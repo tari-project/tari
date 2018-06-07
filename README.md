@@ -1,0 +1,2 @@
+# tari
+The Tari protocol
