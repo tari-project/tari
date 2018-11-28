@@ -1,0 +1,5 @@
+[package]
+name = "cli_wallet"
+version = "0.0.1"
+
+[dependencies]
