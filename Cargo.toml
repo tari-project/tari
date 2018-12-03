@@ -1,0 +1,13 @@
+[workspace]
+
+members = [
+    "base_layer/blockchain",
+    "base_layer/core",
+    "base_layer/mempool",
+    "base_layer/mining",
+    "base_layer/p2p",
+    "digital_assets_layer/core",
+    "infrastructure/comms",
+    "infrastructure/crypto",
+    "infrastructure/storage",
+]
