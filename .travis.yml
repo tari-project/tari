@@ -1,0 +1,21 @@
+
+language: rust
+rust:
+  - nightly
+cache: cargo
+env:
+matrix:
+  fast_finish: true
+script:
+  - cargo fmt --all -- --check
+  - cargo test --all
+
+before_install:
+  - export PATH="$PATH:$HOME/.cargo/bin"
+  - rustup component add rustfmt-preview clippy-preview
+
+before_script:
+
+after_script:
+
+
