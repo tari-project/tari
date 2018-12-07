@@ -1,9 +1,9 @@
 //! An abstraction layer for persistent key-value storage. The Tari domain layer classes should only make use of
 //! these traits and objects and let the underlying implementations handle the details.
 
+use bincode::{deserialize, serialize, ErrorKind};
 use derive_error::Error;
-use bincode::{ErrorKind, serialize, deserialize};
-use serde::{ Serialize, de::DeserializeOwned };
+use serde::{de::DeserializeOwned, Serialize};
 use std::error::Error;
 
 #[derive(Debug, Error)]

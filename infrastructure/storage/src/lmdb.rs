@@ -25,7 +25,7 @@ use std::sync::Arc;
 pub struct LMDBBuilder {
     path: String,
     db_size_mb: usize,
-    db_names: Vec<String>
+    db_names: Vec<String>,
 }
 
 impl LMDBBuilder {
@@ -192,9 +192,9 @@ mod test {
     use super::{LMDBBuilder, LMDBStore};
     use crate::keyvalue_store::{BatchWrite, DataStore, DatastoreError};
     use crate::lmdb::LMDBBatch;
+    use bincode::{deserialize, serialize};
     use rand::{OsRng, RngCore};
     use std::{fs, str};
-    use bincode::{serialize, deserialize};
 
     #[derive(Serialize, Deserialize, PartialEq, Debug)]
     struct Entity {
@@ -396,17 +396,20 @@ mod test {
     fn write_structs() {
         fs::create_dir("./tests/test_struct").unwrap();
         let builder = LMDBBuilder::new();
-        let mut store = builder
-            .set_path("./tests/test_struct/")
-            .build()
-            .unwrap();
+        let mut store = builder.set_path("./tests/test_struct/").build().unwrap();
         let world = World(vec![Entity { x: 0.0, y: 4.0 }, Entity { x: 10.0, y: 20.5 }]);
         let encoded: Vec<u8> = serialize(&world).unwrap();
         // 8 bytes for the length of the vector, 4 bytes per float.
         assert_eq!(encoded.len(), 8 + 4 * 4);
         store.put_raw(b"world", encoded).unwrap();
         // Write using `put`
-        let world_2 = World(vec![Entity { x: 100.0, y: -123.45 }, Entity { x: 42.0, y: -42.0 } ]);
+        let world_2 = World(vec![
+            Entity {
+                x: 100.0,
+                y: -123.45,
+            },
+            Entity { x: 42.0, y: -42.0 },
+        ]);
         store.put("brave new world", &world_2).unwrap();
         // Get world back using get_raw
         let val = store.get_raw(b"world").unwrap().unwrap();
