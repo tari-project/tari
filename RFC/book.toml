@@ -1,0 +1,28 @@
+[book]
+title = "The Tari Network: RFC library"
+authors = ["The Tari Labs Community"]
+description = "The Tari network RFC library and documentation"
+
+[build]
+build-dir = "../book"
+create-missing = true
+preprocess = ["links", "index"]
+
+[output.html]
+mathjax-support=true
+theme = "src/theme"
+
+[output.html.playpen]
+editable = false
+
+[output.html.search]
+enable = true
+limit-results = 30
+teaser-word-count = 30
+use-boolean-and = true
+boost-title = 2
+boost-hierarchy = 1
+boost-paragraph = 1
+expand = true
+heading-split-level = 3
+copy-js = true
