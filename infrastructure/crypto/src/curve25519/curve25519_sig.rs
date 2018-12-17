@@ -10,26 +10,12 @@ use sha2::Sha512;
 
 /// The EdDSA algorithm for Curve25519 using SHA512 as hash algorithm.
 ///
-/// The author of the underlying Rust library for Curve25519 has some interesting comments :) (see
-/// below)
+/// The author of the underlying Rust library for Curve25519 has some
+/// [interesting comments](https://github.com/dalek-cryptography/ed25519-dalek/blob/12c5777b239b6033ab393cf9ce6a1919fa6fbb73/src/ed25519.rs#L351).
 ///
 /// EdDSA uses a 'deterministic nonce' for the Schnorr signature. This is achieved by hashing the
 /// secret key with a 512-bit digest algo (e.g. SHA-512) and then splitting the result in half.
-/// The lower half is the actual `key` used to sign messages, after twiddling with some bits.¹ The
-/// upper half is used a sort of half-baked, ill-designed² pseudo-domain-separation
-/// "nonce"-like thing, which is used during signature production by
-/// concatenating it with the message to be signed before the message is hashed.
-///
-/// ¹ This results in a slight bias towards non-uniformity at one spectrum of
-/// the range of valid keys.
-///
-/// ² It is the [ed25519_dalek] author's view ... that this is "ill-designed" because
-/// this doesn't actually provide true hash domain separation, in that in many
-/// real-world applications a user wishes to have one key which is used in
-/// several contexts... such as bitcoind, a user might wish to have one master keypair from which others are
-/// derived (à la BIP32) and different domain separators between keys derived at
-/// different levels ...  For a better-designed, Schnorr-based signature scheme, see Trevor Perrin's work on
-/// "generalised EdDSA" and "VXEdDSA".
+/// The lower half is the actual key used to sign messages, after twiddling with some bits.
 pub struct Curve25519EdDSA(pub(crate) Signature);
 
 impl SchnorrSignature for Curve25519EdDSA {
