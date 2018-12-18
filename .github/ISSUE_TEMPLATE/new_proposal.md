@@ -14,10 +14,14 @@ assignees: ''
 This proposal is (tick applicable):
 
 * [ ] A new feature
-* [ ] an extension to an existing RFC/proposal <LINK>
-* [ ] an alternative approach to an existing RFC or proposal <LINK>
+* [ ] An extension to an existing RFC/proposal <LINK>
+* [ ] An alternative approach to an existing RFC or proposal <LINK>
 
 ### Change log
+
+| Date | Changes |
+|:-----|:--------|
+|      |         |
 
 ### Goals
 _What problems is this proposal addressing?_

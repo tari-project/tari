@@ -25,15 +25,13 @@ A clear and concise description of what you expected to happen.
 If applicable, add screenshots to help explain your problem.
 
 **Desktop (please complete the following information):**
- - OS: [e.g. iOS]
- - Browser [e.g. chrome, safari]
- - Version [e.g. 22]
+ - OS & Version: [e.g. iOS 10.2.1]
+ - Browser & Version [e.g. chrome v71.0.12345]
 
 **Smartphone (please complete the following information):**
  - Device: [e.g. iPhone6]
  - OS: [e.g. iOS8.1]
- - Browser [e.g. stock browser, safari]
- - Version [e.g. 22]
+ - Browser & Version [e.g. stock browser v0.1.2]
 
 **Additional context**
 Add any other context about the problem here.
