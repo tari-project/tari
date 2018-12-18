@@ -217,9 +217,8 @@ Table 1 summarises the defining characteristics of the Tari network layers:
 | Processes digital asset instructions | Only checkpoints | Yes                    |
 
 
-[Tari coin]: ../../Glossary.md#tari-coin
-[transaction]: ../../Glossary.md#transaction
-[instruction]: ../../Glossary.md#instructions
-[Validator Nodes]: ../../Glossary.md#validator-node
-[Mimblewimble]: ../../Glossary.md#mimblewimble
-[UTXO]: ../../Glossary.md#unspent-transaction-outputs
+[Tari coin]: Glossary.md#tari-coin
+[transaction]: Glossary.md#transaction
+[Validator Nodes]: Glossary.md#validator-node
+[Mimblewimble]: Glossary.md#mimblewimble
+[UTXO]: Glossary.md#unspent-transaction-outputs
