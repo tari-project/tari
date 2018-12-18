@@ -4,13 +4,13 @@ This PR
  * [ ] fixes issue #nnn
  * [ ] adds a new feature
  * [ ] refactors a feature
- * [ ] Adds new tests
- * [ ] Documentation / typo fix
+ * [ ] adds new tests
+ * [ ] adds cosmetic changes (typos, formatting)
  * [ ] Other: (...)
 
 # Reminders checklist
-* [ ] Merges against the `development` branch
-* [ ] Run `cargo-fmt --all` before pushing
+* [ ] Merging against the `development` branch
+* [ ] Ran `cargo-fmt --all` before pushing
 
 # Description
 
