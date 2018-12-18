@@ -2,6 +2,7 @@
 
 [About the Tari RFC documents](./about.md)
 - [RFC-0001: An overview of the Tari network](RFC-0001_overview.md)
+- [RFC-0010: Tari code structure and organisation](RFC-0010_CodeStructure.md)
 - [RFC-0100: The Tari Base Layer](RFC-0100_BaseLayer.md)
   - [RFC-0110: Base nodes](RFC-0110_BaseNodes.md)
   - [RFC-0130: Mining](RFC-0130_Mining.md)
