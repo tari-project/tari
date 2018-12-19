@@ -64,9 +64,9 @@ Tari Base Nodes MUST carry out the following tasks:
 
 * Validate all [Tari coin] [transaction]s.
 * Propagate valid transactions to peer nodes.
-* Validate all new [block]s received by checking that
+* Validate all new [block]s received.
 * Propagate validated new blocks to peer nodes.
-* Connect to peer nodes to catch up (sync) its blockchain state
+* Connect to peer nodes to catch up (sync) its blockchain state.
 * Provide historical block information to peers that are syncing.
 
 Once the Digital Assets Network goes live, Base Nodes will also need to support the tasks described in
@@ -89,7 +89,7 @@ clients, block explorers, wallets, and Tari applications:
 
 ### Transaction validation and propagation
 
-Base nodes can notified of new transactions from
+Base nodes can be notified of new transactions by
 * connected peers
 * clients via APIs
 
@@ -117,7 +117,7 @@ The transaction validation service checks that:
 
 The Block validation and propagation process is analogous to that of transactions.
 
-New blocks are received from the peer-to-peer network, for from an API if the Base Node is connected to a Miner.
+New blocks are received from the peer-to-peer network, or from an API if the Base Node is connected to a Miner.
 
 When a new block is received, is is assigned the `unvalidated` [ValidationState]. The block is then passed to the
 block validation service. The validation service checks that
@@ -143,7 +143,7 @@ In addition, when a block has been validated and added to the blockchain:
 * The mempool MUST also remove all transactions that are present in the newly validated block.
 * The UTXO set MUST be updated; removing all inputs in the block, and adding all the new outputs in it.
 
-### Seeding nodes and Synchronizing the chain
+### Seeding nodes and Synchronising the chain
 
 When base nodes start up, they need to synchronize the blockchain with their peers.
 
