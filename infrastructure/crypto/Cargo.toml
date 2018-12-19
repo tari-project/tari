@@ -1,5 +1,14 @@
 [package]
 name = "crypto"
 version = "0.0.1"
+edition = "2018"
 
 [dependencies]
+digest = "0.7.6"
+rand = "0.5.5"
+ed25519-dalek = { version = "0.8.1"}
+sha2 = "0.7.1"
+derive-error = "0.0.4"
+
+[features]
+avx2 = ["ed25519-dalek/avx2_backend"]

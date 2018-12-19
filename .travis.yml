@@ -1,21 +1,42 @@
-
 language: rust
+sudo: false
+
+cache:
+  - cargo
+
 rust:
   - nightly
-cache: cargo
-env:
-matrix:
-  fast_finish: true
-script:
-  - cargo fmt --all -- --check
-  - cargo test --all
 
 before_install:
   - export PATH="$PATH:$HOME/.cargo/bin"
   - rustup component add rustfmt-preview clippy-preview
 
 before_script:
+  - (test -x $HOME/.cargo/bin/cargo-install-update || cargo install cargo-update)
+  - (test -x $HOME/.cargo/bin/mdbook || cargo install --vers "^0.2" mdbook)
+  - cargo install-update -a
 
-after_script:
+matrix:
+  fast_finish: true
+  include:
+    # Only generate docs when on the master branch
+    - stage: docs
+      if: branch = master
+      name: RFC docs
+      script: cd RFC && mdbook test && mdbook build
+    - stage: build
+      name: Tari source code
+      script:
+        - cargo fmt --all -- --check
+        - cargo test --all
 
-
+# Deploy RFC docs for github pages
+deploy:
+  provider: pages
+  skip-cleanup: true
+  github-token: $GITHUB_TOKEN
+  local-dir: book
+  keep-history: false
+  target-branch: gh-pages
+  on:
+    branch: master
