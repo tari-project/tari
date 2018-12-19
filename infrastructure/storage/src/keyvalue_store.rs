@@ -54,13 +54,11 @@ pub trait DataStore {
     /// exist
     fn get<T: DeserializeOwned>(&self, key: &str) -> Result<Option<T>, DatastoreError> {
         let key = key.as_bytes();
-        let value = self.get_raw(key)?;
-        if value.is_none() {
-            return Ok(None);
+        let result = self.get_raw(key)?;
+        match result {
+            None => Ok(None),
+            Some(val) => Ok(Some(deserialize(&val[..])?))
         }
-        let value = value.unwrap();
-        let value: T = deserialize(&value[..])?;
-        Ok(Some(value))
     }
 
     /// Check whether the given key exists in the database
