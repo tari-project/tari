@@ -13,5 +13,5 @@ welcome to contribute ideas, suggestions or constructive criticism can join the 
 submit a new [issue] or contribute with a [pull request].
 
 
-[issue]: https://github.com/tari-project/RFC/issues
-[pull request]: https://github.com/tari-project/RFC/pulls
+[issue]: https://github.com/tari-project/tari/issues
+[pull request]: https://github.com/tari-project/tari/pulls
