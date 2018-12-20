@@ -106,13 +106,13 @@ _h_<sup>th</sup> block.
 [mempool]: #mempool
 
 The mempool is the set of transactions that have been validated by a base node, but have not yet been included in the
-longest proof-of-work chain yet. Miners usually draw from the mempool to build up transaction [block]s.
+longest proof-of-work chain. Miners usually draw from the mempool to build up transaction [block]s.
 
 
-## MimbleWimble
+## Mimblewimble
 [mimblewimble]: #mimblewimble 'a privacy-centric cryptocurrency protocol'
 
-MimbleWimble is a privacy-centric cryptocurrency protocol. It was
+Mimblewimble is a privacy-centric cryptocurrency protocol. It was
 [dropped](https://download.wpsoftware.net/bitcoin/wizardry/mimblewimble.txt) in the Bitcoin Developers chatroom by an
 anonymous author and has since been refined by several authors, including Andrew Poelstra.
 

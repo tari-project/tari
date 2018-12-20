@@ -79,6 +79,9 @@ To carry out these tasks effectively, Base Nodes SHOULD:
 * Maintain a list of all pending, valid transactions that have not yet been mined (the [mempool]).
 * Manage a list of Base Node peers present on the network.
 
+Tari Base nodes MAY implement chain pruning strategies that are features of Mimblewimble, including transaction
+[cut-through and block compaction techniques](https://tlu.tarilabs.com/protocols/grin-protocol-overview/MainReport.html#mimblewimble-protocol-overview).
+
 Tari Base Nodes MAY also implement the following services via an API to clients. Such clients may include "light"
 clients, block explorers, wallets, and Tari applications:
 
@@ -103,9 +106,10 @@ The transaction validation service checks that:
 * all inputs are able to be spent (they're not time-locked)
 * all inputs are signed by their owners
 * all outputs have valid [range proof]s
-* all outputs don't already exist in the [UTXO] set.
+* no outputs currently exist in the [UTXO] set
 * the transaction excess has a valid signature
-* the transaction excess is a valid public key (this proves that $$\Sigma (\mathrm{inputs} - \mathrm{outputs} - \mathrm(fees) = 0$$)
+* the transaction excess is a valid public key (this proves that $$\Sigma \left( \mathrm{inputs} - \mathrm{outputs} -
+  \mathrm{fees} \right) = 0$$)
 
 `Rejected` transactions are dropped silently.
 
@@ -117,20 +121,21 @@ The transaction validation service checks that:
 
 The Block validation and propagation process is analogous to that of transactions.
 
-New blocks are received from the peer-to-peer network, or from an API if the Base Node is connected to a Miner.
+New blocks are received from the peer-to-peer network, or from an API call if the Base Node is connected to a Miner.
 
-When a new block is received, is is assigned the `unvalidated` [ValidationState]. The block is then passed to the
+When a new block is received, it is assigned the `unvalidated` [ValidationState]. The block is then passed to the
 block validation service. The validation service checks that
 
 * the block hasn't been processed before
-* every [transaction] in the block is valid,
+* every [transaction] in the block is valid
 * the proof-of-work is valid
 * the block header is well-formed
 * the block is being added to the chain with the highest accumulated proof-of-work.
   * it is possible for the chain to temporarily fork; base nodes SHOULD account for forks up to some configured depth
   * it is possible that blocks may be received out of order; particularly while syncing. Base Nodes SHOULD keep blocks
     that have block heights greater than the current chain tip in memory for some preconfigured period.
-* the sum of all excesses is a valid public key (this proves that $$\Sigma (\mathrm{inputs} - \mathrm{outputs} - \mathrm(fees) = 0$$)
+* the sum of all excesses is a valid public key (this proves that $$\Sigma\left( \mathrm{inputs} - \mathrm{outputs} -
+  \mathrm{fees} \right) = 0$$)
 
 `Rejected` blocks are dropped silently. Base Nodes MAY ban peers that consistently pass on bad blocks and add them to a
 blacklist.
@@ -154,9 +159,9 @@ network:
 1. Load a bootstrap list of peers from a configuration file, or a cached list, if this is not the first time that the
    node has started.
 1. For each peer in this list
-  1. Establish a connection with the peer
-  1. Request a peer list from that peer
-  1. Request information about the most recent chain state (total accumulated work, block height etc) from the peer
+   1. Establish a connection with the peer
+   1. Request a peer list from that peer
+   1. Request information about the most recent chain state (total accumulated work, block height, etc.) from the peer
 
 The Base Node will now be able to build a strategy for catching up to the network. The Base Node will implement its
 [SynchronisationStrategy], which reduces load on any single peer and optimises bandwidth usage to synchronise the
