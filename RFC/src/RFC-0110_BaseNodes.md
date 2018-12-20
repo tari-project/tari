@@ -108,12 +108,12 @@ The transaction validation service checks that:
 * all outputs have valid [range proof]s.
 * no outputs currently exist in the [UTXO] set.
 * the transaction excess has a valid signature.
-* the transaction excess is a valid public key (this proves that $$\Sigma \left( \mathrm{inputs} - \mathrm{outputs} -
-  \mathrm{fees} \right) = 0$$).
+* the transaction excess is a valid public key. This proves that:
+  $$ \Sigma \left( \mathrm{inputs} - \mathrm{outputs} - \mathrm{fees} \right) = 0 $$
 
 `Rejected` transactions are dropped silently.
 
-`Validated` transactions are
+`Validated` transactions are:
 * Added to the [mempool].
 * forwarded to peers using the transaction [BroadcastStrategy].
 
@@ -134,8 +134,8 @@ block validation service. The validation service checks that
   * it is possible for the chain to temporarily fork; base nodes SHOULD account for forks up to some configured depth.
   * it is possible that blocks may be received out of order; particularly while syncing. Base Nodes SHOULD keep blocks.
     that have block heights greater than the current chain tip in memory for some preconfigured period.
-* the sum of all excesses is a valid public key (this proves that $$\Sigma\left( \mathrm{inputs} - \mathrm{outputs} -
-  \mathrm{fees} \right) = 0$$).
+* the sum of all excesses is a valid public key. This proves that:
+   $$ \Sigma \left( \mathrm{inputs} - \mathrm{outputs} - \mathrm{fees} \right) = 0$$
 
 `Rejected` blocks are dropped silently. Base Nodes MAY ban peers that consistently pass on bad blocks and add them to a
 blacklist.
