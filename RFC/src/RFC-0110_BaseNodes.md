@@ -85,36 +85,36 @@ Tari Base nodes MAY implement chain pruning strategies that are features of Mimb
 Tari Base Nodes MAY also implement the following services via an API to clients. Such clients may include "light"
 clients, block explorers, wallets, and Tari applications:
 
-  * Block queries
-  * Kernel data queries
-  * Transaction queries
-  * Submission of new transactions
+  * Block queries.
+  * Kernel data queries.
+  * Transaction queries.
+  * Submission of new transactions.
 
 ### Transaction validation and propagation
 
 Base nodes can be notified of new transactions by
-* connected peers
-* clients via APIs
+* connected peers.
+* clients via APIs.
 
 When a new transaction has been received, it has the `unvalidated` [ValidationState]. The transaction is then passed
 to the transaction validation service, where its state will become one of `rejected` or `validated`.
 
 The transaction validation service checks that:
 
-* all inputs to the transaction are valid [UTXO]s
-* all inputs are not duplicated
-* all inputs are able to be spent (they're not time-locked)
-* all inputs are signed by their owners
-* all outputs have valid [range proof]s
-* no outputs currently exist in the [UTXO] set
-* the transaction excess has a valid signature
+* all inputs to the transaction are valid [UTXO]s.
+* all inputs are not duplicated.
+* all inputs are able to be spent (they're not time-locked).
+* all inputs are signed by their owners.
+* all outputs have valid [range proof]s.
+* no outputs currently exist in the [UTXO] set.
+* the transaction excess has a valid signature.
 * the transaction excess is a valid public key (this proves that $$\Sigma \left( \mathrm{inputs} - \mathrm{outputs} -
-  \mathrm{fees} \right) = 0$$)
+  \mathrm{fees} \right) = 0$$).
 
 `Rejected` transactions are dropped silently.
 
 `Validated` transactions are
-* Added to the [mempool]
+* Added to the [mempool].
 * forwarded to peers using the transaction [BroadcastStrategy].
 
 ### Block validation and propagation
@@ -126,22 +126,22 @@ New blocks are received from the peer-to-peer network, or from an API call if th
 When a new block is received, it is assigned the `unvalidated` [ValidationState]. The block is then passed to the
 block validation service. The validation service checks that
 
-* the block hasn't been processed before
-* every [transaction] in the block is valid
-* the proof-of-work is valid
-* the block header is well-formed
+* the block hasn't been processed before.
+* every [transaction] in the block is valid.
+* the proof-of-work is valid.
+* the block header is well-formed.
 * the block is being added to the chain with the highest accumulated proof-of-work.
-  * it is possible for the chain to temporarily fork; base nodes SHOULD account for forks up to some configured depth
-  * it is possible that blocks may be received out of order; particularly while syncing. Base Nodes SHOULD keep blocks
+  * it is possible for the chain to temporarily fork; base nodes SHOULD account for forks up to some configured depth.
+  * it is possible that blocks may be received out of order; particularly while syncing. Base Nodes SHOULD keep blocks.
     that have block heights greater than the current chain tip in memory for some preconfigured period.
 * the sum of all excesses is a valid public key (this proves that $$\Sigma\left( \mathrm{inputs} - \mathrm{outputs} -
-  \mathrm{fees} \right) = 0$$)
+  \mathrm{fees} \right) = 0$$).
 
 `Rejected` blocks are dropped silently. Base Nodes MAY ban peers that consistently pass on bad blocks and add them to a
 blacklist.
 
 `Validated` blocks are
-* added to the [blockchain]
+* added to the [blockchain].
 * forwarded to peers using the block [BroadcastStrategy].
 
 In addition, when a block has been validated and added to the blockchain:
@@ -155,13 +155,13 @@ When base nodes start up, they need to synchronize the blockchain with their pee
 Base Nodes that have just started up MUST perform the following in order to synchronize their blockchain state with the
 network:
 
-1. The Base Node's [SynchronisationState] is set to `Synchronising`
+1. The Base Node's [SynchronisationState] is set to `Synchronising`.
 1. Load a bootstrap list of peers from a configuration file, or a cached list, if this is not the first time that the
    node has started.
-1. For each peer in this list
-   1. Establish a connection with the peer
-   1. Request a peer list from that peer
-   1. Request information about the most recent chain state (total accumulated work, block height, etc.) from the peer
+1. For each peer in this list:
+   1. Establish a connection with the peer.
+   1. Request a peer list from that peer.
+   1. Request information about the most recent chain state (total accumulated work, block height, etc.) from the peer.
 
 The Base Node will now be able to build a strategy for catching up to the network. The Base Node will implement its
 [SynchronisationStrategy], which reduces load on any single peer and optimises bandwidth usage to synchronise the
@@ -169,7 +169,18 @@ blockchain as quickly as possible.
 
 In particular, Mimblewimble has some unique properties that could lead to very fast synchronisation strategies. For
 example, because of cut-through and pruning, the entire blockchain state can be represented by the current [UTXO] set
-and all the Coinbase transaction inputs.
+and all the coinbase transaction inputs.
+
+The upshot of this is that a new node can be perfectly sure of the current blockchain state and not download any block
+history at all. All that is required is downloading the block _header_ history and the current UTXO set. Then
+verification is achieved by
+
+1. The UTXO set and knowledge of the emission rate are used to verify the coin supply.
+1. The transaction kernel history (present in the block headers) and the UTXO range proofs are used to verify that every
+   UTXO is legitimate.
+1. The proof of work can be verified from the block headers. Furthermore, if a commitment (e.g. a Merkle tree root) for
+   the UTXO set is stored in the block headers, it is straightforward to verify that the UTXO set corresponds to a block
+   in the chain.
 
 When Base Nodes receive blocks from peers while synchronizing, the usual
 [block validation](#block-validation-and-propagation) process is followed.
