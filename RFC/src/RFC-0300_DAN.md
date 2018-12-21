@@ -155,7 +155,7 @@ The exact mechanism for the Multi-Signature address on the base layer and who pa
 
 ### Network communication
 The VNs will communicate using a peer-to-peer (P2P) network. To facilitate this this VNs must perform the following functions:
-* VNs must maintain a list of peers, and which assets each peer is managing.
+* VNs MUST maintain a list of peers, and which assets each peer is managing.
 * VNs must relay [instructions] to interested peers.
 * VNs must respond to requests for information about digital assets that they manage on the DAN.
 * VNs and clients can advertise public keys to facilitate P2P communication encryption
