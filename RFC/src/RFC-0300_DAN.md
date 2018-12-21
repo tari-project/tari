@@ -126,13 +126,13 @@ issuance process and membership of the committee can be updated at [Checkpoint]s
 #### Checkpoints
 VNs periodically post checkpoint summaries to the [base layer] for each asset that they are managing. The checkpoints will form an immutable
 record of the [Digital Asset] state on the base-layer. There will be two types of checkpoints:
-* An Opening checkpoint will:
+* An Opening checkpoint (OC) will:
   * Specify the members of the VN committee.
   * Lock up the collateral for the committee members for this checkpoint period.
   * Collect the fee pool for this checkpoint period from the Asset Issuer into a Multi-Sig UTXO under the control of the committee.
   This can be a top-up of the fees or a whole new fee pool.
 
-* A Closing checkpoint will:
+* A Closing checkpoint (CC) will:
   * Summarize the Digital Asset state on the base layer.
   * Release the fee pay outs.
   * Release the collateral for the committee members for this checkpoint period.
@@ -140,7 +140,27 @@ record of the [Digital Asset] state on the base-layer. There will be two types o
 
 After an DA is issued there will immediately be an Opening checkpoint. After a checkpoint period there will then be a Closing checkpoint followed
 immediately by an Opening checkpoint for the next period, we will call this set of checkpoints an Intermediate checkpoint. This will continue
-until the end of the asset's lifetime where there will be a final Closing checkpoint will be followed by the retirement of the asset.
+until the end of the asset's lifetime where there will be a final Closing checkpoint that will be followed by the retirement of the asset.
+
+<div class="mermaid">
+graph LR;
+    subgraph Asset Issuance
+    IssueAsset-->OC1;
+    end
+    OC1-->CC1;
+    subgraph Intermediate Checkpoint
+    CC1-->OC2;
+    end
+    OC2-->CC2;
+    subgraph Intermediate Checkpoint
+    CC2-->OC3;
+    end
+    OC3-->CC3;
+    subgraph Asset Retirement
+    CC3-->RetireAsset;
+    end
+
+</div>
 
 #### Consensus
 Committees of VNs will use a [ConsensusStrategy] to manage the process of
