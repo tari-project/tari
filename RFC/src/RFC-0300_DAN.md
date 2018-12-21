@@ -147,7 +147,7 @@ Part of the [ConsensusStrategy] will be mechanisms for detecting actions by [Bad
 against bad actors are still to be decided.
 
 #### Fees
-The distribution of the fees for work done by VNs during a checkpoint period will be agreed upon by the committee.
+The distribution of the fees for work done by VNs during a checkpoint period will be algorithmically determined by the committee.
 The committee members will sign for the fee payments based on the respective work done by the committee members. Remaining fees will
 roll over into the next checkpoint periods fee pool.
 
