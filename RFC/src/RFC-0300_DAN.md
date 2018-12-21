@@ -77,7 +77,7 @@ that the rules of the asset contracts are enforced.
 * Asset issuers can register TLDIs (top-level digital issuer) names on the base chain to help disambiguate similar
   contracts and improve the signal-to-noise ratio from scam- or copy-cat contracts.
 
-An [Asset Issuer] (AI) will issue a Digital Assets by constructing a contract from on of the supported set of [DigitalAssetTemplate]s. The AI will choose
+An [Asset Issuer] (AI) will issue a Digital Assets by constructing a contract from one of the supported set of [DigitalAssetTemplate]s. The AI will choose
  how large the committee of Validator Nodes will be for this DA and have the option to nominate [Trusted Node]s to be part of the VN committee for the DA.
 Any remaining spots on the committee will be filled by permissionless VNs that are selected randomly by the DAN.
 
