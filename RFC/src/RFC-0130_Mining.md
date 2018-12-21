@@ -90,16 +90,3 @@ Solved and completed blocks should be propagated to the rest of the base layer n
 - The Tari full-node miner must reject and discard invalid Tari and/or Monero blocks.  
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
