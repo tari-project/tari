@@ -126,17 +126,21 @@ issuance process and membership of the committee can be updated at [Checkpoint]s
 #### Checkpoints
 VNs periodically post checkpoint summaries to the [base layer] for each asset that they are managing. The checkpoints will form an immutable
 record of the [Digital Asset] state on the base-layer. There will be two types of checkpoints:
-* An opening checkpoint will:
+* An Opening checkpoint will:
   * Specify the members of the VN committee.
   * Lock up the collateral for the committee members for this checkpoint period.
   * Collect the fee pool for this checkpoint period from the Asset Issuer into a Multi-Sig UTXO under the control of the committee.
   This can be a top-up of the fees or a whole new fee pool.
 
-* A closing checkpoint will:
+* A Closing checkpoint will:
   * Summarize the Digital Asset state on the base layer.
   * Release the fee pay outs.
   * Release the collateral for the committee members for this checkpoint period.
   * Allow for committee members to resign from the committee
+
+After an DA is issued there will immediately be an Opening checkpoint. After a checkpoint period there will then be a Closing checkpoint followed
+immediately by an Opening checkpoint for the next period, we will call this set of checkpoints an Intermediate checkpoint. This will continue
+until the end of the asset's lifetime where there will be a final Closing checkpoint will be followed by the retirement of the asset.
 
 #### Consensus
 Committees of VNs will use a [ConsensusStrategy] to manage the process of
@@ -147,16 +151,13 @@ Part of the [ConsensusStrategy] will be mechanisms for detecting actions by [Bad
 against bad actors are still to be decided.
 
 #### Fees
-The distribution of the fees for work done by VNs during a checkpoint period will be agreed upon by the committee.
-The committee members will sign for the fee payments based on the respective work done by the committee members. Remaining fees will
-roll over into the next checkpoint periods fee pool.
-
-The exact mechanism for the Multi-Signature address on the base layer and who pays the various fees is still under discussion.
+Fees will be paid to VNs based on the amount of work they did during a checkpoint period. The exact mechanism for the the payment of the
+fees by the committee and who pays the various types of fees is still under discussion.
 
 ### Network communication
 The VNs will communicate using a peer-to-peer (P2P) network. To facilitate this this VNs must perform the following functions:
 * VNs must maintain a list of peers, and which assets each peer is managing.
-* VNs must relay [instructions] to interested peers.
+* VNs must relay [instructions] to members of the committee that is managing the relevant asset.
 * VNs must respond to requests for information about digital assets that they manage on the DAN.
 * VNs and clients can advertise public keys to facilitate P2P communication encryption
 

@@ -9,7 +9,7 @@ glossary to disambiguate ideas, and work towards a
 
 An entity that creates digital assets on the Tari DAN. The Asset Issuer will specify the parameters of the contract template
 that defines the rules that govern the asset and the number and nature of its constituent tokens on issuance. The Asset Issuer
-will be the initial owner of the tokens.
+will, generally, be the initial owner of the tokens.
 
 ## Bad Actor
 [Bad Actor]: #bad-actor 'A stakeholder that acts maliciously or negligently to the detriment of the network or another stakeholder'
@@ -53,9 +53,9 @@ with the property that changing anything in a block other than the head block re
 blockchain from that point on.
 
 ## Checkpoint
-[checkpoint]: #checkpoint 'A snapshot of the state of a Digital Asset that is recorded on the base layer'
+[checkpoint]: #checkpoint 'A summary of the state of a Digital Asset that is recorded on the base layer'
 
-A snapshot of the state of a Digital Asset that is recorded on the base layer.
+A hash of the state of a Digital Asset that is recorded on the base layer.
 
 ## Coinbase transaction 
 [coinbase transaction]: #coinbase-transaction
