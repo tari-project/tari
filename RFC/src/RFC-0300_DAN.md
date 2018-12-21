@@ -79,7 +79,9 @@ that the rules of the asset contracts are enforced.
 
 An [Asset Issuer] (AI) will issue a Digital Assets by constructing a contract from one of the supported set of [DigitalAssetTemplate]s. The AI will choose
  how large the committee of Validator Nodes will be for this DA and have the option to nominate [Trusted Node]s to be part of the VN committee for the DA.
-Any remaining spots on the committee will be filled by permissionless VNs that are selected randomly by the DAN.
+Any remaining spots on the committee will be filled by permissionless VNs that are selected according to a [CommitteeSelectionStrategy]. This ia a strategy
+for the DAN to algorithmically select candidates for the committee from the available registered Validator Nodes. The VNs will need accept the nomination
+to become part of the committee by putting up the specified collateral.
 
 ### Validator Nodes
 
@@ -122,6 +124,11 @@ issuance process and membership of the committee can be updated at [Checkpoint]s
   collateral being slashed).
 * Digital asset metadata (e.g. large images) are managed by VNs, but whether the data is considered part of the state
   (and thus checkpointed) or out of state depends on the type of digital asset contract employed.
+
+#### Fees
+Fees will be paid to VNs based on the amount of work they did during a checkpoint period. The fees will be paid from a fee pool which will be collected
+and reside in a UTXO that is accessible by the committee. The exact mechanism for the the payment of the fees by the committee and who pays the various
+types of fees is still under discussion.
 
 #### Checkpoints
 VNs periodically post checkpoint summaries to the [base layer] for each asset that they are managing. The checkpoints will form an immutable
@@ -170,10 +177,6 @@ Committees of VNs will use a [ConsensusStrategy] to manage the process of
 Part of the [ConsensusStrategy] will be mechanisms for detecting actions by [Bad Actor]s. The nature of the enforcement actions that can be taken
 against bad actors are still to be decided.
 
-#### Fees
-Fees will be paid to VNs based on the amount of work they did during a checkpoint period. The exact mechanism for the the payment of the
-fees by the committee and who pays the various types of fees is still under discussion.
-
 ### Network communication
 The VNs will communicate using a peer-to-peer (P2P) network. To facilitate this this VNs must perform the following functions:
 * VNs MUST maintain a list of peers, and which assets each peer is managing.
@@ -187,6 +190,7 @@ The VNs will communicate using a peer-to-peer (P2P) network. To facilitate this 
 [digital asset]: Glossary.md#digital-asset
 [checkpoint]: Glossary.md#checkpoint
 [committee]: Glossary.md#committee
+[CommitteeSelectionStrategy]: Glossary.md#committee-selection-strategy
 [ConsensusStrategy]: Glossary.md#consensusstrategy
 [validator node]: Glossary.md#validator-node
 [digital asset network]: Glossary.md#digital-asset-network

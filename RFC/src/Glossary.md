@@ -69,6 +69,10 @@ awarded to the miner that performed the Proof of Work for the block.
 A group of [Validator Node]s that are responsible for managing the state of a specific [Digital Asset]. A committee is selected
 during asset issuance and can be updated at [Checkpoint]s.
 
+## CommitteeSelectionStrategy
+[CommitteeSelectionStrategy]: #committee-selection-strategy 'A strategy for the DAN to algorithmically select candidates for the committee from the available registered Validator Nodes'
+A strategy for the DAN to algorithmically select candidates for the committee from the available registered Validator Nodes. The VNs will need accept the nomination to become part of the committee.
+
 ## ConsensusStrategy
 [ConsensusStrategy]: #consensusstrategy 'The approach that will be taken for a committee to reach consensus on instructions'
 
