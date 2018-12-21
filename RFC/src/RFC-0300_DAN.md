@@ -91,7 +91,7 @@ that VNs will facilitate are:
 * querying the state of [Digital Asset] and its constituent [tokens],
 * issuing and instruction to change the state of a [Digital Asset] or [tokens].
 
-VNs will also perform archival function for the assets they manage. The lifetime of these archives and the fee structure for this function is
+VNs will also perform archival functions for the assets they manage. The lifetime of these archives and the fee structure for this function is
 still being discussed.
 
 #### Registration
