@@ -97,17 +97,17 @@ still being discussed.
 #### Registration
 VNs register themselves on the [Base Layer] using a special [transaction] type. The registration [transaction] type
 requires spending of a certain minimum amount of [Tari coin], the ([RegistrationCollateral]), that has a time-lock on the
-output for a minimum amount of time ([RegistrationPeriod]) as well as some metadata, such as the VNs public key and a generated Node ID. The
-details of this transaction are not confidential and are publicly auditable. The Node ID is generated during registration to prevent mining
-of VN public keys that can be used to manipulate routing on the DAN.
+output for a minimum amount of time ([RegistrationTerm]) as well as some metadata, such as the VNs public key and a generated Node ID. The Node ID is generated
+during registration to prevent mining of VN public keys that can be used to manipulate routing on the DAN. The blinding factor for the Registration transaction is the private key
+that the VN node will use to sign every instruction that it executes for the duration of its [RegistrationTerm] (or period).
 
-VNs may spend this Tari back to themselves which will end their registration.
+VNs may unregister their VN by spending the Tari from this UTXO, whose timelock will have expired after the [RegistrationTerm] minimum time has elapsed.
 
 Requiring nodes to register themselves serves two purposes:
 * Makes VN Sybil attacks expensive,
 * Provides an authoritative "central-but-not-centralised" registry of validator nodes from the base layer.
 
-#### Validation of instructions
+#### Execution of instructions
 VNs are expected to manage the state of digital assets on behalf of digital asset issuers. They receive fees as reward
 for doing this.
 * Digital assets consist of an initial state plus a set of state transition rules. These rules are set by the Tari
@@ -190,7 +190,7 @@ The VNs will communicate using a peer-to-peer (P2P) network. To facilitate this 
 [digital asset]: Glossary.md#digital-asset
 [checkpoint]: Glossary.md#checkpoint
 [committee]: Glossary.md#committee
-[CommitteeSelectionStrategy]: Glossary.md#committee-selection-strategy
+[CommitteeSelectionStrategy]: Glossary.md#committeeselectionstrategy
 [ConsensusStrategy]: Glossary.md#consensusstrategy
 [validator node]: Glossary.md#validator-node
 [digital asset network]: Glossary.md#digital-asset-network
@@ -200,5 +200,5 @@ The VNs will communicate using a peer-to-peer (P2P) network. To facilitate this 
 [trusted node]: Glossary.md#trusted-node
 [instructions]: Glossary.md#instructions
 [RegistrationCollateral]: Glossary.md#registrationcollateral
-[RegistrationPeriod]: Glossary.md#registrationperiod
+[RegistrationTerm]: Glossary.md#registrationterm
 [DigitalAssetTemplate]: Glossary.md#digitalassettemplate

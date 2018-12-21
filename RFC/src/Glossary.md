@@ -70,7 +70,7 @@ A group of [Validator Node]s that are responsible for managing the state of a sp
 during asset issuance and can be updated at [Checkpoint]s.
 
 ## CommitteeSelectionStrategy
-[CommitteeSelectionStrategy]: #committee-selection-strategy 'A strategy for the DAN to algorithmically select candidates for the committee from the available registered Validator Nodes'
+[CommitteeSelectionStrategy]: #committeeselectionstrategy 'A strategy for the DAN to algorithmically select candidates for the committee from the available registered Validator Nodes'
 A strategy for the DAN to algorithmically select candidates for the committee from the available registered Validator Nodes. The VNs will need accept the nomination to become part of the committee.
 
 ## ConsensusStrategy
@@ -137,8 +137,8 @@ anonymous author and has since been refined by several authors, including Andrew
 In order to make Sybil attacks expensive and to provide an authorative base layer registry of [validator node]s they will need to lock up
 a amount of [Tari Coin] on the [Base Layer] using a registration transaction to begin acting as a VN on the DAN.
 
-## RegistrationPeriod
-[RegistrationPeriod]: #registrationperiod 'The minimum amount of time that a VN registration lasts'
+## RegistrationTerm
+[RegistrationTerm]: #registrationterm 'The minimum amount of time that a VN registration lasts'
 
 The minimum amount of time that a VN registration lasts, the RegistrationCollateral can only be released after this minimum period has elapsed.
 
