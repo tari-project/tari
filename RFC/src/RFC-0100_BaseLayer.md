@@ -77,5 +77,5 @@ project source code:
 * Cryptography services
 * Peer-to-peer networking and messaging services
 
-[RFC-0110](./RFC-0110_BaseNodes.md) provides more detail on how the source code is structured within the Tari codebase.
+[RFC-0010](RFC-0010_CodeStructure.md) provides more detail on how the source code is structured within the Tari codebase.
 
