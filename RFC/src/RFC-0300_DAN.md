@@ -74,10 +74,10 @@ that the rules of the asset contracts are enforced.
   the behaviour of each contract type. e.g. there could be a Single-Use Token template for simple ticketing systems; a
   Coupon template for loyalty programmes and so on.
 * The template system is intended to be highly flexible and additional templates can be added to the protocol periodically.
-* Asset issuers can register TLDIs (top-level digital issuer) names on the base chain to help disambiguate similar
+* Asset issuers can register Top-Level Digital Issuer (TLDI) names on the base chain to help disambiguate similar
   contracts and improve the signal-to-noise ratio from scam- or copy-cat contracts.
 
-An [Asset Issuer] (AI) will issue a Digital Assets by constructing a contract from on of the supported set of [DigitalAssetTemplate]s. The AI will choose
+An [Asset Issuer] (AI) will issue a Digital Assets by constructing a contract from one of the supported set of [DigitalAssetTemplate]s. The AI will choose
  how large the committee of Validator Nodes will be for this DA and have the option to nominate [Trusted Node]s to be part of the VN committee for the DA.
 Any remaining spots on the committee will be filled by permissionless VNs that are selected randomly by the DAN.
 
@@ -156,9 +156,9 @@ fees by the committee and who pays the various types of fees is still under disc
 
 ### Network communication
 The VNs will communicate using a peer-to-peer (P2P) network. To facilitate this this VNs must perform the following functions:
-* VNs must maintain a list of peers, and which assets each peer is managing.
-* VNs must relay [instructions] to members of the committee that is managing the relevant asset.
-* VNs must respond to requests for information about digital assets that they manage on the DAN.
+* VNs MUST maintain a list of peers, and which assets each peer is managing.
+* VNs MUST relay [instructions] to to members of the committee that is managing the relevant asset.
+* VNs MUST respond to requests for information about digital assets that they manage on the DAN.
 * VNs and clients can advertise public keys to facilitate P2P communication encryption
 
 [asset issuer]: Glossary.md#asset-issuer
