@@ -180,7 +180,7 @@ against bad actors are still to be decided.
 ### Network communication
 The VNs will communicate using a peer-to-peer (P2P) network. To facilitate this this VNs must perform the following functions:
 * VNs MUST maintain a list of peers, and which assets each peer is managing.
-* VNs MUST relay [instructions] to to members of the committee that is managing the relevant asset.
+* VNs MUST relay [instructions] to members of the committee that are managing the relevant asset.
 * VNs MUST respond to requests for information about digital assets that they manage on the DAN.
 * VNs and clients can advertise public keys to facilitate P2P communication encryption
 
