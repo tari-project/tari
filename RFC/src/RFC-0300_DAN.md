@@ -101,7 +101,8 @@ output for a minimum amount of time ([RegistrationTerm]) as well as some metadat
 during registration to prevent mining of VN public keys that can be used to manipulate routing on the DAN. The blinding factor for the Registration transaction is the private key
 that the VN node will use to sign every instruction that it executes for the duration of its [RegistrationTerm].
 
-VNs may unregister their VN by spending the Tari from this UTXO, whose timelock will have expired after the [RegistrationTerm] minimum time has elapsed.
+Once a VNs [RegistrationTerm] has expired so will this specific VN registration. The UTXO timelock will have elapsed so the [RegistrationCollateral] can be reclaimed and a new VN registration
+need to be performed. This automatic registration expiry will ensure that the VN registry stays up to date with active VN registrations and inactive registrations will naturally be removed.
 
 Requiring nodes to register themselves serves two purposes:
 * Makes VN Sybil attacks expensive,
