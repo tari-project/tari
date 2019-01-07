@@ -102,7 +102,7 @@ to the transaction validation service, where its state will become one of `rejec
 The transaction validation service checks that:
 
 * all inputs to the transaction are valid [UTXO]s.
-* all inputs are not duplicated.
+* no inputs are duplicated.
 * all inputs are able to be spent (they're not time-locked).
 * all inputs are signed by their owners.
 * all outputs have valid [range proof]s.
