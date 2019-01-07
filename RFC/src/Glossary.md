@@ -42,11 +42,24 @@ with the property that changing anything in a block other than the head block re
 blockchain from that point on.
 
 
-## Coinbase transaction 
+## BroadcastStrategy
+
+A strategy for propagating messages amongst nodes in a peer-to-peer network. Example implementations of
+`BroadcastStrategy` include the Gossip protocol, Dandelion and flood fill.
+
+## Coinbase transaction
 [coinbase transaction]: #coinbase-transaction
 
 The first transaction in every Tari block yields a [Block Reward] according to the Tari [emission Schedule] and is 
 awarded to the miner that performed the Proof of Work for the block.
+
+
+## Commitment
+[commitment]: #commitment
+
+A commitment is a cryptographic primitive that allows one to commit to a chosen value while keeping it hidden from
+others, with the ability to reveal the committed value later. Commitments are designed so that one cannot change the
+value or statement after they have committed to it.
 
 
 ## Digital asset
@@ -89,12 +102,41 @@ An explicit formula as a function of the block height, _h_, that determines the 
 _h_<sup>th</sup> block.
 
 
-## MimbleWimble
+## Mempool
+[mempool]: #mempool
+
+The mempool is the set of transactions that have been validated by a base node, but have not yet been included in the
+longest proof-of-work chain. Miners usually draw from the mempool to build up transaction [block]s.
+
+
+## Mimblewimble
 [mimblewimble]: #mimblewimble 'a privacy-centric cryptocurrency protocol'
 
-MimbleWimble is a privacy-centric cryptocurrency protocol. It was
+Mimblewimble is a privacy-centric cryptocurrency protocol. It was
 [dropped](https://download.wpsoftware.net/bitcoin/wizardry/mimblewimble.txt) in the Bitcoin Developers chatroom by an
 anonymous author and has since been refined by several authors, including Andrew Poelstra.
+
+## Range proof
+[range proof]: #range-proof
+
+A mathematical demonstration that a value inside a [commitment] (i.e. it is hidden) lies within a certain range. For
+[Mimblewimble], range proofs are used to prove that outputs are positive values.
+
+
+## SynchronisationStrategy
+
+The generalised approach for a [Base Node] to obtain the current state of the blockchain from the peer-to-peer network.
+Specific implementations may differ based on different trade-offs and constraints with respect to bandwidth, local
+network conditions etc.
+
+
+## SynchronisationState
+
+The current synchronisation state of a [Base Node]. This can either be
+* `new` - The blockchain state is empty and is waiting for synchronisation to begin.
+* `synchronising` - The blockchain state is in the process of synchronising with the rest of the network.
+* `synchronised` - The blockchain state has synchronised with the rest of the network and is in a position to validate
+  transactions.
 
 
 ## Transaction
@@ -103,6 +145,14 @@ anonymous author and has since been refined by several authors, including Andrew
 Transactions are activities recorded on the Tari [blockchain] running on the [base layer]. Transactions always involve a
 transfer of [Tari coin]s.
 
+## ValidationState
+
+Transactions or blocks are `unvalidated` when first received by a [Base Node]. After validation, they are either
+`rejected` or `validated`.
+
+`Validated` transactions can be added to the [mempool] and propagated to peers.
+
+`Validated` blocks are added to the [blockchain] and propagated to peers.
 
 ## Tari Coin
 [tari coin]: #tari-coin 'The base layer token'
@@ -118,7 +168,7 @@ An unspent transaction output (UTXO) is a discrete number of Tari that are avail
 UTXOs represents all the Tari currently in circulation. In addition, the sum of all UTXO values equals the sum of the
  [block reward]s for all blocks up to the current block height.
  
-UTXO values are hidden by their commitments. Only the owner of the UTXO and (presumably) the creator of the UTXO 
+UTXO values are hidden by their [commitment]s. Only the owner of the UTXO and (presumably) the creator of the UTXO
 (either a [Coinbase transaction] or previous spender) know the value of the UTXO.
 
 
@@ -131,4 +181,4 @@ updating [digital asset]s living on the Tari network.
 
 # Disclaimer
 
-This document is subject to the [disclaimer](DISCLAIMER.md).
+This document is subject to the [disclaimer](../DISCLAIMER.md).
