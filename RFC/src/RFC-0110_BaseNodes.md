@@ -137,8 +137,12 @@ block validation service. The validation service checks that
 * the sum of all excesses is a valid public key. This proves that:
    $$ \Sigma \left( \mathrm{inputs} - \mathrm{outputs} - \mathrm{fees} \right) = 0$$
 
-`Rejected` blocks are dropped silently. Base Nodes MAY ban peers that consistently pass on bad blocks and add them to a
-blacklist.
+`Rejected` blocks are dropped silently.
+
+Base Nodes are not obliged to accept connections from any peer node on the network. In particular:
+
+* Base Nodes MAY refuse connections from peers that have been added to a blacklist.
+* Base Nodes MAY be configured to exclusively connect to a given set of peer nodes.
 
 `Validated` blocks are
 * added to the [blockchain].
