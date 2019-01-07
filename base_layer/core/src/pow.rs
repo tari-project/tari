@@ -20,6 +20,5 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod block;
-pub mod pow;
-pub mod transaction;
+#[derive(Clone, Debug, PartialEq)]
+pub struct ProofOfWork {}

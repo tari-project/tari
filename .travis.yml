@@ -9,7 +9,7 @@ rust:
 
 before_install:
   - export PATH="$PATH:$HOME/.cargo/bin"
-  - rustup component add rustfmt-preview
+  - rustup component add rustfmt
 
 before_script:
   - (test -x $HOME/.cargo/bin/cargo-install-update || cargo install cargo-update)
