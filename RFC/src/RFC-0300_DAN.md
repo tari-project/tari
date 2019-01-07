@@ -123,7 +123,7 @@ issuance process and membership of the committee can be updated at [Checkpoint]s
   malicious behaviour.
 * VNs participate in fraud proof validations in the event of consensus disputes (which could result in the malicious VN's
   collateral being slashed).
-* Digital asset metadata (e.g. large images) are managed by VNs, but whether the data is considered part of the state
+* Digital asset metadata (e.g. large images) are managed by VNs. The large data itself will not be stored on the VNs but an external location and a hash of the data can be stored. Whether the data is considered part of the state
   (and thus checkpointed) or out of state depends on the type of digital asset contract employed.
 
 #### Fees
