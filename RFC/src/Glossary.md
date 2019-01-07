@@ -132,7 +132,11 @@ network conditions etc.
 
 ## SynchronisationState
 
-The current synchronisation state of a [Base Node]. This can either be `synchronising` or `up-to-date`.
+The current synchronisation state of a [Base Node]. This can either be
+* `new` - The blockchain state is empty and is waiting for synchronisation to begin.
+* `synchronising` - The blockchain state is in the process of synchronising with the rest of the network.
+* `synchronised` - The blockchain state has synchronised with the rest of the network and is in a position to validate
+  transactions.
 
 
 ## Transaction
