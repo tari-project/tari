@@ -4,6 +4,17 @@ Below are a list of terms and their definitions that are used throughout the Tar
 glossary to disambiguate ideas, and work towards a
 [ubiquitous language](https://blog.carbonfive.com/2016/10/04/ubiquitous-language-the-joy-of-naming/) for this project.
 
+## Asset Issuer
+[Asset Issuer]: #asset-issuer 'An entity that creates digital assets on the Tari DAN'
+
+An entity that creates digital assets on the Tari DAN. The Asset Issuer will specify the parameters of the contract template
+that defines the rules that govern the asset and the number and nature of its constituent tokens on issuance. The Asset Issuer
+will, generally, be the initial owner of the tokens.
+
+## Bad Actor
+[Bad Actor]: #bad-actor 'A stakeholder that acts maliciously or negligently to the detriment of the network or another stakeholder'
+
+A stakeholder that acts maliciously or negligently to the detriment of the network or another stakeholder.
 
 ## Base layer
 [Base Layer]: #base-layer 'The Tari layer handling payments and secured by proof of work'
@@ -41,6 +52,10 @@ A sequence of tari [block]s. Each block contains a hash of the previous valid bl
 with the property that changing anything in a block other than the head block requires rewriting the entire 
 blockchain from that point on.
 
+## Checkpoint
+[checkpoint]: #checkpoint 'A summary of the state of a Digital Asset that is recorded on the base layer'
+
+A hash of the state of a Digital Asset that is recorded on the base layer.
 
 ## BroadcastStrategy
 
@@ -53,6 +68,21 @@ A strategy for propagating messages amongst nodes in a peer-to-peer network. Exa
 The first transaction in every Tari block yields a [Block Reward] according to the Tari [emission Schedule] and is 
 awarded to the miner that performed the Proof of Work for the block.
 
+## Committee
+[committee]: #committee 'A group of validator nodes that are responsible for managing a specific Digital Asset'
+
+A group of [Validator Node]s that are responsible for managing the state of a specific [Digital Asset]. A committee is selected
+during asset issuance and can be updated at [Checkpoint]s.
+
+## CommitteeSelectionStrategy
+[CommitteeSelectionStrategy]: #committeeselectionstrategy 'A strategy for the DAN to algorithmically select candidates for the committee from the available registered Validator Nodes'
+A strategy for the DAN to algorithmically select candidates for the committee from the available registered Validator Nodes. The VNs will need accept the nomination to become part of the committee.
+
+## ConsensusStrategy
+[ConsensusStrategy]: #consensusstrategy 'The approach that will be taken for a committee to reach consensus on instructions'
+
+The approach that will be taken for a committee to reach consensus on the validity of instructions that are performed on a
+given Digital Asset.
 
 ## Commitment
 [commitment]: #commitment
@@ -67,7 +97,7 @@ value or statement after they have committed to it.
 asset issuers on the Tari 2nd layer'
 
 Digital assets (DAs) are the sets or collections of native digital tokens (both fungible and non-fungible) that are 
-created by asset issuers on the Tari 2nd layer. For example, a promoter might create a DA for a music concert event. The
+created by [asset issuer]s on the Tari 2nd layer. For example, a promoter might create a DA for a music concert event. The
  event is the digital asset, and the tickets for the event are digital asset [tokens].
 
 
@@ -77,6 +107,11 @@ created by asset issuers on the Tari 2nd layer. For example, a promoter might cr
 The Tari second layer. All digital asset interactions are managed on the Tari Digital Assets Network (DAN). These
 interactions (defined in [instruction]s) are processed and validated by [Validator Node]s.
 
+## DigitalAssetTemplate
+[DigitalAssetTemplate]: #digitalassettemplate 'A set of non-turing complete contract types supported by the DAN'
+
+A DigitalAssetTemplate is one of a set of contract types supported by the DAN. These contracts are non-turing complete and consist of
+rigid rule-sets with parameters that can be set by Asset Issuers.
 
 ## Digital asset tokens
 [tokens]: #digital-asset-tokens 'or just, "tokens". The tokens associated with a given digital asset. Tokens are created
@@ -122,6 +157,16 @@ anonymous author and has since been refined by several authors, including Andrew
 A mathematical demonstration that a value inside a [commitment] (i.e. it is hidden) lies within a certain range. For
 [Mimblewimble], range proofs are used to prove that outputs are positive values.
 
+## RegistrationCollateral
+[RegistrationCollateral]: #registrationcollateral 'An amount of tari coin that is locked up on the base layer when a [Validator Node] is registered'
+
+In order to make Sybil attacks expensive and to provide an authorative base layer registry of [validator node]s they will need to lock up
+a amount of [Tari Coin] on the [Base Layer] using a registration transaction to begin acting as a VN on the DAN.
+
+## RegistrationTerm
+[RegistrationTerm]: #registrationterm 'The minimum amount of time that a VN registration lasts'
+
+The minimum amount of time that a VN registration lasts, the RegistrationCollateral can only be released after this minimum period has elapsed.
 
 ## SynchronisationStrategy
 
@@ -137,7 +182,6 @@ The current synchronisation state of a [Base Node]. This can either be
 * `synchronising` - The blockchain state is in the process of synchronising with the rest of the network.
 * `synchronised` - The blockchain state has synchronised with the rest of the network and is in a position to validate
   transactions.
-
 
 ## Transaction
 [transaction]: #transaction 'Base layer tari coin transfers.'
@@ -160,6 +204,10 @@ Transactions or blocks are `unvalidated` when first received by a [Base Node]. A
 The base layer token. Tari coins are released according to the [emission schedule] on the Tari [base layer] 
 [blockchain] in [coinbase transaction]s.
 
+## Trusted Node
+[trusted node]: #trusted-node 'A permissioned Validator Node nominated by an Asset Issuer'
+
+A permissioned Validator Node nominated by an Asset Issuer that will form part of the committee for that Digital Asset.
 
 ## Unspent transaction outputs
 [utxo]: #unspent-transaction-outputs
