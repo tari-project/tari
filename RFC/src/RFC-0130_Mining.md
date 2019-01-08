@@ -2,7 +2,7 @@
 
 ## Full-node mining on Tari base layer
 
-![status: raw](theme/images/status-raw.svg)
+![status: draft](theme/images/status-draft.svg)
 
 **Maintainer(s)**: [Yuko Roodt] (https://github.com/neonknight64)
 
@@ -59,34 +59,35 @@ This document will provide an overview of the Tari mining process and will propo
 
 ### Abstract
 
-The process of mining on the Tari base layer is responsible for confirming and adding valid transactions to the Tari blockchain and distributing transactions on the Tari base layer network. This task is achieved by validating transactions and by performing Nakamoto consensus through Proof-of-Work. New blocks on the Tari blockchain can be merged mined with Monero by linking Tari blocks to solved Monero blocks.  
+The process of mining on the Tari base layer is responsible for confirming and adding valid transactions to the Tari blockchain and distributing transactions on the Tari base layer network. This task is achieved by validating transactions and by performing Nakamoto consensus through Proof-of-Work. New blocks on the Tari blockchain will be merged mined with Monero by linking Tari blocks and Monero blocks.  
 
 ### Full-node mining on Tari base layer
 
-The document is divided into two parts. First an overview will be provided describing the Tari merge mining process, then a descriptive list of the primary functionality required by the Tari full-node miner will be proposed.
+The document is divided into two parts. First an overview will be provided describing the Tari merged mining process, then a descriptive list of the primary functionality required by the Tari full-node miner will be proposed.
 
 
 ####  Overview of Tari merged mining process
 
-Valid transactions that need to be included on the Tari blockchain should be propagated by the mining full-nodes on the Tari base layer network. A Tari mining full-node should retrieve transactions from its mempool and assemble a new Tari block by bundling transactions together. It should ensure that the transactions that are included in the new Tari block are valid and that rules such as signatures, multi-signatures and timelocks are enforced before they are including in a new block.
+Valid transactions that need to be included on the Tari blockchain should be propagated by the mining full-nodes on the Tari base layer network. A Tari mining full-node should retrieve transactions from its mempool and assemble a new Tari block by bundling transactions together. It should ensure that the transactions that are included in the new Tari block are valid and that rules such as signatures and timelocks are enforced before they are included in a new block.
 
-As Tari could be merged mined with Monero, both a Tari and a Monero block needs to be created and linked by including the Tari block information in the Monero block, and Monero block information in the Tari block. First, a new Tari block is created and then the block header hash of the new Tari block should be included in the coinbase transaction of the new Monero block. Once the block construction is complete, the mining full-node should perform the CryptoNight Proof-of-Work (PoW) algorithm on the Monero block that includes the information of the new Tari block. 
+As Tari is merged mined with Monero, both a Tari and a Monero block need to be created and linked by including some Tari block information in the Monero block, and some Monero block information in the Tari block. First, a new Tari block is created and then the block header hash of the new Tari block should be included in the coinbase transaction of the new Monero block. Once the block construction is complete, the mining full-node should perform the CryptoNight Proof-of-Work (PoW) algorithm on the Monero block that includes the information of the new Tari block. 
 
-The solution to the PoW problem could be solved at the difficulty of either the Tari and/or Monero blockchain. If a solution has been found that meets the minimum difficulty requirements of the Monero blockchain, then the new Tari block should be updated by including the solved Monero block’s information (block header hash, merkel tree branch, and hash of the coinbase transaction) into the PoW summary section of the Tari block header. If a solution was found that meet the Tari or Monero blockchain difficulty then the new Tari block can be added to the Tari blockchain. If the solution met the difficulty requirements of the Monero blockchain then the new Monero block can also be added to the Monero blockchain. If the PoW solution was sufficient to meet the difficult level of both the Tari and Monero blockchains then the individual blocks for each cryptocurrency can be added to their respective blockchains.
+The solution to the PoW problem could be solved at the difficulty of either the Tari and/or Monero blockchain. If a solution has been found that meets the minimum difficulty requirements of the Monero blockchain, then the new Tari block should be updated by including the solved Monero block’s information (block header hash, Merkel tree branch, and hash of the coinbase transaction) into the PoW summary section of the Tari block header. If a solution was found that meet the Tari or Monero blockchain difficulty then the new Tari block can be added to the Tari blockchain. If the solution met the difficulty requirements of the Monero blockchain then the new Monero block can also be added to the Monero blockchain. If the PoW solution was sufficient to meet the difficult level of both the Tari and Monero blockchains then the individual blocks for each cryptocurrency can be added to their respective blockchains. The Tari block times is (hard fork) flexible and can be less than, equal or greater than the Monero block times.
 
 Solved and completed blocks should be propagated to the rest of the base layer network so that Nakamoto consensus can be performed on the new block and it can be added to the local blockchain copies of the full mining nodes.
 
 ####  Primary functionality required by a Tari full-node miner
-- The Tari blockchain should have the ability to be merged mined with Monero using the CryptoNight Proof-of-Work algorithm. 
-- The Tari full-node miner must maintain complete or pruned copies of the Tari and Monero blockchains.
-- It must be able to transmit and propagate information on the Tari base layer network using peer-to-peer communication using a gossip protocol. It could also propagate information and blocks on the Monero network.
-- It should have a mechanism to construct a new Tari and Monero block by selecting transactions from the different Tari and Monero mempools that need to be included in the different blocks.
-- It must have the ability to include the block header hash of the new Tari block into the coinbase section of a newly created Monero block to enable merged mining.
-- It must be able to include the Monero block header hash, merkel tree branch, and hash of the coinbase transaction of the Monero block into the PoW summary field of the new Tari block header. 
-- It must have the ability to perform a PoW algorithm on the newly created Monero block, that contains the Tari block information. It should then attempting to solve the PoW algorithm at the desired Tari or Monero difficulty.  
-- It must have the functionality to verify the validity of a newly received or created block for either the Tari and/or Monero blockchain. Created or received valid Tari blocks should be included in the local Tari blockchain. Created or received valid Monero blocks should be included in the local Monero blockchain.
-- Valid Tari and/or Monero blocks should be propagated to other mining nodes on the Tari base layer network and/or the Monero network. 
-- The Tari full-node miner must reject and discard invalid Tari and/or Monero blocks.  
-- The Tari full-node miner could be implemented as a one click installer/miner with a user-friendly GUI.
+- The Tari blockchain MUST have the ability to be merged mined with Monero using the latest released version of the Monero CryptoNight PoW algorithm.
+- The Tari full-node miner MUST maintain complete or pruned copies of the Tari and Monero blockchains.
+- It MUST be able to transmit and propagate information on the Tari base layer network using peer-to-peer communication using a gossip protocol. It SHOULD also propagate information and blocks on the Monero network.
+- It MUST have a mechanism to construct a new Tari and Monero block by selecting transactions from the different Tari and Monero mempools that need to be included in the different blocks.
+- It MUST have the ability to include the block header hash of the new Tari block into the coinbase section of a newly created Monero block to enable merged mining.
+- It MUST be able to include the Monero block header hash, Merkel tree branch and hash of the coinbase transaction of the Monero block into the PoW summary field of the new Tari block header. 
+- It MUST have the ability to perform a PoW algorithm on the newly created Monero block, that contains the Tari block information.
+- It MUST attempt to solve the PoW algorithm at the Tari and/or Monero difficulties. 
+- Valid Tari and/or Monero blocks SHOULD be propagated to other mining nodes on the Tari base layer network and/or the Monero network. 
+- The Tari full-node miner MUST reject and discard invalid Tari and/or Monero blocks.  
+- The Tari full-node miner MAY be implemented as a one click installer/miner with a user-friendly GUI.
+- The Tari full-node miner MUST be fully compatible with the Monero blockchain miner requirements.
 
 
