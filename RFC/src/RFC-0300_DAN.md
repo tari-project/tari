@@ -89,7 +89,7 @@ to become part of the committee by putting up the specified collateral.
 that VNs will facilitate are:
 * Issuing a [Digital Asset],
 * querying the state of [Digital Asset] and its constituent [tokens],
-* issuing and instruction to change the state of a [Digital Asset] or [tokens].
+* issuing an instruction to change the state of a [Digital Asset] or [tokens].
 
 VNs will also perform archival functions for the assets they manage. The lifetime of these archives and the fee structure for this function is
 still being discussed.
@@ -116,10 +116,9 @@ for doing this.
 * The set of VNs that participate in managing state of a specific DA is called a [Committee]. A committee is selected during the asset
 issuance process and membership of the committee can be updated at [Checkpoint]s.
 * It is the VNs responsibility to ensure that every state change in a digital asset conforms to the contract's rules.
-* VNs accept digital asset [Instructions] from clients and peers. [Instructions] allow for creating, updating, and
-  expiring digital assets on the DAN.
+* VNs accept digital asset [Instructions] from clients and peers. [Instructions] allow for creating, updating, expiring and archiving digital assets on the DAN.
 * VNs provide additional collateral when accepting an offer to manage an asset, which is stored in a multi-signature
-  contract on the base layer. This collateral can be taken from the VN if it is proven that the VN engaged in
+  UTXO on the base layer. This collateral can be taken from the VN if it is proven that the VN engaged in
   malicious behaviour.
 * VNs participate in fraud proof validations in the event of consensus disputes (which could result in the malicious VN's
   collateral being slashed).
@@ -147,7 +146,7 @@ record of the [Digital Asset] state on the base-layer. There will be two types o
   * Allow for committee members to resign from the committee
 
 After an DA is issued there will immediately be an Opening checkpoint. After a checkpoint period there will then be a Closing checkpoint followed
-immediately by an Opening checkpoint for the next period, we will call this set of checkpoints an Intermediate checkpoint. This will continue
+immediately by an Opening checkpoint for the next period, we will call this set of checkpoints an Intermediate checkpoint, which could be a compressed combination of an opening and closing checkpoint. This will continue
 until the end of the asset's lifetime where there will be a final Closing checkpoint that will be followed by the retirement of the asset.
 
 <div class="mermaid">

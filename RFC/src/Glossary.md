@@ -12,9 +12,9 @@ that defines the rules that govern the asset and the number and nature of its co
 will, generally, be the initial owner of the tokens.
 
 ## Bad Actor
-[Bad Actor]: #bad-actor 'A stakeholder that acts maliciously or negligently to the detriment of the network or another stakeholder'
+[Bad Actor]: #bad-actor 'A participant that acts maliciously or negligently to the detriment of the network or another participant'
 
-A stakeholder that acts maliciously or negligently to the detriment of the network or another stakeholder.
+A participant that acts maliciously or negligently to the detriment of the network or another participant.
 
 ## Base layer
 [Base Layer]: #base-layer 'The Tari layer handling payments and secured by proof of work'
@@ -75,7 +75,7 @@ A group of [Validator Node]s that are responsible for managing the state of a sp
 during asset issuance and can be updated at [Checkpoint]s.
 
 ## CommitteeSelectionStrategy
-[CommitteeSelectionStrategy]: #committeeselectionstrategy 'A strategy for the DAN to algorithmically select candidates for the committee from the available registered Validator Nodes'
+[CommitteeSelectionStrategy]: #committeeselectionstrategy 'A strategy for the DAN to select candidates for the committee from the available registered Validator Nodes'
 A strategy for the DAN to algorithmically select candidates for the committee from the available registered Validator Nodes. The VNs will need accept the nomination to become part of the committee.
 
 ## ConsensusStrategy
@@ -160,8 +160,9 @@ A mathematical demonstration that a value inside a [commitment] (i.e. it is hidd
 ## RegistrationCollateral
 [RegistrationCollateral]: #registrationcollateral 'An amount of tari coin that is locked up on the base layer when a [Validator Node] is registered'
 
-In order to make Sybil attacks expensive and to provide an authorative base layer registry of [validator node]s they will need to lock up
-a amount of [Tari Coin] on the [Base Layer] using a registration transaction to begin acting as a VN on the DAN.
+An amount of tari coin that is locked up on the base layer when a [Validator Node] is registered. In order to make Sybil attacks expensive and to
+provide an authorative base layer registry of [validator node]s they will need to lock up a amount of [Tari Coin] on the [Base Layer] using a
+registration transaction to begin acting as a VN on the DAN.
 
 ## RegistrationTerm
 [RegistrationTerm]: #registrationterm 'The minimum amount of time that a VN registration lasts'
