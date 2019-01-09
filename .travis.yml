@@ -19,10 +19,10 @@ before_script:
 matrix:
   fast_finish: true
   include:
-    # Only generate docs when on the master branch
+    # Only generate docs when on the development branch
     - stage: docs
-      if: branch = master
-      name: RFC docs
+      if: branch = development
+      name: RFC documentation
       script: cd RFC && mdbook test && mdbook build
     - stage: build
       name: Tari source code
