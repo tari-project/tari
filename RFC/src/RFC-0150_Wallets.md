@@ -59,51 +59,44 @@ This RFC is derived from a proposal first made in [this issue](https://github.co
 
 ### Key responsibilities
 
-The Wallet software is responsible for constructing and negotiating transactions for transferring and receiving Tari
-coins on the base layer. It should also provide functionality to generate, store and recover a master seed key and
-derived cryptographic key pairs that can be used for base layer addresses and signing of transactions.
+The Wallet software is responsible for constructing and negotiating transactions for transferring and receiving Tari coins on the base layer. It should also provide functionality to generate, store and recover a master seed key and derived cryptographic key pairs that can be used for base layer addresses and signing of transactions.
 
 ### Details of functionality
 
 A detailed description of the required functionality of the Tari software wallet is provided in three parts:
-* basic functionality.
-* maintaining of private keys.
+* basic functionality,
+* maintaining of private keys and
 * wallet recovery.
 
 #### Transaction features
 
-- It MUST be able to send and receive Tari coins using mimblewimble transactions.
+- It MUST be able to send and receive Tari coins using Mimblewimble transactions.
 - It SHOULD be able to establish a connection between different user wallets to negotiate:
   - the construction of a transaction and
   - the signing of multi signature transactions.
-- The Tari software wallet SHOULD be implemented as a library or API so that GUI or CLI applications can be developed on
-  top of it.
-- It MUST be able to obtain a connection to a Base Node to submit transactions and monitor the Tari blockchain.
+- The Tari software wallet SHOULD be implemented as a library or API so that GUI or CLI applications can be developed on top of it.
+- It MUST be able to establish a connection to a Base Node to submit transactions and monitor the Tari blockchain.
 - It SHOULD maintain an internal ledger to keep track of the Tari coin balance of the wallet.
 - It MAY offer transaction fee estimation taking into account:
   - transaction byte size,
   - network congestion and
   - the desired transaction priority.
-- It SHOULD be able to monitor and return the states (Spent, Unspent or Unconfirmed) of previously submitted
-  transactions by querying information from the connected full node.
-- The wallet software SHOULD be able to update its software to patch potential security vulnerabilities. Automatic
-  updating SHOULD be selected by default, but users can decide to opt out.
-- Wallet features requiring querying a full node for information, SHOULD have caching capabilities to reduce bandwidth
-  consumption.
+- It SHOULD be able to monitor and return the states (Spent, Unspent or Unconfirmed) of previously submitted transactions by querying information from the connected Base node.
+- The wallet software SHOULD be able to update its software to patch potential security vulnerabilities. Automatic updating SHOULD be selected by default, but users can decide to opt out.
+- Wallet features requiring querying a full node for information, SHOULD have caching capabilities to reduce bandwidth consumption.
 
 #### Key management features
 
 - It MUST be able to generate a master seed key for the wallet by using one of:
-  - input from a user (for example, when restoring a wallet, or in testing)
-  - an cryptographically secure random number generator.
-- It SHOULD be able to generate derived transactional cryptographic key pairs from the master seed key using
-  deterministic key pair generation.
+  - input from a user (for example, when restoring a wallet, or in testing),
+  - a user defined set of mnemonic word sequences using known word lists,
+  - a cryptographically secure random number generator.
+- It SHOULD be able to generate derived transactional cryptographic key pairs from the master seed key using deterministic key pair generation.
 - It SHOULD store the wallet state using a password or passphrase encrypted persistent key-value database.
-- It SHOULD provide the ability to backup the wallet state to a single encrypted file to simplify wallet recovery and
-  reconstruction at a later stage.
+- It SHOULD provide the ability to backup the wallet state to a single encrypted file to simplify wallet recovery and reconstruction at a later stage.
 - It MAY provide the ability to export the master seed key or wallet state as a printable paper wallet using coded markers.
 
-Different methods for recovering the wallet state of the Tari software wallet:
-- It SHOULD be able to reconstruction the wallet state from a manually entered master seed key.
-- The master seed key SHOULD be derivable from mnemonic word sequences using known word lists.
+#### Different methods for recovering the wallet state of the Tari software wallet:
+- It MUST be able to reconstruction the wallet state from a manually entered master seed key.
+- The master seed key SHOULD be derivable from a specific set of mnemonic word sequences using known word lists.
 - It MAY enable the reconstruction of the master seed key by scanning a coded marker of a paper wallet.
