@@ -97,7 +97,7 @@ Base nodes can be notified of new transactions by
 * clients via APIs.
 
 When a new transaction has been received, it has the `unvalidated` [ValidationState]. The transaction is then passed
-to the transaction validation service, where its state will become one of `rejected` or `validated`.
+to the transaction validation service, where its state will become either `rejected`, `timelocked` or `validated`.
 
 The transaction validation service checks that:
 
@@ -107,11 +107,16 @@ The transaction validation service checks that:
 * all inputs are signed by their owners.
 * all outputs have valid [range proof]s.
 * no outputs currently exist in the [UTXO] set.
+* the transaction does not have a timelock applied, limiting it from being added to the blockchain before a specified block height or timestamp has been reached.
 * the transaction excess has a valid signature.
 * the transaction excess is a valid public key. This proves that:
   $$ \Sigma \left( \mathrm{inputs} - \mathrm{outputs} - \mathrm{fees} \right) = 0 $$
 
 `Rejected` transactions are dropped silently.
+
+`Timelocked` transactions are:
+* marked with a timelocked status and gets added to the [mempool].
+* will be evaluated again at a later state to determine if the timelock has passed and if it can be upgraded to 'Validated' status.
 
 `Validated` transactions are:
 * Added to the [mempool].
