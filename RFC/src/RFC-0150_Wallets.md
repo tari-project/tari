@@ -81,7 +81,7 @@ A detailed description of the required functionality of the Tari software wallet
   - transaction byte size,
   - network congestion and
   - the desired transaction priority.
-- It SHOULD be able to monitor and return the states (Spent, Unspent or Unconfirmed) of previously submitted transactions by querying information from the connected [base node].
+- It SHOULD be able to monitor and return the states (Spent, Unspent or Unconfirmed) of previously submitted transactions by querying information from the connected base node.
 - The wallet software SHOULD be able to update its software to patch potential security vulnerabilities. Automatic updating SHOULD be selected by default, but users can decide to opt out.
 - Wallet features requiring querying a base node for information, SHOULD have caching capabilities to reduce bandwidth consumption.
 
