@@ -59,7 +59,7 @@ This RFC is derived from a proposal first made in [this issue](https://github.co
 
 ### Key responsibilities
 
-The wallet software is responsible for constructing and negotiating [transaction]s for transferring and receiving [tari coin]s on the Base Layer. It should also provide functionality to generate, store and recover a master seed key and derived cryptographic key pairs that can be used for Base Layer addresses and signing of transactions.
+The wallet software is responsible for constructing and negotiating [transaction]s for transferring and receiving [Tari coin]s on the Base Layer. It should also provide functionality to generate, store and recover a master seed key and derived cryptographic key pairs that can be used for Base Layer addresses and signing of transactions.
 
 ### Details of functionality
 
