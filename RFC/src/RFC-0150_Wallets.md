@@ -70,13 +70,13 @@ A detailed description of the required functionality of the Tari software wallet
 
 #### Transaction features
 
-- It MUST be able to send and receive Tari coins using [mimblewimble] transactions.
+- It MUST be able to send and receive Tari coins using [Mimblewimble] transactions.
 - It SHOULD be able to establish a connection between different user wallets to negotiate:
   - the construction of a transaction and
   - the signing of multi signature transactions.
 - The Tari software wallet SHOULD be implemented as a library or API so that GUI or CLI applications can be developed on top of it.
-- It MUST be able to establish a connection to a [base node] to submit transactions and monitor the Tari [blockchain].
-- It SHOULD maintain an internal ledger to keep track of the tari coin balance of the wallet.
+- It MUST be able to establish a connection to a [Base Node] to submit transactions and monitor the Tari [blockchain].
+- It SHOULD maintain an internal ledger to keep track of the Tari coin balance of the wallet.
 - It MAY offer transaction fee estimation taking into account:
   - transaction byte size,
   - network congestion and
