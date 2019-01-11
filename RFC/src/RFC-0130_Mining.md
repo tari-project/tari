@@ -103,16 +103,3 @@ The solution to the PoW problem could be solved at the difficulty of either the 
 [transaction]: Glossary.md#transaction
 [block]: Glossary.md#block
 [mempool]: Glossary.md#mempool
-
-
-
-
-
-
-
-
-
-
-
-
-
