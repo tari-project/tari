@@ -1,3 +1,5 @@
+[![Waffle.io - Columns and their card count](https://badge.waffle.io/tari-project/tari.svg?columns=Inbox,Backlog,In%20Progress,Review,Done)](https://waffle.io/tari-project/tari)
+
 # The Tari protocol
 
 ## Documentation
