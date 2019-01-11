@@ -47,7 +47,7 @@ technological merits of the potential system outlined herein.
 ## Goals
 
 This document will propose the functionality and techniques required by the [Base Layer] Tari [wallet] module. The module
-exposes the core [wallet] functionality that user-facing [wallet] applications may be built on.
+exposes the core wallet functionality that user-facing wallet applications may be built on.
 
 ## Related RFCs
 
@@ -59,36 +59,36 @@ This RFC is derived from a proposal first made in [this issue](https://github.co
 
 ### Key responsibilities
 
-The [wallet] software is responsible for constructing and negotiating [transaction]s for transferring and receiving [tari coin]s on the [Base Layer]. It should also provide functionality to generate, store and recover a master seed key and derived cryptographic key pairs that can be used for [Base Layer] addresses and signing of [transaction]s.
+The wallet software is responsible for constructing and negotiating [transaction]s for transferring and receiving [tari coin]s on the Base Layer. It should also provide functionality to generate, store and recover a master seed key and derived cryptographic key pairs that can be used for Base Layer addresses and signing of transactions.
 
 ### Details of functionality
 
-A detailed description of the required functionality of the Tari software [wallet] is provided in three parts:
+A detailed description of the required functionality of the Tari software wallet is provided in three parts:
 * basic functionality,
 * maintaining of private keys and
 * wallet recovery.
 
 #### Transaction features
 
-- It MUST be able to send and receive [tari coin]s using [mimblewimble] transactions.
-- It SHOULD be able to establish a connection between different user [wallet]s to negotiate:
-  - the construction of a [transaction] and
-  - the signing of multi signature [transaction]s.
-- The Tari software [wallet] SHOULD be implemented as a library or API so that GUI or CLI applications can be developed on top of it.
-- It MUST be able to establish a connection to a [base node] to submit [transaction]s and monitor the Tari [blockchain].
-- It SHOULD maintain an internal ledger to keep track of the [tari coin] balance of the [wallet].
+- It MUST be able to send and receive Tari coins using [mimblewimble] transactions.
+- It SHOULD be able to establish a connection between different user wallets to negotiate:
+  - the construction of a transaction and
+  - the signing of multi signature transactions.
+- The Tari software wallet SHOULD be implemented as a library or API so that GUI or CLI applications can be developed on top of it.
+- It MUST be able to establish a connection to a [base node] to submit transactions and monitor the Tari [blockchain].
+- It SHOULD maintain an internal ledger to keep track of the tari coin balance of the wallet.
 - It MAY offer transaction fee estimation taking into account:
   - transaction byte size,
   - network congestion and
   - the desired transaction priority.
-- It SHOULD be able to monitor and return the states (Spent, Unspent or Unconfirmed) of previously submitted [transaction]s by querying information from the connected [base node].
-- The [wallet] software SHOULD be able to update its software to patch potential security vulnerabilities. Automatic updating SHOULD be selected by default, but users can decide to opt out.
-- Wallet features requiring querying a [base node] for information, SHOULD have caching capabilities to reduce bandwidth consumption.
+- It SHOULD be able to monitor and return the states (Spent, Unspent or Unconfirmed) of previously submitted transactions by querying information from the connected [base node].
+- The wallet software SHOULD be able to update its software to patch potential security vulnerabilities. Automatic updating SHOULD be selected by default, but users can decide to opt out.
+- Wallet features requiring querying a base node for information, SHOULD have caching capabilities to reduce bandwidth consumption.
 
 #### Key management features
 
-- It MUST be able to generate a master seed key for the [wallet] by using one of:
-  - input from a user (for example, when restoring a [wallet], or in testing),
+- It MUST be able to generate a master seed key for the wallet by using one of:
+  - input from a user (for example, when restoring a wallet, or in testing),
   - a user defined set of mnemonic word sequences using known word lists,
   - a cryptographically secure random number generator.
 - It SHOULD be able to generate derived transactional cryptographic key pairs from the master seed key using deterministic key pair generation.
