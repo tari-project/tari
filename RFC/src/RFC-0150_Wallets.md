@@ -64,11 +64,11 @@ The wallet software is responsible for constructing and negotiating [transaction
 ### Details of functionality
 
 A detailed description of the required functionality of the Tari software wallet is provided in three parts:
-* basic functionality,
-* maintaining of private keys and
-* wallet recovery.
+* Basic transaction functionality,
+* Key management features and
+* the different wallet recovery methods.
 
-#### Transaction features
+#### Basic transaction functionality
 
 - It MUST be able to send and receive Tari coins using [Mimblewimble] transactions.
 - It SHOULD be able to establish a connection between different user wallets to negotiate:
@@ -82,6 +82,7 @@ A detailed description of the required functionality of the Tari software wallet
   - network congestion and
   - the desired transaction priority.
 - It SHOULD be able to monitor and return the states (Spent, Unspent or Unconfirmed) of previously submitted transactions by querying information from the connected base node.
+- The Wallet COULD present the total Spent, Unspent or Unconfirmed transactions in summarised form. 
 - The wallet software SHOULD be able to update its software to patch potential security vulnerabilities. Automatic updating SHOULD be selected by default, but users can decide to opt out.
 - Wallet features requiring querying a base node for information, SHOULD have caching capabilities to reduce bandwidth consumption.
 
@@ -97,10 +98,9 @@ A detailed description of the required functionality of the Tari software wallet
 - It MAY provide the ability to export the master seed key or wallet state as a printable paper wallet using coded markers.
 
 #### Different methods for recovering the wallet state of the Tari software wallet:
-- It MUST be able to reconstruction the wallet state from a manually entered master seed key.
-
+- It MUST be able to reconstruction the wallet state from a manually entered master seed key. 
+- It MUST have a mechanism to systematically search through the Tari blockchain and mempool for unspent and unconfirmed transactions using the keys derived from the master key.
 - The master seed key SHOULD be derivable from a specific set of mnemonic word sequences using known word lists.
-
 - It MAY enable the reconstruction of the master seed key by scanning a coded marker of a paper wallet.
 
 [wallet]: Glossary.md#wallet
