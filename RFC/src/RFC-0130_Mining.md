@@ -93,7 +93,7 @@ This process will ensure that the Tari difficulty remains independent. Adjusting
 - It MUST verify PoW solutions received from Mining Workers and it MUST reject and discard invalid solutions or solutions that do not meet the minimum required difficulty.
 - The Mining Server MAY keep track of mining share contributions of the connected Mining Workers. 
 - It MUST submit completed Tari blocks to the Tari Base Node.
-- It SHOULD submit completed Monero blocks to the Monero Network.  
+- It MUST submit completed Monero blocks to the Monero Network.  
 
 #### Functionality required by the Tari Mining Worker
 
