@@ -57,11 +57,11 @@ This document will provide a brief overview of the Tari merged mining process an
 
 ### Assumptions
 - That the Tari [blockchain] will be merged mined with Monero.
-- The Tari [Base Layer] has a network of [Base Node]s that propagate [transaction]s and valid [block]s. 
+- The Tari [Base Layer] has a network of [Base Node]s that verify and propagate valid [transaction]s and [block]s. 
 
 ### Abstract
 
-The process of merged mining Tari with Monero on the Tari Base Layer is performed by Mining Servers and Mining Workers. Mining Servers are responsible for constructing new blocks by bundling transactions from the [mempool] of a connected Base Node. They then distribute Proof-of-Work(PoW) tasks to Mining Workers in an attempt to solve the newly created block. Solved solutions and shares are sent by the Mining Workers to the Mining Server, who in turns verifies the solution and distributes the newly created blocks to the Base Node and Monero Node for inclusion in their respective blockchains.
+The process of merged mining Tari with Monero on the Tari Base Layer is performed by Mining Servers and Mining Workers. Mining Servers are responsible for constructing new blocks by bundling transactions from the [mempool] of a connected Base Node. They then distribute Proof-of-Work(PoW) tasks to Mining Workers in an attempt to solve newly created blocks. Solved solutions and shares are sent by the Mining Workers to the Mining Server, who in turns verifies the solution and distributes the newly created blocks to the Base Node and Monero Node for inclusion in their respective blockchains.
 
 ### Merged mining on the Tari Base Layer
 
@@ -69,12 +69,14 @@ This document is divided into three parts. First, a brief overview of the merged
 
 ####  Overview of the Tari merged mining process using Mining Servers and Mining Workers
 
-Mining on the Tari Base Layer consists of three primary entities: the Base Node, Mining Servers and Mining Workers. A description of the Base Node is provided in [RFC-0110/Base Nodes] (https://tari-project.github.io/tari/RFC-0110_BaseNodes.html).
-A Mining Server is connected locally or remotely to a Tari Base Node and a Monero Node, and is responsible for constructing Tari and Monero Blocks from their respective mempools. The Mining Server should retrieve transactions from the mempool of the connected Base Node and assemble a new Tari block by bundling transactions together.Mining servers also have the option to re-verify transactions before including them in a new Tari block, but this verification process of checking that the transaction's rules such as signatures and timelocks are enforced is the responsibility of the connected Base Node. 
+Mining on the Tari Base Layer consists of three primary entities: the Base Nodes, Mining Servers and Mining Workers. A description of the Base Node is provided in [RFC-0110/Base Nodes] (https://tari-project.github.io/tari/RFC-0110_BaseNodes.html).
+A Mining Server is connected locally or remotely to a Tari Base Node and a Monero Node, and is responsible for constructing Tari and Monero Blocks from their respective mempools. The Mining Server should retrieve transactions from the mempool of the connected Base Node and assemble a new Tari block by bundling transactions together. Mining servers also have the option to re-verify transactions before including them in a new Tari block, but this verification process of checking that the transaction's rules such as signatures and timelocks are enforced is the responsibility of the connected Base Node. 
 
 To enable Merged mining of Tari with Monero, both a Tari and a Monero block needs to be created and linked. First, a new Tari block is created and then the block header hash of the new Tari block should be included in the coinbase transaction of the new Monero block. Once a new merged mined Monero block has been constructed, PoW tasks can then be sent to the connected Mining Workers that will attempt to solve the block by performing the latest CryptoNight PoW algorithm.
 
-The solution to the PoW problem could be solved at the difficulty of either the Tari and/or Monero blockchains. If the PoW solution was sufficient to meet the difficult level of both the Tari and Monero blockchains then the individual blocks for each blockchain can be sent from the Mining Server to the Base Node and Monero Node to be added to the different blockchains.  Before the Mining Server sends the new Tari block to the Base Node it should first update it by including the solved Monero block’s information (block header hash, Merkel tree branch, and hash of the coinbase transaction) into the PoW summary section of the Tari block header. If the PoW solution found by the Mining Workers only solved the problem at the Tari difficulty then the new Tari block can be added to the Tari blockchain and the Monero block can be discarded. Adjusting the difficulty will ensure that the Tari block times are preserved, these Tari block times is (hard fork) flexible and can be less than, equal or greater than the Monero block times. A more detailed description of the Merged Mining process between a Primary and Auxiliary blockchain is provided in the [Merged Mining TLU report] (https://tlu.tarilabs.com/merged-mining/merged-mining.html).
+The solution to the PoW problem could be solved at the difficulty of either the Tari and/or Monero blockchains. If the PoW solution was sufficient to meet the difficult level of both the Tari and Monero blockchains then the individual blocks for each blockchain can be sent from the Mining Server to the Base Node and Monero Node to be added to the different blockchains.  Before the Mining Server sends the new Tari block to the Base Node it should first update it by including the solved Monero block’s information (block header hash, Merkel tree branch, and hash of the coinbase transaction) into the PoW summary section of the Tari block header. If the PoW solution found by the Mining Workers only solved the problem at the Tari difficulty then the new Tari block can be added to the Tari blockchain and the Monero block can be discarded. 
+
+This process will ensure that the Tari difficulty remains independent. Adjusting the difficulty will ensure that the Tari block times are preserved. Also, the Tari block time is (hard fork) flexible and can be less than, equal or greater than the Monero block times. A more detailed description of the Merged Mining process between a Primary and Auxiliary blockchain is provided in the [Merged Mining TLU report] (https://tlu.tarilabs.com/merged-mining/merged-mining.html).
 
 #### Functionality required by the Tari Mining Server
 
@@ -87,15 +89,20 @@ The solution to the PoW problem could be solved at the difficulty of either the 
 - It MUST have the ability to transmit and distribute PoW tasks for the newly created Monero block, that contains the Tari block information, to connected Mining Workers.
 - It MUST verify PoW solutions received from Mining Workers and it MUST reject and discard invalid solutions or solutions that do not meet the minimum required difficulty.
 - The Mining Server MAY keep track of mining share contributions of the connected Mining Workers. 
-- It MUST submit completed Tari blocks to the Tari Base Node and MAY submit completed Monero blocks to the Monero Network.  
+- It MUST submit completed Tari blocks to the Tari Base Node and COULD submit completed Monero blocks to the Monero Network.  
 
 #### Functionality required by the Tari Mining Worker
 
 - It MUST maintain a local or remote connection to a Mining Server.
+
 - It MUST have the ability to receive PoW tasks from the connected Mining Server. 
-- It MUST have the ability to perform the latest released version of the Monero CryptoNight PoW algorithm on the received PoW task.
+
+- It MUST have the ability to perform the latest released version of the Monero CryptoNight PoW algorithm on the received PoW tasks.
+
 - It MUST attempt to solve the PoW algorithm at the Tari and/or Monero difficulties. 
+
 - It MUST submit completed shares to the connected Mining Server. 
+
 
 [blockchain]: Glossary.md#blockchain
 [Base Layer]: Glossary.md#base-layer
