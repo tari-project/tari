@@ -61,7 +61,7 @@ This document will provide a brief overview of the Tari merged mining process an
 
 ### Abstract
 
-The process of merged mining Tari with Monero on the Tari Base Layer is performed by Mining Servers and Mining Workers. Mining Servers are responsible for constructing new blocks by bundling transactions from the [mempool] of a connected Base Node. They then distribute Proof-of-Work(PoW) tasks to Mining Workers in an attempt to solve newly created blocks. Solved solutions and shares are sent by the Mining Workers to the Mining Server, who in turns verifies the solution and distributes the newly created blocks to the Base Node and Monero Node for inclusion in their respective blockchains.
+The process of merged mining Tari with Monero on the Tari Base Layer is performed by [Mining Server]s and [Mining Worker]s. Mining Servers are responsible for constructing new blocks by bundling transactions from the [mempool] of a connected Base Node. They then distribute Proof-of-Work(PoW) tasks to Mining Workers in an attempt to solve newly created blocks. Solved solutions and shares are sent by the Mining Workers to the Mining Server, who in turns verifies the solution and distributes the newly created blocks to the Base Node and Monero Node for inclusion in their respective blockchains.
 
 ### Merged mining on the Tari Base Layer
 
@@ -112,5 +112,7 @@ This process will ensure that the Tari difficulty remains independent. Adjusting
 [Base Layer]: Glossary.md#base-layer
 [base node]: Glossary.md#base-node
 [transaction]: Glossary.md#transaction
+[mining server]: Glossary.md#mining-server
+[mining worker]: Glossary.md#mining-worker
 [block]: Glossary.md#block
 [mempool]: Glossary.md#mempool
