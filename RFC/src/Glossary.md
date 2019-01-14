@@ -227,6 +227,10 @@ UTXO values are hidden by their [commitment]s. Only the owner of the UTXO and (p
 Validator nodes (VNs) make up the Tari second layer, or [Digital Asset Network]. VNs are responsible for creating and
 updating [digital asset]s living on the Tari network.
 
+## Wallet
+[wallet]: #wallet "A Wallet for Tari coins"
+
+A Tari Wallet is responsible for managing key pairs, and for constructing and negotiating [transaction]s for transferring and receiving [tari coin]s on the [Base Layer]. 
 
 # Disclaimer
 
