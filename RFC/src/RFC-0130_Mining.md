@@ -72,14 +72,17 @@ This document is divided into three parts. First, a brief overview of the merged
 Mining on the Tari Base Layer consists of three primary entities: the Base Nodes, Mining Servers and Mining Workers. A description of the Base Node is provided in [RFC-0110/Base Nodes] (https://tari-project.github.io/tari/RFC-0110_BaseNodes.html).
 A Mining Server is connected locally or remotely to a Tari Base Node and a Monero Node, and is responsible for constructing Tari and Monero Blocks from their respective mempools. The Mining Server should retrieve transactions from the mempool of the connected Base Node and assemble a new Tari block by bundling transactions together. Mining servers also have the option to re-verify transactions before including them in a new Tari block, but this verification process of checking that the transaction's rules such as signatures and timelocks are enforced is the responsibility of the connected Base Node. 
 
-To enable Merged mining of Tari with Monero, both a Tari and a Monero block needs to be created and linked. First, a new Tari block is created and then the block header hash of the new Tari block should be included in the coinbase transaction of the new Monero block. Once a new merged mined Monero block has been constructed, PoW tasks can then be sent to the connected Mining Workers that will attempt to solve the block by performing the latest CryptoNight PoW algorithm.
+To enable Merged mining of Tari with Monero, both a Tari and a Monero block needs to be created and linked. First, a new Tari block is created and then the block header hash of the new Tari block should be included in the coinbase transaction of the new Monero block. Once a new merged mined Monero block has been constructed, PoW tasks can then be sent to the connected Mining Workers that will attempt to solve the block by performing the latest released version of the PoW algorithm selected by Monero.
 
-The solution to the PoW problem could be solved at the difficulty of either the Tari and/or Monero blockchains. If the PoW solution was sufficient to meet the difficult level of both the Tari and Monero blockchains then the individual blocks for each blockchain can be sent from the Mining Server to the Base Node and Monero Node to be added to the different blockchains.  Before the Mining Server sends the new Tari block to the Base Node it should first update it by including the solved Monero block’s information (block header hash, Merkel tree branch, and hash of the coinbase transaction) into the PoW summary section of the Tari block header. If the PoW solution found by the Mining Workers only solved the problem at the Tari difficulty then the new Tari block can be added to the Tari blockchain and the Monero block can be discarded. 
+Assuming the Tari difficulty is less than the Monero difficulty, miners get rewarded for solving the PoW at any difficulty above the Tari difficulty. If the block is solved above the Tari difficulty, a new Tari block is mined. If the difficulty is also greater than the Monero difficulty, a new Monero block is mined as well. In either event, the header for the candidate Monero block is included in the Tari block header.
+
+If the PoW solution was sufficient to meet the difficult level of both the Tari and Monero blockchains, then the individual blocks for each blockchain can be sent from the Mining Server to the Base Node and Monero Node to be added to the different blockchains.  Before the Mining Server sends the new Tari block to the Base Node it must first update it by including the solved Monero block’s information (block header hash, Merkel tree branch, and hash of the coinbase transaction) into the PoW summary section of the Tari block header. If the PoW solution found by the Mining Workers only solved the problem at the Tari difficulty, then the new Tari block must be updated and added to the Tari blockchain and the Monero block can be discarded. 
 
 This process will ensure that the Tari difficulty remains independent. Adjusting the difficulty will ensure that the Tari block times are preserved. Also, the Tari block time is (hard fork) flexible and can be less than, equal or greater than the Monero block times. A more detailed description of the Merged Mining process between a Primary and Auxiliary blockchain is provided in the [Merged Mining TLU report] (https://tlu.tarilabs.com/merged-mining/merged-mining.html).
 
 #### Functionality required by the Tari Mining Server
 
+- The Tari blockchain MUST have the ability to be merged mined with Monero. 
 - The Mining Server MUST maintain a local or remote connection with a Base Node and a Monero Node.
 - It MUST have a mechanism to construct a new Tari and Monero block by selecting transactions from the different Tari and Monero mempools that need to be included in the different blocks.
 - It MAY have a configurable transaction selection mechanism for the block construction process. 
@@ -89,7 +92,8 @@ This process will ensure that the Tari difficulty remains independent. Adjusting
 - It MUST have the ability to transmit and distribute PoW tasks for the newly created Monero block, that contains the Tari block information, to connected Mining Workers.
 - It MUST verify PoW solutions received from Mining Workers and it MUST reject and discard invalid solutions or solutions that do not meet the minimum required difficulty.
 - The Mining Server MAY keep track of mining share contributions of the connected Mining Workers. 
-- It MUST submit completed Tari blocks to the Tari Base Node and COULD submit completed Monero blocks to the Monero Network.  
+- It MUST submit completed Tari blocks to the Tari Base Node.
+- It SHOULD submit completed Monero blocks to the Monero Network.  
 
 #### Functionality required by the Tari Mining Worker
 
@@ -97,7 +101,7 @@ This process will ensure that the Tari difficulty remains independent. Adjusting
 
 - It MUST have the ability to receive PoW tasks from the connected Mining Server. 
 
-- It MUST have the ability to perform the latest released version of the Monero CryptoNight PoW algorithm on the received PoW tasks.
+- It MUST have the ability to perform the latest released version of Monero's PoW algorithm on the received PoW tasks.
 
 - It MUST attempt to solve the PoW algorithm at the Tari and/or Monero difficulties. 
 
