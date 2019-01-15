@@ -7,10 +7,6 @@ assignees: ''
 
 ---
 
-# [TITLE]
-
-## Metadata
-
 This proposal is (tick applicable):
 
 * [ ] A new feature
