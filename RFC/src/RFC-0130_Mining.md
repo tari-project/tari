@@ -34,8 +34,8 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", 
 "NOT RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in 
-[BCP 14](https://tools.ietf.org/html/bcp14) (covering RFC2119 and RFC8174) when, and only when, they appear in all capitals, as 
-shown here.
+[BCP 14](https://tools.ietf.org/html/bcp14) (covering RFC2119 and RFC8174) when, and only when, they appear in all 
+capitals, as shown here.
 
 ## Disclaimer
 
@@ -85,9 +85,8 @@ A Mining Server is connected locally or remotely to a Tari Base Node and a Moner
 constructing Tari and Monero Blocks from their respective mempools. The Mining Server should retrieve transactions 
 from the mempool of the connected Base Node and assemble a new Tari block by bundling transactions together.
 
-Mining servers may re-verify transactions before including them in a new Tari block, but this 
-verification process of checking that the transaction's rules such as signatures and timelocks are enforced is the 
-responsibility of the connected Base Node. 
+Mining servers may re-verify transactions before including them in a new Tari block, but this enforcement of 
+verification and transaction rules such as signatures and timelocks is the responsibility of the connected Base node.
 
 To enable Merged mining of Tari with Monero, both a Tari and a Monero block needs to be created and linked. First, 
 a new Tari block is created and then the block header hash of the new Tari block should be included in the coinbase 
@@ -100,9 +99,12 @@ difficulty above the Tari difficulty. If the block is solved above the Tari diff
 If the difficulty is also greater than the Monero difficulty, a new Monero block is mined as well. In either event, 
 the header for the candidate Monero block is included in the Tari block header.
 
-If the PoW solution was sufficient to meet the difficult level of both the Tari and Monero blockchains, then the individual blocks for each blockchain can be sent from the Mining Server to the Base Node and Monero Node to be added to the respective blockchains.  
+If the PoW solution was sufficient to meet the difficult level of both the Tari and Monero blockchains, then the 
+individual blocks for each blockchain can be sent from the Mining Server to the Base Node and Monero Node to be 
+added to the respective blockchains.  
 
-Every Tari block must include the solved Monero block’s information (block header hash, Merkle tree branch, and hash of the coinbase transaction) into the PoW summary section of the Tari block header. 
+Every Tari block must include the solved Monero block’s information (block header hash, Merkle tree branch, and 
+hash of the coinbase transaction) into the PoW summary section of the Tari block header. 
 If the PoW solution found by the Mining Workers only solved the problem at the Tari difficulty, the Monero block can be discarded. 
 
 This process will ensure that the Tari difficulty remains independent. Adjusting the difficulty will ensure that 
