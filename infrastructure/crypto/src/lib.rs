@@ -1,3 +1,4 @@
+pub mod common;
 pub mod hex;
 pub mod keys;
 pub mod signatures;

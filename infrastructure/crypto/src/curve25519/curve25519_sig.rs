@@ -1,9 +1,9 @@
 use crate::{
+    common::ByteArray,
     curve25519::{Curve25519PublicKey, Curve25519SecretKey},
-    keys::{PublicKey as TariPublicKey, SecretKey as TariSecretKey},
     signatures::SchnorrSignature,
 };
-use ed25519_dalek::{PublicKey, Signature, PUBLIC_KEY_LENGTH};
+use ed25519_dalek::{PublicKey as DalekPK, Signature, PUBLIC_KEY_LENGTH};
 /// ! The Tari-compatible implementation of Curve25519 signatures based on the curve25519-dalek
 /// implementation
 use sha2::Sha512;
@@ -39,19 +39,19 @@ impl SchnorrSignature for Curve25519EdDSA {
     }
 
     fn verify(&self, public: &Curve25519PublicKey, m: &[u8]) -> bool {
-        PublicKey::verify::<Sha512>(&public.0, m, &self.0).is_ok()
+        DalekPK::verify::<Sha512>(&public.0, m, &self.0).is_ok()
     }
 }
 
 #[cfg(test)]
 mod test {
     use crate::{
+        common::ByteArray,
         curve25519::{
             curve25519_keys::{Curve25519PublicKey, Curve25519SecretKey},
             curve25519_sig::Curve25519EdDSA,
         },
         hex::from_hex,
-        keys::{PublicKey, SecretKey},
         signatures::SchnorrSignature,
     };
     use std::{

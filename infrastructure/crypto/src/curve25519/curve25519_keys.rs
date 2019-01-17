@@ -1,52 +1,21 @@
 //! The Tari-compatible implementation of Curve25519 based on the curve25519-dalek implementation
 use crate::{
-    hex::{from_hex, to_hex},
-    keys::{KeyError, PublicKey as TariPublicKey, SecretKey as TariSecretKey, SecretKeyFactory},
+    common::{ByteArray, ByteArrayError},
+    keys::{PublicKey, SecretKey, SecretKeyFactory},
 };
-use ed25519_dalek::{PublicKey, SecretKey};
+use ed25519_dalek::{PublicKey as DalekPK, SecretKey as DalekSK, SECRET_KEY_LENGTH};
 use rand::{CryptoRng, Rng};
 use sha2::Sha512;
 
 //----------------------------------------   Secret Keys  ----------------------------------------//
 #[derive(Debug)]
-pub struct Curve25519SecretKey(pub(crate) SecretKey);
+pub struct Curve25519SecretKey(pub(crate) DalekSK);
 
-impl TariSecretKey for Curve25519SecretKey {
-    fn to_hex(&self) -> String {
-        to_hex(self.0.to_bytes().to_vec())
-    }
-
-    fn from_hex(hex: &str) -> Result<Curve25519SecretKey, KeyError> {
-        let b = from_hex(hex)?;
-        Curve25519SecretKey::from_vec(&b)
-    }
-
-    fn from_bytes(bytes: &[u8]) -> Result<Curve25519SecretKey, KeyError> {
-        match SecretKey::from_bytes(bytes) {
-            Ok(v) => Ok(Curve25519SecretKey(v)),
-            Err(e) => Err(KeyError::ConversionError(format!("Could not convert byte array to SecretKey: {}", e))),
-        }
-    }
-
-    fn to_bytes(&self) -> &[u8] {
-        self.0.as_bytes().as_ref()
-    }
-
-    fn to_vec(&self) -> Vec<u8> {
-        self.0.as_bytes().to_vec()
-    }
-
-    fn from_vec(v: &[u8]) -> Result<Curve25519SecretKey, KeyError> {
-        match SecretKey::from_bytes(v) {
-            Ok(v) => Ok(Curve25519SecretKey(v)),
-            Err(e) => Err(KeyError::ConversionError(format!("Could not convert vector to SecretKey: {}", e))),
-        }
-    }
-}
+impl SecretKey for Curve25519SecretKey {}
 
 impl SecretKeyFactory for Curve25519SecretKey {
     fn random<R: CryptoRng + Rng>(rng: &mut R) -> Curve25519SecretKey {
-        let k = SecretKey::generate(rng);
+        let k = DalekSK::generate(rng);
         Curve25519SecretKey(k)
     }
 }
@@ -59,57 +28,56 @@ impl PartialEq<Curve25519SecretKey> for Curve25519SecretKey {
 
 impl Eq for Curve25519SecretKey {}
 
-//----------------------------------------   Public Keys  ----------------------------------------//
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct Curve25519PublicKey(pub(crate) PublicKey);
-
-impl TariPublicKey for Curve25519PublicKey {
-    type K = Curve25519SecretKey;
-
-    fn from_secret_key(k: &Curve25519SecretKey) -> Self {
-        Curve25519PublicKey(PublicKey::from_secret::<Sha512>(&k.0))
-    }
-
-    fn to_hex(&self) -> String {
-        to_hex(self.0.to_bytes().to_vec())
-    }
-
-    fn from_hex(hex: &str) -> Result<Self, KeyError>
-    where Self: Sized {
-        let b = from_hex(hex)?;
-        Curve25519PublicKey::from_vec(&b)
-    }
-
-    fn from_bytes(bytes: &[u8]) -> Result<Self, KeyError>
-    where Self: Sized {
-        match PublicKey::from_bytes(bytes) {
-            Ok(v) => Ok(Curve25519PublicKey(v)),
-            Err(e) => Err(KeyError::ConversionError(format!("Could not convert byte array to PublicKey: {}", e))),
+impl ByteArray for Curve25519SecretKey {
+    /// Creates a secret key from the first `SK_LEN` bytes of the byte array. Returns an error if `bytes` is less
+    /// than `SK_LEN` bytes long.
+    fn from_bytes(bytes: &[u8]) -> Result<Self, ByteArrayError> {
+        if bytes.len() < SECRET_KEY_LENGTH {
+            return Err(ByteArrayError::ConversionError("Byte array was too short".into()));
+        }
+        match DalekSK::from_bytes(&bytes[0..SECRET_KEY_LENGTH]) {
+            Ok(v) => Ok(Curve25519SecretKey(v)),
+            Err(e) => Err(ByteArrayError::ConversionError(e.to_string())),
         }
     }
 
     fn to_bytes(&self) -> &[u8] {
         self.0.as_bytes().as_ref()
     }
+}
+//----------------------------------------   Public Keys  ----------------------------------------//
 
-    fn to_vec(&self) -> Vec<u8> {
-        self.0.as_bytes().to_vec()
+#[derive(Debug, PartialEq, Eq)]
+pub struct Curve25519PublicKey(pub(crate) DalekPK);
+
+impl PublicKey for Curve25519PublicKey {
+    type K = Curve25519SecretKey;
+
+    fn from_secret_key(k: &Curve25519SecretKey) -> Self {
+        Curve25519PublicKey(DalekPK::from_secret::<Sha512>(&k.0))
+    }
+}
+
+impl ByteArray for Curve25519PublicKey {
+    fn from_bytes(bytes: &[u8]) -> Result<Self, ByteArrayError> {
+        match DalekPK::from_bytes(bytes) {
+            Ok(v) => Ok(Curve25519PublicKey(v)),
+            Err(e) => Err(ByteArrayError::ConversionError(format!("Could not convert byte array to PublicKey: {}", e))),
+        }
     }
 
-    fn from_vec(v: &[u8]) -> Result<Self, KeyError>
-    where Self: Sized {
-        match PublicKey::from_bytes(v) {
-            Ok(v) => Ok(Curve25519PublicKey(v)),
-            Err(e) => Err(KeyError::ConversionError(format!("Could not convert vector to PublicKey: {}", e))),
-        }
+    fn to_bytes(&self) -> &[u8] {
+        self.0.as_bytes().as_ref()
     }
 }
 
 #[cfg(test)]
 mod test {
     use super::{Curve25519PublicKey, Curve25519SecretKey};
-    use crate::keys::{PublicKey, SecretKey, SecretKeyFactory};
+    use crate::{
+        common::ByteArray,
+        keys::{PublicKey, SecretKeyFactory},
+    };
     use rand;
 
     const PUB_KEY: [u8; 32] = [
