@@ -4,7 +4,7 @@
 
 ![status: draft](theme/images/status-draft.svg)
 
-**Maintainer(s)**: [Cayle Sharrock](https://github.com/CjS77)
+**Maintainer(s)**: [Cayle Sharrock](https://github.com/CjS77) [SW van heerden](https://github.com/SWvheerden)
 
 # License
 
@@ -196,6 +196,20 @@ verification is achieved by
 When Base Nodes receive blocks from peers while synchronizing, the usual
 [block validation](#block-validation-and-propagation) process is followed.
 
+### Pruning and cut-through
+
+In MimbleWimble only the currently UTXO set is really of importance, this allows base layer nodes to remove old used inputs from the [blockchain] and or the [mempool]. Cut-through happens in the [mempool] while pruning happens in the [blockchain] with already confirmed transactions. This will only remove the inputs and outputs, but will not excess of each [transaction]. 
+
+[mining server]s have the following responsibilities:
+
+1. Must apply cut-through when mining transactions from the [mempool] and only add the exces to the new mined block transactions. 
+
+[base node]s have the following reponsibilities:
+
+1. Must apply pruning when it receives a new block from another [base node].
+2. Must only forward the pruned block when it is asked for a spesific block.
+
+
 
 [tari coin]: Glossary.md#tari-coin
 [blockchain]: Glossary.md#blockchain
@@ -210,3 +224,4 @@ When Base Nodes receive blocks from peers while synchronizing, the usual
 [range proof]: Glossary.md#range-proof
 [SynchronisationStrategy]: Glossary.md#synchronisationstrategy
 [SynchronisationState]: Glossary.md#synchronisationstate
+[mining server]: #mining-server
