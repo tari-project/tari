@@ -131,7 +131,7 @@ client applications and are relayed by the DAN to the [validator node]s that are
 
 
 ## Emission schedule
-[emission schedule]: #emission-schedule 
+[emission schedule]: #emission-schedule
 
 An explicit formula as a function of the block height, _h_, that determines the block reward for the 
 _h_<sup>th</sup> block.
@@ -150,6 +150,16 @@ longest proof-of-work chain. Miners usually draw from the mempool to build up tr
 Mimblewimble is a privacy-centric cryptocurrency protocol. It was
 [dropped](https://download.wpsoftware.net/bitcoin/wizardry/mimblewimble.txt) in the Bitcoin Developers chatroom by an
 anonymous author and has since been refined by several authors, including Andrew Poelstra.
+
+## Mining Server
+[mining server]: #mining-server
+
+A Mining Server is responsible for constructing new blocks by bundling transactions from the [mempool] of a connected [Base Node]. It also distributes Proof-of-Work tasks to Mining Workers and verifies PoW solutions.
+
+## Mining Worker
+[mining worker]: #mining-worker
+
+A Mining Worker is responsible for performing Proof-of-Work tasks received from its parent [Mining Server].
 
 ## Range proof
 [range proof]: #range-proof
@@ -216,7 +226,7 @@ A permissioned Validator Node nominated by an Asset Issuer that will form part o
 An unspent transaction output (UTXO) is a discrete number of Tari that are available to be spent. The sum of all 
 UTXOs represents all the Tari currently in circulation. In addition, the sum of all UTXO values equals the sum of the
  [block reward]s for all blocks up to the current block height.
- 
+
 UTXO values are hidden by their [commitment]s. Only the owner of the UTXO and (presumably) the creator of the UTXO
 (either a [Coinbase transaction] or previous spender) know the value of the UTXO.
 
