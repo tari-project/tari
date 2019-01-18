@@ -89,7 +89,7 @@ Mining servers may re-verify transactions before including them in a new Tari bl
 verification and transaction rules such as signatures and timelocks is the responsibility of the connected Base node.
 
 To enable Merged mining of Tari with Monero, both a Tari and a Monero block needs to be created and linked. First, 
-a new Tari block is created and then the block header hash of the new Tari block should be included in the coinbase 
+a new Tari block is created and then the block header hash of the new Tari block is included in the coinbase 
 transaction of the new Monero block. Once a new merged mined Monero block has been constructed, PoW tasks can then 
 be sent to the connected Mining Workers that will attempt to solve the block by performing the latest released 
 version of the PoW algorithm selected by Monero.
