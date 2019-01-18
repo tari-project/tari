@@ -203,14 +203,14 @@ In MimbleWimble only the currently UTXO set is really of importance, this allows
 
 Pruning is only for the benifit of the local base node so this is an optional, but recommended requirement. If the base node is running in archival mode it must not prune. 
 
-[base node]s has the following optional reponsibilities:
+[base node]s has the following **optional** reponsibilities:
 
-1. Must search for used outputs in old blocks when a new block is received from another [base node].
-2. Must apply pruning to each transaction found.
+1. MUST search for used outputs in old blocks when a new block is received from another [base node].
+2. MUST apply pruning to each transaction found.
 
-[base node]s have the following required reponsibilities:
+[base node]s have the following **required** reponsibilities:
 
-1. Must check if a newly received block for cut-through. If a block contains already spent outputs, reject that block. 
+1. MUST check if a newly received block for cut-through. If a block contains already spent outputs, reject that block. 
 
 
 
