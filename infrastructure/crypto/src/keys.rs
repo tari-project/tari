@@ -13,6 +13,20 @@ pub trait SecretKeyFactory {
     fn random<R: CryptoRng + Rng>(rng: &mut R) -> Self;
 }
 
+/// A trait specifying common behaviour for representing `SecretKey`s. Specific elliptic curve
+/// implementations need to implement this trait for them to be used in Tari.
+///
+/// ## Example
+///
+/// Assuming there is a Curve25519 implementation,
+/// ```edition2018
+/// # use crypto::curve25519::{ Curve25519SecretKey, Curve25519PublicKey };
+/// # use crypto::keys::{ SecretKeyFactory, SecretKey, PublicKey };
+/// # use rand;
+/// let mut rng = rand::OsRng::new().unwrap();
+/// let k = Curve25519SecretKey::random(&mut rng);
+/// let p = Curve25519PublicKey::from_secret_key(&k);
+/// ```
 pub trait SecretKey {}
 
 //----------------------------------------   Public Keys  ----------------------------------------//
