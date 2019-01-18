@@ -200,14 +200,20 @@ When Base Nodes receive blocks from peers while synchronizing, the usual
 
 In MimbleWimble only the currently UTXO set is really of importance, this allows base layer nodes to remove old used inputs from the [blockchain] and or the [mempool]. Cut-through happens in the [mempool] while pruning happens in the [blockchain] with already confirmed transactions. This will only remove the inputs and outputs, but will not excess of each [transaction]. 
 
+Pruning is only for the benifit of the local base node so this is an optional, but recommended requirement. If the base node is running in archival mode it must not prune. 
+
 [mining server]s have the following responsibilities:
 
 1. Must apply cut-through when mining transactions from the [mempool] and only add the exces to the new mined block transactions. 
 
-[base node]s have the following reponsibilities:
+[base node]s have the following optional reponsibilities:
 
-1. Must apply pruning when it receives a new block from another [base node].
-2. Must only forward the pruned block when it is asked for a spesific block.
+1. Must search for used outputs in old blocks when a new block is received from another [base node].
+2. Must apply pruning to each transaction found.
+
+[base node]s have the following required reponsibilities:
+
+1. Must check if a newly received block for cut-through. If a block contains already spent outputs, reject that block. 
 
 
 
