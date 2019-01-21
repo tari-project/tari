@@ -205,8 +205,8 @@ Pruning is only for the benifit of the local base node so this is an optional, b
 
 [base node]s has the following **optional** reponsibilities:
 
-1. MUST search for used outputs in old blocks when a new block is received from another [base node].
-2. MUST apply pruning to each transaction found.
+1. SHOULD search for used outputs in old blocks when a new block is received from another [base node].
+2. SHOULD apply pruning to each transaction found.
 
 [base node]s have the following **required** reponsibilities:
 
