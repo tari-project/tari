@@ -6,7 +6,9 @@ edition = "2018"
 [dependencies]
 digest = "0.7.6"
 rand = "0.5.5"
-ed25519-dalek = { version = "0.8.1"}
+ed25519-dalek = "0.8.1"
+curve25519-dalek = "1.0.2"
+
 sha2 = "0.7.1"
 derive-error = "0.0.4"
 

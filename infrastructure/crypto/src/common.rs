@@ -22,6 +22,7 @@
 
 use crate::hex::{from_hex, to_hex, HexError};
 use derive_error::Error;
+use sha2::Digest;
 
 #[derive(Debug, Error)]
 pub enum ByteArrayError {
@@ -68,4 +69,15 @@ pub trait ByteArray {
 
     /// Return the type as a byte array
     fn to_bytes(&self) -> &[u8];
+}
+
+/// Generate a vector on n NUMS hashes of the input value v using the supplied digest function
+pub fn nums_generator<D: Digest>(n: usize, v: &[u8]) -> Vec<Vec<u8>> {
+    let mut result = Vec::new();
+    let mut v = v.to_vec();
+    for _ in 0..n {
+        v = D::digest(&v).to_vec();
+        result.push(v.clone());
+    }
+    result
 }
