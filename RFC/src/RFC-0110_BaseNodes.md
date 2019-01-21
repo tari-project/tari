@@ -201,7 +201,7 @@ When Base Nodes receive blocks from peers while synchronizing, the usual
 
 In MimbleWimble, only the current [UTXO](utxo) set is of importance. This allows base layer nodes to remove old used inputs from the [blockchain] and or the [mempool]. [Cut-through](cut-through) happens in the [mempool] while pruning happens in the [blockchain] with already confirmed transactions. This will remove some of the inputs and outputs, but will retain the excesses  of each [transaction]. 
 
-Pruning is only for the benifit of the local base node so this is an optional, but recommended requirement. If the base node is running in archival mode it must not prune. 
+Pruning is only for the benefit of the local base node so this is an optional, but recommended requirement. If the base node is running in archival mode it must not prune. 
 
 [base node]s has the following **optional** reponsibilities:
 
