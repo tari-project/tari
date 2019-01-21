@@ -228,3 +228,4 @@ Pruning is only for the benifit of the local base node so this is an optional, b
 [SynchronisationStrategy]: Glossary.md#synchronisationstrategy
 [SynchronisationState]: Glossary.md#synchronisationstate
 [mining server]: Glossary.md#mining-server
+[cut-through]: RFC-0110_BaseNodes.md#Pruning-and-cut-through
