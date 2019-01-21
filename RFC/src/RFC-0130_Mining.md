@@ -118,7 +118,7 @@ and Auxiliary blockchain is provided in the [Merged Mining TLU report] (https://
 - The Mining Server MUST maintain a local or remote connection with a Base Node and a Monero Node.
 - It MUST have a mechanism to construct a new Tari and Monero block by selecting transactions from the different 
   Tari and Monero mempools that need to be included in the different blocks.
-- It MUST apply cut-through when mining transactions from the [mempool] and only add the exces to the list of new block transactions. 
+- It MUST apply [cut-through] when mining transactions from the [mempool] and only add the excess to the list of new block transactions. 
 - It MAY have a configurable transaction selection mechanism for the block construction process. 
 - It MAY have the ability to re-verify transactions before including them in a new Tari block.
 - It MUST have the ability to include the block header hash of the new Tari block into the coinbase section of a 
