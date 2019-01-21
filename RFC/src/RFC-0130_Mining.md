@@ -86,7 +86,7 @@ constructing Tari and Monero Blocks from their respective mempools. The Mining S
 from the mempool of the connected Base Node and assemble a new Tari block by bundling transactions together.
 
 Mining servers may re-verify transactions before including them in a new Tari block, but this enforcement of 
-verification and transaction rules such as signatures and timelocks is the responsibility of the connected Base node. Mining servers are however responsible to do [cut-through] as this is required for scalability and privacy.
+verification and transaction rules such as signatures and timelocks is the responsibility of the connected Base node. Mining servers are responsible for [cut-through] as this is required for scalability and privacy.
 
 To enable Merged mining of Tari with Monero, both a Tari and a Monero block needs to be created and linked. First, 
 a new Tari block is created and then the block header hash of the new Tari block is included in the coinbase 
