@@ -19,12 +19,13 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+//
+// Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
+// Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
-#[macro_use]
-extern crate bitflags;
+/// Define the explicit Signature implementation for the Tari base layer. A different signature scheme can be
+/// employed by redefining this type.
+pub type Signature = [u8; 32]; // TODO replace with a concrete signature type;
 
-pub mod block;
-pub mod pow;
-pub mod range_proof;
-pub mod transaction;
-pub mod types;
+/// Define the explicit Commitment implementation for the Tari base layer.
+pub type Commitment = [u8; 32]; // TODO replace with a concrete commitment type
