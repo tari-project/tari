@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use curve25519_dalek::edwards::CompressedEdwardsY;
-use crate::commitments::HomomorphicCommitment;
+use crate::commitment::HomomorphicCommitment;
 use curve25519_dalek::scalar::Scalar;
 use curve25519_dalek::edwards::EdwardsPoint;
 use curve25519_dalek::constants::ED25519_BASEPOINT_COMPRESSED;
