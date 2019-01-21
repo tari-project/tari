@@ -210,7 +210,7 @@ Pruning is only for the benifit of the local base node so this is an optional, b
 
 [base node]s have the following **required** reponsibilities:
 
-1. MUST check if a newly received block for cut-through. If a block contains already spent outputs, reject that block. 
+1. MUST check if a newly received block for [cut-through]. If a block contains already spent outputs, reject that block. 
 
 
 
