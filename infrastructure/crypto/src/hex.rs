@@ -10,7 +10,7 @@ pub enum HexError {
 }
 
 /// Encode the provided bytes into a hex string
-pub fn to_hex(bytes: Vec<u8>) -> String {
+pub fn to_hex(bytes: &Vec<u8>) -> String {
     let mut s = String::new();
     for byte in bytes {
         write!(&mut s, "{:02x}", byte).expect("Unable to write");
@@ -43,9 +43,9 @@ mod test {
     use std::error::Error;
     #[test]
     fn test_to_hex() {
-        assert_eq!(to_hex(vec![0, 0, 0, 0]), "00000000");
-        assert_eq!(to_hex(vec![10, 11, 12, 13]), "0a0b0c0d");
-        assert_eq!(to_hex(vec![0, 0, 0, 255]), "000000ff");
+        assert_eq!(to_hex(&vec![0, 0, 0, 0]), "00000000");
+        assert_eq!(to_hex(&vec![10, 11, 12, 13]), "0a0b0c0d");
+        assert_eq!(to_hex(&vec![0, 0, 0, 255]), "000000ff");
     }
 
     #[test]

@@ -18,16 +18,18 @@ pub trait SecretKeyFactory {
 ///
 /// ## Example
 ///
-/// Assuming there is a Curve25519 implementation,
+/// Assuming there is a Ristretto implementation,
 /// ```edition2018
-/// # use crypto::curve25519::{ Curve25519SecretKey, Curve25519PublicKey };
+/// # use crypto::ristretto::{ RistrettoSecretKey, RistrettoPublicKey };
 /// # use crypto::keys::{ SecretKeyFactory, SecretKey, PublicKey };
 /// # use rand;
 /// let mut rng = rand::OsRng::new().unwrap();
-/// let k = Curve25519SecretKey::random(&mut rng);
-/// let p = Curve25519PublicKey::from_secret_key(&k);
+/// let k = RistrettoSecretKey::random(&mut rng);
+/// let p = RistrettoPublicKey::from_secret_key(&k);
 /// ```
-pub trait SecretKey {}
+pub trait SecretKey {
+    fn key_length() -> usize;
+}
 
 //----------------------------------------   Public Keys  ----------------------------------------//
 
@@ -40,4 +42,6 @@ pub trait PublicKey {
     /// Calculate the public key associated with the given secret key. This should not fail; if a
     /// failure does occur (implementation error?), the function will panic.
     fn from_secret_key(k: &Self::K) -> Self;
+
+    fn key_length() -> usize;
 }
