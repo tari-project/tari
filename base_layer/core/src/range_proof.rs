@@ -19,12 +19,13 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+//
+// Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
+// Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
-#[macro_use]
-extern crate bitflags;
+const RANGE_PROOF_LENGTH: usize = 1; // This will be changed
 
-pub mod block;
-pub mod pow;
-pub mod range_proof;
-pub mod transaction;
-pub mod types;
+#[derive(Debug, Clone)]
+pub struct RangeProof([u8; RANGE_PROOF_LENGTH]);
+
+impl Copy for RangeProof {}
