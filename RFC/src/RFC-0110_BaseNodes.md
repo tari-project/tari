@@ -113,6 +113,7 @@ The transaction validation service checks that:
 * the transaction excess has a valid signature.
 * the transaction excess is a valid public key. This proves that:
   $$ \Sigma \left( \mathrm{inputs} - \mathrm{outputs} - \mathrm{fees} \right) = 0 $$
+* check if a newly received block for [cut-through]. If a block contains already spent outputs, reject that block.
 
 `Rejected` transactions are dropped silently.
 
@@ -142,7 +143,7 @@ block validation service. The validation service checks that
   * it is possible that blocks may be received out of order; particularly while syncing. Base Nodes SHOULD keep blocks.
     that have block heights greater than the current chain tip in memory for some preconfigured period.
 * the sum of all excesses is a valid public key. This proves that:
-   $$ \Sigma \left( \mathrm{inputs} - \mathrm{outputs} - \mathrm{fees} \right) = 0$$
+   $$ \Sigma \left( \mathrm{inputs} - \mathrm{outputs} - \mathrm{fees} \right) = 0$$ 
 
 `Rejected` blocks are dropped silently.
 
@@ -199,18 +200,14 @@ When Base Nodes receive blocks from peers while synchronizing, the usual
 ### Pruning and cut-through
 [Pruning and cut-through]: #Pruning-and-cut-through "Remove already spent outputs from the [utxo]"
 
-In MimbleWimble, only the current [UTXO](utxo) set is of importance. This allows base layer nodes to remove old used inputs from the [blockchain] and or the [mempool]. [Cut-through](cut-through) happens in the [mempool] while pruning happens in the [blockchain] with already confirmed transactions. This will removes the inputs and outputs, but will retain the excesses  of each [transaction]. 
+In MimbleWimble, only the current [UTXO](utxo) set is of importance. This allows base layer nodes to remove old used inputs from the [blockchain] and or the [mempool]. [Cut-through](cut-through) happens in the [mempool] while pruning happens in the [blockchain] with already confirmed transactions. This will remove the inputs and outputs, but will retain the excesses  of each [transaction]. 
 
-Pruning is only for the benefit of the local base node so this is an optional, but recommended requirement as it reduces the UTXO set. A Base node will either run in archive mode or prune mode, if the base node is running in archive mode it should not prune. 
+Pruning is only for the benefit of the local base node so this is an optional, but recommended requirement as it reduces the local blockchain size. A Base node will either run in archive mode or prune mode, if the base node is running in archive mode it should not prune. 
 
 [base node]s have the following **optional** reponsibilities:
 
 1. SHOULD search for used outputs in old blocks when a new block is received from another [base node].
 2. SHOULD apply pruning to each transaction found.
-
-[base node]s have the following **required** reponsibilities:
-
-1. MUST check if a newly received block for [cut-through]. If a block contains already spent outputs, reject that block. 
 
 
 
