@@ -204,7 +204,7 @@ In MimbleWimble, the state can be completely verified using the current [UTXO](u
 
 Pruning is only for the benefit of the local base node so this is an optional, but recommended requirement as it reduces the local blockchain size. A Base node will either run in archive mode or prune mode, if the base node is running in archive mode it should not prune. 
 
-[base node]s have the following **optional** reponsibilities:
+When running in pruning mode, [base node]s have the following responsibilities:
 
 1. SHOULD search for used outputs in old blocks when a new block is received from another [base node].
 2. SHOULD apply pruning to each transaction found.
