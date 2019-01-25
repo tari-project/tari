@@ -200,7 +200,7 @@ When Base Nodes receive blocks from peers while synchronizing, the usual
 ### Pruning and cut-through
 [Pruning and cut-through]: #Pruning-and-cut-through "Remove already spent outputs from the [utxo]"
 
-In MimbleWimble, only the current [UTXO](utxo) set is of importance. This allows base layer nodes to remove old used inputs from the [blockchain] and or the [mempool]. [Cut-through](cut-through) happens in the [mempool] while pruning happens in the [blockchain] with already confirmed transactions. This will remove the inputs and outputs, but will retain the excesses  of each [transaction]. 
+In MimbleWimble, the state can be completely verified using the current [UTXO](utxo) set, the set of excess signatures (contained in the transaction kernels) and the proof-of-work. The full block and transaction history is not required. This allows base layer nodes to remove old used inputs from the [blockchain] and or the [mempool]. [Cut-through](cut-through) happens in the [mempool] while pruning happens in the [blockchain] with already confirmed transactions. This will remove the inputs and outputs, but will retain the excesses  of each [transaction]. 
 
 Pruning is only for the benefit of the local base node so this is an optional, but recommended requirement as it reduces the local blockchain size. A Base node will either run in archive mode or prune mode, if the base node is running in archive mode it should not prune. 
 
