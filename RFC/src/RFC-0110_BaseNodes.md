@@ -4,7 +4,7 @@
 
 ![status: draft](theme/images/status-draft.svg)
 
-**Maintainer(s)**: [Cayle Sharrock](https://github.com/CjS77)
+**Maintainer(s)**: [Cayle Sharrock](https://github.com/CjS77) [SW van heerden](https://github.com/SWvheerden)
 
 # License
 
@@ -131,7 +131,7 @@ The Block validation and propagation process is analogous to that of transaction
 New blocks are received from the peer-to-peer network, or from an API call if the Base Node is connected to a Miner.
 
 When a new block is received, it is assigned the `unvalidated` [ValidationState]. The block is then passed to the
-block validation service. The validation service checks that
+block validation service.  The validation service checks that
 
 * the block hasn't been processed before.
 * every [transaction] in the block is valid.
@@ -142,7 +142,10 @@ block validation service. The validation service checks that
   * it is possible that blocks may be received out of order; particularly while syncing. Base Nodes SHOULD keep blocks.
     that have block heights greater than the current chain tip in memory for some preconfigured period.
 * the sum of all excesses is a valid public key. This proves that:
-   $$ \Sigma \left( \mathrm{inputs} - \mathrm{outputs} - \mathrm{fees} \right) = 0$$
+   $$ \Sigma \left( \mathrm{inputs} - \mathrm{outputs} - \mathrm{fees} \right) = 0$$ 
+* check if [cut-through] was applied. If a block contains already spent outputs, reject that block.
+
+Because MimbleWimble blocks can be simple be seen as large transactions with multiple inputs and outputs, the block validation service checks all transaction verification on the block as well.
 
 `Rejected` blocks are dropped silently.
 
@@ -196,6 +199,19 @@ verification is achieved by
 When Base Nodes receive blocks from peers while synchronizing, the usual
 [block validation](#block-validation-and-propagation) process is followed.
 
+### Pruning and cut-through
+[Pruning and cut-through]: #Pruning-and-cut-through "Remove already spent outputs from the [utxo]"
+
+In MimbleWimble, the state can be completely verified using the current [UTXO](utxo) set, the set of excess signatures (contained in the transaction kernels) and the proof-of-work. The full block and transaction history is not required. This allows base layer nodes to remove old used inputs from the [blockchain] and or the [mempool]. [Cut-through](cut-through) happens in the [mempool] while pruning happens in the [blockchain] with already confirmed transactions. This will remove the inputs and outputs, but will retain the excesses  of each [transaction]. 
+
+Pruning is only for the benefit of the local base node as it reduces the local blockchain size. A Base node will either run in archive mode or prune mode, if the base node is running in archive mode it should not prune. Pruned nodes will not be able to safely handle a sufficiently deep re-org. Only Archival nodes can roll back arbitrarily to handle large re-orgs, and so the network cannot run on pruned nodes alone.
+
+When running in pruning mode, [base node]s have the following responsibilities:
+
+1. MUST remove all spent outputs in it's current stored [UTXO](utxo) when a new block is received from another [base node].
+
+
+
 
 [tari coin]: Glossary.md#tari-coin
 [blockchain]: Glossary.md#blockchain
@@ -210,3 +226,5 @@ When Base Nodes receive blocks from peers while synchronizing, the usual
 [range proof]: Glossary.md#range-proof
 [SynchronisationStrategy]: Glossary.md#synchronisationstrategy
 [SynchronisationState]: Glossary.md#synchronisationstate
+[mining server]: Glossary.md#mining-server
+[cut-through]: RFC-0110_BaseNodes.md#Pruning-and-cut-through
