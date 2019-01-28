@@ -34,7 +34,7 @@ https://help.github.com/articles/signing-commits/
 
 ## Submitting your public key
 
-To add your GPG key to the list, export your **public**** key with
+To add your GPG key to the list, export your **public** key with
 
     gpg --armor --export <your_email_address>
 
