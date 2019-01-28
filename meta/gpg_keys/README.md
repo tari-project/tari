@@ -38,5 +38,5 @@ To add your GPG key to the list, export your **public**** key with
 
     gpg --armor --export <your_email_address>_
 
-thne, create a pull request with your GPG public key in a single file in this folder with the name
+then, create a pull request with your GPG public key in a single file in this folder with the name
 `<your-github-handle>.asc`
