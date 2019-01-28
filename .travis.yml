@@ -32,6 +32,8 @@ matrix:
         local-dir: book
         keep-history: false
         target-branch: gh-pages
+        on:
+          branch: development
     - stage: build
       name: Tari source code
       script:
