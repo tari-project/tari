@@ -1,4 +1,4 @@
-# RFC-0550: Instruction fees
+# RFC-0550/VNFees
 
 RFC placeholder.
 

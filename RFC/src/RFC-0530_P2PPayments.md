@@ -1,4 +1,4 @@
-# RFC-0530: Peer-to-peer payments
+# RFC-0530_P2PPayments
 
 RFC placeholder.
 

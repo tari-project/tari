@@ -1,4 +1,4 @@
-# RFC-0350: DAN Dispute resolution mechanism
+# RFC-0350/DisputeResolution
 
 RFC placeholder.
 

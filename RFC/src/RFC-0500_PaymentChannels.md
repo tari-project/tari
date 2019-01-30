@@ -1,4 +1,4 @@
-# RFC-0500: Tari payment channels
+# RFC-0500/PaymentChannels
 
 RFC placeholder.
 

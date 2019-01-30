@@ -1,4 +1,4 @@
-# RFC-0320: Validator Nodes
+# RFC-0320/ValidatorNodes
 
 RFC placeholder.
 

@@ -1,4 +1,4 @@
-# RFC-0372: Peer-to-peer communication for asset managers
+# RFC-0372/TCP2PComm
 
 RFC placeholder.
 

@@ -1,4 +1,4 @@
-# RFC-0323: Validator Node committee selection
+# RFC-0323/VNCommittees
 
 RFC placeholder.
 

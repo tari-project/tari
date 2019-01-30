@@ -1,4 +1,4 @@
-# RFC-0210: Namespace registration
+# RFC-0210/NamespaceRegistration
 
 RFC placeholder.
 

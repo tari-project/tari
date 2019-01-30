@@ -1,4 +1,4 @@
-# RFC-0220: Asset checkpoints
+# RFC-0220/AssetCheckpoints
 
 RFC placeholder.
 

@@ -1,4 +1,4 @@
-# RFC-0200: Tari-specific extensions to Mimblewimble
+# RFC-0200/BaseLayerExtensions
 
 RFC placeholder.
 

@@ -1,4 +1,4 @@
-# RFC-0345: Asset retirement
+# RFC-0345/VNAssetRetirement
 
 RFC placeholder.
 

@@ -1,4 +1,4 @@
-# RFC-0130: Mining
+# RFC-0130/Mining
 
 ## Full-node mining on Tari base layer
 

@@ -1,4 +1,4 @@
-# RFC-0325: The asset read-only API
+# RFC-0325/AssetReadAPI
 
 RFC placeholder.
 
