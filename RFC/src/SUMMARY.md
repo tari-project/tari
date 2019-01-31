@@ -11,6 +11,8 @@
   - [RFC-0210: Namespace registration](RFC-0210_NamespaceRegistration.md)
   - [RFC-0220: Asset checkpoints](RFC-0220_AssetCheckpoints.md)
   - [RFC-0230: Hash time locked contracts](RFC-0230_HTLC.md)
+  - [RFC-0322: Validator Node Registration](RFC-0322_VNRegistration.md)
+  - [RFC-0341: Asset registration](RFC-0341_AssetRegistration.md)
 - [RFC-0300: The Digital Assets Network](RFC-0300_DAN.md)
 - [RFC-0320: Validator Nodes](RFC-0320_ValidatorNodes.md)
   - [RFC-0321: Asset discovery](RFC-0321_VNAssetDiscovery.md)
