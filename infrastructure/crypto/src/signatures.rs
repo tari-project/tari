@@ -7,43 +7,20 @@ use crate::keys::{PublicKey, SecretKey};
 /// Generic definition of Schnorr Signature functionality, agnostic of the elliptic curve used.
 /// Schnorr signatures are linear and have the form _s = r + ek_, where _r_ is a nonce (secret key),
 /// _k_ is a secret key, and _s_ is the signature.
-///
-/// ## Example
-///
-/// ```edition2018
-/// # use rand::OsRng;
-/// # use crypto::keys::{ PublicKey, SecretKey, SecretKeyFactory };
-/// # use crypto::signatures::SchnorrSignature;
-/// # use crypto::curve25519::{ Curve25519PublicKey, Curve25519SecretKey, Curve25519EdDSA };
-/// # let mut rng = OsRng::new().unwrap();
-///  let msg = b"This parrot is dead";
-///  let k = Curve25519SecretKey::random(&mut rng);
-///  let p = Curve25519PublicKey::from_secret_key(&k);
-///  let sig = Curve25519EdDSA::sign(&k, &p, msg);
-///  assert!(sig.verify(&p, msg));
-/// ```
+#[allow(non_snake_case)]
 pub trait SchnorrSignature {
-    type K: SecretKey;
-    type P: PublicKey;
+    type Scalar: SecretKey;
+    type Point: PublicKey;
+    type Challenge;
 
-    /// Return the public nonce R associated with this signature
-    #[allow(non_snake_case)]
-    fn R(&self) -> Self::P;
+    fn new(public_nonce: Self::Point, signature: Self::Scalar) -> Self;
 
-    /// Return the signature
-    fn s(&self) -> Self::K;
-
-    /// Sign the given message, using the provided secret key. The public key must be the one
-    /// associated with the secret key. The message is an arbitrary byte array that will be
-    /// hashed as part of the specific digital signature algorithm
-    fn sign(secret: &Self::K, public: &Self::P, m: &[u8]) -> Self;
+    fn sign(secret: &Self::Scalar, nonce: &Self::Scalar, challenge: Self::Challenge) -> Self;
 
     /// Check whether the given signature is valid for the given message and public key
-    fn verify(&self, public: &Self::P, m: &[u8]) -> bool;
-}
+    fn verify(&self, public_key: &Self::Point, challenge: &Self::Challenge) -> bool;
 
-//* MuSig
-//* Schnorr signatures
-//* Partial Signatures and Zero-knowledge contingent payments
-//* Message signing
-//* Aggregate Signatures
+    fn get_signature(&self) -> &Self::Scalar;
+
+    fn get_public_nonce(&self) -> &Self::Point;
+}
