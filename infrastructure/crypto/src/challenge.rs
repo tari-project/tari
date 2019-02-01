@@ -27,7 +27,7 @@ pub type Challenge256Bit = [u8; 32];
 
 /// A Challenge of the form H(P || R || ... || m).
 /// Challenges are often used in constructing signatures. Given some hash function H, the value is a
-/// scalar hand can be used as a secret key.
+/// scalar and can be used as a secret key.
 /// `Challenge` is really just a thin wrapper around Digest, but we make use of Rust's typing system to prevent type
 /// mixing
 /// ## Usage
