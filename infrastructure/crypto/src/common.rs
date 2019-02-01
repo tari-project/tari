@@ -130,7 +130,7 @@ impl ByteArray for [u8; 32] {
 }
 
 /// A convenience wrapper produce 256 bit hashes from Blake2b
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Blake256(VarBlake2b);
 
 impl Default for Blake256 {
