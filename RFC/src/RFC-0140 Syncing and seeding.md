@@ -103,11 +103,11 @@ To counter this problem we use  [pruning horizon](pruninghorizon), this allows e
 
 In MimbleWimble, the state can be completely verified using the current [UTXO](utxo) set, the set of excess signatures (contained in the transaction kernels) and the proof-of-work. The full block and transaction history is not required. This allows base layer nodes to remove old used inputs from the [blockchain] and or the [mempool]. [Cut-through](cut-through) happens in the [mempool] while pruning happens in the [blockchain] with already confirmed transactions. This will remove the inputs and outputs, but will retain the excesses  of each [transaction]. 
 
-Pruning is only for the benefit of the local base node as it reduces the local blockchain size. A Base node will either run in archive mode or prune mode, if the base node is running in archive mode it should not prune. Pruned nodes will not be able to safely handle a sufficiently deep re-org. Only Archival nodes can roll back arbitrarily to handle large re-orgs, and so the network cannot run on pruned nodes alone.
+Pruning is only for the benefit of the local base node as it reduces the local blockchain size. Pruning only happens afterthe [pruning horizon](pruninghorizon) height. A Base node will either run in archive mode or prune mode, if the base node is running in archive mode it should not prune. Pruned nodes will not be able to safely handle a sufficiently deep re-org. Only Archival nodes can roll back arbitrarily to handle large re-orgs, and so the network cannot run on pruned nodes alone.
 
 When running in pruning mode, [base node]s have the following responsibilities:
 
-1. MUST remove all spent outputs in it's current stored [UTXO](utxo) when a new block is received from another [base node].
+1. MUST remove all spent outputs thats older than the [pruning horizon](pruninghorizon) in it's current stored [UTXO](utxo) when a new block is received from another [base node].
 
 
 
