@@ -160,14 +160,3 @@ impl Reset for Blake256 {
         (self.0).reset()
     }
 }
-
-/// Generate a vector on n NUMS hashes of the input value v using the supplied digest function
-pub fn nums_generator<D: Digest>(n: usize, v: &[u8]) -> Vec<Vec<u8>> {
-    let mut result = Vec::new();
-    let mut v = v.to_vec();
-    for _ in 0..n {
-        v = D::digest(&v).to_vec();
-        result.push(v.clone());
-    }
-    result
-}

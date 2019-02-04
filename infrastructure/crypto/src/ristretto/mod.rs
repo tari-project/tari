@@ -22,6 +22,7 @@
 
 pub mod ristretto_keys;
 pub mod ristretto_sig;
+pub mod constants;
 
 // Re-export
 pub use self::{
