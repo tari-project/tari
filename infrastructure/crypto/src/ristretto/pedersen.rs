@@ -27,6 +27,7 @@ use crate::commitment::HomomorphicCommitment;
 use curve25519_dalek::scalar::Scalar;
 use std::ops::Add;
 use curve25519_dalek::ristretto::CompressedRistretto;
+use crate::ristretto::RistrettoPublicKey;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 #[allow(non_snake_case)]
@@ -50,7 +51,13 @@ impl Default for PedersenBaseOnRistretto255 {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct PedersenOnRistretto255<'a> {
     base: &'a PedersenBaseOnRistretto255,
-    pub(crate) commitment: CompressedRistretto,
+    commitment: RistrettoPublicKey,
+}
+
+impl<'a> PedersenOnRistretto255<'a> {
+    pub fn as_public_key(&self) -> &RistrettoPublicKey {
+        &self.commitment
+    }
 }
 
 impl<'a> HomomorphicCommitment<'a> for PedersenOnRistretto255<'a> {
@@ -59,18 +66,17 @@ impl<'a> HomomorphicCommitment<'a> for PedersenOnRistretto255<'a> {
         let c: RistrettoPoint = k * base.H + v * base.G;
         PedersenOnRistretto255 {
             base,
-            commitment: c.compress(),
+            commitment: RistrettoPublicKey::new_from_pk(c),
         }
     }
 
     fn open(&self, k: &Scalar, v: &Scalar) -> bool {
         let c: RistrettoPoint = (v * self.base.G) + (k * self.base.H);
-        // TODO: Check that this is constant time
-        c == self.commitment.decompress().expect("Pedersen commitment was not a valid Ristretto point")
+        c == self.commitment.point
     }
 
     fn commit(&self) -> &[u8] {
-        self.commitment.as_bytes()
+        self.commitment.compressed.as_bytes()
     }
 }
 
@@ -82,21 +88,23 @@ impl<'a, 'b> Add for &'b PedersenOnRistretto255<'a> {
 
     fn add(self, rhs: &'b PedersenOnRistretto255) -> Self::Output {
         assert_eq!(self.base, rhs.base, "Bases are unequal");
-        let lhp = self.commitment.decompress().expect("Pedersen commitment was not a valid Ristretto point");
-        let rhp = rhs.commitment.decompress().expect("Pedersen commitment was not a valid Ristretto point");
-        let sum = &lhp + &rhp;
+        let lhp = &self.commitment.point;
+        let rhp = &rhs.commitment.point;
+        let sum = lhp + rhp;
         PedersenOnRistretto255 {
             base: self.base,
-            commitment: sum.compress(),
+            commitment: RistrettoPublicKey::new_from_pk(sum)
         }
     }
 }
+
 
 
 #[cfg(test)]
 mod test {
     use super::*;
     use curve25519_dalek::scalar::Scalar;
+    use std::convert::From;
     use rand;
 
     #[test]
@@ -122,9 +130,12 @@ mod test {
             let k = Scalar::random(&mut rng);
             let c = PedersenOnRistretto255::new(&k, &v, &base);
             let c_calc: RistrettoPoint = v * base.G + k * base.H;
-            assert_eq!(c.commitment, c_calc.compress());
+            assert_eq!(RistrettoPoint::from(c.as_public_key()), c_calc);
             assert!(c.open(&k, &v));
+            // A different value doesn't open the commitment
             assert!(!c.open(&k, &(&v + &v)));
+            // A different blinding factor doesn't open the commitment
+            assert!(!c.open(&(&k + &v), &v));
         }
     }
 

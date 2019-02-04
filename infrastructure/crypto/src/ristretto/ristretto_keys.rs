@@ -201,6 +201,12 @@ impl From<RistrettoPublicKey> for RistrettoPoint {
     }
 }
 
+impl From<&RistrettoPublicKey> for RistrettoPoint {
+    fn from(pk: &RistrettoPublicKey) -> Self {
+        pk.point
+    }
+}
+
 impl From<RistrettoPublicKey> for CompressedRistretto {
     fn from(pk: RistrettoPublicKey) -> Self {
         pk.compressed
