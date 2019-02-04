@@ -170,6 +170,13 @@ Syncing is discussed in detail in [RFC-0140](RFC-0140_Syncing.md)
 
 pruning and cut-through is discussed in detail in [RFC-0140](RFC-0140_Syncing.md)
 
+### Archival nodes
+
+[Archival nodes](archivenode) are used to keep a complete history of the blockchain since genesis block, they do not employ pruning at all. These nodes will allow full syncing of the blockchain because normal nodes will not keep the full history to enable this. 
+
+
+
+[archivenode]: Glossary.md#archivenode
 
 [tari coin]: Glossary.md#tari-coin
 [blockchain]: Glossary.md#blockchain
