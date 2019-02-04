@@ -20,14 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use curve25519_dalek::ristretto::RistrettoPoint;
-use curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT;
-use crate::ristretto::constants::RISTRETTO_NUMS_POINTS;
-use crate::commitment::HomomorphicCommitment;
-use curve25519_dalek::scalar::Scalar;
+use crate::{
+    commitment::HomomorphicCommitment,
+    ristretto::{constants::RISTRETTO_NUMS_POINTS, RistrettoPublicKey},
+};
+use curve25519_dalek::{
+    constants::RISTRETTO_BASEPOINT_POINT,
+    ristretto::{CompressedRistretto, RistrettoPoint},
+    scalar::Scalar,
+};
 use std::ops::Add;
-use curve25519_dalek::ristretto::CompressedRistretto;
-use crate::ristretto::RistrettoPublicKey;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 #[allow(non_snake_case)]
@@ -41,10 +43,7 @@ pub const RISTRETTO_PEDERSEN_H_COMPRESSED: CompressedRistretto = RISTRETTO_NUMS_
 
 impl Default for PedersenBaseOnRistretto255 {
     fn default() -> Self {
-        PedersenBaseOnRistretto255 {
-            G: RISTRETTO_PEDERSEN_G,
-            H: RISTRETTO_PEDERSEN_H_COMPRESSED.decompress().unwrap(),
-        }
+        PedersenBaseOnRistretto255 { G: RISTRETTO_PEDERSEN_G, H: RISTRETTO_PEDERSEN_H_COMPRESSED.decompress().unwrap() }
     }
 }
 
@@ -62,12 +61,10 @@ impl<'a> PedersenOnRistretto255<'a> {
 
 impl<'a> HomomorphicCommitment<'a> for PedersenOnRistretto255<'a> {
     type Base = PedersenBaseOnRistretto255;
+
     fn new(k: &Scalar, v: &Scalar, base: &'a PedersenBaseOnRistretto255) -> Self {
         let c: RistrettoPoint = k * base.H + v * base.G;
-        PedersenOnRistretto255 {
-            base,
-            commitment: RistrettoPublicKey::new_from_pk(c),
-        }
+        PedersenOnRistretto255 { base, commitment: RistrettoPublicKey::new_from_pk(c) }
     }
 
     fn open(&self, k: &Scalar, v: &Scalar) -> bool {
@@ -91,21 +88,16 @@ impl<'a, 'b> Add for &'b PedersenOnRistretto255<'a> {
         let lhp = &self.commitment.point;
         let rhp = &rhs.commitment.point;
         let sum = lhp + rhp;
-        PedersenOnRistretto255 {
-            base: self.base,
-            commitment: RistrettoPublicKey::new_from_pk(sum)
-        }
+        PedersenOnRistretto255 { base: self.base, commitment: RistrettoPublicKey::new_from_pk(sum) }
     }
 }
-
-
 
 #[cfg(test)]
 mod test {
     use super::*;
     use curve25519_dalek::scalar::Scalar;
-    use std::convert::From;
     use rand;
+    use std::convert::From;
 
     #[test]
     fn check_default_base() {
@@ -182,4 +174,3 @@ mod test {
         let _ = &c1 + &c2;
     }
 }
-
