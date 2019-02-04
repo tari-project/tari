@@ -164,53 +164,11 @@ In addition, when a block has been validated and added to the blockchain:
 
 ### Seeding nodes and Synchronising the chain
 
-When base nodes start up, they need to synchronize the blockchain with their peers.
-
-Base Nodes that have just started up MUST perform the following in order to synchronize their blockchain state with the
-network:
-
-1. The Base Node's [SynchronisationState] is set to `Synchronising`.
-1. Load a bootstrap list of peers from a configuration file, or a cached list, if this is not the first time that the
-   node has started.
-1. For each peer in this list:
-   1. Establish a connection with the peer.
-   1. Request a peer list from that peer.
-   1. Request information about the most recent chain state (total accumulated work, block height, etc.) from the peer.
-
-The Base Node will now be able to build a strategy for catching up to the network. The Base Node will implement its
-[SynchronisationStrategy], which reduces load on any single peer and optimises bandwidth usage to synchronise the
-blockchain as quickly as possible.
-
-In particular, Mimblewimble has some unique properties that could lead to very fast synchronisation strategies. For
-example, because of cut-through and pruning, the entire blockchain state can be represented by the current [UTXO] set
-and all the coinbase transaction inputs.
-
-The upshot of this is that a new node can be perfectly sure of the current blockchain state and not download any block
-history at all. All that is required is downloading the block _header_ history and the current UTXO set. Then
-verification is achieved by
-
-1. The UTXO set and knowledge of the emission rate are used to verify the coin supply.
-1. The transaction kernel history (present in the block headers) and the UTXO range proofs are used to verify that every
-   UTXO is legitimate.
-1. The proof of work can be verified from the block headers. Furthermore, if a commitment (e.g. a Merkle tree root) for
-   the UTXO set is stored in the block headers, it is straightforward to verify that the UTXO set corresponds to a block
-   in the chain.
-
-When Base Nodes receive blocks from peers while synchronizing, the usual
-[block validation](#block-validation-and-propagation) process is followed.
+Syncing is discussed in detail in [RFC-0140](RFC-0140_Syncing.md)
 
 ### Pruning and cut-through
-[Pruning and cut-through]: #Pruning-and-cut-through "Remove already spent outputs from the [utxo]"
 
-In MimbleWimble, the state can be completely verified using the current [UTXO](utxo) set, the set of excess signatures (contained in the transaction kernels) and the proof-of-work. The full block and transaction history is not required. This allows base layer nodes to remove old used inputs from the [blockchain] and or the [mempool]. [Cut-through](cut-through) happens in the [mempool] while pruning happens in the [blockchain] with already confirmed transactions. This will remove the inputs and outputs, but will retain the excesses  of each [transaction]. 
-
-Pruning is only for the benefit of the local base node as it reduces the local blockchain size. A Base node will either run in archive mode or prune mode, if the base node is running in archive mode it should not prune. Pruned nodes will not be able to safely handle a sufficiently deep re-org. Only Archival nodes can roll back arbitrarily to handle large re-orgs, and so the network cannot run on pruned nodes alone.
-
-When running in pruning mode, [base node]s have the following responsibilities:
-
-1. MUST remove all spent outputs in it's current stored [UTXO](utxo) when a new block is received from another [base node].
-
-
+pruning and cut-through is discussed in detail in [RFC-0140](RFC-0140_Syncing.md)
 
 
 [tari coin]: Glossary.md#tari-coin
@@ -227,4 +185,4 @@ When running in pruning mode, [base node]s have the following responsibilities:
 [SynchronisationStrategy]: Glossary.md#synchronisationstrategy
 [SynchronisationState]: Glossary.md#synchronisationstate
 [mining server]: Glossary.md#mining-server
-[cut-through]: RFC-0110_BaseNodes.md#Pruning-and-cut-through
+[cut-through]: RFC-0140_Syncing.md#Pruning-and-cut-through
