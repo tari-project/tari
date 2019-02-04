@@ -25,6 +25,9 @@
 
 use curve25519_dalek::ristretto::CompressedRistretto;
 
+/// These points on the Ristretto curve have been created by sequentially hashing the Generator point with SHA512 and
+/// using the byte string representation of the hash as input into the `from_uniform_bytes` constructor in
+/// [RistrettoPoint](Struct.RistrettoPoint.html). This process is validated with the `check_nums_points` test below.
 pub const RISTRETTO_NUMS_POINTS: [CompressedRistretto; 10] = [
     CompressedRistretto([
         144, 202, 17, 205, 108, 98, 39, 203, 10, 188, 57, 226, 113, 12, 68, 74, 230, 97, 126, 168, 24, 152, 231, 22,
