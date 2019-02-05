@@ -1,4 +1,4 @@
-# RFC-0140/Sync and Seeding
+# RFC-0140/SyncAndSeeding
 
 ## Syncing strategies and objectives
 
