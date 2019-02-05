@@ -162,13 +162,9 @@ In addition, when a block has been validated and added to the blockchain:
 * The mempool MUST also remove all transactions that are present in the newly validated block.
 * The UTXO set MUST be updated; removing all inputs in the block, and adding all the new outputs in it.
 
-### Seeding nodes and Synchronising the chain
+### Synchronising and pruning of the chain
 
-Syncing is discussed in detail in [RFC-0140](RFC-0140_Syncing.md)
-
-### Pruning and cut-through
-
-pruning and cut-through is discussed in detail in [RFC-0140](RFC-0140_Syncing.md)
+Syncing, pruning and cut-through is discussed in detail in [RFC-0140](RFC-0140_Syncing.md)
 
 ### Archival nodes
 
