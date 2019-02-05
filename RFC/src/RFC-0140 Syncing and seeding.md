@@ -87,7 +87,7 @@ After this process the node will be in sync and able to process blocks and trans
 
 The node should periodically test its peers with ping messages to ensure that they are alive. When a node sends a ping message, it should enclude the current total pow, hash of the [current head](currenthead) and genesis block hash of its own current longest chain in the ping message. The receiving node will replay with a pong message also including the total pow, [current head](currenthead) and genesis block hash of its longest chain. If the two chains dont match up, the node with the lowest pow has the responsiblity to ask the peer for syncing information. 
 
-If the genesis block hash's dont match the node is removed from its peer list as this node is running a different block chain, we can remove it. 
+If the genesis block hashes don't match, the node is removed from its peer list as this node is running a different block chain. 
 
 This will be hanled by the node asking for each block from the [current head](currenthead) going backword untill a known block is found. If no block is found, the node will enter sync mode and resync. It cannot recover from its state as the fork is older than its [pruning horizon](pruninghorizon).
 
