@@ -58,7 +58,7 @@ This document describes the process of Syncing, seeding, pruning and cut-through
 
 ### Syncing
 
-When a new node comes online, looses connection or encounters a fork that is longer than is longer than it can solve, it must enter syncing mode. This will allow it to recover its state to the newest up to date state. Sycning can be diveded into 2 [SynchronisationStrategy]s, complete sync and sync. Complete sync will involve that the node communicates with an archive node to get the complete history of every single block from genesis block. Sync will involve the node getting every block from its [puning horizon](pruninghorizon) to current head, as well as every block header from genesis block. 
+When a new node comes online, loses connection or encounters a chain re-organisation that is longer than it can tolerate, it must enter syncing mode. This will allow it to recover its state to the newest up to date state. Syncing can be divided into 2 [SynchronisationStrategy]s, complete sync and sync. Complete sync will involve that the node communicates with an archive node to get the complete history of every single block from genesis block. Sync will involve the node getting every block from its [pruning horizon](pruninghorizon) to current head, as well as every block header from genesis block. 
 
 #### Complete Sync
 
