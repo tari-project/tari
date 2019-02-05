@@ -253,7 +253,7 @@ A Tari Wallet is responsible for managing key pairs, and for constructing and ne
 
 [pruninghorizon]: #pruninghorizon	"Block height at which  pruning must commence"
 
-This is a local setting for each node to help reduce required syncing. This is the age in block height after which a block may be pruned.
+This is a local setting for each node to help reduce syncing time and bandwidth. This is the number of blocks from the chain tip beyond which a chain will be pruned.
 
 ## Archive node
 
