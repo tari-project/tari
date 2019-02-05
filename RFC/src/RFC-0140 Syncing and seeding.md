@@ -85,7 +85,7 @@ After this process the node will be in sync and able to process blocks and trans
 
 #### Keeping in sync
 
-The node should periodically test its peers with ping messages to ensure that they are alive. When a node sends a ping message, it should include the current total POW, hash of the [current head](currenthead) and genesis block hash of its own current longest chain in the ping message. The receiving node will relay with a pong message also including the total POW, [current head](currenthead) and genesis block hash of its longest chain. If the two chains dont match up, the node with the lowest POW has the responsiblity to ask the peer for syncing information. 
+The node SHOULD periodically test its peers with ping messages to ensure that they are alive. When a node sends a ping message, it should include the current total POW, hash of the [current head](currenthead) and genesis block hash of its own current longest chain in the ping message. The receiving node MUST relay with a pong message also including the total POW, [current head](currenthead) and genesis block hash of its longest chain. If the two chains dont match up, the node with the lowest POW has the responsiblity to ask the peer for syncing information. 
 
 If the genesis block hashes don't match, the node is removed from its peer list as this node is running a different blockchain. 
 
