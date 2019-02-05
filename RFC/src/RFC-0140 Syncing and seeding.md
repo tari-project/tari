@@ -79,7 +79,7 @@ The syncing process is done in the following steps:
 4. Choose the longest chain based on pow. 
 5. Download all headers from genesis block up onto [current head](currenthead), and validate the headers as you receive them.
 6. Download all blocks from  [pruning horizon](pruninghorizon) up onto [current head](currenthead), if the node is doing a complete sync, the pruninghorizon will just be infinite, which means you will download all blocks ever created.
-7. Validate blocks as if they where just mined and then received, in order of ascending age. 
+7. Validate blocks as if they where just mined and then received, in chronological order. 
 
 After this process the node will be in sync and able to process blocks and transaction normally. 
 
