@@ -68,7 +68,7 @@ Complete sync is only available from archive nodes, as these will be the only no
 
 #### Syncing process
 
-The syncing process is done in the following steps:
+The syncing process MUST be done in the following steps:
 
 1. Set its [SynchronisationState] to `Synchronising`.
 2. Load a bootstrap list of peers from a configuration file, or a cached list.
