@@ -251,7 +251,7 @@ A Tari Wallet is responsible for managing key pairs, and for constructing and ne
 
 ## Pruning horizon
 
-[pruninghorizon]: #pruninghorizon	"Block height at which  pruning must commence"
+[pruninghorizon]: #pruninghorizon	"Block height at which pruning will commence"
 
 This is a local setting for each node to help reduce syncing time and bandwidth. This is the number of blocks from the chain tip beyond which a chain will be pruned.
 
@@ -260,6 +260,8 @@ This is a local setting for each node to help reduce syncing time and bandwidth.
 [archivenode]: #archivenode	"a full history node"
 
 This is a full history [base node]. It will keep a complete history of every transaction ever received and it will not implement pruning.
+
+
 
 # Disclaimer
 
