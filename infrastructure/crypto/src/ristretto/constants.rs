@@ -89,7 +89,6 @@ mod test {
             let b = Sha512::digest(&v[..]);
             a.copy_from_slice(&b);
             let y = RistrettoPoint::from_uniform_bytes(&a);
-            // println!("{:?}", y.compress());
             result.push(y);
             v = y.compress().to_bytes();
         }
