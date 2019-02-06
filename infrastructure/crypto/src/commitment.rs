@@ -20,13 +20,23 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod constants;
-pub mod pedersen;
-pub mod ristretto_keys;
-pub mod ristretto_sig;
+use curve25519_dalek::scalar::Scalar;
 
-// Re-export
-pub use self::{
-    ristretto_keys::{RistrettoPublicKey, RistrettoSecretKey},
-    ristretto_sig::RistrettoSchnorr,
-};
+/// A commitment is like a sealed envelope. You put some information inside the envelope, and then seal (commit) it.
+/// You can't change what you've said, but also, no-one knows what you've said until you're ready to open (open) the
+/// envelope and reveal its contents. Also it's a special envelope that can only be opened by a special opener that
+/// you keep safe in your drawer.
+///
+/// There are also different types of commitments that vary in their security guarantees, but all of them are
+/// represented by binary data; so [HomomorphicCommitment](trait.HomomorphicCommitment.html) implements
+/// [ByteArray](trait.ByteArray.html).
+///
+/// The Homomorphic part means, more or less, that commitments follow some of the standard rules of
+/// arithmetic. Adding two commitments is the same as committing to the sum of their parts.
+pub trait HomomorphicCommitment<'a> {
+    type Base;
+    fn new(k: &Scalar, v: &Scalar, base: &'a Self::Base) -> Self;
+    /// Test whether the envelope content match the given key and value
+    fn open(&self, k: &Scalar, v: &Scalar) -> bool;
+    fn commit(&self) -> &[u8];
+}
