@@ -71,30 +71,31 @@ Complete sync is only available from archive nodes, as these will be the only no
 The syncing process MUST be done in the following steps:
 
 1. Set [SynchronisationState] to `Synchronising`.
-2. Load a bootstrap list of peers from a configuration file, or a cached list.
-3. For each peer in this list:
-   1. Establish a connection with the peer.
-   2. Request a peer list from that peer.
-   3. Request information about the most recent chain state (total accumulated work, block height, etc.) from the peer.
-4. Choose the longest chain based on PoW. 
-5. Download all headers from genesis block up onto [current head](currenthead), and validate the headers as you receive them.
-6. Download [UTXO](utxo) set at [pruning horizon](pruninghorizon). 
-7. Download all blocks from  [pruning horizon](pruninghorizon) up to [current head](currenthead), if the node is doing a complete sync, the [pruning horizon](pruninghorizon) will just be infinite, which means you will download all blocks ever created.
-8. Validate blocks as if they where just mined and then received, in chronological order. 
+2. Selects a connected peer to sync from, this is based on the following criteria teria:
+   1. Does the peer have a high enough [pruning horizon](pruninghorizon).
+   2. Does the peer allow syncing.
+   3. Does the peer have a low latency.
+3. Choose the longest chain based on PoW. 
+4. Download all headers from genesis block up onto [current head](currenthead), and validate the headers as you receive them.
+5. Download [UTXO](utxo) set at [pruning horizon](pruninghorizon). 
+6. Download all blocks from  [pruning horizon](pruninghorizon) up to [current head](currenthead), if the node is doing a complete sync, the [pruning horizon](pruninghorizon) will just be infinite, which means you will download all blocks ever created.
+7. Validate blocks as if they where just mined and then received, in chronological order. 
 
 After this process the node will be in sync and able to process blocks and transaction normally. 
 
 #### Keeping in sync
 
-The node SHOULD periodically test its peers with ping messages to ensure that they are alive. When a node sends a ping message, it should include the current total PoW, hash of the [current head](currenthead) and genesis block hash of its own current longest chain in the ping message. The receiving node MUST reply with a pong message also including the total PoW, [current head](currenthead) and genesis block hash of its longest chain. If the two chains don't match up, the node with the lowest PoW has the responsibility to ask the peer for syncing information. 
+The node SHOULD periodically test its peers with ping messages to ensure that they are alive. When a node sends a ping message, it should include the current total PoW, hash of the [current head](currenthead) and genesis block hash of its own current longest chain in the ping message. The receiving node MUST reply with a pong message also including the total PoW, [current head](currenthead) and genesis block hash of its longest chain. If the two chains don't match up, the node with the lowest PoW has the responsibility to ask the peer for syncing information and set [SynchronisationState] to `Synchronising`. 
 
 If the genesis block hashes don't match, the node is removed from its peer list as this node is running a different blockchain. 
 
-This will be handled by the node asking for each block from the [current head](currenthead) going backward for older blocks until a known block is found. If no block is found, the node will enter sync mode and resync. It cannot recover from its state as the fork is older than its [pruning horizon](pruninghorizon).
+This will be handled by the node asking for each block header from the [current head](currenthead) going backward for older blocks until a known block is found. If a known block is found, and it has missing blocks it MUST set [SynchronisationState] to `Synchronising` while it is busy catching up those blocks.
+
+If no block is found, the node will enter sync mode and resync. It cannot recover from its state as the fork is older than its [pruning horizon](pruninghorizon).
 
 #### Chain forks
 
-Chain forks can be a problem since in Mimblewimble not all nodes keep the complete history, the design philosophy is more along the lines of only keeping the current [Blockchain state](blockchainstate). Only keeping the current [Blockchain state](blockchainstate) will not be possible, because if you encounter a fork where there are two running version on the blockchain, you will not be able to swop without doing sync again. 
+Chain forks can be a problem since in Mimblewimble not all nodes keep the complete transaction history, the design philosophy is more along the lines of only keeping the current [Blockchain state](blockchainstate). However, if such a node only maintains only the current [Blockchain state](blockchainstate) it is not possible for the node to "rewind" its state to handle forks in the chain history. In this case, a mode must re-sync its chain to recover the necessary transaction history up onto its [pruning horizon](pruninghorizon).
 
 To counter this problem we use  [pruning horizon](pruninghorizon), this allows every [node](base node) to be a "light" [archival node](archivenode). This in effect means that the node will keep a full history for a short while. If the node encounters a fork it can easily rewind its state to apply the fork. If the fork is longer than the [pruning horizon](pruninghorizon), the node will enter a sync state where it will resync. 
 
@@ -102,9 +103,9 @@ To counter this problem we use  [pruning horizon](pruninghorizon), this allows e
 
 [Pruning and cut-through]: #Pruning-and-cut-through	"Remove already spent outputs from the [utxo]"
 
-In Mimblewimble, the state can be completely verified using the current [UTXO](utxo) set, the set of excess signatures (contained in the transaction kernels) and the proof-of-work. The full block and transaction history is not required. This allows base layer nodes to remove old used inputs from the [blockchain] and or the [mempool]. [Cut-through](cut-through) happens in the [mempool] while pruning happens in the [blockchain] with already confirmed transactions. This will remove the spent inputs and outputs, but will retain the excesses of each [transaction]. 
+In Mimblewimble, the state can be completely verified using the current [UTXO](utxo) set (which contains the output commitments and range proofs), the set of excess signatures (contained in the transaction kernels) and the proof-of-work. The full block and transaction history is not required. This allows base layer nodes to remove old used inputs from the [blockchain] and or the [mempool]. [Cut-through](cut-through) happens in the [mempool] while pruning happens in the [blockchain] with already confirmed transactions. This will remove the spent inputs and outputs, but will retain the excesses of each [transaction]. 
 
-Pruning is only for the benefit of the local base node as it reduces the local blockchain size. Pruning only happens after the block is older than the [pruning horizon](pruninghorizon) height. A Base node will either run in archive mode or prune mode, if the base node is running in archive mode it should not prune. 
+Pruning is only for the benefit of the local base node as it reduces the local blockchain size. Pruning only happens after the block is older than the [pruning horizon](pruninghorizon) height. A Base node will either run in archive mode or prune mode, if the base node is running in archive mode it MUST NOT prune. 
 
 When running in pruning mode, [base node]s have the following responsibilities:
 
