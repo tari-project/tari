@@ -94,7 +94,7 @@ This will be handled by the node asking for each block from the [current head](c
 
 #### Chain forks
 
-Chain forks can be a problem since in MimbleWimble not all nodes keep the complete history, the design philosophy is more along the lines of only keeping the current [UTXO](utxo). Only keeping the current [UTXO](utxo) will not be possible, because if you encounter a fork where there are two running version on the blockchain, you will not be able to swop without doing sync again. 
+Chain forks can be a problem since in MimbleWimble not all nodes keep the complete history, the design philosophy is more along the lines of only keeping the current [Blockchain state](blockchainstate). Only keeping the current [Blockchain state](blockchainstate) will not be possible, because if you encounter a fork where there are two running version on the blockchain, you will not be able to swop without doing sync again. 
 
 To counter this problem we use  [pruning horizon](pruninghorizon), this allows every [node](base node) to be a "light" [archival node](archivenode). This in effect means that the node will keep a full history for a short while. If the node encounters a fork it can easily rewind its state to apply the fork. If the fork is longer than the [pruning horizon](pruninghorizon), the node will enter a sync state where it will resync. 
 
@@ -113,6 +113,7 @@ When running in pruning mode, [base node]s have the following responsibilities:
 
 
 [archivenode]: Glossary.md#archivenode
+[blockchainstate]: Glossary.md#blockchainstate
 [pruninghorizon]: Glossary.md#pruninghorizon
 [tari coin]: Glossary.md#tari-coin
 [blockchain]: Glossary.md#blockchain

@@ -261,7 +261,11 @@ This is a local setting for each node to help reduce syncing time and bandwidth.
 
 This is a full history [base node]. It will keep a complete history of every transaction ever received and it will not implement pruning.
 
+## Blockchain state
 
+[blockchainstate]: #blockchainstate	"This is a snapshot of how the blockchain looks"
+
+This is a complete snapshot of the blockchain at a spesific block height. This means pruned [utxo], complete set of kernals and headers up to that block height from genesis block is known.
 
 # Disclaimer
 
