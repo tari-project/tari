@@ -20,6 +20,22 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod blockchainstate;
-pub mod chain;
-pub mod store;
+use crate::{blockchainstate::BlockchainState, store::Store};
+use tari_core::block::Block;
+
+use std::collections::HashMap;
+
+type BlockHash = [u8; 32];
+
+///this is the actual data structure to represent the blockchain
+pub struct Chain {
+    pub store: Store,
+    pub blockchainstate: BlockchainState,
+    pub orphans: HashMap<BlockHash,Block>,
+    pub pruninghorizon: Option<u64>,
+}
+
+impl Chain {
+    pub fn process_new_block(&self, new_block : &Block) -> Result<_,ChainError>
+    {unimplemented!;}
+}
