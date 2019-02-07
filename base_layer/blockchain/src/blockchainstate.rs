@@ -27,7 +27,7 @@
 pub struct BlockchainState {}
 
 impl BlockchainState {
-    pub fn new() ->BlockchainState{
-        BlockchainState{}
+    pub fn new() -> BlockchainState {
+        BlockchainState {}
     }
 }

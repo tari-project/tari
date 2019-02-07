@@ -28,8 +28,6 @@ use crate::{
     transaction::{TransactionInput, TransactionKernel, TransactionOutput},
 };
 
-
-
 /// A Tari block. Blocks are linked together into a blockchain.
 pub struct Block {
     pub header: BlockHeader,

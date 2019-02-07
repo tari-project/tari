@@ -32,6 +32,7 @@ impl Error for ChainError {
     fn description(&self) -> &str {
         "not yet implemented"
     }
+
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         None
     }
