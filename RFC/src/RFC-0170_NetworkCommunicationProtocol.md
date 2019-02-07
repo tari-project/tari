@@ -258,18 +258,31 @@ Functionality required of communication network:
 
 
 #### Functionality required of Consensus Nodes
-- A Consensus Nodes MUST have the ability to connect and maintain connections with a set of peers.
-- The MUST have the ability to broadcast messages to a set of self selected peers.
+- It MUST select a cryptographic key pair used for identification on the Tari Communication network
+- A CN MAY request the peer addresses of CNs with similar node ids from other CNs to extend their local routing table. 
+- If a CN is a VN, then a node id MUST be obtained by registering on the Base layer
+- If a CN is a BN, then a node id MUST be derived from the nodes' identification cryptographic keys
+- A new CN MUST submit a joining request to the Tari communication network so that the nodes' peer address can be added to the routing table of neighbouring peers in the network.
+- If a CN receives a new joining request with a similar node id (within a network selected threshold) then the peer address specified in the joining request then the peer address MUST be added to his local routing table.
+- When a CN receives an encrypted message, the node MUST attempt to open the message.
+- When a CN receives an encrypted message that the node is unable to open, and the destination node id is known then the CN MUST forward it to all connected peers that have node ids that are closer to the destination.
+- When a CN receives an encrypted message that the node is unable to open and the destination node is unknown then the CN MUST forward the message to all connected peers.
+- A CN MUST have the ability to verify the content of unencrypted messages to limit the propagation of spam messages.
+- If an unencrypted message is received by the CN with an unspecified destination node id, then the node MUST verify the content of the message and forward the message to all connected peers.
+- If an unencrypted message is received by the CN with an specified destination node id, then the node MUST verify the content of the message and forward the message to all connected peers that have closer node ids
+- A CN MUST have the ability to select a set of peer connection from routing table.
+- Connections with the selected set of peers MUST be maintain by the CN.
+- A CN MUST have a mechanism to construct encrypted and unencrypted joining, discovery and data messages.
 
 
 #### Functionality required of Consensus Clients
-Registration
-- It MUST select a cryptographic keypair used for identifying the client on the Tari Communication network 
-- It MUST have a mechanism to derive a node_id from the self selected public key
-- A new Consensus client MUST broadcast an add peer request to the Tari communication network so that its routing information can be stored by the Consensus nodes with similar node_ids.
-
-Normal behavior
-- A Consensus Client MUST maintain a small list of peers on the Tari Communication network.
+- It MUST select a cryptographic key pair used for identification on the Tari Communication network 
+- It MUST have a mechanism to derive a node_id from the self selected identification public key
+- A CC must have the ability to construct a peer address that link it's identification public key, node id and online communication address.
+- A new CC MUST broadcast a joining request with its peer address to the Tari communication network so that CNs with similar node ids can add the peer address of the new CC to the their routing tables.
+- A CC MAY request the peer addresses of CNs with similar node ids from other CNs to extend their local routing table.
+- A CC MUST have a mechanism to construct encrypted and unencrypted joining and discovery.
+- A CC MUST maintain a small routing table of Tari Communication network peers with which ad hoc connections can be established.
 - As the Consensus Client becomes aware of other Consensus Nodes and Clients on the communication network he SHOULD extend his routing table by including the newly discovered Node/Clients contact information.
 - Peers from the Consensus Clients routing table that have been unreachable for a number of attempts SHOULD be removed from the routing table.
 
@@ -277,6 +290,11 @@ Normal behavior
 
 
 
+
+
+#### temp
+
+Add section that provides an overview of all the messages that can be sent on the network -> types of messages
 
 
 3 ways of propagating messages?
@@ -291,14 +309,8 @@ Normal behavior
     Reason: A directed propagation ensures much quicker propagation of the message to the destination. It also reduces network traffic. This type of directed broadcast can only happen between VNs as their node ids are assigned during the Validator Node registration process making them less vulnerable to an eclipse attack.
 
 
-Types of messages:
 
 
-
-
-
-
--
 
 
 
