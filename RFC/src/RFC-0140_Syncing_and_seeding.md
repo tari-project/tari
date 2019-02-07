@@ -71,21 +71,22 @@ Complete sync is only available from archive nodes, as these will be the only no
 The syncing process MUST be done in the following steps:
 
 1. Set [SynchronisationState] to `Synchronising`.
-2. Selects a connected peer to sync from, this is based on the following criteria teria:
+2. Asks peers for their latest block, so it can get the total proof of work. 
+3. Choose the longest chain based on total PoW done on that chain.
+4. Selects a connected peer with the logest chain to sync from, this is based on the following criteria teria:
    1. Does the peer have a high enough [pruning horizon](pruninghorizon).
    2. Does the peer allow syncing.
    3. Does the peer have a low latency.
-3. Choose the longest chain based on PoW. 
-4. Download all headers from genesis block up onto [current head](currenthead), and validate the headers as you receive them.
-5. Download [UTXO](utxo) set at [pruning horizon](pruninghorizon). 
-6. Download all blocks from  [pruning horizon](pruninghorizon) up to [current head](currenthead), if the node is doing a complete sync, the [pruning horizon](pruninghorizon) will just be infinite, which means you will download all blocks ever created.
-7. Validate blocks as if they where just mined and then received, in chronological order. 
+5. Download all headers from genesis block up onto [current head](currenthead), and validate the headers as you receive them.
+6. Download [UTXO](utxo) set at [pruning horizon](pruninghorizon). 
+7. Download all blocks from  [pruning horizon](pruninghorizon) up to [current head](currenthead), if the node is doing a complete sync, the [pruning horizon](pruninghorizon) will just be infinite, which means you will download all blocks ever created.
+8. Validate blocks as if they where just mined and then received, in chronological order. 
 
 After this process the node will be in sync and able to process blocks and transaction normally. 
 
 #### Keeping in sync
 
-The node SHOULD periodically test its peers with ping messages to ensure that they are alive. When a node sends a ping message, it should include the current total PoW, hash of the [current head](currenthead) and genesis block hash of its own current longest chain in the ping message. The receiving node MUST reply with a pong message also including the total PoW, [current head](currenthead) and genesis block hash of its longest chain. If the two chains don't match up, the node with the lowest PoW has the responsibility to ask the peer for syncing information and set [SynchronisationState] to `Synchronising`. 
+The node SHOULD periodically test its peers with ping messages to ensure that they are alive. When a node sends a ping message, it MUST include the current total PoW, hash of the [current head](currenthead) and genesis block hash of its own current longest chain in the ping message. The receiving node MUST reply with a pong message also including the total PoW, [current head](currenthead) and genesis block hash of its longest chain. If the two chains don't match up, the node with the lowest PoW has the responsibility to ask the peer for syncing information and set [SynchronisationState] to `Synchronising`. 
 
 If the genesis block hashes don't match, the node is removed from its peer list as this node is running a different blockchain. 
 
