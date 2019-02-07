@@ -73,7 +73,7 @@ The syncing process MUST be done in the following steps:
 1. Set [SynchronisationState] to `Synchronising`.
 2. Asks peers for their latest block, so it can get the total proof of work. 
 3. Choose the longest chain based on total PoW done on that chain.
-4. Selects a connected peer with the logest chain to sync from, this is based on the following criteria teria:
+4. Selects a connected peer with the longest chain to sync from, this is based on the following criteria:
    1. Does the peer have a high enough [pruning horizon](pruninghorizon).
    2. Does the peer allow syncing.
    3. Does the peer have a low latency.
