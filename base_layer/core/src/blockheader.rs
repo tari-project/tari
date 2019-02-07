@@ -25,7 +25,7 @@
 
 use crate::{
     pow::ProofOfWork,
-    transaction::{BlindingFactor, TransactionInput, TransactionKernel, TransactionOutput},
+    transaction::{BlindingFactor},
 };
 use chrono::{DateTime, Utc};
 
