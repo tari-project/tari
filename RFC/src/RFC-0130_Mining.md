@@ -151,4 +151,4 @@ and Auxiliary blockchain is provided in the [Merged Mining TLU report] (https://
 [block]: Glossary.md#block
 [mempool]: Glossary.md#mempool
 
-[cut-through]: RFC-0110_BaseNodes.md#Pruning-and-cut-through
+[cut-through]: RFC-0140_Syncing.md#Pruning-and-cut-through
