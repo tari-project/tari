@@ -22,5 +22,12 @@
 
 /// this file is used to store the current blockchain state
 
-///this struct keeps record of the current UTXO, total kernals and headers
+/// this struct keeps record of the current UTXO, total kernals and headers
+
 pub struct BlockchainState {}
+
+impl BlockchainState {
+    pub fn new() ->BlockchainState{
+        BlockchainState{}
+    }
+}

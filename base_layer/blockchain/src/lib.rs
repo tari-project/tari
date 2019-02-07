@@ -22,4 +22,5 @@
 
 pub mod blockchainstate;
 pub mod chain;
+pub mod error;
 pub mod store;

@@ -33,7 +33,6 @@ type BlockHash = [u8; 32];
 
 /// The BlockHeader contains all the metadata for the block, including proof of work, a link to the previous block
 /// and the transaction kernels.
-#[derive(Clone, Debug, PartialEq)]
 pub struct BlockHeader {
     /// Version of the block
     pub version: u16,

@@ -21,5 +21,4 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 /// This file is where the database lives
-
 pub struct Store {}
