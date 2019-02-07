@@ -44,9 +44,9 @@ pub struct BlockHeader {
     /// Timestamp at which the block was built.
     pub timestamp: DateTime<Utc>,
     /// This is the MMR root of the outputs
-    pub output_mmr : BlockHash,
+    pub output_mmr: BlockHash,
     /// This is the MMR root of the kernels
-    pub kernel_mmr : BlockHash,
+    pub kernel_mmr: BlockHash,
     /// Total accumulated sum of kernel offsets since genesis block. We can derive the kernel offset sum for *this*
     /// block from the total kernel offset of the previous block header.
     pub total_kernel_offset: BlindingFactor,
@@ -56,9 +56,8 @@ pub struct BlockHeader {
 }
 
 impl BlockHeader {
-    ///This function will validate the proof of work in the header
-    pub fn validate_pow(&self) -> bool
-    {
+    /// This function will validate the proof of work in the header
+    pub fn validate_pow(&self) -> bool {
         unimplemented!();
     }
 }

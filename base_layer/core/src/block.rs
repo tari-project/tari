@@ -24,9 +24,9 @@
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
 use crate::{
+    blockheader::BlockHeader,
     pow::ProofOfWork,
     transaction::{BlindingFactor, TransactionInput, TransactionKernel, TransactionOutput},
-    blockheader::BlockHeader,
 };
 
 use chrono::{DateTime, Utc};
