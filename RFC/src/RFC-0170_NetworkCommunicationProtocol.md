@@ -87,6 +87,7 @@ Here are some examples of different communication tasks that need to be performe
 - Asset Managers need to communicate with Validator Node [committee]s and other Asset Managers to construct and send DAN instructions.
 
 Here is an overview communication matrix that show which source entities need to communicate with other destination entities on the Tari Communication network:
+
 | Source  \  Destination | Validator Node | Base Node | Wallet | Asset Manager|
 |---                     |---             |---        |---     |---           |
 | Validator Node         | Yes            | Yes       | Yes    | Yes          |
@@ -106,6 +107,7 @@ Once a CC has discovered the CC or CN they want to communicate with, they will e
 The Tari communication network is unaware of this direct P2P communication once discovery was completed.
 
 The different entity types were grouped into the different communication node types as follows:
+
 | Entity Type    | Communication Node Type |
 |---             |---                      |
 | Validator Node | Consensus Node          |
