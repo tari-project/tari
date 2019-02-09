@@ -1,4 +1,5 @@
 pub mod challenge;
+pub mod commitment;
 pub mod common;
 pub mod hex;
 pub mod keys;
