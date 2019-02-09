@@ -20,10 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-/// this file is used to store the current blockchain state
+// This file is used to store the current blockchain state
 
-/// this struct keeps record of the current UTXO, total kernals and headers
-
+/// The BlockchainState struct keeps record of the current UTXO, total kernels and headers.
 pub struct BlockchainState {}
 
 impl BlockchainState {

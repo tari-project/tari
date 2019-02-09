@@ -20,10 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-/// this file is used for all blockchain error types
+// this file is used for all blockchain error types
 use derive_error::Error;
 
-/// This is the generic chain error type for generic errors relating to the actual blockchain
+/// The ChainError is used to present all generic chain error of the actual blockchain
 #[derive(Debug, Error)]
 pub enum ChainError {
     Brokenchain, // place holder for real error

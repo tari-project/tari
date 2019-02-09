@@ -27,17 +27,21 @@ use std::collections::HashMap;
 
 type BlockHash = [u8; 32];
 
-/// this is the actual data structure to represent the blockchain
+/// The Chain is the actual data structure to represent the blockchain
 pub struct Chain {
+    /// This is the database used to storepersistentt data in
     pub store: Store,
+    /// This the the current UTXO set, kernels and headers
     pub blockchainstate: BlockchainState,
+    /// This is all valid blocks which dont have a parent trace to the genesis block
     pub orphans: HashMap<BlockHash, Block>,
+    /// This is our pruning horizon
     pub pruning_horizon: Option<u64>,
 }
 
 impl Chain {
-    pub fn new(dbstore: Store, pruninghorizon: Option<u64>) -> Chain {
-        Chain { store: dbstore, blockchainstate: BlockchainState::new(), orphans: HashMap::new(), pruninghorizon }
+    pub fn new(dbstore: Store, pruning_horizon: Option<u64>) -> Chain {
+        Chain { store: dbstore, blockchainstate: BlockchainState::new(), orphans: HashMap::new(), pruning_horizon }
     }
 
     pub fn process_new_block(&self, new_block: &Block) -> Result<(), ChainError> {
