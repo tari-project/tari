@@ -5,3 +5,4 @@ edition = "2018"
 
 [dependencies]
 tari_core = { path = "../core"}
+derive-error = "0.0.4"

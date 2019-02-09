@@ -32,7 +32,7 @@ pub struct Chain {
     pub store: Store,
     pub blockchainstate: BlockchainState,
     pub orphans: HashMap<BlockHash, Block>,
-    pub pruninghorizon: Option<u64>,
+    pub pruning_horizon: Option<u64>,
 }
 
 impl Chain {

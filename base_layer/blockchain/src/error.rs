@@ -21,24 +21,10 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 /// this file is used for all blockchain error types
-use std::error::Error;
-use std::fmt;
+use derive_error::Error;
 
 /// This is the generic chain error type for generic errors relating to the actual blockchain
-#[derive(Debug)]
-pub struct ChainError;
-
-impl Error for ChainError {
-    fn description(&self) -> &str {
-        "not yet implemented"
-    }
-
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        None
-    }
-}
-impl fmt::Display for ChainError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "error is here!")
-    }
+#[derive(Debug, Error)]
+pub enum ChainError {
+    Brokenchain, // place holder for real error
 }
