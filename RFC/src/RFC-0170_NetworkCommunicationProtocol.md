@@ -61,7 +61,7 @@ This document will introduce the Tari communication network and the communicatio
 ### Assumptions
 
 - A communication channel can be established between two peers once their online communication addresses are known to each other.
-- A [Validator Node] is able to obtain a [node id] from the registration process on the Base Layer.
+- A [Validator Node] is able to obtain a [node ID] from the registration process on the Base Layer.
 
 ### Abstract
 
@@ -117,16 +117,16 @@ The different entity types were grouped into the different communication node ty
 
 #### Unique identification of Consensus Nodes and Consensus Clients 
 
-In the Tari communication network, each CN or CC makes use of a node id to determine their position in the network.
-This node id is either assigned based on registration on the Base Layer or can be derived from the CNs or CCs identification public key.
-The method used to obtain a node id will either enhance or limit the trustworthiness of that entity when propagating messages through them on the Tari communication network.
-When performing the broadcasting of data messages or propagating discovery requests, nodes with registration assigned node ids are considered more trustworthy compared to nodes with derived node ids. 
+In the Tari communication network, each CN or CC makes use of a node ID to determine their position in the network.
+This node ID is either assigned based on registration on the Base Layer or can be derived from the CNs or CCs identification public key.
+The method used to obtain a node ID will either enhance or limit the trustworthiness of that entity when propagating messages through them on the Tari communication network.
+When performing the broadcasting of data messages or propagating discovery requests, nodes with registration assigned node IDs are considered more trustworthy compared to nodes with derived node IDs. 
 
-Obtaining a node id from registration on the Base Layer is important as it will limit the potential of some parties performing [Eclipse attacks](https://eprint.iacr.org/2015/263.pdf) on the network.
+Obtaining a node ID from registration on the Base Layer is important as it will limit the potential of some parties performing [Eclipse attacks](https://eprint.iacr.org/2015/263.pdf) on the network.
 Registration makes it more difficult for [Bad Actor]s to position themselves in ideal patterns on the network to perform disruptive operations and actions. 
 In sensitive situations or situations where the Kademlia-style directed propagation of messages are vulnerable, gossip protocol-based broadcasting of messages can be performed as a less efficient, but safer alternative to ensure that the message will successfully reach the rest of the network.
 
-The recommended method of node id assignment for each Tari communication network entity type are as follows:
+The recommended method of node ID assignment for each Tari communication network entity type are as follows:
 
 | Entity Type    | Communication Node Type | Node ID Assignment |
 |---             |---                      |---                 |
@@ -143,7 +143,7 @@ The parent Base Node will perform any communication tasks on the Tari communicat
 
 #### Online Communication Address, Peer Address and Routing Table
 
-Each CC and CN on the Tari communication network will have identification cryptographic keys, a node id and an online communication address.
+Each CC and CN on the Tari communication network will have identification cryptographic keys, a node ID and an online communication address.
 The online communication address can be either an IPv4, IPv6, URL, Tor(Base32) or I2P(Base32) address and can be stored using the network address type as follows:
 
 | Description  | Data type  | Comments                                     |
@@ -159,25 +159,25 @@ When a CC or CN wants to join the Tari communication network, the online communi
 The online communication address of the initial CN can either be manually provided or a bootstrapped list of "reliable" and persistent CNs can be provided with the Validator Node, Base Node, Wallet or Token Wallet software.
 The new CC or CN can then request additional peer contact information of other CNs from the initial peers to extend their own routing table.
 
-The routing table consists of a list of peer addresses that link node ids, public identification keys and online communication addresses of each known CC and CN.
+The routing table consists of a list of peer addresses that link node IDs, public identification keys and online communication addresses of each known CC and CN.
 
 The Peer Address stored in the routing table can be implemented as follows:
 
 | Description      | Data type          | Comments                                                                 |
 |---               |---                 |---                                                                       |
 | network address  | network_address    | The online communication address of the CC or CN                         |
-| node_id          | node_id            | Registration Assigned for VN, Self selected for BN, W and TW             |
+| node_ID          | node_ID            | Registration Assigned for VN, Self selected for BN, W and TW             |
 | public_key       | public_key         | The public key of the identification cryptographic key of the CC or CN   |
 | node_type        | node_type          | VN, BN, W or TW                                                          |
-| linked asset ids | list of asset ids  | Asset ids can be used as an address on Tari network similar to a node id |
+| linked asset IDs | list of asset IDs  | Asset IDs can be used as an address on Tari network similar to a node ID |
 | last_connection  | timestamp          | Time of last successful connection with peer                             |
 | update_timestamp | timestamp          | A timestamp for the last peer address update                             |
 
 When a new CC or CN wants to join the Tari communication network they need to submit a joining request to the rest of the network.
 The joining request contains the peer address of the new CC or CN.
 Each CN that receives the joining request can decide if they want to add the new CCs or CNs contact information to their local routing table.
-When a CN, that received the joining request, has a similar node id to the new CC or CN then that node must add the peer address to their routing table.
-All CNs with similar node ids to the new CC or CN should have a copy of the new peer address in their routing tables.
+When a CN, that received the joining request, has a similar node ID to the new CC or CN then that node must add the peer address to their routing table.
+All CNs with similar node IDs to the new CC or CN should have a copy of the new peer address in their routing tables.
 
 To limit potential attacks, only one registration for a specific node type with the same online communication address can be stored in the routing table of a CN.
 This restriction will limit Bad Actors from spinning up multiple CNs on a single computer.
@@ -186,8 +186,8 @@ This restriction will limit Bad Actors from spinning up multiple CNs on a single
 
 A new CC or CN needs to register their peer address on the Tari communication network.
 This is achieved by submitting a network joining request to a subset of CNs selected from the routing table of the new CC or CN.
-These peers will forward the joining request, with the peer address, to the rest of the network until CNs with similar node ids have been reached.
-CNs with similar node ids will then add the new peer address of the new node to their routing table, allowing for fast discovery of the new CC or CN. 
+These peers will forward the joining request, with the peer address, to the rest of the network until CNs with similar node IDs have been reached.
+CNs with similar node IDs will then add the new peer address of the new node to their routing table, allowing for fast discovery of the new CC or CN. 
 
 Other CCs and CNs will then be able to retrieve the new CCs or CNs peer address by submitting discovery requests.
 Once the peer address of the desired CC or CN has been discovered then a direct P2P communication channel can be established between the two parties for any future communication.
@@ -230,7 +230,7 @@ CNs consisting of VNs and BNs typically attempt to maintain communication channe
 The distribution of peers (VNs vs BNs) that a single CN keeps communication channels open with can change depending on the type of node.
 A CN that is also a BN should maintain more peer connections with other BNs, but should also have some connections with other VNs.
 
-Having some connections with VNs are important as BNs have derived node ids and not registered node ids such as VNs, making it possible for the CN to be separated from the main network and become victim to an [Eclipse attack](https://www.radixdlt.com/post/what-is-an-eclipse-attack).
+Having some connections with VNs are important as BNs have derived node IDs and not registered node IDs such as VNs, making it possible for the CN to be separated from the main network and become victim to an [Eclipse attack](https://www.radixdlt.com/post/what-is-an-eclipse-attack).
 Having some connections with VNs will make it more difficult to separate the CN from the network and will ensure successful propagation of transactions and completed blocks from that CN. 
 
 A CN that is also a VN should maintain more peer connections with other VNs, but also have some connections with BNs.
@@ -241,7 +241,7 @@ Discover peers using discovery requests, and add their details to the local rout
 The CN can decide how the peer connections should be selected from the routing table by either:
  - manually selecting a subset,
  - automatically selecting a random subset or
- - selecting a subset of neighbouring nodes with similar node ids. 
+ - selecting a subset of neighbouring nodes with similar node IDs. 
 
  Maintaining communication channels is important and the following process can be followed in an attempt to keep peer connections alive:
 For an existing peer connection.
@@ -255,31 +255,31 @@ Losing of a peer might happen in cases where the CN or CC went temporarily offli
 #### Functionality Required of Consensus Nodes
 
 - It MUST select a cryptographic key pair used for identification on the Tari Communication network.
-- A CN MAY request the peer addresses of CNs with similar node ids from other CNs to extend their local routing table. 
-- If a CN is a VN, then a node id MUST be obtained by registering on the Base layer.
-- If a CN is a BN, then a node id MUST be derived from the nodes identification public key.
+- A CN MAY request the peer addresses of CNs with similar node IDs from other CNs to extend their local routing table. 
+- If a CN is a VN, then a node ID MUST be obtained by registering on the Base layer.
+- If a CN is a BN, then a node ID MUST be derived from the nodes identification public key.
 - A new CN MUST submit a joining request to the Tari communication network so that the nodes peer address can be added to the routing table of neighbouring peers in the network.
-- If a CN receives a new joining request with a similar node id (within a network selected threshold), then the peer address specified in the joining request MUST be added to its local routing table.
+- If a CN receives a new joining request with a similar node ID (within a network selected threshold), then the peer address specified in the joining request MUST be added to its local routing table.
 - When a CN receives an encrypted message, the node MUST attempt to open the message.
-- When a CN receives an encrypted message that the node is unable to open, and the destination node id is known then the CN MUST forward it to all connected peers that have node ids that are closer to the destination.
+- When a CN receives an encrypted message that the node is unable to open, and the destination node ID is known then the CN MUST forward it to all connected peers that have node IDs that are closer to the destination.
 - When a CN receives an encrypted message that the node is unable to open and the destination node is unknown then the CN MUST forward the message to all connected peers.
 - A CN MUST have the ability to verify the content of unencrypted messages to limit the propagation of spam messages.
-- If an unencrypted message is received by the CN with a unspecified destination node id, then the node MUST verify the content of the message and forward the message to all connected peers.
-- If an unencrypted message is received by the CN with an specified destination node id, then the node MUST verify the content of the message and forward the message to all connected peers that have closer node ids.
+- If an unencrypted message is received by the CN with a unspecified destination node ID, then the node MUST verify the content of the message and forward the message to all connected peers.
+- If an unencrypted message is received by the CN with an specified destination node ID, then the node MUST verify the content of the message and forward the message to all connected peers that have closer node IDs.
 - A CN MUST have the ability to select a set of peer connections from its routing table.
 - Connections with the selected set of peers MUST be maintained by the CN.
 - A CN MUST have a mechanism to construct encrypted and unencrypted joining requests, discovery requests or data messages.
-- A CN MUST construct and provide a list of peer addresses from its routing table that is similar to a requested node id so that other CCs and CNs can extend their routing tables.
+- A CN MUST construct and provide a list of peer addresses from its routing table that is similar to a requested node ID so that other CCs and CNs can extend their routing tables.
 - A CN MUST keep its routing table up to date by removing unreachable peer addresses and adding newly received addresses.
-- It MUST have a mechanism to determine if a node id was obtained through registration or was derived from an identification public key.
+- It MUST have a mechanism to determine if a node ID was obtained through registration or was derived from an identification public key.
 
 #### Functionality Required of Consensus Clients
 
 - It MUST select a cryptographic key pair used for identification on the Tari Communication network.
-- It MUST have a mechanism to derive a node_id from the self-selected identification public key.
-- A CC must have the ability to construct a peer address that links its identification public key, node id and an online communication address.
-- A new CC MUST broadcast a joining request with its peer address to the Tari communication network so that CNs with similar node ids can add the peer address of the new CC to their routing tables.
-- A CC MAY request the peer addresses of CNs with similar node ids from other CNs to extend their local routing table.
+- It MUST have a mechanism to derive a node ID from the self-selected identification public key.
+- A CC must have the ability to construct a peer address that links its identification public key, node ID and an online communication address.
+- A new CC MUST broadcast a joining request with its peer address to the Tari communication network so that CNs with similar node IDs can add the peer address of the new CC to their routing tables.
+- A CC MAY request the peer addresses of CNs with similar node IDs from other CNs to extend their local routing table.
 - A CC MUST have a mechanism to construct encrypted and unencrypted joining and discovery requests.
 - A CC MUST maintain a small routing table of Tari Communication network peers with which ad hoc connections can be established.
 - As the CC becomes aware of other CNs and CCs on the communication network, the CC SHOULD extend its local routing table by including the newly discovered CCs or CNs contact information.
