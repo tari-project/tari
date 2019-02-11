@@ -20,7 +20,31 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod blockchainstate;
-pub mod chain;
-pub mod error;
-pub mod store;
+use crate::{blockchainstate::BlockchainState, error::ChainError, store::Store};
+use tari_core::block::Block;
+
+use std::collections::HashMap;
+
+type BlockHash = [u8; 32];
+
+/// The Chain is the actual data structure to represent the blockchain
+pub struct Chain {
+    /// This is the database used to storepersistentt data in
+    pub store: Store,
+    /// This the the current UTXO set, kernels and headers
+    pub blockchainstate: BlockchainState,
+    /// This is all valid blocks which dont have a parent trace to the genesis block
+    pub orphans: HashMap<BlockHash, Block>,
+    /// This is our pruning horizon
+    pub pruning_horizon: Option<u64>,
+}
+
+impl Chain {
+    pub fn new(dbstore: Store, pruning_horizon: Option<u64>) -> Chain {
+        Chain { store: dbstore, blockchainstate: BlockchainState::new(), orphans: HashMap::new(), pruning_horizon }
+    }
+
+    pub fn process_new_block(&self, new_block: &Block) -> Result<(), ChainError> {
+        Ok(())
+    }
+}

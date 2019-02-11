@@ -57,6 +57,10 @@ dependencies = [
 [[package]]
 name = "blockchain"
 version = "0.0.1"
+dependencies = [
+ "derive-error 0.0.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tari_core 0.0.1",
+]
 
 [[package]]
 name = "byte-tools"

@@ -25,13 +25,8 @@
 
 use crate::{
     blockheader::BlockHeader,
-    pow::ProofOfWork,
-    transaction::{BlindingFactor, TransactionInput, TransactionKernel, TransactionOutput},
+    transaction::{TransactionInput, TransactionKernel, TransactionOutput},
 };
-
-use chrono::{DateTime, Utc};
-
-type BlockHash = [u8; 32];
 
 /// A Tari block. Blocks are linked together into a blockchain.
 pub struct Block {

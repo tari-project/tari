@@ -20,7 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod blockchainstate;
-pub mod chain;
-pub mod error;
-pub mod store;
+// this file is used for all blockchain error types
+use derive_error::Error;
+
+/// The ChainError is used to present all generic chain error of the actual blockchain
+#[derive(Debug, Error)]
+pub enum ChainError {
+    Brokenchain, // place holder for real error
+}
