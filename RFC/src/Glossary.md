@@ -97,7 +97,7 @@ value or statement after they have committed to it.
 A Consensus Node is either a Validator Node or Base Node that is part of the Tari communication network. It maintains the network and is responsible for forwarding and propagating joining requests, discovery requests and data messages on the communication network.  
 
 ## Consensus Clients 
-[consensus client]: #consensus-client 'A communication client that does not maintaining the Tari communication network, but makes use of it'
+[consensus client]: #consensus-client 'A communication client that makes use of the Tari communication network, but does not maintain it'
 
 A Consensus Client is a Wallet or Asset Manager that makes use of the Tari communication network to send joining and discovery requests. A Consensus Client does not maintain the communication network and is not responsible for forwarding or propagating any requests or data messages.
 

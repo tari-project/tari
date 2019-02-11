@@ -199,14 +199,14 @@ The majority of all communication on the Tari communication network will be perf
 Message propagation on the network will typically consist only of joining and discovery requests where a CC or CN wants to join the network or retrieve the peer address of another CC or CN so that a direct P2P channel can be established.
 
 Messages can be transmitted in this network in either an unencrypted or encrypted form.
-Typically messages that have been sent in unencrypted form is of interest to a number of CNs on the network and should be propagated so that every CN that is interested in that data message obtains a copy.
+Typically messages that have been sent in unencrypted form are of interest to a number of CNs on the network and should be propagated so that every CN that is interested in that data message obtains a copy.
 Block and Transaction propagation are examples of data messages where multiple entities on the Tari communication network are interested in that data message, this requires propagation through the entire Tari communication network in unencrypted form.
 
 Encrypted data messages make use of the source and destinations identification cryptographic keys to construct a shared secret with which the message can be encoded and decoded.
 This ensures that only the two parties are able to decode the data message as it is propagated through the communication network.
 This mechanism can be used to perform private discovery requests, where the online communication address of the source node is encrypted and propagated through the network until it reached the destination node.
 Private discovery requests can only be performed if both parties are online at the same time.
-Encryption of the data message ensuring that only the destination node is able to view the online address of the source node as the data message moves through the network.
+Encryption of the data message ensures that only the destination node is able to view the online address of the source node as the data message moves through the network.
 Once the destination node receives and decrypts the data message, that node is then able to establish a P2P communication channel with the source node for any further communication.
 
 Propagation of completely private discovery request, hidden as an encrypted data message, can be performed as a broadcast through the entire network using the Gossip protocol.
@@ -223,30 +223,30 @@ CCs and CNs establish and maintain connections with peers differently.
 CCs only create a few short-lived ad hoc channels and CNs create and maintain long-lived channels with a number of peers.
 
 If a CC is unaware of a destination CNs or CCs online communication address then the address first needs to be obtained using a discovery request.
-When a CC already know the communication address of the CC or CN that he wants to communicate with, then a direct P2P channel can be established between the two peers for the duration of the communication task.
+When a CC already knows the communication address of the CC or CN that he wants to communicate with, then a direct P2P channel can be established between the two peers for the duration of the communication task.
 The communication channel can then be closed as soon as the communication task has been completed.
 
 CNs consisting of VNs and BNs typically attempt to maintain communication channels with a large number of peers.
 The distribution of peers (VNs vs BNs) that a single CN keeps communication channels open with can change depending on the type of node.
 A CN that is also a BN should maintain more peer connections with other BNs, but should also have some connections with other VNs.
 
-Having some connections with VNs are important as BNs have derived node ids and not registered node ids such as VNs, making it possible for the CN to be separated from the main network and become victim to an eclipse attack.
+Having some connections with VNs are important as BNs have derived node ids and not registered node ids such as VNs, making it possible for the CN to be separated from the main network and become victim to an [Eclipse attack](https://www.radixdlt.com/post/what-is-an-eclipse-attack).
 Having some connections with VNs will make it more difficult to separate the CN from the network and will ensure successful propagation of transactions and completed blocks from that CN. 
 
 A CN that is also a VN should maintain more peer connections with other VNs, but also have some connections with BNs.
 CNs that are part of Validator Node committees should attempt to maintain permanent connections with the other members of the committee to ensure that quick consensus can be achieved.
 
 To maintain connections with peers, the following process can be performed.
-Once some peers have been found using discovery requests, resulting in them successfully being added to the local routing table.
+Discover peers using discovery requests, and add their details to the local routing table.
 The CN can decide how the peer connections should be selected from the routing table by either:
  - manually selecting a subset,
  - automatically selecting a random subset or
  - selecting a subset of neighbouring nodes with similar node ids. 
 
- Maintaining communication channels are important and the following process can be followed in an attempt to keep peer connections alive:
+ Maintaining communication channels is important and the following process can be followed in an attempt to keep peer connections alive:
 For an existing peer connection.
 When more than 30 minutes have passed since the last communication with that peer, then a heartbeat message should be sent to the peer in an attempt to keep the connection with the peer alive.
-If that specific peer connection is not important then a new peer can be selected from the local routing table.
+If the peer connection was not established for a specific purpose, such as with the connections between committee members, then a new replacement peer can be selected from the local routing table.
 A new connection can then be established and maintained between the current node and the newly selected node.
 If that specific connection is important, such as with the connections between committee members, then the current CN or CC must wait and attempt to create a new connection with that same peer.
 If more than 90 minutes have passed since the last successful communication with the peer node, a new discovery request can be sent on the Tari communication network in an attempt to locate that peer again.
@@ -266,7 +266,7 @@ Losing of a peer might happen in cases where the CN or CC went temporarily offli
 - A CN MUST have the ability to verify the content of unencrypted messages to limit the propagation of spam messages.
 - If an unencrypted message is received by the CN with a unspecified destination node id, then the node MUST verify the content of the message and forward the message to all connected peers.
 - If an unencrypted message is received by the CN with an specified destination node id, then the node MUST verify the content of the message and forward the message to all connected peers that have closer node ids.
-- A CN MUST have the ability to select a set of peer connection from its routing table.
+- A CN MUST have the ability to select a set of peer connections from its routing table.
 - Connections with the selected set of peers MUST be maintained by the CN.
 - A CN MUST have a mechanism to construct encrypted and unencrypted joining requests, discovery requests or data messages.
 - A CN MUST construct and provide a list of peer addresses from its routing table that is similar to a requested node id so that other CCs and CNs can extend their routing tables.
