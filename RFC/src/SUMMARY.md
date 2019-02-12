@@ -7,6 +7,7 @@
   - [RFC-0110: Base nodes](RFC-0110_BaseNodes.md)
   - [RFC-0130: Mining](RFC-0130_Mining.md)
   - [RFC-0150: Wallets](RFC-0150_Wallets.md)
+  - [RFC-0170: Network Communication Protocol](RFC-0170_NetworkCommunicationProtocol.md)
 - [RFC-0300: The Digital Assets Network](RFC-0300_DAN.md)
   - [RFC-0310: Digital Asset templates](RFC-0310_Assets.md)
 - [Glossary](Glossary.md)

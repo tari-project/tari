@@ -86,9 +86,9 @@ Here are some examples of different communication tasks that need to be performe
 - Wallets need to communicate and negotiate with other Wallets to create transactions. They also need the ability to submit transactions to the [mempool] of Base Nodes.
 - Token Wallets need to communicate with Validator Node [committee]s and other Token Wallets to construct and send DAN instructions.
 
-Here is an overview communication matrix that show which source entities need to communicate with other destination entities on the Tari Communication network:
+Here is an overview communication matrix that show which source entities initiate communication with destination entities on the Tari Communication network:
 
-| Source \ Destination   | Validator Node | Base Node | Wallet | Token Wallet |
+| &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;\Destination<br>Source | Validator Node | Base Node | Wallet | Token Wallet |
 |---                     |---             |---        |---     |---           |
 | Validator Node         | Yes            | Yes       | Yes    | Yes          |
 | Base Node              | No             | Yes       | No     | No           |
@@ -106,7 +106,7 @@ They do make use of the network to submit their own joining requests and perform
 Once a CC has discovered the CC or CN they want to communicate with, they will establish a direct P2P channel with them.
 The Tari communication network is unaware of this direct P2P communication once discovery is completed.
 
-The different entity types are grouped into the different communication node types as follows:
+The different entity types MUST be grouped into the different communication node types as follows:
 
 | Entity Type    | Communication Node Type |
 |---             |---                      |
@@ -126,7 +126,7 @@ Obtaining a node ID from registration on the Base Layer is important as it will 
 Registration makes it more difficult for [Bad Actor]s to position themselves in ideal patterns on the network to perform disruptive operations and actions. 
 In sensitive situations or situations where the Kademlia-style directed propagation of messages are vulnerable, gossip protocol-based broadcasting of messages can be performed as a less efficient, but safer alternative to ensure that the message will successfully reach the rest of the network.
 
-The recommended method of node ID assignment for each Tari communication network entity type are as follows:
+The recommended method of node ID assignment for each Tari communication network entity type MUST be implemented as follows:
 
 | Entity Type    | Communication Node Type | Node ID Assignment |
 |---             |---                      |---                 |
@@ -144,12 +144,12 @@ The parent Base Node will perform any communication tasks on the Tari communicat
 #### Online Communication Address, Peer Address and Routing Table
 
 Each CC and CN on the Tari communication network will have identification cryptographic keys, a node ID and an online communication address.
-The online communication address can be either an IPv4, IPv6, URL, Tor(Base32) or I2P(Base32) address and can be stored using the network address type as follows:
+The online communication address can be either an IPv4, IPv6, URL, Tor (Base32) or I2P (Base32) address and can be stored using the network address type as follows:
 
 | Description  | Data type  | Comments                                     |
 |---           |---         |---                                           |
 | address type | uint4      | Specify if IPv4/IPv6/Url/Tor/I2P             |
-| address      | char array | IPv4, IPv6, Tor(Base32), I2P(Base32) address |
+| address      | char array | IPv4, IPv6, Tor (Base32), I2P (Base32) address |
 | port         | uint16     | port number                                  |
 
 The address type is used to determine how to interpret the address characters. An I2P address can be interpreted as "{52 address characters}.b32.i2p". The Tor address should be interpreted as "http://{16 or 52 address chars}.onion/". The IPv4 and IPv6 address can be stored in the address field without modification. URL addresses can be used for nodes with dynamic IP addresses. 
@@ -161,7 +161,7 @@ The new CC or CN can then request additional peer contact information of other C
 
 The routing table consists of a list of peer addresses that link node IDs, public identification keys and online communication addresses of each known CC and CN.
 
-The Peer Address stored in the routing table can be implemented as follows:
+The Peer Address stored in the routing table MAY be implemented as follows:
 
 | Description      | Data type          | Comments                                                                 |
 |---               |---                 |---                                                                       |
@@ -243,7 +243,7 @@ The CN can decide how the peer connections should be selected from the routing t
  - automatically selecting a random subset or
  - selecting a subset of neighbouring nodes with similar node IDs. 
 
- Maintaining communication channels is important and the following process can be followed in an attempt to keep peer connections alive:
+Maintaining communication channels is important and the following process can be followed in an attempt to keep peer connections alive:
 For an existing peer connection.
 When more than 30 minutes have passed since the last communication with that peer, then a heartbeat message should be sent to the peer in an attempt to keep the connection with the peer alive.
 If the peer connection was not established for a specific purpose, such as with the connections between committee members, then a new replacement peer can be selected from the local routing table.
