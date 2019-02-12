@@ -2,4 +2,4 @@
 
 RFC placeholder.
 
-This document will describe the process for TLDI registration on the Tari base layer.
+This document will describe the process for Registered Asset Issuer Name (RAIN) registration on the Tari base layer.
