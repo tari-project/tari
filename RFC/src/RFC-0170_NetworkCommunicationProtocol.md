@@ -65,7 +65,7 @@ This document will introduce the Tari communication network and the communicatio
 
 ### Abstract
 
-The Tari communication network consists of a large number of nodes that maintained peer connections between each other.
+The backbone of the Tari communication network consists of a large number of nodes that maintain peer connections between each other.
 These nodes forward and propagate encrypted and unencrypted data messages through the network such as joining requests, discovery requests, [transaction]s and completed [block]s.
 Network clients, not responsible for maintaining the network, are able to create ad hoc connections with nodes on the network to perform joining and discovery requests.
 The majority of communication between clients and nodes will be performed using direct Peer-to-peer (P2P) communication once the discovery process was used to obtain the online communication addresses of peers.
@@ -88,7 +88,7 @@ Here are some examples of different communication tasks that need to be performe
 
 Here is an overview communication matrix that show which source entities need to communicate with other destination entities on the Tari Communication network:
 
-| Source  \  Destination | Validator Node | Base Node | Wallet | Token Wallet |
+| Source \ Destination   | Validator Node | Base Node | Wallet | Token Wallet |
 |---                     |---             |---        |---     |---           |
 | Validator Node         | Yes            | Yes       | Yes    | Yes          |
 | Base Node              | No             | Yes       | No     | No           |
@@ -98,15 +98,15 @@ Here is an overview communication matrix that show which source entities need to
 #### Consensus Nodes and Consensus Clients
 
 To simplify the description of the Tari communication network, the different entities with similar behaviour were grouped into two groups: Consensus Nodes and Consensus Clients.
-Validator Nodes and Base Nodes are Consensus Nodes(CN).
-Wallets and Token Wallets are Communication Clients(CC).
+Validator Nodes and Base Nodes are Consensus Nodes (CN).
+Wallets and Token Wallets are Consensus Clients (CC).
 CNs form the core communication infrastructure of the Tari communication network and are responsible for maintaining the Tari communication network by receiving, forwarding and distributing joining requests, discovery requests, data messages and routing information.
 CCs are different from CNs in that they do not maintain the network and they are not responsible for propagating any joining requests, discovery requests, data messages and routing information.
 They do make use of the network to submit their own joining requests and perform discovery request of other specific CNs and CCs when they need to communicate with them.
 Once a CC has discovered the CC or CN they want to communicate with, they will establish a direct P2P channel with them.
 The Tari communication network is unaware of this direct P2P communication once discovery is completed.
 
-The different entity types were grouped into the different communication node types as follows:
+The different entity types are grouped into the different communication node types as follows:
 
 | Entity Type    | Communication Node Type |
 |---             |---                      |
@@ -200,7 +200,7 @@ Message propagation on the network will typically consist only of joining and di
 
 Messages can be transmitted in this network in either an unencrypted or encrypted form.
 Typically messages that have been sent in unencrypted form are of interest to a number of CNs on the network and should be propagated so that every CN that is interested in that data message obtains a copy.
-Block and Transaction propagation are examples of data messages where multiple entities on the Tari communication network are interested in that data message, this requires propagation through the entire Tari communication network in unencrypted form.
+Block and Transaction propagation are examples of data messages where multiple entities on the Tari communication network are interested in that data message; this requires propagation through the entire Tari communication network in unencrypted form.
 
 Encrypted data messages make use of the source and destinations identification cryptographic keys to construct a shared secret with which the message can be encoded and decoded.
 This ensures that only the two parties are able to decode the data message as it is propagated through the communication network.
@@ -281,7 +281,7 @@ Losing of a peer might happen in cases where the CN or CC went temporarily offli
 - A new CC MUST broadcast a joining request with its peer address to the Tari communication network so that CNs with similar node IDs can add the peer address of the new CC to their routing tables.
 - A CC MAY request the peer addresses of CNs with similar node IDs from other CNs to extend their local routing table.
 - A CC MUST have a mechanism to construct encrypted and unencrypted joining and discovery requests.
-- A CC MUST maintain a small routing table of Tari Communication network peers with which ad hoc connections can be established.
+- A CC MUST maintain a small persistent routing table of Tari Communication network peers with which ad hoc connections can be established.
 - As the CC becomes aware of other CNs and CCs on the communication network, the CC SHOULD extend its local routing table by including the newly discovered CCs or CNs contact information.
 - Peers from the CCs routing table that have been unreachable for a number of attempts SHOULD be removed from the its routing table.
 

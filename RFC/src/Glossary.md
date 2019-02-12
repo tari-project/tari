@@ -170,10 +170,10 @@ A Mining Server is responsible for constructing new blocks by bundling transacti
 
 A Mining Worker is responsible for performing Proof-of-Work tasks received from its parent [Mining Server].
 
-## Node id
-[node id]: #node-id
+## Node ID
+[node ID]: #node-id
 
-A node id is a unique identifier that specifies the location of a [Consensus Node] or [Consensus Client] in the Tari communication network. The node id can either be obtained from registration on the [Base Layer] or can be derived from the public identification key of a [Consensus Node] or [Consensus Client]. 
+A node ID is a unique identifier that specifies the location of a [Consensus Node] or [Consensus Client] in the Tari communication network. The node ID can either be obtained from registration on the [Base Layer] or can be derived from the public identification key of a [Consensus Node] or [Consensus Client]. 
 
 ## Range proof
 [range proof]: #range-proof
