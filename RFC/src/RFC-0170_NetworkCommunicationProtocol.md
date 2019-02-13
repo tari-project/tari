@@ -86,7 +86,7 @@ Here are some examples of different communication tasks that need to be performe
 - Wallets need to communicate and negotiate with other Wallets to create transactions. They also need the ability to submit transactions to the [mempool] of Base Nodes.
 - Token Wallets need to communicate with Validator Node [committee]s and other Token Wallets to construct and send DAN instructions.
 
-Here is an overview communication matrix that show which source entities initiate communication with destination entities on the Tari Communication network:
+Here is an overview communication matrix that show which source entities SHOULD initiate communication with destination entities on the Tari Communication network:
 
 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;\Destination<br>Source | Validator Node | Base Node | Wallet | Token Wallet |
 |---                     |---             |---        |---     |---           |
@@ -286,6 +286,7 @@ Losing of a peer might happen in cases where the CN or CC went temporarily offli
 - A CN MUST construct and provide a list of peer addresses from its routing table that is similar to a requested node ID so that other CCs and CNs can extend their routing tables.
 - A CN MUST keep its routing table up to date by removing unreachable peer addresses and adding newly received addresses.
 - It MUST have a mechanism to determine if a node ID was obtained through registration or was derived from an identification public key.
+- A CN MUST calculate the similarity between different node IDs by calculating the Hamming distance between the bits of the two node ID numbers.
 
 #### Functionality Required of Consensus Clients
 
@@ -298,6 +299,7 @@ Losing of a peer might happen in cases where the CN or CC went temporarily offli
 - A CC MUST maintain a small persistent routing table of Tari Communication network peers with which ad hoc connections can be established.
 - As the CC becomes aware of other CNs and CCs on the communication network, the CC SHOULD extend its local routing table by including the newly discovered CCs or CNs contact information.
 - Peers from the CCs routing table that have been unreachable for a number of attempts SHOULD be removed from the its routing table.
+- A CC MUST calculate the similarity between different node IDs by calculating the Hamming distance between the bits of the two node ID numbers.
 
 [consensus node]: Glossary.md#consensus-node
 [consensus client]: Glossary.md#consensus-client
