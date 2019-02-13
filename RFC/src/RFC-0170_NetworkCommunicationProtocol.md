@@ -61,7 +61,7 @@ This document will introduce the Tari communication network and the communicatio
 ### Assumptions
 
 - A communication channel can be established between two peers once their online communication addresses are known to each other.
-- A [Validator Node] is able to derive a [node ID] from the registered location on the Base Layer.
+- A [Validator Node] is able to derive a [node ID] from the Validator Node registration transaction on the Base Layer.
 
 ### Abstract
 
@@ -79,7 +79,7 @@ The majority of the communication required on the [Base Layer] and [Digital Asse
 Alternatively, the Tari communication network can be used for broadcasting joining requests, discovery requests and propagating data messages such as completed blocks, transactions and data messages that are of interest to a large part of the Tari communication network. 
 
 The Tari communication network consists of a number of different entities that need to communicate in a distributed and ad-hoc manner. 
-The primary entities that need to communicate are Validator Nodes (VN), [Base Node]s (BN), [Wallet]s (W) and Token Wallet (TW).
+The primary entities that need to communicate are Validator Nodes (VN), [Base Node]s (BN), [Wallet]s (W) and [Token Wallet]s (TW).
 Here are some examples of different communication tasks that need to be performed by these entities on the Tari Communication network:
 - Base Nodes on the Base Layer need to propagate completed blocks and transactions to other Base Nodes using Gossip protocol based broadcasting.
 - Validator Nodes need to efficiently discover other Validator Nodes in the process of forming Validator Node committees. 
@@ -128,7 +128,7 @@ In sensitive situations or situations where the Kademlia-style directed propagat
 
 The similarity or distance between different node IDs can be calculated by performing the [Hamming distance](https://en.wikipedia.org/wiki/Hamming_distance) between the bits of the two node ID numbers.
 The Hamming distance can be implemented as an Exclusive OR (XOR) between the bits of the numbers and the summation of the resulting true bits.
-CCs and/or CNs that have node IDs with a low Hamming distance are located in similar regions of the Tari communication network.
+CCs and/or CNs that have similar node IDs, that produce a small Hamming distance, are located in similar regions of the Tari communication network.
 This does not mean that their geographic locations are near each other, but rather that their location in the network is similar.
 A thresholding scheme can be applied to the Hamming distance to ensure that only neighboring CNs with similar node IDs are allowed to share and propagate specific information.
 As an example, only routing table information that contains similar node IDs to the requesting CCs or CNs node ID should be shared with them.
@@ -226,6 +226,7 @@ Once the destination node receives and decrypts the data message, that node is t
 Propagation of completely private discovery request, hidden as an encrypted data message, can be performed as a broadcast through the entire network using the Gossip protocol.
 Propagation of public discovery requests can be performed using more efficient directed propagation using the Kademlia protocol.
 As encrypted message with visible destinations tend to not be of interest to the rest of the network, directed propagation using the Kademlia protocol to forward these messages to the correct parties are preferred.
+Privacy of a CCs online address, whom is sending a transaction to a Base Node, may be enhanced if the transaction is encrypted and sent to a Base Node with a node ID that is not the closest to the CCs node ID. This should prevent linking a transaction to the originating online address.
 
 This same encryption technique can be used to send encrypted messages to a single node or a group of nodes, where the group of nodes have shared identification keys.
 A Validation Committee is an example of a group of CNs that have shared identification keys for the committee.
@@ -311,6 +312,7 @@ Losing of a peer might happen in cases where the CN or CC went temporarily offli
 [digital asset network]: Glossary.md#digital-asset-network
 [base node]: Glossary.md#base-node
 [wallet]: Glossary.md#wallet
+[token wallet]: Glossary.md#token-wallet
 [mempool]: Glossary.md#mempool
 [committee]: Glossary.md#committee
 [Bad Actor]: Glossary.md#bad-actor

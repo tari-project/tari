@@ -234,6 +234,11 @@ The base layer token. Tari coins are released according to the [emission schedul
 
 A permissioned Validator Node nominated by an Asset Issuer that will form part of the committee for that Digital Asset.
 
+## Token Wallet
+[token wallet]: #token-wallet "An Asset Manager Wallet for Tari Assets and Tokens"
+
+A Tari Token Wallet is responsible for managing [Digital asset]s and [Tokens], and for constructing and negotiating [instructions]s for transferring and receiving Assets and Tokens on the [Digital Asset Network]. 
+
 ## Unspent transaction outputs
 [utxo]: #unspent-transaction-outputs
 
