@@ -61,7 +61,7 @@ This document will introduce the Tari communication network and the communicatio
 ### Assumptions
 
 - A communication channel can be established between two peers once their online communication addresses are known to each other.
-- A [Validator Node] is able to obtain a [node ID] from the registration process on the Base Layer.
+- A [Validator Node] is able to derive a [node ID] from the registered location on the Base Layer.
 
 ### Abstract
 
@@ -126,6 +126,14 @@ Obtaining a node ID from registration on the Base Layer is important as it will 
 Registration makes it more difficult for [Bad Actor]s to position themselves in ideal patterns on the network to perform disruptive operations and actions. 
 In sensitive situations or situations where the Kademlia-style directed propagation of messages are vulnerable, gossip protocol-based broadcasting of messages can be performed as a less efficient, but safer alternative to ensure that the message will successfully reach the rest of the network.
 
+The similarity or distance between different node IDs can be calculated by performing the [Hamming distance](https://en.wikipedia.org/wiki/Hamming_distance) between the bits of the two node ID numbers.
+The Hamming distance can be implemented as an Exclusive OR (XOR) between the bits of the numbers and the summation of the resulting true bits.
+CCs and/or CNs that have node IDs with a low Hamming distance are located in similar regions of the Tari communication network.
+This does not mean that their geographic locations are near each other, but rather that their location in the network is similar.
+A thresholding scheme can be applied to the Hamming distance to ensure that only neighboring CNs with similar node IDs are allowed to share and propagate specific information.
+As an example, only routing table information that contains similar node IDs to the requesting CCs or CNs node ID should be shared with them.
+Limiting the sharing of routing table information makes it more difficult to map the entire Tari communication network.
+
 The recommended method of node ID assignment for each Tari communication network entity type MUST be implemented as follows:
 
 | Entity Type    | Communication Node Type | Node ID Assignment |
@@ -144,15 +152,21 @@ The parent Base Node will perform any communication tasks on the Tari communicat
 #### Online Communication Address, Peer Address and Routing Table
 
 Each CC and CN on the Tari communication network will have identification cryptographic keys, a node ID and an online communication address.
-The online communication address can be either an IPv4, IPv6, URL, Tor (Base32) or I2P (Base32) address and can be stored using the network address type as follows:
+The online communication address SHOULD be either an IPv4, IPv6, URL, Tor (Base32) or I2P (Base32) address and can be stored using the network address type as follows:
 
-| Description  | Data type  | Comments                                     |
-|---           |---         |---                                           |
-| address type | uint4      | Specify if IPv4/IPv6/Url/Tor/I2P             |
-| address      | char array | IPv4, IPv6, Tor (Base32), I2P (Base32) address |
-| port         | uint16     | port number                                  |
+| Description  | Data type  | Comments                                            |
+|---           |---         |---                                                  |
+| address type | uint4      | Specify if IPv4/IPv6/Url/Tor/I2P                    |
+| address      | char array | IPv4, IPv6, URL, Tor (Base32), I2P (Base32) address |
+| port         | uint16     | port number                                         |
 
-The address type is used to determine how to interpret the address characters. An I2P address can be interpreted as "{52 address characters}.b32.i2p". The Tor address should be interpreted as "http://{16 or 52 address chars}.onion/". The IPv4 and IPv6 address can be stored in the address field without modification. URL addresses can be used for nodes with dynamic IP addresses. 
+The address type is used to determine how to interpret the address characters. An I2P address can be interpreted as "{52 address characters}.b32.i2p".
+The Tor address should be interpreted as "http://{16 or 52 address chars}.onion/".
+The IPv4 and IPv6 address can be stored in the address field without modification.
+URL addresses can be used for nodes with dynamic IP addresses. 
+
+A Tor or I2P address can be used when anonymity is important for a CC or CN.
+The IPv4, IPv6 and URL address types do not provide any privacy features but do provide increased bandwidth. 
 
 Each CC or CN has a local routing table that contains the online communication addresses of all CCs and CNs on the Tari communication network known to that CC or CN.
 When a CC or CN wants to join the Tari communication network, the online communication address of at least one other CN that is part of the network needs to be known.
