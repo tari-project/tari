@@ -78,12 +78,16 @@ This document will describe the process for Registered Asset Issuer Name (RAIN) 
   - Create RAIN & sig
 - RAIN sell Tx
   - Inputs
-    - $ v_{in} ​$ (in Tari coins)
-    - RAIN output of seller - $ \Re_{seller} : (str , Pk_s) ​$ 
+    - Tari coins payment of buyer - $ v_{in} $ 
+    - RAIN of seller - $ \Re_{seller} : (str , Pk_s) $ 
   - Outputs
-    - RAIN output to buyer - $ \Re_{seller} : (str , Pk_b) $ 
-    - Change to buyer - $ v_{in} - v_{cost} ​$ 
-    - Payment to Seller - $ v_{cost} $ 
+    - RAIN to buyer - $ \Re_{buyer} : (str , Pk_b) $ 
+    - Tari coins change to buyer - $ v_{in} - v_{cost} ​$ 
+    - Tari coins payment to seller - $ v_{cost} $ 
+  - $ \text{Hash} (\text{prior block hash} \parallel str \parallel Pk) $ 
+  - $ vG + (k_1 + k_b)H ​$ 
+  - $ vG + k_0H + k_b I _e $ 
+  - $ vG + kH = C ​$ 
 
 
 
