@@ -1,12 +1,12 @@
 version: 2
 
 defaults:
-  rust_base_image: &rust_base_image rust:1.32
+  rust_image: &rust_image rust:1.32
 
 jobs:
   test-docs:
     docker:
-      - image: *rust_base_image
+      - image: *rust_image
     steps:
       - checkout
       - run:
@@ -38,7 +38,7 @@ jobs:
 
   test-tari:
     docker:
-      - image: *rust_base_image
+      - image: *rust_image
     steps:
       - checkout
       - run:
