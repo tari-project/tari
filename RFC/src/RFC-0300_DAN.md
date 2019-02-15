@@ -1,5 +1,6 @@
-# The Digital Assets Network
-## An overview of the Tari network
+# RFC-0300/DAN
+
+## The Digital Assets Network
 
 ![status: draft](theme/images/status-draft.svg)
 
@@ -31,9 +32,11 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ## Language
 
-The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and
-"OPTIONAL" in this document are to be interpreted as described in [RFC 2119](http://tools.ietf.org/html/rfc2119).
-
+The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", 
+"NOT RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in 
+[BCP 14](https://tools.ietf.org/html/bcp14) (covering RFC2119 and RFC8174) when, and only when, they appear in all capitals, as 
+shown here.
+      
 ## Disclaimer
 
 The purpose of this document and its content is for information purposes only and may be subject to change or update
@@ -50,7 +53,7 @@ The goal of this RFC is to describe the key features of the Tari second layer, a
 ## Related RFCs
 
 * [RFC-0100: Base layer](RFC-0100_BaseLayer.md)
-* [RFC-0310: Digital assets](RFC-0310_Assets.md)
+* [RFC-0310: Digital assets](RFC-0310_AssetTemplates.md)
 * [RFC-0311: Second layer consensus strategies](RFC-3011_SecondLayerConsensus.md)
 * [RFC-0312: Validator nodes](RFC-3012_ValidatorNodes.md)
 

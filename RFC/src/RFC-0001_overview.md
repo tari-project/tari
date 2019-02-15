@@ -32,8 +32,10 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ## Language
 
-The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and
-"OPTIONAL" in this document are to be interpreted as described in [RFC 2119](http://tools.ietf.org/html/rfc2119).
+The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", 
+"NOT RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in 
+[BCP 14](https://tools.ietf.org/html/bcp14) (covering RFC2119 and RFC8174) when, and only when, they appear in all capitals, as 
+shown here.
 
 ## Disclaimer
 
@@ -52,7 +54,7 @@ The aim of this proposal is to provide a very high-level perspective for the mov
 
 * [RFC-0100: Base layer](RFC-0100_BaseLayer.md)
 * [RFC-0300: Digital asset network](RFC-0300_DAN.md)
-* [RFC-0310: Digital assets](RFC-0310_Assets.md)
+* [RFC-0310: Digital assets](RFC-0310_AssetTemplates.md)
 
 ## Description
 
@@ -149,7 +151,7 @@ future.
 ### The Digital Assets Network
 
 A more detailed proposal for the digital assets network is presented in [RFC-0300/DAN](RFC-0300_DAN.md). Digital assets
-_are discussed in more detail in [RFC-0310/Assets](RFC-0310_Assets.md)._
+_are discussed in more detail in [RFC-0310/Assets](RFC-0310_AssetTemplates.md)._
 
 The Tari digital assets network (DAN) consists of a peer-to-peer network of [Validator nodes]. These nodes ensure the
 safe and efficient operation of all native digital assets on the Tari network.

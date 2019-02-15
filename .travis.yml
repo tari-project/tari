@@ -5,7 +5,7 @@ cache:
   - cargo
 
 rust:
-  - nightly-x86_64-unknown-linux-gnu
+  - nightly-2018-02-05
 
 before_install:
   - export PATH="$PATH:$HOME/.cargo/bin"
@@ -32,6 +32,8 @@ matrix:
         local-dir: book
         keep-history: false
         target-branch: gh-pages
+        on:
+          branch: development
     - stage: build
       name: Tari source code
       script:
