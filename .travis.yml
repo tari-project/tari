@@ -9,7 +9,10 @@ rust:
 
 before_install:
   - export PATH="$PATH:$HOME/.cargo/bin"
-  - rustup component add rustfmt
+  # https://mexus.github.io/rustup-components-history/x86_64-unknown-linux-gnu.html
+  - rustup update nightly-2019-02-13
+  - rustup default nightly-2019-02-13
+  - rustup component add --toolchain nightly-2019-02-13 rustfmt
 
 before_script:
   - (test -x $HOME/.cargo/bin/cargo-install-update || cargo install cargo-update)
