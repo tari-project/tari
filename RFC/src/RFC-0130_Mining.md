@@ -1,4 +1,4 @@
-# RFC-0130: Mining
+# RFC-0130/Mining
 
 ## Full-node mining on Tari base layer
 
@@ -86,7 +86,7 @@ constructing Tari and Monero Blocks from their respective mempools. The Mining S
 from the mempool of the connected Base Node and assemble a new Tari block by bundling transactions together.
 
 Mining servers may re-verify transactions before including them in a new Tari block, but this enforcement of 
-verification and transaction rules such as signatures and timelocks is the responsibility of the connected Base node.
+verification and transaction rules such as signatures and timelocks are the responsibility of the connected Base node. Mining servers are responsible for [cut-through] as this is required for scalability and privacy.
 
 To enable Merged mining of Tari with Monero, both a Tari and a Monero block needs to be created and linked. First, 
 a new Tari block is created and then the block header hash of the new Tari block is included in the coinbase 
@@ -117,17 +117,18 @@ and Auxiliary blockchain is provided in the [Merged Mining TLU report] (https://
 - The Tari blockchain MUST have the ability to be merged mined with Monero. 
 - The Mining Server MUST maintain a local or remote connection with a Base Node and a Monero Node.
 - It MUST have a mechanism to construct a new Tari and Monero block by selecting transactions from the different 
-Tari and Monero mempools that need to be included in the different blocks.
+  Tari and Monero mempools that need to be included in the different blocks.
+- It MUST apply [cut-through] when mining Tari transactions from the [mempool] and only add the excess to the list of new  Tari block transactions. 
 - It MAY have a configurable transaction selection mechanism for the block construction process. 
 - It MAY have the ability to re-verify transactions before including them in a new Tari block.
 - It MUST have the ability to include the block header hash of the new Tari block into the coinbase section of a 
-newly created Monero block to enable merged mining.
+  newly created Monero block to enable merged mining.
 - It MUST be able to include the Monero block header hash, Merkle tree branch and hash of the coinbase transaction 
-of the Monero block into the PoW summary field of the new Tari block header. 
+  of the Monero block into the PoW summary field of the new Tari block header. 
 - It MUST have the ability to transmit and distribute PoW tasks for the newly created Monero block, that contains 
-the Tari block information, to connected Mining Workers.
+  the Tari block information, to connected Mining Workers.
 - It MUST verify PoW solutions received from Mining Workers and it MUST reject and discard invalid solutions or 
-solutions that do not meet the minimum required difficulty.
+  solutions that do not meet the minimum required difficulty.
 - The Mining Server MAY keep track of mining share contributions of the connected Mining Workers. 
 - It MUST submit completed Tari blocks to the Tari Base Node.
 - It MUST submit completed Monero blocks to the Monero Network.  
@@ -149,3 +150,5 @@ solutions that do not meet the minimum required difficulty.
 [mining worker]: Glossary.md#mining-worker
 [block]: Glossary.md#block
 [mempool]: Glossary.md#mempool
+
+[cut-through]: RFC-0140_Syncing.md#Pruning-and-cut-through

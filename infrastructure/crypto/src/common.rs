@@ -21,7 +21,16 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::hex::{from_hex, to_hex, HexError};
+use blake2::{
+    digest::{Input, VariableOutput},
+    VarBlake2b,
+};
 use derive_error::Error;
+use digest::{
+    generic_array::{typenum::U32, GenericArray},
+    FixedOutput,
+    Reset,
+};
 
 #[derive(Debug, Error)]
 pub enum ByteArrayError {
@@ -30,6 +39,8 @@ pub enum ByteArrayError {
     ConversionError(String),
     // Invalid hex representation for ByteArray
     HexConversionError(HexError),
+    // The input data was the incorrect length to perform the desired conversion
+    IncorrectLength,
 }
 
 /// Many of the types in this crate are just large numbers (256 bit usually). This trait provides the common
@@ -38,7 +49,7 @@ pub enum ByteArrayError {
 pub trait ByteArray {
     /// Return the hexadecimal string representation of the type
     fn to_hex(&self) -> String {
-        to_hex(self.to_vec())
+        to_hex(&self.to_vec())
     }
 
     /// Try and convert the given hexadecimal string to the type. Any failures (incorrect  string length, non hex
@@ -68,4 +79,84 @@ pub trait ByteArray {
 
     /// Return the type as a byte array
     fn to_bytes(&self) -> &[u8];
+}
+
+impl ByteArray for Vec<u8> {
+    fn to_hex(&self) -> String {
+        to_hex(self)
+    }
+
+    /// Try and convert the given hexadecimal string to the type. Any failures (incorrect  string length, non hex
+    /// characters, etc) return a [KeyError](enum.KeyError.html) with an explanatory note.
+    fn from_hex(hex: &str) -> Result<Self, ByteArrayError>
+    where Self: Sized {
+        let v = from_hex(hex)?;
+        Self::from_vec(&v)
+    }
+
+    fn to_vec(&self) -> Vec<u8> {
+        self.clone()
+    }
+
+    fn from_vec(v: &Vec<u8>) -> Result<Self, ByteArrayError>
+    where Self: Sized {
+        Ok(v.clone())
+    }
+
+    fn from_bytes(bytes: &[u8]) -> Result<Self, ByteArrayError>
+    where Self: Sized {
+        Ok(bytes.to_vec())
+    }
+
+    fn to_bytes(&self) -> &[u8] {
+        Vec::as_slice(self)
+    }
+}
+
+impl ByteArray for [u8; 32] {
+    fn from_bytes(bytes: &[u8]) -> Result<Self, ByteArrayError>
+    where Self: Sized {
+        if bytes.len() != 32 {
+            return Err(ByteArrayError::IncorrectLength);
+        }
+        let mut a = [0u8; 32];
+        a.copy_from_slice(bytes);
+        Ok(a)
+    }
+
+    fn to_bytes(&self) -> &[u8] {
+        self
+    }
+}
+
+/// A convenience wrapper produce 256 bit hashes from Blake2b
+#[derive(Clone, Debug)]
+pub struct Blake256(VarBlake2b);
+
+impl Default for Blake256 {
+    fn default() -> Blake256 {
+        let h = VarBlake2b::new(32).unwrap();
+        Blake256(h)
+    }
+}
+
+impl Input for Blake256 {
+    fn input<B: AsRef<[u8]>>(&mut self, data: B) {
+        (self.0).input(data);
+    }
+}
+
+impl FixedOutput for Blake256 {
+    type OutputSize = U32;
+
+    fn fixed_result(self) -> GenericArray<u8, U32> {
+        let v = (self.0).vec_result();
+        GenericArray::clone_from_slice(&v)
+    }
+}
+
+impl Reset for Blake256 {
+    fn reset(&mut self) {
+        (self.0).reset()
+    }
 }

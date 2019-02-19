@@ -4,7 +4,7 @@
 
 ![status: draft](theme/images/status-draft.svg)
 
-**Maintainer(s)**: [Cayle Sharrock](https://github.com/CjS77)
+**Maintainer(s)**: [Cayle Sharrock](https://github.com/CjS77) [SW van heerden](https://github.com/SWvheerden)
 
 # License
 
@@ -131,7 +131,7 @@ The Block validation and propagation process is analogous to that of transaction
 New blocks are received from the peer-to-peer network, or from an API call if the Base Node is connected to a Miner.
 
 When a new block is received, it is assigned the `unvalidated` [ValidationState]. The block is then passed to the
-block validation service. The validation service checks that
+block validation service.  The validation service checks that
 
 * the block hasn't been processed before.
 * every [transaction] in the block is valid.
@@ -142,7 +142,10 @@ block validation service. The validation service checks that
   * it is possible that blocks may be received out of order; particularly while syncing. Base Nodes SHOULD keep blocks.
     that have block heights greater than the current chain tip in memory for some preconfigured period.
 * the sum of all excesses is a valid public key. This proves that:
-   $$ \Sigma \left( \mathrm{inputs} - \mathrm{outputs} - \mathrm{fees} \right) = 0$$
+   $$ \Sigma \left( \mathrm{inputs} - \mathrm{outputs} - \mathrm{fees} \right) = 0$$ 
+* check if [cut-through] was applied. If a block contains already spent outputs, reject that block.
+
+Because MimbleWimble blocks can be simple be seen as large transactions with multiple inputs and outputs, the block validation service checks all transaction verification on the block as well.
 
 `Rejected` blocks are dropped silently.
 
@@ -159,43 +162,17 @@ In addition, when a block has been validated and added to the blockchain:
 * The mempool MUST also remove all transactions that are present in the newly validated block.
 * The UTXO set MUST be updated; removing all inputs in the block, and adding all the new outputs in it.
 
-### Seeding nodes and Synchronising the chain
+### Synchronising and pruning of the chain
 
-When base nodes start up, they need to synchronize the blockchain with their peers.
+Syncing, pruning and cut-through is discussed in detail in [RFC-0140](RFC-0140_Syncing.md)
 
-Base Nodes that have just started up MUST perform the following in order to synchronize their blockchain state with the
-network:
+### Archival nodes
 
-1. The Base Node's [SynchronisationState] is set to `Synchronising`.
-1. Load a bootstrap list of peers from a configuration file, or a cached list, if this is not the first time that the
-   node has started.
-1. For each peer in this list:
-   1. Establish a connection with the peer.
-   1. Request a peer list from that peer.
-   1. Request information about the most recent chain state (total accumulated work, block height, etc.) from the peer.
+[Archival nodes](archivenode) are used to keep a complete history of the blockchain since genesis block, they do not employ pruning at all. These nodes will allow full syncing of the blockchain because normal nodes will not keep the full history to enable this. 
 
-The Base Node will now be able to build a strategy for catching up to the network. The Base Node will implement its
-[SynchronisationStrategy], which reduces load on any single peer and optimises bandwidth usage to synchronise the
-blockchain as quickly as possible.
 
-In particular, Mimblewimble has some unique properties that could lead to very fast synchronisation strategies. For
-example, because of cut-through and pruning, the entire blockchain state can be represented by the current [UTXO] set
-and all the coinbase transaction inputs.
 
-The upshot of this is that a new node can be perfectly sure of the current blockchain state and not download any block
-history at all. All that is required is downloading the block _header_ history and the current UTXO set. Then
-verification is achieved by
-
-1. The UTXO set and knowledge of the emission rate are used to verify the coin supply.
-1. The transaction kernel history (present in the block headers) and the UTXO range proofs are used to verify that every
-   UTXO is legitimate.
-1. The proof of work can be verified from the block headers. Furthermore, if a commitment (e.g. a Merkle tree root) for
-   the UTXO set is stored in the block headers, it is straightforward to verify that the UTXO set corresponds to a block
-   in the chain.
-
-When Base Nodes receive blocks from peers while synchronizing, the usual
-[block validation](#block-validation-and-propagation) process is followed.
-
+[archivenode]: Glossary.md#archivenode
 
 [tari coin]: Glossary.md#tari-coin
 [blockchain]: Glossary.md#blockchain
@@ -210,3 +187,5 @@ When Base Nodes receive blocks from peers while synchronizing, the usual
 [range proof]: Glossary.md#range-proof
 [SynchronisationStrategy]: Glossary.md#synchronisationstrategy
 [SynchronisationState]: Glossary.md#synchronisationstate
+[mining server]: Glossary.md#mining-server
+[cut-through]: RFC-0140_Syncing.md#Pruning-and-cut-through

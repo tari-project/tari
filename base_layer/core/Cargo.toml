@@ -4,5 +4,7 @@ version = "0.0.1"
 edition = "2018"
 
 [dependencies]
+bitflags = "1.0.4"
 chrono = "0.4.6"
 digest = "0.8.0"
+crypto = { path = "../../infrastructure/crypto"}

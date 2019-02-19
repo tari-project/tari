@@ -4,8 +4,7 @@
 
 ## Documentation
 
-* [RFC documents](https://tari-project.github.io/tari/) are hosted on Github Pages. The source markdown is in the `RFC`
-  directory.
+* [RFC documents](https://rfc.tari.com) are hosted on Github Pages. The source markdown is in the `RFC` directory.
 * Source code documentation is hosted on [docs.rs](https://docs.rs)
 
 ### Serving the documentation locally

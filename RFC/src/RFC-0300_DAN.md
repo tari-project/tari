@@ -1,5 +1,6 @@
-# The Digital Assets Network
-## An overview of the Tari network
+# RFC-0300/DAN
+
+## The Digital Assets Network
 
 ![status: draft](theme/images/status-draft.svg)
 
@@ -52,7 +53,7 @@ The goal of this RFC is to describe the key features of the Tari second layer, a
 ## Related RFCs
 
 * [RFC-0100: Base layer](RFC-0100_BaseLayer.md)
-* [RFC-0310: Digital assets](RFC-0310_Assets.md)
+* [RFC-0310: Digital assets](RFC-0310_AssetTemplates.md)
 * [RFC-0311: Second layer consensus strategies](RFC-3011_SecondLayerConsensus.md)
 * [RFC-0312: Validator nodes](RFC-3012_ValidatorNodes.md)
 

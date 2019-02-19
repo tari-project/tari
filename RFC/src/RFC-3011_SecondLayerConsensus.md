@@ -1,1 +1,0 @@
-# RFC-0311/Second layer consensus strategies

@@ -70,6 +70,7 @@ a > .hljs {
 
 #print-button {
     margin: 0 15px;
+    margin-top: 20px;
 }
 
 html:not(.sidebar-visible) #menu-bar:not(:hover).folded > #menu-bar-sticky-container {
@@ -95,6 +96,7 @@ html:not(.sidebar-visible) #menu-bar:not(:hover).folded > #menu-bar-sticky-conta
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    padding-top:20px;
 }
 .js .menu-title {
     cursor: pointer;
