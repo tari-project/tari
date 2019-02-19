@@ -49,7 +49,7 @@ technological merits of the potential system outlined herein.
 ## Goals
 
 This document will introduce the Tari communication network and the communication protocol used to select, establish and maintain connections between peers on the network.
-[Consensus Node]s and [Consensus Client]s will be introduced and their required functionality will be proposed.
+[Communication Node]s and [Communication Client]s will be introduced and their required functionality will be proposed.
 
 ## Related RFCs
 
@@ -95,11 +95,11 @@ Here is an overview communication matrix that show which source entities SHOULD 
 | Wallet                 | No             | Yes       | Yes    | No           |
 | Token Wallet           | Yes            | No        | Yes    | Yes          |
 
-#### Consensus Nodes and Consensus Clients
+#### Communication Nodes and Communication Clients
 
-To simplify the description of the Tari communication network, the different entities with similar behaviour were grouped into two groups: Consensus Nodes and Consensus Clients.
-Validator Nodes and Base Nodes are Consensus Nodes (CN).
-Wallets and Token Wallets are Consensus Clients (CC).
+To simplify the description of the Tari communication network, the different entities with similar behaviour were grouped into two groups: Communication Nodes and Communication Clients.
+Validator Nodes and Base Nodes are Communication Nodes (CN).
+Wallets and Token Wallets are Communication Clients (CC).
 CNs form the core communication infrastructure of the Tari communication network and are responsible for maintaining the Tari communication network by receiving, forwarding and distributing joining requests, discovery requests, data messages and routing information.
 CCs are different from CNs in that they do not maintain the network and they are not responsible for propagating any joining requests, discovery requests, data messages and routing information.
 They do make use of the network to submit their own joining requests and perform discovery request of other specific CNs and CCs when they need to communicate with them.
@@ -110,12 +110,12 @@ The different entity types MUST be grouped into the different communication node
 
 | Entity Type    | Communication Node Type |
 |---             |---                      |
-| Validator Node | Consensus Node          |
-| Base Node      | Consensus Node          |
-| Wallet         | Consensus Client        |
-| Token Wallet   | Consensus Client        |
+| Validator Node | Communication Node      |
+| Base Node      | Communication Node      |
+| Wallet         | Communication Client    |
+| Token Wallet   | Communication Client    |
 
-#### Unique identification of Consensus Nodes and Consensus Clients 
+#### Unique identification of Communication Nodes and Communication Clients 
 
 In the Tari communication network, each CN or CC makes use of a node ID to determine their position in the network.
 This node ID is either assigned based on registration on the Base Layer or can be derived from the CNs or CCs identification public key.
@@ -138,10 +138,10 @@ The recommended method of node ID assignment for each Tari communication network
 
 | Entity Type    | Communication Node Type | Node ID Assignment |
 |---             |---                      |---                 |
-| Validator Node | Consensus Node          | Registration       |
-| Base Node      | Consensus Node          | Derived            |
-| Wallet         | Consensus Client        | Derived            |
-| Token Wallet   | Consensus Client        | Derived            |
+| Validator Node | Communication Node      | Registration       |
+| Base Node      | Communication Node      | Derived            |
+| Wallet         | Communication Client    | Derived            |
+| Token Wallet   | Communication Client    | Derived            |
 
 Note that [Mining Server]s and [Mining Worker]s are excluded from the Tari communication network.
 A Mining Worker will have a local or remote P2P connection with a Mining Server.
@@ -267,7 +267,7 @@ If that specific connection is important, such as with the connections between c
 If more than 90 minutes have passed since the last successful communication with the peer node, a new discovery request can be sent on the Tari communication network in an attempt to locate that peer again.
 Losing of a peer might happen in cases where the CN or CC went temporarily offline and their dynamic communication address changed, requiring the discovery process to be performed again before a direct P2P communication channel can be established.
 
-#### Functionality Required of Consensus Nodes
+#### Functionality Required of Communication Nodes
 
 - It MUST select a cryptographic key pair used for identification on the Tari Communication network.
 - A CN MAY request the peer addresses of CNs with similar node IDs from other CNs to extend their local routing table. 
@@ -289,7 +289,7 @@ Losing of a peer might happen in cases where the CN or CC went temporarily offli
 - It MUST have a mechanism to determine if a node ID was obtained through registration or was derived from an identification public key.
 - A CN MUST calculate the similarity between different node IDs by calculating the Hamming distance between the bits of the two node ID numbers.
 
-#### Functionality Required of Consensus Clients
+#### Functionality Required of Communication Clients
 
 - It MUST select a cryptographic key pair used for identification on the Tari Communication network.
 - It MUST have a mechanism to derive a node ID from the self-selected identification public key.
@@ -302,8 +302,8 @@ Losing of a peer might happen in cases where the CN or CC went temporarily offli
 - Peers from the CCs routing table that have been unreachable for a number of attempts SHOULD be removed from the its routing table.
 - A CC MUST calculate the similarity between different node IDs by calculating the Hamming distance between the bits of the two node ID numbers.
 
-[consensus node]: Glossary.md#consensus-node
-[consensus client]: Glossary.md#consensus-client
+[communication node]: Glossary.md#communication-node
+[communication client]: Glossary.md#communication-client
 [validator node]: Glossary.md#validator-node
 [node id]: Glossary.md#node-id
 [transaction]: Glossary.md#transaction

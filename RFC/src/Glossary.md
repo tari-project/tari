@@ -91,15 +91,15 @@ A commitment is a cryptographic primitive that allows one to commit to a chosen 
 others, with the ability to reveal the committed value later. Commitments are designed so that one cannot change the
 value or statement after they have committed to it.
 
-## Consensus Node 
-[consensus node]: #consensus-node 'A communication node that is responsible for maintaining the Tari communication network'
+## Communication Node 
+[communication node]: #communication-node 'A communication node that is responsible for maintaining the Tari communication network'
 
-A Consensus Node is either a Validator Node or Base Node that is part of the Tari communication network. It maintains the network and is responsible for forwarding and propagating joining requests, discovery requests and data messages on the communication network.  
+A Communication Node is either a Validator Node or Base Node that is part of the Tari communication network. It maintains the network and is responsible for forwarding and propagating joining requests, discovery requests and data messages on the communication network.  
 
-## Consensus Clients 
-[consensus client]: #consensus-client 'A communication client that makes use of the Tari communication network, but does not maintain it'
+## Communication Clients 
+[communication client]: #communication-client 'A communication client that makes use of the Tari communication network, but does not maintain it'
 
-A Consensus Client is a Wallet or Asset Manager that makes use of the Tari communication network to send joining and discovery requests. A Consensus Client does not maintain the communication network and is not responsible for forwarding or propagating any requests or data messages.
+A Communication Client is a Wallet or Asset Manager that makes use of the Tari communication network to send joining and discovery requests. A Communication Client does not maintain the communication network and is not responsible for forwarding or propagating any requests or data messages.
 
 ## Digital asset
 [digital asset]: #digital-asset 'Sets of Native digital tokens, both fungible and non-fungible that are created by 
