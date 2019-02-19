@@ -8,6 +8,7 @@
   - [RFC-0130: Mining](RFC-0130_Mining.md)
   - [RFC-0140: Sync and Seeding](RFC-0140_Syncing_and_seeding.md)
   - [RFC-0150: Wallets](RFC-0150_Wallets.md)
+  - [RFC-0170: Network Communication Protocol](RFC-0170_NetworkCommunicationProtocol.md)
 - [RFC-0200: Tari-specific extensions to Mimblewimble](RFC-0200_BaseLayerExtensions.md)
   - [RFC-0210: Namespace registration](RFC-0210_NamespaceRegistration.md)
   - [RFC-0220: Asset checkpoints](RFC-0220_AssetCheckpoints.md)
@@ -38,3 +39,4 @@
   - [RFC-0530: Peer-to-peer payments](RFC-0530_P2PPayments.md)
   - [RFC-0550: Instruction fees](RFC-0550_VNFees.md)
 - [Glossary](Glossary.md)
+
