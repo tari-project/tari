@@ -1,4 +1,4 @@
-# RFC-0210-NamespaceRegistration
+# RFC-0210/NamespaceRegistration
 
 ## Namespace Registration on the Base Layer
 
@@ -115,7 +115,9 @@ This document will describe the process for Registered Asset Issuer Name (RAIN) 
 
       `recipient_name=<FQDN>;` 
 
-      `address_signature=<signature (containing the FQDN and RAIN_ID)>;`
+      `tx_description=<Asset short name>;` 
+
+      `address_signature=<Asset issuer signature (containing the FQDN and RAIN_ID)>;`
 
       `checksum=<CRC-32 cheksum of the entire record up to but excluding the checksum key-value pair>;"`
 
@@ -139,7 +141,7 @@ This document will describe the process for Registered Asset Issuer Name (RAIN) 
 
 [OpenAlias](https://openalias.org/) FQDN TXT records composition
 
-- A FQDN TXT record starts with `oa1:<name>` followed by a number of key-value pairs. Standard (optional) key-value are:
+- A FQDN TXT record starts with `oa1:<name>` followed by a number of key-value pairs. Standard (optional) key-values are:
   - `recipient_address`
   - `recipient_name`
   - `tx_description`
@@ -148,7 +150,7 @@ This document will describe the process for Registered Asset Issuer Name (RAIN) 
   - `address_signature`
   - `checksum`
 
-A RAIN UTXO consists of tuple `(RAIN_ID, PubKey)`. It is identified by a kernel feature flag and is a non-private non-fungible digital asset on the base layer. Ownership is confirmed by the `PubKey` value in the RAIN UTXO tuple. It costs Tari coins to register a RAIN UTXO and it can be transferred. A valid RAIN UTXO tuple is required to register a digital asset on the [Digital Asset Network] (DAN). Miners will ensure that no duplicate `RAIN_ID`s are created with registration.
+A RAIN UTXO consists of tuple `(RAIN_ID, PubKey)`. It is a non-confidential non-fungible digital asset on the base layer identified by a kernel feature flag. Ownership is confirmed by the `PubKey` value in the RAIN UTXO tuple. It costs Tari coins to register a RAIN UTXO and it can be transferred. A valid RAIN UTXO tuple is required to register a digital asset on the [Digital Asset Network] (DAN). Duplicate `RAIN_ID`s are not allowed and miner validation rules will ensure this with RAIN registration.
 
 
 
