@@ -25,7 +25,7 @@ following conditions are met:
 THIS DOCUMENT IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
 INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
 DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS ORrain
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS ORRAID
 SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
 THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
@@ -48,11 +48,14 @@ technological merits of the potential system outlined herein.
 
 ## Goals
 
-This document will describe the process for Registered Asset Issuer Name (RAIN) registration on the Tari base layer.
+This purpose of this document is to describe and specify the process for creating and linking an asset issuer specified domain name with a digital asset on the Digital Assets Network [(DAN)](DAN).
+
+
 
 ## Related RFCs
 
 - [RFC-0100: Base layer](RFC-0100_BaseLayer.md)
+- [RFC-0310/AssetTemplates](RFC-0310_AssetTemplates.md)
 
 # Description
 
@@ -73,17 +76,17 @@ This document will describe the process for Registered Asset Issuer Name (RAIN) 
       - RAIN - str[16]
       - Pubkey  - ???
   - Features
-    - It costs Tari to register a RAIN
-    - Must be able to transfer RAIN
+    - It costs Tari to register a RAIN 
+    - Must be able to transfer RAIN 
   - On asset create
-    - Create RAIN & sign
+    - Provide RAIN & sign
     - Miners must verify $ str ​$ has no been used before
   - RAIN sell Tx
     - Inputs
       - Tari coins payment of buyer - $ v_{in} $ 
-      - RAIN of seller - $ \Re_{seller} : (str , Pk_s) ​$ 
+      - RAIN of seller - $ \Re_{seller} : (str , Pk_s) $ 
     - Outputs
-      - RAIN to buyer - $ \Re_{buyer} : (str , Pk_b) ​$ 
+      - RAIN to buyer - $ \Re_{buyer} : (str , Pk_b) $ 
       - Tari coins change to buyer - $ v_{in} - v_{cost} ​$ 
       - Tari coins payment to seller - $ v_{cost} ​$ 
     - $ \text{Hash} (\text{prior block hash} \parallel str \parallel Pk) ​$ 
@@ -91,55 +94,66 @@ This document will describe the process for Registered Asset Issuer Name (RAIN) 
     - $ vG + k_0H + k_b I _e ​$ 
     - $ vG + kH = C $ 
 
-- Discussion 2
+- Discussion 2 & 3
 
-  - Make use of TXT records of a Fully Qualified Domain Name (FQDN) in the Domain Name System (DNS), as developed by [OpenAlias](https://openalias.org/) 
+  - Make use of text records of a Fully Qualified Domain Name (FQDN) in the Domain Name System (DNS), as developed by [OpenAlias](https://openalias.org/) 
 
-  - As DNS records are write only by their owners fraudulent activity should be minimized. Maintenance of the DNS records will always be the responsibility of the owner.
+  - As DNS records are write only by their owners, fraudulent activity should be minimized. Maintenance of the DNS records will always be the responsibility of the owner.
 
-  - RAIN registration UTXO consists of tuple `(RAIN_ID, PubKey)`
+  - A RAID UTXO consists of tuple `(RAID_ID, PubKey)`
 
-  - Sequence of events for RAIN registration
+  - Sequence of events for RAID registration and linking to a digital asset
 
-    - Asset issuer creates a RAIN registration Tx
+    -  Register RAID on the base layer
 
-      - Create `RAIN_ID = Hash(prior block hash || ??? || PubKey)` ​
-      - Post Tx to base layer
-      - Miners validate Tx as per RAIN registration validation rules
+      - Asset issuer create `RAID_ID = Hash(PubKey || FQDN)` 
+      - Asset issuer create a RAID registration Tx and post it to the base layer
+      - Miners validate Tx as per RAID registration validation rules
 
-    - DNS owner (whom may be the asset issuer) create FQDN TXT record entry
+    - Create FQDN text record entry
 
-      `"oa1:tari_rain` 
+      - The DNS owner (whom may be the asset issuer) create the OpenAlias type text record:
 
-      `recipient_address=<RAIN_ID>;` 
+        `"oa1:tari_RAID` 
 
-      `recipient_name=<FQDN>;` 
+        `recipient_address=<RAID_ID>;` 
 
-      `tx_description=<Asset short name>;` 
+        `recipient_name=<FQDN>;` 
 
-      `address_signature=<Asset issuer signature (containing the FQDN and RAIN_ID)>;`
+        `tx_description=<optional description>;` 
 
-      `checksum=<CRC-32 cheksum of the entire record up to but excluding the checksum key-value pair>;"`
+        `address_signature=<Asset issuer signature (containing the FQDN and RAID_ID)>;`
 
-    - Asset issuer create the asset Tx
+        `checksum=<CRC-32 cheksum of the entire record up to but excluding the checksum key-value pair>;"`
 
-      - Create asset from template
-      - Supply FQDN and `RAIN_ID`
-      - Post asset create Tx to VNs
+    - Create asset on DAN and link the RAID_ID
 
-    - VNs 
-
-      - Verify `RAIN_ID` on base layer
-      - Verify FQDN TXT record
-      - Create asset in DAN
-      - Register asset on base layer
-      - Update RAIN to FQDN hash table
+      - Asset issuer create asset from template, supplying the FQDN and `RAID_ID`
+      - Asset issuer post asset create Tx to VNs
+      - VNs verify valid `RAID_ID` and valid FQDN text record
+      - VNs create asset in DAN
+      - VNs register asset on base layer
+      - VNs update RAID to FQDN hash table
 
 
 
 ## Background
 
-[OpenAlias](https://openalias.org/) FQDN TXT records composition
+In order to easily differentiate different digital assets in the DAN, apart from some unique unpronounceable character string, a human readable identifier (domain name) is required. It is perceived that shorter names will have higher value due to branding and marketability, and the question is how this can be managed elegantly. It is also undesirable if for example the real Disney is forced to use the long versioned `disney.com-goofy-is-my-asset-yes` because some fake Disneys claimed `goofy` and `disney.com-goofy` and everything in between.
+
+One method to curb name space squatting is to register names in the Tari base layer with a domain name registration transaction. Let us call such a name a Registered Asset Issuer Name (RAIN). To make registering RAINs difficult enough to prevent spamming the network, a certain amount of Tari coins must be committed in a burn (permanently destroy) or a time locked pay to self type transaction. Lots of management overhead will be associated with such a scheme, even if domain-less assets are allowed. Although name space squatting will be curbed, it would be impossible to stop someone from registering say a `disney.com` RAIN if they do not own the real `disney.com` Fully Qualified Domain Name (FQDN).
+
+Another approach would be to make use of the public Domain Name System (DNS) and to link the FQDNs, that are already registered, to the digital assets in the DAN, making use of [OpenAlias](https://openalias.org/) text (TXT) records. Let us call this a Registered Asset Issuer Domain (RAID) TXT record. If we hash a public key and FQDN pair, it will provide us with a unique RAID_ID (RAID Identification). The RAID_ID will serve a similar purpose in the DAN as a Top Level Domain (TLD) in a DNS, as all digital assets belonging to a specific asset issuer could then be grouped under the FQDN by inference. To make this scheme more elaborate, but potentially unnecessary, all such RAIN_IDs could be also be registered in the base layer, similar to the RAIN scheme.
+
+If the standard Mimblewimble protocol is to be followed, a new output feature can be defined to cater for a RAID tuple `(RAID_ID, PubKey)` that is linked to a specific Unspent Transaction Output [UTXO]. The `RAID_ID` could be based on a [Base58Check](https://en.bitcoin.it/wiki/Base58Check_encoding) variant applied to `Hash(PubKey || FQDN)`. If the amount of Tari coin associated with the RAID tuple transaction is burned, `(RAID_ID, PubKey)` will forever be present on the blockchain and can assist with blockchain bloat. On the other hand, if that Tari coin is spent back to its owner with a specific time lock, it will be possible to spend and prune that UTXO later on. While that UTXO remains unspent, the RAID tuple will be valid, but when all or part of it is spent, the RAID tuple will disappear from the blockchain. Such a UTXO will thus be "colored" while unspent as it will have different properties to a normal UTXO. It will also be possible to recreate the original RAID tuple by registering it using the original `Hash(PubKey || FQDN)`.
+
+Thinking about the makeup of the `RAID_ID` it is evident that it can easily be calculated on the fly using the public key and FQDN, both of which values will always be known. The biggest advantage having the RAID tuple in the base layer is that of embedded consensus, where it will be validated (as no duplicates can be allowed) and mined before it can be used. However, this comes at the cost of more complex code, a more elaborate asset registration process and higher asset registration fees.
+
+This document explores the creation and use of RAID TXT records to link asset issuer specified domain names with digital assets on the [(DAN)](DAN), without RAID_IDs being registered on the base layer.
+
+## OpenAlias FQDN TXT Records
+
+[OpenAlias](https://openalias.org/) FQDN TXT records composition is defined below.
 
 - A FQDN TXT record starts with `oa1:<name>` followed by a number of key-value pairs. Standard (optional) key-values are:
   - `recipient_address`
@@ -150,7 +164,17 @@ This document will describe the process for Registered Asset Issuer Name (RAIN) 
   - `address_signature`
   - `checksum`
 
-A RAIN UTXO consists of tuple `(RAIN_ID, PubKey)`. It is a non-confidential non-fungible digital asset on the base layer identified by a kernel feature flag. Ownership is confirmed by the `PubKey` value in the RAIN UTXO tuple. It costs Tari coins to register a RAIN UTXO and it can be transferred. A valid RAIN UTXO tuple is required to register a digital asset on the [Digital Asset Network] (DAN). Duplicate `RAIN_ID`s are not allowed and miner validation rules will ensure this with RAIN registration.
+
+
+Integration with public Domain Name Service (DNS) records will be used to ensure valid ownership of a Fully Qualified Domain Name (FQDN). Only entities with write access to a specific DNS record will be able to create the required DNS entries.
+
+## Requirements
+
+Ownership of a RAID tuple `(RAID_ID, PubKey)` is confirmed by the public key. 
+
+A `RAID_ID` cannot be transferred.
+
+Duplicate `RAID_ID`s are not allowed and miner (or Validator Nodes (VN)) validation rules will ensure this with RAID registration.
 
 
 
