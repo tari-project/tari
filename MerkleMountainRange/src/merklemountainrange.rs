@@ -181,8 +181,6 @@ where T: Hashable
 {
     mmr: Vec<MerkleNode>,
     data: HashMap<ObjectHash, T>,
-    blockheight: Vec<u64>,
-
 }
 
 impl MerkleMountainRange {
@@ -191,7 +189,7 @@ impl MerkleMountainRange {
         mmr: Vec::new();
         data: HashMap::new();
     }
-
+    /// This function adds an vec of leaf nodes to the mmr.
     pub fn add_vec(&self, objects : Vec<T>)
     where T: Hashable {
         for i in 0..objects.len(){
@@ -199,10 +197,10 @@ impl MerkleMountainRange {
         }
     }
 
-    /// This function adds a new node to the mmr.
+    /// This function adds a new leaf node to the mmr.
     pub fn add_single(&self,object: T)
     where T: Hashable {
-        let node : merklenode{
+        let node : MerkleNode{
             object.get_hash(),
             false,
         };
@@ -218,7 +216,7 @@ impl MerkleMountainRange {
     fn add_single_no_leaf(&self, index : u64)
     {
         let new_hash = self.mmr[index].hash.clone() + self.mmr[pow(2,index+1) -1].hash.clone();
-        let new_node = : merklenode{
+        let new_node = : MerkleNode{
             new_hash,
             false,
         };
@@ -229,8 +227,8 @@ impl MerkleMountainRange {
 
 /// This function takes in the index and calculates if the node is right child node or not.
 /// If the node is the tree root it will still give the answer as if is a child of a node
-    pub fn is_node_right(index : u64) -> boolean
+    pub fn is_node_right(index : u64) -> bool
     {
-        true;
+        unimplemented!;
     }
 }
