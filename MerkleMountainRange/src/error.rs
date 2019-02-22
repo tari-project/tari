@@ -1,4 +1,4 @@
-// Copyright 2019 The Tari Project
+// Copyright 2018 The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,20 +20,19 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-type Hash = [u8; 32];
+use derive_error::Error;
 
-pub trait Hashable{//to_review is this required? I dont think so
-    fn get_hash(&Self)->Hash; 
+#[derive(Debug, Error)]
+pub enum MerkleNodeError {
+    error, // place holder for real error
 }
 
-/// This is the MerkleNode struct. This struct represents a merkle node, which in essence forms a linked list.
-pub struct MerkleNode< {
-    hash: Hash,
-    left_node: Option<&MerkleNode>,
-    right_node: Option<&MerkleNode>,
-    object : Option<Hash>,
+#[derive(Debug, Error)]
+pub enum MerkleMountainError {
+    error, // place holder for real error
 }
 
-impl MerkleNode {
-    pub fn new() -> MerkleNode {}
+#[derive(Debug, Error)]
+pub enum MerkleChainError {
+    error, // place holder for real error
 }

@@ -1,0 +1,6 @@
+[package]
+name = "merklemountainrange"
+version = "0.0.1"
+
+[dependencies]
+derive-error = "0.0.4"

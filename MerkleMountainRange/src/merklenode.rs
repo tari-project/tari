@@ -1,4 +1,4 @@
-// Copyright 2018 The Tari Project
+// Copyright 2019 The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,6 +20,22 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod merklechain;
-pub mod merklemountainrange;
-pub mod merklenode;
+type ObjectHash = [u8; 32];
+
+pub trait Hashable{//to_review is this required? I dont think so
+    fn get_hash(&Self)->ObjectHash;
+}
+
+/// This is the MerkleNode struct. This struct represents a merkle node, which in essence forms a linked list.
+pub struct MerkleNode< {
+    hash: ObjectHash,
+    pruned : bool,
+}
+
+impl MerkleNode {
+    pub fn new(hash : ObjectHash, height : u64) -> MerkleNode {
+        MerkleNode{
+            hash, pruned : false,
+        }
+    }
+}

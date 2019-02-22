@@ -1,4 +1,4 @@
-// Copyright 2019 The Tari Project
+// Copyright 2018 The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,13 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-/// The merkle mountain range was invented by Peter Todd more about them can be ready at:
-/// https://github.com/opentimestamps/opentimestamps-server/blob/master/doc/merkle-mountain-range.md
-/// https://github.com/mimblewimble/grin/blob/master/doc/mmr.md
-use crate::merklenode::MerkleNode;
-
-pub struct MerkleMountainRange {
-    merkle_root: MerkleNode,
-}
-
-impl MerkleMountainRange {}
+pub mod error;
+pub mod merklechain;
+pub mod merklemountainrange;
+pub mod merklenode;
