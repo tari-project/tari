@@ -20,160 +20,162 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-/// The merkle mountain range was invented by Peter Todd more about them can be ready at:
-/// https://github.com/opentimestamps/opentimestamps-server/blob/master/doc/merkle-mountain-range.md
-/// https://github.com/mimblewimble/grin/blob/master/doc/mmr.md
-///
-/// A Merkle mountian range(MMR) is a binary tree in where each parent is the concatenated hash of its two
-/// children. The leaves at the bottom of the MMR is the hashes of the data. The MMR allows easy to add and proof
-/// of existence inside of the tree. MMR always tries to have the largest possible single binary tree, so in effect
-/// it is possible to have more than one binary tree. Every time you have to get the merkle root (the single merkle
-/// proof of the whole MMR) you have the bag the peaks of the individual trees, or mountain peaks.
-///
-/// Lets take an example of how to construct one. Say you have the following MMR already made:
-///
-///       /\
-///      /  \
-///     /\  /\   /\
-///    /\/\/\/\ /\/\ /\
-///
-/// From this we can see we have 3 trees or mountains. We have constructed the largest possible tree's we can.
-/// If we want to calculate the merkle route we will bag each of the mountains in the following way
-///
-///          /\
-///         /\ \
-///        /  \ \
-///       /\   \ \
-///      /  \   \ \
-///     /\  /\  /\ \
-///    /\/\/\/\/\/\/\
-///
-/// Lets continue thw example, by adding a single object. Our MMR now looks as follows
-///
-///       /\
-///      /  \
-///     /\  /\   /\
-///    /\/\/\/\ /\/\ /\ /
-///
-/// We now have 4 mountains. Lets bag and calculate the merkle root again
-///
-///           /\
-///          /\ \
-///         /\ \ \
-///        /  \ \ \
-///       /\   \ \ \
-///      /  \   \ \ \
-///     /\  /\  /\ \ \
-///    /\/\/\/\/\/\/\ \
-///
-/// /// Lets continue thw example, by adding a single object. Our MMR now looks as follows
-///
-///           /\
-///          /  \
-///         /    \
-///        /      \
-///       /\      /\
-///      /  \    /  \
-///     /\  /\  /\  /\
-///    /\/\/\/\/\/\/\/\
-///
-/// Now we only have a single binary tree, we dont have to bag the mountains to calculate the merkle root. This
-/// process continues as you add more objects to the MMR.
-///
-///                 /\
-///                /  \
-///               /    \
-///              /      \
-///             /        \
-///            /          \
-///           /            \
-///          /\             \
-///         /\ \            /\
-///        /  \ \          /  \
-///       /\   \ \        /\   \
-///      /  \   \ \      /  \   \
-///     /\  /\  /\ \    /\  /\  /\
-///    /\/\/\/\/\/\/\  /\/\/\/\/\/\
-///
-/// Due to the unique way the MMR is constructed we can easily represent the MMR as a list of the nodes, as when
-/// adding nodes you only append. Lets take the following MMR and number the nodes in the order we create them.
-///
-///        7
-///       /  \
-///      /    \
-///     3      6
-///    / \    / \
-///   1   2  4   5
-///
-/// Looking above at the example of when you create the nodes, you will see the nodes will have been created in the
-/// order as they are named. This means we can easily represent them as a list: Height:  0 | 0 | 1 | 0 | 0 | 1 | 2
-/// Node:    1 | 2 | 3 | 4 | 5 | 6 | 7
-///
-/// Because of the list nature of the MMR we can easily navigate around the MMR using the following formulas:
-/// Jump to peer : 2^(H+1) -1
-/// find peak : 2^(H+1) -2 where < total elements
-/// left down : 2^H
-/// right down: -1
-/// height : log2(I+2) -1
-/// Pleas note that the formulas are for direct indexs in array's meaning the nodes count from 0 and not 1 as in
-/// the examples above. H - Height
-/// I - Index
-///
-/// Pruning the MMR means removing flagging an node as pruned and only removing it if its peer has been removed.
-/// We do this as we require the peer to prove the hash of the node. Taking the above example, let prune leave 1.
-///
-///                 /\
-///                /  \
-///               /    \
-///              /      \
-///             /        \
-///            /          \
-///           /            \
-///          /\             \
-///         /\ \            /\
-///        /  \ \          /  \
-///       /\   \ \        /\   \
-///      /  \   \ \      /  \   \
-///     /\  /\  /\ \    /\  /\  /\
-///    /\/\/\/\/\/\/\  /\/\/\/\/\/\
-///
-/// Node 1 has now only been marked as pruned but we cannot remove it as of yet because we still require it to
-/// prove node 2. When we prune node 2, the MMR looks as follows
-///
-///                 /\
-///                /  \
-///               /    \
-///              /      \
-///             /        \
-///            /          \
-///           /            \
-///          /\             \
-///         /\ \            /\
-///        /  \ \          /  \
-///       /\   \ \        /\   \
-///      /  \   \ \      /  \   \
-///     /\  /\  /\ \    /\  /\  /\
-///      /\/\/\/\/\/\  /\/\/\/\/\/\
-///
-/// Although we have no removed node 1 and node 2 from the MMR we cannot yet remove node 3 as we require node 3 for
-/// the proof of node 6. Lets prune 4 and 5.
-///
-///                 /\
-///                /  \
-///               /    \
-///              /      \
-///             /        \
-///            /          \
-///           /            \
-///          /\             \
-///         /\ \            /\
-///        /  \ \          /  \
-///       /\   \ \        /\   \
-///      /  \   \ \      /  \   \
-///         /\  /\ \    /\  /\  /\
-///        /\/\/\/\/\  /\/\/\/\/\/\
-///
-/// Now we removed 3 from the MMR
+// The merkle mountain range was invented by Peter Todd more about them can be ready at:
+// https://github.com/opentimestamps/opentimestamps-server/blob/master/doc/merkle-mountain-range.md
+// https://github.com/mimblewimble/grin/blob/master/doc/mmr.md
+//
+// A Merkle mountian range(MMR) is a binary tree in where each parent is the concatenated hash of its two
+// children. The leaves at the bottom of the MMR is the hashes of the data. The MMR allows easy to add and proof
+// of existence inside of the tree. MMR always tries to have the largest possible single binary tree, so in effect
+// it is possible to have more than one binary tree. Every time you have to get the merkle root (the single merkle
+// proof of the whole MMR) you have the bag the peaks of the individual trees, or mountain peaks.
+//
+// Lets take an example of how to construct one. Say you have the following MMR already made:
+//
+//       /\
+//      /  \
+//     /\  /\   /\
+//    /\/\/\/\ /\/\ /\
+//
+// From this we can see we have 3 trees or mountains. We have constructed the largest possible tree's we can.
+// If we want to calculate the merkle route we will bag each of the mountains in the following way
+//
+//          /\
+//         /\ \
+//        /  \ \
+//       /\   \ \
+//      /  \   \ \
+//     /\  /\  /\ \
+//    /\/\/\/\/\/\/\
+//
+// Lets continue thw example, by adding a single object. Our MMR now looks as follows
+//
+//       /\
+//      /  \
+//     /\  /\   /\
+//    /\/\/\/\ /\/\ /\ /
+//
+// We now have 4 mountains. Lets bag and calculate the merkle root again
+//
+//           /\
+//          /\ \
+//         /\ \ \
+//        /  \ \ \
+//       /\   \ \ \
+//      /  \   \ \ \
+//     /\  /\  /\ \ \
+//    /\/\/\/\/\/\/\ \
+//
+//  Lets continue thw example, by adding a single object. Our MMR now looks as follows
+//
+//           /\
+//          /  \
+//         /    \
+//        /      \
+//       /\      /\
+//      /  \    /  \
+//     /\  /\  /\  /\
+//    /\/\/\/\/\/\/\/\
+//
+// Now we only have a single binary tree, we dont have to bag the mountains to calculate the merkle root. This
+// process continues as you add more objects to the MMR.
+//
+//                 /\
+//                /  \
+//               /    \
+//              /      \
+//             /        \
+//            /          \
+//           /            \
+//          /\             \
+//         /\ \            /\
+//        /  \ \          /  \
+//       /\   \ \        /\   \
+//      /  \   \ \      /  \   \
+//     /\  /\  /\ \    /\  /\  /\
+//    /\/\/\/\/\/\/\  /\/\/\/\/\/\
+//
+// Due to the unique way the MMR is constructed we can easily represent the MMR as a list of the nodes, as when
+// adding nodes you only append. Lets take the following MMR and number the nodes in the order we create them.
+//
+//        7
+//       /  \
+//      /    \
+//     3      6
+//    / \    / \
+//   1   2  4   5
+//
+// Looking above at the example of when you create the nodes, you will see the nodes will have been created in the
+// order as they are named. This means we can easily represent them as a list:
+// Height:  0 | 0 | 1 | 0 | 0 | 1 | 2
+// Node:    1 | 2 | 3 | 4 | 5 | 6 | 7
+//
+// Because of the list nature of the MMR we can easily navigate around the MMR using the following formulas:
+// Jump to peer : 2^(H+1) -1
+// find peak : 2^(H+1) -2 where < total elements
+// left down : 2^H
+// right down: -1
+// height : log2(I+2) -1
+// Pleas note that the formulas are for direct indexs in array's meaning the nodes count from 0 and not 1 as in
+// the examples above. H - Height
+// I - Index
+//
+// Pruning the MMR means removing flagging an node as pruned and only removing it if its peer has been removed.
+// We do this as we require the peer to prove the hash of the node. Taking the above example, let prune leave 1.
+//
+//                 /\
+//                /  \
+//               /    \
+//              /      \
+//             /        \
+//            /          \
+//           /            \
+//          /\             \
+//         /\ \            /\
+//        /  \ \          /  \
+//       /\   \ \        /\   \
+//      /  \   \ \      /  \   \
+//     /\  /\  /\ \    /\  /\  /\
+//    /\/\/\/\/\/\/\  /\/\/\/\/\/\
+//
+// Node 1 has now only been marked as pruned but we cannot remove it as of yet because we still require it to
+// prove node 2. When we prune node 2, the MMR looks as follows
+//
+//                 /\
+//                /  \
+//               /    \
+//              /      \
+//             /        \
+//            /          \
+//           /            \
+//          /\             \
+//         /\ \            /\
+//        /  \ \          /  \
+//       /\   \ \        /\   \
+//      /  \   \ \      /  \   \
+//     /\  /\  /\ \    /\  /\  /\
+//      /\/\/\/\/\/\  /\/\/\/\/\/\
+//
+// Although we have no removed node 1 and node 2 from the MMR we cannot yet remove node 3 as we require node 3 for
+// the proof of node 6. Lets prune 4 and 5.
+//
+//                 /\
+//                /  \
+//               /    \
+//              /      \
+//             /        \
+//            /          \
+//           /            \
+//          /\             \
+//         /\ \            /\
+//        /  \ \          /  \
+//       /\   \ \        /\   \
+//      /  \   \ \      /  \   \
+//         /\  /\ \    /\  /\  /\
+//        /\/\/\/\/\  /\/\/\/\/\/\
+//
+// Now we removed 3 from the MMR
+
 use crate::merklenode::{Hashable, MerkleNode, ObjectHash};
 use std::collections::HashMap;
 
