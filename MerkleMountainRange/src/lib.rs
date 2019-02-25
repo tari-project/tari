@@ -21,6 +21,5 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 pub mod error;
-pub mod merklechain;
 pub mod merklemountainrange;
 pub mod merklenode;

@@ -23,16 +23,6 @@
 use derive_error::Error;
 
 #[derive(Debug, Error)]
-pub enum MerkleNodeError {
-    error, // place holder for real error
-}
-
-#[derive(Debug, Error)]
-pub enum MerkleMountainError {
-    error, // place holder for real error
-}
-
-#[derive(Debug, Error)]
-pub enum MerkleChainError {
+pub enum MerkleMountainRangeError {
     error, // place holder for real error
 }

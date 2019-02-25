@@ -235,6 +235,13 @@ name = "mempool"
 version = "0.0.1"
 
 [[package]]
+name = "merklemountainrange"
+version = "0.0.1"
+dependencies = [
+ "derive-error 0.0.4 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "mining"
 version = "0.0.1"
 
