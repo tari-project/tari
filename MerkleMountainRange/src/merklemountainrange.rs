@@ -217,6 +217,7 @@ where T: Hashable
             self.data.get(&self.mmr[index as usize].hash).unwrap().concat(self.mmr[peer_index(index) as usize].hash);
 
         let new_node = MerkleNode::new(new_hash);
+        self.mmr.push(new_node);
         if is_node_right((self.mmr.len() - 1) as u64) {
             self.add_single_no_leaf((self.mmr.len() - 1) as u64)
         }
@@ -234,6 +235,6 @@ pub fn peer_index(index: u64) -> u64 {
 
 // This function takes in the index and calculates if the node is right child node or not.
 // If the node is the tree root it will still give the answer as if is a child of a node
-pub fn is_node_right(index: u64) -> bool {
+pub fn is_node_right(_index: u64) -> bool {
     true // todo figure out math formula required to do this
 }

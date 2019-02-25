@@ -25,7 +25,7 @@ pub type ObjectHash = [u8; 32];
 pub trait Hashable {
     fn get_hash(&self) -> ObjectHash;
 
-    fn concat(&self, Hash: ObjectHash) -> ObjectHash;
+    fn concat(&self, hash: ObjectHash) -> ObjectHash;
     // think about this, perhaps we should do something like this:
     // fn fun_test_impl(value: i32, f: impl Fn(i32) -> i32) -> i32 {
     // println!("{}", f(value));

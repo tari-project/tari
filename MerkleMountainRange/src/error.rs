@@ -24,5 +24,5 @@ use derive_error::Error;
 
 #[derive(Debug, Error)]
 pub enum MerkleMountainRangeError {
-    error, // place holder for real error
+    Error, // place holder for real error
 }
