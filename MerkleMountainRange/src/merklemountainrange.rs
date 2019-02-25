@@ -213,20 +213,22 @@ where T: Hashable
     //  //This function adds non leaf nodes, eg nodes that are not directly a hash of data
     // This is iterative and will continue to add up and till it hits the top, will be a future left child
     fn add_single_no_leaf(&mut self, index: u64) {
-        let new_hash = self
-            .data
-            .get(&self.mmr[index as usize].hash)
-            .unwrap()
-            .concat(self.mmr[MerkleMountainRange::<T>::peer_index(index) as usize].hash);
+        let new_hash =
+            self.data.get(&self.mmr[index as usize].hash).unwrap().concat(self.mmr[peer_index(index) as usize].hash);
 
         let new_node = MerkleNode::new(new_hash);
         if is_node_right((self.mmr.len() - 1) as u64) {
             self.add_single_no_leaf((self.mmr.len() - 1) as u64)
         }
     }
-
-    pub fn peer_index(index: u64) -> u64 {
-        index + u64::pow(2, index as u32 + 1) - 1
+}
+/// This function takes in the index and calculates the index of the peer.
+pub fn peer_index(index: u64) -> u64 {
+    let index_count = u64::pow(2, index as u32 + 1) - 1;
+    if is_node_right(index) {
+        index - index_count
+    } else {
+        index + index_count
     }
 }
 
