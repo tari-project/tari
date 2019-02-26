@@ -65,6 +65,7 @@ pub trait Hashable {
 pub struct MerkleNode {
     pub hash: ObjectHash,
     pub pruned: bool,
+    // todo discuss adding height here, this will make some calculations faster, but will storage larger
 }
 
 impl MerkleNode {
