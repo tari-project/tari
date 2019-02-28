@@ -45,7 +45,7 @@ where T: Hashable
         self.data.get(&hash)
     }
 
-    /// This function returns a mut reference to the data stored in the mmr
+    /// This function returns a mut reference to the data stored in the MMR
     /// It will return none if the hash does not exist
     pub fn get_mut_object(&mut self, hash: ObjectHash) -> Option<&mut T> {
         self.data.get_mut(&hash)
@@ -53,7 +53,8 @@ where T: Hashable
 
     /// This function returns the hash proof tree of a given hash.
     /// If the given hash is not in the tree, the vec will be empty.
-    /// The Vec will be created in form of the child-child-parent
+    /// The Vec will be created in form of the child-child-parent(child)-child-parent-..
+    /// This pattern will be repeated until the parent is the root of the MMR
     pub fn get_hash_proof(&self, hash: ObjectHash) -> Vec<ObjectHash> {
         let mut result = Vec::new();
         let mut i = self.mmr.len();
@@ -64,22 +65,22 @@ where T: Hashable
                 break;
             }
         }
-        i = peer_index(i as u64) as usize;
+        i = peer_index(i);
         while i < self.mmr.len() {
             result.push(self.mmr[i].hash.clone());
             i += 1;
             result.push(self.mmr[i].hash.clone());
 
-            i = peer_index(i as u64) as usize;
+            i = peer_index(i);
         }
         result
     }
 
     /// This function returns the peak height of the mmr
-    pub fn get_peak(&self) -> u32 {
+    pub fn get_peak_height(&self) -> usize {
         let mut height_counter = 0;
         let mmr_len = self.get_last_added_index() as i128;
-        while (mmr_len - i128::pow(2, height_counter + 1) - 2) >= 0 {
+        while (mmr_len - (1 << height_counter + 1) - 2) >= 0 {
             height_counter += 1;
         }
         height_counter
@@ -105,7 +106,7 @@ where T: Hashable
 
     // This function adds non leaf nodes, eg nodes that are not directly a hash of data
     // This is iterative and will continue to up and till it hits the top, will be a future left child
-    fn add_single_no_leaf(&mut self, index: u64) {
+    fn add_single_no_leaf(&mut self, index: usize) {
         let new_hash =
             self.data.get(&self.mmr[index as usize].hash).unwrap().concat(self.mmr[peer_index(index) as usize].hash);
 
@@ -117,12 +118,12 @@ where T: Hashable
     }
 
     // This function is just a private function to return the index of the last added node
-    fn get_last_added_index(&self) -> u64 {
-        (self.mmr.len() - 1) as u64
+    fn get_last_added_index(&self) -> usize {
+        self.mmr.len() - 1
     }
 }
 /// This function takes in the index and calculates the index of the peer.
-pub fn peer_index(index: u64) -> u64 {
+pub fn peer_index(index: usize) -> usize {
     let index_count = (1 << index + 1) - 1;
     if is_node_right(index) {
         index - index_count
@@ -134,16 +135,16 @@ pub fn peer_index(index: u64) -> u64 {
 /// This function takes in the index and calculates if the node is the right child node or not.
 /// If the node is the tree root it will still give the answer as if it is a child of a node.
 /// This function is an iterative function as we might have to subtract the largest left_most tree.
-pub fn is_node_right(index: u64) -> bool {
+pub fn is_node_right(index: usize) -> bool {
     let mut height_counter = 0;
-    while (index as i128 - i128::pow(2, height_counter + 1) - 2) >= 0 {
+    while (index as i128 - (1 << height_counter + 1) - 2) >= 0 {
         height_counter += 1;
     }
-    if (index - u64::pow(2, height_counter + 1) - 2) == 0 {
+    if (index - (1 << height_counter + 1) - 2) == 0 {
         return false;
     };
-    let cloned_index = index - u64::pow(2, height_counter + 1) - 1;
-    if (cloned_index - u64::pow(2, height_counter + 1) - 2) == 0 {
+    let cloned_index = index - (1 << height_counter + 1) - 1;
+    if (cloned_index - (1 << height_counter + 1) - 2) == 0 {
         return true;
     };
     is_node_right(cloned_index)
@@ -151,16 +152,16 @@ pub fn is_node_right(index: u64) -> bool {
 
 /// This function takes in the index and calculates the height of the node
 /// This function is an iterative function as we might have to subtract the largest left_most tree.
-pub fn get_node_height(index: u64) -> u32 {
+pub fn get_node_height(index: usize) -> usize {
     let mut height_counter = 0;
-    while (index as i128 - i128::pow(2, height_counter + 1) - 2) >= 0 {
+    while (index as i128 - (1 << height_counter + 1) - 2) >= 0 {
         height_counter += 1;
     }
-    if (index - u64::pow(2, height_counter + 1) - 2) == 0 {
+    if (index - (1 << height_counter + 1) - 2) == 0 {
         return height_counter;
     };
-    let cloned_index = index - u64::pow(2, height_counter + 1) - 1;
-    if (cloned_index - u64::pow(2, height_counter + 1) - 2) == 0 {
+    let cloned_index = index - (1 << height_counter + 1) - 1;
+    if (cloned_index - (1 << height_counter + 1) - 2) == 0 {
         return height_counter;
     };
     get_node_height(cloned_index)
