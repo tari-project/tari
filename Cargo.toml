@@ -10,5 +10,5 @@ members = [
     "infrastructure/comms",
     "infrastructure/crypto",
     "infrastructure/storage",
-    "MerkleMountainRange"
+    "infrastructure/merklemountainrange"
 ]
