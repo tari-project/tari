@@ -20,46 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub type ObjectHash = [u8; 32];
-
-pub trait Hashable {
-    fn get_hash(&self) -> ObjectHash;
-
-    fn concat(&self, hash: ObjectHash) -> ObjectHash;
-    // think about this, perhaps we should do something like this:
-    // fn fun_test_impl(value: i32, f: impl Fn(i32) -> i32) -> i32 {
-    // println!("{}", f(value));
-    // value
-    // }
-    // fn fun_test_dyn(value: i32, f: &dyn Fn(i32) -> i32) -> i32 {
-    // println!("{}", f(value));
-    // value
-    // }
-    // fn fun_test_ptr(value: i32, f: fn(i32) -> i32) -> i32 {
-    // println!("{}", f(value));
-    // value
-    // }
-    //
-    // fn times2(value: i32) -> i32 {
-    // 2 * value
-    // }
-    //
-    // fn main() {
-    // let y = 2;
-    // static dispatch
-    // fun_test_impl(5, times2);
-    // fun_test_impl(5, |x| 2*x);
-    // fun_test_impl(5, |x| y*x);
-    // dynamic dispatch
-    // fun_test_dyn(5, &times2);
-    // fun_test_dyn(5, &|x| 2*x);
-    // fun_test_dyn(5, &|x| y*x);
-    // C-like pointer to function
-    // fun_test_ptr(5, times2);
-    // fun_test_ptr(5, |x| 2*x); //ok: empty capture set
-    // fun_test_ptr(5, |x| y*x); //error: expected fn pointer, found closure
-    // }
-}
+pub type ObjectHash = Vec<u8>;
 
 /// This is the MerkleNode struct. This struct represents a merkle node,
 pub struct MerkleNode {
