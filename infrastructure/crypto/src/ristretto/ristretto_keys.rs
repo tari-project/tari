@@ -29,9 +29,13 @@ use curve25519_dalek::{
     constants::RISTRETTO_BASEPOINT_TABLE,
     ristretto::{CompressedRistretto, RistrettoPoint},
     scalar::Scalar,
+    traits::MultiscalarMul,
 };
 use rand::{CryptoRng, Rng};
-use std::ops::Add;
+use std::{
+    cmp::Ordering,
+    ops::{Add, Mul, Sub},
+};
 
 /// The [SecretKey](trait.SecretKey.html) implementation for [Ristretto](https://ristretto.group) is a thin wrapper
 /// around the Dalek [Scalar](struct.Scalar.html) type, representing a 256-bit integer (mod the group order).
@@ -58,11 +62,21 @@ pub struct RistrettoSecretKey(pub(crate) Scalar);
 const SCALAR_LENGTH: usize = 32;
 const PUBLIC_KEY_LENGTH: usize = 32;
 
+//-----------------------------------------   Ristretto Secret Key    ------------------------------------------------//
 impl SecretKey for RistrettoSecretKey {
     fn key_length() -> usize {
         SCALAR_LENGTH
     }
 }
+
+/// Return a random secret key on the `ristretto255` curve using the supplied CSPRNG.
+impl SecretKeyFactory for RistrettoSecretKey {
+    fn random<R: CryptoRng + Rng>(rng: &mut R) -> Self {
+        RistrettoSecretKey(Scalar::random(rng))
+    }
+}
+
+//-------------------------------------  Ristretto Secret Key ByteArray  ---------------------------------------------//
 
 impl ByteArray for RistrettoSecretKey {
     /// Create a secret key on the Ristretto255 curve using the given little-endian byte array. If the byte array is
@@ -85,12 +99,39 @@ impl ByteArray for RistrettoSecretKey {
     }
 }
 
-/// Return a random secret key on the `ristretto255` curve using the supplied CSPRNG.
-impl SecretKeyFactory for RistrettoSecretKey {
-    fn random<R: CryptoRng + Rng>(rng: &mut R) -> Self {
-        RistrettoSecretKey(Scalar::random(rng))
+//----------------------------------   RistrettoSecretKey Mul / Add / Sub --------------------------------------------//
+
+impl<'a, 'b> Mul<&'b RistrettoPublicKey> for &'a RistrettoSecretKey {
+    type Output = RistrettoPublicKey;
+
+    fn mul(self, rhs: &'b RistrettoPublicKey) -> RistrettoPublicKey {
+        let p = &self.0 * &rhs.point;
+        RistrettoPublicKey::new_from_pk(p)
     }
 }
+
+impl<'a, 'b> Add<&'b RistrettoSecretKey> for &'a RistrettoSecretKey {
+    type Output = RistrettoSecretKey;
+
+    fn add(self, rhs: &'b RistrettoSecretKey) -> RistrettoSecretKey {
+        let k = &self.0 + &rhs.0;
+        RistrettoSecretKey(k)
+    }
+}
+
+impl<'a, 'b> Sub<&'b RistrettoSecretKey> for &'a RistrettoSecretKey {
+    type Output = RistrettoSecretKey;
+
+    fn sub(self, rhs: &'b RistrettoSecretKey) -> RistrettoSecretKey {
+        RistrettoSecretKey(&self.0 - &rhs.0)
+    }
+}
+
+define_add_variants!(LHS = RistrettoSecretKey, RHS = RistrettoSecretKey, Output = RistrettoSecretKey);
+define_sub_variants!(LHS = RistrettoSecretKey, RHS = RistrettoSecretKey, Output = RistrettoSecretKey);
+define_mul_variants!(LHS = RistrettoSecretKey, RHS = RistrettoPublicKey, Output = RistrettoPublicKey);
+
+//--------------------------------------------- Ristretto Public Key -------------------------------------------------//
 
 /// The [PublicKey](trait.PublicKey.html) implementation for `ristretto255` is a thin wrapper around the dalek
 /// library's [RistrettoPoint](struct.RistrettoPoint.html).
@@ -136,7 +177,16 @@ impl PublicKey for RistrettoPublicKey {
     fn key_length() -> usize {
         PUBLIC_KEY_LENGTH
     }
+
+    fn batch_mul(scalars: &Vec<Self::K>, points: &Vec<Self>) -> Self {
+        let p: Vec<RistrettoPoint> = points.iter().map(|p| p.point.clone()).collect();
+        let s: Vec<Scalar> = scalars.iter().map(|k| k.0.clone()).collect();
+        let p = RistrettoPoint::multiscalar_mul(s, p);
+        RistrettoPublicKey::new_from_pk(p)
+    }
 }
+
+//------------------------------------ PublicKey PartialEq, Eq, Ord impl ---------------------------------------------//
 
 impl PartialEq for RistrettoPublicKey {
     fn eq(&self, other: &RistrettoPublicKey) -> bool {
@@ -147,6 +197,20 @@ impl PartialEq for RistrettoPublicKey {
 }
 
 impl Eq for RistrettoPublicKey {}
+
+impl PartialOrd for RistrettoPublicKey {
+    fn partial_cmp(&self, other: &RistrettoPublicKey) -> Option<Ordering> {
+        self.compressed.to_bytes().partial_cmp(&other.compressed.to_bytes())
+    }
+}
+
+impl Ord for RistrettoPublicKey {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.compressed.to_bytes().cmp(&other.compressed.to_bytes())
+    }
+}
+
+//---------------------------------- PublicKey ByteArray implementation  ---------------------------------------------//
 
 impl ByteArray for RistrettoPublicKey {
     /// Create a new `RistrettoPublicKey` instance form the given byte array. The constructor returns errors under
@@ -172,22 +236,50 @@ impl ByteArray for RistrettoPublicKey {
     }
 }
 
-impl Add for &RistrettoPublicKey {
+//----------------------------------         PublicKey Add / Sub / Mul   ---------------------------------------------//
+
+impl<'a, 'b> Add<&'b RistrettoPublicKey> for &'a RistrettoPublicKey {
     type Output = RistrettoPublicKey;
 
-    fn add(self, rhs: &RistrettoPublicKey) -> Self::Output {
+    fn add(self, rhs: &'b RistrettoPublicKey) -> RistrettoPublicKey {
         let p_sum = &self.point + &rhs.point;
         RistrettoPublicKey::new_from_pk(p_sum)
     }
 }
 
-impl Add for &RistrettoSecretKey {
-    type Output = RistrettoSecretKey;
+impl<'a, 'b> Sub<&'b RistrettoPublicKey> for &'a RistrettoPublicKey {
+    type Output = RistrettoPublicKey;
 
-    fn add(self, rhs: &RistrettoSecretKey) -> Self::Output {
-        RistrettoSecretKey(&self.0 + &rhs.0)
+    fn sub(self, rhs: &RistrettoPublicKey) -> RistrettoPublicKey {
+        let p_sum = &self.point - &rhs.point;
+        RistrettoPublicKey::new_from_pk(p_sum)
     }
 }
+
+impl<'a, 'b> Mul<&'b RistrettoSecretKey> for &'a RistrettoPublicKey {
+    type Output = RistrettoPublicKey;
+
+    fn mul(self, rhs: &'b RistrettoSecretKey) -> RistrettoPublicKey {
+        let p = &rhs.0 * &self.point;
+        RistrettoPublicKey::new_from_pk(p)
+    }
+}
+
+impl<'a, 'b> Mul<&'b RistrettoSecretKey> for &'a RistrettoSecretKey {
+    type Output = RistrettoSecretKey;
+
+    fn mul(self, rhs: &'b RistrettoSecretKey) -> RistrettoSecretKey {
+        let p = &rhs.0 * &self.0;
+        RistrettoSecretKey(p)
+    }
+}
+
+define_add_variants!(LHS = RistrettoPublicKey, RHS = RistrettoPublicKey, Output = RistrettoPublicKey);
+define_sub_variants!(LHS = RistrettoPublicKey, RHS = RistrettoPublicKey, Output = RistrettoPublicKey);
+define_mul_variants!(LHS = RistrettoPublicKey, RHS = RistrettoSecretKey, Output = RistrettoPublicKey);
+define_mul_variants!(LHS = RistrettoSecretKey, RHS = RistrettoSecretKey, Output = RistrettoSecretKey);
+
+//----------------------------------         PublicKey From implementations      -------------------------------------//
 
 impl From<RistrettoSecretKey> for Scalar {
     fn from(k: RistrettoSecretKey) -> Self {
@@ -213,12 +305,17 @@ impl From<RistrettoPublicKey> for CompressedRistretto {
     }
 }
 
+//--------------------------------------------------------------------------------------------------------------------//
+//                                                     Tests                                                          //
+//--------------------------------------------------------------------------------------------------------------------//
+
 #[cfg(test)]
 mod test {
     use super::*;
     use crate::{
         common::ByteArray,
         keys::{PublicKey, SecretKeyFactory},
+        ristretto::test_common::get_keypair,
     };
     use rand;
 
@@ -349,5 +446,14 @@ mod test {
         for bad_encoding in &bad_encodings {
             RistrettoPublicKey::from_hex(bad_encoding).expect_err(&format!("Encoding {} should fail", bad_encoding));
         }
+    }
+
+    #[test]
+    fn batch_mul() {
+        let (k1, p1) = get_keypair();
+        let (k2, p2) = get_keypair();
+        let p_slow = &(k1 * &p1) + &(k2 * &p2);
+        let b_batch = RistrettoPublicKey::batch_mul(&vec![k1, k2], &vec![p1, p2]);
+        assert_eq!(p_slow, b_batch);
     }
 }
