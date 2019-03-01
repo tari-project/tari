@@ -20,25 +20,29 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::merklenode::{MerkleNode, ObjectHash};
-
+use crate::merklenode::{Hashable, MerkleNode, ObjectHash};
 use digest::Digest;
-use std::collections::HashMap;
+use std::{collections::HashMap, marker::PhantomData};
 
-pub struct MerkleMountainRange<T>
-where T: Digest
+pub struct MerkleMountainRange<T, D>
+where
+    T: Hashable,
+    D: Digest,
 {
     // todo convert these to a bitmap
     mmr: Vec<MerkleNode>,
     data: HashMap<ObjectHash, T>,
+    hasher: PhantomData<D>,
 }
 
-impl<T> MerkleMountainRange<T>
-where T: Digest
+impl<T, D> MerkleMountainRange<T, D>
+where
+    T: Hashable,
+    D: Digest,
 {
     /// This function creates a new empty Merkle Mountain Range
-    pub fn new() -> MerkleMountainRange<T> {
-        MerkleMountainRange { mmr: Vec::new(), data: HashMap::new() }
+    pub fn new() -> MerkleMountainRange<T, D> {
+        MerkleMountainRange { mmr: Vec::new(), data: HashMap::new(), hasher: PhantomData }
     }
 
     /// This function returns a reference to the data stored in the mmr
@@ -96,8 +100,8 @@ where T: Digest
     }
 
     /// This function adds a new leaf node to the mmr.
-    pub fn add_single(&mut self, mut object: T) {
-        let node_hash = object.result_reset().to_vec();
+    pub fn add_single(&mut self, object: T) {
+        let node_hash = object.get_hash();
         let node = MerkleNode::new(node_hash.clone());
         self.mmr.push(node);
         if is_node_right(self.get_last_added_index()) {
@@ -109,7 +113,7 @@ where T: Digest
     // This function adds non leaf nodes, eg nodes that are not directly a hash of data
     // This is iterative and will continue to up and till it hits the top, will be a future left child
     fn add_single_no_leaf(&mut self, index: usize) {
-        let mut hasher = T::new();
+        let mut hasher = D::new();
         hasher.input(&self.mmr[index].hash);
         hasher.input(&self.mmr[peer_index(index)].hash);
         let new_hash = hasher.result().to_vec();
