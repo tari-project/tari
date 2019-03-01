@@ -161,7 +161,7 @@ This document explores the creation and use of RAID TXT records to link asset is
 
 ### OpenAlias TXT DNS Records
 
-An [OpenAlias](https://openalias.org/) TXT DNS record on a FQDN starts with "*oa1:\<name\>*" followed by a number of key-value pairs. Standard (optional) key-values are: "*recipient_address*"; "*recipient_name*"; "*tx_description*"; "*tx_amount*"; "*tx_payment_id*"; "*address_signature*" and "*checksum*". Only entities with write access to a specific DNS record will be able to create the required TXT DNS record entries.
+An [OpenAlias](https://openalias.org/) TXT DNS record on a FQDN starts with "*oa1:\<name\>*" field followed by a number of key-value pairs. Standard (optional) key-values are: "*recipient_address*"; "*recipient_name*"; "*tx_description*"; "*tx_amount*"; "*tx_payment_id*"; "*address_signature*" and "*checksum*". Only entities with write access to a specific DNS record will be able to create the required TXT DNS record entries.
 
 **Req** - Integration with public DNS records MUST be used to ensure valid ownership of a FQDN. 
 
@@ -174,15 +174,24 @@ An [OpenAlias](https://openalias.org/) TXT DNS record on a FQDN starts with "*oa
 | recipient_name                 | \<FQDN\>                                                     |
 | tx_description                 | \<Optional description\>                                     |
 | address_signature              | \<Asset issuer signature (containing the FQDN and RAID_ID)\> |
-| checksum"                      | \<CRC-32 cheksum of the entire record up to but excluding the checksum key-value pair\> |
+| checksum                       | \<CRC-32 checksum of the entire record up to but excluding the checksum key-value pair\> |
 
 
 
-Ownership of a `RAID_ID` MUST be confirmed by the `PubKey` used to create it.
+### The `RAID_ID`
 
-A `RAID_ID` cannot be transferred.
+Because the `RAID_ID` does not exist as an entity on the base layer or in the [DAN], it cannot be owned or transferred, but only be verified as part of the [OpenAlias](https://openalias.org/) TXT DNS record verification. If an asset creator chooses not to link a `RAIN_ID` and FQDN, a default network assigned `RAIN_ID` will be used in the digital asset registration process.
 
-Duplicate `RAID_ID`s cannot be allowed on the [DAN]. Validator Nodes' (VN) validation rules MUST ensure no duplicate `RAID_ID`s are created with asset registration.
+**Req** - A `RAID_ID` MUST be a variant of a valid `Hash(PubKey || FQDN)`.
+
+**Req** - Validator Nodes (VN) MUST verify the [OpenAlias](https://openalias.org/) TXT DNS record to ensure the `RAIN_ID` and FQDN are correctly linked:
+
+- The TXT DNS record MUST start with "oa1:tari_RAID".
+- The "*recipient_address*" field MUST contain a valid `RAID_ID`.
+- The "*recipient_name*" field MUST correspond to the FQDN the TXT DNS record is in.
+- The "*address_signature*" field MUST contain a valid asset issuer signature:
+  - ???
+- The "*checksum*" field MUST contain a valid CRC-32 checksum.
 
 
 
