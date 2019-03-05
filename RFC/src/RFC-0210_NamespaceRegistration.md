@@ -85,11 +85,11 @@ This document explores the creation and use of RAID TXT records to link asset is
 
 ### OpenAlias TXT DNS Records
 
-An [OpenAlias](https://openalias.org/) TXT DNS record on a FQDN starts with "*oa1:\<name\>*" field followed by a number of key-value pairs. Standard (optional) key-values are: "*recipient_address*"; "*recipient_name*"; "*tx_description*"; "*tx_amount*"; "*tx_payment_id*"; "*address_signature*" and "*checksum*". Additional key-values may also be defined. Only entities with write access to a specific DNS record will be able to create the required TXT DNS record entries.
+An OpenAlias TXT DNS record  [[1]] on a FQDN starts with "*oa1:\<name\>*" field followed by a number of key-value pairs. Standard (optional) key-values are: "*recipient_address*"; "*recipient_name*"; "*tx_description*"; "*tx_amount*"; "*tx_payment_id*"; "*address_signature*" and "*checksum*". Additional key-values may also be defined. Only entities with write access to a specific DNS record will be able to create the required TXT DNS record entries.
 
 **Req** - Integration with public DNS records MUST be used to ensure valid ownership of a FQDN. 
 
-**Req** - The [OpenAlias](https://openalias.org/) TXT DNS record that links a `RAIN_ID` and FQDN must be constructed as follows:
+**Req** - The OpenAlias TXT DNS record that links a `RAIN_ID` and FQDN must be constructed as follows:
 
 | OpenAlias TXT DNS Record Field | OpenAlias TXT DNS Record Data                                |
 | ------------------------------ | ------------------------------------------------------------ |
@@ -106,7 +106,7 @@ An [OpenAlias](https://openalias.org/) TXT DNS record on a FQDN starts with "*oa
 
 ### The `RAID_ID`
 
-Because the `RAID_ID` does not exist as an entity on the base layer or in the [DAN], it cannot be owned or transferred, but only be verified as part of the [OpenAlias](https://openalias.org/) TXT DNS record verification. If an asset creator chooses not to link a `RAID_ID` and FQDN, a default network assigned `RAID_ID` will be used in the digital asset registration process.
+Because the `RAID_ID` does not exist as an entity on the base layer or in the [DAN], it cannot be owned or transferred, but only be verified as part of the OpenAlias TXT DNS record [[1]] verification. If an asset creator chooses not to link a `RAID_ID` and FQDN, a default network assigned `RAID_ID` will be used in the digital asset registration process.
 
 **Req** - A default `RAID_ID` MUST be used where it will not be linked to a FQDN, for example `RAID_ID = Base58Check(Hash256("No FQDN"))`.
 
@@ -123,7 +123,6 @@ The sequence of events for digital asset registration are perceived as follows:
 1. The asset issuer will decide if the default `RAID_ID` or a `RAID_ID` that is linked to a FQDN must be used for asset registration.
 
 2. **Req** - If a default `RAID_ID` is required:
-
    1. The asset issuer MUST use the default `RAID_ID` (see [The `RAID_ID`](???)).
    2. The asset issuer MUST sign the `RAID_ID` as specified (see [The `RAID_ID`](???)).
 
@@ -132,9 +131,9 @@ The sequence of events for digital asset registration are perceived as follows:
    2. The asset issuer MUST sign the `RAID_ID` as specified.
    3. The asset issuer MUST create a valid TXT DNS record (see [OpenAlias TXT DNS Records](???)).
 
-4. **Req** - VNs MUST only allow a valid `RAID_ID` to be used in the digital asset registration process.
+4. **Req** - [Validator Node]s (VN) MUST only allow a valid `RAID_ID` to be used in the digital asset registration process.
 
-5. **Req** - Validator Nodes (VN) MUST verify the [OpenAlias](https://openalias.org/) TXT DNS record if a linked (`RAID_ID`, FQDN) tuple is used:
+5. **Req** - VNs MUST verify the OpenAlias TXT DNS record if a linked (`RAID_ID`, FQDN) tuple is used:
    1. Verify that all fields have been completed as per the [specification](???).
    2. Verify that the `RAID_ID` can be calculated from information provided in the TXT DNS record.
    3. Verify that the asset issuer's `RAID_ID` signature is valid.
@@ -142,6 +141,24 @@ The sequence of events for digital asset registration are perceived as follows:
    5. Verify the checksum.
 
 
+
+### Confidentiality
+
+To prevent client lookups from leaking, OpenAlias recommends making use of [DNSCrypt](https://dnscrypt.info/), resolution via DNSCrypt-compatible resolvers that support Domain Name System Security Extensions (DNSSEC) and without DNS requests being logged.
+
+**Req** - [Token Wallet]s (TW) and VNs SHOULD enforce confidentiality when dealing with OpenAlias TXT DNS records:
+
+- All queries SHOULD make use of the DNSCrypt protocol.
+- Resolution SHOULD be forced via DNSCrypt-compatible resolvers that support DNSSEC and that do not log DNS requests.
+- The DNSSEC trust chain validity SHOULD be verified and the status SHOULD be reported back to the asset issuer.
+
+
+
+## References
+
+[[1]] Crate openalias [online]. Available: https://docs.rs/openalias/0.2.0/openalias/index.html. Date accessed: 2019-03-05.
+
+[1]: https://docs.rs/openalias/0.2.0/openalias/index.html "Crate openalias"
 
 
 
@@ -152,5 +169,10 @@ The sequence of events for digital asset registration are perceived as follows:
 [base layer]: Glossary.md#base-layer
 
 [Tari coin]: Glossary.md#tari-coin
+
+[Validator Node]: Glossary.md#validator-node
+
+[Token Wallet]: Glossary.md#token-wallet
+
 
 
