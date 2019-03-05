@@ -47,26 +47,33 @@ where
 
     /// This function returns a reference to the data stored in the mmr
     /// It will return none if the hash does not exist
-    pub fn get_object(&self, hash: ObjectHash) -> Option<&T> {
-        self.data.get(&hash)
+    pub fn get_object(&self, hash: &ObjectHash) -> Option<&T> {
+        self.data.get(hash)
     }
 
     /// This function returns a mut reference to the data stored in the MMR
     /// It will return none if the hash does not exist
-    pub fn get_mut_object(&mut self, hash: ObjectHash) -> Option<&mut T> {
-        self.data.get_mut(&hash)
+    pub fn get_mut_object(&mut self, hash: &ObjectHash) -> Option<&mut T> {
+        self.data.get_mut(hash)
+    }
+
+    pub fn get_hash(&self, index: usize) -> Option<ObjectHash> {
+        if index < 0 && index > self.get_last_added_index() {
+            return None;
+        };
+        Some(self.mmr[index].hash.clone())
     }
 
     /// This function returns the hash proof tree of a given hash.
     /// If the given hash is not in the tree, the vec will be empty.
     /// The Vec will be created in form of the child-child-parent(child)-child-parent-..
     /// This pattern will be repeated until the parent is the root of the MMR
-    pub fn get_hash_proof(&self, hash: ObjectHash) -> Vec<ObjectHash> {
+    pub fn get_hash_proof(&self, hash: &ObjectHash) -> Vec<ObjectHash> {
         let mut result = Vec::new();
         let mut i = self.mmr.len();
         for counter in 0..self.mmr.len() {
-            if self.mmr[counter].hash == hash {
-                result.push(self.mmr[i].hash.clone());
+            if self.mmr[counter].hash == *hash {
+                result.push(self.mmr[counter].hash.clone());
                 i = counter;
                 break;
             }
@@ -82,11 +89,24 @@ where
         result
     }
 
+    /// This function will verify the provided proof. Internally it uses the get_hash_proof function to construct a
+    /// similar proof. This function will return true if the proof is valid
+    pub fn verify_proof(&self, hashes: &Vec<ObjectHash>) -> bool {
+        if hashes.len() == 0 {
+            return false;
+        }
+        if self.get_object(&hashes[0]).is_none() {
+            return false;
+        }
+        let proof = self.get_hash_proof(&hashes[0]);
+        hashes.eq(&proof)
+    }
+
     /// This function returns the peak height of the mmr
     pub fn get_peak_height(&self) -> usize {
         let mut height_counter = 0;
         let mmr_len = self.get_last_added_index() as i128;
-        while (mmr_len - (1 << height_counter + 1) - 2) >= 0 {
+        while (mmr_len - (1 << height_counter + 1) + 2) > 0 {
             height_counter += 1;
         }
         height_counter
@@ -103,9 +123,9 @@ where
     pub fn add_single(&mut self, object: T) {
         let node_hash = object.get_hash();
         let node = MerkleNode::new(node_hash.clone());
+        self.data.insert(node_hash, object);
         self.mmr.push(node);
         if is_node_right(self.get_last_added_index()) {
-            self.data.insert(node_hash, object);
             self.add_single_no_leaf(self.get_last_added_index())
         }
     }
@@ -114,8 +134,8 @@ where
     // This is iterative and will continue to up and till it hits the top, will be a future left child
     fn add_single_no_leaf(&mut self, index: usize) {
         let mut hasher = D::new();
-        hasher.input(&self.mmr[index].hash);
         hasher.input(&self.mmr[peer_index(index)].hash);
+        hasher.input(&self.mmr[index].hash);
         let new_hash = hasher.result().to_vec();
         let new_node = MerkleNode::new(new_hash);
         self.mmr.push(new_node);
@@ -131,7 +151,8 @@ where
 }
 /// This function takes in the index and calculates the index of the peer.
 pub fn peer_index(index: usize) -> usize {
-    let index_count = (1 << index + 1) - 1;
+    let height = get_node_height(index);
+    let index_count = (1 << height + 1) - 1;
     if is_node_right(index) {
         index - index_count
     } else {
@@ -144,14 +165,17 @@ pub fn peer_index(index: usize) -> usize {
 /// This function is an iterative function as we might have to subtract the largest left_most tree.
 pub fn is_node_right(index: usize) -> bool {
     let mut height_counter = 0;
-    while (index as i128 - (1 << height_counter + 1) - 2) >= 0 {
+    while (index as i128 - (1 << height_counter + 1) + 1) > 0 {
+        // find the height of the tree by finding if we can subtract the  height +1
         height_counter += 1;
     }
-    if (index - (1 << height_counter + 1) - 2) == 0 {
+    if (index as i128 - (1 << height_counter + 1) + 2) == 0 {
+        // if it is the left node then and we subtract the height, it will be 0
         return false;
     };
-    let cloned_index = index - (1 << height_counter + 1) - 1;
-    if (cloned_index - (1 << height_counter + 1) - 2) == 0 {
+    let cloned_index = index - ((1 << height_counter + 1) - 1); // go to left peer.
+    if (cloned_index as i128 - (1 << height_counter + 1) + 2) == 0 {
+        // are we now on the correct height
         return true;
     };
     is_node_right(cloned_index)
@@ -161,14 +185,14 @@ pub fn is_node_right(index: usize) -> bool {
 /// This function is an iterative function as we might have to subtract the largest left_most tree.
 pub fn get_node_height(index: usize) -> usize {
     let mut height_counter = 0;
-    while (index as i128 - (1 << height_counter + 1) - 2) >= 0 {
+    while (index as i128 - (1 << height_counter + 1) + 1) > 0 {
         height_counter += 1;
     }
-    if (index - (1 << height_counter + 1) - 2) == 0 {
+    if (index as i128 - (1 << height_counter + 1) + 2) == 0 {
         return height_counter;
     };
-    let cloned_index = index - (1 << height_counter + 1) - 1;
-    if (cloned_index - (1 << height_counter + 1) - 2) == 0 {
+    let cloned_index = index - ((1 << height_counter + 1) - 1);
+    if (cloned_index as i128 - (1 << height_counter + 1) + 2) == 0 {
         return height_counter;
     };
     get_node_height(cloned_index)

@@ -21,17 +21,24 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use digest::Digest;
+use merklemountainrange::merklenode::{Hashable, ObjectHash};
 
-struct TestObject<D: Digest> {
-    pub id: u32,
+pub struct TestObject<D: Digest> {
+    pub id: String,
     pub hasher: D,
 }
 
 impl<D: Digest> TestObject<D> {
-    pub fn new(id: u32) -> TestObject<D> {
+    pub fn new(id: String) -> TestObject<D> {
         let hasher = D::new();
         TestObject { id, hasher }
     }
+}
 
-    pub fn h
+impl<D: Digest> Hashable for TestObject<D> {
+    fn get_hash(&self) -> ObjectHash {
+        let mut hash = D::new();
+        hash.input(self.id.as_bytes());
+        hash.result().to_vec()
+    }
 }
