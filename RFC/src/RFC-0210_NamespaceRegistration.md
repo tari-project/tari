@@ -61,10 +61,6 @@ This purpose of this document is to describe and specify the process for creatin
 
 # Description
 
-## Abstract
-
-???
-
 
 
 ## Background
@@ -89,7 +85,7 @@ This document explores the creation and use of RAID TXT records to link asset is
 
 ### OpenAlias TXT DNS Records
 
-An [OpenAlias](https://openalias.org/) TXT DNS record on a FQDN starts with "*oa1:\<name\>*" field followed by a number of key-value pairs. Standard (optional) key-values are: "*recipient_address*"; "*recipient_name*"; "*tx_description*"; "*tx_amount*"; "*tx_payment_id*"; "*address_signature*" and "*checksum*". Only entities with write access to a specific DNS record will be able to create the required TXT DNS record entries.
+An [OpenAlias](https://openalias.org/) TXT DNS record on a FQDN starts with "*oa1:\<name\>*" field followed by a number of key-value pairs. Standard (optional) key-values are: "*recipient_address*"; "*recipient_name*"; "*tx_description*"; "*tx_amount*"; "*tx_payment_id*"; "*address_signature*" and "*checksum*". Additional key-values may also be defined. Only entities with write access to a specific DNS record will be able to create the required TXT DNS record entries.
 
 **Req** - Integration with public DNS records MUST be used to ensure valid ownership of a FQDN. 
 
@@ -97,12 +93,14 @@ An [OpenAlias](https://openalias.org/) TXT DNS record on a FQDN starts with "*oa
 
 | OpenAlias TXT DNS Record Field | OpenAlias TXT DNS Record Data                                |
 | ------------------------------ | ------------------------------------------------------------ |
-| oa1:\<name\>                   | "oa1:tari_RAID"                                              |
-| recipient_address              | \<`RAID_ID`\>                                                |
-| recipient_name                 | \<FQDN\>                                                     |
-| tx_description                 | \<Optional description\>                                     |
-| address_signature              | \<Asset issuer signature (containing the FQDN and RAID_ID)\> |
-| checksum                       | \<CRC-32 checksum of the entire record up to but excluding the checksum key-value pair\> |
+| oa1:\<name\>                   | "oa1:tari_raid"                                              |
+| fqdn                           | \<FQDN\>                                                     |
+| public_key                     | \<256 bit public key in hexadecimal format excluding the leading `0x` (64 characters)\> |
+| raid_id                        | \<`RAID_ID` in hexadecimal format excluding the leading `0x` (44 characters)\> |
+| public_nonce                   | \<256 bit public nonce in hexadecimal format excluding the leading `0x` (64 characters)\> |
+| signature                      | \<Asset issuer's 256 bit Schnorr signature (bound to the `RAID_ID`), in hexadecimal format excluding the leading `0x` (64 characters)\> |
+| asset_description              | \<Optional description\>                                     |
+| checksum                       | \<CRC-32 checksum of the entire record up to but excluding the checksum key-value pair, in hexadecimal format excluding the leading `0x` (8 characters)\> |
 
 
 
@@ -110,19 +108,11 @@ An [OpenAlias](https://openalias.org/) TXT DNS record on a FQDN starts with "*oa
 
 Because the `RAID_ID` does not exist as an entity on the base layer or in the [DAN], it cannot be owned or transferred, but only be verified as part of the [OpenAlias](https://openalias.org/) TXT DNS record verification. If an asset creator chooses not to link a `RAID_ID` and FQDN, a default network assigned `RAID_ID` will be used in the digital asset registration process.
 
+**Req** - A default `RAID_ID` MUST be used where it will not be linked to a FQDN, for example `RAID_ID = Base58Check(Hash256("No FQDN"))`.
+
 **Req** - A FQDN linked (non-default) `RAID_ID` MUST be calculated as follows: `RAID_ID = Base58Check(Hash256(PubKey || FQDN))`.
 
-**Req** - Validator Nodes (VN) MUST verify the [OpenAlias](https://openalias.org/) TXT DNS record to ensure the `RAID_ID` and FQDN are correctly linked:
-
-- The TXT DNS record MUST start with "oa1:tari_RAID".
-- The "*recipient_address*" field MUST contain a valid `RAID_ID`.
-- The "*recipient_name*" field MUST correspond to the FQDN the TXT DNS record is in.
-- The "*address_signature*" field MUST contain a valid asset issuer Schnorr signature: `S = R + e x PubKey` with the challenge `e = RAID_ID`.
-- The "*checksum*" field MUST contain a valid CRC-32 checksum.
-
-**Req** - VNs MUST assign a default `RAID_ID` where it will not be linked to a FQDN.
-
-**Req** - VNs MUST only allow a valid `RAID_ID` to be used in the digital asset registration process.
+**Req** - A valid `RAID_ID` signature MUST be a 256 bit Schnorr signature defined as `s = PvtNonce + e·PvtKey` with the challenge `e` being `e = Hash256(PubNonce || PubKey || RAID_ID)`.
 
 
 
@@ -130,9 +120,26 @@ Because the `RAID_ID` does not exist as an entity on the base layer or in the [D
 
 The sequence of events for digital asset registration are perceived as follows:
 
-1. The asset issuer will decide if a default `RAID_ID` or one that is linked to a FQDN must be used for asset registration.
-2. The asset issuer will create a valid TXT DNS record (see [The `RAID_ID`](???)).
-3. 
+1. The asset issuer will decide if the default `RAID_ID` or a `RAID_ID` that is linked to a FQDN must be used for asset registration.
+
+2. **Req** - If a default `RAID_ID` is required:
+
+   1. The asset issuer MUST use the default `RAID_ID` (see [The `RAID_ID`](???)).
+   2. The asset issuer MUST sign the `RAID_ID` as specified (see [The `RAID_ID`](???)).
+
+3. **Req** - If a linked (`RAID_ID`, FQDN) tuple is required:
+   1. The asset issuer MUST create a `RAID_ID`.
+   2. The asset issuer MUST sign the `RAID_ID` as specified.
+   3. The asset issuer MUST create a valid TXT DNS record (see [OpenAlias TXT DNS Records](???)).
+
+4. **Req** - VNs MUST only allow a valid `RAID_ID` to be used in the digital asset registration process.
+
+5. **Req** - Validator Nodes (VN) MUST verify the [OpenAlias](https://openalias.org/) TXT DNS record if a linked (`RAID_ID`, FQDN) tuple is used:
+   1. Verify that all fields have been completed as per the [specification](???).
+   2. Verify that the `RAID_ID` can be calculated from information provided in the TXT DNS record.
+   3. Verify that the asset issuer's `RAID_ID` signature is valid.
+   4. Verify that the FQDN corresponds to the public DNS record it is in.
+   5. Verify the checksum.
 
 
 
