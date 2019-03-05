@@ -77,7 +77,8 @@ that the rules of the asset contracts are enforced.
   the behaviour of each contract type. e.g. there could be a Single-Use Token template for simple ticketing systems; a
   Coupon template for loyalty programmes and so on.
 * The template system is intended to be highly flexible and additional templates can be added to the protocol periodically.
-* Asset issuers can register Registered Asset Issuer Names (RAIN) on the base chain to help disambiguate similar
+* Asset issuers can link a Registered Asset Issuer Domain (RAID) ID in an OpenAlias TXT public Domain Name System (DNS) 
+  record to a Fully Qualified Domain Name (FQDN) that they own. This is to help disambiguate similar
   contracts and improve the signal-to-noise ratio from scam- or copy-cat contracts.
 
 An [Asset Issuer] (AI) will issue a Digital Assets by constructing a contract from one of the supported set of [DigitalAssetTemplate]s. The AI will choose
