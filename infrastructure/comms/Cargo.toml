@@ -3,3 +3,5 @@ name = "comms"
 version = "0.0.1"
 
 [dependencies]
+zmq = "0.8"
+crypto = { path = "../crypto"}

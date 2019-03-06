@@ -19,3 +19,20 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+use std::fmt;
+
+#[derive(Debug)]
+pub enum ConnectionError {
+    AddressParseFailed(String),
+    Unknown(String),
+}
+
+impl fmt::Display for ConnectionError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            ConnectionError::AddressParseFailed(ref reason) => write!(f, "Unable to parse NodeAddress: {}", reason),
+            ConnectionError::Unknown(ref reason) => write!(f, "An unknown connection error occurred: {}", reason),
+        }
+    }
+}

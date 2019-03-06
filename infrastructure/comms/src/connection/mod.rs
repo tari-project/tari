@@ -19,3 +19,13 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+pub mod error;
+pub mod i2p;
+pub mod node_address;
+pub mod onion;
+pub mod p2p;
+
+pub use self::{error::ConnectionError, node_address::NodeAddress};
+
+pub trait Connection {}

@@ -19,3 +19,20 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+use std::str::FromStr;
+
+use crate::connection::{ConnectionError, NodeAddress};
+
+pub struct OnionAddress(String);
+
+impl NodeAddress for OnionAddress {}
+
+impl FromStr for OnionAddress {
+    type Err = ConnectionError;
+
+    fn from_str(_addr: &str) -> Result<Self, Self::Err> {
+        // TODO: Implemented Onion address parsing
+        unimplemented!();
+    }
+}
