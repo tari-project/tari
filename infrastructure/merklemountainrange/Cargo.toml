@@ -1,0 +1,11 @@
+[package]
+name = "merklemountainrange"
+version = "0.0.1"
+edition = "2018"
+
+[dependencies]
+derive-error = "0.0.4"
+digest = "0.8.0"
+
+[dev-dependencies]
+blake2 = "0.8.0"
