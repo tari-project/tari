@@ -1,15 +1,39 @@
+// Copyright 2019 The Tari Project
+//
+// Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+// following conditions are met:
+//
+// 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+// disclaimer.
+//
+// 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+// following disclaimer in the documentation and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+// products derived from this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+// INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+// WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
 //! General definition of public-private key pairs for use in Tari. The traits and structs
 //! defined here are used in the Tari domain logic layer exclusively (as opposed to any specific
 //! implementation of ECC curve). The idea being that we can swap out the underlying
 //! implementation without worrying too much about the impact on upstream code.
 
+use crate::common::ByteArray;
 use rand::{CryptoRng, Rng};
+use std::ops::Add;
 
 /// A secret key factory trait. The `random` function is pulled out into a separate Trait because
 /// we can't know _a priori_ whether the default implementation (uniform random characters over the
 /// full 2^256 space) represents legal private keys. Maybe some validation must be done, which
 /// must be left up to the respective curve implementations.
-pub trait SecretKeyFactory {
+pub trait SecretKeyFactory: Sized {
     fn random<R: CryptoRng + Rng>(rng: &mut R) -> Self;
 }
 
@@ -27,7 +51,7 @@ pub trait SecretKeyFactory {
 /// let k = RistrettoSecretKey::random(&mut rng);
 /// let p = RistrettoPublicKey::from_secret_key(&k);
 /// ```
-pub trait SecretKey {
+pub trait SecretKey: ByteArray + Clone {
     fn key_length() -> usize;
 }
 
@@ -37,11 +61,13 @@ pub trait SecretKey {
 /// implementations need to implement this trait for them to be used in Tari.
 ///
 /// See [SecretKey](trait.SecretKey.html) for an example.
-pub trait PublicKey {
+pub trait PublicKey: ByteArray + Add<Output = Self> + Clone + PartialOrd + Ord {
     type K: SecretKey;
     /// Calculate the public key associated with the given secret key. This should not fail; if a
     /// failure does occur (implementation error?), the function will panic.
     fn from_secret_key(k: &Self::K) -> Self;
 
     fn key_length() -> usize;
+
+    fn batch_mul(scalars: &Vec<Self::K>, points: &Vec<Self>) -> Self;
 }

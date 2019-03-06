@@ -21,13 +21,9 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    challenge::Challenge256Bit,
-    keys::PublicKey,
     ristretto::{RistrettoPublicKey, RistrettoSecretKey},
     signatures::SchnorrSignature,
 };
-use curve25519_dalek::scalar::Scalar;
-use std::ops::Add;
 
 /// # A Schnorr signature implementation on Ristretto
 ///
@@ -74,10 +70,8 @@ use std::ops::Add;
 /// fn main() {
 ///     let (k, P) = get_keypair();
 ///     let (r, R) = get_keypair();
-///     let c = Challenge::<Blake256>::new();
-///     let e = c.concat(b"Small Gods");
-///     let e: Challenge256Bit = e.into();
-///     let sig = RistrettoSchnorr::sign(&k.into(), &r.into(), e);
+///     let e = Challenge::<Blake256>::new().concat(b"Small Gods");
+///     let sig = RistrettoSchnorr::sign(k, r, e);
 /// }
 /// ```
 ///
@@ -101,73 +95,18 @@ use std::ops::Add;
 /// let sig = RistrettoSchnorr::new(R, s);
 /// let e = Challenge::<Blake256>::new()
 ///     .concat(b"Maskerade");
-/// let e: Challenge256Bit = e.into();
-/// assert!(sig.verify(&P, &e));
+/// assert!(sig.verify(&P, e));
 /// # }
 /// ```
-#[allow(non_snake_case)]
-#[derive(PartialEq, Eq, Copy, Debug, Clone)]
-pub struct RistrettoSchnorr {
-    R: RistrettoPublicKey,
-    s: RistrettoSecretKey,
-}
-
-impl SchnorrSignature for RistrettoSchnorr {
-    type Challenge = Challenge256Bit;
-    type Point = RistrettoPublicKey;
-    type Scalar = RistrettoSecretKey;
-
-    /// Create a new SchnorrSignature instance given the signature pair (R,s)
-    fn new(public_nonce: RistrettoPublicKey, signature: RistrettoSecretKey) -> Self {
-        RistrettoSchnorr { R: public_nonce, s: signature }
-    }
-
-    /// Create a new SchnorrSignature instance by signing the challenge (which usually comes from a hashed message,
-    /// but in general could be any 256bit number) with the secret key and the secret nonce provided.
-    fn sign(secret: &RistrettoSecretKey, nonce: &RistrettoSecretKey, challenge: Challenge256Bit) -> RistrettoSchnorr {
-        // s = r + e.k
-        let e = Scalar::from_bytes_mod_order(challenge);
-        let s = &nonce.0 + &(&secret.0 * &e);
-        let public_nonce = RistrettoPublicKey::from_secret_key(nonce);
-        RistrettoSchnorr { R: public_nonce, s: RistrettoSecretKey(s) }
-    }
-
-    /// Verify that this instance is a valid signature for the given public key and challenge
-    fn verify(&self, public_key: &RistrettoPublicKey, challenge: &Challenge256Bit) -> bool {
-        let lhs = RistrettoPublicKey::from_secret_key(&self.s);
-        let e = Scalar::from_bytes_mod_order(challenge.clone());
-        let rhs = &self.R.point + &(&e * &public_key.point);
-        // This is a constant time comparison
-        lhs.point == rhs
-    }
-
-    fn get_signature(&self) -> &RistrettoSecretKey {
-        &self.s
-    }
-
-    fn get_public_nonce(&self) -> &RistrettoPublicKey {
-        &self.R
-    }
-}
-
-impl Add for &RistrettoSchnorr {
-    type Output = RistrettoSchnorr;
-
-    fn add(self, rhs: &RistrettoSchnorr) -> Self::Output {
-        let r_sum = self.get_public_nonce() + rhs.get_public_nonce();
-        let s_sum = self.get_signature() + rhs.get_signature();
-        RistrettoSchnorr::new(r_sum, s_sum)
-    }
-}
+pub type RistrettoSchnorr = SchnorrSignature<RistrettoPublicKey, RistrettoSecretKey>;
 
 #[cfg(test)]
 mod test {
     use crate::{
-        challenge::{Challenge, Challenge256Bit},
+        challenge::Challenge,
         common::{Blake256, ByteArray},
         keys::{PublicKey, SecretKeyFactory},
         ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
-        signatures::SchnorrSignature,
     };
     use rand;
 
@@ -186,16 +125,15 @@ mod test {
         let (r, R) = get_keypair();
         let c = Challenge::<Blake256>::new();
         let e = c.concat(P.to_bytes()).concat(R.to_bytes()).concat(b"Small Gods");
-        let e: Challenge256Bit = e.into();
-        let sig = RistrettoSchnorr::sign(&k.into(), &r.into(), e);
+        let sig = RistrettoSchnorr::sign(k, r, e.clone()).unwrap();
         let R_calc = sig.get_public_nonce();
         assert_eq!(R, *R_calc);
-        assert!(sig.verify(&P, &e));
+        assert!(sig.verify(&P, e.clone()));
         // Doesn't work for invalid credentials
-        assert!(!sig.verify(&R, &e));
+        assert!(!sig.verify(&R, e));
         // Doesn't work for different challenge
-        let wrong_challenge: Challenge256Bit = Challenge::<Blake256>::new().concat(b"Guards! Guards!").into();
-        assert!(!sig.verify(&P, &wrong_challenge));
+        let wrong_challenge = Challenge::<Blake256>::new().concat(b"Guards! Guards!");
+        assert!(!sig.verify(&P, wrong_challenge));
     }
 
     /// This test checks that the linearity of Schnorr signatures hold, i.e. that s = s1 + s2 is validated by R1 + R2
@@ -215,16 +153,16 @@ mod test {
             .concat(P1.to_bytes())
             .concat(P2.to_bytes())
             .concat(b"Moving Pictures");
-        let e1: Challenge256Bit = challenge.clone().into();
-        let e2: Challenge256Bit = challenge.clone().into();
+        let e1 = challenge.clone();
+        let e2 = challenge.clone();
         // Calculate Alice's signature
-        let s1 = RistrettoSchnorr::sign(&k1.into(), &r1.into(), e1);
+        let s1 = RistrettoSchnorr::sign(k1, r1, e1).unwrap();
         // Calculate Bob's signature
-        let s2 = RistrettoSchnorr::sign(&k2.into(), &r2.into(), e2);
+        let s2 = RistrettoSchnorr::sign(k2, r2, e2).unwrap();
         // Now add the two sigs together
         let s_agg = &s1 + &s2;
-        let e3: Challenge256Bit = challenge.into();
+        let e3 = challenge.clone();
         // Check that the multi-sig verifies
-        assert!(s_agg.verify(&(&P1 + &P2), &e3));
+        assert!(s_agg.verify(&(P1 + P2), e3));
     }
 }

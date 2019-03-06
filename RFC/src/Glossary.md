@@ -98,6 +98,15 @@ A commitment is a cryptographic primitive that allows one to commit to a chosen 
 others, with the ability to reveal the committed value later. Commitments are designed so that one cannot change the
 value or statement after they have committed to it.
 
+## Communication Node 
+[communication node]: #communication-node 'A communication node that is responsible for maintaining the Tari communication network'
+
+A Communication Node is either a Validator Node or Base Node that is part of the Tari communication network. It maintains the network and is responsible for forwarding and propagating joining requests, discovery requests and data messages on the communication network.  
+
+## Communication Clients 
+[communication client]: #communication-client 'A communication client that makes use of the Tari communication network, but does not maintain it'
+
+A Communication Client is a Wallet or Asset Manager that makes use of the Tari communication network to send joining and discovery requests. A Communication Client does not maintain the communication network and is not responsible for forwarding or propagating any requests or data messages.
 
 ## Digital asset
 [digital asset]: #digital-asset 'Sets of Native digital tokens, both fungible and non-fungible that are created by 
@@ -168,6 +177,11 @@ A Mining Server is responsible for constructing new blocks by bundling transacti
 
 A Mining Worker is responsible for performing Proof-of-Work tasks received from its parent [Mining Server].
 
+## Node ID
+[node ID]: #node-id
+
+A node ID is a unique identifier that specifies the location of a [Consensus Node] or [Consensus Client] in the Tari communication network. The node ID can either be obtained from registration on the [Base Layer] or can be derived from the public identification key of a [Consensus Node] or [Consensus Client]. 
+
 ## Range proof
 [range proof]: #range-proof
 
@@ -226,6 +240,11 @@ The base layer token. Tari coins are released according to the [emission schedul
 [trusted node]: #trusted-node "A permissioned Validator Node nominated by an Asset Issuer"
 
 A permissioned Validator Node nominated by an Asset Issuer that will form part of the committee for that Digital Asset.
+
+## Token Wallet
+[token wallet]: #token-wallet "An Asset Manager Wallet for Tari Assets and Tokens"
+
+A Tari Token Wallet is responsible for managing [Digital asset]s and [Tokens], and for constructing and negotiating [instructions]s for transferring and receiving Assets and Tokens on the [Digital Asset Network]. 
 
 ## Unspent transaction outputs
 [utxo]: #unspent-transaction-outputs
