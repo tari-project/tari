@@ -2,7 +2,7 @@
 
 ## Namespace Registration on the Base Layer
 
-![status: raw](./theme/images/status-raw.svg)
+![status: raw](./theme/images/status-draft.svg)
 
 **Maintainer(s)**: [Hansie Odendaal](https://github,com/hansieodendaal)
 
@@ -10,7 +10,7 @@
 
 [ The 3-Clause BSD License](https://opensource.org/licenses/BSD-3-Clause).
 
-Copyright <YEAR> <COPYRIGHT HOLDER | The Tari Development Community>
+Copyright 2019 The Tari Development Community
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 following conditions are met:
@@ -66,6 +66,8 @@ specified domain name with a [digital asset] on the Digital Assets Network ([DAN
 
 ## Background
 
+### Alternative Approaches
+
 In order to easily differentiate different [digital asset]s in the DAN, apart from some unique unpronounceable 
 character string, a human readable identifier (domain name) is required. It is perceived that shorter names will have 
 higher value due to branding and marketability, and the question is how this can be managed elegantly. It is also 
@@ -76,7 +78,7 @@ One method to curb name space squatting is to register names on the [base layer]
 transaction. Let us call such a name a Registered Asset Issuer Name (RAIN). To make registering RAINs difficult enough 
 to prevent spamming the network, a certain amount of [Tari coins] must be committed in a burn (permanently destroy) or 
 a time locked pay to self type transaction. Lots of management overhead will be associated with such a scheme, even if 
-domain-less assets are allowed. Although name space squatting will be curbed, it would be impossible to stop someone 
+domain-less assets are allowed. However, it would be impossible to stop someone 
 from registering say a "*disney.com*" RAIN if they do not own the real "*disney.com*" Fully Qualified Domain Name (FQDN).
 
 Another approach would be to make use of the public Domain Name System (DNS) and to link the FQDNs, that are already 
@@ -103,6 +105,8 @@ layer] is that of embedded consensus, where it will be validated (as no duplicat
 can be used. However, this comes at the cost of more complex code, a more elaborate asset registration process and 
 higher asset registration fees.
 
+### This RFC
+
 This document explores the creation and use of RAID TXT records to link asset issuer specified domain names with 
 digital assets on the [DAN], without RAID_IDs being registered on the [base layer].
 
@@ -120,8 +124,14 @@ number of key-value pairs. Standard (optional) key-values are: "*recipient_addre
 may also be defined. Only entities with write access to a specific DNS record will be able to create the required TXT 
 DNS record entries.
 
+TXT DNS records are limited to multiple strings of size 255, and as the User Datagram Protocol (UDP) size is 512 bytes, a TXT DNS record that exceeds that limit is less optimal [[2], Sections 3.3 & 3.4].
+
 **Req** - Integration with public DNS records MUST be used to ensure valid ownership of an FQDN that needs to be 
 linked to a [digital asset] on the DAN. 
+
+**Req** - The total size of the OpenAlias TXT DNS record MUST not exceed 512 characters.
+
+**Req** - The OpenAlias TXT DNS record implementation MUST make provision to interpret entries that are made up of more than one string as defined in [[2]].
 
 **Req** - The OpenAlias TXT DNS record MUST be constructed as follows:
 
@@ -129,11 +139,11 @@ linked to a [digital asset] on the DAN.
 | ------------------------------ | ------------------------------------------------------------ |
 | oa1:\<name\>                   | "oa1:tari_raid"                                              |
 | fqdn                           | \<FQDN\>                                                     |
-| public_key                     | \<256 bit public key in hexadecimal format excluding the leading "0x" (64 characters)\> |
-| raid_id                        | \<`RAID_ID` in hexadecimal format excluding the leading "0x" (44 characters)\> |
-| public_nonce                   | \<256 bit public nonce in hexadecimal format excluding the leading "0x" (64 characters)\> |
-| signature                      | \<[Asset issuer]'s 256 bit Schnorr signature (bound to the `RAID_ID`), in hexadecimal format excluding the leading "0x" (64 characters)\> |
-| asset_description              | \<Optional description\>                                     |
+| pub_key                        | \<256 bit public key in hexadecimal format excluding the leading "0x" (64 characters)\> |
+| raid_id                        | \<`RAID_ID` (*see [The RAID_ID](#the-raid_id)*) in hexadecimal format excluding the leading "0x" (44 characters)\> |
+| pub_nonce                      | \<256 bit public nonce in hexadecimal format excluding the leading "0x" (64 characters)\> |
+| signature                      | \<[Asset issuer]'s 256 bit Schnorr signature for the `RAID_ID` (*see [The RAID_ID](#the-raid_id)*), in hexadecimal format excluding the leading "0x" (64 characters)\> |
+| description                    | \<Optional RAID description\>                                |
 | checksum                       | \<CRC-32 checksum of the entire record up to but excluding the checksum key-value pair, in hexadecimal format excluding the leading "0x" (8 characters)\> |
 
 **Req** - The OpenAlias TXT DNS record MUST adhere to the formatting requirements as specified in [[1]].
@@ -147,14 +157,40 @@ transferred, but only be verified as part of the OpenAlias TXT DNS record [[1]] 
 chooses not to link a `RAID_ID` and FQDN, a default network assigned `RAID_ID` will be used in the digital asset 
 registration process.
 
-**Req** - A `RAID_ID` MUST be the result of a `Base58Check` encoding of a 256 bit hash function (`Hash256`). This will 
-result in a 44 character string.
+**Req** - A default `RAID_ID` MUST be used where it will not be linked to a FQDN, for example it MAY be derived
+from a default input string `"No FQDN"`.
 
-**Req** - A default `RAID_ID` MUST be used where it will not be linked to a FQDN, for example it MAY be calculated as 
-`RAID_ID = Base58Check(Hash256("No FQDN"))`.
+**Req** - A FQDN linked (non-default) `RAID_ID` MUST be derived from the concatenation `PubKey || <FQDN>`.
 
-**Req** - A FQDN linked (non-default) `RAID_ID` MUST be calculated as follows: 
-`RAID_ID = Base58Check(Hash256(PubKey || FQDN))`.
+**Req** - All concatenations of inputs for any hash algorithm MUST be done without adding any spaces.
+
+**Req** - Deriving a `RAID_ID` follows the general process of creating a Bitcoin address [[3]] and MUST be calculated 
+as follows:
+
+- Inputs for all hashing algorithms used to calculate the `RAID_ID` MUST be lower case characters.
+- The `Hash256` algorithm is not prescribed, but MUST be consistently used and MUST produce a 64 character (256 bit) 
+  hexadecimal output.
+- Stage 1 - MUST select the input string to use (either `"No FQDN"` or `PubKey || <FQDN>`).
+  - Example: Mimblewimble public key `6be6f34b657b785e558e85cc3b8bdb5bcbe8c10e7e58524c8027da7727e189ef` and FQDN `disney.com`
+     is used here, resulting in `6be6f34b657b785e558e85cc3b8bdb5bcbe8c10e7e58524c8027da7727e189efdisney.com`.
+- Stage 2 - MUST perform `Hash256` hashing on the input from stage 1.
+  - Example: `01df567efd2d3db687f78aeb2cdb3b045a651f241165165cd65824fe30c4eed8`
+- Stage 3 - MUST perform `RIPEMD-160` hashing on the result of stage 2.
+  - Example: `372180e923b2ba4bc84e1fae908bcbda387afe13`
+- Stage 4 - MUST concatenate the `RAID_ID` identifier byte, `3c`, with the result of stage 3.
+  - Example: `3c372180e923b2ba4bc84e1fae908bcbda387afe13`
+- Stage 5 - MUST perform `Hash256` hashing on the extended result of stage 4.
+  - Example: `c46df8650aab0e90622a13742b5f391a0598142ef96be47db9c59a0ddda8b82f`
+- Stage 6 - MUST perform `Hash256` hashing on the result of stage 5.
+  - Example: `7ccdbb1ad04cf63a6ae09432b1882aba4ffb820b1fa93f8765054da2bdcb1bf2`
+- Stage 7 - MUST take the first 4 bytes of the result of stage 6; this is the address checksum.
+  - Example: `7ccdbb1a`
+- Stage 8 - MUST concatenate the extended result of stage 4 with the 4 checksum bytes from stage 7. This is the 
+  25-byte binary address for the `RAID_ID`.
+  - Example: `3c372180e923b2ba4bc84e1fae908bcbda387afe137ccdbb1a`
+- Stage 9 - MUST convert the result of stage 8 from a byte string into a base58 string using `Base58Check` encoding. 
+  This will result in a 34 character string starting with `R`.
+  - Example: The resulting `RAID_ID` will be `REJhNwAdszLTteYuhY7KFTko4Q5CaVrvSu`.
 
 **Req** - A valid `RAID_ID` signature MUST be a 256 bit Schnorr signature defined as `s = PvtNonce + e·PvtKey` with 
 the challenge `e` being `e = Hash256(PubNonce || PubKey || RAID_ID)`.
@@ -166,15 +202,17 @@ the challenge `e` being `e = Hash256(PubNonce || PubKey || RAID_ID)`.
 The sequence of events leading up to digital asset registration are perceived as follows:
 
 1. The [asset issuer] will decide if the default `RAID_ID` or a `RAID_ID` that is linked to a FQDN must be used for 
-   asset registration.
+   asset registration. 
+   (_**Note:** A single linked (`RAID_ID`, FQDN) tuple may be associated with multiple digital assets from the same asset issuer._)
 
 2. **Req** - If a default `RAID_ID` is required:
+
    1. The asset issuer MUST use the default `RAID_ID` (see [The RAID_ID](#the-raid_id)).
-   2. The asset issuer MUST sign the `RAID_ID` as specified (see [The RAID_ID](#the-raid_id)).
+   2. The asset issuer MUST NOT sign the `RAID_ID`.
 
 3. **Req** - If a linked (`RAID_ID`, FQDN) tuple is required:
    1. The asset issuer MUST create a `RAID_ID`.
-   2. The asset issuer MUST sign the `RAID_ID` as specified.
+   2. The asset issuer MUST sign the `RAID_ID` as specified (see [The RAID_ID](#the-raid_id)).
    3. The asset issuer MUST create a valid TXT DNS record (see [OpenAlias TXT DNS Records](#openalias-txt-dns-records)).
 
 4. **Req** - [Validator Node]s (VN) MUST only allow a valid `RAID_ID` to be used in the digital asset registration 
@@ -215,7 +253,15 @@ Date accessed: 2019-03-05.
 
 [1]: https://docs.rs/openalias/0.2.0/openalias/index.html "Crate openalias"
 
+[[2]] RFC 7208: Sender Policy Framework (SPF) for Authorizing Use of Domains in Email, Version 1 [online]. 
+Available: https://tools.ietf.org/html/rfc7208. Date accessed: 2019-03-06.
 
+[2]: https://tools.ietf.org/html/rfc7208 "RFC 7208"
+
+[[3]] Technical background of version 1 Bitcoin addresses [online]. Available: https://en.bitcoin.it/wiki/Technical_background_of_version_1_Bitcoin_addresses#How_to_create_Bitcoin_Address. Date accessed: 2019-03-06.
+
+[3]: https://en.bitcoin.it/wiki/Technical_background_of_version_1_Bitcoin_addresses#How_to_create_Bitcoin_Address
+"Technical background of version 1 Bitcoin addresses"
 
 [DAN]: Glossary.md#digital-asset-network
 
