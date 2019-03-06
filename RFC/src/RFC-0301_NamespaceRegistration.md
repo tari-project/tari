@@ -85,7 +85,7 @@ records on a FQDN. Let us call this a Registered Asset Issuer Domain (RAID) TXT 
 FQDN pair, it will provide us with a unique RAID_ID (RAID Identification). The RAID_ID will serve a similar purpose in 
 the DAN as a Top Level Domain (TLD) in a DNS, as all digital assets belonging to a specific [asset issuer] could then 
 be grouped under the FQDN by inference. To make this scheme more elaborate, but potentially unnecessary, all such 
-RAIN_IDs could be also be registered on the [base layer] layer, similar to the RAIN scheme.
+RAID_IDs could be also be registered on the [base layer] layer, similar to the RAIN scheme.
 
 If the standard Mimblewimble protocol is to be followed, a new output feature can be defined to cater for a RAID tuple 
 `(RAID_ID, PubKey)` that is linked to a specific Unspent Transaction Output ([UTXO]). The `RAID_ID` could be based on 
