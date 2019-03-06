@@ -22,11 +22,7 @@
 
 use crate::support::{hashvalues::HashValues, testobject::TestObject};
 use blake2::Blake2b;
-<<<<<<< HEAD
 use merklemountainrange::{merklemountainrange::*};
-=======
-use merklemountainrange::{merklemountainrange::MerkleMountainRange, merklenode::Hashable};
->>>>>>> development
 
 fn create_mmr(leaves: u32) -> MerkleMountainRange<TestObject<Blake2b>, Blake2b> {
     let mut mmr: MerkleMountainRange<TestObject<Blake2b>, Blake2b> = MerkleMountainRange::new();
@@ -45,7 +41,6 @@ fn create_small_mmr() {
     let hash0 = mmr.get_hash(0).unwrap();
     let proof = mmr.get_hash_proof(&hash0);
     let mut our_proof = Vec::new();
-<<<<<<< HEAD
     for i in 0..3 {
         our_proof.push(mmr.get_hash(i).unwrap());
     }
@@ -163,11 +158,3 @@ fn test_node_heights() {
     assert_eq!(merklemountainrange::merklemountainrange::get_node_height(30), 4);
     assert_eq!(merklemountainrange::merklemountainrange::get_node_height(62), 5);
 }
-=======
-    our_proof.push(mmr.get_hash(0).unwrap());
-    our_proof.push(mmr.get_hash(1).unwrap());
-    our_proof.push(mmr.get_hash(2).unwrap());
-    assert_eq!(hash_values.get_slice(2), HashValues::to_hex_multiple(&proof));
-    assert_eq!(mmr.verify_proof(&our_proof), true);
-}
->>>>>>> development

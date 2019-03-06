@@ -22,31 +22,20 @@
 
 // This file only contains hashvalue lookups for the mmr tests. The values are stored in an array representing the same
 // storage of the mmr. All values are Hex encoded
-<<<<<<< HEAD
 use digest::Digest;
 use std::fmt::Write;
 
 // this struct is used to contain already computed hashes used by blake2b
-=======
-use blake2::Blake2b;
-use digest::Digest;
-use std::{fmt::Write, num::ParseIntError};
-
->>>>>>> development
 pub struct HashValues {
     values: Vec<String>,
 }
 
 impl HashValues {
-<<<<<<< HEAD
     #[allow(dead_code)] // function saved for future use
-=======
->>>>>>> development
     pub fn get_value(&self, index: usize) -> String {
         self.values[index].clone()
     }
 
-<<<<<<< HEAD
     pub fn get_slice(&self, start: usize, end: usize) -> Vec<String> {
         let mut result = Vec::new();
         result.resize(end + 1 - start, "".to_string());
@@ -59,18 +48,11 @@ impl HashValues {
         for num in indexes {
             result.push(self.values[num].clone());
         }
-=======
-    pub fn get_slice(&self, end: usize) -> Vec<String> {
-        let mut result = Vec::new();
-        result.resize(end + 1, "".to_string());
-        result[..end + 1].clone_from_slice(&(self.values[..end + 1]));
->>>>>>> development
         result
     }
 
     pub fn new() -> HashValues {
         let mut hashvalues = HashValues { values: Vec::new() };
-<<<<<<< HEAD
         // list of hex values of blake2b hashes
         hashvalues.values.push("1ced8f5be2db23a6513eba4d819c73806424748a7bc6fa0d792cc1c7d1775a9778e894aa91413f6eb79ad5ae2f871eafcc78797e4c82af6d1cbfb1a294a10d10".to_string()); // 1
         hashvalues.values.push("c5faca15ac2f93578b39ef4b6bbb871bdedce4ddd584fd31f0bb66fade3947e6bb1353e562414ed50638a8829ff3daccac7ef4a50acee72a5384ba9aeb604fc9".to_string()); // 2
@@ -110,12 +92,6 @@ impl HashValues {
         hashvalues.values.push("92ce61bf50a5c299bc88d6adad5db7b68c4b61abb7760947e8b9898c99312b18ba974d427e1699ede1be7c1c25b03440235a41a71ab2b4d1410399b72da87111".to_string()); // 20
         hashvalues.values.push("74d84a50748a78c7b98dcc9e22a62d64c726cb0e30126a26d8168e7252f4a67149506a4acde7a307372ebd0a0bcd3ef5f5670434262783d41675448ab7d06e3f".to_string()); // (19-20)
         hashvalues.values.push("a14d655ecdf12d3dacc2bb9c6779345db9e08fa8ddaa2163ada5d2ff3c21b9bd5b9d59f4f7fbe489543deafd0e2ca45b75d7f7fd047b83e74b85b1ea0a5ec5ff".to_string()); // (17-18)(19-20)
-=======
-        hashvalues.values.push("1ced8f5be2db23a6513eba4d819c73806424748a7bc6fa0d792cc1c7d1775a9778e894aa91413f6eb79ad5ae2f871eafcc78797e4c82af6d1cbfb1a294a10d10".to_string());
-        hashvalues.values.push("c5faca15ac2f93578b39ef4b6bbb871bdedce4ddd584fd31f0bb66fade3947e6bb1353e562414ed50638a8829ff3daccac7ef4a50acee72a5384ba9aeb604fc9".to_string());
-        hashvalues.values.push("4d3d9d4c8da746e2dcf236f31b53850e0e35a07c1d6082be51b33e7c1e11c39cf5e309953bf56866b0ccede95cdf3ae5f9823f6cf3bcc6ada19cf21b09884717".to_string());
-        // 4
->>>>>>> development
         hashvalues
     }
 
@@ -135,10 +111,7 @@ impl HashValues {
         result
     }
 
-<<<<<<< HEAD
     #[allow(dead_code)] // function saved for future use
-=======
->>>>>>> development
     pub fn get_hash_in_hex<D: Digest>(hash1: &Vec<u8>, hash2: &Vec<u8>) -> String {
         let mut hasher = D::new();
         hasher.input(hash1);
