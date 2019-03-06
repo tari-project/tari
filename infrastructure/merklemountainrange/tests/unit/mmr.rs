@@ -22,7 +22,7 @@
 
 use crate::support::{hashvalues::HashValues, testobject::TestObject};
 use blake2::Blake2b;
-use merklemountainrange::{merklemountainrange::*};
+use merklemountainrange::merklemountainrange::*;
 
 fn create_mmr(leaves: u32) -> MerkleMountainRange<TestObject<Blake2b>, Blake2b> {
     let mut mmr: MerkleMountainRange<TestObject<Blake2b>, Blake2b> = MerkleMountainRange::new();
@@ -77,7 +77,7 @@ fn create_med_mmr() {
     let our_proof = hash_values.get_indexes(vec![0, 1, 2, 5, 6, 13, 14, 29, 30]);
     assert_eq!(HashValues::to_hex_multiple(&proof), our_proof);
 
-//test some more proofs
+    // test some more proofs
     let proof = mmr.get_hash_proof(&mmr.get_hash(6).unwrap());
     let our_proof = hash_values.get_indexes(vec![6, 13, 14, 29, 30]);
     assert_eq!(HashValues::to_hex_multiple(&proof), our_proof);
@@ -91,7 +91,7 @@ fn create_med_mmr() {
     assert_eq!(HashValues::to_hex_multiple(&proof), our_proof);
 
     let proof = mmr.get_hash_proof(&mmr.get_hash(14).unwrap());
-    let our_proof = hash_values.get_indexes(vec![14,29,30]);
+    let our_proof = hash_values.get_indexes(vec![14, 29, 30]);
     assert_eq!(HashValues::to_hex_multiple(&proof), our_proof);
 
     let proof = mmr.get_hash_proof(&mmr.get_hash(11).unwrap());
