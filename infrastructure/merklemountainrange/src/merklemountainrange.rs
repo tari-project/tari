@@ -88,19 +88,19 @@ where
     // This function is an iterative function. It will add the left node first then the right node to the provided array
     // on the index. It will return when it reaches a single highest point.
     fn get_ordered_hash_proof(&self, index: usize, results: &mut Vec<ObjectHash>) {
-        let peer = peer_index(index);
+        let sibling = sibling_index(index);
         let mut next_index = index + 1;
-        if peer >= self.mmr.len() {
+        if sibling >= self.mmr.len() {
             results.push(self.mmr[index].hash.clone());
             return;
         }
-        if peer < index {
-            results.push(self.mmr[peer].hash.clone());
+        if sibling < index {
+            results.push(self.mmr[sibling].hash.clone());
             results.push(self.mmr[index].hash.clone());
         } else {
             results.push(self.mmr[index].hash.clone());
-            results.push(self.mmr[peer].hash.clone());
-            next_index = peer + 1;
+            results.push(self.mmr[sibling].hash.clone());
+            next_index = sibling + 1;
         }
         self.get_ordered_hash_proof(next_index, results);
     }
@@ -162,7 +162,7 @@ where
     // This is iterative and will continue to up and till it hits the top, will be a future left child
     fn add_single_no_leaf(&mut self, index: usize) {
         let mut hasher = D::new();
-        hasher.input(&self.mmr[peer_index(index)].hash);
+        hasher.input(&self.mmr[sibling_index(index)].hash);
         hasher.input(&self.mmr[index].hash);
         let new_hash = hasher.result().to_vec();
         let new_node = MerkleNode::new(new_hash);
@@ -199,8 +199,8 @@ where
         }
     }
 }
-/// This function takes in the index and calculates the index of the peer.
-pub fn peer_index(index: usize) -> usize {
+/// This function takes in the index and calculates the index of the sibling.
+pub fn sibling_index(index: usize) -> usize {
     let height = get_node_height(index);
     let index_count = (1 << height + 1) - 1;
     if is_node_right(index) {
@@ -225,7 +225,7 @@ pub fn is_node_right(index: usize) -> bool {
         return false;
     };
     if index == (height_index + ((1 << height_counter + 1) - 1)) {
-        // we are looking if its the right peer
+        // we are looking if its the right sibling
         return true;
     };
     // if we are here means it was not a right node at height counter, we therefor search lower
@@ -247,7 +247,7 @@ pub fn get_node_height(index: usize) -> usize {
         return height_counter;
     };
     if index == (height_index + ((1 << height_counter + 1) - 1)) {
-        // we are looking if its the right peer
+        // we are looking if its the right sibling
         return height_counter;
     };
     // if we are here means it was not a right node at height counter, we therefor search lower

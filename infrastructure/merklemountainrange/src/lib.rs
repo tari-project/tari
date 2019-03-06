@@ -111,7 +111,7 @@
 //! Node:    1 | 2 | 3 | 4 | 5 | 6 | 7
 //!
 //! Because of the list nature of the MMR we can easily navigate around the MMR using the following formulas:
-//! Jump to peer : 2^(H+1) -1
+//! Jump to sibling : 2^(H+1) -1
 //! find peak : 2^(H+1) -2 where < total elements
 //! left down : 2^H
 //! right down: -1
@@ -119,8 +119,8 @@
 //! the examples above. H - Height
 //! I - Index
 //!
-//! Pruning the MMR means removing flagging a node as pruned and only removing it if its peer has been removed.
-//! We do this as we require the peer to prove the hash of the node. Taking the above example, let's prune leave 1.
+//! Pruning the MMR means removing flagging a node as pruned and only removing it if its sibling has been removed.
+//! We do this as we require the sibling to prove the hash of the node. Taking the above example, let's prune leave 1.
 //! '''
 //!                 /\
 //!                /  \
