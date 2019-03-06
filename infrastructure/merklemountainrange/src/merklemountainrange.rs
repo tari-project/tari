@@ -33,7 +33,7 @@ where
     mmr: Vec<MerkleNode>,
     data: HashMap<ObjectHash, T>,
     hasher: PhantomData<D>,
-    // current_peak_height : usize, todo investigate caching height
+    current_peak_height: (usize, usize), // we store a tuple of peak height,index
 }
 
 impl<T, D> MerkleMountainRange<T, D>
@@ -43,7 +43,7 @@ where
 {
     /// This function creates a new empty Merkle Mountain Range
     pub fn new() -> MerkleMountainRange<T, D> {
-        MerkleMountainRange { mmr: Vec::new(), data: HashMap::new(), hasher: PhantomData }
+        MerkleMountainRange { mmr: Vec::new(), data: HashMap::new(), hasher: PhantomData, current_peak_height: (0, 0) }
     }
 
     /// This function returns a reference to the data stored in the mmr
@@ -119,16 +119,26 @@ where
         hashes.eq(&proof)
     }
 
-    /// This function returns the peak height of the mmr
-    pub fn get_peak_height(&self) -> usize {
+    // This function calculates the peak height of the mmr
+    fn calc_peak_height(&self) -> (usize, usize) {
         let mut height_counter = 0;
-        let mmr_len = self.get_last_added_index() as i128;
-        while mmr_len >= ((1 << height_counter + 2) - 2) {
+        let mmr_len = self.get_last_added_index();
+        let mut index: usize = (1 << height_counter + 2) - 2;
+        while mmr_len >= index {
             // find the height of the tree by finding if we can subtract the  height +1
             height_counter += 1;
+            index = (1 << height_counter + 2) - 2;
         }
-        height_counter
+        (height_counter, index)
     }
+
+    /// This function returns the peak height of the mmr
+    pub fn get_peak_height(&self) -> usize {
+        self.current_peak_height.0
+    }
+
+    /// This function will return the single merkle root of the MMR.
+    pub fn get_merkle_root(&self) -> ObjectHash {}
 
     /// This function adds a vec of leaf nodes to the mmr.
     pub fn add_vec(&mut self, objects: Vec<T>) {
@@ -159,12 +169,34 @@ where
         self.mmr.push(new_node);
         if is_node_right(self.get_last_added_index()) {
             self.add_single_no_leaf(self.get_last_added_index())
+        } else {
+            self.current_peak_height = self.calc_peak_height(); // because we have now stopped adding right nodes, we need to update the height of the mmr
         }
     }
 
     // This function is just a private function to return the index of the last added node
     fn get_last_added_index(&self) -> usize {
         self.mmr.len() - 1
+    }
+
+    fn bag_mmr(&self) -> Vec<ObjectHash> {
+        // lets find all peaks of the mmr
+        let mut peaks = Vec::new();
+        self.find_bagging_indexes(self.current_peak_height.0 as i64, self.current_peak_height.1, &mut peaks);
+        peaks
+    }
+
+    fn find_bagging_indexes(&self, mut height: i64, index: usize, peaks: &mut Vec<ObjectHash>) {
+        let mut new_index = index + (1 << height + 1) - 1;
+        while (new_index > self.get_last_added_index()) && (height > 0) {
+            new_index = new_index - (1 << height);
+            height -= 1;
+            new_index = new_index + (1 << height + 1) - 1;
+        }
+        if (new_index < self.get_last_added_index()) && (height > 0) {
+            peaks.push(self.mmr[new_index].hash.clone());
+            self.find_bagging_indexes(height, new_index, peaks);
+        }
     }
 }
 /// This function takes in the index and calculates the index of the peer.
