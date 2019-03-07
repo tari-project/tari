@@ -22,3 +22,5 @@
 
 pub mod address;
 pub mod connection;
+
+pub use self::address::SocketAddress;

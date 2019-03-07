@@ -4,4 +4,5 @@ version = "0.0.1"
 
 [dependencies]
 zmq = "0.8"
+derive-error = "0.0.4"
 crypto = { path = "../crypto"}

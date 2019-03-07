@@ -22,11 +22,9 @@
 
 use std::str::FromStr;
 
-use crate::connection::{ConnectionError, NodeAddress};
+use crate::connection::ConnectionError;
 
 pub struct OnionAddress(String);
-
-impl NodeAddress for OnionAddress {}
 
 impl FromStr for OnionAddress {
     type Err = ConnectionError;

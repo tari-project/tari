@@ -20,12 +20,20 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod error;
 pub mod i2p;
-pub mod node_address;
+pub mod net_address;
 pub mod onion;
 pub mod p2p;
 
-pub use self::{error::ConnectionError, node_address::NodeAddress};
+use derive_error::Error;
+
+pub use self::net_address::{NetAddress, NetAddressError};
+
+#[derive(Debug, Error)]
+pub enum ConnectionError {
+    NetAddressError(NetAddressError),
+    /// Connection timed out
+    Timeout,
+}
 
 pub trait Connection {}

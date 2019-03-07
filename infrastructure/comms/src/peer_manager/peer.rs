@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::connection::NodeAddress;
+use crate::connection::NetAddress;
 
 pub enum PeerType {
     BaseNode,
@@ -33,5 +33,5 @@ pub enum PeerType {
 pub struct Peer {
     // TODO: Add fields
     peer_type: PeerType,
-    addresses: Vec<Box<NodeAddress>>,
+    addresses: Vec<NetAddress>,
 }

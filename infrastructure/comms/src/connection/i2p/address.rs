@@ -22,11 +22,9 @@
 
 use std::str::FromStr;
 
-use crate::connection::{ConnectionError, NodeAddress};
+use crate::connection::ConnectionError;
 
 pub struct I2PAddress(String);
-
-impl NodeAddress for I2PAddress {}
 
 impl FromStr for I2PAddress {
     type Err = ConnectionError;
