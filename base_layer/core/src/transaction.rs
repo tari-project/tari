@@ -323,7 +323,7 @@ impl Transaction {
         Ok(())
     }
 
-    /// Validate this transactions
+    /// Validate this transaction
     pub fn validate(&self) -> Result<(), TransactionError> {
         self.body.verify_kernel_signatures()?;
         self.validate_kernel_sum()?;
