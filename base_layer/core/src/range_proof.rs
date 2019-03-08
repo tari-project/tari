@@ -26,6 +26,6 @@
 const RANGE_PROOF_LENGTH: usize = 1; // This will be changed
 
 #[derive(Debug, Clone)]
-pub struct RangeProof([u8; RANGE_PROOF_LENGTH]);
+pub struct RangeProof(pub [u8; RANGE_PROOF_LENGTH]);
 
 impl Copy for RangeProof {}
