@@ -7,7 +7,7 @@ extern crate quote;
 
 use proc_macro::TokenStream;
 
-// This macro will produce the 4 trait implementations required for an hashable struct to be sorted
+/// This macro will produce the 4 trait implementations required for an hashable struct to be sorted
 #[proc_macro_derive(HashableOrdering)]
 pub fn derive_hashable_ordering(tokens: TokenStream) -> TokenStream {
     // Parse TokenStream into AST
