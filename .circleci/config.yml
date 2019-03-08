@@ -12,7 +12,7 @@ jobs:
       - run:
           name: RFC documentation
           command: |
-            (test -x $HOME/.cargo/bin/mdbook || cargo install --vers "^0.2" mdbook)
+            (test -x /usr/local/cargo/bin/mdbook || cargo install --vers "^0.2" mdbook)
             cd RFC && mdbook test && mdbook build
 
       - persist_to_workspace:
