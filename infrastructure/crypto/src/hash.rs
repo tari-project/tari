@@ -1,4 +1,4 @@
-// Copyright 2018 The Tari Project
+// Copyright 2019 The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -18,15 +18,11 @@
 // SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
-// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE
 
-#[macro_use]
-extern crate bitflags;
+/// A trait for structs that need to produce a canonical hash
+pub trait Hashable {
+    type Hasher;
 
-pub mod block;
-pub mod blockheader;
-pub mod pow;
-pub mod range_proof;
-pub mod transaction;
-pub mod transaction_builder;
-pub mod types;
+    fn hash(&self) -> Vec<u8>;
+}
