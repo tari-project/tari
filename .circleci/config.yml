@@ -1,7 +1,7 @@
 version: 2
 
 defaults:
-  rust_image: &rust_image rust:1.32
+  rust_image: &rust_image quay.io/tarilabs/rust_tari-build-zmq:nightly-2019-03-08
 
 jobs:
   test-docs:
@@ -47,10 +47,7 @@ jobs:
       - run:
           name: Tari source code
           command: |
-            # https://mexus.github.io/rustup-components-history/x86_64-unknown-linux-gnu.html
-            rustup update nightly-2019-02-13
-            rustup default nightly-2019-02-13
-            rustup component add --toolchain nightly-2019-02-13 rustfmt
+            rustup component add --toolchain $NIGHTLY_VERSION rustfmt
             cargo fmt --all -- --check
             cargo test --all
 
