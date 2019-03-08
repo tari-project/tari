@@ -131,7 +131,7 @@ define_add_variants!(LHS = RistrettoSecretKey, RHS = RistrettoSecretKey, Output 
 define_sub_variants!(LHS = RistrettoSecretKey, RHS = RistrettoSecretKey, Output = RistrettoSecretKey);
 define_mul_variants!(LHS = RistrettoSecretKey, RHS = RistrettoPublicKey, Output = RistrettoPublicKey);
 
-//---------------------------------------  SecretKey From Implementations ---------------------------------------------//
+//--------------------------------------  SecretKey From Implementations ---------------------------------------------//
 
 impl From<RistrettoSecretKey> for Scalar {
     fn from(k: RistrettoSecretKey) -> Self {
