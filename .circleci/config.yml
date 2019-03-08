@@ -48,9 +48,10 @@ jobs:
           name: Tari source code
           command: |
             # https://mexus.github.io/rustup-components-history/x86_64-unknown-linux-gnu.html
-            rustup update nightly-2019-02-13
-            rustup default nightly-2019-02-13
-            rustup component add --toolchain nightly-2019-02-13 rustfmt
+            NIGHTLY_VERSION=nightly-2019-03-08
+            rustup update $NIGHTLY_VERSION
+            rustup default $NIGHTLY_VERSION
+            rustup component add --toolchain $NIGHTLY_VERSION rustfmt
             cargo fmt --all -- --check
             cargo test --all
 
