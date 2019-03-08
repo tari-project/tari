@@ -23,10 +23,13 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
-use crypto::ristretto::{
-    pedersen::{PedersenBaseOnRistretto255, PedersenOnRistretto255},
-    RistrettoSchnorr,
-    RistrettoSecretKey,
+use crypto::{
+    common::Blake256,
+    ristretto::{
+        pedersen::{PedersenBaseOnRistretto255, PedersenOnRistretto255},
+        RistrettoSchnorr,
+        RistrettoSecretKey,
+    },
 };
 
 /// Define the explicit Signature implementation for the Tari base layer. A different signature scheme can be
@@ -39,3 +42,6 @@ pub type Base = PedersenBaseOnRistretto255;
 
 /// Define the explicit Secret key implementation for the Tari base layer.
 pub type BlindingFactor = RistrettoSecretKey;
+
+/// Define the hash function that will be used to produce a signature challenge
+pub type SignatureHash = Blake256;

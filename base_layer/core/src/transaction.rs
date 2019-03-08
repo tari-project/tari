@@ -29,6 +29,7 @@ use crate::{
     types::{Base, BlindingFactor, Commitment, Signature},
 };
 
+use crate::types::SignatureHash;
 use crypto::{
     challenge::Challenge,
     commitment::HomomorphicCommitment,
@@ -223,7 +224,7 @@ impl TransactionKernel {
         let excess = self.excess.unwrap();
         let excess = excess.as_public_key();
         let r = signature.get_public_nonce();
-        let c = Challenge::<Blake256>::new()
+        let c = Challenge::<SignatureHash>::new()
             .concat(r.to_bytes())
             .concat(excess.clone().to_bytes())
             .concat(&self.fee.to_le_bytes())
