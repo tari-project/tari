@@ -32,7 +32,6 @@ use crate::{
 use crypto::{
     commitment::HomomorphicCommitment,
     common::{Blake256, ByteArray},
-    hash::Hashable,
 };
 use curve25519_dalek::scalar::Scalar;
 use derive_error::Error;
@@ -53,28 +52,6 @@ bitflags! {
         /// Output is a coinbase output, must not be spent until maturity
         const COINBASE_OUTPUT = 0b00000001;
     }
-}
-
-/// This macro implements the Ord, PartialOrd, PartialEq and Eq traits for the Hashable struct passed in
-macro_rules! hashable_ord {
-    ($hashable:ident) => {
-        impl Ord for $hashable {
-            fn cmp(&self, other: &$hashable) -> Ordering {
-                self.hash().cmp(&other.hash())
-            }
-        }
-        impl PartialOrd for $hashable {
-            fn partial_cmp(&self, other: &$hashable) -> Option<Ordering> {
-                Some(self.cmp(other))
-            }
-        }
-        impl PartialEq for $hashable {
-            fn eq(&self, other: &$hashable) -> bool {
-                self.hash() == other.hash()
-            }
-        }
-        impl Eq for $hashable {}
-    };
 }
 
 #[derive(Debug, PartialEq, Error)]
@@ -119,8 +96,6 @@ impl Hashable for TransactionInput {
     }
 }
 
-hashable_ord!(TransactionInput);
-
 /// Output for a transaction, defining the new ownership of coins that are being transferred. The commitment is a
 /// blinded value for the output while the range proof guarantees the commitment includes a positive value without
 /// overflow and the ownership of the private key.
@@ -164,8 +139,6 @@ impl Hashable for TransactionOutput {
         hasher.result().to_vec()
     }
 }
-
-hashable_ord!(TransactionOutput);
 
 /// The transaction kernel tracks the excess for a given transaction. For an explanation of what the excess is, and
 /// why it is necessary, refer to the
@@ -228,8 +201,6 @@ impl Hashable for TransactionKernel {
         hasher.result().to_vec()
     }
 }
-
-hashable_ord!(TransactionKernel);
 
 /// A transaction which consists of a kernel offset and an aggregate body made up of inputs, outputs and kernels.
 pub struct Transaction {
