@@ -47,8 +47,6 @@ jobs:
       - run:
           name: Tari source code
           command: |
-            TOOLCHAIN_VERSION=nightly-2019-03-08
-            rustup component add --toolchain $TOOLCHAIN_VERSION rustfmt
             cargo fmt --all -- --check
             cargo test --all
 
