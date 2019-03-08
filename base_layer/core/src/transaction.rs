@@ -215,24 +215,24 @@ impl TransactionKernel {
     }
 
     pub fn verify_signature(&self) -> Result<(), TransactionError> {
-        if self.excess.is_some() && self.excess_sig.is_some() {
-            let signature = self.excess_sig.unwrap();
-            let excess = self.excess.unwrap();
-            let excess = excess.as_public_key();
-            let r = signature.get_public_nonce();
-            let c = Challenge::<Blake256>::new()
-                .concat(r.to_bytes())
-                .concat(excess.clone().to_bytes())
-                .concat(&self.fee.to_le_bytes())
-                .concat(&self.lock_height.to_le_bytes());
-
-            if signature.verify(excess, c) {
-                return Ok(());
-            } else {
-                return Err(TransactionError::InvalidSignatureError);
-            }
-        } else {
+        if self.excess.is_none() || self.excess_sig.is_none() {
             return Err(TransactionError::NoSignatureError);
+        }
+
+        let signature = self.excess_sig.unwrap();
+        let excess = self.excess.unwrap();
+        let excess = excess.as_public_key();
+        let r = signature.get_public_nonce();
+        let c = Challenge::<Blake256>::new()
+            .concat(r.to_bytes())
+            .concat(excess.clone().to_bytes())
+            .concat(&self.fee.to_le_bytes())
+            .concat(&self.lock_height.to_le_bytes());
+
+        if signature.verify(excess, c) {
+            return Ok(());
+        } else {
+            return Err(TransactionError::InvalidSignatureError);
         }
     }
 }
