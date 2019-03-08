@@ -28,5 +28,4 @@ pub mod blockheader;
 pub mod pow;
 pub mod range_proof;
 pub mod transaction;
-pub mod transaction_builder;
 pub mod types;
