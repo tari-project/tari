@@ -32,8 +32,10 @@ use crate::{
 use crypto::{
     commitment::HomomorphicCommitment,
     common::{Blake256, ByteArray},
+    hash::Hashable,
 };
 use curve25519_dalek::scalar::Scalar;
+use derive::HashableOrdering;
 use derive_error::Error;
 use digest::Digest;
 use std::cmp::Ordering;
@@ -63,7 +65,7 @@ pub enum TransactionError {
 /// A transaction input.
 ///
 /// Primarily a reference to an output being spent by the transaction.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, HashableOrdering)]
 pub struct TransactionInput {
     /// The features of the output being spent. We will check maturity for coinbase output.
     pub features: OutputFeatures,
@@ -99,7 +101,7 @@ impl Hashable for TransactionInput {
 /// Output for a transaction, defining the new ownership of coins that are being transferred. The commitment is a
 /// blinded value for the output while the range proof guarantees the commitment includes a positive value without
 /// overflow and the ownership of the private key.
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, HashableOrdering)]
 pub struct TransactionOutput {
     /// Options for an output's structure or use
     pub features: OutputFeatures,
@@ -145,7 +147,7 @@ impl Hashable for TransactionOutput {
 /// [Mimblewimble TLU post](https://tlu.tarilabs.com/protocols/mimblewimble-1/sources/PITCHME.link.html?highlight=mimblewimble#mimblewimble).
 /// The kernel also tracks other transaction metadata, such as the lock height for the transaction (i.e. the earliest
 /// this transaction can be mined) and the transaction fee, in cleartext.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, HashableOrdering)]
 pub struct TransactionKernel {
     /// Options for a kernel's structure or use
     pub features: KernelFeatures,
