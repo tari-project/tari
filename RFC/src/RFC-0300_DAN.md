@@ -32,11 +32,11 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ## Language
 
-The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", 
-"NOT RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in 
-[BCP 14](https://tools.ietf.org/html/bcp14) (covering RFC2119 and RFC8174) when, and only when, they appear in all capitals, as 
+The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED",
+"NOT RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in
+[BCP 14](https://tools.ietf.org/html/bcp14) (covering RFC2119 and RFC8174) when, and only when, they appear in all capitals, as
 shown here.
-      
+
 ## Disclaimer
 
 The purpose of this document and its content is for information purposes only and may be subject to change or update
@@ -77,7 +77,7 @@ that the rules of the asset contracts are enforced.
   the behaviour of each contract type. e.g. there could be a Single-Use Token template for simple ticketing systems; a
   Coupon template for loyalty programmes and so on.
 * The template system is intended to be highly flexible and additional templates can be added to the protocol periodically.
-* Asset issuers can link a Registered Asset Issuer Domain (RAID) ID in an OpenAlias TXT public Domain Name System (DNS) 
+* Asset issuers can link a Registered Asset Issuer Domain (RAID) ID in an OpenAlias TXT public Domain Name System (DNS)
   record to a Fully Qualified Domain Name (FQDN) that they own. This is to help disambiguate similar
   contracts and improve the signal-to-noise ratio from scam- or copy-cat contracts.
 
@@ -100,7 +100,7 @@ still being discussed.
 
 #### Registration
 VNs register themselves on the [Base Layer] using a special [transaction] type. The registration [transaction] type
-requires the spending of a certain minimum amount of [Tari coin], the ([RegistrationCollateral]), that has a time-lock on the
+requires the spending of a certain minimum amount of [Tari token], the ([RegistrationCollateral]), that has a time-lock on the
 output for a minimum amount of time ([RegistrationTerm]) as well as some metadata, such as the VNs public key and a generated [Node ID]. The Node ID is generated
 during registration to prevent mining of VN public keys that can be used to manipulate routing on the DAN. The blinding factor for the Registration transaction is the private key
 that the VN node will use to sign every instruction that it executes for the duration of its [RegistrationTerm].
@@ -199,7 +199,7 @@ The VNs will communicate using a peer-to-peer (P2P) network. To facilitate this 
 [validator node]: Glossary.md#validator-node
 [digital asset network]: Glossary.md#digital-asset-network
 [transaction]: Glossary.md#transaction
-[tari coin]: Glossary.md#tari-coin
+[tari token]: Glossary.md#tari-coin
 [tokens]: Glossary.md#digital-asset-tokens
 [trusted node]: Glossary.md#trusted-node
 [instructions]: Glossary.md#instructions

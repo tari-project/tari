@@ -32,9 +32,9 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ## Language
 
-The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", 
-"NOT RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in 
-[BCP 14](https://tools.ietf.org/html/bcp14) (covering RFC2119 and RFC8174) when, and only when, they appear in all capitals, as 
+The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED",
+"NOT RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in
+[BCP 14](https://tools.ietf.org/html/bcp14) (covering RFC2119 and RFC8174) when, and only when, they appear in all capitals, as
 shown here.
 
 ## Disclaimer
@@ -62,7 +62,7 @@ The aim of this proposal is to provide a very high-level perspective for the mov
 
 The Tari network is composed of two layers:
 
-1. The base layer deals with [Tari coin] [transaction]s. It governed by a proof-of-work blockchain that is merged-mined with
+1. The base layer deals with [Tari token] [transaction]s. It governed by a proof-of-work blockchain that is merged-mined with
 Monero. The base layer is highly secure, decentralised and relatively slow.
 2. The digital assets network runs on a second layer. This layer manages all things to do with native digital assets. It
    is built for liveness, speed and scalability at the expense of decentralisation.
@@ -100,7 +100,7 @@ We can't have fast, cheap digital assets and also highly secure and decentralise
 
 Tari overcomes this constraint by building two layers:
 
-* A base layer that provides a public ledger of Tari coin transactions, secured by proof of work to maximise security, and
+* A base layer that provides a public ledger of Tari token transactions, secured by proof of work to maximise security, and
 * A second layer that manages digital asset state that is very fast and cheap, at the expense of decentralisation.
 
 If required, the digital asset layer can refer back to the base layer to temporarily give up speed in exchange for
@@ -182,7 +182,7 @@ and
 ### Interaction between the base layer and the DAN
 
 The base layer provides supporting services to the digital asset network. In general, the base layer only knows about
-Tari coin transactions. It knows nothing about the details of any digital assets and their state.
+Tari token transactions. It knows nothing about the details of any digital assets and their state.
 
 This is by design: The network cannot scale if details of digital asset contracts have to be tracked on the base layer.
 We envisage that there could be tens of thousands of contracts deployed on Tari. Some of those contracts may be enormous;
@@ -215,11 +215,11 @@ Table 1 summarises the defining characteristics of the Tari network layers:
 | Scalability                          | Moderate         | Very high              |
 | Security                             | High             | Mod (High w/ fallback) |
 | Decentralisation                     | High             | Low - Med              |
-| Processes Tari coin transactions     | Yes              | No                     |
+| Processes Tari token transactions     | Yes              | No                     |
 | Processes digital asset instructions | Only checkpoints | Yes                    |
 
 
-[Tari coin]: Glossary.md#tari-coin
+[Tari token]: Glossary.md#tari-coin
 [transaction]: Glossary.md#transaction
 [Validator Nodes]: Glossary.md#validator-node
 [Mimblewimble]: Glossary.md#mimblewimble

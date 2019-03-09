@@ -32,9 +32,9 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ## Language
 
-The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", 
-"NOT RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in 
-[BCP 14](https://tools.ietf.org/html/bcp14) (covering RFC2119 and RFC8174) when, and only when, they appear in all capitals, as 
+The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED",
+"NOT RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in
+[BCP 14](https://tools.ietf.org/html/bcp14) (covering RFC2119 and RFC8174) when, and only when, they appear in all capitals, as
 shown here.
 
 ## Disclaimer
@@ -64,7 +64,7 @@ presented [in the overview](RFC-0001_overview.md#proof-of-work).
 
 Tari Base Nodes MUST carry out the following tasks:
 
-* Validate all [Tari coin] [transaction]s.
+* Validate all [Tari token] [transaction]s.
 * Propagate valid transactions to peer nodes.
 * Validate all new [block]s received.
 * Propagate validated new blocks to peer nodes.
@@ -142,7 +142,7 @@ block validation service.  The validation service checks that
   * it is possible that blocks may be received out of order; particularly while syncing. Base Nodes SHOULD keep blocks.
     that have block heights greater than the current chain tip in memory for some preconfigured period.
 * the sum of all excesses is a valid public key. This proves that:
-   $$ \Sigma \left( \mathrm{inputs} - \mathrm{outputs} - \mathrm{fees} \right) = 0$$ 
+   $$ \Sigma \left( \mathrm{inputs} - \mathrm{outputs} - \mathrm{fees} \right) = 0$$
 * check if [cut-through] was applied. If a block contains already spent outputs, reject that block.
 
 Because MimbleWimble blocks can be simple be seen as large transactions with multiple inputs and outputs, the block validation service checks all transaction verification on the block as well.
@@ -168,13 +168,13 @@ Syncing, pruning and cut-through is discussed in detail in [RFC-0140](RFC-0140_S
 
 ### Archival nodes
 
-[Archival nodes](archivenode) are used to keep a complete history of the blockchain since genesis block, they do not employ pruning at all. These nodes will allow full syncing of the blockchain because normal nodes will not keep the full history to enable this. 
+[Archival nodes](archivenode) are used to keep a complete history of the blockchain since genesis block, they do not employ pruning at all. These nodes will allow full syncing of the blockchain because normal nodes will not keep the full history to enable this.
 
 
 
 [archivenode]: Glossary.md#archivenode
 
-[tari coin]: Glossary.md#tari-coin
+[tari token]: Glossary.md#tari-coin
 [blockchain]: Glossary.md#blockchain
 [transaction]: Glossary.md#transaction
 [block]: Glossary.md#block
