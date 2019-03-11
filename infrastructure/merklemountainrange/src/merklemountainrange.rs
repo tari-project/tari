@@ -85,7 +85,7 @@ where
         result
     }
 
-    // This function is an iterative function. It will add the left node first then the right node to the provided array
+    // This function is an recursive function. It will add the left node first then the right node to the provided array
     // on the index. It will return when it reaches a single highest point.
     fn get_ordered_hash_proof(&self, index: usize, results: &mut Vec<ObjectHash>) {
         let sibling = sibling_index(index);

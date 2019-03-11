@@ -119,7 +119,7 @@
 //! the examples above. H - Height
 //! I - Index
 //!
-//! Pruning the MMR means removing flagging a node as pruned and only removing it if its sibling has been removed.
+//! Pruning the MMR means flagging a node as pruned and only removing it if its sibling has been removed.
 //! We do this as we require the sibling to prove the hash of the node. Taking the above example, let's prune leave 1.
 //! '''
 //!                 /\
