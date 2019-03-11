@@ -417,10 +417,7 @@ mod test {
         commitment::HomomorphicCommitment,
         common::{Blake256, ByteArray},
         keys::{PublicKey as PublicKeyTrait, SecretKeyFactory},
-        ristretto::{
-            pedersen::DEFAULT_RISTRETTO_PEDERSON_BASE,
-            RistrettoSchnorr,
-        },
+        ristretto::{pedersen::DEFAULT_RISTRETTO_PEDERSON_BASE, RistrettoSchnorr},
     };
     use curve25519_dalek::scalar::Scalar;
     use rand;

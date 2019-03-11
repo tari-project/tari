@@ -27,11 +27,11 @@ use crypto::{
     common::Blake256,
     ristretto::{
         pedersen::{PedersenBaseOnRistretto255, PedersenOnRistretto255},
+        RistrettoPublicKey,
         RistrettoSchnorr,
         RistrettoSecretKey,
     },
 };
-use crypto::ristretto::RistrettoPublicKey;
 
 /// Define the explicit Signature implementation for the Tari base layer. A different signature scheme can be
 /// employed by redefining this type.
@@ -49,4 +49,3 @@ pub type PublicKey = RistrettoPublicKey;
 
 /// Define the hash function that will be used to produce a signature challenge
 pub type SignatureHash = Blake256;
-
