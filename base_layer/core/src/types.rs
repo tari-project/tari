@@ -31,6 +31,7 @@ use crypto::{
         RistrettoSecretKey,
     },
 };
+use crypto::ristretto::RistrettoPublicKey;
 
 /// Define the explicit Signature implementation for the Tari base layer. A different signature scheme can be
 /// employed by redefining this type.
@@ -43,5 +44,9 @@ pub type Base = PedersenBaseOnRistretto255;
 /// Define the explicit Secret key implementation for the Tari base layer.
 pub type BlindingFactor = RistrettoSecretKey;
 
+/// Define the explicit Public key implementation for the Tari base layer
+pub type PublicKey = RistrettoPublicKey;
+
 /// Define the hash function that will be used to produce a signature challenge
 pub type SignatureHash = Blake256;
+

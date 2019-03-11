@@ -410,18 +410,16 @@ mod test {
     use crate::{
         range_proof::RangeProof,
         transaction::{KernelFeatures, OutputFeatures, TransactionInput, TransactionKernel, TransactionOutput},
-        types::Commitment,
+        types::{BlindingFactor, Commitment, PublicKey},
     };
     use crypto::{
         challenge::Challenge,
         commitment::HomomorphicCommitment,
         common::{Blake256, ByteArray},
-        keys::{PublicKey, SecretKeyFactory},
+        keys::{PublicKey as PublicKeyTrait, SecretKeyFactory},
         ristretto::{
             pedersen::DEFAULT_RISTRETTO_PEDERSON_BASE,
-            RistrettoPublicKey,
             RistrettoSchnorr,
-            RistrettoSecretKey,
         },
     };
     use curve25519_dalek::scalar::Scalar;
@@ -432,11 +430,11 @@ mod test {
         let mut rng = rand::OsRng::new().unwrap();
         let base = &DEFAULT_RISTRETTO_PEDERSON_BASE;
 
-        let input_secret_key = RistrettoSecretKey::random(&mut rng);
-        let input_secret_key2 = RistrettoSecretKey::random(&mut rng);
-        let change_secret_key = RistrettoSecretKey::random(&mut rng);
-        let receiver_secret_key = RistrettoSecretKey::random(&mut rng);
-        let receiver_secret_key2 = RistrettoSecretKey::random(&mut rng);
+        let input_secret_key = BlindingFactor::random(&mut rng);
+        let input_secret_key2 = BlindingFactor::random(&mut rng);
+        let change_secret_key = BlindingFactor::random(&mut rng);
+        let receiver_secret_key = BlindingFactor::random(&mut rng);
+        let receiver_secret_key2 = BlindingFactor::random(&mut rng);
         let receiver_full_secret_key = &receiver_secret_key + &receiver_secret_key2;
 
         let input = TransactionInput::new(
@@ -457,8 +455,8 @@ mod test {
         );
 
         let offset: BlindingFactor = BlindingFactor::random(&mut rng).into();
-        let sender_private_nonce = RistrettoSecretKey::random(&mut rng);
-        let sender_public_nonce = RistrettoPublicKey::from_secret_key(&sender_private_nonce);
+        let sender_private_nonce = BlindingFactor::random(&mut rng);
+        let sender_public_nonce = PublicKey::from_secret_key(&sender_private_nonce);
         let fee = 1u64;
         let lock_height = 0u64;
 
@@ -491,7 +489,7 @@ mod test {
         sender_excess_key = &sender_excess_key - &input_secret_key2;
         sender_excess_key = &sender_excess_key - &offset;
 
-        let sender_public_excess = RistrettoPublicKey::from_secret_key(&sender_excess_key);
+        let sender_public_excess = PublicKey::from_secret_key(&sender_excess_key);
         // Receiver generate partial signatures
 
         let mut final_excess = &output.commitment + &change_output.commitment;
@@ -501,9 +499,9 @@ mod test {
         final_excess = &final_excess + &Commitment::new(&Scalar::zero(), &Scalar::from(fee), &base); // add fee
         final_excess = &final_excess - &Commitment::new(&offset.into(), &Scalar::zero(), &base); // subtract Offset
 
-        let receiver_private_nonce = RistrettoSecretKey::random(&mut rng);
-        let receiver_public_nonce = RistrettoPublicKey::from_secret_key(&receiver_private_nonce);
-        let receiver_public_key = RistrettoPublicKey::from_secret_key(&receiver_full_secret_key);
+        let receiver_private_nonce = BlindingFactor::random(&mut rng);
+        let receiver_public_nonce = PublicKey::from_secret_key(&receiver_private_nonce);
+        let receiver_public_key = PublicKey::from_secret_key(&receiver_full_secret_key);
 
         let challenge = Challenge::<Blake256>::new()
             .concat((&sender_public_nonce + &receiver_public_nonce).to_bytes())
