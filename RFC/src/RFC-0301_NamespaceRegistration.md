@@ -150,7 +150,7 @@ linked to a [digital asset] on the DAN.
 
 &nbsp;&nbsp;&nbsp;&nbsp;Example: An example OpenAlias TXT DNS record is shown:
 
-```
+``` text
 RAID_ID:
 raid_id       = RSt3HqhdvyuBkxqvZfhDtQT1WBC6e11bJ1
    
