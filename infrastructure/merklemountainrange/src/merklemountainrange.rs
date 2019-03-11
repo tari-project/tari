@@ -126,7 +126,7 @@ where
         result
     }
 
-    // This function is an iterative function. It will add the left node first then the right node to the provided array
+    // This function is an recursive function. It will add the left node first then the right node to the provided array
     // on the index. It will return when it reaches a single highest point.
     // this function will return the index of the local peak, negating the need to search for it again.
     fn get_ordered_hash_proof(&self, index: usize, results: &mut Vec<ObjectHash>) -> usize {
