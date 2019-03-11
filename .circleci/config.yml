@@ -40,7 +40,6 @@ jobs:
           command: |
             cd book
             NODE_DEBUG=gh-pages gh-pages --dotfiles --message "[skip ci] Update RFC docs" --dist . --dest .
-
   test-tari:
     docker:
       - image: *rust_image
