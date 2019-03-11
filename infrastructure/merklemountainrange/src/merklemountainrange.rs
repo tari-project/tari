@@ -81,10 +81,10 @@ where
         if i == self.mmr.len() {
             return result;
         };
-        let local_peak = self.get_ordered_hash_proof(i, &mut result);
+        self.get_ordered_hash_proof(i, &mut result);
 
-        if local_peak == self.get_last_added_index() {
-            // we know there is no bagging
+        if self.current_peak_height.1 == self.get_last_added_index() {
+            // we know there is no bagging as the mmr is a balanced binary tree
             return result;
         }
 
@@ -126,16 +126,16 @@ where
         result
     }
 
-    // This function is an recursive function. It will add the left node first then the right node to the provided array
+    // This function is an iterative function. It will add the left node first then the right node to the provided array
     // on the index. It will return when it reaches a single highest point.
     // this function will return the index of the local peak, negating the need to search for it again.
-    fn get_ordered_hash_proof(&self, index: usize, results: &mut Vec<ObjectHash>) -> usize {
+    fn get_ordered_hash_proof(&self, index: usize, results: &mut Vec<ObjectHash>) {
         let sibling = sibling_index(index);
         let mut next_index = index + 1;
         if sibling >= self.mmr.len() {
             // we are at a peak
             results.push(self.mmr[index].hash.clone());
-            return index;
+            return;
         }
         if sibling < index {
             results.push(self.mmr[sibling].hash.clone());
@@ -145,17 +145,19 @@ where
             results.push(self.mmr[sibling].hash.clone());
             next_index = sibling + 1;
         }
-        return self.get_ordered_hash_proof(next_index, results);
+        self.get_ordered_hash_proof(next_index, results);
     }
 
     /// This function will verify the provided proof. Internally it uses the get_hash_proof function to construct a
     /// similar proof. This function will return true if the proof is valid
     /// If the order does not match Lchild-Rchild-parent(Lchild)-Rchild-parent-.. the validation will fail
+    /// This function will only succeed if the given hash is of height 0
     pub fn verify_proof(&self, hashes: &Vec<ObjectHash>) -> bool {
         if hashes.len() == 0 {
             return false;
         }
-        if self.get_object(&hashes[0]).is_none() {
+        if self.get_object(&hashes[0]).is_none() && self.get_object(&hashes[1]).is_none() {
+            //we only want to search for valid object's proofs, either 0 or 1 must be a valid object
             return false;
         }
         let proof = self.get_hash_proof(&hashes[0]);
