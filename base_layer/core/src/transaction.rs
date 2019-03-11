@@ -417,7 +417,7 @@ mod test {
         commitment::HomomorphicCommitment,
         common::{Blake256, ByteArray},
         keys::{PublicKey as PublicKeyTrait, SecretKeyFactory},
-        ristretto::{pedersen::DEFAULT_RISTRETTO_PEDERSON_BASE, RistrettoSchnorr},
+        ristretto::pedersen::DEFAULT_RISTRETTO_PEDERSON_BASE,
     };
     use curve25519_dalek::scalar::Scalar;
     use rand;
@@ -507,9 +507,8 @@ mod test {
             .concat(&lock_height.to_le_bytes());
 
         let receiver_partial_sig =
-            RistrettoSchnorr::sign(receiver_full_secret_key, receiver_private_nonce, challenge.clone()).unwrap();
-        let sender_partial_sig =
-            RistrettoSchnorr::sign(sender_excess_key, sender_private_nonce, challenge.clone()).unwrap();
+            Signature::sign(receiver_full_secret_key, receiver_private_nonce, challenge.clone()).unwrap();
+        let sender_partial_sig = Signature::sign(sender_excess_key, sender_private_nonce, challenge.clone()).unwrap();
 
         let s_agg = &sender_partial_sig + &receiver_partial_sig;
 
