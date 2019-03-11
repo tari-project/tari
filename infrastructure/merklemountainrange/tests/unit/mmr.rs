@@ -46,56 +46,104 @@ fn create_small_mmr() {
     }
     assert_eq!(hash_values.get_slice(0, 2), HashValues::to_hex_multiple(&proof));
     assert_eq!(mmr.verify_proof(&our_proof), true);
+    assert_eq!(mmr.get_merkle_root(), mmr.get_hash(2).unwrap())
 }
 
 #[test]
-fn create_med_mmr() {
+fn create_mmr_with_2_peaks() {
     let mmr = create_mmr(20);
     assert_eq!(4, mmr.get_peak_height());
-    let mut raw = Vec::new();
-    for i in 0..38 {
-        raw.push(mmr.get_hash(i).unwrap());
-    }
     let hash_values = HashValues::new();
-    assert_eq!(hash_values.get_slice(0, 37), HashValues::to_hex_multiple(&raw)); // we are comparing the entire merkle mountain range array as we think it should look.
+
     let hash0 = mmr.get_hash(0).unwrap();
     let proof = mmr.get_hash_proof(&hash0);
-    let our_proof = hash_values.get_indexes(vec![0, 1, 2, 5, 6, 13, 14, 29, 30]);
+    let our_proof = hash_values.get_indexes(vec![0, 1, 2, 5, 6, 13, 14, 29, 30, 37, 42]);
     assert_eq!(HashValues::to_hex_multiple(&proof), our_proof);
-    let mut our_proof_raw = Vec::new();
-    our_proof_raw.push(raw[0].clone());
-    our_proof_raw.push(raw[1].clone());
-    our_proof_raw.push(raw[2].clone());
-    our_proof_raw.push(raw[5].clone());
-    our_proof_raw.push(raw[6].clone());
-    our_proof_raw.push(raw[13].clone());
-    our_proof_raw.push(raw[14].clone());
-    our_proof_raw.push(raw[29].clone());
-    our_proof_raw.push(raw[30].clone());
-    assert_eq!(mmr.verify_proof(&our_proof_raw), true);
     let proof = mmr.get_hash_proof(&mmr.get_hash(1).unwrap());
-    let our_proof = hash_values.get_indexes(vec![0, 1, 2, 5, 6, 13, 14, 29, 30]);
+    let our_proof = hash_values.get_indexes(vec![0, 1, 2, 5, 6, 13, 14, 29, 30, 37, 42]);
     assert_eq!(HashValues::to_hex_multiple(&proof), our_proof);
 
     // test some more proofs
     let proof = mmr.get_hash_proof(&mmr.get_hash(6).unwrap());
-    let our_proof = hash_values.get_indexes(vec![6, 13, 14, 29, 30]);
+    let our_proof = hash_values.get_indexes(vec![6, 13, 14, 29, 30, 37, 42]);
     assert_eq!(HashValues::to_hex_multiple(&proof), our_proof);
 
     let proof = mmr.get_hash_proof(&mmr.get_hash(22).unwrap());
-    let our_proof = hash_values.get_indexes(vec![22, 23, 24, 27, 21, 28, 14, 29, 30]);
+    let our_proof = hash_values.get_indexes(vec![22, 23, 24, 27, 21, 28, 14, 29, 30, 37, 42]);
     assert_eq!(HashValues::to_hex_multiple(&proof), our_proof);
 
     let proof = mmr.get_hash_proof(&mmr.get_hash(26).unwrap());
-    let our_proof = hash_values.get_indexes(vec![25, 26, 24, 27, 21, 28, 14, 29, 30]);
+    let our_proof = hash_values.get_indexes(vec![25, 26, 24, 27, 21, 28, 14, 29, 30, 37, 42]);
     assert_eq!(HashValues::to_hex_multiple(&proof), our_proof);
 
     let proof = mmr.get_hash_proof(&mmr.get_hash(14).unwrap());
-    let our_proof = hash_values.get_indexes(vec![14, 29, 30]);
+    let our_proof = hash_values.get_indexes(vec![14, 29, 30, 37, 42]);
     assert_eq!(HashValues::to_hex_multiple(&proof), our_proof);
 
     let proof = mmr.get_hash_proof(&mmr.get_hash(11).unwrap());
-    let our_proof = hash_values.get_indexes(vec![10, 11, 9, 12, 6, 13, 14, 29, 30]);
+    let our_proof = hash_values.get_indexes(vec![10, 11, 9, 12, 6, 13, 14, 29, 30, 37, 42]);
+    assert_eq!(HashValues::to_hex_multiple(&proof), our_proof);
+
+    assert_eq!(HashValues::to_hex(&mmr.get_merkle_root()), hash_values.get_value(42));
+}
+
+#[test]
+fn mmr_with_3_peaks() {
+    let mmr = create_mmr(21);
+    assert_eq!(4, mmr.get_peak_height());
+    let mut raw = Vec::new();
+    for i in 0..39 {
+        raw.push(mmr.get_hash(i).unwrap());
+    }
+    let hash_values = HashValues::new();
+    let proof = mmr.get_hash_proof(&mmr.get_hash(35).unwrap());
+    let our_proof = hash_values.get_indexes(vec![34, 35, 33, 36, 37, 38, 30, 43, 44]);
+    assert_eq!(HashValues::to_hex_multiple(&proof), our_proof);
+
+    assert_eq!(HashValues::to_hex(&mmr.get_merkle_root()), hash_values.get_value(44));
+}
+
+#[test]
+fn mmr_with_4_peaks() {
+    let mmr = create_mmr(23);
+    assert_eq!(4, mmr.get_peak_height());
+    let mut raw = Vec::new();
+    for i in 0..42 {
+        raw.push(mmr.get_hash(i).unwrap());
+    }
+    let hash_values = HashValues::new();
+    assert_eq!(HashValues::to_hex(&mmr.get_merkle_root()), hash_values.get_value(47));
+
+    let proof = mmr.get_hash_proof(&mmr.get_hash(35).unwrap());
+    let our_proof = hash_values.get_indexes(vec![34, 35, 33, 36, 37, 45, 30, 46, 47]);
+    assert_eq!(HashValues::to_hex_multiple(&proof), our_proof);
+
+    let proof = mmr.get_hash_proof(&mmr.get_hash(34).unwrap());
+    let our_proof = hash_values.get_indexes(vec![34, 35, 33, 36, 37, 45, 30, 46, 47]);
+    assert_eq!(HashValues::to_hex_multiple(&proof), our_proof);
+
+    let proof = mmr.get_hash_proof(&mmr.get_hash(21).unwrap());
+    let our_proof = hash_values.get_indexes(vec![21, 28, 14, 29,30, 46, 47]);
+    assert_eq!(HashValues::to_hex_multiple(&proof), our_proof);
+
+    let proof = mmr.get_hash_proof(&mmr.get_hash(41).unwrap());
+    let our_proof = hash_values.get_indexes(vec![40, 41, 37, 45, 30, 46, 47]);
+    assert_eq!(HashValues::to_hex_multiple(&proof), our_proof);
+
+    let proof = mmr.get_hash_proof(&mmr.get_hash(0).unwrap());
+    let our_proof = hash_values.get_indexes(vec![0, 1, 2, 5, 6, 13, 14, 29, 30, 46, 47]);
+    assert_eq!(HashValues::to_hex_multiple(&proof), our_proof);
+
+    let proof = mmr.get_hash_proof(&mmr.get_hash(1).unwrap());
+    let our_proof = hash_values.get_indexes(vec![0, 1, 2, 5, 6, 13, 14, 29, 30, 46, 47]);
+    assert_eq!(HashValues::to_hex_multiple(&proof), our_proof);
+
+    let proof = mmr.get_hash_proof(&mmr.get_hash(21).unwrap());
+    let our_proof = hash_values.get_indexes(vec![21, 28, 14, 29, 30, 46, 47]);
+    assert_eq!(HashValues::to_hex_multiple(&proof), our_proof);
+
+    let proof = mmr.get_hash_proof(&mmr.get_hash(28).unwrap());
+    let our_proof = hash_values.get_indexes(vec![21, 28, 14, 29, 30, 46, 47]);
     assert_eq!(HashValues::to_hex_multiple(&proof), our_proof);
 }
 

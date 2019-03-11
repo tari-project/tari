@@ -1,4 +1,4 @@
-// Copyright 2018 The Tari Project
+// Copyright 2019 The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
