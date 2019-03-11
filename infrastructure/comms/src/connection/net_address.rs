@@ -1,4 +1,4 @@
-//  Copyright 2018 The Tari Project
+//  Copyright 2019 The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -23,7 +23,7 @@
 use derive_error::Error;
 use std::str::FromStr;
 
-use connection::{i2p::I2PAddress, onion::OnionAddress, p2p::SocketAddress};
+use crate::connection::{i2p::I2PAddress, onion::OnionAddress, p2p::SocketAddress};
 
 #[derive(Debug, Error)]
 pub enum NetAddressError {

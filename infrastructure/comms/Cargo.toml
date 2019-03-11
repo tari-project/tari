@@ -1,6 +1,7 @@
 [package]
 name = "comms"
 version = "0.0.1"
+edition = "2018"
 
 [dependencies]
 zmq = "0.8"
