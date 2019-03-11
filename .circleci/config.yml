@@ -38,8 +38,7 @@ jobs:
       - run:
           name: Deploy docs to gh-pages branch
           command: |
-            cd book
-            gh-pages --dotfiles --message "Updates" --dist .
+            gh-pages --dotfiles --message "[skip ci] Update RFC docs" --dist ./book --dest .
 
   test-tari:
     docker:
