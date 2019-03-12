@@ -22,8 +22,8 @@
 
 use crate::support::{hashvalues::HashValues, testobject::TestObject};
 use blake2::Blake2b;
-use mmr::*;
 use merklemountainrange::mmr;
+use mmr::*;
 
 fn create_mmr(leaves: u32) -> MerkleMountainRange<TestObject<Blake2b>, Blake2b> {
     let mut mmr: MerkleMountainRange<TestObject<Blake2b>, Blake2b> = MerkleMountainRange::new();
@@ -159,8 +159,8 @@ fn mmr_with_4_peaks() {
 }
 
 #[test]
-fn very_large_mmr(){
-    //test test only tests that it doesn't crash currently, we need to create fuzz testing to test this properly
+fn very_large_mmr() {
+    // test test only tests that it doesn't crash currently, we need to create fuzz testing to test this properly
     let mmr = create_mmr(23000);
     let _merkle_root = mmr.get_merkle_root();
     let proof = mmr.get_hash_proof(&mmr.get_hash(1).unwrap());

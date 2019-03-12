@@ -26,20 +26,15 @@
 use crate::{
     block::AggregateBody,
     range_proof::RangeProof,
-    types::{Base, BlindingFactor, Commitment, Signature},
+    types::{Base, BlindingFactor, Commitment, Hasher, Signature},
 };
 
-use crypto::{
-    commitment::HomomorphicCommitment,
-    common::{Blake256, ByteArray},
-};
+use crypto::{commitment::HomomorphicCommitment, common::ByteArray};
 use curve25519_dalek::scalar::Scalar;
 use derive_error::Error;
 use digest::Digest;
 use merklemountainrange::merklenode::Hashable;
 use std::cmp::Ordering;
-
-type Hasher = Blake256;
 
 bitflags! {
     /// Options for a kernel's structure or use.
