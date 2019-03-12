@@ -23,7 +23,17 @@
 // This file is used to store the current blockchain state
 
 /// The BlockchainState struct keeps record of the current UTXO, total kernels and headers.
-pub struct BlockchainState {}
+use merklemountainrange::mmr;
+use blake2::Blake2b;
+use tari_core::transactions::{TransactionInput,TransactionOutput,TransactionKernel};
+
+type BlockHash = Blake2b;
+
+pub struct BlockchainState {
+    inputs : MerkleMountainRange<TransactionInput, BlockHash> = MerkleMountainRange::new();
+    outputs : MerkleMountainRange<TransactionOutput, BlockHash> = MerkleMountainRange::new();
+    kernals : MerkleMountainRange<TransactionKernel, BlockHash> = MerkleMountainRange::new();
+}
 
 impl BlockchainState {
     pub fn new() -> BlockchainState {

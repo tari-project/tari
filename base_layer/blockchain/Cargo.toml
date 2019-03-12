@@ -5,4 +5,6 @@ edition = "2018"
 
 [dependencies]
 tari_core = { path = "../core"}
+merklemountainrange= {path = "../infrastructure/merklemountainrange"}
 derive-error = "0.0.4"
+blake2 = "0.8.0"
