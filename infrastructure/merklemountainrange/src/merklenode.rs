@@ -23,7 +23,7 @@
 pub type ObjectHash = Vec<u8>;
 
 pub trait Hashable {
-    fn get_hash(&self) -> ObjectHash;
+    fn hash(&self) -> ObjectHash;
 }
 
 /// This is the MerkleNode struct. This struct represents a merkle node,

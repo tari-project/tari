@@ -157,7 +157,7 @@ where
             return false;
         }
         if self.get_object(&hashes[0]).is_none() && self.get_object(&hashes[1]).is_none() {
-            //we only want to search for valid object's proofs, either 0 or 1 must be a valid object
+            // we only want to search for valid object's proofs, either 0 or 1 must be a valid object
             return false;
         }
         let proof = self.get_hash_proof(&hashes[0]);
@@ -216,7 +216,7 @@ where
 
     /// This function adds a new leaf node to the mmr.
     pub fn add_single(&mut self, object: T) {
-        let node_hash = object.get_hash();
+        let node_hash = object.hash();
         let node = MerkleNode::new(node_hash.clone());
         self.data.insert(node_hash, object);
         self.mmr.push(node);

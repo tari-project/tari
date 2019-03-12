@@ -11,3 +11,4 @@ crypto = { path = "../../infrastructure/crypto"}
 curve25519-dalek = "1.0.2"
 derive-error = "0.0.4"
 rand = "0.5.5"
+merklemountainrange= {path = "../../infrastructure/merklemountainrange"}
