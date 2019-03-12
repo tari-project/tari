@@ -25,7 +25,7 @@ jobs:
     steps:
       - checkout
       - attach_workspace:
-          at: book
+          at: .
       - add_ssh_keys:
           fingerprints:
             - "a6:a6:e2:be:a3:94:3e:4c:9d:51:25:f6:98:f9:0c:a4"
@@ -43,7 +43,7 @@ jobs:
             TMP_DIR=$(mktemp -d /tmp/ghpages_XXXXXX)
 
             echo "Copying book files to temporary location $TMP_DIR"
-            cp -R $DEST_PATH $TMP_DIR
+            cp -R $DEST_PATH/* $DEST_PATH/.nojekyll $TMP_DIR
 
             REMOTE=$(git remote get-url origin)
 
