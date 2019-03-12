@@ -35,6 +35,7 @@ use crypto::{
     hash::Hashable,
 };
 use curve25519_dalek::scalar::Scalar;
+use derive::HashableOrdering;
 use derive_error::Error;
 use digest::Digest;
 use std::cmp::Ordering;
@@ -55,28 +56,6 @@ bitflags! {
     }
 }
 
-/// This macro implements the Ord, PartialOrd, PartialEq and Eq traits for the Hashable struct passed in
-macro_rules! hashable_ord {
-    ($hashable:ident) => {
-        impl Ord for $hashable {
-            fn cmp(&self, other: &$hashable) -> Ordering {
-                self.hash().cmp(&other.hash())
-            }
-        }
-        impl PartialOrd for $hashable {
-            fn partial_cmp(&self, other: &$hashable) -> Option<Ordering> {
-                Some(self.cmp(other))
-            }
-        }
-        impl PartialEq for $hashable {
-            fn eq(&self, other: &$hashable) -> bool {
-                self.hash() == other.hash()
-            }
-        }
-        impl Eq for $hashable {}
-    };
-}
-
 #[derive(Debug, PartialEq, Error)]
 pub enum TransactionError {
     // Error validating the transaction
@@ -86,7 +65,7 @@ pub enum TransactionError {
 /// A transaction input.
 ///
 /// Primarily a reference to an output being spent by the transaction.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, HashableOrdering)]
 pub struct TransactionInput {
     /// The features of the output being spent. We will check maturity for coinbase output.
     pub features: OutputFeatures,
@@ -119,12 +98,10 @@ impl Hashable for TransactionInput {
     }
 }
 
-hashable_ord!(TransactionInput);
-
 /// Output for a transaction, defining the new ownership of coins that are being transferred. The commitment is a
 /// blinded value for the output while the range proof guarantees the commitment includes a positive value without
 /// overflow and the ownership of the private key.
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, HashableOrdering)]
 pub struct TransactionOutput {
     /// Options for an output's structure or use
     pub features: OutputFeatures,
@@ -165,14 +142,12 @@ impl Hashable for TransactionOutput {
     }
 }
 
-hashable_ord!(TransactionOutput);
-
 /// The transaction kernel tracks the excess for a given transaction. For an explanation of what the excess is, and
 /// why it is necessary, refer to the
 /// [Mimblewimble TLU post](https://tlu.tarilabs.com/protocols/mimblewimble-1/sources/PITCHME.link.html?highlight=mimblewimble#mimblewimble).
 /// The kernel also tracks other transaction metadata, such as the lock height for the transaction (i.e. the earliest
 /// this transaction can be mined) and the transaction fee, in cleartext.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, HashableOrdering)]
 pub struct TransactionKernel {
     /// Options for a kernel's structure or use
     pub features: KernelFeatures,
@@ -228,8 +203,6 @@ impl Hashable for TransactionKernel {
         hasher.result().to_vec()
     }
 }
-
-hashable_ord!(TransactionKernel);
 
 /// A transaction which consists of a kernel offset and an aggregate body made up of inputs, outputs and kernels.
 pub struct Transaction {
