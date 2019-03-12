@@ -131,6 +131,14 @@ define_add_variants!(LHS = RistrettoSecretKey, RHS = RistrettoSecretKey, Output 
 define_sub_variants!(LHS = RistrettoSecretKey, RHS = RistrettoSecretKey, Output = RistrettoSecretKey);
 define_mul_variants!(LHS = RistrettoSecretKey, RHS = RistrettoPublicKey, Output = RistrettoPublicKey);
 
+//--------------------------------------  SecretKey From Implementations ---------------------------------------------//
+
+impl From<RistrettoSecretKey> for Scalar {
+    fn from(k: RistrettoSecretKey) -> Self {
+        k.0
+    }
+}
+
 //--------------------------------------------- Ristretto Public Key -------------------------------------------------//
 
 /// The [PublicKey](trait.PublicKey.html) implementation for `ristretto255` is a thin wrapper around the dalek
@@ -280,12 +288,6 @@ define_mul_variants!(LHS = RistrettoPublicKey, RHS = RistrettoSecretKey, Output 
 define_mul_variants!(LHS = RistrettoSecretKey, RHS = RistrettoSecretKey, Output = RistrettoSecretKey);
 
 //----------------------------------         PublicKey From implementations      -------------------------------------//
-
-impl From<RistrettoSecretKey> for Scalar {
-    fn from(k: RistrettoSecretKey) -> Self {
-        k.0
-    }
-}
 
 impl From<RistrettoPublicKey> for RistrettoPoint {
     fn from(pk: RistrettoPublicKey) -> Self {

@@ -19,3 +19,21 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+pub mod i2p;
+pub mod net_address;
+pub mod onion;
+pub mod p2p;
+
+use derive_error::Error;
+
+pub use self::net_address::{NetAddress, NetAddressError};
+
+#[derive(Debug, Error)]
+pub enum ConnectionError {
+    NetAddressError(NetAddressError),
+    /// Connection timed out
+    Timeout,
+}
+
+pub trait Connection {}

@@ -10,6 +10,7 @@ curve25519-dalek = "1.0.2"
 sha2 = "0.8.0"
 derive-error = "0.0.4"
 blake2 = "0.8.0"
+lazy_static = "1.3.0"
 
 [features]
 avx2 = ["curve25519-dalek/avx2_backend"]

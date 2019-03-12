@@ -44,7 +44,7 @@ impl Chain {
         Chain { store: dbstore, blockchainstate: BlockchainState::new(), orphans: HashMap::new(), pruning_horizon }
     }
 
-    pub fn process_new_block(&self, new_block: &Block) -> Result<(), ChainError> {
+    pub fn process_new_block(&self, _new_block: &Block) -> Result<(), ChainError> {
         Ok(())
     }
 }

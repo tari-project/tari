@@ -33,10 +33,11 @@ use curve25519_dalek::scalar::Scalar;
 ///
 /// The Homomorphic part means, more or less, that commitments follow some of the standard rules of
 /// arithmetic. Adding two commitments is the same as committing to the sum of their parts.
-pub trait HomomorphicCommitment<'a> {
+pub trait HomomorphicCommitment {
     type Base;
-    fn new(k: &Scalar, v: &Scalar, base: &'a Self::Base) -> Self;
+    fn new(k: &Scalar, v: &Scalar, base: &'static Self::Base) -> Self;
     /// Test whether the envelope content match the given key and value
     fn open(&self, k: &Scalar, v: &Scalar) -> bool;
     fn commit(&self) -> &[u8];
+    fn to_bytes(&self) -> &[u8];
 }

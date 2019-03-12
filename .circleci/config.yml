@@ -1,7 +1,7 @@
 version: 2
 
 defaults:
-  rust_image: &rust_image rust:1.32
+  rust_image: &rust_image quay.io/tarilabs/rust_tari-build-zmq:nightly-2019-03-08
 
 jobs:
   test-docs:
@@ -12,7 +12,7 @@ jobs:
       - run:
           name: RFC documentation
           command: |
-            (test -x $HOME/.cargo/bin/mdbook || cargo install --vers "^0.2" mdbook)
+            (test -x /usr/local/cargo/bin/mdbook || cargo install --vers "^0.2" mdbook)
             cd RFC && mdbook test && mdbook build
 
       - persist_to_workspace:
@@ -21,7 +21,7 @@ jobs:
 
   deploy-docs:
     docker:
-      - image: node:8.10.0
+      - image: node:9.11.1
     steps:
       - checkout
       - attach_workspace:
@@ -37,8 +37,8 @@ jobs:
             - "a6:a6:e2:be:a3:94:3e:4c:9d:51:25:f6:98:f9:0c:a4"
       - run:
           name: Deploy docs to gh-pages branch
-          command: gh-pages --dotfiles --message "[skip ci] Updates" --dist book --dest .
-
+          command: |
+            cd book && NODE_DEBUG=gh-pages gh-pages --dotfiles --message "[skip ci] Update RFC docs" --dist . --dest .
   test-tari:
     docker:
       - image: *rust_image
@@ -47,10 +47,8 @@ jobs:
       - run:
           name: Tari source code
           command: |
-            # https://mexus.github.io/rustup-components-history/x86_64-unknown-linux-gnu.html
-            rustup update nightly-2019-02-13
-            rustup default nightly-2019-02-13
-            rustup component add --toolchain nightly-2019-02-13 rustfmt
+            TOOLCHAIN_VERSION=nightly-2019-03-08
+            rustup component add --toolchain $TOOLCHAIN_VERSION rustfmt
             cargo fmt --all -- --check
             cargo test --all
 
@@ -58,8 +56,14 @@ workflows:
   version: 2
   workflow:
     jobs:
-      - test-docs
-      - test-tari
+      - test-docs:
+          filters:
+            branches:
+              ignore: gh-pages
+      - test-tari:
+          filters:
+            branches:
+              ignore: gh-pages
       - deploy-docs:
           requires:
             - test-docs
