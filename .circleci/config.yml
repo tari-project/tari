@@ -40,7 +40,7 @@ jobs:
               exit 1
             fi
 
-            TMP_DIR=$(mktemp -d /tmp/ghpages_XXXX)
+            TMP_DIR=$(mktemp -d /tmp/ghpages_XXXXXX)
 
             echo "Copying book files to temporary location $TMP_DIR"
             cp -R $DEST_PATH $TMP_DIR
