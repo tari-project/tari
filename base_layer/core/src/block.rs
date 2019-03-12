@@ -25,7 +25,7 @@
 
 use crate::{
     blockheader::BlockHeader,
-    transaction::{TransactionInput, TransactionKernel, TransactionOutput},
+    transaction::{TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
 };
 
 /// A Tari block. Blocks are linked together into a blockchain.
@@ -107,5 +107,13 @@ impl AggregateBody {
         self.inputs.sort();
         self.outputs.sort();
         self.kernels.sort();
+    }
+
+    /// Verify the signatures in all kernels contained in this aggregate body
+    pub fn verify_kernel_signatures(&self) -> Result<(), TransactionError> {
+        for kernel in self.kernels.iter() {
+            kernel.verify_signature()?;
+        }
+        Ok(())
     }
 }

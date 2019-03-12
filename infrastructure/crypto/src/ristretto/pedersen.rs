@@ -75,12 +75,12 @@ impl HomomorphicCommitment for PedersenOnRistretto255 {
     type Base = PedersenBaseOnRistretto255;
 
     fn new(k: &Scalar, v: &Scalar, base: &'static PedersenBaseOnRistretto255) -> Self {
-        let c: RistrettoPoint = k * base.H + v * base.G;
+        let c: RistrettoPoint = k * base.G + v * base.H;
         PedersenOnRistretto255 { base, commitment: RistrettoPublicKey::new_from_pk(c) }
     }
 
     fn open(&self, k: &Scalar, v: &Scalar) -> bool {
-        let c: RistrettoPoint = (v * self.base.G) + (k * self.base.H);
+        let c: RistrettoPoint = (v * self.base.H) + (k * self.base.G);
         c == self.commitment.point
     }
 
@@ -165,7 +165,7 @@ mod test {
     }
 
     /// Simple test for open: Generate 100 random sets of scalars and calculate the Pedersen commitment for them.
-    /// Then check that the commitment = v.G + k.H, and that `open` returns `true` for `open(&k, &v)`
+    /// Then check that the commitment = k.G + v.H, and that `open` returns `true` for `open(&k, &v)`
     #[test]
     fn check_open() {
         let base = &DEFAULT_RISTRETTO_PEDERSON_BASE;
@@ -174,7 +174,7 @@ mod test {
             let v = Scalar::random(&mut rng);
             let k = Scalar::random(&mut rng);
             let c = PedersenOnRistretto255::new(&k, &v, &base);
-            let c_calc: RistrettoPoint = v * base.G + k * base.H;
+            let c_calc: RistrettoPoint = v * base.H + k * base.G;
             assert_eq!(RistrettoPoint::from(c.as_public_key()), c_calc);
             assert!(c.open(&k, &v));
             // A different value doesn't open the commitment
@@ -186,7 +186,7 @@ mod test {
 
     /// Test, for 100 random sets of scalars that the homomorphic property holds. i.e.
     /// $$
-    ///   C = C_1 + C_2 = (k_1+k_2).H + (v_1+v_2).G
+    ///   C = C_1 + C_2 = (k_1+k_2).G + (v_1+v_2).H
     /// $$
     /// and
     /// `open(k1+k2, v1+v2)` is true for _C_
