@@ -1,4 +1,4 @@
-# RFC-0321/VNAssetDiscovery
+# RFC-0314/AssetDiscovery
 
 RFC placeholder.
 
