@@ -157,7 +157,7 @@ where
             return false;
         }
         if self.get_object(&hashes[0]).is_none() && self.get_object(&hashes[1]).is_none() {
-            //we only want to search for valid object's proofs, either 0 or 1 must be a valid object
+            // we only want to search for valid object's proofs, either 0 or 1 must be a valid object
             return false;
         }
         let proof = self.get_hash_proof(&hashes[0]);

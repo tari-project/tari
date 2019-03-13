@@ -1,4 +1,4 @@
-# RFC-0344/VNAssetTransfer
+# RFC-0315/AssetTransfer
 
 RFC placeholder.
 
