@@ -27,6 +27,7 @@ use crypto::{
     common::Blake256,
     ristretto::{
         pedersen::{PedersenBaseOnRistretto255, PedersenOnRistretto255},
+        RistrettoPublicKey,
         RistrettoSchnorr,
         RistrettoSecretKey,
     },
@@ -43,4 +44,8 @@ pub type Base = PedersenBaseOnRistretto255;
 /// Define the explicit Secret key implementation for the Tari base layer.
 pub type BlindingFactor = RistrettoSecretKey;
 
-pub type Hasher = Blake256;
+/// This is the hash function used by the chain
+pub type Hash = Blake256;
+
+/// Define the explicit Public key implementation for the Tari base layer
+pub type PublicKey = RistrettoPublicKey;

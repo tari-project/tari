@@ -26,11 +26,12 @@
 use crate::{
     block::AggregateBody,
     range_proof::RangeProof,
-    types::{Base, BlindingFactor, Commitment, Hasher, Signature},
+    types::{Base, BlindingFactor, Commitment, Hash, Signature},
 };
 
-use crypto::{commitment::HomomorphicCommitment, common::ByteArray};
+use crypto::{challenge::Challenge, commitment::HomomorphicCommitment, common::ByteArray};
 use curve25519_dalek::scalar::Scalar;
+use derive::HashableOrdering;
 use derive_error::Error;
 use digest::Digest;
 use merklemountainrange::merklenode::Hashable;
@@ -52,38 +53,20 @@ bitflags! {
     }
 }
 
-/// This macro implements the Ord, PartialOrd, PartialEq and Eq traits for the Hashable struct passed in
-macro_rules! hashable_ord {
-    ($hashable:ident) => {
-        impl Ord for $hashable {
-            fn cmp(&self, other: &$hashable) -> Ordering {
-                self.hash().cmp(&other.hash())
-            }
-        }
-        impl PartialOrd for $hashable {
-            fn partial_cmp(&self, other: &$hashable) -> Option<Ordering> {
-                Some(self.cmp(other))
-            }
-        }
-        impl PartialEq for $hashable {
-            fn eq(&self, other: &$hashable) -> bool {
-                self.hash() == other.hash()
-            }
-        }
-        impl Eq for $hashable {}
-    };
-}
-
 #[derive(Debug, PartialEq, Error)]
 pub enum TransactionError {
     // Error validating the transaction
     ValidationError,
+    // Signature could not be verified
+    InvalidSignatureError,
+    // Transaction kernel does not contain a signature
+    NoSignatureError,
 }
 
 /// A transaction input.
 ///
 /// Primarily a reference to an output being spent by the transaction.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, HashableOrdering)]
 pub struct TransactionInput {
     /// The features of the output being spent. We will check maturity for coinbase output.
     pub features: OutputFeatures,
@@ -107,19 +90,17 @@ impl TransactionInput {
 /// Implement the canonical hashing function for TransactionInput for use in ordering
 impl Hashable for TransactionInput {
     fn hash(&self) -> Vec<u8> {
-        let mut hasher = Hasher::new();
+        let mut hasher = Hash::new();
         hasher.input(vec![self.features.bits]);
         hasher.input(self.commitment.to_bytes());
         hasher.result().to_vec()
     }
 }
 
-hashable_ord!(TransactionInput);
-
 /// Output for a transaction, defining the new ownership of coins that are being transferred. The commitment is a
 /// blinded value for the output while the range proof guarantees the commitment includes a positive value without
 /// overflow and the ownership of the private key.
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, HashableOrdering)]
 pub struct TransactionOutput {
     /// Options for an output's structure or use
     pub features: OutputFeatures,
@@ -150,7 +131,7 @@ impl TransactionOutput {
 /// Implement the canonical hashing function for TransactionOutput for use in ordering
 impl Hashable for TransactionOutput {
     fn hash(&self) -> Vec<u8> {
-        let mut hasher = Hasher::new();
+        let mut hasher = Hash::new();
         hasher.input(vec![self.features.bits]);
         hasher.input(self.commitment.to_bytes());
         hasher.input(self.proof.0);
@@ -158,14 +139,12 @@ impl Hashable for TransactionOutput {
     }
 }
 
-hashable_ord!(TransactionOutput);
-
 /// The transaction kernel tracks the excess for a given transaction. For an explanation of what the excess is, and
 /// why it is necessary, refer to the
 /// [Mimblewimble TLU post](https://tlu.tarilabs.com/protocols/mimblewimble-1/sources/PITCHME.link.html?highlight=mimblewimble#mimblewimble).
 /// The kernel also tracks other transaction metadata, such as the lock height for the transaction (i.e. the earliest
 /// this transaction can be mined) and the transaction fee, in cleartext.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, HashableOrdering)]
 pub struct TransactionKernel {
     /// Options for a kernel's structure or use
     pub features: KernelFeatures,
@@ -201,12 +180,34 @@ impl TransactionKernel {
         self.lock_height = lock_height;
         self
     }
+
+    pub fn verify_signature(&self) -> Result<(), TransactionError> {
+        if self.excess.is_none() || self.excess_sig.is_none() {
+            return Err(TransactionError::NoSignatureError);
+        }
+
+        let signature = self.excess_sig.unwrap();
+        let excess = self.excess.unwrap();
+        let excess = excess.as_public_key();
+        let r = signature.get_public_nonce();
+        let c = Challenge::<Hash>::new()
+            .concat(r.to_bytes())
+            .concat(excess.clone().to_bytes())
+            .concat(&self.fee.to_le_bytes())
+            .concat(&self.lock_height.to_le_bytes());
+
+        if signature.verify(excess, c) {
+            return Ok(());
+        } else {
+            return Err(TransactionError::InvalidSignatureError);
+        }
+    }
 }
 
 /// Implement the canonical hashing function for TransactionKernel for use in ordering
 impl Hashable for TransactionKernel {
     fn hash(&self) -> Vec<u8> {
-        let mut hasher = Hasher::new();
+        let mut hasher = Hash::new();
         hasher.input(vec![self.features.bits]);
         hasher.input(self.fee.to_le_bytes());
         hasher.input(self.lock_height.to_le_bytes());
@@ -219,8 +220,6 @@ impl Hashable for TransactionKernel {
         hasher.result().to_vec()
     }
 }
-
-hashable_ord!(TransactionKernel);
 
 /// A transaction which consists of a kernel offset and an aggregate body made up of inputs, outputs and kernels.
 pub struct Transaction {
@@ -248,7 +247,7 @@ impl Transaction {
     }
 
     /// Calculate the sum of the inputs and outputs including the fees
-    pub fn sum_commitments(&self, fees: u64) -> Commitment {
+    fn sum_commitments(&self, fees: u64) -> Commitment {
         let fee_commitment = Commitment::new(&Scalar::zero(), &Scalar::from(fees), self.base);
 
         let outputs_minus_inputs =
@@ -259,7 +258,7 @@ impl Transaction {
     }
 
     /// Calculate the sum of the kernels, taking into account the offset if it exists, and their constituent fees
-    pub fn sum_kernels(&self) -> KernelSum {
+    fn sum_kernels(&self) -> KernelSum {
         // Sum all kernel excesses and fees
         let mut kernel_sum =
             self.body.kernels.iter().fold(KernelSum { fees: 0u64, sum: Commitment::zero(self.base) }, |acc, val| {
@@ -276,7 +275,7 @@ impl Transaction {
     }
 
     /// Confirm that the (sum of the outputs) - (sum of inputs) = Kernel excess
-    pub fn validate_kernel_sum(&self) -> Result<(), TransactionError> {
+    fn validate_kernel_sum(&self) -> Result<(), TransactionError> {
         let kernel_sum = self.sum_kernels();
         let sum_io = self.sum_commitments(kernel_sum.fees);
 
@@ -286,6 +285,13 @@ impl Transaction {
 
         Ok(())
     }
+
+    /// Validate this transaction
+    pub fn validate(&self) -> Result<(), TransactionError> {
+        self.body.verify_kernel_signatures()?;
+        self.validate_kernel_sum()?;
+        Ok(())
+    }
 }
 
 /// This struct holds the result of calculating the sum of the kernels in a Transaction
@@ -293,4 +299,191 @@ impl Transaction {
 pub struct KernelSum {
     pub sum: Commitment,
     pub fees: u64,
+}
+
+pub struct TransactionBuilder {
+    base: &'static Base,
+    body: AggregateBody,
+    offset: Option<BlindingFactor>,
+}
+
+impl TransactionBuilder {
+    /// Create an new empty TransactionBuilder
+    pub fn new(base: &'static Base) -> Self {
+        Self { base, offset: None, body: AggregateBody::empty() }
+    }
+
+    /// Update the offset of an existing transaction
+    pub fn add_offset(mut self, offset: BlindingFactor) -> Self {
+        self.offset = Some(offset);
+        self
+    }
+
+    /// Add an input to an existing transaction
+    pub fn add_input(mut self, input: TransactionInput) -> Self {
+        self.body = self.body.add_input(input);
+        self
+    }
+
+    /// Add an output to an existing transaction
+    pub fn add_output(mut self, output: TransactionOutput) -> Self {
+        self.body = self.body.add_output(output);
+        self
+    }
+
+    /// Add a series of inputs to an existing transaction
+    pub fn add_inputs(mut self, inputs: Vec<TransactionInput>) -> Self {
+        self.body = self.body.add_inputs(inputs);
+        self
+    }
+
+    /// Add a series of outputs to an existing transaction
+    pub fn add_outputs(mut self, outputs: Vec<TransactionOutput>) -> Self {
+        self.body = self.body.add_outputs(outputs);
+        self
+    }
+
+    /// Set the kernel of a transaction. Currently only one kernel is allowed per transaction
+    pub fn with_kernel(mut self, kernel: TransactionKernel) -> Self {
+        self.body = self.body.set_kernel(kernel);
+        self
+    }
+
+    pub fn build(&self) -> Result<Transaction, TransactionError> {
+        if let Some(offset) = self.offset {
+            let tx = Transaction::new(
+                self.base,
+                self.body.inputs.clone(),
+                self.body.outputs.clone(),
+                self.body.kernels.clone(),
+                offset,
+            );
+            tx.validate()?;
+            Ok(tx)
+        } else {
+            return Err(TransactionError::ValidationError);
+        }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::{
+        range_proof::RangeProof,
+        transaction::{KernelFeatures, OutputFeatures, TransactionInput, TransactionKernel, TransactionOutput},
+        types::{BlindingFactor, Commitment, PublicKey},
+    };
+    use crypto::{
+        challenge::Challenge,
+        commitment::HomomorphicCommitment,
+        common::{Blake256, ByteArray},
+        keys::{PublicKey as PublicKeyTrait, SecretKeyFactory},
+        ristretto::pedersen::DEFAULT_RISTRETTO_PEDERSON_BASE,
+    };
+    use curve25519_dalek::scalar::Scalar;
+    use rand;
+
+    #[test]
+    fn build_transaction_test_and_validation() {
+        let mut rng = rand::OsRng::new().unwrap();
+        let base = &DEFAULT_RISTRETTO_PEDERSON_BASE;
+
+        let input_secret_key = BlindingFactor::random(&mut rng);
+        let input_secret_key2 = BlindingFactor::random(&mut rng);
+        let change_secret_key = BlindingFactor::random(&mut rng);
+        let receiver_secret_key = BlindingFactor::random(&mut rng);
+        let receiver_secret_key2 = BlindingFactor::random(&mut rng);
+        let receiver_full_secret_key = &receiver_secret_key + &receiver_secret_key2;
+
+        let input = TransactionInput::new(
+            OutputFeatures::empty(),
+            Commitment::new(&input_secret_key.into(), &Scalar::from(12u64), &base),
+        );
+
+        let change_output = TransactionOutput::new(
+            OutputFeatures::empty(),
+            Commitment::new(&change_secret_key.into(), &Scalar::from(4u64), &base),
+            RangeProof([0; 1]),
+        );
+
+        let output = TransactionOutput::new(
+            OutputFeatures::empty(),
+            Commitment::new(&receiver_secret_key.into(), &Scalar::from(7u64), &base),
+            RangeProof([0; 1]),
+        );
+
+        let offset: BlindingFactor = BlindingFactor::random(&mut rng).into();
+        let sender_private_nonce = BlindingFactor::random(&mut rng);
+        let sender_public_nonce = PublicKey::from_secret_key(&sender_private_nonce);
+        let fee = 1u64;
+        let lock_height = 0u64;
+
+        // Create a transaction
+        let tx_builder = TransactionBuilder::new(&base)
+            .add_input(input.clone())
+            .add_output(output)
+            .add_output(change_output)
+            .add_offset(offset.clone());
+
+        // Test adding inputs and outputs in vector form
+        let input2 = TransactionInput::new(
+            OutputFeatures::empty(),
+            Commitment::new(&input_secret_key2.into(), &Scalar::from(2u64), &base),
+        );
+        let output2 = TransactionOutput::new(
+            OutputFeatures::empty(),
+            Commitment::new(&receiver_secret_key2.into(), &Scalar::from(2u64), &base),
+            RangeProof([0; 1]),
+        );
+
+        let tx_builder = tx_builder.add_inputs(vec![input2.clone()]).add_outputs(vec![output2.clone()]);
+
+        // Should fail the validation because there is no kernel yet.
+        let tx = tx_builder.build();
+        assert!(tx.is_err());
+
+        // Calculate Excess
+        let mut sender_excess_key = &change_secret_key - &input_secret_key;
+        sender_excess_key = &sender_excess_key - &input_secret_key2;
+        sender_excess_key = &sender_excess_key - &offset;
+
+        let sender_public_excess = PublicKey::from_secret_key(&sender_excess_key);
+        // Receiver generate partial signatures
+
+        let mut final_excess = &output.commitment + &change_output.commitment;
+        final_excess = &final_excess + &output2.commitment;
+        final_excess = &final_excess - &input.commitment;
+        final_excess = &final_excess - &input2.commitment;
+        final_excess = &final_excess + &Commitment::new(&Scalar::zero(), &Scalar::from(fee), &base); // add fee
+        final_excess = &final_excess - &Commitment::new(&offset.into(), &Scalar::zero(), &base); // subtract Offset
+
+        let receiver_private_nonce = BlindingFactor::random(&mut rng);
+        let receiver_public_nonce = PublicKey::from_secret_key(&receiver_private_nonce);
+        let receiver_public_key = PublicKey::from_secret_key(&receiver_full_secret_key);
+
+        let challenge = Challenge::<Blake256>::new()
+            .concat((&sender_public_nonce + &receiver_public_nonce).to_bytes())
+            .concat((&sender_public_excess + &receiver_public_key).to_bytes())
+            .concat(&fee.to_le_bytes())
+            .concat(&lock_height.to_le_bytes());
+
+        let receiver_partial_sig =
+            Signature::sign(receiver_full_secret_key, receiver_private_nonce, challenge.clone()).unwrap();
+        let sender_partial_sig = Signature::sign(sender_excess_key, sender_private_nonce, challenge.clone()).unwrap();
+
+        let s_agg = &sender_partial_sig + &receiver_partial_sig;
+
+        // Create a kernel with a fee (taken into account in the creation of the inputs and outputs
+        let kernel = TransactionKernel {
+            features: KernelFeatures::empty(),
+            fee,
+            lock_height,
+            excess: Some(final_excess),
+            excess_sig: Some(s_agg),
+        };
+
+        let tx = tx_builder.with_kernel(kernel).build().unwrap();
+        tx.validate().unwrap();
+    }
 }

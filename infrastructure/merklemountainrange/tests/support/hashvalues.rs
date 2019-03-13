@@ -36,16 +36,13 @@ impl HashValues {
         self.values[index].clone()
     }
 
-    pub fn get_slice(&self, start: usize, end: usize) -> Vec<String> {
-        let mut result = Vec::new();
-        result.resize(end + 1 - start, "".to_string());
-        result[..(end + 1 - start)].clone_from_slice(&(self.values[start..end + 1]));
-        result
+    pub fn copy_slice(&self, start: usize, end: usize) -> Vec<String> {
+        self.values[start..end + 1].to_vec()
     }
 
-    pub fn get_indexes(&self, indexes: Vec<usize>) -> Vec<String> {
+    pub fn copy_from_indices(&self, indices: Vec<usize>) -> Vec<String> {
         let mut result = Vec::new();
-        for num in indexes {
+        for num in indices {
             result.push(self.values[num].clone());
         }
         result

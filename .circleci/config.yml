@@ -21,24 +21,46 @@ jobs:
 
   deploy-docs:
     docker:
-      - image: node:9.11.1
+      - image: quay.io/tarilabs/git-ssh-client:0.2-alpine
     steps:
       - checkout
       - attach_workspace:
-          at: book
-      - run:
-          name: Install and configure dependencies
-          command: |
-            npm install -g --silent gh-pages@2.0.1
-            git config user.email "ci-build@tari.com"
-            git config user.name "ci-build"
+          at: .
       - add_ssh_keys:
           fingerprints:
             - "a6:a6:e2:be:a3:94:3e:4c:9d:51:25:f6:98:f9:0c:a4"
       - run:
           name: Deploy docs to gh-pages branch
           command: |
-            cd book && NODE_DEBUG=gh-pages gh-pages --dotfiles --message "[skip ci] Update RFC docs" --dist . --dest .
+            DEST_BRANCH=gh-pages
+            DEST_PATH=book/
+
+            if [[ ! -d $DEST_PATH ]]; then
+              echo "$DEST_PATH directory not found!"
+              exit 1
+            fi
+
+            TMP_DIR=$(mktemp -d /tmp/ghpages_XXXXXX)
+
+            echo "Copying book files to temporary location $TMP_DIR"
+            cp -R $DEST_PATH/* $DEST_PATH/.nojekyll $TMP_DIR
+
+            REMOTE=$(git remote get-url origin)
+
+            cd $TMP_DIR
+
+            git config --global user.email "ci-build@tari.com"
+            git config --global user.name "ci-build"
+
+            git init
+            git checkout -b $DEST_BRANCH
+            git remote add origin $REMOTE
+            git add --all .
+            git commit -m "[skip ci] Update RFC docs"
+            git push origin $DEST_BRANCH --force
+
+            echo "Published."
+
   test-tari:
     docker:
       - image: *rust_image
