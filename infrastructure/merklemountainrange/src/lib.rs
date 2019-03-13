@@ -20,11 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-//! The merkle mountain range was invented by Peter Todd more about them can be ready at:
+//! The Merkle mountain range was invented by Peter Todd more about them can be read at:
 //! https://github.com/opentimestamps/opentimestamps-server/blob/master/doc/merkle-mountain-range.md
 //! https://github.com/mimblewimble/grin/blob/master/doc/mmr.md
 //!
-//! A Merkle mountian range(MMR) is a binary tree where each parent is the concatenated hash of its two
+//! A Merkle mountain range(MMR) is a binary tree where each parent is the concatenated hash of its two
 //! children. The leaves at the bottom of the MMR is the hashes of the data. The MMR allows easy to add and proof
 //! of existence inside of the tree. MMR always tries to have the largest possible single binary tree, so in effect
 //! it is possible to have more than one binary tree. Every time you have to get the merkle root (the single merkle
@@ -111,7 +111,7 @@
 //! Node:    1 | 2 | 3 | 4 | 5 | 6 | 7
 //!
 //! Because of the list nature of the MMR we can easily navigate around the MMR using the following formulas:
-//! Jump to peer : 2^(H+1) -1
+//! Jump to sibling : 2^(H+1) -1
 //! find peak : 2^(H+1) -2 where < total elements
 //! left down : 2^H
 //! right down: -1
@@ -119,8 +119,8 @@
 //! the examples above. H - Height
 //! I - Index
 //!
-//! Pruning the MMR means removing flagging a node as pruned and only removing it if its peer has been removed.
-//! We do this as we require the peer to prove the hash of the node. Taking the above example, let's prune leave 1.
+//! Pruning the MMR means flagging a node as pruned and only removing it if its sibling has been removed.
+//! We do this as we require the sibling to prove the hash of the node. Taking the above example, let's prune leaf 1.
 //! '''
 //!                 /\
 //!                /  \

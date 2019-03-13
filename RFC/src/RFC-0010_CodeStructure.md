@@ -101,8 +101,9 @@ domain layer directories, corresponding to the two network layers that make up t
     - `comms`: The networking and messaging subsystem
     - `crypto`: All cryptographic services, including a Curve25519 implementation
     - `storage`: Data persistence services, including an LMDB persistence implementation
-    - `merklemountainrange`: An independent implementation of a merkle mountain range
+    - `merklemountainrange`: An independant implementation of a merkle mountain range
     - `derive`: A crate to contain #[derive(...)] macros
+
 1. `base_layer` is a domain-layer directory and contains:
     - `blockchain`: The Tari consensus code
     - `core`: common classes and traits, such as [Transaction]s and [Block]s

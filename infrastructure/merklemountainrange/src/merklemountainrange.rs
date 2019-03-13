@@ -33,6 +33,7 @@ where
     mmr: Vec<MerkleNode>,
     data: HashMap<ObjectHash, T>,
     hasher: PhantomData<D>,
+    // current_peak_height : usize, todo investigate caching height
 }
 
 impl<T, D> MerkleMountainRange<T, D>
@@ -58,7 +59,7 @@ where
     }
 
     pub fn get_hash(&self, index: usize) -> Option<ObjectHash> {
-        if index < 0 && index > self.get_last_added_index() {
+        if index > self.get_last_added_index() {
             return None;
         };
         Some(self.mmr[index].hash.clone())
@@ -66,31 +67,47 @@ where
 
     /// This function returns the hash proof tree of a given hash.
     /// If the given hash is not in the tree, the vec will be empty.
-    /// The Vec will be created in form of the child-child-parent(child)-child-parent-..
+    /// The Vec will be created in form of the Lchild-Rchild-parent(Lchild)-Rchild-parent-..
     /// This pattern will be repeated until the parent is the root of the MMR
     pub fn get_hash_proof(&self, hash: &ObjectHash) -> Vec<ObjectHash> {
         let mut result = Vec::new();
         let mut i = self.mmr.len();
         for counter in 0..self.mmr.len() {
             if self.mmr[counter].hash == *hash {
-                result.push(self.mmr[counter].hash.clone());
                 i = counter;
                 break;
             }
         }
-        i = peer_index(i);
-        while i < self.mmr.len() {
-            result.push(self.mmr[i].hash.clone());
-            i += 1;
-            result.push(self.mmr[i].hash.clone());
-
-            i = peer_index(i);
-        }
+        if i == self.mmr.len() {
+            return result;
+        };
+        self.get_ordered_hash_proof(i, &mut result);
         result
+    }
+
+    // This function is an recursive function. It will add the left node first then the right node to the provided array
+    // on the index. It will return when it reaches a single highest point.
+    fn get_ordered_hash_proof(&self, index: usize, results: &mut Vec<ObjectHash>) {
+        let sibling = sibling_index(index);
+        let mut next_index = index + 1;
+        if sibling >= self.mmr.len() {
+            results.push(self.mmr[index].hash.clone());
+            return;
+        }
+        if sibling < index {
+            results.push(self.mmr[sibling].hash.clone());
+            results.push(self.mmr[index].hash.clone());
+        } else {
+            results.push(self.mmr[index].hash.clone());
+            results.push(self.mmr[sibling].hash.clone());
+            next_index = sibling + 1;
+        }
+        self.get_ordered_hash_proof(next_index, results);
     }
 
     /// This function will verify the provided proof. Internally it uses the get_hash_proof function to construct a
     /// similar proof. This function will return true if the proof is valid
+    /// If the order does not match Lchild-Rchild-parent(Lchild)-Rchild-parent-.. the validation will fail
     pub fn verify_proof(&self, hashes: &Vec<ObjectHash>) -> bool {
         if hashes.len() == 0 {
             return false;
@@ -106,7 +123,8 @@ where
     pub fn get_peak_height(&self) -> usize {
         let mut height_counter = 0;
         let mmr_len = self.get_last_added_index() as i128;
-        while (mmr_len - (1 << height_counter + 1) + 2) > 0 {
+        while mmr_len >= ((1 << height_counter + 2) - 2) {
+            // find the height of the tree by finding if we can subtract the  height +1
             height_counter += 1;
         }
         height_counter
@@ -134,7 +152,7 @@ where
     // This is iterative and will continue to up and till it hits the top, will be a future left child
     fn add_single_no_leaf(&mut self, index: usize) {
         let mut hasher = D::new();
-        hasher.input(&self.mmr[peer_index(index)].hash);
+        hasher.input(&self.mmr[sibling_index(index)].hash);
         hasher.input(&self.mmr[index].hash);
         let new_hash = hasher.result().to_vec();
         let new_node = MerkleNode::new(new_hash);
@@ -149,8 +167,8 @@ where
         self.mmr.len() - 1
     }
 }
-/// This function takes in the index and calculates the index of the peer.
-pub fn peer_index(index: usize) -> usize {
+/// This function takes in the index and calculates the index of the sibling.
+pub fn sibling_index(index: usize) -> usize {
     let height = get_node_height(index);
     let index_count = (1 << height + 1) - 1;
     if is_node_right(index) {
@@ -165,35 +183,42 @@ pub fn peer_index(index: usize) -> usize {
 /// This function is an iterative function as we might have to subtract the largest left_most tree.
 pub fn is_node_right(index: usize) -> bool {
     let mut height_counter = 0;
-    while (index as i128 - (1 << height_counter + 1) + 1) > 0 {
+    while index >= ((1 << height_counter + 2) - 2) {
         // find the height of the tree by finding if we can subtract the  height +1
         height_counter += 1;
     }
-    if (index as i128 - (1 << height_counter + 1) + 2) == 0 {
-        // if it is the left node then and we subtract the height, it will be 0
+    let height_index = (1 << height_counter + 1) - 2;
+    if index == height_index {
+        // If this is the first peak then subtracting the height of first peak will be 0
         return false;
     };
-    let cloned_index = index - ((1 << height_counter + 1) - 1); // go to left peer.
-    if (cloned_index as i128 - (1 << height_counter + 1) + 2) == 0 {
-        // are we now on the correct height
+    if index == (height_index + ((1 << height_counter + 1) - 1)) {
+        // we are looking if its the right sibling
         return true;
     };
-    is_node_right(cloned_index)
+    // if we are here means it was not a right node at height counter, we therefor search lower
+    let new_index = index - height_index - 1;
+    is_node_right(new_index)
 }
 
 /// This function takes in the index and calculates the height of the node
 /// This function is an iterative function as we might have to subtract the largest left_most tree.
 pub fn get_node_height(index: usize) -> usize {
     let mut height_counter = 0;
-    while (index as i128 - (1 << height_counter + 1) + 1) > 0 {
+    while index >= ((1 << height_counter + 2) - 2) {
+        // find the height of the tree by finding if we can subtract the  height +1
         height_counter += 1;
     }
-    if (index as i128 - (1 << height_counter + 1) + 2) == 0 {
+    let height_index = (1 << height_counter + 1) - 2;
+    if index == height_index {
+        // If this is the first peak then subtracting the height of first peak will be 0
         return height_counter;
     };
-    let cloned_index = index - ((1 << height_counter + 1) - 1);
-    if (cloned_index as i128 - (1 << height_counter + 1) + 2) == 0 {
+    if index == (height_index + ((1 << height_counter + 1) - 1)) {
+        // we are looking if its the right sibling
         return height_counter;
     };
-    get_node_height(cloned_index)
+    // if we are here means it was not a right node at height counter, we therefor search lower
+    let new_index = index - height_index - 1;
+    get_node_height(new_index)
 }
