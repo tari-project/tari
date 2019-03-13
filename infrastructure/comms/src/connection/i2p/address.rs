@@ -19,3 +19,18 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+use std::str::FromStr;
+
+use crate::connection::ConnectionError;
+
+pub struct I2PAddress(String);
+
+impl FromStr for I2PAddress {
+    type Err = ConnectionError;
+
+    fn from_str(_addr: &str) -> Result<Self, Self::Err> {
+        // TODO: Implemented I2P address parsing
+        unimplemented!();
+    }
+}

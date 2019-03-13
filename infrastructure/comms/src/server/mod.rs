@@ -19,3 +19,12 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+/// Builder pattern for constructing a Server instance
+pub struct ServerBuilder {}
+
+/// Inbound connections to this node
+/// This server will listen on a ZMQ_ROUTER socket and accept multiple encrypted inbound connections.
+/// It will then pass the data using ZMQ_DEALER to a configurable number of worker threads.
+/// Workers will be listening for messages using a ZMQ_REP inproc socket.
+struct Server {}

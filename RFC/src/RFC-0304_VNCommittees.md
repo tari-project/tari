@@ -1,4 +1,4 @@
-# RFC-0323/VNCommittees
+# RFC-0304/VNCommittees
 
 RFC placeholder.
 

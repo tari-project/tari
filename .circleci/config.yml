@@ -1,7 +1,7 @@
 version: 2
 
 defaults:
-  rust_image: &rust_image rust:1.32
+  rust_image: &rust_image quay.io/tarilabs/rust_tari-build-zmq:nightly-2019-03-08
 
 jobs:
   test-docs:
@@ -12,7 +12,7 @@ jobs:
       - run:
           name: RFC documentation
           command: |
-            (test -x $HOME/.cargo/bin/mdbook || cargo install --vers "^0.2" mdbook)
+            (test -x /usr/local/cargo/bin/mdbook || cargo install --vers "^0.2" mdbook)
             cd RFC && mdbook test && mdbook build
 
       - persist_to_workspace:
@@ -21,23 +21,45 @@ jobs:
 
   deploy-docs:
     docker:
-      - image: node:8.10.0
+      - image: quay.io/tarilabs/git-ssh-client:0.2-alpine
     steps:
       - checkout
       - attach_workspace:
-          at: book
-      - run:
-          name: Install and configure dependencies
-          command: |
-            npm install -g --silent gh-pages@2.0.1
-            git config user.email "ci-build@tari.com"
-            git config user.name "ci-build"
+          at: .
       - add_ssh_keys:
           fingerprints:
             - "a6:a6:e2:be:a3:94:3e:4c:9d:51:25:f6:98:f9:0c:a4"
       - run:
           name: Deploy docs to gh-pages branch
-          command: gh-pages --dotfiles --message "[skip ci] Updates" --dist book --dest .
+          command: |
+            DEST_BRANCH=gh-pages
+            DEST_PATH=book/
+
+            if [[ ! -d $DEST_PATH ]]; then
+              echo "$DEST_PATH directory not found!"
+              exit 1
+            fi
+
+            TMP_DIR=$(mktemp -d /tmp/ghpages_XXXXXX)
+
+            echo "Copying book files to temporary location $TMP_DIR"
+            cp -R $DEST_PATH/* $DEST_PATH/.nojekyll $TMP_DIR
+
+            REMOTE=$(git remote get-url origin)
+
+            cd $TMP_DIR
+
+            git config --global user.email "ci-build@tari.com"
+            git config --global user.name "ci-build"
+
+            git init
+            git checkout -b $DEST_BRANCH
+            git remote add origin $REMOTE
+            git add --all .
+            git commit -m "[skip ci] Update RFC docs"
+            git push origin $DEST_BRANCH --force
+
+            echo "Published."
 
   test-tari:
     docker:
@@ -47,10 +69,8 @@ jobs:
       - run:
           name: Tari source code
           command: |
-            # https://mexus.github.io/rustup-components-history/x86_64-unknown-linux-gnu.html
-            rustup update nightly-2019-02-13
-            rustup default nightly-2019-02-13
-            rustup component add --toolchain nightly-2019-02-13 rustfmt
+            TOOLCHAIN_VERSION=nightly-2019-03-08
+            rustup component add --toolchain $TOOLCHAIN_VERSION rustfmt
             cargo fmt --all -- --check
             cargo test --all
 
@@ -58,8 +78,14 @@ workflows:
   version: 2
   workflow:
     jobs:
-      - test-docs
-      - test-tari
+      - test-docs:
+          filters:
+            branches:
+              ignore: gh-pages
+      - test-tari:
+          filters:
+            branches:
+              ignore: gh-pages
       - deploy-docs:
           requires:
             - test-docs
