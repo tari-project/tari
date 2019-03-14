@@ -21,13 +21,17 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 pub mod constants;
+pub mod musig;
 pub mod pedersen;
 pub mod ristretto_keys;
 pub mod ristretto_sig;
-pub mod test_common;
 
 // Re-export
 pub use self::{
     ristretto_keys::{RistrettoPublicKey, RistrettoSecretKey},
     ristretto_sig::RistrettoSchnorr,
 };
+
+// test modules
+#[cfg(test)]
+mod test_common;

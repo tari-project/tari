@@ -29,14 +29,6 @@ use crate::common::ByteArray;
 use rand::{CryptoRng, Rng};
 use std::ops::Add;
 
-/// A secret key factory trait. The `random` function is pulled out into a separate Trait because
-/// we can't know _a priori_ whether the default implementation (uniform random characters over the
-/// full 2^256 space) represents legal private keys. Maybe some validation must be done, which
-/// must be left up to the respective curve implementations.
-pub trait SecretKeyFactory: Sized {
-    fn random<R: CryptoRng + Rng>(rng: &mut R) -> Self;
-}
-
 /// A trait specifying common behaviour for representing `SecretKey`s. Specific elliptic curve
 /// implementations need to implement this trait for them to be used in Tari.
 ///
@@ -45,14 +37,15 @@ pub trait SecretKeyFactory: Sized {
 /// Assuming there is a Ristretto implementation,
 /// ```edition2018
 /// # use crypto::ristretto::{ RistrettoSecretKey, RistrettoPublicKey };
-/// # use crypto::keys::{ SecretKeyFactory, SecretKey, PublicKey };
+/// # use crypto::keys::{ SecretKey, PublicKey };
 /// # use rand;
 /// let mut rng = rand::OsRng::new().unwrap();
 /// let k = RistrettoSecretKey::random(&mut rng);
 /// let p = RistrettoPublicKey::from_secret_key(&k);
 /// ```
-pub trait SecretKey: ByteArray + Clone {
+pub trait SecretKey: ByteArray + Clone + PartialEq + Eq + Add<Output = Self> + Default {
     fn key_length() -> usize;
+    fn random<R: Rng + CryptoRng>(rng: &mut R) -> Self;
 }
 
 //----------------------------------------   Public Keys  ----------------------------------------//
@@ -61,7 +54,7 @@ pub trait SecretKey: ByteArray + Clone {
 /// implementations need to implement this trait for them to be used in Tari.
 ///
 /// See [SecretKey](trait.SecretKey.html) for an example.
-pub trait PublicKey: ByteArray + Add<Output = Self> + Clone + PartialOrd + Ord {
+pub trait PublicKey: ByteArray + Add<Output = Self> + Clone + PartialOrd + Ord + Default {
     type K: SecretKey;
     /// Calculate the public key associated with the given secret key. This should not fail; if a
     /// failure does occur (implementation error?), the function will panic.
@@ -70,4 +63,10 @@ pub trait PublicKey: ByteArray + Add<Output = Self> + Clone + PartialOrd + Ord {
     fn key_length() -> usize;
 
     fn batch_mul(scalars: &Vec<Self::K>, points: &Vec<Self>) -> Self;
+
+    fn random_keypair<R: Rng + CryptoRng>(rng: &mut R) -> (Self::K, Self) {
+        let k = Self::K::random(rng);
+        let pk = Self::from_secret_key(&k);
+        (k, pk)
+    }
 }

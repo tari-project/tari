@@ -9,6 +9,7 @@ pub mod common;
 pub mod hash;
 pub mod hex;
 pub mod keys;
+pub mod musig;
 pub mod signatures;
 
 // Implementations

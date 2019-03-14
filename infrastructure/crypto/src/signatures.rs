@@ -18,11 +18,7 @@ pub enum SchnorrSignatureError {
 
 #[allow(non_snake_case)]
 #[derive(PartialEq, Eq, Copy, Debug, Clone)]
-pub struct SchnorrSignature<P, K>
-where
-    P: PublicKey<K = K>,
-    K: SecretKey,
-{
+pub struct SchnorrSignature<P, K> {
     public_nonce: P,
     signature: K,
 }
@@ -59,14 +55,28 @@ where
         Ok(Self::new(public_nonce, s))
     }
 
-    pub fn verify<'a, D: Digest>(&self, public_key: &'a P, challenge: Challenge<D>) -> bool
-    where K: Mul<&'a P, Output = P> {
-        let lhs = self.calc_signature_verifier();
+    pub fn verify_challenge<'a, D: Digest>(&self, public_key: &'a P, challenge: Challenge<D>) -> bool
+    where
+        for<'b> &'b K: Mul<&'a P, Output = P>,
+        for<'b> &'b P: Add<P, Output = P>,
+    {
         let e = match K::from_vec(&challenge.hash()) {
             Ok(e) => e,
             Err(_) => return false,
         };
-        let rhs = self.public_nonce.clone() + e * public_key;
+        self.verify(public_key, &e)
+        //        let rhs = self.public_nonce.clone() + e * public_key;
+        //        // Implementors should make this a constant time comparison
+        //        lhs == rhs
+    }
+
+    pub fn verify<'a>(&self, public_key: &'a P, challenge: &K) -> bool
+    where
+        for<'b> &'b K: Mul<&'a P, Output = P>,
+        for<'b> &'b P: Add<P, Output = P>,
+    {
+        let lhs = self.calc_signature_verifier();
+        let rhs = &self.public_nonce + challenge * public_key;
         // Implementors should make this a constant time comparison
         lhs == rhs
     }
@@ -95,5 +105,31 @@ where
         let r_sum = self.get_public_nonce() + rhs.get_public_nonce();
         let s_sum = self.get_signature() + rhs.get_signature();
         SchnorrSignature::new(r_sum, s_sum)
+    }
+}
+
+impl<'a, P, K> Add<SchnorrSignature<P, K>> for &'a SchnorrSignature<P, K>
+where
+    P: PublicKey<K = K>,
+    for<'b> &'a P: Add<&'b P, Output = P>,
+    K: SecretKey,
+    for<'b> &'a K: Add<&'b K, Output = K>,
+{
+    type Output = SchnorrSignature<P, K>;
+
+    fn add(self, rhs: SchnorrSignature<P, K>) -> SchnorrSignature<P, K> {
+        let r_sum = self.get_public_nonce() + rhs.get_public_nonce();
+        let s_sum = self.get_signature() + rhs.get_signature();
+        SchnorrSignature::new(r_sum, s_sum)
+    }
+}
+
+impl<P, K> Default for SchnorrSignature<P, K>
+where
+    P: PublicKey<K = K>,
+    K: SecretKey,
+{
+    fn default() -> Self {
+        SchnorrSignature::new(P::default(), K::default())
     }
 }
