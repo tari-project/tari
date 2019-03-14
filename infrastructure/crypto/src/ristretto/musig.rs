@@ -31,6 +31,7 @@ use crate::{
 };
 use digest::Digest;
 use std::marker::PhantomData;
+use crate::signatures::SchnorrSignature;
 
 //-----------------------------------------  Constants and aliases    ------------------------------------------------//
 
@@ -157,8 +158,8 @@ impl<D: Digest> RistrettoMuSig<D> {
         self.handle_event(MuSigEvent::AddNonce(pub_key, nonce))
     }
 
-    pub fn add_signature(self, s: RistrettoSchnorr, should_validate: bool) -> Self {
-        self.handle_event(MuSigEvent::AddPartialSig(s, should_validate))
+    pub fn add_signature(self, s: &RistrettoSchnorr, should_validate: bool) -> Self {
+        self.handle_event(MuSigEvent::AddPartialSig(s.clone(), should_validate))
     }
 
     /// Return a reference to the standard challenge $$ H(R_{agg} || P_{agg} || m) $$, or `None` if the requisite data
@@ -189,6 +190,23 @@ impl<D: Digest> RistrettoMuSig<D> {
             MuSigState::Finalized(s) => Some(s.joint_key.get_joint_pubkey()),
             _ => None,
         }
+    }
+
+    fn get_public_nonce(&self, index:usize) -> Option<&RistrettoPublicKey> {
+        match &self.state {
+            MuSigState::SignatureCollection(s) => s.public_nonces.get_item(index),
+            _ => None
+        }
+    }
+
+    pub fn calculate_partial_signature(&self, pub_key: &RistrettoPublicKey, secret: &RistrettoSecretKey, nonce: &RistrettoSecretKey) -> Option<RistrettoSchnorr> {
+        let index = self.index_of(pub_key)?;
+        let pub_nonce = self.get_public_nonce(index)?;
+        let ai = self.get_musig_scalar(pub_key)?;
+        let e = self.get_challenge()?;
+        let s = nonce + ai * e * secret;
+        let sig = SchnorrSignature::new(pub_nonce.clone(), s);
+        Some(sig)
     }
 
     /// Once all public keys have been collected, this function returns a reference to the joint public key as
@@ -503,8 +521,7 @@ impl FinalizedMuSig {
 
 //--------------------------------------------------------------------------------------------------------------------//
 //------------------------------------               Tests                  ------------------------------------------//
-//------------------------------------ --------------------------------------------------------------------------------/
-//------------------------------------ /
+//--------------------------------------------------------------------------------------------------------------------//
 
 #[cfg(test)]
 mod test {
@@ -635,7 +652,7 @@ mod test {
         assert_eq!(musig.has_failed(), false);
         // Add the partial signatures
         for &s in data.partial_sigs.iter() {
-            musig = musig.add_signature(s.clone(), true);
+            musig = musig.add_signature(&s, true);
             assert_eq!(musig.has_failed(), false, "Partial signature addition failed. {:?}", musig.failure_reason());
         }
         let mut iter = data.partial_sigs.iter();
@@ -759,7 +776,7 @@ mod test {
         // Create a signature with a valid nonce, but the signature is invalid
         let bad_sig = RistrettoSchnorr::new(data.public_nonces[1], s);
         let index = data.indices[1];
-        musig = musig.add_signature(bad_sig, true);
+        musig = musig.add_signature(&bad_sig, true);
         assert!(musig.has_failed());
         assert_eq!(musig.failure_reason(), Some(MuSigError::InvalidPartialSignature(index)));
     }
@@ -772,7 +789,7 @@ mod test {
         let (s, r) = RistrettoPublicKey::random_keypair(&mut rng);
         // Create a signature with an invalid nonce
         let bad_sig = RistrettoSchnorr::new(r, s);
-        musig = musig.add_signature(bad_sig, true);
+        musig = musig.add_signature(&bad_sig, true);
         assert!(musig.has_failed());
         assert_eq!(musig.failure_reason(), Some(MuSigError::ParticipantNotFound));
     }
@@ -803,6 +820,41 @@ mod test {
             Challenge::<Sha256>::new().concat(data.r_agg.to_bytes()).concat(p_agg.to_bytes()).concat(&get_message());
         assert_eq!(&s_agg, sig);
         assert!(sig.verify_challenge(p_agg, challenge));
+    }
+
+    #[test]
+    fn multiparty_musig() {
+        // Everyone sets up their MuSig
+        let m = Challenge::<Sha256>::new().concat(b"Discworld").hash();
+        let (mut alice, data) = create_round_three_musig(2, Some(m.clone()));
+        // Aliases to Alice's and Bob's public key
+        let p_a = data.pub_keys.get(0).unwrap();
+        let p_b = data.pub_keys.get(1).unwrap();
+        let mut bob = RistrettoMuSig::<Sha256>::new(2);
+        // Setup Bob's MuSig
+        bob = bob
+            .add_public_key(p_b)
+            .add_public_key(p_a)
+        // Round 1 - Collect nonce hashes
+            .add_nonce_commitment(p_b, data.nonce_hashes[1].clone())
+            .add_nonce_commitment(p_a, data.nonce_hashes[0].clone())
+        // Round 2 - Collect Nonces
+            .add_nonce(p_b, data.public_nonces[1].clone())
+            .add_nonce(p_a, data.public_nonces[0].clone())
+            .set_message(&m);
+        assert!(bob.is_collecting_signatures());
+        // round 3 - Collect partial signatures
+        let s_a = alice.calculate_partial_signature(p_a, &data.secret_keys[0], &data.nonces[0]).unwrap();
+        let s_b = bob.calculate_partial_signature(p_b, &data.secret_keys[1], &data.nonces[1]).unwrap();
+        alice = alice
+            .add_signature(&s_a, true)
+            .add_signature(&s_b, true);
+        assert!(alice.is_finalized());
+        bob = bob
+            .add_signature(&s_b, true)
+            .add_signature(&s_a, true);
+        assert!(bob.is_finalized());
+        assert_eq!(alice.get_aggregated_signature(), bob.get_aggregated_signature());
     }
 }
 
