@@ -87,13 +87,13 @@ records on a FQDN. Let us call this a Registered Asset Issuer Domain (RAID) TXT 
 FQDN pair, it will provide us with a unique RAID_ID (RAID Identification). The RAID_ID will serve a similar purpose in 
 the DAN as a Top Level Domain (TLD) in a DNS, as all digital assets belonging to a specific [asset issuer] could then 
 be grouped under the FQDN by inference. To make this scheme more elaborate, but potentially unnecessary, all such 
-RAID_IDs could be also be registered on the [base layer] layer, similar to the RAIN scheme.
+RAID_IDs could also be registered on the [base layer], similar to the RAIN scheme.
 
-If the standard Mimblewimble protocol is to be followed, a new output feature can be defined to cater for a RAID tuple 
+If the standard Mimblewimble protocol is followed, a new output feature can be defined to cater for a RAID tuple 
 `(RAID_ID, PubKey)` that is linked to a specific Unspent Transaction Output ([UTXO]). The `RAID_ID` could be based on 
 a [Base58Check](https://en.bitcoin.it/wiki/Base58Check_encoding) variant applied to `Hash256(PubKey || FQDN)`. If the 
 amount of Tari coins associated with the RAID tuple transaction is burned, `(RAID_ID, PubKey)` will forever be present 
-on the blockchain and can assist with blockchain bloat. On the other hand, if those [Tari coins] are spent back to its 
+on the blockchain and can increase blockchain bloat. On the other hand, if those [Tari coins] are spent back to its 
 owner with a specific time lock, it will be possible to spend and prune that UTXO later on. While that UTXO remains 
 unspent, the RAID tuple will be valid, but when all or part of it is spent, the RAID tuple will disappear from the 
 blockchain. Such a UTXO will thus be "colored" while unspent as it will have different properties to a normal UTXO. It 
@@ -152,20 +152,20 @@ linked to a [digital asset] on the DAN.
 
 ``` text
 RAID_ID:
-raid_id       = RSt3HqhdvyuBkxqvZfhDtQT1WBC6e11bJ1
+raid_id       = RYqMMuSmBZFQkgp
    
 base58 encodings:
 public key    = ca469346d7643336c19155fdf5c6500a5232525ce4eba7e4db757639159e9861
  -> base58    = EcbmnM6PLosBzpyCcBz1TikpNXRKcucpm73ez6xYfLtg
 public nonce  = fc2c5fce596338f43f70dc0ce14659fdfea1ba3e588a7c6fa79957fc70aa1b4b
- -> base58    = HyNz7LE99iw8UW6sYtbLTHMEntsYkbWjgCwXikcTv4bc
-signature     = e78bc897e6e2f343a47414fa19b9dcbe5cd39535a48cbb84350d504ba2dfc006
- -> base58    = GarobuNKW2EX6syGUoPvCgbKMU8gJGGyv3LKbcc3dKYR
+ -> base58    = 5ctFNnCfBrP99rT1AFmj1WPyMD8uAdNUTESHhLoV3KBZ
+signature     = 7dc54ec98da2350b0c8ed0561537517ac6f93a37f08a34482824e7df3514ce0d
+ -> base58    = 9TxTorviyTJAaVJ4eY4AQPixwLb6SDL4dieHff6MFUha
    
 OpenAlias TXT DNS record:
 IN   TXT = "oa1:tari_raid fqdn=disney.com; pub_key=EcbmnM6PLosBzpyCcBz1TikpNXRKcucpm73ez6xYfLtg; 
-raid_id=REJhNwAdszLTteYuhY7KFTko4Q5CaVrvSu; pub_nonce=HyNz7LE99iw8UW6sYtbLTHMEntsYkbWjgCwXikcTv4bc;"
-" signature=GarobuNKW2EX6syGUoPvCgbKMU8gJGGyv3LKbcc3dKYR; description=Cartoon charaters; checksum=B7064DE7"
+raid_id=RYqMMuSmBZFQkgp; pub_nonce=5ctFNnCfBrP99rT1AFmj1WPyMD8uAdNUTESHhLoV3KBZ;"
+" signature=9TxTorviyTJAaVJ4eY4AQPixwLb6SDL4dieHff6MFUha; description=Cartoon charaters; checksum=02A99340"
 ```
 
 
@@ -193,20 +193,13 @@ as follows:
 - Stage 1 - MUST select the input string to use (either `"No FQDN"` or `PubKey || <FQDN>`).
   - Example: Mimblewimble public key `ca469346d7643336c19155fdf5c6500a5232525ce4eba7e4db757639159e9861` and FQDN 
   `disney.com` is used here, resulting in `ca469346d7643336c19155fdf5c6500a5232525ce4eba7e4db757639159e9861disney.com`.
-- Stage 2 - MUST perform `RIPEMD-160` hashing on the result of stage 1.
-  - Example: `c1115c8e138ce39c90cf40fae7aa43972e3203eb`
-- Stage 3 - MUST concatenate the `RAID_ID` identifier byte, `3c`, with the result of stage 2.
-  - Example: `3cc1115c8e138ce39c90cf40fae7aa43972e3203eb`
-- Stage 4 - MUST perform `Hash256` hashing on the extended result of stage 3.
-  - Example: `c46df8650aab0e90622a13742b5f391a0598142ef96be47db9c59a0ddda8b82f`
-- Stage 5 - MUST take the first 4 bytes of the result of stage 4; this is the address checksum.
-  - Example: `f3831182`
-- Stage 6 - MUST concatenate the extended result of stage 3 with the 4 checksum bytes from stage 5. This is the 
-  25-byte binary address for the `RAID_ID`.
-  - Example: `3cc1115c8e138ce39c90cf40fae7aa43972e3203ebf3831182`
-- Stage 7 - MUST convert the result of stage 6 from a byte string into `Base58` encoded string. 
-  This will result in a 34 character string starting with `R`.
-  - Example: The resulting `RAID_ID` will be `RSt3HqhdvyuBkxqvZfhDtQT1WBC6e11bJ1`.
+- Stage 2 - MUST perform `Blake2b` hashing on the result of stage 1 using a 10 byte digest size.
+  - Example: In hexadecimal representation `ff517a1387153cc38009` or binary representation`\xffQz\x13\x87\x15<\xc3\x80\t`
+- Stage 3 - MUST concatenate the `RAID_ID` identifier byte, `0x62`, with the result of stage 2.
+  - Example: `62ff517a1387153cc38009` `
+- Stage 4 - MUST convert the result of stage 3 from a byte string into `Base58` encoded string. 
+  This will result in a 15 character string starting with `R`.
+  - Example: The resulting `RAID_ID` will be `RYqMMuSmBZFQkgp`.
 
 **Req** - A valid `RAID_ID` signature MUST be a 256 bit Schnorr signature defined as `s = PvtNonce + e·PvtKey` with 
 the challenge `e` being `e = Hash256(PubNonce || PubKey || RAID_ID)`.
