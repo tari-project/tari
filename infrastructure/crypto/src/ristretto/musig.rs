@@ -28,10 +28,10 @@ use crate::{
     common::ByteArray,
     musig::{FixedSet, JointKey, JointKeyBuilder, MuSigError},
     ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
+    signatures::SchnorrSignature,
 };
 use digest::Digest;
 use std::marker::PhantomData;
-use crate::signatures::SchnorrSignature;
 
 //-----------------------------------------  Constants and aliases    ------------------------------------------------//
 
@@ -192,14 +192,20 @@ impl<D: Digest> RistrettoMuSig<D> {
         }
     }
 
-    fn get_public_nonce(&self, index:usize) -> Option<&RistrettoPublicKey> {
+    fn get_public_nonce(&self, index: usize) -> Option<&RistrettoPublicKey> {
         match &self.state {
             MuSigState::SignatureCollection(s) => s.public_nonces.get_item(index),
-            _ => None
+            _ => None,
         }
     }
 
-    pub fn calculate_partial_signature(&self, pub_key: &RistrettoPublicKey, secret: &RistrettoSecretKey, nonce: &RistrettoSecretKey) -> Option<RistrettoSchnorr> {
+    pub fn calculate_partial_signature(
+        &self,
+        pub_key: &RistrettoPublicKey,
+        secret: &RistrettoSecretKey,
+        nonce: &RistrettoSecretKey,
+    ) -> Option<RistrettoSchnorr>
+    {
         let index = self.index_of(pub_key)?;
         let pub_nonce = self.get_public_nonce(index)?;
         let ai = self.get_musig_scalar(pub_key)?;
@@ -521,7 +527,8 @@ impl FinalizedMuSig {
 
 //--------------------------------------------------------------------------------------------------------------------//
 //------------------------------------               Tests                  ------------------------------------------//
-//--------------------------------------------------------------------------------------------------------------------//
+//------------------------------------ --------------------------------------------------------------------------------/
+//------------------------------------ /
 
 #[cfg(test)]
 mod test {
@@ -846,13 +853,9 @@ mod test {
         // round 3 - Collect partial signatures
         let s_a = alice.calculate_partial_signature(p_a, &data.secret_keys[0], &data.nonces[0]).unwrap();
         let s_b = bob.calculate_partial_signature(p_b, &data.secret_keys[1], &data.nonces[1]).unwrap();
-        alice = alice
-            .add_signature(&s_a, true)
-            .add_signature(&s_b, true);
+        alice = alice.add_signature(&s_a, true).add_signature(&s_b, true);
         assert!(alice.is_finalized());
-        bob = bob
-            .add_signature(&s_b, true)
-            .add_signature(&s_a, true);
+        bob = bob.add_signature(&s_b, true).add_signature(&s_a, true);
         assert!(bob.is_finalized());
         assert_eq!(alice.get_aggregated_signature(), bob.get_aggregated_signature());
     }
