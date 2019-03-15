@@ -142,7 +142,7 @@ linked to a [digital asset] on the DAN.
 | oa1:\<name\>                   | "oa1:tari_raid"                                              |
 | fqdn                           | \<FQDN\>                                                     |
 | pub_key                        | \<256 bit public key in hexadecimal format (64 characters), converted into a `Base58` encoded string (44 characters)\> |
-| raid_id                        | \<`RAID_ID` (*see [The RAID_ID](#the-raid_id)*) in hexadecimal format (34 characters)\> |
+| raid_id                        | \<`RAID_ID` (*see [The RAID_ID](#the-raid_id)*) (15 characters)\> |
 | pub_nonce                      | \<256 bit public nonce in hexadecimal format (64 characters), converted into a `Base58` encoded string (44 characters)\> |
 | signature                      | \<[Asset issuer]'s 256 bit Schnorr signature for the `RAID_ID` (*see [The RAID_ID](#the-raid_id)*), in hexadecimal format (64 characters), converted into a `Base58` encoded string (44 characters)\> |
 | description                    | \<Optional RAID description\>                                |
