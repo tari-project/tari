@@ -1,12 +1,14 @@
 #![recursion_limit = "128"]
+//#![feature(Hashable_ignore)]
 
 extern crate proc_macro;
 extern crate proc_macro2;
 
 use blake2::Blake2b;
 use proc_macro::TokenStream;
+use proc_macro2::{Ident, Span};
 use quote::{quote, quote_spanned};
-use syn::{parse_macro_input, spanned::Spanned, Data, DeriveInput, Fields, Index};use proc_macro2::{Ident, Span};
+use syn::{parse_macro_input, spanned::Spanned, Data, DeriveInput, Fields, Index};
 
 /// This macro will produce the 4 trait implementations required for an hashable struct to be sorted
 #[proc_macro_derive(HashableOrdering)]
@@ -35,8 +37,9 @@ pub fn derive_hashable_ordering(tokens: TokenStream) -> TokenStream {
     gen.into()
 }
 
+
 /// This macro will provide a hasable implementation to the a given struct
-#[proc_macro_derive(Hashable, attributes(Digest))]
+#[proc_macro_derive(Hashable, attributes(Digest, hash))]
 pub fn derive_hashable(tokens: TokenStream) -> TokenStream {
     let input = parse_macro_input!(tokens as DeriveInput);
     let object_name = &input.ident;
@@ -61,9 +64,24 @@ pub fn derive_hashable(tokens: TokenStream) -> TokenStream {
             match item.fields {
                 Fields::Named(ref fields) => {
                     let recurse = fields.named.iter().map(|f| {
-                        let name = &f.ident;
-                        quote_spanned! {f.span()=>
-                            hasher.input((&self.#name).as_bytes());
+                        let mut do_we_ignore_field = false;
+                        for attr in f.attrs.iter() {
+                            // Parse the individual attributes
+                            let meta = attr.parse_meta().unwrap();
+                            match meta {
+                                // search for Hashable_ignore
+                                syn::Meta::Word(ref ident) if ident == "hash(Hashable_ignore)" => do_we_ignore_field = true,
+                                _ => (),
+                            }
+                        }
+                        if !do_we_ignore_field {
+                            let name = &f.ident;
+                            quote_spanned! {f.span()=>
+                                hasher.input((&self.#name).as_bytes());
+                            }
+                        } else {
+                            quote_spanned! {f.span()=>
+                            }
                         }
                     });
                     quote! {#( #recurse)*

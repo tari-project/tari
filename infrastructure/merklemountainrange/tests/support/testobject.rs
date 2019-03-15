@@ -29,11 +29,13 @@ use merklemountainrange::merklenode::{Hashable, ObjectHash};
 #[Digest = "Blake2b"]
 pub struct TestObject {
     pub id: String,
+    #[hash(Hashable_ignore)]
+    pub string_we_should_not_hash: String,
 }
 
 impl TestObject {
     pub fn new(id: String) -> TestObject {
-        TestObject { id }
+        TestObject { id, string_we_should_not_hash: "a".to_owned() }
     }
 }
 // impl Hashable for TestObject {
