@@ -145,7 +145,7 @@ linked to a [digital asset] on the DAN.
 | raid_id                        | \<`RAID_ID` (*see [The RAID_ID](#the-raid_id)*) (15 characters)\> |
 | pub_nonce                      | \<256 bit public nonce in hexadecimal format (64 characters), converted into a `Base58` encoded string (44 characters)\> |
 | signature                      | \<[Asset issuer]'s 256 bit Schnorr signature for the `RAID_ID` (*see [The RAID_ID](#the-raid_id)*), in hexadecimal format (64 characters), converted into a `Base58` encoded string (44 characters)\> |
-| description                    | \<Optional RAID description\>                                |
+| description                    | \<Optional RAID description\>; ASCII String; Up to  127 characters              |
 | checksum                       | \<CRC-32 checksum of the entire record up to but excluding the checksum key-value pair (starting at "**oa1:tari_raid**" and ending at the last "**;**" before the checksum key-value pair) in hexadecimal format (8 characters)\> |
 
 &nbsp;&nbsp;&nbsp;&nbsp;Example: An example OpenAlias TXT DNS record is shown:
