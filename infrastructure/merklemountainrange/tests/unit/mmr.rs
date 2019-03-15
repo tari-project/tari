@@ -35,6 +35,7 @@ fn create_mmr(leaves: u32) -> MerkleMountainRange<TestObject, Blake2b> {
 
 #[test]
 fn create_small_mmr() {
+    dbg!(1);
     let mmr = create_mmr(2);
     assert_eq!(1, mmr.get_peak_height());
     let hash_values = HashValues::new();
