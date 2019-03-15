@@ -184,12 +184,11 @@ from a default input string `"No FQDN"`.
 
 **Req** - All concatenations of inputs for any hash algorithm MUST be done without adding any spaces.
 
-**Req** - Deriving a `RAID_ID` follows the general process of creating a Bitcoin address [[3]] and MUST be calculated 
-as follows:
+**Req** - The hash algorithm MUST be `Blake2b` using a 32 byte digest size unless otherwise specified.
+
+**Req** - Deriving a `RAID_ID` MUST be calculated as follows:
 
 - Inputs for all hashing algorithms used to calculate the `RAID_ID` MUST be lower case characters.
-- The `Hash256` algorithm is not prescribed, but MUST be consistently used and MUST produce a 64 character (256 bit) 
-  hexadecimal output.
 - Stage 1 - MUST select the input string to use (either `"No FQDN"` or `PubKey || <FQDN>`).
   - Example: Mimblewimble public key `ca469346d7643336c19155fdf5c6500a5232525ce4eba7e4db757639159e9861` and FQDN 
   `disney.com` is used here, resulting in `ca469346d7643336c19155fdf5c6500a5232525ce4eba7e4db757639159e9861disney.com`.
@@ -202,7 +201,7 @@ as follows:
   - Example: The resulting `RAID_ID` will be `RYqMMuSmBZFQkgp`.
 
 **Req** - A valid `RAID_ID` signature MUST be a 256 bit Schnorr signature defined as `s = PvtNonce + e·PvtKey` with 
-the challenge `e` being `e = Hash256(PubNonce || PubKey || RAID_ID)`.
+the challenge `e` being `e = Blake2b(PubNonce || PubKey || RAID_ID)`.
 
 
 
@@ -268,11 +267,6 @@ Date accessed: 2019-03-05.
 Available: https://tools.ietf.org/html/rfc7208. Date accessed: 2019-03-06.
 
 [2]: https://tools.ietf.org/html/rfc7208 "RFC 7208"
-
-[[3]] Technical background of version 1 Bitcoin addresses [online]. Available: https://en.bitcoin.it/wiki/Technical_background_of_version_1_Bitcoin_addresses#How_to_create_Bitcoin_Address. Date accessed: 2019-03-06.
-
-[3]: https://en.bitcoin.it/wiki/Technical_background_of_version_1_Bitcoin_addresses#How_to_create_Bitcoin_Address
-"Technical background of version 1 Bitcoin addresses"
 
 [DAN]: Glossary.md#digital-asset-network
 
