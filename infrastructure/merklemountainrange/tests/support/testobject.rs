@@ -20,25 +20,26 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use blake2::Blake2b;
+use derive::Hashable;
 use digest::Digest;
 use merklemountainrange::merklenode::{Hashable, ObjectHash};
 
-pub struct TestObject<D: Digest> {
+#[derive(Hashable)]
+#[Digest = "Blake2b"]
+pub struct TestObject {
     pub id: String,
-    pub hasher: D,
 }
 
-impl<D: Digest> TestObject<D> {
-    pub fn new(id: String) -> TestObject<D> {
-        let hasher = D::new();
-        TestObject { id, hasher }
+impl TestObject {
+    pub fn new(id: String) -> TestObject {
+        TestObject { id }
     }
 }
-
-impl<D: Digest> Hashable for TestObject<D> {
-    fn hash(&self) -> ObjectHash {
-        let mut hash = D::new();
-        hash.input(self.id.as_bytes());
-        hash.result().to_vec()
-    }
-}
+// impl Hashable for TestObject {
+// fn hash(&self) -> ObjectHash {
+// let mut hash = Blake2b::new();
+// hash.input(self.id.as_bytes());
+// hash.result().to_vec()
+// }
+// }

@@ -8,5 +8,7 @@ proc-macro = true
 
 [dependencies]
 quote = "0.6.11"
-syn = "0.15.26"
-
+syn = "0.15.29"
+merklemountainrange= {path = "../../infrastructure/merklemountainrange"}
+blake2 = "0.8.0"
+proc-macro2 =   "0.4.27"
