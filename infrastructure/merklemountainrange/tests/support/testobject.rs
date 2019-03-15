@@ -23,7 +23,7 @@
 use blake2::Blake2b;
 use derive::Hashable;
 use digest::Digest;
-use merklemountainrange::merklenode::{Hashable, ObjectHash};
+use merklemountainrange::merklenode::Hashable;
 
 #[derive(Hashable)]
 #[Digest = "Blake2b"]

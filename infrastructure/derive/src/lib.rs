@@ -4,16 +4,11 @@
 extern crate proc_macro;
 extern crate proc_macro2;
 
-use blake2::Blake2b;
+
 use proc_macro::TokenStream;
 use proc_macro2::{Ident, Span};
 use quote::{quote, quote_spanned};
 use syn::{parse_macro_input, spanned::Spanned, Data, DeriveInput, Fields, Index};
-
-use syn::{
-    Meta::{List, NameValue, Word},
-    NestedMeta,
-};
 
 /// This macro will produce the 4 trait implementations required for an hashable struct to be sorted
 #[proc_macro_derive(HashableOrdering)]
