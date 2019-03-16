@@ -69,6 +69,10 @@ pub struct RistrettoMuSig<D: Digest> {
 impl<D: Digest> RistrettoMuSig<D> {
     /// Create a new, empty MuSig ceremony for _n_ participants
     pub fn new(n: usize) -> RistrettoMuSig<D> {
+        // Ristretto requires a 256 bit has
+        if D::output_size() != 32 {
+            panic!("RistrettoMuSig requires a digest function with a 32 byte digest.")
+        }
         let state = match Initialization::new(n) {
             Ok(s) => MuSigState::Initialization(s),
             Err(e) => MuSigState::Failed(e),
@@ -84,6 +88,7 @@ impl<D: Digest> RistrettoMuSig<D> {
         }
     }
 
+    /// IF `has_failed()` is true, you can obtain the specific error that caused the failure
     pub fn failure_reason(&self) -> Option<MuSigError> {
         match &self.state {
             MuSigState::Failed(e) => Some(e.clone()),
@@ -135,6 +140,9 @@ impl<D: Digest> RistrettoMuSig<D> {
         joint_key.index_of(pub_key).ok()
     }
 
+    /// Add a public key to the MuSig ceremony. Public keys can only be added in the `Initialization` state and the
+    /// MuSig state will only progress to the next state (nonce hash collection) once exactly `n` unique public keys
+    /// have been added.
     pub fn add_public_key(self, key: &RistrettoPublicKey) -> Self {
         let key = key.clone();
         self.handle_event(MuSigEvent::AddKey(key))
@@ -485,19 +493,18 @@ impl SignatureCollection {
     }
 
     fn set_signature<D: Digest>(mut self, index: usize, signature: RistrettoSchnorr) -> MuSigState {
-        if self.partial_signatures.set_item(index, signature) {
-            if self.partial_signatures.is_full() {
-                MuSigState::Finalized(FinalizedMuSig::new(self))
-            } else {
-                MuSigState::SignatureCollection(self)
-            }
+        if !self.partial_signatures.set_item(index, signature) {
+            return MuSigState::Failed(MuSigError::MismatchedSignatures);
+        }
+        if self.partial_signatures.is_full() {
+            MuSigState::Finalized(FinalizedMuSig::new(self))
         } else {
-            MuSigState::Failed(MuSigError::MismatchedSignatures)
+            MuSigState::SignatureCollection(self)
         }
     }
 
     fn add_partial_signature<D: Digest>(self, signature: RistrettoSchnorr, validate: bool) -> MuSigState {
-        match self.public_nonces.slow_search(signature.get_public_nonce()) {
+        match self.public_nonces.search(signature.get_public_nonce()) {
             None => MuSigState::Failed(MuSigError::ParticipantNotFound),
             Some(i) => {
                 if validate && !self.validate_partial_signature::<D>(i, &signature) {
@@ -527,8 +534,7 @@ impl FinalizedMuSig {
 
 //--------------------------------------------------------------------------------------------------------------------//
 //------------------------------------               Tests                  ------------------------------------------//
-//------------------------------------ --------------------------------------------------------------------------------/
-//------------------------------------ /
+//--------------------------------------------------------------------------------------------------------------------//
 
 #[cfg(test)]
 mod test {
@@ -595,9 +601,9 @@ mod test {
         if msg.is_some() {
             musig = musig.set_message(msg.unwrap());
         }
-        // We should now have switched to Round 1 automatically
+// We should now have switched to Round 1 automatically
         assert!(musig.is_collecting_hashes());
-        // Collect the positions of the pubkeys in the sorted list
+// Collect the positions of the pubkeys in the sorted list
         let indices = pub_keys.iter().map(|p| musig.index_of(p).unwrap()).collect();
         (musig, MuSigTestData {
             pub_keys,
@@ -624,7 +630,7 @@ mod test {
         if msg.is_some() {
             musig = musig.set_message(&msg.unwrap());
         }
-        // We should now have switched to Round 2 automatically
+// We should now have switched to Round 2 automatically
         assert!(musig.is_collecting_nonces());
         (musig, data)
     }
@@ -642,7 +648,7 @@ mod test {
         }
         assert!(musig.is_collecting_signatures());
         let e = musig.get_challenge().unwrap();
-        // Calculate partial signatures
+// Calculate partial signatures
         for (i, r) in data.nonces.iter().enumerate() {
             let k = data.secret_keys.get(i).unwrap();
             let ai = musig.get_musig_scalar(data.pub_keys.get(i).unwrap()).unwrap();
@@ -657,7 +663,7 @@ mod test {
     fn create_final_musig(n: usize, msg: MessageHash) -> (RistrettoMuSig<Sha256>, MuSigTestData, RistrettoSchnorr) {
         let (mut musig, mut data) = create_round_three_musig(n, Some(msg));
         assert_eq!(musig.has_failed(), false);
-        // Add the partial signatures
+// Add the partial signatures
         for &s in data.partial_sigs.iter() {
             musig = musig.add_signature(&s, true);
             assert_eq!(musig.has_failed(), false, "Partial signature addition failed. {:?}", musig.failure_reason());
@@ -707,7 +713,7 @@ mod test {
         let m = get_message();
         musig = musig.set_message(&m);
         assert_eq!(musig.has_failed(), false);
-        // Haven't collected nonces yet, so challenge is still undefined
+// Haven't collected nonces yet, so challenge is still undefined
         assert_eq!(musig.get_challenge(), None);
     }
 
@@ -729,7 +735,7 @@ mod test {
         let mut rng = rand::OsRng::new().unwrap();
         let (_, p) = RistrettoPublicKey::random_keypair(&mut rng);
         let (mut musig, _) = create_round_one_musig(25, None);
-        // We can't add pub keys anymore!
+// We can't add pub keys anymore!
         musig = musig.add_public_key(&p);
         assert!(musig.has_failed());
         assert_eq!(musig.failure_reason(), Some(MuSigError::InvalidStateTransition));
@@ -740,7 +746,7 @@ mod test {
         let (mut musig, data) = create_round_one_musig(3, None);
         musig = musig.add_nonce_commitment(&data.pub_keys[2], data.nonce_hashes[2].clone());
         assert_eq!(musig.has_failed(), false);
-        // Try add nonce before all hashes have been collected
+// Try add nonce before all hashes have been collected
         musig = musig.add_nonce(&data.pub_keys[2], data.public_nonces[2].clone());
         assert_eq!(musig.failure_reason(), Some(MuSigError::InvalidStateTransition));
     }
@@ -780,7 +786,7 @@ mod test {
         let m = get_message();
         let (mut musig, data) = create_round_three_musig(15, Some(m));
         let s = RistrettoSecretKey::random(&mut rng);
-        // Create a signature with a valid nonce, but the signature is invalid
+// Create a signature with a valid nonce, but the signature is invalid
         let bad_sig = RistrettoSchnorr::new(data.public_nonces[1], s);
         let index = data.indices[1];
         musig = musig.add_signature(&bad_sig, true);
@@ -794,7 +800,7 @@ mod test {
         let m = get_message();
         let (mut musig, data) = create_round_three_musig(3, Some(m));
         let (s, r) = RistrettoPublicKey::random_keypair(&mut rng);
-        // Create a signature with an invalid nonce
+// Create a signature with an invalid nonce
         let bad_sig = RistrettoSchnorr::new(r, s);
         musig = musig.add_signature(&bad_sig, true);
         assert!(musig.has_failed());
@@ -831,26 +837,26 @@ mod test {
 
     #[test]
     fn multiparty_musig() {
-        // Everyone sets up their MuSig
+// Everyone sets up their MuSig
         let m = Challenge::<Sha256>::new().concat(b"Discworld").hash();
         let (mut alice, data) = create_round_three_musig(2, Some(m.clone()));
-        // Aliases to Alice's and Bob's public key
+// Aliases to Alice's and Bob's public key
         let p_a = data.pub_keys.get(0).unwrap();
         let p_b = data.pub_keys.get(1).unwrap();
         let mut bob = RistrettoMuSig::<Sha256>::new(2);
-        // Setup Bob's MuSig
+// Setup Bob's MuSig
         bob = bob
             .add_public_key(p_b)
             .add_public_key(p_a)
-        // Round 1 - Collect nonce hashes
+// Round 1 - Collect nonce hashes
             .add_nonce_commitment(p_b, data.nonce_hashes[1].clone())
             .add_nonce_commitment(p_a, data.nonce_hashes[0].clone())
-        // Round 2 - Collect Nonces
+// Round 2 - Collect Nonces
             .add_nonce(p_b, data.public_nonces[1].clone())
             .add_nonce(p_a, data.public_nonces[0].clone())
             .set_message(&m);
         assert!(bob.is_collecting_signatures());
-        // round 3 - Collect partial signatures
+// round 3 - Collect partial signatures
         let s_a = alice.calculate_partial_signature(p_a, &data.secret_keys[0], &data.nonces[0]).unwrap();
         let s_b = bob.calculate_partial_signature(p_b, &data.secret_keys[1], &data.nonces[1]).unwrap();
         alice = alice.add_signature(&s_a, true).add_signature(&s_b, true);
@@ -887,15 +893,15 @@ mod test_joint_key {
         let (_, p1) = RistrettoPublicKey::random_keypair(&mut rng);
         let (_, p2) = RistrettoPublicKey::random_keypair(&mut rng);
         let (_, p3) = RistrettoPublicKey::random_keypair(&mut rng);
-        // Add first key
+// Add first key
         assert_eq!(jk.key_exists(&p1), false);
         assert_eq!(jk.add_key(p1).unwrap(), 1);
         assert_eq!(jk.is_full(), false);
-        // Add second key
+// Add second key
         assert_eq!(jk.key_exists(&p2), false);
         assert_eq!(jk.add_key(p2).unwrap(), 2);
         assert!(jk.is_full());
-        // Try add third key
+// Try add third key
         assert_eq!(jk.key_exists(&p3), false);
         assert_eq!(jk.add_key(p3).err(), Some(MuSigError::TooManyParticipants));
     }
@@ -906,15 +912,15 @@ mod test_joint_key {
         let mut jk = JKBuilder::new(3).unwrap();
         let (_, p1) = RistrettoPublicKey::random_keypair(&mut rng);
         let (_, p2) = RistrettoPublicKey::random_keypair(&mut rng);
-        // Add first key
+// Add first key
         assert_eq!(jk.key_exists(&p1), false);
         assert_eq!(jk.add_key(p1.clone()).unwrap(), 1);
         assert_eq!(jk.is_full(), false);
-        // Add second key
+// Add second key
         assert_eq!(jk.key_exists(&p2), false);
         assert_eq!(jk.add_key(p2).unwrap(), 2);
         assert_eq!(jk.is_full(), false);
-        // Try add third key
+// Try add third key
         assert_eq!(jk.key_exists(&p1), true);
         assert_eq!(jk.add_key(p1).err(), Some(MuSigError::DuplicatePubKey));
     }
@@ -933,16 +939,16 @@ mod test_joint_key {
         assert!(key_builder.is_full());
         let joint_key = key_builder.build::<Sha256>().unwrap();
         assert_eq!(joint_key.size(), 3);
-        // The keys have been sorted
+// The keys have been sorted
         assert_eq!(joint_key.get_pub_keys(0), &p2);
         assert_eq!(joint_key.get_pub_keys(1), &p1);
         assert_eq!(joint_key.get_pub_keys(2), &p3);
-        // Calculate ell and partials
+// Calculate ell and partials
         let ell = Sha256::new().chain(p2.to_bytes()).chain(p1.to_bytes()).chain(p3.to_bytes()).result().to_vec();
-        // Check Ell
+// Check Ell
         let ell = RistrettoSecretKey::from_vec(&ell).unwrap();
         assert_eq!(joint_key.get_common(), &ell);
-        // Check partial scalars
+// Check partial scalars
         let hash = |p: &RistrettoPublicKey| {
             let h = Sha256::new().chain(ell.to_bytes()).chain(p.to_bytes()).result().to_vec();
             RistrettoSecretKey::from_vec(&h).unwrap()
@@ -953,7 +959,7 @@ mod test_joint_key {
         assert_eq!(joint_key.get_musig_scalar(0), &a2);
         assert_eq!(joint_key.get_musig_scalar(1), &a1);
         assert_eq!(joint_key.get_musig_scalar(2), &a3);
-        // Check joint public key
+// Check joint public key
         let key = (a1 * p1) + (a2 * p2) + (a3 * p3);
         assert_eq!(joint_key.get_joint_pubkey(), &key);
     }

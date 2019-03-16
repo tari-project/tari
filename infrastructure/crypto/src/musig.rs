@@ -314,7 +314,7 @@ impl<T: Clone + PartialEq> FixedSet<T> {
     }
 
     /// Return the index of the given item in the set by performing a linear search through the set
-    pub fn slow_search(&self, val: &T) -> Option<usize> {
+    pub fn search(&self, val: &T) -> Option<usize> {
         let key = self.items.iter().enumerate().find(|v| v.1.is_some() && v.1.as_ref().unwrap() == val);
         match key {
             Some(item) => Some(item.0),
@@ -400,9 +400,9 @@ mod test {
         // Size is 3
         assert_eq!(s.size(), 3);
         // Slow search
-        assert_eq!(s.slow_search(&data("carrot")), Some(2));
-        assert_eq!(s.slow_search(&data("vimes")), Some(0));
-        assert_eq!(s.slow_search(&data("librarian")), None);
+        assert_eq!(s.search(&data("carrot")), Some(2));
+        assert_eq!(s.search(&data("vimes")), Some(0));
+        assert_eq!(s.search(&data("librarian")), None);
     }
 
     #[test]
