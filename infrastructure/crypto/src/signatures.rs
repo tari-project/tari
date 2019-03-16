@@ -65,9 +65,6 @@ where
             Err(_) => return false,
         };
         self.verify(public_key, &e)
-        //        let rhs = self.public_nonce.clone() + e * public_key;
-        //        // Implementors should make this a constant time comparison
-        //        lhs == rhs
     }
 
     pub fn verify<'a>(&self, public_key: &'a P, challenge: &K) -> bool

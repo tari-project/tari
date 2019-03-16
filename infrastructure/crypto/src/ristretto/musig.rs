@@ -73,12 +73,10 @@ type JointPubKey = JointKey<RistrettoPublicKey, RistrettoSecretKey>;
 ///       // Create a new MuSig instance. The number of signing parties must be known at this time.
 ///       let mut alice = RistrettoMuSig::<Sha256>::new(2);
 ///       let mut bob = RistrettoMuSig::<Sha256>::new(2);
-///       // Build the message we're signing
-///       let m = Challenge::<Sha256>::new().concat(b"Discworld").hash();
 ///       // Set the message. This can only be done once to prevent replay attacks. Any attempt to assign another
 ///       // message will result in a Failure state.
-///       alice = alice.set_message(&m);
-///       bob = bob.set_message(&m);
+///       alice = alice.set_message(b"Discworld");
+///       bob = bob.set_message(b"Discworld");
 ///       // Collect public keys
 ///       let (k_a, p_a) = RistrettoPublicKey::random_keypair(&mut rng);
 ///       let (k_b, p_b) = RistrettoPublicKey::random_keypair(&mut rng);
@@ -211,13 +209,8 @@ impl<D: Digest> RistrettoMuSig<D> {
     }
 
     /// Set the message to be signed in this MuSig ceremony
-    pub fn set_message(self, msg: &MessageHash) -> Self {
-        // Handle invalid messages here, rather than in each state handler, to prevent resource attack with cloning
-        // large memory maps
-        if msg.len() > D::output_size() {
-            return RistrettoMuSig { state: MuSigState::Failed(MuSigError::InvalidMessage), digest_type: PhantomData };
-        }
-        let msg = msg.clone();
+    pub fn set_message(self, msg: &[u8]) -> Self {
+        let msg = D::digest(msg).to_vec();
         self.handle_event(MuSigEvent::SetMessage(msg))
     }
 
@@ -429,7 +422,7 @@ impl Initialization {
         if self.message.is_some() {
             return MuSigState::Failed(MuSigError::MessageAlreadySet);
         }
-        self.message = Some(msg);
+        self.message = Some(msg.to_vec());
         MuSigState::Initialization(self)
     }
 }
@@ -557,7 +550,11 @@ impl SignatureCollection {
         m: &MessageHash,
     ) -> RistrettoSecretKey
     {
-        let e = Challenge::<D>::new().concat(r_agg.to_bytes()).concat(p_agg.to_bytes()).concat(m).hash();
+        let e = Challenge::<D>::new()
+            .concat(r_agg.to_bytes())
+            .concat(p_agg.to_bytes())
+            .concat(m)
+            .hash();
         RistrettoSecretKey::from_vec(&e).expect("Found a u256 that does not map to a valid Ristretto scalar")
     }
 
@@ -638,10 +635,6 @@ mod test {
         pub partial_sigs: Vec<RistrettoSchnorr>,
     }
 
-    fn get_message() -> MessageHash {
-        Challenge::<Sha256>::hash_input(b"TheDiscworld".to_vec())
-    }
-
     fn get_key_and_nonce<R: CryptoRng + Rng>(
         rng: &mut R,
     ) -> (RistrettoSecretKey, RistrettoPublicKey, RistrettoSecretKey, RistrettoPublicKey, MessageHash) {
@@ -656,7 +649,7 @@ mod test {
     /// You can also optionally provide a message at this stage to be signed.
     /// The function returns the MuSig struct as well as a data structure that holds the secret and public keys, the
     /// nonces and public nonces, and the nonce hashes to aid with testing
-    fn create_round_one_musig(n: usize, msg: Option<&MessageHash>) -> (RistrettoMuSig<Sha256>, MuSigTestData) {
+    fn create_round_one_musig(n: usize, msg: Option<&[u8]>) -> (RistrettoMuSig<Sha256>, MuSigTestData) {
         let mut rng = rand::OsRng::new().unwrap();
         let mut musig = RistrettoMuSig::<Sha256>::new(n);
         let mut pub_keys = Vec::with_capacity(n);
@@ -704,7 +697,7 @@ mod test {
     /// `create_round_one_musig`, this function calls `MuSig::add_nonce_commitment` for each nonce hash in the test
     /// data structure leaving the MuSig structure ready to accept public nonces. If the message is supplied, it is
     /// added after the nonce commitments have been added
-    fn create_round_two_musig(n: usize, msg: Option<&MessageHash>) -> (RistrettoMuSig<Sha256>, MuSigTestData) {
+    fn create_round_two_musig(n: usize, msg: Option<&[u8]>) -> (RistrettoMuSig<Sha256>, MuSigTestData) {
         let (mut musig, data) = create_round_one_musig(n, None);
         for (p, h) in data.pub_keys.iter().zip(&data.nonce_hashes) {
             musig = musig.add_nonce_commitment(p, h.clone());
@@ -721,7 +714,7 @@ mod test {
     /// Utility test function that creates a MuSig ceremony at Round 3 (signature collection). This function takes
     /// the result from `create_round_two_musig` and adds the public nonces found in `data`. If the message is
     /// provided, it is added after this. The MuSig structure that is returned is ready to accept partial signatures
-    fn create_round_three_musig(n: usize, msg: Option<MessageHash>) -> (RistrettoMuSig<Sha256>, MuSigTestData) {
+    fn create_round_three_musig(n: usize, msg: Option<&[u8]>) -> (RistrettoMuSig<Sha256>, MuSigTestData) {
         let (mut musig, mut data) = create_round_two_musig(n, None);
         for (p, r) in data.pub_keys.iter().zip(&data.public_nonces) {
             musig = musig.add_nonce(p, r.clone())
@@ -743,7 +736,7 @@ mod test {
 
     /// Utility test function to create a finalised MuSig struct: All partial signatures have been collected and
     /// verified, and the sum of partial signatures is returned independently
-    fn create_final_musig(n: usize, msg: MessageHash) -> (RistrettoMuSig<Sha256>, MuSigTestData, RistrettoSchnorr) {
+    fn create_final_musig(n: usize, msg: &[u8]) -> (RistrettoMuSig<Sha256>, MuSigTestData, RistrettoSchnorr) {
         let (mut musig, data) = create_round_three_musig(n, Some(msg));
         assert_eq!(musig.has_failed(), false);
         // Add the partial signatures
@@ -793,8 +786,7 @@ mod test {
     #[test]
     fn add_msg_in_round_one() {
         let (mut musig, _) = create_round_one_musig(5, None);
-        let m = get_message();
-        musig = musig.set_message(&m);
+        musig = musig.set_message(b"Hello Discworld");
         assert_eq!(musig.has_failed(), false);
         // Haven't collected nonces yet, so challenge is still undefined
         assert_eq!(musig.get_challenge(), None);
@@ -846,8 +838,7 @@ mod test {
 
     #[test]
     fn can_add_nonces_in_any_order() {
-        let msg = get_message();
-        let (mut musig, data) = create_round_two_musig(3, Some(&msg));
+        let (mut musig, data) = create_round_two_musig(3, Some(b"message"));
         musig = musig
             .add_nonce(&data.pub_keys[2], data.public_nonces[2].clone())
             .add_nonce(&data.pub_keys[0], data.public_nonces[0].clone())
@@ -866,8 +857,7 @@ mod test {
     #[test]
     fn invalid_partial_signature_causes_failure() {
         let mut rng = rand::OsRng::new().unwrap();
-        let m = get_message();
-        let (mut musig, data) = create_round_three_musig(15, Some(m));
+        let (mut musig, data) = create_round_three_musig(15, Some(b"message"));
         let s = RistrettoSecretKey::random(&mut rng);
         // Create a signature with a valid nonce, but the signature is invalid
         let bad_sig = RistrettoSchnorr::new(data.public_nonces[1], s);
@@ -880,8 +870,7 @@ mod test {
     #[test]
     fn bad_partial_signature_causes_failure() {
         let mut rng = rand::OsRng::new().unwrap();
-        let m = get_message();
-        let (mut musig, _) = create_round_three_musig(3, Some(m));
+        let (mut musig, _) = create_round_three_musig(3, Some(b"message"));
         let (s, r) = RistrettoPublicKey::random_keypair(&mut rng);
         // Create a signature with an invalid nonce
         let bad_sig = RistrettoSchnorr::new(r, s);
@@ -902,27 +891,31 @@ mod test {
         musig = musig.add_public_key(&p);
         assert!(musig.has_failed());
 
-        let (mut musig, _) = create_round_three_musig(5, Some(get_message()));
+        let (mut musig, _) = create_round_three_musig(5, Some(b"message"));
         musig = musig.add_public_key(&p);
         assert!(musig.has_failed());
     }
 
     #[test]
     fn aggregated_signature_validates() {
-        let (musig, data, s_agg) = create_final_musig(15, get_message());
+        let (musig, data, s_agg) = create_final_musig(15, b"message");
         let sig = musig.get_aggregated_signature().unwrap();
         let p_agg = musig.get_aggregated_public_key().unwrap();
+        let m_hash = Challenge::<Sha256>::hash_input(b"message".to_vec());
         let challenge =
-            Challenge::<Sha256>::new().concat(data.r_agg.to_bytes()).concat(p_agg.to_bytes()).concat(&get_message());
-        assert_eq!(&s_agg, sig);
+            Challenge::<Sha256>::new()
+                .concat(data.r_agg.to_bytes())
+                .concat(p_agg.to_bytes())
+                .concat(&m_hash);
         assert!(sig.verify_challenge(p_agg, challenge));
+        assert_eq!(&s_agg, sig);
     }
 
     #[test]
     fn multiparty_musig() {
         // Everyone sets up their MuSig
-        let m = Challenge::<Sha256>::new().concat(b"Discworld").hash();
-        let (mut alice, data) = create_round_three_musig(2, Some(m.clone()));
+        let m = b"Discworld".to_vec();
+        let (mut alice, data) = create_round_three_musig(2, Some(&m));
         // Aliases to Alice's and Bob's public key
         let p_a = data.pub_keys.get(0).unwrap();
         let p_b = data.pub_keys.get(1).unwrap();
