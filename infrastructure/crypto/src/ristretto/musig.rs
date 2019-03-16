@@ -135,11 +135,7 @@ pub struct RistrettoMuSig<D: Digest> {
 impl<D: Digest> RistrettoMuSig<D> {
     /// Create a new, empty MuSig ceremony for _n_ participants
     pub fn new(n: usize) -> RistrettoMuSig<D> {
-        // Ristretto requires a 256 bit has
-        if D::output_size() != 32 {
-            panic!("RistrettoMuSig requires a digest function with a 32 byte digest.")
-        }
-        let state = match Initialization::new(n) {
+        let state = match Initialization::new::<D>(n) {
             Ok(s) => MuSigState::Initialization(s),
             Err(e) => MuSigState::Failed(e),
         };
@@ -404,7 +400,11 @@ struct Initialization {
 }
 
 impl Initialization {
-    pub fn new(n: usize) -> Result<Initialization, MuSigError> {
+    pub fn new<D: Digest>(n: usize) -> Result<Initialization, MuSigError> {
+        // Ristretto requires a 256 bit hash
+        if D::output_size() != 32 {
+            return Err(MuSigError::IncompatibleHashFunction);
+        }
         let joint_key_builder = JKBuilder::new(n)?;
         Ok(Initialization { joint_key_builder, message: None })
     }
@@ -617,7 +617,7 @@ impl FinalizedMuSig {
 
 //-------------------------------------------------------------------------------------------------------------------//
 //------------------------------------               Tests                  -----------------------------------------//
-//-------------------------------------------------------------------------------------------------------------------//
+//------------------------------------ -------------------------------------------------------------------------------//
 
 #[cfg(test)]
 mod test {
@@ -664,7 +664,7 @@ mod test {
         let mut nonces = Vec::with_capacity(n);
         let mut public_nonces = Vec::with_capacity(n);
         let mut nonce_hashes = Vec::with_capacity(n);
-        let mut partial_sigs = Vec::with_capacity(n);
+        let partial_sigs = Vec::with_capacity(n);
         for _ in 0..n {
             let (k, pk, r, pr, h) = get_key_and_nonce(&mut rng);
             secret_keys.push(k);
@@ -705,7 +705,7 @@ mod test {
     /// data structure leaving the MuSig structure ready to accept public nonces. If the message is supplied, it is
     /// added after the nonce commitments have been added
     fn create_round_two_musig(n: usize, msg: Option<&MessageHash>) -> (RistrettoMuSig<Sha256>, MuSigTestData) {
-        let (mut musig, mut data) = create_round_one_musig(n, None);
+        let (mut musig, data) = create_round_one_musig(n, None);
         for (p, h) in data.pub_keys.iter().zip(&data.nonce_hashes) {
             musig = musig.add_nonce_commitment(p, h.clone());
         }
@@ -744,7 +744,7 @@ mod test {
     /// Utility test function to create a finalised MuSig struct: All partial signatures have been collected and
     /// verified, and the sum of partial signatures is returned independently
     fn create_final_musig(n: usize, msg: MessageHash) -> (RistrettoMuSig<Sha256>, MuSigTestData, RistrettoSchnorr) {
-        let (mut musig, mut data) = create_round_three_musig(n, Some(msg));
+        let (mut musig, data) = create_round_three_musig(n, Some(msg));
         assert_eq!(musig.has_failed(), false);
         // Add the partial signatures
         for &s in data.partial_sigs.iter() {
@@ -761,7 +761,7 @@ mod test {
     #[test]
     fn add_too_many_pub_keys() {
         let mut rng = rand::OsRng::new().unwrap();
-        let mut musig = RistrettoMuSig::<Sha256>::new(2);
+        let musig = RistrettoMuSig::<Sha256>::new(2);
         let (_, p1) = RistrettoPublicKey::random_keypair(&mut rng);
         let (_, p2) = RistrettoPublicKey::random_keypair(&mut rng);
         let (_, p3) = RistrettoPublicKey::random_keypair(&mut rng);
@@ -782,7 +782,7 @@ mod test {
     #[test]
     fn duplicate_pub_key() {
         let mut rng = rand::OsRng::new().unwrap();
-        let mut musig = RistrettoMuSig::<Sha256>::new(3);
+        let musig = RistrettoMuSig::<Sha256>::new(3);
         let (_, p1) = RistrettoPublicKey::random_keypair(&mut rng);
         let (_, p2) = RistrettoPublicKey::random_keypair(&mut rng);
         let musig = musig.add_public_key(&p1).add_public_key(&p2).add_public_key(&p1);
@@ -792,7 +792,7 @@ mod test {
 
     #[test]
     fn add_msg_in_round_one() {
-        let (mut musig, data) = create_round_one_musig(5, None);
+        let (mut musig, _) = create_round_one_musig(5, None);
         let m = get_message();
         musig = musig.set_message(&m);
         assert_eq!(musig.has_failed(), false);
@@ -881,7 +881,7 @@ mod test {
     fn bad_partial_signature_causes_failure() {
         let mut rng = rand::OsRng::new().unwrap();
         let m = get_message();
-        let (mut musig, data) = create_round_three_musig(3, Some(m));
+        let (mut musig, _) = create_round_three_musig(3, Some(m));
         let (s, r) = RistrettoPublicKey::random_keypair(&mut rng);
         // Create a signature with an invalid nonce
         let bad_sig = RistrettoSchnorr::new(r, s);

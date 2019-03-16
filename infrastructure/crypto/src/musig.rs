@@ -82,6 +82,9 @@ pub enum MuSigError {
     /// The message to sign is invalid. have you hashed it?
     #[error(no_from, non_std)]
     InvalidMessage,
+    /// MuSig requires a hash function with a 32 byte digest
+    #[error(no_from, non_std)]
+    IncompatibleHashFunction,
 }
 
 //----------------------------------------------     Joint Key     ------------------------------------------------//
