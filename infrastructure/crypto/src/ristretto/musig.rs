@@ -550,11 +550,7 @@ impl SignatureCollection {
         m: &MessageHash,
     ) -> RistrettoSecretKey
     {
-        let e = Challenge::<D>::new()
-            .concat(r_agg.to_bytes())
-            .concat(p_agg.to_bytes())
-            .concat(m)
-            .hash();
+        let e = Challenge::<D>::new().concat(r_agg.to_bytes()).concat(p_agg.to_bytes()).concat(m).hash();
         RistrettoSecretKey::from_vec(&e).expect("Found a u256 that does not map to a valid Ristretto scalar")
     }
 
@@ -903,10 +899,7 @@ mod test {
         let p_agg = musig.get_aggregated_public_key().unwrap();
         let m_hash = Challenge::<Sha256>::hash_input(b"message".to_vec());
         let challenge =
-            Challenge::<Sha256>::new()
-                .concat(data.r_agg.to_bytes())
-                .concat(p_agg.to_bytes())
-                .concat(&m_hash);
+            Challenge::<Sha256>::new().concat(data.r_agg.to_bytes()).concat(p_agg.to_bytes()).concat(&m_hash);
         assert!(sig.verify_challenge(p_agg, challenge));
         assert_eq!(&s_agg, sig);
     }
