@@ -4,7 +4,6 @@
 extern crate proc_macro;
 extern crate proc_macro2;
 
-
 use proc_macro::TokenStream;
 use proc_macro2::{Ident, Span};
 use quote::{quote, quote_spanned};
