@@ -205,7 +205,7 @@ impl TransactionKernel {
             .concat(&self.fee.to_le_bytes())
             .concat(&self.lock_height.to_le_bytes());
 
-        if signature.verify(excess, c) {
+        if signature.verify_challenge(excess, c) {
             return Ok(());
         } else {
             return Err(TransactionError::InvalidSignatureError);
@@ -389,7 +389,7 @@ mod test {
         challenge::Challenge,
         commitment::HomomorphicCommitment,
         common::{Blake256, ByteArray},
-        keys::{PublicKey as PublicKeyTrait, SecretKeyFactory},
+        keys::{PublicKey as PublicKeyTrait, SecretKey},
         ristretto::pedersen::DEFAULT_RISTRETTO_PEDERSON_BASE,
     };
     use curve25519_dalek::scalar::Scalar;

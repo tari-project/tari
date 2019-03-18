@@ -95,7 +95,7 @@ use crate::{
 /// let sig = RistrettoSchnorr::new(R, s);
 /// let e = Challenge::<Blake256>::new()
 ///     .concat(b"Maskerade");
-/// assert!(sig.verify(&P, e));
+/// assert!(sig.verify_challenge(&P, e));
 /// # }
 /// ```
 pub type RistrettoSchnorr = SchnorrSignature<RistrettoPublicKey, RistrettoSecretKey>;
@@ -105,7 +105,7 @@ mod test {
     use crate::{
         challenge::Challenge,
         common::{Blake256, ByteArray},
-        keys::{PublicKey, SecretKeyFactory},
+        keys::{PublicKey, SecretKey},
         ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
     };
     use rand;
@@ -128,12 +128,12 @@ mod test {
         let sig = RistrettoSchnorr::sign(k, r, e.clone()).unwrap();
         let R_calc = sig.get_public_nonce();
         assert_eq!(R, *R_calc);
-        assert!(sig.verify(&P, e.clone()));
+        assert!(sig.verify_challenge(&P, e.clone()));
         // Doesn't work for invalid credentials
-        assert!(!sig.verify(&R, e));
+        assert!(!sig.verify_challenge(&R, e));
         // Doesn't work for different challenge
         let wrong_challenge = Challenge::<Blake256>::new().concat(b"Guards! Guards!");
-        assert!(!sig.verify(&P, wrong_challenge));
+        assert!(!sig.verify_challenge(&P, wrong_challenge));
     }
 
     /// This test checks that the linearity of Schnorr signatures hold, i.e. that s = s1 + s2 is validated by R1 + R2
@@ -159,10 +159,10 @@ mod test {
         let s1 = RistrettoSchnorr::sign(k1, r1, e1).unwrap();
         // Calculate Bob's signature
         let s2 = RistrettoSchnorr::sign(k2, r2, e2).unwrap();
-        // Now add the two sigs together
+        // Now add the two signatures together
         let s_agg = &s1 + &s2;
         let e3 = challenge.clone();
         // Check that the multi-sig verifies
-        assert!(s_agg.verify(&(P1 + P2), e3));
+        assert!(s_agg.verify_challenge(&(P1 + P2), e3));
     }
 }

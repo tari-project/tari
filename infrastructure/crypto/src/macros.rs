@@ -20,6 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+/// Adds some variations of `Add` given a definition for `Add` that takes references. i.e. assuming we have
+/// ```ignore
+///   impl<'a, 'b> Add<&'b Foo> for &'a Foo {
+///       type Output = Foo;
+///       fn add(self, rhs: &'b rhs) -> Foo {...}
+///   }
+/// ```
+/// which allows `&foo1 + &foo2` This macro adds definitions for
+/// * `&foo1 + foo2`
+/// * `foo1 + &foo2`
+/// * `foo1 + foo2`
 macro_rules! define_add_variants {
     (LHS = $lhs:ty, RHS = $rhs:ty, Output = $out:ty) => {
         impl<'b> Add<&'b $rhs> for $lhs {
@@ -48,6 +59,7 @@ macro_rules! define_add_variants {
     };
 }
 
+/// Add variations for `Sub` definitions, similar to those for `Add`
 macro_rules! define_sub_variants {
     (LHS = $lhs:ty, RHS = $rhs:ty, Output = $out:ty) => {
         impl<'b> Sub<&'b $rhs> for $lhs {
@@ -76,6 +88,7 @@ macro_rules! define_sub_variants {
     };
 }
 
+/// Add variations for `Mul` definitions, similar to those for `Add`
 macro_rules! define_mul_variants {
     (LHS = $lhs:ty, RHS = $rhs:ty, Output = $out:ty) => {
         impl<'b> Mul<&'b $rhs> for $lhs {

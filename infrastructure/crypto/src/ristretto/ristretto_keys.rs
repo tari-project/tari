@@ -23,7 +23,7 @@
 //! The Tari-compatible implementation of Ristretto based on the curve25519-dalek implementation
 use crate::{
     common::{ByteArray, ByteArrayError},
-    keys::{PublicKey, SecretKey, SecretKeyFactory},
+    keys::{PublicKey, SecretKey},
 };
 use curve25519_dalek::{
     constants::RISTRETTO_BASEPOINT_TABLE,
@@ -46,15 +46,15 @@ use std::{
 /// little-endian):
 ///
 /// ```edition2018
-/// use crypto::ristretto::RistrettoSecretKey as SecretKey;
-/// use crypto::keys::SecretKeyFactory;
+/// use crypto::ristretto::RistrettoSecretKey;
 /// use crypto::common::ByteArray;
+/// use crypto::keys::SecretKey;
 /// use rand;
 ///
 /// let mut rng = rand::OsRng::new().unwrap();
-/// let _k1 = SecretKey::from_bytes(&[1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0]);
-/// let _k2 = SecretKey::from_hex(&"100000002000000030000000040000000");
-/// let _k3 = SecretKey::random(&mut rng);
+/// let _k1 = RistrettoSecretKey::from_bytes(&[1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0]);
+/// let _k2 = RistrettoSecretKey::from_hex(&"100000002000000030000000040000000");
+/// let _k3 = RistrettoSecretKey::random(&mut rng);
 /// ```
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub struct RistrettoSecretKey(pub(crate) Scalar);
@@ -67,12 +67,18 @@ impl SecretKey for RistrettoSecretKey {
     fn key_length() -> usize {
         SCALAR_LENGTH
     }
+
+    /// Return a random secret key on the `ristretto255` curve using the supplied CSPRNG.
+    fn random<R: Rng + CryptoRng>(rng: &mut R) -> Self {
+        RistrettoSecretKey(Scalar::random(rng))
+    }
 }
 
-/// Return a random secret key on the `ristretto255` curve using the supplied CSPRNG.
-impl SecretKeyFactory for RistrettoSecretKey {
-    fn random<R: CryptoRng + Rng>(rng: &mut R) -> Self {
-        RistrettoSecretKey(Scalar::random(rng))
+//----------------------------------    Ristretto Secret Key Default   -----------------------------------------------//
+
+impl Default for RistrettoSecretKey {
+    fn default() -> Self {
+        RistrettoSecretKey(Scalar::default())
     }
 }
 
@@ -131,14 +137,6 @@ define_add_variants!(LHS = RistrettoSecretKey, RHS = RistrettoSecretKey, Output 
 define_sub_variants!(LHS = RistrettoSecretKey, RHS = RistrettoSecretKey, Output = RistrettoSecretKey);
 define_mul_variants!(LHS = RistrettoSecretKey, RHS = RistrettoPublicKey, Output = RistrettoPublicKey);
 
-//---------------------------------------  SecretKey From Implementations -------------------------------------------//
-
-impl From<RistrettoSecretKey> for Scalar {
-    fn from(k: RistrettoSecretKey) -> Self {
-        k.0
-    }
-}
-
 //--------------------------------------------- Ristretto Public Key -------------------------------------------------//
 
 /// The [PublicKey](trait.PublicKey.html) implementation for `ristretto255` is a thin wrapper around the dalek
@@ -148,16 +146,16 @@ impl From<RistrettoSecretKey> for Scalar {
 /// Both [PublicKey](trait.PublicKey.html) and [ByteArray](trait.ByteArray.html) are implemented on
 /// `RistrettoPublicKey` so all of the following will work:
 /// ```edition2018
-/// use crypto::ristretto::{ RistrettoPublicKey, RistrettoSecretKey as SecretKey };
+/// use crypto::ristretto::{ RistrettoPublicKey, RistrettoSecretKey };
 /// use crypto::common::ByteArray;
-/// use crypto::keys::{ PublicKey, SecretKeyFactory };
+/// use crypto::keys::{ PublicKey, SecretKey };
 /// use rand;
 ///
 /// let mut rng = rand::OsRng::new().unwrap();
 /// let _p1 = RistrettoPublicKey::from_bytes(&[224, 196, 24, 247, 200, 217, 196, 205, 215, 57, 91, 147, 234, 18, 79, 58, 217,
 /// 144, 33, 187, 104, 29, 252, 51, 2, 169, 217, 154, 46, 83, 230, 78]);
 /// let _p2 = RistrettoPublicKey::from_hex(&"e882b131016b52c1d3337080187cf768423efccbb517bb495ab812c4160ff44e");
-/// let sk = SecretKey::random(&mut rng);
+/// let sk = RistrettoSecretKey::random(&mut rng);
 /// let _p3 = RistrettoPublicKey::from_secret_key(&sk);
 /// ```
 #[derive(Clone, Copy, Debug)]
@@ -191,6 +189,14 @@ impl PublicKey for RistrettoPublicKey {
         let s: Vec<Scalar> = scalars.iter().map(|k| k.0.clone()).collect();
         let p = RistrettoPoint::multiscalar_mul(s, p);
         RistrettoPublicKey::new_from_pk(p)
+    }
+}
+
+//----------------------------------    Ristretto Public Key Default   -----------------------------------------------//
+
+impl Default for RistrettoPublicKey {
+    fn default() -> Self {
+        RistrettoPublicKey::new_from_pk(RistrettoPoint::default())
     }
 }
 
@@ -289,6 +295,12 @@ define_mul_variants!(LHS = RistrettoSecretKey, RHS = RistrettoSecretKey, Output 
 
 //----------------------------------         PublicKey From implementations      -------------------------------------//
 
+impl From<RistrettoSecretKey> for Scalar {
+    fn from(k: RistrettoSecretKey) -> Self {
+        k.0
+    }
+}
+
 impl From<RistrettoPublicKey> for RistrettoPoint {
     fn from(pk: RistrettoPublicKey) -> Self {
         pk.point
@@ -314,11 +326,7 @@ impl From<RistrettoPublicKey> for CompressedRistretto {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{
-        common::ByteArray,
-        keys::{PublicKey, SecretKeyFactory},
-        ristretto::test_common::get_keypair,
-    };
+    use crate::{common::ByteArray, keys::PublicKey, ristretto::test_common::get_keypair};
     use rand;
 
     #[test]
@@ -457,5 +465,12 @@ mod test {
         let p_slow = &(k1 * &p1) + &(k2 * &p2);
         let b_batch = RistrettoPublicKey::batch_mul(&vec![k1, k2], &vec![p1, p2]);
         assert_eq!(p_slow, b_batch);
+    }
+
+    #[test]
+    fn create_keypair() {
+        let mut rng = rand::OsRng::new().unwrap();
+        let (k, pk) = RistrettoPublicKey::random_keypair(&mut rng);
+        assert_eq!(pk, RistrettoPublicKey::from_secret_key(&k));
     }
 }

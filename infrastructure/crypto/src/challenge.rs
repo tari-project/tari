@@ -23,6 +23,7 @@
 use digest::{generic_array::typenum::U32, FixedOutput};
 use sha2::Digest;
 
+pub type MessageHash = Vec<u8>;
 pub type Challenge256Bit = [u8; 32];
 
 /// A Challenge of the form H(P || R || ... || m).
@@ -65,8 +66,13 @@ impl<D: Digest> Challenge<D> {
     }
 
     /// Hash the challenge input, consuming the challenge in the process.
-    pub fn hash(self) -> Vec<u8> {
+    pub fn hash(self) -> MessageHash {
         self.hasher.result().to_vec()
+    }
+
+    /// Convenience function that returns the hash of the input
+    pub fn hash_input(data: Vec<u8>) -> MessageHash {
+        Challenge::<D>::new().concat(&data).hash()
     }
 }
 
