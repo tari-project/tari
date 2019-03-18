@@ -28,6 +28,8 @@ use chrono::{DateTime, Utc};
 
 type BlockHash = [u8; 32];
 
+// use little indian
+
 /// The BlockHeader contains all the metadata for the block, including proof of work, a link to the previous block
 /// and the transaction kernels.
 pub struct BlockHeader {

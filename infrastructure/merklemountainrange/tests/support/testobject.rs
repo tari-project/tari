@@ -29,7 +29,7 @@ use merklemountainrange::merklenode::Hashable;
 #[Digest = "Blake2b"]
 pub struct TestObject {
     pub id: String,
-    #[hash(Hashable_ignore)]
+    #[Hashable(Ignore)]
     pub string_we_should_not_hash: String,
 }
 
@@ -38,10 +38,3 @@ impl TestObject {
         TestObject { id, string_we_should_not_hash: "a".to_owned() }
     }
 }
-// impl Hashable for TestObject {
-// fn hash(&self) -> ObjectHash {
-// let mut hash = Blake2b::new();
-// hash.input(self.id.as_bytes());
-// hash.result().to_vec()
-// }
-// }

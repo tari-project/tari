@@ -31,11 +31,11 @@ type BlockHash = Blake2b;
 
 pub struct BlockchainState {
     _outputs: MerkleMountainRange<TransactionOutput, BlockHash>,
-    _kernals: MerkleMountainRange<TransactionKernel, BlockHash>,
+    _kernels: MerkleMountainRange<TransactionKernel, BlockHash>,
 }
 
 impl BlockchainState {
     pub fn new() -> BlockchainState {
-        BlockchainState { _outputs: MerkleMountainRange::new(), _kernals: MerkleMountainRange::new() }
+        BlockchainState { _outputs: MerkleMountainRange::new(), _kernels: MerkleMountainRange::new() }
     }
 }
