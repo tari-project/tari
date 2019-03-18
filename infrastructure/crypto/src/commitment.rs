@@ -32,7 +32,12 @@ use curve25519_dalek::scalar::Scalar;
 /// [ByteArray](trait.ByteArray.html).
 ///
 /// The Homomorphic part means, more or less, that commitments follow some of the standard rules of
-/// arithmetic. Adding two commitments is the same as committing to the sum of their parts.
+/// arithmetic. Adding two commitments is the same as committing to the sum of their parts:
+/// $$ \begin{aligned}
+///   C_1 &= v_1.G + k_1.H \\\\
+///   C_2 &= v_2.G + k_2.H \\\\
+///   \therefore C_1 + C_2 &= (v_1 + v_2)G + (k_1 + k_2)H
+/// \end{aligned} $$
 pub trait HomomorphicCommitment {
     type Base;
     fn new(k: &Scalar, v: &Scalar, base: &'static Self::Base) -> Self;
