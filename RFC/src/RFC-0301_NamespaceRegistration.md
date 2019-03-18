@@ -124,35 +124,38 @@ number of key-value pairs. Standard (optional) key-values are: "*recipient_addre
 may also be defined. Only entities with write access to a specific DNS record will be able to create the required TXT 
 DNS record entries.
 
-TXT DNS records are limited to multiple strings of size 255, and as the User Datagram Protocol (UDP) size is 512 bytes, a TXT DNS record that exceeds that limit is less optimal [[2], Sections 3.3 & 3.4].
+TXT DNS records are limited to multiple strings of size 255, and as the User Datagram Protocol (UDP) size is 512 bytes, a TXT DNS record that exceeds that limit is less optimal [[2], Sections 3.3 & 3.4]. Some hosting sites also pose limitations to TXT DNS record string lengths and concatenation of multiple strings as per [[2]]. The basic idea of this specification is to make the implementation robust and flexible at the same time.
 
 **Req** - Integration with public DNS records MUST be used to ensure valid ownership of an FQDN that needs to be 
 linked to a [digital asset] on the DAN. 
+
+**Req** - The total size of the OpenAlias TXT DNS record SHOULD not exceed 255 characters.
 
 **Req** - The total size of the OpenAlias TXT DNS record MUST not exceed 512 characters.
 
 **Req** - The OpenAlias TXT DNS record implementation MUST make provision to interpret entries that are made up of more than one string as defined in [[2]].
 
-**Req** - The OpenAlias TXT DNS record MUST adhere to the formatting requirements as specified in [[1]].
+**Req** - The OpenAlias TXT DNS record SHOULD adhere to the formatting requirements as specified in [[1]].
 
 **Req** - The OpenAlias TXT DNS record MUST be constructed as follows:
 
 | OpenAlias TXT DNS Record Field | OpenAlias TXT DNS Record Data                                |
 | ------------------------------ | ------------------------------------------------------------ |
-| oa1:\<name\>                   | "oa1:tari_raid"                                              |
-| fqdn                           | \<FQDN\>                                                     |
-| pub_key                        | \<256 bit public key in hexadecimal format (64 characters), converted into a `Base58` encoded string (44 characters)\> |
+| oa1:\<name\>                   | "oa1:tari"                                                   |
+| pk                             | \<256 bit public key, in hexadecimal format (64 characters), that is converted into a `Base58` encoded string (44 characters)\> |
 | raid_id                        | \<`RAID_ID` (*see [The RAID_ID](#the-raid_id)*) (15 characters)\> |
-| pub_nonce                      | \<256 bit public nonce in hexadecimal format (64 characters), converted into a `Base58` encoded string (44 characters)\> |
-| signature                      | \<[Asset issuer]'s 256 bit Schnorr signature for the `RAID_ID` (*see [The RAID_ID](#the-raid_id)*), in hexadecimal format (64 characters), converted into a `Base58` encoded string (44 characters)\> |
-| description                    | \<Optional RAID description\>; ASCII String; Up to  127 characters              |
-| checksum                       | \<CRC-32 checksum of the entire record up to but excluding the checksum key-value pair (starting at "**oa1:tari_raid**" and ending at the last "**;**" before the checksum key-value pair) in hexadecimal format (8 characters)\> |
+| nonce                          | \<256 bit public nonce, in hexadecimal format (64 characters), that is converted into a `Base58` encoded string (44 characters)\> |
+| sig                            | \<[Asset issuer]'s 256 bit Schnorr signature for the `RAID_ID` (*see [The RAID_ID](#the-raid_id)*), in hexadecimal format (64 characters), that is converted into a `Base58` encoded string (44 characters)\> |
+| desc                           | \<Optional RAID description\>; ASCII String; Up to 48 characters for the condensed version (using only one string) and up to 235 characters (when spanning two strings). |
+| crc                            | \<CRC-32 checksum of the entire record up to but excluding the checksum key-value pair (starting at "**oa1:tari**" and ending at the last "**;**" before the checksum key-value pair) in hexadecimal format (8 characters)\> |
 
-&nbsp;&nbsp;&nbsp;&nbsp;Example: An example OpenAlias TXT DNS record is shown:
+&nbsp;&nbsp;&nbsp;&nbsp;Examples: Two example OpenAlias TXT DNS records are shown; the first a condensed version and the second one that spans two strings:
 
 ``` text
 RAID_ID:
-raid_id       = RYqMMuSmBZFQkgp
+public key    = ca469346d7643336c19155fdf5c6500a5232525ce4eba7e4db757639159e9861
+FQDN          = disney.com
+ -> id        = RYqMMuSmBZFQkgp
    
 base58 encodings:
 public key    = ca469346d7643336c19155fdf5c6500a5232525ce4eba7e4db757639159e9861
@@ -162,10 +165,17 @@ public nonce  = fc2c5fce596338f43f70dc0ce14659fdfea1ba3e588a7c6fa79957fc70aa1b4b
 signature     = 7dc54ec98da2350b0c8ed0561537517ac6f93a37f08a34482824e7df3514ce0d
  -> base58    = 9TxTorviyTJAaVJ4eY4AQPixwLb6SDL4dieHff6MFUha
    
-OpenAlias TXT DNS record:
-IN   TXT = "oa1:tari_raid fqdn=disney.com; pub_key=EcbmnM6PLosBzpyCcBz1TikpNXRKcucpm73ez6xYfLtg; 
-raid_id=RYqMMuSmBZFQkgp; pub_nonce=5ctFNnCfBrP99rT1AFmj1WPyMD8uAdNUTESHhLoV3KBZ;"
-" signature=9TxTorviyTJAaVJ4eY4AQPixwLb6SDL4dieHff6MFUha; description=Cartoon charaters; checksum=02A99340"
+OpenAlias TXT DNS record (condensed: 211 characters):
+IN   TXT = "oa1:tari pk=EcbmnM6PLosBzpyCcBz1TikpNXRKcucpm73ez6xYfLtg;id=RYqMMuSmBZFQkgp;
+nonce=5ctFNnCfBrP99rT1AFmj1WPyMD8uAdNUTESHhLoV3KBZ;sig=9TxTorviyTJAaVJ4eY4AQPixwLb6SDL4dieHff6MFUha;
+desc=Cartoon charaters;crc=B31C7CA0"
+
+OpenAlias TXT DNS record (spanning two strings: string 1 = 179 characters and string 2 = 249 characters):
+IN   TXT = "oa1:tari pk=EcbmnM6PLosBzpyCcBz1TikpNXRKcucpm73ez6xYfLtg; id=RYqMMuSmBZFQkgp; 
+nonce=5ctFNnCfBrP99rT1AFmj1WPyMD8uAdNUTESHhLoV3KBZ; sig=9TxTorviyTJAaVJ4eY4AQPixwLb6SDL4dieHff6MFUha; "
+"desc=Cartoon charaters: Mickey Mouse\; Minnie Mouse\; Goofy\; Donald Duck\; Pluto\; Daisy Duck\; 
+Scrooge McDuck\; Launchpad McQuack\; Huey, Dewey and Louie\; Bambi\; Thumper\; Flower\; Faline\; 
+Tinker Bell\; Peter Pan and Captain Hook.; crc=96EC6593"
 ```
 
 
@@ -229,11 +239,10 @@ The sequence of events leading up to digital asset registration are perceived as
 
 5. **Req** - VNs MUST verify the OpenAlias TXT DNS record if a linked (`RAID_ID`, FQDN) tuple is used:
    1. Verify that all fields have been completed as per the specification (see 
-   [OpenAlias TXT DNS Records](#openalias-txt-dns-records)).
-   2. Verify that the `RAID_ID` can be calculated from information provided in the TXT DNS record.
+     [OpenAlias TXT DNS Records](#openalias-txt-dns-records)).
+   2. Verify that the `RAID_ID` can be calculated from information provided in the TXT DNS record and the FQDN of the public DNS record it is in.
    3. Verify that the asset issuer's `RAID_ID` signature is valid.
-   4. Verify that the FQDN corresponds to the public DNS record it is in.
-   5. Verify the checksum.
+   4. Verify the checksum.
 
 
 
