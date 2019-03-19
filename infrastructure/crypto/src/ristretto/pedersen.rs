@@ -89,7 +89,7 @@ impl HomomorphicCommitment for PedersenOnRistretto255 {
     }
 
     fn to_bytes(&self) -> &[u8] {
-        self.commitment.to_bytes()
+        self.commitment.as_bytes()
     }
 }
 

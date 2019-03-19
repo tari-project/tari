@@ -194,7 +194,7 @@ where
     fn calculate_common<D: Digest>(&self) -> K {
         let mut common = Challenge::<D>::new();
         for k in self.pub_keys.iter() {
-            common = common.concat(k.to_bytes());
+            common = common.concat(k.as_bytes());
         }
         K::from_vec(&common.hash())
             .expect("Could not calculate Scalar from hash value. Your crypto/hash combination might be inconsistent")
@@ -206,7 +206,7 @@ where
     /// You should ensure that the SecretKey constructor protects against failures and that the hash digest given
     /// produces a byte array of the correct length.
     fn calculate_partial_key<D: Digest>(common: &[u8], pubkey: &P) -> K {
-        let k = Challenge::<D>::new().concat(common).concat(pubkey.to_bytes()).hash();
+        let k = Challenge::<D>::new().concat(common).concat(pubkey.as_bytes()).hash();
         K::from_vec(&k)
             .expect("Could not calculate Scalar from hash value. Your crypto/hash combination might be inconsistent")
     }
@@ -220,7 +220,7 @@ where
 
     /// Utility function that produces the vector of MuSig private key modifiers, \\( a_i = H(\ell || P_i) \\)
     fn calculate_musig_scalars<D: Digest>(&self, common: &K) -> Vec<K> {
-        self.pub_keys.iter().map(|p| JointKeyBuilder::calculate_partial_key::<D>(common.to_bytes(), p)).collect()
+        self.pub_keys.iter().map(|p| JointKeyBuilder::calculate_partial_key::<D>(common.as_bytes(), p)).collect()
     }
 
     /// Calculate the value of the Joint MuSig public key. **NB**: you should usually sort the participant's keys

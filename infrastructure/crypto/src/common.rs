@@ -62,7 +62,7 @@ pub trait ByteArray {
 
     /// Return the type as a byte vector
     fn to_vec(&self) -> Vec<u8> {
-        self.to_bytes().to_vec()
+        self.as_bytes().to_vec()
     }
 
     /// Try and convert the given byte vector to the implemented type. Any failures (incorrect string length etc)
@@ -78,7 +78,7 @@ pub trait ByteArray {
     where Self: Sized;
 
     /// Return the type as a byte array
-    fn to_bytes(&self) -> &[u8];
+    fn as_bytes(&self) -> &[u8];
 }
 
 impl ByteArray for Vec<u8> {
@@ -108,7 +108,7 @@ impl ByteArray for Vec<u8> {
         Ok(bytes.to_vec())
     }
 
-    fn to_bytes(&self) -> &[u8] {
+    fn as_bytes(&self) -> &[u8] {
         Vec::as_slice(self)
     }
 }
@@ -124,7 +124,7 @@ impl ByteArray for [u8; 32] {
         Ok(a)
     }
 
-    fn to_bytes(&self) -> &[u8] {
+    fn as_bytes(&self) -> &[u8] {
         self
     }
 }

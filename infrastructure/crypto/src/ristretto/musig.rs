@@ -550,7 +550,7 @@ impl SignatureCollection {
         m: &MessageHash,
     ) -> RistrettoSecretKey
     {
-        let e = Challenge::<D>::new().concat(r_agg.to_bytes()).concat(p_agg.to_bytes()).concat(m).hash();
+        let e = Challenge::<D>::new().concat(r_agg.as_bytes()).concat(p_agg.as_bytes()).concat(m).hash();
         RistrettoSecretKey::from_vec(&e).expect("Found a u256 that does not map to a valid Ristretto scalar")
     }
 
@@ -899,7 +899,7 @@ mod test {
         let p_agg = musig.get_aggregated_public_key().unwrap();
         let m_hash = Challenge::<Sha256>::hash_input(b"message".to_vec());
         let challenge =
-            Challenge::<Sha256>::new().concat(data.r_agg.to_bytes()).concat(p_agg.to_bytes()).concat(&m_hash);
+            Challenge::<Sha256>::new().concat(data.r_agg.as_bytes()).concat(p_agg.as_bytes()).concat(&m_hash);
         assert!(sig.verify_challenge(p_agg, challenge));
         assert_eq!(&s_agg, sig);
     }
@@ -1013,13 +1013,13 @@ mod test_joint_key {
         assert_eq!(joint_key.get_pub_keys(1), &p1);
         assert_eq!(joint_key.get_pub_keys(2), &p3);
         // Calculate ell and partials
-        let ell = Sha256::new().chain(p2.to_bytes()).chain(p1.to_bytes()).chain(p3.to_bytes()).result().to_vec();
+        let ell = Sha256::new().chain(p2.as_bytes()).chain(p1.as_bytes()).chain(p3.as_bytes()).result().to_vec();
         // Check Ell
         let ell = RistrettoSecretKey::from_vec(&ell).unwrap();
         assert_eq!(joint_key.get_common(), &ell);
         // Check partial scalars
         let hash = |p: &RistrettoPublicKey| {
-            let h = Sha256::new().chain(ell.to_bytes()).chain(p.to_bytes()).result().to_vec();
+            let h = Sha256::new().chain(ell.as_bytes()).chain(p.as_bytes()).result().to_vec();
             RistrettoSecretKey::from_vec(&h).unwrap()
         };
         let a1 = hash(&p1);
