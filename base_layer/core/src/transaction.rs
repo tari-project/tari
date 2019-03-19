@@ -200,8 +200,8 @@ impl TransactionKernel {
         let excess = excess.as_public_key();
         let r = signature.get_public_nonce();
         let c = Challenge::<SignatureHash>::new()
-            .concat(r.to_bytes())
-            .concat(excess.clone().to_bytes())
+            .concat(r.as_bytes())
+            .concat(excess.clone().as_bytes())
             .concat(&self.fee.to_le_bytes())
             .concat(&self.lock_height.to_le_bytes());
 
@@ -226,7 +226,7 @@ impl Hashable for TransactionKernel {
             hasher.input(self.excess.unwrap().to_bytes());
         }
         if self.excess_sig.is_some() {
-            hasher.input(self.excess_sig.unwrap().get_signature().to_bytes());
+            hasher.input(self.excess_sig.unwrap().get_signature().as_bytes());
         }
         hasher.result().to_vec()
     }
@@ -474,8 +474,8 @@ mod test {
         let receiver_public_key = PublicKey::from_secret_key(&receiver_full_secret_key);
 
         let challenge = Challenge::<Blake256>::new()
-            .concat((&sender_public_nonce + &receiver_public_nonce).to_bytes())
-            .concat((&sender_public_excess + &receiver_public_key).to_bytes())
+            .concat((&sender_public_nonce + &receiver_public_nonce).as_bytes())
+            .concat((&sender_public_excess + &receiver_public_key).as_bytes())
             .concat(&fee.to_le_bytes())
             .concat(&lock_height.to_le_bytes());
 

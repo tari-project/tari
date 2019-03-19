@@ -100,7 +100,7 @@ impl ByteArray for RistrettoSecretKey {
     }
 
     /// Return the byte array for the secret key in little-endian order
-    fn to_bytes(&self) -> &[u8] {
+    fn as_bytes(&self) -> &[u8] {
         self.0.as_bytes()
     }
 }
@@ -245,7 +245,7 @@ impl ByteArray for RistrettoPublicKey {
     }
 
     /// Return the little-endian byte array representation of the compressed public key
-    fn to_bytes(&self) -> &[u8] {
+    fn as_bytes(&self) -> &[u8] {
         self.compressed.as_bytes()
     }
 }

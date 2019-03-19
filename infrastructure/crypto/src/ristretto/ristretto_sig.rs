@@ -124,7 +124,7 @@ mod test {
         let (k, P) = get_keypair();
         let (r, R) = get_keypair();
         let c = Challenge::<Blake256>::new();
-        let e = c.concat(P.to_bytes()).concat(R.to_bytes()).concat(b"Small Gods");
+        let e = c.concat(P.as_bytes()).concat(R.as_bytes()).concat(b"Small Gods");
         let sig = RistrettoSchnorr::sign(k, r, e.clone()).unwrap();
         let R_calc = sig.get_public_nonce();
         assert_eq!(R, *R_calc);
@@ -148,10 +148,10 @@ mod test {
         let (r2, R2) = get_keypair();
         // Each of them creates the Challenge = H(R1 || R2 || P1 || P2 || m)
         let challenge = Challenge::<Blake256>::new()
-            .concat(R1.to_bytes())
-            .concat(R2.to_bytes())
-            .concat(P1.to_bytes())
-            .concat(P2.to_bytes())
+            .concat(R1.as_bytes())
+            .concat(R2.as_bytes())
+            .concat(P1.as_bytes())
+            .concat(P2.as_bytes())
             .concat(b"Moving Pictures");
         let e1 = challenge.clone();
         let e2 = challenge.clone();
