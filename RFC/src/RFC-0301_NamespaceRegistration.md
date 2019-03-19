@@ -87,13 +87,13 @@ records on a FQDN. Let us call this a Registered Asset Issuer Domain (RAID) TXT 
 FQDN pair, it will provide us with a unique RAID_ID (RAID Identification). The RAID_ID will serve a similar purpose in 
 the DAN as a Top Level Domain (TLD) in a DNS, as all digital assets belonging to a specific [asset issuer] could then 
 be grouped under the FQDN by inference. To make this scheme more elaborate, but potentially unnecessary, all such 
-RAID_IDs could be also be registered on the [base layer] layer, similar to the RAIN scheme.
+RAID_IDs could also be registered on the [base layer], similar to the RAIN scheme.
 
-If the standard Mimblewimble protocol is to be followed, a new output feature can be defined to cater for a RAID tuple 
+If the standard Mimblewimble protocol is followed, a new output feature can be defined to cater for a RAID tuple 
 `(RAID_ID, PubKey)` that is linked to a specific Unspent Transaction Output ([UTXO]). The `RAID_ID` could be based on 
 a [Base58Check](https://en.bitcoin.it/wiki/Base58Check_encoding) variant applied to `Hash256(PubKey || FQDN)`. If the 
 amount of Tari coins associated with the RAID tuple transaction is burned, `(RAID_ID, PubKey)` will forever be present 
-on the blockchain and can assist with blockchain bloat. On the other hand, if those [Tari coins] are spent back to its 
+on the blockchain and can increase blockchain bloat. On the other hand, if those [Tari coins] are spent back to its 
 owner with a specific time lock, it will be possible to spend and prune that UTXO later on. While that UTXO remains 
 unspent, the RAID tuple will be valid, but when all or part of it is spent, the RAID tuple will disappear from the 
 blockchain. Such a UTXO will thus be "colored" while unspent as it will have different properties to a normal UTXO. It 
@@ -124,29 +124,59 @@ number of key-value pairs. Standard (optional) key-values are: "*recipient_addre
 may also be defined. Only entities with write access to a specific DNS record will be able to create the required TXT 
 DNS record entries.
 
-TXT DNS records are limited to multiple strings of size 255, and as the User Datagram Protocol (UDP) size is 512 bytes, a TXT DNS record that exceeds that limit is less optimal [[2], Sections 3.3 & 3.4].
+TXT DNS records are limited to multiple strings of size 255, and as the User Datagram Protocol (UDP) size is 512 bytes, a TXT DNS record that exceeds that limit is less optimal [[2], Sections 3.3 & 3.4]. Some hosting sites also pose limitations to TXT DNS record string lengths and concatenation of multiple strings as per [[2]]. The basic idea of this specification is to make the implementation robust and flexible at the same time.
 
 **Req** - Integration with public DNS records MUST be used to ensure valid ownership of an FQDN that needs to be 
 linked to a [digital asset] on the DAN. 
+
+**Req** - The total size of the OpenAlias TXT DNS record SHOULD not exceed 255 characters.
 
 **Req** - The total size of the OpenAlias TXT DNS record MUST not exceed 512 characters.
 
 **Req** - The OpenAlias TXT DNS record implementation MUST make provision to interpret entries that are made up of more than one string as defined in [[2]].
 
+**Req** - The OpenAlias TXT DNS record SHOULD adhere to the formatting requirements as specified in [[1]].
+
 **Req** - The OpenAlias TXT DNS record MUST be constructed as follows:
 
 | OpenAlias TXT DNS Record Field | OpenAlias TXT DNS Record Data                                |
 | ------------------------------ | ------------------------------------------------------------ |
-| oa1:\<name\>                   | "oa1:tari_raid"                                              |
-| fqdn                           | \<FQDN\>                                                     |
-| pub_key                        | \<256 bit public key in hexadecimal format excluding the leading "0x" (64 characters)\> |
-| raid_id                        | \<`RAID_ID` (*see [The RAID_ID](#the-raid_id)*) in hexadecimal format excluding the leading "0x" (44 characters)\> |
-| pub_nonce                      | \<256 bit public nonce in hexadecimal format excluding the leading "0x" (64 characters)\> |
-| signature                      | \<[Asset issuer]'s 256 bit Schnorr signature for the `RAID_ID` (*see [The RAID_ID](#the-raid_id)*), in hexadecimal format excluding the leading "0x" (64 characters)\> |
-| description                    | \<Optional RAID description\>                                |
-| checksum                       | \<CRC-32 checksum of the entire record up to but excluding the checksum key-value pair, in hexadecimal format excluding the leading "0x" (8 characters)\> |
+| oa1:\<name\>                   | "oa1:tari"                                                   |
+| pk                             | \<256 bit public key, in hexadecimal format (64 characters), that is converted into a `Base58` encoded string (44 characters)\> |
+| raid_id                        | \<`RAID_ID` (*see [The RAID_ID](#the-raid_id)*) (15 characters)\> |
+| nonce                          | \<256 bit public nonce, in hexadecimal format (64 characters), that is converted into a `Base58` encoded string (44 characters)\> |
+| sig                            | \<[Asset issuer]'s 256 bit Schnorr signature for the `RAID_ID` (*see [The RAID_ID](#the-raid_id)*), in hexadecimal format (64 characters), that is converted into a `Base58` encoded string (44 characters)\> |
+| desc                           | \<Optional RAID description\>; ASCII String; Up to 48 characters for the condensed version (using only one string) and up to 235 characters (when spanning two strings). |
+| crc                            | \<CRC-32 checksum of the entire record up to but excluding the checksum key-value pair (starting at "**oa1:tari**" and ending at the last "**;**" before the checksum key-value pair) in hexadecimal format (8 characters)\> |
 
-**Req** - The OpenAlias TXT DNS record MUST adhere to the formatting requirements as specified in [[1]].
+&nbsp;&nbsp;&nbsp;&nbsp;Examples: Two example OpenAlias TXT DNS records are shown; the first a condensed version and the second one that spans two strings:
+
+``` text
+RAID_ID:
+public key    = ca469346d7643336c19155fdf5c6500a5232525ce4eba7e4db757639159e9861
+FQDN          = disney.com
+ -> id        = RYqMMuSmBZFQkgp
+   
+base58 encodings:
+public key    = ca469346d7643336c19155fdf5c6500a5232525ce4eba7e4db757639159e9861
+ -> base58    = EcbmnM6PLosBzpyCcBz1TikpNXRKcucpm73ez6xYfLtg
+public nonce  = fc2c5fce596338f43f70dc0ce14659fdfea1ba3e588a7c6fa79957fc70aa1b4b
+ -> base58    = 5ctFNnCfBrP99rT1AFmj1WPyMD8uAdNUTESHhLoV3KBZ
+signature     = 7dc54ec98da2350b0c8ed0561537517ac6f93a37f08a34482824e7df3514ce0d
+ -> base58    = 9TxTorviyTJAaVJ4eY4AQPixwLb6SDL4dieHff6MFUha
+   
+OpenAlias TXT DNS record (condensed: 211 characters):
+IN   TXT = "oa1:tari pk=EcbmnM6PLosBzpyCcBz1TikpNXRKcucpm73ez6xYfLtg;id=RYqMMuSmBZFQkgp;
+nonce=5ctFNnCfBrP99rT1AFmj1WPyMD8uAdNUTESHhLoV3KBZ;sig=9TxTorviyTJAaVJ4eY4AQPixwLb6SDL4dieHff6MFUha;
+desc=Cartoon charaters;crc=B31C7CA0"
+
+OpenAlias TXT DNS record (spanning two strings: string 1 = 179 characters and string 2 = 249 characters):
+IN   TXT = "oa1:tari pk=EcbmnM6PLosBzpyCcBz1TikpNXRKcucpm73ez6xYfLtg; id=RYqMMuSmBZFQkgp; 
+nonce=5ctFNnCfBrP99rT1AFmj1WPyMD8uAdNUTESHhLoV3KBZ; sig=9TxTorviyTJAaVJ4eY4AQPixwLb6SDL4dieHff6MFUha; "
+"desc=Cartoon charaters: Mickey Mouse\; Minnie Mouse\; Goofy\; Donald Duck\; Pluto\; Daisy Duck\; 
+Scrooge McDuck\; Launchpad McQuack\; Huey, Dewey and Louie\; Bambi\; Thumper\; Flower\; Faline\; 
+Tinker Bell\; Peter Pan and Captain Hook.; crc=96EC6593"
+```
 
 
 
@@ -164,36 +194,24 @@ from a default input string `"No FQDN"`.
 
 **Req** - All concatenations of inputs for any hash algorithm MUST be done without adding any spaces.
 
-**Req** - Deriving a `RAID_ID` follows the general process of creating a Bitcoin address [[3]] and MUST be calculated 
-as follows:
+**Req** - The hash algorithm MUST be `Blake2b` using a 32 byte digest size unless otherwise specified.
+
+**Req** - Deriving a `RAID_ID` MUST be calculated as follows:
 
 - Inputs for all hashing algorithms used to calculate the `RAID_ID` MUST be lower case characters.
-- The `Hash256` algorithm is not prescribed, but MUST be consistently used and MUST produce a 64 character (256 bit) 
-  hexadecimal output.
 - Stage 1 - MUST select the input string to use (either `"No FQDN"` or `PubKey || <FQDN>`).
-  - Example: Mimblewimble public key `6be6f34b657b785e558e85cc3b8bdb5bcbe8c10e7e58524c8027da7727e189ef` and FQDN `disney.com`
-     is used here, resulting in `6be6f34b657b785e558e85cc3b8bdb5bcbe8c10e7e58524c8027da7727e189efdisney.com`.
-- Stage 2 - MUST perform `Hash256` hashing on the input from stage 1.
-  - Example: `01df567efd2d3db687f78aeb2cdb3b045a651f241165165cd65824fe30c4eed8`
-- Stage 3 - MUST perform `RIPEMD-160` hashing on the result of stage 2.
-  - Example: `372180e923b2ba4bc84e1fae908bcbda387afe13`
-- Stage 4 - MUST concatenate the `RAID_ID` identifier byte, `3c`, with the result of stage 3.
-  - Example: `3c372180e923b2ba4bc84e1fae908bcbda387afe13`
-- Stage 5 - MUST perform `Hash256` hashing on the extended result of stage 4.
-  - Example: `c46df8650aab0e90622a13742b5f391a0598142ef96be47db9c59a0ddda8b82f`
-- Stage 6 - MUST perform `Hash256` hashing on the result of stage 5.
-  - Example: `7ccdbb1ad04cf63a6ae09432b1882aba4ffb820b1fa93f8765054da2bdcb1bf2`
-- Stage 7 - MUST take the first 4 bytes of the result of stage 6; this is the address checksum.
-  - Example: `7ccdbb1a`
-- Stage 8 - MUST concatenate the extended result of stage 4 with the 4 checksum bytes from stage 7. This is the 
-  25-byte binary address for the `RAID_ID`.
-  - Example: `3c372180e923b2ba4bc84e1fae908bcbda387afe137ccdbb1a`
-- Stage 9 - MUST convert the result of stage 8 from a byte string into a base58 string using `Base58Check` encoding. 
-  This will result in a 34 character string starting with `R`.
-  - Example: The resulting `RAID_ID` will be `REJhNwAdszLTteYuhY7KFTko4Q5CaVrvSu`.
+  - Example: Mimblewimble public key `ca469346d7643336c19155fdf5c6500a5232525ce4eba7e4db757639159e9861` and FQDN 
+  `disney.com` is used here, resulting in `ca469346d7643336c19155fdf5c6500a5232525ce4eba7e4db757639159e9861disney.com`.
+- Stage 2 - MUST perform `Blake2b` hashing on the result of stage 1 using a 10 byte digest size.
+  - Example: In hexadecimal representation `ff517a1387153cc38009` or binary representation`\xffQz\x13\x87\x15<\xc3\x80\t`
+- Stage 3 - MUST concatenate the `RAID_ID` identifier byte, `0x62`, with the result of stage 2.
+  - Example: `62ff517a1387153cc38009` `
+- Stage 4 - MUST convert the result of stage 3 from a byte string into `Base58` encoded string. 
+  This will result in a 15 character string starting with `R`.
+  - Example: The resulting `RAID_ID` will be `RYqMMuSmBZFQkgp`.
 
 **Req** - A valid `RAID_ID` signature MUST be a 256 bit Schnorr signature defined as `s = PvtNonce + e·PvtKey` with 
-the challenge `e` being `e = Hash256(PubNonce || PubKey || RAID_ID)`.
+the challenge `e` being `e = Blake2b(PubNonce || PubKey || RAID_ID)`.
 
 
 
@@ -203,7 +221,8 @@ The sequence of events leading up to digital asset registration are perceived as
 
 1. The [asset issuer] will decide if the default `RAID_ID` or a `RAID_ID` that is linked to a FQDN must be used for 
    asset registration. 
-   (_**Note:** A single linked (`RAID_ID`, FQDN) tuple may be associated with multiple digital assets from the same asset issuer._)
+   (_**Note:** A single linked (`RAID_ID`, FQDN) tuple may be associated with multiple digital assets from the same 
+   asset issuer._)
 
 2. **Req** - If a default `RAID_ID` is required:
 
@@ -219,11 +238,11 @@ The sequence of events leading up to digital asset registration are perceived as
    process.
 
 5. **Req** - VNs MUST verify the OpenAlias TXT DNS record if a linked (`RAID_ID`, FQDN) tuple is used:
-   1. Verify that all fields have been completed as per the specification (see [OpenAlias TXT DNS Records](#openalias-txt-dns-records)).
-   2. Verify that the `RAID_ID` can be calculated from information provided in the TXT DNS record.
+   1. Verify that all fields have been completed as per the specification (see 
+     [OpenAlias TXT DNS Records](#openalias-txt-dns-records)).
+   2. Verify that the `RAID_ID` can be calculated from information provided in the TXT DNS record and the FQDN of the public DNS record it is in.
    3. Verify that the asset issuer's `RAID_ID` signature is valid.
-   4. Verify that the FQDN corresponds to the public DNS record it is in.
-   5. Verify the checksum.
+   4. Verify the checksum.
 
 
 
@@ -257,11 +276,6 @@ Date accessed: 2019-03-05.
 Available: https://tools.ietf.org/html/rfc7208. Date accessed: 2019-03-06.
 
 [2]: https://tools.ietf.org/html/rfc7208 "RFC 7208"
-
-[[3]] Technical background of version 1 Bitcoin addresses [online]. Available: https://en.bitcoin.it/wiki/Technical_background_of_version_1_Bitcoin_addresses#How_to_create_Bitcoin_Address. Date accessed: 2019-03-06.
-
-[3]: https://en.bitcoin.it/wiki/Technical_background_of_version_1_Bitcoin_addresses#How_to_create_Bitcoin_Address
-"Technical background of version 1 Bitcoin addresses"
 
 [DAN]: Glossary.md#digital-asset-network
 
