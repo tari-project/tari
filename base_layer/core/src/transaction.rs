@@ -440,9 +440,7 @@ mod test {
             RangeProof([0; 1]),
         );
 
-        let tx_builder = tx_builder
-            .add_inputs(vec![input2.clone()])
-            .add_outputs(vec![output2.clone()]);
+        let tx_builder = tx_builder.add_inputs(vec![input2.clone()]).add_outputs(vec![output2.clone()]);
 
         // Should fail the validation because there is no kernel yet.
         let tx = tx_builder.build();
