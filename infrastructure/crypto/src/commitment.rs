@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use curve25519_dalek::scalar::Scalar;
+use crate::keys::SecretKey;
 
 /// A commitment is like a sealed envelope. You put some information inside the envelope, and then seal (commit) it.
 /// You can't change what you've said, but also, no-one knows what you've said until you're ready to open (open) the
@@ -39,10 +39,17 @@ use curve25519_dalek::scalar::Scalar;
 ///   \therefore C_1 + C_2 &= (v_1 + v_2)G + (k_1 + k_2)H
 /// \end{aligned} $$
 pub trait HomomorphicCommitment {
-    type Base;
-    fn new(k: &Scalar, v: &Scalar, base: &'static Self::Base) -> Self;
-    /// Test whether the envelope content match the given key and value
-    fn open(&self, k: &Scalar, v: &Scalar) -> bool;
-    fn commit(&self) -> &[u8];
-    fn to_bytes(&self) -> &[u8];
+    type K: SecretKey;
+
+    fn open(&self, k: &Self::K, v: &Self::K) -> bool;
+    fn as_bytes(&self) -> &[u8];
+}
+
+pub trait HomomorphicCommitmentFactory {
+    type K: SecretKey;
+    type C: HomomorphicCommitment<K = Self::K>;
+    fn create(k: &Self::K, v: &Self::K) -> Self::C;
+    /// return an identity point for addition using the specified base point. This is a commitment to zero with a zero
+    /// blinding factor on the base point
+    fn zero() -> Self::C;
 }
