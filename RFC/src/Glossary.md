@@ -56,7 +56,7 @@ blockchain from that point on.
 
 [currenthead]: #currenthead	"The last valid block of the longest chain"
 
-The last [block] of the base layer that represents the latest valid block. This [block] must be from the longest proof of work chain to be the current head. 
+The last [block] of the base layer that represents the latest valid block. This [block] must be from the longest proof of work chain to be the current head.
 
 ## Checkpoint
 
@@ -98,15 +98,20 @@ A commitment is a cryptographic primitive that allows one to commit to a chosen 
 others, with the ability to reveal the committed value later. Commitments are designed so that one cannot change the
 value or statement after they have committed to it.
 
-## Communication Node 
+## Communication Node
 [communication node]: #communication-node 'A communication node that is responsible for maintaining the Tari communication network'
 
-A Communication Node is either a Validator Node or Base Node that is part of the Tari communication network. It maintains the network and is responsible for forwarding and propagating joining requests, discovery requests and data messages on the communication network.  
+A Communication Node is either a Validator Node or Base Node that is part of the Tari communication network. It maintains the network and is responsible for forwarding and propagating joining requests, discovery requests and data messages on the communication network.
 
-## Communication Clients 
+## Communication Clients
 [communication client]: #communication-client 'A communication client that makes use of the Tari communication network, but does not maintain it'
 
 A Communication Client is a Wallet or Asset Manager that makes use of the Tari communication network to send joining and discovery requests. A Communication Client does not maintain the communication network and is not responsible for forwarding or propagating any requests or data messages.
+
+## Creator Assigned Mode
+
+An asset runs in creator-assigned mode when _every_ validator node in a validator committee is a [Trusted Node].
+
 
 ## Digital asset
 [digital asset]: #digital-asset 'Sets of Native digital tokens, both fungible and non-fungible that are created by 
@@ -167,10 +172,12 @@ Mimblewimble is a privacy-centric cryptocurrency protocol. It was
 [dropped](https://download.wpsoftware.net/bitcoin/wizardry/mimblewimble.txt) in the Bitcoin Developers chatroom by an
 anonymous author and has since been refined by several authors, including Andrew Poelstra.
 
+
 ## Mining Server
 [mining server]: #mining-server
 
 A Mining Server is responsible for constructing new blocks by bundling transactions from the [mempool] of a connected [Base Node]. It also distributes Proof-of-Work tasks to Mining Workers and verifies PoW solutions.
+
 
 ## Mining Worker
 [mining worker]: #mining-worker
@@ -180,7 +187,7 @@ A Mining Worker is responsible for performing Proof-of-Work tasks received from 
 ## Node ID
 [node ID]: #node-id
 
-A node ID is a unique identifier that specifies the location of a [Consensus Node] or [Consensus Client] in the Tari communication network. The node ID can either be obtained from registration on the [Base Layer] or can be derived from the public identification key of a [Consensus Node] or [Consensus Client]. 
+A node ID is a unique identifier that specifies the location of a [Consensus Node] or [Consensus Client] in the Tari communication network. The node ID can either be obtained from registration on the [Base Layer] or can be derived from the public identification key of a [Consensus Node] or [Consensus Client].
 
 ## Range proof
 [range proof]: #range-proof
@@ -244,7 +251,7 @@ A permissioned Validator Node nominated by an Asset Issuer that will form part o
 ## Token Wallet
 [token wallet]: #token-wallet "An Asset Manager Wallet for Tari Assets and Tokens"
 
-A Tari Token Wallet is responsible for managing [Digital asset]s and [Tokens], and for constructing and negotiating [instructions]s for transferring and receiving Assets and Tokens on the [Digital Asset Network]. 
+A Tari Token Wallet is responsible for managing [Digital asset]s and [Tokens], and for constructing and negotiating [instructions]s for transferring and receiving Assets and Tokens on the [Digital Asset Network].
 
 ## Unspent transaction outputs
 [utxo]: #unspent-transaction-outputs
@@ -266,7 +273,7 @@ updating [digital asset]s living on the Tari network.
 ## Wallet
 [wallet]: #wallet "A Wallet for Tari coins"
 
-A Tari Wallet is responsible for managing key pairs, and for constructing and negotiating [transaction]s for transferring and receiving [tari coin]s on the [Base Layer]. 
+A Tari Wallet is responsible for managing key pairs, and for constructing and negotiating [transaction]s for transferring and receiving [tari coin]s on the [Base Layer].
 
 ## Pruning horizon
 
