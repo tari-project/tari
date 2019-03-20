@@ -39,7 +39,7 @@ pub type Signature = RistrettoSchnorr;
 
 /// Define the explicit Commitment implementation for the Tari base layer.
 pub type Commitment = PedersenOnRistretto255;
-pub type Base = PedersenBaseOnRistretto255;
+pub type CommitmentFactory = PedersenBaseOnRistretto255;
 
 /// Define the explicit Secret key implementation for the Tari base layer.
 pub type BlindingFactor = RistrettoSecretKey;

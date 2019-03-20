@@ -135,6 +135,15 @@ define_add_variants!(LHS = RistrettoSecretKey, RHS = RistrettoSecretKey, Output 
 define_sub_variants!(LHS = RistrettoSecretKey, RHS = RistrettoSecretKey, Output = RistrettoSecretKey);
 define_mul_variants!(LHS = RistrettoSecretKey, RHS = RistrettoPublicKey, Output = RistrettoPublicKey);
 
+//---------------------------------------------      Conversions     -------------------------------------------------//
+
+impl From<u64> for RistrettoSecretKey {
+    fn from(v: u64) -> Self {
+        let s = Scalar::from(v);
+        RistrettoSecretKey(s)
+    }
+}
+
 //--------------------------------------------- Ristretto Public Key -------------------------------------------------//
 
 /// The [PublicKey](trait.PublicKey.html) implementation for `ristretto255` is a thin wrapper around the dalek
@@ -410,6 +419,14 @@ mod test {
         let vec = pk.to_vec();
         let pk2 = RistrettoPublicKey::from_vec(&vec).unwrap();
         assert_eq!(pk, pk2);
+    }
+
+    #[test]
+    fn zero_plus_k_is_k() {
+        let zero = RistrettoSecretKey::default();
+        let mut rng = rand::OsRng::new().unwrap();
+        let k = RistrettoSecretKey::random(&mut rng);
+        assert_eq!(&k + &zero, k);
     }
 
     /// These test vectors are from https://ristretto.group/test_vectors/ristretto255.html
