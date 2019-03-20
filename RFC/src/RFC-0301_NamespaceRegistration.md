@@ -56,7 +56,7 @@ specified domain name with a [digital asset] on the Digital Assets Network ([DAN
 ## Related RFCs
 
 - [RFC-0341/AssetRegistration](RFC-0341_AssetRegistration.md)
-- [RFC-0310/AssetTemplates](RFC-0310_AssetTemplates.md)
+- [RFC-0310/AssetTemplates](RFC-0311_AssetTemplates.md)
 
 <br>
 

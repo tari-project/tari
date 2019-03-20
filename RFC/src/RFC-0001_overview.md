@@ -54,7 +54,7 @@ The aim of this proposal is to provide a very high-level perspective for the mov
 
 * [RFC-0100: Base layer](RFC-0100_BaseLayer.md)
 * [RFC-0300: Digital asset network](RFC-0300_DAN.md)
-* [RFC-0310: Digital assets](RFC-0310_AssetTemplates.md)
+* [RFC-0310: Digital assets](RFC-0311_AssetTemplates.md)
 
 ## Description
 
@@ -151,7 +151,7 @@ future.
 ### The Digital Assets Network
 
 A more detailed proposal for the digital assets network is presented in [RFC-0300/DAN](RFC-0300_DAN.md). Digital assets
-_are discussed in more detail in [RFC-0310/Assets](RFC-0310_AssetTemplates.md)._
+_are discussed in more detail in [RFC-0310/Assets](RFC-0311_AssetTemplates.md)._
 
 The Tari digital assets network (DAN) consists of a peer-to-peer network of [Validator nodes]. These nodes ensure the
 safe and efficient operation of all native digital assets on the Tari network.
