@@ -18,6 +18,15 @@ pub fn to_hex(bytes: &Vec<u8>) -> String {
     s
 }
 
+/// Encode the provided vector of bytes into a hex string
+pub fn to_hex_multiple(bytearray: &Vec<Vec<u8>>) -> Vec<String> {
+    let mut result = Vec::new();
+    for bytes in bytearray {
+        result.push(to_hex(bytes))
+    }
+    result
+}
+
 /// Decode a hex string into bytes.
 pub fn from_hex(hex_str: &str) -> Result<Vec<u8>, HexError> {
     let hex_trim = hex_str.trim();

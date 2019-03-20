@@ -25,9 +25,9 @@
 //! implementation of ECC curve). The idea being that we can swap out the underlying
 //! implementation without worrying too much about the impact on upstream code.
 
-use crate::common::ByteArray;
 use rand::{CryptoRng, Rng};
 use std::ops::Add;
+use tari_utilities::ByteArray;
 
 /// A trait specifying common behaviour for representing `SecretKey`s. Specific elliptic curve
 /// implementations need to implement this trait for them to be used in Tari.

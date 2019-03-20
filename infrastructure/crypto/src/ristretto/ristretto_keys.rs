@@ -21,10 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 //! The Tari-compatible implementation of Ristretto based on the curve25519-dalek implementation
-use crate::{
-    common::{ByteArray, ByteArrayError},
-    keys::{PublicKey, SecretKey},
-};
+use crate::keys::{PublicKey, SecretKey};
 use curve25519_dalek::{
     constants::RISTRETTO_BASEPOINT_TABLE,
     ristretto::{CompressedRistretto, RistrettoPoint},
@@ -36,6 +33,7 @@ use std::{
     cmp::Ordering,
     ops::{Add, Mul, Sub},
 };
+use tari_utilities::{ByteArray, ByteArrayError};
 
 /// The [SecretKey](trait.SecretKey.html) implementation for [Ristretto](https://ristretto.group) is a thin wrapper
 /// around the Dalek [Scalar](struct.Scalar.html) type, representing a 256-bit integer (mod the group order).
@@ -47,7 +45,7 @@ use std::{
 ///
 /// ```edition2018
 /// use crypto::ristretto::RistrettoSecretKey;
-/// use crypto::common::ByteArray;
+/// use tari_utilities::ByteArray;
 /// use crypto::keys::SecretKey;
 /// use rand;
 ///
@@ -156,7 +154,7 @@ impl From<u64> for RistrettoSecretKey {
 /// `RistrettoPublicKey` so all of the following will work:
 /// ```edition2018
 /// use crypto::ristretto::{ RistrettoPublicKey, RistrettoSecretKey };
-/// use crypto::common::ByteArray;
+/// use tari_utilities::ByteArray;
 /// use crypto::keys::{ PublicKey, SecretKey };
 /// use rand;
 ///
@@ -335,8 +333,9 @@ impl From<RistrettoPublicKey> for CompressedRistretto {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{common::ByteArray, keys::PublicKey, ristretto::test_common::get_keypair};
+    use crate::{keys::PublicKey, ristretto::test_common::get_keypair};
     use rand;
+    use tari_utilities::ByteArray;
 
     #[test]
     fn test_generation() {

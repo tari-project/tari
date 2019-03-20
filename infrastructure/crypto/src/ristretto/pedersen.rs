@@ -218,7 +218,6 @@ mod test {
     #[should_panic]
     fn summing_different_bases_panics() {
         let mut rng = rand::OsRng::new().unwrap();
-        let base = &DEFAULT_RISTRETTO_PEDERSON_BASE;
         let base2 = &TEST_RISTRETTO_PEDERSON_BASE;
         let k = RistrettoSecretKey::random(&mut rng);
         let v = RistrettoSecretKey::random(&mut rng);

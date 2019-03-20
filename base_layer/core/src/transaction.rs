@@ -33,14 +33,14 @@ use crate::types::SignatureHash;
 use crypto::{
     challenge::Challenge,
     commitment::{HomomorphicCommitment, HomomorphicCommitmentFactory},
-    common::{Blake256, ByteArray},
-    hash::Hashable,
+    common::Blake256,
     ristretto::RistrettoSecretKey,
 };
 use derive::HashableOrdering;
 use derive_error::Error;
 use digest::Digest;
 use std::cmp::Ordering;
+use tari_utilities::{ByteArray, Hashable};
 
 bitflags! {
     /// Options for a kernel's structure or use.
@@ -57,6 +57,8 @@ bitflags! {
         const COINBASE_OUTPUT = 0b00000001;
     }
 }
+
+type Hasher = Blake256;
 
 #[derive(Debug, PartialEq, Error)]
 pub enum TransactionError {
@@ -94,10 +96,8 @@ impl TransactionInput {
 
 /// Implement the canonical hashing function for TransactionInput for use in ordering
 impl Hashable for TransactionInput {
-    type Hasher = Blake256;
-
     fn hash(&self) -> Vec<u8> {
-        let mut hasher = Self::Hasher::new();
+        let mut hasher = Hasher::new();
         hasher.input(vec![self.features.bits]);
         hasher.input(self.commitment.as_bytes());
         hasher.result().to_vec()
@@ -137,10 +137,8 @@ impl TransactionOutput {
 
 /// Implement the canonical hashing function for TransactionOutput for use in ordering
 impl Hashable for TransactionOutput {
-    type Hasher = Blake256;
-
     fn hash(&self) -> Vec<u8> {
-        let mut hasher = Self::Hasher::new();
+        let mut hasher = Hasher::new();
         hasher.input(vec![self.features.bits]);
         hasher.input(self.commitment.as_bytes());
         hasher.input(self.proof.0);
@@ -215,10 +213,8 @@ impl TransactionKernel {
 
 /// Implement the canonical hashing function for TransactionKernel for use in ordering
 impl Hashable for TransactionKernel {
-    type Hasher = Blake256;
-
     fn hash(&self) -> Vec<u8> {
-        let mut hasher = Self::Hasher::new();
+        let mut hasher = Hasher::new();
         hasher.input(vec![self.features.bits]);
         hasher.input(self.fee.to_le_bytes());
         hasher.input(self.lock_height.to_le_bytes());
@@ -383,10 +379,11 @@ mod test {
     };
     use crypto::{
         challenge::Challenge,
-        common::{Blake256, ByteArray},
+        common::Blake256,
         keys::{PublicKey as PublicKeyTrait, SecretKey},
     };
     use rand;
+    use tari_utilities::ByteArray;
 
     #[test]
     fn build_transaction_test_and_validation() {

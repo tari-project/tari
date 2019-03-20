@@ -21,7 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use digest::Digest;
-use merklemountainrange::merklenode::{Hashable, ObjectHash};
+use merklemountainrange::merklenode::ObjectHash;
+use tari_utilities::Hashable;
 
 pub struct TestObject<D: Digest> {
     pub id: String,
@@ -36,7 +37,7 @@ impl<D: Digest> TestObject<D> {
 }
 
 impl<D: Digest> Hashable for TestObject<D> {
-    fn get_hash(&self) -> ObjectHash {
+    fn hash(&self) -> ObjectHash {
         let mut hash = D::new();
         hash.input(self.id.as_bytes());
         hash.result().to_vec()

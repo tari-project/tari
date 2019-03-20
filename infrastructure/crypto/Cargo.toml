@@ -4,6 +4,7 @@ version = "0.0.1"
 edition = "2018"
 
 [dependencies]
+tari_utilities = { path = "../tari_util"}
 digest = "0.8.0"
 rand = "0.5.5"
 curve25519-dalek = "1.0.2"

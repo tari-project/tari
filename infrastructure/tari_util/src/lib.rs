@@ -19,19 +19,11 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+pub mod byte_array;
+pub mod hash;
+pub mod hex;
 
-pub type ObjectHash = Vec<u8>;
-
-/// This is the MerkleNode struct. This struct represents a merkle node,
-#[derive(Debug)]
-pub struct MerkleNode {
-    pub hash: ObjectHash,
-    pub pruned: bool,
-    // todo discuss adding height here, this will make some calculations faster, but will storage larger
-}
-
-impl MerkleNode {
-    pub fn new(hash: ObjectHash) -> MerkleNode {
-        MerkleNode { hash, pruned: false }
-    }
-}
+pub use self::{
+    byte_array::{ByteArray, ByteArrayError},
+    hash::Hashable,
+};

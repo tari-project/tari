@@ -90,9 +90,9 @@ where D: Digest + FixedOutput<OutputSize = U32>
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::common::ByteArray;
     use blake2::Blake2b;
     use sha2::Sha256;
+    use tari_utilities::ByteArray;
 
     #[test]
     fn hash_with_sha256() {

@@ -20,9 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::merklenode::{Hashable, MerkleNode, ObjectHash};
+use crate::merklenode::{MerkleNode, ObjectHash};
 use digest::Digest;
 use std::{collections::HashMap, marker::PhantomData};
+use tari_utilities::Hashable;
 
 pub struct MerkleMountainRange<T, D>
 where
@@ -216,7 +217,7 @@ where
 
     /// This function adds a new leaf node to the mmr.
     pub fn add_single(&mut self, object: T) {
-        let node_hash = object.get_hash();
+        let node_hash = object.hash();
         let node = MerkleNode::new(node_hash.clone());
         self.data.insert(node_hash, object);
         self.mmr.push(node);
