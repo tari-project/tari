@@ -23,7 +23,7 @@
 use crate::merklenode::{MerkleNode, ObjectHash};
 use digest::Digest;
 use std::{collections::HashMap, marker::PhantomData};
-use tari_utilities::hash::Hashable;
+use tari_utilities::Hashable;
 
 pub struct MerkleMountainRange<T, D>
 where

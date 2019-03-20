@@ -31,7 +31,7 @@ use crate::{
 };
 use digest::Digest;
 use std::marker::PhantomData;
-use tari_utilities::byte_array::ByteArray;
+use tari_utilities::ByteArray;
 
 //-----------------------------------------  Constants and aliases    ------------------------------------------------//
 
@@ -65,7 +65,7 @@ type JointPubKey = JointKey<RistrettoPublicKey, RistrettoSecretKey>;
 ///
 /// ```edition2018
 ///       # use crypto::ristretto::{ musig::RistrettoMuSig, ristretto_keys::* };
-///       # use tari_utilities::byte_array::ByteArray;
+///       # use tari_utilities::ByteArray;
 ///       # use crypto::keys::PublicKey;
 ///       # use crypto::challenge::Challenge;
 ///       # use sha2::Sha256;

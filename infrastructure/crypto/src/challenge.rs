@@ -92,7 +92,7 @@ mod test {
     use super::*;
     use blake2::Blake2b;
     use sha2::Sha256;
-    use tari_utilities::byte_array::ByteArray;
+    use tari_utilities::ByteArray;
 
     #[test]
     fn hash_with_sha256() {

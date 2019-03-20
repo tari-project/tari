@@ -40,7 +40,7 @@ use derive::HashableOrdering;
 use derive_error::Error;
 use digest::Digest;
 use std::cmp::Ordering;
-use tari_utilities::{byte_array::ByteArray, hash::Hashable};
+use tari_utilities::{ByteArray, Hashable};
 
 bitflags! {
     /// Options for a kernel's structure or use.
@@ -383,7 +383,7 @@ mod test {
         keys::{PublicKey as PublicKeyTrait, SecretKey},
     };
     use rand;
-    use tari_utilities::byte_array::ByteArray;
+    use tari_utilities::ByteArray;
 
     #[test]
     fn build_transaction_test_and_validation() {

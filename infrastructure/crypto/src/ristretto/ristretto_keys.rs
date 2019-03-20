@@ -33,7 +33,7 @@ use std::{
     cmp::Ordering,
     ops::{Add, Mul, Sub},
 };
-use tari_utilities::byte_array::{ByteArray, ByteArrayError};
+use tari_utilities::{ByteArray, ByteArrayError};
 
 /// The [SecretKey](trait.SecretKey.html) implementation for [Ristretto](https://ristretto.group) is a thin wrapper
 /// around the Dalek [Scalar](struct.Scalar.html) type, representing a 256-bit integer (mod the group order).
@@ -45,7 +45,7 @@ use tari_utilities::byte_array::{ByteArray, ByteArrayError};
 ///
 /// ```edition2018
 /// use crypto::ristretto::RistrettoSecretKey;
-/// use tari_utilities::byte_array::ByteArray;
+/// use tari_utilities::ByteArray;
 /// use crypto::keys::SecretKey;
 /// use rand;
 ///
@@ -154,7 +154,7 @@ impl From<u64> for RistrettoSecretKey {
 /// `RistrettoPublicKey` so all of the following will work:
 /// ```edition2018
 /// use crypto::ristretto::{ RistrettoPublicKey, RistrettoSecretKey };
-/// use tari_utilities::byte_array::ByteArray;
+/// use tari_utilities::ByteArray;
 /// use crypto::keys::{ PublicKey, SecretKey };
 /// use rand;
 ///
@@ -335,7 +335,7 @@ mod test {
     use super::*;
     use crate::{keys::PublicKey, ristretto::test_common::get_keypair};
     use rand;
-    use tari_utilities::byte_array::ByteArray;
+    use tari_utilities::ByteArray;
 
     #[test]
     fn test_generation() {

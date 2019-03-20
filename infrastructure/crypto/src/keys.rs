@@ -27,7 +27,7 @@
 
 use rand::{CryptoRng, Rng};
 use std::ops::Add;
-use tari_utilities::byte_array::ByteArray;
+use tari_utilities::ByteArray;
 
 /// A trait specifying common behaviour for representing `SecretKey`s. Specific elliptic curve
 /// implementations need to implement this trait for them to be used in Tari.

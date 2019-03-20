@@ -22,3 +22,8 @@
 pub mod byte_array;
 pub mod hash;
 pub mod hex;
+
+pub use self::{
+    byte_array::{ByteArray, ByteArrayError},
+    hash::Hashable,
+};

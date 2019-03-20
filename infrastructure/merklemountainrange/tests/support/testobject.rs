@@ -22,7 +22,7 @@
 
 use digest::Digest;
 use merklemountainrange::merklenode::ObjectHash;
-use tari_utilities::hash::Hashable;
+use tari_utilities::Hashable;
 
 pub struct TestObject<D: Digest> {
     pub id: String,
