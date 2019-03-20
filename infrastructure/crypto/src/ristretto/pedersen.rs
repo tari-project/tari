@@ -22,15 +22,15 @@
 
 use crate::{
     commitment::HomomorphicCommitment,
-    common::ByteArray,
     ristretto::{constants::RISTRETTO_NUMS_POINTS, RistrettoPublicKey},
 };
 use curve25519_dalek::{
     constants::RISTRETTO_BASEPOINT_POINT,
     ristretto::{CompressedRistretto, RistrettoPoint},
-    scalar::Scalar,
 };
 
+use crate::{commitment::HomomorphicCommitmentFactory, ristretto::RistrettoSecretKey};
+use curve25519_dalek::scalar::Scalar;
 use std::ops::{Add, Sub};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -63,33 +63,36 @@ impl PedersenOnRistretto255 {
     pub fn as_public_key(&self) -> &RistrettoPublicKey {
         &self.commitment
     }
+}
 
-    /// return an identity point for addition using the specified base point. This is a commitment to zero with a zero
-    /// blinding factor on the base point
-    pub fn zero(base: &'static PedersenBaseOnRistretto255) -> Self {
-        PedersenOnRistretto255::new(&Scalar::zero(), &Scalar::zero(), base)
+impl HomomorphicCommitmentFactory for PedersenBaseOnRistretto255 {
+    type C = PedersenOnRistretto255;
+    type K = RistrettoSecretKey;
+
+    fn create(k: &RistrettoSecretKey, v: &RistrettoSecretKey) -> PedersenOnRistretto255 {
+        let base = &DEFAULT_RISTRETTO_PEDERSON_BASE;
+        let c: RistrettoPoint = k.0 * base.G + v.0 * base.H;
+        PedersenOnRistretto255 { base, commitment: RistrettoPublicKey::new_from_pk(c) }
+    }
+
+    fn zero() -> PedersenOnRistretto255 {
+        let base = &DEFAULT_RISTRETTO_PEDERSON_BASE;
+        let zero = Scalar::zero();
+        let c: RistrettoPoint = &zero * base.G + &zero * base.H;
+        PedersenOnRistretto255 { base, commitment: RistrettoPublicKey::new_from_pk(c) }
     }
 }
 
 impl HomomorphicCommitment for PedersenOnRistretto255 {
-    type Base = PedersenBaseOnRistretto255;
+    type K = RistrettoSecretKey;
 
-    fn new(k: &Scalar, v: &Scalar, base: &'static PedersenBaseOnRistretto255) -> Self {
-        let c: RistrettoPoint = k * base.G + v * base.H;
-        PedersenOnRistretto255 { base, commitment: RistrettoPublicKey::new_from_pk(c) }
-    }
-
-    fn open(&self, k: &Scalar, v: &Scalar) -> bool {
-        let c: RistrettoPoint = (v * self.base.H) + (k * self.base.G);
+    fn open(&self, k: &RistrettoSecretKey, v: &RistrettoSecretKey) -> bool {
+        let c: RistrettoPoint = (v.0 * self.base.H) + (k.0 * self.base.G);
         c == self.commitment.point
     }
 
-    fn commit(&self) -> &[u8] {
+    fn as_bytes(&self) -> &[u8] {
         self.commitment.compressed.as_bytes()
-    }
-
-    fn to_bytes(&self) -> &[u8] {
-        self.commitment.as_bytes()
     }
 }
 
@@ -141,7 +144,7 @@ impl<'b> Sub for &'b PedersenOnRistretto255 {
 #[cfg(test)]
 mod test {
     use super::*;
-    use curve25519_dalek::scalar::Scalar;
+    use crate::keys::SecretKey;
     use rand;
     use std::convert::From;
 
@@ -171,10 +174,10 @@ mod test {
         let base = &DEFAULT_RISTRETTO_PEDERSON_BASE;
         let mut rng = rand::OsRng::new().unwrap();
         for _ in 0..100 {
-            let v = Scalar::random(&mut rng);
-            let k = Scalar::random(&mut rng);
-            let c = PedersenOnRistretto255::new(&k, &v, &base);
-            let c_calc: RistrettoPoint = v * base.H + k * base.G;
+            let v = RistrettoSecretKey::random(&mut rng);
+            let k = RistrettoSecretKey::random(&mut rng);
+            let c = PedersenBaseOnRistretto255::create(&k, &v);
+            let c_calc: RistrettoPoint = v.0 * base.H + k.0 * base.G;
             assert_eq!(RistrettoPoint::from(c.as_public_key()), c_calc);
             assert!(c.open(&k, &v));
             // A different value doesn't open the commitment
@@ -192,19 +195,18 @@ mod test {
     /// `open(k1+k2, v1+v2)` is true for _C_
     #[test]
     fn check_homomorphism() {
-        let base = &DEFAULT_RISTRETTO_PEDERSON_BASE;
         let mut rng = rand::OsRng::new().unwrap();
         for _ in 0..100 {
-            let v1 = Scalar::random(&mut rng);
-            let v2 = Scalar::random(&mut rng);
+            let v1 = RistrettoSecretKey::random(&mut rng);
+            let v2 = RistrettoSecretKey::random(&mut rng);
             let v_sum = v1 + v2;
-            let k1 = Scalar::random(&mut rng);
-            let k2 = Scalar::random(&mut rng);
+            let k1 = RistrettoSecretKey::random(&mut rng);
+            let k2 = RistrettoSecretKey::random(&mut rng);
             let k_sum = k1 + k2;
-            let c1 = PedersenOnRistretto255::new(&k1, &v1, &base);
-            let c2 = PedersenOnRistretto255::new(&k2, &v2, &base);
+            let c1 = PedersenBaseOnRistretto255::create(&k1, &v1);
+            let c2 = PedersenBaseOnRistretto255::create(&k2, &v2);
             let c_sum = &c1 + &c2;
-            let c_sum2 = PedersenOnRistretto255::new(&k_sum, &v_sum, &base);
+            let c_sum2 = PedersenBaseOnRistretto255::create(&k_sum, &v_sum);
             assert!(c1.open(&k1, &v1));
             assert!(c2.open(&k2, &v2));
             assert_eq!(c_sum, c_sum2);
@@ -215,12 +217,14 @@ mod test {
     #[test]
     #[should_panic]
     fn summing_different_bases_panics() {
+        let mut rng = rand::OsRng::new().unwrap();
         let base = &DEFAULT_RISTRETTO_PEDERSON_BASE;
         let base2 = &TEST_RISTRETTO_PEDERSON_BASE;
-        let v = Scalar::from(100u64);
-        let k = Scalar::from(101u64);
-        let c1 = PedersenOnRistretto255::new(&k, &v, &base);
-        let c2 = PedersenOnRistretto255::new(&k, &v, &base2);
+        let k = RistrettoSecretKey::random(&mut rng);
+        let v = RistrettoSecretKey::random(&mut rng);
+        let c1 = PedersenBaseOnRistretto255::create(&k, &v);
+        let c: RistrettoPoint = k.0 * base2.G + v.0 * base2.H;
+        let c2 = PedersenOnRistretto255 { base: base2, commitment: RistrettoPublicKey::new_from_pk(c) };
         let _ = &c1 + &c2;
     }
 
