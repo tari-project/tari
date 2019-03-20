@@ -43,7 +43,7 @@ use crate::{
 /// # use crypto::ristretto::*;
 /// # use crypto::keys::*;
 /// # use crypto::signatures::SchnorrSignature;
-/// # use crypto::common::ByteArray;
+/// # use tari_utilities::byte_array::ByteArray;
 ///
 /// let public_r = RistrettoPublicKey::from_hex("6a493210f7499cd17fecb510ae0cea23a110e8d5b901f8acadd3095c73a3b919").unwrap();
 /// let s = RistrettoSecretKey::from_bytes(b"10000000000000000000000000000000").unwrap();
@@ -86,6 +86,8 @@ use crate::{
 /// # use crypto::challenge::*;
 /// # use crypto::signatures::SchnorrSignature;
 /// # use crypto::common::*;
+/// # use tari_utilities::hex::*;
+/// # use tari_utilities::byte_array::ByteArray;
 ///
 /// # #[allow(non_snake_case)]
 /// # fn main() {
@@ -104,11 +106,12 @@ pub type RistrettoSchnorr = SchnorrSignature<RistrettoPublicKey, RistrettoSecret
 mod test {
     use crate::{
         challenge::Challenge,
-        common::{Blake256, ByteArray},
+        common::Blake256,
         keys::{PublicKey, SecretKey},
         ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
     };
     use rand;
+    use tari_utilities::byte_array::ByteArray;
 
     fn get_keypair() -> (RistrettoSecretKey, RistrettoPublicKey) {
         let mut rng = rand::OsRng::new().unwrap();

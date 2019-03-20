@@ -22,7 +22,6 @@
 
 use crate::{
     commitment::HomomorphicCommitment,
-    common::ByteArray,
     ristretto::{constants::RISTRETTO_NUMS_POINTS, RistrettoPublicKey},
 };
 use curve25519_dalek::{
@@ -30,6 +29,7 @@ use curve25519_dalek::{
     ristretto::{CompressedRistretto, RistrettoPoint},
     scalar::Scalar,
 };
+use tari_utilities::byte_array::ByteArray;
 
 use std::ops::{Add, Sub};
 

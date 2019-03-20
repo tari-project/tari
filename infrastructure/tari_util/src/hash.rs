@@ -20,18 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub type ObjectHash = Vec<u8>;
-
-/// This is the MerkleNode struct. This struct represents a merkle node,
-#[derive(Debug)]
-pub struct MerkleNode {
-    pub hash: ObjectHash,
-    pub pruned: bool,
-    // todo discuss adding height here, this will make some calculations faster, but will storage larger
-}
-
-impl MerkleNode {
-    pub fn new(hash: ObjectHash) -> MerkleNode {
-        MerkleNode { hash, pruned: false }
-    }
+/// This trait is used to describe how an object should be hashed
+pub trait Hashable {
+    fn hash(&self) -> Vec<u8>;
 }

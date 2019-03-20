@@ -23,7 +23,7 @@
 // This file only contains hashvalue lookups for the mmr tests. The values are stored in an array representing the same
 // storage of the mmr. All values are Hex encoded
 use digest::Digest;
-use std::fmt::Write;
+use tari_utilities::hex::*;
 
 // this struct is used to contain already computed hashes used by blake2b
 pub struct HashValues {
@@ -108,29 +108,13 @@ impl HashValues {
         hashvalues
     }
 
-    pub fn to_hex(bytes: &Vec<u8>) -> String {
-        let mut s = String::new();
-        for byte in bytes {
-            write!(&mut s, "{:02x}", byte).expect("Unable to write");
-        }
-        s
-    }
-
-    pub fn to_hex_multiple(bytearray: &Vec<Vec<u8>>) -> Vec<String> {
-        let mut result = Vec::new();
-        for bytes in bytearray {
-            result.push(HashValues::to_hex(bytes))
-        }
-        result
-    }
-
     #[allow(dead_code)] // This function is used to generate hashvalues for the hashvalue struct
     pub fn get_hash_in_hex<D: Digest>(hash1: &Vec<u8>, hash2: &Vec<u8>) -> String {
         let mut hasher = D::new();
         hasher.input(hash1);
         hasher.input(hash2);
         let new_hash = hasher.result().to_vec();
-        HashValues::to_hex(&new_hash)
+        to_hex(&new_hash)
     }
 
     #[allow(dead_code)] // This function is used to generate hashvalues for the hashvalue struct

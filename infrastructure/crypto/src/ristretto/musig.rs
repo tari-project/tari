@@ -25,13 +25,13 @@
 
 use crate::{
     challenge::{Challenge, MessageHash},
-    common::ByteArray,
     musig::{FixedSet, JointKey, JointKeyBuilder, MuSigError},
     ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
     signatures::SchnorrSignature,
 };
 use digest::Digest;
 use std::marker::PhantomData;
+use tari_utilities::byte_array::ByteArray;
 
 //-----------------------------------------  Constants and aliases    ------------------------------------------------//
 
@@ -65,7 +65,7 @@ type JointPubKey = JointKey<RistrettoPublicKey, RistrettoSecretKey>;
 ///
 /// ```edition2018
 ///       # use crypto::ristretto::{ musig::RistrettoMuSig, ristretto_keys::* };
-///       # use crypto::common::ByteArray;
+///       # use tari_utilities::byte_array::ByteArray;
 ///       # use crypto::keys::PublicKey;
 ///       # use crypto::challenge::Challenge;
 ///       # use sha2::Sha256;
