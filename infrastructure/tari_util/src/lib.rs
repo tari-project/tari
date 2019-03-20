@@ -23,6 +23,9 @@ pub mod bit;
 pub mod byte_array;
 pub mod hash;
 pub mod hex;
+pub mod to_bytes;
+
+pub use self::to_bytes::ToBytes;
 
 pub use self::{
     byte_array::{ByteArray, ByteArrayError},
