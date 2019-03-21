@@ -107,8 +107,8 @@ The instruction is in JSON format and MUST contain the following fields:
 | **template-specific data**         | Object        | Template-specific metadata can be defined in this section                                                                   |
 | **Signatures**                     |               |                                                                                                                             |
 | metadata_hash                      | `u256`        | A hash of the previous three sections' data, in canonical format (`m`)                                                      |
-| creator_sig                        | `u256`        | A digital signature of the message `H(R || P || m)` using the asset creator’s private key corresponding to the `issuer` PKH |
-| raid_signature                     | `u256`        | Digital signature for the given RAID, signing the message `H(R || P || RAID_ID || m)`                                       |
+| creator_sig                        | `u256`        | A digital signature of the message `H(R ‖ P ‖ m)` using the asset creator’s private key corresponding to the `issuer` PKH |
+| raid_signature                     | `u256`        | Digital signature for the given RAID, signing the message `H(R ‖ P ‖ RAID_ID ‖ m)`                                       |
 | commitment_sig                     | `u256`        | A signature proving the issuer is able to spend the commitment to the asset fee                                             |
 
 #### Committee parameters
