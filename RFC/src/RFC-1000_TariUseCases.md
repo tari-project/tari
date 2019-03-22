@@ -1,6 +1,6 @@
-# RFC-0380/AssetFramework
+# RFC-1000/TariUseCases
 
-## Digital Asset Framework
+## A Digital Asset Framework
 
 ![status: draft](https://github.com/tari-project/tari/raw/master/RFC/src/theme/images/status-draft.svg)
 
@@ -10,7 +10,7 @@
 
 [ The 3-Clause BSD License](https://opensource.org/licenses/BSD-3-Clause).
 
-Copyright 2018 The Tari Development Community
+Copyright 2019 The Tari Development Community
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 following conditions are met:
@@ -45,12 +45,16 @@ community. The release of this document is intended solely for review and discus
 technological merits of the potential system outlined herein.
 
 ## Goals
-There will be many types of digital assets that can be issued on Tari. This early, draft “framework” is intended to help issuers design new types of digital assets that may or may not exist in their ecosystems today.
+There will be many types of digital assets that can be issued on Tari. This document is intended to help potential asset
+issuers identify use cases for Tari that lead to the design of new types of digital assets that may or may not exist in
+their ecosystems today.
 
 ## Related RFCs
+* [RFC-0001: An overview of the Tari network](RFC-0001_overview.md)
 * [RFC-0300: The Digital Assets Network](RFC-0300_DAN.md)
 
 ## Description
+
 
 ### Types
 A potential high level taxonomy of different types of digital assets.
@@ -129,9 +133,10 @@ The governance of how assets may be used or transfered, defined by the asset iss
 * Upgradability / Versioning - Assets can be upgraded and / or versioned
 * Redeemability - Assets can be used once or multiple times
 
-### Example Permutations
+### Examples
 
-***Crystal Skull of Akador***
+#### Crystal Skull of Akador
+
 * Is rare
 	* Is 1 of 5
 * Is legendary
@@ -149,7 +154,8 @@ The governance of how assets may be used or transfered, defined by the asset iss
 		* Ark of the covenant gives you lifetime access to Indiana Jones World
 		* Ark of the covenant has rules. 20% of the resale price goes to Indiana Jones World
 
-***AB de Villiers bat***
+#### AB de Villiers' bat
+
 * Isn’t Rare
 	* Is 1 of 100,000
 * Is Legendary
@@ -164,7 +170,8 @@ The governance of how assets may be used or transfered, defined by the asset iss
 * Has no utility
 * Has no rules
 
-***OVO Owl x Supreme***
+#### OVO Owl x Supreme
+
 * Is Rare
 	* Is 1 of 200
 * Is Legendary
