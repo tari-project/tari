@@ -86,7 +86,6 @@ Assets are created on the Tari network by issuing a `create_asset` instruction f
 it to the Tari Digital Assets Network (DAN).
 
 The instruction is in JSON format and MUST contain the following fields:
-(PKH = Public Key Hash)
 
 | Name                               | Type          | Description                                                                                                                            |
 |:-----------------------------------|:--------------|:---------------------------------------------------------------------------------------------------------------------------------------|
@@ -94,8 +93,8 @@ The instruction is in JSON format and MUST contain the following fields:
 | issuer                             | PubKey        | The public key of the creator of the asset. See [issuer](#issuer)                                                                      |
 | name                               | `string[64]`  | The name or identifier for the asset. See [Name and Description](#name-and-description)                                                |
 | description                        | `string[216]` | A short description of the asset - with name, fits in a tweet. See [Name and Description](#name-and-description)                       |
-| raid                               | `string[15]`  | The [Registered Asset Issuer Domain (RAID_ID)](#raid-id) for the asset.                                                                |
-| FQDN                               | `string[*]`   | The FQDN corresponding to the `raid_id`. Up to 255 characters in length; or "No_FQDN" to use the default.                              |
+| raid_id                            | `string[15]`  | The [Registered Asset Issuer Domain (RAID_ID)](#raid-id) for the asset.                                                                |
+| fqdn                               | `string[*]`   | The FQDN corresponding to the `raid_id`. Up to 255 characters in length; or "No_FQDN" to use the default.                              |
 | public_nonce                       | PubKey        | Public nonce part of the creator signature                                                                                             |
 | template_id                        | `u64`         | The template descriptor. See [Template ID](#template-id)                                                                               |
 | asset_expiry                       | `u64`         | A timestamp or block height after which the asset will automatically expire. Zero for arbitrarily long-lived assets                    |
@@ -109,7 +108,7 @@ The instruction is in JSON format and MUST contain the following fields:
 | **template-specific data**         | Object        | Template-specific metadata can be defined in this section                                                                              |
 | **Signatures**                     |               |                                                                                                                                        |
 | metadata_hash                      | `u256`        | A hash of the previous three sections' data, in canonical format (`m`)                                                                 |
-| creator_sig                        | `u256`        | A digital signature of the message `H(R || P || RAID_ID || m)` using the asset creator’s private key corresponding to the `issuer` PKH |
+| creator_sig                        | `u256`        | A digital signature of the message `H(R ‖ P ‖ RAID_ID ‖ m)` using the asset creator’s private key corresponding to the `issuer` PKH |
 | commitment_sig                     | `u256`        | A signature proving the issuer is able to spend the commitment to the asset fee                                                        |
 
 #### Committee parameters
@@ -146,7 +145,7 @@ The RAID_ID is a 15 character string that associates the asset issuer with a reg
 
 If it is likely that a digital asset issuer will be issuing many assets on the Tari Network (hundreds, or thousands),
 the issuer should strongly consider using a registered domain (e.g. `acme.com`). This is
-done via OpenAlias on the domain owner's DNS record, as described in [RFC-0301](RFC-0301_NamespaceRegistration.md). A
+done via OpenAlias on the domain owner's DNS record, as described in [RFC-0301]. A
  RAID prevents spoofing of assets from copycats or other malicious actors. It also makes asset discovery
 simpler.
 
@@ -154,18 +153,28 @@ Assets from issuers that do not have a RAID are all grouped under the default RA
 
 RAID owners must provide a valid signature proving that they own the given domain when creating assets.
 
+#### FQDN
+
+The fully qualified domain name that corresponds to the `raid_id` or the string `"NO FQDN"` to use the default RAID ID.
+Validator nodes will calculate and check that the RAID ID is valid when
+[validating the instruction signature](signature-validation).
+
+#### Public nonce
+
+A single-use public nonce to be used in the asset signature.
+
 #### Asset identification
 
 Assets are identified by a 64-character string that uniquely identifies an asset on the network:
 
-| Bytes | Description                                 |
-|:------|:--------------------------------------------|
-| 8     | Template type (hex)                         |
-| 4     | Template version (hex)                      |
-| 4     | Feature flags (hex)                         |
-| 15    | RAID identifier (Base58)                    |
-| 1     | A period character, `.`                     |
-| 32    | Hash of `create_asset` instruction (Base58) |
+| Bytes | Description                                     |
+|:------|:------------------------------------------------|
+| 8     | Template type (hex)                             |
+| 4     | Template version (hex)                          |
+| 4     | Feature flags (hex)                             |
+| 15    | RAID identifier (Base58)                        |
+| 1     | A period character, `.`                         |
+| 32    | Hex representation of the `metadata_hash` field |
 
 This allows assets to be deterministically identified from their initial state. Two different creation instructions
 leading to the same hash refer to the same single asset, by definition. Validator Nodes maintain an index of assets and
@@ -244,3 +253,39 @@ until the year 4870).
 
 Expiry times should not be considered exact, since nodes don’t share the same clocks and block heights as time proxies
 become more inaccurate the further out you go (since height in the future is dependent on hash rate).
+
+### Signature validation
+
+Validator nodes will verify the `creator_sig` for every `create_asset` instruction before propagating the instruction to
+the network. This involves the following process:
+
+1. The VN MUST calculate the metadata hash by hashing the canonical representation of all the data in the first three
+   sections of the `create_asset` instruction.
+
+2. The VN MUST compare this calculated value to the value given in the `metadata_hash` field. If they do not match, drop
+   the instruction and STOP.
+
+3. The VN MUST calculate the RAID ID from the `fqdn` and `issuer` fields as specified in [RFC-0301].
+
+4. The VN MUST compare the calculated RAID ID with the value given in the `raid_id` field. If they do not match, drop
+   the instruction and STOP.
+
+5. If the `fqdn` is `"No FQDN", then skip to step 9.
+
+6. The VN MUST Look up the OpenAlias TXT record at the domain given in `fqdn`. If the record is does not exist, then
+   drop the instruction and STOP.
+
+7. The VN MUST check that each of the public key and RAID ID in the TXT record match the values in the `create_asset`
+   instruction. If any values do not match, then drop the instruction and STOP.
+
+8. The VN MUST validate the registration signature in the TXT record, using the TXT record's nonce, the issuer's public
+   key and the RAID ID. If the signature does not verify, drop the instruction and STOP.
+
+9. The VN MUST validate the signature in the `creator_sig` field against the challenge built up from the issuer's public
+   key, the nonce given in `public_nonce` field, the `raid_id` field and the `metadata_hash` field.
+
+If step 9 passes, then the VN has proven that the `create_asset` contains a valid RAID ID, and that if a non-default
+FQDN was provided, that the owner of that domain provided the `create_asset` instruction. In this case, the VN SHOULD
+propagate the instruction to the network.
+
+[RFC-0301]: RFC-0301_NamespaceRegistration.md
