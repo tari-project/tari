@@ -20,13 +20,53 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#[macro_use]
-extern crate bitflags;
+use base64;
+use derive_error::Error;
+use rmp_serde::{Deserializer, Serializer};
+use serde::{Deserialize, Serialize};
+use serde_json;
+use std::fmt::Write;
 
-pub mod block;
-pub mod blockheader;
-pub mod message;
-pub mod pow;
-pub mod range_proof;
-pub mod transaction;
-pub mod types;
+#[derive(Debug, Error)]
+pub enum MessageError {
+    // An error occurred serialising an object into binary
+    BinarySerializeError,
+}
+
+pub trait MessageFormat: Sized {
+    fn to_binary(&self) -> Result<Vec<u8>, MessageError>;
+    fn to_json(&self) -> Result<String, MessageError>;
+    fn to_base64(&self) -> Result<String, MessageError>;
+
+    fn from_binary(msg: &[u8]) -> Result<Self, MessageError>;
+    fn from_json(msg: &str) -> Result<Self, MessageError>;
+    fn from_base64(msg: &str) -> Result<Self, MessageError>;
+}
+
+impl<'a, T> MessageFormat for T
+where T: Deserialize<'a> + Serialize
+{
+    fn to_binary(&self) -> Result<Vec<u8>, MessageError> {
+        unimplemented!()
+    }
+
+    fn to_json(&self) -> Result<String, MessageError> {
+        unimplemented!()
+    }
+
+    fn to_base64(&self) -> Result<String, MessageError> {
+        unimplemented!()
+    }
+
+    fn from_binary(msg: &[u8]) -> Result<Self, MessageError> {
+        unimplemented!()
+    }
+
+    fn from_json(msg: &str) -> Result<Self, MessageError> {
+        unimplemented!()
+    }
+
+    fn from_base64(msg: &str) -> Result<Self, MessageError> {
+        unimplemented!()
+    }
+}
