@@ -20,40 +20,21 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use derive_error::Error;
-use std::str::FromStr;
+use std::{net::SocketAddr, str::FromStr};
 
-use crate::connection::{i2p::I2PAddress, onion::OnionAddress, p2p::SocketAddress};
+use crate::connection::NetAddressError;
 
-#[derive(Debug, Error)]
-pub enum NetAddressError {
-    /// Failed to parse address
-    ParseFailed,
-    /// Specified port range is invalid
-    InvalidPortRange,
-}
+/// Represents an {IPv4, IPv6} address and port
+#[derive(Clone, Hash, PartialEq, Eq, Debug)]
+pub struct SocketAddress(SocketAddr);
 
-/// Represents an address which can be used to reach a node on the network
-pub enum NetAddress {
-    /// IPv4 and IPv6
-    IP(SocketAddress),
-    Tor(OnionAddress),
-    I2P(I2PAddress),
-}
-
-impl FromStr for NetAddress {
+impl FromStr for SocketAddress {
     type Err = NetAddressError;
 
-    fn from_str(address: &str) -> Result<Self, Self::Err> {
-        if let Ok(addr) = address.parse::<SocketAddress>() {
-            Ok(NetAddress::IP(addr))
-        } else if let Ok(addr) = address.parse::<OnionAddress>() {
-            Ok(NetAddress::Tor(addr))
-        } else if let Ok(addr) = address.parse::<I2PAddress>() {
-            Ok(NetAddress::I2P(addr))
-        } else {
-            Err(NetAddressError::ParseFailed)
-        }
+    fn from_str(addr: &str) -> Result<Self, Self::Err> {
+        let socket_addr = addr.parse::<SocketAddr>().map_err(|_| NetAddressError::ParseFailed)?;
+
+        Ok(Self(socket_addr))
     }
 }
 
@@ -63,12 +44,22 @@ mod test {
 
     #[test]
     fn string_address_parsing() {
+        // Testing our implementation of address parsing which uses SocketAddr internally.
+        // The SocketAddr is used "as is" which means technically we're testing SocketAddr,
+        // however this shows the expected usage of SocketAddress without knowing about SocketAddr
+
         // Valid string addresses
         let addr = "127.0.0.1:8000".parse::<SocketAddress>();
         assert!(addr.is_ok(), "Valid IPv4 loopback address parsing failed");
 
         let addr = "[::1]:8080".parse::<SocketAddress>();
         assert!(addr.is_ok(), "Valid IPv6 loopback address parsing failed");
+
+        let addr = "123.122.234.100:8080".parse::<SocketAddress>();
+        assert!(addr.is_ok(), "Valid IPv4 address parsing failed");
+
+        let addr = "[fe80::1ff:fe23:4567:890a]:8080".parse::<SocketAddress>();
+        assert!(addr.is_ok(), "Valid IPv6 address parsing failed");
 
         // Invalid string addresses
         macro_rules! check_addr_fail {
