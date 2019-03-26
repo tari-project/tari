@@ -182,6 +182,6 @@ The governance of how assets may be used or transfered, defined by the asset iss
 	* If its become a golden ticket and is transferred, it loses its golden ticket superpower.
 * Has utility
 	* Unlocks exclusive media content feat. Drake hosted by OVO
-	* May become a golden ticket that grants you access to any Drake show
+	* May become a golden ticket that grants you access to any Drake show.
 * Has rules
 	* Every time its transferred Supreme and OVO receive 25% of the transaction value
