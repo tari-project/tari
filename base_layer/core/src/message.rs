@@ -26,11 +26,12 @@ use rmp_serde::{Deserializer, Serializer};
 use serde::{Deserialize, Serialize};
 use serde_json;
 use std::fmt::Write;
+use std::io::Error;
 
 #[derive(Debug, Error)]
 pub enum MessageError {
     // An error occurred serialising an object into binary
-    BinarySerializeError,
+    BinarySerializeError(Error),
 }
 
 pub trait MessageFormat: Sized {

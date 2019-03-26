@@ -149,6 +149,17 @@ is similar to Message Pack. Can work with ZMQ but is better designed to be used 
 
 Similar to [Protobuf](#protobuf), but claims to be much faster. Rust is supported.
 
+#### Hand-rolled serialisation
+
+[Hintjens recommends](http://zguide.zeromq.org/py:chapter7#Serialization-Libraries) using hand-rolled serialization for
+bulk messaging. While Pieter usually offers sage advice, I'm going to argue against using custom serialisers at this
+point in time for the following reasons:
+* We're unlikely to improve hugely over MessagePack
+* Since serde does 95% of our work for us with MessagePack, there's significant development overhead (and new bugs)
+  involved with a hand-rolled solution.
+* We'd have to write de/serialisers for every language that wants Tari bindings; whereas every major language has a
+  MessagePack implementation.
+
 ### Serialisation in Tari
 
 Deciding between these protocols is largely a matter of preference, since there isn't that much to choose between them.
@@ -166,7 +177,7 @@ structure able to be sent over the wire.
 However, other structures might need fine tuning, or hand-written serialisation procedures. To capture both use cases,
 it is proposed that a `MessageFormat` trait be defined:
 
-```
+```rust
 {{#include ../../base_layer/core/src/message.rs:36:44}}
 ```
 
