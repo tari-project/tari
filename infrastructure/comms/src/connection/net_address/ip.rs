@@ -25,7 +25,7 @@ use std::{net::SocketAddr, str::FromStr};
 use crate::connection::NetAddressError;
 
 /// Represents an {IPv4, IPv6} address and port
-#[derive(Clone, Hash, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct SocketAddress(SocketAddr);
 
 impl FromStr for SocketAddress {

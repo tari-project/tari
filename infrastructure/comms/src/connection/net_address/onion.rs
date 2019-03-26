@@ -25,7 +25,7 @@ use std::str::FromStr;
 use super::{parser::AddressParser, NetAddressError};
 
 /// Represents a Tor Onion address
-#[derive(Clone, Hash, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct OnionAddress {
     pub public_key: String,
     pub port: u16,

@@ -50,7 +50,7 @@ pub enum NetAddressError {
 /// assert!(address.is_ok());
 /// assert!(address.unwrap().is_tor());
 /// ```
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 /// Represents an address which can be used to reach a node on the network
 pub enum NetAddress {
     /// IPv4 and IPv6

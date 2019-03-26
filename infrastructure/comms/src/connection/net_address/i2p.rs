@@ -25,7 +25,7 @@ use std::str::FromStr;
 use super::{parser::AddressParser, NetAddressError};
 
 /// Represents an I2P address
-#[derive(Clone, Hash, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct I2PAddress {
     pub name: String,
 }
