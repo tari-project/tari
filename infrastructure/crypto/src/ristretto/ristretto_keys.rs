@@ -335,6 +335,7 @@ mod test {
     use super::*;
     use crate::{keys::PublicKey, ristretto::test_common::get_keypair};
     use rand;
+    use std::slice;
     use tari_utilities::ByteArray;
 
     #[test]
@@ -488,5 +489,19 @@ mod test {
         let mut rng = rand::OsRng::new().unwrap();
         let (k, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         assert_eq!(pk, RistrettoPublicKey::from_secret_key(&k));
+    }
+
+    #[test]
+    fn secret_keys_are_cleared_after_drop() {
+        let zero = &vec![0u8; 32][..];
+        let mut rng = rand::OsRng::new().unwrap();
+        let ptr;
+        {
+            let k = RistrettoSecretKey::random(&mut rng);
+            ptr = (k.0).as_bytes().as_ptr();
+        }
+        unsafe {
+            assert_eq!(slice::from_raw_parts(ptr, 32), zero);
+        }
     }
 }
