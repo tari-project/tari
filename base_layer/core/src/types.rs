@@ -42,6 +42,7 @@ pub type Commitment = PedersenOnRistretto255;
 pub type CommitmentFactory = PedersenBaseOnRistretto255;
 
 /// Define the explicit Secret key implementation for the Tari base layer.
+pub type SecretKey = RistrettoSecretKey;
 pub type BlindingFactor = RistrettoSecretKey;
 
 /// Define the explicit Public key implementation for the Tari base layer

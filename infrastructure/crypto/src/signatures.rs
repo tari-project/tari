@@ -10,7 +10,7 @@ use derive_error::Error;
 use digest::Digest;
 use std::ops::{Add, Mul};
 
-#[derive(Debug, Error, PartialEq, Eq)]
+#[derive(Clone, Debug, Error, PartialEq, Eq)]
 pub enum SchnorrSignatureError {
     // An invalid challenge was provided
     InvalidChallenge,

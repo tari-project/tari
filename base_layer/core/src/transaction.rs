@@ -29,12 +29,11 @@ use crate::{
     types::{BlindingFactor, Commitment, CommitmentFactory, Signature},
 };
 
-use crate::types::SignatureHash;
+use crate::types::{SecretKey, SignatureHash};
 use crypto::{
     challenge::Challenge,
     commitment::{HomomorphicCommitment, HomomorphicCommitmentFactory},
     common::Blake256,
-    ristretto::RistrettoSecretKey,
 };
 use derive::HashableOrdering;
 use derive_error::Error;
@@ -60,7 +59,7 @@ bitflags! {
 
 type Hasher = Blake256;
 
-#[derive(Debug, PartialEq, Error)]
+#[derive(Clone, Debug, PartialEq, Error)]
 pub enum TransactionError {
     // Error validating the transaction
     ValidationError,
@@ -252,7 +251,7 @@ impl Transaction {
 
     /// Calculate the sum of the inputs and outputs including the fees
     fn sum_commitments(&self, fees: u64) -> Commitment {
-        let fee_commitment = CommitmentFactory::create(&RistrettoSecretKey::default(), &RistrettoSecretKey::from(fees));
+        let fee_commitment = CommitmentFactory::create(&SecretKey::default(), &SecretKey::from(fees));
 
         let outputs_minus_inputs =
             &self.body.outputs.iter().fold(CommitmentFactory::zero(), |acc, val| &acc + &val.commitment) -
@@ -273,8 +272,7 @@ impl Transaction {
             });
 
         // Add the offset commitment
-        kernel_sum.sum =
-            kernel_sum.sum + CommitmentFactory::create(&self.offset.into(), &RistrettoSecretKey::default());
+        kernel_sum.sum = kernel_sum.sum + CommitmentFactory::create(&self.offset.into(), &SecretKey::default());
 
         kernel_sum
     }
@@ -318,38 +316,38 @@ impl TransactionBuilder {
     }
 
     /// Update the offset of an existing transaction
-    pub fn add_offset(mut self, offset: BlindingFactor) -> Self {
+    pub fn add_offset(&mut self, offset: BlindingFactor) -> &mut Self {
         self.offset = Some(offset);
         self
     }
 
     /// Add an input to an existing transaction
-    pub fn add_input(mut self, input: TransactionInput) -> Self {
-        self.body = self.body.add_input(input);
+    pub fn add_input(&mut self, input: TransactionInput) -> &mut Self {
+        self.body.add_input(input);
         self
     }
 
     /// Add an output to an existing transaction
-    pub fn add_output(mut self, output: TransactionOutput) -> Self {
-        self.body = self.body.add_output(output);
+    pub fn add_output(&mut self, output: TransactionOutput) -> &mut Self {
+        self.body.add_output(output);
         self
     }
 
     /// Add a series of inputs to an existing transaction
-    pub fn add_inputs(mut self, inputs: Vec<TransactionInput>) -> Self {
-        self.body = self.body.add_inputs(inputs);
+    pub fn add_inputs(&mut self, inputs: Vec<TransactionInput>) -> &mut Self {
+        self.body.add_inputs(inputs);
         self
     }
 
     /// Add a series of outputs to an existing transaction
-    pub fn add_outputs(mut self, outputs: Vec<TransactionOutput>) -> Self {
-        self.body = self.body.add_outputs(outputs);
+    pub fn add_outputs(&mut self, outputs: Vec<TransactionOutput>) -> &mut Self {
+        self.body.add_outputs(outputs);
         self
     }
 
     /// Set the kernel of a transaction. Currently only one kernel is allowed per transaction
-    pub fn with_kernel(mut self, kernel: TransactionKernel) -> Self {
-        self.body = self.body.set_kernel(kernel);
+    pub fn with_kernel(&mut self, kernel: TransactionKernel) -> &mut Self {
+        self.body.set_kernel(kernel);
         self
     }
 
@@ -375,12 +373,12 @@ mod test {
     use crate::{
         range_proof::RangeProof,
         transaction::{KernelFeatures, OutputFeatures, TransactionInput, TransactionKernel, TransactionOutput},
-        types::{BlindingFactor, PublicKey},
+        types::{BlindingFactor, PublicKey, SecretKey},
     };
     use crypto::{
         challenge::Challenge,
         common::Blake256,
-        keys::{PublicKey as PublicKeyTrait, SecretKey},
+        keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
     };
     use rand;
     use tari_utilities::ByteArray;
@@ -398,18 +396,18 @@ mod test {
 
         let input = TransactionInput::new(
             OutputFeatures::empty(),
-            CommitmentFactory::create(&input_secret_key, &RistrettoSecretKey::from(12u64)),
+            CommitmentFactory::create(&input_secret_key, &SecretKey::from(12u64)),
         );
 
         let change_output = TransactionOutput::new(
             OutputFeatures::empty(),
-            CommitmentFactory::create(&change_secret_key, &RistrettoSecretKey::from(4u64)),
+            CommitmentFactory::create(&change_secret_key, &SecretKey::from(4u64)),
             RangeProof([0; 1]),
         );
 
         let output = TransactionOutput::new(
             OutputFeatures::empty(),
-            CommitmentFactory::create(&receiver_secret_key, &RistrettoSecretKey::from(7u64)),
+            CommitmentFactory::create(&receiver_secret_key, &SecretKey::from(7u64)),
             RangeProof([0; 1]),
         );
 
@@ -420,24 +418,22 @@ mod test {
         let lock_height = 0u64;
 
         // Create a transaction
-        let tx_builder = TransactionBuilder::new()
-            .add_input(input.clone())
-            .add_output(output)
-            .add_output(change_output)
-            .add_offset(offset.clone());
+        let mut tx_builder = TransactionBuilder::new();
+
+        tx_builder.add_input(input.clone()).add_output(output).add_output(change_output).add_offset(offset.clone());
 
         // Test adding inputs and outputs in vector form
         let input2 = TransactionInput::new(
             OutputFeatures::empty(),
-            CommitmentFactory::create(&input_secret_key2, &RistrettoSecretKey::from(2u64)),
+            CommitmentFactory::create(&input_secret_key2, &SecretKey::from(2u64)),
         );
         let output2 = TransactionOutput::new(
             OutputFeatures::empty(),
-            CommitmentFactory::create(&receiver_secret_key2, &RistrettoSecretKey::from(2u64)),
+            CommitmentFactory::create(&receiver_secret_key2, &SecretKey::from(2u64)),
             RangeProof([0; 1]),
         );
 
-        let tx_builder = tx_builder.add_inputs(vec![input2.clone()]).add_outputs(vec![output2.clone()]);
+        tx_builder.add_inputs(vec![input2.clone()]).add_outputs(vec![output2.clone()]);
 
         // Should fail the validation because there is no kernel yet.
         let tx = tx_builder.build();
@@ -452,11 +448,11 @@ mod test {
         // Receiver generate partial signatures
 
         let mut final_excess = &output.commitment + &change_output.commitment;
-        let zero = RistrettoSecretKey::default();
+        let zero = SecretKey::default();
         final_excess = &final_excess + &output2.commitment;
         final_excess = &final_excess - &input.commitment;
         final_excess = &final_excess - &input2.commitment;
-        final_excess = &final_excess + &CommitmentFactory::create(&zero, &RistrettoSecretKey::from(fee)); // add fee
+        final_excess = &final_excess + &CommitmentFactory::create(&zero, &SecretKey::from(fee)); // add fee
         final_excess = &final_excess - &CommitmentFactory::create(&offset, &zero); // subtract Offset
 
         let receiver_private_nonce = BlindingFactor::random(&mut rng);

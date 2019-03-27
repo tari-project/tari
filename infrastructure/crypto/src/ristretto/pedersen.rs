@@ -68,6 +68,7 @@ impl PedersenOnRistretto255 {
 impl HomomorphicCommitmentFactory for PedersenBaseOnRistretto255 {
     type C = PedersenOnRistretto255;
     type K = RistrettoSecretKey;
+    type PK = RistrettoPublicKey;
 
     fn create(k: &RistrettoSecretKey, v: &RistrettoSecretKey) -> PedersenOnRistretto255 {
         let base = &DEFAULT_RISTRETTO_PEDERSON_BASE;
@@ -80,6 +81,11 @@ impl HomomorphicCommitmentFactory for PedersenBaseOnRistretto255 {
         let zero = Scalar::zero();
         let c: RistrettoPoint = &zero * base.G + &zero * base.H;
         PedersenOnRistretto255 { base, commitment: RistrettoPublicKey::new_from_pk(c) }
+    }
+
+    fn from_public_key(k: &RistrettoPublicKey) -> PedersenOnRistretto255 {
+        let base = &DEFAULT_RISTRETTO_PEDERSON_BASE;
+        PedersenOnRistretto255 { base, commitment: k.clone() }
     }
 }
 

@@ -62,44 +62,38 @@ impl AggregateBody {
     }
 
     /// Add an input to the existing aggregate body
-    pub fn add_input(mut self, input: TransactionInput) -> AggregateBody {
+    pub fn add_input(&mut self, input: TransactionInput) {
         self.inputs.push(input);
         self.inputs.sort();
-        self
     }
 
     /// Add a series of inputs to the existing aggregate body
-    pub fn add_inputs(mut self, mut inputs: Vec<TransactionInput>) -> AggregateBody {
+    pub fn add_inputs(&mut self, mut inputs: Vec<TransactionInput>) {
         self.inputs.append(&mut inputs);
         self.inputs.sort();
-        self
     }
 
     /// Add an output to the existing aggregate body
-    pub fn add_output(mut self, output: TransactionOutput) -> AggregateBody {
+    pub fn add_output(&mut self, output: TransactionOutput) {
         self.outputs.push(output);
         self.outputs.sort();
-        self
     }
 
     /// Add an output to the existing aggregate body
-    pub fn add_outputs(mut self, mut outputs: Vec<TransactionOutput>) -> AggregateBody {
+    pub fn add_outputs(&mut self, mut outputs: Vec<TransactionOutput>) {
         self.outputs.append(&mut outputs);
         self.outputs.sort();
-        self
     }
 
     /// Add a kernel to the existing aggregate body
-    pub fn add_kernel(mut self, kernel: TransactionKernel) -> AggregateBody {
+    pub fn add_kernel(&mut self, kernel: TransactionKernel) {
         self.kernels.push(kernel);
         self.kernels.sort();
-        self
     }
 
     /// Set the kernel of the aggregate body, replacing any previous kernels
-    pub fn set_kernel(mut self, kernel: TransactionKernel) -> AggregateBody {
+    pub fn set_kernel(&mut self, kernel: TransactionKernel) {
         self.kernels = vec![kernel];
-        self
     }
 
     /// Sort the component lists of the aggregate body

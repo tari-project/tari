@@ -28,4 +28,7 @@ pub mod blockheader;
 pub mod pow;
 pub mod range_proof;
 pub mod transaction;
+// TODO Remove this when this module is used elsewhere
+#[allow(dead_code)]
+pub mod transaction_protocol_manager;
 pub mod types;
