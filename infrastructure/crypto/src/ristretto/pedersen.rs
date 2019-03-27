@@ -199,10 +199,10 @@ mod test {
         for _ in 0..100 {
             let v1 = RistrettoSecretKey::random(&mut rng);
             let v2 = RistrettoSecretKey::random(&mut rng);
-            let v_sum = v1 + v2;
+            let v_sum = &v1 + &v2;
             let k1 = RistrettoSecretKey::random(&mut rng);
             let k2 = RistrettoSecretKey::random(&mut rng);
-            let k_sum = k1 + k2;
+            let k_sum = &k1 + &k2;
             let c1 = PedersenBaseOnRistretto255::create(&k1, &v1);
             let c2 = PedersenBaseOnRistretto255::create(&k2, &v2);
             let c_sum = &c1 + &c2;

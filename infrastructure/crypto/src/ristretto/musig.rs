@@ -736,7 +736,7 @@ mod test {
         let (mut musig, data) = create_round_three_musig(n, Some(msg));
         assert_eq!(musig.has_failed(), false);
         // Add the partial signatures
-        for &s in data.partial_sigs.iter() {
+        for s in data.partial_sigs.iter() {
             musig = musig.add_signature(&s, true);
             assert_eq!(musig.has_failed(), false, "Partial signature addition failed. {:?}", musig.failure_reason());
         }

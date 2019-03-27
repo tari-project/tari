@@ -62,7 +62,7 @@ pub trait PublicKey: ByteArray + Add<Output = Self> + Clone + PartialOrd + Ord +
 
     fn key_length() -> usize;
 
-    fn batch_mul(scalars: &Vec<Self::K>, points: &Vec<Self>) -> Self;
+    fn batch_mul (scalars: &[Self::K], points: &[Self]) -> Self;
 
     fn random_keypair<R: Rng + CryptoRng>(rng: &mut R) -> (Self::K, Self) {
         let k = Self::K::random(rng);

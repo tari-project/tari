@@ -34,6 +34,7 @@ use std::{
     ops::{Add, Mul, Sub},
 };
 use tari_utilities::{ByteArray, ByteArrayError};
+use clear_on_drop::clear::{Clear};
 
 /// The [SecretKey](trait.SecretKey.html) implementation for [Ristretto](https://ristretto.group) is a thin wrapper
 /// around the Dalek [Scalar](struct.Scalar.html) type, representing a 256-bit integer (mod the group order).
@@ -54,7 +55,7 @@ use tari_utilities::{ByteArray, ByteArrayError};
 /// let _k2 = RistrettoSecretKey::from_hex(&"100000002000000030000000040000000");
 /// let _k3 = RistrettoSecretKey::random(&mut rng);
 /// ```
-#[derive(PartialEq, Eq, Clone, Copy, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug)]
 pub struct RistrettoSecretKey(pub(crate) Scalar);
 
 const SCALAR_LENGTH: usize = 32;
@@ -77,6 +78,15 @@ impl SecretKey for RistrettoSecretKey {
 impl Default for RistrettoSecretKey {
     fn default() -> Self {
         RistrettoSecretKey(Scalar::default())
+    }
+}
+
+//----------------------------------    Ristretto Secret Key Default   -----------------------------------------------//
+
+/// Clear the secret key value in memory when it goes out of scope
+impl Drop for RistrettoSecretKey {
+    fn drop(&mut self) {
+        self.0.clear();
     }
 }
 
@@ -191,9 +201,9 @@ impl PublicKey for RistrettoPublicKey {
         PUBLIC_KEY_LENGTH
     }
 
-    fn batch_mul(scalars: &Vec<Self::K>, points: &Vec<Self>) -> Self {
-        let p: Vec<RistrettoPoint> = points.iter().map(|p| p.point.clone()).collect();
-        let s: Vec<Scalar> = scalars.iter().map(|k| k.0.clone()).collect();
+    fn batch_mul(scalars: &[Self::K], points: &[Self]) -> Self {
+        let p: Vec<&RistrettoPoint> = points.iter().map(|p| &p.point).collect();
+        let s: Vec<&Scalar> = scalars.iter().map(|k| &k.0).collect();
         let p = RistrettoPoint::multiscalar_mul(s, p);
         RistrettoPublicKey::new_from_pk(p)
     }
@@ -479,8 +489,8 @@ mod test {
     fn batch_mul() {
         let (k1, p1) = get_keypair();
         let (k2, p2) = get_keypair();
-        let p_slow = &(k1 * &p1) + &(k2 * &p2);
-        let b_batch = RistrettoPublicKey::batch_mul(&vec![k1, k2], &vec![p1, p2]);
+        let p_slow = &(&k1 * &p1) + &(&k2 * &p2);
+        let b_batch = RistrettoPublicKey::batch_mul(&[k1, k2], &vec![p1, p2]);
         assert_eq!(p_slow, b_batch);
     }
 

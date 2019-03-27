@@ -225,7 +225,7 @@ where
 
     /// Calculate the value of the Joint MuSig public key. **NB**: you should usually sort the participant's keys
     /// before calculating the joint key.
-    fn calculate_joint_key<D: Digest>(scalars: &Vec<K>, pub_keys: &Vec<P>) -> P {
+    fn calculate_joint_key<D: Digest>(scalars: &[K], pub_keys: &[P]) -> P {
         P::batch_mul(scalars, pub_keys)
     }
 }

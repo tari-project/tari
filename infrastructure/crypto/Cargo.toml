@@ -7,6 +7,7 @@ edition = "2018"
 tari_utilities = { path = "../tari_util"}
 digest = "0.8.0"
 rand = "0.5.5"
+clear_on_drop = "0.2.3"
 curve25519-dalek = "1.0.2"
 sha2 = "0.8.0"
 derive-error = "0.0.4"
