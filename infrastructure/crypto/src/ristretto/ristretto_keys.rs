@@ -29,8 +29,13 @@ use curve25519_dalek::{
     traits::MultiscalarMul,
 };
 use rand::{CryptoRng, Rng};
+use serde::{
+    de::{Deserialize, Deserializer, Visitor},
+    ser::{Serialize, Serializer},
+};
 use std::{
     cmp::Ordering,
+    fmt,
     ops::{Add, Mul, Sub},
 };
 use tari_utilities::{ByteArray, ByteArrayError};
@@ -56,6 +61,39 @@ use tari_utilities::{ByteArray, ByteArrayError};
 /// ```
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub struct RistrettoSecretKey(pub(crate) Scalar);
+
+/// Requires custom Serde Serialize and Deserialize for RistrettoSecretKey as Scalar do not implement these traits
+impl Serialize for RistrettoSecretKey {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where S: Serializer {
+        serializer.serialize_str(&self.to_hex())
+    }
+}
+
+struct DeserializeVisitor;
+
+impl<'de> Visitor<'de> for DeserializeVisitor {
+    type Value = RistrettoSecretKey;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("expecting a hex string")
+    }
+
+    fn visit_str<E>(self, str_data: &str) -> Result<Self::Value, E>
+    where E: serde::de::Error {
+        match RistrettoSecretKey::from_hex(str_data) {
+            Ok(k) => Ok(k),
+            Err(parse_error) => Err(E::custom(format!("SecretKey parser error: {}", parse_error))),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for RistrettoSecretKey {
+    fn deserialize<D>(deserializer: D) -> Result<RistrettoSecretKey, D::Error>
+    where D: Deserializer<'de> {
+        deserializer.deserialize_string(DeserializeVisitor)
+    }
+}
 
 const SCALAR_LENGTH: usize = 32;
 const PUBLIC_KEY_LENGTH: usize = 32;
