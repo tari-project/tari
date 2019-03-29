@@ -135,7 +135,7 @@ Several candidates fulfil these properties to some degree.
   * Very compact
   * Fast
   * Multiple language support
-  * Good Rust / SerDe support
+  * Good Rust / Serde support
   * Dovetails into ZMQ nicely
 * Cons:
   * No metadata support
