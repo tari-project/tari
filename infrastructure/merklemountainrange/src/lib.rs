@@ -31,15 +31,15 @@
 //! proof of the whole MMR) you have the bag the peaks of the individual trees, or mountain peaks.
 //!
 //! Lets take an example of how to construct one. Say you have the following MMR already made:
-//! '''
+//! ```plaintext
 //!       /\
 //!      /  \
 //!     /\  /\   /\
 //!    /\/\/\/\ /\/\ /\
-//! '''
+//! ```
 //! From this we can see we have 3 trees or mountains. We have constructed the largest possible tree's we can.
 //! If we want to calculate the merkle route we will bag each of the mountains in the following way
-//! '''
+//! ```plaintext
 //!          /\
 //!         /\ \
 //!        /  \ \
@@ -47,16 +47,16 @@
 //!      /  \   \ \
 //!     /\  /\  /\ \
 //!    /\/\/\/\/\/\/\
-//! '''
+//! ```
 //! Lets continue the example, by adding a single object. Our MMR now looks as follows
-//! '''
+//! ```plaintext
 //!       /\
 //!      /  \
 //!     /\  /\   /\
 //!    /\/\/\/\ /\/\ /\ /
-//! '''
+//! ```
 //! We now have 4 mountains. Lets bag and calculate the merkle root again
-//! '''
+//! ```plaintext
 //!           /\
 //!          /\ \
 //!         /\ \ \
@@ -65,9 +65,9 @@
 //!      /  \   \ \ \
 //!     /\  /\  /\ \ \
 //!    /\/\/\/\/\/\/\ \
-//! '''
+//! ```
 //!  Lets continue thw example, by adding a single object. Our MMR now looks as follows
-//! '''
+//! ```plaintext
 //!           /\
 //!          /  \
 //!         /    \
@@ -76,10 +76,10 @@
 //!      /  \    /  \
 //!     /\  /\  /\  /\
 //!    /\/\/\/\/\/\/\/\
-//! '''
+//! ```
 //! Now we only have a single binary tree, we dont have to bag the mountains to calculate the merkle root. This
 //! process continues as you add more objects to the MMR.
-//! '''
+//! ```plaintext
 //!                 /\
 //!                /  \
 //!               /    \
@@ -94,17 +94,17 @@
 //!      /  \   \ \      /  \   \
 //!     /\  /\  /\ \    /\  /\  /\
 //!    /\/\/\/\/\/\/\  /\/\/\/\/\/\
-//! '''
+//! ```
 //! Due to the unique way the MMR is constructed we can easily represent the MMR as a list of the nodes, as when
 //! adding nodes you only append. Lets take the following MMR and number the nodes in the order we create them.
-//! '''
+//! ```plaintext
 //!        7
 //!       /  \
 //!      /    \
 //!     3      6
 //!    / \    / \
 //!   1   2  4   5
-//! '''
+//! ```
 //! Looking above at the example of when you create the nodes, you will see the nodes will have been created in the
 //! order as they are named. This means we can easily represent them as a list:
 //! Height:  0 | 0 | 1 | 0 | 0 | 1 | 2
@@ -121,7 +121,7 @@
 //!
 //! Pruning the MMR means flagging a node as pruned and only removing it if its sibling has been removed.
 //! We do this as we require the sibling to prove the hash of the node. Taking the above example, let's prune leaf 1.
-//! '''
+//! ```plaintext
 //!                 /\
 //!                /  \
 //!               /    \
@@ -136,10 +136,10 @@
 //!      /  \   \ \      /  \   \
 //!     /\  /\  /\ \    /\  /\  /\
 //!    /\/\/\/\/\/\/\  /\/\/\/\/\/\
-//! '''
+//! ```
 //! Node 1 has now only been marked as pruned but we cannot remove it as of yet because we still require it to
 //! prove node 2. When we prune node 2, the MMR looks as follows
-//! '''
+//! ```plaintext
 //!                 /\
 //!                /  \
 //!               /    \
@@ -154,10 +154,10 @@
 //!      /  \   \ \      /  \   \
 //!     /\  /\  /\ \    /\  /\  /\
 //!      /\/\/\/\/\/\  /\/\/\/\/\/\
-//! '''
+//! ```
 //! Although we have not removed node 1 and node 2 from the MMR, we cannot yet remove node 3 as we require node 3
 //! for the proof of node 6. Let's prune 4 and 5.
-//! '''
+//! ```plaintext
 //!                 /\
 //!                /  \
 //!               /    \
@@ -172,7 +172,7 @@
 //!      /  \   \ \      /  \   \
 //!         /\  /\ \    /\  /\  /\
 //!        /\/\/\/\/\  /\/\/\/\/\/\
-//! '''
+//! ```
 //! Now we removed 3 from the MMR
 
 pub mod error;
