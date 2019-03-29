@@ -30,7 +30,7 @@ use crate::{
 };
 
 use crate::types::SignatureHash;
-use derive::HashableOrdering;
+use tari_infra_derive::HashableOrdering;
 use derive_error::Error;
 use digest::Digest;
 use std::cmp::Ordering;
