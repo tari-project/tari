@@ -43,7 +43,7 @@ pub enum NetAddressError {
 /// # Examples
 ///
 /// ```
-/// use self::comms::connection::NetAddress;
+/// use tari_comms::connection::NetAddress;
 ///
 /// let address = "propub3r6espa33w.onion:1234".parse::<NetAddress>();
 ///

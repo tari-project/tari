@@ -1,10 +1,17 @@
 [package]
-name = "crypto"
+name = "tari_crypto"
+description = "Tari Cryptography library"
+authors = ["The Tari Development Community"]
+repository = "https://github.com/tari-project/tari"
+categories = ["cryptography"]
+homepage = "https://tari.com"
+readme = "README.md"
+license = "BSD-3-Clause"
 version = "0.0.1"
 edition = "2018"
 
 [dependencies]
-tari_utilities = { path = "../tari_util"}
+tari_utilities = { path = "../tari_util", version = "0.0.1" }
 digest = "0.8.0"
 rand = "0.5.5"
 curve25519-dalek = "1.0.2"

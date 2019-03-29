@@ -36,7 +36,7 @@ pub type Challenge256Bit = [u8; 32];
 /// Challenge makes use of a fluent interface to build up the challenge parts:
 ///
 /// ```edition2018
-///     use crypto::challenge::*;
+///     use tari_crypto::challenge::*;
 ///     use sha2::Sha256;
 ///
 ///     let challenge = Challenge::<Sha256>::new();
