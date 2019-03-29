@@ -143,6 +143,9 @@ mod test {
         assert!(addr.is_ok(), "Valid I2P address parsing failed");
 
         let addr = "google.com:1234".parse::<NetAddress>();
-        assert!(addr.is_err(), "Invalid net address string should not have successfully parsed");
+        assert!(
+            addr.is_err(),
+            "Invalid net address string should not have successfully parsed"
+        );
     }
 }

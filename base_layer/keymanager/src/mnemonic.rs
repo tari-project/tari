@@ -411,8 +411,11 @@ mod test {
         match mnemonic::from_bytes(secretkey_bytes.clone(), &MnemonicLanguage::English) {
             Ok(mnemonic_seq) => match mnemonic::to_bytes(&mnemonic_seq) {
                 Ok(mnemonic_bytes) => {
-                    let mismatched_bytes =
-                        secretkey_bytes.iter().zip(mnemonic_bytes.iter()).filter(|&(a, b)| a != b).count();
+                    let mismatched_bytes = secretkey_bytes
+                        .iter()
+                        .zip(mnemonic_bytes.iter())
+                        .filter(|&(a, b)| a != b)
+                        .count();
                     assert_eq!(mismatched_bytes, 0);
                 },
                 Err(_e) => assert!(false),

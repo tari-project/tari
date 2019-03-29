@@ -121,7 +121,11 @@ pub struct TransactionOutput {
 impl TransactionOutput {
     /// Create new Transaction Output
     pub fn new(features: OutputFeatures, commitment: Commitment, proof: RangeProof) -> TransactionOutput {
-        TransactionOutput { features, commitment, proof }
+        TransactionOutput {
+            features,
+            commitment,
+            proof,
+        }
     }
 
     /// Accessor method for the commitment contained in an output
@@ -173,7 +177,13 @@ pub struct TransactionKernel {
 impl TransactionKernel {
     /// Creates an empty transaction kernel
     pub fn empty() -> TransactionKernel {
-        TransactionKernel { features: KernelFeatures::empty(), fee: 0, lock_height: 0, excess: None, excess_sig: None }
+        TransactionKernel {
+            features: KernelFeatures::empty(),
+            fee: 0,
+            lock_height: 0,
+            excess: None,
+            excess_sig: None,
+        }
     }
 
     /// Build a transaction kernel with the provided fee
@@ -247,16 +257,26 @@ impl Transaction {
         offset: BlindingFactor,
     ) -> Transaction
     {
-        Transaction { offset, body: AggregateBody::new(inputs, outputs, kernels) }
+        Transaction {
+            offset,
+            body: AggregateBody::new(inputs, outputs, kernels),
+        }
     }
 
     /// Calculate the sum of the inputs and outputs including the fees
     fn sum_commitments(&self, fees: u64) -> Commitment {
         let fee_commitment = CommitmentFactory::create(&RistrettoSecretKey::default(), &RistrettoSecretKey::from(fees));
 
-        let outputs_minus_inputs =
-            &self.body.outputs.iter().fold(CommitmentFactory::zero(), |acc, val| &acc + &val.commitment) -
-                &self.body.inputs.iter().fold(CommitmentFactory::zero(), |acc, val| &acc + &val.commitment);
+        let outputs_minus_inputs = &self
+            .body
+            .outputs
+            .iter()
+            .fold(CommitmentFactory::zero(), |acc, val| &acc + &val.commitment) -
+            &self
+                .body
+                .inputs
+                .iter()
+                .fold(CommitmentFactory::zero(), |acc, val| &acc + &val.commitment);
 
         &outputs_minus_inputs + &fee_commitment
     }
@@ -264,13 +284,16 @@ impl Transaction {
     /// Calculate the sum of the kernels, taking into account the offset if it exists, and their constituent fees
     fn sum_kernels(&self) -> KernelSum {
         // Sum all kernel excesses and fees
-        let mut kernel_sum =
-            self.body.kernels.iter().fold(KernelSum { fees: 0u64, sum: CommitmentFactory::zero() }, |acc, val| {
-                KernelSum {
-                    fees: &acc.fees + val.fee,
-                    sum: &acc.sum + &val.excess.unwrap_or(CommitmentFactory::zero()),
-                }
-            });
+        let mut kernel_sum = self.body.kernels.iter().fold(
+            KernelSum {
+                fees: 0u64,
+                sum: CommitmentFactory::zero(),
+            },
+            |acc, val| KernelSum {
+                fees: &acc.fees + val.fee,
+                sum: &acc.sum + &val.excess.unwrap_or(CommitmentFactory::zero()),
+            },
+        );
 
         // Add the offset commitment
         kernel_sum.sum =
@@ -314,7 +337,10 @@ pub struct TransactionBuilder {
 impl TransactionBuilder {
     /// Create an new empty TransactionBuilder
     pub fn new() -> Self {
-        Self { offset: None, body: AggregateBody::empty() }
+        Self {
+            offset: None,
+            body: AggregateBody::empty(),
+        }
     }
 
     /// Update the offset of an existing transaction
@@ -437,7 +463,9 @@ mod test {
             RangeProof([0; 1]),
         );
 
-        let tx_builder = tx_builder.add_inputs(vec![input2.clone()]).add_outputs(vec![output2.clone()]);
+        let tx_builder = tx_builder
+            .add_inputs(vec![input2.clone()])
+            .add_outputs(vec![output2.clone()]);
 
         // Should fail the validation because there is no kernel yet.
         let tx = tx_builder.build();

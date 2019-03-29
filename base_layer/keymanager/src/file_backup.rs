@@ -96,7 +96,11 @@ mod test {
             pub var2: Vec<u8>,
             pub var3: usize,
         }
-        let desired_struct = R { var1: "Test".to_string(), var2: vec![0, 1, 2], var3: 3 };
+        let desired_struct = R {
+            var1: "Test".to_string(),
+            var2: vec![0, 1, 2],
+            var3: 3,
+        };
         // Backup struct to file
         let backup_filename = "test_backup.json".to_string();
         match desired_struct.to_file(&backup_filename) {

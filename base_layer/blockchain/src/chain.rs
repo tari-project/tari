@@ -41,7 +41,12 @@ pub struct Chain {
 
 impl Chain {
     pub fn new(dbstore: Store, pruning_horizon: Option<u64>) -> Chain {
-        Chain { store: dbstore, blockchainstate: BlockchainState::new(), orphans: HashMap::new(), pruning_horizon }
+        Chain {
+            store: dbstore,
+            blockchainstate: BlockchainState::new(),
+            orphans: HashMap::new(),
+            pruning_horizon,
+        }
     }
 
     pub fn process_new_block(&self, _new_block: &Block) -> Result<(), ChainError> {
