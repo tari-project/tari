@@ -177,7 +177,7 @@ structure able to be sent over the wire.
 However, other structures might need fine tuning, or hand-written serialisation procedures. To capture both use cases,
 it is proposed that a `MessageFormat` trait be defined:
 
-```rust
+```rust,compile_fail
 {{#include ../../base_layer/core/src/message.rs:41:49}}
 ```
 
