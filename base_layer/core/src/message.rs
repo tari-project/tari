@@ -53,8 +53,7 @@ where T: Deserialize<'a> + Serialize
 {
     fn to_binary(&self) -> Result<Vec<u8>, MessageError> {
         let mut buf = Vec::new();
-        self.serialize(&mut rmp_serde::Serializer::new(&mut buf))
-            .map_err(|e| MessageError::BinarySerializeError(e))?;
+        self.serialize(&mut rmp_serde::Serializer::new(&mut buf)).map_err(|e| MessageError::BinarySerializeError(e))?;
         Ok(buf.to_vec())
     }
 
@@ -86,18 +85,17 @@ where T: Deserialize<'a> + Serialize
 #[cfg(test)]
 mod test {
     use super::*;
-    use serde_derive::{Serialize, Deserialize};
-    use serde_json::error::{ErrorCode, Category};
     use base64::DecodeError as Base64Error;
     use rmp_serde::decode::Error as RMPError;
-    use std::error::Error;
-    use std::io::ErrorKind;
+    use serde_derive::{Deserialize, Serialize};
+    use serde_json::error::{Category, ErrorCode};
+    use std::{error::Error, io::ErrorKind};
 
     #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
     struct TestMessage {
         key: String,
         value: u64,
-        sub_message: Option<Box<TestMessage>>
+        sub_message: Option<Box<TestMessage>>,
     }
 
     impl TestMessage {
@@ -144,7 +142,11 @@ mod test {
         val.set_sub_message(inner);
 
         let msg_json = val.to_json().unwrap();
-        assert_eq!(msg_json, "{\"key\":\"tomorrow\",\"value\":50,\"sub_message\":{\"key\":\"today\",\"value\":100,\"sub_message\":null}}");
+        assert_eq!(
+            msg_json,
+            "{\"key\":\"tomorrow\",\"value\":50,\"sub_message\":{\"key\":\"today\",\"value\":100,\"sub_message\":\
+             null}}"
+        );
 
         let msg_base64 = val.to_base64().unwrap();
         assert_eq!(msg_base64, "k6h0b21vcnJvdzKTpXRvZGF5ZMA=");
@@ -166,7 +168,7 @@ mod test {
     fn fail_json() {
         let err = TestMessage::from_json("{\"key\":5}").err().unwrap();
         match err {
-            MessageError::JSONError(e) =>  {
+            MessageError::JSONError(e) => {
                 assert_eq!(e.line(), 1);
                 assert_eq!(e.column(), 9);
                 assert!(e.is_data());
@@ -179,7 +181,7 @@ mod test {
     fn fail_base64() {
         let err = TestMessage::from_base64("aaaaa$aaaaa").err().unwrap();
         match err {
-            MessageError::Base64DeserializeError(Base64Error::InvalidByte(offset, val)) =>  {
+            MessageError::Base64DeserializeError(Base64Error::InvalidByte(offset, val)) => {
                 assert_eq!(offset, 5);
                 assert_eq!(val, '$' as u8);
             },
@@ -188,7 +190,7 @@ mod test {
 
         let err = TestMessage::from_base64("j6h0b21vcnJvdzKTpXRvZGF5ZMA=").err().unwrap();
         match err {
-            MessageError::BinaryDeserializeError(RMPError::Syntax(s)) =>  {
+            MessageError::BinaryDeserializeError(RMPError::Syntax(s)) => {
                 assert_eq!(s, "invalid type: sequence, expected field identifier");
             },
             _ => panic!("Base64 conversion should fail"),
@@ -201,10 +203,10 @@ mod test {
         match err {
             MessageError::BinaryDeserializeError(RMPError::InvalidMarkerRead(e)) => {
                 assert_eq!(e.kind(), ErrorKind::UnexpectedEof, "Unexpected error type: {:?}", e);
-            }
+            },
             _ => {
                 panic!("Base64 conversion should fail");
-            }
+            },
         }
     }
 }
