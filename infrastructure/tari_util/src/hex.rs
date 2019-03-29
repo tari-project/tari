@@ -30,7 +30,11 @@ pub fn to_hex_multiple(bytearray: &Vec<Vec<u8>>) -> Vec<String> {
 /// Decode a hex string into bytes.
 pub fn from_hex(hex_str: &str) -> Result<Vec<u8>, HexError> {
     let hex_trim = hex_str.trim();
-    let hex_trim = if (hex_trim.len() >= 2) && (&hex_trim[..2] == "0x") { &hex_trim[2..] } else { hex_trim };
+    let hex_trim = if (hex_trim.len() >= 2) && (&hex_trim[..2] == "0x") {
+        &hex_trim[2..]
+    } else {
+        hex_trim
+    };
     if hex_trim.len() % 2 == 1 {
         return Err(HexError::LengthError);
     }

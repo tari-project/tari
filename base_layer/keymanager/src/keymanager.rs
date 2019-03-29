@@ -71,7 +71,12 @@ where
 
     /// Constructs a KeyManager from known parts
     pub fn from(master_key: K, branch_seed: String, primary_key_index: usize) -> KeyManager<K, D> {
-        KeyManager { master_key, branch_seed, primary_key_index, digest_type: PhantomData }
+        KeyManager {
+            master_key,
+            branch_seed,
+            primary_key_index,
+            digest_type: PhantomData,
+        }
     }
 
     /// Constructs a KeyManager by generating a master_key=SHA256(seed_phrase) using a non-mnemonic seed phrase
@@ -82,7 +87,12 @@ where
     ) -> Result<KeyManager<K, D>, KeyManagerError>
     {
         match K::from_bytes(D::digest(&seed_phrase.into_bytes()).as_slice()) {
-            Ok(master_key) => Ok(KeyManager { master_key, branch_seed, primary_key_index, digest_type: PhantomData }),
+            Ok(master_key) => Ok(KeyManager {
+                master_key,
+                branch_seed,
+                primary_key_index,
+                digest_type: PhantomData,
+            }),
             Err(e) => Err(KeyManagerError::from(e)),
         }
     }
@@ -96,7 +106,12 @@ where
     ) -> Result<KeyManager<K, D>, KeyManagerError>
     {
         match K::from_mnemonic(mnemonic_seq) {
-            Ok(master_key) => Ok(KeyManager { master_key, branch_seed, primary_key_index, digest_type: PhantomData }),
+            Ok(master_key) => Ok(KeyManager {
+                master_key,
+                branch_seed,
+                primary_key_index,
+                digest_type: PhantomData,
+            }),
             Err(e) => Err(KeyManagerError::from(e)),
         }
     }

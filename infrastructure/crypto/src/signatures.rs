@@ -29,7 +29,10 @@ where
     K: SecretKey,
 {
     pub fn new(public_nonce: P, signature: K) -> Self {
-        SchnorrSignature { public_nonce, signature }
+        SchnorrSignature {
+            public_nonce,
+            signature,
+        }
     }
 
     pub fn calc_signature_verifier(&self) -> P {

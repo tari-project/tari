@@ -169,9 +169,21 @@ impl<'a, 'b> Sub<&'b RistrettoSecretKey> for &'a RistrettoSecretKey {
     }
 }
 
-define_add_variants!(LHS = RistrettoSecretKey, RHS = RistrettoSecretKey, Output = RistrettoSecretKey);
-define_sub_variants!(LHS = RistrettoSecretKey, RHS = RistrettoSecretKey, Output = RistrettoSecretKey);
-define_mul_variants!(LHS = RistrettoSecretKey, RHS = RistrettoPublicKey, Output = RistrettoPublicKey);
+define_add_variants!(
+    LHS = RistrettoSecretKey,
+    RHS = RistrettoSecretKey,
+    Output = RistrettoSecretKey
+);
+define_sub_variants!(
+    LHS = RistrettoSecretKey,
+    RHS = RistrettoSecretKey,
+    Output = RistrettoSecretKey
+);
+define_mul_variants!(
+    LHS = RistrettoSecretKey,
+    RHS = RistrettoPublicKey,
+    Output = RistrettoPublicKey
+);
 
 //---------------------------------------------      Conversions     -------------------------------------------------//
 
@@ -212,7 +224,10 @@ pub struct RistrettoPublicKey {
 impl RistrettoPublicKey {
     // Private constructor
     pub(crate) fn new_from_pk(pk: RistrettoPoint) -> RistrettoPublicKey {
-        RistrettoPublicKey { point: pk, compressed: pk.compress() }
+        RistrettoPublicKey {
+            point: pk,
+            compressed: pk.compress(),
+        }
     }
 }
 
@@ -284,7 +299,9 @@ impl ByteArray for RistrettoPublicKey {
         }
         let pk = CompressedRistretto::from_slice(bytes);
         match pk.decompress() {
-            None => Err(ByteArrayError::ConversionError("Invalid compressed Ristretto point".to_string())),
+            None => Err(ByteArrayError::ConversionError(
+                "Invalid compressed Ristretto point".to_string(),
+            )),
             Some(p) => Ok(RistrettoPublicKey::new_from_pk(p)),
         }
     }
@@ -333,10 +350,26 @@ impl<'a, 'b> Mul<&'b RistrettoSecretKey> for &'a RistrettoSecretKey {
     }
 }
 
-define_add_variants!(LHS = RistrettoPublicKey, RHS = RistrettoPublicKey, Output = RistrettoPublicKey);
-define_sub_variants!(LHS = RistrettoPublicKey, RHS = RistrettoPublicKey, Output = RistrettoPublicKey);
-define_mul_variants!(LHS = RistrettoPublicKey, RHS = RistrettoSecretKey, Output = RistrettoPublicKey);
-define_mul_variants!(LHS = RistrettoSecretKey, RHS = RistrettoSecretKey, Output = RistrettoSecretKey);
+define_add_variants!(
+    LHS = RistrettoPublicKey,
+    RHS = RistrettoPublicKey,
+    Output = RistrettoPublicKey
+);
+define_sub_variants!(
+    LHS = RistrettoPublicKey,
+    RHS = RistrettoPublicKey,
+    Output = RistrettoPublicKey
+);
+define_mul_variants!(
+    LHS = RistrettoPublicKey,
+    RHS = RistrettoSecretKey,
+    Output = RistrettoPublicKey
+);
+define_mul_variants!(
+    LHS = RistrettoSecretKey,
+    RHS = RistrettoSecretKey,
+    Output = RistrettoSecretKey
+);
 
 //----------------------------------         PublicKey From implementations      -------------------------------------//
 
