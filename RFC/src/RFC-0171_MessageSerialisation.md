@@ -81,7 +81,7 @@ For successful communication to occur, the following needs to happen:
   * adding a message header to describe the type of payload,
   * encrypting the message,
   * signing the message, and
-  * adding destination /recipient metadata.
+  * adding destination/recipient metadata.
 * The communication module then sends the message over the wire.
 * The recipient receives the message and unwraps it, possibly performing any/all of the following:
   * decryption,
@@ -164,8 +164,8 @@ point in time for the following reasons:
 
 Deciding between these protocols is largely a matter of preference, since there isn't that much to choose between them.
 Given that ZMQ is used in other places in the Tari network; MessagePack looks to be a good fit while offering a compact
-data structure and highly performant de/serialisation. In Rust in particular, there's first-class support for Message
-Pack in serde.
+data structure and highly performant de/serialisation. In Rust in particular, there's first-class support for MessagePack
+in serde.
 
 For human-readable formats, it makes little sense to deviate from JSON. For copy-paste semantics, the extra compression
 that Base64 offers over raw hex or Base58 makes it attractive.
