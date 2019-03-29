@@ -178,9 +178,9 @@ However, other structures might need fine tuning, or hand-written serialisation 
 it is proposed that a `MessageFormat` trait be defined:
 
 ```rust
-{{#include ../../base_layer/core/src/message.rs:36:44}}
+{{#include ../../base_layer/core/src/message.rs:41:49}}
 ```
 
 This trait will have default implementations to cover most use cases (e.g. a simple call through to `serde_json`). Serde
 also offers significant ability to tweak how a given struct will be serialised through the use of
-[atttributes](https://serde.rs/attributes.html).
+[attributes](https://serde.rs/attributes.html).
