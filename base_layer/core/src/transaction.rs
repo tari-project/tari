@@ -30,7 +30,6 @@ use crate::{
 };
 
 use crate::types::SignatureHash;
-use tari_infra_derive::HashableOrdering;
 use derive_error::Error;
 use digest::Digest;
 use std::cmp::Ordering;
@@ -40,6 +39,7 @@ use tari_crypto::{
     common::Blake256,
     ristretto::RistrettoSecretKey,
 };
+use tari_infra_derive::HashableOrdering;
 use tari_utilities::{ByteArray, Hashable};
 
 bitflags! {
