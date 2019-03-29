@@ -44,7 +44,12 @@ where
 {
     /// This function creates a new empty Merkle Mountain Range
     pub fn new() -> MerkleMountainRange<T, D> {
-        MerkleMountainRange { mmr: Vec::new(), data: HashMap::new(), hasher: PhantomData, current_peak_height: (0, 0) }
+        MerkleMountainRange {
+            mmr: Vec::new(),
+            data: HashMap::new(),
+            hasher: PhantomData,
+            current_peak_height: (0, 0),
+        }
     }
 
     /// This function returns a reference to the data stored in the mmr
@@ -250,7 +255,11 @@ where
     fn bag_mmr(&self) -> Vec<ObjectHash> {
         // lets find all peaks of the mmr
         let mut peaks = Vec::new();
-        self.find_bagging_indexes(self.current_peak_height.0 as i64, self.current_peak_height.1, &mut peaks);
+        self.find_bagging_indexes(
+            self.current_peak_height.0 as i64,
+            self.current_peak_height.1,
+            &mut peaks,
+        );
         peaks
     }
 

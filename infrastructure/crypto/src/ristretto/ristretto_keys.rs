@@ -29,8 +29,13 @@ use curve25519_dalek::{
     traits::MultiscalarMul,
 };
 use rand::{CryptoRng, Rng};
+use serde::{
+    de::{Deserialize, Deserializer, Visitor},
+    ser::{Serialize, Serializer},
+};
 use std::{
     cmp::Ordering,
+    fmt,
     ops::{Add, Mul, Sub},
 };
 use tari_utilities::{ByteArray, ByteArrayError};
@@ -56,6 +61,39 @@ use tari_utilities::{ByteArray, ByteArrayError};
 /// ```
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub struct RistrettoSecretKey(pub(crate) Scalar);
+
+/// Requires custom Serde Serialize and Deserialize for RistrettoSecretKey as Scalar do not implement these traits
+impl Serialize for RistrettoSecretKey {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where S: Serializer {
+        serializer.serialize_str(&self.to_hex())
+    }
+}
+
+struct DeserializeVisitor;
+
+impl<'de> Visitor<'de> for DeserializeVisitor {
+    type Value = RistrettoSecretKey;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("expecting a hex string")
+    }
+
+    fn visit_str<E>(self, str_data: &str) -> Result<Self::Value, E>
+    where E: serde::de::Error {
+        match RistrettoSecretKey::from_hex(str_data) {
+            Ok(k) => Ok(k),
+            Err(parse_error) => Err(E::custom(format!("SecretKey parser error: {}", parse_error))),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for RistrettoSecretKey {
+    fn deserialize<D>(deserializer: D) -> Result<RistrettoSecretKey, D::Error>
+    where D: Deserializer<'de> {
+        deserializer.deserialize_string(DeserializeVisitor)
+    }
+}
 
 const SCALAR_LENGTH: usize = 32;
 const PUBLIC_KEY_LENGTH: usize = 32;
@@ -131,9 +169,21 @@ impl<'a, 'b> Sub<&'b RistrettoSecretKey> for &'a RistrettoSecretKey {
     }
 }
 
-define_add_variants!(LHS = RistrettoSecretKey, RHS = RistrettoSecretKey, Output = RistrettoSecretKey);
-define_sub_variants!(LHS = RistrettoSecretKey, RHS = RistrettoSecretKey, Output = RistrettoSecretKey);
-define_mul_variants!(LHS = RistrettoSecretKey, RHS = RistrettoPublicKey, Output = RistrettoPublicKey);
+define_add_variants!(
+    LHS = RistrettoSecretKey,
+    RHS = RistrettoSecretKey,
+    Output = RistrettoSecretKey
+);
+define_sub_variants!(
+    LHS = RistrettoSecretKey,
+    RHS = RistrettoSecretKey,
+    Output = RistrettoSecretKey
+);
+define_mul_variants!(
+    LHS = RistrettoSecretKey,
+    RHS = RistrettoPublicKey,
+    Output = RistrettoPublicKey
+);
 
 //---------------------------------------------      Conversions     -------------------------------------------------//
 
@@ -174,7 +224,10 @@ pub struct RistrettoPublicKey {
 impl RistrettoPublicKey {
     // Private constructor
     pub(crate) fn new_from_pk(pk: RistrettoPoint) -> RistrettoPublicKey {
-        RistrettoPublicKey { point: pk, compressed: pk.compress() }
+        RistrettoPublicKey {
+            point: pk,
+            compressed: pk.compress(),
+        }
     }
 }
 
@@ -246,7 +299,9 @@ impl ByteArray for RistrettoPublicKey {
         }
         let pk = CompressedRistretto::from_slice(bytes);
         match pk.decompress() {
-            None => Err(ByteArrayError::ConversionError("Invalid compressed Ristretto point".to_string())),
+            None => Err(ByteArrayError::ConversionError(
+                "Invalid compressed Ristretto point".to_string(),
+            )),
             Some(p) => Ok(RistrettoPublicKey::new_from_pk(p)),
         }
     }
@@ -295,10 +350,26 @@ impl<'a, 'b> Mul<&'b RistrettoSecretKey> for &'a RistrettoSecretKey {
     }
 }
 
-define_add_variants!(LHS = RistrettoPublicKey, RHS = RistrettoPublicKey, Output = RistrettoPublicKey);
-define_sub_variants!(LHS = RistrettoPublicKey, RHS = RistrettoPublicKey, Output = RistrettoPublicKey);
-define_mul_variants!(LHS = RistrettoPublicKey, RHS = RistrettoSecretKey, Output = RistrettoPublicKey);
-define_mul_variants!(LHS = RistrettoSecretKey, RHS = RistrettoSecretKey, Output = RistrettoSecretKey);
+define_add_variants!(
+    LHS = RistrettoPublicKey,
+    RHS = RistrettoPublicKey,
+    Output = RistrettoPublicKey
+);
+define_sub_variants!(
+    LHS = RistrettoPublicKey,
+    RHS = RistrettoPublicKey,
+    Output = RistrettoPublicKey
+);
+define_mul_variants!(
+    LHS = RistrettoPublicKey,
+    RHS = RistrettoSecretKey,
+    Output = RistrettoPublicKey
+);
+define_mul_variants!(
+    LHS = RistrettoSecretKey,
+    RHS = RistrettoSecretKey,
+    Output = RistrettoSecretKey
+);
 
 //----------------------------------         PublicKey From implementations      -------------------------------------//
 

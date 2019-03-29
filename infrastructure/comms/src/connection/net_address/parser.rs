@@ -32,7 +32,10 @@ pub(crate) struct AddressParser<'a> {
 impl<'a> AddressParser<'a> {
     /// Create a new address parser
     pub fn new(s: &'a str) -> Self {
-        AddressParser { pos: 0, data: s.as_bytes() }
+        AddressParser {
+            pos: 0,
+            data: s.as_bytes(),
+        }
     }
 
     /// Parse I2P address
@@ -98,7 +101,10 @@ impl<'a> AddressParser<'a> {
                 return None;
             }
 
-            Some(OnionAddress { public_key, port: port as u16 })
+            Some(OnionAddress {
+                public_key,
+                port: port as u16,
+            })
         })
     }
 

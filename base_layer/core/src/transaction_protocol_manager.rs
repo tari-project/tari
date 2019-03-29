@@ -128,7 +128,9 @@ struct SenderTransactionProtocolManager {
 
 impl SenderTransactionProtocolManager {
     pub fn new() -> SenderTransactionProtocolManager {
-        SenderTransactionProtocolManager { state: SenderState::SenderInit(SenderInit::new()) }
+        SenderTransactionProtocolManager {
+            state: SenderState::SenderInit(SenderInit::new()),
+        }
     }
 
     // SenderState::SenderInit state methods
@@ -267,7 +269,9 @@ struct ReceiverTransactionProtocolManager {
 
 impl ReceiverTransactionProtocolManager {
     pub fn new() -> ReceiverTransactionProtocolManager {
-        ReceiverTransactionProtocolManager { state: ReceiverState::ReceiverInit(ReceiverInit::new()) }
+        ReceiverTransactionProtocolManager {
+            state: ReceiverState::ReceiverInit(ReceiverInit::new()),
+        }
     }
 
     // ReceiverState::ReceiverInit state methods
@@ -442,10 +446,10 @@ pub struct SenderStateData {
 }
 
 impl SenderStateData {
-    /// This function validates the contents of the SenderStateData structure. It can validate at two stages of completion
-    /// Firstly, if only the Sender's data is completed it will validate by creating a output for the specified amount
-    /// Secondly, if the Receiver data is present it will use the provided Receiver output and validate the Receiver's
-    /// Partial Signature
+    /// This function validates the contents of the SenderStateData structure. It can validate at two stages of
+    /// completion Firstly, if only the Sender's data is completed it will validate by creating a output for the
+    /// specified amount Secondly, if the Receiver data is present it will use the provided Receiver output and
+    /// validate the Receiver's Partial Signature
     pub fn validate(&self) -> Result<(), TransactionProtocolError> {
         if self.amount.is_none() ||
             self.lock_height.is_none() ||
@@ -475,7 +479,10 @@ impl SenderStateData {
         }
 
         sum = &sum -
-            &CommitmentFactory::create(&self.sender_excess_blinding_factor.unwrap().into(), &SecretKey::default());
+            &CommitmentFactory::create(
+                &self.sender_excess_blinding_factor.unwrap().into(),
+                &SecretKey::default(),
+            );
         sum = &sum - &CommitmentFactory::create(&self.offset.unwrap().into(), &SecretKey::default());
 
         if sum != CommitmentFactory::create(&SecretKey::default(), &SecretKey::default()) {
@@ -555,8 +562,8 @@ pub struct ReceiverPublicData {
 }
 
 // -------------------------------------- Sender States --------------------------------------------
-/// This is the starting state for the Sender, this state waits until it receives a completely constructed SenderStateData
-/// (constructed using the Builder) and then moves on to the next state.
+/// This is the starting state for the Sender, this state waits until it receives a completely constructed
+/// SenderStateData (constructed using the Builder) and then moves on to the next state.
 #[derive(Clone, Debug)]
 struct SenderInit {}
 
@@ -568,12 +575,15 @@ impl SenderInit {
     fn accept_initial_state(self, sender_state: SenderStateData) -> Result<SenderState, TransactionProtocolError> {
         sender_state.validate()?;
 
-        Ok(SenderState::WaitingForReceiverOutput(WaitingForReceiverOutput::new(sender_state)))
+        Ok(SenderState::WaitingForReceiverOutput(WaitingForReceiverOutput::new(
+            sender_state,
+        )))
     }
 }
 
 /// In this state the Sender is able to construct the message containing the public data to be sent to the Receiver,
-/// the state waits in this state until it receives the Receiver's public data in return before moving to the next state.
+/// the state waits in this state until it receives the Receiver's public data in return before moving to the next
+/// state.
 #[derive(Clone, Debug)]
 struct WaitingForReceiverOutput {
     state_data: SenderStateData,
@@ -628,7 +638,9 @@ struct SenderPartialSignatureCreation {
 
 impl SenderPartialSignatureCreation {
     fn new(previous_state_data: SenderStateData) -> SenderPartialSignatureCreation {
-        SenderPartialSignatureCreation { state_data: previous_state_data }
+        SenderPartialSignatureCreation {
+            state_data: previous_state_data,
+        }
     }
 
     fn finalize_signature(mut self) -> Result<SenderState, TransactionProtocolError> {
@@ -675,7 +687,9 @@ impl SenderPartialSignatureCreation {
             return Err(TransactionProtocolError::InvalidSignatureError);
         }
 
-        Ok(SenderState::FinalizedTransaction(FinalizedTransaction::new(self.state_data)))
+        Ok(SenderState::FinalizedTransaction(FinalizedTransaction::new(
+            self.state_data,
+        )))
     }
 }
 
@@ -759,7 +773,10 @@ struct ReceiverOutputSetup {
 
 impl ReceiverOutputSetup {
     fn new(sender_state_data: SenderPublicData) -> ReceiverOutputSetup {
-        ReceiverOutputSetup { sender_state_data, receiver_state_data: ReceiverStateData::new() }
+        ReceiverOutputSetup {
+            sender_state_data,
+            receiver_state_data: ReceiverStateData::new(),
+        }
     }
 
     fn set_receiver_output(
@@ -772,10 +789,9 @@ impl ReceiverOutputSetup {
         self.receiver_state_data.receiver_output_blinding_factor = Some(blinding_factor);
         self.receiver_state_data.receiver_output_public_key = Some(PublicKey::from_secret_key(&blinding_factor));
 
-        Ok(ReceiverState::ReceiverPartialSignatureCreation(ReceiverPartialSignatureCreation::new(
-            self.sender_state_data,
-            self.receiver_state_data,
-        )))
+        Ok(ReceiverState::ReceiverPartialSignatureCreation(
+            ReceiverPartialSignatureCreation::new(self.sender_state_data, self.receiver_state_data),
+        ))
     }
 }
 
@@ -792,7 +808,10 @@ impl ReceiverPartialSignatureCreation {
         receiver_state_data: ReceiverStateData,
     ) -> ReceiverPartialSignatureCreation
     {
-        ReceiverPartialSignatureCreation { sender_state_data, receiver_state_data }
+        ReceiverPartialSignatureCreation {
+            sender_state_data,
+            receiver_state_data,
+        }
     }
 
     fn set_private_nonce(mut self, nonce: SecretKey) -> Result<ReceiverState, TransactionProtocolError> {
@@ -821,7 +840,9 @@ impl ReceiverPartialSignatureCreation {
             challenge,
         )?);
 
-        Ok(ReceiverState::ReceiverCompleted(ReceiverCompleted::new(self.receiver_state_data)))
+        Ok(ReceiverState::ReceiverCompleted(ReceiverCompleted::new(
+            self.receiver_state_data,
+        )))
     }
 }
 
@@ -1039,7 +1060,10 @@ mod test {
             .with_private_nonce(sender_private_nonce);
 
         // Attempt to build initial state without setting offset
-        assert_eq!(initial_state.finish(), Err(TransactionProtocolError::IncompleteStateError));
+        assert_eq!(
+            initial_state.finish(),
+            Err(TransactionProtocolError::IncompleteStateError)
+        );
 
         initial_state = initial_state.with_offset(offset);
 
@@ -1062,7 +1086,9 @@ mod test {
 
         assert!(sender_protocol_manager.is_sender_init());
 
-        sender_protocol_manager.accept_sender_initial_state(initial_state.clone()).unwrap();
+        sender_protocol_manager
+            .accept_sender_initial_state(initial_state.clone())
+            .unwrap();
 
         assert!(sender_protocol_manager.is_sender_waiting_for_receiver_output());
         assert_eq!(
@@ -1076,7 +1102,9 @@ mod test {
         let mut receiver_protocol_manager = ReceiverTransactionProtocolManager::new();
         assert!(receiver_protocol_manager.is_receiver_init());
 
-        receiver_protocol_manager.accept_sender_public_data(sender_public_data).unwrap();
+        receiver_protocol_manager
+            .accept_sender_public_data(sender_public_data)
+            .unwrap();
         assert!(receiver_protocol_manager.is_receiver_output_setup());
 
         receiver_protocol_manager
@@ -1091,14 +1119,19 @@ mod test {
             .unwrap();
         assert!(receiver_protocol_manager.is_receiver_partial_signature_creation());
 
-        receiver_protocol_manager.set_receiver_nonce(receiver_private_nonce).unwrap();
+        receiver_protocol_manager
+            .set_receiver_nonce(receiver_private_nonce)
+            .unwrap();
         assert!(receiver_protocol_manager.is_completed());
 
         // The receiver now constructs their public data message to send back to the sender
         let receiver_public_data = receiver_protocol_manager.construct_receiver_public_data().unwrap();
 
         // Lets try finalize the signature without accepting the receiver's public data
-        assert_eq!(sender_protocol_manager.finalize_signature(), Err(TransactionProtocolError::InvalidTransitionError));
+        assert_eq!(
+            sender_protocol_manager.finalize_signature(),
+            Err(TransactionProtocolError::InvalidTransitionError)
+        );
 
         // Lets try accept receiver data with an incorrect output amount (same secret key)
         let mut incorrect_receiver_public_data = receiver_public_data.clone();
@@ -1107,14 +1140,20 @@ mod test {
             CommitmentFactory::create(&receiver_secret_key.into(), &SecretKey::from(amount + 10)),
             RangeProof([0; 1]),
         );
-        sender_protocol_manager.accept_receiver_public_data(incorrect_receiver_public_data).unwrap();
+        sender_protocol_manager
+            .accept_receiver_public_data(incorrect_receiver_public_data)
+            .unwrap();
         assert!(sender_protocol_manager.is_failed());
 
         // Redo the sender side of the protocol as the previous test put the original sender_protocol_manager into the
         // Failed state
         let mut sender_protocol_manager = SenderTransactionProtocolManager::new();
-        sender_protocol_manager.accept_sender_initial_state(initial_state.clone()).unwrap();
-        sender_protocol_manager.accept_receiver_public_data(receiver_public_data).unwrap();
+        sender_protocol_manager
+            .accept_sender_initial_state(initial_state.clone())
+            .unwrap();
+        sender_protocol_manager
+            .accept_receiver_public_data(receiver_public_data)
+            .unwrap();
         assert!(!sender_protocol_manager.is_failed());
         assert!(sender_protocol_manager.is_sender_partial_signature_creation());
 

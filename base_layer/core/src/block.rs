@@ -48,7 +48,11 @@ pub struct AggregateBody {
 impl AggregateBody {
     /// Create an empty aggregate body
     pub fn empty() -> AggregateBody {
-        AggregateBody { inputs: vec![], outputs: vec![], kernels: vec![] }
+        AggregateBody {
+            inputs: vec![],
+            outputs: vec![],
+            kernels: vec![],
+        }
     }
 
     /// Create a new aggregate body from provided inputs, outputs and kernels
@@ -58,7 +62,11 @@ impl AggregateBody {
         kernels: Vec<TransactionKernel>,
     ) -> AggregateBody
     {
-        AggregateBody { inputs, outputs, kernels }
+        AggregateBody {
+            inputs,
+            outputs,
+            kernels,
+        }
     }
 
     /// Add an input to the existing aggregate body

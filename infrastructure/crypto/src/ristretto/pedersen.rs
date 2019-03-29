@@ -45,7 +45,10 @@ pub const RISTRETTO_PEDERSEN_H_COMPRESSED: CompressedRistretto = RISTRETTO_NUMS_
 
 impl Default for PedersenBaseOnRistretto255 {
     fn default() -> Self {
-        PedersenBaseOnRistretto255 { G: RISTRETTO_PEDERSEN_G, H: RISTRETTO_PEDERSEN_H_COMPRESSED.decompress().unwrap() }
+        PedersenBaseOnRistretto255 {
+            G: RISTRETTO_PEDERSEN_G,
+            H: RISTRETTO_PEDERSEN_H_COMPRESSED.decompress().unwrap(),
+        }
     }
 }
 
@@ -73,19 +76,28 @@ impl HomomorphicCommitmentFactory for PedersenBaseOnRistretto255 {
     fn create(k: &RistrettoSecretKey, v: &RistrettoSecretKey) -> PedersenOnRistretto255 {
         let base = &DEFAULT_RISTRETTO_PEDERSON_BASE;
         let c: RistrettoPoint = k.0 * base.G + v.0 * base.H;
-        PedersenOnRistretto255 { base, commitment: RistrettoPublicKey::new_from_pk(c) }
+        PedersenOnRistretto255 {
+            base,
+            commitment: RistrettoPublicKey::new_from_pk(c),
+        }
     }
 
     fn zero() -> PedersenOnRistretto255 {
         let base = &DEFAULT_RISTRETTO_PEDERSON_BASE;
         let zero = Scalar::zero();
         let c: RistrettoPoint = &zero * base.G + &zero * base.H;
-        PedersenOnRistretto255 { base, commitment: RistrettoPublicKey::new_from_pk(c) }
+        PedersenOnRistretto255 {
+            base,
+            commitment: RistrettoPublicKey::new_from_pk(c),
+        }
     }
 
     fn from_public_key(k: &RistrettoPublicKey) -> PedersenOnRistretto255 {
         let base = &DEFAULT_RISTRETTO_PEDERSON_BASE;
-        PedersenOnRistretto255 { base, commitment: k.clone() }
+        PedersenOnRistretto255 {
+            base,
+            commitment: k.clone(),
+        }
     }
 }
 
@@ -113,7 +125,10 @@ impl<'b> Add for &'b PedersenOnRistretto255 {
         let lhp = &self.commitment.point;
         let rhp = &rhs.commitment.point;
         let sum = lhp + rhp;
-        PedersenOnRistretto255 { base: self.base, commitment: RistrettoPublicKey::new_from_pk(sum) }
+        PedersenOnRistretto255 {
+            base: self.base,
+            commitment: RistrettoPublicKey::new_from_pk(sum),
+        }
     }
 }
 
@@ -128,7 +143,10 @@ impl Add for PedersenOnRistretto255 {
         let lhp = self.commitment.point;
         let rhp = rhs.commitment.point;
         let sum = lhp + rhp;
-        PedersenOnRistretto255 { base: self.base, commitment: RistrettoPublicKey::new_from_pk(sum) }
+        PedersenOnRistretto255 {
+            base: self.base,
+            commitment: RistrettoPublicKey::new_from_pk(sum),
+        }
     }
 }
 
@@ -143,7 +161,10 @@ impl<'b> Sub for &'b PedersenOnRistretto255 {
         let lhp = &self.commitment.point;
         let rhp = &rhs.commitment.point;
         let sum = lhp - rhp;
-        PedersenOnRistretto255 { base: self.base, commitment: RistrettoPublicKey::new_from_pk(sum) }
+        PedersenOnRistretto255 {
+            base: self.base,
+            commitment: RistrettoPublicKey::new_from_pk(sum),
+        }
     }
 }
 
@@ -229,7 +250,10 @@ mod test {
         let v = RistrettoSecretKey::random(&mut rng);
         let c1 = PedersenBaseOnRistretto255::create(&k, &v);
         let c: RistrettoPoint = k.0 * base2.G + v.0 * base2.H;
-        let c2 = PedersenOnRistretto255 { base: base2, commitment: RistrettoPublicKey::new_from_pk(c) };
+        let c2 = PedersenOnRistretto255 {
+            base: base2,
+            commitment: RistrettoPublicKey::new_from_pk(c),
+        };
         let _ = &c1 + &c2;
     }
 

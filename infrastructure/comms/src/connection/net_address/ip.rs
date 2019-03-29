@@ -72,11 +72,17 @@ mod test {
         }
 
         let addr = "123.123.123.123".parse::<SocketAddress>();
-        assert!(addr.is_err(), "Invalid IPv4 address was erroneously successfully parsed");
+        assert!(
+            addr.is_err(),
+            "Invalid IPv4 address was erroneously successfully parsed"
+        );
         check_addr_fail!(addr);
 
         let addr = "fe80::1ff:fe23:4567:890a:8080".parse::<SocketAddress>();
-        assert!(addr.is_err(), "Invalid IPv6 address was erroneously successfully parsed");
+        assert!(
+            addr.is_err(),
+            "Invalid IPv6 address was erroneously successfully parsed"
+        );
         check_addr_fail!(addr);
     }
 }

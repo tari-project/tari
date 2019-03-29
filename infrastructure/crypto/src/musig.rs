@@ -134,7 +134,10 @@ where
         if n == 0 {
             return Err(MuSigError::NotEnoughParticipants);
         }
-        Ok(JointKeyBuilder { pub_keys: Vec::with_capacity(n), num_signers: n })
+        Ok(JointKeyBuilder {
+            pub_keys: Vec::with_capacity(n),
+            num_signers: n,
+        })
     }
 
     /// The number of parties in the Joint key
@@ -183,7 +186,12 @@ where
         let common = self.calculate_common::<D>();
         let musig_scalars = self.calculate_musig_scalars::<D>(&common);
         let joint_pub_key = JointKeyBuilder::calculate_joint_key::<D>(&musig_scalars, &self.pub_keys);
-        Ok(JointKey { pub_keys: self.pub_keys, musig_scalars, joint_pub_key, common })
+        Ok(JointKey {
+            pub_keys: self.pub_keys,
+            musig_scalars,
+            joint_pub_key,
+            common,
+        })
     }
 
     /// Utility function to calculate \\( \ell = H(P_1 || ... || P_n) \mod p \\)
@@ -220,7 +228,10 @@ where
 
     /// Utility function that produces the vector of MuSig private key modifiers, \\( a_i = H(\ell || P_i) \\)
     fn calculate_musig_scalars<D: Digest>(&self, common: &K) -> Vec<K> {
-        self.pub_keys.iter().map(|p| JointKeyBuilder::calculate_partial_key::<D>(common.as_bytes(), p)).collect()
+        self.pub_keys
+            .iter()
+            .map(|p| JointKeyBuilder::calculate_partial_key::<D>(common.as_bytes(), p))
+            .collect()
     }
 
     /// Calculate the value of the Joint MuSig public key. **NB**: you should usually sort the participant's keys
@@ -318,7 +329,11 @@ impl<T: Clone + PartialEq> FixedSet<T> {
 
     /// Return the index of the given item in the set by performing a linear search through the set
     pub fn search(&self, val: &T) -> Option<usize> {
-        let key = self.items.iter().enumerate().find(|v| v.1.is_some() && v.1.as_ref().unwrap() == val);
+        let key = self
+            .items
+            .iter()
+            .enumerate()
+            .find(|v| v.1.is_some() && v.1.as_ref().unwrap() == val);
         match key {
             Some(item) => Some(item.0),
             None => None,
@@ -364,11 +379,21 @@ mod test {
 
     fn data(s: &str) -> Foo {
         match s {
-            "patrician" => Foo { baz: "The Patrician".into() },
-            "rincewind" => Foo { baz: "Rincewind".into() },
-            "vimes" => Foo { baz: "Commander Vimes".into() },
-            "librarian" => Foo { baz: "The Librarian".into() },
-            "carrot" => Foo { baz: "Captain Carrot".into() },
+            "patrician" => Foo {
+                baz: "The Patrician".into(),
+            },
+            "rincewind" => Foo {
+                baz: "Rincewind".into(),
+            },
+            "vimes" => Foo {
+                baz: "Commander Vimes".into(),
+            },
+            "librarian" => Foo {
+                baz: "The Librarian".into(),
+            },
+            "carrot" => Foo {
+                baz: "Captain Carrot".into(),
+            },
             _ => Foo { baz: "None".into() },
         }
     }
