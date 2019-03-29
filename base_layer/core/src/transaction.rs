@@ -30,16 +30,16 @@ use crate::{
 };
 
 use crate::types::SignatureHash;
-use crypto::{
+use derive::HashableOrdering;
+use derive_error::Error;
+use digest::Digest;
+use std::cmp::Ordering;
+use tari_crypto::{
     challenge::Challenge,
     commitment::{HomomorphicCommitment, HomomorphicCommitmentFactory},
     common::Blake256,
     ristretto::RistrettoSecretKey,
 };
-use derive::HashableOrdering;
-use derive_error::Error;
-use digest::Digest;
-use std::cmp::Ordering;
 use tari_utilities::{ByteArray, Hashable};
 
 bitflags! {
@@ -403,12 +403,12 @@ mod test {
         transaction::{KernelFeatures, OutputFeatures, TransactionInput, TransactionKernel, TransactionOutput},
         types::{BlindingFactor, PublicKey},
     };
-    use crypto::{
+    use rand;
+    use tari_crypto::{
         challenge::Challenge,
         common::Blake256,
         keys::{PublicKey as PublicKeyTrait, SecretKey},
     };
-    use rand;
     use tari_utilities::ByteArray;
 
     #[test]

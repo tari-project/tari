@@ -21,13 +21,13 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::mnemonic;
-use crypto::keys::SecretKey;
 use derive_error::Error;
 use digest::Digest;
 use rand::{CryptoRng, Rng};
 use serde::de::DeserializeOwned;
 use serde_derive::{Deserialize, Serialize};
 use std::marker::PhantomData;
+use tari_crypto::keys::SecretKey;
 use tari_utilities::byte_array::ByteArrayError;
 
 #[derive(Debug, Error)]
@@ -135,9 +135,9 @@ where
 #[cfg(test)]
 mod test {
     use crate::{file_backup::*, keymanager::*};
-    use crypto::ristretto::RistrettoSecretKey;
     use sha2::Sha256;
     use std::fs::remove_file;
+    use tari_crypto::ristretto::RistrettoSecretKey;
 
     #[test]
     fn test_new_keymanager() {

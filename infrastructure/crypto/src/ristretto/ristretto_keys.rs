@@ -49,9 +49,9 @@ use tari_utilities::{ByteArray, ByteArrayError};
 /// little-endian):
 ///
 /// ```edition2018
-/// use crypto::ristretto::RistrettoSecretKey;
+/// use tari_crypto::ristretto::RistrettoSecretKey;
 /// use tari_utilities::ByteArray;
-/// use crypto::keys::SecretKey;
+/// use tari_crypto::keys::SecretKey;
 /// use rand;
 ///
 /// let mut rng = rand::OsRng::new().unwrap();
@@ -203,9 +203,9 @@ impl From<u64> for RistrettoSecretKey {
 /// Both [PublicKey](trait.PublicKey.html) and [ByteArray](trait.ByteArray.html) are implemented on
 /// `RistrettoPublicKey` so all of the following will work:
 /// ```edition2018
-/// use crypto::ristretto::{ RistrettoPublicKey, RistrettoSecretKey };
+/// use tari_crypto::ristretto::{ RistrettoPublicKey, RistrettoSecretKey };
 /// use tari_utilities::ByteArray;
-/// use crypto::keys::{ PublicKey, SecretKey };
+/// use tari_crypto::keys::{ PublicKey, SecretKey };
 /// use rand;
 ///
 /// let mut rng = rand::OsRng::new().unwrap();

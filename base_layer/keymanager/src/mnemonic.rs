@@ -21,9 +21,9 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{diacritics::*, mnemonic_wordlists::*};
-use crypto::keys::SecretKey;
 use derive_error::Error;
 use std::slice::Iter;
+use tari_crypto::keys::SecretKey;
 use tari_utilities::{bit::*, byte_array::ByteArrayError};
 
 /// The Mnemonic system simplifies the encoding and decoding of a secret key into and from a Mnemonic word sequence
@@ -254,8 +254,8 @@ impl<T: SecretKey> Mnemonic<T> for T {
 mod test {
     use super::*;
     use crate::mnemonic;
-    use crypto::{keys::SecretKey, ristretto::RistrettoSecretKey};
     use rand;
+    use tari_crypto::{keys::SecretKey, ristretto::RistrettoSecretKey};
     use tari_utilities::byte_array::ByteArray;
 
     #[test]

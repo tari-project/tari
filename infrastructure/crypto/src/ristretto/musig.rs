@@ -64,10 +64,10 @@ type JointPubKey = JointKey<RistrettoPublicKey, RistrettoSecretKey>;
 /// 2-of-2 aggregated signature.
 ///
 /// ```edition2018
-///       # use crypto::ristretto::{ musig::RistrettoMuSig, ristretto_keys::* };
+///       # use tari_crypto::ristretto::{ musig::RistrettoMuSig, ristretto_keys::* };
 ///       # use tari_utilities::ByteArray;
-///       # use crypto::keys::PublicKey;
-///       # use crypto::challenge::Challenge;
+///       # use tari_crypto::keys::PublicKey;
+///       # use tari_crypto::challenge::Challenge;
 ///       # use sha2::Sha256;
 ///       let mut rng = rand::OsRng::new().unwrap();
 ///       // Create a new MuSig instance. The number of signing parties must be known at this time.

@@ -53,7 +53,8 @@ where T: Deserialize<'a> + Serialize
 {
     fn to_binary(&self) -> Result<Vec<u8>, MessageError> {
         let mut buf = Vec::new();
-        self.serialize(&mut rmp_serde::Serializer::new(&mut buf)).map_err(|e| MessageError::BinarySerializeError(e))?;
+        self.serialize(&mut rmp_serde::Serializer::new(&mut buf))
+            .map_err(|e| MessageError::BinarySerializeError(e))?;
         Ok(buf.to_vec())
     }
 
@@ -88,8 +89,7 @@ mod test {
     use base64::DecodeError as Base64Error;
     use rmp_serde::decode::Error as RMPError;
     use serde_derive::{Deserialize, Serialize};
-    use serde_json::error::{Category, ErrorCode};
-    use std::{error::Error, io::ErrorKind};
+    use std::io::ErrorKind;
 
     #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
     struct TestMessage {
@@ -100,7 +100,11 @@ mod test {
 
     impl TestMessage {
         pub fn new(key: &str, value: u64) -> TestMessage {
-            TestMessage { key: key.to_string(), value, sub_message: None }
+            TestMessage {
+                key: key.to_string(),
+                value,
+                sub_message: None,
+            }
         }
 
         pub fn set_sub_message(&mut self, msg: TestMessage) {
@@ -152,7 +156,10 @@ mod test {
         assert_eq!(msg_base64, "k6h0b21vcnJvdzKTpXRvZGF5ZMA=");
 
         let msg_bin = val.to_binary().unwrap();
-        assert_eq!(msg_bin, b"\x93\xA8\x74\x6F\x6D\x6F\x72\x72\x6F\x77\x32\x93\xA5\x74\x6F\x64\x61\x79\x64\xC0");
+        assert_eq!(
+            msg_bin,
+            b"\x93\xA8\x74\x6F\x6D\x6F\x72\x72\x6F\x77\x32\x93\xA5\x74\x6F\x64\x61\x79\x64\xC0"
+        );
 
         let val2 = TestMessage::from_json(&msg_json).unwrap();
         assert_eq!(val, val2);

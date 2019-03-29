@@ -40,9 +40,9 @@ use crate::{
 /// You can create a `RisrettoSchnorr` from it's component parts:
 ///
 /// ```edition2018
-/// # use crypto::ristretto::*;
-/// # use crypto::keys::*;
-/// # use crypto::signatures::SchnorrSignature;
+/// # use tari_crypto::ristretto::*;
+/// # use tari_crypto::keys::*;
+/// # use tari_crypto::signatures::SchnorrSignature;
 /// # use tari_utilities::ByteArray;
 ///
 /// let public_r = RistrettoPublicKey::from_hex("6a493210f7499cd17fecb510ae0cea23a110e8d5b901f8acadd3095c73a3b919").unwrap();
@@ -53,11 +53,11 @@ use crate::{
 /// or you can create a signature by signing a message:
 ///
 /// ```rust
-/// # use crypto::ristretto::*;
-/// # use crypto::keys::*;
-/// # use crypto::signatures::SchnorrSignature;
-/// # use crypto::common::*;
-/// # use crypto::challenge::*;
+/// # use tari_crypto::ristretto::*;
+/// # use tari_crypto::keys::*;
+/// # use tari_crypto::signatures::SchnorrSignature;
+/// # use tari_crypto::common::*;
+/// # use tari_crypto::challenge::*;
 ///
 /// fn get_keypair() -> (RistrettoSecretKey, RistrettoPublicKey) {
 ///     let mut rng = rand::OsRng::new().unwrap();
@@ -81,11 +81,11 @@ use crate::{
 /// method:
 ///
 /// ```edition2018
-/// # use crypto::ristretto::*;
-/// # use crypto::keys::*;
-/// # use crypto::challenge::*;
-/// # use crypto::signatures::SchnorrSignature;
-/// # use crypto::common::*;
+/// # use tari_crypto::ristretto::*;
+/// # use tari_crypto::keys::*;
+/// # use tari_crypto::challenge::*;
+/// # use tari_crypto::signatures::SchnorrSignature;
+/// # use tari_crypto::common::*;
 /// # use tari_utilities::hex::*;
 /// # use tari_utilities::ByteArray;
 ///

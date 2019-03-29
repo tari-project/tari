@@ -1,5 +1,10 @@
 [package]
 name = "tari_core"
+description = "Core Tari protocol components"
+repository = "https://github.com/tari-project/tari"
+homepage = "https://tari.com"
+readme = "README.md"
+license = "BSD-3-Clause"
 version = "0.0.1"
 edition = "2018"
 
@@ -9,7 +14,7 @@ bitflags = "1.0.4"
 chrono = "0.4.6"
 derive = { path = "../../infrastructure/derive"}
 digest = "0.8.0"
-crypto = { path = "../../infrastructure/crypto"}
+tari_crypto = { path = "../../infrastructure/crypto"}
 curve25519-dalek = "1.0.2"
 derive-error = "0.0.4"
 rand = "0.5.5"

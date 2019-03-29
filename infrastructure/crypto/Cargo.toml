@@ -1,5 +1,13 @@
 [package]
-name = "crypto"
+name = "tari_crypto"
+description = "Tari Cryptography library"
+repository = "https://github.com/tari-project/tari"
+categories = "cryptography"
+homepage = "https://tari.com"
+readme = "README.md"
+license = "BSD-3-Clause"
+version = "0.0.1"
+edition = "2018"
 version = "0.0.1"
 edition = "2018"
 
