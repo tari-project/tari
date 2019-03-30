@@ -1,0 +1,15 @@
+[package]
+name = "tari_utilities"
+description = "A set of useful and commonly used utilities that are used in several places in the Tari project."
+authors = ["The Tari Development Community"]
+repository = "https://github.com/tari-project/tari"
+homepage = "https://tari.com"
+readme = "README.md"
+license = "BSD-3-Clause"
+version = "0.0.1"
+edition = "2018"
+
+[dependencies]
+derive-error = "0.0.4"
+
+[dev-dependencies]

@@ -1,0 +1,8 @@
+[package]
+name = "blockchain"
+version = "0.0.1"
+edition = "2018"
+
+[dependencies]
+tari_core = { path = "../core"}
+derive-error = "0.0.4"

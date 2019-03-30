@@ -1,0 +1,21 @@
+[package]
+name = "tari_storage"
+description = "Key-Value store API for the Tari project"
+repository = "https://github.com/tari-project/tari"
+homepage = "https://tari.com"
+readme = "README.md"
+license = "BSD-3-Clause"
+version = "0.0.1"
+edition = "2018"
+
+[dependencies]
+bincode = "1.0.1"
+derive-error = "0.0.4"
+lmdb-zero = "0.4.4"
+rmp = "0.8.7"
+rmp-serde = "0.13.7"
+serde = "1.0.80"
+serde_derive = "1.0.80"
+
+[dev-dependencies]
+rand = "0.5.5"
