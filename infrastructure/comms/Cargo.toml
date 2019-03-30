@@ -1,5 +1,14 @@
 [package]
-name = "comms"
+name = "tari_comms"
+description = "A peer-to-peer messaging system"
+repository = "https://github.com/tari-project/tari"
+homepage = "https://tari.com"
+readme = "README.md"
+license = "BSD-3-Clause"
 version = "0.0.1"
+edition = "2018"
 
 [dependencies]
+zmq = "0.8"
+derive-error = "0.0.4"
+tari_crypto = { path = "../crypto"}

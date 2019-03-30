@@ -1,0 +1,96 @@
+version: 2
+
+defaults:
+  rust_image: &rust_image quay.io/tarilabs/rust_tari-build-zmq:nightly-2019-03-08
+
+jobs:
+  test-docs:
+    docker:
+      - image: *rust_image
+    steps:
+      - checkout
+      - run:
+          name: RFC documentation
+          command: |
+            # Workaround for bug https://github.com/rust-lang-nursery/mdBook/issues/855
+            (test -x /usr/local/cargo/bin/mdbook || cargo install --git "https://github.com/integer32llc/mdBook" --rev "d7c7d910057d22180a8eaffee9e17fa983652b64" mdbook)
+            cd RFC && mdbook test && mdbook build
+
+      - persist_to_workspace:
+          root: .
+          paths: book
+
+  deploy-docs:
+    docker:
+      - image: quay.io/tarilabs/git-ssh-client:0.2-alpine
+    steps:
+      - checkout
+      - attach_workspace:
+          at: .
+      - add_ssh_keys:
+          fingerprints:
+            - "a6:a6:e2:be:a3:94:3e:4c:9d:51:25:f6:98:f9:0c:a4"
+      - run:
+          name: Deploy docs to gh-pages branch
+          command: |
+            DEST_BRANCH=gh-pages
+            DEST_PATH=book/
+
+            if [[ ! -d $DEST_PATH ]]; then
+              echo "$DEST_PATH directory not found!"
+              exit 1
+            fi
+
+            TMP_DIR=$(mktemp -d /tmp/ghpages_XXXXXX)
+
+            echo "Copying book files to temporary location $TMP_DIR"
+            cp -R $DEST_PATH/* $DEST_PATH/.nojekyll $TMP_DIR
+
+            REMOTE=$(git remote get-url origin)
+
+            cd $TMP_DIR
+
+            git config --global user.email "ci-build@tari.com"
+            git config --global user.name "ci-build"
+
+            git init
+            git checkout -b $DEST_BRANCH
+            git remote add origin $REMOTE
+            git add --all .
+            git commit -m "[skip ci] Update RFC docs"
+            git push origin $DEST_BRANCH --force
+
+            echo "Published."
+
+  test-tari:
+    docker:
+      - image: *rust_image
+    steps:
+      - checkout
+      - run:
+          name: Tari source code
+          command: |
+            TOOLCHAIN_VERSION=nightly-2019-03-08
+            rustup component add --toolchain $TOOLCHAIN_VERSION rustfmt
+            cargo fmt --all -- --check
+            cargo test --all
+
+workflows:
+  version: 2
+  workflow:
+    jobs:
+      - test-docs:
+          filters:
+            branches:
+              ignore: gh-pages
+      - test-tari:
+          filters:
+            branches:
+              ignore: gh-pages
+      - deploy-docs:
+          requires:
+            - test-docs
+          filters:
+            branches:
+              only: development
+

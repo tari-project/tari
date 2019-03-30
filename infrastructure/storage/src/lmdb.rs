@@ -11,9 +11,14 @@ use std::{collections::HashMap, sync::Arc};
 /// Create a new LMDB database of 500MB in the `db` directory with two named databases: "db1" and "db2"
 ///
 /// ```
-/// # use crate::storage::lmdb::LMDBBuilder;
-/// let mut store =
-///     LMDBBuilder::new().set_path("/tmp/").set_mapsize(500).add_database("db1").add_database("db2").build().unwrap();
+/// # use tari_storage::lmdb::LMDBBuilder;
+/// let mut store = LMDBBuilder::new()
+///     .set_path("/tmp/")
+///     .set_mapsize(500)
+///     .add_database("db1")
+///     .add_database("db2")
+///     .build()
+///     .unwrap();
 /// ```
 pub struct LMDBBuilder {
     path: String,
@@ -31,7 +36,11 @@ impl LMDBBuilder {
     /// | size      | 64 MB   |
     /// | named DBs | none    |
     pub fn new() -> LMDBBuilder {
-        LMDBBuilder { path: "./store/".into(), db_size_mb: 64, db_names: Vec::new() }
+        LMDBBuilder {
+            path: "./store/".into(),
+            db_size_mb: 64,
+            db_names: Vec::new(),
+        }
     }
 
     /// Set the directory where the LMDB database exists, or must be created.
@@ -79,7 +88,11 @@ impl LMDBBuilder {
             let db = Arc::new(lmdb::Database::open(env.clone(), Some(name), &opt)?);
             databases.insert(name.to_string(), db);
         }
-        Ok(LMDBStore { env, databases, curr_db })
+        Ok(LMDBStore {
+            env,
+            databases,
+            curr_db,
+        })
     }
 }
 
@@ -139,7 +152,10 @@ impl<'a> BatchWrite for LMDBBatch<'a> {
     type Store = LMDBStore;
 
     fn new(store: &LMDBStore) -> Result<LMDBBatch<'a>, DatastoreError> {
-        Ok(LMDBBatch { db: store.curr_db.clone(), tx: lmdb::WriteTransaction::new(store.env.clone())? })
+        Ok(LMDBBatch {
+            db: store.curr_db.clone(),
+            tx: lmdb::WriteTransaction::new(store.env.clone())?,
+        })
     }
 
     fn put_raw(&mut self, key: &[u8], value: Vec<u8>) -> Result<(), DatastoreError> {
@@ -175,6 +191,7 @@ mod test {
     };
     use bincode::{deserialize, serialize};
     use rand::{OsRng, RngCore};
+    use serde_derive::{Deserialize, Serialize};
     use std::{fs, str};
 
     #[derive(Serialize, Deserialize, PartialEq, Debug)]
@@ -298,7 +315,11 @@ mod test {
     fn read_and_write_10k_values() {
         fs::create_dir("./tests/test_10k").unwrap();
         let builder = LMDBBuilder::new();
-        let mut store = builder.set_path("./tests/test_10k/").add_database("test").build().unwrap();
+        let mut store = builder
+            .set_path("./tests/test_10k/")
+            .add_database("test")
+            .build()
+            .unwrap();
         assert!(store.connect("test").is_ok());
         // Write 100,000 integers to the DB with val = 2*key
         let mut batch = LMDBBatch::new(&store).unwrap();
@@ -317,8 +338,12 @@ mod test {
     #[test]
     fn test_exist_on_different_databases() {
         fs::create_dir("./tests/test_exist").unwrap();
-        let mut store =
-            LMDBBuilder::new().set_path("./tests/test_exist/").add_database("db1").add_database("db2").build().unwrap();
+        let mut store = LMDBBuilder::new()
+            .set_path("./tests/test_exist/")
+            .add_database("db1")
+            .add_database("db2")
+            .build()
+            .unwrap();
         store.connect("db1").unwrap();
         // Write some values
         store.put_raw(b"db1-a", b"val1".to_vec()).unwrap();

@@ -32,8 +32,10 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ## Language
 
-The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and
-"OPTIONAL" in this document are to be interpreted as described in [RFC 2119](http://tools.ietf.org/html/rfc2119).
+The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", 
+"NOT RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in 
+[BCP 14](https://tools.ietf.org/html/bcp14) (covering RFC2119 and RFC8174) when, and only when, they appear in all capitals, as 
+shown here.
 
 ## Disclaimer
 
@@ -99,6 +101,9 @@ domain layer directories, corresponding to the two network layers that make up t
     - `comms`: The networking and messaging subsystem
     - `crypto`: All cryptographic services, including a Curve25519 implementation
     - `storage`: Data persistence services, including an LMDB persistence implementation
+    - `merklemountainrange`: An independant implementation of a merkle mountain range
+    - `derive`: A crate to contain #[derive(...)] macros
+
 1. `base_layer` is a domain-layer directory and contains:
     - `blockchain`: The Tari consensus code
     - `core`: common classes and traits, such as [Transaction]s and [Block]s

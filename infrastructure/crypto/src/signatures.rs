@@ -2,48 +2,134 @@
 //! This module defines generic traits for handling the digital signature operations, agnostic
 //! of the underlying elliptic curve implementation
 
-use crate::keys::{PublicKey, SecretKey};
+use crate::{
+    challenge::Challenge,
+    keys::{PublicKey, SecretKey},
+};
+use derive_error::Error;
+use digest::Digest;
+use std::ops::{Add, Mul};
 
-/// Generic definition of Schnorr Signature functionality, agnostic of the elliptic curve used.
-/// Schnorr signatures are linear and have the form _s = r + ek_, where _r_ is a nonce (secret key),
-/// _k_ is a secret key, and _s_ is the signature.
-///
-/// ## Example
-///
-/// ```edition2018
-/// # use rand::OsRng;
-/// # use crypto::keys::{ PublicKey, SecretKey, SecretKeyFactory };
-/// # use crypto::signatures::SchnorrSignature;
-/// # use crypto::curve25519::{ Curve25519PublicKey, Curve25519SecretKey, Curve25519EdDSA };
-/// # let mut rng = OsRng::new().unwrap();
-///  let msg = b"This parrot is dead";
-///  let k = Curve25519SecretKey::random(&mut rng);
-///  let p = Curve25519PublicKey::from_secret_key(&k);
-///  let sig = Curve25519EdDSA::sign(&k, &p, msg);
-///  assert!(sig.verify(&p, msg));
-/// ```
-pub trait SchnorrSignature {
-    type K: SecretKey;
-    type P: PublicKey;
-
-    /// Return the public nonce R associated with this signature
-    #[allow(non_snake_case)]
-    fn R(&self) -> Self::P;
-
-    /// Return the signature
-    fn s(&self) -> Self::K;
-
-    /// Sign the given message, using the provided secret key. The public key must be the one
-    /// associated with the secret key. The message is an arbitrary byte array that will be
-    /// hashed as part of the specific digital signature algorithm
-    fn sign(secret: &Self::K, public: &Self::P, m: &[u8]) -> Self;
-
-    /// Check whether the given signature is valid for the given message and public key
-    fn verify(&self, public: &Self::P, m: &[u8]) -> bool;
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum SchnorrSignatureError {
+    // An invalid challenge was provided
+    InvalidChallenge,
 }
 
-//* MuSig
-//* Schnorr signatures
-//* Partial Signatures and Zero-knowledge contingent payments
-//* Message signing
-//* Aggregate Signatures
+#[allow(non_snake_case)]
+#[derive(PartialEq, Eq, Copy, Debug, Clone)]
+pub struct SchnorrSignature<P, K> {
+    public_nonce: P,
+    signature: K,
+}
+
+impl<P, K> SchnorrSignature<P, K>
+where
+    P: PublicKey<K = K>,
+    K: SecretKey,
+{
+    pub fn new(public_nonce: P, signature: K) -> Self {
+        SchnorrSignature {
+            public_nonce,
+            signature,
+        }
+    }
+
+    pub fn calc_signature_verifier(&self) -> P {
+        P::from_secret_key(&self.signature)
+    }
+
+    pub fn sign<'a, 'b, D: Digest>(
+        secret: K,
+        nonce: K,
+        challenge: Challenge<D>,
+    ) -> Result<Self, SchnorrSignatureError>
+    where
+        K: Add<Output = K> + Mul<P, Output = P> + Mul<Output = K>,
+    {
+        // s = r + e.k
+        let e = match K::from_vec(&challenge.hash()) {
+            Ok(e) => e,
+            Err(_) => return Err(SchnorrSignatureError::InvalidChallenge),
+        };
+        let public_nonce = P::from_secret_key(&nonce);
+        let ek = e * secret;
+        let s = ek + nonce;
+        Ok(Self::new(public_nonce, s))
+    }
+
+    pub fn verify_challenge<'a, D: Digest>(&self, public_key: &'a P, challenge: Challenge<D>) -> bool
+    where
+        for<'b> &'b K: Mul<&'a P, Output = P>,
+        for<'b> &'b P: Add<P, Output = P>,
+    {
+        let e = match K::from_vec(&challenge.hash()) {
+            Ok(e) => e,
+            Err(_) => return false,
+        };
+        self.verify(public_key, &e)
+    }
+
+    pub fn verify<'a>(&self, public_key: &'a P, challenge: &K) -> bool
+    where
+        for<'b> &'b K: Mul<&'a P, Output = P>,
+        for<'b> &'b P: Add<P, Output = P>,
+    {
+        let lhs = self.calc_signature_verifier();
+        let rhs = &self.public_nonce + challenge * public_key;
+        // Implementors should make this a constant time comparison
+        lhs == rhs
+    }
+
+    #[inline]
+    pub fn get_signature(&self) -> &K {
+        &self.signature
+    }
+
+    #[inline]
+    pub fn get_public_nonce(&self) -> &P {
+        &self.public_nonce
+    }
+}
+
+impl<'a, 'b, P, K> Add<&'b SchnorrSignature<P, K>> for &'a SchnorrSignature<P, K>
+where
+    P: PublicKey<K = K>,
+    &'a P: Add<&'b P, Output = P>,
+    K: SecretKey,
+    &'a K: Add<&'b K, Output = K>,
+{
+    type Output = SchnorrSignature<P, K>;
+
+    fn add(self, rhs: &'b SchnorrSignature<P, K>) -> SchnorrSignature<P, K> {
+        let r_sum = self.get_public_nonce() + rhs.get_public_nonce();
+        let s_sum = self.get_signature() + rhs.get_signature();
+        SchnorrSignature::new(r_sum, s_sum)
+    }
+}
+
+impl<'a, P, K> Add<SchnorrSignature<P, K>> for &'a SchnorrSignature<P, K>
+where
+    P: PublicKey<K = K>,
+    for<'b> &'a P: Add<&'b P, Output = P>,
+    K: SecretKey,
+    for<'b> &'a K: Add<&'b K, Output = K>,
+{
+    type Output = SchnorrSignature<P, K>;
+
+    fn add(self, rhs: SchnorrSignature<P, K>) -> SchnorrSignature<P, K> {
+        let r_sum = self.get_public_nonce() + rhs.get_public_nonce();
+        let s_sum = self.get_signature() + rhs.get_signature();
+        SchnorrSignature::new(r_sum, s_sum)
+    }
+}
+
+impl<P, K> Default for SchnorrSignature<P, K>
+where
+    P: PublicKey<K = K>,
+    K: SecretKey,
+{
+    fn default() -> Self {
+        SchnorrSignature::new(P::default(), K::default())
+    }
+}

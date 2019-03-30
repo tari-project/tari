@@ -24,36 +24,14 @@
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
 use crate::{
-    pow::ProofOfWork,
-    transaction::{BlindingFactor, TransactionInput, TransactionKernel, TransactionOutput},
+    blockheader::BlockHeader,
+    transaction::{TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
 };
-use chrono::{DateTime, Utc};
-
-type BlockHash = [u8; 32];
 
 /// A Tari block. Blocks are linked together into a blockchain.
 pub struct Block {
     pub header: BlockHeader,
     pub body: AggregateBody,
-}
-
-/// The BlockHeader contains all the metadata for the block, including proof of work, a link to the previous block
-/// and the transaction kernels.
-#[derive(Clone, Debug, PartialEq)]
-pub struct BlockHeader {
-    /// Version of the block
-    pub version: u16,
-    /// Height of this block since the genesis block (height 0)
-    pub height: u64,
-    /// Hash of the block previous to this in the chain.
-    pub prev_hash: BlockHash,
-    /// Timestamp at which the block was built.
-    pub timestamp: DateTime<Utc>,
-    /// Total accumulated sum of kernel offsets since genesis block. We can derive the kernel offset sum for *this*
-    /// block from the total kernel offset of the previous block header.
-    pub total_kernel_offset: BlindingFactor,
-    /// Proof of work summary
-    pub pow: ProofOfWork,
 }
 
 /// The components of the block or transaction. The same struct can be used for either, since in Mimblewimble,
@@ -65,4 +43,85 @@ pub struct AggregateBody {
     pub outputs: Vec<TransactionOutput>,
     /// Kernels contain the excesses and their signatures for transaction
     pub kernels: Vec<TransactionKernel>,
+}
+
+impl AggregateBody {
+    /// Create an empty aggregate body
+    pub fn empty() -> AggregateBody {
+        AggregateBody {
+            inputs: vec![],
+            outputs: vec![],
+            kernels: vec![],
+        }
+    }
+
+    /// Create a new aggregate body from provided inputs, outputs and kernels
+    pub fn new(
+        inputs: Vec<TransactionInput>,
+        outputs: Vec<TransactionOutput>,
+        kernels: Vec<TransactionKernel>,
+    ) -> AggregateBody
+    {
+        AggregateBody {
+            inputs,
+            outputs,
+            kernels,
+        }
+    }
+
+    /// Add an input to the existing aggregate body
+    pub fn add_input(mut self, input: TransactionInput) -> AggregateBody {
+        self.inputs.push(input);
+        self.inputs.sort();
+        self
+    }
+
+    /// Add a series of inputs to the existing aggregate body
+    pub fn add_inputs(mut self, mut inputs: Vec<TransactionInput>) -> AggregateBody {
+        self.inputs.append(&mut inputs);
+        self.inputs.sort();
+        self
+    }
+
+    /// Add an output to the existing aggregate body
+    pub fn add_output(mut self, output: TransactionOutput) -> AggregateBody {
+        self.outputs.push(output);
+        self.outputs.sort();
+        self
+    }
+
+    /// Add an output to the existing aggregate body
+    pub fn add_outputs(mut self, mut outputs: Vec<TransactionOutput>) -> AggregateBody {
+        self.outputs.append(&mut outputs);
+        self.outputs.sort();
+        self
+    }
+
+    /// Add a kernel to the existing aggregate body
+    pub fn add_kernel(mut self, kernel: TransactionKernel) -> AggregateBody {
+        self.kernels.push(kernel);
+        self.kernels.sort();
+        self
+    }
+
+    /// Set the kernel of the aggregate body, replacing any previous kernels
+    pub fn set_kernel(mut self, kernel: TransactionKernel) -> AggregateBody {
+        self.kernels = vec![kernel];
+        self
+    }
+
+    /// Sort the component lists of the aggregate body
+    pub fn sort(&mut self) {
+        self.inputs.sort();
+        self.outputs.sort();
+        self.kernels.sort();
+    }
+
+    /// Verify the signatures in all kernels contained in this aggregate body
+    pub fn verify_kernel_signatures(&self) -> Result<(), TransactionError> {
+        for kernel in self.kernels.iter() {
+            kernel.verify_signature()?;
+        }
+        Ok(())
+    }
 }

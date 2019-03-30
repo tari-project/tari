@@ -1,11 +1,11 @@
 [![Waffle.io - Columns and their card count](https://badge.waffle.io/tari-project/tari.svg?columns=Inbox,Backlog,In%20Progress,Review,Done)](https://waffle.io/tari-project/tari)
+[![Build](https://circleci.com/gh/tari-project/tari.svg?style=svg)](https://circleci.com/gh/tari-project/tari)
 
 # The Tari protocol
 
 ## Documentation
 
-* [RFC documents](https://tari-project.github.io/tari/) are hosted on Github Pages. The source markdown is in the `RFC`
-  directory.
+* [RFC documents](https://rfc.tari.com) are hosted on Github Pages. The source markdown is in the `RFC` directory.
 * Source code documentation is hosted on [docs.rs](https://docs.rs)
 
 ### Serving the documentation locally

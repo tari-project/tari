@@ -1,5 +1,5 @@
 binop_separator = "Back"
-use_small_heuristics = "max"
+use_small_heuristics = "default"
 comment_width = 120
 format_strings = true
 hard_tabs = false
@@ -12,8 +12,8 @@ normalize_comments = true
 reorder_imports = true
 reorder_modules = true
 reorder_impl_items = true
-report_todo = "Always"
-report_fixme = "Always"
+report_todo = "Never"
+report_fixme = "Never"
 space_after_colon = true
 space_before_colon = false
 struct_lit_single_line = true

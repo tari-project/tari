@@ -1,8 +1,26 @@
 [package]
 name = "tari_core"
+description = "Core Tari protocol components"
+authors = ["The Tari Development Community"]
+repository = "https://github.com/tari-project/tari"
+homepage = "https://tari.com"
+readme = "README.md"
+license = "BSD-3-Clause"
 version = "0.0.1"
 edition = "2018"
 
 [dependencies]
+tari_utilities = { path = "../../infrastructure/tari_util", version = "0.0.1" }
+bitflags = "1.0.4"
 chrono = "0.4.6"
+tari_infra_derive = { path = "../../infrastructure/derive", version = "0.0.1" }
 digest = "0.8.0"
+tari_crypto = { path = "../../infrastructure/crypto", version = "0.0.1" }
+curve25519-dalek = "1.0.2"
+derive-error = "0.0.4"
+rand = "0.5.5"
+serde = "1.0.89"
+serde_derive = "1.0.89"
+rmp-serde = "0.13.7"
+base64 = "0.10.1"
+serde_json = "1.0"
