@@ -93,13 +93,13 @@ use crate::{
     transaction::{KernelFeatures, Transaction, TransactionBuilder, TransactionError, TransactionKernel},
     types::{CommitmentFactory, PublicKey, SignatureHash},
 };
-use crypto::{
+use derive_error::Error;
+use tari_crypto::{
     challenge::Challenge,
     commitment::HomomorphicCommitmentFactory,
     keys::PublicKey as PublicKeyTrait,
     signatures::SchnorrSignatureError,
 };
-use derive_error::Error;
 use tari_utilities::ByteArray;
 
 #[derive(Clone, Debug, PartialEq, Error)]
@@ -1008,7 +1008,7 @@ mod test {
         },
         types::{BlindingFactor, CommitmentFactory, SecretKey},
     };
-    use crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey as SecretKeyTrait};
+    use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey as SecretKeyTrait};
 
     #[test]
     fn transaction_protocol_test() {

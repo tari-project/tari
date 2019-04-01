@@ -1,5 +1,10 @@
 [package]
-name = "storage"
+name = "tari_storage"
+description = "Key-Value store API for the Tari project"
+repository = "https://github.com/tari-project/tari"
+homepage = "https://tari.com"
+readme = "README.md"
+license = "BSD-3-Clause"
 version = "0.0.1"
 edition = "2018"
 

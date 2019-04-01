@@ -89,8 +89,7 @@ mod test {
     use base64::DecodeError as Base64Error;
     use rmp_serde::decode::Error as RMPError;
     use serde_derive::{Deserialize, Serialize};
-    use serde_json::error::{Category, ErrorCode};
-    use std::{error::Error, io::ErrorKind};
+    use std::io::ErrorKind;
 
     #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
     struct TestMessage {

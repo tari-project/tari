@@ -4,7 +4,7 @@ version = "0.0.1"
 edition = "2018"
 
 [dependencies]
-crypto = { path = "../../infrastructure/crypto"}
+tari_crypto = { path = "../../infrastructure/crypto"}
 tari_utilities = { path = "../../infrastructure/tari_util"}
 rand = "0.5.5"
 digest = "0.8.0"

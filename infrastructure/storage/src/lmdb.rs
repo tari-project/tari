@@ -11,7 +11,7 @@ use std::{collections::HashMap, sync::Arc};
 /// Create a new LMDB database of 500MB in the `db` directory with two named databases: "db1" and "db2"
 ///
 /// ```
-/// # use crate::storage::lmdb::LMDBBuilder;
+/// # use tari_storage::lmdb::LMDBBuilder;
 /// let mut store = LMDBBuilder::new()
 ///     .set_path("/tmp/")
 ///     .set_mapsize(500)
@@ -191,6 +191,7 @@ mod test {
     };
     use bincode::{deserialize, serialize};
     use rand::{OsRng, RngCore};
+    use serde_derive::{Deserialize, Serialize};
     use std::{fs, str};
 
     #[derive(Serialize, Deserialize, PartialEq, Debug)]
