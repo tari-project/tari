@@ -57,6 +57,8 @@ their ecosystems today.
 
 ## Description
 
+Tari [digital asset]s may exist on the Tari [Digital Assets Network] (DAN), are perceived to have value and can be 
+owned, with the associated digital data being classified as intangible, personal property.
 
 ### Types
 A potential high level taxonomy of different types of digital assets.
