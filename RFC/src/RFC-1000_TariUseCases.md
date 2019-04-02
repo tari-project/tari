@@ -115,10 +115,9 @@ Digital assets have many different properties, which may be one or more of the f
 	* Evolutionary
 * Digital assets can be combined to create super assets.
 * Digital assets can be attribute(s) of another digital asset (e.g. wheels of a vehicle or a VIP ticket has two drink cards).
-* Digital assets can have contingencies
-* Digital assets can have utility or not
-* Digital assets can be used across platforms or not
-* Digital assets can have rules
+* Digital assets can have contingencies (e.g. ownership of a digital asset is contingent on ownership of a different digital asset, using this digital asset is contingent on holding it for a particular duration, etc)
+* Digital assets can have utility (e.g. be useful).
+* Digital assets can be used across platforms (e.g. a digital asset for a game could be used as avatars in a social network).
 * Digital assets can have history.
 * Digital assets can have user-generated tags and/or metadata.
 
@@ -131,7 +130,7 @@ Digital asset owners may have the following interactions with the DAN and/or oth
 ### Rules
 Rules are the governance of how digital assets may be used or transferred, as defined by the asset issuer:
 
-* Transaction Fees - Asset transfers require a fee to be paid to initial issuer(s), etc
+* Royalty Fees -  Digital asset issuers can set a royalty that charges a fee every time the digital asset is transferred between parties. The fee as defined by the issuer can be fixed or dynamic or follow a complex formula and value is granted to the issuer(s) and/or other entities.
 * Contingency - Digital asset ownership/interaction may be contingent/dependent on another asset.
 * Timing Controls - Digital assets can only be transferred or used at particular times.
 * Sharing - Digital assets can be shared to others or even co-owned.
