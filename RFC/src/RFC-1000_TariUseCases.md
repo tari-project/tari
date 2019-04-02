@@ -103,7 +103,7 @@ Potential types of actions that tokens may drive.
 * Building / combining
 
 ### Attributes
-The properties of assets.
+Digital assets have many different properties, which may be one or more of the following:
 
 * Digital assets can be interactive
 	* Easter eggs
