@@ -107,37 +107,41 @@ Digital asset tokens may influence the following behavioral types:
 ### Attributes
 Digital assets have many different properties, which may be one or more of the following:
 
-* Digital assets can be interactive
+* Digital assets can be interactive:
 	* Easter eggs
 		* Media
 		* Dynamic (eg. Imagine if assets were similar to sounds, visualisations or other kinds of "demos" or "gifs")
 	* Game mechanics
 	* Evolutionary
-* Digital assets can be combined to create super assets
+* Digital assets can be combined to create super assets.
 * Digital assets can be attribute(s) of another digital asset (e.g. wheels of a vehicle or a VIP ticket has two drink cards).
 * Digital assets can have contingencies
 * Digital assets can have utility or not
 * Digital assets can be used across platforms or not
 * Digital assets can have rules
-* Digital assets can have history
-* Digital assets can have user-generated tags and metadata
+* Digital assets can have history.
+* Digital assets can have user-generated tags and/or metadata.
 
 ### Interactions
-* Digital asset holders can attest that they have ownership over there assets at time t
-* Digital assets holders may want to attest ownership to an individual or to a group of friends or to the entire world
+
+Digital asset owners may have the following interactions with the DAN and/or other people:
+* Digital asset owners can attest that they have ownership over there assets at time `t`.
+* Digital assets owners may attest ownership to an individual, to a group of friends or to the entire world.
 
 ### Rules
-The governance of how assets may be used or transfered, defined by the asset issuer. Rules are a subset of asset attributes.
+Rules are the governance of how digital assets may be used or transferred, as defined by the asset issuer:
 
 * Transaction Fees - Asset transfers require a fee to be paid to initial issuer(s), etc
-* Contingency - Asset ownership / interaction is contingent on another asset
-* Timing Controls - Assets can only be transferred or used at particular times
-* Sharing - Assets can be shared to others or even co-owned
-* Privacy - Ownership of the asset can be set from private to public
-* Upgradability / Versioning - Assets can be upgraded and / or versioned
-* Redeemability - Assets can be used once or multiple times
+* Contingency - Digital asset ownership/interaction may be contingent/dependent on another asset.
+* Timing Controls - Digital assets can only be transferred or used at particular times.
+* Sharing - Digital assets can be shared to others or even co-owned.
+* Privacy - Ownership of a digital asset can be changed from private to public.
+* Upgradability/Versioning - Digital assets can be upgraded and/or versioned.
+* Redeemability - Digital assets can be used once or multiple times.
 
 ### Examples
+Some examples of how different types of digital assets with different attributes, rules and interactions may be 
+manifested are shown below.
 
 #### Crystal Skull of Akador
 
@@ -148,15 +152,15 @@ The governance of how assets may be used or transfered, defined by the asset iss
 	* Press reports that this artifact could be worth $X
 * Drives collectibility
 * Drives advance purchase
-	* If you are one of the first 100,000 people to buy tickets to Indiana Jones World you have a chance of winning this 1 of 5 artifact
+	* If you are one of the first 100,000 people to buy tickets to Indiana Jones World you have a chance of winning this 1 of 5 artifact.
 * Has superpowers and utility
-	* If you have this item while visiting Indiana Jones World, you get to skip the line three times
+	* If you have this item while visiting Indiana Jones World, you get to skip the line three times.
 * Is a contingency for another asset
-	* If you collect this item, two sankara stones, and the cross of coronado, you can buy the ark of the covenant
+	* If you collect this item, two Sankara stones, and the Cross of Coronado, you can buy the ark of the covenant:
 		* Ark of the covenant is rare. It is 1 of 1.
-		* Ark of the covenant is legendary
-		* Ark of the covenant gives you lifetime access to Indiana Jones World
-		* Ark of the covenant has rules. 20% of the resale price goes to Indiana Jones World
+		* Ark of the covenant is legendary.
+		* Ark of the covenant gives you lifetime access to Indiana Jones World.
+		* Ark of the covenant has rules; 20% of the resale price goes to Indiana Jones World.
 
 #### AB de Villiers' bat
 
@@ -165,10 +169,10 @@ The governance of how assets may be used or transfered, defined by the asset iss
 * Is Legendary
 	* https://www.youtube.com/watch?v=HK6B2da3DPA
 * Drives collectibility
-	* Is part of a series of bats from famous batsmen
+	* Is part of a series of bats from famous batsmen.
 * Can be combined with other assets
-	* Be one of the first 10 people to combine six bats to turn this asset into a ODI century bat
-		* ODI century bats are rare. They are 1 of 10.
+	* Be one of the first 10 people to combine six bats to turn this asset into a One Day International (ODI) century bat:
+		* ODI century bats are rare, they are 1 of 10.
 		* ODI century bats are legendary.
 * Has no superpowers
 * Has no utility
@@ -182,10 +186,15 @@ The governance of how assets may be used or transfered, defined by the asset iss
 	* https://www.supremenewyork.com
 	* https://us.octobersveryown.com
 * Has a game mechanic
-	* Every time it’s transferred, it may become a golden ticket that grants you access to any Drake show
+	* Every time it’s transferred, it may become a golden ticket that grants you access to any Drake show.
 	* If its become a golden ticket and is transferred, it loses its golden ticket superpower.
 * Has utility
-	* Unlocks exclusive media content feat. Drake hosted by OVO
+	* Unlocks exclusive media content feat. Drake hosted by OVO SOUND.
 	* May become a golden ticket that grants you access to any Drake show.
 * Has rules
-	* Every time its transferred Supreme and OVO receive 25% of the transaction value
+	* Every time its transferred Supreme and OVO SOUND receive 25% of the transaction value.
+
+[digital asset]: Glossary.md#digital-asset
+[Digital Assets Network]:Glossary.md#digital-asset-network
+[Validator Nodes]:Glossary.md#validator-node
+[asset issuer]:Glossary.md#asset-issuer
