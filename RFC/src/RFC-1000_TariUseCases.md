@@ -112,7 +112,7 @@ Digital assets have many different properties, which may be one or more of the f
 	* Game mechanics
 	* Evolutionary
 * Digital assets can be combined to create super assets
-* Digital assets can be attribute(s) of another digital asset (eg. wheels of a vehicle or a VIP ticket has two drink cards)
+* Digital assets can be attribute(s) of another digital asset (e.g. wheels of a vehicle or a VIP ticket has two drink cards).
 * Digital assets can have contingencies
 * Digital assets can have utility or not
 * Digital assets can be used across platforms or not
