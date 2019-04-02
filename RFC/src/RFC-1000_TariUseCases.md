@@ -2,7 +2,7 @@
 
 ## A Digital Asset Framework
 
-![status: draft](https://github.com/tari-project/tari/raw/master/RFC/src/theme/images/status-draft.svg)
+![status: draft](./theme/images/status-draft.svg)
 
 **Maintainer(s)**: [Leland Lee](https://github.com/lelandlee)
 
