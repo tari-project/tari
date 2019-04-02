@@ -89,7 +89,7 @@ A potential high level taxonomy of different types of digital assets.
 	* Avatar
 
 ### Behaviors
-Potential types of actions that tokens may drive.
+Digital asset tokens may influence the following behavioral types:
 
 * Advance purchase
 * Experience enhancement
