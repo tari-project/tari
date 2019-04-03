@@ -25,13 +25,13 @@ use quote::{quote, quote_spanned};
 use syn::{spanned::Spanned, Data, DeriveInput, Fields, Index};
 
 // this is the actual code for the derive macro, the function in lib points to this one
-pub fn create_derive_to_bytes(input: DeriveInput) -> proc_macro2::TokenStream {
+pub fn create_derive_extend_bytes(input: DeriveInput) -> proc_macro2::TokenStream {
     let object_name = &input.ident;
     let item = input.data;
-    let fields_text = handle_fields_for_to_bytes(&item);
+    let fields_text = handle_fields_for_extend_bytes(&item);
     let gen = quote! {
-        impl  ToBytes for #object_name  {
-            fn get_raw_bytes(&self, buf: &mut Vec<u8>) {
+        impl  ExtendBytes for #object_name  {
+            fn append_raw_bytes(&self, buf: &mut Vec<u8>) {
                 #fields_text
             }
         }
@@ -40,7 +40,7 @@ pub fn create_derive_to_bytes(input: DeriveInput) -> proc_macro2::TokenStream {
 }
 
 // this function processes the individual fields of the hashable trait macro: derive_hashable
-fn handle_fields_for_to_bytes(item: &Data) -> proc_macro2::TokenStream {
+fn handle_fields_for_extend_bytes(item: &Data) -> proc_macro2::TokenStream {
     match item {
         Data::Struct(ref item) => {
             match item.fields {
@@ -50,7 +50,7 @@ fn handle_fields_for_to_bytes(item: &Data) -> proc_macro2::TokenStream {
                         for attr in &f.attrs {
                             match attr.interpret_meta().unwrap() {
                                 syn::Meta::NameValue(ref val) => {
-                                    if val.ident.to_string() == "ToBytes" {
+                                    if val.ident.to_string() == "ExtendBytes" {
                                         if let syn::Lit::Str(lit) = &val.lit {
                                             if lit.value() == "Ignore" {
                                                 do_we_ignore_field = true;
@@ -60,7 +60,7 @@ fn handle_fields_for_to_bytes(item: &Data) -> proc_macro2::TokenStream {
                                 },
                                 syn::Meta::List(ref val) => {
                                     // we have more than one property
-                                    if val.ident.to_string() == "ToBytes" {
+                                    if val.ident.to_string() == "ExtendBytes" {
                                         // we have a hash command here, lets search for the sub command
                                         for nestedmeta in val.nested.iter() {
                                             if let syn::NestedMeta::Meta(meta) = nestedmeta {
@@ -79,7 +79,7 @@ fn handle_fields_for_to_bytes(item: &Data) -> proc_macro2::TokenStream {
                         if !do_we_ignore_field {
                             let name = &f.ident;
                             quote_spanned! {f.span()=>
-                            (&self.#name).get_raw_bytes(buf);
+                            (&self.#name).append_raw_bytes(buf);
                             }
                         } else {
                             quote_spanned! {f.span()=>
@@ -93,7 +93,7 @@ fn handle_fields_for_to_bytes(item: &Data) -> proc_macro2::TokenStream {
                     let recurse = fields.unnamed.iter().enumerate().map(|(i, f)| {
                         let index = Index::from(i);
                         quote_spanned! {f.span()=>
-                            (&self.#index).get_raw_bytes(buf);
+                            (&self.#index).append_raw_bytes(buf);
                         }
                     });
                     quote! {

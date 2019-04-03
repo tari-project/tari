@@ -20,94 +20,94 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-/// this trait allows us to call get_raw_bytes and get the raw bytes of the type
-pub trait ToBytes {
-    fn get_raw_bytes(&self, buf: &mut Vec<u8>);
+/// this trait allows us to call append_raw_bytes and get the raw bytes of the type
+pub trait ExtendBytes {
+    fn append_raw_bytes(&self, buf: &mut Vec<u8>);
 }
 
-impl<T> ToBytes for Vec<T>
-where T: ToBytes
+impl<T> ExtendBytes for Vec<T>
+where T: ExtendBytes
 {
-    fn get_raw_bytes(&self, buf: &mut Vec<u8>) {
+    fn append_raw_bytes(&self, buf: &mut Vec<u8>) {
         for t in self {
-            t.get_raw_bytes(buf);
+            t.append_raw_bytes(buf);
         }
     }
 }
 
-impl<T> ToBytes for [T]
-where T: ToBytes
+impl<T> ExtendBytes for [T]
+where T: ExtendBytes
 {
-    fn get_raw_bytes(&self, buf: &mut Vec<u8>) {
+    fn append_raw_bytes(&self, buf: &mut Vec<u8>) {
         for t in self {
-            t.get_raw_bytes(buf);
+            t.append_raw_bytes(buf);
         }
     }
 }
 
-impl ToBytes for str {
-    fn get_raw_bytes(&self, buf: &mut Vec<u8>) {
+impl ExtendBytes for str {
+    fn append_raw_bytes(&self, buf: &mut Vec<u8>) {
         buf.extend(self.as_bytes())
     }
 }
 
-impl ToBytes for &str {
-    fn get_raw_bytes(&self, buf: &mut Vec<u8>) {
+impl ExtendBytes for &str {
+    fn append_raw_bytes(&self, buf: &mut Vec<u8>) {
         buf.extend(self.as_bytes())
     }
 }
 
-impl ToBytes for String {
-    fn get_raw_bytes(&self, buf: &mut Vec<u8>) {
+impl ExtendBytes for String {
+    fn append_raw_bytes(&self, buf: &mut Vec<u8>) {
         buf.extend(self.as_bytes())
     }
 }
 
-impl ToBytes for i8 {
-    fn get_raw_bytes(&self, buf: &mut Vec<u8>) {
+impl ExtendBytes for i8 {
+    fn append_raw_bytes(&self, buf: &mut Vec<u8>) {
         let bytes = self.to_le_bytes();
         buf.extend_from_slice(&bytes);
     }
 }
-impl ToBytes for i16 {
-    fn get_raw_bytes(&self, buf: &mut Vec<u8>) {
+impl ExtendBytes for i16 {
+    fn append_raw_bytes(&self, buf: &mut Vec<u8>) {
         let bytes = self.to_le_bytes();
         buf.extend_from_slice(&bytes);
     }
 }
-impl ToBytes for i32 {
-    fn get_raw_bytes(&self, buf: &mut Vec<u8>) {
+impl ExtendBytes for i32 {
+    fn append_raw_bytes(&self, buf: &mut Vec<u8>) {
         let bytes = self.to_le_bytes();
         buf.extend_from_slice(&bytes);
     }
 }
-impl ToBytes for i128 {
-    fn get_raw_bytes(&self, buf: &mut Vec<u8>) {
+impl ExtendBytes for i128 {
+    fn append_raw_bytes(&self, buf: &mut Vec<u8>) {
         let bytes = self.to_le_bytes();
         buf.extend_from_slice(&bytes);
     }
 }
 
-impl ToBytes for u8 {
-    fn get_raw_bytes(&self, buf: &mut Vec<u8>) {
+impl ExtendBytes for u8 {
+    fn append_raw_bytes(&self, buf: &mut Vec<u8>) {
         let bytes = self.to_le_bytes();
         buf.extend_from_slice(&bytes);
     }
 }
-impl ToBytes for u16 {
-    fn get_raw_bytes(&self, buf: &mut Vec<u8>) {
+impl ExtendBytes for u16 {
+    fn append_raw_bytes(&self, buf: &mut Vec<u8>) {
         let bytes = self.to_le_bytes();
         buf.extend_from_slice(&bytes);
     }
 }
-impl ToBytes for u32 {
-    fn get_raw_bytes(&self, buf: &mut Vec<u8>) {
+impl ExtendBytes for u32 {
+    fn append_raw_bytes(&self, buf: &mut Vec<u8>) {
         let bytes = self.to_le_bytes();
         buf.extend_from_slice(&bytes);
     }
 }
-impl ToBytes for u128 {
-    fn get_raw_bytes(&self, buf: &mut Vec<u8>) {
+impl ExtendBytes for u128 {
+    fn append_raw_bytes(&self, buf: &mut Vec<u8>) {
         let bytes = self.to_le_bytes();
         buf.extend_from_slice(&bytes);
     }

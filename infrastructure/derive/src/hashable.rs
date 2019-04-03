@@ -100,7 +100,7 @@ fn handle_fields_for_hashable(item: &Data) -> proc_macro2::TokenStream {
                         if !do_we_ignore_field {
                             let name = &f.ident;
                             quote_spanned! {f.span()=>
-                                (&self.#name).get_raw_bytes(&mut buf);
+                                (&self.#name).append_raw_bytes(&mut buf);
                             }
                         } else {
                             quote_spanned! {f.span()=>
@@ -114,7 +114,7 @@ fn handle_fields_for_hashable(item: &Data) -> proc_macro2::TokenStream {
                     let recurse = fields.unnamed.iter().enumerate().map(|(i, f)| {
                         let index = Index::from(i);
                         quote_spanned! {f.span()=>
-                            (&self.#index).get_raw_bytes(&mut buf);
+                            (&self.#index).append_raw_bytes(&mut buf);
                         }
                     });
                     quote! {

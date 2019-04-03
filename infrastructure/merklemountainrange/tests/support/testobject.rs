@@ -22,8 +22,8 @@
 
 use blake2::Blake2b;
 use digest::Digest;
-use tari_infra_derive::{Hashable, ToBytes};
-use tari_utilities::{Hashable, ToBytes};
+use tari_infra_derive::{ExtendBytes, Hashable};
+use tari_utilities::{ExtendBytes, Hashable};
 
 #[derive(Hashable)]
 #[digest = "Blake2b"]
@@ -46,7 +46,7 @@ impl TestObject {
 #[digest = "Blake2b"]
 pub struct InnerObject {
     pub id: String,
-    #[ToBytes(Ignore)]
+    #[ExtendBytes(Ignore)]
     pub string_we_should_not_view_as_raw: String,
 }
 

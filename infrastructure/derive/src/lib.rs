@@ -29,9 +29,9 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::{parse_macro_input, DeriveInput};
 
+mod extend_bytes;
 mod hashable;
 mod hashable_ordering;
-mod to_bytes;
 
 /// This macro will produce the 4 trait implementations required for an hashable struct to be sorted
 #[proc_macro_derive(HashableOrdering)]
@@ -43,24 +43,24 @@ pub fn derive_hashable_ordering(tokens: TokenStream) -> TokenStream {
 /// To use this provide #[derive(Hashable)] to the struct and #[Digest = "<Digest>"] with <Digest> being the included
 /// digest the macro should use to impl Hashable individual fields can be skipped by providing them with:
 /// #[Hashable(Ignore)]
-#[proc_macro_derive(Hashable, attributes(digest, Hashable, ToBytes))]
+#[proc_macro_derive(Hashable, attributes(digest, Hashable, ExtendBytes))]
 pub fn derive_hashable(tokens: TokenStream) -> TokenStream {
     let input = parse_macro_input!(tokens as DeriveInput);
     let hash = hashable::create_derive_hashable(input.clone());
-    let tobytes = to_bytes::create_derive_to_bytes(input);
+    let extendbytes = extend_bytes::create_derive_extend_bytes(input);
     let tokens = quote! {
         #hash
-        #tobytes
+        #extendbytes
     };
     tokens.into()
 }
 
 /// This macro will provide a To_bytes implementation to the a given struct
-/// To use this provide #[derive(ToBytes)] to the struct
+/// To use this provide #[derive(ExtendBytes)] to the struct
 /// digest the macro should use to impl Hashable individual fields can be skipped by providing them with:
-/// #[ToBytes(Ignore)]
-#[proc_macro_derive(ToBytes, attributes(ToBytes))]
+/// #[ExtendBytes(Ignore)]
+#[proc_macro_derive(ExtendBytes, attributes(ExtendBytes))]
 pub fn derive_to_bytes(tokens: TokenStream) -> TokenStream {
     let input = parse_macro_input!(tokens as DeriveInput);
-    to_bytes::create_derive_to_bytes(input).into()
+    extend_bytes::create_derive_extend_bytes(input).into()
 }

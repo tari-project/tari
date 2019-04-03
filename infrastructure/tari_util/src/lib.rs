@@ -21,11 +21,11 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 pub mod bit;
 pub mod byte_array;
+pub mod extend_bytes;
 pub mod hash;
 pub mod hex;
-pub mod to_bytes;
 
-pub use self::to_bytes::ToBytes;
+pub use self::extend_bytes::ExtendBytes;
 
 pub use self::{
     byte_array::{ByteArray, ByteArrayError},
