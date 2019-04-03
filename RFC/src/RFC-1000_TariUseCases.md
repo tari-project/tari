@@ -61,7 +61,7 @@ Tari [digital asset]s may exist on the Tari [Digital Assets Network] (DAN), are 
 owned, with the associated digital data being classified as intangible, personal property.
 
 ### Types
-A potential high level taxonomy of different types of digital assets.
+Digital assets may have the following high level classification scheme:
 
 * Symbolic
 	* Insignia
