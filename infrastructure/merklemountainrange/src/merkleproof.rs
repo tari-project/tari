@@ -20,10 +20,72 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use derive_error::Error;
+pub MerkleProof {
+    hash : Vec<Option<Vec<u8>>>;
+}
 
-#[derive(Debug, Error)]
-pub enum MerkleMountainRangeError {
-    // The provided index is out of bounds
-    index_out_of_bounds,
+impl MerkleProof{
+    pub fn new()->MerkleProof
+    {
+        MerkleProof{hash:Vec::new();}
+    }
+}
+
+
+impl IntoIterator for MerkleProof {
+    type Item = Option<Vec<u8>>;
+    type IntoIter = MerkleProofIntoIterator;
+
+    fn into_iter(self) -> Self::IntoIter {
+        MerkleProofIntoIterator {
+            MerkleProof: self,
+            index: -1,
+        }
+    }
+}
+
+struct MerkleProofIntoIterator {
+    merkleproof: MerkleProof,
+    index: usize,
+}
+
+impl Iterator for MerkleProofIntoIterator {
+    type Item = Option<Vec<u8>>;
+    fn next(&mut self) -> Option<Option<Vec<u8>>> {
+        self.index =+1;
+        if index > (self.merkleproof.hash.len() -1) 
+        {
+            return None
+        }
+        self.merkleproof.hash[self.index]
+    }
+}
+
+impl<'a> IntoIterator for &'a MerkleProof {
+    type Item = Option<Vec<u8>>;
+    type IntoIter = MerkleProofIterator<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        MerkleProofIterator {
+            merkleproof: self,
+            index: -1,
+        }
+    }
+}
+
+struct MerkleProofIterator<'a> {
+    merkleproof: &'a MerkleProof,
+    index: usize,
+}
+
+impl<'a> Iterator for MerkleProofIterator<'a> {
+    type Item = Option<Vec<u8>>;
+    fn next(&mut self) -> Option<Option<Vec<u8>>> {
+        self.index =+1;
+        if index > (self.merkleproof.hash.len() -1) 
+        {
+            return None
+        }
+        self.merkleproof.hash[self.index]
+    }
 }

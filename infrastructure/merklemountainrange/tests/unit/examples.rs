@@ -1,8 +1,7 @@
-use tari_utilities::Hashable;
 use blake2::Blake2b;
 use digest::Digest;
-use merklemountainrange::merklemountainrange::MerkleMountainRange;
-use merklemountainrange::error::MerkleMountainRangeError;
+use merklemountainrange::{error::MerkleMountainRangeError, merklemountainrange::MerkleMountainRange};
+use tari_utilities::Hashable;
 
 #[derive(PartialEq, Eq, Debug, Clone)]
 struct MyObject {
@@ -32,12 +31,17 @@ Be not self-will'd, for thou art much too fair
 To be death's conquest and make worms thine heir.";
 
 fn create_word_list(n: usize) -> Vec<MyObject> {
-    WORDLIST.split_whitespace().take(n).map(|s| MyObject { val: s.into() }).collect()
+    WORDLIST
+        .split_whitespace()
+        .take(n)
+        .map(|s| MyObject { val: s.into() })
+        .collect()
 }
 #[test]
 fn create_mmr() {
     let words = create_word_list(15);
-    let mmr = MerkleMountainRange::create_from_vec::<Blake2b>(words);
+    // let mmr = MerkleMountainRange::create_from_vec::<Blake2b>(words);
+    let mmr: MerkleMountainRange<MyObject, Blake2b> = words.into();
     assert_eq!(mmr.len(), words.len());
     assert_eq!(mmr.get_peak_height(), 3);
     let summer = MyObject { val: "summer,".into() };
@@ -56,7 +60,7 @@ fn create_mmr() {
 #[test]
 fn append_to_mmr() {
     let words = create_word_list(15);
-    let mmr = MerkleMountainRange::create_from_vec::<Blake2b>(words);
+    let mmr: MerkleMountainRange<MyObject, Blake2b> = words.into();
     let words = create_word_list(20);
     assert_eq!(mmr.len(), 15);
     assert_eq!(mmr.get_peak_height(), 3);
@@ -69,14 +73,14 @@ fn append_to_mmr() {
     assert_eq!(mmr.get_peak_height(), 4);
     let proof = mmr.construct_proof(0).unwrap();
     // The second-to-last hash of the proof should equal the root of the previous mmr
-    assert_eq!(root_1, proof.hashes[proof.len()-1])
+    assert_eq!(root_1, proof.hashes[proof.len() - 1])
 }
 
 #[test]
 fn deserialize_proof() {
     // MMR the whole sonnet
     let words = create_word_list(108);
-    let mmr = MerkleMountainRange::create_from_vec::<Blake2b>(words);
+    let mmr: MerkleMountainRange<MyObject, Blake2b> = words.into();
     // Proof of word 20: thou
     let thou = MyObject { val: "thou".into() };
     let though_proof = "???";

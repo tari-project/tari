@@ -20,7 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::merklenode::{MerkleNode, ObjectHash};
+use crate::{
+    error::MerkleMountainRangeError,
+    merklenode::{MerkleNode, ObjectHash},
+};
 use digest::Digest;
 use std::{collections::HashMap, marker::PhantomData};
 use tari_utilities::Hashable;
@@ -58,12 +61,22 @@ where
         self.data.get(hash)
     }
 
-    /// This function returns a mut reference to the data stored in the MMR
-    /// It will return none if the hash does not exist
-    pub fn get_mut_object(&mut self, hash: &ObjectHash) -> Option<&mut T> {
-        self.data.get_mut(hash)
+    /// This function returns a reference to the data stored in the mmr
+    /// It will return an error if the index is out of bounds
+    pub fn get_object_by_index(&self, index: usize) -> Result<&T, MerkleMountainRangeError> {
+        if index > self.data.len() {
+            return Err(MerkleMountainRangeError::index_out_of_bounds);
+        }
+        let data = self.data.get(hash)
     }
 
+    /// This function returns the length of objects stored in the MMR
+    /// It does not return the total number of nodes
+    pub fn len(&self) -> usize {
+        self.data.len()
+    }
+
+    /// This function returns the hash of the node index provided, this counts from 0
     pub fn get_hash(&self, index: usize) -> Option<ObjectHash> {
         if index > self.get_last_added_index() {
             return None;
@@ -214,14 +227,14 @@ where
     }
 
     /// This function adds a vec of leaf nodes to the mmr.
-    pub fn add_vec(&mut self, objects: Vec<T>) {
+    pub fn append(&mut self, objects: Vec<T>) {
         for object in objects {
-            self.add_single(object);
+            self.push(object);
         }
     }
 
     /// This function adds a new leaf node to the mmr.
-    pub fn add_single(&mut self, object: T) {
+    pub fn push(&mut self, object: T) {
         let node_hash = object.hash();
         let node = MerkleNode::new(node_hash.clone());
         self.data.insert(node_hash, object);
@@ -288,6 +301,23 @@ pub fn sibling_index(index: usize) -> usize {
     }
 }
 
+impl<T, D> From<Vec<T>> for MerkleMountainRange<T, D>
+where
+    T: Hashable,
+    D: Digest,
+{
+    fn from(items: Vec<T>) -> Self {
+        let mut mmr = MerkleMountainRange {
+            mmr: Vec::new(),
+            data: HashMap::new(),
+            hasher: PhantomData,
+            current_peak_height: (0, 0),
+        };
+        mmr.append(items);
+        mmr
+    }
+}
+
 /// This function takes in the index and calculates if the node is the right child node or not.
 /// If the node is the tree root it will still give the answer as if it is a child of a node.
 /// This function is an iterative function as we might have to subtract the largest left_most tree.
@@ -331,4 +361,9 @@ pub fn get_node_height(index: usize) -> usize {
     // if we are here means it was not a right node at height counter, we therefor search lower
     let new_index = index - height_index - 1;
     get_node_height(new_index)
+}
+
+/// This function will convert the given index and get its location in the MMR, this only works for leaf nodes
+pub fn get_leaf_index(index: usize)->usize{
+    
 }
