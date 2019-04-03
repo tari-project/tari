@@ -20,41 +20,31 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use blake2::Blake2b;
-use digest::Digest;
-use tari_infra_derive::{ExtendBytes, Hashable};
-use tari_utilities::{ExtendBytes, Hashable};
+use proc_macro::TokenStream;
+use quote::quote;
 
-#[derive(Hashable)]
-#[digest = "Blake2b"]
-pub struct TestObject {
-    pub id: InnerObject,
-    #[Hashable(Ignore)]
-    pub string_we_should_not_hash: String,
-}
-
-impl TestObject {
-    pub fn new(id: String) -> TestObject {
-        TestObject {
-            id: InnerObject::new(id),
-            string_we_should_not_hash: "a".to_owned(),
+// this is the actual code for the hashable ordering macro, function in lib points to this one
+pub fn create_hashable_ordering(tokens: TokenStream) -> TokenStream {
+    // Parse TokenStream into AST
+    let ast: syn::DeriveInput = syn::parse(tokens).unwrap();
+    let name = &ast.ident;
+    let gen = quote! {
+         impl Ord for #name {
+            fn cmp(&self, other: &#name) -> Ordering {
+                self.hash().cmp(&other.hash())
+            }
         }
-    }
-}
-
-#[derive(Hashable)]
-#[digest = "Blake2b"]
-pub struct InnerObject {
-    pub id: String,
-    #[ExtendBytes(Ignore)]
-    pub string_we_should_not_view_as_raw: String,
-}
-
-impl InnerObject {
-    pub fn new(id: String) -> InnerObject {
-        InnerObject {
-            id,
-            string_we_should_not_view_as_raw: "a".to_owned(),
+        impl PartialOrd for #name {
+            fn partial_cmp(&self, other: &#name) -> Option<Ordering> {
+                Some(self.cmp(other))
+            }
         }
-    }
+        impl PartialEq for #name {
+            fn eq(&self, other: &#name) -> bool {
+                self.hash() == other.hash()
+            }
+        }
+        impl Eq for #name {}
+    };
+    gen.into()
 }
