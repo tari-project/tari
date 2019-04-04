@@ -197,7 +197,7 @@ pub enum NetAddress {
 
 #### Messaging structure
 
-This illustrates the structure of a Tari message. 
+This illustrates the structure of a Tari message.
 
 ```text
 +----------------------------------------+
@@ -309,10 +309,11 @@ All messages can be categorized as follows, each categorization has rules for ho
   - if a destination peer is known, MUST use the `Direct` BroadcastStrategy
   - otherwise, SHOULD use the `Closest` BroadcastStrategy
 - an encrypted message
+
   - all recipients MUST attempt to decrypt the message
   - recipients MUST forward a message which cannot be decrypted
   - SHOULD discard a message that they have seen before
-  
+
 The [MessageType] in the header MUST be used to determine the type of the message deserialize.
 If the deserialization fails, the message SHOULD be discarded.
 
