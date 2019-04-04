@@ -1,6 +1,6 @@
 use blake2::Blake2b;
 use digest::Digest;
-use merklemountainrange::{error::MerkleMountainRangeError, merklemountainrange::MerkleMountainRange};
+use merklemountainrange::mmr::{self, *};
 use tari_utilities::Hashable;
 
 #[derive(PartialEq, Eq, Debug, Clone)]
@@ -46,15 +46,15 @@ fn create_mmr() {
     assert_eq!(mmr.get_peak_height(), 3);
     let summer = MyObject { val: "summer,".into() };
     let summer_hash = summer.hash();
-    assert_eq!(mmr.get_object(10).unwrap(), summer);
+    assert_eq!(*mmr.get_object_by_index(10).unwrap(), summer);
     assert_eq!(mmr.get_hash(10).unwrap(), summer_hash);
-    let tree_hash_index = MerkleMountainRange::index_to_tree_index(10);
+    let tree_hash_index = mmr::get_leaf_index(10);
     assert_eq!(tree_hash_index, 15);
-    assert_eq!(mmr.get_tree_hash(tree_hash_index).unwrap(), summer_hash);
-    let proof = mmr.construct_proof(10).unwrap();
+    assert_eq!(mmr.get_hash(tree_hash_index).unwrap(), summer_hash);
+    let proof = mmr.get_index_proof(10);
     assert!(MerkleMountainRange::verify_proof(&summer.hash(), &proof));
-    let root = mmr.get_root().unwrap();
-    assert_eq!(root, "??????");
+    let root = mmr.get_merkle_root();
+    // assert_eq!(root, "??????");
 }
 
 #[test]
@@ -64,14 +64,14 @@ fn append_to_mmr() {
     let words = create_word_list(20);
     assert_eq!(mmr.len(), 15);
     assert_eq!(mmr.get_peak_height(), 3);
-    mmr.append(words[15].clone());
+    mmr.push(words[15].clone());
     assert_eq!(mmr.len(), 16);
     assert_eq!(mmr.get_peak_height(), 4);
-    let root_1 = mmr.get_root();
-    mmr.append(words[16].clone());
+    let root_1 = mmr.get_merkle_root();
+    mmr.push(words[16].clone());
     assert_eq!(mmr.len(), 17);
     assert_eq!(mmr.get_peak_height(), 4);
-    let proof = mmr.construct_proof(0).unwrap();
+    let proof = mmr.get_index_proof(0);
     // The second-to-last hash of the proof should equal the root of the previous mmr
     assert_eq!(root_1, proof.hashes[proof.len() - 1])
 }

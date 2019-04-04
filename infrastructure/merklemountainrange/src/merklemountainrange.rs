@@ -62,12 +62,17 @@ where
     }
 
     /// This function returns a reference to the data stored in the mmr
-    /// It will return an error if the index is out of bounds
+    /// It will return an error if the index is out of bounds or the index is not a leaf
     pub fn get_object_by_index(&self, index: usize) -> Result<&T, MerkleMountainRangeError> {
         if index > self.data.len() {
-            return Err(MerkleMountainRangeError::index_out_of_bounds);
+            return Err(MerkleMountainRangeError::IndexOutOfBounds);
         }
-        let data = self.data.get(hash)
+        let hash = &self.mmr[get_leaf_index(index)].hash;
+        let data = self.data.get(hash);
+        match data {
+            Some(value) => Ok(value),
+            None => Err(MerkleMountainRangeError::IndexOutOfBounds),
+        }
     }
 
     /// This function returns the length of objects stored in the MMR
@@ -82,6 +87,19 @@ where
             return None;
         };
         Some(self.mmr[index].hash.clone())
+    }
+
+    /// This function returns the hash proof tree of a given index.
+    /// If the given hash is not in the tree, the vec will be empty.
+    /// The Vec will be created in form of the Lchild-Rchild-parent(Lchild)-Rchild-parent-..
+    /// This pattern will be repeated until the parent is the root of the MMR
+    pub fn get_index_proof(&self, index: usize) -> Vec<ObjectHash> {
+        let mmr_index = get_leaf_index(index);
+        if mmr_index >= self.mmr.len() {
+            return Vec::new();
+        }
+        let hash = &self.mmr[mmr_index].hash;
+        self.get_hash_proof(hash)
     }
 
     /// This function returns the hash proof tree of a given hash.
@@ -364,6 +382,29 @@ pub fn get_node_height(index: usize) -> usize {
 }
 
 /// This function will convert the given index and get its location in the MMR, this only works for leaf nodes
-pub fn get_leaf_index(index: usize)->usize{
-    
+pub fn get_leaf_index(index: usize) -> usize {
+    let offset = calculate_leaf_index_offset(index, 0);
+    (index + offset)
+}
+
+// This is the iterative companion function to get_leaf_index and this will search the tree for the correct height
+fn calculate_leaf_index_offset(index: usize, offset: usize) -> usize {
+    let mut height_counter = 0;
+    while index >= ((1 << height_counter + 2) - 2) {
+        // find the height of the tree by finding if we can subtract the  height +1
+        height_counter += 1;
+    }
+    let height_index = (1 << height_counter + 1) - 2;
+    if index == height_index {
+        // If this is the first peak then subtracting the height of first peak will be 0
+        return offset;
+    };
+    if index == (height_index + ((1 << height_counter + 1) - 1)) {
+        // we are looking if its the right sibling
+        return offset;
+    };
+    // if we are here means it was not a right node at height counter, we therefor search lower
+    let new_offset = offset + (height_index / 2);
+    let new_index = index - (height_index / 2) - 1;
+    calculate_leaf_index_offset(new_index, new_offset)
 }

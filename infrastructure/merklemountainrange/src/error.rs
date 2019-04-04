@@ -25,5 +25,5 @@ use derive_error::Error;
 #[derive(Debug, Error)]
 pub enum MerkleMountainRangeError {
     // The provided index is out of bounds
-    index_out_of_bounds,
+    IndexOutOfBounds,
 }
