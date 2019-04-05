@@ -43,13 +43,13 @@ fn create_mmr() {
     // let mmr = MerkleMountainRange::create_from_vec::<Blake2b>(words);
     let mmr: MerkleMountainRange<MyObject, Blake2b> = words.into();
     assert_eq!(mmr.len(), words.len());
-    assert_eq!(mmr.get_peak_height(), 3);
+    assert_eq!(mmr.get_peak_height(), 4);
     let summer = MyObject { val: "summer,".into() };
     let summer_hash = summer.hash();
     assert_eq!(*mmr.get_object_by_index(10).unwrap(), summer);
     assert_eq!(mmr.get_hash(10).unwrap(), summer_hash);
     let tree_hash_index = mmr::get_leaf_index(10);
-    assert_eq!(tree_hash_index, 15);
+    assert_eq!(tree_hash_index, 18);
     assert_eq!(mmr.get_hash(tree_hash_index).unwrap(), summer_hash);
     let proof = mmr.get_index_proof(10);
     assert!(MerkleMountainRange::verify_proof(&summer.hash(), &proof));
@@ -63,7 +63,7 @@ fn append_to_mmr() {
     let mmr: MerkleMountainRange<MyObject, Blake2b> = words.into();
     let words = create_word_list(20);
     assert_eq!(mmr.len(), 15);
-    assert_eq!(mmr.get_peak_height(), 3);
+    assert_eq!(mmr.get_peak_height(), 4);
     mmr.push(words[15].clone());
     assert_eq!(mmr.len(), 16);
     assert_eq!(mmr.get_peak_height(), 4);

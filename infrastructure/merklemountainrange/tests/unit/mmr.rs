@@ -62,6 +62,8 @@ fn create_mmr_with_2_peaks() {
     assert_eq!(to_hex_multiple(&proof), our_proof);
     assert_eq!(mmr.verify_proof(&proof), true);
 
+    // TODO add test for left peak, its missing
+
     let proof = mmr.get_hash_proof(&mmr.get_hash(1).unwrap());
     let our_proof = hash_values.copy_from_indices(vec![0, 1, 2, 5, 6, 13, 14, 29, 30, 37, 42]);
     assert_eq!(to_hex_multiple(&proof), our_proof);

@@ -21,9 +21,13 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use digest::Digest;
+use std::ops::{Index, IndexMut};
 
-/// This is a wrapper function to make working with the proof of a merklemountain range more efficient
+/// This is a wrapper function for a vec to make working with the proof of a merklemountain range more efficient
 /// This will hold a proof. Every value that can be calculated will or that needs to be checked will be none inside.
+/// The data in the merkleproof will be created in form of the Lchild-Rchild-parent(Lchild)-Rchild-parent-..
+/// This pattern will be repeated until the parent is the root of the MMR
+#deri
 pub struct MerkleProof {
     hash: Vec<Option<Vec<u8>>>,
 }
@@ -39,12 +43,22 @@ impl MerkleProof {
         self.hash.push(new_value);
     }
 
+    /// Adds a new hash or empty value that needs to be completed at the given point
+    pub fn insert(&mut self, index: usize, new_value: Option<Vec<u8>>) {
+        self.hash.insert(index, new_value);
+    }
+
     /// Gets a referance to the value at the provided index
     pub fn get(&self, index: usize) -> Option<&Option<Vec<u8>>> {
         if index > self.hash.len() - 1 {
             return None;
         }
         Some(&self.hash[index])
+    }
+
+    /// This function will return the length of the merkleroot
+    pub fn len(&self) -> usize {
+        self.hash.len()
     }
 
     /// This will verify the merkleproof
@@ -82,7 +96,7 @@ impl MerkleProof {
 
     /// This will compare and validate the provided proof ensuring that they are the same.
     /// Both merkleproofs needs to be longer than 2 hashes
-    pub fn compare<D>(&self, merkleproof: MerkleProof) -> bool
+    pub fn compare<D>(&self, merkleproof: &MerkleProof) -> bool
     where D: Digest {
         if (self.hash.len() != merkleproof.hash.len()) && self.hash.len() < 3 {
             return false;
@@ -155,5 +169,19 @@ impl<'a> Iterator for MerkleProofIterator<'a> {
         }
         self.index += 1;
         Some(self.merkleproof.hash[self.index - 1].clone())
+    }
+}
+
+impl Index<usize> for MerkleProof {
+    type Output = Option<Vec<u8>>;
+
+    fn index(&self, index: usize) -> &Option<Vec<u8>> {
+        &self.hash[index]
+    }
+}
+
+impl IndexMut<usize> for MerkleProof {
+    fn index_mut<'a>(&'a mut self, index: usize) -> &'a mut Option<Vec<u8>> {
+        &mut self.hash[index]
     }
 }

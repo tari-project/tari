@@ -23,6 +23,7 @@
 // This file only contains hashvalue lookups for the mmr tests. The values are stored in an array representing the same
 // storage of the mmr. All values are Hex encoded
 use digest::Digest;
+use merklemountainrange::merkleproof::MerkleProof;
 use tari_utilities::hex::*;
 
 // this struct is used to contain already computed hashes used by blake2b
@@ -44,6 +45,17 @@ impl HashValues {
         let mut result = Vec::new();
         for num in indices {
             result.push(self.values[num].clone());
+        }
+        result
+    }
+
+    pub fn create_merkleproof(&self, indices: Vec<Option<usize>>) -> MerkleProof {
+        let mut result = MerkleProof::new();
+        for num in indices {
+            match num {
+                Some(index) => result.push(Some(from_hex(&self.values[index].clone()).unwrap())),
+                None => result.push(None),
+            }
         }
         result
     }

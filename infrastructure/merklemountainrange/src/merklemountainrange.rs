@@ -23,6 +23,7 @@
 use crate::{
     error::MerkleMountainRangeError,
     merklenode::{MerkleNode, ObjectHash},
+    merkleproof::MerkleProof,
 };
 use digest::Digest;
 use std::{collections::HashMap, marker::PhantomData};
@@ -89,25 +90,17 @@ where
         Some(self.mmr[index].hash.clone())
     }
 
-    /// This function returns the hash proof tree of a given index.
-    /// If the given hash is not in the tree, the vec will be empty.
-    /// The Vec will be created in form of the Lchild-Rchild-parent(Lchild)-Rchild-parent-..
-    /// This pattern will be repeated until the parent is the root of the MMR
-    pub fn get_index_proof(&self, index: usize) -> Vec<ObjectHash> {
+    /// This function returns a MerkleProof of the provided index
+    pub fn get_index_proof(&self, index: usize) -> MerkleProof {
         let mmr_index = get_leaf_index(index);
         if mmr_index >= self.mmr.len() {
-            return Vec::new();
+            return MerkleProof::new();
         }
-        let hash = &self.mmr[mmr_index].hash;
-        self.get_hash_proof(hash)
+        self.get_proof(mmr_index)
     }
 
-    /// This function returns the hash proof tree of a given hash.
-    /// If the given hash is not in the tree, the vec will be empty.
-    /// The Vec will be created in form of the Lchild-Rchild-parent(Lchild)-Rchild-parent-..
-    /// This pattern will be repeated until the parent is the root of the MMR
-    pub fn get_hash_proof(&self, hash: &ObjectHash) -> Vec<ObjectHash> {
-        let mut result = Vec::new();
+    /// This function returns a MerkleProof of the provided index
+    pub fn get_hash_proof(&self, hash: &ObjectHash) -> MerkleProof {
         let mut i = self.mmr.len();
         for counter in 0..self.mmr.len() {
             if self.mmr[counter].hash == *hash {
@@ -116,9 +109,15 @@ where
             }
         }
         if i == self.mmr.len() {
-            return result;
+            return MerkleProof::new();
         };
-        self.get_ordered_hash_proof(i, &mut result);
+        self.get_proof(i)
+    }
+
+    // This is the internal function given the correct mmr index
+    fn get_proof(&self, i: usize) -> MerkleProof {
+        let mut result = MerkleProof::new();
+        self.get_ordered_hash_proof(i, true, &mut result);
 
         if self.current_peak_height.1 == self.get_last_added_index() {
             // we know there is no bagging as the mmr is a balanced binary tree
@@ -127,38 +126,52 @@ where
 
         let mut peaks = self.bag_mmr();
         let mut i = peaks.len();
-        let mut was_on_correct_height = false;
+        let mut was_on_correct_peak = false;
+
+        let mut hasher = D::new();
+        let cur_proof_len = result.len();
         while i > 1 {
             // was_on_correct_height is used to track should we add from this point onwards both left and right
             // siblings. This loop tracks from bottom of the peaks, so we keep going up until we hit a known
             // point, we then add the missing sibling from that point
-            if was_on_correct_height {
-                result.push(peaks[i - 2].clone());
-                result.push(peaks[i - 1].clone());
-            } else if peaks[i - 1] == result[result.len() - 1] {
-                result.insert(result.len() - 1, peaks[i - 2].clone());
-                was_on_correct_height = true;
-            } else if peaks[i - 2] == result[result.len() - 1] {
-                result.push(peaks[i - 1].clone());
-                was_on_correct_height = true;
+            let cur_proof_len = result.len();
+            if was_on_correct_peak {
+                // result.push(Some(peaks[i - 2].clone()));
+                result.push(Some(peaks[i - 1].clone()));
+            } else if peaks[i - 1] == result[cur_proof_len - 1].clone().unwrap() {
+                result.insert(result.len() - 1, Some(peaks[i - 2].clone()));
+                result[cur_proof_len - 1] = None; // this is a calculated result, so we can remove this
+                was_on_correct_peak = true;
+            } else if peaks[i - 2] == result[cur_proof_len - 1].clone().unwrap() {
+                result[cur_proof_len - 1] = None; // this is a calculated result, so we can remove this
+                result.push(Some(peaks[i - 1].clone()));
+                was_on_correct_peak = true;
             }
 
-            let mut hasher = D::new();
             hasher.input(&peaks[i - 2]);
             hasher.input(&peaks[i - 1]);
-            peaks[i - 2] = hasher.result().to_vec();
+            peaks[i - 2] = hasher.result_reset().to_vec();
             i -= 1;
         }
         // lets calculate the final new peak
-        let mut hasher = D::new();
         hasher.input(&self.mmr[self.current_peak_height.1].hash);
         hasher.input(&peaks[0]);
-        if was_on_correct_height {
-            // edge case, our node is in the largest peak, we have already added it
-            result.push(self.mmr[self.current_peak_height.1].hash.clone());
+        if was_on_correct_peak {
+            // we where not in the main peak, so add main peak
+            result.push(Some(self.mmr[self.current_peak_height.1].hash.clone()));
+            result.push(None);
+        } else {
+            if result[result.len() - 1].clone().unwrap() == peaks[0] {
+                let cur_proof_len = result.len();
+                result[cur_proof_len - 1] = Some(self.mmr[self.current_peak_height.1].hash.clone());
+                result.push(None);
+            } else {
+                let cur_proof_len = result.len();
+                result[cur_proof_len - 1] = None; // this is a calculated result, so we can remove this, we have come from the main peak
+                result.push(Some(peaks[0].clone()));
+            }
         }
-        result.push(peaks[0].clone());
-        result.push(hasher.result().to_vec());
+        result.push(Some(hasher.result_reset().to_vec()));
 
         result
     }
@@ -166,39 +179,45 @@ where
     // This function is an iterative function. It will add the left node first then the right node to the provided array
     // on the index. It will return when it reaches a single highest point.
     // this function will return the index of the local peak, negating the need to search for it again.
-    fn get_ordered_hash_proof(&self, index: usize, results: &mut Vec<ObjectHash>) {
+    fn get_ordered_hash_proof(&self, index: usize, is_first_run: bool, results: &mut MerkleProof) {
         let sibling = sibling_index(index);
         let mut next_index = index + 1;
         if sibling >= self.mmr.len() {
             // we are at a peak
-            results.push(self.mmr[index].hash.clone());
+            results.push(Some(self.mmr[index].hash.clone()));
             return;
         }
+        // we check first run, as we need to store both children, after that we only need to store one child (the one
+        // not a parent)
         if sibling < index {
-            results.push(self.mmr[sibling].hash.clone());
-            results.push(self.mmr[index].hash.clone());
+            results.push(Some(self.mmr[sibling].hash.clone()));
+            if !is_first_run {
+                results.push(None) // index can be calculated
+            } else {
+                results.push(Some(self.mmr[index].hash.clone()));
+            }
         } else {
-            results.push(self.mmr[index].hash.clone());
-            results.push(self.mmr[sibling].hash.clone());
+            if !is_first_run {
+                results.push(None) // index can be calculated
+            } else {
+                results.push(Some(self.mmr[index].hash.clone()));
+            }
+            results.push(Some(self.mmr[sibling].hash.clone()));
             next_index = sibling + 1;
         }
-        self.get_ordered_hash_proof(next_index, results);
+        self.get_ordered_hash_proof(next_index, false, results);
     }
 
     /// This function will verify the provided proof. Internally it uses the get_hash_proof function to construct a
     /// similar proof. This function will return true if the proof is valid
     /// If the order does not match Lchild-Rchild-parent(Lchild)-Rchild-parent-.. the validation will fail
     /// This function will only succeed if the given hash is of height 0
-    pub fn verify_proof(&self, hashes: &Vec<ObjectHash>) -> bool {
-        if hashes.len() == 0 {
+    pub fn verify_proof(&self, proof: &MerkleProof) -> bool {
+        if proof.len() == 0 {
             return false;
         }
-        if self.get_object(&hashes[0]).is_none() && self.get_object(&hashes[1]).is_none() {
-            // we only want to search for valid object's proofs, either 0 or 1 must be a valid object
-            return false;
-        }
-        let proof = self.get_hash_proof(&hashes[0]);
-        hashes.eq(&proof)
+        let our_proof = self.get_hash_proof(&proof[0].clone().unwrap());
+        our_proof.compare::<D>(&proof)
     }
 
     // This function calculates the peak height of the mmr
@@ -283,6 +302,7 @@ where
         self.mmr.len() - 1
     }
 
+    // This function does not include the current largest peak
     fn bag_mmr(&self) -> Vec<ObjectHash> {
         // lets find all peaks of the mmr
         let mut peaks = Vec::new();
