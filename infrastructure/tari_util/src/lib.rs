@@ -21,6 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 pub mod bit;
 pub mod byte_array;
+pub mod chacha20;
+pub mod cipher;
 pub mod extend_bytes;
 pub mod hash;
 pub mod hex;

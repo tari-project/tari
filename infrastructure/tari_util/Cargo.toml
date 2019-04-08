@@ -11,5 +11,6 @@ edition = "2018"
 
 [dependencies]
 derive-error = "0.0.4"
+clear_on_drop = "0.2.3"
 
 [dev-dependencies]
