@@ -109,7 +109,7 @@ The transaction validation service checks that:
 * all inputs are signed by their owners.
 * all outputs have valid [range proof]s.
 * no outputs currently exist in the [UTXO] set.
-* the transaction does not have a timelock applied, limiting it from being added to the blockchain before a specified block height or timestamp has been reached.
+* the transaction does not have a [timelock](timelocks) applied, limiting it from being added to the blockchain before a specified block height or timestamp has been reached.
 * the transaction excess has a valid signature.
 * the transaction excess is a valid public key. This proves that:
   $$ \Sigma \left( \mathrm{inputs} - \mathrm{outputs} - \mathrm{fees} \right) = 0 $$
@@ -119,6 +119,7 @@ The transaction validation service checks that:
 `Timelocked` transactions are:
 * marked with a timelocked status and gets added to the [mempool].
 * will be evaluated again at a later state to determine if the timelock has passed and if it can be upgraded to 'Validated' status.
+* More detailed information in [RFC-0230](timelocks)
 
 `Validated` transactions are:
 * Added to the [mempool].
@@ -189,3 +190,4 @@ Syncing, pruning and cut-through is discussed in detail in [RFC-0140](RFC-0140_S
 [SynchronisationState]: Glossary.md#synchronisationstate
 [mining server]: Glossary.md#mining-server
 [cut-through]: RFC-0140_Syncing.md#Pruning-and-cut-through
+[timelocks]: RFC-0230_HTLC.md#Time-Locked-contracts
