@@ -106,6 +106,14 @@ impl ExtendBytes for u32 {
         buf.extend_from_slice(&bytes);
     }
 }
+
+impl ExtendBytes for u64 {
+    fn append_raw_bytes(&self, buf: &mut Vec<u8>) {
+        let bytes = self.to_le_bytes();
+        buf.extend_from_slice(&bytes);
+    }
+}
+
 impl ExtendBytes for u128 {
     fn append_raw_bytes(&self, buf: &mut Vec<u8>) {
         let bytes = self.to_le_bytes();

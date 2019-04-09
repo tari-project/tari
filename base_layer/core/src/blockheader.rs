@@ -23,13 +23,17 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
-use crate::{pow::ProofOfWork, types::BlindingFactor};
+use crate::{pow::ProofOfWork, types::*};
 use chrono::{DateTime, Utc};
+use tari_infra_derive::{ExtendBytes, Hashable};
+use tari_utilities::{ExtendBytes, Hashable};
 
 type BlockHash = [u8; 32];
 
 /// The BlockHeader contains all the metadata for the block, including proof of work, a link to the previous block
 /// and the transaction kernels.
+#[derive(Hashable)]
+#[digest = "SignatureHash"]
 pub struct BlockHeader {
     /// Version of the block
     pub version: u16,
