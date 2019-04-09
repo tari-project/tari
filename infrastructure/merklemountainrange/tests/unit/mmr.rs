@@ -28,10 +28,10 @@ use merklemountainrange::{
 };
 use tari_utilities::hex::*;
 
-fn create_mmr(leaves: u32) -> MerkleMountainRange<TestObject<Blake2b>, Blake2b> {
-    let mut mmr: MerkleMountainRange<TestObject<Blake2b>, Blake2b> = MerkleMountainRange::new();
+fn create_mmr(leaves: u32) -> MerkleMountainRange<TestObject, Blake2b> {
+    let mut mmr: MerkleMountainRange<TestObject, Blake2b> = MerkleMountainRange::new();
     for i in 1..leaves + 1 {
-        let object: TestObject<Blake2b> = TestObject::new(i.to_string());
+        let object: TestObject = TestObject::new(i.to_string());
         mmr.push(object);
     }
     mmr
