@@ -99,12 +99,12 @@ others, with the ability to reveal the committed value later. Commitments are de
 value or statement after they have committed to it.
 
 ## Communication Node
-[communication node]: #communication-node 'A communication node that is responsible for maintaining the Tari communication network'
+[communication node]: #communication-node "A communication node that is responsible for maintaining the Tari communication network"
 
 A Communication Node is either a Validator Node or Base Node that is part of the Tari communication network. It maintains the network and is responsible for forwarding and propagating joining requests, discovery requests and data messages on the communication network.
 
 ## Communication Client
-[communication client]: #communication-client 'A communication client that makes use of the Tari communication network, but does not maintain it'
+[communication client]: #communication-client "A communication client that makes use of the Tari communication network, but does not maintain it"
 
 A Communication Client is a Wallet or Asset Manager that makes use of the Tari communication network to send joining and discovery requests. A Communication Client does not maintain the communication network and is not responsible for forwarding or propagating any requests or data messages.
 
@@ -141,6 +141,11 @@ rigid rule-sets with parameters that can be set by Asset Issuers.
 Digital asset tokens (or often, just "tokens") are the finite set of digital entities associated with a given digital 
 asset. Depending on the DA created, tokens can represent tickets, in-game items, collectibles or loyalty points. They
  are bound to the [digital asset] that created them.
+
+## Hashed Time Locked Contract
+[htlc]: #Hashed-Time-Locked-Contract 'or just, "HTLC". 
+
+A time locked contract that only pays out after a certain criteria has been met or refunds the originator if a certain period has expired.
 
 
 ## Instructions
@@ -183,6 +188,11 @@ A Mining Server is responsible for constructing new blocks by bundling transacti
 [mining worker]: #mining-worker
 
 A Mining Worker is responsible for performing Proof-of-Work tasks received from its parent [Mining Server].
+
+## Multisig
+[multisig]: #multisig
+
+Multi-signatures (Multisigs) are also known as N-of-M signatures, and this means that N amount out of M amount of peers need to agree before a transaction can be spend. N and M can also be the same amount.
 
 ## Node ID
 [node ID]: #node-id
