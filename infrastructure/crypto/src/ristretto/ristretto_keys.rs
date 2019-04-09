@@ -22,12 +22,14 @@
 
 //! The Tari-compatible implementation of Ristretto based on the curve25519-dalek implementation
 use crate::keys::{PublicKey, SecretKey};
+use blake2::Blake2b;
 use curve25519_dalek::{
     constants::RISTRETTO_BASEPOINT_TABLE,
     ristretto::{CompressedRistretto, RistrettoPoint},
     scalar::Scalar,
     traits::MultiscalarMul,
 };
+use digest::Digest;
 use rand::{CryptoRng, Rng};
 use serde::{
     de::{Deserialize, Deserializer, Visitor},
@@ -38,7 +40,7 @@ use std::{
     fmt,
     ops::{Add, Mul, Sub},
 };
-use tari_utilities::{ByteArray, ByteArrayError};
+use tari_utilities::{ByteArray, ByteArrayError, Hashable};
 
 /// The [SecretKey](trait.SecretKey.html) implementation for [Ristretto](https://ristretto.group) is a thin wrapper
 /// around the Dalek [Scalar](struct.Scalar.html) type, representing a 256-bit integer (mod the group order).
@@ -59,6 +61,9 @@ use tari_utilities::{ByteArray, ByteArrayError};
 /// let _k2 = RistrettoSecretKey::from_hex(&"100000002000000030000000040000000");
 /// let _k3 = RistrettoSecretKey::random(&mut rng);
 /// ```
+
+type HashDigest = Blake2b;
+
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub struct RistrettoSecretKey(pub(crate) Scalar);
 
@@ -249,6 +254,16 @@ impl PublicKey for RistrettoPublicKey {
         let s: Vec<Scalar> = scalars.iter().map(|k| k.0.clone()).collect();
         let p = RistrettoPoint::multiscalar_mul(s, p);
         RistrettoPublicKey::new_from_pk(p)
+    }
+}
+
+/// Requires custom Hashable implementation for RistrettoPublicKey as CompressedRistretto doesnt implement this trait
+impl Hashable for RistrettoPublicKey {
+    fn hash(&self) -> Vec<u8> {
+        let mut hasher = HashDigest::new();
+        let buf: Vec<u8> = Vec::new();
+        hasher.input(&buf);
+        hasher.result().to_vec()
     }
 }
 
