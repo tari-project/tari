@@ -40,30 +40,29 @@ fn create_word_list(n: usize) -> Vec<MyObject> {
 #[test]
 fn create_mmr() {
     let words = create_word_list(15);
-    // let mmr = MerkleMountainRange::create_from_vec::<Blake2b>(words);
-    let mmr: MerkleMountainRange<MyObject, Blake2b> = words.into();
+    let mmr: MerkleMountainRange<MyObject, Blake2b> = words.clone().into();
     assert_eq!(mmr.len(), words.len());
-    assert_eq!(mmr.get_peak_height(), 4);
+    assert_eq!(mmr.get_peak_height(), 3);
     let summer = MyObject { val: "summer,".into() };
     let summer_hash = summer.hash();
     assert_eq!(*mmr.get_object_by_index(10).unwrap(), summer);
     assert_eq!(mmr.get_hash(10).unwrap(), summer_hash);
     let tree_hash_index = mmr::get_leaf_index(10);
     assert_eq!(tree_hash_index, 18);
-    assert_eq!(mmr.get_hash(tree_hash_index).unwrap(), summer_hash);
-    let proof = mmr.get_index_proof(10);
-    assert!(MerkleMountainRange::verify_proof(&summer.hash(), &proof));
-    let root = mmr.get_merkle_root();
+    assert_eq!(mmr.get_node_hash(tree_hash_index).unwrap(), summer_hash);
+    let mut proof = mmr.get_index_proof(10);
+    assert_eq!(proof.verify_proof::<Blake2b>(&summer.hash()), true);
+    let _root = mmr.get_merkle_root();
     // assert_eq!(root, "??????");
 }
 
 #[test]
 fn append_to_mmr() {
     let words = create_word_list(15);
-    let mmr: MerkleMountainRange<MyObject, Blake2b> = words.into();
+    let mut mmr: MerkleMountainRange<MyObject, Blake2b> = words.into();
     let words = create_word_list(20);
     assert_eq!(mmr.len(), 15);
-    assert_eq!(mmr.get_peak_height(), 4);
+    assert_eq!(mmr.get_peak_height(), 3);
     mmr.push(words[15].clone());
     assert_eq!(mmr.len(), 16);
     assert_eq!(mmr.get_peak_height(), 4);
@@ -71,9 +70,10 @@ fn append_to_mmr() {
     mmr.push(words[16].clone());
     assert_eq!(mmr.len(), 17);
     assert_eq!(mmr.get_peak_height(), 4);
-    let proof = mmr.get_index_proof(0);
-    // The second-to-last hash of the proof should equal the root of the previous mmr
-    assert_eq!(root_1, proof.hashes[proof.len() - 1])
+    let mut proof = mmr.get_index_proof(0);
+    assert_eq!(proof.verify::<Blake2b>(), true);
+    // The third-to-last hash of the proof should equal the root of the previous mmr
+    assert_eq!(root_1, proof[proof.len() - 3].clone().unwrap())
 }
 
 #[test]
@@ -83,12 +83,16 @@ fn deserialize_proof() {
     let mmr: MerkleMountainRange<MyObject, Blake2b> = words.into();
     // Proof of word 20: thou
     let thou = MyObject { val: "thou".into() };
-    let though_proof = "???";
-    let proof = MerkleProof::<Blake2b>::from_hex().unwrap();
-    assert!(mmr.verify_proof(&thou, &proof));
+    // let though_proof = "???";
+    // let proof = MerkleProof::<Blake2b>::from_hex().unwrap();
+    let mut proof = mmr.get_hash_proof(&thou.hash());
+    // assert!(mmr.verify_proof(&thou, &proof));
+    assert!(proof.verify_proof::<Blake2b>(&thou.hash()));
     // Proof of word 102: conquest
     let conquest = MyObject { val: "conquest".into() };
-    let conquest_proof = "???";
-    let proof = MerkleProof::<Blake2b>::from_hex().unwrap();
-    assert!(MerkleProof::verify(&thou.hash(), &proof, &root));
+    // let conquest_proof = "???";
+    // let proof = MerkleProof::<Blake2b>::from_hex().unwrap();
+    // assert!(MerkleProof::verify(&thou.hash(), &proof, &root));
+    let mut proof2 = mmr.get_hash_proof(&conquest.hash());
+    assert!(proof2.verify_proof::<Blake2b>(&conquest.hash()));
 }

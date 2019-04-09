@@ -37,10 +37,12 @@ impl HashValues {
         self.values[index].clone()
     }
 
+    #[allow(dead_code)] // This function is used to generate hashvalues for the hashvalue struct
     pub fn copy_slice(&self, start: usize, end: usize) -> Vec<String> {
         self.values[start..end + 1].to_vec()
     }
 
+    #[allow(dead_code)] // This function is used to generate hashvalues for the hashvalue struct
     pub fn copy_from_indices(&self, indices: Vec<usize>) -> Vec<String> {
         let mut result = Vec::new();
         for num in indices {
@@ -49,12 +51,13 @@ impl HashValues {
         result
     }
 
-    pub fn create_merkleproof(&self, indices: Vec<Option<usize>>) -> MerkleProof {
+    pub fn create_merkleproof(&self, indices: Vec<i32>) -> MerkleProof {
         let mut result = MerkleProof::new();
         for num in indices {
-            match num {
-                Some(index) => result.push(Some(from_hex(&self.values[index].clone()).unwrap())),
-                None => result.push(None),
+            if num < 0 {
+                result.push(None);
+            } else {
+                result.push(Some(from_hex(&self.values[num as usize].clone()).unwrap()))
             }
         }
         result

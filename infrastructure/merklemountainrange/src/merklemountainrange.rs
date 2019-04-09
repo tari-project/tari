@@ -83,11 +83,16 @@ where
     }
 
     /// This function returns the hash of the node index provided, this counts from 0
-    pub fn get_hash(&self, index: usize) -> Option<ObjectHash> {
+    pub fn get_node_hash(&self, index: usize) -> Option<ObjectHash> {
         if index > self.get_last_added_index() {
             return None;
         };
         Some(self.mmr[index].hash.clone())
+    }
+
+    /// This function returns the hash of the leaf index provided, this counts from 0
+    pub fn get_hash(&self, index: usize) -> Option<ObjectHash> {
+        self.get_node_hash(get_leaf_index(index))
     }
 
     /// This function returns a MerkleProof of the provided index
@@ -129,21 +134,27 @@ where
         let mut was_on_correct_peak = false;
 
         let mut hasher = D::new();
-        let cur_proof_len = result.len();
+        let _cur_proof_len = result.len();
         while i > 1 {
             // was_on_correct_height is used to track should we add from this point onwards both left and right
             // siblings. This loop tracks from bottom of the peaks, so we keep going up until we hit a known
             // point, we then add the missing sibling from that point
             let cur_proof_len = result.len();
             if was_on_correct_peak {
-                // result.push(Some(peaks[i - 2].clone()));
-                result.push(Some(peaks[i - 1].clone()));
+                result.push(Some(peaks[i - 2].clone()));
+                result.push(None);
             } else if peaks[i - 1] == result[cur_proof_len - 1].clone().unwrap() {
                 result.insert(result.len() - 1, Some(peaks[i - 2].clone()));
-                result[cur_proof_len - 1] = None; // this is a calculated result, so we can remove this
+                if cur_proof_len > 2 {
+                    result[cur_proof_len - 1] = None; // this is a calculated result, so we can remove this, we only remove if there was more than 2
+                                                      // values
+                }
                 was_on_correct_peak = true;
             } else if peaks[i - 2] == result[cur_proof_len - 1].clone().unwrap() {
-                result[cur_proof_len - 1] = None; // this is a calculated result, so we can remove this
+                if cur_proof_len > 2 {
+                    result[cur_proof_len - 1] = None; // this is a calculated result, so we can remove this, we only remove if there was more than 2
+                                                      // values
+                }
                 result.push(Some(peaks[i - 1].clone()));
                 was_on_correct_peak = true;
             }
@@ -216,7 +227,10 @@ where
         if proof.len() == 0 {
             return false;
         }
-        let our_proof = self.get_hash_proof(&proof[0].clone().unwrap());
+        if proof[0].is_none() {
+            return false;
+        }
+        let mut our_proof = self.get_hash_proof(&proof[0].clone().unwrap());
         our_proof.compare::<D>(&proof)
     }
 
@@ -410,16 +424,16 @@ pub fn get_leaf_index(index: usize) -> usize {
 // This is the iterative companion function to get_leaf_index and this will search the tree for the correct height
 fn calculate_leaf_index_offset(index: usize, offset: usize) -> usize {
     let mut height_counter = 0;
-    while index >= ((1 << height_counter + 2) - 2) {
+    while index * 2 > ((1 << height_counter + 2) - 2) {
         // find the height of the tree by finding if we can subtract the  height +1
         height_counter += 1;
     }
     let height_index = (1 << height_counter + 1) - 2;
-    if index == height_index {
+    if index == 0 {
         // If this is the first peak then subtracting the height of first peak will be 0
         return offset;
     };
-    if index == (height_index + ((1 << height_counter + 1) - 1)) {
+    if index == 1 {
         // we are looking if its the right sibling
         return offset;
     };
