@@ -12,3 +12,7 @@ edition = "2018"
 zmq = "0.8"
 derive-error = "0.0.4"
 tari_crypto = { path = "../crypto"}
+tari_utilities = { path = "../../infrastructure/tari_util"}
+
+[dev-dependencies]
+rand = "0.5.5"
