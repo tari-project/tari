@@ -25,6 +25,7 @@ use std::ops::{Index, IndexMut};
 
 /// This is a wrapper function for a vec to make working with the proof of a merklemountain range more efficient
 /// This will hold a proof. Every value that can be calculated will or that needs to be checked will be none inside.
+/// When a proof is verified or checked these will be filled out.
 /// The data in the merkleproof will be created in form of the Lchild-Rchild-parent(Lchild)-Rchild-parent-..
 /// This pattern will be repeated until the parent is the root of the MMR
 #[derive(PartialEq, Debug)]

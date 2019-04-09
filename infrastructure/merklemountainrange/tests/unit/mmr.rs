@@ -250,14 +250,14 @@ fn test_node_heights() {
 }
 
 #[test]
-fn get_leaf_index() {
-    assert_eq!(mmr::get_leaf_index(10), 18);
-    assert_eq!(mmr::get_leaf_index(0), 0);
-    assert_eq!(mmr::get_leaf_index(3), 4);
-    assert_eq!(mmr::get_leaf_index(11), 19);
-    assert_eq!(mmr::get_leaf_index(16), 31);
-    assert_eq!(mmr::get_leaf_index(17), 32);
-    assert_eq!(mmr::get_leaf_index(6), 10);
-    assert_eq!(mmr::get_leaf_index(1), 1);
-    assert_eq!(mmr::get_leaf_index(12), 22);
+fn get_object_index() {
+    assert_eq!(mmr::get_object_index(10), 18);
+    assert_eq!(mmr::get_object_index(0), 0);
+    assert_eq!(mmr::get_object_index(3), 4);
+    assert_eq!(mmr::get_object_index(11), 19);
+    assert_eq!(mmr::get_object_index(16), 31);
+    assert_eq!(mmr::get_object_index(17), 32);
+    assert_eq!(mmr::get_object_index(6), 10);
+    assert_eq!(mmr::get_object_index(1), 1);
+    assert_eq!(mmr::get_object_index(12), 22);
 }

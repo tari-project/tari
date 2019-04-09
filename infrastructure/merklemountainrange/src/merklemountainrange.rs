@@ -64,11 +64,12 @@ where
 
     /// This function returns a reference to the data stored in the mmr
     /// It will return an error if the index is out of bounds or the index is not a leaf
-    pub fn get_object_by_index(&self, index: usize) -> Result<&T, MerkleMountainRangeError> {
-        if index > self.data.len() {
+    pub fn get_object_by_object_index(&self, object_index: usize) -> Result<&T, MerkleMountainRangeError> {
+        if object_index > self.data.len() {
             return Err(MerkleMountainRangeError::IndexOutOfBounds);
         }
-        let hash = &self.mmr[get_leaf_index(index)].hash;
+        let index = get_object_index(object_index);
+        let hash = &self.mmr[index].hash;
         let data = self.data.get(hash);
         match data {
             Some(value) => Ok(value),
@@ -83,21 +84,21 @@ where
     }
 
     /// This function returns the hash of the node index provided, this counts from 0
-    pub fn get_node_hash(&self, index: usize) -> Option<ObjectHash> {
-        if index > self.get_last_added_index() {
+    pub fn get_node_hash(&self, node_index: usize) -> Option<ObjectHash> {
+        if node_index > self.get_last_added_index() {
             return None;
         };
-        Some(self.mmr[index].hash.clone())
+        Some(self.mmr[node_index].hash.clone())
     }
 
     /// This function returns the hash of the leaf index provided, this counts from 0
-    pub fn get_hash(&self, index: usize) -> Option<ObjectHash> {
-        self.get_node_hash(get_leaf_index(index))
+    pub fn get_object_hash(&self, object_index: usize) -> Option<ObjectHash> {
+        self.get_node_hash(get_object_index(object_index))
     }
 
     /// This function returns a MerkleProof of the provided index
-    pub fn get_index_proof(&self, index: usize) -> MerkleProof {
-        let mmr_index = get_leaf_index(index);
+    pub fn get_object_index_proof(&self, index: usize) -> MerkleProof {
+        let mmr_index = get_object_index(index);
         if mmr_index >= self.mmr.len() {
             return MerkleProof::new();
         }
@@ -343,13 +344,13 @@ where
     }
 }
 /// This function takes in the index and calculates the index of the sibling.
-pub fn sibling_index(index: usize) -> usize {
-    let height = get_node_height(index);
+pub fn sibling_index(node_index: usize) -> usize {
+    let height = get_node_height(node_index);
     let index_count = (1 << height + 1) - 1;
-    if is_node_right(index) {
-        index - index_count
+    if is_node_right(node_index) {
+        node_index - index_count
     } else {
-        index + index_count
+        node_index + index_count
     }
 }
 
@@ -373,52 +374,52 @@ where
 /// This function takes in the index and calculates if the node is the right child node or not.
 /// If the node is the tree root it will still give the answer as if it is a child of a node.
 /// This function is an iterative function as we might have to subtract the largest left_most tree.
-pub fn is_node_right(index: usize) -> bool {
+pub fn is_node_right(node_index: usize) -> bool {
     let mut height_counter = 0;
-    while index >= ((1 << height_counter + 2) - 2) {
+    while node_index >= ((1 << height_counter + 2) - 2) {
         // find the height of the tree by finding if we can subtract the  height +1
         height_counter += 1;
     }
     let height_index = (1 << height_counter + 1) - 2;
-    if index == height_index {
+    if node_index == height_index {
         // If this is the first peak then subtracting the height of first peak will be 0
         return false;
     };
-    if index == (height_index + ((1 << height_counter + 1) - 1)) {
+    if node_index == (height_index + ((1 << height_counter + 1) - 1)) {
         // we are looking if its the right sibling
         return true;
     };
     // if we are here means it was not a right node at height counter, we therefor search lower
-    let new_index = index - height_index - 1;
+    let new_index = node_index - height_index - 1;
     is_node_right(new_index)
 }
 
 /// This function takes in the index and calculates the height of the node
 /// This function is an iterative function as we might have to subtract the largest left_most tree.
-pub fn get_node_height(index: usize) -> usize {
+pub fn get_node_height(node_index: usize) -> usize {
     let mut height_counter = 0;
-    while index >= ((1 << height_counter + 2) - 2) {
+    while node_index >= ((1 << height_counter + 2) - 2) {
         // find the height of the tree by finding if we can subtract the  height +1
         height_counter += 1;
     }
     let height_index = (1 << height_counter + 1) - 2;
-    if index == height_index {
+    if node_index == height_index {
         // If this is the first peak then subtracting the height of first peak will be 0
         return height_counter;
     };
-    if index == (height_index + ((1 << height_counter + 1) - 1)) {
+    if node_index == (height_index + ((1 << height_counter + 1) - 1)) {
         // we are looking if its the right sibling
         return height_counter;
     };
     // if we are here means it was not a right node at height counter, we therefor search lower
-    let new_index = index - height_index - 1;
+    let new_index = node_index - height_index - 1;
     get_node_height(new_index)
 }
 
 /// This function will convert the given index and get its location in the MMR, this only works for leaf nodes
-pub fn get_leaf_index(index: usize) -> usize {
-    let offset = calculate_leaf_index_offset(index, 0);
-    (index + offset)
+pub fn get_object_index(node_index: usize) -> usize {
+    let offset = calculate_leaf_index_offset(node_index, 0);
+    (node_index + offset)
 }
 
 // This is the iterative companion function to get_leaf_index and this will search the tree for the correct height
