@@ -25,13 +25,13 @@
 
 use crate::{
     challenge::{Challenge, MessageHash},
-    musig::{FixedSet, JointKey, JointKeyBuilder, MuSigError},
+    musig::{JointKey, JointKeyBuilder, MuSigError},
     ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
     signatures::SchnorrSignature,
 };
 use digest::Digest;
 use std::marker::PhantomData;
-use tari_utilities::ByteArray;
+use tari_utilities::{fixed_set::FixedSet, ByteArray};
 
 //-----------------------------------------  Constants and aliases    ------------------------------------------------//
 
