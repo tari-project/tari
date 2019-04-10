@@ -491,7 +491,9 @@ name = "tari_comms"
 version = "0.0.1"
 dependencies = [
  "derive-error 0.0.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rand 0.5.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "tari_crypto 0.0.1",
+ "tari_utilities 0.0.1",
  "zmq 0.8.2 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 

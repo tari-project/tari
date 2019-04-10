@@ -24,6 +24,7 @@ pub mod byte_array;
 pub mod chacha20;
 pub mod cipher;
 pub mod extend_bytes;
+pub mod fixed_set;
 pub mod hash;
 pub mod hex;
 
