@@ -22,6 +22,7 @@
 
 use std::ops::Add;
 
+#[derive(Clone, Debug)]
 pub struct FixedSet<T> {
     items: Vec<Option<T>>,
 }
