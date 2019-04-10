@@ -22,14 +22,17 @@
 
 use crate::support::{hashvalues::HashValues, testobject::TestObject};
 use blake2::Blake2b;
-use merklemountainrange::mmr::{self, *};
+use merklemountainrange::{
+    merkleproof::MerkleProof,
+    mmr::{self, *},
+};
 use tari_utilities::hex::*;
 
 fn create_mmr(leaves: u32) -> MerkleMountainRange<TestObject, Blake2b> {
     let mut mmr: MerkleMountainRange<TestObject, Blake2b> = MerkleMountainRange::new();
     for i in 1..leaves + 1 {
         let object: TestObject = TestObject::new(i.to_string());
-        mmr.add_single(object);
+        mmr.push(object);
     }
     mmr
 }
@@ -39,15 +42,15 @@ fn create_small_mmr() {
     let mmr = create_mmr(2);
     assert_eq!(1, mmr.get_peak_height());
     let hash_values = HashValues::new();
-    let hash0 = mmr.get_hash(0).unwrap();
+    let hash0 = mmr.get_node_hash(0).unwrap();
     let proof = mmr.get_hash_proof(&hash0);
-    let mut our_proof = Vec::new();
+    let mut our_proof = MerkleProof::new();
     for i in 0..3 {
-        our_proof.push(mmr.get_hash(i).unwrap());
+        our_proof.push(mmr.get_node_hash(i));
     }
-    assert_eq!(hash_values.copy_slice(0, 2), to_hex_multiple(&proof));
+    assert_eq!(hash_values.create_merkleproof(vec![0, 1, 2]), proof);
     assert_eq!(mmr.verify_proof(&our_proof), true);
-    assert_eq!(mmr.get_merkle_root(), mmr.get_hash(2).unwrap())
+    assert_eq!(mmr.get_merkle_root(), mmr.get_node_hash(2).unwrap())
 }
 
 #[test]
@@ -56,36 +59,47 @@ fn create_mmr_with_2_peaks() {
     assert_eq!(4, mmr.get_peak_height());
     let hash_values = HashValues::new();
 
-    let hash0 = mmr.get_hash(0).unwrap();
+    let hash0 = mmr.get_node_hash(0).unwrap();
     let proof = mmr.get_hash_proof(&hash0);
-    let our_proof = hash_values.copy_from_indices(vec![0, 1, 2, 5, 6, 13, 14, 29, 30, 37, 42]);
-    assert_eq!(to_hex_multiple(&proof), our_proof);
+    let our_proof = hash_values.create_merkleproof(vec![0, 1, -1, 5, -1, 13, -1, 29, -1, 37, 42]);
+    assert_eq!(proof, our_proof);
     assert_eq!(mmr.verify_proof(&proof), true);
 
-    let proof = mmr.get_hash_proof(&mmr.get_hash(1).unwrap());
-    let our_proof = hash_values.copy_from_indices(vec![0, 1, 2, 5, 6, 13, 14, 29, 30, 37, 42]);
-    assert_eq!(to_hex_multiple(&proof), our_proof);
+    let proof = mmr.get_hash_proof(&mmr.get_node_hash(31).unwrap());
+    let our_proof = hash_values.create_merkleproof(vec![31, 32, -1, 36, 30, -1, 42]);
+    assert_eq!(proof, our_proof);
+    assert_eq!(mmr.verify_proof(&proof), true);
+
+    let proof = mmr.get_hash_proof(&mmr.get_node_hash(1).unwrap());
+    let our_proof = hash_values.create_merkleproof(vec![0, 1, -1, 5, -1, 13, -1, 29, -1, 37, 42]);
+    assert_eq!(proof, our_proof);
+    assert_eq!(mmr.verify_proof(&proof), true);
 
     // test some more proofs
-    let proof = mmr.get_hash_proof(&mmr.get_hash(6).unwrap());
-    let our_proof = hash_values.copy_from_indices(vec![6, 13, 14, 29, 30, 37, 42]);
-    assert_eq!(to_hex_multiple(&proof), our_proof);
+    let proof = mmr.get_hash_proof(&mmr.get_node_hash(6).unwrap());
+    let our_proof = hash_values.create_merkleproof(vec![6, 13, -1, 29, -1, 37, 42]);
+    assert_eq!(proof, our_proof);
+    assert_eq!(mmr.verify_proof(&proof), true);
 
-    let proof = mmr.get_hash_proof(&mmr.get_hash(22).unwrap());
-    let our_proof = hash_values.copy_from_indices(vec![22, 23, 24, 27, 21, 28, 14, 29, 30, 37, 42]);
-    assert_eq!(to_hex_multiple(&proof), our_proof);
+    let proof = mmr.get_hash_proof(&mmr.get_node_hash(22).unwrap());
+    let our_proof = hash_values.create_merkleproof(vec![22, 23, -1, 27, 21, -1, 14, -1, -1, 37, 42]);
+    assert_eq!(proof, our_proof);
+    assert_eq!(mmr.verify_proof(&proof), true);
 
-    let proof = mmr.get_hash_proof(&mmr.get_hash(26).unwrap());
-    let our_proof = hash_values.copy_from_indices(vec![25, 26, 24, 27, 21, 28, 14, 29, 30, 37, 42]);
-    assert_eq!(to_hex_multiple(&proof), our_proof);
+    let proof = mmr.get_hash_proof(&mmr.get_node_hash(26).unwrap());
+    let our_proof = hash_values.create_merkleproof(vec![25, 26, 24, -1, 21, -1, 14, -1, -1, 37, 42]);
+    assert_eq!(proof, our_proof);
+    assert_eq!(mmr.verify_proof(&proof), true);
 
-    let proof = mmr.get_hash_proof(&mmr.get_hash(14).unwrap());
-    let our_proof = hash_values.copy_from_indices(vec![14, 29, 30, 37, 42]);
-    assert_eq!(to_hex_multiple(&proof), our_proof);
+    let proof = mmr.get_hash_proof(&mmr.get_node_hash(14).unwrap());
+    let our_proof = hash_values.create_merkleproof(vec![14, 29, -1, 37, 42]);
+    assert_eq!(proof, our_proof);
+    assert_eq!(mmr.verify_proof(&proof), true);
 
-    let proof = mmr.get_hash_proof(&mmr.get_hash(11).unwrap());
-    let our_proof = hash_values.copy_from_indices(vec![10, 11, 9, 12, 6, 13, 14, 29, 30, 37, 42]);
-    assert_eq!(to_hex_multiple(&proof), our_proof);
+    let proof = mmr.get_hash_proof(&mmr.get_node_hash(11).unwrap());
+    let our_proof = hash_values.create_merkleproof(vec![10, 11, 9, -1, 6, -1, -1, 29, -1, 37, 42]);
+    assert_eq!(proof, our_proof);
+    assert_eq!(mmr.verify_proof(&proof), true);
 
     assert_eq!(to_hex(&mmr.get_merkle_root()), hash_values.get_value(42));
 }
@@ -94,22 +108,22 @@ fn create_mmr_with_2_peaks() {
 fn mmr_with_3_peaks() {
     let mmr = create_mmr(21);
     assert_eq!(4, mmr.get_peak_height());
-    let mut raw = Vec::new();
-    for i in 0..39 {
-        raw.push(mmr.get_hash(i).unwrap());
-    }
+
     let hash_values = HashValues::new();
-    let proof = mmr.get_hash_proof(&mmr.get_hash(35).unwrap());
-    let our_proof = hash_values.copy_from_indices(vec![34, 35, 33, 36, 37, 38, 30, 43, 44]);
-    assert_eq!(to_hex_multiple(&proof), our_proof);
+    let proof = mmr.get_hash_proof(&mmr.get_node_hash(35).unwrap());
+    let our_proof = hash_values.create_merkleproof(vec![34, 35, 33, -1, -1, 38, 30, -1, 44]);
+    assert_eq!(proof, our_proof);
+    assert_eq!(mmr.verify_proof(&proof), true);
 
-    let proof = mmr.get_hash_proof(&mmr.get_hash(38).unwrap());
-    let our_proof = hash_values.copy_from_indices(vec![37, 38, 30, 43, 44]);
-    assert_eq!(to_hex_multiple(&proof), our_proof);
+    let proof = mmr.get_hash_proof(&mmr.get_node_hash(38).unwrap());
+    let our_proof = hash_values.create_merkleproof(vec![37, 38, 30, -1, 44]);
+    assert_eq!(proof, our_proof);
+    assert_eq!(mmr.verify_proof(&proof), true);
 
-    let proof = mmr.get_hash_proof(&mmr.get_hash(0).unwrap());
-    let our_proof = hash_values.copy_from_indices(vec![0, 1, 2, 5, 6, 13, 14, 29, 30, 43, 44]);
-    assert_eq!(to_hex_multiple(&proof), our_proof);
+    let proof = mmr.get_hash_proof(&mmr.get_node_hash(0).unwrap());
+    let our_proof = hash_values.create_merkleproof(vec![0, 1, -1, 5, -1, 13, -1, 29, -1, 43, 44]);
+    assert_eq!(proof, our_proof);
+    assert_eq!(mmr.verify_proof(&proof), true);
 
     assert_eq!(to_hex(&mmr.get_merkle_root()), hash_values.get_value(44));
 }
@@ -120,42 +134,50 @@ fn mmr_with_4_peaks() {
     assert_eq!(4, mmr.get_peak_height());
     let mut raw = Vec::new();
     for i in 0..42 {
-        raw.push(mmr.get_hash(i).unwrap());
+        raw.push(mmr.get_node_hash(i).unwrap());
     }
     let hash_values = HashValues::new();
     assert_eq!(to_hex(&mmr.get_merkle_root()), hash_values.get_value(47));
 
-    let proof = mmr.get_hash_proof(&mmr.get_hash(35).unwrap());
-    let our_proof = hash_values.copy_from_indices(vec![34, 35, 33, 36, 37, 45, 30, 46, 47]);
-    assert_eq!(to_hex_multiple(&proof), our_proof);
+    let proof = mmr.get_hash_proof(&mmr.get_node_hash(35).unwrap());
+    let our_proof = hash_values.create_merkleproof(vec![34, 35, 33, -1, -1, 45, 30, -1, 47]);
+    assert_eq!(proof, our_proof);
+    assert_eq!(mmr.verify_proof(&proof), true);
 
-    let proof = mmr.get_hash_proof(&mmr.get_hash(34).unwrap());
-    let our_proof = hash_values.copy_from_indices(vec![34, 35, 33, 36, 37, 45, 30, 46, 47]);
-    assert_eq!(to_hex_multiple(&proof), our_proof);
+    let proof = mmr.get_hash_proof(&mmr.get_node_hash(34).unwrap());
+    let our_proof = hash_values.create_merkleproof(vec![34, 35, 33, -1, -1, 45, 30, -1, 47]);
+    assert_eq!(proof, our_proof);
+    assert_eq!(mmr.verify_proof(&proof), true);
 
-    let proof = mmr.get_hash_proof(&mmr.get_hash(21).unwrap());
-    let our_proof = hash_values.copy_from_indices(vec![21, 28, 14, 29, 30, 46, 47]);
-    assert_eq!(to_hex_multiple(&proof), our_proof);
+    let proof = mmr.get_hash_proof(&mmr.get_node_hash(21).unwrap());
+    let our_proof = hash_values.create_merkleproof(vec![21, 28, 14, -1, -1, 46, 47]);
+    assert_eq!(proof, our_proof);
+    assert_eq!(mmr.verify_proof(&proof), true);
 
-    let proof = mmr.get_hash_proof(&mmr.get_hash(41).unwrap());
-    let our_proof = hash_values.copy_from_indices(vec![40, 41, 37, 45, 30, 46, 47]);
-    assert_eq!(to_hex_multiple(&proof), our_proof);
+    let proof = mmr.get_hash_proof(&mmr.get_node_hash(41).unwrap());
+    let our_proof = hash_values.create_merkleproof(vec![40, 41, 37, -1, 30, -1, 47]);
+    assert_eq!(proof, our_proof);
+    assert_eq!(mmr.verify_proof(&proof), true);
 
-    let proof = mmr.get_hash_proof(&mmr.get_hash(0).unwrap());
-    let our_proof = hash_values.copy_from_indices(vec![0, 1, 2, 5, 6, 13, 14, 29, 30, 46, 47]);
-    assert_eq!(to_hex_multiple(&proof), our_proof);
+    let proof = mmr.get_hash_proof(&mmr.get_node_hash(0).unwrap());
+    let our_proof = hash_values.create_merkleproof(vec![0, 1, -1, 5, -1, 13, -1, 29, -1, 46, 47]);
+    assert_eq!(proof, our_proof);
+    assert_eq!(mmr.verify_proof(&proof), true);
 
-    let proof = mmr.get_hash_proof(&mmr.get_hash(1).unwrap());
-    let our_proof = hash_values.copy_from_indices(vec![0, 1, 2, 5, 6, 13, 14, 29, 30, 46, 47]);
-    assert_eq!(to_hex_multiple(&proof), our_proof);
+    let proof = mmr.get_hash_proof(&mmr.get_node_hash(1).unwrap());
+    let our_proof = hash_values.create_merkleproof(vec![0, 1, -1, 5, -1, 13, -1, 29, -1, 46, 47]);
+    assert_eq!(proof, our_proof);
+    assert_eq!(mmr.verify_proof(&proof), true);
 
-    let proof = mmr.get_hash_proof(&mmr.get_hash(21).unwrap());
-    let our_proof = hash_values.copy_from_indices(vec![21, 28, 14, 29, 30, 46, 47]);
-    assert_eq!(to_hex_multiple(&proof), our_proof);
+    let proof = mmr.get_hash_proof(&mmr.get_node_hash(21).unwrap());
+    let our_proof = hash_values.create_merkleproof(vec![21, 28, 14, -1, -1, 46, 47]);
+    assert_eq!(proof, our_proof);
+    assert_eq!(mmr.verify_proof(&proof), true);
 
-    let proof = mmr.get_hash_proof(&mmr.get_hash(28).unwrap());
-    let our_proof = hash_values.copy_from_indices(vec![21, 28, 14, 29, 30, 46, 47]);
-    assert_eq!(to_hex_multiple(&proof), our_proof);
+    let proof = mmr.get_hash_proof(&mmr.get_node_hash(28).unwrap());
+    let our_proof = hash_values.create_merkleproof(vec![21, 28, 14, -1, -1, 46, 47]);
+    assert_eq!(proof, our_proof);
+    assert_eq!(mmr.verify_proof(&proof), true);
 }
 
 #[test]
@@ -163,7 +185,7 @@ fn very_large_mmr() {
     // test test only tests that it doesn't crash currently, we need to create fuzz testing to test this properly
     let mmr = create_mmr(23000);
     let _merkle_root = mmr.get_merkle_root();
-    let proof = mmr.get_hash_proof(&mmr.get_hash(1).unwrap());
+    let proof = mmr.get_hash_proof(&mmr.get_node_hash(1).unwrap());
     assert_eq!(mmr.verify_proof(&proof), true);
 }
 
@@ -225,4 +247,17 @@ fn test_node_heights() {
     assert_eq!(mmr::get_node_height(29), 3);
     assert_eq!(mmr::get_node_height(30), 4);
     assert_eq!(mmr::get_node_height(62), 5);
+}
+
+#[test]
+fn get_object_index() {
+    assert_eq!(mmr::get_object_index(10), 18);
+    assert_eq!(mmr::get_object_index(0), 0);
+    assert_eq!(mmr::get_object_index(3), 4);
+    assert_eq!(mmr::get_object_index(11), 19);
+    assert_eq!(mmr::get_object_index(16), 31);
+    assert_eq!(mmr::get_object_index(17), 32);
+    assert_eq!(mmr::get_object_index(6), 10);
+    assert_eq!(mmr::get_object_index(1), 1);
+    assert_eq!(mmr::get_object_index(12), 22);
 }

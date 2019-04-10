@@ -178,6 +178,7 @@
 pub mod error;
 pub mod merklemountainrange;
 pub mod merklenode;
+pub mod merkleproof;
 pub mod mmr {
-    pub use crate::merklemountainrange::*;
+    pub use crate::{merklemountainrange::*, merkleproof::*};
 }
