@@ -48,49 +48,75 @@ technological merits of the potential system outlined herein.
 
 ## Goals
 
-This document describes how to implement hashed time locked contracts as an extension to [mimblewimble](MimbleWimble).
+This document describes how to implement hashed time locked contracts as an extension to [Mimblewimble].
 
 ## Related RFCs
 ## Description
 ### Abstract
-Hashed Time Locked Contracts are time locked contracts that only pays out after a certain criteria has been met or refunds the originator if a certain period has expired. 
+Hashed Time Locked Contracts ([HTLC]s) are time locked contracts that only pays out after a certain criteria has been met or refunds the originator if a certain period has expired. 
 
-#### Time Locked contracts
-In [mimblewimble](MimbleWimble) timelocked contracts can be accomplished by modifying the kernel of each transaction to include a block height. This allows a limit to how early in the blockchain lifetime the specific transaction can be included in a block. 
+### Time Locked Contracts
 
-This requires users constructing a transaction to:
-* MUST include a lockheight in the kernal of their transaction,
-* Must include the lockheight in the signed message to stop tampering with the lockheight after the transaction was constructed.
+In [Mimblewimble] time locked contracts can be accomplished by preventing a transaction to be mined or by preventing a UTXO that is available in the blockchain to be spent until certain conditions are met.
+
+#### Time Locked Transactions
+
+Time locked transactions can be accomplished by modifying the transaction kernel to include a lock height. This allows a limit to how early in the blockchain lifetime the specific transaction can be included in a block. 
+
+This requires that users constructing a transaction:
+* MUST include a lock height in the kernel of their transaction,
+* MUST include the lock height in the signature challenge to stop tampering with the lock height after the transaction was constructed.
 
 This add the following requirement to a miner:
-* MUST not add any transaction to the mined [block](block) that has not already exceeded its lockheight.
+* MUST not add any transaction to the new [block] to be mined where the blockchain's block height has not already exceeded the transaction's lock height.
 
-This also adds the following requirement to a [base node](base node):
-* MUST reject any [block](block) that contains a kernel with a lockheight not already past the [currenthead](currenthead).
+This also adds the following requirement to a [base node]:
+* MUST reject any [block] that contains a kernel with a lock height not already past the [current head].
 
-#### Hashed Time Locked Contract
-Unlike Bitcoin where this can be accomplished with a single transaction, in [mimblewimble](MimbleWimble) this is a multi-step process to construct a timelocked contract. 
+#### Time Locked UTXOs
 
-The steps are as follows:
-* MUST pay all the funds into a n-of-n [multisig](multisig) [utxo](UTXO).  
-* MUST construct a refund [transaction](transaction) paying back all funds to the sender, paying from the n-of-n [multisig](multisig) [utxo](UTXO). This [transaction](transaction) has a lockheight in the future and cannot be immediately mined. It therefor lives in the [mempool](mempool).
-* The sender MUST publish both above [transactions](transaction) at the same time. 
-* MUST construct a second [transaction](transaction) that pays the receiver the funds. This [transaction](transaction) typically makes use of a preimage to allow spending of the [transaction](transaction) if the user reveals some knowledge, allowing the user to unlock the [utxo](UTXO).
+Time locked UTXOs can be accomplished by modifying the feature flags of a UTXO to include a lock height. This allows a limit as to when in the blockchain lifetime the specific UTXO can be spent. 
 
-HTLC's in [mimblewimble](MimbleWimble) makes use of double spending the n-of-n [multisig](multisig) [utxo](UTXO) and the first valid published [transaction](transaction) can then be mined and claim the n-of-n [multisig](multisig) [utxo](UTXO). 
+This requires that users constructing a transaction:
 
-An example of a [HTLC](HTLC) in practice can be viewed at Tari University:
-[Bitcoin atomic swaps](https://tlu.tarilabs.com/protocols/atomic-swaps/AtomicSwaps.html)
-[MimbleWimble atomic swaps](https://tlu.tarilabs.com/protocols/grin-protocol-overview/MainReport.html#atomic-swaps)
+- MUST include a lock height in the feature flag of their UTXO,
+- MUST include the lock height in the signature challenge to stop tampering with the lock height after the transaction was constructed.
 
-[HTLC]: Glossary.md#Hashed-Time-Locked-Contract
+This add the following requirement to a miner:
+
+- MUST not allow a UTXO to be spent if the blockchain's block height has not already exceeded the UTXO's lock height.
+
+This also adds the following requirement to a [base node]:
+
+- MUST reject any [block] that contains a [UTXO] with a lock height not already past the [current head].
+
+### Mimblewimble N-of-N Multisig UTXO
+
+A normal Mimblewimble UTXO does not have a notion of being a [multisig] UTXO. The UTXO is hidden inside the commitment `C(v,r) = r·G + v·H` by virtue of being blinded. However, the blinding factor `r` can be composed of multiple blinding factors where `r = r1 + r2 + ... + rn`. The output commitment can then be constructed as `C(v,r) = r1·G + r2·G + ... + rn·G + v·H = (r1 + r2 + ... + rn)·G + v·H` where each participant keeps their private blinding factor hidden and only provides their public blinding factor. A multi-party aggregated signature (aggsig) scheme like Musig may be employed to sign such a transaction so that all parties' interests can be protected.
+
+The base layer is oblivious as to how the commitment and related signature were constructed. To open such commitment (in order to spend it) only the n-of-n blinding factor `r` is required, and not the original aggsig that was used to sign the transaction. The parties that wants to open the commitment needs to collaborate with special scriptless scripts to produce the n-of-n blinding factor `r`.
+
+### Hashed Time Locked Contract
+
+Unlike Bitcoin where an [HTLC] can be accomplished with a single transaction, in [Mimblewimble] it is a multi-step process. 
+
+The steps where only one sender and one receiver are involved are as follows:
+* The sender MUST pay all the funds into a [2-of-2 multisig UTXO](#mimblewimble-n-of-n-multisig-utxo), where the participants are both the sender and receiver.
+* The parties involved MUST construct a refund [transaction] paying back all funds to the sender from the 2-of-2 multisig [UTXO]. This transaction MUST have a [transaction lock height](#time-locked-transactions) in the far future so that it cannot be mined immediately. It therefor lives in the [mempool].
+* The parties involved MUST publish both above [transaction]s at the same time. 
+* The parties involved MUST construct a payout [transaction] that pay the receiver the funds. This type of [transaction] typically makes use of a preimage (similar to [adapter signatures](introduction-to-scriptless-scripts.html#adaptor-signatures)) to allow spending of the [transaction] if the user reveals some knowledge, allowing the user to unlock the UTXO.
+
+HTLC's in [Mimblewimble] makes use of double spending the n-of-n [multisig] UTXO and the first valid published [transaction] can then be mined and claim the n-of-n multisig UTXO. 
+
+An example of an [HTLC] in practice can be viewed at Tari University:
+[Mimblewimble atomic swaps](https://tlu.tarilabs.com/protocols/grin-protocol-overview/MainReport.html#atomic-swaps)
+
+[HTLC]: Glossary.md#hashed-time-locked-contract
 [mempool]: Glossary.md#mempool
-[mimblewimble]: Glossary.md#mimblewimble
+[Mimblewimble]: Glossary.md#mimblewimble
 [base node]: Glossary.md#base-node
 [block]: Glossary.md#block
-[currenthead]: Glossary.md#currenthead
+[current head]: Glossary.md#current-head
 [utxo]: Glossary.md#unspent-transaction-outputs
 [multisig]: Glossary.md#multisig
 [transaction]: Glossary.md#transaction
-
-
