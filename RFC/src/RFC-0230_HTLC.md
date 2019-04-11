@@ -60,7 +60,7 @@ In [mimblewimble](MimbleWimble) timelocked contracts can be accomplished by modi
 
 This requires users constructing a transaction to:
 * MUST include a lockheight in the kernal of their transaction,
-* Must include the lockheight in the signed message to stop tampering with the lockheight after the transaction was constructed.
+* MUST include the lockheight in the signed message to stop tampering with the lockheight after the transaction was constructed.
 
 This add the following requirement to a miner:
 * MUST not add any transaction to the mined [block](block) that has not already exceeded its lockheight.
@@ -68,14 +68,20 @@ This add the following requirement to a miner:
 This also adds the following requirement to a [base node](base node):
 * MUST reject any [block](block) that contains a kernel with a lockheight not already past the [currenthead](currenthead).
 
+### Mimblewimble N-of-N Multisig UTXO
+
+A normal Mimblewimble UTXO does not have a notion of being a [multisig] UTXO. The value of UTXO is hidden inside the commitment `C(v,r) = r·G + v·H` by virtue of being blinded. However, the blinding factor `r` can be composed of multiple blinding factors where `r = r1 + r2 + ... + rn`. The output commitment can then be constructed as `C(v,r) = r1·G + r2·G + ... + rn·G + v·H = (r1 + r2 + ... + rn)·G + v·H` where each participant keeps their private blinding factor hidden and only provides their public blinding factor. A multi-party aggregated signature scheme like Musig may be employed to sign such a transaction so that all parties' interests can be protected.
+
+The base layer is oblivious as to how the commitment and related signature were constructed. To open such commitments (in order to spend it) only the n-of-n blinding factor `r` is required. The parties that wants to open the commitment needs to collaborate n-of-n blinding factor `r`.
+
 #### Hashed Time Locked Contract
-Unlike Bitcoin where this can be accomplished with a single transaction, in [mimblewimble](MimbleWimble) this is a multi-step process to construct a timelocked contract. 
+Unlike Bitcoin where this can be accomplished with a single transaction, in [MimbleWimble](MimbleWimble) this is a multi-step process to construct a timelocked contract. 
 
 The steps are as follows:
-* MUST pay all the funds into a n-of-n [multisig](multisig) [utxo](UTXO).  
-* MUST construct a refund [transaction](transaction) paying back all funds to the sender, paying from the n-of-n [multisig](multisig) [utxo](UTXO). This [transaction](transaction) has a lockheight in the future and cannot be immediately mined. It therefor lives in the [mempool](mempool).
-* The sender MUST publish both above [transactions](transaction) at the same time. 
-* MUST construct a second [transaction](transaction) that pays the receiver the funds. This [transaction](transaction) typically makes use of a preimage to allow spending of the [transaction](transaction) if the user reveals some knowledge, allowing the user to unlock the [utxo](UTXO).
+* The sender MUST pay all the funds into a n-of-n [multisig](multisig) [utxo](UTXO).  
+* All parties invlovled MUST construct a refund [transaction](transaction) paying back all funds to the sender, paying from the n-of-n [multisig](multisig) [utxo](UTXO). This [transaction](transaction) has a [transaction lock height](#Time Locked contracts) in the future and cannot be immediately mined. It therefor lives in the [mempool](mempool).
+* The sender MUST publish both above [transactions](transaction) at the same time to ensure the receiver cannot hold him hostage. 
+* The parties MUST construct a second [transaction](transaction) that pays the receiver the funds. This [transaction](transaction) typically makes use of a preimage to allow spending of the [transaction](transaction) if the user reveals some knowledge, allowing the user to unlock the [utxo](UTXO).
 
 HTLC's in [mimblewimble](MimbleWimble) makes use of double spending the n-of-n [multisig](multisig) [utxo](UTXO) and the first valid published [transaction](transaction) can then be mined and claim the n-of-n [multisig](multisig) [utxo](UTXO). 
 

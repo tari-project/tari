@@ -192,7 +192,7 @@ A Mining Worker is responsible for performing Proof-of-Work tasks received from 
 ## Multisig
 [multisig]: #multisig
 
-Multi-signatures (Multisigs) are also known as N-of-M signatures, and this means that N amount out of M amount of peers need to agree before a transaction can be spend. N and M can also be the same amount.
+Multi-signatures (Multisigs) are also known as N-of-M signatures, this means that a minimum of N number of the M peers need to agree before a transaction can be spend. N and M can also be the same amount.
 
 ## Node ID
 [node ID]: #node-id
