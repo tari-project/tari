@@ -57,6 +57,7 @@ Hashed Time Locked Contracts ([HTLC]s) are time locked contracts that only pays 
 
 ### Time Locked Contracts
 
+
 In [Mimblewimble] time locked contracts can be accomplished by preventing a transaction to be mined or by preventing a UTXO that is available in the blockchain to be spent until certain conditions are met.
 
 #### Time Locked Transactions
@@ -69,6 +70,7 @@ This requires that users constructing a transaction:
 
 This adds the following requirement to a miner:
 * MUST not add any transaction to the new [block] to be mined where the blockchain's block height has not already exceeded the transaction's lock height.
+
 
 This also adds the following requirement to a [base node]:
 * MUST reject any [block] that contains a kernel with a lock height not already past the [current head].
