@@ -103,7 +103,7 @@ Unlike Bitcoin where an [HTLC] can be accomplished with a single transaction, in
 The steps where only one sender and one receiver are involved are as follows:
 * The sender MUST pay all the funds into a [2-of-2 multisig UTXO](#mimblewimble-n-of-n-multisig-utxo), where the participants are both the sender and receiver.
 * The parties involved MUST construct a refund [transaction] paying back all funds to the sender from the 2-of-2 multisig [UTXO]. This transaction MUST have a [transaction lock height](#time-locked-transactions) in the far future so that it cannot be mined immediately. It therefor lives in the [mempool].
-* The parties involved MUST publish both above [transaction]s at the same time. 
+* The sender MUST publish both above [transaction]s at the same time. 
 * The parties involved MUST construct a payout [transaction] that pay the receiver the funds. This type of [transaction] typically makes use of a preimage (similar to [adapter signatures](introduction-to-scriptless-scripts.html#adaptor-signatures)) to allow spending of the [transaction] if the user reveals some knowledge, allowing the user to unlock the UTXO.
 
 HTLC's in [Mimblewimble] makes use of double spending the n-of-n [multisig] UTXO and the first valid published [transaction] can then be mined and claim the n-of-n multisig UTXO. 
