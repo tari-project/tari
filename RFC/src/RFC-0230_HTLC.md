@@ -67,7 +67,7 @@ This requires that users constructing a transaction:
 * MUST include a lock height in the kernel of their transaction,
 * MUST include the lock height in the signature challenge to stop tampering with the lock height after the transaction was constructed.
 
-This add the following requirement to a miner:
+This adds the following requirement to a miner:
 * MUST not add any transaction to the new [block] to be mined where the blockchain's block height has not already exceeded the transaction's lock height.
 
 This also adds the following requirement to a [base node]:
@@ -82,7 +82,7 @@ This requires that users constructing a transaction:
 - MUST include a lock height in the feature flag of their UTXO,
 - MUST include the lock height in the signature challenge to stop tampering with the lock height after the transaction was constructed.
 
-This add the following requirement to a miner:
+This adds the following requirement to a miner:
 
 - MUST not allow a UTXO to be spent if the blockchain's block height has not already exceeded the UTXO's lock height.
 
@@ -94,7 +94,7 @@ This also adds the following requirement to a [base node]:
 
 A normal Mimblewimble UTXO does not have a notion of being a [multisig] UTXO. The UTXO is hidden inside the commitment `C(v,r) = r·G + v·H` by virtue of being blinded. However, the blinding factor `r` can be composed of multiple blinding factors where `r = r1 + r2 + ... + rn`. The output commitment can then be constructed as `C(v,r) = r1·G + r2·G + ... + rn·G + v·H = (r1 + r2 + ... + rn)·G + v·H` where each participant keeps their private blinding factor hidden and only provides their public blinding factor. A multi-party aggregated signature (aggsig) scheme like Musig may be employed to sign such a transaction so that all parties' interests can be protected.
 
-The base layer is oblivious as to how the commitment and related signature were constructed. To open such commitment (in order to spend it) only the n-of-n blinding factor `r` is required, and not the original aggsig that was used to sign the transaction. The parties that wants to open the commitment needs to collaborate with special scriptless scripts to produce the n-of-n blinding factor `r`.
+The base layer is oblivious as to how the commitment and related signature were constructed. To open such commitments (in order to spend it) only the n-of-n blinding factor `r` is required, and not the original aggsig that was used to sign the transaction. The parties that wants to open the commitment needs to collaborate with special scriptless scripts to produce the n-of-n blinding factor `r`.
 
 ### Hashed Time Locked Contract
 
