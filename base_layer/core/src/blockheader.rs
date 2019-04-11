@@ -25,6 +25,8 @@
 
 use crate::{pow::ProofOfWork, types::*};
 use chrono::{DateTime, Utc};
+use digest::Input;
+use tari_crypto::{common::Blake256, ristretto::RistrettoSecretKey};
 use tari_infra_derive::{ExtendBytes, Hashable};
 use tari_utilities::{ExtendBytes, Hashable};
 
@@ -49,7 +51,7 @@ pub struct BlockHeader {
     pub kernel_mmr: BlockHash,
     /// Total accumulated sum of kernel offsets since genesis block. We can derive the kernel offset sum for *this*
     /// block from the total kernel offset of the previous block header.
-    pub total_kernel_offset: BlindingFactor,
+    pub total_kernel_offset: PublicKey,
     /// Nonce used
     /// Proof of work summary
     pub pow: ProofOfWork,

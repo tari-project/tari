@@ -38,6 +38,10 @@ pub struct BlockchainState {
 
 impl BlockchainState {
     pub fn new() -> BlockchainState {
-        BlockchainState {}
+        BlockchainState {
+            headers: MerkleMountainRange::new(),
+            outputs: MerkleMountainRange::new(),
+            kernals: MerkleMountainRange::new(),
+        }
     }
 }

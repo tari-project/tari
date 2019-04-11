@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::types::*;
+use digest::Input;
 use tari_infra_derive::{ExtendBytes, Hashable};
 use tari_utilities::{ExtendBytes, Hashable};
 

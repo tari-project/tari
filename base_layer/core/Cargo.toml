@@ -10,7 +10,7 @@ version = "0.0.1"
 edition = "2018"
 
 [dependencies]
-tari_utilities = { path = "../../infrastructure/tari_util", version = "0.0.1" }
+tari_utilities = { path = "../../infrastructure/tari_util", version = "0.0.1", features = ["chrono_dt"]}
 bitflags = "1.0.4"
 chrono = "0.4.6"
 tari_infra_derive = { path = "../../infrastructure/derive", version = "0.0.1" }
