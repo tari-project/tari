@@ -20,5 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod connection;
-mod support;
+use derive_error::Error;
+
+#[derive(Debug, Error, Eq, PartialEq)]
+pub enum ZmqError {
+    /// Inproc address is malformed
+    MalformedInprocAddress,
+    #[error(msg_embedded, no_from, non_std)]
+    SocketError(String),
+}

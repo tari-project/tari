@@ -9,10 +9,9 @@ version = "0.0.1"
 edition = "2018"
 
 [dependencies]
-zmq = "0.8"
+clear_on_drop = "0.2.3"
 derive-error = "0.0.4"
+rand = "0.5.5"
 tari_crypto = { path = "../crypto"}
 tari_utilities = { path = "../../infrastructure/tari_util"}
-
-[dev-dependencies]
-rand = "0.5.5"
+zmq = "0.9"

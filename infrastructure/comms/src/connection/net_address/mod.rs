@@ -26,9 +26,12 @@ pub mod onion;
 pub mod parser;
 
 use derive_error::Error;
-use std::str::FromStr;
+
+use std::{fmt, str::FromStr};
 
 use self::{i2p::I2PAddress, ip::SocketAddress, onion::OnionAddress};
+
+use crate::connection::zmq::ZmqEndpoint;
 
 #[derive(Debug, Error)]
 pub enum NetAddressError {
@@ -55,7 +58,7 @@ pub enum NetAddressError {
 pub enum NetAddress {
     /// IPv4 and IPv6
     IP(SocketAddress),
-    Tor(OnionAddress),
+    Onion(OnionAddress),
     I2P(I2PAddress),
 }
 
@@ -71,7 +74,7 @@ impl NetAddress {
     /// Returns true if the [`NetAddress`] is a Tor Onion address, otherwise false
     pub fn is_tor(&self) -> bool {
         match *self {
-            NetAddress::Tor(_) => true,
+            NetAddress::Onion(_) => true,
             _ => false,
         }
     }
@@ -102,6 +105,18 @@ impl FromStr for NetAddress {
     }
 }
 
+impl fmt::Display for NetAddress {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use NetAddress::*;
+
+        match *self {
+            IP(ref addr) => write!(f, "IP({})", addr),
+            Onion(ref addr) => write!(f, "Onion({})", addr),
+            I2P(ref addr) => write!(f, "I2P({})", addr),
+        }
+    }
+}
+
 impl From<SocketAddress> for NetAddress {
     /// Converts a [`SocketAddress`] into a [`NetAddress::IP`].
     fn from(addr: SocketAddress) -> Self {
@@ -112,7 +127,7 @@ impl From<SocketAddress> for NetAddress {
 impl From<OnionAddress> for NetAddress {
     /// Converts a [`OnionAddress`] into a [`NetAddress::Tor`].
     fn from(addr: OnionAddress) -> Self {
-        NetAddress::Tor(addr)
+        NetAddress::Onion(addr)
     }
 }
 
@@ -120,6 +135,17 @@ impl From<I2PAddress> for NetAddress {
     /// Converts a [`I2PAddress`] into a [`NetAddress::I2P`].
     fn from(addr: I2PAddress) -> Self {
         NetAddress::I2P(addr)
+    }
+}
+
+impl ZmqEndpoint for NetAddress {
+    fn to_zmq_endpoint(&self) -> String {
+        match *self {
+            NetAddress::IP(ref addr) => format!("tcp://{}:{}", addr.ip(), addr.port()),
+            NetAddress::Onion(ref addr) => format!("tcp://{}:{}", addr.public_key, addr.port),
+            // TODO: need to confirm this works
+            NetAddress::I2P(ref addr) => format!("tcp://{}.b32.i2p", addr.name),
+        }
     }
 }
 
