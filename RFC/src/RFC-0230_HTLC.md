@@ -81,13 +81,15 @@ This also adds the following requirement to a [base node]:
 - MUST reject any [block] that contains a [UTXO] with a lock height not already past the [current head](current-head).
 
 #### Hashed Time Locked Contract
+Hashed time locked contracts are a way of reserving funds for a certain payment, but it only pays out to the receiver if certain conditions are met. If these are not met withing a time limit, the funds are payed back to the sender.
+
 Unlike Bitcoin where this can be accomplished with a single transaction, in [MimbleWimble] HTLCs involve a multi-step process to construct a timelocked contract. 
 
 The steps are as follows:
 * The sender MUST pay all the funds into a n-of-n [multisig](multisig) [UTXO](UTXO).  
-* All parties invlovled MUST construct a refund [transaction](transaction) paying back all funds to the sender, paying from the n-of-n [multisig](multisig) [UTXO](UTXO). This [transaction](transaction) has a [transaction lock height](#Time-Locked-contracts) in the future and cannot be immediately mined. It therefor lives in the [mempool](mempool).
+* * All parties involved MUST construct a refund [transaction] paying back all funds to the sender, spending this n-of-n [multisig] [utxo]. However, this [transaction] has a [transaction lock height](#Time Locked contracts) set in the future and cannot be immediately mined. It therefore lives in the [mempool](mempool). This means that if anything goes wrong from here on out, the sender will get his money back after the time lock expires.
 * The sender MUST publish both above [transactions](transaction) at the same time to ensure the receiver cannot hold him hostage. 
-* The parties MUST construct a second [transaction](transaction) that pays the receiver the funds. This [transaction](transaction) typically makes use of a preimage to allow spending of the [transaction](transaction) if the user reveals some knowledge, allowing the user to unlock the [UTXO](UTXO).
+* The parties MUST construct a third [transaction](transaction) that pays the receiver the funds. This [transaction](transaction) typically makes use of a preimage to allow spending of the [transaction](transaction) if the user reveals some knowledge, allowing the user to unlock the [UTXO](UTXO).
 
 HTLC's in [MimbleWimble](mimbleWimble) makes use of double spending the n-of-n [multisig](multisig) [UTXO](UTXO) and the first valid published [transaction](transaction) can then be mined and claim the n-of-n [multisig](multisig) [UTXO](UTXO). 
 
