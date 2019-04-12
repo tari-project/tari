@@ -20,5 +20,13 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod connection;
-mod support;
+/// Represents the linger behavior of a connection. This can, depending on the chosen behavior,
+/// allow a connection to finish sending messages before disconnecting.
+pub enum Linger {
+    /// Linger until all messages have been sent
+    Indefinitely,
+    /// Don't linger, close the connection immediately
+    Never,
+    /// Linger for the specified time (in milliseconds) before disconnecting.
+    Timeout(u32),
+}

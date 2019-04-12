@@ -20,5 +20,20 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod connection;
-mod support;
+use crate::connection::ConnectionError;
+
+/// The types of socket available
+pub enum SocketType {
+    Request,
+    Reply,
+    Router,
+    Dealer,
+    Pub,
+    Sub,
+    Push,
+    Pull,
+    Pair,
+}
+
+/// Result type used by `comms::connection` module
+pub type Result<T> = std::result::Result<T, ConnectionError>;

@@ -20,5 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod connection;
-mod support;
+/// Any type that can be represented as a ZeroMQ endpoint string
+pub trait ZmqEndpoint {
+    /// Convert to a ZeroMQ endpoint string
+    fn to_zmq_endpoint(&self) -> String;
+}

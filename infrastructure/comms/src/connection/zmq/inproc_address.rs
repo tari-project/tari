@@ -20,5 +20,56 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod connection;
-mod support;
+use crate::connection::zmq::{ZmqEndpoint, ZmqError};
+use rand::{distributions::Alphanumeric, EntropyRng, Rng};
+use std::{iter, str::FromStr};
+
+#[derive(Clone)]
+pub struct InprocAddress(String);
+
+impl InprocAddress {
+    pub fn random() -> Self {
+        let mut rng = EntropyRng::new();
+        let rand_str: String = iter::repeat(()).map(|_| rng.sample(Alphanumeric)).take(8).collect();
+        Self(format!("inproc://{}", rand_str))
+    }
+}
+
+impl FromStr for InprocAddress {
+    type Err = ZmqError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.len() > 9 && s.starts_with("inproc://") {
+            Ok(InprocAddress(s.to_owned()))
+        } else {
+            Err(ZmqError::MalformedInprocAddress)
+        }
+    }
+}
+
+impl ZmqEndpoint for InprocAddress {
+    fn to_zmq_endpoint(&self) -> String {
+        self.0.to_string()
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn from_str() {
+        let addr = "inproc://扩".parse::<InprocAddress>().unwrap();
+        assert_eq!("inproc://扩", addr.to_zmq_endpoint());
+
+        let result = "inporc://abc".parse::<InprocAddress>();
+        assert!(result.is_err());
+        let err = result.err().unwrap();
+        assert_eq!(ZmqError::MalformedInprocAddress, err);
+
+        let result = "inproc://".parse::<InprocAddress>();
+        assert!(result.is_err());
+        let err = result.err().unwrap();
+        assert_eq!(ZmqError::MalformedInprocAddress, err);
+    }
+}
