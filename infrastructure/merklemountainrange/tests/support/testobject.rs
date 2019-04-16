@@ -22,7 +22,7 @@
 
 use blake2::Blake2b;
 use digest::Digest;
-use tari_infra_derive::{ExtendBytes, Hashable};
+use tari_infra_derive::Hashable;
 use tari_utilities::{ExtendBytes, Hashable};
 
 #[derive(Hashable)]
