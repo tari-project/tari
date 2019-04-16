@@ -575,4 +575,23 @@ mod test {
         let (k, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         assert_eq!(pk, RistrettoPublicKey::from_secret_key(&k));
     }
+
+    #[test]
+    fn convert_from_u64() {
+        let k = RistrettoSecretKey::from(42u64);
+        assert_eq!(
+            k.to_hex(),
+            "2a00000000000000000000000000000000000000000000000000000000000000"
+        );
+        let k = RistrettoSecretKey::from(256u64);
+        assert_eq!(
+            k.to_hex(),
+            "0001000000000000000000000000000000000000000000000000000000000000"
+        );
+        let k = RistrettoSecretKey::from(100_000_000u64);
+        assert_eq!(
+            k.to_hex(),
+            "00e1f50500000000000000000000000000000000000000000000000000000000"
+        );
+    }
 }
