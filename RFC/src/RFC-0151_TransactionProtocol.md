@@ -91,7 +91,7 @@ preferable if a secure scheme could be found where each recipient interacts only
 calculate these sums themselves.
 
 Unfortunately, as we discuss below, it seems that it's not possible using any known scheme that satisfies both this
-privacy goal while achieving the desired privacy level.
+privacy goal while achieving the desired security level.
 
 
 ### The issue with multiple senders
