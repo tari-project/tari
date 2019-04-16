@@ -23,18 +23,18 @@
 use crate::support::{self, utils as support_utils};
 use std::time::Duration;
 use tari_comms::connection::{
-    p2p::inbound::InboundConnection,
-    zmq::{curve_keypair, Context, InprocAddress},
+    p2p::{connection::Connection, Direction},
+    zmq::{curve_keypair, Context, CurveEncryption, InprocAddress},
     ConnectionError,
 };
 
 #[test]
-fn receive_timeout() {
+fn inbound_receive_timeout() {
     let ctx = Context::new();
 
     let addr = InprocAddress::random();
 
-    let conn = InboundConnection::new(&ctx).bind(&addr).unwrap();
+    let conn = Connection::new(&ctx, Direction::Inbound).establish(&addr).unwrap();
 
     let result = conn.receive(1);
     assert!(result.is_err());
@@ -46,14 +46,14 @@ fn receive_timeout() {
 }
 
 #[test]
-fn receive_inproc() {
+fn inbound_recv_send_inproc() {
     let ctx = Context::new();
 
     let addr = InprocAddress::random();
 
-    let req_rep_pattern = support::comms_patterns::async_request_reply();
+    let req_rep_pattern = support::comms_patterns::async_request_reply(Direction::Outbound);
 
-    let conn = InboundConnection::new(&ctx).bind(&addr).unwrap();
+    let conn = Connection::new(&ctx, Direction::Inbound).establish(&addr).unwrap();
 
     let signal = req_rep_pattern
         .set_endpoint(addr.clone())
@@ -79,24 +79,24 @@ fn receive_inproc() {
 }
 
 #[test]
-fn receive_encrypted_tcp() {
+fn inbound_recv_send_encrypted_tcp() {
     let ctx = Context::new();
 
     let addr = support_utils::find_available_tcp_net_address("127.0.0.1").unwrap();
 
-    let req_rep_pattern = support::comms_patterns::async_request_reply();
+    let req_rep_pattern = support::comms_patterns::async_request_reply(Direction::Outbound);
 
     let (sk, pk) = curve_keypair::generate().unwrap();
 
-    let conn = InboundConnection::new(&ctx)
-        .set_curve_secret_key(sk)
-        .bind(&addr)
+    let conn = Connection::new(&ctx, Direction::Inbound)
+        .set_curve_encryption(CurveEncryption::Server { secret_key: sk })
+        .establish(&addr)
         .unwrap();
 
     let signal = req_rep_pattern
         .set_endpoint(addr.clone())
         .set_identity("the dude")
-        .set_public_key(pk)
+        .set_server_public_key(pk)
         .set_send_data(vec![(0..255).map(|i| i as u8).collect::<Vec<_>>()])
         .run(ctx.clone());
 
@@ -104,6 +104,73 @@ fn receive_encrypted_tcp() {
     assert_eq!(frames.len(), 2);
 
     conn.send(&["the dude", "OK"]).unwrap();
+
+    // Wait for pattern to exit
+    signal.recv_timeout(Duration::from_millis(200)).unwrap();
+}
+
+#[test]
+fn outbound_send_recv_inproc() {
+    let ctx = Context::new();
+
+    let addr = InprocAddress::random();
+
+    let req_rep_pattern = support::comms_patterns::async_request_reply(Direction::Inbound);
+
+    let signal = req_rep_pattern
+        .set_endpoint(addr.clone())
+        .set_send_data(vec!["OK".as_bytes().to_vec()])
+        .run(ctx.clone());
+
+    let conn = Connection::new(&ctx, Direction::Outbound)
+        .set_identity("identity")
+        .establish(&addr)
+        .unwrap();
+
+    conn.send(&["identity"]).unwrap();
+
+    let frames = conn.receive(1000).unwrap();
+
+    assert_eq!(1, frames.len());
+    assert_eq!("OK", String::from_utf8_lossy(frames[0].as_slice()));
+
+    // Wait for pattern to exit
+    signal.recv_timeout(Duration::from_millis(200)).unwrap();
+}
+
+#[test]
+fn outbound_send_recv_encrypted_tcp() {
+    let ctx = Context::new();
+
+    let addr = support_utils::find_available_tcp_net_address("127.0.0.1").unwrap();
+
+    let req_rep_pattern = support::comms_patterns::async_request_reply(Direction::Inbound);
+
+    let (sk, spk) = curve_keypair::generate().unwrap();
+    let (csk, cpk) = curve_keypair::generate().unwrap();
+
+    let signal = req_rep_pattern
+        .set_endpoint(addr.clone())
+        .set_secret_key(sk)
+        .set_send_data(vec!["OK".as_bytes().to_vec()])
+        .run(ctx.clone());
+
+    let conn = Connection::new(&ctx, Direction::Outbound)
+        .set_curve_encryption(CurveEncryption::Client {
+            secret_key: csk,
+            public_key: cpk,
+            server_public_key: spk,
+        })
+        .set_identity("identity")
+        .establish(&addr)
+        .unwrap();
+
+    conn.send(&["identity"]).unwrap();
+
+    let frames = conn.receive(1000).unwrap();
+
+    assert_eq!(1, frames.len());
+    assert_eq!("OK", String::from_utf8_lossy(frames[0].as_slice()));
 
     // Wait for pattern to exit
     signal.recv_timeout(Duration::from_millis(200)).unwrap();

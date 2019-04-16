@@ -29,7 +29,7 @@ mod inproc_address;
 
 pub use self::{
     context::Context,
-    curve_keypair::{CurvePublicKey, CurveSecretKey},
+    curve_keypair::{CurveEncryption, CurvePublicKey, CurveSecretKey},
     endpoint::ZmqEndpoint,
     error::ZmqError,
     inproc_address::InprocAddress,

@@ -32,6 +32,24 @@ pub fn generate() -> Result<(CurveSecretKey, CurvePublicKey)> {
     return Ok((CurveSecretKey(keypair.secret_key), CurvePublicKey(keypair.public_key)));
 }
 
+//---------------------------------- Curve Encryption --------------------------------------------//
+
+/// Represents settings for asymmetric curve encryption. Every socket with encryption enabled
+/// must either act as a server or client.
+pub enum CurveEncryption {
+    /// No encryption
+    None,
+    /// Act as a server which accepts all connections which have a public key corresponding to the
+    /// given secret key.
+    Server { secret_key: CurveSecretKey },
+    /// Act as a client which connects to a server with a given server public key and a client keypair.
+    Client {
+        secret_key: CurveSecretKey,
+        public_key: CurvePublicKey,
+        server_public_key: CurvePublicKey,
+    },
+}
+
 //---------------------------------- Curve Secret Key --------------------------------------------//
 
 /// Represents a Curve25519 secret key
