@@ -63,7 +63,7 @@ The goal is to describe a transaction protocol that
 
 ## Description
 
-The Tari base layer is built using [Mimblewimble], which requires all parties involved in a Tari transfer must interact
+The Tari base layer is built using [Mimblewimble], which requires that all parties involved in a Tari transfer must interact
 to construct a valid [Mimblewimble transaction].
 
 A valid transaction involves:
