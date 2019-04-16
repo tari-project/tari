@@ -82,7 +82,7 @@ fn inbound_recv_send_inproc() {
 fn inbound_recv_send_encrypted_tcp() {
     let ctx = Context::new();
 
-    let addr = support_utils::find_available_tcp_net_address("127.0.0.1").unwrap();
+    let addr = support_utils::find_available_tcp_net_address("127.0.0.1", 20000..20100).unwrap();
 
     let req_rep_pattern = support::comms_patterns::async_request_reply(Direction::Outbound);
 
@@ -142,7 +142,7 @@ fn outbound_send_recv_inproc() {
 fn outbound_send_recv_encrypted_tcp() {
     let ctx = Context::new();
 
-    let addr = support_utils::find_available_tcp_net_address("127.0.0.1").unwrap();
+    let addr = support_utils::find_available_tcp_net_address("127.0.0.1", 20101..20200).unwrap();
 
     let req_rep_pattern = support::comms_patterns::async_request_reply(Direction::Inbound);
 

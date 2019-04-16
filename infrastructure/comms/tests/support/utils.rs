@@ -20,11 +20,14 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::net::{TcpListener, ToSocketAddrs};
+use std::{
+    net::{TcpListener, ToSocketAddrs},
+    ops::Range,
+};
 use tari_comms::connection::net_address::NetAddress;
 
-pub fn find_available_tcp_net_address(host: &str) -> Option<NetAddress> {
-    for port in 20000..std::u16::MAX {
+pub fn find_available_tcp_net_address(host: &str, range: Range<u16>) -> Option<NetAddress> {
+    for port in range {
         let addr = format!("{}:{}", host, port);
         if is_port_open(&addr) {
             return addr.parse().ok();
