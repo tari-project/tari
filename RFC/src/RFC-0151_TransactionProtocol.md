@@ -4,7 +4,7 @@
 
 ![status: draft](theme/images/status-draft.svg)
 
-**Maintainer(s)**: <Maintainer name> <github username>
+**Maintainer(s)**: Cayle Sharrock <CjS77>
 
 # License
 
@@ -97,7 +97,7 @@ privacy goal while achieving the desired privacy level.
 ### The issue with multiple senders
 
 To increase privacy, the public excess values are [offset] by a constant random value. The choice of this value, as well
-as fee selection can only be set once per transaction. The privilege of selecting these values is generally bestowed on
+as fee selection, can only be set once per transaction. The privilege of selecting these values is generally bestowed on
 the sender, since she pays the fee. Allowing multiple sending parties (or equivalently, allowing recipients to provide
 inputs) would require a negotiation round to set the fee and offset before the transaction could be constructed. This is
 a complication we don't want to deal with, and so all schemes presented here allow exactly one sender.
@@ -142,7 +142,7 @@ sequenceDiagram
         Sender-->>+Receivers: [tx_id, [Rs, Ri] [Xs, Pi]]
         note left of Sender: CollectingSignatures
         note right of Receivers: Signing
-        Receivers-->>Receivers: validate nonce and pubkey sum
+        Receivers-->>Receivers: validate nonces, pubkeys and pubkey sum
         alt invalid
            Receivers--XSender: failed
         end
@@ -157,6 +157,19 @@ sequenceDiagram
       Sender--XReceivers: [tx_id, Failed]
     end
 </div>
+
+** Legend **
+
+| Symbol | Meaning                       |
+|:-------|:------------------------------|
+| tx_id  | Transaction identifier        |
+| amt_i  | Amount sent to i-th recipient |
+| Rs, Ri | Public nonce                  |
+| Xs, Pi | Public excess / key           |
+| m      | Message metadata              |
+| C_i    | Commitment                    |
+| RP_i   | Range proof                   |
+| \[..\] | Vector of data                |
 
 ## Transaction ID
 
