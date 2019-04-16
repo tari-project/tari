@@ -219,6 +219,17 @@ registration transaction to begin acting as a VN on the DAN.
 
 The minimum amount of time that a VN registration lasts, the RegistrationCollateral can only be released after this minimum period has elapsed.
 
+
+## Spending Key
+
+A private spending key is a private key that permits spending of a [UTXO]. It is also sometimes referred to as a
+Blinding Factor, since is Tari (and Mimblewimble) outputs, the value of a UTXO is _blinded_ by the spending key:
+
+$$ C = v.H + k.G $$
+
+The public key, \\(P = k.G\\) is known as the _public_ spending key.
+
+
 ## SynchronisationStrategy
 
 The generalised approach for a [Base Node] to obtain the current state of the blockchain from the peer-to-peer network.

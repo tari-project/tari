@@ -9,6 +9,7 @@
   - [RFC-0130: Mining](RFC-0130_Mining.md)
   - [RFC-0140: Sync and Seeding](RFC-0140_Syncing_and_seeding.md)
   - [RFC-0150: Wallets](RFC-0150_Wallets.md)
+  - [RFC-0151: Transaction protocol](RFC-0151_TransactionProtocol.md)
   - [RFC-0170: Network Communication Protocol](RFC-0170_NetworkCommunicationProtocol.md)
       - [RFC-0171: Message Serialisation](RFC-0171_MessageSerialisation.md)
       - [RFC-0172: Peer to Peer Messaging Protocol](RFC-0172_PeerToPeerMessagingProtocol.md)
