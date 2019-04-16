@@ -42,6 +42,14 @@ use tari_crypto::{
 use tari_infra_derive::HashableOrdering;
 use tari_utilities::{ByteArray, Hashable};
 
+// These are set fairly arbitrarily at the moment. We'll need to do some modelling / testing to tune these values.
+pub const MAX_TRANSACTION_INPUTS: usize = 500;
+pub const MAX_TRANSACTION_OUTPUTS: usize = 100;
+pub const MAX_TRANSACTION_RECIPIENTS: usize = 15;
+pub const MINIMUM_TRANSACTION_FEE: u64 = 100;
+
+//--------------------------------------        Bit flag features   --------------------------------------------------//
+
 bitflags! {
     /// Options for a kernel's structure or use.
     /// TODO:  expand to accommodate Tari DAN transaction types, such as namespace and validator node registrations
