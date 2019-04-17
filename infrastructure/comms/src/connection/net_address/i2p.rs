@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::str::FromStr;
+use std::{fmt, str::FromStr};
 
 use super::{parser::AddressParser, NetAddressError};
 
@@ -39,6 +39,12 @@ impl FromStr for I2PAddress {
             Some(addr) => Ok(addr),
             None => Err(NetAddressError::ParseFailed),
         }
+    }
+}
+
+impl fmt::Display for I2PAddress {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}.b32.i2p", self.name)
     }
 }
 

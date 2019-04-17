@@ -20,5 +20,17 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod connection;
-mod support;
+pub mod curve_keypair;
+
+mod context;
+mod endpoint;
+mod error;
+mod inproc_address;
+
+pub use self::{
+    context::Context,
+    curve_keypair::{CurveEncryption, CurvePublicKey, CurveSecretKey},
+    endpoint::ZmqEndpoint,
+    error::ZmqError,
+    inproc_address::InprocAddress,
+};

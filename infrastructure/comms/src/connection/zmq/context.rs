@@ -20,5 +20,35 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod connection;
-mod support;
+use zmq;
+
+use crate::connection::{types::SocketType, zmq::ZmqError};
+
+#[derive(Clone)]
+pub struct Context(zmq::Context);
+
+impl Context {
+    pub fn new() -> Self {
+        Self(zmq::Context::new())
+    }
+
+    pub fn socket(&self, socket_type: SocketType) -> Result<zmq::Socket, ZmqError> {
+        use SocketType::*;
+
+        let zmq_socket_type = match socket_type {
+            Request => zmq::REQ,
+            Reply => zmq::REP,
+            Router => zmq::ROUTER,
+            Dealer => zmq::DEALER,
+            Pub => zmq::PUB,
+            Sub => zmq::SUB,
+            Push => zmq::PUSH,
+            Pull => zmq::PULL,
+            Pair => zmq::PAIR,
+        };
+
+        self.0
+            .socket(zmq_socket_type)
+            .map_err(|e| ZmqError::SocketError(format!("{}", e)))
+    }
+}

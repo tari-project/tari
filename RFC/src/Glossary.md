@@ -99,12 +99,12 @@ others, with the ability to reveal the committed value later. Commitments are de
 value or statement after they have committed to it.
 
 ## Communication Node
-[communication node]: #communication-node 'A communication node that is responsible for maintaining the Tari communication network'
+[communication node]: #communication-node "A communication node that is responsible for maintaining the Tari communication network"
 
 A Communication Node is either a Validator Node or Base Node that is part of the Tari communication network. It maintains the network and is responsible for forwarding and propagating joining requests, discovery requests and data messages on the communication network.
 
 ## Communication Client
-[communication client]: #communication-client 'A communication client that makes use of the Tari communication network, but does not maintain it'
+[communication client]: #communication-client "A communication client that makes use of the Tari communication network, but does not maintain it"
 
 A Communication Client is a Wallet or Asset Manager that makes use of the Tari communication network to send joining and discovery requests. A Communication Client does not maintain the communication network and is not responsible for forwarding or propagating any requests or data messages.
 
@@ -141,6 +141,11 @@ rigid rule-sets with parameters that can be set by Asset Issuers.
 Digital asset tokens (or often, just "tokens") are the finite set of digital entities associated with a given digital 
 asset. Depending on the DA created, tokens can represent tickets, in-game items, collectibles or loyalty points. They
  are bound to the [digital asset] that created them.
+
+## Hashed Time Locked Contract
+[htlc]: #Hashed-Time-Locked-Contract 'or just, "HTLC". 
+
+A time locked contract that only pays out after a certain criteria has been met or refunds the originator if a certain period has expired.
 
 
 ## Instructions
@@ -184,6 +189,13 @@ A Mining Server is responsible for constructing new blocks by bundling transacti
 
 A Mining Worker is responsible for performing Proof-of-Work tasks received from its parent [Mining Server].
 
+## Multisig
+[multisig]: #multisig
+
+Multi-signatures (Multisigs) are also known as N-of-M signatures, this means that a minimum of N number of the M peers need to agree before a transaction can be spent. N and M can be equal; which is a special case and is often referred to as an N-of-N Multisig.
+
+[TLU musig](<https://tlu.tarilabs.com/cryptography/musig-schnorr-sig-scheme/The_MuSig_Schnorr_Signature_Scheme.html>)
+
 ## Node ID
 [node ID]: #node-id
 
@@ -206,6 +218,17 @@ registration transaction to begin acting as a VN on the DAN.
 [RegistrationTerm]: #registrationterm "The minimum amount of time that a VN registration lasts"
 
 The minimum amount of time that a VN registration lasts, the RegistrationCollateral can only be released after this minimum period has elapsed.
+
+
+## Spending Key
+
+A private spending key is a private key that permits spending of a [UTXO]. It is also sometimes referred to as a
+Blinding Factor, since is Tari (and Mimblewimble) outputs, the value of a UTXO is _blinded_ by the spending key:
+
+$$ C = v.H + k.G $$
+
+The public key, \\(P = k.G\\) is known as the _public_ spending key.
+
 
 ## SynchronisationStrategy
 
