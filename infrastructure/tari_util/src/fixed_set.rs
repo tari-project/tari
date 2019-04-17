@@ -27,7 +27,7 @@ pub struct FixedSet<T> {
     items: Vec<Option<T>>,
 }
 
-impl<T: Clone + PartialEq> FixedSet<T> {
+impl<T: Clone + PartialEq + Default> FixedSet<T> {
     /// Creates a new fixed set of size n.
     pub fn new(n: usize) -> FixedSet<T> {
         FixedSet { items: vec![None; n] }
@@ -85,7 +85,10 @@ impl<T: Clone + PartialEq> FixedSet<T> {
     where for<'a> &'a T: Add<&'a T, Output = T> {
         // This function uses HTRB to work: See https://doc.rust-lang.org/nomicon/hrtb.html
         // or here https://users.rust-lang.org/t/lifetimes-for-type-constraint-where-one-reference-is-local/11087
-        if self.size() == 0 || !self.is_full() {
+        if self.size() == 0 {
+            return Some(T::default());
+        }
+        if !self.is_full() {
             return None;
         }
         let mut iter = self.items.iter().filter_map(|v| v.as_ref());
@@ -96,6 +99,11 @@ impl<T: Clone + PartialEq> FixedSet<T> {
         }
         Some(sum)
     }
+
+    /// Collects all non-empty elements of the set into a Vec instance
+    pub fn into_vec(self) -> Vec<T> {
+        self.items.into_iter().filter_map(|v| v).collect()
+    }
 }
 
 //-------------------------------------------         Tests              ---------------------------------------------//
@@ -104,7 +112,7 @@ impl<T: Clone + PartialEq> FixedSet<T> {
 mod test {
     use super::FixedSet;
 
-    #[derive(Eq, PartialEq, Clone, Debug)]
+    #[derive(Eq, PartialEq, Clone, Debug, Default)]
     struct Foo {
         baz: String,
     }
@@ -115,6 +123,7 @@ mod test {
         assert!(s.is_full(), "Set should be full");
         assert_eq!(s.set_item(1, 1), false, "Should not be able to set item");
         assert_eq!(s.get_item(0), None, "Should not return a value");
+        assert_eq!(s.sum(), Some(0));
     }
 
     fn data(s: &str) -> Foo {
