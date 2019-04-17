@@ -36,8 +36,8 @@ use std::ops::{Add, Sub};
 #[derive(Debug, PartialEq, Eq, Clone)]
 #[allow(non_snake_case)]
 pub struct PedersenBaseOnRistretto255 {
-    G: RistrettoPoint,
-    H: RistrettoPoint,
+    pub(crate) G: RistrettoPoint,
+    pub(crate) H: RistrettoPoint,
 }
 
 pub const RISTRETTO_PEDERSEN_G: RistrettoPoint = RISTRETTO_BASEPOINT_POINT;
