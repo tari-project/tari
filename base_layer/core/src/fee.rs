@@ -1,4 +1,4 @@
-// Copyright 2018 The Tari Project
+// Copyright 2019. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,14 +20,28 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#[macro_use]
-extern crate bitflags;
+use crate::transaction::MINIMUM_TRANSACTION_FEE;
 
-pub mod block;
-pub mod blockheader;
-pub mod fee;
-pub mod message;
-pub mod pow;
-pub mod range_proof;
-pub mod transaction;
-pub mod types;
+pub struct Fee {}
+
+pub const COST_PER_INPUT: u64 = 1;
+pub const COST_PER_OUTPUT: u64 = 4;
+pub const BASE_COST: u64 = 1;
+
+impl Fee {
+    /// Computes the absolute transaction fee given the fee-per-gram, and the size of the transaction
+    pub fn calculate(fee_per_gram: u64, num_inputs: usize, num_outputs: usize) -> u64 {
+        BASE_COST + (COST_PER_INPUT * num_inputs as u64 + COST_PER_OUTPUT * num_outputs as u64) * fee_per_gram
+    }
+
+    /// Computes the absolute transaction fee using `calculate`, but the resulting fee will always be at least the
+    /// minimum network transaction fee.
+    pub fn calculate_with_minimum(fee_per_gram: u64, num_inputs: usize, num_outputs: usize) -> u64 {
+        let fee = Fee::calculate(fee_per_gram, num_inputs, num_outputs);
+        if fee < MINIMUM_TRANSACTION_FEE {
+            MINIMUM_TRANSACTION_FEE
+        } else {
+            fee
+        }
+    }
+}
