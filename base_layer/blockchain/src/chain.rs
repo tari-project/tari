@@ -49,7 +49,14 @@ impl Chain {
         }
     }
 
-    pub fn process_new_block(&self, _new_block: &Block) -> Result<(), ChainError> {
+    /// This function will process a newly receivedd block
+    pub fn process_new_block(&self, new_block: &Block) -> Result<(), ChainError> {
+        self.validate_new_block(new_block)
+    }
+
+    /// This block will validate the block and enforce the consensus rules on the block that dont require looking at
+    /// state, the all transactions have been signed, count up to zero commitments etc)
+    pub fn validate_new_block(&self, _new_block: &Block) -> Result<(), ChainError> {
         Ok(())
     }
 }

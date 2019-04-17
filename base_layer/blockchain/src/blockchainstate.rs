@@ -22,8 +22,10 @@
 
 // This file is used to store the current blockchain state
 
+use crate::error::StateError;
 use merklemountainrange::mmr::*;
 use tari_core::{
+    block::Block,
     blockheader::BlockHeader,
     transaction::{TransactionKernel, TransactionOutput},
     types::*,
@@ -33,15 +35,27 @@ use tari_core::{
 pub struct BlockchainState {
     _headers: MerkleMountainRange<BlockHeader, SignatureHash>,
     _outputs: MerkleMountainRange<TransactionOutput, SignatureHash>,
-    _kernals: MerkleMountainRange<TransactionKernel, SignatureHash>,
+    _kernels: MerkleMountainRange<TransactionKernel, SignatureHash>,
 }
 
 impl BlockchainState {
+    /// Creates a new empty blockchainstate
     pub fn new() -> BlockchainState {
         BlockchainState {
             _headers: MerkleMountainRange::new(),
             _outputs: MerkleMountainRange::new(),
-            _kernals: MerkleMountainRange::new(),
+            _kernels: MerkleMountainRange::new(),
         }
+    }
+
+    /// This function  will process a new block.
+    /// Note the block must have been validated by the chainstate before.
+    pub fn process_new_block(&self, new_block: &Block) -> Result<(), StateError> {
+        self.validate_new_block(new_block)
+    }
+
+    /// This function will validate the block in terms of the current state.
+    pub fn validate_new_block(&self, _new_block: &Block) -> Result<(), StateError> {
+        Ok(())
     }
 }
