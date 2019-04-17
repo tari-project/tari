@@ -278,6 +278,17 @@ The minimum amount of time that a VN registration lasts, the RegistrationCollate
 The reorg pool is part of the [mempool] and stores all [transaction]s that have recently been included in blocks in case a blockchain reorganization occurs and the transactions need to be restored to the [transaction pool].
 
 
+## Spending Key
+[spending key]: #spending-key
+
+A private spending key is a private key that permits spending of a [UTXO]. It is also sometimes referred to as a
+Blinding Factor, since is Tari (and Mimblewimble) outputs, the value of a UTXO is _blinded_ by the spending key:
+
+$$ C = v.H + k.G $$
+
+The public key, \\(P = k.G\\) is known as the _public_ spending key.
+
+
 ## SynchronisationState
 [SynchronisationState]: #synchronisationstate
 

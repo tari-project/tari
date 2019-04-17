@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 pub mod connection;
-pub mod inbound;
+pub mod peer_connection;
 pub mod types;
 
-pub use self::types::Linger;
+pub use self::types::*;
