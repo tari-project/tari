@@ -28,3 +28,9 @@ use derive_error::Error;
 pub enum ChainError {
     Brokenchain, // place holder for real error
 }
+
+/// The chainstate is used to present all generic chain error of the actual blockchain state
+#[derive(Debug, Error)]
+pub enum StateError {
+    Brokenchain, // place holder for real error
+}

@@ -40,7 +40,7 @@ use std::{
     fmt,
     ops::{Add, Mul, Sub},
 };
-use tari_utilities::{ByteArray, ByteArrayError, Hashable};
+use tari_utilities::{ByteArray, ByteArrayError, ExtendBytes, Hashable};
 
 /// The [SecretKey](trait.SecretKey.html) implementation for [Ristretto](https://ristretto.group) is a thin wrapper
 /// around the Dalek [Scalar](struct.Scalar.html) type, representing a 256-bit integer (mod the group order).
@@ -257,13 +257,21 @@ impl PublicKey for RistrettoPublicKey {
     }
 }
 
-/// Requires custom Hashable implementation for RistrettoPublicKey as CompressedRistretto doesnt implement this trait
+// Requires custom Hashable implementation for RistrettoPublicKey as CompressedRistretto doesnt implement this trait
 impl Hashable for RistrettoPublicKey {
     fn hash(&self) -> Vec<u8> {
         let mut hasher = HashDigest::new();
         let buf: Vec<u8> = Vec::new();
         hasher.input(&buf);
         hasher.result().to_vec()
+    }
+}
+
+// Requires custom Extendbytes implementation for RistrettoPublicKey as CompressedRistretto doesnt implement this trait
+impl ExtendBytes for RistrettoPublicKey {
+    fn append_raw_bytes(&self, buf: &mut Vec<u8>) {
+        let bytes = self.as_bytes();
+        buf.extend_from_slice(&bytes);
     }
 }
 

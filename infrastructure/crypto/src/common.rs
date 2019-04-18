@@ -34,6 +34,17 @@ use digest::{
 #[derive(Clone, Debug)]
 pub struct Blake256(VarBlake2b);
 
+impl Blake256 {
+    pub fn new() -> Blake256 {
+        let h = VarBlake2b::new(32).unwrap();
+        Blake256(h)
+    }
+
+    pub fn result(self) -> GenericArray<u8, U32> {
+        self.fixed_result()
+    }
+}
+
 impl Default for Blake256 {
     fn default() -> Blake256 {
         let h = VarBlake2b::new(32).unwrap();
