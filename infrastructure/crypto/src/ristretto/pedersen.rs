@@ -31,7 +31,12 @@ use curve25519_dalek::{
 
 use crate::{commitment::HomomorphicCommitmentFactory, ristretto::RistrettoSecretKey};
 use curve25519_dalek::scalar::Scalar;
-use std::ops::{Add, Sub};
+use std::{
+    borrow::Borrow,
+    cmp::Ordering,
+    iter::Sum,
+    ops::{Add, Sub},
+};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 #[allow(non_snake_case)]
@@ -56,7 +61,7 @@ lazy_static! {
     pub static ref DEFAULT_RISTRETTO_PEDERSON_BASE: PedersenBaseOnRistretto255 = PedersenBaseOnRistretto255::default();
 }
 
-#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct PedersenOnRistretto255 {
     base: &'static PedersenBaseOnRistretto255,
     commitment: RistrettoPublicKey,
@@ -71,6 +76,7 @@ impl PedersenOnRistretto255 {
 impl HomomorphicCommitmentFactory for PedersenBaseOnRistretto255 {
     type C = PedersenOnRistretto255;
     type K = RistrettoSecretKey;
+    type PK = RistrettoPublicKey;
 
     fn create(k: &RistrettoSecretKey, v: &RistrettoSecretKey) -> PedersenOnRistretto255 {
         let base = &DEFAULT_RISTRETTO_PEDERSON_BASE;
@@ -88,6 +94,14 @@ impl HomomorphicCommitmentFactory for PedersenBaseOnRistretto255 {
         PedersenOnRistretto255 {
             base,
             commitment: RistrettoPublicKey::new_from_pk(c),
+        }
+    }
+
+    fn from_public_key(k: &RistrettoPublicKey) -> PedersenOnRistretto255 {
+        let base = &DEFAULT_RISTRETTO_PEDERSON_BASE;
+        PedersenOnRistretto255 {
+            base,
+            commitment: k.clone(),
         }
     }
 }
@@ -123,23 +137,11 @@ impl<'b> Add for &'b PedersenOnRistretto255 {
     }
 }
 
-/// Add two commitments together
-/// #panics
-/// * If the base values are not equal
-impl Add for PedersenOnRistretto255 {
-    type Output = PedersenOnRistretto255;
-
-    fn add(self, rhs: PedersenOnRistretto255) -> Self::Output {
-        assert_eq!(self.base, rhs.base, "Bases are unequal");
-        let lhp = self.commitment.point;
-        let rhp = rhs.commitment.point;
-        let sum = lhp + rhp;
-        PedersenOnRistretto255 {
-            base: self.base,
-            commitment: RistrettoPublicKey::new_from_pk(sum),
-        }
-    }
-}
+define_add_variants!(
+    LHS = PedersenOnRistretto255,
+    RHS = PedersenOnRistretto255,
+    Output = PedersenOnRistretto255
+);
 
 /// Subtracts the left commitment from the right commitment
 /// #panics
@@ -156,6 +158,28 @@ impl<'b> Sub for &'b PedersenOnRistretto255 {
             base: self.base,
             commitment: RistrettoPublicKey::new_from_pk(sum),
         }
+    }
+}
+
+impl<T> Sum<T> for PedersenOnRistretto255
+where T: Borrow<PedersenOnRistretto255>
+{
+    fn sum<I>(iter: I) -> Self
+    where I: Iterator<Item = T> {
+        let sum = iter.map(|c| c.borrow().as_public_key().point).sum();
+        let sum = RistrettoPublicKey::new_from_pk(sum);
+        PedersenBaseOnRistretto255::from_public_key(&sum)
+    }
+}
+
+impl PartialOrd for PedersenOnRistretto255 {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+impl Ord for PedersenOnRistretto255 {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.commitment.cmp(&other.commitment)
     }
 }
 
@@ -246,6 +270,27 @@ mod test {
             commitment: RistrettoPublicKey::new_from_pk(c),
         };
         let _ = &c1 + &c2;
+    }
+
+    #[test]
+    fn sum_commitment_vector() {
+        let mut rng = rand::OsRng::new().unwrap();
+        let mut v_sum = RistrettoSecretKey::default();
+        let mut k_sum = RistrettoSecretKey::default();
+        let zero = RistrettoSecretKey::default();
+        let mut c_sum = PedersenBaseOnRistretto255::create(&zero, &zero);
+        let mut commitments = Vec::with_capacity(100);
+        for _ in 0..100 {
+            let v = RistrettoSecretKey::random(&mut rng);
+            v_sum = &v_sum + &v;
+            let k = RistrettoSecretKey::random(&mut rng);
+            k_sum = &k_sum + &k;
+            let c = PedersenBaseOnRistretto255::create(&k, &v);
+            c_sum = &c_sum + &c;
+            commitments.push(c);
+        }
+        assert!(c_sum.open(&k_sum, &v_sum));
+        assert_eq!(c_sum, commitments.iter().sum());
     }
 
 }

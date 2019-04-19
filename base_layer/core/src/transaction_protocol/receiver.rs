@@ -1,4 +1,4 @@
-// Copyright 2018 The Tari Project
+// Copyright 2019. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,15 +20,44 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#[macro_use]
-extern crate bitflags;
+use crate::{
+    transaction::TransactionOutput,
+    transaction_protocol::TransactionProtocolError,
+    types::{PublicKey, SecretKey, Signature},
+};
+use std::collections::HashMap;
+use tari_crypto::challenge::MessageHash;
 
-pub mod block;
-pub mod blockheader;
-pub mod fee;
-pub mod message;
-pub mod pow;
-pub mod range_proof;
-pub mod transaction;
-pub mod transaction_protocol;
-pub mod types;
+pub enum RecipientState {
+    Finalized(RecipientSignedTransactionData),
+    Failed(TransactionProtocolError),
+}
+
+/// An enum describing the types of information that a recipient can send back to the receiver
+#[derive(Debug, Clone)]
+pub(super) enum RecipientInfo {
+    None,
+    Single(Option<Box<RecipientSignedTransactionData>>),
+    Multiple(HashMap<u64, MultiRecipientInfo>),
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct MultiRecipientInfo {
+    pub commitment: MessageHash,
+    pub data: RecipientSignedTransactionData,
+}
+
+/// This is the message containing the public data that the Receiver will send back to the Sender
+#[derive(Clone, Debug)]
+pub struct RecipientSignedTransactionData {
+    pub tx_id: u64,
+    pub output: TransactionOutput,
+    pub public_spend_key: PublicKey,
+    pub partial_signature: Signature,
+}
+
+pub struct ReceiverTransactionProtocol {
+    state: RecipientState,
+}
+
+impl ReceiverTransactionProtocol {}
