@@ -192,7 +192,7 @@ impl SenderTransactionInitializer {
         }
     }
 
-    fn err(self, msg: &str) -> Result<SenderTransactionProtocol, BuildError> {
+    fn build_err<T>(self, msg: &str) -> Result<T, BuildError> {
         Err(BuildError {
             builder: self,
             message: msg.to_string(),
@@ -222,17 +222,17 @@ impl SenderTransactionInitializer {
             message.push("Too many inputs".into());
         }
         if message.len() > 0 {
-            return self.err(&message.join(","));
+            return self.build_err(&message.join(","));
         }
         // Everything is here. Let's send some Tari!
         // Calculate the fee based on whether we need to add a residual change output or not
         let total_fee = match self.add_change_if_required() {
             Ok(fee) => fee,
-            Err(e) => return self.err(&e),
+            Err(e) => return self.build_err(&e),
         };
         // Some checks on the fee
         if total_fee < MINIMUM_TRANSACTION_FEE {
-            return self.err("Fee is less than the minimum");
+            return self.build_err("Fee is less than the minimum");
         }
         let public_nonce = PublicKey::from_secret_key(&self.private_nonce.unwrap());
         let offset = self.offset.unwrap();
@@ -281,7 +281,7 @@ impl SenderTransactionInitializer {
 #[cfg(test)]
 mod test {
     use crate::{
-        fee::{BASE_COST, COST_PER_INPUT, COST_PER_OUTPUT},
+        fee::{Fee, BASE_COST, COST_PER_INPUT, COST_PER_OUTPUT},
         transaction::{OutputFeatures, TransactionInput, UnblindedOutput, MAX_TRANSACTION_INPUTS},
         transaction_protocol::{
             sender::{calculate_tx_id, SenderState},
@@ -349,7 +349,7 @@ mod test {
         let (utxo, input) = make_input(&mut rng, 500);
         builder.with_input(utxo, input);
         builder.with_fee_per_gram(20);
-        let expected_fee = BASE_COST + (COST_PER_INPUT + 2 * COST_PER_OUTPUT) * 20;
+        let expected_fee = Fee::calculate(20, 1, 2);
         // We needed a change input, so this should fail
         let err = builder.build::<Blake256>().unwrap_err();
         assert_eq!(err.message, "Change spending key was not provided");
@@ -379,7 +379,7 @@ mod test {
         let mut rng = OsRng::new().unwrap();
         let p = TestParams::new(&mut rng);
         let (utxo, input) = make_input(&mut rng, 500);
-        let expected_fee = BASE_COST + (COST_PER_INPUT + 1 * COST_PER_OUTPUT) * 20;
+        let expected_fee = Fee::calculate(20, 1, 1);
         let output = UnblindedOutput::new(500 - expected_fee, p.k1, None);
         // Start the builder
         let mut builder = SenderTransactionInitializer::new(0);
@@ -529,7 +529,7 @@ mod test {
         if let SenderState::Failed(TransactionProtocolError::UnsupportedError(s)) = result.state {
             assert_eq!(s, "Multiple recipients are not supported yet")
         } else {
-            panic!("We should not allow multiple recipients ast this time");
+            panic!("We should not allow multiple recipients at this time");
         }
     }
 
@@ -541,7 +541,7 @@ mod test {
         let (utxo1, input1) = make_input(&mut rng, 2000);
         let (utxo2, input2) = make_input(&mut rng, 3000);
         let weight = 30;
-        let expected_fee = BASE_COST + (2 * COST_PER_INPUT + 3 * COST_PER_OUTPUT) * weight;
+        let expected_fee = Fee::calculate(weight, 2, 3);
         let output = UnblindedOutput::new(1500 - expected_fee, p.k1, None);
         // Start the builder
         let mut builder = SenderTransactionInitializer::new(1);
