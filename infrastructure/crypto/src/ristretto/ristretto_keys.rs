@@ -23,6 +23,7 @@
 //! The Tari-compatible implementation of Ristretto based on the curve25519-dalek implementation
 use crate::keys::{PublicKey, SecretKey};
 use blake2::Blake2b;
+use clear_on_drop::clear::Clear;
 use curve25519_dalek::{
     constants::RISTRETTO_BASEPOINT_TABLE,
     ristretto::{CompressedRistretto, RistrettoPoint},
@@ -41,6 +42,8 @@ use std::{
     ops::{Add, Mul, Sub},
 };
 use tari_utilities::{ByteArray, ByteArrayError, ExtendBytes, Hashable};
+
+type HashDigest = Blake2b;
 
 /// The [SecretKey](trait.SecretKey.html) implementation for [Ristretto](https://ristretto.group) is a thin wrapper
 /// around the Dalek [Scalar](struct.Scalar.html) type, representing a 256-bit integer (mod the group order).
@@ -61,10 +64,7 @@ use tari_utilities::{ByteArray, ByteArrayError, ExtendBytes, Hashable};
 /// let _k2 = RistrettoSecretKey::from_hex(&"100000002000000030000000040000000");
 /// let _k3 = RistrettoSecretKey::random(&mut rng);
 /// ```
-
-type HashDigest = Blake2b;
-
-#[derive(PartialEq, Eq, Clone, Copy, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug)]
 pub struct RistrettoSecretKey(pub(crate) Scalar);
 
 /// Requires custom Serde Serialize and Deserialize for RistrettoSecretKey as Scalar do not implement these traits
@@ -120,6 +120,15 @@ impl SecretKey for RistrettoSecretKey {
 impl Default for RistrettoSecretKey {
     fn default() -> Self {
         RistrettoSecretKey(Scalar::default())
+    }
+}
+
+//----------------------------------    Ristretto Secret Key Default   -----------------------------------------------//
+
+/// Clear the secret key value in memory when it goes out of scope
+impl Drop for RistrettoSecretKey {
+    fn drop(&mut self) {
+        self.0.clear();
     }
 }
 
@@ -249,9 +258,9 @@ impl PublicKey for RistrettoPublicKey {
         PUBLIC_KEY_LENGTH
     }
 
-    fn batch_mul(scalars: &Vec<Self::K>, points: &Vec<Self>) -> Self {
-        let p: Vec<RistrettoPoint> = points.iter().map(|p| p.point.clone()).collect();
-        let s: Vec<Scalar> = scalars.iter().map(|k| k.0.clone()).collect();
+    fn batch_mul(scalars: &[Self::K], points: &[Self]) -> Self {
+        let p: Vec<&RistrettoPoint> = points.iter().map(|p| &p.point).collect();
+        let s: Vec<&Scalar> = scalars.iter().map(|k| &k.0).collect();
         let p = RistrettoPoint::multiscalar_mul(s, p);
         RistrettoPublicKey::new_from_pk(p)
     }
@@ -429,6 +438,7 @@ mod test {
     use super::*;
     use crate::{keys::PublicKey, ristretto::test_common::get_keypair};
     use rand;
+    use std::slice;
     use tari_utilities::ByteArray;
 
     #[test]
@@ -572,8 +582,8 @@ mod test {
     fn batch_mul() {
         let (k1, p1) = get_keypair();
         let (k2, p2) = get_keypair();
-        let p_slow = &(k1 * &p1) + &(k2 * &p2);
-        let b_batch = RistrettoPublicKey::batch_mul(&vec![k1, k2], &vec![p1, p2]);
+        let p_slow = &(&k1 * &p1) + &(&k2 * &p2);
+        let b_batch = RistrettoPublicKey::batch_mul(&[k1, k2], &vec![p1, p2]);
         assert_eq!(p_slow, b_batch);
     }
 
@@ -582,6 +592,20 @@ mod test {
         let mut rng = rand::OsRng::new().unwrap();
         let (k, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         assert_eq!(pk, RistrettoPublicKey::from_secret_key(&k));
+    }
+
+    #[test]
+    fn secret_keys_are_cleared_after_drop() {
+        let zero = &vec![0u8; 32][..];
+        let mut rng = rand::OsRng::new().unwrap();
+        let ptr;
+        {
+            let k = RistrettoSecretKey::random(&mut rng);
+            ptr = (k.0).as_bytes().as_ptr();
+        }
+        unsafe {
+            assert_eq!(slice::from_raw_parts(ptr, 32), zero);
+        }
     }
 
     #[test]

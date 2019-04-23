@@ -63,7 +63,7 @@ pub struct SenderTransactionInitializer {
     outputs: Vec<UnblindedOutput>,
     change_secret: Option<BlindingFactor>,
     offset: Option<BlindingFactor>,
-    excess_blinding_factor: Option<BlindingFactor>,
+    excess_blinding_factor: BlindingFactor,
     private_nonce: Option<SecretKey>,
 }
 
@@ -91,7 +91,7 @@ impl SenderTransactionInitializer {
             change_secret: None,
             offset: None,
             private_nonce: None,
-            excess_blinding_factor: None,
+            excess_blinding_factor: BlindingFactor::default(),
         }
     }
 
@@ -124,16 +124,14 @@ impl SenderTransactionInitializer {
     /// was first set as an output. We don't check that the input and commitments match at this point.
     pub fn with_input(&mut self, utxo: TransactionInput, input: UnblindedOutput) -> &mut Self {
         self.inputs.push(utxo);
-        self.excess_blinding_factor =
-            Some(self.excess_blinding_factor.unwrap_or(BlindingFactor::default()) - &input.spending_key);
+        self.excess_blinding_factor = &self.excess_blinding_factor - &input.spending_key;
         self.unblinded_inputs.push(input);
         self
     }
 
     /// Adds an output to the transaction. This can be called multiple times
     pub fn with_output(&mut self, output: UnblindedOutput) -> &mut Self {
-        self.excess_blinding_factor =
-            Some(self.excess_blinding_factor.unwrap_or(BlindingFactor::default()) + &output.spending_key);
+        self.excess_blinding_factor = &self.excess_blinding_factor + &output.spending_key;
         self.outputs.push(output);
         self
     }
@@ -177,7 +175,10 @@ impl SenderTransactionInitializer {
                     // output and go without a change output
                     None | Some(0) => Ok(fee_without_change + v),
                     Some(v) => {
-                        let change_key = self.change_secret.ok_or("Change spending key was not provided")?;
+                        let change_key = self
+                            .change_secret
+                            .as_ref()
+                            .ok_or("Change spending key was not provided")?;
                         self.with_output(UnblindedOutput::new(v, change_key.clone(), None));
                         Ok(fee_with_change)
                     },
@@ -234,12 +235,12 @@ impl SenderTransactionInitializer {
         if total_fee < MINIMUM_TRANSACTION_FEE {
             return self.build_err("Fee is less than the minimum");
         }
-        let public_nonce = PublicKey::from_secret_key(&self.private_nonce.unwrap());
+        let nonce = self.private_nonce.unwrap();
+        let public_nonce = PublicKey::from_secret_key(&nonce);
         let offset = self.offset.unwrap();
-        let excess_blinding_factor = self.excess_blinding_factor.unwrap();
+        let excess_blinding_factor = self.excess_blinding_factor;
         let offset_blinding_factor = &excess_blinding_factor - &offset;
         let excess = PublicKey::from_secret_key(&offset_blinding_factor);
-        let nonce = self.private_nonce.unwrap();
         let outputs = self.outputs.iter().map(|o| TransactionOutput::from(o)).collect();
         let recipient_info = match self.num_recipients {
             0 => RecipientInfo::None,
@@ -312,8 +313,8 @@ mod test {
                 k1: SecretKey::random(rng),
                 k_change: SecretKey::random(rng),
                 offset: SecretKey::random(rng),
-                r,
                 public_nonce: PublicKey::from_secret_key(&r),
+                r,
             }
         }
     }
