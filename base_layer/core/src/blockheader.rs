@@ -23,13 +23,19 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
-use crate::{pow::ProofOfWork, types::BlindingFactor};
+use crate::{pow::ProofOfWork, types::*};
 use chrono::{DateTime, Utc};
+use digest::Input;
+use tari_crypto::{common::Blake256, ristretto::RistrettoSecretKey};
+use tari_infra_derive::{ExtendBytes, Hashable};
+use tari_utilities::{ExtendBytes, Hashable};
 
 type BlockHash = [u8; 32];
 
 /// The BlockHeader contains all the metadata for the block, including proof of work, a link to the previous block
 /// and the transaction kernels.
+#[derive(Hashable)]
+#[digest = "SignatureHash"]
 pub struct BlockHeader {
     /// Version of the block
     pub version: u16,
@@ -45,7 +51,7 @@ pub struct BlockHeader {
     pub kernel_mmr: BlockHash,
     /// Total accumulated sum of kernel offsets since genesis block. We can derive the kernel offset sum for *this*
     /// block from the total kernel offset of the previous block header.
-    pub total_kernel_offset: BlindingFactor,
+    pub total_kernel_offset: PublicKey,
     /// Nonce used
     /// Proof of work summary
     pub pow: ProofOfWork,

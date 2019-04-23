@@ -25,13 +25,13 @@
 
 use crate::{
     challenge::{Challenge, MessageHash},
-    musig::{FixedSet, JointKey, JointKeyBuilder, MuSigError},
+    musig::{JointKey, JointKeyBuilder, MuSigError},
     ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
     signatures::SchnorrSignature,
 };
 use digest::Digest;
 use std::marker::PhantomData;
-use tari_utilities::ByteArray;
+use tari_utilities::{fixed_set::FixedSet, ByteArray};
 
 //-----------------------------------------  Constants and aliases    ------------------------------------------------//
 
@@ -64,10 +64,10 @@ type JointPubKey = JointKey<RistrettoPublicKey, RistrettoSecretKey>;
 /// 2-of-2 aggregated signature.
 ///
 /// ```edition2018
-///       # use crypto::ristretto::{ musig::RistrettoMuSig, ristretto_keys::* };
+///       # use tari_crypto::ristretto::{ musig::RistrettoMuSig, ristretto_keys::* };
 ///       # use tari_utilities::ByteArray;
-///       # use crypto::keys::PublicKey;
-///       # use crypto::challenge::Challenge;
+///       # use tari_crypto::keys::PublicKey;
+///       # use tari_crypto::challenge::Challenge;
 ///       # use sha2::Sha256;
 ///       let mut rng = rand::OsRng::new().unwrap();
 ///       // Create a new MuSig instance. The number of signing parties must be known at this time.
@@ -137,7 +137,10 @@ impl<D: Digest> RistrettoMuSig<D> {
             Ok(s) => MuSigState::Initialization(s),
             Err(e) => MuSigState::Failed(e),
         };
-        RistrettoMuSig { state, digest_type: PhantomData }
+        RistrettoMuSig {
+            state,
+            digest_type: PhantomData,
+        }
     }
 
     /// Convenience wrapper function to determined whether a signing ceremony has failed
@@ -349,7 +352,10 @@ impl<D: Digest> RistrettoMuSig<D> {
             MuSigState::Failed(_) => RistrettoMuSig::<D>::invalid_transition(),
             _ => RistrettoMuSig::<D>::invalid_transition(),
         };
-        RistrettoMuSig { state, digest_type: PhantomData }
+        RistrettoMuSig {
+            state,
+            digest_type: PhantomData,
+        }
     }
 }
 
@@ -399,7 +405,10 @@ impl Initialization {
             return Err(MuSigError::IncompatibleHashFunction);
         }
         let joint_key_builder = JKBuilder::new(n)?;
-        Ok(Initialization { joint_key_builder, message: None })
+        Ok(Initialization {
+            joint_key_builder,
+            message: None,
+        })
     }
 
     pub fn add_pubkey<D: Digest>(mut self, key: RistrettoPublicKey) -> MuSigState {
@@ -436,7 +445,11 @@ struct NonceHashCollection {
 impl NonceHashCollection {
     fn new(joint_key: JointPubKey, msg: Option<MessageHash>) -> NonceHashCollection {
         let n = joint_key.size();
-        NonceHashCollection { joint_key, nonce_hashes: FixedSet::new(n), message: msg }
+        NonceHashCollection {
+            joint_key,
+            nonce_hashes: FixedSet::new(n),
+            message: msg,
+        }
     }
 
     fn add_nonce_hash<D: Digest>(mut self, pub_key: &RistrettoPublicKey, hash: MessageHash) -> MuSigState {
@@ -550,7 +563,11 @@ impl SignatureCollection {
         m: &MessageHash,
     ) -> RistrettoSecretKey
     {
-        let e = Challenge::<D>::new().concat(r_agg.as_bytes()).concat(p_agg.as_bytes()).concat(m).hash();
+        let e = Challenge::<D>::new()
+            .concat(r_agg.as_bytes())
+            .concat(p_agg.as_bytes())
+            .concat(m)
+            .hash();
         RistrettoSecretKey::from_vec(&e).expect("Found a u256 that does not map to a valid Ristretto scalar")
     }
 
@@ -604,7 +621,11 @@ impl FinalizedMuSig {
         let s_agg = init.calculate_agg_signature();
         let joint_key = init.joint_key;
         let challenge = init.challenge;
-        FinalizedMuSig { s_agg, challenge, joint_key }
+        FinalizedMuSig {
+            s_agg,
+            challenge,
+            joint_key,
+        }
     }
 }
 
@@ -633,7 +654,13 @@ mod test {
 
     fn get_key_and_nonce<R: CryptoRng + Rng>(
         rng: &mut R,
-    ) -> (RistrettoSecretKey, RistrettoPublicKey, RistrettoSecretKey, RistrettoPublicKey, MessageHash) {
+    ) -> (
+        RistrettoSecretKey,
+        RistrettoPublicKey,
+        RistrettoSecretKey,
+        RistrettoPublicKey,
+        MessageHash,
+    ) {
         let (k, pubkey) = RistrettoPublicKey::random_keypair(rng);
         let (r, nonce) = RistrettoPublicKey::random_keypair(rng);
         let hash = Challenge::<Sha256>::hash_input(nonce.to_vec());
@@ -725,7 +752,8 @@ mod test {
             let k = data.secret_keys.get(i).unwrap();
             let ai = musig.get_musig_scalar(data.pub_keys.get(i).unwrap()).unwrap();
             let sig = r + ai * e * k;
-            data.partial_sigs.push(RistrettoSchnorr::new(data.public_nonces[i].clone(), sig));
+            data.partial_sigs
+                .push(RistrettoSchnorr::new(data.public_nonces[i].clone(), sig));
         }
         (musig, data)
     }
@@ -738,7 +766,12 @@ mod test {
         // Add the partial signatures
         for s in data.partial_sigs.iter() {
             musig = musig.add_signature(&s, true);
-            assert_eq!(musig.has_failed(), false, "Partial signature addition failed. {:?}", musig.failure_reason());
+            assert_eq!(
+                musig.has_failed(),
+                false,
+                "Partial signature addition failed. {:?}",
+                musig.failure_reason()
+            );
         }
         let mut iter = data.partial_sigs.iter();
         let v0 = iter.next().unwrap().clone();
@@ -898,8 +931,10 @@ mod test {
         let sig = musig.get_aggregated_signature().unwrap();
         let p_agg = musig.get_aggregated_public_key().unwrap();
         let m_hash = Challenge::<Sha256>::hash_input(b"message".to_vec());
-        let challenge =
-            Challenge::<Sha256>::new().concat(data.r_agg.as_bytes()).concat(p_agg.as_bytes()).concat(&m_hash);
+        let challenge = Challenge::<Sha256>::new()
+            .concat(data.r_agg.as_bytes())
+            .concat(p_agg.as_bytes())
+            .concat(&m_hash);
         assert!(sig.verify_challenge(p_agg, challenge));
         assert_eq!(&s_agg, sig);
     }
@@ -926,8 +961,12 @@ mod test {
             .set_message(&m);
         assert!(bob.is_collecting_signatures());
         // round 3 - Collect partial signatures
-        let s_a = alice.calculate_partial_signature(p_a, &data.secret_keys[0], &data.nonces[0]).unwrap();
-        let s_b = bob.calculate_partial_signature(p_b, &data.secret_keys[1], &data.nonces[1]).unwrap();
+        let s_a = alice
+            .calculate_partial_signature(p_a, &data.secret_keys[0], &data.nonces[0])
+            .unwrap();
+        let s_b = bob
+            .calculate_partial_signature(p_b, &data.secret_keys[1], &data.nonces[1])
+            .unwrap();
         alice = alice.add_signature(&s_a, true).add_signature(&s_b, true);
         assert!(alice.is_finalized());
         bob = bob.add_signature(&s_b, true).add_signature(&s_a, true);
@@ -1013,13 +1052,22 @@ mod test_joint_key {
         assert_eq!(joint_key.get_pub_keys(1), &p1);
         assert_eq!(joint_key.get_pub_keys(2), &p3);
         // Calculate ell and partials
-        let ell = Sha256::new().chain(p2.as_bytes()).chain(p1.as_bytes()).chain(p3.as_bytes()).result().to_vec();
+        let ell = Sha256::new()
+            .chain(p2.as_bytes())
+            .chain(p1.as_bytes())
+            .chain(p3.as_bytes())
+            .result()
+            .to_vec();
         // Check Ell
         let ell = RistrettoSecretKey::from_vec(&ell).unwrap();
         assert_eq!(joint_key.get_common(), &ell);
         // Check partial scalars
         let hash = |p: &RistrettoPublicKey| {
-            let h = Sha256::new().chain(ell.as_bytes()).chain(p.as_bytes()).result().to_vec();
+            let h = Sha256::new()
+                .chain(ell.as_bytes())
+                .chain(p.as_bytes())
+                .result()
+                .to_vec();
             RistrettoSecretKey::from_vec(&h).unwrap()
         };
         let a1 = hash(&p1);

@@ -19,9 +19,16 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+pub mod bit;
 pub mod byte_array;
+pub mod chacha20;
+pub mod cipher;
+pub mod extend_bytes;
+pub mod fixed_set;
 pub mod hash;
 pub mod hex;
+
+pub use self::extend_bytes::ExtendBytes;
 
 pub use self::{
     byte_array::{ByteArray, ByteArrayError},

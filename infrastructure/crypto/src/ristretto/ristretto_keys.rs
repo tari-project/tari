@@ -22,19 +22,26 @@
 
 //! The Tari-compatible implementation of Ristretto based on the curve25519-dalek implementation
 use crate::keys::{PublicKey, SecretKey};
+use blake2::Blake2b;
 use curve25519_dalek::{
     constants::RISTRETTO_BASEPOINT_TABLE,
     ristretto::{CompressedRistretto, RistrettoPoint},
     scalar::Scalar,
     traits::MultiscalarMul,
 };
+use digest::Digest;
 use rand::{CryptoRng, Rng};
+use serde::{
+    de::{Deserialize, Deserializer, Visitor},
+    ser::{Serialize, Serializer},
+};
 use std::{
     cmp::Ordering,
+    fmt,
     ops::{Add, Mul, Sub},
 };
-use tari_utilities::{ByteArray, ByteArrayError};
 use clear_on_drop::clear::{Clear};
+use tari_utilities::{ByteArray, ByteArrayError, ExtendBytes, Hashable};
 
 /// The [SecretKey](trait.SecretKey.html) implementation for [Ristretto](https://ristretto.group) is a thin wrapper
 /// around the Dalek [Scalar](struct.Scalar.html) type, representing a 256-bit integer (mod the group order).
@@ -45,9 +52,9 @@ use clear_on_drop::clear::{Clear};
 /// little-endian):
 ///
 /// ```edition2018
-/// use crypto::ristretto::RistrettoSecretKey;
+/// use tari_crypto::ristretto::RistrettoSecretKey;
 /// use tari_utilities::ByteArray;
-/// use crypto::keys::SecretKey;
+/// use tari_crypto::keys::SecretKey;
 /// use rand;
 ///
 /// let mut rng = rand::OsRng::new().unwrap();
@@ -56,7 +63,44 @@ use clear_on_drop::clear::{Clear};
 /// let _k3 = RistrettoSecretKey::random(&mut rng);
 /// ```
 #[derive(PartialEq, Eq, Clone, Debug)]
+
+type HashDigest = Blake2b;
+
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub struct RistrettoSecretKey(pub(crate) Scalar);
+
+/// Requires custom Serde Serialize and Deserialize for RistrettoSecretKey as Scalar do not implement these traits
+impl Serialize for RistrettoSecretKey {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where S: Serializer {
+        serializer.serialize_str(&self.to_hex())
+    }
+}
+
+struct DeserializeVisitor;
+
+impl<'de> Visitor<'de> for DeserializeVisitor {
+    type Value = RistrettoSecretKey;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("expecting a hex string")
+    }
+
+    fn visit_str<E>(self, str_data: &str) -> Result<Self::Value, E>
+    where E: serde::de::Error {
+        match RistrettoSecretKey::from_hex(str_data) {
+            Ok(k) => Ok(k),
+            Err(parse_error) => Err(E::custom(format!("SecretKey parser error: {}", parse_error))),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for RistrettoSecretKey {
+    fn deserialize<D>(deserializer: D) -> Result<RistrettoSecretKey, D::Error>
+    where D: Deserializer<'de> {
+        deserializer.deserialize_string(DeserializeVisitor)
+    }
+}
 
 const SCALAR_LENGTH: usize = 32;
 const PUBLIC_KEY_LENGTH: usize = 32;
@@ -141,9 +185,21 @@ impl<'a, 'b> Sub<&'b RistrettoSecretKey> for &'a RistrettoSecretKey {
     }
 }
 
-define_add_variants!(LHS = RistrettoSecretKey, RHS = RistrettoSecretKey, Output = RistrettoSecretKey);
-define_sub_variants!(LHS = RistrettoSecretKey, RHS = RistrettoSecretKey, Output = RistrettoSecretKey);
-define_mul_variants!(LHS = RistrettoSecretKey, RHS = RistrettoPublicKey, Output = RistrettoPublicKey);
+define_add_variants!(
+    LHS = RistrettoSecretKey,
+    RHS = RistrettoSecretKey,
+    Output = RistrettoSecretKey
+);
+define_sub_variants!(
+    LHS = RistrettoSecretKey,
+    RHS = RistrettoSecretKey,
+    Output = RistrettoSecretKey
+);
+define_mul_variants!(
+    LHS = RistrettoSecretKey,
+    RHS = RistrettoPublicKey,
+    Output = RistrettoPublicKey
+);
 
 //---------------------------------------------      Conversions     -------------------------------------------------//
 
@@ -163,9 +219,9 @@ impl From<u64> for RistrettoSecretKey {
 /// Both [PublicKey](trait.PublicKey.html) and [ByteArray](trait.ByteArray.html) are implemented on
 /// `RistrettoPublicKey` so all of the following will work:
 /// ```edition2018
-/// use crypto::ristretto::{ RistrettoPublicKey, RistrettoSecretKey };
+/// use tari_crypto::ristretto::{ RistrettoPublicKey, RistrettoSecretKey };
 /// use tari_utilities::ByteArray;
-/// use crypto::keys::{ PublicKey, SecretKey };
+/// use tari_crypto::keys::{ PublicKey, SecretKey };
 /// use rand;
 ///
 /// let mut rng = rand::OsRng::new().unwrap();
@@ -184,7 +240,10 @@ pub struct RistrettoPublicKey {
 impl RistrettoPublicKey {
     // Private constructor
     pub(crate) fn new_from_pk(pk: RistrettoPoint) -> RistrettoPublicKey {
-        RistrettoPublicKey { point: pk, compressed: pk.compress() }
+        RistrettoPublicKey {
+            point: pk,
+            compressed: pk.compress(),
+        }
     }
 }
 
@@ -206,6 +265,24 @@ impl PublicKey for RistrettoPublicKey {
         let s: Vec<&Scalar> = scalars.iter().map(|k| &k.0).collect();
         let p = RistrettoPoint::multiscalar_mul(s, p);
         RistrettoPublicKey::new_from_pk(p)
+    }
+}
+
+// Requires custom Hashable implementation for RistrettoPublicKey as CompressedRistretto doesnt implement this trait
+impl Hashable for RistrettoPublicKey {
+    fn hash(&self) -> Vec<u8> {
+        let mut hasher = HashDigest::new();
+        let buf: Vec<u8> = Vec::new();
+        hasher.input(&buf);
+        hasher.result().to_vec()
+    }
+}
+
+// Requires custom Extendbytes implementation for RistrettoPublicKey as CompressedRistretto doesnt implement this trait
+impl ExtendBytes for RistrettoPublicKey {
+    fn append_raw_bytes(&self, buf: &mut Vec<u8>) {
+        let bytes = self.as_bytes();
+        buf.extend_from_slice(&bytes);
     }
 }
 
@@ -256,7 +333,9 @@ impl ByteArray for RistrettoPublicKey {
         }
         let pk = CompressedRistretto::from_slice(bytes);
         match pk.decompress() {
-            None => Err(ByteArrayError::ConversionError("Invalid compressed Ristretto point".to_string())),
+            None => Err(ByteArrayError::ConversionError(
+                "Invalid compressed Ristretto point".to_string(),
+            )),
             Some(p) => Ok(RistrettoPublicKey::new_from_pk(p)),
         }
     }
@@ -305,10 +384,26 @@ impl<'a, 'b> Mul<&'b RistrettoSecretKey> for &'a RistrettoSecretKey {
     }
 }
 
-define_add_variants!(LHS = RistrettoPublicKey, RHS = RistrettoPublicKey, Output = RistrettoPublicKey);
-define_sub_variants!(LHS = RistrettoPublicKey, RHS = RistrettoPublicKey, Output = RistrettoPublicKey);
-define_mul_variants!(LHS = RistrettoPublicKey, RHS = RistrettoSecretKey, Output = RistrettoPublicKey);
-define_mul_variants!(LHS = RistrettoSecretKey, RHS = RistrettoSecretKey, Output = RistrettoSecretKey);
+define_add_variants!(
+    LHS = RistrettoPublicKey,
+    RHS = RistrettoPublicKey,
+    Output = RistrettoPublicKey
+);
+define_sub_variants!(
+    LHS = RistrettoPublicKey,
+    RHS = RistrettoPublicKey,
+    Output = RistrettoPublicKey
+);
+define_mul_variants!(
+    LHS = RistrettoPublicKey,
+    RHS = RistrettoSecretKey,
+    Output = RistrettoPublicKey
+);
+define_mul_variants!(
+    LHS = RistrettoSecretKey,
+    RHS = RistrettoSecretKey,
+    Output = RistrettoSecretKey
+);
 
 //----------------------------------         PublicKey From implementations      -------------------------------------//
 
@@ -513,5 +608,24 @@ mod test {
         unsafe {
             assert_eq!(slice::from_raw_parts(ptr, 32), zero);
         }
+    }
+
+    #[test]
+    fn convert_from_u64() {
+        let k = RistrettoSecretKey::from(42u64);
+        assert_eq!(
+            k.to_hex(),
+            "2a00000000000000000000000000000000000000000000000000000000000000"
+        );
+        let k = RistrettoSecretKey::from(256u64);
+        assert_eq!(
+            k.to_hex(),
+            "0001000000000000000000000000000000000000000000000000000000000000"
+        );
+        let k = RistrettoSecretKey::from(100_000_000u64);
+        assert_eq!(
+            k.to_hex(),
+            "00e1f50500000000000000000000000000000000000000000000000000000000"
+        );
     }
 }

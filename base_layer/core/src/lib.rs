@@ -25,7 +25,10 @@ extern crate bitflags;
 
 pub mod block;
 pub mod blockheader;
+pub mod fee;
+pub mod message;
 pub mod pow;
 pub mod range_proof;
 pub mod transaction;
+pub mod transaction_protocol;
 pub mod types;

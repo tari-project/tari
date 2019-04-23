@@ -23,7 +23,8 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
-use crypto::{
+use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
     common::Blake256,
     ristretto::{
         pedersen::{PedersenBaseOnRistretto255, PedersenOnRistretto255},
@@ -42,6 +43,7 @@ pub type Commitment = PedersenOnRistretto255;
 pub type CommitmentFactory = PedersenBaseOnRistretto255;
 
 /// Define the explicit Secret key implementation for the Tari base layer.
+pub type SecretKey = RistrettoSecretKey;
 pub type BlindingFactor = RistrettoSecretKey;
 
 /// Define the explicit Public key implementation for the Tari base layer
@@ -49,3 +51,18 @@ pub type PublicKey = RistrettoPublicKey;
 
 /// Define the hash function that will be used to produce a signature challenge
 pub type SignatureHash = Blake256;
+
+/// Specify the Hash function for general hashing
+pub type HashDigest = Blake256;
+
+/// Convenience type wrapper for creating output commitments directly from values and spending_keys
+pub trait TariCommitment {
+    fn commit(value: u64, spending_key: &SecretKey) -> Commitment;
+}
+
+impl TariCommitment for CommitmentFactory {
+    fn commit(value: u64, spending_key: &SecretKey) -> Commitment {
+        let v = SecretKey::from(value);
+        CommitmentFactory::create(&v, spending_key)
+    }
+}

@@ -20,26 +20,41 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use blake2::Blake2b;
 use digest::Digest;
-use merklemountainrange::merklenode::ObjectHash;
-use tari_utilities::Hashable;
+use tari_infra_derive::Hashable;
+use tari_utilities::{ExtendBytes, Hashable};
 
-pub struct TestObject<D: Digest> {
-    pub id: String,
-    pub hasher: D,
+#[derive(Hashable)]
+#[digest = "Blake2b"]
+pub struct TestObject {
+    pub id: InnerObject,
+    #[Hashable(Ignore)]
+    pub string_we_should_not_hash: String,
 }
 
-impl<D: Digest> TestObject<D> {
-    pub fn new(id: String) -> TestObject<D> {
-        let hasher = D::new();
-        TestObject { id, hasher }
+impl TestObject {
+    pub fn new(id: String) -> TestObject {
+        TestObject {
+            id: InnerObject::new(id),
+            string_we_should_not_hash: "a".to_owned(),
+        }
     }
 }
 
-impl<D: Digest> Hashable for TestObject<D> {
-    fn hash(&self) -> ObjectHash {
-        let mut hash = D::new();
-        hash.input(self.id.as_bytes());
-        hash.result().to_vec()
+#[derive(Hashable)]
+#[digest = "Blake2b"]
+pub struct InnerObject {
+    pub id: String,
+    #[ExtendBytes(Ignore)]
+    pub string_we_should_not_view_as_raw: String,
+}
+
+impl InnerObject {
+    pub fn new(id: String) -> InnerObject {
+        InnerObject {
+            id,
+            string_we_should_not_view_as_raw: "a".to_owned(),
+        }
     }
 }

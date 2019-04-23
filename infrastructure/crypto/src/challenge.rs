@@ -36,7 +36,7 @@ pub type Challenge256Bit = [u8; 32];
 /// Challenge makes use of a fluent interface to build up the challenge parts:
 ///
 /// ```edition2018
-///     use crypto::challenge::*;
+///     use tari_crypto::challenge::*;
 ///     use sha2::Sha256;
 ///
 ///     let challenge = Challenge::<Sha256>::new();
@@ -98,13 +98,19 @@ mod test {
     fn hash_with_sha256() {
         let e = Challenge::<Sha256>::new();
         let result = e.concat(b"Hi").concat(b"World").hash();
-        assert_eq!(result.to_hex(), "f1007761429621683d6f843fdc3d0de3c8c02497f38cf73789cb9e41ce49fa6e");
+        assert_eq!(
+            result.to_hex(),
+            "f1007761429621683d6f843fdc3d0de3c8c02497f38cf73789cb9e41ce49fa6e"
+        );
     }
 
     #[test]
     fn hash_with_blake() {
         let e = Challenge::<Blake2b>::new();
-        let result = e.concat("Now is the winter".as_bytes()).concat("of our discontent".as_bytes()).hash();
+        let result = e
+            .concat("Now is the winter".as_bytes())
+            .concat("of our discontent".as_bytes())
+            .hash();
         assert_eq!(result.to_hex(),
                    "521143c1e862cd458164c5c48ffa354ada324ff4f20b830a5c98de205ed0c8b8b49170101a209386608fc1bc5715f6c536b4a5a74d65a02c609b80231d3d72bd");
     }

@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::str::FromStr;
+use std::{fmt, str::FromStr};
 
 use super::{parser::AddressParser, NetAddressError};
 
@@ -43,6 +43,12 @@ impl FromStr for OnionAddress {
     }
 }
 
+impl fmt::Display for OnionAddress {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}.onion:{}", self.public_key, self.port)
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -52,13 +58,19 @@ mod test {
         let addr1 = "nqblqa3x7ddnkp664cowka6jx4mlc26vpgdksj6uya2kbyvi77aqpqqd.onion:1234".parse::<OnionAddress>();
         assert!(addr1.is_ok(), "failed to parse valid onion address");
         let addr1 = addr1.unwrap();
-        assert_eq!("NQBLQA3X7DDNKP664COWKA6JX4MLC26VPGDKSJ6UYA2KBYVI77AQPQQD", addr1.public_key);
+        assert_eq!(
+            "NQBLQA3X7DDNKP664COWKA6JX4MLC26VPGDKSJ6UYA2KBYVI77AQPQQD",
+            addr1.public_key
+        );
         assert_eq!(1234, addr1.port);
 
         let addr2 = "nqblqa3x7ddnkP664COWKA6JX4MLC26VPGDKSJ6UYA2KBYVI77AQPQQD.onion:1234".parse::<OnionAddress>();
         assert!(addr2.is_ok(), "failed to parse valid mixed case onion address");
         let addr2 = addr2.unwrap();
-        assert_eq!("NQBLQA3X7DDNKP664COWKA6JX4MLC26VPGDKSJ6UYA2KBYVI77AQPQQD", addr2.public_key);
+        assert_eq!(
+            "NQBLQA3X7DDNKP664COWKA6JX4MLC26VPGDKSJ6UYA2KBYVI77AQPQQD",
+            addr2.public_key
+        );
         assert_eq!(1234, addr2.port);
 
         assert_eq!(addr1, addr2);

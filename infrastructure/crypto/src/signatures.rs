@@ -10,14 +10,14 @@ use derive_error::Error;
 use digest::Digest;
 use std::ops::{Add, Mul};
 
-#[derive(Debug, Error, PartialEq, Eq)]
+#[derive(Clone, Debug, Error, PartialEq, Eq)]
 pub enum SchnorrSignatureError {
     // An invalid challenge was provided
     InvalidChallenge,
 }
 
 #[allow(non_snake_case)]
-#[derive(PartialEq, Eq, Copy, Debug, Clone)]
+#[derive(PartialEq, Eq, Copy, Debug, Clone, PartialOrd, Ord)]
 pub struct SchnorrSignature<P, K> {
     public_nonce: P,
     signature: K,
@@ -29,7 +29,10 @@ where
     K: SecretKey,
 {
     pub fn new(public_nonce: P, signature: K) -> Self {
-        SchnorrSignature { public_nonce, signature }
+        SchnorrSignature {
+            public_nonce,
+            signature,
+        }
     }
 
     pub fn calc_signature_verifier(&self) -> P {

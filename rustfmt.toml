@@ -1,5 +1,5 @@
 binop_separator = "Back"
-use_small_heuristics = "max"
+use_small_heuristics = "default"
 comment_width = 120
 format_strings = true
 hard_tabs = false

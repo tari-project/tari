@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 pub mod constants;
+pub mod dalek_range_proof;
 pub mod musig;
 pub mod pedersen;
 pub mod ristretto_keys;

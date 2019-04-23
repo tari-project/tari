@@ -29,10 +29,7 @@ use crate::{
 };
 use derive_error::Error;
 use digest::Digest;
-use std::{
-    ops::{Add, Mul},
-    prelude::v1::Vec,
-};
+use std::{ops::Mul, prelude::v1::Vec};
 
 //----------------------------------------------   Constants       ------------------------------------------------//
 pub const MAX_SIGNATURES: usize = 32768; // If you need more, call customer support
@@ -134,7 +131,10 @@ where
         if n == 0 {
             return Err(MuSigError::NotEnoughParticipants);
         }
-        Ok(JointKeyBuilder { pub_keys: Vec::with_capacity(n), num_signers: n })
+        Ok(JointKeyBuilder {
+            pub_keys: Vec::with_capacity(n),
+            num_signers: n,
+        })
     }
 
     /// The number of parties in the Joint key
@@ -183,7 +183,12 @@ where
         let common = self.calculate_common::<D>();
         let musig_scalars = self.calculate_musig_scalars::<D>(&common);
         let joint_pub_key = JointKeyBuilder::calculate_joint_key::<D>(&musig_scalars, &self.pub_keys);
-        Ok(JointKey { pub_keys: self.pub_keys, musig_scalars, joint_pub_key, common })
+        Ok(JointKey {
+            pub_keys: self.pub_keys,
+            musig_scalars,
+            joint_pub_key,
+            common,
+        })
     }
 
     /// Utility function to calculate \\( \ell = H(P_1 || ... || P_n) \mod p \\)
@@ -220,7 +225,10 @@ where
 
     /// Utility function that produces the vector of MuSig private key modifiers, \\( a_i = H(\ell || P_i) \\)
     fn calculate_musig_scalars<D: Digest>(&self, common: &K) -> Vec<K> {
-        self.pub_keys.iter().map(|p| JointKeyBuilder::calculate_partial_key::<D>(common.as_bytes(), p)).collect()
+        self.pub_keys
+            .iter()
+            .map(|p| JointKeyBuilder::calculate_partial_key::<D>(common.as_bytes(), p))
+            .collect()
     }
 
     /// Calculate the value of the Joint MuSig public key. **NB**: you should usually sort the participant's keys
@@ -267,159 +275,5 @@ where
     #[inline]
     pub fn get_joint_pubkey(&self) -> &P {
         &self.joint_pub_key
-    }
-}
-
-//-------------------------------------------         Fixed Set          ---------------------------------------------//
-
-pub struct FixedSet<T> {
-    items: Vec<Option<T>>,
-}
-
-impl<T: Clone + PartialEq> FixedSet<T> {
-    /// Creates a new fixed set of size n.
-    pub fn new(n: usize) -> FixedSet<T> {
-        FixedSet { items: vec![None; n] }
-    }
-
-    /// Returns the size of the fixed set, NOT the number of items that have been set
-    pub fn size(&self) -> usize {
-        self.items.len()
-    }
-
-    /// Set the `index`th item to `val`. Any existing item is overwritten. The set takes ownership of `val`.
-    pub fn set_item(&mut self, index: usize, val: T) -> bool {
-        if index >= self.items.len() {
-            return false;
-        }
-        self.items[index] = Some(val);
-        true
-    }
-
-    /// Return a reference to the `index`th item, or `None` if that item has not been set yet.
-    pub fn get_item(&self, index: usize) -> Option<&T> {
-        match self.items.get(index) {
-            None => None,
-            Some(option) => option.as_ref(),
-        }
-    }
-
-    /// Delete an item from the set by setting the `index`th value to None
-    pub fn clear_item(&mut self, index: usize) {
-        if index < self.items.len() {
-            self.items[index] = None;
-        }
-    }
-
-    /// Returns true if every item in the set has been set. An empty set returns true as well.
-    pub fn is_full(&self) -> bool {
-        self.items.iter().all(|v| v.is_some())
-    }
-
-    /// Return the index of the given item in the set by performing a linear search through the set
-    pub fn search(&self, val: &T) -> Option<usize> {
-        let key = self.items.iter().enumerate().find(|v| v.1.is_some() && v.1.as_ref().unwrap() == val);
-        match key {
-            Some(item) => Some(item.0),
-            None => None,
-        }
-    }
-
-    /// Produces the sum of the values in the set, provided the set is full
-    pub fn sum(&self) -> Option<T>
-    where for<'a> &'a T: Add<&'a T, Output = T> {
-        // This function uses HTRB to work: See https://doc.rust-lang.org/nomicon/hrtb.html
-        // or here https://users.rust-lang.org/t/lifetimes-for-type-constraint-where-one-reference-is-local/11087
-        if self.size() == 0 || !self.is_full() {
-            return None;
-        }
-        let mut iter = self.items.iter().filter_map(|v| v.as_ref());
-        // Take the first item
-        let mut sum = iter.next().unwrap().clone();
-        for v in iter {
-            sum = &sum + v;
-        }
-        Some(sum)
-    }
-}
-
-//-------------------------------------------         Tests              ---------------------------------------------//
-
-#[cfg(test)]
-mod test {
-    use super::FixedSet;
-
-    #[derive(Eq, PartialEq, Clone, Debug)]
-    struct Foo {
-        baz: String,
-    }
-
-    #[test]
-    fn zero_sized_fixed_set() {
-        let mut s = FixedSet::<usize>::new(0);
-        assert!(s.is_full(), "Set should be full");
-        assert_eq!(s.set_item(1, 1), false, "Should not be able to set item");
-        assert_eq!(s.get_item(0), None, "Should not return a value");
-    }
-
-    fn data(s: &str) -> Foo {
-        match s {
-            "patrician" => Foo { baz: "The Patrician".into() },
-            "rincewind" => Foo { baz: "Rincewind".into() },
-            "vimes" => Foo { baz: "Commander Vimes".into() },
-            "librarian" => Foo { baz: "The Librarian".into() },
-            "carrot" => Foo { baz: "Captain Carrot".into() },
-            _ => Foo { baz: "None".into() },
-        }
-    }
-
-    #[test]
-    fn small_set() {
-        let mut s = FixedSet::<Foo>::new(3);
-        // Set is empty
-        assert_eq!(s.is_full(), false);
-        // Add an item
-        assert!(s.set_item(1, data("patrician")));
-        assert_eq!(s.is_full(), false);
-        // Add an item
-        assert!(s.set_item(0, data("vimes")));
-        assert_eq!(s.is_full(), false);
-        // Replace an item
-        assert!(s.set_item(1, data("rincewind")));
-        assert_eq!(s.is_full(), false);
-        // Add item, filling set
-        assert!(s.set_item(2, data("carrot")));
-        assert_eq!(s.is_full(), true);
-        // Try add an invalid item
-        assert_eq!(s.set_item(3, data("librarian")), false);
-        assert_eq!(s.is_full(), true);
-        // Clear an item
-        s.clear_item(1);
-        assert_eq!(s.is_full(), false);
-        // Check contents
-        assert_eq!(s.get_item(0).unwrap().baz, "Commander Vimes");
-        assert!(s.get_item(1).is_none());
-        assert_eq!(s.get_item(2).unwrap().baz, "Captain Carrot");
-        // Size is 3
-        assert_eq!(s.size(), 3);
-        // Slow search
-        assert_eq!(s.search(&data("carrot")), Some(2));
-        assert_eq!(s.search(&data("vimes")), Some(0));
-        assert_eq!(s.search(&data("librarian")), None);
-    }
-
-    #[test]
-    fn sum_values() {
-        let mut s = FixedSet::<usize>::new(4);
-        s.set_item(0, 5);
-        assert_eq!(s.sum(), None);
-        s.set_item(1, 4);
-        assert_eq!(s.sum(), None);
-        s.set_item(2, 3);
-        assert_eq!(s.sum(), None);
-        s.set_item(3, 2);
-        assert_eq!(s.sum(), Some(14));
-        s.set_item(1, 0);
-        assert_eq!(s.sum(), Some(10));
     }
 }

@@ -190,7 +190,8 @@ html:not(.sidebar-visible) #menu-bar:not(:hover).folded > #menu-bar-sticky-conta
     vertical-align: middle;
     padding: 0.1em 0.3em;
     border-radius: 3px;
-    color: var(--inline-code-color);
+    background-color: #f1f1f1;
+    color: #6e6b5e;
 }
 
 a:hover > .hljs {

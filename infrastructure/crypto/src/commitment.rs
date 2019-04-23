@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::keys::SecretKey;
+use crate::keys::{PublicKey, SecretKey};
 
 /// A commitment is like a sealed envelope. You put some information inside the envelope, and then seal (commit) it.
 /// You can't change what you've said, but also, no-one knows what you've said until you're ready to open (open) the
@@ -47,9 +47,12 @@ pub trait HomomorphicCommitment {
 
 pub trait HomomorphicCommitmentFactory {
     type K: SecretKey;
+    type PK: PublicKey;
     type C: HomomorphicCommitment<K = Self::K>;
+
     fn create(k: &Self::K, v: &Self::K) -> Self::C;
     /// return an identity point for addition using the specified base point. This is a commitment to zero with a zero
     /// blinding factor on the base point
     fn zero() -> Self::C;
+    fn from_public_key(k: &Self::PK) -> Self::C;
 }

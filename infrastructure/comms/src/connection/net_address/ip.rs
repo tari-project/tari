@@ -20,13 +20,27 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{net::SocketAddr, str::FromStr};
+use std::{
+    fmt,
+    net::{IpAddr, SocketAddr},
+    str::FromStr,
+};
 
 use crate::connection::NetAddressError;
 
 /// Represents an {IPv4, IPv6} address and port
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct SocketAddress(SocketAddr);
+
+impl SocketAddress {
+    pub fn ip(&self) -> IpAddr {
+        self.0.ip()
+    }
+
+    pub fn port(&self) -> u16 {
+        self.0.port()
+    }
+}
 
 impl FromStr for SocketAddress {
     type Err = NetAddressError;
@@ -35,6 +49,12 @@ impl FromStr for SocketAddress {
         let socket_addr = addr.parse::<SocketAddr>().map_err(|_| NetAddressError::ParseFailed)?;
 
         Ok(Self(socket_addr))
+    }
+}
+
+impl fmt::Display for SocketAddress {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}:{}", self.ip(), self.port())
     }
 }
 
@@ -72,11 +92,17 @@ mod test {
         }
 
         let addr = "123.123.123.123".parse::<SocketAddress>();
-        assert!(addr.is_err(), "Invalid IPv4 address was erroneously successfully parsed");
+        assert!(
+            addr.is_err(),
+            "Invalid IPv4 address was erroneously successfully parsed"
+        );
         check_addr_fail!(addr);
 
         let addr = "fe80::1ff:fe23:4567:890a:8080".parse::<SocketAddress>();
-        assert!(addr.is_err(), "Invalid IPv6 address was erroneously successfully parsed");
+        assert!(
+            addr.is_err(),
+            "Invalid IPv6 address was erroneously successfully parsed"
+        );
         check_addr_fail!(addr);
     }
 }

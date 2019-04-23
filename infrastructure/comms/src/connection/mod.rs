@@ -21,19 +21,31 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 pub mod i2p;
+pub mod message;
 pub mod net_address;
 pub mod onion;
 pub mod p2p;
+pub mod types;
+pub mod zmq;
 
 use derive_error::Error;
 
-pub use self::net_address::{NetAddress, NetAddressError};
+pub use self::{
+    message::MessageError,
+    net_address::{NetAddress, NetAddressError},
+    types::Result,
+};
 
 #[derive(Debug, Error)]
 pub enum ConnectionError {
     NetAddressError(NetAddressError),
+    #[error(msg_embedded, no_from, non_std)]
+    SocketError(String),
     /// Connection timed out
     Timeout,
+    MessageError(MessageError),
+    #[error(msg_embedded, no_from, non_std)]
+    CurveKeypairError(String),
 }
 
 pub trait Connection {}

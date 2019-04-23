@@ -1,3 +1,7 @@
+extern crate serde;
+extern crate serde_derive;
+extern crate serde_json;
+
 #[macro_use]
 extern crate lazy_static;
 
@@ -8,6 +12,7 @@ pub mod commitment;
 pub mod common;
 pub mod keys;
 pub mod musig;
+pub mod range_proof;
 pub mod signatures;
 
 // Implementations

@@ -1,13 +1,13 @@
 #![feature(test)]
 extern crate test;
 
-use crypto::{
+use ed25519_dalek::SecretKey as dsk;
+use rand::OsRng;
+use tari_crypto::{
     curve25519::{Curve25519EdDSA, Curve25519PublicKey, Curve25519SecretKey},
     keys::{PublicKey, SecretKey, SecretKeyFactory},
     signatures::SchnorrSignature,
 };
-use ed25519_dalek::SecretKey as dsk;
-use rand::OsRng;
 use test::Bencher;
 
 #[bench]

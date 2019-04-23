@@ -36,8 +36,8 @@ use tari_utilities::ByteArray;
 ///
 /// Assuming there is a Ristretto implementation,
 /// ```edition2018
-/// # use crypto::ristretto::{ RistrettoSecretKey, RistrettoPublicKey };
-/// # use crypto::keys::{ SecretKey, PublicKey };
+/// # use tari_crypto::ristretto::{ RistrettoSecretKey, RistrettoPublicKey };
+/// # use tari_crypto::keys::{ SecretKey, PublicKey };
 /// # use rand;
 /// let mut rng = rand::OsRng::new().unwrap();
 /// let k = RistrettoSecretKey::random(&mut rng);
