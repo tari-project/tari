@@ -27,6 +27,7 @@ use crate::{
     blockheader::BlockHeader,
     transaction::{TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
 };
+use crate::types::PublicKey;
 
 //----------------------------------------         Blocks         ----------------------------------------------------//
 
@@ -122,8 +123,9 @@ impl AggregateBody {
         self.sorted = true;
     }
 
-    /// Verify the signatures in all kernels contained in this aggregate body
-    pub fn verify_kernel_signatures(&mut self) -> Result<(), TransactionError> {
+    /// Verify the signatures in all kernels contained in this aggregate body. Clients must provide an offset that
+    /// will be added to the public key used in the signature verification.
+    pub fn verify_kernel_signatures(&mut self, offset: &PublicKey) -> Result<(), TransactionError> {
         if !self.sorted {
             self.sort();
         }

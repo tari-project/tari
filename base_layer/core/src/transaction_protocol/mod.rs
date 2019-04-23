@@ -17,22 +17,22 @@
 //!   sequenceDiagram
 //!   participant Sender
 //!   participant Receivers
-//!
+//!#
 //!   activate Sender
 //!   Sender-->>Sender: initialize
 //!   deactivate Sender
-//!
+//!#
 //!   activate Sender
 //!   Sender-->>+Receivers: [tx_id, amount_i]
 //!   note left of Sender: CollectingPubKeys
 //!   note right of Receivers: Initialization
 //!   Receivers-->>-Sender: [tx_id, Pi, Ri]
 //!   deactivate Sender
-//!
+//!#
 //!   alt invalid
 //!   Sender--XSender: failed
 //!   end
-//!
+//!#
 //!   activate Sender
 //!   Sender-->>+Receivers: [tx_id, ΣR, ΣP]
 //!   note left of Sender: CollectingSignatures
@@ -40,7 +40,7 @@
 //!   Receivers-->>Receivers: create output and sign
 //!   Receivers-->>-Sender: [tx_id, Output_i, s_i]
 //!   deactivate Sender
-//!
+//!#
 //!   note left of Sender: Finalizing
 //!   alt is_valid()
 //!   Sender-->>Sender: Finalized
@@ -53,6 +53,8 @@ pub mod receiver;
 pub mod sender;
 pub mod single_receiver;
 pub mod transaction_initializer;
+#[cfg(test)]
+pub mod test_common;
 
 use crate::{
     transaction::TransactionError,
@@ -96,7 +98,7 @@ pub struct TransactionMetadata {
 }
 
 /// Convenience function that calculates the challenge for the Schnorr signatures
-pub(self) fn build_challenge(
+pub fn build_challenge(
     sum_public_nonces: &PublicKey,
     sum_public_keys: &PublicKey,
     metadata: &TransactionMetadata,

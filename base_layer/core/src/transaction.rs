@@ -29,7 +29,7 @@ use crate::{
     types::{BlindingFactor, Commitment, CommitmentFactory, Signature},
 };
 
-use crate::types::{HashDigest, SecretKey, SignatureHash};
+use crate::types::{HashDigest, SecretKey, SignatureHash, PublicKey};
 use derive_error::Error;
 use digest::Input;
 use tari_crypto::{
@@ -37,6 +37,7 @@ use tari_crypto::{
     commitment::{HomomorphicCommitment, HomomorphicCommitmentFactory},
 };
 use tari_utilities::{ByteArray, Hashable};
+use crate::transaction_protocol::{build_challenge, TransactionMetadata};
 
 // These are set fairly arbitrarily at the moment. We'll need to do some modelling / testing to tune these values.
 pub const MAX_TRANSACTION_INPUTS: usize = 500;
@@ -316,16 +317,13 @@ impl KernelBuilder {
 }
 
 impl TransactionKernel {
-    pub fn verify_signature(&self) -> Result<(), TransactionError> {
+    pub fn verify_signature(&self, offset: &PublicKey) -> Result<(), TransactionError> {
         let excess = self.excess.as_public_key();
+        let public_key = excess + offset;
         let r = self.excess_sig.get_public_nonce();
-        let c = Challenge::<SignatureHash>::new()
-            .concat(r.as_bytes())
-            .concat(excess.as_bytes())
-            .concat(&self.fee.to_le_bytes())
-            .concat(&self.lock_height.to_le_bytes());
-
-        if self.excess_sig.verify_challenge(excess, c) {
+        let m = TransactionMetadata { lock_height: self.lock_height, fee: self.fee };
+        let c = build_challenge(r, &excess, &m);
+        if self.excess_sig.verify_challenge(&public_key, c) {
             return Ok(());
         } else {
             return Err(TransactionError::InvalidSignatureError);
@@ -352,14 +350,15 @@ impl Hashable for TransactionKernel {
 //----------------------------------------      Transaction       ----------------------------------------------------//
 
 /// A transaction which consists of a kernel offset and an aggregate body made up of inputs, outputs and kernels.
-/// This struct can be used for both single transactions and describing an entire block.
+/// This struct is used to describe single transactions only. The common part between transactions and Tari blocks is
+/// accessible via the `body` field, but single transactions also need to carry the public offset around with them so
+/// that these can be aggregated into block offsets.
 #[derive(Clone, Debug)]
 pub struct Transaction {
     /// This kernel offset will be accumulated when transactions are aggregated to prevent the "subset" problem where
     /// kernels can be linked to inputs and outputs by testing a series of subsets and see which produce valid
-    /// transactions. This field is more useful when validating blocks, since transactions have only one kernel, and
-    /// so the `aggregated_offset` will equal the offset in the body.
-    pub aggregated_offset: BlindingFactor,
+    /// transactions.
+    pub offset: PublicKey,
     /// The constituents of a transaction which has the same structure as the body of a block.
     pub body: AggregateBody,
 }
@@ -370,11 +369,11 @@ impl Transaction {
         inputs: Vec<TransactionInput>,
         outputs: Vec<TransactionOutput>,
         kernels: Vec<TransactionKernel>,
-        offset: BlindingFactor,
+        offset: PublicKey,
     ) -> Transaction
     {
         Transaction {
-            aggregated_offset: offset,
+            offset: offset,
             body: AggregateBody::new(inputs, outputs, kernels),
         }
     }
@@ -389,7 +388,7 @@ impl Transaction {
 
     /// Calculate the sum of the kernels, taking into account the offset if it exists, and their constituent fees
     fn sum_kernels(&self) -> KernelSum {
-        let offset_commitment = CommitmentFactory::create(&self.aggregated_offset, &SecretKey::default());
+        let offset_commitment = CommitmentFactory::from_public_key(&self.offset);
         // Sum all kernel excesses and fees
         let kernel_sum = self.body.kernels.iter().fold(
             KernelSum {
@@ -428,7 +427,7 @@ impl Transaction {
     ///
     /// This function does NOT check that inputs come from the UTXO set
     pub fn validate_internal_consistency(&mut self) -> Result<(), TransactionError> {
-        self.body.verify_kernel_signatures()?;
+        self.body.verify_kernel_signatures(&self.offset)?;
         self.validate_kernel_sum()?;
         self.validate_range_proofs()
     }
@@ -445,7 +444,7 @@ pub struct KernelSum {
 
 pub struct TransactionBuilder {
     body: AggregateBody,
-    offset: Option<BlindingFactor>,
+    offset: Option<PublicKey>,
 }
 
 impl TransactionBuilder {
@@ -458,7 +457,7 @@ impl TransactionBuilder {
     }
 
     /// Update the offset of an existing transaction
-    pub fn add_offset(&mut self, offset: BlindingFactor) -> &mut Self {
+    pub fn add_offset(&mut self, offset: PublicKey) -> &mut Self {
         self.offset = Some(offset);
         self
     }

@@ -241,6 +241,7 @@ impl SenderTransactionInitializer {
         let excess_blinding_factor = self.excess_blinding_factor;
         let offset_blinding_factor = &excess_blinding_factor - &offset;
         let excess = PublicKey::from_secret_key(&offset_blinding_factor);
+        let amount_to_self = self.outputs.iter().fold(0u64, |sum, o| sum + o.value);
         let outputs = self.outputs.iter().map(|o| TransactionOutput::from(o)).collect();
         let recipient_info = match self.num_recipients {
             0 => RecipientInfo::None,
@@ -253,6 +254,7 @@ impl SenderTransactionInitializer {
         }
         let sender_info = RawTransactionInfo {
             num_recipients: self.num_recipients,
+            amount_to_self,
             ids,
             amounts: self.amounts.into_vec(),
             metadata: TransactionMetadata {
@@ -283,49 +285,16 @@ impl SenderTransactionInitializer {
 mod test {
     use crate::{
         fee::{Fee, BASE_COST, COST_PER_INPUT, COST_PER_OUTPUT},
-        transaction::{OutputFeatures, TransactionInput, UnblindedOutput, MAX_TRANSACTION_INPUTS},
+        transaction::{UnblindedOutput, MAX_TRANSACTION_INPUTS},
         transaction_protocol::{
-            sender::{calculate_tx_id, SenderState},
+            sender::{SenderState},
             transaction_initializer::SenderTransactionInitializer,
             TransactionProtocolError,
         },
-        types::{CommitmentFactory, PublicKey, SecretKey},
     };
-    use rand::{CryptoRng, OsRng, Rng};
-    use tari_crypto::{
-        commitment::HomomorphicCommitmentFactory,
-        common::Blake256,
-        keys::{PublicKey as PK, SecretKey as SK},
-    };
-
-    pub struct TestParams {
-        k1: SecretKey,
-        k_change: SecretKey,
-        offset: SecretKey,
-        r: SecretKey,
-        public_nonce: PublicKey,
-    }
-
-    impl TestParams {
-        pub fn new<R: Rng + CryptoRng>(rng: &mut R) -> TestParams {
-            let r = SecretKey::random(rng);
-            TestParams {
-                k1: SecretKey::random(rng),
-                k_change: SecretKey::random(rng),
-                offset: SecretKey::random(rng),
-                public_nonce: PublicKey::from_secret_key(&r),
-                r,
-            }
-        }
-    }
-
-    fn make_input<R: Rng + CryptoRng>(rng: &mut R, val: u64) -> (TransactionInput, UnblindedOutput) {
-        let key = SecretKey::random(rng);
-        let v = SecretKey::from(val);
-        let commitment = CommitmentFactory::create(&key, &v);
-        let input = TransactionInput::new(OutputFeatures::empty(), commitment);
-        (input, UnblindedOutput::new(val, key, None))
-    }
+    use rand::{OsRng};
+    use tari_crypto::{common::Blake256};
+    use crate::transaction_protocol::test_common::{TestParams, make_input};
 
     /// One input, 2 outputs
     #[test]
@@ -345,8 +314,8 @@ mod test {
         builder
             .with_lock_height(100)
             .with_offset(p.offset)
-            .with_private_nonce(p.r);
-        builder.with_output(UnblindedOutput::new(100, p.k1, None));
+            .with_private_nonce(p.nonce);
+        builder.with_output(UnblindedOutput::new(100, p.spend_key, None));
         let (utxo, input) = make_input(&mut rng, 500);
         builder.with_input(utxo, input);
         builder.with_fee_per_gram(20);
@@ -356,7 +325,7 @@ mod test {
         assert_eq!(err.message, "Change spending key was not provided");
         // Ok, give them a change output
         let mut builder = err.builder;
-        builder.with_change_secret(p.k_change.clone());
+        builder.with_change_secret(p.change_key.clone());
         let result = builder.build::<Blake256>().unwrap();
         // Peek inside and check the results
         if let SenderState::Finalizing(info) = result.state {
@@ -381,13 +350,13 @@ mod test {
         let p = TestParams::new(&mut rng);
         let (utxo, input) = make_input(&mut rng, 500);
         let expected_fee = Fee::calculate(20, 1, 1);
-        let output = UnblindedOutput::new(500 - expected_fee, p.k1, None);
+        let output = UnblindedOutput::new(500 - expected_fee, p.spend_key, None);
         // Start the builder
         let mut builder = SenderTransactionInitializer::new(0);
         builder
             .with_lock_height(0)
             .with_offset(p.offset)
-            .with_private_nonce(p.r)
+            .with_private_nonce(p.nonce)
             .with_output(output)
             .with_input(utxo, input)
             .with_fee_per_gram(20);
@@ -416,13 +385,13 @@ mod test {
         let (utxo, input) = make_input(&mut rng, 500);
         let expected_fee = BASE_COST + (COST_PER_INPUT + 1 * COST_PER_OUTPUT) * 20; // 101, output = 80
                                                                                     // Pay out so that I should get change, but not enough to pay for the output
-        let output = UnblindedOutput::new(500 - expected_fee - 50, p.k1, None);
+        let output = UnblindedOutput::new(500 - expected_fee - 50, p.spend_key, None);
         // Start the builder
         let mut builder = SenderTransactionInitializer::new(0);
         builder
             .with_lock_height(0)
             .with_offset(p.offset)
-            .with_private_nonce(p.r)
+            .with_private_nonce(p.nonce)
             .with_output(output)
             .with_input(utxo, input)
             .with_fee_per_gram(20);
@@ -447,13 +416,13 @@ mod test {
         // Create some inputs
         let mut rng = OsRng::new().unwrap();
         let p = TestParams::new(&mut rng);
-        let output = UnblindedOutput::new(500, p.k1, None);
+        let output = UnblindedOutput::new(500, p.spend_key, None);
         // Start the builder
         let mut builder = SenderTransactionInitializer::new(0);
         builder
             .with_lock_height(0)
             .with_offset(p.offset)
-            .with_private_nonce(p.r)
+            .with_private_nonce(p.nonce)
             .with_output(output)
             .with_fee_per_gram(2);
         for _ in 0..MAX_TRANSACTION_INPUTS + 1 {
@@ -470,16 +439,16 @@ mod test {
         let mut rng = OsRng::new().unwrap();
         let p = TestParams::new(&mut rng);
         let (utxo, input) = make_input(&mut rng, 500);
-        let output = UnblindedOutput::new(400, p.k1, None);
+        let output = UnblindedOutput::new(400, p.spend_key, None);
         // Start the builder
         let mut builder = SenderTransactionInitializer::new(0);
         builder
             .with_lock_height(0)
             .with_offset(p.offset)
-            .with_private_nonce(p.r)
+            .with_private_nonce(p.nonce)
             .with_input(utxo, input)
             .with_output(output)
-            .with_change_secret(p.k_change)
+            .with_change_secret(p.change_key)
             .with_fee_per_gram(1);
         let err = builder.build::<Blake256>().unwrap_err();
         assert_eq!(err.message, "Fee is less than the minimum");
@@ -491,16 +460,16 @@ mod test {
         let mut rng = OsRng::new().unwrap();
         let p = TestParams::new(&mut rng);
         let (utxo, input) = make_input(&mut rng, 400);
-        let output = UnblindedOutput::new(400, p.k1, None);
+        let output = UnblindedOutput::new(400, p.spend_key, None);
         // Start the builder
         let mut builder = SenderTransactionInitializer::new(0);
         builder
             .with_lock_height(0)
             .with_offset(p.offset)
-            .with_private_nonce(p.r)
+            .with_private_nonce(p.nonce)
             .with_input(utxo, input)
             .with_output(output)
-            .with_change_secret(p.k_change)
+            .with_change_secret(p.change_key)
             .with_fee_per_gram(1);
         let err = builder.build::<Blake256>().unwrap_err();
         assert_eq!(err.message, "You are spending more than you're providing");
@@ -512,7 +481,7 @@ mod test {
         let mut rng = OsRng::new().unwrap();
         let p = TestParams::new(&mut rng);
         let (utxo, input) = make_input(&mut rng, 1000);
-        let output = UnblindedOutput::new(150, p.k1, None);
+        let output = UnblindedOutput::new(150, p.spend_key, None);
         // Start the builder
         let mut builder = SenderTransactionInitializer::new(2);
         builder
@@ -520,10 +489,10 @@ mod test {
             .with_offset(p.offset)
             .with_amount(0, 120)
             .with_amount(1, 110)
-            .with_private_nonce(p.r)
+            .with_private_nonce(p.nonce)
             .with_input(utxo, input)
             .with_output(output)
-            .with_change_secret(p.k_change)
+            .with_change_secret(p.change_key)
             .with_fee_per_gram(20);
         let result = builder.build::<Blake256>().unwrap();
         // Peek inside and check the results
@@ -543,18 +512,18 @@ mod test {
         let (utxo2, input2) = make_input(&mut rng, 3000);
         let weight = 30;
         let expected_fee = Fee::calculate(weight, 2, 3);
-        let output = UnblindedOutput::new(1500 - expected_fee, p.k1, None);
+        let output = UnblindedOutput::new(1500 - expected_fee, p.spend_key, None);
         // Start the builder
         let mut builder = SenderTransactionInitializer::new(1);
         builder
             .with_lock_height(1234)
             .with_offset(p.offset)
-            .with_private_nonce(p.r)
+            .with_private_nonce(p.nonce)
             .with_output(output)
             .with_input(utxo1, input1)
             .with_input(utxo2, input2)
             .with_amount(0, 2500)
-            .with_change_secret(p.k_change)
+            .with_change_secret(p.change_key)
             .with_fee_per_gram(weight);
         let result = builder.build::<Blake256>().unwrap();
         // Peek inside and check the results

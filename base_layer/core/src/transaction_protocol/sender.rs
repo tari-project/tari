@@ -26,7 +26,7 @@ use crate::{
 };
 
 use crate::{
-    transaction::{KernelFeatures, Transaction, TransactionBuilder, TransactionKernel},
+    transaction::{KernelFeatures, Transaction, TransactionBuilder},
     types::{CommitmentFactory, PublicKey},
 };
 
@@ -43,6 +43,7 @@ use digest::Digest;
 use tari_crypto::commitment::HomomorphicCommitmentFactory;
 use tari_utilities::ByteArray;
 use crate::transaction::KernelBuilder;
+use crate::transaction_protocol::build_challenge;
 
 //----------------------------------------   Local Data types     ----------------------------------------------------//
 
@@ -51,6 +52,8 @@ use crate::transaction::KernelBuilder;
 #[derive(Clone, Debug)]
 pub(super) struct RawTransactionInfo {
     pub num_recipients: usize,
+    // The sum of self-created outputs plus change
+    pub amount_to_self: u64,
     pub ids: Vec<u64>,
     pub amounts: Vec<u64>,
     pub metadata: TransactionMetadata,
@@ -68,7 +71,8 @@ pub(super) struct RawTransactionInfo {
 
 impl RawTransactionInfo {
     pub fn calculate_total_amount(&self) -> u64 {
-        self.amounts.iter().fold(0u64, |sum, v| sum + v)
+        let to_others = self.amounts.iter().fold(0u64, |sum, v| sum + v);
+        to_others + self.amount_to_self
     }
 }
 
@@ -114,11 +118,26 @@ impl SenderTransactionProtocol {
         }
     }
 
+    /// Method to determine if we are in the SenderState::Finalizing state
+    pub fn is_finalizing(&self) -> bool {
+        match &self.state {
+            SenderState::Finalizing(_) => true,
+            _ => false,
+        }
+    }
+
     /// Method to determine if we are in the SenderState::FinalizedTransaction state
     pub fn is_finalized(&self) -> bool {
         match &self.state {
             SenderState::FinalizedTransaction(_) => true,
             _ => false,
+        }
+    }
+
+    pub fn get_transaction(&self) -> Result<&Transaction, TPE> {
+        match &self.state {
+            SenderState::FinalizedTransaction(tx) => Ok(tx),
+            _ => Err(TPE::InvalidStateError),
         }
     }
 
@@ -162,7 +181,7 @@ impl SenderTransactionProtocol {
                 };
                 self.state = SenderState::CollectingSingleSignature(info.clone());
                 Ok(result)
-            },
+            }
             _ => Err(TPE::InvalidStateError),
         }
     }
@@ -176,7 +195,7 @@ impl SenderTransactionProtocol {
                 info.signatures.push(rec.partial_signature);
                 self.state = SenderState::Finalizing(info.clone());
                 Ok(())
-            },
+            }
             _ => Err(TPE::InvalidStateError),
         }
     }
@@ -210,11 +229,13 @@ impl SenderTransactionProtocol {
     /// Performs sanitary checks on the collected transaction pieces prior to building the final Transaction instance
     fn validate(&self) -> Result<(), TPE> {
         if let SenderState::Finalizing(info) = &self.state {
+            let total_amount = info.calculate_total_amount();
+            println!("Total amount: {}", total_amount);
+            let fee = info.metadata.fee;
+            println!("Total fee: {}", fee);
             // The fee should be less than the amount. This isn't a protocol requirement, but it's what you want 99.999%
             // of the time, and our users will thank us if we reject a tx where they put the amount in the fee field by
             // mistake!
-            let total_amount = info.calculate_total_amount();
-            let fee = info.metadata.fee;
             if fee > total_amount {
                 return Err(TPE::ValidationError(
                     "Fee is greater than amount".into(),
@@ -254,6 +275,21 @@ impl SenderTransactionProtocol {
         }
     }
 
+    fn sign(&mut self) -> Result<(), TPE> {
+        match &mut self.state {
+            SenderState::Finalizing(info) => {
+                let e = build_challenge(&info.public_nonce, &info.public_excess, &info.metadata);
+                let k = info.offset_blinding_factor.clone();
+                let r = info.private_nonce.clone();
+                let s = Signature::sign(k, r, e)
+                    .map_err(|e| TPE::SigningError(e))?;
+                info.signatures.push(s);
+                Ok(())
+            }
+            _ => Err(TPE::InvalidStateError),
+        }
+    }
+
     /// Try and finalise the transaction. If the current state is Finalizing, the result will be whether the
     /// transaction was valid or not. If the result is false, the transaction will be in a Failed state. Calling
     /// finalize while in any other state will result in an error.
@@ -263,6 +299,15 @@ impl SenderTransactionProtocol {
     /// the transaction protocol moves to Failed state and we are done; you can't rescue the situation. The function
     /// returns `Ok(false)` in this instance.
     pub fn finalize(&mut self, features: KernelFeatures) -> Result<bool, TPE> {
+        match &mut self.state {
+            SenderState::Finalizing(info) => {
+                if let Err(e) = self.sign() {
+                    self.state = SenderState::Failed(e);
+                    return Ok(false);
+                }
+            }
+            _ => return Err(TPE::InvalidStateError),
+        }
         match &self.state {
             SenderState::Finalizing(info) => {
                 let result = self.validate().and_then(|_| Self::build_transaction(info, features));
@@ -280,7 +325,7 @@ impl SenderTransactionProtocol {
                 }
                 self.state = SenderState::FinalizedTransaction(transaction);
                 Ok(true)
-            },
+            }
             _ => Err(TPE::InvalidStateError),
         }
     }
@@ -314,7 +359,9 @@ pub(super) enum SenderState {
 }
 
 impl SenderState {
-    pub fn initialize(self) -> Result<SenderState, TPE> {
+    /// Puts the Sender FSM into the appropriate initial state, based on the number of recipients. Don't call this
+    /// function directly. It is called by the `TransactionInitializer` builder
+    pub(super) fn initialize(self) -> Result<SenderState, TPE> {
         match self {
             SenderState::Initializing(info) => match info.num_recipients {
                 0 => Ok(SenderState::Finalizing(info)),
@@ -329,3 +376,34 @@ impl SenderState {
 }
 
 //----------------------------------------         Tests          ----------------------------------------------------//
+
+#[cfg(test)]
+mod test {
+    use crate::transaction_protocol::sender::SenderTransactionProtocol;
+    use tari_crypto::common::Blake256;
+    use crate::transaction_protocol::test_common::{TestParams, make_input};
+    use rand::OsRng;
+    use crate::transaction::{KernelFeatures, UnblindedOutput};
+
+    #[test]
+    fn zero_recipients() {
+        let mut rng = OsRng::new().unwrap();
+        let p = TestParams::new(&mut rng);
+        let (utxo, input) = make_input(&mut rng, 1200);
+        let mut builder = SenderTransactionProtocol::new(0);
+        builder.with_lock_height(0)
+            .with_fee_per_gram(10)
+            .with_offset(p.offset.clone())
+            .with_private_nonce(p.nonce.clone())
+            .with_change_secret(p.change_key.clone())
+            .with_input(utxo, input)
+            .with_output(UnblindedOutput::new(500, p.spend_key.clone(), None))
+            .with_output(UnblindedOutput::new(400, p.spend_key.clone(), None));
+        let mut sender = builder.build::<Blake256>().unwrap();
+        assert_eq!(sender.is_failed(), false);
+        assert!(sender.is_finalizing());
+        assert!(sender.finalize(KernelFeatures::empty()).unwrap());
+        let tx = sender.get_transaction().unwrap();
+        assert_eq!(tx.offset, p.offset);
+    }
+}
