@@ -37,7 +37,7 @@ pub enum ByteArrayError {
 /// Many of the types in this crate are just large numbers (256 bit usually). This trait provides the common
 /// functionality for  types  like secret keys, signatures, commitments etc. to be converted to and from byte arrays
 /// and hexadecimal formats.
-pub trait ByteArray {
+pub trait ByteArray: Sized {
     /// Return the hexadecimal string representation of the type
     fn to_hex(&self) -> String {
         to_hex(&self.to_vec())
@@ -45,8 +45,7 @@ pub trait ByteArray {
 
     /// Try and convert the given hexadecimal string to the type. Any failures (incorrect  string length, non hex
     /// characters, etc) return a [KeyError](enum.KeyError.html) with an explanatory note.
-    fn from_hex(hex: &str) -> Result<Self, ByteArrayError>
-    where Self: Sized {
+    fn from_hex(hex: &str) -> Result<Self, ByteArrayError> {
         let v = from_hex(hex)?;
         Self::from_vec(&v)
     }
@@ -65,8 +64,7 @@ pub trait ByteArray {
 
     /// Try and convert the given byte array to the implemented type. Any failures (incorrect array length,
     /// implementation-specific checks, etc) return a [ByteArrayError](enum.ByteArrayError.html).
-    fn from_bytes(bytes: &[u8]) -> Result<Self, ByteArrayError>
-    where Self: Sized;
+    fn from_bytes(bytes: &[u8]) -> Result<Self, ByteArrayError>;
 
     /// Return the type as a byte array
     fn as_bytes(&self) -> &[u8];
@@ -79,8 +77,7 @@ impl ByteArray for Vec<u8> {
 
     /// Try and convert the given hexadecimal string to the type. Any failures (incorrect  string length, non hex
     /// characters, etc) return a [KeyError](enum.KeyError.html) with an explanatory note.
-    fn from_hex(hex: &str) -> Result<Self, ByteArrayError>
-    where Self: Sized {
+    fn from_hex(hex: &str) -> Result<Self, ByteArrayError> {
         let v = from_hex(hex)?;
         Self::from_vec(&v)
     }
@@ -89,13 +86,11 @@ impl ByteArray for Vec<u8> {
         self.clone()
     }
 
-    fn from_vec(v: &Vec<u8>) -> Result<Self, ByteArrayError>
-    where Self: Sized {
+    fn from_vec(v: &Vec<u8>) -> Result<Self, ByteArrayError> {
         Ok(v.clone())
     }
 
-    fn from_bytes(bytes: &[u8]) -> Result<Self, ByteArrayError>
-    where Self: Sized {
+    fn from_bytes(bytes: &[u8]) -> Result<Self, ByteArrayError> {
         Ok(bytes.to_vec())
     }
 
@@ -105,8 +100,7 @@ impl ByteArray for Vec<u8> {
 }
 
 impl ByteArray for [u8; 32] {
-    fn from_bytes(bytes: &[u8]) -> Result<Self, ByteArrayError>
-    where Self: Sized {
+    fn from_bytes(bytes: &[u8]) -> Result<Self, ByteArrayError> {
         if bytes.len() != 32 {
             return Err(ByteArrayError::IncorrectLength);
         }
