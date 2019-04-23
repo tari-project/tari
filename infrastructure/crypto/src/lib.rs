@@ -12,6 +12,7 @@ pub mod commitment;
 pub mod common;
 pub mod keys;
 pub mod musig;
+pub mod range_proof;
 pub mod signatures;
 
 // Implementations
