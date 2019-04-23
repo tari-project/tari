@@ -94,3 +94,17 @@ pub struct TransactionMetadata {
     /// The earliest block this transaction can be mined
     lock_height: u64,
 }
+
+/// Convenience function that calculates the challenge for the Schnorr signatures
+pub(self) fn build_challenge(
+    sum_public_nonces: &PublicKey,
+    sum_public_keys: &PublicKey,
+    metadata: &TransactionMetadata,
+) -> Challenge<SignatureHash>
+{
+    Challenge::<SignatureHash>::new()
+        .concat(sum_public_nonces.as_bytes())
+        .concat(sum_public_keys.as_bytes())
+        .concat(&metadata.fee.to_le_bytes())
+        .concat(&metadata.lock_height.to_le_bytes())
+}

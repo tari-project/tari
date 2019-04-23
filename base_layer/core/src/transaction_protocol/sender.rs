@@ -71,6 +71,20 @@ impl RawTransactionInfo {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct SingleRoundSenderData {
+    /// The transaction id for the recipient
+    pub tx_id: u64,
+    /// The amount, in µT, being sent to the recipient
+    pub amount: u64,
+    /// The offset public excess for this transaction
+    pub public_excess: PublicKey,
+    /// The sender's public nonce
+    pub public_nonce: PublicKey,
+    /// The transaction metadata
+    pub metadata: TransactionMetadata,
+}
+
 //----------------------------------------  Sender State Protocol ----------------------------------------------------//
 #[derive(Debug)]
 pub struct SenderTransactionProtocol {
