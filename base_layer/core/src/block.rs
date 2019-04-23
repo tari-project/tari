@@ -28,15 +28,21 @@ use crate::{
     transaction::{TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
 };
 
+//----------------------------------------         Blocks         ----------------------------------------------------//
+
 /// A Tari block. Blocks are linked together into a blockchain.
 pub struct Block {
     pub header: BlockHeader,
     pub body: AggregateBody,
 }
 
+//----------------------------------------     AggregateBody      ----------------------------------------------------//
+
 /// The components of the block or transaction. The same struct can be used for either, since in Mimblewimble,
 /// cut-through means that blocks and transactions have the same structure.
+#[derive(Clone, Debug)]
 pub struct AggregateBody {
+    sorted: bool,
     /// List of inputs spent by the transaction.
     pub inputs: Vec<TransactionInput>,
     /// List of outputs the transaction produces.
@@ -49,6 +55,7 @@ impl AggregateBody {
     /// Create an empty aggregate body
     pub fn empty() -> AggregateBody {
         AggregateBody {
+            sorted: false,
             inputs: vec![],
             outputs: vec![],
             kernels: vec![],
@@ -63,6 +70,7 @@ impl AggregateBody {
     ) -> AggregateBody
     {
         AggregateBody {
+            sorted: false,
             inputs,
             outputs,
             kernels,
@@ -70,58 +78,59 @@ impl AggregateBody {
     }
 
     /// Add an input to the existing aggregate body
-    pub fn add_input(mut self, input: TransactionInput) -> AggregateBody {
+    pub fn add_input(&mut self, input: TransactionInput) {
         self.inputs.push(input);
-        self.inputs.sort();
-        self
+        self.sorted = false;
     }
 
     /// Add a series of inputs to the existing aggregate body
-    pub fn add_inputs(mut self, mut inputs: Vec<TransactionInput>) -> AggregateBody {
-        self.inputs.append(&mut inputs);
-        self.inputs.sort();
-        self
+    pub fn add_inputs(&mut self, inputs: &mut Vec<TransactionInput>) {
+        self.inputs.append(inputs);
+        self.sorted = false;
     }
 
     /// Add an output to the existing aggregate body
-    pub fn add_output(mut self, output: TransactionOutput) -> AggregateBody {
+    pub fn add_output(&mut self, output: TransactionOutput) {
         self.outputs.push(output);
-        self.outputs.sort();
-        self
+        self.sorted = false;
     }
 
     /// Add an output to the existing aggregate body
-    pub fn add_outputs(mut self, mut outputs: Vec<TransactionOutput>) -> AggregateBody {
-        self.outputs.append(&mut outputs);
-        self.outputs.sort();
-        self
+    pub fn add_outputs(&mut self, outputs: &mut Vec<TransactionOutput>) {
+        self.outputs.append(outputs);
+        self.sorted = false;
     }
 
     /// Add a kernel to the existing aggregate body
-    pub fn add_kernel(mut self, kernel: TransactionKernel) -> AggregateBody {
+    pub fn add_kernel(&mut self, kernel: TransactionKernel) {
         self.kernels.push(kernel);
-        self.kernels.sort();
-        self
     }
 
     /// Set the kernel of the aggregate body, replacing any previous kernels
-    pub fn set_kernel(mut self, kernel: TransactionKernel) -> AggregateBody {
+    pub fn set_kernel(&mut self, kernel: TransactionKernel) {
         self.kernels = vec![kernel];
-        self
     }
 
     /// Sort the component lists of the aggregate body
     pub fn sort(&mut self) {
+        if self.sorted {
+            return;
+        }
         self.inputs.sort();
         self.outputs.sort();
-        self.kernels.sort();
+        self.sorted = true;
     }
 
     /// Verify the signatures in all kernels contained in this aggregate body
-    pub fn verify_kernel_signatures(&self) -> Result<(), TransactionError> {
+    pub fn verify_kernel_signatures(&mut self) -> Result<(), TransactionError> {
+        if !self.sorted {
+            self.sort();
+        }
         for kernel in self.kernels.iter() {
             kernel.verify_signature()?;
         }
         Ok(())
     }
 }
+
+//----------------------------------------         Tests          ----------------------------------------------------//

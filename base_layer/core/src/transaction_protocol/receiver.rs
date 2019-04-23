@@ -1,4 +1,4 @@
-// Copyright 2018 The Tari Project
+// Copyright 2019. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,42 +20,44 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// This file is used to store the current blockchain state
-
-use crate::error::StateError;
-use merklemountainrange::mmr::*;
-use tari_core::{
-    block::Block,
-    blockheader::BlockHeader,
-    transaction::{TransactionKernel, TransactionOutput},
-    types::*,
+use crate::{
+    transaction::TransactionOutput,
+    transaction_protocol::TransactionProtocolError,
+    types::{PublicKey, SecretKey, Signature},
 };
+use std::collections::HashMap;
+use tari_crypto::challenge::MessageHash;
 
-/// The BlockchainState struct keeps record of the current UTXO, total kernels and headers.
-pub struct BlockchainState {
-    _headers: MerkleMountainRange<BlockHeader, SignatureHash>,
-    _outputs: MerkleMountainRange<TransactionOutput, SignatureHash>,
-    _kernels: MerkleMountainRange<TransactionKernel, SignatureHash>,
+pub enum RecipientState {
+    Finalized(RecipientSignedTransactionData),
+    Failed(TransactionProtocolError),
 }
 
-impl BlockchainState {
-    /// Creates a new empty blockchainstate
-    pub fn new() -> BlockchainState {
-        BlockchainState {
-            _headers: MerkleMountainRange::new(),
-            _outputs: MerkleMountainRange::new(),
-            _kernels: MerkleMountainRange::new(),
-        }
-    }
-
-    /// This function  will process a new block.
-    /// Note the block must have been validated by the chainstate before.
-    pub fn process_new_block(&self, new_block: &Block) -> Result<(), StateError> {
-        self.validate_new_block(new_block)
-    }
-
-    /// This function will validate the block in terms of the current state.
-    pub fn validate_new_block(&self, _new_block: &Block) -> Result<(), StateError> {
-        Ok(())
-    }
+/// An enum describing the types of information that a recipient can send back to the receiver
+#[derive(Debug, Clone)]
+pub(super) enum RecipientInfo {
+    None,
+    Single(Option<Box<RecipientSignedTransactionData>>),
+    Multiple(HashMap<u64, MultiRecipientInfo>),
 }
+
+#[derive(Debug, Clone)]
+pub(super) struct MultiRecipientInfo {
+    pub commitment: MessageHash,
+    pub data: RecipientSignedTransactionData,
+}
+
+/// This is the message containing the public data that the Receiver will send back to the Sender
+#[derive(Clone, Debug)]
+pub struct RecipientSignedTransactionData {
+    pub tx_id: u64,
+    pub output: TransactionOutput,
+    pub public_spend_key: PublicKey,
+    pub partial_signature: Signature,
+}
+
+pub struct ReceiverTransactionProtocol {
+    state: RecipientState,
+}
+
+impl ReceiverTransactionProtocol {}

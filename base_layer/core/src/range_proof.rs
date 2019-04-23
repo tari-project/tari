@@ -23,9 +23,19 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
+use crate::types::Commitment;
+
 const RANGE_PROOF_LENGTH: usize = 1; // This will be changed
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct RangeProof(pub [u8; RANGE_PROOF_LENGTH]);
 
-impl Copy for RangeProof {}
+impl RangeProof {
+    pub fn create_proof() -> Self {
+        RangeProof([0])
+    }
+
+    pub fn verify(_commitment: &Commitment) -> bool {
+        true
+    }
+}
