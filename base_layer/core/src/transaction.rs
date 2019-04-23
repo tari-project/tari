@@ -29,13 +29,12 @@ use crate::{
     types::{BlindingFactor, Commitment, CommitmentFactory, Signature},
 };
 
-use crate::types::{SecretKey, SignatureHash};
+use crate::types::{HashDigest, SecretKey, SignatureHash};
 use derive_error::Error;
-use digest::Digest;
+use digest::Input;
 use tari_crypto::{
     challenge::Challenge,
     commitment::{HomomorphicCommitment, HomomorphicCommitmentFactory},
-    common::Blake256,
 };
 use tari_utilities::{ByteArray, Hashable};
 
@@ -62,8 +61,6 @@ bitflags! {
         const COINBASE_OUTPUT = 0b00000001;
     }
 }
-
-type Hasher = Blake256;
 
 //----------------------------------------     TransactionError   ----------------------------------------------------//
 
@@ -156,7 +153,7 @@ impl TransactionInput {
 /// Implement the canonical hashing function for TransactionInput for use in ordering
 impl Hashable for TransactionInput {
     fn hash(&self) -> Vec<u8> {
-        let mut hasher = Hasher::new();
+        let mut hasher = HashDigest::new();
         hasher.input(vec![self.features.bits]);
         hasher.input(self.commitment.as_bytes());
         hasher.result().to_vec()
@@ -209,7 +206,7 @@ impl TransactionOutput {
 /// Implement the canonical hashing function for TransactionOutput for use in ordering
 impl Hashable for TransactionOutput {
     fn hash(&self) -> Vec<u8> {
-        let mut hasher = Hasher::new();
+        let mut hasher = HashDigest::new();
         hasher.input(vec![self.features.bits]);
         hasher.input(self.commitment.as_bytes());
         hasher.input(self.proof.0);
@@ -246,17 +243,26 @@ pub struct TransactionKernel {
     /// Remainder of the sum of all transaction commitments. If the transaction
     /// is well formed, amounts components should sum to zero and the excess
     /// is hence a valid public key.
-    pub excess: Option<Commitment>,
+    pub excess: Commitment,
     /// The signature proving the excess is a valid public key, which signs
     /// the transaction fee.
-    pub excess_sig: Option<Signature>,
+    pub excess_sig: Signature,
+}
+
+/// A version of Transaction kernel with optional fields. This struct is only used in constructing transaction kernels
+pub struct KernelBuilder {
+    features: KernelFeatures,
+    fee: u64,
+    lock_height: u64,
+    excess: Option<Commitment>,
+    excess_sig: Option<Signature>,
 }
 
 /// Implementation of the transaction kernel
-impl TransactionKernel {
+impl KernelBuilder {
     /// Creates an empty transaction kernel
-    pub fn empty() -> TransactionKernel {
-        TransactionKernel {
+    pub fn new() -> KernelBuilder {
+        KernelBuilder {
             features: KernelFeatures::empty(),
             fee: 0,
             lock_height: 0,
@@ -265,38 +271,81 @@ impl TransactionKernel {
         }
     }
 
+    /// Build a transaction kernel with the provided features
+    pub fn with_features(mut self, features: KernelFeatures) -> KernelBuilder {
+        self.features = features.clone();
+        self
+    }
+
     /// Build a transaction kernel with the provided fee
-    pub fn with_fee(mut self, fee: u64) -> TransactionKernel {
+    pub fn with_fee(mut self, fee: u64) -> KernelBuilder {
         self.fee = fee;
         self
     }
 
     /// Build a transaction kernel with the provided lock height
-    pub fn with_lock_height(mut self, lock_height: u64) -> TransactionKernel {
+    pub fn with_lock_height(mut self, lock_height: u64) -> KernelBuilder {
         self.lock_height = lock_height;
         self
     }
 
-    pub fn verify_signature(&self) -> Result<(), TransactionError> {
+    /// Add the excess (sum of public spend keys minus the offset)
+    pub fn with_excess(mut self, excess: &Commitment) -> KernelBuilder {
+        self.excess = Some(excess.clone());
+        self
+    }
+
+    /// Add the excess signature
+    pub fn with_signature(mut self, signature: &Signature) -> KernelBuilder {
+        self.excess_sig = Some(signature.clone());
+        self
+    }
+
+    pub fn build(self) -> Result<TransactionKernel, TransactionError> {
         if self.excess.is_none() || self.excess_sig.is_none() {
             return Err(TransactionError::NoSignatureError);
         }
+        Ok(TransactionKernel {
+            features: self.features,
+            fee: self.fee,
+            lock_height: self.lock_height,
+            excess: self.excess.unwrap(),
+            excess_sig: self.excess_sig.unwrap(),
+        })
+    }
+}
 
-        let signature = self.excess_sig.as_ref().unwrap();
-        let excess = self.excess.as_ref().unwrap();
-        let excess = excess.as_public_key();
-        let r = signature.get_public_nonce();
+impl TransactionKernel {
+    pub fn verify_signature(&self) -> Result<(), TransactionError> {
+        let excess = self.excess.as_public_key();
+        let r = self.excess_sig.get_public_nonce();
         let c = Challenge::<SignatureHash>::new()
             .concat(r.as_bytes())
             .concat(excess.as_bytes())
             .concat(&self.fee.to_le_bytes())
             .concat(&self.lock_height.to_le_bytes());
 
-        if signature.verify_challenge(excess, c) {
+        if self.excess_sig.verify_challenge(excess, c) {
             return Ok(());
         } else {
             return Err(TransactionError::InvalidSignatureError);
         }
+    }
+}
+
+impl Hashable for TransactionKernel {
+    /// Produce a canonical hash for a transaction kernel. The hash is given by
+    /// $$ H(feature_bits | fee | lock_height | P_excess | R_sum | s_sum)
+    fn hash(&self) -> Vec<u8> {
+        HashDigest::new()
+            .chain(&[self.features.bits])
+            .chain(self.fee.to_le_bytes())
+            .chain(self.lock_height.to_le_bytes())
+            .chain(self.excess.as_bytes())
+            .chain(self.excess_sig.get_public_nonce().as_bytes())
+            .chain(self.excess_sig.get_signature().as_bytes())
+            .result()
+            .to_vec()
     }
 }
 
@@ -349,7 +398,7 @@ impl Transaction {
             },
             |acc, val| KernelSum {
                 fees: &acc.fees + &val.fee,
-                sum: &acc.sum + val.excess.as_ref().unwrap_or(&CommitmentFactory::zero()),
+                sum: &acc.sum + &val.excess,
             },
         );
         kernel_sum
@@ -461,17 +510,14 @@ impl TransactionBuilder {
 mod test {
     use super::*;
     use crate::{
-        range_proof::RangeProof,
         transaction::{KernelFeatures, OutputFeatures, TransactionInput, TransactionKernel, TransactionOutput},
         types::{BlindingFactor, PublicKey, SecretKey},
     };
     use rand;
     use tari_crypto::{
-        challenge::Challenge,
         common::Blake256,
         keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
     };
-    use tari_utilities::ByteArray;
 
     #[test]
     fn unblinded_input() {
