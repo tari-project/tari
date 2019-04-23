@@ -23,6 +23,7 @@
 //! The Tari-compatible implementation of Ristretto based on the curve25519-dalek implementation
 use crate::keys::{PublicKey, SecretKey};
 use blake2::Blake2b;
+use clear_on_drop::clear::Clear;
 use curve25519_dalek::{
     constants::RISTRETTO_BASEPOINT_TABLE,
     ristretto::{CompressedRistretto, RistrettoPoint},
@@ -40,9 +41,7 @@ use std::{
     fmt,
     ops::{Add, Mul, Sub},
 };
-use clear_on_drop::clear::{Clear};
 use tari_utilities::{ByteArray, ByteArrayError, ExtendBytes, Hashable};
-
 
 type HashDigest = Blake2b;
 

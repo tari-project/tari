@@ -175,7 +175,10 @@ impl SenderTransactionInitializer {
                     // output and go without a change output
                     None | Some(0) => Ok(fee_without_change + v),
                     Some(v) => {
-                        let change_key = self.change_secret.as_ref().ok_or("Change spending key was not provided")?;
+                        let change_key = self
+                            .change_secret
+                            .as_ref()
+                            .ok_or("Change spending key was not provided")?;
                         self.with_output(UnblindedOutput::new(v, change_key.clone(), None));
                         Ok(fee_with_change)
                     },
