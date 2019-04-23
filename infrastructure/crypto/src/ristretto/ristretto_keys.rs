@@ -43,6 +43,9 @@ use std::{
 use clear_on_drop::clear::{Clear};
 use tari_utilities::{ByteArray, ByteArrayError, ExtendBytes, Hashable};
 
+
+type HashDigest = Blake2b;
+
 /// The [SecretKey](trait.SecretKey.html) implementation for [Ristretto](https://ristretto.group) is a thin wrapper
 /// around the Dalek [Scalar](struct.Scalar.html) type, representing a 256-bit integer (mod the group order).
 ///
@@ -63,10 +66,6 @@ use tari_utilities::{ByteArray, ByteArrayError, ExtendBytes, Hashable};
 /// let _k3 = RistrettoSecretKey::random(&mut rng);
 /// ```
 #[derive(PartialEq, Eq, Clone, Debug)]
-
-type HashDigest = Blake2b;
-
-#[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub struct RistrettoSecretKey(pub(crate) Scalar);
 
 /// Requires custom Serde Serialize and Deserialize for RistrettoSecretKey as Scalar do not implement these traits
