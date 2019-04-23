@@ -52,6 +52,9 @@ pub type PublicKey = RistrettoPublicKey;
 /// Define the hash function that will be used to produce a signature challenge
 pub type SignatureHash = Blake256;
 
+/// Specify the Hash function for general hashing
+pub type HashDigest = Blake256;
+
 /// Convenience type wrapper for creating output commitments directly from values and spending_keys
 pub trait TariCommitment {
     fn commit(value: u64, spending_key: &SecretKey) -> Commitment;
