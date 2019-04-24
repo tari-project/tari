@@ -8,7 +8,11 @@ use crate::{
 };
 use derive_error::Error;
 use digest::Digest;
-use std::ops::{Add, Mul};
+use std::{
+    cmp::Ordering,
+    ops::{Add, Mul},
+};
+use tari_utilities::ByteArray;
 
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
 pub enum SchnorrSignatureError {
@@ -17,7 +21,7 @@ pub enum SchnorrSignatureError {
 }
 
 #[allow(non_snake_case)]
-#[derive(PartialEq, Eq, Copy, Debug, Clone, PartialOrd, Ord)]
+#[derive(PartialEq, Eq, Copy, Debug, Clone)]
 pub struct SchnorrSignature<P, K> {
     public_nonce: P,
     signature: K,
@@ -131,5 +135,36 @@ where
 {
     fn default() -> Self {
         SchnorrSignature::new(P::default(), K::default())
+    }
+}
+
+/// Provide an efficient ordering algorithm for Schnorr signatures. It's probably not a good idea to implement `Ord`
+/// for secret keys, but in this instance, the signature is publicly known and is simply a scalar, so we use the hex
+/// representation of the scalar as the canonical ordering metric. This conversion is done if and only if the public
+/// nonces are already equal, otherwise the public nonce ordering determines the SchnorrSignature order.
+impl<P, K> Ord for SchnorrSignature<P, K>
+where
+    P: Eq + Ord,
+    K: Eq + ByteArray,
+{
+    fn cmp(&self, other: &Self) -> Ordering {
+        match self.public_nonce.cmp(&other.public_nonce) {
+            Ordering::Equal => {
+                let this = self.signature.to_hex();
+                let that = other.signature.to_hex();
+                this.cmp(&that)
+            },
+            v => v,
+        }
+    }
+}
+
+impl<P, K> PartialOrd for SchnorrSignature<P, K>
+where
+    P: Eq + Ord,
+    K: Eq + ByteArray,
+{
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
     }
 }
