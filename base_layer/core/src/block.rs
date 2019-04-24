@@ -118,6 +118,7 @@ impl AggregateBody {
         }
         self.inputs.sort();
         self.outputs.sort();
+        self.kernels.sort();
         self.sorted = true;
     }
 
