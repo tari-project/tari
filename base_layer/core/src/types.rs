@@ -24,7 +24,7 @@
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
 use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
+    commitment::{HomomorphicCommitment, HomomorphicCommitmentFactory},
     common::Blake256,
     ristretto::{
         pedersen::{PedersenBaseOnRistretto255, PedersenOnRistretto255},
@@ -63,6 +63,18 @@ pub trait TariCommitment {
 impl TariCommitment for CommitmentFactory {
     fn commit(value: u64, spending_key: &SecretKey) -> Commitment {
         let v = SecretKey::from(value);
-        CommitmentFactory::create(&v, spending_key)
+        CommitmentFactory::create(spending_key, &v)
+    }
+}
+
+/// Convenience wrapper for validating commitments directly from values and keys
+pub trait TariCommitmentValidate {
+    fn validate(&self, value: u64, spending_key: &SecretKey) -> bool;
+}
+
+impl TariCommitmentValidate for Commitment {
+    fn validate(&self, value: u64, spending_key: &RistrettoSecretKey) -> bool {
+        let kv = SecretKey::from(value);
+        self.open(spending_key, &kv)
     }
 }
