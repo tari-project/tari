@@ -267,7 +267,8 @@ impl SenderTransactionInitializer {
             offset_blinding_factor,
             public_excess: excess,
             private_nonce: nonce,
-            public_nonce,
+            public_nonce: public_nonce.clone(),
+            public_nonce_sum: public_nonce,
             recipient_info,
             signatures: Vec::new(),
         };
@@ -287,14 +288,14 @@ mod test {
         fee::{Fee, BASE_COST, COST_PER_INPUT, COST_PER_OUTPUT},
         transaction::{UnblindedOutput, MAX_TRANSACTION_INPUTS},
         transaction_protocol::{
-            sender::{SenderState},
+            sender::SenderState,
+            test_common::{make_input, TestParams},
             transaction_initializer::SenderTransactionInitializer,
             TransactionProtocolError,
         },
     };
-    use rand::{OsRng};
-    use tari_crypto::{common::Blake256};
-    use crate::transaction_protocol::test_common::{TestParams, make_input};
+    use rand::OsRng;
+    use tari_crypto::common::Blake256;
 
     /// One input, 2 outputs
     #[test]

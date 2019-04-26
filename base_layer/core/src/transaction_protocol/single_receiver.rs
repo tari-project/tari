@@ -47,10 +47,7 @@ impl SingleReceiverTransactionProtocol {
         let output = SingleReceiverTransactionProtocol::build_output(sender_info, &spending_key, features)?;
         let public_nonce = PublicKey::from_secret_key(&nonce);
         let public_spending_key = PublicKey::from_secret_key(&spending_key);
-        let e = build_challenge(
-            &(&sender_info.public_nonce + &public_nonce),
-            &sender_info.metadata,
-        );
+        let e = build_challenge(&(&sender_info.public_nonce + &public_nonce), &sender_info.metadata);
         let signature = Signature::sign(spending_key, nonce, e).map_err(|e| TPE::SigningError(e))?;
         let data = RD {
             tx_id: sender_info.tx_id,

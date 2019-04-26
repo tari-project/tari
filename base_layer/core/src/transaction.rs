@@ -29,15 +29,17 @@ use crate::{
     types::{BlindingFactor, Commitment, CommitmentFactory, Signature},
 };
 
-use crate::types::{HashDigest, SecretKey, SignatureHash, PublicKey};
+use crate::{
+    transaction_protocol::{build_challenge, TransactionMetadata},
+    types::{HashDigest, PublicKey, SecretKey, SignatureHash},
+};
 use derive_error::Error;
 use digest::Input;
 use tari_crypto::{
-    keys::PublicKey as PK,
     commitment::{HomomorphicCommitment, HomomorphicCommitmentFactory},
+    keys::PublicKey as PK,
 };
 use tari_utilities::{ByteArray, Hashable};
-use crate::transaction_protocol::{build_challenge, TransactionMetadata};
 
 // These are set fairly arbitrarily at the moment. We'll need to do some modelling / testing to tune these values.
 pub const MAX_TRANSACTION_INPUTS: usize = 500;
@@ -320,7 +322,10 @@ impl TransactionKernel {
     pub fn verify_signature(&self) -> Result<(), TransactionError> {
         let excess = self.excess.as_public_key();
         let r = self.excess_sig.get_public_nonce();
-        let m = TransactionMetadata { lock_height: self.lock_height, fee: self.fee };
+        let m = TransactionMetadata {
+            lock_height: self.lock_height,
+            fee: self.fee,
+        };
         let c = build_challenge(r, &m);
         if self.excess_sig.verify_challenge(excess, c) {
             return Ok(());
@@ -372,7 +377,7 @@ impl Transaction {
     ) -> Transaction
     {
         Transaction {
-            offset: offset,
+            offset,
             body: AggregateBody::new(inputs, outputs, kernels),
         }
     }

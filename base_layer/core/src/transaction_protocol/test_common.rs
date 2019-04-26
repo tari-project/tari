@@ -22,9 +22,11 @@
 
 // Used in tests only
 
-use crate::types::{SecretKey, PublicKey, CommitmentFactory};
-use rand::{Rng, CryptoRng};
-use crate::transaction::{TransactionInput, UnblindedOutput, OutputFeatures};
+use crate::{
+    transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
+    types::{CommitmentFactory, PublicKey, SecretKey},
+};
+use rand::{CryptoRng, Rng};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::{PublicKey as PK, SecretKey as SK},
@@ -58,4 +60,3 @@ pub fn make_input<R: Rng + CryptoRng>(rng: &mut R, val: u64) -> (TransactionInpu
     let input = TransactionInput::new(OutputFeatures::empty(), commitment);
     (input, UnblindedOutput::new(val, key, None))
 }
-
