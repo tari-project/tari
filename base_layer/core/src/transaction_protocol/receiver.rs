@@ -69,7 +69,7 @@ pub struct RecipientSignedTransactionData {
 //}
 
 pub struct ReceiverTransactionProtocol {
-    _state: RecipientState,
+    state: RecipientState,
 }
 
 impl ReceiverTransactionProtocol {
@@ -87,7 +87,21 @@ impl ReceiverTransactionProtocol {
             },
             SenderMessage::Multiple => Self::run_multi_recipient_protocol(),
         };
-        ReceiverTransactionProtocol { _state: state }
+        ReceiverTransactionProtocol { state }
+    }
+
+    pub fn is_finalized(&self) -> bool {
+        match self.state {
+            RecipientState::Finalized(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn get_signed_data(&self) -> Result<&RecipientSignedTransactionData, TransactionProtocolError> {
+        match &self.state {
+            RecipientState::Finalized(data) => Ok(&data),
+            _ => Err(TransactionProtocolError::InvalidStateError),
+        }
     }
 
     fn run_single_recipient_protocol(
