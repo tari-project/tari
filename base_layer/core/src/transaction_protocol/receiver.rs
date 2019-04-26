@@ -21,12 +21,14 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    transaction::TransactionOutput,
+    transaction::{ OutputFeatures, TransactionOutput},
     transaction_protocol::TransactionProtocolError,
     types::{PublicKey, SecretKey, Signature},
 };
 use std::collections::HashMap;
 use tari_crypto::challenge::MessageHash;
+use crate::transaction_protocol::sender::{SenderMessage, SingleRoundSenderData};
+use crate::transaction_protocol::single_receiver::SingleReceiverTransactionProtocol;
 
 pub enum RecipientState {
     Finalized(RecipientSignedTransactionData),
@@ -56,8 +58,53 @@ pub struct RecipientSignedTransactionData {
     pub partial_signature: Signature,
 }
 
+// impl PartialEq for RecipientSignedTransactionData {
+//    fn eq(&self, other: &Self) -> bool {
+//        self.tx_id == other.tx_id
+//            && self.partial_signature.get_signature() == other.partial_signature.get_signature()
+//            && self.partial_signature.get_public_nonce() == other.partial_signature.get_public_nonce()
+//    }
+//}
+
 pub struct ReceiverTransactionProtocol {
     state: RecipientState,
 }
 
-impl ReceiverTransactionProtocol {}
+impl ReceiverTransactionProtocol {
+    pub fn new(
+        info: SenderMessage,
+        nonce: SecretKey,
+        spending_key: SecretKey,
+        features: OutputFeatures,
+    ) -> ReceiverTransactionProtocol
+    {
+        let state = match info {
+            SenderMessage::None => RecipientState::Failed(TransactionProtocolError::InvalidStateError),
+            SenderMessage::Single(v) => {
+                ReceiverTransactionProtocol::run_single_recipient_protocol(nonce, spending_key, features, &v)
+            },
+            SenderMessage::Multiple => Self::run_multi_recipient_protocol(),
+        };
+        ReceiverTransactionProtocol { state }
+    }
+
+    fn run_single_recipient_protocol(
+        nonce: SecretKey,
+        key: SecretKey,
+        features: OutputFeatures,
+        data: &SingleRoundSenderData,
+    ) -> RecipientState
+    {
+        let signer = SingleReceiverTransactionProtocol::new(data, nonce, key, features);
+        match signer {
+            Ok(signed_data) => RecipientState::Finalized(signed_data),
+            Err(e) => RecipientState::Failed(e),
+        }
+    }
+
+    fn run_multi_recipient_protocol() -> RecipientState {
+        RecipientState::Failed(TransactionProtocolError::UnsupportedError(
+            "Multiple recipients aren't supported yet".into(),
+        ))
+    }
+}

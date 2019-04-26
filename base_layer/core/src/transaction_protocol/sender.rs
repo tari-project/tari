@@ -389,12 +389,10 @@ mod test {
         fee::Fee,
         transaction::{KernelFeatures, OutputFeatures, UnblindedOutput},
         transaction_protocol::{
-            receiver::RecipientSignedTransactionData,
             sender::SenderTransactionProtocol,
             single_receiver::SingleReceiverTransactionProtocol,
             test_common::{make_input, TestParams},
         },
-        types::PublicKey,
     };
     use rand::OsRng;
     use tari_crypto::common::Blake256;
