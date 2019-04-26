@@ -176,7 +176,7 @@ impl SenderTransactionProtocol {
                     tx_id: info.ids[0],
                     amount: self.get_total_amount().unwrap(),
                     public_nonce: info.public_nonce.clone(),
-                    public_excess: info.public_nonce.clone(),
+                    public_excess: info.public_excess.clone(),
                     metadata: info.metadata.clone(),
                 };
                 self.state = SenderState::CollectingSingleSignature(info.clone());
@@ -193,6 +193,7 @@ impl SenderTransactionProtocol {
                 // Consolidate transaction info
                 info.outputs.push(rec.output);
                 info.signatures.push(rec.partial_signature);
+                info.public_excess = &info.public_excess + &rec.public_spend_key;
                 self.state = SenderState::Finalizing(info.clone());
                 Ok(())
             }
@@ -212,7 +213,9 @@ impl SenderTransactionProtocol {
         }
         tx_builder.add_offset(info.offset.clone());
         let mut s_agg = info.signatures[0].clone();
-        info.signatures.iter().take(1).for_each(|s| s_agg = &s_agg + s);
+        println!("{:?}", s_agg);
+        info.signatures.iter().skip(1).for_each(|s| s_agg = &s_agg + s);
+        println!("{:?}", s_agg);
         let excess = CommitmentFactory::from_public_key(&info.public_excess);
         let kernel = KernelBuilder::new()
             .with_fee(info.metadata.fee)
@@ -278,7 +281,7 @@ impl SenderTransactionProtocol {
     fn sign(&mut self) -> Result<(), TPE> {
         match &mut self.state {
             SenderState::Finalizing(info) => {
-                let e = build_challenge(&info.public_nonce, &info.public_excess, &info.metadata);
+                let e = build_challenge(&info.public_nonce,  &info.metadata);
                 let k = info.offset_blinding_factor.clone();
                 let r = info.private_nonce.clone();
                 let s = Signature::sign(k, r, e)
@@ -299,6 +302,7 @@ impl SenderTransactionProtocol {
     /// the transaction protocol moves to Failed state and we are done; you can't rescue the situation. The function
     /// returns `Ok(false)` in this instance.
     pub fn finalize(&mut self, features: KernelFeatures) -> Result<bool, TPE> {
+        // Create the final aggregated signature, moving to the Failed state if anything goes wrong
         match &mut self.state {
             SenderState::Finalizing(info) => {
                 if let Err(e) = self.sign() {
@@ -308,6 +312,7 @@ impl SenderTransactionProtocol {
             }
             _ => return Err(TPE::InvalidStateError),
         }
+        // Validate the inputs we have, and then construct the final transaction
         match &self.state {
             SenderState::Finalizing(info) => {
                 let result = self.validate().and_then(|_| Self::build_transaction(info, features));
@@ -402,7 +407,11 @@ mod test {
         let mut sender = builder.build::<Blake256>().unwrap();
         assert_eq!(sender.is_failed(), false);
         assert!(sender.is_finalizing());
-        assert!(sender.finalize(KernelFeatures::empty()).unwrap());
+        match sender.finalize(KernelFeatures::empty()) {
+            Ok(true) => (),
+            Ok(false) => panic!("{:?}", sender.failure_reason()),
+            Err(e) => panic!("{:?}",e),
+        }
         let tx = sender.get_transaction().unwrap();
         assert_eq!(tx.offset, p.offset);
     }

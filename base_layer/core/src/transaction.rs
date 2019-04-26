@@ -33,7 +33,7 @@ use crate::types::{HashDigest, SecretKey, SignatureHash, PublicKey};
 use derive_error::Error;
 use digest::Input;
 use tari_crypto::{
-    challenge::Challenge,
+    keys::PublicKey as PK,
     commitment::{HomomorphicCommitment, HomomorphicCommitmentFactory},
 };
 use tari_utilities::{ByteArray, Hashable};
@@ -317,13 +317,12 @@ impl KernelBuilder {
 }
 
 impl TransactionKernel {
-    pub fn verify_signature(&self, offset: &PublicKey) -> Result<(), TransactionError> {
+    pub fn verify_signature(&self) -> Result<(), TransactionError> {
         let excess = self.excess.as_public_key();
-        let public_key = excess + offset;
         let r = self.excess_sig.get_public_nonce();
         let m = TransactionMetadata { lock_height: self.lock_height, fee: self.fee };
-        let c = build_challenge(r, &excess, &m);
-        if self.excess_sig.verify_challenge(&public_key, c) {
+        let c = build_challenge(r, &m);
+        if self.excess_sig.verify_challenge(excess, c) {
             return Ok(());
         } else {
             return Err(TransactionError::InvalidSignatureError);
@@ -358,7 +357,7 @@ pub struct Transaction {
     /// This kernel offset will be accumulated when transactions are aggregated to prevent the "subset" problem where
     /// kernels can be linked to inputs and outputs by testing a series of subsets and see which produce valid
     /// transactions.
-    pub offset: PublicKey,
+    pub offset: BlindingFactor,
     /// The constituents of a transaction which has the same structure as the body of a block.
     pub body: AggregateBody,
 }
@@ -369,7 +368,7 @@ impl Transaction {
         inputs: Vec<TransactionInput>,
         outputs: Vec<TransactionOutput>,
         kernels: Vec<TransactionKernel>,
-        offset: PublicKey,
+        offset: BlindingFactor,
     ) -> Transaction
     {
         Transaction {
@@ -388,7 +387,8 @@ impl Transaction {
 
     /// Calculate the sum of the kernels, taking into account the offset if it exists, and their constituent fees
     fn sum_kernels(&self) -> KernelSum {
-        let offset_commitment = CommitmentFactory::from_public_key(&self.offset);
+        let public_offset = PublicKey::from_secret_key(&self.offset);
+        let offset_commitment = CommitmentFactory::from_public_key(&public_offset);
         // Sum all kernel excesses and fees
         let kernel_sum = self.body.kernels.iter().fold(
             KernelSum {
@@ -427,7 +427,7 @@ impl Transaction {
     ///
     /// This function does NOT check that inputs come from the UTXO set
     pub fn validate_internal_consistency(&mut self) -> Result<(), TransactionError> {
-        self.body.verify_kernel_signatures(&self.offset)?;
+        self.body.verify_kernel_signatures()?;
         self.validate_kernel_sum()?;
         self.validate_range_proofs()
     }
@@ -444,7 +444,7 @@ pub struct KernelSum {
 
 pub struct TransactionBuilder {
     body: AggregateBody,
-    offset: Option<PublicKey>,
+    offset: Option<BlindingFactor>,
 }
 
 impl TransactionBuilder {
@@ -457,7 +457,7 @@ impl TransactionBuilder {
     }
 
     /// Update the offset of an existing transaction
-    pub fn add_offset(&mut self, offset: PublicKey) -> &mut Self {
+    pub fn add_offset(&mut self, offset: BlindingFactor) -> &mut Self {
         self.offset = Some(offset);
         self
     }
