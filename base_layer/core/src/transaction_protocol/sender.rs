@@ -227,7 +227,6 @@ impl SenderTransactionProtocol {
         }
         tx_builder.add_offset(info.offset.clone());
         let mut s_agg = info.signatures[0].clone();
-        let mut r_sum = info.public_nonce.clone();
         info.signatures.iter().skip(1).for_each(|s| s_agg = &s_agg + s);
         let excess = CommitmentFactory::from_public_key(&info.public_excess);
         let kernel = KernelBuilder::new()
@@ -305,7 +304,7 @@ impl SenderTransactionProtocol {
     pub fn finalize(&mut self, features: KernelFeatures) -> Result<bool, TPE> {
         // Create the final aggregated signature, moving to the Failed state if anything goes wrong
         match &mut self.state {
-            SenderState::Finalizing(info) => {
+            SenderState::Finalizing(_) => {
                 if let Err(e) = self.sign() {
                     self.state = SenderState::Failed(e);
                     return Ok(false);

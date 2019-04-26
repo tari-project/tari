@@ -26,7 +26,6 @@
 use crate::{
     blockheader::BlockHeader,
     transaction::{TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
-    types::{BlindingFactor, PublicKey},
 };
 
 //----------------------------------------         Blocks         ----------------------------------------------------//

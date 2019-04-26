@@ -31,7 +31,7 @@ use crate::{
 
 use crate::{
     transaction_protocol::{build_challenge, TransactionMetadata},
-    types::{HashDigest, PublicKey, SecretKey, SignatureHash},
+    types::{HashDigest, PublicKey, SecretKey},
 };
 use derive_error::Error;
 use digest::Input;
@@ -514,14 +514,11 @@ impl TransactionBuilder {
 mod test {
     use super::*;
     use crate::{
-        transaction::{KernelFeatures, OutputFeatures, TransactionInput, TransactionKernel, TransactionOutput},
-        types::{BlindingFactor, PublicKey, SecretKey},
+        transaction::{OutputFeatures, TransactionInput},
+        types::BlindingFactor,
     };
     use rand;
-    use tari_crypto::{
-        common::Blake256,
-        keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
-    };
+    use tari_crypto::keys::SecretKey as SecretKeyTrait;
 
     #[test]
     fn unblinded_input() {

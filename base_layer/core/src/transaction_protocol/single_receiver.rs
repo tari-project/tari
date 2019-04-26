@@ -111,8 +111,8 @@ mod test {
     #[test]
     fn valid_request() {
         let mut rng = OsRng::new().unwrap();
-        let (xs, pub_xs) = PublicKey::random_keypair(&mut rng);
-        let (rs, pub_rs) = PublicKey::random_keypair(&mut rng);
+        let (_xs, pub_xs) = PublicKey::random_keypair(&mut rng);
+        let (_rs, pub_rs) = PublicKey::random_keypair(&mut rng);
         let (r, k, of) = generate_output_parms();
         let pubkey = PublicKey::from_secret_key(&k);
         let pubnonce = PublicKey::from_secret_key(&r);

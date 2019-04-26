@@ -21,14 +21,16 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    transaction::{ OutputFeatures, TransactionOutput},
-    transaction_protocol::TransactionProtocolError,
+    transaction::{OutputFeatures, TransactionOutput},
+    transaction_protocol::{
+        sender::{SenderMessage, SingleRoundSenderData},
+        single_receiver::SingleReceiverTransactionProtocol,
+        TransactionProtocolError,
+    },
     types::{PublicKey, SecretKey, Signature},
 };
 use std::collections::HashMap;
 use tari_crypto::challenge::MessageHash;
-use crate::transaction_protocol::sender::{SenderMessage, SingleRoundSenderData};
-use crate::transaction_protocol::single_receiver::SingleReceiverTransactionProtocol;
 
 pub enum RecipientState {
     Finalized(RecipientSignedTransactionData),
@@ -67,7 +69,7 @@ pub struct RecipientSignedTransactionData {
 //}
 
 pub struct ReceiverTransactionProtocol {
-    state: RecipientState,
+    _state: RecipientState,
 }
 
 impl ReceiverTransactionProtocol {
@@ -85,7 +87,7 @@ impl ReceiverTransactionProtocol {
             },
             SenderMessage::Multiple => Self::run_multi_recipient_protocol(),
         };
-        ReceiverTransactionProtocol { state }
+        ReceiverTransactionProtocol { _state: state }
     }
 
     fn run_single_recipient_protocol(
