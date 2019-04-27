@@ -34,4 +34,4 @@ pub mod transaction_protocol;
 pub mod types;
 
 // Re-export commonly used structs
-pub use transaction_protocol::{receiver::ReceiverTransactionProtocol, sender::SenderTransactionProtocol};
+pub use transaction_protocol::{recipient::ReceiverTransactionProtocol, sender::SenderTransactionProtocol};

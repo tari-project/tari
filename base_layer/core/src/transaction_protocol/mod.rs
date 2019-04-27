@@ -49,7 +49,7 @@
 //!   end
 //! </div>
 
-pub mod receiver;
+pub mod recipient;
 pub mod sender;
 pub mod single_receiver;
 #[cfg(test)]

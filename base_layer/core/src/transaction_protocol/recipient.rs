@@ -23,7 +23,7 @@
 use crate::{
     transaction::{OutputFeatures, TransactionOutput},
     transaction_protocol::{
-        sender::{SenderMessage, SingleRoundSenderData},
+        sender::{SenderMessage, SingleRoundSenderData as SD},
         single_receiver::SingleReceiverTransactionProtocol,
         TransactionProtocolError,
     },
@@ -60,18 +60,20 @@ pub struct RecipientSignedTransactionData {
     pub partial_signature: Signature,
 }
 
-// impl PartialEq for RecipientSignedTransactionData {
-//    fn eq(&self, other: &Self) -> bool {
-//        self.tx_id == other.tx_id
-//            && self.partial_signature.get_signature() == other.partial_signature.get_signature()
-//            && self.partial_signature.get_public_nonce() == other.partial_signature.get_public_nonce()
-//    }
-//}
-
+/// The generalised transaction recipient protocol. A different state transition network is followed depending on
+/// whether this is a single recipient or one of many.
 pub struct ReceiverTransactionProtocol {
     state: RecipientState,
 }
 
+/// Initiate a new recipient protocol state.
+///
+/// It takes as input the transaction message from the sender (which will indicate how many rounds the transaction
+/// protocol will undergo, the recipient's nonce and spend key, as well as the output features for this recipient's
+/// transaction output.
+///
+/// The function returns the protocol in the relevant state. If this is a single-round protocol, the state will
+/// already be finalised, and the return message will be accessible from the `get_signed_data` method.
 impl ReceiverTransactionProtocol {
     pub fn new(
         info: SenderMessage,
@@ -82,14 +84,13 @@ impl ReceiverTransactionProtocol {
     {
         let state = match info {
             SenderMessage::None => RecipientState::Failed(TransactionProtocolError::InvalidStateError),
-            SenderMessage::Single(v) => {
-                ReceiverTransactionProtocol::run_single_recipient_protocol(nonce, spending_key, features, &v)
-            },
-            SenderMessage::Multiple => Self::run_multi_recipient_protocol(),
+            SenderMessage::Single(v) => ReceiverTransactionProtocol::single_round(nonce, spending_key, features, &v),
+            SenderMessage::Multiple => Self::multi_round(),
         };
         ReceiverTransactionProtocol { state }
     }
 
+    /// Returns true if the recipient protocol is finalised, and the signature data is ready to be sent to the sender.
     pub fn is_finalized(&self) -> bool {
         match self.state {
             RecipientState::Finalized(_) => true,
@@ -97,6 +98,23 @@ impl ReceiverTransactionProtocol {
         }
     }
 
+    /// Method to determine if the transaction protocol has failed
+    pub fn is_failed(&self) -> bool {
+        match &self.state {
+            RecipientState::Failed(_) => true,
+            _ => false,
+        }
+    }
+
+    /// Method to return the error behind a failure, if one has occurred
+    pub fn failure_reason(&self) -> Option<TransactionProtocolError> {
+        match &self.state {
+            RecipientState::Failed(e) => Some(e.clone()),
+            _ => None,
+        }
+    }
+
+    /// Retrieve the final signature data to be returned to the sender to complete the transaction.
     pub fn get_signed_data(&self) -> Result<&RecipientSignedTransactionData, TransactionProtocolError> {
         match &self.state {
             RecipientState::Finalized(data) => Ok(&data),
@@ -104,13 +122,8 @@ impl ReceiverTransactionProtocol {
         }
     }
 
-    fn run_single_recipient_protocol(
-        nonce: SecretKey,
-        key: SecretKey,
-        features: OutputFeatures,
-        data: &SingleRoundSenderData,
-    ) -> RecipientState
-    {
+    /// Run the single-round recipient protocol, which can immediately construct an output and sign the data
+    fn single_round(nonce: SecretKey, key: SecretKey, features: OutputFeatures, data: &SD) -> RecipientState {
         let signer = SingleReceiverTransactionProtocol::new(data, nonce, key, features);
         match signer {
             Ok(signed_data) => RecipientState::Finalized(signed_data),
@@ -118,9 +131,61 @@ impl ReceiverTransactionProtocol {
         }
     }
 
-    fn run_multi_recipient_protocol() -> RecipientState {
+    fn multi_round() -> RecipientState {
         RecipientState::Failed(TransactionProtocolError::UnsupportedError(
             "Multiple recipients aren't supported yet".into(),
         ))
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::{
+        transaction::OutputFeatures,
+        transaction_protocol::{
+            build_challenge,
+            sender::{SenderMessage, SingleRoundSenderData},
+            test_common::TestParams,
+            TransactionMetadata,
+        },
+        types::{PublicKey, Signature, TariCommitmentValidate},
+        ReceiverTransactionProtocol,
+    };
+    use rand::OsRng;
+    use tari_crypto::keys::PublicKey as PK;
+
+    #[test]
+    fn single_round_recipient() {
+        let mut rng = OsRng::new().unwrap();
+        let p = TestParams::new(&mut rng);
+        let m = TransactionMetadata {
+            fee: 125,
+            lock_height: 0,
+        };
+        let msg = SingleRoundSenderData {
+            tx_id: 15,
+            amount: 500,
+            public_excess: PublicKey::from_secret_key(&p.spend_key), // any random key will do
+            public_nonce: PublicKey::from_secret_key(&p.change_key), // any random key will do
+            metadata: m.clone(),
+        };
+        let sender_info = SenderMessage::Single(Box::new(msg.clone()));
+        let pubkey = PublicKey::from_secret_key(&p.spend_key);
+        let receiver = ReceiverTransactionProtocol::new(
+            sender_info,
+            p.nonce.clone(),
+            p.spend_key.clone(),
+            OutputFeatures::empty(),
+        );
+        assert!(receiver.is_finalized());
+        let data = receiver.get_signed_data().unwrap();
+        assert_eq!(data.tx_id, 15);
+        assert_eq!(data.public_spend_key, pubkey);
+        assert!(data.output.commitment.validate(500, &p.spend_key));
+        let r_sum = &msg.public_nonce + &p.public_nonce;
+        let e = build_challenge(&r_sum, &m);
+        let s = Signature::sign(p.spend_key.clone(), p.nonce.clone(), e).unwrap();
+        assert_eq!(data.partial_signature, s);
+        // TODO: test range proof
     }
 }

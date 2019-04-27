@@ -34,7 +34,7 @@ use crate::{
     transaction::{KernelBuilder, MAX_TRANSACTION_INPUTS, MAX_TRANSACTION_OUTPUTS, MINIMUM_TRANSACTION_FEE},
     transaction_protocol::{
         build_challenge,
-        receiver::{RecipientInfo, RecipientSignedTransactionData},
+        recipient::{RecipientInfo, RecipientSignedTransactionData},
         transaction_initializer::SenderTransactionInitializer,
         TransactionMetadata,
         TransactionProtocolError as TPE,

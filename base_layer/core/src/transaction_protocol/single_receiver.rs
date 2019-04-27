@@ -25,7 +25,7 @@ use crate::{
     transaction::{OutputFeatures, TransactionOutput},
     transaction_protocol::{
         build_challenge,
-        receiver::RecipientSignedTransactionData as RD,
+        recipient::RecipientSignedTransactionData as RD,
         sender::SingleRoundSenderData as SD,
         TransactionProtocolError as TPE,
     },

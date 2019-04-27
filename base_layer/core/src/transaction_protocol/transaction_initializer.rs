@@ -30,7 +30,7 @@ use crate::{
         MINIMUM_TRANSACTION_FEE,
     },
     transaction_protocol::{
-        receiver::RecipientInfo,
+        recipient::RecipientInfo,
         sender::{calculate_tx_id, RawTransactionInfo, SenderState, SenderTransactionProtocol},
         TransactionMetadata,
     },
