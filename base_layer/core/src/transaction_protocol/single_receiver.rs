@@ -48,7 +48,7 @@ impl SingleReceiverTransactionProtocol {
         let public_nonce = PublicKey::from_secret_key(&nonce);
         let public_spending_key = PublicKey::from_secret_key(&spending_key);
         let e = build_challenge(&(&sender_info.public_nonce + &public_nonce), &sender_info.metadata);
-        let signature = Signature::sign(spending_key, nonce, e).map_err(|e| TPE::SigningError(e))?;
+        let signature = Signature::sign(spending_key, nonce, &e).map_err(|e| TPE::SigningError(e))?;
         let data = RD {
             tx_id: sender_info.tx_id,
             output,
@@ -133,7 +133,7 @@ mod test {
         assert_eq!(prot.public_spend_key, pubkey, "Public key is incorrect");
         let e = build_challenge(&(&pub_rs + &pubnonce), &m);
         assert!(
-            prot.partial_signature.verify_challenge(&pubkey, e),
+            prot.partial_signature.verify_challenge(&pubkey, &e),
             "Partial signature is incorrect"
         );
         let out = &prot.output;

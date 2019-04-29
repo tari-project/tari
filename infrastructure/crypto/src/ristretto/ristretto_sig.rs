@@ -58,7 +58,7 @@ use crate::{
 /// # use tari_crypto::keys::*;
 /// # use tari_crypto::signatures::SchnorrSignature;
 /// # use tari_crypto::common::*;
-/// # use tari_crypto::challenge::*;
+/// # use digest::Digest;
 ///
 /// fn get_keypair() -> (RistrettoSecretKey, RistrettoPublicKey) {
 ///     let mut rng = rand::OsRng::new().unwrap();
@@ -71,8 +71,8 @@ use crate::{
 /// fn main() {
 ///     let (k, P) = get_keypair();
 ///     let (r, R) = get_keypair();
-///     let e = Challenge::<Blake256>::new().concat(b"Small Gods");
-///     let sig = RistrettoSchnorr::sign(k, r, e);
+///     let e = Blake256::digest(b"Small Gods");
+///     let sig = RistrettoSchnorr::sign(k, r, &e);
 /// }
 /// ```
 ///
@@ -84,11 +84,11 @@ use crate::{
 /// ```edition2018
 /// # use tari_crypto::ristretto::*;
 /// # use tari_crypto::keys::*;
-/// # use tari_crypto::challenge::*;
 /// # use tari_crypto::signatures::SchnorrSignature;
 /// # use tari_crypto::common::*;
 /// # use tari_utilities::hex::*;
 /// # use tari_utilities::ByteArray;
+/// # use digest::Digest;
 ///
 /// # #[allow(non_snake_case)]
 /// # fn main() {
@@ -96,9 +96,8 @@ use crate::{
 /// let R = RistrettoPublicKey::from_hex("fa14cb581ce5717248444721242e6b195a482d503a853dea4acb513074d8d803").unwrap();
 /// let s = RistrettoSecretKey::from_hex("bd0b253a619310340a4fa2de54cdd212eac7d088ee1dc47e305c3f6cbd020908").unwrap();
 /// let sig = RistrettoSchnorr::new(R, s);
-/// let e = Challenge::<Blake256>::new()
-///     .concat(b"Maskerade");
-/// assert!(sig.verify_challenge(&P, e));
+/// let e = Blake256::digest(b"Maskerade");
+/// assert!(sig.verify_challenge(&P, &e));
 /// # }
 /// ```
 pub type RistrettoSchnorr = SchnorrSignature<RistrettoPublicKey, RistrettoSecretKey>;
@@ -106,11 +105,11 @@ pub type RistrettoSchnorr = SchnorrSignature<RistrettoPublicKey, RistrettoSecret
 #[cfg(test)]
 mod test {
     use crate::{
-        challenge::Challenge,
         common::Blake256,
         keys::{PublicKey, SecretKey},
         ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
     };
+    use digest::Digest;
     use rand;
     use tari_utilities::ByteArray;
 
@@ -127,17 +126,20 @@ mod test {
     fn sign_and_verify_message() {
         let (k, P) = get_keypair();
         let (r, R) = get_keypair();
-        let c = Challenge::<Blake256>::new();
-        let e = c.concat(P.as_bytes()).concat(R.as_bytes()).concat(b"Small Gods");
-        let sig = RistrettoSchnorr::sign(k, r, e.clone()).unwrap();
+        let e = Blake256::new()
+            .chain(P.as_bytes())
+            .chain(R.as_bytes())
+            .chain(b"Small Gods")
+            .result();
+        let sig = RistrettoSchnorr::sign(k, r, &e).unwrap();
         let R_calc = sig.get_public_nonce();
         assert_eq!(R, *R_calc);
-        assert!(sig.verify_challenge(&P, e.clone()));
+        assert!(sig.verify_challenge(&P, &e));
         // Doesn't work for invalid credentials
-        assert!(!sig.verify_challenge(&R, e));
+        assert!(!sig.verify_challenge(&R, &e));
         // Doesn't work for different challenge
-        let wrong_challenge = Challenge::<Blake256>::new().concat(b"Guards! Guards!");
-        assert!(!sig.verify_challenge(&P, wrong_challenge));
+        let wrong_challenge = Blake256::digest(b"Guards! Guards!");
+        assert!(!sig.verify_challenge(&P, &wrong_challenge));
     }
 
     /// This test checks that the linearity of Schnorr signatures hold, i.e. that s = s1 + s2 is validated by R1 + R2
@@ -151,22 +153,20 @@ mod test {
         let (k2, P2) = get_keypair();
         let (r2, R2) = get_keypair();
         // Each of them creates the Challenge = H(R1 || R2 || P1 || P2 || m)
-        let challenge = Challenge::<Blake256>::new()
-            .concat(R1.as_bytes())
-            .concat(R2.as_bytes())
-            .concat(P1.as_bytes())
-            .concat(P2.as_bytes())
-            .concat(b"Moving Pictures");
-        let e1 = challenge.clone();
-        let e2 = challenge.clone();
+        let e = Blake256::new()
+            .chain(R1.as_bytes())
+            .chain(R2.as_bytes())
+            .chain(P1.as_bytes())
+            .chain(P2.as_bytes())
+            .chain(b"Moving Pictures")
+            .result();
         // Calculate Alice's signature
-        let s1 = RistrettoSchnorr::sign(k1, r1, e1).unwrap();
+        let s1 = RistrettoSchnorr::sign(k1, r1, &e).unwrap();
         // Calculate Bob's signature
-        let s2 = RistrettoSchnorr::sign(k2, r2, e2).unwrap();
+        let s2 = RistrettoSchnorr::sign(k2, r2, &e).unwrap();
         // Now add the two signatures together
         let s_agg = &s1 + &s2;
-        let e3 = challenge.clone();
         // Check that the multi-sig verifies
-        assert!(s_agg.verify_challenge(&(P1 + P2), e3));
+        assert!(s_agg.verify_challenge(&(P1 + P2), &e));
     }
 }

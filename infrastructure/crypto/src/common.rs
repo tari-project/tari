@@ -20,14 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use blake2::{
-    digest::{Input, VariableOutput},
-    VarBlake2b,
-};
+use blake2::VarBlake2b;
 use digest::{
     generic_array::{typenum::U32, GenericArray},
     FixedOutput,
+    Input,
     Reset,
+    VariableOutput,
 };
 
 /// A convenience wrapper produce 256 bit hashes from Blake2b
@@ -35,7 +34,7 @@ use digest::{
 pub struct Blake256(VarBlake2b);
 
 impl Blake256 {
-    pub fn new() -> Blake256 {
+    pub fn new() -> Self {
         let h = VarBlake2b::new(32).unwrap();
         Blake256(h)
     }
@@ -46,7 +45,7 @@ impl Blake256 {
 }
 
 impl Default for Blake256 {
-    fn default() -> Blake256 {
+    fn default() -> Self {
         let h = VarBlake2b::new(32).unwrap();
         Blake256(h)
     }
@@ -70,5 +69,22 @@ impl FixedOutput for Blake256 {
 impl Reset for Blake256 {
     fn reset(&mut self) {
         (self.0).reset()
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::common::Blake256;
+    use digest::Input;
+    use tari_utilities::hex;
+
+    #[test]
+    fn blake256() {
+        let e = Blake256::new().chain(b"one").chain(b"two").result().to_vec();
+        let h = hex::to_hex(&e);
+        assert_eq!(
+            h,
+            "03521c1777639fc6e5c3d8c3b4600870f18becc155ad7f8053d2c65bc78e4aa0".to_string()
+        );
     }
 }

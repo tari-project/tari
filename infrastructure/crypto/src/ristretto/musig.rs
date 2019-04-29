@@ -24,7 +24,6 @@
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
 use crate::{
-    challenge::{Challenge, MessageHash},
     musig::{JointKey, JointKeyBuilder, MuSigError},
     ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
     signatures::SchnorrSignature,
@@ -37,6 +36,7 @@ use tari_utilities::{fixed_set::FixedSet, ByteArray};
 
 type JKBuilder = JointKeyBuilder<RistrettoPublicKey, RistrettoSecretKey>;
 type JointPubKey = JointKey<RistrettoPublicKey, RistrettoSecretKey>;
+type MessageHash = Vec<u8>;
 
 /// MuSig signature aggregation. [MuSig](https://blockstream.com/2018/01/23/musig-key-aggregation-schnorr-signatures/)
 /// is a 3-round signature aggregation protocol.
@@ -67,8 +67,8 @@ type JointPubKey = JointKey<RistrettoPublicKey, RistrettoSecretKey>;
 ///       # use tari_crypto::ristretto::{ musig::RistrettoMuSig, ristretto_keys::* };
 ///       # use tari_utilities::ByteArray;
 ///       # use tari_crypto::keys::PublicKey;
-///       # use tari_crypto::challenge::Challenge;
 ///       # use sha2::Sha256;
+///       # use digest::Digest;
 ///       let mut rng = rand::OsRng::new().unwrap();
 ///       // Create a new MuSig instance. The number of signing parties must be known at this time.
 ///       let mut alice = RistrettoMuSig::<Sha256>::new(2);
@@ -90,8 +90,8 @@ type JointPubKey = JointKey<RistrettoPublicKey, RistrettoSecretKey>;
 ///       // Round 1 - Collect nonce hashes - each party does this individually and keeps the secret keys secret.
 ///       let (r_a, pr_a) = RistrettoPublicKey::random_keypair(&mut rng);
 ///       let (r_b, pr_b) = RistrettoPublicKey::random_keypair(&mut rng);
-///       let h_a = Challenge::<Sha256>::hash_input(pr_a.to_vec());
-///       let h_b = Challenge::<Sha256>::hash_input(pr_b.to_vec());
+///       let h_a = Sha256::digest(pr_a.as_bytes()).to_vec();
+///       let h_b = Sha256::digest(pr_b.as_bytes()).to_vec();
 ///       bob = bob
 ///           .add_nonce_commitment(&p_b, h_b.clone())
 ///           .add_nonce_commitment(&p_a, h_a.clone());
@@ -494,7 +494,7 @@ impl NonceCollection {
     }
 
     fn is_valid_nonce<D: Digest>(nonce: &RistrettoPublicKey, expected: &MessageHash) -> bool {
-        let calc = Challenge::<D>::hash_input(nonce.to_vec());
+        let calc = D::digest(nonce.as_bytes()).to_vec();
         &calc == expected
     }
 
@@ -563,12 +563,12 @@ impl SignatureCollection {
         m: &MessageHash,
     ) -> RistrettoSecretKey
     {
-        let e = Challenge::<D>::new()
-            .concat(r_agg.as_bytes())
-            .concat(p_agg.as_bytes())
-            .concat(m)
-            .hash();
-        RistrettoSecretKey::from_vec(&e).expect("Found a u256 that does not map to a valid Ristretto scalar")
+        let e = D::new()
+            .chain(r_agg.as_bytes())
+            .chain(p_agg.as_bytes())
+            .chain(m)
+            .result();
+        RistrettoSecretKey::from_bytes(&e).expect("Found a u256 that does not map to a valid Ristretto scalar")
     }
 
     fn validate_partial_signature<D: Digest>(&self, index: usize, signature: &RistrettoSchnorr) -> bool {
@@ -663,7 +663,7 @@ mod test {
     ) {
         let (k, pubkey) = RistrettoPublicKey::random_keypair(rng);
         let (r, nonce) = RistrettoPublicKey::random_keypair(rng);
-        let hash = Challenge::<Sha256>::hash_input(nonce.to_vec());
+        let hash = Sha256::digest(nonce.as_bytes()).to_vec();
         (k, pubkey, r, nonce, hash)
     }
 
@@ -930,12 +930,13 @@ mod test {
         let (musig, data, s_agg) = create_final_musig(15, b"message");
         let sig = musig.get_aggregated_signature().unwrap();
         let p_agg = musig.get_aggregated_public_key().unwrap();
-        let m_hash = Challenge::<Sha256>::hash_input(b"message".to_vec());
-        let challenge = Challenge::<Sha256>::new()
-            .concat(data.r_agg.as_bytes())
-            .concat(p_agg.as_bytes())
-            .concat(&m_hash);
-        assert!(sig.verify_challenge(p_agg, challenge));
+        let m_hash = Sha256::digest(b"message");
+        let challenge = Sha256::new()
+            .chain(data.r_agg.as_bytes())
+            .chain(p_agg.as_bytes())
+            .chain(&m_hash)
+            .result();
+        assert!(sig.verify_challenge(p_agg, &challenge));
         assert_eq!(&s_agg, sig);
     }
 

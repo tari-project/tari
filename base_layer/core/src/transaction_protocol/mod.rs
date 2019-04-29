@@ -58,10 +58,11 @@ pub mod transaction_initializer;
 
 use crate::{
     transaction::TransactionError,
-    types::{PublicKey, SignatureHash},
+    types::{Challenge, MessageHash, PublicKey},
 };
 use derive_error::Error;
-use tari_crypto::{challenge::Challenge, signatures::SchnorrSignatureError};
+use digest::Digest;
+use tari_crypto::signatures::SchnorrSignatureError;
 use tari_utilities::byte_array::ByteArray;
 
 #[derive(Clone, Debug, PartialEq, Error)]
@@ -98,9 +99,11 @@ pub struct TransactionMetadata {
 }
 
 /// Convenience function that calculates the challenge for the Schnorr signatures
-pub fn build_challenge(sum_public_nonces: &PublicKey, metadata: &TransactionMetadata) -> Challenge<SignatureHash> {
-    Challenge::<SignatureHash>::new()
-        .concat(sum_public_nonces.as_bytes())
-        .concat(&metadata.fee.to_le_bytes())
-        .concat(&metadata.lock_height.to_le_bytes())
+pub fn build_challenge(sum_public_nonces: &PublicKey, metadata: &TransactionMetadata) -> MessageHash {
+    Challenge::new()
+        .chain(sum_public_nonces.as_bytes())
+        .chain(&metadata.fee.to_le_bytes())
+        .chain(&metadata.lock_height.to_le_bytes())
+        .result()
+        .to_vec()
 }

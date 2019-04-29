@@ -2,12 +2,8 @@
 //! This module defines generic traits for handling the digital signature operations, agnostic
 //! of the underlying elliptic curve implementation
 
-use crate::{
-    challenge::Challenge,
-    keys::{PublicKey, SecretKey},
-};
+use crate::keys::{PublicKey, SecretKey};
 use derive_error::Error;
-use digest::Digest;
 use std::{
     cmp::Ordering,
     ops::{Add, Mul},
@@ -43,16 +39,10 @@ where
         P::from_secret_key(&self.signature)
     }
 
-    pub fn sign<'a, 'b, D: Digest>(
-        secret: K,
-        nonce: K,
-        challenge: Challenge<D>,
-    ) -> Result<Self, SchnorrSignatureError>
-    where
-        K: Add<Output = K> + Mul<P, Output = P> + Mul<Output = K>,
-    {
+    pub fn sign<'a, 'b>(secret: K, nonce: K, challenge: &[u8]) -> Result<Self, SchnorrSignatureError>
+    where K: Add<Output = K> + Mul<P, Output = P> + Mul<Output = K> {
         // s = r + e.k
-        let e = match K::from_vec(&challenge.hash()) {
+        let e = match K::from_bytes(challenge) {
             Ok(e) => e,
             Err(_) => return Err(SchnorrSignatureError::InvalidChallenge),
         };
@@ -62,12 +52,12 @@ where
         Ok(Self::new(public_nonce, s))
     }
 
-    pub fn verify_challenge<'a, D: Digest>(&self, public_key: &'a P, challenge: Challenge<D>) -> bool
+    pub fn verify_challenge<'a>(&self, public_key: &'a P, challenge: &[u8]) -> bool
     where
         for<'b> &'b K: Mul<&'a P, Output = P>,
         for<'b> &'b P: Add<P, Output = P>,
     {
-        let e = match K::from_vec(&challenge.hash()) {
+        let e = match K::from_bytes(&challenge) {
             Ok(e) => e,
             Err(_) => return false,
         };

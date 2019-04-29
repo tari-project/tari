@@ -285,7 +285,7 @@ impl SenderTransactionProtocol {
                 let e = build_challenge(&info.public_nonce_sum, &info.metadata);
                 let k = info.offset_blinding_factor.clone();
                 let r = info.private_nonce.clone();
-                let s = Signature::sign(k, r, e).map_err(|e| TPE::SigningError(e))?;
+                let s = Signature::sign(k, r, &e).map_err(|e| TPE::SigningError(e))?;
                 info.signatures.push(s);
                 Ok(())
             },

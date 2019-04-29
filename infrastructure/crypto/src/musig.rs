@@ -23,10 +23,7 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
-use crate::{
-    challenge::Challenge,
-    keys::{PublicKey, SecretKey},
-};
+use crate::keys::{PublicKey, SecretKey};
 use derive_error::Error;
 use digest::Digest;
 use std::{ops::Mul, prelude::v1::Vec};
@@ -197,11 +194,11 @@ where
     /// You should ensure that the SecretKey constructor protects against failures and that the hash digest given
     /// produces a byte array of the correct length.
     fn calculate_common<D: Digest>(&self) -> K {
-        let mut common = Challenge::<D>::new();
+        let mut common = D::new();
         for k in self.pub_keys.iter() {
-            common = common.concat(k.as_bytes());
+            common = common.chain(k.as_bytes());
         }
-        K::from_vec(&common.hash())
+        K::from_bytes(&common.result())
             .expect("Could not calculate Scalar from hash value. Your crypto/hash combination might be inconsistent")
     }
 
@@ -211,8 +208,8 @@ where
     /// You should ensure that the SecretKey constructor protects against failures and that the hash digest given
     /// produces a byte array of the correct length.
     fn calculate_partial_key<D: Digest>(common: &[u8], pubkey: &P) -> K {
-        let k = Challenge::<D>::new().concat(common).concat(pubkey.as_bytes()).hash();
-        K::from_vec(&k)
+        let k = D::new().chain(common).chain(pubkey.as_bytes()).result();
+        K::from_bytes(&k)
             .expect("Could not calculate Scalar from hash value. Your crypto/hash combination might be inconsistent")
     }
 
