@@ -1,12 +1,25 @@
 use derive_error::Error;
 use std::{fmt::Write, num::ParseIntError};
 
+/// Any object implementing this trait has the ability to represent itself as a hexadecimal string and convert from it.
+pub trait Hex {
+    type T;
+    /// Try and convert the given hexadecimal string to the type. Any failures (incorrect  string length, non hex
+    /// characters, etc) return a [KeyError](enum.KeyError.html) with an explanatory note.
+    fn from_hex(hex: &str) -> Result<Self::T, HexError>;
+
+    /// Return the hexadecimal string representation of the type
+    fn to_hex(&self) -> String;
+}
+
 #[derive(Debug, Error)]
 pub enum HexError {
     /// Only hexadecimal characters (0-9,a-f) are permitted
     InvalidCharacter(ParseIntError),
     /// Hex string lengths must be a multiple of 2
     LengthError,
+    /// Invalid hex representation for the target type
+    HexConversionError,
 }
 
 /// Encode the provided bytes into a hex string
