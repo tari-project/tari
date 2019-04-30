@@ -22,7 +22,7 @@
 
 use crate::types::*;
 use digest::Input;
-use tari_infra_derive::{ExtendBytes, Hashable};
+use tari_infra_derive::Hashable;
 use tari_utilities::{ExtendBytes, Hashable};
 
 #[derive(Clone, Debug, PartialEq, Hashable)]

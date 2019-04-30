@@ -20,44 +20,43 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+// Used in tests only
+
 use crate::{
-    transaction::TransactionOutput,
-    transaction_protocol::TransactionProtocolError,
-    types::{PublicKey, SecretKey, Signature},
+    transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
+    types::{CommitmentFactory, PublicKey, SecretKey},
 };
-use std::collections::HashMap;
-use tari_crypto::challenge::MessageHash;
+use rand::{CryptoRng, Rng};
+use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
+    keys::{PublicKey as PK, SecretKey as SK},
+};
 
-pub enum RecipientState {
-    Finalized(RecipientSignedTransactionData),
-    Failed(TransactionProtocolError),
+pub struct TestParams {
+    pub spend_key: SecretKey,
+    pub change_key: SecretKey,
+    pub offset: SecretKey,
+    pub nonce: SecretKey,
+    pub public_nonce: PublicKey,
 }
 
-/// An enum describing the types of information that a recipient can send back to the receiver
-#[derive(Debug, Clone)]
-pub(super) enum RecipientInfo {
-    None,
-    Single(Option<Box<RecipientSignedTransactionData>>),
-    Multiple(HashMap<u64, MultiRecipientInfo>),
+impl TestParams {
+    pub fn new<R: Rng + CryptoRng>(rng: &mut R) -> TestParams {
+        let r = SecretKey::random(rng);
+        TestParams {
+            spend_key: SecretKey::random(rng),
+            change_key: SecretKey::random(rng),
+            offset: SecretKey::random(rng),
+            public_nonce: PublicKey::from_secret_key(&r),
+            nonce: r,
+        }
+    }
 }
 
-#[derive(Debug, Clone)]
-pub(super) struct MultiRecipientInfo {
-    pub commitment: MessageHash,
-    pub data: RecipientSignedTransactionData,
+pub fn make_input<R: Rng + CryptoRng>(rng: &mut R, val: u64) -> (TransactionInput, UnblindedOutput) {
+    let key = SecretKey::random(rng);
+    let v = SecretKey::from(val);
+    let commitment = CommitmentFactory::create(&key, &v);
+    let input = TransactionInput::new(OutputFeatures::empty(), commitment);
+    (input, UnblindedOutput::new(val, key, None))
 }
-
-/// This is the message containing the public data that the Receiver will send back to the Sender
-#[derive(Clone, Debug)]
-pub struct RecipientSignedTransactionData {
-    pub tx_id: u64,
-    pub output: TransactionOutput,
-    pub public_spend_key: PublicKey,
-    pub partial_signature: Signature,
-}
-
-pub struct ReceiverTransactionProtocol {
-    state: RecipientState,
-}
-
-impl ReceiverTransactionProtocol {}

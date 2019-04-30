@@ -32,3 +32,6 @@ pub mod range_proof;
 pub mod transaction;
 pub mod transaction_protocol;
 pub mod types;
+
+// Re-export commonly used structs
+pub use transaction_protocol::{recipient::ReceiverTransactionProtocol, sender::SenderTransactionProtocol};

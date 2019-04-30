@@ -25,7 +25,7 @@ use crate::{
     transaction::{OutputFeatures, TransactionOutput},
     transaction_protocol::{
         build_challenge,
-        receiver::RecipientSignedTransactionData as RD,
+        recipient::RecipientSignedTransactionData as RD,
         sender::SingleRoundSenderData as SD,
         TransactionProtocolError as TPE,
     },
@@ -47,11 +47,7 @@ impl SingleReceiverTransactionProtocol {
         let output = SingleReceiverTransactionProtocol::build_output(sender_info, &spending_key, features)?;
         let public_nonce = PublicKey::from_secret_key(&nonce);
         let public_spending_key = PublicKey::from_secret_key(&spending_key);
-        let e = build_challenge(
-            &(&sender_info.public_nonce + &public_nonce),
-            &(&sender_info.public_excess + &public_spending_key),
-            &sender_info.metadata,
-        );
+        let e = build_challenge(&(&sender_info.public_nonce + &public_nonce), &sender_info.metadata);
         let signature = Signature::sign(spending_key, nonce, e).map_err(|e| TPE::SigningError(e))?;
         let data = RD {
             tx_id: sender_info.tx_id,
@@ -115,8 +111,8 @@ mod test {
     #[test]
     fn valid_request() {
         let mut rng = OsRng::new().unwrap();
-        let (xs, pub_xs) = PublicKey::random_keypair(&mut rng);
-        let (rs, pub_rs) = PublicKey::random_keypair(&mut rng);
+        let (_xs, pub_xs) = PublicKey::random_keypair(&mut rng);
+        let (_rs, pub_rs) = PublicKey::random_keypair(&mut rng);
         let (r, k, of) = generate_output_parms();
         let pubkey = PublicKey::from_secret_key(&k);
         let pubnonce = PublicKey::from_secret_key(&r);
@@ -135,7 +131,7 @@ mod test {
         assert_eq!(prot.tx_id, 500, "tx_id is incorrect");
         // Check the signature
         assert_eq!(prot.public_spend_key, pubkey, "Public key is incorrect");
-        let e = build_challenge(&(&pub_rs + &pubnonce), &(&pub_xs + &pubkey), &m);
+        let e = build_challenge(&(&pub_rs + &pubnonce), &m);
         assert!(
             prot.partial_signature.verify_challenge(&pubkey, e),
             "Partial signature is incorrect"

@@ -26,8 +26,7 @@
 use crate::{pow::ProofOfWork, types::*};
 use chrono::{DateTime, Utc};
 use digest::Input;
-use tari_crypto::{common::Blake256, ristretto::RistrettoSecretKey};
-use tari_infra_derive::{ExtendBytes, Hashable};
+use tari_infra_derive::Hashable;
 use tari_utilities::{ExtendBytes, Hashable};
 
 type BlockHash = [u8; 32];

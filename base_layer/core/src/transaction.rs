@@ -29,12 +29,15 @@ use crate::{
     types::{BlindingFactor, Commitment, CommitmentFactory, Signature},
 };
 
-use crate::types::{HashDigest, SecretKey, SignatureHash};
+use crate::{
+    transaction_protocol::{build_challenge, TransactionMetadata},
+    types::{HashDigest, PublicKey, SecretKey},
+};
 use derive_error::Error;
 use digest::Input;
 use tari_crypto::{
-    challenge::Challenge,
     commitment::{HomomorphicCommitment, HomomorphicCommitmentFactory},
+    keys::PublicKey as PK,
 };
 use tari_utilities::{ByteArray, Hashable};
 
@@ -319,12 +322,11 @@ impl TransactionKernel {
     pub fn verify_signature(&self) -> Result<(), TransactionError> {
         let excess = self.excess.as_public_key();
         let r = self.excess_sig.get_public_nonce();
-        let c = Challenge::<SignatureHash>::new()
-            .concat(r.as_bytes())
-            .concat(excess.as_bytes())
-            .concat(&self.fee.to_le_bytes())
-            .concat(&self.lock_height.to_le_bytes());
-
+        let m = TransactionMetadata {
+            lock_height: self.lock_height,
+            fee: self.fee,
+        };
+        let c = build_challenge(r, &m);
         if self.excess_sig.verify_challenge(excess, c) {
             return Ok(());
         } else {
@@ -352,14 +354,15 @@ impl Hashable for TransactionKernel {
 //----------------------------------------      Transaction       ----------------------------------------------------//
 
 /// A transaction which consists of a kernel offset and an aggregate body made up of inputs, outputs and kernels.
-/// This struct can be used for both single transactions and describing an entire block.
+/// This struct is used to describe single transactions only. The common part between transactions and Tari blocks is
+/// accessible via the `body` field, but single transactions also need to carry the public offset around with them so
+/// that these can be aggregated into block offsets.
 #[derive(Clone, Debug)]
 pub struct Transaction {
     /// This kernel offset will be accumulated when transactions are aggregated to prevent the "subset" problem where
     /// kernels can be linked to inputs and outputs by testing a series of subsets and see which produce valid
-    /// transactions. This field is more useful when validating blocks, since transactions have only one kernel, and
-    /// so the `aggregated_offset` will equal the offset in the body.
-    pub aggregated_offset: BlindingFactor,
+    /// transactions.
+    pub offset: BlindingFactor,
     /// The constituents of a transaction which has the same structure as the body of a block.
     pub body: AggregateBody,
 }
@@ -374,7 +377,7 @@ impl Transaction {
     ) -> Transaction
     {
         Transaction {
-            aggregated_offset: offset,
+            offset,
             body: AggregateBody::new(inputs, outputs, kernels),
         }
     }
@@ -389,7 +392,8 @@ impl Transaction {
 
     /// Calculate the sum of the kernels, taking into account the offset if it exists, and their constituent fees
     fn sum_kernels(&self) -> KernelSum {
-        let offset_commitment = CommitmentFactory::create(&self.aggregated_offset, &SecretKey::default());
+        let public_offset = PublicKey::from_secret_key(&self.offset);
+        let offset_commitment = CommitmentFactory::from_public_key(&public_offset);
         // Sum all kernel excesses and fees
         let kernel_sum = self.body.kernels.iter().fold(
             KernelSum {
@@ -510,14 +514,11 @@ impl TransactionBuilder {
 mod test {
     use super::*;
     use crate::{
-        transaction::{KernelFeatures, OutputFeatures, TransactionInput, TransactionKernel, TransactionOutput},
-        types::{BlindingFactor, PublicKey, SecretKey},
+        transaction::{OutputFeatures, TransactionInput},
+        types::BlindingFactor,
     };
     use rand;
-    use tari_crypto::{
-        common::Blake256,
-        keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
-    };
+    use tari_crypto::keys::SecretKey as SecretKeyTrait;
 
     #[test]
     fn unblinded_input() {
