@@ -15,3 +15,6 @@ rand = "0.5.5"
 tari_crypto = { path = "../crypto"}
 tari_utilities = { path = "../../infrastructure/tari_util"}
 zmq = "0.9"
+chrono ="0.4.6"
+bitflags ="1.0.4"
+

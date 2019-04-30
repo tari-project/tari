@@ -22,6 +22,8 @@
 
 pub mod i2p;
 pub mod ip;
+pub mod net_address_with_stats;
+pub mod net_addresses;
 pub mod onion;
 pub mod parser;
 
@@ -39,6 +41,14 @@ pub enum NetAddressError {
     ParseFailed,
     /// Specified port range is invalid
     InvalidPortRange,
+    /// The net address couldn't be added to net addresses as a duplicate net address exist
+    DuplicateAddress,
+    /// The specified net address does not exist
+    AddressNotFound,
+    /// Empty set of net addresses
+    NoValidAddresses,
+    /// The number of connection attempts for all net addresses in the set exceeded the threshold
+    ConnectionAttemptsExceeded,
 }
 
 /// A Tari network address, either IP (v4 or v6), Tor Onion or I2P.
