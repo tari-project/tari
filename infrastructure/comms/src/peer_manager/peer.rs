@@ -20,18 +20,82 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::connection::NetAddress;
+use crate::{connection::net_address::net_addresses::NetAddresses, peer_manager::node_id::NodeId};
+use bitflags::*;
+use chrono::prelude::*;
+use tari_crypto::keys::PublicKey;
 
-pub enum PeerType {
-    BaseNode,
-    ValidatorNode,
-    Wallet,
-    TokenWallet,
+// TODO reputation metric?
+
+bitflags! {
+    #[derive(Default)]
+    pub struct PeerFlags: u8 {
+        const BANNED = 0b00000001;
+    }
 }
 
-#[allow(dead_code)]
-pub struct Peer {
-    // TODO: Add fields
-    peer_type: PeerType,
-    addresses: Vec<NetAddress>,
+#[derive(Debug)]
+pub struct Peer<K: PublicKey> {
+    pub public_key: K,
+    pub node_id: NodeId,
+    pub addresses: NetAddresses,
+    pub flags: PeerFlags,
+}
+
+impl<K> Peer<K>
+where K: PublicKey
+{
+    /// Constructs a new peer
+    pub fn new(public_key: K, node_id: NodeId, addresses: NetAddresses, flags: PeerFlags) -> Peer<K> {
+        Peer {
+            public_key,
+            node_id,
+            addresses,
+            flags,
+        }
+    }
+
+    /// Provides that date time of the last successful interaction with the peer
+    pub fn last_seen(&self) -> Option<DateTime<Utc>> {
+        self.addresses.last_seen()
+    }
+
+    /// Returns the ban status of the peer
+    pub fn is_banned(&self) -> bool {
+        self.flags.contains(PeerFlags::BANNED)
+    }
+
+    /// Changes the ban flag bit of the peer
+    pub fn set_banned(&mut self, ban_flag: bool) {
+        self.flags.set(PeerFlags::BANNED, ban_flag);
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::{
+        connection::{net_address::net_addresses::NetAddresses, NetAddress},
+        peer_manager::node_id::NodeId,
+    };
+    use tari_crypto::{
+        keys::{PublicKey, SecretKey},
+        ristretto::{RistrettoPublicKey, RistrettoSecretKey},
+    };
+
+    #[test]
+    fn test_is_and_set_banned() {
+        let mut rng = rand::OsRng::new().unwrap();
+        let sk = RistrettoSecretKey::random(&mut rng);
+        let pk = RistrettoPublicKey::from_secret_key(&sk);
+        let node_id = NodeId::from_key(&pk).unwrap();
+        let addresses = NetAddresses::from("123.0.0.123:8000".parse::<NetAddress>().unwrap());
+        let mut peer: Peer<RistrettoPublicKey> =
+            Peer::<RistrettoPublicKey>::new(pk, node_id, addresses, PeerFlags::default());
+        assert_eq!(peer.is_banned(), false);
+        peer.set_banned(true);
+        assert_eq!(peer.is_banned(), true);
+        peer.set_banned(false);
+        assert_eq!(peer.is_banned(), false);
+    }
 }
