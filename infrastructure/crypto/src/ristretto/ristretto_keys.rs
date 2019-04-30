@@ -270,8 +270,7 @@ impl PublicKey for RistrettoPublicKey {
 impl Hashable for RistrettoPublicKey {
     fn hash(&self) -> Vec<u8> {
         let mut hasher = HashDigest::new();
-        let buf: Vec<u8> = Vec::new();
-        hasher.input(&buf);
+        hasher.input(&self.to_vec());
         hasher.result().to_vec()
     }
 }
