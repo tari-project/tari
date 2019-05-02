@@ -397,6 +397,7 @@ name = "p2p"
 version = "0.0.1"
 dependencies = [
  "tari_comms 0.0.1",
+ "tari_core 0.0.1",
  "tari_crypto 0.0.1",
 ]
 
