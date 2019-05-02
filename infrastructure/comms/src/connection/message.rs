@@ -71,6 +71,11 @@ impl RawDataMessage {
     pub fn body(&self) -> &Frame {
         &self.frames[3]
     }
+
+    // this function is used to send the data data on so we can convert, it consumes rawdatmessage
+    pub(crate) fn get_frames(self) -> FrameSet {
+        self.frames
+    }
 }
 
 impl TryFrom<FrameSet> for RawDataMessage {

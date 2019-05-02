@@ -17,4 +17,6 @@ tari_utilities = { path = "../../infrastructure/tari_util"}
 zmq = "0.9"
 chrono ="0.4.6"
 bitflags ="1.0.4"
-
+rmp-serde = "0.13.7"
+serde = "1.0.90"
+serde_derive = "1.0.90"

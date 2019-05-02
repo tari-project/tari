@@ -27,9 +27,10 @@ use std::{
 };
 
 use crate::connection::NetAddressError;
+use serde_derive::{Deserialize, Serialize};
 
 /// Represents an {IPv4, IPv6} address and port
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, Deserialize, Serialize)]
 pub struct SocketAddress(SocketAddr);
 
 impl SocketAddress {
