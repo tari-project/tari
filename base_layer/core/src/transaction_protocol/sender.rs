@@ -395,7 +395,7 @@ mod test {
     };
     use rand::OsRng;
     use tari_crypto::common::Blake256;
-    use tari_utilities::byte_array::ByteArray;
+    use tari_utilities::hex::Hex;
 
     #[test]
     fn zero_recipients() {

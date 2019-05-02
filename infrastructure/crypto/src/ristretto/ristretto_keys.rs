@@ -41,7 +41,7 @@ use std::{
     fmt,
     ops::{Add, Mul, Sub},
 };
-use tari_utilities::{ByteArray, ByteArrayError, ExtendBytes, Hashable};
+use tari_utilities::{hex::Hex, ByteArray, ByteArrayError, ExtendBytes, Hashable};
 
 type HashDigest = Blake2b;
 
@@ -55,7 +55,7 @@ type HashDigest = Blake2b;
 ///
 /// ```edition2018
 /// use tari_crypto::ristretto::RistrettoSecretKey;
-/// use tari_utilities::ByteArray;
+/// use tari_utilities::{ ByteArray, hex::Hex };
 /// use tari_crypto::keys::SecretKey;
 /// use rand;
 ///
@@ -218,7 +218,7 @@ impl From<u64> for RistrettoSecretKey {
 /// `RistrettoPublicKey` so all of the following will work:
 /// ```edition2018
 /// use tari_crypto::ristretto::{ RistrettoPublicKey, RistrettoSecretKey };
-/// use tari_utilities::ByteArray;
+/// use tari_utilities::{ ByteArray, hex::Hex };
 /// use tari_crypto::keys::{ PublicKey, SecretKey };
 /// use rand;
 ///

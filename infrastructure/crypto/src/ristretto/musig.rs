@@ -980,6 +980,7 @@ mod test_joint_key {
     use super::*;
     use crate::{keys::PublicKey, musig::MAX_SIGNATURES};
     use sha2::Sha256;
+    use tari_utilities::hex::Hex;
 
     #[test]
     fn zero_sized_jk() {
