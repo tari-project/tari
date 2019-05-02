@@ -12,7 +12,7 @@ use std::{
     cmp::Ordering,
     ops::{Add, Mul},
 };
-use tari_utilities::ByteArray;
+use tari_utilities::{hex::Hex, ByteArray};
 
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
 pub enum SchnorrSignatureError {

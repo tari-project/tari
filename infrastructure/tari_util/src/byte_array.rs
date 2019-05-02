@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::hex::{from_hex, to_hex, HexError};
+use crate::hex::{from_hex, to_hex, Hex, HexError};
 use derive_error::Error;
 
 #[derive(Debug, Error)]
@@ -28,8 +28,6 @@ pub enum ByteArrayError {
     // Could not create a ByteArray when converting from a different format
     #[error(msg_embedded, non_std, no_from)]
     ConversionError(String),
-    // Invalid hex representation for ByteArray
-    HexConversionError(HexError),
     // The input data was the incorrect length to perform the desired conversion
     IncorrectLength,
 }
@@ -38,18 +36,6 @@ pub enum ByteArrayError {
 /// functionality for  types  like secret keys, signatures, commitments etc. to be converted to and from byte arrays
 /// and hexadecimal formats.
 pub trait ByteArray: Sized {
-    /// Return the hexadecimal string representation of the type
-    fn to_hex(&self) -> String {
-        to_hex(&self.to_vec())
-    }
-
-    /// Try and convert the given hexadecimal string to the type. Any failures (incorrect  string length, non hex
-    /// characters, etc) return a [KeyError](enum.KeyError.html) with an explanatory note.
-    fn from_hex(hex: &str) -> Result<Self, ByteArrayError> {
-        let v = from_hex(hex)?;
-        Self::from_vec(&v)
-    }
-
     /// Return the type as a byte vector
     fn to_vec(&self) -> Vec<u8> {
         self.as_bytes().to_vec()
@@ -57,8 +43,7 @@ pub trait ByteArray: Sized {
 
     /// Try and convert the given byte vector to the implemented type. Any failures (incorrect string length etc)
     /// return a [KeyError](enum.KeyError.html) with an explanatory note.
-    fn from_vec(v: &Vec<u8>) -> Result<Self, ByteArrayError>
-    where Self: Sized {
+    fn from_vec(v: &Vec<u8>) -> Result<Self, ByteArrayError> {
         Self::from_bytes(v.as_slice())
     }
 
@@ -71,17 +56,6 @@ pub trait ByteArray: Sized {
 }
 
 impl ByteArray for Vec<u8> {
-    fn to_hex(&self) -> String {
-        to_hex(self)
-    }
-
-    /// Try and convert the given hexadecimal string to the type. Any failures (incorrect  string length, non hex
-    /// characters, etc) return a [KeyError](enum.KeyError.html) with an explanatory note.
-    fn from_hex(hex: &str) -> Result<Self, ByteArrayError> {
-        let v = from_hex(hex)?;
-        Self::from_vec(&v)
-    }
-
     fn to_vec(&self) -> Vec<u8> {
         self.clone()
     }
@@ -111,5 +85,18 @@ impl ByteArray for [u8; 32] {
 
     fn as_bytes(&self) -> &[u8] {
         self
+    }
+}
+
+impl<T: ByteArray> Hex for T {
+    type T = T;
+
+    fn from_hex(hex: &str) -> Result<Self::T, HexError> {
+        let v = from_hex(hex)?;
+        Self::from_vec(&v).map_err(|_| HexError::HexConversionError)
+    }
+
+    fn to_hex(&self) -> String {
+        to_hex(&self.to_vec())
     }
 }

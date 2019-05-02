@@ -396,7 +396,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 name = "p2p"
 version = "0.0.1"
 dependencies = [
- "bitflags 1.0.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "tari_comms 0.0.1",
  "tari_core 0.0.1",
  "tari_crypto 0.0.1",
