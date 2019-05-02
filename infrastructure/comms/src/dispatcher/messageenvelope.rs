@@ -30,7 +30,6 @@ use serde_derive::{Deserialize, Serialize};
 use std::convert::TryFrom;
 use tari_crypto::keys::PublicKey;
 
-
 #[derive(Debug, Error)]
 pub enum MessageEnvelopeError {
     // An error occurred serialising an object into binary
@@ -56,7 +55,6 @@ where PubKey: PublicKey
     signature: Vec<u8>,
     flags: IdentityFlags,
 }
-
 
 impl<'a, PubKey> TryFrom<Vec<u8>> for MessageIdentity<PubKey>
 where PubKey: PublicKey + Deserialize<'a>
