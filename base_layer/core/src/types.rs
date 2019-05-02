@@ -55,6 +55,12 @@ pub type SignatureHash = Blake256;
 /// Specify the Hash function for general hashing
 pub type HashDigest = Blake256;
 
+/// Specify the digest type for signature challenges
+pub type Challenge = Blake256;
+
+/// The type of output that `Challenge` produces
+pub type MessageHash = Vec<u8>;
+
 /// Convenience type wrapper for creating output commitments directly from values and spending_keys
 pub trait TariCommitment {
     fn commit(value: u64, spending_key: &SecretKey) -> Commitment;

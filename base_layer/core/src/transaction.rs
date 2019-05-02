@@ -178,7 +178,7 @@ pub struct TransactionOutput {
     pub proof: RangeProof,
 }
 
-/// An output for a transaction, includes a rangeproof
+/// An output for a transaction, includes a range proof
 impl TransactionOutput {
     /// Create new Transaction Output
     pub fn new(features: OutputFeatures, commitment: Commitment, proof: RangeProof) -> TransactionOutput {
@@ -327,7 +327,7 @@ impl TransactionKernel {
             fee: self.fee,
         };
         let c = build_challenge(r, &m);
-        if self.excess_sig.verify_challenge(excess, c) {
+        if self.excess_sig.verify_challenge(excess, &c) {
             return Ok(());
         } else {
             return Err(TransactionError::InvalidSignatureError);

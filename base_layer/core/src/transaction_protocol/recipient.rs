@@ -27,10 +27,9 @@ use crate::{
         single_receiver::SingleReceiverTransactionProtocol,
         TransactionProtocolError,
     },
-    types::{PublicKey, SecretKey, Signature},
+    types::{MessageHash, PublicKey, SecretKey, Signature},
 };
 use std::collections::HashMap;
-use tari_crypto::challenge::MessageHash;
 
 pub enum RecipientState {
     Finalized(RecipientSignedTransactionData),
@@ -184,7 +183,7 @@ mod test {
         assert!(data.output.commitment.validate(500, &p.spend_key));
         let r_sum = &msg.public_nonce + &p.public_nonce;
         let e = build_challenge(&r_sum, &m);
-        let s = Signature::sign(p.spend_key.clone(), p.nonce.clone(), e).unwrap();
+        let s = Signature::sign(p.spend_key.clone(), p.nonce.clone(), &e).unwrap();
         assert_eq!(data.partial_signature, s);
         // TODO: test range proof
     }
