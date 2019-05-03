@@ -1,4 +1,4 @@
-# RFC-0171/PeerToPeerMessaging
+# RFC-0172/PeerToPeerMessaging
 
 ## Peer to Peer Messaging Protocol
 
@@ -143,7 +143,7 @@ There are two forms of encryption which are used:
 
 - Over the wire encryption: encryption of traffic between nodes using zMQ's [CURVE](http://curvezmq.org/page:read-the-docs)
   implementation.
-- Payload encryption: the [DataMessageBody] is encrypted in such a way that only the destination recipient can decrypt it.
+- Payload encryption: the [MessageEnvelopeBody] is encrypted in such a way that only the destination recipient can decrypt it.
 
 ### Components
 
@@ -201,12 +201,12 @@ This illustrates the structure of a Tari message.
 
 ```text
 +----------------------------------------+
-|              DataMessage               |
+|             MessageEnvelope            |
 |  +----------------------------------+  |
-|  |        DataMessageHeader         |  |
+|  |        MessageEnvelope Header    |  |
 |  +----------------------------------+  |
 |  +----------------------------------+  |
-|  |        DataMessageBody           |  |
+|  |      MessageEnvelopeBody         |  |
 |  |     (optionally encrypted)       |  |
 |  | +------------------------------+ |  |
 |  | |        MessageHeader         | |  |
@@ -218,24 +218,24 @@ This illustrates the structure of a Tari message.
 +----------------------------------------+
 ```
 
-#### DataMessage wire format
+#### MessageEnvelope  wire format
 
-Every Tari message MUST use the DataMessage format. This format consists of four frames of a multipart message.
+Every Tari message MUST use the MessageEnvelope format. This format consists of four frames of a multipart message.
 
-A DataMessage represents a message which has just come off, or is about to go on to the wire and consists of the following:
+A MessageEnvelope  represents a message which has just come off, or is about to go on to the wire and consists of the following:
 
 | Name     | Frame | Length (octets) | Type      | Description                                                                                                                                            |
 | -------- | ----- | --------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | identity | 0     | 8               | `[u8;8]`  | The identifier that a `ZMQ_ROUTER` socket expects so that it knows the intended destination of the message. This can be thought of as a session token. |
 | version  | 1     | 1               | `u8`      | The wire protocol version.                                                                                                                             |
 | header   | 2     | varies          | `Vec<u8>` | Serialized bytes of data containing an unencrypted HeaderMessage.                                                                                      |
-| body     | 3     | varies          | `Vec<u8>` | Serialized bytes of data containing a unencrypted or encrypted [DataMessageBody].                                                                      |
+| body     | 3     | varies          | `Vec<u8>` | Serialized bytes of data containing a unencrypted or encrypted [MessageEnvelopeBody].                                                                      |
 
 The header and decrypted body MUST be deserializable as per [RFC-0171: Message Serialisation](RFC-0171_MessageSerialisation.md)
 
-#### DataMessageHeader
+#### MessageEnvelope Header
 
-Every [DataMessage] MUST have an unencrypted header containing the following fields:
+Every [MessageEnvelope] MUST have an unencrypted header containing the following fields:
 
 | Name      | Type                      | Description                                                                                        |
 | --------- | ------------------------- | -------------------------------------------------------------------------------------------------- |
@@ -250,13 +250,13 @@ A [communication node] and [communication client]:
 - MUST validate the signature of the message using the source's public key.
 - MUST reject the message if the signature verification fails.
 - if the encryption bit flag is set:
-  - MUST attempt to decrypt the [DataMessageBody], or failing that
+  - MUST attempt to decrypt the [MessageEnvelopeBody], or failing that
   - MUST forward the message to a subset of peers using the `Closest` [BroadcastStrategy]
   - MUST discard the message if the body is not encrypted
 
-#### DataMessageBody
+#### MessageEnvelopeBody
 
-A DataMessageBody is the payload of the [DataMessage]. A [DataMessage] may be encrypted as required.
+A MessageEnvelopeBody is the payload of the [MessageEnvelope]. A [MessageEnvelopeBody] may be encrypted as required.
 
 It consists of a [MessageHeader] and [Message] of a particular predefined [MessageType].
 
@@ -288,7 +288,7 @@ Every Tari message MUST have a header containing the following fields:
 | version      | `u8` | The message version.                                               |
 | message_type | `u8` | An enumeration of the message type of the body. See [MessageType]. |
 
-As this is part of the [DataMessageBody], it can be encrypted along with the rest of the message
+As this is part of the [MessageEnvelopeBody], it can be encrypted along with the rest of the message
 which keeps the type of message private.
 
 #### Message
@@ -383,7 +383,7 @@ An [OutboundConnection]:
   - For an IP [NetAddress], connect to the given host IP and port
   - For an Onion [NetAddress], connect to the onion address using the tcp protocol (e.g. `tcp://xyz...123.onion:1234`)
   - For an I2P [NetAddress], as yet undetermined
-- MUST write the parts of the given [DataMessage] to the socket as a multipart message consisting of, in order:
+- MUST write the parts of the given [MessageEnvelope] to the socket as a multipart message consisting of, in order:
   - identity
   - version
   - header
@@ -454,9 +454,9 @@ A `PeerConnection`:
 
 - MUST listen for data on the given [NetAddress] using an [InboundConnection]
 - MUST sequentially try to connect to one of the peer's [NetAddress]es until one succeeds or all fail using an [OutboundConnection]
-- MUST immediately reject and dispose of a multipart message not consisting of four parts, as detailed in [DataMessage].
-- MUST construct a [DataMessage] from the multiple parts.
-- MUST pass the constructed [DataMessage] to the message handler.
+- MUST immediately reject and dispose of a multipart message not consisting of four parts, as detailed in [MessageEnvelope].
+- MUST construct a [MessageEnvelope] from the multiple parts.
+- MUST pass the constructed [MessageEnvelope] to the message handler.
 - Should a connection drop, the connection state MUST transition to `Connecting` and the connection retried.
 - When a shutdown signal is received, MUST send a `net::Disconnect` message and drop the connection.
 
@@ -609,7 +609,7 @@ send messages to the rest of the network.
 In particular, it is responsible for:
 
 - serializing the message body
-- constructing the [DataMessage]
+- constructing the [MessageEnvelope]
 - executing the required BroadcastStrategy
 - sending messages using the [ConnectionManager]
 
@@ -632,7 +632,7 @@ The following privacy features are proposed:
 
 - A [communication node] or [communication client] MAY communicate solely over the Tor/I2P networks
 - All traffic (with the exception of the control service) MUST be encrypted
-- Messages MAY encrypt the body of a DataMessage which only a particular recipient can decrypt.
+- Messages MAY encrypt the body of a MessageEnvelope which only a particular recipient can decrypt.
 - The `destination` header field can be omitted, when used in conjunction with body encryption the destination is
   completely unknown to the rest of the network.
 
@@ -697,12 +697,11 @@ If the HWM is hit:
 [communication node]: Glossary.md#communication-node
 [connectioncontext]: #connectioncontext
 [controlservice]: #controlservice
-[datamessage]: #datamessage
-[datamessagebody]: #datamessagebody
+[MessageEnvelope]: #MessageEnvelope
+[MessageEnvelopebody]: #MessageEnvelopebody
 [duplicatemessagewindow]: #duplicatemessagewindow
 [inboundconnection]: #inboundconnection
 [message]: #message
-[messageenvelope]: #datamessage-wire-format
 [messagetype]: #messagetype
 [netaddress]: #netaddress
 [node id]: Glossary.md#node-id

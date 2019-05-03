@@ -22,13 +22,14 @@
 
 use crate::connection::{message::RawDataMessage, net_address::*};
 
+use crate::peer_manager::node_id::*;
 use bitflags::*;
 use derive_error::Error;
-use rmp_serde;
 use serde::{Deserialize, Serialize};
 use serde_derive::{Deserialize, Serialize};
 use std::convert::TryFrom;
 use tari_crypto::keys::PublicKey;
+
 
 #[derive(Debug, Error)]
 pub enum MessageEnvelopeError {
@@ -45,13 +46,21 @@ bitflags! {
     }
 }
 
+pub enum NodeDestination<PubKey>
+where PubKey: PublicKey
+{
+    Unknown,
+    PublicKey(PubKey),
+    NodeId(NodeId),
+}
+
 #[derive(Debug, Deserialize, Serialize, PartialEq)]
 pub struct MessageIdentity<PubKey>
 where PubKey: PublicKey
 {
     version: u8,
     source: PubKey,
-    dest: Option<NetAddress>,
+    dest: NodeDestination<Pubkey>,
     signature: Vec<u8>,
     flags: IdentityFlags,
 }
@@ -120,7 +129,7 @@ pub struct MessageBody {
 pub struct MessageEnvelope<PubKey>
 where PubKey: PublicKey
 {
-    identity: MessageIdentity<PubKey>,
+    data_message_header: MessageIdentity<PubKey>,
     version: MessageVersion,
     internal_header: MessageHeader,
     internal_body: MessageBody,
@@ -141,7 +150,7 @@ where PubKey: PublicKey + Deserialize<'a>
                 data: raw_frames.remove(2),
             },
             version: MessageVersion::try_from(raw_frames.remove(1))?,
-            identity: MessageIdentity::try_from(raw_frames.remove(0))?,
+            data_message_header: MessageIdentity::try_from(raw_frames.remove(0))?,
         })
     }
 }

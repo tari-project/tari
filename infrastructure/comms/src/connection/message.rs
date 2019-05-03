@@ -20,9 +20,13 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::TryFrom;
-
+use crate::{connection::net_address::*, peer_manager::node_id::*};
+use bitflags::*;
 use derive_error::Error;
+use serde::{Deserialize, Deserializer, Serialize};
+use serde_derive::{Deserialize, Serialize};
+use std::convert::TryFrom;
+use tari_crypto::keys::PublicKey;
 
 #[derive(Error, Debug)]
 pub enum MessageError {
@@ -30,6 +34,37 @@ pub enum MessageError {
     MalformedMultipart,
     /// Failed to deserialize message
     DeserializeFailed,
+    // An error occurred serialising an object into binary
+    BinarySerializeError,
+    // An error occurred deserialising binary data into an object
+    BinaryDeserializeError,
+}
+
+bitflags! {
+    #[derive(Deserialize, Serialize)]
+    struct IdentityFlags: u8 {
+        const ENCRYPTED = 0b00000001;
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize, PartialEq)]
+pub enum NodeDestination<PubKey>
+where PubKey: PublicKey
+{
+    Unknown,
+    PublicKey(PubKey),
+    NodeId(NodeId),
+}
+
+#[derive(Debug, Deserialize, Serialize, PartialEq)]
+pub struct MessageEnvelopeHeader<PubKey>
+where PubKey: PublicKey
+{
+    version: u8,
+    source: PubKey,
+    dest: NodeDestination<PubKey>,
+    signature: Vec<u8>,
+    flags: IdentityFlags,
 }
 
 const FRAMES_PER_MESSAGE: usize = 4;
@@ -40,14 +75,14 @@ pub type Frame = Vec<u8>;
 pub type FrameSet = Vec<Frame>;
 
 /// Represents a message which is about to go on or has just come off the wire.
-pub struct RawDataMessage {
+pub struct MessageEnvelope {
     frames: FrameSet,
 }
 
-impl RawDataMessage {
-    /// Create a new RawDataMessage from four frames
+impl MessageEnvelope {
+    /// Create a new MessageEnvelope from four frames
     pub fn new(identity: Frame, version: Frame, header: Frame, body: Frame) -> Self {
-        RawDataMessage {
+        MessageEnvelope {
             frames: vec![identity, version, header, body],
         }
     }
@@ -72,22 +107,18 @@ impl RawDataMessage {
         &self.frames[3]
     }
 
-    // this function is used to send the data data on so we can convert, it consumes rawdatmessage
-    pub(crate) fn get_frames(self) -> FrameSet {
-        self.frames
-    }
 }
 
-impl TryFrom<FrameSet> for RawDataMessage {
+impl TryFrom<FrameSet> for MessageEnvelope {
     type Error = MessageError;
 
-    /// Returns a RawDataMessage from a FrameSet
+    /// Returns a MessageEnvelope from a FrameSet
     fn try_from(frames: FrameSet) -> Result<Self, Self::Error> {
         if frames.len() != FRAMES_PER_MESSAGE {
             return Err(MessageError::MalformedMultipart);
         }
 
-        Ok(RawDataMessage { frames })
+        Ok(MessageEnvelope { frames })
     }
 }
 
@@ -100,7 +131,7 @@ mod test {
     fn try_from_valid() {
         let example = vec![vec![0u8], vec![1u8], vec![2u8], vec![3u8]];
 
-        let raw_message: Result<RawDataMessage, MessageError> = example.try_into();
+        let raw_message: Result<MessageEnvelope, MessageError> = example.try_into();
 
         assert!(raw_message.is_ok());
         let raw_message = raw_message.unwrap();
@@ -114,7 +145,7 @@ mod test {
     fn try_from_invalid() {
         let example = vec![vec![0u8], vec![1u8], vec![2u8]];
 
-        let raw_message: Result<RawDataMessage, MessageError> = example.try_into();
+        let raw_message: Result<MessageEnvelope, MessageError> = example.try_into();
 
         assert!(raw_message.is_err());
         let error = raw_message.err().unwrap();
@@ -123,4 +154,5 @@ mod test {
             _ => panic!("Unexpected MessageError {:?}", error),
         }
     }
+
 }
