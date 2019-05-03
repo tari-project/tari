@@ -27,6 +27,7 @@ use tari_crypto::{
     commitment::{HomomorphicCommitment, HomomorphicCommitmentFactory},
     common::Blake256,
     ristretto::{
+        dalek_range_proof::DalekRangeProofService,
         pedersen::{PedersenBaseOnRistretto255, PedersenOnRistretto255},
         RistrettoPublicKey,
         RistrettoSchnorr,
@@ -60,6 +61,10 @@ pub type Challenge = Blake256;
 
 /// The type of output that `Challenge` produces
 pub type MessageHash = Vec<u8>;
+
+/// Specify the range proof type
+pub type RangeProof = Vec<u8>;
+pub type RangeProofService = DalekRangeProofService;
 
 /// Convenience type wrapper for creating output commitments directly from values and spending_keys
 pub trait TariCommitment {

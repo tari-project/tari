@@ -25,19 +25,20 @@
 
 use crate::{
     block::AggregateBody,
-    range_proof::RangeProof,
     types::{BlindingFactor, Commitment, CommitmentFactory, Signature},
 };
 
 use crate::{
     transaction_protocol::{build_challenge, TransactionMetadata},
-    types::{HashDigest, PublicKey, SecretKey},
+    types::{HashDigest, PublicKey, RangeProof, RangeProofService, SecretKey},
 };
 use derive_error::Error;
 use digest::Input;
+use std::convert::TryFrom;
 use tari_crypto::{
     commitment::{HomomorphicCommitment, HomomorphicCommitmentFactory},
     keys::PublicKey as PK,
+    range_proof::{RangeProofError, RangeProofService as RangeProofServiceTrait},
 };
 use tari_utilities::{ByteArray, Hashable};
 
@@ -75,6 +76,8 @@ pub enum TransactionError {
     InvalidSignatureError,
     // Transaction kernel does not contain a signature
     NoSignatureError,
+    // A range proof construction or verification has produced an error
+    RangeProofError(RangeProofError),
 }
 
 //-----------------------------------------     UnblindedOutput   ----------------------------------------------------//
@@ -89,7 +92,7 @@ pub struct UnblindedOutput {
 }
 
 impl UnblindedOutput {
-    /// Creates a new un-blinded input
+    /// Creates a new un-blinded output
     pub fn new(value: u64, spending_key: BlindingFactor, features: Option<OutputFeatures>) -> UnblindedOutput {
         UnblindedOutput {
             value,
@@ -99,7 +102,7 @@ impl UnblindedOutput {
     }
 }
 
-/// Converts an UnblindedInput into a Transaction input with default output features.
+/// Converts an UnblindedOutput into a Transaction input with default output features.
 impl<'a> From<&UnblindedOutput> for TransactionInput {
     fn from(v: &UnblindedOutput) -> Self {
         let c = CommitmentFactory::create(&v.spending_key, &v.value.into());
@@ -110,15 +113,19 @@ impl<'a> From<&UnblindedOutput> for TransactionInput {
     }
 }
 
-/// Converts an UnblindedInput into a Transaction input with default output features.
-impl<'a> From<&'a UnblindedOutput> for TransactionOutput {
-    fn from(v: &'a UnblindedOutput) -> Self {
+/// Converts an UnblindedOutput into a Transaction Output with default output features.
+impl<'a> TryFrom<&'a UnblindedOutput> for TransactionOutput {
+    type Error = RangeProofError;
+
+    fn try_from(v: &'a UnblindedOutput) -> Result<Self, Self::Error> {
         let c = CommitmentFactory::create(&v.spending_key, &v.value.into());
-        TransactionOutput {
+        let prover = RangeProofService::new(1 << 6, CommitmentFactory::default())?;
+
+        Ok(TransactionOutput {
             features: v.features.clone(),
             commitment: c,
-            proof: RangeProof([0; 1]), // TODO
-        }
+            proof: prover.construct_proof(&v.spending_key, v.value)?,
+        })
     }
 }
 
@@ -156,10 +163,11 @@ impl TransactionInput {
 /// Implement the canonical hashing function for TransactionInput for use in ordering
 impl Hashable for TransactionInput {
     fn hash(&self) -> Vec<u8> {
-        let mut hasher = HashDigest::new();
-        hasher.input(vec![self.features.bits]);
-        hasher.input(self.commitment.as_bytes());
-        hasher.result().to_vec()
+        HashDigest::new()
+            .chain(vec![self.features.bits])
+            .chain(self.commitment.as_bytes())
+            .result()
+            .to_vec()
     }
 }
 
@@ -200,20 +208,21 @@ impl TransactionOutput {
     }
 
     /// Verify that range proof is valid
-    pub fn verify_range_proof(&self) -> bool {
-        // TODO: range roof verification
-        true
+    pub fn verify_range_proof(&self) -> Result<bool, TransactionError> {
+        let prover = RangeProofService::new(1 << 6, CommitmentFactory::default())?;
+        Ok(prover.verify(&self.proof, &self.commitment))
     }
 }
 
 /// Implement the canonical hashing function for TransactionOutput for use in ordering
 impl Hashable for TransactionOutput {
     fn hash(&self) -> Vec<u8> {
-        let mut hasher = HashDigest::new();
-        hasher.input(vec![self.features.bits]);
-        hasher.input(self.commitment.as_bytes());
-        hasher.input(self.proof.0);
-        hasher.result().to_vec()
+        HashDigest::new()
+            .chain(vec![self.features.bits])
+            .chain(self.commitment.as_bytes())
+            .chain(self.proof.as_bytes())
+            .result()
+            .to_vec()
     }
 }
 
@@ -420,8 +429,13 @@ impl Transaction {
         Ok(())
     }
 
-    // TODO - check range proofs
     fn validate_range_proofs(&self) -> Result<(), TransactionError> {
+        for o in &self.body.outputs {
+            if !o.verify_range_proof()? {
+                return Err(TransactionError::ValidationError);
+            }
+        }
+
         Ok(())
     }
 

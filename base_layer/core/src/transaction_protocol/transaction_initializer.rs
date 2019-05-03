@@ -39,6 +39,8 @@ use crate::{
 use digest::Digest;
 use std::{
     collections::HashMap,
+    convert::TryFrom,
+    error::Error as ErrorTrait,
     fmt::{Debug, Error, Formatter},
 };
 use tari_crypto::keys::PublicKey as PublicKeyTrait;
@@ -235,6 +237,19 @@ impl SenderTransactionInitializer {
         if total_fee < MINIMUM_TRANSACTION_FEE {
             return self.build_err("Fee is less than the minimum");
         }
+
+        let outputs = match self
+            .outputs
+            .iter()
+            .map(|o| TransactionOutput::try_from(o))
+            .collect::<Result<Vec<TransactionOutput>, _>>()
+        {
+            Ok(o) => o,
+            Err(e) => {
+                return self.build_err(e.description());
+            },
+        };
+
         let nonce = self.private_nonce.unwrap();
         let public_nonce = PublicKey::from_secret_key(&nonce);
         let offset = self.offset.unwrap();
@@ -242,7 +257,7 @@ impl SenderTransactionInitializer {
         let offset_blinding_factor = &excess_blinding_factor - &offset;
         let excess = PublicKey::from_secret_key(&offset_blinding_factor);
         let amount_to_self = self.outputs.iter().fold(0u64, |sum, o| sum + o.value);
-        let outputs = self.outputs.iter().map(|o| TransactionOutput::from(o)).collect();
+
         let recipient_info = match self.num_recipients {
             0 => RecipientInfo::None,
             1 => RecipientInfo::Single(None),

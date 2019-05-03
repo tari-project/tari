@@ -62,7 +62,7 @@ use crate::{
 };
 use derive_error::Error;
 use digest::Digest;
-use tari_crypto::signatures::SchnorrSignatureError;
+use tari_crypto::{range_proof::RangeProofError, signatures::SchnorrSignatureError};
 use tari_utilities::byte_array::ByteArray;
 
 #[derive(Clone, Debug, PartialEq, Error)]
@@ -84,6 +84,8 @@ pub enum TransactionProtocolError {
     TransactionBuildError(TransactionError),
     // The transaction construction broke down due to communication failure
     TimeoutError,
+    // An error was produced while constructing a rangeproof
+    RangeProofError(RangeProofError),
     // This set of parameters is currently not supported
     #[error(msg_embedded, no_from, non_std)]
     UnsupportedError(String),

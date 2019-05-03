@@ -26,7 +26,7 @@
 use crate::{commitment::HomomorphicCommitment, keys::SecretKey};
 use derive_error::Error;
 
-#[derive(Debug, Clone, Error)]
+#[derive(Debug, Clone, Error, PartialEq)]
 pub enum RangeProofError {
     /// Could not construct range proof
     ProofConstructionError,

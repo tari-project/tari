@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    range_proof::RangeProof,
     transaction::{OutputFeatures, TransactionOutput},
     transaction_protocol::{
         build_challenge,
@@ -29,9 +28,9 @@ use crate::{
         sender::SingleRoundSenderData as SD,
         TransactionProtocolError as TPE,
     },
-    types::{CommitmentFactory, PublicKey, SecretKey as SK, Signature, TariCommitment},
+    types::{CommitmentFactory, PublicKey, RangeProofService, SecretKey as SK, Signature, TariCommitment},
 };
-use tari_crypto::keys::PublicKey as PK;
+use tari_crypto::{keys::PublicKey as PK, range_proof::RangeProofService as RangeProofServiceTrait};
 
 /// SingleReceiverTransactionProtocol represents the actions taken by the single receiver in the one-round Tari
 /// transaction protocol. The procedure is straightforward. Upon receiving the sender's information, the receiver:
@@ -68,8 +67,13 @@ impl SingleReceiverTransactionProtocol {
 
     fn build_output(sender_info: &SD, spending_key: &SK, features: OutputFeatures) -> Result<TransactionOutput, TPE> {
         let commitment = CommitmentFactory::commit(sender_info.amount, &spending_key);
-        let proof = RangeProof::create_proof();
-        Ok(TransactionOutput::new(features, commitment, proof))
+        let prover = RangeProofService::new(1 << 6, CommitmentFactory::default())?;
+
+        Ok(TransactionOutput::new(
+            features,
+            commitment,
+            prover.construct_proof(&spending_key, sender_info.amount)?,
+        ))
     }
 }
 
