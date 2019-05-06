@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    transaction::{OutputFeatures, TransactionOutput},
+    transaction::{OutputFeatures, TransactionOutput, MAX_RANGE_PROOF_RANGE},
     transaction_protocol::{
         build_challenge,
         recipient::RecipientSignedTransactionData as RD,
@@ -67,7 +67,7 @@ impl SingleReceiverTransactionProtocol {
 
     fn build_output(sender_info: &SD, spending_key: &SK, features: OutputFeatures) -> Result<TransactionOutput, TPE> {
         let commitment = CommitmentFactory::commit(sender_info.amount, &spending_key);
-        let prover = RangeProofService::new(1 << 6, CommitmentFactory::default())?;
+        let prover = RangeProofService::new(MAX_RANGE_PROOF_RANGE, CommitmentFactory::default())?;
 
         Ok(TransactionOutput::new(
             features,
@@ -141,9 +141,9 @@ mod test {
             "Partial signature is incorrect"
         );
         let out = &prot.output;
-        // Check the output tha was constructed
+        // Check the output that was constructed
         assert!(out.commitment.validate(info.amount, &k), "Output commitment is invalid");
-        // TODO: Add range proof verification
+        assert!(out.verify_range_proof().unwrap(), "Range proof is invalid");
         assert!(out.features.is_empty(), "Output features have changed");
     }
 }

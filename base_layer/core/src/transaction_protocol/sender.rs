@@ -201,13 +201,17 @@ impl SenderTransactionProtocol {
     pub fn add_single_recipient_info(&mut self, rec: RecipientSignedTransactionData) -> Result<(), TPE> {
         match &mut self.state {
             SenderState::CollectingSingleSignature(info) => {
+                if !rec.output.verify_range_proof()? {
+                    return Err(TPE::ValidationError(
+                        "Recipient output range proof failed to verify".into(),
+                    ));
+                }
                 // Consolidate transaction info
                 info.outputs.push(rec.output);
                 // nonce is in the signature, so we'll add those together later
                 info.public_excess = &info.public_excess + &rec.public_spend_key;
                 info.public_nonce_sum = &info.public_nonce_sum + rec.partial_signature.get_public_nonce();
                 info.signatures.push(rec.partial_signature);
-                // TODO check range proof
                 self.state = SenderState::Finalizing(info.clone());
                 Ok(())
             },
@@ -391,6 +395,7 @@ mod test {
             sender::SenderTransactionProtocol,
             single_receiver::SingleReceiverTransactionProtocol,
             test_common::{make_input, TestParams},
+            TransactionProtocolError,
         },
     };
     use rand::OsRng;
@@ -526,5 +531,41 @@ mod test {
         assert_eq!(tx.body.inputs[0], utxo);
         assert_eq!(tx.body.outputs.len(), 2);
         assert!(tx.clone().validate_internal_consistency().is_ok());
+    }
+
+    #[test]
+    fn single_recipient_range_proof_fail() {
+        let mut rng = OsRng::new().unwrap();
+        // Alice's parameters
+        let a = TestParams::new(&mut rng);
+        // Bob's parameters
+        let b = TestParams::new(&mut rng);
+        let (utxo, input) = make_input(&mut rng, 2u64.pow(32) + 2001);
+        let mut builder = SenderTransactionProtocol::new(1);
+
+        builder
+            .with_lock_height(0)
+            .with_fee_per_gram(20)
+            .with_offset(a.offset.clone())
+            .with_private_nonce(a.nonce.clone())
+            .with_change_secret(a.change_key.clone())
+            .with_input(utxo.clone(), input)
+            .with_amount(0, 2u64.pow(32) + 1);
+        let mut alice = builder.build::<Blake256>().unwrap();
+        assert!(alice.is_single_round_message_ready());
+        let msg = alice.build_single_round_message().unwrap();
+        // Send message down the wire....and wait for response
+        assert!(alice.is_collecting_single_signature());
+        // Receiver gets message, deserializes it etc, and creates his response
+        let bob_info =
+            SingleReceiverTransactionProtocol::new(&msg, b.nonce, b.spend_key, OutputFeatures::empty()).unwrap();
+        // Alice gets message back, deserializes it, etc
+        match alice.add_single_recipient_info(bob_info.clone()) {
+            Ok(_) => panic!("Range proof should have failed to verify"),
+            Err(e) => assert_eq!(
+                e,
+                TransactionProtocolError::ValidationError("Recipient output range proof failed to verify".into())
+            ),
+        }
     }
 }

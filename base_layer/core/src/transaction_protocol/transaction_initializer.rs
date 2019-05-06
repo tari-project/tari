@@ -557,4 +557,31 @@ mod test {
         }
     }
 
+    #[test]
+    fn fail_range_proof() {
+        // Create some inputs
+        let mut rng = OsRng::new().unwrap();
+        let p = TestParams::new(&mut rng);
+        let (utxo1, input1) = make_input(&mut rng, 2u64.pow(32) + 10000u64);
+        let weight = 30;
+        let output = UnblindedOutput::new(1u64.pow(32) + 1u64, p.spend_key, None);
+        // Start the builder
+        let mut builder = SenderTransactionInitializer::new(1);
+        builder
+            .with_lock_height(1234)
+            .with_offset(p.offset)
+            .with_private_nonce(p.nonce)
+            .with_output(output)
+            .with_input(utxo1, input1)
+            .with_amount(0, 100)
+            .with_change_secret(p.change_key)
+            .with_fee_per_gram(weight);
+        let result = builder.build::<Blake256>();
+
+        match result {
+            Ok(_) => panic!("Range proof should have failed to verify"),
+            Err(e) => assert_eq!(e.message, "Range proof could not be verified".to_string()),
+        }
+    }
+
 }
