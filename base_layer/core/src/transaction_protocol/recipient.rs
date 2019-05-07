@@ -181,10 +181,10 @@ mod test {
         assert_eq!(data.tx_id, 15);
         assert_eq!(data.public_spend_key, pubkey);
         assert!(data.output.commitment.validate(500, &p.spend_key));
+        assert!(data.output.verify_range_proof().unwrap());
         let r_sum = &msg.public_nonce + &p.public_nonce;
         let e = build_challenge(&r_sum, &m);
         let s = Signature::sign(p.spend_key.clone(), p.nonce.clone(), &e).unwrap();
         assert_eq!(data.partial_signature, s);
-        // TODO: test range proof
     }
 }

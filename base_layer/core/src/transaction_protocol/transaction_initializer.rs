@@ -39,6 +39,8 @@ use crate::{
 use digest::Digest;
 use std::{
     collections::HashMap,
+    convert::TryFrom,
+    error::Error as ErrorTrait,
     fmt::{Debug, Error, Formatter},
 };
 use tari_crypto::keys::PublicKey as PublicKeyTrait;
@@ -235,6 +237,19 @@ impl SenderTransactionInitializer {
         if total_fee < MINIMUM_TRANSACTION_FEE {
             return self.build_err("Fee is less than the minimum");
         }
+
+        let outputs = match self
+            .outputs
+            .iter()
+            .map(|o| TransactionOutput::try_from(o))
+            .collect::<Result<Vec<TransactionOutput>, _>>()
+        {
+            Ok(o) => o,
+            Err(e) => {
+                return self.build_err(e.description());
+            },
+        };
+
         let nonce = self.private_nonce.unwrap();
         let public_nonce = PublicKey::from_secret_key(&nonce);
         let offset = self.offset.unwrap();
@@ -242,7 +257,7 @@ impl SenderTransactionInitializer {
         let offset_blinding_factor = &excess_blinding_factor - &offset;
         let excess = PublicKey::from_secret_key(&offset_blinding_factor);
         let amount_to_self = self.outputs.iter().fold(0u64, |sum, o| sum + o.value);
-        let outputs = self.outputs.iter().map(|o| TransactionOutput::from(o)).collect();
+
         let recipient_info = match self.num_recipients {
             0 => RecipientInfo::None,
             1 => RecipientInfo::Single(None),
@@ -539,6 +554,33 @@ mod test {
             assert_eq!(info.inputs.len(), 2, "There should be 2 input");
         } else {
             panic!("There was a recipient, we should be ready to send a message");
+        }
+    }
+
+    #[test]
+    fn fail_range_proof() {
+        // Create some inputs
+        let mut rng = OsRng::new().unwrap();
+        let p = TestParams::new(&mut rng);
+        let (utxo1, input1) = make_input(&mut rng, 2u64.pow(32) + 10000u64);
+        let weight = 30;
+        let output = UnblindedOutput::new(1u64.pow(32) + 1u64, p.spend_key, None);
+        // Start the builder
+        let mut builder = SenderTransactionInitializer::new(1);
+        builder
+            .with_lock_height(1234)
+            .with_offset(p.offset)
+            .with_private_nonce(p.nonce)
+            .with_output(output)
+            .with_input(utxo1, input1)
+            .with_amount(0, 100)
+            .with_change_secret(p.change_key)
+            .with_fee_per_gram(weight);
+        let result = builder.build::<Blake256>();
+
+        match result {
+            Ok(_) => panic!("Range proof should have failed to verify"),
+            Err(e) => assert_eq!(e.message, "Range proof could not be verified".to_string()),
         }
     }
 

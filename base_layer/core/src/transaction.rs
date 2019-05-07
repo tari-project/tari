@@ -25,19 +25,20 @@
 
 use crate::{
     block::AggregateBody,
-    range_proof::RangeProof,
     types::{BlindingFactor, Commitment, CommitmentFactory, Signature},
 };
 
 use crate::{
     transaction_protocol::{build_challenge, TransactionMetadata},
-    types::{HashDigest, PublicKey, SecretKey},
+    types::{HashDigest, PublicKey, RangeProof, RangeProofService, SecretKey},
 };
 use derive_error::Error;
 use digest::Input;
+use std::convert::TryFrom;
 use tari_crypto::{
     commitment::{HomomorphicCommitment, HomomorphicCommitmentFactory},
     keys::PublicKey as PK,
+    range_proof::{RangeProofError, RangeProofService as RangeProofServiceTrait},
 };
 use tari_utilities::{ByteArray, Hashable};
 
@@ -46,6 +47,11 @@ pub const MAX_TRANSACTION_INPUTS: usize = 500;
 pub const MAX_TRANSACTION_OUTPUTS: usize = 100;
 pub const MAX_TRANSACTION_RECIPIENTS: usize = 15;
 pub const MINIMUM_TRANSACTION_FEE: u64 = 100;
+
+#[cfg(test)]
+pub const MAX_RANGE_PROOF_RANGE: usize = 1 << 5; // 2^32 This is the only way to produce failing range proofs for the tests
+#[cfg(not(test))]
+pub const MAX_RANGE_PROOF_RANGE: usize = 1 << 6; // 2^64
 
 //--------------------------------------        Bit flag features   --------------------------------------------------//
 
@@ -70,11 +76,14 @@ bitflags! {
 #[derive(Clone, Debug, PartialEq, Error)]
 pub enum TransactionError {
     // Error validating the transaction
-    ValidationError,
+    #[error(msg_embedded, no_from, non_std)]
+    ValidationError(String),
     // Signature could not be verified
     InvalidSignatureError,
     // Transaction kernel does not contain a signature
     NoSignatureError,
+    // A range proof construction or verification has produced an error
+    RangeProofError(RangeProofError),
 }
 
 //-----------------------------------------     UnblindedOutput   ----------------------------------------------------//
@@ -89,7 +98,7 @@ pub struct UnblindedOutput {
 }
 
 impl UnblindedOutput {
-    /// Creates a new un-blinded input
+    /// Creates a new un-blinded output
     pub fn new(value: u64, spending_key: BlindingFactor, features: Option<OutputFeatures>) -> UnblindedOutput {
         UnblindedOutput {
             value,
@@ -99,7 +108,7 @@ impl UnblindedOutput {
     }
 }
 
-/// Converts an UnblindedInput into a Transaction input with default output features.
+/// Converts an UnblindedOutput into a Transaction input with default output features.
 impl<'a> From<&UnblindedOutput> for TransactionInput {
     fn from(v: &UnblindedOutput) -> Self {
         let c = CommitmentFactory::create(&v.spending_key, &v.value.into());
@@ -110,15 +119,28 @@ impl<'a> From<&UnblindedOutput> for TransactionInput {
     }
 }
 
-/// Converts an UnblindedInput into a Transaction input with default output features.
-impl<'a> From<&'a UnblindedOutput> for TransactionOutput {
-    fn from(v: &'a UnblindedOutput) -> Self {
+/// Converts an UnblindedOutput into a Transaction Output with default output features.
+impl<'a> TryFrom<&'a UnblindedOutput> for TransactionOutput {
+    type Error = TransactionError;
+
+    fn try_from(v: &'a UnblindedOutput) -> Result<Self, Self::Error> {
         let c = CommitmentFactory::create(&v.spending_key, &v.value.into());
-        TransactionOutput {
+        let prover = RangeProofService::new(MAX_RANGE_PROOF_RANGE, CommitmentFactory::default())?;
+
+        let output = TransactionOutput {
             features: v.features.clone(),
             commitment: c,
-            proof: RangeProof([0; 1]), // TODO
+            proof: prover.construct_proof(&v.spending_key, v.value)?,
+        };
+
+        // A range proof can be constructed for an invalid value so we should confirm that the proof can be verified.
+        if !output.verify_range_proof()? {
+            return Err(TransactionError::ValidationError(
+                "Range proof could not be verified".into(),
+            ));
         }
+
+        Ok(output)
     }
 }
 
@@ -156,10 +178,11 @@ impl TransactionInput {
 /// Implement the canonical hashing function for TransactionInput for use in ordering
 impl Hashable for TransactionInput {
     fn hash(&self) -> Vec<u8> {
-        let mut hasher = HashDigest::new();
-        hasher.input(vec![self.features.bits]);
-        hasher.input(self.commitment.as_bytes());
-        hasher.result().to_vec()
+        HashDigest::new()
+            .chain(vec![self.features.bits])
+            .chain(self.commitment.as_bytes())
+            .result()
+            .to_vec()
     }
 }
 
@@ -200,20 +223,21 @@ impl TransactionOutput {
     }
 
     /// Verify that range proof is valid
-    pub fn verify_range_proof(&self) -> bool {
-        // TODO: range roof verification
-        true
+    pub fn verify_range_proof(&self) -> Result<bool, TransactionError> {
+        let prover = RangeProofService::new(MAX_RANGE_PROOF_RANGE, CommitmentFactory::default())?;
+        Ok(prover.verify(&self.proof, &self.commitment))
     }
 }
 
 /// Implement the canonical hashing function for TransactionOutput for use in ordering
 impl Hashable for TransactionOutput {
     fn hash(&self) -> Vec<u8> {
-        let mut hasher = HashDigest::new();
-        hasher.input(vec![self.features.bits]);
-        hasher.input(self.commitment.as_bytes());
-        hasher.input(self.proof.0);
-        hasher.result().to_vec()
+        HashDigest::new()
+            .chain(vec![self.features.bits])
+            .chain(self.commitment.as_bytes())
+            .chain(self.proof.as_bytes())
+            .result()
+            .to_vec()
     }
 }
 
@@ -414,14 +438,23 @@ impl Transaction {
         let sum_io = self.sum_commitments(kernel_sum.fees);
 
         if kernel_sum.sum != sum_io {
-            return Err(TransactionError::ValidationError);
+            return Err(TransactionError::ValidationError(
+                "Sum of inputs and outputs did not equal sum of kernels with fees".into(),
+            ));
         }
 
         Ok(())
     }
 
-    // TODO - check range proofs
     fn validate_range_proofs(&self) -> Result<(), TransactionError> {
+        for o in &self.body.outputs {
+            if !o.verify_range_proof()? {
+                return Err(TransactionError::ValidationError(
+                    "Range proof could not be verified".into(),
+                ));
+            }
+        }
+
         Ok(())
     }
 
@@ -503,7 +536,9 @@ impl TransactionBuilder {
             tx.validate_internal_consistency()?;
             Ok(tx)
         } else {
-            return Err(TransactionError::ValidationError);
+            return Err(TransactionError::ValidationError(
+                "Transaction validation failed".into(),
+            ));
         }
     }
 }
@@ -514,8 +549,8 @@ impl TransactionBuilder {
 mod test {
     use super::*;
     use crate::{
-        transaction::{OutputFeatures, TransactionInput},
-        types::BlindingFactor,
+        transaction::{OutputFeatures, RangeProofService, TransactionInput},
+        types::{BlindingFactor, CommitmentFactory, TariCommitment},
     };
     use rand;
     use tari_crypto::keys::SecretKey as SecretKeyTrait;
@@ -528,5 +563,37 @@ mod test {
         let input = TransactionInput::from(&i);
         assert_eq!(input.features, OutputFeatures::empty());
         assert!(input.opened_by(&i));
+    }
+
+    #[test]
+    fn range_proof_verification() {
+        let mut rng = rand::OsRng::new().unwrap();
+
+        // Directly test the tx_output verification
+        let k1 = BlindingFactor::random(&mut rng);
+        let k2 = BlindingFactor::random(&mut rng);
+
+        // For testing the max range has been limited to 2^32 so this value is too large.
+        let unblinded_output1 = UnblindedOutput::new(2u64.pow(32) - 1u64, k1, None);
+        let tx_output1 = TransactionOutput::try_from(&unblinded_output1).unwrap();
+        assert!(tx_output1.verify_range_proof().unwrap());
+
+        let unblinded_output2 = UnblindedOutput::new(2u64.pow(32) + 1u64, k2.clone(), None);
+        let tx_output2 = TransactionOutput::try_from(&unblinded_output2);
+
+        match tx_output2 {
+            Ok(_) => panic!("Range proof should have failed to verify"),
+            Err(e) => assert_eq!(
+                e,
+                TransactionError::ValidationError("Range proof could not be verified".to_string())
+            ),
+        }
+
+        let c = CommitmentFactory::commit(2u64.pow(32) + 1, &k2);
+        let prover = RangeProofService::new(MAX_RANGE_PROOF_RANGE, CommitmentFactory::default()).unwrap();
+        let proof = prover.construct_proof(&k2, 2u64.pow(32) + 1).unwrap();
+
+        let tx_output3 = TransactionOutput::new(OutputFeatures::empty(), c, proof);
+        assert_eq!(tx_output3.verify_range_proof().unwrap(), false);
     }
 }
