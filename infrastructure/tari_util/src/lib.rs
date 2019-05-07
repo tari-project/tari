@@ -31,7 +31,6 @@ pub mod fixed_set;
 pub mod hash;
 pub mod hex;
 
-
 pub use self::extend_bytes::ExtendBytes;
 
 pub use self::{
