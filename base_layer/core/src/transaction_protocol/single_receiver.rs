@@ -143,7 +143,7 @@ mod test {
         let out = &prot.output;
         // Check the output that was constructed
         assert!(out.commitment.validate(info.amount, &k), "Output commitment is invalid");
-        assert!(out.verify_range_proof().unwrap(), "Range proof is invalid");
+        assert!(out.verify_range_proof(None).unwrap(), "Range proof is invalid");
         assert!(out.features.is_empty(), "Output features have changed");
     }
 }
