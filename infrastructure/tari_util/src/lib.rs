@@ -27,8 +27,10 @@ pub mod cipher;
 #[cfg(feature = "confg")]
 pub mod config_manager;
 pub mod extend_bytes;
+pub mod fixed_set;
 pub mod hash;
 pub mod hex;
+
 
 pub use self::extend_bytes::ExtendBytes;
 
