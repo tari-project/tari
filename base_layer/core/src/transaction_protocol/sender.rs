@@ -201,7 +201,7 @@ impl SenderTransactionProtocol {
     pub fn add_single_recipient_info(&mut self, rec: RecipientSignedTransactionData) -> Result<(), TPE> {
         match &mut self.state {
             SenderState::CollectingSingleSignature(info) => {
-                if !rec.output.verify_range_proof()? {
+                if !rec.output.verify_range_proof(None)? {
                     return Err(TPE::ValidationError(
                         "Recipient output range proof failed to verify".into(),
                     ));
@@ -326,7 +326,7 @@ impl SenderTransactionProtocol {
                 }
                 let mut transaction = result.unwrap();
                 let result = transaction
-                    .validate_internal_consistency()
+                    .validate_internal_consistency(None)
                     .map_err(|e| TPE::TransactionBuildError(e));
                 if let Err(e) = result {
                     self.state = SenderState::Failed(e);
@@ -390,13 +390,14 @@ impl SenderState {
 mod test {
     use crate::{
         fee::Fee,
-        transaction::{KernelFeatures, OutputFeatures, UnblindedOutput},
+        transaction::{KernelFeatures, OutputFeatures, UnblindedOutput, MAX_RANGE_PROOF_RANGE},
         transaction_protocol::{
             sender::SenderTransactionProtocol,
             single_receiver::SingleReceiverTransactionProtocol,
             test_common::{make_input, TestParams},
             TransactionProtocolError,
         },
+        types::{CommitmentFactory, RangeProofService},
     };
     use rand::OsRng;
     use tari_crypto::common::Blake256;
@@ -530,7 +531,8 @@ mod test {
         assert_eq!(tx.body.inputs.len(), 1);
         assert_eq!(tx.body.inputs[0], utxo);
         assert_eq!(tx.body.outputs.len(), 2);
-        assert!(tx.clone().validate_internal_consistency().is_ok());
+        let prover = RangeProofService::new(MAX_RANGE_PROOF_RANGE, CommitmentFactory::default()).unwrap();
+        assert!(tx.clone().validate_internal_consistency(Some(&prover)).is_ok());
     }
 
     #[test]

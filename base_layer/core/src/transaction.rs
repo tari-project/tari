@@ -134,7 +134,7 @@ impl<'a> TryFrom<&'a UnblindedOutput> for TransactionOutput {
         };
 
         // A range proof can be constructed for an invalid value so we should confirm that the proof can be verified.
-        if !output.verify_range_proof()? {
+        if !output.verify_range_proof(Some(&prover))? {
             return Err(TransactionError::ValidationError(
                 "Range proof could not be verified".into(),
             ));
@@ -223,8 +223,19 @@ impl TransactionOutput {
     }
 
     /// Verify that range proof is valid
-    pub fn verify_range_proof(&self) -> Result<bool, TransactionError> {
-        let prover = RangeProofService::new(MAX_RANGE_PROOF_RANGE, CommitmentFactory::default())?;
+    pub fn verify_range_proof(
+        &self,
+        range_proof_service: Option<&RangeProofService>,
+    ) -> Result<bool, TransactionError>
+    {
+        let rps;
+        let prover = match range_proof_service {
+            Some(rps) => rps,
+            None => {
+                rps = RangeProofService::new(MAX_RANGE_PROOF_RANGE, CommitmentFactory::default())?;
+                &rps
+            },
+        };
         Ok(prover.verify(&self.proof, &self.commitment))
     }
 }
@@ -446,9 +457,9 @@ impl Transaction {
         Ok(())
     }
 
-    fn validate_range_proofs(&self) -> Result<(), TransactionError> {
+    fn validate_range_proofs(&self, range_proof_service: Option<&RangeProofService>) -> Result<(), TransactionError> {
         for o in &self.body.outputs {
-            if !o.verify_range_proof()? {
+            if !o.verify_range_proof(range_proof_service)? {
                 return Err(TransactionError::ValidationError(
                     "Range proof could not be verified".into(),
                 ));
@@ -464,10 +475,14 @@ impl Transaction {
     /// 1. Range proofs of the outputs are valid
     ///
     /// This function does NOT check that inputs come from the UTXO set
-    pub fn validate_internal_consistency(&mut self) -> Result<(), TransactionError> {
+    pub fn validate_internal_consistency(
+        &mut self,
+        range_proof_service: Option<&RangeProofService>,
+    ) -> Result<(), TransactionError>
+    {
         self.body.verify_kernel_signatures()?;
         self.validate_kernel_sum()?;
-        self.validate_range_proofs()
+        self.validate_range_proofs(range_proof_service)
     }
 }
 
@@ -533,7 +548,7 @@ impl TransactionBuilder {
     pub fn build(self) -> Result<Transaction, TransactionError> {
         if let Some(offset) = self.offset {
             let mut tx = Transaction::new(self.body.inputs, self.body.outputs, self.body.kernels, offset);
-            tx.validate_internal_consistency()?;
+            tx.validate_internal_consistency(None)?;
             Ok(tx)
         } else {
             return Err(TransactionError::ValidationError(
@@ -576,7 +591,7 @@ mod test {
         // For testing the max range has been limited to 2^32 so this value is too large.
         let unblinded_output1 = UnblindedOutput::new(2u64.pow(32) - 1u64, k1, None);
         let tx_output1 = TransactionOutput::try_from(&unblinded_output1).unwrap();
-        assert!(tx_output1.verify_range_proof().unwrap());
+        assert!(tx_output1.verify_range_proof(None).unwrap());
 
         let unblinded_output2 = UnblindedOutput::new(2u64.pow(32) + 1u64, k2.clone(), None);
         let tx_output2 = TransactionOutput::try_from(&unblinded_output2);
@@ -594,6 +609,7 @@ mod test {
         let proof = prover.construct_proof(&k2, 2u64.pow(32) + 1).unwrap();
 
         let tx_output3 = TransactionOutput::new(OutputFeatures::empty(), c, proof);
-        assert_eq!(tx_output3.verify_range_proof().unwrap(), false);
+
+        assert_eq!(tx_output3.verify_range_proof(Some(&prover)).unwrap(), false);
     }
 }
