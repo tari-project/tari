@@ -28,7 +28,7 @@ use std::fs;
 // TODO add clap
 
 struct ConfigManager {
-    fileconfig: Config,
+    config: Config,
 }
 
 #[derive(Debug, Error)]
@@ -38,14 +38,14 @@ pub enum ConfigManagerError {
     // Could not find the file
     FileNotFound,
     // Could not be translated into object
-    FileDeseriliseError,
+    FileDeserializeError,
 }
 
 impl ConfigManager {
     /// This creates a new ConfigManager
     pub fn new() -> ConfigManager {
         let c = Config::default();
-        ConfigManager { fileconfig: c }
+        ConfigManager { config: c }
     }
 
     /// This function adds a configuration file be loaded and searched for settings
@@ -53,7 +53,7 @@ impl ConfigManager {
         if fs::metadata(&filename).is_err() {
             return Err(ConfigManagerError::FileNotFound);
         }
-        self.fileconfig
+        self.config
             .merge(File::new(&filename, FileFormat::Toml))
             .map_err(|e| ConfigManagerError::FileLoadError(e))?;
         Ok(())
@@ -61,6 +61,6 @@ impl ConfigManager {
 
     /// Attempt to deserialize the entire configuration into the requested type.
     pub fn try_into<'de, T: Deserialize<'de>>(self) -> Result<T, ConfigManagerError> {
-        T::deserialize(self.fileconfig).map_err(|_| ConfigManagerError::FileDeseriliseError)
+        T::deserialize(self.config).map_err(|_| ConfigManagerError::FileDeserializeError)
     }
 }
