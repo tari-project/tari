@@ -573,11 +573,11 @@ mod test {
         let k1 = BlindingFactor::random(&mut rng);
         let k2 = BlindingFactor::random(&mut rng);
 
-        // For testing the max range has been limited to 2^32 so this value is too large.
         let unblinded_output1 = UnblindedOutput::new(2u64.pow(32) - 1u64, k1, None);
         let tx_output1 = TransactionOutput::try_from(&unblinded_output1).unwrap();
         assert!(tx_output1.verify_range_proof().unwrap());
 
+        // For testing the max range has been limited to 2^32 so this value is too large.
         let unblinded_output2 = UnblindedOutput::new(2u64.pow(32) + 1u64, k2.clone(), None);
         let tx_output2 = TransactionOutput::try_from(&unblinded_output2);
 
