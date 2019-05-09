@@ -22,7 +22,6 @@
 
 use crate::{
     error::MerkleMountainRangeError,
-
     merklenode::{MerkleNode, ObjectHash},
     merkleproof::MerkleProof,
     mmr_settings::MmrSettings,
@@ -42,7 +41,6 @@ where
     hasher: PhantomData<D>,
     current_peak_height: (usize, usize), // we store a tuple of peak height,index
     settings: MmrSettings,
-
 }
 
 impl<T, D> MerkleMountainRange<T, D>
