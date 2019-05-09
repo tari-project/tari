@@ -43,6 +43,8 @@ use std::{
 };
 use tari_utilities::{hex::Hex, ByteArray, ByteArrayError, ExtendBytes, Hashable};
 
+use serde_derive::{Deserialize, Serialize};
+
 type HashDigest = Blake2b;
 
 /// The [SecretKey](trait.SecretKey.html) implementation for [Ristretto](https://ristretto.group) is a thin wrapper
@@ -229,7 +231,7 @@ impl From<u64> for RistrettoSecretKey {
 /// let sk = RistrettoSecretKey::random(&mut rng);
 /// let _p3 = RistrettoPublicKey::from_secret_key(&sk);
 /// ```
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct RistrettoPublicKey {
     pub(crate) point: RistrettoPoint,
     pub(crate) compressed: CompressedRistretto,

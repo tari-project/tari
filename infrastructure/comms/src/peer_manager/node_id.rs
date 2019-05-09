@@ -24,6 +24,8 @@ use derive_error::Error;
 use std::convert::TryFrom;
 use tari_utilities::Hashable;
 
+use serde_derive::{Deserialize, Serialize};
+
 const NODE_ID_ARRAY_SIZE: usize = 32;
 type NodeIdArray = [u8; NODE_ID_ARRAY_SIZE];
 
@@ -73,7 +75,7 @@ impl TryFrom<&[u8]> for NodeDistance {
     }
 }
 
-#[derive(Clone, Debug, Eq)]
+#[derive(Clone, Debug, Eq, Deserialize, Serialize)]
 pub struct NodeId(NodeIdArray);
 
 impl NodeId {
