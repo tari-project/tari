@@ -19,48 +19,17 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use serde_derive::Deserialize;
 
-use config::*;
-use derive_error::Error;
-use serde::de::Deserialize;
-use std::fs;
-
-// TODO add clap
-
-pub struct ConfigManager {
-    config: Config,
+#[derive(Debug, Deserialize)]
+pub struct MmrSettings {
+    pub pruning_horizon: usize,
 }
 
-#[derive(Debug, Error)]
-pub enum ConfigManagerError {
-    // Could not load file
-    FileLoadError(ConfigError),
-    // Could not find the file
-    FileNotFound,
-    // Could not be translated into object
-    FileDeserializeError,
-}
-
-impl ConfigManager {
-    /// This creates a new ConfigManager
-    pub fn new() -> ConfigManager {
-        let c = Config::default();
-        ConfigManager { config: c }
-    }
-
-    /// This function adds a configuration file be loaded and searched for settings
-    pub fn add_file(&mut self, filename: String) -> Result<(), ConfigManagerError> {
-        if fs::metadata(&filename).is_err() {
-            return Err(ConfigManagerError::FileNotFound);
+impl Default for MmrSettings {
+    fn default() -> Self {
+        MmrSettings {
+            pruning_horizon: usize::max_value(),
         }
-        self.config
-            .merge(File::new(&filename, FileFormat::Toml))
-            .map_err(|e| ConfigManagerError::FileLoadError(e))?;
-        Ok(())
-    }
-
-    /// Attempt to deserialize the entire configuration into the requested type.
-    pub fn try_into<'de, T: Deserialize<'de>>(self) -> Result<T, ConfigManagerError> {
-        T::deserialize(self.config).map_err(|_| ConfigManagerError::FileDeserializeError)
     }
 }

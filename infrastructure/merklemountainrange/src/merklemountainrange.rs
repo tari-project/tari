@@ -22,12 +22,14 @@
 
 use crate::{
     error::MerkleMountainRangeError,
+
     merklenode::{MerkleNode, ObjectHash},
     merkleproof::MerkleProof,
+    mmr_settings::MmrSettings,
 };
 use digest::Digest;
 use std::{collections::HashMap, marker::PhantomData};
-use tari_utilities::Hashable;
+use tari_utilities::{config_manager::ConfigManager, Hashable};
 
 pub struct MerkleMountainRange<T, D>
 where
@@ -39,6 +41,8 @@ where
     data: HashMap<ObjectHash, T>,
     hasher: PhantomData<D>,
     current_peak_height: (usize, usize), // we store a tuple of peak height,index
+    settings: MmrSettings,
+
 }
 
 impl<T, D> MerkleMountainRange<T, D>
@@ -53,7 +57,21 @@ where
             data: HashMap::new(),
             hasher: PhantomData,
             current_peak_height: (0, 0),
+            settings: Self::load_settings(),
         }
+    }
+
+    fn load_settings() -> MmrSettings {
+        let mut config = ConfigManager::new();
+        let defaults = MmrSettings::default();
+        if config.add_file("Settings".to_string()).is_err() {
+            return defaults;
+        }
+        let settings = config.try_into();
+        if settings.is_err() {
+            return defaults;
+        }
+        settings.unwrap()
     }
 
     /// This function returns a reference to the data stored in the mmr
@@ -365,6 +383,7 @@ where
             data: HashMap::new(),
             hasher: PhantomData,
             current_peak_height: (0, 0),
+            settings: Self::load_settings(),
         };
         mmr.append(items);
         mmr

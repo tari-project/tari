@@ -21,4 +21,4 @@ config = {version = "0.9", optional = true}
 
 [features]
 chrono_dt = ["chrono"]
-confg = ["config"]
+config_m = ["config", "serde"]

@@ -10,7 +10,9 @@ version = "0.0.1"
 edition = "2018"
 
 [dependencies]
-tari_utilities = { path = "../tari_util", version = "0.0.1" }
+serde = "1.0.89"
+serde_derive = "1.0.89"
+tari_utilities = { path = "../tari_util", version = "0.0.1", features = ["config_m"] }
 derive-error = "0.0.4"
 digest = "0.8.0"
 

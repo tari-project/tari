@@ -24,7 +24,7 @@ pub mod byte_array;
 pub mod chacha20;
 pub mod cipher;
 
-#[cfg(feature = "confg")]
+#[cfg(feature = "config_m")]
 pub mod config_manager;
 pub mod extend_bytes;
 pub mod fixed_set;
