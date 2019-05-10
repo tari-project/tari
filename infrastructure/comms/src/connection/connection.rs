@@ -22,13 +22,13 @@
 
 use crate::connection::{
     message::FrameSet,
-    p2p::{Direction, Linger},
-    types::SocketType,
+    net_address::ip::SocketAddress,
+    types::{Direction, Linger, SocketType},
     zmq::{Context, CurveEncryption, InprocAddress, ZmqEndpoint},
     ConnectionError,
     Result,
 };
-use std::iter::IntoIterator;
+use std::{cmp, iter::IntoIterator};
 
 /// Represents a low-level connection which can be bound an address
 /// supported by [`ZeroMQ`] the `ZMQ_ROUTER` socket.
@@ -36,7 +36,8 @@ use std::iter::IntoIterator;
 /// ```edition2018
 /// # use tari_comms::connection::{
 /// #   zmq::{Context, InprocAddress, curve_keypair, CurveEncryption},
-/// #   p2p::{Linger, Direction, connection::Connection},
+/// #   connection::Connection,
+/// #   types::{Linger, Direction},
 /// # };
 ///
 ///  let ctx  = Context::new();
@@ -67,8 +68,8 @@ pub struct Connection<'a> {
     pub(crate) identity: Option<String>,
     pub(crate) linger: Linger,
     pub(crate) curve_encryption: CurveEncryption,
-    pub(crate) max_message_size: Option<i64>,
-    pub(crate) socks_proxy_addr: Option<String>,
+    pub(crate) max_message_size: Option<u64>,
+    pub(crate) socks_proxy_addr: Option<SocketAddress>,
     pub(crate) monitor_addr: Option<InprocAddress>,
 }
 
@@ -116,9 +117,11 @@ impl<'a> Connection<'a> {
 
     /// The maximum size in bytes of the inbound message. If a message is
     /// received which is larger, the connection will disconnect.
+    /// `msg_size` has an upper bound of i64::MAX due to zMQ's usage of a signed 64-bit
+    /// integer for this socket option. Setting it higher will result in i64::MAX being used.
     /// Set to None for no limit
-    pub fn set_max_message_size(mut self, msg_size: Option<i64>) -> Self {
-        self.max_message_size = Some(msg_size.unwrap_or(-1));
+    pub fn set_max_message_size(mut self, msg_size: Option<u64>) -> Self {
+        self.max_message_size = msg_size;
         self
     }
 
@@ -130,7 +133,7 @@ impl<'a> Connection<'a> {
     }
 
     /// Set the ip:port of a SOCKS proxy to use for this connection
-    pub fn set_socks_proxy_addr(mut self, addr: Option<String>) -> Self {
+    pub fn set_socks_proxy_addr(mut self, addr: Option<SocketAddress>) -> Self {
         self.socks_proxy_addr = addr;
         self
     }
@@ -167,7 +170,9 @@ impl<'a> Connection<'a> {
         }
 
         if let Some(v) = self.max_message_size {
-            socket.set_maxmsgsize(v).map_err(config_error_mapper)?;
+            socket
+                .set_maxmsgsize(cmp::min(v, std::i64::MAX as u64) as i64)
+                .map_err(config_error_mapper)?;
         }
 
         match self.linger {
@@ -209,8 +214,10 @@ impl<'a> Connection<'a> {
             },
         }
 
-        if let Some(ref v) = self.socks_proxy_addr {
-            socket.set_socks_proxy(Some(v)).map_err(config_error_mapper)?;
+        if let Some(v) = self.socks_proxy_addr {
+            socket
+                .set_socks_proxy(Some(&v.to_string()))
+                .map_err(config_error_mapper)?;
         }
 
         if let Some(ref v) = self.monitor_addr {
@@ -330,7 +337,7 @@ mod test {
             .set_max_message_size(Some(123))
             .set_receive_hwm(1)
             .set_send_hwm(2)
-            .set_socks_proxy_addr(Some("127.0.0.1:9988".to_string()))
+            .set_socks_proxy_addr(Some("127.0.0.1:9988".parse::<SocketAddress>().unwrap()))
             .set_monitor_addr(monitor_addr)
             .establish(&addr)
             .unwrap();

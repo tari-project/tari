@@ -413,9 +413,9 @@ if a peer should be banned. This mechanism is yet to be decided.
 
 #### PeerConnection
 
-Represents direct bi-directional connection to another node or client. This holds an [InboundConnection]
-and [OutboundConnection]. Together the connections form a true peer to peer connection between two nodes. This connection
-is an implementation of the [Harmony pattern](http://zguide.zeromq.org/php:chapter8#toc21).
+Represents direct bi-directional connection to another node or client. As connections are bi-directional,
+the [PeerConnection] need only hold a single [InboundConnection] or [OutboundConnection], depending on if the
+node requested a peer connect to it or it is connecting to a peer.
 
 PeerConnection will send messages to the peer in a non-blocking, asynchronous manner as long as the connection
 is maintained.
@@ -423,8 +423,8 @@ is maintained.
 It has a few important functions:
 
 - Manage the underlying network connections; with automatic reconnection if necessary.
-- Listen for messages from its [InboundConnection] and pass the messages onto the given handler socket.
-- Send messages to the peer using the [OutboundConnection].
+- Forward incoming messages onto the given handler socket.
+- Send outgoing messages.
 
 Unlike [InboundConnection] and [OutboundConnection] which are essentially stateless,
 `PeerConnection` maintains a particular `ConnectionState`.
@@ -440,10 +440,9 @@ Fields may include:
 
 - a connection state,
 - a control socket,
-- a Peer for [OutboundConnection],
+- a peer connection `NetAddress`
+- a direction (either `Inbound` or `Outbound`)
 - a public key obtained from the connection negotiation
-- a [NetAddress] for the [InboundConnection],
-- an [InboundConnection] and [OutboundConnection],
 - (optional) SOCKS proxy.
 
 Methods may include:
@@ -556,7 +555,7 @@ A MessageDispatcher is responsible for:
 An example API may be:
 
 ```rust,compile_fail
-let dispatcher = Dispatcher::new()
+let dispatcher = MessageDispatcher::new()
     .middleware(logger)
     .route(BlockchainMessageType::NewBlock, BlockHandlers::store_and_broadcast)
     ...
