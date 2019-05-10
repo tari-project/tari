@@ -36,10 +36,9 @@ fn create_mmr(leaves: u32) -> MerkleMountainRange<TestObject, Blake2b> {
     }
     mmr
 }
-
 #[test]
 fn create_small_mmr() {
-    let mmr = create_mmr(2);
+    let mut mmr = create_mmr(2);
     assert_eq!(1, mmr.get_peak_height());
     let hash_values = HashValues::new();
     let hash0 = mmr.get_node_hash(0).unwrap();
@@ -50,21 +49,29 @@ fn create_small_mmr() {
     }
     assert_eq!(hash_values.create_merkleproof(vec![0, 1, 2]), proof);
     assert_eq!(mmr.verify_proof(&our_proof), true);
-    assert_eq!(mmr.get_merkle_root(), mmr.get_node_hash(2).unwrap())
-}
+    assert_eq!(mmr.get_merkle_root(), mmr.get_node_hash(2).unwrap());
+    // test pruning
+    assert_eq!(mmr.get_data_object(hash0.clone()).unwrap().pruned, false);
+    assert_eq!(mmr.prune_object_hash(hash0.clone()).is_ok(), true);
+    assert_eq!(mmr.get_data_object(hash0.clone()).unwrap().pruned, true);
 
+    let hash1 = mmr.get_node_hash(1).unwrap();
+    assert_eq!(mmr.get_data_object(hash1.clone()).unwrap().pruned, false);
+    assert_eq!(mmr.prune_object_hash(hash1.clone()).is_ok(), true);
+    // both are now pruned, thus deleted
+    assert_eq!(mmr.get_data_object(hash1).is_none(), true);
+    assert_eq!(mmr.get_data_object(hash0).is_none(), true);
+}
 #[test]
 fn create_mmr_with_2_peaks() {
     let mmr = create_mmr(20);
     assert_eq!(4, mmr.get_peak_height());
     let hash_values = HashValues::new();
-
     let hash0 = mmr.get_node_hash(0).unwrap();
     let proof = mmr.get_hash_proof(&hash0);
     let our_proof = hash_values.create_merkleproof(vec![0, 1, -1, 5, -1, 13, -1, 29, -1, 37, 42]);
     assert_eq!(proof, our_proof);
     assert_eq!(mmr.verify_proof(&proof), true);
-
     let proof = mmr.get_hash_proof(&mmr.get_node_hash(31).unwrap());
     let our_proof = hash_values.create_merkleproof(vec![31, 32, -1, 36, 30, -1, 42]);
     assert_eq!(proof, our_proof);
@@ -138,22 +145,18 @@ fn mmr_with_4_peaks() {
     }
     let hash_values = HashValues::new();
     assert_eq!(to_hex(&mmr.get_merkle_root()), hash_values.get_value(47));
-
     let proof = mmr.get_hash_proof(&mmr.get_node_hash(35).unwrap());
     let our_proof = hash_values.create_merkleproof(vec![34, 35, 33, -1, -1, 45, 30, -1, 47]);
     assert_eq!(proof, our_proof);
     assert_eq!(mmr.verify_proof(&proof), true);
-
     let proof = mmr.get_hash_proof(&mmr.get_node_hash(34).unwrap());
     let our_proof = hash_values.create_merkleproof(vec![34, 35, 33, -1, -1, 45, 30, -1, 47]);
     assert_eq!(proof, our_proof);
     assert_eq!(mmr.verify_proof(&proof), true);
-
     let proof = mmr.get_hash_proof(&mmr.get_node_hash(21).unwrap());
     let our_proof = hash_values.create_merkleproof(vec![21, 28, 14, -1, -1, 46, 47]);
     assert_eq!(proof, our_proof);
     assert_eq!(mmr.verify_proof(&proof), true);
-
     let proof = mmr.get_hash_proof(&mmr.get_node_hash(41).unwrap());
     let our_proof = hash_values.create_merkleproof(vec![40, 41, 37, -1, 30, -1, 47]);
     assert_eq!(proof, our_proof);

@@ -19,21 +19,17 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use serde_derive::Deserialize;
 
-/// This is the MerkleNode struct. This struct represents a merkle node,
-#[derive(Debug)]
-pub struct MerkleNode<T> {
-    pub object: T,
-    pub pruned: bool,
-    pub vec_index: usize,
+#[derive(Debug, Deserialize)]
+pub struct MmrSettings {
+    pub pruning_horizon: usize,
 }
 
-impl<T> MerkleNode<T> {
-    pub fn new(object: T, index: usize) -> MerkleNode<T> {
-        MerkleNode {
-            object,
-            pruned: false,
-            vec_index: index,
+impl Default for MmrSettings {
+    fn default() -> Self {
+        MmrSettings {
+            pruning_horizon: usize::max_value(),
         }
     }
 }
