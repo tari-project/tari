@@ -32,6 +32,7 @@ use super::{
 };
 
 /// The state of the PeerConnection
+#[derive(Clone)]
 enum PeerConnectionState {
     /// The connection object has been created but is not connected
     Initial,
@@ -95,7 +96,7 @@ impl fmt::Display for PeerConnectionState {
 /// conn.start(peer_context).unwrap();
 /// assert!(conn.is_connected());
 /// ```
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct PeerConnection {
     state: PeerConnectionState,
 }

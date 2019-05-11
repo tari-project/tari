@@ -20,33 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod connection;
-pub mod message;
-pub mod net_address;
-pub mod peer_connection;
-pub mod types;
-pub mod zmq;
+#[macro_use]
+extern crate criterion;
+#[macro_use]
+extern crate lazy_static;
 
-use derive_error::Error;
+mod connection;
 
-pub use self::{
-    connection::Connection,
-    message::MessageError,
-    net_address::{NetAddress, NetAddressError},
-    peer_connection::{PeerConnection, PeerConnectionContextBuilder, PeerConnectionError},
-    types::*,
-    zmq::{Context, InprocAddress},
-};
-
-#[derive(Debug, Error)]
-pub enum ConnectionError {
-    NetAddressError(NetAddressError),
-    #[error(msg_embedded, no_from, non_std)]
-    SocketError(String),
-    /// Connection timed out
-    Timeout,
-    MessageError(MessageError),
-    #[error(msg_embedded, no_from, non_std)]
-    CurveKeypairError(String),
-    PeerError(PeerConnectionError),
-}
+criterion_main!(connection::connection::benches, connection::peer_connection::benches);
