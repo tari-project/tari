@@ -20,17 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    error::MerkleMountainRangeError,
-    merklenode::MerkleNode,
-    merkleproof::MerkleProof,
-    mmr_settings::MmrSettings,
-};
+use crate::{error::MerkleMountainRangeError, merklenode::*, merkleproof::MerkleProof};
 use digest::Digest;
 use std::{collections::HashMap, marker::PhantomData};
 use tari_utilities::Hashable;
-
-pub type ObjectHash = Vec<u8>;
 
 pub struct MerkleMountainRange<T, D>
 where
@@ -38,12 +31,10 @@ where
     D: Digest,
 {
     // todo convert these to a bitmap
-    mmr: Vec<ObjectHash>,
-    data: HashMap<ObjectHash, MerkleNode<T>>,
+    mmr: Vec<MerkleNode>,
+    data: HashMap<ObjectHash, MerkleObject<T>>,
     hasher: PhantomData<D>,
     current_peak_height: (usize, usize), // we store a tuple of peak height,index
-    _settings: MmrSettings,
-    _states: Vec<usize>,
 }
 
 impl<T, D> MerkleMountainRange<T, D>
@@ -58,13 +49,11 @@ where
             data: HashMap::new(),
             hasher: PhantomData,
             current_peak_height: (0, 0),
-            _settings: MmrSettings::default(),
-            _states: Vec::new(),
         }
     }
 
     #[cfg(debug_assertions)]
-    pub fn get_data_object(&self, hash: ObjectHash) -> Option<&MerkleNode<T>> {
+    pub fn get_data_object(&self, hash: ObjectHash) -> Option<&MerkleObject<T>> {
         self.data.get(&hash)
     }
 
@@ -72,7 +61,7 @@ where
     /// It will return none if the hash does not exist
     pub fn get_object(&self, hash: &ObjectHash) -> Option<&T> {
         let object = self.data.get(hash);
-        if object.is_none() || !object.unwrap().pruned {
+        if object.is_none() {
             return None;
         };
         Some(&object.unwrap().object)
@@ -85,17 +74,11 @@ where
             return Err(MerkleMountainRangeError::IndexOutOfBounds);
         }
         let index = get_object_index(object_index);
-        let hash = &self.mmr[index];
+        let hash = &self.mmr[index].hash;
         let data = self.data.get(hash);
         match data {
-            Some(value) => {
-                if !value.pruned {
-                    Ok(&value.object)
-                } else {
-                    Err(MerkleMountainRangeError::ObjectNotFound)
-                }
-            },
-            None => Err(MerkleMountainRangeError::IndexOutOfBounds),
+            Some(value) => Ok(&value.object),
+            None => Err(MerkleMountainRangeError::ObjectNotFound),
         }
     }
 
@@ -110,7 +93,7 @@ where
         if node_index > self.get_last_added_index() {
             return None;
         };
-        Some(self.mmr[node_index].clone())
+        Some(self.mmr[node_index].hash.clone())
     }
 
     /// This function returns the hash of the leaf index provided, this counts from 0
@@ -131,7 +114,7 @@ where
     pub fn get_hash_proof(&self, hash: &ObjectHash) -> MerkleProof {
         let mut i = self.mmr.len();
         for counter in 0..self.mmr.len() {
-            if self.mmr[counter] == *hash {
+            if self.mmr[counter].hash == *hash {
                 i = counter;
                 break;
             }
@@ -188,16 +171,16 @@ where
             i -= 1;
         }
         // lets calculate the final new peak
-        hasher.input(&self.mmr[self.current_peak_height.1]);
+        hasher.input(&self.mmr[self.current_peak_height.1].hash);
         hasher.input(&peaks[0]);
         if was_on_correct_peak {
             // we where not in the main peak, so add main peak
-            result.push(Some(self.mmr[self.current_peak_height.1].clone()));
+            result.push(Some(self.mmr[self.current_peak_height.1].hash.clone()));
             result.push(None);
         } else {
             if result[result.len() - 1].clone().unwrap() == peaks[0] {
                 let cur_proof_len = result.len();
-                result[cur_proof_len - 1] = Some(self.mmr[self.current_peak_height.1].clone());
+                result[cur_proof_len - 1] = Some(self.mmr[self.current_peak_height.1].hash.clone());
                 result.push(None);
             } else {
                 let cur_proof_len = result.len();
@@ -218,25 +201,25 @@ where
         let mut next_index = index + 1;
         if sibling >= self.mmr.len() {
             // we are at a peak
-            results.push(Some(self.mmr[index].clone()));
+            results.push(Some(self.mmr[index].hash.clone()));
             return;
         }
         // we check first run, as we need to store both children, after that we only need to store one child (the one
         // not a parent)
         if sibling < index {
-            results.push(Some(self.mmr[sibling].clone()));
+            results.push(Some(self.mmr[sibling].hash.clone()));
             if !is_first_run {
                 results.push(None) // index can be calculated
             } else {
-                results.push(Some(self.mmr[index].clone()));
+                results.push(Some(self.mmr[index].hash.clone()));
             }
         } else {
             if !is_first_run {
                 results.push(None) // index can be calculated
             } else {
-                results.push(Some(self.mmr[index].clone()));
+                results.push(Some(self.mmr[index].hash.clone()));
             }
-            results.push(Some(self.mmr[sibling].clone()));
+            results.push(Some(self.mmr[sibling].hash.clone()));
             next_index = sibling + 1;
         }
         self.get_ordered_hash_proof(next_index, false, results);
@@ -292,12 +275,12 @@ where
         if peaks.len() > 0 {
             // if there was other peaks, lets bag them with the highest peak
             let mut hasher = D::new();
-            hasher.input(&self.mmr[self.current_peak_height.1]);
+            hasher.input(&self.mmr[self.current_peak_height.1].hash);
             hasher.input(&peaks[0]);
             return hasher.result().to_vec();
         }
         // there was no other peaks, return the highest peak
-        return self.mmr[self.current_peak_height.1].clone();
+        return self.mmr[self.current_peak_height.1].hash.clone();
     }
 
     /// This function adds a vec of leaf nodes to the mmr.
@@ -310,9 +293,9 @@ where
     /// This function adds a new leaf node to the mmr.
     pub fn push(&mut self, object: T) {
         let node_hash = object.hash();
-        let node = MerkleNode::new(object, self.mmr.len());
+        let node = MerkleObject::new(object, self.mmr.len());
         self.data.insert(node_hash.clone(), node);
-        self.mmr.push(node_hash);
+        self.mmr.push(MerkleNode::new(node_hash));
         if is_node_right(self.get_last_added_index()) {
             self.add_single_no_leaf(self.get_last_added_index())
         }
@@ -322,10 +305,10 @@ where
     // This is iterative and will continue to up and till it hits the top, will be a future left child
     fn add_single_no_leaf(&mut self, index: usize) {
         let mut hasher = D::new();
-        hasher.input(&self.mmr[sibling_index(index)]);
-        hasher.input(&self.mmr[index]);
+        hasher.input(&self.mmr[sibling_index(index)].hash);
+        hasher.input(&self.mmr[index].hash);
         let new_hash = hasher.result().to_vec();
-        self.mmr.push(new_hash);
+        self.mmr.push(MerkleNode::new(new_hash));
         if is_node_right(self.get_last_added_index()) {
             self.add_single_no_leaf(self.get_last_added_index())
         } else {
@@ -359,44 +342,31 @@ where
         }
         if (new_index <= self.get_last_added_index()) && (height >= 0) {
             // is this a valid peak which needs to be bagged
-            peaks.push(self.mmr[new_index].clone());
+            peaks.push(self.mmr[new_index].hash.clone());
             self.find_bagging_indexes(height, new_index, peaks); // lets go look for more peaks
         }
     }
 
     /// Mark an object as pruned, if the MMR can remove this safely it will
-    pub fn prune_object_hash(&mut self, hash: ObjectHash) -> Result<(), MerkleMountainRangeError> {
-        let object = self.data.get_mut(&hash);
+    pub fn prune_object_hash(&mut self, hash: &ObjectHash) -> Result<(), MerkleMountainRangeError> {
+        let object = self.data.get_mut(hash);
         if object.is_none() {
             return Err(MerkleMountainRangeError::ObjectNotFound);
         };
         let object = object.unwrap();
-        object.pruned = true;
-        let sibling_index = if is_node_right(object.vec_index) {
-            object.vec_index - 1
-        } else {
-            object.vec_index + 1
-        };
-        let sibling = self.data.get_mut(&self.mmr[sibling_index]);
-        if sibling.is_none() {
-            return Ok(());
-        };
-        let sibling = sibling.unwrap();
-        if sibling.pruned == true {
-            self.data.remove(&self.mmr[sibling_index]);
-            self.data.remove(&hash);
-        }
+        self.mmr[object.vec_index].pruned = true;
+        self.data.remove(hash);
         Ok(())
     }
 
     /// Mark an object as pruned, if the MMR can remove this safely it will
-    pub fn prune_index(&mut self, object_index: usize) -> Result<(), MerkleMountainRangeError> {
-        if object_index > self.data.len() {
+    pub fn prune_index(&mut self, node_index: usize) -> Result<(), MerkleMountainRangeError> {
+        if node_index > self.data.len() {
             return Err(MerkleMountainRangeError::IndexOutOfBounds);
         }
-        let index = get_object_index(object_index);
-        let hash = self.mmr[index].clone();
-        self.prune_object_hash(hash)
+        let index = get_object_index(node_index);
+        let hash = self.mmr[index].hash.clone();
+        self.prune_object_hash(&hash)
     }
 }
 /// This function takes in the index and calculates the index of the sibling.
@@ -421,8 +391,6 @@ where
             data: HashMap::new(),
             hasher: PhantomData,
             current_peak_height: (0, 0),
-            _settings: MmrSettings::default(),
-            _states: Vec::new(),
         };
         mmr.append(items);
         mmr

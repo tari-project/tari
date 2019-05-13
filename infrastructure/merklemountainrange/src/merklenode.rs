@@ -20,19 +20,31 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-/// This is the MerkleNode struct. This struct represents a merkle node,
+pub type ObjectHash = Vec<u8>;
+
+/// This is the MerkleNode struct. This struct represents a merkle node in the tree,
 #[derive(Debug)]
-pub struct MerkleNode<T> {
-    pub object: T,
+pub struct MerkleNode {
+    pub hash: ObjectHash,
     pub pruned: bool,
+}
+
+impl MerkleNode {
+    pub fn new(hash: ObjectHash) -> MerkleNode {
+        MerkleNode { hash, pruned: false }
+    }
+}
+
+#[derive(Debug)]
+pub struct MerkleObject<T> {
+    pub object: T,
     pub vec_index: usize,
 }
 
-impl<T> MerkleNode<T> {
-    pub fn new(object: T, index: usize) -> MerkleNode<T> {
-        MerkleNode {
+impl<T> MerkleObject<T> {
+    pub fn new(object: T, index: usize) -> MerkleObject<T> {
+        MerkleObject {
             object,
-            pruned: false,
             vec_index: index,
         }
     }
