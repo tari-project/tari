@@ -27,6 +27,7 @@ pub mod extend_bytes;
 pub mod fixed_set;
 pub mod hash;
 pub mod hex;
+pub mod message_format;
 
 pub use self::extend_bytes::ExtendBytes;
 

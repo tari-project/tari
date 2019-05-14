@@ -27,7 +27,7 @@ use serde::{Deserialize, Serialize};
 use serde_json;
 
 #[derive(Debug, Error)]
-pub enum MessageError {
+pub enum MessageFormatError {
     // An error occurred serialising an object into binary
     BinarySerializeError(rmp_serde::encode::Error),
     // An error occurred deserialising binary data into an object
@@ -39,45 +39,45 @@ pub enum MessageError {
 }
 
 pub trait MessageFormat: Sized {
-    fn to_binary(&self) -> Result<Vec<u8>, MessageError>;
-    fn to_json(&self) -> Result<String, MessageError>;
-    fn to_base64(&self) -> Result<String, MessageError>;
+    fn to_binary(&self) -> Result<Vec<u8>, MessageFormatError>;
+    fn to_json(&self) -> Result<String, MessageFormatError>;
+    fn to_base64(&self) -> Result<String, MessageFormatError>;
 
-    fn from_binary(msg: &[u8]) -> Result<Self, MessageError>;
-    fn from_json(msg: &str) -> Result<Self, MessageError>;
-    fn from_base64(msg: &str) -> Result<Self, MessageError>;
+    fn from_binary(msg: &[u8]) -> Result<Self, MessageFormatError>;
+    fn from_json(msg: &str) -> Result<Self, MessageFormatError>;
+    fn from_base64(msg: &str) -> Result<Self, MessageFormatError>;
 }
 
 impl<'a, T> MessageFormat for T
 where T: Deserialize<'a> + Serialize
 {
-    fn to_binary(&self) -> Result<Vec<u8>, MessageError> {
+    fn to_binary(&self) -> Result<Vec<u8>, MessageFormatError> {
         let mut buf = Vec::new();
         self.serialize(&mut rmp_serde::Serializer::new(&mut buf))
-            .map_err(|e| MessageError::BinarySerializeError(e))?;
+            .map_err(|e| MessageFormatError::BinarySerializeError(e))?;
         Ok(buf.to_vec())
     }
 
-    fn to_json(&self) -> Result<String, MessageError> {
-        serde_json::to_string(self).map_err(|e| MessageError::JSONError(e))
+    fn to_json(&self) -> Result<String, MessageFormatError> {
+        serde_json::to_string(self).map_err(|e| MessageFormatError::JSONError(e))
     }
 
-    fn to_base64(&self) -> Result<String, MessageError> {
+    fn to_base64(&self) -> Result<String, MessageFormatError> {
         let val = self.to_binary()?;
         Ok(base64::encode(&val))
     }
 
-    fn from_binary(msg: &[u8]) -> Result<Self, MessageError> {
+    fn from_binary(msg: &[u8]) -> Result<Self, MessageFormatError> {
         let mut de = rmp_serde::Deserializer::new(msg);
-        Deserialize::deserialize(&mut de).map_err(|e| MessageError::BinaryDeserializeError(e))
+        Deserialize::deserialize(&mut de).map_err(|e| MessageFormatError::BinaryDeserializeError(e))
     }
 
-    fn from_json(msg: &str) -> Result<Self, MessageError> {
+    fn from_json(msg: &str) -> Result<Self, MessageFormatError> {
         let mut de = serde_json::Deserializer::from_reader(msg.as_bytes());
-        Deserialize::deserialize(&mut de).map_err(|e| MessageError::JSONError(e))
+        Deserialize::deserialize(&mut de).map_err(|e| MessageFormatError::JSONError(e))
     }
 
-    fn from_base64(msg: &str) -> Result<Self, MessageError> {
+    fn from_base64(msg: &str) -> Result<Self, MessageFormatError> {
         let buf = base64::decode(msg)?;
         Self::from_binary(&buf)
     }
@@ -175,7 +175,7 @@ mod test {
     fn fail_json() {
         let err = TestMessage::from_json("{\"key\":5}").err().unwrap();
         match err {
-            MessageError::JSONError(e) => {
+            MessageFormatError::JSONError(e) => {
                 assert_eq!(e.line(), 1);
                 assert_eq!(e.column(), 9);
                 assert!(e.is_data());
@@ -188,7 +188,7 @@ mod test {
     fn fail_base64() {
         let err = TestMessage::from_base64("aaaaa$aaaaa").err().unwrap();
         match err {
-            MessageError::Base64DeserializeError(Base64Error::InvalidByte(offset, val)) => {
+            MessageFormatError::Base64DeserializeError(Base64Error::InvalidByte(offset, val)) => {
                 assert_eq!(offset, 5);
                 assert_eq!(val, '$' as u8);
             },
@@ -197,7 +197,7 @@ mod test {
 
         let err = TestMessage::from_base64("j6h0b21vcnJvdzKTpXRvZGF5ZMA=").err().unwrap();
         match err {
-            MessageError::BinaryDeserializeError(RMPError::Syntax(s)) => {
+            MessageFormatError::BinaryDeserializeError(RMPError::Syntax(s)) => {
                 assert_eq!(s, "invalid type: sequence, expected field identifier");
             },
             _ => panic!("Base64 conversion should fail"),
@@ -208,7 +208,7 @@ mod test {
     fn fail_binary() {
         let err = TestMessage::from_binary(b"").err().unwrap();
         match err {
-            MessageError::BinaryDeserializeError(RMPError::InvalidMarkerRead(e)) => {
+            MessageFormatError::BinaryDeserializeError(RMPError::InvalidMarkerRead(e)) => {
                 assert_eq!(e.kind(), ErrorKind::UnexpectedEof, "Unexpected error type: {:?}", e);
             },
             _ => {
