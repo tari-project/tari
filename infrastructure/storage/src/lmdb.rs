@@ -4,6 +4,7 @@ use crate::keyvalue_store::{BatchWrite, DataStore, DatastoreError};
 use lmdb_zero as lmdb;
 use lmdb_zero::error::LmdbResultExt;
 use std::{collections::HashMap, sync::Arc};
+extern crate sys_info;
 
 /// A builder for [LMDBStore](struct.lmdbstore.html)
 /// ## Example
@@ -20,6 +21,7 @@ use std::{collections::HashMap, sync::Arc};
 ///     .build()
 ///     .unwrap();
 /// ```
+#[derive(Debug)]
 pub struct LMDBBuilder {
     path: String,
     db_size_mb: usize,
@@ -36,8 +38,14 @@ impl LMDBBuilder {
     /// | size      | 64 MB   |
     /// | named DBs | none    |
     pub fn new() -> LMDBBuilder {
+        let mut store = "./store/";
+        let os = sys_info::os_type().unwrap();
+        if os == "Windows" {
+            store = "\\store\\";
+        }
+        println!("LMDBBuilder store={:?}", &store);
         LMDBBuilder {
-            path: "./store/".into(),
+            path: store.into(),
             db_size_mb: 64,
             db_names: Vec::new(),
         }
@@ -48,7 +56,15 @@ impl LMDBBuilder {
     /// return `DataStoreError::InternalError`.
     /// the `path` must have a trailing slash
     pub fn set_path(mut self, path: &str) -> LMDBBuilder {
-        self.path = path.into();
+        println!("set_path path={:?}", &path);
+        let os = sys_info::os_type().unwrap();
+        if os == "Windows" {
+            self.path = path.replace("/", "\\").into();
+        }
+        else {
+            self.path = path.into();
+        }
+        println!("set_path self.path={:?}", &self.path);
         self
     }
 
@@ -98,6 +114,7 @@ impl LMDBBuilder {
 
 /// A Struct for holding state for the LMDB implementation of DataStore and BatchWrite. To create an instance of
 /// LMDBStore, use [LMDBBuilder](struct.lmdbbuilder.html).
+#[derive(Debug)]
 pub struct LMDBStore {
     pub(crate) env: Arc<lmdb::Environment>,
     pub(crate) databases: HashMap<String, Arc<lmdb::Database<'static>>>,
@@ -220,18 +237,38 @@ mod test {
 
     #[test]
     fn path_must_exist() {
-        let builder = LMDBBuilder::new();
-        match builder.set_mapsize(1).set_path("./tests/not_here/").build() {
-            Err(DatastoreError::InternalError(s)) => assert_eq!(s, "LMDB Error: No such file or directory"),
-            _ => panic!(),
+        // Hansie >>>
+        let os = sys_info::os_type().unwrap();
+        println!("OS Type: {:?}", &os);
+        let base = std::env::current_dir().unwrap();
+        println!("current_dir = {:?}", base);
+        // Hansie <<<
+            
+
+        let mut msg = "LMDB Error: No such file or directory";
+        if os == "Windows" {
+            msg = "LMDB Error: The system cannot find the path specified.\r\n";
         }
+        let builder = LMDBBuilder::new();
+        match builder.set_mapsize(1).set_path("tests/not_here/").build() {
+            Err(DatastoreError::InternalError(s)) => assert_eq!(s, msg),
+            _ => panic!(),
+        } 
+        
     }
 
     #[test]
     fn batch_writes() {
+        // Hansie >>>
+        let os = sys_info::os_type().unwrap();
+        println!("OS Type: {:?}", &os);
+        let base = std::env::current_dir().unwrap();
+        println!("current_dir = {:?}", base);
+        // Hansie <<<
+
         fs::create_dir("./tests/test_tx").unwrap();
         let builder = LMDBBuilder::new();
-        let store = builder.set_mapsize(5).set_path("./tests/test_tx/").build().unwrap();
+        let store = builder.set_mapsize(5).set_path("tests/test_tx/").build().unwrap();
         let mut batch = LMDBBatch::new(&store).unwrap();
         batch.put_raw(b"a", b"apple".to_vec()).unwrap();
         batch.put_raw(b"b", b"banana".to_vec()).unwrap();
@@ -239,11 +276,18 @@ mod test {
         batch.commit().unwrap();
         let banana = store.get_raw(b"b").unwrap().unwrap();
         assert_eq!(&banana, b"banana");
-        assert!(fs::remove_dir_all("./tests/test_tx").is_ok());
+        assert!(fs::remove_dir_all("tests/test_tx").is_ok());
     }
 
     #[test]
     fn writes_to_default_db() {
+        // Hansie >>>
+        let os = sys_info::os_type().unwrap();
+        println!("OS Type: {:?}", &os);
+        let base = std::env::current_dir().unwrap();
+        println!("current_dir = {:?}", base);
+        // Hansie <<<
+
         fs::create_dir("./tests/test_default").unwrap();
         let mut store = LMDBBuilder::new().set_path("./tests/test_default/").build().unwrap();
         store.connect("default").unwrap();
@@ -262,7 +306,14 @@ mod test {
 
     #[test]
     fn aborts_write() {
-        fs::create_dir("./tests/test_abort").unwrap();
+         // Hansie >>>
+        let os = sys_info::os_type().unwrap();
+        println!("OS Type: {:?}", &os);
+        let base = std::env::current_dir().unwrap();
+        println!("current_dir = {:?}", base);
+        // Hansie <<<
+
+       fs::create_dir("./tests/test_abort").unwrap();
         let mut store = LMDBBuilder::new().set_path("./tests/test_abort/").build().unwrap();
         store.connect("default").unwrap();
         // Write some values
@@ -286,6 +337,13 @@ mod test {
     /// Set the DB size to 1MB and write more than a MB to it
     #[test]
     fn overflow_db() {
+        // Hansie >>>
+        let os = sys_info::os_type().unwrap();
+        println!("OS Type: {:?}", &os);
+        let base = std::env::current_dir().unwrap();
+        println!("current_dir = {:?}", base);
+        // Hansie <<<
+
         fs::create_dir("./tests/test_overflow").unwrap();
         let builder = LMDBBuilder::new();
         let mut store = builder
@@ -313,6 +371,13 @@ mod test {
 
     #[test]
     fn read_and_write_10k_values() {
+        // Hansie >>>
+        let os = sys_info::os_type().unwrap();
+        println!("OS Type: {:?}", &os);
+        let base = std::env::current_dir().unwrap();
+        println!("current_dir = {:?}", base);
+        // Hansie <<<
+
         fs::create_dir("./tests/test_10k").unwrap();
         let builder = LMDBBuilder::new();
         let mut store = builder
@@ -337,6 +402,13 @@ mod test {
 
     #[test]
     fn test_exist_on_different_databases() {
+        // Hansie >>>
+        let os = sys_info::os_type().unwrap();
+        println!("OS Type: {:?}", &os);
+        let base = std::env::current_dir().unwrap();
+        println!("current_dir = {:?}", base);
+        // Hansie <<<
+
         fs::create_dir("./tests/test_exist").unwrap();
         let mut store = LMDBBuilder::new()
             .set_path("./tests/test_exist/")
@@ -377,6 +449,13 @@ mod test {
 
     #[test]
     fn write_structs() {
+        // Hansie >>>
+        let os = sys_info::os_type().unwrap();
+        println!("OS Type: {:?}", &os);
+        let base = std::env::current_dir().unwrap();
+        println!("current_dir = {:?}", base);
+        // Hansie <<<
+
         fs::create_dir("./tests/test_struct").unwrap();
         let builder = LMDBBuilder::new();
         let mut store = builder.set_path("./tests/test_struct/").build().unwrap();
