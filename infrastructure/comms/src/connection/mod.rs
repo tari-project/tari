@@ -22,6 +22,7 @@
 
 pub mod connection;
 pub mod message;
+pub mod monitor;
 pub mod net_address;
 pub mod peer_connection;
 pub mod types;
@@ -49,4 +50,5 @@ pub enum ConnectionError {
     #[error(msg_embedded, no_from, non_std)]
     CurveKeypairError(String),
     PeerError(PeerConnectionError),
+    MonitorError(monitor::ConnectionMonitorError),
 }

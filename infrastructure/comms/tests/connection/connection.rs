@@ -168,7 +168,7 @@ fn outbound_send_recv_encrypted_tcp() {
 
     conn.send(&["identity"]).unwrap();
 
-    let frames = conn.receive(1000).unwrap();
+    let frames = conn.receive(2000).unwrap();
 
     assert_eq!(1, frames.len());
     assert_eq!("OK", String::from_utf8_lossy(frames[0].as_slice()));

@@ -69,7 +69,7 @@ fn connection_in() {
     sender.send(&[&[123u8]]).unwrap();
 
     // Receive the message from the receiver socket
-    let frames = receiver.receive(500).unwrap();
+    let frames = receiver.receive(2000).unwrap();
     assert_eq!(vec![123u8], frames[1]);
 
     conn.send(vec![vec![111u8]]).unwrap();
@@ -121,7 +121,7 @@ fn connection_out() {
 
     conn.send(vec![vec![123u8]]).unwrap();
 
-    let data = sender.receive(500).unwrap();
+    let data = sender.receive(2000).unwrap();
     assert_eq!(data[1], vec![123u8]);
     sender.send(&[data[0].as_slice(), &[123u8]]).unwrap();
 

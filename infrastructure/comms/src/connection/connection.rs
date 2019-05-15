@@ -126,7 +126,8 @@ impl<'a> Connection<'a> {
     }
 
     /// Set the InprocAddress to enable monitoring on the underlying socket.
-    /// All socket events are sent to sent to this address
+    /// All socket events are sent to sent to this address.
+    /// The monitor must be connected before the connection is established.
     pub fn set_monitor_addr(mut self, addr: InprocAddress) -> Self {
         self.monitor_addr = Some(addr);
         self
@@ -220,9 +221,9 @@ impl<'a> Connection<'a> {
                 .map_err(config_error_mapper)?;
         }
 
-        if let Some(ref v) = self.monitor_addr {
+        if let Some(ref addr) = self.monitor_addr {
             socket
-                .monitor(v.to_zmq_endpoint().as_str(), zmq::SocketEvent::ALL as i32)
+                .monitor(addr.to_zmq_endpoint().as_str(), zmq::SocketEvent::ALL as i32)
                 .map_err(|e| ConnectionError::SocketError(format!("Unable to set monitor address: {}", e)))?;
         }
 
@@ -260,6 +261,13 @@ impl EstablishedConnection {
 
             Err(e) => Err(ConnectionError::SocketError(format!("Failed to poll: {}", e))),
         }
+    }
+
+    /// Read entire multipart message
+    fn receive_multipart(&self) -> Result<FrameSet> {
+        self.socket
+            .recv_multipart(0)
+            .map_err(|e| ConnectionError::SocketError(format!("Error receiving: {} ({})", e, e.to_raw())))
     }
 
     /// Sends multipart message frames. This function is non-blocking.
@@ -305,12 +313,6 @@ impl EstablishedConnection {
         self.socket
             .send(frame.as_ref(), flags)
             .map_err(|e| ConnectionError::SocketError(format!("Error sending: {} ({})", e, e.to_raw())))
-    }
-
-    fn receive_multipart(&self) -> Result<FrameSet> {
-        self.socket
-            .recv_multipart(0)
-            .map_err(|e| ConnectionError::SocketError(format!("Error receiving: {} ({})", e, e.to_raw())))
     }
 
     #[cfg(test)]
