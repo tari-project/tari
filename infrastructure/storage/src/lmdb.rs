@@ -21,7 +21,6 @@ extern crate sys_info;
 ///     .build()
 ///     .unwrap();
 /// ```
-#[derive(Debug)]
 pub struct LMDBBuilder {
     path: String,
     db_size_mb: usize,
@@ -38,14 +37,8 @@ impl LMDBBuilder {
     /// | size      | 64 MB   |
     /// | named DBs | none    |
     pub fn new() -> LMDBBuilder {
-        let mut store = "./store/";
-        let os = sys_info::os_type().unwrap();
-        if os == "Windows" {
-            store = "\\store\\";
-        }
-        println!("LMDBBuilder store={:?}", &store);
         LMDBBuilder {
-            path: store.into(),
+            path: "./store/".into(),
             db_size_mb: 64,
             db_names: Vec::new(),
         }
@@ -56,15 +49,7 @@ impl LMDBBuilder {
     /// return `DataStoreError::InternalError`.
     /// the `path` must have a trailing slash
     pub fn set_path(mut self, path: &str) -> LMDBBuilder {
-        println!("set_path path={:?}", &path);
-        let os = sys_info::os_type().unwrap();
-        if os == "Windows" {
-            self.path = path.replace("/", "\\").into();
-        }
-        else {
-            self.path = path.into();
-        }
-        println!("set_path self.path={:?}", &self.path);
+        self.path = path.into();
         self
     }
 
@@ -237,20 +222,16 @@ mod test {
 
     #[test]
     fn path_must_exist() {
-        // Hansie >>>
-        let os = sys_info::os_type().unwrap();
-        println!("OS Type: {:?}", &os);
-        let base = std::env::current_dir().unwrap();
-        println!("current_dir = {:?}", base);
-        // Hansie <<<
-            
-
+        let test_dir = "./tests/not_here/";
+        if std::fs::metadata(test_dir).is_ok() {
+            assert!(fs::remove_dir_all(test_dir).is_ok());    
+        }            
         let mut msg = "LMDB Error: No such file or directory";
-        if os == "Windows" {
+        if sys_info::os_type().unwrap() == "Windows" {
             msg = "LMDB Error: The system cannot find the path specified.\r\n";
         }
         let builder = LMDBBuilder::new();
-        match builder.set_mapsize(1).set_path("tests/not_here/").build() {
+        match builder.set_mapsize(1).set_path(test_dir).build() {
             Err(DatastoreError::InternalError(s)) => assert_eq!(s, msg),
             _ => panic!(),
         } 
@@ -259,16 +240,13 @@ mod test {
 
     #[test]
     fn batch_writes() {
-        // Hansie >>>
-        let os = sys_info::os_type().unwrap();
-        println!("OS Type: {:?}", &os);
-        let base = std::env::current_dir().unwrap();
-        println!("current_dir = {:?}", base);
-        // Hansie <<<
-
-        fs::create_dir("./tests/test_tx").unwrap();
+        let test_dir = "./tests/test_tx/";
+        if std::fs::metadata(test_dir).is_ok() {
+            assert!(fs::remove_dir_all(test_dir).is_ok());    
+        }   
+        fs::create_dir(test_dir).unwrap();
         let builder = LMDBBuilder::new();
-        let store = builder.set_mapsize(5).set_path("tests/test_tx/").build().unwrap();
+        let store = builder.set_mapsize(5).set_path(test_dir).build().unwrap();
         let mut batch = LMDBBatch::new(&store).unwrap();
         batch.put_raw(b"a", b"apple".to_vec()).unwrap();
         batch.put_raw(b"b", b"banana".to_vec()).unwrap();
@@ -276,20 +254,18 @@ mod test {
         batch.commit().unwrap();
         let banana = store.get_raw(b"b").unwrap().unwrap();
         assert_eq!(&banana, b"banana");
-        assert!(fs::remove_dir_all("tests/test_tx").is_ok());
+        println!("info = {:?}", store.env.info().unwrap());
+        fs::remove_dir_all(test_dir).is_ok(); //assert!(fs::remove_dir_all(test_dir).is_ok());
     }
 
     #[test]
     fn writes_to_default_db() {
-        // Hansie >>>
-        let os = sys_info::os_type().unwrap();
-        println!("OS Type: {:?}", &os);
-        let base = std::env::current_dir().unwrap();
-        println!("current_dir = {:?}", base);
-        // Hansie <<<
-
-        fs::create_dir("./tests/test_default").unwrap();
-        let mut store = LMDBBuilder::new().set_path("./tests/test_default/").build().unwrap();
+        let test_dir = "./tests/test_default";
+        if std::fs::metadata(test_dir).is_ok() {
+            assert!(fs::remove_dir_all(test_dir).is_ok());    
+        }   
+        fs::create_dir(test_dir).unwrap();
+        let mut store = LMDBBuilder::new().set_path(test_dir).build().unwrap();
         store.connect("default").unwrap();
         // Write some values
         store.put_raw(b"England", b"rose".to_vec()).unwrap();
@@ -301,7 +277,7 @@ mod test {
         let val = store.get_raw(b"England").unwrap().unwrap();
         assert_eq!(str::from_utf8(&val).unwrap(), "rose");
         // Clean up
-        assert!(fs::remove_dir_all("./tests/test_default").is_ok());
+        fs::remove_dir_all(test_dir).is_ok(); //assert!(fs::remove_dir_all(test_dir).is_ok());
     }
 
     #[test]
