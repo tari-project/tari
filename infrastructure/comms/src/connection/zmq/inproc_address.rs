@@ -24,10 +24,12 @@ use crate::connection::zmq::{ZmqEndpoint, ZmqError};
 use rand::{distributions::Alphanumeric, EntropyRng, Rng};
 use std::{iter, str::FromStr};
 
-#[derive(Clone)]
+/// Represents a zMQ inproc address
+#[derive(Eq, PartialEq, Debug, Clone)]
 pub struct InprocAddress(String);
 
 impl InprocAddress {
+    /// Generate a random InprocAddress.
     pub fn random() -> Self {
         let mut rng = EntropyRng::new();
         let rand_str: String = iter::repeat(()).map(|_| rng.sample(Alphanumeric)).take(8).collect();

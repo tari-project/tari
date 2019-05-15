@@ -21,13 +21,22 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    cmp,
     net::{TcpListener, ToSocketAddrs},
-    ops::Range,
 };
 use tari_comms::connection::net_address::NetAddress;
 
-pub fn find_available_tcp_net_address(host: &str, range: Range<u16>) -> Option<NetAddress> {
-    for port in range {
+// This is mutated in an unsafe way and
+// should only be used by find_available_tcp_net_address
+static mut PORT_COUNTER: u16 = 20000;
+
+pub fn find_available_tcp_net_address(host: &str) -> Option<NetAddress> {
+    // Try 100
+    for _i in 0..100 {
+        let port = unsafe {
+            PORT_COUNTER = cmp::max((PORT_COUNTER + 1) % std::u16::MAX, 20000u16);
+            PORT_COUNTER
+        };
         let addr = format!("{}:{}", host, port);
         if is_port_open(&addr) {
             return addr.parse().ok();

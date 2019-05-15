@@ -36,6 +36,7 @@ pub fn generate() -> Result<(CurveSecretKey, CurvePublicKey)> {
 
 /// Represents settings for asymmetric curve encryption. Every socket with encryption enabled
 /// must either act as a server or client.
+#[derive(Clone)]
 pub enum CurveEncryption {
     /// No encryption
     None,
@@ -48,6 +49,12 @@ pub enum CurveEncryption {
         public_key: CurvePublicKey,
         server_public_key: CurvePublicKey,
     },
+}
+
+impl Default for CurveEncryption {
+    fn default() -> Self {
+        CurveEncryption::None
+    }
 }
 
 //---------------------------------- Curve Secret Key --------------------------------------------//
