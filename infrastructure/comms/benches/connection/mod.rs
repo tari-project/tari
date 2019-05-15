@@ -21,32 +21,4 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 pub mod connection;
-pub mod message;
-pub mod net_address;
 pub mod peer_connection;
-pub mod types;
-pub mod zmq;
-
-use derive_error::Error;
-
-pub use self::{
-    connection::Connection,
-    message::MessageError,
-    net_address::{NetAddress, NetAddressError},
-    peer_connection::{PeerConnection, PeerConnectionContextBuilder, PeerConnectionError},
-    types::*,
-    zmq::{Context, InprocAddress},
-};
-
-#[derive(Debug, Error)]
-pub enum ConnectionError {
-    NetAddressError(NetAddressError),
-    #[error(msg_embedded, no_from, non_std)]
-    SocketError(String),
-    /// Connection timed out
-    Timeout,
-    MessageError(MessageError),
-    #[error(msg_embedded, no_from, non_std)]
-    CurveKeypairError(String),
-    PeerError(PeerConnectionError),
-}
