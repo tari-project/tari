@@ -225,7 +225,7 @@ mod test {
         let test_dir = "./tests/not_here/";
         if std::fs::metadata(test_dir).is_ok() {
             assert!(fs::remove_dir_all(test_dir).is_ok());    
-        }            
+        }
         let mut msg = "LMDB Error: No such file or directory";
         if sys_info::os_type().unwrap() == "Windows" {
             msg = "LMDB Error: The system cannot find the path specified.\r\n";
@@ -235,7 +235,6 @@ mod test {
             Err(DatastoreError::InternalError(s)) => assert_eq!(s, msg),
             _ => panic!(),
         } 
-        
     }
 
     #[test]
@@ -255,7 +254,8 @@ mod test {
         let banana = store.get_raw(b"b").unwrap().unwrap();
         assert_eq!(&banana, b"banana");
         println!("info = {:?}", store.env.info().unwrap());
-        fs::remove_dir_all(test_dir).is_ok(); //assert!(fs::remove_dir_all(test_dir).is_ok());
+        // Clean up
+        let _no_val = fs::remove_dir_all(test_dir);
     }
 
     #[test]
@@ -277,7 +277,7 @@ mod test {
         let val = store.get_raw(b"England").unwrap().unwrap();
         assert_eq!(str::from_utf8(&val).unwrap(), "rose");
         // Clean up
-        fs::remove_dir_all(test_dir).is_ok(); //assert!(fs::remove_dir_all(test_dir).is_ok());
+        let _no_val = fs::remove_dir_all(test_dir);
     }
 
     #[test]
@@ -304,7 +304,7 @@ mod test {
         check(b"SouthAfrica", &store);
         check(b"England", &store);
         // Clean up
-        fs::remove_dir_all(test_dir).is_ok(); //assert!(fs::remove_dir_all(test_dir).is_ok());
+        let _no_val = fs::remove_dir_all(test_dir);
     }
 
     /// Set the DB size to 1MB and write more than a MB to it
@@ -336,7 +336,7 @@ mod test {
                 panic!()
             },
         }
-        fs::remove_dir_all(test_dir).is_ok(); //assert!(fs::remove_dir_all(test_dir).is_ok());
+        let _no_val = fs::remove_dir_all(test_dir);
     }
 
     #[test]
@@ -364,7 +364,7 @@ mod test {
             let val = store.get_raw(&to_bytes(i)).unwrap().unwrap();
             assert_eq!(from_bytes(&val), i * 2);
         }
-        fs::remove_dir_all(test_dir).is_ok(); //assert!(fs::remove_dir_all(test_dir).is_ok());
+        let _no_val = fs::remove_dir_all(test_dir);
     }
 
     #[test]
@@ -408,7 +408,7 @@ mod test {
         let val = store.get_raw(b"common").unwrap().unwrap();
         assert_eq!(&val, b"db1");
         // Clean up
-        fs::remove_dir_all(test_dir).is_ok(); //assert!(fs::remove_dir_all(test_dir).is_ok());
+        let _no_val = fs::remove_dir_all(test_dir);
     }
 
     #[test]
@@ -443,6 +443,6 @@ mod test {
         let val = store.get::<World>("not here").unwrap();
         assert!(val.is_none());
         // Clean up
-        fs::remove_dir_all(test_dir).is_ok(); //assert!(fs::remove_dir_all(test_dir).is_ok());
+        let _no_val = fs::remove_dir_all(test_dir);
     }
 }
