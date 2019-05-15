@@ -22,16 +22,30 @@
 
 pub type ObjectHash = Vec<u8>;
 
-/// This is the MerkleNode struct. This struct represents a merkle node,
+/// This is the MerkleNode struct. This struct represents a merkle node in the tree,
 #[derive(Debug)]
 pub struct MerkleNode {
     pub hash: ObjectHash,
     pub pruned: bool,
-    // todo discuss adding height here, this will make some calculations faster, but will storage larger
 }
 
 impl MerkleNode {
     pub fn new(hash: ObjectHash) -> MerkleNode {
         MerkleNode { hash, pruned: false }
+    }
+}
+
+#[derive(Debug)]
+pub struct MerkleObject<T> {
+    pub object: T,
+    pub vec_index: usize,
+}
+
+impl<T> MerkleObject<T> {
+    pub fn new(object: T, index: usize) -> MerkleObject<T> {
+        MerkleObject {
+            object,
+            vec_index: index,
+        }
     }
 }

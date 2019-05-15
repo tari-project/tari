@@ -20,11 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    error::MerkleMountainRangeError,
-    merklenode::{MerkleNode, ObjectHash},
-    merkleproof::MerkleProof,
-};
+use crate::{error::MerkleMountainRangeError, merklenode::*, merkleproof::MerkleProof};
 use digest::Digest;
 use std::{collections::HashMap, marker::PhantomData};
 use tari_utilities::Hashable;
@@ -36,7 +32,7 @@ where
 {
     // todo convert these to a bitmap
     mmr: Vec<MerkleNode>,
-    data: HashMap<ObjectHash, T>,
+    data: HashMap<ObjectHash, MerkleObject<T>>,
     hasher: PhantomData<D>,
     current_peak_height: (usize, usize), // we store a tuple of peak height,index
 }
@@ -56,10 +52,19 @@ where
         }
     }
 
+    #[cfg(debug_assertions)]
+    pub fn get_data_object(&self, hash: ObjectHash) -> Option<&MerkleObject<T>> {
+        self.data.get(&hash)
+    }
+
     /// This function returns a reference to the data stored in the mmr
     /// It will return none if the hash does not exist
     pub fn get_object(&self, hash: &ObjectHash) -> Option<&T> {
-        self.data.get(hash)
+        let object = self.data.get(hash);
+        if object.is_none() {
+            return None;
+        };
+        Some(&object.unwrap().object)
     }
 
     /// This function returns a reference to the data stored in the mmr
@@ -72,8 +77,8 @@ where
         let hash = &self.mmr[index].hash;
         let data = self.data.get(hash);
         match data {
-            Some(value) => Ok(value),
-            None => Err(MerkleMountainRangeError::IndexOutOfBounds),
+            Some(value) => Ok(&value.object),
+            None => Err(MerkleMountainRangeError::ObjectNotFound),
         }
     }
 
@@ -288,9 +293,9 @@ where
     /// This function adds a new leaf node to the mmr.
     pub fn push(&mut self, object: T) {
         let node_hash = object.hash();
-        let node = MerkleNode::new(node_hash.clone());
-        self.data.insert(node_hash, object);
-        self.mmr.push(node);
+        let node = MerkleObject::new(object, self.mmr.len());
+        self.data.insert(node_hash.clone(), node);
+        self.mmr.push(MerkleNode::new(node_hash));
         if is_node_right(self.get_last_added_index()) {
             self.add_single_no_leaf(self.get_last_added_index())
         }
@@ -303,8 +308,7 @@ where
         hasher.input(&self.mmr[sibling_index(index)].hash);
         hasher.input(&self.mmr[index].hash);
         let new_hash = hasher.result().to_vec();
-        let new_node = MerkleNode::new(new_hash);
-        self.mmr.push(new_node);
+        self.mmr.push(MerkleNode::new(new_hash));
         if is_node_right(self.get_last_added_index()) {
             self.add_single_no_leaf(self.get_last_added_index())
         } else {
@@ -341,6 +345,28 @@ where
             peaks.push(self.mmr[new_index].hash.clone());
             self.find_bagging_indexes(height, new_index, peaks); // lets go look for more peaks
         }
+    }
+
+    /// Mark an object as pruned, if the MMR can remove this safely it will
+    pub fn prune_object_hash(&mut self, hash: &ObjectHash) -> Result<(), MerkleMountainRangeError> {
+        let object = self.data.get_mut(hash);
+        if object.is_none() {
+            return Err(MerkleMountainRangeError::ObjectNotFound);
+        };
+        let object = object.unwrap();
+        self.mmr[object.vec_index].pruned = true;
+        self.data.remove(hash);
+        Ok(())
+    }
+
+    /// Mark an object as pruned, if the MMR can remove this safely it will
+    pub fn prune_index(&mut self, node_index: usize) -> Result<(), MerkleMountainRangeError> {
+        if node_index > self.data.len() {
+            return Err(MerkleMountainRangeError::IndexOutOfBounds);
+        }
+        let index = get_object_index(node_index);
+        let hash = self.mmr[index].hash.clone();
+        self.prune_object_hash(&hash)
     }
 }
 /// This function takes in the index and calculates the index of the sibling.
