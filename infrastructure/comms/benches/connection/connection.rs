@@ -20,33 +20,35 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod connection;
-pub mod message;
-pub mod net_address;
-pub mod peer_connection;
-pub mod types;
-pub mod zmq;
+use criterion::Criterion;
 
-use derive_error::Error;
+use std::iter::repeat;
+use tari_comms::connection::{Connection, Context, Direction, InprocAddress};
 
-pub use self::{
-    connection::Connection,
-    message::MessageError,
-    net_address::{NetAddress, NetAddressError},
-    peer_connection::{PeerConnection, PeerConnectionContextBuilder, PeerConnectionError},
-    types::*,
-    zmq::{Context, InprocAddress},
-};
+/// Connection benchmark
+///
+/// Benchmark a message being sent and received between two connections
+fn bench_connection(c: &mut Criterion) {
+    let ctx = Context::new();
+    let addr = InprocAddress::random();
 
-#[derive(Debug, Error)]
-pub enum ConnectionError {
-    NetAddressError(NetAddressError),
-    #[error(msg_embedded, no_from, non_std)]
-    SocketError(String),
-    /// Connection timed out
-    Timeout,
-    MessageError(MessageError),
-    #[error(msg_embedded, no_from, non_std)]
-    CurveKeypairError(String),
-    PeerError(PeerConnectionError),
+    let bytes = repeat(88u8).take(1 * 1024 * 1024 /* 10Mb */).collect::<Vec<u8>>();
+    let receiver = Connection::new(&ctx, Direction::Inbound)
+        .set_receive_hwm(0)
+        .establish(&addr)
+        .unwrap();
+
+    let sender = Connection::new(&ctx, Direction::Outbound)
+        .set_send_hwm(0)
+        .establish(&addr)
+        .unwrap();
+
+    c.bench_function("connection: send/recv", move |b| {
+        b.iter(|| {
+            sender.send(&[bytes.as_slice()]).unwrap();
+            receiver.receive(100).unwrap();
+        });
+    });
 }
+
+criterion_group!(benches, bench_connection);
