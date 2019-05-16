@@ -1,0 +1,12 @@
+[package]
+name = "tari_common"
+description = "Utilities and features for the Tari domain layer, shared across both Base and Digital Asset layers."
+repository = "https://github.com/tari-project/tari"
+homepage = "https://tari.com"
+readme = "README.md"
+license = "BSD-3-Clause"
+version = "0.0.1"
+edition = "2018"
+
+
+[dependencies]
