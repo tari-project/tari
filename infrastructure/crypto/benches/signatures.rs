@@ -1,40 +1,49 @@
-#![feature(test)]
-extern crate test;
+#[macro_use]
+extern crate criterion;
 
-use ed25519_dalek::SecretKey as dsk;
-use rand::OsRng;
+use criterion::Criterion;
+use rand::{OsRng, RngCore};
+use std::time::Duration;
 use tari_crypto::{
-    curve25519::{Curve25519EdDSA, Curve25519PublicKey, Curve25519SecretKey},
-    keys::{PublicKey, SecretKey, SecretKeyFactory},
-    signatures::SchnorrSignature,
+    keys::{PublicKey, SecretKey},
+    ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
 };
-use test::Bencher;
+use tari_utilities::byte_array::ByteArray;
 
-#[bench]
-fn generate_secret_key(b: &mut Bencher) {
-    let mut rng = OsRng::new().unwrap();
-    b.iter(|| {
-        let key = Curve25519SecretKey::random(&mut rng);
-        key.to_hex();
+fn generate_secret_key(c: &mut Criterion) {
+    c.bench_function("generate secret key", |b| {
+        let mut rng = OsRng::new().unwrap();
+        b.iter(|| {
+            let _ = RistrettoSecretKey::random(&mut rng);
+        });
     });
 }
 
-#[bench]
-fn native_keypair(b: &mut Bencher) {
-    let mut rng = OsRng::new().unwrap();
-    b.iter(|| {
-        dsk::generate(&mut rng);
+fn native_keypair(c: &mut Criterion) {
+    c.bench_function("Generate key pair", |b| {
+        let mut rng = OsRng::new().unwrap();
+        b.iter(|| RistrettoPublicKey::random_keypair(&mut rng));
     });
 }
 
-#[bench]
-fn curve25519_eddsa(b: &mut Bencher) {
-    let mut rng = OsRng::new().unwrap();
-    let msg = b"This parrot is dead";
-    let k = Curve25519SecretKey::random(&mut rng);
-    let p = Curve25519PublicKey::from_secret_key(&k);
-    b.iter(|| {
-        let sig = Curve25519EdDSA::sign(&k, &p, msg);
-        assert!(sig.verify(&p, msg));
-    })
+fn sign_and_verify_message(c: &mut Criterion) {
+    c.bench_function("Sign and verify", |b| {
+        let mut rng = OsRng::new().unwrap();
+        b.iter(|| {
+            let mut msg = [0u8; 32];
+            rng.fill_bytes(&mut msg);
+            let (k, p) = RistrettoPublicKey::random_keypair(&mut rng);
+            let r = RistrettoSecretKey::random(&mut rng);
+            let msg_key = RistrettoSecretKey::from_bytes(&msg).unwrap();
+            let sig = RistrettoSchnorr::sign(k, r, &msg).unwrap();
+            assert!(sig.verify(&p, &msg_key));
+        });
+    });
 }
+
+criterion_group!(
+    name = signatures;
+    config = Criterion::default().warm_up_time(Duration::from_millis(500));
+    targets = generate_secret_key, native_keypair, sign_and_verify_message
+    );
+criterion_main!(signatures);
