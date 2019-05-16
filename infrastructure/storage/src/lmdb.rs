@@ -226,9 +226,11 @@ mod test {
         if std::fs::metadata(test_dir).is_ok() {
             assert!(fs::remove_dir_all(test_dir).is_ok());    
         }
-        let mut msg = "LMDB Error: No such file or directory";
-        if sys_info::os_type().unwrap() == "Windows" {
+        let msg;
+        if sys_info::os_type().unwrap().to_uppercase() == "WINDOWS" {
             msg = "LMDB Error: The system cannot find the path specified.\r\n";
+        } else {
+            msg = "LMDB Error: No such file or directory";
         }
         let builder = LMDBBuilder::new();
         match builder.set_mapsize(1).set_path(test_dir).build() {
@@ -244,19 +246,24 @@ mod test {
             assert!(fs::remove_dir_all(test_dir).is_ok());    
         }   
         fs::create_dir(test_dir).unwrap();
-        let builder = LMDBBuilder::new();
-        let store = builder.set_mapsize(5).set_path(test_dir).build().unwrap();
-        let mut batch = LMDBBatch::new(&store).unwrap();
-        batch.put_raw(b"a", b"apple".to_vec()).unwrap();
-        batch.put_raw(b"b", b"banana".to_vec()).unwrap();
-        batch.put_raw(b"c", b"carrot".to_vec()).unwrap();
-        batch.commit().unwrap();
-        let banana = store.get_raw(b"b").unwrap().unwrap();
-        assert_eq!(&banana, b"banana");
-        println!("info = {:?}", store.env.info().unwrap());
+        {
+            let builder = LMDBBuilder::new();
+            let store = builder.set_mapsize(5).set_path(test_dir).build().unwrap();
+            let mut batch = LMDBBatch::new(&store).unwrap();
+            batch.put_raw(b"a", b"apple".to_vec()).unwrap();
+            batch.put_raw(b"b", b"banana".to_vec()).unwrap();
+            batch.put_raw(b"c", b"carrot".to_vec()).unwrap();
+            batch.commit().unwrap();
+            let banana = store.get_raw(b"b").unwrap().unwrap();
+            assert_eq!(&banana, b"banana");
+        }
         // Clean up
         let _no_val = fs::remove_dir_all(test_dir);
-    }
+        if std::fs::metadata(test_dir).is_ok() {
+            println!("Database file handles not released, still open in {:?}!", test_dir);
+            assert!(fs::remove_dir_all(test_dir).is_ok());    
+        }   
+   }
 
     #[test]
     fn writes_to_default_db() {
@@ -278,6 +285,10 @@ mod test {
         assert_eq!(str::from_utf8(&val).unwrap(), "rose");
         // Clean up
         let _no_val = fs::remove_dir_all(test_dir);
+        if std::fs::metadata(test_dir).is_ok() {
+            println!("Database file handles not released, still open in {:?}!", test_dir);
+            assert!(fs::remove_dir_all(test_dir).is_ok());    
+        }   
     }
 
     #[test]
@@ -305,7 +316,11 @@ mod test {
         check(b"England", &store);
         // Clean up
         let _no_val = fs::remove_dir_all(test_dir);
-    }
+        if std::fs::metadata(test_dir).is_ok() {
+            println!("Database file handles not released, still open in {:?}!", test_dir);
+            assert!(fs::remove_dir_all(test_dir).is_ok());    
+        }   
+   }
 
     /// Set the DB size to 1MB and write more than a MB to it
     #[test]
@@ -337,6 +352,10 @@ mod test {
             },
         }
         let _no_val = fs::remove_dir_all(test_dir);
+        if std::fs::metadata(test_dir).is_ok() {
+            println!("Database file handles not released, still open in {:?}!", test_dir);
+            assert!(fs::remove_dir_all(test_dir).is_ok());    
+        }   
     }
 
     #[test]
@@ -365,6 +384,10 @@ mod test {
             assert_eq!(from_bytes(&val), i * 2);
         }
         let _no_val = fs::remove_dir_all(test_dir);
+        if std::fs::metadata(test_dir).is_ok() {
+            println!("Database file handles not released, still open in {:?}!", test_dir);
+            assert!(fs::remove_dir_all(test_dir).is_ok());    
+        }   
     }
 
     #[test]
@@ -409,6 +432,10 @@ mod test {
         assert_eq!(&val, b"db1");
         // Clean up
         let _no_val = fs::remove_dir_all(test_dir);
+        if std::fs::metadata(test_dir).is_ok() {
+            println!("Database file handles not released, still open in {:?}!", test_dir);
+            assert!(fs::remove_dir_all(test_dir).is_ok());    
+        }   
     }
 
     #[test]
@@ -444,5 +471,9 @@ mod test {
         assert!(val.is_none());
         // Clean up
         let _no_val = fs::remove_dir_all(test_dir);
+        if std::fs::metadata(test_dir).is_ok() {
+            println!("Database file handles not released, still open in {:?}!", test_dir);
+            assert!(fs::remove_dir_all(test_dir).is_ok());    
+        }   
     }
 }
