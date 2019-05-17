@@ -56,6 +56,12 @@ pub enum TransactionManagerError {
 /// The TransactionManager will accept inbound transactions and generate a reply. Received transactions will remain
 /// in the pending_inbound_transactions buffer.
 /// TODO Allow for inbound transactions that are detected on the blockchain to be marked as complete.
+///
+/// # Fields
+/// 'pending_outbound_transactions' - List of transaction protocols sent by this client and waiting response from the recipient
+/// 'pending_inbound_transactions' - List of transaction protocols that have been received and responded to.
+/// 'completed_transaction' - List of sent transactions that have been responded to and are completed.
+
 pub struct TransactionManager {
     pending_outbound_transactions: HashMap<u64, SenderTransactionProtocol>,
     pending_inbound_transactions: HashMap<u64, ReceiverTransactionProtocol>,
@@ -72,8 +78,11 @@ impl TransactionManager {
     }
 
     /// Start to send a new transaction.
-    /// Accepts a well formed SenderTransactionProtocol.
-    /// Returns the public SenderMessage to be transmitted to the recipient.
+    /// # Arguments
+    /// 'sender_transaction_protocol' - A well formed SenderTransactionProtocol ready to generate the SenderMessage.
+    ///
+    ///# Returns
+    /// Public SenderMessage to be transmitted to the recipient.
     pub fn start_send_transaction(
         &mut self,
         mut sender_transaction_protocol: SenderTransactionProtocol,
@@ -92,6 +101,8 @@ impl TransactionManager {
     }
 
     /// Accept the public reply from a recipient and apply the reply to the relevant transaction protocol
+    /// # Arguments
+    /// 'recipient_reply' - The public response from a recipient with data required to complete the transaction
     pub fn accept_recipient_reply(
         &mut self,
         recipient_reply: RecipientSignedTransactionData,
@@ -122,7 +133,12 @@ impl TransactionManager {
     }
 
     /// Accept a new transaction from a sender by handling a public SenderMessage
-    /// Returns the public reply message to be sent back to the sender.
+    /// # Arguments
+    /// 'sender_message' - Message from a sender containing the setup of the transaction being sent to you
+    /// 'nonce' - Your chosen nonce for your signature of this transaction
+    /// 'spending_key' - Your chosen secret_key for this transaction
+    /// # Returns
+    /// Public reply message to be sent back to the sender.
     pub fn accept_transaction(
         &mut self,
         sender_message: SenderMessage,
