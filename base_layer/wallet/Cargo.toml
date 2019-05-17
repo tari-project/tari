@@ -5,7 +5,6 @@ edition = "2018"
 
 [dependencies]
 tari_core = { path = "../core", version="0.0.1"}
-tari_p2p = { path = "../p2p"}
 tari_crypto = { path = "../../infrastructure/crypto", version = "0.0.1" }
 tari_utilities = { path = "../../infrastructure/tari_util", version = "0.0.1"}
 derive-error = "0.0.4"
