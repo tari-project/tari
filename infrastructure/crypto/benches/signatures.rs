@@ -1,40 +1,79 @@
-#![feature(test)]
-extern crate test;
+#[macro_use]
+extern crate criterion;
 
-use ed25519_dalek::SecretKey as dsk;
-use rand::OsRng;
+use criterion::{BatchSize, Criterion};
+use rand::{OsRng, RngCore};
+use std::time::Duration;
 use tari_crypto::{
-    curve25519::{Curve25519EdDSA, Curve25519PublicKey, Curve25519SecretKey},
-    keys::{PublicKey, SecretKey, SecretKeyFactory},
-    signatures::SchnorrSignature,
+    keys::{PublicKey, SecretKey},
+    ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
 };
-use test::Bencher;
+use tari_utilities::byte_array::ByteArray;
 
-#[bench]
-fn generate_secret_key(b: &mut Bencher) {
-    let mut rng = OsRng::new().unwrap();
-    b.iter(|| {
-        let key = Curve25519SecretKey::random(&mut rng);
-        key.to_hex();
+fn generate_secret_key(c: &mut Criterion) {
+    c.bench_function("generate secret key", |b| {
+        let mut rng = OsRng::new().unwrap();
+        b.iter(|| {
+            let _ = RistrettoSecretKey::random(&mut rng);
+        });
     });
 }
 
-#[bench]
-fn native_keypair(b: &mut Bencher) {
-    let mut rng = OsRng::new().unwrap();
-    b.iter(|| {
-        dsk::generate(&mut rng);
+fn native_keypair(c: &mut Criterion) {
+    c.bench_function("Generate key pair", |b| {
+        let mut rng = OsRng::new().unwrap();
+        b.iter(|| RistrettoPublicKey::random_keypair(&mut rng));
     });
 }
 
-#[bench]
-fn curve25519_eddsa(b: &mut Bencher) {
-    let mut rng = OsRng::new().unwrap();
-    let msg = b"This parrot is dead";
-    let k = Curve25519SecretKey::random(&mut rng);
-    let p = Curve25519PublicKey::from_secret_key(&k);
-    b.iter(|| {
-        let sig = Curve25519EdDSA::sign(&k, &p, msg);
-        assert!(sig.verify(&p, msg));
-    })
+struct SigningData {
+    k: RistrettoSecretKey,
+    p: RistrettoPublicKey,
+    r: RistrettoSecretKey,
+    m: RistrettoSecretKey,
 }
+
+fn gen_keypair() -> SigningData {
+    let mut rng = OsRng::new().unwrap();
+    let mut msg = [0u8; 32];
+    rng.fill_bytes(&mut msg);
+    let (k, p) = RistrettoPublicKey::random_keypair(&mut rng);
+    let r = RistrettoSecretKey::random(&mut rng);
+    let m = RistrettoSecretKey::from_bytes(&msg).unwrap();
+    SigningData { k, p, r, m }
+}
+
+fn sign_message(c: &mut Criterion) {
+    c.bench_function("Create RistrettoSchnorr", move |b| {
+        b.iter_batched(
+            || gen_keypair(),
+            |d| {
+                let _ = RistrettoSchnorr::sign(d.k, d.r, &d.m.to_vec()).unwrap();
+            },
+            BatchSize::SmallInput,
+        );
+    });
+
+    //    assert!(sig.verify(&p, &msg_key));
+}
+
+fn verify_message(c: &mut Criterion) {
+    c.bench_function("Verify RistrettoSchnorr", move |b| {
+        b.iter_batched(
+            || {
+                let d = gen_keypair();
+                let s = RistrettoSchnorr::sign(d.k.clone(), d.r.clone(), &d.m.to_vec()).unwrap();
+                (d, s)
+            },
+            |(d, s)| assert!(s.verify(&d.p, &d.m)),
+            BatchSize::SmallInput,
+        );
+    });
+}
+
+criterion_group!(
+name = signatures;
+config = Criterion::default().warm_up_time(Duration::from_millis(500));
+targets = generate_secret_key, native_keypair, sign_message, verify_message
+);
+criterion_main!(signatures);

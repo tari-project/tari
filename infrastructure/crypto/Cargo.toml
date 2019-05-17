@@ -28,3 +28,10 @@ lazy_static = "1.3.0"
 
 [features]
 avx2 = ["curve25519-dalek/avx2_backend", "bulletproofs/avx2_backend"]
+
+[dev-dependencies]
+criterion = "0.2"
+
+[[bench]]
+name = "signatures"
+harness = false
