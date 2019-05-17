@@ -58,8 +58,8 @@ pub enum TransactionManagerError {
 /// TODO Allow for inbound transactions that are detected on the blockchain to be marked as complete.
 ///
 /// # Fields
-/// 'pending_outbound_transactions' - List of transaction protocols sent by this client and waiting response from the recipient
-/// 'pending_inbound_transactions' - List of transaction protocols that have been received and responded to.
+/// 'pending_outbound_transactions' - List of transaction protocols sent by this client and waiting response from the
+/// recipient 'pending_inbound_transactions' - List of transaction protocols that have been received and responded to.
 /// 'completed_transaction' - List of sent transactions that have been responded to and are completed.
 
 pub struct TransactionManager {
@@ -81,7 +81,7 @@ impl TransactionManager {
     /// # Arguments
     /// 'sender_transaction_protocol' - A well formed SenderTransactionProtocol ready to generate the SenderMessage.
     ///
-    ///# Returns
+    /// # Returns
     /// Public SenderMessage to be transmitted to the recipient.
     pub fn start_send_transaction(
         &mut self,
@@ -111,11 +111,12 @@ impl TransactionManager {
         let mut marked_for_removal = None;
 
         for (tx_id, stp) in self.pending_outbound_transactions.iter_mut() {
-            if stp.check_tx_id(recipient_reply.tx_id) && stp.is_collecting_single_signature() {
-                stp.add_single_recipient_info(recipient_reply.clone())?;
+            let recp_tx_id = recipient_reply.tx_id.clone();
+            if stp.check_tx_id(recp_tx_id) && stp.is_collecting_single_signature() {
+                stp.add_single_recipient_info(recipient_reply)?;
                 stp.finalize(KernelFeatures::empty())?;
                 let tx = stp.get_transaction()?;
-                self.completed_transactions.insert(recipient_reply.tx_id, tx.clone());
+                self.completed_transactions.insert(recp_tx_id, tx.clone());
                 marked_for_removal = Some(tx_id.clone());
                 break;
             }
@@ -147,23 +148,19 @@ impl TransactionManager {
     ) -> Result<RecipientSignedTransactionData, TransactionManagerError>
     {
         let rtp = ReceiverTransactionProtocol::new(sender_message, nonce, spending_key, OutputFeatures::empty());
-        let recipient_reply = rtp.get_signed_data()?;
+        let recipient_reply = rtp.get_signed_data()?.clone();
 
         // Check this is not a repeat message i.e. tx_id doesn't already exist in our pending or completed transactions
-        for (tx_id, _) in self.pending_outbound_transactions.iter() {
-            if tx_id == &recipient_reply.tx_id {
-                return Err(TransactionManagerError::RepeatedMessageError);
-            }
+        if self.pending_outbound_transactions.contains_key(&recipient_reply.tx_id) {
+            return Err(TransactionManagerError::RepeatedMessageError);
         }
-        for (tx_id, _) in self.pending_inbound_transactions.iter() {
-            if tx_id == &recipient_reply.tx_id {
-                return Err(TransactionManagerError::RepeatedMessageError);
-            }
+
+        if self.pending_inbound_transactions.contains_key(&recipient_reply.tx_id) {
+            return Err(TransactionManagerError::RepeatedMessageError);
         }
-        for (tx_id, _) in self.completed_transactions.iter() {
-            if tx_id == &recipient_reply.tx_id {
-                return Err(TransactionManagerError::RepeatedMessageError);
-            }
+
+        if self.completed_transactions.contains_key(&recipient_reply.tx_id) {
+            return Err(TransactionManagerError::RepeatedMessageError);
         }
 
         // Otherwise add it to our pending transaction list and return reply

@@ -113,9 +113,9 @@ impl ReceiverTransactionProtocol {
     }
 
     /// Retrieve the final signature data to be returned to the sender to complete the transaction.
-    pub fn get_signed_data(&self) -> Result<RecipientSignedTransactionData, TransactionProtocolError> {
+    pub fn get_signed_data(&self) -> Result<&RecipientSignedTransactionData, TransactionProtocolError> {
         match &self.state {
-            RecipientState::Finalized(data) => Ok(data.clone()),
+            RecipientState::Finalized(data) => Ok(data),
             _ => Err(TransactionProtocolError::InvalidStateError),
         }
     }
