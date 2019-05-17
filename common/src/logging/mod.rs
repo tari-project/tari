@@ -20,7 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod logging;
 
-pub use logging::logging_service::{ LoggingService, LogMessage, Logger };
-pub use logging::log_levels::LogLevel;
+pub mod logging_service;
+pub mod log_levels;
