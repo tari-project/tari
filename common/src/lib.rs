@@ -22,5 +22,7 @@
 
 mod logging;
 
-pub use logging::logging_service::{ LoggingService, LogMessage, Logger };
-pub use logging::log_levels::LogLevel;
+pub use logging::{
+    log_levels::LogLevel,
+    logging_service::{LogMessage, Logger, LoggingService},
+};

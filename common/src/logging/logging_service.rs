@@ -20,11 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::mpsc;
 use crate::logging::log_levels::LogLevel;
+use std::{
+    fmt::{Display, Error, Formatter},
+    sync::mpsc,
+    thread,
+};
 use term::stderr;
-use std::thread;
-use std::fmt::{Display, Formatter, Error};
 
 /// LogMessage is a container for Tari log messages. You typically don't create these yourself; they are created by
 /// the `log` functions in `Logger`
@@ -106,8 +108,10 @@ impl Logger {
 
 #[cfg(test)]
 mod test {
-    use crate::logging::logging_service::{LoggingService, Logger};
-    use crate::logging::log_levels::LogLevel;
+    use crate::logging::{
+        log_levels::LogLevel,
+        logging_service::{Logger, LoggingService},
+    };
     use std::thread;
 
     #[test]
