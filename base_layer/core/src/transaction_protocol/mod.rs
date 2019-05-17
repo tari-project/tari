@@ -49,11 +49,12 @@
 //!   end
 //! </div>
 
+#[cfg(test)]
+pub mod test_common;
+
 pub mod recipient;
 pub mod sender;
 pub mod single_receiver;
-#[cfg(test)]
-pub mod test_common;
 pub mod transaction_initializer;
 
 use crate::{
@@ -62,6 +63,7 @@ use crate::{
 };
 use derive_error::Error;
 use digest::Digest;
+use serde::{Deserialize, Serialize};
 use tari_crypto::{range_proof::RangeProofError, signatures::SchnorrSignatureError};
 use tari_utilities::byte_array::ByteArray;
 
@@ -92,7 +94,7 @@ pub enum TransactionProtocolError {
 }
 
 /// Transaction metadata, including the fee and lock height
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize, Serialize)]
 pub struct TransactionMetadata {
     /// The absolute fee for the transaction
     pub fee: u64,
