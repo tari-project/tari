@@ -21,4 +21,5 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod connection;
+mod monitor;
 mod peer_connection;
