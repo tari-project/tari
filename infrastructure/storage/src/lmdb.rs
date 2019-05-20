@@ -4,7 +4,6 @@ use crate::keyvalue_store::{BatchWrite, DataStore, DatastoreError};
 use lmdb_zero as lmdb;
 use lmdb_zero::error::LmdbResultExt;
 use std::{collections::HashMap, sync::Arc};
-extern crate sys_info;
 
 /// A builder for [LMDBStore](struct.lmdbstore.html)
 /// ## Example
@@ -204,6 +203,7 @@ mod test {
     use rand::{OsRng, RngCore};
     use serde_derive::{Deserialize, Serialize};
     use std::{fs, str};
+    extern crate sys_info;
 
     #[derive(Serialize, Deserialize, PartialEq, Debug)]
     struct Entity {
