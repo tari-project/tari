@@ -30,7 +30,10 @@ use crate::connection::{
     SocketType,
 };
 use derive_error::Error;
-use std::convert::{TryFrom, TryInto};
+use std::{
+    convert::{TryFrom, TryInto},
+    fmt,
+};
 
 #[derive(Debug, Error)]
 pub enum ConnectionMonitorError {
@@ -169,7 +172,7 @@ pub struct SocketEvent {
 }
 
 /// Represents the types of socket events which can occur.
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Clone)]
 pub enum SocketEventType {
     Connected = 0x0001,
     ConnectDelayed = 0x0002,
@@ -186,6 +189,12 @@ pub enum SocketEventType {
     HandshakeSucceeded = 0x1000,
     HandshakeFailedProtocol = 0x2000,
     HandshakeFailedAuth = 0x4000,
+}
+
+impl fmt::Display for SocketEventType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", &self)
+    }
 }
 
 impl TryFrom<u16> for SocketEventType {

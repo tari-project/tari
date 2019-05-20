@@ -23,7 +23,7 @@
 use derive_error::Error;
 
 /// Represents errors which can occur in a PeerConnection.
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Clone)]
 pub enum PeerConnectionError {
     #[error(msg_embedded, non_std, no_from)]
     InitializationError(String),
@@ -39,4 +39,8 @@ pub enum PeerConnectionError {
     StateError(String),
     /// Error occurred while shutting down the connection
     ShutdownError,
+    /// Failed to establish a connection
+    ConnectFailed,
+    /// An unexpected connection error occurred
+    UnexpectedConnectionError,
 }

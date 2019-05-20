@@ -35,6 +35,8 @@ use crate::connection::{
 
 /// The default maximum message size which will be used if no maximum message size is set.
 const DEFAULT_MAX_MSG_SIZE: u64 = 500 * 1024; // 500 kb
+/// The default maximum number of retries before failing the connection.
+const DEFAULT_MAX_RETRY_ATTEMPTS: u16 = 10;
 
 /// Context for connecting to a Peer. This is handed to a PeerConnection and is used to establish the connection.
 ///
@@ -47,6 +49,8 @@ const DEFAULT_MAX_MSG_SIZE: u64 = 500 * 1024; // 500 kb
 /// `curve_encryption` - the [CurveEncryption] for the connection
 /// `max_msg_size` - the maximum size of a incoming message
 /// `socks_address` - optional address for a SOCKS proxy
+///
+/// [CurveEncryption]: ./../zmq/curve_keypair/struct.CurveEncryption.html
 pub struct PeerConnectionContext {
     pub(crate) context: Context,
     pub(crate) peer_address: NetAddress,
@@ -54,6 +58,7 @@ pub struct PeerConnectionContext {
     pub(crate) direction: Direction,
     pub(crate) curve_encryption: CurveEncryption,
     pub(crate) max_msg_size: u64,
+    pub(crate) max_retry_attempts: u16,
     pub(crate) socks_address: Option<SocketAddress>,
 }
 
@@ -69,6 +74,7 @@ impl<'a> TryFrom<PeerConnectionContextBuilder<'a>> for PeerConnectionContext {
         let curve_encryption = builder.curve_encryption;
         let direction = unwrap_prop(builder.direction, "direction")?;
         let max_msg_size = builder.max_msg_size.unwrap_or(DEFAULT_MAX_MSG_SIZE);
+        let max_retry_attempts = builder.max_retry_attempts.unwrap_or(DEFAULT_MAX_RETRY_ATTEMPTS);
         let peer_address = unwrap_prop(builder.address, "peer_address")?;
         let socks_address = builder.socks_address;
 
@@ -78,6 +84,7 @@ impl<'a> TryFrom<PeerConnectionContextBuilder<'a>> for PeerConnectionContext {
             curve_encryption,
             direction,
             max_msg_size,
+            max_retry_attempts,
             peer_address,
             socks_address,
         })
@@ -90,10 +97,7 @@ fn unwrap_prop<T>(prop: Option<T>, prop_name: &str) -> Result<T> {
     match prop {
         Some(t) => Ok(t),
         None => Err(ConnectionError::PeerError(PeerConnectionError::InitializationError(
-            format!(
-                "InitializationError: Missing required connection property '{}'",
-                prop_name
-            ),
+            format!("Missing required connection property '{}'", prop_name),
         ))),
     }
 }
@@ -132,6 +136,7 @@ pub struct PeerConnectionContextBuilder<'a> {
     pub(super) consumer_address: Option<InprocAddress>,
     pub(super) curve_encryption: CurveEncryption,
     pub(super) max_msg_size: Option<u64>,
+    pub(super) max_retry_attempts: Option<u16>,
     pub(super) socks_address: Option<SocketAddress>,
 }
 
@@ -145,15 +150,17 @@ macro_rules! setter {
 }
 
 impl<'a> PeerConnectionContextBuilder<'a> {
-    setter!(set_context, context, &'a Context);
-
     setter!(set_address, address, NetAddress);
-
-    setter!(set_max_msg_size, max_msg_size, u64);
 
     setter!(set_consumer_address, consumer_address, InprocAddress);
 
+    setter!(set_context, context, &'a Context);
+
     setter!(set_direction, direction, Direction);
+
+    setter!(set_max_retry_attempts, max_retry_attempts, u16);
+
+    setter!(set_max_msg_size, max_msg_size, u64);
 
     setter!(set_socks_proxy, socks_address, SocketAddress);
 
@@ -186,24 +193,23 @@ impl<'a> PeerConnectionContextBuilder<'a> {
                     CurveEncryption::None { .. } => Ok(()),
                     CurveEncryption::Client { .. } => Ok(()),
                     CurveEncryption::Server { .. } => Err(PeerConnectionError::InitializationError(
-                        "InitializationError: 'Client' curve encryption required for outbound connection".to_string(),
+                        "'Client' curve encryption required for outbound connection".to_string(),
                     )
                     .into()),
                 },
                 Direction::Inbound => match self.curve_encryption {
                     CurveEncryption::None { .. } => Ok(()),
                     CurveEncryption::Client { .. } => Err(PeerConnectionError::InitializationError(
-                        "InitializationError: 'Server' curve encryption required for inbound connection".to_string(),
+                        "'Server' curve encryption required for inbound connection".to_string(),
                     )
                     .into()),
                     CurveEncryption::Server { .. } => Ok(()),
                 },
             },
 
-            None => Err(PeerConnectionError::InitializationError(
-                "InitializationError: Direction not set for peer connection".to_string(),
-            )
-            .into()),
+            None => Err(
+                PeerConnectionError::InitializationError("Direction not set for peer connection".to_string()).into(),
+            ),
         }
     }
 }
@@ -270,10 +276,7 @@ mod test {
             .set_address("127.0.0.1:80".parse().unwrap())
             .build();
 
-        assert_initialization_error(
-            result,
-            "InitializationError: Missing required connection property 'context'",
-        );
+        assert_initialization_error(result, "Missing required connection property 'context'");
 
         let result = PeerConnectionContextBuilder::new()
             .set_direction(Direction::Inbound)
@@ -287,10 +290,7 @@ mod test {
             .set_address("127.0.0.1:80".parse().unwrap())
             .build();
 
-        assert_initialization_error(
-            result,
-            "InitializationError: 'Server' curve encryption required for inbound connection",
-        );
+        assert_initialization_error(result, "'Server' curve encryption required for inbound connection");
 
         let result = PeerConnectionContextBuilder::new()
             .set_direction(Direction::Outbound)
@@ -300,9 +300,6 @@ mod test {
             .set_address("127.0.0.1:80".parse().unwrap())
             .build();
 
-        assert_initialization_error(
-            result,
-            "InitializationError: 'Client' curve encryption required for outbound connection",
-        );
+        assert_initialization_error(result, "'Client' curve encryption required for outbound connection");
     }
 }
