@@ -108,10 +108,7 @@ impl Logger {
 
 #[cfg(test)]
 mod test {
-    use crate::logging::{
-        log_levels::LogLevel,
-        logging_service::LoggingService,
-    };
+    use crate::logging::{log_levels::LogLevel, logging_service::LoggingService};
     use std::thread;
 
     #[test]
