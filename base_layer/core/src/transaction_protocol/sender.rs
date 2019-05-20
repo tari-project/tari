@@ -41,6 +41,7 @@ use crate::{
     },
 };
 use digest::Digest;
+use serde::{Deserialize, Serialize};
 use tari_crypto::commitment::HomomorphicCommitmentFactory;
 use tari_utilities::ByteArray;
 
@@ -79,7 +80,7 @@ impl RawTransactionInfo {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct SingleRoundSenderData {
     /// The transaction id for the recipient
     pub tx_id: u64,
@@ -93,6 +94,7 @@ pub struct SingleRoundSenderData {
     pub metadata: TransactionMetadata,
 }
 
+#[derive(Clone, Serialize, Deserialize)]
 pub enum SenderMessage {
     None,
     Single(Box<SingleRoundSenderData>),
@@ -165,6 +167,25 @@ impl SenderTransactionProtocol {
         match &self.state {
             SenderState::Failed(e) => Some(e.clone()),
             _ => None,
+        }
+    }
+
+    /// Method to check if the provided tx_id matches this transaction
+    pub fn check_tx_id(&self, tx_id: u64) -> bool {
+        match &self.state {
+            SenderState::Finalizing(info) |
+            SenderState::SingleRoundMessageReady(info) |
+            SenderState::CollectingSingleSignature(info) => info.ids[0] == tx_id,
+            _ => false,
+        }
+    }
+
+    pub fn get_tx_id(&self) -> Result<u64, TPE> {
+        match &self.state {
+            SenderState::Finalizing(info) |
+            SenderState::SingleRoundMessageReady(info) |
+            SenderState::CollectingSingleSignature(info) => Ok(info.ids[0]),
+            _ => Err(TPE::InvalidStateError),
         }
     }
 
