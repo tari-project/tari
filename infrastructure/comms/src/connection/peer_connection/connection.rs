@@ -31,7 +31,7 @@ use crate::connection::{message::FrameSet, ConnectionError, Result};
 
 use super::{
     control::{ControlMessage, ThreadControlMessenger},
-    worker,
+    worker::Worker,
     PeerConnectionContext,
     PeerConnectionError,
 };
@@ -170,7 +170,8 @@ impl PeerConnection {
     /// `context` - The PeerConnectionContext which is owned by the underlying thread
     pub fn start(&self, context: PeerConnectionContext) -> Result<()> {
         let mut lock = self.acquire_state_write_lock()?;
-        *lock = PeerConnectionState::Connecting(Arc::new(worker::start(context, self.state.clone()).into()));
+        let worker = Worker::new(context, self.state.clone());
+        *lock = PeerConnectionState::Connecting(Arc::new(worker.spawn().into()));
         Ok(())
     }
 

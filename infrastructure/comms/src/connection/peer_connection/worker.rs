@@ -43,24 +43,6 @@ use crate::connection::{
 };
 use std::sync::{Arc, RwLock};
 
-/// Take the given PeerConnectionContext and use it to start a worker thread which:
-/// - Establishes a connection to peer
-/// - Establishes a connection to the message consumer
-/// - Receives and handles ControlMessages
-/// - Forwards frames to consumer
-/// - Handles SocketEvents and updates shared connection state
-///
-/// # Arguments
-///
-/// `context` - The PeerConnectionContext which will be owned by the worker thread
-pub(super) fn start(
-    context: PeerConnectionContext,
-    state: Arc<RwLock<PeerConnectionState>>,
-) -> SyncSender<ControlMessage>
-{
-    Worker::new(context, state).spawn()
-}
-
 /// Send HWM for peer connections
 const PEER_CONNECTION_SEND_HWM: i32 = 10;
 /// Receive HWM for peer connections
@@ -87,8 +69,13 @@ macro_rules! acquire_write_lock {
     };
 }
 
-/// PeerConnection worker. Performs tasks as described in [`tari_comms::connection::peer_connection::worker::start`]
-struct Worker {
+/// Worker which:
+/// - Establishes a connection to peer
+/// - Establishes a connection to the message consumer
+/// - Receives and handles ControlMessages
+/// - Forwards frames to consumer
+/// - Handles SocketEvents and updates shared connection state
+pub(super) struct Worker {
     context: PeerConnectionContext,
     sender: SyncSender<ControlMessage>,
     receiver: Receiver<ControlMessage>,
