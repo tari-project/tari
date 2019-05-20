@@ -170,9 +170,9 @@ impl TransactionManager {
         Ok(recipient_reply)
     }
 
-    /// Return a copy of the completed transactions
-    fn get_completed_transactions(&self) -> HashMap<u64, Transaction> {
-        return self.completed_transactions.clone();
+    /// Returns the list of the completed transactions
+    fn get_completed_transactions(&self) -> &HashMap<u64, Transaction> {
+        return &self.completed_transactions;
     }
 
     fn num_pending_inbound_transactions(&self) -> usize {
