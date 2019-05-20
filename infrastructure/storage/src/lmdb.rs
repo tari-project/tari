@@ -235,11 +235,12 @@ mod test {
         if std::fs::metadata(test_dir).is_ok() {
             assert!(fs::remove_dir_all(test_dir).is_ok());    
         }
-        let win_cmp = "WINDOWS".to_string();
-        let msg = match sys_info::os_type().unwrap().to_uppercase().to_string(){
-            win_cmp => "LMDB Error: The system cannot find the path specified.\r\n",
-            (_) => "LMDB Error: No such file or directory",
-        };
+        let msg;
+        if sys_info::os_type().unwrap().to_uppercase() == "WINDOWS" {
+            msg = "LMDB Error: The system cannot find the path specified.\r\n";
+        } else {
+            msg = "LMDB Error: No such file or directory";
+        }
         let builder = LMDBBuilder::new();
         match builder.set_mapsize(1).set_path(test_dir).build() {
             Err(DatastoreError::InternalError(s)) => assert_eq!(s, msg),
