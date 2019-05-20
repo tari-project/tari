@@ -24,3 +24,6 @@ book
 
 # Ignore Code Coverage Report files
 report
+
+# On development branch only. This should be removed for point releases
+Cargo.lock
