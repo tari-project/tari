@@ -106,10 +106,10 @@ pub struct LMDBStore {
     pub(crate) curr_db: Arc<lmdb::Database<'static>>,
 }
 
+/// Consume self to remove all databases from scope
 impl LMDBStore {
-    fn delete_db(&mut self) -> Result<(), DatastoreError> {
+    fn delete_db_from_scope(self) -> Result<(), DatastoreError> {
         self.curr_db.env().sync(true)?;
-        //self.curr_db.delete()?;
         Ok(())
     }
 }
@@ -235,12 +235,11 @@ mod test {
         if std::fs::metadata(test_dir).is_ok() {
             assert!(fs::remove_dir_all(test_dir).is_ok());    
         }
-        let msg;
-        if sys_info::os_type().unwrap().to_uppercase() == "WINDOWS" {
-            msg = "LMDB Error: The system cannot find the path specified.\r\n";
-        } else {
-            msg = "LMDB Error: No such file or directory";
-        }
+        let win_cmp = "WINDOWS".to_string();
+        let msg = match sys_info::os_type().unwrap().to_uppercase().to_string(){
+            win_cmp => "LMDB Error: The system cannot find the path specified.\r\n",
+            (_) => "LMDB Error: No such file or directory",
+        };
         let builder = LMDBBuilder::new();
         match builder.set_mapsize(1).set_path(test_dir).build() {
             Err(DatastoreError::InternalError(s)) => assert_eq!(s, msg),
@@ -255,18 +254,17 @@ mod test {
             assert!(fs::remove_dir_all(test_dir).is_ok());    
         }   
         fs::create_dir(test_dir).unwrap();
-        {
-            let builder = LMDBBuilder::new();
-            let store = builder.set_mapsize(5).set_path(test_dir).build().unwrap();
-            let mut batch = LMDBBatch::new(&store).unwrap();
-            batch.put_raw(b"a", b"apple".to_vec()).unwrap();
-            batch.put_raw(b"b", b"banana".to_vec()).unwrap();
-            batch.put_raw(b"c", b"carrot".to_vec()).unwrap();
-            batch.commit().unwrap();
-            let banana = store.get_raw(b"b").unwrap().unwrap();
-            assert_eq!(&banana, b"banana");
-        }
+        let builder = LMDBBuilder::new();
+        let store = builder.set_mapsize(5).set_path(test_dir).build().unwrap();
+        let mut batch = LMDBBatch::new(&store).unwrap();
+        batch.put_raw(b"a", b"apple".to_vec()).unwrap();
+        batch.put_raw(b"b", b"banana".to_vec()).unwrap();
+        batch.put_raw(b"c", b"carrot".to_vec()).unwrap();
+        batch.commit().unwrap();
+        let banana = store.get_raw(b"b").unwrap().unwrap();
+        assert_eq!(&banana, b"banana");
         // Clean up
+        assert!(store.delete_db_from_scope().is_ok());
         let _no_val = fs::remove_dir_all(test_dir);
         if std::fs::metadata(test_dir).is_ok() {
             println!("Database file handles not released, still open in {:?}!", test_dir);
@@ -278,9 +276,10 @@ mod test {
     fn writes_to_default_db() {
         let test_dir = "./tests/test_default";
         if std::fs::metadata(test_dir).is_ok() {
-            assert!(fs::remove_dir_all(test_dir).is_ok());    
-        }   
+            assert!(fs::remove_dir_all(test_dir).is_ok());
+        }
         fs::create_dir(test_dir).unwrap();
+
         let mut store = LMDBBuilder::new().set_path(test_dir).build().unwrap();
         store.connect("default").unwrap();
         // Write some values
@@ -293,13 +292,11 @@ mod test {
         let val = store.get_raw(b"England").unwrap().unwrap();
         assert_eq!(str::from_utf8(&val).unwrap(), "rose");
         // Clean up
+        assert!(store.delete_db_from_scope().is_ok());
         let _no_val = fs::remove_dir_all(test_dir);
         if std::fs::metadata(test_dir).is_ok() {
             println!("Database file handles not released, still open in {:?}!", test_dir);
-            println!("store.curr_db.env().info() {:?}", store.curr_db.env().info());
-            println!("store.curr_db.as_raw()     {:?}", store.curr_db.as_raw());
-            store.delete_db().unwrap();
-            assert!(fs::remove_dir_all(test_dir).is_ok());    
+            assert!(fs::remove_dir_all(test_dir).is_ok());
         }   
     }
 
@@ -327,6 +324,7 @@ mod test {
         check(b"SouthAfrica", &store);
         check(b"England", &store);
         // Clean up
+        assert!(store.delete_db_from_scope().is_ok());
         let _no_val = fs::remove_dir_all(test_dir);
         if std::fs::metadata(test_dir).is_ok() {
             println!("Database file handles not released, still open in {:?}!", test_dir);
@@ -363,6 +361,8 @@ mod test {
                 panic!()
             },
         }
+        // Clean up
+        assert!(store.delete_db_from_scope().is_ok());
         let _no_val = fs::remove_dir_all(test_dir);
         if std::fs::metadata(test_dir).is_ok() {
             println!("Database file handles not released, still open in {:?}!", test_dir);
@@ -395,6 +395,8 @@ mod test {
             let val = store.get_raw(&to_bytes(i)).unwrap().unwrap();
             assert_eq!(from_bytes(&val), i * 2);
         }
+        // Clean up
+        assert!(store.delete_db_from_scope().is_ok());
         let _no_val = fs::remove_dir_all(test_dir);
         if std::fs::metadata(test_dir).is_ok() {
             println!("Database file handles not released, still open in {:?}!", test_dir);
@@ -409,42 +411,41 @@ mod test {
             assert!(fs::remove_dir_all(test_dir).is_ok());    
         }   
         fs::create_dir(test_dir).unwrap();
-        {
-            let mut store = LMDBBuilder::new()
-                .set_path(test_dir)
-                .add_database("db1")
-                .add_database("db2")
-                .build()
-                .unwrap();
-            store.connect("db1").unwrap();
-            // Write some values
-            store.put_raw(b"db1-a", b"val1".to_vec()).unwrap();
-            store.put_raw(b"db1-b", b"val2".to_vec()).unwrap();
-            store.put_raw(b"common", b"db1".to_vec()).unwrap();
-            // Change databases
-            store.connect("db2").unwrap();
-            store.put_raw(b"db2-a", b"val3".to_vec()).unwrap();
-            store.put_raw(b"db2-b", b"val4".to_vec()).unwrap();
-            store.put_raw(b"common", b"db2".to_vec()).unwrap();
-            // Check existence and non-existence of keys
-            assert!(!store.exists(b"db1-a").unwrap());
-            assert!(!store.exists(b"db1-b").unwrap());
-            assert!(store.exists(b"db2-a").unwrap());
-            assert!(store.exists(b"db2-b").unwrap());
-            assert!(store.exists(b"common").unwrap());
-            // Change back to db1
-            store.connect("db1").unwrap();
-            // Check existence and non-existence of keys
-            assert!(store.exists(b"db1-a").unwrap());
-            assert!(store.exists(b"db1-b").unwrap());
-            assert!(!store.exists(b"db2-a").unwrap());
-            assert!(!store.exists(b"db2-b").unwrap());
-            assert!(store.exists(b"common").unwrap());
-            // Finally check the value of 'common'
-            let val = store.get_raw(b"common").unwrap().unwrap();
-            assert_eq!(&val, b"db1");
-        }
+        let mut store = LMDBBuilder::new()
+            .set_path(test_dir)
+            .add_database("db1")
+            .add_database("db2")
+            .build()
+            .unwrap();
+        store.connect("db1").unwrap();
+        // Write some values
+        store.put_raw(b"db1-a", b"val1".to_vec()).unwrap();
+        store.put_raw(b"db1-b", b"val2".to_vec()).unwrap();
+        store.put_raw(b"common", b"db1".to_vec()).unwrap();
+        // Change databases
+        store.connect("db2").unwrap();
+        store.put_raw(b"db2-a", b"val3".to_vec()).unwrap();
+        store.put_raw(b"db2-b", b"val4".to_vec()).unwrap();
+        store.put_raw(b"common", b"db2".to_vec()).unwrap();
+        // Check existence and non-existence of keys
+        assert!(!store.exists(b"db1-a").unwrap());
+        assert!(!store.exists(b"db1-b").unwrap());
+        assert!(store.exists(b"db2-a").unwrap());
+        assert!(store.exists(b"db2-b").unwrap());
+        assert!(store.exists(b"common").unwrap());
+        // Change back to db1
+        store.connect("db1").unwrap();
+        // Check existence and non-existence of keys
+        assert!(store.exists(b"db1-a").unwrap());
+        assert!(store.exists(b"db1-b").unwrap());
+        assert!(!store.exists(b"db2-a").unwrap());
+        assert!(!store.exists(b"db2-b").unwrap());
+        assert!(store.exists(b"common").unwrap());
+        // Finally check the value of 'common'
+        let val = store.get_raw(b"common").unwrap().unwrap();
+        assert_eq!(&val, b"db1");
         // Clean up
+        assert!(store.delete_db_from_scope().is_ok());
         let _no_val = fs::remove_dir_all(test_dir);
         if std::fs::metadata(test_dir).is_ok() {
             println!("Database file handles not released, still open in {:?}!", test_dir);
@@ -484,6 +485,7 @@ mod test {
         let val = store.get::<World>("not here").unwrap();
         assert!(val.is_none());
         // Clean up
+        assert!(store.delete_db_from_scope().is_ok());
         let _no_val = fs::remove_dir_all(test_dir);
         if std::fs::metadata(test_dir).is_ok() {
             println!("Database file handles not released, still open in {:?}!", test_dir);
