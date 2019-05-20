@@ -7,6 +7,7 @@ members = [
     "base_layer/mempool",
     "base_layer/mining",
     "base_layer/p2p",
+    "base_layer/wallet",
     "common",
     "digital_assets_layer/core",
     "infrastructure/comms",
