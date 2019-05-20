@@ -110,7 +110,7 @@ impl Logger {
 mod test {
     use crate::logging::{
         log_levels::LogLevel,
-        logging_service::{Logger, LoggingService},
+        logging_service::LoggingService,
     };
     use std::thread;
 
