@@ -149,7 +149,6 @@ impl DataStore for LMDBStore {
         }
         tx.commit().map_err(|e| e.into())
     }
-
 }
 
 struct LMDBBatch<'a> {
@@ -233,7 +232,7 @@ mod test {
     fn path_must_exist() {
         let test_dir = "./tests/not_here/";
         if std::fs::metadata(test_dir).is_ok() {
-            assert!(fs::remove_dir_all(test_dir).is_ok());    
+            assert!(fs::remove_dir_all(test_dir).is_ok());
         }
         let msg;
         if sys_info::os_type().unwrap().to_uppercase() == "WINDOWS" {
@@ -245,15 +244,15 @@ mod test {
         match builder.set_mapsize(1).set_path(test_dir).build() {
             Err(DatastoreError::InternalError(s)) => assert_eq!(s, msg),
             _ => panic!(),
-        } 
+        }
     }
 
     #[test]
     fn batch_writes() {
         let test_dir = "./tests/test_tx/";
         if std::fs::metadata(test_dir).is_ok() {
-            assert!(fs::remove_dir_all(test_dir).is_ok());    
-        }   
+            assert!(fs::remove_dir_all(test_dir).is_ok());
+        }
         fs::create_dir(test_dir).unwrap();
         let builder = LMDBBuilder::new();
         let store = builder.set_mapsize(5).set_path(test_dir).build().unwrap();
@@ -269,9 +268,9 @@ mod test {
         let _no_val = fs::remove_dir_all(test_dir);
         if std::fs::metadata(test_dir).is_ok() {
             println!("Database file handles not released, still open in {:?}!", test_dir);
-            assert!(fs::remove_dir_all(test_dir).is_ok());    
-        }   
-   }
+            assert!(fs::remove_dir_all(test_dir).is_ok());
+        }
+    }
 
     #[test]
     fn writes_to_default_db() {
@@ -298,15 +297,15 @@ mod test {
         if std::fs::metadata(test_dir).is_ok() {
             println!("Database file handles not released, still open in {:?}!", test_dir);
             assert!(fs::remove_dir_all(test_dir).is_ok());
-        }   
+        }
     }
 
     #[test]
     fn aborts_write() {
         let test_dir = "./tests/test_abort";
         if std::fs::metadata(test_dir).is_ok() {
-            assert!(fs::remove_dir_all(test_dir).is_ok());    
-        }   
+            assert!(fs::remove_dir_all(test_dir).is_ok());
+        }
         fs::create_dir(test_dir).unwrap();
         let mut store = LMDBBuilder::new().set_path(test_dir).build().unwrap();
         store.connect("default").unwrap();
@@ -329,17 +328,17 @@ mod test {
         let _no_val = fs::remove_dir_all(test_dir);
         if std::fs::metadata(test_dir).is_ok() {
             println!("Database file handles not released, still open in {:?}!", test_dir);
-            assert!(fs::remove_dir_all(test_dir).is_ok());    
-        }   
-   }
+            assert!(fs::remove_dir_all(test_dir).is_ok());
+        }
+    }
 
     /// Set the DB size to 1MB and write more than a MB to it
     #[test]
     fn overflow_db() {
         let test_dir = "./tests/test_overflow";
         if std::fs::metadata(test_dir).is_ok() {
-            assert!(fs::remove_dir_all(test_dir).is_ok());    
-        }   
+            assert!(fs::remove_dir_all(test_dir).is_ok());
+        }
         fs::create_dir(test_dir).unwrap();
         let builder = LMDBBuilder::new();
         let mut store = builder
@@ -367,23 +366,19 @@ mod test {
         let _no_val = fs::remove_dir_all(test_dir);
         if std::fs::metadata(test_dir).is_ok() {
             println!("Database file handles not released, still open in {:?}!", test_dir);
-            assert!(fs::remove_dir_all(test_dir).is_ok());    
-        }   
+            assert!(fs::remove_dir_all(test_dir).is_ok());
+        }
     }
 
     #[test]
     fn read_and_write_10k_values() {
         let test_dir = "./tests/test_10k";
         if std::fs::metadata(test_dir).is_ok() {
-            assert!(fs::remove_dir_all(test_dir).is_ok());    
-        }   
+            assert!(fs::remove_dir_all(test_dir).is_ok());
+        }
         fs::create_dir(test_dir).unwrap();
         let builder = LMDBBuilder::new();
-        let mut store = builder
-            .set_path(test_dir)
-            .add_database("test")
-            .build()
-            .unwrap();
+        let mut store = builder.set_path(test_dir).add_database("test").build().unwrap();
         assert!(store.connect("test").is_ok());
         // Write 100,000 integers to the DB with val = 2*key
         let mut batch = LMDBBatch::new(&store).unwrap();
@@ -401,16 +396,16 @@ mod test {
         let _no_val = fs::remove_dir_all(test_dir);
         if std::fs::metadata(test_dir).is_ok() {
             println!("Database file handles not released, still open in {:?}!", test_dir);
-            assert!(fs::remove_dir_all(test_dir).is_ok());    
-        }   
+            assert!(fs::remove_dir_all(test_dir).is_ok());
+        }
     }
 
     #[test]
     fn test_exist_on_different_databases() {
         let test_dir = "./tests/test_exist";
         if std::fs::metadata(test_dir).is_ok() {
-            assert!(fs::remove_dir_all(test_dir).is_ok());    
-        }   
+            assert!(fs::remove_dir_all(test_dir).is_ok());
+        }
         fs::create_dir(test_dir).unwrap();
         let mut store = LMDBBuilder::new()
             .set_path(test_dir)
@@ -450,16 +445,16 @@ mod test {
         let _no_val = fs::remove_dir_all(test_dir);
         if std::fs::metadata(test_dir).is_ok() {
             println!("Database file handles not released, still open in {:?}!", test_dir);
-            assert!(fs::remove_dir_all(test_dir).is_ok());    
-        }   
+            assert!(fs::remove_dir_all(test_dir).is_ok());
+        }
     }
 
     #[test]
     fn write_structs() {
         let test_dir = "./tests/test_struct";
         if std::fs::metadata(test_dir).is_ok() {
-            assert!(fs::remove_dir_all(test_dir).is_ok());    
-        }   
+            assert!(fs::remove_dir_all(test_dir).is_ok());
+        }
         fs::create_dir(test_dir).unwrap();
         let builder = LMDBBuilder::new();
         let mut store = builder.set_path(test_dir).build().unwrap();
@@ -490,7 +485,7 @@ mod test {
         let _no_val = fs::remove_dir_all(test_dir);
         if std::fs::metadata(test_dir).is_ok() {
             println!("Database file handles not released, still open in {:?}!", test_dir);
-            assert!(fs::remove_dir_all(test_dir).is_ok());    
-        }   
+            assert!(fs::remove_dir_all(test_dir).is_ok());
+        }
     }
 }
