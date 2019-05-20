@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::support::utils::find_available_tcp_net_address;
-use std::time::Duration;
+use std::{thread, time::Duration};
 use tari_comms::connection::{
     curve_keypair,
     Connection,
@@ -285,13 +285,16 @@ fn connection_disconnect() {
 
     let conn = PeerConnection::new();
     conn.start(context).unwrap();
+    conn.wait_connected_or_failure(Duration::from_millis(100)).unwrap();
 
     {
         // Connect to the inbound connection and send a message
         let sender = Connection::new(&ctx, Direction::Outbound).establish(&addr).unwrap();
         sender.send(&[&[123u8]]).unwrap();
+        // Without this pause, it's possible for the connection to drop before it
+        // has connected.
+        thread::sleep(Duration::from_millis(5));
     }
-    conn.wait_connected_or_failure(Duration::from_millis(100)).unwrap();
 
     conn.wait_disconnected(Duration::from_millis(2000)).unwrap();
 }

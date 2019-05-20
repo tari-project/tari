@@ -212,10 +212,15 @@ impl Worker {
                 *lock = PeerConnectionState::Failed(PeerConnectionError::ConnectFailed);
             },
             ConnectRetried => {
-                self.retry_count += 1;
-                if self.retry_count >= self.context.max_retry_attempts {
-                    let mut lock = acquire_write_lock!(self.connection_state)?;
-                    *lock = PeerConnectionState::Failed(PeerConnectionError::ConnectFailed);
+                let mut lock = acquire_write_lock!(self.connection_state)?;
+                match *lock {
+                    PeerConnectionState::Connecting(_) => {
+                        self.retry_count += 1;
+                        if self.retry_count >= self.context.max_retry_attempts {
+                            *lock = PeerConnectionState::Failed(PeerConnectionError::ConnectFailed);
+                        }
+                    },
+                    _ => {},
                 }
             },
             _ => {},
@@ -235,7 +240,7 @@ impl Worker {
         let context = &self.context;
         if let Some(frames) = try_recv!(frontend.receive(10)) {
             match context.direction {
-                // For a ROUTERbackend, the first frame is the identity
+                // For a ROUTER backend, the first frame is the identity
                 Direction::Inbound => {
                     match self.identity {
                         Some(ref ident) => {
