@@ -20,8 +20,39 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::connection::Connection;
+use criterion::Criterion;
 
-pub struct I2PConnection {}
+use std::{iter::repeat, time::Duration};
+use tari_comms::connection::{Connection, Context, Direction, InprocAddress};
 
-impl Connection for I2PConnection {}
+/// Connection benchmark
+///
+/// Benchmark a message being sent and received between two connections
+fn bench_connection(c: &mut Criterion) {
+    let ctx = Context::new();
+    let addr = InprocAddress::random();
+
+    let bytes = repeat(88u8).take(1 * 1024 * 1024 /* 10Mb */).collect::<Vec<u8>>();
+    let receiver = Connection::new(&ctx, Direction::Inbound)
+        .set_receive_hwm(0)
+        .establish(&addr)
+        .unwrap();
+
+    let sender = Connection::new(&ctx, Direction::Outbound)
+        .set_send_hwm(0)
+        .establish(&addr)
+        .unwrap();
+
+    c.bench_function("connection: send/recv", move |b| {
+        b.iter(|| {
+            sender.send(&[bytes.as_slice()]).unwrap();
+            receiver.receive(100).unwrap();
+        });
+    });
+}
+
+criterion_group!(
+    name = benches;
+    config = Criterion::default().warm_up_time(Duration::from_millis(500));
+    targets = bench_connection,
+);

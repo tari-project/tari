@@ -30,7 +30,6 @@ use crate::{
     types::{MessageHash, PublicKey, SecretKey, Signature},
 };
 use std::collections::HashMap;
-
 pub enum RecipientState {
     Finalized(RecipientSignedTransactionData),
     Failed(TransactionProtocolError),
@@ -51,7 +50,7 @@ pub(super) struct MultiRecipientInfo {
 }
 
 /// This is the message containing the public data that the Receiver will send back to the Sender
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct RecipientSignedTransactionData {
     pub tx_id: u64,
     pub output: TransactionOutput,
@@ -116,7 +115,7 @@ impl ReceiverTransactionProtocol {
     /// Retrieve the final signature data to be returned to the sender to complete the transaction.
     pub fn get_signed_data(&self) -> Result<&RecipientSignedTransactionData, TransactionProtocolError> {
         match &self.state {
-            RecipientState::Finalized(data) => Ok(&data),
+            RecipientState::Finalized(data) => Ok(data),
             _ => Err(TransactionProtocolError::InvalidStateError),
         }
     }

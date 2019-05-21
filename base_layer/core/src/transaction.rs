@@ -34,6 +34,7 @@ use crate::{
 };
 use derive_error::Error;
 use digest::Input;
+use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
 use tari_crypto::{
     commitment::{HomomorphicCommitment, HomomorphicCommitmentFactory},
@@ -65,6 +66,7 @@ bitflags! {
 }
 
 bitflags! {
+    #[derive(Deserialize, Serialize)]
     pub struct OutputFeatures: u8 {
         /// Output is a coinbase output, must not be spent until maturity
         const COINBASE_OUTPUT = 0b00000001;
@@ -588,11 +590,11 @@ mod test {
         let k1 = BlindingFactor::random(&mut rng);
         let k2 = BlindingFactor::random(&mut rng);
 
+        // For testing the max range has been limited to 2^32 so this value is too large.
         let unblinded_output1 = UnblindedOutput::new(2u64.pow(32) - 1u64, k1, None);
         let tx_output1 = TransactionOutput::try_from(&unblinded_output1).unwrap();
         assert!(tx_output1.verify_range_proof(None).unwrap());
 
-        // For testing the max range has been limited to 2^32 so this value is too large.
         let unblinded_output2 = UnblindedOutput::new(2u64.pow(32) + 1u64, k2.clone(), None);
         let tx_output2 = TransactionOutput::try_from(&unblinded_output2);
 

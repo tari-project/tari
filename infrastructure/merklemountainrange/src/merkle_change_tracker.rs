@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{merkle_storage::*, merklenode::*};
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{de::DeserializeOwned, ser::Serialize};
 use serde_derive::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tari_utilities::hex::*;

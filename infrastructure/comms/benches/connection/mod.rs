@@ -22,6 +22,3 @@
 
 pub mod connection;
 pub mod peer_connection;
-pub mod types;
-
-pub use self::types::*;

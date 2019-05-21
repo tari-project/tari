@@ -20,8 +20,44 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::connection::Connection;
+use derive_error::Error;
 
-pub struct PeerConnection {}
+use super::{monitor, MessageError, NetAddressError, PeerConnectionError};
 
-impl Connection for PeerConnection {}
+#[derive(Debug, Error)]
+pub enum ConnectionError {
+    NetAddressError(NetAddressError),
+    #[error(msg_embedded, no_from, non_std)]
+    SocketError(String),
+    /// Connection timed out
+    Timeout,
+    MessageError(MessageError),
+    #[error(msg_embedded, no_from, non_std)]
+    CurveKeypairError(String),
+    PeerError(PeerConnectionError),
+    MonitorError(monitor::ConnectionMonitorError),
+}
+
+impl ConnectionError {
+    /// Returns true if the error is a Timeout error, otherwise false
+    pub fn is_timeout(&self) -> bool {
+        match *self {
+            ConnectionError::Timeout => true,
+            _ => false,
+        }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn is_timeout() {
+        let err = ConnectionError::Timeout;
+        assert!(err.is_timeout());
+
+        let err = ConnectionError::SocketError("dummy error".to_string());
+        assert!(!err.is_timeout());
+    }
+}

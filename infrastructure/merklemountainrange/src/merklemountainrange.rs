@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+<<<<<<< HEAD
 use crate::{
     error::MerkleMountainRangeError,
     merkle_change_tracker::MerkleChangeTracker,
@@ -27,6 +28,9 @@ use crate::{
     merklenode::*,
     merkleproof::MerkleProof,
 };
+=======
+use crate::{error::MerkleMountainRangeError, merklenode::*, merkleproof::MerkleProof};
+>>>>>>> development
 use digest::Digest;
 use serde::{de::DeserializeOwned, Serialize};
 use std::{collections::HashMap, marker::PhantomData};
@@ -57,6 +61,7 @@ where
         }
     }
 
+<<<<<<< HEAD
     /// This allows the DB to store its data on a persistant meduim using the tari::keyvalue_store trait
     /// store_prefix is the db file name prefix used for this mmr.
     /// pruning horizon is how far changes are kept so that it can rewind.
@@ -70,6 +75,10 @@ where
     }
 
     pub(crate) fn get_data_object(&self, hash: ObjectHash) -> Option<&MerkleObject<T>> {
+=======
+    #[cfg(debug_assertions)]
+    pub fn get_data_object(&self, hash: ObjectHash) -> Option<&MerkleObject<T>> {
+>>>>>>> development
         self.data.get(&hash)
     }
 
@@ -93,7 +102,11 @@ where
         let hash = &self.mmr[index].hash;
         let data = self.get_object(hash);
         match data {
+<<<<<<< HEAD
             Some(value) => Ok(value),
+=======
+            Some(value) => Ok(&value.object),
+>>>>>>> development
             None => Err(MerkleMountainRangeError::ObjectNotFound),
         }
     }
@@ -321,7 +334,10 @@ where
         let node_hash = object.hash();
         let node = MerkleObject::new(object, self.mmr.len());
         self.data.insert(node_hash.clone(), node);
+<<<<<<< HEAD
         self.change_tracker.add_new_data(&node_hash);
+=======
+>>>>>>> development
         self.mmr.push(MerkleNode::new(node_hash));
         if is_node_right(self.get_last_added_index()) {
             self.add_single_no_leaf(self.get_last_added_index())
@@ -382,11 +398,15 @@ where
         };
         let object = object.unwrap();
         self.mmr[object.vec_index].pruned = true;
+<<<<<<< HEAD
 
         self.data.remove(hash);
         if self.change_tracker.enabled {
             self.change_tracker.remove_data(hash);
         };
+=======
+        self.data.remove(hash);
+>>>>>>> development
         Ok(())
     }
 

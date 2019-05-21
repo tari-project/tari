@@ -20,4 +20,27 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod connection;
+use derive_error::Error;
+
+/// Represents errors which can occur in a PeerConnection.
+#[derive(Debug, Error, Clone)]
+pub enum PeerConnectionError {
+    #[error(msg_embedded, non_std, no_from)]
+    InitializationError(String),
+    #[error(msg_embedded, non_std, no_from)]
+    ControlSendError(String),
+    /// Peer connection control port has disconnected
+    ControlPortDisconnected,
+    /// Unexpected identity received from peer
+    UnexpectedIdentity,
+    /// Connection identity of peer has not been established
+    IdentityNotEstablished,
+    #[error(msg_embedded, non_std, no_from)]
+    StateError(String),
+    /// Error occurred while shutting down the connection
+    ShutdownError,
+    /// Failed to establish a connection
+    ConnectFailed,
+    /// An unexpected connection error occurred
+    UnexpectedConnectionError,
+}

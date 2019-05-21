@@ -26,8 +26,7 @@ use std::{
 };
 use tari_comms::connection::{
     message::FrameSet,
-    p2p::Direction,
-    types::SocketType,
+    types::{Direction, SocketType},
     zmq::{curve_keypair, Context, CurvePublicKey, CurveSecretKey, ZmqEndpoint},
 };
 

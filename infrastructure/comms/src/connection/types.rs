@@ -37,3 +37,23 @@ pub enum SocketType {
 
 /// Result type used by `comms::connection` module
 pub type Result<T> = std::result::Result<T, ConnectionError>;
+
+/// Represents the linger behavior of a connection. This can, depending on the chosen behavior,
+/// allow a connection to finish sending messages before disconnecting.
+pub enum Linger {
+    /// Linger until all messages have been sent
+    Indefinitely,
+    /// Don't linger, close the connection immediately
+    Never,
+    /// Linger for the specified time (in milliseconds) before disconnecting.
+    Timeout(u32),
+}
+
+/// Direction of the connection
+#[derive(Clone, Eq, PartialEq, Debug)]
+pub enum Direction {
+    /// Connection listens for incoming connections
+    Inbound,
+    /// Connection establishes an outbound connection
+    Outbound,
+}

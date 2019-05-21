@@ -20,32 +20,21 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod i2p;
+pub mod connection;
+pub mod error;
 pub mod message;
+pub mod monitor;
 pub mod net_address;
-pub mod onion;
-pub mod p2p;
+pub mod peer_connection;
 pub mod types;
 pub mod zmq;
 
-use derive_error::Error;
-
 pub use self::{
+    connection::Connection,
+    error::ConnectionError,
     message::MessageError,
     net_address::{NetAddress, NetAddressError},
-    types::Result,
+    peer_connection::{PeerConnection, PeerConnectionContextBuilder, PeerConnectionError},
+    types::*,
+    zmq::{curve_keypair, Context, CurveEncryption, InprocAddress},
 };
-
-#[derive(Debug, Error)]
-pub enum ConnectionError {
-    NetAddressError(NetAddressError),
-    #[error(msg_embedded, no_from, non_std)]
-    SocketError(String),
-    /// Connection timed out
-    Timeout,
-    MessageError(MessageError),
-    #[error(msg_embedded, no_from, non_std)]
-    CurveKeypairError(String),
-}
-
-pub trait Connection {}

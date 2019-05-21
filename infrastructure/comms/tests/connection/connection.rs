@@ -23,7 +23,8 @@
 use crate::support::{self, utils as support_utils};
 use std::time::Duration;
 use tari_comms::connection::{
-    p2p::{connection::Connection, Direction},
+    connection::Connection,
+    types::Direction,
     zmq::{curve_keypair, Context, CurveEncryption, InprocAddress},
     ConnectionError,
 };
@@ -65,7 +66,7 @@ fn inbound_recv_send_inproc() {
         ])
         .run(ctx.clone());
 
-    let frames = conn.receive(1000).unwrap();
+    let frames = conn.receive(200).unwrap();
     assert_eq!(frames.len(), 4);
     assert_eq!("boba".as_bytes(), frames[0].as_slice());
     assert_eq!("Just".as_bytes(), frames[1].as_slice());
@@ -75,14 +76,14 @@ fn inbound_recv_send_inproc() {
     conn.send(&["boba", "OK"]).unwrap();
 
     // Wait for pattern to exit
-    signal.recv_timeout(Duration::from_millis(200)).unwrap();
+    signal.recv_timeout(Duration::from_millis(10)).unwrap();
 }
 
 #[test]
 fn inbound_recv_send_encrypted_tcp() {
     let ctx = Context::new();
 
-    let addr = support_utils::find_available_tcp_net_address("127.0.0.1", 20000..20100).unwrap();
+    let addr = support_utils::find_available_tcp_net_address("127.0.0.1").unwrap();
 
     let req_rep_pattern = support::comms_patterns::async_request_reply(Direction::Outbound);
 
@@ -100,13 +101,13 @@ fn inbound_recv_send_encrypted_tcp() {
         .set_send_data(vec![(0..255).map(|i| i as u8).collect::<Vec<_>>()])
         .run(ctx.clone());
 
-    let frames = conn.receive(1000).unwrap();
+    let frames = conn.receive(500).unwrap();
     assert_eq!(frames.len(), 2);
 
     conn.send(&["the dude", "OK"]).unwrap();
 
     // Wait for pattern to exit
-    signal.recv_timeout(Duration::from_millis(200)).unwrap();
+    signal.recv_timeout(Duration::from_millis(10)).unwrap();
 }
 
 #[test]
@@ -129,20 +130,20 @@ fn outbound_send_recv_inproc() {
 
     conn.send(&["identity"]).unwrap();
 
-    let frames = conn.receive(1000).unwrap();
+    let frames = conn.receive(500).unwrap();
 
     assert_eq!(1, frames.len());
     assert_eq!("OK", String::from_utf8_lossy(frames[0].as_slice()));
 
     // Wait for pattern to exit
-    signal.recv_timeout(Duration::from_millis(200)).unwrap();
+    signal.recv_timeout(Duration::from_millis(10)).unwrap();
 }
 
 #[test]
 fn outbound_send_recv_encrypted_tcp() {
     let ctx = Context::new();
 
-    let addr = support_utils::find_available_tcp_net_address("127.0.0.1", 20101..20200).unwrap();
+    let addr = support_utils::find_available_tcp_net_address("127.0.0.1").unwrap();
 
     let req_rep_pattern = support::comms_patterns::async_request_reply(Direction::Inbound);
 
@@ -167,11 +168,11 @@ fn outbound_send_recv_encrypted_tcp() {
 
     conn.send(&["identity"]).unwrap();
 
-    let frames = conn.receive(1000).unwrap();
+    let frames = conn.receive(2000).unwrap();
 
     assert_eq!(1, frames.len());
     assert_eq!("OK", String::from_utf8_lossy(frames[0].as_slice()));
 
     // Wait for pattern to exit
-    signal.recv_timeout(Duration::from_millis(200)).unwrap();
+    signal.recv_timeout(Duration::from_millis(10)).unwrap();
 }
