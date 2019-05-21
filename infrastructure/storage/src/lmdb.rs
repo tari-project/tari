@@ -98,7 +98,6 @@ impl LMDBBuilder {
 
 /// A Struct for holding state for the LMDB implementation of DataStore and BatchWrite. To create an instance of
 /// LMDBStore, use [LMDBBuilder](struct.lmdbbuilder.html).
-#[derive(Debug)]
 pub struct LMDBStore {
     pub(crate) env: Arc<lmdb::Environment>,
     pub(crate) databases: HashMap<String, Arc<lmdb::Database<'static>>>,
@@ -234,12 +233,11 @@ mod test {
         if std::fs::metadata(test_dir).is_ok() {
             assert!(fs::remove_dir_all(test_dir).is_ok());
         }
-        let msg;
-        if sys_info::os_type().unwrap().to_uppercase() == "WINDOWS" {
-            msg = "LMDB Error: The system cannot find the path specified.\r\n";
-        } else {
-            msg = "LMDB Error: No such file or directory";
-        }
+        let msg = match sys_info::os_type() {
+            Ok(ref msg) if msg.to_uppercase() == "WINDOWS" => "LMDB Error: The system cannot find the path specified.\r\n",
+            Ok(ref msg) if msg.to_uppercase() == "LINUX" || msg == "DARWIN" => "LMDB Error: No such file or directory",
+            _ => ":(",
+        };
         let builder = LMDBBuilder::new();
         match builder.set_mapsize(1).set_path(test_dir).build() {
             Err(DatastoreError::InternalError(s)) => assert_eq!(s, msg),
