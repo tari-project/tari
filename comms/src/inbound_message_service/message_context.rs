@@ -20,13 +20,15 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::inbound_message_service::{
-    comms_msg_handlers::determine_comms_msg_dispatch_type,
-    message_dispatcher::Dispatchable,
+use crate::{
+    connection::message::{FrameSet, MessageEnvelopeHeader, MessageError},
+    inbound_message_service::{
+        comms_msg_handlers::determine_comms_msg_dispatch_type,
+        message_dispatcher::Dispatchable,
+    },
 };
 use serde_derive::{Deserialize, Serialize};
 use std::convert::TryFrom;
-use tari_comms::connection::message::{FrameSet, MessageEnvelopeHeader, MessageError};
 use tari_crypto::keys::PublicKey;
 
 /// The number of frames required to construct a MessageContext
@@ -106,7 +108,7 @@ impl<PubKey: PublicKey> Dispatchable for MessageContext<PubKey> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use tari_comms::connection::message::{IdentityFlags, MessageEnvelopeHeader, NodeDestination};
+    use crate::connection::message::{IdentityFlags, MessageEnvelopeHeader, NodeDestination};
     use tari_crypto::{
         keys::{PublicKey, SecretKey},
         ristretto::{RistrettoPublicKey, RistrettoSecretKey},
