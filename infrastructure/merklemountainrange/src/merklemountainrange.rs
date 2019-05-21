@@ -22,28 +22,28 @@
 
 use crate::{
     error::MerkleMountainRangeError,
-    merklenode::{MerkleNode, ObjectHash},
+    merkle_change_tracker::MerkleChangeTracker,
+    merkle_storage::*,
+    merklenode::*,
     merkleproof::MerkleProof,
 };
 use digest::Digest;
+use serde::{de::DeserializeOwned, Serialize};
 use std::{collections::HashMap, marker::PhantomData};
+use tari_storage::keyvalue_store::*;
 use tari_utilities::Hashable;
-
-pub struct MerkleMountainRange<T, D>
-where
-    T: Hashable,
-    D: Digest,
-{
+pub struct MerkleMountainRange<T, D> {
     // todo convert these to a bitmap
     mmr: Vec<MerkleNode>,
-    data: HashMap<ObjectHash, T>,
+    data: HashMap<ObjectHash, MerkleObject<T>>,
     hasher: PhantomData<D>,
     current_peak_height: (usize, usize), // we store a tuple of peak height,index
+    change_tracker: MerkleChangeTracker,
 }
 
 impl<T, D> MerkleMountainRange<T, D>
 where
-    T: Hashable,
+    T: Hashable + Serialize + DeserializeOwned,
     D: Digest,
 {
     /// This function creates a new empty Merkle Mountain Range
@@ -53,13 +53,34 @@ where
             data: HashMap::new(),
             hasher: PhantomData,
             current_peak_height: (0, 0),
+            change_tracker: MerkleChangeTracker::new(),
         }
+    }
+
+    /// This allows the DB to store its data on a persistant meduim using the tari::keyvalue_store trait
+    /// store_prefix is the db file name prefix used for this mmr.
+    /// pruning horizon is how far changes are kept so that it can rewind.
+    pub fn init_persistance_store(&mut self, store_prefix: &str, pruning_horizon: usize) {
+        self.change_tracker.init(store_prefix, pruning_horizon)
+    }
+
+    /// This function saves the current state to the perseistance store
+    pub fn save_state(&mut self) -> Result<(), DatastoreError> {
+        Ok(())
+    }
+
+    pub(crate) fn get_data_object(&self, hash: ObjectHash) -> Option<&MerkleObject<T>> {
+        self.data.get(&hash)
     }
 
     /// This function returns a reference to the data stored in the mmr
     /// It will return none if the hash does not exist
     pub fn get_object(&self, hash: &ObjectHash) -> Option<&T> {
-        self.data.get(hash)
+        let object = self.data.get(hash);
+        if object.is_none() {
+            return None;
+        };
+        Some(&object.unwrap().object)
     }
 
     /// This function returns a reference to the data stored in the mmr
@@ -70,10 +91,10 @@ where
         }
         let index = get_object_index(object_index);
         let hash = &self.mmr[index].hash;
-        let data = self.data.get(hash);
+        let data = self.get_object(hash);
         match data {
             Some(value) => Ok(value),
-            None => Err(MerkleMountainRangeError::IndexOutOfBounds),
+            None => Err(MerkleMountainRangeError::ObjectNotFound),
         }
     }
 
@@ -285,12 +306,23 @@ where
         }
     }
 
+    /// This function applies all changes to disc
+    pub fn apply_checkpoint<S: MerkleStorage>(&mut self, store: &mut S) -> Result<(), MerkleStorageError> {
+        self.change_tracker.save(&mut self.data, &mut self.mmr, store)
+    }
+
+    /// This function applies all changes to disc
+    pub fn load_from_store<S: MerkleStorage>(&mut self, store: &mut S) -> Result<(), MerkleStorageError> {
+        self.change_tracker.load(&mut self.data, &mut self.mmr, store)
+    }
+
     /// This function adds a new leaf node to the mmr.
     pub fn push(&mut self, object: T) {
         let node_hash = object.hash();
-        let node = MerkleNode::new(node_hash.clone());
-        self.data.insert(node_hash, object);
-        self.mmr.push(node);
+        let node = MerkleObject::new(object, self.mmr.len());
+        self.data.insert(node_hash.clone(), node);
+        self.change_tracker.add_new_data(&node_hash);
+        self.mmr.push(MerkleNode::new(node_hash));
         if is_node_right(self.get_last_added_index()) {
             self.add_single_no_leaf(self.get_last_added_index())
         }
@@ -303,8 +335,7 @@ where
         hasher.input(&self.mmr[sibling_index(index)].hash);
         hasher.input(&self.mmr[index].hash);
         let new_hash = hasher.result().to_vec();
-        let new_node = MerkleNode::new(new_hash);
-        self.mmr.push(new_node);
+        self.mmr.push(MerkleNode::new(new_hash));
         if is_node_right(self.get_last_added_index()) {
             self.add_single_no_leaf(self.get_last_added_index())
         } else {
@@ -342,6 +373,32 @@ where
             self.find_bagging_indexes(height, new_index, peaks); // lets go look for more peaks
         }
     }
+
+    /// Mark an object as pruned, if the MMR can remove this safely it will
+    pub fn prune_object_hash(&mut self, hash: &ObjectHash) -> Result<(), MerkleMountainRangeError> {
+        let object = self.data.get_mut(hash);
+        if object.is_none() {
+            return Err(MerkleMountainRangeError::ObjectNotFound);
+        };
+        let object = object.unwrap();
+        self.mmr[object.vec_index].pruned = true;
+
+        self.data.remove(hash);
+        if self.change_tracker.enabled {
+            self.change_tracker.remove_data(hash);
+        };
+        Ok(())
+    }
+
+    /// Mark an object as pruned, if the MMR can remove this safely it will
+    pub fn prune_index(&mut self, node_index: usize) -> Result<(), MerkleMountainRangeError> {
+        if node_index > self.data.len() {
+            return Err(MerkleMountainRangeError::IndexOutOfBounds);
+        }
+        let index = get_object_index(node_index);
+        let hash = self.mmr[index].hash.clone();
+        self.prune_object_hash(&hash)
+    }
 }
 /// This function takes in the index and calculates the index of the sibling.
 pub fn sibling_index(node_index: usize) -> usize {
@@ -356,7 +413,7 @@ pub fn sibling_index(node_index: usize) -> usize {
 
 impl<T, D> From<Vec<T>> for MerkleMountainRange<T, D>
 where
-    T: Hashable,
+    T: Hashable + Serialize + DeserializeOwned,
     D: Digest,
 {
     fn from(items: Vec<T>) -> Self {
@@ -365,6 +422,7 @@ where
             data: HashMap::new(),
             hasher: PhantomData,
             current_peak_height: (0, 0),
+            change_tracker: MerkleChangeTracker::new(),
         };
         mmr.append(items);
         mmr
@@ -442,4 +500,55 @@ fn calculate_leaf_index_offset(index: usize, offset: usize) -> usize {
     let new_offset = offset + (height_index / 2);
     let new_index = index - (height_index / 2) - 1;
     calculate_leaf_index_offset(new_index, new_offset)
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+    use blake2::Blake2b;
+
+    pub struct IWrapper(u32);
+
+    impl Hashable for IWrapper {
+        fn hash(&self) -> Vec<u8> {
+            Blake2b::new().chain(self.0.to_le_bytes()).result().to_vec()
+        }
+    }
+
+    fn create_mmr(leaves: u32) -> MerkleMountainRange<IWrapper, Blake2b> {
+        let mut mmr: MerkleMountainRange<IWrapper, Blake2b> = MerkleMountainRange::new();
+        for i in 1..leaves + 1 {
+            let object: IWrapper = IWrapper(i);
+            mmr.push(object);
+        }
+        mmr
+    }
+
+    #[test]
+    fn test_inner_data_pruning_handling() {
+        let mut mmr = create_mmr(2);
+        assert_eq!(1, mmr.get_peak_height());
+        let hash0 = mmr.get_node_hash(0).unwrap();
+        let proof = mmr.get_hash_proof(&hash0);
+        let mut our_proof = MerkleProof::new();
+        for i in 0..3 {
+            our_proof.push(mmr.get_node_hash(i));
+        }
+        // test pruning
+        assert_eq!(mmr.get_object(&hash0).is_some(), true);
+        assert_eq!(mmr.get_data_object(hash0.clone()).is_some(), true);
+        assert_eq!(mmr.prune_object_hash(&hash0).is_ok(), true);
+        assert_eq!(mmr.get_data_object(hash0.clone()).is_some(), false);
+        assert_eq!(mmr.get_object(&hash0).is_some(), false);
+
+        let hash1 = mmr.get_node_hash(1).unwrap();
+        assert_eq!(mmr.get_object(&hash1).is_some(), true);
+        assert_eq!(mmr.get_data_object(hash1.clone()).is_some(), true);
+        assert_eq!(mmr.prune_object_hash(&hash1).is_ok(), true);
+        assert_eq!(mmr.get_object(&hash1).is_some(), false);
+        // both are now pruned, thus deleted
+        assert_eq!(mmr.get_data_object(hash1).is_none(), true);
+        assert_eq!(mmr.get_data_object(hash0).is_none(), true);
+    }
 }
