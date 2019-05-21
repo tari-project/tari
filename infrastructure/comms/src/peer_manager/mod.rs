@@ -23,7 +23,6 @@
 pub mod ban_list;
 pub mod liveness;
 pub mod manager;
-pub mod message;
 pub mod node_id;
 pub mod peer;
 pub mod routing_table;

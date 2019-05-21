@@ -8,7 +8,7 @@ members = [
     "base_layer/mining",
     "base_layer/p2p",
     "base_layer/wallet",
-    "common",
+    "comms",
     "digital_assets_layer/core",
     "infrastructure/comms",
     "infrastructure/crypto",

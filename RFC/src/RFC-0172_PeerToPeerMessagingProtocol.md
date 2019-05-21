@@ -555,13 +555,11 @@ A MessageDispatcher is responsible for:
 An example API may be:
 
 ```rust,compile_fail
-let dispatcher = MessageDispatcher::new()
+let dispatcher = MessageDispatcher::<MessageType>::new()
     .middleware(logger)
     .route(BlockchainMessageType::NewBlock, BlockHandlers::store_and_broadcast)
     ...
-    .route(NetMessageType::Ping, send_pong)
-    .catch_all(catch_all_handler)
-    .finish();
+    .route(NetMessageType::Ping, send_pong);
 
 inbound_msg_service.set_handler(dispatcher.handler);
 ```

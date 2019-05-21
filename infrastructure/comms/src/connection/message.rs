@@ -23,55 +23,78 @@
 use crate::peer_manager::node_id::*;
 use bitflags::*;
 use derive_error::Error;
-use serde_derive::{Deserialize, Serialize};
+use rmp_serde;
+use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
 use tari_crypto::keys::PublicKey;
-
-#[derive(Error, Debug)]
-pub enum MessageError {
-    /// Multipart message is malformed
-    MalformedMultipart,
-    /// Failed to deserialize message
-    DeserializeFailed,
-    // An error occurred serialising an object into binary
-    BinarySerializeError,
-    // An error occurred deserialising binary data into an object
-    BinaryDeserializeError,
-}
-
-bitflags! {
-    #[derive(Deserialize, Serialize)]
-    struct IdentityFlags: u8 {
-        const ENCRYPTED = 0b00000001;
-    }
-}
-
-#[derive(Debug, Deserialize, Serialize, PartialEq)]
-pub enum NodeDestination<PubKey>
-where PubKey: PublicKey
-{
-    Unknown,
-    PublicKey(PubKey),
-    NodeId(NodeId),
-}
-
-#[derive(Debug, Deserialize, Serialize, PartialEq)]
-pub struct MessageEnvelopeHeader<PubKey>
-where PubKey: PublicKey
-{
-    version: u8,
-    source: PubKey,
-    dest: NodeDestination<PubKey>,
-    signature: Vec<u8>,
-    flags: IdentityFlags,
-}
-
-const FRAMES_PER_MESSAGE: usize = 4;
 
 /// Represents a single message frame.
 pub type Frame = Vec<u8>;
 /// Represents a collection of frames which make up a multipart message.
 pub type FrameSet = Vec<Frame>;
+
+#[derive(Error, Debug)]
+pub enum MessageError {
+    /// Multipart message is malformed
+    MalformedMultipart,
+    /// Failed to serialize message
+    SerializeFailed,
+    /// Failed to deserialize message
+    DeserializeFailed,
+    /// An error occurred serialising an object into binary
+    BinarySerializeError,
+    /// An error occurred deserialising binary data into an object
+    BinaryDeserializeError,
+}
+
+bitflags! {
+    #[derive(Deserialize, Serialize)]
+    pub struct IdentityFlags: u8 {
+        const ENCRYPTED = 0b00000001;
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub enum NodeDestination<PubKey> {
+    Unknown,
+    PublicKey(PubKey),
+    NodeId(NodeId),
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct MessageEnvelopeHeader<PubKey> {
+    pub version: u8,
+    pub source: PubKey,
+    pub dest: NodeDestination<PubKey>,
+    pub signature: Vec<u8>,
+    pub flags: IdentityFlags,
+}
+
+impl<PubKey: PublicKey> MessageEnvelopeHeader<PubKey> {
+    /// Serialize a MessageEnvelopeHeader into a single frame
+    pub fn to_frame(&self) -> Result<Frame, MessageError> {
+        let mut buf: Vec<u8> = Vec::new();
+        match self.serialize(&mut rmp_serde::Serializer::new(&mut buf)) {
+            Ok(_) => Ok(buf.to_vec()),
+            Err(_) => Err(MessageError::SerializeFailed),
+        }
+    }
+}
+
+impl<PubKey: PublicKey> TryFrom<Frame> for MessageEnvelopeHeader<PubKey> {
+    type Error = MessageError;
+
+    /// Returns a MessageEnvelopeHeader from a Frame
+    fn try_from(frame: Frame) -> Result<Self, Self::Error> {
+        let mut de = rmp_serde::Deserializer::new(frame.as_slice());
+        match Deserialize::deserialize(&mut de) {
+            Ok(message_envelope_header) => Ok(message_envelope_header),
+            Err(_) => Err(MessageError::DeserializeFailed),
+        }
+    }
+}
+
+const FRAMES_PER_MESSAGE: usize = 4;
 
 /// Represents a message which is about to go on or has just come off the wire.
 pub struct MessageEnvelope {
