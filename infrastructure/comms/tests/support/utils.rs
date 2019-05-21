@@ -30,6 +30,8 @@ use tari_comms::connection::net_address::NetAddress;
 // should only be used by find_available_tcp_net_address
 static mut PORT_COUNTER: u16 = 20000;
 
+/// Search for an available port on the given host. After 100 searches give up.
+/// This function is not thread-safe.
 pub fn find_available_tcp_net_address(host: &str) -> Option<NetAddress> {
     // Try 100
     for _i in 0..100 {

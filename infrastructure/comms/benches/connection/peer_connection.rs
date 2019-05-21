@@ -26,6 +26,7 @@ use std::{
     iter::repeat,
     sync::mpsc::{channel, sync_channel, Sender, SyncSender},
     thread,
+    time::Duration,
 };
 use tari_comms::connection::{
     message::FrameSet,
@@ -140,10 +141,10 @@ fn bench_peer_connection(c: &mut Criterion) {
     let p2_ctx = build_context(&ctx, Direction::Outbound, &addr, &consumer2);
 
     // Start peer connections on either end
-    let mut p1 = PeerConnection::new();
+    let p1 = PeerConnection::new();
     p1.start(p1_ctx).unwrap();
 
-    let mut p2 = PeerConnection::new();
+    let p2 = PeerConnection::new();
     p2.start(p2_ctx).unwrap();
 
     let (done1_tx, done1_rx) = channel();
@@ -157,6 +158,9 @@ fn bench_peer_connection(c: &mut Criterion) {
     // Duplicates which won't be moved into the bench function
     let dup_signal1 = signal1.clone();
     let dup_signal2 = signal2.clone();
+
+    p1.wait_connected_or_failure(Duration::from_millis(1000)).unwrap();
+    p2.wait_connected_or_failure(Duration::from_millis(1000)).unwrap();
 
     c.bench_function("peer_connection: send/recv", move |b| {
         // Benchmark
@@ -180,4 +184,8 @@ fn bench_peer_connection(c: &mut Criterion) {
     dup_signal2.send(WorkerTask::Exit).unwrap();
 }
 
-criterion_group!(benches, bench_peer_connection);
+criterion_group!(
+    name = benches;
+    config = Criterion::default().warm_up_time(Duration::from_millis(500));
+    targets = bench_peer_connection,
+);

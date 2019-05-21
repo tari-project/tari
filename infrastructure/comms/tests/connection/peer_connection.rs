@@ -21,12 +21,18 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::support::utils::find_available_tcp_net_address;
+use std::{thread, time::Duration};
 use tari_comms::connection::{
-    connection::Connection,
-    peer_connection::PeerConnection,
-    types::Direction,
-    zmq::{curve_keypair, Context, CurveEncryption, InprocAddress},
+    curve_keypair,
+    Connection,
+    ConnectionError,
+    Context,
+    CurveEncryption,
+    Direction,
+    InprocAddress,
+    PeerConnection,
     PeerConnectionContextBuilder,
+    PeerConnectionError,
 };
 
 #[test]
@@ -37,24 +43,25 @@ fn connection_in() {
     let (server_sk, server_pk) = curve_keypair::generate().unwrap();
     let (client_sk, client_pk) = curve_keypair::generate().unwrap();
 
-    let receiver_addr = InprocAddress::random();
+    let consumer_addr = InprocAddress::random();
 
     // Initialize and start peer connection
     let context = PeerConnectionContextBuilder::new()
         .set_direction(Direction::Inbound)
         .set_context(&ctx)
-        .set_consumer_address(receiver_addr.clone())
+        .set_consumer_address(consumer_addr.clone())
         .set_curve_encryption(CurveEncryption::Server { secret_key: server_sk })
         .set_address(addr.clone())
         .build()
         .unwrap();
 
-    let mut conn = PeerConnection::new();
+    let conn = PeerConnection::new();
     conn.start(context).unwrap();
+    conn.wait_connected_or_failure(Duration::from_millis(1000)).unwrap();
 
-    // Connect the message receiver
-    let receiver = Connection::new(&ctx, Direction::Inbound)
-        .establish(&receiver_addr)
+    // Connect the message consumer
+    let consumer = Connection::new(&ctx, Direction::Inbound)
+        .establish(&consumer_addr)
         .unwrap();
 
     // Connect to the inbound connection and send a message
@@ -68,8 +75,8 @@ fn connection_in() {
         .unwrap();
     sender.send(&[&[123u8]]).unwrap();
 
-    // Receive the message from the receiver socket
-    let frames = receiver.receive(2000).unwrap();
+    // Receive the message from the consumersocket
+    let frames = consumer.receive(2000).unwrap();
     assert_eq!(vec![123u8], frames[1]);
 
     conn.send(vec![vec![111u8]]).unwrap();
@@ -86,7 +93,7 @@ fn connection_out() {
     let (server_sk, server_pk) = curve_keypair::generate().unwrap();
     let (client_sk, client_pk) = curve_keypair::generate().unwrap();
 
-    let receiver_addr = InprocAddress::random();
+    let consumer_addr = InprocAddress::random();
 
     // Connect to the sender (peer)
     let sender = Connection::new(&ctx, Direction::Inbound)
@@ -98,7 +105,7 @@ fn connection_out() {
     let context = PeerConnectionContextBuilder::new()
         .set_direction(Direction::Outbound)
         .set_context(&ctx)
-        .set_consumer_address(receiver_addr.clone())
+        .set_consumer_address(consumer_addr.clone())
         .set_curve_encryption(CurveEncryption::Client {
             server_public_key: server_pk,
             secret_key: client_sk,
@@ -108,15 +115,15 @@ fn connection_out() {
         .build()
         .unwrap();
 
-    let mut conn = PeerConnection::new();
+    let conn = PeerConnection::new();
 
     assert!(!conn.is_connected());
     conn.start(context).unwrap();
-    assert!(conn.is_connected());
+    conn.wait_connected_or_failure(Duration::from_millis(1000)).unwrap();
 
-    // Connect the message receiver
-    let receiver = Connection::new(&ctx, Direction::Inbound)
-        .establish(&receiver_addr)
+    // Connect the message consumer
+    let consumer = Connection::new(&ctx, Direction::Inbound)
+        .establish(&consumer_addr)
         .unwrap();
 
     conn.send(vec![vec![123u8]]).unwrap();
@@ -125,28 +132,169 @@ fn connection_out() {
     assert_eq!(data[1], vec![123u8]);
     sender.send(&[data[0].as_slice(), &[123u8]]).unwrap();
 
-    let frames = receiver.receive(100).unwrap();
+    let frames = consumer.receive(100).unwrap();
     assert_eq!(vec![123u8], frames[1]);
 }
 
 #[test]
-fn connection_shutdown() {
+fn connection_wait_connect_shutdown() {
     let addr = find_available_tcp_net_address("127.0.0.1").unwrap();
     let ctx = Context::new();
 
-    let receiver_addr = InprocAddress::random();
+    let receiver = Connection::new(&ctx, Direction::Inbound).establish(&addr).unwrap();
+
+    let consumer_addr = InprocAddress::random();
 
     let context = PeerConnectionContextBuilder::new()
         .set_direction(Direction::Outbound)
         .set_context(&ctx)
-        .set_consumer_address(receiver_addr.clone())
+        .set_consumer_address(consumer_addr.clone())
         .set_address(addr.clone())
         .build()
         .unwrap();
 
-    let mut conn = PeerConnection::new();
+    let conn = PeerConnection::new();
 
     assert!(!conn.is_connected());
     conn.start(context).unwrap();
-    assert!(conn.is_connected());
+
+    assert!(
+        conn.wait_connected_or_failure(Duration::from_millis(100)).is_ok(),
+        "Failed to connect in 100ms"
+    );
+
+    conn.shutdown().unwrap();
+
+    assert!(
+        conn.wait_disconnected(Duration::from_millis(100)).is_ok(),
+        "Failed to shut down in 100ms"
+    );
+
+    drop(receiver);
+}
+
+#[test]
+fn connection_wait_connect_failed() {
+    let addr = find_available_tcp_net_address("127.0.0.1").unwrap();
+    let ctx = Context::new();
+
+    let consumer_addr = InprocAddress::random();
+
+    // This has nothing to connect to
+    let context = PeerConnectionContextBuilder::new()
+        .set_direction(Direction::Outbound)
+        .set_max_retry_attempts(1)
+        .set_context(&ctx)
+        .set_consumer_address(consumer_addr.clone())
+        .set_address(addr.clone())
+        .build()
+        .unwrap();
+
+    let conn = PeerConnection::new();
+
+    assert!(!conn.is_connected());
+    conn.start(context).unwrap();
+
+    let err = conn.wait_connected_or_failure(Duration::from_millis(2000)).unwrap_err();
+
+    assert!(conn.is_failed());
+    match err {
+        ConnectionError::PeerError(err) => match err {
+            PeerConnectionError::ConnectFailed => {},
+            _ => panic!("Unexpected connection error '{}'", err),
+        },
+        _ => panic!("Unexpected connection error '{}'", err),
+    }
+}
+
+#[test]
+fn connection_pause_resume() {
+    let addr = find_available_tcp_net_address("127.0.0.1").unwrap();
+    let ctx = Context::new();
+
+    let consumer_addr = InprocAddress::random();
+
+    // Connect to the sender (peer)
+    let sender = Connection::new(&ctx, Direction::Outbound).establish(&addr).unwrap();
+
+    // Initialize and start peer connection
+    let context = PeerConnectionContextBuilder::new()
+        .set_direction(Direction::Inbound)
+        .set_context(&ctx)
+        .set_consumer_address(consumer_addr.clone())
+        .set_address(addr.clone())
+        .build()
+        .unwrap();
+
+    let conn = PeerConnection::new();
+
+    assert!(!conn.is_connected());
+    conn.start(context).unwrap();
+
+    conn.wait_connected_or_failure(Duration::from_millis(100)).unwrap();
+
+    // Connect the message consumer
+    let consumer = Connection::new(&ctx, Direction::Inbound)
+        .establish(&consumer_addr)
+        .unwrap();
+
+    sender.send(&[&[1u8]]).unwrap();
+
+    let frames = consumer.receive(200).unwrap();
+    assert_eq!(vec![1u8], frames[1]);
+
+    conn.wait_connected_or_failure(Duration::from_millis(100)).unwrap();
+
+    // Pause the connection
+    conn.pause().unwrap();
+
+    sender.send(&[&[2u8]]).unwrap();
+    sender.send(&[&[3u8]]).unwrap();
+    sender.send(&[&[4u8]]).unwrap();
+
+    let err = consumer.receive(100).unwrap_err();
+    assert!(err.is_timeout());
+
+    // Resume connection
+    conn.resume().unwrap();
+
+    // Should receive all the pending messages
+    let frames = consumer.receive(100).unwrap();
+    assert_eq!(vec![2u8], frames[1]);
+    let frames = consumer.receive(100).unwrap();
+    assert_eq!(vec![3u8], frames[1]);
+    let frames = consumer.receive(100).unwrap();
+    assert_eq!(vec![4u8], frames[1]);
+}
+
+#[test]
+fn connection_disconnect() {
+    let addr = find_available_tcp_net_address("127.0.0.1").unwrap();
+    let ctx = Context::new();
+
+    let consumer_addr = InprocAddress::random();
+
+    // Initialize and start peer connection
+    let context = PeerConnectionContextBuilder::new()
+        .set_direction(Direction::Inbound)
+        .set_context(&ctx)
+        .set_consumer_address(consumer_addr.clone())
+        .set_address(addr.clone())
+        .build()
+        .unwrap();
+
+    let conn = PeerConnection::new();
+    conn.start(context).unwrap();
+    conn.wait_connected_or_failure(Duration::from_millis(100)).unwrap();
+
+    {
+        // Connect to the inbound connection and send a message
+        let sender = Connection::new(&ctx, Direction::Outbound).establish(&addr).unwrap();
+        sender.send(&[&[123u8]]).unwrap();
+        // Without this pause, it's possible for the connection to drop before it
+        // has connected.
+        thread::sleep(Duration::from_millis(5));
+    }
+
+    conn.wait_disconnected(Duration::from_millis(2000)).unwrap();
 }

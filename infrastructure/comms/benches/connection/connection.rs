@@ -22,7 +22,7 @@
 
 use criterion::Criterion;
 
-use std::iter::repeat;
+use std::{iter::repeat, time::Duration};
 use tari_comms::connection::{Connection, Context, Direction, InprocAddress};
 
 /// Connection benchmark
@@ -51,4 +51,8 @@ fn bench_connection(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, bench_connection);
+criterion_group!(
+    name = benches;
+    config = Criterion::default().warm_up_time(Duration::from_millis(500));
+    targets = bench_connection,
+);

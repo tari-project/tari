@@ -27,12 +27,16 @@ use crate::connection::{message::FrameSet, Result};
 use super::PeerConnectionError;
 
 /// Control messages which are sent by PeerConnection to the underlying thread.
-#[derive(Debug, Clone)]
-pub(super) enum ControlMessage {
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum ControlMessage {
     /// Shut the thread down
     Shutdown,
     /// Send the given frames to the peer
     SendMsg(FrameSet),
+    /// Temporarily pause receiving messages from this connection
+    Pause,
+    /// Resume receiving messages from peer
+    Resume,
 }
 
 impl fmt::Display for ControlMessage {
