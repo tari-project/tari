@@ -41,6 +41,6 @@ pub enum PeerConnectionError {
     ShutdownError,
     /// Failed to establish a connection
     ConnectFailed,
-    /// An unexpected connection error occurred
-    UnexpectedConnectionError,
+    #[error(msg_embedded, non_std, no_from)]
+    UnexpectedConnectionError(String),
 }

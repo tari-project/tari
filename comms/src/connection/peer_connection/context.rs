@@ -22,7 +22,7 @@
 
 use std::convert::{TryFrom, TryInto};
 
-use super::PeerConnectionError;
+use super::{ConnectionId, PeerConnectionError};
 
 use crate::connection::{
     net_address::ip::SocketAddress,
@@ -56,6 +56,7 @@ pub struct PeerConnectionContext {
     pub(crate) peer_address: NetAddress,
     pub(crate) consumer_address: InprocAddress,
     pub(crate) direction: Direction,
+    pub(crate) id: ConnectionId,
     pub(crate) curve_encryption: CurveEncryption,
     pub(crate) max_msg_size: u64,
     pub(crate) max_retry_attempts: u16,
@@ -73,6 +74,7 @@ impl<'a> TryFrom<PeerConnectionContextBuilder<'a>> for PeerConnectionContext {
         let context = unwrap_prop(builder.context, "context")?.clone();
         let curve_encryption = builder.curve_encryption;
         let direction = unwrap_prop(builder.direction, "direction")?;
+        let id = unwrap_prop(builder.id, "id")?;
         let max_msg_size = builder.max_msg_size.unwrap_or(DEFAULT_MAX_MSG_SIZE);
         let max_retry_attempts = builder.max_retry_attempts.unwrap_or(DEFAULT_MAX_RETRY_ATTEMPTS);
         let peer_address = unwrap_prop(builder.address, "peer_address")?;
@@ -83,6 +85,7 @@ impl<'a> TryFrom<PeerConnectionContextBuilder<'a>> for PeerConnectionContext {
             context,
             curve_encryption,
             direction,
+            id,
             max_msg_size,
             max_retry_attempts,
             peer_address,
@@ -119,6 +122,7 @@ fn unwrap_prop<T>(prop: Option<T>, prop_name: &str) -> Result<T> {
 /// let ctx = Context::new();
 ///
 /// let peer_context = PeerConnectionContextBuilder::new()
+///    .set_id("123")
 ///    .set_context(&ctx)
 ///    .set_direction(Direction::Outbound)
 ///    .set_consumer_address(InprocAddress::random())
@@ -130,11 +134,12 @@ fn unwrap_prop<T>(prop: Option<T>, prop_name: &str) -> Result<T> {
 /// [PeerConnectionContext]: ./struct.PeerConnectionContext.html
 #[derive(Default)]
 pub struct PeerConnectionContextBuilder<'a> {
-    pub(super) context: Option<&'a Context>,
-    pub(super) direction: Option<Direction>,
     pub(super) address: Option<NetAddress>,
     pub(super) consumer_address: Option<InprocAddress>,
+    pub(super) context: Option<&'a Context>,
     pub(super) curve_encryption: CurveEncryption,
+    pub(super) direction: Option<Direction>,
+    pub(super) id: Option<ConnectionId>,
     pub(super) max_msg_size: Option<u64>,
     pub(super) max_retry_attempts: Option<u16>,
     pub(super) socks_address: Option<SocketAddress>,
@@ -172,6 +177,12 @@ impl<'a> PeerConnectionContextBuilder<'a> {
     /// Set CurveEncryption. Defaults to the default of CurveEncryption.
     pub fn set_curve_encryption(mut self, enc: CurveEncryption) -> Self {
         self.curve_encryption = enc;
+        self
+    }
+
+    pub fn set_id<T>(mut self, id: T) -> Self
+    where T: AsRef<[u8]> {
+        self.id = Some(id.as_ref().to_vec());
         self
     }
 
@@ -248,9 +259,11 @@ mod test {
 
         let recv_addr = InprocAddress::random();
         let peer_addr = "127.0.0.1:80".parse::<NetAddress>().unwrap();
+        let conn_id = "123".as_bytes();
         let socks_addr = "127.0.0.1:8080".parse::<SocketAddress>().unwrap();
 
         let peer_ctx = PeerConnectionContextBuilder::new()
+            .set_id(conn_id.clone())
             .set_direction(Direction::Inbound)
             .set_context(&ctx)
             .set_socks_proxy(socks_addr.clone())
@@ -259,6 +272,7 @@ mod test {
             .build()
             .unwrap();
 
+        assert_eq!(conn_id.to_vec(), peer_ctx.id);
         assert_eq!(recv_addr, peer_ctx.consumer_address);
         assert_eq!(Direction::Inbound, peer_ctx.direction);
         assert_eq!(peer_addr, peer_ctx.peer_address);
@@ -271,6 +285,7 @@ mod test {
         let ctx = Context::new();
 
         let result = PeerConnectionContextBuilder::new()
+            .set_id("123")
             .set_direction(Direction::Outbound)
             .set_consumer_address(InprocAddress::random())
             .set_address("127.0.0.1:80".parse().unwrap())
@@ -279,6 +294,7 @@ mod test {
         assert_initialization_error(result, "Missing required connection property 'context'");
 
         let result = PeerConnectionContextBuilder::new()
+            .set_id("123")
             .set_direction(Direction::Inbound)
             .set_context(&ctx)
             .set_consumer_address(InprocAddress::random())
@@ -293,6 +309,7 @@ mod test {
         assert_initialization_error(result, "'Server' curve encryption required for inbound connection");
 
         let result = PeerConnectionContextBuilder::new()
+            .set_id("123")
             .set_direction(Direction::Outbound)
             .set_context(&ctx)
             .set_consumer_address(InprocAddress::random())
