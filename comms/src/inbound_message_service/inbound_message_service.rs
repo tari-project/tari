@@ -20,17 +20,19 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::inbound_message_service::{
-    message_context::MessageContext,
-    message_dispatcher::MessageDispatcher,
-    msg_processing_worker::*,
+use crate::{
+    connection::{
+        types::SocketType,
+        zmq::{Context, InprocAddress, ZmqEndpoint, ZmqError},
+        ConnectionError,
+    },
+    inbound_message_service::{
+        message_context::MessageContext,
+        message_dispatcher::MessageDispatcher,
+        msg_processing_worker::*,
+    },
 };
 use std::{marker::Send, thread};
-use tari_comms::connection::{
-    types::SocketType,
-    zmq::{Context, InprocAddress, ZmqEndpoint, ZmqError},
-    ConnectionError,
-};
 use tari_crypto::keys::PublicKey;
 
 /// As DealerError is handled in a thread it needs to be written to the error log
@@ -123,13 +125,15 @@ impl<PubKey: PublicKey + Send + 'static> InboundMessageService<PubKey> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::inbound_message_service::{comms_msg_handlers::*, message_dispatcher::DispatchError};
-    use std::thread::ThreadId;
-    use tari_comms::connection::{
-        connection::EstablishedConnection,
-        message::{IdentityFlags, MessageEnvelopeHeader, NodeDestination},
-        zmq::{Context, InprocAddress, ZmqEndpoint},
+    use crate::{
+        connection::{
+            connection::EstablishedConnection,
+            message::{IdentityFlags, MessageEnvelopeHeader, NodeDestination},
+            zmq::{Context, InprocAddress, ZmqEndpoint},
+        },
+        inbound_message_service::{comms_msg_handlers::*, message_dispatcher::DispatchError},
     };
+    use std::thread::ThreadId;
     use tari_crypto::{
         keys::{PublicKey, SecretKey},
         ristretto::{RistrettoPublicKey, RistrettoSecretKey},

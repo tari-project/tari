@@ -20,13 +20,15 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::inbound_message_service::message_dispatcher::{Dispatchable, MessageDispatcher};
-use std::{convert::TryFrom, marker::Send, thread};
-use tari_comms::connection::{
-    message::FrameSet,
-    types::SocketType,
-    zmq::{Context, InprocAddress, ZmqEndpoint, ZmqError},
+use crate::{
+    connection::{
+        message::FrameSet,
+        types::SocketType,
+        zmq::{Context, InprocAddress, ZmqEndpoint, ZmqError},
+    },
+    inbound_message_service::message_dispatcher::{Dispatchable, MessageDispatcher},
 };
+use std::{convert::TryFrom, marker::Send, thread};
 use tari_crypto::keys::PublicKey;
 
 /// As DealerError is handled in a thread it needs to be written to the error log
@@ -127,9 +129,11 @@ impl<PubKey: PublicKey + Send + 'static, DispMsg: Dispatchable + TryFrom<FrameSe
 mod test {
     use super::*;
 
-    use crate::inbound_message_service::message_dispatcher::{DispatchError, Dispatchable};
+    use crate::{
+        connection::{connection::EstablishedConnection, MessageError},
+        inbound_message_service::message_dispatcher::{DispatchError, Dispatchable},
+    };
     use std::time;
-    use tari_comms::connection::{connection::EstablishedConnection, MessageError};
     use tari_crypto::{
         keys::{PublicKey, SecretKey},
         ristretto::{RistrettoPublicKey, RistrettoSecretKey},

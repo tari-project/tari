@@ -293,7 +293,7 @@ fn connection_disconnect() {
         sender.send(&[&[123u8]]).unwrap();
         // Without this pause, it's possible for the connection to drop before it
         // has connected.
-        thread::sleep(Duration::from_millis(5));
+        thread::sleep(Duration::from_millis(50));
     }
 
     conn.wait_disconnected(Duration::from_millis(2000)).unwrap();
