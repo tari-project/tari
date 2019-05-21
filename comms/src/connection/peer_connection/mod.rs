@@ -36,7 +36,7 @@
 /// A [PeerConnection] consists of these modules:
 ///
 /// 1. `connection` - responsible for starting and sending control messages to the PeerConnection
-///                   worker thread. This has a
+///                   worker thread.
 /// 2. `context` - Builder for a `PeerConnectionContext` which is owned by a PeerConnection worker
 ///                thread. This provides all the information required to create the underlying
 ///                connections to the peer and consumer.
@@ -62,12 +62,12 @@
 /// |     Connecting     |       |         |                  |
 /// |                    |-      |         +------------------+
 /// +---------|----------+ \ +-----+       +------------------+
-///          |              |     |       |                  |
-///          |              |     |-------+  Disconnected    |
-/// Accepted / Connected     |     |       |                  |
-///          |             /+-----+       +------------------+
-///          |            /     |         +------------------+
-///          |           /      |         |                  |
+///           |              |     |       |                  |
+///           |              |     |-------+  Disconnected    |
+///  Accepted / Connected    |     |       |                  |
+///           |             /+-----+       +------------------+
+///           |            /     |         +------------------+
+///           |           /      |         |                  |
 /// +---------------------       |         |     Failed       |
 /// |                    |       +----------                  |
 /// |     Connected      |                 +------------------+
@@ -86,6 +86,8 @@ mod context;
 mod control;
 mod error;
 mod worker;
+
+pub type ConnectionId = super::message::Frame;
 
 pub use self::{
     connection::PeerConnection,

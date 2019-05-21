@@ -21,7 +21,11 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    sync::mpsc::{sync_channel, Receiver, RecvTimeoutError, SyncSender},
+    sync::{
+        mpsc::{sync_channel, Receiver, RecvTimeoutError, SyncSender},
+        Arc,
+        RwLock,
+    },
     thread,
     time::Duration,
 };
@@ -41,7 +45,6 @@ use crate::connection::{
     InprocAddress,
     Result,
 };
-use std::sync::{Arc, RwLock};
 
 /// Send HWM for peer connections
 const PEER_CONNECTION_SEND_HWM: i32 = 10;
@@ -138,7 +141,7 @@ impl Worker {
                 // Loop failed, update the connection state to reflect that
                 *lock = match err {
                     ConnectionError::PeerError(err) => PeerConnectionState::Failed(err),
-                    _ => PeerConnectionState::Failed(PeerConnectionError::UnexpectedConnectionError),
+                    e => PeerConnectionState::Failed(PeerConnectionError::UnexpectedConnectionError(format!("{}", e))),
                 };
             },
         }
@@ -241,24 +244,37 @@ impl Worker {
         if let Some(frames) = try_recv!(frontend.receive(10)) {
             match context.direction {
                 // For a ROUTER backend, the first frame is the identity
-                Direction::Inbound => {
-                    match self.identity {
-                        Some(ref ident) => {
-                            if frames[0] != *ident {
-                                return Err(PeerConnectionError::UnexpectedIdentity.into());
-                            }
-                        },
-                        None => {
-                            self.identity = Some(frames[0].clone());
-                        },
-                    }
-
-                    backend.send(&frames[1..])?;
+                Direction::Inbound => match self.identity {
+                    Some(ref ident) => {
+                        if frames[0] != *ident {
+                            return Err(PeerConnectionError::UnexpectedIdentity.into());
+                        }
+                    },
+                    None => {
+                        self.identity = Some(frames[0].clone());
+                    },
                 },
-                Direction::Outbound => backend.send(frames)?,
+                Direction::Outbound => {},
             }
+
+            let payload = self.construct_consumer_payload(frames);
+            backend.send(&payload)?;
         }
         Ok(())
+    }
+
+    fn construct_consumer_payload(&self, frames: FrameSet) -> FrameSet {
+        let mut payload = vec![];
+        payload.push(self.context.id.clone());
+        match self.context.direction {
+            Direction::Inbound => {
+                payload.extend_from_slice(&frames[1..]);
+            },
+            Direction::Outbound => {
+                payload.extend_from_slice(&frames);
+            },
+        }
+        payload
     }
 
     /// Creates the payload to be sent to the underlying connection

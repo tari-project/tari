@@ -9,17 +9,17 @@ version = "0.0.1"
 edition = "2018"
 
 [dependencies]
+bitflags ="1.0.4"
+chrono ="0.4.6"
 clear_on_drop = "0.2.3"
 derive-error = "0.0.4"
 rand = "0.5.5"
+rmp-serde = "0.13.7"
+serde = "1.0.90"
+serde_derive = "1.0.90"
 tari_crypto = { path = "../infrastructure/crypto"}
 tari_utilities = { path = "../infrastructure/tari_util"}
 zmq = "0.9"
-chrono ="0.4.6"
-bitflags ="1.0.4"
-serde = "1.0.90"
-serde_derive = "1.0.90"
-rmp-serde = "0.13.7"
 
 [dev-dependencies]
 criterion = "0.2"

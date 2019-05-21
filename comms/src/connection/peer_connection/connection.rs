@@ -108,6 +108,7 @@ macro_rules! is_state {
 /// let addr: NetAddress = "127.0.0.1:8080".parse().unwrap();
 ///
 /// let peer_context = PeerConnectionContextBuilder::new()
+///    .set_id("123")
 ///    .set_context(&ctx)
 ///    .set_direction(Direction::Outbound)
 ///    .set_consumer_address(InprocAddress::random())

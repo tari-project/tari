@@ -47,6 +47,7 @@ fn connection_in() {
 
     // Initialize and start peer connection
     let context = PeerConnectionContextBuilder::new()
+        .set_id("123")
         .set_direction(Direction::Inbound)
         .set_context(&ctx)
         .set_consumer_address(consumer_addr.clone())
@@ -73,11 +74,12 @@ fn connection_in() {
         })
         .establish(&addr)
         .unwrap();
-    sender.send(&[&[123u8]]).unwrap();
+    sender.send(&[&[1u8]]).unwrap();
 
-    // Receive the message from the consumersocket
+    // Receive the message from the consumer socket
     let frames = consumer.receive(2000).unwrap();
-    assert_eq!(vec![123u8], frames[1]);
+    assert_eq!("123".as_bytes().to_vec(), frames[1]);
+    assert_eq!(vec![1u8], frames[2]);
 
     conn.send(vec![vec![111u8]]).unwrap();
 
@@ -101,8 +103,11 @@ fn connection_out() {
         .establish(&addr)
         .unwrap();
 
+    let conn_id = "123".as_bytes();
+
     // Initialize and start peer connection
     let context = PeerConnectionContextBuilder::new()
+        .set_id(conn_id.clone())
         .set_direction(Direction::Outbound)
         .set_context(&ctx)
         .set_consumer_address(consumer_addr.clone())
@@ -129,11 +134,12 @@ fn connection_out() {
     conn.send(vec![vec![123u8]]).unwrap();
 
     let data = sender.receive(2000).unwrap();
-    assert_eq!(data[1], vec![123u8]);
+    assert_eq!(vec![123u8], data[1]);
     sender.send(&[data[0].as_slice(), &[123u8]]).unwrap();
 
     let frames = consumer.receive(100).unwrap();
-    assert_eq!(vec![123u8], frames[1]);
+    assert_eq!(conn_id.to_vec(), frames[1]);
+    assert_eq!(vec![123u8], frames[2]);
 }
 
 #[test]
@@ -146,6 +152,7 @@ fn connection_wait_connect_shutdown() {
     let consumer_addr = InprocAddress::random();
 
     let context = PeerConnectionContextBuilder::new()
+        .set_id("123")
         .set_direction(Direction::Outbound)
         .set_context(&ctx)
         .set_consumer_address(consumer_addr.clone())
@@ -182,6 +189,7 @@ fn connection_wait_connect_failed() {
 
     // This has nothing to connect to
     let context = PeerConnectionContextBuilder::new()
+        .set_id("123")
         .set_direction(Direction::Outbound)
         .set_max_retry_attempts(1)
         .set_context(&ctx)
@@ -216,9 +224,11 @@ fn connection_pause_resume() {
 
     // Connect to the sender (peer)
     let sender = Connection::new(&ctx, Direction::Outbound).establish(&addr).unwrap();
+    let conn_id = "123".as_bytes();
 
     // Initialize and start peer connection
     let context = PeerConnectionContextBuilder::new()
+        .set_id(conn_id.clone())
         .set_direction(Direction::Inbound)
         .set_context(&ctx)
         .set_consumer_address(consumer_addr.clone())
@@ -231,7 +241,7 @@ fn connection_pause_resume() {
     assert!(!conn.is_connected());
     conn.start(context).unwrap();
 
-    conn.wait_connected_or_failure(Duration::from_millis(100)).unwrap();
+    conn.wait_connected_or_failure(Duration::from_millis(2000)).unwrap();
 
     // Connect the message consumer
     let consumer = Connection::new(&ctx, Direction::Inbound)
@@ -241,9 +251,8 @@ fn connection_pause_resume() {
     sender.send(&[&[1u8]]).unwrap();
 
     let frames = consumer.receive(200).unwrap();
-    assert_eq!(vec![1u8], frames[1]);
-
-    conn.wait_connected_or_failure(Duration::from_millis(100)).unwrap();
+    assert_eq!(conn_id.to_vec(), frames[1]);
+    assert_eq!(vec![1u8], frames[2]);
 
     // Pause the connection
     conn.pause().unwrap();
@@ -260,11 +269,11 @@ fn connection_pause_resume() {
 
     // Should receive all the pending messages
     let frames = consumer.receive(100).unwrap();
-    assert_eq!(vec![2u8], frames[1]);
+    assert_eq!(vec![2u8], frames[2]);
     let frames = consumer.receive(100).unwrap();
-    assert_eq!(vec![3u8], frames[1]);
+    assert_eq!(vec![3u8], frames[2]);
     let frames = consumer.receive(100).unwrap();
-    assert_eq!(vec![4u8], frames[1]);
+    assert_eq!(vec![4u8], frames[2]);
 }
 
 #[test]
@@ -276,6 +285,7 @@ fn connection_disconnect() {
 
     // Initialize and start peer connection
     let context = PeerConnectionContextBuilder::new()
+        .set_id("123")
         .set_direction(Direction::Inbound)
         .set_context(&ctx)
         .set_consumer_address(consumer_addr.clone())
@@ -285,7 +295,7 @@ fn connection_disconnect() {
 
     let conn = PeerConnection::new();
     conn.start(context).unwrap();
-    conn.wait_connected_or_failure(Duration::from_millis(100)).unwrap();
+    conn.wait_connected_or_failure(Duration::from_millis(1000)).unwrap();
 
     {
         // Connect to the inbound connection and send a message
