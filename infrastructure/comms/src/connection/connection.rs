@@ -239,7 +239,7 @@ impl<'a> Connection<'a> {
 
 /// Represents an established connection.
 pub struct EstablishedConnection {
-    socket: zmq::Socket,
+    pub socket: zmq::Socket,
 }
 
 impl EstablishedConnection {
