@@ -30,7 +30,6 @@ use crate::{
 use digest::Digest;
 use serde::{de::DeserializeOwned, Serialize};
 use std::{collections::HashMap, marker::PhantomData};
-use tari_storage::keyvalue_store::*;
 use tari_utilities::Hashable;
 pub struct MerkleMountainRange<T, D> {
     // todo convert these to a bitmap
@@ -62,10 +61,6 @@ where
     /// pruning horizon is how far changes are kept so that it can rewind.
     pub fn init_persistance_store(&mut self, store_prefix: &str, pruning_horizon: usize) {
         self.change_tracker.init(store_prefix, pruning_horizon)
-    }
-
-    pub(crate) fn get_data_object(&self, hash: ObjectHash) -> Option<&MerkleObject<T>> {
-        self.data.get(&hash)
     }
 
     /// This function returns a reference to the data stored in the mmr
@@ -310,6 +305,8 @@ where
     pub fn load_from_store<S: MerkleStorage>(&mut self, store: &mut S) -> Result<(), MerkleStorageError> {
         self.change_tracker.load(&mut self.data, &mut self.mmr, store)?;
         self.current_peak_height = self.calc_peak_height(); // calculate cached height after loading in data
+        dbg!(&self.current_peak_height);
+        dbg!(&self.mmr.len());
         Ok(())
     }
 
@@ -323,6 +320,7 @@ where
         if is_node_right(self.get_last_added_index()) {
             self.add_single_no_leaf(self.get_last_added_index())
         }
+        dbg!(&self.mmr.len());
     }
 
     // This function adds non leaf nodes, eg nodes that are not directly a hash of data
@@ -536,18 +534,18 @@ mod tests {
         }
         // test pruning
         assert_eq!(mmr.get_object(&hash0).is_some(), true);
-        assert_eq!(mmr.get_data_object(hash0.clone()).is_some(), true);
+        assert_eq!(mmr.data.get(&hash0).is_some(), true);
         assert_eq!(mmr.prune_object_hash(&hash0).is_ok(), true);
-        assert_eq!(mmr.get_data_object(hash0.clone()).is_some(), false);
+        assert_eq!(mmr.data.get(&hash0).is_some(), false);
         assert_eq!(mmr.get_object(&hash0).is_some(), false);
 
         let hash1 = mmr.get_node_hash(1).unwrap();
         assert_eq!(mmr.get_object(&hash1).is_some(), true);
-        assert_eq!(mmr.get_data_object(hash1.clone()).is_some(), true);
+        assert_eq!(mmr.data.get(&hash1).is_some(), true);
         assert_eq!(mmr.prune_object_hash(&hash1).is_ok(), true);
         assert_eq!(mmr.get_object(&hash1).is_some(), false);
         // both are now pruned, thus deleted
-        assert_eq!(mmr.get_data_object(hash1).is_none(), true);
-        assert_eq!(mmr.get_data_object(hash0).is_none(), true);
+        assert_eq!(mmr.data.get(&hash1).is_none(), true);
+        assert_eq!(mmr.data.get(&hash0).is_none(), true);
     }
 }
