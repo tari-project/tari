@@ -59,6 +59,7 @@ pub trait MerkleStorage {
     fn delete(&mut self, id: &str, database: &str) -> Result<(), MerkleStorageError>;
 }
 
+// todo add feature flags so this does not get added if you dont want our lmdb
 impl MerkleStorage for LMDBStore {
     fn store<T: Serialize>(&mut self, id: &str, database: &str, object: &T) -> Result<(), MerkleStorageError> {
         self.connect(database)

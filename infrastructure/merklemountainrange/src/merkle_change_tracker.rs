@@ -120,9 +120,9 @@ impl MerkleChangeTracker {
             return Ok(());
         }
         self.current_horizon += 1;
-        let inc_index = self.current_horizon - self.pruning_horizon;
+        let inc_index = self.current_horizon as i64 - self.pruning_horizon as i64;
         if inc_index > 0 {
-            self.inc_pruning_hor(inc_index, hashmap, store)?
+            self.inc_pruning_hor(inc_index as usize, hashmap, store)?
         }
 
         let mut checkpoint = MerkleCheckPoint {
@@ -130,6 +130,7 @@ impl MerkleChangeTracker {
             objects_to_del: Vec::new(),
             mmr_to_add: Vec::new(),
         };
+
         checkpoint.objects_to_add.extend(self.objects_to_save.drain(..));
         for hash in &checkpoint.objects_to_add {
             let object = hashmap.get(hash);
@@ -140,18 +141,13 @@ impl MerkleChangeTracker {
             let _result = store.store(&to_hex(hash), &self.object_key, object)?;
         }
         checkpoint.objects_to_del.extend(self.objects_to_del.drain(..));
-        let mut counter = self.tree_saved + 1;
+        let mut counter = self.tree_saved;
         while counter < mmr.len() {
             checkpoint.mmr_to_add.push(mmr[counter].clone());
             counter += 1;
         }
-
         let _result = store.store(&(self.current_horizon).to_string(), &self.mmr_key, &checkpoint)?;
-        let _result = store.store(
-            &(self.current_horizon).to_string(),
-            &self.init_key,
-            &self.current_horizon,
-        )?;
+        let _result = store.store(&("init").to_string(), &self.init_key, &self.current_horizon)?;
         self.tree_saved = counter - 1;
 
         Ok(())
@@ -180,7 +176,7 @@ impl MerkleChangeTracker {
         Ok(())
     }
 
-    /// Function to load a checkpoint
+    /// Function to load an mmr
     pub fn load<T, S: MerkleStorage>(
         &mut self,
         hashmap: &mut HashMap<ObjectHash, MerkleObject<T>>,
@@ -193,17 +189,17 @@ impl MerkleChangeTracker {
         if !self.enabled {
             return Ok(());
         }
-
-        let amount_of_cps = store.load::<usize>(&(self.current_horizon).to_string(), &self.init_key)?;
+        let amount_of_cps = store.load::<usize>(&("init").to_string(), &self.init_key)?;
         self.current_horizon = if (amount_of_cps as i64 - self.pruning_horizon as i64) >= 0 {
             amount_of_cps - self.pruning_horizon
         } else {
-            0
+            1
         };
 
         while self.current_horizon <= amount_of_cps {
             let mut cp = store.load::<MerkleCheckPoint>(&self.current_horizon.to_string(), &self.mmr_key)?;
-            self.apply_cp(&mut cp, hashmap, mmr, store)?
+            self.apply_cp(&mut cp, hashmap, mmr, store)?;
+            self.current_horizon += 1;
         }
         Ok(())
     }

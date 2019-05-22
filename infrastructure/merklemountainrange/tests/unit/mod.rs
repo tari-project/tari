@@ -22,3 +22,4 @@
 
 mod examples;
 mod mmr;
+mod mmr_storage;
