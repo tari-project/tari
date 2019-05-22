@@ -59,12 +59,12 @@ This document will describe the process an [Asset Issuer] (AI) will go through i
 ## Description
 
 ### Abstract
-[Digital Asset]s (DAs) are managed by [committee]s of nodes called [Validator Node]s (VNs), as described in [RFC-0300](RFC-0300_DAN.md) and [RFC-0302](RFC-0302_ValidatorNodes.md). During the asset creation process, described in [RFC-0341](RFC-0341_AssetRegistration.md), the [Asset Issuer] (AI) needs to select a committee of VNs to manage their asset. This process consists of the following steps:
+[Digital Asset]s (DAs) are managed by [committee]s of nodes called [Validator Node]s (VNs), as described in [RFC-0300](RFC-0300_DAN.md) and [RFC-0302](RFC-0302_ValidatorNodes.md). During the asset creation process, described in [RFC-0341](RFC-0341_AssetRegistration.md), the [Asset Issuer] (AI) MUST select a committee of VNs to manage their asset. This process consists of the following steps:
 
-1. Candidate VNs need to be nominated to be considered for selection by the AI.
-2. The AI must employ a [CommitteeSelectionStrategy] to select VNs from the set of nominated candidates.
-3. The AI makes an offer of committee membership to the selected VNs.
-4. Selected VNs may accept the offer to become part of the committee by posting the required [AssetCollateral].
+1. Candidate VNs MUST be nominated to be considered for selection by the AI.
+2. The AI MUST employ a [CommitteeSelectionStrategy] to select VNs from the set of nominated candidates.
+3. The AI MUST make an offer of committee membership to the selected VNs.
+4. Selected VNs MAY accept the offer to become part of the committee by posting the required [AssetCollateral].
 
 ### Nomination
 The first step in assembling a committee is to nominate candidate VNs. As described in [RFC-0311](RFC-0311_AssetTemplates.md) an asset can be created with two possible `committee_modes`: `CREATOR_NOMINATION` or `PUBLIC_NOMINATION`.

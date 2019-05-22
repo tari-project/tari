@@ -64,7 +64,8 @@ This document will describe the process an [Asset Issuer] (AI) will go through i
 - commence operation of the (DA) on the [Digital Asset Network] (DAN).
 
 ### Asset creation instruction
-The first step in registering and commencing the operation of an asset is for the AI to issue an asset creation transaction to the [base layer].
+The first step in registering and commencing the operation of an asset is that the AI MUST issue an asset creation transaction to the [base layer].
+
 This transaction will be time-locked for the length of the desired nomination period. This ensures that this transaction cannot be spent until the nomination period has elapsed so that it is present during the entire nomination process. The value of the transaction will be the `asset_creation_fee` described in [RFC-0311](RFC-0311_AssetTemplates.md). The AI will spend the transaction back to themselves but locking this fee up at this stage achieves 2 goals. Firstly, it makes it expensive to spam the network with asset creation transactions that a malicious AI does not intend to complete. Secondly, it proves to the VNs that participate in the nomination process that the AI does indeed have the funds required to commence operation of the asset once the committee has been selected. If the asset registration process fails, for example if there are not enough available VNs for the committee, then the AI can refund the fee to themselves after the time-lock expires.
 
 The transaction will contain the following extra metadata to facilitate the registration process:
