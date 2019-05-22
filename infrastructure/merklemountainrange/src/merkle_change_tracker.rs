@@ -39,7 +39,9 @@ pub(crate) struct MerkleChangeTracker {
     init_key: String,
 }
 
-/// This struct is used as a data struct summarizing all changes in a checkpoint.
+/// This struct is used as a temporary data struct summarizing all changes in a checkpoint.
+/// It saves all the changes made to the MMR as a diff before dumping it to disc. This is done so we can iterate over
+/// changes made to the MMR.
 #[derive(Serialize, Deserialize)]
 pub(crate) struct MerkleCheckPoint {
     objects_to_add: Vec<ObjectHash>,
@@ -91,7 +93,7 @@ impl MerkleChangeTracker {
     }
 
     /// This function adds a ref to a object to be saved
-    pub fn add_new_data(&mut self, hash: &ObjectHash) {
+    pub fn add_new_data(&mut self, hash: ObjectHash) {
         if !self.enabled {
             return;
         }
@@ -99,7 +101,7 @@ impl MerkleChangeTracker {
     }
 
     /// This function adds a ref to a object to be saved
-    pub fn remove_data(&mut self, hash: &ObjectHash) {
+    pub fn remove_data(&mut self, hash: ObjectHash) {
         if !self.enabled {
             return;
         }
@@ -114,7 +116,7 @@ impl MerkleChangeTracker {
         store: &mut S,
     ) -> Result<(), MerkleStorageError>
     where
-        T: Serialize,
+        T: Serialize + DeserializeOwned,
     {
         if !self.enabled {
             return Ok(());
@@ -122,7 +124,7 @@ impl MerkleChangeTracker {
         self.current_horizon += 1;
         let inc_index = self.current_horizon as i64 - self.pruning_horizon as i64;
         if inc_index > 0 {
-            self.inc_pruning_hor(inc_index as usize, hashmap, store)?
+            self.increase_pruning_horizon(inc_index as usize, hashmap, store)?
         }
 
         let mut checkpoint = MerkleCheckPoint {
@@ -154,7 +156,7 @@ impl MerkleChangeTracker {
     }
 
     /// Function to load the checkpoint on pruning horizon and move that up
-    fn inc_pruning_hor<T, S: MerkleStorage>(
+    fn increase_pruning_horizon<T, S: MerkleStorage>(
         &self,
         index: usize,
         hashmap: &mut HashMap<ObjectHash, MerkleObject<T>>,
@@ -184,7 +186,7 @@ impl MerkleChangeTracker {
         store: &mut S,
     ) -> Result<(), MerkleStorageError>
     where
-        T: DeserializeOwned,
+        T: Serialize + DeserializeOwned,
     {
         if !self.enabled {
             return Ok(());
@@ -212,7 +214,7 @@ impl MerkleChangeTracker {
         store: &mut S,
     ) -> Result<(), MerkleStorageError>
     where
-        T: DeserializeOwned,
+        T: Serialize + DeserializeOwned,
     {
         mmr.extend(checkpoint.mmr_to_add.drain(..));
         for hash in &checkpoint.objects_to_add {

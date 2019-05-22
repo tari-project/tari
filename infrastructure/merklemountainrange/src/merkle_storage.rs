@@ -21,12 +21,9 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use derive_error::Error;
-use rmp_serde;
-use serde::{
-    de::{Deserialize, DeserializeOwned},
-    Serialize,
-};
+use serde::{de::DeserializeOwned, Serialize};
 use tari_storage::{keyvalue_store::DataStore, lmdb::*};
+use tari_utilities::message_format::MessageFormat;
 
 #[derive(Debug, Error)]
 pub enum MerkleStorageError {
@@ -52,29 +49,40 @@ pub enum MerkleStorageError {
 /// This trait proves an interface for the MMR to store and retrieve data from some storage medium.
 pub trait MerkleStorage {
     /// This function will store some object via an id/key id
-    fn store<T: Serialize>(&mut self, id: &str, database: &str, object: &T) -> Result<(), MerkleStorageError>;
+    fn store<T: Serialize + DeserializeOwned>(
+        &mut self,
+        id: &str,
+        database: &str,
+        object: &T,
+    ) -> Result<(), MerkleStorageError>;
     /// This function will load some object via an id/key id
-    fn load<T: DeserializeOwned>(&mut self, id: &str, database: &str) -> Result<T, MerkleStorageError>;
+    fn load<T: Serialize + DeserializeOwned>(&mut self, id: &str, database: &str) -> Result<T, MerkleStorageError>;
     /// This function will load some object via an id/key id
     fn delete(&mut self, id: &str, database: &str) -> Result<(), MerkleStorageError>;
 }
 
 // todo add feature flags so this does not get added if you dont want our lmdb
 impl MerkleStorage for LMDBStore {
-    fn store<T: Serialize>(&mut self, id: &str, database: &str, object: &T) -> Result<(), MerkleStorageError> {
+    fn store<T: Serialize + DeserializeOwned>(
+        &mut self,
+        id: &str,
+        database: &str,
+        object: &T,
+    ) -> Result<(), MerkleStorageError>
+    {
         self.connect(database)
             .map_err(|e| MerkleStorageError::InternalError(e.to_string()))?;
-
-        let mut buff = Vec::new();
-        object
-            .serialize(&mut rmp_serde::Serializer::new(&mut buff))
-            .map_err(|e| MerkleStorageError::SerializationErr(e.to_string()))?;
-        self.put_raw(id.as_bytes(), buff.to_vec())
-            .map_err(|e| MerkleStorageError::InternalError(e.to_string()))?;
+        self.put_raw(
+            id.as_bytes(),
+            object
+                .to_binary()
+                .map_err(|e| MerkleStorageError::SerializationErr(e.to_string()))?,
+        )
+        .map_err(|e| MerkleStorageError::InternalError(e.to_string()))?;
         Ok(())
     }
 
-    fn load<T: DeserializeOwned>(&mut self, id: &str, database: &str) -> Result<T, MerkleStorageError> {
+    fn load<T: Serialize + DeserializeOwned>(&mut self, id: &str, database: &str) -> Result<T, MerkleStorageError> {
         self.connect(database)
             .map_err(|e| MerkleStorageError::InternalError(e.to_string()))?;
         let value = self
@@ -84,9 +92,7 @@ impl MerkleStorage for LMDBStore {
             return Err(MerkleStorageError::GetError(("No value").to_string()));
         }
         let buff = value.unwrap();
-        let mut de = rmp_serde::Deserializer::new(&buff[..]);
-        let object =
-            Deserialize::deserialize(&mut de).map_err(|e| MerkleStorageError::DeserializationErr(e.to_string()))?;
+        let object = T::from_binary(&buff).map_err(|e| MerkleStorageError::DeserializationErr(e.to_string()))?;
         Ok(object)
     }
 
