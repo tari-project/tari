@@ -1,0 +1,42 @@
+#  See https://docs.rs/log4rs/0.8.3/log4rs/encode/pattern/index.html for deciphering the log pattern.
+appenders:
+  # An appender named "stdout" that writes to stdout
+  stdout:
+    kind: console
+    encoder:
+      pattern: "[{M}#{L}] {d(%Y-%m-%d %H:%M:%S)} [{t}] {h({l}):5} {m} (({T}:{I})){n}"
+
+  # An appender named "network" that writes to a file with a custom pattern encoder
+  network:
+    kind: file
+    path: "log/network-debug.log"
+    encoder:
+      pattern: "[{M}#{L}] {d(%Y-%m-%d %H:%M:%S)} [{t}] {l:5} {m} (({T}:{I})){n}"
+
+  # An appender named "base_layer" that writes to a file with a custom pattern encoder
+  base_layer:
+    kind: file
+    path: "log/base_layer-debug.log"
+    encoder:
+      pattern: "[{M}#{L}] {d(%Y-%m-%d %H:%M:%S)} [{t}] {l:5} {m} (({T}:{I})){n}"
+
+# Set the default logging level to "debug" and attach the "base_layer" appender to the root
+root:
+  level: debug
+  appenders:
+    - base_layer
+
+loggers:
+  # Set the maximum console output to "warn"
+  stdout:
+    level: warn
+    appenders:
+      - stdout
+    additive: false
+
+  # Route log events sent to the "comms" logger to the "network" appender
+  comms:
+    level: debug
+    appenders:
+      - network
+    additive: false
