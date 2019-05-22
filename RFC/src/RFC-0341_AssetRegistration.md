@@ -67,13 +67,17 @@ This document will describe the process an [Asset Issuer] (AI) will go through i
 The first step in registering and commencing the operation of an asset is for the AI to issue an asset creation transaction to the [base layer].
 This transaction will be time-locked for the length of the desired nomination period. This ensures that this transaction cannot be spent until the nomination period has elapsed so that it is present during the entire nomination process. The value of the transaction will be the `asset_creation_fee` described in [RFC-0311](RFC-0311_AssetTemplates.md). The AI will spend the transaction back to themselves but locking this fee up at this stage achieves 2 goals. Firstly, it makes it expensive to spam the network with asset creation transactions that a malicious AI does not intend to complete. Secondly, it proves to the VNs that participate in the nomination process that the AI does indeed have the funds required to commence operation of the asset once the committee has been selected. If the asset registration process fails, for example if there are not enough available VNs for the committee, then the AI can refund the fee to themselves after the time-lock expires.
 
-The transaction will contain the following extra meta-data to facilitate the registration process:
+The transaction will contain the following extra metadata to facilitate the registration process:
 
-1. The value of the transaction in clear text so that it can be verified by third parties.
-2. The public key of the fee commitment which is required to verify the stated value is correct.
-3. A commitment (hash) to the asset parameters as defined by a [DigitalAssetTemplate] described in [RFC-0311](RFC-0311_AssetTemplates.md). This template will define all the parameters of the asset the AI intends to register including information the VNs need to know like what the required [AssetCollateral] is to be part of the committee.
+1. The value of the transaction in clear text and the public spending key of the commitment so that it can be verified by third parties. A third party can verify the value of the commitment by doing the following:
 
-Once this transaction appears on the blockchain the nomination phase can begin.
+    1. The output commitment is $ C = k.G + v.H $
+    2. $ v $ and $ k.G $ are provided in the metadata
+    3. A verifier can calculate $ C - k.G = v.H $ and verify this value by multiplying the clear text $ v $ by $ H $ themselves.
+
+2. A commitment (hash) to the asset parameters as defined by a [DigitalAssetTemplate] described in [RFC-0311](RFC-0311_AssetTemplates.md). This template will define all the parameters of the asset the AI intends to register including information the VNs need to know like what the required [AssetCollateral] is to be part of the committee.
+
+Once this transaction has been confirmed to the required depth on the blockchain the nomination phase can begin.
 
 ### Nomination phase
 The next step in registering an asset is for the AI to select a committee of VNs to manage the asset. The process to do this is described in [RFC-0304](RFC-0304_VNCommittees.md). This process lasts as long as the time-lock on the asset creation transaction described above. The VNs have until that time-lock elapses to nominate themselves (in the case of an asset being registered using the `committee_mode::PUBLIC_NOMINATION` parameter in the [DigitalAssetTemplate]).

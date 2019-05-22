@@ -84,7 +84,7 @@ that the rules of the asset contracts are enforced.
 An [Asset Issuer] (AI) will issue a Digital Assets by constructing a contract from one of the supported set of [DigitalAssetTemplate]s. The AI will choose
 how large the committee of Validator Nodes will be for this DA and have the option to nominate [Trusted Node]s to be part of the VN committee for the DA.
 Any remaining spots on the committee will be filled by permissionless VNs that are selected according to a [CommitteeSelectionStrategy]. This is a strategy
-that an AI will use to select from the set of potential candidate VNs that nominated themselves for a position on the committe when the AI broadcast a public call for VNs during the asset creation process. For the VNs to accept the appointment to the committee they will need to put up the specified collateral.
+that an AI will use to select from the set of potential candidate VNs that nominated themselves for a position on the committee when the AI broadcast a public call for VNs during the asset creation process. For the VNs to accept the appointment to the committee they will need to put up the specified collateral.
 
 [asset issuer]: Glossary.md#asset-issuer
 [base layer]: Glossary.md#base-layer

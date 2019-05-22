@@ -63,8 +63,8 @@ This document will describe the process an [Asset Issuer] (AI) will go through i
 
 1. Candidate VNs need to be nominated to be considered for selection by the AI.
 2. The AI must employ a [CommitteeSelectionStrategy] to select VNs from the set of nominated candidates.
-3. The AI makes an offers of committee membership to the selected VNs.
-4. Selected VNs may accept the offer to become part of the committee by posted the required [AssetCollateral].
+3. The AI makes an offer of committee membership to the selected VNs.
+4. Selected VNs may accept the offer to become part of the committee by posting the required [AssetCollateral].
 
 ### Nomination
 The first step in assembling a committee is to nominate candidate VNs. As described in [RFC-0311](RFC-0311_AssetTemplates.md) an asset can be created with two possible `committee_modes`: `CREATOR_NOMINATION` or `PUBLIC_NOMINATION`.
@@ -74,11 +74,9 @@ In `CREATOR_NOMINATION` mode the AI nominates candidate committee members direct
 In `PUBLIC_NOMINATION` mode the AI does not have a list of [Trusted Node]s and wants to source unknown VNs from the network. In this case the AI broadcasts a public call for nomination to the Tari network using the peer-to-peer messaging protocol described in [RFC-0172](RFC-0172_PeerToPeerMessagingProtocol.md). This call for nomination contains all the details of the asset and VNs that want to participate will then nominate themselves by contacting the AI.
 
 ### Selection
-Once the AI has received a list of nominated VNs it must make a selection, assuming enough VNs were nominated to populate the committee. In `CREATOR_NOMINATION` mode this selection should trivial as the AI directly nominated [Trusted Node]s.
+Once the AI has received a list of nominated VNs it must make a selection, assuming enough VNs were nominated to populate the committee. The AI will employ some [CommitteeSelectionStrategy] in order to select the committee from the candidate VNs that have been nominated. This strategy might aim for a perfectly random selection or perhaps it will consider some metrics about the candidate VNs such as the length of their VN registrations which might indicate that they are reliable and have not been blacklisted for poor or malicious performance.
 
-In `PUBLIC_NOMINATION` mode the AI will employ some [CommitteeSelectionStrategy] in order to select the committee. This strategy might aim for a perfectly random selection or perhaps it will consider some metrics about the candidate VNs such as the length of their VN registrations which might indicate that they are reliable and have not been black listed for poor or malicious performance.
-
-A consideration when selecting a committee in `PUBLIC_NOMINATION` mode will be the size of the pool of nominated VNs. The size of this pool relative to the size of the committee to be selected will be linked to a risk profile. In the pool has very few candidates in it then it will be much easier for an attacker to have nominated their own nodes in order to obtain a majority membership of the committee i.e. if the AI is selecting a committee of 10 members using a uniformly random selection strategy and only 12 public nominations are received an attacker only requires control of 6 VNs to achieve a majority position in the committee. In contrast, if 100 nominations are received and the AI performs a uniformly random selection an attacked would need to control more than 50 of the nominated nodes in order to achieve a majority position in the committee.
+A consideration when selecting a committee in `PUBLIC_NOMINATION` mode will be the size of the pool of nominated VNs. The size of this pool relative to the size of the committee to be selected will be linked to a risk profile. If the pool has very few candidates in it then it will be much easier for an attacker to have nominated their own nodes in order to obtain a majority membership of the committee i.e. if the AI is selecting a committee of 10 members using a uniformly random selection strategy and only 12 public nominations are received an attacker only requires control of 6 VNs to achieve a majority position in the committee. In contrast, if 100 nominations are received and the AI performs a uniformly random selection an attacked would need to control more than 50 of the nominated nodes in order to achieve a majority position in the committee.
 
 ### Offer acceptance
 Once the selection has been made by the AI the selected VNs will be informed and an offer of membership will be made to them. If the VNs are still inclined to join the committee they will accept the offer by posting the [AssetCollateral] required by the asset to the [base layer] during the initial [Checkpoint] transaction built to commence the operation of the asset.
