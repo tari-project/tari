@@ -106,9 +106,8 @@ pub struct LMDBStore {
 
 /// Consume self to remove all databases from scope
 impl LMDBStore {
-    fn delete_db_from_scope(self) -> Result<(), DatastoreError> {
-        self.curr_db.env().sync(true)?;
-        Ok(())
+    fn delete_db_from_scope(self) -> Result<(), lmdb_zero::error::Error> {
+        self.curr_db.env().sync(true)
     }
 }
 
@@ -251,7 +250,7 @@ mod test {
         if std::fs::metadata(test_dir).is_ok() {
             assert!(fs::remove_dir_all(test_dir).is_ok());
         }
-        fs::create_dir(test_dir).unwrap();
+        assert!(fs::create_dir(test_dir).is_ok());
         let builder = LMDBBuilder::new();
         let store = builder.set_mapsize(5).set_path(test_dir).build().unwrap();
         let mut batch = LMDBBatch::new(&store).unwrap();
@@ -276,7 +275,7 @@ mod test {
         if std::fs::metadata(test_dir).is_ok() {
             assert!(fs::remove_dir_all(test_dir).is_ok());
         }
-        fs::create_dir(test_dir).unwrap();
+        assert!(fs::create_dir(test_dir).is_ok());
 
         let mut store = LMDBBuilder::new().set_path(test_dir).build().unwrap();
         store.connect("default").unwrap();
@@ -304,7 +303,7 @@ mod test {
         if std::fs::metadata(test_dir).is_ok() {
             assert!(fs::remove_dir_all(test_dir).is_ok());
         }
-        fs::create_dir(test_dir).unwrap();
+        assert!(fs::create_dir(test_dir).is_ok());
         let mut store = LMDBBuilder::new().set_path(test_dir).build().unwrap();
         store.connect("default").unwrap();
         // Write some values
@@ -337,7 +336,7 @@ mod test {
         if std::fs::metadata(test_dir).is_ok() {
             assert!(fs::remove_dir_all(test_dir).is_ok());
         }
-        fs::create_dir(test_dir).unwrap();
+        assert!(fs::create_dir(test_dir).is_ok());
         let builder = LMDBBuilder::new();
         let mut store = builder
             .set_path(test_dir)
@@ -374,7 +373,7 @@ mod test {
         if std::fs::metadata(test_dir).is_ok() {
             assert!(fs::remove_dir_all(test_dir).is_ok());
         }
-        fs::create_dir(test_dir).unwrap();
+        assert!(fs::create_dir(test_dir).is_ok());
         let builder = LMDBBuilder::new();
         let mut store = builder.set_path(test_dir).add_database("test").build().unwrap();
         assert!(store.connect("test").is_ok());
@@ -404,7 +403,7 @@ mod test {
         if std::fs::metadata(test_dir).is_ok() {
             assert!(fs::remove_dir_all(test_dir).is_ok());
         }
-        fs::create_dir(test_dir).unwrap();
+        assert!(fs::create_dir(test_dir).is_ok());
         let mut store = LMDBBuilder::new()
             .set_path(test_dir)
             .add_database("db1")
@@ -453,7 +452,7 @@ mod test {
         if std::fs::metadata(test_dir).is_ok() {
             assert!(fs::remove_dir_all(test_dir).is_ok());
         }
-        fs::create_dir(test_dir).unwrap();
+        assert!(fs::create_dir(test_dir).is_ok());
         let builder = LMDBBuilder::new();
         let mut store = builder.set_path(test_dir).build().unwrap();
         let world = World(vec![Entity { x: 0.0, y: 4.0 }, Entity { x: 10.0, y: 20.5 }]);
