@@ -19,3 +19,4 @@ serde_derive = "1.0.80"
 
 [dev-dependencies]
 rand = "0.5.5"
+sys-info = "0.5.6"
