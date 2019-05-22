@@ -147,6 +147,11 @@ impl DataStore for LMDBStore {
         }
         tx.commit().map_err(|e| e.into())
     }
+
+    fn close(self) -> Result<(), DatastoreError> {
+        self.delete_db_from_scope()
+            .map_err(|e| DatastoreError::InternalError(e.to_string()))
+    }
 }
 
 struct LMDBBatch<'a> {
@@ -200,7 +205,6 @@ mod test {
     use rand::{OsRng, RngCore};
     use serde_derive::{Deserialize, Serialize};
     use std::{fs, str};
-    extern crate sys_info;
 
     #[derive(Serialize, Deserialize, PartialEq, Debug)]
     struct Entity {
@@ -233,9 +237,7 @@ mod test {
             assert!(fs::remove_dir_all(test_dir).is_ok());
         }
         let msg = match sys_info::os_type() {
-            Ok(ref msg) if msg == "Windows" => {
-                "LMDB Error: The system cannot find the path specified.\r\n"
-            },
+            Ok(ref msg) if msg == "Windows" => "LMDB Error: The system cannot find the path specified.\r\n",
             Ok(ref msg) if msg == "Linux" || msg == "Darwin" => "LMDB Error: No such file or directory",
             _ => "LMDB Error: File or directory not found",
         };
@@ -263,7 +265,7 @@ mod test {
         let banana = store.get_raw(b"b").unwrap().unwrap();
         assert_eq!(&banana, b"banana");
         // Clean up
-        assert!(store.delete_db_from_scope().is_ok());
+        assert!(store.close().is_ok());
         let _no_val = fs::remove_dir_all(test_dir);
         if std::fs::metadata(test_dir).is_ok() {
             println!("Database file handles not released, still open in {:?}!", test_dir);
@@ -291,7 +293,7 @@ mod test {
         let val = store.get_raw(b"England").unwrap().unwrap();
         assert_eq!(str::from_utf8(&val).unwrap(), "rose");
         // Clean up
-        assert!(store.delete_db_from_scope().is_ok());
+        assert!(store.close().is_ok());
         let _no_val = fs::remove_dir_all(test_dir);
         if std::fs::metadata(test_dir).is_ok() {
             println!("Database file handles not released, still open in {:?}!", test_dir);
@@ -323,7 +325,7 @@ mod test {
         check(b"SouthAfrica", &store);
         check(b"England", &store);
         // Clean up
-        assert!(store.delete_db_from_scope().is_ok());
+        assert!(store.close().is_ok());
         let _no_val = fs::remove_dir_all(test_dir);
         if std::fs::metadata(test_dir).is_ok() {
             println!("Database file handles not released, still open in {:?}!", test_dir);
@@ -361,7 +363,7 @@ mod test {
             },
         }
         // Clean up
-        assert!(store.delete_db_from_scope().is_ok());
+        assert!(store.close().is_ok());
         let _no_val = fs::remove_dir_all(test_dir);
         if std::fs::metadata(test_dir).is_ok() {
             println!("Database file handles not released, still open in {:?}!", test_dir);
@@ -391,7 +393,7 @@ mod test {
             assert_eq!(from_bytes(&val), i * 2);
         }
         // Clean up
-        assert!(store.delete_db_from_scope().is_ok());
+        assert!(store.close().is_ok());
         let _no_val = fs::remove_dir_all(test_dir);
         if std::fs::metadata(test_dir).is_ok() {
             println!("Database file handles not released, still open in {:?}!", test_dir);
@@ -440,7 +442,7 @@ mod test {
         let val = store.get_raw(b"common").unwrap().unwrap();
         assert_eq!(&val, b"db1");
         // Clean up
-        assert!(store.delete_db_from_scope().is_ok());
+        assert!(store.close().is_ok());
         let _no_val = fs::remove_dir_all(test_dir);
         if std::fs::metadata(test_dir).is_ok() {
             println!("Database file handles not released, still open in {:?}!", test_dir);
@@ -480,7 +482,7 @@ mod test {
         let val = store.get::<World>("not here").unwrap();
         assert!(val.is_none());
         // Clean up
-        assert!(store.delete_db_from_scope().is_ok());
+        assert!(store.close().is_ok());
         let _no_val = fs::remove_dir_all(test_dir);
         if std::fs::metadata(test_dir).is_ok() {
             println!("Database file handles not released, still open in {:?}!", test_dir);
