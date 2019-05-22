@@ -10,6 +10,10 @@ glossary to disambiguate ideas, and work towards a
 
 This is a full history [base node]. It will keep a complete history of every transaction ever received and it will not implement pruning.
 
+## AssetCollateral
+[AssetCollateral]: #assetcollateral
+
+The amount of tari coin that a [Validator Node] must put up on the [base layer] in order to become part of an asset [committee].
 
 ## Asset Issuer
 [Asset Issuer]: #asset-issuer "An entity that creates digital assets on the Tari DAN"
@@ -95,8 +99,8 @@ during asset issuance and can be updated at [Checkpoint]s.
 
 
 ## CommitteeSelectionStrategy
-[CommitteeSelectionStrategy]: #committeeselectionstrategy "A strategy for the DAN to select candidates for the committee from the available registered Validator Nodes"
-A strategy for the DAN to algorithmically select candidates for the committee from the available registered Validator Nodes. The VNs will need accept the nomination to become part of the committee.
+[CommitteeSelectionStrategy]: #committeeselectionstrategy "A strategy for an Asset Issuer to select candidates for the committee from the available registered Validator Nodes who responded to the nomination call for that asset"
+A strategy for an Asset Issuer to select candidates for the committee from the available registered Validator Nodes who responded to the nomination call for that asset.
 
 
 ## ConsensusStrategy
@@ -126,10 +130,10 @@ A Communication Node is either a Validator Node or Base Node that is part of the
 A Communication Client is a Wallet or Asset Manager that makes use of the Tari communication network to send joining and discovery requests. A Communication Client does not maintain the communication network and is not responsible for forwarding or propagating any requests or data messages.
 
 
-## Creator Assigned Mode
-[creator assigned mode]: #creator-assigned-mode
+## Creator Nomination Mode
+[creator nomination mode]: #creator-nomination-mode "An asset runs in creator nomination mode when _every_ validator node in a validator committee is a [Trusted Node] that was directly nominated by the AI."
 
-An asset runs in creator-assigned mode when _every_ validator node in a validator committee is a [Trusted Node].
+An asset runs in creator nomination mode when _every_ validator node in a validator committee is a [Trusted Node] that was directly nominated by the [Asset Issuer].
 
 
 ## Current head
@@ -250,6 +254,9 @@ The pending pool is part of the [mempool] and manages all [transaction]s that ha
 
 This is a local setting for each node to help reduce syncing time and bandwidth. This is the number of blocks from the chain tip beyond which a chain will be pruned.
 
+## Public Nomination Mode
+[public nomination mode]: #public-nomination-mode
+An asset runs in public nomination mode when the [Asset Issuer] broadcasts a call for nominations to the network and VNs from the network nominate themselves as candidates to become members of the [committee] for the asset. The [Asset Issuer] will then employ the [CommitteeSelectionStrategy] to select the committee from the list of available candidates.
 
 ## Range proof
 [range proof]: #range-proof
