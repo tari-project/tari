@@ -236,9 +236,7 @@ mod test {
             Ok(ref msg) if msg.to_uppercase() == "WINDOWS" => {
                 "LMDB Error: The system cannot find the path specified.\r\n"
             },
-            Ok(ref msg) if msg.to_uppercase() == "LINUX" || msg == "DARWIN" => {
-                "LMDB Error: No such file or directory"
-            },
+            Ok(ref msg) if msg.to_uppercase() == "LINUX" || msg == "DARWIN" => "LMDB Error: No such file or directory",
             _ => ":(",
         };
         let builder = LMDBBuilder::new();
