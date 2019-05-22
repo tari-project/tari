@@ -25,7 +25,6 @@ use blake2::Blake2b;
 use merklemountainrange::{merkleproof::MerkleProof, mmr::*};
 use std::fs;
 use tari_storage::lmdb::*;
-use tari_utilities::hex::*;
 
 fn create_mmr(leaves: u32) -> MerkleMountainRange<TestObject, Blake2b> {
     let mut mmr: MerkleMountainRange<TestObject, Blake2b> = MerkleMountainRange::new();

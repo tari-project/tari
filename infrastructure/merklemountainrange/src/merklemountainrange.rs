@@ -56,9 +56,9 @@ where
         }
     }
 
-    /// This allows the DB to store its data on a persistant meduim using the tari::keyvalue_store trait
+    /// This allows the DB to store its data on a persistent medium using the tari::keyvalue_store trait
     /// store_prefix is the db file name prefix used for this mmr.
-    /// pruning horizon is how far changes are kept so that it can rewind.
+    /// pruning horizon is how far back changes are kept so that it can rewind.
     pub fn init_persistance_store(&mut self, store_prefix: &str, pruning_horizon: usize) {
         self.change_tracker.init(store_prefix, pruning_horizon)
     }
@@ -315,7 +315,7 @@ where
         let node_hash = object.hash();
         let node = MerkleObject::new(object, self.mmr.len());
         self.data.insert(node_hash.clone(), node);
-        self.change_tracker.add_new_data(&node_hash);
+        self.change_tracker.add_new_data(node_hash.clone());
         self.mmr.push(MerkleNode::new(node_hash));
         if is_node_right(self.get_last_added_index()) {
             self.add_single_no_leaf(self.get_last_added_index())
@@ -380,7 +380,7 @@ where
 
         self.data.remove(hash);
         if self.change_tracker.enabled {
-            self.change_tracker.remove_data(hash);
+            self.change_tracker.remove_data(hash.clone());
         };
         Ok(())
     }

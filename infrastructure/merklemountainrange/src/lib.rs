@@ -175,6 +175,7 @@
 //! ```
 //! Now we removed 3 from the MMR
 
+// todo fix crate/file/struct names
 pub mod error;
 pub mod merkle_change_tracker;
 pub mod merkle_storage;
