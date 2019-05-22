@@ -233,8 +233,12 @@ mod test {
             assert!(fs::remove_dir_all(test_dir).is_ok());
         }
         let msg = match sys_info::os_type() {
-            Ok(ref msg) if msg.to_uppercase() == "WINDOWS" => "LMDB Error: The system cannot find the path specified.\r\n",
-            Ok(ref msg) if msg.to_uppercase() == "LINUX" || msg == "DARWIN" => "LMDB Error: No such file or directory",
+            Ok(ref msg) if msg.to_uppercase() == "WINDOWS" => {
+                "LMDB Error: The system cannot find the path specified.\r\n"
+            },
+            Ok(ref msg) if msg.to_uppercase() == "LINUX" || msg == "DARWIN" => {
+                "LMDB Error: No such file or directory"
+            },
             _ => ":(",
         };
         let builder = LMDBBuilder::new();
