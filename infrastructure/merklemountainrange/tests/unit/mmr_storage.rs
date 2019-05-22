@@ -52,7 +52,7 @@ fn create_small_mmr() {
     assert_eq!(mmr.verify_proof(&our_proof), true);
     assert_eq!(mmr.get_merkle_root(), mmr.get_node_hash(2).unwrap());
     // create storage
-    fs::create_dir("./tests/test_tx").unwrap();
+    fs::create_dir("./tests/test_mmr_s").unwrap();
     let builder = LMDBBuilder::new();
     let mut store = builder
         .set_mapsize(5)
@@ -69,5 +69,6 @@ fn create_small_mmr() {
     let result = mmr2.load_from_store(&mut store);
     assert_eq!(result.is_ok(), true);
     assert_eq!(mmr.get_merkle_root(), mmr2.get_merkle_root());
+    fs::remove_dir_all("./tests/test_mmr_s"); // we ensure that the test dir is empty
 }
 // Todo add more tests
