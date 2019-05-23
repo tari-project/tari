@@ -99,7 +99,7 @@ The instruction is in JSON format and MUST contain the following fields:
 | template_id                        | `u64`         | The template descriptor. See [Template ID](#template-id)                                                                               |
 | asset_expiry                       | `u64`         | A timestamp or block height after which the asset will automatically expire. Zero for arbitrarily long-lived assets                    |
 | **Validation Committee selection** |               |                                                                                                                                        |
-| committee_mode                     | `u8`          | The validation committee mode, either `CREATOR_ASSIGNED` (0) or `NETWORK_ASSIGNED` (1)                                                 |
+| committee_mode                     | `u8`          | The validation committee nomination mode, either `CREATOR_NOMINATION` (0) or `PUBLIC_NOMINATION` (1)                                                 |
 | committee_parameters               | Object        | See [Committee Parameters](#committee-parameters).                                                                                     |
 | asset_creation_fee                 | `u64`         | The fee the issuer is paying, in microTari, for the asset creation process                                                             |
 | commitment                         | `u256`        | A time-locked commitment for the asset creation fee                                                                                    |
@@ -113,7 +113,7 @@ The instruction is in JSON format and MUST contain the following fields:
 
 #### Committee parameters
 
-If `committee_mode` is `CREATOR_ASSIGNED` the `committee_mode` object is
+If `committee_mode` is `CREATOR_NOMINATION` the `committee_parameters` object is
 
 | Name             | Type         | Description |
 |:-----------------|:-------------|:------------|
@@ -121,7 +121,7 @@ If `committee_mode` is `CREATOR_ASSIGNED` the `committee_mode` object is
 
 Only the nodes in the trusted node set will be allowed to execute instructions for this asset.
 
-If `committee_mode` is `NETWORK_ASSIGNED` the `committee_mode` object is
+If `committee_mode` is `PUBLIC_NOMINATION` the `committee_parameters` object is
 
 | Name                    | Type  | Description                                                                                                           |
 |:------------------------|:------|:----------------------------------------------------------------------------------------------------------------------|

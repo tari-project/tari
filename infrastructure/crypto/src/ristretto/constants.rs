@@ -79,15 +79,15 @@ mod test {
     /// Generate a set of NUMS points by sequentially hashing the Ristretto255 generator point. By using
     /// `from_uniform_bytes`, the resulting point is a NUMS point if the input bytes are from a uniform distribution.
     fn nums_ristretto(n: usize) -> Vec<RistrettoPoint> {
-        let mut v = RISTRETTO_BASEPOINT_POINT.compress().to_bytes();
+        let mut val = RISTRETTO_BASEPOINT_POINT.compress().to_bytes();
         let mut result = Vec::new();
         let mut a: [u8; 64] = [0; 64];
         for _ in 0..n {
-            let b = Sha512::digest(&v[..]);
-            a.copy_from_slice(&b);
-            let y = RistrettoPoint::from_uniform_bytes(&a);
-            result.push(y);
-            v = y.compress().to_bytes();
+            let hashed_v = Sha512::digest(&val[..]);
+            a.copy_from_slice(&hashed_v);
+            let next_val = RistrettoPoint::from_uniform_bytes(&a);
+            result.push(next_val);
+            val = next_val.compress().to_bytes();
         }
         result
     }

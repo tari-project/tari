@@ -101,7 +101,7 @@ impl MerkleChangeTracker {
         if !self.enabled {
             return;
         }
-        self.objects_to_save.push(hash.clone());
+        self.objects_to_save.push(hash);
     }
 
     /// This function adds a ref to a object to be saved
@@ -109,7 +109,7 @@ impl MerkleChangeTracker {
         if !self.enabled {
             return;
         }
-        self.objects_to_del.push(hash.clone());
+        self.objects_to_del.push(hash);
     }
 
     /// Function to save the current checkpoint

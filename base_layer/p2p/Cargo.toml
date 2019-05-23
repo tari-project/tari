@@ -5,5 +5,5 @@ edition = "2018"
 
 [dependencies]
 tari_crypto = { version = "0.0.1", path = "../../infrastructure/crypto"}
-tari_comms = { version = "0.0.1", path = "../../infrastructure/comms"}
+tari_comms = { version = "0.0.1", path = "../../comms"}
 tari_core = { version = "0.0.1", path = "../core"}

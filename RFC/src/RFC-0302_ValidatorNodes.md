@@ -51,7 +51,7 @@ technological merits of the potential system outlined herein.
 The goal of this RFC is to describe the responisibilities of Validator Nodes (VNs) on the DAN.
 
 ## Related RFCs
-* [RFC-0303: Validator Node Registration](RFC-0303_VNRegistration.md)
+* [RFC-0322: Validator Node Registration](RFC-0322_VNRegistration.md)
 * [RFC-0304: Validator Node committee selection](RFC-0304_VNCommittees.md)
 * [RFC-0340: VN Consensus Overview](RFC-0340_VNConsensusOverview.md)
 
@@ -89,7 +89,7 @@ for doing this.
 issuance process and membership of the committee can be updated at [Checkpoint]s.
 * It is the VNs responsibility to ensure that every state change in a digital asset conforms to the contract's rules.
 * VNs accept digital asset [Instructions] from clients and peers. [Instructions] allow for creating, updating, expiring and archiving digital assets on the DAN.
-* VNs provide additional collateral when accepting an offer to manage an asset, which is stored in a multi-signature
+* VNs provide additional collateral, called [AssetCollateral], when accepting an offer to manage an asset, which is stored in a multi-signature
   UTXO on the base layer. This collateral can be taken from the VN if it is proven that the VN engaged in
   malicious behaviour.
 * VNs participate in fraud proof validations in the event of consensus disputes (which could result in the malicious VN's
@@ -156,6 +156,7 @@ The VNs will communicate using a peer-to-peer (P2P) network. To facilitate this 
 * VNs MUST respond to requests for information about digital assets that they manage on the DAN.
 * VNs and clients can advertise public keys to facilitate P2P communication encryption
 
+[assetcollateral]: Glossary.md#assetcollateral
 [asset issuer]: Glossary.md#asset-issuer
 [base layer]: Glossary.md#base-layer
 [bad actor]: Glossary.md#bad-actor

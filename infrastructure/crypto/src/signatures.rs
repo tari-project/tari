@@ -39,7 +39,7 @@ where
         P::from_secret_key(&self.signature)
     }
 
-    pub fn sign<'a, 'b>(secret: K, nonce: K, challenge: &[u8]) -> Result<Self, SchnorrSignatureError>
+    pub fn sign(secret: K, nonce: K, challenge: &[u8]) -> Result<Self, SchnorrSignatureError>
     where K: Add<Output = K> + Mul<P, Output = P> + Mul<Output = K> {
         // s = r + e.k
         let e = match K::from_bytes(challenge) {
