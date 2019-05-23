@@ -23,7 +23,7 @@ pub enum HexError {
 }
 
 /// Encode the provided bytes into a hex string
-pub fn to_hex(bytes: &Vec<u8>) -> String {
+pub fn to_hex(bytes: &[u8]) -> String {
     let mut s = String::new();
     for byte in bytes {
         write!(&mut s, "{:02x}", byte).expect("Unable to write");
@@ -32,7 +32,7 @@ pub fn to_hex(bytes: &Vec<u8>) -> String {
 }
 
 /// Encode the provided vector of bytes into a hex string
-pub fn to_hex_multiple(bytearray: &Vec<Vec<u8>>) -> Vec<String> {
+pub fn to_hex_multiple(bytearray: &[Vec<u8>]) -> Vec<String> {
     let mut result = Vec::new();
     for bytes in bytearray {
         result.push(to_hex(bytes))

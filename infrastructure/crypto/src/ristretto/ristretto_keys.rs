@@ -231,7 +231,7 @@ impl From<u64> for RistrettoSecretKey {
 /// let sk = RistrettoSecretKey::random(&mut rng);
 /// let _p3 = RistrettoPublicKey::from_secret_key(&sk);
 /// ```
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RistrettoPublicKey {
     pub(crate) point: RistrettoPoint,
     pub(crate) compressed: CompressedRistretto,

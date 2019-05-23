@@ -48,7 +48,7 @@ fn quarter_round(state: &mut [u32; 16], a_index: usize, b_index: usize, c_index:
 
 /// Construct a chacha block by performing a number of column and diagonal quarter round operations
 fn chacha20_block(state: &[u32; 16]) -> [u32; 16] {
-    let mut working_state = state.clone();
+    let mut working_state = *state;
     for _iter in 0..10 {
         // 20 total => odd and even round performed for every iteration
         // Odd round
@@ -101,8 +101,8 @@ fn chacha20_cipher_keystream(key: &[u8; 32], nonce: &[u32; 3], block_count: usiz
         state.clear();
         // convert cipher block to bytes
         let mut block_bytes: Vec<u8> = Vec::with_capacity(BYTES_PER_BLOCK);
-        for i in 0..cipher_block.len() {
-            block_bytes.append(&mut cipher_block[i].to_ne_bytes().to_vec())
+        for block in cipher_block.iter() {
+            block_bytes.append(&mut block.to_ne_bytes().to_vec())
         }
         cipher_bytes.append(&mut block_bytes)
     }
@@ -110,13 +110,13 @@ fn chacha20_cipher_keystream(key: &[u8; 32], nonce: &[u32; 3], block_count: usiz
 }
 
 /// Encode the provided input bytes using a chacha20 keystream and a default nonce
-pub fn encode(bytes: &Vec<u8>, key: &[u8; 32]) -> Vec<u8> {
+pub fn encode(bytes: &[u8], key: &[u8; 32]) -> Vec<u8> {
     let default_nonce: [u32; 3] = [0; 3];
     (encode_with_nonce(bytes, key, &default_nonce))
 }
 
 /// Encode the provided input bytes using a chacha20 keystream
-pub fn encode_with_nonce(bytes: &Vec<u8>, key: &[u8; 32], nonce: &[u32; 3]) -> Vec<u8> {
+pub fn encode_with_nonce(bytes: &[u8], key: &[u8; 32], nonce: &[u32; 3]) -> Vec<u8> {
     const BYTES_PER_BLOCK: usize = 64;
     let block_count = (bytes.len() as f64 / BYTES_PER_BLOCK as f64).ceil() as usize;
     let cipher_bytes = chacha20_cipher_keystream(key, nonce, block_count);
@@ -128,12 +128,12 @@ pub fn encode_with_nonce(bytes: &Vec<u8>, key: &[u8; 32], nonce: &[u32; 3]) -> V
 }
 
 /// Decode the provided input bytes using a chacha20 keystream and a default nonce
-pub fn decode(bytes: &Vec<u8>, key: &[u8; 32]) -> Vec<u8> {
+pub fn decode(bytes: &[u8], key: &[u8; 32]) -> Vec<u8> {
     (encode(bytes, &key))
 }
 
 /// Decode the provided input bytes using a chacha20 keystream
-pub fn decode_with_nonce(bytes: &Vec<u8>, key: &[u8; 32], nonce: &[u32; 3]) -> Vec<u8> {
+pub fn decode_with_nonce(bytes: &[u8], key: &[u8; 32], nonce: &[u32; 3]) -> Vec<u8> {
     (encode_with_nonce(bytes, &key, &nonce))
 }
 

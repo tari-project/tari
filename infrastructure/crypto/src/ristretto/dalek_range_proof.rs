@@ -40,7 +40,7 @@ pub struct DalekRangeProofService {
     bp_gens: BulletproofGens,
 }
 
-const MASK: usize = 0b1111000; // Mask for 8,16,32,64; the valid ranges on the Dalek library
+const MASK: usize = 0b111_1000; // Mask for 8,16,32,64; the valid ranges on the Dalek library
 
 impl DalekRangeProofService {
     /// Create a new RangeProofService. The Dalek library can only generate proofs for ranges between [0; 2^range),

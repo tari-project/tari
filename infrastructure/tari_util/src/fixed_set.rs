@@ -64,7 +64,7 @@ impl<T: Clone + PartialEq + Default> FixedSet<T> {
 
     /// Returns true if every item in the set has been set. An empty set returns true as well.
     pub fn is_full(&self) -> bool {
-        self.items.iter().all(|v| v.is_some())
+        self.items.iter().all(Option::is_some)
     }
 
     /// Return the index of the given item in the set by performing a linear search through the set
@@ -91,7 +91,7 @@ impl<T: Clone + PartialEq + Default> FixedSet<T> {
         if !self.is_full() {
             return None;
         }
-        let mut iter = self.items.iter().filter_map(|v| v.as_ref());
+        let mut iter = self.items.iter().filter_map(Option::as_ref);
         // Take the first item
         let mut sum = iter.next().unwrap().clone();
         for v in iter {

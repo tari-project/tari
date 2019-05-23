@@ -54,12 +54,12 @@ where T: Deserialize<'a> + Serialize
     fn to_binary(&self) -> Result<Vec<u8>, MessageFormatError> {
         let mut buf = Vec::new();
         self.serialize(&mut rmp_serde::Serializer::new(&mut buf))
-            .map_err(|e| MessageFormatError::BinarySerializeError(e))?;
+            .map_err(MessageFormatError::BinarySerializeError)?;
         Ok(buf.to_vec())
     }
 
     fn to_json(&self) -> Result<String, MessageFormatError> {
-        serde_json::to_string(self).map_err(|e| MessageFormatError::JSONError(e))
+        serde_json::to_string(self).map_err(MessageFormatError::JSONError)
     }
 
     fn to_base64(&self) -> Result<String, MessageFormatError> {
@@ -69,12 +69,12 @@ where T: Deserialize<'a> + Serialize
 
     fn from_binary(msg: &[u8]) -> Result<Self, MessageFormatError> {
         let mut de = rmp_serde::Deserializer::new(msg);
-        Deserialize::deserialize(&mut de).map_err(|e| MessageFormatError::BinaryDeserializeError(e))
+        Deserialize::deserialize(&mut de).map_err(MessageFormatError::BinaryDeserializeError)
     }
 
     fn from_json(msg: &str) -> Result<Self, MessageFormatError> {
         let mut de = serde_json::Deserializer::from_reader(msg.as_bytes());
-        Deserialize::deserialize(&mut de).map_err(|e| MessageFormatError::JSONError(e))
+        Deserialize::deserialize(&mut de).map_err(MessageFormatError::JSONError)
     }
 
     fn from_base64(msg: &str) -> Result<Self, MessageFormatError> {
