@@ -143,7 +143,7 @@ A VN renewal transaction is a special transaction:
   * Provide the _value_ of the transaction in the signature metadata
   * Provide the _public key_ for the spending key for the output in the signature metadata
 * This UTXO MUST also store
-  * The value of the VN collateral UTXO in as a u64.
+  * The value of the VN deposit UTXO as a u64.
   * The value of the _public key_ for the spending key for the output as 32 bytes in little endian order.
   * The VN's Node ID. This can be validated by following the Renewal transaction kernel chain.
   * The kernel hash of this transaction's kernel.
