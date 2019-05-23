@@ -27,6 +27,7 @@ use tari_comms::connection::{
     types::Direction,
     zmq::{curve_keypair, Context, CurveEncryption, InprocAddress},
     ConnectionError,
+    Linger,
 };
 
 #[test]
@@ -35,7 +36,10 @@ fn inbound_receive_timeout() {
 
     let addr = InprocAddress::random();
 
-    let conn = Connection::new(&ctx, Direction::Inbound).establish(&addr).unwrap();
+    let conn = Connection::new(&ctx, Direction::Inbound)
+        .set_linger(Linger::Indefinitely)
+        .establish(&addr)
+        .unwrap();
 
     let result = conn.receive(1);
     assert!(result.is_err());
@@ -54,7 +58,10 @@ fn inbound_recv_send_inproc() {
 
     let req_rep_pattern = support::comms_patterns::async_request_reply(Direction::Outbound);
 
-    let conn = Connection::new(&ctx, Direction::Inbound).establish(&addr).unwrap();
+    let conn = Connection::new(&ctx, Direction::Inbound)
+        .set_linger(Linger::Indefinitely)
+        .establish(&addr)
+        .unwrap();
 
     let signal = req_rep_pattern
         .set_endpoint(addr.clone())
@@ -90,6 +97,7 @@ fn inbound_recv_send_encrypted_tcp() {
     let (sk, pk) = curve_keypair::generate().unwrap();
 
     let conn = Connection::new(&ctx, Direction::Inbound)
+        .set_linger(Linger::Indefinitely)
         .set_curve_encryption(CurveEncryption::Server { secret_key: sk })
         .establish(&addr)
         .unwrap();
@@ -124,6 +132,7 @@ fn outbound_send_recv_inproc() {
         .run(ctx.clone());
 
     let conn = Connection::new(&ctx, Direction::Outbound)
+        .set_linger(Linger::Indefinitely)
         .set_identity("identity")
         .establish(&addr)
         .unwrap();
@@ -157,6 +166,7 @@ fn outbound_send_recv_encrypted_tcp() {
         .run(ctx.clone());
 
     let conn = Connection::new(&ctx, Direction::Outbound)
+        .set_linger(Linger::Indefinitely)
         .set_curve_encryption(CurveEncryption::Client {
             secret_key: csk,
             public_key: cpk,
