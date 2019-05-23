@@ -31,13 +31,15 @@ use digest::Digest;
 use serde::{de::DeserializeOwned, Serialize};
 use std::{collections::HashMap, marker::PhantomData};
 use tari_utilities::Hashable;
+
+#[derive(Default)]
 pub struct MerkleMountainRange<T, D> {
     // todo convert these to a bitmap
     mmr: Vec<MerkleNode>,
     data: HashMap<ObjectHash, MerkleObject<T>>,
     hasher: PhantomData<D>,
     current_peak_height: (usize, usize), // we store a tuple of peak height,index
-    change_tracker: MerkleChangeTracker,
+    pub(crate) change_tracker: MerkleChangeTracker,
 }
 
 impl<T, D> MerkleMountainRange<T, D>
@@ -65,11 +67,9 @@ where
 
     /// This function returns a reference to the data stored in the mmr
     /// It will return none if the hash does not exist
-    pub fn get_object(&self, hash: &ObjectHash) -> Option<&T> {
+    pub fn get_object(&self, hash: &[u8]) -> Option<&T> {
         let object = self.data.get(hash);
-        if object.is_none() {
-            return None;
-        };
+        object?;
         Some(&object.unwrap().object)
     }
 
@@ -92,6 +92,11 @@ where
     /// It does not return the total number of nodes
     pub fn len(&self) -> usize {
         self.data.len()
+    }
+
+    /// This function will return true if there is no data objects stored in the MMR
+    pub fn is_empty(&self) -> bool {
+        self.data.len() == 0
     }
 
     /// This function returns the hash of the node index provided, this counts from 0
@@ -117,10 +122,10 @@ where
     }
 
     /// This function returns a MerkleProof of the provided index
-    pub fn get_hash_proof(&self, hash: &ObjectHash) -> MerkleProof {
+    pub fn get_hash_proof(&self, hash: &[u8]) -> MerkleProof {
         let mut i = self.mmr.len();
         for counter in 0..self.mmr.len() {
-            if self.mmr[counter].hash == *hash {
+            if *(self.mmr[counter].hash.as_slice()) == *hash {
                 i = counter;
                 break;
             }
@@ -183,16 +188,14 @@ where
             // we where not in the main peak, so add main peak
             result.push(Some(self.mmr[self.current_peak_height.1].hash.clone()));
             result.push(None);
+        } else if result[result.len() - 1].clone().unwrap() == peaks[0] {
+            let cur_proof_len = result.len();
+            result[cur_proof_len - 1] = Some(self.mmr[self.current_peak_height.1].hash.clone());
+            result.push(None);
         } else {
-            if result[result.len() - 1].clone().unwrap() == peaks[0] {
-                let cur_proof_len = result.len();
-                result[cur_proof_len - 1] = Some(self.mmr[self.current_peak_height.1].hash.clone());
-                result.push(None);
-            } else {
-                let cur_proof_len = result.len();
-                result[cur_proof_len - 1] = None; // this is a calculated result, so we can remove this, we have come from the main peak
-                result.push(Some(peaks[0].clone()));
-            }
+            let cur_proof_len = result.len();
+            result[cur_proof_len - 1] = None; // this is a calculated result, so we can remove this, we have come from the main peak
+            result.push(Some(peaks[0].clone()));
         }
         result.push(Some(hasher.result_reset().to_vec()));
 
@@ -236,7 +239,7 @@ where
     /// If the order does not match Lchild-Rchild-parent(Lchild)-Rchild-parent-.. the validation will fail
     /// This function will only succeed if the given hash is of height 0
     pub fn verify_proof(&self, proof: &MerkleProof) -> bool {
-        if proof.len() == 0 {
+        if proof.is_empty() {
             return false;
         }
         if proof[0].is_none() {
@@ -250,13 +253,13 @@ where
     fn calc_peak_height(&self) -> (usize, usize) {
         let mut height_counter = 0;
         let mmr_len = self.get_last_added_index();
-        let mut index: usize = (1 << height_counter + 2) - 2;
+        let mut index: usize = (1 << (height_counter + 2)) - 2;
         let mut actual_height_index = 0;
         while mmr_len >= index {
             // find the height of the tree by finding if we can subtract the  height +1
             height_counter += 1;
             actual_height_index = index;
-            index = (1 << height_counter + 2) - 2;
+            index = (1 << (height_counter + 2)) - 2;
         }
         (height_counter, actual_height_index)
     }
@@ -278,7 +281,7 @@ where
             peaks[i - 2] = hasher.result().to_vec();
             i -= 1;
         }
-        if peaks.len() > 0 {
+        if !peaks.is_empty() {
             // if there was other peaks, lets bag them with the highest peak
             let mut hasher = D::new();
             hasher.input(&self.mmr[self.current_peak_height.1].hash);
@@ -286,7 +289,7 @@ where
             return hasher.result().to_vec();
         }
         // there was no other peaks, return the highest peak
-        return self.mmr[self.current_peak_height.1].hash.clone();
+        self.mmr[self.current_peak_height.1].hash.clone()
     }
 
     /// This function adds a vec of leaf nodes to the mmr.
@@ -298,15 +301,13 @@ where
 
     /// This function applies all changes to disc
     pub fn apply_checkpoint<S: MerkleStorage>(&mut self, store: &mut S) -> Result<(), MerkleStorageError> {
-        self.change_tracker.save(&mut self.data, &mut self.mmr, store)
+        self.change_tracker.save(&mut self.data, &self.mmr, store)
     }
 
     /// This function applies all changes to disc
     pub fn load_from_store<S: MerkleStorage>(&mut self, store: &mut S) -> Result<(), MerkleStorageError> {
         self.change_tracker.load(&mut self.data, &mut self.mmr, store)?;
         self.current_peak_height = self.calc_peak_height(); // calculate cached height after loading in data
-        dbg!(&self.current_peak_height);
-        dbg!(&self.mmr.len());
         Ok(())
     }
 
@@ -320,7 +321,6 @@ where
         if is_node_right(self.get_last_added_index()) {
             self.add_single_no_leaf(self.get_last_added_index())
         }
-        dbg!(&self.mmr.len());
     }
 
     // This function adds non leaf nodes, eg nodes that are not directly a hash of data
@@ -356,10 +356,10 @@ where
     }
 
     fn find_bagging_indexes(&self, mut height: i64, index: usize, peaks: &mut Vec<ObjectHash>) {
-        let mut new_index = index + (1 << height + 1) - 1; // go the potential right sibling
+        let mut new_index = index + (1 << (height + 1)) - 1; // go the potential right sibling
         while (new_index > self.get_last_added_index()) && (height > 0) {
             // lets go down left child till we hit a valid node or we reach height 0
-            new_index = new_index - (1 << height);
+            new_index -= 1 << height;
             height -= 1;
         }
         if (new_index <= self.get_last_added_index()) && (height >= 0) {
@@ -370,7 +370,7 @@ where
     }
 
     /// Mark an object as pruned, if the MMR can remove this safely it will
-    pub fn prune_object_hash(&mut self, hash: &ObjectHash) -> Result<(), MerkleMountainRangeError> {
+    pub fn prune_object_hash(&mut self, hash: &[u8]) -> Result<(), MerkleMountainRangeError> {
         let object = self.data.get_mut(hash);
         if object.is_none() {
             return Err(MerkleMountainRangeError::ObjectNotFound);
@@ -380,7 +380,7 @@ where
 
         self.data.remove(hash);
         if self.change_tracker.enabled {
-            self.change_tracker.remove_data(hash.clone());
+            self.change_tracker.remove_data(hash.to_vec().clone());
         };
         Ok(())
     }
@@ -398,7 +398,7 @@ where
 /// This function takes in the index and calculates the index of the sibling.
 pub fn sibling_index(node_index: usize) -> usize {
     let height = get_node_height(node_index);
-    let index_count = (1 << height + 1) - 1;
+    let index_count = (1 << (height + 1)) - 1;
     if is_node_right(node_index) {
         node_index - index_count
     } else {
@@ -429,16 +429,16 @@ where
 /// This function is an iterative function as we might have to subtract the largest left_most tree.
 pub fn is_node_right(node_index: usize) -> bool {
     let mut height_counter = 0;
-    while node_index >= ((1 << height_counter + 2) - 2) {
+    while node_index >= ((1 << (height_counter + 2)) - 2) {
         // find the height of the tree by finding if we can subtract the  height +1
         height_counter += 1;
     }
-    let height_index = (1 << height_counter + 1) - 2;
+    let height_index = (1 << (height_counter + 1)) - 2;
     if node_index == height_index {
         // If this is the first peak then subtracting the height of first peak will be 0
         return false;
     };
-    if node_index == (height_index + ((1 << height_counter + 1) - 1)) {
+    if node_index == (height_index + ((1 << (height_counter + 1)) - 1)) {
         // we are looking if its the right sibling
         return true;
     };
@@ -451,16 +451,16 @@ pub fn is_node_right(node_index: usize) -> bool {
 /// This function is an iterative function as we might have to subtract the largest left_most tree.
 pub fn get_node_height(node_index: usize) -> usize {
     let mut height_counter = 0;
-    while node_index >= ((1 << height_counter + 2) - 2) {
+    while node_index >= ((1 << (height_counter + 2)) - 2) {
         // find the height of the tree by finding if we can subtract the  height +1
         height_counter += 1;
     }
-    let height_index = (1 << height_counter + 1) - 2;
+    let height_index = (1 << (height_counter + 1)) - 2;
     if node_index == height_index {
         // If this is the first peak then subtracting the height of first peak will be 0
         return height_counter;
     };
-    if node_index == (height_index + ((1 << height_counter + 1) - 1)) {
+    if node_index == (height_index + ((1 << (height_counter + 1)) - 1)) {
         // we are looking if its the right sibling
         return height_counter;
     };
@@ -478,11 +478,11 @@ pub fn get_object_index(node_index: usize) -> usize {
 // This is the iterative companion function to get_leaf_index and this will search the tree for the correct height
 fn calculate_leaf_index_offset(index: usize, offset: usize) -> usize {
     let mut height_counter = 0;
-    while index * 2 > ((1 << height_counter + 2) - 2) {
+    while index * 2 > ((1 << (height_counter + 2)) - 2) {
         // find the height of the tree by finding if we can subtract the  height +1
         height_counter += 1;
     }
-    let height_index = (1 << height_counter + 1) - 2;
+    let height_index = (1 << (height_counter + 1)) - 2;
     if index == 0 {
         // If this is the first peak then subtracting the height of first peak will be 0
         return offset;
@@ -527,7 +527,7 @@ mod tests {
         let mut mmr = create_mmr(2);
         assert_eq!(1, mmr.get_peak_height());
         let hash0 = mmr.get_node_hash(0).unwrap();
-        let proof = mmr.get_hash_proof(&hash0);
+        let _proof = mmr.get_hash_proof(&hash0);
         let mut our_proof = MerkleProof::new();
         for i in 0..3 {
             our_proof.push(mmr.get_node_hash(i));
