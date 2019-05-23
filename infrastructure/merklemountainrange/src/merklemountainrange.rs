@@ -67,7 +67,7 @@ where
 
     /// This function returns a reference to the data stored in the mmr
     /// It will return none if the hash does not exist
-    pub fn get_object(&self, hash: &[u8]) -> Option<&T> {
+    pub fn get_object(&self, hash: &ObjectHashSlice) -> Option<&T> {
         let object = self.data.get(hash);
         object?;
         Some(&object.unwrap().object)
@@ -122,7 +122,7 @@ where
     }
 
     /// This function returns a MerkleProof of the provided index
-    pub fn get_hash_proof(&self, hash: &[u8]) -> MerkleProof {
+    pub fn get_hash_proof(&self, hash: &ObjectHashSlice) -> MerkleProof {
         let mut i = self.mmr.len();
         for counter in 0..self.mmr.len() {
             if *(self.mmr[counter].hash.as_slice()) == *hash {
@@ -370,7 +370,7 @@ where
     }
 
     /// Mark an object as pruned, if the MMR can remove this safely it will
-    pub fn prune_object_hash(&mut self, hash: &[u8]) -> Result<(), MerkleMountainRangeError> {
+    pub fn prune_object_hash(&mut self, hash: &ObjectHashSlice) -> Result<(), MerkleMountainRangeError> {
         let object = self.data.get_mut(hash);
         if object.is_none() {
             return Err(MerkleMountainRangeError::ObjectNotFound);
