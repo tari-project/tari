@@ -103,12 +103,12 @@ type MessageHash = Vec<u8>;
 ///       assert!(alice.is_collecting_nonces());
 ///        // Round 2 - Collect Nonces
 ///        bob = bob
-///           .add_nonce(&p_b, pr_b)
-///           .add_nonce(&p_a, pr_a);
+///           .add_nonce(&p_b, pr_b.clone())
+///           .add_nonce(&p_a, pr_a.clone());
 ///       assert!(bob.is_collecting_signatures());
 ///       alice = alice
-///           .add_nonce(&p_a, pr_a)
-///           .add_nonce(&p_b, pr_b);
+///           .add_nonce(&p_a, pr_a.clone())
+///           .add_nonce(&p_b, pr_b.clone());
 ///       assert!(alice.is_collecting_signatures());
 ///       // round 3 - Collect partial signatures
 ///       let s_a = alice.calculate_partial_signature(&p_a, &k_a, &r_a).unwrap();
@@ -878,7 +878,7 @@ mod test {
     #[test]
     fn invalid_nonce_causes_failure() {
         let (mut musig, data) = create_round_two_musig(25, None);
-        musig = musig.add_nonce(&data.pub_keys[0], data.public_nonces[1]);
+        musig = musig.add_nonce(&data.pub_keys[0], data.public_nonces[1].clone());
         assert!(musig.has_failed());
         assert_eq!(musig.failure_reason(), Some(MuSigError::MismatchedNonces));
     }
@@ -889,7 +889,7 @@ mod test {
         let (mut musig, data) = create_round_three_musig(15, Some(b"message"));
         let s = RistrettoSecretKey::random(&mut rng);
         // Create a signature with a valid nonce, but the signature is invalid
-        let bad_sig = RistrettoSchnorr::new(data.public_nonces[1], s);
+        let bad_sig = RistrettoSchnorr::new(data.public_nonces[1].clone(), s);
         let index = data.indices[1];
         musig = musig.add_signature(&bad_sig, true);
         assert!(musig.has_failed());
@@ -1045,7 +1045,10 @@ mod test_joint_key {
             RistrettoPublicKey::from_hex("46376b80f409b29dc2b5f6f0c52591990896e5716f41477cd30085ab7f10301e").unwrap();
         let p3 =
             RistrettoPublicKey::from_hex("e0c418f7c8d9c4cdd7395b93ea124f3ad99021bb681dfc3302a9d99a2e53e64e").unwrap();
-        assert_eq!(key_builder.add_keys(vec![p1, p2, p3]).unwrap(), 3);
+        assert_eq!(
+            key_builder.add_keys(vec![p1.clone(), p2.clone(), p3.clone()]).unwrap(),
+            3
+        );
         assert!(key_builder.is_full());
         let joint_key = key_builder.build::<Sha256>().unwrap();
         assert_eq!(joint_key.size(), 3);

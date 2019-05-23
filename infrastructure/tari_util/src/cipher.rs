@@ -30,11 +30,11 @@ pub trait Cipher {
     fn encode_with_nonce(&self, key: &[u8; 32], nonce: &[u32; 3]) -> Vec<u8>;
 
     /// Decode using a cipher keystream with a default nonce
-    fn decode(bytes: &Vec<u8>, key: &[u8; 32]) -> Self
+    fn decode(bytes: &[u8], key: &[u8; 32]) -> Self
     where Self: Sized;
 
     /// Decode using a cipher keystream with a self selected nonce
-    fn decode_with_nonce(bytes: &Vec<u8>, key: &[u8; 32], nonce: &[u32; 3]) -> Self
+    fn decode_with_nonce(bytes: &[u8], key: &[u8; 32], nonce: &[u32; 3]) -> Self
     where Self: Sized;
 }
 
@@ -47,11 +47,11 @@ impl Cipher for Vec<u8> {
         (encode_with_nonce(self, &key, &nonce))
     }
 
-    fn decode(bytes: &Vec<u8>, key: &[u8; 32]) -> Self {
+    fn decode(bytes: &[u8], key: &[u8; 32]) -> Self {
         (decode(&bytes, &key))
     }
 
-    fn decode_with_nonce(bytes: &Vec<u8>, key: &[u8; 32], nonce: &[u32; 3]) -> Self {
+    fn decode_with_nonce(bytes: &[u8], key: &[u8; 32], nonce: &[u32; 3]) -> Self {
         (decode_with_nonce(&bytes, &key, &nonce))
     }
 }
