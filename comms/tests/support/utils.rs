@@ -23,21 +23,27 @@
 use std::{
     cmp,
     net::{TcpListener, ToSocketAddrs},
+    sync::Mutex,
 };
 use tari_comms::connection::net_address::NetAddress;
 
-// This is mutated in an unsafe way and
-// should only be used by find_available_tcp_net_address
-static mut PORT_COUNTER: u16 = 20000;
+lazy_static! {
+    /// Shared counter of ports which have been used
+    static ref PORT_COUNTER: Mutex<u16> = Mutex::new(20000);
+}
 
 /// Search for an available port on the given host. After 100 searches give up.
-/// This function is not thread-safe.
+/// This function is thread-safe.
 pub fn find_available_tcp_net_address(host: &str) -> Option<NetAddress> {
+    let mut lock = match PORT_COUNTER.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
     // Try 100
     for _i in 0..100 {
-        let port = unsafe {
-            PORT_COUNTER = cmp::max((PORT_COUNTER + 1) % std::u16::MAX, 20000u16);
-            PORT_COUNTER
+        let port = {
+            *lock = cmp::max((*lock + 1) % std::u16::MAX, 20000u16);
+            *lock
         };
         let addr = format!("{}:{}", host, port);
         if is_port_open(&addr) {
