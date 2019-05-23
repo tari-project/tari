@@ -75,7 +75,7 @@ pub(super) struct RawTransactionInfo {
 
 impl RawTransactionInfo {
     pub fn calculate_total_amount(&self) -> u64 {
-        let to_others = self.amounts.iter().fold(0u64, |sum, v| sum + v);
+        let to_others: u64 = self.amounts.iter().sum();
         to_others + self.amount_to_self
     }
 }
@@ -111,7 +111,7 @@ pub struct SenderTransactionProtocol {
 impl SenderTransactionProtocol {
     /// Begin constructing a new transaction. All the up-front data is collected via the `SenderTransactionInitializer`
     /// builder function
-    pub fn new(num_recipients: usize) -> SenderTransactionInitializer {
+    pub fn builder(num_recipients: usize) -> SenderTransactionInitializer {
         SenderTransactionInitializer::new(num_recipients)
     }
 
@@ -288,7 +288,7 @@ impl SenderTransactionProtocol {
             if info.outputs.len() > MAX_TRANSACTION_OUTPUTS {
                 return Err(TPE::ValidationError("Too many outputs in transaction".into()));
             }
-            if info.inputs.len() == 0 {
+            if info.inputs.is_empty() {
                 return Err(TPE::ValidationError("A transaction cannot have zero inputs".into()));
             }
             if info.signatures.len() != 1 + info.num_recipients {
@@ -310,7 +310,7 @@ impl SenderTransactionProtocol {
                 let e = build_challenge(&info.public_nonce_sum, &info.metadata);
                 let k = info.offset_blinding_factor.clone();
                 let r = info.private_nonce.clone();
-                let s = Signature::sign(k, r, &e).map_err(|e| TPE::SigningError(e))?;
+                let s = Signature::sign(k, r, &e).map_err(TPE::SigningError)?;
                 info.signatures.push(s);
                 Ok(())
             },
@@ -348,7 +348,7 @@ impl SenderTransactionProtocol {
                 let mut transaction = result.unwrap();
                 let result = transaction
                     .validate_internal_consistency(None)
-                    .map_err(|e| TPE::TransactionBuildError(e));
+                    .map_err(TPE::TransactionBuildError);
                 if let Err(e) = result {
                     self.state = SenderState::Failed(e);
                     return Ok(false);
@@ -429,7 +429,7 @@ mod test {
         let mut rng = OsRng::new().unwrap();
         let p = TestParams::new(&mut rng);
         let (utxo, input) = make_input(&mut rng, 1200);
-        let mut builder = SenderTransactionProtocol::new(0);
+        let mut builder = SenderTransactionProtocol::builder(0);
         builder
             .with_lock_height(0)
             .with_fee_per_gram(10)
@@ -459,7 +459,7 @@ mod test {
         // Bob's parameters
         let b = TestParams::new(&mut rng);
         let (utxo, input) = make_input(&mut rng, 1200);
-        let mut builder = SenderTransactionProtocol::new(1);
+        let mut builder = SenderTransactionProtocol::builder(1);
         let fee = Fee::calculate(20, 1, 1);
         builder
             .with_lock_height(0)
@@ -476,7 +476,7 @@ mod test {
         assert!(alice.is_collecting_single_signature());
         // Receiver gets message, deserializes it etc, and creates his response
         let bob_info =
-            SingleReceiverTransactionProtocol::new(&msg, b.nonce, b.spend_key, OutputFeatures::empty()).unwrap();
+            SingleReceiverTransactionProtocol::create(&msg, b.nonce, b.spend_key, OutputFeatures::empty()).unwrap();
         // Alice gets message back, deserializes it, etc
         alice.add_single_recipient_info(bob_info.clone()).unwrap();
         // Transaction should be complete
@@ -504,7 +504,7 @@ mod test {
         // Bob's parameters
         let b = TestParams::new(&mut rng);
         let (utxo, input) = make_input(&mut rng, 2500);
-        let mut builder = SenderTransactionProtocol::new(1);
+        let mut builder = SenderTransactionProtocol::builder(1);
         let fee = Fee::calculate(20, 1, 2);
         builder
             .with_lock_height(0)
@@ -528,7 +528,7 @@ mod test {
         assert!(alice.is_collecting_single_signature());
         // Receiver gets message, deserializes it etc, and creates his response
         let bob_info =
-            SingleReceiverTransactionProtocol::new(&msg, b.nonce, b.spend_key, OutputFeatures::empty()).unwrap();
+            SingleReceiverTransactionProtocol::create(&msg, b.nonce, b.spend_key, OutputFeatures::empty()).unwrap();
         println!(
             "Bob's key: {}, Nonce: {}, Signature: {}, Commitment: {}",
             bob_info.public_spend_key.to_hex(),
@@ -564,7 +564,7 @@ mod test {
         // Bob's parameters
         let b = TestParams::new(&mut rng);
         let (utxo, input) = make_input(&mut rng, 2u64.pow(32) + 2001);
-        let mut builder = SenderTransactionProtocol::new(1);
+        let mut builder = SenderTransactionProtocol::builder(1);
 
         builder
             .with_lock_height(0)
@@ -581,7 +581,7 @@ mod test {
         assert!(alice.is_collecting_single_signature());
         // Receiver gets message, deserializes it etc, and creates his response
         let bob_info =
-            SingleReceiverTransactionProtocol::new(&msg, b.nonce, b.spend_key, OutputFeatures::empty()).unwrap();
+            SingleReceiverTransactionProtocol::create(&msg, b.nonce, b.spend_key, OutputFeatures::empty()).unwrap();
         // Alice gets message back, deserializes it, etc
         match alice.add_single_recipient_info(bob_info.clone()) {
             Ok(_) => panic!("Range proof should have failed to verify"),

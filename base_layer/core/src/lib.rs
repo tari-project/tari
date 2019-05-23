@@ -27,6 +27,7 @@ pub mod block;
 pub mod blockheader;
 pub mod fee;
 pub mod pow;
+#[allow(clippy::op_ref)]
 pub mod transaction;
 pub mod transaction_protocol;
 pub mod types;

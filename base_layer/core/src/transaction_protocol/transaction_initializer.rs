@@ -181,7 +181,8 @@ impl SenderTransactionInitializer {
                             .change_secret
                             .as_ref()
                             .ok_or("Change spending key was not provided")?;
-                        self.with_output(UnblindedOutput::new(v, change_key.clone(), None));
+                        let change_key = change_key.clone();
+                        self.with_output(UnblindedOutput::new(v, change_key, None));
                         Ok(fee_with_change)
                     },
                 }
@@ -217,14 +218,14 @@ impl SenderTransactionInitializer {
         if !self.amounts.is_full() {
             message.push(format!("Missing all {} amounts", self.amounts.size()));
         }
-        if self.inputs.len() < 1 {
+        if self.inputs.is_empty() {
             message.push("Missing Input".to_string());
         }
         // Prevent overflow attacks by imposing sane limits on some key parameters
         if self.inputs.len() > MAX_TRANSACTION_INPUTS {
             message.push("Too many inputs".into());
         }
-        if message.len() > 0 {
+        if !message.is_empty() {
             return self.build_err(&message.join(","));
         }
         // Everything is here. Let's send some Tari!
@@ -241,7 +242,7 @@ impl SenderTransactionInitializer {
         let outputs = match self
             .outputs
             .iter()
-            .map(|o| TransactionOutput::try_from(o))
+            .map(TransactionOutput::try_from)
             .collect::<Result<Vec<TransactionOutput>, _>>()
         {
             Ok(o) => o,

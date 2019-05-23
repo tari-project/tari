@@ -69,7 +69,7 @@ bitflags! {
     #[derive(Deserialize, Serialize)]
     pub struct OutputFeatures: u8 {
         /// Output is a coinbase output, must not be spent until maturity
-        const COINBASE_OUTPUT = 0b00000001;
+        const COINBASE_OUTPUT = 0b0000_0001;
     }
 }
 
@@ -105,7 +105,7 @@ impl UnblindedOutput {
         UnblindedOutput {
             value,
             spending_key,
-            features: features.unwrap_or(OutputFeatures::empty()),
+            features: features.unwrap_or_else(OutputFeatures::empty),
         }
     }
 }
@@ -115,7 +115,7 @@ impl<'a> From<&UnblindedOutput> for TransactionInput {
     fn from(v: &UnblindedOutput) -> Self {
         let c = CommitmentFactory::create(&v.spending_key, &v.value.into());
         TransactionInput {
-            features: v.features.clone(),
+            features: v.features,
             commitment: c,
         }
     }
@@ -130,7 +130,7 @@ impl<'a> TryFrom<&'a UnblindedOutput> for TransactionOutput {
         let prover = RangeProofService::new(MAX_RANGE_PROOF_RANGE, CommitmentFactory::default())?;
 
         let output = TransactionOutput {
-            features: v.features.clone(),
+            features: v.features,
             commitment: c,
             proof: prover.construct_proof(&v.spending_key, v.value)?,
         };
@@ -302,18 +302,12 @@ pub struct KernelBuilder {
 impl KernelBuilder {
     /// Creates an empty transaction kernel
     pub fn new() -> KernelBuilder {
-        KernelBuilder {
-            features: KernelFeatures::empty(),
-            fee: 0,
-            lock_height: 0,
-            excess: None,
-            excess_sig: None,
-        }
+        KernelBuilder::default()
     }
 
     /// Build a transaction kernel with the provided features
     pub fn with_features(mut self, features: KernelFeatures) -> KernelBuilder {
-        self.features = features.clone();
+        self.features = features;
         self
     }
 
@@ -355,6 +349,18 @@ impl KernelBuilder {
     }
 }
 
+impl Default for KernelBuilder {
+    fn default() -> Self {
+        KernelBuilder {
+            features: KernelFeatures::empty(),
+            fee: 0,
+            lock_height: 0,
+            excess: None,
+            excess_sig: None,
+        }
+    }
+}
+
 impl TransactionKernel {
     pub fn verify_signature(&self) -> Result<(), TransactionError> {
         let excess = self.excess.as_public_key();
@@ -365,9 +371,9 @@ impl TransactionKernel {
         };
         let c = build_challenge(r, &m);
         if self.excess_sig.verify_challenge(excess, &c) {
-            return Ok(());
+            Ok(())
         } else {
-            return Err(TransactionError::InvalidSignatureError);
+            Err(TransactionError::InvalidSignatureError)
         }
     }
 }
@@ -432,7 +438,7 @@ impl Transaction {
         let public_offset = PublicKey::from_secret_key(&self.offset);
         let offset_commitment = CommitmentFactory::from_public_key(&public_offset);
         // Sum all kernel excesses and fees
-        let kernel_sum = self.body.kernels.iter().fold(
+        self.body.kernels.iter().fold(
             KernelSum {
                 fees: 0u64,
                 sum: offset_commitment,
@@ -441,8 +447,7 @@ impl Transaction {
                 fees: &acc.fees + &val.fee,
                 sum: &acc.sum + &val.excess,
             },
-        );
-        kernel_sum
+        )
     }
 
     /// Confirm that the (sum of the outputs) - (sum of inputs) = Kernel excess
@@ -505,10 +510,7 @@ pub struct TransactionBuilder {
 impl TransactionBuilder {
     /// Create an new empty TransactionBuilder
     pub fn new() -> Self {
-        Self {
-            offset: None,
-            body: AggregateBody::empty(),
-        }
+        Self::default()
     }
 
     /// Update the offset of an existing transaction
@@ -560,7 +562,16 @@ impl TransactionBuilder {
     }
 }
 
-//----------------------------------------         Tests          ----------------------------------------------------//
+impl Default for TransactionBuilder {
+    fn default() -> Self {
+        Self {
+            offset: None,
+            body: AggregateBody::empty(),
+        }
+    }
+}
+
+//-----------------------------------------       Tests           ----------------------------------------------------//
 
 #[cfg(test)]
 mod test {

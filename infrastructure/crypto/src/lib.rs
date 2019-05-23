@@ -15,4 +15,5 @@ pub mod range_proof;
 pub mod signatures;
 
 // Implementations
+#[allow(clippy::op_ref)]
 pub mod ristretto;
