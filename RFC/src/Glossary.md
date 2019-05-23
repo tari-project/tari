@@ -6,7 +6,7 @@ glossary to disambiguate ideas, and work towards a
 
 
 ## Archive node
-[archivenode]: #archivenode	"a full history node"
+[archivenode]: #archive-node	"a full history node"
 
 This is a full history [base node]. It will keep a complete history of every transaction ever received and it will not implement pruning.
 
@@ -66,7 +66,7 @@ blockchain from that point on.
 
 
 ## Blockchain state
-[blockchainstate]: #blockchainstate	"This is a snapshot of how the blockchain looks"
+[blockchainstate]: #blockchain-state	"This is a snapshot of how the blockchain looks"
 
 The complete state of the blockchain at a specific block height. This means a pruned [utxo] set, a complete set of kernels and headers up to that block height from the genesis block.
 
@@ -92,7 +92,7 @@ awarded to the miner that performed the Proof of Work for the block.
 
 
 ## Committee
-[committee]: #committee "A group of validator nodes that are responsible for managing a specific Digital Asset"
+[Committee]: #committee "A group of validator nodes that are responsible for managing a specific Digital Asset"
 
 A group of [Validator Node]s that are responsible for managing the state of a specific [Digital Asset]. A committee is selected
 during asset issuance and can be updated at [Checkpoint]s.
@@ -111,7 +111,7 @@ given Digital Asset.
 
 
 ## Commitment
-[commitment]: #commitment
+[Commitment]: #commitment
 
 A commitment is a cryptographic primitive that allows one to commit to a chosen value while keeping it hidden from
 others, with the ability to reveal the committed value later. Commitments are designed so that one cannot change the
@@ -119,13 +119,13 @@ value or statement after they have committed to it.
 
 
 ## Communication Node
-[communication node]: #communication-node "A communication node that is responsible for maintaining the Tari communication network"
+[Communication Node]: #communication-node "A communication node that is responsible for maintaining the Tari communication network"
 
 A Communication Node is either a Validator Node or Base Node that is part of the Tari communication network. It maintains the network and is responsible for forwarding and propagating joining requests, discovery requests and data messages on the communication network.
 
 
 ## Communication Client
-[communication client]: #communication-client "A communication client that makes use of the Tari communication network, but does not maintain it"
+[Communication Client]: #communication-client "A communication client that makes use of the Tari communication network, but does not maintain it"
 
 A Communication Client is a Wallet or Asset Manager that makes use of the Tari communication network to send joining and discovery requests. A Communication Client does not maintain the communication network and is not responsible for forwarding or propagating any requests or data messages.
 
@@ -137,7 +137,7 @@ An asset runs in creator nomination mode when _every_ validator node in a valida
 
 
 ## Current head
-[currenthead]: #currenthead	"The last valid block of the longest chain"
+[currenthead]: #current-head	"The last valid block of the longest chain"
 
 The last [block] of the base layer that represents the latest valid block. This [block] must be from the longest proof-of-work chain to be the current head.
 
@@ -175,7 +175,7 @@ asset. Depending on the DA created, tokens can represent tickets, in-game items,
 
 
 ## Hashed Time Locked Contract
-[htlc]: #Hashed-Time-Locked-Contract 'or just, "HTLC". 
+[htlc]: #hashed-time-locked-contract 'or just, "HTLC".'
 
 A time locked contract that only pays out after a certain criteria has been met or refunds the originator if a certain period has expired.
 
@@ -233,8 +233,9 @@ Multi-signatures (Multisigs) are also known as N-of-M signatures, this means tha
 ## Node ID
 [node ID]: #node-id
 
-A node ID is a unique identifier that specifies the location of a [Consensus Node] or [Consensus Client] in the Tari communication network.
-The node ID can either be obtained from registration on the [Base Layer] or can be derived from the public identification key of a [Consensus Node] or [Consensus Client].
+A node ID is a unique identifier that specifies the location of a [communication node] or [communication client] in the
+Tari communication network. The node ID can either be obtained from registration on the [Base Layer] or can be derived
+from the public identification key of a [communication node] or [communication client].
 
 
 ## Orphan Pool
@@ -250,7 +251,7 @@ The pending pool is part of the [mempool] and manages all [transaction]s that ha
 
 
 ## Pruning horizon
-[pruninghorizon]: #pruninghorizon	"Block height at which pruning will commence"
+[pruninghorizon]: #pruning-horizon	"Block height at which pruning will commence"
 
 This is a local setting for each node to help reduce syncing time and bandwidth. This is the number of blocks from the chain tip beyond which a chain will be pruned.
 
@@ -265,18 +266,19 @@ A mathematical demonstration that a value inside a [commitment] (i.e. it is hidd
 [Mimblewimble], range proofs are used to prove that outputs are positive values.
 
 
-## RegistrationCollateral
-[RegistrationCollateral]: #registrationcollateral "An amount of tari coin that is locked up on the base layer when a [Validator Node] is registered"
+## Registration Deposit
+[Registration Deposit]: #registration-deposit "An amount of tari coin that is locked up on the base layer when a [Validator Node] is registered"
 
-An amount of tari coin that is locked up on the base layer when a [Validator Node] is registered. In order to make Sybil attacks expensive and to
-provide an authorative base layer registry of [validator node]s they will need to lock up a amount of [Tari Coin] on the [Base Layer] using a
-registration transaction to begin acting as a VN on the DAN.
+An amount of tari coin that is locked up on the base layer when a [Validator Node] is registered. In order to make Sybil
+attacks expensive and to provide an authorative base layer registry of [validator node]s they will need to lock up a
+amount of [Tari Coin] on the [Base Layer] using a registration transaction to begin acting as a VN on the DAN.
 
 
-## RegistrationTerm
-[RegistrationTerm]: #registrationterm "The minimum amount of time that a VN registration lasts"
+## Registration Term
+[Registration Term]: #registration-term "The minimum amount of time that a VN registration lasts"
 
-The minimum amount of time that a VN registration lasts, the RegistrationCollateral can only be released after this minimum period has elapsed.
+The minimum amount of time that a VN registration lasts, the [Registration Deposit] can only be released after this
+minimum period has elapsed.
 
 
 ## Reorg Pool
@@ -343,7 +345,7 @@ A permissioned Validator Node nominated by an Asset Issuer that will form part o
 ## Token Wallet
 [token wallet]: #token-wallet "An Asset Manager Wallet for Tari Assets and Tokens"
 
-A Tari Token Wallet is responsible for managing [Digital asset]s and [Tokens], and for constructing and negotiating [instructions]s for transferring and receiving Assets and Tokens on the [Digital Asset Network].
+A Tari Token Wallet is responsible for managing [Digital asset]s and [Tokens], and for constructing and negotiating [instruction]s for transferring and receiving Assets and Tokens on the [Digital Asset Network].
 
 
 ## Unspent transaction outputs
@@ -358,7 +360,7 @@ UTXO values are hidden by their [commitment]s. Only the owner of the UTXO and (p
 
 
 ## Validator Node
-[validator node]: #validator-node "A second-layer node that manages and validates digital asset state transitions"
+[Validator Node]: #validator-node "A second-layer node that manages and validates digital asset state transitions"
 
 Validator nodes (VNs) make up the Tari second layer, or [Digital Asset Network]. VNs are responsible for creating and
 updating [digital asset]s living on the Tari network.
@@ -376,6 +378,8 @@ Transactions or blocks are `unvalidated` when first received by a [Base Node]. A
 
 ## Wallet
 [wallet]: #wallet "A Wallet for Tari coins"
+[Registration Deposit]: #registration-deposit
+
 
 A Tari Wallet is responsible for managing key pairs, and for constructing and negotiating [transaction]s for transferring and receiving [tari coin]s on the [Base Layer].
 
