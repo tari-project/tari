@@ -73,6 +73,10 @@ pub trait DataStore {
         let val = serialize(value)?;
         self.put_raw(key, val)
     }
+
+    /// Close and release any underlying resources associated with the datastore. The instance is no longer
+    /// accessible from this point
+    fn close(self) -> Result<(), DatastoreError>;
 }
 
 /// BatchWrite is implemented on Datastores if it supports batch writes, or transactions, to efficiently write
