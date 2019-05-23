@@ -30,21 +30,21 @@ use tari_core::{
     transaction::{TransactionKernel, TransactionOutput},
     types::*,
 };
-
+// TODO add back in MMR
 /// The BlockchainState struct keeps record of the current UTXO, total kernels and headers.
 pub struct BlockchainState {
-    _headers: MerkleMountainRange<BlockHeader, SignatureHash>,
-    _outputs: MerkleMountainRange<TransactionOutput, SignatureHash>,
-    _kernels: MerkleMountainRange<TransactionKernel, SignatureHash>,
+    _headers: i32, // MerkleMountainRange<BlockHeader, SignatureHash>,
+    _outputs: i32, // MerkleMountainRange<TransactionOutput, SignatureHash>,
+    _kernels: i32, // MerkleMountainRange<TransactionKernel, SignatureHash>,
 }
 
 impl BlockchainState {
     /// Creates a new empty blockchainstate
     pub fn new() -> BlockchainState {
         BlockchainState {
-            _headers: MerkleMountainRange::new(),
-            _outputs: MerkleMountainRange::new(),
-            _kernels: MerkleMountainRange::new(),
+            _headers: 0, // MerkleMountainRange::new(),
+            _outputs: 0, // MerkleMountainRange::new(),
+            _kernels: 0, // MerkleMountainRange::new(),
         }
     }
 

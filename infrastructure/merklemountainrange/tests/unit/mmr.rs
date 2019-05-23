@@ -52,19 +52,13 @@ fn create_small_mmr() {
     assert_eq!(mmr.get_merkle_root(), mmr.get_node_hash(2).unwrap());
     // test pruning
     assert_eq!(mmr.get_object(&hash0).is_some(), true);
-    assert_eq!(mmr.get_data_object(hash0.clone()).is_some(), true);
     assert_eq!(mmr.prune_object_hash(&hash0).is_ok(), true);
-    assert_eq!(mmr.get_data_object(hash0.clone()).is_some(), false);
     assert_eq!(mmr.get_object(&hash0).is_some(), false);
 
     let hash1 = mmr.get_node_hash(1).unwrap();
     assert_eq!(mmr.get_object(&hash1).is_some(), true);
-    assert_eq!(mmr.get_data_object(hash1.clone()).is_some(), true);
     assert_eq!(mmr.prune_object_hash(&hash1).is_ok(), true);
     assert_eq!(mmr.get_object(&hash1).is_some(), false);
-    // both are now pruned, thus deleted
-    assert_eq!(mmr.get_data_object(hash1).is_none(), true);
-    assert_eq!(mmr.get_data_object(hash0).is_none(), true);
 }
 #[test]
 fn create_mmr_with_2_peaks() {

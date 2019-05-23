@@ -22,10 +22,11 @@
 
 use blake2::Blake2b;
 use digest::Digest;
+use serde_derive::{Deserialize, Serialize};
 use tari_infra_derive::Hashable;
 use tari_utilities::{ExtendBytes, Hashable};
 
-#[derive(Hashable)]
+#[derive(Hashable, Serialize, Deserialize)]
 #[digest = "Blake2b"]
 pub struct TestObject {
     pub id: InnerObject,
@@ -42,7 +43,7 @@ impl TestObject {
     }
 }
 
-#[derive(Hashable)]
+#[derive(Hashable, Serialize, Deserialize)]
 #[digest = "Blake2b"]
 pub struct InnerObject {
     pub id: String,

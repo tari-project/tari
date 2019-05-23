@@ -21,9 +21,11 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 pub type ObjectHash = Vec<u8>;
+use serde::{de::DeserializeOwned, ser::Serialize};
+use serde_derive::{Deserialize, Serialize};
 
 /// This is the MerkleNode struct. This struct represents a merkle node in the tree,
-#[derive(Debug)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MerkleNode {
     pub hash: ObjectHash,
     pub pruned: bool,
@@ -35,13 +37,15 @@ impl MerkleNode {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct MerkleObject<T> {
     pub object: T,
     pub vec_index: usize,
 }
 
-impl<T> MerkleObject<T> {
+impl<T> MerkleObject<T>
+where T: Serialize + DeserializeOwned
+{
     pub fn new(object: T, index: usize) -> MerkleObject<T> {
         MerkleObject {
             object,

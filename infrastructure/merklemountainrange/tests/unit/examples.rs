@@ -1,9 +1,10 @@
 use blake2::Blake2b;
 use digest::Digest;
 use merklemountainrange::mmr::{self, *};
+use serde_derive::{Deserialize, Serialize};
 use tari_utilities::Hashable;
 
-#[derive(PartialEq, Eq, Debug, Clone)]
+#[derive(PartialEq, Eq, Debug, Clone, Serialize, Deserialize)]
 struct MyObject {
     pub val: String,
 }
