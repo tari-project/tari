@@ -87,7 +87,9 @@ that VNs are randomly distributed over the DHT network.
 
 VN Node IDs MUST be calculated as follows:
 
-    NodeId = Hash( pk || h || kh )
+```text
+ NodeId = Hash( pk || h || kh )
+```
 
 Where
 
