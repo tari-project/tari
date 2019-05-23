@@ -120,7 +120,7 @@ A VN registration transaction is a special transaction.
   * Provide the _public key_ for the spending key for the output in the signature metadata
 * The value of this output MUST be equal or greater than the [Registration Deposit].
 * The UTXO MUST store:
-  * The value of the VN deposit UTXO in as a u64.
+  * The value of the VN deposit UTXO as a u64.
   * The value of the _public key_ for the spending key for the output as 32 bytes in little endian order.
 * The `KernelFeatures` bit flag MUST have the `VN_Registration` flag set.
 * The kernel MUST also store the VN's DHT public key as 32 bytes in little endian order.
