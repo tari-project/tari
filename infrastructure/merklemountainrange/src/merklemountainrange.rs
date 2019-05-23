@@ -187,16 +187,14 @@ where
             // we where not in the main peak, so add main peak
             result.push(Some(self.mmr[self.current_peak_height.1].hash.clone()));
             result.push(None);
+        } else if result[result.len() - 1].clone().unwrap() == peaks[0] {
+            let cur_proof_len = result.len();
+            result[cur_proof_len - 1] = Some(self.mmr[self.current_peak_height.1].hash.clone());
+            result.push(None);
         } else {
-            if result[result.len() - 1].clone().unwrap() == peaks[0] {
-                let cur_proof_len = result.len();
-                result[cur_proof_len - 1] = Some(self.mmr[self.current_peak_height.1].hash.clone());
-                result.push(None);
-            } else {
-                let cur_proof_len = result.len();
-                result[cur_proof_len - 1] = None; // this is a calculated result, so we can remove this, we have come from the main peak
-                result.push(Some(peaks[0].clone()));
-            }
+            let cur_proof_len = result.len();
+            result[cur_proof_len - 1] = None; // this is a calculated result, so we can remove this, we have come from the main peak
+            result.push(Some(peaks[0].clone()));
         }
         result.push(Some(hasher.result_reset().to_vec()));
 
@@ -254,13 +252,13 @@ where
     fn calc_peak_height(&self) -> (usize, usize) {
         let mut height_counter = 0;
         let mmr_len = self.get_last_added_index();
-        let mut index: usize = (1 << height_counter + 2) - 2;
+        let mut index: usize = (1 << (height_counter + 2)) - 2;
         let mut actual_height_index = 0;
         while mmr_len >= index {
             // find the height of the tree by finding if we can subtract the  height +1
             height_counter += 1;
             actual_height_index = index;
-            index = (1 << height_counter + 2) - 2;
+            index = (1 << (height_counter + 2)) - 2;
         }
         (height_counter, actual_height_index)
     }
