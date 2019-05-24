@@ -323,6 +323,6 @@ mod tests {
             let result = store.load::<MerkleObject<IWrapper>>(&to_hex(&object.hash()), &"mmr_mmr_objects".to_string());
             assert_eq!(result.is_ok(), false);
         }
-        let _res = fs::remove_dir_all("./tests/test_mmr_cm"); // we ensure that the test dir is empty
+        assert!(fs::remove_dir_all("./tests/test_mmr_cm").is_ok()); // we ensure that the test dir is empty
     }
 }
