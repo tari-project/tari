@@ -28,7 +28,7 @@ use std::ops::{Index, IndexMut};
 /// When a proof is verified or checked these will be filled out.
 /// The data in the merkleproof will be created in form of the Lchild-Rchild-parent(Lchild)-Rchild-parent-..
 /// This pattern will be repeated until the parent is the root of the MMR
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Default)]
 pub struct MerkleProof {
     hash: Vec<Option<Vec<u8>>>,
 }
@@ -62,8 +62,14 @@ impl MerkleProof {
         self.hash.len()
     }
 
+    /// This function will return true if the length of the merkleroot is 0
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     /// This will verify the merkleproof
-    /// This function will fill in the provided proof
+    /// This function will fill in the provided proof    
+    #[allow(clippy::int_plus_one)]
     pub fn verify<D>(&mut self) -> bool
     where D: Digest {
         let mut hasher = D::new();
@@ -98,6 +104,7 @@ impl MerkleProof {
 
     /// This will verify the merkleproof
     /// This function will reset in the provided proof after verification
+    #[allow(clippy::int_plus_one)]
     pub fn verify_reset<D>(&mut self) -> bool
     where D: Digest {
         let mut hasher = D::new();
@@ -177,7 +184,7 @@ impl MerkleProof {
 
     /// This function will search if the provided hash in contained in the proof
     /// It will reset the proof to before the verification
-    pub fn verify_proof_reset<D>(&mut self, hash: &Vec<u8>) -> bool
+    pub fn verify_proof_reset<D>(&mut self, hash: &[u8]) -> bool
     where D: Digest {
         let reset = self.hash.clone();
         if self.hash.len() < 3 {
@@ -191,7 +198,7 @@ impl MerkleProof {
             return false;
         };
         for i in 0..(self.hash.len() - 1) {
-            if self.hash[i].is_some() && self.hash[i].clone().unwrap() == *hash {
+            if self.hash[i].is_some() && *(self.hash[i].clone().unwrap().as_slice()) == *hash {
                 self.hash = reset;
                 return true;
             }
@@ -202,7 +209,7 @@ impl MerkleProof {
 
     /// This function will search if the provided hash in contained in the proof
     /// This function will fill in the proof
-    pub fn verify_proof<D>(&mut self, hash: &Vec<u8>) -> bool
+    pub fn verify_proof<D>(&mut self, hash: &[u8]) -> bool
     where D: Digest {
         if self.hash.len() < 3 {
             // our merkle proof is not a valid tree
@@ -214,7 +221,7 @@ impl MerkleProof {
             return false;
         };
         for i in 0..(self.hash.len() - 1) {
-            if self.hash[i].is_some() && self.hash[i].clone().unwrap() == *hash {
+            if self.hash[i].is_some() && *(self.hash[i].clone().unwrap().as_slice()) == *hash {
                 return true;
             }
         }
