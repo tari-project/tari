@@ -68,9 +68,8 @@ where
     /// This function returns a reference to the data stored in the mmr
     /// It will return none if the hash does not exist
     pub fn get_object(&self, hash: &ObjectHashSlice) -> Option<&T> {
-        let object = self.data.get(hash);
-        object?;
-        Some(&object.unwrap().object)
+        let object = self.data.get(hash)?;
+        Some(&object.object)
     }
 
     /// This function returns a reference to the data stored in the mmr

@@ -275,12 +275,10 @@ mod tests {
             .add_database(&"mmr_init".to_string())
             .build()
             .unwrap();
-        let result = mmr.apply_checkpoint(&mut store);
-        assert_eq!(result.is_ok(), true);
+        assert_eq!(mmr.apply_checkpoint(&mut store).is_ok(), true);
         let mut mmr2: MerkleMountainRange<IWrapper, Blake2b> = MerkleMountainRange::new();
         mmr2.init_persistance_store(&"mmr".to_string(), 5);
-        let result = mmr2.load_from_store(&mut store);
-        assert_eq!(result.is_ok(), true);
+        assert_eq!(mmr2.load_from_store(&mut store).is_ok(), true);
         assert_eq!(mmr.get_merkle_root(), mmr2.get_merkle_root());
 
         // add more leaves
@@ -288,13 +286,11 @@ mod tests {
             let object: IWrapper = IWrapper(i);
             mmr.push(object);
             assert_eq!(mmr.change_tracker.objects_to_save.len() > 0, true);
-            let result = mmr.apply_checkpoint(&mut store);
+            assert_eq!(mmr.apply_checkpoint(&mut store).is_ok(), true);
             assert_eq!(mmr.change_tracker.objects_to_save.len() == 0, true);
-            assert_eq!(result.is_ok(), true);
             let mut mmr2: MerkleMountainRange<IWrapper, Blake2b> = MerkleMountainRange::new();
             mmr2.init_persistance_store(&"mmr".to_string(), 5);
-            let result = mmr2.load_from_store(&mut store);
-            assert_eq!(result.is_ok(), true);
+            assert_eq!(mmr2.load_from_store(&mut store).is_ok(), true);
             assert_eq!(mmr.get_merkle_root(), mmr2.get_merkle_root());
         }
 
@@ -303,25 +299,26 @@ mod tests {
             let object: IWrapper = IWrapper(i);
             mmr.push(object);
             let object_delete = IWrapper(i - 25);
-            let result = mmr.prune_object_hash(&object_delete.hash());
-            assert_eq!(result.is_ok(), true);
+            assert_eq!(mmr.prune_object_hash(&object_delete.hash()).is_ok(), true);
             assert!(mmr.change_tracker.objects_to_save.len() > 0);
             assert_eq!(mmr.change_tracker.objects_to_del.len() > 0, true);
-            let result = mmr.apply_checkpoint(&mut store);
-            assert_eq!(result.is_ok(), true);
+            assert_eq!(mmr.apply_checkpoint(&mut store).is_ok(), true);
             assert_eq!(mmr.change_tracker.objects_to_save.len() == 0, true);
             assert_eq!(mmr.change_tracker.objects_to_del.len() == 0, true);
             let mut mmr2: MerkleMountainRange<IWrapper, Blake2b> = MerkleMountainRange::new();
             mmr2.init_persistance_store(&"mmr".to_string(), 5);
-            let result = mmr2.load_from_store(&mut store);
-            assert_eq!(result.is_ok(), true);
+            assert_eq!(mmr2.load_from_store(&mut store).is_ok(), true);
             assert_eq!(mmr.get_merkle_root(), mmr2.get_merkle_root());
         }
         // try and find old deleted objects
         for i in 1..11 {
             let object: IWrapper = IWrapper(i);
-            let result = store.load::<MerkleObject<IWrapper>>(&to_hex(&object.hash()), &"mmr_mmr_objects".to_string());
-            assert_eq!(result.is_ok(), false);
+            assert_eq!(
+                store
+                    .load::<MerkleObject<IWrapper>>(&to_hex(&object.hash()), &"mmr_mmr_objects".to_string())
+                    .is_ok(),
+                false
+            );
         }
         assert!(fs::remove_dir_all("./tests/test_mmr_cm").is_ok()); // we ensure that the test dir is empty
     }
