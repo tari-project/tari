@@ -37,7 +37,7 @@ fn create_mmr(leaves: u32) -> MerkleMountainRange<TestObject, Blake2b> {
 }
 #[test]
 fn create_small_mmr() {
-    let _res = fs::remove_dir_all("./tests/test_mmr_s"); // we ensure that the test dir is empty
+    fs::remove_dir_all("./tests/test_mmr_s"); // we ensure that the test dir is empty
     let mut mmr = create_mmr(2);
     assert_eq!(1, mmr.get_peak_height());
     let hash_values = HashValues::new();
@@ -68,12 +68,12 @@ fn create_small_mmr() {
     let result = mmr2.load_from_store(&mut store);
     assert_eq!(result.is_ok(), true);
     assert_eq!(mmr.get_merkle_root(), mmr2.get_merkle_root());
-    let _res = fs::remove_dir_all("./tests/test_mmr_s"); // we ensure that the test dir is empty
+    assert!(fs::remove_dir_all("./tests/test_mmr_s").is_ok()); // we ensure that the test dir is empty
 }
 
 #[test]
 fn create_med_mmr() {
-    let _res = fs::remove_dir_all("./tests/test_mmr_m"); // we ensure that the test dir is empty
+    fs::remove_dir_all("./tests/test_mmr_m"); // we ensure that the test dir is empty
     let mut mmr = create_mmr(14);
     // create storage
     fs::create_dir("./tests/test_mmr_m").unwrap();
@@ -106,12 +106,12 @@ fn create_med_mmr() {
         assert_eq!(result.is_ok(), true);
         assert_eq!(mmr.get_merkle_root(), mmr2.get_merkle_root());
     }
-    let _res = fs::remove_dir_all("./tests/test_mmr_m"); // we ensure that the test dir is empty
+    assert!(fs::remove_dir_all("./tests/test_mmr_m").is_ok()); // we ensure that the test dir is empty
 }
 
 #[test]
 fn create_large_mmr() {
-    let _res = fs::remove_dir_all("./tests/test_mmr_l"); // we ensure that the test dir is empty
+    fs::remove_dir_all("./tests/test_mmr_l"); // we ensure that the test dir is empty
     let mut mmr = create_mmr(14);
     // create storage
     fs::create_dir("./tests/test_mmr_l").unwrap();
@@ -142,5 +142,5 @@ fn create_large_mmr() {
         assert_eq!(mmr2.load_from_store(&mut store).is_ok(), true);
         assert_eq!(mmr.get_merkle_root(), mmr2.get_merkle_root());
     }
-    let _res = fs::remove_dir_all("./tests/test_mmr_l"); // we ensure that the test dir is empty
+    assert!(fs::remove_dir_all("./tests/test_mmr_l").is_ok()); // we ensure that the test dir is empty
 }
