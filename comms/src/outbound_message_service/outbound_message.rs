@@ -86,15 +86,12 @@ impl<T: Serialize + DeserializeOwned> TryFrom<Frame> for OutboundMessage<T> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use tari_crypto::{
-        keys::{PublicKey, SecretKey},
-        ristretto::{RistrettoPublicKey, RistrettoSecretKey},
-    };
+    use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
 
     #[test]
     fn test_outbound_message() {
         let mut rng = rand::OsRng::new().unwrap();
-        let (sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
+        let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let destination_node_id = NodeId::from_key(&pk).unwrap();
         let message_envelope: Frame = vec![0, 1, 2, 3, 4];
         let mut desired_outbound_message = OutboundMessage::<Frame>::new(destination_node_id, message_envelope);

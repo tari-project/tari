@@ -27,6 +27,7 @@ use crate::connection::{
     zmq::{Context, CurveEncryption, InprocAddress, ZmqEndpoint},
     ConnectionError,
     Result,
+    SocketEstablishment,
 };
 use std::{cmp, iter::IntoIterator};
 
@@ -62,15 +63,16 @@ use std::{cmp, iter::IntoIterator};
 /// [`ZeroMQ`]: http://zeromq.org/
 pub struct Connection<'a> {
     pub(crate) context: &'a Context,
+    pub(crate) curve_encryption: CurveEncryption,
     pub(crate) direction: Direction,
-    pub(crate) recv_hwm: Option<i32>,
-    pub(crate) send_hwm: Option<i32>,
     pub(crate) identity: Option<String>,
     pub(crate) linger: Linger,
-    pub(crate) curve_encryption: CurveEncryption,
     pub(crate) max_message_size: Option<u64>,
-    pub(crate) socks_proxy_addr: Option<SocketAddress>,
     pub(crate) monitor_addr: Option<InprocAddress>,
+    pub(crate) recv_hwm: Option<i32>,
+    pub(crate) send_hwm: Option<i32>,
+    pub(crate) socket_establishment: SocketEstablishment,
+    pub(crate) socks_proxy_addr: Option<SocketAddress>,
 }
 
 impl<'a> Connection<'a> {
@@ -78,15 +80,16 @@ impl<'a> Connection<'a> {
     pub fn new(context: &'a Context, direction: Direction) -> Self {
         Self {
             context,
+            curve_encryption: Default::default(),
             direction,
-            recv_hwm: None,
-            send_hwm: None,
             identity: None,
             linger: Linger::Never,
-            curve_encryption: CurveEncryption::None,
             max_message_size: None,
-            socks_proxy_addr: None,
             monitor_addr: None,
+            recv_hwm: None,
+            send_hwm: None,
+            socket_establishment: Default::default(),
+            socks_proxy_addr: None,
         }
     }
 
@@ -136,6 +139,12 @@ impl<'a> Connection<'a> {
     /// Set the ip:port of a SOCKS proxy to use for this connection
     pub fn set_socks_proxy_addr(mut self, addr: Option<SocketAddress>) -> Self {
         self.socks_proxy_addr = addr;
+        self
+    }
+
+    /// Used to select the method to use when establishing the connection.
+    pub fn set_socket_establishment(mut self, establishment: SocketEstablishment) -> Self {
+        self.socket_establishment = establishment;
         self
     }
 
@@ -215,9 +224,13 @@ impl<'a> Connection<'a> {
                 .map_err(|e| ConnectionError::SocketError(format!("Unable to set monitor address: {}", e)))?;
         }
 
-        match self.direction {
-            Direction::Inbound => socket.bind(&addr.to_zmq_endpoint()),
-            Direction::Outbound => socket.connect(&addr.to_zmq_endpoint()),
+        match self.socket_establishment {
+            SocketEstablishment::Bind => socket.bind(&addr.to_zmq_endpoint()),
+            SocketEstablishment::Connect => socket.connect(&addr.to_zmq_endpoint()),
+            SocketEstablishment::Auto => match self.direction {
+                Direction::Inbound => socket.bind(&addr.to_zmq_endpoint()),
+                Direction::Outbound => socket.connect(&addr.to_zmq_endpoint()),
+            },
         }
         .map_err(|e| ConnectionError::SocketError(format!("Failed to establish socket: {}", e)))?;
 
@@ -320,8 +333,7 @@ impl EstablishedConnection {
             .map_err(|e| ConnectionError::SocketError(format!("Error sending: {} ({})", e, e.to_raw())))
     }
 
-    #[cfg(test)]
-    pub fn get_socket(&self) -> &zmq::Socket {
+    pub(crate) fn get_socket(&self) -> &zmq::Socket {
         &self.socket
     }
 }

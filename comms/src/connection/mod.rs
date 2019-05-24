@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 pub mod connection;
+pub mod dealer_proxy;
 pub mod error;
 pub mod message;
 pub mod monitor;
@@ -31,6 +32,7 @@ pub mod zmq;
 
 pub use self::{
     connection::Connection,
+    dealer_proxy::{DealerProxy, DealerProxyError},
     error::ConnectionError,
     message::MessageError,
     net_address::{NetAddress, NetAddressError},
