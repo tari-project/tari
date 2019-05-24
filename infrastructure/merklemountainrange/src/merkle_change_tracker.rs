@@ -305,7 +305,7 @@ mod tests {
             let object_delete = IWrapper(i - 25);
             let result = mmr.prune_object_hash(&object_delete.hash());
             assert_eq!(result.is_ok(), true);
-            assert_eq!(mmr.change_tracker.objects_to_save.len() > 0, true);
+            assert!(mmr.change_tracker.objects_to_save.len() > 0);
             assert_eq!(mmr.change_tracker.objects_to_del.len() > 0, true);
             let result = mmr.apply_checkpoint(&mut store);
             assert_eq!(result.is_ok(), true);
