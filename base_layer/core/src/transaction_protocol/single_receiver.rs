@@ -41,13 +41,13 @@ use tari_crypto::{keys::PublicKey as PK, range_proof::RangeProofService as Range
 pub(super) struct SingleReceiverTransactionProtocol {}
 
 impl SingleReceiverTransactionProtocol {
-    pub fn new(sender_info: &SD, nonce: SK, spending_key: SK, features: OutputFeatures) -> Result<RD, TPE> {
+    pub fn create(sender_info: &SD, nonce: SK, spending_key: SK, features: OutputFeatures) -> Result<RD, TPE> {
         SingleReceiverTransactionProtocol::validate_sender_data(sender_info)?;
         let output = SingleReceiverTransactionProtocol::build_output(sender_info, &spending_key, features)?;
         let public_nonce = PublicKey::from_secret_key(&nonce);
         let public_spending_key = PublicKey::from_secret_key(&spending_key);
         let e = build_challenge(&(&sender_info.public_nonce + &public_nonce), &sender_info.metadata);
-        let signature = Signature::sign(spending_key, nonce, &e).map_err(|e| TPE::SigningError(e))?;
+        let signature = Signature::sign(spending_key, nonce, &e).map_err(TPE::SigningError)?;
         let data = RD {
             tx_id: sender_info.tx_id,
             output,
@@ -105,7 +105,7 @@ mod test {
     fn zero_amount_fails() {
         let info = SingleRoundSenderData::default();
         let (r, k, of) = generate_output_parms();
-        match SingleReceiverTransactionProtocol::new(&info, r, k, of) {
+        match SingleReceiverTransactionProtocol::create(&info, r, k, of) {
             Ok(_) => panic!("Zero amounts should fail"),
             Err(TransactionProtocolError::ValidationError(s)) => assert_eq!(s, "Cannot send zero microTari"),
             Err(_) => panic!("Protocol fails for the wrong reason"),
@@ -131,7 +131,7 @@ mod test {
             public_nonce: pub_rs.clone(),
             metadata: m.clone(),
         };
-        let prot = SingleReceiverTransactionProtocol::new(&info, r, k.clone(), of).unwrap();
+        let prot = SingleReceiverTransactionProtocol::create(&info, r, k.clone(), of).unwrap();
         assert_eq!(prot.tx_id, 500, "tx_id is incorrect");
         // Check the signature
         assert_eq!(prot.public_spend_key, pubkey, "Public key is incorrect");

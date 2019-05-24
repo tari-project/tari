@@ -35,6 +35,7 @@ pub enum ByteArrayError {
 /// Many of the types in this crate are just large numbers (256 bit usually). This trait provides the common
 /// functionality for  types  like secret keys, signatures, commitments etc. to be converted to and from byte arrays
 /// and hexadecimal formats.
+#[allow(clippy::ptr_arg)]
 pub trait ByteArray: Sized {
     /// Return the type as a byte vector
     fn to_vec(&self) -> Vec<u8> {

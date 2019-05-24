@@ -237,7 +237,7 @@ mod test {
         // Bob's parameters
         let b = TestParams::new(&mut rng);
         let (utxo, input) = make_input(&mut rng, 2500);
-        let mut builder = SenderTransactionProtocol::new(1);
+        let mut builder = SenderTransactionProtocol::builder(1);
         builder
             .with_lock_height(0)
             .with_fee_per_gram(20)
@@ -290,7 +290,7 @@ mod test {
         // Initializing all the sending transaction protocols
         // Alice
         let (utxo_a1, input_a1) = make_input(&mut rng, 2500);
-        let mut builder_a1 = SenderTransactionProtocol::new(1);
+        let mut builder_a1 = SenderTransactionProtocol::builder(1);
         builder_a1
             .with_lock_height(0)
             .with_fee_per_gram(20)
@@ -302,7 +302,7 @@ mod test {
         let alice_stp1 = builder_a1.build::<Blake256>().unwrap();
 
         let (utxo_a2, input_a2) = make_input(&mut rng, 2500);
-        let mut builder_a2 = SenderTransactionProtocol::new(1);
+        let mut builder_a2 = SenderTransactionProtocol::builder(1);
         builder_a2
             .with_lock_height(0)
             .with_fee_per_gram(20)
@@ -314,7 +314,7 @@ mod test {
         let alice_stp2 = builder_a2.build::<Blake256>().unwrap();
 
         let (utxo_a3, input_a3) = make_input(&mut rng, 2500);
-        let mut builder_a3 = SenderTransactionProtocol::new(1);
+        let mut builder_a3 = SenderTransactionProtocol::builder(1);
         builder_a3
             .with_lock_height(0)
             .with_fee_per_gram(20)
@@ -327,7 +327,7 @@ mod test {
 
         // Bob
         let (utxo_b1, input_b1) = make_input(&mut rng, 2500);
-        let mut builder_b1 = SenderTransactionProtocol::new(1);
+        let mut builder_b1 = SenderTransactionProtocol::builder(1);
         builder_b1
             .with_lock_height(0)
             .with_fee_per_gram(20)
@@ -422,7 +422,7 @@ mod test {
         // Bob's parameters
         let b = TestParams::new(&mut rng);
         let (utxo, input) = make_input(&mut rng, 2500);
-        let mut builder = SenderTransactionProtocol::new(1);
+        let mut builder = SenderTransactionProtocol::builder(1);
         builder
             .with_lock_height(0)
             .with_fee_per_gram(20)
@@ -472,7 +472,7 @@ mod test {
         // Bob's parameters
         let b = TestParams::new(&mut rng);
         let (utxo, input) = make_input(&mut rng, 2500);
-        let mut builder = SenderTransactionProtocol::new(1);
+        let mut builder = SenderTransactionProtocol::builder(1);
         builder
             .with_lock_height(0)
             .with_fee_per_gram(20)
@@ -511,7 +511,7 @@ mod test {
         // Bob's parameters
         let b = TestParams::new(&mut rng);
         let (utxo, input) = make_input(&mut rng, 2500);
-        let mut builder = SenderTransactionProtocol::new(1);
+        let mut builder = SenderTransactionProtocol::builder(1);
         builder
             .with_lock_height(0)
             .with_fee_per_gram(20)

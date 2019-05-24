@@ -37,6 +37,7 @@ use tari_utilities::{fixed_set::FixedSet, ByteArray};
 type JKBuilder = JointKeyBuilder<RistrettoPublicKey, RistrettoSecretKey>;
 type JointPubKey = JointKey<RistrettoPublicKey, RistrettoSecretKey>;
 type MessageHash = Vec<u8>;
+type MessageHashSlice = [u8];
 
 /// MuSig signature aggregation. [MuSig](https://blockstream.com/2018/01/23/musig-key-aggregation-schnorr-signatures/)
 /// is a 3-round signature aggregation protocol.
@@ -493,9 +494,9 @@ impl NonceCollection {
         }
     }
 
-    fn is_valid_nonce<D: Digest>(nonce: &RistrettoPublicKey, expected: &MessageHash) -> bool {
+    fn is_valid_nonce<D: Digest>(nonce: &RistrettoPublicKey, expected: &MessageHashSlice) -> bool {
         let calc = D::digest(nonce.as_bytes()).to_vec();
-        &calc == expected
+        &calc[..] == expected
     }
 
     // We definitely want to consume `nonce` here to discourage nonce re-use
@@ -560,7 +561,7 @@ impl SignatureCollection {
     fn calculate_challenge<D: Digest>(
         r_agg: &RistrettoPublicKey,
         p_agg: &RistrettoPublicKey,
-        m: &MessageHash,
+        m: &MessageHashSlice,
     ) -> RistrettoSecretKey
     {
         let e = D::new()

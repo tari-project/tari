@@ -70,6 +70,7 @@ fn chacha20_block(state: &[u32; 16]) -> [u32; 16] {
 }
 
 /// Construct an initial state from a 128-bit constant, 256-bit key, 96-bit nonce and a 32-bit block counter
+#[allow(clippy::needless_range_loop)]
 fn construct_state(key: &[u8; 32], nonce: &[u32; 3], counter: u32) -> [u32; 16] {
     let constant: [u8; 16] = [101, 120, 112, 97, 110, 100, 32, 51, 50, 45, 98, 121, 116, 101, 32, 107]; // 0x61707865, 0x3320646e, 0x79622d32, 0x6b206574
     let mut state_bytes = constant.to_vec(); // 128 bit

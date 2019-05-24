@@ -122,7 +122,7 @@ impl ReceiverTransactionProtocol {
 
     /// Run the single-round recipient protocol, which can immediately construct an output and sign the data
     fn single_round(nonce: SecretKey, key: SecretKey, features: OutputFeatures, data: &SD) -> RecipientState {
-        let signer = SingleReceiverTransactionProtocol::new(data, nonce, key, features);
+        let signer = SingleReceiverTransactionProtocol::create(data, nonce, key, features);
         match signer {
             Ok(signed_data) => RecipientState::Finalized(signed_data),
             Err(e) => RecipientState::Failed(e),
