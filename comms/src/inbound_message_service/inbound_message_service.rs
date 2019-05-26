@@ -22,9 +22,10 @@
 
 use crate::{
     connection::{
-        types::SocketType,
-        zmq::{Context, InprocAddress, ZmqEndpoint, ZmqError},
+        zmq::{Context, InprocAddress},
         ConnectionError,
+        DealerProxy,
+        DealerProxyError,
     },
     inbound_message_service::{
         message_context::MessageContext,
@@ -34,21 +35,6 @@ use crate::{
 };
 use std::{marker::Send, thread};
 use tari_crypto::keys::PublicKey;
-
-/// As DealerError is handled in a thread it needs to be written to the error log
-#[derive(Debug)]
-pub enum DealerError {
-    /// Problem with router socket
-    RouterSocketError(ZmqError),
-    /// Could not bind to router socket
-    RouterBindError(zmq::Error),
-    /// Problem with dealer socket
-    DealerSocketError(ZmqError),
-    /// Could not bind to dealer socket
-    DealerBindError(zmq::Error),
-    /// Could not start dealer proxy
-    DealerProxyError,
-}
 
 /// The maximum number of processing worker threads that will be created by the InboundMessageService
 const MAX_MSG_PROCESSING_WORKERS: u8 = 8;
@@ -80,22 +66,8 @@ impl<PubKey: PublicKey + Send + 'static> InboundMessageService<PubKey> {
         })
     }
 
-    fn start_dealer(&self) -> Result<(), DealerError> {
-        let router_socket = self
-            .context
-            .socket(SocketType::Router)
-            .map_err(|e| DealerError::RouterSocketError(e))?;
-        router_socket
-            .bind(&self.inbound_address.to_zmq_endpoint())
-            .map_err(|e| DealerError::RouterBindError(e))?;
-        let dealer_socket = self
-            .context
-            .socket(SocketType::Dealer)
-            .map_err(|e| DealerError::DealerSocketError(e))?;
-        dealer_socket
-            .bind(&self.dealer_address.to_zmq_endpoint())
-            .map_err(|e| DealerError::DealerBindError(e))?;
-        zmq::proxy(&router_socket, &dealer_socket).map_err(|_| DealerError::DealerProxyError)
+    fn start_dealer(&self) -> Result<(), DealerProxyError> {
+        DealerProxy::new(self.inbound_address.clone(), self.dealer_address.clone()).proxy(&self.context)
     }
 
     /// Starts the MsgProcessingWorker threads and the InboundMessageService with Dealer in its own thread
@@ -130,6 +102,7 @@ mod test {
             connection::EstablishedConnection,
             message::{IdentityFlags, MessageEnvelopeHeader, NodeDestination},
             zmq::{Context, InprocAddress, ZmqEndpoint},
+            SocketType,
         },
         inbound_message_service::{comms_msg_handlers::*, message_dispatcher::DispatchError},
     };

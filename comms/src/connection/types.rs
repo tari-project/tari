@@ -57,3 +57,19 @@ pub enum Direction {
     /// Connection establishes an outbound connection
     Outbound,
 }
+
+/// Used to select the method to use when establishing the connection.
+pub enum SocketEstablishment {
+    /// Select bind or connect based on connection [Direction](./enum.Direction.html)
+    Auto,
+    /// Always bind on the socket
+    Bind,
+    /// Always connect on the socket
+    Connect,
+}
+
+impl Default for SocketEstablishment {
+    fn default() -> Self {
+        SocketEstablishment::Auto
+    }
+}
