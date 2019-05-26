@@ -59,7 +59,7 @@ This document describes Validator Node registration. Registration accomplishes t
 * [RFC-0304: Validator Node committee selection](RFC-0304_VNCommittees.md)
 * [RFC-0170: The Tari Communication Network and Network Communication Protocol](RFC-0170_NetworkCommunicationProtocol.md)
 * [RFC-0341: Asset Registration](RFC-0341_AssetRegistration.md)
-* [RFC-0200: Base Layer Extensions](RFC-0200_BaseLayerExtensions.md)
+* [RFC-0200: Base Layer Extensions](BaseLayerExtensions.md)
 
 ## Description
 
