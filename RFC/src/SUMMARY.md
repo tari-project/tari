@@ -26,7 +26,6 @@
 - [RFC-0310: Asset Management](RFC-0310_AssetManagement.md)
   - [RFC-0311: Digital Asset templates](RFC-0311_AssetTemplates.md)
   - [RFC-0313: The asset read-only API](RFC-0313_AssetReadAPI.md)
-  - [RFC-0314: Asset discovery](RFC-0314_AssetDiscovery.md)
   - [RFC-0315: Asset transfer mechanism](RFC-0315_AssetTransfer.md)
   - [RFC-0316: Asset retirement](RFC-0316_AssetRetirement.md)
 - [RFC-0340: Validator Node Consensus](RFC-0340_VNConsensusOverview.md)
