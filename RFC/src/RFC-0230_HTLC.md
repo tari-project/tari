@@ -48,7 +48,7 @@ technological merits of the potential system outlined herein.
 
 ## Goals
 
-This document describes a few extension to [MimbleWimble] to allow time related transactions.
+This document describes a few extensions to [MimbleWimble] to allow time related transactions.
 
 ## Related RFCs
 
