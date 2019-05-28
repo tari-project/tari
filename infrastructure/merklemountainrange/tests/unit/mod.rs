@@ -22,4 +22,5 @@
 
 mod examples;
 mod mmr;
+mod mmr_rewinding;
 mod mmr_storage;

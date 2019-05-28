@@ -67,6 +67,9 @@ pub trait DataStore {
     /// Save a value at the given key. Existing values are overwritten
     fn put_raw(&mut self, key: &[u8], value: Vec<u8>) -> Result<(), DatastoreError>;
 
+    /// This deletes a key from the database
+    fn delete_raw(&mut self, key: &[u8]) -> Result<(), DatastoreError>;
+
     /// Serialize a value using Bincode and then save it value at the given key. Existing values are overwritten
     fn put<T: Serialize>(&mut self, key: &str, value: &T) -> Result<(), DatastoreError> {
         let key = key.as_bytes();

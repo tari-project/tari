@@ -299,12 +299,60 @@ where
     }
 
     /// This function applies all changes to disc
-    pub fn apply_checkpoint<S: MerkleStorage>(&mut self, store: &mut S) -> Result<(), MerkleStorageError> {
-        self.change_tracker.save(&mut self.data, &self.mmr, store)
+    pub fn checkpoint(&mut self) -> Result<(), MerkleStorageError> {
+        if !self.change_tracker.enabled {
+            return Err(MerkleStorageError::StoreNotEnabledError);
+        }
+        self.change_tracker.checkpoint(&self.mmr)
+    }
+
+    /// This fast forwards the MMR back to its current head
+    pub fn ff_to_head<S: MerkleStorage>(&mut self, store: &mut S) -> Result<(), MerkleStorageError> {
+        if !self.change_tracker.enabled {
+            return Err(MerkleStorageError::StoreNotEnabledError);
+        }
+        self.change_tracker
+            .reset_to_head(&mut self.data, &mut self.mmr, store)?;
+        self.current_peak_height = self.calc_peak_height(); // calculate cached height after loading in data
+        Ok(())
+    }
+
+    /// This rewinds the MMR from the store
+    pub fn rewind<S: MerkleStorage>(&mut self, store: &mut S, rewind_amount: usize) -> Result<(), MerkleStorageError> {
+        dbg!(&self.current_peak_height);
+        if !self.change_tracker.enabled {
+            return Err(MerkleStorageError::StoreNotEnabledError);
+        }
+        if self.change_tracker.current_horizon.checked_sub(rewind_amount).is_none() {
+            return Err(MerkleStorageError::InternalError(
+                "Cannot rewind past checkpoint 0".to_owned(),
+            ));
+        }
+        if rewind_amount > self.change_tracker.pruning_horizon {
+            return Err(MerkleStorageError::InternalError(
+                "Cannot rewind past pruning horizon".to_owned(),
+            ));
+        }
+        self.change_tracker
+            .rewind(&mut self.data, &mut self.mmr, rewind_amount, store)?;
+        self.current_peak_height = self.calc_peak_height(); // calculate cached height after loading in data
+        dbg!(&self.current_peak_height);
+        Ok(())
+    }
+
+    /// This applies an unsaved state to disc
+    pub fn apply_state<S: MerkleStorage>(&mut self, store: &mut S) -> Result<(), MerkleStorageError> {
+        if !self.change_tracker.enabled {
+            return Err(MerkleStorageError::StoreNotEnabledError);
+        }
+        self.change_tracker.save(&mut self.data, store)
     }
 
     /// This function applies all changes to disc
     pub fn load_from_store<S: MerkleStorage>(&mut self, store: &mut S) -> Result<(), MerkleStorageError> {
+        if !self.change_tracker.enabled {
+            return Err(MerkleStorageError::StoreNotEnabledError);
+        }
         self.change_tracker.load(&mut self.data, &mut self.mmr, store)?;
         self.current_peak_height = self.calc_peak_height(); // calculate cached height after loading in data
         Ok(())
