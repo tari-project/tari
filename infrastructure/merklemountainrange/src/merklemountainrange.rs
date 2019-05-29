@@ -29,7 +29,7 @@ use crate::{
 };
 use digest::Digest;
 use serde::{de::DeserializeOwned, Serialize};
-use std::{collections::HashMap, marker::PhantomData};
+use std::{collections::HashMap, convert::TryFrom, marker::PhantomData};
 use tari_utilities::Hashable;
 
 #[derive(Default)]
@@ -292,10 +292,12 @@ where
     }
 
     /// This function adds a vec of leaf nodes to the mmr.
-    pub fn append(&mut self, objects: Vec<T>) {
+    /// It will return an error on a duplicate hash being added to the MMR
+    pub fn append(&mut self, objects: Vec<T>) -> Result<(), MerkleMountainRangeError> {
         for object in objects {
-            self.push(object);
+            self.push(object)?;
         }
+        Ok(())
     }
 
     /// This function applies all changes to disc
@@ -319,7 +321,6 @@ where
 
     /// This rewinds the MMR from the store
     pub fn rewind<S: MerkleStorage>(&mut self, store: &mut S, rewind_amount: usize) -> Result<(), MerkleStorageError> {
-        dbg!(&self.current_peak_height);
         if !self.change_tracker.enabled {
             return Err(MerkleStorageError::StoreNotEnabledError);
         }
@@ -336,7 +337,6 @@ where
         self.change_tracker
             .rewind(&mut self.data, &mut self.mmr, rewind_amount, store)?;
         self.current_peak_height = self.calc_peak_height(); // calculate cached height after loading in data
-        dbg!(&self.current_peak_height);
         Ok(())
     }
 
@@ -359,15 +359,19 @@ where
     }
 
     /// This function adds a new leaf node to the mmr.
-    pub fn push(&mut self, object: T) {
+    /// It will return an error on a duplicate hash being added to the MMR
+    pub fn push(&mut self, object: T) -> Result<(), MerkleMountainRangeError> {
         let node_hash = object.hash();
         let node = MerkleObject::new(object, self.mmr.len());
-        self.data.insert(node_hash.clone(), node);
+        if self.data.insert(node_hash.clone(), node).is_some() {
+            return Err(MerkleMountainRangeError::CannotAddToMMR);
+        };
         self.change_tracker.add_new_data(node_hash.clone());
         self.mmr.push(MerkleNode::new(node_hash));
         if is_node_right(self.get_last_added_index()) {
             self.add_single_no_leaf(self.get_last_added_index())
         }
+        Ok(())
     }
 
     // This function adds non leaf nodes, eg nodes that are not directly a hash of data
@@ -453,12 +457,16 @@ pub fn sibling_index(node_index: usize) -> usize {
     }
 }
 
-impl<T, D> From<Vec<T>> for MerkleMountainRange<T, D>
+impl<T, D> TryFrom<Vec<T>> for MerkleMountainRange<T, D>
 where
     T: Hashable + Serialize + DeserializeOwned,
     D: Digest,
 {
-    fn from(items: Vec<T>) -> Self {
+    type Error = MerkleMountainRangeError;
+
+    /// This function try to convert a vec of type T to a MMR
+    /// It will return an error on a duplicate hash being added to the MMR
+    fn try_from(items: Vec<T>) -> Result<Self, MerkleMountainRangeError> {
         let mut mmr = MerkleMountainRange {
             mmr: Vec::new(),
             data: HashMap::new(),
@@ -466,8 +474,8 @@ where
             current_peak_height: (0, 0),
             change_tracker: MerkleChangeTracker::new(),
         };
-        mmr.append(items);
-        mmr
+        mmr.append(items)?;
+        Ok(mmr)
     }
 }
 

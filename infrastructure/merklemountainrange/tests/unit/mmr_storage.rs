@@ -31,7 +31,7 @@ fn create_mmr(leaves: u32) -> MerkleMountainRange<TestObject, Blake2b> {
     mmr.init_persistance_store(&"mmr".to_string(), 5);
     for i in 1..leaves + 1 {
         let object: TestObject = TestObject::new(i.to_string());
-        mmr.push(object);
+        assert!(mmr.push(object).is_ok());
     }
     mmr
 }
@@ -97,7 +97,7 @@ fn create_med_mmr() {
     // add much more leafs
     for i in 15..25 {
         let object: TestObject = TestObject::new(i.to_string());
-        mmr.push(object);
+        assert!(mmr.push(object).is_ok());
         assert!(mmr.checkpoint().is_ok());
         assert!(mmr.apply_state(&mut store).is_ok());
         let mut mmr2: MerkleMountainRange<TestObject, Blake2b> = MerkleMountainRange::new();
@@ -132,10 +132,10 @@ fn create_large_mmr() {
     assert_eq!(mmr.get_merkle_root(), mmr2.get_merkle_root());
 
     // add much more leaves
-    for j in 1..40 {
-        for i in 14..25 {
-            let object: TestObject = TestObject::new((i + j).to_string());
-            mmr.push(object);
+    for j in 0..40 {
+        for i in 1..11 {
+            let object: TestObject = TestObject::new((14 * j + i + 14).to_string());
+            assert!(mmr.push(object).is_ok());
         }
         assert!(mmr.checkpoint().is_ok());
         assert!(mmr.apply_state(&mut store).is_ok());

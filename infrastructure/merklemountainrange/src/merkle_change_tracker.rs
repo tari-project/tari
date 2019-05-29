@@ -32,9 +32,9 @@ pub(crate) struct MerkleChangeTracker {
     pub enabled: bool,
     objects_to_save: Vec<ObjectHash>,
     objects_to_del: Vec<ObjectHash>,
-    tree_saved: usize,               // how much of the mmr have saved to date in all CP
-    pub pruning_horizon: usize,      // how many CP's do we keep before compressing and deleting
-    pub current_head_horizon: usize, // how many cp's have you had to date, saved on disc
+    tree_saved: usize,           // how much of the mmr have saved to date in all CP
+    pub pruning_horizon: usize,  // how many CP's do we keep before compressing and deleting
+    current_head_horizon: usize, // how many cp's have you had to date, saved on disc
     pub current_horizon: usize,
     mmr_key: String,
     object_key: String,
@@ -168,23 +168,24 @@ impl MerkleChangeTracker {
     where
         T: Serialize + DeserializeOwned,
     {
-        // Todo investigate doing this without IO
+        // Todo investigate doing this without IO, currently this is a duplicate of load which is not ideal
         if !self.enabled {
             return Ok(());
         }
-
-        self.uncleaned_checkpoints = Vec::new();
+        hashmap.drain();
+        mmr.drain(..);
         self.unsaved_checkpoints = Vec::new();
+        self.uncleaned_checkpoints = Vec::new();
         let amount_of_cps = store.load::<usize>(&("init").to_string(), &self.init_key)?;
         self.current_head_horizon = match amount_of_cps.checked_sub(self.pruning_horizon) {
-            None => 1,
-            Some(v) => v + 1,
+            None => 0,
+            Some(v) => v,
         };
 
-        while self.current_head_horizon <= amount_of_cps {
+        while self.current_head_horizon < amount_of_cps {
+            self.current_head_horizon += 1;
             let mut cp = store.load::<MerkleCheckPoint>(&self.current_head_horizon.to_string(), &self.mmr_key)?;
             self.apply_cp(&mut cp, hashmap, mmr, store)?;
-            self.current_head_horizon += 1;
         }
         self.current_horizon = self.current_head_horizon;
         Ok(())
@@ -217,6 +218,7 @@ impl MerkleChangeTracker {
         }
         store.commit()?;
         self.unsaved_checkpoints = Vec::new(); // clear out all unsaved changes
+        self.uncleaned_checkpoints = Vec::new();
         self.current_horizon = self.current_head_horizon;
 
         Ok(())
@@ -280,16 +282,20 @@ impl MerkleChangeTracker {
         if !self.enabled {
             return Ok(());
         }
+        hashmap.drain();
+        mmr.drain(..);
+        self.unsaved_checkpoints = Vec::new();
+        self.uncleaned_checkpoints = Vec::new();
         let amount_of_cps = store.load::<usize>(&("init").to_string(), &self.init_key)?;
         self.current_head_horizon = match amount_of_cps.checked_sub(self.pruning_horizon) {
-            None => 1,
-            Some(v) => v + 1,
+            None => 0,
+            Some(v) => v,
         };
 
-        while self.current_head_horizon <= amount_of_cps {
+        while self.current_head_horizon < amount_of_cps {
+            self.current_head_horizon += 1;
             let mut cp = store.load::<MerkleCheckPoint>(&self.current_head_horizon.to_string(), &self.mmr_key)?;
             self.apply_cp(&mut cp, hashmap, mmr, store)?;
-            self.current_head_horizon += 1;
         }
         self.current_horizon = self.current_head_horizon;
         Ok(())
@@ -309,12 +315,12 @@ impl MerkleChangeTracker {
         if !self.enabled {
             return Ok(());
         }
+
         for _i in 0..rewind_amount {
-            self.current_horizon -= 1;
             let mut cp = store.load::<MerkleCheckPoint>(&(self.current_horizon).to_string(), &self.mmr_key)?;
             self.apply_cp_reverse(&mut cp, hashmap, mmr, store)?;
-            self.uncleaned_checkpoints
-                .push(cp.create_cleanup(self.current_horizon.clone()));
+            self.uncleaned_checkpoints.push(cp.create_cleanup(self.current_horizon));
+            self.current_horizon -= 1;
         }
         Ok(())
     }

@@ -28,4 +28,6 @@ pub enum MerkleMountainRangeError {
     IndexOutOfBounds,
     // Object was not found
     ObjectNotFound,
+    // Object could not be inserted into MMR
+    CannotAddToMMR,
 }
