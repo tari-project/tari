@@ -87,7 +87,7 @@ mod control;
 mod error;
 mod worker;
 
-pub type ConnectionId = super::message::Frame;
+pub type ConnectionId = super::Frame;
 
 pub use self::{
     connection::PeerConnection,

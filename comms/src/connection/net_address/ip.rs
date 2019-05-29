@@ -26,10 +26,12 @@ use std::{
     str::FromStr,
 };
 
+use serde::{Deserialize, Serialize};
+
 use crate::connection::NetAddressError;
 
 /// Represents an {IPv4, IPv6} address and port
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct SocketAddress(SocketAddr);
 
 impl SocketAddress {

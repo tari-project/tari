@@ -25,9 +25,9 @@ use std::{
     thread,
 };
 use tari_comms::connection::{
-    message::FrameSet,
     types::{Direction, SocketType},
     zmq::{curve_keypair, Context, CurvePublicKey, CurveSecretKey, ZmqEndpoint},
+    FrameSet,
 };
 
 /// Creates an [AsyncRequestReplyPattern].

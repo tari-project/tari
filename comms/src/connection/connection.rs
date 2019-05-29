@@ -21,11 +21,11 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::connection::{
-    message::FrameSet,
     net_address::ip::SocketAddress,
     types::{Direction, Linger, SocketType},
     zmq::{Context, CurveEncryption, InprocAddress, ZmqEndpoint},
     ConnectionError,
+    FrameSet,
     Result,
     SocketEstablishment,
 };
@@ -251,7 +251,7 @@ fn set_linger(socket: &zmq::Socket, linger: Linger) -> Result<()> {
 
 /// Represents an established connection.
 pub struct EstablishedConnection {
-    pub socket: zmq::Socket,
+    socket: zmq::Socket,
 }
 
 impl EstablishedConnection {
@@ -335,6 +335,12 @@ impl EstablishedConnection {
 
     pub(crate) fn get_socket(&self) -> &zmq::Socket {
         &self.socket
+    }
+}
+
+impl From<zmq::Socket> for EstablishedConnection {
+    fn from(socket: zmq::Socket) -> Self {
+        Self { socket }
     }
 }
 

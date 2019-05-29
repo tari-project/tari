@@ -20,29 +20,37 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#[macro_use]
-mod macros;
+use tari_utilities::message_format::MessageFormat;
 
-pub mod connection;
-pub mod dealer_proxy;
-pub mod error;
-pub mod monitor;
-pub mod net_address;
-pub mod peer_connection;
-pub mod types;
-pub mod zmq;
+use super::{error::ControlServiceError, messages::EstablishConnection, types::ControlServiceMessageContext};
 
-/// Represents a single message frame.
-pub type Frame = Vec<u8>;
-/// Represents a collection of frames which make up a multipart message.
-pub type FrameSet = Vec<Frame>;
+#[allow(dead_code)]
+const LOG_TARGET: &'static str = "comms::control_service::handlers";
 
-pub use self::{
-    connection::Connection,
-    dealer_proxy::{DealerProxy, DealerProxyError},
-    error::ConnectionError,
-    net_address::{NetAddress, NetAddressError},
-    peer_connection::{PeerConnection, PeerConnectionContextBuilder, PeerConnectionError},
-    types::*,
-    zmq::{curve_keypair, Context, CurveEncryption, InprocAddress},
-};
+/// Establish connection handler. This is the default handler which can be used to handle
+/// the EstablishConnection message.
+/// This handler:
+/// - Will check if the connecting peer/public key should be allowed to connect
+/// - Will open an outbound [PeerConnection] to that peer (using [ConnectionManager])
+/// - If that connection is successful, add the peer to the routing table (using [PeerManager])
+/// - Send an Accept message over the new [PeerConnection]
+#[allow(dead_code)]
+pub fn establish_connection(context: ControlServiceMessageContext) -> Result<(), ControlServiceError> {
+    let message = EstablishConnection::from_binary(context.message.body.as_slice())
+        .map_err(|e| ControlServiceError::MessageFormatError(e))?;
+
+    debug!(target: LOG_TARGET, "EstablishConnection message: {:#?}", message);
+
+    // TODO:
+    // - Add peer to routing table
+    // - Open a port with connection manager
+    // - Send Accept message
+
+    Ok(())
+}
+
+/// Discards (does nothing) with the given message.
+pub fn discard(_: ControlServiceMessageContext) -> Result<(), ControlServiceError> {
+    debug!(target: LOG_TARGET, "Discarding message");
+    Ok(())
+}

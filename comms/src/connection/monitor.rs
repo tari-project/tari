@@ -20,15 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::connection::{
-    message::FrameSet,
-    zmq::ZmqEndpoint,
-    ConnectionError,
-    Context,
-    InprocAddress,
-    Result,
-    SocketType,
-};
+use crate::connection::{zmq::ZmqEndpoint, ConnectionError, Context, FrameSet, InprocAddress, Result, SocketType};
 use derive_error::Error;
 use std::{
     convert::{TryFrom, TryInto},

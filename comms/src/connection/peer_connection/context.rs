@@ -145,15 +145,6 @@ pub struct PeerConnectionContextBuilder<'a> {
     pub(super) socks_address: Option<SocketAddress>,
 }
 
-macro_rules! setter {
- ($func:ident, $name: ident, $type: ty) => {
-	pub fn $func(mut self, val: $type) -> Self {
-	    self.$name = Some(val);
-	    self
-	}
-    }
-}
-
 impl<'a> PeerConnectionContextBuilder<'a> {
     setter!(set_address, address, NetAddress);
 

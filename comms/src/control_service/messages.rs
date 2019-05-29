@@ -20,29 +20,24 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#[macro_use]
-mod macros;
+use serde::{Deserialize, Serialize};
 
-pub mod connection;
-pub mod dealer_proxy;
-pub mod error;
-pub mod monitor;
-pub mod net_address;
-pub mod peer_connection;
-pub mod types;
-pub mod zmq;
+use tari_crypto::ristretto::RistrettoPublicKey;
 
-/// Represents a single message frame.
-pub type Frame = Vec<u8>;
-/// Represents a collection of frames which make up a multipart message.
-pub type FrameSet = Vec<Frame>;
+use crate::connection::{net_address::NetAddress, zmq::CurvePublicKey};
 
-pub use self::{
-    connection::Connection,
-    dealer_proxy::{DealerProxy, DealerProxyError},
-    error::ConnectionError,
-    net_address::{NetAddress, NetAddressError},
-    peer_connection::{PeerConnection, PeerConnectionContextBuilder, PeerConnectionError},
-    types::*,
-    zmq::{curve_keypair, Context, CurveEncryption, InprocAddress},
-};
+/// This represents a request to open a peer connection
+/// to a remote peer.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct EstablishConnection {
+    /// The public key to use to connect to this connection
+    pub server_key: CurvePublicKey,
+    /// The address to which to connect
+    pub address: NetAddress,
+    /// The requesting node's public key
+    pub public_key: RistrettoPublicKey,
+}
+
+/// Sent to show that the connection has been accepted
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Accept;

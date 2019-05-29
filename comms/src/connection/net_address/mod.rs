@@ -28,6 +28,7 @@ pub mod onion;
 pub mod parser;
 
 use derive_error::Error;
+use serde::{Deserialize, Serialize};
 
 use std::{fmt, str::FromStr};
 
@@ -63,7 +64,7 @@ pub enum NetAddressError {
 /// assert!(address.is_ok());
 /// assert!(address.unwrap().is_tor());
 /// ```
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 /// Represents an address which can be used to reach a node on the network
 pub enum NetAddress {
     /// IPv4 and IPv6

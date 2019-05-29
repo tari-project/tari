@@ -20,29 +20,26 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#[macro_use]
-mod macros;
+use crate::peer_manager::node_id::NodeId;
+use bitflags::*;
+use serde::{Deserialize, Serialize};
 
-pub mod connection;
-pub mod dealer_proxy;
-pub mod error;
-pub mod monitor;
-pub mod net_address;
-pub mod peer_connection;
-pub mod types;
-pub mod zmq;
+mod envelope;
+mod error;
+mod message;
 
-/// Represents a single message frame.
-pub type Frame = Vec<u8>;
-/// Represents a collection of frames which make up a multipart message.
-pub type FrameSet = Vec<Frame>;
+pub use self::{envelope::*, error::MessageError, message::*};
 
-pub use self::{
-    connection::Connection,
-    dealer_proxy::{DealerProxy, DealerProxyError},
-    error::ConnectionError,
-    net_address::{NetAddress, NetAddressError},
-    peer_connection::{PeerConnection, PeerConnectionContextBuilder, PeerConnectionError},
-    types::*,
-    zmq::{curve_keypair, Context, CurveEncryption, InprocAddress},
-};
+bitflags! {
+    #[derive(Deserialize, Serialize)]
+    pub struct MessageFlags: u8 {
+        const ENCRYPTED = 0b00000001;
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub enum NodeDestination<P> {
+    Unknown,
+    PublicKey(P),
+    NodeId(NodeId),
+}

@@ -29,11 +29,11 @@ use std::{
     time::Duration,
 };
 use tari_comms::connection::{
-    message::FrameSet,
     peer_connection::PeerConnectionContext,
     Connection,
     Context,
     Direction,
+    FrameSet,
     InprocAddress,
     NetAddress,
     PeerConnection,
@@ -68,6 +68,7 @@ fn build_context(
 ) -> PeerConnectionContext
 {
     PeerConnectionContextBuilder::new()
+        .set_id("benchmark")
         .set_direction(dir)
         .set_max_msg_size(512 * 1024)
         .set_address(addr.clone())

@@ -32,7 +32,6 @@ use std::{
 
 use crate::connection::{
     connection::{Connection, EstablishedConnection},
-    message::{Frame, FrameSet},
     monitor::{ConnectionMonitor, SocketEvent, SocketEventType},
     peer_connection::{
         connection::PeerConnectionState,
@@ -42,6 +41,8 @@ use crate::connection::{
     },
     types::Direction,
     ConnectionError,
+    Frame,
+    FrameSet,
     InprocAddress,
     Result,
 };
@@ -50,18 +51,6 @@ use crate::connection::{
 const PEER_CONNECTION_SEND_HWM: i32 = 10;
 /// Receive HWM for peer connections
 const PEER_CONNECTION_RECV_HWM: i32 = 10;
-
-macro_rules! try_recv {
-    ($e: expr) => {
-        match $e {
-            Ok(d) => Some(d),
-            Err(e) => match e {
-                ConnectionError::Timeout => None,
-                _ => return Err(e),
-            },
-        }
-    };
-}
 
 macro_rules! acquire_write_lock {
     ($lock: expr) => {
@@ -188,6 +177,7 @@ impl Worker {
     fn handle_socket_event(&mut self, event: SocketEvent) -> Result<()> {
         use SocketEventType::*;
 
+        debug!(target: "comms::peer_connection::worker", "{:?}", event);
         match event.event_type {
             Disconnected => {
                 let mut lock = acquire_write_lock!(self.connection_state)?;
@@ -241,7 +231,7 @@ impl Worker {
     /// Forwards frames from the source to the sink
     fn forward_frames(&mut self, frontend: &EstablishedConnection, backend: &EstablishedConnection) -> Result<()> {
         let context = &self.context;
-        if let Some(frames) = try_recv!(frontend.receive(10)) {
+        if let Some(frames) = connection_try!(frontend.receive(10)) {
             match context.direction {
                 // For a ROUTER backend, the first frame is the identity
                 Direction::Inbound => match self.identity {

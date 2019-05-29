@@ -22,7 +22,7 @@
 
 use derive_error::Error;
 
-use super::{monitor, MessageError, NetAddressError, PeerConnectionError};
+use super::{monitor, NetAddressError, PeerConnectionError};
 
 #[derive(Debug, Error)]
 pub enum ConnectionError {
@@ -31,7 +31,6 @@ pub enum ConnectionError {
     SocketError(String),
     /// Connection timed out
     Timeout,
-    MessageError(MessageError),
     #[error(msg_embedded, no_from, non_std)]
     CurveKeypairError(String),
     PeerError(PeerConnectionError),

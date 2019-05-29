@@ -24,4 +24,5 @@
 extern crate lazy_static;
 
 mod connection;
+mod control_service;
 mod support;

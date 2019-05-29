@@ -22,10 +22,12 @@
 
 use std::{fmt, str::FromStr};
 
+use serde::{Deserialize, Serialize};
+
 use super::{parser::AddressParser, NetAddressError};
 
 /// Represents an I2P address
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct I2PAddress {
     pub name: String,
 }

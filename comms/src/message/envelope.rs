@@ -20,102 +20,33 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::peer_manager::node_id::*;
-use bitflags::*;
-use derive_error::Error;
-use rmp_serde;
+use crate::{
+    connection::{Frame, FrameSet},
+    message::{error::MessageError, MessageFlags, NodeDestination},
+};
+
+use crate::message::Message;
 use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
 use tari_crypto::keys::PublicKey;
-
-/// Represents a single message frame.
-pub type Frame = Vec<u8>;
-/// Represents a collection of frames which make up a multipart message.
-pub type FrameSet = Vec<Frame>;
-
-#[derive(Error, Debug)]
-pub enum MessageError {
-    /// Multipart message is malformed
-    MalformedMultipart,
-    /// Failed to serialize message
-    SerializeFailed,
-    /// Failed to deserialize message
-    DeserializeFailed,
-    /// An error occurred serialising an object into binary
-    BinarySerializeError,
-    /// An error occurred deserialising binary data into an object
-    BinaryDeserializeError,
-}
-
-bitflags! {
-    #[derive(Deserialize, Serialize)]
-    pub struct IdentityFlags: u8 {
-        const ENCRYPTED = 0b00000001;
-    }
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-pub enum NodeDestination<PubKey> {
-    Unknown,
-    PublicKey(PubKey),
-    NodeId(NodeId),
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-pub struct MessageEnvelopeHeader<PubKey> {
-    pub version: u8,
-    pub source: PubKey,
-    pub dest: NodeDestination<PubKey>,
-    pub signature: Vec<u8>,
-    pub flags: IdentityFlags,
-}
-
-impl<PubKey: PublicKey> MessageEnvelopeHeader<PubKey> {
-    /// Construct a new MessageEnvelopeHeader from its member variables
-    pub fn new(
-        version: u8,
-        source: PubKey,
-        dest: NodeDestination<PubKey>,
-        signature: Vec<u8>,
-        flags: IdentityFlags,
-    ) -> MessageEnvelopeHeader<PubKey>
-    {
-        MessageEnvelopeHeader {
-            version,
-            source,
-            dest,
-            signature,
-            flags,
-        }
-    }
-
-    /// Serialize a MessageEnvelopeHeader into a single frame
-    pub fn to_frame(&self) -> Result<Frame, MessageError> {
-        let mut buf: Vec<u8> = Vec::new();
-        match self.serialize(&mut rmp_serde::Serializer::new(&mut buf)) {
-            Ok(_) => Ok(buf.to_vec()),
-            Err(_) => Err(MessageError::SerializeFailed),
-        }
-    }
-}
-
-impl<PubKey: PublicKey> TryFrom<Frame> for MessageEnvelopeHeader<PubKey> {
-    type Error = MessageError;
-
-    /// Returns a MessageEnvelopeHeader from a Frame
-    fn try_from(frame: Frame) -> Result<Self, Self::Error> {
-        let mut de = rmp_serde::Deserializer::new(frame.as_slice());
-        match Deserialize::deserialize(&mut de) {
-            Ok(message_envelope_header) => Ok(message_envelope_header),
-            Err(_) => Err(MessageError::DeserializeFailed),
-        }
-    }
-}
+use tari_utilities::message_format::MessageFormat;
 
 const FRAMES_PER_MESSAGE: usize = 3;
 
+/// Represents data that every message contains.
+/// As described in [RFC-0172](https://rfc.tari.com/RFC-0172_PeerToPeerMessagingProtocol.html#messaging-structure)
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct MessageEnvelopeHeader<P> {
+    pub version: u8,
+    pub source: P,
+    pub dest: NodeDestination<P>,
+    pub signature: Vec<u8>,
+    pub flags: MessageFlags,
+}
+
 /// Represents a message which is about to go on or has just come off the wire.
-#[derive(Deserialize, Serialize)]
+/// As described in [RFC-0172](https://rfc.tari.com/RFC-0172_PeerToPeerMessagingProtocol.html#messaging-structure)
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct MessageEnvelope {
     frames: FrameSet,
 }
@@ -129,23 +60,34 @@ impl MessageEnvelope {
     }
 
     /// Returns the frame that is expected to be version frame
-    pub fn version(&self) -> &Frame {
+    pub fn version_frame(&self) -> &Frame {
         &self.frames[0]
     }
 
     /// Returns the frame that is expected to be header frame
-    pub fn header(&self) -> &Frame {
+    pub fn header_frame(&self) -> &Frame {
         &self.frames[1]
     }
 
+    /// Returns the [MessageEnvelopeHeader] deserialized from the header frame
+    pub fn to_header<P: PublicKey>(&self) -> Result<MessageEnvelopeHeader<P>, MessageError>
+    where MessageEnvelopeHeader<P>: MessageFormat {
+        MessageEnvelopeHeader::<P>::from_binary(self.header_frame()).map_err(Into::into)
+    }
+
     /// Returns the frame that is expected to be body frame
-    pub fn body(&self) -> &Frame {
+    pub fn body_frame(&self) -> &Frame {
         &self.frames[2]
     }
 
-    /// Serialize a MessageEnvelope into a frame set
-    pub fn to_frame_set(&self) -> Result<FrameSet, MessageError> {
-        Ok(self.frames.clone())
+    /// Returns the Message deserialized from the body frame
+    pub fn message_body(&self) -> Result<Message, MessageError> {
+        Message::from_binary(self.body_frame()).map_err(Into::into)
+    }
+
+    /// This struct is consumed and the contained FrameSet is returned.
+    pub fn into_frame_set(self) -> FrameSet {
+        self.frames
     }
 }
 
@@ -165,6 +107,7 @@ impl TryFrom<FrameSet> for MessageEnvelope {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::message::{MessageEnvelopeHeader, MessageFlags, NodeDestination};
     use rand;
     use rmp_serde;
     use serde::{Deserialize, Serialize};
@@ -174,22 +117,23 @@ mod test {
     };
 
     use std::convert::TryInto;
+
     #[test]
     fn try_from_valid() {
-        let example = vec![vec![0u8], vec![1u8], vec![2u8]];
+        let example = vec![vec![1u8], vec![2u8], vec![3u8]];
 
         let raw_message: Result<MessageEnvelope, MessageError> = example.try_into();
 
         assert!(raw_message.is_ok());
-        let raw_message = raw_message.unwrap();
-        assert_eq!(raw_message.version(), &[0u8]);
-        assert_eq!(raw_message.header(), &[1u8]);
-        assert_eq!(raw_message.body(), &[2u8]);
+        let envelope = raw_message.unwrap();
+        assert_eq!(envelope.version_frame(), &[1u8]);
+        assert_eq!(envelope.header_frame(), &[2u8]);
+        assert_eq!(envelope.body_frame(), &[3u8]);
     }
 
     #[test]
     fn try_from_invalid() {
-        let example = vec![vec![0u8], vec![1u8]];
+        let example = vec![vec![1u8], vec![2u8]];
 
         let raw_message: Result<MessageEnvelope, MessageError> = example.try_into();
 
@@ -202,6 +146,22 @@ mod test {
     }
 
     #[test]
+    fn header() {
+        let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rand::OsRng::new().unwrap());
+        let header = MessageEnvelopeHeader {
+            version: 0,
+            source: pk,
+            dest: NodeDestination::Unknown,
+            signature: vec![0],
+            flags: MessageFlags::ENCRYPTED,
+        };
+
+        let envelope = MessageEnvelope::new(vec![0u8], header.to_binary().unwrap(), vec![0u8]);
+
+        assert_eq!(header, envelope.to_header().unwrap());
+    }
+
+    #[test]
     fn test_ser_des() {
         let version = 0;
         let mut rng = rand::OsRng::new().unwrap();
@@ -210,7 +170,7 @@ mod test {
         let source = p;
         let dest: NodeDestination<RistrettoPublicKey> = NodeDestination::Unknown;
         let signature = vec![0];
-        let flags = IdentityFlags::ENCRYPTED;
+        let flags = MessageFlags::ENCRYPTED;
         let header: MessageEnvelopeHeader<RistrettoPublicKey> = MessageEnvelopeHeader {
             version,
             source,
