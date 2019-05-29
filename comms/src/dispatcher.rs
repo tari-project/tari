@@ -31,14 +31,17 @@ pub enum DispatchError {
     HandlerError(String),
 }
 
-/// Format required of handler functions specified by dispatch routes
+/// The signature of a handler function
 type HandlerFunc<M, E> = fn(msg: M) -> Result<(), E>;
 
-pub trait DispatchHandler<M, E> {
-    fn handle(&self, msg: M) -> Result<(), E>;
-}
-
+/// The trait bound for type parameter K on the dispatcher i.e the route key.
+/// K must be Eq + Hash + {able to be sent across threads} +
+/// 'static (all references must live as long as the program BUT there are no references
+/// so therefore this is simply to satisfy the closure on `thread::spawn`)
+/// This saves us from having to duplicate these trait bounds whenever we
+/// want specify the type parameter K (like a type alias).
 pub trait DispatchableKey: Eq + Hash + Send + 'static {}
+/// Implement this trait for all types which satisfy it's trait bounds.
 impl<T> DispatchableKey for T where T: Eq + Hash + Send + 'static {}
 
 /// A message type resolver. The resolver is called with the dispatched message.
@@ -49,6 +52,14 @@ where K: DispatchableKey
     fn resolve(&self, msg: &M) -> Result<K, DispatchError>;
 }
 
+/// Dispatcher pattern. Links handler function to "keys" which are resolved
+/// be a given type implementing [DispatchResolver].
+///
+/// ## Type Parameters
+/// `K` - The route key
+/// `M` - The type which is passed into the handler
+/// `E` - The type of error returned from the handler
+/// `R` - The resolver type
 #[derive(Clone, Debug)]
 pub struct Dispatcher<K, M, E, R>
 where K: DispatchableKey
@@ -80,6 +91,7 @@ where
         self
     }
 
+    /// Set the handler to use if no other handlers match
     pub fn catch_all(mut self, handler: HandlerFunc<M, E>) -> Self {
         self.catch_all = Some(handler);
         self
@@ -88,18 +100,13 @@ where
     /// This function can be used to forward a message to the correct function handler
     pub fn dispatch(&self, msg: M) -> Result<(), DispatchError> {
         let route_type = self.resolver.resolve(&msg)?;
-        match self.handlers.get(&route_type) {
-            Some(handler) => {
+        self.handlers
+            .get(&route_type)
+            .or(self.catch_all.as_ref())
+            .ok_or(DispatchError::MessageHandlerUndefined)
+            .and_then(|handler| {
                 handler(msg).map_err(|err| DispatchError::HandlerError(format!("Handler error occurred. {}", err)))
-            },
-            None => {
-                if let Some(ref handler) = self.catch_all {
-                    handler(msg).map_err(|err| DispatchError::HandlerError(format!("Handler error occurred. {}", err)))
-                } else {
-                    Err(DispatchError::MessageHandlerUndefined)
-                }
-            },
-        }
+            })
     }
 }
 

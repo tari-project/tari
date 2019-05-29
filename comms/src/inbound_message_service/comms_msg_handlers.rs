@@ -20,13 +20,14 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::inbound_message_service::{
-    message_context::MessageContext,
-    message_dispatcher::{DispatchError, MessageDispatcher},
+use crate::{
+    dispatcher::{DispatchError, DispatchResolver},
+    inbound_message_service::{message_context::MessageContext, message_dispatcher::MessageDispatcher},
 };
 use tari_crypto::keys::PublicKey;
 
 /// The comms_msg_dispatcher will determine the type of message and forward it to the the correct handler
+#[derive(Eq, PartialEq, Hash, Clone, Debug)]
 pub enum CommsDispatchType {
     // Messages of this type must be handled
     Handle,
@@ -38,38 +39,44 @@ pub enum CommsDispatchType {
 
 /// Specify what handler function should be called for messages with different comms level dispatch types
 pub fn construct_comms_msg_dispatcher<PubKey: PublicKey>() -> MessageDispatcher<MessageContext<PubKey>> {
-    MessageDispatcher::<MessageContext<PubKey>>::new()
-        .route(CommsDispatchType::Handle as u32, handler_handle)
-        .route(CommsDispatchType::Forward as u32, handler_forward)
-        .route(CommsDispatchType::Discard as u32, handler_discard)
+    MessageDispatcher::new(InboundMessageServiceResolver {})
+        .route(CommsDispatchType::Handle, handler_handle)
+        .route(CommsDispatchType::Forward, handler_forward)
+        .route(CommsDispatchType::Discard, handler_discard)
 }
 
-/// The dispatch type is determined from the content of the MessageContext, which is used to dispatch the message to the
-/// correct handler
-pub fn determine_comms_msg_dispatch_type<PubKey: PublicKey>(_message_context: &MessageContext<PubKey>) -> u32 {
-    // TODO:
-    // if signature is correct {
-    //     if message_context.message_envelope_header.flags.contains(IdentityFlags::ENCRYPTED)  {
-    //         if msg can be decrypted {
-    //             if msg meant for curr node {
-    //                 DispatchType::Handle
-    //             }
-    //             else {
-    //                 CommsDispatchType::Forward
-    //             }
-    //         }
-    //         else {
-    //             CommsDispatchType::Forward
-    //         }
-    //     }
-    //     else {
-    //         CommsDispatchType::Handle
-    //     }
-    // }
-    // else {
-    //     CommsDispatchType::Discard
-    // }
-    CommsDispatchType::Handle as u32
+#[derive(Clone)]
+pub struct InboundMessageServiceResolver;
+
+impl<P: PublicKey> DispatchResolver<CommsDispatchType, MessageContext<P>> for InboundMessageServiceResolver {
+    /// The dispatch type is determined from the content of the MessageContext, which is used to dispatch the message to
+    /// the correct handler
+    fn resolve(&self, _msg: &MessageContext<P>) -> Result<CommsDispatchType, DispatchError> {
+        // TODO:
+        // if signature is correct {
+        //     if message_context.message_envelope_header.flags.contains(IdentityFlags::ENCRYPTED)  {
+        //         if msg can be decrypted {
+        //             if msg meant for curr node {
+        //                 DispatchType::Handle
+        //             }
+        //             else {
+        //                 CommsDispatchType::Forward
+        //             }
+        //         }
+        //         else {
+        //             CommsDispatchType::Forward
+        //         }
+        //     }
+        //     else {
+        //         CommsDispatchType::Handle
+        //     }
+        // }
+        // else {
+        //     CommsDispatchType::Discard
+        // }
+
+        Ok(CommsDispatchType::Handle)
+    }
 }
 
 fn handler_handle<PubKey: PublicKey>(_message_context: MessageContext<PubKey>) -> Result<(), DispatchError> {

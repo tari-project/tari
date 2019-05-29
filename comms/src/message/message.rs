@@ -41,19 +41,6 @@ pub struct Message {
 }
 
 impl Message {
-    //    pub fn from_message_format<H, B>(header: H, msg: B) -> Result<Self, MessageError>
-    //    where
-    //        H: MessageFormat,
-    //        B: MessageFormat,
-    //    {
-    //        let header_frame = header.to_binary()?;
-    //        let body_frame = msg.to_binary()?;
-    //        Ok(Self {
-    //            header: header_frame,
-    //            body: body_frame,
-    //        })
-    //    }
-
     pub fn to_header<MType>(&self) -> Result<MessageHeader<MType>, MessageError>
     where
         MessageHeader<MType>: MessageFormat,

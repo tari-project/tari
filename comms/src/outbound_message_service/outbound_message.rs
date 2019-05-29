@@ -21,7 +21,8 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    connection::message::{Frame, FrameSet, MessageError},
+    connection::{Frame, FrameSet},
+    message::MessageError,
     peer_manager::node_id::NodeId,
 };
 use chrono::prelude::*;

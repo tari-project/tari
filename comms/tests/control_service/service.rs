@@ -101,11 +101,7 @@ fn construct_envelope<T: MessageFormat>(
     ))
 }
 
-fn poll_handler_call_count_change(ms: u64) -> Option<u8> {
-    let initial = {
-        let lock = HANDLER_CALL_COUNT.read().unwrap();
-        *lock
-    };
+fn poll_handler_call_count_change(initial: u8, ms: u64) -> Option<u8> {
     for _i in 0..ms {
         {
             let lock = HANDLER_CALL_COUNT.read().unwrap();
@@ -152,13 +148,22 @@ fn recv_message() {
         .establish(&control_service_address)
         .unwrap();
 
+    let initial = {
+        let lock = HANDLER_CALL_COUNT.read().unwrap();
+        *lock
+    };
     remote_conn.send_sync(envelope.clone().into_frame_set()).unwrap();
 
-    let call_count = poll_handler_call_count_change(500).unwrap();
+    let call_count = poll_handler_call_count_change(initial, 500).unwrap();
     assert_eq!(1, call_count);
 
+    let initial = {
+        let lock = HANDLER_CALL_COUNT.read().unwrap();
+        *lock
+    };
+
     remote_conn.send_sync(envelope.into_frame_set()).unwrap();
-    let call_count = poll_handler_call_count_change(500).unwrap();
+    let call_count = poll_handler_call_count_change(initial, 500).unwrap();
     assert_eq!(2, call_count);
 
     service.shutdown().unwrap();
