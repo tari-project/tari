@@ -24,6 +24,7 @@ pub mod ban_list;
 pub mod liveness;
 pub mod manager;
 pub mod node_id;
+pub mod node_identity;
 pub mod peer;
 pub mod routing_table;
 pub mod storage;

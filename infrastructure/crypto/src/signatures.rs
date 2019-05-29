@@ -4,6 +4,7 @@
 
 use crate::keys::{PublicKey, SecretKey};
 use derive_error::Error;
+use serde::{Deserialize, Serialize};
 use std::{
     cmp::Ordering,
     ops::{Add, Mul},
@@ -17,7 +18,7 @@ pub enum SchnorrSignatureError {
 }
 
 #[allow(non_snake_case)]
-#[derive(PartialEq, Eq, Copy, Debug, Clone)]
+#[derive(PartialEq, Eq, Copy, Debug, Clone, Serialize, Deserialize)]
 pub struct SchnorrSignature<P, K> {
     public_nonce: P,
     signature: K,
