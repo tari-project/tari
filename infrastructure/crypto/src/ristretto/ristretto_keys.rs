@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 //! The Tari-compatible implementation of Ristretto based on the curve25519-dalek implementation
-use crate::keys::{PublicKey, SecretKey};
+use crate::keys::{DiffieHellmanSharedSecret, PublicKey, SecretKey};
 use blake2::Blake2b;
 use clear_on_drop::clear::Clear;
 use curve25519_dalek::{
@@ -265,6 +265,16 @@ impl PublicKey for RistrettoPublicKey {
         let s: Vec<&Scalar> = scalars.iter().map(|k| &k.0).collect();
         let p = RistrettoPoint::multiscalar_mul(s, p);
         RistrettoPublicKey::new_from_pk(p)
+    }
+}
+
+impl DiffieHellmanSharedSecret for RistrettoPublicKey {
+    type K = RistrettoSecretKey;
+    type PK = RistrettoPublicKey;
+
+    /// Generate a shared secret from one party's private key and another party's public key
+    fn shared_secret(k: &Self::K, pk: &Self::PK) -> Self::PK {
+        k * pk
     }
 }
 

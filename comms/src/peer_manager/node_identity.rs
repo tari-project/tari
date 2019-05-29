@@ -20,6 +20,23 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod broadcast_strategy;
-pub mod outbound_message;
-pub mod outbound_message_service;
+use crate::peer_manager::node_id::NodeId;
+use tari_crypto::keys::{PublicKey, SecretKey};
+
+/// The NodeIdentity is a container that stores the identity (NodeId, Identification Key pair) of a single node
+pub struct NodeIdentity<PubKey, SecKey> {
+    pub node_id: NodeId,
+    pub public_key: PubKey,
+    pub secret_key: Option<SecKey>,
+}
+
+impl<PubKey: PublicKey, SecKey: SecretKey> NodeIdentity<PubKey, SecKey> {
+    /// Construct a new identity for a node that contains its NodeId and identification key pair
+    pub fn new(node_id: NodeId, public_key: PubKey, secret_key: Option<SecKey>) -> NodeIdentity<PubKey, SecKey> {
+        NodeIdentity {
+            node_id,
+            public_key,
+            secret_key,
+        }
+    }
+}

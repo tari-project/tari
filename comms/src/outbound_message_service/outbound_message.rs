@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    connection::message::{Frame, MessageError},
+    connection::message::{Frame, FrameSet, MessageError},
     peer_manager::node_id::NodeId,
 };
 use chrono::prelude::*;
@@ -79,6 +79,19 @@ impl<T: Serialize + DeserializeOwned> TryFrom<Frame> for OutboundMessage<T> {
         match Deserialize::deserialize(&mut de) {
             Ok(outbound_message) => Ok(outbound_message),
             Err(_) => Err(MessageError::DeserializeFailed),
+        }
+    }
+}
+
+impl<T: Serialize + DeserializeOwned> TryFrom<FrameSet> for OutboundMessage<T> {
+    type Error = MessageError;
+
+    /// Construct an OutboundMessage from a Frame
+    fn try_from(frames: FrameSet) -> Result<Self, Self::Error> {
+        if frames.len() == 1 {
+            OutboundMessage::try_from(frames[0].clone())
+        } else {
+            Err(MessageError::DeserializeFailed)
         }
     }
 }

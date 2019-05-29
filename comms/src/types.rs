@@ -20,6 +20,13 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod broadcast_strategy;
-pub mod outbound_message;
-pub mod outbound_message_service;
+use tari_crypto::common::Blake256;
+
+/// The message protocol version for the MessageEnvelopeHeader
+pub const MESSAGE_PROTOCOL_VERSION: u8 = 0;
+
+/// The wire protocol version for the MessageEnvelope wire format
+pub const WIRE_PROTOCOL_VERSION: u8 = 0;
+
+/// Specify the digest type for the signature challenges
+pub type Challenge = Blake256;

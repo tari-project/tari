@@ -71,6 +71,24 @@ pub struct MessageEnvelopeHeader<PubKey> {
 }
 
 impl<PubKey: PublicKey> MessageEnvelopeHeader<PubKey> {
+    /// Construct a new MessageEnvelopeHeader from its member variables
+    pub fn new(
+        version: u8,
+        source: PubKey,
+        dest: NodeDestination<PubKey>,
+        signature: Vec<u8>,
+        flags: IdentityFlags,
+    ) -> MessageEnvelopeHeader<PubKey>
+    {
+        MessageEnvelopeHeader {
+            version,
+            source,
+            dest,
+            signature,
+            flags,
+        }
+    }
+
     /// Serialize a MessageEnvelopeHeader into a single frame
     pub fn to_frame(&self) -> Result<Frame, MessageError> {
         let mut buf: Vec<u8> = Vec::new();
@@ -94,39 +112,40 @@ impl<PubKey: PublicKey> TryFrom<Frame> for MessageEnvelopeHeader<PubKey> {
     }
 }
 
-const FRAMES_PER_MESSAGE: usize = 4;
+const FRAMES_PER_MESSAGE: usize = 3;
 
 /// Represents a message which is about to go on or has just come off the wire.
+#[derive(Deserialize, Serialize)]
 pub struct MessageEnvelope {
     frames: FrameSet,
 }
 
 impl MessageEnvelope {
     /// Create a new MessageEnvelope from four frames
-    pub fn new(identity: Frame, version: Frame, header: Frame, body: Frame) -> Self {
+    pub fn new(version: Frame, header: Frame, body: Frame) -> Self {
         MessageEnvelope {
-            frames: vec![identity, version, header, body],
+            frames: vec![version, header, body],
         }
-    }
-
-    /// Returns the frame that is expected to be identity frame
-    pub fn identity(&self) -> &Frame {
-        &self.frames[0]
     }
 
     /// Returns the frame that is expected to be version frame
     pub fn version(&self) -> &Frame {
-        &self.frames[1]
+        &self.frames[0]
     }
 
     /// Returns the frame that is expected to be header frame
     pub fn header(&self) -> &Frame {
-        &self.frames[2]
+        &self.frames[1]
     }
 
     /// Returns the frame that is expected to be body frame
     pub fn body(&self) -> &Frame {
-        &self.frames[3]
+        &self.frames[2]
+    }
+
+    /// Serialize a MessageEnvelope into a frame set
+    pub fn to_frame_set(&self) -> Result<FrameSet, MessageError> {
+        Ok(self.frames.clone())
     }
 }
 
@@ -157,21 +176,20 @@ mod test {
     use std::convert::TryInto;
     #[test]
     fn try_from_valid() {
-        let example = vec![vec![0u8], vec![1u8], vec![2u8], vec![3u8]];
+        let example = vec![vec![0u8], vec![1u8], vec![2u8]];
 
         let raw_message: Result<MessageEnvelope, MessageError> = example.try_into();
 
         assert!(raw_message.is_ok());
         let raw_message = raw_message.unwrap();
-        assert_eq!(raw_message.identity(), &[0u8]);
-        assert_eq!(raw_message.version(), &[1u8]);
-        assert_eq!(raw_message.header(), &[2u8]);
-        assert_eq!(raw_message.body(), &[3u8]);
+        assert_eq!(raw_message.version(), &[0u8]);
+        assert_eq!(raw_message.header(), &[1u8]);
+        assert_eq!(raw_message.body(), &[2u8]);
     }
 
     #[test]
     fn try_from_invalid() {
-        let example = vec![vec![0u8], vec![1u8], vec![2u8]];
+        let example = vec![vec![0u8], vec![1u8]];
 
         let raw_message: Result<MessageEnvelope, MessageError> = example.try_into();
 

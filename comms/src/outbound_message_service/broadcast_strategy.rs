@@ -20,6 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod broadcast_strategy;
-pub mod outbound_message;
-pub mod outbound_message_service;
+use crate::peer_manager::node_id::NodeId;
+
+pub enum BroadcastStrategy {
+    Direct(NodeId), // Send to a particular peer matching the given node ID
+    Flood,          // Send to all known Communication Node peers
+    Closest(u32),   // Send to all n nearest neighbour Communication Nodes
+    Random(u32),    // Send to a random set of peers of size n that are Communication Nodes
+}
