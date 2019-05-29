@@ -74,6 +74,7 @@ jobs:
             rustup component add --toolchain $TOOLCHAIN_VERSION rustfmt
             cargo fmt --all -- --check
             cargo test --all
+            cargo test --release
 
 workflows:
   version: 2
