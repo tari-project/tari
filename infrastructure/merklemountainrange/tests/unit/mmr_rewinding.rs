@@ -28,7 +28,7 @@ use tari_storage::lmdb::*;
 
 fn create_mmr(leaves: u32) -> MerkleMountainRange<TestObject, Blake2b> {
     let mut mmr: MerkleMountainRange<TestObject, Blake2b> = MerkleMountainRange::new();
-    mmr.init_persistance_store(&"mmr".to_string(), 5);
+    mmr.init_persistance_store(&"mmr".to_string(), 20);
     for i in 1..leaves + 1 {
         let object: TestObject = TestObject::new(i.to_string());
         assert!(mmr.push(object).is_ok());
@@ -36,89 +36,15 @@ fn create_mmr(leaves: u32) -> MerkleMountainRange<TestObject, Blake2b> {
     mmr
 }
 #[test]
-fn create_small_mmr() {
-    fs::remove_dir_all("./tests/test_mmr_s"); // we ensure that the test dir is empty
-    let mut mmr = create_mmr(2);
-    assert_eq!(1, mmr.get_peak_height());
-    let hash_values = HashValues::new();
-    let hash0 = mmr.get_node_hash(0).unwrap();
-    let proof = mmr.get_hash_proof(&hash0);
-    let mut our_proof = MerkleProof::new();
-    for i in 0..3 {
-        our_proof.push(mmr.get_node_hash(i));
-    }
-    assert_eq!(hash_values.create_merkleproof(vec![0, 1, 2]), proof);
-    assert!(mmr.verify_proof(&our_proof));
-    assert_eq!(mmr.get_merkle_root(), mmr.get_node_hash(2).unwrap());
-    // create storage
-    fs::create_dir("./tests/test_mmr_s").unwrap();
-    let builder = LMDBBuilder::new();
-    let mut store = builder
-        .set_mapsize(5)
-        .set_path("./tests/test_mmr_s/")
-        .add_database(&"mmr_mmr_checkpoints".to_string())
-        .add_database(&"mmr_mmr_objects".to_string())
-        .add_database(&"mmr_init".to_string())
-        .build()
-        .unwrap();
-    assert!(mmr.checkpoint().is_ok());
-    assert!(mmr.apply_state(&mut store).is_ok());
-    let mut mmr2: MerkleMountainRange<TestObject, Blake2b> = MerkleMountainRange::new();
-    mmr2.init_persistance_store(&"mmr".to_string(), 5);
-    let result = mmr2.load_from_store(&mut store);
-    assert!(result.is_ok());
-    assert_eq!(mmr.get_merkle_root(), mmr2.get_merkle_root());
-    assert!(fs::remove_dir_all("./tests/test_mmr_s").is_ok()); // we ensure that the test dir is empty
-}
-
-#[test]
-fn create_med_mmr() {
-    fs::remove_dir_all("./tests/test_mmr_m"); // we ensure that the test dir is empty
+fn rewind_simple() {
+    fs::remove_dir_all("./tests/test_mmr_r"); // we ensure that the test dir is empty
     let mut mmr = create_mmr(14);
     // create storage
-    fs::create_dir("./tests/test_mmr_m").unwrap();
+    fs::create_dir("./tests/test_mmr_r").unwrap();
     let builder = LMDBBuilder::new();
     let mut store = builder
         .set_mapsize(5)
-        .set_path("./tests/test_mmr_m/")
-        .add_database(&"mmr_mmr_checkpoints".to_string())
-        .add_database(&"mmr_mmr_objects".to_string())
-        .add_database(&"mmr_init".to_string())
-        .build()
-        .unwrap();
-    assert!(mmr.checkpoint().is_ok());
-    assert!(mmr.apply_state(&mut store).is_ok());
-    let mut mmr2: MerkleMountainRange<TestObject, Blake2b> = MerkleMountainRange::new();
-    mmr2.init_persistance_store(&"mmr".to_string(), 5);
-    let result = mmr2.load_from_store(&mut store);
-    assert!(result.is_ok());
-    assert_eq!(mmr.get_merkle_root(), mmr2.get_merkle_root());
-
-    // add much more leafs
-    for i in 15..25 {
-        let object: TestObject = TestObject::new(i.to_string());
-        assert!(mmr.push(object).is_ok());
-        assert!(mmr.checkpoint().is_ok());
-        assert!(mmr.apply_state(&mut store).is_ok());
-        let mut mmr2: MerkleMountainRange<TestObject, Blake2b> = MerkleMountainRange::new();
-        mmr2.init_persistance_store(&"mmr".to_string(), 5);
-        let result = mmr2.load_from_store(&mut store);
-        assert!(result.is_ok());
-        assert_eq!(mmr.get_merkle_root(), mmr2.get_merkle_root());
-    }
-    assert!(fs::remove_dir_all("./tests/test_mmr_m").is_ok()); // we ensure that the test dir is empty
-}
-
-#[test]
-fn create_large_mmr() {
-    fs::remove_dir_all("./tests/test_mmr_l"); // we ensure that the test dir is empty
-    let mut mmr = create_mmr(14);
-    // create storage
-    fs::create_dir("./tests/test_mmr_l").unwrap();
-    let builder = LMDBBuilder::new();
-    let mut store = builder
-        .set_mapsize(5)
-        .set_path("./tests/test_mmr_l/")
+        .set_path("./tests/test_mmr_r/")
         .add_database(&"mmr_mmr_checkpoints".to_string())
         .add_database(&"mmr_mmr_objects".to_string())
         .add_database(&"mmr_init".to_string())
@@ -126,23 +52,92 @@ fn create_large_mmr() {
         .unwrap();
     assert!(mmr.checkpoint().is_ok());
     assert!(mmr.apply_state(&mut store).is_ok());;
+
     let mut mmr2: MerkleMountainRange<TestObject, Blake2b> = MerkleMountainRange::new();
-    mmr2.init_persistance_store(&"mmr".to_string(), 5);
+    mmr2.init_persistance_store(&"mmr".to_string(), 20);
     assert!(mmr2.load_from_store(&mut store).is_ok());
     assert_eq!(mmr.get_merkle_root(), mmr2.get_merkle_root());
 
+    let mut mmr3: MerkleMountainRange<TestObject, Blake2b> = MerkleMountainRange::new();
+    mmr3.init_persistance_store(&"mmr".to_string(), 20);
+    assert!(mmr3.load_from_store(&mut store).is_ok());
+    assert_eq!(mmr.get_merkle_root(), mmr3.get_merkle_root());
     // add much more leaves
-    for j in 0..40 {
+    for j in 0..5 {
         for i in 1..11 {
             let object: TestObject = TestObject::new((14 * j + i + 14).to_string());
             assert!(mmr.push(object).is_ok());
         }
+        for i in 1..11 {
+            let object: TestObject = TestObject::new((14 * j + i + 14).to_string());
+            assert!(mmr3.push(object).is_ok());
+        }
         assert!(mmr.checkpoint().is_ok());
         assert!(mmr.apply_state(&mut store).is_ok());
-        let mut mmr2: MerkleMountainRange<TestObject, Blake2b> = MerkleMountainRange::new();
-        mmr2.init_persistance_store(&"mmr".to_string(), 5);
-        assert!(mmr2.load_from_store(&mut store).is_ok());
+
+        assert!(mmr.rewind(&mut store, j + 1).is_ok());
         assert_eq!(mmr.get_merkle_root(), mmr2.get_merkle_root());
+
+        assert!(mmr.ff_to_head(&mut store).is_ok());
+        assert_eq!(mmr.get_merkle_root(), mmr3.get_merkle_root()); // are we where we are suppose to be
     }
-    assert!(fs::remove_dir_all("./tests/test_mmr_l").is_ok()); // we ensure that the test dir is empty
+    assert!(fs::remove_dir_all("./tests/test_mmr_r").is_ok()); // we ensure that the test dir is empty
+}
+
+#[test]
+fn batch_save() {
+    fs::remove_dir_all("./tests/test_mmr_bs"); // we ensure that the test dir is empty
+    let mut mmr = create_mmr(14);
+    // create storage
+    fs::create_dir("./tests/test_mmr_bs").unwrap();
+    let builder = LMDBBuilder::new();
+    let mut store = builder
+        .set_mapsize(5)
+        .set_path("./tests/test_mmr_bs/")
+        .add_database(&"mmr_mmr_checkpoints".to_string())
+        .add_database(&"mmr_mmr_objects".to_string())
+        .add_database(&"mmr_init".to_string())
+        .build()
+        .unwrap();
+    assert!(mmr.checkpoint().is_ok());
+    assert!(mmr.apply_state(&mut store).is_ok());;
+
+    let mut mmr2: MerkleMountainRange<TestObject, Blake2b> = MerkleMountainRange::new();
+    mmr2.init_persistance_store(&"mmr".to_string(), 20);
+    assert!(mmr2.load_from_store(&mut store).is_ok());
+    assert_eq!(mmr.get_merkle_root(), mmr2.get_merkle_root());
+
+    let mut mmr3: MerkleMountainRange<TestObject, Blake2b> = MerkleMountainRange::new();
+    mmr3.init_persistance_store(&"mmr".to_string(), 20);
+    assert!(mmr3.load_from_store(&mut store).is_ok());
+    assert_eq!(mmr.get_merkle_root(), mmr3.get_merkle_root());
+    // add much more leaves
+    for j in 0..5 {
+        for i in 1..11 {
+            let object: TestObject = TestObject::new((14 * j + i + 14).to_string());
+            assert!(mmr.push(object).is_ok());
+        }
+        for i in 1..11 {
+            let object: TestObject = TestObject::new((14 * j + i + 14).to_string());
+            assert!(mmr3.push(object).is_ok());
+        }
+        assert!(mmr.checkpoint().is_ok());
+
+        // are we where we are suppose to be
+    }
+
+    assert!(mmr.apply_state(&mut store).is_ok());
+    assert!(mmr.rewind(&mut store, 5).is_ok());
+    assert_eq!(mmr.get_merkle_root(), mmr2.get_merkle_root());
+
+    assert!(mmr.ff_to_head(&mut store).is_ok());
+    assert_eq!(mmr.get_merkle_root(), mmr3.get_merkle_root());
+
+    // have we  saved correctly and can we load again
+    let mut mmr4: MerkleMountainRange<TestObject, Blake2b> = MerkleMountainRange::new();
+    mmr4.init_persistance_store(&"mmr".to_string(), 20);
+    assert!(mmr4.load_from_store(&mut store).is_ok());
+    assert_eq!(mmr4.get_merkle_root(), mmr3.get_merkle_root());
+
+    assert!(fs::remove_dir_all("./tests/test_mmr_bs").is_ok()); // we ensure that the test dir is empty
 }

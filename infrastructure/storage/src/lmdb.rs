@@ -148,6 +148,15 @@ impl DataStore for LMDBStore {
         tx.commit().map_err(|e| e.into())
     }
 
+    fn delete_raw(&mut self, key: &[u8]) -> Result<(), DatastoreError> {
+        let tx = lmdb::WriteTransaction::new(self.env.clone())?;
+        {
+            let mut accessor = tx.access();
+            accessor.del_key(&self.curr_db, key)?;
+        }
+        tx.commit().map_err(|e| e.into())
+    }
+
     fn close(self) -> Result<(), DatastoreError> {
         self.delete_db_from_scope()
             .map_err(|e| DatastoreError::InternalError(e.to_string()))

@@ -32,12 +32,15 @@ pub(crate) struct MerkleChangeTracker {
     pub enabled: bool,
     objects_to_save: Vec<ObjectHash>,
     objects_to_del: Vec<ObjectHash>,
-    tree_saved: usize,      // how much of the mmr have saved to date in all CP
-    pruning_horizon: usize, // how many CP's do we keep before compressing and deleting
-    current_horizon: usize, // how many cp's have you had to date
+    tree_saved: usize,           // how much of the mmr have saved to date in all CP
+    pub pruning_horizon: usize,  // how many CP's do we keep before compressing and deleting
+    current_head_horizon: usize, // how many cp's have you had to date, saved on disc
+    pub current_horizon: usize,
     mmr_key: String,
     object_key: String,
     init_key: String,
+    unsaved_checkpoints: Vec<MerkleCheckPoint>,
+    uncleaned_checkpoints: Vec<CpCleanup>,
 }
 
 /// This struct is used as a temporary data struct summarizing all changes in a checkpoint.
@@ -49,6 +52,12 @@ pub(crate) struct MerkleCheckPoint {
     pub objects_to_del: Vec<ObjectHash>,
     mmr_to_add: Vec<MerkleNode>,
 }
+
+pub(crate) struct CpCleanup {
+    pub objects_to_del: Vec<ObjectHash>,
+    pub id: usize,
+}
+
 impl MerkleCheckPoint {
     pub(crate) fn add(&mut self, rhs: &mut MerkleCheckPoint) {
         self.objects_to_add.extend(rhs.objects_to_add.drain(..));
@@ -69,6 +78,13 @@ impl MerkleCheckPoint {
             }
         }
     }
+
+    pub(crate) fn create_cleanup(self, id: usize) -> CpCleanup {
+        CpCleanup {
+            objects_to_del: self.objects_to_add,
+            id,
+        }
+    }
 }
 
 impl MerkleChangeTracker {
@@ -81,9 +97,12 @@ impl MerkleChangeTracker {
             tree_saved: 0,
             pruning_horizon: 0,
             current_horizon: 0,
+            current_head_horizon: 0,
             mmr_key: "".to_string(),
             object_key: "".to_string(),
             init_key: "".to_string(),
+            unsaved_checkpoints: Vec::new(),
+            uncleaned_checkpoints: Vec::new(),
         }
     }
 
@@ -113,22 +132,10 @@ impl MerkleChangeTracker {
     }
 
     /// Function to save the current checkpoint
-    pub fn save<T, S: MerkleStorage>(
-        &mut self,
-        hashmap: &mut HashMap<ObjectHash, MerkleObject<T>>,
-        mmr: &[MerkleNode],
-        store: &mut S,
-    ) -> Result<(), MerkleStorageError>
-    where
-        T: Serialize + DeserializeOwned,
-    {
+    /// The current checkpoint is only saved in memory until save is called to apply these changes
+    pub fn checkpoint(&mut self, mmr: &[MerkleNode]) -> Result<(), MerkleStorageError> {
         if !self.enabled {
             return Ok(());
-        }
-        self.current_horizon += 1;
-        let inc_index = self.current_horizon as i64 - self.pruning_horizon as i64;
-        if inc_index > 0 {
-            self.increase_pruning_horizon::<T, S>(inc_index as usize, store)?
         }
         let mut checkpoint = MerkleCheckPoint {
             objects_to_add: Vec::new(),
@@ -137,7 +144,97 @@ impl MerkleChangeTracker {
         };
 
         checkpoint.objects_to_add.extend(self.objects_to_save.drain(..));
-        for hash in &checkpoint.objects_to_add {
+        checkpoint.objects_to_del.extend(self.objects_to_del.drain(..));
+        let mut counter = self.tree_saved;
+        while counter < mmr.len() {
+            checkpoint.mmr_to_add.push(mmr[counter].clone());
+            counter += 1;
+        }
+        self.unsaved_checkpoints.push(checkpoint);
+
+        self.tree_saved = counter;
+        self.current_horizon += 1;
+
+        Ok(())
+    }
+
+    /// This function will reset the MMR back to its head reverting all unchanged states=
+    pub fn reset_to_head<T, S: MerkleStorage>(
+        &mut self,
+        hashmap: &mut HashMap<ObjectHash, MerkleObject<T>>,
+        mmr: &mut Vec<MerkleNode>,
+        store: &mut S,
+    ) -> Result<(), MerkleStorageError>
+    where
+        T: Serialize + DeserializeOwned,
+    {
+        // Todo investigate doing this without IO, currently this is a duplicate of load which is not ideal
+        if !self.enabled {
+            return Ok(());
+        }
+        hashmap.drain();
+        mmr.drain(..);
+        self.unsaved_checkpoints = Vec::new();
+        self.uncleaned_checkpoints = Vec::new();
+        let amount_of_cps = store.load::<usize>(&("init").to_string(), &self.init_key)?;
+        self.current_head_horizon = match amount_of_cps.checked_sub(self.pruning_horizon) {
+            None => 0,
+            Some(v) => v,
+        };
+
+        while self.current_head_horizon < amount_of_cps {
+            self.current_head_horizon += 1;
+            let mut cp = store.load::<MerkleCheckPoint>(&self.current_head_horizon.to_string(), &self.mmr_key)?;
+            self.apply_cp(&mut cp, hashmap, mmr, store)?;
+        }
+        self.current_horizon = self.current_head_horizon;
+        Ok(())
+    }
+
+    /// Function to save all unsaved changed to disc
+    pub fn save<T, S: MerkleStorage>(
+        &mut self,
+        hashmap: &mut HashMap<ObjectHash, MerkleObject<T>>,
+        store: &mut S,
+    ) -> Result<(), MerkleStorageError>
+    where
+        T: Serialize + DeserializeOwned,
+    {
+        if !self.enabled {
+            return Ok(());
+        }
+
+        for i in 0..self.unsaved_checkpoints.len() {
+            self.current_head_horizon += 1;
+            let inc_index = self.current_head_horizon as i64 - self.pruning_horizon as i64;
+            if inc_index > 0 {
+                self.increase_pruning_horizon::<T, S>(inc_index as usize, store)?
+            }
+            self.save_single(i, hashmap, store)?;
+            store.store(&("init").to_string(), &self.init_key, &self.current_head_horizon)?;
+        }
+        for i in 0..self.uncleaned_checkpoints.len() {
+            self.cleanup_rewind(&(self.uncleaned_checkpoints[i]), store)?
+        }
+        store.commit()?;
+        self.unsaved_checkpoints = Vec::new(); // clear out all unsaved changes
+        self.uncleaned_checkpoints = Vec::new();
+        self.current_horizon = self.current_head_horizon;
+
+        Ok(())
+    }
+
+    /// Function to save a single checkpoint to disc
+    fn save_single<T, S: MerkleStorage>(
+        &self,
+        checkpoint: usize,
+        hashmap: &mut HashMap<ObjectHash, MerkleObject<T>>,
+        store: &mut S,
+    ) -> Result<(), MerkleStorageError>
+    where
+        T: Serialize + DeserializeOwned,
+    {
+        for hash in &self.unsaved_checkpoints[checkpoint].objects_to_add {
             let object = hashmap.get(hash);
             if object.is_none() {
                 return Err(MerkleStorageError::SyncError);
@@ -145,16 +242,11 @@ impl MerkleChangeTracker {
             let object = object.unwrap();
             store.store(&to_hex(hash), &self.object_key, object)?;
         }
-        checkpoint.objects_to_del.extend(self.objects_to_del.drain(..));
-        let mut counter = self.tree_saved;
-        while counter < mmr.len() {
-            checkpoint.mmr_to_add.push(mmr[counter].clone());
-            counter += 1;
-        }
-        store.store(&(self.current_horizon).to_string(), &self.mmr_key, &checkpoint)?;
-        store.store(&("init").to_string(), &self.init_key, &self.current_horizon)?;
-
-        self.tree_saved = counter;
+        store.store(
+            &(self.current_head_horizon).to_string(),
+            &self.mmr_key,
+            &self.unsaved_checkpoints[checkpoint],
+        )?;
 
         Ok(())
     }
@@ -190,16 +282,45 @@ impl MerkleChangeTracker {
         if !self.enabled {
             return Ok(());
         }
+        hashmap.drain();
+        mmr.drain(..);
+        self.unsaved_checkpoints = Vec::new();
+        self.uncleaned_checkpoints = Vec::new();
         let amount_of_cps = store.load::<usize>(&("init").to_string(), &self.init_key)?;
-        self.current_horizon = match amount_of_cps.checked_sub(self.pruning_horizon) {
-            None => 1,
-            Some(v) => v + 1,
+        self.current_head_horizon = match amount_of_cps.checked_sub(self.pruning_horizon) {
+            None => 0,
+            Some(v) => v,
         };
 
-        while self.current_horizon <= amount_of_cps {
-            let mut cp = store.load::<MerkleCheckPoint>(&self.current_horizon.to_string(), &self.mmr_key)?;
+        while self.current_head_horizon < amount_of_cps {
+            self.current_head_horizon += 1;
+            let mut cp = store.load::<MerkleCheckPoint>(&self.current_head_horizon.to_string(), &self.mmr_key)?;
             self.apply_cp(&mut cp, hashmap, mmr, store)?;
-            self.current_horizon += 1;
+        }
+        self.current_horizon = self.current_head_horizon;
+        Ok(())
+    }
+
+    /// Function to load an mmr
+    pub fn rewind<T, S: MerkleStorage>(
+        &mut self,
+        hashmap: &mut HashMap<ObjectHash, MerkleObject<T>>,
+        mmr: &mut Vec<MerkleNode>,
+        rewind_amount: usize,
+        store: &mut S,
+    ) -> Result<(), MerkleStorageError>
+    where
+        T: Serialize + DeserializeOwned,
+    {
+        if !self.enabled {
+            return Ok(());
+        }
+
+        for _i in 0..rewind_amount {
+            let mut cp = store.load::<MerkleCheckPoint>(&(self.current_horizon).to_string(), &self.mmr_key)?;
+            self.apply_cp_reverse(&mut cp, hashmap, mmr, store)?;
+            self.uncleaned_checkpoints.push(cp.create_cleanup(self.current_horizon));
+            self.current_horizon -= 1;
         }
         Ok(())
     }
@@ -224,7 +345,47 @@ impl MerkleChangeTracker {
             if result.is_none() {
                 return Err(MerkleStorageError::SyncError);
             }
+            mmr[result.unwrap().vec_index].pruned = true;
         }
+        Ok(())
+    }
+
+    fn apply_cp_reverse<T, S: MerkleStorage>(
+        &self,
+        checkpoint: &mut MerkleCheckPoint,
+        hashmap: &mut HashMap<ObjectHash, MerkleObject<T>>,
+        mmr: &mut Vec<MerkleNode>,
+        store: &mut S,
+    ) -> Result<(), MerkleStorageError>
+    where
+        T: Serialize + DeserializeOwned,
+    {
+        for hash in &checkpoint.objects_to_add {
+            let result = hashmap.remove(hash);
+            if result.is_none() {
+                return Err(MerkleStorageError::SyncError);
+            }
+        }
+
+        for hash in &checkpoint.objects_to_del {
+            let object = store.load::<MerkleObject<T>>(&to_hex(hash), &self.object_key)?;
+            mmr[object.vec_index].pruned = false;
+            hashmap.insert(hash.clone(), object);
+        }
+        mmr.drain((mmr.len() - checkpoint.mmr_to_add.len())..);
+        Ok(())
+    }
+
+    fn cleanup_rewind<S: MerkleStorage>(
+        &self,
+        checkpoint: &CpCleanup,
+        store: &mut S,
+    ) -> Result<(), MerkleStorageError>
+    {
+        for hash in &checkpoint.objects_to_del {
+            store.delete(&to_hex(hash), &self.object_key)?;
+        }
+        store.delete(&(checkpoint.id).to_string(), &self.object_key)?;
         Ok(())
     }
 }
@@ -275,7 +436,8 @@ mod tests {
             .add_database(&"mmr_init".to_string())
             .build()
             .unwrap();
-        assert_eq!(mmr.apply_checkpoint(&mut store).is_ok(), true);
+        assert_eq!(mmr.checkpoint().is_ok(), true);
+        assert_eq!(mmr.apply_state(&mut store).is_ok(), true);
         let mut mmr2: MerkleMountainRange<IWrapper, Blake2b> = MerkleMountainRange::new();
         mmr2.init_persistance_store(&"mmr".to_string(), 5);
         assert_eq!(mmr2.load_from_store(&mut store).is_ok(), true);
@@ -286,7 +448,8 @@ mod tests {
             let object: IWrapper = IWrapper(i);
             mmr.push(object);
             assert_eq!(mmr.change_tracker.objects_to_save.len() > 0, true);
-            assert_eq!(mmr.apply_checkpoint(&mut store).is_ok(), true);
+            assert_eq!(mmr.checkpoint().is_ok(), true);
+            assert_eq!(mmr.apply_state(&mut store).is_ok(), true);
             assert_eq!(mmr.change_tracker.objects_to_save.len() == 0, true);
             let mut mmr2: MerkleMountainRange<IWrapper, Blake2b> = MerkleMountainRange::new();
             mmr2.init_persistance_store(&"mmr".to_string(), 5);
@@ -302,7 +465,8 @@ mod tests {
             assert_eq!(mmr.prune_object_hash(&object_delete.hash()).is_ok(), true);
             assert!(mmr.change_tracker.objects_to_save.len() > 0);
             assert_eq!(mmr.change_tracker.objects_to_del.len() > 0, true);
-            assert_eq!(mmr.apply_checkpoint(&mut store).is_ok(), true);
+            assert_eq!(mmr.checkpoint().is_ok(), true);
+            assert_eq!(mmr.apply_state(&mut store).is_ok(), true);
             assert_eq!(mmr.change_tracker.objects_to_save.len() == 0, true);
             assert_eq!(mmr.change_tracker.objects_to_del.len() == 0, true);
             let mut mmr2: MerkleMountainRange<IWrapper, Blake2b> = MerkleMountainRange::new();

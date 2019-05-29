@@ -44,6 +44,8 @@ pub enum MerkleStorageError {
     GetError(String),
     /// Sync error, expected some value where it found none
     SyncError,
+    /// The persistant storage was not enabled
+    StoreNotEnabledError,
 }
 
 /// This trait proves an interface for the MMR to store and retrieve data from some storage medium.
@@ -59,6 +61,9 @@ pub trait MerkleStorage {
     fn load<T: Serialize + DeserializeOwned>(&mut self, id: &str, database: &str) -> Result<T, MerkleStorageError>;
     /// This function will load some object via an id/key id
     fn delete(&mut self, id: &str, database: &str) -> Result<(), MerkleStorageError>;
+    // This function is called after all the DB changes where made. It makes it possible to implement batch writes
+    // implementing this.
+    fn commit(&mut self) -> Result<(), MerkleStorageError>;
 }
 
 // todo add feature flags so this does not get added if you dont want our lmdb
@@ -101,6 +106,10 @@ impl MerkleStorage for LMDBStore {
             .map_err(|e| MerkleStorageError::InternalError(e.to_string()))?;
         self.put_raw(id.as_bytes(), b"".to_vec())
             .map_err(|e| MerkleStorageError::InternalError(e.to_string()))?;
+        Ok(())
+    }
+
+    fn commit(&mut self) -> Result<(), MerkleStorageError> {
         Ok(())
     }
 }
