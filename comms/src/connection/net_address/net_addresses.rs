@@ -142,6 +142,7 @@ mod test {
         net_address::{net_address_with_stats::NetAddressWithStats, net_addresses::NetAddresses},
         NetAddress,
     };
+    use std::thread;
 
     #[test]
     fn test_last_seen() {
@@ -234,6 +235,7 @@ mod test {
         assert_eq!(net_addresses.addresses[1].avg_latency, Duration::from_millis(200));
         assert_eq!(net_addresses.addresses[2].avg_latency, Duration::from_millis(0));
 
+        thread::sleep(Duration::from_millis(1));
         assert!(net_addresses.message_received(&net_address1).is_ok());
         assert!(net_addresses.addresses[0].last_seen.is_some());
         assert!(net_addresses.addresses[1].last_seen.is_some());

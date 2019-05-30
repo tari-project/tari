@@ -143,7 +143,7 @@ impl PartialEq for NetAddressWithStats {
 #[cfg(test)]
 mod test {
     use crate::connection::{net_address::net_address_with_stats::NetAddressWithStats, NetAddress};
-    use std::time::Duration;
+    use std::{thread, time::Duration};
 
     #[test]
     fn test_update_latency() {
@@ -195,10 +195,13 @@ mod test {
         let net_address = "123.0.0.123:8000".parse::<NetAddress>().unwrap();
         let mut na1 = NetAddressWithStats::from(net_address.clone());
         let mut na2 = NetAddressWithStats::from(net_address);
+        thread::sleep(Duration::from_millis(1));
         na1.successful_connection_attempt();
         assert!(na1 < na2);
+        thread::sleep(Duration::from_millis(1));
         na2.successful_connection_attempt();
         assert!(na1 > na2);
+        thread::sleep(Duration::from_millis(1));
         na1.message_rejected();
         assert!(na1 < na2);
         na1.update_latency(Duration::from_millis(200));
