@@ -117,7 +117,6 @@ fn poll_handler_call_count_change(initial: u8, ms: u64) -> Option<u8> {
 
 #[test]
 fn recv_message() {
-    // tari_common::logging::initialize_logger::initialize_logger();
     let context = Context::new();
     let control_service_address = utils::find_available_tcp_net_address("127.0.0.1").unwrap();
 

@@ -20,6 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use log::*;
 use std::{
     sync::{
         mpsc::{sync_channel, Receiver, RecvTimeoutError, SyncSender},
@@ -30,21 +31,22 @@ use std::{
     time::Duration,
 };
 
-use crate::connection::{
-    connection::{Connection, EstablishedConnection},
-    monitor::{ConnectionMonitor, SocketEvent, SocketEventType},
-    peer_connection::{
-        connection::PeerConnectionState,
-        control::ControlMessage,
-        PeerConnectionContext,
-        PeerConnectionError,
+use crate::{
+    connection::{
+        connection::{Connection, EstablishedConnection},
+        monitor::{ConnectionMonitor, SocketEvent, SocketEventType},
+        peer_connection::{
+            connection::PeerConnectionState,
+            control::ControlMessage,
+            PeerConnectionContext,
+            PeerConnectionError,
+        },
+        types::Direction,
+        ConnectionError,
+        InprocAddress,
+        Result,
     },
-    types::Direction,
-    ConnectionError,
-    Frame,
-    FrameSet,
-    InprocAddress,
-    Result,
+    message::{Frame, FrameSet},
 };
 
 /// Send HWM for peer connections

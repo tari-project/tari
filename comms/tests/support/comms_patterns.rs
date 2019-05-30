@@ -24,10 +24,12 @@ use std::{
     sync::mpsc::{channel, Receiver},
     thread,
 };
-use tari_comms::connection::{
-    types::{Direction, SocketType},
-    zmq::{curve_keypair, Context, CurvePublicKey, CurveSecretKey, ZmqEndpoint},
-    FrameSet,
+use tari_comms::{
+    connection::{
+        types::{Direction, SocketType},
+        zmq::{curve_keypair, Context, CurvePublicKey, CurveSecretKey, ZmqEndpoint},
+    },
+    message::FrameSet,
 };
 
 /// Creates an [AsyncRequestReplyPattern].

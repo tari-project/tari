@@ -20,6 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use log::*;
+
 use super::{
     error::ControlServiceError,
     service::ControlServiceConfig,
@@ -33,11 +35,10 @@ use crate::{
         Connection,
         Context,
         Direction,
-        FrameSet,
         InprocAddress,
     },
     dispatcher::{DispatchResolver, DispatchableKey},
-    message::{Message, MessageEnvelope},
+    message::{FrameSet, Message, MessageEnvelope},
     types::MessageEnvelopeHeader,
 };
 use std::{
@@ -53,9 +54,7 @@ const CONTROL_SERVICE_MAX_MSG_SIZE: u64 = 300; // 1kb
 /// The [ControlService] worker is responsible for handling incoming messages
 /// to the control port and dispatching them using the message dispatcher.
 pub struct ControlServiceWorker<MType, R>
-where
-    MType: DispatchableKey,
-    R: DispatchResolver<MType, ControlServiceMessageContext>,
+where MType: DispatchableKey
 {
     context: Context,
     config: ControlServiceConfig,

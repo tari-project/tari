@@ -22,7 +22,7 @@
 
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
-use crate::{connection::Frame, message::MessageError};
+use crate::message::{Frame, MessageError};
 use std::convert::TryFrom;
 use tari_utilities::message_format::MessageFormat;
 

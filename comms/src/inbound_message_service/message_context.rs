@@ -20,10 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    connection::FrameSet,
-    message::{MessageEnvelope, MessageError},
-};
+use crate::message::{FrameSet, MessageEnvelope, MessageError};
 use serde_derive::{Deserialize, Serialize};
 use std::convert::{TryFrom, TryInto};
 use tari_crypto::keys::PublicKey;
@@ -85,7 +82,7 @@ impl<PubKey: PublicKey> TryFrom<FrameSet> for MessageContext<PubKey> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::connection::Frame;
+    use crate::message::Frame;
     use std::convert::TryInto;
     use tari_crypto::ristretto::RistrettoPublicKey;
 

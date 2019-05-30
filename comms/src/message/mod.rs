@@ -30,6 +30,11 @@ mod message;
 
 pub use self::{envelope::*, error::MessageError, message::*};
 
+/// Represents a single message frame.
+pub type Frame = Vec<u8>;
+/// Represents a collection of frames which make up a multipart message.
+pub type FrameSet = Vec<Frame>;
+
 bitflags! {
     #[derive(Deserialize, Serialize)]
     pub struct MessageFlags: u8 {

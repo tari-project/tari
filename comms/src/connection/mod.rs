@@ -32,11 +32,6 @@ pub mod peer_connection;
 pub mod types;
 pub mod zmq;
 
-/// Represents a single message frame.
-pub type Frame = Vec<u8>;
-/// Represents a collection of frames which make up a multipart message.
-pub type FrameSet = Vec<Frame>;
-
 pub use self::{
     connection::Connection,
     dealer_proxy::{DealerProxy, DealerProxyError},
