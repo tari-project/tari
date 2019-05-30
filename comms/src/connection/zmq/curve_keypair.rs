@@ -109,10 +109,12 @@ impl Default for CurvePublicKey {
 #[cfg(test)]
 mod test {
     use super::*;
-    use std::slice;
 
     #[test]
+    // Optimisations can cause this test to erroneously fail in release mode. The value is zeroed out on drop though.
+    #[cfg(debug_assertions)]
     fn clears_secret_key_on_drop() {
+        use std::slice;
         let ptr;
         {
             let sk = generate().unwrap().0;
