@@ -22,6 +22,7 @@
 
 use crate::connection::{ConnectionError, Result};
 use clear_on_drop::clear::Clear;
+use serde::{Deserialize, Serialize};
 use zmq;
 
 /// Generates a Curve25519 public/private keypair
@@ -86,7 +87,7 @@ impl Drop for CurveSecretKey {
 }
 
 //---------------------------------- Curve Public Key --------------------------------------------//
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 /// Represents a Curve25519 public key
 pub struct CurvePublicKey(pub(crate) [u8; 32]);
 

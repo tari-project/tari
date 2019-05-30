@@ -20,28 +20,16 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    connection::message::{FrameSet, MessageEnvelopeHeader, MessageError},
-    inbound_message_service::{
-        comms_msg_handlers::determine_comms_msg_dispatch_type,
-        message_dispatcher::Dispatchable,
-    },
-};
+use crate::message::{FrameSet, MessageEnvelope, MessageError};
 use serde_derive::{Deserialize, Serialize};
-use std::convert::TryFrom;
+use std::convert::{TryFrom, TryInto};
 use tari_crypto::keys::PublicKey;
-
-/// The number of frames required to construct a MessageContext
-const FRAMES_PER_MESSAGE: usize = 5;
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct MessageContext<PubKey> {
     pub connection_id: Vec<u8>,
-    pub source: Vec<u8>,
-    pub version: Vec<u8>,
     pub node_identity: Option<PubKey>,
-    pub message_envelope_header: MessageEnvelopeHeader<PubKey>,
-    pub message_envelope_body: Vec<u8>,
+    pub message_envelope: MessageEnvelope,
 }
 
 impl<PubKey: PublicKey + 'static> MessageContext<PubKey> {
@@ -49,33 +37,23 @@ impl<PubKey: PublicKey + 'static> MessageContext<PubKey> {
     /// and body
     pub fn new(
         connection_id: Vec<u8>,
-        source: Vec<u8>,
-        version: Vec<u8>,
         node_identity: Option<PubKey>,
-        message_envelope_header: MessageEnvelopeHeader<PubKey>,
-        message_envelope_body: Vec<u8>,
+        message_envelope: MessageEnvelope,
     ) -> MessageContext<PubKey>
     {
         MessageContext {
             connection_id,
-            source,
-            version,
             node_identity,
-            message_envelope_header,
-            message_envelope_body,
+            message_envelope,
         }
     }
 
-    /// Serialize the MessageContext into a FrameSet
-    pub fn to_frame_set(&self) -> Result<FrameSet, MessageError> {
-        let mut frame_set: Vec<Vec<u8>> = Vec::new();
+    /// Convert the MessageContext into a FrameSet
+    pub fn into_frame_set(self) -> FrameSet {
+        let mut frame_set = Vec::new();
         frame_set.push(self.connection_id.clone());
-        frame_set.push(self.source.clone());
-        frame_set.push(self.version.clone());
-        // node identity should be excluded
-        frame_set.push(self.message_envelope_header.to_frame()?);
-        frame_set.push(self.message_envelope_body.clone());
-        Ok(frame_set)
+        frame_set.extend(self.message_envelope.into_frame_set());
+        frame_set
     }
 }
 
@@ -84,65 +62,59 @@ impl<PubKey: PublicKey> TryFrom<FrameSet> for MessageContext<PubKey> {
 
     /// Attempt to create a MessageContext from a FrameSet
     fn try_from(mut frames: FrameSet) -> Result<Self, Self::Error> {
-        if frames.len() == FRAMES_PER_MESSAGE {
-            Ok(MessageContext {
-                message_envelope_body: frames.remove(4),
-                message_envelope_header: MessageEnvelopeHeader::try_from(frames.remove(3))?,
-                version: frames.remove(2),
-                node_identity: None,
-                source: frames.remove(1),
-                connection_id: frames.remove(0),
-            })
+        let connection_id = if frames.len() > 0 {
+            // `remove` panics if the index is out of bounds, so we have to check
+            frames.remove(0)
         } else {
-            Err(MessageError::MalformedMultipart)
-        }
-    }
-}
+            return Err(MessageError::MalformedMultipart);
+        };
 
-impl<PubKey: PublicKey> Dispatchable for MessageContext<PubKey> {
-    fn dispatch_type(&self) -> u32 {
-        determine_comms_msg_dispatch_type(&self)
+        let message_envelope: MessageEnvelope = frames.try_into()?;
+
+        Ok(MessageContext {
+            message_envelope,
+            node_identity: None,
+            connection_id,
+        })
     }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::connection::message::{IdentityFlags, MessageEnvelopeHeader, NodeDestination};
-    use tari_crypto::{
-        keys::{PublicKey, SecretKey},
-        ristretto::{RistrettoPublicKey, RistrettoSecretKey},
-    };
+    use crate::message::Frame;
+    use std::convert::TryInto;
+    use tari_crypto::ristretto::RistrettoPublicKey;
 
     #[test]
     fn test_try_from_and_to_frame_set() {
-        // Create a new Message Context
-        let mut rng = rand::OsRng::new().unwrap();
-        let connection_id: Vec<u8> = vec![0, 1, 2, 3, 4];
-        let source: Vec<u8> = vec![5, 6, 7, 8, 9];
-        let version: Vec<u8> = vec![10];
-        let dest: NodeDestination<RistrettoPublicKey> = NodeDestination::Unknown;
-        let message_envelope_header: MessageEnvelopeHeader<RistrettoPublicKey> = MessageEnvelopeHeader {
-            version: 0,
-            source: RistrettoPublicKey::from_secret_key(&RistrettoSecretKey::random(&mut rng)),
-            dest,
-            signature: vec![0],
-            flags: IdentityFlags::ENCRYPTED,
-        };
-        let message_envelope_body: Vec<u8> = vec![11, 12, 13, 14, 15];
-        let desired_message_context = MessageContext::<RistrettoPublicKey>::new(
-            connection_id,
-            source,
-            version,
-            None,
-            message_envelope_header,
-            message_envelope_body,
-        );
+        let connection_id: Frame = vec![0, 1, 2, 3, 4];
+        let header_frame: Frame = vec![11, 12, 13, 14, 15];
+        let body_frame: Frame = vec![11, 12, 13, 14, 15];
+        let version_frame: Frame = vec![10];
+
+        // Frames received off the "wire"
+        let frames = vec![
+            connection_id.clone(),
+            version_frame.clone(),
+            header_frame.clone(),
+            body_frame.clone(),
+        ];
+
+        // Convert to MessageContext
+        let message_context: MessageContext<RistrettoPublicKey> = frames.try_into().unwrap();
+
+        let message_envelope = MessageEnvelope::new(version_frame, header_frame, body_frame);
+
+        let expected_message_context = MessageContext::<RistrettoPublicKey>::new(connection_id, None, message_envelope);
+
+        assert_eq!(expected_message_context, message_context);
+
         // Convert MessageContext to FrameSet
-        let message_context_buffer = desired_message_context.to_frame_set().unwrap();
+        let message_context_buffer = expected_message_context.clone().into_frame_set();
         // Create MessageContext from FrameSet
         let message_context: Result<MessageContext<RistrettoPublicKey>, MessageError> =
             MessageContext::try_from(message_context_buffer);
-        assert_eq!(desired_message_context, message_context.unwrap());
+        assert_eq!(expected_message_context, message_context.unwrap());
     }
 }

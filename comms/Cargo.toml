@@ -13,6 +13,7 @@ bitflags ="1.0.4"
 chrono = { version = "0.4.6", features = ["serde"]}
 clear_on_drop = "0.2.3"
 derive-error = "0.0.4"
+log = { version = "0.4.0", features = ["std"] }
 rand = "0.5.5"
 rmp-serde = "0.13.7"
 serde = "1.0.90"

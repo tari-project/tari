@@ -100,17 +100,19 @@ mod test {
     use crate::{
         connection::{
             connection::EstablishedConnection,
-            message::{IdentityFlags, MessageEnvelopeHeader, NodeDestination},
             zmq::{Context, InprocAddress, ZmqEndpoint},
             SocketType,
         },
-        inbound_message_service::{comms_msg_handlers::*, message_dispatcher::DispatchError},
+        dispatcher::DispatchError,
+        inbound_message_service::comms_msg_handlers::*,
+        message::{MessageEnvelope, MessageEnvelopeHeader, MessageFlags, NodeDestination},
     };
     use std::thread::ThreadId;
     use tari_crypto::{
         keys::{PublicKey, SecretKey},
         ristretto::{RistrettoPublicKey, RistrettoSecretKey},
     };
+    use tari_utilities::message_format::MessageFormat;
 
     #[test]
     fn test_new_and_start() {
@@ -124,7 +126,7 @@ mod test {
         let msg_pool_address = InprocAddress::random();
         let client_socket = context.socket(SocketType::Request).unwrap();
         client_socket.connect(&msg_pool_address.to_zmq_endpoint()).unwrap();
-        let conn_client = EstablishedConnection { socket: client_socket };
+        let conn_client: EstablishedConnection = client_socket.into();
 
         // Create a common variable that the workers can change
         static mut WORKER_ID: u64 = 0;
@@ -136,10 +138,7 @@ mod test {
             }
             Ok(())
         }
-        let message_dispatcher = MessageDispatcher::<MessageContext<RistrettoPublicKey>>::new()
-            .route(CommsDispatchType::Handle as u32, test_fn)
-            .route(CommsDispatchType::Forward as u32, test_fn)
-            .route(CommsDispatchType::Discard as u32, test_fn);
+        let message_dispatcher = MessageDispatcher::new(InboundMessageServiceResolver {}).catch_all(test_fn);
 
         // Setup and start InboundMessagePool
         let mut rng = rand::OsRng::new().unwrap();
@@ -153,7 +152,7 @@ mod test {
         .start();
         // Create a new Message Context
         let connection_id: Vec<u8> = vec![0, 1, 2, 3, 4];
-        let source: Vec<u8> = vec![5, 6, 7, 8, 9];
+        let _source: Vec<u8> = vec![5, 6, 7, 8, 9];
         let version: Vec<u8> = vec![10];
         let dest: NodeDestination<RistrettoPublicKey> = NodeDestination::Unknown;
         let message_envelope_header: MessageEnvelopeHeader<RistrettoPublicKey> = MessageEnvelopeHeader {
@@ -161,18 +160,20 @@ mod test {
             source: RistrettoPublicKey::from_secret_key(&RistrettoSecretKey::random(&mut rng)),
             dest,
             signature: vec![0],
-            flags: IdentityFlags::ENCRYPTED,
+            flags: MessageFlags::ENCRYPTED,
         };
-        let message_envelope_body: Vec<u8> = vec![11, 12, 13, 14, 15];
-        let message_context = MessageContext::<RistrettoPublicKey>::new(
-            connection_id,
-            source,
+
+        let message_envelope_body: Vec<u8> = "handle".as_bytes().to_vec();
+
+        let message_envelope = MessageEnvelope::new(
             version,
-            None,
-            message_envelope_header,
+            message_envelope_header.to_binary().unwrap(),
             message_envelope_body,
         );
-        let message_context_buffer = message_context.to_frame_set().unwrap();
+
+        let message_context = MessageContext::<RistrettoPublicKey>::new(connection_id, None, message_envelope);
+
+        let message_context_buffer = message_context.into_frame_set();
 
         // Check that the dealer distributed messages to different threads
         assert!(conn_client.send(&message_context_buffer).is_ok());

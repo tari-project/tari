@@ -20,6 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use log::*;
 use std::{
     sync::{
         mpsc::{sync_channel, Receiver, RecvTimeoutError, SyncSender},
@@ -30,38 +31,28 @@ use std::{
     time::Duration,
 };
 
-use crate::connection::{
-    connection::{Connection, EstablishedConnection},
-    message::{Frame, FrameSet},
-    monitor::{ConnectionMonitor, SocketEvent, SocketEventType},
-    peer_connection::{
-        connection::PeerConnectionState,
-        control::ControlMessage,
-        PeerConnectionContext,
-        PeerConnectionError,
+use crate::{
+    connection::{
+        connection::{Connection, EstablishedConnection},
+        monitor::{ConnectionMonitor, SocketEvent, SocketEventType},
+        peer_connection::{
+            connection::PeerConnectionState,
+            control::ControlMessage,
+            PeerConnectionContext,
+            PeerConnectionError,
+        },
+        types::Direction,
+        ConnectionError,
+        InprocAddress,
+        Result,
     },
-    types::Direction,
-    ConnectionError,
-    InprocAddress,
-    Result,
+    message::{Frame, FrameSet},
 };
 
 /// Send HWM for peer connections
 const PEER_CONNECTION_SEND_HWM: i32 = 10;
 /// Receive HWM for peer connections
 const PEER_CONNECTION_RECV_HWM: i32 = 10;
-
-macro_rules! try_recv {
-    ($e: expr) => {
-        match $e {
-            Ok(d) => Some(d),
-            Err(e) => match e {
-                ConnectionError::Timeout => None,
-                _ => return Err(e),
-            },
-        }
-    };
-}
 
 macro_rules! acquire_write_lock {
     ($lock: expr) => {
@@ -188,6 +179,7 @@ impl Worker {
     fn handle_socket_event(&mut self, event: SocketEvent) -> Result<()> {
         use SocketEventType::*;
 
+        debug!(target: "comms::peer_connection::worker", "{:?}", event);
         match event.event_type {
             Disconnected => {
                 let mut lock = acquire_write_lock!(self.connection_state)?;
@@ -241,7 +233,7 @@ impl Worker {
     /// Forwards frames from the source to the sink
     fn forward_frames(&mut self, frontend: &EstablishedConnection, backend: &EstablishedConnection) -> Result<()> {
         let context = &self.context;
-        if let Some(frames) = try_recv!(frontend.receive(10)) {
+        if let Some(frames) = connection_try!(frontend.receive(10)) {
             match context.direction {
                 // For a ROUTER backend, the first frame is the identity
                 Direction::Inbound => match self.identity {

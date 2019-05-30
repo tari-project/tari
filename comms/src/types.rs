@@ -20,7 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_crypto::common::Blake256;
+use tari_crypto::{common::Blake256, ristretto::RistrettoPublicKey};
+
+pub type MessageEnvelopeHeader = crate::message::MessageEnvelopeHeader<RistrettoPublicKey>;
 
 /// The message protocol version for the MessageEnvelopeHeader
 pub const MESSAGE_PROTOCOL_VERSION: u8 = 0;

@@ -24,10 +24,10 @@ use crate::{
     connection::{
         connection::EstablishedConnection,
         error::ConnectionError,
-        message::{Frame, IdentityFlags, MessageEnvelope, MessageEnvelopeHeader, MessageError, NodeDestination},
         types::SocketType,
         zmq::{Context, InprocAddress, ZmqEndpoint, ZmqError},
     },
+    message::{Frame, MessageEnvelope, MessageEnvelopeHeader, MessageFlags, NodeDestination},
     outbound_message_service::{broadcast_strategy::BroadcastStrategy, outbound_message::OutboundMessage},
     peer_manager::node_identity::NodeIdentity,
     types::{Challenge, MESSAGE_PROTOCOL_VERSION, WIRE_PROTOCOL_VERSION},
@@ -42,7 +42,13 @@ use tari_crypto::{
     keys::{DiffieHellmanSharedSecret, PublicKey, SecretKey},
     signatures::{SchnorrSignature, SchnorrSignatureError},
 };
-use tari_utilities::{chacha20, ByteArray, ByteArrayError, Hashable};
+use tari_utilities::{
+    chacha20,
+    message_format::{MessageFormat, MessageFormatError},
+    ByteArray,
+    ByteArrayError,
+    Hashable,
+};
 
 #[derive(Debug, Error)]
 pub enum OutboundError {
@@ -59,7 +65,7 @@ pub enum OutboundError {
     /// The generated shared secret could not be serialized to a vector of bytes
     SharedSecretSerializationError(ByteArrayError),
     /// The message could not be serialized
-    MessageSerializationError(MessageError),
+    MessageSerializationError(MessageFormatError),
     /// Could not successfully sign the message
     SignatureError(SchnorrSignatureError),
 }
@@ -142,7 +148,7 @@ where
         &self,
         _broadcast_strategy: BroadcastStrategy, /* TODO: make use of BroadcastStrategy once the PeerManager has been
                                                  * implemented */
-        flags: IdentityFlags,
+        flags: MessageFlags,
         message_envelope_body: &Frame,
         rng: &mut R,
         dest_node_identity: Arc<NodeIdentity<PubKey, SecKey>>, /* TODO: This field is temporary until routing table
@@ -155,22 +161,22 @@ where
 
         for dest_node_identity in &selected_node_identities {
             // Constructing a MessageEnvelope
-            let message_envelope_body = if flags.contains(IdentityFlags::ENCRYPTED) {
+            let message_envelope_body = if flags.contains(MessageFlags::ENCRYPTED) {
                 self.encrypt_envelope_body(message_envelope_body, &dest_node_identity.public_key)?
             } else {
                 message_envelope_body.clone()
             };
             let signature = self.sign_envelope_body(&message_envelope_body, rng)?;
-            let message_envelope_header = MessageEnvelopeHeader::<PubKey>::new(
-                MESSAGE_PROTOCOL_VERSION,
-                self.node_identity.public_key.clone(),
-                NodeDestination::<PubKey>::NodeId(dest_node_identity.node_id.clone()),
+            let message_envelope_header = MessageEnvelopeHeader {
+                version: MESSAGE_PROTOCOL_VERSION,
+                source: self.node_identity.public_key.clone(),
+                dest: NodeDestination::NodeId(dest_node_identity.node_id.clone()),
                 signature,
                 flags,
-            );
+            };
             let message_envelope_header_frame = message_envelope_header
-                .to_frame()
-                .map_err(|e| OutboundError::MessageSerializationError(e))?;
+                .to_binary()
+                .map_err(OutboundError::MessageSerializationError)?;
             let message_envelope = MessageEnvelope::new(
                 vec![WIRE_PROTOCOL_VERSION],
                 message_envelope_header_frame,
@@ -180,7 +186,7 @@ where
             let outbound_message =
                 OutboundMessage::<MessageEnvelope>::new(dest_node_identity.node_id.clone(), message_envelope);
             let outbound_message_buffer = vec![outbound_message
-                .to_frame()
+                .to_binary()
                 .map_err(|e| OutboundError::MessageSerializationError(e))?];
 
             // Send message to outbound message pool
@@ -191,9 +197,7 @@ where
             outbound_socket
                 .connect(&self.outbound_address.to_zmq_endpoint())
                 .map_err(|e| OutboundError::SocketConnectionError(e))?;
-            let outbound_connection = EstablishedConnection {
-                socket: outbound_socket,
-            };
+            let outbound_connection: EstablishedConnection = outbound_socket.into();
             outbound_connection
                 .send(&outbound_message_buffer)
                 .map_err(|e| OutboundError::SendError(e))?;
@@ -256,7 +260,7 @@ mod test {
         assert!(outbound_message_service
             .send(
                 BroadcastStrategy::Direct(dest_node_identity.node_id.clone()),
-                IdentityFlags::ENCRYPTED,
+                MessageFlags::ENCRYPTED,
                 &message_envelope_body,
                 &mut rng,
                 dest_node_identity.clone(), // TODO Remove, this is temporary until the routing table is implemented
@@ -268,9 +272,8 @@ mod test {
         assert_eq!(outbound_message.destination_node_id, dest_node_identity.node_id);
         assert_eq!(outbound_message.retry_count, 0);
         assert_eq!(outbound_message.last_retry_timestamp, None);
-        let message_envelope_header =
-            MessageEnvelopeHeader::<RistrettoPublicKey>::try_from(outbound_message.message_envelope.header().clone())
-                .unwrap();
+        let message_envelope_header: MessageEnvelopeHeader<RistrettoPublicKey> =
+            outbound_message.message_envelope.to_header().unwrap();
         assert_eq!(message_envelope_header.source, node_identity.public_key);
         assert_eq!(
             message_envelope_header.dest,
@@ -280,20 +283,22 @@ mod test {
         let mut de = rmp_serde::Deserializer::new(message_envelope_header.signature.as_slice());
         let signature = SchnorrSignature::<RistrettoPublicKey, RistrettoSecretKey>::deserialize(&mut de).unwrap();
         let challenge = Challenge::new()
-            .chain(outbound_message.message_envelope.body())
+            .chain(outbound_message.message_envelope.body_frame())
             .result()
             .to_vec();
         assert!(signature.verify_challenge(&node_identity.public_key, &challenge));
         // Check Encryption
-        assert_eq!(message_envelope_header.flags, IdentityFlags::ENCRYPTED);
+        assert_eq!(message_envelope_header.flags, MessageFlags::ENCRYPTED);
         let ecdh_shared_secret = RistrettoPublicKey::shared_secret(
             &dest_node_identity.secret_key.clone().unwrap(),
             &node_identity.public_key,
         )
         .to_vec();
         let ecdh_shared_secret_bytes: [u8; 32] = ByteArray::from_bytes(&ecdh_shared_secret).unwrap();
-        let decoded_message_envelope_body =
-            chacha20::decode(outbound_message.message_envelope.body(), &ecdh_shared_secret_bytes);
+        let decoded_message_envelope_body = chacha20::decode(
+            outbound_message.message_envelope.body_frame(),
+            &ecdh_shared_secret_bytes,
+        );
         assert_eq!(message_envelope_body, decoded_message_envelope_body);
 
         assert!(omp_socket.send("OK".as_bytes(), 0).is_ok());

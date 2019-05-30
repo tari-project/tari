@@ -20,14 +20,16 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::connection::{
+use crate::{
+    connection::{
+        net_address::ip::SocketAddress,
+        types::{Direction, Linger, SocketType},
+        zmq::{Context, CurveEncryption, InprocAddress, ZmqEndpoint},
+        ConnectionError,
+        Result,
+        SocketEstablishment,
+    },
     message::FrameSet,
-    net_address::ip::SocketAddress,
-    types::{Direction, Linger, SocketType},
-    zmq::{Context, CurveEncryption, InprocAddress, ZmqEndpoint},
-    ConnectionError,
-    Result,
-    SocketEstablishment,
 };
 use std::{cmp, iter::IntoIterator};
 
@@ -251,7 +253,7 @@ fn set_linger(socket: &zmq::Socket, linger: Linger) -> Result<()> {
 
 /// Represents an established connection.
 pub struct EstablishedConnection {
-    pub socket: zmq::Socket,
+    socket: zmq::Socket,
 }
 
 impl EstablishedConnection {
@@ -335,6 +337,12 @@ impl EstablishedConnection {
 
     pub(crate) fn get_socket(&self) -> &zmq::Socket {
         &self.socket
+    }
+}
+
+impl From<zmq::Socket> for EstablishedConnection {
+    fn from(socket: zmq::Socket) -> Self {
+        Self { socket }
     }
 }
 

@@ -20,24 +20,17 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#[macro_use]
-mod macros;
-
-pub mod connection;
-pub mod dealer_proxy;
-pub mod error;
-pub mod monitor;
-pub mod net_address;
-pub mod peer_connection;
-pub mod types;
-pub mod zmq;
-
-pub use self::{
-    connection::Connection,
-    dealer_proxy::{DealerProxy, DealerProxyError},
-    error::ConnectionError,
-    net_address::{NetAddress, NetAddressError},
-    peer_connection::{PeerConnection, PeerConnectionContextBuilder, PeerConnectionError},
-    types::*,
-    zmq::{curve_keypair, Context, CurveEncryption, InprocAddress},
-};
+/// Converts a [connection::Result] into an Option. If the call results in
+/// a [ConnectionError::Timeout], `None` is passed back. For any other error,
+/// the error `return`ed from containing function.
+macro_rules! connection_try {
+    ($e: expr) => {
+        match $e {
+            Ok(d) => Some(d),
+            Err(e) => match e {
+                crate::connection::ConnectionError::Timeout => None,
+                _ => return Err(e.into()),
+            },
+        }
+    };
+}

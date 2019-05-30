@@ -27,7 +27,10 @@ use std::{
     time::Duration,
 };
 
-use crate::connection::{message::FrameSet, ConnectionError, Result};
+use crate::{
+    connection::{ConnectionError, Result},
+    message::FrameSet,
+};
 
 use super::{
     control::{ControlMessage, ThreadControlMessenger},
