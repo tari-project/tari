@@ -27,9 +27,10 @@ use crate::{
     },
     inbound_message_service::{message_context::MessageContext, message_dispatcher::MessageDispatcher},
 };
+#[cfg(test)]
+use std::sync::mpsc::SyncSender;
 use std::{convert::TryFrom, marker::Send, thread};
 use tari_crypto::keys::PublicKey;
-
 /// As DealerError is handled in a thread it needs to be written to the error log
 #[derive(Debug)]
 pub enum WorkerError {
@@ -45,6 +46,8 @@ pub struct MsgProcessingWorker<PubKey> {
     #[allow(dead_code)]
     node_identity: PubKey,
     message_dispatcher: MessageDispatcher<MessageContext<PubKey>>,
+    #[cfg(test)]
+    test_sync_sender: Option<SyncSender<String>>,
 }
 
 impl<PubKey: PublicKey + Send + 'static> MsgProcessingWorker<PubKey> {
@@ -61,6 +64,8 @@ impl<PubKey: PublicKey + Send + 'static> MsgProcessingWorker<PubKey> {
             inbound_address,
             node_identity,
             message_dispatcher,
+            #[cfg(test)]
+            test_sync_sender: None,
         }
     }
 
@@ -75,6 +80,9 @@ impl<PubKey: PublicKey + Send + 'static> MsgProcessingWorker<PubKey> {
             .map_err(|e| WorkerError::InboundConnectionError(e))?;
         // Retrieve, process and dispatch messages
         loop {
+            #[cfg(test)]
+            let sync_sender = self.test_sync_sender.clone();
+
             let frames = match inbound_socket.recv_multipart(0) {
                 Ok(frames) => frames,
                 Err(_e) => {
@@ -95,6 +103,13 @@ impl<PubKey: PublicKey + Send + 'static> MsgProcessingWorker<PubKey> {
                     inbound_socket.send("OK".as_bytes(), 0).unwrap_or_else(|_e| {
                         (/*TODO Log Warning: could not return status message*/)
                     });
+
+                    #[cfg(test)]
+                    {
+                        if let Some(tx) = sync_sender {
+                            tx.send("Message dispatched".to_string()).unwrap();
+                        }
+                    }
                 },
                 Err(_e) => {
                     // if unable to deserialize the MessageHeader then MUST discard the
@@ -119,6 +134,11 @@ impl<PubKey: PublicKey + Send + 'static> MsgProcessingWorker<PubKey> {
                 }
             }
         });
+    }
+
+    #[cfg(test)]
+    pub fn set_test_channel(&mut self, tx: SyncSender<String>) {
+        self.test_sync_sender = Some(tx);
     }
 }
 
