@@ -20,11 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod ban_list;
 pub mod liveness;
-pub mod manager;
 pub mod node_id;
 pub mod node_identity;
 pub mod peer;
-pub mod routing_table;
-pub mod storage;
+pub mod peer_manager;
+pub mod peer_storage;

@@ -20,9 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::support::{hashvalues::HashValues, testobject::TestObject};
+use crate::support::testobject::TestObject;
 use blake2::Blake2b;
-use merklemountainrange::{merkleproof::MerkleProof, mmr::*};
+use merklemountainrange::mmr::*;
 use std::fs;
 use tari_storage::lmdb::*;
 

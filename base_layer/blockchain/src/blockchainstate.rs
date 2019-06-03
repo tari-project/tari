@@ -23,13 +23,7 @@
 // This file is used to store the current blockchain state
 
 use crate::error::StateError;
-use merklemountainrange::mmr::*;
-use tari_core::{
-    block::Block,
-    blockheader::BlockHeader,
-    transaction::{TransactionKernel, TransactionOutput},
-    types::*,
-};
+use tari_core::block::Block;
 // TODO add back in MMR
 /// The BlockchainState struct keeps record of the current UTXO, total kernels and headers.
 pub struct BlockchainState {

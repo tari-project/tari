@@ -525,7 +525,7 @@ This list is called a routing table and is made up of [Peer]s.
 The PeerManager can
 
 - add a peer to the routing table,
-- search for a peer given a public key or [NetAddress],
+- search for a peer given a node id, public key or [NetAddress],
 - delete a peer from the list,
 - persist the peer list using a storage backend,
 - restore the peer list from the storage backend,
@@ -615,7 +615,7 @@ In particular, it is responsible for:
 - sending messages using the [ConnectionManager]
 
 The actual sending of messages can be requested via the public `send_message` method which takes a
-MessageHeader, Message and BroadcastStrategy as parameters.
+MessageHeader, MessageBody and BroadcastStrategy as parameters.
 
 `send_message` then selects an appropriate peer(s) from the ConnectionManager according to the
 BroadcastStrategy and sends the message to each of the selected peers.

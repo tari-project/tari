@@ -27,7 +27,7 @@ use serde::{Deserialize, Serialize};
 use super::{parser::AddressParser, NetAddressError};
 
 /// Represents a Tor Onion address
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Debug, Hash, Serialize, Deserialize)]
 pub struct OnionAddress {
     pub public_key: String,
     pub port: u16,
