@@ -81,7 +81,7 @@ impl<PubKey: PublicKey + Send + 'static> MsgProcessingWorker<PubKey> {
         // Retrieve, process and dispatch messages
         loop {
             #[cfg(test)]
-            let tx = self.test_sync_sender.clone().unwrap();
+            let sync_sender = self.test_sync_sender.clone();
 
             let frames = match inbound_socket.recv_multipart(0) {
                 Ok(frames) => frames,
@@ -106,7 +106,9 @@ impl<PubKey: PublicKey + Send + 'static> MsgProcessingWorker<PubKey> {
 
                     #[cfg(test)]
                     {
-                        tx.send("Message dispatched".to_string()).unwrap();
+                        if let Some(tx) = sync_sender {
+                            tx.send("Message dispatched".to_string()).unwrap();
+                        }
                     }
                 },
                 Err(_e) => {
