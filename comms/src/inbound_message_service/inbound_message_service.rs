@@ -36,6 +36,9 @@ use crate::{
 use std::{marker::Send, thread};
 use tari_crypto::keys::PublicKey;
 
+#[cfg(test)]
+use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
+
 /// The maximum number of processing worker threads that will be created by the InboundMessageService
 const MAX_MSG_PROCESSING_WORKERS: u8 = 8;
 
@@ -45,6 +48,9 @@ pub struct InboundMessageService<PubKey> {
     dealer_address: InprocAddress,
     node_identity: PubKey,
     message_dispatcher: MessageDispatcher<MessageContext<PubKey>>,
+    #[cfg(test)]
+    test_sync_sender: Vec<SyncSender<String>>, /* These channels will be to test the pool workers threaded
+                                                * operation */
 }
 
 impl<PubKey: PublicKey + Send + 'static> InboundMessageService<PubKey> {
@@ -63,6 +69,8 @@ impl<PubKey: PublicKey + Send + 'static> InboundMessageService<PubKey> {
             dealer_address: InprocAddress::random(),
             node_identity,
             message_dispatcher,
+            #[cfg(test)]
+            test_sync_sender: Vec::new(),
         })
     }
 
@@ -74,14 +82,20 @@ impl<PubKey: PublicKey + Send + 'static> InboundMessageService<PubKey> {
     pub fn start(self) {
         thread::spawn(move || {
             // Start workers
-            for _ in 0..MAX_MSG_PROCESSING_WORKERS {
-                MsgProcessingWorker::new(
+            #[allow(unused_variables)]
+            for i in 0..MAX_MSG_PROCESSING_WORKERS {
+                #[allow(unused_mut)] // Allow for testing
+                let mut worker = MsgProcessingWorker::new(
                     self.context.clone(),
                     self.dealer_address.clone(),
                     self.node_identity.clone(),
                     self.message_dispatcher.clone(),
-                )
-                .start();
+                );
+
+                #[cfg(test)]
+                worker.set_test_channel(self.test_sync_sender[i as usize].clone());
+
+                worker.start();
             }
             // Start dealer
             loop {
@@ -91,6 +105,19 @@ impl<PubKey: PublicKey + Send + 'static> InboundMessageService<PubKey> {
                 }
             }
         });
+    }
+
+    /// Create a channel pairs for use during testing the workers, the sync sender will be passed into the worker's
+    /// threads and the receivers returned to the test function.
+    #[cfg(test)]
+    fn create_test_channels(&mut self) -> Vec<Receiver<String>> {
+        let mut receivers = Vec::new();
+        for _ in 0..MAX_MSG_PROCESSING_WORKERS {
+            let (tx, rx) = sync_channel::<String>(0);
+            self.test_sync_sender.push(tx);
+            receivers.push(rx);
+        }
+        receivers
     }
 }
 
@@ -107,7 +134,8 @@ mod test {
         inbound_message_service::comms_msg_handlers::*,
         message::{MessageEnvelope, MessageEnvelopeHeader, MessageFlags, NodeDestination},
     };
-    use std::thread::ThreadId;
+
+    use std::time;
     use tari_crypto::{
         keys::{PublicKey, SecretKey},
         ristretto::{RistrettoPublicKey, RistrettoSecretKey},
@@ -116,11 +144,6 @@ mod test {
 
     #[test]
     fn test_new_and_start() {
-        // TODO: This is very unsafe but currently the only way to get the ThreadID into an integer. Remove and fix when issue is resolved -> https://github.com/rust-lang/rust/issues/52780
-        fn thread_id_to_u64(thread_id: ThreadId) -> u64 {
-            unsafe { std::mem::transmute::<ThreadId, u64>(thread_id) }
-        }
-
         // Create a client that will write message into message pool
         let context = Context::new();
         let msg_pool_address = InprocAddress::random();
@@ -129,12 +152,12 @@ mod test {
         let conn_client: EstablishedConnection = client_socket.into();
 
         // Create a common variable that the workers can change
-        static mut WORKER_ID: u64 = 0;
+        static mut HANDLER_RESPONSES: u64 = 0;
 
         // Create a testing dispatcher for MessageContext
         fn test_fn(_message_context: MessageContext<RistrettoPublicKey>) -> Result<(), DispatchError> {
             unsafe {
-                WORKER_ID = thread_id_to_u64(thread::current().id());
+                HANDLER_RESPONSES += 1;
             }
             Ok(())
         }
@@ -142,14 +165,17 @@ mod test {
 
         // Setup and start InboundMessagePool
         let mut rng = rand::OsRng::new().unwrap();
-        let _inbound_msg_service = InboundMessageService::new(
+        let mut inbound_msg_service = InboundMessageService::new(
             context,
             msg_pool_address,
             RistrettoPublicKey::from_secret_key(&RistrettoSecretKey::random(&mut rng)),
             message_dispatcher,
         )
-        .unwrap()
-        .start();
+        .unwrap();
+        // Instantiate the channels that will be used in the tests.
+        let receivers = inbound_msg_service.create_test_channels();
+
+        inbound_msg_service.start();
         // Create a new Message Context
         let connection_id: Vec<u8> = vec![0, 1, 2, 3, 4];
         let _source: Vec<u8> = vec![5, 6, 7, 8, 9];
@@ -175,13 +201,41 @@ mod test {
 
         let message_context_buffer = message_context.into_frame_set();
 
-        // Check that the dealer distributed messages to different threads
-        assert!(conn_client.send(&message_context_buffer).is_ok());
-        assert!(conn_client.receive(2000).is_ok());
-        let prev_worker_id = unsafe { WORKER_ID };
+        for i in 0..8 {
+            assert!(conn_client.send(&message_context_buffer).is_ok());
+            assert!(conn_client.receive(2000).is_ok());
+            thread::sleep(time::Duration::from_millis(1));
+            unsafe {
+                assert_eq!(HANDLER_RESPONSES, i + 1);
+            }
+        }
 
-        assert!(conn_client.send(&message_context_buffer).is_ok());
-        assert!(conn_client.receive(2000).is_ok());
-        assert_ne!(prev_worker_id, unsafe { WORKER_ID });
+        // This array marks which worked responded. If fairly dealt each index should be set to 1
+        let mut worker_responses = [0; MAX_MSG_PROCESSING_WORKERS as usize];
+        // Keep track of how many channels have responded
+        let mut resp_count = 0;
+        loop {
+            // Poll all the channels
+            for i in 0..MAX_MSG_PROCESSING_WORKERS as usize {
+                if let Ok(_recv) = receivers[i].try_recv() {
+                    // If this worker responded multiple times then the message were not fairly dealt so bork the count
+                    if worker_responses[i] > 0 {
+                        worker_responses[i] = MAX_MSG_PROCESSING_WORKERS + 1;
+                    } else {
+                        worker_responses[i] = 1;
+                    }
+                    resp_count += 1;
+                }
+            }
+            // Check to see if all the workers have responded.
+            if resp_count >= MAX_MSG_PROCESSING_WORKERS {
+                break;
+            }
+        }
+        // Confirm that the messages were fairly dealt
+        assert_eq!(
+            worker_responses.iter().fold(0, |acc, x| acc + x),
+            MAX_MSG_PROCESSING_WORKERS
+        );
     }
 }
