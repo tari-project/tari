@@ -20,18 +20,16 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::connection::NetAddressError;
+use serde::{Deserialize, Serialize};
 use std::{
     fmt,
     net::{IpAddr, SocketAddr},
     str::FromStr,
 };
 
-use serde::{Deserialize, Serialize};
-
-use crate::connection::NetAddressError;
-
 /// Represents an {IPv4, IPv6} address and port
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Debug, Hash, Serialize, Deserialize)]
 pub struct SocketAddress(SocketAddr);
 
 impl SocketAddress {

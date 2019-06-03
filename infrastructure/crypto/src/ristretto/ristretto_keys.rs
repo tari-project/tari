@@ -36,14 +36,14 @@ use serde::{
     de::{Deserialize, Deserializer, Visitor},
     ser::{Serialize, Serializer},
 };
+use serde_derive::{Deserialize, Serialize};
 use std::{
     cmp::Ordering,
     fmt,
+    hash::{Hash, Hasher},
     ops::{Add, Mul, Sub},
 };
 use tari_utilities::{hex::Hex, ByteArray, ByteArrayError, ExtendBytes, Hashable};
-
-use serde_derive::{Deserialize, Serialize};
 
 type HashDigest = Blake2b;
 
@@ -292,6 +292,13 @@ impl ExtendBytes for RistrettoPublicKey {
     fn append_raw_bytes(&self, buf: &mut Vec<u8>) {
         let bytes = self.as_bytes();
         buf.extend_from_slice(&bytes);
+    }
+}
+
+impl Hash for RistrettoPublicKey {
+    /// Require the implementation of the Hash trait for Hashmaps
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.to_vec().hash(state);
     }
 }
 

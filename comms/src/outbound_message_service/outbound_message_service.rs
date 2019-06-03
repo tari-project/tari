@@ -29,7 +29,10 @@ use crate::{
     },
     message::{Frame, MessageEnvelope, MessageEnvelopeHeader, MessageFlags, NodeDestination},
     outbound_message_service::{broadcast_strategy::BroadcastStrategy, outbound_message::OutboundMessage},
-    peer_manager::node_identity::NodeIdentity,
+    peer_manager::{
+        node_identity::NodeIdentity,
+        peer_manager::{PeerManager, PeerManagerError},
+    },
     types::{Challenge, MESSAGE_PROTOCOL_VERSION, WIRE_PROTOCOL_VERSION},
 };
 use derive_error::Error;
@@ -37,11 +40,16 @@ use digest::Digest;
 use rand::{CryptoRng, Rng};
 use rmp_serde;
 use serde::Serialize;
-use std::{ops::Mul, sync::Arc};
+use std::{
+    hash::Hash,
+    ops::Mul,
+    sync::{Arc, RwLock},
+};
 use tari_crypto::{
     keys::{DiffieHellmanSharedSecret, PublicKey, SecretKey},
     signatures::{SchnorrSignature, SchnorrSignatureError},
 };
+use tari_storage::keyvalue_store::DataStore;
 use tari_utilities::{
     chacha20,
     message_format::{MessageFormat, MessageFormatError},
@@ -68,21 +76,27 @@ pub enum OutboundError {
     MessageSerializationError(MessageFormatError),
     /// Could not successfully sign the message
     SignatureError(SchnorrSignatureError),
+    /// Problem encountered with Broadcast Strategy and PeerManager
+    BroadcastStrategyError(PeerManagerError),
+    /// The Thread Safety has been breached and the data access has become poisoned
+    PoisonedAccess,
 }
 
 /// Handler functions use the OutboundMessageService to send messages to peers. The OutboundMessage service will receive
 /// messages from handlers, apply a broadcasting strategy, encrypted and serialized the messages into OutboundMessages
 /// and write them to the outbound message pool.
-pub struct OutboundMessageService<PubKey, SecKey> {
+pub struct OutboundMessageService<PubKey, SecKey, DS> {
     context: Context,
     outbound_address: InprocAddress,
     node_identity: Arc<NodeIdentity<PubKey, SecKey>>,
+    peer_manager: RwLock<PeerManager<PubKey, DS>>,
 }
 
-impl<PubKey, SecKey> OutboundMessageService<PubKey, SecKey>
+impl<PubKey, SecKey, DS> OutboundMessageService<PubKey, SecKey, DS>
 where
-    PubKey: PublicKey<K = SecKey> + Hashable + DiffieHellmanSharedSecret<K = SecKey, PK = PubKey>,
+    PubKey: PublicKey<K = SecKey> + Hashable + Hash + DiffieHellmanSharedSecret<K = SecKey, PK = PubKey>,
     SecKey: SecretKey + Mul<PubKey, Output = PubKey> + Mul<Output = SecKey> + Serialize,
+    DS: DataStore,
 {
     /// Constructs a new OutboundMessageService from the context, node_identity and outbound_address
     pub fn new(
@@ -90,12 +104,14 @@ where
         outbound_address: InprocAddress, /* The outbound_address is an inproc that connects the OutboundMessagePool
                                           * and the OutboundMessageService */
         node_identity: Arc<NodeIdentity<PubKey, SecKey>>,
-    ) -> OutboundMessageService<PubKey, SecKey>
+        peer_manager: RwLock<PeerManager<PubKey, DS>>,
+    ) -> OutboundMessageService<PubKey, SecKey, DS>
     {
         OutboundMessageService {
             context,
             outbound_address,
             node_identity,
+            peer_manager,
         }
     }
 
@@ -146,19 +162,20 @@ where
     /// BroadcastStrategy
     pub fn send<R: Rng + CryptoRng>(
         &self,
-        _broadcast_strategy: BroadcastStrategy, /* TODO: make use of BroadcastStrategy once the PeerManager has been
-                                                 * implemented */
+        broadcast_strategy: BroadcastStrategy,
         flags: MessageFlags,
         message_envelope_body: &Frame,
         rng: &mut R,
-        dest_node_identity: Arc<NodeIdentity<PubKey, SecKey>>, /* TODO: This field is temporary until routing table
-                                                                * has been implemented */
     ) -> Result<(), OutboundError>
     {
-        // Todo: use the BroadcastStrategy to select appropriate peer(s) from PeerManager and then construct and send a
+        // Use the BroadcastStrategy to select appropriate peer(s) from PeerManager and then construct and send a
         // personalised message to each selected peer
-        let selected_node_identities = vec![Arc::clone(&dest_node_identity)]; // TODO: Remove with PeerManager call after PeerManager has been implemented
-
+        let selected_node_identities = self
+            .peer_manager
+            .read()
+            .map_err(|_| OutboundError::PoisonedAccess)?
+            .get_broadcast_identities::<SecKey>(broadcast_strategy)
+            .map_err(|e| OutboundError::BroadcastStrategyError(e))?;
         for dest_node_identity in &selected_node_identities {
             // Constructing a MessageEnvelope
             let message_envelope_body = if flags.contains(MessageFlags::ENCRYPTED) {
@@ -211,12 +228,19 @@ mod test {
     use super::*;
 
     use crate::{
-        connection::zmq::{Context, InprocAddress, ZmqEndpoint},
-        peer_manager::node_id::NodeId,
+        connection::{
+            net_address::{net_addresses::NetAddresses, NetAddress},
+            zmq::{Context, InprocAddress, ZmqEndpoint},
+        },
+        peer_manager::{
+            node_id::NodeId,
+            peer::{Peer, PeerFlags},
+        },
     };
     use serde::Deserialize;
     use std::{convert::TryFrom, sync::Arc};
     use tari_crypto::ristretto::{RistrettoPublicKey, RistrettoSecretKey};
+    use tari_storage::lmdb::LMDBStore;
 
     #[test]
     fn test_outbound_send() {
@@ -242,34 +266,36 @@ mod test {
             Some(sk),
         ));
 
-        let (sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
-        let dest_node_identity = Arc::new(NodeIdentity::<RistrettoPublicKey, RistrettoSecretKey>::new(
-            NodeId::from_key(&pk).unwrap(),
-            pk,
-            Some(sk),
-        ));
+        let (dest_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
+        let node_id = NodeId::from_key(&pk).unwrap();
+        let net_addresses = NetAddresses::from("1.2.3.4:8000".parse::<NetAddress>().unwrap());
+        let dest_peer: Peer<RistrettoPublicKey> =
+            Peer::<RistrettoPublicKey>::new(pk, node_id, net_addresses, PeerFlags::default());
 
         // Setup OutboundMessageService and transmit a message to the destination
-        let outbound_message_service = OutboundMessageService::<RistrettoPublicKey, RistrettoSecretKey>::new(
+        let peer_manager = RwLock::new(PeerManager::new(None).unwrap());
+        assert!(peer_manager.write().unwrap().add_peer(dest_peer.clone()).is_ok());
+
+        let outbound_message_service = OutboundMessageService::<RistrettoPublicKey, RistrettoSecretKey, LMDBStore>::new(
             context,
             outbound_address,
             node_identity.clone(),
+            peer_manager,
         );
 
         let message_envelope_body: Vec<u8> = vec![0, 1, 2, 3];
         assert!(outbound_message_service
             .send(
-                BroadcastStrategy::Direct(dest_node_identity.node_id.clone()),
+                BroadcastStrategy::Direct(dest_peer.node_id.clone()),
                 MessageFlags::ENCRYPTED,
                 &message_envelope_body,
                 &mut rng,
-                dest_node_identity.clone(), // TODO Remove, this is temporary until the routing table is implemented
             )
             .is_ok());
 
         let msg_bytes = omp_socket.recv_multipart(0).unwrap();
         let outbound_message = OutboundMessage::<MessageEnvelope>::try_from(msg_bytes).unwrap();
-        assert_eq!(outbound_message.destination_node_id, dest_node_identity.node_id);
+        assert_eq!(outbound_message.destination_node_id, dest_peer.node_id);
         assert_eq!(outbound_message.retry_count, 0);
         assert_eq!(outbound_message.last_retry_timestamp, None);
         let message_envelope_header: MessageEnvelopeHeader<RistrettoPublicKey> =
@@ -277,7 +303,7 @@ mod test {
         assert_eq!(message_envelope_header.source, node_identity.public_key);
         assert_eq!(
             message_envelope_header.dest,
-            NodeDestination::<RistrettoPublicKey>::NodeId(dest_node_identity.node_id.clone())
+            NodeDestination::<RistrettoPublicKey>::NodeId(dest_peer.node_id.clone())
         );
         // Verify message signature
         let mut de = rmp_serde::Deserializer::new(message_envelope_header.signature.as_slice());
@@ -289,11 +315,8 @@ mod test {
         assert!(signature.verify_challenge(&node_identity.public_key, &challenge));
         // Check Encryption
         assert_eq!(message_envelope_header.flags, MessageFlags::ENCRYPTED);
-        let ecdh_shared_secret = RistrettoPublicKey::shared_secret(
-            &dest_node_identity.secret_key.clone().unwrap(),
-            &node_identity.public_key,
-        )
-        .to_vec();
+        let ecdh_shared_secret =
+            RistrettoPublicKey::shared_secret(&dest_sk.clone(), &node_identity.public_key).to_vec();
         let ecdh_shared_secret_bytes: [u8; 32] = ByteArray::from_bytes(&ecdh_shared_secret).unwrap();
         let decoded_message_envelope_body = chacha20::decode(
             outbound_message.message_envelope.body_frame(),

@@ -23,19 +23,20 @@
 use crate::{connection::net_address::net_addresses::NetAddresses, peer_manager::node_id::NodeId};
 use bitflags::*;
 use chrono::prelude::*;
+use serde::{Deserialize, Serialize};
 use tari_crypto::keys::PublicKey;
 
 // TODO reputation metric?
 
 bitflags! {
-    #[derive(Default)]
+    #[derive(Default, Deserialize, Serialize)]
     pub struct PeerFlags: u8 {
         const BANNED = 0b00000001;
     }
 }
 
-#[derive(Debug)]
-pub struct Peer<K: PublicKey> {
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub struct Peer<K> {
     pub public_key: K,
     pub node_id: NodeId,
     pub addresses: NetAddresses,

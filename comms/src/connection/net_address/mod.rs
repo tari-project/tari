@@ -27,14 +27,11 @@ pub mod net_addresses;
 pub mod onion;
 pub mod parser;
 
+use self::{i2p::I2PAddress, ip::SocketAddress, onion::OnionAddress};
+use crate::connection::zmq::ZmqEndpoint;
 use derive_error::Error;
 use serde::{Deserialize, Serialize};
-
 use std::{fmt, str::FromStr};
-
-use self::{i2p::I2PAddress, ip::SocketAddress, onion::OnionAddress};
-
-use crate::connection::zmq::ZmqEndpoint;
 
 #[derive(Debug, Error)]
 pub enum NetAddressError {
@@ -64,7 +61,7 @@ pub enum NetAddressError {
 /// assert!(address.is_ok());
 /// assert!(address.unwrap().is_tor());
 /// ```
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Debug, Hash, Deserialize, Serialize)]
 /// Represents an address which can be used to reach a node on the network
 pub enum NetAddress {
     /// IPv4 and IPv6

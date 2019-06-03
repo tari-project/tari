@@ -20,6 +20,7 @@ serde = "1.0.90"
 serde_derive = "1.0.90"
 tari_crypto = { path = "../infrastructure/crypto"}
 tari_utilities = { path = "../infrastructure/tari_util"}
+tari_storage = { path = "../infrastructure/storage"}
 zmq = "0.9"
 digest = "0.8.0"
 

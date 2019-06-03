@@ -21,10 +21,12 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use derive_error::Error;
-use std::convert::TryFrom;
+use serde::{Deserialize, Serialize};
+use std::{
+    convert::TryFrom,
+    hash::{Hash, Hasher},
+};
 use tari_utilities::Hashable;
-
-use serde_derive::{Deserialize, Serialize};
 
 const NODE_ID_ARRAY_SIZE: usize = 32;
 type NodeIdArray = [u8; NODE_ID_ARRAY_SIZE];
@@ -153,6 +155,13 @@ impl TryFrom<&[u8]> for NodeId {
         } else {
             Err(NodeIdError::IncorrectByteCount)
         }
+    }
+}
+
+impl Hash for NodeId {
+    /// Require the implementation of the Hash trait for Hashmaps
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.0.hash(state);
     }
 }
 
