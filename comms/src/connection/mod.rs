@@ -36,8 +36,13 @@ pub use self::{
     connection::Connection,
     dealer_proxy::{DealerProxy, DealerProxyError},
     error::ConnectionError,
-    net_address::{NetAddress, NetAddressError},
-    peer_connection::{PeerConnection, PeerConnectionContextBuilder, PeerConnectionError},
+    net_address::{NetAddress, NetAddressError, NetAddresses},
+    peer_connection::{
+        PeerConnection,
+        PeerConnectionContextBuilder,
+        PeerConnectionError,
+        PeerConnectionSimpleState as PeerConnectionState,
+    },
     types::*,
-    zmq::{curve_keypair, Context, CurveEncryption, InprocAddress},
+    zmq::{curve_keypair, Context, CurveEncryption, CurvePublicKey, CurveSecretKey, InprocAddress},
 };

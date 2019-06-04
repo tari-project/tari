@@ -20,7 +20,13 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{connection::ConnectionError, dispatcher::DispatchError, message::MessageError};
+use crate::{
+    connection::{ConnectionError, PeerConnectionError},
+    connection_manager::ConnectionManagerError,
+    dispatcher::DispatchError,
+    message::MessageError,
+    peer_manager::{node_id::NodeIdError, peer_manager::PeerManagerError},
+};
 use derive_error::Error;
 use tari_utilities::message_format::MessageFormatError;
 
@@ -28,6 +34,7 @@ use tari_utilities::message_format::MessageFormatError;
 pub enum ControlServiceError {
     /// Control service is not configured
     NotConfigured,
+    #[error(no_from)]
     BindFailed(ConnectionError),
     MessageError(MessageError),
     DispatchError(DispatchError),
@@ -36,4 +43,11 @@ pub enum ControlServiceError {
     ControlMessageSendFailed,
     /// Failed to join on worker thread
     WorkerThreadJoinFailed,
+    NodeIdError(NodeIdError),
+    PeerManagerError(PeerManagerError),
+    PeerConnectionError(PeerConnectionError),
+    ConnectionError(ConnectionError),
+    /// Node identity has not been set
+    NodeIdentityNotSet,
+    ConnectionManagerError(ConnectionManagerError),
 }

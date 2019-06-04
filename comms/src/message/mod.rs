@@ -27,6 +27,7 @@ use serde::{Deserialize, Serialize};
 mod envelope;
 mod error;
 mod message;
+pub mod p2p;
 
 pub use self::{envelope::*, error::MessageError, message::*};
 

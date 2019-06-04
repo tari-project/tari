@@ -33,6 +33,12 @@ pub struct OnionAddress {
     pub port: u16,
 }
 
+impl OnionAddress {
+    pub fn port(&self) -> u16 {
+        self.port
+    }
+}
+
 impl FromStr for OnionAddress {
     type Err = NetAddressError;
 

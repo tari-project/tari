@@ -78,6 +78,11 @@ impl NetAddressWithStats {
     pub fn mark_failed_connection_attempt(&mut self) {
         self.connection_attempts += 1;
     }
+
+    /// Get as a NetAddress
+    pub fn as_net_address(self) -> NetAddress {
+        self.net_address
+    }
 }
 
 impl From<NetAddress> for NetAddressWithStats {

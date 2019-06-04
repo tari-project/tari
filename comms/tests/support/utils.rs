@@ -37,7 +37,7 @@ lazy_static! {
 pub fn find_available_tcp_net_address(host: &str) -> Option<NetAddress> {
     let mut lock = match PORT_COUNTER.lock() {
         Ok(guard) => guard,
-        Err(poisoned) => poisoned.into_inner(),
+        Err(_) => panic!("Poisoned PORT_COUNTER"),
     };
     // Try 100
     for _i in 0..100 {

@@ -30,23 +30,19 @@ use crate::{
     message::{Frame, MessageEnvelope, MessageEnvelopeHeader, MessageFlags, NodeDestination},
     outbound_message_service::{broadcast_strategy::BroadcastStrategy, outbound_message::OutboundMessage},
     peer_manager::{
-        node_identity::NodeIdentity,
+        node_identity::CommsNodeIdentity,
         peer_manager::{PeerManager, PeerManagerError},
     },
-    types::{Challenge, MESSAGE_PROTOCOL_VERSION, WIRE_PROTOCOL_VERSION},
+    types::{Challenge, CommsPublicKey, CommsSecretKey, MESSAGE_PROTOCOL_VERSION, WIRE_PROTOCOL_VERSION},
 };
 use derive_error::Error;
 use digest::Digest;
 use rand::{CryptoRng, Rng};
 use rmp_serde;
 use serde::Serialize;
-use std::{
-    hash::Hash,
-    ops::Mul,
-    sync::{Arc, RwLock},
-};
+use std::sync::{Arc, RwLock};
 use tari_crypto::{
-    keys::{DiffieHellmanSharedSecret, PublicKey, SecretKey},
+    keys::{DiffieHellmanSharedSecret, SecretKey},
     signatures::{SchnorrSignature, SchnorrSignatureError},
 };
 use tari_storage::keyvalue_store::DataStore;
@@ -55,7 +51,6 @@ use tari_utilities::{
     message_format::{MessageFormat, MessageFormatError},
     ByteArray,
     ByteArrayError,
-    Hashable,
 };
 
 #[derive(Debug, Error)]
@@ -85,49 +80,44 @@ pub enum OutboundError {
 /// Handler functions use the OutboundMessageService to send messages to peers. The OutboundMessage service will receive
 /// messages from handlers, apply a broadcasting strategy, encrypted and serialized the messages into OutboundMessages
 /// and write them to the outbound message pool.
-pub struct OutboundMessageService<PubKey, SecKey, DS> {
+pub struct OutboundMessageService<DS> {
     context: Context,
     outbound_address: InprocAddress,
-    node_identity: Arc<NodeIdentity<PubKey, SecKey>>,
-    peer_manager: RwLock<PeerManager<PubKey, DS>>,
+    node_identity: Arc<CommsNodeIdentity>,
+    peer_manager: RwLock<PeerManager<CommsPublicKey, DS>>,
 }
 
-impl<PubKey, SecKey, DS> OutboundMessageService<PubKey, SecKey, DS>
-where
-    PubKey: PublicKey<K = SecKey> + Hashable + Hash + DiffieHellmanSharedSecret<K = SecKey, PK = PubKey>,
-    SecKey: SecretKey + Mul<PubKey, Output = PubKey> + Mul<Output = SecKey> + Serialize,
-    DS: DataStore,
+impl<DS> OutboundMessageService<DS>
+where DS: DataStore
 {
     /// Constructs a new OutboundMessageService from the context, node_identity and outbound_address
     pub fn new(
         context: Context,
         outbound_address: InprocAddress, /* The outbound_address is an inproc that connects the OutboundMessagePool
                                           * and the OutboundMessageService */
-        node_identity: Arc<NodeIdentity<PubKey, SecKey>>,
-        peer_manager: RwLock<PeerManager<PubKey, DS>>,
-    ) -> OutboundMessageService<PubKey, SecKey, DS>
+        peer_manager: RwLock<PeerManager<CommsPublicKey, DS>>,
+    ) -> Result<OutboundMessageService<DS>, OutboundError>
     {
-        OutboundMessageService {
+        let node_identity: Arc<CommsNodeIdentity> =
+            CommsNodeIdentity::global().ok_or(OutboundError::UndefinedSecretKey)?;
+
+        Ok(OutboundMessageService {
             context,
             outbound_address,
             node_identity,
             peer_manager,
-        }
+        })
     }
 
     /// Encrypt the message_envelope_body with the generated shared secret if the Encrypted IdentityFlag is set
     fn encrypt_envelope_body(
         &self,
         message_envelope_body: &Frame,
-        dest_node_public_key: &PubKey,
+        dest_node_public_key: &CommsPublicKey,
     ) -> Result<Frame, OutboundError>
     {
-        let node_secret_key = self
-            .node_identity
-            .secret_key
-            .clone()
-            .ok_or(OutboundError::UndefinedSecretKey)?;
-        let ecdh_shared_secret = PubKey::shared_secret(&node_secret_key, &dest_node_public_key).to_vec();
+        let ecdh_shared_secret =
+            CommsPublicKey::shared_secret(&self.node_identity.secret_key, &dest_node_public_key).to_vec();
         let ecdh_shared_secret_bytes: [u8; 32] =
             ByteArray::from_bytes(&ecdh_shared_secret).map_err(|e| OutboundError::SharedSecretSerializationError(e))?;
         Ok(chacha20::encode(message_envelope_body, &ecdh_shared_secret_bytes))
@@ -141,12 +131,9 @@ where
     ) -> Result<Vec<u8>, OutboundError>
     {
         let challenge = Challenge::new().chain(message_envelope_body.clone()).result().to_vec();
-        let nonce = SecKey::random(rng);
-        let signature = SchnorrSignature::<PubKey, SecKey>::sign(
-            self.node_identity
-                .secret_key
-                .clone()
-                .ok_or(OutboundError::UndefinedSecretKey)?,
+        let nonce = CommsSecretKey::random(rng);
+        let signature = SchnorrSignature::<CommsPublicKey, CommsSecretKey>::sign(
+            self.node_identity.secret_key.clone(),
             nonce,
             &challenge,
         )
@@ -168,13 +155,14 @@ where
         rng: &mut R,
     ) -> Result<(), OutboundError>
     {
+        let node_identity = CommsNodeIdentity::global().ok_or(OutboundError::UndefinedSecretKey)?;
         // Use the BroadcastStrategy to select appropriate peer(s) from PeerManager and then construct and send a
         // personalised message to each selected peer
         let selected_node_identities = self
             .peer_manager
             .read()
             .map_err(|_| OutboundError::PoisonedAccess)?
-            .get_broadcast_identities::<SecKey>(broadcast_strategy)
+            .get_broadcast_identities(broadcast_strategy)
             .map_err(|e| OutboundError::BroadcastStrategyError(e))?;
         for dest_node_identity in &selected_node_identities {
             // Constructing a MessageEnvelope
@@ -186,7 +174,7 @@ where
             let signature = self.sign_envelope_body(&message_envelope_body, rng)?;
             let message_envelope_header = MessageEnvelopeHeader {
                 version: MESSAGE_PROTOCOL_VERSION,
-                source: self.node_identity.public_key.clone(),
+                source: node_identity.identity.public_key.clone(),
                 dest: NodeDestination::NodeId(dest_node_identity.node_id.clone()),
                 signature,
                 flags,
@@ -238,8 +226,11 @@ mod test {
         },
     };
     use serde::Deserialize;
-    use std::{convert::TryFrom, sync::Arc};
-    use tari_crypto::ristretto::{RistrettoPublicKey, RistrettoSecretKey};
+    use std::convert::TryFrom;
+    use tari_crypto::{
+        keys::PublicKey,
+        ristretto::{RistrettoPublicKey, RistrettoSecretKey},
+    };
     use tari_storage::lmdb::LMDBStore;
 
     #[test]
@@ -258,13 +249,7 @@ mod test {
             .map_err(|e| OutboundError::SocketConnectionError(e))
             .unwrap();
 
-        // Create an identity for the current node and the destination node
-        let (sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
-        let node_identity = Arc::new(NodeIdentity::<RistrettoPublicKey, RistrettoSecretKey>::new(
-            NodeId::from_key(&pk).unwrap(),
-            pk,
-            Some(sk),
-        ));
+        let node_identity = CommsNodeIdentity::global().unwrap();
 
         let (dest_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk).unwrap();
@@ -273,15 +258,10 @@ mod test {
             Peer::<RistrettoPublicKey>::new(pk, node_id, net_addresses, PeerFlags::default());
 
         // Setup OutboundMessageService and transmit a message to the destination
-        let peer_manager = RwLock::new(PeerManager::new(None).unwrap());
+        let peer_manager = RwLock::new(PeerManager::<CommsPublicKey, LMDBStore>::new(None).unwrap());
         assert!(peer_manager.write().unwrap().add_peer(dest_peer.clone()).is_ok());
 
-        let outbound_message_service = OutboundMessageService::<RistrettoPublicKey, RistrettoSecretKey, LMDBStore>::new(
-            context,
-            outbound_address,
-            node_identity.clone(),
-            peer_manager,
-        );
+        let outbound_message_service = OutboundMessageService::new(context, outbound_address, peer_manager).unwrap();
 
         let message_envelope_body: Vec<u8> = vec![0, 1, 2, 3];
         assert!(outbound_message_service
@@ -300,7 +280,7 @@ mod test {
         assert_eq!(outbound_message.last_retry_timestamp, None);
         let message_envelope_header: MessageEnvelopeHeader<RistrettoPublicKey> =
             outbound_message.message_envelope.to_header().unwrap();
-        assert_eq!(message_envelope_header.source, node_identity.public_key);
+        assert_eq!(message_envelope_header.source, node_identity.identity.public_key);
         assert_eq!(
             message_envelope_header.dest,
             NodeDestination::<RistrettoPublicKey>::NodeId(dest_peer.node_id.clone())
@@ -312,11 +292,11 @@ mod test {
             .chain(outbound_message.message_envelope.body_frame())
             .result()
             .to_vec();
-        assert!(signature.verify_challenge(&node_identity.public_key, &challenge));
+        assert!(signature.verify_challenge(&node_identity.identity.public_key, &challenge));
         // Check Encryption
         assert_eq!(message_envelope_header.flags, MessageFlags::ENCRYPTED);
         let ecdh_shared_secret =
-            RistrettoPublicKey::shared_secret(&dest_sk.clone(), &node_identity.public_key).to_vec();
+            RistrettoPublicKey::shared_secret(&dest_sk, &node_identity.identity.public_key).to_vec();
         let ecdh_shared_secret_bytes: [u8; 32] = ByteArray::from_bytes(&ecdh_shared_secret).unwrap();
         let decoded_message_envelope_body = chacha20::decode(
             outbound_message.message_envelope.body_frame(),

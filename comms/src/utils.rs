@@ -20,24 +20,32 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use serde::{Deserialize, Serialize};
+use std::net::{TcpListener, ToSocketAddrs};
 
-use tari_crypto::ristretto::RistrettoPublicKey;
-
-use crate::connection::{net_address::NetAddress, zmq::CurvePublicKey};
-
-/// This represents a request to open a peer connection
-/// to a remote peer.
-#[derive(Serialize, Deserialize, Debug)]
-pub struct EstablishConnection {
-    /// The public key to use to connect to this connection
-    pub server_key: CurvePublicKey,
-    /// The address to which to connect
-    pub address: NetAddress,
-    /// The requesting node's public key
-    pub public_key: RistrettoPublicKey,
+pub fn is_address_available<A: ToSocketAddrs>(addr: &A) -> bool {
+    TcpListener::bind(addr).is_ok()
 }
 
-/// Sent to show that the connection has been accepted
-#[derive(Serialize, Deserialize, Debug)]
-pub struct Accept;
+pub mod crypto {
+    use crate::types::{Challenge, CommsPublicKey, CommsSecretKey};
+    use digest::Digest;
+    use rand::{CryptoRng, Rng};
+    use tari_crypto::{
+        keys::SecretKey,
+        signatures::{SchnorrSignature, SchnorrSignatureError},
+    };
+
+    pub fn sign<R, B>(
+        rng: &mut R,
+        secret_key: CommsSecretKey,
+        body: B,
+    ) -> Result<SchnorrSignature<CommsPublicKey, CommsSecretKey>, SchnorrSignatureError>
+    where
+        R: CryptoRng + Rng,
+        B: AsRef<[u8]>,
+    {
+        let challenge = Challenge::new().chain(body).result().to_vec();
+        let nonce = CommsSecretKey::random(rng);
+        SchnorrSignature::sign(secret_key, nonce, &challenge)
+    }
+}

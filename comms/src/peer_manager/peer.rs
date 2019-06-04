@@ -20,11 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{connection::net_address::net_addresses::NetAddresses, peer_manager::node_id::NodeId};
 use bitflags::*;
 use chrono::prelude::*;
 use serde::{Deserialize, Serialize};
 use tari_crypto::keys::PublicKey;
+
+use crate::{connection::net_address::net_addresses::NetAddresses, peer_manager::node_id::NodeId};
 
 // TODO reputation metric?
 

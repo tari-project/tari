@@ -40,9 +40,9 @@ type HandlerFunc<M, E> = fn(msg: M) -> Result<(), E>;
 /// so therefore this is simply to satisfy the closure on `thread::spawn`)
 /// This saves us from having to duplicate these trait bounds whenever we
 /// want specify the type parameter K (like a type alias).
-pub trait DispatchableKey: Eq + Hash + Send + 'static {}
+pub trait DispatchableKey: Eq + Hash + Send + Sync + 'static {}
 /// Implement this trait for all types which satisfy it's trait bounds.
-impl<T> DispatchableKey for T where T: Eq + Hash + Send + 'static {}
+impl<T> DispatchableKey for T where T: Eq + Hash + Send + Sync + 'static {}
 
 /// A message type resolver. The resolver is called with the dispatched message.
 /// The resolver should then decide which dispatch key should be used.

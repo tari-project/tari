@@ -26,3 +26,10 @@ pub mod node_identity;
 pub mod peer;
 pub mod peer_manager;
 pub mod peer_storage;
+
+pub use self::{
+    node_id::NodeId,
+    node_identity::{CommsNodeIdentity, NodeIdentity, PeerNodeIdentity},
+    peer::{Peer, PeerFlags},
+    peer_manager::PeerManager,
+};

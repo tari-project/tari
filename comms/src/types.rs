@@ -20,9 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_crypto::{common::Blake256, ristretto::RistrettoPublicKey};
-
-pub type MessageEnvelopeHeader = crate::message::MessageEnvelopeHeader<RistrettoPublicKey>;
+use tari_crypto::{common::Blake256, keys::PublicKey, ristretto::RistrettoPublicKey};
 
 /// The message protocol version for the MessageEnvelopeHeader
 pub const MESSAGE_PROTOCOL_VERSION: u8 = 0;
@@ -32,3 +30,10 @@ pub const WIRE_PROTOCOL_VERSION: u8 = 0;
 
 /// Specify the digest type for the signature challenges
 pub type Challenge = Blake256;
+
+/// Public key type
+pub type CommsPublicKey = RistrettoPublicKey;
+pub type CommsSecretKey = <CommsPublicKey as PublicKey>::K;
+
+/// Message envelop header type
+pub type MessageEnvelopeHeader = crate::message::MessageEnvelopeHeader<CommsPublicKey>;

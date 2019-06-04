@@ -37,19 +37,25 @@ use crate::{
         Direction,
         InprocAddress,
     },
+    connection_manager::ConnectionManager,
     dispatcher::{DispatchResolver, DispatchableKey},
     message::{FrameSet, Message, MessageEnvelope},
-    types::MessageEnvelopeHeader,
+    peer_manager::PeerManager,
+    types::{CommsPublicKey, MessageEnvelopeHeader},
 };
 use std::{
     convert::TryInto,
-    sync::mpsc::{sync_channel, Receiver, SyncSender},
+    sync::{
+        mpsc::{sync_channel, Receiver, SyncSender},
+        Arc,
+    },
     thread,
     time::Duration,
 };
+use tari_storage::lmdb::LMDBStore;
 
 const LOG_TARGET: &'static str = "comms::control_service::worker";
-const CONTROL_SERVICE_MAX_MSG_SIZE: u64 = 300; // 1kb
+const CONTROL_SERVICE_MAX_MSG_SIZE: u64 = 1024; // 1kb
 
 /// The [ControlService] worker is responsible for handling incoming messages
 /// to the control port and dispatching them using the message dispatcher.
@@ -62,6 +68,8 @@ where MType: DispatchableKey
     receiver: Receiver<ControlMessage>,
     is_running: bool,
     dispatcher: ControlServiceDispatcher<MType, R>,
+    connection_manager: Arc<ConnectionManager>,
+    peer_manager: Arc<PeerManager<CommsPublicKey, LMDBStore>>,
 }
 
 impl<MType, R> ControlServiceWorker<MType, R>
@@ -75,10 +83,14 @@ where
     /// - `context` - Connection context
     /// - `config` - ControlServiceConfig
     /// - `dispatcher` - the `Dispatcher` to use when message are received
+    /// - `connection_manager` - the `ConnectionManager`
+    /// - `peer_manager` - the `PeerManager`
     pub fn start(
         context: Context,
         config: ControlServiceConfig,
         dispatcher: ControlServiceDispatcher<MType, R>,
+        connection_manager: Arc<ConnectionManager>,
+        peer_manager: Arc<PeerManager<CommsPublicKey, LMDBStore>>,
     ) -> (thread::JoinHandle<Result<()>>, SyncSender<ControlMessage>)
     {
         let (sender, receiver) = sync_channel(5);
@@ -90,6 +102,8 @@ where
             receiver,
             is_running: false,
             dispatcher,
+            connection_manager,
+            peer_manager,
         };
 
         let handle = thread::spawn(move || {
@@ -169,14 +183,15 @@ where
         let message: Message = envelope.message_body()?;
 
         // TODO: Add outbound message service, peer etc.
-        //        let message: Message<ControlServiceMessageType> = envelope.body_frame().as_slice().try_into()?;
         let context = ControlServiceMessageContext {
             envelope_header,
             message,
+            connection_manager: self.connection_manager.clone(),
+            peer_manager: self.peer_manager.clone(),
         };
 
         // TODO: Decryption of message
-
+        debug!(target: LOG_TARGET, "Dispatching message");
         self.dispatcher.dispatch(context).map_err(|e| e.into())
     }
 
@@ -190,6 +205,9 @@ where
             },
             Accepted => {
                 info!(target: LOG_TARGET, "Accepted connection from '{}'", event.address);
+            },
+            Disconnected => {
+                info!(target: LOG_TARGET, "'{}' Disconnected", event.address);
             },
             BindFailed => {
                 self.is_running = false;

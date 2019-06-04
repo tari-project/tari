@@ -23,7 +23,6 @@
 use crate::support::utils::find_available_tcp_net_address;
 use std::time::Duration;
 use tari_comms::connection::{
-    curve_keypair,
     Connection,
     ConnectionError,
     Context,
@@ -41,8 +40,8 @@ fn connection_in() {
     let addr = find_available_tcp_net_address("127.0.0.1").unwrap();
     let ctx = Context::new();
 
-    let (server_sk, server_pk) = curve_keypair::generate().unwrap();
-    let (client_sk, client_pk) = curve_keypair::generate().unwrap();
+    let (server_sk, server_pk) = CurveEncryption::generate_keypair().unwrap();
+    let (client_sk, client_pk) = CurveEncryption::generate_keypair().unwrap();
 
     let consumer_addr = InprocAddress::random();
 
@@ -93,8 +92,8 @@ fn connection_out() {
     let addr = find_available_tcp_net_address("127.0.0.1").unwrap();
     let ctx = Context::new();
 
-    let (server_sk, server_pk) = curve_keypair::generate().unwrap();
-    let (client_sk, client_pk) = curve_keypair::generate().unwrap();
+    let (server_sk, server_pk) = CurveEncryption::generate_keypair().unwrap();
+    let (client_sk, client_pk) = CurveEncryption::generate_keypair().unwrap();
 
     let consumer_addr = InprocAddress::random();
 

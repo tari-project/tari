@@ -22,7 +22,6 @@
 
 mod error;
 pub mod handlers;
-pub mod messages;
 mod service;
 mod types;
 mod worker;
@@ -30,5 +29,5 @@ mod worker;
 pub use self::{
     error::ControlServiceError,
     service::{ControlService, ControlServiceConfig},
-    types::{ControlServiceMessageContext, Result},
+    types::{ControlServiceMessageContext, ControlServiceMessageType, Result},
 };

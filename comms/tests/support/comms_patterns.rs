@@ -27,7 +27,9 @@ use std::{
 use tari_comms::{
     connection::{
         types::{Direction, SocketType},
-        zmq::{curve_keypair, Context, CurvePublicKey, CurveSecretKey, ZmqEndpoint},
+        zmq::{CurvePublicKey, CurveSecretKey, ZmqEndpoint},
+        Context,
+        CurveEncryption,
     },
     message::FrameSet,
 };
@@ -136,7 +138,7 @@ where T: ZmqEndpoint + Clone + Send + Sync + 'static
                 Direction::Outbound => {
                     if let Some(spk) = server_public_key {
                         socket.set_curve_serverkey(&spk.into_inner()).unwrap();
-                        let keypair = curve_keypair::generate().unwrap();
+                        let keypair = CurveEncryption::generate_keypair().unwrap();
                         socket.set_curve_publickey(&keypair.1.into_inner()).unwrap();
                         socket.set_curve_secretkey(&keypair.0.into_inner()).unwrap();
                     }

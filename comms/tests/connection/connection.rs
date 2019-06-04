@@ -25,8 +25,10 @@ use std::time::Duration;
 use tari_comms::connection::{
     connection::Connection,
     types::Direction,
-    zmq::{curve_keypair, Context, CurveEncryption, InprocAddress},
     ConnectionError,
+    Context,
+    CurveEncryption,
+    InprocAddress,
     Linger,
 };
 
@@ -94,7 +96,7 @@ fn inbound_recv_send_encrypted_tcp() {
 
     let req_rep_pattern = support::comms_patterns::async_request_reply(Direction::Outbound);
 
-    let (sk, pk) = curve_keypair::generate().unwrap();
+    let (sk, pk) = CurveEncryption::generate_keypair().unwrap();
 
     let conn = Connection::new(&ctx, Direction::Inbound)
         .set_linger(Linger::Indefinitely)
@@ -156,8 +158,8 @@ fn outbound_send_recv_encrypted_tcp() {
 
     let req_rep_pattern = support::comms_patterns::async_request_reply(Direction::Inbound);
 
-    let (sk, spk) = curve_keypair::generate().unwrap();
-    let (csk, cpk) = curve_keypair::generate().unwrap();
+    let (sk, spk) = CurveEncryption::generate_keypair().unwrap();
+    let (csk, cpk) = CurveEncryption::generate_keypair().unwrap();
 
     let signal = req_rep_pattern
         .set_endpoint(addr.clone())

@@ -202,8 +202,8 @@ mod test {
         let message_context_buffer = message_context.into_frame_set();
 
         for i in 0..8 {
-            assert!(conn_client.send(&message_context_buffer).is_ok());
-            assert!(conn_client.receive(2000).is_ok());
+            conn_client.send(&message_context_buffer).unwrap();
+            conn_client.receive(2000).unwrap();
             thread::sleep(time::Duration::from_millis(1));
             unsafe {
                 assert_eq!(HANDLER_RESPONSES, i + 1);

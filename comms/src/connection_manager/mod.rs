@@ -20,22 +20,19 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use derive_error::Error;
-use tari_crypto::signatures::SchnorrSignatureError;
-use tari_utilities::message_format::MessageFormatError;
+mod connections;
+/// ## ConnectionManager
+///
+/// Responsible for managing and establishing active connections to peers.
+mod error;
+mod manager;
+mod protocol;
+mod repository;
 
-#[derive(Error, Debug)]
-pub enum MessageError {
-    /// Multipart message is malformed
-    MalformedMultipart,
-    /// Failed to serialize message
-    SerializeFailed,
-    /// Failed to deserialize message
-    DeserializeFailed,
-    /// An error occurred serialising an object into binary
-    BinarySerializeError,
-    /// An error occurred deserialising binary data into an object
-    BinaryDeserializeError,
-    MessageFormatError(MessageFormatError),
-    SchnorrSignatureError(SchnorrSignatureError),
-}
+pub use self::{
+    connections::{ConnectionDirection, LivePeerConnections, PeerConnectionConfig},
+    error::ConnectionManagerError,
+    manager::ConnectionManager,
+};
+
+pub type Result<T> = std::result::Result<T, ConnectionManagerError>;

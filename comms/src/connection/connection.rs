@@ -38,14 +38,14 @@ use std::{cmp, iter::IntoIterator};
 ///
 /// ```edition2018
 /// # use tari_comms::connection::{
-/// #   zmq::{Context, InprocAddress, curve_keypair, CurveEncryption},
+/// #   zmq::{Context, InprocAddress, CurveEncryption},
 /// #   connection::Connection,
 /// #   types::{Linger, Direction},
 /// # };
 ///
 ///  let ctx  = Context::new();
 ///
-///  let (secret_key, _public_key) = curve_keypair::generate().unwrap();
+///  let (secret_key, _public_key) =CurveEncryption::generate_keypair().unwrap();
 ///
 ///  let addr = "inproc://docs-comms-inbound-connection".parse::<InprocAddress>().unwrap();
 ///
@@ -64,17 +64,17 @@ use std::{cmp, iter::IntoIterator};
 /// ```
 /// [`ZeroMQ`]: http://zeromq.org/
 pub struct Connection<'a> {
-    pub(crate) context: &'a Context,
-    pub(crate) curve_encryption: CurveEncryption,
-    pub(crate) direction: Direction,
-    pub(crate) identity: Option<String>,
-    pub(crate) linger: Linger,
-    pub(crate) max_message_size: Option<u64>,
-    pub(crate) monitor_addr: Option<InprocAddress>,
-    pub(crate) recv_hwm: Option<i32>,
-    pub(crate) send_hwm: Option<i32>,
-    pub(crate) socket_establishment: SocketEstablishment,
-    pub(crate) socks_proxy_addr: Option<SocketAddress>,
+    pub(super) context: &'a Context,
+    pub(super) curve_encryption: CurveEncryption,
+    pub(super) direction: Direction,
+    pub(super) identity: Option<String>,
+    pub(super) linger: Linger,
+    pub(super) max_message_size: Option<u64>,
+    pub(super) monitor_addr: Option<InprocAddress>,
+    pub(super) recv_hwm: Option<i32>,
+    pub(super) send_hwm: Option<i32>,
+    pub(super) socket_establishment: SocketEstablishment,
+    pub(super) socks_proxy_addr: Option<SocketAddress>,
 }
 
 impl<'a> Connection<'a> {
@@ -349,7 +349,7 @@ impl From<zmq::Socket> for EstablishedConnection {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::connection::zmq::{curve_keypair, InprocAddress};
+    use crate::connection::zmq::{CurveEncryption, InprocAddress};
 
     #[test]
     fn sets_socketopts() {
@@ -385,7 +385,7 @@ mod test {
 
         let addr = InprocAddress::random();
 
-        let (sk, _) = curve_keypair::generate().unwrap();
+        let (sk, _) = CurveEncryption::generate_keypair().unwrap();
         let expected_sk = sk.clone();
 
         let conn = Connection::new(&ctx, Direction::Inbound)
@@ -404,8 +404,8 @@ mod test {
 
         let addr = InprocAddress::random();
 
-        let (sk, pk) = curve_keypair::generate().unwrap();
-        let (_, spk) = curve_keypair::generate().unwrap();
+        let (sk, pk) = CurveEncryption::generate_keypair().unwrap();
+        let (_, spk) = CurveEncryption::generate_keypair().unwrap();
         let expected_sk = sk.clone();
         let expected_pk = pk.clone();
         let expected_spk = spk.clone();
