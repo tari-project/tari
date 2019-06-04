@@ -251,7 +251,7 @@ mod test {
 
         let node_identity = CommsNodeIdentity::global().unwrap();
 
-        let (_dest_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
+        let (dest_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk).unwrap();
         let net_addresses = NetAddresses::from("1.2.3.4:8000".parse::<NetAddress>().unwrap());
         let dest_peer: Peer<RistrettoPublicKey> =
@@ -296,7 +296,7 @@ mod test {
         // Check Encryption
         assert_eq!(message_envelope_header.flags, MessageFlags::ENCRYPTED);
         let ecdh_shared_secret =
-            RistrettoPublicKey::shared_secret(&node_identity.secret_key, &dest_peer.public_key).to_vec();
+            RistrettoPublicKey::shared_secret(&dest_sk, &node_identity.identity.public_key).to_vec();
         let ecdh_shared_secret_bytes: [u8; 32] = ByteArray::from_bytes(&ecdh_shared_secret).unwrap();
         let decoded_message_envelope_body = chacha20::decode(
             outbound_message.message_envelope.body_frame(),
