@@ -28,6 +28,9 @@ pub const MESSAGE_PROTOCOL_VERSION: u8 = 0;
 /// The wire protocol version for the MessageEnvelope wire format
 pub const WIRE_PROTOCOL_VERSION: u8 = 0;
 
+/// The default port that control services listen on
+pub const DEFAULT_LISTENER_ADDRESS: &str = "0.0.0.0:7899";
+
 /// Specify the digest type for the signature challenges
 pub type Challenge = Blake256;
 

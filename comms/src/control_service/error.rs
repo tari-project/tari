@@ -32,8 +32,6 @@ use tari_utilities::message_format::MessageFormatError;
 
 #[derive(Debug, Error)]
 pub enum ControlServiceError {
-    /// Control service is not configured
-    NotConfigured,
     #[error(no_from)]
     BindFailed(ConnectionError),
     MessageError(MessageError),

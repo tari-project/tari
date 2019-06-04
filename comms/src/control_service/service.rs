@@ -27,7 +27,7 @@ use crate::{
     connection_manager::ConnectionManager,
     dispatcher::{DispatchResolver, DispatchableKey},
     peer_manager::PeerManager,
-    types::CommsPublicKey,
+    types::{CommsPublicKey, DEFAULT_LISTENER_ADDRESS},
 };
 
 use super::{
@@ -44,6 +44,16 @@ pub struct ControlServiceConfig {
     pub listener_address: NetAddress,
     /// Optional SOCKS proxy
     pub socks_proxy_address: Option<SocketAddress>,
+}
+
+impl Default for ControlServiceConfig {
+    fn default() -> Self {
+        let listener_address = DEFAULT_LISTENER_ADDRESS.parse::<NetAddress>().unwrap();
+        ControlServiceConfig {
+            listener_address,
+            socks_proxy_address: None,
+        }
+    }
 }
 
 /// The service responsible for establishing new [PeerConnection]s.
@@ -89,16 +99,19 @@ pub struct ControlServiceConfig {
 /// ```
 pub struct ControlService<'a> {
     context: &'a Context,
-    config: Option<ControlServiceConfig>,
+    config: ControlServiceConfig,
 }
 
 impl<'a> ControlService<'a> {
     pub fn new(context: &'a Context) -> Self {
-        Self { context, config: None }
+        Self {
+            context,
+            config: ControlServiceConfig::default(),
+        }
     }
 
     pub fn configure(mut self, config: ControlServiceConfig) -> Self {
-        self.config = Some(config);
+        self.config = config;
         self
     }
 
@@ -109,7 +122,7 @@ impl<'a> ControlService<'a> {
         peer_manager: Arc<PeerManager<CommsPublicKey, LMDBStore>>,
     ) -> Result<ControlServiceHandle>
     {
-        let config = self.config.ok_or(ControlServiceError::NotConfigured)?;
+        let config = self.config;
         Ok(ControlServiceWorker::start(
             self.context.clone(),
             config,
@@ -187,19 +200,20 @@ mod test {
     }
 
     #[test]
-    fn no_configure() {
+    fn control_service_has_default() {
         let context = Context::new();
         let dispatcher = Dispatcher::new(TestResolver {});
         let connection_manager = make_connection_manager(&context);
         let peer_manager = make_peer_manager();
-
-        let err = ControlService::new(&context)
+        let control_service = ControlService::new(&context);
+        assert_eq!(
+            control_service.config.listener_address,
+            DEFAULT_LISTENER_ADDRESS.parse::<NetAddress>().unwrap()
+        );
+        assert!(control_service.config.socks_proxy_address.is_none());
+        assert!(control_service
             .serve(dispatcher, connection_manager, peer_manager)
-            .unwrap_err();
-        match err {
-            ControlServiceError::NotConfigured => {},
-            _ => panic!("Unexpected ControlServiceError '{:?}'", err),
-        }
+            .is_ok());
     }
 
     #[test]
