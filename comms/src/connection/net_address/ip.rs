@@ -24,7 +24,7 @@ use crate::connection::NetAddressError;
 use serde::{Deserialize, Serialize};
 use std::{
     fmt,
-    net::{IpAddr, SocketAddr},
+    net::{IpAddr, SocketAddr, ToSocketAddrs},
     str::FromStr,
 };
 
@@ -49,6 +49,20 @@ impl FromStr for SocketAddress {
         let socket_addr = addr.parse::<SocketAddr>().map_err(|_| NetAddressError::ParseFailed)?;
 
         Ok(Self(socket_addr))
+    }
+}
+
+impl<I: Into<IpAddr>> From<(I, u16)> for SocketAddress {
+    fn from(v: (I, u16)) -> Self {
+        Self(v.into())
+    }
+}
+
+impl ToSocketAddrs for SocketAddress {
+    type Iter = std::option::IntoIter<SocketAddr>;
+
+    fn to_socket_addrs(&self) -> std::io::Result<Self::Iter> {
+        self.0.to_socket_addrs()
     }
 }
 

@@ -25,14 +25,6 @@ use clear_on_drop::clear::Clear;
 use serde::{Deserialize, Serialize};
 use zmq;
 
-/// Generates a Curve25519 public/private keypair
-pub fn generate() -> Result<(CurveSecretKey, CurvePublicKey)> {
-    let keypair = zmq::CurveKeyPair::new()
-        .map_err(|e| ConnectionError::CurveKeypairError(format!("Unable to generate new Curve25519 keypair: {}", e)))?;
-
-    return Ok((CurveSecretKey(keypair.secret_key), CurvePublicKey(keypair.public_key)));
-}
-
 //---------------------------------- Curve Encryption --------------------------------------------//
 
 /// Represents settings for asymmetric curve encryption. Every socket with encryption enabled
@@ -50,6 +42,17 @@ pub enum CurveEncryption {
         public_key: CurvePublicKey,
         server_public_key: CurvePublicKey,
     },
+}
+
+impl CurveEncryption {
+    /// Generates a Curve25519 public/private keypair
+    pub fn generate_keypair() -> Result<(CurveSecretKey, CurvePublicKey)> {
+        let keypair = zmq::CurveKeyPair::new().map_err(|e| {
+            ConnectionError::CurveKeypairError(format!("Unable to generate new Curve25519 keypair: {}", e))
+        })?;
+
+        return Ok((CurveSecretKey(keypair.secret_key), CurvePublicKey(keypair.public_key)));
+    }
 }
 
 impl Default for CurveEncryption {
@@ -118,7 +121,7 @@ mod test {
         use std::slice;
         let ptr;
         {
-            let sk = generate().unwrap().0;
+            let sk = CurveEncryption::generate_keypair().unwrap().0;
             ptr = sk.0.as_ptr()
         }
 

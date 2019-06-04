@@ -136,6 +136,13 @@ impl From<NetAddress> for NetAddresses {
     }
 }
 
+impl From<Vec<NetAddressWithStats>> for NetAddresses {
+    /// Constructs NetAddresses from a list of addresses with usage stats
+    fn from(addresses: Vec<NetAddressWithStats>) -> Self {
+        NetAddresses { addresses }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;

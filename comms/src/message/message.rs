@@ -22,9 +22,9 @@
 
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
-use crate::message::{Frame, MessageError};
-use std::convert::TryFrom;
 use tari_utilities::message_format::MessageFormat;
+
+use crate::message::{Frame, MessageError};
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct MessageHeader<MType> {
@@ -41,6 +41,16 @@ pub struct Message {
 }
 
 impl Message {
+    /// Create a new Message from two MessagFormat types
+    pub fn from_message_format<H: MessageFormat, B: MessageFormat>(header: H, msg: B) -> Result<Self, MessageError> {
+        let header_frame = header.to_binary()?;
+        let body_frame = msg.to_binary()?;
+        Ok(Self {
+            header: header_frame,
+            body: body_frame,
+        })
+    }
+
     pub fn to_header<MType>(&self) -> Result<MessageHeader<MType>, MessageError>
     where
         MessageHeader<MType>: MessageFormat,
@@ -51,21 +61,32 @@ impl Message {
 
     pub fn to_message<T>(&self) -> Result<T, MessageError>
     where T: MessageFormat {
-        // TryFrom<Frame, Error=MessageError> {
         T::from_binary(&self.body).map_err(Into::into)
     }
 }
 
-impl<H: MessageFormat, B: MessageFormat> TryFrom<(H, B)> for Message {
-    type Error = MessageError;
+#[cfg(test)]
+mod test {
+    use super::*;
+    use tari_utilities::hex::to_hex;
 
-    /// Create a new Message from two message format types
-    fn try_from((header, body): (H, B)) -> Result<Self, Self::Error> {
-        let header_frame = header.to_binary()?;
-        let body_frame = body.to_binary()?;
-        Ok(Self {
-            header: header_frame,
-            body: body_frame,
-        })
+    #[derive(Serialize, Deserialize)]
+    struct TestHeader {
+        a: u32,
+    }
+
+    #[derive(Serialize, Deserialize)]
+    struct TestMsg {
+        a: u32,
+    }
+
+    #[test]
+    fn from_message_format() {
+        let header = TestHeader { a: 1 };
+        let msg = TestMsg { a: 2 };
+
+        let msg = Message::from_message_format(header, msg).unwrap();
+        assert_eq!("9101", to_hex(&msg.header));
+        assert_eq!("9102", to_hex(&msg.body));
     }
 }

@@ -20,11 +20,17 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::message::{error::MessageError, Frame, FrameSet, MessageFlags, NodeDestination};
+use super::Message;
+use crate::{
+    message::{error::MessageError, Frame, FrameSet, MessageFlags, NodeDestination},
+    peer_manager::CommsNodeIdentity,
+    types::{CommsPublicKey, MESSAGE_PROTOCOL_VERSION, WIRE_PROTOCOL_VERSION},
+    utils::crypto,
+};
 
-use crate::message::Message;
+use rand::OsRng;
 use serde::{Deserialize, Serialize};
-use std::convert::TryFrom;
+use std::{convert::TryFrom, sync::Arc};
 use tari_crypto::keys::PublicKey;
 use tari_utilities::message_format::MessageFormat;
 
@@ -54,6 +60,34 @@ impl MessageEnvelope {
         MessageEnvelope {
             frames: vec![version, header, body],
         }
+    }
+
+    /// Sign a message, construct a MessageEnvelopeHeader and return the resulting MessageEnvelope
+    pub fn construct(
+        node_identity: Arc<CommsNodeIdentity>,
+        dest: NodeDestination<CommsPublicKey>,
+        body: Frame,
+        flags: MessageFlags,
+    ) -> Result<Self, MessageError>
+    {
+        let signature = crypto::sign(&mut OsRng::new().unwrap(), node_identity.secret_key.clone(), &body)
+            .map_err(MessageError::SchnorrSignatureError)?;
+
+        let signature = signature.to_binary().map_err(MessageError::MessageFormatError)?;
+
+        let header = MessageEnvelopeHeader {
+            version: MESSAGE_PROTOCOL_VERSION,
+            source: node_identity.identity.public_key.clone(),
+            dest,
+            signature,
+            flags,
+        };
+
+        Ok(Self::new(
+            vec![WIRE_PROTOCOL_VERSION],
+            header.to_binary().map_err(MessageError::MessageFormatError)?,
+            body,
+        ))
     }
 
     /// Returns the frame that is expected to be version frame
@@ -114,6 +148,7 @@ mod test {
     };
 
     use std::convert::TryInto;
+    use tari_utilities::hex::to_hex;
 
     #[test]
     fn try_from_valid() {
@@ -182,5 +217,26 @@ mod test {
         let mut de = rmp_serde::Deserializer::new(serialized.as_slice());
         let deserialized: MessageEnvelopeHeader<RistrettoPublicKey> = Deserialize::deserialize(&mut de).unwrap();
         assert_eq!(deserialized, header);
+    }
+
+    #[test]
+    fn construct() {
+        let node_identity = CommsNodeIdentity::global().unwrap();
+        let msg_frame = vec![1, 2, 3];
+        let pk = node_identity.identity.public_key.clone();
+        let envelope = MessageEnvelope::construct(
+            node_identity.clone(),
+            NodeDestination::Unknown,
+            msg_frame,
+            MessageFlags::ENCRYPTED,
+        )
+        .unwrap();
+        assert_eq!("00", to_hex(envelope.version_frame()));
+        let header = MessageEnvelopeHeader::from_binary(envelope.header_frame()).unwrap();
+        assert_eq!(pk, header.source);
+        assert_eq!(MessageFlags::ENCRYPTED, header.flags);
+        assert_eq!(NodeDestination::Unknown, header.dest);
+        assert_eq!(136, header.signature.len());
+        assert_eq!("010203", to_hex(envelope.body_frame()));
     }
 }

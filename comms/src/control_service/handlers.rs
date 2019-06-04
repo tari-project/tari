@@ -23,10 +23,40 @@
 use log::*;
 use tari_utilities::message_format::MessageFormat;
 
-use super::{error::ControlServiceError, messages::EstablishConnection, types::ControlServiceMessageContext};
+use crate::{
+    dispatcher::{DispatchError, DispatchResolver},
+    message::{
+        p2p::{Accept, EstablishConnection},
+        Message,
+        MessageEnvelope,
+        MessageFlags,
+        MessageHeader,
+        NodeDestination,
+    },
+    peer_manager::{peer_manager::PeerManagerError, CommsNodeIdentity, Peer, PeerFlags},
+};
+
+use super::{
+    error::ControlServiceError,
+    types::{ControlServiceMessageContext, ControlServiceMessageType},
+};
+use std::time::Duration;
 
 #[allow(dead_code)]
 const LOG_TARGET: &'static str = "comms::control_service::handlers";
+
+pub struct ControlServiceResolver;
+
+impl DispatchResolver<ControlServiceMessageType, ControlServiceMessageContext> for ControlServiceResolver {
+    fn resolve(&self, msg: &ControlServiceMessageContext) -> Result<ControlServiceMessageType, DispatchError> {
+        let header: MessageHeader<ControlServiceMessageType> = msg
+            .message
+            .to_header()
+            .map_err(|err| DispatchError::HandlerError(format!("{}", err)))?;
+
+        Ok(header.message_type)
+    }
+}
 
 /// Establish connection handler. This is the default handler which can be used to handle
 /// the EstablishConnection message.
@@ -42,16 +72,77 @@ pub fn establish_connection(context: ControlServiceMessageContext) -> Result<(),
 
     debug!(target: LOG_TARGET, "EstablishConnection message: {:#?}", message);
 
-    // TODO:
-    // - Add peer to routing table
-    // - Open a port with connection manager
-    // - Send Accept message
+    let pm = &context.peer_manager;
+    let public_key = message.public_key.clone();
+    let node_id = message.node_id.clone();
+    let mut peer = match pm.find_with_public_key(&public_key) {
+        Ok(peer) => {
+            // TODO: check that this peer is valid / can be connected to etc
+            pm.add_net_address(&node_id, &message.control_service_address)
+                .map_err(ControlServiceError::PeerManagerError)?;
+
+            peer
+        },
+        Err(err) => {
+            match err {
+                PeerManagerError::PeerNotFoundError => {
+                    let peer = Peer::new(
+                        public_key.clone(),
+                        node_id,
+                        message.control_service_address.clone().into(),
+                        PeerFlags::empty(),
+                    );
+                    // TODO: check that this peer is valid / can be connected to etc
+                    pm.add_peer(peer.clone())
+                        .map_err(ControlServiceError::PeerManagerError)?;
+                    peer
+                },
+                e => return Err(ControlServiceError::PeerManagerError(e)),
+            }
+        },
+    };
+
+    let conn_manager = &mut context.connection_manager.clone();
+    let conn = conn_manager
+        .new_connection_to_peer(&mut peer, message.server_key.clone())
+        .map_err(ControlServiceError::ConnectionManagerError)?;
+
+    conn.wait_connected_or_failure(Duration::from_millis(5000))
+        .map_err(ControlServiceError::ConnectionError)?;
+
+    let node_identity = CommsNodeIdentity::global().ok_or(ControlServiceError::NodeIdentityNotSet)?;
+
+    let header = MessageHeader {
+        message_type: ControlServiceMessageType::Accept,
+    };
+    let msg = Message::from_message_format(header, Accept {}).map_err(ControlServiceError::MessageError)?;
+
+    let envelope = MessageEnvelope::construct(
+        node_identity,
+        NodeDestination::PublicKey(public_key),
+        msg.to_binary().map_err(ControlServiceError::MessageFormatError)?,
+        MessageFlags::empty(),
+    )
+    .map_err(ControlServiceError::MessageError)?;
+
+    conn.send(envelope.into_frame_set())
+        .map_err(ControlServiceError::ConnectionError)?;
 
     Ok(())
 }
 
-/// Discards (does nothing) with the given message.
+/// Discard
 pub fn discard(_: ControlServiceMessageContext) -> Result<(), ControlServiceError> {
-    debug!(target: LOG_TARGET, "Discarding message");
+    debug!(target: LOG_TARGET, "Message discarded");
+
+    Ok(())
+}
+
+/// The peer has accepted the request to connect
+pub fn accept(_: ControlServiceMessageContext) -> Result<(), ControlServiceError> {
+    debug!(target: LOG_TARGET, "Peer Connection accepted");
+
+    // TODO: Validate this message and update connection protocol state accordingly once that is in place
+
     Ok(())
 }

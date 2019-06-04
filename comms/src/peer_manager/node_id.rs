@@ -20,6 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::fmt;
+
 use derive_error::Error;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -27,6 +29,8 @@ use std::{
     hash::{Hash, Hasher},
 };
 use tari_utilities::Hashable;
+
+use tari_utilities::hex::to_hex;
 
 const NODE_ID_ARRAY_SIZE: usize = 32;
 type NodeIdArray = [u8; NODE_ID_ARRAY_SIZE];
@@ -82,13 +86,13 @@ pub struct NodeId(NodeIdArray);
 
 impl NodeId {
     /// Construct a new node id on the origin
-    pub fn new() -> NodeId {
-        NodeId([0; NODE_ID_ARRAY_SIZE])
+    pub fn new() -> Self {
+        Self([0; NODE_ID_ARRAY_SIZE])
     }
 
     /// Derive a node id from a public key: node_id=hash(public_key)
-    pub fn from_key<K: Hashable>(key: &K) -> Result<NodeId, NodeIdError> {
-        NodeId::try_from(key.hash().as_slice())
+    pub fn from_key<K: Hashable>(key: &K) -> Result<Self, NodeIdError> {
+        Self::try_from(key.hash().as_slice())
     }
 
     /// Generate a node id from a base layer registration using the block hash and public key
@@ -165,6 +169,18 @@ impl Hash for NodeId {
     }
 }
 
+impl AsRef<[u8]> for NodeId {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl fmt::Display for NodeId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", to_hex(&self.0))
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -173,6 +189,24 @@ mod test {
         ristretto::{RistrettoPublicKey, RistrettoSecretKey},
     };
     use tari_utilities::byte_array::ByteArray;
+
+    #[test]
+    fn display() {
+        let node_id = NodeId::try_from(
+            [
+                144, 28, 106, 112, 220, 197, 216, 119, 9, 217, 42, 77, 159, 211, 53, 207, 0, 157, 5, 55, 235, 247, 160,
+                195, 240, 48, 146, 168, 119, 15, 241, 54,
+            ]
+            .as_bytes(),
+        )
+        .unwrap();
+
+        let result = format!("{}", node_id);
+        assert_eq!(
+            "901c6a70dcc5d87709d92a4d9fd335cf009d0537ebf7a0c3f03092a8770ff136",
+            result
+        );
+    }
 
     #[test]
     fn test_from_public_key() {

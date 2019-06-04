@@ -36,7 +36,7 @@ use crate::{
         connection::{Connection, EstablishedConnection},
         monitor::{ConnectionMonitor, SocketEvent, SocketEventType},
         peer_connection::{
-            connection::PeerConnectionState,
+            connection::{PeerConnectionSimpleState, PeerConnectionState},
             control::ControlMessage,
             PeerConnectionContext,
             PeerConnectionError,
@@ -48,6 +48,7 @@ use crate::{
     },
     message::{Frame, FrameSet},
 };
+use std::thread::JoinHandle;
 
 /// Send HWM for peer connections
 const PEER_CONNECTION_SEND_HWM: i32 = 10;
@@ -97,10 +98,10 @@ impl Worker {
     }
 
     /// Spawn a worker thread
-    pub fn spawn(mut self) -> SyncSender<ControlMessage> {
+    pub fn spawn(mut self) -> (JoinHandle<Result<()>>, SyncSender<ControlMessage>) {
         let sender = self.sender.clone();
 
-        thread::spawn(move || -> Result<()> {
+        let handle = thread::spawn(move || -> Result<()> {
             let result = self.main_loop();
 
             // Main loop exited, let's set the shared connection state.
@@ -109,7 +110,7 @@ impl Worker {
             Ok(())
         });
 
-        sender
+        (handle, sender)
     }
 
     /// Handle the result for the worker loop and update connection state if necessary
@@ -196,7 +197,7 @@ impl Worker {
                     ref s => {
                         return Err(PeerConnectionError::StateError(format!(
                             "Unable to transition to connected state from state '{}'",
-                            s
+                            PeerConnectionSimpleState::from(s)
                         ))
                         .into());
                     },

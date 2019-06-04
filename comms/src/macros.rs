@@ -29,3 +29,24 @@ macro_rules! setter {
 	}
     }
 }
+
+macro_rules! acquire_lock {
+    ($e:expr, $m:ident) => {
+        match $e.$m() {
+            Ok(lock) => lock,
+            Err(poisoned) => poisoned.into_inner(),
+        }
+    };
+}
+
+macro_rules! acquire_write_lock {
+    ($e:expr) => {
+        acquire_lock!($e, write)
+    };
+}
+
+macro_rules! acquire_read_lock {
+    ($e:expr) => {
+        acquire_lock!($e, read)
+    };
+}

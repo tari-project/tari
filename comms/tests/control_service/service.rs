@@ -23,22 +23,28 @@
 use crate::support::utils;
 use serde::{Deserialize, Serialize};
 
-use std::{convert::TryInto, sync::RwLock, thread, time::Duration};
+use std::{sync::RwLock, thread, time::Duration};
 
+use std::sync::Arc;
 use tari_comms::{
-    connection::{curve_keypair, Connection, Context, Direction, Linger},
-    control_service::{
-        messages::EstablishConnection,
-        ControlService,
-        ControlServiceConfig,
-        ControlServiceError,
-        ControlServiceMessageContext,
-    },
+    connection::{Connection, Context, CurveEncryption, Direction, InprocAddress, Linger},
+    connection_manager::{ConnectionManager, PeerConnectionConfig},
+    control_service::{ControlService, ControlServiceConfig, ControlServiceError, ControlServiceMessageContext},
     dispatcher::{DispatchError, DispatchResolver, Dispatcher},
-    message::{Message, MessageEnvelope, MessageError, MessageFlags, MessageHeader, NodeDestination},
-    types::MessageEnvelopeHeader,
+    message::{
+        p2p::EstablishConnection,
+        Message,
+        MessageEnvelope,
+        MessageError,
+        MessageFlags,
+        MessageHeader,
+        NodeDestination,
+    },
+    peer_manager::{NodeId, PeerManager},
+    types::{CommsPublicKey, MessageEnvelopeHeader},
 };
 use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
+use tari_storage::lmdb::LMDBStore;
 use tari_utilities::message_format::MessageFormat;
 
 #[derive(Eq, PartialEq, Hash, Serialize, Deserialize)]
@@ -85,7 +91,7 @@ fn construct_envelope<T: MessageFormat>(
 ) -> Result<MessageEnvelope, MessageError>
 {
     let msg_header = MessageHeader { message_type };
-    let msg: Message = (msg_header, msg).try_into()?;
+    let msg = Message::from_message_format(msg_header, msg)?;
     let envelope_header = MessageEnvelopeHeader {
         source: pk,
         dest: NodeDestination::Unknown,
@@ -115,10 +121,28 @@ fn poll_handler_call_count_change(initial: u8, ms: u64) -> Option<u8> {
     None
 }
 
+fn make_connection_manager(context: &Context) -> Arc<ConnectionManager> {
+    Arc::new(ConnectionManager::new(context, PeerConnectionConfig {
+        establish_timeout: Duration::from_millis(1000),
+        max_message_size: 1024 * 1024,
+        socks_proxy_address: None,
+        consumer_address: InprocAddress::random(),
+        port_range: 22000..22100,
+        host: "127.0.0.1".parse().unwrap(),
+        max_connect_retries: 1,
+    }))
+}
+
+fn make_peer_manager() -> Arc<PeerManager<CommsPublicKey, LMDBStore>> {
+    Arc::new(PeerManager::<CommsPublicKey, LMDBStore>::new(None).unwrap())
+}
+
 #[test]
 fn recv_message() {
     let context = Context::new();
+    let connection_manager = make_connection_manager(&context);
     let control_service_address = utils::find_available_tcp_net_address("127.0.0.1").unwrap();
+    let peer_manager = make_peer_manager();
 
     let dispatcher = Dispatcher::new(CustomTestResolver {}).route(MessageType::EstablishConnection, test_handler);
 
@@ -127,17 +151,19 @@ fn recv_message() {
             socks_proxy_address: None,
             listener_address: control_service_address.clone(),
         })
-        .serve(dispatcher)
+        .serve(dispatcher, connection_manager, peer_manager)
         .unwrap();
 
     // A "remote" node sends an EstablishConnection message to this node's control port
     let requesting_node_address = utils::find_available_tcp_net_address("127.0.0.1").unwrap();
     let (_secret_key, public_key) = RistrettoPublicKey::random_keypair(&mut rand::OsRng::new().unwrap());
-    let (_sk, server_pk) = curve_keypair::generate().unwrap();
+    let (_sk, server_pk) = CurveEncryption::generate_keypair().unwrap();
     let msg = EstablishConnection {
         address: requesting_node_address,
+        node_id: NodeId::from_key(&public_key).unwrap(),
         public_key: public_key.clone(),
         server_key: server_pk,
+        control_service_address: control_service_address.clone(),
     };
 
     let envelope = construct_envelope(public_key, MessageType::EstablishConnection, msg).unwrap();
@@ -151,9 +177,10 @@ fn recv_message() {
         let lock = HANDLER_CALL_COUNT.read().unwrap();
         *lock
     };
+
     remote_conn.send_sync(envelope.clone().into_frame_set()).unwrap();
 
-    let call_count = poll_handler_call_count_change(initial, 500).unwrap();
+    let call_count = poll_handler_call_count_change(initial, 2000).expect("Timeout before handler was called");
     assert_eq!(1, call_count);
 
     let initial = {
@@ -162,7 +189,7 @@ fn recv_message() {
     };
 
     remote_conn.send_sync(envelope.into_frame_set()).unwrap();
-    let call_count = poll_handler_call_count_change(initial, 500).unwrap();
+    let call_count = poll_handler_call_count_change(initial, 500).expect("Timeout before handler was called");
     assert_eq!(2, call_count);
 
     service.shutdown().unwrap();
