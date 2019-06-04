@@ -34,6 +34,7 @@ use crate::{
         CurvePublicKey,
         Direction,
         Linger,
+        NetAddress,
         PeerConnection,
     },
     control_service::ControlServiceMessageType,
@@ -61,14 +62,29 @@ impl<'p> PeerConnectionProtocol<'p> {
         Self { peer }
     }
 
-    pub fn establish(
+    pub fn establish_outbound(
         &self,
         connections: Arc<LivePeerConnections>,
-        server_public_key: CurvePublicKey,
+        peer_curve_pk: CurvePublicKey,
+        net_address: NetAddress,
+    ) -> Result<Arc<PeerConnection>>
+    {
+        connections.establish_connection(ConnectionDirection::Outbound {
+            server_public_key: peer_curve_pk,
+            node_id: self.peer.node_id.clone(),
+            net_addresses: net_address.into(),
+        })?;
+        let node_id = Arc::new(self.peer.node_id.clone());
+        connections.get_connection(&node_id).ok_or(ConnectionManagerError::PeerConnectionNotFound)
+    }
+
+    pub fn establish_inbound(
+        &self,
+        connections: Arc<LivePeerConnections>,
     ) -> Result<Arc<PeerConnection>>
     {
         // Send establish connection to peer's control service
-        let control_port_connection = self.establish_control_service_connection(&connections, server_public_key)?;
+        let control_port_connection = self.establish_control_service_connection(&connections)?;
 
         let (inbound_peer_conn, establish_message) = self.open_inbound_peer_connection(&connections)?;
 
@@ -142,7 +158,6 @@ impl<'p> PeerConnectionProtocol<'p> {
     fn establish_control_service_connection(
         &self,
         connections: &Arc<LivePeerConnections>,
-        server_public_key: CurvePublicKey,
     ) -> Result<EstablishedConnection>
     {
         let context = connections.borrow_context();
@@ -151,17 +166,10 @@ impl<'p> PeerConnectionProtocol<'p> {
         // TODO: Set net address stats and try all net addresses before giving up
         let address = self.peer.addresses.addresses[0].clone().as_net_address();
 
-        let (sk, pk) = CurveEncryption::generate_keypair().map_err(ConnectionManagerError::ConnectionError)?;
-
         let conn = Connection::new(context, Direction::Outbound)
             .set_linger(Linger::Timeout(100))
             .set_socks_proxy_addr(config.socks_proxy_address.clone())
             .set_max_message_size(Some(config.max_message_size))
-            .set_curve_encryption(CurveEncryption::Client {
-                server_public_key,
-                public_key: pk,
-                secret_key: sk,
-            })
             .set_receive_hwm(0)
             .establish(&address)
             .map_err(ConnectionManagerError::ConnectionError)?;

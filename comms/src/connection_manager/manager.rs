@@ -25,7 +25,7 @@ use std::sync::Arc;
 use log::*;
 
 use crate::{
-    connection::{zmq::CurvePublicKey, Context, PeerConnection, PeerConnectionState},
+    connection::{zmq::CurvePublicKey, Context, PeerConnection, PeerConnectionState, NetAddress},
     peer_manager::Peer,
     types::CommsPublicKey,
 };
@@ -56,13 +56,14 @@ impl ConnectionManager {
         &self,
         peer: &mut Peer<CommsPublicKey>,
         peer_curve_pk: CurvePublicKey,
+        net_address: NetAddress,
     ) -> Result<Arc<PeerConnection>>
     {
         let node_id = Arc::new(peer.node_id.clone());
         let maybe_conn = self.connections.get_connection(&node_id);
         match maybe_conn {
-            Some(conn) => self.ensure_peer_connection(peer, conn, peer_curve_pk),
-            None => self.establish_peer_connection(peer, peer_curve_pk),
+            Some(conn) => self.ensure_peer_connection(peer, conn, peer_curve_pk, net_address),
+            None => self.establish_peer_connection(peer, peer_curve_pk, net_address),
         }
     }
 
@@ -79,6 +80,7 @@ impl ConnectionManager {
         peer: &mut Peer<CommsPublicKey>,
         existing_conn: Arc<PeerConnection>,
         peer_curve_pk: CurvePublicKey,
+        address: NetAddress,
     ) -> Result<Arc<PeerConnection>>
     {
         let state = existing_conn
@@ -91,7 +93,7 @@ impl ConnectionManager {
                     "Peer connection state is '{}'. Attempting to reestablish connection to peer.", state
                 );
                 self.connections.drop_connection(&peer.node_id)?;
-                self.establish_peer_connection(peer, peer_curve_pk)
+                self.establish_peer_connection(peer, peer_curve_pk, address)
             },
             PeerConnectionState::Failed(err) => {
                 warn!(
@@ -101,7 +103,7 @@ impl ConnectionManager {
                     err
                 );
                 self.connections.drop_connection(&peer.node_id)?;
-                self.establish_peer_connection(peer, peer_curve_pk)
+                self.establish_peer_connection(peer, peer_curve_pk, address)
             },
             PeerConnectionState::Connecting | PeerConnectionState::Connected => Ok(existing_conn),
         }
@@ -111,12 +113,13 @@ impl ConnectionManager {
         &self,
         peer: &mut Peer<CommsPublicKey>,
         peer_curve_pk: CurvePublicKey,
+        address: NetAddress,
     ) -> Result<Arc<PeerConnection>>
     {
         let protocol = PeerConnectionProtocol::new(peer);
 
         protocol
-            .establish(self.connections.clone(), peer_curve_pk)
+            .establish_outbound(self.connections.clone(), peer_curve_pk, address)
             .or_else(|err| {
                 warn!(
                     target: LOG_TARGET,

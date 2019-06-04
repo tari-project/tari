@@ -104,7 +104,7 @@ pub fn establish_connection(context: ControlServiceMessageContext) -> Result<(),
 
     let conn_manager = &mut context.connection_manager.clone();
     let conn = conn_manager
-        .new_connection_to_peer(&mut peer, message.server_key.clone())
+        .new_connection_to_peer(&mut peer, message.server_key.clone(), message.address.clone())
         .map_err(ControlServiceError::ConnectionManagerError)?;
 
     conn.wait_connected_or_failure(Duration::from_millis(5000))
