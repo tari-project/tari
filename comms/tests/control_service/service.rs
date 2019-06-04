@@ -20,14 +20,16 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::support::utils;
 use serde::{Deserialize, Serialize};
 
-use std::{sync::RwLock, thread, time::Duration};
-
-use std::sync::Arc;
+use std::{
+    str::FromStr,
+    sync::{Arc, RwLock},
+    thread,
+    time::Duration,
+};
 use tari_comms::{
-    connection::{Connection, Context, CurveEncryption, Direction, InprocAddress, Linger},
+    connection::{Connection, Context, CurveEncryption, Direction, InprocAddress, Linger, NetAddress},
     connection_manager::{ConnectionManager, PeerConnectionConfig},
     control_service::{ControlService, ControlServiceConfig, ControlServiceError, ControlServiceMessageContext},
     dispatcher::{DispatchError, DispatchResolver, Dispatcher},
@@ -127,7 +129,6 @@ fn make_connection_manager(context: &Context) -> Arc<ConnectionManager> {
         max_message_size: 1024 * 1024,
         socks_proxy_address: None,
         consumer_address: InprocAddress::random(),
-        port_range: 22000..22100,
         host: "127.0.0.1".parse().unwrap(),
         max_connect_retries: 1,
     }))
@@ -141,7 +142,7 @@ fn make_peer_manager() -> Arc<PeerManager<CommsPublicKey, LMDBStore>> {
 fn recv_message() {
     let context = Context::new();
     let connection_manager = make_connection_manager(&context);
-    let control_service_address = utils::find_available_tcp_net_address("127.0.0.1").unwrap();
+    let control_service_address = NetAddress::from_str("127.0.0.1:9882").unwrap();
     let peer_manager = make_peer_manager();
 
     let dispatcher = Dispatcher::new(CustomTestResolver {}).route(MessageType::EstablishConnection, test_handler);
@@ -155,7 +156,7 @@ fn recv_message() {
         .unwrap();
 
     // A "remote" node sends an EstablishConnection message to this node's control port
-    let requesting_node_address = utils::find_available_tcp_net_address("127.0.0.1").unwrap();
+    let requesting_node_address = NetAddress::from_str("127.0.0.1:9882").unwrap();
     let (_secret_key, public_key) = RistrettoPublicKey::random_keypair(&mut rand::OsRng::new().unwrap());
     let (_sk, server_pk) = CurveEncryption::generate_keypair().unwrap();
     let msg = EstablishConnection {

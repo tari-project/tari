@@ -20,21 +20,21 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::support::utils::find_available_tcp_net_address;
-use std::{thread, time::Duration};
+use std::{str::FromStr, thread, time::Duration};
 use tari_comms::connection::{
     connection::Connection,
     monitor::{ConnectionMonitor, SocketEventType},
     zmq::{Context, ZmqEndpoint},
     Direction,
     InprocAddress,
+    NetAddress,
 };
 
 #[test]
 fn recv_socket_events() {
     let ctx = Context::new();
     let monitor_addr = InprocAddress::random();
-    let address = find_available_tcp_net_address("127.0.0.1").unwrap();
+    let address = NetAddress::from_str("127.0.0.1:0").unwrap();
 
     let monitor = ConnectionMonitor::connect(&ctx, &monitor_addr).unwrap();
 
@@ -42,10 +42,13 @@ fn recv_socket_events() {
         .set_monitor_addr(monitor_addr.clone())
         .establish(&address)
         .unwrap();
+    let connected_address = NetAddress::from(conn_in.get_connected_address().clone().unwrap());
 
     {
         // Connect and disconnect
-        let conn_out = Connection::new(&ctx, Direction::Outbound).establish(&address).unwrap();
+        let conn_out = Connection::new(&ctx, Direction::Outbound)
+            .establish(&connected_address)
+            .unwrap();
         conn_out.send(&["test".as_bytes()]).unwrap();
 
         let _ = conn_in.receive(1000).unwrap();
@@ -61,6 +64,8 @@ fn recv_socket_events() {
     let event = events.iter().find(|e| e.event_type == SocketEventType::Listening);
     assert!(event.is_some(), "Expected to find event Listening");
     let event = event.unwrap();
+    // Note! The monitor returns events with the original address given to the socket (127.0.0.2:0, and not the
+    // actual address that is connected to (if it is different)
     assert_eq!(event.address, address.to_zmq_endpoint());
 
     let event = events.iter().find(|e| e.event_type == SocketEventType::Accepted);

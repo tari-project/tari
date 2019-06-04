@@ -65,7 +65,6 @@ pub struct ControlServiceConfig {
 ///      max_connect_retries: 1,
 ///      socks_proxy_address: None,
 ///      consumer_address: InprocAddress::random(),
-///      port_range: 10000..11000,
 ///      host: "0.0.0.0".parse().unwrap(),
 ///      establish_timeout: Duration::from_millis(1000),
 /// }));
@@ -176,7 +175,6 @@ mod test {
             max_message_size: 1024 * 1024,
             socks_proxy_address: None,
             consumer_address: InprocAddress::random(),
-            port_range: 22000..22100,
             host: "127.0.0.1".parse().unwrap(),
             max_connect_retries: 1,
         }))

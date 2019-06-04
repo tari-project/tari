@@ -40,7 +40,7 @@ use digest::Digest;
 use rand::{CryptoRng, Rng};
 use rmp_serde;
 use serde::Serialize;
-use std::sync::Arc;
+use std::{convert::TryInto, sync::Arc};
 use tari_crypto::{
     keys::{DiffieHellmanSharedSecret, SecretKey},
     signatures::{SchnorrSignature, SchnorrSignatureError},
@@ -200,7 +200,7 @@ where DS: DataStore
             outbound_socket
                 .connect(&self.outbound_address.to_zmq_endpoint())
                 .map_err(|e| OutboundError::SocketConnectionError(e))?;
-            let outbound_connection: EstablishedConnection = outbound_socket.into();
+            let outbound_connection: EstablishedConnection = outbound_socket.try_into()?;
             outbound_connection
                 .send(&outbound_message_buffer)
                 .map_err(|e| OutboundError::SendError(e))?;
