@@ -22,8 +22,15 @@
 
 use crate::{
     connection::net_address::NetAddress,
-    peer_manager::{node_id::NodeId, node_identity::PeerNodeIdentity, peer::Peer, peer_manager::PeerManagerError},
+    peer_manager::{
+        node_id::{NodeDistance, NodeId},
+        node_identity::PeerNodeIdentity,
+        peer::Peer,
+        peer_manager::PeerManagerError,
+    },
+    types::CommsRng,
 };
+use rand::Rng;
 use std::{collections::HashMap, hash::Hash, ops::Index, time::Duration};
 use tari_crypto::keys::PublicKey;
 use tari_storage::keyvalue_store::DataStore;
@@ -37,6 +44,7 @@ pub struct PeerStorage<PubKey, DS> {
     node_id_hm: HashMap<NodeId, usize>,
     public_key_hm: HashMap<PubKey, usize>,
     net_address_hm: HashMap<NetAddress, usize>,
+    rng: CommsRng,
 }
 
 impl<PubKey, DS> PeerStorage<PubKey, DS>
@@ -45,14 +53,15 @@ where
     DS: DataStore,
 {
     /// Constructs a new empty PeerStorage system
-    pub fn new() -> PeerStorage<PubKey, DS> {
-        PeerStorage {
+    pub fn new() -> Result<PeerStorage<PubKey, DS>, PeerManagerError> {
+        Ok(PeerStorage {
             datastore: None,
             peers: Vec::new(),
             node_id_hm: HashMap::new(),
             public_key_hm: HashMap::new(),
             net_address_hm: HashMap::new(),
-        }
+            rng: CommsRng::new().map_err(|_| PeerManagerError::RngError)?,
+        })
     }
 
     /// Connects and restore the PeerStorage system from a datastore
@@ -140,10 +149,20 @@ where
         Ok(self.peers.index(peer_index).clone())
     }
 
-    /// Constructs a single PeerNodeIdentity for the peer corresponding to the provided NodeId
+    /// Constructs a single NodeIdentity for the peer corresponding to the provided NodeId
     pub fn direct_identity(&self, node_id: &NodeId) -> Result<Vec<PeerNodeIdentity<PubKey>>, PeerManagerError> {
-        let public_key = self.find_with_node_id(&node_id)?.public_key;
-        Ok(vec![PeerNodeIdentity::<PubKey>::new(node_id.clone(), public_key)])
+        let peer_index = *self
+            .node_id_hm
+            .get(&node_id)
+            .ok_or(PeerManagerError::PeerNotFoundError)?;
+        if self.peers[peer_index].is_banned() {
+            Err(PeerManagerError::BannedPeer)
+        } else {
+            Ok(vec![PeerNodeIdentity::<PubKey>::new(
+                node_id.clone(),
+                self.peers[peer_index].public_key.clone(),
+            )])
+        }
     }
 
     /// Compile a list of all known node identities that can be used for the flood BroadcastStrategy
@@ -159,21 +178,68 @@ where
     }
 
     /// Compile a list of node identities that can be used for the closest BroadcastStrategy
-    pub fn closest_identities(&self, _n: u32) -> Result<Vec<PeerNodeIdentity<PubKey>>, PeerManagerError> {
-        let identities: Vec<PeerNodeIdentity<PubKey>> = Vec::new();
-
-        // TODO: Send to all n nearest neighbour Communication Nodes
-
-        Ok(identities)
+    pub fn closest_identities(
+        &self,
+        node_id: NodeId,
+        n: usize,
+    ) -> Result<Vec<PeerNodeIdentity<PubKey>>, PeerManagerError>
+    {
+        let mut indices: Vec<usize> = Vec::new();
+        let mut dists: Vec<NodeDistance> = Vec::new();
+        for i in 0..self.peers.len() {
+            if !self.peers[i].is_banned() {
+                indices.push(i);
+                dists.push(node_id.distance(&self.peers[i].node_id));
+            }
+        }
+        if n > indices.len() {
+            return Err(PeerManagerError::InsufficientPeers);
+        }
+        // Perform partial sort of elements only up to N elements
+        let mut nearest_identities: Vec<PeerNodeIdentity<PubKey>> = Vec::with_capacity(n);
+        for i in 0..n {
+            // for i in 0..indices.len()-1 {
+            for j in (i + 1)..indices.len() {
+                if dists[i] > dists[j] {
+                    dists.swap(i, j);
+                    indices.swap(i, j);
+                }
+            }
+            nearest_identities.push(PeerNodeIdentity::<PubKey>::new(
+                self.peers[indices[i]].node_id.clone(),
+                self.peers[indices[i]].public_key.clone(),
+            ));
+        }
+        Ok(nearest_identities)
     }
 
     /// Compile a list of node identities that can be used for the random BroadcastStrategy
-    pub fn random_identities(&self, _n: u32) -> Result<Vec<PeerNodeIdentity<PubKey>>, PeerManagerError> {
-        let identities: Vec<PeerNodeIdentity<PubKey>> = Vec::new();
-
-        // TODO: Send to all n nearest neighbour Communication Nodes
-
-        Ok(identities)
+    pub fn random_identities(&mut self, n: usize) -> Result<Vec<PeerNodeIdentity<PubKey>>, PeerManagerError> {
+        // TODO: Send to a random set of Communication Nodes
+        let peer_count = self.peers.len();
+        let mut indices: Vec<usize> = Vec::new();
+        for i in 0..peer_count {
+            if !self.peers[i].is_banned() {
+                indices.push(i);
+            }
+        }
+        if n > indices.len() {
+            return Err(PeerManagerError::InsufficientPeers);
+        }
+        // Shuffle first n elements
+        for i in 0..n {
+            let j = self.rng.gen_range(0, indices.len());
+            indices.swap(i, j);
+        }
+        // Compile list of first n shuffled elements
+        let mut random_identities: Vec<PeerNodeIdentity<PubKey>> = Vec::with_capacity(n);
+        for i in 0..n {
+            random_identities.push(PeerNodeIdentity::<PubKey>::new(
+                self.peers[indices[i]].node_id.clone(),
+                self.peers[indices[i]].public_key.clone(),
+            ));
+        }
+        Ok(random_identities)
     }
 
     /// Add key pairs to the search hashmaps for a newly added or moved peer
@@ -367,6 +433,7 @@ mod test {
         let mut datastore = LMDBBuilder::new().set_path(test_dir).build().unwrap();
         datastore.connect("default").unwrap();
         let mut peer_storage = PeerStorage::<RistrettoPublicKey, LMDBStore>::new()
+            .unwrap()
             .init_persistance_store(datastore)
             .unwrap();
 
@@ -582,6 +649,7 @@ mod test {
         let mut datastore = LMDBBuilder::new().set_path(test_dir).build().unwrap();
         datastore.connect("default").unwrap();
         let mut peer_storage = PeerStorage::<RistrettoPublicKey, LMDBStore>::new()
+            .unwrap()
             .init_persistance_store(datastore)
             .unwrap();
 
@@ -611,6 +679,7 @@ mod test {
         let mut datastore = LMDBBuilder::new().set_path(test_dir).build().unwrap();
         datastore.connect("default").unwrap();
         let peer_storage = PeerStorage::<RistrettoPublicKey, LMDBStore>::new()
+            .unwrap()
             .init_persistance_store(datastore)
             .unwrap();
 
