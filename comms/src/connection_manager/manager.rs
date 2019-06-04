@@ -25,7 +25,7 @@ use std::sync::Arc;
 use log::*;
 
 use crate::{
-    connection::{zmq::CurvePublicKey, Context, PeerConnection, PeerConnectionState, NetAddress},
+    connection::{zmq::CurvePublicKey, Context, NetAddress, PeerConnection, PeerConnectionState},
     peer_manager::Peer,
     types::CommsPublicKey,
 };

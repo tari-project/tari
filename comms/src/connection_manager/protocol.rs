@@ -75,14 +75,12 @@ impl<'p> PeerConnectionProtocol<'p> {
             net_addresses: net_address.into(),
         })?;
         let node_id = Arc::new(self.peer.node_id.clone());
-        connections.get_connection(&node_id).ok_or(ConnectionManagerError::PeerConnectionNotFound)
+        connections
+            .get_connection(&node_id)
+            .ok_or(ConnectionManagerError::PeerConnectionNotFound)
     }
 
-    pub fn establish_inbound(
-        &self,
-        connections: Arc<LivePeerConnections>,
-    ) -> Result<Arc<PeerConnection>>
-    {
+    pub fn establish_inbound(&self, connections: Arc<LivePeerConnections>) -> Result<Arc<PeerConnection>> {
         // Send establish connection to peer's control service
         let control_port_connection = self.establish_control_service_connection(&connections)?;
 
