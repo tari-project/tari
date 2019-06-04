@@ -118,6 +118,7 @@ where
             .find_with_net_address(net_address)
     }
 
+    /// Request a sub-set of peers based on the provided BroadcastStrategy
     pub fn get_broadcast_identities(
         &self,
         broadcast_strategy: BroadcastStrategy,

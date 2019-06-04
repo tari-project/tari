@@ -58,9 +58,13 @@ pub enum TransactionManagerError {
 /// TODO Allow for inbound transactions that are detected on the blockchain to be marked as complete.
 ///
 /// # Fields
-/// 'pending_outbound_transactions' - List of transaction protocols sent by this client and waiting response from the
-/// recipient 'pending_inbound_transactions' - List of transaction protocols that have been received and responded to.
-/// 'completed_transaction' - List of sent transactions that have been responded to and are completed.
+/// `pending_outbound_transactions` - List of transaction protocols sent by this client and waiting response from the
+/// recipient
+///
+/// `pending_inbound_transactions` - List of transaction protocols that have been received and responded to.
+///
+///
+/// `completed_transaction` - List of sent transactions that have been responded to and are completed.
 
 pub struct TransactionManager {
     pending_outbound_transactions: HashMap<u64, SenderTransactionProtocol>,

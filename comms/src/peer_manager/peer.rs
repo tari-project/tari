@@ -37,6 +37,9 @@ bitflags! {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+/// A Peer represents a communication peer that is identified by a Public Key and NodeId. The Peer struct maintains a
+/// collection of the NetAddresses that this Peer can be reached by. The struct also maintains a set of flags describing
+/// the status of the Peer.
 pub struct Peer<K> {
     pub public_key: K,
     pub node_id: NodeId,
