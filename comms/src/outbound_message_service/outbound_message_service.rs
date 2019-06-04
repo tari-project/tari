@@ -40,7 +40,7 @@ use digest::Digest;
 use rand::{CryptoRng, Rng};
 use rmp_serde;
 use serde::Serialize;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use tari_crypto::{
     keys::{DiffieHellmanSharedSecret, SecretKey},
     signatures::{SchnorrSignature, SchnorrSignatureError},
@@ -84,7 +84,7 @@ pub struct OutboundMessageService<DS> {
     context: Context,
     outbound_address: InprocAddress,
     node_identity: Arc<CommsNodeIdentity>,
-    peer_manager: RwLock<PeerManager<CommsPublicKey, DS>>,
+    peer_manager: Arc<PeerManager<CommsPublicKey, DS>>,
 }
 
 impl<DS> OutboundMessageService<DS>
@@ -95,7 +95,7 @@ where DS: DataStore
         context: Context,
         outbound_address: InprocAddress, /* The outbound_address is an inproc that connects the OutboundMessagePool
                                           * and the OutboundMessageService */
-        peer_manager: RwLock<PeerManager<CommsPublicKey, DS>>,
+        peer_manager: Arc<PeerManager<CommsPublicKey, DS>>,
     ) -> Result<OutboundMessageService<DS>, OutboundError>
     {
         let node_identity: Arc<CommsNodeIdentity> =
@@ -160,8 +160,6 @@ where DS: DataStore
         // personalised message to each selected peer
         let selected_node_identities = self
             .peer_manager
-            .read()
-            .map_err(|_| OutboundError::PoisonedAccess)?
             .get_broadcast_identities(broadcast_strategy)
             .map_err(|e| OutboundError::BroadcastStrategyError(e))?;
         for dest_node_identity in &selected_node_identities {
@@ -258,8 +256,8 @@ mod test {
             Peer::<RistrettoPublicKey>::new(pk, node_id, net_addresses, PeerFlags::default());
 
         // Setup OutboundMessageService and transmit a message to the destination
-        let peer_manager = RwLock::new(PeerManager::<CommsPublicKey, LMDBStore>::new(None).unwrap());
-        assert!(peer_manager.write().unwrap().add_peer(dest_peer.clone()).is_ok());
+        let peer_manager = Arc::new(PeerManager::<CommsPublicKey, LMDBStore>::new(None).unwrap());
+        assert!(peer_manager.add_peer(dest_peer.clone()).is_ok());
 
         let outbound_message_service = OutboundMessageService::new(context, outbound_address, peer_manager).unwrap();
 
