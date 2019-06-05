@@ -31,7 +31,7 @@ use crate::{
     },
     message::FrameSet,
 };
-use std::{cmp, iter::IntoIterator};
+use std::{cmp, convert::TryFrom, iter::IntoIterator, str::FromStr};
 
 /// Represents a low-level connection which can be bound an address
 /// supported by [`ZeroMQ`] the `ZMQ_ROUTER` socket.
@@ -236,7 +236,12 @@ impl<'a> Connection<'a> {
         }
         .map_err(|e| ConnectionError::SocketError(format!("Failed to establish socket: {}", e)))?;
 
-        Ok(EstablishedConnection { socket })
+        let connected_address = get_socket_address(&socket);
+
+        Ok(EstablishedConnection {
+            socket,
+            connected_address,
+        })
     }
 }
 
@@ -254,6 +259,8 @@ fn set_linger(socket: &zmq::Socket, linger: Linger) -> Result<()> {
 /// Represents an established connection.
 pub struct EstablishedConnection {
     socket: zmq::Socket,
+    // If the connection is a TCP connection, it will be stored here, otherwise it is None
+    connected_address: Option<SocketAddress>,
 }
 
 impl EstablishedConnection {
@@ -275,6 +282,14 @@ impl EstablishedConnection {
 
             Err(e) => Err(ConnectionError::SocketError(format!("Failed to poll: {}", e))),
         }
+    }
+
+    /// Return the actual address that we're connected to. On inbound connections, once can delegate port selection to
+    /// the OS, (e.g. "127.0.0.1:0") which means that the actual port we're connecting to isn't known until the binding
+    /// has been made. This function queries the socket for the connection info, and extracts the address & port if it
+    /// was a TCP connection, returning None otherwise
+    pub fn get_connected_address(&self) -> &Option<SocketAddress> {
+        &self.connected_address
     }
 
     /// Read entire multipart message
@@ -340,9 +355,32 @@ impl EstablishedConnection {
     }
 }
 
-impl From<zmq::Socket> for EstablishedConnection {
-    fn from(socket: zmq::Socket) -> Self {
-        Self { socket }
+/// Extract the actual address that we're connected to. On inbound connections, once can delegate port selection to
+/// the OS, (e.g. "127.0.0.1:0") which means that the actual port we're connecting to isn't known until the binding
+/// has been made. This function queries the socket for the connection info, and extracts the address & port if it
+/// was a TCP connection, returning None otherwise
+fn get_socket_address(socket: &zmq::Socket) -> Option<SocketAddress> {
+    let addr = match socket.get_last_endpoint() {
+        Ok(v) => v.unwrap(),
+        Err(_) => return None,
+    };
+    let parts = &addr.split("//").collect::<Vec<&str>>();
+    if parts.len() < 2 || parts[0] != "tcp:" {
+        return None;
+    }
+    let addr = parts[1];
+    SocketAddress::from_str(&addr).ok()
+}
+
+impl TryFrom<zmq::Socket> for EstablishedConnection {
+    type Error = ConnectionError;
+
+    fn try_from(socket: zmq::Socket) -> Result<Self> {
+        let connected_address = get_socket_address(&socket);
+        Ok(EstablishedConnection {
+            socket,
+            connected_address,
+        })
     }
 }
 

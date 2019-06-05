@@ -20,12 +20,6 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::net::{TcpListener, ToSocketAddrs};
-
-pub fn is_address_available<A: ToSocketAddrs>(addr: &A) -> bool {
-    TcpListener::bind(addr).is_ok()
-}
-
 pub mod crypto {
     use crate::types::{Challenge, CommsPublicKey, CommsSecretKey};
     use digest::Digest;

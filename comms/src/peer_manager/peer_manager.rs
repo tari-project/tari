@@ -51,6 +51,12 @@ pub enum PeerManagerError {
     EmptyDatastoreQuery,
     /// The data update could not be performed
     DataUpdateError,
+    /// The PeerManager doesn't have enough peers to fill the identity request
+    InsufficientPeers,
+    /// The peer has been banned
+    BannedPeer,
+    /// Problem initilizing the RNG
+    RngError,
 }
 
 /// The PeerManager consist of a routing table of previously discovered peers.
@@ -69,10 +75,10 @@ where
     pub fn new(datastore: Option<DS>) -> Result<PeerManager<PubKey, DS>, PeerManagerError> {
         Ok(match datastore {
             Some(datastore) => PeerManager {
-                peer_storage: RwLock::new(PeerStorage::<PubKey, DS>::new().init_persistance_store(datastore)?),
+                peer_storage: RwLock::new(PeerStorage::<PubKey, DS>::new()?.init_persistance_store(datastore)?),
             },
             None => PeerManager {
-                peer_storage: RwLock::new(PeerStorage::<PubKey, DS>::new()),
+                peer_storage: RwLock::new(PeerStorage::<PubKey, DS>::new()?),
             },
         })
     }
@@ -118,6 +124,7 @@ where
             .find_with_net_address(net_address)
     }
 
+    /// Request a sub-set of peers based on the provided BroadcastStrategy
     pub fn get_broadcast_identities(
         &self,
         broadcast_strategy: BroadcastStrategy,
@@ -138,17 +145,17 @@ where
                     .map_err(|_| PeerManagerError::PoisonedAccess)?
                     .flood_identities()
             },
-            BroadcastStrategy::Closest(n) => {
+            BroadcastStrategy::Closest(closest_request) => {
                 // Send to all n nearest neighbour Communication Nodes
                 self.peer_storage
                     .read()
                     .map_err(|_| PeerManagerError::PoisonedAccess)?
-                    .closest_identities(n)
+                    .closest_identities(closest_request.node_id, closest_request.n)
             },
             BroadcastStrategy::Random(n) => {
                 // Send to a random set of peers of size n that are Communication Nodes
                 self.peer_storage
-                    .read()
+                    .write()
                     .map_err(|_| PeerManagerError::PoisonedAccess)?
                     .random_identities(n)
             },
@@ -224,5 +231,115 @@ where
             .write()
             .map_err(|_| PeerManagerError::PoisonedAccess)?
             .mark_failed_connection_attempt(net_address)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::{
+        connection::net_address::{net_addresses::NetAddresses, NetAddress},
+        outbound_message_service::broadcast_strategy::ClosestRequest,
+        peer_manager::{
+            node_id::NodeId,
+            peer::{Peer, PeerFlags},
+        },
+        types::CommsPublicKey,
+    };
+    use rand::OsRng;
+    use tari_crypto::ristretto::RistrettoPublicKey;
+    use tari_storage::lmdb::LMDBStore;
+
+    fn create_test_peer(rng: &mut OsRng, ban_flag: bool) -> Peer<RistrettoPublicKey> {
+        let (_sk, pk) = RistrettoPublicKey::random_keypair(rng);
+        let node_id = NodeId::from_key(&pk).unwrap();
+        let net_addresses = NetAddresses::from("1.2.3.4:8000".parse::<NetAddress>().unwrap());
+        let mut peer = Peer::<RistrettoPublicKey>::new(pk, node_id, net_addresses, PeerFlags::default());
+        peer.set_banned(ban_flag);
+        peer
+    }
+
+    #[test]
+    fn test_get_broadcast_identities() {
+        // Create peer manager with random peers
+        let peer_manager = PeerManager::<CommsPublicKey, LMDBStore>::new(None).unwrap();
+        let mut test_peers: Vec<Peer<RistrettoPublicKey>> = Vec::new();
+        // Create 20 peers were the 1st and last one is bad
+        let mut rng = rand::OsRng::new().unwrap();
+        test_peers.push(create_test_peer(&mut rng, true));
+        assert!(peer_manager.add_peer(test_peers[test_peers.len() - 1].clone()).is_ok());
+        for i in 0..18 {
+            test_peers.push(create_test_peer(&mut rng, false));
+            assert!(peer_manager.add_peer(test_peers[test_peers.len() - 1].clone()).is_ok());
+        }
+        test_peers.push(create_test_peer(&mut rng, true));
+        assert!(peer_manager.add_peer(test_peers[test_peers.len() - 1].clone()).is_ok());
+
+        // Test Valid Direct
+        let identities = peer_manager
+            .get_broadcast_identities(BroadcastStrategy::Direct(test_peers[2].node_id.clone()))
+            .unwrap();
+        assert_eq!(identities.len(), 1);
+        assert_eq!(identities[0].node_id, test_peers[2].node_id);
+        assert_eq!(identities[0].public_key, test_peers[2].public_key);
+        // Test Invalid Direct
+        let unmanaged_peer = create_test_peer(&mut rng, false);
+        assert!(peer_manager
+            .get_broadcast_identities(BroadcastStrategy::Direct(unmanaged_peer.node_id.clone()))
+            .is_err());
+
+        // Test Flood
+        let identities = peer_manager.get_broadcast_identities(BroadcastStrategy::Flood).unwrap();
+        assert_eq!(identities.len(), 18);
+        for peer_identity in &identities {
+            assert_eq!(
+                peer_manager
+                    .find_with_node_id(&peer_identity.node_id)
+                    .unwrap()
+                    .is_banned(),
+                false
+            );
+        }
+
+        // Test Closest
+        let identities = peer_manager
+            .get_broadcast_identities(BroadcastStrategy::Closest(ClosestRequest {
+                n: 3,
+                node_id: unmanaged_peer.node_id.clone(),
+            }))
+            .unwrap();
+        assert_eq!(identities.len(), 3);
+        // Remove current identity nodes from test peers
+        let mut unused_peers: Vec<Peer<RistrettoPublicKey>> = Vec::new();
+        for peer in &test_peers {
+            let mut found_flag = false;
+            for peer_identity in &identities {
+                if (peer.node_id == peer_identity.node_id) || (peer.is_banned()) {
+                    found_flag = true;
+                    break;
+                }
+            }
+            if !found_flag {
+                unused_peers.push(peer.clone());
+            }
+        }
+
+        // Check that none of the remaining unused peers have smaller distances compared to the selected peers
+        for peer_identity in &identities {
+            let selected_dist = unmanaged_peer.node_id.distance(&peer_identity.node_id);
+            for unused_peer in &unused_peers {
+                let unused_dist = unmanaged_peer.node_id.distance(&unused_peer.node_id);
+                assert!(unused_dist > selected_dist);
+            }
+        }
+
+        // Test Closest
+        let identities1 = peer_manager
+            .get_broadcast_identities(BroadcastStrategy::Random(10))
+            .unwrap();
+        let identities2 = peer_manager
+            .get_broadcast_identities(BroadcastStrategy::Random(10))
+            .unwrap();
+        assert_ne!(identities1, identities2);
     }
 }

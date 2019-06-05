@@ -82,6 +82,7 @@ impl TryFrom<&[u8]> for NodeDistance {
 }
 
 #[derive(Clone, Debug, Eq, Deserialize, Serialize)]
+/// A Node Identity is used as a unique identifier for a node in the Tari communications network.
 pub struct NodeId(NodeIdArray);
 
 impl NodeId {
@@ -184,10 +185,8 @@ impl fmt::Display for NodeId {
 #[cfg(test)]
 mod test {
     use super::*;
-    use tari_crypto::{
-        keys::{PublicKey, SecretKey},
-        ristretto::{RistrettoPublicKey, RistrettoSecretKey},
-    };
+    use crate::types::{CommsPublicKey, CommsSecretKey};
+    use tari_crypto::keys::{PublicKey, SecretKey};
     use tari_utilities::byte_array::ByteArray;
 
     #[test]
@@ -211,8 +210,8 @@ mod test {
     #[test]
     fn test_from_public_key() {
         let mut rng = rand::OsRng::new().unwrap();
-        let sk = RistrettoSecretKey::random(&mut rng);
-        let pk = RistrettoPublicKey::from_secret_key(&sk);
+        let sk = CommsSecretKey::random(&mut rng);
+        let pk = CommsPublicKey::from_secret_key(&sk);
         let node_id = NodeId::from_key(&pk).unwrap();
         assert_ne!(node_id.0.to_vec(), NodeId::new().0.to_vec());
         // Ensure node id is different to original public key

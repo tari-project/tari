@@ -105,7 +105,7 @@ impl ConnectionManager {
                 self.connections.drop_connection(&peer.node_id)?;
                 self.establish_peer_connection(peer, peer_curve_pk, address)
             },
-            PeerConnectionState::Connecting | PeerConnectionState::Connected => Ok(existing_conn),
+            PeerConnectionState::Connecting | PeerConnectionState::Connected(_) => Ok(existing_conn),
         }
     }
 

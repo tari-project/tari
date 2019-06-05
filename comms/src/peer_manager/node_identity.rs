@@ -34,6 +34,12 @@ lazy_static! {
 }
 
 /// Identity of this node
+/// # Fields
+/// `identity`: The public identity fields for this node
+///
+/// `secret_key`: The secret key corresponding to the public key of this node
+///
+/// `control_service_address`: The NetAddress of the local node's Control port
 pub struct NodeIdentity<P: PublicKey> {
     pub identity: PeerNodeIdentity<P>,
     pub secret_key: P::K,
@@ -44,14 +50,14 @@ impl<P> NodeIdentity<P>
 where P: PublicKey + Hashable
 {
     #[cfg(not(test))]
-    /// Fetches the NodeIdentity
+    /// Fetches the static global NodeIdentity for this node
     pub fn global() -> Option<Arc<CommsNodeIdentity>> {
         let lock = acquire_read_lock!(GLOBAL_NODE_IDENTITY);
         lock.clone()
     }
 
     #[cfg(test)]
-    /// Fetches the test NodeIdentity
+    /// Fetches the test local NodeIdentity
     pub fn global() -> Option<Arc<CommsNodeIdentity>> {
         use tari_crypto::ristretto::{RistrettoPublicKey, RistrettoSecretKey};
         use tari_utilities::byte_array::ByteArray;
@@ -86,7 +92,8 @@ where P: PublicKey + Hashable
     }
 }
 
-/// The NodeIdentity is a container that stores the identity (NodeId, Identification Key pair) of a single node
+/// The PeerNodeIdentity is a container that stores the public identity (NodeId, Identification Public Key pair) of a
+/// single node
 #[derive(Eq, PartialEq, Debug)]
 pub struct PeerNodeIdentity<PubKey> {
     pub node_id: NodeId,

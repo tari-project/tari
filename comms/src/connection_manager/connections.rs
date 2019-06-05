@@ -41,14 +41,12 @@ use crate::{
         PeerConnectionState,
     },
     peer_manager::node_id::NodeId,
-    utils,
 };
 
 use crate::connection::InprocAddress;
 use std::{
     collections::HashMap,
     net::IpAddr,
-    ops::Range,
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
     thread::JoinHandle,
     time::Duration,
@@ -59,7 +57,6 @@ pub struct PeerConnectionConfig {
     pub max_connect_retries: u16,
     pub socks_proxy_address: Option<SocketAddress>,
     pub consumer_address: InprocAddress,
-    pub port_range: Range<u16>,
     pub host: IpAddr,
     pub establish_timeout: Duration,
 }
@@ -184,14 +181,9 @@ impl LivePeerConnections {
 
     fn establish_inbound_connection(&self, node_id: NodeId, secret_key: CurveSecretKey) -> Result<NetAddress> {
         let mut repo = acquire_write_lock!(self.repository);
-        let address = self
-            .find_open_local_net_address(&repo)
-            .ok_or(ConnectionManagerError::NoAvailablePeerConnectionPort)?;
 
-        if let Some(port) = address.maybe_port() {
-            repo.allocate_local_port(port);
-        }
-
+        // Providing port 0 tells the OS to allocate a port for us
+        let address = NetAddress::IP((self.config.host, 0).into());
         let context = self
             .new_context_builder()
             .set_id(node_id.clone())
@@ -274,27 +266,6 @@ impl LivePeerConnections {
 
         builder
     }
-
-    fn find_open_local_net_address(&self, repo: &RwLockWriteGuard<ConnectionRepository>) -> Option<NetAddress> {
-        let config = &self.config;
-        let (port_start, port_end) = (config.port_range.start, config.port_range.end);
-
-        // Save ourselves some work if there are no ports available
-        let num_available_ports = (port_end - port_start) - repo.port_allocation_count() as u16;
-        if num_available_ports == 0 {
-            return None;
-        }
-
-        for port in config.port_range.clone() {
-            if !repo.is_port_allocated(port) {
-                let address: SocketAddress = (config.host, port).into();
-                if utils::is_address_available(&address) {
-                    return Some(address.into());
-                }
-            }
-        }
-        None
-    }
 }
 
 #[cfg(test)]
@@ -308,7 +279,6 @@ mod test {
     fn make_connection_manager_config(consumer_address: InprocAddress) -> PeerConnectionConfig {
         PeerConnectionConfig {
             host: "127.0.0.1".parse().unwrap(),
-            port_range: 10000..20000,
             socks_proxy_address: None,
             consumer_address,
             max_connect_retries: 5,
@@ -333,11 +303,11 @@ mod test {
     #[test]
     fn get_active_connection_count() {
         let context = Context::new();
-        let (establisher, secret_key, _) = make_live_connections(&context);
-        assert_eq!(0, establisher.get_active_connection_count());
+        let (connections, secret_key, _) = make_live_connections(&context);
+        assert_eq!(0, connections.get_active_connection_count());
 
         let node_id = make_node_id();
-        establisher
+        connections
             .establish_connection(ConnectionDirection::Inbound {
                 node_id: node_id.clone(),
                 secret_key: secret_key.clone(),
@@ -345,20 +315,20 @@ mod test {
             .unwrap();
 
         let node_id2 = make_node_id();
-        establisher
+        connections
             .establish_connection(ConnectionDirection::Inbound {
                 node_id: node_id2.clone(),
                 secret_key: secret_key.clone(),
             })
             .unwrap();
 
-        assert_eq!(2, establisher.get_active_connection_count());
+        assert_eq!(2, connections.get_active_connection_count());
 
-        let conn = establisher.get_connection(&node_id2).unwrap();
+        let conn = connections.get_connection(&node_id2).unwrap();
         conn.shutdown().unwrap();
         conn.wait_disconnected(Duration::from_millis(2000)).unwrap();
 
-        assert_eq!(1, establisher.get_active_connection_count());
+        assert_eq!(1, connections.get_active_connection_count());
     }
 
     #[test]
@@ -375,7 +345,7 @@ mod test {
             .unwrap();
 
         match establisher.get_connection_state(&node_id).unwrap() {
-            PeerConnectionState::Connecting | PeerConnectionState::Connected => {},
+            PeerConnectionState::Connecting | PeerConnectionState::Connected(_) => {},
             _ => panic!("Invalid state"),
         }
     }

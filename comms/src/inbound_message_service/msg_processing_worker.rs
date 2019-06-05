@@ -152,7 +152,7 @@ mod test {
         inbound_message_service::comms_msg_handlers::{CommsDispatchType, InboundMessageServiceResolver},
         message::MessageEnvelope,
     };
-    use std::time;
+    use std::{convert::TryInto, time};
     use tari_crypto::{
         keys::{PublicKey, SecretKey},
         ristretto::{RistrettoPublicKey, RistrettoSecretKey},
@@ -201,7 +201,7 @@ mod test {
         // Create a dealer that will send the worker messages
         let client_socket = context.socket(SocketType::Request).unwrap();
         assert!(client_socket.bind(&inbound_address.to_zmq_endpoint()).is_ok());
-        let conn_outbound: EstablishedConnection = client_socket.into();
+        let conn_outbound: EstablishedConnection = client_socket.try_into().unwrap();
 
         let message_buffer = MessageContext::<RistrettoPublicKey> {
             message_envelope: MessageEnvelope::new(vec![1u8], vec![1u8], "handle".as_bytes().to_vec()),

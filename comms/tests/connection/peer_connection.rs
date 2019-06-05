@@ -20,8 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::support::utils::find_available_tcp_net_address;
-use std::time::Duration;
+use std::{str::FromStr, time::Duration};
 use tari_comms::connection::{
     Connection,
     ConnectionError,
@@ -30,6 +29,7 @@ use tari_comms::connection::{
     Direction,
     InprocAddress,
     Linger,
+    NetAddress,
     PeerConnection,
     PeerConnectionContextBuilder,
     PeerConnectionError,
@@ -37,7 +37,7 @@ use tari_comms::connection::{
 
 #[test]
 fn connection_in() {
-    let addr = find_available_tcp_net_address("127.0.0.1").unwrap();
+    let addr = NetAddress::from_str("127.0.0.1:9888").unwrap();
     let ctx = Context::new();
 
     let (server_sk, server_pk) = CurveEncryption::generate_keypair().unwrap();
@@ -89,7 +89,7 @@ fn connection_in() {
 
 #[test]
 fn connection_out() {
-    let addr = find_available_tcp_net_address("127.0.0.1").unwrap();
+    let addr = NetAddress::from_str("127.0.0.1:9884").unwrap();
     let ctx = Context::new();
 
     let (server_sk, server_pk) = CurveEncryption::generate_keypair().unwrap();
@@ -124,7 +124,7 @@ fn connection_out() {
 
     assert!(!conn.is_connected());
     conn.start(context).unwrap();
-    conn.wait_connected_or_failure(Duration::from_millis(1000)).unwrap();
+    conn.wait_connected_or_failure(Duration::from_millis(100)).unwrap();
 
     // Connect the message consumer
     let consumer = Connection::new(&ctx, Direction::Inbound)
@@ -144,7 +144,7 @@ fn connection_out() {
 
 #[test]
 fn connection_wait_connect_shutdown() {
-    let addr = find_available_tcp_net_address("127.0.0.1").unwrap();
+    let addr = NetAddress::from_str("127.0.0.1:10100").unwrap();
     let ctx = Context::new();
 
     let receiver = Connection::new(&ctx, Direction::Inbound).establish(&addr).unwrap();
@@ -156,7 +156,7 @@ fn connection_wait_connect_shutdown() {
         .set_direction(Direction::Outbound)
         .set_context(&ctx)
         .set_consumer_address(consumer_addr.clone())
-        .set_address(addr.clone())
+        .set_address(addr)
         .build()
         .unwrap();
 
@@ -165,10 +165,7 @@ fn connection_wait_connect_shutdown() {
     assert!(!conn.is_connected());
     conn.start(context).unwrap();
 
-    assert!(
-        conn.wait_connected_or_failure(Duration::from_millis(100)).is_ok(),
-        "Failed to connect in 100ms"
-    );
+    conn.wait_connected_or_failure(Duration::from_millis(100)).unwrap();
 
     conn.shutdown().unwrap();
 
@@ -182,7 +179,7 @@ fn connection_wait_connect_shutdown() {
 
 #[test]
 fn connection_wait_connect_failed() {
-    let addr = find_available_tcp_net_address("127.0.0.1").unwrap();
+    let addr = NetAddress::from_str("127.0.0.1:0").unwrap();
     let ctx = Context::new();
 
     let consumer_addr = InprocAddress::random();
@@ -217,7 +214,7 @@ fn connection_wait_connect_failed() {
 
 #[test]
 fn connection_pause_resume() {
-    let addr = find_available_tcp_net_address("127.0.0.1").unwrap();
+    let addr = NetAddress::from_str("127.0.0.1:9873").unwrap();
     let ctx = Context::new();
 
     let consumer_addr = InprocAddress::random();
@@ -235,7 +232,7 @@ fn connection_pause_resume() {
         .set_direction(Direction::Inbound)
         .set_context(&ctx)
         .set_consumer_address(consumer_addr.clone())
-        .set_address(addr.clone())
+        .set_address(addr)
         .build()
         .unwrap();
 
@@ -244,7 +241,7 @@ fn connection_pause_resume() {
     assert!(!conn.is_connected());
     conn.start(context).unwrap();
 
-    conn.wait_connected_or_failure(Duration::from_millis(2000)).unwrap();
+    conn.wait_connected_or_failure(Duration::from_millis(100)).unwrap();
 
     // Connect the message consumer
     let consumer = Connection::new(&ctx, Direction::Inbound)
@@ -281,7 +278,7 @@ fn connection_pause_resume() {
 
 #[test]
 fn connection_disconnect() {
-    let addr = find_available_tcp_net_address("127.0.0.1").unwrap();
+    let addr = NetAddress::from_str("127.0.0.1:0").unwrap();
     let ctx = Context::new();
 
     let consumer_addr = InprocAddress::random();
@@ -292,13 +289,14 @@ fn connection_disconnect() {
         .set_direction(Direction::Inbound)
         .set_context(&ctx)
         .set_consumer_address(consumer_addr.clone())
-        .set_address(addr.clone())
+        .set_address(addr)
         .build()
         .unwrap();
 
     let conn = PeerConnection::new();
     conn.start(context).unwrap();
     conn.wait_connected_or_failure(Duration::from_millis(1000)).unwrap();
+    let addr = NetAddress::from(conn.get_connected_address().unwrap());
 
     {
         // Connect to the inbound connection and send a message
