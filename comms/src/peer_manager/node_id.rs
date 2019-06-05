@@ -82,6 +82,7 @@ impl TryFrom<&[u8]> for NodeDistance {
 }
 
 #[derive(Clone, Debug, Eq, Deserialize, Serialize)]
+/// A Node Identity is used as a unique identifier for a node in the Tari communications network.
 pub struct NodeId(NodeIdArray);
 
 impl NodeId {
