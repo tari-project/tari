@@ -41,6 +41,7 @@ pub enum NodeIdError {
     OutOfBounds,
 }
 
+/// Hold the XOR distance calculated between two NodeId's. This is used for DHT-style routing.
 #[derive(Clone, Debug, Eq, PartialOrd, Ord)]
 pub struct NodeDistance(NodeIdArray);
 
