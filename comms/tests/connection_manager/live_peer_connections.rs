@@ -28,8 +28,13 @@ use tari_comms::{
     connection_manager::{ConnectionDirection, ConnectionManagerError},
 };
 
+fn init() {
+    let _ = simple_logger::init();
+}
+
 #[test]
 fn get_active_connection() {
+    init();
     let context = Context::new();
     let node_id = makers::make_node_id();
     let (establisher, secret_key, _) = makers::make_live_peer_connections(&context);
@@ -53,6 +58,7 @@ fn get_active_connection() {
 
 #[test]
 fn drop_connection() {
+    init();
     let context = Context::new();
     let node_id = makers::make_node_id();
     let (establisher, _secret_key, public_key) = makers::make_live_peer_connections(&context);
@@ -76,6 +82,7 @@ fn drop_connection() {
 
 #[test]
 fn shutdown_wait() {
+    init();
     let (tx, rx) = sync_channel(1);
     let handle = thread::spawn(move || -> Result<(), ConnectionManagerError> {
         let context = Context::new();

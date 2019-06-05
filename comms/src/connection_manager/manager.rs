@@ -60,6 +60,7 @@ impl ConnectionManager {
     ) -> Result<Arc<PeerConnection>>
     {
         let node_id = Arc::new(peer.node_id.clone());
+        debug!("Attempting to connect to peer [{}]", node_id);
         let maybe_conn = self.connections.get_connection(&node_id);
         match maybe_conn {
             Some(conn) => self.ensure_peer_connection(peer, conn, peer_curve_pk, net_address),
@@ -105,7 +106,18 @@ impl ConnectionManager {
                 self.connections.drop_connection(&peer.node_id)?;
                 self.establish_peer_connection(peer, peer_curve_pk, address)
             },
-            PeerConnectionState::Connecting | PeerConnectionState::Connected(_) => Ok(existing_conn),
+            PeerConnectionState::Connecting => {
+                debug!(target: LOG_TARGET, "Still connecting to {}...", peer.node_id);
+                Ok(existing_conn)
+            },
+            PeerConnectionState::Connected(Some(address)) => {
+                debug!("Connection already established to  {}.", address);
+                Ok(existing_conn)
+            },
+            PeerConnectionState::Connected(None) => {
+                debug!("Connection already established to  non-TCP socket");
+                Ok(existing_conn)
+            },
         }
     }
 
@@ -116,8 +128,8 @@ impl ConnectionManager {
         address: NetAddress,
     ) -> Result<Arc<PeerConnection>>
     {
+        debug!("Establishing new connection to {}", peer.node_id);
         let protocol = PeerConnectionProtocol::new(peer);
-
         protocol
             .establish_outbound(self.connections.clone(), peer_curve_pk, address)
             .or_else(|err| {
