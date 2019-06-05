@@ -47,7 +47,7 @@ use tari_crypto::{
 };
 use tari_storage::keyvalue_store::DataStore;
 use tari_utilities::{
-    chacha20,
+    chacha20::ChaCha20,
     message_format::{MessageFormat, MessageFormatError},
     ByteArray,
     ByteArrayError,
@@ -120,7 +120,11 @@ where DS: DataStore
             CommsPublicKey::shared_secret(&self.node_identity.secret_key, &dest_node_public_key).to_vec();
         let ecdh_shared_secret_bytes: [u8; 32] =
             ByteArray::from_bytes(&ecdh_shared_secret).map_err(|e| OutboundError::SharedSecretSerializationError(e))?;
-        Ok(chacha20::encode(message_envelope_body, &ecdh_shared_secret_bytes))
+        Ok(ChaCha20::encode_with_nonce(
+            message_envelope_body,
+            &ecdh_shared_secret_bytes,
+            &[0u8; 12],
+        ))
     }
 
     /// Generate a signature for the MessageEnvelopeHeader from the MessageEnvelopeBody
