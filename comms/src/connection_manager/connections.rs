@@ -44,6 +44,7 @@ use crate::{
 };
 
 use crate::connection::InprocAddress;
+use log::*;
 use std::{
     collections::HashMap,
     net::IpAddr,
@@ -51,6 +52,8 @@ use std::{
     thread::JoinHandle,
     time::Duration,
 };
+
+const LOG_TARGET: &'static str = "comms::connection_manager::connections";
 
 pub struct PeerConnectionConfig {
     pub max_message_size: u64,
@@ -146,6 +149,7 @@ impl LivePeerConnections {
         server_public_key: CurvePublicKey,
     ) -> Result<NetAddress>
     {
+        debug!("Establishing outbound connection to {}", node_id);
         let mut repo = acquire_write_lock!(self.repository);
         let (secret_key, public_key) = CurveEncryption::generate_keypair()?;
 
@@ -170,16 +174,17 @@ impl LivePeerConnections {
         acquire_write_lock!(self.connection_thread_handles).insert(node_id.clone(), worker_handle);
 
         let connection = Arc::new(connection);
+        debug!("Outbound connection to {} established.", node_id);
         repo.insert(node_id, PeerConnectionEntry {
             connection,
             address: address.clone(),
             direction: Direction::Outbound,
         });
-
         Ok(address)
     }
 
     fn establish_inbound_connection(&self, node_id: NodeId, secret_key: CurveSecretKey) -> Result<NetAddress> {
+        debug!("Establishing inbound connection from {}", node_id);
         let mut repo = acquire_write_lock!(self.repository);
 
         // Providing port 0 tells the OS to allocate a port for us
@@ -197,6 +202,11 @@ impl LivePeerConnections {
         acquire_write_lock!(self.connection_thread_handles).insert(node_id.clone(), worker_handle);
 
         let connection = Arc::new(connection);
+        let connected_address = connection
+            .get_connected_address()
+            .and_then(|a| Some(a.to_string()))
+            .unwrap_or("non-TCP socket".to_string());
+        debug!("Connection to {} on {}", node_id, connected_address);
         repo.insert(node_id, PeerConnectionEntry {
             connection,
             address: address.clone(),
@@ -273,8 +283,12 @@ mod test {
     use super::*;
 
     use crate::connection::{CurveEncryption, InprocAddress};
-    use std::time::Duration;
+    use std::{thread, time::Duration};
     use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
+
+    fn pause() {
+        thread::sleep(Duration::from_millis(5));
+    }
 
     fn make_connection_manager_config(consumer_address: InprocAddress) -> PeerConnectionConfig {
         PeerConnectionConfig {
@@ -313,13 +327,22 @@ mod test {
                 secret_key: secret_key.clone(),
             })
             .unwrap();
-
+        connections
+            .get_connection(&node_id)
+            .unwrap()
+            .wait_connected_or_failure(Duration::from_millis(100))
+            .unwrap();
         let node_id2 = make_node_id();
         connections
             .establish_connection(ConnectionDirection::Inbound {
                 node_id: node_id2.clone(),
                 secret_key: secret_key.clone(),
             })
+            .unwrap();
+        connections
+            .get_connection(&node_id2)
+            .unwrap()
+            .wait_connected_or_failure(Duration::from_millis(100))
             .unwrap();
 
         assert_eq!(2, connections.get_active_connection_count());
