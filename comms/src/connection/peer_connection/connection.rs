@@ -32,6 +32,8 @@ use crate::{
     message::FrameSet,
 };
 
+use crate::connection::net_address::ip::SocketAddress;
+
 use super::{
     control::{ControlMessage, ThreadControlMessenger},
     worker::Worker,
@@ -39,6 +41,11 @@ use super::{
     PeerConnectionError,
 };
 use std::thread::JoinHandle;
+
+pub struct ConnectionInfo {
+    pub(super) control_messenger: Arc<ThreadControlMessenger>,
+    pub(super) connected_address: Option<SocketAddress>,
+}
 
 /// The state of the PeerConnection
 #[derive(Clone)]
@@ -48,7 +55,7 @@ pub(super) enum PeerConnectionState {
     /// The connection thread is running, but the connection has not been accepted
     Connecting(Arc<ThreadControlMessenger>),
     /// The connection thread is running, and has been accepted.
-    Connected(Arc<ThreadControlMessenger>),
+    Connected(Arc<ConnectionInfo>),
     /// The connection has been shut down (node disconnected)
     Shutdown,
     /// The remote peer has disconnected
@@ -198,6 +205,19 @@ impl PeerConnection {
         self.send_control_message(ControlMessage::Resume)
     }
 
+    /// Return the actual address this connection is bound to. If the connection is not over a TCP socket, or the
+    /// connection state is not Connected, this function returns None
+    pub fn get_connected_address(&self) -> Option<SocketAddress> {
+        if let Ok(lock) = self.acquire_state_read_lock() {
+            match &*lock {
+                PeerConnectionState::Connected(info) => info.connected_address.clone(),
+                _ => None,
+            }
+        } else {
+            None
+        }
+    }
+
     /// Send control message to the ThreadControlMessenger.
     /// Will return an error if the connection is not in an active state.
     ///
@@ -208,7 +228,8 @@ impl PeerConnection {
         use PeerConnectionState::*;
         let lock = self.acquire_state_read_lock()?;
         match &*lock {
-            Connecting(ref thread_ctl) | Connected(ref thread_ctl) => thread_ctl.send(msg),
+            Connecting(ref thread_ctl) => thread_ctl.send(msg),
+            Connected(ref info) => info.control_messenger.send(msg),
             state => Err(PeerConnectionError::StateError(format!(
                 "Attempt to retrieve thread messenger on peer connection with state '{}'",
                 PeerConnectionSimpleState::from(state)
@@ -297,7 +318,7 @@ pub enum PeerConnectionSimpleState {
     /// The connection thread is running, but the connection has not been accepted
     Connecting,
     /// The connection thread is running, and has been accepted.
-    Connected,
+    Connected(Option<SocketAddress>),
     /// The connection has been shut down (node disconnected)
     Shutdown,
     /// The remote peer has disconnected
@@ -311,7 +332,9 @@ impl From<&PeerConnectionState> for PeerConnectionSimpleState {
         match state {
             PeerConnectionState::Initial => PeerConnectionSimpleState::Initial,
             PeerConnectionState::Connecting(_) => PeerConnectionSimpleState::Connecting,
-            PeerConnectionState::Connected(_) => PeerConnectionSimpleState::Connected,
+            PeerConnectionState::Connected(info) => {
+                PeerConnectionSimpleState::Connected(info.connected_address.clone())
+            },
             PeerConnectionState::Shutdown => PeerConnectionSimpleState::Shutdown,
             PeerConnectionState::Disconnected => PeerConnectionSimpleState::Disconnected,
             PeerConnectionState::Failed(e) => PeerConnectionSimpleState::Failed(e.clone()),
@@ -325,7 +348,8 @@ impl fmt::Display for PeerConnectionSimpleState {
         match *self {
             Initial => write!(f, "Initial"),
             Connecting => write!(f, "Connecting"),
-            Connected => write!(f, "Connected"),
+            Connected(Some(ref addr)) => write!(f, "Connected to {}", addr),
+            Connected(None) => write!(f, "Connected to non TCP socket"),
             Shutdown => write!(f, "Shutdown"),
             Disconnected => write!(f, "Disconnected"),
             Failed(ref event) => write!(f, "Failed({})", event),
@@ -348,9 +372,17 @@ mod test {
 
     #[test]
     fn state_display() {
+        let addr = "127.0.0.1:8000".parse().ok();
         assert_eq!("Initial", format!("{}", PeerConnectionSimpleState::Initial));
         assert_eq!("Connecting", format!("{}", PeerConnectionSimpleState::Connecting));
-        assert_eq!("Connected", format!("{}", PeerConnectionSimpleState::Connected));
+        assert_eq!(
+            "Connected to non TCP socket",
+            format!("{}", PeerConnectionSimpleState::Connected(None))
+        );
+        assert_eq!(
+            "Connected to 127.0.0.1:8000",
+            format!("{}", PeerConnectionSimpleState::Connected(addr))
+        );
         assert_eq!("Shutdown", format!("{}", PeerConnectionSimpleState::Shutdown));
         assert_eq!(
             format!("Failed({})", PeerConnectionError::ConnectFailed),
@@ -371,8 +403,12 @@ mod test {
     fn state_connected() {
         let (thread_ctl, _) = create_thread_ctl();
 
+        let info = ConnectionInfo {
+            control_messenger: thread_ctl,
+            connected_address: Some("127.0.0.1:1000".parse().unwrap()),
+        };
         let conn = PeerConnection {
-            state: Arc::new(RwLock::new(PeerConnectionState::Connected(thread_ctl))),
+            state: Arc::new(RwLock::new(PeerConnectionState::Connected(Arc::new(info)))),
         };
 
         assert!(conn.is_connected());
@@ -454,8 +490,12 @@ mod test {
 
     fn create_connected_peer_connection() -> (PeerConnection, Receiver<ControlMessage>) {
         let (thread_ctl, rx) = create_thread_ctl();
+        let info = ConnectionInfo {
+            control_messenger: thread_ctl,
+            connected_address: Some("127.0.0.1:1000".parse().unwrap()),
+        };
         let conn = PeerConnection {
-            state: Arc::new(RwLock::new(PeerConnectionState::Connected(thread_ctl))),
+            state: Arc::new(RwLock::new(PeerConnectionState::Connected(Arc::new(info)))),
         };
         (conn, rx)
     }

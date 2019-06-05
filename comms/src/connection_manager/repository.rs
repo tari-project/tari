@@ -67,30 +67,11 @@ impl Repository<NodeId, PeerConnectionEntry> for ConnectionRepository {
     }
 
     fn insert(&mut self, node_id: NodeId, entry: PeerConnectionEntry) {
-        if entry.direction == Direction::Inbound {
-            if let Some(port) = entry.address.maybe_port() {
-                self.allocate_local_port(port);
-            }
-        }
-
         self.entries.insert(node_id, Arc::new(entry));
     }
 
     fn remove(&mut self, node_id: &NodeId) -> Option<Arc<PeerConnectionEntry>> {
-        match self.entries.get(node_id) {
-            Some(entry) => {
-                match entry.direction {
-                    Direction::Inbound => {
-                        if let Some(port) = entry.address.maybe_port() {
-                            self.release_port(port);
-                        }
-                    },
-                    _ => {},
-                }
-                self.entries.remove(node_id)
-            },
-            None => None,
-        }
+        self.entries.remove(node_id)
     }
 }
 
@@ -104,28 +85,6 @@ impl ConnectionRepository {
         for entry in self.entries.values() {
             f(entry);
         }
-    }
-
-    pub fn allocate_local_port(&mut self, port: u16) {
-        let mut lock = acquire_write_lock!(PORT_ALLOCATIONS);
-        if !lock.contains(&port) {
-            lock.push(port);
-        }
-    }
-
-    fn release_port(&mut self, port: u16) {
-        let mut lock = acquire_write_lock!(PORT_ALLOCATIONS);
-        lock.iter().position(|p| *p == port).map(|idx| lock.remove(idx));
-    }
-
-    pub fn is_port_allocated(&self, port: u16) -> bool {
-        let lock = acquire_read_lock!(PORT_ALLOCATIONS);
-        lock.contains(&port)
-    }
-
-    pub fn port_allocation_count(&self) -> usize {
-        let lock = acquire_read_lock!(PORT_ALLOCATIONS);
-        lock.len()
     }
 }
 
@@ -179,57 +138,4 @@ mod test {
         assert!(repo.has(&node_id2));
         assert!(!repo.has(&node_id3));
     }
-
-    #[test]
-    fn port_allocated() {
-        let node_id = make_node_id();
-        let test_port = 24321;
-        let conn = make_peer_connection_entry(format!("127.0.0.1:{}", test_port).parse().unwrap(), Direction::Inbound);
-        let mut repo = ConnectionRepository::default();
-        {
-            let pa_lock = PORT_ALLOCATIONS.read().unwrap();
-            if pa_lock.contains(&test_port) {
-                panic!("{} port used for testing is already in use", test_port);
-            }
-
-            assert!(!repo.is_port_allocated(test_port));
-            assert_eq!(pa_lock.len(), repo.port_allocation_count());
-        }
-        {
-            // Create
-            repo.insert(node_id, conn.clone());
-            let pa_lock = PORT_ALLOCATIONS.read().unwrap();
-            assert!(repo.is_port_allocated(test_port));
-            assert_eq!(pa_lock.len(), repo.port_allocation_count());
-        }
-    }
-
-    // TODO: Test atomicity of the repository
-    //    #[test]
-    //    fn port_allocated_threaded() {
-    //        let node_ids = repeat_with(make_node_id).take(3).collect::<Vec<NodeId>>();
-    //
-    //        let repo = Arc::new(ConnectionRepository::new());
-    //
-    //        let mut handles = vec![];
-    //        for i in 0..3 {
-    //            let mut thread_repo = repo.clone();
-    //            handles.push(thread::spawn(move || {
-    //                let conn = make_peer_connection_entry(format!("127.0.0.1:{}", 9000 + i).parse().unwrap(),
-    //                                                      Direction::Inbound);
-    //                thread_repo.insert(node_ids[i].clone(), conn);
-    //
-    //                if i > 0 {
-    //                    thread_repo.remove(&node_ids[i - 1]);
-    //                    if thread_repo.is_port_allocated(9000 + (i - 1) as u16) {
-    //                        return Err("failed");
-    //                    }
-    //                }
-    //
-    //                Ok(())
-    //            }));
-    //        }
-    //
-    //        assert!(handles.iter().map(|h| h.join()).all(|r| r.is_ok()));
-    //    }
 }

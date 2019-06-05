@@ -20,6 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::connection::net_address::ip::SocketAddress;
 use log::*;
 use std::{
     sync::{
@@ -36,7 +37,7 @@ use crate::{
         connection::{Connection, EstablishedConnection},
         monitor::{ConnectionMonitor, SocketEvent, SocketEventType},
         peer_connection::{
-            connection::{PeerConnectionSimpleState, PeerConnectionState},
+            connection::{ConnectionInfo, PeerConnectionSimpleState, PeerConnectionState},
             control::ControlMessage,
             PeerConnectionContext,
             PeerConnectionError,
@@ -147,6 +148,7 @@ impl Worker {
         let monitor = self.connect_monitor()?;
         let peer_conn = self.establish_peer_connection()?;
         let consumer = self.establish_consumer_connection()?;
+        let addr = peer_conn.get_connected_address();
 
         loop {
             if let Some(msg) = self.receive_control_msg()? {
@@ -170,14 +172,14 @@ impl Worker {
             }
 
             if let Ok(event) = monitor.read(1) {
-                self.handle_socket_event(event)?;
+                self.handle_socket_event(event, addr)?;
             }
         }
     }
 
     /// Handles socket events from the ConnectionMonitor. Updating connection
     /// state as necessary.
-    fn handle_socket_event(&mut self, event: SocketEvent) -> Result<()> {
+    fn handle_socket_event(&mut self, event: SocketEvent, address: &Option<SocketAddress>) -> Result<()> {
         use SocketEventType::*;
 
         debug!(target: "comms::peer_connection::worker", "{:?}", event);
@@ -191,7 +193,11 @@ impl Worker {
                 let mut lock = acquire_write_lock!(self.connection_state)?;
                 match *lock {
                     PeerConnectionState::Connecting(ref thread_ctl) => {
-                        *lock = PeerConnectionState::Connected(thread_ctl.clone());
+                        let info = ConnectionInfo {
+                            control_messenger: thread_ctl.clone(),
+                            connected_address: address.clone(),
+                        };
+                        *lock = PeerConnectionState::Connected(Arc::new(info));
                     },
                     PeerConnectionState::Connected(_) => {},
                     ref s => {

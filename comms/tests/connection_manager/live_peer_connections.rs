@@ -22,8 +22,6 @@
 
 use std::{thread, time::Duration};
 
-use crate::support::utils;
-
 use std::sync::mpsc::sync_channel;
 use tari_comms::{
     connection::{Context, NetAddresses},
@@ -139,8 +137,8 @@ mod makers {
         peer_manager::NodeId,
     };
 
-    use super::utils;
-    use std::time::Duration;
+    use std::{str::FromStr, time::Duration};
+    use tari_comms::connection::NetAddress;
 
     pub(super) fn make_node_id() -> NodeId {
         let (_secret_key, public_key) = RistrettoPublicKey::random_keypair(&mut rand::OsRng::new().unwrap());
@@ -150,7 +148,6 @@ mod makers {
     pub(super) fn make_config(consumer_address: InprocAddress) -> PeerConnectionConfig {
         PeerConnectionConfig {
             host: "127.0.0.1".parse().unwrap(),
-            port_range: 10000..10050,
             socks_proxy_address: None,
             consumer_address,
             max_connect_retries: 5,
@@ -177,7 +174,7 @@ mod makers {
     }
 
     pub(super) fn make_net_addresses(count: usize) -> NetAddresses {
-        let address_maker = || utils::find_available_tcp_net_address("127.0.0.1").unwrap().into();
+        let address_maker = || NetAddress::from_str("127.0.0.1:0").unwrap().into();
         repeat_with(address_maker)
             .take(count)
             .collect::<Vec<NetAddressWithStats>>()

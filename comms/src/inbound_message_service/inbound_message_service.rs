@@ -135,7 +135,7 @@ mod test {
         message::{MessageEnvelope, MessageEnvelopeHeader, MessageFlags, NodeDestination},
     };
 
-    use std::time;
+    use std::{convert::TryInto, time};
     use tari_crypto::{
         keys::{PublicKey, SecretKey},
         ristretto::{RistrettoPublicKey, RistrettoSecretKey},
@@ -149,7 +149,7 @@ mod test {
         let msg_pool_address = InprocAddress::random();
         let client_socket = context.socket(SocketType::Request).unwrap();
         client_socket.connect(&msg_pool_address.to_zmq_endpoint()).unwrap();
-        let conn_client: EstablishedConnection = client_socket.into();
+        let conn_client: EstablishedConnection = client_socket.try_into().unwrap();
 
         // Create a common variable that the workers can change
         static mut HANDLER_RESPONSES: u64 = 0;
