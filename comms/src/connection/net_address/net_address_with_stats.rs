@@ -1,5 +1,6 @@
 use crate::connection::NetAddress;
 use chrono::prelude::*;
+use serde::{Deserialize, Serialize};
 use std::{
     cmp::{Ord, Ordering},
     time::Duration,
@@ -7,7 +8,7 @@ use std::{
 
 const MAX_LATENCY_SAMPLE_COUNT: u32 = 100;
 
-#[derive(Debug, Eq)]
+#[derive(Debug, Eq, Clone, Deserialize, Serialize)]
 pub struct NetAddressWithStats {
     pub net_address: NetAddress,
     pub last_seen: Option<DateTime<Utc>>,
@@ -57,25 +58,30 @@ impl NetAddressWithStats {
     }
 
     /// Mark that a message was received from this net address
-    pub fn message_received(&mut self) {
+    pub fn mark_message_received(&mut self) {
         self.last_seen = Some(Utc::now());
     }
 
     /// Mark that a rejected message was received from this net address
-    pub fn message_rejected(&mut self) {
+    pub fn mark_message_rejected(&mut self) {
         self.last_seen = Some(Utc::now());
         self.rejected_message_count += 1;
     }
 
     /// Mark that a successful connection was established with this net address
-    pub fn successful_connection_attempt(&mut self) {
+    pub fn mark_successful_connection_attempt(&mut self) {
         self.last_seen = Some(Utc::now());
         self.connection_attempts = 0;
     }
 
     /// Mark that a connection could not be established with this net address
-    pub fn failed_connection_attempt(&mut self) {
+    pub fn mark_failed_connection_attempt(&mut self) {
         self.connection_attempts += 1;
+    }
+
+    /// Get as a NetAddress
+    pub fn as_net_address(self) -> NetAddress {
+        self.net_address
     }
 }
 
@@ -143,7 +149,7 @@ impl PartialEq for NetAddressWithStats {
 #[cfg(test)]
 mod test {
     use crate::connection::{net_address::net_address_with_stats::NetAddressWithStats, NetAddress};
-    use std::time::Duration;
+    use std::{thread, time::Duration};
 
     #[test]
     fn test_update_latency() {
@@ -168,11 +174,11 @@ mod test {
         let net_address = "123.0.0.123:8000".parse::<NetAddress>().unwrap();
         let mut net_address_with_stats = NetAddressWithStats::from(net_address);
         assert!(net_address_with_stats.last_seen.is_none());
-        net_address_with_stats.message_received();
+        net_address_with_stats.mark_message_received();
         assert!(net_address_with_stats.last_seen.is_some());
         let last_seen = net_address_with_stats.last_seen.unwrap();
-        net_address_with_stats.message_rejected();
-        net_address_with_stats.message_rejected();
+        net_address_with_stats.mark_message_rejected();
+        net_address_with_stats.mark_message_rejected();
         assert_eq!(net_address_with_stats.rejected_message_count, 2);
         assert!(last_seen < net_address_with_stats.last_seen.unwrap());
     }
@@ -181,11 +187,11 @@ mod test {
     fn test_successful_and_failed_connection_attempts() {
         let net_address = "123.0.0.123:8000".parse::<NetAddress>().unwrap();
         let mut net_address_with_stats = NetAddressWithStats::from(net_address);
-        net_address_with_stats.failed_connection_attempt();
-        net_address_with_stats.failed_connection_attempt();
+        net_address_with_stats.mark_failed_connection_attempt();
+        net_address_with_stats.mark_failed_connection_attempt();
         assert!(net_address_with_stats.last_seen.is_none());
         assert_eq!(net_address_with_stats.connection_attempts, 2);
-        net_address_with_stats.successful_connection_attempt();
+        net_address_with_stats.mark_successful_connection_attempt();
         assert!(net_address_with_stats.last_seen.is_some());
         assert_eq!(net_address_with_stats.connection_attempts, 0);
     }
@@ -195,16 +201,19 @@ mod test {
         let net_address = "123.0.0.123:8000".parse::<NetAddress>().unwrap();
         let mut na1 = NetAddressWithStats::from(net_address.clone());
         let mut na2 = NetAddressWithStats::from(net_address);
-        na1.successful_connection_attempt();
+        thread::sleep(Duration::from_millis(1));
+        na1.mark_successful_connection_attempt();
         assert!(na1 < na2);
-        na2.successful_connection_attempt();
+        thread::sleep(Duration::from_millis(1));
+        na2.mark_successful_connection_attempt();
         assert!(na1 > na2);
-        na1.message_rejected();
+        thread::sleep(Duration::from_millis(1));
+        na1.mark_message_rejected();
         assert!(na1 < na2);
         na1.update_latency(Duration::from_millis(200));
         na2.update_latency(Duration::from_millis(100));
         assert!(na1 > na2);
-        na1.failed_connection_attempt();
+        na1.mark_failed_connection_attempt();
         assert!(na1 > na2);
     }
 }

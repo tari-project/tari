@@ -20,30 +20,32 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::connection::{
+use crate::{
+    connection::{
+        net_address::ip::SocketAddress,
+        types::{Direction, Linger, SocketType},
+        zmq::{Context, CurveEncryption, InprocAddress, ZmqEndpoint},
+        ConnectionError,
+        Result,
+        SocketEstablishment,
+    },
     message::FrameSet,
-    net_address::ip::SocketAddress,
-    types::{Direction, Linger, SocketType},
-    zmq::{Context, CurveEncryption, InprocAddress, ZmqEndpoint},
-    ConnectionError,
-    Result,
-    SocketEstablishment,
 };
-use std::{cmp, iter::IntoIterator};
+use std::{cmp, convert::TryFrom, iter::IntoIterator, str::FromStr};
 
 /// Represents a low-level connection which can be bound an address
 /// supported by [`ZeroMQ`] the `ZMQ_ROUTER` socket.
 ///
 /// ```edition2018
 /// # use tari_comms::connection::{
-/// #   zmq::{Context, InprocAddress, curve_keypair, CurveEncryption},
+/// #   zmq::{Context, InprocAddress, CurveEncryption},
 /// #   connection::Connection,
 /// #   types::{Linger, Direction},
 /// # };
 ///
 ///  let ctx  = Context::new();
 ///
-///  let (secret_key, _public_key) = curve_keypair::generate().unwrap();
+///  let (secret_key, _public_key) =CurveEncryption::generate_keypair().unwrap();
 ///
 ///  let addr = "inproc://docs-comms-inbound-connection".parse::<InprocAddress>().unwrap();
 ///
@@ -62,17 +64,17 @@ use std::{cmp, iter::IntoIterator};
 /// ```
 /// [`ZeroMQ`]: http://zeromq.org/
 pub struct Connection<'a> {
-    pub(crate) context: &'a Context,
-    pub(crate) curve_encryption: CurveEncryption,
-    pub(crate) direction: Direction,
-    pub(crate) identity: Option<String>,
-    pub(crate) linger: Linger,
-    pub(crate) max_message_size: Option<u64>,
-    pub(crate) monitor_addr: Option<InprocAddress>,
-    pub(crate) recv_hwm: Option<i32>,
-    pub(crate) send_hwm: Option<i32>,
-    pub(crate) socket_establishment: SocketEstablishment,
-    pub(crate) socks_proxy_addr: Option<SocketAddress>,
+    pub(super) context: &'a Context,
+    pub(super) curve_encryption: CurveEncryption,
+    pub(super) direction: Direction,
+    pub(super) identity: Option<String>,
+    pub(super) linger: Linger,
+    pub(super) max_message_size: Option<u64>,
+    pub(super) monitor_addr: Option<InprocAddress>,
+    pub(super) recv_hwm: Option<i32>,
+    pub(super) send_hwm: Option<i32>,
+    pub(super) socket_establishment: SocketEstablishment,
+    pub(super) socks_proxy_addr: Option<SocketAddress>,
 }
 
 impl<'a> Connection<'a> {
@@ -234,7 +236,12 @@ impl<'a> Connection<'a> {
         }
         .map_err(|e| ConnectionError::SocketError(format!("Failed to establish socket: {}", e)))?;
 
-        Ok(EstablishedConnection { socket })
+        let connected_address = get_socket_address(&socket);
+
+        Ok(EstablishedConnection {
+            socket,
+            connected_address,
+        })
     }
 }
 
@@ -251,7 +258,9 @@ fn set_linger(socket: &zmq::Socket, linger: Linger) -> Result<()> {
 
 /// Represents an established connection.
 pub struct EstablishedConnection {
-    pub socket: zmq::Socket,
+    socket: zmq::Socket,
+    // If the connection is a TCP connection, it will be stored here, otherwise it is None
+    connected_address: Option<SocketAddress>,
 }
 
 impl EstablishedConnection {
@@ -273,6 +282,14 @@ impl EstablishedConnection {
 
             Err(e) => Err(ConnectionError::SocketError(format!("Failed to poll: {}", e))),
         }
+    }
+
+    /// Return the actual address that we're connected to. On inbound connections, once can delegate port selection to
+    /// the OS, (e.g. "127.0.0.1:0") which means that the actual port we're connecting to isn't known until the binding
+    /// has been made. This function queries the socket for the connection info, and extracts the address & port if it
+    /// was a TCP connection, returning None otherwise
+    pub fn get_connected_address(&self) -> &Option<SocketAddress> {
+        &self.connected_address
     }
 
     /// Read entire multipart message
@@ -338,10 +355,39 @@ impl EstablishedConnection {
     }
 }
 
+/// Extract the actual address that we're connected to. On inbound connections, once can delegate port selection to
+/// the OS, (e.g. "127.0.0.1:0") which means that the actual port we're connecting to isn't known until the binding
+/// has been made. This function queries the socket for the connection info, and extracts the address & port if it
+/// was a TCP connection, returning None otherwise
+fn get_socket_address(socket: &zmq::Socket) -> Option<SocketAddress> {
+    let addr = match socket.get_last_endpoint() {
+        Ok(v) => v.unwrap(),
+        Err(_) => return None,
+    };
+    let parts = &addr.split("//").collect::<Vec<&str>>();
+    if parts.len() < 2 || parts[0] != "tcp:" {
+        return None;
+    }
+    let addr = parts[1];
+    SocketAddress::from_str(&addr).ok()
+}
+
+impl TryFrom<zmq::Socket> for EstablishedConnection {
+    type Error = ConnectionError;
+
+    fn try_from(socket: zmq::Socket) -> Result<Self> {
+        let connected_address = get_socket_address(&socket);
+        Ok(EstablishedConnection {
+            socket,
+            connected_address,
+        })
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::connection::zmq::{curve_keypair, InprocAddress};
+    use crate::connection::zmq::{CurveEncryption, InprocAddress};
 
     #[test]
     fn sets_socketopts() {
@@ -377,7 +423,7 @@ mod test {
 
         let addr = InprocAddress::random();
 
-        let (sk, _) = curve_keypair::generate().unwrap();
+        let (sk, _) = CurveEncryption::generate_keypair().unwrap();
         let expected_sk = sk.clone();
 
         let conn = Connection::new(&ctx, Direction::Inbound)
@@ -396,8 +442,8 @@ mod test {
 
         let addr = InprocAddress::random();
 
-        let (sk, pk) = curve_keypair::generate().unwrap();
-        let (_, spk) = curve_keypair::generate().unwrap();
+        let (sk, pk) = CurveEncryption::generate_keypair().unwrap();
+        let (_, spk) = CurveEncryption::generate_keypair().unwrap();
         let expected_sk = sk.clone();
         let expected_pk = pk.clone();
         let expected_spk = spk.clone();

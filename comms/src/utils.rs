@@ -20,39 +20,26 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    cmp,
-    net::{TcpListener, ToSocketAddrs},
-    sync::Mutex,
-};
-use tari_comms::connection::net_address::NetAddress;
-
-lazy_static! {
-    /// Shared counter of ports which have been used
-    static ref PORT_COUNTER: Mutex<u16> = Mutex::new(20000);
-}
-
-/// Search for an available port on the given host. After 100 searches give up.
-/// This function is thread-safe.
-pub fn find_available_tcp_net_address(host: &str) -> Option<NetAddress> {
-    let mut lock = match PORT_COUNTER.lock() {
-        Ok(guard) => guard,
-        Err(poisoned) => poisoned.into_inner(),
+pub mod crypto {
+    use crate::types::{Challenge, CommsPublicKey, CommsSecretKey};
+    use digest::Digest;
+    use rand::{CryptoRng, Rng};
+    use tari_crypto::{
+        keys::SecretKey,
+        signatures::{SchnorrSignature, SchnorrSignatureError},
     };
-    // Try 100
-    for _i in 0..100 {
-        let port = {
-            *lock = cmp::max((*lock + 1) % std::u16::MAX, 20000u16);
-            *lock
-        };
-        let addr = format!("{}:{}", host, port);
-        if is_port_open(&addr) {
-            return addr.parse().ok();
-        }
-    }
-    None
-}
 
-pub fn is_port_open<A: ToSocketAddrs>(addr: A) -> bool {
-    TcpListener::bind(addr).is_ok()
+    pub fn sign<R, B>(
+        rng: &mut R,
+        secret_key: CommsSecretKey,
+        body: B,
+    ) -> Result<SchnorrSignature<CommsPublicKey, CommsSecretKey>, SchnorrSignatureError>
+    where
+        R: CryptoRng + Rng,
+        B: AsRef<[u8]>,
+    {
+        let challenge = Challenge::new().chain(body).result().to_vec();
+        let nonce = CommsSecretKey::random(rng);
+        SchnorrSignature::sign(secret_key, nonce, &challenge)
+    }
 }

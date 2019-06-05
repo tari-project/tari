@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_crypto::common::Blake256;
+use tari_crypto::{common::Blake256, keys::PublicKey, ristretto::RistrettoPublicKey};
 
 /// The message protocol version for the MessageEnvelopeHeader
 pub const MESSAGE_PROTOCOL_VERSION: u8 = 0;
@@ -28,5 +28,18 @@ pub const MESSAGE_PROTOCOL_VERSION: u8 = 0;
 /// The wire protocol version for the MessageEnvelope wire format
 pub const WIRE_PROTOCOL_VERSION: u8 = 0;
 
+/// The default port that control services listen on
+pub const DEFAULT_LISTENER_ADDRESS: &str = "0.0.0.0:7899";
+
 /// Specify the digest type for the signature challenges
 pub type Challenge = Blake256;
+
+/// Public key type
+pub type CommsPublicKey = RistrettoPublicKey;
+pub type CommsSecretKey = <CommsPublicKey as PublicKey>::K;
+
+/// Message envelop header type
+pub type MessageEnvelopeHeader = crate::message::MessageEnvelopeHeader<CommsPublicKey>;
+
+/// Specify the RNG that should be used for random selection
+pub type CommsRng = rand::OsRng;

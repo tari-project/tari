@@ -27,13 +27,13 @@ pub mod net_addresses;
 pub mod onion;
 pub mod parser;
 
+use self::{i2p::I2PAddress, ip::SocketAddress, onion::OnionAddress};
+use crate::connection::zmq::ZmqEndpoint;
 use derive_error::Error;
-
+use serde::{Deserialize, Serialize};
 use std::{fmt, str::FromStr};
 
-use self::{i2p::I2PAddress, ip::SocketAddress, onion::OnionAddress};
-
-use crate::connection::zmq::ZmqEndpoint;
+pub use self::{net_address_with_stats::NetAddressWithStats, net_addresses::NetAddresses};
 
 #[derive(Debug, Error)]
 pub enum NetAddressError {
@@ -63,7 +63,7 @@ pub enum NetAddressError {
 /// assert!(address.is_ok());
 /// assert!(address.unwrap().is_tor());
 /// ```
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, Hash, Deserialize, Serialize)]
 /// Represents an address which can be used to reach a node on the network
 pub enum NetAddress {
     /// IPv4 and IPv6
@@ -94,6 +94,15 @@ impl NetAddress {
         match *self {
             NetAddress::I2P(_) => true,
             _ => false,
+        }
+    }
+
+    /// Returns the port for the NetAddress if applicable, otherwise None
+    pub fn maybe_port(&self) -> Option<u16> {
+        match self {
+            NetAddress::Onion(addr) => Some(addr.port()),
+            NetAddress::IP(addr) => Some(addr.port()),
+            NetAddress::I2P(_) => None,
         }
     }
 }

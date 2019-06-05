@@ -20,22 +20,27 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{connection::net_address::net_addresses::NetAddresses, peer_manager::node_id::NodeId};
 use bitflags::*;
 use chrono::prelude::*;
+use serde::{Deserialize, Serialize};
 use tari_crypto::keys::PublicKey;
+
+use crate::{connection::net_address::net_addresses::NetAddresses, peer_manager::node_id::NodeId};
 
 // TODO reputation metric?
 
 bitflags! {
-    #[derive(Default)]
+    #[derive(Default, Deserialize, Serialize)]
     pub struct PeerFlags: u8 {
         const BANNED = 0b00000001;
     }
 }
 
-#[derive(Debug)]
-pub struct Peer<K: PublicKey> {
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+/// A Peer represents a communication peer that is identified by a Public Key and NodeId. The Peer struct maintains a
+/// collection of the NetAddresses that this Peer can be reached by. The struct also maintains a set of flags describing
+/// the status of the Peer.
+pub struct Peer<K> {
     pub public_key: K,
     pub node_id: NodeId,
     pub addresses: NetAddresses,

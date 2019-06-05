@@ -20,11 +20,17 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::fmt;
+
 use derive_error::Error;
-use std::convert::TryFrom;
+use serde::{Deserialize, Serialize};
+use std::{
+    convert::TryFrom,
+    hash::{Hash, Hasher},
+};
 use tari_utilities::Hashable;
 
-use serde_derive::{Deserialize, Serialize};
+use tari_utilities::hex::to_hex;
 
 const NODE_ID_ARRAY_SIZE: usize = 32;
 type NodeIdArray = [u8; NODE_ID_ARRAY_SIZE];
@@ -35,6 +41,7 @@ pub enum NodeIdError {
     OutOfBounds,
 }
 
+/// Hold the XOR distance calculated between two NodeId's. This is used for DHT-style routing.
 #[derive(Clone, Debug, Eq, PartialOrd, Ord)]
 pub struct NodeDistance(NodeIdArray);
 
@@ -76,17 +83,18 @@ impl TryFrom<&[u8]> for NodeDistance {
 }
 
 #[derive(Clone, Debug, Eq, Deserialize, Serialize)]
+/// A Node Identity is used as a unique identifier for a node in the Tari communications network.
 pub struct NodeId(NodeIdArray);
 
 impl NodeId {
     /// Construct a new node id on the origin
-    pub fn new() -> NodeId {
-        NodeId([0; NODE_ID_ARRAY_SIZE])
+    pub fn new() -> Self {
+        Self([0; NODE_ID_ARRAY_SIZE])
     }
 
     /// Derive a node id from a public key: node_id=hash(public_key)
-    pub fn from_key<K: Hashable>(key: &K) -> Result<NodeId, NodeIdError> {
-        NodeId::try_from(key.hash().as_slice())
+    pub fn from_key<K: Hashable>(key: &K) -> Result<Self, NodeIdError> {
+        Self::try_from(key.hash().as_slice())
     }
 
     /// Generate a node id from a base layer registration using the block hash and public key
@@ -156,20 +164,55 @@ impl TryFrom<&[u8]> for NodeId {
     }
 }
 
+impl Hash for NodeId {
+    /// Require the implementation of the Hash trait for Hashmaps
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.0.hash(state);
+    }
+}
+
+impl AsRef<[u8]> for NodeId {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl fmt::Display for NodeId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", to_hex(&self.0))
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
-    use tari_crypto::{
-        keys::{PublicKey, SecretKey},
-        ristretto::{RistrettoPublicKey, RistrettoSecretKey},
-    };
+    use crate::types::{CommsPublicKey, CommsSecretKey};
+    use tari_crypto::keys::{PublicKey, SecretKey};
     use tari_utilities::byte_array::ByteArray;
+
+    #[test]
+    fn display() {
+        let node_id = NodeId::try_from(
+            [
+                144, 28, 106, 112, 220, 197, 216, 119, 9, 217, 42, 77, 159, 211, 53, 207, 0, 157, 5, 55, 235, 247, 160,
+                195, 240, 48, 146, 168, 119, 15, 241, 54,
+            ]
+            .as_bytes(),
+        )
+        .unwrap();
+
+        let result = format!("{}", node_id);
+        assert_eq!(
+            "901c6a70dcc5d87709d92a4d9fd335cf009d0537ebf7a0c3f03092a8770ff136",
+            result
+        );
+    }
 
     #[test]
     fn test_from_public_key() {
         let mut rng = rand::OsRng::new().unwrap();
-        let sk = RistrettoSecretKey::random(&mut rng);
-        let pk = RistrettoPublicKey::from_secret_key(&sk);
+        let sk = CommsSecretKey::random(&mut rng);
+        let pk = CommsPublicKey::from_secret_key(&sk);
         let node_id = NodeId::from_key(&pk).unwrap();
         assert_ne!(node_id.0.to_vec(), NodeId::new().0.to_vec());
         // Ensure node id is different to original public key

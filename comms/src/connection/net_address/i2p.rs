@@ -20,12 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use super::{parser::AddressParser, NetAddressError};
+use serde::{Deserialize, Serialize};
 use std::{fmt, str::FromStr};
 
-use super::{parser::AddressParser, NetAddressError};
-
 /// Represents an I2P address
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, Hash, Deserialize, Serialize)]
 pub struct I2PAddress {
     pub name: String,
 }

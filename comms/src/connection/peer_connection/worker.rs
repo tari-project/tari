@@ -20,6 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::connection::net_address::ip::SocketAddress;
+use log::*;
 use std::{
     sync::{
         mpsc::{sync_channel, Receiver, RecvTimeoutError, SyncSender},
@@ -30,38 +32,31 @@ use std::{
     time::Duration,
 };
 
-use crate::connection::{
-    connection::{Connection, EstablishedConnection},
-    message::{Frame, FrameSet},
-    monitor::{ConnectionMonitor, SocketEvent, SocketEventType},
-    peer_connection::{
-        connection::PeerConnectionState,
-        control::ControlMessage,
-        PeerConnectionContext,
-        PeerConnectionError,
+use crate::{
+    connection::{
+        connection::{Connection, EstablishedConnection},
+        monitor::{ConnectionMonitor, SocketEvent, SocketEventType},
+        peer_connection::{
+            connection::{ConnectionInfo, PeerConnectionSimpleState, PeerConnectionState},
+            control::ControlMessage,
+            PeerConnectionContext,
+            PeerConnectionError,
+        },
+        types::Direction,
+        ConnectionError,
+        InprocAddress,
+        Result,
     },
-    types::Direction,
-    ConnectionError,
-    InprocAddress,
-    Result,
+    message::{Frame, FrameSet},
 };
+use std::thread::JoinHandle;
+
+const LOG_TARGET: &'static str = "comms::connection::peer_connection::worker";
 
 /// Send HWM for peer connections
 const PEER_CONNECTION_SEND_HWM: i32 = 10;
 /// Receive HWM for peer connections
 const PEER_CONNECTION_RECV_HWM: i32 = 10;
-
-macro_rules! try_recv {
-    ($e: expr) => {
-        match $e {
-            Ok(d) => Some(d),
-            Err(e) => match e {
-                ConnectionError::Timeout => None,
-                _ => return Err(e),
-            },
-        }
-    };
-}
 
 macro_rules! acquire_write_lock {
     ($lock: expr) => {
@@ -106,10 +101,10 @@ impl Worker {
     }
 
     /// Spawn a worker thread
-    pub fn spawn(mut self) -> SyncSender<ControlMessage> {
+    pub fn spawn(mut self) -> (JoinHandle<Result<()>>, SyncSender<ControlMessage>) {
         let sender = self.sender.clone();
 
-        thread::spawn(move || -> Result<()> {
+        let handle = thread::spawn(move || -> Result<()> {
             let result = self.main_loop();
 
             // Main loop exited, let's set the shared connection state.
@@ -118,7 +113,7 @@ impl Worker {
             Ok(())
         });
 
-        sender
+        (handle, sender)
     }
 
     /// Handle the result for the worker loop and update connection state if necessary
@@ -155,19 +150,29 @@ impl Worker {
         let monitor = self.connect_monitor()?;
         let peer_conn = self.establish_peer_connection()?;
         let consumer = self.establish_consumer_connection()?;
+        let addr = peer_conn.get_connected_address();
+        if let Some(a) = addr {
+            debug!(target: LOG_TARGET, "Starting peer connection worker thread on {}", a);
+        }
 
         loop {
             if let Some(msg) = self.receive_control_msg()? {
                 match msg {
-                    ControlMessage::Shutdown => break Ok(()),
+                    ControlMessage::Shutdown => {
+                        debug!(target: LOG_TARGET, "Shutdown message received");
+                        break Ok(());
+                    },
                     ControlMessage::SendMsg(frames) => {
+                        debug!(target: LOG_TARGET, "SendMsg message received");
                         let payload = self.create_payload(frames)?;
                         peer_conn.send(payload)?;
                     },
                     ControlMessage::Pause => {
+                        debug!(target: LOG_TARGET, "Pause message received");
                         self.paused = true;
                     },
                     ControlMessage::Resume => {
+                        debug!(target: LOG_TARGET, "Resume message received");
                         self.paused = false;
                     },
                 }
@@ -178,16 +183,17 @@ impl Worker {
             }
 
             if let Ok(event) = monitor.read(1) {
-                self.handle_socket_event(event)?;
+                self.handle_socket_event(event, addr)?;
             }
         }
     }
 
     /// Handles socket events from the ConnectionMonitor. Updating connection
     /// state as necessary.
-    fn handle_socket_event(&mut self, event: SocketEvent) -> Result<()> {
+    fn handle_socket_event(&mut self, event: SocketEvent, address: &Option<SocketAddress>) -> Result<()> {
         use SocketEventType::*;
 
+        debug!(target: "comms::peer_connection::worker", "{:?}", event);
         match event.event_type {
             Disconnected => {
                 let mut lock = acquire_write_lock!(self.connection_state)?;
@@ -198,13 +204,17 @@ impl Worker {
                 let mut lock = acquire_write_lock!(self.connection_state)?;
                 match *lock {
                     PeerConnectionState::Connecting(ref thread_ctl) => {
-                        *lock = PeerConnectionState::Connected(thread_ctl.clone());
+                        let info = ConnectionInfo {
+                            control_messenger: thread_ctl.clone(),
+                            connected_address: address.clone(),
+                        };
+                        *lock = PeerConnectionState::Connected(Arc::new(info));
                     },
                     PeerConnectionState::Connected(_) => {},
                     ref s => {
                         return Err(PeerConnectionError::StateError(format!(
                             "Unable to transition to connected state from state '{}'",
-                            s
+                            PeerConnectionSimpleState::from(s)
                         ))
                         .into());
                     },
@@ -241,7 +251,7 @@ impl Worker {
     /// Forwards frames from the source to the sink
     fn forward_frames(&mut self, frontend: &EstablishedConnection, backend: &EstablishedConnection) -> Result<()> {
         let context = &self.context;
-        if let Some(frames) = try_recv!(frontend.receive(10)) {
+        if let Some(frames) = connection_try!(frontend.receive(10)) {
             match context.direction {
                 // For a ROUTER backend, the first frame is the identity
                 Direction::Inbound => match self.identity {

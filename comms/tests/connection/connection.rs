@@ -20,14 +20,17 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::support::{self, utils as support_utils};
-use std::time::Duration;
+use crate::support;
+use std::{str::FromStr, time::Duration};
 use tari_comms::connection::{
     connection::Connection,
     types::Direction,
-    zmq::{curve_keypair, Context, CurveEncryption, InprocAddress},
     ConnectionError,
+    Context,
+    CurveEncryption,
+    InprocAddress,
     Linger,
+    NetAddress,
 };
 
 #[test]
@@ -90,17 +93,19 @@ fn inbound_recv_send_inproc() {
 fn inbound_recv_send_encrypted_tcp() {
     let ctx = Context::new();
 
-    let addr = support_utils::find_available_tcp_net_address("127.0.0.1").unwrap();
+    let addr = NetAddress::from_str("127.0.0.1:0").unwrap();
 
     let req_rep_pattern = support::comms_patterns::async_request_reply(Direction::Outbound);
 
-    let (sk, pk) = curve_keypair::generate().unwrap();
+    let (sk, pk) = CurveEncryption::generate_keypair().unwrap();
 
     let conn = Connection::new(&ctx, Direction::Inbound)
         .set_linger(Linger::Indefinitely)
         .set_curve_encryption(CurveEncryption::Server { secret_key: sk })
         .establish(&addr)
         .unwrap();
+
+    let addr = NetAddress::from(conn.get_connected_address().clone().unwrap());
 
     let signal = req_rep_pattern
         .set_endpoint(addr.clone())
@@ -152,12 +157,12 @@ fn outbound_send_recv_inproc() {
 fn outbound_send_recv_encrypted_tcp() {
     let ctx = Context::new();
 
-    let addr = support_utils::find_available_tcp_net_address("127.0.0.1").unwrap();
+    let addr = NetAddress::from_str("127.0.0.1:9886").unwrap();
 
     let req_rep_pattern = support::comms_patterns::async_request_reply(Direction::Inbound);
 
-    let (sk, spk) = curve_keypair::generate().unwrap();
-    let (csk, cpk) = curve_keypair::generate().unwrap();
+    let (sk, spk) = CurveEncryption::generate_keypair().unwrap();
+    let (csk, cpk) = CurveEncryption::generate_keypair().unwrap();
 
     let signal = req_rep_pattern
         .set_endpoint(addr.clone())

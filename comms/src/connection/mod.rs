@@ -20,10 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#[macro_use]
+mod macros;
+
 pub mod connection;
 pub mod dealer_proxy;
 pub mod error;
-pub mod message;
 pub mod monitor;
 pub mod net_address;
 pub mod peer_connection;
@@ -31,12 +33,16 @@ pub mod types;
 pub mod zmq;
 
 pub use self::{
-    connection::Connection,
+    connection::{Connection, EstablishedConnection},
     dealer_proxy::{DealerProxy, DealerProxyError},
     error::ConnectionError,
-    message::MessageError,
-    net_address::{NetAddress, NetAddressError},
-    peer_connection::{PeerConnection, PeerConnectionContextBuilder, PeerConnectionError},
+    net_address::{NetAddress, NetAddressError, NetAddresses},
+    peer_connection::{
+        PeerConnection,
+        PeerConnectionContextBuilder,
+        PeerConnectionError,
+        PeerConnectionSimpleState as PeerConnectionState,
+    },
     types::*,
-    zmq::{curve_keypair, Context, CurveEncryption, InprocAddress},
+    zmq::{curve_keypair, Context, CurveEncryption, CurvePublicKey, CurveSecretKey, InprocAddress},
 };

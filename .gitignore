@@ -28,4 +28,4 @@ report
 # On development branch only. This should be removed for point releases
 Cargo.lock
 
-common/log/
+*.log

@@ -1,0 +1,148 @@
+//  Copyright 2019 The Tari Project
+//
+//  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+//  following conditions are met:
+//
+//  1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+//  disclaimer.
+//
+//  2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+//  following disclaimer in the documentation and/or other materials provided with the distribution.
+//
+//  3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+//  products derived from this software without specific prior written permission.
+//
+//  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+//  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+//  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+//  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+//  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+//  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+//  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+use log::*;
+use tari_utilities::message_format::MessageFormat;
+
+use crate::{
+    dispatcher::{DispatchError, DispatchResolver},
+    message::{
+        p2p::{Accept, EstablishConnection},
+        Message,
+        MessageEnvelope,
+        MessageFlags,
+        MessageHeader,
+        NodeDestination,
+    },
+    peer_manager::{peer_manager::PeerManagerError, CommsNodeIdentity, Peer, PeerFlags},
+};
+
+use super::{
+    error::ControlServiceError,
+    types::{ControlServiceMessageContext, ControlServiceMessageType},
+};
+use std::time::Duration;
+
+#[allow(dead_code)]
+const LOG_TARGET: &'static str = "comms::control_service::handlers";
+
+pub struct ControlServiceResolver;
+
+impl DispatchResolver<ControlServiceMessageType, ControlServiceMessageContext> for ControlServiceResolver {
+    fn resolve(&self, msg: &ControlServiceMessageContext) -> Result<ControlServiceMessageType, DispatchError> {
+        let header: MessageHeader<ControlServiceMessageType> = msg
+            .message
+            .to_header()
+            .map_err(|err| DispatchError::HandlerError(format!("{}", err)))?;
+
+        Ok(header.message_type)
+    }
+}
+
+/// Establish connection handler. This is the default handler which can be used to handle
+/// the EstablishConnection message.
+/// This handler:
+/// - Will check if the connecting peer/public key should be allowed to connect
+/// - Will open an outbound [PeerConnection] to that peer (using [ConnectionManager])
+/// - If that connection is successful, add the peer to the routing table (using [PeerManager])
+/// - Send an Accept message over the new [PeerConnection]
+#[allow(dead_code)]
+pub fn establish_connection(context: ControlServiceMessageContext) -> Result<(), ControlServiceError> {
+    let message = EstablishConnection::from_binary(context.message.body.as_slice())
+        .map_err(|e| ControlServiceError::MessageFormatError(e))?;
+
+    debug!(target: LOG_TARGET, "EstablishConnection message: {:#?}", message);
+
+    let pm = &context.peer_manager;
+    let public_key = message.public_key.clone();
+    let node_id = message.node_id.clone();
+    let mut peer = match pm.find_with_public_key(&public_key) {
+        Ok(peer) => {
+            // TODO: check that this peer is valid / can be connected to etc
+            pm.add_net_address(&node_id, &message.control_service_address)
+                .map_err(ControlServiceError::PeerManagerError)?;
+
+            peer
+        },
+        Err(err) => {
+            match err {
+                PeerManagerError::PeerNotFoundError => {
+                    let peer = Peer::new(
+                        public_key.clone(),
+                        node_id,
+                        message.control_service_address.clone().into(),
+                        PeerFlags::empty(),
+                    );
+                    // TODO: check that this peer is valid / can be connected to etc
+                    pm.add_peer(peer.clone())
+                        .map_err(ControlServiceError::PeerManagerError)?;
+                    peer
+                },
+                e => return Err(ControlServiceError::PeerManagerError(e)),
+            }
+        },
+    };
+
+    let conn_manager = &mut context.connection_manager.clone();
+    let conn = conn_manager
+        .new_connection_to_peer(&mut peer, message.server_key.clone(), message.address.clone())
+        .map_err(ControlServiceError::ConnectionManagerError)?;
+
+    conn.wait_connected_or_failure(Duration::from_millis(5000))
+        .map_err(ControlServiceError::ConnectionError)?;
+
+    let node_identity = CommsNodeIdentity::global().ok_or(ControlServiceError::NodeIdentityNotSet)?;
+
+    let header = MessageHeader {
+        message_type: ControlServiceMessageType::Accept,
+    };
+    let msg = Message::from_message_format(header, Accept {}).map_err(ControlServiceError::MessageError)?;
+
+    let envelope = MessageEnvelope::construct(
+        node_identity,
+        NodeDestination::PublicKey(public_key),
+        msg.to_binary().map_err(ControlServiceError::MessageFormatError)?,
+        MessageFlags::empty(),
+    )
+    .map_err(ControlServiceError::MessageError)?;
+
+    conn.send(envelope.into_frame_set())
+        .map_err(ControlServiceError::ConnectionError)?;
+
+    Ok(())
+}
+
+/// Discard
+pub fn discard(_: ControlServiceMessageContext) -> Result<(), ControlServiceError> {
+    debug!(target: LOG_TARGET, "Message discarded");
+
+    Ok(())
+}
+
+/// The peer has accepted the request to connect
+pub fn accept(_: ControlServiceMessageContext) -> Result<(), ControlServiceError> {
+    debug!(target: LOG_TARGET, "Peer Connection accepted");
+
+    // TODO: Validate this message and update connection protocol state accordingly once that is in place
+
+    Ok(())
+}

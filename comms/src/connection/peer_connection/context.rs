@@ -50,7 +50,7 @@ const DEFAULT_MAX_RETRY_ATTEMPTS: u16 = 10;
 /// `max_msg_size` - the maximum size of a incoming message
 /// `socks_address` - optional address for a SOCKS proxy
 ///
-/// [CurveEncryption]: ./../zmq/curve_keypair/struct.CurveEncryption.html
+/// [CurveEncryption]: ./../zmq/CurveEncryption/struct.CurveEncryption.html
 pub struct PeerConnectionContext {
     pub(crate) context: Context,
     pub(crate) peer_address: NetAddress,
@@ -145,15 +145,6 @@ pub struct PeerConnectionContextBuilder<'a> {
     pub(super) socks_address: Option<SocketAddress>,
 }
 
-macro_rules! setter {
- ($func:ident, $name: ident, $type: ty) => {
-	pub fn $func(mut self, val: $type) -> Self {
-	    self.$name = Some(val);
-	    self
-	}
-    }
-}
-
 impl<'a> PeerConnectionContextBuilder<'a> {
     setter!(set_address, address, NetAddress);
 
@@ -230,7 +221,7 @@ mod test {
     use super::*;
     use crate::connection::{
         peer_connection::PeerConnectionError,
-        zmq::{curve_keypair, Context, CurveEncryption, InprocAddress},
+        zmq::{Context, CurveEncryption, InprocAddress},
         ConnectionError,
         Direction,
         NetAddress,
@@ -281,7 +272,7 @@ mod test {
 
     #[test]
     fn invalid_build() {
-        let (sk, pk) = curve_keypair::generate().unwrap();
+        let (sk, pk) = CurveEncryption::generate_keypair().unwrap();
         let ctx = Context::new();
 
         let result = PeerConnectionContextBuilder::new()

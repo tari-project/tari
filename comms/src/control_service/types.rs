@@ -19,3 +19,44 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+
+use super::error::ControlServiceError;
+use crate::{
+    connection_manager::ConnectionManager,
+    dispatcher::Dispatcher,
+    message::Message,
+    peer_manager::PeerManager,
+    types::{CommsPublicKey, MessageEnvelopeHeader},
+};
+use tari_storage::lmdb::LMDBStore;
+
+/// Control Messgages for the control service worker
+#[derive(Debug)]
+pub enum ControlMessage {
+    Shutdown,
+}
+
+/// ControlService result type
+pub type Result<T> = std::result::Result<T, ControlServiceError>;
+
+/// The [Dispatcher] required for ControlService.
+pub type ControlServiceDispatcher<MType, R> = Dispatcher<MType, ControlServiceMessageContext, ControlServiceError, R>;
+
+/// The message required to use the default handlers.
+/// This contains the serialized message and envelope header
+pub struct ControlServiceMessageContext {
+    pub envelope_header: MessageEnvelopeHeader,
+    pub message: Message,
+    pub connection_manager: Arc<ConnectionManager>,
+    pub peer_manager: Arc<PeerManager<CommsPublicKey, LMDBStore>>,
+}
+
+/// Control service message types
+#[derive(Eq, PartialEq, Hash, Serialize, Deserialize)]
+pub enum ControlServiceMessageType {
+    EstablishConnection,
+    Accept,
+}

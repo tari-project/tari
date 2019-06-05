@@ -38,9 +38,11 @@ use serde::{
     Deserialize,
     Serialize,
 };
+use serde_derive::{Deserialize, Serialize};
 use std::{
     cmp::Ordering,
     fmt,
+    hash::{Hash, Hasher},
     ops::{Add, Mul, Sub},
 };
 use tari_utilities::{hex::Hex, ByteArray, ByteArrayError, ExtendBytes, Hashable};
@@ -295,6 +297,13 @@ impl ExtendBytes for RistrettoPublicKey {
     }
 }
 
+impl Hash for RistrettoPublicKey {
+    /// Require the implementation of the Hash trait for Hashmaps
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.to_vec().hash(state);
+    }
+}
+
 //----------------------------------    Ristretto Public Key Default   -----------------------------------------------//
 
 impl Default for RistrettoPublicKey {
@@ -449,7 +458,6 @@ mod test {
     use super::*;
     use crate::{keys::PublicKey, ristretto::test_common::get_keypair};
     use rand;
-    use std::slice;
     use tari_utilities::ByteArray;
 
     #[test]
@@ -614,8 +622,13 @@ mod test {
             let k = RistrettoSecretKey::random(&mut rng);
             ptr = (k.0).as_bytes().as_ptr();
         }
-        unsafe {
-            assert_eq!(slice::from_raw_parts(ptr, 32), zero);
+        // In release mode, the memory can already be reclaimed by this stage due to optimisations, and so this test
+        // can fail in release mode, even though the values were effectively scrubbed.
+        if cfg!(debug_assertions) {
+            unsafe {
+                use std::slice;
+                assert_eq!(slice::from_raw_parts(ptr, 32), zero);
+            }
         }
     }
 

@@ -22,15 +22,8 @@
 
 use crate::connection::{ConnectionError, Result};
 use clear_on_drop::clear::Clear;
+use serde::{Deserialize, Serialize};
 use zmq;
-
-/// Generates a Curve25519 public/private keypair
-pub fn generate() -> Result<(CurveSecretKey, CurvePublicKey)> {
-    let keypair = zmq::CurveKeyPair::new()
-        .map_err(|e| ConnectionError::CurveKeypairError(format!("Unable to generate new Curve25519 keypair: {}", e)))?;
-
-    return Ok((CurveSecretKey(keypair.secret_key), CurvePublicKey(keypair.public_key)));
-}
 
 //---------------------------------- Curve Encryption --------------------------------------------//
 
@@ -49,6 +42,17 @@ pub enum CurveEncryption {
         public_key: CurvePublicKey,
         server_public_key: CurvePublicKey,
     },
+}
+
+impl CurveEncryption {
+    /// Generates a Curve25519 public/private keypair
+    pub fn generate_keypair() -> Result<(CurveSecretKey, CurvePublicKey)> {
+        let keypair = zmq::CurveKeyPair::new().map_err(|e| {
+            ConnectionError::CurveKeypairError(format!("Unable to generate new Curve25519 keypair: {}", e))
+        })?;
+
+        return Ok((CurveSecretKey(keypair.secret_key), CurvePublicKey(keypair.public_key)));
+    }
 }
 
 impl Default for CurveEncryption {
@@ -86,7 +90,7 @@ impl Drop for CurveSecretKey {
 }
 
 //---------------------------------- Curve Public Key --------------------------------------------//
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 /// Represents a Curve25519 public key
 pub struct CurvePublicKey(pub(crate) [u8; 32]);
 
@@ -109,13 +113,15 @@ impl Default for CurvePublicKey {
 #[cfg(test)]
 mod test {
     use super::*;
-    use std::slice;
 
     #[test]
+    // Optimisations can cause this test to erroneously fail in release mode. The value is zeroed out on drop though.
+    #[cfg(debug_assertions)]
     fn clears_secret_key_on_drop() {
+        use std::slice;
         let ptr;
         {
-            let sk = generate().unwrap().0;
+            let sk = CurveEncryption::generate_keypair().unwrap().0;
             ptr = sk.0.as_ptr()
         }
 
