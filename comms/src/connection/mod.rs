@@ -33,7 +33,7 @@ pub mod types;
 pub mod zmq;
 
 pub use self::{
-    connection::Connection,
+    connection::{Connection, EstablishedConnection},
     dealer_proxy::{DealerProxy, DealerProxyError},
     error::ConnectionError,
     net_address::{NetAddress, NetAddressError, NetAddresses},

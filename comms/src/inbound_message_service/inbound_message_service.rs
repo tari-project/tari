@@ -40,7 +40,7 @@ use tari_crypto::keys::PublicKey;
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 
 /// The maximum number of processing worker threads that will be created by the InboundMessageService
-const MAX_MSG_PROCESSING_WORKERS: u8 = 8;
+const MAX_INBOUND_MSG_PROCESSING_WORKERS: u8 = 8; // TODO read this from config
 
 pub struct InboundMessageService<PubKey> {
     context: Context,
@@ -83,7 +83,7 @@ impl<PubKey: PublicKey + Send + 'static> InboundMessageService<PubKey> {
         thread::spawn(move || {
             // Start workers
             #[allow(unused_variables)]
-            for i in 0..MAX_MSG_PROCESSING_WORKERS {
+            for i in 0..MAX_INBOUND_MSG_PROCESSING_WORKERS {
                 #[allow(unused_mut)] // Allow for testing
                 let mut worker = MsgProcessingWorker::new(
                     self.context.clone(),
@@ -112,7 +112,7 @@ impl<PubKey: PublicKey + Send + 'static> InboundMessageService<PubKey> {
     #[cfg(test)]
     fn create_test_channels(&mut self) -> Vec<Receiver<String>> {
         let mut receivers = Vec::new();
-        for _ in 0..MAX_MSG_PROCESSING_WORKERS {
+        for _ in 0..MAX_INBOUND_MSG_PROCESSING_WORKERS {
             let (tx, rx) = sync_channel::<String>(0);
             self.test_sync_sender.push(tx);
             receivers.push(rx);
@@ -210,17 +210,17 @@ mod test {
             }
         }
 
-        // This array marks which worked responded. If fairly dealt each index should be set to 1
-        let mut worker_responses = [0; MAX_MSG_PROCESSING_WORKERS as usize];
+        // This array marks which workers responded. If fairly dealt each index should be set to 1
+        let mut worker_responses = [0; MAX_INBOUND_MSG_PROCESSING_WORKERS as usize];
         // Keep track of how many channels have responded
         let mut resp_count = 0;
         loop {
             // Poll all the channels
-            for i in 0..MAX_MSG_PROCESSING_WORKERS as usize {
+            for i in 0..MAX_INBOUND_MSG_PROCESSING_WORKERS as usize {
                 if let Ok(_recv) = receivers[i].try_recv() {
                     // If this worker responded multiple times then the message were not fairly dealt so bork the count
                     if worker_responses[i] > 0 {
-                        worker_responses[i] = MAX_MSG_PROCESSING_WORKERS + 1;
+                        worker_responses[i] = MAX_INBOUND_MSG_PROCESSING_WORKERS + 1;
                     } else {
                         worker_responses[i] = 1;
                     }
@@ -228,14 +228,14 @@ mod test {
                 }
             }
             // Check to see if all the workers have responded.
-            if resp_count >= MAX_MSG_PROCESSING_WORKERS {
+            if resp_count >= MAX_INBOUND_MSG_PROCESSING_WORKERS {
                 break;
             }
         }
         // Confirm that the messages were fairly dealt
         assert_eq!(
             worker_responses.iter().fold(0, |acc, x| acc + x),
-            MAX_MSG_PROCESSING_WORKERS
+            MAX_INBOUND_MSG_PROCESSING_WORKERS
         );
     }
 }
