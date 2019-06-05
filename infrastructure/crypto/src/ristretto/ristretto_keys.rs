@@ -33,8 +33,10 @@ use curve25519_dalek::{
 use digest::Digest;
 use rand::{CryptoRng, Rng};
 use serde::{
-    de::{Deserialize, Deserializer, Visitor},
-    ser::{Serialize, Serializer},
+    de::{Deserializer, Visitor},
+    ser::Serializer,
+    Deserialize,
+    Serialize,
 };
 use std::{
     cmp::Ordering,
@@ -42,8 +44,6 @@ use std::{
     ops::{Add, Mul, Sub},
 };
 use tari_utilities::{hex::Hex, ByteArray, ByteArrayError, ExtendBytes, Hashable};
-
-use serde_derive::{Deserialize, Serialize};
 
 type HashDigest = Blake2b;
 

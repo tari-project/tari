@@ -22,9 +22,10 @@
 
 use crate::types::*;
 use digest::Input;
+use serde::{Deserialize, Serialize};
 use tari_infra_derive::Hashable;
 use tari_utilities::{ExtendBytes, Hashable};
 
-#[derive(Clone, Debug, PartialEq, Hashable)]
+#[derive(Clone, Debug, PartialEq, Hashable, Serialize, Deserialize)]
 #[digest = "SignatureHash"]
 pub struct ProofOfWork {}

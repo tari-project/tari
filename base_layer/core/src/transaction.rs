@@ -59,6 +59,7 @@ pub const MAX_RANGE_PROOF_RANGE: usize = 1 << 6; // 2^64
 bitflags! {
     /// Options for a kernel's structure or use.
     /// TODO:  expand to accommodate Tari DAN transaction types, such as namespace and validator node registrations
+    #[derive(Deserialize, Serialize)]
     pub struct KernelFeatures: u8 {
         /// Coinbase transaction
         const COINBASE_KERNEL = 1u8;
@@ -193,7 +194,7 @@ impl Hashable for TransactionInput {
 /// Output for a transaction, defining the new ownership of coins that are being transferred. The commitment is a
 /// blinded value for the output while the range proof guarantees the commitment includes a positive value without
 /// overflow and the ownership of the private key.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct TransactionOutput {
     /// Options for an output's structure or use
     pub features: OutputFeatures,
@@ -271,7 +272,7 @@ impl Default for TransactionOutput {
 /// [Mimblewimble TLU post](https://tlu.tarilabs.com/protocols/mimblewimble-1/sources/PITCHME.link.html?highlight=mimblewimble#mimblewimble).
 /// The kernel also tracks other transaction metadata, such as the lock height for the transaction (i.e. the earliest
 /// this transaction can be mined) and the transaction fee, in cleartext.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct TransactionKernel {
     /// Options for a kernel's structure or use
     pub features: KernelFeatures,

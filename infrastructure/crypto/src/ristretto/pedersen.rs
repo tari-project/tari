@@ -31,6 +31,7 @@ use curve25519_dalek::{
 
 use crate::{commitment::HomomorphicCommitmentFactory, ristretto::RistrettoSecretKey};
 use curve25519_dalek::scalar::Scalar;
+use serde::{Deserialize, Serialize};
 use std::{
     borrow::Borrow,
     cmp::Ordering,
@@ -38,7 +39,7 @@ use std::{
     ops::{Add, Sub},
 };
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 #[allow(non_snake_case)]
 pub struct PedersenBaseOnRistretto255 {
     pub(crate) G: RistrettoPoint,
@@ -56,13 +57,18 @@ impl Default for PedersenBaseOnRistretto255 {
         }
     }
 }
-
+impl Default for &PedersenBaseOnRistretto255 {
+    fn default() -> Self {
+        &DEFAULT_RISTRETTO_PEDERSON_BASE
+    }
+}
 lazy_static! {
     pub static ref DEFAULT_RISTRETTO_PEDERSON_BASE: PedersenBaseOnRistretto255 = PedersenBaseOnRistretto255::default();
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct PedersenOnRistretto255 {
+    #[serde(skip)]
     base: &'static PedersenBaseOnRistretto255,
     commitment: RistrettoPublicKey,
 }

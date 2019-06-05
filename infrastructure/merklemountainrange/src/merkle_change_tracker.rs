@@ -40,7 +40,7 @@ pub(crate) struct MerkleChangeTracker {
     object_key: String,
     init_key: String,
     unsaved_checkpoints: Vec<MerkleCheckPoint>,
-    uncleaned_checkpoints: Vec<CpCleanup>,
+    uncleaned_checkpoints: Vec<CheckpointCleanup>,
 }
 
 /// This struct is used as a temporary data struct summarizing all changes in a checkpoint.
@@ -53,7 +53,7 @@ pub(crate) struct MerkleCheckPoint {
     mmr_to_add: Vec<MerkleNode>,
 }
 
-pub(crate) struct CpCleanup {
+pub(crate) struct CheckpointCleanup {
     pub objects_to_del: Vec<ObjectHash>,
     pub id: usize,
 }
@@ -79,8 +79,8 @@ impl MerkleCheckPoint {
         }
     }
 
-    pub(crate) fn create_cleanup(self, id: usize) -> CpCleanup {
-        CpCleanup {
+    pub(crate) fn create_cleanup(self, id: usize) -> CheckpointCleanup {
+        CheckpointCleanup {
             objects_to_del: self.objects_to_add,
             id,
         }
@@ -378,7 +378,7 @@ impl MerkleChangeTracker {
 
     fn cleanup_rewind<S: MerkleStorage>(
         &self,
-        checkpoint: &CpCleanup,
+        checkpoint: &CheckpointCleanup,
         store: &mut S,
     ) -> Result<(), MerkleStorageError>
     {
