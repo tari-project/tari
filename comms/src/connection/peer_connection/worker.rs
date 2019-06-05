@@ -51,6 +51,8 @@ use crate::{
 };
 use std::thread::JoinHandle;
 
+const LOG_TARGET: &'static str = "comms::connection::peer_connection::worker";
+
 /// Send HWM for peer connections
 const PEER_CONNECTION_SEND_HWM: i32 = 10;
 /// Receive HWM for peer connections
@@ -149,19 +151,28 @@ impl Worker {
         let peer_conn = self.establish_peer_connection()?;
         let consumer = self.establish_consumer_connection()?;
         let addr = peer_conn.get_connected_address();
+        if let Some(a) = addr {
+            debug!(target: LOG_TARGET, "Starting peer connection worker thread on {}", a);
+        }
 
         loop {
             if let Some(msg) = self.receive_control_msg()? {
                 match msg {
-                    ControlMessage::Shutdown => break Ok(()),
+                    ControlMessage::Shutdown => {
+                        debug!(target: LOG_TARGET, "Shutdown message received");
+                        break Ok(());
+                    },
                     ControlMessage::SendMsg(frames) => {
+                        debug!(target: LOG_TARGET, "SendMsg message received");
                         let payload = self.create_payload(frames)?;
                         peer_conn.send(payload)?;
                     },
                     ControlMessage::Pause => {
+                        debug!(target: LOG_TARGET, "Pause message received");
                         self.paused = true;
                     },
                     ControlMessage::Resume => {
+                        debug!(target: LOG_TARGET, "Resume message received");
                         self.paused = false;
                     },
                 }

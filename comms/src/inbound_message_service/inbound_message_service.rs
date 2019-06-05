@@ -33,11 +33,14 @@ use crate::{
         msg_processing_worker::*,
     },
 };
+use log::*;
 use std::{marker::Send, thread};
 use tari_crypto::keys::PublicKey;
 
 #[cfg(test)]
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
+
+const LOG_TARGET: &'static str = "comms::inbound_message_service";
 
 /// The maximum number of processing worker threads that will be created by the InboundMessageService
 const MAX_INBOUND_MSG_PROCESSING_WORKERS: u8 = 8; // TODO read this from config
@@ -82,6 +85,7 @@ impl<PubKey: PublicKey + Send + 'static> InboundMessageService<PubKey> {
     pub fn start(self) {
         thread::spawn(move || {
             // Start workers
+            debug!(target: LOG_TARGET, "Starting inbound message service workers");
             #[allow(unused_variables)]
             for i in 0..MAX_INBOUND_MSG_PROCESSING_WORKERS {
                 #[allow(unused_mut)] // Allow for testing
@@ -135,15 +139,24 @@ mod test {
         message::{MessageEnvelope, MessageEnvelopeHeader, MessageFlags, NodeDestination},
     };
 
-    use std::{convert::TryInto, time};
+    use std::{convert::TryInto, time::Duration};
     use tari_crypto::{
         keys::{PublicKey, SecretKey},
         ristretto::{RistrettoPublicKey, RistrettoSecretKey},
     };
     use tari_utilities::message_format::MessageFormat;
 
+    fn init() {
+        let _ = simple_logger::init();
+    }
+
+    fn pause() {
+        thread::sleep(Duration::from_millis(5));
+    }
+
     #[test]
     fn test_new_and_start() {
+        init();
         // Create a client that will write message into message pool
         let context = Context::new();
         let msg_pool_address = InprocAddress::random();
@@ -201,10 +214,11 @@ mod test {
 
         let message_context_buffer = message_context.into_frame_set();
 
+        pause();
         for i in 0..8 {
             conn_client.send(&message_context_buffer).unwrap();
             conn_client.receive(2000).unwrap();
-            thread::sleep(time::Duration::from_millis(1));
+            pause();
             unsafe {
                 assert_eq!(HANDLER_RESPONSES, i + 1);
             }
