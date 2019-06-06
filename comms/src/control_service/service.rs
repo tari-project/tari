@@ -39,6 +39,8 @@ use std::sync::Arc;
 
 const LOG_TARGET: &'static str = "comms::control_service::service";
 
+const LOG_TARGET: &'static str = "comms::control_service::service";
+
 /// Configuration for [ControlService]
 pub struct ControlServiceConfig {
     /// Which address to open a port
@@ -61,7 +63,7 @@ impl Default for ControlServiceConfig {
 /// When `serve` is called, a worker thread starts up which listens for
 /// connections on the configured `listener_address`.
 ///
-/// ```rust
+/// ```edition2018
 /// # use tari_comms::{connection::*, control_service::*, dispatcher::*, connection_manager::*, peer_manager::*, types::*};
 /// # use tari_comms::control_service::handlers as comms_handlers;
 /// # use std::{time::Duration, sync::Arc};

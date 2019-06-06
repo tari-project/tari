@@ -198,11 +198,7 @@ impl Worker {
                             target: LOG_TARGET,
                             "[{:?}] Setting linger to {:?} on peer connection", addr, linger
                         );
-                        // Log and ignore errors here since this is unlikely to happen or cause any issues
-                        match peer_conn.set_linger(linger) {
-                            Ok(_) => {},
-                            Err(err) => error!(target: LOG_TARGET, "Error setting linger on connection: {:?}", err),
-                        }
+                        peer_conn.set_linger(linger);
                     },
                 }
             }

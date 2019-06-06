@@ -22,7 +22,7 @@
 
 use log::*;
 
-use crate::connection::{zmq::ZmqEndpoint, Connection, Context, Direction};
+use crate::connection::{zmq::ZmqEndpoint, Connection, Context, Direction, EstablishedConnection};
 
 use std::{
     sync::{Arc, RwLock},

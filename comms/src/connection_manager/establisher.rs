@@ -484,9 +484,6 @@ mod test {
         let _ = other_peer_conn.shutdown();
         other_peer_conn.wait_disconnected(Duration::from_millis(1000)).unwrap();
 
-        //        let _ = entry.connection.shutdown();
-        //        entry.connection.wait_disconnected(Duration::from_millis(1000)).unwrap();
-
         assert_eq!(msg_counter.count(), 2);
 
         peer_conn_handle.join().unwrap().unwrap();

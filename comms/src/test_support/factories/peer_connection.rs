@@ -20,9 +20,24 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::{peer_connection_context::PeerConnectionContextFactory, Factory, FactoryError};
+use super::{peer::PeersFactory, peer_connection_context::PeerConnectionContextFactory, Factory, FactoryError};
 
-use crate::connection::{CurvePublicKey, CurveSecretKey, PeerConnection};
+use crate::{
+    connection::{
+        peer_connection::{ConnectionId, PeerConnectionContext},
+        Context,
+        CurveEncryption,
+        CurvePublicKey,
+        CurveSecretKey,
+        Direction,
+        InprocAddress,
+        PeerConnection,
+        PeerConnectionContextBuilder,
+    },
+    peer_manager::{Peer, PeerManager},
+    types::{CommsDataStore, CommsPublicKey},
+};
+use rand::{OsRng, Rng};
 
 pub fn create<'c>() -> PeerConnectionFactory<'c> {
     PeerConnectionFactory::default()
@@ -38,6 +53,11 @@ impl<'c> PeerConnectionFactory<'c> {
         self.peer_connection_context_factory = context_factory;
         self
     }
+
+    fn random_connection_id() -> ConnectionId {
+        let rng = &mut OsRng::new().unwrap();
+        (0..8).map(|_| rng.gen::<u8>()).collect()
+    }
 }
 
 impl<'c> Factory for PeerConnectionFactory<'c> {
@@ -50,7 +70,7 @@ impl<'c> Factory for PeerConnectionFactory<'c> {
             .map_err(FactoryError::build_failed())?;
 
         let conn = PeerConnection::new();
-        conn.start(peer_conn_context).map_err(FactoryError::build_failed())?;
+        conn.start(peer_conn_context).map_err(FactoryError::build_failed());
 
         Ok((conn, secret_key, public_key))
     }

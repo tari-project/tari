@@ -142,7 +142,7 @@ mod test {
 
     #[test]
     fn for_each() {
-        let (repo, _) = make_repo_with_connections(3);
+        let (mut repo, node_ids) = make_repo_with_connections(3);
 
         let mut count = 0;
         repo.for_each(|_| {
@@ -154,10 +154,10 @@ mod test {
 
     #[test]
     fn count_where() {
-        let (repo, _) = make_repo_with_connections(4);
+        let (mut repo, node_ids) = make_repo_with_connections(4);
 
         let mut count = 0;
-        let total = repo.count_where(|_| {
+        let total = repo.count_where(|entry| {
             count += 1;
             count % 2 == 0
         });

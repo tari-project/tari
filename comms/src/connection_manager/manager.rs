@@ -183,7 +183,6 @@ mod test {
         connection::{types::Linger, Context, InprocAddress, NetAddress},
         control_service::{handlers, ControlService, ControlServiceConfig, ControlServiceMessageType},
         dispatcher::Dispatcher,
-        peer_manager::CommsNodeIdentity,
         test_support::{
             factories::{self, Factory},
             helpers::ConnectionMessageCounter,
@@ -219,8 +218,6 @@ mod test {
             handlers::establish_connection,
         );
 
-        let node_identity = CommsNodeIdentity::global().unwrap();
-
         //---------------------------------- Node B Setup --------------------------------------------//
 
         let node_B_consumer_address = InprocAddress::random();
@@ -231,9 +228,6 @@ mod test {
 
         let node_B_peer = factories::peer::create()
             .with_net_addresses(vec![node_B_control_port_address.clone()])
-            // Set node B's secret key to be the same as node A's so that we can generate the same shared secret
-            // TODO: we'll need a way to generate separate node identities for two nodes
-            .with_public_key(node_identity.identity.public_key.clone())
             .build()
             .unwrap();
 
