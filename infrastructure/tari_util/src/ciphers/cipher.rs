@@ -29,6 +29,8 @@ pub enum CipherError {
     KeyLengthError,
     /// Provided Nonce is the incorrect size to be used by the Cipher
     NonceLengthError,
+    /// No data was provided for encryption/decryption
+    NoDataError,
     /// Byte Array conversion error
     ByteArrayError(ByteArrayError),
 }

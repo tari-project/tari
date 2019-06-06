@@ -146,6 +146,9 @@ where D: ByteArray
         if nonce.len() != 12 {
             return Err(CipherError::NonceLengthError);
         }
+        if plain_text.as_bytes().len() == 0 {
+            return Err(CipherError::NoDataError);
+        }
 
         let mut sized_key = [0; 32];
         sized_key.copy_from_slice(key.as_slice());
@@ -169,6 +172,9 @@ where D: ByteArray
         if nonce.len() != 12 {
             return Err(CipherError::NonceLengthError);
         }
+        if cipher_text.len() == 0 {
+            return Err(CipherError::NoDataError);
+        }
 
         let mut sized_key = [0; 32];
         sized_key.copy_from_slice(key.as_slice());
@@ -188,6 +194,9 @@ where D: ByteArray
         // Validation
         if key.len() != 32 {
             return Err(CipherError::KeyLengthError);
+        }
+        if plain_text.as_bytes().len() == 0 {
+            return Err(CipherError::NoDataError);
         }
 
         let mut sized_key = [0; 32];
@@ -216,6 +225,8 @@ where D: ByteArray
         // If the cipher text is shorter than the required nonce length then the nonce is not properly included
         if cipher_text.len() < 12 {
             return Err(CipherError::NonceLengthError);
+        } else if cipher_text.len() < 13 {
+            return Err(CipherError::NoDataError);
         }
 
         let mut sized_key = [0; 32];
