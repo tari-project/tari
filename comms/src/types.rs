@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_crypto::{common::Blake256, keys::PublicKey, ristretto::RistrettoPublicKey};
+use tari_utilities::ciphers::chacha20::ChaCha20;
 
 /// The message protocol version for the MessageEnvelopeHeader
 pub const MESSAGE_PROTOCOL_VERSION: u8 = 0;
@@ -43,3 +44,6 @@ pub type MessageEnvelopeHeader = crate::message::MessageEnvelopeHeader<CommsPubl
 
 /// Specify the RNG that should be used for random selection
 pub type CommsRng = rand::OsRng;
+
+/// Specify what cipher to use for encryption/decryption
+pub type CommsCipher = ChaCha20;
