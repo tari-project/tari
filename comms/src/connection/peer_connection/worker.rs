@@ -20,7 +20,6 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::connection::net_address::ip::SocketAddress;
 use log::*;
 use std::{
     sync::{
@@ -32,20 +31,22 @@ use std::{
     time::Duration,
 };
 
+use tari_utilities::hex::to_hex;
+
 use crate::{
     connection::{
         connection::{Connection, EstablishedConnection},
         monitor::{ConnectionMonitor, SocketEvent, SocketEventType},
+        net_address::ip::SocketAddress,
         peer_connection::{
             connection::{ConnectionInfo, PeerConnectionSimpleState, PeerConnectionState},
             control::ControlMessage,
             PeerConnectionContext,
             PeerConnectionError,
         },
-        types::Direction,
+        types::{Direction, Result},
         ConnectionError,
         InprocAddress,
-        Result,
     },
     message::{Frame, FrameSet},
 };
@@ -101,19 +102,22 @@ impl Worker {
     }
 
     /// Spawn a worker thread
-    pub fn spawn(mut self) -> (JoinHandle<Result<()>>, SyncSender<ControlMessage>) {
+    pub fn spawn(mut self) -> Result<(JoinHandle<Result<()>>, SyncSender<ControlMessage>)> {
         let sender = self.sender.clone();
 
-        let handle = thread::spawn(move || -> Result<()> {
-            let result = self.main_loop();
+        let handle = thread::Builder::new()
+            .name(format!("peer-conn-{}", to_hex(&self.context.id)))
+            .spawn(move || -> Result<()> {
+                let result = self.main_loop();
 
-            // Main loop exited, let's set the shared connection state.
-            self.handle_loop_result(result)?;
+                // Main loop exited, let's set the shared connection state.
+                self.handle_loop_result(result)?;
 
-            Ok(())
-        });
+                Ok(())
+            })
+            .map_err(|_| PeerConnectionError::ThreadInitializationError)?;
 
-        (handle, sender)
+        Ok((handle, sender))
     }
 
     /// Handle the result for the worker loop and update connection state if necessary
@@ -121,6 +125,10 @@ impl Worker {
         let mut lock = acquire_write_lock!(self.connection_state)?;
         match result {
             Ok(_) => {
+                info!(
+                    target: LOG_TARGET,
+                    "[{}] Peer connection shut down cleanly", self.context.peer_address
+                );
                 // The loop exited cleanly.
                 match *lock {
                     // The connection is still in a connected state, transition to Shutdown
@@ -133,6 +141,10 @@ impl Worker {
                 }
             },
             Err(err) => {
+                error!(
+                    target: LOG_TARGET,
+                    "[{}] Peer connection exited with an error: {:?}", self.context.peer_address, err
+                );
                 // Loop failed, update the connection state to reflect that
                 *lock = match err {
                     ConnectionError::PeerError(err) => PeerConnectionState::Failed(err),
@@ -153,27 +165,40 @@ impl Worker {
         let addr = peer_conn.get_connected_address();
         if let Some(a) = addr {
             debug!(target: LOG_TARGET, "Starting peer connection worker thread on {}", a);
+            self.context.peer_address = a.clone().into();
         }
 
         loop {
             if let Some(msg) = self.receive_control_msg()? {
                 match msg {
                     ControlMessage::Shutdown => {
-                        debug!(target: LOG_TARGET, "Shutdown message received");
+                        debug!(target: LOG_TARGET, "[{:?}] Shutdown message received", addr);
                         break Ok(());
                     },
                     ControlMessage::SendMsg(frames) => {
-                        debug!(target: LOG_TARGET, "SendMsg message received");
+                        debug!(
+                            target: LOG_TARGET,
+                            "[{:?}] SendMsg message received ({} frames)",
+                            addr,
+                            frames.len()
+                        );
                         let payload = self.create_payload(frames)?;
                         peer_conn.send(payload)?;
                     },
                     ControlMessage::Pause => {
-                        debug!(target: LOG_TARGET, "Pause message received");
+                        debug!(target: LOG_TARGET, "[{:?}] Pause message received", addr);
                         self.paused = true;
                     },
                     ControlMessage::Resume => {
-                        debug!(target: LOG_TARGET, "Resume message received");
+                        debug!(target: LOG_TARGET, "[{:?}] Resume message received", addr);
                         self.paused = false;
+                    },
+                    ControlMessage::SetLinger(linger) => {
+                        debug!(
+                            target: LOG_TARGET,
+                            "[{:?}] Setting linger to {:?} on peer connection", addr, linger
+                        );
+                        peer_conn.set_linger(linger);
                     },
                 }
             }
@@ -230,7 +255,7 @@ impl Worker {
                     PeerConnectionState::Connecting(_) => {
                         self.retry_count += 1;
                         if self.retry_count >= self.context.max_retry_attempts {
-                            *lock = PeerConnectionState::Failed(PeerConnectionError::ConnectFailed);
+                            *lock = PeerConnectionState::Failed(PeerConnectionError::ExceededMaxConnectRetryCount);
                         }
                     },
                     _ => {},
@@ -321,6 +346,7 @@ impl Worker {
     fn establish_peer_connection(&self) -> Result<EstablishedConnection> {
         let context = &self.context;
         Connection::new(&context.context, context.direction.clone())
+            .set_linger(context.linger.clone())
             .set_monitor_addr(self.monitor_addr.clone())
             .set_curve_encryption(context.curve_encryption.clone())
             .set_receive_hwm(PEER_CONNECTION_RECV_HWM)

@@ -20,29 +20,58 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#[macro_use]
-mod macros;
+use super::{peer::PeersFactory, peer_connection_context::PeerConnectionContextFactory, Factory, FactoryError};
 
-pub mod connection;
-pub mod dealer_proxy;
-pub mod error;
-pub mod monitor;
-pub mod net_address;
-pub mod peer_connection;
-pub mod types;
-pub mod zmq;
-
-pub use self::{
-    connection::{Connection, EstablishedConnection},
-    dealer_proxy::{DealerProxy, DealerProxyError},
-    error::ConnectionError,
-    net_address::{NetAddress, NetAddressError, NetAddresses},
-    peer_connection::{
+use crate::{
+    connection::{
+        peer_connection::{ConnectionId, PeerConnectionContext},
+        Context,
+        CurveEncryption,
+        CurvePublicKey,
+        CurveSecretKey,
+        Direction,
+        InprocAddress,
         PeerConnection,
         PeerConnectionContextBuilder,
-        PeerConnectionError,
-        PeerConnectionSimpleState as PeerConnectionState,
     },
-    types::{Direction, SocketEstablishment},
-    zmq::{curve_keypair, Context, CurveEncryption, CurvePublicKey, CurveSecretKey, InprocAddress},
+    peer_manager::{Peer, PeerManager},
+    types::{CommsDataStore, CommsPublicKey},
 };
+use rand::{OsRng, Rng};
+
+pub fn create<'c>() -> PeerConnectionFactory<'c> {
+    PeerConnectionFactory::default()
+}
+
+#[derive(Default)]
+pub struct PeerConnectionFactory<'c> {
+    peer_connection_context_factory: PeerConnectionContextFactory<'c>,
+}
+
+impl<'c> PeerConnectionFactory<'c> {
+    pub fn with_peer_connection_context_factory(mut self, context_factory: PeerConnectionContextFactory<'c>) -> Self {
+        self.peer_connection_context_factory = context_factory;
+        self
+    }
+
+    fn random_connection_id() -> ConnectionId {
+        let rng = &mut OsRng::new().unwrap();
+        (0..8).map(|_| rng.gen::<u8>()).collect()
+    }
+}
+
+impl<'c> Factory for PeerConnectionFactory<'c> {
+    type Object = (PeerConnection, CurveSecretKey, CurvePublicKey);
+
+    fn build(self) -> Result<Self::Object, FactoryError> {
+        let (peer_conn_context, secret_key, public_key) = self
+            .peer_connection_context_factory
+            .build()
+            .map_err(FactoryError::build_failed())?;
+
+        let conn = PeerConnection::new();
+        conn.start(peer_conn_context).map_err(FactoryError::build_failed());
+
+        Ok((conn, secret_key, public_key))
+    }
+}

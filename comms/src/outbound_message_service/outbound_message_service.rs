@@ -219,27 +219,26 @@ mod test {
 
         // Setup OutboundMessageService and transmit a message to the destination
         let peer_manager = Arc::new(PeerManager::<CommsPublicKey, LMDBStore>::new(None).unwrap());
-        assert!(peer_manager.add_peer(dest_peer.clone()).is_ok());
+        peer_manager.add_peer(dest_peer.clone()).unwrap();
 
         let outbound_message_service = OutboundMessageService::new(context, outbound_address, peer_manager).unwrap();
 
         let message_envelope_body: Vec<u8> = vec![0, 1, 2, 3];
-        assert!(outbound_message_service
+        outbound_message_service
             .send(
                 BroadcastStrategy::Direct(dest_peer.node_id.clone()),
                 MessageFlags::ENCRYPTED,
                 &message_envelope_body,
                 &mut rng,
             )
-            .is_ok());
+            .unwrap();
 
         let msg_bytes: FrameSet = message_queue_connection.receive(100).unwrap().drain(1..).collect();
         let outbound_message = OutboundMessage::<MessageEnvelope>::try_from(msg_bytes).unwrap();
         assert_eq!(outbound_message.destination_node_id, dest_peer.node_id);
         assert_eq!(outbound_message.number_of_retries(), 0);
         assert_eq!(outbound_message.last_retry_timestamp(), None);
-        let message_envelope_header: MessageEnvelopeHeader<RistrettoPublicKey> =
-            outbound_message.message_envelope.to_header().unwrap();
+        let message_envelope_header = outbound_message.message_envelope.to_header().unwrap();
         assert_eq!(message_envelope_header.source, node_identity.identity.public_key);
         assert_eq!(
             message_envelope_header.dest,

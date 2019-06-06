@@ -20,11 +20,18 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use log::*;
+
 use std::{convert::From, fmt, sync::mpsc::SyncSender};
 
-use crate::{connection::Result, message::FrameSet};
+use crate::{
+    connection::types::{Linger, Result},
+    message::FrameSet,
+};
 
 use super::PeerConnectionError;
+
+const LOG_TARGET: &'static str = "comms::connections::peer_connection::control";
 
 /// Control messages which are sent by PeerConnection to the underlying thread.
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -37,6 +44,8 @@ pub enum ControlMessage {
     Pause,
     /// Resume receiving messages from peer
     Resume,
+    /// Sets the linger on the peer connection
+    SetLinger(Linger),
 }
 
 impl fmt::Display for ControlMessage {
@@ -74,6 +83,7 @@ impl From<SyncSender<ControlMessage>> for ThreadControlMessenger {
 impl Drop for ThreadControlMessenger {
     /// Send a ControlMessage::Shutdown on drop.
     fn drop(&mut self) {
+        debug!(target: LOG_TARGET, "ThreadControlMessager dropped");
         // We assume here that the thread responds to the shutdown request.
         let _ = self.0.try_send(ControlMessage::Shutdown);
     }

@@ -20,5 +20,14 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod comms_patterns;
-pub mod node_identity;
+use rand::OsRng;
+use tari_crypto::{
+    keys::PublicKey,
+    ristretto::{RistrettoPublicKey, RistrettoSecretKey},
+};
+
+/// Creates a random keypair using OsRng
+#[inline]
+pub fn make_random_keypair() -> (RistrettoSecretKey, RistrettoPublicKey) {
+    RistrettoPublicKey::random_keypair(&mut OsRng::new().unwrap())
+}

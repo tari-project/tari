@@ -24,7 +24,11 @@ use std::sync::{Arc, RwLock};
 
 use crate::{connection::NetAddress, peer_manager::node_id::NodeId, types::CommsPublicKey};
 
-use tari_crypto::keys::PublicKey;
+use rand::OsRng;
+use tari_crypto::{
+    keys::{PublicKey, SecretKey},
+    ristretto::{RistrettoPublicKey, RistrettoSecretKey},
+};
 use tari_utilities::Hashable;
 
 pub type CommsNodeIdentity = NodeIdentity<CommsPublicKey>;
@@ -69,26 +73,27 @@ where P: PublicKey + Hashable
             }
         }
 
+        let mut lock = acquire_write_lock!(GLOBAL_NODE_IDENTITY);
         // Generate a test identity, set it and return it
-        let secret_key = RistrettoSecretKey::from_bytes(&[
-            1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        ])
-        .unwrap();
+        let secret_key = RistrettoSecretKey::random(&mut OsRng::new().unwrap());
         let public_key = RistrettoPublicKey::from_secret_key(&secret_key);
         let node_id = NodeId::from_key(&public_key).unwrap();
-        Self::set_global(CommsNodeIdentity {
+        let node_identity = CommsNodeIdentity {
             identity: PeerNodeIdentity::new(node_id, public_key),
             secret_key,
             control_service_address: "127.0.0.1:9090".parse::<NetAddress>().unwrap(),
-        });
-        let lock = acquire_read_lock!(GLOBAL_NODE_IDENTITY);
-        lock.clone()
+        };
+        let new_identity = Some(Arc::new(node_identity));
+        *lock = new_identity.clone();
+        new_identity
     }
 
     /// Sets the global node identity.
-    pub fn set_global(node_identity: CommsNodeIdentity) {
+    pub fn set_global(node_identity: CommsNodeIdentity) -> Arc<CommsNodeIdentity> {
         let mut lock = acquire_write_lock!(GLOBAL_NODE_IDENTITY);
-        *lock = Some(Arc::new(node_identity));
+        let new_identity = Arc::new(node_identity);
+        *lock = Some(new_identity.clone());
+        new_identity
     }
 }
 

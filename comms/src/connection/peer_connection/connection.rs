@@ -28,11 +28,13 @@ use std::{
 };
 
 use crate::{
-    connection::{ConnectionError, Result},
+    connection::{
+        net_address::ip::SocketAddress,
+        types::{Linger, Result},
+        ConnectionError,
+    },
     message::FrameSet,
 };
-
-use crate::connection::net_address::ip::SocketAddress;
 
 use super::{
     control::{ControlMessage, ThreadControlMessenger},
@@ -169,7 +171,7 @@ impl PeerConnection {
     pub fn start(&self, context: PeerConnectionContext) -> Result<JoinHandle<Result<()>>> {
         let mut lock = self.acquire_state_write_lock()?;
         let worker = Worker::new(context, self.state.clone());
-        let (handle, sender) = worker.spawn();
+        let (handle, sender) = worker.spawn()?;
         *lock = PeerConnectionState::Connecting(Arc::new(sender.into()));
         Ok(handle)
     }
@@ -189,6 +191,15 @@ impl PeerConnection {
     /// `frames` - The frames to send
     pub fn send(&self, frames: FrameSet) -> Result<()> {
         self.send_control_message(ControlMessage::SendMsg(frames))
+    }
+
+    /// Set the linger for the connection
+    ///
+    /// # Arguments
+    ///
+    /// `linger` - The Linger to set
+    pub fn set_linger(&self, linger: Linger) -> Result<()> {
+        self.send_control_message(ControlMessage::SetLinger(linger))
     }
 
     /// Temporarily suspend messages from being processed and forwarded to the consumer.

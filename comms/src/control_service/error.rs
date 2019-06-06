@@ -28,7 +28,7 @@ use crate::{
     peer_manager::{node_id::NodeIdError, peer_manager::PeerManagerError},
 };
 use derive_error::Error;
-use tari_utilities::message_format::MessageFormatError;
+use tari_utilities::{ciphers::cipher::CipherError, message_format::MessageFormatError};
 
 #[derive(Debug, Error)]
 pub enum ControlServiceError {
@@ -48,4 +48,11 @@ pub enum ControlServiceError {
     /// Node identity has not been set
     NodeIdentityNotSet,
     ConnectionManagerError(ConnectionManagerError),
+    /// The worker thread failed to start
+    WorkerThreadFailedToStart,
+    /// Failed to serialize shared secret
+    SharedSecretSerializationError,
+    /// Received an unencrypted message. Discarding it.
+    ReceivedUnencryptedMessage,
+    CipherError(CipherError),
 }

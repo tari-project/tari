@@ -20,5 +20,28 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod comms_patterns;
-pub mod node_identity;
+use tari_comms::{
+    connection::{Connection, Context, CurveEncryption, Direction, InprocAddress, NetAddress},
+    connection_manager::{ConnectionManager, ConnectionManagerError, PeerConnectionConfig},
+    peer_manager::PeerFlags,
+    test_support::{
+        factories::{self, Factory},
+        helpers::ConnectionMessageCounter,
+    },
+};
+
+use tari_storage::lmdb::LMDBStore;
+
+use std::{sync::Arc, time::Duration};
+
+fn make_peer_connection_config(context: &Context, consumer_address: InprocAddress) -> PeerConnectionConfig {
+    PeerConnectionConfig {
+        context: context.clone(),
+        establish_timeout: Duration::from_millis(2000),
+        max_message_size: 1024,
+        host: "127.0.0.1".parse().unwrap(),
+        max_connect_retries: 3,
+        consumer_address,
+        socks_proxy_address: None,
+    }
+}

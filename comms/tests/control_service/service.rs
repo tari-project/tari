@@ -22,6 +22,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::support::node_identity::set_test_node_identity;
 use std::{
     str::FromStr,
     sync::{Arc, RwLock},
@@ -29,7 +30,14 @@ use std::{
     time::Duration,
 };
 use tari_comms::{
-    connection::{Connection, Context, CurveEncryption, Direction, InprocAddress, Linger, NetAddress},
+    connection::{
+        types::{Direction, Linger},
+        Connection,
+        Context,
+        CurveEncryption,
+        InprocAddress,
+        NetAddress,
+    },
     connection_manager::{ConnectionManager, PeerConnectionConfig},
     control_service::{ControlService, ControlServiceConfig, ControlServiceError, ControlServiceMessageContext},
     dispatcher::{DispatchError, DispatchResolver, Dispatcher},
@@ -37,17 +45,21 @@ use tari_comms::{
         p2p::EstablishConnection,
         Message,
         MessageEnvelope,
+        MessageEnvelopeHeader,
         MessageError,
         MessageFlags,
         MessageHeader,
         NodeDestination,
     },
-    peer_manager::{NodeId, PeerManager},
-    types::{CommsPublicKey, MessageEnvelopeHeader},
+    peer_manager::{CommsNodeIdentity, NodeId, PeerManager, PeerNodeIdentity},
+    types::CommsPublicKey,
 };
-use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
+use tari_crypto::{
+    keys::PublicKey,
+    ristretto::{RistrettoPublicKey, RistrettoSecretKey},
+};
 use tari_storage::lmdb::LMDBStore;
-use tari_utilities::message_format::MessageFormat;
+use tari_utilities::{byte_array::ByteArray, message_format::MessageFormat};
 
 #[derive(Eq, PartialEq, Hash, Serialize, Deserialize)]
 enum MessageType {
@@ -97,7 +109,7 @@ fn construct_envelope<T: MessageFormat>(
     let envelope_header = MessageEnvelopeHeader {
         source: pk,
         dest: NodeDestination::Unknown,
-        flags: MessageFlags::empty(),
+        flags: MessageFlags::ENCRYPTED,
         signature: vec![0],
         version: 0,
     };
@@ -124,7 +136,8 @@ fn poll_handler_call_count_change(initial: u8, ms: u64) -> Option<u8> {
 }
 
 fn make_connection_manager(context: &Context) -> Arc<ConnectionManager> {
-    Arc::new(ConnectionManager::new(context, PeerConnectionConfig {
+    Arc::new(ConnectionManager::new(make_peer_manager(), PeerConnectionConfig {
+        context: context.clone(),
         establish_timeout: Duration::from_millis(1000),
         max_message_size: 1024 * 1024,
         socks_proxy_address: None,
@@ -140,6 +153,9 @@ fn make_peer_manager() -> Arc<PeerManager<CommsPublicKey, LMDBStore>> {
 
 #[test]
 fn recv_message() {
+    simple_logger::init().unwrap();
+    set_test_node_identity();
+
     let context = Context::new();
     let connection_manager = make_connection_manager(&context);
     let control_service_address = NetAddress::from_str("127.0.0.1:9882").unwrap();
@@ -152,7 +168,7 @@ fn recv_message() {
             socks_proxy_address: None,
             listener_address: control_service_address.clone(),
         })
-        .serve(dispatcher, connection_manager, peer_manager)
+        .serve(dispatcher, connection_manager)
         .unwrap();
 
     // A "remote" node sends an EstablishConnection message to this node's control port

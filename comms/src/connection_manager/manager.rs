@@ -25,15 +25,17 @@ use std::sync::Arc;
 use log::*;
 
 use crate::{
-    connection::{zmq::CurvePublicKey, Context, NetAddress, PeerConnection, PeerConnectionState},
-    peer_manager::Peer,
-    types::CommsPublicKey,
+    connection::{CurvePublicKey, NetAddress, PeerConnection, PeerConnectionState},
+    peer_manager::{NodeId, Peer, PeerManager},
+    types::{CommsDataStore, CommsPublicKey},
 };
 
 use super::{
+    connections::LivePeerConnections,
+    establisher::ConnectionEstablisher,
     protocol::PeerConnectionProtocol,
+    repository::PeerConnectionEntry,
     ConnectionManagerError,
-    LivePeerConnections,
     PeerConnectionConfig,
     Result,
 };
@@ -41,97 +43,127 @@ use super::{
 const LOG_TARGET: &'static str = "comms::connection_manager::manager";
 
 pub struct ConnectionManager {
-    connections: Arc<LivePeerConnections>,
+    connections: LivePeerConnections,
+    establisher: Arc<ConnectionEstablisher>,
+    peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
 }
 
 impl ConnectionManager {
-    pub fn new(context: &Context, config: PeerConnectionConfig) -> Self {
+    pub fn new(peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>, config: PeerConnectionConfig) -> Self {
         Self {
-            connections: Arc::new(LivePeerConnections::new(context.clone(), config)),
+            connections: LivePeerConnections::new(),
+            establisher: Arc::new(ConnectionEstablisher::new(config, peer_manager.clone())),
+            peer_manager,
         }
     }
 
-    /// Gets a peer connection, establishing one if
-    pub fn new_connection_to_peer(
+    pub fn get_peer_manager(&self) -> Arc<PeerManager<CommsPublicKey, CommsDataStore>> {
+        self.peer_manager.clone()
+    }
+
+    pub fn establish_connection_to_peer(&self, peer: &Peer<CommsPublicKey>) -> Result<Arc<PeerConnection>> {
+        self.attempt_peer_connection(peer)
+    }
+
+    pub fn establish_connection_to_node_id(&self, node_id: &NodeId) -> Result<Arc<PeerConnection>> {
+        match self.peer_manager.find_with_node_id(node_id) {
+            Ok(peer) => self.attempt_peer_connection(&peer),
+            Err(err) => Err(ConnectionManagerError::PeerManagerError(err)),
+        }
+    }
+
+    pub fn establish_requested_connection(
         &self,
-        peer: &mut Peer<CommsPublicKey>,
-        peer_curve_pk: CurvePublicKey,
-        net_address: NetAddress,
+        peer: &Peer<CommsPublicKey>,
+        address: &NetAddress,
+        server_public_key: CurvePublicKey,
     ) -> Result<Arc<PeerConnection>>
     {
-        let node_id = Arc::new(peer.node_id.clone());
-        debug!("Attempting to connect to peer [{}]", node_id);
-        let maybe_conn = self.connections.get_connection(&node_id);
-        match maybe_conn {
-            Some(conn) => self.ensure_peer_connection(peer, conn, peer_curve_pk, net_address),
-            None => self.establish_peer_connection(peer, peer_curve_pk, net_address),
-        }
-    }
+        let (entry, join_handle) =
+            self.establisher
+                .establish_outbound_peer_connection(peer, address, server_public_key)?;
 
-    /// Gets an active connectionf or the peer
-    pub fn get_connection(&self, peer: &mut Peer<CommsPublicKey>) -> Result<Arc<PeerConnection>> {
-        let node_id = Arc::new(peer.node_id.clone());
+        let conn = entry.connection.clone();
+        let entry = Arc::new(entry);
         self.connections
-            .get_active_connection(&node_id)
-            .ok_or(ConnectionManagerError::PeerConnectionNotFound)
+            .add_connection(peer.node_id.clone(), entry, join_handle);
+        Ok(conn)
     }
 
-    fn ensure_peer_connection(
-        &self,
-        peer: &mut Peer<CommsPublicKey>,
-        existing_conn: Arc<PeerConnection>,
-        peer_curve_pk: CurvePublicKey,
-        address: NetAddress,
-    ) -> Result<Arc<PeerConnection>>
-    {
-        let state = existing_conn
-            .get_state()
-            .map_err(ConnectionManagerError::ConnectionError)?;
-        match state {
-            PeerConnectionState::Initial | PeerConnectionState::Disconnected | PeerConnectionState::Shutdown => {
-                warn!(
-                    target: LOG_TARGET,
-                    "Peer connection state is '{}'. Attempting to reestablish connection to peer.", state
-                );
-                self.connections.drop_connection(&peer.node_id)?;
-                self.establish_peer_connection(peer, peer_curve_pk, address)
-            },
-            PeerConnectionState::Failed(err) => {
-                warn!(
-                    target: LOG_TARGET,
-                    "Peer connection for NodeId={} in failed state. Error({:?}) Attempting to reestablish.",
-                    peer.node_id,
-                    err
-                );
-                self.connections.drop_connection(&peer.node_id)?;
-                self.establish_peer_connection(peer, peer_curve_pk, address)
-            },
-            PeerConnectionState::Connecting => {
-                debug!(target: LOG_TARGET, "Still connecting to {}...", peer.node_id);
-                Ok(existing_conn)
-            },
-            PeerConnectionState::Connected(Some(address)) => {
-                debug!("Connection already established to  {}.", address);
-                Ok(existing_conn)
-            },
-            PeerConnectionState::Connected(None) => {
-                debug!("Connection already established to  non-TCP socket");
-                Ok(existing_conn)
-            },
-        }
+    pub fn get_active_connection_count(&self) -> usize {
+        self.connections.get_active_connection_count()
     }
 
-    fn establish_peer_connection(
-        &self,
-        peer: &mut Peer<CommsPublicKey>,
-        peer_curve_pk: CurvePublicKey,
-        address: NetAddress,
-    ) -> Result<Arc<PeerConnection>>
-    {
-        debug!("Establishing new connection to {}", peer.node_id);
-        let protocol = PeerConnectionProtocol::new(peer);
+    fn attempt_peer_connection(&self, peer: &Peer<CommsPublicKey>) -> Result<Arc<PeerConnection>> {
+        let maybe_conn = self.connections.get_connection(&peer.node_id);
+        let peer_conn_entry = match maybe_conn {
+            Some(conn) => {
+                let state = conn.get_state().map_err(ConnectionManagerError::ConnectionError)?;
+
+                match state {
+                    PeerConnectionState::Initial |
+                    PeerConnectionState::Disconnected |
+                    PeerConnectionState::Shutdown => {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Peer connection state is '{}'. Attempting to reestablish connection to peer.", state
+                        );
+                        // Ignore not found error when dropping
+                        let _ = self.connections.drop_connection(&peer.node_id);
+                        self.initiate_peer_connection(peer)?
+                    },
+                    PeerConnectionState::Failed(err) => {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Peer connection for NodeId={} in failed state. Error({:?}) Attempting to reestablish.",
+                            peer.node_id,
+                            err
+                        );
+                        // Ignore not found error when dropping
+                        self.connections.drop_connection(&peer.node_id)?;
+                        self.initiate_peer_connection(peer)?
+                    },
+                    // Already have an active connection, just return it
+                    PeerConnectionState::Connecting => {
+                        debug!(target: LOG_TARGET, "Still connecting to {}...", peer.node_id);
+                        return Ok(conn);
+                    },
+                    PeerConnectionState::Connected(Some(address)) => {
+                        debug!("Connection already established to {}.", address);
+                        return Ok(conn);
+                    },
+                    PeerConnectionState::Connected(None) => {
+                        debug!("Connection already established to non-TCP socket");
+                        return Ok(conn);
+                    },
+                }
+            },
+            None => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Peer connection does not exist for NodeId={}", peer.node_id
+                );
+                self.initiate_peer_connection(peer)?
+            },
+        };
+
+        Ok(peer_conn_entry.connection.clone())
+    }
+
+    fn initiate_peer_connection(&self, peer: &Peer<CommsPublicKey>) -> Result<Arc<PeerConnectionEntry>> {
+        let protocol = PeerConnectionProtocol::new(&self.establisher)?;
+
         protocol
-            .establish_outbound(self.connections.clone(), peer_curve_pk, address)
+            .negotiate_peer_connection(peer)
+            .and_then(|(entry, join_handle)| {
+                debug!(
+                    target: LOG_TARGET,
+                    "[{}] Adding inbound peer connection to connection manager", entry.address
+                );
+                self.connections
+                    .add_connection(peer.node_id.clone(), entry.clone(), join_handle);
+                Ok(entry)
+            })
             .or_else(|err| {
                 warn!(
                     target: LOG_TARGET,
@@ -140,5 +172,115 @@ impl ConnectionManager {
                 error!(target: LOG_TARGET, "Error (NodeId={}): {}", peer.node_id, err);
                 Err(err)
             })
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    use crate::{
+        connection::{types::Linger, Context, InprocAddress, NetAddress},
+        control_service::{handlers, ControlService, ControlServiceConfig, ControlServiceMessageType},
+        dispatcher::Dispatcher,
+        test_support::{
+            factories::{self, Factory},
+            helpers::ConnectionMessageCounter,
+            log,
+        },
+    };
+    use std::time::Duration;
+
+    fn make_peer_connection_config(context: &Context, consumer_address: InprocAddress) -> PeerConnectionConfig {
+        PeerConnectionConfig {
+            context: context.clone(),
+            establish_timeout: Duration::from_millis(2000),
+            max_message_size: 1024,
+            host: "127.0.0.1".parse().unwrap(),
+            max_connect_retries: 3,
+            consumer_address,
+            socks_proxy_address: None,
+        }
+    }
+
+    fn make_peer_manager(peers: Vec<Peer<CommsPublicKey>>) -> Arc<PeerManager<CommsPublicKey, CommsDataStore>> {
+        Arc::new(factories::peer_manager::create().with_peers(peers).build().unwrap())
+    }
+
+    #[test]
+    #[allow(non_snake_case)]
+    fn establish_peer_connection_by_peer() {
+        log::init();
+        let context = Context::new();
+
+        let dispatcher = Dispatcher::new(handlers::ControlServiceResolver::new()).route(
+            ControlServiceMessageType::EstablishConnection,
+            handlers::establish_connection,
+        );
+
+        //---------------------------------- Node B Setup --------------------------------------------//
+
+        let node_B_consumer_address = InprocAddress::random();
+        let node_B_control_port_address: NetAddress = "127.0.0.1:9000".parse().unwrap();
+
+        let node_B_msg_counter = ConnectionMessageCounter::new(&context);
+        node_B_msg_counter.start(node_B_consumer_address.clone());
+
+        let node_B_peer = factories::peer::create()
+            .with_net_addresses(vec![node_B_control_port_address.clone()])
+            .build()
+            .unwrap();
+
+        // Node B knows no peers
+        let node_B_peer_manager = make_peer_manager(vec![]);
+        let node_B_connection_manager = Arc::new(ConnectionManager::new(
+            node_B_peer_manager,
+            make_peer_connection_config(&context, node_B_consumer_address.clone()),
+        ));
+
+        // Start node B's control service
+        let node_B_control_service = ControlService::new(&context)
+            .configure(ControlServiceConfig {
+                socks_proxy_address: None,
+                listener_address: node_B_control_port_address,
+            })
+            .serve(dispatcher, node_B_connection_manager)
+            .unwrap();
+
+        //---------------------------------- Node A setup --------------------------------------------//
+
+        let node_A_consumer_address = InprocAddress::random();
+
+        // Add node B to node A's peer manager
+        let node_A_peer_manager = make_peer_manager(vec![node_B_peer.clone()]);
+        let node_A_connection_manager = Arc::new(ConnectionManager::new(
+            node_A_peer_manager,
+            make_peer_connection_config(&context, node_A_consumer_address),
+        ));
+
+        //------------------------------ Negotiate connection to node B -----------------------------------//
+
+        let to_node_B_conn = node_A_connection_manager
+            .establish_connection_to_peer(&node_B_peer)
+            .unwrap();
+
+        to_node_B_conn.set_linger(Linger::Indefinitely).unwrap();
+
+        // Wait for a second for the accept message to be sent from the control service handler
+        // TODO: This connection should be properly accepted before being returned
+        std::thread::sleep(std::time::Duration::from_millis(1000));
+
+        assert_eq!(node_A_connection_manager.connections.get_active_connection_count(), 1);
+
+        assert!(to_node_B_conn.is_connected());
+
+        to_node_B_conn.send(vec!["HELLO".as_bytes().to_vec()]).unwrap();
+        to_node_B_conn.send(vec!["TARI".as_bytes().to_vec()]).unwrap();
+
+        node_B_control_service.shutdown().unwrap();
+        node_B_control_service.handle.join().unwrap().unwrap();
+
+        assert_eq!(node_A_connection_manager.get_active_connection_count(), 1);
+        node_B_msg_counter.assert_count(2, 1000);
     }
 }

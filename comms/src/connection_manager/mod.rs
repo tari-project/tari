@@ -25,14 +25,12 @@ mod connections;
 ///
 /// Responsible for managing and establishing active connections to peers.
 mod error;
+mod establisher;
 mod manager;
 mod protocol;
 mod repository;
+mod types;
 
-pub use self::{
-    connections::{ConnectionDirection, LivePeerConnections, PeerConnectionConfig},
-    error::ConnectionManagerError,
-    manager::ConnectionManager,
-};
+pub use self::{error::ConnectionManagerError, establisher::PeerConnectionConfig, manager::ConnectionManager};
 
-pub type Result<T> = std::result::Result<T, ConnectionManagerError>;
+type Result<T> = std::result::Result<T, ConnectionManagerError>;

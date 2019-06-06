@@ -26,11 +26,10 @@ use super::{ConnectionId, PeerConnectionError};
 
 use crate::connection::{
     net_address::ip::SocketAddress,
+    types::{Direction, Linger, Result},
     zmq::{Context, CurveEncryption, InprocAddress},
     ConnectionError,
-    Direction,
     NetAddress,
-    Result,
 };
 
 /// The default maximum message size which will be used if no maximum message size is set.
@@ -61,6 +60,7 @@ pub struct PeerConnectionContext {
     pub(crate) max_msg_size: u64,
     pub(crate) max_retry_attempts: u16,
     pub(crate) socks_address: Option<SocketAddress>,
+    pub(super) linger: Linger,
 }
 
 impl<'a> TryFrom<PeerConnectionContextBuilder<'a>> for PeerConnectionContext {
@@ -79,6 +79,7 @@ impl<'a> TryFrom<PeerConnectionContextBuilder<'a>> for PeerConnectionContext {
         let max_retry_attempts = builder.max_retry_attempts.unwrap_or(DEFAULT_MAX_RETRY_ATTEMPTS);
         let peer_address = unwrap_prop(builder.address, "peer_address")?;
         let socks_address = builder.socks_address;
+        let linger = builder.linger.or(Some(Linger::Timeout(100))).unwrap();
 
         Ok(PeerConnectionContext {
             consumer_address,
@@ -90,6 +91,7 @@ impl<'a> TryFrom<PeerConnectionContextBuilder<'a>> for PeerConnectionContext {
             max_retry_attempts,
             peer_address,
             socks_address,
+            linger,
         })
     }
 }
@@ -133,24 +135,26 @@ fn unwrap_prop<T>(prop: Option<T>, prop_name: &str) -> Result<T> {
 ///
 /// [PeerConnectionContext]: ./struct.PeerConnectionContext.html
 #[derive(Default)]
-pub struct PeerConnectionContextBuilder<'a> {
+pub struct PeerConnectionContextBuilder<'c> {
     pub(super) address: Option<NetAddress>,
     pub(super) consumer_address: Option<InprocAddress>,
-    pub(super) context: Option<&'a Context>,
+    pub(super) context: Option<&'c Context>,
     pub(super) curve_encryption: CurveEncryption,
     pub(super) direction: Option<Direction>,
     pub(super) id: Option<ConnectionId>,
     pub(super) max_msg_size: Option<u64>,
     pub(super) max_retry_attempts: Option<u16>,
     pub(super) socks_address: Option<SocketAddress>,
+    pub(super) linger: Option<Linger>,
 }
 
-impl<'a> PeerConnectionContextBuilder<'a> {
+impl<'c> PeerConnectionContextBuilder<'c> {
+    //    setter!(set_id, id, ConnectionId);
     setter!(set_address, address, NetAddress);
 
     setter!(set_consumer_address, consumer_address, InprocAddress);
 
-    setter!(set_context, context, &'a Context);
+    setter!(set_context, context, &'c Context);
 
     setter!(set_direction, direction, Direction);
 
@@ -159,6 +163,8 @@ impl<'a> PeerConnectionContextBuilder<'a> {
     setter!(set_max_msg_size, max_msg_size, u64);
 
     setter!(set_socks_proxy, socks_address, SocketAddress);
+
+    setter!(set_linger, linger, Linger);
 
     /// Return a new PeerConnectionContextBuilder
     pub fn new() -> Self {
@@ -221,11 +227,10 @@ mod test {
     use super::*;
     use crate::connection::{
         peer_connection::PeerConnectionError,
+        types::{Direction, Result},
         zmq::{Context, CurveEncryption, InprocAddress},
         ConnectionError,
-        Direction,
         NetAddress,
-        Result,
     };
 
     fn assert_initialization_error<T>(result: Result<T>, expected: &str) {
