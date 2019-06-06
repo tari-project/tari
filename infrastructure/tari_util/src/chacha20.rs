@@ -20,8 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::cipher::{Cipher, CipherError, Encryptable};
+use crate::{
+    cipher::{Cipher, CipherError},
+    ByteArray,
+};
 use clear_on_drop::clear::Clear;
+use rand::{OsRng, RngCore};
 /// This in an implementation of the ChaCha20 stream cipher developed using the Internet Research Task Force (IRTF) 8439 RFC (https://tools.ietf.org/html/rfc8439)
 /// ChaCha20 is a high-speed cipher proposed by D. Bernstein that is not sensitive to timing attacks (http://cr.yp.to/chacha/chacha-20080128.pdf).
 /// Data used in the unit tests were derived from the examples from the IRTF 8439 RFC
@@ -114,7 +118,7 @@ impl ChaCha20 {
     }
 
     /// Encode the provided input bytes using a chacha20 keystream
-    pub fn encode_with_nonce(bytes: &[u8], key: &[u8; 32], nonce: &[u8; 12]) -> Vec<u8> {
+    fn encode_with_nonce(bytes: &[u8], key: &[u8; 32], nonce: &[u8; 12]) -> Vec<u8> {
         const BYTES_PER_BLOCK: usize = 64;
         let block_count = (bytes.len() as f64 / BYTES_PER_BLOCK as f64).ceil() as usize;
         let cipher_bytes = Self::chacha20_cipher_keystream(key, nonce, block_count);
@@ -126,13 +130,15 @@ impl ChaCha20 {
     }
 
     /// Decode the provided input bytes using a chacha20 keystream
-    pub fn decode_with_nonce(bytes: &[u8], key: &[u8; 32], nonce: &[u8; 12]) -> Vec<u8> {
+    fn decode_with_nonce(bytes: &[u8], key: &[u8; 32], nonce: &[u8; 12]) -> Vec<u8> {
         (Self::encode_with_nonce(bytes, &key, &nonce))
     }
 }
 
-impl Cipher for ChaCha20 {
-    fn encrypt(plain_text: &[u8], key: &[u8], nonce: &[u8]) -> Result<Vec<u8>, CipherError> {
+impl<D> Cipher<D> for ChaCha20
+where D: ByteArray
+{
+    fn seal(plain_text: &D, key: &Vec<u8>, nonce: &Vec<u8>) -> Result<Vec<u8>, CipherError> {
         // Validation
         if key.len() != 32 {
             return Err(CipherError::KeyLengthError);
@@ -142,10 +148,14 @@ impl Cipher for ChaCha20 {
         }
 
         let mut sized_key = [0; 32];
-        sized_key.copy_from_slice(&key[..32]);
+        // sized_key.copy_from_slice(&key[..32]);
+        sized_key.copy_from_slice(key.as_slice());
+
         let mut sized_nonce = [0; 12];
-        sized_nonce.copy_from_slice(&nonce[..12]);
-        let cipher_text = ChaCha20::encode_with_nonce(plain_text, &sized_key, &sized_nonce);
+        // sized_nonce.copy_from_slice(&nonce[..12]);
+        sized_nonce.copy_from_slice(nonce.as_slice());
+
+        let cipher_text = ChaCha20::encode_with_nonce(plain_text.as_bytes(), &sized_key, &sized_nonce);
         // Clear copied private data
         sized_key.clear();
         sized_nonce.clear();
@@ -153,7 +163,7 @@ impl Cipher for ChaCha20 {
         Ok(cipher_text)
     }
 
-    fn decrypt(cipher_text: &[u8], key: &[u8], nonce: &[u8]) -> Result<Vec<u8>, CipherError> {
+    fn open(cipher_text: &Vec<u8>, key: &Vec<u8>, nonce: &Vec<u8>) -> Result<D, CipherError> {
         // Validation
         if key.len() != 32 {
             return Err(CipherError::KeyLengthError);
@@ -163,19 +173,68 @@ impl Cipher for ChaCha20 {
         }
 
         let mut sized_key = [0; 32];
-        sized_key.copy_from_slice(&key[..32]);
+        sized_key.copy_from_slice(key.as_slice());
+
         let mut sized_nonce = [0; 12];
-        sized_nonce.copy_from_slice(&nonce[..12]);
+        sized_nonce.copy_from_slice(nonce.as_slice());
+
         let plain_text = ChaCha20::decode_with_nonce(cipher_text, &sized_key, &sized_nonce);
         // Clear copied private data
         sized_key.clear();
         sized_nonce.clear();
 
-        Ok(plain_text)
+        Ok(D::from_vec(&plain_text)?)
+    }
+
+    fn seal_with_integral_nonce(plain_text: &D, key: &Vec<u8>) -> Result<Vec<u8>, CipherError> {
+        // Validation
+        if key.len() != 32 {
+            return Err(CipherError::KeyLengthError);
+        }
+
+        let mut sized_key = [0; 32];
+        // sized_key.copy_from_slice(&key[..32]);
+        sized_key.copy_from_slice(key.as_slice());
+
+        let mut rng = OsRng::new().unwrap();
+        let mut nonce = [0u8; 12];
+        rng.fill_bytes(&mut nonce);
+
+        let cipher_text = ChaCha20::encode_with_nonce(plain_text.as_bytes(), &sized_key, &nonce);
+        let mut nonce_with_cipher_text: Vec<u8> = nonce.to_vec();
+        nonce_with_cipher_text.extend(cipher_text);
+
+        // Clear copied private data
+        sized_key.clear();
+        nonce.clear();
+
+        Ok(nonce_with_cipher_text)
+    }
+
+    fn open_with_integral_nonce(cipher_text: &Vec<u8>, key: &Vec<u8>) -> Result<D, CipherError> {
+        // Validation
+        if key.len() != 32 {
+            return Err(CipherError::KeyLengthError);
+        }
+        // If the cipher text is shorter than the required nonce length then the nonce is not properly included
+        if cipher_text.len() < 12 {
+            return Err(CipherError::NonceLengthError);
+        }
+
+        let mut sized_key = [0; 32];
+        sized_key.copy_from_slice(key.as_slice());
+
+        let mut nonce = [0u8; 12];
+        nonce.copy_from_slice(&cipher_text.clone()[0..12]);
+
+        let plain_text = ChaCha20::decode_with_nonce(&cipher_text[12..], &sized_key, &nonce);
+        // Clear copied private data
+        sized_key.clear();
+        nonce.clear();
+
+        Ok(D::from_vec(&plain_text)?)
     }
 }
-
-impl Encryptable for Vec<u8> {}
 
 #[cfg(test)]
 mod test {
@@ -293,16 +352,15 @@ mod test {
     }
 
     #[test]
-    fn test_trait_interface() {
-        let key: [u8; 32] = [
+    fn test_cipher_trait() {
+        let key: Vec<u8> = vec![
             0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11,
             0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,
         ];
 
-        let nonce: [u8; 12] = [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x4A, 0x00, 0x00, 0x00, 0x00];
+        let nonce: Vec<u8> = vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x4A, 0x00, 0x00, 0x00, 0x00];
         // Text: "Ladies and Gentlemen of the class of '99: If I could offer you only one tip for the future, sunscreen
-        // would be it."
-        // The test data bytes are from IRTF 8439 RFC
+        // would be it." The test data bytes are from IRTF 8439 RFC
         let data_bytes: Vec<u8> = vec![
             0x4c, 0x61, 0x64, 0x69, 0x65, 0x73, 0x20, 0x61, 0x6e, 0x64, 0x20, 0x47, 0x65, 0x6e, 0x74, 0x6c, 0x65, 0x6d,
             0x65, 0x6e, 0x20, 0x6f, 0x66, 0x20, 0x74, 0x68, 0x65, 0x20, 0x63, 0x6c, 0x61, 0x73, 0x73, 0x20, 0x6f, 0x66,
@@ -324,20 +382,37 @@ mod test {
         ];
 
         assert_eq!(
-            ChaCha20::encrypt(&data_bytes, &key[..31], &nonce),
+            ChaCha20::seal(&data_bytes, &key[..31].to_vec(), &nonce),
             Err(CipherError::KeyLengthError)
         );
 
         assert_eq!(
-            ChaCha20::encrypt(&data_bytes, &key, &nonce[..11]),
+            ChaCha20::seal(&data_bytes, &key, &nonce[..11].to_vec()),
             Err(CipherError::NonceLengthError)
         );
 
-        let cipher_text = ChaCha20::encrypt(&data_bytes, &key, &nonce).unwrap();
+        let cipher_text = ChaCha20::seal(&data_bytes, &key, &nonce).unwrap();
 
         assert_eq!(cipher_text, desired_encoded_bytes);
 
-        let plain_text = ChaCha20::decrypt(&cipher_text, &key, &nonce).unwrap();
+        let plain_text: Vec<u8> = ChaCha20::open(&cipher_text, &key, &nonce).unwrap();
+
+        assert_eq!(plain_text, data_bytes);
+    }
+
+    #[test]
+    fn test_integral_nonce_cipher() {
+        let key: Vec<u8> = vec![
+            0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11,
+            0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,
+        ];
+        let data_bytes: Vec<u8> = "One Ring to rule them all, One Ring to find them, One Ring to bring them all, and \
+                                   in the darkness bind them"
+            .as_bytes()
+            .to_vec();
+
+        let cipher_text = ChaCha20::seal_with_integral_nonce(&data_bytes, &key).unwrap();
+        let plain_text: Vec<u8> = ChaCha20::open_with_integral_nonce(&cipher_text, &key).unwrap();
 
         assert_eq!(plain_text, data_bytes);
     }

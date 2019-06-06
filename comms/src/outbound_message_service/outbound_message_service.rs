@@ -48,6 +48,7 @@ use tari_crypto::{
 use tari_storage::keyvalue_store::DataStore;
 use tari_utilities::{
     chacha20::ChaCha20,
+    cipher::Cipher,
     message_format::{MessageFormat, MessageFormatError},
     ByteArray,
     ByteArrayError,
@@ -120,11 +121,10 @@ where DS: DataStore
             CommsPublicKey::shared_secret(&self.node_identity.secret_key, &dest_node_public_key).to_vec();
         let ecdh_shared_secret_bytes: [u8; 32] =
             ByteArray::from_bytes(&ecdh_shared_secret).map_err(|e| OutboundError::SharedSecretSerializationError(e))?;
-        Ok(ChaCha20::encode_with_nonce(
+        Ok(ChaCha20::seal_with_integral_nonce(
             message_envelope_body,
-            &ecdh_shared_secret_bytes,
-            &[0u8; 12],
-        ))
+            &ecdh_shared_secret_bytes.to_vec(),
+        )?)
     }
 
     /// Generate a signature for the MessageEnvelopeHeader from the MessageEnvelopeBody
@@ -300,10 +300,10 @@ mod test {
         let ecdh_shared_secret =
             RistrettoPublicKey::shared_secret(&dest_sk, &node_identity.identity.public_key).to_vec();
         let ecdh_shared_secret_bytes: [u8; 32] = ByteArray::from_bytes(&ecdh_shared_secret).unwrap();
-        let decoded_message_envelope_body = chacha20::decode(
+        let decoded_message_envelope_body = ChaCha20::open_with_integral_nonce(
             outbound_message.message_envelope.body_frame(),
-            &ecdh_shared_secret_bytes,
-        );
+            &ecdh_shared_secret_bytes.to_vec(),
+        )?;
         assert_eq!(message_envelope_body, decoded_message_envelope_body);
 
         assert!(omp_socket.send("OK".as_bytes(), 0).is_ok());
