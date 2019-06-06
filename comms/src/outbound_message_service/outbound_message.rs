@@ -36,9 +36,9 @@ use std::convert::TryFrom;
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct OutboundMessage<T> {
     pub destination_node_id: NodeId,
-    pub retry_count: u32,
-    pub creation_timestamp: DateTime<Utc>,
-    pub last_retry_timestamp: Option<DateTime<Utc>>,
+    retry_count: u32,
+    creation_timestamp: DateTime<Utc>,
+    last_retry_timestamp: Option<DateTime<Utc>>,
     pub message_envelope: T,
 }
 
@@ -67,6 +67,14 @@ impl<T: Serialize + DeserializeOwned> OutboundMessage<T> {
     pub fn mark_transmission_attempt(&mut self) {
         self.retry_count += 1;
         self.last_retry_timestamp = Some(Utc::now());
+    }
+
+    pub fn number_of_retries(&self) -> u32 {
+        self.retry_count
+    }
+
+    pub fn last_retry_timestamp(&self) -> Option<DateTime<Utc>> {
+        self.last_retry_timestamp
     }
 }
 

@@ -22,61 +22,28 @@
 
 use crate::{
     connection::{
-        connection::EstablishedConnection,
-        error::ConnectionError,
-        types::SocketType,
-        zmq::{Context, InprocAddress, ZmqEndpoint, ZmqError},
+        zmq::{Context, InprocAddress},
+        Connection,
+        Direction,
+        SocketEstablishment,
     },
     message::{Frame, MessageEnvelope, MessageEnvelopeHeader, MessageFlags, NodeDestination},
-    outbound_message_service::{broadcast_strategy::BroadcastStrategy, outbound_message::OutboundMessage},
-    peer_manager::{
-        node_identity::CommsNodeIdentity,
-        peer_manager::{PeerManager, PeerManagerError},
-    },
+    outbound_message_service::{BroadcastStrategy, OutboundError, OutboundMessage},
+    peer_manager::{node_identity::CommsNodeIdentity, peer_manager::PeerManager},
     types::{Challenge, CommsPublicKey, CommsSecretKey, MESSAGE_PROTOCOL_VERSION, WIRE_PROTOCOL_VERSION},
 };
-use derive_error::Error;
+
 use digest::Digest;
 use rand::{CryptoRng, Rng};
 use rmp_serde;
 use serde::Serialize;
-use std::{convert::TryInto, sync::Arc};
+use std::sync::Arc;
 use tari_crypto::{
     keys::{DiffieHellmanSharedSecret, SecretKey},
-    signatures::{SchnorrSignature, SchnorrSignatureError},
+    signatures::SchnorrSignature,
 };
 use tari_storage::keyvalue_store::DataStore;
-use tari_utilities::{
-    chacha20::ChaCha20,
-    cipher::Cipher,
-    message_format::{MessageFormat, MessageFormatError},
-    ByteArray,
-    ByteArrayError,
-};
-
-#[derive(Debug, Error)]
-pub enum OutboundError {
-    /// Problem setting up a socket to an outbound message pool
-    SocketError(ZmqError),
-    /// Could not connect to the outbound message pool
-    SocketConnectionError(zmq::Error),
-    /// Problem sending message to outbound message pool
-    SendError(ConnectionError),
-    /// The secret key was not defined in the node identity
-    UndefinedSecretKey,
-    /// The message signature could not be serialized to a vector of bytes
-    SignatureSerializationError,
-    /// The generated shared secret could not be serialized to a vector of bytes
-    SharedSecretSerializationError(ByteArrayError),
-    /// The message could not be serialized
-    MessageSerializationError(MessageFormatError),
-    /// Could not successfully sign the message
-    SignatureError(SchnorrSignatureError),
-    /// Problem encountered with Broadcast Strategy and PeerManager
-    BroadcastStrategyError(PeerManagerError),
-    /// The Thread Safety has been breached and the data access has become poisoned
-    PoisonedAccess,
-}
+use tari_utilities::{chacha20::ChaCha20, cipher::Cipher, message_format::MessageFormat, ByteArray};
 
 /// Handler functions use the OutboundMessageService to send messages to peers. The OutboundMessage service will receive
 /// messages from handlers, apply a broadcasting strategy, encrypted and serialized the messages into OutboundMessages
@@ -162,10 +129,7 @@ where DS: DataStore
         let node_identity = CommsNodeIdentity::global().ok_or(OutboundError::UndefinedSecretKey)?;
         // Use the BroadcastStrategy to select appropriate peer(s) from PeerManager and then construct and send a
         // personalised message to each selected peer
-        let selected_node_identities = self
-            .peer_manager
-            .get_broadcast_identities(broadcast_strategy)
-            .map_err(|e| OutboundError::BroadcastStrategyError(e))?;
+        let selected_node_identities = self.peer_manager.get_broadcast_identities(broadcast_strategy)?;
         for dest_node_identity in &selected_node_identities {
             // Constructing a MessageEnvelope
             let message_envelope_body = if flags.contains(MessageFlags::ENCRYPTED) {
@@ -183,7 +147,7 @@ where DS: DataStore
             };
             let message_envelope_header_frame = message_envelope_header
                 .to_binary()
-                .map_err(OutboundError::MessageSerializationError)?;
+                .map_err(|e| OutboundError::MessageFormatError(e))?;
             let message_envelope = MessageEnvelope::new(
                 vec![WIRE_PROTOCOL_VERSION],
                 message_envelope_header_frame,
@@ -194,20 +158,15 @@ where DS: DataStore
                 OutboundMessage::<MessageEnvelope>::new(dest_node_identity.node_id.clone(), message_envelope);
             let outbound_message_buffer = vec![outbound_message
                 .to_binary()
-                .map_err(|e| OutboundError::MessageSerializationError(e))?];
-
+                .map_err(|e| OutboundError::MessageFormatError(e))?];
             // Send message to outbound message pool
-            let outbound_socket = self
-                .context
-                .socket(SocketType::Request)
-                .map_err(|e| OutboundError::SocketError(e))?;
-            outbound_socket
-                .connect(&self.outbound_address.to_zmq_endpoint())
-                .map_err(|e| OutboundError::SocketConnectionError(e))?;
-            let outbound_connection: EstablishedConnection = outbound_socket.try_into()?;
+            let outbound_connection = Connection::new(&self.context, Direction::Outbound)
+                .set_socket_establishment(SocketEstablishment::Connect)
+                .establish(&self.outbound_address)
+                .map_err(|e| OutboundError::ConnectionError(e))?;
             outbound_connection
                 .send(&outbound_message_buffer)
-                .map_err(|e| OutboundError::SendError(e))?;
+                .map_err(|e| OutboundError::ConnectionError(e))?;
         }
         Ok(())
     }
@@ -218,10 +177,8 @@ mod test {
     use super::*;
 
     use crate::{
-        connection::{
-            net_address::{net_addresses::NetAddresses, NetAddress},
-            zmq::{Context, InprocAddress, ZmqEndpoint},
-        },
+        connection::net_address::{net_addresses::NetAddresses, NetAddress},
+        message::FrameSet,
         peer_manager::{
             node_id::NodeId,
             peer::{Peer, PeerFlags},
@@ -241,14 +198,10 @@ mod test {
         let mut rng = rand::OsRng::new().unwrap();
         let outbound_address = InprocAddress::random();
 
-        // Create a client that will retrieve messages from the outbound message pool
-        let omp_socket = context
-            .socket(SocketType::Reply)
-            .map_err(|e| OutboundError::SocketError(e))
-            .unwrap();
-        omp_socket
-            .bind(&outbound_address.to_zmq_endpoint())
-            .map_err(|e| OutboundError::SocketConnectionError(e))
+        // Create a Outbound Message Pool connection that will receive messages from the outbound message service
+        let message_queue_connection = Connection::new(&context, Direction::Inbound)
+            .set_socket_establishment(SocketEstablishment::Bind)
+            .establish(&outbound_address)
             .unwrap();
 
         let node_identity = CommsNodeIdentity::global().unwrap();
@@ -275,11 +228,11 @@ mod test {
             )
             .is_ok());
 
-        let msg_bytes = omp_socket.recv_multipart(0).unwrap();
+        let msg_bytes: FrameSet = message_queue_connection.receive(100).unwrap().drain(1..).collect();
         let outbound_message = OutboundMessage::<MessageEnvelope>::try_from(msg_bytes).unwrap();
         assert_eq!(outbound_message.destination_node_id, dest_peer.node_id);
-        assert_eq!(outbound_message.retry_count, 0);
-        assert_eq!(outbound_message.last_retry_timestamp, None);
+        assert_eq!(outbound_message.number_of_retries(), 0);
+        assert_eq!(outbound_message.last_retry_timestamp(), None);
         let message_envelope_header: MessageEnvelopeHeader<RistrettoPublicKey> =
             outbound_message.message_envelope.to_header().unwrap();
         assert_eq!(message_envelope_header.source, node_identity.identity.public_key);
@@ -300,12 +253,11 @@ mod test {
         let ecdh_shared_secret =
             RistrettoPublicKey::shared_secret(&dest_sk, &node_identity.identity.public_key).to_vec();
         let ecdh_shared_secret_bytes: [u8; 32] = ByteArray::from_bytes(&ecdh_shared_secret).unwrap();
-        let decoded_message_envelope_body = ChaCha20::open_with_integral_nonce(
+        let decoded_message_envelope_body: Vec<u8> = ChaCha20::open_with_integral_nonce(
             outbound_message.message_envelope.body_frame(),
             &ecdh_shared_secret_bytes.to_vec(),
-        )?;
+        )
+        .unwrap();
         assert_eq!(message_envelope_body, decoded_message_envelope_body);
-
-        assert!(omp_socket.send("OK".as_bytes(), 0).is_ok());
     }
 }
