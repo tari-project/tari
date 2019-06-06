@@ -193,7 +193,6 @@ where D: ByteArray
         }
 
         let mut sized_key = [0; 32];
-        // sized_key.copy_from_slice(&key[..32]);
         sized_key.copy_from_slice(key.as_slice());
 
         let mut rng = OsRng::new().unwrap();
