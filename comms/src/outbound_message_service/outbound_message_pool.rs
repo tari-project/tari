@@ -146,19 +146,13 @@ mod test {
         peer_manager::{peer::PeerFlags, NodeId, Peer},
         types::CommsPublicKey,
     };
-    use log::*;
-    use tari_storage::lmdb::LMDBStore;
 
-    fn init() {
-        simple_logger::init();
-    }
+    use tari_storage::lmdb::LMDBStore;
 
     #[test]
     /// Test that when a message is sent via the pool that it is retried and requeued the correct amount of times and
     /// that ConnectionRetryAttempts error is thrown
     fn test_requeuing_messages() {
-        // init();
-
         let mut rng = rand::OsRng::new().unwrap();
         let context = Context::new();
         let omp_inbound_address = InprocAddress::random();

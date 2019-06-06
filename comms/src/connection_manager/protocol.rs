@@ -24,7 +24,11 @@ use std::sync::Arc;
 
 use tari_crypto::keys::DiffieHellmanSharedSecret;
 
-use tari_utilities::{chacha20, message_format::MessageFormat, ByteArray};
+use tari_utilities::{
+    ciphers::{chacha20::ChaCha20, cipher::Cipher},
+    message_format::MessageFormat,
+    ByteArray,
+};
 
 use crate::{
     connection::{
@@ -122,7 +126,10 @@ impl<'p> PeerConnectionProtocol<'p> {
         let ecdh_shared_secret = CommsPublicKey::shared_secret(&identity.secret_key, &self.peer.public_key).to_vec();
         let ecdh_shared_secret_bytes: [u8; 32] = ByteArray::from_bytes(&ecdh_shared_secret)
             .map_err(ConnectionManagerError::SharedSecretSerializationError)?;
-        Ok(chacha20::encode(&body, &ecdh_shared_secret_bytes))
+        Ok(ChaCha20::seal_with_integral_nonce(
+            &body,
+            &ecdh_shared_secret_bytes.to_vec(),
+        )?)
     }
 
     fn open_inbound_peer_connection(

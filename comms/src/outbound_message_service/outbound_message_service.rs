@@ -30,7 +30,7 @@ use crate::{
     message::{Frame, MessageEnvelope, MessageEnvelopeHeader, MessageFlags, NodeDestination},
     outbound_message_service::{BroadcastStrategy, OutboundError, OutboundMessage},
     peer_manager::{node_identity::CommsNodeIdentity, peer_manager::PeerManager},
-    types::{Challenge, CommsPublicKey, CommsSecretKey, MESSAGE_PROTOCOL_VERSION, WIRE_PROTOCOL_VERSION},
+    types::{Challenge, CommsCipher, CommsPublicKey, CommsSecretKey, MESSAGE_PROTOCOL_VERSION, WIRE_PROTOCOL_VERSION},
 };
 
 use digest::Digest;
@@ -43,7 +43,7 @@ use tari_crypto::{
     signatures::SchnorrSignature,
 };
 use tari_storage::keyvalue_store::DataStore;
-use tari_utilities::{chacha20, message_format::MessageFormat, ByteArray};
+use tari_utilities::{ciphers::cipher::Cipher, message_format::MessageFormat, ByteArray};
 
 /// Handler functions use the OutboundMessageService to send messages to peers. The OutboundMessage service will receive
 /// messages from handlers, apply a broadcasting strategy, encrypted and serialized the messages into OutboundMessages
@@ -88,7 +88,10 @@ where DS: DataStore
             CommsPublicKey::shared_secret(&self.node_identity.secret_key, &dest_node_public_key).to_vec();
         let ecdh_shared_secret_bytes: [u8; 32] =
             ByteArray::from_bytes(&ecdh_shared_secret).map_err(|e| OutboundError::SharedSecretSerializationError(e))?;
-        Ok(chacha20::encode(message_envelope_body, &ecdh_shared_secret_bytes))
+        Ok(CommsCipher::seal_with_integral_nonce(
+            message_envelope_body,
+            &ecdh_shared_secret_bytes.to_vec(),
+        )?)
     }
 
     /// Generate a signature for the MessageEnvelopeHeader from the MessageEnvelopeBody
@@ -250,10 +253,11 @@ mod test {
         let ecdh_shared_secret =
             RistrettoPublicKey::shared_secret(&dest_sk, &node_identity.identity.public_key).to_vec();
         let ecdh_shared_secret_bytes: [u8; 32] = ByteArray::from_bytes(&ecdh_shared_secret).unwrap();
-        let decoded_message_envelope_body = chacha20::decode(
+        let decoded_message_envelope_body: Vec<u8> = CommsCipher::open_with_integral_nonce(
             outbound_message.message_envelope.body_frame(),
-            &ecdh_shared_secret_bytes,
-        );
+            &ecdh_shared_secret_bytes.to_vec(),
+        )
+        .unwrap();
         assert_eq!(message_envelope_body, decoded_message_envelope_body);
     }
 }

@@ -27,7 +27,7 @@ use crate::{
 };
 use derive_error::Error;
 use tari_crypto::signatures::SchnorrSignatureError;
-use tari_utilities::{message_format::MessageFormatError, ByteArrayError};
+use tari_utilities::{ciphers::cipher::CipherError, message_format::MessageFormatError, ByteArrayError};
 
 #[derive(Debug, Error)]
 pub enum OutboundError {
@@ -53,4 +53,6 @@ pub enum OutboundError {
     PoisonedAccess,
     /// Error requesting or updating a net address
     NetAddressError(NetAddressError),
+    // Error using a Cipher
+    CipherError(CipherError),
 }

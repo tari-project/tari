@@ -19,19 +19,35 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#[allow(clippy::needless_range_loop)]
-pub mod bit;
-pub mod byte_array;
-pub mod ciphers;
-pub mod extend_bytes;
-pub mod fixed_set;
-pub mod hash;
-pub mod hex;
-pub mod message_format;
 
-pub use self::extend_bytes::ExtendBytes;
+use crate::{ByteArray, ByteArrayError};
+use derive_error::Error;
 
-pub use self::{
-    byte_array::{ByteArray, ByteArrayError},
-    hash::Hashable,
-};
+#[derive(Debug, Error, PartialEq)]
+pub enum CipherError {
+    /// Provided key is the incorrect size to be used by the Cipher
+    KeyLengthError,
+    /// Provided Nonce is the incorrect size to be used by the Cipher
+    NonceLengthError,
+    /// No data was provided for encryption/decryption
+    NoDataError,
+    /// Byte Array conversion error
+    ByteArrayError(ByteArrayError),
+}
+
+/// A trait describing an interface to a symmetrical encryption scheme
+pub trait Cipher<D>
+where D: ByteArray
+{
+    /// Encrypt using a cipher and provided key and nonce
+    fn seal(plain_text: &D, key: &Vec<u8>, nonce: &Vec<u8>) -> Result<Vec<u8>, CipherError>;
+
+    /// Decrypt using a cipher and provided key and nonce
+    fn open(cipher_text: &Vec<u8>, key: &Vec<u8>, nonce: &Vec<u8>) -> Result<D, CipherError>;
+
+    /// Encrypt using a cipher and provided key, the nonce will be generate internally and appended to the cipher text
+    fn seal_with_integral_nonce(plain_text: &D, key: &Vec<u8>) -> Result<Vec<u8>, CipherError>;
+
+    /// Decrypt using a cipher and provided key. The integral nonce will be read from the cipher text
+    fn open_with_integral_nonce(cipher_text: &Vec<u8>, key: &Vec<u8>) -> Result<D, CipherError>;
+}
