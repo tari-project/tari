@@ -25,7 +25,7 @@ use crate::{
     message::MessageError,
 };
 use derive_error::Error;
-use tari_utilities::{cipher::CipherError, message_format::MessageFormatError, ByteArrayError};
+use tari_utilities::{ciphers::cipher::CipherError, message_format::MessageFormatError, ByteArrayError};
 
 #[derive(Error, Debug)]
 pub enum ConnectionManagerError {

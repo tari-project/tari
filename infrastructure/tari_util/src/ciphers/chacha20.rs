@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    cipher::{Cipher, CipherError},
+    ciphers::cipher::{Cipher, CipherError},
     ByteArray,
 };
 use clear_on_drop::clear::Clear;

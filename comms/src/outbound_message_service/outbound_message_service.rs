@@ -43,7 +43,11 @@ use tari_crypto::{
     signatures::SchnorrSignature,
 };
 use tari_storage::keyvalue_store::DataStore;
-use tari_utilities::{chacha20::ChaCha20, cipher::Cipher, message_format::MessageFormat, ByteArray};
+use tari_utilities::{
+    ciphers::{chacha20::ChaCha20, cipher::Cipher},
+    message_format::MessageFormat,
+    ByteArray,
+};
 
 /// Handler functions use the OutboundMessageService to send messages to peers. The OutboundMessage service will receive
 /// messages from handlers, apply a broadcasting strategy, encrypted and serialized the messages into OutboundMessages

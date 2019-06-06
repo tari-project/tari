@@ -24,7 +24,11 @@ use std::sync::Arc;
 
 use tari_crypto::keys::DiffieHellmanSharedSecret;
 
-use tari_utilities::{chacha20::ChaCha20, cipher::Cipher, message_format::MessageFormat, ByteArray};
+use tari_utilities::{
+    ciphers::{chacha20::ChaCha20, cipher::Cipher},
+    message_format::MessageFormat,
+    ByteArray,
+};
 
 use crate::{
     connection::{
