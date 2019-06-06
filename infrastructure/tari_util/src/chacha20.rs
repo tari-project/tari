@@ -148,11 +148,9 @@ where D: ByteArray
         }
 
         let mut sized_key = [0; 32];
-        // sized_key.copy_from_slice(&key[..32]);
         sized_key.copy_from_slice(key.as_slice());
 
         let mut sized_nonce = [0; 12];
-        // sized_nonce.copy_from_slice(&nonce[..12]);
         sized_nonce.copy_from_slice(nonce.as_slice());
 
         let cipher_text = ChaCha20::encode_with_nonce(plain_text.as_bytes(), &sized_key, &sized_nonce);
