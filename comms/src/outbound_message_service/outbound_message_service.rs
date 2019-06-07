@@ -30,7 +30,15 @@ use crate::{
     message::{Frame, MessageEnvelope, MessageEnvelopeHeader, MessageFlags, NodeDestination},
     outbound_message_service::{BroadcastStrategy, OutboundError, OutboundMessage},
     peer_manager::{node_identity::CommsNodeIdentity, peer_manager::PeerManager},
-    types::{Challenge, CommsCipher, CommsPublicKey, CommsSecretKey, MESSAGE_PROTOCOL_VERSION, WIRE_PROTOCOL_VERSION},
+    types::{
+        Challenge,
+        CommsCipher,
+        CommsDataStore,
+        CommsPublicKey,
+        CommsSecretKey,
+        MESSAGE_PROTOCOL_VERSION,
+        WIRE_PROTOCOL_VERSION,
+    },
 };
 
 use digest::Digest;
@@ -42,29 +50,26 @@ use tari_crypto::{
     keys::{DiffieHellmanSharedSecret, SecretKey},
     signatures::SchnorrSignature,
 };
-use tari_storage::keyvalue_store::DataStore;
 use tari_utilities::{ciphers::cipher::Cipher, message_format::MessageFormat, ByteArray};
 
 /// Handler functions use the OutboundMessageService to send messages to peers. The OutboundMessage service will receive
 /// messages from handlers, apply a broadcasting strategy, encrypted and serialized the messages into OutboundMessages
 /// and write them to the outbound message pool.
-pub struct OutboundMessageService<DS> {
+pub struct OutboundMessageService {
     context: Context,
     outbound_address: InprocAddress,
     node_identity: Arc<CommsNodeIdentity>,
-    peer_manager: Arc<PeerManager<CommsPublicKey, DS>>,
+    peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
 }
 
-impl<DS> OutboundMessageService<DS>
-where DS: DataStore
-{
+impl OutboundMessageService {
     /// Constructs a new OutboundMessageService from the context, node_identity and outbound_address
     pub fn new(
         context: Context,
         outbound_address: InprocAddress, /* The outbound_address is an inproc that connects the OutboundMessagePool
                                           * and the OutboundMessageService */
-        peer_manager: Arc<PeerManager<CommsPublicKey, DS>>,
-    ) -> Result<OutboundMessageService<DS>, OutboundError>
+        peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
+    ) -> Result<OutboundMessageService, OutboundError>
     {
         let node_identity: Arc<CommsNodeIdentity> =
             CommsNodeIdentity::global().ok_or(OutboundError::UndefinedSecretKey)?;

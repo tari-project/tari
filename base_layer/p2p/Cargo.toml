@@ -7,3 +7,10 @@ edition = "2018"
 tari_crypto = { version = "0.0.1", path = "../../infrastructure/crypto"}
 tari_comms = { version = "0.0.1", path = "../../comms"}
 tari_core = { version = "0.0.1", path = "../core"}
+tari_utilities = { version = "0.0.1", path = "../../infrastructure/tari_util"}
+rmp-serde = "0.13.7"
+serde = "1.0.90"
+serde_derive = "1.0.90"
+
+[dev-dependencies]
+rand = "0.5.5"
