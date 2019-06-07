@@ -21,13 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    transaction::{TransactionInput, TransactionOutput},
-    types::{BlindingFactor, SecretKey, Signature},
-};
-
-use crate::{
-    transaction::{KernelFeatures, Transaction, TransactionBuilder},
-    types::{CommitmentFactory, PublicKey},
+    transaction::{KernelFeatures, Transaction, TransactionBuilder, TransactionInput, TransactionOutput},
+    types::{BlindingFactor, CommitmentFactory, PublicKey, RangeProofService, SecretKey, Signature},
 };
 
 use crate::{
@@ -42,7 +37,7 @@ use crate::{
 };
 use digest::Digest;
 use serde::{Deserialize, Serialize};
-use tari_crypto::commitment::HomomorphicCommitmentFactory;
+use tari_crypto::ristretto::pedersen::PedersenCommitment;
 use tari_utilities::ByteArray;
 
 //----------------------------------------   Local Data types     ----------------------------------------------------//
@@ -219,10 +214,15 @@ impl SenderTransactionProtocol {
     }
 
     /// Add the signed transaction from the recipient and move to the next state
-    pub fn add_single_recipient_info(&mut self, rec: RecipientSignedTransactionData) -> Result<(), TPE> {
+    pub fn add_single_recipient_info(
+        &mut self,
+        rec: RecipientSignedTransactionData,
+        prover: &RangeProofService,
+    ) -> Result<(), TPE>
+    {
         match &mut self.state {
             SenderState::CollectingSingleSignature(info) => {
-                if !rec.output.verify_range_proof(None)? {
+                if !rec.output.verify_range_proof(prover)? {
                     return Err(TPE::ValidationError(
                         "Recipient output range proof failed to verify".into(),
                     ));
@@ -241,7 +241,13 @@ impl SenderTransactionProtocol {
     }
 
     /// Attempts to build the final transaction.
-    fn build_transaction(info: &RawTransactionInfo, features: KernelFeatures) -> Result<Transaction, TPE> {
+    fn build_transaction(
+        info: &RawTransactionInfo,
+        features: KernelFeatures,
+        prover: &RangeProofService,
+        factory: &CommitmentFactory,
+    ) -> Result<Transaction, TPE>
+    {
         let mut tx_builder = TransactionBuilder::new();
         for i in &info.inputs {
             tx_builder.add_input(i.clone());
@@ -253,7 +259,7 @@ impl SenderTransactionProtocol {
         tx_builder.add_offset(info.offset.clone());
         let mut s_agg = info.signatures[0].clone();
         info.signatures.iter().skip(1).for_each(|s| s_agg = &s_agg + s);
-        let excess = CommitmentFactory::from_public_key(&info.public_excess);
+        let excess = PedersenCommitment::from_public_key(&info.public_excess);
         let kernel = KernelBuilder::new()
             .with_fee(info.metadata.fee)
             .with_features(features)
@@ -262,8 +268,7 @@ impl SenderTransactionProtocol {
             .with_signature(&s_agg)
             .build()?;
         tx_builder.with_kernel(kernel);
-        let tx = tx_builder.build()?;
-        Ok(tx)
+        tx_builder.build(prover, factory).map_err(TPE::from)
     }
 
     /// Performs sanitary checks on the collected transaction pieces prior to building the final Transaction instance
@@ -326,7 +331,13 @@ impl SenderTransactionProtocol {
     /// formally validate the transaction terms (no inflation, signature matches etc). If any step fails,
     /// the transaction protocol moves to Failed state and we are done; you can't rescue the situation. The function
     /// returns `Ok(false)` in this instance.
-    pub fn finalize(&mut self, features: KernelFeatures) -> Result<bool, TPE> {
+    pub fn finalize(
+        &mut self,
+        features: KernelFeatures,
+        prover: &RangeProofService,
+        factory: &CommitmentFactory,
+    ) -> Result<bool, TPE>
+    {
         // Create the final aggregated signature, moving to the Failed state if anything goes wrong
         match &mut self.state {
             SenderState::Finalizing(_) => {
@@ -340,14 +351,16 @@ impl SenderTransactionProtocol {
         // Validate the inputs we have, and then construct the final transaction
         match &self.state {
             SenderState::Finalizing(info) => {
-                let result = self.validate().and_then(|_| Self::build_transaction(info, features));
+                let result = self
+                    .validate()
+                    .and_then(|_| Self::build_transaction(info, features, prover, factory));
                 if let Err(e) = result {
                     self.state = SenderState::Failed(e);
                     return Ok(false);
                 }
                 let mut transaction = result.unwrap();
                 let result = transaction
-                    .validate_internal_consistency(None)
+                    .validate_internal_consistency(prover, factory)
                     .map_err(TPE::TransactionBuildError);
                 if let Err(e) = result {
                     self.state = SenderState::Failed(e);
@@ -411,14 +424,14 @@ impl SenderState {
 mod test {
     use crate::{
         fee::Fee,
-        transaction::{KernelFeatures, OutputFeatures, UnblindedOutput, MAX_RANGE_PROOF_RANGE},
+        transaction::{KernelFeatures, OutputFeatures, UnblindedOutput},
         transaction_protocol::{
             sender::SenderTransactionProtocol,
             single_receiver::SingleReceiverTransactionProtocol,
             test_common::{make_input, TestParams},
             TransactionProtocolError,
         },
-        types::{CommitmentFactory, RangeProofService},
+        types::{COMMITMENT_FACTORY, PROVER},
     };
     use rand::OsRng;
     use tari_crypto::common::Blake256;
@@ -439,10 +452,10 @@ mod test {
             .with_input(utxo, input)
             .with_output(UnblindedOutput::new(500, p.spend_key.clone(), None))
             .with_output(UnblindedOutput::new(400, p.spend_key.clone(), None));
-        let mut sender = builder.build::<Blake256>().unwrap();
+        let mut sender = builder.build::<Blake256>(&PROVER, &COMMITMENT_FACTORY).unwrap();
         assert_eq!(sender.is_failed(), false);
         assert!(sender.is_finalizing());
-        match sender.finalize(KernelFeatures::empty()) {
+        match sender.finalize(KernelFeatures::empty(), &PROVER, &COMMITMENT_FACTORY) {
             Ok(true) => (),
             Ok(false) => panic!("{:?}", sender.failure_reason()),
             Err(e) => panic!("{:?}", e),
@@ -469,19 +482,26 @@ mod test {
             .with_input(utxo.clone(), input)
             // A little twist: Check the case where the change is less than the cost of another output
             .with_amount(0, 1200 - fee - 10);
-        let mut alice = builder.build::<Blake256>().unwrap();
+        let mut alice = builder.build::<Blake256>(&PROVER, &COMMITMENT_FACTORY).unwrap();
         assert!(alice.is_single_round_message_ready());
         let msg = alice.build_single_round_message().unwrap();
         // Send message down the wire....and wait for response
         assert!(alice.is_collecting_single_signature());
         // Receiver gets message, deserializes it etc, and creates his response
-        let bob_info =
-            SingleReceiverTransactionProtocol::create(&msg, b.nonce, b.spend_key, OutputFeatures::empty()).unwrap();
+        let bob_info = SingleReceiverTransactionProtocol::create(
+            &msg,
+            b.nonce,
+            b.spend_key,
+            OutputFeatures::empty(),
+            &PROVER,
+            &COMMITMENT_FACTORY,
+        )
+        .unwrap();
         // Alice gets message back, deserializes it, etc
-        alice.add_single_recipient_info(bob_info.clone()).unwrap();
+        alice.add_single_recipient_info(bob_info.clone(), &PROVER).unwrap();
         // Transaction should be complete
         assert!(alice.is_finalizing());
-        match alice.finalize(KernelFeatures::empty()) {
+        match alice.finalize(KernelFeatures::empty(), &PROVER, &COMMITMENT_FACTORY) {
             Ok(true) => (),
             Ok(false) => panic!("{:?}", alice.failure_reason()),
             Err(e) => panic!("{:?}", e),
@@ -514,7 +534,7 @@ mod test {
             .with_change_secret(a.change_key.clone())
             .with_input(utxo.clone(), input)
             .with_amount(0, 500);
-        let mut alice = builder.build::<Blake256>().unwrap();
+        let mut alice = builder.build::<Blake256>(&PROVER, &COMMITMENT_FACTORY).unwrap();
         assert!(alice.is_single_round_message_ready());
         let msg = alice.build_single_round_message().unwrap();
         println!(
@@ -527,8 +547,15 @@ mod test {
         // Send message down the wire....and wait for response
         assert!(alice.is_collecting_single_signature());
         // Receiver gets message, deserializes it etc, and creates his response
-        let bob_info =
-            SingleReceiverTransactionProtocol::create(&msg, b.nonce, b.spend_key, OutputFeatures::empty()).unwrap();
+        let bob_info = SingleReceiverTransactionProtocol::create(
+            &msg,
+            b.nonce,
+            b.spend_key,
+            OutputFeatures::empty(),
+            &PROVER,
+            &COMMITMENT_FACTORY,
+        )
+        .unwrap();
         println!(
             "Bob's key: {}, Nonce: {}, Signature: {}, Commitment: {}",
             bob_info.public_spend_key.to_hex(),
@@ -537,10 +564,10 @@ mod test {
             bob_info.output.commitment.as_public_key().to_hex()
         );
         // Alice gets message back, deserializes it, etc
-        alice.add_single_recipient_info(bob_info.clone()).unwrap();
+        alice.add_single_recipient_info(bob_info.clone(), &PROVER).unwrap();
         // Transaction should be complete
         assert!(alice.is_finalizing());
-        match alice.finalize(KernelFeatures::empty()) {
+        match alice.finalize(KernelFeatures::empty(), &PROVER, &COMMITMENT_FACTORY) {
             Ok(true) => (),
             Ok(false) => panic!("{:?}", alice.failure_reason()),
             Err(e) => panic!("{:?}", e),
@@ -552,8 +579,10 @@ mod test {
         assert_eq!(tx.body.inputs.len(), 1);
         assert_eq!(tx.body.inputs[0], utxo);
         assert_eq!(tx.body.outputs.len(), 2);
-        let prover = RangeProofService::new(MAX_RANGE_PROOF_RANGE, CommitmentFactory::default()).unwrap();
-        assert!(tx.clone().validate_internal_consistency(Some(&prover)).is_ok());
+        assert!(tx
+            .clone()
+            .validate_internal_consistency(&PROVER, &COMMITMENT_FACTORY)
+            .is_ok());
     }
 
     #[test]
@@ -574,16 +603,23 @@ mod test {
             .with_change_secret(a.change_key.clone())
             .with_input(utxo.clone(), input)
             .with_amount(0, 2u64.pow(32) + 1);
-        let mut alice = builder.build::<Blake256>().unwrap();
+        let mut alice = builder.build::<Blake256>(&PROVER, &COMMITMENT_FACTORY).unwrap();
         assert!(alice.is_single_round_message_ready());
         let msg = alice.build_single_round_message().unwrap();
         // Send message down the wire....and wait for response
         assert!(alice.is_collecting_single_signature());
         // Receiver gets message, deserializes it etc, and creates his response
-        let bob_info =
-            SingleReceiverTransactionProtocol::create(&msg, b.nonce, b.spend_key, OutputFeatures::empty()).unwrap();
+        let bob_info = SingleReceiverTransactionProtocol::create(
+            &msg,
+            b.nonce,
+            b.spend_key,
+            OutputFeatures::empty(),
+            &PROVER,
+            &COMMITMENT_FACTORY,
+        )
+        .unwrap();
         // Alice gets message back, deserializes it, etc
-        match alice.add_single_recipient_info(bob_info.clone()) {
+        match alice.add_single_recipient_info(bob_info.clone(), &PROVER) {
             Ok(_) => panic!("Range proof should have failed to verify"),
             Err(e) => assert_eq!(
                 e,

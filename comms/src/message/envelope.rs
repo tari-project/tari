@@ -235,7 +235,7 @@ mod test {
         assert_eq!(pk, header.source);
         assert_eq!(MessageFlags::ENCRYPTED, header.flags);
         assert_eq!(NodeDestination::Unknown, header.dest);
-        assert_eq!(136, header.signature.len());
+        assert_eq!(71, header.signature.len());
         assert_eq!("010203", to_hex(envelope.body_frame()));
     }
 }

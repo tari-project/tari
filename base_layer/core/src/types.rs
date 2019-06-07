@@ -24,11 +24,10 @@
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
 use tari_crypto::{
-    commitment::{HomomorphicCommitment, HomomorphicCommitmentFactory},
     common::Blake256,
     ristretto::{
         dalek_range_proof::DalekRangeProofService,
-        pedersen::{PedersenBaseOnRistretto255, PedersenOnRistretto255},
+        pedersen::{PedersenCommitment, PedersenCommitmentFactory},
         RistrettoPublicKey,
         RistrettoSchnorr,
         RistrettoSecretKey,
@@ -40,8 +39,8 @@ use tari_crypto::{
 pub type Signature = RistrettoSchnorr;
 
 /// Define the explicit Commitment implementation for the Tari base layer.
-pub type Commitment = PedersenOnRistretto255;
-pub type CommitmentFactory = PedersenBaseOnRistretto255;
+pub type Commitment = PedersenCommitment;
+pub type CommitmentFactory = PedersenCommitmentFactory;
 
 /// Define the explicit Secret key implementation for the Tari base layer.
 pub type SecretKey = RistrettoSecretKey;
@@ -66,26 +65,15 @@ pub type MessageHash = Vec<u8>;
 pub type RangeProof = Vec<u8>;
 pub type RangeProofService = DalekRangeProofService;
 
-/// Convenience type wrapper for creating output commitments directly from values and spending_keys
-pub trait TariCommitment {
-    fn commit(value: u64, spending_key: &SecretKey) -> Commitment;
-}
+#[cfg(test)]
+pub const MAX_RANGE_PROOF_RANGE: usize = 32; // 2^32 This is the only way to produce failing range proofs for the tests
+#[cfg(not(test))]
+pub const MAX_RANGE_PROOF_RANGE: usize = 64; // 2^64
 
-impl TariCommitment for CommitmentFactory {
-    fn commit(value: u64, spending_key: &SecretKey) -> Commitment {
-        let v = SecretKey::from(value);
-        CommitmentFactory::create(spending_key, &v)
-    }
-}
-
-/// Convenience wrapper for validating commitments directly from values and keys
-pub trait TariCommitmentValidate {
-    fn validate(&self, value: u64, spending_key: &SecretKey) -> bool;
-}
-
-impl TariCommitmentValidate for Commitment {
-    fn validate(&self, value: u64, spending_key: &RistrettoSecretKey) -> bool {
-        let kv = SecretKey::from(value);
-        self.open(spending_key, &kv)
-    }
+// Set up some "global" services for the Tari blockchain - These are most likely not threadsafe as written, but haven't
+// checked.
+lazy_static! {
+    pub static ref COMMITMENT_FACTORY: CommitmentFactory = CommitmentFactory::default();
+    pub static ref PROVER: RangeProofService =
+        RangeProofService::new(MAX_RANGE_PROOF_RANGE, &COMMITMENT_FACTORY).unwrap();
 }

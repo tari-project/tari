@@ -21,16 +21,20 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    transaction::{OutputFeatures, TransactionOutput, MAX_RANGE_PROOF_RANGE},
+    transaction::{OutputFeatures, TransactionOutput},
     transaction_protocol::{
         build_challenge,
         recipient::RecipientSignedTransactionData as RD,
         sender::SingleRoundSenderData as SD,
         TransactionProtocolError as TPE,
     },
-    types::{CommitmentFactory, PublicKey, RangeProofService, SecretKey as SK, Signature, TariCommitment},
+    types::{CommitmentFactory, PublicKey, RangeProofService, SecretKey as SK, Signature},
 };
-use tari_crypto::{keys::PublicKey as PK, range_proof::RangeProofService as RangeProofServiceTrait};
+use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
+    keys::PublicKey as PK,
+    range_proof::RangeProofService as RPS,
+};
 
 /// SingleReceiverTransactionProtocol represents the actions taken by the single receiver in the one-round Tari
 /// transaction protocol. The procedure is straightforward. Upon receiving the sender's information, the receiver:
@@ -41,9 +45,18 @@ use tari_crypto::{keys::PublicKey as PK, range_proof::RangeProofService as Range
 pub(super) struct SingleReceiverTransactionProtocol {}
 
 impl SingleReceiverTransactionProtocol {
-    pub fn create(sender_info: &SD, nonce: SK, spending_key: SK, features: OutputFeatures) -> Result<RD, TPE> {
+    pub fn create(
+        sender_info: &SD,
+        nonce: SK,
+        spending_key: SK,
+        features: OutputFeatures,
+        prover: &RangeProofService,
+        factory: &CommitmentFactory,
+    ) -> Result<RD, TPE>
+    {
         SingleReceiverTransactionProtocol::validate_sender_data(sender_info)?;
-        let output = SingleReceiverTransactionProtocol::build_output(sender_info, &spending_key, features)?;
+        let output =
+            SingleReceiverTransactionProtocol::build_output(sender_info, &spending_key, features, prover, factory)?;
         let public_nonce = PublicKey::from_secret_key(&nonce);
         let public_spending_key = PublicKey::from_secret_key(&spending_key);
         let e = build_challenge(&(&sender_info.public_nonce + &public_nonce), &sender_info.metadata);
@@ -65,15 +78,17 @@ impl SingleReceiverTransactionProtocol {
         Ok(())
     }
 
-    fn build_output(sender_info: &SD, spending_key: &SK, features: OutputFeatures) -> Result<TransactionOutput, TPE> {
-        let commitment = CommitmentFactory::commit(sender_info.amount, &spending_key);
-        let prover = RangeProofService::new(MAX_RANGE_PROOF_RANGE, CommitmentFactory::default())?;
-
-        Ok(TransactionOutput::new(
-            features,
-            commitment,
-            prover.construct_proof(&spending_key, sender_info.amount)?,
-        ))
+    fn build_output(
+        sender_info: &SD,
+        spending_key: &SK,
+        features: OutputFeatures,
+        prover: &RangeProofService,
+        factory: &CommitmentFactory,
+    ) -> Result<TransactionOutput, TPE>
+    {
+        let commitment = factory.commit_value(&spending_key, sender_info.amount);
+        let proof = prover.construct_proof(&spending_key, sender_info.amount)?;
+        Ok(TransactionOutput::new(features, commitment, proof))
     }
 }
 
@@ -88,10 +103,13 @@ mod test {
             TransactionMetadata,
             TransactionProtocolError,
         },
-        types::{PublicKey, SecretKey, TariCommitmentValidate},
+        types::{PublicKey, SecretKey, COMMITMENT_FACTORY, PROVER},
     };
     use rand::OsRng;
-    use tari_crypto::keys::{PublicKey as PK, SecretKey as SK};
+    use tari_crypto::{
+        commitment::HomomorphicCommitmentFactory,
+        keys::{PublicKey as PK, SecretKey as SK},
+    };
 
     fn generate_output_parms() -> (SecretKey, SecretKey, OutputFeatures) {
         let mut rng = OsRng::new().unwrap();
@@ -105,7 +123,7 @@ mod test {
     fn zero_amount_fails() {
         let info = SingleRoundSenderData::default();
         let (r, k, of) = generate_output_parms();
-        match SingleReceiverTransactionProtocol::create(&info, r, k, of) {
+        match SingleReceiverTransactionProtocol::create(&info, r, k, of, &PROVER, &COMMITMENT_FACTORY) {
             Ok(_) => panic!("Zero amounts should fail"),
             Err(TransactionProtocolError::ValidationError(s)) => assert_eq!(s, "Cannot send zero microTari"),
             Err(_) => panic!("Protocol fails for the wrong reason"),
@@ -131,7 +149,8 @@ mod test {
             public_nonce: pub_rs.clone(),
             metadata: m.clone(),
         };
-        let prot = SingleReceiverTransactionProtocol::create(&info, r, k.clone(), of).unwrap();
+        let prot =
+            SingleReceiverTransactionProtocol::create(&info, r, k.clone(), of, &PROVER, &COMMITMENT_FACTORY).unwrap();
         assert_eq!(prot.tx_id, 500, "tx_id is incorrect");
         // Check the signature
         assert_eq!(prot.public_spend_key, pubkey, "Public key is incorrect");
@@ -142,8 +161,11 @@ mod test {
         );
         let out = &prot.output;
         // Check the output that was constructed
-        assert!(out.commitment.validate(info.amount, &k), "Output commitment is invalid");
-        assert!(out.verify_range_proof(None).unwrap(), "Range proof is invalid");
+        assert!(
+            COMMITMENT_FACTORY.open_value(&k, info.amount, &out.commitment),
+            "Output commitment is invalid"
+        );
+        assert!(out.verify_range_proof(&PROVER).unwrap(), "Range proof is invalid");
         assert!(out.features.is_empty(), "Output features have changed");
     }
 }

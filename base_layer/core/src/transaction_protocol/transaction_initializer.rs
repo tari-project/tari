@@ -23,6 +23,7 @@
 use crate::{
     fee::Fee,
     transaction::{
+        OutputFeatures,
         TransactionInput,
         TransactionOutput,
         UnblindedOutput,
@@ -34,12 +35,11 @@ use crate::{
         sender::{calculate_tx_id, RawTransactionInfo, SenderState, SenderTransactionProtocol},
         TransactionMetadata,
     },
-    types::{BlindingFactor, PublicKey, SecretKey},
+    types::{BlindingFactor, CommitmentFactory, PublicKey, RangeProofService, SecretKey},
 };
 use digest::Digest;
 use std::{
     collections::HashMap,
-    convert::TryFrom,
     error::Error as ErrorTrait,
     fmt::{Debug, Error, Formatter},
 };
@@ -208,7 +208,12 @@ impl SenderTransactionInitializer {
     /// error (so that you can continue building) along with a string listing the missing fields.
     /// If all the input data is present, but one or more fields are invalid, the function will return a
     /// `SenderTransactionProtocol` instance in the Failed state.
-    pub fn build<D: Digest>(mut self) -> Result<SenderTransactionProtocol, BuildError> {
+    pub fn build<D: Digest>(
+        mut self,
+        prover: &RangeProofService,
+        factory: &CommitmentFactory,
+    ) -> Result<SenderTransactionProtocol, BuildError>
+    {
         // Compile a list of all data that is missing
         let mut message = Vec::new();
         Self::check_value("Missing Lock Height", &self.lock_height, &mut message);
@@ -242,7 +247,7 @@ impl SenderTransactionInitializer {
         let outputs = match self
             .outputs
             .iter()
-            .map(TransactionOutput::try_from)
+            .map(|o| o.as_transaction_output(prover, factory, OutputFeatures::empty()))
             .collect::<Result<Vec<TransactionOutput>, _>>()
         {
             Ok(o) => o,
@@ -309,6 +314,7 @@ mod test {
             transaction_initializer::SenderTransactionInitializer,
             TransactionProtocolError,
         },
+        types::{COMMITMENT_FACTORY, PROVER},
     };
     use rand::OsRng;
     use tari_crypto::common::Blake256;
@@ -321,7 +327,7 @@ mod test {
         let p = TestParams::new(&mut rng);
         // Start the builder
         let builder = SenderTransactionInitializer::new(0);
-        let err = builder.build::<Blake256>().unwrap_err();
+        let err = builder.build::<Blake256>(&PROVER, &COMMITMENT_FACTORY).unwrap_err();
         // We should have a bunch of fields missing still, but we can recover and continue
         assert_eq!(
             err.message,
@@ -338,12 +344,12 @@ mod test {
         builder.with_fee_per_gram(20);
         let expected_fee = Fee::calculate(20, 1, 2);
         // We needed a change input, so this should fail
-        let err = builder.build::<Blake256>().unwrap_err();
+        let err = builder.build::<Blake256>(&PROVER, &COMMITMENT_FACTORY).unwrap_err();
         assert_eq!(err.message, "Change spending key was not provided");
         // Ok, give them a change output
         let mut builder = err.builder;
         builder.with_change_secret(p.change_key.clone());
-        let result = builder.build::<Blake256>().unwrap();
+        let result = builder.build::<Blake256>(&PROVER, &COMMITMENT_FACTORY).unwrap();
         // Peek inside and check the results
         if let SenderState::Finalizing(info) = result.state {
             assert_eq!(info.num_recipients, 0, "Number of receivers");
@@ -377,7 +383,7 @@ mod test {
             .with_output(output)
             .with_input(utxo, input)
             .with_fee_per_gram(20);
-        let result = builder.build::<Blake256>().unwrap();
+        let result = builder.build::<Blake256>(&PROVER, &COMMITMENT_FACTORY).unwrap();
         // Peek inside and check the results
         if let SenderState::Finalizing(info) = result.state {
             assert_eq!(info.num_recipients, 0, "Number of receivers");
@@ -412,7 +418,7 @@ mod test {
             .with_output(output)
             .with_input(utxo, input)
             .with_fee_per_gram(20);
-        let result = builder.build::<Blake256>().unwrap();
+        let result = builder.build::<Blake256>(&PROVER, &COMMITMENT_FACTORY).unwrap();
         // Peek inside and check the results
         if let SenderState::Finalizing(info) = result.state {
             assert_eq!(info.num_recipients, 0, "Number of receivers");
@@ -446,7 +452,7 @@ mod test {
             let (utxo, input) = make_input(&mut rng, 50);
             builder.with_input(utxo, input);
         }
-        let err = builder.build::<Blake256>().unwrap_err();
+        let err = builder.build::<Blake256>(&PROVER, &COMMITMENT_FACTORY).unwrap_err();
         assert_eq!(err.message, "Too many inputs");
     }
 
@@ -467,7 +473,7 @@ mod test {
             .with_output(output)
             .with_change_secret(p.change_key)
             .with_fee_per_gram(1);
-        let err = builder.build::<Blake256>().unwrap_err();
+        let err = builder.build::<Blake256>(&PROVER, &COMMITMENT_FACTORY).unwrap_err();
         assert_eq!(err.message, "Fee is less than the minimum");
     }
 
@@ -488,7 +494,7 @@ mod test {
             .with_output(output)
             .with_change_secret(p.change_key)
             .with_fee_per_gram(1);
-        let err = builder.build::<Blake256>().unwrap_err();
+        let err = builder.build::<Blake256>(&PROVER, &COMMITMENT_FACTORY).unwrap_err();
         assert_eq!(err.message, "You are spending more than you're providing");
     }
 
@@ -511,7 +517,7 @@ mod test {
             .with_output(output)
             .with_change_secret(p.change_key)
             .with_fee_per_gram(20);
-        let result = builder.build::<Blake256>().unwrap();
+        let result = builder.build::<Blake256>(&PROVER, &COMMITMENT_FACTORY).unwrap();
         // Peek inside and check the results
         if let SenderState::Failed(TransactionProtocolError::UnsupportedError(s)) = result.state {
             assert_eq!(s, "Multiple recipients are not supported yet")
@@ -542,7 +548,7 @@ mod test {
             .with_amount(0, 2500)
             .with_change_secret(p.change_key)
             .with_fee_per_gram(weight);
-        let result = builder.build::<Blake256>().unwrap();
+        let result = builder.build::<Blake256>(&PROVER, &COMMITMENT_FACTORY).unwrap();
         // Peek inside and check the results
         if let SenderState::SingleRoundMessageReady(info) = result.state {
             assert_eq!(info.num_recipients, 1, "Number of receivers");
@@ -577,7 +583,7 @@ mod test {
             .with_amount(0, 100)
             .with_change_secret(p.change_key)
             .with_fee_per_gram(weight);
-        let result = builder.build::<Blake256>();
+        let result = builder.build::<Blake256>(&PROVER, &COMMITMENT_FACTORY);
 
         match result {
             Ok(_) => panic!("Range proof should have failed to verify"),
