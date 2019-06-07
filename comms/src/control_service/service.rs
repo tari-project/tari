@@ -27,8 +27,7 @@ use crate::{
     connection::{net_address::ip::SocketAddress, Context, NetAddress},
     connection_manager::ConnectionManager,
     dispatcher::{DispatchResolver, DispatchableKey},
-    peer_manager::PeerManager,
-    types::{CommsPublicKey, DEFAULT_LISTENER_ADDRESS},
+    types::DEFAULT_LISTENER_ADDRESS,
 };
 
 use super::{
@@ -37,7 +36,6 @@ use super::{
     worker::ControlServiceWorker,
 };
 use std::sync::Arc;
-use tari_storage::lmdb::LMDBStore;
 
 const LOG_TARGET: &'static str = "comms::control_service::service";
 
@@ -180,6 +178,8 @@ mod test {
         connection_manager::{ConnectionManager, PeerConnectionConfig},
         control_service::types::ControlServiceMessageContext,
         dispatcher::{DispatchError, DispatchResolver, Dispatcher},
+        peer_manager::PeerManager,
+        types::{CommsDataStore, CommsPublicKey},
     };
     use std::{sync::mpsc::channel, time::Duration};
 
@@ -203,15 +203,13 @@ mod test {
         }))
     }
 
-    fn make_peer_manager() -> Arc<PeerManager<CommsPublicKey, LMDBStore>> {
-        Arc::new(PeerManager::<CommsPublicKey, LMDBStore>::new(None).unwrap())
+    fn make_peer_manager() -> Arc<PeerManager<CommsPublicKey, CommsDataStore>> {
+        Arc::new(PeerManager::<CommsPublicKey, CommsDataStore>::new(None).unwrap())
     }
 
     #[test]
     fn control_service_has_default() {
         let context = Context::new();
-        let connection_manager = make_connection_manager(&context);
-        let peer_manager = make_peer_manager();
         let control_service = ControlService::new(&context);
         assert_eq!(
             control_service.config.listener_address,
@@ -225,7 +223,6 @@ mod test {
         let (tx, rx) = channel();
         let context = Context::new();
         let connection_manager = make_connection_manager(&context);
-        let peer_manager = make_peer_manager();
         thread::spawn(move || {
             let dispatcher = Dispatcher::new(TestResolver {});
 

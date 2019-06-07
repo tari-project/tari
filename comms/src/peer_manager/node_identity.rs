@@ -24,11 +24,7 @@ use std::sync::{Arc, RwLock};
 
 use crate::{connection::NetAddress, peer_manager::node_id::NodeId, types::CommsPublicKey};
 
-use rand::OsRng;
-use tari_crypto::{
-    keys::{PublicKey, SecretKey},
-    ristretto::{RistrettoPublicKey, RistrettoSecretKey},
-};
+use tari_crypto::keys::PublicKey;
 use tari_utilities::Hashable;
 
 pub type CommsNodeIdentity = NodeIdentity<CommsPublicKey>;
@@ -63,8 +59,12 @@ where P: PublicKey + Hashable
     #[cfg(test)]
     /// Fetches the test local NodeIdentity
     pub fn global() -> Option<Arc<CommsNodeIdentity>> {
-        use tari_crypto::ristretto::{RistrettoPublicKey, RistrettoSecretKey};
-        use tari_utilities::byte_array::ByteArray;
+        use tari_crypto::{
+            keys::SecretKey,
+            ristretto::{RistrettoPublicKey, RistrettoSecretKey},
+        };
+        //        use tari_utilities::byte_array::ByteArray;
+        use rand::OsRng;
 
         {
             let lock = acquire_read_lock!(GLOBAL_NODE_IDENTITY);

@@ -22,7 +22,7 @@
 
 use super::{Factory, FactoryError};
 
-use crate::connection::{NetAddress, NetAddresses};
+use crate::connection::NetAddress;
 
 use rand::OsRng;
 use std::iter::repeat_with;

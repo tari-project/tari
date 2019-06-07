@@ -169,7 +169,7 @@ pub fn discard(_: ControlServiceMessageContext) -> Result<(), ControlServiceErro
 }
 
 /// The peer has accepted the request to connect
-pub fn accept(context: ControlServiceMessageContext) -> Result<(), ControlServiceError> {
+pub fn accept(_: ControlServiceMessageContext) -> Result<(), ControlServiceError> {
     debug!(target: LOG_TARGET, "Accept message received");
 
     // TODO: Validate this message and update connection protocol state accordingly once that is in place

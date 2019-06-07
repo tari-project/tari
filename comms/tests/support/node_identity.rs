@@ -37,7 +37,7 @@ lazy_static! {
 
 /// Sets the global node identity using random values
 pub fn set_test_node_identity() -> Arc<CommsNodeIdentity> {
-    let lock = IDENTITY_RACE_CONDITION_LOCK.lock().unwrap();
+    let _lock = IDENTITY_RACE_CONDITION_LOCK.lock().unwrap();
     match CommsNodeIdentity::global() {
         Some(identity) => identity,
         None => {

@@ -31,7 +31,6 @@ use crate::{
 use rand::OsRng;
 use serde::{Deserialize, Serialize};
 use std::{convert::TryFrom, sync::Arc};
-use tari_crypto::keys::PublicKey;
 use tari_utilities::message_format::MessageFormat;
 
 const FRAMES_PER_MESSAGE: usize = 3;
@@ -143,7 +142,7 @@ mod test {
     use rmp_serde;
     use serde::{Deserialize, Serialize};
     use tari_crypto::{
-        keys::SecretKey,
+        keys::{PublicKey, SecretKey},
         ristretto::{RistrettoPublicKey, RistrettoSecretKey},
     };
 

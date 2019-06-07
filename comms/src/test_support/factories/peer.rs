@@ -25,7 +25,7 @@ use super::{net_address::NetAddressesFactory, Factory, FactoryError};
 use crate::{
     connection::NetAddress,
     peer_manager::{NodeId, Peer, PeerFlags},
-    types::{CommsDataStore, CommsPublicKey},
+    types::CommsPublicKey,
 };
 
 use crate::test_support::makers::{comms_keys as ristretto_maker, node_id as node_id_maker};

@@ -89,6 +89,7 @@ where
     /// Start the Outbound Message Pool. This will spawn a thread that services the message queue that is sent to the
     /// Inproc address.
     pub fn start(self) {
+        info!(target: LOG_TARGET, "Starting outbound message pool");
         thread::spawn(move || {
             // Start workers
             for _i in 0..MAX_OUTBOUND_MSG_PROCESSING_WORKERS as usize {

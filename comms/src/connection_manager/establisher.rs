@@ -222,7 +222,6 @@ use crate::connection::{
     connection::EstablishedConnection,
     monitor::{ConnectionMonitor, SocketEventType},
 };
-use tari_storage::keyvalue_store::DataStore;
 
 /// Helper struct which enables multiple attempts at connecting. This also updates the peers connection
 /// attempts statistics
@@ -310,9 +309,6 @@ mod test {
         factories::{self, Factory},
         helpers::ConnectionMessageCounter,
     };
-    use tari_storage::lmdb::LMDBStore;
-
-    use crate::peer_manager::PeerFlags;
 
     fn make_peer_connection_config(context: &Context, consumer_address: InprocAddress) -> PeerConnectionConfig {
         PeerConnectionConfig {
@@ -382,7 +378,6 @@ mod test {
     #[test]
     fn establish_peer_connection_outbound() {
         let context = Context::new();
-        let address: NetAddress = "127.0.0.1:0".parse().unwrap();
         let consumer_address = InprocAddress::random();
 
         // Setup a message counter to count the number of messages sent to the consumer address
@@ -432,7 +427,7 @@ mod test {
 
         assert_eq!(msg_counter.count(), 2);
 
-        peer_conn_handle.join().unwrap();
+        peer_conn_handle.join().unwrap().unwrap();
     }
 
     #[test]
@@ -450,8 +445,6 @@ mod test {
                 .build()
                 .unwrap(),
         );
-
-        let consumer_address = InprocAddress::random();
 
         // Setup a message counter to count the number of messages sent to the consumer address
         let msg_counter = ConnectionMessageCounter::new(&context);
@@ -496,6 +489,6 @@ mod test {
 
         assert_eq!(msg_counter.count(), 2);
 
-        peer_conn_handle.join().unwrap();
+        peer_conn_handle.join().unwrap().unwrap();
     }
 }
