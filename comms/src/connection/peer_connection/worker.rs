@@ -37,7 +37,6 @@ use crate::{
     connection::{
         connection::{Connection, EstablishedConnection},
         monitor::{ConnectionMonitor, SocketEvent, SocketEventType},
-        net_address::ip::SocketAddress,
         peer_connection::{
             connection::{ConnectionInfo, PeerConnectionSimpleState, PeerConnectionState},
             control::ControlMessage,
@@ -47,6 +46,7 @@ use crate::{
         types::{Direction, Result},
         ConnectionError,
         InprocAddress,
+        NetAddress,
     },
     message::{Frame, FrameSet},
 };
@@ -58,15 +58,6 @@ const LOG_TARGET: &'static str = "comms::connection::peer_connection::worker";
 const PEER_CONNECTION_SEND_HWM: i32 = 10;
 /// Receive HWM for peer connections
 const PEER_CONNECTION_RECV_HWM: i32 = 10;
-
-macro_rules! acquire_write_lock {
-    ($lock: expr) => {
-        $lock.write().map_err(|e| -> ConnectionError {
-            PeerConnectionError::StateError(format!("Unable to acquire write lock on PeerConnection state: {}", e))
-                .into()
-        });
-    };
-}
 
 /// Worker which:
 /// - Establishes a connection to peer
@@ -122,7 +113,7 @@ impl Worker {
 
     /// Handle the result for the worker loop and update connection state if necessary
     fn handle_loop_result(&mut self, result: Result<()>) -> Result<()> {
-        let mut lock = acquire_write_lock!(self.connection_state)?;
+        let mut lock = acquire_write_lock!(self.connection_state);
         match result {
             Ok(_) => {
                 info!(
@@ -163,6 +154,7 @@ impl Worker {
         let peer_conn = self.establish_peer_connection()?;
         let consumer = self.establish_consumer_connection()?;
         let addr = peer_conn.get_connected_address();
+
         if let Some(a) = addr {
             debug!(target: LOG_TARGET, "Starting peer connection worker thread on {}", a);
             self.context.peer_address = a.clone().into();
@@ -212,34 +204,46 @@ impl Worker {
             }
 
             if let Ok(event) = monitor.read(1) {
-                self.handle_socket_event(event, addr)?;
+                self.handle_socket_event(event)?;
             }
         }
     }
 
     /// Handles socket events from the ConnectionMonitor. Updating connection
     /// state as necessary.
-    fn handle_socket_event(&mut self, event: SocketEvent, address: &Option<SocketAddress>) -> Result<()> {
+    fn handle_socket_event(&mut self, event: SocketEvent) -> Result<()> {
         use SocketEventType::*;
 
         debug!(target: "comms::peer_connection::worker", "{:?}", event);
         match event.event_type {
             Disconnected => {
-                let mut lock = acquire_write_lock!(self.connection_state)?;
+                let mut lock = acquire_write_lock!(self.connection_state);
                 *lock = PeerConnectionState::Disconnected;
             },
-            Listening | Accepted | Connected => {
+            Listening => {
                 self.retry_count = 0;
-                let mut lock = acquire_write_lock!(self.connection_state)?;
+                let mut lock = acquire_write_lock!(self.connection_state);
                 match *lock {
                     PeerConnectionState::Connecting(ref thread_ctl) => {
                         let info = ConnectionInfo {
                             control_messenger: thread_ctl.clone(),
-                            connected_address: address.clone(),
+                            connected_address: match self.context.peer_address {
+                                NetAddress::IP(ref socket_addr) => Some(socket_addr.clone()),
+                                _ => None,
+                            },
                         };
-                        *lock = PeerConnectionState::Connected(Arc::new(info));
+                        info!(
+                            target: LOG_TARGET,
+                            "[{}] Inbound connection accepted", self.context.peer_address
+                        );
+                        *lock = PeerConnectionState::Listening(Arc::new(info));
                     },
-                    PeerConnectionState::Connected(_) => {},
+                    PeerConnectionState::Connected(_) => {
+                        warn!(
+                            target: LOG_TARGET,
+                            "[{}] Listening event when connected", self.context.peer_address
+                        );
+                    },
                     ref s => {
                         return Err(PeerConnectionError::StateError(format!(
                             "Unable to transition to connected state from state '{}'",
@@ -249,12 +253,16 @@ impl Worker {
                     },
                 }
             },
+            Accepted | Connected => {
+                self.retry_count = 0;
+                self.transition_connected()?;
+            },
             BindFailed | AcceptFailed | HandshakeFailedNoDetail | HandshakeFailedProtocol | HandshakeFailedAuth => {
-                let mut lock = acquire_write_lock!(self.connection_state)?;
+                let mut lock = acquire_write_lock!(self.connection_state);
                 *lock = PeerConnectionState::Failed(PeerConnectionError::ConnectFailed);
             },
             ConnectRetried => {
-                let mut lock = acquire_write_lock!(self.connection_state)?;
+                let mut lock = acquire_write_lock!(self.connection_state);
                 match *lock {
                     PeerConnectionState::Connecting(_) => {
                         self.retry_count += 1;
@@ -266,6 +274,63 @@ impl Worker {
                 }
             },
             _ => {},
+        }
+
+        Ok(())
+    }
+
+    fn transition_connected(&self) -> Result<()> {
+        let mut lock = acquire_write_lock!(self.connection_state);
+        match *lock {
+            PeerConnectionState::Connecting(ref thread_ctl) => {
+                let info = ConnectionInfo {
+                    control_messenger: thread_ctl.clone(),
+                    connected_address: match self.context.peer_address {
+                        NetAddress::IP(ref socket_addr) => Some(socket_addr.clone()),
+                        _ => None,
+                    },
+                };
+                info!(target: LOG_TARGET, "[{}] Connected", self.context.peer_address);
+                match self.context.direction {
+                    Direction::Inbound => {
+                        if self.identity.is_some() {
+                            *lock = PeerConnectionState::Connected(Arc::new(info));
+                        }
+                    },
+                    Direction::Outbound => {
+                        *lock = PeerConnectionState::Connected(Arc::new(info));
+                    },
+                }
+            },
+            PeerConnectionState::Listening(ref info) => {
+                info!(
+                    target: LOG_TARGET,
+                    "[{}] Connection accepted", self.context.peer_address
+                );
+                match self.context.direction {
+                    Direction::Inbound => {
+                        if self.identity.is_some() {
+                            *lock = PeerConnectionState::Connected(info.clone());
+                        }
+                    },
+                    Direction::Outbound => {
+                        *lock = PeerConnectionState::Connected(info.clone());
+                    },
+                }
+            },
+            PeerConnectionState::Connected(_) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "[{}] Connected event when already connected", self.context.peer_address
+                );
+            },
+            ref s => {
+                return Err(PeerConnectionError::StateError(format!(
+                    "Unable to transition to connected state from state '{}'",
+                    PeerConnectionSimpleState::from(s)
+                ))
+                .into());
+            },
         }
 
         Ok(())
@@ -290,7 +355,9 @@ impl Worker {
                         }
                     },
                     None => {
+                        debug!(target: LOG_TARGET, "Setting peer connection identity");
                         self.identity = Some(frames[0].clone());
+                        self.transition_connected()?;
                     },
                 },
                 Direction::Outbound => {},

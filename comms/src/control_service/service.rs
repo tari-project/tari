@@ -91,7 +91,8 @@ impl Default for ControlServiceConfig {
 ///      socks_proxy_address: None,
 ///      consumer_address: InprocAddress::random(),
 ///      host: "127.0.0.1".parse().unwrap(),
-///      establish_timeout: Duration::from_millis(1000),
+///      control_service_establish_timeout: Duration::from_millis(1000),
+///      peer_connection_establish_timeout: Duration::from_secs(4),
 /// }));
 ///
 /// let dispatcher = Dispatcher::new(comms_handlers::ControlServiceResolver{})
@@ -162,14 +163,6 @@ impl From<(thread::JoinHandle<Result<()>>, SyncSender<ControlMessage>)> for Cont
     }
 }
 
-// impl Drop for ControlServiceHandle {
-//    /// Ensure the control service shuts down when this handle is dropped
-//    fn drop(&mut self) {
-//        warn!(target: LOG_TARGET, "CONTROL SERVICE SHUTDOWN");
-//        let _ = self.shutdown();
-//    }
-//}
-
 #[cfg(test)]
 mod test {
     use super::*;
@@ -179,6 +172,7 @@ mod test {
         control_service::types::ControlServiceMessageContext,
         dispatcher::{DispatchError, DispatchResolver, Dispatcher},
         peer_manager::PeerManager,
+        test_support::factories::{self, Factory},
         types::{CommsDataStore, CommsPublicKey},
     };
     use std::{sync::mpsc::channel, time::Duration};
@@ -193,7 +187,8 @@ mod test {
 
     fn make_connection_manager(context: &Context) -> Arc<ConnectionManager> {
         Arc::new(ConnectionManager::new(make_peer_manager(), PeerConnectionConfig {
-            establish_timeout: Duration::from_millis(1000),
+            control_service_establish_timeout: Duration::from_millis(1000),
+            peer_connection_establish_timeout: Duration::from_secs(4),
             max_message_size: 1024 * 1024,
             socks_proxy_address: None,
             consumer_address: InprocAddress::random(),
@@ -223,12 +218,14 @@ mod test {
         let (tx, rx) = channel();
         let context = Context::new();
         let connection_manager = make_connection_manager(&context);
+
+        let listener_address = factories::net_address::create().use_os_port().build().unwrap();
         thread::spawn(move || {
             let dispatcher = Dispatcher::new(TestResolver {});
 
             let service = ControlService::new(&context)
                 .configure(ControlServiceConfig {
-                    listener_address: "127.0.0.1:9999".parse().unwrap(),
+                    listener_address,
                     socks_proxy_address: None,
                 })
                 .serve(dispatcher, connection_manager)

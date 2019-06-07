@@ -20,6 +20,25 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub fn init() {
-    let _ = simple_logger::init();
+use std::{cmp, ops::Range, sync::Mutex};
+
+const PORT_RANGE: Range<u16> = 40000..48000;
+
+lazy_static! {
+    /// Shared counter of ports which have been used
+    static ref PORT_COUNTER: Mutex<u16> = Mutex::new(PORT_RANGE.start);
+}
+
+/// Maintains a counter of ports within a range (40000..48000), returning them in
+/// sequence. Port numbers will wrap back to 40000 once the upper bound is exceeded.
+pub fn get_next_local_port() -> u16 {
+    let mut lock = match PORT_COUNTER.lock() {
+        Ok(guard) => guard,
+        Err(_) => panic!("Poisoned PORT_COUNTER"),
+    };
+    let port = {
+        *lock = cmp::max((*lock + 1) % PORT_RANGE.end, PORT_RANGE.start);
+        *lock
+    };
+    port
 }

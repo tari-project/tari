@@ -22,7 +22,7 @@
 
 use super::{Factory, FactoryError};
 
-use crate::connection::NetAddress;
+use crate::{connection::NetAddress, test_support::helpers::ports::get_next_local_port};
 
 use rand::OsRng;
 use std::iter::repeat_with;
@@ -68,6 +68,7 @@ pub struct NetAddressFactory {
     rng: OsRng,
     port: Option<u16>,
     host: Option<String>,
+    is_use_os_port: bool,
 }
 
 impl Default for NetAddressFactory {
@@ -76,6 +77,7 @@ impl Default for NetAddressFactory {
             rng: OsRng::new().unwrap(),
             port: None,
             host: None,
+            is_use_os_port: false,
         }
     }
 }
@@ -84,6 +86,11 @@ impl NetAddressFactory {
     factory_setter!(with_port, port, Option<u16>);
 
     factory_setter!(with_host, host, Option<String>);
+
+    pub fn use_os_port(mut self) -> Self {
+        self.is_use_os_port = true;
+        self
+    }
 }
 
 impl Factory for NetAddressFactory {
@@ -91,7 +98,18 @@ impl Factory for NetAddressFactory {
 
     fn build(self) -> Result<Self::Object, FactoryError> {
         let host = self.host.clone().or(Some("127.0.0.1".to_string())).unwrap();
-        let port = self.port.clone().or(Some(0)).unwrap();
+        let port = self
+            .port
+            .clone()
+            .or_else(|| {
+                if self.is_use_os_port {
+                    Some(0)
+                } else {
+                    Some(get_next_local_port())
+                }
+            })
+            .unwrap();
+
         format!("{}:{}", host, port)
             .parse()
             .map_err(|err| FactoryError::BuildFailed(format!("Failed to build NetAddress: {:?}", err)))

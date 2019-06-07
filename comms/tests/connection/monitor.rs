@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{str::FromStr, thread, time::Duration};
+use std::{thread, time::Duration};
 use tari_comms::connection::{
     connection::Connection,
     monitor::{ConnectionMonitor, SocketEventType},
@@ -30,11 +30,13 @@ use tari_comms::connection::{
     NetAddress,
 };
 
+use tari_comms::test_support::factories::{self, Factory};
+
 #[test]
 fn recv_socket_events() {
     let ctx = Context::new();
     let monitor_addr = InprocAddress::random();
-    let address = NetAddress::from_str("127.0.0.1:0").unwrap();
+    let address = factories::net_address::create().use_os_port().build().unwrap();
 
     let monitor = ConnectionMonitor::connect(&ctx, &monitor_addr).unwrap();
 

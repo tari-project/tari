@@ -16,5 +16,5 @@ pub mod peer_manager;
 pub mod types;
 mod utils;
 
-#[cfg(test)]
+// TODO: Find a way to only include this for tests
 pub mod test_support;

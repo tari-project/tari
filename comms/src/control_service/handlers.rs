@@ -122,13 +122,7 @@ pub fn establish_connection(context: ControlServiceMessageContext) -> Result<(),
         .establish_requested_connection(&peer, &message.address, message.server_key)
         .map_err(ControlServiceError::ConnectionManagerError)?;
 
-    debug!(
-        target: LOG_TARGET,
-        "Number of active connections: {}",
-        conn_manager.get_active_connection_count()
-    );
-
-    conn.wait_connected_or_failure(Duration::from_millis(5000))
+    conn.wait_connected_or_failure(&Duration::from_millis(5000))
         .map_err(ControlServiceError::ConnectionError)?;
     debug!(
         target: LOG_TARGET,
