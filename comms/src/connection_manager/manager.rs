@@ -127,7 +127,7 @@ impl ConnectionManager {
                     PeerConnectionState::Listening(Some(address)) => {
                         debug!(
                             target: LOG_TARGET,
-                            "Listening on {} for NodeId={}...", address, peer.node_id
+                            "Waiting for NodeId={} to connect at {}...", peer.node_id, address
                         );
                         return Ok(conn);
                     },
