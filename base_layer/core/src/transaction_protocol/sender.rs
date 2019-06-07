@@ -268,8 +268,7 @@ impl SenderTransactionProtocol {
             .with_signature(&s_agg)
             .build()?;
         tx_builder.with_kernel(kernel);
-        let tx = tx_builder.build(prover, factory)?;
-        Ok(tx)
+        tx_builder.build(prover, factory).map_err(TPE::from)
     }
 
     /// Performs sanitary checks on the collected transaction pieces prior to building the final Transaction instance
