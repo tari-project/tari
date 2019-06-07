@@ -20,12 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use curve25519_dalek::ristretto::CompressedRistretto;
+use curve25519_dalek::ristretto::{CompressedRistretto, RistrettoPoint};
 
 /// These points on the Ristretto curve have been created by sequentially hashing the Generator point with SHA512 and
 /// using the byte string representation of the hash as input into the `from_uniform_bytes` constructor in
 /// [RistrettoPoint](Struct.RistrettoPoint.html). This process is validated with the `check_nums_points` test below.
-pub const RISTRETTO_NUMS_POINTS: [CompressedRistretto; 10] = [
+pub const RISTRETTO_NUMS_POINTS_COMPRESSED: [CompressedRistretto; 10] = [
     CompressedRistretto([
         144, 202, 17, 205, 108, 98, 39, 203, 10, 188, 57, 226, 113, 12, 68, 74, 230, 97, 126, 168, 24, 152, 231, 22,
         53, 63, 52, 16, 217, 101, 102, 5,
@@ -68,39 +68,55 @@ pub const RISTRETTO_NUMS_POINTS: [CompressedRistretto; 10] = [
     ]),
 ];
 
-pub const RISTRETTO_PEDERSEN_H: CompressedRistretto = RISTRETTO_NUMS_POINTS[0];
+lazy_static! {
+    pub static ref RISTRETTO_NUMS_POINTS: [RistrettoPoint; 10] = {
+        let mut arr = [RistrettoPoint::default(); 10];
+        for i in 0..10 {
+            arr[i] = RISTRETTO_NUMS_POINTS_COMPRESSED[i].decompress().unwrap();
+        }
+        arr
+    };
+}
+
+pub const RISTRETTO_PEDERSEN_H: CompressedRistretto = RISTRETTO_NUMS_POINTS_COMPRESSED[0];
 
 #[cfg(test)]
 mod test {
-    use crate::ristretto::constants::RISTRETTO_NUMS_POINTS;
-    use curve25519_dalek::{constants::RISTRETTO_BASEPOINT_POINT, ristretto::RistrettoPoint};
+    use crate::ristretto::constants::{RISTRETTO_NUMS_POINTS, RISTRETTO_NUMS_POINTS_COMPRESSED};
+    use curve25519_dalek::{
+        constants::RISTRETTO_BASEPOINT_POINT,
+        ristretto::{CompressedRistretto, RistrettoPoint},
+    };
     use sha2::{Digest, Sha512};
 
     /// Generate a set of NUMS points by sequentially hashing the Ristretto255 generator point. By using
     /// `from_uniform_bytes`, the resulting point is a NUMS point if the input bytes are from a uniform distribution.
-    fn nums_ristretto(n: usize) -> Vec<RistrettoPoint> {
+    fn nums_ristretto(n: usize) -> (Vec<RistrettoPoint>, Vec<CompressedRistretto>) {
         let mut val = RISTRETTO_BASEPOINT_POINT.compress().to_bytes();
-        let mut result = Vec::new();
+        let mut points = Vec::with_capacity(n);
+        let mut compressed_points = Vec::with_capacity(n);
         let mut a: [u8; 64] = [0; 64];
         for _ in 0..n {
             let hashed_v = Sha512::digest(&val[..]);
             a.copy_from_slice(&hashed_v);
             let next_val = RistrettoPoint::from_uniform_bytes(&a);
-            result.push(next_val);
-            val = next_val.compress().to_bytes();
+            points.push(next_val);
+            let next_compressed = next_val.compress();
+            val = next_compressed.to_bytes();
+            compressed_points.push(next_compressed);
         }
-        result
+        (points, compressed_points)
     }
 
     /// Confirm that the [RISTRETTO_NUM_POINTS array](Const.RISTRETTO_NUMS_POINTS.html) is generated with Nothing Up
     /// My Sleeve (NUMS).
     #[test]
     pub fn check_nums_points() {
-        let n = RISTRETTO_NUMS_POINTS.len();
+        let n = RISTRETTO_NUMS_POINTS_COMPRESSED.len();
         let v_arr = nums_ristretto(n);
         for i in 0..n {
-            let nums = RISTRETTO_NUMS_POINTS[i].decompress().unwrap();
-            assert_eq!(v_arr[i], nums);
+            assert_eq!(v_arr.0[i], RISTRETTO_NUMS_POINTS[i]);
+            assert_eq!(v_arr.1[i], RISTRETTO_NUMS_POINTS_COMPRESSED[i]);
         }
     }
 }

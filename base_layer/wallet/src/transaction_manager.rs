@@ -29,7 +29,7 @@ use tari_core::{
         sender::SenderMessage,
         TransactionProtocolError,
     },
-    types::SecretKey,
+    types::{CommitmentFactory, RangeProofService, SecretKey},
     ReceiverTransactionProtocol,
     SenderTransactionProtocol,
 };
@@ -110,6 +110,8 @@ impl TransactionManager {
     pub fn accept_recipient_reply(
         &mut self,
         recipient_reply: RecipientSignedTransactionData,
+        prover: &RangeProofService,
+        factory: &CommitmentFactory,
     ) -> Result<(), TransactionManagerError>
     {
         let mut marked_for_removal = None;
@@ -117,8 +119,8 @@ impl TransactionManager {
         for (tx_id, stp) in self.pending_outbound_transactions.iter_mut() {
             let recp_tx_id = recipient_reply.tx_id.clone();
             if stp.check_tx_id(recp_tx_id) && stp.is_collecting_single_signature() {
-                stp.add_single_recipient_info(recipient_reply)?;
-                stp.finalize(KernelFeatures::empty())?;
+                stp.add_single_recipient_info(recipient_reply, prover)?;
+                stp.finalize(KernelFeatures::empty(), prover, factory)?;
                 let tx = stp.get_transaction()?;
                 self.completed_transactions.insert(recp_tx_id, tx.clone());
                 marked_for_removal = Some(tx_id.clone());
@@ -149,9 +151,18 @@ impl TransactionManager {
         sender_message: SenderMessage,
         nonce: SecretKey,
         spending_key: SecretKey,
+        prover: &RangeProofService,
+        factory: &CommitmentFactory,
     ) -> Result<RecipientSignedTransactionData, TransactionManagerError>
     {
-        let rtp = ReceiverTransactionProtocol::new(sender_message, nonce, spending_key, OutputFeatures::empty());
+        let rtp = ReceiverTransactionProtocol::new(
+            sender_message,
+            nonce,
+            spending_key,
+            OutputFeatures::empty(),
+            prover,
+            factory,
+        );
         let recipient_reply = rtp.get_signed_data()?.clone();
 
         // Check this is not a repeat message i.e. tx_id doesn't already exist in our pending or completed transactions
@@ -175,15 +186,15 @@ impl TransactionManager {
     }
 
     /// Returns the list of the completed transactions
-    fn get_completed_transactions(&self) -> &HashMap<u64, Transaction> {
+    pub fn get_completed_transactions(&self) -> &HashMap<u64, Transaction> {
         return &self.completed_transactions;
     }
 
-    fn num_pending_inbound_transactions(&self) -> usize {
+    pub fn num_pending_inbound_transactions(&self) -> usize {
         return self.pending_inbound_transactions.len();
     }
 
-    fn num_pending_outbound_transactions(&self) -> usize {
+    pub fn num_pending_outbound_transactions(&self) -> usize {
         return self.pending_outbound_transactions.len();
     }
 }
@@ -195,7 +206,7 @@ mod test {
     use tari_core::{
         transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
         transaction_protocol::{sender::SenderMessage, TransactionProtocolError},
-        types::{CommitmentFactory, PublicKey, SecretKey},
+        types::{PublicKey, SecretKey, COMMITMENT_FACTORY, PROVER},
         SenderTransactionProtocol,
     };
     use tari_crypto::{
@@ -227,8 +238,7 @@ mod test {
 
     pub fn make_input<R: Rng + CryptoRng>(rng: &mut R, val: u64) -> (TransactionInput, UnblindedOutput) {
         let key = SecretKey::random(rng);
-        let v = SecretKey::from(val);
-        let commitment = CommitmentFactory::create(&key, &v);
+        let commitment = COMMITMENT_FACTORY.commit_value(&key, val);
         let input = TransactionInput::new(OutputFeatures::empty(), commitment);
         (input, UnblindedOutput::new(val, key, None))
     }
@@ -250,7 +260,7 @@ mod test {
             .with_change_secret(a.change_key.clone())
             .with_input(utxo.clone(), input)
             .with_amount(0, 500);
-        let alice_stp = builder.build::<Blake256>().unwrap();
+        let alice_stp = builder.build::<Blake256>(&PROVER, &COMMITMENT_FACTORY).unwrap();
 
         let mut alice_tx_manager = TransactionManager::new();
         let mut bob_tx_manager = TransactionManager::new();
@@ -264,12 +274,14 @@ mod test {
         assert_eq!(alice_tx_manager.num_pending_outbound_transactions(), 1);
 
         let receive_msg = bob_tx_manager
-            .accept_transaction(send_msg, b.nonce, b.spend_key)
+            .accept_transaction(send_msg, b.nonce, b.spend_key, &PROVER, &COMMITMENT_FACTORY)
             .unwrap();
 
         assert_eq!(bob_tx_manager.num_pending_inbound_transactions(), 1);
 
-        alice_tx_manager.accept_recipient_reply(receive_msg).unwrap();
+        alice_tx_manager
+            .accept_recipient_reply(receive_msg, &PROVER, &COMMITMENT_FACTORY)
+            .unwrap();
 
         let txs = alice_tx_manager.get_completed_transactions();
 
@@ -303,7 +315,7 @@ mod test {
             .with_change_secret(a_send1.change_key.clone())
             .with_input(utxo_a1.clone(), input_a1)
             .with_amount(0, 500);
-        let alice_stp1 = builder_a1.build::<Blake256>().unwrap();
+        let alice_stp1 = builder_a1.build::<Blake256>(&PROVER, &COMMITMENT_FACTORY).unwrap();
 
         let (utxo_a2, input_a2) = make_input(&mut rng, 2500);
         let mut builder_a2 = SenderTransactionProtocol::builder(1);
@@ -315,7 +327,7 @@ mod test {
             .with_change_secret(a_send2.change_key.clone())
             .with_input(utxo_a2.clone(), input_a2)
             .with_amount(0, 500);
-        let alice_stp2 = builder_a2.build::<Blake256>().unwrap();
+        let alice_stp2 = builder_a2.build::<Blake256>(&PROVER, &COMMITMENT_FACTORY).unwrap();
 
         let (utxo_a3, input_a3) = make_input(&mut rng, 2500);
         let mut builder_a3 = SenderTransactionProtocol::builder(1);
@@ -327,7 +339,7 @@ mod test {
             .with_change_secret(a_send3.change_key.clone())
             .with_input(utxo_a3.clone(), input_a3)
             .with_amount(0, 500);
-        let alice_stp3 = builder_a3.build::<Blake256>().unwrap();
+        let alice_stp3 = builder_a3.build::<Blake256>(&PROVER, &COMMITMENT_FACTORY).unwrap();
 
         // Bob
         let (utxo_b1, input_b1) = make_input(&mut rng, 2500);
@@ -340,7 +352,7 @@ mod test {
             .with_change_secret(b_send1.change_key.clone())
             .with_input(utxo_b1.clone(), input_b1)
             .with_amount(0, 500);
-        let bob_stp1 = builder_b1.build::<Blake256>().unwrap();
+        let bob_stp1 = builder_b1.build::<Blake256>(&PROVER, &COMMITMENT_FACTORY).unwrap();
 
         let mut alice_tx_manager = TransactionManager::new();
         let mut bob_tx_manager = TransactionManager::new();
@@ -361,12 +373,24 @@ mod test {
         assert_eq!(alice_tx_manager.num_pending_outbound_transactions(), 2);
 
         let receive_msg_b1 = bob_tx_manager
-            .accept_transaction(send_msg_a1, b_recv1.nonce, b_recv1.spend_key)
+            .accept_transaction(
+                send_msg_a1,
+                b_recv1.nonce,
+                b_recv1.spend_key,
+                &PROVER,
+                &COMMITMENT_FACTORY,
+            )
             .unwrap();
         assert_eq!(bob_tx_manager.num_pending_inbound_transactions(), 1);
 
         let receive_msg_c1 = carol_tx_manager
-            .accept_transaction(send_msg_a2, c_recv1.nonce, c_recv1.spend_key)
+            .accept_transaction(
+                send_msg_a2,
+                c_recv1.nonce,
+                c_recv1.spend_key,
+                &PROVER,
+                &COMMITMENT_FACTORY,
+            )
             .unwrap();
         assert_eq!(carol_tx_manager.num_pending_inbound_transactions(), 1);
 
@@ -378,11 +402,19 @@ mod test {
         assert_eq!(bob_tx_manager.num_pending_outbound_transactions(), 1);
 
         let receive_msg_a1 = alice_tx_manager
-            .accept_transaction(send_msg_b1, a_recv1.nonce, a_recv1.spend_key)
+            .accept_transaction(
+                send_msg_b1,
+                a_recv1.nonce,
+                a_recv1.spend_key,
+                &PROVER,
+                &COMMITMENT_FACTORY,
+            )
             .unwrap();
         assert_eq!(alice_tx_manager.num_pending_inbound_transactions(), 1);
 
-        alice_tx_manager.accept_recipient_reply(receive_msg_c1).unwrap();
+        alice_tx_manager
+            .accept_recipient_reply(receive_msg_c1, &PROVER, &COMMITMENT_FACTORY)
+            .unwrap();
         assert_eq!(alice_tx_manager.num_pending_outbound_transactions(), 1);
         assert_eq!(alice_tx_manager.get_completed_transactions().len(), 1);
 
@@ -393,19 +425,31 @@ mod test {
         assert_eq!(alice_tx_manager.num_pending_outbound_transactions(), 2);
 
         let receive_msg_b2 = bob_tx_manager
-            .accept_transaction(send_msg_a3, b_recv2.nonce, b_recv2.spend_key)
+            .accept_transaction(
+                send_msg_a3,
+                b_recv2.nonce,
+                b_recv2.spend_key,
+                &PROVER,
+                &COMMITMENT_FACTORY,
+            )
             .unwrap();
         assert_eq!(bob_tx_manager.num_pending_inbound_transactions(), 2);
 
-        alice_tx_manager.accept_recipient_reply(receive_msg_b2).unwrap();
+        alice_tx_manager
+            .accept_recipient_reply(receive_msg_b2, &PROVER, &COMMITMENT_FACTORY)
+            .unwrap();
         assert_eq!(alice_tx_manager.num_pending_outbound_transactions(), 1);
         assert_eq!(alice_tx_manager.get_completed_transactions().len(), 2);
 
-        bob_tx_manager.accept_recipient_reply(receive_msg_a1).unwrap();
+        bob_tx_manager
+            .accept_recipient_reply(receive_msg_a1, &PROVER, &COMMITMENT_FACTORY)
+            .unwrap();
         assert_eq!(bob_tx_manager.num_pending_outbound_transactions(), 0);
         assert_eq!(bob_tx_manager.get_completed_transactions().len(), 1);
 
-        alice_tx_manager.accept_recipient_reply(receive_msg_b1).unwrap();
+        alice_tx_manager
+            .accept_recipient_reply(receive_msg_b1, &PROVER, &COMMITMENT_FACTORY)
+            .unwrap();
         assert_eq!(alice_tx_manager.num_pending_outbound_transactions(), 0);
         assert_eq!(alice_tx_manager.get_completed_transactions().len(), 3);
 
@@ -435,7 +479,7 @@ mod test {
             .with_change_secret(a.change_key.clone())
             .with_input(utxo.clone(), input)
             .with_amount(0, 500);
-        let alice_stp = builder.build::<Blake256>().unwrap();
+        let alice_stp = builder.build::<Blake256>(&PROVER, &COMMITMENT_FACTORY).unwrap();
 
         let mut alice_tx_manager = TransactionManager::new();
         let mut bob_tx_manager = TransactionManager::new();
@@ -443,10 +487,17 @@ mod test {
         let send_msg = alice_tx_manager.start_send_transaction(alice_stp).unwrap();
 
         let _receive_msg = bob_tx_manager
-            .accept_transaction(send_msg.clone(), b.nonce.clone(), b.spend_key.clone())
+            .accept_transaction(
+                send_msg.clone(),
+                b.nonce.clone(),
+                b.spend_key.clone(),
+                &PROVER,
+                &COMMITMENT_FACTORY,
+            )
             .unwrap();
 
-        let receive_msg2 = bob_tx_manager.accept_transaction(send_msg, b.nonce, b.spend_key);
+        let receive_msg2 =
+            bob_tx_manager.accept_transaction(send_msg, b.nonce, b.spend_key, &PROVER, &COMMITMENT_FACTORY);
 
         assert_eq!(receive_msg2, Err(TransactionManagerError::RepeatedMessageError));
     }
@@ -458,7 +509,8 @@ mod test {
         let b = TestParams::new(&mut rng);
         let send_msg = SenderMessage::None;
         let mut bob_tx_manager = TransactionManager::new();
-        let receive_msg = bob_tx_manager.accept_transaction(send_msg, b.nonce, b.spend_key);
+        let receive_msg =
+            bob_tx_manager.accept_transaction(send_msg, b.nonce, b.spend_key, &PROVER, &COMMITMENT_FACTORY);
 
         assert_eq!(
             receive_msg,
@@ -485,7 +537,7 @@ mod test {
             .with_change_secret(a.change_key.clone())
             .with_input(utxo.clone(), input)
             .with_amount(0, 500);
-        let alice_stp = builder.build::<Blake256>().unwrap();
+        let alice_stp = builder.build::<Blake256>(&PROVER, &COMMITMENT_FACTORY).unwrap();
 
         let mut alice_tx_manager = TransactionManager::new();
         let mut bob_tx_manager = TransactionManager::new();
@@ -493,14 +545,20 @@ mod test {
         let send_msg = alice_tx_manager.start_send_transaction(alice_stp).unwrap();
 
         let mut receive_msg = bob_tx_manager
-            .accept_transaction(send_msg.clone(), b.nonce.clone(), b.spend_key.clone())
+            .accept_transaction(
+                send_msg.clone(),
+                b.nonce.clone(),
+                b.spend_key.clone(),
+                &PROVER,
+                &COMMITMENT_FACTORY,
+            )
             .unwrap();
 
         // Monkey with the range proof
         receive_msg.output.proof = [0u8; 32].to_vec();
 
         assert_eq!(
-            alice_tx_manager.accept_recipient_reply(receive_msg),
+            alice_tx_manager.accept_recipient_reply(receive_msg, &PROVER, &COMMITMENT_FACTORY),
             Err(TransactionManagerError::TransactionProtocolError(
                 TransactionProtocolError::ValidationError("Recipient output range proof failed to verify".to_string())
             ))
@@ -524,7 +582,7 @@ mod test {
             .with_change_secret(a.change_key.clone())
             .with_input(utxo.clone(), input)
             .with_amount(0, 500);
-        let alice_stp = builder.build::<Blake256>().unwrap();
+        let alice_stp = builder.build::<Blake256>(&PROVER, &COMMITMENT_FACTORY).unwrap();
 
         let mut alice_tx_manager = TransactionManager::new();
         let mut bob_tx_manager = TransactionManager::new();
@@ -532,13 +590,19 @@ mod test {
         let send_msg = alice_tx_manager.start_send_transaction(alice_stp).unwrap();
 
         let mut receive_msg = bob_tx_manager
-            .accept_transaction(send_msg.clone(), b.nonce.clone(), b.spend_key.clone())
+            .accept_transaction(
+                send_msg.clone(),
+                b.nonce.clone(),
+                b.spend_key.clone(),
+                &PROVER,
+                &COMMITMENT_FACTORY,
+            )
             .unwrap();
 
         receive_msg.tx_id = 0;
 
         assert_eq!(
-            alice_tx_manager.accept_recipient_reply(receive_msg),
+            alice_tx_manager.accept_recipient_reply(receive_msg, &PROVER, &COMMITMENT_FACTORY),
             Err(TransactionManagerError::TransactionDoesNotExistError)
         );
     }

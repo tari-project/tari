@@ -15,15 +15,14 @@ tari_utilities = { path = "../tari_util", version = "0.0.1" }
 digest = "0.8.0"
 rand = "0.5.5"
 clear_on_drop = "0.2.3"
-curve25519-dalek = "1.1.3"
-bulletproofs = "1.0.1"
+curve25519-dalek = { version = "1.1.3" }
+bulletproofs = { version = "1.0.2" }
 merlin = "1.0.3"
 sha2 = "0.8.0"
 derive-error = "0.0.4"
 blake2 = "0.8.0"
 serde = "1.0.89"
-serde_derive = "1.0.89"
-serde_json = "1.0.39"
+serde_json = { version = "1.0.39" }
 lazy_static = "1.3.0"
 
 [features]
@@ -31,6 +30,7 @@ avx2 = ["curve25519-dalek/avx2_backend", "bulletproofs/avx2_backend"]
 
 [dev-dependencies]
 criterion = "0.2"
+bincode = "1.1.4"
 
 [[bench]]
 name = "signatures"

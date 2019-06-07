@@ -23,10 +23,12 @@
 use bitflags::*;
 use chrono::prelude::*;
 use serde::{Deserialize, Serialize};
-use tari_crypto::keys::PublicKey;
+use tari_crypto::{
+    keys::PublicKey,
+    ristretto::serialize::{pubkey_from_hex, serialize_to_hex},
+};
 
 use crate::{connection::net_address::net_addresses::NetAddresses, peer_manager::node_id::NodeId};
-
 // TODO reputation metric?
 
 bitflags! {
@@ -41,6 +43,8 @@ bitflags! {
 /// collection of the NetAddresses that this Peer can be reached by. The struct also maintains a set of flags describing
 /// the status of the Peer.
 pub struct Peer<K> {
+    #[serde(serialize_with = "serialize_to_hex", bound(serialize = "K: PublicKey"))]
+    #[serde(deserialize_with = "pubkey_from_hex", bound(deserialize = "K: PublicKey"))]
     pub public_key: K,
     pub node_id: NodeId,
     pub addresses: NetAddresses,
