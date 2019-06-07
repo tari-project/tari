@@ -74,7 +74,7 @@ impl LivePeerConnections {
 
     /// Get the state for a connection
     pub fn get_connection_state(&self, node_id: &NodeId) -> Option<PeerConnectionState> {
-        self.get_connection(node_id).and_then(|conn| conn.get_state().ok())
+        self.get_connection(node_id).and_then(|conn| Some(conn.get_state()))
     }
 
     /// Add a connection to live peer connections

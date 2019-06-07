@@ -59,15 +59,6 @@ const PEER_CONNECTION_SEND_HWM: i32 = 10;
 /// Receive HWM for peer connections
 const PEER_CONNECTION_RECV_HWM: i32 = 10;
 
-// macro_rules! acquire_write_lock {
-//    ($lock: expr) => {
-//        $lock.write().map_err(|e| -> ConnectionError {
-//            PeerConnectionError::StateError(format!("Unable to acquire write lock on PeerConnection state: {}", e))
-//                .into()
-//        });
-//    };
-//}
-
 /// Worker which:
 /// - Establishes a connection to peer
 /// - Establishes a connection to the message consumer

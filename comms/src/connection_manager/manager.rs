@@ -98,7 +98,7 @@ impl ConnectionManager {
         let maybe_conn = self.connections.get_connection(&peer.node_id);
         let peer_conn_entry = match maybe_conn {
             Some(conn) => {
-                let state = conn.get_state().map_err(ConnectionManagerError::ConnectionError)?;
+                let state = conn.get_state();
 
                 match state {
                     PeerConnectionState::Initial |
@@ -213,11 +213,11 @@ mod test {
         connection::{types::Linger, Context, InprocAddress, NetAddress},
         control_service::{handlers, ControlService, ControlServiceConfig, ControlServiceMessageType},
         dispatcher::Dispatcher,
+        log,
         peer_manager::CommsNodeIdentity,
         test_support::{
             factories::{self, Factory},
             helpers::ConnectionMessageCounter,
-            log,
         },
     };
     use std::time::Duration;
@@ -255,7 +255,7 @@ mod test {
         //---------------------------------- Node B Setup --------------------------------------------//
 
         let node_B_consumer_address = InprocAddress::random();
-        let node_B_control_port_address: NetAddress = "127.0.0.1:9000".parse().unwrap();
+        let node_B_control_port_address: NetAddress = factories::net_address::create().build().unwrap();
 
         let node_B_msg_counter = ConnectionMessageCounter::new(&context);
         node_B_msg_counter.start(node_B_consumer_address.clone());
@@ -302,10 +302,6 @@ mod test {
             .unwrap();
 
         to_node_B_conn.set_linger(Linger::Indefinitely).unwrap();
-
-        // Wait for a second for the accept message to be sent from the control service handler
-        // TODO: This connection should be properly accepted before being returned
-        //        std::thread::sleep(std::time::Duration::from_millis(1000));
 
         assert_eq!(node_A_connection_manager.connections.get_active_connection_count(), 1);
 

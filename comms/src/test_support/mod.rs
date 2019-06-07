@@ -22,5 +22,4 @@
 
 pub mod factories;
 pub mod helpers;
-pub mod log;
 pub mod makers;

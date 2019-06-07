@@ -22,7 +22,7 @@
 
 use std::{
     fmt,
-    sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
+    sync::{Arc, RwLock},
     thread,
     time::Duration,
 };
@@ -79,14 +79,11 @@ macro_rules! is_state {
     ($name: ident, $($e: pat)|*) => {
 	pub fn $name(&self) -> bool {
         use PeerConnectionState::*;
-	    if let Ok(lock) = self.acquire_state_read_lock() {
-            match *lock {
-                $($e)|* => true,
-                _ => false,
-            }
-	    } else {
-            false
-	    }
+	    let lock = acquire_read_lock!(self.state);
+        match *lock {
+            $($e)|* => true,
+            _ => false,
+        }
 	}
     };
 }
@@ -178,7 +175,7 @@ impl PeerConnection {
     pub fn start(&mut self, context: PeerConnectionContext) -> Result<JoinHandle<Result<()>>> {
         self.direction = Some(context.direction.clone());
 
-        let mut lock = self.acquire_state_write_lock()?;
+        let mut lock = acquire_write_lock!(self.state);
         let worker = Worker::new(context, self.state.clone());
         let (handle, sender) = worker.spawn()?;
         *lock = PeerConnectionState::Connecting(Arc::new(sender.into()));
@@ -228,15 +225,12 @@ impl PeerConnection {
     /// Return the actual address this connection is bound to. If the connection is not over a TCP socket, or the
     /// connection state is not Connected, this function returns None
     pub fn get_connected_address(&self) -> Option<SocketAddress> {
-        if let Ok(lock) = self.acquire_state_read_lock() {
-            match &*lock {
-                PeerConnectionState::Listening(info) | PeerConnectionState::Connected(info) => {
-                    info.connected_address.clone()
-                },
-                _ => None,
-            }
-        } else {
-            None
+        let lock = acquire_read_lock!(self.state);
+        match &*lock {
+            PeerConnectionState::Listening(info) | PeerConnectionState::Connected(info) => {
+                info.connected_address.clone()
+            },
+            _ => None,
         }
     }
 
@@ -248,7 +242,7 @@ impl PeerConnection {
     /// `msg` - The ControlMessage to send
     fn send_control_message(&self, msg: ControlMessage) -> Result<()> {
         use PeerConnectionState::*;
-        let lock = self.acquire_state_read_lock()?;
+        let lock = acquire_read_lock!(self.state);
         match &*lock {
             Connecting(ref thread_ctl) => thread_ctl.send(msg),
             Listening(ref info) => info.control_messenger.send(msg),
@@ -313,21 +307,18 @@ impl PeerConnection {
 
     /// If the connection is in a `Failed` state, the failure error is returned, otherwise `None`
     pub fn failure(&self) -> Option<ConnectionError> {
-        let lock = self.acquire_state_read_lock().ok();
-        match lock {
-            Some(lock) => match &*lock {
-                PeerConnectionState::Failed(err) => Some(err.clone().into()),
-                _ => None,
-            },
-            None => None,
+        let lock = acquire_read_lock!(self.state);
+        match &*lock {
+            PeerConnectionState::Failed(err) => Some(err.clone().into()),
+            _ => None,
         }
     }
 
     /// Returns the connection state without the ThreadControlMessenger
     /// which should never be leaked.
-    pub fn get_state(&self) -> Result<PeerConnectionSimpleState> {
-        let lock = self.acquire_state_read_lock()?;
-        Ok(PeerConnectionSimpleState::from(&*lock))
+    pub fn get_state(&self) -> PeerConnectionSimpleState {
+        let lock = acquire_read_lock!(self.state);
+        PeerConnectionSimpleState::from(&*lock)
     }
 
     /// Gets the direction for this peer connection
@@ -351,20 +342,19 @@ impl PeerConnection {
             Err(ConnectionError::Timeout)
         }
     }
-
-    fn acquire_state_read_lock(&self) -> Result<RwLockReadGuard<PeerConnectionState>> {
-        self.state.read().map_err(|e| {
-            PeerConnectionError::StateError(format!("Unable to acquire read lock on PeerConnection state: {}", e))
-                .into()
-        })
-    }
-
-    fn acquire_state_write_lock(&self) -> Result<RwLockWriteGuard<PeerConnectionState>> {
-        self.state.write().map_err(|e| {
-            PeerConnectionError::StateError(format!("Unable to acquire write lock on PeerConnection state: {}", e))
-                .into()
-        })
-    }
+    //    fn acquire_state_read_lock(&self) -> Result<RwLockReadGuard<PeerConnectionState>> {
+    //        self.state.read().map_err(|e| {
+    //            PeerConnectionError::StateError(format!("Unable to acquire read lock on PeerConnection state: {}", e))
+    //                .into()
+    //        })
+    //    }
+    //
+    //    fn acquire_state_write_lock(&self) -> Result<RwLockWriteGuard<PeerConnectionState>> {
+    //        self.state.write().map_err(|e| {
+    //            PeerConnectionError::StateError(format!("Unable to acquire write lock on PeerConnection state: {}",
+    // e))                .into()
+    //        })
+    //    }
 }
 
 /// Represents the states that a peer connection can be in without
@@ -575,6 +565,7 @@ mod test {
         assert!(!conn.is_shutdown());
         assert!(!conn.is_failed());
     }
+
     #[test]
     fn state_shutdown() {
         let conn = PeerConnection {

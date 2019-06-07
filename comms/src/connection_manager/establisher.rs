@@ -360,7 +360,7 @@ mod test {
     #[test]
     fn establish_control_service_connection_succeed() {
         let context = Context::new();
-        let address: NetAddress = "127.0.0.1:0".parse().unwrap();
+        let address = factories::net_address::create().use_os_port().build().unwrap();
 
         // Setup a connection to act as an endpoint for a peers control service
         let dummy_conn = Connection::new(&context, Direction::Inbound)

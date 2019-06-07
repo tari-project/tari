@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::support;
-use std::{str::FromStr, time::Duration};
+use std::time::Duration;
 use tari_comms::connection::{
     connection::Connection,
     error::ConnectionError,
@@ -31,6 +31,8 @@ use tari_comms::connection::{
     InprocAddress,
     NetAddress,
 };
+
+use tari_comms::test_support::factories::{self, Factory};
 
 #[test]
 fn inbound_receive_timeout() {
@@ -92,7 +94,7 @@ fn inbound_recv_send_inproc() {
 fn inbound_recv_send_encrypted_tcp() {
     let ctx = Context::new();
 
-    let addr = NetAddress::from_str("127.0.0.1:0").unwrap();
+    let addr = factories::net_address::create().use_os_port().build().unwrap();
 
     let req_rep_pattern = support::comms_patterns::async_request_reply(Direction::Outbound);
 
@@ -156,7 +158,7 @@ fn outbound_send_recv_inproc() {
 fn outbound_send_recv_encrypted_tcp() {
     let ctx = Context::new();
 
-    let addr = NetAddress::from_str("127.0.0.1:9886").unwrap();
+    let addr = factories::net_address::create().build().unwrap();
 
     let req_rep_pattern = support::comms_patterns::async_request_reply(Direction::Inbound);
 

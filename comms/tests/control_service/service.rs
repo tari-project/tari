@@ -24,7 +24,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::support::node_identity::set_test_node_identity;
 use std::{
-    str::FromStr,
     sync::{Arc, RwLock},
     thread,
     time::Duration,
@@ -36,7 +35,6 @@ use tari_comms::{
         Context,
         CurveEncryption,
         InprocAddress,
-        NetAddress,
     },
     connection_manager::{ConnectionManager, PeerConnectionConfig},
     control_service::{ControlService, ControlServiceConfig, ControlServiceError, ControlServiceMessageContext},
@@ -57,6 +55,8 @@ use tari_comms::{
 use tari_crypto::keys::DiffieHellmanSharedSecret;
 use tari_storage::lmdb::LMDBStore;
 use tari_utilities::{byte_array::ByteArray, ciphers::cipher::Cipher, message_format::MessageFormat};
+
+use tari_comms::test_support::factories::{self, Factory};
 
 #[derive(Eq, PartialEq, Hash, Serialize, Deserialize)]
 enum MessageType {
@@ -167,7 +167,7 @@ fn recv_message() {
 
     let context = Context::new();
     let connection_manager = make_connection_manager(&context);
-    let control_service_address = NetAddress::from_str("127.0.0.1:9882").unwrap();
+    let control_service_address = factories::net_address::create().build().unwrap();
 
     let dispatcher = Dispatcher::new(CustomTestResolver {}).route(MessageType::EstablishConnection, test_handler);
 
@@ -180,7 +180,7 @@ fn recv_message() {
         .unwrap();
 
     // A "remote" node sends an EstablishConnection message to this node's control port
-    let requesting_node_address = NetAddress::from_str("127.0.0.1:9882").unwrap();
+    let requesting_node_address = factories::net_address::create().build().unwrap();
     //    let (secret_key, public_key) = RistrettoPublicKey::random_keypair(&mut rand::OsRng::new().unwrap());
     let (_sk, server_pk) = CurveEncryption::generate_keypair().unwrap();
     let msg = EstablishConnection {

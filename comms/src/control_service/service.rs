@@ -172,6 +172,7 @@ mod test {
         control_service::types::ControlServiceMessageContext,
         dispatcher::{DispatchError, DispatchResolver, Dispatcher},
         peer_manager::PeerManager,
+        test_support::factories::{self, Factory},
         types::{CommsDataStore, CommsPublicKey},
     };
     use std::{sync::mpsc::channel, time::Duration};
@@ -217,12 +218,14 @@ mod test {
         let (tx, rx) = channel();
         let context = Context::new();
         let connection_manager = make_connection_manager(&context);
+
+        let listener_address = factories::net_address::create().use_os_port().build().unwrap();
         thread::spawn(move || {
             let dispatcher = Dispatcher::new(TestResolver {});
 
             let service = ControlService::new(&context)
                 .configure(ControlServiceConfig {
-                    listener_address: "127.0.0.1:9999".parse().unwrap(),
+                    listener_address,
                     socks_proxy_address: None,
                 })
                 .serve(dispatcher, connection_manager)
