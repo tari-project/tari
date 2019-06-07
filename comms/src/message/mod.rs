@@ -24,12 +24,22 @@ use crate::peer_manager::node_id::NodeId;
 use bitflags::*;
 use serde::{Deserialize, Serialize};
 
+mod domain_message_context;
 mod envelope;
 mod error;
 mod message;
+mod message_context;
+mod message_data;
 pub mod p2p;
 
-pub use self::{envelope::*, error::MessageError, message::*};
+pub use self::{
+    domain_message_context::*,
+    envelope::*,
+    error::MessageError,
+    message::*,
+    message_context::*,
+    message_data::*,
+};
 
 /// Represents a single message frame.
 pub type Frame = Vec<u8>;

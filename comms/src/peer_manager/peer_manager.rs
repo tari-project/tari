@@ -55,7 +55,7 @@ pub enum PeerManagerError {
     InsufficientPeers,
     /// The peer has been banned
     BannedPeer,
-    /// Problem initilizing the RNG
+    /// Problem initializing the RNG
     RngError,
 }
 
@@ -268,7 +268,7 @@ mod test {
         let mut rng = rand::OsRng::new().unwrap();
         test_peers.push(create_test_peer(&mut rng, true));
         assert!(peer_manager.add_peer(test_peers[test_peers.len() - 1].clone()).is_ok());
-        for i in 0..18 {
+        for _i in 0..18 {
             test_peers.push(create_test_peer(&mut rng, false));
             assert!(peer_manager.add_peer(test_peers[test_peers.len() - 1].clone()).is_ok());
         }

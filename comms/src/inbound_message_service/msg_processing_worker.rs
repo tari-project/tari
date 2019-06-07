@@ -25,12 +25,23 @@ use crate::{
         types::SocketType,
         zmq::{Context, InprocAddress, ZmqEndpoint, ZmqError},
     },
-    inbound_message_service::{message_context::MessageContext, message_dispatcher::MessageDispatcher},
+    dispatcher::{DispatchResolver, DispatchableKey},
+    message::{DomainMessageContext, MessageContext, MessageData},
+    outbound_message_service::outbound_message_service::OutboundMessageService,
+    peer_manager::peer_manager::PeerManager,
+    types::{CommsDataStore, CommsPublicKey, DomainMessageDispatcher, MessageDispatcher},
 };
 #[cfg(test)]
 use std::sync::mpsc::SyncSender;
-use std::{convert::TryFrom, marker::Send, thread};
+use std::{
+    convert::TryFrom,
+    hash::Hash,
+    marker::{Send, Sync},
+    sync::Arc,
+    thread,
+};
 use tari_crypto::keys::PublicKey;
+
 /// As DealerError is handled in a thread it needs to be written to the error log
 #[derive(Debug)]
 pub enum WorkerError {
@@ -40,30 +51,42 @@ pub enum WorkerError {
     InboundConnectionError(zmq::Error),
 }
 
-pub struct MsgProcessingWorker<PubKey> {
+pub struct MsgProcessingWorker<PubKey, DispKey, DispRes>
+where DispKey: DispatchableKey
+{
     context: Context,
     inbound_address: InprocAddress,
-    #[allow(dead_code)]
-    node_identity: PubKey,
-    message_dispatcher: MessageDispatcher<MessageContext<PubKey>>,
+    message_dispatcher: Arc<MessageDispatcher<MessageContext<PubKey, DispKey, DispRes>>>,
+    domain_dispatcher: Arc<DomainMessageDispatcher<PubKey, DispKey, DispRes>>,
+    outbound_message_service: Arc<OutboundMessageService>,
+    peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
     #[cfg(test)]
     test_sync_sender: Option<SyncSender<String>>,
 }
 
-impl<PubKey: PublicKey + Send + 'static> MsgProcessingWorker<PubKey> {
+impl<PubKey, DispKey, DispRes> MsgProcessingWorker<PubKey, DispKey, DispRes>
+where
+    PubKey: PublicKey + Send + 'static + Sync + Hash,
+    DispKey: DispatchableKey,
+    DispRes: DispatchResolver<DispKey, DomainMessageContext<PubKey>> + Sync,
+{
     /// Setup a new MsgProcessingWorker that will read incoming messages and dispatch them using the message_dispatcher
     pub fn new(
         context: Context,
         inbound_address: InprocAddress,
-        node_identity: PubKey,
-        message_dispatcher: MessageDispatcher<MessageContext<PubKey>>,
-    ) -> MsgProcessingWorker<PubKey>
+        message_dispatcher: Arc<MessageDispatcher<MessageContext<PubKey, DispKey, DispRes>>>,
+        domain_dispatcher: Arc<DomainMessageDispatcher<PubKey, DispKey, DispRes>>,
+        outbound_message_service: Arc<OutboundMessageService>,
+        peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
+    ) -> MsgProcessingWorker<PubKey, DispKey, DispRes>
     {
         MsgProcessingWorker {
             context,
             inbound_address,
-            node_identity,
             message_dispatcher,
+            domain_dispatcher,
+            outbound_message_service,
+            peer_manager,
             #[cfg(test)]
             test_sync_sender: None,
         }
@@ -93,8 +116,15 @@ impl<PubKey: PublicKey + Send + 'static> MsgProcessingWorker<PubKey> {
                 },
             };
 
-            match MessageContext::try_from(frames) {
-                Ok(message_context) => {
+            match MessageData::try_from(frames) {
+                Ok(message_data) => {
+                    let message_context = MessageContext::<PubKey, DispKey, DispRes>::new(
+                        message_data,
+                        self.outbound_message_service.clone(),
+                        self.peer_manager.clone(),
+                        self.domain_dispatcher.clone(),
+                    );
+
                     // TODO: Provide worker with the current nodes identity by adding it onto MessageContext, I
                     // think it should rather be added as another frame before the message reaches the dealer
                     self.message_dispatcher.dispatch(message_context).unwrap_or_else(|_e| {
@@ -151,12 +181,11 @@ mod test {
         dispatcher::DispatchError,
         inbound_message_service::comms_msg_handlers::{CommsDispatchType, InboundMessageServiceResolver},
         message::MessageEnvelope,
+        peer_manager::peer_manager::PeerManager,
+        types::{CommsDataStore, CommsPublicKey},
     };
     use std::{convert::TryInto, time};
-    use tari_crypto::{
-        keys::{PublicKey, SecretKey},
-        ristretto::{RistrettoPublicKey, RistrettoSecretKey},
-    };
+    use tari_crypto::ristretto::RistrettoPublicKey;
 
     #[test]
     fn test_new_and_start() {
@@ -164,34 +193,58 @@ mod test {
         // correctly dispatched
         static mut CALLED_FN_TYPE: CommsDispatchType = CommsDispatchType::Discard;
 
-        // Setup a test message dispatcher
-        //        fn test_fn_forward(_msg_data: MessageContext<RistrettoPublicKey>) -> Result<(), DispatchError> {
-        //            unsafe {
-        //                CALLED_FN_TYPE = CommsDispatchType::Forward;
-        //            }
-        //            Ok(())
-        //        }
+        #[derive(Debug, Hash, Eq, PartialEq)]
+        pub enum DomainDispatchType {
+            Default,
+        }
 
-        fn test_fn_handle(_msg_data: MessageContext<RistrettoPublicKey>) -> Result<(), DispatchError> {
+        pub struct DomainResolver;
+
+        impl DispatchResolver<DomainDispatchType, DomainMessageContext<RistrettoPublicKey>> for DomainResolver {
+            fn resolve(
+                &self,
+                _msg: &DomainMessageContext<RistrettoPublicKey>,
+            ) -> Result<DomainDispatchType, DispatchError>
+            {
+                Ok(DomainDispatchType::Default)
+            }
+        }
+        fn domain_test_fn(_message_context: DomainMessageContext<RistrettoPublicKey>) -> Result<(), DispatchError> {
+            Ok(())
+        }
+
+        let domain_dispatcher = Arc::new(
+            DomainMessageDispatcher::<RistrettoPublicKey, DomainDispatchType, DomainResolver>::new(DomainResolver {})
+                .catch_all(domain_test_fn),
+        );
+
+        fn test_fn_handle(
+            _msg_context: MessageContext<RistrettoPublicKey, DomainDispatchType, DomainResolver>,
+        ) -> Result<(), DispatchError> {
             unsafe {
                 CALLED_FN_TYPE = CommsDispatchType::Handle;
             }
             Ok(())
         }
 
-        let message_dispatcher =
-            MessageDispatcher::new(InboundMessageServiceResolver {}).route(CommsDispatchType::Handle, test_fn_handle);
+        let message_dispatcher = Arc::new(
+            MessageDispatcher::new(InboundMessageServiceResolver {}).route(CommsDispatchType::Handle, test_fn_handle),
+        );
 
         // Create the message worker
         let context = Context::new();
         let inbound_address = InprocAddress::random();
-        let mut rng = rand::OsRng::new().unwrap();
-        let node_identity = RistrettoPublicKey::from_secret_key(&RistrettoSecretKey::random(&mut rng));
+        let peer_manager = Arc::new(PeerManager::<CommsPublicKey, CommsDataStore>::new(None).unwrap());
+        let outbound_message_service = Arc::new(
+            OutboundMessageService::new(context.clone(), InprocAddress::random(), peer_manager.clone()).unwrap(),
+        );
         let worker = MsgProcessingWorker::new(
             context.clone(),
             inbound_address.clone(),
-            node_identity,
             message_dispatcher,
+            domain_dispatcher,
+            outbound_message_service,
+            peer_manager,
         );
         worker.start();
 
@@ -203,10 +256,10 @@ mod test {
         assert!(client_socket.bind(&inbound_address.to_zmq_endpoint()).is_ok());
         let conn_outbound: EstablishedConnection = client_socket.try_into().unwrap();
 
-        let message_buffer = MessageContext::<RistrettoPublicKey> {
+        let message_buffer = MessageData::<RistrettoPublicKey> {
             message_envelope: MessageEnvelope::new(vec![1u8], vec![1u8], "handle".as_bytes().to_vec()),
             connection_id: vec![1u8],
-            node_identity: None,
+            source_node_identity: None,
         }
         .into_frame_set();
         conn_outbound.send(message_buffer).unwrap();

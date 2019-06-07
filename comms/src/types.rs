@@ -20,7 +20,13 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::{
+    dispatcher::{DispatchError, Dispatcher},
+    inbound_message_service::comms_msg_handlers::{CommsDispatchType, InboundMessageServiceResolver},
+    message::DomainMessageContext,
+};
 use tari_crypto::{common::Blake256, keys::PublicKey, ristretto::RistrettoPublicKey};
+use tari_storage::lmdb::LMDBStore;
 use tari_utilities::ciphers::chacha20::ChaCha20;
 
 /// The message protocol version for the MessageEnvelopeHeader
@@ -47,3 +53,13 @@ pub type CommsRng = rand::OsRng;
 
 /// Specify what cipher to use for encryption/decryption
 pub type CommsCipher = ChaCha20;
+
+/// Datastore used for persistence storage
+pub type CommsDataStore = LMDBStore;
+
+/// Dispatcher format for comms level dispatching to handlers
+pub type MessageDispatcher<M> = Dispatcher<CommsDispatchType, M, DispatchError, InboundMessageServiceResolver>;
+
+/// Dispatcher format for domain level dispatching to handlers
+pub type DomainMessageDispatcher<PubKey, DispKey, DispRes> =
+    Dispatcher<DispKey, DomainMessageContext<PubKey>, DispatchError, DispRes>;

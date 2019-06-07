@@ -20,6 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use serde::{Deserialize, Serialize};
+
 /// Reduce repetitive boilerplate by defining a `is_xxx_message() -> bool` function for each class of message
 macro_rules! is_type {
     ($m:ident, $f:ident) => {
@@ -32,6 +34,7 @@ macro_rules! is_type {
 /// A tari message type is an immutable 8-bit unsigned integer indicating the type of message being received or sent
 /// over the network. Details are in
 /// [RFC-0172](https://rfc.tari.com/RFC-0172_PeerToPeerMessagingProtocol.html#messagetype).
+#[derive(Serialize, Deserialize, Eq, PartialEq, Hash, Clone)]
 pub struct TariMessageType(u8);
 
 #[allow(non_snake_case, non_upper_case_globals)]
