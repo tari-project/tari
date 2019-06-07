@@ -213,7 +213,6 @@ mod test {
         connection::{types::Linger, Context, InprocAddress, NetAddress},
         control_service::{handlers, ControlService, ControlServiceConfig, ControlServiceMessageType},
         dispatcher::Dispatcher,
-        log,
         peer_manager::CommsNodeIdentity,
         test_support::{
             factories::{self, Factory},
@@ -242,7 +241,6 @@ mod test {
     #[test]
     #[allow(non_snake_case)]
     fn establish_peer_connection_by_peer() {
-        log::init();
         let context = Context::new();
 
         let dispatcher = Dispatcher::new(handlers::ControlServiceResolver::new()).route(

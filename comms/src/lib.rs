@@ -16,9 +16,6 @@ pub mod peer_manager;
 pub mod types;
 mod utils;
 
-// Use debug assertions so that unit/functional and integration tests can use this module
-#[cfg(debug_assertions)]
+// TODO: Find a way to only include this for tests
 pub mod test_support;
 
-#[cfg(test)]
-pub(crate) mod log;
