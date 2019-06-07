@@ -53,7 +53,6 @@ use std::{
     time::Duration,
 };
 use tari_crypto::keys::DiffieHellmanSharedSecret;
-use tari_storage::lmdb::LMDBStore;
 use tari_utilities::{byte_array::ByteArray, ciphers::cipher::Cipher, message_format::MessageFormat};
 
 const LOG_TARGET: &'static str = "comms::control_service::worker";

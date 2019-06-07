@@ -187,7 +187,7 @@ mod test {
     use std::{convert::TryInto, time};
     use tari_crypto::ristretto::RistrettoPublicKey;
 
-    //    #[test] TODO: Fix this test
+    #[test]
     fn test_new_and_start() {
         // Create a common variable that the worker can change and the test can read to determine that the message was
         // correctly dispatched

@@ -24,11 +24,7 @@ use std::sync::{Arc, RwLock};
 
 use crate::{connection::NetAddress, peer_manager::node_id::NodeId, types::CommsPublicKey};
 
-use rand::OsRng;
-use tari_crypto::{
-    keys::{PublicKey, SecretKey},
-    ristretto::{RistrettoPublicKey, RistrettoSecretKey},
-};
+use tari_crypto::keys::PublicKey;
 use tari_utilities::Hashable;
 
 pub type CommsNodeIdentity = NodeIdentity<CommsPublicKey>;
