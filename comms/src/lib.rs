@@ -15,3 +15,6 @@ pub mod outbound_message_service;
 pub mod peer_manager;
 pub mod types;
 mod utils;
+
+#[cfg(test)]
+pub mod test_support;

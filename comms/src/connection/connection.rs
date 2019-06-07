@@ -23,15 +23,16 @@
 use crate::{
     connection::{
         net_address::ip::SocketAddress,
-        types::{Direction, Linger, SocketType},
+        types::{Direction, Linger, Result, SocketEstablishment, SocketType},
         zmq::{Context, CurveEncryption, InprocAddress, ZmqEndpoint},
         ConnectionError,
-        Result,
-        SocketEstablishment,
     },
     message::FrameSet,
 };
+use log::*;
 use std::{cmp, convert::TryFrom, iter::IntoIterator, str::FromStr};
+
+const LOG_TARGET: &'static str = "comms::connection::Connection";
 
 /// Represents a low-level connection which can be bound an address
 /// supported by [`ZeroMQ`] the `ZMQ_ROUTER` socket.
@@ -226,12 +227,13 @@ impl<'a> Connection<'a> {
                 .map_err(|e| ConnectionError::SocketError(format!("Unable to set monitor address: {}", e)))?;
         }
 
+        let endpoint = &addr.to_zmq_endpoint();
         match self.socket_establishment {
-            SocketEstablishment::Bind => socket.bind(&addr.to_zmq_endpoint()),
-            SocketEstablishment::Connect => socket.connect(&addr.to_zmq_endpoint()),
+            SocketEstablishment::Bind => socket.bind(endpoint),
+            SocketEstablishment::Connect => socket.connect(endpoint),
             SocketEstablishment::Auto => match self.direction {
-                Direction::Inbound => socket.bind(&addr.to_zmq_endpoint()),
-                Direction::Outbound => socket.connect(&addr.to_zmq_endpoint()),
+                Direction::Inbound => socket.bind(endpoint),
+                Direction::Outbound => socket.connect(endpoint),
             },
         }
         .map_err(|e| ConnectionError::SocketError(format!("Failed to establish socket: {}", e)))?;
@@ -352,6 +354,16 @@ impl EstablishedConnection {
 
     pub(crate) fn get_socket(&self) -> &zmq::Socket {
         &self.socket
+    }
+}
+
+impl Drop for EstablishedConnection {
+    fn drop(&mut self) {
+        debug!(
+            target: LOG_TARGET,
+            "Dropping connection {:?}",
+            self.get_connected_address()
+        );
     }
 }
 

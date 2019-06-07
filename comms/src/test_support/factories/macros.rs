@@ -20,5 +20,18 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod comms_patterns;
-pub mod node_identity;
+macro_rules! factory_setter {
+ ($func:ident, $name: ident, Option<$type: ty>) => {
+        pub fn $func(mut self, val: $type) -> Self {
+            self.$name = Some(val);
+            self
+        }
+    };
+ ($func:ident, $name: ident, $type: ty) => {
+        pub fn $func(mut self, val: $type) -> Self {
+            self.$name = val;
+            self
+        }
+    };
+
+}

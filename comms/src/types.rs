@@ -45,9 +45,6 @@ pub type Challenge = Blake256;
 pub type CommsPublicKey = RistrettoPublicKey;
 pub type CommsSecretKey = <CommsPublicKey as PublicKey>::K;
 
-/// Message envelop header type
-pub type MessageEnvelopeHeader = crate::message::MessageEnvelopeHeader<CommsPublicKey>;
-
 /// Specify the RNG that should be used for random selection
 pub type CommsRng = rand::OsRng;
 

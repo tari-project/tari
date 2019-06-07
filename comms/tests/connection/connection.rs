@@ -24,12 +24,11 @@ use crate::support;
 use std::{str::FromStr, time::Duration};
 use tari_comms::connection::{
     connection::Connection,
-    types::Direction,
-    ConnectionError,
+    error::ConnectionError,
+    types::{Direction, Linger},
     Context,
     CurveEncryption,
     InprocAddress,
-    Linger,
     NetAddress,
 };
 

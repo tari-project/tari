@@ -43,4 +43,8 @@ pub enum PeerConnectionError {
     ConnectFailed,
     #[error(msg_embedded, non_std, no_from)]
     UnexpectedConnectionError(String),
+    /// Connection attempts exceeded max retries
+    ExceededMaxConnectRetryCount,
+    /// Peer connection worker thread failed to start
+    ThreadInitializationError,
 }

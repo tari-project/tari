@@ -161,11 +161,11 @@ mod test {
     use std::{convert::TryInto, sync::Arc, thread, time::Duration};
     use tari_comms::{
         connection::{
+            types::SocketType,
             zmq::{InprocAddress, ZmqEndpoint},
             Context,
             EstablishedConnection,
             NetAddress,
-            SocketType,
         },
         inbound_message_service::{
             comms_msg_handlers::construct_comms_msg_dispatcher,
@@ -240,7 +240,7 @@ mod test {
         let _source: Vec<u8> = vec![5, 6, 7, 8, 9];
         let version: Vec<u8> = vec![10];
         let dest: NodeDestination<RistrettoPublicKey> = NodeDestination::Unknown;
-        let message_envelope_header: MessageEnvelopeHeader<RistrettoPublicKey> = MessageEnvelopeHeader {
+        let message_envelope_header = MessageEnvelopeHeader {
             version: 0,
             source: RistrettoPublicKey::from_secret_key(&RistrettoSecretKey::random(&mut rng)),
             dest,
@@ -269,7 +269,7 @@ mod test {
         }
 
         let dest: NodeDestination<RistrettoPublicKey> = NodeDestination::Unknown;
-        let message_envelope_header: MessageEnvelopeHeader<RistrettoPublicKey> = MessageEnvelopeHeader {
+        let message_envelope_header = MessageEnvelopeHeader {
             version: 0,
             source: RistrettoPublicKey::from_secret_key(&RistrettoSecretKey::random(&mut rng)),
             dest,

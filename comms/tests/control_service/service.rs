@@ -22,6 +22,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::support::node_identity::set_test_node_identity;
 use std::{
     str::FromStr,
     sync::{Arc, RwLock},
@@ -29,7 +30,14 @@ use std::{
     time::Duration,
 };
 use tari_comms::{
-    connection::{Connection, Context, CurveEncryption, Direction, InprocAddress, Linger, NetAddress},
+    connection::{
+        types::{Direction, Linger},
+        Connection,
+        Context,
+        CurveEncryption,
+        InprocAddress,
+        NetAddress,
+    },
     connection_manager::{ConnectionManager, PeerConnectionConfig},
     control_service::{ControlService, ControlServiceConfig, ControlServiceError, ControlServiceMessageContext},
     dispatcher::{DispatchError, DispatchResolver, Dispatcher},
@@ -37,17 +45,18 @@ use tari_comms::{
         p2p::EstablishConnection,
         Message,
         MessageEnvelope,
+        MessageEnvelopeHeader,
         MessageError,
         MessageFlags,
         MessageHeader,
         NodeDestination,
     },
-    peer_manager::{NodeId, PeerManager},
-    types::{CommsPublicKey, MessageEnvelopeHeader},
+    peer_manager::{CommsNodeIdentity, NodeId, PeerManager},
+    types::{CommsCipher, CommsPublicKey, CommsSecretKey},
 };
-use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
+use tari_crypto::keys::DiffieHellmanSharedSecret;
 use tari_storage::lmdb::LMDBStore;
-use tari_utilities::message_format::MessageFormat;
+use tari_utilities::{byte_array::ByteArray, ciphers::cipher::Cipher, message_format::MessageFormat};
 
 #[derive(Eq, PartialEq, Hash, Serialize, Deserialize)]
 enum MessageType {
@@ -86,8 +95,13 @@ impl DispatchResolver<MessageType, ControlServiceMessageContext> for CustomTestR
     }
 }
 
+fn encrypt_message(secret_key: &CommsSecretKey, public_key: &CommsPublicKey, msg: Vec<u8>) -> Vec<u8> {
+    let shared_secret = CommsPublicKey::shared_secret(secret_key, public_key);
+    CommsCipher::seal_with_integral_nonce(&msg, &shared_secret.to_vec()).unwrap()
+}
+
 fn construct_envelope<T: MessageFormat>(
-    pk: RistrettoPublicKey,
+    node_identity: &Arc<CommsNodeIdentity>,
     message_type: MessageType,
     msg: T,
 ) -> Result<MessageEnvelope, MessageError>
@@ -95,17 +109,23 @@ fn construct_envelope<T: MessageFormat>(
     let msg_header = MessageHeader { message_type };
     let msg = Message::from_message_format(msg_header, msg)?;
     let envelope_header = MessageEnvelopeHeader {
-        source: pk,
-        dest: NodeDestination::Unknown,
-        flags: MessageFlags::empty(),
+        source: node_identity.identity.public_key.clone(),
+        dest: NodeDestination::NodeId(node_identity.identity.node_id.clone()),
+        flags: MessageFlags::ENCRYPTED,
         signature: vec![0],
         version: 0,
     };
 
+    let encrypted_body = encrypt_message(
+        &node_identity.secret_key,
+        &node_identity.identity.public_key,
+        msg.to_binary()?,
+    );
+
     Ok(MessageEnvelope::new(
         vec![0],
         envelope_header.to_binary()?,
-        msg.to_binary()?,
+        encrypted_body,
     ))
 }
 
@@ -124,7 +144,8 @@ fn poll_handler_call_count_change(initial: u8, ms: u64) -> Option<u8> {
 }
 
 fn make_connection_manager(context: &Context) -> Arc<ConnectionManager> {
-    Arc::new(ConnectionManager::new(context, PeerConnectionConfig {
+    Arc::new(ConnectionManager::new(make_peer_manager(), PeerConnectionConfig {
+        context: context.clone(),
         establish_timeout: Duration::from_millis(1000),
         max_message_size: 1024 * 1024,
         socks_proxy_address: None,
@@ -140,10 +161,12 @@ fn make_peer_manager() -> Arc<PeerManager<CommsPublicKey, LMDBStore>> {
 
 #[test]
 fn recv_message() {
+    simple_logger::init().unwrap();
+    let node_identity = set_test_node_identity();
+
     let context = Context::new();
     let connection_manager = make_connection_manager(&context);
     let control_service_address = NetAddress::from_str("127.0.0.1:9882").unwrap();
-    let peer_manager = make_peer_manager();
 
     let dispatcher = Dispatcher::new(CustomTestResolver {}).route(MessageType::EstablishConnection, test_handler);
 
@@ -152,22 +175,22 @@ fn recv_message() {
             socks_proxy_address: None,
             listener_address: control_service_address.clone(),
         })
-        .serve(dispatcher, connection_manager, peer_manager)
+        .serve(dispatcher, connection_manager)
         .unwrap();
 
     // A "remote" node sends an EstablishConnection message to this node's control port
     let requesting_node_address = NetAddress::from_str("127.0.0.1:9882").unwrap();
-    let (_secret_key, public_key) = RistrettoPublicKey::random_keypair(&mut rand::OsRng::new().unwrap());
+    //    let (secret_key, public_key) = RistrettoPublicKey::random_keypair(&mut rand::OsRng::new().unwrap());
     let (_sk, server_pk) = CurveEncryption::generate_keypair().unwrap();
     let msg = EstablishConnection {
         address: requesting_node_address,
-        node_id: NodeId::from_key(&public_key).unwrap(),
-        public_key: public_key.clone(),
+        node_id: NodeId::from_key(&node_identity.identity.public_key).unwrap(),
+        public_key: node_identity.identity.public_key.clone(),
         server_key: server_pk,
         control_service_address: control_service_address.clone(),
     };
 
-    let envelope = construct_envelope(public_key, MessageType::EstablishConnection, msg).unwrap();
+    let envelope = construct_envelope(&node_identity, MessageType::EstablishConnection, msg).unwrap();
 
     let remote_conn = Connection::new(&context, Direction::Outbound)
         .set_linger(Linger::Indefinitely)

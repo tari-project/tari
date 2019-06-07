@@ -22,13 +22,12 @@
 
 use std::{str::FromStr, time::Duration};
 use tari_comms::connection::{
+    types::{Direction, Linger},
     Connection,
     ConnectionError,
     Context,
     CurveEncryption,
-    Direction,
     InprocAddress,
-    Linger,
     NetAddress,
     PeerConnection,
     PeerConnectionContextBuilder,
@@ -165,12 +164,12 @@ fn connection_wait_connect_shutdown() {
     assert!(!conn.is_connected());
     conn.start(context).unwrap();
 
-    conn.wait_connected_or_failure(Duration::from_millis(100)).unwrap();
+    conn.wait_connected_or_failure(Duration::from_millis(2000)).unwrap();
 
     conn.shutdown().unwrap();
 
     assert!(
-        conn.wait_disconnected(Duration::from_millis(100)).is_ok(),
+        conn.wait_disconnected(Duration::from_millis(2000)).is_ok(),
         "Failed to shut down in 100ms"
     );
 
@@ -205,7 +204,7 @@ fn connection_wait_connect_failed() {
     assert!(conn.is_failed());
     match err {
         ConnectionError::PeerError(err) => match err {
-            PeerConnectionError::ConnectFailed => {},
+            PeerConnectionError::ExceededMaxConnectRetryCount => {},
             _ => panic!("Unexpected connection error '{}'", err),
         },
         _ => panic!("Unexpected connection error '{}'", err),
@@ -241,7 +240,7 @@ fn connection_pause_resume() {
     assert!(!conn.is_connected());
     conn.start(context).unwrap();
 
-    conn.wait_connected_or_failure(Duration::from_millis(100)).unwrap();
+    conn.wait_connected_or_failure(Duration::from_millis(2000)).unwrap();
 
     // Connect the message consumer
     let consumer = Connection::new(&ctx, Direction::Inbound)

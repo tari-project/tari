@@ -20,92 +20,41 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use log::*;
+
 use super::{
     error::ConnectionManagerError,
     repository::{ConnectionRepository, PeerConnectionEntry, Repository},
+    types::PeerConnectionJoinHandle,
     Result,
 };
 
 use crate::{
-    connection::{
-        self,
-        curve_keypair::{CurvePublicKey, CurveSecretKey},
-        net_address::ip::SocketAddress,
-        Context,
-        CurveEncryption,
-        Direction,
-        NetAddress,
-        NetAddresses,
-        PeerConnection,
-        PeerConnectionContextBuilder,
-        PeerConnectionState,
-    },
+    connection::{PeerConnection, PeerConnectionState},
     peer_manager::node_id::NodeId,
 };
 
-use crate::connection::InprocAddress;
-use log::*;
+use crate::connection::ConnectionError;
 use std::{
     collections::HashMap,
-    net::IpAddr,
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
-    thread::JoinHandle,
-    time::Duration,
 };
 
 const LOG_TARGET: &'static str = "comms::connection_manager::connections";
 
-pub struct PeerConnectionConfig {
-    pub max_message_size: u64,
-    pub max_connect_retries: u16,
-    pub socks_proxy_address: Option<SocketAddress>,
-    pub consumer_address: InprocAddress,
-    pub host: IpAddr,
-    pub establish_timeout: Duration,
-}
-
-/// Indicates the type of connection to establish.
-pub enum ConnectionDirection {
-    /// Listen for a connection from a peer and possibly accept their connection
-    Inbound {
-        node_id: NodeId,
-        secret_key: CurveSecretKey,
-    },
-    /// Connect to a peer and wait for them to possibly accept
-    Outbound {
-        node_id: NodeId,
-        net_addresses: NetAddresses,
-        server_public_key: CurvePublicKey,
-    },
-}
-
 /// Stores, and establishes the live peer connections
-pub struct LivePeerConnections {
-    context: Context,
+pub(super) struct LivePeerConnections {
     repository: RwLock<ConnectionRepository>,
-    pub(crate) config: PeerConnectionConfig,
-    connection_thread_handles: RwLock<HashMap<NodeId, JoinHandle<connection::Result<()>>>>,
+    connection_thread_handles: RwLock<HashMap<NodeId, PeerConnectionJoinHandle>>,
 }
 
 impl LivePeerConnections {
     /// Create a new live peer connection
-    pub fn new(context: Context, config: PeerConnectionConfig) -> Self {
+    pub fn new() -> Self {
         Self {
-            context,
-            config,
             repository: RwLock::new(ConnectionRepository::default()),
             connection_thread_handles: RwLock::new(HashMap::new()),
         }
-    }
-
-    /// Borrow the connection context
-    pub fn borrow_context(&self) -> &Context {
-        &self.context
-    }
-
-    /// Borrow the PeerConnectionConfig
-    pub fn borrow_config(&self) -> &PeerConnectionConfig {
-        &self.config
     }
 
     /// Get a connection byy node id
@@ -128,120 +77,63 @@ impl LivePeerConnections {
         self.get_connection(node_id).and_then(|conn| conn.get_state().ok())
     }
 
-    /// Establish a new peer connection
-    pub fn establish_connection(&self, direction: ConnectionDirection) -> Result<NetAddress> {
-        match direction {
-            ConnectionDirection::Inbound { node_id, secret_key } => {
-                self.establish_inbound_connection(node_id, secret_key)
-            },
-            ConnectionDirection::Outbound {
-                node_id,
-                net_addresses,
-                server_public_key,
-            } => self.establish_outbound_connection(node_id, net_addresses, server_public_key),
-        }
-    }
+    /// Add a connection to live peer connections
+    pub fn add_connection(&self, node_id: NodeId, entry: Arc<PeerConnectionEntry>, handle: PeerConnectionJoinHandle) {
+        acquire_write_lock!(self.connection_thread_handles).insert(node_id.clone(), handle);
 
-    fn establish_outbound_connection(
-        &self,
-        node_id: NodeId,
-        mut addresses: NetAddresses,
-        server_public_key: CurvePublicKey,
-    ) -> Result<NetAddress>
-    {
-        debug!("Establishing outbound connection to {}", node_id);
-        let mut repo = acquire_write_lock!(self.repository);
-        let (secret_key, public_key) = CurveEncryption::generate_keypair()?;
-
-        let address = addresses
-            .get_best_net_address()
-            .map_err(ConnectionManagerError::NetAddressError)?;
-
-        let context = self
-            .new_context_builder()
-            .set_id(node_id.clone())
-            .set_direction(Direction::Outbound)
-            .set_address(address.clone())
-            .set_curve_encryption(CurveEncryption::Client {
-                secret_key,
-                public_key,
-                server_public_key,
-            })
-            .build()?;
-
-        let connection = PeerConnection::new();
-        let worker_handle = connection.start(context)?;
-        acquire_write_lock!(self.connection_thread_handles).insert(node_id.clone(), worker_handle);
-
-        let connection = Arc::new(connection);
-        debug!("Outbound connection to {} established.", node_id);
-        repo.insert(node_id, PeerConnectionEntry {
-            connection,
-            address: address.clone(),
-            direction: Direction::Outbound,
-        });
-        Ok(address)
-    }
-
-    fn establish_inbound_connection(&self, node_id: NodeId, secret_key: CurveSecretKey) -> Result<NetAddress> {
-        debug!("Establishing inbound connection from {}", node_id);
-        let mut repo = acquire_write_lock!(self.repository);
-
-        // Providing port 0 tells the OS to allocate a port for us
-        let address = NetAddress::IP((self.config.host, 0).into());
-        let context = self
-            .new_context_builder()
-            .set_id(node_id.clone())
-            .set_direction(Direction::Inbound)
-            .set_address(address.clone())
-            .set_curve_encryption(CurveEncryption::Server { secret_key })
-            .build()?;
-
-        let connection = PeerConnection::new();
-        let worker_handle = connection.start(context)?;
-        acquire_write_lock!(self.connection_thread_handles).insert(node_id.clone(), worker_handle);
-
-        let connection = Arc::new(connection);
-        let connected_address = connection
-            .get_connected_address()
-            .and_then(|a| Some(a.to_string()))
-            .unwrap_or("non-TCP socket".to_string());
-        debug!("Connection to {} on {}", node_id, connected_address);
-        repo.insert(node_id, PeerConnectionEntry {
-            connection,
-            address: address.clone(),
-            direction: Direction::Inbound,
-        });
-
-        Ok(address)
-    }
-
-    pub fn drop_connection(&self, node_id: &NodeId) -> Result<Arc<PeerConnection>> {
         self.atomic_write(|mut repo| {
-            repo.remove(node_id)
-                .ok_or(ConnectionManagerError::PeerConnectionNotFound)
-                .map(|entry| entry.connection.clone())
+            repo.insert(node_id, entry.into());
         })
     }
 
-    pub fn shutdown_wait(self) -> Result<()> {
+    /// If the connection exists, it is removed, shut down and returned. Otherwise
+    /// `ConnectionManagerError::PeerConnectionNotFound` is returned
+    pub fn drop_connection(&self, node_id: &NodeId) -> Result<(Arc<PeerConnection>, Option<PeerConnectionJoinHandle>)> {
+        let conn = self.atomic_write(|mut repo| {
+            repo.remove(node_id)
+                .ok_or(ConnectionManagerError::PeerConnectionNotFound)
+                .map(|entry| entry.connection.clone())
+        })?;
+
+        let handle = acquire_write_lock!(self.connection_thread_handles).remove(node_id);
+
+        debug!(target: LOG_TARGET, "Dropping connection for NodeID={}", node_id);
+
+        if conn.is_active() {
+            conn.shutdown().map_err(ConnectionManagerError::ConnectionError)?;
+        }
+        Ok((conn, handle))
+    }
+
+    /// Send a shutdown signal to all peer connections, returning their worker thread handles
+    pub fn shutdown_all(self) -> HashMap<NodeId, PeerConnectionJoinHandle> {
+        info!(target: LOG_TARGET, "Shutting down all peer connections");
         self.atomic_read(|repo| {
             repo.for_each(|entry| {
-                // TODO: if shutdown message fails (possible?) log and don't join the corresponding handle (or something
-                // simpler)
                 let _ = entry.connection.shutdown();
             });
         });
-        // Wait for all peer connection threads to exit
-        let thread_handles = acquire_lock!(self.connection_thread_handles, into_inner);
 
-        for (_, handle) in thread_handles.into_iter() {
-            if let Ok(result) = handle.join() {
-                result.map_err(ConnectionManagerError::ConnectionError)?
+        acquire_lock!(self.connection_thread_handles, into_inner)
+    }
+
+    /// Send a shutdown signal to all peer connections, and wait for all of them to
+    /// shut down, returning the result of the shutdown. Warning: If a PeerConnection worker
+    /// is deadlocked, this method may never return.
+    pub fn shutdown_joined(self) -> Vec<std::result::Result<(), ConnectionError>> {
+        let handles = self.shutdown_all();
+
+        let mut results = vec![];
+        for (_, handle) in handles.into_iter() {
+            match handle.join() {
+                Ok(result) => results.push(result),
+                Err(err) => {
+                    error!(target: LOG_TARGET, "Failed to join: {:?}", err);
+                },
             }
         }
 
-        Ok(())
+        results
     }
 
     fn atomic_write<F, T>(&self, f: F) -> T
@@ -260,116 +152,93 @@ impl LivePeerConnections {
     where P: FnOnce(&Arc<PeerConnection>) -> bool {
         self.get_connection(node_id).filter(predicate)
     }
-
-    fn new_context_builder(&self) -> PeerConnectionContextBuilder {
-        let config = &self.config;
-
-        let mut builder = PeerConnectionContextBuilder::new()
-            .set_context(&self.context)
-            .set_max_msg_size(config.max_message_size)
-            .set_consumer_address(config.consumer_address.clone())
-            .set_max_retry_attempts(config.max_connect_retries);
-
-        if let Some(ref addr) = config.socks_proxy_address {
-            builder = builder.set_socks_proxy(addr.clone());
-        }
-
-        builder
-    }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
 
-    use crate::connection::{CurveEncryption, InprocAddress};
-    use std::{thread, time::Duration};
+    use rand::OsRng;
     use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
 
-    fn pause() {
-        thread::sleep(Duration::from_millis(5));
+    use std::thread;
+
+    fn make_join_handle() -> PeerConnectionJoinHandle {
+        thread::spawn(move || Ok(()))
     }
 
-    fn make_connection_manager_config(consumer_address: InprocAddress) -> PeerConnectionConfig {
-        PeerConnectionConfig {
-            host: "127.0.0.1".parse().unwrap(),
-            socks_proxy_address: None,
-            consumer_address,
-            max_connect_retries: 5,
-            max_message_size: 512 * 1024,
-            establish_timeout: Duration::from_millis(2000),
-        }
-    }
-
-    fn make_live_connections(context: &Context) -> (LivePeerConnections, CurveSecretKey, CurvePublicKey) {
-        let consumer_address = InprocAddress::random();
-        let (secret_key, public_key) = CurveEncryption::generate_keypair().unwrap();
-        let live_connections =
-            LivePeerConnections::new(context.clone(), make_connection_manager_config(consumer_address));
-        (live_connections, secret_key, public_key)
+    fn make_peer_connection_entry() -> Arc<PeerConnectionEntry> {
+        Arc::new(PeerConnectionEntry {
+            connection: Arc::new(PeerConnection::new()),
+            address: "127.0.0.1:0".parse().unwrap(),
+        })
     }
 
     fn make_node_id() -> NodeId {
-        let (_secret_key, public_key) = RistrettoPublicKey::random_keypair(&mut rand::OsRng::new().unwrap());
-        NodeId::from_key(&public_key).unwrap()
+        let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut OsRng::new().unwrap());
+        NodeId::from_key(&pk).unwrap()
     }
 
     #[test]
-    fn get_active_connection_count() {
-        let context = Context::new();
-        let (connections, secret_key, _) = make_live_connections(&context);
+    fn new() {
+        let connections = LivePeerConnections::new();
         assert_eq!(0, connections.get_active_connection_count());
-
-        let node_id = make_node_id();
-        connections
-            .establish_connection(ConnectionDirection::Inbound {
-                node_id: node_id.clone(),
-                secret_key: secret_key.clone(),
-            })
-            .unwrap();
-        connections
-            .get_connection(&node_id)
-            .unwrap()
-            .wait_connected_or_failure(Duration::from_millis(100))
-            .unwrap();
-        let node_id2 = make_node_id();
-        connections
-            .establish_connection(ConnectionDirection::Inbound {
-                node_id: node_id2.clone(),
-                secret_key: secret_key.clone(),
-            })
-            .unwrap();
-        connections
-            .get_connection(&node_id2)
-            .unwrap()
-            .wait_connected_or_failure(Duration::from_millis(100))
-            .unwrap();
-
-        assert_eq!(2, connections.get_active_connection_count());
-
-        let conn = connections.get_connection(&node_id2).unwrap();
-        conn.shutdown().unwrap();
-        conn.wait_disconnected(Duration::from_millis(2000)).unwrap();
-
-        assert_eq!(1, connections.get_active_connection_count());
     }
 
     #[test]
-    fn get_connection_state() {
-        let context = Context::new();
+    fn crud() {
+        let connections = LivePeerConnections::new();
+
         let node_id = make_node_id();
-        let (establisher, secret_key, _) = make_live_connections(&context);
+        let entry = make_peer_connection_entry();
+        let join_handle = make_join_handle();
 
-        establisher
-            .establish_connection(ConnectionDirection::Inbound {
-                node_id: node_id.clone(),
-                secret_key,
-            })
-            .unwrap();
+        connections.add_connection(node_id.clone(), entry, join_handle);
+        assert!(connections.get_active_connection(&node_id).is_none());
+        assert_eq!(
+            1,
+            acquire_read_lock!(connections.connection_thread_handles)
+                .values()
+                .count()
+        );
+        connections.get_connection(&node_id).unwrap();
+        connections.get_connection_state(&node_id).unwrap();
+        connections.drop_connection(&node_id).unwrap();
+        assert_eq!(
+            0,
+            acquire_read_lock!(connections.connection_thread_handles)
+                .values()
+                .count()
+        );
 
-        match establisher.get_connection_state(&node_id).unwrap() {
-            PeerConnectionState::Connecting | PeerConnectionState::Connected(_) => {},
-            _ => panic!("Invalid state"),
+        assert_eq!(0, connections.get_active_connection_count());
+    }
+
+    #[test]
+    fn drop_connection_fail() {
+        let connections = LivePeerConnections::new();
+        let node_id = make_node_id();
+        match connections.drop_connection(&node_id) {
+            Err(ConnectionManagerError::PeerConnectionNotFound) => {},
+            Err(err) => panic!("Unexpected error: {:?}", err),
+            Ok(_) => panic!("Unexpected Ok result"),
         }
+    }
+
+    #[test]
+    fn shutdown() {
+        let connections = LivePeerConnections::new();
+
+        for _i in 0..3 {
+            let node_id = make_node_id();
+            let entry = make_peer_connection_entry();
+            let join_handle = make_join_handle();
+
+            connections.add_connection(node_id, entry, join_handle);
+        }
+
+        let results = connections.shutdown_joined();
+        assert_eq!(3, results.len());
+        assert!(results.iter().all(|r| r.is_ok()));
     }
 }

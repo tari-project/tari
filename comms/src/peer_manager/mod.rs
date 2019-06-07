@@ -59,5 +59,5 @@ pub use self::{
     node_id::NodeId,
     node_identity::{CommsNodeIdentity, NodeIdentity, PeerNodeIdentity},
     peer::{Peer, PeerFlags},
-    peer_manager::PeerManager,
+    peer_manager::{PeerManager, PeerManagerError},
 };

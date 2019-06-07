@@ -40,6 +40,7 @@ pub type Result<T> = std::result::Result<T, ConnectionError>;
 
 /// Represents the linger behavior of a connection. This can, depending on the chosen behavior,
 /// allow a connection to finish sending messages before disconnecting.
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Linger {
     /// Linger until all messages have been sent
     Indefinitely,

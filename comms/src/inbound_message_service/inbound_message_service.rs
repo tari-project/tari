@@ -152,8 +152,8 @@ mod test {
     use crate::{
         connection::{
             connection::EstablishedConnection,
+            types::SocketType,
             zmq::{Context, InprocAddress, ZmqEndpoint},
-            SocketType,
         },
         dispatcher::DispatchError,
         inbound_message_service::comms_msg_handlers::*,
@@ -253,7 +253,7 @@ mod test {
         let _source: Vec<u8> = vec![5, 6, 7, 8, 9];
         let version: Vec<u8> = vec![10];
         let dest: NodeDestination<RistrettoPublicKey> = NodeDestination::Unknown;
-        let message_envelope_header: MessageEnvelopeHeader<RistrettoPublicKey> = MessageEnvelopeHeader {
+        let message_envelope_header = MessageEnvelopeHeader {
             version: 0,
             source: RistrettoPublicKey::from_secret_key(&RistrettoSecretKey::random(&mut rng)),
             dest,
