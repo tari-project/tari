@@ -52,14 +52,14 @@ use tari_comms::{
         NodeDestination,
     },
     peer_manager::{CommsNodeIdentity, NodeId, PeerManager, PeerNodeIdentity},
-    types::CommsPublicKey,
+    types::{CommsCipher, CommsPublicKey, CommsSecretKey},
 };
 use tari_crypto::{
-    keys::PublicKey,
+    keys::{DiffieHellmanSharedSecret, PublicKey},
     ristretto::{RistrettoPublicKey, RistrettoSecretKey},
 };
 use tari_storage::lmdb::LMDBStore;
-use tari_utilities::{byte_array::ByteArray, message_format::MessageFormat};
+use tari_utilities::{byte_array::ByteArray, ciphers::cipher::Cipher, message_format::MessageFormat};
 
 #[derive(Eq, PartialEq, Hash, Serialize, Deserialize)]
 enum MessageType {
@@ -98,8 +98,13 @@ impl DispatchResolver<MessageType, ControlServiceMessageContext> for CustomTestR
     }
 }
 
+fn encrypt_message(secret_key: &CommsSecretKey, public_key: &CommsPublicKey, msg: Vec<u8>) -> Vec<u8> {
+    let shared_secret = CommsPublicKey::shared_secret(secret_key, public_key);
+    CommsCipher::seal_with_integral_nonce(&msg, &shared_secret.to_vec()).unwrap()
+}
+
 fn construct_envelope<T: MessageFormat>(
-    pk: RistrettoPublicKey,
+    node_identity: &Arc<CommsNodeIdentity>,
     message_type: MessageType,
     msg: T,
 ) -> Result<MessageEnvelope, MessageError>
@@ -107,17 +112,23 @@ fn construct_envelope<T: MessageFormat>(
     let msg_header = MessageHeader { message_type };
     let msg = Message::from_message_format(msg_header, msg)?;
     let envelope_header = MessageEnvelopeHeader {
-        source: pk,
-        dest: NodeDestination::Unknown,
+        source: node_identity.identity.public_key.clone(),
+        dest: NodeDestination::NodeId(node_identity.identity.node_id.clone()),
         flags: MessageFlags::ENCRYPTED,
         signature: vec![0],
         version: 0,
     };
 
+    let encrypted_body = encrypt_message(
+        &node_identity.secret_key,
+        &node_identity.identity.public_key,
+        msg.to_binary()?,
+    );
+
     Ok(MessageEnvelope::new(
         vec![0],
         envelope_header.to_binary()?,
-        msg.to_binary()?,
+        encrypted_body,
     ))
 }
 
@@ -154,7 +165,7 @@ fn make_peer_manager() -> Arc<PeerManager<CommsPublicKey, LMDBStore>> {
 #[test]
 fn recv_message() {
     simple_logger::init().unwrap();
-    set_test_node_identity();
+    let node_identity = set_test_node_identity();
 
     let context = Context::new();
     let connection_manager = make_connection_manager(&context);
@@ -173,17 +184,17 @@ fn recv_message() {
 
     // A "remote" node sends an EstablishConnection message to this node's control port
     let requesting_node_address = NetAddress::from_str("127.0.0.1:9882").unwrap();
-    let (_secret_key, public_key) = RistrettoPublicKey::random_keypair(&mut rand::OsRng::new().unwrap());
+    //    let (secret_key, public_key) = RistrettoPublicKey::random_keypair(&mut rand::OsRng::new().unwrap());
     let (_sk, server_pk) = CurveEncryption::generate_keypair().unwrap();
     let msg = EstablishConnection {
         address: requesting_node_address,
-        node_id: NodeId::from_key(&public_key).unwrap(),
-        public_key: public_key.clone(),
+        node_id: NodeId::from_key(&node_identity.identity.public_key).unwrap(),
+        public_key: node_identity.identity.public_key.clone(),
         server_key: server_pk,
         control_service_address: control_service_address.clone(),
     };
 
-    let envelope = construct_envelope(public_key, MessageType::EstablishConnection, msg).unwrap();
+    let envelope = construct_envelope(&node_identity, MessageType::EstablishConnection, msg).unwrap();
 
     let remote_conn = Connection::new(&context, Direction::Outbound)
         .set_linger(Linger::Indefinitely)
