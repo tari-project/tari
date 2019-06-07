@@ -124,6 +124,20 @@ impl ConnectionManager {
                         self.initiate_peer_connection(peer)?
                     },
                     // Already have an active connection, just return it
+                    PeerConnectionState::Listening(Some(address)) => {
+                        debug!(
+                            target: LOG_TARGET,
+                            "Listening on {} for NodeId={}...", address, peer.node_id
+                        );
+                        return Ok(conn);
+                    },
+                    PeerConnectionState::Listening(None) => {
+                        debug!(
+                            target: LOG_TARGET,
+                            "Listening on non-tcp socket for NodeId={}...", peer.node_id
+                        );
+                        return Ok(conn);
+                    },
                     PeerConnectionState::Connecting => {
                         debug!(target: LOG_TARGET, "Still connecting to {}...", peer.node_id);
                         return Ok(conn);
@@ -155,14 +169,30 @@ impl ConnectionManager {
 
         protocol
             .negotiate_peer_connection(peer)
-            .and_then(|(entry, join_handle)| {
+            .and_then(|(new_inbound_conn_entry, join_handle)| {
                 debug!(
                     target: LOG_TARGET,
-                    "[{}] Adding inbound peer connection to connection manager", entry.address
+                    "[{}] Waiting for peer connection acceptance from remote peer ", new_inbound_conn_entry.address
                 );
+                let config = self.establisher.get_config();
+                // Wait for a message from the peer before continuing
+                new_inbound_conn_entry
+                    .connection
+                    .wait_connected_or_failure(&config.peer_connection_establish_timeout)
+                    .or_else(|err| {
+                        error!(
+                            target: LOG_TARGET,
+                            "Peer did not accept the connection within {} [NodeId={}] : {:?}",
+                            peer.node_id,
+                            err,
+                            config.peer_connection_establish_timeout
+                        );
+                        Err(ConnectionManagerError::ConnectionError(err))
+                    })?;
+
                 self.connections
-                    .add_connection(peer.node_id.clone(), entry.clone(), join_handle);
-                Ok(entry)
+                    .add_connection(peer.node_id.clone(), new_inbound_conn_entry.clone(), join_handle);
+                Ok(new_inbound_conn_entry)
             })
             .or_else(|err| {
                 warn!(
@@ -195,7 +225,8 @@ mod test {
     fn make_peer_connection_config(context: &Context, consumer_address: InprocAddress) -> PeerConnectionConfig {
         PeerConnectionConfig {
             context: context.clone(),
-            establish_timeout: Duration::from_millis(2000),
+            control_service_establish_timeout: Duration::from_millis(2000),
+            peer_connection_establish_timeout: Duration::from_secs(5),
             max_message_size: 1024,
             host: "127.0.0.1".parse().unwrap(),
             max_connect_retries: 3,
@@ -274,11 +305,11 @@ mod test {
 
         // Wait for a second for the accept message to be sent from the control service handler
         // TODO: This connection should be properly accepted before being returned
-        std::thread::sleep(std::time::Duration::from_millis(1000));
+        //        std::thread::sleep(std::time::Duration::from_millis(1000));
 
         assert_eq!(node_A_connection_manager.connections.get_active_connection_count(), 1);
 
-        assert!(to_node_B_conn.is_connected());
+        assert!(to_node_B_conn.is_active());
 
         to_node_B_conn.send(vec!["HELLO".as_bytes().to_vec()]).unwrap();
         to_node_B_conn.send(vec!["TARI".as_bytes().to_vec()]).unwrap();

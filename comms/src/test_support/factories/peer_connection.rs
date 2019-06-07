@@ -49,7 +49,7 @@ impl<'c> Factory for PeerConnectionFactory<'c> {
             .build()
             .map_err(FactoryError::build_failed())?;
 
-        let conn = PeerConnection::new();
+        let mut conn = PeerConnection::new();
         conn.start(peer_conn_context).map_err(FactoryError::build_failed())?;
 
         Ok((conn, secret_key, public_key))

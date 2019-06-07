@@ -85,7 +85,7 @@ impl<'e> PeerConnectionProtocol<'e> {
             target: LOG_TARGET,
             "[NodeId={}] Control port connection established", peer.node_id
         );
-        let (entry, curve_pk, join_handle) = self.open_inbound_peer_connection(&peer)?;
+        let (new_inbound_conn_entry, curve_pk, join_handle) = self.open_inbound_peer_connection(&peer)?;
 
         debug!(
             target: LOG_TARGET,
@@ -93,7 +93,7 @@ impl<'e> PeerConnectionProtocol<'e> {
         );
         // Construct establish connection message
         let msg = EstablishConnection {
-            address: entry.address.clone(),
+            address: new_inbound_conn_entry.address.clone(),
             control_service_address: self.node_identity.control_service_address.clone(),
             public_key: self.node_identity.identity.public_key.clone(),
             node_id: self.node_identity.identity.node_id.clone(),
@@ -106,9 +106,7 @@ impl<'e> PeerConnectionProtocol<'e> {
             "[NodeId={}] EstablishConnection message sent", peer.node_id
         );
 
-        let entry = Arc::new(entry);
-
-        Ok((entry, join_handle))
+        Ok((Arc::new(new_inbound_conn_entry), join_handle))
     }
 
     fn send_establish_message(
@@ -145,14 +143,6 @@ impl<'e> PeerConnectionProtocol<'e> {
     fn encrypt_body_for_peer(&self, peer: &Peer<CommsPublicKey>, body: Frame) -> Result<Frame> {
         let ecdh_shared_secret =
             CommsPublicKey::shared_secret(&self.node_identity.secret_key, &peer.public_key).to_vec();
-
-        use tari_utilities::hex::to_hex;
-        debug!(
-            target: LOG_TARGET,
-            "Connection proto shared key: {} SK:{}",
-            to_hex(ecdh_shared_secret.as_bytes()),
-            to_hex(self.node_identity.secret_key.as_bytes())
-        );
         Ok(ChaCha20::seal_with_integral_nonce(&body, &ecdh_shared_secret)?)
     }
 

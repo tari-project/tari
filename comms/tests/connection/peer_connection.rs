@@ -55,9 +55,9 @@ fn connection_in() {
         .build()
         .unwrap();
 
-    let conn = PeerConnection::new();
+    let mut conn = PeerConnection::new();
     conn.start(context).unwrap();
-    conn.wait_connected_or_failure(Duration::from_millis(1000)).unwrap();
+    conn.wait_listening_or_failure(&Duration::from_millis(1000)).unwrap();
 
     // Connect the message consumer
     let consumer = Connection::new(&ctx, Direction::Inbound)
@@ -119,11 +119,11 @@ fn connection_out() {
         .build()
         .unwrap();
 
-    let conn = PeerConnection::new();
+    let mut conn = PeerConnection::new();
 
     assert!(!conn.is_connected());
     conn.start(context).unwrap();
-    conn.wait_connected_or_failure(Duration::from_millis(100)).unwrap();
+    conn.wait_connected_or_failure(&Duration::from_millis(100)).unwrap();
 
     // Connect the message consumer
     let consumer = Connection::new(&ctx, Direction::Inbound)
@@ -159,17 +159,17 @@ fn connection_wait_connect_shutdown() {
         .build()
         .unwrap();
 
-    let conn = PeerConnection::new();
+    let mut conn = PeerConnection::new();
 
     assert!(!conn.is_connected());
     conn.start(context).unwrap();
 
-    conn.wait_connected_or_failure(Duration::from_millis(2000)).unwrap();
+    conn.wait_connected_or_failure(&Duration::from_millis(2000)).unwrap();
 
     conn.shutdown().unwrap();
 
     assert!(
-        conn.wait_disconnected(Duration::from_millis(2000)).is_ok(),
+        conn.wait_disconnected(&Duration::from_millis(2000)).is_ok(),
         "Failed to shut down in 100ms"
     );
 
@@ -194,12 +194,14 @@ fn connection_wait_connect_failed() {
         .build()
         .unwrap();
 
-    let conn = PeerConnection::new();
+    let mut conn = PeerConnection::new();
 
     assert!(!conn.is_connected());
     conn.start(context).unwrap();
 
-    let err = conn.wait_connected_or_failure(Duration::from_millis(2000)).unwrap_err();
+    let err = conn
+        .wait_connected_or_failure(&Duration::from_millis(2000))
+        .unwrap_err();
 
     assert!(conn.is_failed());
     match err {
@@ -235,12 +237,12 @@ fn connection_pause_resume() {
         .build()
         .unwrap();
 
-    let conn = PeerConnection::new();
+    let mut conn = PeerConnection::new();
 
     assert!(!conn.is_connected());
     conn.start(context).unwrap();
 
-    conn.wait_connected_or_failure(Duration::from_millis(2000)).unwrap();
+    conn.wait_listening_or_failure(&Duration::from_millis(2000)).unwrap();
 
     // Connect the message consumer
     let consumer = Connection::new(&ctx, Direction::Inbound)
@@ -292,9 +294,9 @@ fn connection_disconnect() {
         .build()
         .unwrap();
 
-    let conn = PeerConnection::new();
+    let mut conn = PeerConnection::new();
     conn.start(context).unwrap();
-    conn.wait_connected_or_failure(Duration::from_millis(1000)).unwrap();
+    conn.wait_listening_or_failure(&Duration::from_millis(1000)).unwrap();
     let addr = NetAddress::from(conn.get_connected_address().unwrap());
 
     {
@@ -306,5 +308,5 @@ fn connection_disconnect() {
         sender.send(&[&[123u8]]).unwrap();
     }
 
-    conn.wait_disconnected(Duration::from_millis(2000)).unwrap();
+    conn.wait_disconnected(&Duration::from_millis(2000)).unwrap();
 }

@@ -91,7 +91,8 @@ impl Default for ControlServiceConfig {
 ///      socks_proxy_address: None,
 ///      consumer_address: InprocAddress::random(),
 ///      host: "127.0.0.1".parse().unwrap(),
-///      establish_timeout: Duration::from_millis(1000),
+///      control_service_establish_timeout: Duration::from_millis(1000),
+///      peer_connection_establish_timeout: Duration::from_secs(4),
 /// }));
 ///
 /// let dispatcher = Dispatcher::new(comms_handlers::ControlServiceResolver{})
@@ -162,14 +163,6 @@ impl From<(thread::JoinHandle<Result<()>>, SyncSender<ControlMessage>)> for Cont
     }
 }
 
-// impl Drop for ControlServiceHandle {
-//    /// Ensure the control service shuts down when this handle is dropped
-//    fn drop(&mut self) {
-//        warn!(target: LOG_TARGET, "CONTROL SERVICE SHUTDOWN");
-//        let _ = self.shutdown();
-//    }
-//}
-
 #[cfg(test)]
 mod test {
     use super::*;
@@ -193,7 +186,8 @@ mod test {
 
     fn make_connection_manager(context: &Context) -> Arc<ConnectionManager> {
         Arc::new(ConnectionManager::new(make_peer_manager(), PeerConnectionConfig {
-            establish_timeout: Duration::from_millis(1000),
+            control_service_establish_timeout: Duration::from_millis(1000),
+            peer_connection_establish_timeout: Duration::from_secs(4),
             max_message_size: 1024 * 1024,
             socks_proxy_address: None,
             consumer_address: InprocAddress::random(),

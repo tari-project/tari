@@ -146,7 +146,8 @@ fn poll_handler_call_count_change(initial: u8, ms: u64) -> Option<u8> {
 fn make_connection_manager(context: &Context) -> Arc<ConnectionManager> {
     Arc::new(ConnectionManager::new(make_peer_manager(), PeerConnectionConfig {
         context: context.clone(),
-        establish_timeout: Duration::from_millis(1000),
+        control_service_establish_timeout: Duration::from_millis(1000),
+        peer_connection_establish_timeout: Duration::from_secs(4),
         max_message_size: 1024 * 1024,
         socks_proxy_address: None,
         consumer_address: InprocAddress::random(),

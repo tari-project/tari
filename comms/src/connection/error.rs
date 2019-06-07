@@ -35,6 +35,8 @@ pub enum ConnectionError {
     CurveKeypairError(String),
     PeerError(PeerConnectionError),
     MonitorError(monitor::ConnectionMonitorError),
+    #[error(msg_embedded, no_from, non_std)]
+    InvalidOperation(String),
 }
 
 impl ConnectionError {

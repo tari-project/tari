@@ -60,8 +60,12 @@ pub struct PeerConnectionConfig {
     pub consumer_address: InprocAddress,
     /// The host to bind to when creating inbound connections
     pub host: IpAddr,
-    /// The time to wait for a new connection to connect before failing
-    pub establish_timeout: Duration,
+    /// The length of time to wait for the connection to be established to a peer's control services.
+    pub control_service_establish_timeout: Duration,
+    /// The length of time to wait for the requested peer connection to be established before timing out.
+    /// This should be more than twice as long as control_service_establish_timeout, as communication
+    /// this must be long enough for a single back-and-forth between the peers.
+    pub peer_connection_establish_timeout: Duration,
 }
 
 /// ## ConnectionEstablisher
@@ -81,6 +85,12 @@ impl ConnectionEstablisher {
         Self { config, peer_manager }
     }
 
+    /// Returns the peer connection config
+    pub fn get_config(&self) -> &PeerConnectionConfig {
+        &self.config
+    }
+
+    /// Attempt to establish a control service connection to one of the peer's addresses
     pub fn establish_control_service_connection(&self, peer: &Peer<CommsPublicKey>) -> Result<EstablishedConnection> {
         let config = &self.config;
 
@@ -139,10 +149,10 @@ impl ConnectionEstablisher {
             })
             .build()?;
 
-        let connection = PeerConnection::new();
+        let mut connection = PeerConnection::new();
         let worker_handle = connection.start(context)?;
         connection
-            .wait_connected_or_failure(self.config.establish_timeout)
+            .wait_connected_or_failure(&self.config.control_service_establish_timeout)
             .or_else(|err| {
                 error!(
                     target: LOG_TARGET,
@@ -179,10 +189,10 @@ impl ConnectionEstablisher {
             .set_curve_encryption(CurveEncryption::Server { secret_key })
             .build()?;
 
-        let connection = PeerConnection::new();
+        let mut connection = PeerConnection::new();
         let worker_handle = connection.start(context)?;
         connection
-            .wait_connected_or_failure(self.config.establish_timeout)
+            .wait_listening_or_failure(&self.config.control_service_establish_timeout)
             .or_else(|err| {
                 error!(
                     target: LOG_TARGET,
@@ -313,7 +323,8 @@ mod test {
     fn make_peer_connection_config(context: &Context, consumer_address: InprocAddress) -> PeerConnectionConfig {
         PeerConnectionConfig {
             context: context.clone(),
-            establish_timeout: Duration::from_millis(2000),
+            control_service_establish_timeout: Duration::from_millis(2000),
+            peer_connection_establish_timeout: Duration::from_secs(20),
             max_message_size: 1024,
             host: "127.0.0.1".parse().unwrap(),
             max_connect_retries: 3,
@@ -396,7 +407,7 @@ mod test {
             .unwrap();
 
         other_peer_conn
-            .wait_connected_or_failure(Duration::from_millis(2000))
+            .wait_listening_or_failure(&Duration::from_millis(200))
             .unwrap();
 
         let address: NetAddress = other_peer_conn.get_connected_address().unwrap().into();
@@ -423,7 +434,10 @@ mod test {
         entry.connection.send(vec!["TARI".as_bytes().to_vec()]).unwrap();
 
         entry.connection.shutdown().unwrap();
-        entry.connection.wait_disconnected(Duration::from_millis(1000)).unwrap();
+        entry
+            .connection
+            .wait_disconnected(&Duration::from_millis(1000))
+            .unwrap();
 
         assert_eq!(msg_counter.count(), 2);
 
@@ -459,7 +473,7 @@ mod test {
 
         entry
             .connection
-            .wait_connected_or_failure(Duration::from_millis(2000))
+            .wait_listening_or_failure(&Duration::from_millis(2000))
             .unwrap();
         let address: NetAddress = entry.connection.get_connected_address().unwrap().into();
 
@@ -476,13 +490,13 @@ mod test {
             .unwrap();
 
         other_peer_conn
-            .wait_connected_or_failure(Duration::from_millis(2000))
+            .wait_connected_or_failure(&Duration::from_millis(2000))
             .unwrap();
         // Start sending messages
         other_peer_conn.send(vec!["HELLO".as_bytes().to_vec()]).unwrap();
         other_peer_conn.send(vec!["TARI".as_bytes().to_vec()]).unwrap();
         let _ = other_peer_conn.shutdown();
-        other_peer_conn.wait_disconnected(Duration::from_millis(1000)).unwrap();
+        other_peer_conn.wait_disconnected(&Duration::from_millis(1000)).unwrap();
 
         assert_eq!(msg_counter.count(), 2);
 
