@@ -196,7 +196,7 @@ where
             return Err(ControlServiceError::ReceivedUnencryptedMessage);
         }
 
-        let decrypted_body = envelope.body_frame(); // self.decrypt_body(envelope.body_frame(), &envelope_header.source)?;
+        let decrypted_body = self.decrypt_body(envelope.body_frame(), &envelope_header.source)?;
         let message =
             Message::from_binary(decrypted_body.as_bytes()).map_err(ControlServiceError::MessageFormatError)?;
 
@@ -213,6 +213,13 @@ where
 
     fn decrypt_body(&self, body: &Frame, public_key: &CommsPublicKey) -> Result<Frame> {
         let ecdh_shared_secret = CommsPublicKey::shared_secret(&self.node_identity.secret_key, public_key).to_vec();
+        use tari_utilities::hex::to_hex;
+        debug!(
+            target: LOG_TARGET,
+            "Control service shared key: {} SK: {}",
+            to_hex(ecdh_shared_secret.as_bytes()),
+            to_hex(self.node_identity.secret_key.as_bytes())
+        );
         CommsCipher::open_with_integral_nonce(&body, &ecdh_shared_secret).map_err(ControlServiceError::CipherError)
     }
 

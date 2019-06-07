@@ -125,7 +125,7 @@ impl<'e> PeerConnectionProtocol<'e> {
         let body = msg.to_binary().map_err(ConnectionManagerError::MessageFormatError)?;
 
         // Encrypt body
-        let encrypted_body = body; // self.encrypt_body_for_peer(peer, body)?;
+        let encrypted_body = self.encrypt_body_for_peer(peer, body)?;
 
         let envelope = MessageEnvelope::construct(
             self.node_identity.clone(),
@@ -145,12 +145,15 @@ impl<'e> PeerConnectionProtocol<'e> {
     fn encrypt_body_for_peer(&self, peer: &Peer<CommsPublicKey>, body: Frame) -> Result<Frame> {
         let ecdh_shared_secret =
             CommsPublicKey::shared_secret(&self.node_identity.secret_key, &peer.public_key).to_vec();
-        let ecdh_shared_secret_bytes: [u8; 32] = ByteArray::from_bytes(&ecdh_shared_secret)
-            .map_err(ConnectionManagerError::SharedSecretSerializationError)?;
-        Ok(ChaCha20::seal_with_integral_nonce(
-            &body,
-            &ecdh_shared_secret_bytes.to_vec(),
-        )?)
+
+        use tari_utilities::hex::to_hex;
+        debug!(
+            target: LOG_TARGET,
+            "Connection proto shared key: {} SK:{}",
+            to_hex(ecdh_shared_secret.as_bytes()),
+            to_hex(self.node_identity.secret_key.as_bytes())
+        );
+        Ok(ChaCha20::seal_with_integral_nonce(&body, &ecdh_shared_secret)?)
     }
 
     fn open_inbound_peer_connection(

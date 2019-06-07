@@ -60,6 +60,3 @@ pub type MessageDispatcher<M> = Dispatcher<CommsDispatchType, M, DispatchError, 
 /// Dispatcher format for domain level dispatching to handlers
 pub type DomainMessageDispatcher<PubKey, DispKey, DispRes> =
     Dispatcher<DispKey, DomainMessageContext<PubKey>, DispatchError, DispRes>;
-
-/// Comms datastore type
-pub type CommsDataStore = LMDBStore;

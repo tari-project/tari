@@ -51,10 +51,13 @@ use tari_comms::{
         MessageHeader,
         NodeDestination,
     },
-    peer_manager::{CommsNodeIdentity, NodeId, PeerManager},
+    peer_manager::{CommsNodeIdentity, NodeId, PeerManager, PeerNodeIdentity},
     types::{CommsCipher, CommsPublicKey, CommsSecretKey},
 };
-use tari_crypto::keys::DiffieHellmanSharedSecret;
+use tari_crypto::{
+    keys::{DiffieHellmanSharedSecret, PublicKey},
+    ristretto::{RistrettoPublicKey, RistrettoSecretKey},
+};
 use tari_storage::lmdb::LMDBStore;
 use tari_utilities::{byte_array::ByteArray, ciphers::cipher::Cipher, message_format::MessageFormat};
 
@@ -167,6 +170,7 @@ fn recv_message() {
     let context = Context::new();
     let connection_manager = make_connection_manager(&context);
     let control_service_address = NetAddress::from_str("127.0.0.1:9882").unwrap();
+    let peer_manager = make_peer_manager();
 
     let dispatcher = Dispatcher::new(CustomTestResolver {}).route(MessageType::EstablishConnection, test_handler);
 
