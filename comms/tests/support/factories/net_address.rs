@@ -22,7 +22,9 @@
 
 use super::{Factory, FactoryError};
 
-use crate::{connection::NetAddress, test_support::helpers::ports::get_next_local_port};
+use crate::support::helpers::ports::get_next_local_port;
+
+use tari_comms::connection::NetAddress;
 
 use rand::OsRng;
 use std::iter::repeat_with;

@@ -24,11 +24,9 @@ use std::convert::TryFrom;
 
 use rand::{CryptoRng, OsRng, Rng};
 
-use tari_crypto::ristretto::RistrettoPublicKey;
+use tari_comms::peer_manager::NodeId;
+use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
 use tari_utilities::{ByteArray, Hashable};
-
-use crate::peer_manager::NodeId;
-use tari_crypto::keys::PublicKey;
 
 /// Creates a random node ID witht he given RNG
 pub fn make_random_node_id_with_rng<RNG: CryptoRng + Rng>(rng: &mut RNG) -> NodeId {
@@ -42,11 +40,13 @@ pub fn make_node_id() -> NodeId {
 }
 
 /// Creates a random node ID using OsRng
+#[allow(dead_code)]
 pub fn make_node_id_from_public_key<P: PublicKey + Hashable>(pk: &P) -> NodeId {
     NodeId::from_key(pk).unwrap()
 }
 
 /// Creates the same node ID
+#[allow(dead_code)]
 pub fn make_dummy_node_id() -> NodeId {
     NodeId::try_from(
         [

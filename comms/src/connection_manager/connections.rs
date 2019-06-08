@@ -24,7 +24,7 @@ use log::*;
 
 use super::{
     error::ConnectionManagerError,
-    repository::{ConnectionRepository, PeerConnectionEntry, Repository},
+    repository::{ConnectionRepository, Repository},
     types::PeerConnectionJoinHandle,
     Result,
 };
@@ -59,7 +59,7 @@ impl LivePeerConnections {
 
     /// Get a connection byy node id
     pub fn get_connection(&self, node_id: &NodeId) -> Option<Arc<PeerConnection>> {
-        self.atomic_read(|lock| lock.get(node_id).map(|entry| entry.connection.clone()))
+        self.atomic_read(|lock| lock.get(node_id).map(|conn| conn.clone()))
     }
 
     /// Get a connection by node id only if it is active
@@ -69,7 +69,7 @@ impl LivePeerConnections {
 
     /// Get number of active connections
     pub fn get_active_connection_count(&self) -> usize {
-        self.atomic_read(|repo| repo.count_where(|entry| entry.connection.is_active()))
+        self.atomic_read(|repo| repo.count_where(|conn| conn.is_active()))
     }
 
     /// Get the state for a connection
@@ -78,11 +78,11 @@ impl LivePeerConnections {
     }
 
     /// Add a connection to live peer connections
-    pub fn add_connection(&self, node_id: NodeId, entry: Arc<PeerConnectionEntry>, handle: PeerConnectionJoinHandle) {
+    pub fn add_connection(&self, node_id: NodeId, conn: Arc<PeerConnection>, handle: PeerConnectionJoinHandle) {
         acquire_write_lock!(self.connection_thread_handles).insert(node_id.clone(), handle);
 
         self.atomic_write(|mut repo| {
-            repo.insert(node_id, entry.into());
+            repo.insert(node_id, conn);
         })
     }
 
@@ -92,7 +92,7 @@ impl LivePeerConnections {
         let conn = self.atomic_write(|mut repo| {
             repo.remove(node_id)
                 .ok_or(ConnectionManagerError::PeerConnectionNotFound)
-                .map(|entry| entry.connection.clone())
+                .map(|conn| conn.clone())
         })?;
 
         let handle = acquire_write_lock!(self.connection_thread_handles).remove(node_id);
@@ -109,8 +109,8 @@ impl LivePeerConnections {
     pub fn shutdown_all(self) -> HashMap<NodeId, PeerConnectionJoinHandle> {
         info!(target: LOG_TARGET, "Shutting down all peer connections");
         self.atomic_read(|repo| {
-            repo.for_each(|entry| {
-                let _ = entry.connection.shutdown();
+            repo.for_each(|conn| {
+                let _ = conn.shutdown();
             });
         });
 
@@ -167,13 +167,6 @@ mod test {
         thread::spawn(move || Ok(()))
     }
 
-    fn make_peer_connection_entry() -> Arc<PeerConnectionEntry> {
-        Arc::new(PeerConnectionEntry {
-            connection: Arc::new(PeerConnection::new()),
-            address: "127.0.0.1:0".parse().unwrap(),
-        })
-    }
-
     fn make_node_id() -> NodeId {
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut OsRng::new().unwrap());
         NodeId::from_key(&pk).unwrap()
@@ -190,10 +183,10 @@ mod test {
         let connections = LivePeerConnections::new();
 
         let node_id = make_node_id();
-        let entry = make_peer_connection_entry();
+        let conn = Arc::new(PeerConnection::new());
         let join_handle = make_join_handle();
 
-        connections.add_connection(node_id.clone(), entry, join_handle);
+        connections.add_connection(node_id.clone(), conn, join_handle);
         assert!(connections.get_active_connection(&node_id).is_none());
         assert_eq!(
             1,
@@ -231,10 +224,10 @@ mod test {
 
         for _i in 0..3 {
             let node_id = make_node_id();
-            let entry = make_peer_connection_entry();
+            let conn = Arc::new(PeerConnection::new());
             let join_handle = make_join_handle();
 
-            connections.add_connection(node_id, entry, join_handle);
+            connections.add_connection(node_id, conn, join_handle);
         }
 
         let results = connections.shutdown_joined();

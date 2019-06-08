@@ -22,12 +22,15 @@
 
 use log::*;
 
-use super::{error::ConnectionManagerError, repository::PeerConnectionEntry, types::PeerConnectionJoinHandle, Result};
+use super::{error::ConnectionManagerError, types::PeerConnectionJoinHandle, Result};
 
 use crate::{
     connection::{
+        connection::EstablishedConnection,
         curve_keypair::{CurvePublicKey, CurveSecretKey},
+        monitor::{ConnectionMonitor, SocketEventType},
         net_address::ip::SocketAddress,
+        peer_connection::ConnectionId,
         types::Direction,
         Connection,
         Context,
@@ -57,7 +60,7 @@ pub struct PeerConnectionConfig {
     /// The address of the SOCKS proxy to use for this connection
     pub socks_proxy_address: Option<SocketAddress>,
     /// The address to forward all the messages received from this peer connection
-    pub consumer_address: InprocAddress,
+    pub message_sink_address: InprocAddress,
     /// The host to bind to when creating inbound connections
     pub host: IpAddr,
     /// The length of time to wait for the connection to be established to a peer's control services.
@@ -91,6 +94,9 @@ impl ConnectionEstablisher {
     }
 
     /// Attempt to establish a control service connection to one of the peer's addresses
+    ///
+    /// ### Arguments
+    /// - `peer`: `&Peer<CommsPublicKey>` - The peer to connect to
     pub fn establish_control_service_connection(&self, peer: &Peer<CommsPublicKey>) -> Result<EstablishedConnection> {
         let config = &self.config;
 
@@ -127,25 +133,33 @@ impl ConnectionEstablisher {
         attempt.try_connect(peer.addresses.len())
     }
 
-    /// Create a new outbound PeerConnection for a peer.
+    /// Create a new outbound PeerConnection
+    ///
+    /// ### Arguments
+    /// `conn_id`: [ConnectionId] - The id to use for the connection
+    /// `address`: [NetAddress] - The [NetAddress] to connect to
+    /// `curve_public_key`: [&NetAddress] - The Curve25519 public key of the destination connection
+    ///
+    /// Returns an Arc<[PeerConnection]> in `Connected` state and the [std::thread::JoinHandle] of the
+    /// [PeerConnection] worker thread or an error.
     pub fn establish_outbound_peer_connection(
         &self,
-        peer: &Peer<CommsPublicKey>,
-        address: &NetAddress,
-        server_public_key: CurvePublicKey,
-    ) -> Result<(PeerConnectionEntry, PeerConnectionJoinHandle)>
+        conn_id: ConnectionId,
+        address: NetAddress,
+        curve_public_key: CurvePublicKey,
+    ) -> Result<(Arc<PeerConnection>, PeerConnectionJoinHandle)>
     {
         let (secret_key, public_key) = CurveEncryption::generate_keypair()?;
 
         let context = self
             .new_context_builder()
-            .set_id(peer.node_id.clone())
+            .set_id(conn_id)
             .set_direction(Direction::Outbound)
-            .set_address(address.clone())
+            .set_address(address)
             .set_curve_encryption(CurveEncryption::Client {
                 secret_key,
                 public_key,
-                server_public_key,
+                server_public_key: curve_public_key,
             })
             .build()?;
 
@@ -154,39 +168,39 @@ impl ConnectionEstablisher {
         connection
             .wait_connected_or_failure(&self.config.control_service_establish_timeout)
             .or_else(|err| {
-                error!(
-                    target: LOG_TARGET,
-                    "Outbound connection to NodeId={} failed: {:?}", peer.node_id, err
-                );
+                error!(target: LOG_TARGET, "Outbound connection failed: {:?}", err);
                 Err(ConnectionManagerError::ConnectionError(err))
             })?;
 
         let connection = Arc::new(connection);
 
-        Ok((
-            PeerConnectionEntry {
-                connection,
-                address: address.clone(),
-            },
-            worker_handle,
-        ))
+        Ok((connection, worker_handle))
     }
 
-    /// Establish a new connection for a peer. A connection may be Inbound
+    /// Establish a new inbound peer connection.
+    ///
+    /// ### Arguments
+    /// `conn_id`: [ConnectionId] - The id to use for the connection
+    /// `curve_secret_key`: [&CurveSecretKey] - The zmq Curve25519 secret key for the connection
+    ///
+    /// Returns an Arc<[PeerConnection]> in `Listening` state and the [std::thread::JoinHandle] of the
+    /// [PeerConnection] worker thread or an error.
     pub fn establish_inbound_peer_connection(
         &self,
-        peer: &Peer<CommsPublicKey>,
-        secret_key: CurveSecretKey,
-    ) -> Result<(PeerConnectionEntry, PeerConnectionJoinHandle)>
+        conn_id: ConnectionId,
+        curve_secret_key: CurveSecretKey,
+    ) -> Result<(Arc<PeerConnection>, PeerConnectionJoinHandle)>
     {
         // Providing port 0 tells the OS to allocate a port for us
-        let mut address = NetAddress::IP((self.config.host, 0).into());
+        let address = NetAddress::IP((self.config.host, 0).into());
         let context = self
             .new_context_builder()
-            .set_id(peer.node_id.clone())
+            .set_id(conn_id)
             .set_direction(Direction::Inbound)
-            .set_address(address.clone())
-            .set_curve_encryption(CurveEncryption::Server { secret_key })
+            .set_address(address)
+            .set_curve_encryption(CurveEncryption::Server {
+                secret_key: curve_secret_key,
+            })
             .build()?;
 
         let mut connection = PeerConnection::new();
@@ -194,19 +208,13 @@ impl ConnectionEstablisher {
         connection
             .wait_listening_or_failure(&self.config.control_service_establish_timeout)
             .or_else(|err| {
-                error!(
-                    target: LOG_TARGET,
-                    "Unable to establish inbound connection for NodeId={}: {:?}", peer.node_id, err
-                );
+                error!(target: LOG_TARGET, "Unable to establish inbound connection: {:?}", err);
                 Err(ConnectionManagerError::ConnectionError(err))
             })?;
 
         let connection = Arc::new(connection);
-        if let Some(addr) = connection.get_connected_address().map(|a| a.into()) {
-            address = addr;
-        }
 
-        Ok((PeerConnectionEntry { connection, address }, worker_handle))
+        Ok((connection, worker_handle))
     }
 
     fn new_context_builder(&self) -> PeerConnectionContextBuilder {
@@ -215,7 +223,7 @@ impl ConnectionEstablisher {
         let mut builder = PeerConnectionContextBuilder::new()
             .set_context(&config.context)
             .set_max_msg_size(config.max_message_size)
-            .set_consumer_address(config.consumer_address.clone())
+            .set_message_sink_address(config.message_sink_address.clone())
             .set_max_retry_attempts(config.max_connect_retries);
 
         if let Some(ref addr) = config.socks_proxy_address {
@@ -227,11 +235,6 @@ impl ConnectionEstablisher {
 }
 
 //---------------------------------- Connection Attempts --------------------------------------------//
-
-use crate::connection::{
-    connection::EstablishedConnection,
-    monitor::{ConnectionMonitor, SocketEventType},
-};
 
 /// Helper struct which enables multiple attempts at connecting. This also updates the peers connection
 /// attempts statistics
@@ -309,197 +312,5 @@ where F: Fn(usize, InprocAddress) -> Result<(EstablishedConnection, NetAddress)>
                 }
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    use crate::test_support::{
-        factories::{self, Factory},
-        helpers::ConnectionMessageCounter,
-    };
-
-    fn make_peer_connection_config(context: &Context, consumer_address: InprocAddress) -> PeerConnectionConfig {
-        PeerConnectionConfig {
-            context: context.clone(),
-            control_service_establish_timeout: Duration::from_millis(2000),
-            peer_connection_establish_timeout: Duration::from_secs(20),
-            max_message_size: 1024,
-            host: "127.0.0.1".parse().unwrap(),
-            max_connect_retries: 3,
-            consumer_address,
-            socks_proxy_address: None,
-        }
-    }
-
-    #[test]
-    fn establish_control_service_connection_fail() {
-        let context = Context::new();
-        let peers = factories::peer::create_many(2).build().unwrap();
-        let peer_manager = Arc::new(
-            factories::peer_manager::create()
-                .with_peers(peers.clone())
-                .build()
-                .unwrap(),
-        );
-        let config = make_peer_connection_config(&context, InprocAddress::random());
-
-        let example_peer = &peers[0];
-
-        let establisher = ConnectionEstablisher::new(config, peer_manager);
-        let result = establisher.establish_control_service_connection(example_peer);
-
-        match result {
-            Ok(_) => panic!("Unexpected success result"),
-            Err(ConnectionManagerError::MaxConnnectionAttemptsExceeded) => {},
-            Err(err) => panic!("Unexpected error type: {:?}", err),
-        }
-    }
-
-    #[test]
-    fn establish_control_service_connection_succeed() {
-        let context = Context::new();
-        let address = factories::net_address::create().use_os_port().build().unwrap();
-
-        // Setup a connection to act as an endpoint for a peers control service
-        let dummy_conn = Connection::new(&context, Direction::Inbound)
-            .establish(&address)
-            .unwrap();
-
-        let address: NetAddress = dummy_conn.get_connected_address().clone().unwrap().into();
-
-        let example_peer = factories::peer::create()
-            .with_net_addresses(vec![address])
-            .build()
-            .unwrap();
-
-        let peer_manager = Arc::new(
-            factories::peer_manager::create()
-                .with_peers(vec![example_peer.clone()])
-                .build()
-                .unwrap(),
-        );
-
-        let config = make_peer_connection_config(&context, InprocAddress::random());
-        let establisher = ConnectionEstablisher::new(config, peer_manager);
-        establisher.establish_control_service_connection(&example_peer).unwrap();
-    }
-
-    #[test]
-    fn establish_peer_connection_outbound() {
-        let context = Context::new();
-        let consumer_address = InprocAddress::random();
-
-        // Setup a message counter to count the number of messages sent to the consumer address
-        let msg_counter = ConnectionMessageCounter::new(&context);
-        msg_counter.start(consumer_address.clone());
-
-        // Setup a peer connection
-        let (other_peer_conn, _, peer_curve_pk) = factories::peer_connection::create()
-            .with_peer_connection_context_factory(
-                factories::peer_connection_context::create()
-                    .with_consumer_address(consumer_address.clone())
-                    .with_context(&context)
-                    .with_direction(Direction::Inbound),
-            )
-            .build()
-            .unwrap();
-
-        other_peer_conn
-            .wait_listening_or_failure(&Duration::from_millis(200))
-            .unwrap();
-
-        let address: NetAddress = other_peer_conn.get_connected_address().unwrap().into();
-
-        let example_peer = factories::peer::create()
-            .with_net_addresses(vec![address.clone()])
-            .build()
-            .unwrap();
-
-        let peer_manager = Arc::new(
-            factories::peer_manager::create()
-                .with_peers(vec![example_peer.clone()])
-                .build()
-                .unwrap(),
-        );
-
-        let config = make_peer_connection_config(&context, InprocAddress::random());
-        let establisher = ConnectionEstablisher::new(config, peer_manager);
-        let (entry, peer_conn_handle) = establisher
-            .establish_outbound_peer_connection(&example_peer, &address, peer_curve_pk)
-            .unwrap();
-
-        entry.connection.send(vec!["HELLO".as_bytes().to_vec()]).unwrap();
-        entry.connection.send(vec!["TARI".as_bytes().to_vec()]).unwrap();
-
-        entry.connection.shutdown().unwrap();
-        entry
-            .connection
-            .wait_disconnected(&Duration::from_millis(1000))
-            .unwrap();
-
-        assert_eq!(msg_counter.count(), 2);
-
-        peer_conn_handle.join().unwrap().unwrap();
-    }
-
-    #[test]
-    fn establish_peer_connection_inbound() {
-        let context = Context::new();
-        let consumer_address = InprocAddress::random();
-
-        let (secret_key, public_key) = CurveEncryption::generate_keypair().unwrap();
-
-        let example_peer = factories::peer::create().build().unwrap();
-
-        let peer_manager = Arc::new(
-            factories::peer_manager::create()
-                .with_peers(vec![example_peer.clone()])
-                .build()
-                .unwrap(),
-        );
-
-        // Setup a message counter to count the number of messages sent to the consumer address
-        let msg_counter = ConnectionMessageCounter::new(&context);
-        msg_counter.start(consumer_address.clone());
-
-        // Create a connection establisher
-        let config = make_peer_connection_config(&context, consumer_address.clone());
-        let establisher = ConnectionEstablisher::new(config, peer_manager);
-        let (entry, peer_conn_handle) = establisher
-            .establish_inbound_peer_connection(&example_peer, secret_key)
-            .unwrap();
-
-        entry
-            .connection
-            .wait_listening_or_failure(&Duration::from_millis(2000))
-            .unwrap();
-        let address: NetAddress = entry.connection.get_connected_address().unwrap().into();
-
-        // Setup a peer connection which will connect to our established inbound peer connection
-        let (other_peer_conn, _, _) = factories::peer_connection::create()
-            .with_peer_connection_context_factory(
-                factories::peer_connection_context::create()
-                    .with_context(&context)
-                    .with_address(address)
-                    .with_server_public_key(public_key.clone())
-                    .with_direction(Direction::Outbound),
-            )
-            .build()
-            .unwrap();
-
-        other_peer_conn
-            .wait_connected_or_failure(&Duration::from_millis(2000))
-            .unwrap();
-        // Start sending messages
-        other_peer_conn.send(vec!["HELLO".as_bytes().to_vec()]).unwrap();
-        other_peer_conn.send(vec!["TARI".as_bytes().to_vec()]).unwrap();
-        let _ = other_peer_conn.shutdown();
-        other_peer_conn.wait_disconnected(&Duration::from_millis(1000)).unwrap();
-
-        assert_eq!(msg_counter.count(), 2);
-
-        peer_conn_handle.join().unwrap().unwrap();
     }
 }

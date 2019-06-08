@@ -87,10 +87,8 @@ mod control;
 mod error;
 mod worker;
 
-pub type ConnectionId = crate::message::Frame;
-
 pub use self::{
-    connection::{PeerConnection, PeerConnectionSimpleState},
+    connection::{ConnectionId, PeerConnection, PeerConnectionSimpleState},
     context::{PeerConnectionContext, PeerConnectionContextBuilder},
     error::PeerConnectionError,
 };

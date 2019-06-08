@@ -20,6 +20,38 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod factories;
-pub mod helpers;
-pub mod makers;
+use super::{peer_connection_context::PeerConnectionContextFactory, Factory, FactoryError};
+
+use tari_comms::connection::{CurvePublicKey, CurveSecretKey, PeerConnection};
+
+pub fn create<'c>() -> PeerConnectionFactory<'c> {
+    PeerConnectionFactory::default()
+}
+
+#[derive(Default)]
+pub struct PeerConnectionFactory<'c> {
+    peer_connection_context_factory: PeerConnectionContextFactory<'c>,
+}
+
+impl<'c> PeerConnectionFactory<'c> {
+    pub fn with_peer_connection_context_factory(mut self, context_factory: PeerConnectionContextFactory<'c>) -> Self {
+        self.peer_connection_context_factory = context_factory;
+        self
+    }
+}
+
+impl<'c> Factory for PeerConnectionFactory<'c> {
+    type Object = (PeerConnection, CurveSecretKey, CurvePublicKey);
+
+    fn build(self) -> Result<Self::Object, FactoryError> {
+        let (peer_conn_context, secret_key, public_key) = self
+            .peer_connection_context_factory
+            .build()
+            .map_err(FactoryError::build_failed())?;
+
+        let mut conn = PeerConnection::new();
+        conn.start(peer_conn_context).map_err(FactoryError::build_failed())?;
+
+        Ok((conn, secret_key, public_key))
+    }
+}

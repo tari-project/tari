@@ -20,34 +20,23 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use derive_error::Error;
-use serde::export::fmt::Debug;
-
-#[macro_use]
-mod macros;
-
-pub mod net_address;
-pub mod peer;
-pub mod peer_connection;
-pub mod peer_connection_context;
-pub mod peer_manager;
-
-pub trait Factory: Default {
-    type Object;
-
-    fn build(self) -> Result<Self::Object, FactoryError>;
+macro_rules! acquire_lock {
+    ($e:expr, $m:ident) => {
+        match $e.$m() {
+            Ok(lock) => lock,
+            Err(poisoned) => poisoned.into_inner(),
+        }
+    };
 }
 
-#[derive(Debug, Error)]
-pub enum FactoryError {
-    /// Failed to build object
-    #[error(msg_embedded, non_std, no_from)]
-    BuildFailed(String),
+macro_rules! acquire_write_lock {
+    ($e:expr) => {
+        acquire_lock!($e, write)
+    };
 }
 
-impl FactoryError {
-    pub fn build_failed<E>() -> impl Fn(E) -> Self
-    where E: Debug {
-        |err| FactoryError::BuildFailed(format!("Factory failed to build: {:?}", err))
-    }
+macro_rules! acquire_read_lock {
+    ($e:expr) => {
+        acquire_lock!($e, read)
+    };
 }

@@ -89,7 +89,7 @@ impl Default for ControlServiceConfig {
 ///      max_message_size: 1024,
 ///      max_connect_retries: 1,
 ///      socks_proxy_address: None,
-///      consumer_address: InprocAddress::random(),
+///      message_sink_address: InprocAddress::random(),
 ///      host: "127.0.0.1".parse().unwrap(),
 ///      control_service_establish_timeout: Duration::from_millis(1000),
 ///      peer_connection_establish_timeout: Duration::from_secs(4),
@@ -166,41 +166,6 @@ impl From<(thread::JoinHandle<Result<()>>, SyncSender<ControlMessage>)> for Cont
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{
-        connection::InprocAddress,
-        connection_manager::{ConnectionManager, PeerConnectionConfig},
-        control_service::types::ControlServiceMessageContext,
-        dispatcher::{DispatchError, DispatchResolver, Dispatcher},
-        peer_manager::PeerManager,
-        test_support::factories::{self, Factory},
-        types::{CommsDataStore, CommsPublicKey},
-    };
-    use std::{sync::mpsc::channel, time::Duration};
-
-    struct TestResolver;
-
-    impl DispatchResolver<u8, ControlServiceMessageContext> for TestResolver {
-        fn resolve(&self, _context: &ControlServiceMessageContext) -> std::result::Result<u8, DispatchError> {
-            Ok(0u8)
-        }
-    }
-
-    fn make_connection_manager(context: &Context) -> Arc<ConnectionManager> {
-        Arc::new(ConnectionManager::new(make_peer_manager(), PeerConnectionConfig {
-            control_service_establish_timeout: Duration::from_millis(1000),
-            peer_connection_establish_timeout: Duration::from_secs(4),
-            max_message_size: 1024 * 1024,
-            socks_proxy_address: None,
-            consumer_address: InprocAddress::random(),
-            host: "127.0.0.1".parse().unwrap(),
-            max_connect_retries: 1,
-            context: context.clone(),
-        }))
-    }
-
-    fn make_peer_manager() -> Arc<PeerManager<CommsPublicKey, CommsDataStore>> {
-        Arc::new(PeerManager::<CommsPublicKey, CommsDataStore>::new(None).unwrap())
-    }
 
     #[test]
     fn control_service_has_default() {
@@ -211,31 +176,5 @@ mod test {
             DEFAULT_LISTENER_ADDRESS.parse::<NetAddress>().unwrap()
         );
         assert!(control_service.config.socks_proxy_address.is_none());
-    }
-
-    #[test]
-    fn serve_and_shutdown() {
-        let (tx, rx) = channel();
-        let context = Context::new();
-        let connection_manager = make_connection_manager(&context);
-
-        let listener_address = factories::net_address::create().use_os_port().build().unwrap();
-        thread::spawn(move || {
-            let dispatcher = Dispatcher::new(TestResolver {});
-
-            let service = ControlService::new(&context)
-                .configure(ControlServiceConfig {
-                    listener_address,
-                    socks_proxy_address: None,
-                })
-                .serve(dispatcher, connection_manager)
-                .unwrap();
-
-            service.shutdown().unwrap();
-            tx.send(()).unwrap();
-        });
-
-        // Test that the control service loop ends within 1000ms
-        rx.recv_timeout(Duration::from_millis(1000)).unwrap();
     }
 }

@@ -23,7 +23,7 @@
 use std::{
     fmt,
     sync::{Arc, RwLock},
-    thread,
+    thread::{self, JoinHandle},
     time::Duration,
 };
 
@@ -33,6 +33,7 @@ use crate::{
         types::{Linger, Result},
         ConnectionError,
         Direction,
+        NetAddress,
     },
     message::FrameSet,
 };
@@ -43,7 +44,63 @@ use super::{
     PeerConnectionContext,
     PeerConnectionError,
 };
-use std::thread::JoinHandle;
+
+use tari_utilities::hex::to_hex;
+
+/// Represents the ID of a PeerConnection. This is sent as the first frame
+/// to the message sink on the peer connection.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct ConnectionId(Vec<u8>);
+
+impl ConnectionId {
+    pub fn new(id: Vec<u8>) -> Self {
+        Self(id)
+    }
+
+    pub fn into_inner(self) -> Vec<u8> {
+        self.0
+    }
+
+    pub fn as_bytes(&self) -> &[u8] {
+        self.0.as_slice()
+    }
+}
+
+impl PartialEq<ConnectionId> for Vec<u8> {
+    fn eq(&self, other: &ConnectionId) -> bool {
+        self == &other.0
+    }
+}
+
+impl From<Vec<u8>> for ConnectionId {
+    fn from(bytes: Vec<u8>) -> Self {
+        Self(bytes)
+    }
+}
+
+impl From<&[u8]> for ConnectionId {
+    fn from(bytes: &[u8]) -> Self {
+        Self(bytes.to_vec())
+    }
+}
+
+impl From<&str> for ConnectionId {
+    fn from(bytes: &str) -> Self {
+        Self(bytes.as_bytes().to_vec())
+    }
+}
+
+impl AsRef<[u8]> for ConnectionId {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
+    }
+}
+
+impl fmt::Display for ConnectionId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", to_hex(self.as_bytes()))
+    }
+}
 
 pub struct ConnectionInfo {
     pub(super) control_messenger: Arc<ThreadControlMessenger>,
@@ -110,7 +167,7 @@ macro_rules! is_state {
 ///    .set_id("123")
 ///    .set_context(&ctx)
 ///    .set_direction(Direction::Outbound)
-///    .set_consumer_address(InprocAddress::random())
+///    .set_message_sink_address(InprocAddress::random())
 ///    .set_address(addr.clone())
 ///    .build()
 ///    .unwrap();
@@ -138,6 +195,7 @@ macro_rules! is_state {
 pub struct PeerConnection {
     state: Arc<RwLock<PeerConnectionState>>,
     direction: Option<Direction>,
+    peer_address: Option<NetAddress>,
 }
 
 impl PeerConnection {
@@ -174,11 +232,10 @@ impl PeerConnection {
     /// `context` - The PeerConnectionContext which is owned by the underlying thread
     pub fn start(&mut self, context: PeerConnectionContext) -> Result<JoinHandle<Result<()>>> {
         self.direction = Some(context.direction.clone());
+        self.peer_address = Some(context.peer_address.clone());
 
-        let mut lock = acquire_write_lock!(self.state);
         let worker = Worker::new(context, self.state.clone());
-        let (handle, sender) = worker.spawn()?;
-        *lock = PeerConnectionState::Connecting(Arc::new(sender.into()));
+        let handle = worker.spawn()?;
         Ok(handle)
     }
 
@@ -230,6 +287,19 @@ impl PeerConnection {
             PeerConnectionState::Listening(info) | PeerConnectionState::Connected(info) => {
                 info.connected_address.clone()
             },
+            _ => None,
+        }
+    }
+
+    /// Return the actual address this connection is bound to. If the connection state is not Connected,
+    /// this function returns None
+    pub fn get_address(&self) -> Option<NetAddress> {
+        let lock = acquire_read_lock!(self.state);
+        match &*lock {
+            PeerConnectionState::Listening(info) | PeerConnectionState::Connected(info) => info
+                .connected_address
+                .clone()
+                .map_or(self.peer_address.clone(), |addr| Some(addr.into())),
             _ => None,
         }
     }
@@ -342,19 +412,6 @@ impl PeerConnection {
             Err(ConnectionError::Timeout)
         }
     }
-    //    fn acquire_state_read_lock(&self) -> Result<RwLockReadGuard<PeerConnectionState>> {
-    //        self.state.read().map_err(|e| {
-    //            PeerConnectionError::StateError(format!("Unable to acquire read lock on PeerConnection state: {}", e))
-    //                .into()
-    //        })
-    //    }
-    //
-    //    fn acquire_state_write_lock(&self) -> Result<RwLockWriteGuard<PeerConnectionState>> {
-    //        self.state.write().map_err(|e| {
-    //            PeerConnectionError::StateError(format!("Unable to acquire write lock on PeerConnection state: {}",
-    // e))                .into()
-    //        })
-    //    }
 }
 
 /// Represents the states that a peer connection can be in without
@@ -469,6 +526,7 @@ mod test {
         let conn = PeerConnection {
             state: Arc::new(RwLock::new(PeerConnectionState::Connected(Arc::new(info)))),
             direction: None,
+            peer_address: None,
         };
 
         assert!(conn.is_connected());
@@ -490,6 +548,7 @@ mod test {
         let conn = PeerConnection {
             state: Arc::new(RwLock::new(PeerConnectionState::Listening(Arc::new(info)))),
             direction: None,
+            peer_address: None,
         };
 
         assert!(!conn.is_connected());
@@ -507,6 +566,7 @@ mod test {
         let conn = PeerConnection {
             state: Arc::new(RwLock::new(PeerConnectionState::Connecting(thread_ctl))),
             direction: None,
+            peer_address: None,
         };
 
         assert!(!conn.is_connected());
@@ -524,6 +584,7 @@ mod test {
         let conn = PeerConnection {
             state: Arc::new(RwLock::new(PeerConnectionState::Connecting(thread_ctl))),
             direction: None,
+            peer_address: None,
         };
 
         assert!(!conn.is_connected());
@@ -541,6 +602,7 @@ mod test {
                 PeerConnectionError::ConnectFailed,
             ))),
             direction: None,
+            peer_address: None,
         };
 
         assert!(!conn.is_connected());
@@ -556,6 +618,7 @@ mod test {
         let conn = PeerConnection {
             state: Arc::new(RwLock::new(PeerConnectionState::Disconnected)),
             direction: None,
+            peer_address: None,
         };
 
         assert!(!conn.is_connected());
@@ -571,6 +634,7 @@ mod test {
         let conn = PeerConnection {
             state: Arc::new(RwLock::new(PeerConnectionState::Shutdown)),
             direction: None,
+            peer_address: None,
         };
 
         assert!(!conn.is_connected());
@@ -590,6 +654,7 @@ mod test {
         let conn = PeerConnection {
             state: Arc::new(RwLock::new(PeerConnectionState::Connected(Arc::new(info)))),
             direction: None,
+            peer_address: None,
         };
         (conn, rx)
     }

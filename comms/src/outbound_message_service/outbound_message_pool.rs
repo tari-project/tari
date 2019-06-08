@@ -145,10 +145,7 @@ mod test {
     use crate::{
         connection::{net_address::net_addresses::MAX_CONNECTION_ATTEMPTS, NetAddress, NetAddresses},
         peer_manager::{peer::PeerFlags, NodeId, Peer},
-        types::CommsPublicKey,
     };
-
-    use tari_storage::lmdb::LMDBStore;
 
     #[test]
     /// Test that when a message is sent via the pool that it is retried and requeued the correct amount of times and
@@ -157,7 +154,7 @@ mod test {
         let mut rng = rand::OsRng::new().unwrap();
         let context = Context::new();
         let omp_inbound_address = InprocAddress::random();
-        let peer_manager = Arc::new(PeerManager::<CommsPublicKey, LMDBStore>::new(None).unwrap());
+        let peer_manager = Arc::new(PeerManager::new(None).unwrap());
 
         let mut omp =
             OutboundMessagePool::new(context.clone(), omp_inbound_address.clone(), peer_manager.clone()).unwrap();

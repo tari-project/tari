@@ -1,5 +1,8 @@
 use derive_error::Error;
-use std::{fmt::Write, num::ParseIntError};
+use std::{
+    fmt::{LowerHex, Write},
+    num::ParseIntError,
+};
 
 /// Any object implementing this trait has the ability to represent itself as a hexadecimal string and convert from it.
 pub trait Hex {
@@ -23,7 +26,8 @@ pub enum HexError {
 }
 
 /// Encode the provided bytes into a hex string
-pub fn to_hex(bytes: &[u8]) -> String {
+pub fn to_hex<T>(bytes: &[T]) -> String
+where T: LowerHex {
     let mut s = String::new();
     for byte in bytes {
         write!(&mut s, "{:02x}", byte).expect("Unable to write");
@@ -67,6 +71,7 @@ pub fn from_hex(hex_str: &str) -> Result<Vec<u8>, HexError> {
 mod test {
     use super::*;
     use std::error::Error;
+
     #[test]
     fn test_to_hex() {
         assert_eq!(to_hex(&vec![0, 0, 0, 0]), "00000000");

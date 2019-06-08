@@ -31,8 +31,6 @@ use std::{
     time::Duration,
 };
 
-use tari_utilities::hex::to_hex;
-
 use crate::{
     connection::{
         connection::{Connection, EstablishedConnection},
@@ -93,11 +91,15 @@ impl Worker {
     }
 
     /// Spawn a worker thread
-    pub fn spawn(mut self) -> Result<(JoinHandle<Result<()>>, SyncSender<ControlMessage>)> {
-        let sender = self.sender.clone();
+    pub fn spawn(mut self) -> Result<JoinHandle<Result<()>>> {
+        {
+            // Set connecting state
+            let mut state_lock = acquire_write_lock!(self.connection_state);
+            *state_lock = PeerConnectionState::Connecting(Arc::new(self.sender.clone().into()));
+        }
 
         let handle = thread::Builder::new()
-            .name(format!("peer-conn-{}", to_hex(&self.context.id)))
+            .name(format!("peer-conn-{}", &self.context.id))
             .spawn(move || -> Result<()> {
                 let result = self.main_loop();
 
@@ -108,7 +110,7 @@ impl Worker {
             })
             .map_err(|_| PeerConnectionError::ThreadInitializationError)?;
 
-        Ok((handle, sender))
+        Ok(handle)
     }
 
     /// Handle the result for the worker loop and update connection state if necessary
@@ -371,7 +373,7 @@ impl Worker {
 
     fn construct_consumer_payload(&self, frames: FrameSet) -> FrameSet {
         let mut payload = vec![];
-        payload.push(self.context.id.clone());
+        payload.push(self.context.id.clone().into_inner());
         match self.context.direction {
             Direction::Inbound => {
                 payload.extend_from_slice(&frames[1..]);
@@ -430,6 +432,6 @@ impl Worker {
     /// Establish the connection to the consumer
     fn establish_consumer_connection(&self) -> Result<EstablishedConnection> {
         let context = &self.context;
-        Connection::new(&context.context, Direction::Outbound).establish(&context.consumer_address)
+        Connection::new(&context.context, Direction::Outbound).establish(&context.message_sink_address)
     }
 }

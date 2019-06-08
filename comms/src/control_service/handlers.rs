@@ -119,7 +119,7 @@ pub fn establish_connection(context: ControlServiceMessageContext) -> Result<(),
         "Connecting to requested address {}", message.address
     );
     let conn = conn_manager
-        .establish_requested_connection(&peer, &message.address, message.server_key)
+        .establish_requested_outbound_connection(&peer, message.address.clone(), message.server_key)
         .map_err(ControlServiceError::ConnectionManagerError)?;
 
     conn.wait_connected_or_failure(&Duration::from_millis(5000))

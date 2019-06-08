@@ -48,7 +48,6 @@
 //! let returned_peer = peer_manager.find_with_node_id(&node_id).unwrap();
 //! ```
 
-pub mod liveness;
 pub mod node_id;
 pub mod node_identity;
 pub mod peer;

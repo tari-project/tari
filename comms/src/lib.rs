@@ -15,6 +15,3 @@ pub mod outbound_message_service;
 pub mod peer_manager;
 pub mod types;
 mod utils;
-
-// TODO: Find a way to only include this for tests
-pub mod test_support;
