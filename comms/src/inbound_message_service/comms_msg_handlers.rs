@@ -21,8 +21,9 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    dispatcher::{DispatchError, DispatchResolver},
-    inbound_message_service::{message_context::MessageContext, message_dispatcher::MessageDispatcher},
+    dispatcher::{DispatchError, DispatchResolver, DispatchableKey},
+    message::{DomainMessageContext, MessageContext},
+    types::MessageDispatcher,
 };
 use tari_crypto::keys::PublicKey;
 
@@ -38,7 +39,13 @@ pub enum CommsDispatchType {
 }
 
 /// Specify what handler function should be called for messages with different comms level dispatch types
-pub fn construct_comms_msg_dispatcher<PubKey: PublicKey>() -> MessageDispatcher<MessageContext<PubKey>> {
+pub fn construct_comms_msg_dispatcher<PubKey, DispKey, DispRes>(
+) -> MessageDispatcher<MessageContext<PubKey, DispKey, DispRes>>
+where
+    PubKey: PublicKey,
+    DispKey: DispatchableKey,
+    DispRes: DispatchResolver<DispKey, DomainMessageContext<PubKey>>,
+{
     MessageDispatcher::new(InboundMessageServiceResolver {})
         .route(CommsDispatchType::Handle, handler_handle)
         .route(CommsDispatchType::Forward, handler_forward)
@@ -48,10 +55,16 @@ pub fn construct_comms_msg_dispatcher<PubKey: PublicKey>() -> MessageDispatcher<
 #[derive(Clone)]
 pub struct InboundMessageServiceResolver;
 
-impl<P: PublicKey> DispatchResolver<CommsDispatchType, MessageContext<P>> for InboundMessageServiceResolver {
+impl<PubKey, DispKey, DispRes> DispatchResolver<CommsDispatchType, MessageContext<PubKey, DispKey, DispRes>>
+    for InboundMessageServiceResolver
+where
+    PubKey: PublicKey,
+    DispKey: DispatchableKey,
+    DispRes: DispatchResolver<DispKey, DomainMessageContext<PubKey>>,
+{
     /// The dispatch type is determined from the content of the MessageContext, which is used to dispatch the message to
     /// the correct handler
-    fn resolve(&self, _msg: &MessageContext<P>) -> Result<CommsDispatchType, DispatchError> {
+    fn resolve(&self, _msg: &MessageContext<PubKey, DispKey, DispRes>) -> Result<CommsDispatchType, DispatchError> {
         // TODO:
         // if signature is correct {
         //     if message_context.message_envelope_header.flags.contains(IdentityFlags::ENCRYPTED)  {
@@ -79,19 +92,50 @@ impl<P: PublicKey> DispatchResolver<CommsDispatchType, MessageContext<P>> for In
     }
 }
 
-fn handler_handle<PubKey: PublicKey>(_message_context: MessageContext<PubKey>) -> Result<(), DispatchError> {
-    // TODO: Pass message to DHT and/or Domain Dispatcher
-
-    Ok(())
+fn handler_handle<PubKey, DispKey, DispRes>(
+    message_context: MessageContext<PubKey, DispKey, DispRes>,
+) -> Result<(), DispatchError>
+where
+    PubKey: PublicKey,
+    DispKey: DispatchableKey,
+    DispRes: DispatchResolver<DispKey, DomainMessageContext<PubKey>>,
+{
+    // Change the MessageContext into the DomainMessageContext and submit to the domain dispatcher
+    let message = message_context
+        .message_data
+        .message_envelope
+        .message_body()
+        .map_err(|e| DispatchError::HandlerError(format!("{}", e)))?;
+    let domain_message_context = DomainMessageContext::new(
+        message_context.message_data.source_node_identity,
+        message,
+        message_context.outbound_message_service,
+        message_context.peer_manager,
+    );
+    message_context.domain_dispatcher.dispatch(domain_message_context)
 }
 
-fn handler_forward<PubKey: PublicKey>(_message_context: MessageContext<PubKey>) -> Result<(), DispatchError> {
+fn handler_forward<PubKey, DispKey, DispRes>(
+    _message_context: MessageContext<PubKey, DispKey, DispRes>,
+) -> Result<(), DispatchError>
+where
+    PubKey: PublicKey,
+    DispKey: DispatchableKey,
+    DispRes: DispatchResolver<DispKey, DomainMessageContext<PubKey>>,
+{
     // TODO: Add logic for message forwarding
 
     Ok(())
 }
 
-fn handler_discard<PubKey: PublicKey>(_message_context: MessageContext<PubKey>) -> Result<(), DispatchError> {
+fn handler_discard<PubKey, DispKey, DispRes>(
+    _message_context: MessageContext<PubKey, DispKey, DispRes>,
+) -> Result<(), DispatchError>
+where
+    PubKey: PublicKey,
+    DispKey: DispatchableKey,
+    DispRes: DispatchResolver<DispKey, DomainMessageContext<PubKey>>,
+{
     // TODO: Add logic for discarding a message
 
     Ok(())

@@ -32,16 +32,16 @@ use crate::{
     connection::{
         connection::EstablishedConnection,
         monitor::{ConnectionMonitor, SocketEvent, SocketEventType},
+        types::Direction,
         Connection,
         Context,
-        Direction,
         InprocAddress,
     },
     connection_manager::ConnectionManager,
     dispatcher::{DispatchResolver, DispatchableKey},
-    message::{FrameSet, Message, MessageEnvelope},
-    peer_manager::PeerManager,
-    types::{CommsPublicKey, MessageEnvelopeHeader},
+    message::{Frame, FrameSet, Message, MessageEnvelope, MessageEnvelopeHeader, MessageFlags},
+    peer_manager::CommsNodeIdentity,
+    types::{CommsCipher, CommsPublicKey},
 };
 use std::{
     convert::TryInto,
@@ -52,7 +52,8 @@ use std::{
     thread,
     time::Duration,
 };
-use tari_storage::lmdb::LMDBStore;
+use tari_crypto::keys::DiffieHellmanSharedSecret;
+use tari_utilities::{byte_array::ByteArray, ciphers::cipher::Cipher, message_format::MessageFormat};
 
 const LOG_TARGET: &'static str = "comms::control_service::worker";
 const CONTROL_SERVICE_MAX_MSG_SIZE: u64 = 1024; // 1kb
@@ -69,7 +70,7 @@ where MType: DispatchableKey
     is_running: bool,
     dispatcher: ControlServiceDispatcher<MType, R>,
     connection_manager: Arc<ConnectionManager>,
-    peer_manager: Arc<PeerManager<CommsPublicKey, LMDBStore>>,
+    node_identity: Arc<CommsNodeIdentity>,
 }
 
 impl<MType, R> ControlServiceWorker<MType, R>
@@ -84,16 +85,20 @@ where
     /// - `config` - ControlServiceConfig
     /// - `dispatcher` - the `Dispatcher` to use when message are received
     /// - `connection_manager` - the `ConnectionManager`
-    /// - `peer_manager` - the `PeerManager`
     pub fn start(
         context: Context,
         config: ControlServiceConfig,
         dispatcher: ControlServiceDispatcher<MType, R>,
         connection_manager: Arc<ConnectionManager>,
-        peer_manager: Arc<PeerManager<CommsPublicKey, LMDBStore>>,
-    ) -> (thread::JoinHandle<Result<()>>, SyncSender<ControlMessage>)
+    ) -> Result<(thread::JoinHandle<Result<()>>, SyncSender<ControlMessage>)>
     {
+        info!(
+            target: LOG_TARGET,
+            "Control service starting on {}...", config.listener_address
+        );
         let (sender, receiver) = sync_channel(5);
+
+        let node_identity = CommsNodeIdentity::global().ok_or(ControlServiceError::NodeIdentityNotSet)?;
 
         let mut worker = Self {
             context,
@@ -103,28 +108,31 @@ where
             is_running: false,
             dispatcher,
             connection_manager,
-            peer_manager,
+            node_identity,
         };
 
-        let handle = thread::spawn(move || {
-            loop {
-                match worker.main_loop() {
-                    Ok(_) => {
-                        info!(target: LOG_TARGET, "Control service exiting loop.");
-                        break;
-                    },
+        let handle = thread::Builder::new()
+            .name("control-service".into())
+            .spawn(move || {
+                loop {
+                    match worker.main_loop() {
+                        Ok(_) => {
+                            info!(target: LOG_TARGET, "Control service exiting loop.");
+                            break;
+                        },
 
-                    Err(err) => {
-                        error!(target: LOG_TARGET, "Worker exited with an error: {:?}", err);
-                        info!(target: LOG_TARGET, "Restarting control service.");
-                    },
+                        Err(err) => {
+                            error!(target: LOG_TARGET, "Worker exited with an error: {:?}", err);
+                            info!(target: LOG_TARGET, "Restarting control service.");
+                        },
+                    }
                 }
-            }
 
-            Ok(())
-        });
+                Ok(())
+            })
+            .map_err(|_| ControlServiceError::WorkerThreadFailedToStart)?;
 
-        (handle, sender)
+        Ok((handle, sender))
     }
 
     fn main_loop(&mut self) -> Result<()> {
@@ -132,9 +140,11 @@ where
         let monitor = ConnectionMonitor::connect(&self.context, &self.monitor_address)?;
         let listener = self.establish_listener()?;
 
+        debug!(target: LOG_TARGET, "Control service started");
         loop {
             // Read incoming messages
             if let Some(frames) = connection_try!(listener.receive(100)) {
+                debug!(target: LOG_TARGET, "Received {} frames", frames.len());
                 match self.process_message(frames) {
                     Ok(_) => info!(target: LOG_TARGET, "Message processed"),
                     Err(err) => error!(target: LOG_TARGET, "Error when processing message: {:?}", err),
@@ -143,6 +153,7 @@ where
 
             // Read socket events
             if let Some(event) = connection_try!(monitor.read(5)) {
+                debug!(target: LOG_TARGET, "Control service socket event: {:?}", event);
                 self.process_socket_event(event)?;
             }
 
@@ -180,31 +191,46 @@ where
             .map_err(|err| ControlServiceError::MessageError(err))?;
 
         let envelope_header: MessageEnvelopeHeader = envelope.to_header()?;
-        let message: Message = envelope.message_body()?;
+        if !envelope_header.flags.contains(MessageFlags::ENCRYPTED) {
+            return Err(ControlServiceError::ReceivedUnencryptedMessage);
+        }
 
-        // TODO: Add outbound message service, peer etc.
+        let decrypted_body = self.decrypt_body(envelope.body_frame(), &envelope_header.source)?;
+        let message =
+            Message::from_binary(decrypted_body.as_bytes()).map_err(ControlServiceError::MessageFormatError)?;
+
         let context = ControlServiceMessageContext {
             envelope_header,
             message,
             connection_manager: self.connection_manager.clone(),
-            peer_manager: self.peer_manager.clone(),
+            peer_manager: self.connection_manager.get_peer_manager(),
         };
 
-        // TODO: Decryption of message
         debug!(target: LOG_TARGET, "Dispatching message");
         self.dispatcher.dispatch(context).map_err(|e| e.into())
     }
 
+    fn decrypt_body(&self, body: &Frame, public_key: &CommsPublicKey) -> Result<Frame> {
+        let ecdh_shared_secret = CommsPublicKey::shared_secret(&self.node_identity.secret_key, public_key).to_vec();
+        use tari_utilities::hex::to_hex;
+        debug!(
+            target: LOG_TARGET,
+            "Control service shared key: {} SK: {}",
+            to_hex(ecdh_shared_secret.as_bytes()),
+            to_hex(self.node_identity.secret_key.as_bytes())
+        );
+        CommsCipher::open_with_integral_nonce(&body, &ecdh_shared_secret).map_err(ControlServiceError::CipherError)
+    }
+
     fn process_socket_event(&mut self, event: SocketEvent) -> Result<()> {
         use SocketEventType::*;
-        debug!(target: LOG_TARGET, "{:?}", event);
 
         match event.event_type {
             Listening => {
                 info!(target: LOG_TARGET, "Started listening on '{}'", event.address);
             },
             Accepted => {
-                info!(target: LOG_TARGET, "Accepted connection from '{}'", event.address);
+                info!(target: LOG_TARGET, "Accepted connection on '{}'", event.address);
             },
             Disconnected => {
                 info!(target: LOG_TARGET, "'{}' Disconnected", event.address);

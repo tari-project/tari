@@ -22,8 +22,7 @@
 #[allow(clippy::needless_range_loop)]
 pub mod bit;
 pub mod byte_array;
-pub mod chacha20;
-pub mod cipher;
+pub mod ciphers;
 pub mod extend_bytes;
 pub mod fixed_set;
 pub mod hash;

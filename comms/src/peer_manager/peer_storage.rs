@@ -198,7 +198,6 @@ where
         // Perform partial sort of elements only up to N elements
         let mut nearest_identities: Vec<PeerNodeIdentity<PubKey>> = Vec::with_capacity(n);
         for i in 0..n {
-            // for i in 0..indices.len()-1 {
             for j in (i + 1)..indices.len() {
                 if dists[i] > dists[j] {
                     dists.swap(i, j);

@@ -21,7 +21,13 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    connection::{zmq::ZmqEndpoint, ConnectionError, Context, InprocAddress, Result, SocketType},
+    connection::{
+        types::{Result, SocketType},
+        zmq::ZmqEndpoint,
+        ConnectionError,
+        Context,
+        InprocAddress,
+    },
     message::FrameSet,
 };
 use derive_error::Error;

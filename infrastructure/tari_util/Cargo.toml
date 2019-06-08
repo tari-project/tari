@@ -17,6 +17,7 @@ rmp-serde = "0.13.7"
 base64 = "0.10.1"
 serde_json = "1.0"
 serde = {version = "1.0.89", features = ["derive"] }
+rand = "0.5.5"
 
 [dev-dependencies]
 

@@ -20,14 +20,14 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use log::*;
 use std::{sync::mpsc::SyncSender, thread};
 
 use crate::{
     connection::{net_address::ip::SocketAddress, Context, NetAddress},
     connection_manager::ConnectionManager,
     dispatcher::{DispatchResolver, DispatchableKey},
-    peer_manager::PeerManager,
-    types::{CommsPublicKey, DEFAULT_LISTENER_ADDRESS},
+    types::DEFAULT_LISTENER_ADDRESS,
 };
 
 use super::{
@@ -36,7 +36,8 @@ use super::{
     worker::ControlServiceWorker,
 };
 use std::sync::Arc;
-use tari_storage::lmdb::LMDBStore;
+
+const LOG_TARGET: &'static str = "comms::control_service::service";
 
 /// Configuration for [ControlService]
 pub struct ControlServiceConfig {
@@ -60,26 +61,39 @@ impl Default for ControlServiceConfig {
 /// When `serve` is called, a worker thread starts up which listens for
 /// connections on the configured `listener_address`.
 ///
-/// ```edition2018
+/// ```rust
 /// # use tari_comms::{connection::*, control_service::*, dispatcher::*, connection_manager::*, peer_manager::*, types::*};
 /// # use tari_comms::control_service::handlers as comms_handlers;
 /// # use std::{time::Duration, sync::Arc};
 /// # use tari_storage::lmdb::LMDBStore;
 /// # use std::collections::HashMap;
+/// # use tari_crypto::{ristretto::{RistrettoSecretKey, RistrettoPublicKey}, keys::{PublicKey, SecretKey}};
+///
+/// # let secret_key = RistrettoSecretKey::random(&mut rand::OsRng::new().unwrap());
+/// # let public_key = RistrettoPublicKey::from_secret_key(&secret_key);
+/// # let node_id = NodeId::from_key(&public_key).unwrap();
+/// # let node_identity = CommsNodeIdentity {
+/// #      identity: PeerNodeIdentity::new(node_id, public_key),
+/// #      secret_key,
+/// #      control_service_address: "127.0.0.1:9090".parse::<NetAddress>().unwrap(),
+/// # };
+/// # CommsNodeIdentity::set_global(node_identity);
 ///
 /// let context = Context::new();
-/// let listener_address = "0.0.0.0:9000".parse::<NetAddress>().unwrap();
+/// let listener_address = "127.0.0.1:9000".parse::<NetAddress>().unwrap();
 ///
-/// let conn_manager = Arc::new(ConnectionManager::new(&context, PeerConnectionConfig {
+/// let peer_manager = Arc::new(PeerManager::<CommsPublicKey, LMDBStore>::new(None).unwrap());
+///
+/// let conn_manager = Arc::new(ConnectionManager::new(peer_manager.clone(), PeerConnectionConfig {
+///      context: context.clone(),
 ///      max_message_size: 1024,
 ///      max_connect_retries: 1,
 ///      socks_proxy_address: None,
 ///      consumer_address: InprocAddress::random(),
-///      host: "0.0.0.0".parse().unwrap(),
-///      establish_timeout: Duration::from_millis(1000),
+///      host: "127.0.0.1".parse().unwrap(),
+///      control_service_establish_timeout: Duration::from_millis(1000),
+///      peer_connection_establish_timeout: Duration::from_secs(4),
 /// }));
-///
-/// let peer_manager = Arc::new(PeerManager::<CommsPublicKey, LMDBStore>::new(None).unwrap());
 ///
 /// let dispatcher = Dispatcher::new(comms_handlers::ControlServiceResolver{})
 ///     .route(ControlServiceMessageType::EstablishConnection, comms_handlers::establish_connection)
@@ -91,18 +105,18 @@ impl Default for ControlServiceConfig {
 ///         listener_address,
 ///         socks_proxy_address: None,
 ///     })
-///     .serve(dispatcher, conn_manager, peer_manager)
+///     .serve(dispatcher, conn_manager)
 ///     .unwrap();
 ///
 /// service.shutdown().unwrap();
 /// ```
-pub struct ControlService<'a> {
-    context: &'a Context,
+pub struct ControlService<'c> {
+    context: &'c Context,
     config: ControlServiceConfig,
 }
 
-impl<'a> ControlService<'a> {
-    pub fn new(context: &'a Context) -> Self {
+impl<'c> ControlService<'c> {
+    pub fn new(context: &'c Context) -> Self {
         Self {
             context,
             config: ControlServiceConfig::default(),
@@ -118,18 +132,10 @@ impl<'a> ControlService<'a> {
         self,
         dispatcher: ControlServiceDispatcher<MType, R>,
         connection_manager: Arc<ConnectionManager>,
-        peer_manager: Arc<PeerManager<CommsPublicKey, LMDBStore>>,
     ) -> Result<ControlServiceHandle>
     {
         let config = self.config;
-        Ok(ControlServiceWorker::start(
-            self.context.clone(),
-            config,
-            dispatcher,
-            connection_manager,
-            peer_manager,
-        )
-        .into())
+        Ok(ControlServiceWorker::start(self.context.clone(), config, dispatcher, connection_manager)?.into())
     }
 }
 
@@ -137,13 +143,14 @@ impl<'a> ControlService<'a> {
 /// handle which can send control messages to the [ControlService] worker.
 #[derive(Debug)]
 pub struct ControlServiceHandle {
-    handle: thread::JoinHandle<Result<()>>,
+    pub handle: thread::JoinHandle<Result<()>>,
     sender: SyncSender<ControlMessage>,
 }
 
 impl ControlServiceHandle {
     /// Send a [ControlMessage::Shutdown] message to the worker thread.
     pub fn shutdown(&self) -> Result<()> {
+        warn!(target: LOG_TARGET, "CONTROL SERVICE SHUTDOWN");
         self.sender
             .send(ControlMessage::Shutdown)
             .map_err(|_| ControlServiceError::ControlMessageSendFailed)
@@ -156,13 +163,6 @@ impl From<(thread::JoinHandle<Result<()>>, SyncSender<ControlMessage>)> for Cont
     }
 }
 
-impl Drop for ControlServiceHandle {
-    /// Ensure the control service shuts down when this handle is dropped
-    fn drop(&mut self) {
-        let _ = self.shutdown();
-    }
-}
-
 #[cfg(test)]
 mod test {
     use super::*;
@@ -171,6 +171,9 @@ mod test {
         connection_manager::{ConnectionManager, PeerConnectionConfig},
         control_service::types::ControlServiceMessageContext,
         dispatcher::{DispatchError, DispatchResolver, Dispatcher},
+        peer_manager::PeerManager,
+        test_support::factories::{self, Factory},
+        types::{CommsDataStore, CommsPublicKey},
     };
     use std::{sync::mpsc::channel, time::Duration};
 
@@ -183,35 +186,31 @@ mod test {
     }
 
     fn make_connection_manager(context: &Context) -> Arc<ConnectionManager> {
-        Arc::new(ConnectionManager::new(context, PeerConnectionConfig {
-            establish_timeout: Duration::from_millis(1000),
+        Arc::new(ConnectionManager::new(make_peer_manager(), PeerConnectionConfig {
+            control_service_establish_timeout: Duration::from_millis(1000),
+            peer_connection_establish_timeout: Duration::from_secs(4),
             max_message_size: 1024 * 1024,
             socks_proxy_address: None,
             consumer_address: InprocAddress::random(),
             host: "127.0.0.1".parse().unwrap(),
             max_connect_retries: 1,
+            context: context.clone(),
         }))
     }
 
-    fn make_peer_manager() -> Arc<PeerManager<CommsPublicKey, LMDBStore>> {
-        Arc::new(PeerManager::<CommsPublicKey, LMDBStore>::new(None).unwrap())
+    fn make_peer_manager() -> Arc<PeerManager<CommsPublicKey, CommsDataStore>> {
+        Arc::new(PeerManager::<CommsPublicKey, CommsDataStore>::new(None).unwrap())
     }
 
     #[test]
     fn control_service_has_default() {
         let context = Context::new();
-        let dispatcher = Dispatcher::new(TestResolver {});
-        let connection_manager = make_connection_manager(&context);
-        let peer_manager = make_peer_manager();
         let control_service = ControlService::new(&context);
         assert_eq!(
             control_service.config.listener_address,
             DEFAULT_LISTENER_ADDRESS.parse::<NetAddress>().unwrap()
         );
         assert!(control_service.config.socks_proxy_address.is_none());
-        assert!(control_service
-            .serve(dispatcher, connection_manager, peer_manager)
-            .is_ok());
     }
 
     #[test]
@@ -219,16 +218,17 @@ mod test {
         let (tx, rx) = channel();
         let context = Context::new();
         let connection_manager = make_connection_manager(&context);
-        let peer_manager = make_peer_manager();
+
+        let listener_address = factories::net_address::create().use_os_port().build().unwrap();
         thread::spawn(move || {
             let dispatcher = Dispatcher::new(TestResolver {});
 
             let service = ControlService::new(&context)
                 .configure(ControlServiceConfig {
-                    listener_address: "127.0.0.1:9999".parse().unwrap(),
+                    listener_address,
                     socks_proxy_address: None,
                 })
-                .serve(dispatcher, connection_manager, peer_manager)
+                .serve(dispatcher, connection_manager)
                 .unwrap();
 
             service.shutdown().unwrap();

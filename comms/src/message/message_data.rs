@@ -25,30 +25,34 @@ use serde_derive::{Deserialize, Serialize};
 use std::convert::{TryFrom, TryInto};
 use tari_crypto::keys::PublicKey;
 
+/// Messages submitted to the inbound message pool are of type MessageData. This struct contains the received message
+/// envelope from a peer, its node identity and the connection id associated with the received message.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-pub struct MessageContext<PubKey> {
+pub struct MessageData<PubKey> {
     pub connection_id: Vec<u8>,
-    pub node_identity: Option<PubKey>,
+    pub source_node_identity: Option<PubKey>,
     pub message_envelope: MessageEnvelope,
 }
 
-impl<PubKey: PublicKey + 'static> MessageContext<PubKey> {
-    /// Construct a new MessageContext that consist of the peer connection information and the received message header
-    /// and body
+impl<PubKey> MessageData<PubKey>
+where PubKey: PublicKey + 'static
+{
+    /// Construct a new MessageData that consist of the peer connection information and the received message envelope
+    /// header and body
     pub fn new(
         connection_id: Vec<u8>,
-        node_identity: Option<PubKey>,
+        source_node_identity: Option<PubKey>,
         message_envelope: MessageEnvelope,
-    ) -> MessageContext<PubKey>
+    ) -> MessageData<PubKey>
     {
-        MessageContext {
+        MessageData {
             connection_id,
-            node_identity,
+            source_node_identity,
             message_envelope,
         }
     }
 
-    /// Convert the MessageContext into a FrameSet
+    /// Convert the MessageData into a FrameSet
     pub fn into_frame_set(self) -> FrameSet {
         let mut frame_set = Vec::new();
         frame_set.push(self.connection_id.clone());
@@ -57,10 +61,10 @@ impl<PubKey: PublicKey + 'static> MessageContext<PubKey> {
     }
 }
 
-impl<PubKey: PublicKey> TryFrom<FrameSet> for MessageContext<PubKey> {
+impl<PubKey: PublicKey> TryFrom<FrameSet> for MessageData<PubKey> {
     type Error = MessageError;
 
-    /// Attempt to create a MessageContext from a FrameSet
+    /// Attempt to create a MessageData from a FrameSet
     fn try_from(mut frames: FrameSet) -> Result<Self, Self::Error> {
         let connection_id = if frames.len() > 0 {
             // `remove` panics if the index is out of bounds, so we have to check
@@ -71,9 +75,9 @@ impl<PubKey: PublicKey> TryFrom<FrameSet> for MessageContext<PubKey> {
 
         let message_envelope: MessageEnvelope = frames.try_into()?;
 
-        Ok(MessageContext {
+        Ok(MessageData {
             message_envelope,
-            node_identity: None,
+            source_node_identity: None,
             connection_id,
         })
     }
@@ -101,20 +105,20 @@ mod test {
             body_frame.clone(),
         ];
 
-        // Convert to MessageContext
-        let message_context: MessageContext<RistrettoPublicKey> = frames.try_into().unwrap();
+        // Convert to MessageData
+        let message_data: MessageData<RistrettoPublicKey> = frames.try_into().unwrap();
 
         let message_envelope = MessageEnvelope::new(version_frame, header_frame, body_frame);
 
-        let expected_message_context = MessageContext::<RistrettoPublicKey>::new(connection_id, None, message_envelope);
+        let expected_message_data = MessageData::<RistrettoPublicKey>::new(connection_id, None, message_envelope);
 
-        assert_eq!(expected_message_context, message_context);
+        assert_eq!(expected_message_data, message_data);
 
-        // Convert MessageContext to FrameSet
-        let message_context_buffer = expected_message_context.clone().into_frame_set();
-        // Create MessageContext from FrameSet
-        let message_context: Result<MessageContext<RistrettoPublicKey>, MessageError> =
-            MessageContext::try_from(message_context_buffer);
-        assert_eq!(expected_message_context, message_context.unwrap());
+        // Convert MessageData to FrameSet
+        let message_data_buffer = expected_message_data.clone().into_frame_set();
+        // Create MessageData from FrameSet
+        let message_data: Result<MessageData<RistrettoPublicKey>, MessageError> =
+            MessageData::try_from(message_data_buffer);
+        assert_eq!(expected_message_data, message_data.unwrap());
     }
 }

@@ -24,7 +24,13 @@ use std::thread;
 
 use derive_error::Error;
 
-use crate::connection::{Connection, ConnectionError, Context, Direction, InprocAddress, SocketEstablishment};
+use crate::connection::{
+    types::{Direction, SocketEstablishment},
+    Connection,
+    ConnectionError,
+    Context,
+    InprocAddress,
+};
 
 #[derive(Debug, Error)]
 pub enum DealerProxyError {

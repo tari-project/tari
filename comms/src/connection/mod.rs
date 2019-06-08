@@ -43,6 +43,6 @@ pub use self::{
         PeerConnectionError,
         PeerConnectionSimpleState as PeerConnectionState,
     },
-    types::*,
+    types::{Direction, SocketEstablishment},
     zmq::{curve_keypair, Context, CurveEncryption, CurvePublicKey, CurveSecretKey, InprocAddress},
 };

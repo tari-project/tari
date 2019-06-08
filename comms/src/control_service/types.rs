@@ -27,9 +27,9 @@ use super::error::ControlServiceError;
 use crate::{
     connection_manager::ConnectionManager,
     dispatcher::Dispatcher,
-    message::Message,
+    message::{Message, MessageEnvelopeHeader},
     peer_manager::PeerManager,
-    types::{CommsPublicKey, MessageEnvelopeHeader},
+    types::CommsPublicKey,
 };
 use tari_storage::lmdb::LMDBStore;
 

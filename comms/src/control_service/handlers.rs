@@ -45,7 +45,14 @@ use std::time::Duration;
 #[allow(dead_code)]
 const LOG_TARGET: &'static str = "comms::control_service::handlers";
 
+#[derive(Default)]
 pub struct ControlServiceResolver;
+
+impl ControlServiceResolver {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
 
 impl DispatchResolver<ControlServiceMessageType, ControlServiceMessageContext> for ControlServiceResolver {
     fn resolve(&self, msg: &ControlServiceMessageContext) -> Result<ControlServiceMessageType, DispatchError> {
@@ -61,8 +68,8 @@ impl DispatchResolver<ControlServiceMessageType, ControlServiceMessageContext> f
 /// Establish connection handler. This is the default handler which can be used to handle
 /// the EstablishConnection message.
 /// This handler:
-/// - Will check if the connecting peer/public key should be allowed to connect
-/// - Will open an outbound [PeerConnection] to that peer (using [ConnectionManager])
+/// - checks if the connecting peer/public key should be allowed to connect
+/// - opens an outbound [PeerConnection] to that peer (using [ConnectionManager])
 /// - If that connection is successful, add the peer to the routing table (using [PeerManager])
 /// - Send an Accept message over the new [PeerConnection]
 #[allow(dead_code)]
@@ -70,12 +77,15 @@ pub fn establish_connection(context: ControlServiceMessageContext) -> Result<(),
     let message = EstablishConnection::from_binary(context.message.body.as_slice())
         .map_err(|e| ControlServiceError::MessageFormatError(e))?;
 
-    debug!(target: LOG_TARGET, "EstablishConnection message: {:#?}", message);
+    debug!(
+        target: LOG_TARGET,
+        "EstablishConnection message received from NodeId={}", message.node_id
+    );
 
     let pm = &context.peer_manager;
     let public_key = message.public_key.clone();
     let node_id = message.node_id.clone();
-    let mut peer = match pm.find_with_public_key(&public_key) {
+    let peer = match pm.find_with_public_key(&public_key) {
         Ok(peer) => {
             // TODO: check that this peer is valid / can be connected to etc
             pm.add_net_address(&node_id, &message.control_service_address)
@@ -102,13 +112,22 @@ pub fn establish_connection(context: ControlServiceMessageContext) -> Result<(),
         },
     };
 
-    let conn_manager = &mut context.connection_manager.clone();
+    let conn_manager = &context.connection_manager.clone();
+
+    debug!(
+        target: LOG_TARGET,
+        "Connecting to requested address {}", message.address
+    );
     let conn = conn_manager
-        .new_connection_to_peer(&mut peer, message.server_key.clone(), message.address.clone())
+        .establish_requested_connection(&peer, &message.address, message.server_key)
         .map_err(ControlServiceError::ConnectionManagerError)?;
 
-    conn.wait_connected_or_failure(Duration::from_millis(5000))
+    conn.wait_connected_or_failure(&Duration::from_millis(5000))
         .map_err(ControlServiceError::ConnectionError)?;
+    debug!(
+        target: LOG_TARGET,
+        "Connection to requested address {} succeeded", message.address
+    );
 
     let node_identity = CommsNodeIdentity::global().ok_or(ControlServiceError::NodeIdentityNotSet)?;
 
@@ -125,6 +144,11 @@ pub fn establish_connection(context: ControlServiceMessageContext) -> Result<(),
     )
     .map_err(ControlServiceError::MessageError)?;
 
+    debug!(
+        target: LOG_TARGET,
+        "Sending 'Accept' message to address {:?}",
+        conn.get_connected_address()
+    );
     conn.send(envelope.into_frame_set())
         .map_err(ControlServiceError::ConnectionError)?;
 
@@ -140,7 +164,7 @@ pub fn discard(_: ControlServiceMessageContext) -> Result<(), ControlServiceErro
 
 /// The peer has accepted the request to connect
 pub fn accept(_: ControlServiceMessageContext) -> Result<(), ControlServiceError> {
-    debug!(target: LOG_TARGET, "Peer Connection accepted");
+    debug!(target: LOG_TARGET, "Accept message received");
 
     // TODO: Validate this message and update connection protocol state accordingly once that is in place
 

@@ -31,7 +31,6 @@ use crate::{
 use rand::OsRng;
 use serde::{Deserialize, Serialize};
 use std::{convert::TryFrom, sync::Arc};
-use tari_crypto::keys::PublicKey;
 use tari_utilities::message_format::MessageFormat;
 
 const FRAMES_PER_MESSAGE: usize = 3;
@@ -39,10 +38,10 @@ const FRAMES_PER_MESSAGE: usize = 3;
 /// Represents data that every message contains.
 /// As described in [RFC-0172](https://rfc.tari.com/RFC-0172_PeerToPeerMessagingProtocol.html#messaging-structure)
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-pub struct MessageEnvelopeHeader<P> {
+pub struct MessageEnvelopeHeader {
     pub version: u8,
-    pub source: P,
-    pub dest: NodeDestination<P>,
+    pub source: CommsPublicKey,
+    pub dest: NodeDestination<CommsPublicKey>,
     pub signature: Vec<u8>,
     pub flags: MessageFlags,
 }
@@ -101,9 +100,9 @@ impl MessageEnvelope {
     }
 
     /// Returns the [MessageEnvelopeHeader] deserialized from the header frame
-    pub fn to_header<P: PublicKey>(&self) -> Result<MessageEnvelopeHeader<P>, MessageError>
-    where MessageEnvelopeHeader<P>: MessageFormat {
-        MessageEnvelopeHeader::<P>::from_binary(self.header_frame()).map_err(Into::into)
+    pub fn to_header(&self) -> Result<MessageEnvelopeHeader, MessageError>
+    where MessageEnvelopeHeader: MessageFormat {
+        MessageEnvelopeHeader::from_binary(self.header_frame()).map_err(Into::into)
     }
 
     /// Returns the frame that is expected to be body frame
@@ -143,7 +142,7 @@ mod test {
     use rmp_serde;
     use serde::{Deserialize, Serialize};
     use tari_crypto::{
-        keys::SecretKey,
+        keys::{PublicKey, SecretKey},
         ristretto::{RistrettoPublicKey, RistrettoSecretKey},
     };
 
@@ -203,7 +202,7 @@ mod test {
         let dest: NodeDestination<RistrettoPublicKey> = NodeDestination::Unknown;
         let signature = vec![0];
         let flags = MessageFlags::ENCRYPTED;
-        let header: MessageEnvelopeHeader<RistrettoPublicKey> = MessageEnvelopeHeader {
+        let header = MessageEnvelopeHeader {
             version,
             source,
             dest,
@@ -215,7 +214,7 @@ mod test {
         header.serialize(&mut rmp_serde::Serializer::new(&mut buf)).unwrap();
         let serialized = buf.to_vec();
         let mut de = rmp_serde::Deserializer::new(serialized.as_slice());
-        let deserialized: MessageEnvelopeHeader<RistrettoPublicKey> = Deserialize::deserialize(&mut de).unwrap();
+        let deserialized: MessageEnvelopeHeader = Deserialize::deserialize(&mut de).unwrap();
         assert_eq!(deserialized, header);
     }
 
@@ -236,7 +235,7 @@ mod test {
         assert_eq!(pk, header.source);
         assert_eq!(MessageFlags::ENCRYPTED, header.flags);
         assert_eq!(NodeDestination::Unknown, header.dest);
-        assert_eq!(136, header.signature.len());
+        assert_eq!(71, header.signature.len());
         assert_eq!("010203", to_hex(envelope.body_frame()));
     }
 }

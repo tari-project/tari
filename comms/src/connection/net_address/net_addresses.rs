@@ -9,7 +9,7 @@ use std::time::Duration;
 pub const MAX_CONNECTION_ATTEMPTS: u32 = 3;
 
 /// This struct is used to store a set of different net addresses such as IPv4, IPv6, Tor or I2P for a single peer.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default)]
 pub struct NetAddresses {
     pub addresses: Vec<NetAddressWithStats>,
 }
@@ -125,6 +125,11 @@ impl NetAddresses {
         updatable_address.mark_failed_connection_attempt();
         Ok(())
     }
+
+    /// Returns the number of addresses
+    pub fn len(&self) -> usize {
+        self.addresses.len()
+    }
 }
 
 impl From<NetAddress> for NetAddresses {
@@ -132,6 +137,18 @@ impl From<NetAddress> for NetAddresses {
     fn from(net_address: NetAddress) -> Self {
         NetAddresses {
             addresses: vec![NetAddressWithStats::from(net_address)],
+        }
+    }
+}
+
+impl From<Vec<NetAddress>> for NetAddresses {
+    /// Constructs a new list of addresses with usage stats from a Vec<NetAddress>
+    fn from(net_addresses: Vec<NetAddress>) -> Self {
+        NetAddresses {
+            addresses: net_addresses
+                .into_iter()
+                .map(|addr| NetAddressWithStats::from(addr))
+                .collect::<Vec<NetAddressWithStats>>(),
         }
     }
 }

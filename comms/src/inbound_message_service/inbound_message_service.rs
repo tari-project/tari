@@ -27,51 +27,70 @@ use crate::{
         DealerProxy,
         DealerProxyError,
     },
-    inbound_message_service::{
-        message_context::MessageContext,
-        message_dispatcher::MessageDispatcher,
-        msg_processing_worker::*,
-    },
+    inbound_message_service::msg_processing_worker::*,
+    message::MessageContext,
+    types::MessageDispatcher,
 };
 use log::*;
 use std::{marker::Send, thread};
 use tari_crypto::keys::PublicKey;
 
+use crate::{
+    dispatcher::{DispatchResolver, DispatchableKey},
+    message::DomainMessageContext,
+    outbound_message_service::outbound_message_service::OutboundMessageService,
+    peer_manager::peer_manager::PeerManager,
+    types::{CommsDataStore, CommsPublicKey, DomainMessageDispatcher},
+};
 #[cfg(test)]
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
+use std::{hash::Hash, marker::Sync, sync::Arc};
 
 const LOG_TARGET: &'static str = "comms::inbound_message_service";
 
 /// The maximum number of processing worker threads that will be created by the InboundMessageService
 const MAX_INBOUND_MSG_PROCESSING_WORKERS: u8 = 8; // TODO read this from config
 
-pub struct InboundMessageService<PubKey> {
+pub struct InboundMessageService<PubKey, DispKey, DispRes>
+where DispKey: DispatchableKey
+{
     context: Context,
     inbound_address: InprocAddress,
     dealer_address: InprocAddress,
-    node_identity: PubKey,
-    message_dispatcher: MessageDispatcher<MessageContext<PubKey>>,
+    message_dispatcher: Arc<MessageDispatcher<MessageContext<PubKey, DispKey, DispRes>>>,
+    domain_dispatcher: Arc<DomainMessageDispatcher<PubKey, DispKey, DispRes>>,
+    outbound_message_service: Arc<OutboundMessageService>,
+    peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
     #[cfg(test)]
     test_sync_sender: Vec<SyncSender<String>>, /* These channels will be to test the pool workers threaded
                                                 * operation */
 }
 
-impl<PubKey: PublicKey + Send + 'static> InboundMessageService<PubKey> {
+impl<PubKey, DispKey, DispRes> InboundMessageService<PubKey, DispKey, DispRes>
+where
+    PubKey: PublicKey + Send + 'static + Sync + Hash,
+    DispKey: DispatchableKey,
+    DispRes: DispatchResolver<DispKey, DomainMessageContext<PubKey>> + std::marker::Sync,
+{
     /// Creates a new InboundMessageService that will fairly deal message received on the inbound address to worker
     /// threads
     pub fn new(
         context: Context,
         inbound_address: InprocAddress,
-        node_identity: PubKey,
-        message_dispatcher: MessageDispatcher<MessageContext<PubKey>>,
-    ) -> Result<InboundMessageService<PubKey>, ConnectionError>
+        message_dispatcher: Arc<MessageDispatcher<MessageContext<PubKey, DispKey, DispRes>>>,
+        domain_dispatcher: Arc<DomainMessageDispatcher<PubKey, DispKey, DispRes>>,
+        outbound_message_service: Arc<OutboundMessageService>,
+        peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
+    ) -> Result<InboundMessageService<PubKey, DispKey, DispRes>, ConnectionError>
     {
         Ok(InboundMessageService {
             context,
             inbound_address,
             dealer_address: InprocAddress::random(),
-            node_identity,
             message_dispatcher,
+            domain_dispatcher,
+            outbound_message_service,
+            peer_manager,
             #[cfg(test)]
             test_sync_sender: Vec::new(),
         })
@@ -92,8 +111,10 @@ impl<PubKey: PublicKey + Send + 'static> InboundMessageService<PubKey> {
                 let mut worker = MsgProcessingWorker::new(
                     self.context.clone(),
                     self.dealer_address.clone(),
-                    self.node_identity.clone(),
                     self.message_dispatcher.clone(),
+                    self.domain_dispatcher.clone(),
+                    self.outbound_message_service.clone(),
+                    self.peer_manager.clone(),
                 );
 
                 #[cfg(test)]
@@ -131,14 +152,19 @@ mod test {
     use crate::{
         connection::{
             connection::EstablishedConnection,
+            types::SocketType,
             zmq::{Context, InprocAddress, ZmqEndpoint},
-            SocketType,
         },
         dispatcher::DispatchError,
         inbound_message_service::comms_msg_handlers::*,
         message::{MessageEnvelope, MessageEnvelopeHeader, MessageFlags, NodeDestination},
     };
 
+    use crate::{
+        message::MessageData,
+        peer_manager::peer_manager::PeerManager,
+        types::{CommsDataStore, CommsPublicKey},
+    };
     use std::{convert::TryInto, time::Duration};
     use tari_crypto::{
         keys::{PublicKey, SecretKey},
@@ -167,22 +193,55 @@ mod test {
         // Create a common variable that the workers can change
         static mut HANDLER_RESPONSES: u64 = 0;
 
+        #[derive(Debug, Hash, Eq, PartialEq)]
+        pub enum DomainDispatchType {
+            Default,
+        }
+
+        pub struct DomainResolver;
+
+        impl DispatchResolver<DomainDispatchType, DomainMessageContext<RistrettoPublicKey>> for DomainResolver {
+            fn resolve(
+                &self,
+                _msg: &DomainMessageContext<RistrettoPublicKey>,
+            ) -> Result<DomainDispatchType, DispatchError>
+            {
+                Ok(DomainDispatchType::Default)
+            }
+        }
+        fn domain_test_fn(_message_context: DomainMessageContext<RistrettoPublicKey>) -> Result<(), DispatchError> {
+            Ok(())
+        }
+
+        let domain_dispatcher = Arc::new(
+            DomainMessageDispatcher::<RistrettoPublicKey, DomainDispatchType, DomainResolver>::new(DomainResolver {})
+                .catch_all(domain_test_fn),
+        );
+
         // Create a testing dispatcher for MessageContext
-        fn test_fn(_message_context: MessageContext<RistrettoPublicKey>) -> Result<(), DispatchError> {
+        fn test_fn(
+            _message_context: MessageContext<RistrettoPublicKey, DomainDispatchType, DomainResolver>,
+        ) -> Result<(), DispatchError> {
             unsafe {
                 HANDLER_RESPONSES += 1;
             }
             Ok(())
         }
-        let message_dispatcher = MessageDispatcher::new(InboundMessageServiceResolver {}).catch_all(test_fn);
+        let message_dispatcher = Arc::new(MessageDispatcher::new(InboundMessageServiceResolver {}).catch_all(test_fn));
 
         // Setup and start InboundMessagePool
         let mut rng = rand::OsRng::new().unwrap();
+        let peer_manager = Arc::new(PeerManager::<CommsPublicKey, CommsDataStore>::new(None).unwrap());
+        let outbound_message_service = Arc::new(
+            OutboundMessageService::new(context.clone(), InprocAddress::random(), peer_manager.clone()).unwrap(),
+        );
         let mut inbound_msg_service = InboundMessageService::new(
             context,
             msg_pool_address,
-            RistrettoPublicKey::from_secret_key(&RistrettoSecretKey::random(&mut rng)),
             message_dispatcher,
+            domain_dispatcher,
+            outbound_message_service,
+            peer_manager,
         )
         .unwrap();
         // Instantiate the channels that will be used in the tests.
@@ -194,7 +253,7 @@ mod test {
         let _source: Vec<u8> = vec![5, 6, 7, 8, 9];
         let version: Vec<u8> = vec![10];
         let dest: NodeDestination<RistrettoPublicKey> = NodeDestination::Unknown;
-        let message_envelope_header: MessageEnvelopeHeader<RistrettoPublicKey> = MessageEnvelopeHeader {
+        let message_envelope_header = MessageEnvelopeHeader {
             version: 0,
             source: RistrettoPublicKey::from_secret_key(&RistrettoSecretKey::random(&mut rng)),
             dest,
@@ -210,8 +269,7 @@ mod test {
             message_envelope_body,
         );
 
-        let message_context = MessageContext::<RistrettoPublicKey>::new(connection_id, None, message_envelope);
-
+        let message_context = MessageData::<RistrettoPublicKey>::new(connection_id, None, message_envelope);
         let message_context_buffer = message_context.into_frame_set();
 
         pause();

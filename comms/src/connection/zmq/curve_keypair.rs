@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::connection::{ConnectionError, Result};
+use crate::connection::{types::Result, ConnectionError};
 use clear_on_drop::clear::Clear;
 use serde::{Deserialize, Serialize};
 use zmq;

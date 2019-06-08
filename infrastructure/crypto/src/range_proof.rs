@@ -23,7 +23,10 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
-use crate::{commitment::HomomorphicCommitment, keys::SecretKey};
+use crate::{
+    commitment::HomomorphicCommitment,
+    keys::{PublicKey, SecretKey},
+};
 use derive_error::Error;
 
 #[derive(Debug, Clone, Error, PartialEq)]
@@ -39,7 +42,7 @@ pub enum RangeProofError {
 pub trait RangeProofService {
     type P: Sized;
     type K: SecretKey;
-    type C: HomomorphicCommitment<K = Self::K>;
+    type PK: PublicKey<K = Self::K>;
 
     /// Construct a new range proof for the given secret key and value. The resulting proof will be sufficient
     /// evidence that the prover knows the secret key and value, and that the value lies in the range determined by
@@ -48,5 +51,5 @@ pub trait RangeProofService {
 
     /// Verify the range proof against the given commitment. If this function returns true, it attests to the
     /// commitment having a value in the range [0; 2^64-1] and that the prover knew both the value and private key.
-    fn verify(&self, proof: &Self::P, commitment: &Self::C) -> bool;
+    fn verify(&self, proof: &Self::P, commitment: &HomomorphicCommitment<Self::PK>) -> bool;
 }

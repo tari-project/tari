@@ -23,9 +23,10 @@
 use crate::{
     connection::{ConnectionError, NetAddressError},
     message::MessageError,
+    peer_manager::PeerManagerError,
 };
 use derive_error::Error;
-use tari_utilities::{message_format::MessageFormatError, ByteArrayError};
+use tari_utilities::{ciphers::cipher::CipherError, message_format::MessageFormatError, ByteArrayError};
 
 #[derive(Error, Debug)]
 pub enum ConnectionManagerError {
@@ -33,6 +34,8 @@ pub enum ConnectionManagerError {
     NoAvailablePeerConnectionPort,
     /// The peer connection could not be found
     PeerConnectionNotFound,
+    /// The peer could not be found
+    PeerNotFound,
     // Error establishing connection
     ConnectionError(ConnectionError),
     NetAddressError(NetAddressError),
@@ -43,4 +46,8 @@ pub enum ConnectionManagerError {
     /// The global node identity has not been set
     GlobalNodeIdentityNotSet,
     SharedSecretSerializationError(ByteArrayError),
+    CipherError(CipherError),
+    PeerManagerError(PeerManagerError),
+    /// The connection could not connect within the maximum number of attempts
+    MaxConnnectionAttemptsExceeded,
 }

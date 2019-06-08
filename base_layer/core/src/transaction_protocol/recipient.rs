@@ -27,7 +27,7 @@ use crate::{
         single_receiver::SingleReceiverTransactionProtocol,
         TransactionProtocolError,
     },
-    types::{MessageHash, PublicKey, SecretKey, Signature},
+    types::{CommitmentFactory, MessageHash, PublicKey, RangeProofService, SecretKey, Signature},
 };
 use std::collections::HashMap;
 pub enum RecipientState {
@@ -78,11 +78,15 @@ impl ReceiverTransactionProtocol {
         nonce: SecretKey,
         spending_key: SecretKey,
         features: OutputFeatures,
+        prover: &RangeProofService,
+        factory: &CommitmentFactory,
     ) -> ReceiverTransactionProtocol
     {
         let state = match info {
             SenderMessage::None => RecipientState::Failed(TransactionProtocolError::InvalidStateError),
-            SenderMessage::Single(v) => ReceiverTransactionProtocol::single_round(nonce, spending_key, features, &v),
+            SenderMessage::Single(v) => {
+                ReceiverTransactionProtocol::single_round(nonce, spending_key, features, &v, prover, factory)
+            },
             SenderMessage::Multiple => Self::multi_round(),
         };
         ReceiverTransactionProtocol { state }
@@ -121,8 +125,16 @@ impl ReceiverTransactionProtocol {
     }
 
     /// Run the single-round recipient protocol, which can immediately construct an output and sign the data
-    fn single_round(nonce: SecretKey, key: SecretKey, features: OutputFeatures, data: &SD) -> RecipientState {
-        let signer = SingleReceiverTransactionProtocol::create(data, nonce, key, features);
+    fn single_round(
+        nonce: SecretKey,
+        key: SecretKey,
+        features: OutputFeatures,
+        data: &SD,
+        prover: &RangeProofService,
+        factory: &CommitmentFactory,
+    ) -> RecipientState
+    {
+        let signer = SingleReceiverTransactionProtocol::create(data, nonce, key, features, prover, factory);
         match signer {
             Ok(signed_data) => RecipientState::Finalized(signed_data),
             Err(e) => RecipientState::Failed(e),
@@ -146,11 +158,11 @@ mod test {
             test_common::TestParams,
             TransactionMetadata,
         },
-        types::{PublicKey, Signature, TariCommitmentValidate},
+        types::{PublicKey, Signature, COMMITMENT_FACTORY, PROVER},
         ReceiverTransactionProtocol,
     };
     use rand::OsRng;
-    use tari_crypto::keys::PublicKey as PK;
+    use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::PublicKey as PK};
 
     #[test]
     fn single_round_recipient() {
@@ -174,13 +186,15 @@ mod test {
             p.nonce.clone(),
             p.spend_key.clone(),
             OutputFeatures::empty(),
+            &PROVER,
+            &COMMITMENT_FACTORY,
         );
         assert!(receiver.is_finalized());
         let data = receiver.get_signed_data().unwrap();
         assert_eq!(data.tx_id, 15);
         assert_eq!(data.public_spend_key, pubkey);
-        assert!(data.output.commitment.validate(500, &p.spend_key));
-        assert!(data.output.verify_range_proof(None).unwrap());
+        assert!(COMMITMENT_FACTORY.open_value(&p.spend_key, 500, &data.output.commitment));
+        assert!(data.output.verify_range_proof(&PROVER).unwrap());
         let r_sum = &msg.public_nonce + &p.public_nonce;
         let e = build_challenge(&r_sum, &m);
         let s = Signature::sign(p.spend_key.clone(), p.nonce.clone(), &e).unwrap();

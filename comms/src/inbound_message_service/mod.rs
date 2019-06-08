@@ -22,6 +22,4 @@
 
 pub mod comms_msg_handlers;
 pub mod inbound_message_service;
-pub mod message_context;
-pub mod message_dispatcher;
 pub mod msg_processing_worker;
