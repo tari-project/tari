@@ -20,12 +20,15 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
 
 use log::*;
 
 use crate::{
-    connection::{CurvePublicKey, NetAddress, PeerConnection, PeerConnectionState},
+    connection::{ConnectionError, CurvePublicKey, NetAddress, PeerConnection, PeerConnectionState},
     peer_manager::{NodeId, Peer, PeerManager},
     types::{CommsDataStore, CommsPublicKey},
 };
@@ -38,7 +41,6 @@ use super::{
     PeerConnectionConfig,
     Result,
 };
-use crate::connection::ConnectionError;
 
 const LOG_TARGET: &'static str = "comms::connection_manager::manager";
 
@@ -76,6 +78,7 @@ pub struct ConnectionManager {
     connections: LivePeerConnections,
     establisher: Arc<ConnectionEstablisher>,
     peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
+    establish_locks: Mutex<HashMap<NodeId, Arc<Mutex<()>>>>,
 }
 
 impl ConnectionManager {
@@ -85,20 +88,21 @@ impl ConnectionManager {
             connections: LivePeerConnections::new(),
             establisher: Arc::new(ConnectionEstablisher::new(config, peer_manager.clone())),
             peer_manager,
+            establish_locks: Mutex::new(HashMap::new()),
         }
     }
 
     /// Attempt to establish a connection to a given peer. If the connection exists
     /// the existing connection is returned.
     pub fn establish_connection_to_peer(&self, peer: &Peer<CommsPublicKey>) -> Result<Arc<PeerConnection>> {
-        self.attempt_peer_connection(peer)
+        self.with_establish_lock(&peer.node_id, || self.attempt_peer_connection(peer))
     }
 
     /// Attempt to establish a connection to a given NodeId. If the connection exists
     /// the existing connection is returned.
     pub fn establish_connection_to_node_id(&self, node_id: &NodeId) -> Result<Arc<PeerConnection>> {
         match self.peer_manager.find_with_node_id(node_id) {
-            Ok(peer) => self.attempt_peer_connection(&peer),
+            Ok(peer) => self.with_establish_lock(node_id, || self.attempt_peer_connection(&peer)),
             Err(err) => Err(ConnectionManagerError::PeerManagerError(err)),
         }
     }
@@ -131,6 +135,33 @@ impl ConnectionManager {
 
     pub fn shutdown(self) -> Vec<std::result::Result<(), ConnectionError>> {
         self.connections.shutdown_joined()
+    }
+
+    /// Lock a critical section for the given node id during connection establishment
+    fn with_establish_lock<T>(&self, node_id: &NodeId, func: impl Fn() -> T) -> T {
+        // Return the lock for the given node id. If no lock exists create a new one and return it.
+        let nid_lock = {
+            let mut establish_locks = acquire_lock!(self.establish_locks);
+            match establish_locks.get(node_id) {
+                Some(lock) => lock.clone(),
+                None => {
+                    let new_lock = Arc::new(Mutex::new(()));
+                    establish_locks.insert(node_id.clone(), new_lock.clone());
+                    new_lock
+                },
+            }
+        };
+
+        // Lock the lock for the NodeId
+        let _nid_lock_guard = acquire_lock!(nid_lock);
+        let ret = func();
+        // Remove establish lock once done to release memory. This is safe because the function has already
+        // established the connection, so any subsequent calls will return the existing connection.
+        {
+            let mut establish_locks = acquire_lock!(self.establish_locks);
+            establish_locks.remove(node_id);
+        }
+        ret
     }
 
     fn attempt_peer_connection(&self, peer: &Peer<CommsPublicKey>) -> Result<Arc<PeerConnection>> {
