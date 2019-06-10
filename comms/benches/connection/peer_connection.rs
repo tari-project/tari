@@ -28,16 +28,18 @@ use std::{
     thread,
     time::Duration,
 };
-use tari_comms::connection::{
-    peer_connection::PeerConnectionContext,
-    Connection,
-    Context,
-    Direction,
-    FrameSet,
-    InprocAddress,
-    NetAddress,
-    PeerConnection,
-    PeerConnectionContextBuilder,
+use tari_comms::{
+    connection::{
+        peer_connection::PeerConnectionContext,
+        Connection,
+        Context,
+        Direction,
+        InprocAddress,
+        NetAddress,
+        PeerConnection,
+        PeerConnectionContextBuilder,
+    },
+    message::FrameSet,
 };
 
 const BENCH_SOCKET_ADDRESS: &'static str = "127.0.0.1:9999";
@@ -142,10 +144,10 @@ fn bench_peer_connection(c: &mut Criterion) {
     let p2_ctx = build_context(&ctx, Direction::Outbound, &addr, &consumer2);
 
     // Start peer connections on either end
-    let p1 = PeerConnection::new();
+    let mut p1 = PeerConnection::new();
     p1.start(p1_ctx).unwrap();
 
-    let p2 = PeerConnection::new();
+    let mut p2 = PeerConnection::new();
     p2.start(p2_ctx).unwrap();
 
     let (done1_tx, done1_rx) = channel();
@@ -160,8 +162,8 @@ fn bench_peer_connection(c: &mut Criterion) {
     let dup_signal1 = signal1.clone();
     let dup_signal2 = signal2.clone();
 
-    p1.wait_connected_or_failure(Duration::from_millis(1000)).unwrap();
-    p2.wait_connected_or_failure(Duration::from_millis(1000)).unwrap();
+    p1.wait_listening_or_failure(&Duration::from_millis(1000)).unwrap();
+    p2.wait_connected_or_failure(&Duration::from_millis(1000)).unwrap();
 
     c.bench_function("peer_connection: send/recv", move |b| {
         // Benchmark
