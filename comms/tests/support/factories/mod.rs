@@ -20,38 +20,39 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::{peer_connection_context::PeerConnectionContextFactory, Factory, FactoryError};
+use derive_error::Error;
+use serde::export::fmt::Debug;
 
-use crate::connection::{CurvePublicKey, CurveSecretKey, PeerConnection};
+#[macro_use]
+mod macros;
 
-pub fn create<'c>() -> PeerConnectionFactory<'c> {
-    PeerConnectionFactory::default()
+#[allow(dead_code)]
+pub mod net_address;
+#[allow(dead_code)]
+pub mod peer;
+#[allow(dead_code)]
+pub mod peer_connection;
+#[allow(dead_code)]
+pub mod peer_connection_context;
+#[allow(dead_code)]
+pub mod peer_manager;
+
+pub trait Factory: Default {
+    type Object;
+
+    fn build(self) -> Result<Self::Object, FactoryError>;
 }
 
-#[derive(Default)]
-pub struct PeerConnectionFactory<'c> {
-    peer_connection_context_factory: PeerConnectionContextFactory<'c>,
+#[derive(Debug, Error)]
+pub enum FactoryError {
+    /// Failed to build object
+    #[error(msg_embedded, non_std, no_from)]
+    BuildFailed(String),
 }
 
-impl<'c> PeerConnectionFactory<'c> {
-    pub fn with_peer_connection_context_factory(mut self, context_factory: PeerConnectionContextFactory<'c>) -> Self {
-        self.peer_connection_context_factory = context_factory;
-        self
-    }
-}
-
-impl<'c> Factory for PeerConnectionFactory<'c> {
-    type Object = (PeerConnection, CurveSecretKey, CurvePublicKey);
-
-    fn build(self) -> Result<Self::Object, FactoryError> {
-        let (peer_conn_context, secret_key, public_key) = self
-            .peer_connection_context_factory
-            .build()
-            .map_err(FactoryError::build_failed())?;
-
-        let mut conn = PeerConnection::new();
-        conn.start(peer_conn_context).map_err(FactoryError::build_failed())?;
-
-        Ok((conn, secret_key, public_key))
+impl FactoryError {
+    pub fn build_failed<E>() -> impl Fn(E) -> Self
+    where E: Debug {
+        |err| FactoryError::BuildFailed(format!("Factory failed to build: {:?}", err))
     }
 }

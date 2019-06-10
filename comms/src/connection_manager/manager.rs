@@ -34,14 +34,44 @@ use super::{
     connections::LivePeerConnections,
     establisher::ConnectionEstablisher,
     protocol::PeerConnectionProtocol,
-    repository::PeerConnectionEntry,
     ConnectionManagerError,
     PeerConnectionConfig,
     Result,
 };
+use crate::connection::ConnectionError;
 
 const LOG_TARGET: &'static str = "comms::connection_manager::manager";
 
+/// # ConnectionManager
+///
+/// Responsible for:
+/// - Negotiating and setting up peer connections
+/// - Storing and maintaining live peer connections
+///
+/// ```edition2018
+/// # use std::time::Duration;
+/// # use std::sync::Arc;
+/// # use tari_comms::connection_manager::{ConnectionManager, PeerConnectionConfig};
+/// # use tari_comms::peer_manager::PeerManager;
+/// # use tari_comms::connection::{Context, InprocAddress};
+///
+/// let context = Context::new();
+/// let peer_manager = Arc::new(PeerManager::new(None).unwrap());
+///
+/// let manager = ConnectionManager::new(peer_manager, PeerConnectionConfig {
+///     context: context.clone(),
+///     control_service_establish_timeout: Duration::from_millis(2000),
+///     peer_connection_establish_timeout: Duration::from_secs(5),
+///     max_message_size: 1024,
+///     host: "127.0.0.1".parse().unwrap(),
+///     max_connect_retries: 3,
+///     message_sink_address: InprocAddress::random(),
+///     socks_proxy_address: None,
+/// });
+///
+/// // No active connections
+/// assert_eq!(manager.get_active_connection_count(), 0);
+/// ```
 pub struct ConnectionManager {
     connections: LivePeerConnections,
     establisher: Arc<ConnectionEstablisher>,
@@ -49,6 +79,7 @@ pub struct ConnectionManager {
 }
 
 impl ConnectionManager {
+    /// Create a new connection manager
     pub fn new(peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>, config: PeerConnectionConfig) -> Self {
         Self {
             connections: LivePeerConnections::new(),
@@ -57,14 +88,14 @@ impl ConnectionManager {
         }
     }
 
-    pub fn get_peer_manager(&self) -> Arc<PeerManager<CommsPublicKey, CommsDataStore>> {
-        self.peer_manager.clone()
-    }
-
+    /// Attempt to establish a connection to a given peer. If the connection exists
+    /// the existing connection is returned.
     pub fn establish_connection_to_peer(&self, peer: &Peer<CommsPublicKey>) -> Result<Arc<PeerConnection>> {
         self.attempt_peer_connection(peer)
     }
 
+    /// Attempt to establish a connection to a given NodeId. If the connection exists
+    /// the existing connection is returned.
     pub fn establish_connection_to_node_id(&self, node_id: &NodeId) -> Result<Arc<PeerConnection>> {
         match self.peer_manager.find_with_node_id(node_id) {
             Ok(peer) => self.attempt_peer_connection(&peer),
@@ -72,31 +103,39 @@ impl ConnectionManager {
         }
     }
 
-    pub fn establish_requested_connection(
+    /// Establish an outbound connection for the given peer to the given address using the given
+    /// CurvePublicKey.
+    ///
+    /// ## Arguments
+    ///
+    /// `peer`: &Peer<CommsPublicKey> - The peer which issued the request
+    /// `address`: NetAddress - The address of the destination connection
+    /// `dest_public_key`: &Peer<CommsPublicKey> - The Curve25519 public key of the destination connection
+    pub(crate) fn establish_requested_outbound_connection(
         &self,
         peer: &Peer<CommsPublicKey>,
-        address: &NetAddress,
-        server_public_key: CurvePublicKey,
+        address: NetAddress,
+        dest_public_key: CurvePublicKey,
     ) -> Result<Arc<PeerConnection>>
     {
-        let (entry, join_handle) =
-            self.establisher
-                .establish_outbound_peer_connection(peer, address, server_public_key)?;
+        let (conn, join_handle) = self.establisher.establish_outbound_peer_connection(
+            peer.node_id.clone().into(),
+            address,
+            dest_public_key,
+        )?;
 
-        let conn = entry.connection.clone();
-        let entry = Arc::new(entry);
         self.connections
-            .add_connection(peer.node_id.clone(), entry, join_handle);
+            .add_connection(peer.node_id.clone(), conn.clone(), join_handle);
         Ok(conn)
     }
 
-    pub fn get_active_connection_count(&self) -> usize {
-        self.connections.get_active_connection_count()
+    pub fn shutdown(self) -> Vec<std::result::Result<(), ConnectionError>> {
+        self.connections.shutdown_joined()
     }
 
     fn attempt_peer_connection(&self, peer: &Peer<CommsPublicKey>) -> Result<Arc<PeerConnection>> {
         let maybe_conn = self.connections.get_connection(&peer.node_id);
-        let peer_conn_entry = match maybe_conn {
+        let peer_conn = match maybe_conn {
             Some(conn) => {
                 let state = conn.get_state();
 
@@ -161,38 +200,38 @@ impl ConnectionManager {
             },
         };
 
-        Ok(peer_conn_entry.connection.clone())
+        Ok(peer_conn.clone())
     }
 
-    fn initiate_peer_connection(&self, peer: &Peer<CommsPublicKey>) -> Result<Arc<PeerConnectionEntry>> {
+    fn initiate_peer_connection(&self, peer: &Peer<CommsPublicKey>) -> Result<Arc<PeerConnection>> {
         let protocol = PeerConnectionProtocol::new(&self.establisher)?;
 
         protocol
             .negotiate_peer_connection(peer)
-            .and_then(|(new_inbound_conn_entry, join_handle)| {
+            .and_then(|(new_inbound_conn, join_handle)| {
                 debug!(
                     target: LOG_TARGET,
-                    "[{}] Waiting for peer connection acceptance from remote peer ", new_inbound_conn_entry.address
+                    "[{:?}] Waiting for peer connection acceptance from remote peer ",
+                    new_inbound_conn.get_address()
                 );
                 let config = self.establisher.get_config();
                 // Wait for a message from the peer before continuing
-                new_inbound_conn_entry
-                    .connection
+                new_inbound_conn
                     .wait_connected_or_failure(&config.peer_connection_establish_timeout)
                     .or_else(|err| {
                         error!(
                             target: LOG_TARGET,
-                            "Peer did not accept the connection within {} [NodeId={}] : {:?}",
+                            "Peer did not accept the connection within {:?} [NodeId={}] : {:?}",
+                            config.peer_connection_establish_timeout,
                             peer.node_id,
                             err,
-                            config.peer_connection_establish_timeout
                         );
                         Err(ConnectionManagerError::ConnectionError(err))
                     })?;
 
                 self.connections
-                    .add_connection(peer.node_id.clone(), new_inbound_conn_entry.clone(), join_handle);
-                Ok(new_inbound_conn_entry)
+                    .add_connection(peer.node_id.clone(), new_inbound_conn.clone(), join_handle);
+                Ok(new_inbound_conn)
             })
             .or_else(|err| {
                 warn!(
@@ -203,115 +242,38 @@ impl ConnectionManager {
                 Err(err)
             })
     }
+
+    /// Get the peer manager
+    pub(crate) fn get_peer_manager(&self) -> Arc<PeerManager<CommsPublicKey, CommsDataStore>> {
+        self.peer_manager.clone()
+    }
+
+    /// Return the number of _active_ peer connections currently managed by this instance
+    pub fn get_active_connection_count(&self) -> usize {
+        self.connections.get_active_connection_count()
+    }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
-
-    use crate::{
-        connection::{types::Linger, Context, InprocAddress, NetAddress},
-        control_service::{handlers, ControlService, ControlServiceConfig, ControlServiceMessageType},
-        dispatcher::Dispatcher,
-        peer_manager::CommsNodeIdentity,
-        test_support::{
-            factories::{self, Factory},
-            helpers::ConnectionMessageCounter,
-        },
-    };
+    use crate::connection::{Context, InprocAddress};
     use std::time::Duration;
 
-    fn make_peer_connection_config(context: &Context, consumer_address: InprocAddress) -> PeerConnectionConfig {
-        PeerConnectionConfig {
+    #[test]
+    fn get_active_connection_count() {
+        let context = Context::new();
+        let peer_manager = Arc::new(PeerManager::new(None).unwrap());
+        let manager = ConnectionManager::new(peer_manager, PeerConnectionConfig {
             context: context.clone(),
             control_service_establish_timeout: Duration::from_millis(2000),
             peer_connection_establish_timeout: Duration::from_secs(5),
             max_message_size: 1024,
             host: "127.0.0.1".parse().unwrap(),
             max_connect_retries: 3,
-            consumer_address,
+            message_sink_address: InprocAddress::random(),
             socks_proxy_address: None,
-        }
-    }
-
-    fn make_peer_manager(peers: Vec<Peer<CommsPublicKey>>) -> Arc<PeerManager<CommsPublicKey, CommsDataStore>> {
-        Arc::new(factories::peer_manager::create().with_peers(peers).build().unwrap())
-    }
-
-    #[test]
-    #[allow(non_snake_case)]
-    fn establish_peer_connection_by_peer() {
-        let context = Context::new();
-
-        let dispatcher = Dispatcher::new(handlers::ControlServiceResolver::new()).route(
-            ControlServiceMessageType::EstablishConnection,
-            handlers::establish_connection,
-        );
-
-        let node_identity = CommsNodeIdentity::global().unwrap();
-
-        //---------------------------------- Node B Setup --------------------------------------------//
-
-        let node_B_consumer_address = InprocAddress::random();
-        let node_B_control_port_address: NetAddress = factories::net_address::create().build().unwrap();
-
-        let node_B_msg_counter = ConnectionMessageCounter::new(&context);
-        node_B_msg_counter.start(node_B_consumer_address.clone());
-
-        let node_B_peer = factories::peer::create()
-            .with_net_addresses(vec![node_B_control_port_address.clone()])
-            // Set node B's secret key to be the same as node A's so that we can generate the same shared secret
-            // TODO: we'll need a way to generate separate node identities for two nodes
-            .with_public_key(node_identity.identity.public_key.clone())
-            .build()
-            .unwrap();
-
-        // Node B knows no peers
-        let node_B_peer_manager = make_peer_manager(vec![]);
-        let node_B_connection_manager = Arc::new(ConnectionManager::new(
-            node_B_peer_manager,
-            make_peer_connection_config(&context, node_B_consumer_address.clone()),
-        ));
-
-        // Start node B's control service
-        let node_B_control_service = ControlService::new(&context)
-            .configure(ControlServiceConfig {
-                socks_proxy_address: None,
-                listener_address: node_B_control_port_address,
-            })
-            .serve(dispatcher, node_B_connection_manager)
-            .unwrap();
-
-        //---------------------------------- Node A setup --------------------------------------------//
-
-        let node_A_consumer_address = InprocAddress::random();
-
-        // Add node B to node A's peer manager
-        let node_A_peer_manager = make_peer_manager(vec![node_B_peer.clone()]);
-        let node_A_connection_manager = Arc::new(ConnectionManager::new(
-            node_A_peer_manager,
-            make_peer_connection_config(&context, node_A_consumer_address),
-        ));
-
-        //------------------------------ Negotiate connection to node B -----------------------------------//
-
-        let to_node_B_conn = node_A_connection_manager
-            .establish_connection_to_peer(&node_B_peer)
-            .unwrap();
-
-        to_node_B_conn.set_linger(Linger::Indefinitely).unwrap();
-
-        assert_eq!(node_A_connection_manager.connections.get_active_connection_count(), 1);
-
-        assert!(to_node_B_conn.is_active());
-
-        to_node_B_conn.send(vec!["HELLO".as_bytes().to_vec()]).unwrap();
-        to_node_B_conn.send(vec!["TARI".as_bytes().to_vec()]).unwrap();
-
-        node_B_control_service.shutdown().unwrap();
-        node_B_control_service.handle.join().unwrap().unwrap();
-
-        assert_eq!(node_A_connection_manager.get_active_connection_count(), 1);
-        node_B_msg_counter.assert_count(2, 1000);
+        });
+        assert_eq!(manager.get_active_connection_count(), 0);
     }
 }

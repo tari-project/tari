@@ -30,6 +30,7 @@ use std::{
 };
 use tari_utilities::Hashable;
 
+use crate::connection::peer_connection::ConnectionId;
 use tari_utilities::hex::to_hex;
 
 const NODE_ID_ARRAY_SIZE: usize = 32;
@@ -141,6 +142,10 @@ impl NodeId {
         }
         Ok(nearest_node_ids)
     }
+
+    pub fn into_inner(self) -> NodeIdArray {
+        self.0
+    }
 }
 
 impl PartialEq for NodeId {
@@ -180,6 +185,12 @@ impl AsRef<[u8]> for NodeId {
 impl fmt::Display for NodeId {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", to_hex(&self.0))
+    }
+}
+
+impl From<NodeId> for ConnectionId {
+    fn from(node_id: NodeId) -> Self {
+        ConnectionId::new(node_id.into_inner().to_vec())
     }
 }
 

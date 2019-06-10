@@ -33,7 +33,7 @@ use tari_utilities::{
 };
 
 use crate::{
-    connection::{connection::EstablishedConnection, CurveEncryption, CurvePublicKey},
+    connection::{connection::EstablishedConnection, CurveEncryption, CurvePublicKey, PeerConnection},
     control_service::ControlServiceMessageType,
     message::{
         p2p::EstablishConnection,
@@ -48,13 +48,8 @@ use crate::{
     types::CommsPublicKey,
 };
 
-use super::{
-    establisher::ConnectionEstablisher,
-    repository::PeerConnectionEntry,
-    types::PeerConnectionJoinHandle,
-    ConnectionManagerError,
-    Result,
-};
+use super::{establisher::ConnectionEstablisher, types::PeerConnectionJoinHandle, ConnectionManagerError, Result};
+use std::time::Duration;
 
 const LOG_TARGET: &'static str = "comms::connection_manager::protocol";
 
@@ -73,10 +68,11 @@ impl<'e> PeerConnectionProtocol<'e> {
             .ok_or(ConnectionManagerError::GlobalNodeIdentityNotSet)
     }
 
+    /// Send Establish connection message to the peers control port to request a connection
     pub fn negotiate_peer_connection(
         &self,
         peer: &Peer<CommsPublicKey>,
-    ) -> Result<(Arc<PeerConnectionEntry>, PeerConnectionJoinHandle)>
+    ) -> Result<(Arc<PeerConnection>, PeerConnectionJoinHandle)>
     {
         info!(target: LOG_TARGET, "[NodeId={}] Negotiating connection", peer.node_id);
         let control_port_conn = self.establisher.establish_control_service_connection(&peer)?;
@@ -85,15 +81,20 @@ impl<'e> PeerConnectionProtocol<'e> {
             target: LOG_TARGET,
             "[NodeId={}] Control port connection established", peer.node_id
         );
-        let (new_inbound_conn_entry, curve_pk, join_handle) = self.open_inbound_peer_connection(&peer)?;
+        let (new_inbound_conn, curve_pk, join_handle) = self.open_inbound_peer_connection(&peer)?;
 
         debug!(
             target: LOG_TARGET,
             "[NodeId={}] Inbound peer connection established", peer.node_id
         );
+
+        let address = new_inbound_conn
+            .get_address()
+            .ok_or(ConnectionManagerError::ConnectionAddressNotEstablished)?;
+
         // Construct establish connection message
         let msg = EstablishConnection {
-            address: new_inbound_conn_entry.address.clone(),
+            address,
             control_service_address: self.node_identity.control_service_address.clone(),
             public_key: self.node_identity.identity.public_key.clone(),
             node_id: self.node_identity.identity.node_id.clone(),
@@ -106,7 +107,7 @@ impl<'e> PeerConnectionProtocol<'e> {
             "[NodeId={}] EstablishConnection message sent", peer.node_id
         );
 
-        Ok((Arc::new(new_inbound_conn_entry), join_handle))
+        Ok((new_inbound_conn, join_handle))
     }
 
     fn send_establish_message(
@@ -149,13 +150,17 @@ impl<'e> PeerConnectionProtocol<'e> {
     fn open_inbound_peer_connection(
         &self,
         peer: &Peer<CommsPublicKey>,
-    ) -> Result<(PeerConnectionEntry, CurvePublicKey, PeerConnectionJoinHandle)>
+    ) -> Result<(Arc<PeerConnection>, CurvePublicKey, PeerConnectionJoinHandle)>
     {
         let (secret_key, public_key) =
             CurveEncryption::generate_keypair().map_err(ConnectionManagerError::CurveEncryptionGenerateError)?;
 
-        let (entry, join_handle) = self.establisher.establish_inbound_peer_connection(peer, secret_key)?;
+        let (conn, join_handle) = self
+            .establisher
+            .establish_inbound_peer_connection(peer.node_id.clone().into(), secret_key)?;
+        conn.wait_listening_or_failure(&Duration::from_millis(200))
+            .map_err(ConnectionManagerError::ConnectionError)?;
 
-        Ok((entry, public_key, join_handle))
+        Ok((conn, public_key, join_handle))
     }
 }

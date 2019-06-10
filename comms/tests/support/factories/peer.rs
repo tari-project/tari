@@ -22,13 +22,13 @@
 
 use super::{net_address::NetAddressesFactory, Factory, FactoryError};
 
-use crate::{
+use tari_comms::{
     connection::NetAddress,
     peer_manager::{NodeId, Peer, PeerFlags},
     types::CommsPublicKey,
 };
 
-use crate::test_support::makers::{comms_keys as ristretto_maker, node_id as node_id_maker};
+use crate::support::makers::{comms_keys as ristretto_maker, node_id as node_id_maker};
 
 use std::iter::repeat_with;
 

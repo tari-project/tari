@@ -30,7 +30,7 @@ use tari_comms::connection::{
     NetAddress,
 };
 
-use tari_comms::test_support::factories::{self, Factory};
+use crate::support::factories::{self, Factory};
 
 #[test]
 fn recv_socket_events() {

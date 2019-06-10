@@ -50,4 +50,6 @@ pub enum ConnectionManagerError {
     PeerManagerError(PeerManagerError),
     /// The connection could not connect within the maximum number of attempts
     MaxConnnectionAttemptsExceeded,
+    /// The connection address could not be established
+    ConnectionAddressNotEstablished,
 }

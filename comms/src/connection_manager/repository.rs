@@ -22,21 +22,12 @@
 
 use std::collections::HashMap;
 
-use crate::{
-    connection::{NetAddress, PeerConnection},
-    peer_manager::node_id::NodeId,
-};
+use crate::{connection::PeerConnection, peer_manager::node_id::NodeId};
 
 use std::sync::{Arc, RwLock};
 
 lazy_static! {
     static ref PORT_ALLOCATIONS: RwLock<Vec<u16>> = RwLock::new(vec![]);
-}
-
-pub struct PeerConnectionEntry {
-    pub(super) connection: Arc<PeerConnection>,
-    pub(super) address: NetAddress,
-    //    pub(super) direction: Direction,
 }
 
 pub trait Repository<I, T> {
@@ -49,11 +40,11 @@ pub trait Repository<I, T> {
 
 #[derive(Default)]
 pub(super) struct ConnectionRepository {
-    entries: HashMap<NodeId, Arc<PeerConnectionEntry>>,
+    entries: HashMap<NodeId, Arc<PeerConnection>>,
 }
 
-impl Repository<NodeId, PeerConnectionEntry> for ConnectionRepository {
-    fn get(&self, node_id: &NodeId) -> Option<Arc<PeerConnectionEntry>> {
+impl Repository<NodeId, PeerConnection> for ConnectionRepository {
+    fn get(&self, node_id: &NodeId) -> Option<Arc<PeerConnection>> {
         self.entries.get(node_id).map(|entry| entry.clone())
     }
 
@@ -65,22 +56,22 @@ impl Repository<NodeId, PeerConnectionEntry> for ConnectionRepository {
         self.entries.values().count()
     }
 
-    fn insert(&mut self, node_id: NodeId, entry: Arc<PeerConnectionEntry>) {
+    fn insert(&mut self, node_id: NodeId, entry: Arc<PeerConnection>) {
         self.entries.insert(node_id, entry);
     }
 
-    fn remove(&mut self, node_id: &NodeId) -> Option<Arc<PeerConnectionEntry>> {
+    fn remove(&mut self, node_id: &NodeId) -> Option<Arc<PeerConnection>> {
         self.entries.remove(node_id)
     }
 }
 
 impl ConnectionRepository {
     pub fn count_where<P>(&self, predicate: P) -> usize
-    where P: FnMut(&&Arc<PeerConnectionEntry>) -> bool {
+    where P: FnMut(&&Arc<PeerConnection>) -> bool {
         self.entries.values().filter(predicate).count()
     }
 
-    pub fn for_each(&self, mut f: impl FnMut(&Arc<PeerConnectionEntry>)) {
+    pub fn for_each(&self, mut f: impl FnMut(&Arc<PeerConnection>)) {
         for entry in self.entries.values() {
             f(entry);
         }
@@ -93,13 +84,6 @@ mod test {
     use rand::OsRng;
     use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
 
-    fn make_peer_connection_entry() -> Arc<PeerConnectionEntry> {
-        Arc::new(PeerConnectionEntry {
-            connection: Arc::new(PeerConnection::new()),
-            address: "127.0.0.1:9000".parse().unwrap(),
-        })
-    }
-
     fn make_node_id() -> NodeId {
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut OsRng::new().unwrap());
         NodeId::from_key(&pk).unwrap()
@@ -110,8 +94,8 @@ mod test {
         let mut node_ids = vec![];
         for _i in 0..n {
             let node_id = make_node_id();
-            let conn_entry = make_peer_connection_entry();
-            repo.insert(node_id.clone(), conn_entry.clone());
+            let conn = Arc::new(PeerConnection::new());
+            repo.insert(node_id.clone(), conn.clone());
             node_ids.push(node_id);
         }
         (repo, node_ids)

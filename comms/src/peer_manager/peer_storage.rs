@@ -636,7 +636,7 @@ mod test {
     }
 
     #[test]
-    fn test_persistance_storage() {
+    fn test_persistence_storage() {
         // Clear and setup DB folders
         let test_dir = "./tests/test_peer_storage2";
         if std::fs::metadata(test_dir).is_ok() {

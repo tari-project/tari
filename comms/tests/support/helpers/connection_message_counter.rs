@@ -22,7 +22,7 @@
 
 use log::*;
 
-use crate::connection::{zmq::ZmqEndpoint, Connection, Context, Direction};
+use tari_comms::connection::{zmq::ZmqEndpoint, Connection, Context, Direction};
 
 use std::{
     sync::{Arc, RwLock},
@@ -45,6 +45,7 @@ impl<'c> ConnectionMessageCounter<'c> {
         }
     }
 
+    #[allow(dead_code)]
     pub fn reset(&self) {
         let mut counter_lock = acquire_write_lock!(self.counter);
         *counter_lock = 0;

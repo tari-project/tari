@@ -22,7 +22,8 @@
 
 use super::{Factory, FactoryError};
 
-use crate::connection::{
+use rand::{OsRng, Rng};
+use tari_comms::connection::{
     peer_connection::{ConnectionId, PeerConnectionContext},
     types::Linger,
     Context,
@@ -34,7 +35,6 @@ use crate::connection::{
     NetAddress,
     PeerConnectionContextBuilder,
 };
-use rand::{OsRng, Rng};
 
 pub fn create<'c>() -> PeerConnectionContextFactory<'c> {
     PeerConnectionContextFactory::default()
@@ -45,7 +45,7 @@ pub struct PeerConnectionContextFactory<'c> {
     direction: Option<Direction>,
     context: Option<&'c Context>,
     connection_id: Option<ConnectionId>,
-    consumer_address: Option<InprocAddress>,
+    message_sink_address: Option<InprocAddress>,
     server_public_key: Option<CurvePublicKey>,
     address: Option<NetAddress>,
     linger: Option<Linger>,
@@ -53,7 +53,7 @@ pub struct PeerConnectionContextFactory<'c> {
 
 fn random_connection_id() -> ConnectionId {
     let rng = &mut OsRng::new().unwrap();
-    (0..8).map(|_| rng.gen::<u8>()).collect()
+    (0..8).map(|_| rng.gen::<u8>()).collect::<Vec<u8>>().into()
 }
 
 impl<'c> PeerConnectionContextFactory<'c> {
@@ -61,7 +61,7 @@ impl<'c> PeerConnectionContextFactory<'c> {
 
     factory_setter!(with_connection_id, connection_id, Option<ConnectionId>);
 
-    factory_setter!(with_consumer_address, consumer_address, Option<InprocAddress>);
+    factory_setter!(with_message_sink_address, message_sink_address, Option<InprocAddress>);
 
     factory_setter!(with_server_public_key, server_public_key, Option<CurvePublicKey>);
 
@@ -95,7 +95,7 @@ impl<'c> Factory for PeerConnectionContextFactory<'c> {
             .set_direction(direction.clone())
             .set_context(context)
             .set_address(address)
-            .set_consumer_address(self.consumer_address.or(Some(InprocAddress::random())).unwrap());
+            .set_message_sink_address(self.message_sink_address.or(Some(InprocAddress::random())).unwrap());
 
         let (secret_key, public_key) = CurveEncryption::generate_keypair().map_err(FactoryError::build_failed())?;
         match direction {

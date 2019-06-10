@@ -43,7 +43,7 @@ const DEFAULT_MAX_RETRY_ATTEMPTS: u16 = 10;
 ///
 /// `context` - the underlying connection context
 /// `peer_address` - the address to listen (Direction::Inbound) or connect(Direction::Outbound)
-/// `consumer_address` - the address to forward all received messages
+/// `message_sink_address` - the address to forward all received messages
 /// `direction` - the connection direction (Inbound or Outbound)
 /// `curve_encryption` - the [CurveEncryption] for the connection
 /// `max_msg_size` - the maximum size of a incoming message
@@ -53,7 +53,7 @@ const DEFAULT_MAX_RETRY_ATTEMPTS: u16 = 10;
 pub struct PeerConnectionContext {
     pub(crate) context: Context,
     pub(crate) peer_address: NetAddress,
-    pub(crate) consumer_address: InprocAddress,
+    pub(crate) message_sink_address: InprocAddress,
     pub(crate) direction: Direction,
     pub(crate) id: ConnectionId,
     pub(crate) curve_encryption: CurveEncryption,
@@ -70,7 +70,7 @@ impl<'a> TryFrom<PeerConnectionContextBuilder<'a>> for PeerConnectionContext {
     fn try_from(builder: PeerConnectionContextBuilder<'a>) -> Result<Self> {
         builder.check_curve_encryption()?;
 
-        let consumer_address = unwrap_prop(builder.consumer_address, "consumer_address")?;
+        let message_sink_address = unwrap_prop(builder.message_sink_address, "message_sink_address")?;
         let context = unwrap_prop(builder.context, "context")?.clone();
         let curve_encryption = builder.curve_encryption;
         let direction = unwrap_prop(builder.direction, "direction")?;
@@ -82,7 +82,7 @@ impl<'a> TryFrom<PeerConnectionContextBuilder<'a>> for PeerConnectionContext {
         let linger = builder.linger.or(Some(Linger::Timeout(100))).unwrap();
 
         Ok(PeerConnectionContext {
-            consumer_address,
+            message_sink_address,
             context,
             curve_encryption,
             direction,
@@ -127,7 +127,7 @@ fn unwrap_prop<T>(prop: Option<T>, prop_name: &str) -> Result<T> {
 ///    .set_id("123")
 ///    .set_context(&ctx)
 ///    .set_direction(Direction::Outbound)
-///    .set_consumer_address(InprocAddress::random())
+///    .set_message_sink_address(InprocAddress::random())
 ///    .set_address("127.0.0.1:8080".parse().unwrap())
 ///    .build()
 ///    .unwrap();
@@ -137,7 +137,7 @@ fn unwrap_prop<T>(prop: Option<T>, prop_name: &str) -> Result<T> {
 #[derive(Default)]
 pub struct PeerConnectionContextBuilder<'c> {
     pub(super) address: Option<NetAddress>,
-    pub(super) consumer_address: Option<InprocAddress>,
+    pub(super) message_sink_address: Option<InprocAddress>,
     pub(super) context: Option<&'c Context>,
     pub(super) curve_encryption: CurveEncryption,
     pub(super) direction: Option<Direction>,
@@ -149,21 +149,28 @@ pub struct PeerConnectionContextBuilder<'c> {
 }
 
 impl<'c> PeerConnectionContextBuilder<'c> {
-    //    setter!(set_id, id, ConnectionId);
+    /// Set the peer address
     setter!(set_address, address, NetAddress);
 
-    setter!(set_consumer_address, consumer_address, InprocAddress);
+    /// Set the address where incoming peer messages are forwarded
+    setter!(set_message_sink_address, message_sink_address, InprocAddress);
 
+    /// Set the zmq context
     setter!(set_context, context, &'c Context);
 
+    /// Set the connection direction
     setter!(set_direction, direction, Direction);
 
+    /// Set the maximum connection retry attempts
     setter!(set_max_retry_attempts, max_retry_attempts, u16);
 
+    /// Set the maximum message size in bytes
     setter!(set_max_msg_size, max_msg_size, u64);
 
+    /// Set the socks proxy address
     setter!(set_socks_proxy, socks_address, SocketAddress);
 
+    /// Set the [Linger] for this connection
     setter!(set_linger, linger, Linger);
 
     /// Return a new PeerConnectionContextBuilder
@@ -177,9 +184,11 @@ impl<'c> PeerConnectionContextBuilder<'c> {
         self
     }
 
+    /// Set the ID for the connection. This will be sent as the first
+    /// frame to the message sink address
     pub fn set_id<T>(mut self, id: T) -> Self
-    where T: AsRef<[u8]> {
-        self.id = Some(id.as_ref().to_vec());
+    where T: Into<ConnectionId> {
+        self.id = Some(id.into());
         self
     }
 
@@ -263,13 +272,13 @@ mod test {
             .set_direction(Direction::Inbound)
             .set_context(&ctx)
             .set_socks_proxy(socks_addr.clone())
-            .set_consumer_address(recv_addr.clone())
+            .set_message_sink_address(recv_addr.clone())
             .set_address(peer_addr.clone())
             .build()
             .unwrap();
 
         assert_eq!(conn_id.to_vec(), peer_ctx.id);
-        assert_eq!(recv_addr, peer_ctx.consumer_address);
+        assert_eq!(recv_addr, peer_ctx.message_sink_address);
         assert_eq!(Direction::Inbound, peer_ctx.direction);
         assert_eq!(peer_addr, peer_ctx.peer_address);
         assert_eq!(Some(socks_addr), peer_ctx.socks_address);
@@ -283,7 +292,7 @@ mod test {
         let result = PeerConnectionContextBuilder::new()
             .set_id("123")
             .set_direction(Direction::Outbound)
-            .set_consumer_address(InprocAddress::random())
+            .set_message_sink_address(InprocAddress::random())
             .set_address("127.0.0.1:80".parse().unwrap())
             .build();
 
@@ -293,7 +302,7 @@ mod test {
             .set_id("123")
             .set_direction(Direction::Inbound)
             .set_context(&ctx)
-            .set_consumer_address(InprocAddress::random())
+            .set_message_sink_address(InprocAddress::random())
             .set_curve_encryption(CurveEncryption::Client {
                 secret_key: sk.clone(),
                 public_key: pk.clone(),
@@ -308,7 +317,7 @@ mod test {
             .set_id("123")
             .set_direction(Direction::Outbound)
             .set_context(&ctx)
-            .set_consumer_address(InprocAddress::random())
+            .set_message_sink_address(InprocAddress::random())
             .set_curve_encryption(CurveEncryption::Server { secret_key: sk.clone() })
             .set_address("127.0.0.1:80".parse().unwrap())
             .build();

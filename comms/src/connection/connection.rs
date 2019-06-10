@@ -20,6 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use log::*;
+
 use crate::{
     connection::{
         net_address::ip::SocketAddress,
@@ -29,7 +31,7 @@ use crate::{
     },
     message::FrameSet,
 };
-use log::*;
+
 use std::{cmp, convert::TryFrom, iter::IntoIterator, str::FromStr};
 
 const LOG_TARGET: &'static str = "comms::connection::Connection";

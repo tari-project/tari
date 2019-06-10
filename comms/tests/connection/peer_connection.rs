@@ -34,7 +34,7 @@ use tari_comms::connection::{
     PeerConnectionError,
 };
 
-use tari_comms::test_support::factories::{self, Factory};
+use crate::support::factories::{self, Factory};
 
 #[test]
 fn connection_in() {
@@ -51,7 +51,7 @@ fn connection_in() {
         .set_id("123")
         .set_direction(Direction::Inbound)
         .set_context(&ctx)
-        .set_consumer_address(consumer_addr.clone())
+        .set_message_sink_address(consumer_addr.clone())
         .set_curve_encryption(CurveEncryption::Server { secret_key: server_sk })
         .set_address(addr.clone())
         .build()
@@ -111,7 +111,7 @@ fn connection_out() {
         .set_id(conn_id.clone())
         .set_direction(Direction::Outbound)
         .set_context(&ctx)
-        .set_consumer_address(consumer_addr.clone())
+        .set_message_sink_address(consumer_addr.clone())
         .set_curve_encryption(CurveEncryption::Client {
             server_public_key: server_pk,
             secret_key: client_sk,
@@ -156,7 +156,7 @@ fn connection_wait_connect_shutdown() {
         .set_id("123")
         .set_direction(Direction::Outbound)
         .set_context(&ctx)
-        .set_consumer_address(consumer_addr.clone())
+        .set_message_sink_address(consumer_addr.clone())
         .set_address(addr)
         .build()
         .unwrap();
@@ -191,7 +191,7 @@ fn connection_wait_connect_failed() {
         .set_direction(Direction::Outbound)
         .set_max_retry_attempts(1)
         .set_context(&ctx)
-        .set_consumer_address(consumer_addr.clone())
+        .set_message_sink_address(consumer_addr.clone())
         .set_address(addr.clone())
         .build()
         .unwrap();
@@ -234,7 +234,7 @@ fn connection_pause_resume() {
         .set_id(conn_id.clone())
         .set_direction(Direction::Inbound)
         .set_context(&ctx)
-        .set_consumer_address(consumer_addr.clone())
+        .set_message_sink_address(consumer_addr.clone())
         .set_address(addr)
         .build()
         .unwrap();
@@ -253,7 +253,7 @@ fn connection_pause_resume() {
 
     sender.send(&[&[1u8]]).unwrap();
 
-    let frames = consumer.receive(200).unwrap();
+    let frames = consumer.receive(2000).unwrap();
     assert_eq!(conn_id.to_vec(), frames[1]);
     assert_eq!(vec![1u8], frames[2]);
 
@@ -291,7 +291,7 @@ fn connection_disconnect() {
         .set_id("123")
         .set_direction(Direction::Inbound)
         .set_context(&ctx)
-        .set_consumer_address(consumer_addr.clone())
+        .set_message_sink_address(consumer_addr.clone())
         .set_address(addr)
         .build()
         .unwrap();

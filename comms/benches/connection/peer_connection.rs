@@ -72,7 +72,7 @@ fn build_context(
         .set_direction(dir)
         .set_max_msg_size(512 * 1024)
         .set_address(addr.clone())
-        .set_consumer_address(consumer_addr.clone())
+        .set_message_sink_address(consumer_addr.clone())
         .set_context(ctx)
         .build()
         .unwrap()
@@ -80,7 +80,7 @@ fn build_context(
 
 /// Start a consumer thread.
 /// This listens for control messages, execute the given task and signal when it's done (`signal` field)
-fn start_consumer(
+fn start_message_sink_consumer(
     ctx: &Context,
     addr: &InprocAddress,
     peer_conn: &PeerConnection,
@@ -153,8 +153,8 @@ fn bench_peer_connection(c: &mut Criterion) {
 
     // Start consumers
     // These act as a threaded worker which consumes messages from peer connections
-    let signal1 = start_consumer(&ctx, &consumer1, &p1, done1_tx);
-    let signal2 = start_consumer(&ctx, &consumer2, &p2, done2_tx);
+    let signal1 = start_message_sink_consumer(&ctx, &consumer1, &p1, done1_tx);
+    let signal2 = start_message_sink_consumer(&ctx, &consumer2, &p2, done2_tx);
 
     // Duplicates which won't be moved into the bench function
     let dup_signal1 = signal1.clone();

@@ -1,0 +1,139 @@
+//  Copyright 2019 The Tari Project
+//
+//  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+//  following conditions are met:
+//
+//  1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+//  disclaimer.
+//
+//  2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+//  following disclaimer in the documentation and/or other materials provided with the distribution.
+//
+//  3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+//  products derived from this software without specific prior written permission.
+//
+//  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+//  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+//  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+//  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+//  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+//  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+//  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+use std::{sync::Arc, time::Duration};
+
+use crate::support::{
+    factories::{self, Factory},
+    helpers::ConnectionMessageCounter,
+    node_identity::set_test_node_identity,
+};
+
+use tari_comms::{
+    connection::{types::Linger, Context, InprocAddress, NetAddress},
+    connection_manager::{ConnectionManager, PeerConnectionConfig},
+    control_service::{handlers, ControlService, ControlServiceConfig, ControlServiceMessageType},
+    dispatcher::Dispatcher,
+    peer_manager::{CommsNodeIdentity, Peer, PeerManager},
+    types::{CommsDataStore, CommsPublicKey},
+};
+
+fn make_peer_connection_config(context: &Context, consumer_address: InprocAddress) -> PeerConnectionConfig {
+    PeerConnectionConfig {
+        context: context.clone(),
+        control_service_establish_timeout: Duration::from_millis(2000),
+        peer_connection_establish_timeout: Duration::from_secs(5),
+        max_message_size: 1024,
+        host: "127.0.0.1".parse().unwrap(),
+        max_connect_retries: 3,
+        message_sink_address: consumer_address,
+        socks_proxy_address: None,
+    }
+}
+
+fn make_peer_manager(peers: Vec<Peer<CommsPublicKey>>) -> Arc<PeerManager<CommsPublicKey, CommsDataStore>> {
+    Arc::new(factories::peer_manager::create().with_peers(peers).build().unwrap())
+}
+
+#[test]
+#[allow(non_snake_case)]
+fn establish_peer_connection_by_peer() {
+    let _ = simple_logger::init();
+    set_test_node_identity();
+    let context = Context::new();
+
+    let dispatcher = Dispatcher::new(handlers::ControlServiceResolver::new()).route(
+        ControlServiceMessageType::EstablishConnection,
+        handlers::establish_connection,
+    );
+
+    let node_identity = CommsNodeIdentity::global().unwrap();
+
+    //---------------------------------- Node B Setup --------------------------------------------//
+
+    let node_B_consumer_address = InprocAddress::random();
+    let node_B_control_port_address: NetAddress = factories::net_address::create().build().unwrap();
+
+    let node_B_msg_counter = ConnectionMessageCounter::new(&context);
+    node_B_msg_counter.start(node_B_consumer_address.clone());
+
+    let node_B_peer = factories::peer::create()
+        .with_net_addresses(vec![node_B_control_port_address.clone()])
+        // Set node B's secret key to be the same as node A's so that we can generate the same shared secret
+        // TODO: we'll need a way to generate separate node identities for two nodes
+        .with_public_key(node_identity.identity.public_key.clone())
+        .build()
+        .unwrap();
+
+    // Node B knows no peers
+    let node_B_peer_manager = make_peer_manager(vec![]);
+    let node_B_connection_manager = Arc::new(ConnectionManager::new(
+        node_B_peer_manager,
+        make_peer_connection_config(&context, node_B_consumer_address.clone()),
+    ));
+
+    // Start node B's control service
+    let node_B_control_service = ControlService::new(&context)
+        .configure(ControlServiceConfig {
+            socks_proxy_address: None,
+            listener_address: node_B_control_port_address,
+        })
+        .serve(dispatcher, node_B_connection_manager)
+        .unwrap();
+
+    //---------------------------------- Node A setup --------------------------------------------//
+
+    let node_A_consumer_address = InprocAddress::random();
+
+    // Add node B to node A's peer manager
+    let node_A_peer_manager = make_peer_manager(vec![node_B_peer.clone()]);
+    let node_A_connection_manager = Arc::new(ConnectionManager::new(
+        node_A_peer_manager,
+        make_peer_connection_config(&context, node_A_consumer_address),
+    ));
+
+    //------------------------------ Negotiate connection to node B -----------------------------------//
+
+    let to_node_B_conn = node_A_connection_manager
+        .establish_connection_to_peer(&node_B_peer)
+        .unwrap();
+
+    to_node_B_conn.set_linger(Linger::Indefinitely).unwrap();
+
+    assert_eq!(node_A_connection_manager.get_active_connection_count(), 1);
+
+    assert!(to_node_B_conn.is_active());
+
+    to_node_B_conn.send(vec!["HELLO".as_bytes().to_vec()]).unwrap();
+    to_node_B_conn.send(vec!["TARI".as_bytes().to_vec()]).unwrap();
+
+    node_B_control_service.shutdown().unwrap();
+    node_B_control_service.handle.join().unwrap().unwrap();
+
+    assert_eq!(node_A_connection_manager.get_active_connection_count(), 1);
+    node_B_msg_counter.assert_count(2, 1000);
+
+    match Arc::try_unwrap(node_A_connection_manager) {
+        Ok(manager) => manager.shutdown().into_iter().map(|r| r.unwrap()).collect::<Vec<()>>(),
+        Err(_) => panic!("Unable to unwrap connection manager from Arc"),
+    };
+}

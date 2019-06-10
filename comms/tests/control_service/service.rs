@@ -22,12 +22,12 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::support::node_identity::set_test_node_identity;
 use std::{
-    sync::{Arc, RwLock},
+    sync::{mpsc::channel, Arc, RwLock},
     thread,
     time::Duration,
 };
+
 use tari_comms::{
     connection::{
         types::{Direction, Linger},
@@ -35,6 +35,7 @@ use tari_comms::{
         Context,
         CurveEncryption,
         InprocAddress,
+        NetAddress,
     },
     connection_manager::{ConnectionManager, PeerConnectionConfig},
     control_service::{ControlService, ControlServiceConfig, ControlServiceError, ControlServiceMessageContext},
@@ -56,7 +57,10 @@ use tari_crypto::keys::DiffieHellmanSharedSecret;
 use tari_storage::lmdb::LMDBStore;
 use tari_utilities::{byte_array::ByteArray, ciphers::cipher::Cipher, message_format::MessageFormat};
 
-use tari_comms::test_support::factories::{self, Factory};
+use crate::support::{
+    factories::{self, Factory},
+    node_identity::set_test_node_identity,
+};
 
 #[derive(Eq, PartialEq, Hash, Serialize, Deserialize)]
 enum MessageType {
@@ -150,7 +154,7 @@ fn make_connection_manager(context: &Context) -> Arc<ConnectionManager> {
         peer_connection_establish_timeout: Duration::from_secs(4),
         max_message_size: 1024 * 1024,
         socks_proxy_address: None,
-        consumer_address: InprocAddress::random(),
+        message_sink_address: InprocAddress::random(),
         host: "127.0.0.1".parse().unwrap(),
         max_connect_retries: 1,
     }))
@@ -162,7 +166,6 @@ fn make_peer_manager() -> Arc<PeerManager<CommsPublicKey, LMDBStore>> {
 
 #[test]
 fn recv_message() {
-    simple_logger::init().unwrap();
     let node_identity = set_test_node_identity();
 
     let context = Context::new();
@@ -218,4 +221,39 @@ fn recv_message() {
     assert_eq!(2, call_count);
 
     service.shutdown().unwrap();
+}
+
+struct TestResolver;
+
+impl DispatchResolver<u8, ControlServiceMessageContext> for TestResolver {
+    fn resolve(&self, _context: &ControlServiceMessageContext) -> std::result::Result<u8, DispatchError> {
+        Ok(0u8)
+    }
+}
+
+#[test]
+fn serve_and_shutdown() {
+    set_test_node_identity();
+    let (tx, rx) = channel();
+    let context = Context::new();
+    let connection_manager = make_connection_manager(&context);
+
+    let listener_address: NetAddress = "127.0.0.1:0".parse().unwrap(); // factories::net_address::create().use_os_port().build().unwrap();
+    thread::spawn(move || {
+        let dispatcher = Dispatcher::new(TestResolver {});
+
+        let service = ControlService::new(&context)
+            .configure(ControlServiceConfig {
+                listener_address,
+                socks_proxy_address: None,
+            })
+            .serve(dispatcher, connection_manager)
+            .unwrap();
+
+        service.shutdown().unwrap();
+        tx.send(()).unwrap();
+    });
+
+    // Test that the control service loop ends within 1000ms
+    rx.recv_timeout(Duration::from_millis(1000)).unwrap();
 }
