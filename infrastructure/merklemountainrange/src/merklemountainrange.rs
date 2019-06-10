@@ -572,7 +572,7 @@ mod tests {
         let mut mmr: MerkleMountainRange<IWrapper, Blake2b> = MerkleMountainRange::new();
         for i in 1..leaves + 1 {
             let object: IWrapper = IWrapper(i);
-            mmr.push(object);
+            assert!(mmr.push(object).is_ok());
         }
         mmr
     }

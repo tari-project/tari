@@ -26,6 +26,7 @@
 use crate::{pow::ProofOfWork, types::*};
 use chrono::{DateTime, Utc};
 use digest::Input;
+use serde::{Deserialize, Serialize};
 use tari_infra_derive::Hashable;
 use tari_utilities::{ExtendBytes, Hashable};
 
@@ -33,7 +34,7 @@ type BlockHash = [u8; 32];
 
 /// The BlockHeader contains all the metadata for the block, including proof of work, a link to the previous block
 /// and the transaction kernels.
-#[derive(Hashable)]
+#[derive(Hashable, Serialize, Deserialize)]
 #[digest = "SignatureHash"]
 pub struct BlockHeader {
     /// Version of the block
