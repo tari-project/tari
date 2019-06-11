@@ -232,6 +232,14 @@ where
             .map_err(|_| PeerManagerError::PoisonedAccess)?
             .mark_failed_connection_attempt(net_address)
     }
+
+    /// Thread safe access to peer - Reset all connection attempts on all net addresses for peer
+    pub fn reset_connection_attempts(&self, node_id: &NodeId) -> Result<(), PeerManagerError> {
+        self.peer_storage
+            .write()
+            .map_err(|_| PeerManagerError::PoisonedAccess)?
+            .reset_connection_attempts(node_id)
+    }
 }
 
 #[cfg(test)]
@@ -342,4 +350,40 @@ mod test {
             .unwrap();
         assert_ne!(identities1, identities2);
     }
+
+    #[test]
+    fn test_peer_reset_connection_attempts() {
+        // Create peer manager with random peers
+        let peer_manager = PeerManager::<CommsPublicKey, LMDBStore>::new(None).unwrap();
+        let mut rng = rand::OsRng::new().unwrap();
+        let peer = create_test_peer(&mut rng, false);
+        peer_manager.add_peer(peer.clone()).unwrap();
+
+        peer_manager
+            .mark_failed_connection_attempt(&peer.addresses.addresses[0].clone().as_net_address())
+            .unwrap();
+        peer_manager
+            .mark_failed_connection_attempt(&peer.addresses.addresses[0].clone().as_net_address())
+            .unwrap();
+        assert_eq!(
+            peer_manager
+                .find_with_node_id(&peer.node_id.clone())
+                .unwrap()
+                .addresses
+                .addresses[0]
+                .connection_attempts,
+            2
+        );
+        peer_manager.reset_connection_attempts(&peer.node_id.clone()).unwrap();
+        assert_eq!(
+            peer_manager
+                .find_with_node_id(&peer.node_id.clone())
+                .unwrap()
+                .addresses
+                .addresses[0]
+                .connection_attempts,
+            0
+        );
+    }
+
 }

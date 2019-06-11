@@ -12,12 +12,16 @@ pub const MAX_CONNECTION_ATTEMPTS: u32 = 3;
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default)]
 pub struct NetAddresses {
     pub addresses: Vec<NetAddressWithStats>,
+    last_attempted: Option<DateTime<Utc>>,
 }
 
 impl NetAddresses {
     /// Constructs a new list of addresses with usage stats from a list of net addresses
     pub fn new(addresses: Vec<NetAddressWithStats>) -> NetAddresses {
-        NetAddresses { addresses }
+        NetAddresses {
+            addresses,
+            last_attempted: None,
+        }
     }
 
     /// Finds the specified address in the set and allow updating of its variables such as its usage stats
@@ -47,6 +51,11 @@ impl NetAddresses {
             }
         }
         latest_valid_datetime
+    }
+
+    /// Return the time of last attempted connection to this collection of addresses
+    pub fn last_attempted(&self) -> Option<DateTime<Utc>> {
+        self.last_attempted
     }
 
     /// Adds a new net address to the peer if it doesn't yet exist
@@ -116,6 +125,7 @@ impl NetAddresses {
     pub fn mark_successful_connection_attempt(&mut self, address: &NetAddress) -> Result<(), NetAddressError> {
         let updatable_address = self.find_address_mut(address)?;
         updatable_address.mark_successful_connection_attempt();
+        self.last_attempted = Some(Utc::now());
         Ok(())
     }
 
@@ -123,7 +133,15 @@ impl NetAddresses {
     pub fn mark_failed_connection_attempt(&mut self, address: &NetAddress) -> Result<(), NetAddressError> {
         let updatable_address = self.find_address_mut(address)?;
         updatable_address.mark_failed_connection_attempt();
+        self.last_attempted = Some(Utc::now());
         Ok(())
+    }
+
+    /// Reset the connection attempts stat on all of this Peers net addresses to retry connection
+    pub fn reset_connection_attempts(&mut self) {
+        for a in self.addresses.iter_mut() {
+            a.reset_connection_attempts();
+        }
     }
 
     /// Returns the number of addresses
@@ -137,6 +155,7 @@ impl From<NetAddress> for NetAddresses {
     fn from(net_address: NetAddress) -> Self {
         NetAddresses {
             addresses: vec![NetAddressWithStats::from(net_address)],
+            last_attempted: None,
         }
     }
 }
@@ -149,6 +168,7 @@ impl From<Vec<NetAddress>> for NetAddresses {
                 .into_iter()
                 .map(|addr| NetAddressWithStats::from(addr))
                 .collect::<Vec<NetAddressWithStats>>(),
+            last_attempted: None,
         }
     }
 }
@@ -156,7 +176,10 @@ impl From<Vec<NetAddress>> for NetAddresses {
 impl From<Vec<NetAddressWithStats>> for NetAddresses {
     /// Constructs NetAddresses from a list of addresses with usage stats
     fn from(addresses: Vec<NetAddressWithStats>) -> Self {
-        NetAddresses { addresses }
+        NetAddresses {
+            addresses,
+            last_attempted: None,
+        }
     }
 }
 
@@ -283,4 +306,29 @@ mod test {
         assert_eq!(net_addresses.addresses[1].connection_attempts, 0);
         assert_eq!(net_addresses.addresses[2].connection_attempts, 1);
     }
+
+    #[test]
+    fn test_resetting_all_connection_attempts() {
+        let net_address1 = "123.0.0.123:8000".parse::<NetAddress>().unwrap();
+        let net_address2 = "125.1.54.254:7999".parse::<NetAddress>().unwrap();
+        let net_address3 = "175.6.3.145:8000".parse::<NetAddress>().unwrap();
+        let mut addresses: Vec<NetAddressWithStats> = Vec::new();
+        addresses.push(NetAddressWithStats::from(net_address1.clone()));
+        addresses.push(NetAddressWithStats::from(net_address2.clone()));
+        addresses.push(NetAddressWithStats::from(net_address3.clone()));
+        let mut net_addresses = NetAddresses::new(addresses);
+        assert!(net_addresses.mark_failed_connection_attempt(&net_address1).is_ok());
+        assert!(net_addresses.mark_failed_connection_attempt(&net_address2).is_ok());
+        assert!(net_addresses.mark_failed_connection_attempt(&net_address3).is_ok());
+        assert!(net_addresses.mark_failed_connection_attempt(&net_address1).is_ok());
+
+        assert_eq!(net_addresses.addresses[0].connection_attempts, 2);
+        assert_eq!(net_addresses.addresses[1].connection_attempts, 1);
+        assert_eq!(net_addresses.addresses[2].connection_attempts, 1);
+        net_addresses.reset_connection_attempts();
+        assert_eq!(net_addresses.addresses[0].connection_attempts, 0);
+        assert_eq!(net_addresses.addresses[1].connection_attempts, 0);
+        assert_eq!(net_addresses.addresses[2].connection_attempts, 0);
+    }
+
 }

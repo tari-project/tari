@@ -403,6 +403,17 @@ where
             .mark_failed_connection_attempt(net_address)
             .map_err(|_| PeerManagerError::DataUpdateError)
     }
+
+    /// Enables Thread safe access - Finds a peer and if it exists resets all connection attempts on all net address
+    /// belonging to that peer
+    pub fn reset_connection_attempts(&mut self, node_id: &NodeId) -> Result<(), PeerManagerError> {
+        let peer_index = *self
+            .node_id_hm
+            .get(&node_id)
+            .ok_or(PeerManagerError::PeerNotFoundError)?;
+        self.peers[peer_index].addresses.reset_connection_attempts();
+        Ok(())
+    }
 }
 
 #[cfg(test)]
