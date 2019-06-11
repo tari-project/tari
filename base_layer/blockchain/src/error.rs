@@ -22,6 +22,9 @@
 
 // this file is used for all blockchain error types
 use derive_error::Error;
+use merklemountainrange::{error::MerkleMountainRangeError, merkle_storage::MerkleStorageError};
+use tari_core::transaction::TransactionError;
+use tari_storage::keyvalue_store::*;
 
 /// The ChainError is used to present all generic chain error of the actual blockchain
 #[derive(Debug, Error)]
@@ -32,5 +35,16 @@ pub enum ChainError {
 /// The chainstate is used to present all generic chain error of the actual blockchain state
 #[derive(Debug, Error)]
 pub enum StateError {
-    Brokenchain, // place holder for real error
+    // could not create a database
+    StoreError(DatastoreError),
+    // MerklestorageError
+    StorageError(MerkleStorageError),
+    // Unkown commitment spent
+    SpentUnknownCommitment(MerkleMountainRangeError),
+    // provided mmr states in headers mismatch
+    HeaderStateMismatch,
+    // block is not correctly constructed
+    InvalidBlock(TransactionError),
+    // block is orphaned
+    OrphanBlock,
 }

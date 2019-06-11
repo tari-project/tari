@@ -27,15 +27,13 @@ use crate::{pow::ProofOfWork, types::*};
 use chrono::{DateTime, Utc};
 use digest::Input;
 use serde::{Deserialize, Serialize};
-use tari_infra_derive::Hashable;
-use tari_utilities::{ExtendBytes, Hashable};
+use tari_utilities::{ByteArray, Hashable};
 
 type BlockHash = [u8; 32];
 
 /// The BlockHeader contains all the metadata for the block, including proof of work, a link to the previous block
 /// and the transaction kernels.
-#[derive(Hashable, Serialize, Deserialize)]
-#[digest = "SignatureHash"]
+#[derive(Serialize, Deserialize)]
 pub struct BlockHeader {
     /// Version of the block
     pub version: u16,
@@ -47,11 +45,13 @@ pub struct BlockHeader {
     pub timestamp: DateTime<Utc>,
     /// This is the MMR root of the outputs
     pub output_mmr: BlockHash,
+    /// This is the MMR root of the range proofs
+    pub range_proof_mmr: BlockHash,
     /// This is the MMR root of the kernels
     pub kernel_mmr: BlockHash,
     /// Total accumulated sum of kernel offsets since genesis block. We can derive the kernel offset sum for *this*
     /// block from the total kernel offset of the previous block header.
-    pub total_kernel_offset: PublicKey,
+    pub total_kernel_offset: BlindingFactor,
     /// Nonce used
     /// Proof of work summary
     pub pow: ProofOfWork,
@@ -61,5 +61,22 @@ impl BlockHeader {
     /// This function will validate the proof of work in the header
     pub fn validate_pow(&self) -> bool {
         unimplemented!();
+    }
+}
+
+impl Hashable for BlockHeader {
+    fn hash(&self) -> Vec<u8> {
+        HashDigest::new()
+            .chain(self.version.to_le_bytes())
+            .chain(self.height.to_le_bytes())
+            .chain(self.prev_hash.as_bytes())
+            .chain(self.timestamp.timestamp().to_le_bytes())
+            .chain(self.output_mmr.as_bytes())
+            .chain(self.range_proof_mmr.as_bytes())
+            .chain(self.kernel_mmr.as_bytes())
+            .chain(self.total_kernel_offset.as_bytes())
+            .chain(self.pow.as_bytes())
+            .result()
+            .to_vec()
     }
 }

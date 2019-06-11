@@ -416,7 +416,7 @@ mod tests {
         mmr.init_persistance_store(&"mmr".to_string(), 5);
         for i in 1..leaves + 1 {
             let object: IWrapper = IWrapper(i);
-            mmr.push(object);
+            assert!(mmr.push(object).is_ok());
         }
         mmr
     }
@@ -446,7 +446,7 @@ mod tests {
         // add more leaves
         for i in 15..25 {
             let object: IWrapper = IWrapper(i);
-            mmr.push(object);
+            assert!(mmr.push(object).is_ok());
             assert_eq!(mmr.change_tracker.objects_to_save.len() > 0, true);
             assert_eq!(mmr.checkpoint().is_ok(), true);
             assert_eq!(mmr.apply_state(&mut store).is_ok(), true);
@@ -460,7 +460,7 @@ mod tests {
         // add much more leafs
         for i in 26..50 {
             let object: IWrapper = IWrapper(i);
-            mmr.push(object);
+            assert!(mmr.push(object).is_ok());
             let object_delete = IWrapper(i - 25);
             assert_eq!(mmr.prune_object_hash(&object_delete.hash()).is_ok(), true);
             assert!(mmr.change_tracker.objects_to_save.len() > 0);
