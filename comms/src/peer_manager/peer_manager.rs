@@ -246,7 +246,7 @@ where
 mod test {
     use super::*;
     use crate::{
-        connection::net_address::{net_addresses::NetAddresses, NetAddress},
+        connection::net_address::{net_addresses::NetAddressesWithStats, NetAddress},
         outbound_message_service::broadcast_strategy::ClosestRequest,
         peer_manager::{
             node_id::NodeId,
@@ -261,7 +261,7 @@ mod test {
     fn create_test_peer(rng: &mut OsRng, ban_flag: bool) -> Peer<RistrettoPublicKey> {
         let (_sk, pk) = RistrettoPublicKey::random_keypair(rng);
         let node_id = NodeId::from_key(&pk).unwrap();
-        let net_addresses = NetAddresses::from("1.2.3.4:8000".parse::<NetAddress>().unwrap());
+        let net_addresses = NetAddressesWithStats::from("1.2.3.4:8000".parse::<NetAddress>().unwrap());
         let mut peer = Peer::<RistrettoPublicKey>::new(pk, node_id, net_addresses, PeerFlags::default());
         peer.set_banned(ban_flag);
         peer

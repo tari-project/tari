@@ -33,7 +33,7 @@ use derive_error::Error;
 use serde::{Deserialize, Serialize};
 use std::{fmt, str::FromStr};
 
-pub use self::{net_address_with_stats::NetAddressWithStats, net_addresses::NetAddresses};
+pub use self::{net_address_with_stats::NetAddressWithStats, net_addresses::NetAddressesWithStats};
 
 #[derive(Debug, Error)]
 pub enum NetAddressError {

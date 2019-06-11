@@ -28,7 +28,7 @@ use tari_crypto::{
     ristretto::serialize::{pubkey_from_hex, serialize_to_hex},
 };
 
-use crate::{connection::net_address::net_addresses::NetAddresses, peer_manager::node_id::NodeId};
+use crate::{connection::net_address::net_addresses::NetAddressesWithStats, peer_manager::node_id::NodeId};
 // TODO reputation metric?
 
 bitflags! {
@@ -40,14 +40,14 @@ bitflags! {
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 /// A Peer represents a communication peer that is identified by a Public Key and NodeId. The Peer struct maintains a
-/// collection of the NetAddresses that this Peer can be reached by. The struct also maintains a set of flags describing
-/// the status of the Peer.
+/// collection of the NetAddressesWithStats that this Peer can be reached by. The struct also maintains a set of flags
+/// describing the status of the Peer.
 pub struct Peer<K> {
     #[serde(serialize_with = "serialize_to_hex", bound(serialize = "K: PublicKey"))]
     #[serde(deserialize_with = "pubkey_from_hex", bound(deserialize = "K: PublicKey"))]
     pub public_key: K,
     pub node_id: NodeId,
-    pub addresses: NetAddresses,
+    pub addresses: NetAddressesWithStats,
     pub flags: PeerFlags,
 }
 
@@ -55,7 +55,7 @@ impl<K> Peer<K>
 where K: PublicKey
 {
     /// Constructs a new peer
-    pub fn new(public_key: K, node_id: NodeId, addresses: NetAddresses, flags: PeerFlags) -> Peer<K> {
+    pub fn new(public_key: K, node_id: NodeId, addresses: NetAddressesWithStats, flags: PeerFlags) -> Peer<K> {
         Peer {
             public_key,
             node_id,
@@ -84,7 +84,7 @@ where K: PublicKey
 mod test {
     use super::*;
     use crate::{
-        connection::{net_address::net_addresses::NetAddresses, NetAddress},
+        connection::{net_address::net_addresses::NetAddressesWithStats, NetAddress},
         peer_manager::node_id::NodeId,
     };
     use tari_crypto::{
@@ -98,7 +98,7 @@ mod test {
         let sk = RistrettoSecretKey::random(&mut rng);
         let pk = RistrettoPublicKey::from_secret_key(&sk);
         let node_id = NodeId::from_key(&pk).unwrap();
-        let addresses = NetAddresses::from("123.0.0.123:8000".parse::<NetAddress>().unwrap());
+        let addresses = NetAddressesWithStats::from("123.0.0.123:8000".parse::<NetAddress>().unwrap());
         let mut peer: Peer<RistrettoPublicKey> =
             Peer::<RistrettoPublicKey>::new(pk, node_id, addresses, PeerFlags::default());
         assert_eq!(peer.is_banned(), false);

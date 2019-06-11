@@ -10,15 +10,15 @@ pub const MAX_CONNECTION_ATTEMPTS: u32 = 3;
 
 /// This struct is used to store a set of different net addresses such as IPv4, IPv6, Tor or I2P for a single peer.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default)]
-pub struct NetAddresses {
+pub struct NetAddressesWithStats {
     pub addresses: Vec<NetAddressWithStats>,
     last_attempted: Option<DateTime<Utc>>,
 }
 
-impl NetAddresses {
+impl NetAddressesWithStats {
     /// Constructs a new list of addresses with usage stats from a list of net addresses
-    pub fn new(addresses: Vec<NetAddressWithStats>) -> NetAddresses {
-        NetAddresses {
+    pub fn new(addresses: Vec<NetAddressWithStats>) -> NetAddressesWithStats {
+        NetAddressesWithStats {
             addresses,
             last_attempted: None,
         }
@@ -150,20 +150,20 @@ impl NetAddresses {
     }
 }
 
-impl From<NetAddress> for NetAddresses {
+impl From<NetAddress> for NetAddressesWithStats {
     /// Constructs a new list of addresses with usage stats from a single net address
     fn from(net_address: NetAddress) -> Self {
-        NetAddresses {
+        NetAddressesWithStats {
             addresses: vec![NetAddressWithStats::from(net_address)],
             last_attempted: None,
         }
     }
 }
 
-impl From<Vec<NetAddress>> for NetAddresses {
+impl From<Vec<NetAddress>> for NetAddressesWithStats {
     /// Constructs a new list of addresses with usage stats from a Vec<NetAddress>
     fn from(net_addresses: Vec<NetAddress>) -> Self {
-        NetAddresses {
+        NetAddressesWithStats {
             addresses: net_addresses
                 .into_iter()
                 .map(|addr| NetAddressWithStats::from(addr))
@@ -173,10 +173,10 @@ impl From<Vec<NetAddress>> for NetAddresses {
     }
 }
 
-impl From<Vec<NetAddressWithStats>> for NetAddresses {
-    /// Constructs NetAddresses from a list of addresses with usage stats
+impl From<Vec<NetAddressWithStats>> for NetAddressesWithStats {
+    /// Constructs NetAddressesWithStats from a list of addresses with usage stats
     fn from(addresses: Vec<NetAddressWithStats>) -> Self {
-        NetAddresses {
+        NetAddressesWithStats {
             addresses,
             last_attempted: None,
         }
@@ -187,7 +187,7 @@ impl From<Vec<NetAddressWithStats>> for NetAddresses {
 mod test {
     use super::*;
     use crate::connection::{
-        net_address::{net_address_with_stats::NetAddressWithStats, net_addresses::NetAddresses},
+        net_address::{net_address_with_stats::NetAddressWithStats, net_addresses::NetAddressesWithStats},
         NetAddress,
     };
     use std::thread;
@@ -197,7 +197,7 @@ mod test {
         let net_address1 = "123.0.0.123:8000".parse::<NetAddress>().unwrap();
         let net_address2 = "125.1.54.254:7999".parse::<NetAddress>().unwrap();
         let net_address3 = "175.6.3.145:8000".parse::<NetAddress>().unwrap();
-        let mut net_addresses = NetAddresses::from(net_address1.clone());
+        let mut net_addresses = NetAddressesWithStats::from(net_address1.clone());
         assert!(net_addresses.add_net_address(&net_address2).is_ok());
         assert!(net_addresses.add_net_address(&net_address3).is_ok());
 
@@ -216,7 +216,7 @@ mod test {
         let net_address1 = "123.0.0.123:8000".parse::<NetAddress>().unwrap();
         let net_address2 = "125.1.54.254:7999".parse::<NetAddress>().unwrap();
         let net_address3 = "175.6.3.145:8000".parse::<NetAddress>().unwrap();
-        let mut net_addresses = NetAddresses::from(net_address1.clone());
+        let mut net_addresses = NetAddressesWithStats::from(net_address1.clone());
         assert!(net_addresses.add_net_address(&net_address2).is_ok());
         assert!(net_addresses.add_net_address(&net_address3).is_ok());
         assert!(net_addresses.add_net_address(&net_address2).is_err()); // Add duplicate address
@@ -231,7 +231,7 @@ mod test {
         let net_address1 = "123.0.0.123:8000".parse::<NetAddress>().unwrap();
         let net_address2 = "125.1.54.254:7999".parse::<NetAddress>().unwrap();
         let net_address3 = "175.6.3.145:8000".parse::<NetAddress>().unwrap();
-        let mut net_addresses = NetAddresses::from(net_address1.clone());
+        let mut net_addresses = NetAddressesWithStats::from(net_address1.clone());
         assert!(net_addresses.add_net_address(&net_address2).is_ok());
         assert!(net_addresses.add_net_address(&net_address3).is_ok());
 
@@ -274,7 +274,7 @@ mod test {
         addresses.push(NetAddressWithStats::from(net_address1.clone()));
         addresses.push(NetAddressWithStats::from(net_address2.clone()));
         addresses.push(NetAddressWithStats::from(net_address3.clone()));
-        let mut net_addresses = NetAddresses::new(addresses);
+        let mut net_addresses = NetAddressesWithStats::new(addresses);
 
         assert!(net_addresses
             .update_latency(&net_address2, Duration::from_millis(200))
@@ -316,7 +316,7 @@ mod test {
         addresses.push(NetAddressWithStats::from(net_address1.clone()));
         addresses.push(NetAddressWithStats::from(net_address2.clone()));
         addresses.push(NetAddressWithStats::from(net_address3.clone()));
-        let mut net_addresses = NetAddresses::new(addresses);
+        let mut net_addresses = NetAddressesWithStats::new(addresses);
         assert!(net_addresses.mark_failed_connection_attempt(&net_address1).is_ok());
         assert!(net_addresses.mark_failed_connection_attempt(&net_address2).is_ok());
         assert!(net_addresses.mark_failed_connection_attempt(&net_address3).is_ok());

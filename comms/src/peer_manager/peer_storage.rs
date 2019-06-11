@@ -420,7 +420,7 @@ where
 mod test {
     use super::*;
     use crate::{
-        connection::net_address::{net_addresses::NetAddresses, NetAddress},
+        connection::net_address::{net_addresses::NetAddressesWithStats, NetAddress},
         peer_manager::peer::PeerFlags,
     };
     use std::fs;
@@ -454,7 +454,7 @@ mod test {
         let net_address1 = NetAddress::from("1.2.3.4:8000".parse::<NetAddress>().unwrap());
         let net_address2 = NetAddress::from("5.6.7.8:8000".parse::<NetAddress>().unwrap());
         let net_address3 = NetAddress::from("5.6.7.8:7000".parse::<NetAddress>().unwrap());
-        let mut net_addresses = NetAddresses::from(net_address1.clone());
+        let mut net_addresses = NetAddressesWithStats::from(net_address1.clone());
         net_addresses.add_net_address(&net_address2).unwrap();
         net_addresses.add_net_address(&net_address3).unwrap();
         let peer1: Peer<RistrettoPublicKey> =
@@ -463,7 +463,7 @@ mod test {
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk).unwrap();
         let net_address4 = NetAddress::from("9.10.11.12:7000".parse::<NetAddress>().unwrap());
-        let net_addresses = NetAddresses::from(net_address4.clone());
+        let net_addresses = NetAddressesWithStats::from(net_address4.clone());
         let peer2: Peer<RistrettoPublicKey> =
             Peer::<RistrettoPublicKey>::new(pk, node_id, net_addresses, PeerFlags::default());
 
@@ -471,7 +471,7 @@ mod test {
         let node_id = NodeId::from_key(&pk).unwrap();
         let net_address5 = NetAddress::from("13.14.15.16:6000".parse::<NetAddress>().unwrap());
         let net_address6 = NetAddress::from("17.18.19.20:8000".parse::<NetAddress>().unwrap());
-        let mut net_addresses = NetAddresses::from(net_address5.clone());
+        let mut net_addresses = NetAddressesWithStats::from(net_address5.clone());
         net_addresses.add_net_address(&net_address6).unwrap();
         let peer3: Peer<RistrettoPublicKey> =
             Peer::<RistrettoPublicKey>::new(pk, node_id, net_addresses, PeerFlags::default());
@@ -669,7 +669,7 @@ mod test {
         let node_id = NodeId::from_key(&pk).unwrap();
         let net_address1 = NetAddress::from("1.2.3.4:8000".parse::<NetAddress>().unwrap());
         let net_address2 = NetAddress::from("5.6.7.8:8000".parse::<NetAddress>().unwrap());
-        let mut net_addresses = NetAddresses::from(net_address1.clone());
+        let mut net_addresses = NetAddressesWithStats::from(net_address1.clone());
         assert!(net_addresses.add_net_address(&net_address2).is_ok());
         let peer1: Peer<RistrettoPublicKey> =
             Peer::<RistrettoPublicKey>::new(pk, node_id, net_addresses, PeerFlags::default());
@@ -677,7 +677,7 @@ mod test {
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk).unwrap();
         let net_address3 = NetAddress::from("9.10.11.12:7000".parse::<NetAddress>().unwrap());
-        let net_addresses = NetAddresses::from(net_address3.clone());
+        let net_addresses = NetAddressesWithStats::from(net_address3.clone());
         let peer2: Peer<RistrettoPublicKey> =
             Peer::<RistrettoPublicKey>::new(pk, node_id, net_addresses, PeerFlags::default());
 
