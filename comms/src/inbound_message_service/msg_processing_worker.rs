@@ -180,20 +180,46 @@ mod test {
         connection::connection::EstablishedConnection,
         dispatcher::DispatchError,
         inbound_message_service::comms_msg_handlers::{CommsDispatchType, InboundMessageServiceResolver},
-        message::MessageEnvelope,
+        message::{Message, MessageEnvelope, MessageHeader},
         peer_manager::peer_manager::PeerManager,
         types::{CommsDataStore, CommsPublicKey},
     };
+    use serde::{Deserialize, Serialize};
     use std::{convert::TryInto, time};
-    use tari_crypto::ristretto::RistrettoPublicKey;
+    use tari_crypto::ristretto::{RistrettoPublicKey, RistrettoSecretKey};
+    use tari_utilities::message_format::MessageFormat;
+
+    use crate::{
+        connection::net_address::NetAddress,
+        message::{MessageFlags, NodeDestination},
+        peer_manager::{node_id::NodeId, node_identity::CommsNodeIdentity, NodeIdentity, PeerNodeIdentity},
+    };
+    use std::sync::Arc;
+    use tari_utilities::byte_array::ByteArray;
+
+    fn init_node_identity() {
+        let secret_key = RistrettoSecretKey::from_bytes(&[
+            1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ])
+        .unwrap();
+        let public_key = RistrettoPublicKey::from_secret_key(&secret_key);
+        let node_id = NodeId::from_key(&public_key).unwrap();
+        NodeIdentity::<RistrettoPublicKey>::set_global(CommsNodeIdentity {
+            identity: PeerNodeIdentity::new(node_id, public_key),
+            secret_key,
+            control_service_address: "127.0.0.1:9090".parse::<NetAddress>().unwrap(),
+        });
+    }
 
     #[test]
     fn test_new_and_start() {
+        init_node_identity();
+        let node_identity = CommsNodeIdentity::global().unwrap();
         // Create a common variable that the worker can change and the test can read to determine that the message was
         // correctly dispatched
         static mut CALLED_FN_TYPE: CommsDispatchType = CommsDispatchType::Discard;
 
-        #[derive(Debug, Hash, Eq, PartialEq)]
+        #[derive(Debug, Hash, Eq, PartialEq, Serialize, Deserialize)]
         pub enum DomainDispatchType {
             Default,
         }
@@ -256,8 +282,25 @@ mod test {
         assert!(client_socket.bind(&inbound_address.to_zmq_endpoint()).is_ok());
         let conn_outbound: EstablishedConnection = client_socket.try_into().unwrap();
 
+        // Create a new Message Context
+        let message_header = MessageHeader {
+            message_type: DomainDispatchType::Default,
+        };
+        let message_body = "Test Message Body".as_bytes().to_vec();
+        let message_envelope_body = Message::from_message_format(message_header, message_body).unwrap();
+        let dest_node_public_key = node_identity.identity.public_key.clone();
+        let dest = NodeDestination::Unknown;
+        let message_envelope = MessageEnvelope::construct(
+            node_identity.clone(),
+            dest_node_public_key.clone(),
+            dest,
+            &message_envelope_body.to_binary().unwrap(),
+            MessageFlags::NONE,
+        )
+        .unwrap();
+
         let message_buffer = MessageData::<RistrettoPublicKey> {
-            message_envelope: MessageEnvelope::new(vec![1u8], vec![1u8], "handle".as_bytes().to_vec()),
+            message_envelope,
             connection_id: vec![1u8],
             source_node_identity: None,
         }

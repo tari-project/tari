@@ -98,7 +98,7 @@ pub fn establish_connection(context: ControlServiceMessageContext) -> Result<(),
                 PeerManagerError::PeerNotFoundError => {
                     let peer = Peer::new(
                         public_key.clone(),
-                        node_id,
+                        node_id.clone(),
                         message.control_service_address.clone().into(),
                         PeerFlags::empty(),
                     );
@@ -138,8 +138,9 @@ pub fn establish_connection(context: ControlServiceMessageContext) -> Result<(),
 
     let envelope = MessageEnvelope::construct(
         node_identity,
+        public_key.clone(),
         NodeDestination::PublicKey(public_key),
-        msg.to_binary().map_err(ControlServiceError::MessageFormatError)?,
+        &msg.to_binary().map_err(ControlServiceError::MessageFormatError)?,
         MessageFlags::empty(),
     )
     .map_err(ControlServiceError::MessageError)?;

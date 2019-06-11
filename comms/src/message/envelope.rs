@@ -28,10 +28,12 @@ use crate::{
     utils::crypto,
 };
 
+use crate::types::{CommsCipher, CommsSecretKey};
 use rand::OsRng;
 use serde::{Deserialize, Serialize};
 use std::{convert::TryFrom, sync::Arc};
-use tari_utilities::message_format::MessageFormat;
+use tari_crypto::keys::DiffieHellmanSharedSecret;
+use tari_utilities::{ciphers::cipher::Cipher, message_format::MessageFormat, ByteArray};
 
 const FRAMES_PER_MESSAGE: usize = 3;
 
@@ -64,14 +66,20 @@ impl MessageEnvelope {
     /// Sign a message, construct a MessageEnvelopeHeader and return the resulting MessageEnvelope
     pub fn construct(
         node_identity: Arc<CommsNodeIdentity>,
+        dest_public_key: CommsPublicKey,
         dest: NodeDestination<CommsPublicKey>,
-        body: Frame,
+        body: &Frame,
         flags: MessageFlags,
     ) -> Result<Self, MessageError>
     {
+        let body = if flags.contains(MessageFlags::ENCRYPTED) {
+            encrypt_envelope_body(&node_identity.secret_key, &dest_public_key, &body)?
+        } else {
+            body.clone()
+        };
+
         let signature = crypto::sign(&mut OsRng::new().unwrap(), node_identity.secret_key.clone(), &body)
             .map_err(MessageError::SchnorrSignatureError)?;
-
         let signature = signature.to_binary().map_err(MessageError::MessageFormatError)?;
 
         let header = MessageEnvelopeHeader {
@@ -87,6 +95,17 @@ impl MessageEnvelope {
             header.to_binary().map_err(MessageError::MessageFormatError)?,
             body,
         ))
+    }
+
+    /// Verify that the signature provided in the message header is valid for the specified source and body of the
+    /// message envelope
+    pub fn verify_signature(&self) -> Result<bool, MessageError> {
+        let message_envelope_header: MessageEnvelopeHeader = self.to_header()?;
+        crypto::verify(
+            message_envelope_header.source,
+            message_envelope_header.signature,
+            self.body_frame(),
+        )
     }
 
     /// Returns the frame that is expected to be version frame
@@ -115,6 +134,17 @@ impl MessageEnvelope {
         Message::from_binary(self.body_frame()).map_err(Into::into)
     }
 
+    /// Returns the decrypted and deserialized Message from the body frame
+    pub fn decrypted_message_body(
+        &self,
+        dest_secret_key: &CommsSecretKey,
+        source_public_key: &CommsPublicKey,
+    ) -> Result<Message, MessageError>
+    {
+        let decrypted_frame = decrypted_envelope_body(&dest_secret_key, &source_public_key, self.body_frame())?;
+        Message::from_binary(&decrypted_frame).map_err(Into::into)
+    }
+
     /// This struct is consumed and the contained FrameSet is returned.
     pub fn into_frame_set(self) -> FrameSet {
         self.frames
@@ -132,6 +162,29 @@ impl TryFrom<FrameSet> for MessageEnvelope {
 
         Ok(MessageEnvelope { frames })
     }
+}
+
+/// Encrypt the message_envelope_body with the generated shared secret
+fn encrypt_envelope_body(
+    source_secret_key: &CommsSecretKey,
+    dest_public_key: &CommsPublicKey,
+    message_body: &Frame,
+) -> Result<Frame, MessageError>
+{
+    let ecdh_shared_secret = CommsPublicKey::shared_secret(&source_secret_key, &dest_public_key).to_vec();
+    CommsCipher::seal_with_integral_nonce(message_body, &ecdh_shared_secret).map_err(|e| MessageError::CipherError(e))
+}
+
+/// Decrypt the message_envelope_body with the generated shared secret
+fn decrypted_envelope_body(
+    dest_secret_key: &CommsSecretKey,
+    source_public_key: &CommsPublicKey,
+    encrypted_message_body: &Frame,
+) -> Result<Frame, MessageError>
+{
+    let ecdh_shared_secret = CommsPublicKey::shared_secret(&dest_secret_key, &source_public_key).to_vec();
+    CommsCipher::open_with_integral_nonce(encrypted_message_body, &ecdh_shared_secret)
+        .map_err(|e| MessageError::CipherError(e))
 }
 
 #[cfg(test)]
@@ -221,21 +274,45 @@ mod test {
     #[test]
     fn construct() {
         let node_identity = CommsNodeIdentity::global().unwrap();
-        let msg_frame = vec![1, 2, 3];
-        let pk = node_identity.identity.public_key.clone();
+        let dest_secret_key = node_identity.secret_key.clone();
+        let dest_public_key = node_identity.identity.public_key.clone(); // Send to self
+        let message_header = "Test Message Header".as_bytes().to_vec();
+        let message_body = "Test Message Body".as_bytes().to_vec();
+        let message_envelope_body = Message::from_message_format(message_header, message_body.clone()).unwrap();
+        let message_envelope_body_frame = message_envelope_body.to_binary().unwrap();
         let envelope = MessageEnvelope::construct(
             node_identity.clone(),
+            dest_public_key.clone(),
             NodeDestination::Unknown,
-            msg_frame,
-            MessageFlags::ENCRYPTED,
+            &message_envelope_body_frame,
+            MessageFlags::NONE,
         )
         .unwrap();
         assert_eq!("00", to_hex(envelope.version_frame()));
         let header = MessageEnvelopeHeader::from_binary(envelope.header_frame()).unwrap();
-        assert_eq!(pk, header.source);
-        assert_eq!(MessageFlags::ENCRYPTED, header.flags);
+        assert_eq!(dest_public_key, header.source);
+        assert_eq!(MessageFlags::NONE, header.flags);
         assert_eq!(NodeDestination::Unknown, header.dest);
         assert_eq!(71, header.signature.len());
-        assert_eq!("010203", to_hex(envelope.body_frame()));
+        assert_eq!(message_envelope_body_frame, *envelope.body_frame());
+        assert!(envelope.verify_signature().unwrap());
+
+        // Check Encrypted MessageEnvelope construction
+        let envelope = MessageEnvelope::construct(
+            node_identity.clone(),
+            dest_public_key.clone(),
+            NodeDestination::Unknown,
+            &message_envelope_body_frame,
+            MessageFlags::ENCRYPTED,
+        )
+        .unwrap();
+        assert!(envelope.verify_signature().unwrap());
+        assert_ne!(message_envelope_body_frame, *envelope.body_frame());
+        assert_eq!(
+            envelope
+                .decrypted_message_body(&dest_secret_key, &node_identity.identity.public_key)
+                .unwrap(),
+            message_envelope_body
+        );
     }
 }

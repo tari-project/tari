@@ -21,13 +21,17 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 pub mod crypto {
-    use crate::types::{Challenge, CommsPublicKey, CommsSecretKey};
+    use crate::{
+        message::MessageError,
+        types::{Challenge, CommsPublicKey, CommsSecretKey},
+    };
     use digest::Digest;
     use rand::{CryptoRng, Rng};
     use tari_crypto::{
         keys::SecretKey,
         signatures::{SchnorrSignature, SchnorrSignatureError},
     };
+    use tari_utilities::message_format::MessageFormat;
 
     pub fn sign<R, B>(
         rng: &mut R,
@@ -41,5 +45,14 @@ pub mod crypto {
         let challenge = Challenge::new().chain(body).result().to_vec();
         let nonce = CommsSecretKey::random(rng);
         SchnorrSignature::sign(secret_key, nonce, &challenge)
+    }
+
+    /// Verify that the signature is valid for the message body
+    pub fn verify<B>(public_key: CommsPublicKey, signature: Vec<u8>, body: B) -> Result<bool, MessageError>
+    where B: AsRef<[u8]> {
+        let signature = SchnorrSignature::<CommsPublicKey, CommsSecretKey>::from_binary(signature.as_slice())
+            .map_err(MessageError::MessageFormatError)?;
+        let challenge = Challenge::new().chain(body).result().to_vec();
+        Ok(signature.verify_challenge(&public_key, &challenge))
     }
 }

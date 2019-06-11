@@ -22,7 +22,7 @@
 
 use derive_error::Error;
 use tari_crypto::signatures::SchnorrSignatureError;
-use tari_utilities::message_format::MessageFormatError;
+use tari_utilities::{ciphers::cipher::CipherError, message_format::MessageFormatError};
 
 #[derive(Error, Debug)]
 pub enum MessageError {
@@ -38,4 +38,6 @@ pub enum MessageError {
     BinaryDeserializeError,
     MessageFormatError(MessageFormatError),
     SchnorrSignatureError(SchnorrSignatureError),
+    /// Failed to Encode or Decode the message using the Cipher
+    CipherError(CipherError),
 }

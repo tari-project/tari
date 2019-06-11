@@ -49,6 +49,7 @@ pub type FrameSet = Vec<Frame>;
 bitflags! {
     #[derive(Deserialize, Serialize)]
     pub struct MessageFlags: u8 {
+        const NONE = 0b00000000;
         const ENCRYPTED = 0b00000001;
     }
 }

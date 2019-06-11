@@ -91,6 +91,7 @@ fn handler_net_message_discover<PubKey: PublicKey>(
             TEST_CALLED_FN_TYPE = NetMessage::Discover;
         }
     }
+
     // TODO: Add logic
 
     Ok(())
@@ -171,13 +172,13 @@ mod test {
             comms_msg_handlers::construct_comms_msg_dispatcher,
             inbound_message_service::InboundMessageService,
         },
-        message::{Message, MessageData, MessageEnvelope, MessageEnvelopeHeader, MessageFlags, NodeDestination},
+        message::{Message, MessageData, MessageEnvelope, MessageFlags, NodeDestination},
         outbound_message_service::outbound_message_service::OutboundMessageService,
         peer_manager::{node_id::NodeId, peer_manager::PeerManager, CommsNodeIdentity, NodeIdentity, PeerNodeIdentity},
         types::{CommsDataStore, CommsPublicKey},
     };
     use tari_crypto::{
-        keys::{PublicKey, SecretKey},
+        keys::PublicKey,
         ristretto::{RistrettoPublicKey, RistrettoSecretKey},
     };
     use tari_utilities::{byte_array::ByteArray, message_format::MessageFormat};
@@ -204,6 +205,7 @@ mod test {
     fn test_handlers() {
         // Setup Comms system
         init_node_identity();
+        let node_identity = CommsNodeIdentity::global().unwrap();
         let context = Context::new();
         let inbound_msg_pool_address = InprocAddress::random();
         // Create a conn_client that can submit messages to the InboundMessageService
@@ -234,30 +236,24 @@ mod test {
         .unwrap();
         inbound_message_service.start();
 
-        // Create and send message
-        let mut rng = rand::OsRng::new().unwrap();
-        let connection_id: Vec<u8> = vec![0, 1, 2, 3, 4];
-        let _source: Vec<u8> = vec![5, 6, 7, 8, 9];
-        let version: Vec<u8> = vec![10];
-        let dest: NodeDestination<RistrettoPublicKey> = NodeDestination::Unknown;
-        let message_envelope_header = MessageEnvelopeHeader {
-            version: 0,
-            source: RistrettoPublicKey::from_secret_key(&RistrettoSecretKey::random(&mut rng)),
-            dest,
-            signature: vec![0],
-            flags: MessageFlags::ENCRYPTED,
-        };
+        // Create and send unencrypted message
         let message_type = TariMessageType::new(NetMessage::Discover);
-        let message_body = "Test Message Body".as_bytes().to_vec();
         let message_header = MessageHeader {
             message_type: message_type.clone(),
         };
+        let message_body = "Test Message Body1".as_bytes().to_vec();
         let message_envelope_body = Message::from_message_format(message_header, message_body).unwrap();
-        let message_envelope = MessageEnvelope::new(
-            version.clone(),
-            message_envelope_header.to_binary().unwrap(),
-            message_envelope_body.to_binary().unwrap(),
-        );
+        let dest_public_key = node_identity.identity.public_key.clone(); // Send to self
+        let dest_node_id = node_identity.identity.node_id.clone(); // Send to self
+        let message_envelope = MessageEnvelope::construct(
+            node_identity.clone(),
+            dest_public_key.clone(),
+            NodeDestination::Unknown,
+            &message_envelope_body.to_binary().unwrap(),
+            MessageFlags::NONE,
+        )
+        .unwrap();
+        let connection_id = vec![0, 1, 2, 3, 4];
         let message_data = MessageData::<RistrettoPublicKey>::new(connection_id.clone(), None, message_envelope);
         // Submit Message to the InboundMessageService
         pause();
@@ -268,25 +264,21 @@ mod test {
             assert_eq!(TEST_CALLED_FN_TYPE, message_type.value());
         }
 
-        let dest: NodeDestination<RistrettoPublicKey> = NodeDestination::Unknown;
-        let message_envelope_header = MessageEnvelopeHeader {
-            version: 0,
-            source: RistrettoPublicKey::from_secret_key(&RistrettoSecretKey::random(&mut rng)),
-            dest,
-            signature: vec![0],
-            flags: MessageFlags::ENCRYPTED,
-        };
+        // Create and send encrypted message
         let message_type = TariMessageType::new(BlockchainMessage::NewBlock);
-        let message_body = "Test Message Body".as_bytes().to_vec();
         let message_header = MessageHeader {
             message_type: message_type.clone(),
         };
+        let message_body = "Test Message Body2".as_bytes().to_vec();
         let message_envelope_body = Message::from_message_format(message_header, message_body).unwrap();
-        let message_envelope = MessageEnvelope::new(
-            version,
-            message_envelope_header.to_binary().unwrap(),
-            message_envelope_body.to_binary().unwrap(),
-        );
+        let message_envelope = MessageEnvelope::construct(
+            node_identity,
+            dest_public_key,
+            NodeDestination::NodeId(dest_node_id),
+            &message_envelope_body.to_binary().unwrap(),
+            MessageFlags::ENCRYPTED,
+        )
+        .unwrap();
         let message_data = MessageData::<RistrettoPublicKey>::new(connection_id, None, message_envelope);
         // Submit Message to the InboundMessageService
         pause();
