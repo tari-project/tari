@@ -27,30 +27,13 @@ use crate::{
         Direction,
         SocketEstablishment,
     },
-    message::{Frame, MessageEnvelope, MessageEnvelopeHeader, MessageFlags, NodeDestination},
+    message::{Frame, MessageEnvelope, MessageFlags, NodeDestination},
     outbound_message_service::{BroadcastStrategy, OutboundError, OutboundMessage},
     peer_manager::{node_identity::CommsNodeIdentity, peer_manager::PeerManager},
-    types::{
-        Challenge,
-        CommsCipher,
-        CommsDataStore,
-        CommsPublicKey,
-        CommsSecretKey,
-        MESSAGE_PROTOCOL_VERSION,
-        WIRE_PROTOCOL_VERSION,
-    },
+    types::{CommsDataStore, CommsPublicKey},
 };
-
-use digest::Digest;
-use rand::{CryptoRng, Rng};
-use rmp_serde;
-use serde::Serialize;
 use std::sync::Arc;
-use tari_crypto::{
-    keys::{DiffieHellmanSharedSecret, SecretKey},
-    signatures::SchnorrSignature,
-};
-use tari_utilities::{ciphers::cipher::Cipher, message_format::MessageFormat, ByteArray};
+use tari_utilities::message_format::MessageFormat;
 
 /// Handler functions use the OutboundMessageService to send messages to peers. The OutboundMessage service will receive
 /// messages from handlers, apply a broadcasting strategy, encrypted and serialized the messages into OutboundMessages
@@ -82,53 +65,13 @@ impl OutboundMessageService {
         })
     }
 
-    /// Encrypt the message_envelope_body with the generated shared secret if the Encrypted IdentityFlag is set
-    fn encrypt_envelope_body(
-        &self,
-        message_envelope_body: &Frame,
-        dest_node_public_key: &CommsPublicKey,
-    ) -> Result<Frame, OutboundError>
-    {
-        let ecdh_shared_secret =
-            CommsPublicKey::shared_secret(&self.node_identity.secret_key, &dest_node_public_key).to_vec();
-        let ecdh_shared_secret_bytes: [u8; 32] =
-            ByteArray::from_bytes(&ecdh_shared_secret).map_err(|e| OutboundError::SharedSecretSerializationError(e))?;
-        Ok(CommsCipher::seal_with_integral_nonce(
-            message_envelope_body,
-            &ecdh_shared_secret_bytes.to_vec(),
-        )?)
-    }
-
-    /// Generate a signature for the MessageEnvelopeHeader from the MessageEnvelopeBody
-    fn sign_envelope_body<R: Rng + CryptoRng>(
-        &self,
-        message_envelope_body: &Frame,
-        rng: &mut R,
-    ) -> Result<Vec<u8>, OutboundError>
-    {
-        let challenge = Challenge::new().chain(message_envelope_body.clone()).result().to_vec();
-        let nonce = CommsSecretKey::random(rng);
-        let signature = SchnorrSignature::<CommsPublicKey, CommsSecretKey>::sign(
-            self.node_identity.secret_key.clone(),
-            nonce,
-            &challenge,
-        )
-        .map_err(|e| OutboundError::SignatureError(e))?;
-        let mut buf: Vec<u8> = Vec::new();
-        signature
-            .serialize(&mut rmp_serde::Serializer::new(&mut buf))
-            .map_err(|_| OutboundError::SignatureSerializationError)?;
-        Ok(buf.to_vec())
-    }
-
     /// Handler functions use the send function to transmit a message to a peer or set of peers based on the
     /// BroadcastStrategy
-    pub fn send<R: Rng + CryptoRng>(
+    pub fn send(
         &self,
         broadcast_strategy: BroadcastStrategy,
         flags: MessageFlags,
         message_envelope_body: &Frame,
-        rng: &mut R,
     ) -> Result<(), OutboundError>
     {
         let node_identity = CommsNodeIdentity::global().ok_or(OutboundError::UndefinedSecretKey)?;
@@ -137,27 +80,14 @@ impl OutboundMessageService {
         let selected_node_identities = self.peer_manager.get_broadcast_identities(broadcast_strategy)?;
         for dest_node_identity in &selected_node_identities {
             // Constructing a MessageEnvelope
-            let message_envelope_body = if flags.contains(MessageFlags::ENCRYPTED) {
-                self.encrypt_envelope_body(message_envelope_body, &dest_node_identity.public_key)?
-            } else {
-                message_envelope_body.clone()
-            };
-            let signature = self.sign_envelope_body(&message_envelope_body, rng)?;
-            let message_envelope_header = MessageEnvelopeHeader {
-                version: MESSAGE_PROTOCOL_VERSION,
-                source: node_identity.identity.public_key.clone(),
-                dest: NodeDestination::NodeId(dest_node_identity.node_id.clone()),
-                signature,
-                flags,
-            };
-            let message_envelope_header_frame = message_envelope_header
-                .to_binary()
-                .map_err(|e| OutboundError::MessageFormatError(e))?;
-            let message_envelope = MessageEnvelope::new(
-                vec![WIRE_PROTOCOL_VERSION],
-                message_envelope_header_frame,
+            let message_envelope = MessageEnvelope::construct(
+                node_identity.clone(),
+                dest_node_identity.public_key.clone(),
+                NodeDestination::NodeId(dest_node_identity.node_id.clone()),
                 message_envelope_body,
-            );
+                flags,
+            )
+            .map_err(|e| OutboundError::MessageSerializationError(e))?;
             // Construct an OutboundMessage
             let outbound_message =
                 OutboundMessage::<MessageEnvelope>::new(dest_node_identity.node_id.clone(), message_envelope);
@@ -183,18 +113,14 @@ mod test {
 
     use crate::{
         connection::net_address::{net_addresses::NetAddresses, NetAddress},
-        message::FrameSet,
+        message::{FrameSet, Message},
         peer_manager::{
             node_id::NodeId,
             peer::{Peer, PeerFlags},
         },
     };
-    use serde::Deserialize;
     use std::convert::TryFrom;
-    use tari_crypto::{
-        keys::PublicKey,
-        ristretto::{RistrettoPublicKey, RistrettoSecretKey},
-    };
+    use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
     use tari_storage::lmdb::LMDBStore;
 
     #[test]
@@ -223,13 +149,15 @@ mod test {
 
         let outbound_message_service = OutboundMessageService::new(context, outbound_address, peer_manager).unwrap();
 
-        let message_envelope_body: Vec<u8> = vec![0, 1, 2, 3];
+        // Construct and send OutboundMessage
+        let message_header = "Test Message Header".as_bytes().to_vec();
+        let message_body = "Test Message Body".as_bytes().to_vec();
+        let message_envelope_body = Message::from_message_format(message_header, message_body).unwrap();
         outbound_message_service
             .send(
                 BroadcastStrategy::Direct(dest_peer.node_id.clone()),
                 MessageFlags::ENCRYPTED,
-                &message_envelope_body,
-                &mut rng,
+                &message_envelope_body.to_binary().unwrap(),
             )
             .unwrap();
 
@@ -244,24 +172,12 @@ mod test {
             message_envelope_header.dest,
             NodeDestination::<RistrettoPublicKey>::NodeId(dest_peer.node_id.clone())
         );
-        // Verify message signature
-        let mut de = rmp_serde::Deserializer::new(message_envelope_header.signature.as_slice());
-        let signature = SchnorrSignature::<RistrettoPublicKey, RistrettoSecretKey>::deserialize(&mut de).unwrap();
-        let challenge = Challenge::new()
-            .chain(outbound_message.message_envelope.body_frame())
-            .result()
-            .to_vec();
-        assert!(signature.verify_challenge(&node_identity.identity.public_key, &challenge));
-        // Check Encryption
+        assert!(outbound_message.message_envelope.verify_signature().unwrap());
         assert_eq!(message_envelope_header.flags, MessageFlags::ENCRYPTED);
-        let ecdh_shared_secret =
-            RistrettoPublicKey::shared_secret(&dest_sk, &node_identity.identity.public_key).to_vec();
-        let ecdh_shared_secret_bytes: [u8; 32] = ByteArray::from_bytes(&ecdh_shared_secret).unwrap();
-        let decoded_message_envelope_body: Vec<u8> = CommsCipher::open_with_integral_nonce(
-            outbound_message.message_envelope.body_frame(),
-            &ecdh_shared_secret_bytes.to_vec(),
-        )
-        .unwrap();
+        let decoded_message_envelope_body = outbound_message
+            .message_envelope
+            .decrypted_message_body(&dest_sk, &node_identity.identity.public_key)
+            .unwrap();
         assert_eq!(message_envelope_body, decoded_message_envelope_body);
     }
 }

@@ -173,7 +173,6 @@ mod test {
             BroadcastStrategy::Direct(dest_peer.node_id.clone()),
             MessageFlags::ENCRYPTED,
             &message_envelope_body,
-            &mut rng,
         )
         .unwrap();
 

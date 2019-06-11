@@ -34,7 +34,7 @@ pub struct MessageHeader<MType> {
 /// Represents a Message as described in [RFC-0172](https://rfc.tari.com/RFC-0172_PeerToPeerMessagingProtocol.html#messaging-structure).
 /// This message has been decrypted but the contents are still serialized
 /// as described in [RFC-0171](https://rfc.tari.com/RFC-0171_MessageSerialisation.html)
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct Message {
     pub header: Frame,
     pub body: Frame,
@@ -51,6 +51,7 @@ impl Message {
         })
     }
 
+    /// Deserialize and return the header of the message
     pub fn to_header<MType>(&self) -> Result<MessageHeader<MType>, MessageError>
     where
         MessageHeader<MType>: MessageFormat,

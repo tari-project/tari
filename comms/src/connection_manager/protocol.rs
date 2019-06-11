@@ -24,26 +24,12 @@ use log::*;
 
 use std::sync::Arc;
 
-use tari_crypto::keys::DiffieHellmanSharedSecret;
-
-use tari_utilities::{
-    ciphers::{chacha20::ChaCha20, cipher::Cipher},
-    message_format::MessageFormat,
-    ByteArray,
-};
+use tari_utilities::message_format::MessageFormat;
 
 use crate::{
     connection::{connection::EstablishedConnection, CurveEncryption, CurvePublicKey, PeerConnection},
     control_service::ControlServiceMessageType,
-    message::{
-        p2p::EstablishConnection,
-        Frame,
-        Message,
-        MessageEnvelope,
-        MessageFlags,
-        MessageHeader,
-        NodeDestination,
-    },
+    message::{p2p::EstablishConnection, Message, MessageEnvelope, MessageFlags, MessageHeader, NodeDestination},
     peer_manager::{node_identity::CommsNodeIdentity, Peer},
     types::CommsPublicKey,
 };
@@ -123,13 +109,11 @@ impl<'e> PeerConnectionProtocol<'e> {
         let msg = Message::from_message_format(message_header, msg).map_err(ConnectionManagerError::MessageError)?;
         let body = msg.to_binary().map_err(ConnectionManagerError::MessageFormatError)?;
 
-        // Encrypt body
-        let encrypted_body = self.encrypt_body_for_peer(peer, body)?;
-
         let envelope = MessageEnvelope::construct(
             self.node_identity.clone(),
+            peer.public_key.clone(),
             NodeDestination::NodeId(peer.node_id.clone()),
-            encrypted_body,
+            &body,
             MessageFlags::ENCRYPTED,
         )
         .map_err(ConnectionManagerError::MessageError)?;
@@ -139,12 +123,6 @@ impl<'e> PeerConnectionProtocol<'e> {
             .map_err(ConnectionManagerError::ConnectionError)?;
 
         Ok(())
-    }
-
-    fn encrypt_body_for_peer(&self, peer: &Peer<CommsPublicKey>, body: Frame) -> Result<Frame> {
-        let ecdh_shared_secret =
-            CommsPublicKey::shared_secret(&self.node_identity.secret_key, &peer.public_key).to_vec();
-        Ok(ChaCha20::seal_with_integral_nonce(&body, &ecdh_shared_secret)?)
     }
 
     fn open_inbound_peer_connection(

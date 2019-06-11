@@ -13,4 +13,3 @@ serde = "1.0.90"
 serde_derive = "1.0.90"
 
 [dev-dependencies]
-rand = "0.5.5"
