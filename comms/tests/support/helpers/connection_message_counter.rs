@@ -59,8 +59,15 @@ impl<'c> ConnectionMessageCounter<'c> {
     pub fn assert_count(&self, count: u32, timeout_ms: u64) -> () {
         for _i in 0..timeout_ms {
             thread::sleep(Duration::from_millis(1));
-            if self.count() >= count {
+            let curr_count = self.count();
+            if curr_count == count {
                 return;
+            }
+            if curr_count > count {
+                panic!(
+                    "Message count exceeded the expected count. Expected={} Actual={}",
+                    count, curr_count
+                );
             }
         }
         panic!(

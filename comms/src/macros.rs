@@ -37,6 +37,9 @@ macro_rules! acquire_lock {
             Err(poisoned) => poisoned.into_inner(),
         }
     };
+    ($e:expr) => {
+        acquire_lock!($e, lock)
+    };
 }
 
 macro_rules! acquire_write_lock {

@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{sync::Arc, time::Duration};
+use std::{sync::Arc, thread, time::Duration};
 
 use crate::support::{
     factories::{self, Factory},
@@ -29,7 +29,7 @@ use crate::support::{
 };
 
 use tari_comms::{
-    connection::{types::Linger, Context, InprocAddress, NetAddress},
+    connection::{types::Linger, Context, InprocAddress},
     connection_manager::{ConnectionManager, PeerConnectionConfig},
     control_service::{handlers, ControlService, ControlServiceConfig, ControlServiceMessageType},
     dispatcher::Dispatcher,
@@ -71,7 +71,7 @@ fn establish_peer_connection_by_peer() {
     //---------------------------------- Node B Setup --------------------------------------------//
 
     let node_B_consumer_address = InprocAddress::random();
-    let node_B_control_port_address: NetAddress = factories::net_address::create().build().unwrap();
+    let node_B_control_port_address = factories::net_address::create().build().unwrap();
 
     let node_B_msg_counter = ConnectionMessageCounter::new(&context);
     node_B_msg_counter.start(node_B_consumer_address.clone());
@@ -113,18 +113,33 @@ fn establish_peer_connection_by_peer() {
 
     //------------------------------ Negotiate connection to node B -----------------------------------//
 
-    let to_node_B_conn = node_A_connection_manager
-        .establish_connection_to_peer(&node_B_peer)
-        .unwrap();
+    let node_B_peer_copy = node_B_peer.clone();
+    let node_A_connection_manager_cloned = node_A_connection_manager.clone();
+    let handle1 = thread::spawn(move || -> Result<(), String> {
+        let to_node_B_conn = node_A_connection_manager_cloned
+            .establish_connection_to_peer(&node_B_peer)
+            .map_err(|err| format!("{:?}", err))?;
+        to_node_B_conn.set_linger(Linger::Indefinitely);
+        to_node_B_conn
+            .send(vec!["THREAD1".as_bytes().to_vec()])
+            .map_err(|err| format!("{:?}", err))?;
+        Ok(())
+    });
 
-    to_node_B_conn.set_linger(Linger::Indefinitely).unwrap();
+    let node_A_connection_manager_cloned = node_A_connection_manager.clone();
+    let handle2 = thread::spawn(move || -> Result<(), String> {
+        let to_node_B_conn = node_A_connection_manager_cloned
+            .establish_connection_to_peer(&node_B_peer_copy)
+            .map_err(|err| format!("{:?}", err))?;
+        to_node_B_conn.set_linger(Linger::Indefinitely);
+        to_node_B_conn
+            .send(vec!["THREAD2".as_bytes().to_vec()])
+            .map_err(|err| format!("{:?}", err))?;
+        Ok(())
+    });
 
-    assert_eq!(node_A_connection_manager.get_active_connection_count(), 1);
-
-    assert!(to_node_B_conn.is_active());
-
-    to_node_B_conn.send(vec!["HELLO".as_bytes().to_vec()]).unwrap();
-    to_node_B_conn.send(vec!["TARI".as_bytes().to_vec()]).unwrap();
+    handle1.join().unwrap().unwrap();
+    handle2.join().unwrap().unwrap();
 
     node_B_control_service.shutdown().unwrap();
     node_B_control_service.handle.join().unwrap().unwrap();
