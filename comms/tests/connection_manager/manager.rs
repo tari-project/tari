@@ -115,25 +115,31 @@ fn establish_peer_connection_by_peer() {
 
     let node_B_peer_copy = node_B_peer.clone();
     let node_A_connection_manager_cloned = node_A_connection_manager.clone();
-    let handle1 = thread::spawn(move || {
+    let handle1 = thread::spawn(move || -> Result<(), String> {
         let to_node_B_conn = node_A_connection_manager_cloned
             .establish_connection_to_peer(&node_B_peer)
-            .unwrap();
+            .map_err(|err| format!("{:?}", err))?;
         to_node_B_conn.set_linger(Linger::Indefinitely);
-        to_node_B_conn.send(vec!["THREAD1".as_bytes().to_vec()]).unwrap();
+        to_node_B_conn
+            .send(vec!["THREAD1".as_bytes().to_vec()])
+            .map_err(|err| format!("{:?}", err))?;
+        Ok(())
     });
 
     let node_A_connection_manager_cloned = node_A_connection_manager.clone();
-    let handle2 = thread::spawn(move || {
+    let handle2 = thread::spawn(move || -> Result<(), String> {
         let to_node_B_conn = node_A_connection_manager_cloned
             .establish_connection_to_peer(&node_B_peer_copy)
-            .unwrap();
+            .map_err(|err| format!("{:?}", err))?;
         to_node_B_conn.set_linger(Linger::Indefinitely);
-        to_node_B_conn.send(vec!["THREAD2".as_bytes().to_vec()]).unwrap();
+        to_node_B_conn
+            .send(vec!["THREAD2".as_bytes().to_vec()])
+            .map_err(|err| format!("{:?}", err))?;
+        Ok(())
     });
 
-    handle1.join().unwrap();
-    handle2.join().unwrap();
+    handle1.join().unwrap().unwrap();
+    handle2.join().unwrap().unwrap();
 
     node_B_control_service.shutdown().unwrap();
     node_B_control_service.handle.join().unwrap().unwrap();
