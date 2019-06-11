@@ -9,3 +9,4 @@ derive-error = "0.0.4"
 tari_utilities = { path = "../../infrastructure/tari_util", version = "0.0.1" }
 merklemountainrange = { path = "../../infrastructure/merklemountainrange", version = "0.0.1" }
 tari_infra_derive = { path = "../../infrastructure/derive", version = "0.0.1" }
+tari_storage = { path = "../../infrastructure/storage", version = "0.0.1" }

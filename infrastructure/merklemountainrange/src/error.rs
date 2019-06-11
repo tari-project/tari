@@ -30,4 +30,6 @@ pub enum MerkleMountainRangeError {
     ObjectNotFound,
     // Object could not be inserted into MMR
     CannotAddToMMR,
+    // Object was already pruned
+    ObjectAlreadyPruned,
 }

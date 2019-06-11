@@ -206,7 +206,7 @@ mod test {
     use tari_core::{
         transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
         transaction_protocol::{sender::SenderMessage, TransactionProtocolError},
-        types::{PublicKey, SecretKey, COMMITMENT_FACTORY, PROVER},
+        types::{PublicKey, RangeProof, SecretKey, COMMITMENT_FACTORY, PROVER},
         SenderTransactionProtocol,
     };
     use tari_crypto::{
@@ -214,6 +214,7 @@ mod test {
         common::Blake256,
         keys::{PublicKey as PK, SecretKey as SK},
     };
+    use tari_utilities::ByteArray;
 
     pub struct TestParams {
         pub spend_key: SecretKey,
@@ -555,7 +556,7 @@ mod test {
             .unwrap();
 
         // Monkey with the range proof
-        receive_msg.output.proof = [0u8; 32].to_vec();
+        receive_msg.output.proof = RangeProof::from_bytes(&[0u8; 32]).unwrap();
 
         assert_eq!(
             alice_tx_manager.accept_recipient_reply(receive_msg, &PROVER, &COMMITMENT_FACTORY),

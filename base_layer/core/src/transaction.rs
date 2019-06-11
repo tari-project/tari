@@ -122,7 +122,8 @@ impl UnblindedOutput {
         let output = TransactionOutput {
             features,
             commitment,
-            proof: prover.construct_proof(&self.spending_key, self.value)?,
+            proof: RangeProof::from_bytes(&prover.construct_proof(&self.spending_key, self.value)?)
+                .map_err(|_| TransactionError::RangeProofError(RangeProofError::ProofConstructionError))?,
         };
         // A range proof can be constructed for an invalid value so we should confirm that the proof can be verified.
         if !output.verify_range_proof(&prover)? {
@@ -139,7 +140,7 @@ impl UnblindedOutput {
 /// A transaction input.
 ///
 /// Primarily a reference to an output being spent by the transaction.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct TransactionInput {
     /// The features of the output being spent. We will check maturity for coinbase output.
     pub features: OutputFeatures,
@@ -162,6 +163,15 @@ impl TransactionInput {
     /// Checks if the given un-blinded input instance corresponds to this blinded Transaction Input
     pub fn opened_by(&self, input: &UnblindedOutput, factory: &CommitmentFactory) -> bool {
         factory.open(&input.spending_key, &input.value.into(), &self.commitment)
+    }
+}
+
+impl From<TransactionOutput> for TransactionInput {
+    fn from(item: TransactionOutput) -> Self {
+        TransactionInput {
+            features: item.features,
+            commitment: item.commitment,
+        }
     }
 }
 
@@ -214,7 +224,7 @@ impl TransactionOutput {
 
     /// Verify that range proof is valid
     pub fn verify_range_proof(&self, prover: &RangeProofService) -> Result<bool, TransactionError> {
-        Ok(prover.verify(&self.proof, &self.commitment))
+        Ok(prover.verify(&self.proof.to_vec(), &self.commitment))
     }
 }
 
@@ -469,6 +479,16 @@ impl Transaction {
     }
 }
 
+/// This will ecapsulate the aggregatebody inside a transaction with a zero offset.
+impl From<AggregateBody> for Transaction {
+    fn from(body: AggregateBody) -> Self {
+        Transaction {
+            body,
+            offset: BlindingFactor::default(),
+        }
+    }
+}
+
 //----------------------------------------  Transaction Builder   ----------------------------------------------------//
 
 /// This struct holds the result of calculating the sum of the kernels in a Transaction
@@ -557,7 +577,10 @@ impl Default for TransactionBuilder {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{transaction::OutputFeatures, types::BlindingFactor};
+    use crate::{
+        transaction::OutputFeatures,
+        types::{BlindingFactor, RangeProof},
+    };
     use rand;
     use tari_crypto::{
         keys::SecretKey as SecretKeyTrait,
@@ -604,7 +627,7 @@ mod test {
         let v = SecretKey::from(2u64.pow(32) + 1);
         let c = factory.commit(&k2, &v);
         let proof = prover.construct_proof(&k2, 2u64.pow(32) + 1).unwrap();
-        let tx_output3 = TransactionOutput::new(OutputFeatures::empty(), c, proof);
+        let tx_output3 = TransactionOutput::new(OutputFeatures::empty(), c, RangeProof::from_bytes(&proof).unwrap());
         assert_eq!(tx_output3.verify_range_proof(&prover).unwrap(), false);
     }
 }

@@ -40,6 +40,7 @@ pub struct MerkleMountainRange<T, D> {
     hasher: PhantomData<D>,
     current_peak_height: (usize, usize), // we store a tuple of peak height,index
     pub(crate) change_tracker: MerkleChangeTracker,
+    last_added_object: ObjectHash,
 }
 
 impl<T, D> MerkleMountainRange<T, D>
@@ -55,6 +56,7 @@ where
             hasher: PhantomData,
             current_peak_height: (0, 0),
             change_tracker: MerkleChangeTracker::new(),
+            last_added_object: Vec::new(),
         }
     }
 
@@ -65,11 +67,30 @@ where
         self.change_tracker.init(store_prefix, pruning_horizon)
     }
 
+    /// Allow users to change the pruning horizon after init.
+    pub fn set_pruning_horizon(&mut self, new_pruning_horizon: usize) {
+        self.change_tracker.pruning_horizon = new_pruning_horizon;
+    }
+
     /// This function returns a reference to the data stored in the mmr
     /// It will return none if the hash does not exist
     pub fn get_object(&self, hash: &ObjectHashSlice) -> Option<&T> {
         let object = self.data.get(hash)?;
         Some(&object.object)
+    }
+
+    /// This function returns a reference to the last added data stored in the mmr
+    /// It will return none if the hash does not exist
+    pub fn get_last_added_object(&self) -> Option<&T> {
+        let object = self.data.get(&self.last_added_object)?;
+        Some(&object.object)
+    }
+
+    /// This function returns a hash of the last added data stored in the mmr
+    /// It will return none if the hash does not exist
+    pub fn get_hash_hash_of_last_added_object(&self) -> Option<&ObjectHash> {
+        let object = self.data.get(&self.last_added_object)?;
+        Some(&self.mmr[object.vec_index].hash)
     }
 
     /// This function returns a reference to the data stored in the mmr
@@ -366,7 +387,10 @@ where
         if self.data.insert(node_hash.clone(), node).is_some() {
             return Err(MerkleMountainRangeError::CannotAddToMMR);
         };
-        self.change_tracker.add_new_data(node_hash.clone());
+        if self.change_tracker.enabled {
+            self.change_tracker.add_new_data(node_hash.clone());
+        };
+        self.last_added_object = node_hash.clone();
         self.mmr.push(MerkleNode::new(node_hash));
         if is_node_right(self.get_last_added_index()) {
             self.add_single_no_leaf(self.get_last_added_index())
@@ -421,12 +445,16 @@ where
     }
 
     /// Mark an object as pruned, if the MMR can remove this safely it will
+    /// This will return an error if the object was not found
     pub fn prune_object_hash(&mut self, hash: &ObjectHashSlice) -> Result<(), MerkleMountainRangeError> {
         let object = self.data.get_mut(hash);
         if object.is_none() {
             return Err(MerkleMountainRangeError::ObjectNotFound);
         };
         let object = object.unwrap();
+        if self.mmr[object.vec_index].pruned {
+            return Err(MerkleMountainRangeError::ObjectAlreadyPruned);
+        }
         self.mmr[object.vec_index].pruned = true;
 
         self.data.remove(hash);
@@ -473,6 +501,7 @@ where
             hasher: PhantomData,
             current_peak_height: (0, 0),
             change_tracker: MerkleChangeTracker::new(),
+            last_added_object: Vec::new(),
         };
         mmr.append(items)?;
         Ok(mmr)

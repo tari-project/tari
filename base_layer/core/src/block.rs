@@ -25,7 +25,8 @@
 
 use crate::{
     blockheader::BlockHeader,
-    transaction::{TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
+    transaction::{Transaction, TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
+    types::{COMMITMENT_FACTORY, PROVER},
 };
 
 //----------------------------------------         Blocks         ----------------------------------------------------//
@@ -36,6 +37,16 @@ pub struct Block {
     pub body: AggregateBody,
 }
 
+impl Block {
+    /// This function will check the block to ensure that all UTXO's are validly constructed and that all signatures are
+    /// valid. It does _not_ check that the inputs exist in the current UTXO set;
+    /// nor does it check that the PoW is the largest accumulated PoW value.
+    pub fn check_internal_consistency(&self) -> Result<(), TransactionError> {
+        let mut trans: Transaction = self.body.clone().into(); // todo revisit this one q=whole code chain is completed
+        trans.offset = self.header.total_kernel_offset.clone();
+        trans.validate_internal_consistency(&PROVER, &COMMITMENT_FACTORY)
+    }
+}
 //----------------------------------------     AggregateBody      ----------------------------------------------------//
 
 /// The components of the block or transaction. The same struct can be used for either, since in Mimblewimble,
@@ -124,14 +135,18 @@ impl AggregateBody {
 
     /// Verify the signatures in all kernels contained in this aggregate body. Clients must provide an offset that
     /// will be added to the public key used in the signature verification.
-    pub fn verify_kernel_signatures(&mut self) -> Result<(), TransactionError> {
-        if !self.sorted {
-            self.sort();
-        }
+    pub fn verify_kernel_signatures(&self) -> Result<(), TransactionError> {
         for kernel in self.kernels.iter() {
             kernel.verify_signature()?;
         }
         Ok(())
+    }
+}
+
+/// This will strip away the offset of the transaction returning a pure aggregate body
+impl From<Transaction> for AggregateBody {
+    fn from(transaction: Transaction) -> Self {
+        transaction.body
     }
 }
 

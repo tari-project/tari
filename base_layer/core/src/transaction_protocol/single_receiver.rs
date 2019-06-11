@@ -28,13 +28,14 @@ use crate::{
         sender::SingleRoundSenderData as SD,
         TransactionProtocolError as TPE,
     },
-    types::{CommitmentFactory, PublicKey, RangeProofService, SecretKey as SK, Signature},
+    types::{CommitmentFactory, PublicKey, RangeProof, RangeProofService, SecretKey as SK, Signature},
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::PublicKey as PK,
-    range_proof::RangeProofService as RPS,
+    range_proof::{RangeProofError, RangeProofService as RPS},
 };
+use tari_utilities::byte_array::ByteArray;
 
 /// SingleReceiverTransactionProtocol represents the actions taken by the single receiver in the one-round Tari
 /// transaction protocol. The procedure is straightforward. Upon receiving the sender's information, the receiver:
@@ -88,7 +89,12 @@ impl SingleReceiverTransactionProtocol {
     {
         let commitment = factory.commit_value(&spending_key, sender_info.amount);
         let proof = prover.construct_proof(&spending_key, sender_info.amount)?;
-        Ok(TransactionOutput::new(features, commitment, proof))
+        Ok(TransactionOutput::new(
+            features,
+            commitment,
+            RangeProof::from_bytes(&proof)
+                .map_err(|_| TPE::RangeProofError(RangeProofError::ProofConstructionError))?,
+        ))
     }
 }
 

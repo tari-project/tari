@@ -29,3 +29,9 @@ use tari_utilities::{ExtendBytes, Hashable};
 #[derive(Clone, Debug, PartialEq, Hashable, Serialize, Deserialize)]
 #[digest = "SignatureHash"]
 pub struct ProofOfWork {}
+
+impl ProofOfWork {
+    pub fn as_bytes(&self) -> Vec<u8> {
+        Vec::new()
+    }
+}
