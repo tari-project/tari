@@ -34,13 +34,13 @@
 //! # use tari_comms::peer_manager::{NodeId, Peer, PeerManager, PeerFlags};
 //! # use tari_comms::types::CommsPublicKey;
 //! # use tari_storage::lmdb::LMDBStore;
-//! # use tari_comms::connection::{NetAddress, NetAddresses};
+//! # use tari_comms::connection::{NetAddress, NetAddressesWithStats};
 //! # use tari_crypto::keys::PublicKey;
 //!
 //! let mut rng = rand::OsRng::new().unwrap();
 //! let (dest_sk, pk) = CommsPublicKey::random_keypair(&mut rng);
 //! let node_id = NodeId::from_key(&pk).unwrap();
-//! let net_addresses = NetAddresses::from("1.2.3.4:8000".parse::<NetAddress>().unwrap());
+//! let net_addresses = NetAddressesWithStats::from("1.2.3.4:8000".parse::<NetAddress>().unwrap());
 //! let peer: Peer<CommsPublicKey> = Peer::<CommsPublicKey>::new(pk, node_id.clone(), net_addresses, PeerFlags::default());
 //! let peer_manager = PeerManager::<CommsPublicKey, LMDBStore>::new(None).unwrap();
 //! peer_manager.add_peer(peer.clone());

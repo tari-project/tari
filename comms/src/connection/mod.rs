@@ -36,7 +36,7 @@ pub use self::{
     connection::{Connection, EstablishedConnection},
     dealer_proxy::{DealerProxy, DealerProxyError},
     error::ConnectionError,
-    net_address::{NetAddress, NetAddressError, NetAddresses},
+    net_address::{NetAddress, NetAddressError, NetAddressesWithStats},
     peer_connection::{
         PeerConnection,
         PeerConnectionContextBuilder,

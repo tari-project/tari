@@ -112,7 +112,7 @@ mod test {
     use super::*;
 
     use crate::{
-        connection::net_address::{net_addresses::NetAddresses, NetAddress},
+        connection::net_address::{net_addresses::NetAddressesWithStats, NetAddress},
         message::{FrameSet, Message},
         peer_manager::{
             node_id::NodeId,
@@ -139,7 +139,7 @@ mod test {
 
         let (dest_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk).unwrap();
-        let net_addresses = NetAddresses::from("1.2.3.4:8000".parse::<NetAddress>().unwrap());
+        let net_addresses = NetAddressesWithStats::from("1.2.3.4:8000".parse::<NetAddress>().unwrap());
         let dest_peer: Peer<RistrettoPublicKey> =
             Peer::<RistrettoPublicKey>::new(pk, node_id, net_addresses, PeerFlags::default());
 

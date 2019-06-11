@@ -143,7 +143,7 @@ mod test {
     use crate::{message::MessageFlags, outbound_message_service::BroadcastStrategy};
 
     use crate::{
-        connection::{net_address::net_addresses::MAX_CONNECTION_ATTEMPTS, NetAddress, NetAddresses},
+        connection::{net_address::net_addresses::MAX_CONNECTION_ATTEMPTS, NetAddress, NetAddressesWithStats},
         peer_manager::{peer::PeerFlags, NodeId, Peer},
     };
 
@@ -161,7 +161,7 @@ mod test {
 
         let (_dest_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk).unwrap();
-        let net_addresses = NetAddresses::from("1.2.3.4:8000".parse::<NetAddress>().unwrap());
+        let net_addresses = NetAddressesWithStats::from("1.2.3.4:8000".parse::<NetAddress>().unwrap());
         let dest_peer: Peer<RistrettoPublicKey> =
             Peer::<RistrettoPublicKey>::new(pk, node_id, net_addresses, PeerFlags::default());
         peer_manager.add_peer(dest_peer.clone()).unwrap();

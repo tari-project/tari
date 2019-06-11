@@ -74,6 +74,11 @@ impl NetAddressWithStats {
         self.connection_attempts = 0;
     }
 
+    /// Reset the connection attempts on this net address for a later session of retries
+    pub fn reset_connection_attempts(&mut self) {
+        self.connection_attempts = 0;
+    }
+
     /// Mark that a connection could not be established with this net address
     pub fn mark_failed_connection_attempt(&mut self) {
         self.connection_attempts += 1;
@@ -193,6 +198,17 @@ mod test {
         assert_eq!(net_address_with_stats.connection_attempts, 2);
         net_address_with_stats.mark_successful_connection_attempt();
         assert!(net_address_with_stats.last_seen.is_some());
+        assert_eq!(net_address_with_stats.connection_attempts, 0);
+    }
+
+    #[test]
+    fn test_reseting_connection_attempts() {
+        let net_address = "123.0.0.123:8000".parse::<NetAddress>().unwrap();
+        let mut net_address_with_stats = NetAddressWithStats::from(net_address);
+        net_address_with_stats.mark_failed_connection_attempt();
+        net_address_with_stats.mark_failed_connection_attempt();
+        assert_eq!(net_address_with_stats.connection_attempts, 2);
+        net_address_with_stats.reset_connection_attempts();
         assert_eq!(net_address_with_stats.connection_attempts, 0);
     }
 
