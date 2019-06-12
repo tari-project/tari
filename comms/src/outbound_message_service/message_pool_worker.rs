@@ -28,19 +28,22 @@ use crate::{
         Direction,
         SocketEstablishment,
     },
+    connection_manager::ConnectionManager,
     message::{FrameSet, MessageEnvelope},
     outbound_message_service::{OutboundError, OutboundMessage},
     peer_manager::PeerManager,
+    types::{CommsDataStore, CommsPublicKey},
 };
 
-use crate::connection::net_address::NetAddressError;
+use crate::outbound_message_service::outbound_message_pool::OutboundMessagePoolConfig;
+
 use log::*;
 #[cfg(test)]
 use std::sync::mpsc::SyncSender;
-use std::{convert::TryFrom, hash::Hash, sync::Arc, thread};
-use tari_crypto::keys::PublicKey;
+use std::{convert::TryFrom, sync::Arc, thread};
 
-use tari_storage::keyvalue_store::DataStore;
+use chrono::Utc;
+use tari_utilities::message_format::MessageFormat;
 
 const LOG_TARGET: &'static str = "comms::outbound_message_service::pool::worker";
 
@@ -52,32 +55,38 @@ pub enum WorkerError {
     MessageQueueConnectionError(ConnectionError),
 }
 
-pub struct MessagePoolWorker<P, DS> {
+/// This is an instance of a single Worker thread for the Outbound Message Pool
+pub struct MessagePoolWorker {
+    config: OutboundMessagePoolConfig,
     context: Context,
     inbound_address: InprocAddress,
     message_queue_address: InprocAddress,
-    peer_manager: Arc<PeerManager<P, DS>>,
+    message_requeue_address: InprocAddress,
+    peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
+    connection_manager: Arc<ConnectionManager>,
     #[cfg(test)]
     test_sync_sender: Option<SyncSender<String>>,
 }
 
-impl<P, DS> MessagePoolWorker<P, DS>
-where
-    P: PublicKey + Hash + Send + Sync + 'static,
-    DS: DataStore + Send + Sync + 'static,
-{
+impl MessagePoolWorker {
     pub fn new(
+        config: OutboundMessagePoolConfig,
         context: Context,
         inbound_address: InprocAddress,
         message_queue_address: InprocAddress,
-        peer_manager: Arc<PeerManager<P, DS>>,
-    ) -> MessagePoolWorker<P, DS>
+        message_requeue_address: InprocAddress,
+        peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
+        connection_manager: Arc<ConnectionManager>,
+    ) -> MessagePoolWorker
     {
         MessagePoolWorker {
+            config,
             context,
             inbound_address,
             message_queue_address,
+            message_requeue_address,
             peer_manager,
+            connection_manager,
             #[cfg(test)]
             test_sync_sender: None,
         }
@@ -94,34 +103,53 @@ where
             .set_socket_establishment(SocketEstablishment::Connect)
             .establish(&self.inbound_address)
             .map_err(|e| WorkerError::InboundConnectionError(e))?;
-
         loop {
-            match inbound_connection.receive(100) {
+            match inbound_connection.receive(self.config.worker_timeout_in_ms) {
                 Ok(mut frame_set) => {
                     // This strips off the two ZeroMQ Identity frames introduced by the transmission to the proxy and
                     // from the proxy to this worker
                     let data: FrameSet = frame_set.drain(2..).collect();
                     if let Ok(mut msg) = OutboundMessage::<MessageEnvelope>::try_from(data) {
-                        match self.attempt_message_transmission(&mut msg) {
-                            Ok(()) => {
-                                #[cfg(test)]
-                                tx.send(String::from(format!("Attempt {:?}", msg.number_of_retries())))
-                                    .unwrap();
-                            },
-                            Err(e) => match e {
-                                OutboundError::NetAddressError(e) => match e {
-                                    NetAddressError::ConnectionAttemptsExceeded => {
-                                        warn!(
-                                            target: LOG_TARGET,
-                                            "Number of Connection Attempts Exceeded - Error: {}", e
-                                        );
-                                        #[cfg(test)]
-                                        tx.send(String::from("Connection Attempts Exceeded")).unwrap()
-                                    },
-                                    _ => (),
+                        #[cfg(test)]
+                        tx.send(String::from("Message Received".to_string())).unwrap();
+
+                        // Check if the retry time wait period has elapsed
+                        if msg.last_retry_timestamp().is_none() ||
+                            msg.last_retry_timestamp().unwrap() + self.config.retry_wait_time <= Utc::now()
+                        {
+                            // Attempt transmission
+                            match self.attempt_message_transmission(&mut msg) {
+                                Ok(()) => {
+                                    debug!(target: LOG_TARGET, "Outbound message successfully sent");
                                 },
-                                _ => (),
-                            },
+                                Err(e) => {
+                                    warn!(
+                                        target: LOG_TARGET,
+                                        "Failed to transmit outbound message - Error: {:?}", e
+                                    );
+                                    match self.queue_message_retry(msg) {
+                                        Ok(()) => {
+                                            debug!(target: LOG_TARGET, "Message retry successfully requeued");
+                                        },
+                                        Err(e) => error!(
+                                            target: LOG_TARGET,
+                                            "Error retrying message transmission - Error {:?}", e
+                                        ),
+                                    }
+                                },
+                            }
+                        } else {
+                            // Requeue a message whose Retry Wait Time has not elapsed without marking a transmission
+                            // attempt
+                            match self.requeue_message(&msg) {
+                                Ok(_) => (),
+                                Err(e) => {
+                                    error!(
+                                        target: LOG_TARGET,
+                                        "Error requeuing an Outbound Message - Error: {:?}", e
+                                    );
+                                },
+                            };
                         }
                     }
                 },
@@ -129,7 +157,7 @@ where
                 Err(e) => {
                     error!(
                         target: LOG_TARGET,
-                        "Failed to receive messages from outbound message queue - Error: {}", e
+                        "Error receiving messages from outbound message queue - Error: {}", e
                     );
                 },
             };
@@ -138,14 +166,15 @@ where
 
     /// Start the MessagePoolWorker thread
     pub fn start(mut self) {
-        thread::spawn(move || {
-            loop {
-                match self.start_worker() {
-                    Ok(_) => (),
-                    Err(_e) => {
-                        // TODO Write WorkerError as a Log Error
-                    },
-                }
+        thread::spawn(move || loop {
+            match self.start_worker() {
+                Ok(_) => (),
+                Err(e) => {
+                    error!(
+                        target: LOG_TARGET,
+                        "Error starting Outbound Message Pool worker: {:?}", e
+                    );
+                },
             }
         });
     }
@@ -157,28 +186,29 @@ where
         msg: &mut OutboundMessage<MessageEnvelope>,
     ) -> Result<(), OutboundError>
     {
-        // Should attempt to connect and send, just mark as failed attempt
-        let mut peer = self.peer_manager.find_with_node_id(&msg.destination_node_id)?;
-        let net_address = peer.addresses.get_best_net_address()?;
-        self.peer_manager.mark_failed_connection_attempt(&net_address)?;
+        let peer = self.peer_manager.find_with_node_id(&msg.destination_node_id)?;
+        let peer_connection = self.connection_manager.establish_connection_to_peer(&peer)?;
+        peer_connection.send(msg.message_envelope.clone().into_frame_set())?;
+        Ok(())
+    }
 
-        // TODO Actually try send
-
-        msg.mark_transmission_attempt();
-        self.requeue_message(msg)?;
-
+    /// Check if a message transmission is able to be retried, if so then mark the transmission attempt and requeue it.
+    fn queue_message_retry(&self, mut msg: OutboundMessage<MessageEnvelope>) -> Result<(), OutboundError> {
+        if msg.number_of_retries() < self.config.max_num_of_retries {
+            msg.mark_transmission_attempt();
+            self.peer_manager.reset_connection_attempts(&msg.destination_node_id)?;
+            self.requeue_message(&msg)?;
+        };
         Ok(())
     }
 
     /// Send a message back to the Outbound Message Pool message queue.
     fn requeue_message(&self, msg: &OutboundMessage<MessageEnvelope>) -> Result<(), OutboundError> {
-        let outbound_message_buffer = vec![msg
-            .to_frame()
-            .map_err(|e| OutboundError::MessageSerializationError(e))?];
+        let outbound_message_buffer = vec![msg.to_binary().map_err(|e| OutboundError::MessageFormatError(e))?];
 
         let outbound_connection = Connection::new(&self.context, Direction::Outbound)
             .set_socket_establishment(SocketEstablishment::Connect)
-            .establish(&self.message_queue_address)
+            .establish(&self.message_requeue_address)
             .map_err(|e| OutboundError::ConnectionError(e))?;
         outbound_connection
             .send(&outbound_message_buffer)

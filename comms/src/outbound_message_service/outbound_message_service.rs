@@ -119,12 +119,18 @@ mod test {
             peer::{Peer, PeerFlags},
         },
     };
+    use log::*;
     use std::convert::TryFrom;
     use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
     use tari_storage::lmdb::LMDBStore;
 
+    pub fn init() {
+        let _ = simple_logger::init();
+    }
+
     #[test]
     fn test_outbound_send() {
+        init();
         let context = Context::new();
         let mut rng = rand::OsRng::new().unwrap();
         let outbound_address = InprocAddress::random();
@@ -162,6 +168,10 @@ mod test {
             .unwrap();
 
         let msg_bytes: FrameSet = message_queue_connection.receive(100).unwrap().drain(1..).collect();
+        debug!(
+            target: "comms::outbound_message_service::outbound_message_service",
+            "Received message bytes: {:?}", msg_bytes
+        );
         let outbound_message = OutboundMessage::<MessageEnvelope>::try_from(msg_bytes).unwrap();
         assert_eq!(outbound_message.destination_node_id, dest_peer.node_id);
         assert_eq!(outbound_message.number_of_retries(), 0);

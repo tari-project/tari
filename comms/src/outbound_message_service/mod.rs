@@ -32,4 +32,5 @@ pub use self::{
     error::OutboundError,
     message_pool_worker::MessagePoolWorker,
     outbound_message::OutboundMessage,
+    outbound_message_pool::OutboundMessagePool,
 };

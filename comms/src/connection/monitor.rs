@@ -36,7 +36,7 @@ use std::{
     fmt,
 };
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, PartialEq)]
 pub enum ConnectionMonitorError {
     #[error(msg_embedded, non_std, no_from)]
     CreateSocketFailed(String),
