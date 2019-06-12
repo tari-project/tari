@@ -119,7 +119,7 @@ fn establish_peer_connection_by_peer() {
         let to_node_B_conn = node_A_connection_manager_cloned
             .establish_connection_to_peer(&node_B_peer)
             .map_err(|err| format!("{:?}", err))?;
-        to_node_B_conn.set_linger(Linger::Indefinitely);
+        to_node_B_conn.set_linger(Linger::Indefinitely).unwrap();
         to_node_B_conn
             .send(vec!["THREAD1".as_bytes().to_vec()])
             .map_err(|err| format!("{:?}", err))?;
@@ -131,7 +131,7 @@ fn establish_peer_connection_by_peer() {
         let to_node_B_conn = node_A_connection_manager_cloned
             .establish_connection_to_peer(&node_B_peer_copy)
             .map_err(|err| format!("{:?}", err))?;
-        to_node_B_conn.set_linger(Linger::Indefinitely);
+        to_node_B_conn.set_linger(Linger::Indefinitely).unwrap();
         to_node_B_conn
             .send(vec!["THREAD2".as_bytes().to_vec()])
             .map_err(|err| format!("{:?}", err))?;
