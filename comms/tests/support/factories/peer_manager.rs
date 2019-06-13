@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::{peer::PeersFactory, Factory, FactoryError};
+use super::{peer::PeersFactory, TestFactory, TestFactoryError};
 
 use tari_comms::{
     peer_manager::{Peer, PeerManager},
@@ -43,20 +43,20 @@ impl PeerManagerFactory {
     factory_setter!(with_peers, peers, Option<Vec<Peer<CommsPublicKey>>>);
 }
 
-impl Factory for PeerManagerFactory {
+impl TestFactory for PeerManagerFactory {
     type Object = PeerManager<CommsPublicKey, CommsDataStore>;
 
-    fn build(self) -> Result<Self::Object, FactoryError> {
+    fn build(self) -> Result<Self::Object, TestFactoryError> {
         let pm = PeerManager::<CommsPublicKey, CommsDataStore>::new(None)
-            .map_err(|err| FactoryError::BuildFailed(format!("Failed to build peer manager: {:?}", err)))?;
+            .map_err(|err| TestFactoryError::BuildFailed(format!("Failed to build peer manager: {:?}", err)))?;
 
         let peers = self
             .peers
             .or(self.peers_factory.build().ok())
-            .ok_or(FactoryError::BuildFailed("Failed to build peers".into()))?;
+            .ok_or(TestFactoryError::BuildFailed("Failed to build peers".into()))?;
         for peer in peers {
             pm.add_peer(peer)
-                .map_err(|err| FactoryError::BuildFailed(format!("Failed to build peer manager: {:?}", err)))?;
+                .map_err(|err| TestFactoryError::BuildFailed(format!("Failed to build peer manager: {:?}", err)))?;
         }
         Ok(pm)
     }

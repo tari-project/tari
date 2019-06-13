@@ -25,21 +25,21 @@ use tari_comms::connection::{
     types::{Direction, Linger},
     Connection,
     ConnectionError,
-    Context,
     CurveEncryption,
     InprocAddress,
     NetAddress,
     PeerConnection,
     PeerConnectionContextBuilder,
     PeerConnectionError,
+    ZmqContext,
 };
 
-use crate::support::factories::{self, Factory};
+use crate::support::factories::{self, TestFactory};
 
 #[test]
 fn connection_in() {
     let addr = factories::net_address::create().build().unwrap();
-    let ctx = Context::new();
+    let ctx = ZmqContext::new();
 
     let (server_sk, server_pk) = CurveEncryption::generate_keypair().unwrap();
     let (client_sk, client_pk) = CurveEncryption::generate_keypair().unwrap();
@@ -91,7 +91,7 @@ fn connection_in() {
 #[test]
 fn connection_out() {
     let addr = factories::net_address::create().build().unwrap();
-    let ctx = Context::new();
+    let ctx = ZmqContext::new();
 
     let (server_sk, server_pk) = CurveEncryption::generate_keypair().unwrap();
     let (client_sk, client_pk) = CurveEncryption::generate_keypair().unwrap();
@@ -146,7 +146,7 @@ fn connection_out() {
 #[test]
 fn connection_wait_connect_shutdown() {
     let addr = factories::net_address::create().build().unwrap();
-    let ctx = Context::new();
+    let ctx = ZmqContext::new();
 
     let receiver = Connection::new(&ctx, Direction::Inbound).establish(&addr).unwrap();
 
@@ -181,7 +181,7 @@ fn connection_wait_connect_shutdown() {
 #[test]
 fn connection_wait_connect_failed() {
     let addr = factories::net_address::create().use_os_port().build().unwrap();
-    let ctx = Context::new();
+    let ctx = ZmqContext::new();
 
     let consumer_addr = InprocAddress::random();
 
@@ -218,7 +218,7 @@ fn connection_wait_connect_failed() {
 #[test]
 fn connection_pause_resume() {
     let addr = factories::net_address::create().build().unwrap();
-    let ctx = Context::new();
+    let ctx = ZmqContext::new();
 
     let consumer_addr = InprocAddress::random();
 
@@ -282,7 +282,7 @@ fn connection_pause_resume() {
 #[test]
 fn connection_disconnect() {
     let addr = factories::net_address::create().use_os_port().build().unwrap();
-    let ctx = Context::new();
+    let ctx = ZmqContext::new();
 
     let consumer_addr = InprocAddress::random();
 

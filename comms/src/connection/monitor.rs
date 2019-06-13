@@ -25,8 +25,8 @@ use crate::{
         types::{Result, SocketType},
         zmq::ZmqEndpoint,
         ConnectionError,
-        Context,
         InprocAddress,
+        ZmqContext,
     },
     message::FrameSet,
 };
@@ -54,9 +54,9 @@ pub enum ConnectionMonitorError {
 /// More details here: http://api.zeromq.org/4-1:zmq-socket-monitor
 ///
 /// ```edition2018
-/// # use tari_comms::connection::{Context, monitor::ConnectionMonitor, Connection, Direction, InprocAddress, NetAddress};
+/// # use tari_comms::connection::{ZmqContext, monitor::ConnectionMonitor, Connection, Direction, InprocAddress, NetAddress};
 ///
-/// let ctx = Context::new();
+/// let ctx = ZmqContext::new();
 /// let monitor_addr = InprocAddress::random();
 /// let address = "127.0.0.1:9999".parse::<NetAddress>().unwrap();
 ///
@@ -85,7 +85,7 @@ impl ConnectionMonitor {
     /// ## Arguments
     /// `context` - Connection context. Must be the same context as the connection being monitored
     /// `address` - The inproc address from which to read socket events
-    pub fn connect(context: &Context, address: &InprocAddress) -> Result<Self> {
+    pub fn connect(context: &ZmqContext, address: &InprocAddress) -> Result<Self> {
         let socket = context.socket(SocketType::Pair).map_err(|e| {
             ConnectionError::MonitorError(ConnectionMonitorError::CreateSocketFailed(format!(
                 "Failed to create monitor pair socket: {}",

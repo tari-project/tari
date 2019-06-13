@@ -28,6 +28,6 @@ mod worker;
 
 pub use self::{
     error::ControlServiceError,
-    service::{ControlService, ControlServiceConfig},
+    service::{ControlService, ControlServiceConfig, ControlServiceHandle},
     types::{ControlServiceMessageContext, ControlServiceMessageType},
 };

@@ -23,7 +23,7 @@ use std::thread;
 
 use crate::{
     connection::{
-        zmq::{Context, InprocAddress},
+        zmq::{InprocAddress, ZmqContext},
         DealerProxy,
         DealerProxyError,
     },
@@ -32,13 +32,11 @@ use crate::{
     peer_manager::PeerManager,
     types::{CommsDataStore, CommsPublicKey},
 };
-
+use chrono::Duration;
 use log::*;
 #[cfg(test)]
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 use std::sync::Arc;
-
-use chrono::Duration;
 
 /// The maximum number of processing worker threads that will be created by the OutboundMessageService
 pub const MAX_OUTBOUND_MSG_PROCESSING_WORKERS: u8 = 8;
@@ -69,7 +67,7 @@ impl Default for OutboundMessagePoolConfig {
 /// the back of the queue.
 pub struct OutboundMessagePool {
     config: OutboundMessagePoolConfig,
-    context: Context,
+    context: ZmqContext,
     message_queue_address: InprocAddress,
     message_requeue_address: InprocAddress,
     worker_dealer_address: InprocAddress,
@@ -82,16 +80,16 @@ pub struct OutboundMessagePool {
 impl OutboundMessagePool {
     /// Construct a new Outbound Message Pool.
     /// # Arguments
-    /// `config` - The configuration struct to use for the Outbound Message Pool  
-    /// `context` - A ZeroMQ context  
-    /// `message_queue_address` - The InProc address that will be used to send message to this message pool  
+    /// `config` - The configuration struct to use for the Outbound Message Pool
+    /// `context` - A ZeroMQ context
+    /// `message_queue_address` - The InProc address that will be used to send message to this message pool
     /// `message_requeue_address` - The InProc address that messages that are being requeued is sent to. Typically this
     /// will be same as the `message_queue_address` but this allows for a requeue proxy to be introduced
     /// `peer_manager` - a reference to the peer manager to be used when
     /// sending messages
     pub fn new(
         config: OutboundMessagePoolConfig,
-        context: Context,
+        context: ZmqContext,
         message_queue_address: InprocAddress,
         message_requeue_address: InprocAddress,
         peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
@@ -167,31 +165,21 @@ impl OutboundMessagePool {
 
 #[cfg(test)]
 mod test {
-    use crate::{connection::Context, outbound_message_service::outbound_message_service::OutboundMessageService};
-    use std::sync::Arc;
-    use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
-
-    use crate::{message::MessageFlags, outbound_message_service::BroadcastStrategy};
-
     use crate::{
-        connection::{NetAddress, NetAddressesWithStats},
+        connection::{InprocAddress, NetAddress, NetAddressesWithStats, ZmqContext},
         connection_manager::{ConnectionManager, PeerConnectionConfig},
-        peer_manager::{peer::PeerFlags, NodeId, Peer},
+        message::MessageFlags,
+        outbound_message_service::{
+            outbound_message_pool::{OutboundMessagePoolConfig, MAX_OUTBOUND_MSG_PROCESSING_WORKERS},
+            outbound_message_service::OutboundMessageService,
+            BroadcastStrategy,
+            OutboundMessagePool,
+        },
+        peer_manager::{peer::PeerFlags, NodeId, NodeIdentity, Peer, PeerManager},
         types::{CommsDataStore, CommsPublicKey},
     };
-
-    use crate::outbound_message_service::OutboundMessagePool;
-
-    use crate::{
-        connection::InprocAddress,
-        outbound_message_service::outbound_message_pool::{
-            OutboundMessagePoolConfig,
-            MAX_OUTBOUND_MSG_PROCESSING_WORKERS,
-        },
-        peer_manager::PeerManager,
-    };
-
-    use std::{thread, time::Duration};
+    use std::{sync::Arc, thread, time::Duration};
+    use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
 
     const LOG_TARGET: &'static str = "comms::outbound_message_service::pool";
 
@@ -199,9 +187,8 @@ mod test {
         let _ = simple_logger::init();
     }
 
-    fn make_peer_connection_config(context: &Context, consumer_address: InprocAddress) -> PeerConnectionConfig {
+    fn make_peer_connection_config(consumer_address: InprocAddress) -> PeerConnectionConfig {
         PeerConnectionConfig {
-            context: context.clone(),
             control_service_establish_timeout: Duration::from_millis(2000),
             peer_connection_establish_timeout: Duration::from_secs(5),
             max_message_size: 1024,
@@ -216,14 +203,17 @@ mod test {
     fn outbound_message_pool_threading_test() {
         init();
         let mut rng = rand::OsRng::new().unwrap();
-        let context = Context::new();
+        let context = ZmqContext::new();
+        let node_identity = Arc::new(NodeIdentity::random_for_test(None));
 
         let peer_manager = Arc::new(PeerManager::<CommsPublicKey, CommsDataStore>::new(None).unwrap());
 
         let local_consumer_address = InprocAddress::random();
         let connection_manager = Arc::new(ConnectionManager::new(
+            context.clone(),
+            node_identity.clone(),
             peer_manager.clone(),
-            make_peer_connection_config(&context, local_consumer_address.clone()),
+            make_peer_connection_config(local_consumer_address.clone()),
         ));
 
         let (_dest_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
@@ -245,7 +235,8 @@ mod test {
         )
         .unwrap();
 
-        let oms = OutboundMessageService::new(context, omp_inbound_address, peer_manager.clone()).unwrap();
+        let oms =
+            OutboundMessageService::new(context, node_identity, omp_inbound_address, peer_manager.clone()).unwrap();
         let receivers = omp.create_test_channels();
 
         let _omp = omp.start();
@@ -256,7 +247,7 @@ mod test {
             oms.send(
                 BroadcastStrategy::Direct(dest_peer.node_id.clone()),
                 MessageFlags::ENCRYPTED,
-                &message_envelope_body,
+                message_envelope_body.clone(),
             )
             .unwrap();
             thread::sleep(Duration::from_millis(100));
@@ -291,4 +282,5 @@ mod test {
             MAX_OUTBOUND_MSG_PROCESSING_WORKERS
         );
     }
+
 }

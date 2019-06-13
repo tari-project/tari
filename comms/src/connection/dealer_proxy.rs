@@ -28,8 +28,8 @@ use crate::connection::{
     types::{Direction, SocketEstablishment},
     Connection,
     ConnectionError,
-    Context,
     InprocAddress,
+    ZmqContext,
 };
 
 #[derive(Debug, Error)]
@@ -60,12 +60,12 @@ impl DealerProxy {
 
     /// Proxy the source and sink addresses. This method does not block and returns
     /// a [thread::JoinHandle] of the proxy thread.
-    pub fn spawn_proxy(self, context: Context) -> thread::JoinHandle<Result<()>> {
+    pub fn spawn_proxy(self, context: ZmqContext) -> thread::JoinHandle<Result<()>> {
         thread::spawn(move || self.proxy(&context))
     }
 
     /// Proxy the source and sink addresses. This method will block the current thread.
-    pub fn proxy(&self, context: &Context) -> Result<()> {
+    pub fn proxy(&self, context: &ZmqContext) -> Result<()> {
         let source = Connection::new(context, Direction::Inbound)
             .set_socket_establishment(SocketEstablishment::Bind)
             .establish(&self.source_address)
@@ -86,7 +86,7 @@ mod test {
 
     #[test]
     fn threaded_proxy() {
-        let context = Context::new();
+        let context = ZmqContext::new();
         let sender_addr = InprocAddress::random();
         let receiver_addr = InprocAddress::random();
         let sender = Connection::new(&context, Direction::Outbound)

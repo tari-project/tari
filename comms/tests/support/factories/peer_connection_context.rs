@@ -20,13 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::{Factory, FactoryError};
+use super::{TestFactory, TestFactoryError};
 
 use rand::{OsRng, Rng};
 use tari_comms::connection::{
     peer_connection::{ConnectionId, PeerConnectionContext},
     types::Linger,
-    Context,
     CurveEncryption,
     CurvePublicKey,
     CurveSecretKey,
@@ -34,6 +33,7 @@ use tari_comms::connection::{
     InprocAddress,
     NetAddress,
     PeerConnectionContextBuilder,
+    ZmqContext,
 };
 
 pub fn create<'c>() -> PeerConnectionContextFactory<'c> {
@@ -43,7 +43,7 @@ pub fn create<'c>() -> PeerConnectionContextFactory<'c> {
 #[derive(Default)]
 pub struct PeerConnectionContextFactory<'c> {
     direction: Option<Direction>,
-    context: Option<&'c Context>,
+    context: Option<&'c ZmqContext>,
     connection_id: Option<ConnectionId>,
     message_sink_address: Option<InprocAddress>,
     server_public_key: Option<CurvePublicKey>,
@@ -69,21 +69,21 @@ impl<'c> PeerConnectionContextFactory<'c> {
 
     factory_setter!(with_linger, linger, Option<Linger>);
 
-    pub fn with_context(mut self, context: &'c Context) -> Self {
+    pub fn with_context(mut self, context: &'c ZmqContext) -> Self {
         self.context = Some(context);
         self
     }
 }
 
-impl<'c> Factory for PeerConnectionContextFactory<'c> {
+impl<'c> TestFactory for PeerConnectionContextFactory<'c> {
     type Object = (PeerConnectionContext, CurveSecretKey, CurvePublicKey);
 
-    fn build(self) -> Result<Self::Object, FactoryError> {
-        let context = self.context.ok_or(FactoryError::BuildFailed(
+    fn build(self) -> Result<Self::Object, TestFactoryError> {
+        let context = self.context.ok_or(TestFactoryError::BuildFailed(
             "Context must be set for PeerConnectionContextFactory".into(),
         ))?;
 
-        let direction = self.direction.ok_or(FactoryError::BuildFailed(
+        let direction = self.direction.ok_or(TestFactoryError::BuildFailed(
             "Must set direction on PeerConnectionContextFactory".into(),
         ))?;
 
@@ -97,7 +97,7 @@ impl<'c> Factory for PeerConnectionContextFactory<'c> {
             .set_address(address)
             .set_message_sink_address(self.message_sink_address.or(Some(InprocAddress::random())).unwrap());
 
-        let (secret_key, public_key) = CurveEncryption::generate_keypair().map_err(FactoryError::build_failed())?;
+        let (secret_key, public_key) = CurveEncryption::generate_keypair().map_err(TestFactoryError::build_failed())?;
         match direction {
             Direction::Inbound => {
                 builder = builder.set_curve_encryption(CurveEncryption::Server {
@@ -114,7 +114,7 @@ impl<'c> Factory for PeerConnectionContextFactory<'c> {
             },
         }
 
-        let peer_context = builder.build().map_err(FactoryError::build_failed())?;
+        let peer_context = builder.build().map_err(TestFactoryError::build_failed())?;
 
         Ok((peer_context, secret_key, public_key))
     }

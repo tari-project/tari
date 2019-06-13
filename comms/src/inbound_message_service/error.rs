@@ -20,17 +20,15 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod curve_keypair;
+use crate::connection::{zmq::ZmqError, DealerProxyError};
+use derive_error::Error;
 
-mod context;
-mod endpoint;
-mod error;
-mod inproc_address;
-
-pub use self::{
-    context::ZmqContext,
-    curve_keypair::{CurveEncryption, CurvePublicKey, CurveSecretKey},
-    endpoint::ZmqEndpoint,
-    error::ZmqError,
-    inproc_address::InprocAddress,
-};
+/// Error type for IMS
+#[derive(Debug, Error)]
+pub enum InboundMessageServiceError {
+    /// Problem with inbound socket
+    InboundSocketError(ZmqError),
+    /// Failed to connect to inbound socket
+    InboundConnectionError(zmq::Error),
+    DealerProxyError(DealerProxyError),
+}

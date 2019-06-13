@@ -232,11 +232,10 @@ impl PublicKey for RistrettoPublicKey {
 }
 
 impl DiffieHellmanSharedSecret for RistrettoPublicKey {
-    type K = RistrettoSecretKey;
     type PK = RistrettoPublicKey;
 
     /// Generate a shared secret from one party's private key and another party's public key
-    fn shared_secret(k: &Self::K, pk: &Self::PK) -> Self::PK {
+    fn shared_secret(k: &<Self::PK as PublicKey>::K, pk: &Self::PK) -> Self::PK {
         k * pk
     }
 }

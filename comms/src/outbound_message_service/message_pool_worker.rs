@@ -20,29 +20,19 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE
 
+use super::{outbound_message_pool::OutboundMessagePoolConfig, OutboundError, OutboundMessage};
 use crate::{
-    connection::{
-        zmq::{Context, InprocAddress},
-        Connection,
-        ConnectionError,
-        Direction,
-        SocketEstablishment,
-    },
+    connection::{Connection, ConnectionError, Direction, InprocAddress, SocketEstablishment, ZmqContext},
     connection_manager::ConnectionManager,
     message::{FrameSet, MessageEnvelope},
-    outbound_message_service::{OutboundError, OutboundMessage},
     peer_manager::PeerManager,
     types::{CommsDataStore, CommsPublicKey},
 };
-
-use crate::outbound_message_service::outbound_message_pool::OutboundMessagePoolConfig;
-
+use chrono::Utc;
 use log::*;
 #[cfg(test)]
 use std::sync::mpsc::SyncSender;
 use std::{convert::TryFrom, sync::Arc, thread};
-
-use chrono::Utc;
 use tari_utilities::message_format::MessageFormat;
 
 const LOG_TARGET: &'static str = "comms::outbound_message_service::pool::worker";
@@ -58,7 +48,7 @@ pub enum WorkerError {
 /// This is an instance of a single Worker thread for the Outbound Message Pool
 pub struct MessagePoolWorker {
     config: OutboundMessagePoolConfig,
-    context: Context,
+    context: ZmqContext,
     inbound_address: InprocAddress,
     message_queue_address: InprocAddress,
     message_requeue_address: InprocAddress,
@@ -71,7 +61,7 @@ pub struct MessagePoolWorker {
 impl MessagePoolWorker {
     pub fn new(
         config: OutboundMessagePoolConfig,
-        context: Context,
+        context: ZmqContext,
         inbound_address: InprocAddress,
         message_queue_address: InprocAddress,
         message_requeue_address: InprocAddress,
