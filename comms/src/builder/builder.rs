@@ -271,7 +271,7 @@ where
         .map_err(CommsBuilderError::OutboundMessagePoolError)
     }
 
-    pub fn make_inbound_message_service(
+    pub fn make_ims(
         &mut self,
         node_identity: Arc<NodeIdentity<CommsPublicKey>>,
         message_sink_address: InprocAddress,
@@ -319,7 +319,7 @@ where
 
         let dispatcher = self.dispatcher_factory.make();
 
-        let ims = self.make_inbound_message_service(
+        let ims = self.make_ims(
             node_identity,
             peer_conn_config.message_sink_address,
             dispatcher,
