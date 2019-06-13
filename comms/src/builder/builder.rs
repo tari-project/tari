@@ -107,7 +107,7 @@ where
     MType: Serialize + DeserializeOwned,
     MType: Clone,
 {
-    comms_context: ZmqContext,
+    zmq_context: ZmqContext,
     // Factories
     control_service_config_factory: Option<Box<Factory<ControlServiceConfig<MType>>>>,
     dispatcher_factory: Box<Factory<DomainMessageDispatcher<MType>>>,
@@ -128,10 +128,10 @@ where
         F: Factory<DomainMessageDispatcher<MType>>,
         F: 'static,
     {
-        let comms_context = ZmqContext::new();
+        let zmq_context = ZmqContext::new();
 
         Self {
-            comms_context,
+            zmq_context,
             control_service_config_factory: None,
             peer_conn_config_factory: None,
             omp_config_factory: None,
@@ -196,7 +196,7 @@ where
         self.control_service_config_factory
             .take()
             .map(|f| f.make())
-            .map(|config| ControlService::new(self.comms_context.clone(), node_identity, config))
+            .map(|config| ControlService::new(self.zmq_context.clone(), node_identity, config))
     }
 
     fn make_connection_manager(
@@ -207,7 +207,7 @@ where
     ) -> Arc<ConnectionManager>
     {
         Arc::new(ConnectionManager::new(
-            self.comms_context.clone(),
+            self.zmq_context.clone(),
             node_identity,
             peer_manager,
             config,
@@ -242,7 +242,7 @@ where
     ) -> Result<OutboundMessageService, CommsBuilderError>
     {
         OutboundMessageService::new(
-            self.comms_context.clone(),
+            self.zmq_context.clone(),
             node_identity,
             message_sink_address,
             peer_manager,
@@ -261,7 +261,7 @@ where
 
         OutboundMessagePool::new(
             config,
-            self.comms_context.clone(),
+            self.zmq_context.clone(),
             // OMP can requeue back onto itself
             message_sink_address.clone(),
             message_sink_address.clone(),
@@ -281,7 +281,7 @@ where
     ) -> Result<InboundMessageService<MType>, CommsBuilderError>
     {
         InboundMessageService::new(
-            self.comms_context.clone(),
+            self.zmq_context.clone(),
             node_identity,
             message_sink_address,
             Arc::new(construct_comms_msg_dispatcher()),

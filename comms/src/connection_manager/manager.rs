@@ -84,7 +84,7 @@ pub struct ConnectionManager {
 impl ConnectionManager {
     /// Create a new connection manager
     pub fn new(
-        comms_context: ZmqContext,
+        zmq_context: ZmqContext,
         node_identity: Arc<NodeIdentity<CommsPublicKey>>,
         peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
         config: PeerConnectionConfig,
@@ -93,7 +93,7 @@ impl ConnectionManager {
         Self {
             node_identity,
             connections: LivePeerConnections::new(),
-            establisher: Arc::new(ConnectionEstablisher::new(comms_context, config, peer_manager.clone())),
+            establisher: Arc::new(ConnectionEstablisher::new(zmq_context, config, peer_manager.clone())),
             peer_manager,
             establish_locks: Mutex::new(HashMap::new()),
         }

@@ -40,7 +40,7 @@ pub fn create() -> ConnectionManagerFactory {
 
 #[derive(Default)]
 pub struct ConnectionManagerFactory {
-    comms_context: Option<ZmqContext>,
+    zmq_context: Option<ZmqContext>,
     peer_connection_config: PeerConnectionConfig,
     peer_manager: Option<Arc<PeerManager<CommsPublicKey, CommsDataStore>>>,
     peer_manager_factory: PeerManagerFactory,
@@ -63,7 +63,7 @@ impl ConnectionManagerFactory {
 
     factory_setter!(with_peer_manager_factory, peer_manager_factory, PeerManagerFactory);
 
-    factory_setter!(with_context, comms_context, Option<ZmqContext>);
+    factory_setter!(with_context, zmq_context, Option<ZmqContext>);
 
     factory_setter!(
         with_node_identity,
@@ -82,7 +82,7 @@ impl TestFactory for ConnectionManagerFactory {
     type Object = ConnectionManager;
 
     fn build(self) -> Result<Self::Object, TestFactoryError> {
-        let comms_context = self.comms_context.unwrap_or(ZmqContext::new());
+        let zmq_context = self.zmq_context.unwrap_or(ZmqContext::new());
 
         let peer_manager = self
             .peer_manager
@@ -96,7 +96,7 @@ impl TestFactory for ConnectionManagerFactory {
 
         let config = self.peer_connection_config;
 
-        let conn_manager = ConnectionManager::new(comms_context, node_identity, peer_manager, config);
+        let conn_manager = ConnectionManager::new(zmq_context, node_identity, peer_manager, config);
 
         Ok(conn_manager)
     }
