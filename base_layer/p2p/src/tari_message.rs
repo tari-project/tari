@@ -41,8 +41,10 @@ pub struct TariMessageType(u8);
 pub mod NetMessage {
     pub(super) const START_RANGE: u8 = 1;
     pub(super) const END_RANGE: u8 = 2; // Can be extended to 32
-    pub const Join: u8 = 1;
-    pub const Discover: u8 = 2;
+    /// Message sent when a request to establish a peer connection has been accepted
+    pub const Accept: u8 = 1;
+    pub const Join: u8 = 2;
+    pub const Discover: u8 = 3;
 }
 
 #[allow(non_snake_case, non_upper_case_globals)]

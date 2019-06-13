@@ -20,9 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use log::*;
-use tari_utilities::message_format::MessageFormat;
-
+use super::{
+    error::ControlServiceError,
+    types::{ControlServiceMessageContext, ControlServiceMessageType},
+};
 use crate::{
     dispatcher::{DispatchError, DispatchResolver},
     message::{
@@ -33,33 +34,35 @@ use crate::{
         MessageHeader,
         NodeDestination,
     },
-    peer_manager::{peer_manager::PeerManagerError, CommsNodeIdentity, Peer, PeerFlags},
+    peer_manager::{peer_manager::PeerManagerError, Peer, PeerFlags},
+    types::CommsPublicKey,
 };
-
-use super::{
-    error::ControlServiceError,
-    types::{ControlServiceMessageContext, ControlServiceMessageType},
-};
+use log::*;
+use serde::{de::DeserializeOwned, export::PhantomData, Serialize};
 use std::time::Duration;
+use tari_utilities::message_format::MessageFormat;
 
 #[allow(dead_code)]
 const LOG_TARGET: &'static str = "comms::control_service::handlers";
 
 #[derive(Default)]
-pub struct ControlServiceResolver;
+pub struct ControlServiceResolver<MType>(PhantomData<MType>);
 
-impl ControlServiceResolver {
+impl<MType> ControlServiceResolver<MType> {
     pub fn new() -> Self {
-        Self {}
+        Self(PhantomData)
     }
 }
 
-impl DispatchResolver<ControlServiceMessageType, ControlServiceMessageContext> for ControlServiceResolver {
-    fn resolve(&self, msg: &ControlServiceMessageContext) -> Result<ControlServiceMessageType, DispatchError> {
+impl<MType> DispatchResolver<ControlServiceMessageType, ControlServiceMessageContext<MType>>
+    for ControlServiceResolver<MType>
+where MType: Clone
+{
+    fn resolve(&self, msg: &ControlServiceMessageContext<MType>) -> Result<ControlServiceMessageType, DispatchError> {
         let header: MessageHeader<ControlServiceMessageType> = msg
             .message
             .to_header()
-            .map_err(|err| DispatchError::HandlerError(format!("{}", err)))?;
+            .map_err(|err| DispatchError::ResolveFailed(format!("{}", err)))?;
 
         Ok(header.message_type)
     }
@@ -73,8 +76,12 @@ impl DispatchResolver<ControlServiceMessageType, ControlServiceMessageContext> f
 /// - If that connection is successful, add the peer to the routing table (using [PeerManager])
 /// - Send an Accept message over the new [PeerConnection]
 #[allow(dead_code)]
-pub fn establish_connection(context: ControlServiceMessageContext) -> Result<(), ControlServiceError> {
-    let message = EstablishConnection::from_binary(context.message.body.as_slice())
+pub fn establish_connection<MType>(context: ControlServiceMessageContext<MType>) -> Result<(), ControlServiceError>
+where
+    MType: Serialize + DeserializeOwned,
+    MType: Clone,
+{
+    let message = EstablishConnection::<CommsPublicKey>::from_binary(context.message.body.as_slice())
         .map_err(|e| ControlServiceError::MessageFormatError(e))?;
 
     debug!(
@@ -129,18 +136,16 @@ pub fn establish_connection(context: ControlServiceMessageContext) -> Result<(),
         "Connection to requested address {} succeeded", message.address
     );
 
-    let node_identity = CommsNodeIdentity::global().ok_or(ControlServiceError::NodeIdentityNotSet)?;
-
     let header = MessageHeader {
-        message_type: ControlServiceMessageType::Accept,
+        message_type: context.config.accept_message_type,
     };
     let msg = Message::from_message_format(header, Accept {}).map_err(ControlServiceError::MessageError)?;
 
     let envelope = MessageEnvelope::construct(
-        node_identity,
+        &context.node_identity,
         public_key.clone(),
         NodeDestination::PublicKey(public_key),
-        &msg.to_binary().map_err(ControlServiceError::MessageFormatError)?,
+        msg.to_binary().map_err(ControlServiceError::MessageFormatError)?,
         MessageFlags::empty(),
     )
     .map_err(ControlServiceError::MessageError)?;
@@ -157,17 +162,9 @@ pub fn establish_connection(context: ControlServiceMessageContext) -> Result<(),
 }
 
 /// Discard
-pub fn discard(_: ControlServiceMessageContext) -> Result<(), ControlServiceError> {
+pub fn discard<MType>(_: ControlServiceMessageContext<MType>) -> Result<(), ControlServiceError>
+where MType: Clone {
     debug!(target: LOG_TARGET, "Message discarded");
-
-    Ok(())
-}
-
-/// The peer has accepted the request to connect
-pub fn accept(_: ControlServiceMessageContext) -> Result<(), ControlServiceError> {
-    debug!(target: LOG_TARGET, "Accept message received");
-
-    // TODO: Validate this message and update connection protocol state accordingly once that is in place
 
     Ok(())
 }

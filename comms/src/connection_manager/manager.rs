@@ -20,19 +20,6 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex},
-};
-
-use log::*;
-
-use crate::{
-    connection::{ConnectionError, CurvePublicKey, NetAddress, PeerConnection, PeerConnectionState},
-    peer_manager::{NodeId, Peer, PeerManager},
-    types::{CommsDataStore, CommsPublicKey},
-};
-
 use super::{
     connections::LivePeerConnections,
     establisher::ConnectionEstablisher,
@@ -40,6 +27,16 @@ use super::{
     ConnectionManagerError,
     PeerConnectionConfig,
     Result,
+};
+use crate::{
+    connection::{ConnectionError, CurvePublicKey, NetAddress, PeerConnection, PeerConnectionState, ZmqContext},
+    peer_manager::{NodeId, NodeIdentity, Peer, PeerManager},
+    types::{CommsDataStore, CommsPublicKey},
+};
+use log::*;
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
 };
 
 const LOG_TARGET: &'static str = "comms::connection_manager::manager";
@@ -54,14 +51,16 @@ const LOG_TARGET: &'static str = "comms::connection_manager::manager";
 /// # use std::time::Duration;
 /// # use std::sync::Arc;
 /// # use tari_comms::connection_manager::{ConnectionManager, PeerConnectionConfig};
-/// # use tari_comms::peer_manager::PeerManager;
-/// # use tari_comms::connection::{Context, InprocAddress};
+/// # use tari_comms::peer_manager::{PeerManager, NodeIdentity};
+/// # use tari_comms::connection::{ZmqContext, InprocAddress};
+/// # use rand::OsRng;
 ///
-/// let context = Context::new();
+/// let node_identity = Arc::new(NodeIdentity::random(&mut OsRng::new().unwrap(), "127.0.0.1:9000".parse().unwrap()).unwrap());
+///
+/// let context = ZmqContext::new();
 /// let peer_manager = Arc::new(PeerManager::new(None).unwrap());
 ///
-/// let manager = ConnectionManager::new(peer_manager, PeerConnectionConfig {
-///     context: context.clone(),
+/// let manager = ConnectionManager::new(context, node_identity, peer_manager, PeerConnectionConfig {
 ///     control_service_establish_timeout: Duration::from_millis(2000),
 ///     peer_connection_establish_timeout: Duration::from_secs(5),
 ///     max_message_size: 1024,
@@ -75,18 +74,26 @@ const LOG_TARGET: &'static str = "comms::connection_manager::manager";
 /// assert_eq!(manager.get_active_connection_count(), 0);
 /// ```
 pub struct ConnectionManager {
+    node_identity: Arc<NodeIdentity<CommsPublicKey>>,
     connections: LivePeerConnections,
-    establisher: Arc<ConnectionEstablisher>,
+    establisher: Arc<ConnectionEstablisher<CommsPublicKey>>,
     peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
     establish_locks: Mutex<HashMap<NodeId, Arc<Mutex<()>>>>,
 }
 
 impl ConnectionManager {
     /// Create a new connection manager
-    pub fn new(peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>, config: PeerConnectionConfig) -> Self {
+    pub fn new(
+        comms_context: ZmqContext,
+        node_identity: Arc<NodeIdentity<CommsPublicKey>>,
+        peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
+        config: PeerConnectionConfig,
+    ) -> Self
+    {
         Self {
+            node_identity,
             connections: LivePeerConnections::new(),
-            establisher: Arc::new(ConnectionEstablisher::new(config, peer_manager.clone())),
+            establisher: Arc::new(ConnectionEstablisher::new(comms_context, config, peer_manager.clone())),
             peer_manager,
             establish_locks: Mutex::new(HashMap::new()),
         }
@@ -234,8 +241,18 @@ impl ConnectionManager {
         Ok(peer_conn.clone())
     }
 
+    /// Get the peer manager
+    pub(crate) fn get_peer_manager(&self) -> Arc<PeerManager<CommsPublicKey, CommsDataStore>> {
+        self.peer_manager.clone()
+    }
+
+    /// Return the number of _active_ peer connections currently managed by this instance
+    pub fn get_active_connection_count(&self) -> usize {
+        self.connections.get_active_connection_count()
+    }
+
     fn initiate_peer_connection(&self, peer: &Peer<CommsPublicKey>) -> Result<Arc<PeerConnection>> {
-        let protocol = PeerConnectionProtocol::new(&self.establisher)?;
+        let protocol = PeerConnectionProtocol::new(&self.node_identity, &self.establisher);
 
         protocol
             .negotiate_peer_connection(peer)
@@ -273,30 +290,20 @@ impl ConnectionManager {
                 Err(err)
             })
     }
-
-    /// Get the peer manager
-    pub(crate) fn get_peer_manager(&self) -> Arc<PeerManager<CommsPublicKey, CommsDataStore>> {
-        self.peer_manager.clone()
-    }
-
-    /// Return the number of _active_ peer connections currently managed by this instance
-    pub fn get_active_connection_count(&self) -> usize {
-        self.connections.get_active_connection_count()
-    }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::connection::{Context, InprocAddress};
+    use crate::connection::{InprocAddress, ZmqContext};
     use std::time::Duration;
 
     #[test]
     fn get_active_connection_count() {
-        let context = Context::new();
+        let context = ZmqContext::new();
+        let node_identity = Arc::new(NodeIdentity::random_for_test(None));
         let peer_manager = Arc::new(PeerManager::new(None).unwrap());
-        let manager = ConnectionManager::new(peer_manager, PeerConnectionConfig {
-            context: context.clone(),
+        let manager = ConnectionManager::new(context, node_identity, peer_manager, PeerConnectionConfig {
             control_service_establish_timeout: Duration::from_millis(2000),
             peer_connection_establish_timeout: Duration::from_secs(5),
             max_message_size: 1024,

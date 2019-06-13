@@ -20,26 +20,21 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{sync::Arc, thread, time::Duration};
-
 use crate::support::{
-    factories::{self, Factory},
+    factories::{self, TestFactory},
     helpers::ConnectionMessageCounter,
-    node_identity::set_test_node_identity,
 };
-
+use std::{sync::Arc, thread, time::Duration};
 use tari_comms::{
-    connection::{types::Linger, Context, InprocAddress},
+    connection::{types::Linger, InprocAddress, ZmqContext},
     connection_manager::{ConnectionManager, PeerConnectionConfig},
-    control_service::{handlers, ControlService, ControlServiceConfig, ControlServiceMessageType},
-    dispatcher::Dispatcher,
-    peer_manager::{CommsNodeIdentity, Peer, PeerManager},
+    control_service::{ControlService, ControlServiceConfig},
+    peer_manager::{Peer, PeerManager},
     types::{CommsDataStore, CommsPublicKey},
 };
 
-fn make_peer_connection_config(context: &Context, consumer_address: InprocAddress) -> PeerConnectionConfig {
+fn make_peer_connection_config(consumer_address: InprocAddress) -> PeerConnectionConfig {
     PeerConnectionConfig {
-        context: context.clone(),
         control_service_establish_timeout: Duration::from_millis(2000),
         peer_connection_establish_timeout: Duration::from_secs(5),
         max_message_size: 1024,
@@ -58,15 +53,9 @@ fn make_peer_manager(peers: Vec<Peer<CommsPublicKey>>) -> Arc<PeerManager<CommsP
 #[allow(non_snake_case)]
 fn establish_peer_connection_by_peer() {
     let _ = simple_logger::init();
-    set_test_node_identity();
-    let context = Context::new();
+    let context = ZmqContext::new();
 
-    let dispatcher = Dispatcher::new(handlers::ControlServiceResolver::new()).route(
-        ControlServiceMessageType::EstablishConnection,
-        handlers::establish_connection,
-    );
-
-    let node_identity = CommsNodeIdentity::global().unwrap();
+    let node_identity = Arc::new(factories::node_identity::create::<CommsPublicKey>().build().unwrap());
 
     //---------------------------------- Node B Setup --------------------------------------------//
 
@@ -86,19 +75,24 @@ fn establish_peer_connection_by_peer() {
 
     // Node B knows no peers
     let node_B_peer_manager = make_peer_manager(vec![]);
-    let node_B_connection_manager = Arc::new(ConnectionManager::new(
-        node_B_peer_manager,
-        make_peer_connection_config(&context, node_B_consumer_address.clone()),
-    ));
+    let node_B_connection_manager = Arc::new(
+        factories::connection_manager::create()
+            .with_context(context.clone())
+            .with_node_identity(node_identity.clone())
+            .with_peer_manager(node_B_peer_manager)
+            .with_peer_connection_config(make_peer_connection_config(node_B_consumer_address.clone()))
+            .build()
+            .unwrap(),
+    );
 
     // Start node B's control service
-    let node_B_control_service = ControlService::new(&context)
-        .configure(ControlServiceConfig {
-            socks_proxy_address: None,
-            listener_address: node_B_control_port_address,
-        })
-        .serve(dispatcher, node_B_connection_manager)
-        .unwrap();
+    let node_B_control_service = ControlService::new(context.clone(), node_identity.clone(), ControlServiceConfig {
+        socks_proxy_address: None,
+        listener_address: node_B_control_port_address,
+        accept_message_type: 123,
+    })
+    .serve(node_B_connection_manager)
+    .unwrap();
 
     //---------------------------------- Node A setup --------------------------------------------//
 
@@ -107,8 +101,10 @@ fn establish_peer_connection_by_peer() {
     // Add node B to node A's peer manager
     let node_A_peer_manager = make_peer_manager(vec![node_B_peer.clone()]);
     let node_A_connection_manager = Arc::new(ConnectionManager::new(
+        context.clone(),
+        node_identity.clone(),
         node_A_peer_manager,
-        make_peer_connection_config(&context, node_A_consumer_address),
+        make_peer_connection_config(node_A_consumer_address),
     ));
 
     //------------------------------ Negotiate connection to node B -----------------------------------//

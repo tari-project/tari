@@ -20,17 +20,14 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod curve_keypair;
+pub trait Factory<T> {
+    fn make(&self) -> T;
+}
 
-mod context;
-mod endpoint;
-mod error;
-mod inproc_address;
-
-pub use self::{
-    context::ZmqContext,
-    curve_keypair::{CurveEncryption, CurvePublicKey, CurveSecretKey},
-    endpoint::ZmqEndpoint,
-    error::ZmqError,
-    inproc_address::InprocAddress,
-};
+impl<F, T> Factory<T> for F
+where F: Fn() -> T
+{
+    fn make(&self) -> T {
+        (self)()
+    }
+}

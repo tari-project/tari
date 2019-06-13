@@ -20,38 +20,35 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use log::*;
-
-use std::sync::Arc;
-
-use tari_utilities::message_format::MessageFormat;
-
+use super::{establisher::ConnectionEstablisher, types::PeerConnectionJoinHandle, ConnectionManagerError, Result};
 use crate::{
     connection::{connection::EstablishedConnection, CurveEncryption, CurvePublicKey, PeerConnection},
     control_service::ControlServiceMessageType,
     message::{p2p::EstablishConnection, Message, MessageEnvelope, MessageFlags, MessageHeader, NodeDestination},
-    peer_manager::{node_identity::CommsNodeIdentity, Peer},
+    peer_manager::{NodeIdentity, Peer},
     types::CommsPublicKey,
 };
-
-use super::{establisher::ConnectionEstablisher, types::PeerConnectionJoinHandle, ConnectionManagerError, Result};
-use std::time::Duration;
+use log::*;
+use std::{sync::Arc, time::Duration};
+use tari_utilities::message_format::MessageFormat;
 
 const LOG_TARGET: &'static str = "comms::connection_manager::protocol";
 
-pub(crate) struct PeerConnectionProtocol<'e> {
-    node_identity: Arc<CommsNodeIdentity>,
-    establisher: &'e ConnectionEstablisher,
+pub(crate) struct PeerConnectionProtocol<'e, 'ni> {
+    node_identity: &'ni Arc<NodeIdentity<CommsPublicKey>>,
+    establisher: &'e ConnectionEstablisher<CommsPublicKey>,
 }
 
-impl<'e> PeerConnectionProtocol<'e> {
-    pub fn new(establisher: &'e ConnectionEstablisher) -> Result<Self> {
-        CommsNodeIdentity::global()
-            .map(|node_identity| Self {
-                node_identity,
-                establisher,
-            })
-            .ok_or(ConnectionManagerError::GlobalNodeIdentityNotSet)
+impl<'e, 'ni> PeerConnectionProtocol<'e, 'ni> {
+    pub fn new(
+        node_identity: &'ni Arc<NodeIdentity<CommsPublicKey>>,
+        establisher: &'e ConnectionEstablisher<CommsPublicKey>,
+    ) -> Self
+    {
+        Self {
+            node_identity,
+            establisher,
+        }
     }
 
     /// Send Establish connection message to the peers control port to request a connection
@@ -100,7 +97,7 @@ impl<'e> PeerConnectionProtocol<'e> {
         &self,
         peer: &Peer<CommsPublicKey>,
         control_conn: EstablishedConnection,
-        msg: EstablishConnection,
+        msg: EstablishConnection<CommsPublicKey>,
     ) -> Result<()>
     {
         let message_header = MessageHeader {
@@ -110,10 +107,10 @@ impl<'e> PeerConnectionProtocol<'e> {
         let body = msg.to_binary().map_err(ConnectionManagerError::MessageFormatError)?;
 
         let envelope = MessageEnvelope::construct(
-            self.node_identity.clone(),
+            &self.node_identity,
             peer.public_key.clone(),
             NodeDestination::NodeId(peer.node_id.clone()),
-            &body,
+            body,
             MessageFlags::ENCRYPTED,
         )
         .map_err(ConnectionManagerError::MessageError)?;

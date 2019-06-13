@@ -44,5 +44,5 @@ pub use self::{
         PeerConnectionSimpleState as PeerConnectionState,
     },
     types::{Direction, SocketEstablishment},
-    zmq::{curve_keypair, Context, CurveEncryption, CurvePublicKey, CurveSecretKey, InprocAddress},
+    zmq::{curve_keypair, CurveEncryption, CurvePublicKey, CurveSecretKey, InprocAddress, ZmqContext},
 };

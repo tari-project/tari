@@ -25,9 +25,9 @@ use zmq;
 use crate::connection::{types::SocketType, zmq::ZmqError};
 
 #[derive(Clone)]
-pub struct Context(zmq::Context);
+pub struct ZmqContext(zmq::Context);
 
-impl Context {
+impl ZmqContext {
     pub fn new() -> Self {
         Self(zmq::Context::new())
     }

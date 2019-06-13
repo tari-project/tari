@@ -26,17 +26,17 @@ use tari_comms::connection::{
     connection::Connection,
     error::ConnectionError,
     types::{Direction, Linger},
-    Context,
     CurveEncryption,
     InprocAddress,
     NetAddress,
+    ZmqContext,
 };
 
-use crate::support::factories::{self, Factory};
+use crate::support::factories::{self, TestFactory};
 
 #[test]
 fn inbound_receive_timeout() {
-    let ctx = Context::new();
+    let ctx = ZmqContext::new();
 
     let addr = InprocAddress::random();
 
@@ -56,7 +56,7 @@ fn inbound_receive_timeout() {
 
 #[test]
 fn inbound_recv_send_inproc() {
-    let ctx = Context::new();
+    let ctx = ZmqContext::new();
 
     let addr = InprocAddress::random();
 
@@ -92,7 +92,7 @@ fn inbound_recv_send_inproc() {
 
 #[test]
 fn inbound_recv_send_encrypted_tcp() {
-    let ctx = Context::new();
+    let ctx = ZmqContext::new();
 
     let addr = factories::net_address::create().use_os_port().build().unwrap();
 
@@ -126,7 +126,7 @@ fn inbound_recv_send_encrypted_tcp() {
 
 #[test]
 fn outbound_send_recv_inproc() {
-    let ctx = Context::new();
+    let ctx = ZmqContext::new();
 
     let addr = InprocAddress::random();
 
@@ -156,7 +156,7 @@ fn outbound_send_recv_inproc() {
 
 #[test]
 fn outbound_send_recv_encrypted_tcp() {
-    let ctx = Context::new();
+    let ctx = ZmqContext::new();
 
     let addr = factories::net_address::create().build().unwrap();
 

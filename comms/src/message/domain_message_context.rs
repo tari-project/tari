@@ -27,30 +27,27 @@ use crate::{
     types::{CommsDataStore, CommsPublicKey},
 };
 use std::sync::Arc;
-use tari_crypto::keys::PublicKey;
 
 /// The DomainMessageContext is the container that will be dispatched to the domain handlers. It contains the received
 /// message after the comms level envelope has been removed. It also has handles to the PeerManager and
 /// OutboundMessageService.
 #[derive(Clone)]
-pub struct DomainMessageContext<PubKey> {
-    pub source_node_identity: Option<PubKey>,
+pub struct DomainMessageContext {
+    pub source_node_identity: Option<CommsPublicKey>,
     pub message: Message,
     pub outbound_message_service: Arc<OutboundMessageService>,
     pub peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
 }
 
-impl<PubKey> DomainMessageContext<PubKey>
-where PubKey: PublicKey
-{
+impl DomainMessageContext {
     /// Construct a new DomainMessageContext that consist of the peer connection information and the received message
     /// header and body
     pub fn new(
-        source_node_identity: Option<PubKey>,
+        source_node_identity: Option<CommsPublicKey>,
         message: Message,
         outbound_message_service: Arc<OutboundMessageService>,
         peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
-    ) -> DomainMessageContext<PubKey>
+    ) -> Self
     {
         DomainMessageContext {
             source_node_identity,

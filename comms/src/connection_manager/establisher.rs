@@ -33,26 +33,26 @@ use crate::{
         peer_connection::ConnectionId,
         types::Direction,
         Connection,
-        Context,
         CurveEncryption,
         InprocAddress,
         NetAddress,
         PeerConnection,
         PeerConnectionContextBuilder,
+        ZmqContext,
     },
     peer_manager::{Peer, PeerManager},
-    types::{CommsDataStore, CommsPublicKey},
+    types::CommsDataStore,
 };
 
-use std::{net::IpAddr, sync::Arc, time::Duration};
+use std::{hash::Hash, net::IpAddr, sync::Arc, time::Duration};
+use tari_crypto::keys::PublicKey;
 
 const LOG_TARGET: &'static str = "comms::connection_manager::establisher";
 
 /// Configuration for peer connections which are produced by the ConnectionEstablisher
 /// These are the common properties which are shared across all peer connections
+#[derive(Clone)]
 pub struct PeerConnectionConfig {
-    /// The peer connection context
-    pub context: Context,
     /// Maximum size of inbound messages - messages larger than this will be dropped
     pub max_message_size: u64,
     /// The number of connection attempts to make to one address before giving up
@@ -71,21 +71,47 @@ pub struct PeerConnectionConfig {
     pub peer_connection_establish_timeout: Duration,
 }
 
+impl Default for PeerConnectionConfig {
+    fn default() -> Self {
+        Self {
+            max_message_size: 1024 * 1024,
+            max_connect_retries: 5,
+            socks_proxy_address: None,
+            message_sink_address: Default::default(),
+            peer_connection_establish_timeout: Duration::from_secs(1),
+            control_service_establish_timeout: Duration::from_secs(2),
+            host: "0.0.0.0".parse().unwrap(),
+        }
+    }
+}
+
 /// ## ConnectionEstablisher
 ///
 /// This component is responsible for creating encrypted connections to peers and updating
 /// the peer stats for failed/successful connection attempts. This component does not hold any
 /// connections, but returns them so that the caller may use them as needed. This component does
 /// not complete the peer connection protocol, it simply creates connections with some reliability.
-pub(crate) struct ConnectionEstablisher {
+pub(crate) struct ConnectionEstablisher<PK> {
+    context: ZmqContext,
     config: PeerConnectionConfig,
-    peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
+    peer_manager: Arc<PeerManager<PK, CommsDataStore>>,
 }
 
-impl ConnectionEstablisher {
+impl<PK> ConnectionEstablisher<PK>
+where PK: PublicKey + Hash
+{
     /// Create a new ConnectionEstablisher.
-    pub fn new(config: PeerConnectionConfig, peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>) -> Self {
-        Self { config, peer_manager }
+    pub fn new(
+        context: ZmqContext,
+        config: PeerConnectionConfig,
+        peer_manager: Arc<PeerManager<PK, CommsDataStore>>,
+    ) -> Self
+    {
+        Self {
+            context,
+            config,
+            peer_manager,
+        }
     }
 
     /// Returns the peer connection config
@@ -97,11 +123,11 @@ impl ConnectionEstablisher {
     ///
     /// ### Arguments
     /// - `peer`: `&Peer<CommsPublicKey>` - The peer to connect to
-    pub fn establish_control_service_connection(&self, peer: &Peer<CommsPublicKey>) -> Result<EstablishedConnection> {
+    pub fn establish_control_service_connection(&self, peer: &Peer<PK>) -> Result<EstablishedConnection> {
         let config = &self.config;
 
         let mut attempt = ConnectionAttempts::new(
-            &config.context,
+            &self.context,
             self.peer_manager.clone(),
             |attempt_count, monitor_addr| {
                 let address = self
@@ -109,7 +135,7 @@ impl ConnectionEstablisher {
                     .get_best_net_address(&peer.node_id)
                     .map_err(ConnectionManagerError::PeerManagerError)?;
 
-                let conn = Connection::new(&config.context, Direction::Outbound)
+                let conn = Connection::new(&self.context, Direction::Outbound)
                     .set_monitor_addr(monitor_addr)
                     .set_socks_proxy_addr(config.socks_proxy_address.clone())
                     .set_max_message_size(Some(config.max_message_size))
@@ -221,7 +247,7 @@ impl ConnectionEstablisher {
         let config = &self.config;
 
         let mut builder = PeerConnectionContextBuilder::new()
-            .set_context(&config.context)
+            .set_context(&self.context)
             .set_max_msg_size(config.max_message_size)
             .set_message_sink_address(config.message_sink_address.clone())
             .set_max_retry_attempts(config.max_connect_retries);
@@ -238,22 +264,19 @@ impl ConnectionEstablisher {
 
 /// Helper struct which enables multiple attempts at connecting. This also updates the peers connection
 /// attempts statistics
-struct ConnectionAttempts<'c, F> {
-    context: &'c Context,
+struct ConnectionAttempts<'c, PK, F> {
+    context: &'c ZmqContext,
     num_attempts: usize,
     attempt_fn: F,
-    peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
+    peer_manager: Arc<PeerManager<PK, CommsDataStore>>,
 }
 
-impl<'c, F> ConnectionAttempts<'c, F>
-where F: Fn(usize, InprocAddress) -> Result<(EstablishedConnection, NetAddress)>
+impl<'c, PK, F> ConnectionAttempts<'c, PK, F>
+where
+    F: Fn(usize, InprocAddress) -> Result<(EstablishedConnection, NetAddress)>,
+    PK: PublicKey + Hash,
 {
-    pub fn new(
-        context: &'c Context,
-        peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
-        attempt_fn: F,
-    ) -> Self
-    {
+    pub fn new(context: &'c ZmqContext, peer_manager: Arc<PeerManager<PK, CommsDataStore>>, attempt_fn: F) -> Self {
         Self {
             context,
             num_attempts: 0,

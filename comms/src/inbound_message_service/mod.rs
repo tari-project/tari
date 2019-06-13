@@ -21,5 +21,6 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 pub mod comms_msg_handlers;
+pub mod error;
 pub mod inbound_message_service;
 pub mod msg_processing_worker;

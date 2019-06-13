@@ -22,12 +22,18 @@
 
 /// Creates a setter function used with the builder pattern
 macro_rules! setter {
+ ($func:ident, $name: ident, Option<$type: ty>) => {
+        pub fn $func(mut self, val: $type) -> Self {
+            self.$name = Some(val);
+            self
+        }
+    };
  ($func:ident, $name: ident, $type: ty) => {
-	pub fn $func(mut self, val: $type) -> Self {
-	    self.$name = Some(val);
-	    self
-	}
-    }
+        pub fn $func(mut self, val: $type) -> Self {
+            self.$name = val;
+            self
+        }
+    };
 }
 
 macro_rules! acquire_lock {

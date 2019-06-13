@@ -24,7 +24,6 @@
 mod macros;
 
 pub mod comms_patterns;
-pub mod node_identity;
 
 pub mod factories;
 pub mod helpers;

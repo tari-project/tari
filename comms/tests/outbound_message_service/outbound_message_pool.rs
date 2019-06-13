@@ -22,42 +22,30 @@
 
 #[cfg(test)]
 mod test {
-    use std::sync::Arc;
-    use tari_comms::{connection::Context, outbound_message_service::outbound_message_service::OutboundMessageService};
-
-    use tari_comms::{message::MessageFlags, outbound_message_service::BroadcastStrategy};
-
+    use crate::support::{
+        factories::{self, TestFactory},
+        helpers::ConnectionMessageCounter,
+    };
+    use chrono;
+    use std::{convert::TryFrom, sync::Arc, thread, time::Duration};
     use tari_comms::{
-        connection::NetAddress,
+        connection::{Connection, ConnectionError, Direction, InprocAddress, NetAddress, ZmqContext},
         connection_manager::{ConnectionManager, PeerConnectionConfig},
-        control_service::{handlers, ControlService, ControlServiceConfig, ControlServiceMessageType},
-        dispatcher::Dispatcher,
-        peer_manager::{CommsNodeIdentity, Peer},
+        control_service::{ControlService, ControlServiceConfig},
+        message::{FrameSet, MessageEnvelope, MessageFlags},
+        outbound_message_service::{
+            outbound_message_pool::OutboundMessagePoolConfig,
+            outbound_message_service::OutboundMessageService,
+            BroadcastStrategy,
+            OutboundMessage,
+            OutboundMessagePool,
+        },
+        peer_manager::{Peer, PeerManager},
         types::{CommsDataStore, CommsPublicKey},
     };
 
-    use tari_comms::outbound_message_service::{OutboundMessage, OutboundMessagePool};
-
-    use crate::support::{
-        factories::{self, Factory},
-        helpers::ConnectionMessageCounter,
-        node_identity::set_test_node_identity,
-    };
-
-    use chrono;
-    use std::{convert::TryFrom, thread, time::Duration};
-    use tari_comms::{
-        connection::{Connection, ConnectionError, Direction, InprocAddress, SocketEstablishment},
-        message::{FrameSet, MessageEnvelope},
-        outbound_message_service::outbound_message_pool::OutboundMessagePoolConfig,
-        peer_manager::PeerManager,
-    };
-
-    const LOG_TARGET: &'static str = "comms::outbound_message_service::pool";
-
-    fn make_peer_connection_config(context: &Context, consumer_address: InprocAddress) -> PeerConnectionConfig {
+    fn make_peer_connection_config(consumer_address: InprocAddress) -> PeerConnectionConfig {
         PeerConnectionConfig {
-            context: context.clone(),
             control_service_establish_timeout: Duration::from_millis(2000),
             peer_connection_establish_timeout: Duration::from_secs(5),
             max_message_size: 1024,
@@ -80,14 +68,8 @@ mod test {
     #[allow(non_snake_case)]
     fn test_outbound_message_pool() {
         init();
-        let context = Context::new();
-
-        let dispatcher = Dispatcher::new(handlers::ControlServiceResolver::new()).route(
-            ControlServiceMessageType::EstablishConnection,
-            handlers::establish_connection,
-        );
-        set_test_node_identity();
-        let node_identity = CommsNodeIdentity::global().unwrap();
+        let context = ZmqContext::new();
+        let node_identity = Arc::new(factories::node_identity::create::<CommsPublicKey>().build().unwrap());
 
         //---------------------------------- Node B Setup --------------------------------------------//
 
@@ -107,17 +89,20 @@ mod test {
         // Node B knows no peers
         let node_B_peer_manager = make_peer_manager(vec![]);
         let node_B_connection_manager = Arc::new(ConnectionManager::new(
+            context.clone(),
+            node_identity.clone(),
             node_B_peer_manager,
-            make_peer_connection_config(&context, node_B_consumer_address.clone()),
+            make_peer_connection_config(node_B_consumer_address.clone()),
         ));
 
         // Start node B's control service
-        let node_B_control_service = ControlService::new(&context)
-            .configure(ControlServiceConfig {
+        let node_B_control_service =
+            ControlService::new(context.clone(), node_identity.clone(), ControlServiceConfig {
                 socks_proxy_address: None,
                 listener_address: node_B_control_port_address,
+                accept_message_type: "CUSTOM".to_string(),
             })
-            .serve(dispatcher, node_B_connection_manager)
+            .serve(node_B_connection_manager)
             .unwrap();
 
         //---------------------------------- Node A setup --------------------------------------------//
@@ -126,10 +111,13 @@ mod test {
 
         // Add node B to node A's peer manager
         let node_A_peer_manager = make_peer_manager(vec![node_B_peer.clone()]);
-        let node_A_connection_manager = Arc::new(ConnectionManager::new(
-            node_A_peer_manager.clone(),
-            make_peer_connection_config(&context, node_A_consumer_address),
-        ));
+        let node_A_connection_manager = Arc::new(
+            factories::connection_manager::create()
+                .with_peer_manager(node_A_peer_manager.clone())
+                .with_peer_connection_config(make_peer_connection_config(node_A_consumer_address))
+                .build()
+                .unwrap(),
+        );
 
         // Setup Node A OMP and OMS
         let omp_inbound_address = InprocAddress::random();
@@ -146,28 +134,34 @@ mod test {
 
         let oms = OutboundMessageService::new(
             context.clone(),
+            node_identity.clone(),
             omp_inbound_address.clone(),
             node_A_peer_manager.clone(),
         )
         .unwrap();
-        let oms2 =
-            OutboundMessageService::new(context.clone(), omp_inbound_address, node_A_peer_manager.clone()).unwrap();
+        let oms2 = OutboundMessageService::new(
+            context.clone(),
+            node_identity.clone(),
+            omp_inbound_address,
+            node_A_peer_manager.clone(),
+        )
+        .unwrap();
 
         let _omp = omp.start();
-        let message_envelope_body: Vec<u8> = vec![0, 1, 2, 3];
+        let message_envelope_body = vec![0, 1, 2, 3];
 
         // Send 8 message alternating two different OMS's
         for _ in 0..4 {
             oms.send(
                 BroadcastStrategy::Direct(node_B_peer.node_id.clone()),
                 MessageFlags::ENCRYPTED,
-                &message_envelope_body,
+                message_envelope_body.clone(),
             )
             .unwrap();
             oms2.send(
                 BroadcastStrategy::Direct(node_B_peer.node_id.clone()),
                 MessageFlags::ENCRYPTED,
-                &message_envelope_body,
+                message_envelope_body.clone(),
             )
             .unwrap();
         }
@@ -181,10 +175,9 @@ mod test {
     #[allow(non_snake_case)]
     fn test_outbound_message_pool_requeuing() {
         init();
-        let context = Context::new();
+        let context = ZmqContext::new();
 
-        set_test_node_identity();
-        let node_identity = CommsNodeIdentity::global().unwrap();
+        let node_identity = Arc::new(factories::node_identity::create::<CommsPublicKey>().build().unwrap());
 
         //---------------------------------- Node B Setup --------------------------------------------//
         let node_B_control_port_address: NetAddress = "127.0.0.1:45845".parse().unwrap();
@@ -200,10 +193,17 @@ mod test {
         let node_A_consumer_address = InprocAddress::random();
 
         // Add node B to node A's peer manager
-        let node_A_peer_manager = make_peer_manager(vec![node_B_peer.clone()]);
+        let node_A_peer_manager = Arc::new(
+            factories::peer_manager::create()
+                .with_peers(vec![node_B_peer.clone()])
+                .build()
+                .unwrap(),
+        );
         let node_A_connection_manager = Arc::new(ConnectionManager::new(
+            context.clone(),
+            node_identity.clone(),
             node_A_peer_manager.clone(),
-            make_peer_connection_config(&context, node_A_consumer_address),
+            make_peer_connection_config(node_A_consumer_address),
         ));
 
         // Setup Node A OMP and OMS
@@ -227,6 +227,7 @@ mod test {
 
         let oms = OutboundMessageService::new(
             context.clone(),
+            node_identity.clone(),
             omp_inbound_address.clone(),
             node_A_peer_manager.clone(),
         )
@@ -237,18 +238,16 @@ mod test {
 
         // Now check that the requeuing happens
         let requeue_connection = Connection::new(&context.clone(), Direction::Inbound)
-            .set_socket_establishment(SocketEstablishment::Bind)
             .establish(&omp_requeue_address)
             .unwrap();
         let omp_inbound_connection = Connection::new(&context.clone(), Direction::Outbound)
-            .set_socket_establishment(SocketEstablishment::Connect)
             .establish(&omp_inbound_address)
             .unwrap();
 
         oms.send(
             BroadcastStrategy::Direct(node_B_peer.node_id.clone()),
             MessageFlags::ENCRYPTED,
-            &message_envelope_body,
+            message_envelope_body,
         )
         .unwrap();
 

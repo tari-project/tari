@@ -164,9 +164,9 @@ mod test {
         connection::{
             types::SocketType,
             zmq::{InprocAddress, ZmqEndpoint},
-            Context,
             EstablishedConnection,
             NetAddress,
+            ZmqContext,
         },
         inbound_message_service::{
             comms_msg_handlers::construct_comms_msg_dispatcher,
@@ -206,7 +206,7 @@ mod test {
         // Setup Comms system
         init_node_identity();
         let node_identity = CommsNodeIdentity::global().unwrap();
-        let context = Context::new();
+        let context = ZmqContext::new();
         let inbound_msg_pool_address = InprocAddress::random();
         // Create a conn_client that can submit messages to the InboundMessageService
         let client_socket = context.socket(SocketType::Request).unwrap();
