@@ -22,50 +22,89 @@
 
 use crate::{
     connection::{zmq::ZmqEndpoint, Connection, ConnectionError, Direction, EstablishedConnection, ZmqContext},
-    message::{Frame, FrameSet},
+    message::{DomainMessageContext, Frame, FrameSet, MessageError},
+    types::CommsPublicKey,
 };
 use derive_error::Error;
 use serde::{Deserialize, Serialize};
-use std::{cmp, marker::PhantomData, time::Duration};
+use std::{marker::PhantomData, time::Duration};
 use tari_utilities::message_format::{MessageFormat, MessageFormatError};
 
 #[derive(Debug, Error)]
-pub enum DomainConnectorError {
+pub enum ConnectorError {
     ConnectionError(ConnectionError),
     #[error(no_from)]
     ListenFailed(ConnectionError),
     DeserializeFailed(MessageFormatError),
+    MessageError(MessageError),
     #[error(msg_embedded, non_std, no_from)]
     ExtractFrameSetError(String),
 }
 
+/// Information about the message received
+pub struct MessageInfo {
+    source_public_key: Option<CommsPublicKey>, // TODO: This shouldn't be optional in DomainMessageContext
+}
+
 /// # DomainConnector
+///
+/// Receives frames from a connection, extracts the frame at index 1, deserializes the
+/// message (DomainMessageContext) and returns a ([MessageInfo], T) tuple
+pub struct DomainConnector<'de> {
+    connector: Connector<'de, DomainMessageContext>,
+}
+
+impl<'de> DomainConnector<'de> {
+    /// Start listening for messages. The message is expected to be at index 1
+    pub fn listen<A>(context: &ZmqContext, address: &A) -> Result<Self, ConnectorError>
+    where A: ZmqEndpoint {
+        Ok(Self {
+            connector: Connector::listen(context, address, ByIndexFrameExtractor(1))?,
+        })
+    }
+
+    /// Receive and deserialize a message.
+    ///
+    /// This method returns:
+    /// `Ok((MessageInfo, T))` if a message is received within the timeout and can be deserialized
+    /// `Ok(None)` if the timeout is reached before a message arrives
+    /// `Err(DomainConnectorError)` if there is a connection error, or a message fails to deserialize
+    pub fn receive_timeout<T>(&self, duration: Duration) -> Result<Option<(MessageInfo, T)>, ConnectorError>
+    where T: MessageFormat {
+        match self.connector.receive_timeout(duration)? {
+            Some(domain_context) => Ok(Some((
+                MessageInfo {
+                    source_public_key: domain_context.source_node_identity,
+                },
+                domain_context
+                    .message
+                    .to_message()
+                    .map_err(ConnectorError::MessageError)?,
+            ))),
+            None => Ok(None),
+        }
+    }
+}
+
+/// # Connector
 ///
 /// The domain connector receives messages from an inbound address, and extracts and deserializes
 /// two frames into what the caller specifies.
 ///
 /// This should be used by services/protocol managers to receive messages from the [InboundMessageService].
-pub struct DomainConnector<'de, H, T> {
+///
+/// ## Generics
+///
+/// T - The type into which the frame should be deserialized
+pub struct Connector<'de, T> {
     connection: EstablishedConnection,
-    frame_extractor: Box<FrameExtractor<Error = DomainConnectorError>>,
-    _t: PhantomData<&'de (H, T)>,
+    frame_extractor: Box<FrameExtractor<Error = ConnectorError>>,
+    _t: PhantomData<&'de T>,
 }
 
-impl<'de, H, T> DomainConnector<'de, H, T>
-where
-    T: Serialize + Deserialize<'de>,
-    H: Serialize + Deserialize<'de>,
+impl<'de, T> Connector<'de, T>
+where T: Serialize + Deserialize<'de>
 {
-    /// Start listening for messages. Frames are extracted by the ByIndexFrameExtractor, which
-    /// expects the header frame to be at index 1 and the message frame to be at index 2.
-    pub fn listen<A>(context: &ZmqContext, address: &A) -> Result<Self, DomainConnectorError>
-    where A: ZmqEndpoint {
-        DomainConnector::listen_with_frame_extractor(context, address, ByIndexFrameExtractor {
-            header_index: 1,
-            body_index: 2,
-        })
-    }
-
     /// Start listening for messages. Frames are extracted using the given impl of FrameExtractor.
     ///
     /// ```edition2018,no_compile
@@ -76,19 +115,15 @@ where
     ///       frames.remove(0),
     ///    ))
     /// });
-    pub fn listen_with_frame_extractor<FE, A>(
-        context: &ZmqContext,
-        address: &A,
-        frame_extractor: FE,
-    ) -> Result<Self, DomainConnectorError>
+    pub fn listen<FE, A>(context: &ZmqContext, address: &A, frame_extractor: FE) -> Result<Self, ConnectorError>
     where
         A: ZmqEndpoint,
-        FE: FrameExtractor<Error = DomainConnectorError>,
+        FE: FrameExtractor<Error = ConnectorError>,
         FE: 'static,
     {
         let connection = Connection::new(context, Direction::Inbound)
             .establish(&address)
-            .map_err(DomainConnectorError::ListenFailed)?;
+            .map_err(ConnectorError::ListenFailed)?;
 
         Ok(Self {
             connection,
@@ -97,64 +132,64 @@ where
         })
     }
 
-    pub fn receive_timeout(&self, duration: Duration) -> Result<Option<(H, T)>, DomainConnectorError> {
+    /// Receive and deserialize a message.
+    ///
+    /// This method returns:
+    /// `Ok(T)` if a message is received within the timeout and can be deserialized
+    /// `Ok(None)` if the timeout is reached before a message arrives
+    /// `Err(DomainConnectorError)` if there is a connection error, or a message fails to deserialize
+    pub fn receive_timeout(&self, duration: Duration) -> Result<Option<T>, ConnectorError> {
         match connection_try!(self.connection.receive(duration.as_millis() as u32)) {
             Some(frames) => self.deserialize_from(frames).map(Some),
             None => Ok(None),
         }
     }
 
-    fn deserialize_from(&self, mut frames: FrameSet) -> Result<(H, T), DomainConnectorError> {
-        let (header_frame, body_frame) = self.frame_extractor.extract(&mut frames)?;
-        Ok((
-            H::from_binary(&header_frame).map_err(DomainConnectorError::DeserializeFailed)?,
-            T::from_binary(&body_frame).map_err(DomainConnectorError::DeserializeFailed)?,
-        ))
+    fn deserialize_from(&self, mut frames: FrameSet) -> Result<T, ConnectorError> {
+        let frame = self.frame_extractor.extract(&mut frames)?;
+        Ok(T::from_binary(&frame).map_err(ConnectorError::DeserializeFailed)?)
     }
 }
 
+/// Generic trait for which provides a generalization of zero copy [Frame] extraction from a [FrameSet]
 pub trait FrameExtractor {
     type Error;
 
-    fn extract(&self, frames: &mut FrameSet) -> Result<(Frame, Frame), Self::Error>;
+    fn extract(&self, frames: &mut FrameSet) -> Result<Frame, Self::Error>;
 }
 
+/// Impl for functions bearing the same signature as `FrameExtractor::extract`
 impl<F, E> FrameExtractor for F
-where F: Fn(&mut FrameSet) -> Result<(Frame, Frame), E>
+where F: Fn(&mut FrameSet) -> Result<Frame, E>
 {
     type Error = E;
 
-    fn extract(&self, frames: &mut FrameSet) -> Result<(Frame, Frame), E> {
+    fn extract(&self, frames: &mut FrameSet) -> Result<Frame, E> {
         (self)(frames)
     }
 }
 
-pub struct ByIndexFrameExtractor {
-    header_index: usize,
-    body_index: usize,
+/// Specialized [FrameExtractor] which extracts the frame at a given index
+struct ByIndexFrameExtractor(usize);
+
+impl ByIndexFrameExtractor {
+    /// Fetch the index
+    fn index(&self) -> usize {
+        self.0
+    }
 }
 
 impl FrameExtractor for ByIndexFrameExtractor {
-    type Error = DomainConnectorError;
+    type Error = ConnectorError;
 
-    fn extract(&self, frames: &mut FrameSet) -> Result<(Frame, Frame), DomainConnectorError> {
-        let max_index = cmp::max(self.header_index, self.body_index);
+    fn extract(&self, frames: &mut FrameSet) -> Result<Frame, ConnectorError> {
         match frames.len() {
-            len if len <= max_index => Err(DomainConnectorError::ExtractFrameSetError(format!(
-                "Not enough frames to extract. (len={}, required len={})",
+            len if len <= self.index() => Err(ConnectorError::ExtractFrameSetError(format!(
+                "Not enough frames to extract. (Frame count={}, Required count={})",
                 frames.len(),
-                max_index
+                self.index() + 1
             ))),
-            _ => {
-                let header = frames.remove(self.header_index);
-                let mut body_index = self.body_index;
-                if self.header_index < self.body_index {
-                    // The header removal has changed the size of the vec
-                    // and effected any index greater than it.
-                    body_index = body_index - 1;
-                }
-                Ok((header, frames.remove(body_index)))
-            },
+            _ => Ok(frames.remove(self.index())),
         }
     }
 }
@@ -162,16 +197,17 @@ impl FrameExtractor for ByIndexFrameExtractor {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::connection::InprocAddress;
+    use crate::{
+        connection::InprocAddress,
+        message::{Message, MessageHeader},
+    };
+    use rand::rngs::OsRng;
+    use tari_crypto::keys::PublicKey;
 
-    #[derive(Eq, PartialEq, Debug, Serialize, Deserialize)]
-    struct TestHeader {
+    #[derive(Clone, Eq, PartialEq, Debug, Serialize, Deserialize)]
+    struct TestMessage {
         from: String,
         to: String,
-    }
-
-    #[derive(Eq, PartialEq, Debug, Serialize, Deserialize)]
-    struct TestMessage {
         poem: String,
     }
 
@@ -179,18 +215,13 @@ mod test {
     fn index_extractor() {
         let mut frames = vec![
             "body".as_bytes().to_vec(),
-            "no".as_bytes().to_vec(),
-            "header".as_bytes().to_vec(),
+            "fizz".as_bytes().to_vec(),
+            "buzz".as_bytes().to_vec(),
         ];
-        let (header, body) = ByIndexFrameExtractor {
-            header_index: 2,
-            body_index: 0,
-        }
-        .extract(&mut frames)
-        .unwrap();
-        assert_eq!(String::from_utf8_lossy(header.as_slice()), "header");
+        let body = ByIndexFrameExtractor(0).extract(&mut frames).unwrap();
         assert_eq!(String::from_utf8_lossy(body.as_slice()), "body");
-        assert_eq!(String::from_utf8_lossy(&frames[0]), "no");
+        assert_eq!(String::from_utf8_lossy(&frames[0]), "fizz");
+        assert_eq!(String::from_utf8_lossy(&frames[1]), "buzz");
     }
 
     #[test]
@@ -201,24 +232,24 @@ mod test {
             "frames".as_bytes().to_vec(),
         ];
 
-        let result = ByIndexFrameExtractor {
-            header_index: 8,
-            body_index: 0,
-        }
-        .extract(&mut frames);
+        let result = ByIndexFrameExtractor(4).extract(&mut frames);
 
         match result {
             Ok(_) => panic!("Unexpected Ok result"),
-            Err(DomainConnectorError::ExtractFrameSetError(_)) => {},
+            Err(ConnectorError::ExtractFrameSetError(_)) => {},
             Err(err) => panic!("Unexpected error {:?}", err),
         }
     }
 
+    fn second_frame_extractor(frames: &mut FrameSet) -> Result<Frame, ConnectorError> {
+        Ok(frames.remove(1))
+    }
+
     #[test]
-    fn connect() {
+    fn connector_connect() {
         let context = ZmqContext::new();
         let addr = InprocAddress::random();
-        let connector = DomainConnector::<TestHeader, TestMessage>::listen(&context, &addr).unwrap();
+        let connector = Connector::<TestMessage>::listen(&context, &addr, second_frame_extractor).unwrap();
 
         assert!(connector.connection.get_connected_address().is_none());
         assert_eq!(
@@ -228,35 +259,27 @@ mod test {
     }
 
     #[test]
-    fn receive_default_extractor() {
+    fn connector_receive() {
         let context = ZmqContext::new();
         let addr = InprocAddress::random();
 
-        let connector = DomainConnector::listen(&context, &addr).unwrap();
+        let connector = Connector::listen(&context, &addr, second_frame_extractor).unwrap();
 
         let source = Connection::new(&context, Direction::Outbound).establish(&addr).unwrap();
 
-        let expected_header = TestHeader {
+        let expected_message = TestMessage {
             from: "Cryptokitties".to_string(),
             to: "Mike".to_string(),
-        };
-        let expected_message = TestMessage {
             poem: "meow meow".to_string(),
         };
 
         assert!(connector.receive_timeout(Duration::from_millis(1)).unwrap().is_none());
 
-        source
-            .send(&[
-                expected_header.to_binary().unwrap(),
-                expected_message.to_binary().unwrap(),
-            ])
-            .unwrap();
+        source.send(&[expected_message.to_binary().unwrap()]).unwrap();
 
         match connector.receive_timeout(Duration::from_millis(2000)).unwrap() {
             Some(resp) => {
-                let (header, msg): (TestHeader, TestMessage) = resp;
-                assert_eq!(header, expected_header);
+                let msg: TestMessage = resp;
                 assert_eq!(msg, expected_message);
             },
             None => panic!("DomainConnector Timed out"),
@@ -264,20 +287,54 @@ mod test {
     }
 
     #[test]
-    fn receive_fail_deserialize() {
+    fn connector_receive_fail_deserialize() {
         let context = ZmqContext::new();
         let addr = InprocAddress::random();
 
-        let connector = DomainConnector::<TestHeader, TestMessage>::listen(&context, &addr).unwrap();
+        let connector = Connector::<TestMessage>::listen(&context, &addr, second_frame_extractor).unwrap();
 
         let source = Connection::new(&context, Direction::Outbound).establish(&addr).unwrap();
 
-        source.send(&["broken", "message"]).unwrap();
+        source.send(&["broken"]).unwrap();
 
         match connector.receive_timeout(Duration::from_millis(2000)) {
             Ok(_) => panic!("Unexpected success with bad serialization data"),
-            Err(DomainConnectorError::DeserializeFailed(_)) => {},
+            Err(ConnectorError::DeserializeFailed(_)) => {},
             Err(err) => panic!("Unexpected error {:?}", err),
+        }
+    }
+
+    #[test]
+    fn domain_connector_receive() {
+        let context = ZmqContext::new();
+        let addr = InprocAddress::random();
+
+        let connector = DomainConnector::listen(&context, &addr).unwrap();
+        let source = Connection::new(&context, Direction::Outbound).establish(&addr).unwrap();
+
+        let expected_message = TestMessage {
+            from: "Cryptokitties".to_string(),
+            to: "Mike".to_string(),
+            poem: "meow meow".to_string(),
+        };
+
+        let header = MessageHeader { message_type: "abc123" };
+
+        let expected_pub_key = CommsPublicKey::random_keypair(&mut OsRng::new().unwrap()).1;
+        let domain_message_context = DomainMessageContext {
+            source_node_identity: Some(expected_pub_key.clone()),
+            message: Message::from_message_format(header, expected_message.clone()).unwrap(),
+        };
+
+        source.send(&[domain_message_context.to_binary().unwrap()]).unwrap();
+
+        match connector.receive_timeout(Duration::from_millis(2000)).unwrap() {
+            Some((info, resp)) => {
+                let msg: TestMessage = resp;
+                assert_eq!(msg, expected_message);
+                assert_eq!(info.source_public_key.unwrap(), expected_pub_key);
+            },
+            None => panic!("DomainConnector Timed out"),
         }
     }
 }

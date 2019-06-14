@@ -145,12 +145,7 @@ where
             .map_err(|e| DispatchError::HandlerError(format!("{}", e)))?;
     };
     // Construct DomainMessageContext and dispatch using domain dispatcher
-    let domain_message_context = DomainMessageContext::new(
-        message_context.message_data.source_node_identity,
-        message,
-        message_context.outbound_message_service,
-        message_context.peer_manager,
-    );
+    let domain_message_context = DomainMessageContext::new(message_context.message_data.source_node_identity, message);
     message_context.domain_dispatcher.dispatch(domain_message_context)
 }
 
