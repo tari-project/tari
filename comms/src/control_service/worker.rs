@@ -20,27 +20,29 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use log::*;
+
 use super::{
     error::ControlServiceError,
     service::ControlServiceConfig,
     types::{ControlMessage, ControlServiceDispatcher, ControlServiceMessageContext, Result},
 };
+
 use crate::{
     connection::{
         connection::EstablishedConnection,
         monitor::{ConnectionMonitor, SocketEvent, SocketEventType},
         types::Direction,
         Connection,
+        Context,
         InprocAddress,
-        ZmqContext,
     },
     connection_manager::ConnectionManager,
+    dispatcher::{DispatchResolver, DispatchableKey},
     message::{Frame, FrameSet, Message, MessageEnvelope, MessageEnvelopeHeader, MessageFlags},
-    peer_manager::NodeIdentity,
+    peer_manager::CommsNodeIdentity,
     types::{CommsCipher, CommsPublicKey},
 };
-use log::*;
-use serde::{de::DeserializeOwned, Serialize};
 use std::{
     convert::TryInto,
     sync::{
@@ -58,36 +60,35 @@ const CONTROL_SERVICE_MAX_MSG_SIZE: u64 = 1024; // 1kb
 
 /// The [ControlService] worker is responsible for handling incoming messages
 /// to the control port and dispatching them using the message dispatcher.
-pub struct ControlServiceWorker<MType>
-where MType: Clone
+pub struct ControlServiceWorker<MType, R>
+where MType: DispatchableKey
 {
-    context: ZmqContext,
-    config: ControlServiceConfig<MType>,
+    context: Context,
+    config: ControlServiceConfig,
     monitor_address: InprocAddress,
     receiver: Receiver<ControlMessage>,
     is_running: bool,
-    dispatcher: ControlServiceDispatcher<MType>,
+    dispatcher: ControlServiceDispatcher<MType, R>,
     connection_manager: Arc<ConnectionManager>,
-    node_identity: Arc<NodeIdentity<CommsPublicKey>>,
+    node_identity: Arc<CommsNodeIdentity>,
 }
 
-impl<MType> ControlServiceWorker<MType>
+impl<MType, R> ControlServiceWorker<MType, R>
 where
-    MType: Send + Sync + 'static,
-    MType: Serialize + DeserializeOwned,
-    MType: Clone,
+    MType: DispatchableKey,
+    R: DispatchResolver<MType, ControlServiceMessageContext>,
 {
     /// Start the worker
     ///
     /// # Arguments
     /// - `context` - Connection context
     /// - `config` - ControlServiceConfig
+    /// - `dispatcher` - the `Dispatcher` to use when message are received
     /// - `connection_manager` - the `ConnectionManager`
     pub fn start(
-        context: ZmqContext,
-        node_identity: Arc<NodeIdentity<CommsPublicKey>>,
-        dispatcher: ControlServiceDispatcher<MType>,
-        config: ControlServiceConfig<MType>,
+        context: Context,
+        config: ControlServiceConfig,
+        dispatcher: ControlServiceDispatcher<MType, R>,
         connection_manager: Arc<ConnectionManager>,
     ) -> Result<(thread::JoinHandle<Result<()>>, SyncSender<ControlMessage>)>
     {
@@ -97,15 +98,17 @@ where
         );
         let (sender, receiver) = sync_channel(5);
 
+        let node_identity = CommsNodeIdentity::global().ok_or(ControlServiceError::NodeIdentityNotSet)?;
+
         let mut worker = Self {
-            config,
-            connection_manager,
             context,
-            dispatcher,
-            is_running: false,
+            config,
             monitor_address: InprocAddress::random(),
-            node_identity,
             receiver,
+            is_running: false,
+            dispatcher,
+            connection_manager,
+            node_identity,
         };
 
         let handle = thread::Builder::new()
@@ -187,7 +190,7 @@ where
             .try_into()
             .map_err(|err| ControlServiceError::MessageError(err))?;
 
-        let envelope_header: MessageEnvelopeHeader<CommsPublicKey> = envelope.to_header()?;
+        let envelope_header: MessageEnvelopeHeader = envelope.to_header()?;
         if !envelope_header.flags.contains(MessageFlags::ENCRYPTED) {
             return Err(ControlServiceError::ReceivedUnencryptedMessage);
         }
@@ -201,8 +204,6 @@ where
             message,
             connection_manager: self.connection_manager.clone(),
             peer_manager: self.connection_manager.get_peer_manager(),
-            node_identity: self.node_identity.clone(),
-            config: self.config.clone(),
         };
 
         debug!(target: LOG_TARGET, "Dispatching message");
@@ -211,6 +212,13 @@ where
 
     fn decrypt_body(&self, body: &Frame, public_key: &CommsPublicKey) -> Result<Frame> {
         let ecdh_shared_secret = CommsPublicKey::shared_secret(&self.node_identity.secret_key, public_key).to_vec();
+        use tari_utilities::hex::to_hex;
+        debug!(
+            target: LOG_TARGET,
+            "Control service shared key: {} SK: {}",
+            to_hex(ecdh_shared_secret.as_bytes()),
+            to_hex(self.node_identity.secret_key.as_bytes())
+        );
         CommsCipher::open_with_integral_nonce(&body, &ecdh_shared_secret).map_err(ControlServiceError::CipherError)
     }
 

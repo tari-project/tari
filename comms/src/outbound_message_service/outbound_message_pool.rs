@@ -23,87 +23,60 @@ use std::thread;
 
 use crate::{
     connection::{
-        zmq::{InprocAddress, ZmqContext},
+        zmq::{Context, InprocAddress},
         DealerProxy,
         DealerProxyError,
     },
-    connection_manager::ConnectionManager,
     outbound_message_service::{MessagePoolWorker, OutboundError},
     peer_manager::PeerManager,
-    types::{CommsDataStore, CommsPublicKey},
 };
-use chrono::Duration;
+
 use log::*;
 #[cfg(test)]
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
-use std::sync::Arc;
+use std::{hash::Hash, sync::Arc};
+use tari_crypto::keys::PublicKey;
+use tari_storage::keyvalue_store::DataStore;
 
 /// The maximum number of processing worker threads that will be created by the OutboundMessageService
-pub const MAX_OUTBOUND_MSG_PROCESSING_WORKERS: u8 = 8;
+const MAX_OUTBOUND_MSG_PROCESSING_WORKERS: u8 = 8;
 
 const LOG_TARGET: &'static str = "comms::outbound_message_service::pool";
-
-#[derive(Clone, Copy)]
-pub struct OutboundMessagePoolConfig {
-    /// How many times the pool will requeue a message to be sent
-    pub max_num_of_retries: u32,
-    pub retry_wait_time: Duration,
-    pub worker_timeout_in_ms: u32,
-}
-
-impl Default for OutboundMessagePoolConfig {
-    fn default() -> Self {
-        OutboundMessagePoolConfig {
-            max_num_of_retries: 10,
-            retry_wait_time: Duration::seconds(3600),
-            worker_timeout_in_ms: 100,
-        }
-    }
-}
 
 /// The OutboundMessagePool will field outbound messages received from multiple OutboundMessageService instance that
 /// it will receive via the Inbound Inproc connection. It will handle the messages in the queue one at a time and
 /// attempt to send them. If they cannot be sent then the Retry count will be incremented and the message pushed to
 /// the back of the queue.
-pub struct OutboundMessagePool {
-    config: OutboundMessagePoolConfig,
-    context: ZmqContext,
+struct OutboundMessagePool<P, DS> {
+    context: Context,
     message_queue_address: InprocAddress,
-    message_requeue_address: InprocAddress,
     worker_dealer_address: InprocAddress,
-    peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
-    connection_manager: Arc<ConnectionManager>,
+    peer_manager: Arc<PeerManager<P, DS>>,
     #[cfg(test)]
     test_sync_sender: Vec<SyncSender<String>>, /* These channels will be to test the pool workers threaded
                                                 * operation */
 }
-impl OutboundMessagePool {
+impl<P, DS> OutboundMessagePool<P, DS>
+where
+    P: PublicKey + Hash + Send + Sync + 'static,
+    DS: DataStore + Send + Sync + 'static,
+{
     /// Construct a new Outbound Message Pool.
     /// # Arguments
-    /// `config` - The configuration struct to use for the Outbound Message Pool
-    /// `context` - A ZeroMQ context
-    /// `message_queue_address` - The InProc address that will be used to send message to this message pool
-    /// `message_requeue_address` - The InProc address that messages that are being requeued is sent to. Typically this
-    /// will be same as the `message_queue_address` but this allows for a requeue proxy to be introduced
-    /// `peer_manager` - a reference to the peer manager to be used when
-    /// sending messages
+    /// `context` - A ZeroMQ context  
+    /// `message_queue_address` - The InProc address that will be used to send message to this message pool  
+    /// `peer_manager` - a reference to the peer manager to be used when sending messages
     pub fn new(
-        config: OutboundMessagePoolConfig,
-        context: ZmqContext,
+        context: Context,
         message_queue_address: InprocAddress,
-        message_requeue_address: InprocAddress,
-        peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
-        connection_manager: Arc<ConnectionManager>,
-    ) -> Result<OutboundMessagePool, OutboundError>
+        peer_manager: Arc<PeerManager<P, DS>>,
+    ) -> Result<OutboundMessagePool<P, DS>, OutboundError>
     {
         Ok(OutboundMessagePool {
-            config,
             context,
             message_queue_address,
-            message_requeue_address,
             worker_dealer_address: InprocAddress::random(),
             peer_manager,
-            connection_manager,
             #[cfg(test)]
             test_sync_sender: Vec::new(),
         })
@@ -122,13 +95,10 @@ impl OutboundMessagePool {
             for _i in 0..MAX_OUTBOUND_MSG_PROCESSING_WORKERS as usize {
                 #[allow(unused_mut)] // For testing purposes
                 let mut worker = MessagePoolWorker::new(
-                    self.config.clone(),
                     self.context.clone(),
                     self.worker_dealer_address.clone(),
                     self.message_queue_address.clone(),
-                    self.message_requeue_address.clone(),
                     self.peer_manager.clone(),
-                    self.connection_manager.clone(),
                 );
 
                 #[cfg(test)]
@@ -165,102 +135,58 @@ impl OutboundMessagePool {
 
 #[cfg(test)]
 mod test {
-    use crate::{
-        connection::{InprocAddress, NetAddress, NetAddressesWithStats, ZmqContext},
-        connection_manager::{ConnectionManager, PeerConnectionConfig},
-        message::MessageFlags,
-        outbound_message_service::{
-            outbound_message_pool::{OutboundMessagePoolConfig, MAX_OUTBOUND_MSG_PROCESSING_WORKERS},
-            outbound_message_service::OutboundMessageService,
-            BroadcastStrategy,
-            OutboundMessagePool,
-        },
-        peer_manager::{peer::PeerFlags, NodeId, NodeIdentity, Peer, PeerManager},
-        types::{CommsDataStore, CommsPublicKey},
-    };
-    use std::{sync::Arc, thread, time::Duration};
+    use super::*;
+    use crate::{connection::Context, outbound_message_service::outbound_message_service::OutboundMessageService};
+    use std::sync::Arc;
     use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
 
-    const LOG_TARGET: &'static str = "comms::outbound_message_service::pool";
+    use crate::{message::MessageFlags, outbound_message_service::BroadcastStrategy};
 
-    pub fn init() {
-        let _ = simple_logger::init();
-    }
-
-    fn make_peer_connection_config(consumer_address: InprocAddress) -> PeerConnectionConfig {
-        PeerConnectionConfig {
-            control_service_establish_timeout: Duration::from_millis(2000),
-            peer_connection_establish_timeout: Duration::from_secs(5),
-            max_message_size: 1024,
-            host: "127.0.0.1".parse().unwrap(),
-            max_connect_retries: 3,
-            message_sink_address: consumer_address,
-            socks_proxy_address: None,
-        }
-    }
+    use crate::{
+        connection::{net_address::net_addresses::MAX_CONNECTION_ATTEMPTS, NetAddress, NetAddressesWithStats},
+        peer_manager::{peer::PeerFlags, NodeId, Peer},
+    };
 
     #[test]
-    fn outbound_message_pool_threading_test() {
-        init();
+    /// Test that when a message is sent via the pool that it is retried and requeued the correct amount of times and
+    /// that ConnectionRetryAttempts error is thrown
+    fn test_requeuing_messages() {
         let mut rng = rand::OsRng::new().unwrap();
-        let context = ZmqContext::new();
-        let node_identity = Arc::new(NodeIdentity::random_for_test(None));
+        let context = Context::new();
+        let omp_inbound_address = InprocAddress::random();
+        let peer_manager = Arc::new(PeerManager::new(None).unwrap());
 
-        let peer_manager = Arc::new(PeerManager::<CommsPublicKey, CommsDataStore>::new(None).unwrap());
-
-        let local_consumer_address = InprocAddress::random();
-        let connection_manager = Arc::new(ConnectionManager::new(
-            context.clone(),
-            node_identity.clone(),
-            peer_manager.clone(),
-            make_peer_connection_config(local_consumer_address.clone()),
-        ));
+        let mut omp =
+            OutboundMessagePool::new(context.clone(), omp_inbound_address.clone(), peer_manager.clone()).unwrap();
 
         let (_dest_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
-        let node_id = NodeId::from_key(&pk.clone()).unwrap();
-        let net_addresses = NetAddressesWithStats::from("1.2.3.4:45325".parse::<NetAddress>().unwrap());
+        let node_id = NodeId::from_key(&pk).unwrap();
+        let net_addresses = NetAddressesWithStats::from("1.2.3.4:8000".parse::<NetAddress>().unwrap());
         let dest_peer: Peer<RistrettoPublicKey> =
-            Peer::<RistrettoPublicKey>::new(pk.clone(), node_id, net_addresses, PeerFlags::default());
+            Peer::<RistrettoPublicKey>::new(pk, node_id, net_addresses, PeerFlags::default());
         peer_manager.add_peer(dest_peer.clone()).unwrap();
-
-        let omp_inbound_address = InprocAddress::random();
-        let omp_config = OutboundMessagePoolConfig::default();
-        let mut omp = OutboundMessagePool::new(
-            omp_config.clone(),
-            context.clone(),
-            omp_inbound_address.clone(),
-            omp_inbound_address.clone(),
-            peer_manager.clone(),
-            connection_manager.clone(),
+        let oms = OutboundMessageService::new(context, omp_inbound_address, peer_manager.clone()).unwrap();
+        let receivers = omp.create_test_channels();
+        let _omp = omp.start();
+        let message_envelope_body: Vec<u8> = vec![0, 1, 2, 3];
+        oms.send(
+            BroadcastStrategy::Direct(dest_peer.node_id.clone()),
+            MessageFlags::ENCRYPTED,
+            &message_envelope_body,
         )
         .unwrap();
 
-        let oms =
-            OutboundMessageService::new(context, node_identity, omp_inbound_address, peer_manager.clone()).unwrap();
-        let receivers = omp.create_test_channels();
-
-        let _omp = omp.start();
-        let message_envelope_body: Vec<u8> = vec![0, 1, 2, 3];
-
-        // Send a message for each thread so we can test that each worker receives one
-        for _ in 0..MAX_OUTBOUND_MSG_PROCESSING_WORKERS {
-            oms.send(
-                BroadcastStrategy::Direct(dest_peer.node_id.clone()),
-                MessageFlags::ENCRYPTED,
-                message_envelope_body.clone(),
-            )
-            .unwrap();
-            thread::sleep(Duration::from_millis(100));
-        }
-
         // This array marks which workers responded. If fairly dealt each index should be set to 1
         let mut worker_responses = [0; MAX_OUTBOUND_MSG_PROCESSING_WORKERS as usize];
+        let expected_responses = vec!["Attempt 1", "Attempt 2", "Attempt 3", "Connection Attempts Exceeded"];
 
         let mut resp_count = 0;
         loop {
             for i in 0..MAX_OUTBOUND_MSG_PROCESSING_WORKERS as usize {
-                if let Ok(_recv) = receivers[i].try_recv() {
+                if let Ok(recv) = receivers[i].try_recv() {
+                    assert_eq!(recv, expected_responses[resp_count].to_string());
                     resp_count += 1;
+
                     // If this worker responded multiple times then the message were not fairly dealt so bork the count
                     if worker_responses[i] > 0 {
                         worker_responses[i] = MAX_OUTBOUND_MSG_PROCESSING_WORKERS + 1;
@@ -270,8 +196,8 @@ mod test {
                 }
             }
 
-            // For this test we expect 1 message to reach each worker
-            if resp_count >= MAX_OUTBOUND_MSG_PROCESSING_WORKERS as usize {
+            // For this test we expect 3 retries + the response for the Connection Attempts Exceeded error
+            if resp_count >= MAX_CONNECTION_ATTEMPTS as usize + 1 {
                 break;
             }
         }
@@ -279,8 +205,7 @@ mod test {
         // Confirm that the messages were fairly dealt to different worker threads
         assert_eq!(
             worker_responses.iter().fold(0, |acc, x| acc + x),
-            MAX_OUTBOUND_MSG_PROCESSING_WORKERS
+            MAX_CONNECTION_ATTEMPTS as u8 + 1
         );
     }
-
 }

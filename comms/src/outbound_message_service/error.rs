@@ -21,8 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE
 
 use crate::{
-    connection::{ConnectionError, NetAddressError, PeerConnectionError},
-    connection_manager::ConnectionManagerError,
+    connection::{ConnectionError, NetAddressError},
     message::MessageError,
     peer_manager::peer_manager::PeerManagerError,
 };
@@ -54,12 +53,6 @@ pub enum OutboundError {
     PoisonedAccess,
     /// Error requesting or updating a net address
     NetAddressError(NetAddressError),
-    /// Error using a Cipher
+    // Error using a Cipher
     CipherError(CipherError),
-    /// Error using the ConnectionManager
-    ConnectionManagerError(ConnectionManagerError),
-    /// Error using a PeerConnection
-    PeerConnectionError(PeerConnectionError),
-    /// Number of retry attempts exceeded
-    RetryAttemptsExceedError,
 }

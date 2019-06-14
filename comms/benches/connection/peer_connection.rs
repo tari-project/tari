@@ -32,12 +32,12 @@ use tari_comms::{
     connection::{
         peer_connection::PeerConnectionContext,
         Connection,
+        Context,
         Direction,
         InprocAddress,
         NetAddress,
         PeerConnection,
         PeerConnectionContextBuilder,
-        ZmqContext,
     },
     message::FrameSet,
 };
@@ -63,7 +63,7 @@ enum WorkerTask {
 
 /// Build a context for the connections to be used in the benchmark
 fn build_context(
-    ctx: &ZmqContext,
+    ctx: &Context,
     dir: Direction,
     addr: &NetAddress,
     consumer_addr: &InprocAddress,
@@ -83,7 +83,7 @@ fn build_context(
 /// Start a consumer thread.
 /// This listens for control messages, execute the given task and signal when it's done (`signal` field)
 fn start_message_sink_consumer(
-    ctx: &ZmqContext,
+    ctx: &Context,
     addr: &InprocAddress,
     peer_conn: &PeerConnection,
     signal: Sender<()>,
@@ -135,7 +135,7 @@ fn start_message_sink_consumer(
 /// 2. All connections go out of scope (i.e. are dropped)
 fn bench_peer_connection(c: &mut Criterion) {
     // Setup
-    let ctx = ZmqContext::new();
+    let ctx = Context::new();
     let addr = BENCH_SOCKET_ADDRESS.parse::<NetAddress>().unwrap();
     let consumer1 = InprocAddress::random();
     let consumer2 = InprocAddress::random();

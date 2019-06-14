@@ -27,11 +27,7 @@ use serde::export::fmt::Debug;
 mod macros;
 
 #[allow(dead_code)]
-pub mod connection_manager;
-#[allow(dead_code)]
 pub mod net_address;
-#[allow(dead_code)]
-pub mod node_identity;
 #[allow(dead_code)]
 pub mod peer;
 #[allow(dead_code)]
@@ -41,22 +37,22 @@ pub mod peer_connection_context;
 #[allow(dead_code)]
 pub mod peer_manager;
 
-pub trait TestFactory: Default {
+pub trait Factory: Default {
     type Object;
 
-    fn build(self) -> Result<Self::Object, TestFactoryError>;
+    fn build(self) -> Result<Self::Object, FactoryError>;
 }
 
 #[derive(Debug, Error)]
-pub enum TestFactoryError {
+pub enum FactoryError {
     /// Failed to build object
     #[error(msg_embedded, non_std, no_from)]
     BuildFailed(String),
 }
 
-impl TestFactoryError {
+impl FactoryError {
     pub fn build_failed<E>() -> impl Fn(E) -> Self
     where E: Debug {
-        |err| TestFactoryError::BuildFailed(format!("Factory failed to build: {:?}", err))
+        |err| FactoryError::BuildFailed(format!("Factory failed to build: {:?}", err))
     }
 }

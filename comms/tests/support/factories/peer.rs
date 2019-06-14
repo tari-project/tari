@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::{net_address::NetAddressesFactory, TestFactory, TestFactoryError};
+use super::{net_address::NetAddressesFactory, Factory, FactoryError};
 
 use tari_comms::{
     connection::NetAddress,
@@ -61,10 +61,10 @@ impl PeerFactory {
     factory_setter!(with_net_addresses, net_addresses, Option<Vec<NetAddress>>);
 }
 
-impl TestFactory for PeerFactory {
+impl Factory for PeerFactory {
     type Object = Peer<CommsPublicKey>;
 
-    fn build(self) -> Result<Self::Object, TestFactoryError> {
+    fn build(self) -> Result<Self::Object, FactoryError> {
         let node_id = self.node_id.clone().or(Some(node_id_maker::make_node_id())).unwrap();
         let flags = self.flags.clone().or(Some(PeerFlags::empty())).unwrap().clone();
         let public_key = self
@@ -79,7 +79,7 @@ impl TestFactory for PeerFactory {
         let addresses =
             self.net_addresses
                 .or(self.net_addresses_factory.build().ok())
-                .ok_or(TestFactoryError::BuildFailed(format!(
+                .ok_or(FactoryError::BuildFailed(format!(
                     "Failed to build net addresses for peer"
                 )))?;
 
@@ -110,10 +110,10 @@ impl PeersFactory {
     }
 }
 
-impl TestFactory for PeersFactory {
+impl Factory for PeersFactory {
     type Object = Vec<Peer<CommsPublicKey>>;
 
-    fn build(self) -> Result<Self::Object, TestFactoryError> {
+    fn build(self) -> Result<Self::Object, FactoryError> {
         Ok(repeat_with(|| self.create_peer())
             .take(self.count.or(Some(1)).unwrap())
             .collect::<Vec<Peer<CommsPublicKey>>>())

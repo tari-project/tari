@@ -23,37 +23,36 @@
 pub mod crypto {
     use crate::{
         message::MessageError,
-        types::{Challenge, CommsPublicKey},
+        types::{Challenge, CommsPublicKey, CommsSecretKey},
     };
     use digest::Digest;
     use rand::{CryptoRng, Rng};
     use tari_crypto::{
-        keys::{PublicKey, SecretKey},
+        keys::SecretKey,
         signatures::{SchnorrSignature, SchnorrSignatureError},
     };
     use tari_utilities::message_format::MessageFormat;
 
     pub fn sign<R, B>(
         rng: &mut R,
-        secret_key: <CommsPublicKey as PublicKey>::K,
+        secret_key: CommsSecretKey,
         body: B,
-    ) -> Result<SchnorrSignature<CommsPublicKey, <CommsPublicKey as PublicKey>::K>, SchnorrSignatureError>
+    ) -> Result<SchnorrSignature<CommsPublicKey, CommsSecretKey>, SchnorrSignatureError>
     where
         R: CryptoRng + Rng,
         B: AsRef<[u8]>,
     {
         let challenge = Challenge::new().chain(body).result().to_vec();
-        let nonce = <CommsPublicKey as PublicKey>::K::random(rng);
+        let nonce = CommsSecretKey::random(rng);
         SchnorrSignature::sign(secret_key, nonce, &challenge)
     }
 
     /// Verify that the signature is valid for the message body
-    pub fn verify<B>(public_key: &CommsPublicKey, signature: Vec<u8>, body: B) -> Result<bool, MessageError>
+    pub fn verify<B>(public_key: CommsPublicKey, signature: Vec<u8>, body: B) -> Result<bool, MessageError>
     where B: AsRef<[u8]> {
-        let signature =
-            SchnorrSignature::<CommsPublicKey, <CommsPublicKey as PublicKey>::K>::from_binary(signature.as_slice())
-                .map_err(MessageError::MessageFormatError)?;
+        let signature = SchnorrSignature::<CommsPublicKey, CommsSecretKey>::from_binary(signature.as_slice())
+            .map_err(MessageError::MessageFormatError)?;
         let challenge = Challenge::new().chain(body).result().to_vec();
-        Ok(signature.verify_challenge(public_key, &challenge))
+        Ok(signature.verify_challenge(&public_key, &challenge))
     }
 }

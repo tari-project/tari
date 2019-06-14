@@ -29,3 +29,7 @@ report
 Cargo.lock
 
 *.log
+
+# Temporary test data directories
+infrastructure/storage/tests/data/single_thread
+infrastructure/storage/tests/data/multi_thread

@@ -28,7 +28,7 @@ mod error;
 mod inproc_address;
 
 pub use self::{
-    context::ZmqContext,
+    context::Context,
     curve_keypair::{CurveEncryption, CurvePublicKey, CurveSecretKey},
     endpoint::ZmqEndpoint,
     error::ZmqError,

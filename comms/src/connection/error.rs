@@ -24,7 +24,7 @@ use derive_error::Error;
 
 use super::{monitor, NetAddressError, PeerConnectionError};
 
-#[derive(Debug, Error, PartialEq)]
+#[derive(Debug, Error)]
 pub enum ConnectionError {
     NetAddressError(NetAddressError),
     #[error(msg_embedded, no_from, non_std)]

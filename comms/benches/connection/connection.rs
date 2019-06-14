@@ -23,13 +23,13 @@
 use criterion::Criterion;
 
 use std::{iter::repeat, time::Duration};
-use tari_comms::connection::{Connection, Direction, InprocAddress, ZmqContext};
+use tari_comms::connection::{Connection, Context, Direction, InprocAddress};
 
 /// Connection benchmark
 ///
 /// Benchmark a message being sent and received between two connections
 fn bench_connection(c: &mut Criterion) {
-    let ctx = ZmqContext::new();
+    let ctx = Context::new();
     let addr = InprocAddress::random();
 
     let bytes = repeat(88u8).take(1 * 1024 * 1024 /* 10Mb */).collect::<Vec<u8>>();

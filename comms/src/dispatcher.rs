@@ -26,35 +26,13 @@ use std::{collections::HashMap, error::Error, hash::Hash};
 #[derive(Debug, Error, Clone)]
 pub enum DispatchError {
     /// A dispatch route was not defined for the specific message type
-    MessageHandlerNotDefined,
-    #[error(msg_embedded, non_std, no_from)]
-    ResolveFailed(String),
+    MessageHandlerUndefined,
     #[error(msg_embedded, non_std, no_from)]
     HandlerError(String),
 }
 
-impl DispatchError {
-    pub fn resolve_failed<E>() -> impl Fn(E) -> Self
-    where E: Error {
-        |err| DispatchError::ResolveFailed(format!("Dispatch resolve failed: {}", err))
-    }
-}
-
-#[derive(Debug, Error, Clone)]
-pub enum HandlerError {
-    #[error(msg_embedded, non_std, no_from)]
-    Failed(String),
-}
-
-impl HandlerError {
-    pub fn failed<E>() -> impl Fn(E) -> Self
-    where E: Error {
-        |err| HandlerError::Failed(format!("Handler failed with error '{}'", err))
-    }
-}
-
 /// The signature of a handler function
-type HandlerFunc<M, E = HandlerError> = fn(msg: M) -> Result<(), E>;
+type HandlerFunc<M, E> = fn(msg: M) -> Result<(), E>;
 
 /// The trait bound for type parameter K on the dispatcher i.e the route key.
 /// K must be Eq + Hash + {able to be sent across threads} +
@@ -63,14 +41,13 @@ type HandlerFunc<M, E = HandlerError> = fn(msg: M) -> Result<(), E>;
 /// This saves us from having to duplicate these trait bounds whenever we
 /// want specify the type parameter K (like a type alias).
 pub trait DispatchableKey: Eq + Hash + Send + Sync + 'static {}
-
 /// Implement this trait for all types which satisfy it's trait bounds.
 impl<T> DispatchableKey for T where T: Eq + Hash + Send + Sync + 'static {}
 
 /// A message type resolver. The resolver is called with the dispatched message.
 /// The resolver should then decide which dispatch key should be used.
-pub trait DispatchResolver<K, M> //: Send + 'static
-// where K: DispatchableKey
+pub trait DispatchResolver<K, M>: Send + 'static
+where K: DispatchableKey
 {
     fn resolve(&self, msg: &M) -> Result<K, DispatchError>;
 }
@@ -81,25 +58,25 @@ pub trait DispatchResolver<K, M> //: Send + 'static
 /// ## Type Parameters
 /// `K` - The route key
 /// `M` - The type which is passed into the handler
-/// `R` - The resolver type
 /// `E` - The type of error returned from the handler
-//#[derive(Clone)]
-pub struct Dispatcher<K, M, R, E = HandlerError>
-where R: DispatchResolver<K, M>
+/// `R` - The resolver type
+#[derive(Clone, Debug)]
+pub struct Dispatcher<K, M, E, R>
+where K: DispatchableKey
 {
     handlers: HashMap<K, HandlerFunc<M, E>>,
     catch_all: Option<HandlerFunc<M, E>>,
     resolver: R,
 }
 
-impl<K, M, R, E> Dispatcher<K, M, R, E>
+impl<K, M, E, R> Dispatcher<K, M, E, R>
 where
     K: DispatchableKey,
     R: DispatchResolver<K, M>,
     E: Error,
 {
     /// Construct a new MessageDispatcher with no defined dispatch routes
-    pub fn new(resolver: R) -> Dispatcher<K, M, R, E> {
+    pub fn new(resolver: R) -> Dispatcher<K, M, E, R> {
         Dispatcher {
             handlers: HashMap::new(),
             resolver,
@@ -126,9 +103,9 @@ where
         self.handlers
             .get(&route_type)
             .or(self.catch_all.as_ref())
-            .ok_or(DispatchError::MessageHandlerNotDefined)
+            .ok_or(DispatchError::MessageHandlerUndefined)
             .and_then(|handler| {
-                handler(msg).map_err(|err| DispatchError::HandlerError(format!("Handler error: {:?}", err)))
+                handler(msg).map_err(|err| DispatchError::HandlerError(format!("Handler error occurred. {}", err)))
             })
     }
 }

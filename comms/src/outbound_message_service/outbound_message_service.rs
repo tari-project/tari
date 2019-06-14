@@ -22,14 +22,14 @@
 
 use crate::{
     connection::{
-        zmq::{InprocAddress, ZmqContext},
+        zmq::{Context, InprocAddress},
         Connection,
         Direction,
         SocketEstablishment,
     },
     message::{Frame, MessageEnvelope, MessageFlags, NodeDestination},
     outbound_message_service::{BroadcastStrategy, OutboundError, OutboundMessage},
-    peer_manager::{peer_manager::PeerManager, NodeIdentity},
+    peer_manager::{node_identity::CommsNodeIdentity, peer_manager::PeerManager},
     types::{CommsDataStore, CommsPublicKey},
 };
 use std::sync::Arc;
@@ -39,22 +39,24 @@ use tari_utilities::message_format::MessageFormat;
 /// messages from handlers, apply a broadcasting strategy, encrypted and serialized the messages into OutboundMessages
 /// and write them to the outbound message pool.
 pub struct OutboundMessageService {
-    context: ZmqContext,
+    context: Context,
     outbound_address: InprocAddress,
-    node_identity: Arc<NodeIdentity<CommsPublicKey>>,
+    node_identity: Arc<CommsNodeIdentity>,
     peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
 }
 
 impl OutboundMessageService {
     /// Constructs a new OutboundMessageService from the context, node_identity and outbound_address
     pub fn new(
-        context: ZmqContext,
-        node_identity: Arc<NodeIdentity<CommsPublicKey>>,
+        context: Context,
         outbound_address: InprocAddress, /* The outbound_address is an inproc that connects the OutboundMessagePool
                                           * and the OutboundMessageService */
         peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
     ) -> Result<OutboundMessageService, OutboundError>
     {
+        let node_identity: Arc<CommsNodeIdentity> =
+            CommsNodeIdentity::global().ok_or(OutboundError::UndefinedSecretKey)?;
+
         Ok(OutboundMessageService {
             context,
             outbound_address,
@@ -69,20 +71,20 @@ impl OutboundMessageService {
         &self,
         broadcast_strategy: BroadcastStrategy,
         flags: MessageFlags,
-        message_envelope_body: Frame,
+        message_envelope_body: &Frame,
     ) -> Result<(), OutboundError>
     {
-        let node_identity = &self.node_identity;
+        let node_identity = CommsNodeIdentity::global().ok_or(OutboundError::UndefinedSecretKey)?;
         // Use the BroadcastStrategy to select appropriate peer(s) from PeerManager and then construct and send a
         // personalised message to each selected peer
         let selected_node_identities = self.peer_manager.get_broadcast_identities(broadcast_strategy)?;
         for dest_node_identity in &selected_node_identities {
             // Constructing a MessageEnvelope
             let message_envelope = MessageEnvelope::construct(
-                &node_identity,
+                node_identity.clone(),
                 dest_node_identity.public_key.clone(),
                 NodeDestination::NodeId(dest_node_identity.node_id.clone()),
-                message_envelope_body.clone(),
+                message_envelope_body,
                 flags,
             )
             .map_err(|e| OutboundError::MessageSerializationError(e))?;
@@ -117,19 +119,13 @@ mod test {
             peer::{Peer, PeerFlags},
         },
     };
-    use log::*;
     use std::convert::TryFrom;
     use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
     use tari_storage::lmdb::LMDBStore;
 
-    pub fn init() {
-        let _ = simple_logger::init();
-    }
-
     #[test]
     fn test_outbound_send() {
-        init();
-        let context = ZmqContext::new();
+        let context = Context::new();
         let mut rng = rand::OsRng::new().unwrap();
         let outbound_address = InprocAddress::random();
 
@@ -139,7 +135,7 @@ mod test {
             .establish(&outbound_address)
             .unwrap();
 
-        let node_identity = Arc::new(NodeIdentity::random_for_test(None));
+        let node_identity = CommsNodeIdentity::global().unwrap();
 
         let (dest_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk).unwrap();
@@ -151,8 +147,7 @@ mod test {
         let peer_manager = Arc::new(PeerManager::<CommsPublicKey, LMDBStore>::new(None).unwrap());
         peer_manager.add_peer(dest_peer.clone()).unwrap();
 
-        let outbound_message_service =
-            OutboundMessageService::new(context, node_identity.clone(), outbound_address, peer_manager).unwrap();
+        let outbound_message_service = OutboundMessageService::new(context, outbound_address, peer_manager).unwrap();
 
         // Construct and send OutboundMessage
         let message_header = "Test Message Header".as_bytes().to_vec();
@@ -162,15 +157,11 @@ mod test {
             .send(
                 BroadcastStrategy::Direct(dest_peer.node_id.clone()),
                 MessageFlags::ENCRYPTED,
-                message_envelope_body.to_binary().unwrap(),
+                &message_envelope_body.to_binary().unwrap(),
             )
             .unwrap();
 
         let msg_bytes: FrameSet = message_queue_connection.receive(100).unwrap().drain(1..).collect();
-        debug!(
-            target: "comms::outbound_message_service::outbound_message_service",
-            "Received message bytes: {:?}", msg_bytes
-        );
         let outbound_message = OutboundMessage::<MessageEnvelope>::try_from(msg_bytes).unwrap();
         assert_eq!(outbound_message.destination_node_id, dest_peer.node_id);
         assert_eq!(outbound_message.number_of_retries(), 0);

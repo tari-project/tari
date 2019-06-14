@@ -22,7 +22,7 @@
 
 use log::*;
 
-use tari_comms::connection::{zmq::ZmqEndpoint, Connection, Direction, ZmqContext};
+use tari_comms::connection::{zmq::ZmqEndpoint, Connection, Context, Direction};
 
 use std::{
     sync::{Arc, RwLock},
@@ -34,11 +34,11 @@ const LOG_TARGET: &'static str = "comms::test_support::connection_message_counte
 
 pub struct ConnectionMessageCounter<'c> {
     counter: Arc<RwLock<u32>>,
-    context: &'c ZmqContext,
+    context: &'c Context,
 }
 
 impl<'c> ConnectionMessageCounter<'c> {
-    pub fn new(context: &'c ZmqContext) -> Self {
+    pub fn new(context: &'c Context) -> Self {
         Self {
             counter: Arc::new(RwLock::new(0)),
             context,

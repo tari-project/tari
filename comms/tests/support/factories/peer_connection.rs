@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::{peer_connection_context::PeerConnectionContextFactory, TestFactory, TestFactoryError};
+use super::{peer_connection_context::PeerConnectionContextFactory, Factory, FactoryError};
 
 use tari_comms::connection::{CurvePublicKey, CurveSecretKey, PeerConnection};
 
@@ -40,18 +40,17 @@ impl<'c> PeerConnectionFactory<'c> {
     }
 }
 
-impl<'c> TestFactory for PeerConnectionFactory<'c> {
+impl<'c> Factory for PeerConnectionFactory<'c> {
     type Object = (PeerConnection, CurveSecretKey, CurvePublicKey);
 
-    fn build(self) -> Result<Self::Object, TestFactoryError> {
+    fn build(self) -> Result<Self::Object, FactoryError> {
         let (peer_conn_context, secret_key, public_key) = self
             .peer_connection_context_factory
             .build()
-            .map_err(TestFactoryError::build_failed())?;
+            .map_err(FactoryError::build_failed())?;
 
         let mut conn = PeerConnection::new();
-        conn.start(peer_conn_context)
-            .map_err(TestFactoryError::build_failed())?;
+        conn.start(peer_conn_context).map_err(FactoryError::build_failed())?;
 
         Ok((conn, secret_key, public_key))
     }

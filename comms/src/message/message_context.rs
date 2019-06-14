@@ -19,47 +19,44 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use super::message_data::MessageData;
+
 use crate::{
-    dispatcher::{DispatchableKey, DomainMessageDispatcher},
+    dispatcher::{DispatchResolver, DispatchableKey},
+    message::{DomainMessageContext, MessageData},
     outbound_message_service::outbound_message_service::OutboundMessageService,
-    peer_manager::{peer_manager::PeerManager, NodeIdentity},
-    types::{CommsDataStore, CommsPublicKey},
+    peer_manager::peer_manager::PeerManager,
+    types::{CommsDataStore, CommsPublicKey, DomainMessageDispatcher},
 };
-use serde::{de::DeserializeOwned, Serialize};
 use std::sync::Arc;
+use tari_crypto::keys::PublicKey;
 
 #[derive(Clone)]
-pub struct MessageContext<MType>
-where
-    MType: DispatchableKey,
-    MType: Serialize + DeserializeOwned,
+pub struct MessageContext<PubKey, DispKey, DispRes>
+where DispKey: DispatchableKey
 {
-    pub message_data: MessageData<CommsPublicKey>,
+    pub message_data: MessageData<PubKey>,
     pub outbound_message_service: Arc<OutboundMessageService>,
     pub peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
-    pub domain_dispatcher: Arc<DomainMessageDispatcher<MType>>,
-    pub node_identity: Arc<NodeIdentity<CommsPublicKey>>,
+    pub domain_dispatcher: Arc<DomainMessageDispatcher<PubKey, DispKey, DispRes>>,
 }
 
-impl<MType> MessageContext<MType>
+impl<PubKey, DispKey, DispRes> MessageContext<PubKey, DispKey, DispRes>
 where
-    MType: DispatchableKey,
-    MType: Serialize + DeserializeOwned,
+    PubKey: PublicKey,
+    DispKey: DispatchableKey,
+    DispRes: DispatchResolver<DispKey, DomainMessageContext<PubKey>>,
 {
     /// Construct a new MessageContext that consist of the peer connection information and the received message header
     /// and body
     pub fn new(
-        node_identity: Arc<NodeIdentity<CommsPublicKey>>,
-        message_data: MessageData<CommsPublicKey>,
+        message_data: MessageData<PubKey>,
         outbound_message_service: Arc<OutboundMessageService>,
         peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
-        domain_dispatcher: Arc<DomainMessageDispatcher<MType>>,
-    ) -> Self
+        domain_dispatcher: Arc<DomainMessageDispatcher<PubKey, DispKey, DispRes>>,
+    ) -> MessageContext<PubKey, DispKey, DispRes>
     {
         MessageContext {
             message_data,
-            node_identity,
             outbound_message_service,
             peer_manager,
             domain_dispatcher,

@@ -37,7 +37,7 @@ pub use self::{
     envelope::*,
     error::MessageError,
     message::*,
-    message_context::MessageContext,
+    message_context::*,
     message_data::*,
 };
 

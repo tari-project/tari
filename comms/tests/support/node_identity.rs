@@ -20,8 +20,38 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod builder;
-mod types;
+use rand::OsRng;
+use std::sync::{Arc, Mutex};
+use tari_comms::{
+    connection::NetAddress,
+    peer_manager::{CommsNodeIdentity, NodeId, PeerNodeIdentity},
+};
+use tari_crypto::{
+    keys::{PublicKey, SecretKey},
+    ristretto::{RistrettoPublicKey, RistrettoSecretKey},
+};
 
-pub use builder::{CommsBuilder, CommsBuilderError};
-pub use types::Factory;
+lazy_static! {
+    static ref IDENTITY_RACE_CONDITION_LOCK: Mutex<()> = Mutex::new(());
+}
+
+/// Sets the global node identity using random values
+pub fn set_test_node_identity() -> Arc<CommsNodeIdentity> {
+    let _lock = IDENTITY_RACE_CONDITION_LOCK.lock().unwrap();
+    match CommsNodeIdentity::global() {
+        Some(identity) => identity,
+        None => {
+            // Generate a test identity, set it and return it
+            let secret_key = RistrettoSecretKey::random(&mut OsRng::new().unwrap());
+            let public_key = RistrettoPublicKey::from_secret_key(&secret_key);
+            let node_id = NodeId::from_key(&public_key).unwrap();
+            let node_identity = CommsNodeIdentity {
+                identity: PeerNodeIdentity::new(node_id, public_key),
+                secret_key,
+                control_service_address: "127.0.0.1:9090".parse::<NetAddress>().unwrap(),
+            };
+
+            CommsNodeIdentity::set_global(node_identity)
+        },
+    }
+}

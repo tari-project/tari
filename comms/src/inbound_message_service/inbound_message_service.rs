@@ -20,47 +20,45 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::{error::InboundMessageServiceError, msg_processing_worker::*};
 use crate::{
     connection::{
-        zmq::{InprocAddress, ZmqContext},
+        zmq::{Context, InprocAddress},
         ConnectionError,
         DealerProxy,
         DealerProxyError,
     },
-    dispatcher::{DispatchableKey, DomainMessageDispatcher},
+    inbound_message_service::msg_processing_worker::*,
     message::MessageContext,
-    outbound_message_service::outbound_message_service::OutboundMessageService,
-    peer_manager::{peer_manager::PeerManager, NodeIdentity},
-    types::{CommsDataStore, CommsPublicKey, MessageDispatcher},
+    types::MessageDispatcher,
 };
 use log::*;
-use serde::{de::DeserializeOwned, Serialize};
+use std::{marker::Send, thread};
+use tari_crypto::keys::PublicKey;
+
+use crate::{
+    dispatcher::{DispatchResolver, DispatchableKey},
+    message::DomainMessageContext,
+    outbound_message_service::outbound_message_service::OutboundMessageService,
+    peer_manager::peer_manager::PeerManager,
+    types::{CommsDataStore, CommsPublicKey, DomainMessageDispatcher},
+};
 #[cfg(test)]
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
-use std::{
-    sync::Arc,
-    thread::{self, JoinHandle},
-};
+use std::{hash::Hash, marker::Sync, sync::Arc};
 
 const LOG_TARGET: &'static str = "comms::inbound_message_service";
 
 /// The maximum number of processing worker threads that will be created by the InboundMessageService
 const MAX_INBOUND_MSG_PROCESSING_WORKERS: u8 = 8; // TODO read this from config
 
-pub struct InboundMessageService<MType>
-where
-    //    PK: PublicKey,
-    //    PK::K: Serialize + DeserializeOwned,
-    MType: Serialize + DeserializeOwned,
-    MType: DispatchableKey,
+pub struct InboundMessageService<PubKey, DispKey, DispRes>
+where DispKey: DispatchableKey
 {
-    context: ZmqContext,
-    node_identity: Arc<NodeIdentity<CommsPublicKey>>,
+    context: Context,
     inbound_address: InprocAddress,
     dealer_address: InprocAddress,
-    message_dispatcher: Arc<MessageDispatcher<MessageContext<MType>>>,
-    domain_dispatcher: Arc<DomainMessageDispatcher<MType>>,
+    message_dispatcher: Arc<MessageDispatcher<MessageContext<PubKey, DispKey, DispRes>>>,
+    domain_dispatcher: Arc<DomainMessageDispatcher<PubKey, DispKey, DispRes>>,
     outbound_message_service: Arc<OutboundMessageService>,
     peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
     #[cfg(test)]
@@ -68,26 +66,25 @@ where
                                                 * operation */
 }
 
-impl<MType> InboundMessageService<MType>
+impl<PubKey, DispKey, DispRes> InboundMessageService<PubKey, DispKey, DispRes>
 where
-    MType: DispatchableKey,
-    MType: Serialize + DeserializeOwned,
+    PubKey: PublicKey + Send + 'static + Sync + Hash,
+    DispKey: DispatchableKey,
+    DispRes: DispatchResolver<DispKey, DomainMessageContext<PubKey>> + std::marker::Sync,
 {
     /// Creates a new InboundMessageService that will fairly deal message received on the inbound address to worker
     /// threads
     pub fn new(
-        context: ZmqContext,
-        node_identity: Arc<NodeIdentity<CommsPublicKey>>,
+        context: Context,
         inbound_address: InprocAddress,
-        message_dispatcher: Arc<MessageDispatcher<MessageContext<MType>>>,
-        domain_dispatcher: Arc<DomainMessageDispatcher<MType>>,
+        message_dispatcher: Arc<MessageDispatcher<MessageContext<PubKey, DispKey, DispRes>>>,
+        domain_dispatcher: Arc<DomainMessageDispatcher<PubKey, DispKey, DispRes>>,
         outbound_message_service: Arc<OutboundMessageService>,
         peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
-    ) -> Result<Self, ConnectionError>
+    ) -> Result<InboundMessageService<PubKey, DispKey, DispRes>, ConnectionError>
     {
         Ok(InboundMessageService {
             context,
-            node_identity,
             inbound_address,
             dealer_address: InprocAddress::random(),
             message_dispatcher,
@@ -104,7 +101,7 @@ where
     }
 
     /// Starts the MsgProcessingWorker threads and the InboundMessageService with Dealer in its own thread
-    pub fn start(self) -> JoinHandle<Result<(), InboundMessageServiceError>> {
+    pub fn start(self) {
         thread::spawn(move || {
             // Start workers
             debug!(target: LOG_TARGET, "Starting inbound message service workers");
@@ -113,7 +110,6 @@ where
                 #[allow(unused_mut)] // Allow for testing
                 let mut worker = MsgProcessingWorker::new(
                     self.context.clone(),
-                    self.node_identity.clone(),
                     self.dealer_address.clone(),
                     self.message_dispatcher.clone(),
                     self.domain_dispatcher.clone(),
@@ -128,12 +124,12 @@ where
             }
             // Start dealer
             loop {
-                self.start_dealer()
-                    .map_err(InboundMessageServiceError::DealerProxyError)?;
+                match self.start_dealer() {
+                    Ok(_) => (),
+                    Err(_e) => (/*TODO Write DealerError as a Log Error*/),
+                }
             }
-            #[allow(unreachable_code)]
-            Ok(())
-        })
+        });
     }
 
     /// Create a channel pairs for use during testing the workers, the sync sender will be passed into the worker's
@@ -157,27 +153,46 @@ mod test {
         connection::{
             connection::EstablishedConnection,
             types::SocketType,
-            zmq::{InprocAddress, ZmqContext, ZmqEndpoint},
+            zmq::{Context, InprocAddress, ZmqEndpoint},
         },
-        dispatcher::{domain::DomainDispatchResolver, DispatchError, HandlerError},
+        dispatcher::DispatchError,
         inbound_message_service::comms_msg_handlers::*,
-        message::{
-            DomainMessageContext,
-            Message,
-            MessageContext,
-            MessageData,
-            MessageEnvelope,
-            MessageFlags,
-            MessageHeader,
-            NodeDestination,
-        },
-        peer_manager::{peer_manager::PeerManager, NodeIdentity},
-        types::{CommsDataStore, CommsPublicKey, MessageDispatcher},
+        message::{MessageEnvelope, MessageFlags, NodeDestination},
+    };
+
+    use crate::{
+        message::{Message, MessageData, MessageHeader},
+        peer_manager::peer_manager::PeerManager,
+        types::{CommsDataStore, CommsPublicKey},
+    };
+    use std::{convert::TryInto, time::Duration};
+    use tari_crypto::{
+        keys::PublicKey,
+        ristretto::{RistrettoPublicKey, RistrettoSecretKey},
+    };
+    use tari_utilities::message_format::MessageFormat;
+
+    use crate::{
+        connection::net_address::NetAddress,
+        peer_manager::{node_id::NodeId, node_identity::CommsNodeIdentity, NodeIdentity, PeerNodeIdentity},
     };
     use serde::{Deserialize, Serialize};
-    use std::{convert::TryInto, sync::Arc, thread, time::Duration};
-    use tari_crypto::ristretto::RistrettoPublicKey;
-    use tari_utilities::message_format::MessageFormat;
+    use std::{sync::Arc, thread};
+    use tari_utilities::byte_array::ByteArray;
+
+    fn init_node_identity() {
+        let secret_key = RistrettoSecretKey::from_bytes(&[
+            1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ])
+        .unwrap();
+        let public_key = RistrettoPublicKey::from_secret_key(&secret_key);
+        let node_id = NodeId::from_key(&public_key).unwrap();
+        NodeIdentity::<RistrettoPublicKey>::set_global(CommsNodeIdentity {
+            identity: PeerNodeIdentity::new(node_id, public_key),
+            secret_key,
+            control_service_address: "127.0.0.1:9090".parse::<NetAddress>().unwrap(),
+        });
+    }
 
     fn init() {
         let _ = simple_logger::init();
@@ -190,9 +205,10 @@ mod test {
     #[test]
     fn test_new_and_start() {
         init();
-        let node_identity = Arc::new(NodeIdentity::random_for_test(None));
+        init_node_identity();
+        let node_identity = CommsNodeIdentity::global().unwrap();
         // Create a client that will write message into message pool
-        let context = ZmqContext::new();
+        let context = Context::new();
         let msg_pool_address = InprocAddress::random();
         let client_socket = context.socket(SocketType::Request).unwrap();
         client_socket.connect(&msg_pool_address.to_zmq_endpoint()).unwrap();
@@ -206,16 +222,30 @@ mod test {
             Default,
         }
 
-        fn domain_test_fn(_message_context: DomainMessageContext) -> Result<(), HandlerError> {
+        pub struct DomainResolver;
+
+        impl DispatchResolver<DomainDispatchType, DomainMessageContext<RistrettoPublicKey>> for DomainResolver {
+            fn resolve(
+                &self,
+                _msg: &DomainMessageContext<RistrettoPublicKey>,
+            ) -> Result<DomainDispatchType, DispatchError>
+            {
+                Ok(DomainDispatchType::Default)
+            }
+        }
+        fn domain_test_fn(_message_context: DomainMessageContext<RistrettoPublicKey>) -> Result<(), DispatchError> {
             Ok(())
         }
 
         let domain_dispatcher = Arc::new(
-            DomainMessageDispatcher::<DomainDispatchType>::new(DomainDispatchResolver::new()).catch_all(domain_test_fn),
+            DomainMessageDispatcher::<RistrettoPublicKey, DomainDispatchType, DomainResolver>::new(DomainResolver {})
+                .catch_all(domain_test_fn),
         );
 
         // Create a testing dispatcher for MessageContext
-        fn test_fn(_message_context: MessageContext<DomainDispatchType>) -> Result<(), DispatchError> {
+        fn test_fn(
+            _message_context: MessageContext<RistrettoPublicKey, DomainDispatchType, DomainResolver>,
+        ) -> Result<(), DispatchError> {
             unsafe {
                 HANDLER_RESPONSES += 1;
             }
@@ -226,17 +256,10 @@ mod test {
         // Setup and start InboundMessagePool
         let peer_manager = Arc::new(PeerManager::<CommsPublicKey, CommsDataStore>::new(None).unwrap());
         let outbound_message_service = Arc::new(
-            OutboundMessageService::new(
-                context.clone(),
-                node_identity.clone(),
-                InprocAddress::random(),
-                peer_manager.clone(),
-            )
-            .unwrap(),
+            OutboundMessageService::new(context.clone(), InprocAddress::random(), peer_manager.clone()).unwrap(),
         );
         let mut inbound_msg_service = InboundMessageService::new(
             context,
-            node_identity.clone(),
             msg_pool_address,
             message_dispatcher,
             domain_dispatcher,
@@ -258,10 +281,10 @@ mod test {
         let dest_node_public_key = node_identity.identity.public_key.clone();
         let dest = NodeDestination::Unknown;
         let message_envelope = MessageEnvelope::construct(
-            &node_identity,
+            node_identity.clone(),
             dest_node_public_key.clone(),
             dest,
-            message_envelope_body.to_binary().unwrap(),
+            &message_envelope_body.to_binary().unwrap(),
             MessageFlags::NONE,
         )
         .unwrap();

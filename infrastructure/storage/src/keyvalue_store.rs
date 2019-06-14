@@ -8,6 +8,8 @@ use std::error::Error;
 
 #[derive(Debug, Error)]
 pub enum DatastoreError {
+    /// Cannot create LMDB. The path does not exist
+    InvalidPath,
     /// An error occurred with the underlying data store implementation
     #[error(embedded_msg, no_from, non_std)]
     InternalError(String),

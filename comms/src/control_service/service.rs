@@ -20,50 +20,39 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use log::*;
+use std::{sync::mpsc::SyncSender, thread};
+
+use crate::{
+    connection::{net_address::ip::SocketAddress, Context, NetAddress},
+    connection_manager::ConnectionManager,
+    dispatcher::{DispatchResolver, DispatchableKey},
+    types::DEFAULT_LISTENER_ADDRESS,
+};
+
 use super::{
     error::ControlServiceError,
-    types::{ControlMessage, Result},
+    types::{ControlMessage, ControlServiceDispatcher, ControlServiceMessageContext, Result},
     worker::ControlServiceWorker,
 };
-use crate::{
-    connection::{net_address::ip::SocketAddress, NetAddress, ZmqContext},
-    connection_manager::ConnectionManager,
-    control_service::types::ControlServiceDispatcher,
-    peer_manager::NodeIdentity,
-    types::{CommsPublicKey, DEFAULT_LISTENER_ADDRESS},
-};
-use log::*;
-use serde::{de::DeserializeOwned, Serialize};
-use std::{
-    sync::{mpsc::SyncSender, Arc},
-    thread,
-};
+use std::sync::Arc;
 
 const LOG_TARGET: &'static str = "comms::control_service::service";
 
 /// Configuration for [ControlService]
-#[derive(Clone)]
-pub struct ControlServiceConfig<T>
-where T: Clone
-{
+pub struct ControlServiceConfig {
     /// Which address to open a port
     pub listener_address: NetAddress,
     /// Optional SOCKS proxy
     pub socks_proxy_address: Option<SocketAddress>,
-    pub accept_message_type: T,
 }
 
-impl<T> Default for ControlServiceConfig<T>
-where
-    T: Default,
-    T: Clone,
-{
+impl Default for ControlServiceConfig {
     fn default() -> Self {
         let listener_address = DEFAULT_LISTENER_ADDRESS.parse::<NetAddress>().unwrap();
         ControlServiceConfig {
             listener_address,
             socks_proxy_address: None,
-            accept_message_type: T::default(),
         }
     }
 }
@@ -78,16 +67,25 @@ where
 /// # use std::{time::Duration, sync::Arc};
 /// # use tari_storage::lmdb::LMDBStore;
 /// # use std::collections::HashMap;
-/// # use rand::OsRng;
+/// # use tari_crypto::{ristretto::{RistrettoSecretKey, RistrettoPublicKey}, keys::{PublicKey, SecretKey}};
 ///
-/// let node_identity = Arc::new(NodeIdentity::random(&mut OsRng::new().unwrap(), "127.0.0.1:9000".parse().unwrap()).unwrap());
+/// # let secret_key = RistrettoSecretKey::random(&mut rand::OsRng::new().unwrap());
+/// # let public_key = RistrettoPublicKey::from_secret_key(&secret_key);
+/// # let node_id = NodeId::from_key(&public_key).unwrap();
+/// # let node_identity = CommsNodeIdentity {
+/// #      identity: PeerNodeIdentity::new(node_id, public_key),
+/// #      secret_key,
+/// #      control_service_address: "127.0.0.1:9090".parse::<NetAddress>().unwrap(),
+/// # };
+/// # CommsNodeIdentity::set_global(node_identity);
 ///
-/// let context = ZmqContext::new();
+/// let context = Context::new();
 /// let listener_address = "127.0.0.1:9000".parse::<NetAddress>().unwrap();
 ///
 /// let peer_manager = Arc::new(PeerManager::<CommsPublicKey, LMDBStore>::new(None).unwrap());
 ///
-/// let conn_manager = Arc::new(ConnectionManager::new(context.clone(), node_identity.clone(), peer_manager.clone(), PeerConnectionConfig {
+/// let conn_manager = Arc::new(ConnectionManager::new(peer_manager.clone(), PeerConnectionConfig {
+///      context: context.clone(),
 ///      max_message_size: 1024,
 ///      max_connect_retries: 1,
 ///      socks_proxy_address: None,
@@ -97,72 +95,47 @@ where
 ///      peer_connection_establish_timeout: Duration::from_secs(4),
 /// }));
 ///
-/// let service = ControlService::<u8>::with_default_config(
-///       context,
-///       node_identity,
-///     )
-///     .serve(conn_manager)
+/// let dispatcher = Dispatcher::new(comms_handlers::ControlServiceResolver{})
+///     .route(ControlServiceMessageType::EstablishConnection, comms_handlers::establish_connection)
+///     .route(ControlServiceMessageType::Accept, comms_handlers::accept)
+///     .catch_all(comms_handlers::discard);
+///
+/// let service = ControlService::new(&context)
+///     .configure(ControlServiceConfig {
+///         listener_address,
+///         socks_proxy_address: None,
+///     })
+///     .serve(dispatcher, conn_manager)
 ///     .unwrap();
 ///
 /// service.shutdown().unwrap();
 /// ```
-pub struct ControlService<MType>
-where MType: Clone
-{
-    context: ZmqContext,
-    dispatcher: ControlServiceDispatcher<MType>,
-    config: ControlServiceConfig<MType>,
-    node_identity: Arc<NodeIdentity<CommsPublicKey>>,
+pub struct ControlService<'c> {
+    context: &'c Context,
+    config: ControlServiceConfig,
 }
 
-impl<MType> ControlService<MType>
-where
-    MType: Default,
-    MType: Clone,
-    MType: Serialize + DeserializeOwned,
-{
-    pub fn with_default_config(context: ZmqContext, node_identity: Arc<NodeIdentity<CommsPublicKey>>) -> Self {
+impl<'c> ControlService<'c> {
+    pub fn new(context: &'c Context) -> Self {
         Self {
             context,
-            dispatcher: Default::default(),
-            config: Default::default(),
-            node_identity,
+            config: ControlServiceConfig::default(),
         }
     }
-}
 
-impl<MType> ControlService<MType>
-where
-    MType: Send + Sync + 'static,
-    MType: Serialize + DeserializeOwned,
-    MType: Clone,
-{
-    setter!(with_custom_dispatcher, dispatcher, ControlServiceDispatcher<MType>);
+    pub fn configure(mut self, config: ControlServiceConfig) -> Self {
+        self.config = config;
+        self
+    }
 
-    pub fn new(
-        context: ZmqContext,
-        node_identity: Arc<NodeIdentity<CommsPublicKey>>,
-        config: ControlServiceConfig<MType>,
-    ) -> Self
+    pub fn serve<MType: DispatchableKey, R: DispatchResolver<MType, ControlServiceMessageContext>>(
+        self,
+        dispatcher: ControlServiceDispatcher<MType, R>,
+        connection_manager: Arc<ConnectionManager>,
+    ) -> Result<ControlServiceHandle>
     {
-        Self {
-            context,
-            dispatcher: Default::default(),
-            config,
-            node_identity,
-        }
-    }
-
-    pub fn serve(self, connection_manager: Arc<ConnectionManager>) -> Result<ControlServiceHandle> {
         let config = self.config;
-        Ok(ControlServiceWorker::start(
-            self.context.clone(),
-            self.node_identity,
-            self.dispatcher,
-            config,
-            connection_manager,
-        )?
-        .into())
+        Ok(ControlServiceWorker::start(self.context.clone(), config, dispatcher, connection_manager)?.into())
     }
 }
 
@@ -196,14 +169,12 @@ mod test {
 
     #[test]
     fn control_service_has_default() {
-        let context = ZmqContext::new();
-        let node_identity = Arc::new(NodeIdentity::random_for_test(None));
-        let control_service = ControlService::<u8>::with_default_config(context, node_identity);
+        let context = Context::new();
+        let control_service = ControlService::new(&context);
         assert_eq!(
             control_service.config.listener_address,
             DEFAULT_LISTENER_ADDRESS.parse::<NetAddress>().unwrap()
         );
         assert!(control_service.config.socks_proxy_address.is_none());
-        assert_eq!(control_service.config.accept_message_type, 0);
     }
 }

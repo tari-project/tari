@@ -24,8 +24,6 @@ use crate::connection::zmq::{ZmqEndpoint, ZmqError};
 use rand::{distributions::Alphanumeric, EntropyRng, Rng};
 use std::{iter, str::FromStr};
 
-const DEFAULT_INPROC: &'static str = "inproc://default";
-
 /// Represents a zMQ inproc address
 #[derive(Eq, PartialEq, Debug, Clone)]
 pub struct InprocAddress(String);
@@ -36,16 +34,6 @@ impl InprocAddress {
         let mut rng = EntropyRng::new();
         let rand_str: String = iter::repeat(()).map(|_| rng.sample(Alphanumeric)).take(8).collect();
         Self(format!("inproc://{}", rand_str))
-    }
-
-    pub fn is_default(&self) -> bool {
-        self.0 == DEFAULT_INPROC
-    }
-}
-
-impl Default for InprocAddress {
-    fn default() -> Self {
-        Self(DEFAULT_INPROC.to_owned())
     }
 }
 
@@ -85,13 +73,5 @@ mod test {
         assert!(result.is_err());
         let err = result.err().unwrap();
         assert_eq!(ZmqError::MalformedInprocAddress, err);
-    }
-
-    #[test]
-    fn default() {
-        let addr = InprocAddress::default();
-        assert!(addr.is_default());
-        let addr = InprocAddress::random();
-        assert!(!addr.is_default());
     }
 }

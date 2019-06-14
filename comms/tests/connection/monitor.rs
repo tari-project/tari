@@ -25,16 +25,16 @@ use tari_comms::connection::{
     connection::Connection,
     monitor::{ConnectionMonitor, SocketEventType},
     types::Direction,
-    zmq::{ZmqContext, ZmqEndpoint},
+    zmq::{Context, ZmqEndpoint},
     InprocAddress,
     NetAddress,
 };
 
-use crate::support::factories::{self, TestFactory};
+use crate::support::factories::{self, Factory};
 
 #[test]
 fn recv_socket_events() {
-    let ctx = ZmqContext::new();
+    let ctx = Context::new();
     let monitor_addr = InprocAddress::random();
     let address = factories::net_address::create().use_os_port().build().unwrap();
 

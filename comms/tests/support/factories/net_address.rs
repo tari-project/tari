@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::{TestFactory, TestFactoryError};
+use super::{Factory, FactoryError};
 
 use crate::support::helpers::ports::get_next_local_port;
 
@@ -53,10 +53,10 @@ impl NetAddressesFactory {
     }
 }
 
-impl TestFactory for NetAddressesFactory {
+impl Factory for NetAddressesFactory {
     type Object = Vec<NetAddress>;
 
-    fn build(self) -> Result<Self::Object, TestFactoryError> {
+    fn build(self) -> Result<Self::Object, FactoryError> {
         Ok(repeat_with(|| self.make_one())
             .take(self.count.or(Some(1)).unwrap())
             .collect::<Vec<NetAddress>>())
@@ -95,10 +95,10 @@ impl NetAddressFactory {
     }
 }
 
-impl TestFactory for NetAddressFactory {
+impl Factory for NetAddressFactory {
     type Object = NetAddress;
 
-    fn build(self) -> Result<Self::Object, TestFactoryError> {
+    fn build(self) -> Result<Self::Object, FactoryError> {
         let host = self.host.clone().or(Some("127.0.0.1".to_string())).unwrap();
         let port = self
             .port
@@ -114,6 +114,6 @@ impl TestFactory for NetAddressFactory {
 
         format!("{}:{}", host, port)
             .parse()
-            .map_err(|err| TestFactoryError::BuildFailed(format!("Failed to build NetAddress: {:?}", err)))
+            .map_err(|err| FactoryError::BuildFailed(format!("Failed to build NetAddress: {:?}", err)))
     }
 }

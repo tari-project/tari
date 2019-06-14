@@ -23,9 +23,10 @@
 use crate::{
     dispatcher::{DispatchError, DispatchResolver, DispatchableKey},
     message::{DomainMessageContext, Message, MessageContext, MessageEnvelopeHeader, MessageFlags, NodeDestination},
+    peer_manager::node_identity::CommsNodeIdentity,
     types::{CommsPublicKey, MessageDispatcher},
 };
-use serde::{de::DeserializeOwned, Serialize};
+use tari_crypto::keys::PublicKey;
 
 /// The comms_msg_dispatcher will determine the type of message and forward it to the the correct handler
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]
@@ -39,10 +40,12 @@ pub enum CommsDispatchType {
 }
 
 /// Specify what handler function should be called for messages with different comms level dispatch types
-pub fn construct_comms_msg_dispatcher<MType>() -> MessageDispatcher<MessageContext<MType>>
+pub fn construct_comms_msg_dispatcher<PubKey, DispKey, DispRes>(
+) -> MessageDispatcher<MessageContext<PubKey, DispKey, DispRes>>
 where
-    MType: DispatchableKey,
-    MType: Serialize + DeserializeOwned,
+    PubKey: PublicKey,
+    DispKey: DispatchableKey,
+    DispRes: DispatchResolver<DispKey, DomainMessageContext<PubKey>>,
 {
     MessageDispatcher::new(InboundMessageServiceResolver {})
         .route(CommsDispatchType::Handle, handler_handle)
@@ -53,17 +56,20 @@ where
 #[derive(Clone)]
 pub struct InboundMessageServiceResolver;
 
-impl<MType> DispatchResolver<CommsDispatchType, MessageContext<MType>> for InboundMessageServiceResolver
+impl<PubKey, DispKey, DispRes> DispatchResolver<CommsDispatchType, MessageContext<PubKey, DispKey, DispRes>>
+    for InboundMessageServiceResolver
 where
-    //    PK: PublicKey,
-    //    PK: Serialize + DeserializeOwned,
-    //    PK::K: Serialize + DeserializeOwned,
-    MType: DispatchableKey,
-    MType: Serialize + DeserializeOwned,
+    PubKey: PublicKey,
+    DispKey: DispatchableKey,
+    DispRes: DispatchResolver<DispKey, DomainMessageContext<PubKey>>,
 {
     /// The dispatch type is determined from the content of the MessageContext, which is used to dispatch the message to
     /// the correct handler
-    fn resolve(&self, message_context: &MessageContext<MType>) -> Result<CommsDispatchType, DispatchError> {
+    fn resolve(
+        &self,
+        message_context: &MessageContext<PubKey, DispKey, DispRes>,
+    ) -> Result<CommsDispatchType, DispatchError>
+    {
         // Verify source node message signature
         if !message_context
             .message_data
@@ -74,24 +80,23 @@ where
             return Ok(CommsDispatchType::Discard);
         }
         // Check destination of message
-        let message_envelope_header: MessageEnvelopeHeader<CommsPublicKey> = message_context
+        let message_envelope_header: MessageEnvelopeHeader = message_context
             .message_data
             .message_envelope
             .to_header()
             .map_err(|e| DispatchError::HandlerError(format!("{}", e)))?;
-
-        let node_identity = &message_context.node_identity;
-
+        let node_identity =
+            CommsNodeIdentity::global().ok_or(DispatchError::HandlerError("identity issue".to_string()))?;
         match message_envelope_header.dest {
-            NodeDestination::Unknown => Ok(CommsDispatchType::Handle),
-            NodeDestination::PublicKey(dest_public_key) => {
+            NodeDestination::<CommsPublicKey>::Unknown => Ok(CommsDispatchType::Handle),
+            NodeDestination::<CommsPublicKey>::PublicKey(dest_public_key) => {
                 if node_identity.identity.public_key == dest_public_key {
                     Ok(CommsDispatchType::Handle)
                 } else {
                     Ok(CommsDispatchType::Forward)
                 }
             },
-            NodeDestination::NodeId(dest_node_id) => {
+            NodeDestination::<CommsPublicKey>::NodeId(dest_node_id) => {
                 if node_identity.identity.node_id == dest_node_id {
                     Ok(CommsDispatchType::Handle)
                 } else {
@@ -102,21 +107,22 @@ where
     }
 }
 
-fn handler_handle<MType>(message_context: MessageContext<MType>) -> Result<(), DispatchError>
+fn handler_handle<PubKey, DispKey, DispRes>(
+    message_context: MessageContext<PubKey, DispKey, DispRes>,
+) -> Result<(), DispatchError>
 where
-    //    PK: PublicKey,
-    //    PK: DiffieHellmanSharedSecret<PK>,
-    MType: DispatchableKey,
-    MType: Serialize + DeserializeOwned,
+    PubKey: PublicKey,
+    DispKey: DispatchableKey,
+    DispRes: DispatchResolver<DispKey, DomainMessageContext<PubKey>>,
 {
     // Check encryption and retrieved Message
-    let message_envelope_header: MessageEnvelopeHeader<CommsPublicKey> = message_context
+    let message_envelope_header: MessageEnvelopeHeader = message_context
         .message_data
         .message_envelope
         .to_header()
         .map_err(|e| DispatchError::HandlerError(format!("{}", e)))?;
-
-    let node_identity = &message_context.node_identity;
+    let node_identity =
+        CommsNodeIdentity::global().ok_or(DispatchError::HandlerError("Node Identity not set".to_string()))?;
     let message: Message;
     if message_envelope_header.flags.contains(MessageFlags::ENCRYPTED) {
         match message_context
@@ -128,7 +134,7 @@ where
                 message = decrypted_message_body;
             },
             Err(_) => {
-                if message_envelope_header.dest == NodeDestination::Unknown {
+                if message_envelope_header.dest == NodeDestination::<CommsPublicKey>::Unknown {
                     // Message might have been for this node if it could have been decrypted
                     return handler_forward(message_context);
                 } else {
@@ -145,25 +151,35 @@ where
             .map_err(|e| DispatchError::HandlerError(format!("{}", e)))?;
     };
     // Construct DomainMessageContext and dispatch using domain dispatcher
-    let domain_message_context = DomainMessageContext::new(message_context.message_data.source_node_identity, message);
+    let domain_message_context = DomainMessageContext::new(
+        message_context.message_data.source_node_identity,
+        message,
+        message_context.outbound_message_service,
+        message_context.peer_manager,
+    );
     message_context.domain_dispatcher.dispatch(domain_message_context)
 }
 
-fn handler_forward<MType>(_message_context: MessageContext<MType>) -> Result<(), DispatchError>
+fn handler_forward<PubKey, DispKey, DispRes>(
+    _message_context: MessageContext<PubKey, DispKey, DispRes>,
+) -> Result<(), DispatchError>
 where
-    MType: DispatchableKey,
-    MType: Serialize + DeserializeOwned,
+    PubKey: PublicKey,
+    DispKey: DispatchableKey,
+    DispRes: DispatchResolver<DispKey, DomainMessageContext<PubKey>>,
 {
     // TODO: Add logic for message forwarding
 
     Ok(())
 }
 
-fn handler_discard<MType>(_message_context: MessageContext<MType>) -> Result<(), DispatchError>
+fn handler_discard<PubKey, DispKey, DispRes>(
+    _message_context: MessageContext<PubKey, DispKey, DispRes>,
+) -> Result<(), DispatchError>
 where
-    //    PK: PublicKey,
-    MType: DispatchableKey,
-    MType: Serialize + DeserializeOwned,
+    PubKey: PublicKey,
+    DispKey: DispatchableKey,
+    DispRes: DispatchResolver<DispKey, DomainMessageContext<PubKey>>,
 {
     // TODO: Add logic for discarding a message
 

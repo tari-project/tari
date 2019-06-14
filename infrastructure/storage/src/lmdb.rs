@@ -46,7 +46,6 @@ impl LMDBBuilder {
     /// Set the directory where the LMDB database exists, or must be created.
     /// Note: The directory must exist already; it is not created for you. If it does not exist, `build()` will
     /// return `DataStoreError::InternalError`.
-    /// the `path` must have a trailing slash
     pub fn set_path(mut self, path: &str) -> LMDBBuilder {
         self.path = path.into();
         self

@@ -126,6 +126,12 @@ impl ExtendBytes for u128 {
     }
 }
 
+impl ExtendBytes for bool {
+    fn append_raw_bytes(&self, buf: &mut Vec<u8>) {
+        buf.extend_from_slice(if *self { &[1u8] } else { &[0u8] });
+    }
+}
+
 #[cfg(feature = "chrono_dt")]
 impl ExtendBytes for DateTime<Utc> {
     fn append_raw_bytes(&self, buf: &mut Vec<u8>) {

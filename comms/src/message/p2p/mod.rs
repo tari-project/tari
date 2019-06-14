@@ -22,6 +22,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use tari_crypto::ristretto::RistrettoPublicKey;
+
 use crate::{
     connection::{net_address::NetAddress, zmq::CurvePublicKey},
     peer_manager::NodeId,
@@ -30,7 +32,7 @@ use crate::{
 /// This represents a request to open a peer connection
 /// to a remote peer.
 #[derive(Serialize, Deserialize, Debug)]
-pub struct EstablishConnection<PK> {
+pub struct EstablishConnection {
     pub control_service_address: NetAddress,
     /// The zeroMQ Curve public key to use for the peer connection
     pub server_key: CurvePublicKey,
@@ -39,7 +41,7 @@ pub struct EstablishConnection<PK> {
     /// The address to which to connect
     pub address: NetAddress,
     /// The requesting node's public key
-    pub public_key: PK,
+    pub public_key: RistrettoPublicKey,
 }
 
 /// Sent to show that the connection has been accepted

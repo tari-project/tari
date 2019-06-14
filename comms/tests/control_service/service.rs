@@ -20,29 +20,26 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::support::factories::{self, TestFactory};
+use serde::{Deserialize, Serialize};
+
 use std::{
     sync::{mpsc::channel, Arc, RwLock},
     thread,
     time::Duration,
 };
+
 use tari_comms::{
     connection::{
         types::{Direction, Linger},
         Connection,
+        Context,
         CurveEncryption,
+        InprocAddress,
         NetAddress,
-        ZmqContext,
     },
-    control_service::{
-        handlers::ControlServiceResolver,
-        ControlService,
-        ControlServiceConfig,
-        ControlServiceError,
-        ControlServiceMessageContext,
-        ControlServiceMessageType,
-    },
-    dispatcher::{DispatchError, Dispatcher},
+    connection_manager::{ConnectionManager, PeerConnectionConfig},
+    control_service::{ControlService, ControlServiceConfig, ControlServiceError, ControlServiceMessageContext},
+    dispatcher::{DispatchError, DispatchResolver, Dispatcher},
     message::{
         p2p::EstablishConnection,
         Message,
@@ -53,18 +50,30 @@ use tari_comms::{
         MessageHeader,
         NodeDestination,
     },
-    peer_manager::{NodeId, NodeIdentity},
+    peer_manager::{CommsNodeIdentity, NodeId, PeerManager},
     types::{CommsCipher, CommsPublicKey, CommsSecretKey},
 };
 use tari_crypto::keys::DiffieHellmanSharedSecret;
+use tari_storage::lmdb::LMDBStore;
 use tari_utilities::{byte_array::ByteArray, ciphers::cipher::Cipher, message_format::MessageFormat};
+
+use crate::support::{
+    factories::{self, Factory},
+    node_identity::set_test_node_identity,
+};
+
+#[derive(Eq, PartialEq, Hash, Serialize, Deserialize)]
+enum MessageType {
+    EstablishConnection = 1,
+    InvalidMessage = 2,
+}
 
 lazy_static! {
     static ref HANDLER_CALL_COUNT: RwLock<u8> = RwLock::new(0);
 }
 
-fn test_handler(context: ControlServiceMessageContext<u8>) -> Result<(), ControlServiceError> {
-    let msg: EstablishConnection<CommsPublicKey> = context
+fn test_handler(context: ControlServiceMessageContext) -> Result<(), ControlServiceError> {
+    let msg: EstablishConnection = context
         .message
         .to_message()
         .map_err(|err| DispatchError::HandlerError(format!("Failed to parse message: {}", err)))?;
@@ -77,14 +86,27 @@ fn test_handler(context: ControlServiceMessageContext<u8>) -> Result<(), Control
     Ok(())
 }
 
+struct CustomTestResolver;
+
+impl DispatchResolver<MessageType, ControlServiceMessageContext> for CustomTestResolver {
+    fn resolve(&self, context: &ControlServiceMessageContext) -> Result<MessageType, DispatchError> {
+        let header: MessageHeader<MessageType> = context
+            .message
+            .to_header()
+            .map_err(|err| DispatchError::HandlerError(format!("Failed to parse header: {}", err)))?;
+
+        Ok(header.message_type)
+    }
+}
+
 fn encrypt_message(secret_key: &CommsSecretKey, public_key: &CommsPublicKey, msg: Vec<u8>) -> Vec<u8> {
     let shared_secret = CommsPublicKey::shared_secret(secret_key, public_key);
     CommsCipher::seal_with_integral_nonce(&msg, &shared_secret.to_vec()).unwrap()
 }
 
 fn construct_envelope<T: MessageFormat>(
-    node_identity: &Arc<NodeIdentity<CommsPublicKey>>,
-    message_type: ControlServiceMessageType,
+    node_identity: &Arc<CommsNodeIdentity>,
+    message_type: MessageType,
     msg: T,
 ) -> Result<MessageEnvelope, MessageError>
 {
@@ -125,34 +147,40 @@ fn poll_handler_call_count_change(initial: u8, ms: u64) -> Option<u8> {
     None
 }
 
+fn make_connection_manager(context: &Context) -> Arc<ConnectionManager> {
+    Arc::new(ConnectionManager::new(make_peer_manager(), PeerConnectionConfig {
+        context: context.clone(),
+        control_service_establish_timeout: Duration::from_millis(1000),
+        peer_connection_establish_timeout: Duration::from_secs(4),
+        max_message_size: 1024 * 1024,
+        socks_proxy_address: None,
+        message_sink_address: InprocAddress::random(),
+        host: "127.0.0.1".parse().unwrap(),
+        max_connect_retries: 1,
+    }))
+}
+
+fn make_peer_manager() -> Arc<PeerManager<CommsPublicKey, LMDBStore>> {
+    Arc::new(PeerManager::<CommsPublicKey, LMDBStore>::new(None).unwrap())
+}
+
 #[test]
 fn recv_message() {
-    let context = ZmqContext::new();
-    let connection_manager = Arc::new(
-        factories::connection_manager::create()
-            .with_context(context.clone())
-            .build()
-            .unwrap(),
-    );
+    let node_identity = set_test_node_identity();
+
+    let context = Context::new();
+    let connection_manager = make_connection_manager(&context);
     let control_service_address = factories::net_address::create().build().unwrap();
-    let node_identity = Arc::new(
-        factories::node_identity::create::<CommsPublicKey>()
-            .with_control_service_address(control_service_address.clone())
-            .build()
-            .unwrap(),
-    );
 
-    let dispatcher = Dispatcher::new(ControlServiceResolver::new())
-        .route(ControlServiceMessageType::EstablishConnection, test_handler);
+    let dispatcher = Dispatcher::new(CustomTestResolver {}).route(MessageType::EstablishConnection, test_handler);
 
-    let service = ControlService::new(context.clone(), node_identity.clone(), ControlServiceConfig {
-        socks_proxy_address: None,
-        listener_address: control_service_address.clone(),
-        accept_message_type: 123,
-    })
-    .with_custom_dispatcher(dispatcher)
-    .serve(connection_manager)
-    .unwrap();
+    let service = ControlService::new(&context)
+        .configure(ControlServiceConfig {
+            socks_proxy_address: None,
+            listener_address: control_service_address.clone(),
+        })
+        .serve(dispatcher, connection_manager)
+        .unwrap();
 
     // A "remote" node sends an EstablishConnection message to this node's control port
     let requesting_node_address = factories::net_address::create().build().unwrap();
@@ -166,7 +194,7 @@ fn recv_message() {
         control_service_address: control_service_address.clone(),
     };
 
-    let envelope = construct_envelope(&node_identity, ControlServiceMessageType::EstablishConnection, msg).unwrap();
+    let envelope = construct_envelope(&node_identity, MessageType::EstablishConnection, msg).unwrap();
 
     let remote_conn = Connection::new(&context, Direction::Outbound)
         .set_linger(Linger::Indefinitely)
@@ -195,27 +223,32 @@ fn recv_message() {
     service.shutdown().unwrap();
 }
 
+struct TestResolver;
+
+impl DispatchResolver<u8, ControlServiceMessageContext> for TestResolver {
+    fn resolve(&self, _context: &ControlServiceMessageContext) -> std::result::Result<u8, DispatchError> {
+        Ok(0u8)
+    }
+}
+
 #[test]
 fn serve_and_shutdown() {
-    let node_identity = Arc::new(factories::node_identity::create::<CommsPublicKey>().build().unwrap());
+    set_test_node_identity();
     let (tx, rx) = channel();
-    let context = ZmqContext::new();
-    let connection_manager = Arc::new(
-        factories::connection_manager::create()
-            .with_context(context.clone())
-            .build()
-            .unwrap(),
-    );
+    let context = Context::new();
+    let connection_manager = make_connection_manager(&context);
 
     let listener_address: NetAddress = "127.0.0.1:0".parse().unwrap(); // factories::net_address::create().use_os_port().build().unwrap();
     thread::spawn(move || {
-        let service = ControlService::new(context, node_identity, ControlServiceConfig {
-            listener_address,
-            socks_proxy_address: None,
-            accept_message_type: 123,
-        })
-        .serve(connection_manager)
-        .unwrap();
+        let dispatcher = Dispatcher::new(TestResolver {});
+
+        let service = ControlService::new(&context)
+            .configure(ControlServiceConfig {
+                listener_address,
+                socks_proxy_address: None,
+            })
+            .serve(dispatcher, connection_manager)
+            .unwrap();
 
         service.shutdown().unwrap();
         tx.send(()).unwrap();

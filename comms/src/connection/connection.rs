@@ -26,7 +26,7 @@ use crate::{
     connection::{
         net_address::ip::SocketAddress,
         types::{Direction, Linger, Result, SocketEstablishment, SocketType},
-        zmq::{CurveEncryption, InprocAddress, ZmqContext, ZmqEndpoint},
+        zmq::{Context, CurveEncryption, InprocAddress, ZmqEndpoint},
         ConnectionError,
     },
     message::FrameSet,
@@ -41,12 +41,12 @@ const LOG_TARGET: &'static str = "comms::connection::Connection";
 ///
 /// ```edition2018
 /// # use tari_comms::connection::{
-/// #   zmq::{ZmqContext, InprocAddress, CurveEncryption},
+/// #   zmq::{Context, InprocAddress, CurveEncryption},
 /// #   connection::Connection,
 /// #   types::{Linger, Direction},
 /// # };
 ///
-///  let ctx  = ZmqContext::new();
+///  let ctx  = Context::new();
 ///
 ///  let (secret_key, _public_key) =CurveEncryption::generate_keypair().unwrap();
 ///
@@ -67,7 +67,7 @@ const LOG_TARGET: &'static str = "comms::connection::Connection";
 /// ```
 /// [`ZeroMQ`]: http://zeromq.org/
 pub struct Connection<'a> {
-    pub(super) context: &'a ZmqContext,
+    pub(super) context: &'a Context,
     pub(super) curve_encryption: CurveEncryption,
     pub(super) direction: Direction,
     pub(super) identity: Option<String>,
@@ -82,7 +82,7 @@ pub struct Connection<'a> {
 
 impl<'a> Connection<'a> {
     /// Create a new InboundConnection
-    pub fn new(context: &'a ZmqContext, direction: Direction) -> Self {
+    pub fn new(context: &'a Context, direction: Direction) -> Self {
         Self {
             context,
             curve_encryption: Default::default(),
@@ -405,7 +405,7 @@ mod test {
 
     #[test]
     fn sets_socketopts() {
-        let ctx = ZmqContext::new();
+        let ctx = Context::new();
 
         let addr = InprocAddress::random();
         let monitor_addr = InprocAddress::random();
@@ -433,7 +433,7 @@ mod test {
 
     #[test]
     fn set_server_encryption() {
-        let ctx = ZmqContext::new();
+        let ctx = Context::new();
 
         let addr = InprocAddress::random();
 
@@ -452,7 +452,7 @@ mod test {
 
     #[test]
     fn set_client_encryption() {
-        let ctx = ZmqContext::new();
+        let ctx = Context::new();
 
         let addr = InprocAddress::random();
 

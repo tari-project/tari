@@ -28,8 +28,8 @@ use tari_comms::{
     connection::{
         types::{Direction, SocketType},
         zmq::{CurvePublicKey, CurveSecretKey, ZmqEndpoint},
+        Context,
         CurveEncryption,
-        ZmqContext,
     },
     message::FrameSet,
 };
@@ -101,7 +101,7 @@ where T: ZmqEndpoint + Clone + Send + Sync + 'static
     }
 
     /// Start the thread and run the pattern!
-    pub fn run(self, ctx: ZmqContext) -> Receiver<()> {
+    pub fn run(self, ctx: Context) -> Receiver<()> {
         let (tx, rx) = channel();
         let identity = self.identity.clone();
         let secret_key = self.secret_key.clone();

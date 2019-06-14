@@ -23,6 +23,7 @@
 use crate::{
     dispatcher::{DispatchError, Dispatcher},
     inbound_message_service::comms_msg_handlers::{CommsDispatchType, InboundMessageServiceResolver},
+    message::DomainMessageContext,
 };
 use tari_crypto::{common::Blake256, keys::PublicKey, ristretto::RistrettoPublicKey};
 use tari_storage::lmdb::LMDBStore;
@@ -54,4 +55,8 @@ pub type CommsCipher = ChaCha20;
 pub type CommsDataStore = LMDBStore;
 
 /// Dispatcher format for comms level dispatching to handlers
-pub type MessageDispatcher<M> = Dispatcher<CommsDispatchType, M, InboundMessageServiceResolver, DispatchError>;
+pub type MessageDispatcher<M> = Dispatcher<CommsDispatchType, M, DispatchError, InboundMessageServiceResolver>;
+
+/// Dispatcher format for domain level dispatching to handlers
+pub type DomainMessageDispatcher<PubKey, DispKey, DispRes> =
+    Dispatcher<DispKey, DomainMessageContext<PubKey>, DispatchError, DispRes>;

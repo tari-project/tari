@@ -27,7 +27,7 @@ use super::{ConnectionId, PeerConnectionError};
 use crate::connection::{
     net_address::ip::SocketAddress,
     types::{Direction, Linger, Result},
-    zmq::{CurveEncryption, InprocAddress, ZmqContext},
+    zmq::{Context, CurveEncryption, InprocAddress},
     ConnectionError,
     NetAddress,
 };
@@ -51,7 +51,7 @@ const DEFAULT_MAX_RETRY_ATTEMPTS: u16 = 10;
 ///
 /// [CurveEncryption]: ./../zmq/CurveEncryption/struct.CurveEncryption.html
 pub struct PeerConnectionContext {
-    pub(crate) context: ZmqContext,
+    pub(crate) context: Context,
     pub(crate) peer_address: NetAddress,
     pub(crate) message_sink_address: InprocAddress,
     pub(crate) direction: Direction,
@@ -114,14 +114,14 @@ fn unwrap_prop<T>(prop: Option<T>, prop_name: &str) -> Result<T> {
 ///
 /// ```edition2018
 /// # use tari_comms::connection::{
-/// #     ZmqContext,
+/// #     Context,
 /// #     InprocAddress,
 /// #     Direction,
 /// #     PeerConnectionContextBuilder,
 /// #     PeerConnection,
 /// # };
 ///
-/// let ctx = ZmqContext::new();
+/// let ctx = Context::new();
 ///
 /// let peer_context = PeerConnectionContextBuilder::new()
 ///    .set_id("123")
@@ -138,7 +138,7 @@ fn unwrap_prop<T>(prop: Option<T>, prop_name: &str) -> Result<T> {
 pub struct PeerConnectionContextBuilder<'c> {
     pub(super) address: Option<NetAddress>,
     pub(super) message_sink_address: Option<InprocAddress>,
-    pub(super) context: Option<&'c ZmqContext>,
+    pub(super) context: Option<&'c Context>,
     pub(super) curve_encryption: CurveEncryption,
     pub(super) direction: Option<Direction>,
     pub(super) id: Option<ConnectionId>,
@@ -150,28 +150,28 @@ pub struct PeerConnectionContextBuilder<'c> {
 
 impl<'c> PeerConnectionContextBuilder<'c> {
     /// Set the peer address
-    setter!(set_address, address, Option<NetAddress>);
+    setter!(set_address, address, NetAddress);
 
     /// Set the address where incoming peer messages are forwarded
-    setter!(set_message_sink_address, message_sink_address, Option<InprocAddress>);
+    setter!(set_message_sink_address, message_sink_address, InprocAddress);
 
     /// Set the zmq context
-    setter!(set_context, context, Option<&'c ZmqContext>);
+    setter!(set_context, context, &'c Context);
 
     /// Set the connection direction
-    setter!(set_direction, direction, Option<Direction>);
+    setter!(set_direction, direction, Direction);
 
     /// Set the maximum connection retry attempts
-    setter!(set_max_retry_attempts, max_retry_attempts, Option<u16>);
+    setter!(set_max_retry_attempts, max_retry_attempts, u16);
 
     /// Set the maximum message size in bytes
-    setter!(set_max_msg_size, max_msg_size, Option<u64>);
+    setter!(set_max_msg_size, max_msg_size, u64);
 
     /// Set the socks proxy address
-    setter!(set_socks_proxy, socks_address, Option<SocketAddress>);
+    setter!(set_socks_proxy, socks_address, SocketAddress);
 
     /// Set the [Linger] for this connection
-    setter!(set_linger, linger, Option<Linger>);
+    setter!(set_linger, linger, Linger);
 
     /// Return a new PeerConnectionContextBuilder
     pub fn new() -> Self {
@@ -237,7 +237,7 @@ mod test {
     use crate::connection::{
         peer_connection::PeerConnectionError,
         types::{Direction, Result},
-        zmq::{CurveEncryption, InprocAddress, ZmqContext},
+        zmq::{Context, CurveEncryption, InprocAddress},
         ConnectionError,
         NetAddress,
     };
@@ -260,7 +260,7 @@ mod test {
 
     #[test]
     fn valid_build() {
-        let ctx = ZmqContext::new();
+        let ctx = Context::new();
 
         let recv_addr = InprocAddress::random();
         let peer_addr = "127.0.0.1:80".parse::<NetAddress>().unwrap();
@@ -287,7 +287,7 @@ mod test {
     #[test]
     fn invalid_build() {
         let (sk, pk) = CurveEncryption::generate_keypair().unwrap();
-        let ctx = ZmqContext::new();
+        let ctx = Context::new();
 
         let result = PeerConnectionContextBuilder::new()
             .set_id("123")

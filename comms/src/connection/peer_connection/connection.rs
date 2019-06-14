@@ -160,7 +160,7 @@ macro_rules! is_state {
 /// # use tari_comms::connection::*;
 /// # use std::time::Duration;
 ///
-/// let ctx = ZmqContext::new();
+/// let ctx = Context::new();
 /// let addr: NetAddress = "127.0.0.1:8080".parse().unwrap();
 ///
 /// let peer_context = PeerConnectionContextBuilder::new()
