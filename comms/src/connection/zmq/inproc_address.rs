@@ -86,4 +86,12 @@ mod test {
         let err = result.err().unwrap();
         assert_eq!(ZmqError::MalformedInprocAddress, err);
     }
+
+    #[test]
+    fn default() {
+        let addr = InprocAddress::default();
+        assert!(addr.is_default());
+        let addr = InprocAddress::random();
+        assert!(!addr.is_default());
+    }
 }

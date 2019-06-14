@@ -455,7 +455,7 @@ mod test {
             Ok(())
         }
 
-        pub fn catch_all(msg: DomainMessageContext) -> Result<(), HandlerError> {
+        pub fn catch_all(_msg: DomainMessageContext) -> Result<(), HandlerError> {
             Ok(())
         }
     }

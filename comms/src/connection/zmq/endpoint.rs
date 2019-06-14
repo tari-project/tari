@@ -25,3 +25,11 @@ pub trait ZmqEndpoint {
     /// Convert to a ZeroMQ endpoint string
     fn to_zmq_endpoint(&self) -> String;
 }
+
+impl<T> ZmqEndpoint for &T
+where T: ZmqEndpoint
+{
+    fn to_zmq_endpoint(&self) -> String {
+        (*self).to_zmq_endpoint()
+    }
+}
