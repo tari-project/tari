@@ -26,7 +26,7 @@ use serde::{Deserialize, Serialize};
 use tari_infra_derive::Hashable;
 use tari_utilities::{ExtendBytes, Hashable};
 
-#[derive(Clone, Debug, PartialEq, Hashable, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Hashable, Serialize, Deserialize, Eq, Ord, PartialOrd)]
 #[digest = "SignatureHash"]
 pub struct ProofOfWork {}
 

@@ -29,7 +29,10 @@ use tari_storage::keyvalue_store::*;
 /// The ChainError is used to present all generic chain error of the actual blockchain
 #[derive(Debug, Error)]
 pub enum ChainError {
-    Brokenchain, // place holder for real error
+    // Could not initialise state
+    InitStateError(DatastoreError),
+    // Some kind of processing error in the state
+    StateProcessingError(StateError),
 }
 
 /// The chainstate is used to present all generic chain error of the actual blockchain state
@@ -47,4 +50,6 @@ pub enum StateError {
     InvalidBlock(TransactionError),
     // block is orphaned
     OrphanBlock,
+    // Duplicate block
+    DuplicateBlock,
 }

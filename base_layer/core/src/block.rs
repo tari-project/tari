@@ -26,12 +26,13 @@
 use crate::{
     blockheader::BlockHeader,
     transaction::{Transaction, TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
-    types::{COMMITMENT_FACTORY, PROVER},
+    types::*,
 };
 
 //----------------------------------------         Blocks         ----------------------------------------------------//
 
 /// A Tari block. Blocks are linked together into a blockchain.
+#[derive(Clone)]
 pub struct Block {
     pub header: BlockHeader,
     pub body: AggregateBody,
@@ -44,9 +45,15 @@ impl Block {
     pub fn check_internal_consistency(&self) -> Result<(), TransactionError> {
         let mut trans: Transaction = self.body.clone().into(); // todo revisit this one q=whole code chain is completed
         trans.offset = self.header.total_kernel_offset.clone();
-        trans.validate_internal_consistency(&PROVER, &COMMITMENT_FACTORY)
+        trans.validate_internal_consistency(&PROVER, &COMMITMENT_FACTORY)?;
+        self.check_pow()
+    }
+
+    pub fn check_pow(&self) -> Result<(), TransactionError> {
+        Ok(())
     }
 }
+
 //----------------------------------------     AggregateBody      ----------------------------------------------------//
 
 /// The components of the block or transaction. The same struct can be used for either, since in Mimblewimble,
