@@ -20,7 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::byte_array::ByteArray;
 #[cfg(feature = "chrono_dt")]
 use chrono::{DateTime, Utc};
 
@@ -123,6 +122,12 @@ impl ExtendBytes for u128 {
     fn append_raw_bytes(&self, buf: &mut Vec<u8>) {
         let bytes = self.to_le_bytes();
         buf.extend_from_slice(&bytes);
+    }
+}
+
+impl ExtendBytes for bool {
+    fn append_raw_bytes(&self, buf: &mut Vec<u8>) {
+        buf.extend_from_slice(if *self { &[1u8] } else { &[0u8] });
     }
 }
 
