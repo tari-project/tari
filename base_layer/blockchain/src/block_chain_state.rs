@@ -22,7 +22,7 @@
 
 // This file is used to store the current blockchain state
 
-use crate::error::*;
+use crate::{error::*, genesis_block::*};
 use merklemountainrange::mmr::*;
 use std::fs;
 use tari_core::{
@@ -36,7 +36,7 @@ use tari_utilities::hash::Hashable;
 
 /// The BlockchainState struct keeps record of the current UTXO, total kernels and headers.
 pub struct BlockchainState {
-    headers: MerkleMountainRange<BlockHeader, SignatureHash>,
+    pub headers: MerkleMountainRange<BlockHeader, SignatureHash>,
     utxos: MerkleMountainRange<TransactionInput, SignatureHash>,
     kernels: MerkleMountainRange<TransactionKernel, SignatureHash>,
     store: LMDBStore,
@@ -54,14 +54,29 @@ impl BlockchainState {
         utxos.init_persistance_store(&"outputs".to_string(), 5000);
         let mut kernels = MerkleMountainRange::new();
         kernels.init_persistance_store(&"kernels".to_string(), std::usize::MAX);
-        let block_chain_state = BlockchainState {
+        let mut block_chain_state = BlockchainState {
             headers,
             utxos,
             kernels,
             store,
         };
+        block_chain_state.add_genesis_block();
 
         Ok(block_chain_state)
+    }
+
+    // add the genesis block
+    fn add_genesis_block(&mut self) {
+        let gen_block = get_genesis_block();
+        for output in gen_block.body.outputs {
+            self.utxos.push(output.into()).expect("genesis block failed")
+        }
+        self.kernels
+            .append(gen_block.body.kernels)
+            .expect("genesis block failed");
+        self.headers.push(gen_block.header).expect("genesis block failed");
+
+        self.check_point_state().expect("genesis block failed");
     }
 
     fn build_db() -> Result<LMDBStore, DatastoreError> {
@@ -95,16 +110,19 @@ impl BlockchainState {
 
     /// This function  will process a new block.
     /// Note the block is consumed by the function.
-    pub fn process_new_block(&mut self, mut new_block: Block) -> Result<(), StateError> {
+    pub fn process_new_block(&mut self, new_block: &Block) -> Result<(), StateError> {
+        let found = self.headers.get_object(&new_block.header.hash());
+        if found.is_some() {
+            return Err(StateError::DuplicateBlock);
+        }
         self.validate_new_block(&new_block)?;
         self.prune_all_inputs(&new_block)?;
         // All seems valid, lets add the objects to the state
-        let mut drainer = new_block.body.outputs.drain(..);
-        while let Some(output) = drainer.next() {
-            self.utxos.push(output.into())?;
+        for output in &new_block.body.outputs {
+            self.utxos.push(output.clone().into())?;
         }
-        self.kernels.append(new_block.body.kernels)?;
-        self.headers.push(new_block.header)?;
+        self.kernels.append(new_block.body.kernels.clone())?;
+        self.headers.push(new_block.header.clone())?;
         // lets check states
         self.check_mmr_states()?;
         self.check_point_state()
@@ -112,13 +130,13 @@ impl BlockchainState {
 
     /// This function will validate the block in terms of the current state.
     pub fn validate_new_block(&self, new_block: &Block) -> Result<(), StateError> {
+        new_block
+            .check_internal_consistency()
+            .map_err(StateError::InvalidBlock)?;
         // we assume that we have atleast in block in the headers mmr even if this is the genesis one
         if self.headers.get_last_added_object().unwrap().hash() != new_block.header.prev_hash {
             return Err(StateError::OrphanBlock);
         }
-        new_block
-            .check_internal_consistency()
-            .map_err(StateError::InvalidBlock)?;
         Ok(())
     }
 
@@ -175,5 +193,12 @@ impl BlockchainState {
         self.kernels.rewind(&mut self.store, block_count)?;
         self.utxos.rewind(&mut self.store, block_count)?;
         Ok(())
+    }
+
+    pub fn get_tip_height(&self) -> u64 {
+        match self.headers.get_last_added_object() {
+            Some(v) => v.height,
+            None => 0,
+        }
     }
 }

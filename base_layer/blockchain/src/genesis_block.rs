@@ -20,8 +20,49 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod block_chain_state;
-pub mod chain;
-pub mod error;
-pub mod genesis_block;
-pub mod store;
+// This file is used to store the genesis block
+use tari_core::{
+    block::{AggregateBody, Block},
+    blockheader::BlockHeader,
+    pow::*,
+};
+
+use chrono::{DateTime, NaiveDate, Utc};
+use tari_crypto::ristretto::*;
+
+pub fn get_genesis_block() -> Block {
+    let blockheaders = get_gen_header();
+    let body = get_gen_body();
+    Block {
+        header: blockheaders,
+        body,
+    }
+}
+
+pub fn get_gen_header() -> BlockHeader {
+    BlockHeader {
+        version: 0,
+        /// Height of this block since the genesis block (height 0)
+        height: 0,
+        /// Hash of the block previous to this in the chain.
+        prev_hash: [0; 32],
+        /// Timestamp at which the block was built.
+        timestamp: DateTime::<Utc>::from_utc(NaiveDate::from_ymd(2020, 1, 1).and_hms(1, 1, 1), Utc),
+        /// This is the MMR root of the outputs
+        output_mmr: [0; 32],
+        /// This is the MMR root of the range proofs
+        range_proof_mmr: [0; 32],
+        /// This is the MMR root of the kernels
+        kernel_mmr: [0; 32],
+        /// Total accumulated sum of kernel offsets since genesis block. We can derive the kernel offset sum for *this*
+        /// block from the total kernel offset of the previous block header.
+        total_kernel_offset: RistrettoSecretKey::from(0),
+        /// Nonce used
+        /// Proof of work summary
+        pow: ProofOfWork {},
+    }
+}
+
+pub fn get_gen_body() -> AggregateBody {
+    AggregateBody::empty()
+}
