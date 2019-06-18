@@ -21,13 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use serde::{Deserialize, Serialize};
-use std::{
-    net::Ipv4Addr,
-    path::{Path, PathBuf},
-    str::FromStr,
-    sync::Arc,
-    thread,
-};
+use std::{net::Ipv4Addr, path::PathBuf, str::FromStr, sync::Arc, thread};
 use tari_storage::lmdb_store::{db, LMDBBuilder, LMDBDatabase, LMDBError, LMDBStore};
 use tari_utilities::ExtendBytes;
 
@@ -87,8 +81,8 @@ fn init(name: &str) -> Result<LMDBStore, LMDBError> {
     let _ = std::fs::create_dir(&path).unwrap_or_default();
     LMDBBuilder::new()
         .set_path(&path)
-        .set_mapsize(10)
-        .set_max_dbs(2)
+        .set_environment_size(10)
+        .set_max_number_of_databases(2)
         .add_database("users", db::CREATE)
         .build()
 }
@@ -203,6 +197,15 @@ fn multi_thread_writes() {
         thread.join().unwrap()
     }
     env.log_info();
+
+    let db = env.get_handle("users").unwrap();
+
+    assert_eq!(db.size().unwrap(), 1000);
+    for i in 0..1000 {
+        let value: i32 = db.get(&i).unwrap().unwrap();
+        assert_eq!(i, value);
+    }
+
     clean_up("multi-thread-writes");
 }
 
@@ -239,7 +242,7 @@ fn value_iterator() {
 
 #[test]
 fn exists_and_delete() {
-    let (users, db) = insert_all_users("delete");
+    let (_, db) = insert_all_users("delete");
     assert!(db.exists(&525u64).unwrap());
     db.delete(&525u64).unwrap();
     assert_eq!(db.exists(&525u64).unwrap(), false);

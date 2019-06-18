@@ -39,8 +39,8 @@ type DatabaseRef = Arc<Database<'static>>;
 /// # use lmdb_zero::db;
 /// let mut store = LMDBBuilder::new()
 ///     .set_path("/tmp/")
-///     .set_mapsize(500)
-///     .set_max_dbs(10)
+///     .set_environment_size(500)
+///     .set_max_number_of_databases(10)
 ///     .add_database("db1", db::CREATE)
 ///     .add_database("db2", db::CREATE)
 ///     .build()
@@ -82,16 +82,16 @@ impl LMDBBuilder {
         self
     }
 
-    /// Sets the size of the database, in MB.
+    /// Sets the size of the environment, in MB.
     /// The actual memory will only be allocated when #build() is called
-    pub fn set_mapsize(mut self, size: usize) -> LMDBBuilder {
+    pub fn set_environment_size(mut self, size: usize) -> LMDBBuilder {
         self.db_size_mb = size;
         self
     }
 
-    /// Sets the maximum number of dbs (tables) in the environment. If this value is less than the number of DBs that
-    /// are added to the environmet, this value will be ignored.
-    pub fn set_max_dbs(mut self, size: usize) -> LMDBBuilder {
+    /// Sets the maximum number of databases (tables) in the environment. If this value is less than the number of
+    /// DBs that will be created when the environment is built, this value will be ignored.
+    pub fn set_max_number_of_databases(mut self, size: usize) -> LMDBBuilder {
         self.max_dbs = size;
         self
     }
@@ -230,7 +230,7 @@ impl LMDBBuilder {
 /// capnproto tests don't actually serialise to and from the general Rust struct (an HTTP request type template), but
 /// from specially generated structs based on the schema.
 ///
-/// Strictly speaking, if we're going to serialise arbitrary key-value types, these menchmarks should include the
+/// Strictly speaking, if we're going to serialise arbitrary key-value types, these benchmarks should include the
 /// time it takes to populate a flatbuffer / capnproto structure.
 ///
 /// A quick modification of the benchmarks to take this int account this reveals:
