@@ -60,19 +60,24 @@ The aim of this proposal is to provide a very high-level perspective for the mov
 
 ### Abstract
 
-The Tari network is composed of two layers:
+The Tari network is composed of three layers:
 
 1. The base layer deals with [Tari coin] [transaction]s. It governed by a proof-of-work blockchain that is merged-mined with
 Monero. The base layer is highly secure, decentralised and relatively slow.
-2. The digital assets network runs on a second layer. This layer manages all things to do with native digital assets. It
-   is built for liveness, speed and scalability at the expense of decentralisation.
+2. A multiparty payments channel allows rapid, secure, low cost off-chain payments that are periodically settled on the
+   base layer.
+3. The digital assets network. This layer manages all things to do with native digital assets. It is built for liveness,
+   speed and scalability at the expense of decentralisation.
+
+
+![Tari Network Overview](theme/images/tari_network_overview.png)
 
 ### Currency tokens and digital assets
 
 There are two major digital entities on the Tari network: The coins that are the unit of transfer for the Tari
 cryptocurrency, and the digital assets that could represent anything from tickets to in-game items.
 
-Tari coins are the fuel that drives the entire Tari ecosystem. But they share many of the properties of money, and so
+Tari coins are the fuel that drives the entire Tari ecosystem. They share many of the properties of money, and so
 security is a non-negotiable requirement. In a cryptocurrency context, this is usually achieved by employing a
 decentralised network running a censorship-resistant protocol like Nakamoto consensus over a proof of work blockchain.
 As we know, proof of work blockchains are not scalable, or terribly fast.
@@ -91,21 +96,24 @@ state updates because centralised solutions offer them that today.
 
 Therefore the Tari digital assets network must offer speed and scalability.
 
-#### Two layers
+#### Multiple layers
 
 The [distributed system trilemma](https://en.wikipedia.org/wiki/CAP_theorem) tells us that these requirements are
  mutually exclusive.
 
 We can't have fast, cheap digital assets and also highly secure and decentralised currency tokens on a single system.
 
-Tari overcomes this constraint by building two layers:
+Tari overcomes this constraint by building three layers:
 
-* A base layer that provides a public ledger of Tari coin transactions, secured by proof of work to maximise security, and
-* A second layer that manages digital asset state that is very fast and cheap, at the expense of decentralisation.
+* A base layer that provides a public ledger of Tari coin transactions, secured by proof of work to maximise security,
+* A multiparty payment channel, allowing funds to be sent to parties in the channel instantly, securely and with very
+  low fees.
+* A digital asset layer that manages digital asset state that is very fast and cheap, at the expense of
+  decentralisation.
 
 If required, the digital asset layer can refer back to the base layer to temporarily give up speed in exchange for
-increased security. This fallback is used to resolve consensus issues on the second layer that may crop up from time to
-time as a result of the lower degree of decentralisation.
+increased security. This fallback is used to resolve consensus issues on the digital asset layer that may crop up from
+time to time as a result of the lower degree of decentralisation.
 
 ### The Base Layer
 
@@ -147,6 +155,11 @@ There are a few options for the proof of work mechanism for Tari:
 Given Tari's relationship with Monero, a merge-mined strategy with Monero makes the most sense, but the PoW mechanism
 SHOULD be written in a way that makes it relatively easy to code, implement and switch to a different strategy in the
 future.
+
+### Multiparty Payment Channels
+
+Further details about the Tari multiparty payment channel technology are given in
+[RFC-500/PaymentChannels](RFC-0500_PaymentChannels.md).
 
 ### The Digital Assets Network
 
@@ -209,14 +222,14 @@ well-functioning network even while acting in their own self-interests.
 
 Table 1 summarises the defining characteristics of the Tari network layers:
 
-|                                      | Base layer       | DAN                    |
-|:-------------------------------------|:-----------------|:-----------------------|
-| Speed                                | Slow             | Fast                   |
-| Scalability                          | Moderate         | Very high              |
-| Security                             | High             | Mod (High w/ fallback) |
-| Decentralisation                     | High             | Low - Med              |
-| Processes Tari coin transactions     | Yes              | No                     |
-| Processes digital asset instructions | Only checkpoints | Yes                    |
+|                                      | Base layer       | Payment Channels | DAN                    |
+|:-------------------------------------|:-----------------|:-----------------|:-----------------------|
+| Speed                                | Slow             | Fast             | Fast                   |
+| Scalability                          | Moderate         | High             | Very high              |
+| Security                             | High             | High             | Mod (High w/ fallback) |
+| Decentralisation                     | High             | Low - Med        | Low - Med              |
+| Processes Tari coin transactions     | Yes              | Yes              | No                     |
+| Processes digital asset instructions | Only checkpoints | No               | Yes                    |
 
 
 [Tari coin]: Glossary.md#tari-coin
