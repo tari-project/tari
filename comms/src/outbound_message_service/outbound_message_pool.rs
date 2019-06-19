@@ -245,7 +245,7 @@ mod test {
         // Send a message for each thread so we can test that each worker receives one
         for _ in 0..MAX_OUTBOUND_MSG_PROCESSING_WORKERS {
             oms.send(
-                BroadcastStrategy::Direct(dest_peer.node_id.clone()),
+                BroadcastStrategy::DirectNodeId(dest_peer.node_id.clone()),
                 MessageFlags::ENCRYPTED,
                 message_envelope_body.clone(),
             )

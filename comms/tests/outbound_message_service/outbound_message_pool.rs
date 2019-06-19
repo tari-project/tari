@@ -153,13 +153,13 @@ mod test {
         // Send 8 message alternating two different OMS's
         for _ in 0..4 {
             oms.send(
-                BroadcastStrategy::Direct(node_B_peer.node_id.clone()),
+                BroadcastStrategy::DirectNodeId(node_B_peer.node_id.clone()),
                 MessageFlags::ENCRYPTED,
                 message_envelope_body.clone(),
             )
             .unwrap();
             oms2.send(
-                BroadcastStrategy::Direct(node_B_peer.node_id.clone()),
+                BroadcastStrategy::DirectNodeId(node_B_peer.node_id.clone()),
                 MessageFlags::ENCRYPTED,
                 message_envelope_body.clone(),
             )
@@ -245,7 +245,7 @@ mod test {
             .unwrap();
 
         oms.send(
-            BroadcastStrategy::Direct(node_B_peer.node_id.clone()),
+            BroadcastStrategy::DirectNodeId(node_B_peer.node_id.clone()),
             MessageFlags::ENCRYPTED,
             message_envelope_body,
         )

@@ -67,7 +67,7 @@ impl OutboundMessageService {
     /// BroadcastStrategy
     pub fn send(
         &self,
-        broadcast_strategy: BroadcastStrategy,
+        broadcast_strategy: BroadcastStrategy<CommsPublicKey>,
         flags: MessageFlags,
         message_envelope_body: Frame,
     ) -> Result<(), OutboundError>
@@ -160,7 +160,7 @@ mod test {
         let message_envelope_body = Message::from_message_format(message_header, message_body).unwrap();
         outbound_message_service
             .send(
-                BroadcastStrategy::Direct(dest_peer.node_id.clone()),
+                BroadcastStrategy::DirectNodeId(dest_peer.node_id.clone()),
                 MessageFlags::ENCRYPTED,
                 message_envelope_body.to_binary().unwrap(),
             )

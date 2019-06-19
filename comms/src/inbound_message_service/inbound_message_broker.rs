@@ -120,7 +120,7 @@ mod test {
     use tari_utilities::message_format::MessageFormat;
 
     #[test]
-    fn test_temp() {
+    fn test_new_and_dispatch() {
         let context = ZmqContext::new();
         // Create handler services
         let handler1_inproc_address = InprocAddress::random();

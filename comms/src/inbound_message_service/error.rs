@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::connection::{zmq::ZmqError, DealerProxyError};
+use crate::connection::{error::ConnectionError, zmq::ZmqError, DealerProxyError};
 use derive_error::Error;
 
 /// Error type for IMS
@@ -29,6 +29,6 @@ pub enum InboundMessageServiceError {
     /// Problem with inbound socket
     InboundSocketError(ZmqError),
     /// Failed to connect to inbound socket
-    InboundConnectionError(zmq::Error),
+    InboundConnectionError(ConnectionError),
     DealerProxyError(DealerProxyError),
 }

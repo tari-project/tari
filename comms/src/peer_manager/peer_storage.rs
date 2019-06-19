@@ -150,7 +150,7 @@ where
     }
 
     /// Constructs a single NodeIdentity for the peer corresponding to the provided NodeId
-    pub fn direct_identity(&self, node_id: &NodeId) -> Result<Vec<PeerNodeIdentity<PubKey>>, PeerManagerError> {
+    pub fn direct_identity_node_id(&self, node_id: &NodeId) -> Result<Vec<PeerNodeIdentity<PubKey>>, PeerManagerError> {
         let peer_index = *self
             .node_id_hm
             .get(&node_id)
@@ -161,6 +161,26 @@ where
             Ok(vec![PeerNodeIdentity::<PubKey>::new(
                 node_id.clone(),
                 self.peers[peer_index].public_key.clone(),
+            )])
+        }
+    }
+
+    /// Constructs a single NodeIdentity for the peer corresponding to the provided NodeId
+    pub fn direct_identity_public_key(
+        &self,
+        public_key: &PubKey,
+    ) -> Result<Vec<PeerNodeIdentity<PubKey>>, PeerManagerError>
+    {
+        let peer_index = *self
+            .public_key_hm
+            .get(&public_key)
+            .ok_or(PeerManagerError::PeerNotFoundError)?;
+        if self.peers[peer_index].is_banned() {
+            Err(PeerManagerError::BannedPeer)
+        } else {
+            Ok(vec![PeerNodeIdentity::<PubKey>::new(
+                self.peers[peer_index].node_id.clone(),
+                public_key.clone(),
             )])
         }
     }

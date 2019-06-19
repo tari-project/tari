@@ -23,12 +23,14 @@
 use super::error::InboundMessageServiceError;
 use crate::{
     connection::{
-        types::SocketType,
-        zmq::{InprocAddress, ZmqContext, ZmqEndpoint},
+        zmq::{InprocAddress, ZmqContext},
+        Connection,
+        Direction,
+        SocketEstablishment,
     },
     dispatcher::DispatchableKey,
     inbound_message_service::inbound_message_broker::InboundMessageBroker,
-    message::{MessageContext, MessageData},
+    message::{FrameSet, MessageContext, MessageData},
     outbound_message_service::outbound_message_service::OutboundMessageService,
     peer_manager::{peer_manager::PeerManager, NodeIdentity},
     types::{CommsDataStore, CommsPublicKey, MessageDispatcher},
@@ -91,26 +93,25 @@ where
     }
 
     fn start_worker(&self) -> Result<(), InboundMessageServiceError> {
-        // Establish connection inbound socket
-        let inbound_socket = self
-            .context
-            .socket(SocketType::Reply)
-            .map_err(|e| InboundMessageServiceError::InboundSocketError(e))?;
-        inbound_socket
-            .connect(&self.inbound_address.to_zmq_endpoint())
+        let inbound_connection = Connection::new(&self.context, Direction::Inbound)
+            .set_socket_establishment(SocketEstablishment::Connect)
+            .establish(&self.inbound_address)
             .map_err(|e| InboundMessageServiceError::InboundConnectionError(e))?;
+
         // Retrieve, process and dispatch messages
         loop {
             #[cfg(test)]
             let sync_sender = self.test_sync_sender.clone();
 
-            let frames = match inbound_socket.recv_multipart(0) {
-                Ok(frames) => frames,
+            let frames = match inbound_connection.receive_multipart() {
+                Ok(mut frames) => {
+                    // This strips off the two ZeroMQ Identity frames introduced by the transmission to the proxy and
+                    // from the proxy to this worker
+                    let frames: FrameSet = frames.drain(2..).collect();
+                    frames
+                },
                 Err(e) => {
                     warn!(target: LOG_TARGET, "Failed to receive message - Error: {:?}", e);
-                    inbound_socket.send("FAILED".as_bytes(), 0).unwrap_or_else(|e| {
-                        warn!(target: LOG_TARGET, "Could not return status message - Error: {:?}", e);
-                    });
                     break; // Attempt to reconnect to socket
                 },
             };
@@ -124,17 +125,11 @@ where
                         self.peer_manager.clone(),
                         self.inbound_message_broker.clone(),
                     );
-
-                    // TODO: Provide worker with the current nodes identity by adding it onto MessageContext, I
-                    // think it should rather be added as another frame before the message reaches the dealer
                     self.message_dispatcher.dispatch(message_context).unwrap_or_else(|e| {
                         warn!(
                             target: LOG_TARGET,
                             "Could not dispatch message to handler - Error: {:?}", e
                         );
-                    });
-                    inbound_socket.send("OK".as_bytes(), 0).unwrap_or_else(|e| {
-                        warn!(target: LOG_TARGET, "Could not return status message - Error: {:?}", e);
                     });
 
                     #[cfg(test)]
@@ -151,9 +146,6 @@ where
                         target: LOG_TARGET,
                         "Message discarded as it could not be deserialised - Error: {:?}", e
                     );
-                    inbound_socket.send("DISCARD_MSG".as_bytes(), 0).unwrap_or_else(|e| {
-                        warn!(target: LOG_TARGET, "Could not return status message - Error: {:?}", e);
-                    })
                 },
             }
         }
@@ -179,7 +171,7 @@ mod test {
     use super::*;
 
     use crate::{
-        connection::{connection::EstablishedConnection, Connection, Direction},
+        connection::{Connection, Direction},
         inbound_message_service::comms_msg_handlers::construct_comms_msg_dispatcher,
         message::{
             DomainMessageContext,
@@ -195,7 +187,6 @@ mod test {
     };
     use serde::{Deserialize, Serialize};
     use std::{
-        convert::TryInto,
         sync::Arc,
         time::{self, Duration},
     };
@@ -263,14 +254,14 @@ mod test {
             peer_manager,
         );
         worker.start();
-
         // Give worker sufficient time to spinup thread and create a socket
         std::thread::sleep(time::Duration::from_millis(100));
 
         // Create a dealer that will send the worker messages
-        let client_socket = context.socket(SocketType::Request).unwrap();
-        client_socket.bind(&inbound_address.to_zmq_endpoint()).unwrap();
-        let conn_outbound: EstablishedConnection = client_socket.try_into().unwrap();
+        let dealer_connection = Connection::new(&context, Direction::Outbound)
+            .set_socket_establishment(SocketEstablishment::Bind)
+            .establish(&inbound_address)
+            .unwrap();
 
         // Construct test message 1
         let message_header = MessageHeader {
@@ -293,7 +284,9 @@ mod test {
             node_identity.identity.public_key.clone(),
             message_envelope,
         );
-        let message_data1_buffer = message_data1.clone().try_into_frame_set().unwrap();
+        let mut message1_frame_set = Vec::new();
+        message1_frame_set.push(vec![0]);
+        message1_frame_set.extend(message_data1.clone().try_into_frame_set().unwrap());
 
         // Construct test message 2
         let message_header = MessageHeader {
@@ -314,14 +307,14 @@ mod test {
             node_identity.identity.public_key.clone(),
             message_envelope,
         );
-        let message_data2_buffer = message_data2.clone().try_into_frame_set().unwrap();
+        let mut message2_frame_set = Vec::new();
+        message2_frame_set.push(vec![0]);
+        message2_frame_set.extend(message_data2.clone().try_into_frame_set().unwrap());
 
         // Submit Messages to the Worker
         pause();
-        conn_outbound.send(message_data1_buffer).unwrap();
-        conn_outbound.receive(2000).unwrap();
-        conn_outbound.send(message_data2_buffer).unwrap();
-        conn_outbound.receive(2000).unwrap();
+        dealer_connection.send(message1_frame_set).unwrap();
+        dealer_connection.send(message2_frame_set).unwrap();
 
         // Retrieve messages at handler services
         pause();
