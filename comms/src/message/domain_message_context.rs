@@ -24,18 +24,17 @@ use crate::{message::message::Message, types::CommsPublicKey};
 use serde::{Deserialize, Serialize};
 
 /// The DomainMessageContext is the container that will be dispatched to the domain handlers. It contains the received
-/// message after the comms level envelope has been removed. It also has handles to the PeerManager and
-/// OutboundMessageService.
+/// message and source identity after the comms level envelope has been removed.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct DomainMessageContext {
-    pub source_node_identity: Option<CommsPublicKey>,
+    pub source_node_identity: CommsPublicKey,
     pub message: Message,
 }
 
 impl DomainMessageContext {
     /// Construct a new DomainMessageContext that consist of the peer connection information and the received message
     /// header and body
-    pub fn new(source_node_identity: Option<CommsPublicKey>, message: Message) -> Self {
+    pub fn new(source_node_identity: CommsPublicKey, message: Message) -> Self {
         DomainMessageContext {
             source_node_identity,
             message,

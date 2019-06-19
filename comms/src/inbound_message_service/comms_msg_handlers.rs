@@ -22,10 +22,19 @@
 
 use crate::{
     dispatcher::{DispatchError, DispatchResolver, DispatchableKey},
-    message::{DomainMessageContext, Message, MessageContext, MessageEnvelopeHeader, MessageFlags, NodeDestination},
+    message::{
+        DomainMessageContext,
+        Message,
+        MessageContext,
+        MessageEnvelopeHeader,
+        MessageFlags,
+        MessageHeader,
+        NodeDestination,
+    },
     types::{CommsPublicKey, MessageDispatcher},
 };
 use serde::{de::DeserializeOwned, Serialize};
+use tari_utilities::message_format::MessageFormat;
 
 /// The comms_msg_dispatcher will determine the type of message and forward it to the the correct handler
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]
@@ -55,9 +64,6 @@ pub struct InboundMessageServiceResolver;
 
 impl<MType> DispatchResolver<CommsDispatchType, MessageContext<MType>> for InboundMessageServiceResolver
 where
-    //    PK: PublicKey,
-    //    PK: Serialize + DeserializeOwned,
-    //    PK::K: Serialize + DeserializeOwned,
     MType: DispatchableKey,
     MType: Serialize + DeserializeOwned,
 {
@@ -104,8 +110,6 @@ where
 
 fn handler_handle<MType>(message_context: MessageContext<MType>) -> Result<(), DispatchError>
 where
-    //    PK: PublicKey,
-    //    PK: DiffieHellmanSharedSecret<PK>,
     MType: DispatchableKey,
     MType: Serialize + DeserializeOwned,
 {
@@ -144,9 +148,17 @@ where
             .message_body()
             .map_err(|e| DispatchError::HandlerError(format!("{}", e)))?;
     };
-    // Construct DomainMessageContext and dispatch using domain dispatcher
+
+    // Construct DomainMessageContext and dispatch to handler services using domain message broker
+    let header: MessageHeader<MType> = message.to_header().map_err(DispatchError::resolve_failed())?;
     let domain_message_context = DomainMessageContext::new(message_context.message_data.source_node_identity, message);
-    message_context.domain_dispatcher.dispatch(domain_message_context)
+    let domain_message_context_buffer = vec![domain_message_context
+        .to_binary()
+        .map_err(|e| DispatchError::HandlerError(format!("{}", e)))?];
+    message_context
+        .inbound_message_broker
+        .dispatch(header.message_type, &domain_message_context_buffer)
+        .map_err(|e| DispatchError::HandlerError(format!("{}", e)))
 }
 
 fn handler_forward<MType>(_message_context: MessageContext<MType>) -> Result<(), DispatchError>

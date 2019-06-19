@@ -43,7 +43,7 @@ pub enum ConnectorError {
 
 /// Information about the message received
 pub struct MessageInfo {
-    source_public_key: Option<CommsPublicKey>, // TODO: This shouldn't be optional in DomainMessageContext
+    source_public_key: CommsPublicKey,
 }
 
 /// # DomainConnector
@@ -322,7 +322,7 @@ mod test {
 
         let expected_pub_key = CommsPublicKey::random_keypair(&mut OsRng::new().unwrap()).1;
         let domain_message_context = DomainMessageContext {
-            source_node_identity: Some(expected_pub_key.clone()),
+            source_node_identity: expected_pub_key.clone(),
             message: Message::from_message_format(header, expected_message.clone()).unwrap(),
         };
 
@@ -332,7 +332,7 @@ mod test {
             Some((info, resp)) => {
                 let msg: TestMessage = resp;
                 assert_eq!(msg, expected_message);
-                assert_eq!(info.source_public_key.unwrap(), expected_pub_key);
+                assert_eq!(info.source_public_key, expected_pub_key);
             },
             None => panic!("DomainConnector Timed out"),
         }
