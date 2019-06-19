@@ -24,9 +24,10 @@
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
 use crate::{pow::ProofOfWork, types::*};
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 use digest::Input;
 use serde::{Deserialize, Serialize};
+use tari_crypto::ristretto::*;
 use tari_utilities::{ByteArray, Hashable};
 
 type BlockHash = [u8; 32];
@@ -61,6 +62,20 @@ impl BlockHeader {
     /// This function will validate the proof of work in the header
     pub fn validate_pow(&self) -> bool {
         unimplemented!();
+    }
+
+    pub fn create_empty() -> BlockHeader {
+        BlockHeader {
+            version: 0,
+            height: 0,
+            prev_hash: [0; 32],
+            timestamp: DateTime::<Utc>::from_utc(NaiveDate::from_ymd(1900, 1, 1).and_hms(1, 1, 1), Utc),
+            output_mmr: [0; 32],
+            range_proof_mmr: [0; 32],
+            kernel_mmr: [0; 32],
+            total_kernel_offset: RistrettoSecretKey::from(0),
+            pow: ProofOfWork {},
+        }
     }
 }
 
