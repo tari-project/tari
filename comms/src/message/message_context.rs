@@ -21,7 +21,8 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use super::message_data::MessageData;
 use crate::{
-    dispatcher::{DispatchableKey, DomainMessageDispatcher},
+    dispatcher::DispatchableKey,
+    inbound_message_service::inbound_message_broker::InboundMessageBroker,
     outbound_message_service::outbound_message_service::OutboundMessageService,
     peer_manager::{peer_manager::PeerManager, NodeIdentity},
     types::{CommsDataStore, CommsPublicKey},
@@ -30,15 +31,11 @@ use serde::{de::DeserializeOwned, Serialize};
 use std::sync::Arc;
 
 #[derive(Clone)]
-pub struct MessageContext<MType>
-where
-    MType: DispatchableKey,
-    MType: Serialize + DeserializeOwned,
-{
+pub struct MessageContext<MType> {
     pub message_data: MessageData<CommsPublicKey>,
     pub outbound_message_service: Arc<OutboundMessageService>,
     pub peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
-    pub domain_dispatcher: Arc<DomainMessageDispatcher<MType>>,
+    pub inbound_message_broker: Arc<InboundMessageBroker<MType>>,
     pub node_identity: Arc<NodeIdentity<CommsPublicKey>>,
 }
 
@@ -54,7 +51,7 @@ where
         message_data: MessageData<CommsPublicKey>,
         outbound_message_service: Arc<OutboundMessageService>,
         peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
-        domain_dispatcher: Arc<DomainMessageDispatcher<MType>>,
+        inbound_message_broker: Arc<InboundMessageBroker<MType>>,
     ) -> Self
     {
         MessageContext {
@@ -62,7 +59,7 @@ where
             node_identity,
             outbound_message_service,
             peer_manager,
-            domain_dispatcher,
+            inbound_message_broker,
         }
     }
 }
