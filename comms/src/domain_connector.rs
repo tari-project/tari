@@ -23,11 +23,12 @@
 use crate::{
     connection::{zmq::ZmqEndpoint, Connection, ConnectionError, Direction, EstablishedConnection, ZmqContext},
     message::{DomainMessageContext, Frame, FrameSet, MessageError},
-    types::CommsPublicKey,
+    peer_manager::PeerNodeIdentity,
 };
 use derive_error::Error;
 use serde::{Deserialize, Serialize};
 use std::{marker::PhantomData, time::Duration};
+use tari_crypto::ristretto::RistrettoPublicKey;
 use tari_utilities::message_format::{MessageFormat, MessageFormatError};
 
 #[derive(Debug, Error)]
@@ -43,7 +44,7 @@ pub enum ConnectorError {
 
 /// Information about the message received
 pub struct MessageInfo {
-    source_public_key: CommsPublicKey,
+    pub source_identity: PeerNodeIdentity<RistrettoPublicKey>,
 }
 
 /// # DomainConnector
@@ -74,7 +75,7 @@ impl<'de> DomainConnector<'de> {
         match self.connector.receive_timeout(duration)? {
             Some(domain_context) => Ok(Some((
                 MessageInfo {
-                    source_public_key: domain_context.source_node_identity,
+                    source_identity: domain_context.source_identity,
                 },
                 domain_context
                     .message
@@ -98,7 +99,7 @@ impl<'de> DomainConnector<'de> {
 /// T - The type into which the frame should be deserialized
 pub struct Connector<'de, T> {
     connection: EstablishedConnection,
-    frame_extractor: Box<FrameExtractor<Error = ConnectorError>>,
+    frame_extractor: Box<FrameExtractor<Error = ConnectorError> + Send + Sync>,
     _t: PhantomData<&'de T>,
 }
 
@@ -119,6 +120,7 @@ where T: Serialize + Deserialize<'de>
     where
         A: ZmqEndpoint,
         FE: FrameExtractor<Error = ConnectorError>,
+        FE: Send + Sync,
         FE: 'static,
     {
         let connection = Connection::new(context, Direction::Inbound)
@@ -200,6 +202,8 @@ mod test {
     use crate::{
         connection::InprocAddress,
         message::{Message, MessageHeader},
+        peer_manager::NodeId,
+        types::CommsPublicKey,
     };
     use rand::rngs::OsRng;
     use tari_crypto::keys::PublicKey;
@@ -322,7 +326,10 @@ mod test {
 
         let expected_pub_key = CommsPublicKey::random_keypair(&mut OsRng::new().unwrap()).1;
         let domain_message_context = DomainMessageContext {
-            source_node_identity: expected_pub_key.clone(),
+            source_identity: PeerNodeIdentity::new(
+                NodeId::from_key(&expected_pub_key).unwrap(),
+                expected_pub_key.clone(),
+            ),
             message: Message::from_message_format(header, expected_message.clone()).unwrap(),
         };
 
@@ -332,7 +339,7 @@ mod test {
             Some((info, resp)) => {
                 let msg: TestMessage = resp;
                 assert_eq!(msg, expected_message);
-                assert_eq!(info.source_public_key, expected_pub_key);
+                assert_eq!(info.source_identity.public_key, expected_pub_key);
             },
             None => panic!("DomainConnector Timed out"),
         }

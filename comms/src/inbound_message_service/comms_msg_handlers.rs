@@ -72,7 +72,6 @@ where
     fn resolve(&self, message_context: &MessageContext<MType>) -> Result<CommsDispatchType, DispatchError> {
         // Verify source node message signature
         if !message_context
-            .message_data
             .message_envelope
             .verify_signature()
             .map_err(|e| DispatchError::HandlerError(format!("{}", e)))?
@@ -81,7 +80,6 @@ where
         }
         // Check destination of message
         let message_envelope_header: MessageEnvelopeHeader<CommsPublicKey> = message_context
-            .message_data
             .message_envelope
             .to_header()
             .map_err(|e| DispatchError::HandlerError(format!("{}", e)))?;
@@ -114,17 +112,16 @@ where
     MType: Serialize + DeserializeOwned,
 {
     // Check encryption and retrieved Message
-    let message_envelope_header: MessageEnvelopeHeader<CommsPublicKey> = message_context
-        .message_data
-        .message_envelope
-        .to_header()
-        .map_err(|e| DispatchError::HandlerError(format!("{}", e)))?;
+    let message_envelope_header: MessageEnvelopeHeader<CommsPublicKey> =
+        message_context
+            .message_envelope
+            .to_header()
+            .map_err(|e| DispatchError::HandlerError(format!("{}", e)))?;
 
     let node_identity = &message_context.node_identity;
     let message: Message;
     if message_envelope_header.flags.contains(MessageFlags::ENCRYPTED) {
         match message_context
-            .message_data
             .message_envelope
             .decrypted_message_body(&node_identity.secret_key, &message_envelope_header.source)
         {
@@ -143,7 +140,6 @@ where
         }
     } else {
         message = message_context
-            .message_data
             .message_envelope
             .message_body()
             .map_err(|e| DispatchError::HandlerError(format!("{}", e)))?;
@@ -151,7 +147,7 @@ where
 
     // Construct DomainMessageContext and dispatch to handler services using domain message broker
     let header: MessageHeader<MType> = message.to_header().map_err(DispatchError::resolve_failed())?;
-    let domain_message_context = DomainMessageContext::new(message_context.message_data.source_node_identity, message);
+    let domain_message_context = DomainMessageContext::new(message_context.peer.into(), message);
     let domain_message_context_buffer = vec![domain_message_context
         .to_binary()
         .map_err(|e| DispatchError::HandlerError(format!("{}", e)))?];

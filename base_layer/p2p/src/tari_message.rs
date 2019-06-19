@@ -34,17 +34,18 @@ macro_rules! is_type {
 /// A tari message type is an immutable 8-bit unsigned integer indicating the type of message being received or sent
 /// over the network. Details are in
 /// [RFC-0172](https://rfc.tari.com/RFC-0172_PeerToPeerMessagingProtocol.html#messagetype).
-#[derive(Serialize, Deserialize, Eq, PartialEq, Hash, Clone)]
+#[derive(Serialize, Deserialize, Eq, PartialEq, Hash, Clone, Debug)]
 pub struct TariMessageType(u8);
 
 #[allow(non_snake_case, non_upper_case_globals)]
 pub mod NetMessage {
     pub(super) const START_RANGE: u8 = 1;
-    pub(super) const END_RANGE: u8 = 3; // Can be extended to 32
+    pub(super) const END_RANGE: u8 = 4; // Can be extended to 32
     /// Message sent when a request to establish a peer connection has been accepted
     pub const Accept: u8 = 1;
     pub const Join: u8 = 2;
     pub const Discover: u8 = 3;
+    pub const PingPong: u8 = 4;
 }
 
 #[allow(non_snake_case, non_upper_case_globals)]

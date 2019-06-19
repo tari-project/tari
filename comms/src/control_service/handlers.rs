@@ -75,7 +75,6 @@ where MType: Clone
 /// - opens an outbound [PeerConnection] to that peer (using [ConnectionManager])
 /// - If that connection is successful, add the peer to the routing table (using [PeerManager])
 /// - Send an Accept message over the new [PeerConnection]
-#[allow(dead_code)]
 pub fn establish_connection<MType>(context: ControlServiceMessageContext<MType>) -> Result<(), ControlServiceError>
 where
     MType: Serialize + DeserializeOwned,

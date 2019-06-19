@@ -32,7 +32,7 @@ use crate::{
     inbound_message_service::inbound_message_broker::InboundMessageBroker,
     message::{FrameSet, MessageContext, MessageData},
     outbound_message_service::outbound_message_service::OutboundMessageService,
-    peer_manager::{peer_manager::PeerManager, NodeIdentity},
+    peer_manager::{peer_manager::PeerManager, NodeId, NodeIdentity, Peer},
     types::{CommsDataStore, CommsPublicKey, MessageDispatcher},
 };
 use log::*;
@@ -92,6 +92,10 @@ where
         }
     }
 
+    fn lookup_peer(&self, node_id: &NodeId) -> Option<Peer<CommsPublicKey>> {
+        self.peer_manager.find_with_node_id(node_id).ok()
+    }
+
     fn start_worker(&self) -> Result<(), InboundMessageServiceError> {
         let inbound_connection = Connection::new(&self.context, Direction::Inbound)
             .set_socket_establishment(SocketEstablishment::Connect)
@@ -118,9 +122,22 @@ where
 
             match MessageData::try_from(frames) {
                 Ok(message_data) => {
+                    let peer = match self.lookup_peer(&message_data.source_node_id) {
+                        Some(peer) => peer,
+                        None => {
+                            warn!(
+                                target: LOG_TARGET,
+                                "Received unknown node id from peer connection. Discarding message from NodeId={:?}",
+                                message_data.source_node_id
+                            );
+                            continue;
+                        },
+                    };
+
                     let message_context = MessageContext::new(
                         self.node_identity.clone(),
-                        message_data,
+                        peer,
+                        message_data.message_envelope,
                         self.outbound_message_service.clone(),
                         self.peer_manager.clone(),
                         self.inbound_message_broker.clone(),
@@ -171,7 +188,7 @@ mod test {
     use super::*;
 
     use crate::{
-        connection::{Connection, Direction},
+        connection::{Connection, Direction, NetAddress},
         inbound_message_service::comms_msg_handlers::construct_comms_msg_dispatcher,
         message::{
             DomainMessageContext,
@@ -182,7 +199,7 @@ mod test {
             MessageHeader,
             NodeDestination,
         },
-        peer_manager::{peer_manager::PeerManager, NodeIdentity},
+        peer_manager::{peer_manager::PeerManager, NodeIdentity, PeerFlags},
         types::{CommsDataStore, CommsPublicKey},
     };
     use serde::{Deserialize, Serialize};
@@ -235,6 +252,14 @@ mod test {
                 .unwrap(),
         );
         let peer_manager = Arc::new(PeerManager::<CommsPublicKey, CommsDataStore>::new(None).unwrap());
+        // Add peer to peer manager
+        let peer = Peer::new(
+            node_identity.identity.public_key.clone(),
+            node_identity.identity.node_id.clone(),
+            "127.0.0.1:9000".parse::<NetAddress>().unwrap().into(),
+            PeerFlags::empty(),
+        );
+        peer_manager.add_peer(peer).unwrap();
         let outbound_message_service = Arc::new(
             OutboundMessageService::new(
                 context.clone(),
@@ -278,10 +303,8 @@ mod test {
             MessageFlags::NONE,
         )
         .unwrap();
-        let connection_id = vec![0, 1, 2, 3, 4];
-        let message_data1 = MessageData::<RistrettoPublicKey>::new(
-            connection_id.clone(),
-            node_identity.identity.public_key.clone(),
+        let message_data1 = MessageData::new(
+            NodeId::from_key(&node_identity.identity.public_key).unwrap(),
             message_envelope,
         );
         let mut message1_frame_set = Vec::new();
@@ -302,9 +325,8 @@ mod test {
             MessageFlags::NONE,
         )
         .unwrap();
-        let message_data2 = MessageData::<RistrettoPublicKey>::new(
-            connection_id.clone(),
-            node_identity.identity.public_key.clone(),
+        let message_data2 = MessageData::new(
+            NodeId::from_key(&node_identity.identity.public_key).unwrap(),
             message_envelope,
         );
         let mut message2_frame_set = Vec::new();

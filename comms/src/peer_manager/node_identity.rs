@@ -22,10 +22,14 @@
 
 use crate::{
     connection::NetAddress,
-    peer_manager::node_id::{NodeId, NodeIdError},
+    peer_manager::{
+        node_id::{NodeId, NodeIdError},
+        Peer,
+    },
 };
 use derive_error::Error;
 use rand::{CryptoRng, Rng};
+use serde::{Deserialize, Serialize};
 use tari_crypto::{
     keys::{PublicKey, SecretKey},
     ristretto::{RistrettoPublicKey, RistrettoSecretKey},
@@ -79,15 +83,25 @@ impl NodeIdentity<RistrettoPublicKey> {
 
 /// The PeerNodeIdentity is a container that stores the public identity (NodeId, Identification Public Key pair) of a
 /// single node
-#[derive(Eq, PartialEq, Debug)]
-pub struct PeerNodeIdentity<PubKey> {
+#[derive(Eq, PartialEq, Debug, Serialize, Deserialize)]
+pub struct PeerNodeIdentity<PK> {
     pub node_id: NodeId,
-    pub public_key: PubKey,
+    pub public_key: PK,
 }
 
-impl<PubKey: PublicKey> PeerNodeIdentity<PubKey> {
+impl<PK: PublicKey> PeerNodeIdentity<PK> {
     /// Construct a new identity for a node that contains its NodeId and identification key pair
-    pub fn new(node_id: NodeId, public_key: PubKey) -> PeerNodeIdentity<PubKey> {
+    pub fn new(node_id: NodeId, public_key: PK) -> PeerNodeIdentity<PK> {
         PeerNodeIdentity { node_id, public_key }
+    }
+}
+
+/// Construct a PeerNodeIdentity from a Peer
+impl<PK> From<Peer<PK>> for PeerNodeIdentity<PK> {
+    fn from(peer: Peer<PK>) -> Self {
+        Self {
+            public_key: peer.public_key,
+            node_id: peer.node_id,
+        }
     }
 }

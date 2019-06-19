@@ -36,7 +36,7 @@ pub use self::{
     domain_message_context::*,
     envelope::*,
     error::MessageError,
-    message::*,
+    message::{Message, MessageHeader},
     message_context::MessageContext,
     message_data::*,
 };

@@ -138,7 +138,7 @@ fn connection_out() {
     assert_eq!(vec![123u8], data[1]);
     sender.send(&[data[0].as_slice(), &[123u8]]).unwrap();
 
-    let frames = consumer.receive(100).unwrap();
+    let frames = consumer.receive(2000).unwrap();
     assert_eq!(conn_id.to_vec(), frames[1]);
     assert_eq!(vec![123u8], frames[2]);
 }

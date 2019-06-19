@@ -18,4 +18,4 @@ pub mod peer_manager;
 pub mod types;
 mod utils;
 
-pub use self::{builder::CommsBuilder, domain_connector::Connector};
+pub use self::{builder::CommsBuilder, domain_connector::DomainConnector};

@@ -20,26 +20,39 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::peer_manager::node_id::NodeIdError;
-use derive_error::Error;
-use tari_crypto::signatures::SchnorrSignatureError;
-use tari_utilities::{ciphers::cipher::CipherError, message_format::MessageFormatError};
+use super::service::Service;
+use crate::tari_message::TariMessageType;
+use std::collections::HashMap;
+use tari_comms::{builder::CommsRoutes, connection::InprocAddress};
 
-#[derive(Error, Debug)]
-pub enum MessageError {
-    /// Multipart message is malformed
-    MalformedMultipart,
-    /// Failed to serialize message
-    SerializeFailed,
-    /// Failed to deserialize message
-    DeserializeFailed,
-    /// An error occurred serialising an object into binary
-    BinarySerializeError,
-    /// An error occurred deserialising binary data into an object
-    BinaryDeserializeError,
-    MessageFormatError(MessageFormatError),
-    SchnorrSignatureError(SchnorrSignatureError),
-    /// Failed to Encode or Decode the message using the Cipher
-    CipherError(CipherError),
-    NodeIdError(NodeIdError),
+pub struct ServiceRegistry {
+    pub(super) services: Vec<Box<Service>>,
+}
+
+impl ServiceRegistry {
+    pub fn new() -> Self {
+        Self { services: Vec::new() }
+    }
+
+    pub fn register<S>(mut self, service: S) -> Self
+    where S: Service + 'static {
+        self.services.push(Box::new(service));
+        self
+    }
+
+    pub fn num_services(&self) -> usize {
+        self.services.len()
+    }
+
+    pub fn build_comms_routes(&self) -> CommsRoutes<TariMessageType> {
+        let mut routes = CommsRoutes::new();
+        for service in &self.services {
+            routes = service
+                .get_message_types()
+                .iter()
+                .fold(routes, |routes, message_type| routes.register(message_type.clone()));
+        }
+
+        routes
+    }
 }

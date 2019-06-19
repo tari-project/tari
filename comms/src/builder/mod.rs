@@ -21,7 +21,11 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod builder;
+mod routes;
 mod types;
 
-pub use builder::{CommsBuilder, CommsBuilderError};
-pub use types::Factory;
+pub use self::{
+    builder::{CommsBuilder, CommsBuilderError, CommsServices, CommsServicesError},
+    routes::CommsRoutes,
+    types::Factory,
+};
