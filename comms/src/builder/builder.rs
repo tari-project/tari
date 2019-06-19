@@ -74,9 +74,9 @@ trait CommsBuilable {
 /// This builder give the Comms crate user everything they need to
 /// get a p2p messaging layer up and running.
 ///
-/// ```edition2018
+/// ```edition2018,no_compile
 /// use tari_comms::builder::CommsBuilder;
-/// use tari_comms::dispatcher::{DomainMessageDispatcher, HandlerError};
+/// use tari_comms::dispatcher::HandlerError;
 /// use tari_comms::message::DomainMessageContext;
 /// use tari_comms::control_service::ControlServiceConfig;
 /// use tari_comms::peer_manager::NodeIdentity;

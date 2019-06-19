@@ -297,7 +297,7 @@ impl EstablishedConnection {
     }
 
     /// Read entire multipart message
-    fn receive_multipart(&self) -> Result<FrameSet> {
+    pub fn receive_multipart(&self) -> Result<FrameSet> {
         self.socket
             .recv_multipart(0)
             .map_err(|e| ConnectionError::SocketError(format!("Error receiving: {} ({})", e, e.to_raw())))

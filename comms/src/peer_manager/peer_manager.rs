@@ -127,16 +127,23 @@ where
     /// Request a sub-set of peers based on the provided BroadcastStrategy
     pub fn get_broadcast_identities(
         &self,
-        broadcast_strategy: BroadcastStrategy,
+        broadcast_strategy: BroadcastStrategy<PubKey>,
     ) -> Result<Vec<PeerNodeIdentity<PubKey>>, PeerManagerError>
     {
         match broadcast_strategy {
-            BroadcastStrategy::Direct(node_id) => {
+            BroadcastStrategy::DirectNodeId(node_id) => {
                 // Send to a particular peer matching the given node ID
                 self.peer_storage
                     .read()
                     .map_err(|_| PeerManagerError::PoisonedAccess)?
-                    .direct_identity(&node_id)
+                    .direct_identity_node_id(&node_id)
+            },
+            BroadcastStrategy::DirectPublicKey(public_key) => {
+                // Send to a particular peer matching the given node ID
+                self.peer_storage
+                    .read()
+                    .map_err(|_| PeerManagerError::PoisonedAccess)?
+                    .direct_identity_public_key(&public_key)
             },
             BroadcastStrategy::Flood => {
                 // Send to all known Communication Node peers
@@ -285,7 +292,7 @@ mod test {
 
         // Test Valid Direct
         let identities = peer_manager
-            .get_broadcast_identities(BroadcastStrategy::Direct(test_peers[2].node_id.clone()))
+            .get_broadcast_identities(BroadcastStrategy::DirectNodeId(test_peers[2].node_id.clone()))
             .unwrap();
         assert_eq!(identities.len(), 1);
         assert_eq!(identities[0].node_id, test_peers[2].node_id);
@@ -293,7 +300,7 @@ mod test {
         // Test Invalid Direct
         let unmanaged_peer = create_test_peer(&mut rng, false);
         assert!(peer_manager
-            .get_broadcast_identities(BroadcastStrategy::Direct(unmanaged_peer.node_id.clone()))
+            .get_broadcast_identities(BroadcastStrategy::DirectNodeId(unmanaged_peer.node_id.clone()))
             .is_err());
 
         // Test Flood

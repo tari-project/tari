@@ -154,11 +154,10 @@ mod test {
     use super::*;
     use crate::{
         connection::{
-            connection::EstablishedConnection,
-            types::SocketType,
-            zmq::{InprocAddress, ZmqContext, ZmqEndpoint},
+            zmq::{InprocAddress, ZmqContext},
             Connection,
             Direction,
+            SocketEstablishment,
         },
         inbound_message_service::comms_msg_handlers::*,
         message::{
@@ -175,7 +174,7 @@ mod test {
         types::{CommsDataStore, CommsPublicKey},
     };
     use serde::{Deserialize, Serialize};
-    use std::{convert::TryInto, sync::Arc, thread, time::Duration};
+    use std::{sync::Arc, thread, time::Duration};
     use tari_crypto::ristretto::RistrettoPublicKey;
     use tari_utilities::message_format::MessageFormat;
 
@@ -195,11 +194,10 @@ mod test {
 
         // Create a client that will write message to the inbound message pool
         let inbound_msg_queue_address = InprocAddress::random();
-        let client_socket = context.socket(SocketType::Request).unwrap();
-        client_socket
-            .connect(&inbound_msg_queue_address.to_zmq_endpoint())
+        let conn_client = Connection::new(&context, Direction::Outbound)
+            .set_socket_establishment(SocketEstablishment::Connect)
+            .establish(&inbound_msg_queue_address)
             .unwrap();
-        let conn_client: EstablishedConnection = client_socket.try_into().unwrap();
 
         // Create Handler Service
         let handler_inproc_address = InprocAddress::random();
@@ -271,7 +269,6 @@ mod test {
         pause();
         for _ in 0..MAX_INBOUND_MSG_PROCESSING_WORKERS {
             conn_client.send(&message_data_buffer).unwrap();
-            conn_client.receive(2000).unwrap();
             pause();
         }
 
