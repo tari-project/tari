@@ -47,10 +47,14 @@ use threadpool::ThreadPool;
 
 const LOG_TARGET: &'static str = "base_layer::p2p::services";
 
+/// Control messages for services
 pub enum ServiceControlMessage {
+    /// Service should shut down
     Shutdown,
 }
 
+/// This is reponsible for creating and managing the thread pool for
+/// services that should be executed.
 pub struct ServiceExecutor {
     thread_pool: ThreadPool,
     senders: Vec<Sender<ServiceControlMessage>>,
@@ -58,6 +62,7 @@ pub struct ServiceExecutor {
 }
 
 impl ServiceExecutor {
+    /// Execute the services contained in the given [ServiceRegistry].
     pub fn execute(comms_services: Arc<CommsServices<TariMessageType>>, registry: ServiceRegistry) -> Self {
         let thread_pool = threadpool::Builder::new()
             .thread_name("DomainServices".to_string())
@@ -77,8 +82,9 @@ impl ServiceExecutor {
             };
 
             thread_pool.execute(move || {
-                debug!(target: LOG_TARGET, "Executing service {}", service.get_name());
+                info!(target: LOG_TARGET, "Starting service {}", service.get_name());
                 service.execute(service_context);
+                info!(target: LOG_TARGET, "Service '{}' has shut down", service.get_name());
             });
         }
 
@@ -89,6 +95,7 @@ impl ServiceExecutor {
         }
     }
 
+    /// Send a [ServiceControlMessage::Shutdown] message to all services.
     pub fn shutdown(&self) -> Result<(), ServiceError> {
         let mut failed = false;
         for sender in &self.senders {
@@ -109,6 +116,7 @@ impl ServiceExecutor {
         }
     }
 
+    /// Join on all threads in the thread pool until they all exit or a given timeout is reached.
     pub fn join_timeout(self, timeout: Duration) -> Result<(), ServiceError> {
         let (tx, rx) = channel();
         thread::spawn(move || {
@@ -120,12 +128,17 @@ impl ServiceExecutor {
     }
 }
 
+/// The context object given to each service. This allows the service to receive [ServiceControlMessage]s,
+/// access the outbound message service and create [DomainConnector]s to receive comms messages of
+/// a particular [TariMessageType].
 pub struct ServiceContext {
     comms_services: Arc<CommsServices<TariMessageType>>,
     receiver: Receiver<ServiceControlMessage>,
 }
 
 impl ServiceContext {
+    /// Attempt to retrieve a control message. Returns `Some(ServiceControlMessage)` if there
+    /// is a message on the channel or `None` if the channel is empty and the timeout is reached.
     pub fn get_control_message(&self, timeout: Duration) -> Option<ServiceControlMessage> {
         match self.receiver.recv_timeout(timeout) {
             Ok(msg) => Some(msg),
@@ -136,10 +149,12 @@ impl ServiceContext {
         }
     }
 
+    /// Retrieve and `Arc` of the outbound message service. Used for sending outbound messages.
     pub fn get_outbound_message_service(&self) -> &Arc<OutboundMessageService> {
         self.comms_services.get_outbound_message_service()
     }
 
+    /// Create a [DomainConnector] which listens for a particular [TariMessageType].
     pub fn create_connector(&self, message_type: &TariMessageType) -> Result<DomainConnector<'static>, ServiceError> {
         self.comms_services
             .create_connector(message_type)

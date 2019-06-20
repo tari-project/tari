@@ -23,8 +23,17 @@
 use super::executor::ServiceContext;
 use crate::tari_message::TariMessageType;
 
+/// This trait should be implemented for services
 pub trait Service: Send + Sync {
+    /// A 'friendly' name used for logging purposes
     fn get_name(&self) -> String;
+    /// Returns the message types this service requires. These will be
+    /// registered in the comms routing.
     fn get_message_types(&self) -> Vec<TariMessageType>;
+    /// The entry point of the service. This will be executed in a dedicated thread.
+    /// The service should use `context.create_connector(message_type)` to create a `DomainConnector`
+    /// for the registered message types returned from `Service::get_message_types`.
+    /// This should contain a loop which reads control messages (`context.get_control_message`)
+    /// and connector messages and processes them.
     fn execute(&mut self, context: ServiceContext);
 }

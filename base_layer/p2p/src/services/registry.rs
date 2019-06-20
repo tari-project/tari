@@ -25,25 +25,32 @@ use crate::tari_message::TariMessageType;
 use std::collections::HashMap;
 use tari_comms::{builder::CommsRoutes, connection::InprocAddress};
 
+/// This is a container for services. Services can be registered here
+/// and given to the [ServiceExecutor] for execution. This also
+/// builds [CommsRoutes] for the given services.
 pub struct ServiceRegistry {
     pub(super) services: Vec<Box<Service>>,
 }
 
 impl ServiceRegistry {
+    /// Create a new [ServiceRegistry].
     pub fn new() -> Self {
         Self { services: Vec::new() }
     }
 
+    /// Register a [Service]
     pub fn register<S>(mut self, service: S) -> Self
     where S: Service + 'static {
         self.services.push(Box::new(service));
         self
     }
 
+    /// Retrieves the number of services registered.
     pub fn num_services(&self) -> usize {
         self.services.len()
     }
 
+    /// Builds the [CommsRoutes] for the services contained in this registry.
     pub fn build_comms_routes(&self) -> CommsRoutes<TariMessageType> {
         let mut routes = CommsRoutes::new();
         for service in &self.services {
@@ -54,5 +61,35 @@ impl ServiceRegistry {
         }
 
         routes
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::services::ServiceContext;
+
+    struct DummyService;
+
+    impl Service for DummyService {
+        fn get_name(&self) -> String {
+            "dummy".to_string()
+        }
+
+        fn get_message_types(&self) -> Vec<TariMessageType> {
+            Vec::new()
+        }
+
+        fn execute(&mut self, _context: ServiceContext) {
+            // do nothing
+        }
+    }
+
+    #[test]
+    fn num_services() {
+        let mut registry = ServiceRegistry::new();
+        assert_eq!(registry.num_services(), 0);
+        registry = registry.register(DummyService {});
+        assert_eq!(registry.num_services(), 1);
     }
 }
