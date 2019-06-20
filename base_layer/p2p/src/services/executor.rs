@@ -97,22 +97,14 @@ impl ServiceExecutor {
 
     /// Send a [ServiceControlMessage::Shutdown] message to all services.
     pub fn shutdown(&self) -> Result<(), ServiceError> {
-        let mut failed = false;
-        for sender in &self.senders {
-            if sender.send(ServiceControlMessage::Shutdown).is_err() {
-                failed = true;
-            }
-        }
-
-        // TODO: Wait for services to exit and then shutdown the comms
-        //        self.comms_services
-        //            .shutdown()
-        //            .map_err(ServiceError::CommsServicesError)?;
-
-        if failed {
-            Err(ServiceError::ShutdownSendFailed)
-        } else {
+        if self
+            .senders
+            .iter()
+            .all(sender.send(ServiceControlMessage::Shutdown).is_ok())
+        {
             Ok(())
+        } else {
+            Err(ServiceError::ShutdownSendFailed)
         }
     }
 
