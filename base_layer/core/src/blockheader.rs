@@ -63,8 +63,10 @@ impl BlockHeader {
     pub fn validate_pow(&self) -> bool {
         unimplemented!();
     }
+}
 
-    pub fn create_empty() -> BlockHeader {
+impl Default for BlockHeader {
+    fn default() -> Self {
         BlockHeader {
             version: 0,
             height: 0,

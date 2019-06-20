@@ -25,12 +25,9 @@
 
 use crate::{
     blockheader::BlockHeader,
-    pow::*,
     transaction::{Transaction, TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
     types::*,
 };
-use chrono::{DateTime, NaiveDate, Utc};
-use tari_crypto::ristretto::*;
 
 //----------------------------------------         Blocks         ----------------------------------------------------//
 
@@ -169,18 +166,18 @@ impl From<Transaction> for AggregateBody {
 #[derive(Default)]
 pub struct BlockBuilder {
     pub header: Option<BlockHeader>,
-    pub inputs: Option<Vec<TransactionInput>>,
-    pub outputs: Option<Vec<TransactionOutput>>,
-    pub kernels: Option<Vec<TransactionKernel>>,
+    pub inputs: Vec<TransactionInput>,
+    pub outputs: Vec<TransactionOutput>,
+    pub kernels: Vec<TransactionKernel>,
 }
 
 impl BlockBuilder {
     pub fn new() -> BlockBuilder {
         BlockBuilder {
             header: None,
-            inputs: None,
-            outputs: None,
-            kernels: None,
+            inputs: Vec::new(),
+            outputs: Vec::new(),
+            kernels: Vec::new(),
         }
     }
 
@@ -191,26 +188,20 @@ impl BlockBuilder {
     }
 
     /// This function adds the provided transaction inputs to the block
-    pub fn with_inputs(mut self, inputs: &mut Vec<TransactionInput>) -> Self {
-        let mut temp = self.inputs.unwrap_or(Vec::new());
-        temp.append(inputs);
-        self.inputs = Some(temp);
+    pub fn add_inputs(mut self, inputs: &mut Vec<TransactionInput>) -> Self {
+        self.inputs.append(inputs);
         self
     }
 
     /// This function adds the provided transaction outputs to the block
-    pub fn with_outputs(mut self, outputs: &mut Vec<TransactionOutput>) -> Self {
-        let mut temp = self.outputs.unwrap_or(Vec::new());
-        temp.append(outputs);
-        self.outputs = Some(temp);
+    pub fn add_outputs(mut self, outputs: &mut Vec<TransactionOutput>) -> Self {
+        self.outputs.append(outputs);
         self
     }
 
     /// This function adds the provided transaction kernels to the block
-    pub fn with_kernels(mut self, kernels: &mut Vec<TransactionKernel>) -> Self {
-        let mut temp = self.kernels.unwrap_or(Vec::new());
-        temp.append(kernels);
-        self.kernels = Some(temp);
+    pub fn add_kernels(mut self, kernels: &mut Vec<TransactionKernel>) -> Self {
+        self.kernels.append(kernels);
         self
     }
 
@@ -223,9 +214,9 @@ impl BlockBuilder {
         loop {
             match iter.next() {
                 Some(mut tx) => {
-                    self = self.with_inputs(&mut tx.body.inputs);
-                    self = self.with_outputs(&mut tx.body.outputs);
-                    self = self.with_kernels(&mut tx.body.kernels);
+                    self = self.add_inputs(&mut tx.body.inputs);
+                    self = self.add_outputs(&mut tx.body.outputs);
+                    self = self.add_kernels(&mut tx.body.kernels);
                     self.header = self.header.map(|mut h| {
                         h.total_kernel_offset = h.total_kernel_offset + tx.offset;
                         h
@@ -237,43 +228,43 @@ impl BlockBuilder {
         self
     }
 
+    /// This functions add the provided transactions to the block
+    pub fn add_transaction(mut self, mut tx: Transaction) -> Self {
+        if self.header.is_none() {
+            self.header = Some(BlockBuilder::gen_blank_header());
+        }
+        self = self.add_inputs(&mut tx.body.inputs);
+        self = self.add_outputs(&mut tx.body.outputs);
+        self = self.add_kernels(&mut tx.body.kernels);
+        self.header = self.header.map(|mut h| {
+            h.total_kernel_offset = h.total_kernel_offset + tx.offset;
+            h
+        });
+        self
+    }
+
     /// This will add the given coinbase UTXO to the block
     pub fn with_coinbase_utxo(mut self, coinbase_utxo: TransactionOutput, coinbase_kernel: TransactionKernel) -> Self {
-        let mut temp = self.kernels.unwrap_or(Vec::new());
-        temp.push(coinbase_kernel);
-        self.kernels = Some(temp);
-
-        let mut temp = self.outputs.unwrap_or(Vec::new());
-        temp.push(coinbase_utxo);
-        self.outputs = Some(temp);
+        self.kernels.push(coinbase_kernel);
+        self.outputs.push(coinbase_utxo);
         self
     }
 
     /// This will finish construction of the block and create the block
-    pub fn finish(self) -> Block {
+    pub fn build(self) -> Block {
         let mut block = Block {
             header: self.header.unwrap(),
-            body: AggregateBody {
-                sorted: false,
-                inputs: self.inputs.unwrap(),
-                outputs: self.outputs.unwrap(),
-                kernels: self.kernels.unwrap(),
-            },
+            body: AggregateBody::new(self.inputs, self.outputs, self.kernels),
         };
         block.body.sort();
         block
     }
 
     /// This will finish construction of the block, do proof of work and create the block
-    pub fn finish_with_pow(self) -> Block {
+    pub fn build_with_pow(self) -> Block {
         let mut block = Block {
             header: self.header.unwrap(),
-            body: AggregateBody {
-                sorted: false,
-                inputs: self.inputs.unwrap(),
-                outputs: self.outputs.unwrap(),
-                kernels: self.kernels.unwrap(),
-            },
+            body: AggregateBody::new(self.inputs, self.outputs, self.kernels),
         };
         block.body.sort();
         block
@@ -284,17 +275,7 @@ impl BlockBuilder {
 
     /// This is just a wrapper function to return a blank header
     fn gen_blank_header() -> BlockHeader {
-        BlockHeader {
-            version: 0,
-            height: 0,
-            prev_hash: [0; 32],
-            timestamp: DateTime::<Utc>::from_utc(NaiveDate::from_ymd(2020, 1, 1).and_hms(1, 1, 1), Utc),
-            output_mmr: [0; 32],
-            range_proof_mmr: [0; 32],
-            kernel_mmr: [0; 32],
-            total_kernel_offset: RistrettoSecretKey::from(0),
-            pow: ProofOfWork {},
-        }
+        BlockHeader::default()
     }
 }
 //----------------------------------------         Tests          ----------------------------------------------------//
