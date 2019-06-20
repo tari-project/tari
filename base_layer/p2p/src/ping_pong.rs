@@ -24,7 +24,6 @@ use crate::{
     services::{Service, ServiceContext, ServiceControlMessage},
     tari_message::{NetMessage, TariMessageType},
 };
-use derive_error::Error;
 use log::*;
 use serde::{export::fmt::Debug, Deserialize, Serialize};
 use std::{sync::Arc, time::Duration};
@@ -32,24 +31,23 @@ use tari_comms::{
     domain_connector::ConnectorError,
     message::{Message, MessageFlags, MessageHeader},
     outbound_message_service::{outbound_message_service::OutboundMessageService, BroadcastStrategy},
+    peer_manager::NodeId,
     DomainConnector,
 };
+use tari_crypto::ristretto::RistrettoPublicKey;
 use tari_utilities::message_format::MessageFormat;
 use threadpool::ThreadPool;
 
 const LOG_TARGET: &'static str = "base_layer::p2p::ping_pong";
 
+/// The PingPong message
 #[derive(Serialize, Deserialize)]
 pub enum PingPong {
     Ping,
     Pong,
 }
 
-#[derive(Debug, Error)]
-pub enum PingPongError {
-    ConnectorError(ConnectorError),
-}
-
+/// Periodically
 pub struct PingPongService {
     interval: Duration,
 }
@@ -63,6 +61,29 @@ impl PingPongService {
         Self { interval }
     }
 
+    fn send_msg(
+        &self,
+        oms: &Arc<OutboundMessageService>,
+        broadcast_strategy: BroadcastStrategy<RistrettoPublicKey>,
+        msg: PingPong,
+    ) -> Result<(), String>
+    {
+        let msg = Message::from_message_format(
+            MessageHeader {
+                message_type: NetMessage::PingPong,
+            },
+            msg,
+        )
+        .map_err(format_err)?;
+
+        oms.send(
+            broadcast_strategy,
+            MessageFlags::empty(),
+            msg.to_binary().map_err(format_err)?,
+        )
+        .map_err(format_err)
+    }
+
     fn run(&self, oms: &Arc<OutboundMessageService>, connector: &DomainConnector<'static>) -> Result<(), String> {
         if let Some((info, msg)) = connector.receive_timeout(self.interval.clone()).map_err(format_err)? {
             match msg {
@@ -72,20 +93,11 @@ impl PingPongService {
                         "Received ping from NodeID {:?}", info.source_identity.node_id
                     );
                     // Reply with Pong
-                    let msg = Message::from_message_format(
-                        MessageHeader {
-                            message_type: NetMessage::PingPong,
-                        },
-                        PingPong::Pong,
-                    )
-                    .map_err(format_err)?;
-
-                    oms.send(
+                    self.send_msg(
+                        oms,
                         BroadcastStrategy::DirectNodeId(info.source_identity.node_id.clone()),
-                        MessageFlags::empty(),
-                        msg.to_binary().map_err(format_err)?,
-                    )
-                    .map_err(format_err)?;
+                        PingPong::Pong,
+                    )?;
                 },
                 PingPong::Pong => {
                     debug!(
@@ -95,6 +107,8 @@ impl PingPongService {
                 },
             }
         }
+
+        self.send_msg(oms, BroadcastStrategy::Random(1), PingPong::Ping)?;
 
         Ok(())
     }

@@ -67,7 +67,7 @@ impl ServiceRegistry {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::services::ServiceContext;
+    use crate::{services::ServiceContext, tari_message::NetMessage};
 
     struct DummyService;
 
@@ -77,7 +77,7 @@ mod test {
         }
 
         fn get_message_types(&self) -> Vec<TariMessageType> {
-            Vec::new()
+            vec![NetMessage::PingPong.into()]
         }
 
         fn execute(&mut self, _context: ServiceContext) {
@@ -91,5 +91,13 @@ mod test {
         assert_eq!(registry.num_services(), 0);
         registry = registry.register(DummyService {});
         assert_eq!(registry.num_services(), 1);
+    }
+
+    #[test]
+    fn build_comms_routes() {
+        let registry = ServiceRegistry::new().register(DummyService {});
+
+        let routes = registry.build_comms_routes();
+        routes.get_address(&NetMessage::PingPong.into()).unwrap();
     }
 }
