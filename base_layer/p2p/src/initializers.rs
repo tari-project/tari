@@ -23,17 +23,16 @@
 use crate::{
     ping_pong::PingPongService,
     services::{ServiceExecutor, ServiceRegistry},
-    tari_message::{NetMessage, TariMessageType},
+    tari_message::TariMessageType,
 };
 use derive_error::Error;
 use rand::rngs::OsRng;
-use std::{net::IpAddr, sync::Arc, time::Duration};
+use std::{net::IpAddr, sync::Arc};
 use tari_comms::{
     builder::{CommsBuilderError, CommsServicesError},
     connection::net_address::ip::SocketAddress,
     connection_manager::PeerConnectionConfig,
     control_service::ControlServiceConfig,
-    outbound_message_service::outbound_message_pool::OutboundMessagePoolConfig,
     peer_manager::{node_identity::NodeIdentityError, NodeIdentity},
     CommsBuilder,
 };

@@ -22,8 +22,7 @@
 
 use super::service::Service;
 use crate::tari_message::TariMessageType;
-use std::collections::HashMap;
-use tari_comms::{builder::CommsRoutes, connection::InprocAddress};
+use tari_comms::builder::CommsRoutes;
 
 /// This is a container for services. Services can be registered here
 /// and given to the [ServiceExecutor] for execution. This also

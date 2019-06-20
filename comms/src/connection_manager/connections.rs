@@ -29,10 +29,7 @@ use super::{
     Result,
 };
 
-use crate::{
-    connection::{PeerConnection, PeerConnectionState},
-    peer_manager::node_id::NodeId,
-};
+use crate::{connection::PeerConnection, peer_manager::node_id::NodeId};
 
 use crate::connection::ConnectionError;
 use std::{
@@ -62,19 +59,9 @@ impl LivePeerConnections {
         self.atomic_read(|lock| lock.get(node_id).map(|conn| conn.clone()))
     }
 
-    /// Get a connection by node id only if it is active
-    pub fn get_active_connection(&self, node_id: &NodeId) -> Option<Arc<PeerConnection>> {
-        self.get_connection_if(node_id, |connection| connection.is_active())
-    }
-
     /// Get number of active connections
     pub fn get_active_connection_count(&self) -> usize {
         self.atomic_read(|repo| repo.count_where(|conn| conn.is_active()))
-    }
-
-    /// Get the state for a connection
-    pub fn get_connection_state(&self, node_id: &NodeId) -> Option<PeerConnectionState> {
-        self.get_connection(node_id).and_then(|conn| Some(conn.get_state()))
     }
 
     /// Add a connection to live peer connections
@@ -147,11 +134,6 @@ impl LivePeerConnections {
         let lock = acquire_read_lock!(self.repository);
         f(lock)
     }
-
-    fn get_connection_if<P>(&self, node_id: &NodeId, predicate: P) -> Option<Arc<PeerConnection>>
-    where P: FnOnce(&Arc<PeerConnection>) -> bool {
-        self.get_connection(node_id).filter(predicate)
-    }
 }
 
 #[cfg(test)]
@@ -187,7 +169,6 @@ mod test {
         let join_handle = make_join_handle();
 
         connections.add_connection(node_id.clone(), conn, join_handle);
-        assert!(connections.get_active_connection(&node_id).is_none());
         assert_eq!(
             1,
             acquire_read_lock!(connections.connection_thread_handles)
@@ -195,7 +176,6 @@ mod test {
                 .count()
         );
         connections.get_connection(&node_id).unwrap();
-        connections.get_connection_state(&node_id).unwrap();
         connections.drop_connection(&node_id).unwrap();
         assert_eq!(
             0,

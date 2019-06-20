@@ -17,7 +17,7 @@ impl Hashable for MyObject {
     }
 }
 
-const WORDLIST_broken: &str = "Then let not winter's ragged hand deface
+const WORDLIST_BROKEN: &str = "Then let not winter's ragged hand deface
 In thee thy summer, ere thou be distill'd:
 Make sweet some vial; treasure thou some place
 With beauty's treasure, ere it be self-kill'd.
@@ -33,7 +33,7 @@ Be not self-will'd, for thou art much too fair
 To be death's conquest and make worms thine heir.";
 
 fn create_word_list_broken(n: usize) -> Vec<MyObject> {
-    WORDLIST_broken
+    WORDLIST_BROKEN
         .split_whitespace()
         .take(n)
         .map(|s| MyObject { val: s.into() })
