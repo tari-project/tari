@@ -68,7 +68,7 @@ impl BlockHeader {
 impl Default for BlockHeader {
     fn default() -> Self {
         BlockHeader {
-            version: 0,
+            version: BLOCKCHAIN_VERSION,
             height: 0,
             prev_hash: [0; 32],
             timestamp: DateTime::<Utc>::from_utc(NaiveDate::from_ymd(1900, 1, 1).and_hms(1, 1, 1), Utc),

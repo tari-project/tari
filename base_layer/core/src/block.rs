@@ -165,7 +165,7 @@ impl From<Transaction> for AggregateBody {
 
 #[derive(Default)]
 pub struct BlockBuilder {
-    pub header: Option<BlockHeader>,
+    pub header: BlockHeader,
     pub inputs: Vec<TransactionInput>,
     pub outputs: Vec<TransactionOutput>,
     pub kernels: Vec<TransactionKernel>,
@@ -174,7 +174,7 @@ pub struct BlockBuilder {
 impl BlockBuilder {
     pub fn new() -> BlockBuilder {
         BlockBuilder {
-            header: None,
+            header: BlockBuilder::gen_blank_header(),
             inputs: Vec::new(),
             outputs: Vec::new(),
             kernels: Vec::new(),
@@ -183,7 +183,7 @@ impl BlockBuilder {
 
     /// This function adds a header to the block
     pub fn with_header(&mut self, header: BlockHeader) -> &Self {
-        self.header = Some(header);
+        self.header = header;
         self
     }
 
@@ -208,19 +208,13 @@ impl BlockBuilder {
     /// This functions add the provided transactions to the block
     pub fn with_transactions(mut self, txs: Vec<Transaction>) -> Self {
         let mut iter = txs.into_iter();
-        if self.header.is_none() {
-            self.header = Some(BlockBuilder::gen_blank_header());
-        }
         loop {
             match iter.next() {
                 Some(mut tx) => {
                     self = self.add_inputs(&mut tx.body.inputs);
                     self = self.add_outputs(&mut tx.body.outputs);
                     self = self.add_kernels(&mut tx.body.kernels);
-                    self.header = self.header.map(|mut h| {
-                        h.total_kernel_offset = h.total_kernel_offset + tx.offset;
-                        h
-                    });
+                    self.header.total_kernel_offset = self.header.total_kernel_offset + tx.offset;
                 },
                 None => break,
             }
@@ -230,16 +224,10 @@ impl BlockBuilder {
 
     /// This functions add the provided transactions to the block
     pub fn add_transaction(mut self, mut tx: Transaction) -> Self {
-        if self.header.is_none() {
-            self.header = Some(BlockBuilder::gen_blank_header());
-        }
         self = self.add_inputs(&mut tx.body.inputs);
         self = self.add_outputs(&mut tx.body.outputs);
         self = self.add_kernels(&mut tx.body.kernels);
-        self.header = self.header.map(|mut h| {
-            h.total_kernel_offset = h.total_kernel_offset + tx.offset;
-            h
-        });
+        self.header.total_kernel_offset = self.header.total_kernel_offset + tx.offset;
         self
     }
 
@@ -253,7 +241,7 @@ impl BlockBuilder {
     /// This will finish construction of the block and create the block
     pub fn build(self) -> Block {
         let mut block = Block {
-            header: self.header.unwrap(),
+            header: self.header,
             body: AggregateBody::new(self.inputs, self.outputs, self.kernels),
         };
         block.body.sort();
@@ -263,7 +251,7 @@ impl BlockBuilder {
     /// This will finish construction of the block, do proof of work and create the block
     pub fn build_with_pow(self) -> Block {
         let mut block = Block {
-            header: self.header.unwrap(),
+            header: self.header,
             body: AggregateBody::new(self.inputs, self.outputs, self.kernels),
         };
         block.body.sort();
