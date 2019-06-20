@@ -26,10 +26,9 @@ use crate::{
 };
 use derive_error::Error;
 use log::*;
-use serde::{export::fmt::Debug, Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use std::{sync::Arc, time::Duration};
 use tari_comms::{
-    connection::ConnectionError,
     domain_connector::ConnectorError,
     message::{Message, MessageError, MessageFlags, MessageHeader},
     outbound_message_service::{outbound_message_service::OutboundMessageService, BroadcastStrategy, OutboundError},

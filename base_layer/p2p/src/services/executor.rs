@@ -21,26 +21,19 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::{error::ServiceError, registry::ServiceRegistry};
-use crate::tari_message::{NetMessage, TariMessageType};
+use crate::tari_message::TariMessageType;
 use log::*;
 use std::{
-    collections::HashMap,
     sync::{
         mpsc::{channel, Receiver, RecvTimeoutError, Sender},
         Arc,
-        Barrier,
     },
     thread,
     time::Duration,
 };
 use tari_comms::{
     builder::CommsServices,
-    connection::{Connection, InprocAddress, ZmqContext},
-    control_service::ControlServiceConfig,
-    domain_connector::ConnectorError,
     outbound_message_service::outbound_message_service::OutboundMessageService,
-    peer_manager::PeerManager,
-    CommsBuilder,
     DomainConnector,
 };
 use threadpool::ThreadPool;
@@ -58,7 +51,6 @@ pub enum ServiceControlMessage {
 pub struct ServiceExecutor {
     thread_pool: ThreadPool,
     senders: Vec<Sender<ServiceControlMessage>>,
-    comms_services: Arc<CommsServices<TariMessageType>>,
 }
 
 impl ServiceExecutor {
@@ -103,11 +95,7 @@ impl ServiceExecutor {
             });
         }
 
-        Self {
-            thread_pool,
-            senders,
-            comms_services,
-        }
+        Self { thread_pool, senders }
     }
 
     /// Send a [ServiceControlMessage::Shutdown] message to all services.
@@ -182,14 +170,8 @@ mod test {
     use super::*;
     use crate::{services::Service, tari_message::NetMessage};
     use rand::rngs::OsRng;
-    use std::{
-        sync::{
-            mpsc::{channel, Receiver},
-            RwLock,
-        },
-        thread,
-    };
-    use tari_comms::peer_manager::NodeIdentity;
+    use std::sync::RwLock;
+    use tari_comms::{peer_manager::NodeIdentity, CommsBuilder};
 
     #[derive(Clone)]
     struct AddWordService(Arc<RwLock<String>>, &'static str);

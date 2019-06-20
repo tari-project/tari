@@ -125,7 +125,6 @@ impl OutboundMessagePool {
                     self.config.clone(),
                     self.context.clone(),
                     self.worker_dealer_address.clone(),
-                    self.message_queue_address.clone(),
                     self.message_requeue_address.clone(),
                     self.peer_manager.clone(),
                     self.connection_manager.clone(),
@@ -180,8 +179,6 @@ mod test {
     };
     use std::{sync::Arc, thread, time::Duration};
     use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
-
-    const LOG_TARGET: &'static str = "comms::outbound_message_service::pool";
 
     pub fn init() {
         let _ = simple_logger::init();

@@ -175,7 +175,6 @@ mod test {
     };
     use serde::{Deserialize, Serialize};
     use std::{sync::Arc, thread, time::Duration};
-    use tari_crypto::ristretto::RistrettoPublicKey;
     use tari_utilities::message_format::MessageFormat;
 
     fn init() {

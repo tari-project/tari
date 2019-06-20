@@ -37,7 +37,7 @@ fn create_mmr(leaves: u32) -> MerkleMountainRange<TestObject, Blake2b> {
 }
 #[test]
 fn create_small_mmr() {
-    fs::remove_dir_all("./tests/test_mmr_s"); // we ensure that the test dir is empty
+    let _ = fs::remove_dir_all("./tests/test_mmr_s"); // we ensure that the test dir is empty
     let mut mmr = create_mmr(2);
     assert_eq!(1, mmr.get_peak_height());
     let hash_values = HashValues::new();
@@ -73,7 +73,7 @@ fn create_small_mmr() {
 
 #[test]
 fn create_med_mmr() {
-    fs::remove_dir_all("./tests/test_mmr_m"); // we ensure that the test dir is empty
+    let _ = fs::remove_dir_all("./tests/test_mmr_m"); // we ensure that the test dir is empty
     let mut mmr = create_mmr(14);
     // create storage
     fs::create_dir("./tests/test_mmr_m").unwrap();
@@ -111,7 +111,7 @@ fn create_med_mmr() {
 
 #[test]
 fn create_large_mmr() {
-    fs::remove_dir_all("./tests/test_mmr_l"); // we ensure that the test dir is empty
+    let _ = fs::remove_dir_all("./tests/test_mmr_l"); // we ensure that the test dir is empty
     let mut mmr = create_mmr(14);
     // create storage
     fs::create_dir("./tests/test_mmr_l").unwrap();

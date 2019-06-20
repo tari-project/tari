@@ -208,7 +208,6 @@ mod test {
         sync::Arc,
         time::{self, Duration},
     };
-    use tari_crypto::ristretto::RistrettoPublicKey;
     use tari_utilities::message_format::MessageFormat;
 
     fn init() {

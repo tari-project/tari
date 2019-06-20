@@ -37,7 +37,7 @@ fn create_mmr(leaves: u32) -> MerkleMountainRange<TestObject, Blake2b> {
 }
 #[test]
 fn rewind_simple() {
-    fs::remove_dir_all("./tests/test_mmr_r"); // we ensure that the test dir is empty
+    let _ = fs::remove_dir_all("./tests/test_mmr_r"); // we ensure that the test dir is empty
     let mut mmr = create_mmr(14);
     // create storage
     fs::create_dir("./tests/test_mmr_r").unwrap();
@@ -86,7 +86,7 @@ fn rewind_simple() {
 
 #[test]
 fn batch_save() {
-    fs::remove_dir_all("./tests/test_mmr_bs"); // we ensure that the test dir is empty
+    let _ = fs::remove_dir_all("./tests/test_mmr_bs"); // we ensure that the test dir is empty
     let mut mmr = create_mmr(14);
     // create storage
     fs::create_dir("./tests/test_mmr_bs").unwrap();
