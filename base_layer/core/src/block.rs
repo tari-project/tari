@@ -52,6 +52,12 @@ impl Block {
     pub fn check_pow(&self) -> Result<(), TransactionError> {
         Ok(())
     }
+
+    /// This function will calculate the pow for the block and fill out the pow header field
+    pub fn calculate_pow(&mut self) -> Result<(), TransactionError> {
+        // todo
+        Ok(())
+    }
 }
 
 //----------------------------------------     AggregateBody      ----------------------------------------------------//
@@ -157,4 +163,107 @@ impl From<Transaction> for AggregateBody {
     }
 }
 
+#[derive(Default)]
+pub struct BlockBuilder {
+    pub header: BlockHeader,
+    pub inputs: Vec<TransactionInput>,
+    pub outputs: Vec<TransactionOutput>,
+    pub kernels: Vec<TransactionKernel>,
+}
+
+impl BlockBuilder {
+    pub fn new() -> BlockBuilder {
+        BlockBuilder {
+            header: BlockBuilder::gen_blank_header(),
+            inputs: Vec::new(),
+            outputs: Vec::new(),
+            kernels: Vec::new(),
+        }
+    }
+
+    /// This function adds a header to the block
+    pub fn with_header(&mut self, header: BlockHeader) -> &Self {
+        self.header = header;
+        self
+    }
+
+    /// This function adds the provided transaction inputs to the block
+    pub fn add_inputs(mut self, inputs: &mut Vec<TransactionInput>) -> Self {
+        self.inputs.append(inputs);
+        self
+    }
+
+    /// This function adds the provided transaction outputs to the block
+    pub fn add_outputs(mut self, outputs: &mut Vec<TransactionOutput>) -> Self {
+        self.outputs.append(outputs);
+        self
+    }
+
+    /// This function adds the provided transaction kernels to the block
+    pub fn add_kernels(mut self, kernels: &mut Vec<TransactionKernel>) -> Self {
+        self.kernels.append(kernels);
+        self
+    }
+
+    /// This functions add the provided transactions to the block
+    pub fn with_transactions(mut self, txs: Vec<Transaction>) -> Self {
+        let mut iter = txs.into_iter();
+        loop {
+            match iter.next() {
+                Some(mut tx) => {
+                    self = self.add_inputs(&mut tx.body.inputs);
+                    self = self.add_outputs(&mut tx.body.outputs);
+                    self = self.add_kernels(&mut tx.body.kernels);
+                    self.header.total_kernel_offset = self.header.total_kernel_offset + tx.offset;
+                },
+                None => break,
+            }
+        }
+        self
+    }
+
+    /// This functions add the provided transactions to the block
+    pub fn add_transaction(mut self, mut tx: Transaction) -> Self {
+        self = self.add_inputs(&mut tx.body.inputs);
+        self = self.add_outputs(&mut tx.body.outputs);
+        self = self.add_kernels(&mut tx.body.kernels);
+        self.header.total_kernel_offset = self.header.total_kernel_offset + tx.offset;
+        self
+    }
+
+    /// This will add the given coinbase UTXO to the block
+    pub fn with_coinbase_utxo(mut self, coinbase_utxo: TransactionOutput, coinbase_kernel: TransactionKernel) -> Self {
+        self.kernels.push(coinbase_kernel);
+        self.outputs.push(coinbase_utxo);
+        self
+    }
+
+    /// This will finish construction of the block and create the block
+    pub fn build(self) -> Block {
+        let mut block = Block {
+            header: self.header,
+            body: AggregateBody::new(self.inputs, self.outputs, self.kernels),
+        };
+        block.body.sort();
+        block
+    }
+
+    /// This will finish construction of the block, do proof of work and create the block
+    pub fn build_with_pow(self) -> Block {
+        let mut block = Block {
+            header: self.header,
+            body: AggregateBody::new(self.inputs, self.outputs, self.kernels),
+        };
+        block.body.sort();
+        block
+            .calculate_pow()
+            .expect("failure to calculate the block proof of work");
+        block
+    }
+
+    /// This is just a wrapper function to return a blank header
+    fn gen_blank_header() -> BlockHeader {
+        BlockHeader::default()
+    }
+}
 //----------------------------------------         Tests          ----------------------------------------------------//

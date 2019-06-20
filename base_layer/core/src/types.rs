@@ -72,6 +72,9 @@ pub const MAX_RANGE_PROOF_RANGE: usize = 32; // 2^32 This is the only way to pro
 #[cfg(not(test))]
 pub const MAX_RANGE_PROOF_RANGE: usize = 64; // 2^64
 
+/// Current version of the blockchain
+pub const BLOCKCHAIN_VERSION: u16 = 0;
+
 // Set up some "global" services for the Tari blockchain - These are most likely not threadsafe as written, but haven't
 // checked.
 lazy_static! {
