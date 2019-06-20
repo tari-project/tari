@@ -19,12 +19,12 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use super::message_data::MessageData;
 use crate::{
     dispatcher::DispatchableKey,
     inbound_message_service::inbound_message_broker::InboundMessageBroker,
+    message::MessageEnvelope,
     outbound_message_service::outbound_message_service::OutboundMessageService,
-    peer_manager::{peer_manager::PeerManager, NodeIdentity},
+    peer_manager::{peer_manager::PeerManager, NodeIdentity, Peer},
     types::{CommsDataStore, CommsPublicKey},
 };
 use serde::{de::DeserializeOwned, Serialize};
@@ -32,7 +32,8 @@ use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct MessageContext<MType> {
-    pub message_data: MessageData<CommsPublicKey>,
+    pub message_envelope: MessageEnvelope,
+    pub peer: Peer<CommsPublicKey>,
     pub outbound_message_service: Arc<OutboundMessageService>,
     pub peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
     pub inbound_message_broker: Arc<InboundMessageBroker<MType>>,
@@ -48,14 +49,16 @@ where
     /// and body
     pub fn new(
         node_identity: Arc<NodeIdentity<CommsPublicKey>>,
-        message_data: MessageData<CommsPublicKey>,
+        peer: Peer<CommsPublicKey>,
+        message_envelope: MessageEnvelope,
         outbound_message_service: Arc<OutboundMessageService>,
         peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
         inbound_message_broker: Arc<InboundMessageBroker<MType>>,
     ) -> Self
     {
         MessageContext {
-            message_data,
+            message_envelope,
+            peer,
             node_identity,
             outbound_message_service,
             peer_manager,

@@ -30,7 +30,8 @@ use std::{
 };
 use tari_utilities::Hashable;
 
-use crate::connection::peer_connection::ConnectionId;
+use crate::{connection::peer_connection::ConnectionId, message::Frame};
+use std::convert::TryInto;
 use tari_utilities::hex::to_hex;
 
 const NODE_ID_ARRAY_SIZE: usize = 32;
@@ -166,6 +167,15 @@ impl TryFrom<&[u8]> for NodeId {
         } else {
             Err(NodeIdError::IncorrectByteCount)
         }
+    }
+}
+
+impl TryFrom<Frame> for NodeId {
+    type Error = NodeIdError;
+
+    /// Try construct a node id from a frame
+    fn try_from(frame: Frame) -> Result<Self, Self::Error> {
+        frame.as_slice().try_into()
     }
 }
 

@@ -22,14 +22,16 @@
 
 use super::types::Factory;
 use crate::{
+    builder::CommsRoutes,
     connection::{ConnectionError, DealerProxyError, InprocAddress, ZmqContext},
     connection_manager::{ConnectionManager, PeerConnectionConfig},
     control_service::{ControlService, ControlServiceConfig, ControlServiceError, ControlServiceHandle},
     dispatcher::DispatchableKey,
+    domain_connector::ConnectorError,
     inbound_message_service::{
         comms_msg_handlers::construct_comms_msg_dispatcher,
         error::InboundMessageServiceError,
-        inbound_message_broker::InboundMessageBroker,
+        inbound_message_broker::{BrokerError, InboundMessageBroker},
         inbound_message_service::InboundMessageService,
     },
     outbound_message_service::{
@@ -40,6 +42,7 @@ use crate::{
     },
     peer_manager::{NodeIdentity, PeerManager, PeerManagerError},
     types::{CommsDataStore, CommsPublicKey},
+    DomainConnector,
 };
 use derive_error::Error;
 use log::*;
@@ -60,8 +63,8 @@ pub enum CommsBuilderError {
     NodeIdentityNotSet,
     #[error(no_from)]
     DealerProxyError(DealerProxyError),
-    /// The dispatcher has not been defined. Call `with_dispatcher` on [CommsBuilder]
-    DispatcherNotDefined,
+    /// Comms routes have not been defined. Call `with_routes` on [CommsBuilder]
+    RoutesNotDefined,
 }
 
 trait CommsBuilable {
@@ -74,8 +77,8 @@ trait CommsBuilable {
 /// This builder give the Comms crate user everything they need to
 /// get a p2p messaging layer up and running.
 ///
-/// ```edition2018,no_compile
-/// use tari_comms::builder::CommsBuilder;
+/// ```edition2018
+/// use tari_comms::builder::{CommsBuilder, CommsRoutes};
 /// use tari_comms::dispatcher::HandlerError;
 /// use tari_comms::message::DomainMessageContext;
 /// use tari_comms::control_service::ControlServiceConfig;
@@ -91,13 +94,13 @@ trait CommsBuilable {
 ///     Ok(())
 /// }
 ///
-/// let services = CommsBuilder::new(|| DomainMessageDispatcher::default()
-/// .route("my message type".to_string(), my_handler))
-/// // This enables the control service - allowing another peer to connect to this node
-/// .configure_control_service(|| ControlServiceConfig::default())
-/// .with_node_identity(my_node_identity)
-/// .build()
-/// .unwrap();
+/// let services = CommsBuilder::new()
+///    .with_routes(CommsRoutes::<u8>::new())
+///    // This enables the control service - allowing another peer to connect to this node
+///    .configure_control_service(ControlServiceConfig::default())
+///    .with_node_identity(my_node_identity)
+///    .build()
+///    .unwrap();
 ///
 /// let handle = services.start().unwrap();
 /// // Call shutdown when program shuts down
@@ -108,12 +111,14 @@ where MType: Clone
 {
     zmq_context: ZmqContext,
     // Factories
-    control_service_config_factory: Option<Box<Factory<ControlServiceConfig<MType>>>>,
-    inbound_message_broker_factory: Box<Factory<InboundMessageBroker<MType>>>,
     peer_storage_factory: Option<Box<Factory<CommsDataStore>>>,
-    peer_conn_config_factory: Option<Box<Factory<PeerConnectionConfig>>>,
+
+    // Configs
+    routes: Option<CommsRoutes<MType>>,
+    control_service_config: Option<ControlServiceConfig<MType>>,
+    omp_config: Option<OutboundMessagePoolConfig>,
     node_identity: Option<NodeIdentity<CommsPublicKey>>,
-    omp_config_factory: Option<Box<Factory<OutboundMessagePoolConfig>>>,
+    peer_conn_config: Option<PeerConnectionConfig>,
 }
 
 impl<MType> CommsBuilder<MType>
@@ -122,22 +127,23 @@ where
     MType: Serialize + DeserializeOwned,
     MType: Clone,
 {
-    pub fn new<F>(inbound_message_broker_factory: F) -> Self
-    where
-        F: Factory<InboundMessageBroker<MType>>,
-        F: 'static,
-    {
+    pub fn new() -> Self {
         let zmq_context = ZmqContext::new();
 
         Self {
             zmq_context,
-            control_service_config_factory: None,
-            peer_conn_config_factory: None,
-            omp_config_factory: None,
+            control_service_config: None,
+            peer_conn_config: None,
+            omp_config: None,
             peer_storage_factory: None,
-            inbound_message_broker_factory: Box::new(inbound_message_broker_factory),
+            routes: None,
             node_identity: None,
         }
+    }
+
+    pub fn with_routes(mut self, routes: CommsRoutes<MType>) -> Self {
+        self.routes = Some(routes);
+        self
     }
 
     pub fn with_peer_storage<F>(mut self, factory: F) -> Self
@@ -149,12 +155,13 @@ where
         self
     }
 
-    pub fn configure_control_service<F>(mut self, factory: F) -> Self
-    where
-        F: Factory<ControlServiceConfig<MType>>,
-        F: 'static,
-    {
-        self.control_service_config_factory = Some(Box::new(factory));
+    pub fn configure_control_service(mut self, config: ControlServiceConfig<MType>) -> Self {
+        self.control_service_config = Some(config);
+        self
+    }
+
+    pub fn configure_outbound_message_pool(mut self, config: OutboundMessagePoolConfig) -> Self {
+        self.omp_config = Some(config);
         self
     }
 
@@ -163,21 +170,8 @@ where
         self
     }
 
-    pub fn configure_peer_connections<F>(mut self, factory: F) -> Self
-    where
-        F: Factory<PeerConnectionConfig>,
-        F: 'static,
-    {
-        self.peer_conn_config_factory = Some(Box::new(factory));
-        self
-    }
-
-    pub fn configure_outbound_message_pool<F>(mut self, factory: F) -> Self
-    where
-        F: Factory<OutboundMessagePoolConfig>,
-        F: 'static,
-    {
-        self.omp_config_factory = Some(Box::new(factory));
+    pub fn configure_peer_connections(mut self, config: PeerConnectionConfig) -> Self {
+        self.peer_conn_config = Some(config);
         self
     }
 
@@ -192,9 +186,8 @@ where
         node_identity: Arc<NodeIdentity<CommsPublicKey>>,
     ) -> Option<ControlService<MType>>
     {
-        self.control_service_config_factory
+        self.control_service_config
             .take()
-            .map(|f| f.make())
             .map(|config| ControlService::new(self.zmq_context.clone(), node_identity, config))
     }
 
@@ -214,11 +207,7 @@ where
     }
 
     fn make_peer_connection_config(&mut self) -> PeerConnectionConfig {
-        let mut config = self
-            .peer_conn_config_factory
-            .take()
-            .map(|f| f.make())
-            .unwrap_or_default();
+        let mut config = self.peer_conn_config.take().unwrap_or_default();
         // If the message_sink_address is not set (is default) set it to a random inproc address
         if config.message_sink_address.is_default() {
             config.message_sink_address = InprocAddress::random();
@@ -233,12 +222,12 @@ where
             .ok_or(CommsBuilderError::NodeIdentityNotSet)
     }
 
-    fn make_oms(
+    fn make_outbound_message_service(
         &self,
         node_identity: Arc<NodeIdentity<CommsPublicKey>>,
         message_sink_address: InprocAddress,
         peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
-    ) -> Result<OutboundMessageService, CommsBuilderError>
+    ) -> Result<Arc<OutboundMessageService>, CommsBuilderError>
     {
         OutboundMessageService::new(
             self.zmq_context.clone(),
@@ -246,17 +235,18 @@ where
             message_sink_address,
             peer_manager,
         )
+        .map(Arc::new)
         .map_err(CommsBuilderError::OutboundMessageServiceError)
     }
 
-    fn make_omp(
+    fn make_outbound_message_pool(
         &mut self,
         message_sink_address: InprocAddress,
         peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
         connection_manager: Arc<ConnectionManager>,
     ) -> Result<OutboundMessagePool, CommsBuilderError>
     {
-        let config = self.omp_config_factory.take().map(|f| f.make()).unwrap_or_default();
+        let config = self.omp_config.take().unwrap_or_default();
 
         OutboundMessagePool::new(
             config,
@@ -270,12 +260,12 @@ where
         .map_err(CommsBuilderError::OutboundMessagePoolError)
     }
 
-    pub fn make_ims(
+    fn make_inbound_message_service(
         &mut self,
         node_identity: Arc<NodeIdentity<CommsPublicKey>>,
         message_sink_address: InprocAddress,
-        inbound_message_broker: InboundMessageBroker<MType>,
-        oms: OutboundMessageService,
+        inbound_message_broker: Arc<InboundMessageBroker<MType>>,
+        oms: Arc<OutboundMessageService>,
         peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
     ) -> Result<InboundMessageService<MType>, CommsBuilderError>
     {
@@ -284,14 +274,23 @@ where
             node_identity,
             message_sink_address,
             Arc::new(construct_comms_msg_dispatcher()),
-            Arc::new(inbound_message_broker),
-            Arc::new(oms),
+            inbound_message_broker,
+            oms,
             peer_manager,
         )
         .map_err(CommsBuilderError::InboundMessageServiceError)
     }
 
-    pub fn build(mut self) -> Result<CommsServices<MType>, CommsBuilderError> {
+    fn make_inbound_message_broker(&mut self, routes: &CommsRoutes<MType>) -> Arc<InboundMessageBroker<MType>> {
+        let broker = routes.inner().iter().fold(
+            InboundMessageBroker::new(self.zmq_context.clone()),
+            |broker, (message_type, address)| broker.route(message_type.clone(), address.clone()),
+        );
+
+        Arc::new(broker)
+    }
+
+    pub fn build(mut self) -> Result<CommsServiceContainer<MType>, CommsBuilderError> {
         let node_identity = self.make_node_identity()?;
 
         let peer_manager = self.make_peer_manager()?;
@@ -304,33 +303,38 @@ where
             self.make_connection_manager(node_identity.clone(), peer_manager.clone(), peer_conn_config.clone());
 
         let outbound_message_sink_address = InprocAddress::random();
-        let oms = self.make_oms(
+        let outbound_message_service = self.make_outbound_message_service(
             node_identity.clone(),
             outbound_message_sink_address.clone(),
             peer_manager.clone(),
         )?;
 
-        let omp = self.make_omp(
+        let outbound_message_pool = self.make_outbound_message_pool(
             outbound_message_sink_address,
             peer_manager.clone(),
             connection_manager.clone(),
         )?;
 
-        let inbound_message_broker = self.inbound_message_broker_factory.make();
+        let routes = self.routes.take().ok_or(CommsBuilderError::RoutesNotDefined)?;
 
-        let ims = self.make_ims(
+        let inbound_message_broker = self.make_inbound_message_broker(&routes);
+
+        let inbound_message_service = self.make_inbound_message_service(
             node_identity,
             peer_conn_config.message_sink_address,
-            inbound_message_broker,
-            oms,
+            inbound_message_broker.clone(),
+            outbound_message_service.clone(),
             peer_manager.clone(),
         )?;
 
-        Ok(CommsServices {
+        Ok(CommsServiceContainer {
+            zmq_context: self.zmq_context,
+            routes,
             control_service,
-            ims,
+            inbound_message_service,
             connection_manager,
-            omp,
+            outbound_message_pool,
+            outbound_message_service,
         })
     }
 }
@@ -341,27 +345,34 @@ pub enum CommsServicesError {
     ConnectionManagerError(ConnectionError),
     /// Comms services shut down uncleanly
     UncleanShutdown,
+    /// The message type was not registered
+    MessageTypeNotRegistered,
+    ConnectorError(ConnectorError),
+    InboundMessageBrokerError(BrokerError),
 }
 
-pub struct CommsServices<MType>
+pub struct CommsServiceContainer<MType>
 where
     MType: Serialize + DeserializeOwned,
     MType: DispatchableKey,
     MType: Clone,
 {
+    zmq_context: ZmqContext,
+    routes: CommsRoutes<MType>,
     connection_manager: Arc<ConnectionManager>,
     control_service: Option<ControlService<MType>>,
-    ims: InboundMessageService<MType>,
-    omp: OutboundMessagePool,
+    inbound_message_service: InboundMessageService<MType>,
+    outbound_message_pool: OutboundMessagePool,
+    outbound_message_service: Arc<OutboundMessageService>,
 }
 
-impl<MType> CommsServices<MType>
+impl<MType> CommsServiceContainer<MType>
 where
     MType: Serialize + DeserializeOwned,
     MType: DispatchableKey,
     MType: Clone,
 {
-    pub fn start(self) -> Result<CommsServicesHandle, CommsServicesError> {
+    pub fn start(self) -> Result<CommsServices<MType>, CommsServicesError> {
         let mut control_service_handle = None;
         if let Some(control_service) = self.control_service {
             control_service_handle = Some(
@@ -371,25 +382,51 @@ where
             );
         }
 
-        let ims_handle = self.ims.start();
-        self.omp.start();
+        let ims_handle = self.inbound_message_service.start();
+        self.outbound_message_pool.start();
 
-        Ok(CommsServicesHandle {
-            connection_manager: self.connection_manager.clone(),
+        Ok(CommsServices {
+            // Transfer ownership to CommsServices
+            zmq_context: self.zmq_context,
+            outbound_message_service: self.outbound_message_service,
+            routes: self.routes,
+            connection_manager: self.connection_manager,
+
+            // Add handles for started services
             control_service_handle,
             ims_handle,
         })
     }
 }
 
-pub struct CommsServicesHandle {
+pub struct CommsServices<MType> {
+    zmq_context: ZmqContext,
+    outbound_message_service: Arc<OutboundMessageService>,
+    routes: CommsRoutes<MType>,
     control_service_handle: Option<ControlServiceHandle>,
     #[allow(dead_code)]
     ims_handle: JoinHandle<Result<(), InboundMessageServiceError>>,
     connection_manager: Arc<ConnectionManager>,
 }
 
-impl CommsServicesHandle {
+impl<MType> CommsServices<MType>
+where
+    MType: DispatchableKey,
+    MType: Clone,
+{
+    pub fn get_outbound_message_service(&self) -> Arc<OutboundMessageService> {
+        self.outbound_message_service.clone()
+    }
+
+    pub fn create_connector<'de>(&self, message_type: &MType) -> Result<DomainConnector<'de>, CommsServicesError> {
+        let addr = self
+            .routes
+            .get_address(&message_type)
+            .ok_or(CommsServicesError::MessageTypeNotRegistered)?;
+
+        DomainConnector::listen(&self.zmq_context, &addr).map_err(CommsServicesError::ConnectorError)
+    }
+
     pub fn shutdown(self) -> Result<(), CommsServicesError> {
         info!(target: LOG_TARGET, "Comms is shutting down");
         let mut shutdown_results = Vec::new();
@@ -433,59 +470,30 @@ impl CommsServicesHandle {
     }
 }
 
-// TODO: The handler functions need to be changed to handler services for these tests to work
-// #[cfg(test)]
-// mod test {
-// use super::*;
-//
-// mod handlers {
-// use super::*;
-// use crate::{dispatcher::HandlerError, message::DomainMessageContext};
-// use serde::Deserialize;
-//
-// #[derive(Serialize, Deserialize)]
-// pub struct TestMessage {
-// name: String,
-// age: u8,
-// }
-//
-// pub fn hello(context: DomainMessageContext) -> Result<(), HandlerError> {
-// let msg: TestMessage = context.message.to_message().map_err(HandlerError::failed())?;
-// debug!("Hello: {:?}, you are {} years old", msg.name, msg.age);
-// Ok(())
-// }
-//
-// pub fn catch_all(_msg: DomainMessageContext) -> Result<(), HandlerError> {
-// Ok(())
-// }
-// }
-//
-// #[test]
-// fn new_no_control_service() {
-// let comms_services = CommsBuilder::new(|| {
-// DomainMessageDispatcher::default()
-// .route("hello".to_owned(), handlers::hello)
-// .catch_all(handlers::catch_all)
-// })
-// .with_node_identity(NodeIdentity::random_for_test(None))
-// .build()
-// .unwrap();
-//
-// assert!(comms_services.control_service.is_none());
-// }
-//
-// #[test]
-// fn new_with_control_service() {
-// let comms_services = CommsBuilder::new(|| {
-// DomainMessageDispatcher::default()
-// .route("hello".to_owned(), handlers::hello)
-// .catch_all(handlers::catch_all)
-// })
-// .with_node_identity(NodeIdentity::random_for_test(None))
-// .configure_control_service(|| ControlServiceConfig::default())
-// .build()
-// .unwrap();
-//
-// assert!(comms_services.control_service.is_some());
-// }
-// }
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn new_no_control_service() {
+        let comms_services = CommsBuilder::new()
+            .with_routes(CommsRoutes::new().register("hello".to_owned()))
+            .with_node_identity(NodeIdentity::random_for_test(None))
+            .build()
+            .unwrap();
+
+        assert!(comms_services.control_service.is_none());
+    }
+
+    #[test]
+    fn new_with_control_service() {
+        let comms_services = CommsBuilder::new()
+            .with_routes(CommsRoutes::new().register("hello".to_owned()))
+            .with_node_identity(NodeIdentity::random_for_test(None))
+            .configure_control_service(ControlServiceConfig::default())
+            .build()
+            .unwrap();
+
+        assert!(comms_services.control_service.is_some());
+    }
+}

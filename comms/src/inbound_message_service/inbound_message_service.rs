@@ -157,7 +157,7 @@ mod test {
             zmq::{InprocAddress, ZmqContext},
             Connection,
             Direction,
-            SocketEstablishment,
+            NetAddress,
         },
         inbound_message_service::comms_msg_handlers::*,
         message::{
@@ -170,7 +170,7 @@ mod test {
             MessageHeader,
             NodeDestination,
         },
-        peer_manager::{peer_manager::PeerManager, NodeIdentity},
+        peer_manager::{peer_manager::PeerManager, NodeId, NodeIdentity, Peer, PeerFlags},
         types::{CommsDataStore, CommsPublicKey},
     };
     use serde::{Deserialize, Serialize};
@@ -195,7 +195,6 @@ mod test {
         // Create a client that will write message to the inbound message pool
         let inbound_msg_queue_address = InprocAddress::random();
         let conn_client = Connection::new(&context, Direction::Outbound)
-            .set_socket_establishment(SocketEstablishment::Connect)
             .establish(&inbound_msg_queue_address)
             .unwrap();
 
@@ -218,7 +217,16 @@ mod test {
                 .start()
                 .unwrap(),
         );
+
         let peer_manager = Arc::new(PeerManager::<CommsPublicKey, CommsDataStore>::new(None).unwrap());
+        // Add peer to peer manager
+        let peer = Peer::new(
+            node_identity.identity.public_key.clone(),
+            node_identity.identity.node_id.clone(),
+            "127.0.0.1:9000".parse::<NetAddress>().unwrap().into(),
+            PeerFlags::empty(),
+        );
+        peer_manager.add_peer(peer).unwrap();
         let outbound_message_service = Arc::new(
             OutboundMessageService::new(
                 context.clone(),
@@ -257,10 +265,8 @@ mod test {
             MessageFlags::NONE,
         )
         .unwrap();
-        let connection_id = vec![0, 1, 2, 3, 4];
-        let message_data = MessageData::<RistrettoPublicKey>::new(
-            connection_id.clone(),
-            node_identity.identity.public_key.clone(),
+        let message_data = MessageData::new(
+            NodeId::from_key(&node_identity.identity.public_key).unwrap(),
             message_envelope,
         );
         let message_data_buffer = message_data.clone().try_into_frame_set().unwrap();
@@ -275,7 +281,7 @@ mod test {
         // Check that all messages reached handler service queue
         for _ in 0..MAX_INBOUND_MSG_PROCESSING_WORKERS {
             let received_message_data_bytes: FrameSet =
-                handler_queue_connection.receive(100).unwrap().drain(1..).collect();
+                handler_queue_connection.receive(2000).unwrap().drain(1..).collect();
             let received_domain_message_context =
                 DomainMessageContext::from_binary(&received_message_data_bytes[0]).unwrap();
             assert_eq!(received_domain_message_context.message, message_envelope_body);

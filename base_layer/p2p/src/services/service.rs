@@ -20,26 +20,20 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::peer_manager::node_id::NodeIdError;
-use derive_error::Error;
-use tari_crypto::signatures::SchnorrSignatureError;
-use tari_utilities::{ciphers::cipher::CipherError, message_format::MessageFormatError};
+use super::executor::ServiceContext;
+use crate::{services::ServiceError, tari_message::TariMessageType};
 
-#[derive(Error, Debug)]
-pub enum MessageError {
-    /// Multipart message is malformed
-    MalformedMultipart,
-    /// Failed to serialize message
-    SerializeFailed,
-    /// Failed to deserialize message
-    DeserializeFailed,
-    /// An error occurred serialising an object into binary
-    BinarySerializeError,
-    /// An error occurred deserialising binary data into an object
-    BinaryDeserializeError,
-    MessageFormatError(MessageFormatError),
-    SchnorrSignatureError(SchnorrSignatureError),
-    /// Failed to Encode or Decode the message using the Cipher
-    CipherError(CipherError),
-    NodeIdError(NodeIdError),
+/// This trait should be implemented for services
+pub trait Service: Send + Sync {
+    /// A 'friendly' name used for logging purposes
+    fn get_name(&self) -> String;
+    /// Returns the message types this service requires. These will be
+    /// registered in the comms routing.
+    fn get_message_types(&self) -> Vec<TariMessageType>;
+    /// The entry point of the service. This will be executed in a dedicated thread.
+    /// The service should use `context.create_connector(message_type)` to create a `DomainConnector`
+    /// for the registered message types returned from `Service::get_message_types`.
+    /// This should contain a loop which reads control messages (`context.get_control_message`)
+    /// and connector messages and processes them.
+    fn execute(&mut self, context: ServiceContext) -> Result<(), ServiceError>;
 }
