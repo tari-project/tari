@@ -95,12 +95,12 @@ trait CommsBuilable {
 /// }
 ///
 /// let services = CommsBuilder::new()
-/// .with_routes(CommsRoutes::new())
-/// // This enables the control service - allowing another peer to connect to this node
-/// .configure_control_service(ControlServiceConfig::default())
-/// .with_node_identity(my_node_identity)
-/// .build()
-/// .unwrap();
+///    .with_routes(CommsRoutes::<u8>::new())
+///    // This enables the control service - allowing another peer to connect to this node
+///    .configure_control_service(ControlServiceConfig::default())
+///    .with_node_identity(my_node_identity)
+///    .build()
+///    .unwrap();
 ///
 /// let handle = services.start().unwrap();
 /// // Call shutdown when program shuts down

@@ -282,7 +282,7 @@ mod test {
         // Check that all messages reached handler service queue
         for _ in 0..MAX_INBOUND_MSG_PROCESSING_WORKERS {
             let received_message_data_bytes: FrameSet =
-                handler_queue_connection.receive(100).unwrap().drain(1..).collect();
+                handler_queue_connection.receive(2000).unwrap().drain(1..).collect();
             let received_domain_message_context =
                 DomainMessageContext::from_binary(&received_message_data_bytes[0]).unwrap();
             assert_eq!(received_domain_message_context.message, message_envelope_body);
