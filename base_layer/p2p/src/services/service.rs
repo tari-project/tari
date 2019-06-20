@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::executor::ServiceContext;
-use crate::tari_message::TariMessageType;
+use crate::{services::ServiceError, tari_message::TariMessageType};
 
 /// This trait should be implemented for services
 pub trait Service: Send + Sync {
@@ -35,5 +35,5 @@ pub trait Service: Send + Sync {
     /// for the registered message types returned from `Service::get_message_types`.
     /// This should contain a loop which reads control messages (`context.get_control_message`)
     /// and connector messages and processes them.
-    fn execute(&mut self, context: ServiceContext);
+    fn execute(&mut self, context: ServiceContext) -> Result<(), ServiceError>;
 }

@@ -67,7 +67,10 @@ impl ServiceRegistry {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{services::ServiceContext, tari_message::NetMessage};
+    use crate::{
+        services::{ServiceContext, ServiceError},
+        tari_message::NetMessage,
+    };
 
     struct DummyService;
 
@@ -80,8 +83,9 @@ mod test {
             vec![NetMessage::PingPong.into()]
         }
 
-        fn execute(&mut self, _context: ServiceContext) {
+        fn execute(&mut self, _context: ServiceContext) -> Result<(), ServiceError> {
             // do nothing
+            Ok(())
         }
     }
 

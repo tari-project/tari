@@ -414,8 +414,8 @@ where
     MType: DispatchableKey,
     MType: Clone,
 {
-    pub fn get_outbound_message_service(&self) -> &Arc<OutboundMessageService> {
-        &self.outbound_message_service
+    pub fn get_outbound_message_service(&self) -> Arc<OutboundMessageService> {
+        self.outbound_message_service.clone()
     }
 
     pub fn create_connector<'de>(&self, message_type: &MType) -> Result<DomainConnector<'de>, CommsServicesError> {

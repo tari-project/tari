@@ -60,7 +60,7 @@ pub struct WalletConfig {
 pub fn initialize_wallet(config: WalletConfig) -> Result<ServiceExecutor, InitializationError> {
     let mut rng = OsRng::new().map_err(|_| InitializationError::RngError)?;
 
-    let registry = ServiceRegistry::new().register(PingPongService::new(Duration::from_millis(1000)));
+    let registry = ServiceRegistry::new().register(PingPongService::new());
 
     let node_identity = NodeIdentity::random(&mut rng, config.comms.control_service.listener_address.clone())
         .map_err(InitializationError::NodeIdentityError)?;

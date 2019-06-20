@@ -21,24 +21,35 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    services::{Service, ServiceContext, ServiceControlMessage},
+    services::{Service, ServiceContext, ServiceControlMessage, ServiceError},
     tari_message::{NetMessage, TariMessageType},
 };
+use derive_error::Error;
 use log::*;
 use serde::{export::fmt::Debug, Deserialize, Serialize};
 use std::{sync::Arc, time::Duration};
 use tari_comms::{
+    connection::ConnectionError,
     domain_connector::ConnectorError,
-    message::{Message, MessageFlags, MessageHeader},
-    outbound_message_service::{outbound_message_service::OutboundMessageService, BroadcastStrategy},
+    message::{Message, MessageError, MessageFlags, MessageHeader},
+    outbound_message_service::{outbound_message_service::OutboundMessageService, BroadcastStrategy, OutboundError},
     peer_manager::NodeId,
     DomainConnector,
 };
 use tari_crypto::ristretto::RistrettoPublicKey;
-use tari_utilities::message_format::MessageFormat;
-use threadpool::ThreadPool;
+use tari_utilities::message_format::{MessageFormat, MessageFormatError};
 
 const LOG_TARGET: &'static str = "base_layer::p2p::ping_pong";
+
+#[derive(Debug, Error)]
+pub enum PingPongError {
+    OutboundError(OutboundError),
+    /// OMS has not been initialized
+    OMSNotInitialized,
+    SerializationFailed(MessageFormatError),
+    ReceiveError(ConnectorError),
+    MessageError(MessageError),
+}
 
 /// The PingPong message
 #[derive(Serialize, Deserialize)]
@@ -49,43 +60,48 @@ pub enum PingPong {
 
 /// Periodically
 pub struct PingPongService {
-    interval: Duration,
-}
-
-fn format_err<E: Debug>(err: E) -> String {
-    format!("{:?}", err)
+    // Needed because the public ping method needs OMS
+    oms: Option<Arc<OutboundMessageService>>,
 }
 
 impl PingPongService {
-    pub fn new(interval: Duration) -> Self {
-        Self { interval }
+    pub fn new() -> Self {
+        Self { oms: None }
+    }
+
+    pub fn ping(&self, node_id: NodeId) -> Result<(), PingPongError> {
+        self.send_msg(BroadcastStrategy::DirectNodeId(node_id), PingPong::Ping)
     }
 
     fn send_msg(
         &self,
-        oms: &Arc<OutboundMessageService>,
         broadcast_strategy: BroadcastStrategy<RistrettoPublicKey>,
         msg: PingPong,
-    ) -> Result<(), String>
+    ) -> Result<(), PingPongError>
     {
+        let oms = self.oms.clone().ok_or(PingPongError::OMSNotInitialized)?;
+
         let msg = Message::from_message_format(
             MessageHeader {
                 message_type: NetMessage::PingPong,
             },
             msg,
         )
-        .map_err(format_err)?;
+        .map_err(PingPongError::MessageError)?;
 
         oms.send(
             broadcast_strategy,
             MessageFlags::empty(),
-            msg.to_binary().map_err(format_err)?,
+            msg.to_binary().map_err(PingPongError::SerializationFailed)?,
         )
-        .map_err(format_err)
+        .map_err(PingPongError::OutboundError)
     }
 
-    fn run(&self, oms: &Arc<OutboundMessageService>, connector: &DomainConnector<'static>) -> Result<(), String> {
-        if let Some((info, msg)) = connector.receive_timeout(self.interval.clone()).map_err(format_err)? {
+    fn run(&self, connector: &DomainConnector<'static>) -> Result<(), PingPongError> {
+        if let Some((info, msg)) = connector
+            .receive_timeout(Duration::from_millis(500))
+            .map_err(PingPongError::ReceiveError)?
+        {
             match msg {
                 PingPong::Ping => {
                     debug!(
@@ -94,7 +110,6 @@ impl PingPongService {
                     );
                     // Reply with Pong
                     self.send_msg(
-                        oms,
                         BroadcastStrategy::DirectNodeId(info.source_identity.node_id.clone()),
                         PingPong::Pong,
                     )?;
@@ -107,8 +122,6 @@ impl PingPongService {
                 },
             }
         }
-
-        self.send_msg(oms, BroadcastStrategy::Random(1), PingPong::Ping)?;
 
         Ok(())
     }
@@ -123,9 +136,11 @@ impl Service for PingPongService {
         vec![NetMessage::PingPong.into()]
     }
 
-    fn execute(&mut self, context: ServiceContext) {
-        let connector = context.create_connector(&NetMessage::PingPong.into()).unwrap();
-        let oms = context.get_outbound_message_service();
+    fn execute(&mut self, context: ServiceContext) -> Result<(), ServiceError> {
+        let connector = context.create_connector(&NetMessage::PingPong.into()).map_err(|err| {
+            ServiceError::ServiceInitializationFailed(format!("Failed to create connector for service: {}", err))
+        })?;
+        self.oms = Some(context.get_outbound_message_service());
         loop {
             if let Some(msg) = context.get_control_message(Duration::from_millis(5)) {
                 match msg {
@@ -133,13 +148,15 @@ impl Service for PingPongService {
                 }
             }
 
-            match self.run(oms, &connector) {
+            match self.run(&connector) {
                 Ok(_) => {},
                 Err(err) => {
                     error!(target: LOG_TARGET, "PingPong service had error: {}", err);
                 },
             }
         }
+
+        Ok(())
     }
 }
 
@@ -149,13 +166,13 @@ mod test {
 
     #[test]
     fn get_name() {
-        let service = PingPongService::new(Duration::from_millis(10));
+        let service = PingPongService::new();
         assert_eq!(service.get_name(), "ping-pong");
     }
 
     #[test]
     fn get_message_types() {
-        let service = PingPongService::new(Duration::from_millis(10));
+        let service = PingPongService::new();
         assert_eq!(service.get_message_types(), vec![NetMessage::PingPong.into()]);
     }
 }

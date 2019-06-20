@@ -158,7 +158,6 @@ mod test {
             Connection,
             Direction,
             NetAddress,
-            SocketEstablishment,
         },
         inbound_message_service::comms_msg_handlers::*,
         message::{

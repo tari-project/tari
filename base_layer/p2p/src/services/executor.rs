@@ -83,8 +83,23 @@ impl ServiceExecutor {
 
             thread_pool.execute(move || {
                 info!(target: LOG_TARGET, "Starting service {}", service.get_name());
-                service.execute(service_context);
-                info!(target: LOG_TARGET, "Service '{}' has shut down", service.get_name());
+                match service.execute(service_context) {
+                    Ok(_) => {
+                        info!(
+                            target: LOG_TARGET,
+                            "Service '{}' has successfully shut down",
+                            service.get_name()
+                        );
+                    },
+                    Err(err) => {
+                        error!(
+                            target: LOG_TARGET,
+                            "Service '{}' has exited with an error: {:?}",
+                            service.get_name(),
+                            err
+                        );
+                    },
+                }
             });
         }
 
@@ -97,14 +112,22 @@ impl ServiceExecutor {
 
     /// Send a [ServiceControlMessage::Shutdown] message to all services.
     pub fn shutdown(&self) -> Result<(), ServiceError> {
-        if self
-            .senders
-            .iter()
-            .all(sender.send(ServiceControlMessage::Shutdown).is_ok())
-        {
-            Ok(())
-        } else {
+        let mut failed = false;
+        for sender in &self.senders {
+            if sender.send(ServiceControlMessage::Shutdown).is_err() {
+                failed = true;
+            }
+        }
+
+        // TODO: Wait for services to exit and then shutdown the comms
+        //        self.comms_services
+        //            .shutdown()
+        //            .map_err(ServiceError::CommsServicesError)?;
+
+        if failed {
             Err(ServiceError::ShutdownSendFailed)
+        } else {
+            Ok(())
         }
     }
 
@@ -142,7 +165,7 @@ impl ServiceContext {
     }
 
     /// Retrieve and `Arc` of the outbound message service. Used for sending outbound messages.
-    pub fn get_outbound_message_service(&self) -> &Arc<OutboundMessageService> {
+    pub fn get_outbound_message_service(&self) -> Arc<OutboundMessageService> {
         self.comms_services.get_outbound_message_service()
     }
 
@@ -180,7 +203,7 @@ mod test {
             vec![NetMessage::PingPong.into()]
         }
 
-        fn execute(&mut self, context: ServiceContext) {
+        fn execute(&mut self, context: ServiceContext) -> Result<(), ServiceError> {
             let mut added_word = false;
             loop {
                 if !added_word {
@@ -194,6 +217,8 @@ mod test {
                     }
                 }
             }
+
+            Ok(())
         }
     }
 
@@ -218,7 +243,7 @@ mod test {
         let services = ServiceExecutor::execute(comms_services, registry);
 
         services.shutdown().unwrap();
-        services.join_timeout(Duration::from_millis(100));
+        services.join_timeout(Duration::from_millis(100)).unwrap();
 
         {
             let lock = state.read().unwrap();

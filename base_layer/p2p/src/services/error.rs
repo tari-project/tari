@@ -25,6 +25,8 @@ use tari_comms::builder::CommsServicesError;
 
 #[derive(Debug, Error)]
 pub enum ServiceError {
+    #[error(msg_embedded, non_std, no_from)]
+    ServiceInitializationFailed(String),
     CommsServicesError(CommsServicesError),
     /// Timeout waiting for service threads to complete
     JoinTimedOut,
