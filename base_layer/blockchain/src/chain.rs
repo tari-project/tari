@@ -79,7 +79,7 @@ impl Chain {
         let pow = new_block.header.pow.clone();
         self.orphans.insert(hash, new_block);
         let mut currently_used_orphans: Vec<BlockHash> = Vec::new();
-        if pow > self.current_total_pow {
+        if pow.get_total_pow() > self.current_total_pow.get_total_pow() {
             // we have a potential re-org here
             let result = self.handle_re_org(&hash, &mut currently_used_orphans);
             let result = if result.is_err() {

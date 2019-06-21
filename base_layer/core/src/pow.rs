@@ -26,12 +26,18 @@ use serde::{Deserialize, Serialize};
 use tari_infra_derive::Hashable;
 use tari_utilities::{ExtendBytes, Hashable};
 
-#[derive(Clone, Debug, PartialEq, Hashable, Serialize, Deserialize, Eq, Ord, PartialOrd)]
+#[derive(Clone, Debug, PartialEq, Hashable, Serialize, Deserialize)]
 #[digest = "SignatureHash"]
 pub struct ProofOfWork {}
 
 impl ProofOfWork {
     pub fn as_bytes(&self) -> Vec<u8> {
         Vec::new()
+    }
+
+    /// This function will return the total proof of work done
+    pub fn get_total_pow(&self) -> u64 {
+        // todo fill out proper
+        0
     }
 }
