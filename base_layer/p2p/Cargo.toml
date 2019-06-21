@@ -1,13 +1,13 @@
 [package]
 name = "tari_p2p"
-version = "0.0.1"
+version = "0.0.2"
 edition = "2018"
 
 [dependencies]
-tari_crypto = { version = "0.0.1", path = "../../infrastructure/crypto"}
-tari_comms = { version = "0.0.1", path = "../../comms"}
-tari_core = { version = "0.0.1", path = "../core"}
-tari_utilities = { version = "0.0.1", path = "../../infrastructure/tari_util"}
+tari_crypto = { version = "^0.0", path = "../../infrastructure/crypto"}
+tari_comms = { version = "^0.0", path = "../../comms"}
+tari_core = { version = "^0.0", path = "../core"}
+tari_utilities = { version = "^0.0", path = "../../infrastructure/tari_util"}
 rmp-serde = "0.13.7"
 serde = "1.0.90"
 serde_derive = "1.0.90"

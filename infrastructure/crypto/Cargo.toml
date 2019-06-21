@@ -7,11 +7,11 @@ categories = ["cryptography"]
 homepage = "https://tari.com"
 readme = "README.md"
 license = "BSD-3-Clause"
-version = "0.0.1"
+version = "0.0.2"
 edition = "2018"
 
 [dependencies]
-tari_utilities = { path = "../tari_util", version = "0.0.1" }
+tari_utilities = { path = "../tari_util", version = "^0.0" }
 digest = "0.8.0"
 rand = "0.5.5"
 clear_on_drop = "0.2.3"

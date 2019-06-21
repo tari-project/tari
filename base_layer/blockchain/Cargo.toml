@@ -1,14 +1,14 @@
 [package]
 name = "blockchain"
-version = "0.0.1"
+version = "0.0.2"
 edition = "2018"
 
 [dependencies]
 tari_core = { path = "../core"}
 derive-error = "0.0.4"
-tari_utilities = { path = "../../infrastructure/tari_util", version = "0.0.1" }
-merklemountainrange = { path = "../../infrastructure/merklemountainrange", version = "0.0.1" }
-tari_infra_derive = { path = "../../infrastructure/derive", version = "0.0.1" }
-tari_crypto = { path = "../../infrastructure/crypto", version = "0.0.1" }
-tari_storage = { path = "../../infrastructure/storage", version = "0.0.1" }
+tari_utilities = { path = "../../infrastructure/tari_util", version = "^0.0" }
+merklemountainrange = { path = "../../infrastructure/merklemountainrange", version = "^0.0" }
+tari_infra_derive = { path = "../../infrastructure/derive", version = "^0.0" }
+tari_crypto = { path = "../../infrastructure/crypto", version = "^0.0" }
+tari_storage = { path = "../../infrastructure/storage", version = "^0.0" }
 chrono = { version = "0.4.6", features = ["serde"]}
