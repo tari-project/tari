@@ -289,6 +289,7 @@ mod test {
         // Check that each worker thread received work
         // This array marks which workers responded. If fairly dealt each index should be set to 1
         let mut worker_responses = [0; MAX_INBOUND_MSG_PROCESSING_WORKERS as usize];
+
         // Keep track of how many channels have responded
         let mut resp_count = 0;
         loop {

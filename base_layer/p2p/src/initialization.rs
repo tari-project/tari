@@ -20,66 +20,61 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    ping_pong::PingPongService,
-    services::{ServiceExecutor, ServiceRegistry},
-    tari_message::TariMessageType,
-};
+use crate::tari_message::TariMessageType;
 use derive_error::Error;
-use rand::rngs::OsRng;
 use std::{net::IpAddr, sync::Arc};
 use tari_comms::{
-    builder::{CommsBuilderError, CommsServicesError},
+    builder::{CommsBuilderError, CommsRoutes, CommsServices, CommsServicesError},
     connection::net_address::ip::SocketAddress,
     connection_manager::PeerConnectionConfig,
     control_service::ControlServiceConfig,
     peer_manager::{node_identity::NodeIdentityError, NodeIdentity},
+    types::{CommsPublicKey, CommsSecretKey},
     CommsBuilder,
 };
 
 #[derive(Debug, Error)]
-pub enum InitializationError {
-    /// Failed to create RNG
-    RngError,
+pub enum CommsInitializationError {
     NodeIdentityError(NodeIdentityError),
     CommsBuilderError(CommsBuilderError),
     CommsServicesError(CommsServicesError),
 }
 
+#[derive(Clone)]
 pub struct CommsConfig {
-    control_service: ControlServiceConfig<TariMessageType>,
-    socks_proxy_address: Option<SocketAddress>,
-    host: IpAddr,
+    pub control_service: ControlServiceConfig<TariMessageType>,
+    pub socks_proxy_address: Option<SocketAddress>,
+    pub host: IpAddr,
+    pub public_key: CommsPublicKey,
+    pub secret_key: CommsSecretKey,
 }
 
-pub struct WalletConfig {
-    comms: CommsConfig,
-}
-
-pub fn initialize_wallet(config: WalletConfig) -> Result<ServiceExecutor, InitializationError> {
-    let mut rng = OsRng::new().map_err(|_| InitializationError::RngError)?;
-
-    let registry = ServiceRegistry::new().register(PingPongService::new());
-
-    let node_identity = NodeIdentity::random(&mut rng, config.comms.control_service.listener_address.clone())
-        .map_err(InitializationError::NodeIdentityError)?;
-
-    let comm_routes = registry.build_comms_routes();
+pub fn initialize_comms(
+    config: CommsConfig,
+    comms_routes: CommsRoutes<TariMessageType>,
+) -> Result<Arc<CommsServices<TariMessageType>>, CommsInitializationError>
+{
+    let node_identity = NodeIdentity::new(
+        config.secret_key,
+        config.public_key,
+        config.control_service.listener_address.clone(),
+    )
+    .map_err(CommsInitializationError::NodeIdentityError)?;
 
     let comms = CommsBuilder::new()
-        .with_routes(comm_routes.clone())
+        .with_routes(comms_routes.clone())
         .with_node_identity(node_identity)
-        .configure_control_service(config.comms.control_service)
+        .configure_control_service(config.control_service)
         .configure_peer_connections(PeerConnectionConfig {
-            socks_proxy_address: config.comms.socks_proxy_address,
-            host: config.comms.host,
+            socks_proxy_address: config.socks_proxy_address,
+            host: config.host,
             ..Default::default()
         })
         .build()
-        .map_err(InitializationError::CommsBuilderError)?
+        .map_err(CommsInitializationError::CommsBuilderError)?
         .start()
         .map(Arc::new)
-        .map_err(InitializationError::CommsServicesError)?;
+        .map_err(CommsInitializationError::CommsServicesError)?;
 
-    Ok(ServiceExecutor::execute(comms, registry))
+    Ok(comms)
 }

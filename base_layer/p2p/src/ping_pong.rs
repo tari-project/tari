@@ -32,10 +32,9 @@ use tari_comms::{
     domain_connector::ConnectorError,
     message::{Message, MessageError, MessageFlags, MessageHeader},
     outbound_message_service::{outbound_message_service::OutboundMessageService, BroadcastStrategy, OutboundError},
-    peer_manager::NodeId,
+    types::CommsPublicKey,
     DomainConnector,
 };
-use tari_crypto::ristretto::RistrettoPublicKey;
 use tari_utilities::message_format::{MessageFormat, MessageFormatError};
 
 const LOG_TARGET: &'static str = "base_layer::p2p::ping_pong";
@@ -68,13 +67,13 @@ impl PingPongService {
         Self { oms: None }
     }
 
-    pub fn ping(&self, node_id: NodeId) -> Result<(), PingPongError> {
-        self.send_msg(BroadcastStrategy::DirectNodeId(node_id), PingPong::Ping)
+    pub fn ping(&self, pub_key: CommsPublicKey) -> Result<(), PingPongError> {
+        self.send_msg(BroadcastStrategy::DirectPublicKey(pub_key), PingPong::Ping)
     }
 
     fn send_msg(
         &self,
-        broadcast_strategy: BroadcastStrategy<RistrettoPublicKey>,
+        broadcast_strategy: BroadcastStrategy<CommsPublicKey>,
         msg: PingPong,
     ) -> Result<(), PingPongError>
     {
@@ -105,7 +104,7 @@ impl PingPongService {
                 PingPong::Ping => {
                     debug!(
                         target: LOG_TARGET,
-                        "Received ping from NodeID {:?}", info.source_identity.node_id
+                        "Received ping from Public Key {:?}", info.source_identity.public_key
                     );
                     // Reply with Pong
                     self.send_msg(
@@ -116,7 +115,7 @@ impl PingPongService {
                 PingPong::Pong => {
                     debug!(
                         target: LOG_TARGET,
-                        "Received pong from NodeID {:?}", info.source_identity.node_id
+                        "Received pong from Public Key {:?}", info.source_identity.public_key
                     );
                 },
             }
