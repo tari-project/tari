@@ -64,9 +64,16 @@ where
         })
     }
 
+    /// Constructs a PeerStorage with the given DataStore
+    pub fn with_datastore(datastore: DS) -> Result<PeerStorage<PubKey, DS>, PeerManagerError> {
+        let mut store = Self::new()?;
+        store.datastore = Some(datastore);
+        store.init_persistance_store();
+        Ok(store)
+    }
+
     /// Connects and restore the PeerStorage system from a datastore
-    pub fn init_persistance_store(mut self, datastore: DS) -> Result<PeerStorage<PubKey, DS>, PeerManagerError> {
-        self.datastore = Some(datastore);
+    fn init_persistance_store(&mut self) {
         // Restore from datastore
         let mut index = 0;
         while let Ok(peer) = self.get_peer_from_datastore(index) {
@@ -75,7 +82,6 @@ where
             self.peers.push(peer);
             index += 1;
         }
-        Ok(self)
     }
 
     /// Adds a peer to the routing table of the PeerManager if the peer does not already exist. When a peer already
@@ -434,6 +440,11 @@ where
         self.peers[peer_index].addresses.reset_connection_attempts();
         Ok(())
     }
+
+    /// Returns the DataStore underlying PeerStorage if one exists
+    pub fn into_datastore(self) -> Option<DS> {
+        self.datastore
+    }
 }
 
 #[cfg(test)]
@@ -445,10 +456,7 @@ mod test {
     };
     use std::fs;
     use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
-    use tari_storage::{
-        keyvalue_store::DataStore,
-        lmdb::{LMDBBuilder, LMDBStore},
-    };
+    use tari_storage::{keyvalue_store::DataStore, lmdb::LMDBBuilder};
 
     #[test]
     fn test_add_delete_find_peer() {
@@ -462,10 +470,7 @@ mod test {
         // Setup peer storage
         let mut datastore = LMDBBuilder::new().set_path(test_dir).build().unwrap();
         datastore.connect("default").unwrap();
-        let mut peer_storage = PeerStorage::<RistrettoPublicKey, LMDBStore>::new()
-            .unwrap()
-            .init_persistance_store(datastore)
-            .unwrap();
+        let mut peer_storage = PeerStorage::with_datastore(datastore).unwrap();
 
         // Create Peers
         let mut rng = rand::OsRng::new().unwrap();
@@ -678,10 +683,7 @@ mod test {
         // Setup peer storage
         let mut datastore = LMDBBuilder::new().set_path(test_dir).build().unwrap();
         datastore.connect("default").unwrap();
-        let mut peer_storage = PeerStorage::<RistrettoPublicKey, LMDBStore>::new()
-            .unwrap()
-            .init_persistance_store(datastore)
-            .unwrap();
+        let mut peer_storage = PeerStorage::with_datastore(datastore).unwrap();
 
         // Create Peers
         let mut rng = rand::OsRng::new().unwrap();
@@ -708,10 +710,7 @@ mod test {
         // Reconnect to peer storage without deleting datastore
         let mut datastore = LMDBBuilder::new().set_path(test_dir).build().unwrap();
         datastore.connect("default").unwrap();
-        let peer_storage = PeerStorage::<RistrettoPublicKey, LMDBStore>::new()
-            .unwrap()
-            .init_persistance_store(datastore)
-            .unwrap();
+        let peer_storage = PeerStorage::with_datastore(datastore).unwrap();
 
         // Check that peer vector was restored
         assert_eq!(peer_storage.peers.len(), 2);
