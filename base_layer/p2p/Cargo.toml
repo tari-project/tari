@@ -1,5 +1,5 @@
 [package]
-name = "p2p"
+name = "tari_p2p"
 version = "0.0.1"
 edition = "2018"
 

@@ -125,7 +125,7 @@ fn connection_out() {
 
     assert!(!conn.is_connected());
     conn.start(context).unwrap();
-    conn.wait_connected_or_failure(&Duration::from_millis(100)).unwrap();
+    conn.wait_connected_or_failure(&Duration::from_millis(2000)).unwrap();
 
     // Connect the message consumer
     let consumer = Connection::new(&ctx, Direction::Inbound)

@@ -20,7 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod initializers;
+#[macro_use]
+mod macros;
+pub mod initialization;
 pub mod peer;
 pub mod ping_pong;
 pub mod services;

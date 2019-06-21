@@ -55,7 +55,7 @@ pub struct ServiceExecutor {
 
 impl ServiceExecutor {
     /// Execute the services contained in the given [ServiceRegistry].
-    pub fn execute(comms_services: Arc<CommsServices<TariMessageType>>, registry: ServiceRegistry) -> Self {
+    pub fn execute(comms_services: Arc<CommsServices<TariMessageType>>, mut registry: ServiceRegistry) -> Self {
         let thread_pool = threadpool::Builder::new()
             .thread_name("DomainServices".to_string())
             .num_threads(registry.num_services())
@@ -64,7 +64,7 @@ impl ServiceExecutor {
 
         let mut senders = Vec::new();
 
-        for mut service in registry.services.into_iter() {
+        for service in registry.services.drain(..) {
             let (sender, receiver) = channel();
             senders.push(sender);
 
@@ -72,22 +72,27 @@ impl ServiceExecutor {
                 comms_services: comms_services.clone(),
                 receiver,
             };
-
             thread_pool.execute(move || {
-                info!(target: LOG_TARGET, "Starting service {}", service.get_name());
-                match service.execute(service_context) {
+                info!(
+                    target: LOG_TARGET,
+                    "Starting service {}",
+                    service.read().unwrap().get_name()
+                );
+                let mut s = acquire_write_lock!(service);
+                let res = s.execute(service_context);
+                match res {
                     Ok(_) => {
                         info!(
                             target: LOG_TARGET,
                             "Service '{}' has successfully shut down",
-                            service.get_name()
+                            acquire_read_lock!(service).get_name(),
                         );
                     },
                     Err(err) => {
                         error!(
                             target: LOG_TARGET,
                             "Service '{}' has exited with an error: {:?}",
-                            service.get_name(),
+                            acquire_read_lock!(service).get_name(),
                             err
                         );
                     },
@@ -210,8 +215,8 @@ mod test {
             NodeIdentity::random(&mut OsRng::new().unwrap(), "127.0.0.1:9000".parse().unwrap()).unwrap();
 
         let state = Arc::new(RwLock::new("Hello".to_string()));
-
-        let registry = ServiceRegistry::new().register(AddWordService(state.clone(), "Tari"));
+        let service = Arc::new(RwLock::new(AddWordService(state.clone(), "Tari")));
+        let registry = ServiceRegistry::new().register(service);
 
         let comms_services = CommsBuilder::new()
             .with_routes(registry.build_comms_routes())
@@ -228,7 +233,7 @@ mod test {
         services.join_timeout(Duration::from_millis(100)).unwrap();
 
         {
-            let lock = state.read().unwrap();
+            let lock = acquire_read_lock!(state);
             assert_eq!(*lock, "Hello Tari");
         }
     }

@@ -26,14 +26,12 @@ use crate::{
         node_id::{NodeId, NodeIdError},
         Peer,
     },
+    types::{CommsPublicKey, CommsSecretKey},
 };
 use derive_error::Error;
 use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize};
-use tari_crypto::{
-    keys::{PublicKey, SecretKey},
-    ristretto::{RistrettoPublicKey, RistrettoSecretKey},
-};
+use tari_crypto::keys::{PublicKey, SecretKey};
 
 #[derive(Debug, Error)]
 pub enum NodeIdentityError {
@@ -53,12 +51,28 @@ pub struct NodeIdentity<PK: PublicKey> {
     pub control_service_address: NetAddress,
 }
 
-impl NodeIdentity<RistrettoPublicKey> {
-    /// Generates a new random NodeIdentity for Ristretto
+impl NodeIdentity<CommsPublicKey> {
+    /// Create a new NodeIdentity from the provided key pair and control service address
+    pub fn new(
+        secret_key: CommsSecretKey,
+        public_key: CommsPublicKey,
+        control_service_address: NetAddress,
+    ) -> Result<Self, NodeIdentityError>
+    {
+        let node_id = NodeId::from_key(&public_key).map_err(NodeIdentityError::NodeIdError)?;
+
+        Ok(NodeIdentity {
+            identity: PeerNodeIdentity::new(node_id, public_key),
+            secret_key,
+            control_service_address,
+        })
+    }
+
+    /// Generates a new random NodeIdentity for CommsPublicKey
     pub fn random<R>(rng: &mut R, control_service_address: NetAddress) -> Result<Self, NodeIdentityError>
     where R: CryptoRng + Rng {
-        let secret_key = RistrettoSecretKey::random(rng);
-        let public_key = RistrettoPublicKey::from_secret_key(&secret_key);
+        let secret_key = CommsSecretKey::random(rng);
+        let public_key = CommsPublicKey::from_secret_key(&secret_key);
         let node_id = NodeId::from_key(&public_key).map_err(NodeIdentityError::NodeIdError)?;
 
         Ok(NodeIdentity {

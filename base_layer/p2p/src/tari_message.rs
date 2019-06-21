@@ -69,6 +69,14 @@ pub mod ValidatorNodeMessage {
     pub const Instruction: u8 = 97;
 }
 
+#[allow(non_snake_case, non_upper_case_globals)]
+pub mod ExtendedMessage {
+    pub(super) const START_RANGE: u8 = 225;
+    pub(super) const END_RANGE: u8 = 226; // Can be extended to 255
+    pub const Text: u8 = 225;
+    pub const TextAck: u8 = 226;
+}
+
 impl TariMessageType {
     is_type!(NetMessage, is_net_message);
 
@@ -95,6 +103,17 @@ impl From<u8> for TariMessageType {
     fn from(v: u8) -> Self {
         TariMessageType::new(v)
     }
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct TariMessageHeader {
+    pub version: u8,
+    pub message_type: TariMessageType,
+}
+
+pub struct TariMessage {
+    pub header: TariMessageHeader,
+    pub body: Vec<u8>,
 }
 
 #[cfg(test)]
