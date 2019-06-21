@@ -31,15 +31,3 @@ macro_rules! acquire_lock {
         acquire_lock!($e, lock)
     };
 }
-
-macro_rules! acquire_write_lock {
-    ($e:expr) => {
-        acquire_lock!($e, write)
-    };
-}
-
-macro_rules! acquire_read_lock {
-    ($e:expr) => {
-        acquire_lock!($e, read)
-    };
-}

@@ -20,7 +20,6 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::types::Factory;
 use crate::{
     builder::CommsRoutes,
     connection::{ConnectionError, DealerProxyError, InprocAddress, ZmqContext},
@@ -46,7 +45,7 @@ use crate::{
 };
 use derive_error::Error;
 use log::*;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{de::DeserializeOwned, export::fmt::Debug, Serialize};
 use std::{sync::Arc, thread::JoinHandle};
 
 const LOG_TARGET: &'static str = "comms::builder";
@@ -65,11 +64,7 @@ pub enum CommsBuilderError {
     DealerProxyError(DealerProxyError),
     /// Comms routes have not been defined. Call `with_routes` on [CommsBuilder]
     RoutesNotDefined,
-}
-
-trait CommsBuilable {
-    type PublicKey;
-    type DispatcherFactory;
+    BrokerStartError(BrokerError),
 }
 
 /// ## CommsBuilder
@@ -110,11 +105,8 @@ pub struct CommsBuilder<MType>
 where MType: Clone
 {
     zmq_context: ZmqContext,
-    // Factories
-    peer_storage_factory: Option<Box<Factory<CommsDataStore>>>,
-
-    // Configs
     routes: Option<CommsRoutes<MType>>,
+    peer_storage: Option<CommsDataStore>,
     control_service_config: Option<ControlServiceConfig<MType>>,
     omp_config: Option<OutboundMessagePoolConfig>,
     node_identity: Option<NodeIdentity<CommsPublicKey>>,
@@ -125,7 +117,7 @@ impl<MType> CommsBuilder<MType>
 where
     MType: DispatchableKey,
     MType: Serialize + DeserializeOwned,
-    MType: Clone,
+    MType: Clone + Debug,
 {
     pub fn new() -> Self {
         let zmq_context = ZmqContext::new();
@@ -135,7 +127,7 @@ where
             control_service_config: None,
             peer_conn_config: None,
             omp_config: None,
-            peer_storage_factory: None,
+            peer_storage: None,
             routes: None,
             node_identity: None,
         }
@@ -143,15 +135,12 @@ where
 
     pub fn with_routes(mut self, routes: CommsRoutes<MType>) -> Self {
         self.routes = Some(routes);
+        debug!(target: LOG_TARGET, "Comms routes: {:#?}", self.routes);
         self
     }
 
-    pub fn with_peer_storage<F>(mut self, factory: F) -> Self
-    where
-        F: Factory<CommsDataStore>,
-        F: 'static,
-    {
-        self.peer_storage_factory = Some(Box::new(factory));
+    pub fn with_peer_storage(mut self, peer_storage: CommsDataStore) -> Self {
+        self.peer_storage = Some(peer_storage);
         self
     }
 
@@ -176,7 +165,7 @@ where
     }
 
     fn make_peer_manager(&mut self) -> Result<Arc<PeerManager<CommsPublicKey, CommsDataStore>>, CommsBuilderError> {
-        let storage = self.peer_storage_factory.take().map(|f| f.make());
+        let storage = self.peer_storage.take();
         let peer_manager = PeerManager::new(storage).map_err(CommsBuilderError::PeerManagerError)?;
         Ok(Arc::new(peer_manager))
     }
@@ -281,21 +270,51 @@ where
         .map_err(CommsBuilderError::InboundMessageServiceError)
     }
 
-    fn make_inbound_message_broker(&mut self, routes: &CommsRoutes<MType>) -> Arc<InboundMessageBroker<MType>> {
+    fn make_inbound_message_broker(
+        &mut self,
+        routes: &CommsRoutes<MType>,
+    ) -> Result<Arc<InboundMessageBroker<MType>>, CommsBuilderError>
+    {
         let broker = routes.inner().iter().fold(
             InboundMessageBroker::new(self.zmq_context.clone()),
             |broker, (message_type, address)| broker.route(message_type.clone(), address.clone()),
-        );
+        )
+            // FIXME(sdbondi): We have to start the broker here because we cannot mutate it once inUse these fields when
+            // able to shutdown
+            .start().map_err(CommsBuilderError::BrokerStartError)?;
 
-        Arc::new(broker)
+        Ok(Arc::new(broker))
     }
 
+    fn make_routes(&mut self) -> Result<CommsRoutes<MType>, CommsBuilderError> {
+        let mut routes = self.routes.take().ok_or(CommsBuilderError::RoutesNotDefined)?;
+
+        // If the control service is enabled and an accept route is not already defined - define one
+        // so that connections can be established
+        if let Some(ref config) = self.control_service_config {
+            if routes.get_address(&config.accept_message_type).is_none() {
+                warn!(
+                    target: LOG_TARGET,
+                    "Adding dead end route for accept message as one was not specified which matches the control \
+                     service `accept_message_type` setting"
+                );
+                routes = routes.register(config.accept_message_type.clone());
+            }
+        }
+
+        Ok(routes)
+    }
+
+    /// Build CommsServicesContainer
     pub fn build(mut self) -> Result<CommsServiceContainer<MType>, CommsBuilderError> {
         let node_identity = self.make_node_identity()?;
 
         let peer_manager = self.make_peer_manager()?;
 
         let peer_conn_config = self.make_peer_connection_config();
+
+        // This must happen before control service so that it can use it's config to setup a default route for accept
+        let routes = self.make_routes()?;
 
         let control_service = self.make_control_service(node_identity.clone());
 
@@ -315,9 +334,7 @@ where
             connection_manager.clone(),
         )?;
 
-        let routes = self.routes.take().ok_or(CommsBuilderError::RoutesNotDefined)?;
-
-        let inbound_message_broker = self.make_inbound_message_broker(&routes);
+        let inbound_message_broker = self.make_inbound_message_broker(&routes)?;
 
         let inbound_message_service = self.make_inbound_message_service(
             node_identity,
@@ -332,6 +349,7 @@ where
             routes,
             control_service,
             inbound_message_service,
+            inbound_message_broker,
             connection_manager,
             outbound_message_pool,
             outbound_message_service,
@@ -361,6 +379,7 @@ where
     routes: CommsRoutes<MType>,
     connection_manager: Arc<ConnectionManager>,
     control_service: Option<ControlService<MType>>,
+    inbound_message_broker: Arc<InboundMessageBroker<MType>>,
     inbound_message_service: InboundMessageService<MType>,
     outbound_message_pool: OutboundMessagePool,
     outbound_message_service: Arc<OutboundMessageService>,
@@ -391,6 +410,7 @@ where
             outbound_message_service: self.outbound_message_service,
             routes: self.routes,
             connection_manager: self.connection_manager,
+            inbound_message_broker: self.inbound_message_broker,
 
             // Add handles for started services
             control_service_handle,
@@ -404,6 +424,9 @@ pub struct CommsServices<MType> {
     outbound_message_service: Arc<OutboundMessageService>,
     routes: CommsRoutes<MType>,
     control_service_handle: Option<ControlServiceHandle>,
+    // TODO(sdbondi): Use these fields when able to shutdown
+    #[allow(dead_code)]
+    inbound_message_broker: Arc<InboundMessageBroker<MType>>,
     #[allow(dead_code)]
     ims_handle: JoinHandle<Result<(), InboundMessageServiceError>>,
     connection_manager: Arc<ConnectionManager>,

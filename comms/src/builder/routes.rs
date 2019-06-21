@@ -22,7 +22,7 @@
 
 use crate::connection::InprocAddress;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct CommsRoutes<MType>(Vec<(MType, InprocAddress)>);
 
 impl<MType> CommsRoutes<MType>

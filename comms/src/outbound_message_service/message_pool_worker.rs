@@ -175,7 +175,15 @@ impl MessagePoolWorker {
     {
         let peer = self.peer_manager.find_with_node_id(&msg.destination_node_id)?;
         let peer_connection = self.connection_manager.establish_connection_to_peer(&peer)?;
-        peer_connection.send(msg.message_envelope.clone().into_frame_set())?;
+        let frames = msg.message_envelope.clone().into_frame_set();
+
+        debug!(
+            target: LOG_TARGET,
+            "Sending {} frames to {:x?}",
+            frames.len(),
+            peer.node_id
+        );
+        peer_connection.send(frames)?;
         Ok(())
     }
 

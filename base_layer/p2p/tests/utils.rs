@@ -19,11 +19,36 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
+use std::{fmt::Display, iter, thread, time::Duration};
 
-mod builder;
-mod routes;
+pub fn random_string(len: usize) -> String {
+    let mut rng = OsRng::new().unwrap();
+    iter::repeat(()).map(|_| rng.sample(Alphanumeric)).take(len).collect()
+}
 
-pub use self::{
-    builder::{CommsBuilder, CommsBuilderError, CommsServices, CommsServicesError},
-    routes::CommsRoutes,
-};
+pub fn assert_change<F, T>(func: F, to: T, poll_count: usize)
+where
+    F: Fn() -> T,
+    T: Eq + Display,
+{
+    let mut i = 0;
+    loop {
+        let new_val = func();
+        if new_val == to {
+            break;
+        }
+
+        i += 1;
+        if i >= poll_count {
+            panic!(
+                "Value {} did not change to {} within {}ms",
+                new_val,
+                to,
+                poll_count * 100
+            );
+        }
+
+        thread::sleep(Duration::from_millis(100));
+    }
+}

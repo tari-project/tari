@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use derive_error::Error;
+use serde::export::fmt::Debug;
 use tari_comms::builder::CommsServicesError;
 
 #[derive(Debug, Error)]
@@ -32,4 +33,13 @@ pub enum ServiceError {
     JoinTimedOut,
     /// Failed to send shut
     ShutdownSendFailed,
+    #[error(msg_embedded, non_std, no_from)]
+    InternalServiceError(String),
+}
+
+impl ServiceError {
+    pub fn internal_service_error<E>() -> impl Fn(E) -> Self
+    where E: Debug {
+        |err| ServiceError::InternalServiceError(format!("Internal service error: {:?}", err))
+    }
 }

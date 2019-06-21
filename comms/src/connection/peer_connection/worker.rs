@@ -349,7 +349,7 @@ impl Worker {
         let context = &self.context;
         if let Some(frames) = connection_try!(frontend.receive(10)) {
             match context.direction {
-                // For a ROUTER backend, the first frame is the identity
+                // For a ZMQ_ROUTER, the first frame is the identity
                 Direction::Inbound => match self.identity {
                     Some(ref ident) => {
                         if frames[0] != *ident {

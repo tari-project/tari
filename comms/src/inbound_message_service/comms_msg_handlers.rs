@@ -33,8 +33,12 @@ use crate::{
     },
     types::{CommsPublicKey, MessageDispatcher},
 };
+use log::*;
 use serde::{de::DeserializeOwned, Serialize};
+use std::fmt::Debug;
 use tari_utilities::message_format::MessageFormat;
+
+const LOG_TARGET: &'static str = "comms::inbound_message_service::handlers";
 
 /// The comms_msg_dispatcher will determine the type of message and forward it to the the correct handler
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]
@@ -52,6 +56,7 @@ pub fn construct_comms_msg_dispatcher<MType>() -> MessageDispatcher<MessageConte
 where
     MType: DispatchableKey,
     MType: Serialize + DeserializeOwned,
+    MType: Debug,
 {
     MessageDispatcher::new(InboundMessageServiceResolver {})
         .route(CommsDispatchType::Handle, handler_handle)
@@ -110,47 +115,72 @@ fn handler_handle<MType>(message_context: MessageContext<MType>) -> Result<(), D
 where
     MType: DispatchableKey,
     MType: Serialize + DeserializeOwned,
+    MType: Debug,
 {
-    // Check encryption and retrieved Message
-    let message_envelope_header: MessageEnvelopeHeader<CommsPublicKey> =
-        message_context
-            .message_envelope
-            .to_header()
-            .map_err(|e| DispatchError::HandlerError(format!("{}", e)))?;
+    let envelope = &message_context.message_envelope;
+    debug!(
+        target: LOG_TARGET,
+        "Received message, wire format version {:x?}",
+        envelope.version_frame()
+    );
 
+    // Check encryption and retrieved Message
+    let message_envelope_header: MessageEnvelopeHeader<CommsPublicKey> = envelope
+        .to_header()
+        .map_err(|e| DispatchError::HandlerError(format!("{}", e)))?;
+
+    debug!(
+        target: LOG_TARGET,
+        "Handling message with signature {:x?}", message_envelope_header.signature
+    );
     let node_identity = &message_context.node_identity;
     let message: Message;
     if message_envelope_header.flags.contains(MessageFlags::ENCRYPTED) {
+        debug!(target: LOG_TARGET, "Attempting to decrypt message");
         match message_context
             .message_envelope
             .decrypted_message_body(&node_identity.secret_key, &message_envelope_header.source)
         {
             Ok(decrypted_message_body) => {
+                debug!(target: LOG_TARGET, "Message successfully decrypted");
                 message = decrypted_message_body;
             },
             Err(_) => {
                 if message_envelope_header.dest == NodeDestination::Unknown {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Unable to decrypt message with unknown recipient, forwarding..."
+                    );
                     // Message might have been for this node if it could have been decrypted
                     return handler_forward(message_context);
                 } else {
+                    warn!(target: LOG_TARGET, "Unable to decrypt message addressed to this node");
                     // Message was for this node but could not be decrypted
                     return handler_discard(message_context);
                 }
             },
         }
     } else {
+        debug!(target: LOG_TARGET, "Message not encrypted");
         message = message_context
             .message_envelope
             .message_body()
-            .map_err(|e| DispatchError::HandlerError(format!("{}", e)))?;
+            .map_err(DispatchError::handler_error())?;
     };
 
     // Construct DomainMessageContext and dispatch to handler services using domain message broker
-    let header: MessageHeader<MType> = message.to_header().map_err(DispatchError::resolve_failed())?;
+    let header: MessageHeader<MType> = message.to_header().map_err(DispatchError::handler_error())?;
+
+    debug!(target: LOG_TARGET, "Received message type {:?}", header.message_type);
     let domain_message_context = DomainMessageContext::new(message_context.peer.into(), message);
     let domain_message_context_buffer = vec![domain_message_context
         .to_binary()
         .map_err(|e| DispatchError::HandlerError(format!("{}", e)))?];
+
+    debug!(
+        target: LOG_TARGET,
+        "Dispatching message type: {:?}", header.message_type
+    );
     message_context
         .inbound_message_broker
         .dispatch(header.message_type, &domain_message_context_buffer)

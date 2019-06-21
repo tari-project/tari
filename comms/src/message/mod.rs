@@ -34,7 +34,7 @@ pub mod p2p;
 
 pub use self::{
     domain_message_context::*,
-    envelope::*,
+    envelope::{MessageEnvelope, MessageEnvelopeHeader},
     error::MessageError,
     message::{Message, MessageHeader},
     message_context::MessageContext,

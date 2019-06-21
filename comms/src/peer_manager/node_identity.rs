@@ -25,6 +25,7 @@ use crate::{
     peer_manager::{
         node_id::{NodeId, NodeIdError},
         Peer,
+        PeerFlags,
     },
     types::{CommsPublicKey, CommsSecretKey},
 };
@@ -45,6 +46,7 @@ pub enum NodeIdentityError {
 /// `secret_key`: The secret key corresponding to the public key of this node
 ///
 /// `control_service_address`: The NetAddress of the local node's Control port
+#[derive(Clone)]
 pub struct NodeIdentity<PK: PublicKey> {
     pub identity: PeerNodeIdentity<PK>,
     pub secret_key: PK::K,
@@ -95,9 +97,20 @@ impl NodeIdentity<CommsPublicKey> {
     }
 }
 
+impl<PK: PublicKey> From<NodeIdentity<PK>> for Peer<PK> {
+    fn from(node_identity: NodeIdentity<PK>) -> Peer<PK> {
+        Peer::new(
+            node_identity.identity.public_key,
+            node_identity.identity.node_id,
+            node_identity.control_service_address.into(),
+            PeerFlags::empty(),
+        )
+    }
+}
+
 /// The PeerNodeIdentity is a container that stores the public identity (NodeId, Identification Public Key pair) of a
 /// single node
-#[derive(Eq, PartialEq, Debug, Serialize, Deserialize)]
+#[derive(Eq, PartialEq, Debug, Serialize, Deserialize, Clone)]
 pub struct PeerNodeIdentity<PK> {
     pub node_id: NodeId,
     pub public_key: PK,

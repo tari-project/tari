@@ -22,14 +22,13 @@
 
 use super::service::Service;
 use crate::tari_message::TariMessageType;
-use std::sync::{Arc, RwLock};
 use tari_comms::builder::CommsRoutes;
 
 /// This is a container for services. Services can be registered here
 /// and given to the [ServiceExecutor] for execution. This also
 /// builds [CommsRoutes] for the given services.
 pub struct ServiceRegistry {
-    pub(super) services: Vec<Arc<RwLock<Service>>>,
+    pub(super) services: Vec<Box<Service>>,
 }
 
 impl ServiceRegistry {
@@ -39,9 +38,9 @@ impl ServiceRegistry {
     }
 
     /// Register a [Service]
-    pub fn register<S>(mut self, service: Arc<RwLock<S>>) -> Self
+    pub fn register<S>(mut self, service: S) -> Self
     where S: Service + 'static {
-        self.services.push(service);
+        self.services.push(Box::new(service));
         self
     }
 
@@ -55,8 +54,6 @@ impl ServiceRegistry {
         let mut routes = CommsRoutes::new();
         for service in &self.services {
             routes = service
-                .read()
-                .unwrap()
                 .get_message_types()
                 .iter()
                 .fold(routes, |routes, message_type| routes.register(message_type.clone()));
@@ -95,14 +92,14 @@ mod test {
     fn num_services() {
         let mut registry = ServiceRegistry::new();
         assert_eq!(registry.num_services(), 0);
-        let service = Arc::new(RwLock::new(DummyService {}));
+        let service = DummyService {};
         registry = registry.register(service);
         assert_eq!(registry.num_services(), 1);
     }
 
     #[test]
     fn build_comms_routes() {
-        let service = Arc::new(RwLock::new(DummyService {}));
+        let service = DummyService {};
         let registry = ServiceRegistry::new().register(service);
 
         let routes = registry.build_comms_routes();
