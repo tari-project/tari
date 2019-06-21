@@ -27,7 +27,7 @@ use crate::{
         single_receiver::SingleReceiverTransactionProtocol,
         TransactionProtocolError,
     },
-    types::{CommitmentFactory, MessageHash, PublicKey, RangeProofService, SecretKey, Signature},
+    types::{CommitmentFactory, MessageHash, PrivateKey, PublicKey, RangeProofService, Signature},
 };
 use std::collections::HashMap;
 pub enum RecipientState {
@@ -75,8 +75,8 @@ pub struct ReceiverTransactionProtocol {
 impl ReceiverTransactionProtocol {
     pub fn new(
         info: SenderMessage,
-        nonce: SecretKey,
-        spending_key: SecretKey,
+        nonce: PrivateKey,
+        spending_key: PrivateKey,
         features: OutputFeatures,
         prover: &RangeProofService,
         factory: &CommitmentFactory,
@@ -126,8 +126,8 @@ impl ReceiverTransactionProtocol {
 
     /// Run the single-round recipient protocol, which can immediately construct an output and sign the data
     fn single_round(
-        nonce: SecretKey,
-        key: SecretKey,
+        nonce: PrivateKey,
+        key: PrivateKey,
         features: OutputFeatures,
         data: &SD,
         prover: &RangeProofService,

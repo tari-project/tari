@@ -22,7 +22,7 @@
 
 use crate::{
     transaction::{KernelFeatures, Transaction, TransactionBuilder, TransactionInput, TransactionOutput},
-    types::{BlindingFactor, CommitmentFactory, PublicKey, RangeProofService, SecretKey, Signature},
+    types::{BlindingFactor, CommitmentFactory, PrivateKey, PublicKey, RangeProofService, Signature},
 };
 
 use crate::{
@@ -59,7 +59,7 @@ pub(super) struct RawTransactionInfo {
     pub offset_blinding_factor: BlindingFactor,
     pub public_excess: PublicKey,
     // The sender's private nonce
-    pub private_nonce: SecretKey,
+    pub private_nonce: PrivateKey,
     // The sender's public nonce
     pub public_nonce: PublicKey,
     // The sum of all public nonces
