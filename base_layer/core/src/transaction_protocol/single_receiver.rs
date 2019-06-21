@@ -28,7 +28,7 @@ use crate::{
         sender::SingleRoundSenderData as SD,
         TransactionProtocolError as TPE,
     },
-    types::{CommitmentFactory, PublicKey, RangeProof, RangeProofService, SecretKey as SK, Signature},
+    types::{CommitmentFactory, PrivateKey as SK, PublicKey, RangeProof, RangeProofService, Signature},
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
@@ -109,7 +109,7 @@ mod test {
             TransactionMetadata,
             TransactionProtocolError,
         },
-        types::{PublicKey, SecretKey, COMMITMENT_FACTORY, PROVER},
+        types::{PrivateKey, PublicKey, COMMITMENT_FACTORY, PROVER},
     };
     use rand::OsRng;
     use tari_crypto::{
@@ -117,10 +117,10 @@ mod test {
         keys::{PublicKey as PK, SecretKey as SK},
     };
 
-    fn generate_output_parms() -> (SecretKey, SecretKey, OutputFeatures) {
+    fn generate_output_parms() -> (PrivateKey, PrivateKey, OutputFeatures) {
         let mut rng = OsRng::new().unwrap();
-        let r = SecretKey::random(&mut rng);
-        let k = SecretKey::random(&mut rng);
+        let r = PrivateKey::random(&mut rng);
+        let k = PrivateKey::random(&mut rng);
         let of = OutputFeatures::empty();
         (r, k, of)
     }

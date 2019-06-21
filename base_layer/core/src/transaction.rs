@@ -30,7 +30,7 @@ use crate::{
 
 use crate::{
     transaction_protocol::{build_challenge, TransactionMetadata},
-    types::{HashDigest, PublicKey, RangeProof, RangeProofService, SecretKey},
+    types::{HashDigest, PrivateKey, PublicKey, RangeProof, RangeProofService},
 };
 use derive_error::Error;
 use digest::Input;
@@ -413,7 +413,7 @@ impl Transaction {
 
     /// Calculate the sum of the inputs and outputs including the fees
     fn sum_commitments(&self, fees: u64, factory: &CommitmentFactory) -> Commitment {
-        let fee_commitment = factory.commit(&SecretKey::default(), &SecretKey::from(fees));
+        let fee_commitment = factory.commit(&PrivateKey::default(), &PrivateKey::from(fees));
         let sum_inputs = &self.body.inputs.iter().map(|i| &i.commitment).sum::<Commitment>();
         let sum_outputs = &self.body.outputs.iter().map(|o| &o.commitment).sum::<Commitment>();
         &(sum_outputs - sum_inputs) + &fee_commitment
@@ -624,7 +624,7 @@ mod test {
                 TransactionError::ValidationError("Range proof could not be verified".to_string())
             ),
         }
-        let v = SecretKey::from(2u64.pow(32) + 1);
+        let v = PrivateKey::from(2u64.pow(32) + 1);
         let c = factory.commit(&k2, &v);
         let proof = prover.construct_proof(&k2, 2u64.pow(32) + 1).unwrap();
         let tx_output3 = TransactionOutput::new(OutputFeatures::empty(), c, RangeProof::from_bytes(&proof).unwrap());

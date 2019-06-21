@@ -24,29 +24,29 @@
 
 use crate::{
     transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
-    types::{PublicKey, SecretKey, COMMITMENT_FACTORY},
+    types::{PrivateKey, PublicKey, COMMITMENT_FACTORY},
 };
 use rand::{CryptoRng, Rng};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
-    keys::{PublicKey as PK, SecretKey as SK},
+    keys::{PublicKey as PK, SecretKey},
 };
 
 pub struct TestParams {
-    pub spend_key: SecretKey,
-    pub change_key: SecretKey,
-    pub offset: SecretKey,
-    pub nonce: SecretKey,
+    pub spend_key: PrivateKey,
+    pub change_key: PrivateKey,
+    pub offset: PrivateKey,
+    pub nonce: PrivateKey,
     pub public_nonce: PublicKey,
 }
 
 impl TestParams {
     pub fn new<R: Rng + CryptoRng>(rng: &mut R) -> TestParams {
-        let r = SecretKey::random(rng);
+        let r = PrivateKey::random(rng);
         TestParams {
-            spend_key: SecretKey::random(rng),
-            change_key: SecretKey::random(rng),
-            offset: SecretKey::random(rng),
+            spend_key: PrivateKey::random(rng),
+            change_key: PrivateKey::random(rng),
+            offset: PrivateKey::random(rng),
             public_nonce: PublicKey::from_secret_key(&r),
             nonce: r,
         }
@@ -54,8 +54,8 @@ impl TestParams {
 }
 
 pub fn make_input<R: Rng + CryptoRng>(rng: &mut R, val: u64) -> (TransactionInput, UnblindedOutput) {
-    let key = SecretKey::random(rng);
-    let v = SecretKey::from(val);
+    let key = PrivateKey::random(rng);
+    let v = PrivateKey::from(val);
     let commitment = COMMITMENT_FACTORY.commit(&key, &v);
     let input = TransactionInput::new(OutputFeatures::empty(), commitment);
     (input, UnblindedOutput::new(val, key, None))

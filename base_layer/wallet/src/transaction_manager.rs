@@ -29,7 +29,7 @@ use tari_core::{
         sender::SenderMessage,
         TransactionProtocolError,
     },
-    types::{CommitmentFactory, RangeProofService, SecretKey},
+    types::{CommitmentFactory, PrivateKey, RangeProofService},
     ReceiverTransactionProtocol,
     SenderTransactionProtocol,
 };
@@ -149,8 +149,8 @@ impl TransactionManager {
     pub fn accept_transaction(
         &mut self,
         sender_message: SenderMessage,
-        nonce: SecretKey,
-        spending_key: SecretKey,
+        nonce: PrivateKey,
+        spending_key: PrivateKey,
         prover: &RangeProofService,
         factory: &CommitmentFactory,
     ) -> Result<RecipientSignedTransactionData, TransactionManagerError>
@@ -206,7 +206,7 @@ mod test {
     use tari_core::{
         transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
         transaction_protocol::{sender::SenderMessage, TransactionProtocolError},
-        types::{PublicKey, RangeProof, SecretKey, COMMITMENT_FACTORY, PROVER},
+        types::{PrivateKey, PublicKey, RangeProof, COMMITMENT_FACTORY, PROVER},
         SenderTransactionProtocol,
     };
     use tari_crypto::{
@@ -217,20 +217,20 @@ mod test {
     use tari_utilities::ByteArray;
 
     pub struct TestParams {
-        pub spend_key: SecretKey,
-        pub change_key: SecretKey,
-        pub offset: SecretKey,
-        pub nonce: SecretKey,
+        pub spend_key: PrivateKey,
+        pub change_key: PrivateKey,
+        pub offset: PrivateKey,
+        pub nonce: PrivateKey,
         pub public_nonce: PublicKey,
     }
 
     impl TestParams {
         pub fn new<R: Rng + CryptoRng>(rng: &mut R) -> TestParams {
-            let r = SecretKey::random(rng);
+            let r = PrivateKey::random(rng);
             TestParams {
-                spend_key: SecretKey::random(rng),
-                change_key: SecretKey::random(rng),
-                offset: SecretKey::random(rng),
+                spend_key: PrivateKey::random(rng),
+                change_key: PrivateKey::random(rng),
+                offset: PrivateKey::random(rng),
                 public_nonce: PublicKey::from_secret_key(&r),
                 nonce: r,
             }
@@ -238,7 +238,7 @@ mod test {
     }
 
     pub fn make_input<R: Rng + CryptoRng>(rng: &mut R, val: u64) -> (TransactionInput, UnblindedOutput) {
-        let key = SecretKey::random(rng);
+        let key = PrivateKey::random(rng);
         let commitment = COMMITMENT_FACTORY.commit_value(&key, val);
         let input = TransactionInput::new(OutputFeatures::empty(), commitment);
         (input, UnblindedOutput::new(val, key, None))

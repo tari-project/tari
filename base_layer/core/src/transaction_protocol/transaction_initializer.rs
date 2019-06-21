@@ -35,7 +35,7 @@ use crate::{
         sender::{calculate_tx_id, RawTransactionInfo, SenderState, SenderTransactionProtocol},
         TransactionMetadata,
     },
-    types::{BlindingFactor, CommitmentFactory, PublicKey, RangeProofService, SecretKey},
+    types::{BlindingFactor, CommitmentFactory, PrivateKey, PublicKey, RangeProofService},
 };
 use digest::Digest;
 use std::{
@@ -66,7 +66,7 @@ pub struct SenderTransactionInitializer {
     change_secret: Option<BlindingFactor>,
     offset: Option<BlindingFactor>,
     excess_blinding_factor: BlindingFactor,
-    private_nonce: Option<SecretKey>,
+    private_nonce: Option<PrivateKey>,
 }
 
 pub struct BuildError {
@@ -146,7 +146,7 @@ impl SenderTransactionInitializer {
     }
 
     /// Provide the private nonce that will be used for the sender's partial signature for the transaction.
-    pub fn with_private_nonce(&mut self, nonce: SecretKey) -> &mut Self {
+    pub fn with_private_nonce(&mut self, nonce: PrivateKey) -> &mut Self {
         self.private_nonce = Some(nonce);
         self
     }

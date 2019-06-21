@@ -22,12 +22,18 @@
 //
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
-
 use crate::{
     blockheader::BlockHeader,
-    transaction::{Transaction, TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
+    transaction::*,
+    transaction_protocol::{build_challenge, TransactionMetadata},
     types::*,
 };
+use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
+    keys::{PublicKey, SecretKey},
+    range_proof::RangeProofService,
+};
+use tari_utilities::byte_array::ByteArray;
 
 //----------------------------------------         Blocks         ----------------------------------------------------//
 
@@ -58,6 +64,13 @@ impl Block {
         // todo
         Ok(())
     }
+}
+
+// todo this probably need to move somewhere else
+/// This function will create the correct amount for the coinbase given the block height
+pub fn calculate_coinbase(block_height: u64) -> u64 {
+    // todo fill this in properly as a function and not a constant
+    (block_height * 0) + 60
 }
 
 //----------------------------------------     AggregateBody      ----------------------------------------------------//
@@ -169,6 +182,7 @@ pub struct BlockBuilder {
     pub inputs: Vec<TransactionInput>,
     pub outputs: Vec<TransactionOutput>,
     pub kernels: Vec<TransactionKernel>,
+    pub total_fee: u64,
 }
 
 impl BlockBuilder {
@@ -178,6 +192,7 @@ impl BlockBuilder {
             inputs: Vec::new(),
             outputs: Vec::new(),
             kernels: Vec::new(),
+            total_fee: 0,
         }
     }
 
@@ -188,20 +203,23 @@ impl BlockBuilder {
     }
 
     /// This function adds the provided transaction inputs to the block
-    pub fn add_inputs(mut self, inputs: &mut Vec<TransactionInput>) -> Self {
-        self.inputs.append(inputs);
+    pub fn add_inputs(mut self, mut inputs: Vec<TransactionInput>) -> Self {
+        self.inputs.append(&mut inputs);
         self
     }
 
     /// This function adds the provided transaction outputs to the block
-    pub fn add_outputs(mut self, outputs: &mut Vec<TransactionOutput>) -> Self {
-        self.outputs.append(outputs);
+    pub fn add_outputs(mut self, mut outputs: Vec<TransactionOutput>) -> Self {
+        self.outputs.append(&mut outputs);
         self
     }
 
     /// This function adds the provided transaction kernels to the block
-    pub fn add_kernels(mut self, kernels: &mut Vec<TransactionKernel>) -> Self {
-        self.kernels.append(kernels);
+    pub fn add_kernels(mut self, mut kernels: Vec<TransactionKernel>) -> Self {
+        for kernel in &kernels {
+            self.total_fee = self.total_fee + kernel.fee;
+        }
+        self.kernels.append(&mut kernels);
         self
     }
 
@@ -210,10 +228,10 @@ impl BlockBuilder {
         let mut iter = txs.into_iter();
         loop {
             match iter.next() {
-                Some(mut tx) => {
-                    self = self.add_inputs(&mut tx.body.inputs);
-                    self = self.add_outputs(&mut tx.body.outputs);
-                    self = self.add_kernels(&mut tx.body.kernels);
+                Some(tx) => {
+                    self = self.add_inputs(tx.body.inputs);
+                    self = self.add_outputs(tx.body.outputs);
+                    self = self.add_kernels(tx.body.kernels);
                     self.header.total_kernel_offset = self.header.total_kernel_offset + tx.offset;
                 },
                 None => break,
@@ -223,10 +241,10 @@ impl BlockBuilder {
     }
 
     /// This functions add the provided transactions to the block
-    pub fn add_transaction(mut self, mut tx: Transaction) -> Self {
-        self = self.add_inputs(&mut tx.body.inputs);
-        self = self.add_outputs(&mut tx.body.outputs);
-        self = self.add_kernels(&mut tx.body.kernels);
+    pub fn add_transaction(mut self, tx: Transaction) -> Self {
+        self = self.add_inputs(tx.body.inputs);
+        self = self.add_outputs(tx.body.outputs);
+        self = self.add_kernels(tx.body.kernels);
         self.header.total_kernel_offset = self.header.total_kernel_offset + tx.offset;
         self
     }
@@ -235,6 +253,39 @@ impl BlockBuilder {
     pub fn with_coinbase_utxo(mut self, coinbase_utxo: TransactionOutput, coinbase_kernel: TransactionKernel) -> Self {
         self.kernels.push(coinbase_kernel);
         self.outputs.push(coinbase_utxo);
+        self
+    }
+
+    /// This function will create a coinbase from the provided secret key. The coinbase will be added to the outputs and
+    /// kernels
+    pub fn create_coinbase<SKey>(mut self, key: PrivateKey) -> Self {
+        let mut rng = rand::OsRng::new().unwrap();
+        // build output
+        let amount = calculate_coinbase(self.header.height) + self.total_fee;
+        let v = PrivateKey::from(amount);
+        let commitment = COMMITMENT_FACTORY.commit(&key, &v);
+        let rr = PROVER.construct_proof(&v, amount).unwrap();
+        let output = TransactionOutput::new(
+            OutputFeatures::COINBASE_OUTPUT,
+            commitment,
+            RangeProof::from_bytes(&rr).unwrap(),
+        );
+
+        // create kernel
+        let tx_meta = TransactionMetadata { fee: 0, lock_height: 0 };
+        let r = PrivateKey::random(&mut rng);
+        let e = build_challenge(&PublicKey::from_secret_key(&r), &tx_meta);
+        let s = Signature::sign(key.clone(), r, &e).unwrap();
+        let kernel = KernelBuilder::new()
+            .with_features(KernelFeatures::COINBASE_KERNEL)
+            .with_fee(0)
+            .with_lock_height(COINBASE_LOCK_HEIGHT)
+            .with_excess(&COMMITMENT_FACTORY.zero())
+            .with_signature(&s)
+            .build()
+            .unwrap();
+        self.kernels.push(kernel);
+        self.outputs.push(output);
         self
     }
 
