@@ -24,138 +24,84 @@ use crate::{
     commitment::HomomorphicCommitment,
     ristretto::{constants::RISTRETTO_NUMS_POINTS, RistrettoPublicKey},
 };
-use curve25519_dalek::{
-    constants::RISTRETTO_BASEPOINT_POINT,
-    ristretto::{CompressedRistretto, RistrettoPoint},
-};
+use curve25519_dalek::{constants::RISTRETTO_BASEPOINT_POINT, ristretto::RistrettoPoint, traits::MultiscalarMul};
 
 use crate::{commitment::HomomorphicCommitmentFactory, ristretto::RistrettoSecretKey};
 use curve25519_dalek::scalar::Scalar;
-use std::ops::{Add, Sub};
+use std::{borrow::Borrow, iter::Sum};
+
+pub const RISTRETTO_PEDERSEN_G: RistrettoPoint = RISTRETTO_BASEPOINT_POINT;
+lazy_static! {
+    pub static ref RISTRETTO_PEDERSEN_H: RistrettoPoint = RISTRETTO_NUMS_POINTS[0];
+}
+
+pub type PedersenCommitment = HomomorphicCommitment<RistrettoPublicKey>;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 #[allow(non_snake_case)]
-pub struct PedersenBaseOnRistretto255 {
-    G: RistrettoPoint,
-    H: RistrettoPoint,
+pub struct PedersenCommitmentFactory {
+    pub(crate) G: RistrettoPoint,
+    pub(crate) H: RistrettoPoint,
 }
 
-pub const RISTRETTO_PEDERSEN_G: RistrettoPoint = RISTRETTO_BASEPOINT_POINT;
-pub const RISTRETTO_PEDERSEN_H_COMPRESSED: CompressedRistretto = RISTRETTO_NUMS_POINTS[0];
+impl PedersenCommitmentFactory {
+    /// Create a new Ristretto Commitment factory with the given points as the bases. It's very cheap to create
+    /// factories, since we only hold references to the static generator points.
+    #[allow(non_snake_case)]
+    pub fn new(G: RistrettoPoint, H: RistrettoPoint) -> PedersenCommitmentFactory {
+        PedersenCommitmentFactory { G, H }
+    }
+}
 
-impl Default for PedersenBaseOnRistretto255 {
+/// The default Ristretto Commitment factory uses the Base point for x25519 and its first Blake256 hash.
+impl Default for PedersenCommitmentFactory {
     fn default() -> Self {
-        PedersenBaseOnRistretto255 {
-            G: RISTRETTO_PEDERSEN_G,
-            H: RISTRETTO_PEDERSEN_H_COMPRESSED.decompress().unwrap(),
-        }
+        PedersenCommitmentFactory::new(RISTRETTO_PEDERSEN_G.clone(), RISTRETTO_PEDERSEN_H.clone())
     }
 }
 
-lazy_static! {
-    pub static ref DEFAULT_RISTRETTO_PEDERSON_BASE: PedersenBaseOnRistretto255 = PedersenBaseOnRistretto255::default();
-}
+impl HomomorphicCommitmentFactory for PedersenCommitmentFactory {
+    type P = RistrettoPublicKey;
 
-#[derive(Debug, PartialEq, Eq, Copy, Clone)]
-pub struct PedersenOnRistretto255 {
-    base: &'static PedersenBaseOnRistretto255,
-    commitment: RistrettoPublicKey,
-}
-
-impl PedersenOnRistretto255 {
-    pub fn as_public_key(&self) -> &RistrettoPublicKey {
-        &self.commitment
-    }
-}
-
-impl HomomorphicCommitmentFactory for PedersenBaseOnRistretto255 {
-    type C = PedersenOnRistretto255;
-    type K = RistrettoSecretKey;
-
-    fn create(k: &RistrettoSecretKey, v: &RistrettoSecretKey) -> PedersenOnRistretto255 {
-        let base = &DEFAULT_RISTRETTO_PEDERSON_BASE;
-        let c: RistrettoPoint = k.0 * base.G + v.0 * base.H;
-        PedersenOnRistretto255 {
-            base,
-            commitment: RistrettoPublicKey::new_from_pk(c),
-        }
+    fn commit(&self, k: &RistrettoSecretKey, v: &RistrettoSecretKey) -> PedersenCommitment {
+        let c = RistrettoPoint::multiscalar_mul(&[v.0, k.0], &[self.H, self.G]);
+        HomomorphicCommitment(RistrettoPublicKey::new_from_pk(c))
     }
 
-    fn zero() -> PedersenOnRistretto255 {
-        let base = &DEFAULT_RISTRETTO_PEDERSON_BASE;
+    fn zero(&self) -> PedersenCommitment {
         let zero = Scalar::zero();
-        let c: RistrettoPoint = &zero * base.G + &zero * base.H;
-        PedersenOnRistretto255 {
-            base,
-            commitment: RistrettoPublicKey::new_from_pk(c),
-        }
+        let c = RistrettoPoint::multiscalar_mul(&[zero, zero], &[self.H, self.G]);
+        HomomorphicCommitment(RistrettoPublicKey::new_from_pk(c))
+    }
+
+    fn open(&self, k: &RistrettoSecretKey, v: &RistrettoSecretKey, commitment: &PedersenCommitment) -> bool {
+        let c_test = self.commit(k, v);
+        commitment.0 == c_test.0
+    }
+
+    fn commit_value(&self, k: &RistrettoSecretKey, value: u64) -> PedersenCommitment {
+        let v = RistrettoSecretKey::from(value);
+        self.commit(k, &v)
+    }
+
+    fn open_value(&self, k: &RistrettoSecretKey, v: u64, commitment: &HomomorphicCommitment<Self::P>) -> bool {
+        let kv = RistrettoSecretKey::from(v);
+        self.open(k, &kv, commitment)
     }
 }
 
-impl HomomorphicCommitment for PedersenOnRistretto255 {
-    type K = RistrettoSecretKey;
-
-    fn open(&self, k: &RistrettoSecretKey, v: &RistrettoSecretKey) -> bool {
-        let c: RistrettoPoint = (v.0 * self.base.H) + (k.0 * self.base.G);
-        c == self.commitment.point
-    }
-
-    fn as_bytes(&self) -> &[u8] {
-        self.commitment.compressed.as_bytes()
-    }
-}
-
-/// Add two commitments together
-/// #panics
-/// * If the base values are not equal
-impl<'b> Add for &'b PedersenOnRistretto255 {
-    type Output = PedersenOnRistretto255;
-
-    fn add(self, rhs: &'b PedersenOnRistretto255) -> Self::Output {
-        assert_eq!(self.base, rhs.base, "Bases are unequal");
-        let lhp = &self.commitment.point;
-        let rhp = &rhs.commitment.point;
-        let sum = lhp + rhp;
-        PedersenOnRistretto255 {
-            base: self.base,
-            commitment: RistrettoPublicKey::new_from_pk(sum),
+impl<T> Sum<T> for PedersenCommitment
+where T: Borrow<PedersenCommitment>
+{
+    fn sum<I>(iter: I) -> Self
+    where I: Iterator<Item = T> {
+        let mut total = RistrettoPoint::default();
+        for c in iter {
+            let commitment = c.borrow();
+            total = total + (commitment.0).point
         }
-    }
-}
-
-/// Add two commitments together
-/// #panics
-/// * If the base values are not equal
-impl Add for PedersenOnRistretto255 {
-    type Output = PedersenOnRistretto255;
-
-    fn add(self, rhs: PedersenOnRistretto255) -> Self::Output {
-        assert_eq!(self.base, rhs.base, "Bases are unequal");
-        let lhp = self.commitment.point;
-        let rhp = rhs.commitment.point;
-        let sum = lhp + rhp;
-        PedersenOnRistretto255 {
-            base: self.base,
-            commitment: RistrettoPublicKey::new_from_pk(sum),
-        }
-    }
-}
-
-/// Subtracts the left commitment from the right commitment
-/// #panics
-/// * If the base values are not equal
-impl<'b> Sub for &'b PedersenOnRistretto255 {
-    type Output = PedersenOnRistretto255;
-
-    fn sub(self, rhs: &'b PedersenOnRistretto255) -> Self::Output {
-        assert_eq!(self.base, rhs.base, "Bases are unequal");
-        let lhp = &self.commitment.point;
-        let rhp = &rhs.commitment.point;
-        let sum = lhp - rhp;
-        PedersenOnRistretto255 {
-            base: self.base,
-            commitment: RistrettoPublicKey::new_from_pk(sum),
-        }
+        let sum = RistrettoPublicKey::new_from_pk(total);
+        HomomorphicCommitment(sum)
     }
 }
 
@@ -165,43 +111,39 @@ mod test {
     use crate::keys::SecretKey;
     use rand;
     use std::convert::From;
-
-    lazy_static! {
-        static ref TEST_RISTRETTO_PEDERSON_BASE: PedersenBaseOnRistretto255 = PedersenBaseOnRistretto255 {
-            G: RISTRETTO_NUMS_POINTS[0].decompress().unwrap(),
-            H: RISTRETTO_NUMS_POINTS[1].decompress().unwrap(),
-        };
-    }
+    use tari_utilities::message_format::MessageFormat;
 
     #[test]
     fn check_default_base() {
-        let base = PedersenBaseOnRistretto255::default();
+        let base = PedersenCommitmentFactory::default();
         assert_eq!(base.G, RISTRETTO_PEDERSEN_G);
-        assert_eq!(base.H.compress(), RISTRETTO_PEDERSEN_H_COMPRESSED)
+        assert_eq!(base.H, *RISTRETTO_PEDERSEN_H)
     }
 
     #[test]
     fn check_g_ne_h() {
-        assert_ne!(RISTRETTO_PEDERSEN_G.compress(), RISTRETTO_PEDERSEN_H_COMPRESSED);
+        assert_ne!(RISTRETTO_PEDERSEN_G, *RISTRETTO_PEDERSEN_H);
     }
 
     /// Simple test for open: Generate 100 random sets of scalars and calculate the Pedersen commitment for them.
     /// Then check that the commitment = k.G + v.H, and that `open` returns `true` for `open(&k, &v)`
     #[test]
+    #[allow(non_snake_case)]
     fn check_open() {
-        let base = &DEFAULT_RISTRETTO_PEDERSON_BASE;
+        let factory = PedersenCommitmentFactory::default();
+        let H = RISTRETTO_PEDERSEN_H.clone();
         let mut rng = rand::OsRng::new().unwrap();
         for _ in 0..100 {
             let v = RistrettoSecretKey::random(&mut rng);
             let k = RistrettoSecretKey::random(&mut rng);
-            let c = PedersenBaseOnRistretto255::create(&k, &v);
-            let c_calc: RistrettoPoint = v.0 * base.H + k.0 * base.G;
+            let c = factory.commit(&k, &v);
+            let c_calc: RistrettoPoint = v.0 * H + k.0 * RISTRETTO_PEDERSEN_G;
             assert_eq!(RistrettoPoint::from(c.as_public_key()), c_calc);
-            assert!(c.open(&k, &v));
+            assert!(factory.open(&k, &v, &c));
             // A different value doesn't open the commitment
-            assert!(!c.open(&k, &(&v + &v)));
+            assert!(!factory.open(&k, &(&v + &v), &c));
             // A different blinding factor doesn't open the commitment
-            assert!(!c.open(&(&k + &v), &v));
+            assert!(!factory.open(&(&k + &v), &v, &c));
         }
     }
 
@@ -217,35 +159,57 @@ mod test {
         for _ in 0..100 {
             let v1 = RistrettoSecretKey::random(&mut rng);
             let v2 = RistrettoSecretKey::random(&mut rng);
-            let v_sum = v1 + v2;
+            let v_sum = &v1 + &v2;
             let k1 = RistrettoSecretKey::random(&mut rng);
             let k2 = RistrettoSecretKey::random(&mut rng);
-            let k_sum = k1 + k2;
-            let c1 = PedersenBaseOnRistretto255::create(&k1, &v1);
-            let c2 = PedersenBaseOnRistretto255::create(&k2, &v2);
+            let k_sum = &k1 + &k2;
+            let factory = PedersenCommitmentFactory::default();
+            let c1 = factory.commit(&k1, &v1);
+            let c2 = factory.commit(&k2, &v2);
             let c_sum = &c1 + &c2;
-            let c_sum2 = PedersenBaseOnRistretto255::create(&k_sum, &v_sum);
-            assert!(c1.open(&k1, &v1));
-            assert!(c2.open(&k2, &v2));
+            let c_sum2 = factory.commit(&k_sum, &v_sum);
+            assert!(factory.open(&k1, &v1, &c1));
+            assert!(factory.open(&k2, &v2, &c2));
             assert_eq!(c_sum, c_sum2);
-            assert!(c_sum.open(&k_sum, &v_sum));
+            assert!(factory.open(&k_sum, &v_sum, &c_sum));
         }
     }
 
     #[test]
-    #[should_panic]
-    fn summing_different_bases_panics() {
+    fn sum_commitment_vector() {
         let mut rng = rand::OsRng::new().unwrap();
-        let base2 = &TEST_RISTRETTO_PEDERSON_BASE;
-        let k = RistrettoSecretKey::random(&mut rng);
-        let v = RistrettoSecretKey::random(&mut rng);
-        let c1 = PedersenBaseOnRistretto255::create(&k, &v);
-        let c: RistrettoPoint = k.0 * base2.G + v.0 * base2.H;
-        let c2 = PedersenOnRistretto255 {
-            base: base2,
-            commitment: RistrettoPublicKey::new_from_pk(c),
-        };
-        let _ = &c1 + &c2;
+        let mut v_sum = RistrettoSecretKey::default();
+        let mut k_sum = RistrettoSecretKey::default();
+        let zero = RistrettoSecretKey::default();
+        let commitment_factory = PedersenCommitmentFactory::default();
+        let mut c_sum = commitment_factory.commit(&zero, &zero);
+        let mut commitments = Vec::with_capacity(100);
+        for _ in 0..100 {
+            let v = RistrettoSecretKey::random(&mut rng);
+            v_sum = &v_sum + &v;
+            let k = RistrettoSecretKey::random(&mut rng);
+            k_sum = &k_sum + &k;
+            let c = commitment_factory.commit(&k, &v);
+            c_sum = &c_sum + &c;
+            commitments.push(c);
+        }
+        assert!(commitment_factory.open(&k_sum, &v_sum, &c_sum));
+        assert_eq!(c_sum, commitments.iter().sum());
     }
 
+    #[test]
+    fn serialize_deserialize() {
+        let mut rng = rand::OsRng::new().unwrap();
+        let factory = PedersenCommitmentFactory::default();
+        let k = RistrettoSecretKey::random(&mut rng);
+        let c = factory.commit_value(&k, 420);
+        // Base64
+        let ser_c = c.to_base64().unwrap();
+        let c2 = PedersenCommitment::from_base64(&ser_c).unwrap();
+        assert!(factory.open_value(&k, 420, &c2));
+        // MessagePack
+        let ser_c = c.to_binary().unwrap();
+        let c2 = PedersenCommitment::from_binary(&ser_c).unwrap();
+        assert!(factory.open_value(&k, 420, &c2));
+    }
 }

@@ -20,71 +20,34 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use blake2::VarBlake2b;
-use digest::{
-    generic_array::{typenum::U32, GenericArray},
-    FixedOutput,
-    Input,
-    Reset,
-    VariableOutput,
-};
+use crate::{ByteArray, ByteArrayError};
+use derive_error::Error;
 
-/// A convenience wrapper produce 256 bit hashes from Blake2b
-#[derive(Clone, Debug)]
-pub struct Blake256(VarBlake2b);
-
-impl Blake256 {
-    pub fn new() -> Self {
-        let h = VarBlake2b::new(32).unwrap();
-        Blake256(h)
-    }
-
-    pub fn result(self) -> GenericArray<u8, U32> {
-        self.fixed_result()
-    }
+#[derive(Debug, Error, PartialEq)]
+pub enum CipherError {
+    /// Provided key is the incorrect size to be used by the Cipher
+    KeyLengthError,
+    /// Provided Nonce is the incorrect size to be used by the Cipher
+    NonceLengthError,
+    /// No data was provided for encryption/decryption
+    NoDataError,
+    /// Byte Array conversion error
+    ByteArrayError(ByteArrayError),
 }
 
-impl Default for Blake256 {
-    fn default() -> Self {
-        let h = VarBlake2b::new(32).unwrap();
-        Blake256(h)
-    }
-}
+/// A trait describing an interface to a symmetrical encryption scheme
+pub trait Cipher<D>
+where D: ByteArray
+{
+    /// Encrypt using a cipher and provided key and nonce
+    fn seal(plain_text: &D, key: &Vec<u8>, nonce: &Vec<u8>) -> Result<Vec<u8>, CipherError>;
 
-impl Input for Blake256 {
-    fn input<B: AsRef<[u8]>>(&mut self, data: B) {
-        (self.0).input(data);
-    }
-}
+    /// Decrypt using a cipher and provided key and nonce
+    fn open(cipher_text: &Vec<u8>, key: &Vec<u8>, nonce: &Vec<u8>) -> Result<D, CipherError>;
 
-impl FixedOutput for Blake256 {
-    type OutputSize = U32;
+    /// Encrypt using a cipher and provided key, the nonce will be generate internally and appended to the cipher text
+    fn seal_with_integral_nonce(plain_text: &D, key: &Vec<u8>) -> Result<Vec<u8>, CipherError>;
 
-    fn fixed_result(self) -> GenericArray<u8, U32> {
-        let v = (self.0).vec_result();
-        GenericArray::clone_from_slice(&v)
-    }
-}
-
-impl Reset for Blake256 {
-    fn reset(&mut self) {
-        (self.0).reset()
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use crate::common::Blake256;
-    use digest::Input;
-    use tari_utilities::hex;
-
-    #[test]
-    fn blake256() {
-        let e = Blake256::new().chain(b"one").chain(b"two").result().to_vec();
-        let h = hex::to_hex(&e);
-        assert_eq!(
-            h,
-            "03521c1777639fc6e5c3d8c3b4600870f18becc155ad7f8053d2c65bc78e4aa0".to_string()
-        );
-    }
+    /// Decrypt using a cipher and provided key. The integral nonce will be read from the cipher text
+    fn open_with_integral_nonce(cipher_text: &Vec<u8>, key: &Vec<u8>) -> Result<D, CipherError>;
 }

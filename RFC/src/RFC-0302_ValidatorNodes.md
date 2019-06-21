@@ -51,7 +51,7 @@ technological merits of the potential system outlined herein.
 The goal of this RFC is to describe the responisibilities of Validator Nodes (VNs) on the DAN.
 
 ## Related RFCs
-* [RFC-0303: Validator Node Registration](RFC-0303_VNRegistration.md)
+* [RFC-0322: Validator Node Registration](RFC-0322_VNRegistration.md)
 * [RFC-0304: Validator Node committee selection](RFC-0304_VNCommittees.md)
 * [RFC-0340: VN Consensus Overview](RFC-0340_VNConsensusOverview.md)
 
@@ -67,18 +67,9 @@ VNs will also perform archival functions for the assets they manage. The lifetim
 still being discussed.
 
 #### Registration
-VNs register themselves on the [Base Layer] using a special [transaction] type. The registration [transaction] type
-requires the spending of a certain minimum amount of [Tari coin], the ([RegistrationCollateral]), that has a time-lock on the
-output for a minimum amount of time ([RegistrationTerm]) as well as some metadata, such as the VNs public key and a generated [Node ID]. The Node ID is generated
-during registration to prevent mining of VN public keys that can be used to manipulate routing on the DAN. The blinding factor for the Registration transaction is the private key
-that the VN node will use to sign every instruction that it executes for the duration of its [RegistrationTerm].
+VNs register themselves on the [Base Layer] using a special [transaction] type.
 
-Once a VNs [RegistrationTerm] has expired so will this specific VN registration. The UTXO timelock will have elapsed so the [RegistrationCollateral] can be reclaimed and a new VN registration
-need to be performed. This automatic registration expiry will ensure that the VN registry stays up to date with active VN registrations and inactive registrations will naturally be removed.
-
-Requiring nodes to register themselves serves two purposes:
-* Makes VN Sybil attacks expensive,
-* Provides an authoritative "central-but-not-centralised" registry of validator nodes from the base layer.
+Validator node registration is described in [RFC-0322](RFC-0322_VNRegistration.md).
 
 #### Execution of instructions
 VNs are expected to manage the state of digital assets on behalf of digital asset issuers. They receive fees as reward
@@ -89,7 +80,7 @@ for doing this.
 issuance process and membership of the committee can be updated at [Checkpoint]s.
 * It is the VNs responsibility to ensure that every state change in a digital asset conforms to the contract's rules.
 * VNs accept digital asset [Instructions] from clients and peers. [Instructions] allow for creating, updating, expiring and archiving digital assets on the DAN.
-* VNs provide additional collateral when accepting an offer to manage an asset, which is stored in a multi-signature
+* VNs provide additional collateral, called [AssetCollateral], when accepting an offer to manage an asset, which is stored in a multi-signature
   UTXO on the base layer. This collateral can be taken from the VN if it is proven that the VN engaged in
   malicious behaviour.
 * VNs participate in fraud proof validations in the event of consensus disputes (which could result in the malicious VN's
@@ -156,6 +147,7 @@ The VNs will communicate using a peer-to-peer (P2P) network. To facilitate this 
 * VNs MUST respond to requests for information about digital assets that they manage on the DAN.
 * VNs and clients can advertise public keys to facilitate P2P communication encryption
 
+[assetcollateral]: Glossary.md#assetcollateral
 [asset issuer]: Glossary.md#asset-issuer
 [base layer]: Glossary.md#base-layer
 [bad actor]: Glossary.md#bad-actor

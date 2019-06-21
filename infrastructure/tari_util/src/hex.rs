@@ -1,5 +1,19 @@
 use derive_error::Error;
-use std::{fmt::Write, num::ParseIntError};
+use std::{
+    fmt::{LowerHex, Write},
+    num::ParseIntError,
+};
+
+/// Any object implementing this trait has the ability to represent itself as a hexadecimal string and convert from it.
+pub trait Hex {
+    type T;
+    /// Try and convert the given hexadecimal string to the type. Any failures (incorrect  string length, non hex
+    /// characters, etc) return a [KeyError](enum.KeyError.html) with an explanatory note.
+    fn from_hex(hex: &str) -> Result<Self::T, HexError>;
+
+    /// Return the hexadecimal string representation of the type
+    fn to_hex(&self) -> String;
+}
 
 #[derive(Debug, Error)]
 pub enum HexError {
@@ -7,10 +21,13 @@ pub enum HexError {
     InvalidCharacter(ParseIntError),
     /// Hex string lengths must be a multiple of 2
     LengthError,
+    /// Invalid hex representation for the target type
+    HexConversionError,
 }
 
 /// Encode the provided bytes into a hex string
-pub fn to_hex(bytes: &Vec<u8>) -> String {
+pub fn to_hex<T>(bytes: &[T]) -> String
+where T: LowerHex {
     let mut s = String::new();
     for byte in bytes {
         write!(&mut s, "{:02x}", byte).expect("Unable to write");
@@ -19,7 +36,7 @@ pub fn to_hex(bytes: &Vec<u8>) -> String {
 }
 
 /// Encode the provided vector of bytes into a hex string
-pub fn to_hex_multiple(bytearray: &Vec<Vec<u8>>) -> Vec<String> {
+pub fn to_hex_multiple(bytearray: &[Vec<u8>]) -> Vec<String> {
     let mut result = Vec::new();
     for bytes in bytearray {
         result.push(to_hex(bytes))
@@ -54,6 +71,7 @@ pub fn from_hex(hex_str: &str) -> Result<Vec<u8>, HexError> {
 mod test {
     use super::*;
     use std::error::Error;
+
     #[test]
     fn test_to_hex() {
         assert_eq!(to_hex(&vec![0, 0, 0, 0]), "00000000");

@@ -20,7 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::keys::SecretKey;
+use crate::keys::PublicKey;
+use serde::{Deserialize, Serialize};
+use std::{
+    cmp::Ordering,
+    ops::{Add, Sub},
+};
+use tari_utilities::{ByteArray, ByteArrayError};
 
 /// A commitment is like a sealed envelope. You put some information inside the envelope, and then seal (commit) it.
 /// You can't change what you've said, but also, no-one knows what you've said until you're ready to open (open) the
@@ -38,18 +44,96 @@ use crate::keys::SecretKey;
 ///   C_2 &= v_2.G + k_2.H \\\\
 ///   \therefore C_1 + C_2 &= (v_1 + v_2)G + (k_1 + k_2)H
 /// \end{aligned} $$
-pub trait HomomorphicCommitment {
-    type K: SecretKey;
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+#[serde(bound(deserialize = "P: PublicKey"))]
+pub struct HomomorphicCommitment<P>(pub(crate) P)
+where P: PublicKey;
 
-    fn open(&self, k: &Self::K, v: &Self::K) -> bool;
-    fn as_bytes(&self) -> &[u8];
+impl<P> HomomorphicCommitment<P>
+where P: PublicKey
+{
+    pub fn as_public_key(&self) -> &P {
+        &self.0
+    }
+
+    pub fn from_public_key(p: &P) -> HomomorphicCommitment<P> {
+        HomomorphicCommitment(p.clone())
+    }
+}
+
+impl<P> ByteArray for HomomorphicCommitment<P>
+where P: PublicKey
+{
+    fn from_bytes(bytes: &[u8]) -> Result<Self, ByteArrayError> {
+        let p = P::from_bytes(bytes)?;
+        Ok(Self(p))
+    }
+
+    fn as_bytes(&self) -> &[u8] {
+        self.0.as_bytes()
+    }
+}
+
+impl<P> PartialOrd for HomomorphicCommitment<P>
+where P: PublicKey
+{
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.0.cmp(&other.0))
+    }
+}
+
+impl<P> Ord for HomomorphicCommitment<P>
+where P: PublicKey
+{
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.0.cmp(&other.0)
+    }
+}
+
+/// Add two commitments together. Note! There is no check that the bases are equal.
+impl<'b, P> Add for &'b HomomorphicCommitment<P>
+where
+    P: PublicKey,
+    &'b P: Add<&'b P, Output = P>,
+{
+    type Output = HomomorphicCommitment<P>;
+
+    fn add(self, rhs: &'b HomomorphicCommitment<P>) -> Self::Output {
+        HomomorphicCommitment(&self.0 + &rhs.0)
+    }
+}
+
+/// Subtracts the left commitment from the right commitment. Note! There is no check that the bases are equal.
+impl<'b, P> Sub for &'b HomomorphicCommitment<P>
+where
+    P: PublicKey,
+    &'b P: Sub<&'b P, Output = P>,
+{
+    type Output = HomomorphicCommitment<P>;
+
+    fn sub(self, rhs: &'b HomomorphicCommitment<P>) -> Self::Output {
+        HomomorphicCommitment(&self.0 - &rhs.0)
+    }
 }
 
 pub trait HomomorphicCommitmentFactory {
-    type K: SecretKey;
-    type C: HomomorphicCommitment<K = Self::K>;
-    fn create(k: &Self::K, v: &Self::K) -> Self::C;
+    type P: PublicKey;
+
+    /// Create a new commitment with the value and blinding factor provided. The implementing type will provide the
+    /// base values
+    fn commit(&self, k: &<Self::P as PublicKey>::K, v: &<Self::P as PublicKey>::K) -> HomomorphicCommitment<Self::P>;
     /// return an identity point for addition using the specified base point. This is a commitment to zero with a zero
     /// blinding factor on the base point
-    fn zero() -> Self::C;
+    fn zero(&self) -> HomomorphicCommitment<Self::P>;
+    /// Test whether the given keys open the given commitment
+    fn open(
+        &self,
+        k: &<Self::P as PublicKey>::K,
+        v: &<Self::P as PublicKey>::K,
+        commitment: &HomomorphicCommitment<Self::P>,
+    ) -> bool;
+    /// Create a commitment from a spending key and a integer value
+    fn commit_value(&self, k: &<Self::P as PublicKey>::K, value: u64) -> HomomorphicCommitment<Self::P>;
+    /// Test whether the given private key and value open the given commitment
+    fn open_value(&self, k: &<Self::P as PublicKey>::K, v: u64, commitment: &HomomorphicCommitment<Self::P>) -> bool;
 }

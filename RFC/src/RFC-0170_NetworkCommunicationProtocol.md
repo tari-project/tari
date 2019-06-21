@@ -1,10 +1,10 @@
-# RFC-0170: Network Communication Protocol
+# RFC-0170/NetworkCommunicationProtocol
 
 ## The Tari Communication Network and Network Communication Protocol
 
 ![status: draft](theme/images/status-draft.svg)
 
-**Maintainer(s)**: [Yuko Roodt] (https://github.com/neonknight64)
+**Maintainer(s)**: [Yuko Roodt](https://github.com/neonknight64)
 
 # License
 
@@ -155,15 +155,15 @@ Each CC and CN on the Tari communication network will have identification crypto
 The online communication address SHOULD be either an IPv4, IPv6, URL, Tor (Base32) or I2P (Base32) address and can be stored using the network address type as follows:
 
 | Description  | Data type  | Comments                                            |
-|---           |---         |---                                                  |
+|:-------------|:-----------|:----------------------------------------------------|
 | address type | uint4      | Specify if IPv4/IPv6/Url/Tor/I2P                    |
 | address      | char array | IPv4, IPv6, URL, Tor (Base32), I2P (Base32) address |
 | port         | uint16     | port number                                         |
 
-The address type is used to determine how to interpret the address characters. An I2P address can be interpreted as "{52 address characters}.b32.i2p".
-The Tor address should be interpreted as "http://{16 or 52 address chars}.onion/".
-The IPv4 and IPv6 address can be stored in the address field without modification.
-URL addresses can be used for nodes with dynamic IP addresses. 
+The address type is used to determine how to interpret the address characters. An I2P address can be interpreted as "{52
+address characters}.b32.i2p". The Tor address should be interpreted as "http://{16_or_52_address_chars}.onion/". The
+IPv4 and IPv6 address can be stored in the address field without modification. URL addresses can be used for nodes with
+dynamic IP addresses.
 
 A Tor or I2P address can be used when anonymity is important for a CC or CN.
 The IPv4, IPv6 and URL address types do not provide any privacy features but do provide increased bandwidth. 
@@ -177,15 +177,15 @@ The routing table consists of a list of peer addresses that link node IDs, publi
 
 The Peer Address stored in the routing table MAY be implemented as follows:
 
-| Description      | Data type          | Comments                                                                 |
-|---               |---                 |---                                                                       |
-| network address  | network_address    | The online communication address of the CC or CN                         |
-| node_ID          | node_ID            | Registration Assigned for VN, Self selected for BN, W and TW             |
-| public_key       | public_key         | The public key of the identification cryptographic key of the CC or CN   |
-| node_type        | node_type          | VN, BN, W or TW                                                          |
-| linked asset IDs | list of asset IDs  | Asset IDs can be used as an address on Tari network similar to a node ID |
-| last_connection  | timestamp          | Time of last successful connection with peer                             |
-| update_timestamp | timestamp          | A timestamp for the last peer address update                             |
+| Description      | Data type         | Comments                                                                 |
+|:-----------------|:------------------|:-------------------------------------------------------------------------|
+| network address  | network_address   | The online communication address of the CC or CN                         |
+| node_ID          | node_ID           | Registration Assigned for VN, Self selected for BN, W and TW             |
+| public_key       | public_key        | The public key of the identification cryptographic key of the CC or CN   |
+| node_type        | node_type         | VN, BN, W or TW                                                          |
+| linked asset IDs | list of asset IDs | Asset IDs can be used as an address on Tari network similar to a node ID |
+| last_connection  | timestamp         | Time of last successful connection with peer                             |
+| update_timestamp | timestamp         | A timestamp for the last peer address update                             |
 
 When a new CC or CN wants to join the Tari communication network they need to submit a joining request to the rest of the network.
 The joining request contains the peer address of the new CC or CN.

@@ -10,12 +10,12 @@ version = "0.0.1"
 edition = "2018"
 
 [dependencies]
-tari_utilities = { path = "../../infrastructure/tari_util", version = "0.0.1" }
+tari_utilities = { version = "0.0.1" }
 bitflags = "1.0.4"
 chrono = "0.4.6"
-tari_infra_derive = { path = "../../infrastructure/derive", version = "0.0.1" }
+tari_infra_derive = { version = "0.0.1" }
 digest = "0.8.0"
-tari_crypto = { path = "../../infrastructure/crypto", version = "0.0.1" }
+tari_crypto = { version = "0.0.1" }
 curve25519-dalek = "1.0.2"
 derive-error = "0.0.4"
 rand = "0.5.5"

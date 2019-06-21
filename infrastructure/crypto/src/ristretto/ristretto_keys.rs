@@ -21,24 +21,26 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 //! The Tari-compatible implementation of Ristretto based on the curve25519-dalek implementation
-use crate::keys::{PublicKey, SecretKey};
+use crate::keys::{DiffieHellmanSharedSecret, PublicKey, SecretKey};
+use blake2::Blake2b;
+use clear_on_drop::clear::Clear;
 use curve25519_dalek::{
     constants::RISTRETTO_BASEPOINT_TABLE,
     ristretto::{CompressedRistretto, RistrettoPoint},
     scalar::Scalar,
     traits::MultiscalarMul,
 };
+use digest::Digest;
 use rand::{CryptoRng, Rng};
-use serde::{
-    de::{Deserialize, Deserializer, Visitor},
-    ser::{Serialize, Serializer},
-};
+use serde::{Deserialize, Serialize};
 use std::{
     cmp::Ordering,
-    fmt,
+    hash::{Hash, Hasher},
     ops::{Add, Mul, Sub},
 };
-use tari_utilities::{ByteArray, ByteArrayError};
+use tari_utilities::{ByteArray, ByteArrayError, ExtendBytes, Hashable};
+
+type HashDigest = Blake2b;
 
 /// The [SecretKey](trait.SecretKey.html) implementation for [Ristretto](https://ristretto.group) is a thin wrapper
 /// around the Dalek [Scalar](struct.Scalar.html) type, representing a 256-bit integer (mod the group order).
@@ -50,7 +52,7 @@ use tari_utilities::{ByteArray, ByteArrayError};
 ///
 /// ```edition2018
 /// use tari_crypto::ristretto::RistrettoSecretKey;
-/// use tari_utilities::ByteArray;
+/// use tari_utilities::{ ByteArray, hex::Hex };
 /// use tari_crypto::keys::SecretKey;
 /// use rand;
 ///
@@ -59,41 +61,8 @@ use tari_utilities::{ByteArray, ByteArrayError};
 /// let _k2 = RistrettoSecretKey::from_hex(&"100000002000000030000000040000000");
 /// let _k3 = RistrettoSecretKey::random(&mut rng);
 /// ```
-#[derive(PartialEq, Eq, Clone, Copy, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize)]
 pub struct RistrettoSecretKey(pub(crate) Scalar);
-
-/// Requires custom Serde Serialize and Deserialize for RistrettoSecretKey as Scalar do not implement these traits
-impl Serialize for RistrettoSecretKey {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where S: Serializer {
-        serializer.serialize_str(&self.to_hex())
-    }
-}
-
-struct DeserializeVisitor;
-
-impl<'de> Visitor<'de> for DeserializeVisitor {
-    type Value = RistrettoSecretKey;
-
-    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        formatter.write_str("expecting a hex string")
-    }
-
-    fn visit_str<E>(self, str_data: &str) -> Result<Self::Value, E>
-    where E: serde::de::Error {
-        match RistrettoSecretKey::from_hex(str_data) {
-            Ok(k) => Ok(k),
-            Err(parse_error) => Err(E::custom(format!("SecretKey parser error: {}", parse_error))),
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for RistrettoSecretKey {
-    fn deserialize<D>(deserializer: D) -> Result<RistrettoSecretKey, D::Error>
-    where D: Deserializer<'de> {
-        deserializer.deserialize_string(DeserializeVisitor)
-    }
-}
 
 const SCALAR_LENGTH: usize = 32;
 const PUBLIC_KEY_LENGTH: usize = 32;
@@ -115,6 +84,15 @@ impl SecretKey for RistrettoSecretKey {
 impl Default for RistrettoSecretKey {
     fn default() -> Self {
         RistrettoSecretKey(Scalar::default())
+    }
+}
+
+//----------------------------------    Ristretto Secret Key Default   -----------------------------------------------//
+
+/// Clear the secret key value in memory when it goes out of scope
+impl Drop for RistrettoSecretKey {
+    fn drop(&mut self) {
+        self.0.clear();
     }
 }
 
@@ -204,7 +182,7 @@ impl From<u64> for RistrettoSecretKey {
 /// `RistrettoPublicKey` so all of the following will work:
 /// ```edition2018
 /// use tari_crypto::ristretto::{ RistrettoPublicKey, RistrettoSecretKey };
-/// use tari_utilities::ByteArray;
+/// use tari_utilities::{ ByteArray, hex::Hex };
 /// use tari_crypto::keys::{ PublicKey, SecretKey };
 /// use rand;
 ///
@@ -215,9 +193,10 @@ impl From<u64> for RistrettoSecretKey {
 /// let sk = RistrettoSecretKey::random(&mut rng);
 /// let _p3 = RistrettoPublicKey::from_secret_key(&sk);
 /// ```
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RistrettoPublicKey {
     pub(crate) point: RistrettoPoint,
+    #[serde(skip)]
     pub(crate) compressed: CompressedRistretto,
 }
 
@@ -244,11 +223,44 @@ impl PublicKey for RistrettoPublicKey {
         PUBLIC_KEY_LENGTH
     }
 
-    fn batch_mul(scalars: &Vec<Self::K>, points: &Vec<Self>) -> Self {
-        let p: Vec<RistrettoPoint> = points.iter().map(|p| p.point.clone()).collect();
-        let s: Vec<Scalar> = scalars.iter().map(|k| k.0.clone()).collect();
+    fn batch_mul(scalars: &[Self::K], points: &[Self]) -> Self {
+        let p: Vec<&RistrettoPoint> = points.iter().map(|p| &p.point).collect();
+        let s: Vec<&Scalar> = scalars.iter().map(|k| &k.0).collect();
         let p = RistrettoPoint::multiscalar_mul(s, p);
         RistrettoPublicKey::new_from_pk(p)
+    }
+}
+
+impl DiffieHellmanSharedSecret for RistrettoPublicKey {
+    type PK = RistrettoPublicKey;
+
+    /// Generate a shared secret from one party's private key and another party's public key
+    fn shared_secret(k: &<Self::PK as PublicKey>::K, pk: &Self::PK) -> Self::PK {
+        k * pk
+    }
+}
+
+// Requires custom Hashable implementation for RistrettoPublicKey as CompressedRistretto doesnt implement this trait
+impl Hashable for RistrettoPublicKey {
+    fn hash(&self) -> Vec<u8> {
+        let mut hasher = HashDigest::new();
+        hasher.input(&self.to_vec());
+        hasher.result().to_vec()
+    }
+}
+
+// Requires custom Extendbytes implementation for RistrettoPublicKey as CompressedRistretto doesnt implement this trait
+impl ExtendBytes for RistrettoPublicKey {
+    fn append_raw_bytes(&self, buf: &mut Vec<u8>) {
+        let bytes = self.as_bytes();
+        buf.extend_from_slice(&bytes);
+    }
+}
+
+impl Hash for RistrettoPublicKey {
+    /// Require the implementation of the Hash trait for Hashmaps
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.to_vec().hash(state);
     }
 }
 
@@ -406,7 +418,7 @@ mod test {
     use super::*;
     use crate::{keys::PublicKey, ristretto::test_common::get_keypair};
     use rand;
-    use tari_utilities::ByteArray;
+    use tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray};
 
     #[test]
     fn test_generation() {
@@ -549,8 +561,8 @@ mod test {
     fn batch_mul() {
         let (k1, p1) = get_keypair();
         let (k2, p2) = get_keypair();
-        let p_slow = &(k1 * &p1) + &(k2 * &p2);
-        let b_batch = RistrettoPublicKey::batch_mul(&vec![k1, k2], &vec![p1, p2]);
+        let p_slow = &(&k1 * &p1) + &(&k2 * &p2);
+        let b_batch = RistrettoPublicKey::batch_mul(&[k1, k2], &vec![p1, p2]);
         assert_eq!(p_slow, b_batch);
     }
 
@@ -559,5 +571,55 @@ mod test {
         let mut rng = rand::OsRng::new().unwrap();
         let (k, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         assert_eq!(pk, RistrettoPublicKey::from_secret_key(&k));
+    }
+
+    #[test]
+    fn secret_keys_are_cleared_after_drop() {
+        let zero = &vec![0u8; 32][..];
+        let mut rng = rand::OsRng::new().unwrap();
+        let ptr;
+        {
+            let k = RistrettoSecretKey::random(&mut rng);
+            ptr = (k.0).as_bytes().as_ptr();
+        }
+        // In release mode, the memory can already be reclaimed by this stage due to optimisations, and so this test
+        // can fail in release mode, even though the values were effectively scrubbed.
+        if cfg!(debug_assertions) {
+            unsafe {
+                use std::slice;
+                assert_eq!(slice::from_raw_parts(ptr, 32), zero);
+            }
+        }
+    }
+
+    #[test]
+    fn convert_from_u64() {
+        let k = RistrettoSecretKey::from(42u64);
+        assert_eq!(
+            k.to_hex(),
+            "2a00000000000000000000000000000000000000000000000000000000000000"
+        );
+        let k = RistrettoSecretKey::from(256u64);
+        assert_eq!(
+            k.to_hex(),
+            "0001000000000000000000000000000000000000000000000000000000000000"
+        );
+        let k = RistrettoSecretKey::from(100_000_000u64);
+        assert_eq!(
+            k.to_hex(),
+            "00e1f50500000000000000000000000000000000000000000000000000000000"
+        );
+    }
+
+    #[test]
+    fn serialize_deserialize_base64() {
+        let mut rng = rand::OsRng::new().unwrap();
+        let (k, pk) = RistrettoPublicKey::random_keypair(&mut rng);
+        let ser_k = k.to_base64().unwrap();
+        let ser_pk = pk.to_base64().unwrap();
+        let k2: RistrettoSecretKey = RistrettoSecretKey::from_base64(&ser_k).unwrap();
+        assert_eq!(k, k2, "Deserialised secret key");
+        let pk2: RistrettoPublicKey = RistrettoPublicKey::from_base64(&ser_pk).unwrap();
+        assert_eq!(pk, pk2, "Deserialized public key");
     }
 }

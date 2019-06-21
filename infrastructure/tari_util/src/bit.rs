@@ -38,8 +38,8 @@ pub fn uint_to_bits(value: usize, bit_count: usize) -> Vec<bool> {
     (bits)
 }
 
-/// Converts a vector of input bits (little-endian) to a single byte
-pub fn bits_to_byte(bits: &[bool; 8]) -> u8 {
+/// Converts a array of input bits (little-endian) to a single byte
+pub fn bits_to_byte(bits: [bool; 8]) -> u8 {
     let mut value: u8 = 0;
     for i in 0..8 {
         value |= (bits[i] as u8) << i;
@@ -48,7 +48,7 @@ pub fn bits_to_byte(bits: &[bool; 8]) -> u8 {
 }
 
 /// Converts a vector of input bits (little-endian) to its integer representation
-pub fn bits_to_uint(bits: &Vec<bool>) -> usize {
+pub fn bits_to_uint(bits: &[bool]) -> usize {
     let mut value: usize = 0;
     for i in 0..bits.len() {
         value |= (bits[i] as usize) << i;
@@ -57,7 +57,7 @@ pub fn bits_to_uint(bits: &Vec<bool>) -> usize {
 }
 
 /// Converts a vector of input bytes to a vector of bits
-pub fn bytes_to_bits(bytes: &Vec<u8>) -> Vec<bool> {
+pub fn bytes_to_bits(bytes: &[u8]) -> Vec<bool> {
     let mut bits: Vec<bool> = vec![false; bytes.len() * 8];
     for i in 0..bytes.len() {
         let bit_index = i * 8;
@@ -67,13 +67,13 @@ pub fn bytes_to_bits(bytes: &Vec<u8>) -> Vec<bool> {
 }
 
 /// Converts a vector of bits to a vector of bytes
-pub fn bits_to_bytes(bits: &Vec<bool>) -> Vec<u8> {
+pub fn bits_to_bytes(bits: &[bool]) -> Vec<u8> {
     let mut bytes: Vec<u8> = vec![0; bits.len() / 8];
     let mut curr_bits: [bool; 8] = [false; 8];
     for i in 0..bytes.len() {
         let byte_index = i * 8;
         curr_bits.copy_from_slice(&bits[byte_index..(byte_index + 8)]);
-        bytes[i] = bits_to_byte(&curr_bits) as u8;
+        bytes[i] = bits_to_byte(curr_bits) as u8;
     }
     (bytes)
 }

@@ -1,4 +1,4 @@
-// Copyright 2019 The Tari Project
+// Copyright 2019. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -19,72 +19,37 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+//
+// Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
+// Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
-use blake2::VarBlake2b;
-use digest::{
-    generic_array::{typenum::U32, GenericArray},
-    FixedOutput,
-    Input,
-    Reset,
-    VariableOutput,
+use crate::{
+    commitment::HomomorphicCommitment,
+    keys::{PublicKey, SecretKey},
 };
+use derive_error::Error;
 
-/// A convenience wrapper produce 256 bit hashes from Blake2b
-#[derive(Clone, Debug)]
-pub struct Blake256(VarBlake2b);
-
-impl Blake256 {
-    pub fn new() -> Self {
-        let h = VarBlake2b::new(32).unwrap();
-        Blake256(h)
-    }
-
-    pub fn result(self) -> GenericArray<u8, U32> {
-        self.fixed_result()
-    }
+#[derive(Debug, Clone, Error, PartialEq)]
+pub enum RangeProofError {
+    /// Could not construct range proof
+    ProofConstructionError,
+    /// The deserialization of the range proof failed
+    InvalidProof,
+    /// Invalid input was provided to the RangeProofService constructor
+    InitializationError,
 }
 
-impl Default for Blake256 {
-    fn default() -> Self {
-        let h = VarBlake2b::new(32).unwrap();
-        Blake256(h)
-    }
-}
+pub trait RangeProofService {
+    type P: Sized;
+    type K: SecretKey;
+    type PK: PublicKey<K = Self::K>;
 
-impl Input for Blake256 {
-    fn input<B: AsRef<[u8]>>(&mut self, data: B) {
-        (self.0).input(data);
-    }
-}
+    /// Construct a new range proof for the given secret key and value. The resulting proof will be sufficient
+    /// evidence that the prover knows the secret key and value, and that the value lies in the range determined by
+    /// the service.
+    fn construct_proof(&self, key: &Self::K, value: u64) -> Result<Self::P, RangeProofError>;
 
-impl FixedOutput for Blake256 {
-    type OutputSize = U32;
-
-    fn fixed_result(self) -> GenericArray<u8, U32> {
-        let v = (self.0).vec_result();
-        GenericArray::clone_from_slice(&v)
-    }
-}
-
-impl Reset for Blake256 {
-    fn reset(&mut self) {
-        (self.0).reset()
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use crate::common::Blake256;
-    use digest::Input;
-    use tari_utilities::hex;
-
-    #[test]
-    fn blake256() {
-        let e = Blake256::new().chain(b"one").chain(b"two").result().to_vec();
-        let h = hex::to_hex(&e);
-        assert_eq!(
-            h,
-            "03521c1777639fc6e5c3d8c3b4600870f18becc155ad7f8053d2c65bc78e4aa0".to_string()
-        );
-    }
+    /// Verify the range proof against the given commitment. If this function returns true, it attests to the
+    /// commitment having a value in the range [0; 2^64-1] and that the prover knew both the value and private key.
+    fn verify(&self, proof: &Self::P, commitment: &HomomorphicCommitment<Self::PK>) -> bool;
 }

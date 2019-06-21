@@ -2,22 +2,23 @@
 //! This module defines generic traits for handling the digital signature operations, agnostic
 //! of the underlying elliptic curve implementation
 
-use crate::{
-    challenge::Challenge,
-    keys::{PublicKey, SecretKey},
-};
+use crate::keys::{PublicKey, SecretKey};
 use derive_error::Error;
-use digest::Digest;
-use std::ops::{Add, Mul};
+use serde::{Deserialize, Serialize};
+use std::{
+    cmp::Ordering,
+    ops::{Add, Mul},
+};
+use tari_utilities::{hex::Hex, ByteArray};
 
-#[derive(Debug, Error, PartialEq, Eq)]
+#[derive(Clone, Debug, Error, PartialEq, Eq)]
 pub enum SchnorrSignatureError {
     // An invalid challenge was provided
     InvalidChallenge,
 }
 
 #[allow(non_snake_case)]
-#[derive(PartialEq, Eq, Copy, Debug, Clone)]
+#[derive(PartialEq, Eq, Copy, Debug, Clone, Serialize, Deserialize)]
 pub struct SchnorrSignature<P, K> {
     public_nonce: P,
     signature: K,
@@ -39,16 +40,10 @@ where
         P::from_secret_key(&self.signature)
     }
 
-    pub fn sign<'a, 'b, D: Digest>(
-        secret: K,
-        nonce: K,
-        challenge: Challenge<D>,
-    ) -> Result<Self, SchnorrSignatureError>
-    where
-        K: Add<Output = K> + Mul<P, Output = P> + Mul<Output = K>,
-    {
+    pub fn sign(secret: K, nonce: K, challenge: &[u8]) -> Result<Self, SchnorrSignatureError>
+    where K: Add<Output = K> + Mul<P, Output = P> + Mul<Output = K> {
         // s = r + e.k
-        let e = match K::from_vec(&challenge.hash()) {
+        let e = match K::from_bytes(challenge) {
             Ok(e) => e,
             Err(_) => return Err(SchnorrSignatureError::InvalidChallenge),
         };
@@ -58,12 +53,12 @@ where
         Ok(Self::new(public_nonce, s))
     }
 
-    pub fn verify_challenge<'a, D: Digest>(&self, public_key: &'a P, challenge: Challenge<D>) -> bool
+    pub fn verify_challenge<'a>(&self, public_key: &'a P, challenge: &[u8]) -> bool
     where
         for<'b> &'b K: Mul<&'a P, Output = P>,
         for<'b> &'b P: Add<P, Output = P>,
     {
-        let e = match K::from_vec(&challenge.hash()) {
+        let e = match K::from_bytes(&challenge) {
             Ok(e) => e,
             Err(_) => return false,
         };
@@ -131,5 +126,36 @@ where
 {
     fn default() -> Self {
         SchnorrSignature::new(P::default(), K::default())
+    }
+}
+
+/// Provide an efficient ordering algorithm for Schnorr signatures. It's probably not a good idea to implement `Ord`
+/// for secret keys, but in this instance, the signature is publicly known and is simply a scalar, so we use the hex
+/// representation of the scalar as the canonical ordering metric. This conversion is done if and only if the public
+/// nonces are already equal, otherwise the public nonce ordering determines the SchnorrSignature order.
+impl<P, K> Ord for SchnorrSignature<P, K>
+where
+    P: Eq + Ord,
+    K: Eq + ByteArray,
+{
+    fn cmp(&self, other: &Self) -> Ordering {
+        match self.public_nonce.cmp(&other.public_nonce) {
+            Ordering::Equal => {
+                let this = self.signature.to_hex();
+                let that = other.signature.to_hex();
+                this.cmp(&that)
+            },
+            v => v,
+        }
+    }
+}
+
+impl<P, K> PartialOrd for SchnorrSignature<P, K>
+where
+    P: Eq + Ord,
+    K: Eq + ByteArray,
+{
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
     }
 }

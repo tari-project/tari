@@ -26,6 +26,7 @@
 //! implementation without worrying too much about the impact on upstream code.
 
 use rand::{CryptoRng, Rng};
+use serde::{de::DeserializeOwned, ser::Serialize};
 use std::ops::Add;
 use tari_utilities::ByteArray;
 
@@ -54,7 +55,9 @@ pub trait SecretKey: ByteArray + Clone + PartialEq + Eq + Add<Output = Self> + D
 /// implementations need to implement this trait for them to be used in Tari.
 ///
 /// See [SecretKey](trait.SecretKey.html) for an example.
-pub trait PublicKey: ByteArray + Add<Output = Self> + Clone + PartialOrd + Ord + Default {
+pub trait PublicKey:
+    ByteArray + Add<Output = Self> + Clone + PartialOrd + Ord + Default + Serialize + DeserializeOwned
+{
     type K: SecretKey;
     /// Calculate the public key associated with the given secret key. This should not fail; if a
     /// failure does occur (implementation error?), the function will panic.
@@ -62,11 +65,18 @@ pub trait PublicKey: ByteArray + Add<Output = Self> + Clone + PartialOrd + Ord +
 
     fn key_length() -> usize;
 
-    fn batch_mul(scalars: &Vec<Self::K>, points: &Vec<Self>) -> Self;
+    fn batch_mul(scalars: &[Self::K], points: &[Self]) -> Self;
 
     fn random_keypair<R: Rng + CryptoRng>(rng: &mut R) -> (Self::K, Self) {
         let k = Self::K::random(rng);
         let pk = Self::from_secret_key(&k);
         (k, pk)
     }
+}
+
+/// This trait provides a common mechanism to calculate a shared secret using the private and public key of two parties
+pub trait DiffieHellmanSharedSecret: ByteArray + Clone + PartialEq + Eq + Add<Output = Self> + Default {
+    type PK: PublicKey;
+    /// Generate a shared secret from one party's private key and another party's public key
+    fn shared_secret(k: &<Self::PK as PublicKey>::K, pk: &Self::PK) -> Self::PK;
 }
