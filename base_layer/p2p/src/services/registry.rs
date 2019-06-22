@@ -28,7 +28,7 @@ use tari_comms::builder::CommsRoutes;
 /// and given to the [ServiceExecutor] for execution. This also
 /// builds [CommsRoutes] for the given services.
 pub struct ServiceRegistry {
-    pub(super) services: Vec<Box<Service>>,
+    pub(super) services: Vec<Box<dyn Service>>,
 }
 
 impl ServiceRegistry {

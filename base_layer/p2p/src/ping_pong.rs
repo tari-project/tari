@@ -68,7 +68,7 @@ pub enum PingPong {
 }
 
 /// Thin convenience wrapper for any service api
-pub struct ApiWrapper<T, Req, Res> {
+struct ApiWrapper<T, Req, Res> {
     api: Arc<T>,
     receiver: channel::Receiver<Req>,
     sender: channel::Sender<Res>,
@@ -115,7 +115,7 @@ impl PingPongService {
             oms: None,
             ping_count: 0,
             pong_count: 0,
-            api: Self::setup_api_wrapper(),
+            api: Self::setup_api(),
         }
     }
 
@@ -124,12 +124,12 @@ impl PingPongService {
         self.api.get_api()
     }
 
-    fn setup_api_wrapper() -> ApiWrapper<PingPongServiceApi, PingPongApiRequest, PingPongApiResult> {
-        let (api_sender, api_receiver) = channel::bounded(0);
-        let (service_sender, service_receiver) = channel::bounded(0);
+    fn setup_api() -> ApiWrapper<PingPongServiceApi, PingPongApiRequest, PingPongApiResult> {
+        let (api_sender, service_receiver) = channel::bounded(0);
+        let (service_sender, api_receiver) = channel::bounded(0);
 
-        let api = Arc::new(PingPongServiceApi::new(api_sender, service_receiver));
-        ApiWrapper::new(api_receiver, service_sender, api)
+        let api = Arc::new(PingPongServiceApi::new(api_sender, api_receiver));
+        ApiWrapper::new(service_receiver, service_sender, api)
     }
 
     fn send_msg(
@@ -345,7 +345,7 @@ mod test {
         let service = PingPongService::new();
         assert_eq!(service.get_name(), "ping-pong");
         assert_eq!(service.get_message_types(), vec![NetMessage::PingPong.into()]);
-        assert_eq!(service.ping_count(), 0);
-        assert_eq!(service.pong_count(), 0);
+        assert_eq!(service.ping_count, 0);
+        assert_eq!(service.pong_count, 0);
     }
 }

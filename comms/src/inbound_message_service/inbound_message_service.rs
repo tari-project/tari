@@ -47,7 +47,7 @@ use std::{
 const LOG_TARGET: &'static str = "comms::inbound_message_service";
 
 /// The maximum number of processing worker threads that will be created by the InboundMessageService
-const MAX_INBOUND_MSG_PROCESSING_WORKERS: u8 = 4; // TODO read this from config
+const MAX_INBOUND_MSG_PROCESSING_WORKERS: u8 = 2; // TODO read this from config
 
 pub struct InboundMessageService<MType>
 where
