@@ -1,4 +1,4 @@
-// Copyright 2018 The Tari Project
+// Copyright 2019. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -19,18 +19,22 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+//
+// Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
+// Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
 // This file is used to store the current blockchain state
 
-use crate::{error::*, genesis_block::*};
-use merklemountainrange::mmr::*;
-use std::fs;
-use tari_core::{
+use crate::{
     block::Block,
     blockheader::BlockHeader,
+    error::*,
+    genesis_block::*,
     transaction::{TransactionInput, TransactionKernel},
     types::*,
 };
+use merklemountainrange::mmr::*;
+use std::fs;
 use tari_storage::{keyvalue_store::*, lmdb::*};
 use tari_utilities::hash::Hashable;
 

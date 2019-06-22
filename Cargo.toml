@@ -1,7 +1,6 @@
 [workspace]
 
 members = [
-    "base_layer/blockchain",
     "base_layer/core",
     "base_layer/keymanager",
     "base_layer/mempool",

@@ -1,4 +1,4 @@
-// Copyright 2018 The Tari Project
+// Copyright 2019. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -19,50 +19,40 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+//
+// Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
+// Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
-// This file is used to store the genesis block
-use tari_core::{
-    block::{AggregateBody, Block},
-    blockheader::BlockHeader,
-    pow::*,
-};
+// this file is used for all blockchain error types
+use crate::transaction::TransactionError;
+use derive_error::Error;
+use merklemountainrange::{error::MerkleMountainRangeError, merkle_storage::MerkleStorageError};
+use tari_storage::keyvalue_store::*;
 
-use chrono::{DateTime, NaiveDate, Utc};
-use tari_crypto::ristretto::*;
-
-pub fn get_genesis_block() -> Block {
-    let blockheaders = get_gen_header();
-    let body = get_gen_body();
-    Block {
-        header: blockheaders,
-        body,
-    }
+/// The ChainError is used to present all generic chain error of the actual blockchain
+#[derive(Debug, Error)]
+pub enum ChainError {
+    // Could not initialise state
+    InitStateError(DatastoreError),
+    // Some kind of processing error in the state
+    StateProcessingError(StateError),
 }
 
-pub fn get_gen_header() -> BlockHeader {
-    BlockHeader {
-        version: 0,
-        /// Height of this block since the genesis block (height 0)
-        height: 0,
-        /// Hash of the block previous to this in the chain.
-        prev_hash: [0; 32],
-        /// Timestamp at which the block was built.
-        timestamp: DateTime::<Utc>::from_utc(NaiveDate::from_ymd(2020, 1, 1).and_hms(1, 1, 1), Utc),
-        /// This is the MMR root of the outputs
-        output_mmr: [0; 32],
-        /// This is the MMR root of the range proofs
-        range_proof_mmr: [0; 32],
-        /// This is the MMR root of the kernels
-        kernel_mmr: [0; 32],
-        /// Total accumulated sum of kernel offsets since genesis block. We can derive the kernel offset sum for *this*
-        /// block from the total kernel offset of the previous block header.
-        total_kernel_offset: RistrettoSecretKey::from(0),
-        /// Nonce used
-        /// Proof of work summary
-        pow: ProofOfWork {},
-    }
-}
-
-pub fn get_gen_body() -> AggregateBody {
-    AggregateBody::empty()
+/// The chainstate is used to present all generic chain error of the actual blockchain state
+#[derive(Debug, Error)]
+pub enum StateError {
+    // could not create a database
+    StoreError(DatastoreError),
+    // MerklestorageError
+    StorageError(MerkleStorageError),
+    // Unkown commitment spent
+    SpentUnknownCommitment(MerkleMountainRangeError),
+    // provided mmr states in headers mismatch
+    HeaderStateMismatch,
+    // block is not correctly constructed
+    InvalidBlock(TransactionError),
+    // block is orphaned
+    OrphanBlock,
+    // Duplicate block
+    DuplicateBlock,
 }
