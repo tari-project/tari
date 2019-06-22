@@ -38,6 +38,7 @@ pub mod block_chain_state;
 pub mod chain;
 pub mod error;
 pub mod genesis_block;
+pub mod tari_amount;
 
 // Re-export commonly used structs
 pub use transaction_protocol::{recipient::ReceiverTransactionProtocol, sender::SenderTransactionProtocol};
