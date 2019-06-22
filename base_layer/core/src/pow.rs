@@ -36,7 +36,7 @@ impl ProofOfWork {
     }
 
     /// This function will return the total proof of work done
-    pub fn get_total_pow(&self) -> u64 {
+    pub fn get_total_accumulated_difficulty(&self) -> u64 {
         // todo fill out proper
         0
     }
