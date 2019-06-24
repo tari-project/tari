@@ -61,7 +61,6 @@ const LOG_TARGET: &'static str = "comms::connection_manager::manager";
 /// let peer_manager = Arc::new(PeerManager::new(None).unwrap());
 ///
 /// let manager = ConnectionManager::new(context, node_identity, peer_manager, PeerConnectionConfig {
-///     control_service_establish_timeout: Duration::from_millis(2000),
 ///     peer_connection_establish_timeout: Duration::from_secs(5),
 ///     max_message_size: 1024,
 ///     host: "127.0.0.1".parse().unwrap(),
@@ -304,7 +303,6 @@ mod test {
         let node_identity = Arc::new(NodeIdentity::random_for_test(None));
         let peer_manager = Arc::new(PeerManager::new(None).unwrap());
         let manager = ConnectionManager::new(context, node_identity, peer_manager, PeerConnectionConfig {
-            control_service_establish_timeout: Duration::from_millis(2000),
             peer_connection_establish_timeout: Duration::from_secs(5),
             max_message_size: 1024,
             host: "127.0.0.1".parse().unwrap(),

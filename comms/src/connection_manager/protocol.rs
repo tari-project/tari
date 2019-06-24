@@ -29,7 +29,7 @@ use crate::{
     types::CommsPublicKey,
 };
 use log::*;
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 use tari_utilities::message_format::MessageFormat;
 
 const LOG_TARGET: &'static str = "comms::connection_manager::protocol";
@@ -133,8 +133,6 @@ impl<'e, 'ni> PeerConnectionProtocol<'e, 'ni> {
         let (conn, join_handle) = self
             .establisher
             .establish_inbound_peer_connection(peer.node_id.clone().into(), secret_key)?;
-        conn.wait_listening_or_failure(&Duration::from_millis(200))
-            .map_err(ConnectionManagerError::ConnectionError)?;
 
         Ok((conn, public_key, join_handle))
     }

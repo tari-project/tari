@@ -37,6 +37,7 @@ use serde::{de::DeserializeOwned, Serialize};
 use std::{
     sync::{mpsc::SyncSender, Arc},
     thread,
+    time::Duration,
 };
 
 const LOG_TARGET: &'static str = "comms::control_service::service";
@@ -50,7 +51,11 @@ where T: Clone
     pub listener_address: NetAddress,
     /// Optional SOCKS proxy
     pub socks_proxy_address: Option<SocketAddress>,
+    /// The message type
     pub accept_message_type: T,
+    /// The timeout when connecting to the requesting peer's inbound connection.
+    /// If this timeout expires the peer connection will not be established.
+    pub requested_outbound_connection_timeout: Duration,
 }
 
 impl<T> Default for ControlServiceConfig<T>
@@ -64,6 +69,7 @@ where
             listener_address,
             socks_proxy_address: None,
             accept_message_type: T::default(),
+            requested_outbound_connection_timeout: Duration::from_secs(2),
         }
     }
 }
@@ -93,7 +99,6 @@ where
 ///      socks_proxy_address: None,
 ///      message_sink_address: InprocAddress::random(),
 ///      host: "127.0.0.1".parse().unwrap(),
-///      control_service_establish_timeout: Duration::from_millis(1000),
 ///      peer_connection_establish_timeout: Duration::from_secs(4),
 /// }));
 ///

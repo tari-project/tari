@@ -32,6 +32,7 @@ macro_rules! acquire_lock {
     };
 }
 
+#[cfg(test)]
 macro_rules! acquire_read_lock {
     ($e:expr) => {
         acquire_lock!($e, read)

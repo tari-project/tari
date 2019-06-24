@@ -112,6 +112,7 @@ fn setup_ping_pong_service(
             socks_proxy_address: None,
             listener_address: node_identity.control_service_address.clone(),
             accept_message_type: TariMessageType::new(NetMessage::Accept),
+            requested_outbound_connection_timeout: Duration::from_millis(5000),
         })
         .build()
         .unwrap()

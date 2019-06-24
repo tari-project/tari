@@ -149,6 +149,7 @@ fn recv_message() {
         socks_proxy_address: None,
         listener_address: control_service_address.clone(),
         accept_message_type: 123,
+        requested_outbound_connection_timeout: Duration::from_millis(2000),
     })
     .with_custom_dispatcher(dispatcher)
     .serve(connection_manager)
@@ -213,6 +214,7 @@ fn serve_and_shutdown() {
             listener_address,
             socks_proxy_address: None,
             accept_message_type: 123,
+            requested_outbound_connection_timeout: Duration::from_millis(2000),
         })
         .serve(connection_manager)
         .unwrap();

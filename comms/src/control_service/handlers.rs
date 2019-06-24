@@ -39,7 +39,6 @@ use crate::{
 };
 use log::*;
 use serde::{de::DeserializeOwned, export::PhantomData, Serialize};
-use std::time::Duration;
 use tari_utilities::message_format::MessageFormat;
 
 #[allow(dead_code)]
@@ -128,7 +127,7 @@ where
         .establish_requested_outbound_connection(&peer, message.address.clone(), message.server_key)
         .map_err(ControlServiceError::ConnectionManagerError)?;
 
-    conn.wait_connected_or_failure(&Duration::from_millis(5000))
+    conn.wait_connected_or_failure(&context.config.requested_outbound_connection_timeout)
         .map_err(ControlServiceError::ConnectionError)?;
     debug!(
         target: LOG_TARGET,

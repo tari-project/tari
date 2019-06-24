@@ -35,7 +35,6 @@ use tari_comms::{
 
 fn make_peer_connection_config(consumer_address: InprocAddress) -> PeerConnectionConfig {
     PeerConnectionConfig {
-        control_service_establish_timeout: Duration::from_millis(2000),
         peer_connection_establish_timeout: Duration::from_secs(5),
         max_message_size: 1024,
         host: "127.0.0.1".parse().unwrap(),
@@ -90,6 +89,7 @@ fn establish_peer_connection_by_peer() {
         socks_proxy_address: None,
         listener_address: node_B_control_port_address,
         accept_message_type: 123,
+        requested_outbound_connection_timeout: Duration::from_millis(5000),
     })
     .serve(node_B_connection_manager)
     .unwrap();

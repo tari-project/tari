@@ -46,7 +46,6 @@ mod test {
 
     fn make_peer_connection_config(consumer_address: InprocAddress) -> PeerConnectionConfig {
         PeerConnectionConfig {
-            control_service_establish_timeout: Duration::from_millis(2000),
             peer_connection_establish_timeout: Duration::from_secs(5),
             max_message_size: 1024,
             host: "127.0.0.1".parse().unwrap(),
@@ -101,6 +100,7 @@ mod test {
                 socks_proxy_address: None,
                 listener_address: node_B_control_port_address,
                 accept_message_type: "CUSTOM".to_string(),
+                requested_outbound_connection_timeout: Duration::from_millis(2000),
             })
             .serve(node_B_connection_manager)
             .unwrap();
