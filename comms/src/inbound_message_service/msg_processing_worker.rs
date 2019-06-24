@@ -111,8 +111,8 @@ where
                 Ok(mut frames) => {
                     // This strips off the two ZeroMQ Identity frames introduced by the transmission to the proxy and
                     // from the proxy to this worker
-                    debug!(target: LOG_TARGET, "Received {} frames", frames.len());
                     let frames: FrameSet = frames.drain(2..).collect();
+                    debug!(target: LOG_TARGET, "Received {} frames (trimmed)", frames.len());
                     frames
                 },
                 Err(e) => {

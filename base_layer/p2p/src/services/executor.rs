@@ -64,7 +64,7 @@ impl ServiceExecutor {
 
         let mut senders = Vec::new();
 
-        for service in registry.services.drain(..) {
+        for mut service in registry.services.drain(..) {
             let (sender, receiver) = channel();
             senders.push(sender);
 
@@ -72,27 +72,23 @@ impl ServiceExecutor {
                 comms_services: comms_services.clone(),
                 receiver,
             };
+
             thread_pool.execute(move || {
-                info!(
-                    target: LOG_TARGET,
-                    "Starting service {}",
-                    service.read().unwrap().get_name()
-                );
-                let mut s = acquire_write_lock!(service);
-                let res = s.execute(service_context);
-                match res {
+                info!(target: LOG_TARGET, "Starting service {}", service.get_name(),);
+
+                match service.execute(service_context) {
                     Ok(_) => {
                         info!(
                             target: LOG_TARGET,
                             "Service '{}' has successfully shut down",
-                            acquire_read_lock!(service).get_name(),
+                            service.get_name(),
                         );
                     },
                     Err(err) => {
                         error!(
                             target: LOG_TARGET,
                             "Service '{}' has exited with an error: {:?}",
-                            acquire_read_lock!(service).get_name(),
+                            service.get_name(),
                             err
                         );
                     },
@@ -215,7 +211,7 @@ mod test {
             NodeIdentity::random(&mut OsRng::new().unwrap(), "127.0.0.1:9000".parse().unwrap()).unwrap();
 
         let state = Arc::new(RwLock::new("Hello".to_string()));
-        let service = Arc::new(RwLock::new(AddWordService(state.clone(), "Tari")));
+        let service = AddWordService(state.clone(), "Tari");
         let registry = ServiceRegistry::new().register(service);
 
         let comms_services = CommsBuilder::new()

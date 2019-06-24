@@ -86,17 +86,21 @@ impl OutboundMessageService {
                 flags,
             )
             .map_err(|e| OutboundError::MessageSerializationError(e))?;
+
             // Construct an OutboundMessage
             let outbound_message =
                 OutboundMessage::<MessageEnvelope>::new(dest_node_identity.node_id.clone(), message_envelope);
+
             let outbound_message_buffer = vec![outbound_message
                 .to_binary()
                 .map_err(|e| OutboundError::MessageFormatError(e))?];
+
             // Send message to outbound message pool
             let outbound_connection = Connection::new(&self.context, Direction::Outbound)
                 .set_socket_establishment(SocketEstablishment::Connect)
                 .establish(&self.outbound_address)
                 .map_err(|e| OutboundError::ConnectionError(e))?;
+
             outbound_connection
                 .send(&outbound_message_buffer)
                 .map_err(|e| OutboundError::ConnectionError(e))?;

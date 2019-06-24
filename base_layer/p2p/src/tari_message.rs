@@ -86,6 +86,8 @@ impl TariMessageType {
 
     is_type!(ValidatorNodeMessage, is_vn_message);
 
+    is_type!(ExtendedMessage, is_extended_message);
+
     pub fn new(value: u8) -> TariMessageType {
         TariMessageType(value)
     }

@@ -22,10 +22,10 @@
 
 // use crate::text_message_service::TextMessageService;
 use derive_error::Error;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use tari_p2p::{
     initialization::{initialize_comms, CommsConfig, CommsInitializationError},
-    ping_pong::PingPongService,
+    ping_pong::{PingPongService, PingPongServiceApi},
     services::{ServiceExecutor, ServiceRegistry},
 };
 
@@ -41,7 +41,7 @@ pub struct WalletConfig {
 
 pub struct Wallet {
     config: WalletConfig,
-    ping_pong_service: Arc<RwLock<PingPongService>>,
+    ping_pong_service: Option<Arc<PingPongServiceApi>>,
     // text_message_service: Arc<TextMessageService>,
 }
 
@@ -53,12 +53,14 @@ impl Wallet {
             //   config.screen_name.clone(),
             //    config.comms.public_key.clone(),
             //)),
-            ping_pong_service: Arc::new(RwLock::new(PingPongService::new())),
+            ping_pong_service: None,
         }
     }
 
-    pub fn start_services(&self) -> Result<ServiceExecutor, WalletError> {
-        let registry = ServiceRegistry::new().register(self.ping_pong_service.clone());
+    pub fn start_services(&mut self) -> Result<ServiceExecutor, WalletError> {
+        let ping_pong_service = PingPongService::new();
+        self.ping_pong_service = Some(ping_pong_service.get_api());
+        let registry = ServiceRegistry::new().register(ping_pong_service);
         // let registry = ServiceRegistry::new().register(self.text_message_service.clone());
 
         let comm_routes = registry.build_comms_routes();
@@ -102,9 +104,9 @@ mod test {
             // screen_name: "Alice".to_string(),
         };
 
-        let wallet1 = Wallet::new(config1);
+        let mut wallet1 = Wallet::new(config1);
 
-        wallet1.start_services();
+        wallet1.start_services().unwrap();
 
         let listener_address2: NetAddress = "127.0.0.1:32776".parse().unwrap();
         let secret_key2 = CommsSecretKey::random(&mut rng);
@@ -124,8 +126,8 @@ mod test {
             // screen_name: "Alice".to_string(),
         };
 
-        let wallet2 = Wallet::new(config2);
+        let mut wallet2 = Wallet::new(config2);
 
-        wallet2.start_services();
+        wallet2.start_services().unwrap();
     }
 }

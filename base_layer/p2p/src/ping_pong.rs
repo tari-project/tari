@@ -24,10 +24,14 @@ use crate::{
     services::{Service, ServiceContext, ServiceControlMessage, ServiceError},
     tari_message::{NetMessage, TariMessageType},
 };
+use crossbeam_channel as channel;
 use derive_error::Error;
 use log::*;
 use serde::{Deserialize, Serialize};
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 use tari_comms::{
     domain_connector::ConnectorError,
     message::{Message, MessageError, MessageFlags, MessageHeader},
@@ -35,7 +39,10 @@ use tari_comms::{
     types::CommsPublicKey,
     DomainConnector,
 };
-use tari_utilities::message_format::{MessageFormat, MessageFormatError};
+use tari_utilities::{
+    hex::Hex,
+    message_format::{MessageFormat, MessageFormatError},
+};
 
 const LOG_TARGET: &'static str = "base_layer::p2p::ping_pong";
 
@@ -47,6 +54,10 @@ pub enum PingPongError {
     SerializationFailed(MessageFormatError),
     ReceiveError(ConnectorError),
     MessageError(MessageError),
+    /// Failed to send from API
+    ApiSendFailed,
+    /// Failed to receive in API from service
+    ApiReceiveFailed,
 }
 
 /// The PingPong message
@@ -56,19 +67,69 @@ pub enum PingPong {
     Pong,
 }
 
-/// Periodically
+/// Thin convenience wrapper for any service api
+struct ApiWrapper<T, Req, Res> {
+    api: Arc<T>,
+    receiver: channel::Receiver<Req>,
+    sender: channel::Sender<Res>,
+}
+
+impl<T, Req, Res> ApiWrapper<T, Req, Res> {
+    /// Create a new service API
+    pub fn new(receiver: channel::Receiver<Req>, sender: channel::Sender<Res>, api: Arc<T>) -> Self {
+        Self { api, receiver, sender }
+    }
+
+    /// Send a reply to the calling API
+    pub fn send_reply(&self, msg: Res) -> Result<(), channel::SendError<Res>> {
+        self.sender.send(msg)
+    }
+
+    /// Attempt to receive a service API message
+    pub fn recv_timeout(&self, timeout: Duration) -> Result<Option<Req>, channel::RecvTimeoutError> {
+        match self.receiver.recv_timeout(timeout) {
+            Ok(msg) => Ok(Some(msg)),
+            Err(channel::RecvTimeoutError::Timeout) => Ok(None),
+            Err(err) => Err(err),
+        }
+    }
+
+    /// Return the API
+    fn get_api(&self) -> Arc<T> {
+        self.api.clone()
+    }
+}
+
 pub struct PingPongService {
     // Needed because the public ping method needs OMS
     oms: Option<Arc<OutboundMessageService>>,
+    ping_count: usize,
+    pong_count: usize,
+    api: ApiWrapper<PingPongServiceApi, PingPongApiRequest, PingPongApiResult>,
 }
 
 impl PingPongService {
+    /// Create a new ping pong service
     pub fn new() -> Self {
-        Self { oms: None }
+        Self {
+            oms: None,
+            ping_count: 0,
+            pong_count: 0,
+            api: Self::setup_api(),
+        }
     }
 
-    pub fn ping(&self, pub_key: CommsPublicKey) -> Result<(), PingPongError> {
-        self.send_msg(BroadcastStrategy::DirectPublicKey(pub_key), PingPong::Ping)
+    /// Return this services API
+    pub fn get_api(&self) -> Arc<PingPongServiceApi> {
+        self.api.get_api()
+    }
+
+    fn setup_api() -> ApiWrapper<PingPongServiceApi, PingPongApiRequest, PingPongApiResult> {
+        let (api_sender, service_receiver) = channel::bounded(0);
+        let (service_sender, api_receiver) = channel::bounded(0);
+
+        let api = Arc::new(PingPongServiceApi::new(api_sender, api_receiver));
+        ApiWrapper::new(service_receiver, service_sender, api)
     }
 
     fn send_msg(
@@ -81,7 +142,7 @@ impl PingPongService {
 
         let msg = Message::from_message_format(
             MessageHeader {
-                message_type: NetMessage::PingPong,
+                message_type: TariMessageType::new(NetMessage::PingPong),
             },
             msg,
         )
@@ -95,7 +156,7 @@ impl PingPongService {
         .map_err(PingPongError::OutboundError)
     }
 
-    fn run(&self, connector: &DomainConnector<'static>) -> Result<(), PingPongError> {
+    fn receive_ping(&mut self, connector: &DomainConnector<'static>) -> Result<(), PingPongError> {
         if let Some((info, msg)) = connector
             .receive_timeout(Duration::from_millis(500))
             .map_err(PingPongError::ReceiveError)?
@@ -104,8 +165,12 @@ impl PingPongService {
                 PingPong::Ping => {
                     debug!(
                         target: LOG_TARGET,
-                        "Received ping from Public Key {:?}", info.source_identity.public_key
+                        "Received ping from {}",
+                        info.source_identity.public_key.to_hex(),
                     );
+
+                    self.ping_count += 1;
+
                     // Reply with Pong
                     self.send_msg(
                         BroadcastStrategy::DirectNodeId(info.source_identity.node_id.clone()),
@@ -115,13 +180,39 @@ impl PingPongService {
                 PingPong::Pong => {
                     debug!(
                         target: LOG_TARGET,
-                        "Received pong from Public Key {:?}", info.source_identity.public_key
+                        "Received pong from {}",
+                        info.source_identity.public_key.to_hex()
                     );
+
+                    self.pong_count += 1;
                 },
             }
         }
 
         Ok(())
+    }
+
+    fn ping(&self, pub_key: CommsPublicKey) -> Result<(), PingPongError> {
+        self.send_msg(BroadcastStrategy::DirectPublicKey(pub_key), PingPong::Ping)
+    }
+
+    fn handle_api_message(&self, msg: PingPongApiRequest) -> Result<(), ServiceError> {
+        debug!(
+            target: LOG_TARGET,
+            "[{}] Received API message: {:?}",
+            self.get_name(),
+            msg
+        );
+        let resp = match msg {
+            PingPongApiRequest::Ping(pk) => self.ping(pk).map(|_| PingPongApiResponse::PingSent),
+            PingPongApiRequest::GetPingCount => Ok(PingPongApiResponse::Count(self.ping_count)),
+            PingPongApiRequest::GetPongCount => Ok(PingPongApiResponse::Count(self.pong_count)),
+        };
+
+        debug!(target: LOG_TARGET, "[{}] Replying to API: {:?}", self.get_name(), resp);
+        self.api
+            .send_reply(resp)
+            .map_err(ServiceError::internal_service_error())
     }
 }
 
@@ -138,7 +229,9 @@ impl Service for PingPongService {
         let connector = context.create_connector(&NetMessage::PingPong.into()).map_err(|err| {
             ServiceError::ServiceInitializationFailed(format!("Failed to create connector for service: {}", err))
         })?;
+
         self.oms = Some(context.get_outbound_message_service());
+
         loop {
             if let Some(msg) = context.get_control_message(Duration::from_millis(5)) {
                 match msg {
@@ -146,11 +239,19 @@ impl Service for PingPongService {
                 }
             }
 
-            match self.run(&connector) {
+            match self.receive_ping(&connector) {
                 Ok(_) => {},
                 Err(err) => {
                     error!(target: LOG_TARGET, "PingPong service had error: {}", err);
                 },
+            }
+
+            if let Some(msg) = self
+                .api
+                .recv_timeout(Duration::from_millis(5))
+                .map_err(ServiceError::internal_service_error())?
+            {
+                self.handle_api_message(msg)?;
             }
         }
 
@@ -158,19 +259,93 @@ impl Service for PingPongService {
     }
 }
 
+/// API Request enum
+#[derive(Debug)]
+pub enum PingPongApiRequest {
+    /// Send a ping to the given public key
+    Ping(CommsPublicKey),
+    /// Retreive the total number of pings received
+    GetPingCount,
+    /// Retreive the total number of pongs received
+    GetPongCount,
+}
+
+/// API Response enum
+#[derive(Debug)]
+pub enum PingPongApiResponse {
+    PingSent,
+    Count(usize),
+}
+
+/// Result for all API requests
+pub type PingPongApiResult = Result<PingPongApiResponse, PingPongError>;
+
+/// Default duration that a API 'client' will wait for a response from the service before returning a timeout error
+const DEFAULT_API_TIMEOUT_MS: u64 = 200;
+
+/// The PingPong service public api
+pub struct PingPongServiceApi {
+    sender: channel::Sender<PingPongApiRequest>,
+    receiver: channel::Receiver<PingPongApiResult>,
+    mutex: Mutex<()>,
+    timeout: Duration,
+}
+
+impl PingPongServiceApi {
+    fn new(sender: channel::Sender<PingPongApiRequest>, receiver: channel::Receiver<PingPongApiResult>) -> Self {
+        Self {
+            sender,
+            receiver,
+            mutex: Mutex::new(()),
+            timeout: Duration::from_millis(DEFAULT_API_TIMEOUT_MS),
+        }
+    }
+
+    /// Send a ping message to the given peer
+    pub fn ping(&self, public_key: CommsPublicKey) -> PingPongApiResult {
+        self.send_recv(PingPongApiRequest::Ping(public_key))
+    }
+
+    /// Fetch the ping count from the service
+    pub fn ping_count(&self) -> PingPongApiResult {
+        self.send_recv(PingPongApiRequest::GetPingCount)
+    }
+
+    /// Fetch the pong count from the service
+    pub fn pong_count(&self) -> PingPongApiResult {
+        self.send_recv(PingPongApiRequest::GetPongCount)
+    }
+
+    fn send_recv(&self, msg: PingPongApiRequest) -> PingPongApiResult {
+        self.lock(|| -> PingPongApiResult {
+            self.sender.send(msg).map_err(|_| PingPongError::ApiSendFailed)?;
+            self.receiver
+                .recv_timeout(self.timeout.clone())
+                .map_err(|_| PingPongError::ApiReceiveFailed)?
+        })
+    }
+
+    fn lock<F, T>(&self, func: F) -> T
+    where F: FnOnce() -> T {
+        let lock = acquire_lock!(self.mutex);
+        let res = func();
+        drop(lock);
+        res
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
+    use rand::rngs::OsRng;
+    use tari_crypto::keys::PublicKey;
 
     #[test]
-    fn get_name() {
+    fn new() {
         let service = PingPongService::new();
         assert_eq!(service.get_name(), "ping-pong");
-    }
-
-    #[test]
-    fn get_message_types() {
-        let service = PingPongService::new();
         assert_eq!(service.get_message_types(), vec![NetMessage::PingPong.into()]);
+        assert_eq!(service.ping_count, 0);
+        assert_eq!(service.pong_count, 0);
     }
 }

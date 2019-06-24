@@ -38,6 +38,11 @@ impl DispatchError {
     where E: Error {
         |err| DispatchError::ResolveFailed(format!("Dispatch resolve failed: {}", err))
     }
+
+    pub fn handler_error<E>() -> impl Fn(E) -> Self
+    where E: Error {
+        |err| DispatchError::HandlerError(format!("Handler error: {}", err))
+    }
 }
 
 #[derive(Debug, Error, Clone)]

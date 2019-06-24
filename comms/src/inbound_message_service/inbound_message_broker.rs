@@ -43,6 +43,8 @@ pub enum BrokerError {
     ConnectionError(ConnectionError),
     /// The Thread Safety has been breached and data access has become poisoned
     PoisonedAccess,
+    /// The broker was not started before dispatching
+    BrokerNotStarted,
 }
 
 /// The InboundMessageBroker stores a set of registered routes that maps a message_type to a destination handler
@@ -101,10 +103,14 @@ where MType: DispatchableKey
 
     /// Dispatch the provided message to the handler service registered with the specified message_type
     pub fn dispatch(&self, message_type: MType, msg: &FrameSet) -> Result<(), BrokerError> {
+        if self.connections.len() == 0 {
+            return Err(BrokerError::BrokerNotStarted);
+        }
         let index = *self
             .type_to_index_hm
             .get(&message_type)
             .ok_or(BrokerError::RouteNotDefined)?;
+
         self.connections[index]
             .lock()
             .map_err(|_| BrokerError::PoisonedAccess)?

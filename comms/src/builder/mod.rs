@@ -22,10 +22,8 @@
 
 mod builder;
 mod routes;
-mod types;
 
 pub use self::{
     builder::{CommsBuilder, CommsBuilderError, CommsServices, CommsServicesError},
     routes::CommsRoutes,
-    types::Factory,
 };

@@ -99,7 +99,7 @@ impl<'de> DomainConnector<'de> {
 /// T - The type into which the frame should be deserialized
 pub struct Connector<'de, T> {
     connection: EstablishedConnection,
-    frame_extractor: Box<FrameExtractor<Error = ConnectorError> + Send + Sync>,
+    frame_extractor: Box<dyn FrameExtractor<Error = ConnectorError> + Send + Sync>,
     _t: PhantomData<&'de T>,
 }
 

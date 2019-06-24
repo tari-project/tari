@@ -39,7 +39,7 @@ fn make_peer_connection_config(consumer_address: InprocAddress) -> PeerConnectio
         peer_connection_establish_timeout: Duration::from_secs(5),
         max_message_size: 1024,
         host: "127.0.0.1".parse().unwrap(),
-        max_connect_retries: 3,
+        max_connect_retries: 5,
         message_sink_address: consumer_address,
         socks_proxy_address: None,
     }

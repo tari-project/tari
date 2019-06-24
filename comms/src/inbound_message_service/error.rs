@@ -20,7 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::connection::{error::ConnectionError, zmq::ZmqError, DealerProxyError};
+use crate::{
+    connection::{error::ConnectionError, zmq::ZmqError, DealerProxyError},
+    inbound_message_service::inbound_message_broker::BrokerError,
+};
 use derive_error::Error;
 
 /// Error type for IMS
@@ -31,4 +34,5 @@ pub enum InboundMessageServiceError {
     /// Failed to connect to inbound socket
     InboundConnectionError(ConnectionError),
     DealerProxyError(DealerProxyError),
+    BrokerError(BrokerError),
 }
