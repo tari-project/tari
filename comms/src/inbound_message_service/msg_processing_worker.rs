@@ -23,8 +23,10 @@
 use super::error::InboundMessageServiceError;
 use crate::{
     connection::{
+        peer_connection::ControlMessage,
         zmq::{InprocAddress, ZmqContext},
         Connection,
+        ConnectionError,
         Direction,
         SocketEstablishment,
     },
@@ -37,15 +39,19 @@ use crate::{
 };
 use log::*;
 use serde::{de::DeserializeOwned, Serialize};
-#[cfg(test)]
-use std::sync::mpsc::SyncSender;
 use std::{
     convert::TryFrom,
-    sync::Arc,
-    thread::{self, JoinHandle},
+    sync::{
+        mpsc::{sync_channel, Receiver, SyncSender},
+        Arc,
+    },
+    thread,
+    time::Duration,
 };
 
 const LOG_TARGET: &'static str = "comms::inbound_message_service::pool::worker";
+
+const WORKER_TIMEOUT_IN_MS: u32 = 100;
 
 pub struct MsgProcessingWorker<MType>
 where
@@ -59,6 +65,8 @@ where
     inbound_message_broker: Arc<InboundMessageBroker<MType>>,
     outbound_message_service: Arc<OutboundMessageService>,
     peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
+    control_receiver: Option<Receiver<ControlMessage>>,
+    is_running: bool,
     #[cfg(test)]
     test_sync_sender: Option<SyncSender<String>>,
 }
@@ -87,6 +95,8 @@ where
             inbound_message_broker,
             outbound_message_service,
             peer_manager,
+            control_receiver: None,
+            is_running: false,
             #[cfg(test)]
             test_sync_sender: None,
         }
@@ -96,7 +106,7 @@ where
         self.peer_manager.find_with_node_id(node_id).ok()
     }
 
-    fn start_worker(&self) -> Result<(), InboundMessageServiceError> {
+    fn start_worker(&mut self) -> Result<(), InboundMessageServiceError> {
         let inbound_connection = Connection::new(&self.context, Direction::Inbound)
             .set_socket_establishment(SocketEstablishment::Connect)
             .establish(&self.inbound_address)
@@ -104,67 +114,74 @@ where
 
         // Retrieve, process and dispatch messages
         loop {
-            #[cfg(test)]
-            let sync_sender = self.test_sync_sender.clone();
+            // Check for control messages
+            self.process_control_messages();
 
-            let frames = match inbound_connection.receive_multipart() {
-                Ok(mut frames) => {
-                    // This strips off the two ZeroMQ Identity frames introduced by the transmission to the proxy and
-                    // from the proxy to this worker
-                    let frames: FrameSet = frames.drain(2..).collect();
-                    debug!(target: LOG_TARGET, "Received {} frames (trimmed)", frames.len());
-                    frames
-                },
-                Err(e) => {
-                    warn!(target: LOG_TARGET, "Failed to receive message - Error: {:?}", e);
-                    break; // Attempt to reconnect to socket
-                },
-            };
+            if self.is_running {
+                match inbound_connection.receive(WORKER_TIMEOUT_IN_MS) {
+                    Ok(mut frame_set) => {
+                        // This strips off the two ZeroMQ Identity frames introduced by the transmission to the proxy
+                        // and from the proxy to this worker
+                        debug!(target: LOG_TARGET, "Received {} frames", frame_set.len());
+                        let frame_set: FrameSet = frame_set.drain(2..).collect();
 
-            match MessageData::try_from(frames) {
-                Ok(message_data) => {
-                    let peer = match self.lookup_peer(&message_data.source_node_id) {
-                        Some(peer) => peer,
-                        None => {
-                            warn!(
-                                target: LOG_TARGET,
-                                "Received unknown node id from peer connection. Discarding message from NodeId={:?}",
-                                message_data.source_node_id
-                            );
-                            continue;
-                        },
-                    };
+                        match MessageData::try_from(frame_set) {
+                            Ok(message_data) => {
+                                let peer = match self.lookup_peer(&message_data.source_node_id) {
+                                    Some(peer) => peer,
+                                    None => {
+                                        warn!(
+                                            target: LOG_TARGET,
+                                            "Received unknown node id from peer connection. Discarding message from \
+                                             NodeId={:?}",
+                                            message_data.source_node_id
+                                        );
+                                        continue;
+                                    },
+                                };
 
-                    let message_context = MessageContext::new(
-                        self.node_identity.clone(),
-                        peer,
-                        message_data.message_envelope,
-                        self.outbound_message_service.clone(),
-                        self.peer_manager.clone(),
-                        self.inbound_message_broker.clone(),
-                    );
-                    self.message_dispatcher.dispatch(message_context).unwrap_or_else(|e| {
-                        warn!(
-                            target: LOG_TARGET,
-                            "Could not dispatch message to handler - Error: {:?}", e
-                        );
-                    });
+                                let message_context = MessageContext::new(
+                                    self.node_identity.clone(),
+                                    peer,
+                                    message_data.message_envelope,
+                                    self.outbound_message_service.clone(),
+                                    self.peer_manager.clone(),
+                                    self.inbound_message_broker.clone(),
+                                );
+                                self.message_dispatcher.dispatch(message_context).unwrap_or_else(|e| {
+                                    warn!(
+                                        target: LOG_TARGET,
+                                        "Could not dispatch message to handler - Error: {:?}", e
+                                    );
+                                });
 
-                    #[cfg(test)]
-                    {
-                        if let Some(tx) = sync_sender {
-                            tx.send("Message dispatched".to_string()).unwrap();
+                                #[cfg(test)]
+                                {
+                                    if let Some(tx) = self.test_sync_sender.clone() {
+                                        tx.send("Message dispatched".to_string()).unwrap();
+                                    }
+                                }
+                            },
+                            Err(e) => {
+                                // if unable to deserialize the MessageHeader then MUST discard the
+                                // message
+                                warn!(
+                                    target: LOG_TARGET,
+                                    "Message discarded as it could not be deserialised - Error: {:?}", e
+                                );
+                            },
                         }
-                    }
-                },
-                Err(e) => {
-                    // if unable to deserialize the MessageHeader then MUST discard the
-                    // message
-                    warn!(
-                        target: LOG_TARGET,
-                        "Message discarded as it could not be deserialised - Error: {:?}", e
-                    );
-                },
+                    },
+                    Err(ConnectionError::Timeout) => (),
+                    Err(e) => {
+                        error!(
+                            target: LOG_TARGET,
+                            "Error receiving messages from Dealer - Error: {}", e
+                        );
+                    },
+                };
+            } else {
+                break;
             }
         }
         Ok(())
@@ -172,10 +189,40 @@ where
 
     /// Start the MsgProcessingWorker thread, connect to reply socket, retrieve and dispatch incoming messages to
     /// handlers
-    pub fn start(self) -> JoinHandle<Result<(), InboundMessageServiceError>> {
-        thread::spawn(move || loop {
-            self.start_worker()?;
-        })
+    pub fn start(mut self) -> (thread::JoinHandle<()>, SyncSender<ControlMessage>) {
+        self.is_running = true;
+        let (control_sync_sender, control_receiver) = sync_channel(5);
+        self.control_receiver = Some(control_receiver);
+
+        let thread_handle = thread::spawn(move || match self.start_worker() {
+            Ok(_) => (),
+            Err(e) => {
+                error!(
+                    target: LOG_TARGET,
+                    "Error starting Inbound Message Pool worker: {:?}", e
+                );
+            },
+        });
+        (thread_handle, control_sync_sender)
+    }
+
+    /// Check for control messages to manage worker thread
+    fn process_control_messages(&mut self) {
+        match &self.control_receiver {
+            Some(control_receiver) => {
+                if let Some(control_msg) = control_receiver.recv_timeout(Duration::from_millis(5)).ok() {
+                    debug!(target: LOG_TARGET, "Received control message: {:?}", control_msg);
+                    match control_msg {
+                        ControlMessage::Shutdown => {
+                            info!(target: LOG_TARGET, "Shutting down worker");
+                            self.is_running = false;
+                        },
+                        _ => {},
+                    }
+                }
+            },
+            None => warn!(target: LOG_TARGET, "Control receive not available for worker"),
+        }
     }
 
     #[cfg(test)]
@@ -278,7 +325,7 @@ mod test {
             outbound_message_service,
             peer_manager,
         );
-        worker.start();
+        let (thread_handle, control_sync_sender) = worker.start();
         // Give worker sufficient time to spinup thread and create a socket
         std::thread::sleep(time::Duration::from_millis(100));
 
@@ -335,7 +382,7 @@ mod test {
 
         // Submit Messages to the Worker
         pause();
-        dealer_connection.send(message1_frame_set).unwrap();
+        dealer_connection.send(message1_frame_set.clone()).unwrap();
         dealer_connection.send(message2_frame_set).unwrap();
 
         // Retrieve messages at handler services
@@ -350,5 +397,11 @@ mod test {
         let received_domain_message_context =
             DomainMessageContext::from_binary(&received_message_data_bytes[0]).unwrap();
         assert_eq!(received_domain_message_context.message, message_envelope_body2);
+
+        // Test worker clean shutdown
+        control_sync_sender.send(ControlMessage::Shutdown).unwrap();
+        std::thread::sleep(time::Duration::from_millis(200));
+        thread_handle.join().unwrap();
+        assert!(dealer_connection.send(message1_frame_set).is_err());
     }
 }

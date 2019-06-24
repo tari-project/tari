@@ -20,6 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use log::*;
+
 use std::thread;
 
 use derive_error::Error;
@@ -31,12 +33,19 @@ use crate::connection::{
     InprocAddress,
     ZmqContext,
 };
+use std::thread::JoinHandle;
+
+const LOG_TARGET: &'static str = "comms::dealer_proxy";
 
 #[derive(Debug, Error)]
 pub enum DealerProxyError {
     #[error(msg_embedded, no_from, non_std)]
     SocketError(String),
     ConnectionError(ConnectionError),
+    /// The dealer [thread::JoinHandle] is unavailable
+    DealerUndefined,
+    /// Could not join the dealer thread
+    ThreadJoinError,
 }
 
 /// A DealerProxy Result
@@ -45,38 +54,86 @@ pub type Result<T> = std::result::Result<T, DealerProxyError>;
 /// Proxies two addresses, receiving from the source_address and fair dealing to the
 /// sink_address.
 pub struct DealerProxy {
+    context: ZmqContext,
     source_address: InprocAddress,
     sink_address: InprocAddress,
+    control_address: InprocAddress,
+    thread_handle: Option<JoinHandle<Result<()>>>,
+}
+
+/// Spawn a new steerable dealer proxy in its own thread.
+pub fn spawn_proxy(
+    context: ZmqContext,
+    source_address: InprocAddress,
+    sink_address: InprocAddress,
+    control_address: InprocAddress,
+) -> JoinHandle<Result<()>>
+{
+    thread::spawn(move || {
+        let mut source = Connection::new(&context.clone(), Direction::Inbound)
+            .set_socket_establishment(SocketEstablishment::Bind)
+            .establish(&source_address.clone())
+            .map_err(|err| DealerProxyError::ConnectionError(err))?;
+
+        let mut sink = Connection::new(&context.clone(), Direction::Outbound)
+            .set_socket_establishment(SocketEstablishment::Bind)
+            .establish(&sink_address.clone())
+            .map_err(|err| DealerProxyError::ConnectionError(err))?;
+
+        let mut control = Connection::new(&context.clone(), Direction::Inbound)
+            .set_socket_establishment(SocketEstablishment::Bind)
+            .establish(&control_address.clone())
+            .map_err(|err| DealerProxyError::ConnectionError(err))?;
+
+        zmq::proxy_steerable(source.get_mut_socket(), sink.get_mut_socket(), control.get_mut_socket())
+            .map_err(|err| DealerProxyError::SocketError(err.to_string()))
+    })
 }
 
 impl DealerProxy {
     /// Creates a new DealerProxy.
-    pub fn new(source_address: InprocAddress, sink_address: InprocAddress) -> Self {
+    pub fn new(context: ZmqContext, source_address: InprocAddress, sink_address: InprocAddress) -> Self {
         Self {
+            context,
             source_address,
             sink_address,
+            control_address: InprocAddress::random(),
+            thread_handle: None,
         }
     }
 
-    /// Proxy the source and sink addresses. This method does not block and returns
-    /// a [thread::JoinHandle] of the proxy thread.
-    pub fn spawn_proxy(self, context: ZmqContext) -> thread::JoinHandle<Result<()>> {
-        thread::spawn(move || self.proxy(&context))
+    /// Proxy the source and sink addresses. This method does not block and returns stores the [thread::JoinHandle] in
+    /// the DealerProxy.
+    pub fn spawn_proxy(&mut self) {
+        self.thread_handle = Some(spawn_proxy(
+            self.context.clone(),
+            self.source_address.clone(),
+            self.sink_address.clone(),
+            self.control_address.clone(),
+        ));
     }
 
-    /// Proxy the source and sink addresses. This method will block the current thread.
-    pub fn proxy(&self, context: &ZmqContext) -> Result<()> {
-        let source = Connection::new(context, Direction::Inbound)
-            .set_socket_establishment(SocketEstablishment::Bind)
-            .establish(&self.source_address)
-            .map_err(|err| DealerProxyError::ConnectionError(err))?;
-
-        let sink = Connection::new(context, Direction::Outbound)
-            .set_socket_establishment(SocketEstablishment::Bind)
-            .establish(&self.sink_address)
-            .map_err(|err| DealerProxyError::ConnectionError(err))?;
-
-        zmq::proxy(source.get_socket(), sink.get_socket()).map_err(|err| DealerProxyError::SocketError(err.to_string()))
+    /// Send a shutdown request to the dealer proxy
+    pub fn shutdown(self) -> Result<()> {
+        match self.thread_handle {
+            Some(thread_handle) => {
+                let control = Connection::new(&self.context, Direction::Outbound)
+                    .set_socket_establishment(SocketEstablishment::Connect)
+                    .establish(&self.control_address)
+                    .map_err(|err| DealerProxyError::ConnectionError(err))?;
+                control
+                    .send(&["TERMINATE".as_bytes()])
+                    .map_err(|err| DealerProxyError::ConnectionError(err))?;
+                match thread_handle.join() {
+                    Ok(_) => Ok(()),
+                    Err(err) => {
+                        error!(target: LOG_TARGET, "Failed to join dealer thread handle: {:?}", err);
+                        Err(DealerProxyError::ThreadJoinError)
+                    },
+                }
+            },
+            None => Err(DealerProxyError::DealerUndefined),
+        }
     }
 }
 
@@ -97,8 +154,8 @@ mod test {
             .establish(&receiver_addr)
             .unwrap();
 
-        let proxy = DealerProxy::new(sender_addr, receiver_addr);
-        proxy.spawn_proxy(context);
+        let mut proxy = DealerProxy::new(context, sender_addr, receiver_addr);
+        proxy.spawn_proxy();
 
         sender.send_sync(&["HELLO".as_bytes()]).unwrap();
 
@@ -112,5 +169,10 @@ mod test {
 
         let msg = sender.receive(2000).unwrap();
         assert_eq!("WORLD".as_bytes().to_vec(), msg[0]);
+
+        // Test steerable dealer shutdown
+        proxy.shutdown().unwrap();
+        receiver.send_sync(&[&msg[0], "FAIL".as_bytes()]).unwrap();
+        assert!(sender.receive(200).is_err());
     }
 }

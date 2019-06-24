@@ -22,7 +22,15 @@
 
 use super::{outbound_message_pool::OutboundMessagePoolConfig, OutboundError, OutboundMessage};
 use crate::{
-    connection::{Connection, ConnectionError, Direction, InprocAddress, SocketEstablishment, ZmqContext},
+    connection::{
+        peer_connection::ControlMessage,
+        Connection,
+        ConnectionError,
+        Direction,
+        InprocAddress,
+        SocketEstablishment,
+        ZmqContext,
+    },
     connection_manager::ConnectionManager,
     message::{FrameSet, MessageEnvelope},
     peer_manager::PeerManager,
@@ -30,9 +38,15 @@ use crate::{
 };
 use chrono::Utc;
 use log::*;
-#[cfg(test)]
-use std::sync::mpsc::SyncSender;
-use std::{convert::TryFrom, sync::Arc, thread};
+use std::{
+    convert::TryFrom,
+    sync::{
+        mpsc::{sync_channel, Receiver, SyncSender},
+        Arc,
+    },
+    thread,
+    time::Duration,
+};
 use tari_utilities::message_format::MessageFormat;
 
 const LOG_TARGET: &'static str = "comms::outbound_message_service::pool::worker";
@@ -53,6 +67,8 @@ pub struct MessagePoolWorker {
     message_requeue_address: InprocAddress,
     peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
     connection_manager: Arc<ConnectionManager>,
+    control_receiver: Option<Receiver<ControlMessage>>,
+    is_running: bool,
     #[cfg(test)]
     test_sync_sender: Option<SyncSender<String>>,
 }
@@ -74,6 +90,8 @@ impl MessagePoolWorker {
             message_requeue_address,
             peer_manager,
             connection_manager,
+            control_receiver: None,
+            is_running: false,
             #[cfg(test)]
             test_sync_sender: None,
         }
@@ -82,88 +100,101 @@ impl MessagePoolWorker {
     /// Start MessagePoolWorker which will connect to the inbound message dealer, accept messages from the queue,
     /// attempt to send them and if it cannot send then requeue the message
     fn start_worker(&mut self) -> Result<(), WorkerError> {
-        #[cfg(test)]
-        let tx = self.test_sync_sender.clone().unwrap();
-
         // Connection to the message dealer proxy
         let inbound_connection = Connection::new(&self.context, Direction::Inbound)
             .set_socket_establishment(SocketEstablishment::Connect)
             .establish(&self.inbound_address)
             .map_err(|e| WorkerError::InboundConnectionError(e))?;
-        loop {
-            match inbound_connection.receive(self.config.worker_timeout_in_ms) {
-                Ok(mut frame_set) => {
-                    // This strips off the two ZeroMQ Identity frames introduced by the transmission to the proxy and
-                    // from the proxy to this worker
-                    let data: FrameSet = frame_set.drain(2..).collect();
-                    if let Ok(mut msg) = OutboundMessage::<MessageEnvelope>::try_from(data) {
-                        #[cfg(test)]
-                        tx.send(String::from("Message Received".to_string())).unwrap();
 
-                        // Check if the retry time wait period has elapsed
-                        if msg.last_retry_timestamp().is_none() ||
-                            msg.last_retry_timestamp().unwrap() + self.config.retry_wait_time <= Utc::now()
-                        {
-                            // Attempt transmission
-                            match self.attempt_message_transmission(&mut msg) {
-                                Ok(()) => {
-                                    debug!(target: LOG_TARGET, "Outbound message successfully sent");
-                                },
-                                Err(e) => {
-                                    warn!(
-                                        target: LOG_TARGET,
-                                        "Failed to transmit outbound message - Error: {:?}", e
-                                    );
-                                    match self.queue_message_retry(msg) {
-                                        Ok(()) => {
-                                            debug!(target: LOG_TARGET, "Message retry successfully requeued");
-                                        },
-                                        Err(e) => error!(
-                                            target: LOG_TARGET,
-                                            "Error retrying message transmission - Error {:?}", e
-                                        ),
-                                    }
-                                },
+        loop {
+            // Check for control messages
+            self.process_control_messages();
+
+            if self.is_running {
+                match inbound_connection.receive(self.config.worker_timeout_in_ms) {
+                    Ok(mut frame_set) => {
+                        // This strips off the two ZeroMQ Identity frames introduced by the transmission to the proxy
+                        // and from the proxy to this worker
+                        let data: FrameSet = frame_set.drain(2..).collect();
+                        if let Ok(mut msg) = OutboundMessage::<MessageEnvelope>::try_from(data) {
+                            #[cfg(test)]
+                            {
+                                if let Some(tx) = self.test_sync_sender.clone() {
+                                    tx.send("Message Received".to_string()).unwrap();
+                                }
                             }
-                        } else {
-                            // Requeue a message whose Retry Wait Time has not elapsed without marking a transmission
-                            // attempt
-                            match self.requeue_message(&msg) {
-                                Ok(_) => (),
-                                Err(e) => {
-                                    error!(
-                                        target: LOG_TARGET,
-                                        "Error requeuing an Outbound Message - Error: {:?}", e
-                                    );
-                                },
-                            };
+
+                            // Check if the retry time wait period has elapsed
+                            if msg.last_retry_timestamp().is_none() ||
+                                msg.last_retry_timestamp().unwrap() + self.config.retry_wait_time <= Utc::now()
+                            {
+                                // Attempt transmission
+                                match self.attempt_message_transmission(&mut msg) {
+                                    Ok(()) => {
+                                        debug!(target: LOG_TARGET, "Outbound message successfully sent");
+                                    },
+                                    Err(e) => {
+                                        warn!(
+                                            target: LOG_TARGET,
+                                            "Failed to transmit outbound message - Error: {:?}", e
+                                        );
+                                        match self.queue_message_retry(msg) {
+                                            Ok(()) => {
+                                                debug!(target: LOG_TARGET, "Message retry successfully requeued");
+                                            },
+                                            Err(e) => error!(
+                                                target: LOG_TARGET,
+                                                "Error retrying message transmission - Error {:?}", e
+                                            ),
+                                        }
+                                    },
+                                }
+                            } else {
+                                // Requeue a message whose Retry Wait Time has not elapsed without marking a
+                                // transmission attempt
+                                match self.requeue_message(&msg) {
+                                    Ok(_) => (),
+                                    Err(e) => {
+                                        error!(
+                                            target: LOG_TARGET,
+                                            "Error requeuing an Outbound Message - Error: {:?}", e
+                                        );
+                                    },
+                                };
+                            }
                         }
-                    }
-                },
-                Err(ConnectionError::Timeout) => (),
-                Err(e) => {
-                    error!(
-                        target: LOG_TARGET,
-                        "Error receiving messages from outbound message queue - Error: {}", e
-                    );
-                },
-            };
+                    },
+                    Err(ConnectionError::Timeout) => (),
+                    Err(e) => {
+                        error!(
+                            target: LOG_TARGET,
+                            "Error receiving messages from outbound message queue - Error: {}", e
+                        );
+                    },
+                };
+            } else {
+                break;
+            }
         }
+        Ok(())
     }
 
     /// Start the MessagePoolWorker thread
-    pub fn start(mut self) {
-        thread::spawn(move || loop {
-            match self.start_worker() {
-                Ok(_) => (),
-                Err(e) => {
-                    error!(
-                        target: LOG_TARGET,
-                        "Error starting Outbound Message Pool worker: {:?}", e
-                    );
-                },
-            }
+    pub fn start(mut self) -> (thread::JoinHandle<()>, SyncSender<ControlMessage>) {
+        self.is_running = true;
+        let (control_sync_sender, control_receiver) = sync_channel(5);
+        self.control_receiver = Some(control_receiver);
+
+        let thread_handle = thread::spawn(move || match self.start_worker() {
+            Ok(_) => (),
+            Err(e) => {
+                error!(
+                    target: LOG_TARGET,
+                    "Error starting Outbound Message Pool worker: {:?}", e
+                );
+            },
         });
+        (thread_handle, control_sync_sender)
     }
 
     /// Attempt to send a message to the NodeId specified in the message. If the the attempt is not successful then mark
@@ -209,6 +240,25 @@ impl MessagePoolWorker {
             .send(&outbound_message_buffer)
             .map_err(|e| OutboundError::ConnectionError(e))?;
         Ok(())
+    }
+
+    /// Check for control messages to manage worker thread
+    fn process_control_messages(&mut self) {
+        match &self.control_receiver {
+            Some(control_receiver) => {
+                if let Some(control_msg) = control_receiver.recv_timeout(Duration::from_millis(5)).ok() {
+                    debug!(target: LOG_TARGET, "Received control message: {:?}", control_msg);
+                    match control_msg {
+                        ControlMessage::Shutdown => {
+                            info!(target: LOG_TARGET, "Shutting down worker");
+                            self.is_running = false;
+                        },
+                        _ => {},
+                    }
+                }
+            },
+            None => warn!(target: LOG_TARGET, "Control receive not available for worker"),
+        }
     }
 
     #[cfg(test)]

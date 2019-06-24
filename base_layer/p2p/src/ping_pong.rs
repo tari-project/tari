@@ -337,8 +337,6 @@ impl PingPongServiceApi {
 #[cfg(test)]
 mod test {
     use super::*;
-    use rand::rngs::OsRng;
-    use tari_crypto::keys::PublicKey;
 
     #[test]
     fn new() {

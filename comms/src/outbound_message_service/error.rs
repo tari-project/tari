@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE
 
 use crate::{
-    connection::{ConnectionError, NetAddressError, PeerConnectionError},
+    connection::{dealer_proxy::DealerProxyError, ConnectionError, NetAddressError, PeerConnectionError},
     connection_manager::ConnectionManagerError,
     message::MessageError,
     peer_manager::peer_manager::PeerManagerError,
@@ -62,4 +62,9 @@ pub enum OutboundError {
     PeerConnectionError(PeerConnectionError),
     /// Number of retry attempts exceeded
     RetryAttemptsExceedError,
+    #[error(msg_embedded, non_std, no_from)]
+    ControlSendError(String),
+    DealerProxyError(DealerProxyError),
+    /// Could not join the dealer or worker threads
+    ThreadJoinError,
 }

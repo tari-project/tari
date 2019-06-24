@@ -35,4 +35,8 @@ pub enum InboundMessageServiceError {
     InboundConnectionError(ConnectionError),
     DealerProxyError(DealerProxyError),
     BrokerError(BrokerError),
+    #[error(msg_embedded, non_std, no_from)]
+    ControlSendError(String),
+    /// Could not join the dealer or worker threads
+    ThreadJoinError,
 }
