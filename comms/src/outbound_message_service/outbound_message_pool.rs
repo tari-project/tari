@@ -209,7 +209,6 @@ mod test {
 
     fn make_peer_connection_config(consumer_address: InprocAddress) -> PeerConnectionConfig {
         PeerConnectionConfig {
-            control_service_establish_timeout: Duration::from_millis(10),
             peer_connection_establish_timeout: Duration::from_millis(10),
             max_message_size: 1024,
             host: "127.0.0.1".parse().unwrap(),

@@ -34,8 +34,7 @@ use tari_comms::{
 fn make_peer_connection_config(context: &Context, consumer_address: InprocAddress) -> PeerConnectionConfig {
     PeerConnectionConfig {
         context: context.clone(),
-        control_service_establish_timeout: Duration::from_millis(2000),
-        peer_connection_establish_timeout: Duration::from_secs(20),
+        peer_connection_establish_timeout: Duration::from_secs(5),
         max_message_size: 1024,
         host: "127.0.0.1".parse().unwrap(),
         max_connect_retries: 3,

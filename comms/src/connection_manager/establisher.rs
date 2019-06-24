@@ -63,11 +63,9 @@ pub struct PeerConnectionConfig {
     pub message_sink_address: InprocAddress,
     /// The host to bind to when creating inbound connections
     pub host: IpAddr,
-    /// The length of time to wait for the connection to be established to a peer's control services.
-    pub control_service_establish_timeout: Duration,
     /// The length of time to wait for the requested peer connection to be established before timing out.
-    /// This should be more than twice as long as control_service_establish_timeout, as communication
-    /// this must be long enough for a single back-and-forth between the peers.
+    /// Depending on the network, this should be long enough to allow a single back-and-forth
+    /// communication between peers.
     pub peer_connection_establish_timeout: Duration,
 }
 
@@ -78,8 +76,7 @@ impl Default for PeerConnectionConfig {
             max_connect_retries: 5,
             socks_proxy_address: None,
             message_sink_address: Default::default(),
-            peer_connection_establish_timeout: Duration::from_secs(1),
-            control_service_establish_timeout: Duration::from_secs(2),
+            peer_connection_establish_timeout: Duration::from_secs(3),
             host: "0.0.0.0".parse().unwrap(),
         }
     }
@@ -192,7 +189,7 @@ where PK: PublicKey + Hash
         let mut connection = PeerConnection::new();
         let worker_handle = connection.start(context)?;
         connection
-            .wait_connected_or_failure(&self.config.control_service_establish_timeout)
+            .wait_connected_or_failure(&self.config.peer_connection_establish_timeout)
             .or_else(|err| {
                 error!(target: LOG_TARGET, "Outbound connection failed: {:?}", err);
                 Err(ConnectionManagerError::ConnectionError(err))
@@ -232,7 +229,7 @@ where PK: PublicKey + Hash
         let mut connection = PeerConnection::new();
         let worker_handle = connection.start(context)?;
         connection
-            .wait_listening_or_failure(&self.config.control_service_establish_timeout)
+            .wait_listening_or_failure(&self.config.peer_connection_establish_timeout)
             .or_else(|err| {
                 error!(target: LOG_TARGET, "Unable to establish inbound connection: {:?}", err);
                 Err(ConnectionManagerError::ConnectionError(err))
@@ -323,9 +320,11 @@ where
                 use SocketEventType::*;
                 debug!(target: LOG_TARGET, "Socket Event: {:?}", event);
                 match event.event_type {
-                    Connected | Listening => break Ok(true),
+                    Connected | Accepted | Listening => break Ok(true),
+                    AcceptFailed |
                     Disconnected |
                     Closed |
+                    CloseFailed |
                     BindFailed |
                     HandshakeFailedAuth |
                     HandshakeFailedNoDetail |

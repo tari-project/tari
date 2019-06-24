@@ -74,6 +74,7 @@ impl Wallet {
 #[cfg(test)]
 mod test {
     use super::*;
+    use std::time::Duration;
     use tari_comms::{
         connection::NetAddress,
         control_service::ControlServiceConfig,
@@ -95,6 +96,7 @@ mod test {
                     listener_address: listener_address1,
                     socks_proxy_address: None,
                     accept_message_type: TariMessageType::new(NetMessage::Accept),
+                    requested_outbound_connection_timeout: Duration::from_millis(5000),
                 },
                 socks_proxy_address: None,
                 host: "0.0.0.0".parse().unwrap(),
@@ -117,6 +119,7 @@ mod test {
                     listener_address: listener_address2,
                     socks_proxy_address: None,
                     accept_message_type: TariMessageType::new(NetMessage::Accept),
+                    requested_outbound_connection_timeout: Duration::from_millis(5000),
                 },
                 socks_proxy_address: None,
                 host: "0.0.0.0".parse().unwrap(),
