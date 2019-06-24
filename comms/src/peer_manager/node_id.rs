@@ -20,19 +20,21 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::fmt;
-
-use derive_error::Error;
-use serde::{Deserialize, Serialize};
-use std::{
-    convert::TryFrom,
-    hash::{Hash, Hasher},
-};
-use tari_utilities::Hashable;
-
 use crate::{connection::peer_connection::ConnectionId, message::Frame};
-use std::convert::TryInto;
-use tari_utilities::hex::to_hex;
+use derive_error::Error;
+use serde::{de, Deserialize, Deserializer, Serialize};
+use std::{
+    convert::{TryFrom, TryInto},
+    fmt,
+    hash::{Hash, Hasher},
+    marker::PhantomData,
+};
+use tari_utilities::{
+    hex::{to_hex, Hex},
+    ByteArray,
+    ByteArrayError,
+    Hashable,
+};
 
 const NODE_ID_ARRAY_SIZE: usize = 32;
 type NodeIdArray = [u8; NODE_ID_ARRAY_SIZE];
@@ -84,8 +86,8 @@ impl TryFrom<&[u8]> for NodeDistance {
     }
 }
 
-#[derive(Clone, Debug, Eq, Deserialize, Serialize)]
 /// A Node Identity is used as a unique identifier for a node in the Tari communications network.
+#[derive(Clone, Debug, Eq, Deserialize, Serialize)]
 pub struct NodeId(NodeIdArray);
 
 impl NodeId {
@@ -149,6 +151,21 @@ impl NodeId {
     }
 }
 
+impl ByteArray for NodeId {
+    /// Try and convert the given byte array to a NodeId. Any failures (incorrect array length,
+    /// implementation-specific checks, etc) return a [ByteArrayError](enum.ByteArrayError.html).
+    fn from_bytes(bytes: &[u8]) -> Result<Self, ByteArrayError> {
+        bytes
+            .try_into()
+            .map_err(|err| ByteArrayError::ConversionError(format!("{:?}", err)))
+    }
+
+    /// Return the NodeId as a byte array
+    fn as_bytes(&self) -> &[u8] {
+        self.0.as_ref()
+    }
+}
+
 impl PartialEq for NodeId {
     fn eq(&self, nid: &NodeId) -> bool {
         self.0 == nid.0
@@ -202,6 +219,27 @@ impl From<NodeId> for ConnectionId {
     fn from(node_id: NodeId) -> Self {
         ConnectionId::new(node_id.into_inner().to_vec())
     }
+}
+
+pub fn deserialize_node_id_from_hex<'de, D>(des: D) -> Result<NodeId, D::Error>
+where D: Deserializer<'de> {
+    struct KeyStringVisitor<K> {
+        marker: PhantomData<K>,
+    };
+
+    impl<'de> de::Visitor<'de> for KeyStringVisitor<NodeId> {
+        type Value = NodeId;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("a node id in hex format")
+        }
+
+        fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+        where E: de::Error {
+            NodeId::from_hex(v).map_err(E::custom)
+        }
+    }
+    des.deserialize_str(KeyStringVisitor { marker: PhantomData })
 }
 
 #[cfg(test)]

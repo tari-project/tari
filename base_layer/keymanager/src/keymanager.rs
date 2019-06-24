@@ -27,11 +27,11 @@ use rand::{CryptoRng, Rng};
 use serde::de::DeserializeOwned;
 use serde_derive::{Deserialize, Serialize};
 use std::marker::PhantomData;
-use tari_crypto::{
-    keys::SecretKey,
-    ristretto::serialize::{secret_from_hex, serialize_to_hex},
+use tari_crypto::{keys::SecretKey, ristretto::serialize::secret_from_hex};
+use tari_utilities::{
+    byte_array::ByteArrayError,
+    hex::{serialize_to_hex, Hex},
 };
-use tari_utilities::{byte_array::ByteArrayError, hex::Hex};
 
 #[derive(Debug, Error)]
 pub enum KeyManagerError {

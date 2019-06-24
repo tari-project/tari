@@ -1,4 +1,5 @@
 use derive_error::Error;
+use serde::Serializer;
 use std::{
     fmt::{LowerHex, Write},
     num::ParseIntError,
@@ -65,6 +66,14 @@ pub fn from_hex(hex_str: &str) -> Result<Vec<u8>, HexError> {
         }
     }
     Ok(result)
+}
+
+pub fn serialize_to_hex<S, T>(t: &T, ser: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+    T: Hex,
+{
+    ser.serialize_str(&t.to_hex())
 }
 
 #[cfg(test)]

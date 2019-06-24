@@ -3,6 +3,7 @@ use chrono::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{
     cmp::{Ord, Ordering},
+    fmt,
     time::Duration,
 };
 
@@ -148,6 +149,12 @@ impl PartialOrd for NetAddressWithStats {
 impl PartialEq for NetAddressWithStats {
     fn eq(&self, other: &NetAddressWithStats) -> bool {
         self.net_address == other.net_address
+    }
+}
+
+impl fmt::Display for NetAddressWithStats {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.net_address)
     }
 }
 
