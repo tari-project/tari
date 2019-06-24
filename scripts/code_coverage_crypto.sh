@@ -7,4 +7,4 @@ if [ "$primary_dir" != "scripts" ]; then
     cd scripts
 fi
 
-./code_coverage.sh "crypto" "infrastructure/crypto/"
+./code_coverage.sh "tari_crypto" "infrastructure/crypto/"
