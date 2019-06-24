@@ -26,14 +26,14 @@ use std::fmt::{Display, Error, Formatter};
 /// All calculations using Tari amounts should use these newtypes to prevent bugs related to rounding errors, unit
 /// conversion errors etc.
 ///
-/// ```
+/// ```edition2018
 /// use tari_core::tari_amount::MicroTari;
 ///
 /// let a = MicroTari::from(500);
 /// let b = MicroTari::from(50);
 /// assert_eq!(a + b, MicroTari::from(550));
 /// ```
-#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[derive(Copy, Default, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 pub struct MicroTari(u64);
 
 // You can only add or subtract µT from µT
@@ -56,6 +56,12 @@ impl From<MicroTari> for u64 {
 impl From<u64> for MicroTari {
     fn from(v: u64) -> Self {
         MicroTari(v)
+    }
+}
+
+impl From<MicroTari> for f64 {
+    fn from(v: MicroTari) -> Self {
+        v.0 as f64
     }
 }
 

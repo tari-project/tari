@@ -20,15 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::tari_amount::MicroTari;
+
 /// The Tari emission schedule. The emission schedule determines how much Tari is mined as a block reward at every
 /// block.
 ///
 /// NB: We don't know what the final emission schedule will be on Tari yet, so do not give any weight to values or
-/// formulae provided in this file, they will almost certainly change ahead of mainnet release.
+/// formulae provided in this file, they will almost certainly change ahead of main-net release.
 pub struct EmissionSchedule {
-    initial: f64,
+    initial: MicroTari,
     decay: f64,
-    tail: u64,
+    tail: MicroTari,
 }
 
 impl EmissionSchedule {
@@ -44,16 +46,17 @@ impl EmissionSchedule {
     ///  * $$A_0$$ is the genesis block reward
     ///  * $$1-r$$ is the decay rate
     ///  * $$t$$ is the constant tail emission rate
-    pub fn new(initial: f64, decay: f64, tail: u64) -> EmissionSchedule {
+    pub fn new(initial: MicroTari, decay: f64, tail: MicroTari) -> EmissionSchedule {
         EmissionSchedule { initial, decay, tail }
     }
 
     /// Calculate the block reward for the given block height, in µTari
-    pub fn block_reward(&self, block: u64) -> u64 {
+    pub fn block_reward(&self, block: u64) -> MicroTari {
         let base = if block < std::i32::MAX as u64 {
-            (self.initial * self.decay.powi(block as i32)).trunc() as u64
+            let base_f = (f64::from(self.initial) * self.decay.powi(block as i32)).trunc();
+            MicroTari::from(base_f as u64)
         } else {
-            0
+            MicroTari::from(0)
         };
         base + self.tail
     }
@@ -61,8 +64,8 @@ impl EmissionSchedule {
     /// Calculate the exact emitted supply after the given block, in µTari. The value is calculated by summing up the
     /// block reward for each block, making this a very inefficient function if you wanted to call it from a loop for
     /// example. For those cases, use the `iter` function instead.
-    pub fn supply_at_block(&self, block: u64) -> u64 {
-        let mut total = 0u64;
+    pub fn supply_at_block(&self, block: u64) -> MicroTari {
+        let mut total = MicroTari::from(0u64);
         for i in 0..block + 1 {
             total += self.block_reward(i);
         }
@@ -74,14 +77,12 @@ impl EmissionSchedule {
     ///
     /// This is an infinite iterator, and each value returned is a tuple of (block number, reward, and total supply)
     ///
-    /// ```
-    /// # use tari_core::emission::EmissionSchedule;
+    /// ```edition2018
+    /// use tari_core::emission::EmissionSchedule;
+    /// use tari_core::tari_amount::MicroTari;
     /// // Print the reward and supply for first 100 blocks
-    /// let schedule = EmissionSchedule::new(1000.0, 0.999, 10);
-    /// for (n, reward, supply) in schedule.iter() {
-    ///     if n > 100 {
-    ///         break;
-    ///     }
+    /// let schedule = EmissionSchedule::new(MicroTari::from(1000), 0.999, MicroTari::from(10));
+    /// for (n, reward, supply) in schedule.iter().take(100) {
     ///     println!("{:3} {:9} {:9}", n, reward, supply);
     /// }
     /// ```
@@ -92,8 +93,8 @@ impl EmissionSchedule {
 
 pub struct EmissionValues<'a> {
     block_num: u64,
-    supply: u64,
-    reward: u64,
+    supply: MicroTari,
+    reward: MicroTari,
     schedule: &'a EmissionSchedule,
 }
 
@@ -101,15 +102,15 @@ impl<'a> EmissionValues<'a> {
     fn new(schedule: &'a EmissionSchedule) -> EmissionValues<'a> {
         EmissionValues {
             block_num: 0,
-            supply: 0,
-            reward: 0,
+            supply: MicroTari::default(),
+            reward: MicroTari::default(),
             schedule,
         }
     }
 }
 
 impl<'a> Iterator for EmissionValues<'a> {
-    type Item = (u64, u64, u64);
+    type Item = (u64, MicroTari, MicroTari);
 
     fn next(&mut self) -> Option<Self::Item> {
         let n = self.block_num;
@@ -122,45 +123,42 @@ impl<'a> Iterator for EmissionValues<'a> {
 
 #[cfg(test)]
 mod test {
-    use crate::emission::EmissionSchedule;
+    use crate::{emission::EmissionSchedule, tari_amount::MicroTari};
 
     #[test]
     fn schedule() {
-        let schedule = EmissionSchedule::new(10_000_000.0, 0.999, 100);
+        let schedule = EmissionSchedule::new(MicroTari::from(10_000_000), 0.999, MicroTari::from(100));
         let r0 = schedule.block_reward(0);
-        assert_eq!(r0, 10_000_100);
+        assert_eq!(r0, MicroTari::from(10_000_100));
         let s0 = schedule.supply_at_block(0);
-        assert_eq!(s0, 10_000_100);
-        assert_eq!(schedule.block_reward(100), 9_048_021);
-        assert_eq!(schedule.supply_at_block(100), 961_136_499);
+        assert_eq!(s0, MicroTari::from(10_000_100));
+        assert_eq!(schedule.block_reward(100), MicroTari::from(9_048_021));
+        assert_eq!(schedule.supply_at_block(100), MicroTari::from(961_136_499));
     }
 
     #[test]
     fn huge_block_number() {
         let mut n = (std::i32::MAX - 1) as u64;
-        let schedule = EmissionSchedule::new(1e21, 0.999_9999, 100);
+        let schedule = EmissionSchedule::new(MicroTari::from(1e21 as u64), 0.999_9999, MicroTari::from(100));
         for _ in 0..3 {
-            assert_eq!(schedule.block_reward(n), 100);
+            assert_eq!(schedule.block_reward(n), MicroTari::from(100));
             n += 1;
         }
     }
 
     #[test]
     fn iterator() {
-        let schedule = EmissionSchedule::new(10_000_000.0, 0.999, 100);
-        let values: Vec<(u64, u64, u64)> = schedule.iter().take(101).collect();
+        let schedule = EmissionSchedule::new(MicroTari::from(10_000_000), 0.999, MicroTari::from(100));
+        let values: Vec<(u64, MicroTari, MicroTari)> = schedule.iter().take(101).collect();
         assert_eq!(values[0].0, 0);
-        assert_eq!(values[0].1, 10_000_100);
-        assert_eq!(values[0].2, 10_000_100);
+        assert_eq!(values[0].1, MicroTari::from(10_000_100));
+        assert_eq!(values[0].2, MicroTari::from(10_000_100));
         assert_eq!(values[100].0, 100);
-        assert_eq!(values[100].1, 9_048_021);
-        assert_eq!(values[100].2, 961_136_499);
+        assert_eq!(values[100].1, MicroTari::from(9_048_021));
+        assert_eq!(values[100].2, MicroTari::from(961_136_499));
 
-        let mut tot_supply = 0u64;
-        for (n, reward, supply) in schedule.iter() {
-            if n > 1000 {
-                break;
-            }
+        let mut tot_supply = MicroTari::default();
+        for (_, reward, supply) in schedule.iter().take(1000) {
             tot_supply += reward;
             assert_eq!(tot_supply, supply);
         }
