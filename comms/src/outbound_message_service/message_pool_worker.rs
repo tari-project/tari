@@ -27,6 +27,7 @@ use crate::{
         Connection,
         ConnectionError,
         Direction,
+        EstablishedConnection,
         InprocAddress,
         SocketEstablishment,
         ZmqContext,
@@ -55,6 +56,8 @@ const LOG_TARGET: &'static str = "comms::outbound_message_service::pool::worker"
 pub enum WorkerError {
     /// Problem with inbound connection
     InboundConnectionError(ConnectionError),
+    /// Problem with outbound connection
+    OutboundConnectionError(ConnectionError),
     /// Failed to connect to message queue
     MessageQueueConnectionError(ConnectionError),
 }
@@ -104,7 +107,12 @@ impl MessagePoolWorker {
         let inbound_connection = Connection::new(&self.context, Direction::Inbound)
             .set_socket_establishment(SocketEstablishment::Connect)
             .establish(&self.inbound_address)
-            .map_err(|e| WorkerError::InboundConnectionError(e))?;
+            .map_err(WorkerError::InboundConnectionError)?;
+
+        let outbound_connection = Connection::new(&self.context, Direction::Outbound)
+            .set_socket_establishment(SocketEstablishment::Connect)
+            .establish(&self.message_requeue_address)
+            .map_err(WorkerError::OutboundConnectionError)?;
 
         loop {
             // Check for control messages
@@ -138,7 +146,7 @@ impl MessagePoolWorker {
                                             target: LOG_TARGET,
                                             "Failed to transmit outbound message - Error: {:?}", e
                                         );
-                                        match self.queue_message_retry(msg) {
+                                        match self.queue_message_retry(&outbound_connection, msg) {
                                             Ok(()) => {
                                                 debug!(target: LOG_TARGET, "Message retry successfully requeued");
                                             },
@@ -152,7 +160,7 @@ impl MessagePoolWorker {
                             } else {
                                 // Requeue a message whose Retry Wait Time has not elapsed without marking a
                                 // transmission attempt
-                                match self.requeue_message(&msg) {
+                                match self.requeue_message(&outbound_connection, &msg) {
                                     Ok(_) => (),
                                     Err(e) => {
                                         error!(
@@ -219,23 +227,29 @@ impl MessagePoolWorker {
     }
 
     /// Check if a message transmission is able to be retried, if so then mark the transmission attempt and requeue it.
-    fn queue_message_retry(&self, mut msg: OutboundMessage<MessageEnvelope>) -> Result<(), OutboundError> {
+    fn queue_message_retry(
+        &self,
+        outbound_connection: &EstablishedConnection,
+        mut msg: OutboundMessage<MessageEnvelope>,
+    ) -> Result<(), OutboundError>
+    {
         if msg.number_of_retries() < self.config.max_num_of_retries {
             msg.mark_transmission_attempt();
             self.peer_manager.reset_connection_attempts(&msg.destination_node_id)?;
-            self.requeue_message(&msg)?;
+            self.requeue_message(outbound_connection, &msg)?;
         };
         Ok(())
     }
 
     /// Send a message back to the Outbound Message Pool message queue.
-    fn requeue_message(&self, msg: &OutboundMessage<MessageEnvelope>) -> Result<(), OutboundError> {
+    fn requeue_message(
+        &self,
+        outbound_connection: &EstablishedConnection,
+        msg: &OutboundMessage<MessageEnvelope>,
+    ) -> Result<(), OutboundError>
+    {
         let outbound_message_buffer = vec![msg.to_binary().map_err(|e| OutboundError::MessageFormatError(e))?];
 
-        let outbound_connection = Connection::new(&self.context, Direction::Outbound)
-            .set_socket_establishment(SocketEstablishment::Connect)
-            .establish(&self.message_requeue_address)
-            .map_err(|e| OutboundError::ConnectionError(e))?;
         outbound_connection
             .send(&outbound_message_buffer)
             .map_err(|e| OutboundError::ConnectionError(e))?;
