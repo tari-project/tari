@@ -19,13 +19,11 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE
-use std::thread;
-
 use crate::{
     connection::{
+        peer_connection::ControlMessage,
         zmq::{InprocAddress, ZmqContext},
         DealerProxy,
-        DealerProxyError,
     },
     connection_manager::ConnectionManager,
     outbound_message_service::{MessagePoolWorker, OutboundError},
@@ -35,11 +33,14 @@ use crate::{
 use chrono::Duration;
 use log::*;
 #[cfg(test)]
-use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
-use std::sync::Arc;
+use std::sync::mpsc::{sync_channel, Receiver};
+use std::{
+    sync::{mpsc::SyncSender, Arc},
+    thread::JoinHandle,
+};
 
 /// The maximum number of processing worker threads that will be created by the OutboundMessageService
-pub const MAX_OUTBOUND_MSG_PROCESSING_WORKERS: u8 = 8;
+pub const MAX_OUTBOUND_MSG_PROCESSING_WORKERS: u8 = 4;
 
 const LOG_TARGET: &'static str = "comms::outbound_message_service::pool";
 
@@ -68,11 +69,13 @@ impl Default for OutboundMessagePoolConfig {
 pub struct OutboundMessagePool {
     config: OutboundMessagePoolConfig,
     context: ZmqContext,
-    message_queue_address: InprocAddress,
     message_requeue_address: InprocAddress,
     worker_dealer_address: InprocAddress,
     peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
     connection_manager: Arc<ConnectionManager>,
+    worker_thread_handles: Vec<JoinHandle<()>>,
+    worker_control_senders: Vec<SyncSender<ControlMessage>>,
+    dealer_proxy: DealerProxy,
     #[cfg(test)]
     test_sync_sender: Vec<SyncSender<String>>, /* These channels will be to test the pool workers threaded
                                                 * operation */
@@ -96,56 +99,76 @@ impl OutboundMessagePool {
         connection_manager: Arc<ConnectionManager>,
     ) -> Result<OutboundMessagePool, OutboundError>
     {
+        let worker_dealer_address = InprocAddress::random();
         Ok(OutboundMessagePool {
             config,
-            context,
-            message_queue_address,
+            context: context.clone(),
             message_requeue_address,
-            worker_dealer_address: InprocAddress::random(),
+            worker_dealer_address: worker_dealer_address.clone(),
             peer_manager,
             connection_manager,
+            worker_thread_handles: Vec::new(),
+            worker_control_senders: Vec::new(),
+            dealer_proxy: DealerProxy::new(context.clone(), message_queue_address, worker_dealer_address.clone()),
             #[cfg(test)]
             test_sync_sender: Vec::new(),
         })
     }
 
-    fn start_dealer(&self) -> Result<(), DealerProxyError> {
-        DealerProxy::new(self.message_queue_address.clone(), self.worker_dealer_address.clone()).proxy(&self.context)
+    fn start_dealer(&mut self) {
+        self.dealer_proxy.spawn_proxy()
     }
 
     /// Start the Outbound Message Pool. This will spawn a thread that services the message queue that is sent to the
     /// Inproc address.
-    pub fn start(self) {
+    pub fn start(&mut self) {
         info!(target: LOG_TARGET, "Starting outbound message pool");
-        thread::spawn(move || {
-            // Start workers
-            for _i in 0..MAX_OUTBOUND_MSG_PROCESSING_WORKERS as usize {
-                #[allow(unused_mut)] // For testing purposes
-                let mut worker = MessagePoolWorker::new(
-                    self.config.clone(),
-                    self.context.clone(),
-                    self.worker_dealer_address.clone(),
-                    self.message_requeue_address.clone(),
-                    self.peer_manager.clone(),
-                    self.connection_manager.clone(),
-                );
+        // Start workers
+        for _i in 0..MAX_OUTBOUND_MSG_PROCESSING_WORKERS as usize {
+            #[allow(unused_mut)] // For testing purposes
+            let mut worker = MessagePoolWorker::new(
+                self.config.clone(),
+                self.context.clone(),
+                self.worker_dealer_address.clone(),
+                self.message_requeue_address.clone(),
+                self.peer_manager.clone(),
+                self.connection_manager.clone(),
+            );
 
-                #[cfg(test)]
-                worker.set_test_channel(self.test_sync_sender[_i].clone());
-
-                worker.start();
-            }
-
-            // Start dealer
-            loop {
-                if let Err(e) = self.start_dealer() {
-                    error!(
-                        target: LOG_TARGET,
-                        "Could not start dealer for Outbound Message Pool - Error {:?}", e
-                    );
+            #[cfg(test)]
+            {
+                if self.test_sync_sender.len() > 0 {
+                    // Only set if create_test_channels was called
+                    worker.set_test_channel(self.test_sync_sender[_i as usize].clone());
                 }
             }
-        });
+
+            let (worker_thread_handle, worker_sync_sender) = worker.start();
+            self.worker_thread_handles.push(worker_thread_handle);
+            self.worker_control_senders.push(worker_sync_sender);
+        }
+        info!(target: LOG_TARGET, "Starting dealer");
+        self.start_dealer();
+    }
+
+    /// Tell the underlying dealer thread and workers to shut down
+    pub fn shutdown(self) -> Result<(), OutboundError> {
+        // Send Shutdown control message
+        for worker_sync_sender in self.worker_control_senders {
+            worker_sync_sender
+                .send(ControlMessage::Shutdown)
+                .map_err(|e| OutboundError::ControlSendError(format!("Failed to send control message: {:?}", e)))?;
+        }
+        // Join worker threads
+        for worker_thread_handle in self.worker_thread_handles {
+            worker_thread_handle
+                .join()
+                .map_err(|_| OutboundError::ThreadJoinError)?;
+        }
+
+        self.dealer_proxy
+            .shutdown()
+            .map_err(|e| OutboundError::DealerProxyError(e))
     }
 
     /// Create a channel pairs for use during testing the workers, the sync sender will be passed into the worker's
@@ -186,11 +209,11 @@ mod test {
 
     fn make_peer_connection_config(consumer_address: InprocAddress) -> PeerConnectionConfig {
         PeerConnectionConfig {
-            control_service_establish_timeout: Duration::from_millis(2000),
-            peer_connection_establish_timeout: Duration::from_secs(5),
+            control_service_establish_timeout: Duration::from_millis(10),
+            peer_connection_establish_timeout: Duration::from_millis(10),
             max_message_size: 1024,
             host: "127.0.0.1".parse().unwrap(),
-            max_connect_retries: 3,
+            max_connect_retries: 1,
             message_sink_address: consumer_address,
             socks_proxy_address: None,
         }
@@ -234,9 +257,10 @@ mod test {
 
         let oms =
             OutboundMessageService::new(context, node_identity, omp_inbound_address, peer_manager.clone()).unwrap();
+        // Instantiate the channels that will be used in the tests.
         let receivers = omp.create_test_channels();
+        omp.start();
 
-        let _omp = omp.start();
         let message_envelope_body: Vec<u8> = vec![0, 1, 2, 3];
 
         // Send a message for each thread so we can test that each worker receives one
@@ -280,4 +304,53 @@ mod test {
         );
     }
 
+    #[test]
+    fn clean_shutdown() {
+        init();
+        let mut rng = rand::OsRng::new().unwrap();
+        let context = ZmqContext::new();
+        let node_identity = Arc::new(NodeIdentity::random_for_test(None));
+        let peer_manager = Arc::new(PeerManager::<CommsPublicKey, CommsDataStore>::new(None).unwrap());
+        let connection_manager = Arc::new(ConnectionManager::new(
+            context.clone(),
+            node_identity.clone(),
+            peer_manager.clone(),
+            make_peer_connection_config(InprocAddress::random()),
+        ));
+
+        let (_dest_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
+        let node_id = NodeId::from_key(&pk.clone()).unwrap();
+        let net_addresses = NetAddressesWithStats::from("1.2.3.4:45325".parse::<NetAddress>().unwrap());
+        let dest_peer: Peer<RistrettoPublicKey> =
+            Peer::<RistrettoPublicKey>::new(pk.clone(), node_id, net_addresses, PeerFlags::default());
+        peer_manager.add_peer(dest_peer.clone()).unwrap();
+
+        let omp_inbound_address = InprocAddress::random();
+        let omp_config = OutboundMessagePoolConfig::default();
+        let mut omp = OutboundMessagePool::new(
+            omp_config.clone(),
+            context.clone(),
+            omp_inbound_address.clone(),
+            omp_inbound_address.clone(),
+            peer_manager.clone(),
+            connection_manager.clone(),
+        )
+        .unwrap();
+
+        let oms =
+            OutboundMessageService::new(context, node_identity, omp_inbound_address, peer_manager.clone()).unwrap();
+        omp.start();
+        thread::sleep(Duration::from_millis(100));
+
+        // TODO: Add this back in when the establish_connection_to_peer does not block the thread from joining
+        // let message_envelope_body: Vec<u8> = vec![0, 1, 2, 3];
+        // oms.send(
+        // BroadcastStrategy::DirectNodeId(dest_peer.node_id.clone()),
+        // MessageFlags::ENCRYPTED,
+        // message_envelope_body.clone(),
+        // );
+        // thread::sleep(Duration::from_millis(100));
+
+        assert!(omp.shutdown().is_ok());
+    }
 }

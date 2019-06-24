@@ -29,7 +29,6 @@ use crate::{
     domain_connector::ConnectorError,
     inbound_message_service::{
         comms_msg_handlers::construct_comms_msg_dispatcher,
-        error::InboundMessageServiceError,
         inbound_message_broker::{BrokerError, InboundMessageBroker},
         inbound_message_service::InboundMessageService,
     },
@@ -46,7 +45,7 @@ use crate::{
 use derive_error::Error;
 use log::*;
 use serde::{de::DeserializeOwned, export::fmt::Debug, Serialize};
-use std::{sync::Arc, thread::JoinHandle};
+use std::sync::Arc;
 
 const LOG_TARGET: &'static str = "comms::builder";
 
@@ -391,7 +390,7 @@ where
     MType: DispatchableKey,
     MType: Clone,
 {
-    pub fn start(self) -> Result<CommsServices<MType>, CommsServicesError> {
+    pub fn start(mut self) -> Result<CommsServices<MType>, CommsServicesError> {
         let mut control_service_handle = None;
         if let Some(control_service) = self.control_service {
             control_service_handle = Some(
@@ -401,7 +400,7 @@ where
             );
         }
 
-        let ims_handle = self.inbound_message_service.start();
+        self.inbound_message_service.start();
         self.outbound_message_pool.start();
 
         Ok(CommsServices {
@@ -414,7 +413,6 @@ where
 
             // Add handles for started services
             control_service_handle,
-            ims_handle,
         })
     }
 }
@@ -427,8 +425,6 @@ pub struct CommsServices<MType> {
     // TODO(sdbondi): Use these fields when able to shutdown
     #[allow(dead_code)]
     inbound_message_broker: Arc<InboundMessageBroker<MType>>,
-    #[allow(dead_code)]
-    ims_handle: JoinHandle<Result<(), InboundMessageServiceError>>,
     connection_manager: Arc<ConnectionManager>,
 }
 

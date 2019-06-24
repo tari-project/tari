@@ -122,7 +122,7 @@ mod test {
         // Setup Node A OMP and OMS
         let omp_inbound_address = InprocAddress::random();
         let omp_config = OutboundMessagePoolConfig::default();
-        let omp = OutboundMessagePool::new(
+        let mut omp = OutboundMessagePool::new(
             omp_config.clone(),
             context.clone(),
             omp_inbound_address.clone(),
@@ -215,7 +215,7 @@ mod test {
             retry_wait_time: chrono::Duration::milliseconds(100),
             worker_timeout_in_ms: 100,
         };
-        let omp = OutboundMessagePool::new(
+        let mut omp = OutboundMessagePool::new(
             omp_config.clone(),
             context.clone(),
             omp_inbound_address.clone(),
@@ -233,7 +233,7 @@ mod test {
         )
         .unwrap();
 
-        let _omp = omp.start();
+        omp.start();
         let message_envelope_body: Vec<u8> = vec![0, 1, 2, 3];
 
         // Now check that the requeuing happens

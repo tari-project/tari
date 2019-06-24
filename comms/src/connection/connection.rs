@@ -357,6 +357,10 @@ impl EstablishedConnection {
     pub(crate) fn get_socket(&self) -> &zmq::Socket {
         &self.socket
     }
+
+    pub(crate) fn get_mut_socket(&mut self) -> &mut zmq::Socket {
+        &mut self.socket
+    }
 }
 
 impl Drop for EstablishedConnection {

@@ -23,10 +23,10 @@
 use super::{error::InboundMessageServiceError, msg_processing_worker::*};
 use crate::{
     connection::{
+        peer_connection::ControlMessage,
         zmq::{InprocAddress, ZmqContext},
         ConnectionError,
         DealerProxy,
-        DealerProxyError,
     },
     dispatcher::DispatchableKey,
     inbound_message_service::inbound_message_broker::InboundMessageBroker,
@@ -38,10 +38,10 @@ use crate::{
 use log::*;
 use serde::{de::DeserializeOwned, Serialize};
 #[cfg(test)]
-use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
+use std::sync::mpsc::{sync_channel, Receiver};
 use std::{
-    sync::Arc,
-    thread::{self, JoinHandle},
+    sync::{mpsc::SyncSender, Arc},
+    thread::JoinHandle,
 };
 
 const LOG_TARGET: &'static str = "comms::inbound_message_service";
@@ -56,12 +56,14 @@ where
 {
     context: ZmqContext,
     node_identity: Arc<NodeIdentity<CommsPublicKey>>,
-    inbound_address: InprocAddress,
     dealer_address: InprocAddress,
     message_dispatcher: Arc<MessageDispatcher<MessageContext<MType>>>,
     inbound_message_broker: Arc<InboundMessageBroker<MType>>,
     outbound_message_service: Arc<OutboundMessageService>,
     peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
+    worker_thread_handles: Vec<JoinHandle<()>>,
+    worker_control_senders: Vec<SyncSender<ControlMessage>>,
+    dealer_proxy: DealerProxy,
     #[cfg(test)]
     test_sync_sender: Vec<SyncSender<String>>, /* These channels will be to test the pool workers threaded
                                                 * operation */
@@ -84,55 +86,72 @@ where
         peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
     ) -> Result<Self, ConnectionError>
     {
+        let dealer_address = InprocAddress::random();
         Ok(InboundMessageService {
-            context,
+            context: context.clone(),
             node_identity,
-            inbound_address,
-            dealer_address: InprocAddress::random(),
+            dealer_address: dealer_address.clone(),
             message_dispatcher,
             inbound_message_broker,
             outbound_message_service,
             peer_manager,
+            worker_thread_handles: Vec::new(),
+            worker_control_senders: Vec::new(),
+            dealer_proxy: DealerProxy::new(context.clone(), inbound_address, dealer_address.clone()),
             #[cfg(test)]
             test_sync_sender: Vec::new(),
         })
     }
 
-    fn start_dealer(&self) -> Result<(), DealerProxyError> {
-        DealerProxy::new(self.inbound_address.clone(), self.dealer_address.clone()).proxy(&self.context)
+    fn start_dealer(&mut self) {
+        self.dealer_proxy.spawn_proxy()
     }
 
     /// Starts the MsgProcessingWorker threads and the InboundMessageService with Dealer in its own thread
-    pub fn start(self) -> JoinHandle<Result<(), InboundMessageServiceError>> {
-        thread::spawn(move || {
-            // Start workers
-            debug!(target: LOG_TARGET, "Starting inbound message service workers");
-            #[allow(unused_variables)]
-            for i in 0..MAX_INBOUND_MSG_PROCESSING_WORKERS {
-                #[allow(unused_mut)] // Allow for testing
-                let mut worker = MsgProcessingWorker::new(
-                    self.context.clone(),
-                    self.node_identity.clone(),
-                    self.dealer_address.clone(),
-                    self.message_dispatcher.clone(),
-                    self.inbound_message_broker.clone(),
-                    self.outbound_message_service.clone(),
-                    self.peer_manager.clone(),
-                );
+    pub fn start(&mut self) {
+        info!(target: LOG_TARGET, "Starting inbound message service workers");
+        #[allow(unused_variables)]
+        for i in 0..MAX_INBOUND_MSG_PROCESSING_WORKERS {
+            #[allow(unused_mut)] // Allow for testing
+            let mut worker = MsgProcessingWorker::new(
+                self.context.clone(),
+                self.node_identity.clone(),
+                self.dealer_address.clone(),
+                self.message_dispatcher.clone(),
+                self.inbound_message_broker.clone(),
+                self.outbound_message_service.clone(),
+                self.peer_manager.clone(),
+            );
 
-                #[cfg(test)]
-                worker.set_test_channel(self.test_sync_sender[i as usize].clone());
+            #[cfg(test)]
+            worker.set_test_channel(self.test_sync_sender[i as usize].clone());
 
-                worker.start();
-            }
-            // Start dealer
-            loop {
-                self.start_dealer()
-                    .map_err(InboundMessageServiceError::DealerProxyError)?;
-            }
-            #[allow(unreachable_code)]
-            Ok(())
-        })
+            let (worker_thread_handle, worker_sync_sender) = worker.start();
+            self.worker_thread_handles.push(worker_thread_handle);
+            self.worker_control_senders.push(worker_sync_sender);
+        }
+        info!(target: LOG_TARGET, "Starting dealer");
+        self.start_dealer();
+    }
+
+    /// Tell the underlying dealer thread and workers to shut down
+    pub fn shutdown(self) -> Result<(), InboundMessageServiceError> {
+        // Send Shutdown control message
+        for worker_sync_sender in self.worker_control_senders {
+            worker_sync_sender.send(ControlMessage::Shutdown).map_err(|e| {
+                InboundMessageServiceError::ControlSendError(format!("Failed to send control message: {:?}", e))
+            })?;
+        }
+        // Join worker threads
+        for worker_thread_handle in self.worker_thread_handles {
+            worker_thread_handle
+                .join()
+                .map_err(|_| InboundMessageServiceError::ThreadJoinError)?;
+        }
+
+        self.dealer_proxy
+            .shutdown()
+            .map_err(|e| InboundMessageServiceError::DealerProxyError(e))
     }
 
     /// Create a channel pairs for use during testing the workers, the sync sender will be passed into the worker's
@@ -315,5 +334,10 @@ mod test {
             worker_responses.iter().fold(0, |acc, x| acc + x),
             MAX_INBOUND_MSG_PROCESSING_WORKERS
         );
+
+        // Test shutdown control
+        inbound_message_service.shutdown().unwrap();
+        std::thread::sleep(Duration::from_millis(200));
+        assert!(conn_client.send(&message_data_buffer).is_err());
     }
 }

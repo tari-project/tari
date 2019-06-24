@@ -90,5 +90,6 @@ mod worker;
 pub use self::{
     connection::{ConnectionId, PeerConnection, PeerConnectionSimpleState},
     context::{PeerConnectionContext, PeerConnectionContextBuilder},
+    control::ControlMessage,
     error::PeerConnectionError,
 };
