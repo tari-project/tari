@@ -36,6 +36,7 @@ pub mod types;
 
 pub mod block_chain_state;
 pub mod chain;
+pub mod emission;
 pub mod error;
 pub mod genesis_block;
 pub mod tari_amount;
