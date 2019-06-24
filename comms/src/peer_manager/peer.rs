@@ -20,13 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use super::node_id::deserialize_node_id_from_hex;
 use bitflags::*;
 use chrono::prelude::*;
 use serde::{Deserialize, Serialize};
-use tari_crypto::{
-    keys::PublicKey,
-    ristretto::serialize::{pubkey_from_hex, serialize_to_hex},
-};
+use tari_crypto::{keys::PublicKey, ristretto::serialize::pubkey_from_hex};
+use tari_utilities::hex::serialize_to_hex;
 
 use crate::{connection::net_address::net_addresses::NetAddressesWithStats, peer_manager::node_id::NodeId};
 // TODO reputation metric?
@@ -46,6 +45,8 @@ pub struct Peer<K> {
     #[serde(serialize_with = "serialize_to_hex", bound(serialize = "K: PublicKey"))]
     #[serde(deserialize_with = "pubkey_from_hex", bound(deserialize = "K: PublicKey"))]
     pub public_key: K,
+    #[serde(serialize_with = "serialize_to_hex")]
+    #[serde(deserialize_with = "deserialize_node_id_from_hex")]
     pub node_id: NodeId,
     pub addresses: NetAddressesWithStats,
     pub flags: PeerFlags,
@@ -86,11 +87,14 @@ mod test {
     use crate::{
         connection::{net_address::net_addresses::NetAddressesWithStats, NetAddress},
         peer_manager::node_id::NodeId,
+        types::CommsPublicKey,
     };
+    use serde_json::Value;
     use tari_crypto::{
         keys::{PublicKey, SecretKey},
         ristretto::{RistrettoPublicKey, RistrettoSecretKey},
     };
+    use tari_utilities::{hex::Hex, message_format::MessageFormat};
 
     #[test]
     fn test_is_and_set_banned() {
@@ -106,5 +110,25 @@ mod test {
         assert_eq!(peer.is_banned(), true);
         peer.set_banned(false);
         assert_eq!(peer.is_banned(), false);
+    }
+
+    #[test]
+    fn json_ser_der() {
+        let expected_pk_hex = "02622ace8f7303a31cafc63f8fc48fdc16e1c8c8d234b2f0d6685282a9076031";
+        let expected_nodeid_hex = "5f517508fdaeef0aeae7b577336731dfb6fe60bbbde363a5712100109b5d0f69";
+        let pk = CommsPublicKey::from_hex(expected_pk_hex).unwrap();
+        let node_id = NodeId::from_key(&pk).unwrap();
+        let peer = Peer::new(
+            pk,
+            node_id,
+            "127.0.0.1:9000".parse::<NetAddress>().unwrap().into(),
+            PeerFlags::empty(),
+        );
+
+        let json = peer.to_json().unwrap();
+        let json: Value = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(json["public_key"], expected_pk_hex);
+        assert_eq!(json["node_id"], expected_nodeid_hex);
     }
 }

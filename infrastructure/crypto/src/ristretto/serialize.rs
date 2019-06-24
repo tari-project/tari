@@ -42,17 +42,9 @@
 //! ```
 
 use crate::keys::{PublicKey, SecretKey};
-use serde::{de, Deserializer, Serializer};
+use serde::{de, Deserializer};
 use std::{fmt, marker::PhantomData};
 use tari_utilities::hex::Hex;
-
-pub fn serialize_to_hex<S, K>(k: &K, ser: S) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-    K: Hex,
-{
-    ser.serialize_str(&k.to_hex())
-}
 
 pub fn secret_from_hex<'de, D, K>(des: D) -> Result<K, D::Error>
 where
