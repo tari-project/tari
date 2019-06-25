@@ -129,8 +129,7 @@ mod test {
             omp_inbound_address.clone(),
             node_A_peer_manager.clone(),
             node_A_connection_manager.clone(),
-        )
-        .unwrap();
+        );
 
         let oms = OutboundMessageService::new(
             context.clone(),
@@ -213,7 +212,8 @@ mod test {
         let omp_config = OutboundMessagePoolConfig {
             max_num_of_retries: 3,
             retry_wait_time: chrono::Duration::milliseconds(100),
-            worker_timeout_in_ms: 100,
+            worker_timeout_in_ms: Duration::from_millis(100),
+            control_timeout_in_ms: Duration::from_millis(5),
         };
         let mut omp = OutboundMessagePool::new(
             omp_config.clone(),
@@ -222,8 +222,7 @@ mod test {
             omp_requeue_address.clone(),
             node_A_peer_manager.clone(),
             node_A_connection_manager.clone(),
-        )
-        .unwrap();
+        );
 
         let oms = OutboundMessageService::new(
             context.clone(),

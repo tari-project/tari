@@ -24,4 +24,4 @@ pub mod comms_msg_handlers;
 pub mod error;
 pub mod inbound_message_broker;
 pub mod inbound_message_service;
-pub mod msg_processing_worker;
+pub mod inbound_message_worker;

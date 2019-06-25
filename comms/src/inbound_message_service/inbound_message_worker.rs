@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::error::InboundMessageServiceError;
+use super::error::InboundError;
 use crate::{
     connection::{
         peer_connection::ControlMessage,
@@ -31,7 +31,10 @@ use crate::{
         SocketEstablishment,
     },
     dispatcher::DispatchableKey,
-    inbound_message_service::inbound_message_broker::InboundMessageBroker,
+    inbound_message_service::{
+        inbound_message_broker::InboundMessageBroker,
+        inbound_message_service::InboundMessageServiceConfig,
+    },
     message::{FrameSet, MessageContext, MessageData},
     outbound_message_service::outbound_message_service::OutboundMessageService,
     peer_manager::{peer_manager::PeerManager, NodeId, NodeIdentity, Peer},
@@ -46,59 +49,58 @@ use std::{
         Arc,
     },
     thread,
-    time::Duration,
 };
 
-const LOG_TARGET: &'static str = "comms::inbound_message_service::pool::worker";
+const LOG_TARGET: &'static str = "comms::inbound_message_service::worker";
 
-const WORKER_TIMEOUT_IN_MS: u32 = 100;
-
-pub struct MsgProcessingWorker<MType>
+/// The InboundMessageWorker retrieve messages from the inbound message queue, creates a MessageContext for the message
+/// that is then dispatch using the dispatcher.
+pub struct InboundMessageWorker<MType>
 where
     MType: DispatchableKey,
     MType: Serialize + DeserializeOwned,
 {
+    config: InboundMessageServiceConfig,
     context: ZmqContext,
     node_identity: Arc<NodeIdentity>,
-    inbound_address: InprocAddress,
+    message_queue_address: InprocAddress,
     message_dispatcher: Arc<MessageDispatcher<MessageContext<MType>>>,
     inbound_message_broker: Arc<InboundMessageBroker<MType>>,
     outbound_message_service: Arc<OutboundMessageService>,
     peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
     control_receiver: Option<Receiver<ControlMessage>>,
     is_running: bool,
-    #[cfg(test)]
-    test_sync_sender: Option<SyncSender<String>>,
 }
 
-impl<MType> MsgProcessingWorker<MType>
+impl<MType> InboundMessageWorker<MType>
 where
     MType: DispatchableKey,
     MType: Serialize + DeserializeOwned,
 {
-    /// Setup a new MsgProcessingWorker that will read incoming messages and dispatch them using the message_dispatcher
+    /// Setup a new InboundMessageWorker that will read incoming messages and dispatch them using the message_dispatcher
+    /// and inbound_message_broker
     pub fn new(
+        config: InboundMessageServiceConfig,
         context: ZmqContext,
         node_identity: Arc<NodeIdentity>,
-        inbound_address: InprocAddress,
+        message_queue_address: InprocAddress,
         message_dispatcher: Arc<MessageDispatcher<MessageContext<MType>>>,
         inbound_message_broker: Arc<InboundMessageBroker<MType>>,
         outbound_message_service: Arc<OutboundMessageService>,
         peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
     ) -> Self
     {
-        MsgProcessingWorker {
+        InboundMessageWorker {
+            config,
             context,
             node_identity,
-            inbound_address,
+            message_queue_address,
             message_dispatcher,
             inbound_message_broker,
             outbound_message_service,
             peer_manager,
             control_receiver: None,
             is_running: false,
-            #[cfg(test)]
-            test_sync_sender: None,
         }
     }
 
@@ -106,11 +108,12 @@ where
         self.peer_manager.find_with_node_id(node_id).ok()
     }
 
-    fn start_worker(&mut self) -> Result<(), InboundMessageServiceError> {
+    // Main loop of worker thread
+    fn start_worker(&mut self) -> Result<(), InboundError> {
         let inbound_connection = Connection::new(&self.context, Direction::Inbound)
-            .set_socket_establishment(SocketEstablishment::Connect)
-            .establish(&self.inbound_address)
-            .map_err(|e| InboundMessageServiceError::InboundConnectionError(e))?;
+            .set_socket_establishment(SocketEstablishment::Bind)
+            .establish(&self.message_queue_address)
+            .map_err(|e| InboundError::InboundConnectionError(e))?;
 
         // Retrieve, process and dispatch messages
         loop {
@@ -118,12 +121,11 @@ where
             self.process_control_messages();
 
             if self.is_running {
-                match inbound_connection.receive(WORKER_TIMEOUT_IN_MS) {
+                match inbound_connection.receive(self.config.worker_timeout_in_ms.as_millis() as u32) {
                     Ok(mut frame_set) => {
-                        // This strips off the two ZeroMQ Identity frames introduced by the transmission to the proxy
-                        // and from the proxy to this worker
+                        // This strips off the two ZeroMQ Identity frames introduced by the transmission to this worker
                         debug!(target: LOG_TARGET, "Received {} frames", frame_set.len());
-                        let frame_set: FrameSet = frame_set.drain(2..).collect();
+                        let frame_set: FrameSet = frame_set.drain(1..).collect();
 
                         match MessageData::try_from(frame_set) {
                             Ok(message_data) => {
@@ -154,13 +156,6 @@ where
                                         "Could not dispatch message to handler - Error: {:?}", e
                                     );
                                 });
-
-                                #[cfg(test)]
-                                {
-                                    if let Some(tx) = self.test_sync_sender.clone() {
-                                        tx.send("Message dispatched".to_string()).unwrap();
-                                    }
-                                }
                             },
                             Err(e) => {
                                 // if unable to deserialize the MessageHeader then MUST discard the
@@ -176,7 +171,7 @@ where
                     Err(e) => {
                         error!(
                             target: LOG_TARGET,
-                            "Error receiving messages from Dealer - Error: {}", e
+                            "Error receiving messages from message queue - Error: {}", e
                         );
                     },
                 };
@@ -187,8 +182,8 @@ where
         Ok(())
     }
 
-    /// Start the MsgProcessingWorker thread, connect to reply socket, retrieve and dispatch incoming messages to
-    /// handlers
+    /// Start the InboundMessageWorker thread, setup the control channel and start retrieving and dispatching incoming
+    /// messages to handlers
     pub fn start(mut self) -> (thread::JoinHandle<()>, SyncSender<ControlMessage>) {
         self.is_running = true;
         let (control_sync_sender, control_receiver) = sync_channel(5);
@@ -197,10 +192,7 @@ where
         let thread_handle = thread::spawn(move || match self.start_worker() {
             Ok(_) => (),
             Err(e) => {
-                error!(
-                    target: LOG_TARGET,
-                    "Error starting Inbound Message Pool worker: {:?}", e
-                );
+                error!(target: LOG_TARGET, "Error starting inbound message worker: {:?}", e);
             },
         });
         (thread_handle, control_sync_sender)
@@ -210,7 +202,7 @@ where
     fn process_control_messages(&mut self) {
         match &self.control_receiver {
             Some(control_receiver) => {
-                if let Some(control_msg) = control_receiver.recv_timeout(Duration::from_millis(5)).ok() {
+                if let Some(control_msg) = control_receiver.recv_timeout(self.config.control_timeout_in_ms).ok() {
                     debug!(target: LOG_TARGET, "Received control message: {:?}", control_msg);
                     match control_msg {
                         ControlMessage::Shutdown => {
@@ -223,11 +215,6 @@ where
             },
             None => warn!(target: LOG_TARGET, "Control receive not available for worker"),
         }
-    }
-
-    #[cfg(test)]
-    pub fn set_test_channel(&mut self, tx: SyncSender<String>) {
-        self.test_sync_sender = Some(tx);
     }
 }
 
@@ -289,7 +276,7 @@ mod test {
         }
 
         // Create Worker
-        let inbound_address = InprocAddress::random();
+        let message_queue_address = InprocAddress::random();
         let message_dispatcher = Arc::new(construct_comms_msg_dispatcher::<DomainBrokerType>());
         let inbound_message_broker = Arc::new(
             InboundMessageBroker::new(context.clone())
@@ -316,10 +303,12 @@ mod test {
             )
             .unwrap(),
         );
-        let worker = MsgProcessingWorker::new(
+        let ims_config = InboundMessageServiceConfig::default();
+        let worker = InboundMessageWorker::new(
+            ims_config,
             context.clone(),
             node_identity.clone(),
-            inbound_address.clone(),
+            message_queue_address.clone(),
             message_dispatcher,
             inbound_message_broker,
             outbound_message_service,
@@ -329,10 +318,9 @@ mod test {
         // Give worker sufficient time to spinup thread and create a socket
         std::thread::sleep(time::Duration::from_millis(100));
 
-        // Create a dealer that will send the worker messages
-        let dealer_connection = Connection::new(&context, Direction::Outbound)
-            .set_socket_establishment(SocketEstablishment::Bind)
-            .establish(&inbound_address)
+        // Create a client that will send messages to the message queue
+        let client_connection = Connection::new(&context, Direction::Outbound)
+            .establish(&message_queue_address)
             .unwrap();
 
         // Construct test message 1
@@ -355,7 +343,6 @@ mod test {
             message_envelope,
         );
         let mut message1_frame_set = Vec::new();
-        message1_frame_set.push(vec![0]);
         message1_frame_set.extend(message_data1.clone().try_into_frame_set().unwrap());
 
         // Construct test message 2
@@ -377,13 +364,12 @@ mod test {
             message_envelope,
         );
         let mut message2_frame_set = Vec::new();
-        message2_frame_set.push(vec![0]);
         message2_frame_set.extend(message_data2.clone().try_into_frame_set().unwrap());
 
         // Submit Messages to the Worker
         pause();
-        dealer_connection.send(message1_frame_set.clone()).unwrap();
-        dealer_connection.send(message2_frame_set).unwrap();
+        client_connection.send(message1_frame_set.clone()).unwrap();
+        client_connection.send(message2_frame_set).unwrap();
 
         // Retrieve messages at handler services
         pause();
@@ -402,6 +388,6 @@ mod test {
         control_sync_sender.send(ControlMessage::Shutdown).unwrap();
         std::thread::sleep(time::Duration::from_millis(200));
         thread_handle.join().unwrap();
-        assert!(dealer_connection.send(message1_frame_set).is_err());
+        assert!(client_connection.send(message1_frame_set).is_err());
     }
 }

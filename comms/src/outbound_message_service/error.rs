@@ -30,6 +30,7 @@ use derive_error::Error;
 use tari_crypto::signatures::SchnorrSignatureError;
 use tari_utilities::{ciphers::cipher::CipherError, message_format::MessageFormatError, ByteArrayError};
 
+/// Error type for OutboundMessageService subsystem
 #[derive(Debug, Error)]
 pub enum OutboundError {
     /// Could not connect to the outbound message pool

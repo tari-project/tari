@@ -30,13 +30,13 @@ use crate::{
     peer_manager::PeerManager,
     types::{CommsDataStore, CommsPublicKey},
 };
-use chrono::Duration;
 use log::*;
 #[cfg(test)]
 use std::sync::mpsc::{sync_channel, Receiver};
 use std::{
     sync::{mpsc::SyncSender, Arc},
     thread::JoinHandle,
+    time::Duration,
 };
 
 /// The maximum number of processing worker threads that will be created by the OutboundMessageService
@@ -48,16 +48,21 @@ const LOG_TARGET: &'static str = "comms::outbound_message_service::pool";
 pub struct OutboundMessagePoolConfig {
     /// How many times the pool will requeue a message to be sent
     pub max_num_of_retries: u32,
-    pub retry_wait_time: Duration,
-    pub worker_timeout_in_ms: u32,
+    /// Waiting time between different retry attempts
+    pub retry_wait_time: chrono::Duration,
+    /// Timeout used for receiving messages from the message queue
+    pub worker_timeout_in_ms: Duration,
+    /// Timeout used for listening for control messages
+    pub control_timeout_in_ms: Duration,
 }
 
 impl Default for OutboundMessagePoolConfig {
     fn default() -> Self {
         OutboundMessagePoolConfig {
             max_num_of_retries: 10,
-            retry_wait_time: Duration::seconds(3600),
-            worker_timeout_in_ms: 100,
+            retry_wait_time: chrono::Duration::seconds(3600),
+            worker_timeout_in_ms: Duration::from_millis(100),
+            control_timeout_in_ms: Duration::from_millis(5),
         }
     }
 }
@@ -97,10 +102,10 @@ impl OutboundMessagePool {
         message_requeue_address: InprocAddress,
         peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
         connection_manager: Arc<ConnectionManager>,
-    ) -> Result<OutboundMessagePool, OutboundError>
+    ) -> OutboundMessagePool
     {
         let worker_dealer_address = InprocAddress::random();
-        Ok(OutboundMessagePool {
+        OutboundMessagePool {
             config,
             context: context.clone(),
             message_requeue_address,
@@ -112,7 +117,7 @@ impl OutboundMessagePool {
             dealer_proxy: DealerProxy::new(context.clone(), message_queue_address, worker_dealer_address.clone()),
             #[cfg(test)]
             test_sync_sender: Vec::new(),
-        })
+        }
     }
 
     fn start_dealer(&mut self) {
@@ -251,8 +256,7 @@ mod test {
             omp_inbound_address.clone(),
             peer_manager.clone(),
             connection_manager.clone(),
-        )
-        .unwrap();
+        );
 
         let oms =
             OutboundMessageService::new(context, node_identity, omp_inbound_address, peer_manager.clone()).unwrap();
@@ -333,10 +337,9 @@ mod test {
             omp_inbound_address.clone(),
             peer_manager.clone(),
             connection_manager.clone(),
-        )
-        .unwrap();
+        );
 
-        let oms =
+        let _oms =
             OutboundMessageService::new(context, node_identity, omp_inbound_address, peer_manager.clone()).unwrap();
         omp.start();
         thread::sleep(Duration::from_millis(100));

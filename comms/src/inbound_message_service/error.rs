@@ -21,22 +21,24 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    connection::{error::ConnectionError, zmq::ZmqError, DealerProxyError},
+    connection::{error::ConnectionError, DealerProxyError},
     inbound_message_service::inbound_message_broker::BrokerError,
 };
 use derive_error::Error;
 
-/// Error type for IMS
+/// Error type for InboundMessageService subsystem
 #[derive(Debug, Error)]
-pub enum InboundMessageServiceError {
-    /// Problem with inbound socket
-    InboundSocketError(ZmqError),
+pub enum InboundError {
     /// Failed to connect to inbound socket
     InboundConnectionError(ConnectionError),
     DealerProxyError(DealerProxyError),
     BrokerError(BrokerError),
     #[error(msg_embedded, non_std, no_from)]
     ControlSendError(String),
-    /// Could not join the dealer or worker threads
+    /// Unable to send a control message as the control sync sender is undefined
+    ControlSenderUndefined,
+    /// Could not join the InboundMessageWorker thread
     ThreadJoinError,
+    /// The thread handle is undefined and could have not been properly created
+    ThreadHandleUndefined,
 }
