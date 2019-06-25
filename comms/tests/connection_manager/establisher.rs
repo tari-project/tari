@@ -20,32 +20,30 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-//    use tari_comms::
 use crate::support::{
-    factories::{self, Factory},
+    factories::{self, TestFactory},
     helpers::ConnectionMessageCounter,
 };
 use std::{sync::Arc, time::Duration};
 use tari_comms::{
-    connection::{Connection, Context, CurveEncryption, Direction, InprocAddress, NetAddress},
-    connection_manager::{ConnectionManagerError, PeerConnectionConfig},
+    connection::{Connection, CurveEncryption, Direction, InprocAddress, NetAddress, ZmqContext},
+    connection_manager::{establisher::ConnectionEstablisher, ConnectionManagerError, PeerConnectionConfig},
 };
 
-fn make_peer_connection_config(context: &Context, consumer_address: InprocAddress) -> PeerConnectionConfig {
+fn make_peer_connection_config(message_sink_address: InprocAddress) -> PeerConnectionConfig {
     PeerConnectionConfig {
-        context: context.clone(),
         peer_connection_establish_timeout: Duration::from_secs(5),
         max_message_size: 1024,
         host: "127.0.0.1".parse().unwrap(),
         max_connect_retries: 3,
-        consumer_address,
+        message_sink_address,
         socks_proxy_address: None,
     }
 }
 
 #[test]
 fn establish_control_service_connection_fail() {
-    let context = Context::new();
+    let context = ZmqContext::new();
     let peers = factories::peer::create_many(2).build().unwrap();
     let peer_manager = Arc::new(
         factories::peer_manager::create()
@@ -53,11 +51,11 @@ fn establish_control_service_connection_fail() {
             .build()
             .unwrap(),
     );
-    let config = make_peer_connection_config(&context, InprocAddress::random());
+    let config = make_peer_connection_config(InprocAddress::random());
 
     let example_peer = &peers[0];
 
-    let establisher = ConnectionEstablisher::new(config, peer_manager);
+    let establisher = ConnectionEstablisher::new(context, config, peer_manager);
     let result = establisher.establish_control_service_connection(example_peer);
 
     match result {
@@ -69,7 +67,7 @@ fn establish_control_service_connection_fail() {
 
 #[test]
 fn establish_control_service_connection_succeed() {
-    let context = Context::new();
+    let context = ZmqContext::new();
     let address = factories::net_address::create().use_os_port().build().unwrap();
 
     // Setup a connection to act as an endpoint for a peers control service
@@ -91,25 +89,25 @@ fn establish_control_service_connection_succeed() {
             .unwrap(),
     );
 
-    let config = make_peer_connection_config(&context, InprocAddress::random());
-    let establisher = ConnectionEstablisher::new(config, peer_manager);
+    let config = make_peer_connection_config(InprocAddress::random());
+    let establisher = ConnectionEstablisher::new(context, config, peer_manager);
     establisher.establish_control_service_connection(&example_peer).unwrap();
 }
 
 #[test]
 fn establish_peer_connection_outbound() {
-    let context = Context::new();
-    let consumer_address = InprocAddress::random();
+    let context = ZmqContext::new();
+    let msg_sink_address = InprocAddress::random();
 
     // Setup a message counter to count the number of messages sent to the consumer address
     let msg_counter = ConnectionMessageCounter::new(&context);
-    msg_counter.start(consumer_address.clone());
+    msg_counter.start(msg_sink_address.clone());
 
     // Setup a peer connection
     let (other_peer_conn, _, peer_curve_pk) = factories::peer_connection::create()
         .with_peer_connection_context_factory(
             factories::peer_connection_context::create()
-                .with_consumer_address(consumer_address.clone())
+                .with_message_sink_address(msg_sink_address.clone())
                 .with_context(&context)
                 .with_direction(Direction::Inbound),
         )
@@ -134,20 +132,17 @@ fn establish_peer_connection_outbound() {
             .unwrap(),
     );
 
-    let config = make_peer_connection_config(&context, InprocAddress::random());
-    let establisher = ConnectionEstablisher::new(config, peer_manager);
-    let (entry, peer_conn_handle) = establisher
-        .establish_outbound_peer_connection(&example_peer, &address, peer_curve_pk)
+    let config = make_peer_connection_config(InprocAddress::random());
+    let establisher = ConnectionEstablisher::new(context.clone(), config, peer_manager);
+    let (connection, peer_conn_handle) = establisher
+        .establish_outbound_peer_connection(example_peer.node_id.clone().into(), address, peer_curve_pk)
         .unwrap();
 
-    entry.connection.send(vec!["HELLO".as_bytes().to_vec()]).unwrap();
-    entry.connection.send(vec!["TARI".as_bytes().to_vec()]).unwrap();
+    connection.send(vec!["HELLO".as_bytes().to_vec()]).unwrap();
+    connection.send(vec!["TARI".as_bytes().to_vec()]).unwrap();
 
-    entry.connection.shutdown().unwrap();
-    entry
-        .connection
-        .wait_disconnected(&Duration::from_millis(1000))
-        .unwrap();
+    connection.shutdown().unwrap();
+    connection.wait_disconnected(&Duration::from_millis(1000)).unwrap();
 
     assert_eq!(msg_counter.count(), 2);
 
@@ -156,8 +151,8 @@ fn establish_peer_connection_outbound() {
 
 #[test]
 fn establish_peer_connection_inbound() {
-    let context = Context::new();
-    let consumer_address = InprocAddress::random();
+    let context = ZmqContext::new();
+    let msg_sink_address = InprocAddress::random();
 
     let (secret_key, public_key) = CurveEncryption::generate_keypair().unwrap();
 
@@ -172,20 +167,19 @@ fn establish_peer_connection_inbound() {
 
     // Setup a message counter to count the number of messages sent to the consumer address
     let msg_counter = ConnectionMessageCounter::new(&context);
-    msg_counter.start(consumer_address.clone());
+    msg_counter.start(msg_sink_address.clone());
 
     // Create a connection establisher
-    let config = make_peer_connection_config(&context, consumer_address.clone());
-    let establisher = ConnectionEstablisher::new(config, peer_manager);
-    let (entry, peer_conn_handle) = establisher
-        .establish_inbound_peer_connection(&example_peer, secret_key)
+    let config = make_peer_connection_config(msg_sink_address.clone());
+    let establisher = ConnectionEstablisher::new(context.clone(), config, peer_manager);
+    let (connection, peer_conn_handle) = establisher
+        .establish_inbound_peer_connection(example_peer.node_id.clone().into(), secret_key)
         .unwrap();
 
-    entry
-        .connection
+    connection
         .wait_listening_or_failure(&Duration::from_millis(2000))
         .unwrap();
-    let address: NetAddress = entry.connection.get_connected_address().unwrap().into();
+    let address: NetAddress = connection.get_connected_address().unwrap().into();
 
     // Setup a peer connection which will connect to our established inbound peer connection
     let (other_peer_conn, _, _) = factories::peer_connection::create()

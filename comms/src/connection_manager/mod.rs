@@ -25,7 +25,7 @@ mod connections;
 ///
 /// Responsible for managing and establishing active connections to peers.
 mod error;
-mod establisher;
+pub mod establisher;
 mod manager;
 mod protocol;
 mod repository;

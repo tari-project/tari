@@ -85,7 +85,7 @@ impl Default for PeerConnectionConfig {
 /// the peer stats for failed/successful connection attempts. This component does not hold any
 /// connections, but returns them so that the caller may use them as needed. This component does
 /// not complete the peer connection protocol, it simply creates connections with some reliability.
-pub(crate) struct ConnectionEstablisher<PK> {
+pub struct ConnectionEstablisher<PK> {
     context: ZmqContext,
     config: PeerConnectionConfig,
     peer_manager: Arc<PeerManager<PK, CommsDataStore>>,
