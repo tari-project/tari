@@ -62,14 +62,14 @@ impl<'e, 'ni> PeerConnectionProtocol<'e, 'ni> {
         );
         let (new_inbound_conn, curve_pk, join_handle) = self.open_inbound_peer_connection(&peer)?;
 
-        debug!(
-            target: LOG_TARGET,
-            "[NodeId={}] Inbound peer connection established", peer.node_id
-        );
-
         let address = new_inbound_conn
             .get_address()
             .ok_or(ConnectionManagerError::ConnectionAddressNotEstablished)?;
+
+        debug!(
+            target: LOG_TARGET,
+            "[NodeId={}] Inbound peer connection established on address {}", peer.node_id, address
+        );
 
         // Construct establish connection message
         let msg = EstablishConnection {
@@ -112,7 +112,7 @@ impl<'e, 'ni> PeerConnectionProtocol<'e, 'ni> {
         .map_err(ConnectionManagerError::MessageError)?;
 
         control_conn
-            .send(envelope.into_frame_set())
+            .send_sync(envelope.into_frame_set())
             .map_err(ConnectionManagerError::ConnectionError)?;
 
         Ok(())

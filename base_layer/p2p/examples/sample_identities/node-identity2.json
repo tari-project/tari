@@ -1,0 +1,8 @@
+{
+  "identity": {
+    "node_id": "037ff81d7e04338961dedbc6750eaea87b5aa5f42b90ef0b27681a78f9673c54",
+    "public_key": "c4b2f064fdc61229f9d3e7cc67a2e326e252ace50885f315f4d6f262fff1f869"
+  },
+  "secret_key": "b1e8f6e901c6722e71e36bf7fb8255cf5a8c31803913cab3c10428e76cca3e0e",
+  "control_service_address": {"IP": "127.0.0.1:48579"}
+}

@@ -65,7 +65,7 @@ impl Wallet {
 
         let comm_routes = registry.build_comms_routes();
 
-        let comms = initialize_comms(self.config.comms.clone(), comm_routes)?;
+        let comms = initialize_comms(self.config.comms.clone(), comm_routes, None)?;
 
         Ok(ServiceExecutor::execute(comms, registry))
     }

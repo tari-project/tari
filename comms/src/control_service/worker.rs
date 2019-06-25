@@ -120,7 +120,8 @@ where
 
                         Err(err) => {
                             error!(target: LOG_TARGET, "Worker exited with an error: {:?}", err);
-                            info!(target: LOG_TARGET, "Restarting control service.");
+                            info!(target: LOG_TARGET, "Restarting control service after 1 second.");
+                            thread::sleep(Duration::from_millis(1000));
                         },
                     }
                 }
@@ -245,6 +246,10 @@ where
     }
 
     fn establish_listener(&self) -> Result<EstablishedConnection> {
+        debug!(
+            target: LOG_TARGET,
+            "Binding on address: {}", self.config.listener_address
+        );
         Connection::new(&self.context, Direction::Inbound)
             .set_receive_hwm(10)
             .set_max_message_size(Some(CONTROL_SERVICE_MAX_MSG_SIZE))

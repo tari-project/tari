@@ -84,7 +84,7 @@ where
 
     debug!(
         target: LOG_TARGET,
-        "EstablishConnection message received from NodeId={}", message.node_id
+        "EstablishConnection message received (node_id={}, address={})", message.node_id, message.address
     );
 
     let pm = &context.peer_manager;

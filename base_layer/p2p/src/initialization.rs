@@ -29,7 +29,7 @@ use tari_comms::{
     connection_manager::PeerConnectionConfig,
     control_service::ControlServiceConfig,
     peer_manager::{node_identity::NodeIdentityError, NodeIdentity},
-    types::{CommsPublicKey, CommsSecretKey},
+    types::{CommsDataStore, CommsPublicKey, CommsSecretKey},
     CommsBuilder,
 };
 
@@ -52,6 +52,7 @@ pub struct CommsConfig {
 pub fn initialize_comms(
     config: CommsConfig,
     comms_routes: CommsRoutes<TariMessageType>,
+    datastore: Option<CommsDataStore>,
 ) -> Result<Arc<CommsServices<TariMessageType>>, CommsInitializationError>
 {
     let node_identity = NodeIdentity::new(
@@ -61,7 +62,7 @@ pub fn initialize_comms(
     )
     .map_err(CommsInitializationError::NodeIdentityError)?;
 
-    let comms = CommsBuilder::new()
+    let mut builder = CommsBuilder::new()
         .with_routes(comms_routes.clone())
         .with_node_identity(node_identity)
         .configure_control_service(config.control_service)
@@ -69,7 +70,13 @@ pub fn initialize_comms(
             socks_proxy_address: config.socks_proxy_address,
             host: config.host,
             ..Default::default()
-        })
+        });
+
+    if let Some(store) = datastore {
+        builder = builder.with_peer_storage(store);
+    }
+
+    let comms = builder
         .build()
         .map_err(CommsInitializationError::CommsBuilderError)?
         .start()
