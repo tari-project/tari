@@ -23,36 +23,50 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
-use std::sync::Once;
+use std::{path::Path, sync::Once};
 
-/// Initialize the system logger. This function initializes and exposes the global logging instance. You can call
-/// this function multiple times; additional calls will have no effect.
+/// This function initializes global logging for tari applications.
 ///
-/// The logger is configured by the `log4rs.yml` file (release mode), or `log4rs-debug.yml` (debug mode). Obviously,
-/// when binaries are released, users will be able to configure the logging in any way they see fit by editing the
-/// (usually) `log4rs.yml` file.
+/// The `log4rs_config_path` argument should point to the log4rs configuration file. Absolute or
+/// relative paths are supported. If you call this function more than once, an error will be returned.
 ///
 /// Logging configuration is kept in a separate file (before the main Config file) because we'll want to log messages
 /// about the configuration and this won't be possible unless the logger is fully bootstrapped.
-pub fn initialize_logger() {
+pub fn initialize_logger<P>(log4rs_config_path: P) -> Result<(), log4rs::Error>
+where P: AsRef<Path> {
+    log4rs::init_file(log4rs_config_path, Default::default())
+}
+
+/// Initialize the system logger for tests. This function searches up the directory tree
+/// until it finds a `.git` subdirectory and then points to the `log4rs-debug.yml` in the
+/// `tari_common` crate. Therefore, this function should never be used in a prebuilt binary
+/// or outside of tests and examples.
+///
+/// Calling this function multiple times will have no effect.
+pub fn initialize_logger_for_test() {
+    use std::env::current_dir;
     static INIT_LOGGER: Once = Once::new();
     INIT_LOGGER.call_once(|| {
-        #[cfg(debug_assertions)]
-        log4rs::init_file("log4rs-debug.yml", Default::default()).unwrap();
-        #[cfg(not(debug_assertions))]
-        log4rs::init_file("log4rs.yml", Default::default()).unwrap();
+        let mut working_dir = current_dir().unwrap();
+        while !working_dir.join(".git").exists() {
+            if !working_dir.pop() {
+                panic!("Unable to locate log4rs configuration file.");
+            }
+        }
+        working_dir.push("common/");
+        log4rs::init_file(working_dir.join("log4rs-debug.yml"), Default::default()).unwrap();
     });
 }
 
 #[cfg(test)]
 mod test {
-    use super::initialize_logger;
+    use super::initialize_logger_for_test;
     use log::{debug, error, info, warn};
     use std::{thread, time::Duration};
 
     #[test]
     fn logging_from_self() {
-        initialize_logger();
+        initialize_logger_for_test();
         debug!(target: "comms::p2p::inbound", "Demo inbound log message (to network)");
         warn!(target: "stdout", "Logging from main thread (to stdout)");
         debug!(target: "stdout", "Logging from main thread (ignored)");
@@ -61,7 +75,7 @@ mod test {
 
     #[test]
     fn logging_from_multi_threads() {
-        initialize_logger();
+        initialize_logger_for_test();
         thread::spawn(move || {
             warn!(target: "stdout", "Hi from thread A (to stdout)");
             debug!("Default message (to base)");

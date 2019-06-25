@@ -4,10 +4,6 @@ version = "0.0.2"
 edition = "2018"
 
 [dependencies]
-tari_crypto = { version = "^0.0", path = "../../infrastructure/crypto"}
-tari_comms = { version = "^0.0", path = "../../comms"}
-tari_core = { version = "^0.0", path = "../core"}
-tari_utilities = { version = "^0.0", path = "../../infrastructure/tari_util"}
 rmp-serde = "0.13.7"
 serde = "1.0.90"
 serde_derive = "1.0.90"
@@ -17,9 +13,16 @@ log = "0.4.6"
 rand = "0.6.5"
 crossbeam-channel = "0.3.8"
 
+tari_crypto = { version = "^0.0", path = "../../infrastructure/crypto"}
+tari_comms = { version = "^0.0", path = "../../comms"}
+tari_core = { version = "^0.0", path = "../core"}
+tari_utilities = { version = "^0.0", path = "../../infrastructure/tari_util"}
+
 [dev-dependencies]
-tari_storage = {version = "^0.0", path = "../../infrastructure/storage"}
 tempdir = "0.3.7"
 cursive = "0.12.0"
 clap = "2.33.0"
 lazy_static = "1.3.0"
+
+tari_storage = {version = "^0.0", path = "../../infrastructure/storage"}
+tari_common = { version = "^0.0", path = "../../common"}

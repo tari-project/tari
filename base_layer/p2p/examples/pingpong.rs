@@ -92,6 +92,7 @@ fn datastore_with_peer(identity: NodeIdentity) -> CommsDataStore {
 }
 
 fn main() {
+    tari_common::logging::initialize_logger_for_test();
     let matches = App::new("Peer file generator")
         .version("1.0")
         .about("PingPong between two peers")
