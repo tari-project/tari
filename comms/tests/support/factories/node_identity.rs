@@ -25,57 +25,51 @@ use rand::OsRng;
 use tari_comms::{
     connection::NetAddress,
     peer_manager::{NodeId, NodeIdentity, PeerNodeIdentity},
+    types::{CommsPublicKey, CommsSecretKey},
 };
 use tari_crypto::keys::{PublicKey, SecretKey};
-use tari_utilities::Hashable;
 
-pub fn create<PK>() -> NodeIdentityFactory<PK>
-where PK: PublicKey {
-    NodeIdentityFactory::<PK>::default()
+pub fn create() -> NodeIdentityFactory {
+    NodeIdentityFactory::default()
 }
 
 #[derive(Default, Clone)]
-pub struct NodeIdentityFactory<PK>
-where PK: PublicKey
-{
+pub struct NodeIdentityFactory {
     control_service_address: Option<NetAddress>,
-    secret_key: Option<PK::K>,
-    public_key: Option<PK>,
+    secret_key: Option<CommsSecretKey>,
+    public_key: Option<CommsPublicKey>,
     node_id: Option<NodeId>,
 }
 
-impl<PK> NodeIdentityFactory<PK>
-where PK: PublicKey
-{
+impl NodeIdentityFactory {
     factory_setter!(
         with_control_service_address,
         control_service_address,
         Option<NetAddress>
     );
 
-    factory_setter!(with_secret_key, secret_key, Option<PK::K>);
+    factory_setter!(with_secret_key, secret_key, Option<CommsSecretKey>);
 
-    factory_setter!(with_public_key, public_key, Option<PK>);
+    factory_setter!(with_public_key, public_key, Option<CommsPublicKey>);
 
     factory_setter!(with_node_id, node_id, Option<NodeId>);
 }
 
-impl<PK> TestFactory for NodeIdentityFactory<PK>
-where
-    PK: PublicKey,
-    PK: Hashable,
-{
-    type Object = NodeIdentity<PK>;
+impl TestFactory for NodeIdentityFactory {
+    type Object = NodeIdentity;
 
     fn build(self) -> Result<Self::Object, TestFactoryError> {
         // Generate a test identity, set it and return it
         let secret_key = self
             .secret_key
-            .or(Some(PK::K::random(
+            .or(Some(CommsSecretKey::random(
                 &mut OsRng::new().map_err(TestFactoryError::build_failed())?,
             )))
             .unwrap();
-        let public_key = self.public_key.or(Some(PK::from_secret_key(&secret_key))).unwrap();
+        let public_key = self
+            .public_key
+            .or(Some(CommsPublicKey::from_secret_key(&secret_key)))
+            .unwrap();
         let node_id = self
             .node_id
             .or(Some(

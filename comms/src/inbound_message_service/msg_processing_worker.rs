@@ -59,7 +59,7 @@ where
     MType: Serialize + DeserializeOwned,
 {
     context: ZmqContext,
-    node_identity: Arc<NodeIdentity<CommsPublicKey>>,
+    node_identity: Arc<NodeIdentity>,
     inbound_address: InprocAddress,
     message_dispatcher: Arc<MessageDispatcher<MessageContext<MType>>>,
     inbound_message_broker: Arc<InboundMessageBroker<MType>>,
@@ -79,7 +79,7 @@ where
     /// Setup a new MsgProcessingWorker that will read incoming messages and dispatch them using the message_dispatcher
     pub fn new(
         context: ZmqContext,
-        node_identity: Arc<NodeIdentity<CommsPublicKey>>,
+        node_identity: Arc<NodeIdentity>,
         inbound_address: InprocAddress,
         message_dispatcher: Arc<MessageDispatcher<MessageContext<MType>>>,
         inbound_message_broker: Arc<InboundMessageBroker<MType>>,

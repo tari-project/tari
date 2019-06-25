@@ -30,7 +30,7 @@ use crate::{
     connection_manager::ConnectionManager,
     control_service::types::ControlServiceDispatcher,
     peer_manager::NodeIdentity,
-    types::{CommsPublicKey, DEFAULT_LISTENER_ADDRESS},
+    types::DEFAULT_LISTENER_ADDRESS,
 };
 use log::*;
 use serde::{de::DeserializeOwned, Serialize};
@@ -117,7 +117,7 @@ where MType: Clone
     context: ZmqContext,
     dispatcher: ControlServiceDispatcher<MType>,
     config: ControlServiceConfig<MType>,
-    node_identity: Arc<NodeIdentity<CommsPublicKey>>,
+    node_identity: Arc<NodeIdentity>,
 }
 
 impl<MType> ControlService<MType>
@@ -126,7 +126,7 @@ where
     MType: Clone,
     MType: Serialize + DeserializeOwned,
 {
-    pub fn with_default_config(context: ZmqContext, node_identity: Arc<NodeIdentity<CommsPublicKey>>) -> Self {
+    pub fn with_default_config(context: ZmqContext, node_identity: Arc<NodeIdentity>) -> Self {
         Self {
             context,
             dispatcher: Default::default(),
@@ -144,12 +144,7 @@ where
 {
     setter!(with_custom_dispatcher, dispatcher, ControlServiceDispatcher<MType>);
 
-    pub fn new(
-        context: ZmqContext,
-        node_identity: Arc<NodeIdentity<CommsPublicKey>>,
-        config: ControlServiceConfig<MType>,
-    ) -> Self
-    {
+    pub fn new(context: ZmqContext, node_identity: Arc<NodeIdentity>, config: ControlServiceConfig<MType>) -> Self {
         Self {
             context,
             dispatcher: Default::default(),

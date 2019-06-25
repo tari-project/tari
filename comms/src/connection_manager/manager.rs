@@ -73,7 +73,7 @@ const LOG_TARGET: &'static str = "comms::connection_manager::manager";
 /// assert_eq!(manager.get_active_connection_count(), 0);
 /// ```
 pub struct ConnectionManager {
-    node_identity: Arc<NodeIdentity<CommsPublicKey>>,
+    node_identity: Arc<NodeIdentity>,
     connections: LivePeerConnections,
     establisher: Arc<ConnectionEstablisher<CommsPublicKey>>,
     peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
@@ -84,7 +84,7 @@ impl ConnectionManager {
     /// Create a new connection manager
     pub fn new(
         zmq_context: ZmqContext,
-        node_identity: Arc<NodeIdentity<CommsPublicKey>>,
+        node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
         config: PeerConnectionConfig,
     ) -> Self

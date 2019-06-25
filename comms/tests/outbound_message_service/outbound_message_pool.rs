@@ -68,7 +68,7 @@ mod test {
     fn test_outbound_message_pool() {
         init();
         let context = ZmqContext::new();
-        let node_identity = Arc::new(factories::node_identity::create::<CommsPublicKey>().build().unwrap());
+        let node_identity = Arc::new(factories::node_identity::create().build().unwrap());
 
         //---------------------------------- Node B Setup --------------------------------------------//
 
@@ -177,7 +177,7 @@ mod test {
         init();
         let context = ZmqContext::new();
 
-        let node_identity = Arc::new(factories::node_identity::create::<CommsPublicKey>().build().unwrap());
+        let node_identity = Arc::new(factories::node_identity::create().build().unwrap());
 
         //---------------------------------- Node B Setup --------------------------------------------//
         let node_B_control_port_address: NetAddress = "127.0.0.1:45845".parse().unwrap();

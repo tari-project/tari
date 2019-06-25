@@ -37,10 +37,10 @@ bitflags! {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 /// A Peer represents a communication peer that is identified by a Public Key and NodeId. The Peer struct maintains a
 /// collection of the NetAddressesWithStats that this Peer can be reached by. The struct also maintains a set of flags
 /// describing the status of the Peer.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub struct Peer<K> {
     #[serde(serialize_with = "serialize_to_hex", bound(serialize = "K: PublicKey"))]
     #[serde(deserialize_with = "pubkey_from_hex", bound(deserialize = "K: PublicKey"))]

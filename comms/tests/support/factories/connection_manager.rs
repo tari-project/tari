@@ -44,8 +44,8 @@ pub struct ConnectionManagerFactory {
     peer_connection_config: PeerConnectionConfig,
     peer_manager: Option<Arc<PeerManager<CommsPublicKey, CommsDataStore>>>,
     peer_manager_factory: PeerManagerFactory,
-    node_identity_factory: NodeIdentityFactory<CommsPublicKey>,
-    node_identity: Option<Arc<NodeIdentity<CommsPublicKey>>>,
+    node_identity_factory: NodeIdentityFactory,
+    node_identity: Option<Arc<NodeIdentity>>,
 }
 
 impl ConnectionManagerFactory {
@@ -65,17 +65,9 @@ impl ConnectionManagerFactory {
 
     factory_setter!(with_context, zmq_context, Option<ZmqContext>);
 
-    factory_setter!(
-        with_node_identity,
-        node_identity,
-        Option<Arc<NodeIdentity<CommsPublicKey>>>
-    );
+    factory_setter!(with_node_identity, node_identity, Option<Arc<NodeIdentity>>);
 
-    factory_setter!(
-        with_node_identity_factory,
-        node_identity_factory,
-        NodeIdentityFactory<CommsPublicKey>
-    );
+    factory_setter!(with_node_identity_factory, node_identity_factory, NodeIdentityFactory);
 }
 
 impl TestFactory for ConnectionManagerFactory {

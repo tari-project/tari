@@ -71,7 +71,7 @@ where
     }
 }
 
-fn new_node_identity(control_service_address: NetAddress) -> NodeIdentity<CommsPublicKey> {
+fn new_node_identity(control_service_address: NetAddress) -> NodeIdentity {
     NodeIdentity::random(&mut OsRng::new().unwrap(), control_service_address).unwrap()
 }
 
@@ -92,7 +92,7 @@ fn create_peer_storage(tmpdir: &TempDir, name: &str, peers: Vec<Peer<CommsPublic
 }
 
 fn setup_ping_pong_service(
-    node_identity: NodeIdentity<CommsPublicKey>,
+    node_identity: NodeIdentity,
     peer_storage: CommsDataStore,
 ) -> (ServiceExecutor, Arc<PingPongServiceApi>)
 {

@@ -29,7 +29,7 @@ use crate::{
 };
 use rand::OsRng;
 use serde::{Deserialize, Serialize};
-use std::{convert::TryFrom, sync::Arc};
+use std::convert::TryFrom;
 use tari_crypto::keys::{DiffieHellmanSharedSecret, PublicKey};
 use tari_utilities::{ciphers::cipher::Cipher, message_format::MessageFormat};
 
@@ -63,7 +63,7 @@ impl MessageEnvelope {
 
     /// Sign a message, construct a MessageEnvelopeHeader and return the resulting MessageEnvelope
     pub fn construct(
-        node_identity: &Arc<NodeIdentity<CommsPublicKey>>,
+        node_identity: &NodeIdentity,
         dest_public_key: CommsPublicKey,
         dest: NodeDestination<CommsPublicKey>,
         body: Frame,
@@ -209,7 +209,7 @@ mod test {
         ristretto::{RistrettoPublicKey, RistrettoSecretKey},
     };
 
-    use std::convert::TryInto;
+    use std::{convert::TryInto, sync::Arc};
     use tari_utilities::hex::to_hex;
 
     #[test]
