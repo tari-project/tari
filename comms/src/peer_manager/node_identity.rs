@@ -20,6 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use super::node_id::deserialize_node_id_from_hex;
 use crate::{
     connection::NetAddress,
     peer_manager::{
@@ -32,7 +33,11 @@ use crate::{
 use derive_error::Error;
 use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize};
-use tari_crypto::keys::{PublicKey, SecretKey};
+use tari_crypto::{
+    keys::{PublicKey, SecretKey},
+    ristretto::serialize::{pubkey_from_hex, secret_from_hex},
+};
+use tari_utilities::hex::serialize_to_hex;
 
 #[derive(Debug, Error)]
 pub enum NodeIdentityError {
@@ -46,14 +51,16 @@ pub enum NodeIdentityError {
 /// `secret_key`: The secret key corresponding to the public key of this node
 ///
 /// `control_service_address`: The NetAddress of the local node's Control port
-#[derive(Clone)]
-pub struct NodeIdentity<PK: PublicKey> {
-    pub identity: PeerNodeIdentity<PK>,
-    pub secret_key: PK::K,
+#[derive(Clone, Serialize, Deserialize)]
+pub struct NodeIdentity {
+    pub identity: PeerNodeIdentity<CommsPublicKey>,
+    #[serde(serialize_with = "serialize_to_hex")]
+    #[serde(deserialize_with = "secret_from_hex")]
+    pub secret_key: CommsSecretKey,
     pub control_service_address: NetAddress,
 }
 
-impl NodeIdentity<CommsPublicKey> {
+impl NodeIdentity {
     /// Create a new NodeIdentity from the provided key pair and control service address
     pub fn new(
         secret_key: CommsSecretKey,
@@ -97,8 +104,8 @@ impl NodeIdentity<CommsPublicKey> {
     }
 }
 
-impl<PK: PublicKey> From<NodeIdentity<PK>> for Peer<PK> {
-    fn from(node_identity: NodeIdentity<PK>) -> Peer<PK> {
+impl From<NodeIdentity> for Peer<CommsPublicKey> {
+    fn from(node_identity: NodeIdentity) -> Peer<CommsPublicKey> {
         Peer::new(
             node_identity.identity.public_key,
             node_identity.identity.node_id,
@@ -111,8 +118,12 @@ impl<PK: PublicKey> From<NodeIdentity<PK>> for Peer<PK> {
 /// The PeerNodeIdentity is a container that stores the public identity (NodeId, Identification Public Key pair) of a
 /// single node
 #[derive(Eq, PartialEq, Debug, Serialize, Deserialize, Clone)]
-pub struct PeerNodeIdentity<PK> {
+pub struct PeerNodeIdentity<PK: PublicKey> {
+    #[serde(serialize_with = "serialize_to_hex")]
+    #[serde(deserialize_with = "deserialize_node_id_from_hex")]
     pub node_id: NodeId,
+    #[serde(serialize_with = "serialize_to_hex", bound(serialize = "PK: PublicKey"))]
+    #[serde(deserialize_with = "pubkey_from_hex", bound(deserialize = "PK: PublicKey"))]
     pub public_key: PK,
 }
 
@@ -124,7 +135,7 @@ impl<PK: PublicKey> PeerNodeIdentity<PK> {
 }
 
 /// Construct a PeerNodeIdentity from a Peer
-impl<PK> From<Peer<PK>> for PeerNodeIdentity<PK> {
+impl<PK: PublicKey> From<Peer<PK>> for PeerNodeIdentity<PK> {
     fn from(peer: Peer<PK>) -> Self {
         Self {
             public_key: peer.public_key,

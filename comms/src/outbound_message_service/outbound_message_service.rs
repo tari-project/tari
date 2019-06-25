@@ -41,7 +41,7 @@ use tari_utilities::message_format::MessageFormat;
 pub struct OutboundMessageService {
     context: ZmqContext,
     outbound_address: InprocAddress,
-    node_identity: Arc<NodeIdentity<CommsPublicKey>>,
+    node_identity: Arc<NodeIdentity>,
     peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
 }
 
@@ -49,7 +49,7 @@ impl OutboundMessageService {
     /// Constructs a new OutboundMessageService from the context, node_identity and outbound_address
     pub fn new(
         context: ZmqContext,
-        node_identity: Arc<NodeIdentity<CommsPublicKey>>,
+        node_identity: Arc<NodeIdentity>,
         outbound_address: InprocAddress, /* The outbound_address is an inproc that connects the OutboundMessagePool
                                           * and the OutboundMessageService */
         peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,

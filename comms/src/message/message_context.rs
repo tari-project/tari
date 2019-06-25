@@ -37,7 +37,7 @@ pub struct MessageContext<MType> {
     pub outbound_message_service: Arc<OutboundMessageService>,
     pub peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
     pub inbound_message_broker: Arc<InboundMessageBroker<MType>>,
-    pub node_identity: Arc<NodeIdentity<CommsPublicKey>>,
+    pub node_identity: Arc<NodeIdentity>,
 }
 
 impl<MType> MessageContext<MType>
@@ -48,7 +48,7 @@ where
     /// Construct a new MessageContext that consist of the peer connection information and the received message header
     /// and body
     pub fn new(
-        node_identity: Arc<NodeIdentity<CommsPublicKey>>,
+        node_identity: Arc<NodeIdentity>,
         peer: Peer<CommsPublicKey>,
         message_envelope: MessageEnvelope,
         outbound_message_service: Arc<OutboundMessageService>,

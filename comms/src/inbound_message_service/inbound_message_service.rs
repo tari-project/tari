@@ -55,7 +55,7 @@ where
     MType: Serialize + DeserializeOwned,
 {
     context: ZmqContext,
-    node_identity: Arc<NodeIdentity<CommsPublicKey>>,
+    node_identity: Arc<NodeIdentity>,
     dealer_address: InprocAddress,
     message_dispatcher: Arc<MessageDispatcher<MessageContext<MType>>>,
     inbound_message_broker: Arc<InboundMessageBroker<MType>>,
@@ -78,7 +78,7 @@ where
     /// threads
     pub fn new(
         context: ZmqContext,
-        node_identity: Arc<NodeIdentity<CommsPublicKey>>,
+        node_identity: Arc<NodeIdentity>,
         inbound_address: InprocAddress,
         message_dispatcher: Arc<MessageDispatcher<MessageContext<MType>>>,
         inbound_message_broker: Arc<InboundMessageBroker<MType>>,

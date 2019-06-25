@@ -54,7 +54,7 @@ fn establish_peer_connection_by_peer() {
     let _ = simple_logger::init();
     let context = ZmqContext::new();
 
-    let node_identity = Arc::new(factories::node_identity::create::<CommsPublicKey>().build().unwrap());
+    let node_identity = Arc::new(factories::node_identity::create().build().unwrap());
 
     //---------------------------------- Node B Setup --------------------------------------------//
 

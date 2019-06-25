@@ -83,7 +83,7 @@ fn encrypt_message(secret_key: &CommsSecretKey, public_key: &CommsPublicKey, msg
 }
 
 fn construct_envelope<T: MessageFormat>(
-    node_identity: &Arc<NodeIdentity<CommsPublicKey>>,
+    node_identity: &Arc<NodeIdentity>,
     message_type: ControlServiceMessageType,
     msg: T,
 ) -> Result<MessageEnvelope, MessageError>
@@ -136,7 +136,7 @@ fn recv_message() {
     );
     let control_service_address = factories::net_address::create().build().unwrap();
     let node_identity = Arc::new(
-        factories::node_identity::create::<CommsPublicKey>()
+        factories::node_identity::create()
             .with_control_service_address(control_service_address.clone())
             .build()
             .unwrap(),
@@ -198,7 +198,7 @@ fn recv_message() {
 
 #[test]
 fn serve_and_shutdown() {
-    let node_identity = Arc::new(factories::node_identity::create::<CommsPublicKey>().build().unwrap());
+    let node_identity = Arc::new(factories::node_identity::create().build().unwrap());
     let (tx, rx) = channel();
     let context = ZmqContext::new();
     let connection_manager = Arc::new(

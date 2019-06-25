@@ -108,7 +108,7 @@ where MType: Clone
     peer_storage: Option<CommsDataStore>,
     control_service_config: Option<ControlServiceConfig<MType>>,
     omp_config: Option<OutboundMessagePoolConfig>,
-    node_identity: Option<NodeIdentity<CommsPublicKey>>,
+    node_identity: Option<NodeIdentity>,
     peer_conn_config: Option<PeerConnectionConfig>,
 }
 
@@ -153,7 +153,7 @@ where
         self
     }
 
-    pub fn with_node_identity(mut self, node_identity: NodeIdentity<CommsPublicKey>) -> Self {
+    pub fn with_node_identity(mut self, node_identity: NodeIdentity) -> Self {
         self.node_identity = Some(node_identity);
         self
     }
@@ -169,11 +169,7 @@ where
         Ok(Arc::new(peer_manager))
     }
 
-    fn make_control_service(
-        &mut self,
-        node_identity: Arc<NodeIdentity<CommsPublicKey>>,
-    ) -> Option<ControlService<MType>>
-    {
+    fn make_control_service(&mut self, node_identity: Arc<NodeIdentity>) -> Option<ControlService<MType>> {
         self.control_service_config
             .take()
             .map(|config| ControlService::new(self.zmq_context.clone(), node_identity, config))
@@ -181,7 +177,7 @@ where
 
     fn make_connection_manager(
         &mut self,
-        node_identity: Arc<NodeIdentity<CommsPublicKey>>,
+        node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
         config: PeerConnectionConfig,
     ) -> Arc<ConnectionManager>
@@ -203,7 +199,7 @@ where
         config
     }
 
-    fn make_node_identity(&mut self) -> Result<Arc<NodeIdentity<CommsPublicKey>>, CommsBuilderError> {
+    fn make_node_identity(&mut self) -> Result<Arc<NodeIdentity>, CommsBuilderError> {
         self.node_identity
             .take()
             .map(Arc::new)
@@ -212,7 +208,7 @@ where
 
     fn make_outbound_message_service(
         &self,
-        node_identity: Arc<NodeIdentity<CommsPublicKey>>,
+        node_identity: Arc<NodeIdentity>,
         message_sink_address: InprocAddress,
         peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
     ) -> Result<Arc<OutboundMessageService>, CommsBuilderError>
@@ -250,7 +246,7 @@ where
 
     fn make_inbound_message_service(
         &mut self,
-        node_identity: Arc<NodeIdentity<CommsPublicKey>>,
+        node_identity: Arc<NodeIdentity>,
         message_sink_address: InprocAddress,
         inbound_message_broker: Arc<InboundMessageBroker<MType>>,
         oms: Arc<OutboundMessageService>,

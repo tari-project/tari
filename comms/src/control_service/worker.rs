@@ -68,7 +68,7 @@ where MType: Clone
     is_running: bool,
     dispatcher: ControlServiceDispatcher<MType>,
     connection_manager: Arc<ConnectionManager>,
-    node_identity: Arc<NodeIdentity<CommsPublicKey>>,
+    node_identity: Arc<NodeIdentity>,
 }
 
 impl<MType> ControlServiceWorker<MType>
@@ -85,7 +85,7 @@ where
     /// - `connection_manager` - the `ConnectionManager`
     pub fn start(
         context: ZmqContext,
-        node_identity: Arc<NodeIdentity<CommsPublicKey>>,
+        node_identity: Arc<NodeIdentity>,
         dispatcher: ControlServiceDispatcher<MType>,
         config: ControlServiceConfig<MType>,
         connection_manager: Arc<ConnectionManager>,

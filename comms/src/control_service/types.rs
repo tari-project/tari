@@ -74,7 +74,7 @@ where MType: Clone
     pub message: Message,
     pub connection_manager: Arc<ConnectionManager>,
     pub peer_manager: Arc<PeerManager<CommsPublicKey, LMDBStore>>,
-    pub node_identity: Arc<NodeIdentity<CommsPublicKey>>,
+    pub node_identity: Arc<NodeIdentity>,
     pub config: ControlServiceConfig<MType>,
 }
 
