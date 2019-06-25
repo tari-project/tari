@@ -29,6 +29,7 @@ use derive_error::Error;
 use log::*;
 use serde::{Deserialize, Serialize};
 use std::{
+    fmt,
     sync::{Arc, Mutex},
     time::Duration,
 };
@@ -58,6 +59,8 @@ pub enum PingPongError {
     ApiSendFailed,
     /// Failed to receive in API from service
     ApiReceiveFailed,
+    /// Received an unexpected response type from the API
+    UnexpectedApiResponse,
 }
 
 /// The PingPong message
@@ -277,6 +280,15 @@ pub enum PingPongApiResponse {
     Count(usize),
 }
 
+impl fmt::Display for PingPongApiResponse {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            PingPongApiResponse::PingSent => write!(f, "PingSent"),
+            PingPongApiResponse::Count(n) => write!(f, "Count({})", n),
+        }
+    }
+}
+
 /// Result for all API requests
 pub type PingPongApiResult = Result<PingPongApiResponse, PingPongError>;
 
@@ -302,18 +314,30 @@ impl PingPongServiceApi {
     }
 
     /// Send a ping message to the given peer
-    pub fn ping(&self, public_key: CommsPublicKey) -> PingPongApiResult {
+    pub fn ping(&self, public_key: CommsPublicKey) -> Result<(), PingPongError> {
         self.send_recv(PingPongApiRequest::Ping(public_key))
+            .and_then(|resp| match resp {
+                PingPongApiResponse::PingSent => Ok(()),
+                _ => Err(PingPongError::UnexpectedApiResponse),
+            })
     }
 
     /// Fetch the ping count from the service
-    pub fn ping_count(&self) -> PingPongApiResult {
+    pub fn ping_count(&self) -> Result<usize, PingPongError> {
         self.send_recv(PingPongApiRequest::GetPingCount)
+            .and_then(|resp| match resp {
+                PingPongApiResponse::Count(n) => Ok(n),
+                _ => Err(PingPongError::UnexpectedApiResponse),
+            })
     }
 
     /// Fetch the pong count from the service
-    pub fn pong_count(&self) -> PingPongApiResult {
+    pub fn pong_count(&self) -> Result<usize, PingPongError> {
         self.send_recv(PingPongApiRequest::GetPongCount)
+            .and_then(|resp| match resp {
+                PingPongApiResponse::Count(n) => Ok(n),
+                _ => Err(PingPongError::UnexpectedApiResponse),
+            })
     }
 
     fn send_recv(&self, msg: PingPongApiRequest) -> PingPongApiResult {

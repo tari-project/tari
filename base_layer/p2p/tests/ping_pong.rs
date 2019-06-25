@@ -33,7 +33,7 @@ use tari_comms::{
     CommsBuilder,
 };
 use tari_p2p::{
-    ping_pong::{PingPongApiResponse, PingPongService, PingPongServiceApi},
+    ping_pong::{PingPongService, PingPongServiceApi},
     services::{ServiceExecutor, ServiceRegistry},
     tari_message::{NetMessage, TariMessageType},
 };
@@ -125,7 +125,6 @@ fn setup_ping_pong_service(
 #[test]
 #[allow(non_snake_case)]
 fn end_to_end() {
-    let _ = simple_logger::init();
     let node_A_tmpdir = TempDir::new(random_string(8).as_str()).unwrap();
 
     let node_B_tmpdir = TempDir::new(random_string(8).as_str()).unwrap();
@@ -148,44 +147,16 @@ fn end_to_end() {
         .ping(node_B_identity.identity.public_key.clone())
         .unwrap();
 
-    assert_change(
-        || match node_B_pingpong.ping_count().unwrap() {
-            PingPongApiResponse::Count(n) => n,
-            _ => panic!("Unexpected response"),
-        },
-        1,
-        20,
-    );
-    assert_change(
-        || match node_A_pingpong.pong_count().unwrap() {
-            PingPongApiResponse::Count(n) => n,
-            _ => panic!("Unexpected response"),
-        },
-        1,
-        20,
-    );
+    assert_change(|| node_B_pingpong.ping_count().unwrap(), 1, 20);
+    assert_change(|| node_A_pingpong.pong_count().unwrap(), 1, 20);
 
     // Ping node A
     node_B_pingpong
         .ping(node_A_identity.identity.public_key.clone())
         .unwrap();
 
-    assert_change(
-        || match node_A_pingpong.ping_count().unwrap() {
-            PingPongApiResponse::Count(n) => n,
-            _ => panic!("Unexpected response"),
-        },
-        1,
-        20,
-    );
-    assert_change(
-        || match node_A_pingpong.ping_count().unwrap() {
-            PingPongApiResponse::Count(n) => n,
-            _ => panic!("Unexpected response"),
-        },
-        1,
-        20,
-    );
+    assert_change(|| node_A_pingpong.ping_count().unwrap(), 1, 20);
+    assert_change(|| node_A_pingpong.ping_count().unwrap(), 1, 20);
 
     node_A_services.shutdown().unwrap();
     node_B_services.shutdown().unwrap();
