@@ -20,10 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use log::*;
-
 use super::{error::ConnectionManagerError, types::PeerConnectionJoinHandle, Result};
-
 use crate::{
     connection::{
         connection::EstablishedConnection,
@@ -31,7 +28,7 @@ use crate::{
         monitor::{ConnectionMonitor, SocketEventType},
         net_address::ip::SocketAddress,
         peer_connection::ConnectionId,
-        types::Direction,
+        types::{Direction, Linger},
         Connection,
         CurveEncryption,
         InprocAddress,
@@ -43,7 +40,7 @@ use crate::{
     peer_manager::{Peer, PeerManager},
     types::CommsDataStore,
 };
-
+use log::*;
 use std::{hash::Hash, net::IpAddr, sync::Arc, time::Duration};
 use tari_crypto::keys::PublicKey;
 
@@ -133,6 +130,7 @@ where PK: PublicKey + Hash
                     .map_err(ConnectionManagerError::PeerManagerError)?;
 
                 let conn = Connection::new(&self.context, Direction::Outbound)
+                    .set_linger(Linger::Timeout(3000))
                     .set_monitor_addr(monitor_addr)
                     .set_socks_proxy_addr(config.socks_proxy_address.clone())
                     .set_max_message_size(Some(config.max_message_size))
@@ -318,7 +316,7 @@ where
         loop {
             if let Some(event) = connection_try!(monitor.read(100)) {
                 use SocketEventType::*;
-                debug!(target: LOG_TARGET, "Socket Event: {:?}", event);
+                debug!(target: LOG_TARGET, "Attempt Socket Event: {:?}", event);
                 match event.event_type {
                     Connected | Accepted | Listening => break Ok(true),
                     AcceptFailed |

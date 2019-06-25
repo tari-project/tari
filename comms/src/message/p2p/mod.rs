@@ -20,12 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use serde::{Deserialize, Serialize};
-
 use crate::{
     connection::{net_address::NetAddress, zmq::CurvePublicKey},
     peer_manager::NodeId,
 };
+use serde::{Deserialize, Serialize};
 
 /// This represents a request to open a peer connection
 /// to a remote peer.
