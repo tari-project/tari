@@ -171,7 +171,7 @@ where
     // Construct DomainMessageContext and dispatch to handler services using domain message broker
     let header: MessageHeader<MType> = message.to_header().map_err(DispatchError::handler_error())?;
 
-    debug!(target: LOG_TARGET, "Received message type {:?}", header.message_type);
+    debug!(target: LOG_TARGET, "Received message type: {:?}", header.message_type);
     let domain_message_context = DomainMessageContext::new(message_context.peer.into(), message);
     let domain_message_context_buffer = vec![domain_message_context
         .to_binary()
@@ -199,7 +199,6 @@ where
 
 fn handler_discard<MType>(_message_context: MessageContext<MType>) -> Result<(), DispatchError>
 where
-    //    PK: PublicKey,
     MType: DispatchableKey,
     MType: Serialize + DeserializeOwned,
 {

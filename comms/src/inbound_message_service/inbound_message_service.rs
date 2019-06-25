@@ -20,13 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::{error::InboundMessageServiceError, msg_processing_worker::*};
+use super::{error::InboundError, inbound_message_worker::*};
 use crate::{
     connection::{
         peer_connection::ControlMessage,
         zmq::{InprocAddress, ZmqContext},
-        ConnectionError,
-        DealerProxy,
     },
     dispatcher::DispatchableKey,
     inbound_message_service::inbound_message_broker::InboundMessageBroker,
@@ -37,36 +35,50 @@ use crate::{
 };
 use log::*;
 use serde::{de::DeserializeOwned, Serialize};
-#[cfg(test)]
-use std::sync::mpsc::{sync_channel, Receiver};
 use std::{
     sync::{mpsc::SyncSender, Arc},
     thread::JoinHandle,
+    time::Duration,
 };
 
 const LOG_TARGET: &'static str = "comms::inbound_message_service";
 
-/// The maximum number of processing worker threads that will be created by the InboundMessageService
-const MAX_INBOUND_MSG_PROCESSING_WORKERS: u8 = 2; // TODO read this from config
+#[derive(Clone, Copy)]
+pub struct InboundMessageServiceConfig {
+    /// Timeout used for receiving messages from the message queue
+    pub worker_timeout_in_ms: Duration,
+    /// Timeout used for listening for control messages
+    pub control_timeout_in_ms: Duration,
+}
 
+impl Default for InboundMessageServiceConfig {
+    fn default() -> Self {
+        InboundMessageServiceConfig {
+            worker_timeout_in_ms: Duration::from_millis(100),
+            control_timeout_in_ms: Duration::from_millis(5),
+        }
+    }
+}
+
+/// The InboundMessageService manages the inbound message queue. The messages received from different peers are written
+/// to, and accumulate in, the inbound message queue. The InboundMessageWorker will then retrieve messages from the
+/// queue and dispatch them using the dispatcher, that will check signatures and decrypt the message before being sent
+/// to the InboundMessageBroker. The InboundMessageBroker will then send it to the correct handler services.
 pub struct InboundMessageService<MType>
 where
     MType: DispatchableKey,
     MType: Serialize + DeserializeOwned,
 {
+    config: InboundMessageServiceConfig,
     context: ZmqContext,
     node_identity: Arc<NodeIdentity>,
-    dealer_address: InprocAddress,
+    message_queue_address: InprocAddress,
     message_dispatcher: Arc<MessageDispatcher<MessageContext<MType>>>,
     inbound_message_broker: Arc<InboundMessageBroker<MType>>,
     outbound_message_service: Arc<OutboundMessageService>,
     peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
-    worker_thread_handles: Vec<JoinHandle<()>>,
-    worker_control_senders: Vec<SyncSender<ControlMessage>>,
-    dealer_proxy: DealerProxy,
-    #[cfg(test)]
-    test_sync_sender: Vec<SyncSender<String>>, /* These channels will be to test the pool workers threaded
-                                                * operation */
+    worker_thread_handle: Option<JoinHandle<()>>,
+    worker_control_sender: Option<SyncSender<ControlMessage>>,
 }
 
 impl<MType> InboundMessageService<MType>
@@ -74,97 +86,62 @@ where
     MType: DispatchableKey,
     MType: Serialize + DeserializeOwned,
 {
-    /// Creates a new InboundMessageService that will fairly deal message received on the inbound address to worker
-    /// threads
+    /// Creates a new InboundMessageService that will receive message on the message_queue_address that it will then
+    /// dispatch
     pub fn new(
+        config: InboundMessageServiceConfig,
         context: ZmqContext,
         node_identity: Arc<NodeIdentity>,
-        inbound_address: InprocAddress,
+        message_queue_address: InprocAddress,
         message_dispatcher: Arc<MessageDispatcher<MessageContext<MType>>>,
         inbound_message_broker: Arc<InboundMessageBroker<MType>>,
         outbound_message_service: Arc<OutboundMessageService>,
         peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
-    ) -> Result<Self, ConnectionError>
+    ) -> Self
     {
-        let dealer_address = InprocAddress::random();
-        Ok(InboundMessageService {
+        InboundMessageService {
+            config,
             context: context.clone(),
             node_identity,
-            dealer_address: dealer_address.clone(),
+            message_queue_address,
             message_dispatcher,
             inbound_message_broker,
             outbound_message_service,
             peer_manager,
-            worker_thread_handles: Vec::new(),
-            worker_control_senders: Vec::new(),
-            dealer_proxy: DealerProxy::new(context.clone(), inbound_address, dealer_address.clone()),
-            #[cfg(test)]
-            test_sync_sender: Vec::new(),
-        })
+            worker_thread_handle: None,
+            worker_control_sender: None,
+        }
     }
 
-    fn start_dealer(&mut self) {
-        self.dealer_proxy.spawn_proxy()
-    }
-
-    /// Starts the MsgProcessingWorker threads and the InboundMessageService with Dealer in its own thread
+    /// Spawn an InboundMessageWorker for the InboundMessageService
     pub fn start(&mut self) {
-        info!(target: LOG_TARGET, "Starting inbound message service workers");
-        #[allow(unused_variables)]
-        for i in 0..MAX_INBOUND_MSG_PROCESSING_WORKERS {
-            #[allow(unused_mut)] // Allow for testing
-            let mut worker = MsgProcessingWorker::new(
-                self.context.clone(),
-                self.node_identity.clone(),
-                self.dealer_address.clone(),
-                self.message_dispatcher.clone(),
-                self.inbound_message_broker.clone(),
-                self.outbound_message_service.clone(),
-                self.peer_manager.clone(),
-            );
-
-            #[cfg(test)]
-            worker.set_test_channel(self.test_sync_sender[i as usize].clone());
-
-            let (worker_thread_handle, worker_sync_sender) = worker.start();
-            self.worker_thread_handles.push(worker_thread_handle);
-            self.worker_control_senders.push(worker_sync_sender);
-        }
-        info!(target: LOG_TARGET, "Starting dealer");
-        self.start_dealer();
+        info!(target: LOG_TARGET, "Starting inbound message service");
+        let worker = InboundMessageWorker::new(
+            self.config.clone(),
+            self.context.clone(),
+            self.node_identity.clone(),
+            self.message_queue_address.clone(),
+            self.message_dispatcher.clone(),
+            self.inbound_message_broker.clone(),
+            self.outbound_message_service.clone(),
+            self.peer_manager.clone(),
+        );
+        let (worker_thread_handle, worker_sync_sender) = worker.start();
+        self.worker_thread_handle = Some(worker_thread_handle);
+        self.worker_control_sender = Some(worker_sync_sender);
     }
 
-    /// Tell the underlying dealer thread and workers to shut down
-    pub fn shutdown(self) -> Result<(), InboundMessageServiceError> {
-        // Send Shutdown control message
-        for worker_sync_sender in self.worker_control_senders {
-            worker_sync_sender.send(ControlMessage::Shutdown).map_err(|e| {
-                InboundMessageServiceError::ControlSendError(format!("Failed to send control message: {:?}", e))
-            })?;
-        }
-        // Join worker threads
-        for worker_thread_handle in self.worker_thread_handles {
-            worker_thread_handle
-                .join()
-                .map_err(|_| InboundMessageServiceError::ThreadJoinError)?;
-        }
-
-        self.dealer_proxy
-            .shutdown()
-            .map_err(|e| InboundMessageServiceError::DealerProxyError(e))
-    }
-
-    /// Create a channel pairs for use during testing the workers, the sync sender will be passed into the worker's
-    /// threads and the receivers returned to the test function.
-    #[cfg(test)]
-    fn create_test_channels(&mut self) -> Vec<Receiver<String>> {
-        let mut receivers = Vec::new();
-        for _ in 0..MAX_INBOUND_MSG_PROCESSING_WORKERS {
-            let (tx, rx) = sync_channel::<String>(0);
-            self.test_sync_sender.push(tx);
-            receivers.push(rx);
-        }
-        receivers
+    /// Tell the underlying worker thread to shut down
+    pub fn shutdown(self) -> Result<(), InboundError> {
+        self.worker_control_sender
+            .ok_or(InboundError::ControlSenderUndefined)?
+            .send(ControlMessage::Shutdown)
+            .map_err(|e| InboundError::ControlSendError(format!("Failed to send control message: {:?}", e)))?;
+        self.worker_thread_handle
+            .ok_or(InboundError::ThreadHandleUndefined)?
+            .join()
+            .map_err(|_| InboundError::ThreadJoinError)?;
+        Ok(())
     }
 }
 
@@ -205,15 +182,15 @@ mod test {
     }
 
     #[test]
-    fn test_fair_dealing() {
+    fn test_message_queue() {
         init();
         let context = ZmqContext::new();
         let node_identity = Arc::new(NodeIdentity::random_for_test(None));
 
         // Create a client that will write message to the inbound message pool
-        let inbound_msg_queue_address = InprocAddress::random();
-        let conn_client = Connection::new(&context, Direction::Outbound)
-            .establish(&inbound_msg_queue_address)
+        let message_queue_address = InprocAddress::random();
+        let client_connection = Connection::new(&context, Direction::Outbound)
+            .establish(&message_queue_address)
             .unwrap();
 
         // Create Handler Service
@@ -254,18 +231,17 @@ mod test {
             )
             .unwrap(),
         );
+        let ims_config = InboundMessageServiceConfig::default();
         let mut inbound_message_service = InboundMessageService::new(
+            ims_config,
             context,
             node_identity.clone(),
-            inbound_msg_queue_address,
+            message_queue_address,
             message_dispatcher,
             inbound_message_broker,
             outbound_message_service,
             peer_manager,
-        )
-        .unwrap();
-        // Instantiate the channels that will be used in the tests.
-        let receivers = inbound_message_service.create_test_channels();
+        );
         inbound_message_service.start();
 
         // Construct a test message
@@ -291,13 +267,14 @@ mod test {
 
         // Submit Messages to the InboundMessageService
         pause();
-        for _ in 0..MAX_INBOUND_MSG_PROCESSING_WORKERS {
-            conn_client.send(&message_data_buffer).unwrap();
-            pause();
+        let test_message_count = 3;
+        for _ in 0..test_message_count {
+            client_connection.send(&message_data_buffer).unwrap();
         }
 
         // Check that all messages reached handler service queue
-        for _ in 0..MAX_INBOUND_MSG_PROCESSING_WORKERS {
+        pause();
+        for _ in 0..test_message_count {
             let received_message_data_bytes: FrameSet =
                 handler_queue_connection.receive(2000).unwrap().drain(1..).collect();
             let received_domain_message_context =
@@ -305,39 +282,9 @@ mod test {
             assert_eq!(received_domain_message_context.message, message_envelope_body);
         }
 
-        // Check that each worker thread received work
-        // This array marks which workers responded. If fairly dealt each index should be set to 1
-        let mut worker_responses = [0; MAX_INBOUND_MSG_PROCESSING_WORKERS as usize];
-
-        // Keep track of how many channels have responded
-        let mut resp_count = 0;
-        loop {
-            // Poll all the channels
-            for i in 0..MAX_INBOUND_MSG_PROCESSING_WORKERS as usize {
-                if let Ok(_recv) = receivers[i].try_recv() {
-                    // If this worker responded multiple times then the message were not fairly dealt so bork the count
-                    if worker_responses[i] > 0 {
-                        worker_responses[i] = MAX_INBOUND_MSG_PROCESSING_WORKERS + 1;
-                    } else {
-                        worker_responses[i] = 1;
-                    }
-                    resp_count += 1;
-                }
-            }
-            // Check to see if all the workers have responded.
-            if resp_count >= MAX_INBOUND_MSG_PROCESSING_WORKERS {
-                break;
-            }
-        }
-        // Confirm that the messages were fairly dealt
-        assert_eq!(
-            worker_responses.iter().fold(0, |acc, x| acc + x),
-            MAX_INBOUND_MSG_PROCESSING_WORKERS
-        );
-
         // Test shutdown control
         inbound_message_service.shutdown().unwrap();
         std::thread::sleep(Duration::from_millis(200));
-        assert!(conn_client.send(&message_data_buffer).is_err());
+        assert!(client_connection.send(&message_data_buffer).is_err());
     }
 }

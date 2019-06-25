@@ -46,7 +46,6 @@ use std::{
         Arc,
     },
     thread,
-    time::Duration,
 };
 use tari_utilities::message_format::MessageFormat;
 
@@ -119,7 +118,7 @@ impl MessagePoolWorker {
             self.process_control_messages();
 
             if self.is_running {
-                match inbound_connection.receive(self.config.worker_timeout_in_ms) {
+                match inbound_connection.receive(self.config.worker_timeout_in_ms.as_millis() as u32) {
                     Ok(mut frame_set) => {
                         // This strips off the two ZeroMQ Identity frames introduced by the transmission to the proxy
                         // and from the proxy to this worker
@@ -260,7 +259,7 @@ impl MessagePoolWorker {
     fn process_control_messages(&mut self) {
         match &self.control_receiver {
             Some(control_receiver) => {
-                if let Some(control_msg) = control_receiver.recv_timeout(Duration::from_millis(5)).ok() {
+                if let Some(control_msg) = control_receiver.recv_timeout(self.config.control_timeout_in_ms).ok() {
                     debug!(target: LOG_TARGET, "Received control message: {:?}", control_msg);
                     match control_msg {
                         ControlMessage::Shutdown => {

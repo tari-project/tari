@@ -30,7 +30,7 @@ use crate::{
     inbound_message_service::{
         comms_msg_handlers::construct_comms_msg_dispatcher,
         inbound_message_broker::{BrokerError, InboundMessageBroker},
-        inbound_message_service::InboundMessageService,
+        inbound_message_service::{InboundMessageService, InboundMessageServiceConfig},
     },
     outbound_message_service::{
         outbound_message_pool::OutboundMessagePoolConfig,
@@ -108,6 +108,7 @@ where MType: Clone
     peer_storage: Option<CommsDataStore>,
     control_service_config: Option<ControlServiceConfig<MType>>,
     omp_config: Option<OutboundMessagePoolConfig>,
+    ims_config: Option<InboundMessageServiceConfig>,
     node_identity: Option<NodeIdentity>,
     peer_conn_config: Option<PeerConnectionConfig>,
 }
@@ -126,6 +127,7 @@ where
             control_service_config: None,
             peer_conn_config: None,
             omp_config: None,
+            ims_config: None,
             peer_storage: None,
             routes: None,
             node_identity: None,
@@ -228,7 +230,7 @@ where
         message_sink_address: InprocAddress,
         peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
         connection_manager: Arc<ConnectionManager>,
-    ) -> Result<OutboundMessagePool, CommsBuilderError>
+    ) -> OutboundMessagePool
     {
         let config = self.omp_config.take().unwrap_or_default();
 
@@ -241,7 +243,6 @@ where
             peer_manager,
             connection_manager,
         )
-        .map_err(CommsBuilderError::OutboundMessagePoolError)
     }
 
     fn make_inbound_message_service(
@@ -251,9 +252,12 @@ where
         inbound_message_broker: Arc<InboundMessageBroker<MType>>,
         oms: Arc<OutboundMessageService>,
         peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
-    ) -> Result<InboundMessageService<MType>, CommsBuilderError>
+    ) -> InboundMessageService<MType>
     {
+        let config = self.ims_config.take().unwrap_or_default();
+
         InboundMessageService::new(
+            config,
             self.zmq_context.clone(),
             node_identity,
             message_sink_address,
@@ -262,7 +266,6 @@ where
             oms,
             peer_manager,
         )
-        .map_err(CommsBuilderError::InboundMessageServiceError)
     }
 
     fn make_inbound_message_broker(
@@ -327,7 +330,7 @@ where
             outbound_message_sink_address,
             peer_manager.clone(),
             connection_manager.clone(),
-        )?;
+        );
 
         let inbound_message_broker = self.make_inbound_message_broker(&routes)?;
 
@@ -337,7 +340,7 @@ where
             inbound_message_broker.clone(),
             outbound_message_service.clone(),
             peer_manager.clone(),
-        )?;
+        );
 
         Ok(CommsServiceContainer {
             zmq_context: self.zmq_context,
