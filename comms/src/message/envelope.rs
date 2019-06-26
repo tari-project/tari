@@ -202,14 +202,8 @@ mod test {
     use super::*;
     use crate::message::{MessageEnvelopeHeader, MessageFlags, NodeDestination};
     use rand;
-    use rmp_serde;
-    use serde::{Deserialize, Serialize};
-    use tari_crypto::{
-        keys::{PublicKey, SecretKey},
-        ristretto::{RistrettoPublicKey, RistrettoSecretKey},
-    };
-
     use std::{convert::TryInto, sync::Arc};
+    use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
     use tari_utilities::hex::to_hex;
 
     #[test]
@@ -256,32 +250,6 @@ mod test {
     }
 
     #[test]
-    fn test_ser_des() {
-        let version = 0;
-        let mut rng = rand::OsRng::new().unwrap();
-        let k = RistrettoSecretKey::random(&mut rng);
-        let p = RistrettoPublicKey::from_secret_key(&k);
-        let source = p;
-        let dest: NodeDestination<RistrettoPublicKey> = NodeDestination::Unknown;
-        let signature = vec![0];
-        let flags = MessageFlags::ENCRYPTED;
-        let header = MessageEnvelopeHeader {
-            version,
-            source,
-            dest,
-            signature,
-            flags,
-        };
-
-        let mut buf = Vec::new();
-        header.serialize(&mut rmp_serde::Serializer::new(&mut buf)).unwrap();
-        let serialized = buf.to_vec();
-        let mut de = rmp_serde::Deserializer::new(serialized.as_slice());
-        let deserialized: MessageEnvelopeHeader<RistrettoPublicKey> = Deserialize::deserialize(&mut de).unwrap();
-        assert_eq!(deserialized, header);
-    }
-
-    #[test]
     fn construct() {
         let node_identity = Arc::new(NodeIdentity::random_for_test(None));
         let dest_secret_key = node_identity.secret_key.clone();
@@ -304,7 +272,7 @@ mod test {
         assert_eq!(dest_public_key, header.source);
         assert_eq!(MessageFlags::NONE, header.flags);
         assert_eq!(NodeDestination::Unknown, header.dest);
-        assert_eq!(71, header.signature.len());
+        assert!(!header.signature.is_empty());
         assert_eq!(message_envelope_body_frame.clone(), *envelope.body_frame());
         assert!(envelope.verify_signature().unwrap());
 

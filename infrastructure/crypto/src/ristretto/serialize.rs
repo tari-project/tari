@@ -122,11 +122,9 @@ impl<'de> Deserialize<'de> for RistrettoPublicKey {
         }
 
         if deserializer.is_human_readable() {
-            println!("Serializing from HEX");
             let s = String::deserialize(deserializer)?;
             RistrettoPublicKey::from_hex(&s).map_err(de::Error::custom)
         } else {
-            println!("Serializing from BINARY");
             deserializer.deserialize_bytes(RistrettoPubKeyVisitor)
         }
     }
@@ -136,10 +134,8 @@ impl Serialize for RistrettoPublicKey {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where S: Serializer {
         if serializer.is_human_readable() {
-            println!("Serializing to HEX");
             self.to_hex().serialize(serializer)
         } else {
-            println!("Serializing to BINARY");
             serializer.serialize_bytes(self.as_bytes())
         }
     }
@@ -164,11 +160,9 @@ impl<'de> Deserialize<'de> for RistrettoSecretKey {
         }
 
         if deserializer.is_human_readable() {
-            println!("Serializing from HEX");
             let s = String::deserialize(deserializer)?;
             RistrettoSecretKey::from_hex(&s).map_err(de::Error::custom)
         } else {
-            println!("Serializing from BINARY");
             deserializer.deserialize_bytes(RistrettoVisitor)
         }
     }
@@ -178,10 +172,8 @@ impl Serialize for RistrettoSecretKey {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where S: Serializer {
         if serializer.is_human_readable() {
-            println!("Serializing to HEX");
             self.to_hex().serialize(serializer)
         } else {
-            println!("Serializing to BINARY");
             serializer.serialize_bytes(self.as_bytes())
         }
     }

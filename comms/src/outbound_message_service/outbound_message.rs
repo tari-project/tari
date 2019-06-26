@@ -25,9 +25,9 @@ use crate::{
     peer_manager::node_id::NodeId,
 };
 use chrono::prelude::*;
-use rmp_serde;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::convert::TryFrom;
+use tari_utilities::message_format::MessageFormat;
 
 /// The OutboundMessage has a copy of the MessageEnvelope and tracks the number of send attempts, the creation
 /// timestamp and the retry timestamp. The OutboundMessageService will create the OutboundMessage and forward it to
@@ -42,7 +42,11 @@ pub struct OutboundMessage<T> {
     pub message_envelope: T,
 }
 
-impl<T: Serialize + DeserializeOwned> OutboundMessage<T> {
+impl<T> OutboundMessage<T>
+where
+    T: MessageFormat,
+    Self: MessageFormat,
+{
     /// Create a new OutboundMessage from the destination_node_id and message_envelope
     pub fn new(destination_node_id: NodeId, message_envelope: T) -> OutboundMessage<T> {
         OutboundMessage {
@@ -55,12 +59,8 @@ impl<T: Serialize + DeserializeOwned> OutboundMessage<T> {
     }
 
     /// Serialize an OutboundMessage into a single frame
-    pub fn to_frame(&self) -> Result<Frame, MessageError> {
-        let mut buf: Vec<u8> = Vec::new();
-        match self.serialize(&mut rmp_serde::Serializer::new(&mut buf)) {
-            Ok(_) => Ok(buf.to_vec()),
-            Err(_) => Err(MessageError::SerializeFailed),
-        }
+    pub fn into_frame(self) -> Result<Frame, MessageError> {
+        self.to_binary().map_err(MessageError::MessageFormatError)
     }
 
     /// Update the retry count and retry timestamp after a transmission attempt
@@ -78,26 +78,23 @@ impl<T: Serialize + DeserializeOwned> OutboundMessage<T> {
     }
 }
 
-impl<T: Serialize + DeserializeOwned> TryFrom<Frame> for OutboundMessage<T> {
-    type Error = MessageError;
-
-    /// Construct an OutboundMessage from a Frame
-    fn try_from(frame: Frame) -> Result<Self, Self::Error> {
-        let mut de = rmp_serde::Deserializer::new(frame.as_slice());
-        match Deserialize::deserialize(&mut de) {
-            Ok(outbound_message) => Ok(outbound_message),
-            Err(_) => Err(MessageError::DeserializeFailed),
-        }
-    }
-}
-
+// impl<T: MessageFormat> TryFrom<Frame> for OutboundMessage<T> {
+//    type Error = MessageError;
+//
+//    /// Construct an OutboundMessage from a Frame
+//    fn try_from(frame: Frame) -> Result<Self, Self::Error> {
+//        Self::from_binary(frame.as_slice())
+//            .map_err(MessageError::MessageFormatError)
+//    }
+//}
+//
 impl<T: Serialize + DeserializeOwned> TryFrom<FrameSet> for OutboundMessage<T> {
     type Error = MessageError;
 
     /// Construct an OutboundMessage from a Frame
     fn try_from(frames: FrameSet) -> Result<Self, Self::Error> {
         if frames.len() == 1 {
-            OutboundMessage::try_from(frames[0].clone())
+            OutboundMessage::from_binary(frames[0].as_slice()).map_err(MessageError::MessageFormatError)
         } else {
             Err(MessageError::DeserializeFailed)
         }
@@ -115,16 +112,16 @@ mod test {
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let destination_node_id = NodeId::from_key(&pk).unwrap();
         let message_envelope: Frame = vec![0, 1, 2, 3, 4];
-        let mut desired_outbound_message = OutboundMessage::<Frame>::new(destination_node_id, message_envelope);
+        let mut desired_outbound_message = OutboundMessage::new(destination_node_id, message_envelope);
         // Test transmission attempts
         desired_outbound_message.mark_transmission_attempt();
         desired_outbound_message.mark_transmission_attempt();
         assert_eq!(desired_outbound_message.retry_count, 2);
         assert!(desired_outbound_message.last_retry_timestamp.is_some());
         // Test serialization and deserialization
-        let msg_frame_result = desired_outbound_message.to_frame();
+        let msg_frame_result = desired_outbound_message.clone().into_frame();
         assert!(msg_frame_result.is_ok());
-        let outbound_message_result = OutboundMessage::<Frame>::try_from(msg_frame_result.unwrap());
+        let outbound_message_result = OutboundMessage::from_binary(&msg_frame_result.unwrap());
         assert!(outbound_message_result.is_ok());
         assert_eq!(desired_outbound_message, outbound_message_result.unwrap());
     }

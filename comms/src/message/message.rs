@@ -41,7 +41,7 @@ pub struct Message {
 }
 
 impl Message {
-    /// Create a new Message from two MessagFormat types
+    /// Create a new Message from two MessageFormat types
     pub fn from_message_format<H: MessageFormat, B: MessageFormat>(header: H, msg: B) -> Result<Self, MessageError> {
         let header_frame = header.to_binary()?;
         let body_frame = msg.to_binary()?;
@@ -69,14 +69,13 @@ impl Message {
 #[cfg(test)]
 mod test {
     use super::*;
-    use tari_utilities::hex::to_hex;
 
-    #[derive(Serialize, Deserialize)]
+    #[derive(Serialize, Deserialize, Eq, PartialEq, Debug, Clone)]
     struct TestHeader {
         a: u32,
     }
 
-    #[derive(Serialize, Deserialize)]
+    #[derive(Serialize, Deserialize, Eq, PartialEq, Debug, Clone)]
     struct TestMsg {
         a: u32,
     }
@@ -84,10 +83,14 @@ mod test {
     #[test]
     fn from_message_format() {
         let header = TestHeader { a: 1 };
-        let msg = TestMsg { a: 2 };
+        let body = TestMsg { a: 2 };
 
-        let msg = Message::from_message_format(header, msg).unwrap();
-        assert_eq!("9101", to_hex(&msg.header));
-        assert_eq!("9102", to_hex(&msg.body));
+        let msg = Message::from_message_format(header.clone(), body.clone()).unwrap();
+
+        let header2 = msg.to_header::<TestHeader>().unwrap();
+        let body2 = msg.to_message::<TestMsg>().unwrap();
+
+        assert_eq!(header, header2.message_type);
+        assert_eq!(body, body2);
     }
 }
