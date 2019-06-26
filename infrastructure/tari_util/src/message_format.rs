@@ -22,16 +22,17 @@
 
 use base64;
 use derive_error::Error;
-use rmp_serde;
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json;
 
 #[derive(Debug, Error)]
 pub enum MessageFormatError {
     // An error occurred serialising an object into binary
-    BinarySerializeError(rmp_serde::encode::Error),
+    #[error(no_from, no_std)]
+    BinarySerializeError,
     // An error occurred deserialising binary data into an object
-    BinaryDeserializeError(rmp_serde::decode::Error),
+    #[error(no_from, no_std)]
+    BinaryDeserializeError,
     // An error occurred de-/serialising an object from/into JSON
     JSONError(serde_json::error::Error),
     // An error occurred deserialising an object from Base64
@@ -49,17 +50,14 @@ pub trait MessageFormat: Sized {
 }
 
 impl<'a, T> MessageFormat for T
-where T: Deserialize<'a> + Serialize
+where T: DeserializeOwned + Serialize
 {
     fn to_binary(&self) -> Result<Vec<u8>, MessageFormatError> {
-        let mut buf = Vec::new();
-        self.serialize(&mut rmp_serde::Serializer::new(&mut buf))
-            .map_err(MessageFormatError::BinarySerializeError)?;
-        Ok(buf.to_vec())
+        bincode::serialize(self).map_err(|_| MessageFormatError::BinarySerializeError)
     }
 
     fn to_json(&self) -> Result<String, MessageFormatError> {
-        serde_json::to_string(self).map_err(MessageFormatError::JSONError)
+        serde_json::to_string(self).map_err(|e| MessageFormatError::JSONError(e))
     }
 
     fn to_base64(&self) -> Result<String, MessageFormatError> {
@@ -68,13 +66,12 @@ where T: Deserialize<'a> + Serialize
     }
 
     fn from_binary(msg: &[u8]) -> Result<Self, MessageFormatError> {
-        let mut de = rmp_serde::Deserializer::new(msg);
-        Deserialize::deserialize(&mut de).map_err(MessageFormatError::BinaryDeserializeError)
+        bincode::deserialize(msg).map_err(|_| MessageFormatError::BinaryDeserializeError)
     }
 
     fn from_json(msg: &str) -> Result<Self, MessageFormatError> {
         let mut de = serde_json::Deserializer::from_reader(msg.as_bytes());
-        Deserialize::deserialize(&mut de).map_err(MessageFormatError::JSONError)
+        Deserialize::deserialize(&mut de).map_err(|e| MessageFormatError::JSONError(e))
     }
 
     fn from_base64(msg: &str) -> Result<Self, MessageFormatError> {

@@ -32,7 +32,6 @@ use curve25519_dalek::{
 };
 use digest::Digest;
 use rand::{CryptoRng, Rng};
-use serde::{Deserialize, Serialize};
 use std::{
     cmp::Ordering,
     hash::{Hash, Hasher},
@@ -61,7 +60,7 @@ type HashDigest = Blake2b;
 /// let _k2 = RistrettoSecretKey::from_hex(&"100000002000000030000000040000000");
 /// let _k3 = RistrettoSecretKey::random(&mut rng);
 /// ```
-#[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Clone, Debug)]
 pub struct RistrettoSecretKey(pub(crate) Scalar);
 
 const SCALAR_LENGTH: usize = 32;
@@ -193,10 +192,9 @@ impl From<u64> for RistrettoSecretKey {
 /// let sk = RistrettoSecretKey::random(&mut rng);
 /// let _p3 = RistrettoPublicKey::from_secret_key(&sk);
 /// ```
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
 pub struct RistrettoPublicKey {
     pub(crate) point: RistrettoPoint,
-    #[serde(skip)]
     pub(crate) compressed: CompressedRistretto,
 }
 
@@ -260,7 +258,7 @@ impl ExtendBytes for RistrettoPublicKey {
 impl Hash for RistrettoPublicKey {
     /// Require the implementation of the Hash trait for Hashmaps
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.to_vec().hash(state);
+        self.as_bytes().hash(state);
     }
 }
 
@@ -420,6 +418,12 @@ mod test {
     use rand;
     use tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray};
 
+    fn assert_completely_equal(k1: &RistrettoPublicKey, k2: &RistrettoPublicKey) {
+        assert_eq!(k1, k2);
+        assert_eq!(k1.point, k2.point);
+        assert_eq!(k1.compressed, k2.compressed);
+    }
+
     #[test]
     fn test_generation() {
         let mut rng = rand::OsRng::new().unwrap();
@@ -482,7 +486,7 @@ mod test {
         let pk = RistrettoPublicKey::from_secret_key(&sk);
         let hex = pk.to_hex();
         let pk2 = RistrettoPublicKey::from_hex(&hex).unwrap();
-        assert_eq!(pk, pk2);
+        assert_completely_equal(&pk, &pk2);
     }
 
     #[test]
@@ -501,7 +505,7 @@ mod test {
         let pk = RistrettoPublicKey::from_secret_key(&sk);
         let vec = pk.to_vec();
         let pk2 = RistrettoPublicKey::from_vec(&vec).unwrap();
-        assert_eq!(pk, pk2);
+        assert_completely_equal(&pk, &pk2);
     }
 
     #[test]
@@ -563,14 +567,14 @@ mod test {
         let (k2, p2) = get_keypair();
         let p_slow = &(&k1 * &p1) + &(&k2 * &p2);
         let b_batch = RistrettoPublicKey::batch_mul(&[k1, k2], &vec![p1, p2]);
-        assert_eq!(p_slow, b_batch);
+        assert_completely_equal(&p_slow, &b_batch);
     }
 
     #[test]
     fn create_keypair() {
         let mut rng = rand::OsRng::new().unwrap();
         let (k, pk) = RistrettoPublicKey::random_keypair(&mut rng);
-        assert_eq!(pk, RistrettoPublicKey::from_secret_key(&k));
+        assert_completely_equal(&pk, &RistrettoPublicKey::from_secret_key(&k));
     }
 
     #[test]
@@ -620,6 +624,31 @@ mod test {
         let k2: RistrettoSecretKey = RistrettoSecretKey::from_base64(&ser_k).unwrap();
         assert_eq!(k, k2, "Deserialised secret key");
         let pk2: RistrettoPublicKey = RistrettoPublicKey::from_base64(&ser_pk).unwrap();
-        assert_eq!(pk, pk2, "Deserialized public key");
+        assert_completely_equal(&pk, &pk2);
+    }
+
+    #[test]
+    fn serialize_deserialize_json() {
+        let mut rng = rand::OsRng::new().unwrap();
+        let (k, pk) = RistrettoPublicKey::random_keypair(&mut rng);
+        let ser_k = k.to_json().unwrap();
+        let ser_pk = pk.to_json().unwrap();
+        println!("JSON pubkey: {} privkey: {}", ser_pk, ser_k);
+        let k2: RistrettoSecretKey = RistrettoSecretKey::from_json(&ser_k).unwrap();
+        assert_eq!(k, k2, "Deserialised secret key");
+        let pk2: RistrettoPublicKey = RistrettoPublicKey::from_json(&ser_pk).unwrap();
+        assert_completely_equal(&pk, &pk2);
+    }
+
+    #[test]
+    fn serialize_deserialize_binary() {
+        let mut rng = rand::OsRng::new().unwrap();
+        let (k, pk) = RistrettoPublicKey::random_keypair(&mut rng);
+        let ser_k = k.to_binary().unwrap();
+        let ser_pk = pk.to_binary().unwrap();
+        let k2: RistrettoSecretKey = RistrettoSecretKey::from_binary(&ser_k).unwrap();
+        assert_eq!(k, k2);
+        let pk2: RistrettoPublicKey = RistrettoPublicKey::from_binary(&ser_pk).unwrap();
+        assert_completely_equal(&pk, &pk2);
     }
 }
