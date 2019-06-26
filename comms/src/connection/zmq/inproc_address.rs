@@ -22,7 +22,7 @@
 
 use crate::connection::zmq::{ZmqEndpoint, ZmqError};
 use rand::{distributions::Alphanumeric, EntropyRng, Rng};
-use std::{iter, str::FromStr};
+use std::{fmt, iter, str::FromStr};
 
 const DEFAULT_INPROC: &'static str = "inproc://default";
 
@@ -58,6 +58,12 @@ impl FromStr for InprocAddress {
         } else {
             Err(ZmqError::MalformedInprocAddress)
         }
+    }
+}
+
+impl fmt::Display for InprocAddress {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 

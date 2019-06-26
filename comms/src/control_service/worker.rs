@@ -54,6 +54,8 @@ use tari_crypto::keys::DiffieHellmanSharedSecret;
 use tari_utilities::{byte_array::ByteArray, ciphers::cipher::Cipher, message_format::MessageFormat};
 
 const LOG_TARGET: &'static str = "comms::control_service::worker";
+/// The maximum message size allowed for the control service.
+/// Messages will transparently drop if this size is exceeded.
 const CONTROL_SERVICE_MAX_MSG_SIZE: u64 = 1024; // 1kb
 
 /// The [ControlService] worker is responsible for handling incoming messages
@@ -109,7 +111,7 @@ where
         };
 
         let handle = thread::Builder::new()
-            .name("control-service".into())
+            .name("control-service".to_string())
             .spawn(move || {
                 loop {
                     match worker.main_loop() {

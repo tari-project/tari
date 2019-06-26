@@ -30,6 +30,12 @@ pub struct I2PAddress {
     pub name: String,
 }
 
+impl I2PAddress {
+    pub fn host(&self) -> String {
+        format!("{}.b32.i2p", self.name)
+    }
+}
+
 impl FromStr for I2PAddress {
     type Err = NetAddressError;
 

@@ -63,7 +63,7 @@ const PEER_CONNECTION_RECV_HWM: i32 = 10;
 /// - Receives and handles ControlMessages
 /// - Forwards frames to consumer
 /// - Handles SocketEvents and updates shared connection state
-pub(super) struct Worker {
+pub(super) struct PeerConnectionWorker {
     context: PeerConnectionContext,
     sender: SyncSender<ControlMessage>,
     receiver: Receiver<ControlMessage>,
@@ -74,7 +74,7 @@ pub(super) struct Worker {
     retry_count: u16,
 }
 
-impl Worker {
+impl PeerConnectionWorker {
     /// Create a new Worker from the given context
     pub fn new(context: PeerConnectionContext, connection_state: Arc<RwLock<PeerConnectionState>>) -> Self {
         let (sender, receiver) = sync_channel(5);
@@ -99,7 +99,7 @@ impl Worker {
         }
 
         let handle = thread::Builder::new()
-            .name(format!("peer-conn-{}", &self.context.id))
+            .name(format!("peer-conn-{}", &self.context.id.to_short_id()))
             .spawn(move || -> Result<()> {
                 let result = self.main_loop();
 
@@ -283,6 +283,7 @@ impl Worker {
 
     fn transition_connected(&self) -> Result<()> {
         let mut lock = acquire_write_lock!(self.connection_state);
+
         match *lock {
             PeerConnectionState::Connecting(ref thread_ctl) => {
                 let info = ConnectionInfo {
@@ -304,21 +305,22 @@ impl Worker {
                     },
                 }
             },
-            PeerConnectionState::Listening(ref info) => {
-                info!(
-                    target: LOG_TARGET,
-                    "[{}] Connection accepted", self.context.peer_address
-                );
-                match self.context.direction {
-                    Direction::Inbound => {
-                        if self.identity.is_some() {
-                            *lock = PeerConnectionState::Connected(info.clone());
-                        }
-                    },
-                    Direction::Outbound => {
+            PeerConnectionState::Listening(ref info) => match self.context.direction {
+                Direction::Inbound => {
+                    info!(
+                        target: LOG_TARGET,
+                        "Inbound connection listening on {}", self.context.peer_address
+                    );
+                    if self.identity.is_some() {
                         *lock = PeerConnectionState::Connected(info.clone());
-                    },
-                }
+                    }
+                },
+                Direction::Outbound => {
+                    return Err(PeerConnectionError::StateError(format!(
+                        "Should not happen: outbound connection was in listening state",
+                    ))
+                    .into());
+                },
             },
             PeerConnectionState::Connected(_) => {
                 warn!(
@@ -334,6 +336,13 @@ impl Worker {
                 .into());
             },
         }
+
+        debug!(
+            target: LOG_TARGET,
+            "[{}] Peer connection state is '{}'",
+            self.context.peer_address,
+            PeerConnectionSimpleState::from(&*lock)
+        );
 
         Ok(())
     }
@@ -357,8 +366,11 @@ impl Worker {
                         }
                     },
                     None => {
-                        debug!(target: LOG_TARGET, "Setting peer connection identity");
                         self.identity = Some(frames[0].clone());
+                        debug!(
+                            target: LOG_TARGET,
+                            "Set peer connection identity to {:x?}", self.identity
+                        );
                         self.transition_connected()?;
                     },
                 },
@@ -433,5 +445,163 @@ impl Worker {
     fn establish_consumer_connection(&self) -> Result<EstablishedConnection> {
         let context = &self.context;
         Connection::new(&context.context, Direction::Outbound).establish(&context.message_sink_address)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::connection::{
+        peer_connection::{control::ThreadControlMessenger, ConnectionId},
+        types::Linger,
+        CurveEncryption,
+        ZmqContext,
+    };
+
+    fn make_thread_ctl() -> (Arc<ThreadControlMessenger>, Receiver<ControlMessage>) {
+        let (tx, rx) = sync_channel(1);
+        (Arc::new(tx.into()), rx)
+    }
+
+    fn transition_connected_setup(
+        direction: Direction,
+        initial_state: PeerConnectionSimpleState,
+        identity: Option<Frame>,
+    ) -> PeerConnectionWorker
+    {
+        let context = ZmqContext::new();
+        let peer_address = "127.0.0.1:9000".parse().unwrap();
+
+        let (thread_ctl, receiver) = make_thread_ctl();
+        let info = Arc::new(ConnectionInfo {
+            connected_address: None,
+            control_messenger: Arc::clone(&thread_ctl),
+        });
+        let connection_state = match initial_state {
+            PeerConnectionSimpleState::Initial => PeerConnectionState::Initial,
+            PeerConnectionSimpleState::Connecting => PeerConnectionState::Connecting(Arc::clone(&thread_ctl)),
+            PeerConnectionSimpleState::Connected(_) => PeerConnectionState::Connected(info),
+            PeerConnectionSimpleState::Disconnected => PeerConnectionState::Disconnected,
+            PeerConnectionSimpleState::Shutdown => PeerConnectionState::Shutdown,
+            PeerConnectionSimpleState::Listening(_) => PeerConnectionState::Listening(info),
+            PeerConnectionSimpleState::Failed(err) => PeerConnectionState::Failed(err),
+        };
+
+        let context = PeerConnectionContext {
+            context,
+            message_sink_address: InprocAddress::random(),
+            peer_address,
+            direction,
+            linger: Linger::Indefinitely,
+            id: ConnectionId::default(),
+            curve_encryption: CurveEncryption::default(),
+            socks_address: None,
+            max_msg_size: 1024 * 1024,
+            max_retry_attempts: 1,
+        };
+        PeerConnectionWorker {
+            context,
+            identity,
+            receiver,
+            sender: thread_ctl.get_sender().clone(),
+            connection_state: Arc::new(RwLock::new(connection_state)),
+            monitor_addr: InprocAddress::random(),
+            retry_count: 1,
+            paused: false,
+        }
+    }
+
+    #[test]
+    fn transition_connected() {
+        // Transition outbound to connected
+        let subject = transition_connected_setup(Direction::Outbound, PeerConnectionSimpleState::Connecting, None);
+        subject.transition_connected().unwrap();
+        {
+            let lock = subject.connection_state.read().unwrap();
+            match (&*lock).into() {
+                PeerConnectionSimpleState::Connected(_) => {},
+                s => panic!("Unexpected state '{:?}'", s),
+            }
+        }
+
+        // Transition connecting inbound without identity
+        let subject = transition_connected_setup(Direction::Inbound, PeerConnectionSimpleState::Connecting, None);
+        subject.transition_connected().unwrap();
+        {
+            let lock = subject.connection_state.read().unwrap();
+            match (&*lock).into() {
+                PeerConnectionSimpleState::Connecting => {},
+                s => panic!("Unexpected state '{:?}'", s),
+            }
+        }
+
+        // Transition connecting inbound with identity
+        let subject = transition_connected_setup(
+            Direction::Inbound,
+            PeerConnectionSimpleState::Connecting,
+            Some(Vec::new()),
+        );
+        subject.transition_connected().unwrap();
+        {
+            let lock = subject.connection_state.read().unwrap();
+            match (&*lock).into() {
+                PeerConnectionSimpleState::Connected(_) => {},
+                s => panic!("Unexpected state '{:?}'", s),
+            }
+        }
+
+        // Transition listening inbound without identity
+        let subject = transition_connected_setup(Direction::Inbound, PeerConnectionSimpleState::Listening(None), None);
+        subject.transition_connected().unwrap();
+        {
+            let lock = subject.connection_state.read().unwrap();
+            match (&*lock).into() {
+                PeerConnectionSimpleState::Listening(None) => {},
+                s => panic!("Unexpected state '{:?}'", s),
+            }
+        }
+
+        // Transition listening inbound with identity
+        let subject = transition_connected_setup(
+            Direction::Inbound,
+            PeerConnectionSimpleState::Listening(None),
+            Some(Vec::new()),
+        );
+        subject.transition_connected().unwrap();
+        {
+            let lock = subject.connection_state.read().unwrap();
+            match (&*lock).into() {
+                PeerConnectionSimpleState::Connected(_) => {},
+                s => panic!("Unexpected state '{:?}'", s),
+            }
+        }
+
+        // Transition listening outbound with identity
+        let subject = transition_connected_setup(
+            Direction::Outbound,
+            PeerConnectionSimpleState::Listening(None),
+            Some(Vec::new()),
+        );
+        match subject.transition_connected().unwrap_err() {
+            ConnectionError::PeerError(PeerConnectionError::StateError(_)) => {},
+            err => panic!("Unexpected error: {:?}", err),
+        }
+
+        // Transition connected to connected
+        let subject = transition_connected_setup(Direction::Inbound, PeerConnectionSimpleState::Connected(None), None);
+        subject.transition_connected().unwrap();
+        {
+            let lock = subject.connection_state.read().unwrap();
+            match (&*lock).into() {
+                PeerConnectionSimpleState::Connected(_) => {},
+                s => panic!("Unexpected state '{:?}'", s),
+            }
+        }
+        // Transition from other states
+        let subject = transition_connected_setup(Direction::Inbound, PeerConnectionSimpleState::Initial, None);
+        match subject.transition_connected().unwrap_err() {
+            ConnectionError::PeerError(PeerConnectionError::StateError(_)) => {},
+            err => panic!("Unexpected error: {:?}", err),
+        }
     }
 }

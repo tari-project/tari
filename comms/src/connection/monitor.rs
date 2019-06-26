@@ -31,10 +31,13 @@ use crate::{
     message::FrameSet,
 };
 use derive_error::Error;
+use log::*;
 use std::{
     convert::{TryFrom, TryInto},
     fmt,
 };
+
+const LOG_TARGET: &'static str = "comms::connection::monitor";
 
 #[derive(Debug, Error, PartialEq)]
 pub enum ConnectionMonitorError {
@@ -100,6 +103,8 @@ impl ConnectionMonitor {
             )))
         })?;
 
+        debug!(target: LOG_TARGET, "Connection monitor connected on {}", address);
+
         Ok(Self { socket })
     }
 
@@ -157,6 +162,12 @@ impl ConnectionMonitor {
 
             Err(e) => Err(ConnectionError::SocketError(format!("Failed to poll: {}", e))),
         }
+    }
+}
+
+impl Drop for ConnectionMonitor {
+    fn drop(&mut self) {
+        debug!(target: LOG_TARGET, "Connection monitor dropped")
     }
 }
 

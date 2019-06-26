@@ -97,6 +97,14 @@ impl NetAddress {
         }
     }
 
+    pub fn host(&self) -> String {
+        match self {
+            NetAddress::Onion(addr) => addr.host(),
+            NetAddress::IP(addr) => addr.host(),
+            NetAddress::I2P(addr) => addr.host(),
+        }
+    }
+
     /// Returns the port for the NetAddress if applicable, otherwise None
     pub fn maybe_port(&self) -> Option<u16> {
         match self {
