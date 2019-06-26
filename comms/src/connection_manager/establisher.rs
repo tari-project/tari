@@ -124,38 +124,34 @@ where PK: PublicKey + Hash
     {
         let config = &self.config;
 
-        let mut attempt = ConnectionAttempts::new(
-            &self.context,
-            self.peer_manager.clone(),
-            |attempt_count, monitor_addr| {
-                let address = self
-                    .peer_manager
-                    .get_best_net_address(&peer.node_id)
-                    .map_err(ConnectionManagerError::PeerManagerError)?;
+        let mut attempt = ConnectionAttempts::new(&self.context, self.peer_manager.clone(), |monitor_addr, _| {
+            let address = self
+                .peer_manager
+                .get_best_net_address(&peer.node_id)
+                .map_err(ConnectionManagerError::PeerManagerError)?;
 
-                let conn = Connection::new(&self.context, Direction::Outbound)
-                    .set_linger(Linger::Timeout(3000))
-                    .set_monitor_addr(monitor_addr)
-                    .set_socks_proxy_addr(config.socks_proxy_address.clone())
-                    .set_max_message_size(Some(config.max_message_size))
-                    .set_receive_hwm(0)
-                    .establish(&address)
-                    .map_err(ConnectionManagerError::ConnectionError)?;
+            let conn = Connection::new(&self.context, Direction::Outbound)
+                .set_linger(Linger::Timeout(3000))
+                .set_monitor_addr(monitor_addr)
+                .set_socks_proxy_addr(config.socks_proxy_address.clone())
+                .set_max_message_size(Some(config.max_message_size))
+                .set_receive_hwm(0)
+                .establish(&address)
+                .map_err(ConnectionManagerError::ConnectionError)?;
 
-                debug!(
-                    target: LOG_TARGET,
-                    "Connection attempt #{} to NodeId={}", attempt_count, peer.node_id
-                );
-
-                Ok((conn, address))
-            },
-        );
+            Ok((conn, address))
+        });
 
         info!(
             target: LOG_TARGET,
-            "Attempting to connect to control port for NodeId={}", peer.node_id
+            "Starting {} attempt(s) to connect to control port for NodeId={}",
+            peer.addresses.len(),
+            peer.node_id
         );
-        attempt.try_connect(peer.addresses.len())
+        attempt.try_connect(peer.addresses.len()).or_else(|err| {
+            warn!(target: LOG_TARGET, "Failed to connect to peer control port",);
+            Err(err)
+        })
     }
 
     /// Create a new outbound PeerConnection
@@ -275,34 +271,37 @@ where PK: PublicKey + Hash
 /// attempts statistics
 struct ConnectionAttempts<'c, PK, F> {
     context: &'c ZmqContext,
-    num_attempts: usize,
     attempt_fn: F,
     peer_manager: Arc<PeerManager<PK, CommsDataStore>>,
 }
 
 impl<'c, PK, F> ConnectionAttempts<'c, PK, F>
 where
-    F: Fn(usize, InprocAddress) -> Result<(EstablishedConnection, NetAddress)>,
+    F: Fn(InprocAddress, usize) -> Result<(EstablishedConnection, NetAddress)>,
     PK: PublicKey + Hash,
 {
     pub fn new(context: &'c ZmqContext, peer_manager: Arc<PeerManager<PK, CommsDataStore>>, attempt_fn: F) -> Self {
         Self {
             context,
-            num_attempts: 0,
             attempt_fn,
             peer_manager,
         }
     }
 
     pub fn try_connect(&mut self, num_attempts: usize) -> Result<(EstablishedConnection, ConnectionMonitor)> {
-        let mut attempt_count = 0usize;
+        let mut attempt_count = 0;
         loop {
             let monitor_addr = InprocAddress::random();
             let monitor = ConnectionMonitor::connect(self.context, &monitor_addr)
                 .map_err(ConnectionManagerError::ConnectionError)?;
 
             attempt_count += 1;
-            let (conn, address) = (self.attempt_fn)(attempt_count, monitor_addr)?;
+            let (conn, address) = (self.attempt_fn)(monitor_addr, attempt_count)?;
+
+            debug!(
+                target: LOG_TARGET,
+                "Connection attempt {} of {} to {}", attempt_count, num_attempts, address
+            );
 
             if self.is_connected(&monitor)? {
                 debug!(
@@ -318,8 +317,7 @@ where
                 self.peer_manager
                     .mark_failed_connection_attempt(&address)
                     .map_err(ConnectionManagerError::PeerManagerError)?;
-                self.num_attempts += 1;
-                if self.num_attempts > num_attempts {
+                if attempt_count >= num_attempts {
                     break Err(ConnectionManagerError::MaxConnnectionAttemptsExceeded);
                 }
             }

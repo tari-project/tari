@@ -93,11 +93,8 @@ where
         connection_manager: Arc<ConnectionManager>,
     ) -> Result<(thread::JoinHandle<Result<()>>, SyncSender<ControlMessage>)>
     {
-        info!(
-            target: LOG_TARGET,
-            "Control service starting on {}...", config.listener_address
-        );
         let (sender, receiver) = sync_channel(5);
+        let listener_address = config.listener_address.clone();
 
         let mut worker = Self {
             config,
@@ -113,6 +110,10 @@ where
         let handle = thread::Builder::new()
             .name("control-service".to_string())
             .spawn(move || {
+                info!(
+                    target: LOG_TARGET,
+                    "Control service starting on {}...", listener_address
+                );
                 loop {
                     match worker.main_loop() {
                         Ok(_) => {
