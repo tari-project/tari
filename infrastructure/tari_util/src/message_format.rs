@@ -22,16 +22,17 @@
 
 use base64;
 use derive_error::Error;
-use rmp_serde;
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json;
 
 #[derive(Debug, Error)]
 pub enum MessageFormatError {
     // An error occurred serialising an object into binary
-    BinarySerializeError(rmp_serde::encode::Error),
+    #[error(no_from, no_std)]
+    BinarySerializeError,
     // An error occurred deserialising binary data into an object
-    BinaryDeserializeError(rmp_serde::decode::Error),
+    #[error(no_from, no_std)]
+    BinaryDeserializeError,
     // An error occurred de-/serialising an object from/into JSON
     JSONError(serde_json::error::Error),
     // An error occurred deserialising an object from Base64
@@ -48,18 +49,15 @@ pub trait MessageFormat: Sized {
     fn from_base64(msg: &str) -> Result<Self, MessageFormatError>;
 }
 
-impl<'a, T> MessageFormat for T
-where T: Deserialize<'a> + Serialize
+impl<'de, T> MessageFormat for T
+where T: DeserializeOwned + Serialize
 {
     fn to_binary(&self) -> Result<Vec<u8>, MessageFormatError> {
-        let mut buf = Vec::new();
-        self.serialize(&mut rmp_serde::Serializer::new(&mut buf))
-            .map_err(MessageFormatError::BinarySerializeError)?;
-        Ok(buf.to_vec())
+        bincode::serialize(self).map_err(|_| MessageFormatError::BinarySerializeError)
     }
 
     fn to_json(&self) -> Result<String, MessageFormatError> {
-        serde_json::to_string(self).map_err(MessageFormatError::JSONError)
+        serde_json::to_string(self).map_err(|e| MessageFormatError::JSONError(e))
     }
 
     fn to_base64(&self) -> Result<String, MessageFormatError> {
@@ -68,13 +66,12 @@ where T: Deserialize<'a> + Serialize
     }
 
     fn from_binary(msg: &[u8]) -> Result<Self, MessageFormatError> {
-        let mut de = rmp_serde::Deserializer::new(msg);
-        Deserialize::deserialize(&mut de).map_err(MessageFormatError::BinaryDeserializeError)
+        bincode::deserialize(msg).map_err(|_| MessageFormatError::BinaryDeserializeError)
     }
 
     fn from_json(msg: &str) -> Result<Self, MessageFormatError> {
         let mut de = serde_json::Deserializer::from_reader(msg.as_bytes());
-        Deserialize::deserialize(&mut de).map_err(MessageFormatError::JSONError)
+        Deserialize::deserialize(&mut de).map_err(|e| MessageFormatError::JSONError(e))
     }
 
     fn from_base64(msg: &str) -> Result<Self, MessageFormatError> {
@@ -87,9 +84,7 @@ where T: Deserialize<'a> + Serialize
 mod test {
     use super::*;
     use base64::DecodeError as Base64Error;
-    use rmp_serde::decode::Error as RMPError;
     use serde::{Deserialize, Serialize};
-    use std::io::ErrorKind;
 
     #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
     struct TestMessage {
@@ -116,7 +111,10 @@ mod test {
     fn binary_simple() {
         let val = TestMessage::new("twenty", 20);
         let msg = val.to_binary().unwrap();
-        assert_eq!(msg, b"\x93\xA6\x74\x77\x65\x6E\x74\x79\x14\xC0");
+        assert_eq!(
+            msg,
+            b"\x06\x00\x00\x00\x00\x00\x00\x00\x74\x77\x65\x6e\x74\x79\x14\x00\x00\x00\x00\x00\x00\x00\x00"
+        );
         let val2 = TestMessage::from_binary(&msg).unwrap();
         assert_eq!(val, val2);
     }
@@ -125,7 +123,7 @@ mod test {
     fn base64_simple() {
         let val = TestMessage::new("twenty", 20);
         let msg = val.to_base64().unwrap();
-        assert_eq!(msg, "k6Z0d2VudHkUwA==");
+        assert_eq!(msg, "BgAAAAAAAAB0d2VudHkUAAAAAAAAAAA=");
         let val2 = TestMessage::from_base64(&msg).unwrap();
         assert_eq!(val, val2);
     }
@@ -153,12 +151,15 @@ mod test {
         );
 
         let msg_base64 = val.to_base64().unwrap();
-        assert_eq!(msg_base64, "k6h0b21vcnJvdzKTpXRvZGF5ZMA=");
+        assert_eq!(
+            msg_base64,
+            "CAAAAAAAAAB0b21vcnJvdzIAAAAAAAAAAQUAAAAAAAAAdG9kYXlkAAAAAAAAAAA="
+        );
 
         let msg_bin = val.to_binary().unwrap();
         assert_eq!(
             msg_bin,
-            b"\x93\xA8\x74\x6F\x6D\x6F\x72\x72\x6F\x77\x32\x93\xA5\x74\x6F\x64\x61\x79\x64\xC0"
+            b"\x08\x00\x00\x00\x00\x00\x00\x00\x74\x6f\x6d\x6f\x72\x72\x6f\x77\x32\x00\x00\x00\x00\x00\x00\x00\x01\x05\x00\x00\x00\x00\x00\x00\x00\x74\x6f\x64\x61\x79\x64\x00\x00\x00\x00\x00\x00\x00\x00".to_vec()
         );
 
         let val2 = TestMessage::from_json(&msg_json).unwrap();
@@ -197,9 +198,7 @@ mod test {
 
         let err = TestMessage::from_base64("j6h0b21vcnJvdzKTpXRvZGF5ZMA=").err().unwrap();
         match err {
-            MessageFormatError::BinaryDeserializeError(RMPError::Syntax(s)) => {
-                assert_eq!(s, "invalid type: sequence, expected field identifier");
-            },
+            MessageFormatError::BinaryDeserializeError => {},
             _ => panic!("Base64 conversion should fail"),
         };
     }
@@ -208,9 +207,7 @@ mod test {
     fn fail_binary() {
         let err = TestMessage::from_binary(b"").err().unwrap();
         match err {
-            MessageFormatError::BinaryDeserializeError(RMPError::InvalidMarkerRead(e)) => {
-                assert_eq!(e.kind(), ErrorKind::UnexpectedEof, "Unexpected error type: {:?}", e);
-            },
+            MessageFormatError::BinaryDeserializeError => {},
             _ => {
                 panic!("Base64 conversion should fail");
             },

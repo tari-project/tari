@@ -140,14 +140,16 @@ where T: Serialize + Deserialize<'de>
     /// `Ok(T)` if a message is received within the timeout and can be deserialized
     /// `Ok(None)` if the timeout is reached before a message arrives
     /// `Err(DomainConnectorError)` if there is a connection error, or a message fails to deserialize
-    pub fn receive_timeout(&self, duration: Duration) -> Result<Option<T>, ConnectorError> {
+    pub fn receive_timeout(&self, duration: Duration) -> Result<Option<T>, ConnectorError>
+    where T: MessageFormat {
         match connection_try!(self.connection.receive(duration.as_millis() as u32)) {
             Some(frames) => self.deserialize_from(frames).map(Some),
             None => Ok(None),
         }
     }
 
-    fn deserialize_from(&self, mut frames: FrameSet) -> Result<T, ConnectorError> {
+    fn deserialize_from(&self, mut frames: FrameSet) -> Result<T, ConnectorError>
+    where T: MessageFormat {
         let frame = self.frame_extractor.extract(&mut frames)?;
         Ok(T::from_binary(&frame).map_err(ConnectorError::DeserializeFailed)?)
     }
@@ -322,7 +324,7 @@ mod test {
             poem: "meow meow".to_string(),
         };
 
-        let header = MessageHeader { message_type: "abc123" };
+        let header = MessageHeader { message_type: 123 };
 
         let expected_pub_key = CommsPublicKey::random_keypair(&mut OsRng::new().unwrap()).1;
         let domain_message_context = DomainMessageContext {
