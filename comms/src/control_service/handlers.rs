@@ -92,29 +92,48 @@ where
     let node_id = message.node_id.clone();
     let peer = match pm.find_with_public_key(&public_key) {
         Ok(peer) => {
-            // TODO: check that this peer is valid / can be connected to etc
-            pm.add_net_address(&node_id, &message.control_service_address)
-                .map_err(ControlServiceError::PeerManagerError)?;
+            if peer.is_banned() {
+                return Err(ControlServiceError::PeerBanned);
+            }
+
+            // TODO(sdbondi): add_net_address should be idempotent, once it is, we can remove this check
+            match pm.find_with_net_address(&message.control_service_address) {
+                Ok(found_peer) => {
+                    if found_peer == peer {
+                        info!(
+                            target: LOG_TARGET,
+                            "Address {} already exists for node_id={}", message.address, found_peer.node_id
+                        );
+                    } else {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Address {} already used for another peer with node_id={}. Address will be replaced",
+                            message.address,
+                            found_peer.node_id
+                        );
+                    }
+                },
+                Err(PeerManagerError::PeerNotFoundError) => pm
+                    .add_net_address(&node_id, &message.control_service_address)
+                    .map_err(ControlServiceError::PeerManagerError)?,
+                Err(err) => return Err(err.into()),
+            }
 
             peer
         },
-        Err(err) => {
-            match err {
-                PeerManagerError::PeerNotFoundError => {
-                    let peer = Peer::new(
-                        public_key.clone(),
-                        node_id.clone(),
-                        message.control_service_address.clone().into(),
-                        PeerFlags::empty(),
-                    );
-                    // TODO: check that this peer is valid / can be connected to etc
-                    pm.add_peer(peer.clone())
-                        .map_err(ControlServiceError::PeerManagerError)?;
-                    peer
-                },
-                e => return Err(ControlServiceError::PeerManagerError(e)),
-            }
+        Err(PeerManagerError::PeerNotFoundError) => {
+            let peer = Peer::new(
+                public_key.clone(),
+                node_id.clone(),
+                message.control_service_address.clone().into(),
+                PeerFlags::empty(),
+            );
+
+            pm.add_peer(peer.clone())
+                .map_err(ControlServiceError::PeerManagerError)?;
+            peer
         },
+        Err(err) => return Err(ControlServiceError::PeerManagerError(err)),
     };
 
     let conn_manager = &context.connection_manager.clone();

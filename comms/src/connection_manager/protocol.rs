@@ -54,12 +54,14 @@ impl<'e, 'ni> PeerConnectionProtocol<'e, 'ni> {
     ) -> Result<(Arc<PeerConnection>, PeerConnectionJoinHandle)>
     {
         info!(target: LOG_TARGET, "[NodeId={}] Negotiating connection", peer.node_id);
-        let control_port_conn = self.establisher.establish_control_service_connection(&peer)?;
-
-        debug!(
+        let (control_port_conn, monitor) = self.establisher.establish_control_service_connection(&peer)?;
+        info!(
             target: LOG_TARGET,
-            "[NodeId={}] Control port connection established", peer.node_id
+            "[NodeId={}] Established peer control port connection at address {:?}",
+            peer.node_id,
+            control_port_conn.get_connected_address()
         );
+
         let (new_inbound_conn, curve_pk, join_handle) = self.open_inbound_peer_connection(&peer)?;
 
         let address = new_inbound_conn
@@ -71,20 +73,38 @@ impl<'e, 'ni> PeerConnectionProtocol<'e, 'ni> {
             "[NodeId={}] Inbound peer connection established on address {}", peer.node_id, address
         );
 
+        // Create an address which can be connected to externally
+        let our_host = self.node_identity.control_service_address.host();
+        let external_address = address
+            .maybe_port()
+            .map(|port| format!("{}:{}", our_host, port))
+            .or(Some(our_host))
+            .unwrap()
+            .parse()
+            .map_err(ConnectionManagerError::NetAddressError)?;
+
+        debug!(
+            target: LOG_TARGET,
+            "[NodeId={}] Requesting to establish a connection on address {}", peer.node_id, external_address,
+        );
+
         // Construct establish connection message
         let msg = EstablishConnection {
-            address,
+            address: external_address,
             control_service_address: self.node_identity.control_service_address.clone(),
             public_key: self.node_identity.identity.public_key.clone(),
             node_id: self.node_identity.identity.node_id.clone(),
             server_key: curve_pk,
         };
 
-        self.send_establish_message(&peer, control_port_conn, msg)?;
+        self.send_establish_message(&peer, &control_port_conn, msg)?;
         debug!(
             target: LOG_TARGET,
             "[NodeId={}] EstablishConnection message sent", peer.node_id
         );
+
+        drop(control_port_conn);
+        drop(monitor);
 
         Ok((new_inbound_conn, join_handle))
     }
@@ -92,7 +112,7 @@ impl<'e, 'ni> PeerConnectionProtocol<'e, 'ni> {
     fn send_establish_message(
         &self,
         peer: &Peer<CommsPublicKey>,
-        control_conn: EstablishedConnection,
+        control_conn: &EstablishedConnection,
         msg: EstablishConnection<CommsPublicKey>,
     ) -> Result<()>
     {

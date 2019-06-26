@@ -71,6 +71,10 @@ impl ThreadControlMessenger {
             PeerConnectionError::ControlSendError(format!("Failed to send control message: {:?}", e)).into()
         })
     }
+
+    pub fn get_sender(&self) -> &SyncSender<ControlMessage> {
+        &self.0
+    }
 }
 
 impl From<SyncSender<ControlMessage>> for ThreadControlMessenger {

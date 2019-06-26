@@ -34,6 +34,10 @@ pub struct OnionAddress {
 }
 
 impl OnionAddress {
+    pub fn host(&self) -> String {
+        format!("{}.onion", self.public_key)
+    }
+
     pub fn port(&self) -> u16 {
         self.port
     }

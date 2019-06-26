@@ -20,13 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    fmt,
-    sync::{Arc, RwLock},
-    thread::{self, JoinHandle},
-    time::Duration,
+use super::{
+    control::{ControlMessage, ThreadControlMessenger},
+    worker::PeerConnectionWorker,
+    PeerConnectionContext,
+    PeerConnectionError,
 };
-
 use crate::{
     connection::{
         net_address::ip::SocketAddress,
@@ -37,14 +36,12 @@ use crate::{
     },
     message::FrameSet,
 };
-
-use super::{
-    control::{ControlMessage, ThreadControlMessenger},
-    worker::Worker,
-    PeerConnectionContext,
-    PeerConnectionError,
+use std::{
+    fmt,
+    sync::{Arc, RwLock},
+    thread::{self, JoinHandle},
+    time::Duration,
 };
-
 use tari_utilities::hex::to_hex;
 
 /// Represents the ID of a PeerConnection. This is sent as the first frame
@@ -63,6 +60,23 @@ impl ConnectionId {
 
     pub fn as_bytes(&self) -> &[u8] {
         self.0.as_slice()
+    }
+
+    /// Returns a shortened (length of 8 or less) connection ID
+    /// This would typically be used for display purposes when the connection ID is a
+    /// sufficiently large random value and you don't want to have large strings displayed.
+    pub fn to_short_id(&self) -> Self {
+        let start = match self.0.len().checked_sub(8) {
+            Some(s) => s,
+            None => self.0.len(),
+        };
+        Self(self.0[start..].to_vec())
+    }
+}
+
+impl Default for ConnectionId {
+    fn default() -> Self {
+        Self(Default::default())
     }
 }
 
@@ -234,7 +248,7 @@ impl PeerConnection {
         self.direction = Some(context.direction.clone());
         self.peer_address = Some(context.peer_address.clone());
 
-        let worker = Worker::new(context, self.state.clone());
+        let worker = PeerConnectionWorker::new(context, self.state.clone());
         let handle = worker.spawn()?;
         Ok(handle)
     }
@@ -416,6 +430,7 @@ impl PeerConnection {
 
 /// Represents the states that a peer connection can be in without
 /// exposing ThreadControlMessenger which should not be leaked.
+#[derive(Debug)]
 pub enum PeerConnectionSimpleState {
     /// The connection object has been created but is not connected
     Initial,

@@ -37,6 +37,10 @@ impl SocketAddress {
         self.0.ip()
     }
 
+    pub fn host(&self) -> String {
+        self.0.ip().to_string()
+    }
+
     pub fn port(&self) -> u16 {
         self.0.port()
     }

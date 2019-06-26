@@ -55,4 +55,6 @@ pub enum ControlServiceError {
     /// Received an unencrypted message. Discarding it.
     ReceivedUnencryptedMessage,
     CipherError(CipherError),
+    /// Peer is banned, refusing connection request
+    PeerBanned,
 }

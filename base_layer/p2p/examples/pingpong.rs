@@ -209,7 +209,7 @@ fn update_count(s: &mut Cursive) {
     s.call_on_id("counter", move |view: &mut TextView| {
         let lock = COUNTER_STATE.read().unwrap();
         view.set_content(format!(
-            "Pings sent:{}\nPings Received: {}\nPongs Received: {}\n\n(p) Send ping (q) Quit",
+            "Pings sent: {}\nPings Received: {}\nPongs Received: {}\n\n(p) Send ping (q) Quit",
             lock.0, lock.1, lock.2
         ));
     });

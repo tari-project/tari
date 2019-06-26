@@ -117,7 +117,11 @@ where PK: PublicKey + Hash
     ///
     /// ### Arguments
     /// - `peer`: `&Peer<CommsPublicKey>` - The peer to connect to
-    pub fn establish_control_service_connection(&self, peer: &Peer<PK>) -> Result<EstablishedConnection> {
+    pub fn establish_control_service_connection(
+        &self,
+        peer: &Peer<PK>,
+    ) -> Result<(EstablishedConnection, ConnectionMonitor)>
+    {
         let config = &self.config;
 
         let mut attempt = ConnectionAttempts::new(
@@ -170,6 +174,7 @@ where PK: PublicKey + Hash
         curve_public_key: CurvePublicKey,
     ) -> Result<(Arc<PeerConnection>, PeerConnectionJoinHandle)>
     {
+        debug!(target: LOG_TARGET, "Establishing outbound connection to {}", address);
         let (secret_key, public_key) = CurveEncryption::generate_keypair()?;
 
         let context = self
@@ -214,6 +219,8 @@ where PK: PublicKey + Hash
     {
         // Providing port 0 tells the OS to allocate a port for us
         let address = NetAddress::IP((self.config.host, 0).into());
+        debug!(target: LOG_TARGET, "Establishing inbound connection to {}", address);
+
         let context = self
             .new_context_builder()
             .set_id(conn_id)
@@ -232,6 +239,13 @@ where PK: PublicKey + Hash
                 error!(target: LOG_TARGET, "Unable to establish inbound connection: {:?}", err);
                 Err(ConnectionManagerError::ConnectionError(err))
             })?;
+
+        debug!(
+            target: LOG_TARGET,
+            "Inbound connection established on (NetAddress={:?}, SocketAddress={:?})",
+            connection.get_address(),
+            connection.get_connected_address()
+        );
 
         let connection = Arc::new(connection);
 
@@ -280,7 +294,7 @@ where
         }
     }
 
-    pub fn try_connect(&mut self, num_attempts: usize) -> Result<EstablishedConnection> {
+    pub fn try_connect(&mut self, num_attempts: usize) -> Result<(EstablishedConnection, ConnectionMonitor)> {
         let mut attempt_count = 0usize;
         loop {
             let monitor_addr = InprocAddress::random();
@@ -290,7 +304,7 @@ where
             attempt_count += 1;
             let (conn, address) = (self.attempt_fn)(attempt_count, monitor_addr)?;
 
-            if self.is_connected(monitor)? {
+            if self.is_connected(&monitor)? {
                 debug!(
                     target: LOG_TARGET,
                     "Successful connection on control port: {:?}",
@@ -299,7 +313,7 @@ where
                 self.peer_manager
                     .mark_successful_connection_attempt(&address)
                     .map_err(ConnectionManagerError::PeerManagerError)?;
-                break Ok(conn);
+                break Ok((conn, monitor));
             } else {
                 self.peer_manager
                     .mark_failed_connection_attempt(&address)
@@ -312,7 +326,7 @@ where
         }
     }
 
-    fn is_connected(&self, monitor: ConnectionMonitor) -> Result<bool> {
+    fn is_connected(&self, monitor: &ConnectionMonitor) -> Result<bool> {
         loop {
             if let Some(event) = connection_try!(monitor.read(100)) {
                 use SocketEventType::*;
