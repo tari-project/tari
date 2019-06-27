@@ -85,7 +85,7 @@ pub fn spawn_proxy(
             .establish(&control_address.clone())
             .map_err(|err| DealerProxyError::ConnectionError(err))?;
 
-        zmq::proxy_steerable(source.get_mut_socket(), sink.get_mut_socket(), control.get_mut_socket())
+        zmq::proxy_steerable(source.get_socket_mut(), sink.get_socket_mut(), control.get_socket_mut())
             .map_err(|err| DealerProxyError::SocketError(err.to_string()))
     })
 }
