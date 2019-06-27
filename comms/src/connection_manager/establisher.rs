@@ -41,8 +41,7 @@ use crate::{
     types::CommsDataStore,
 };
 use log::*;
-use std::{hash::Hash, net::IpAddr, sync::Arc, time::Duration};
-use tari_crypto::keys::PublicKey;
+use std::{net::IpAddr, sync::Arc, time::Duration};
 
 const LOG_TARGET: &'static str = "comms::connection_manager::establisher";
 
@@ -85,20 +84,18 @@ impl Default for PeerConnectionConfig {
 /// the peer stats for failed/successful connection attempts. This component does not hold any
 /// connections, but returns them so that the caller may use them as needed. This component does
 /// not complete the peer connection protocol, it simply creates connections with some reliability.
-pub struct ConnectionEstablisher<PK> {
+pub struct ConnectionEstablisher {
     context: ZmqContext,
     config: PeerConnectionConfig,
-    peer_manager: Arc<PeerManager<PK, CommsDataStore>>,
+    peer_manager: Arc<PeerManager<CommsDataStore>>,
 }
 
-impl<PK> ConnectionEstablisher<PK>
-where PK: PublicKey + Hash
-{
+impl ConnectionEstablisher {
     /// Create a new ConnectionEstablisher.
     pub fn new(
         context: ZmqContext,
         config: PeerConnectionConfig,
-        peer_manager: Arc<PeerManager<PK, CommsDataStore>>,
+        peer_manager: Arc<PeerManager<CommsDataStore>>,
     ) -> Self
     {
         Self {
@@ -119,7 +116,7 @@ where PK: PublicKey + Hash
     /// - `peer`: `&Peer<CommsPublicKey>` - The peer to connect to
     pub fn establish_control_service_connection(
         &self,
-        peer: &Peer<PK>,
+        peer: &Peer,
     ) -> Result<(EstablishedConnection, ConnectionMonitor)>
     {
         let config = &self.config;
@@ -269,18 +266,16 @@ where PK: PublicKey + Hash
 
 /// Helper struct which enables multiple attempts at connecting. This also updates the peers connection
 /// attempts statistics
-struct ConnectionAttempts<'c, PK, F> {
+struct ConnectionAttempts<'c, F> {
     context: &'c ZmqContext,
     attempt_fn: F,
-    peer_manager: Arc<PeerManager<PK, CommsDataStore>>,
+    peer_manager: Arc<PeerManager<CommsDataStore>>,
 }
 
-impl<'c, PK, F> ConnectionAttempts<'c, PK, F>
-where
-    F: Fn(InprocAddress, usize) -> Result<(EstablishedConnection, NetAddress)>,
-    PK: PublicKey + Hash,
+impl<'c, F> ConnectionAttempts<'c, F>
+where F: Fn(InprocAddress, usize) -> Result<(EstablishedConnection, NetAddress)>
 {
-    pub fn new(context: &'c ZmqContext, peer_manager: Arc<PeerManager<PK, CommsDataStore>>, attempt_fn: F) -> Self {
+    pub fn new(context: &'c ZmqContext, peer_manager: Arc<PeerManager<CommsDataStore>>, attempt_fn: F) -> Self {
         Self {
             context,
             attempt_fn,

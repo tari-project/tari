@@ -28,7 +28,6 @@ use crate::{
 use derive_error::Error;
 use serde::{Deserialize, Serialize};
 use std::{marker::PhantomData, time::Duration};
-use tari_crypto::ristretto::RistrettoPublicKey;
 use tari_utilities::message_format::{MessageFormat, MessageFormatError};
 
 #[derive(Debug, Error)]
@@ -44,7 +43,7 @@ pub enum ConnectorError {
 
 /// Information about the message received
 pub struct MessageInfo {
-    pub source_identity: PeerNodeIdentity<RistrettoPublicKey>,
+    pub source_identity: PeerNodeIdentity,
 }
 
 /// # DomainConnector

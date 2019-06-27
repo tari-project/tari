@@ -135,12 +135,7 @@ impl PingPongService {
         ApiWrapper::new(service_receiver, service_sender, api)
     }
 
-    fn send_msg(
-        &self,
-        broadcast_strategy: BroadcastStrategy<CommsPublicKey>,
-        msg: PingPong,
-    ) -> Result<(), PingPongError>
-    {
+    fn send_msg(&self, broadcast_strategy: BroadcastStrategy, msg: PingPong) -> Result<(), PingPongError> {
         let oms = self.oms.clone().ok_or(PingPongError::OMSNotInitialized)?;
 
         let msg = Message::from_message_format(
@@ -267,9 +262,9 @@ impl Service for PingPongService {
 pub enum PingPongApiRequest {
     /// Send a ping to the given public key
     Ping(CommsPublicKey),
-    /// Retreive the total number of pings received
+    /// Retrieve the total number of pings received
     GetPingCount,
-    /// Retreive the total number of pongs received
+    /// Retrieve the total number of pongs received
     GetPongCount,
 }
 

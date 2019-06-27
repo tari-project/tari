@@ -27,11 +27,8 @@ use rand::{CryptoRng, Rng};
 use serde::de::DeserializeOwned;
 use serde_derive::{Deserialize, Serialize};
 use std::marker::PhantomData;
-use tari_crypto::{keys::SecretKey, ristretto::serialize::secret_from_hex};
-use tari_utilities::{
-    byte_array::ByteArrayError,
-    hex::{serialize_to_hex, Hex},
-};
+use tari_crypto::keys::SecretKey;
+use tari_utilities::{byte_array::ByteArrayError, hex::Hex};
 
 #[derive(Debug, Error)]
 pub enum KeyManagerError {
@@ -51,7 +48,6 @@ where K: SecretKey
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct KeyManager<K: SecretKey, D: Digest> {
-    #[serde(serialize_with = "serialize_to_hex", deserialize_with = "secret_from_hex")]
     pub master_key: K,
     pub branch_seed: String,
     pub primary_key_index: usize,

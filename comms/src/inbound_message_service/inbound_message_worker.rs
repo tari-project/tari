@@ -38,7 +38,7 @@ use crate::{
     message::{FrameSet, MessageContext, MessageData},
     outbound_message_service::outbound_message_service::OutboundMessageService,
     peer_manager::{peer_manager::PeerManager, NodeId, NodeIdentity, Peer},
-    types::{CommsDataStore, CommsPublicKey, MessageDispatcher},
+    types::{CommsDataStore, MessageDispatcher},
 };
 use log::*;
 use serde::{de::DeserializeOwned, Serialize};
@@ -67,7 +67,7 @@ where
     message_dispatcher: Arc<MessageDispatcher<MessageContext<MType>>>,
     inbound_message_broker: Arc<InboundMessageBroker<MType>>,
     outbound_message_service: Arc<OutboundMessageService>,
-    peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
+    peer_manager: Arc<PeerManager<CommsDataStore>>,
     control_receiver: Option<Receiver<ControlMessage>>,
     is_running: bool,
 }
@@ -87,7 +87,7 @@ where
         message_dispatcher: Arc<MessageDispatcher<MessageContext<MType>>>,
         inbound_message_broker: Arc<InboundMessageBroker<MType>>,
         outbound_message_service: Arc<OutboundMessageService>,
-        peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
+        peer_manager: Arc<PeerManager<CommsDataStore>>,
     ) -> Self
     {
         InboundMessageWorker {
@@ -104,7 +104,7 @@ where
         }
     }
 
-    fn lookup_peer(&self, node_id: &NodeId) -> Option<Peer<CommsPublicKey>> {
+    fn lookup_peer(&self, node_id: &NodeId) -> Option<Peer> {
         self.peer_manager.find_with_node_id(node_id).ok()
     }
 
@@ -235,7 +235,7 @@ mod test {
             NodeDestination,
         },
         peer_manager::{peer_manager::PeerManager, NodeIdentity, PeerFlags},
-        types::{CommsDataStore, CommsPublicKey},
+        types::CommsDataStore,
     };
     use serde::{Deserialize, Serialize};
     use std::{
@@ -285,7 +285,7 @@ mod test {
                 .start()
                 .unwrap(),
         );
-        let peer_manager = Arc::new(PeerManager::<CommsPublicKey, CommsDataStore>::new(None).unwrap());
+        let peer_manager = Arc::new(PeerManager::<CommsDataStore>::new(None).unwrap());
         // Add peer to peer manager
         let peer = Peer::new(
             node_identity.identity.public_key.clone(),

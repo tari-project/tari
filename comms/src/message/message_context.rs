@@ -25,7 +25,7 @@ use crate::{
     message::MessageEnvelope,
     outbound_message_service::outbound_message_service::OutboundMessageService,
     peer_manager::{peer_manager::PeerManager, NodeIdentity, Peer},
-    types::{CommsDataStore, CommsPublicKey},
+    types::CommsDataStore,
 };
 use serde::{de::DeserializeOwned, Serialize};
 use std::sync::Arc;
@@ -33,9 +33,9 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub struct MessageContext<MType> {
     pub message_envelope: MessageEnvelope,
-    pub peer: Peer<CommsPublicKey>,
+    pub peer: Peer,
     pub outbound_message_service: Arc<OutboundMessageService>,
-    pub peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
+    pub peer_manager: Arc<PeerManager<CommsDataStore>>,
     pub inbound_message_broker: Arc<InboundMessageBroker<MType>>,
     pub node_identity: Arc<NodeIdentity>,
 }
@@ -49,10 +49,10 @@ where
     /// and body
     pub fn new(
         node_identity: Arc<NodeIdentity>,
-        peer: Peer<CommsPublicKey>,
+        peer: Peer,
         message_envelope: MessageEnvelope,
         outbound_message_service: Arc<OutboundMessageService>,
-        peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
+        peer_manager: Arc<PeerManager<CommsDataStore>>,
         inbound_message_broker: Arc<InboundMessageBroker<MType>>,
     ) -> Self
     {

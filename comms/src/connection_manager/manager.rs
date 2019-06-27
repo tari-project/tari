@@ -31,7 +31,7 @@ use super::{
 use crate::{
     connection::{ConnectionError, CurvePublicKey, NetAddress, PeerConnection, PeerConnectionState, ZmqContext},
     peer_manager::{NodeId, NodeIdentity, Peer, PeerManager},
-    types::{CommsDataStore, CommsPublicKey},
+    types::CommsDataStore,
 };
 use log::*;
 use std::{
@@ -75,8 +75,8 @@ const LOG_TARGET: &'static str = "comms::connection_manager::manager";
 pub struct ConnectionManager {
     node_identity: Arc<NodeIdentity>,
     connections: LivePeerConnections,
-    establisher: Arc<ConnectionEstablisher<CommsPublicKey>>,
-    peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
+    establisher: Arc<ConnectionEstablisher>,
+    peer_manager: Arc<PeerManager<CommsDataStore>>,
     establish_locks: Mutex<HashMap<NodeId, Arc<Mutex<()>>>>,
 }
 
@@ -85,7 +85,7 @@ impl ConnectionManager {
     pub fn new(
         zmq_context: ZmqContext,
         node_identity: Arc<NodeIdentity>,
-        peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
+        peer_manager: Arc<PeerManager<CommsDataStore>>,
         config: PeerConnectionConfig,
     ) -> Self
     {
@@ -100,7 +100,7 @@ impl ConnectionManager {
 
     /// Attempt to establish a connection to a given peer. If the connection exists
     /// the existing connection is returned.
-    pub fn establish_connection_to_peer(&self, peer: &Peer<CommsPublicKey>) -> Result<Arc<PeerConnection>> {
+    pub fn establish_connection_to_peer(&self, peer: &Peer) -> Result<Arc<PeerConnection>> {
         self.with_establish_lock(&peer.node_id, || self.attempt_peer_connection(peer))
     }
 
@@ -118,12 +118,12 @@ impl ConnectionManager {
     ///
     /// ## Arguments
     ///
-    /// `peer`: &Peer<CommsPublicKey> - The peer which issued the request
+    /// `peer`: &Peer - The peer which issued the request
     /// `address`: NetAddress - The address of the destination connection
-    /// `dest_public_key`: &Peer<CommsPublicKey> - The Curve25519 public key of the destination connection
+    /// `dest_public_key`: &Peer - The Curve25519 public key of the destination connection
     pub(crate) fn establish_requested_outbound_connection(
         &self,
-        peer: &Peer<CommsPublicKey>,
+        peer: &Peer,
         address: NetAddress,
         dest_public_key: CurvePublicKey,
     ) -> Result<Arc<PeerConnection>>
@@ -170,7 +170,7 @@ impl ConnectionManager {
         ret
     }
 
-    fn attempt_peer_connection(&self, peer: &Peer<CommsPublicKey>) -> Result<Arc<PeerConnection>> {
+    fn attempt_peer_connection(&self, peer: &Peer) -> Result<Arc<PeerConnection>> {
         let maybe_conn = self.connections.get_connection(&peer.node_id);
         let peer_conn = match maybe_conn {
             Some(conn) => {
@@ -241,7 +241,7 @@ impl ConnectionManager {
     }
 
     /// Get the peer manager
-    pub(crate) fn get_peer_manager(&self) -> Arc<PeerManager<CommsPublicKey, CommsDataStore>> {
+    pub(crate) fn get_peer_manager(&self) -> Arc<PeerManager<CommsDataStore>> {
         self.peer_manager.clone()
     }
 
@@ -250,7 +250,7 @@ impl ConnectionManager {
         self.connections.get_active_connection_count()
     }
 
-    fn initiate_peer_connection(&self, peer: &Peer<CommsPublicKey>) -> Result<Arc<PeerConnection>> {
+    fn initiate_peer_connection(&self, peer: &Peer) -> Result<Arc<PeerConnection>> {
         let protocol = PeerConnectionProtocol::new(&self.node_identity, &self.establisher);
 
         protocol

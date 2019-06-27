@@ -30,7 +30,7 @@ use crate::{
     message::{Frame, MessageEnvelope, MessageFlags, NodeDestination},
     outbound_message_service::{BroadcastStrategy, OutboundError, OutboundMessage},
     peer_manager::{peer_manager::PeerManager, NodeIdentity},
-    types::{CommsDataStore, CommsPublicKey},
+    types::CommsDataStore,
 };
 use std::sync::Arc;
 use tari_utilities::message_format::MessageFormat;
@@ -42,7 +42,7 @@ pub struct OutboundMessageService {
     context: ZmqContext,
     outbound_address: InprocAddress,
     node_identity: Arc<NodeIdentity>,
-    peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
+    peer_manager: Arc<PeerManager<CommsDataStore>>,
 }
 
 impl OutboundMessageService {
@@ -52,7 +52,7 @@ impl OutboundMessageService {
         node_identity: Arc<NodeIdentity>,
         outbound_address: InprocAddress, /* The outbound_address is an inproc that connects the OutboundMessagePool
                                           * and the OutboundMessageService */
-        peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
+        peer_manager: Arc<PeerManager<CommsDataStore>>,
     ) -> Result<OutboundMessageService, OutboundError>
     {
         Ok(OutboundMessageService {
@@ -67,7 +67,7 @@ impl OutboundMessageService {
     /// BroadcastStrategy
     pub fn send(
         &self,
-        broadcast_strategy: BroadcastStrategy<CommsPublicKey>,
+        broadcast_strategy: BroadcastStrategy,
         flags: MessageFlags,
         message_envelope_body: Frame,
     ) -> Result<(), OutboundError>
@@ -148,11 +148,10 @@ mod test {
         let (dest_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk).unwrap();
         let net_addresses = "127.0.0.1:55445".parse::<NetAddress>().unwrap().into();
-        let dest_peer: Peer<RistrettoPublicKey> =
-            Peer::<RistrettoPublicKey>::new(pk, node_id, net_addresses, PeerFlags::default());
+        let dest_peer = Peer::new(pk, node_id, net_addresses, PeerFlags::default());
 
         // Setup OutboundMessageService and transmit a message to the destination
-        let peer_manager = Arc::new(PeerManager::<CommsPublicKey, LMDBStore>::new(None).unwrap());
+        let peer_manager = Arc::new(PeerManager::<LMDBStore>::new(None).unwrap());
         peer_manager.add_peer(dest_peer.clone()).unwrap();
 
         let outbound_message_service =

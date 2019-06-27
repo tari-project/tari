@@ -24,10 +24,13 @@ use super::node_id::deserialize_node_id_from_hex;
 use bitflags::*;
 use chrono::prelude::*;
 use serde::{Deserialize, Serialize};
-use tari_crypto::{keys::PublicKey, ristretto::serialize::pubkey_from_hex};
 use tari_utilities::hex::serialize_to_hex;
 
-use crate::{connection::net_address::net_addresses::NetAddressesWithStats, peer_manager::node_id::NodeId};
+use crate::{
+    connection::net_address::net_addresses::NetAddressesWithStats,
+    peer_manager::node_id::NodeId,
+    types::CommsPublicKey,
+};
 // TODO reputation metric?
 
 bitflags! {
@@ -41,10 +44,8 @@ bitflags! {
 /// collection of the NetAddressesWithStats that this Peer can be reached by. The struct also maintains a set of flags
 /// describing the status of the Peer.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
-pub struct Peer<K> {
-    #[serde(serialize_with = "serialize_to_hex", bound(serialize = "K: PublicKey"))]
-    #[serde(deserialize_with = "pubkey_from_hex", bound(deserialize = "K: PublicKey"))]
-    pub public_key: K,
+pub struct Peer {
+    pub public_key: CommsPublicKey,
     #[serde(serialize_with = "serialize_to_hex")]
     #[serde(deserialize_with = "deserialize_node_id_from_hex")]
     pub node_id: NodeId,
@@ -52,11 +53,15 @@ pub struct Peer<K> {
     pub flags: PeerFlags,
 }
 
-impl<K> Peer<K>
-where K: PublicKey
-{
+impl Peer {
     /// Constructs a new peer
-    pub fn new(public_key: K, node_id: NodeId, addresses: NetAddressesWithStats, flags: PeerFlags) -> Peer<K> {
+    pub fn new(
+        public_key: CommsPublicKey,
+        node_id: NodeId,
+        addresses: NetAddressesWithStats,
+        flags: PeerFlags,
+    ) -> Peer
+    {
         Peer {
             public_key,
             node_id,
@@ -103,8 +108,7 @@ mod test {
         let pk = RistrettoPublicKey::from_secret_key(&sk);
         let node_id = NodeId::from_key(&pk).unwrap();
         let addresses = NetAddressesWithStats::from("123.0.0.123:8000".parse::<NetAddress>().unwrap());
-        let mut peer: Peer<RistrettoPublicKey> =
-            Peer::<RistrettoPublicKey>::new(pk, node_id, addresses, PeerFlags::default());
+        let mut peer: Peer = Peer::new(pk, node_id, addresses, PeerFlags::default());
         assert_eq!(peer.is_banned(), false);
         peer.set_banned(true);
         assert_eq!(peer.is_banned(), true);

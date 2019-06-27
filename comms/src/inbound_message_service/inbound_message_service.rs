@@ -31,7 +31,7 @@ use crate::{
     message::MessageContext,
     outbound_message_service::outbound_message_service::OutboundMessageService,
     peer_manager::{peer_manager::PeerManager, NodeIdentity},
-    types::{CommsDataStore, CommsPublicKey, MessageDispatcher},
+    types::{CommsDataStore, MessageDispatcher},
 };
 use log::*;
 use serde::{de::DeserializeOwned, Serialize};
@@ -76,7 +76,7 @@ where
     message_dispatcher: Arc<MessageDispatcher<MessageContext<MType>>>,
     inbound_message_broker: Arc<InboundMessageBroker<MType>>,
     outbound_message_service: Arc<OutboundMessageService>,
-    peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
+    peer_manager: Arc<PeerManager<CommsDataStore>>,
     worker_thread_handle: Option<JoinHandle<()>>,
     worker_control_sender: Option<SyncSender<ControlMessage>>,
 }
@@ -96,7 +96,7 @@ where
         message_dispatcher: Arc<MessageDispatcher<MessageContext<MType>>>,
         inbound_message_broker: Arc<InboundMessageBroker<MType>>,
         outbound_message_service: Arc<OutboundMessageService>,
-        peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
+        peer_manager: Arc<PeerManager<CommsDataStore>>,
     ) -> Self
     {
         InboundMessageService {
@@ -167,7 +167,7 @@ mod test {
             NodeDestination,
         },
         peer_manager::{peer_manager::PeerManager, NodeId, NodeIdentity, Peer, PeerFlags},
-        types::{CommsDataStore, CommsPublicKey},
+        types::CommsDataStore,
     };
     use serde::{Deserialize, Serialize};
     use std::{sync::Arc, thread, time::Duration};
@@ -213,7 +213,7 @@ mod test {
                 .unwrap(),
         );
 
-        let peer_manager = Arc::new(PeerManager::<CommsPublicKey, CommsDataStore>::new(None).unwrap());
+        let peer_manager = Arc::new(PeerManager::<CommsDataStore>::new(None).unwrap());
         // Add peer to peer manager
         let peer = Peer::new(
             node_identity.identity.public_key.clone(),

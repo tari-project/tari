@@ -28,7 +28,7 @@ use crate::{
     connection_manager::ConnectionManager,
     outbound_message_service::{MessagePoolWorker, OutboundError},
     peer_manager::PeerManager,
-    types::{CommsDataStore, CommsPublicKey},
+    types::CommsDataStore,
 };
 use log::*;
 #[cfg(test)]
@@ -76,7 +76,7 @@ pub struct OutboundMessagePool {
     context: ZmqContext,
     message_requeue_address: InprocAddress,
     worker_dealer_address: InprocAddress,
-    peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
+    peer_manager: Arc<PeerManager<CommsDataStore>>,
     connection_manager: Arc<ConnectionManager>,
     worker_thread_handles: Vec<JoinHandle<()>>,
     worker_control_senders: Vec<SyncSender<ControlMessage>>,
@@ -100,7 +100,7 @@ impl OutboundMessagePool {
         context: ZmqContext,
         message_queue_address: InprocAddress,
         message_requeue_address: InprocAddress,
-        peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
+        peer_manager: Arc<PeerManager<CommsDataStore>>,
         connection_manager: Arc<ConnectionManager>,
     ) -> OutboundMessagePool
     {
@@ -203,7 +203,7 @@ mod test {
             OutboundMessagePool,
         },
         peer_manager::{peer::PeerFlags, NodeId, NodeIdentity, Peer, PeerManager},
-        types::{CommsDataStore, CommsPublicKey},
+        types::CommsDataStore,
     };
     use std::{sync::Arc, thread, time::Duration};
     use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
@@ -230,7 +230,7 @@ mod test {
         let context = ZmqContext::new();
         let node_identity = Arc::new(NodeIdentity::random_for_test(None));
 
-        let peer_manager = Arc::new(PeerManager::<CommsPublicKey, CommsDataStore>::new(None).unwrap());
+        let peer_manager = Arc::new(PeerManager::<CommsDataStore>::new(None).unwrap());
 
         let local_consumer_address = InprocAddress::random();
         let connection_manager = Arc::new(ConnectionManager::new(
@@ -243,8 +243,7 @@ mod test {
         let (_dest_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk.clone()).unwrap();
         let net_addresses = "127.0.0.1:45326".parse::<NetAddress>().unwrap().into();
-        let dest_peer: Peer<RistrettoPublicKey> =
-            Peer::<RistrettoPublicKey>::new(pk.clone(), node_id, net_addresses, PeerFlags::default());
+        let dest_peer = Peer::new(pk.clone(), node_id, net_addresses, PeerFlags::default());
         peer_manager.add_peer(dest_peer.clone()).unwrap();
 
         let omp_inbound_address = InprocAddress::random();
@@ -313,7 +312,7 @@ mod test {
         let mut rng = rand::OsRng::new().unwrap();
         let context = ZmqContext::new();
         let node_identity = Arc::new(NodeIdentity::random_for_test(None));
-        let peer_manager = Arc::new(PeerManager::<CommsPublicKey, CommsDataStore>::new(None).unwrap());
+        let peer_manager = Arc::new(PeerManager::<CommsDataStore>::new(None).unwrap());
         let connection_manager = Arc::new(ConnectionManager::new(
             context.clone(),
             node_identity.clone(),
@@ -324,8 +323,7 @@ mod test {
         let (_dest_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk.clone()).unwrap();
         let net_addresses = "127.0.0.1:45325".parse::<NetAddress>().unwrap().into();
-        let dest_peer: Peer<RistrettoPublicKey> =
-            Peer::<RistrettoPublicKey>::new(pk.clone(), node_id, net_addresses, PeerFlags::default());
+        let dest_peer = Peer::new(pk.clone(), node_id, net_addresses, PeerFlags::default());
         peer_manager.add_peer(dest_peer.clone()).unwrap();
 
         let omp_inbound_address = InprocAddress::random();

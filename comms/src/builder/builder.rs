@@ -39,7 +39,7 @@ use crate::{
         OutboundMessagePool,
     },
     peer_manager::{NodeIdentity, PeerManager, PeerManagerError},
-    types::{CommsDataStore, CommsPublicKey},
+    types::CommsDataStore,
     DomainConnector,
 };
 use derive_error::Error;
@@ -165,7 +165,7 @@ where
         self
     }
 
-    fn make_peer_manager(&mut self) -> Result<Arc<PeerManager<CommsPublicKey, CommsDataStore>>, CommsBuilderError> {
+    fn make_peer_manager(&mut self) -> Result<Arc<PeerManager<CommsDataStore>>, CommsBuilderError> {
         let storage = self.peer_storage.take();
         let peer_manager = PeerManager::new(storage).map_err(CommsBuilderError::PeerManagerError)?;
         Ok(Arc::new(peer_manager))
@@ -180,7 +180,7 @@ where
     fn make_connection_manager(
         &mut self,
         node_identity: Arc<NodeIdentity>,
-        peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
+        peer_manager: Arc<PeerManager<CommsDataStore>>,
         config: PeerConnectionConfig,
     ) -> Arc<ConnectionManager>
     {
@@ -212,7 +212,7 @@ where
         &self,
         node_identity: Arc<NodeIdentity>,
         message_sink_address: InprocAddress,
-        peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
+        peer_manager: Arc<PeerManager<CommsDataStore>>,
     ) -> Result<Arc<OutboundMessageService>, CommsBuilderError>
     {
         OutboundMessageService::new(
@@ -228,7 +228,7 @@ where
     fn make_outbound_message_pool(
         &mut self,
         message_sink_address: InprocAddress,
-        peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
+        peer_manager: Arc<PeerManager<CommsDataStore>>,
         connection_manager: Arc<ConnectionManager>,
     ) -> OutboundMessagePool
     {
@@ -251,7 +251,7 @@ where
         message_sink_address: InprocAddress,
         inbound_message_broker: Arc<InboundMessageBroker<MType>>,
         oms: Arc<OutboundMessageService>,
-        peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
+        peer_manager: Arc<PeerManager<CommsDataStore>>,
     ) -> InboundMessageService<MType>
     {
         let config = self.ims_config.take().unwrap_or_default();

@@ -33,10 +33,7 @@ use crate::{
 use derive_error::Error;
 use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize};
-use tari_crypto::{
-    keys::{PublicKey, SecretKey},
-    ristretto::serialize::{pubkey_from_hex, secret_from_hex},
-};
+use tari_crypto::keys::{PublicKey, SecretKey};
 use tari_utilities::hex::serialize_to_hex;
 
 #[derive(Debug, Error)]
@@ -53,9 +50,7 @@ pub enum NodeIdentityError {
 /// `control_service_address`: The NetAddress of the local node's Control port
 #[derive(Clone, Serialize, Deserialize)]
 pub struct NodeIdentity {
-    pub identity: PeerNodeIdentity<CommsPublicKey>,
-    #[serde(serialize_with = "serialize_to_hex")]
-    #[serde(deserialize_with = "secret_from_hex")]
+    pub identity: PeerNodeIdentity,
     pub secret_key: CommsSecretKey,
     pub control_service_address: NetAddress,
 }
@@ -104,8 +99,8 @@ impl NodeIdentity {
     }
 }
 
-impl From<NodeIdentity> for Peer<CommsPublicKey> {
-    fn from(node_identity: NodeIdentity) -> Peer<CommsPublicKey> {
+impl From<NodeIdentity> for Peer {
+    fn from(node_identity: NodeIdentity) -> Peer {
         Peer::new(
             node_identity.identity.public_key,
             node_identity.identity.node_id,
@@ -118,25 +113,23 @@ impl From<NodeIdentity> for Peer<CommsPublicKey> {
 /// The PeerNodeIdentity is a container that stores the public identity (NodeId, Identification Public Key pair) of a
 /// single node
 #[derive(Eq, PartialEq, Debug, Serialize, Deserialize, Clone)]
-pub struct PeerNodeIdentity<PK: PublicKey> {
+pub struct PeerNodeIdentity {
     #[serde(serialize_with = "serialize_to_hex")]
     #[serde(deserialize_with = "deserialize_node_id_from_hex")]
     pub node_id: NodeId,
-    #[serde(serialize_with = "serialize_to_hex", bound(serialize = "PK: PublicKey"))]
-    #[serde(deserialize_with = "pubkey_from_hex", bound(deserialize = "PK: PublicKey"))]
-    pub public_key: PK,
+    pub public_key: CommsPublicKey,
 }
 
-impl<PK: PublicKey> PeerNodeIdentity<PK> {
+impl PeerNodeIdentity {
     /// Construct a new identity for a node that contains its NodeId and identification key pair
-    pub fn new(node_id: NodeId, public_key: PK) -> PeerNodeIdentity<PK> {
+    pub fn new(node_id: NodeId, public_key: CommsPublicKey) -> PeerNodeIdentity {
         PeerNodeIdentity { node_id, public_key }
     }
 }
 
 /// Construct a PeerNodeIdentity from a Peer
-impl<PK: PublicKey> From<Peer<PK>> for PeerNodeIdentity<PK> {
-    fn from(peer: Peer<PK>) -> Self {
+impl From<Peer> for PeerNodeIdentity {
+    fn from(peer: Peer) -> Self {
         Self {
             public_key: peer.public_key,
             node_id: peer.node_id,

@@ -35,7 +35,7 @@ use crate::{
     connection_manager::ConnectionManager,
     message::{FrameSet, MessageEnvelope},
     peer_manager::PeerManager,
-    types::{CommsDataStore, CommsPublicKey},
+    types::CommsDataStore,
 };
 use chrono::Utc;
 use log::*;
@@ -67,7 +67,7 @@ pub struct MessagePoolWorker {
     context: ZmqContext,
     inbound_address: InprocAddress,
     message_requeue_address: InprocAddress,
-    peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
+    peer_manager: Arc<PeerManager<CommsDataStore>>,
     connection_manager: Arc<ConnectionManager>,
     control_receiver: Option<Receiver<ControlMessage>>,
     is_running: bool,
@@ -81,7 +81,7 @@ impl MessagePoolWorker {
         context: ZmqContext,
         inbound_address: InprocAddress,
         message_requeue_address: InprocAddress,
-        peer_manager: Arc<PeerManager<CommsPublicKey, CommsDataStore>>,
+        peer_manager: Arc<PeerManager<CommsDataStore>>,
         connection_manager: Arc<ConnectionManager>,
     ) -> MessagePoolWorker
     {

@@ -30,7 +30,7 @@ use tari_comms::{
     connection_manager::PeerConnectionConfig,
     control_service::{ControlService, ControlServiceConfig},
     peer_manager::{Peer, PeerManager},
-    types::{CommsDataStore, CommsPublicKey},
+    types::CommsDataStore,
 };
 
 fn make_peer_connection_config(consumer_address: InprocAddress) -> PeerConnectionConfig {
@@ -44,7 +44,7 @@ fn make_peer_connection_config(consumer_address: InprocAddress) -> PeerConnectio
     }
 }
 
-fn make_peer_manager(peers: Vec<Peer<CommsPublicKey>>) -> Arc<PeerManager<CommsPublicKey, CommsDataStore>> {
+fn make_peer_manager(peers: Vec<Peer>) -> Arc<PeerManager<CommsDataStore>> {
     Arc::new(factories::peer_manager::create().with_peers(peers).build().unwrap())
 }
 
