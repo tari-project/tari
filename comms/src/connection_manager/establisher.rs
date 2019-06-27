@@ -273,7 +273,7 @@ struct ConnectionAttempts<'c, F> {
 }
 
 impl<'c, F> ConnectionAttempts<'c, F>
-where F: Fn(usize, InprocAddress) -> Result<(EstablishedConnection, NetAddress)>
+where F: Fn(InprocAddress, usize) -> Result<(EstablishedConnection, NetAddress)>
 {
     pub fn new(context: &'c ZmqContext, peer_manager: Arc<PeerManager<CommsDataStore>>, attempt_fn: F) -> Self {
         Self {
