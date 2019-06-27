@@ -88,7 +88,6 @@ where
             .message_envelope
             .to_header()
             .map_err(|e| DispatchError::HandlerError(format!("{}", e)))?;
-
         let node_identity = &message_context.node_identity;
 
         match message_envelope_header.dest {
@@ -169,7 +168,7 @@ where
     };
 
     // Construct DomainMessageContext and dispatch to handler services using domain message broker
-    let header: MessageHeader<MType> = message.to_header().map_err(DispatchError::handler_error())?;
+    let header: MessageHeader<MType> = message.to_header().unwrap(); //.map_err(DispatchError::handler_error())?;
 
     debug!(target: LOG_TARGET, "Received message type: {:?}", header.message_type);
     let domain_message_context = DomainMessageContext::new(message_context.peer.into(), message);

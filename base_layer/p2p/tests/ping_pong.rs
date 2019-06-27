@@ -149,15 +149,15 @@ fn end_to_end() {
         .unwrap();
 
     assert_change(|| node_B_pingpong.ping_count().unwrap(), 1, 20);
-    //    assert_change(|| node_A_pingpong.pong_count().unwrap(), 1, 20);
+    assert_change(|| node_A_pingpong.pong_count().unwrap(), 1, 20);
 
     // Ping node A
     node_B_pingpong
         .ping(node_A_identity.identity.public_key.clone())
         .unwrap();
 
-    //    assert_change(|| node_A_pingpong.ping_count().unwrap(), 1, 20);
-    //    assert_change(|| node_A_pingpong.ping_count().unwrap(), 1, 20);
+    assert_change(|| node_B_pingpong.pong_count().unwrap(), 1, 20);
+    assert_change(|| node_A_pingpong.ping_count().unwrap(), 1, 20);
 
     node_A_services.shutdown().unwrap();
     node_B_services.shutdown().unwrap();

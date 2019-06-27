@@ -351,6 +351,7 @@ where
             connection_manager,
             outbound_message_pool,
             outbound_message_service,
+            peer_manager,
         })
     }
 }
@@ -381,6 +382,7 @@ where
     inbound_message_service: InboundMessageService<MType>,
     outbound_message_pool: OutboundMessagePool,
     outbound_message_service: Arc<OutboundMessageService>,
+    peer_manager: Arc<PeerManager<CommsDataStore>>,
 }
 
 impl<MType> CommsServiceContainer<MType>
@@ -409,7 +411,7 @@ where
             routes: self.routes,
             connection_manager: self.connection_manager,
             inbound_message_broker: self.inbound_message_broker,
-
+            peer_manager: self.peer_manager,
             // Add handles for started services
             control_service_handle,
         })
@@ -425,6 +427,7 @@ pub struct CommsServices<MType> {
     #[allow(dead_code)]
     inbound_message_broker: Arc<InboundMessageBroker<MType>>,
     connection_manager: Arc<ConnectionManager>,
+    pub peer_manager: Arc<PeerManager<CommsDataStore>>,
 }
 
 impl<MType> CommsServices<MType>

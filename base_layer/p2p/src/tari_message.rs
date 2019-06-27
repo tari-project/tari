@@ -107,17 +107,6 @@ impl From<u8> for TariMessageType {
     }
 }
 
-#[derive(Deserialize, Serialize)]
-pub struct TariMessageHeader {
-    pub version: u8,
-    pub message_type: TariMessageType,
-}
-
-pub struct TariMessage {
-    pub header: TariMessageHeader,
-    pub body: Vec<u8>,
-}
-
 #[cfg(test)]
 mod test {
     use super::*;

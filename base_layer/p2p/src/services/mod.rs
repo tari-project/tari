@@ -29,5 +29,5 @@ pub use self::{
     error::ServiceError,
     executor::{ServiceContext, ServiceControlMessage, ServiceExecutor},
     registry::ServiceRegistry,
-    service::Service,
+    service::{Service, ServiceApiWrapper, DEFAULT_API_TIMEOUT_MS},
 };

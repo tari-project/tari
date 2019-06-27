@@ -26,7 +26,7 @@ use tari_utilities::message_format::MessageFormat;
 
 use crate::message::{Frame, MessageError};
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MessageHeader<MType> {
     pub message_type: MType,
 }

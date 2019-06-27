@@ -21,7 +21,14 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    services::{Service, ServiceContext, ServiceControlMessage, ServiceError},
+    services::{
+        Service,
+        ServiceApiWrapper,
+        ServiceContext,
+        ServiceControlMessage,
+        ServiceError,
+        DEFAULT_API_TIMEOUT_MS,
+    },
     tari_message::{NetMessage, TariMessageType},
 };
 use crossbeam_channel as channel;
@@ -70,45 +77,12 @@ pub enum PingPong {
     Pong,
 }
 
-/// Thin convenience wrapper for any service api
-struct ApiWrapper<T, Req, Res> {
-    api: Arc<T>,
-    receiver: channel::Receiver<Req>,
-    sender: channel::Sender<Res>,
-}
-
-impl<T, Req, Res> ApiWrapper<T, Req, Res> {
-    /// Create a new service API
-    pub fn new(receiver: channel::Receiver<Req>, sender: channel::Sender<Res>, api: Arc<T>) -> Self {
-        Self { api, receiver, sender }
-    }
-
-    /// Send a reply to the calling API
-    pub fn send_reply(&self, msg: Res) -> Result<(), channel::SendError<Res>> {
-        self.sender.send(msg)
-    }
-
-    /// Attempt to receive a service API message
-    pub fn recv_timeout(&self, timeout: Duration) -> Result<Option<Req>, channel::RecvTimeoutError> {
-        match self.receiver.recv_timeout(timeout) {
-            Ok(msg) => Ok(Some(msg)),
-            Err(channel::RecvTimeoutError::Timeout) => Ok(None),
-            Err(err) => Err(err),
-        }
-    }
-
-    /// Return the API
-    fn get_api(&self) -> Arc<T> {
-        self.api.clone()
-    }
-}
-
 pub struct PingPongService {
     // Needed because the public ping method needs OMS
     oms: Option<Arc<OutboundMessageService>>,
     ping_count: usize,
     pong_count: usize,
-    api: ApiWrapper<PingPongServiceApi, PingPongApiRequest, PingPongApiResult>,
+    api: ServiceApiWrapper<PingPongServiceApi, PingPongApiRequest, PingPongApiResult>,
 }
 
 impl PingPongService {
@@ -127,12 +101,12 @@ impl PingPongService {
         self.api.get_api()
     }
 
-    fn setup_api() -> ApiWrapper<PingPongServiceApi, PingPongApiRequest, PingPongApiResult> {
+    fn setup_api() -> ServiceApiWrapper<PingPongServiceApi, PingPongApiRequest, PingPongApiResult> {
         let (api_sender, service_receiver) = channel::bounded(0);
         let (service_sender, api_receiver) = channel::bounded(0);
 
         let api = Arc::new(PingPongServiceApi::new(api_sender, api_receiver));
-        ApiWrapper::new(service_receiver, service_sender, api)
+        ServiceApiWrapper::new(service_receiver, service_sender, api)
     }
 
     fn send_msg(&self, broadcast_strategy: BroadcastStrategy, msg: PingPong) -> Result<(), PingPongError> {
@@ -156,7 +130,7 @@ impl PingPongService {
 
     fn receive_ping(&mut self, connector: &DomainConnector<'static>) -> Result<(), PingPongError> {
         if let Some((info, msg)) = connector
-            .receive_timeout(Duration::from_millis(500))
+            .receive_timeout(Duration::from_millis(1))
             .map_err(PingPongError::ReceiveError)?
         {
             match msg {
@@ -286,9 +260,6 @@ impl fmt::Display for PingPongApiResponse {
 
 /// Result for all API requests
 pub type PingPongApiResult = Result<PingPongApiResponse, PingPongError>;
-
-/// Default duration that a API 'client' will wait for a response from the service before returning a timeout error
-const DEFAULT_API_TIMEOUT_MS: u64 = 200;
 
 /// The PingPong service public api
 pub struct PingPongServiceApi {
