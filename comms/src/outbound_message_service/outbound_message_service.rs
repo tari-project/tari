@@ -114,7 +114,7 @@ mod test {
     use super::*;
 
     use crate::{
-        connection::net_address::{net_addresses::NetAddressesWithStats, NetAddress},
+        connection::net_address::NetAddress,
         message::{FrameSet, Message},
         peer_manager::{
             node_id::NodeId,
@@ -147,7 +147,7 @@ mod test {
 
         let (dest_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk).unwrap();
-        let net_addresses = NetAddressesWithStats::from("1.2.3.4:8000".parse::<NetAddress>().unwrap());
+        let net_addresses = "127.0.0.1:55445".parse::<NetAddress>().unwrap().into();
         let dest_peer = Peer::new(pk, node_id, net_addresses, PeerFlags::default());
 
         // Setup OutboundMessageService and transmit a message to the destination

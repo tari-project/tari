@@ -193,7 +193,7 @@ impl OutboundMessagePool {
 #[cfg(test)]
 mod test {
     use crate::{
-        connection::{InprocAddress, NetAddress, NetAddressesWithStats, ZmqContext},
+        connection::{InprocAddress, NetAddress, ZmqContext},
         connection_manager::{ConnectionManager, PeerConnectionConfig},
         message::MessageFlags,
         outbound_message_service::{
@@ -242,7 +242,7 @@ mod test {
 
         let (_dest_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk.clone()).unwrap();
-        let net_addresses = NetAddressesWithStats::from("1.2.3.4:45325".parse::<NetAddress>().unwrap());
+        let net_addresses = "127.0.0.1:45326".parse::<NetAddress>().unwrap().into();
         let dest_peer = Peer::new(pk.clone(), node_id, net_addresses, PeerFlags::default());
         peer_manager.add_peer(dest_peer.clone()).unwrap();
 
@@ -322,7 +322,7 @@ mod test {
 
         let (_dest_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk.clone()).unwrap();
-        let net_addresses = NetAddressesWithStats::from("1.2.3.4:45325".parse::<NetAddress>().unwrap());
+        let net_addresses = "127.0.0.1:45325".parse::<NetAddress>().unwrap().into();
         let dest_peer = Peer::new(pk.clone(), node_id, net_addresses, PeerFlags::default());
         peer_manager.add_peer(dest_peer.clone()).unwrap();
 
