@@ -91,7 +91,7 @@ where
 /// let context = ZmqContext::new();
 /// let listener_address = "127.0.0.1:9000".parse::<NetAddress>().unwrap();
 ///
-/// let peer_manager = Arc::new(PeerManager::<CommsPublicKey, LMDBStore>::new(None).unwrap());
+/// let peer_manager = Arc::new(PeerManager::<LMDBStore>::new(None).unwrap());
 ///
 /// let conn_manager = Arc::new(ConnectionManager::new(context.clone(), node_identity.clone(), peer_manager.clone(), PeerConnectionConfig {
 ///      max_message_size: 1024,

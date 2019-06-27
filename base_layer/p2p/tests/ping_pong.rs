@@ -29,7 +29,7 @@ use tari_comms::{
     connection_manager::PeerConnectionConfig,
     control_service::ControlServiceConfig,
     peer_manager::{peer_storage::PeerStorage, NodeIdentity, Peer},
-    types::{CommsDataStore, CommsPublicKey},
+    types::CommsDataStore,
     CommsBuilder,
 };
 use tari_p2p::{
@@ -75,7 +75,7 @@ fn new_node_identity(control_service_address: NetAddress) -> NodeIdentity {
     NodeIdentity::random(&mut OsRng::new().unwrap(), control_service_address).unwrap()
 }
 
-fn create_peer_storage(tmpdir: &TempDir, name: &str, peers: Vec<Peer<CommsPublicKey>>) -> CommsDataStore {
+fn create_peer_storage(tmpdir: &TempDir, name: &str, peers: Vec<Peer>) -> CommsDataStore {
     let mut store = LMDBBuilder::new()
         .set_path(tmpdir.path().to_str().unwrap())
         .add_database(name)

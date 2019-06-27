@@ -47,7 +47,7 @@ use std::{
 use tari_comms::{
     control_service::ControlServiceConfig,
     peer_manager::{peer_storage::PeerStorage, NodeIdentity, Peer, PeerFlags, PeerNodeIdentity},
-    types::{CommsDataStore, CommsPublicKey},
+    types::CommsDataStore,
 };
 use tari_p2p::{
     initialization::{initialize_comms, CommsConfig},
@@ -149,12 +149,7 @@ lazy_static! {
     static ref COUNTER_STATE: Arc<RwLock<(usize, usize, usize)>> = Arc::new(RwLock::new((0, 0, 0)));
 }
 
-fn run_ui(
-    services: ServiceExecutor,
-    peer_identity: PeerNodeIdentity<CommsPublicKey>,
-    pingpong_api: Arc<PingPongServiceApi>,
-)
-{
+fn run_ui(services: ServiceExecutor, peer_identity: PeerNodeIdentity, pingpong_api: Arc<PingPongServiceApi>) {
     let mut app = Cursive::default();
 
     app.add_layer(

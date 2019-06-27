@@ -20,21 +20,21 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{message::message::Message, peer_manager::PeerNodeIdentity, types::CommsPublicKey};
+use crate::{message::message::Message, peer_manager::PeerNodeIdentity};
 use serde::{Deserialize, Serialize};
 
 /// The DomainMessageContext is the container that will be dispatched to the domain handlers. It contains the received
 /// message and source identity after the comms level envelope has been removed.
 #[derive(Serialize, Deserialize)]
 pub struct DomainMessageContext {
-    pub source_identity: PeerNodeIdentity<CommsPublicKey>,
+    pub source_identity: PeerNodeIdentity,
     pub message: Message,
 }
 
 impl DomainMessageContext {
     /// Construct a new DomainMessageContext that consist of the peer connection information and the received message
     /// header and body
-    pub fn new(source_identity: PeerNodeIdentity<CommsPublicKey>, message: Message) -> Self {
+    pub fn new(source_identity: PeerNodeIdentity, message: Message) -> Self {
         DomainMessageContext {
             source_identity,
             message,

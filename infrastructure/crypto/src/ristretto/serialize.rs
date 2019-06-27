@@ -41,10 +41,7 @@
 //!   }
 //! ```
 
-use crate::{
-    keys::{PublicKey, SecretKey},
-    ristretto::{RistrettoPublicKey, RistrettoSecretKey},
-};
+use crate::ristretto::{RistrettoPublicKey, RistrettoSecretKey};
 use serde::{
     de::{self, Visitor},
     Deserialize,
@@ -52,56 +49,8 @@ use serde::{
     Serialize,
     Serializer,
 };
-use std::{fmt, marker::PhantomData};
+use std::fmt;
 use tari_utilities::{byte_array::ByteArray, hex::Hex};
-
-pub fn secret_from_hex<'de, D, K>(des: D) -> Result<K, D::Error>
-where
-    D: Deserializer<'de>,
-    K: Hex + SecretKey,
-{
-    struct KeyStringVisitor<K> {
-        marker: PhantomData<K>,
-    };
-
-    impl<'de, K: SecretKey> de::Visitor<'de> for KeyStringVisitor<K> {
-        type Value = K;
-
-        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-            formatter.write_str("a secret key in hex format")
-        }
-
-        fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-        where E: de::Error {
-            K::from_hex(v).map_err(E::custom)
-        }
-    }
-    des.deserialize_str(KeyStringVisitor { marker: PhantomData })
-}
-
-pub fn pubkey_from_hex<'de, D, K>(des: D) -> Result<K, D::Error>
-where
-    D: Deserializer<'de>,
-    K: Hex + PublicKey,
-{
-    struct KeyStringVisitor<K> {
-        marker: PhantomData<K>,
-    };
-
-    impl<'de, K: PublicKey> Visitor<'de> for KeyStringVisitor<K> {
-        type Value = K;
-
-        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-            formatter.write_str("a public key in hex format")
-        }
-
-        fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-        where E: de::Error {
-            K::from_hex(v).map_err(E::custom)
-        }
-    }
-    des.deserialize_str(KeyStringVisitor { marker: PhantomData })
-}
 
 impl<'de> Deserialize<'de> for RistrettoPublicKey {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>

@@ -20,17 +20,17 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::peer_manager::node_id::NodeId;
+use crate::{peer_manager::node_id::NodeId, types::CommsPublicKey};
 
 pub struct ClosestRequest {
     pub n: usize,
     pub node_id: NodeId,
 }
 
-pub enum BroadcastStrategy<PubKey> {
-    DirectNodeId(NodeId),    // Send to a particular peer matching the given node ID
-    DirectPublicKey(PubKey), // Send to a particular peer matching the given Public Key
-    Flood,                   // Send to all known Communication Node peers
-    Closest(ClosestRequest), // Send to all n nearest neighbour Communication Nodes
-    Random(usize),           // Send to a random set of peers of size n that are Communication Nodes
+pub enum BroadcastStrategy {
+    DirectNodeId(NodeId),            // Send to a particular peer matching the given node ID
+    DirectPublicKey(CommsPublicKey), // Send to a particular peer matching the given Public Key
+    Flood,                           // Send to all known Communication Node peers
+    Closest(ClosestRequest),         // Send to all n nearest neighbour Communication Nodes
+    Random(usize),                   // Send to a random set of peers of size n that are Communication Nodes
 }

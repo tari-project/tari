@@ -62,7 +62,7 @@ impl PeerFactory {
 }
 
 impl TestFactory for PeerFactory {
-    type Object = Peer<CommsPublicKey>;
+    type Object = Peer;
 
     fn build(self) -> Result<Self::Object, TestFactoryError> {
         let node_id = self.node_id.clone().or(Some(node_id_maker::make_node_id())).unwrap();
@@ -105,17 +105,17 @@ impl PeersFactory {
 
     factory_setter!(with_factory, peer_factory, PeerFactory);
 
-    fn create_peer(&self) -> Peer<CommsPublicKey> {
+    fn create_peer(&self) -> Peer {
         self.peer_factory.clone().build().unwrap()
     }
 }
 
 impl TestFactory for PeersFactory {
-    type Object = Vec<Peer<CommsPublicKey>>;
+    type Object = Vec<Peer>;
 
     fn build(self) -> Result<Self::Object, TestFactoryError> {
         Ok(repeat_with(|| self.create_peer())
             .take(self.count.or(Some(1)).unwrap())
-            .collect::<Vec<Peer<CommsPublicKey>>>())
+            .collect::<Vec<Peer>>())
     }
 }

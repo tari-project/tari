@@ -36,11 +36,11 @@ const LOG_TARGET: &'static str = "comms::connection_manager::protocol";
 
 pub(crate) struct PeerConnectionProtocol<'e, 'ni> {
     node_identity: &'ni Arc<NodeIdentity>,
-    establisher: &'e ConnectionEstablisher<CommsPublicKey>,
+    establisher: &'e ConnectionEstablisher,
 }
 
 impl<'e, 'ni> PeerConnectionProtocol<'e, 'ni> {
-    pub fn new(node_identity: &'ni Arc<NodeIdentity>, establisher: &'e ConnectionEstablisher<CommsPublicKey>) -> Self {
+    pub fn new(node_identity: &'ni Arc<NodeIdentity>, establisher: &'e ConnectionEstablisher) -> Self {
         Self {
             node_identity,
             establisher,
@@ -48,11 +48,7 @@ impl<'e, 'ni> PeerConnectionProtocol<'e, 'ni> {
     }
 
     /// Send Establish connection message to the peers control port to request a connection
-    pub fn negotiate_peer_connection(
-        &self,
-        peer: &Peer<CommsPublicKey>,
-    ) -> Result<(Arc<PeerConnection>, PeerConnectionJoinHandle)>
-    {
+    pub fn negotiate_peer_connection(&self, peer: &Peer) -> Result<(Arc<PeerConnection>, PeerConnectionJoinHandle)> {
         info!(target: LOG_TARGET, "[NodeId={}] Negotiating connection", peer.node_id);
         let (control_port_conn, monitor) = self.establisher.establish_control_service_connection(&peer)?;
         info!(
@@ -111,7 +107,7 @@ impl<'e, 'ni> PeerConnectionProtocol<'e, 'ni> {
 
     fn send_establish_message(
         &self,
-        peer: &Peer<CommsPublicKey>,
+        peer: &Peer,
         control_conn: &EstablishedConnection,
         msg: EstablishConnection<CommsPublicKey>,
     ) -> Result<()>
@@ -140,7 +136,7 @@ impl<'e, 'ni> PeerConnectionProtocol<'e, 'ni> {
 
     fn open_inbound_peer_connection(
         &self,
-        peer: &Peer<CommsPublicKey>,
+        peer: &Peer,
     ) -> Result<(Arc<PeerConnection>, CurvePublicKey, PeerConnectionJoinHandle)>
     {
         let (secret_key, public_key) =

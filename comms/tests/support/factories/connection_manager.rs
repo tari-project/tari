@@ -31,7 +31,7 @@ use tari_comms::{
     connection::ZmqContext,
     connection_manager::{ConnectionManager, PeerConnectionConfig},
     peer_manager::{NodeIdentity, PeerManager},
-    types::{CommsDataStore, CommsPublicKey},
+    types::CommsDataStore,
 };
 
 pub fn create() -> ConnectionManagerFactory {
@@ -42,7 +42,7 @@ pub fn create() -> ConnectionManagerFactory {
 pub struct ConnectionManagerFactory {
     zmq_context: Option<ZmqContext>,
     peer_connection_config: PeerConnectionConfig,
-    peer_manager: Option<Arc<PeerManager<CommsPublicKey, CommsDataStore>>>,
+    peer_manager: Option<Arc<PeerManager<CommsDataStore>>>,
     peer_manager_factory: PeerManagerFactory,
     node_identity_factory: NodeIdentityFactory,
     node_identity: Option<Arc<NodeIdentity>>,
@@ -58,7 +58,7 @@ impl ConnectionManagerFactory {
     factory_setter!(
         with_peer_manager,
         peer_manager,
-        Option<Arc<PeerManager<CommsPublicKey, CommsDataStore>>>
+        Option<Arc<PeerManager<CommsDataStore>>>
     );
 
     factory_setter!(with_peer_manager_factory, peer_manager_factory, PeerManagerFactory);

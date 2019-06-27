@@ -354,7 +354,8 @@ impl EstablishedConnection {
             .map_err(|e| ConnectionError::SocketError(format!("Error sending: {} ({})", e, e.to_raw())))
     }
 
-    pub(crate) fn get_socket(&self) -> &zmq::Socket {
+    #[cfg(test)]
+    pub fn get_socket(&self) -> &zmq::Socket {
         &self.socket
     }
 

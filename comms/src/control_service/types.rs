@@ -73,7 +73,7 @@ where MType: Clone
     pub envelope_header: MessageEnvelopeHeader<CommsPublicKey>,
     pub message: Message,
     pub connection_manager: Arc<ConnectionManager>,
-    pub peer_manager: Arc<PeerManager<CommsPublicKey, LMDBStore>>,
+    pub peer_manager: Arc<PeerManager<LMDBStore>>,
     pub node_identity: Arc<NodeIdentity>,
     pub config: ControlServiceConfig<MType>,
 }

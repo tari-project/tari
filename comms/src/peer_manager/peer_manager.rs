@@ -24,10 +24,10 @@ use crate::{
     connection::net_address::NetAddress,
     outbound_message_service::broadcast_strategy::BroadcastStrategy,
     peer_manager::{node_id::NodeId, node_identity::PeerNodeIdentity, peer::Peer, peer_storage::PeerStorage},
+    types::CommsPublicKey,
 };
 use derive_error::Error;
-use std::{hash::Hash, sync::RwLock, time::Duration};
-use tari_crypto::keys::PublicKey;
+use std::{sync::RwLock, time::Duration};
 use tari_storage::keyvalue_store::{DataStore, DatastoreError};
 use tari_utilities::message_format::MessageFormatError;
 
@@ -62,20 +62,18 @@ pub enum PeerManagerError {
 /// The PeerManager consist of a routing table of previously discovered peers.
 /// It also provides functionality to add, find and delete peers. A subset of peers can also be requested from the
 /// routing table based on the selected Broadcast strategy.
-pub struct PeerManager<PubKey, DS> {
-    peer_storage: RwLock<PeerStorage<PubKey, DS>>,
+pub struct PeerManager<DS> {
+    peer_storage: RwLock<PeerStorage<DS>>,
 }
 
-impl<PubKey, DS> PeerManager<PubKey, DS>
-where
-    PubKey: PublicKey + Hash,
-    DS: DataStore,
+impl<DS> PeerManager<DS>
+where DS: DataStore
 {
     /// Constructs a new empty PeerManager
-    pub fn new(datastore: Option<DS>) -> Result<PeerManager<PubKey, DS>, PeerManagerError> {
+    pub fn new(datastore: Option<DS>) -> Result<PeerManager<DS>, PeerManagerError> {
         let peer_storage = match datastore {
             Some(store) => PeerStorage::with_datastore(store)?,
-            None => PeerStorage::<PubKey, DS>::new()?,
+            None => PeerStorage::<DS>::new()?,
         };
 
         Ok(Self {
@@ -85,7 +83,7 @@ where
 
     /// Adds a peer to the routing table of the PeerManager if the peer does not already exist. When a peer already
     /// exist, the stored version will be replaced with the newly provided peer.
-    pub fn add_peer(&self, peer: Peer<PubKey>) -> Result<(), PeerManagerError> {
+    pub fn add_peer(&self, peer: Peer) -> Result<(), PeerManagerError> {
         self.peer_storage
             .write()
             .map_err(|_| PeerManagerError::PoisonedAccess)?
@@ -101,7 +99,7 @@ where
     }
 
     /// Find the peer with the provided NodeID
-    pub fn find_with_node_id(&self, node_id: &NodeId) -> Result<Peer<PubKey>, PeerManagerError> {
+    pub fn find_with_node_id(&self, node_id: &NodeId) -> Result<Peer, PeerManagerError> {
         self.peer_storage
             .read()
             .map_err(|_| PeerManagerError::PoisonedAccess)?
@@ -109,7 +107,7 @@ where
     }
 
     /// Find the peer with the provided PublicKey
-    pub fn find_with_public_key(&self, public_key: &PubKey) -> Result<Peer<PubKey>, PeerManagerError> {
+    pub fn find_with_public_key(&self, public_key: &CommsPublicKey) -> Result<Peer, PeerManagerError> {
         self.peer_storage
             .read()
             .map_err(|_| PeerManagerError::PoisonedAccess)?
@@ -117,7 +115,7 @@ where
     }
 
     /// Find the peer with the provided NetAddress
-    pub fn find_with_net_address(&self, net_address: &NetAddress) -> Result<Peer<PubKey>, PeerManagerError> {
+    pub fn find_with_net_address(&self, net_address: &NetAddress) -> Result<Peer, PeerManagerError> {
         self.peer_storage
             .read()
             .map_err(|_| PeerManagerError::PoisonedAccess)?
@@ -127,8 +125,8 @@ where
     /// Request a sub-set of peers based on the provided BroadcastStrategy
     pub fn get_broadcast_identities(
         &self,
-        broadcast_strategy: BroadcastStrategy<PubKey>,
-    ) -> Result<Vec<PeerNodeIdentity<PubKey>>, PeerManagerError>
+        broadcast_strategy: BroadcastStrategy,
+    ) -> Result<Vec<PeerNodeIdentity>, PeerManagerError>
     {
         match broadcast_strategy {
             BroadcastStrategy::DirectNodeId(node_id) => {
@@ -259,17 +257,16 @@ mod test {
             node_id::NodeId,
             peer::{Peer, PeerFlags},
         },
-        types::CommsPublicKey,
     };
     use rand::OsRng;
-    use tari_crypto::ristretto::RistrettoPublicKey;
+    use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
     use tari_storage::lmdb::LMDBStore;
 
-    fn create_test_peer(rng: &mut OsRng, ban_flag: bool) -> Peer<RistrettoPublicKey> {
+    fn create_test_peer(rng: &mut OsRng, ban_flag: bool) -> Peer {
         let (_sk, pk) = RistrettoPublicKey::random_keypair(rng);
         let node_id = NodeId::from_key(&pk).unwrap();
         let net_addresses = NetAddressesWithStats::from("1.2.3.4:8000".parse::<NetAddress>().unwrap());
-        let mut peer = Peer::<RistrettoPublicKey>::new(pk, node_id, net_addresses, PeerFlags::default());
+        let mut peer = Peer::new(pk, node_id, net_addresses, PeerFlags::default());
         peer.set_banned(ban_flag);
         peer
     }
@@ -277,8 +274,8 @@ mod test {
     #[test]
     fn test_get_broadcast_identities() {
         // Create peer manager with random peers
-        let peer_manager = PeerManager::<CommsPublicKey, LMDBStore>::new(None).unwrap();
-        let mut test_peers: Vec<Peer<RistrettoPublicKey>> = Vec::new();
+        let peer_manager = PeerManager::<LMDBStore>::new(None).unwrap();
+        let mut test_peers: Vec<Peer> = Vec::new();
         // Create 20 peers were the 1st and last one is bad
         let mut rng = rand::OsRng::new().unwrap();
         test_peers.push(create_test_peer(&mut rng, true));
@@ -325,7 +322,7 @@ mod test {
             .unwrap();
         assert_eq!(identities.len(), 3);
         // Remove current identity nodes from test peers
-        let mut unused_peers: Vec<Peer<RistrettoPublicKey>> = Vec::new();
+        let mut unused_peers: Vec<Peer> = Vec::new();
         for peer in &test_peers {
             let mut found_flag = false;
             for peer_identity in &identities {
@@ -361,7 +358,7 @@ mod test {
     #[test]
     fn test_peer_reset_connection_attempts() {
         // Create peer manager with random peers
-        let peer_manager = PeerManager::<CommsPublicKey, LMDBStore>::new(None).unwrap();
+        let peer_manager = PeerManager::<LMDBStore>::new(None).unwrap();
         let mut rng = rand::OsRng::new().unwrap();
         let peer = create_test_peer(&mut rng, false);
         peer_manager.add_peer(peer.clone()).unwrap();

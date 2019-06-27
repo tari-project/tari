@@ -28,32 +28,29 @@ use crate::{
         peer::Peer,
         peer_manager::PeerManagerError,
     },
-    types::CommsRng,
+    types::{CommsPublicKey, CommsRng},
 };
 use rand::Rng;
-use std::{collections::HashMap, hash::Hash, ops::Index, time::Duration};
-use tari_crypto::keys::PublicKey;
+use std::{collections::HashMap, ops::Index, time::Duration};
 use tari_storage::keyvalue_store::DataStore;
 use tari_utilities::message_format::MessageFormat;
 
 /// PeerStorage provides a mechanism to keep a datastore and a local copy of all peers in sync and allow fast searches
 /// using the node_id, public key or net_address of a peer.
-pub struct PeerStorage<PubKey, DS> {
+pub struct PeerStorage<DS> {
     pub(crate) datastore: Option<DS>,
-    pub(crate) peers: Vec<Peer<PubKey>>,
+    pub(crate) peers: Vec<Peer>,
     node_id_hm: HashMap<NodeId, usize>,
-    public_key_hm: HashMap<PubKey, usize>,
+    public_key_hm: HashMap<CommsPublicKey, usize>,
     net_address_hm: HashMap<NetAddress, usize>,
     rng: CommsRng,
 }
 
-impl<PubKey, DS> PeerStorage<PubKey, DS>
-where
-    PubKey: PublicKey + Hash,
-    DS: DataStore,
+impl<DS> PeerStorage<DS>
+where DS: DataStore
 {
     /// Constructs a new empty PeerStorage system
-    pub fn new() -> Result<PeerStorage<PubKey, DS>, PeerManagerError> {
+    pub fn new() -> Result<PeerStorage<DS>, PeerManagerError> {
         Ok(PeerStorage {
             datastore: None,
             peers: Vec::new(),
@@ -65,15 +62,15 @@ where
     }
 
     /// Constructs a PeerStorage with the given DataStore
-    pub fn with_datastore(datastore: DS) -> Result<PeerStorage<PubKey, DS>, PeerManagerError> {
+    pub fn with_datastore(datastore: DS) -> Result<PeerStorage<DS>, PeerManagerError> {
         let mut store = Self::new()?;
         store.datastore = Some(datastore);
-        store.init_persistance_store();
+        store.init_persistence_store();
         Ok(store)
     }
 
     /// Connects and restore the PeerStorage system from a datastore
-    fn init_persistance_store(&mut self) {
+    fn init_persistence_store(&mut self) {
         // Restore from datastore
         let mut index = 0;
         while let Ok(peer) = self.get_peer_from_datastore(index) {
@@ -86,7 +83,7 @@ where
 
     /// Adds a peer to the routing table of the PeerManager if the peer does not already exist. When a peer already
     /// exist, the stored version will be replaced with the newly provided peer.
-    pub fn add_peer(&mut self, peer: Peer<PubKey>) -> Result<(), PeerManagerError> {
+    pub fn add_peer(&mut self, peer: Peer) -> Result<(), PeerManagerError> {
         match self.public_key_hm.get(&peer.public_key) {
             Some(index) => {
                 // Replace existing entry
@@ -129,7 +126,7 @@ where
     }
 
     /// Find the peer with the provided NodeID
-    pub fn find_with_node_id(&self, node_id: &NodeId) -> Result<Peer<PubKey>, PeerManagerError> {
+    pub fn find_with_node_id(&self, node_id: &NodeId) -> Result<Peer, PeerManagerError> {
         let peer_index = *self
             .node_id_hm
             .get(&node_id)
@@ -138,7 +135,7 @@ where
     }
 
     /// Find the peer with the provided PublicKey
-    pub fn find_with_public_key(&self, public_key: &PubKey) -> Result<Peer<PubKey>, PeerManagerError> {
+    pub fn find_with_public_key(&self, public_key: &CommsPublicKey) -> Result<Peer, PeerManagerError> {
         let peer_index = *self
             .public_key_hm
             .get(&public_key)
@@ -147,7 +144,7 @@ where
     }
 
     /// Find the peer with the provided NetAddress
-    pub fn find_with_net_address(&self, net_address: &NetAddress) -> Result<Peer<PubKey>, PeerManagerError> {
+    pub fn find_with_net_address(&self, net_address: &NetAddress) -> Result<Peer, PeerManagerError> {
         let peer_index = *self
             .net_address_hm
             .get(&net_address)
@@ -156,7 +153,7 @@ where
     }
 
     /// Constructs a single NodeIdentity for the peer corresponding to the provided NodeId
-    pub fn direct_identity_node_id(&self, node_id: &NodeId) -> Result<Vec<PeerNodeIdentity<PubKey>>, PeerManagerError> {
+    pub fn direct_identity_node_id(&self, node_id: &NodeId) -> Result<Vec<PeerNodeIdentity>, PeerManagerError> {
         let peer_index = *self
             .node_id_hm
             .get(&node_id)
@@ -164,7 +161,7 @@ where
         if self.peers[peer_index].is_banned() {
             Err(PeerManagerError::BannedPeer)
         } else {
-            Ok(vec![PeerNodeIdentity::<PubKey>::new(
+            Ok(vec![PeerNodeIdentity::new(
                 node_id.clone(),
                 self.peers[peer_index].public_key.clone(),
             )])
@@ -174,8 +171,8 @@ where
     /// Constructs a single NodeIdentity for the peer corresponding to the provided NodeId
     pub fn direct_identity_public_key(
         &self,
-        public_key: &PubKey,
-    ) -> Result<Vec<PeerNodeIdentity<PubKey>>, PeerManagerError>
+        public_key: &CommsPublicKey,
+    ) -> Result<Vec<PeerNodeIdentity>, PeerManagerError>
     {
         let peer_index = *self
             .public_key_hm
@@ -184,7 +181,7 @@ where
         if self.peers[peer_index].is_banned() {
             Err(PeerManagerError::BannedPeer)
         } else {
-            Ok(vec![PeerNodeIdentity::<PubKey>::new(
+            Ok(vec![PeerNodeIdentity::new(
                 self.peers[peer_index].node_id.clone(),
                 public_key.clone(),
             )])
@@ -192,9 +189,9 @@ where
     }
 
     /// Compile a list of all known node identities that can be used for the flood BroadcastStrategy
-    pub fn flood_identities(&self) -> Result<Vec<PeerNodeIdentity<PubKey>>, PeerManagerError> {
+    pub fn flood_identities(&self) -> Result<Vec<PeerNodeIdentity>, PeerManagerError> {
         // TODO: this list should only contain Communication Nodes
-        let mut identities: Vec<PeerNodeIdentity<PubKey>> = Vec::new();
+        let mut identities: Vec<PeerNodeIdentity> = Vec::new();
         for peer in &self.peers {
             if !peer.is_banned() {
                 identities.push(PeerNodeIdentity::new(peer.node_id.clone(), peer.public_key.clone()));
@@ -204,12 +201,7 @@ where
     }
 
     /// Compile a list of node identities that can be used for the closest BroadcastStrategy
-    pub fn closest_identities(
-        &self,
-        node_id: NodeId,
-        n: usize,
-    ) -> Result<Vec<PeerNodeIdentity<PubKey>>, PeerManagerError>
-    {
+    pub fn closest_identities(&self, node_id: NodeId, n: usize) -> Result<Vec<PeerNodeIdentity>, PeerManagerError> {
         let mut indices: Vec<usize> = Vec::new();
         let mut dists: Vec<NodeDistance> = Vec::new();
         for i in 0..self.peers.len() {
@@ -222,7 +214,7 @@ where
             return Err(PeerManagerError::InsufficientPeers);
         }
         // Perform partial sort of elements only up to N elements
-        let mut nearest_identities: Vec<PeerNodeIdentity<PubKey>> = Vec::with_capacity(n);
+        let mut nearest_identities: Vec<PeerNodeIdentity> = Vec::with_capacity(n);
         for i in 0..n {
             for j in (i + 1)..indices.len() {
                 if dists[i] > dists[j] {
@@ -230,7 +222,7 @@ where
                     indices.swap(i, j);
                 }
             }
-            nearest_identities.push(PeerNodeIdentity::<PubKey>::new(
+            nearest_identities.push(PeerNodeIdentity::new(
                 self.peers[indices[i]].node_id.clone(),
                 self.peers[indices[i]].public_key.clone(),
             ));
@@ -239,7 +231,7 @@ where
     }
 
     /// Compile a list of node identities that can be used for the random BroadcastStrategy
-    pub fn random_identities(&mut self, n: usize) -> Result<Vec<PeerNodeIdentity<PubKey>>, PeerManagerError> {
+    pub fn random_identities(&mut self, n: usize) -> Result<Vec<PeerNodeIdentity>, PeerManagerError> {
         // TODO: Send to a random set of Communication Nodes
         let peer_count = self.peers.len();
         let mut indices: Vec<usize> = Vec::new();
@@ -257,9 +249,9 @@ where
             indices.swap(i, j);
         }
         // Compile list of first n shuffled elements
-        let mut random_identities: Vec<PeerNodeIdentity<PubKey>> = Vec::with_capacity(n);
+        let mut random_identities: Vec<PeerNodeIdentity> = Vec::with_capacity(n);
         for i in 0..n {
-            random_identities.push(PeerNodeIdentity::<PubKey>::new(
+            random_identities.push(PeerNodeIdentity::new(
                 self.peers[indices[i]].node_id.clone(),
                 self.peers[indices[i]].public_key.clone(),
             ));
@@ -268,7 +260,7 @@ where
     }
 
     /// Add key pairs to the search hashmaps for a newly added or moved peer
-    fn add_peer_hashmap_links(&mut self, index: usize, peer: &Peer<PubKey>) {
+    fn add_peer_hashmap_links(&mut self, index: usize, peer: &Peer) {
         self.node_id_hm.insert(peer.node_id.clone(), index);
         self.public_key_hm.insert(peer.public_key.clone(), index);
         for net_address_with_stats in &peer.addresses.addresses {
@@ -278,7 +270,7 @@ where
     }
 
     /// Add a single peer to the datastore using the provided index as a key
-    fn add_peer_to_datastore(&mut self, index: usize, peer: &Peer<PubKey>) -> Result<(), PeerManagerError> {
+    fn add_peer_to_datastore(&mut self, index: usize, peer: &Peer) -> Result<(), PeerManagerError> {
         if let Some(ref mut datastore) = self.datastore {
             let index_bytes = index.to_binary().map_err(|e| PeerManagerError::SerializationError(e))?;
             let peer_bytes = peer.to_binary().map_err(|e| PeerManagerError::SerializationError(e))?;
@@ -313,7 +305,7 @@ where
     }
 
     /// Retrieve a single peer from the data store using the provided index
-    pub fn get_peer_from_datastore(&self, index: usize) -> Result<Peer<PubKey>, PeerManagerError> {
+    pub fn get_peer_from_datastore(&self, index: usize) -> Result<Peer, PeerManagerError> {
         match self.datastore {
             Some(ref datastore) => {
                 let index_bytes = index.to_binary().map_err(|e| PeerManagerError::SerializationError(e))?;
@@ -321,8 +313,9 @@ where
                     .get_raw(&index_bytes)
                     .map_err(|e| PeerManagerError::DatastoreError(e))?
                 {
-                    Some(peer_raw) => Peer::<PubKey>::from_binary(peer_raw.as_slice())
-                        .map_err(|_| PeerManagerError::DeserializationError),
+                    Some(peer_raw) => {
+                        Peer::from_binary(peer_raw.as_slice()).map_err(|_| PeerManagerError::DeserializationError)
+                    },
                     None => Err(PeerManagerError::EmptyDatastoreQuery),
                 }
             },
@@ -482,15 +475,13 @@ mod test {
         let mut net_addresses = NetAddressesWithStats::from(net_address1.clone());
         net_addresses.add_net_address(&net_address2).unwrap();
         net_addresses.add_net_address(&net_address3).unwrap();
-        let peer1: Peer<RistrettoPublicKey> =
-            Peer::<RistrettoPublicKey>::new(pk, node_id, net_addresses, PeerFlags::default());
+        let peer1 = Peer::new(pk, node_id, net_addresses, PeerFlags::default());
 
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk).unwrap();
         let net_address4 = NetAddress::from("9.10.11.12:7000".parse::<NetAddress>().unwrap());
         let net_addresses = NetAddressesWithStats::from(net_address4.clone());
-        let peer2: Peer<RistrettoPublicKey> =
-            Peer::<RistrettoPublicKey>::new(pk, node_id, net_addresses, PeerFlags::default());
+        let peer2: Peer = Peer::new(pk, node_id, net_addresses, PeerFlags::default());
 
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk).unwrap();
@@ -498,8 +489,7 @@ mod test {
         let net_address6 = NetAddress::from("17.18.19.20:8000".parse::<NetAddress>().unwrap());
         let mut net_addresses = NetAddressesWithStats::from(net_address5.clone());
         net_addresses.add_net_address(&net_address6).unwrap();
-        let peer3: Peer<RistrettoPublicKey> =
-            Peer::<RistrettoPublicKey>::new(pk, node_id, net_addresses, PeerFlags::default());
+        let peer3 = Peer::new(pk, node_id, net_addresses, PeerFlags::default());
         // Test adding and searching for peers
         assert!(peer_storage.add_peer(peer1.clone()).is_ok());
         assert!(peer_storage.add_peer(peer2.clone()).is_ok());
@@ -693,15 +683,13 @@ mod test {
         let net_address2 = NetAddress::from("5.6.7.8:8000".parse::<NetAddress>().unwrap());
         let mut net_addresses = NetAddressesWithStats::from(net_address1.clone());
         assert!(net_addresses.add_net_address(&net_address2).is_ok());
-        let peer1: Peer<RistrettoPublicKey> =
-            Peer::<RistrettoPublicKey>::new(pk, node_id, net_addresses, PeerFlags::default());
+        let peer1 = Peer::new(pk, node_id, net_addresses, PeerFlags::default());
 
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk).unwrap();
         let net_address3 = NetAddress::from("9.10.11.12:7000".parse::<NetAddress>().unwrap());
         let net_addresses = NetAddressesWithStats::from(net_address3.clone());
-        let peer2: Peer<RistrettoPublicKey> =
-            Peer::<RistrettoPublicKey>::new(pk, node_id, net_addresses, PeerFlags::default());
+        let peer2 = Peer::new(pk, node_id, net_addresses, PeerFlags::default());
 
         // Add peers to peer store
         assert!(peer_storage.add_peer(peer1.clone()).is_ok());

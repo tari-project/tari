@@ -24,7 +24,7 @@ use super::{peer::PeersFactory, TestFactory, TestFactoryError};
 
 use tari_comms::{
     peer_manager::{Peer, PeerManager},
-    types::{CommsDataStore, CommsPublicKey},
+    types::CommsDataStore,
 };
 
 pub fn create() -> PeerManagerFactory {
@@ -34,20 +34,20 @@ pub fn create() -> PeerManagerFactory {
 #[derive(Default)]
 pub struct PeerManagerFactory {
     peers_factory: PeersFactory,
-    peers: Option<Vec<Peer<CommsPublicKey>>>,
+    peers: Option<Vec<Peer>>,
 }
 
 impl PeerManagerFactory {
     factory_setter!(with_peers_factory, peers_factory, PeersFactory);
 
-    factory_setter!(with_peers, peers, Option<Vec<Peer<CommsPublicKey>>>);
+    factory_setter!(with_peers, peers, Option<Vec<Peer>>);
 }
 
 impl TestFactory for PeerManagerFactory {
-    type Object = PeerManager<CommsPublicKey, CommsDataStore>;
+    type Object = PeerManager<CommsDataStore>;
 
     fn build(self) -> Result<Self::Object, TestFactoryError> {
-        let pm = PeerManager::<CommsPublicKey, CommsDataStore>::new(None)
+        let pm = PeerManager::<CommsDataStore>::new(None)
             .map_err(|err| TestFactoryError::BuildFailed(format!("Failed to build peer manager: {:?}", err)))?;
 
         let peers = self

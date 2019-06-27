@@ -1,5 +1,4 @@
 use tari_comms::peer_manager::peer::Peer;
-use tari_crypto::keys::PublicKey;
 
 #[derive(Debug)]
 pub enum PeerType {
@@ -10,16 +9,14 @@ pub enum PeerType {
 }
 
 #[derive(Debug)]
-pub struct PeerWithType<K: PublicKey> {
-    pub peer: Peer<K>,
+pub struct PeerWithType {
+    pub peer: Peer,
     pub peer_type: PeerType,
 }
 
-impl<K> PeerWithType<K>
-where K: PublicKey
-{
+impl PeerWithType {
     /// Constructs a new peer with peer type
-    pub fn new(peer: Peer<K>, peer_type: PeerType) -> PeerWithType<K> {
+    pub fn new(peer: Peer, peer_type: PeerType) -> PeerWithType {
         PeerWithType { peer, peer_type }
     }
 }

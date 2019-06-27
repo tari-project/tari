@@ -41,8 +41,8 @@
 //! let (dest_sk, pk) = CommsPublicKey::random_keypair(&mut rng);
 //! let node_id = NodeId::from_key(&pk).unwrap();
 //! let net_addresses = NetAddressesWithStats::from("1.2.3.4:8000".parse::<NetAddress>().unwrap());
-//! let peer: Peer<CommsPublicKey> = Peer::<CommsPublicKey>::new(pk, node_id.clone(), net_addresses, PeerFlags::default());
-//! let peer_manager = PeerManager::<CommsPublicKey, LMDBStore>::new(None).unwrap();
+//! let peer = Peer::new(pk, node_id.clone(), net_addresses, PeerFlags::default());
+//! let peer_manager = PeerManager::<LMDBStore>::new(None).unwrap();
 //! peer_manager.add_peer(peer.clone());
 //!
 //! let returned_peer = peer_manager.find_with_node_id(&node_id).unwrap();
