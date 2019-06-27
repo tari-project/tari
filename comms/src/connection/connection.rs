@@ -32,7 +32,7 @@ use crate::{
     message::FrameSet,
 };
 
-use std::{cmp, convert::TryFrom, iter::IntoIterator, str::FromStr};
+use std::{cmp, iter::IntoIterator, str::FromStr};
 
 const LOG_TARGET: &'static str = "comms::connection::Connection";
 
@@ -245,6 +245,7 @@ impl<'a> Connection<'a> {
         Ok(EstablishedConnection {
             socket,
             connected_address,
+            direction: self.direction,
         })
     }
 }
@@ -265,6 +266,7 @@ pub struct EstablishedConnection {
     socket: zmq::Socket,
     // If the connection is a TCP connection, it will be stored here, otherwise it is None
     connected_address: Option<SocketAddress>,
+    direction: Direction,
 }
 
 impl EstablishedConnection {
@@ -355,11 +357,11 @@ impl EstablishedConnection {
     }
 
     #[cfg(test)]
-    pub fn get_socket(&self) -> &zmq::Socket {
+    pub(crate) fn get_socket(&self) -> &zmq::Socket {
         &self.socket
     }
 
-    pub(crate) fn get_mut_socket(&mut self) -> &mut zmq::Socket {
+    pub(crate) fn get_socket_mut(&mut self) -> &mut zmq::Socket {
         &mut self.socket
     }
 }
@@ -368,7 +370,8 @@ impl Drop for EstablishedConnection {
     fn drop(&mut self) {
         debug!(
             target: LOG_TARGET,
-            "Dropping connection {:?}",
+            "Dropping {} connection {:?}",
+            self.direction,
             self.get_connected_address()
         );
     }
@@ -389,18 +392,6 @@ fn get_socket_address(socket: &zmq::Socket) -> Option<SocketAddress> {
     }
     let addr = parts[1];
     SocketAddress::from_str(&addr).ok()
-}
-
-impl TryFrom<zmq::Socket> for EstablishedConnection {
-    type Error = ConnectionError;
-
-    fn try_from(socket: zmq::Socket) -> Result<Self> {
-        let connected_address = get_socket_address(&socket);
-        Ok(EstablishedConnection {
-            socket,
-            connected_address,
-        })
-    }
 }
 
 #[cfg(test)]

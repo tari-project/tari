@@ -92,6 +92,7 @@ fn datastore_with_peer(identity: NodeIdentity) -> CommsDataStore {
 }
 
 fn main() {
+    log4rs::init_file("base_layer/p2p/examples/example-log-config.yml", Default::default()).unwrap();
     let matches = App::new("Peer file generator")
         .version("1.0")
         .about("PingPong between two peers")

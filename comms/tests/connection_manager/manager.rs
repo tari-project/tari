@@ -27,7 +27,7 @@ use crate::support::{
 use std::{sync::Arc, thread, time::Duration};
 use tari_comms::{
     connection::{types::Linger, InprocAddress, ZmqContext},
-    connection_manager::{ConnectionManager, PeerConnectionConfig},
+    connection_manager::PeerConnectionConfig,
     control_service::{ControlService, ControlServiceConfig},
     peer_manager::{Peer, PeerManager},
     types::CommsDataStore,
@@ -48,27 +48,37 @@ fn make_peer_manager(peers: Vec<Peer>) -> Arc<PeerManager<CommsDataStore>> {
     Arc::new(factories::peer_manager::create().with_peers(peers).build().unwrap())
 }
 
+fn pause() {
+    thread::sleep(Duration::from_millis(200));
+}
+
 #[test]
 #[allow(non_snake_case)]
-fn establish_peer_connection_by_peer() {
+fn establish_peer_connection() {
     let _ = simple_logger::init();
     let context = ZmqContext::new();
 
-    let node_identity = Arc::new(factories::node_identity::create().build().unwrap());
+    let node_A_identity = Arc::new(factories::node_identity::create().build().unwrap());
+
+    let node_B_consumer_address = InprocAddress::random();
+    let node_B_msg_counter = ConnectionMessageCounter::new(&context);
+    node_B_msg_counter.start(node_B_consumer_address.clone());
 
     //---------------------------------- Node B Setup --------------------------------------------//
 
-    let node_B_consumer_address = InprocAddress::random();
     let node_B_control_port_address = factories::net_address::create().build().unwrap();
-
-    let node_B_msg_counter = ConnectionMessageCounter::new(&context);
-    node_B_msg_counter.start(node_B_consumer_address.clone());
+    let node_B_identity = Arc::new(
+        factories::node_identity::create()
+            .with_control_service_address(node_B_control_port_address.clone())
+            .build()
+            .unwrap(),
+    );
 
     let node_B_peer = factories::peer::create()
         .with_net_addresses(vec![node_B_control_port_address.clone()])
         // Set node B's secret key to be the same as node A's so that we can generate the same shared secret
         // TODO: we'll need a way to generate separate node identities for two nodes
-        .with_public_key(node_identity.identity.public_key.clone())
+        .with_public_key(node_B_identity.identity.public_key.clone())
         .build()
         .unwrap();
 
@@ -77,7 +87,7 @@ fn establish_peer_connection_by_peer() {
     let node_B_connection_manager = Arc::new(
         factories::connection_manager::create()
             .with_context(context.clone())
-            .with_node_identity(node_identity.clone())
+            .with_node_identity(node_B_identity.clone())
             .with_peer_manager(node_B_peer_manager)
             .with_peer_connection_config(make_peer_connection_config(node_B_consumer_address.clone()))
             .build()
@@ -85,7 +95,7 @@ fn establish_peer_connection_by_peer() {
     );
 
     // Start node B's control service
-    let node_B_control_service = ControlService::new(context.clone(), node_identity.clone(), ControlServiceConfig {
+    let node_B_control_service = ControlService::new(context.clone(), node_B_identity.clone(), ControlServiceConfig {
         socks_proxy_address: None,
         listener_address: node_B_control_port_address,
         accept_message_type: 123,
@@ -94,18 +104,24 @@ fn establish_peer_connection_by_peer() {
     .serve(node_B_connection_manager)
     .unwrap();
 
+    // Give the control service a moment to start up
+    pause();
+
     //---------------------------------- Node A setup --------------------------------------------//
 
     let node_A_consumer_address = InprocAddress::random();
 
     // Add node B to node A's peer manager
     let node_A_peer_manager = make_peer_manager(vec![node_B_peer.clone()]);
-    let node_A_connection_manager = Arc::new(ConnectionManager::new(
-        context.clone(),
-        node_identity.clone(),
-        node_A_peer_manager,
-        make_peer_connection_config(node_A_consumer_address),
-    ));
+    let node_A_connection_manager = Arc::new(
+        factories::connection_manager::create()
+            .with_context(context.clone())
+            .with_node_identity(node_A_identity.clone())
+            .with_peer_manager(node_A_peer_manager)
+            .with_peer_connection_config(make_peer_connection_config(node_A_consumer_address))
+            .build()
+            .unwrap(),
+    );
 
     //------------------------------ Negotiate connection to node B -----------------------------------//
 
@@ -137,11 +153,14 @@ fn establish_peer_connection_by_peer() {
     handle1.join().unwrap().unwrap();
     handle2.join().unwrap().unwrap();
 
+    // Give the peer connections a moment to receive and the message sink connections to send
+    pause();
+
     node_B_control_service.shutdown().unwrap();
     node_B_control_service.handle.join().unwrap().unwrap();
 
     assert_eq!(node_A_connection_manager.get_active_connection_count(), 1);
-    node_B_msg_counter.assert_count(2, 1000);
+    node_B_msg_counter.assert_count(2, 2000);
 
     match Arc::try_unwrap(node_A_connection_manager) {
         Ok(manager) => manager.shutdown().into_iter().map(|r| r.unwrap()).collect::<Vec<()>>(),

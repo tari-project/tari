@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::connection::ConnectionError;
+use std::fmt;
 
 /// The types of socket available
 pub enum SocketType {
@@ -57,6 +58,12 @@ pub enum Direction {
     Inbound,
     /// Connection establishes an outbound connection
     Outbound,
+}
+
+impl fmt::Display for Direction {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
 }
 
 /// Used to select the method to use when establishing the connection.
