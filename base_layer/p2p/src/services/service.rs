@@ -22,6 +22,8 @@
 
 use super::executor::ServiceContext;
 use crate::{services::ServiceError, tari_message::TariMessageType};
+use crossbeam_channel as channel;
+use std::{sync::Arc, time::Duration};
 
 /// This trait should be implemented for services
 pub trait Service: Send + Sync {
@@ -36,4 +38,40 @@ pub trait Service: Send + Sync {
     /// This should contain a loop which reads control messages (`context.get_control_message`)
     /// and connector messages and processes them.
     fn execute(&mut self, context: ServiceContext) -> Result<(), ServiceError>;
+}
+
+/// Default duration that a API 'client' will wait for a response from the service before returning a timeout error
+pub const DEFAULT_API_TIMEOUT_MS: u64 = 200;
+
+/// Thin convenience wrapper for any service api
+pub struct ServiceApiWrapper<T, Req, Res> {
+    api: Arc<T>,
+    receiver: channel::Receiver<Req>,
+    sender: channel::Sender<Res>,
+}
+
+impl<T, Req, Res> ServiceApiWrapper<T, Req, Res> {
+    /// Create a new service API
+    pub fn new(receiver: channel::Receiver<Req>, sender: channel::Sender<Res>, api: Arc<T>) -> Self {
+        Self { api, receiver, sender }
+    }
+
+    /// Send a reply to the calling API
+    pub fn send_reply(&self, msg: Res) -> Result<(), channel::SendError<Res>> {
+        self.sender.send(msg)
+    }
+
+    /// Attempt to receive a service API message
+    pub fn recv_timeout(&self, timeout: Duration) -> Result<Option<Req>, channel::RecvTimeoutError> {
+        match self.receiver.recv_timeout(timeout) {
+            Ok(msg) => Ok(Some(msg)),
+            Err(channel::RecvTimeoutError::Timeout) => Ok(None),
+            Err(err) => Err(err),
+        }
+    }
+
+    /// Return the API
+    pub fn get_api(&self) -> Arc<T> {
+        self.api.clone()
+    }
 }

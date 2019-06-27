@@ -20,8 +20,20 @@ pub struct NetAddressWithStats {
 }
 
 impl NetAddressWithStats {
+    /// Constructs a new net address with zero stats
+    pub fn new(net_address: NetAddress) -> NetAddressWithStats {
+        NetAddressWithStats {
+            net_address,
+            last_seen: None,
+            connection_attempts: 0,
+            rejected_message_count: 0,
+            avg_latency: Duration::from_millis(0),
+            latency_sample_count: 0,
+        }
+    }
+
     /// Constructs a new net address with usage stats
-    pub fn new(
+    pub fn new_with_stats(
         net_address: NetAddress,
         last_seen: Option<DateTime<Utc>>,
         connection_attempts: u32,
