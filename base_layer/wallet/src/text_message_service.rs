@@ -29,7 +29,7 @@ use log::*;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
-    convert::TryFrom,
+    convert::TryInto,
     sync::{Arc, Mutex},
     time::Duration,
 };
@@ -37,7 +37,7 @@ use tari_comms::{
     builder::CommsServicesError,
     dispatcher::DispatchError,
     domain_connector::{ConnectorError, MessageInfo},
-    message::{Message, MessageError, MessageFlags, MessageHeader},
+    message::{Message, MessageError, MessageFlags},
     outbound_message_service::{outbound_message_service::OutboundMessageService, BroadcastStrategy, OutboundError},
     types::CommsPublicKey,
     DomainConnector,
@@ -53,10 +53,7 @@ use tari_p2p::{
     },
     tari_message::{ExtendedMessage, TariMessageType},
 };
-use tari_utilities::{
-    byte_array::ByteArray,
-    message_format::{MessageFormat, MessageFormatError},
-};
+use tari_utilities::{byte_array::ByteArray, message_format::MessageFormatError};
 
 const LOG_TARGET: &'static str = "base_layer::wallet::text_messsage_service";
 
@@ -93,16 +90,11 @@ pub struct TextMessage {
     timestamp: DateTime<Utc>,
 }
 
-impl TryFrom<TextMessage> for Message {
+impl TryInto<Message> for TextMessage {
     type Error = MessageError;
 
-    fn try_from(v: TextMessage) -> Result<Self, Self::Error> {
-        Ok(Message::from_message_format(
-            MessageHeader {
-                message_type: TariMessageType::new(ExtendedMessage::Text),
-            },
-            v,
-        )?)
+    fn try_into(self) -> Result<Message, Self::Error> {
+        Ok((TariMessageType::new(ExtendedMessage::Text), self).try_into()?)
     }
 }
 /// Represents an Acknowledgement of receiving a Text Message
@@ -111,16 +103,11 @@ pub struct TextMessageAck {
     id: Vec<u8>,
 }
 
-impl TryFrom<TextMessageAck> for Message {
+impl TryInto<Message> for TextMessageAck {
     type Error = MessageError;
 
-    fn try_from(v: TextMessageAck) -> Result<Self, Self::Error> {
-        Ok(Message::from_message_format(
-            MessageHeader {
-                message_type: TariMessageType::new(ExtendedMessage::TextAck),
-            },
-            v,
-        )?)
+    fn try_into(self) -> Result<Message, Self::Error> {
+        Ok((TariMessageType::new(ExtendedMessage::TextAck), self).try_into()?)
     }
 }
 
@@ -204,10 +191,10 @@ impl TextMessageService {
             timestamp,
         };
 
-        oms.send(
+        oms.send_message(
             BroadcastStrategy::DirectPublicKey(text_message.dest_pub_key.clone()),
             MessageFlags::ENCRYPTED,
-            Message::try_from(text_message.clone())?.to_binary()?,
+            text_message.clone(),
         )?;
         self.pending_messages.insert(text_message.id.clone(), text_message);
 
@@ -231,10 +218,10 @@ impl TextMessageService {
             );
 
             let text_message_ack = TextMessageAck { id: msg.clone().id };
-            oms.send(
+            oms.send_message(
                 BroadcastStrategy::DirectPublicKey(info.source_identity.public_key),
                 MessageFlags::ENCRYPTED,
-                Message::try_from(text_message_ack)?.to_binary()?,
+                text_message_ack,
             )?;
 
             self.received_messages.push(msg);

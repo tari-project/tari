@@ -27,12 +27,12 @@ use crate::{
         Direction,
         SocketEstablishment,
     },
-    message::{Frame, MessageEnvelope, MessageFlags, NodeDestination},
+    message::{Frame, Message, MessageEnvelope, MessageError, MessageFlags, NodeDestination},
     outbound_message_service::{BroadcastStrategy, OutboundError, OutboundMessage},
     peer_manager::{peer_manager::PeerManager, NodeIdentity},
     types::CommsDataStore,
 };
-use std::sync::Arc;
+use std::{convert::TryInto, sync::Arc};
 use tari_utilities::message_format::MessageFormat;
 
 /// Handler functions use the OutboundMessageService to send messages to peers. The OutboundMessage service will receive
@@ -63,9 +63,35 @@ impl OutboundMessageService {
         })
     }
 
+    /// Sends a domain-level message using the given BroadcastStrategy.
+    ///
+    /// *Arguments*
+    ///
+    /// - `broadcast_strategy`: [BroadcastStrategy]
+    /// - `flags`: MessageFlags - See [message module docs].
+    /// - `message`: T - The message to send.
+    ///
+    /// [BroadcastStrategy]: ../broadcast_strategy/enum.BroadcastStrategy.html
+    /// [message module docs]: ../../message/index.html
+    pub fn send_message<T>(
+        &self,
+        broadcast_strategy: BroadcastStrategy,
+        flags: MessageFlags,
+        message: T,
+    ) -> Result<(), OutboundError>
+    where
+        T: TryInto<Message, Error = MessageError>,
+        T: MessageFormat,
+    {
+        let msg = message.try_into().map_err(OutboundError::MessageSerializationError)?;
+
+        let message_envelope_body = msg.to_binary().map_err(OutboundError::MessageFormatError)?;
+        self.send_raw(broadcast_strategy, flags, message_envelope_body)
+    }
+
     /// Handler functions use the send function to transmit a message to a peer or set of peers based on the
     /// BroadcastStrategy
-    pub fn send(
+    pub fn send_raw(
         &self,
         broadcast_strategy: BroadcastStrategy,
         flags: MessageFlags,
@@ -162,7 +188,7 @@ mod test {
         let message_body = "Test Message Body".as_bytes().to_vec();
         let message_envelope_body = Message::from_message_format(message_header, message_body).unwrap();
         outbound_message_service
-            .send(
+            .send_raw(
                 BroadcastStrategy::DirectNodeId(dest_peer.node_id.clone()),
                 MessageFlags::ENCRYPTED,
                 message_envelope_body.to_binary().unwrap(),

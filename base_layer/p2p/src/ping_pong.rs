@@ -36,21 +36,19 @@ use derive_error::Error;
 use log::*;
 use serde::{Deserialize, Serialize};
 use std::{
+    convert::TryInto,
     fmt,
     sync::{Arc, Mutex},
     time::Duration,
 };
 use tari_comms::{
     domain_connector::ConnectorError,
-    message::{Message, MessageError, MessageFlags, MessageHeader},
+    message::{Message, MessageError, MessageFlags},
     outbound_message_service::{outbound_message_service::OutboundMessageService, BroadcastStrategy, OutboundError},
     types::CommsPublicKey,
     DomainConnector,
 };
-use tari_utilities::{
-    hex::Hex,
-    message_format::{MessageFormat, MessageFormatError},
-};
+use tari_utilities::{hex::Hex, message_format::MessageFormatError};
 
 const LOG_TARGET: &'static str = "base_layer::p2p::ping_pong";
 
@@ -75,6 +73,14 @@ pub enum PingPongError {
 pub enum PingPong {
     Ping,
     Pong,
+}
+
+impl TryInto<Message> for PingPong {
+    type Error = MessageError;
+
+    fn try_into(self) -> Result<Message, Self::Error> {
+        Ok((TariMessageType::new(NetMessage::PingPong), self).try_into()?)
+    }
 }
 
 pub struct PingPongService {
@@ -111,21 +117,8 @@ impl PingPongService {
 
     fn send_msg(&self, broadcast_strategy: BroadcastStrategy, msg: PingPong) -> Result<(), PingPongError> {
         let oms = self.oms.clone().ok_or(PingPongError::OMSNotInitialized)?;
-
-        let msg = Message::from_message_format(
-            MessageHeader {
-                message_type: TariMessageType::new(NetMessage::PingPong),
-            },
-            msg,
-        )
-        .map_err(PingPongError::MessageError)?;
-
-        oms.send(
-            broadcast_strategy,
-            MessageFlags::empty(),
-            msg.to_binary().map_err(PingPongError::SerializationFailed)?,
-        )
-        .map_err(PingPongError::OutboundError)
+        oms.send_message(broadcast_strategy, MessageFlags::empty(), msg)
+            .map_err(PingPongError::OutboundError)
     }
 
     fn receive_ping(&mut self, connector: &DomainConnector<'static>) -> Result<(), PingPongError> {
@@ -169,7 +162,7 @@ impl PingPongService {
     }
 
     fn handle_api_message(&self, msg: PingPongApiRequest) -> Result<(), ServiceError> {
-        debug!(
+        trace!(
             target: LOG_TARGET,
             "[{}] Received API message: {:?}",
             self.get_name(),
@@ -181,7 +174,7 @@ impl PingPongService {
             PingPongApiRequest::GetPongCount => Ok(PingPongApiResponse::Count(self.pong_count)),
         };
 
-        debug!(target: LOG_TARGET, "[{}] Replying to API: {:?}", self.get_name(), resp);
+        trace!(target: LOG_TARGET, "[{}] Replying to API: {:?}", self.get_name(), resp);
         self.api
             .send_reply(resp)
             .map_err(ServiceError::internal_service_error())
