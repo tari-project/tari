@@ -20,8 +20,6 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use log::*;
-
 use crate::{
     connection::{
         net_address::ip::SocketAddress,
@@ -31,8 +29,8 @@ use crate::{
     },
     message::FrameSet,
 };
-
-use std::{cmp, iter::IntoIterator, str::FromStr};
+use log::*;
+use std::{borrow::Borrow, cmp, iter::IntoIterator, str::FromStr};
 
 const LOG_TARGET: &'static str = "comms::connection::Connection";
 
@@ -68,6 +66,7 @@ const LOG_TARGET: &'static str = "comms::connection::Connection";
 /// [`ZeroMQ`]: http://zeromq.org/
 pub struct Connection<'a> {
     pub(super) context: &'a ZmqContext,
+    pub(super) name: String,
     pub(super) curve_encryption: CurveEncryption,
     pub(super) direction: Direction,
     pub(super) identity: Option<String>,
@@ -85,6 +84,7 @@ impl<'a> Connection<'a> {
     pub fn new(context: &'a ZmqContext, direction: Direction) -> Self {
         Self {
             context,
+            name: "Unnamed".to_string(),
             curve_encryption: Default::default(),
             direction,
             identity: None,
@@ -120,6 +120,12 @@ impl<'a> Connection<'a> {
     /// continue to send messages after this connection is dropped.
     pub fn set_linger(mut self, linger: Linger) -> Self {
         self.linger = linger;
+        self
+    }
+
+    /// Set a name for the connection. This is used in logs and for debugging purposes.
+    pub fn set_name(mut self, name: &str) -> Self {
+        self.name = name.to_string();
         self
     }
 
@@ -242,9 +248,22 @@ impl<'a> Connection<'a> {
 
         let connected_address = get_socket_address(&socket);
 
+        debug!(
+            target: LOG_TARGET,
+            "Established {} connection on {:?} (name: {})",
+            self.direction,
+            connected_address
+                .borrow()
+                .as_ref()
+                .map(|s| s.to_string())
+                .unwrap_or(endpoint.to_owned()),
+            self.name,
+        );
+
         Ok(EstablishedConnection {
             socket,
             connected_address,
+            name: self.name,
             direction: self.direction,
         })
     }
@@ -266,6 +285,7 @@ pub struct EstablishedConnection {
     socket: zmq::Socket,
     // If the connection is a TCP connection, it will be stored here, otherwise it is None
     connected_address: Option<SocketAddress>,
+    name: String,
     direction: Direction,
 }
 
@@ -370,9 +390,10 @@ impl Drop for EstablishedConnection {
     fn drop(&mut self) {
         debug!(
             target: LOG_TARGET,
-            "Dropping {} connection {:?}",
+            "Dropping {} connection {:?} (name: {})",
             self.direction,
-            self.get_connected_address()
+            self.get_connected_address(),
+            self.name,
         );
     }
 }
@@ -407,6 +428,7 @@ mod test {
         let monitor_addr = InprocAddress::random();
 
         let conn = Connection::new(&ctx, Direction::Inbound)
+            .set_name("dummy")
             .set_identity("identity")
             .set_linger(Linger::Timeout(200))
             .set_max_message_size(Some(123))
@@ -417,6 +439,7 @@ mod test {
             .establish(&addr)
             .unwrap();
 
+        assert_eq!("dummy", conn.name);
         let sock = conn.get_socket();
         assert!(!sock.is_curve_server().unwrap());
         assert_eq!(200, sock.get_linger().unwrap());

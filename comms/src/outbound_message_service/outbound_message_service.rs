@@ -72,6 +72,13 @@ impl OutboundMessageService {
         message_envelope_body: Frame,
     ) -> Result<(), OutboundError>
     {
+        // Send message to outbound message pool
+        let outbound_connection = Connection::new(&self.context, Direction::Outbound)
+            .set_name("OMS to OMP")
+            .set_socket_establishment(SocketEstablishment::Connect)
+            .establish(&self.outbound_address)
+            .map_err(|e| OutboundError::ConnectionError(e))?;
+
         let node_identity = &self.node_identity;
         // Use the BroadcastStrategy to select appropriate peer(s) from PeerManager and then construct and send a
         // personalised message to each selected peer
@@ -94,13 +101,6 @@ impl OutboundMessageService {
             let outbound_message_buffer = vec![outbound_message
                 .to_binary()
                 .map_err(|e| OutboundError::MessageFormatError(e))?];
-
-            // Send message to outbound message pool
-            let outbound_connection = Connection::new(&self.context, Direction::Outbound)
-                .set_socket_establishment(SocketEstablishment::Connect)
-                .establish(&self.outbound_address)
-                .map_err(|e| OutboundError::ConnectionError(e))?;
-
             outbound_connection
                 .send(&outbound_message_buffer)
                 .map_err(|e| OutboundError::ConnectionError(e))?;
