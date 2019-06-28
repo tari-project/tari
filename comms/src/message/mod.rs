@@ -20,6 +20,48 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+//! # Message
+//!
+//! The message module contains the message types which wrap domain-level messages.
+//!
+//! Described further in [RFC-0172](https://rfc.tari.com/RFC-0172_PeerToPeerMessagingProtocol.html#messaging-structure)
+//!
+//! - [Frame] and [FrameSet]
+//!
+//! A [FrameSet] consists of multiple [Frame]s. A [Frame] is the raw byte representation of a message.
+//!
+//! - [MessageEnvelope]
+//!
+//! Represents data that is about to go on the wire or has just come off.
+//!
+//! - [MessageEnvelopeHeader]
+//!
+//! The header that every message contains.
+//!
+//! - [Message]
+//!
+//! This message is deserialized from the body [Frame] of the [MessageEnvelope].
+//! It consists of a [MessageHeader] and a domain-level body [Frame].
+//! This part of the [MessageEnvelope] can optionally be encrypted for a particular peer.
+//!
+//! - [MessageHeader]
+//!
+//! Information about the contained message. Currently, this only contains the
+//! domain-level message type.
+//!
+//! - [MessageData]
+//!
+//! This message is dispatched by the [InboundMessageBroker] to a [DomainConnector].
+//!
+//! [Frame]: ./tyoe.Frame.html
+//! [FrameSet]: ./tyoe.FrameSet.html
+//! [MessageEnvelope]: ./envelope/struct.MessageEnvelope.html
+//! [MessageEnvelopeHeader]: ./envelope/struct.MessageEnvelopeHeader.html
+//! [Message]: ./message/struct.Message.html
+//! [MessageHeader]: ./message/struct.MessageHeader.html
+//! [MessageData]: ./message/struct.MessageData.html
+//! [InboundMessageBroker]: ../inbound_message_service/inbound_message_broker/struct.InboundMessageBroker.html
+//! [DomainConnector]: ../domain_connector/struct.DomainConnector.html
 use crate::peer_manager::node_id::NodeId;
 use bitflags::*;
 use serde::{Deserialize, Serialize};
@@ -47,6 +89,8 @@ pub type Frame = Vec<u8>;
 pub type FrameSet = Vec<Frame>;
 
 bitflags! {
+    /// Used to indicate characteristics of the incoming or outgoing message, such
+    /// as whether the message is encrypted.
     #[derive(Deserialize, Serialize)]
     pub struct MessageFlags: u8 {
         const NONE = 0b00000000;
@@ -54,6 +98,7 @@ bitflags! {
     }
 }
 
+/// Represents the ways a destination node can be represented.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub enum NodeDestination<P> {
     Unknown,

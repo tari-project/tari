@@ -20,10 +20,66 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+//! # ConnectionManager
+//!
+//! Responsible for establishing and managing active connections to peers.
+//!
+//! It consists of a number of components each with their own concern.
+//!
+//! - [ConnectionManager]
+//!
+//! The public interface for connection management. This uses the other components
+//! to manage peer connections for tari_comms.
+//!
+//! - [LivePeerConnections]
+//!
+//! A container for [PeerConnection]s which have been created by the [ConnectionManager].
+//!
+//! - [ConnectionEstablisher]
+//!
+//! Responsible for creating [PeerConnection]s. This is basically a factory for [PeerConnection]s
+//! which first checks that the connection is connected before passing it back to the caller.
+//!
+//! - [PeerConnectionProtocol]
+//!
+//! Uses the [ConnectionEstablisher] to connect to a given peer's [ControlService],
+//! open an inbound [PeerConnection] and send an [EstablishConnection] message with
+//! to the peer's [ControlService].
+//!
+//! ```edition2018
+//! # use std::time::Duration;
+//! # use std::sync::Arc;
+//! # use tari_comms::connection_manager::{ConnectionManager, PeerConnectionConfig};
+//! # use tari_comms::peer_manager::{PeerManager, NodeIdentity};
+//! # use tari_comms::connection::{ZmqContext, InprocAddress};
+//! # use rand::OsRng;
+//!
+//! let node_identity = Arc::new(NodeIdentity::random(&mut OsRng::new().unwrap(), "127.0.0.1:9000".parse().unwrap()).unwrap());
+//!
+//! let context = ZmqContext::new();
+//! let peer_manager = Arc::new(PeerManager::new(None).unwrap());
+//!
+//! let manager = ConnectionManager::new(context, node_identity, peer_manager, PeerConnectionConfig {
+//!     peer_connection_establish_timeout: Duration::from_secs(5),
+//!     max_message_size: 1024,
+//!     host: "127.0.0.1".parse().unwrap(),
+//!     max_connect_retries: 3,
+//!     message_sink_address: InprocAddress::random(),
+//!     socks_proxy_address: None,
+//! });
+//!
+//! // No active connections
+//! assert_eq!(manager.get_active_connection_count(), 0);
+//! ```
+//!
+//! [ConnectionManager]: ./manager/struct.ConnectionManager.html
+//! [LivePeerConnections]: ./connections/struct.LivePeerConnections.html
+//! [ControlService]: ../control_service/index.html
+//! [EstablishConnection]: ../message/p2p/struct.EstablishConnection.html
+//! [Connecti]: ./connections/struct.LivePeerConnections.html
+//! [PeerConnection]: ../connection/peer_connection/struct.PeerConnection.html
+//! [ConnectionEstablisher]: ./establisher/struct.ConnectionEstablisher.html
 mod connections;
-/// ## ConnectionManager
-///
-/// Responsible for managing and establishing active connections to peers.
 mod error;
 pub mod establisher;
 mod manager;

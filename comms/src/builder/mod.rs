@@ -20,6 +20,42 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+//! # CommsBuilder
+//!
+//! The [CommsBuilder] provides a simple builder API for getting Tari comms p2p messaging up and running.
+//!
+//! ```edition2018
+//! use tari_comms::builder::{CommsBuilder, CommsRoutes};
+//! use tari_comms::dispatcher::HandlerError;
+//! use tari_comms::message::DomainMessageContext;
+//! use tari_comms::control_service::ControlServiceConfig;
+//! use tari_comms::peer_manager::NodeIdentity;
+//! use std::sync::Arc;
+//! use rand::OsRng;
+//!
+//! // This should be loaded up from storage
+//! let my_node_identity = NodeIdentity::random(&mut OsRng::new().unwrap(), "127.0.0.1:9000".parse().unwrap()).unwrap();
+//!
+//! fn my_handler(_: DomainMessageContext) -> Result<(), HandlerError> {
+//!     println!("Your handler is called!");
+//!     Ok(())
+//! }
+//!
+//! let services = CommsBuilder::new()
+//!    .with_routes(CommsRoutes::<u8>::new())
+//!    // This enables the control service - allowing another peer to connect to this node
+//!    .configure_control_service(ControlServiceConfig::default())
+//!    .with_node_identity(my_node_identity)
+//!    .build()
+//!    .unwrap();
+//!
+//! let handle = services.start().unwrap();
+//! // Call shutdown when program shuts down
+//! handle.shutdown();
+//! ```
+//!
+//! [CommsBuilder]: ./builder/struct.CommsBuilder.html
+
 mod builder;
 mod routes;
 

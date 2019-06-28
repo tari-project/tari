@@ -24,6 +24,9 @@ use zmq;
 
 use crate::connection::{types::SocketType, zmq::ZmqError};
 
+/// Thin wrapper of a [0MQ context].
+///
+/// [0MQ context]: http://api.zeromq.org/2-1:zmq#toc3
 #[derive(Clone)]
 pub struct ZmqContext(zmq::Context);
 

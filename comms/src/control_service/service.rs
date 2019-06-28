@@ -77,40 +77,6 @@ where
 /// The service responsible for establishing new [PeerConnection]s.
 /// When `serve` is called, a worker thread starts up which listens for
 /// connections on the configured `listener_address`.
-///
-/// ```rust
-/// # use tari_comms::{connection::*, control_service::*, dispatcher::*, connection_manager::*, peer_manager::*, types::*};
-/// # use tari_comms::control_service::handlers as comms_handlers;
-/// # use std::{time::Duration, sync::Arc};
-/// # use tari_storage::lmdb::LMDBStore;
-/// # use std::collections::HashMap;
-/// # use rand::OsRng;
-///
-/// let node_identity = Arc::new(NodeIdentity::random(&mut OsRng::new().unwrap(), "127.0.0.1:9000".parse().unwrap()).unwrap());
-///
-/// let context = ZmqContext::new();
-/// let listener_address = "127.0.0.1:9000".parse::<NetAddress>().unwrap();
-///
-/// let peer_manager = Arc::new(PeerManager::<LMDBStore>::new(None).unwrap());
-///
-/// let conn_manager = Arc::new(ConnectionManager::new(context.clone(), node_identity.clone(), peer_manager.clone(), PeerConnectionConfig {
-///      max_message_size: 1024,
-///      max_connect_retries: 1,
-///      socks_proxy_address: None,
-///      message_sink_address: InprocAddress::random(),
-///      host: "127.0.0.1".parse().unwrap(),
-///      peer_connection_establish_timeout: Duration::from_secs(4),
-/// }));
-///
-/// let service = ControlService::<u8>::with_default_config(
-///       context,
-///       node_identity,
-///     )
-///     .serve(conn_manager)
-///     .unwrap();
-///
-/// service.shutdown().unwrap();
-/// ```
 pub struct ControlService<MType>
 where MType: Clone
 {

@@ -41,37 +41,6 @@ use std::{
 
 const LOG_TARGET: &'static str = "comms::connection_manager::manager";
 
-/// # ConnectionManager
-///
-/// Responsible for:
-/// - Negotiating and setting up peer connections
-/// - Storing and maintaining live peer connections
-///
-/// ```edition2018
-/// # use std::time::Duration;
-/// # use std::sync::Arc;
-/// # use tari_comms::connection_manager::{ConnectionManager, PeerConnectionConfig};
-/// # use tari_comms::peer_manager::{PeerManager, NodeIdentity};
-/// # use tari_comms::connection::{ZmqContext, InprocAddress};
-/// # use rand::OsRng;
-///
-/// let node_identity = Arc::new(NodeIdentity::random(&mut OsRng::new().unwrap(), "127.0.0.1:9000".parse().unwrap()).unwrap());
-///
-/// let context = ZmqContext::new();
-/// let peer_manager = Arc::new(PeerManager::new(None).unwrap());
-///
-/// let manager = ConnectionManager::new(context, node_identity, peer_manager, PeerConnectionConfig {
-///     peer_connection_establish_timeout: Duration::from_secs(5),
-///     max_message_size: 1024,
-///     host: "127.0.0.1".parse().unwrap(),
-///     max_connect_retries: 3,
-///     message_sink_address: InprocAddress::random(),
-///     socks_proxy_address: None,
-/// });
-///
-/// // No active connections
-/// assert_eq!(manager.get_active_connection_count(), 0);
-/// ```
 pub struct ConnectionManager {
     node_identity: Arc<NodeIdentity>,
     connections: LivePeerConnections,

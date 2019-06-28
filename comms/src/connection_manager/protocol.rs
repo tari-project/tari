@@ -34,7 +34,7 @@ use tari_utilities::message_format::MessageFormat;
 
 const LOG_TARGET: &'static str = "comms::connection_manager::protocol";
 
-pub(crate) struct PeerConnectionProtocol<'e, 'ni> {
+pub(super) struct PeerConnectionProtocol<'e, 'ni> {
     node_identity: &'ni Arc<NodeIdentity>,
     establisher: &'e ConnectionEstablisher,
 }

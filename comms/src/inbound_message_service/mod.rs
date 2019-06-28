@@ -20,6 +20,22 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+//! # Inbound Message Service
+//!
+//! The inbound message service is responsible for receiving messages from the active [PeerConnection]s
+//! and fair-dealing them to one of the worker threads for processing.
+//!
+//! Worker thread will perform the following tasks:
+//!
+//! 1. Validate the message signature against the sender's public key.
+//! 2. Attempt to decrypt the message with a ECDH shared secret if the MessageFlags::ENCRYPTED flag is set.
+//! 3. Check the destination [NodeId] or [CommsPublicKey]
+//! 3. Should steps 1-3 fail, forward or discard the message as necessary. See [comms_msg_handlers].
+//! 4. Otherwise, dispatch the message to one of the configured message broker routes. See [InboundMessageBroker]
+//!
+//! [PeerConnection]: ../connection/peer_connection/index.html
+//! [comms_msg_handlers]: ./comms_msg_handlers/struct.InboundMessageServiceResolver.html
+//! [InboundMessageBroker]: ./inbound_message_broker/struct.InboundMessageBroker.html
 pub mod comms_msg_handlers;
 pub mod error;
 pub mod inbound_message_broker;
