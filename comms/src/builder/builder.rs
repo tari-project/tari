@@ -424,7 +424,7 @@ pub struct CommsServices<MType> {
     #[allow(dead_code)]
     inbound_message_broker: Arc<InboundMessageBroker<MType>>,
     connection_manager: Arc<ConnectionManager>,
-    pub peer_manager: Arc<PeerManager<CommsDataStore>>,
+    peer_manager: Arc<PeerManager<CommsDataStore>>,
 }
 
 impl<MType> CommsServices<MType>
@@ -432,8 +432,12 @@ where
     MType: DispatchableKey,
     MType: Clone,
 {
-    pub fn get_outbound_message_service(&self) -> Arc<OutboundMessageService> {
-        self.outbound_message_service.clone()
+    pub fn peer_manager(&self) -> &PeerManager<CommsDataStore> {
+        &self.peer_manager
+    }
+
+    pub fn outbound_message_service(&self) -> Arc<OutboundMessageService> {
+        Arc::clone(&self.outbound_message_service)
     }
 
     pub fn create_connector<'de>(&self, message_type: &MType) -> Result<DomainConnector<'de>, CommsServicesError> {

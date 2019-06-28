@@ -74,7 +74,7 @@ pub fn setup_text_message_service(
 
     for p in peers {
         comms
-            .peer_manager
+            .peer_manager()
             .add_peer(create_peer(p.identity.public_key.clone(), p.control_service_address))
             .unwrap();
     }

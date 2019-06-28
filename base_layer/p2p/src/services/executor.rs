@@ -154,8 +154,8 @@ impl ServiceContext {
     }
 
     /// Retrieve and `Arc` of the outbound message service. Used for sending outbound messages.
-    pub fn get_outbound_message_service(&self) -> Arc<OutboundMessageService> {
-        self.comms_services.get_outbound_message_service()
+    pub fn outbound_message_service(&self) -> Arc<OutboundMessageService> {
+        self.comms_services.outbound_message_service()
     }
 
     /// Create a [DomainConnector] which listens for a particular [TariMessageType].

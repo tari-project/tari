@@ -195,7 +195,7 @@ impl Service for PingPongService {
             ServiceError::ServiceInitializationFailed(format!("Failed to create connector for service: {}", err))
         })?;
 
-        self.oms = Some(context.get_outbound_message_service());
+        self.oms = Some(context.outbound_message_service());
 
         loop {
             if let Some(msg) = context.get_control_message(Duration::from_millis(5)) {

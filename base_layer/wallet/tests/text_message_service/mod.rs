@@ -76,7 +76,7 @@ fn test_text_message_service() {
             (msgs.sent_messages.len(), msgs.received_messages.len())
         },
         (5, 4),
-        50,
+        100,
     );
 
     assert_change(
@@ -85,7 +85,7 @@ fn test_text_message_service() {
             (msgs.sent_messages.len(), msgs.received_messages.len())
         },
         (4, 5),
-        50,
+        100,
     );
 
     node_1_services.shutdown().unwrap();
