@@ -1,0 +1,52 @@
+# A sample log configuration file for running in release mode. By default, this configuration splits up log messages to
+# three destinations:
+#    * Console: For log messages with level ERROR and higher
+#    * log/network.log: INFO-level logs related to the comms crate. This file will be quite busy since there
+#      are lots of P2P debug messages, and so this traffic is segregated from the application log messages
+#    * log/base_layer.log: Non-comms related WARN-level messages and higher are logged into this file
+#
+#  See https://docs.rs/log4rs/0.8.3/log4rs/encode/pattern/index.html for deciphering the log pattern. The log format
+#  used in this sample configuration prints messages as:
+#  timestamp [target] LEVEL message
+
+appenders:
+  # An appender named "stdout" that writes to stdout
+  stdout:
+    kind: console
+    encoder:
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {h({l}):5} {m}{n}"
+
+  # An appender named "network" that writes to a file with a custom pattern encoder
+  network:
+    kind: file
+    path: "log/network.log"
+    encoder:
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}"
+
+  # An appender named "base_layer" that writes to a file with a custom pattern encoder
+  base_layer:
+    kind: file
+    path: "log/base_layer.log"
+    encoder:
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}"
+
+# Set the default logging level to "error" and attach the "stdout" appender to the root
+root:
+  level: warn
+  appenders:
+    - base_layer
+
+loggers:
+  # Set the maximum console output to "error"
+  stdout:
+    level: error
+    appenders:
+      - stdout
+    additive: false
+
+  # Route log events sent to the "comms" logger to the "network" appender
+  comms:
+    level: info
+    appenders:
+      - network
+    additive: false
