@@ -109,7 +109,8 @@ The transaction validation service checks that:
 * all inputs are signed by their owners.
 * all outputs have valid [range proof]s.
 * no outputs currently exist in the [UTXO] set.
-* the transaction does not have a [timelock](timelocks) applied, limiting it from being mined and added to the blockchain before a specified block height or timestamp has been reached.
+* the transaction does not have [timelocks] applied, limiting it from being mined and added to the blockchain before a
+  specified block height or timestamp has been reached.
 * the transaction excess has a valid signature.
 * the transaction excess is a valid public key. This proves that:
   $$ \Sigma \left( \mathrm{inputs} - \mathrm{outputs} - \mathrm{fees} \right) = 0 $$
@@ -119,7 +120,7 @@ The transaction validation service checks that:
 `Timelocked` transactions are:
 * marked with a timelocked status and gets added to the [mempool].
 * will be evaluated again at a later state to determine if the timelock has passed and if it can be upgraded to 'Validated' status.
-* More detailed information in [RFC-0230](timelocks)
+* More detailed information in [timelocks] RFC document.
 
 `Validated` transactions are:
 * Added to the [mempool].
@@ -165,16 +166,15 @@ In addition, when a block has been validated and added to the blockchain:
 
 ### Synchronising and pruning of the chain
 
-Syncing, pruning and cut-through is discussed in detail in [RFC-0140](RFC-0140_Syncing.md)
+Syncing, pruning and cut-through is discussed in detail in [RFC-0140](RFC-0140_Syncing_and_seeding.md)
 
 ### Archival nodes
 
-[Archival nodes](archivenode) are used to keep a complete history of the blockchain since genesis block, they do not employ pruning at all. These nodes will allow full syncing of the blockchain because normal nodes will not keep the full history to enable this. 
+[Archival nodes] are used to keep a complete history of the blockchain since genesis block, they do not employ pruning at all. These nodes will allow full syncing of the blockchain because normal nodes will not keep the full history to enable this.
 
 
 
-[archivenode]: Glossary.md#archivenode
-
+[archival nodes]: Glossary.md#archive-node
 [tari coin]: Glossary.md#tari-coin
 [blockchain]: Glossary.md#blockchain
 [transaction]: Glossary.md#transaction
@@ -189,5 +189,5 @@ Syncing, pruning and cut-through is discussed in detail in [RFC-0140](RFC-0140_S
 [SynchronisationStrategy]: Glossary.md#synchronisationstrategy
 [SynchronisationState]: Glossary.md#synchronisationstate
 [mining server]: Glossary.md#mining-server
-[cut-through]: RFC-0140_Syncing.md#Pruning-and-cut-through
-[timelocks]: RFC-0230_HTLC.md#Time-Locked-contracts
+[cut-through]: RFC-0140_Syncing_and_seeding.md#pruning-and-cut-through
+[timelocks]: RFC-0230_HTLC.md#time-locked-contracts
