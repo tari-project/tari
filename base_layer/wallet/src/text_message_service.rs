@@ -79,6 +79,8 @@ pub enum TextMessageError {
     OMSNotInitialized,
     /// The Comms service stack is not initialized
     CommsNotInitialized,
+    /// Received an unexpected API response
+    UnexpectedApiResponse,
 }
 
 /// Represents a single Text Message
@@ -414,12 +416,20 @@ impl TextMessageServiceApi {
         }
     }
 
-    pub fn send_text_message(&self, destination: CommsPublicKey, message: String) -> TextMessageApiResult {
+    pub fn send_text_message(&self, destination: CommsPublicKey, message: String) -> Result<(), TextMessageError> {
         self.send_recv(TextMessageApiRequest::SendTextMessage((destination, message)))
+            .and_then(|resp| match resp {
+                TextMessageApiResponse::MessageSent => Ok(()),
+                _ => Err(TextMessageError::UnexpectedApiResponse),
+            })
     }
 
-    pub fn get_text_messages(&self) -> TextMessageApiResult {
+    pub fn get_text_messages(&self) -> Result<TextMessages, TextMessageError> {
         self.send_recv(TextMessageApiRequest::GetTextMessages)
+            .and_then(|resp| match resp {
+                TextMessageApiResponse::TextMessages(msgs) => Ok(msgs),
+                _ => Err(TextMessageError::UnexpectedApiResponse),
+            })
     }
 
     fn send_recv(&self, msg: TextMessageApiRequest) -> TextMessageApiResult {

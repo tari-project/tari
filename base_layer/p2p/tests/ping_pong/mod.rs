@@ -22,8 +22,9 @@
 
 // NOTE: This test uses ports 11111 and 11112
 
-use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
-use std::{fmt::Display, iter, sync::Arc, thread, time::Duration};
+use crate::support::{assert_change, random_string};
+use rand::rngs::OsRng;
+use std::{sync::Arc, time::Duration};
 use tari_comms::{
     connection::NetAddress,
     connection_manager::PeerConnectionConfig,
@@ -39,37 +40,6 @@ use tari_p2p::{
 };
 use tari_storage::{keyvalue_store::DataStore, lmdb::LMDBBuilder};
 use tempdir::TempDir;
-
-pub fn random_string(len: usize) -> String {
-    let mut rng = OsRng::new().unwrap();
-    iter::repeat(()).map(|_| rng.sample(Alphanumeric)).take(len).collect()
-}
-
-pub fn assert_change<F, T>(func: F, to: T, poll_count: usize)
-where
-    F: Fn() -> T,
-    T: Eq + Display,
-{
-    let mut i = 0;
-    loop {
-        let new_val = func();
-        if new_val == to {
-            break;
-        }
-
-        i += 1;
-        if i >= poll_count {
-            panic!(
-                "Value {} did not change to {} within {}ms",
-                new_val,
-                to,
-                poll_count * 100
-            );
-        }
-
-        thread::sleep(Duration::from_millis(100));
-    }
-}
 
 fn new_node_identity(control_service_address: NetAddress) -> NodeIdentity {
     NodeIdentity::random(&mut OsRng::new().unwrap(), control_service_address).unwrap()
