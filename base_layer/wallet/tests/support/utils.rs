@@ -20,5 +20,30 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod ping_pong;
-mod support;
+use std::{fmt::Debug, thread, time::Duration};
+
+pub fn assert_change<F, T>(func: F, to: T, poll_count: usize)
+where
+    F: Fn() -> T,
+    T: Eq + Debug,
+{
+    let mut i = 0;
+    loop {
+        let last_val = func();
+        if last_val == to {
+            break;
+        }
+
+        i += 1;
+        if i >= poll_count {
+            panic!(
+                "Value did not change to {:?} within {}ms (last value: {:?}",
+                to,
+                poll_count * 100,
+                last_val,
+            );
+        }
+
+        thread::sleep(Duration::from_millis(100));
+    }
+}

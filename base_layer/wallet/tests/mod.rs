@@ -22,3 +22,4 @@
 
 pub mod support;
 pub mod text_message_service;
+pub mod wallet;
