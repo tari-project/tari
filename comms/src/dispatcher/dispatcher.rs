@@ -88,7 +88,6 @@ pub trait DispatchResolver<K, M> //: Send + 'static
 /// `M` - The type which is passed into the handler
 /// `R` - The resolver type
 /// `E` - The type of error returned from the handler
-//#[derive(Clone)]
 pub struct Dispatcher<K, M, R, E = HandlerError>
 where R: DispatchResolver<K, M>
 {

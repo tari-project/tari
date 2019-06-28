@@ -1,3 +1,11 @@
+//! # Tari Comms
+//!
+//! The Tari network messaging library.
+//!
+//! See [CommsBuilder] for more information on using this library.
+//!
+//! [CommsBuilder]: ./builder/index.html
+
 #[macro_use]
 extern crate lazy_static;
 

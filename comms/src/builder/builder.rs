@@ -66,40 +66,10 @@ pub enum CommsBuilderError {
     BrokerStartError(BrokerError),
 }
 
-/// ## CommsBuilder
+/// The `CommsBuilder` provides a simple builder API for getting Tari comms p2p messaging up and running.
 ///
-/// This builder give the Comms crate user everything they need to
-/// get a p2p messaging layer up and running.
-///
-/// ```edition2018
-/// use tari_comms::builder::{CommsBuilder, CommsRoutes};
-/// use tari_comms::dispatcher::HandlerError;
-/// use tari_comms::message::DomainMessageContext;
-/// use tari_comms::control_service::ControlServiceConfig;
-/// use tari_comms::peer_manager::NodeIdentity;
-/// use std::sync::Arc;
-/// use rand::OsRng;
-///
-/// // This should be loaded up from storage
-/// let my_node_identity = NodeIdentity::random(&mut OsRng::new().unwrap(), "127.0.0.1:9000".parse().unwrap()).unwrap();
-///
-/// fn my_handler(_: DomainMessageContext) -> Result<(), HandlerError> {
-///     println!("Your handler is called!");
-///     Ok(())
-/// }
-///
-/// let services = CommsBuilder::new()
-///    .with_routes(CommsRoutes::<u8>::new())
-///    // This enables the control service - allowing another peer to connect to this node
-///    .configure_control_service(ControlServiceConfig::default())
-///    .with_node_identity(my_node_identity)
-///    .build()
-///    .unwrap();
-///
-/// let handle = services.start().unwrap();
-/// // Call shutdown when program shuts down
-/// handle.shutdown();
-/// ```
+/// The [build] method will return an error if any required builder methods are not called. These
+/// are detailed further down on the method docs.
 pub struct CommsBuilder<MType>
 where MType: Clone
 {
@@ -119,6 +89,7 @@ where
     MType: Serialize + DeserializeOwned,
     MType: Clone + Debug,
 {
+    /// Create a new CommsBuilder
     pub fn new() -> Self {
         let zmq_context = ZmqContext::new();
 
@@ -134,32 +105,49 @@ where
         }
     }
 
+    /// Set the [CommsRoute]s to use. This is required.
+    ///
+    /// [CommsRoute]: ../routes/CommsRoutes.html
     pub fn with_routes(mut self, routes: CommsRoutes<MType>) -> Self {
         self.routes = Some(routes);
         debug!(target: LOG_TARGET, "Comms routes: {:#?}", self.routes);
         self
     }
 
-    pub fn with_peer_storage(mut self, peer_storage: CommsDataStore) -> Self {
-        self.peer_storage = Some(peer_storage);
-        self
-    }
-
-    pub fn configure_control_service(mut self, config: ControlServiceConfig<MType>) -> Self {
-        self.control_service_config = Some(config);
-        self
-    }
-
-    pub fn configure_outbound_message_pool(mut self, config: OutboundMessagePoolConfig) -> Self {
-        self.omp_config = Some(config);
-        self
-    }
-
+    /// Set the [NodeIdentity] for this comms instance. This is required.
+    ///
+    /// [OutboundMessagePool]: ../../outbound_message_service/index.html#outbound-message-pool
     pub fn with_node_identity(mut self, node_identity: NodeIdentity) -> Self {
         self.node_identity = Some(node_identity);
         self
     }
 
+    /// Set the peer storage database to use. This is optional.
+    pub fn with_peer_storage(mut self, peer_storage: CommsDataStore) -> Self {
+        self.peer_storage = Some(peer_storage);
+        self
+    }
+
+    /// Configure the [ControlService]. This is optional.
+    ///
+    /// [ControlService]: ../../control_service/index.html
+    pub fn configure_control_service(mut self, config: ControlServiceConfig<MType>) -> Self {
+        self.control_service_config = Some(config);
+        self
+    }
+
+    /// Configure the [OutboundMessagePool]. This is optional. If omitted the default configuration is used.
+    ///
+    /// [OutboundMessagePool]: ../../outbound_message_service/index.html#outbound-message-pool
+    pub fn configure_outbound_message_pool(mut self, config: OutboundMessagePoolConfig) -> Self {
+        self.omp_config = Some(config);
+        self
+    }
+
+    /// Common configuration for all [PeerConnection]s. This is optional.
+    /// If omitted the default configuration is used.
+    ///
+    /// [PeerConnection]: ../../connection/peer_connection/index.html
     pub fn configure_peer_connections(mut self, config: PeerConnectionConfig) -> Self {
         self.peer_conn_config = Some(config);
         self
@@ -303,7 +291,7 @@ where
         Ok(routes)
     }
 
-    /// Build CommsServicesContainer
+    /// Build the required comms services. Services will not be started.
     pub fn build(mut self) -> Result<CommsServiceContainer<MType>, CommsBuilderError> {
         let node_identity = self.make_node_identity()?;
 
@@ -368,6 +356,7 @@ pub enum CommsServicesError {
     InboundMessageBrokerError(BrokerError),
 }
 
+/// Contains the built comms services
 pub struct CommsServiceContainer<MType>
 where
     MType: Serialize + DeserializeOwned,
@@ -391,6 +380,9 @@ where
     MType: DispatchableKey,
     MType: Clone,
 {
+    /// Start all the comms services and return a [CommsServices] object
+    ///
+    /// [CommsServices]: ./struct.CommsServices.html
     pub fn start(mut self) -> Result<CommsServices<MType>, CommsServicesError> {
         let mut control_service_handle = None;
         if let Some(control_service) = self.control_service {
@@ -418,6 +410,11 @@ where
     }
 }
 
+/// # CommsServices
+///
+/// This struct provides a handle to and control over all the running comms services.
+/// You can get a [DomainConnector] from which to receive messages by using the `create_connector`
+/// method. Use the `shutdown` method to attempt to cleanly shut all comms services down.
 pub struct CommsServices<MType> {
     zmq_context: ZmqContext,
     outbound_message_service: Arc<OutboundMessageService>,

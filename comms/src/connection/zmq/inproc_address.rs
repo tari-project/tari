@@ -26,7 +26,7 @@ use std::{fmt, iter, str::FromStr};
 
 const DEFAULT_INPROC: &'static str = "inproc://default";
 
-/// Represents a zMQ inproc address
+/// Represents a zMQ inproc address. More information [here](http://api.zeromq.org/2-1:zmq-inproc).
 #[derive(Eq, PartialEq, Debug, Clone)]
 pub struct InprocAddress(String);
 

@@ -20,6 +20,42 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+//! # Outbound Message Service (OMS)
+//!
+//! Responsible for sending messages on the peer-to-peer network.
+//!
+//! In order to send a message the OMS:
+//!
+//! - evaluates and selects [Peer]'s according to the given [BroadcastStrategy],
+//! - constructs, signs and optionally encrypts a [MessageEnvelope] for each selected [Peer], and
+//! - forwards each constructed message frame to the [OutboundMessagePool] (OMP).
+//!
+//! # Broadcast Strategy
+//!
+//! Represents a strategy for selecting known [Peer]s from the [PeerManager].
+//! See [BroadcastStrategy] for more details.
+//!
+//! # Outbound Message Pool (OMP)
+//!
+//! Responsible for reliably sending messages to [Peer]s.
+//!
+//! The OMP reads from an [0MQ inproc] message queue. Each message received on this queue represents
+//! a message which should be delivered to a single peer. A message is fair-dealt to a worker for
+//! processing. The worker thread attempts to establish a [PeerConnection] to the given [Peer]
+//! using the [ConnectionManager]. Once established, it uses the connection to send the
+//! message. Once sent, it discards the message. If, for whatever reason, the message fails
+//! to send, the message will be requeued and will try again later. If the message fails after
+//! a configured number of attempts, the message is discarded.
+//!
+//! [BroadcastStrategy]: ./broadcast_strategy/enum.BroadcastStrategy.html
+//! [MessageEnvelope]: ../message/struct.MessageEnvelope.html
+//! [Peer]: ../peer_manager/peer/struct.Peer.html
+//! [OutboundMessagePool]: ./outbound_message_pool/struct.OutboundMessagePool.html
+//! [PeerConnection]: ../connection/peer_connection/index.html
+//! [ConnectionManager]: ../connection_manager/index.html
+//! [PeerManager]: ../peer_manager/index.html
+//! [0MQ inproc]: http://api.zeromq.org/2-1:zmq-inproc
+
 pub mod broadcast_strategy;
 pub mod error;
 pub mod message_pool_worker;

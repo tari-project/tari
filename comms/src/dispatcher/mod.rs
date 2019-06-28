@@ -19,7 +19,14 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
+//! # Dispatcher
+//!
+//! [HandlerFunc]s and associated "keys" are given to the dispatcher using the `route` method.
+//! When dispatching a message, the key is resolver using the given [DispatchResolver] implementation.
+//! The associated [HandlerFunc] is retrieved and called with the given type as the first parameter.
+//!
+//! [DispatchResolver]: ./dispatcher/trait.DispatchResolver.html
+//! [HandlerFunc]: ./dispatcher/type.HandlerFunc.html
 mod dispatcher;
 
 pub use self::dispatcher::*;
