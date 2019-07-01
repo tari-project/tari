@@ -148,13 +148,13 @@ fn test_outbound_message_pool() {
 
     // Send 8 message alternating two different OMS's
     for _ in 0..4 {
-        oms.send(
+        oms.send_raw(
             BroadcastStrategy::DirectNodeId(node_B_peer.node_id.clone()),
             MessageFlags::ENCRYPTED,
             message_envelope_body.clone(),
         )
         .unwrap();
-        oms2.send(
+        oms2.send_raw(
             BroadcastStrategy::DirectNodeId(node_B_peer.node_id.clone()),
             MessageFlags::ENCRYPTED,
             message_envelope_body.clone(),
@@ -240,7 +240,7 @@ fn test_outbound_message_pool_requeuing() {
         .establish(&omp_inbound_address)
         .unwrap();
 
-    oms.send(
+    oms.send_raw(
         BroadcastStrategy::DirectNodeId(node_B_peer.node_id.clone()),
         MessageFlags::ENCRYPTED,
         message_envelope_body,

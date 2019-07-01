@@ -91,13 +91,13 @@ fn test_wallet() {
 
     wallet1
         .comms_services
-        .peer_manager
+        .peer_manager()
         .add_peer(create_peer(public_key2.clone(), listener_address2))
         .unwrap();
 
     wallet2
         .comms_services
-        .peer_manager
+        .peer_manager()
         .add_peer(create_peer(public_key1.clone(), listener_address1))
         .unwrap();
 
