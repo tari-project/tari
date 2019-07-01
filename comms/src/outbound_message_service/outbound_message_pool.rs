@@ -195,11 +195,9 @@ mod test {
     use crate::{
         connection::{InprocAddress, NetAddress, ZmqContext},
         connection_manager::{ConnectionManager, PeerConnectionConfig},
-        message::MessageFlags,
         outbound_message_service::{
-            outbound_message_pool::{OutboundMessagePoolConfig, MAX_OUTBOUND_MSG_PROCESSING_WORKERS},
+            outbound_message_pool::OutboundMessagePoolConfig,
             outbound_message_service::OutboundMessageService,
-            BroadcastStrategy,
             OutboundMessagePool,
         },
         peer_manager::{peer::PeerFlags, NodeId, NodeIdentity, Peer, PeerManager},

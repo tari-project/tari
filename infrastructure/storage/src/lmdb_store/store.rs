@@ -401,27 +401,23 @@ impl LMDBDatabase {
         self.get_stats().and_then(|s| Ok(s.entries))
     }
 
-    /// Return an iterator over the keys of the database
-    pub fn keys(&self) -> () {
-        unimplemented!()
-    }
-
     /// Execute function `f` for each value in the database.
     ///
     /// The underlying LMDB library does not permit database cursors to be returned from functions to preserve Rust
     /// memory guarantees, so this is the closest thing to an iterator that you're going to get :/
     ///
-    /// `f` is a closure of form `|v: Result<V, LMDBError>| -> ()`. You will usually need to include type inference
-    /// to let Rust know which type to deserialise to:
+    /// `f` is a closure of form `|pair: Result<(K,V), LMDBError>| -> ()`. You will usually need to include type
+    /// inference to let Rust know which type to deserialise to:
     /// ```nocompile
-    ///    let res = db.for_each::<User, _>(|v| {
-    ///        let u = v.unwrap();
-    ///        //.. do stuff with v ..
+    ///    let res = db.for_each_pair::<Key, User, _>(|pair| {
+    ///        let (key, user) = pair.unwrap();
+    ///        //.. do stuff with key and user..
     ///    });
-    pub fn for_each<V, F>(&self, f: F) -> Result<(), LMDBError>
+    pub fn for_each<K, V, F>(&self, mut f: F) -> Result<(), LMDBError>
     where
+        K: serde::de::DeserializeOwned,
         V: serde::de::DeserializeOwned,
-        F: Fn(Result<V, LMDBError>),
+        F: FnMut(Result<(K, V), LMDBError>),
     {
         let env = self.env.clone();
         let db = self.db.clone();
@@ -431,16 +427,15 @@ impl LMDBDatabase {
         let cursor = txn.cursor(db).map_err(LMDBError::DatabaseError)?;
 
         let head = |c: &mut Cursor, a: &ConstAccessor| {
-            let (_, bytes) = c.first::<Ignore, [u8]>(a)?;
-            let val = ReadOnlyIterator::deserialize::<V>(bytes)?;
-            Ok(val)
+            let (key_bytes, val_bytes) = c.first::<[u8], [u8]>(a)?;
+            ReadOnlyIterator::deserialize::<K, V>(key_bytes, val_bytes)
         };
 
         let cursor = MaybeOwned::Owned(cursor);
         let iter = CursorIter::new(cursor, &access, head, ReadOnlyIterator::next).map_err(LMDBError::DatabaseError)?;
 
-        for v in iter {
-            f(v.map_err(LMDBError::DatabaseError));
+        for p in iter {
+            f(p.map_err(LMDBError::DatabaseError));
         }
 
         Ok(())
@@ -496,16 +491,23 @@ impl LMDBDatabase {
 /// Helper functions for the `for_each` method
 struct ReadOnlyIterator {}
 impl ReadOnlyIterator {
-    fn deserialize<V>(b: &[u8]) -> Result<V, error::Error>
-    where for<'t> V: serde::de::DeserializeOwned {
-        bincode::deserialize(b).map_err(|e| error::Error::ValRejected(e.to_string()))
+    fn deserialize<K, V>(key_bytes: &[u8], val_bytes: &[u8]) -> Result<(K, V), error::Error>
+    where
+        for<'t> K: serde::de::DeserializeOwned,
+        for<'t> V: serde::de::DeserializeOwned,
+    {
+        let key = bincode::deserialize(key_bytes).map_err(|e| error::Error::ValRejected(e.to_string()))?;
+        let val = bincode::deserialize(val_bytes).map_err(|e| error::Error::ValRejected(e.to_string()))?;
+        Ok((key, val))
     }
 
-    fn next<'r, V>(c: &mut Cursor, access: &'r ConstAccessor) -> Result<V, error::Error>
-    where V: serde::de::DeserializeOwned {
-        let (_, v_bytes) = c.next::<Ignore, [u8]>(access)?;
-        let val = ReadOnlyIterator::deserialize(v_bytes)?;
-        Ok(val)
+    fn next<'r, K, V>(c: &mut Cursor, access: &'r ConstAccessor) -> Result<(K, V), error::Error>
+    where
+        K: serde::de::DeserializeOwned,
+        V: serde::de::DeserializeOwned,
+    {
+        let (key_bytes, val_bytes) = c.next::<[u8], [u8]>(access)?;
+        ReadOnlyIterator::deserialize(key_bytes, val_bytes)
     }
 }
 
