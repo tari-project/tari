@@ -230,14 +230,15 @@ fn multi_writes() {
 }
 
 #[test]
-fn value_iterator() {
-    let (users, db) = insert_all_users("value_iterator");
-    let res = db.for_each::<User, _>(|v| {
-        let u = v.unwrap();
-        assert_eq!(users[u.id as usize - 1], u);
+fn pair_iterator() {
+    let (users, db) = insert_all_users("pair_iterator");
+    let res = db.for_each::<u64, User, _>(|pair| {
+        let (key, user) = pair.unwrap();
+        assert_eq!(user.id, key);
+        assert_eq!(users[key as usize - 1], user);
     });
     assert!(res.is_ok());
-    clean_up("value_iterator");
+    clean_up("pair_iterator");
 }
 
 #[test]
