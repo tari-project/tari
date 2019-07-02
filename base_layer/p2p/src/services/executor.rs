@@ -171,8 +171,9 @@ mod test {
     use super::*;
     use crate::{services::Service, tari_message::NetMessage};
     use rand::rngs::OsRng;
-    use std::sync::RwLock;
+    use std::{path::PathBuf, sync::RwLock};
     use tari_comms::{peer_manager::NodeIdentity, CommsBuilder};
+    use tari_storage::lmdb_store::{LMDBBuilder, LMDBError, LMDBStore};
 
     #[derive(Clone)]
     struct AddWordService(Arc<RwLock<String>>, &'static str);
@@ -205,6 +206,28 @@ mod test {
         }
     }
 
+    fn get_path(name: &str) -> String {
+        let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        path.push("tests/data");
+        path.push(name);
+        path.to_str().unwrap().to_string()
+    }
+
+    fn init_datastore(name: &str) -> Result<LMDBStore, LMDBError> {
+        let path = get_path(name);
+        let _ = std::fs::create_dir(&path).unwrap_or_default();
+        LMDBBuilder::new()
+            .set_path(&path)
+            .set_environment_size(10)
+            .set_max_number_of_databases(2)
+            .add_database(name, lmdb_zero::db::CREATE)
+            .build()
+    }
+
+    fn clean_up_datastore(name: &str) {
+        std::fs::remove_dir_all(get_path(name)).unwrap();
+    }
+
     #[test]
     fn execute() {
         let node_identity =
@@ -214,9 +237,14 @@ mod test {
         let service = AddWordService(state.clone(), "Tari");
         let registry = ServiceRegistry::new().register(service);
 
+        let database_name = "executor_execute"; // Note: every test should have unique database
+        let datastore = init_datastore(database_name).unwrap();
+        let peer_database = datastore.get_handle(database_name).unwrap();
+
         let comms_services = CommsBuilder::new()
             .with_routes(registry.build_comms_routes())
             .with_node_identity(node_identity)
+            .with_peer_storage(peer_database)
             .build()
             .unwrap()
             .start()
@@ -232,5 +260,7 @@ mod test {
             let lock = acquire_read_lock!(state);
             assert_eq!(*lock, "Hello Tari");
         }
+
+        clean_up_datastore(database_name);
     }
 }

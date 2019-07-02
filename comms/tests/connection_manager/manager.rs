@@ -24,14 +24,15 @@ use crate::support::{
     factories::{self, TestFactory},
     helpers::ConnectionMessageCounter,
 };
-use std::{sync::Arc, thread, time::Duration};
+use std::{path::PathBuf, sync::Arc, thread, time::Duration};
 use tari_comms::{
     connection::{types::Linger, InprocAddress, ZmqContext},
     connection_manager::PeerConnectionConfig,
     control_service::{ControlService, ControlServiceConfig},
     peer_manager::{Peer, PeerManager},
-    types::CommsDataStore,
+    types::CommsDatabase,
 };
+use tari_storage::lmdb_store::{LMDBBuilder, LMDBError, LMDBStore};
 
 fn make_peer_connection_config(consumer_address: InprocAddress) -> PeerConnectionConfig {
     PeerConnectionConfig {
@@ -44,8 +45,36 @@ fn make_peer_connection_config(consumer_address: InprocAddress) -> PeerConnectio
     }
 }
 
-fn make_peer_manager(peers: Vec<Peer>) -> Arc<PeerManager<CommsDataStore>> {
-    Arc::new(factories::peer_manager::create().with_peers(peers).build().unwrap())
+fn make_peer_manager(peers: Vec<Peer>, database: CommsDatabase) -> Arc<PeerManager> {
+    Arc::new(
+        factories::peer_manager::create()
+            .with_peers(peers)
+            .with_database(database)
+            .build()
+            .unwrap(),
+    )
+}
+
+fn get_path(name: &str) -> String {
+    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    path.push("tests/data");
+    path.push(name);
+    path.to_str().unwrap().to_string()
+}
+
+fn init_datastore(name: &str) -> Result<LMDBStore, LMDBError> {
+    let path = get_path(name);
+    let _ = std::fs::create_dir(&path).unwrap_or_default();
+    LMDBBuilder::new()
+        .set_path(&path)
+        .set_environment_size(10)
+        .set_max_number_of_databases(2)
+        .add_database(name, lmdb_zero::db::CREATE)
+        .build()
+}
+
+fn clean_up_datastore(name: &str) {
+    std::fs::remove_dir_all(get_path(name)).unwrap();
 }
 
 fn pause() {
@@ -83,7 +112,10 @@ fn establish_peer_connection() {
         .unwrap();
 
     // Node B knows no peers
-    let node_B_peer_manager = make_peer_manager(vec![]);
+    let node_B_database_name = "connection_manager_node_B_peer_manager"; // Note: every test should have unique database
+    let datastore = init_datastore(node_B_database_name).unwrap();
+    let database = datastore.get_handle(node_B_database_name).unwrap();
+    let node_B_peer_manager = make_peer_manager(vec![], database);
     let node_B_connection_manager = Arc::new(
         factories::connection_manager::create()
             .with_context(context.clone())
@@ -112,7 +144,10 @@ fn establish_peer_connection() {
     let node_A_consumer_address = InprocAddress::random();
 
     // Add node B to node A's peer manager
-    let node_A_peer_manager = make_peer_manager(vec![node_B_peer.clone()]);
+    let node_A_database_name = "connection_manager_node_A_peer_manager"; // Note: every test should have unique database
+    let datastore = init_datastore(node_A_database_name).unwrap();
+    let database = datastore.get_handle(node_A_database_name).unwrap();
+    let node_A_peer_manager = make_peer_manager(vec![node_B_peer.clone()], database);
     let node_A_connection_manager = Arc::new(
         factories::connection_manager::create()
             .with_context(context.clone())
@@ -166,4 +201,7 @@ fn establish_peer_connection() {
         Ok(manager) => manager.shutdown().into_iter().map(|r| r.unwrap()).collect::<Vec<()>>(),
         Err(_) => panic!("Unable to unwrap connection manager from Arc"),
     };
+
+    clean_up_datastore(node_A_database_name);
+    clean_up_datastore(node_B_database_name);
 }

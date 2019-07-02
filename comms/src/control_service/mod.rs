@@ -32,13 +32,23 @@
 //! # use tari_storage::lmdb::LMDBStore;
 //! # use std::collections::HashMap;
 //! # use rand::OsRng;
+//! # use tari_storage::lmdb_store::LMDBBuilder;
+//! # use lmdb_zero::db;
 //!
 //! let node_identity = Arc::new(NodeIdentity::random(&mut OsRng::new().unwrap(), "127.0.0.1:9000".parse().unwrap()).unwrap());
 //!
 //! let context = ZmqContext::new();
 //! let listener_address = "127.0.0.1:9000".parse::<NetAddress>().unwrap();
 //!
-//! let peer_manager = Arc::new(PeerManager::<LMDBStore>::new(None).unwrap());
+//! let database_name = "cs_peer_database";
+//! let datastore = LMDBBuilder::new()
+//!            .set_path("/tmp/")
+//!            .set_environment_size(10)
+//!            .set_max_number_of_databases(2)
+//!            .add_database(database_name, lmdb_zero::db::CREATE)
+//!           .build().unwrap();
+//! let peer_database = datastore.get_handle(database_name).unwrap();
+//! let peer_manager = Arc::new(PeerManager::new(peer_database).unwrap());
 //!
 //! let conn_manager = Arc::new(ConnectionManager::new(context.clone(), node_identity.clone(), peer_manager.clone(), PeerConnectionConfig {
 //!      max_message_size: 1024,

@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::support::utils::assert_change;
-use std::time::Duration;
+use std::{path::PathBuf, time::Duration};
 use tari_comms::{
     connection::{net_address::NetAddressWithStats, NetAddress, NetAddressesWithStats},
     control_service::ControlServiceConfig,
@@ -44,6 +44,17 @@ fn create_peer(public_key: CommsPublicKey, net_address: NetAddress) -> Peer {
     )
 }
 
+fn get_path(name: &str) -> String {
+    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    path.push("tests/data");
+    path.push(name);
+    path.to_str().unwrap().to_string()
+}
+
+fn clean_up_datastore(name: &str) {
+    std::fs::remove_dir_all(get_path(name)).unwrap();
+}
+
 #[test]
 fn test_wallet() {
     let mut rng = rand::OsRng::new().unwrap();
@@ -51,6 +62,7 @@ fn test_wallet() {
     let listener_address1: NetAddress = "127.0.0.1:32775".parse().unwrap();
     let secret_key1 = CommsSecretKey::random(&mut rng);
     let public_key1 = CommsPublicKey::from_secret_key(&secret_key1);
+    let wallet1_peer_database_name = "wallet1_peer_database".to_string();
     let config1 = WalletConfig {
         comms: CommsConfig {
             control_service: ControlServiceConfig {
@@ -63,6 +75,8 @@ fn test_wallet() {
             host: "127.0.0.1".parse().unwrap(),
             public_key: public_key1.clone(),
             secret_key: secret_key1,
+            datastore_path: get_path(&wallet1_peer_database_name),
+            peer_database_name: wallet1_peer_database_name.clone(),
         },
         public_key: public_key1.clone(),
     };
@@ -71,6 +85,7 @@ fn test_wallet() {
     let listener_address2: NetAddress = "127.0.0.1:32776".parse().unwrap();
     let secret_key2 = CommsSecretKey::random(&mut rng);
     let public_key2 = CommsPublicKey::from_secret_key(&secret_key2);
+    let wallet2_peer_database_name = "wallet2_peer_database".to_string();
     let config2 = WalletConfig {
         comms: CommsConfig {
             control_service: ControlServiceConfig {
@@ -83,6 +98,8 @@ fn test_wallet() {
             host: "127.0.0.1".parse().unwrap(),
             public_key: public_key2.clone(),
             secret_key: secret_key2,
+            datastore_path: get_path(&wallet2_peer_database_name),
+            peer_database_name: wallet2_peer_database_name.clone(),
         },
         public_key: public_key2.clone(),
     };
@@ -141,4 +158,7 @@ fn test_wallet() {
     assert_change(|| wallet1.ping_pong_service.pong_count().unwrap(), 1, 20);
     assert_change(|| wallet2.ping_pong_service.ping_count().unwrap(), 1, 20);
     assert_change(|| wallet2.ping_pong_service.pong_count().unwrap(), 1, 20);
+
+    clean_up_datastore(&wallet1_peer_database_name);
+    clean_up_datastore(&wallet2_peer_database_name);
 }

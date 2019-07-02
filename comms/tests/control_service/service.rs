@@ -22,6 +22,7 @@
 
 use crate::support::factories::{self, TestFactory};
 use std::{
+    path::PathBuf,
     sync::{mpsc::channel, Arc, RwLock},
     thread,
     time::Duration,
@@ -53,10 +54,11 @@ use tari_comms::{
         MessageHeader,
         NodeDestination,
     },
-    peer_manager::{NodeId, NodeIdentity},
-    types::{CommsCipher, CommsPublicKey, CommsSecretKey},
+    peer_manager::{NodeId, NodeIdentity, Peer, PeerManager},
+    types::{CommsCipher, CommsDatabase, CommsPublicKey, CommsSecretKey},
 };
 use tari_crypto::keys::DiffieHellmanSharedSecret;
+use tari_storage::lmdb_store::{LMDBBuilder, LMDBError, LMDBStore};
 use tari_utilities::{byte_array::ByteArray, ciphers::cipher::Cipher, message_format::MessageFormat};
 
 lazy_static! {
@@ -125,12 +127,49 @@ fn poll_handler_call_count_change(initial: u8, ms: u64) -> Option<u8> {
     None
 }
 
+fn make_peer_manager(peers: Vec<Peer>, database: CommsDatabase) -> Arc<PeerManager> {
+    Arc::new(
+        factories::peer_manager::create()
+            .with_peers(peers)
+            .with_database(database)
+            .build()
+            .unwrap(),
+    )
+}
+
+fn get_path(name: &str) -> String {
+    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    path.push("tests/data");
+    path.push(name);
+    path.to_str().unwrap().to_string()
+}
+
+fn init_datastore(name: &str) -> Result<LMDBStore, LMDBError> {
+    let path = get_path(name);
+    let _ = std::fs::create_dir(&path).unwrap_or_default();
+    LMDBBuilder::new()
+        .set_path(&path)
+        .set_environment_size(10)
+        .set_max_number_of_databases(2)
+        .add_database(name, lmdb_zero::db::CREATE)
+        .build()
+}
+
+fn clean_up_datastore(name: &str) {
+    std::fs::remove_dir_all(get_path(name)).unwrap();
+}
+
 #[test]
 fn recv_message() {
     let context = ZmqContext::new();
+    let database_name = "service_recv_message"; // Note: every test should have unique database
+    let datastore = init_datastore(database_name).unwrap();
+    let database = datastore.get_handle(database_name).unwrap();
+    let peer_manager = make_peer_manager(vec![], database);
     let connection_manager = Arc::new(
         factories::connection_manager::create()
             .with_context(context.clone())
+            .with_peer_manager(peer_manager)
             .build()
             .unwrap(),
     );
@@ -194,6 +233,8 @@ fn recv_message() {
     assert_eq!(2, call_count);
 
     service.shutdown().unwrap();
+
+    clean_up_datastore(database_name);
 }
 
 #[test]
@@ -201,9 +242,14 @@ fn serve_and_shutdown() {
     let node_identity = Arc::new(factories::node_identity::create().build().unwrap());
     let (tx, rx) = channel();
     let context = ZmqContext::new();
+    let database_name = "service_serve_and_shutdown"; // Note: every test should have unique database
+    let datastore = init_datastore(database_name).unwrap();
+    let database = datastore.get_handle(database_name).unwrap();
+    let peer_manager = make_peer_manager(vec![], database);
     let connection_manager = Arc::new(
         factories::connection_manager::create()
             .with_context(context.clone())
+            .with_peer_manager(peer_manager)
             .build()
             .unwrap(),
     );
@@ -225,4 +271,6 @@ fn serve_and_shutdown() {
 
     // Test that the control service loop ends within 1000ms
     rx.recv_timeout(Duration::from_millis(1000)).unwrap();
+
+    clean_up_datastore(database_name);
 }

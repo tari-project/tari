@@ -29,3 +29,7 @@ report
 Cargo.lock
 
 *.log
+
+# Ignore DataStore and Database files
+*.mdb
+

@@ -39,13 +39,14 @@ use crate::{
         OutboundMessagePool,
     },
     peer_manager::{NodeIdentity, PeerManager, PeerManagerError},
-    types::CommsDataStore,
+    types::CommsDatabase,
     DomainConnector,
 };
 use derive_error::Error;
 use log::*;
 use serde::{de::DeserializeOwned, export::fmt::Debug, Serialize};
 use std::sync::Arc;
+use tari_storage::lmdb_store::LMDBDatabase;
 
 const LOG_TARGET: &'static str = "comms::builder";
 
@@ -64,6 +65,7 @@ pub enum CommsBuilderError {
     /// Comms routes have not been defined. Call `with_routes` on [CommsBuilder]
     RoutesNotDefined,
     BrokerStartError(BrokerError),
+    DatastoreUndefined,
 }
 
 /// The `CommsBuilder` provides a simple builder API for getting Tari comms p2p messaging up and running.
@@ -75,7 +77,7 @@ where MType: Clone
 {
     zmq_context: ZmqContext,
     routes: Option<CommsRoutes<MType>>,
-    peer_storage: Option<CommsDataStore>,
+    peer_storage: Option<CommsDatabase>,
     control_service_config: Option<ControlServiceConfig<MType>>,
     omp_config: Option<OutboundMessagePoolConfig>,
     ims_config: Option<InboundMessageServiceConfig>,
@@ -123,7 +125,7 @@ where
     }
 
     /// Set the peer storage database to use. This is optional.
-    pub fn with_peer_storage(mut self, peer_storage: CommsDataStore) -> Self {
+    pub fn with_peer_storage(mut self, peer_storage: LMDBDatabase) -> Self {
         self.peer_storage = Some(peer_storage);
         self
     }
@@ -153,10 +155,14 @@ where
         self
     }
 
-    fn make_peer_manager(&mut self) -> Result<Arc<PeerManager<CommsDataStore>>, CommsBuilderError> {
-        let storage = self.peer_storage.take();
-        let peer_manager = PeerManager::new(storage).map_err(CommsBuilderError::PeerManagerError)?;
-        Ok(Arc::new(peer_manager))
+    fn make_peer_manager(&mut self) -> Result<Arc<PeerManager>, CommsBuilderError> {
+        match self.peer_storage.take() {
+            Some(storage) => {
+                let peer_manager = PeerManager::new(storage).map_err(CommsBuilderError::PeerManagerError)?;
+                Ok(Arc::new(peer_manager))
+            },
+            None => Err(CommsBuilderError::DatastoreUndefined),
+        }
     }
 
     fn make_control_service(&mut self, node_identity: Arc<NodeIdentity>) -> Option<ControlService<MType>> {
@@ -168,7 +174,7 @@ where
     fn make_connection_manager(
         &mut self,
         node_identity: Arc<NodeIdentity>,
-        peer_manager: Arc<PeerManager<CommsDataStore>>,
+        peer_manager: Arc<PeerManager>,
         config: PeerConnectionConfig,
     ) -> Arc<ConnectionManager>
     {
@@ -200,7 +206,7 @@ where
         &self,
         node_identity: Arc<NodeIdentity>,
         message_sink_address: InprocAddress,
-        peer_manager: Arc<PeerManager<CommsDataStore>>,
+        peer_manager: Arc<PeerManager>,
     ) -> Result<Arc<OutboundMessageService>, CommsBuilderError>
     {
         OutboundMessageService::new(
@@ -216,7 +222,7 @@ where
     fn make_outbound_message_pool(
         &mut self,
         message_sink_address: InprocAddress,
-        peer_manager: Arc<PeerManager<CommsDataStore>>,
+        peer_manager: Arc<PeerManager>,
         connection_manager: Arc<ConnectionManager>,
     ) -> OutboundMessagePool
     {
@@ -239,7 +245,7 @@ where
         message_sink_address: InprocAddress,
         inbound_message_broker: Arc<InboundMessageBroker<MType>>,
         oms: Arc<OutboundMessageService>,
-        peer_manager: Arc<PeerManager<CommsDataStore>>,
+        peer_manager: Arc<PeerManager>,
     ) -> InboundMessageService<MType>
     {
         let config = self.ims_config.take().unwrap_or_default();
@@ -371,7 +377,7 @@ where
     inbound_message_service: InboundMessageService<MType>,
     outbound_message_pool: OutboundMessagePool,
     outbound_message_service: Arc<OutboundMessageService>,
-    peer_manager: Arc<PeerManager<CommsDataStore>>,
+    peer_manager: Arc<PeerManager>,
 }
 
 impl<MType> CommsServiceContainer<MType>
@@ -424,7 +430,7 @@ pub struct CommsServices<MType> {
     #[allow(dead_code)]
     inbound_message_broker: Arc<InboundMessageBroker<MType>>,
     connection_manager: Arc<ConnectionManager>,
-    peer_manager: Arc<PeerManager<CommsDataStore>>,
+    pub peer_manager: Arc<PeerManager>,
 }
 
 impl<MType> CommsServices<MType>
@@ -432,7 +438,7 @@ where
     MType: DispatchableKey,
     MType: Clone,
 {
-    pub fn peer_manager(&self) -> &PeerManager<CommsDataStore> {
+    pub fn peer_manager(&self) -> &PeerManager {
         &self.peer_manager
     }
 
@@ -495,27 +501,65 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
+    use std::path::PathBuf;
+    use tari_storage::lmdb_store::{LMDBBuilder, LMDBError, LMDBStore};
+
+    fn get_path(name: &str) -> String {
+        let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        path.push("tests/data");
+        path.push(name);
+        path.to_str().unwrap().to_string()
+    }
+
+    fn init_datastore(name: &str) -> Result<LMDBStore, LMDBError> {
+        let path = get_path(name);
+        let _ = std::fs::create_dir(&path).unwrap_or_default();
+        LMDBBuilder::new()
+            .set_path(&path)
+            .set_environment_size(10)
+            .set_max_number_of_databases(2)
+            .add_database(name, lmdb_zero::db::CREATE)
+            .build()
+    }
+
+    fn clean_up_datastore(name: &str) {
+        std::fs::remove_dir_all(get_path(name)).unwrap();
+    }
 
     #[test]
     fn new_no_control_service() {
+        let database_name = "builder_new_no_control_service"; // Note: every test should have unique database
+        let datastore = init_datastore(database_name).unwrap();
+        let peer_database = datastore.get_handle(database_name).unwrap();
+
         let comms_services = CommsBuilder::new()
             .with_routes(CommsRoutes::new().register("hello".to_owned()))
             .with_node_identity(NodeIdentity::random_for_test(None))
+            .with_peer_storage(peer_database)
             .build()
             .unwrap();
 
         assert!(comms_services.control_service.is_none());
+
+        clean_up_datastore(database_name);
     }
 
     #[test]
     fn new_with_control_service() {
+        let database_name = "builder_new_with_control_service"; // Note: every test should have unique database
+        let datastore = init_datastore(database_name).unwrap();
+        let peer_database = datastore.get_handle(database_name).unwrap();
+
         let comms_services = CommsBuilder::new()
             .with_routes(CommsRoutes::new().register("hello".to_owned()))
             .with_node_identity(NodeIdentity::random_for_test(None))
+            .with_peer_storage(peer_database)
             .configure_control_service(ControlServiceConfig::default())
             .build()
             .unwrap();
 
         assert!(comms_services.control_service.is_some());
+
+        clean_up_datastore(database_name);
     }
 }

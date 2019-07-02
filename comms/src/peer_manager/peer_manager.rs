@@ -24,60 +24,24 @@ use crate::{
     connection::net_address::NetAddress,
     outbound_message_service::broadcast_strategy::BroadcastStrategy,
     peer_manager::{node_id::NodeId, node_identity::PeerNodeIdentity, peer::Peer, peer_storage::PeerStorage},
-    types::CommsPublicKey,
+    types::{CommsDatabase, CommsPublicKey},
 };
-use derive_error::Error;
-use std::{sync::RwLock, time::Duration};
-use tari_storage::keyvalue_store::{DataStore, DatastoreError};
-use tari_utilities::message_format::MessageFormatError;
 
-#[derive(Debug, Error)]
-pub enum PeerManagerError {
-    /// The requested peer does not exist or could not be located
-    PeerNotFoundError,
-    /// The Thread Safety has been breached and the data access has become poisoned
-    PoisonedAccess,
-    /// Could not write or read from datastore
-    DatastoreError(DatastoreError),
-    /// A problem occurred during the serialization of the keys or data
-    SerializationError(MessageFormatError),
-    /// A problem occurred converting the serialized data into peers
-    DeserializationError,
-    /// The index doesn't relate to an existing peer
-    IndexOutOfBounds,
-    /// The requested operation can only be performed if the PeerManager is linked to a DataStore
-    DatastoreUndefined,
-    /// An empty response was received from the Datastore
-    EmptyDatastoreQuery,
-    /// The data update could not be performed
-    DataUpdateError,
-    /// The PeerManager doesn't have enough peers to fill the identity request
-    InsufficientPeers,
-    /// The peer has been banned
-    BannedPeer,
-    /// Problem initializing the RNG
-    RngError,
-}
+use crate::peer_manager::PeerManagerError;
+use std::{sync::RwLock, time::Duration};
 
 /// The PeerManager consist of a routing table of previously discovered peers.
 /// It also provides functionality to add, find and delete peers. A subset of peers can also be requested from the
 /// routing table based on the selected Broadcast strategy.
-pub struct PeerManager<DS> {
-    peer_storage: RwLock<PeerStorage<DS>>,
+pub struct PeerManager {
+    peer_storage: RwLock<PeerStorage>,
 }
 
-impl<DS> PeerManager<DS>
-where DS: DataStore
-{
+impl PeerManager {
     /// Constructs a new empty PeerManager
-    pub fn new(datastore: Option<DS>) -> Result<PeerManager<DS>, PeerManagerError> {
-        let peer_storage = match datastore {
-            Some(store) => PeerStorage::with_datastore(store)?,
-            None => PeerStorage::<DS>::new()?,
-        };
-
+    pub fn new(database: CommsDatabase) -> Result<PeerManager, PeerManagerError> {
         Ok(Self {
-            peer_storage: RwLock::new(peer_storage),
+            peer_storage: RwLock::new(PeerStorage::new(database)?),
         })
     }
 
@@ -259,8 +223,9 @@ mod test {
         },
     };
     use rand::OsRng;
+    use std::path::PathBuf;
     use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
-    use tari_storage::lmdb::LMDBStore;
+    use tari_storage::lmdb_store::{LMDBBuilder, LMDBError, LMDBStore};
 
     fn create_test_peer(rng: &mut OsRng, ban_flag: bool) -> Peer {
         let (_sk, pk) = RistrettoPublicKey::random_keypair(rng);
@@ -271,10 +236,35 @@ mod test {
         peer
     }
 
+    fn get_path(name: &str) -> String {
+        let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        path.push("tests/data");
+        path.push(name);
+        path.to_str().unwrap().to_string()
+    }
+
+    fn init_datastore(name: &str) -> Result<LMDBStore, LMDBError> {
+        let path = get_path(name);
+        let _ = std::fs::create_dir(&path).unwrap_or_default();
+        LMDBBuilder::new()
+            .set_path(&path)
+            .set_environment_size(10)
+            .set_max_number_of_databases(1)
+            .add_database(name, lmdb_zero::db::CREATE)
+            .build()
+    }
+
+    fn clean_up_datastore(name: &str) {
+        std::fs::remove_dir_all(get_path(name)).unwrap();
+    }
+
     #[test]
     fn test_get_broadcast_identities() {
         // Create peer manager with random peers
-        let peer_manager = PeerManager::<LMDBStore>::new(None).unwrap();
+        let database_name = "pm_test_get_broadcast_identities"; // Note: every test should have unique database
+        let datastore = init_datastore(database_name).unwrap();
+        let peer_database = datastore.get_handle(database_name).unwrap();
+        let peer_manager = PeerManager::new(peer_database).unwrap();
         let mut test_peers: Vec<Peer> = Vec::new();
         // Create 20 peers were the 1st and last one is bad
         let mut rng = rand::OsRng::new().unwrap();
@@ -353,12 +343,16 @@ mod test {
             .get_broadcast_identities(BroadcastStrategy::Random(10))
             .unwrap();
         assert_ne!(identities1, identities2);
-    }
 
+        clean_up_datastore(database_name);
+    }
     #[test]
     fn test_peer_reset_connection_attempts() {
         // Create peer manager with random peers
-        let peer_manager = PeerManager::<LMDBStore>::new(None).unwrap();
+        let database_name = "pm_test_peer_reset_connection_attempts"; // Note: every test should have unique database
+        let datastore = init_datastore(database_name).unwrap();
+        let peer_database = datastore.get_handle(database_name).unwrap();
+        let peer_manager = PeerManager::new(peer_database).unwrap();
         let mut rng = rand::OsRng::new().unwrap();
         let peer = create_test_peer(&mut rng, false);
         peer_manager.add_peer(peer.clone()).unwrap();
@@ -388,6 +382,7 @@ mod test {
                 .connection_attempts,
             0
         );
-    }
 
+        clean_up_datastore(database_name);
+    }
 }

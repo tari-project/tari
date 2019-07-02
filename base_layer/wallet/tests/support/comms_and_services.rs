@@ -33,6 +33,7 @@ use tari_p2p::{
     services::{ServiceExecutor, ServiceRegistry},
     tari_message::{NetMessage, TariMessageType},
 };
+use tari_storage::lmdb_store::LMDBDatabase;
 use tari_wallet::text_message_service::{TextMessageService, TextMessageServiceApi};
 
 fn create_peer(public_key: CommsPublicKey, net_address: NetAddress) -> Peer {
@@ -47,6 +48,7 @@ fn create_peer(public_key: CommsPublicKey, net_address: NetAddress) -> Peer {
 pub fn setup_text_message_service(
     node_identity: NodeIdentity,
     peers: Vec<NodeIdentity>,
+    peer_database: LMDBDatabase,
 ) -> (ServiceExecutor, Arc<TextMessageServiceApi>)
 {
     let tms = TextMessageService::new(node_identity.identity.public_key.clone());
@@ -57,6 +59,7 @@ pub fn setup_text_message_service(
     let comms = CommsBuilder::new()
         .with_routes(services.build_comms_routes())
         .with_node_identity(node_identity.clone())
+        .with_peer_storage(peer_database)
         .configure_peer_connections(PeerConnectionConfig {
             host: "127.0.0.1".parse().unwrap(),
             ..Default::default()

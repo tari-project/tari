@@ -29,9 +29,10 @@ use tari_comms::{
     connection_manager::PeerConnectionConfig,
     control_service::ControlServiceConfig,
     peer_manager::{node_identity::NodeIdentityError, NodeIdentity},
-    types::{CommsDataStore, CommsPublicKey, CommsSecretKey},
+    types::{CommsPublicKey, CommsSecretKey},
     CommsBuilder,
 };
+use tari_storage::lmdb_store::LMDBBuilder;
 
 #[derive(Debug, Error)]
 pub enum CommsInitializationError {
@@ -47,12 +48,13 @@ pub struct CommsConfig {
     pub host: IpAddr,
     pub public_key: CommsPublicKey,
     pub secret_key: CommsSecretKey,
+    pub datastore_path: String,
+    pub peer_database_name: String,
 }
 
 pub fn initialize_comms(
     config: CommsConfig,
     comms_routes: CommsRoutes<TariMessageType>,
-    datastore: Option<CommsDataStore>,
 ) -> Result<Arc<CommsServices<TariMessageType>>, CommsInitializationError>
 {
     let node_identity = NodeIdentity::new(
@@ -62,19 +64,26 @@ pub fn initialize_comms(
     )
     .map_err(CommsInitializationError::NodeIdentityError)?;
 
-    let mut builder = CommsBuilder::new()
+    let _ = std::fs::create_dir(&config.datastore_path).unwrap_or_default();
+    let datastore = LMDBBuilder::new()
+        .set_path(&config.datastore_path)
+        .set_environment_size(10)
+        .set_max_number_of_databases(1)
+        .add_database(&config.peer_database_name, lmdb_zero::db::CREATE)
+        .build()
+        .unwrap();
+    let peer_database = datastore.get_handle(&config.peer_database_name).unwrap();
+
+    let builder = CommsBuilder::new()
         .with_routes(comms_routes.clone())
         .with_node_identity(node_identity)
+        .with_peer_storage(peer_database)
         .configure_control_service(config.control_service)
         .configure_peer_connections(PeerConnectionConfig {
             socks_proxy_address: config.socks_proxy_address,
             host: config.host,
             ..Default::default()
         });
-
-    if let Some(store) = datastore {
-        builder = builder.with_peer_storage(store);
-    }
 
     let comms = builder
         .build()

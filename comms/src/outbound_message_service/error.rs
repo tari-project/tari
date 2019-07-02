@@ -24,7 +24,7 @@ use crate::{
     connection::{dealer_proxy::DealerProxyError, ConnectionError, NetAddressError, PeerConnectionError},
     connection_manager::ConnectionManagerError,
     message::MessageError,
-    peer_manager::peer_manager::PeerManagerError,
+    peer_manager::PeerManagerError,
 };
 use derive_error::Error;
 use tari_crypto::signatures::SchnorrSignatureError;

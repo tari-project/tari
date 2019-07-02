@@ -30,7 +30,7 @@ use tari_comms::{
     connection_manager::PeerConnectionConfig,
     control_service::ControlServiceConfig,
     peer_manager::{peer_storage::PeerStorage, NodeIdentity, Peer},
-    types::CommsDataStore,
+    types::CommsDatabase,
     CommsBuilder,
 };
 use tari_p2p::{
@@ -38,32 +38,34 @@ use tari_p2p::{
     services::{ServiceExecutor, ServiceRegistry},
     tari_message::{NetMessage, TariMessageType},
 };
-use tari_storage::{keyvalue_store::DataStore, lmdb::LMDBBuilder};
+use tari_storage::lmdb_store::LMDBBuilder;
 use tempdir::TempDir;
 
 fn new_node_identity(control_service_address: NetAddress) -> NodeIdentity {
     NodeIdentity::random(&mut OsRng::new().unwrap(), control_service_address).unwrap()
 }
 
-fn create_peer_storage(tmpdir: &TempDir, name: &str, peers: Vec<Peer>) -> CommsDataStore {
-    let mut store = LMDBBuilder::new()
+fn create_peer_storage(tmpdir: &TempDir, database_name: &str, peers: Vec<Peer>) -> CommsDatabase {
+    let datastore = LMDBBuilder::new()
         .set_path(tmpdir.path().to_str().unwrap())
-        .add_database(name)
+        .set_environment_size(10)
+        .set_max_number_of_databases(1)
+        .add_database(database_name, lmdb_zero::db::CREATE)
         .build()
         .unwrap();
 
-    store.connect(name).unwrap();
-    let mut storage = PeerStorage::with_datastore(store).unwrap();
+    let peer_database = datastore.get_handle(database_name).unwrap();
+    let mut storage = PeerStorage::new(peer_database).unwrap();
     for peer in peers {
         storage.add_peer(peer).unwrap();
     }
 
-    storage.into_datastore().unwrap()
+    storage.into_datastore()
 }
 
 fn setup_ping_pong_service(
     node_identity: NodeIdentity,
-    peer_storage: CommsDataStore,
+    peer_storage: CommsDatabase,
 ) -> (ServiceExecutor, Arc<PingPongServiceApi>)
 {
     let ping_pong = PingPongService::new();

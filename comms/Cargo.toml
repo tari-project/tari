@@ -23,6 +23,7 @@ tari_utilities = { path = "../infrastructure/tari_util"}
 tari_storage = { path = "../infrastructure/storage"}
 zmq = "0.9.1"
 digest = "0.8.0"
+lmdb-zero = "0.4.4"
 
 [dev-dependencies]
 criterion = "0.2"

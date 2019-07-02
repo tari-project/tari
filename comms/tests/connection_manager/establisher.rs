@@ -24,11 +24,12 @@ use crate::support::{
     factories::{self, TestFactory},
     helpers::ConnectionMessageCounter,
 };
-use std::{sync::Arc, time::Duration};
+use std::{path::PathBuf, sync::Arc, time::Duration};
 use tari_comms::{
     connection::{Connection, CurveEncryption, Direction, InprocAddress, NetAddress, ZmqContext},
     connection_manager::{establisher::ConnectionEstablisher, ConnectionManagerError, PeerConnectionConfig},
 };
+use tari_storage::lmdb_store::{LMDBBuilder, LMDBError, LMDBStore};
 
 fn make_peer_connection_config(message_sink_address: InprocAddress) -> PeerConnectionConfig {
     PeerConnectionConfig {
@@ -41,12 +42,38 @@ fn make_peer_connection_config(message_sink_address: InprocAddress) -> PeerConne
     }
 }
 
+fn get_path(name: &str) -> String {
+    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    path.push("tests/data");
+    path.push(name);
+    path.to_str().unwrap().to_string()
+}
+
+fn init_datastore(name: &str) -> Result<LMDBStore, LMDBError> {
+    let path = get_path(name);
+    let _ = std::fs::create_dir(&path).unwrap_or_default();
+    LMDBBuilder::new()
+        .set_path(&path)
+        .set_environment_size(10)
+        .set_max_number_of_databases(2)
+        .add_database(name, lmdb_zero::db::CREATE)
+        .build()
+}
+
+fn clean_up_datastore(name: &str) {
+    std::fs::remove_dir_all(get_path(name)).unwrap();
+}
+
 #[test]
 fn establish_control_service_connection_fail() {
     let context = ZmqContext::new();
     let peers = factories::peer::create_many(2).build().unwrap();
+    let database_name = "establisher_establish_control_service_connection_fail"; // Note: every test should have unique database
+    let datastore = init_datastore(database_name).unwrap();
+    let database = datastore.get_handle(database_name).unwrap();
     let peer_manager = Arc::new(
         factories::peer_manager::create()
+            .with_database(database)
             .with_peers(peers.clone())
             .build()
             .unwrap(),
@@ -63,6 +90,8 @@ fn establish_control_service_connection_fail() {
         Err(ConnectionManagerError::MaxConnnectionAttemptsExceeded) => {},
         Err(err) => panic!("Unexpected error type: {:?}", err),
     }
+
+    clean_up_datastore(database_name);
 }
 
 #[test]
@@ -82,8 +111,12 @@ fn establish_control_service_connection_succeed() {
         .build()
         .unwrap();
 
+    let database_name = "establisher_establish_control_service_connection_succeed"; // Note: every test should have unique database
+    let datastore = init_datastore(database_name).unwrap();
+    let database = datastore.get_handle(database_name).unwrap();
     let peer_manager = Arc::new(
         factories::peer_manager::create()
+            .with_database(database)
             .with_peers(vec![example_peer.clone()])
             .build()
             .unwrap(),
@@ -92,6 +125,8 @@ fn establish_control_service_connection_succeed() {
     let config = make_peer_connection_config(InprocAddress::random());
     let establisher = ConnectionEstablisher::new(context, config, peer_manager);
     establisher.establish_control_service_connection(&example_peer).unwrap();
+
+    clean_up_datastore(database_name);
 }
 
 #[test]
@@ -125,8 +160,12 @@ fn establish_peer_connection_outbound() {
         .build()
         .unwrap();
 
+    let database_name = "establisher_establish_peer_connection_outbound"; // Note: every test should have unique database
+    let datastore = init_datastore(database_name).unwrap();
+    let database = datastore.get_handle(database_name).unwrap();
     let peer_manager = Arc::new(
         factories::peer_manager::create()
+            .with_database(database)
             .with_peers(vec![example_peer.clone()])
             .build()
             .unwrap(),
@@ -147,6 +186,8 @@ fn establish_peer_connection_outbound() {
     assert_eq!(msg_counter.count(), 2);
 
     peer_conn_handle.join().unwrap().unwrap();
+
+    clean_up_datastore(database_name);
 }
 
 #[test]
@@ -158,8 +199,12 @@ fn establish_peer_connection_inbound() {
 
     let example_peer = factories::peer::create().build().unwrap();
 
+    let database_name = "establish_peer_connection_inbound"; // Note: every test should have unique database
+    let datastore = init_datastore(database_name).unwrap();
+    let database = datastore.get_handle(database_name).unwrap();
     let peer_manager = Arc::new(
         factories::peer_manager::create()
+            .with_database(database)
             .with_peers(vec![example_peer.clone()])
             .build()
             .unwrap(),
@@ -205,4 +250,6 @@ fn establish_peer_connection_inbound() {
     assert_eq!(msg_counter.count(), 2);
 
     peer_conn_handle.join().unwrap().unwrap();
+
+    clean_up_datastore(database_name);
 }

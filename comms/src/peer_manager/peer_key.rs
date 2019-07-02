@@ -19,49 +19,12 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use crate::{
-    dispatcher::DispatchableKey,
-    inbound_message_service::inbound_message_broker::InboundMessageBroker,
-    message::MessageEnvelope,
-    outbound_message_service::outbound_message_service::OutboundMessageService,
-    peer_manager::{peer_manager::PeerManager, NodeIdentity, Peer},
-};
-use serde::{de::DeserializeOwned, Serialize};
-use std::sync::Arc;
 
-#[derive(Clone)]
-pub struct MessageContext<MType> {
-    pub message_envelope: MessageEnvelope,
-    pub peer: Peer,
-    pub outbound_message_service: Arc<OutboundMessageService>,
-    pub peer_manager: Arc<PeerManager>,
-    pub inbound_message_broker: Arc<InboundMessageBroker<MType>>,
-    pub node_identity: Arc<NodeIdentity>,
-}
+use rand::RngCore;
 
-impl<MType> MessageContext<MType>
-where
-    MType: DispatchableKey,
-    MType: Serialize + DeserializeOwned,
-{
-    /// Construct a new MessageContext that consist of the peer connection information and the received message header
-    /// and body
-    pub fn new(
-        node_identity: Arc<NodeIdentity>,
-        peer: Peer,
-        message_envelope: MessageEnvelope,
-        outbound_message_service: Arc<OutboundMessageService>,
-        peer_manager: Arc<PeerManager>,
-        inbound_message_broker: Arc<InboundMessageBroker<MType>>,
-    ) -> Self
-    {
-        MessageContext {
-            message_envelope,
-            peer,
-            node_identity,
-            outbound_message_service,
-            peer_manager,
-            inbound_message_broker,
-        }
-    }
+pub type PeerKey = u64;
+
+pub fn generate_peer_key<R>(rng: &mut R) -> PeerKey
+where R: RngCore {
+    rng.next_u64()
 }
