@@ -120,7 +120,7 @@ impl OutboundMessagePool {
     }
 
     fn start_dealer(&mut self) {
-        self.dealer_proxy.spawn_proxy()
+        let _ = self.dealer_proxy.spawn_proxy();
     }
 
     /// Start the Outbound Message Pool. This will spawn a thread that services the message queue that is sent to the
