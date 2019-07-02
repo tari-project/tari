@@ -145,7 +145,6 @@ fn test_text_message_service() {
     node_1_services.shutdown().unwrap();
     node_2_services.shutdown().unwrap();
     node_3_services.shutdown().unwrap();
-
     clean_up_datastore(node_1_database_name);
     clean_up_datastore(node_2_database_name);
     clean_up_datastore(node_3_database_name);
