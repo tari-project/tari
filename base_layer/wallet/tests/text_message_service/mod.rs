@@ -65,9 +65,9 @@ fn test_text_message_service() {
     let node_2_database_name = "node_2_test_text_message_service"; // Note: every test should have unique database
     let node_2_datastore = init_datastore(node_2_database_name).unwrap();
     let node_2_peer_database = node_2_datastore.get_handle(node_2_database_name).unwrap();
-    let node_3_database_name = "node_1_test_text_message_service"; // Note: every test should have unique database
-    let node_3_datastore = init_datastore(node_1_database_name).unwrap();
-    let node_3_peer_database = node_1_datastore.get_handle(node_1_database_name).unwrap();
+    let node_3_database_name = "node_3_test_text_message_service"; // Note: every test should have unique database
+    let node_3_datastore = init_datastore(node_3_database_name).unwrap();
+    let node_3_peer_database = node_3_datastore.get_handle(node_3_database_name).unwrap();
 
     let (node_1_services, node_1_tms) = setup_text_message_service(
         node_1_identity.clone(),
@@ -83,17 +83,6 @@ fn test_text_message_service() {
         node_3_identity.clone(),
         vec![node_1_identity.clone()],
         node_3_peer_database,
-    );
-
-    let (node_1_services, node_1_tms) = setup_text_message_service(
-        node_1_identity.clone(),
-        vec![node_2_identity.clone()],
-        node_1_peer_database,
-    );
-    let (node_2_services, node_2_tms) = setup_text_message_service(
-        node_2_identity.clone(),
-        vec![node_1_identity.clone()],
-        node_2_peer_database,
     );
 
     node_1_tms
