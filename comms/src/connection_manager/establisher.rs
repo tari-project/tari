@@ -38,7 +38,6 @@ use crate::{
         ZmqContext,
     },
     peer_manager::{Peer, PeerManager},
-    types::CommsDataStore,
 };
 use log::*;
 use std::{net::IpAddr, sync::Arc, time::Duration};
@@ -87,17 +86,12 @@ impl Default for PeerConnectionConfig {
 pub struct ConnectionEstablisher {
     context: ZmqContext,
     config: PeerConnectionConfig,
-    peer_manager: Arc<PeerManager<CommsDataStore>>,
+    peer_manager: Arc<PeerManager>,
 }
 
 impl ConnectionEstablisher {
     /// Create a new ConnectionEstablisher.
-    pub fn new(
-        context: ZmqContext,
-        config: PeerConnectionConfig,
-        peer_manager: Arc<PeerManager<CommsDataStore>>,
-    ) -> Self
-    {
+    pub fn new(context: ZmqContext, config: PeerConnectionConfig, peer_manager: Arc<PeerManager>) -> Self {
         Self {
             context,
             config,
@@ -269,13 +263,13 @@ impl ConnectionEstablisher {
 struct ConnectionAttempts<'c, F> {
     context: &'c ZmqContext,
     attempt_fn: F,
-    peer_manager: Arc<PeerManager<CommsDataStore>>,
+    peer_manager: Arc<PeerManager>,
 }
 
 impl<'c, F> ConnectionAttempts<'c, F>
 where F: Fn(InprocAddress, usize) -> Result<(EstablishedConnection, NetAddress)>
 {
-    pub fn new(context: &'c ZmqContext, peer_manager: Arc<PeerManager<CommsDataStore>>, attempt_fn: F) -> Self {
+    pub fn new(context: &'c ZmqContext, peer_manager: Arc<PeerManager>, attempt_fn: F) -> Self {
         Self {
             context,
             attempt_fn,

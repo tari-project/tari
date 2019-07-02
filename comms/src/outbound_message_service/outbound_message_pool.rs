@@ -28,7 +28,6 @@ use crate::{
     connection_manager::ConnectionManager,
     outbound_message_service::{MessagePoolWorker, OutboundError},
     peer_manager::PeerManager,
-    types::CommsDataStore,
 };
 use log::*;
 #[cfg(test)]
@@ -76,7 +75,7 @@ pub struct OutboundMessagePool {
     context: ZmqContext,
     message_requeue_address: InprocAddress,
     worker_dealer_address: InprocAddress,
-    peer_manager: Arc<PeerManager<CommsDataStore>>,
+    peer_manager: Arc<PeerManager>,
     connection_manager: Arc<ConnectionManager>,
     worker_thread_handles: Vec<JoinHandle<()>>,
     worker_control_senders: Vec<SyncSender<ControlMessage>>,
@@ -100,7 +99,7 @@ impl OutboundMessagePool {
         context: ZmqContext,
         message_queue_address: InprocAddress,
         message_requeue_address: InprocAddress,
-        peer_manager: Arc<PeerManager<CommsDataStore>>,
+        peer_manager: Arc<PeerManager>,
         connection_manager: Arc<ConnectionManager>,
     ) -> OutboundMessagePool
     {
@@ -201,10 +200,10 @@ mod test {
             OutboundMessagePool,
         },
         peer_manager::{peer::PeerFlags, NodeId, NodeIdentity, Peer, PeerManager},
-        types::CommsDataStore,
     };
-    use std::{sync::Arc, thread, time::Duration};
+    use std::{path::PathBuf, sync::Arc, thread, time::Duration};
     use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
+    use tari_storage::lmdb_store::{LMDBBuilder, LMDBError, LMDBStore};
 
     pub fn init() {
         let _ = simple_logger::init();
@@ -221,88 +220,115 @@ mod test {
         }
     }
 
-    //    #[test]
-    //    fn outbound_message_pool_threading_test() {
-    //        init();
-    //        let mut rng = rand::OsRng::new().unwrap();
-    //        let context = ZmqContext::new();
-    //        let node_identity = Arc::new(NodeIdentity::random_for_test(None));
+    fn get_path(name: &str) -> String {
+        let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        path.push("tests/data");
+        path.push(name);
+        path.to_str().unwrap().to_string()
+    }
+
+    fn init_datastore(name: &str) -> Result<LMDBStore, LMDBError> {
+        let path = get_path(name);
+        let _ = std::fs::create_dir(&path).unwrap_or_default();
+        LMDBBuilder::new()
+            .set_path(&path)
+            .set_environment_size(10)
+            .set_max_number_of_databases(2)
+            .add_database(name, lmdb_zero::db::CREATE)
+            .build()
+    }
+
+    fn clean_up_datastore(name: &str) {
+        std::fs::remove_dir_all(get_path(name)).unwrap();
+    }
+
+    // #[test]
+    // fn outbound_message_pool_threading_test() {
+    // init();
+    // let mut rng = rand::OsRng::new().unwrap();
+    // let context = ZmqContext::new();
+    // let node_identity = Arc::new(NodeIdentity::random_for_test(None));
     //
-    //        let peer_manager = Arc::new(PeerManager::<CommsDataStore>::new(None).unwrap());
+    // let database_name = "omp_threading_test"; // Note: every test should have unique database
+    // let datastore = init_datastore(database_name).unwrap();
+    // let peer_database = datastore.get_handle(database_name).unwrap();
+    // let peer_manager = Arc::new(PeerManager::new(peer_database).unwrap());
     //
-    //        let local_consumer_address = InprocAddress::random();
-    //        let connection_manager = Arc::new(ConnectionManager::new(
-    //            context.clone(),
-    //            node_identity.clone(),
-    //            peer_manager.clone(),
-    //            make_peer_connection_config(local_consumer_address.clone()),
-    //        ));
+    // let local_consumer_address = InprocAddress::random();
+    // let connection_manager = Arc::new(ConnectionManager::new(
+    // context.clone(),
+    // node_identity.clone(),
+    // peer_manager.clone(),
+    // make_peer_connection_config(local_consumer_address.clone()),
+    // ));
     //
-    //        let (_dest_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
-    //        let node_id = NodeId::from_key(&pk.clone()).unwrap();
-    //        let net_addresses = "127.0.0.1:45326".parse::<NetAddress>().unwrap().into();
-    //        let dest_peer = Peer::new(pk.clone(), node_id, net_addresses, PeerFlags::default());
-    //        peer_manager.add_peer(dest_peer.clone()).unwrap();
+    // let (_dest_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
+    // let node_id = NodeId::from_key(&pk.clone()).unwrap();
+    // let net_addresses = "127.0.0.1:45326".parse::<NetAddress>().unwrap().into();
+    // let dest_peer = Peer::new(pk.clone(), node_id, net_addresses, PeerFlags::default());
+    // peer_manager.add_peer(dest_peer.clone()).unwrap();
     //
-    //        let omp_inbound_address = InprocAddress::random();
-    //        let omp_config = OutboundMessagePoolConfig::default();
-    //        let mut omp = OutboundMessagePool::new(
-    //            omp_config.clone(),
-    //            context.clone(),
-    //            omp_inbound_address.clone(),
-    //            omp_inbound_address.clone(),
-    //            peer_manager.clone(),
-    //            connection_manager.clone(),
-    //        );
+    // let omp_inbound_address = InprocAddress::random();
+    // let omp_config = OutboundMessagePoolConfig::default();
+    // let mut omp = OutboundMessagePool::new(
+    // omp_config.clone(),
+    // context.clone(),
+    // omp_inbound_address.clone(),
+    // omp_inbound_address.clone(),
+    // peer_manager.clone(),
+    // connection_manager.clone(),
+    // );
     //
-    //        let oms =
-    //            OutboundMessageService::new(context, node_identity, omp_inbound_address,
-    // peer_manager.clone()).unwrap();        // Instantiate the channels that will be used in the tests.
-    //        let receivers = omp.create_test_channels();
-    //        omp.start();
+    // let oms =
+    // OutboundMessageService::new(context, node_identity, omp_inbound_address, peer_manager.clone()).unwrap();
+    // Instantiate the channels that will be used in the tests.
+    // let receivers = omp.create_test_channels();
+    // omp.start();
     //
-    //        let message_envelope_body: Vec<u8> = vec![0, 1, 2, 3];
+    // let message_envelope_body: Vec<u8> = vec![0, 1, 2, 3];
     //
-    //        // Send a message for each thread so we can test that each worker receives one
-    //        for _ in 0..MAX_OUTBOUND_MSG_PROCESSING_WORKERS {
-    //            oms.send_raw(
-    //                BroadcastStrategy::DirectNodeId(dest_peer.node_id.clone()),
-    //                MessageFlags::ENCRYPTED,
-    //                message_envelope_body.clone(),
-    //            )
-    //            .unwrap();
-    //            thread::sleep(Duration::from_millis(100));
-    //        }
+    // Send a message for each thread so we can test that each worker receives one
+    // for _ in 0..MAX_OUTBOUND_MSG_PROCESSING_WORKERS {
+    // oms.send(
+    // BroadcastStrategy::DirectNodeId(dest_peer.node_id.clone()),
+    // MessageFlags::ENCRYPTED,
+    // message_envelope_body.clone(),
+    // )
+    // .unwrap();
+    // thread::sleep(Duration::from_millis(100));
+    // }
     //
-    //        // This array marks which workers responded. If fairly dealt each index should be set to 1
-    //        let mut worker_responses = [0; MAX_OUTBOUND_MSG_PROCESSING_WORKERS as usize];
+    // This array marks which workers responded. If fairly dealt each index should be set to 1
+    // let mut worker_responses = [0; MAX_OUTBOUND_MSG_PROCESSING_WORKERS as usize];
     //
-    //        let mut resp_count = 0;
-    //        loop {
-    //            for i in 0..MAX_OUTBOUND_MSG_PROCESSING_WORKERS as usize {
-    //                if let Ok(_recv) = receivers[i].try_recv() {
-    //                    resp_count += 1;
-    //                    // If this worker responded multiple times then the message were not fairly dealt so bork the
-    // count                    if worker_responses[i] > 0 {
-    //                        worker_responses[i] = MAX_OUTBOUND_MSG_PROCESSING_WORKERS + 1;
-    //                    } else {
-    //                        worker_responses[i] = 1;
-    //                    }
-    //                }
-    //            }
+    // let mut resp_count = 0;
+    // loop {
+    // for i in 0..MAX_OUTBOUND_MSG_PROCESSING_WORKERS as usize {
+    // if let Ok(_recv) = receivers[i].try_recv() {
+    // resp_count += 1;
+    // If this worker responded multiple times then the message were not fairly dealt so bork the count
+    // if worker_responses[i] > 0 {
+    // worker_responses[i] = MAX_OUTBOUND_MSG_PROCESSING_WORKERS + 1;
+    // } else {
+    // worker_responses[i] = 1;
+    // }
+    // }
+    // }
     //
-    //            // For this test we expect 1 message to reach each worker
-    //            if resp_count >= MAX_OUTBOUND_MSG_PROCESSING_WORKERS as usize {
-    //                break;
-    //            }
-    //        }
+    // For this test we expect 1 message to reach each worker
+    // if resp_count >= MAX_OUTBOUND_MSG_PROCESSING_WORKERS as usize {
+    // break;
+    // }
+    // }
     //
-    //        // Confirm that the messages were fairly dealt to different worker threads
-    //        assert_eq!(
-    //            worker_responses.iter().fold(0, |acc, x| acc + x),
-    //            MAX_OUTBOUND_MSG_PROCESSING_WORKERS
-    //        );
-    //    }
+    // Confirm that the messages were fairly dealt to different worker threads
+    // assert_eq!(
+    // worker_responses.iter().fold(0, |acc, x| acc + x),
+    // MAX_OUTBOUND_MSG_PROCESSING_WORKERS
+    // );
+    //
+    // clean_up_datastore(database_name);
+    // }
 
     #[test]
     fn clean_shutdown() {
@@ -310,7 +336,11 @@ mod test {
         let mut rng = rand::OsRng::new().unwrap();
         let context = ZmqContext::new();
         let node_identity = Arc::new(NodeIdentity::random_for_test(None));
-        let peer_manager = Arc::new(PeerManager::<CommsDataStore>::new(None).unwrap());
+
+        let database_name = "omp_clean_shutdown"; // Note: every test should have unique database
+        let datastore = init_datastore(database_name).unwrap();
+        let peer_database = datastore.get_handle(database_name).unwrap();
+        let peer_manager = Arc::new(PeerManager::new(peer_database).unwrap());
         let connection_manager = Arc::new(ConnectionManager::new(
             context.clone(),
             node_identity.clone(),
@@ -350,5 +380,7 @@ mod test {
         // thread::sleep(Duration::from_millis(100));
 
         assert!(omp.shutdown().is_ok());
+
+        clean_up_datastore(database_name);
     }
 }

@@ -31,7 +31,6 @@ use crate::{
 };
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::sync::Arc;
-use tari_storage::lmdb::LMDBStore;
 
 /// Control Messgages for the control service worker
 #[derive(Debug)]
@@ -73,7 +72,7 @@ where MType: Clone
     pub envelope_header: MessageEnvelopeHeader<CommsPublicKey>,
     pub message: Message,
     pub connection_manager: Arc<ConnectionManager>,
-    pub peer_manager: Arc<PeerManager<LMDBStore>>,
+    pub peer_manager: Arc<PeerManager>,
     pub node_identity: Arc<NodeIdentity>,
     pub config: ControlServiceConfig<MType>,
 }

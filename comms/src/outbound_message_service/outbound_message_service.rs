@@ -30,7 +30,6 @@ use crate::{
     message::{Frame, Message, MessageEnvelope, MessageError, MessageFlags, NodeDestination},
     outbound_message_service::{BroadcastStrategy, OutboundError, OutboundMessage},
     peer_manager::{peer_manager::PeerManager, NodeIdentity},
-    types::CommsDataStore,
 };
 use std::{convert::TryInto, sync::Arc};
 use tari_utilities::message_format::MessageFormat;
@@ -42,7 +41,7 @@ pub struct OutboundMessageService {
     context: ZmqContext,
     outbound_address: InprocAddress,
     node_identity: Arc<NodeIdentity>,
-    peer_manager: Arc<PeerManager<CommsDataStore>>,
+    peer_manager: Arc<PeerManager>,
 }
 
 impl OutboundMessageService {
@@ -52,7 +51,7 @@ impl OutboundMessageService {
         node_identity: Arc<NodeIdentity>,
         outbound_address: InprocAddress, /* The outbound_address is an inproc that connects the OutboundMessagePool
                                           * and the OutboundMessageService */
-        peer_manager: Arc<PeerManager<CommsDataStore>>,
+        peer_manager: Arc<PeerManager>,
     ) -> Result<OutboundMessageService, OutboundError>
     {
         Ok(OutboundMessageService {
@@ -148,12 +147,34 @@ mod test {
         },
     };
     use log::*;
-    use std::convert::TryFrom;
+    use std::{convert::TryFrom, path::PathBuf};
     use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
-    use tari_storage::lmdb::LMDBStore;
+    use tari_storage::lmdb_store::{LMDBBuilder, LMDBError, LMDBStore};
 
     pub fn init() {
         let _ = simple_logger::init();
+    }
+
+    fn get_path(name: &str) -> String {
+        let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        path.push("tests/data");
+        path.push(name);
+        path.to_str().unwrap().to_string()
+    }
+
+    fn init_datastore(name: &str) -> Result<LMDBStore, LMDBError> {
+        let path = get_path(name);
+        let _ = std::fs::create_dir(&path).unwrap_or_default();
+        LMDBBuilder::new()
+            .set_path(&path)
+            .set_environment_size(10)
+            .set_max_number_of_databases(2)
+            .add_database(name, lmdb_zero::db::CREATE)
+            .build()
+    }
+
+    fn clean_up_datastore(name: &str) {
+        std::fs::remove_dir_all(get_path(name)).unwrap();
     }
 
     #[test]
@@ -177,7 +198,10 @@ mod test {
         let dest_peer = Peer::new(pk, node_id, net_addresses, PeerFlags::default());
 
         // Setup OutboundMessageService and transmit a message to the destination
-        let peer_manager = Arc::new(PeerManager::<LMDBStore>::new(None).unwrap());
+        let database_name = "oms_test_outbound_send"; // Note: every test should have unique database
+        let datastore = init_datastore(database_name).unwrap();
+        let peer_database = datastore.get_handle(database_name).unwrap();
+        let peer_manager = Arc::new(PeerManager::new(peer_database).unwrap());
         peer_manager.add_peer(dest_peer.clone()).unwrap();
 
         let outbound_message_service =
@@ -217,5 +241,7 @@ mod test {
             .decrypted_message_body(&dest_sk, &node_identity.identity.public_key)
             .unwrap();
         assert_eq!(message_envelope_body, decoded_message_envelope_body);
+
+        clean_up_datastore(database_name);
     }
 }

@@ -31,7 +31,6 @@ use tari_comms::{
     connection::ZmqContext,
     connection_manager::{ConnectionManager, PeerConnectionConfig},
     peer_manager::{NodeIdentity, PeerManager},
-    types::CommsDataStore,
 };
 
 pub fn create() -> ConnectionManagerFactory {
@@ -42,7 +41,7 @@ pub fn create() -> ConnectionManagerFactory {
 pub struct ConnectionManagerFactory {
     zmq_context: Option<ZmqContext>,
     peer_connection_config: PeerConnectionConfig,
-    peer_manager: Option<Arc<PeerManager<CommsDataStore>>>,
+    peer_manager: Option<Arc<PeerManager>>,
     peer_manager_factory: PeerManagerFactory,
     node_identity_factory: NodeIdentityFactory,
     node_identity: Option<Arc<NodeIdentity>>,
@@ -55,11 +54,7 @@ impl ConnectionManagerFactory {
         PeerConnectionConfig
     );
 
-    factory_setter!(
-        with_peer_manager,
-        peer_manager,
-        Option<Arc<PeerManager<CommsDataStore>>>
-    );
+    factory_setter!(with_peer_manager, peer_manager, Option<Arc<PeerManager>>);
 
     factory_setter!(with_peer_manager_factory, peer_manager_factory, PeerManagerFactory);
 
@@ -78,8 +73,8 @@ impl TestFactory for ConnectionManagerFactory {
 
         let peer_manager = self
             .peer_manager
-            .or(Some(Arc::new(self.peer_manager_factory.build()?)))
-            .unwrap();
+            //.or(Some(Arc::new(self.peer_manager_factory.build()?))) //Note: Cannot build it twich with persistent storage
+            .ok_or(TestFactoryError::BuildFailed("Failed to build peer manager: peer_manager undefined".into()))?;;
 
         let node_identity = self
             .node_identity

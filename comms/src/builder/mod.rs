@@ -25,13 +25,15 @@
 //! The [CommsBuilder] provides a simple builder API for getting Tari comms p2p messaging up and running.
 //!
 //! ```edition2018
-//! use tari_comms::builder::{CommsBuilder, CommsRoutes};
-//! use tari_comms::dispatcher::HandlerError;
-//! use tari_comms::message::DomainMessageContext;
-//! use tari_comms::control_service::ControlServiceConfig;
-//! use tari_comms::peer_manager::NodeIdentity;
-//! use std::sync::Arc;
-//! use rand::OsRng;
+//! # use tari_comms::builder::{CommsBuilder, CommsRoutes};
+//! # use tari_comms::dispatcher::HandlerError;
+//! # use tari_comms::message::DomainMessageContext;
+//! # use tari_comms::control_service::ControlServiceConfig;
+//! # use tari_comms::peer_manager::NodeIdentity;
+//! # use std::sync::Arc;
+//! # use rand::OsRng;
+//! # use tari_storage::lmdb_store::LMDBBuilder;
+//! # use lmdb_zero::db;
 //!
 //! // This should be loaded up from storage
 //! let my_node_identity = NodeIdentity::random(&mut OsRng::new().unwrap(), "127.0.0.1:9000".parse().unwrap()).unwrap();
@@ -41,11 +43,21 @@
 //!     Ok(())
 //! }
 //!
+//! let database_name = "b_peer_database";
+//! let datastore = LMDBBuilder::new()
+//!            .set_path("/tmp/")
+//!            .set_environment_size(10)
+//!            .set_max_number_of_databases(2)
+//!            .add_database(database_name, lmdb_zero::db::CREATE)
+//!           .build().unwrap();
+//! let peer_database = datastore.get_handle(database_name).unwrap();
+//!
 //! let services = CommsBuilder::new()
 //!    .with_routes(CommsRoutes::<u8>::new())
 //!    // This enables the control service - allowing another peer to connect to this node
 //!    .configure_control_service(ControlServiceConfig::default())
 //!    .with_node_identity(my_node_identity)
+//!    .with_peer_storage(peer_database)
 //!    .build()
 //!    .unwrap();
 //!

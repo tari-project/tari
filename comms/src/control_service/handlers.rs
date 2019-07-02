@@ -34,7 +34,7 @@ use crate::{
         MessageHeader,
         NodeDestination,
     },
-    peer_manager::{peer_manager::PeerManagerError, Peer, PeerFlags},
+    peer_manager::{Peer, PeerFlags, PeerManagerError},
     types::CommsPublicKey,
 };
 use log::*;

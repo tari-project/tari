@@ -25,7 +25,7 @@ use crate::support::{
     helpers::ConnectionMessageCounter,
 };
 use chrono;
-use std::{convert::TryFrom, sync::Arc, thread, time::Duration};
+use std::{convert::TryFrom, path::PathBuf, sync::Arc, thread, time::Duration};
 use tari_comms::{
     connection::{Connection, ConnectionError, Direction, InprocAddress, NetAddress, ZmqContext},
     connection_manager::{ConnectionManager, PeerConnectionConfig},
@@ -39,8 +39,9 @@ use tari_comms::{
         OutboundMessagePool,
     },
     peer_manager::{Peer, PeerManager},
-    types::CommsDataStore,
+    types::CommsDatabase,
 };
+use tari_storage::lmdb_store::{LMDBBuilder, LMDBError, LMDBStore};
 
 fn make_peer_connection_config(consumer_address: InprocAddress) -> PeerConnectionConfig {
     PeerConnectionConfig {
@@ -53,12 +54,40 @@ fn make_peer_connection_config(consumer_address: InprocAddress) -> PeerConnectio
     }
 }
 
-fn make_peer_manager(peers: Vec<Peer>) -> Arc<PeerManager<CommsDataStore>> {
-    Arc::new(factories::peer_manager::create().with_peers(peers).build().unwrap())
+fn make_peer_manager(peers: Vec<Peer>, database: CommsDatabase) -> Arc<PeerManager> {
+    Arc::new(
+        factories::peer_manager::create()
+            .with_peers(peers)
+            .with_database(database)
+            .build()
+            .unwrap(),
+    )
 }
 
 pub fn init() {
     let _ = simple_logger::init();
+}
+
+fn get_path(name: &str) -> String {
+    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    path.push("tests/data");
+    path.push(name);
+    path.to_str().unwrap().to_string()
+}
+
+fn init_datastore(name: &str) -> Result<LMDBStore, LMDBError> {
+    let path = get_path(name);
+    let _ = std::fs::create_dir(&path).unwrap_or_default();
+    LMDBBuilder::new()
+        .set_path(&path)
+        .set_environment_size(10)
+        .set_max_number_of_databases(2)
+        .add_database(name, lmdb_zero::db::CREATE)
+        .build()
+}
+
+fn clean_up_datastore(name: &str) {
+    std::fs::remove_dir_all(get_path(name)).unwrap();
 }
 
 #[test]
@@ -84,7 +113,10 @@ fn test_outbound_message_pool() {
         .unwrap();
 
     // Node B knows no peers
-    let node_B_peer_manager = make_peer_manager(vec![]);
+    let node_B_database_name = "omp_node_B_peer_manager"; // Note: every test should have unique database
+    let datastore = init_datastore(node_B_database_name).unwrap();
+    let database = datastore.get_handle(node_B_database_name).unwrap();
+    let node_B_peer_manager = make_peer_manager(vec![], database);
     let node_B_connection_manager = Arc::new(ConnectionManager::new(
         context.clone(),
         node_identity.clone(),
@@ -107,7 +139,10 @@ fn test_outbound_message_pool() {
     let node_A_consumer_address = InprocAddress::random();
 
     // Add node B to node A's peer manager
-    let node_A_peer_manager = make_peer_manager(vec![node_B_peer.clone()]);
+    let node_A_database_name = "omp_node_A_peer_manager"; // Note: every test should have unique database
+    let datastore = init_datastore(node_A_database_name).unwrap();
+    let database = datastore.get_handle(node_A_database_name).unwrap();
+    let node_A_peer_manager = make_peer_manager(vec![node_B_peer.clone()], database);
     let node_A_connection_manager = Arc::new(
         factories::connection_manager::create()
             .with_peer_manager(node_A_peer_manager.clone())
@@ -165,6 +200,9 @@ fn test_outbound_message_pool() {
     node_B_msg_counter.assert_count(8, 1000);
     node_B_control_service.shutdown().unwrap();
     node_B_control_service.handle.join().unwrap().unwrap();
+
+    clean_up_datastore(node_A_database_name);
+    clean_up_datastore(node_B_database_name);
 }
 
 #[test]
@@ -189,9 +227,13 @@ fn test_outbound_message_pool_requeuing() {
     let node_A_consumer_address = InprocAddress::random();
 
     // Add node B to node A's peer manager
+    let database_name = "omp_test_outbound_message_pool_requeuing"; // Note: every test should have unique database
+    let datastore = init_datastore(database_name).unwrap();
+    let database = datastore.get_handle(database_name).unwrap();
     let node_A_peer_manager = Arc::new(
         factories::peer_manager::create()
             .with_peers(vec![node_B_peer.clone()])
+            .with_database(database)
             .build()
             .unwrap(),
     );
@@ -292,4 +334,6 @@ fn test_outbound_message_pool_requeuing() {
 
     // This time the requeue should not occur so this read should timeout
     assert_eq!(requeue_connection.receive(100), Err(ConnectionError::Timeout));
+
+    clean_up_datastore(database_name);
 }

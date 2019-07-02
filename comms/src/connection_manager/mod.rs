@@ -53,11 +53,22 @@
 //! # use tari_comms::peer_manager::{PeerManager, NodeIdentity};
 //! # use tari_comms::connection::{ZmqContext, InprocAddress};
 //! # use rand::OsRng;
+//! # use tari_storage::lmdb_store::LMDBBuilder;
+//! # use lmdb_zero::db;
 //!
 //! let node_identity = Arc::new(NodeIdentity::random(&mut OsRng::new().unwrap(), "127.0.0.1:9000".parse().unwrap()).unwrap());
 //!
 //! let context = ZmqContext::new();
-//! let peer_manager = Arc::new(PeerManager::new(None).unwrap());
+//!
+//! let database_name = "cm_peer_database";
+//! let datastore = LMDBBuilder::new()
+//!            .set_path("/tmp/")
+//!            .set_environment_size(10)
+//!            .set_max_number_of_databases(1)
+//!            .add_database(database_name, lmdb_zero::db::CREATE)
+//!           .build().unwrap();
+//! let peer_database = datastore.get_handle(database_name).unwrap();
+//! let peer_manager = Arc::new(PeerManager::new(peer_database).unwrap());
 //!
 //! let manager = ConnectionManager::new(context, node_identity, peer_manager, PeerConnectionConfig {
 //!     peer_connection_establish_timeout: Duration::from_secs(5),

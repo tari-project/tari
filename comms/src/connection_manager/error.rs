@@ -52,4 +52,6 @@ pub enum ConnectionManagerError {
     MaxConnnectionAttemptsExceeded,
     /// The connection address could not be established
     ConnectionAddressNotEstablished,
+    /// Problem creating or loading datastore
+    DatastoreError,
 }

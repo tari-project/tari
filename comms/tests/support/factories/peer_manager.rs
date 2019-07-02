@@ -24,7 +24,7 @@ use super::{peer::PeersFactory, TestFactory, TestFactoryError};
 
 use tari_comms::{
     peer_manager::{Peer, PeerManager},
-    types::CommsDataStore,
+    types::CommsDatabase,
 };
 
 pub fn create() -> PeerManagerFactory {
@@ -35,19 +35,26 @@ pub fn create() -> PeerManagerFactory {
 pub struct PeerManagerFactory {
     peers_factory: PeersFactory,
     peers: Option<Vec<Peer>>,
+    database: Option<CommsDatabase>,
 }
 
 impl PeerManagerFactory {
     factory_setter!(with_peers_factory, peers_factory, PeersFactory);
 
     factory_setter!(with_peers, peers, Option<Vec<Peer>>);
+
+    factory_setter!(with_database, database, Option<CommsDatabase>);
 }
 
 impl TestFactory for PeerManagerFactory {
-    type Object = PeerManager<CommsDataStore>;
+    type Object = PeerManager;
 
     fn build(self) -> Result<Self::Object, TestFactoryError> {
-        let pm = PeerManager::<CommsDataStore>::new(None)
+        let database = self.database.ok_or(TestFactoryError::BuildFailed(
+            "Failed to build peer manager: database undefined".into(),
+        ))?;
+
+        let pm = PeerManager::new(database)
             .map_err(|err| TestFactoryError::BuildFailed(format!("Failed to build peer manager: {:?}", err)))?;
 
         let peers = self
@@ -58,6 +65,7 @@ impl TestFactory for PeerManagerFactory {
             pm.add_peer(peer)
                 .map_err(|err| TestFactoryError::BuildFailed(format!("Failed to build peer manager: {:?}", err)))?;
         }
+
         Ok(pm)
     }
 }

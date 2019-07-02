@@ -25,7 +25,7 @@ use crate::{
     connection_manager::ConnectionManagerError,
     dispatcher::DispatchError,
     message::MessageError,
-    peer_manager::{node_id::NodeIdError, peer_manager::PeerManagerError},
+    peer_manager::{node_id::NodeIdError, PeerManagerError},
 };
 use derive_error::Error;
 use tari_utilities::{ciphers::cipher::CipherError, message_format::MessageFormatError};

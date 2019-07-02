@@ -16,9 +16,10 @@ derive-error = "0.0.4"
 log = "0.4.6"
 rand = "0.6.5"
 crossbeam-channel = "0.3.8"
+lmdb-zero = "0.4.4"
+tari_storage = {version = "^0.0", path = "../../infrastructure/storage"}
 
 [dev-dependencies]
-tari_storage = {version = "^0.0", path = "../../infrastructure/storage"}
 tempdir = "0.3.7"
 cursive = "0.12.0"
 clap = "2.33.0"

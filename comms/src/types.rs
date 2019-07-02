@@ -25,7 +25,7 @@ use crate::{
     inbound_message_service::comms_msg_handlers::{CommsDispatchType, InboundMessageServiceResolver},
 };
 use tari_crypto::{common::Blake256, keys::PublicKey, ristretto::RistrettoPublicKey};
-use tari_storage::lmdb::LMDBStore;
+use tari_storage::lmdb_store::{LMDBDatabase, LMDBError, LMDBStore};
 use tari_utilities::ciphers::chacha20::ChaCha20;
 
 /// The message protocol version for the MessageEnvelopeHeader
@@ -50,8 +50,10 @@ pub type CommsRng = rand::OsRng;
 /// Specify what cipher to use for encryption/decryption
 pub type CommsCipher = ChaCha20;
 
-/// Datastore used for persistence storage
+/// Datastore and Database used for persistence storage
 pub type CommsDataStore = LMDBStore;
+pub type CommsDatabase = LMDBDatabase;
+pub type CommsDataStoreError = LMDBError;
 
 /// Dispatcher format for comms level dispatching to handlers
 pub type MessageDispatcher<M> = Dispatcher<CommsDispatchType, M, InboundMessageServiceResolver, DispatchError>;

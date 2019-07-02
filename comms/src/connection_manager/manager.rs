@@ -31,7 +31,6 @@ use super::{
 use crate::{
     connection::{ConnectionError, CurvePublicKey, NetAddress, PeerConnection, PeerConnectionState, ZmqContext},
     peer_manager::{NodeId, NodeIdentity, Peer, PeerManager},
-    types::CommsDataStore,
 };
 use log::*;
 use std::{
@@ -45,7 +44,7 @@ pub struct ConnectionManager {
     node_identity: Arc<NodeIdentity>,
     connections: LivePeerConnections,
     establisher: Arc<ConnectionEstablisher>,
-    peer_manager: Arc<PeerManager<CommsDataStore>>,
+    peer_manager: Arc<PeerManager>,
     establish_locks: Mutex<HashMap<NodeId, Arc<Mutex<()>>>>,
 }
 
@@ -54,7 +53,7 @@ impl ConnectionManager {
     pub fn new(
         zmq_context: ZmqContext,
         node_identity: Arc<NodeIdentity>,
-        peer_manager: Arc<PeerManager<CommsDataStore>>,
+        peer_manager: Arc<PeerManager>,
         config: PeerConnectionConfig,
     ) -> Self
     {
@@ -210,7 +209,7 @@ impl ConnectionManager {
     }
 
     /// Get the peer manager
-    pub(crate) fn get_peer_manager(&self) -> Arc<PeerManager<CommsDataStore>> {
+    pub(crate) fn get_peer_manager(&self) -> Arc<PeerManager> {
         self.peer_manager.clone()
     }
 
@@ -264,13 +263,41 @@ impl ConnectionManager {
 mod test {
     use super::*;
     use crate::connection::{InprocAddress, ZmqContext};
-    use std::time::Duration;
+    use std::{path::PathBuf, time::Duration};
+    use tari_storage::lmdb_store::{LMDBBuilder, LMDBStore};
+
+    fn get_path(name: &str) -> String {
+        let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        path.push("tests/data");
+        path.push(name);
+        path.to_str().unwrap().to_string()
+    }
+
+    fn init_datastore(name: &str) -> Result<LMDBStore> {
+        let path = get_path(name);
+        let _ = std::fs::create_dir(&path).unwrap_or_default();
+        LMDBBuilder::new()
+            .set_path(&path)
+            .set_environment_size(10)
+            .set_max_number_of_databases(2)
+            .add_database(name, lmdb_zero::db::CREATE)
+            .build()
+            .map_err(|_| ConnectionManagerError::DatastoreError)
+    }
+
+    fn clean_up_datastore(name: &str) {
+        std::fs::remove_dir_all(get_path(name)).unwrap();
+    }
 
     #[test]
     fn get_active_connection_count() {
         let context = ZmqContext::new();
         let node_identity = Arc::new(NodeIdentity::random_for_test(None));
-        let peer_manager = Arc::new(PeerManager::new(None).unwrap());
+
+        let database_name = "cm_get_active_connection_count"; // Note: every test should have unique database
+        let datastore = init_datastore(database_name).unwrap();
+        let peer_database = datastore.get_handle(database_name).unwrap();
+        let peer_manager = Arc::new(PeerManager::new(peer_database).unwrap());
         let manager = ConnectionManager::new(context, node_identity, peer_manager, PeerConnectionConfig {
             peer_connection_establish_timeout: Duration::from_secs(5),
             max_message_size: 1024,
@@ -280,5 +307,7 @@ mod test {
             socks_proxy_address: None,
         });
         assert_eq!(manager.get_active_connection_count(), 0);
+
+        clean_up_datastore(database_name);
     }
 }

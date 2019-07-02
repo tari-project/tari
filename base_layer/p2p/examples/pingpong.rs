@@ -46,8 +46,7 @@ use std::{
 };
 use tari_comms::{
     control_service::ControlServiceConfig,
-    peer_manager::{peer_storage::PeerStorage, NodeIdentity, Peer, PeerFlags, PeerNodeIdentity},
-    types::CommsDataStore,
+    peer_manager::{NodeIdentity, Peer, PeerFlags, PeerNodeIdentity},
 };
 use tari_p2p::{
     initialization::{initialize_comms, CommsConfig},
@@ -55,7 +54,6 @@ use tari_p2p::{
     services::{ServiceExecutor, ServiceRegistry},
     tari_message::{NetMessage, TariMessageType},
 };
-use tari_storage::{keyvalue_store::DataStore, lmdb::LMDBBuilder};
 use tari_utilities::message_format::MessageFormat;
 use tempdir::TempDir;
 
@@ -67,28 +65,6 @@ fn load_identity(path: &str) -> NodeIdentity {
 pub fn random_string(len: usize) -> String {
     let mut rng = OsRng::new().unwrap();
     iter::repeat(()).map(|_| rng.sample(Alphanumeric)).take(len).collect()
-}
-
-fn datastore_with_peer(identity: NodeIdentity) -> CommsDataStore {
-    let tmp_dir = TempDir::new(random_string(8).as_str()).unwrap();
-    let dummy_db = random_string(8);
-    let mut store = LMDBBuilder::new()
-        .set_path(tmp_dir.path().to_str().unwrap())
-        .add_database(&dummy_db)
-        .build()
-        .unwrap();
-
-    store.connect(&dummy_db).unwrap();
-    let mut storage = PeerStorage::with_datastore(store).unwrap();
-    let peer = Peer::new(
-        identity.identity.public_key,
-        identity.identity.node_id,
-        identity.control_service_address.into(),
-        PeerFlags::empty(),
-    );
-    storage.add_peer(peer).unwrap();
-
-    storage.into_datastore().unwrap()
 }
 
 fn main() {
@@ -119,8 +95,6 @@ fn main() {
     let node_identity = load_identity(matches.value_of("node-identity").unwrap());
     let peer_identity = load_identity(matches.value_of("peer-identity").unwrap());
 
-    let peer_store = datastore_with_peer(peer_identity.clone());
-
     let comms_config = CommsConfig {
         public_key: node_identity.identity.public_key.clone(),
         host: "0.0.0.0".parse().unwrap(),
@@ -132,13 +106,28 @@ fn main() {
             requested_outbound_connection_timeout: Duration::from_millis(2000),
         },
         secret_key: node_identity.secret_key.clone(),
+        datastore_path: TempDir::new(random_string(8).as_str())
+            .unwrap()
+            .path()
+            .to_str()
+            .unwrap()
+            .to_string(),
+        peer_database_name: random_string(8),
     };
 
     let pingpong_service = PingPongService::new();
     let pingpong = pingpong_service.get_api();
     let services = ServiceRegistry::new().register(pingpong_service);
 
-    let comms = initialize_comms(comms_config, services.build_comms_routes(), Some(peer_store)).unwrap();
+    let comms = initialize_comms(comms_config, services.build_comms_routes()).unwrap();
+    let peer = Peer::new(
+        peer_identity.identity.public_key.clone(),
+        peer_identity.identity.node_id.clone(),
+        peer_identity.control_service_address.into(),
+        PeerFlags::empty(),
+    );
+    comms.peer_manager.add_peer(peer).unwrap();
+
     let services = ServiceExecutor::execute(comms, services);
 
     run_ui(services, peer_identity.identity, pingpong);

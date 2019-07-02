@@ -23,7 +23,31 @@
 use crate::support::comms_and_services::setup_text_message_service;
 
 use crate::support::utils::assert_change;
+use std::path::PathBuf;
 use tari_comms::peer_manager::NodeIdentity;
+use tari_storage::lmdb_store::{LMDBBuilder, LMDBError, LMDBStore};
+
+fn get_path(name: &str) -> String {
+    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    path.push("tests/data");
+    path.push(name);
+    path.to_str().unwrap().to_string()
+}
+
+fn init_datastore(name: &str) -> Result<LMDBStore, LMDBError> {
+    let path = get_path(name);
+    let _ = std::fs::create_dir(&path).unwrap_or_default();
+    LMDBBuilder::new()
+        .set_path(&path)
+        .set_environment_size(10)
+        .set_max_number_of_databases(1)
+        .add_database(name, lmdb_zero::db::CREATE)
+        .build()
+}
+
+fn clean_up_datastore(name: &str) {
+    std::fs::remove_dir_all(get_path(name)).unwrap();
+}
 
 #[test]
 fn test_text_message_service() {
@@ -34,10 +58,23 @@ fn test_text_message_service() {
     let node_1_identity = NodeIdentity::random(&mut rng, "127.0.0.1:31523".parse().unwrap()).unwrap();
     let node_2_identity = NodeIdentity::random(&mut rng, "127.0.0.1:31545".parse().unwrap()).unwrap();
 
-    let (node_1_services, node_1_tms) =
-        setup_text_message_service(node_1_identity.clone(), vec![node_2_identity.clone()]);
-    let (node_2_services, node_2_tms) =
-        setup_text_message_service(node_2_identity.clone(), vec![node_1_identity.clone()]);
+    let node_1_database_name = "node_1_test_text_message_service"; // Note: every test should have unique database
+    let node_1_datastore = init_datastore(node_1_database_name).unwrap();
+    let node_1_peer_database = node_1_datastore.get_handle(node_1_database_name).unwrap();
+    let node_2_database_name = "node_2_test_text_message_service"; // Note: every test should have unique database
+    let node_2_datastore = init_datastore(node_2_database_name).unwrap();
+    let node_2_peer_database = node_2_datastore.get_handle(node_2_database_name).unwrap();
+
+    let (node_1_services, node_1_tms) = setup_text_message_service(
+        node_1_identity.clone(),
+        vec![node_2_identity.clone()],
+        node_1_peer_database,
+    );
+    let (node_2_services, node_2_tms) = setup_text_message_service(
+        node_2_identity.clone(),
+        vec![node_1_identity.clone()],
+        node_2_peer_database,
+    );
 
     node_1_tms
         .send_text_message(node_2_identity.identity.public_key.clone(), "Say Hello,".to_string())
@@ -90,4 +127,7 @@ fn test_text_message_service() {
 
     node_1_services.shutdown().unwrap();
     node_2_services.shutdown().unwrap();
+
+    clean_up_datastore(node_1_database_name);
+    clean_up_datastore(node_2_database_name);
 }

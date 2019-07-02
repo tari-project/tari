@@ -1,0 +1,1 @@
+Temp folder for LMDB database files
