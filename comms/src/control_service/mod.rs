@@ -29,7 +29,6 @@
 //! # use tari_comms::{connection::*, control_service::*, dispatcher::*, connection_manager::*, peer_manager::*, types::*};
 //! # use tari_comms::control_service::handlers as comms_handlers;
 //! # use std::{time::Duration, sync::Arc};
-//! # use tari_storage::lmdb::LMDBStore;
 //! # use std::collections::HashMap;
 //! # use rand::OsRng;
 //! # use tari_storage::lmdb_store::LMDBBuilder;
