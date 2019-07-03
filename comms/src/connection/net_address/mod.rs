@@ -137,9 +137,9 @@ impl fmt::Display for NetAddress {
         use NetAddress::*;
 
         match *self {
-            IP(ref addr) => write!(f, "IP({})", addr),
-            Onion(ref addr) => write!(f, "Onion({})", addr),
-            I2P(ref addr) => write!(f, "I2P({})", addr),
+            IP(ref addr) => write!(f, "{}", addr),
+            Onion(ref addr) => write!(f, "{}", addr),
+            I2P(ref addr) => write!(f, "{}", addr),
         }
     }
 }
