@@ -35,6 +35,7 @@ use std::{
 };
 use tari_comms::{
     builder::CommsServicesError,
+    connection::NetAddress,
     dispatcher::DispatchError,
     domain_connector::{ConnectorError, MessageInfo},
     message::{Message, MessageError, MessageFlags},
@@ -67,7 +68,7 @@ pub enum TextMessageError {
     ConnectorError(ConnectorError),
     CommsServicesError(CommsServicesError),
     /// If a received TextMessageAck doesn't matching any pending messages
-    MessageNotFoundError,
+    MessageNotFound,
     /// Failed to send from API
     ApiSendFailed,
     /// Failed to receive in API from service
@@ -78,16 +79,18 @@ pub enum TextMessageError {
     CommsNotInitialized,
     /// Received an unexpected API response
     UnexpectedApiResponse,
+    /// Contact not found
+    ContactNotFound,
 }
 
 /// Represents a single Text Message
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TextMessage {
-    id: Vec<u8>,
-    source_pub_key: CommsPublicKey,
-    dest_pub_key: CommsPublicKey,
-    message: String,
-    timestamp: DateTime<Utc>,
+    pub id: Vec<u8>,
+    pub source_pub_key: CommsPublicKey,
+    pub dest_pub_key: CommsPublicKey,
+    pub message: String,
+    pub timestamp: DateTime<Utc>,
 }
 
 impl TryInto<Message> for TextMessage {
@@ -97,6 +100,7 @@ impl TryInto<Message> for TextMessage {
         Ok((TariMessageType::new(ExtendedMessage::Text), self).try_into()?)
     }
 }
+
 /// Represents an Acknowledgement of receiving a Text Message
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TextMessageAck {
@@ -109,6 +113,21 @@ impl TryInto<Message> for TextMessageAck {
     fn try_into(self) -> Result<Message, Self::Error> {
         Ok((TariMessageType::new(ExtendedMessage::TextAck), self).try_into()?)
     }
+}
+
+/// A message contact
+#[derive(Clone, Debug, PartialEq)]
+pub struct Contact {
+    pub screen_name: String,
+    pub pub_key: CommsPublicKey,
+    pub address: NetAddress,
+}
+
+/// The updatable fields of message contact
+#[derive(Clone, Debug, PartialEq)]
+pub struct UpdateContact {
+    pub screen_name: String,
+    pub address: NetAddress,
 }
 
 /// This function generates a unique ID hash for a Text Message from the message components and an index integer
@@ -140,6 +159,8 @@ pub struct TextMessageService {
     pending_messages: HashMap<Vec<u8>, TextMessage>,
     sent_messages: Vec<TextMessage>,
     received_messages: Vec<TextMessage>,
+    screen_name: Option<String>,
+    contacts: Vec<Contact>,
     oms: Option<Arc<OutboundMessageService>>,
     api: ServiceApiWrapper<TextMessageServiceApi, TextMessageApiRequest, TextMessageApiResult>,
 }
@@ -151,6 +172,8 @@ impl TextMessageService {
             pending_messages: HashMap::new(),
             sent_messages: Vec::new(),
             received_messages: Vec::new(),
+            screen_name: None,
+            contacts: Vec::new(),
             oms: None,
             api: Self::setup_api(),
         }
@@ -244,7 +267,7 @@ impl TextMessageService {
             );
             match self.pending_messages.remove(&msg_ack.id) {
                 Some(m) => self.sent_messages.push(m),
-                None => return Err(TextMessageError::MessageNotFoundError),
+                None => return Err(TextMessageError::MessageNotFound),
             }
         }
 
@@ -254,10 +277,41 @@ impl TextMessageService {
     /// Return a copy of the current lists of messages
     /// TODO Remove this in memory storing of message in favour of Sqlite persistence
     fn get_current_messages(&self) -> TextMessages {
+        let mut pending_messages: Vec<TextMessage> = Vec::new();
+
+        for (_k, v) in self.pending_messages.iter() {
+            pending_messages.push(v.clone());
+        }
+
         TextMessages {
-            pending_messages: self.pending_messages.clone(),
+            pending_messages,
             sent_messages: self.sent_messages.clone(),
             received_messages: self.received_messages.clone(),
+        }
+    }
+
+    fn get_current_messages_by_pub_key(&self, pub_key: CommsPublicKey) -> TextMessages {
+        let mut pending_messages: Vec<TextMessage> = Vec::new();
+
+        for (_k, v) in self.pending_messages.iter() {
+            if v.dest_pub_key == pub_key {
+                pending_messages.push(v.clone());
+            }
+        }
+        TextMessages {
+            pending_messages,
+            sent_messages: self
+                .sent_messages
+                .iter()
+                .filter(|t| t.dest_pub_key == pub_key)
+                .cloned()
+                .collect(),
+            received_messages: self
+                .received_messages
+                .iter()
+                .filter(|t| t.source_pub_key == pub_key)
+                .cloned()
+                .collect(),
         }
     }
 
@@ -267,6 +321,44 @@ impl TextMessageService {
 
     pub fn set_pub_key(&mut self, pub_key: CommsPublicKey) {
         self.pub_key = pub_key;
+    }
+
+    pub fn get_screen_name(&self) -> Option<String> {
+        self.screen_name.clone()
+    }
+
+    pub fn set_screen_name(&mut self, screen_name: String) {
+        self.screen_name = Some(screen_name);
+    }
+
+    pub fn add_contact(&mut self, contact: Contact) {
+        self.contacts.push(contact);
+    }
+
+    pub fn remove_contact(&mut self, contact: Contact) -> Result<(), TextMessageError> {
+        let position = self
+            .contacts
+            .iter()
+            .position(|x| x == &contact)
+            .ok_or(TextMessageError::ContactNotFound)?;
+
+        let _ = self.contacts.remove(position);
+        Ok(())
+    }
+
+    pub fn get_contacts(&self) -> Vec<Contact> {
+        self.contacts.clone()
+    }
+
+    /// Updates the screen_name of a contact if an existing contact with the same pub_key is found
+    pub fn update_contact(&mut self, pub_key: CommsPublicKey, contact: UpdateContact) -> Result<(), TextMessageError> {
+        let found_contact = self
+            .contacts
+            .iter_mut()
+            .find(|c| c.pub_key == pub_key)
+            .ok_or(TextMessageError::ContactNotFound)?;
+        found_contact.screen_name = contact.screen_name.clone();
+        Ok(())
     }
 
     /// This handler is called when the Service executor loops receives an API request
@@ -284,6 +376,25 @@ impl TextMessageService {
             TextMessageApiRequest::GetTextMessages => {
                 Ok(TextMessageApiResponse::TextMessages(self.get_current_messages()))
             },
+            TextMessageApiRequest::GetTextMessagesByPubKey(pk) => Ok(TextMessageApiResponse::TextMessages(
+                self.get_current_messages_by_pub_key(pk),
+            )),
+            TextMessageApiRequest::GetScreenName => Ok(TextMessageApiResponse::ScreenName(self.get_screen_name())),
+            TextMessageApiRequest::SetScreenName(s) => {
+                self.set_screen_name(s);
+                Ok(TextMessageApiResponse::ScreenNameSet)
+            },
+            TextMessageApiRequest::AddContact(c) => {
+                self.add_contact(c);
+                Ok(TextMessageApiResponse::ContactAdded)
+            },
+            TextMessageApiRequest::RemoveContact(c) => {
+                self.remove_contact(c).map(|_| TextMessageApiResponse::ContactAdded)
+            },
+            TextMessageApiRequest::GetContacts => Ok(TextMessageApiResponse::Contacts(self.get_contacts())),
+            TextMessageApiRequest::UpdateContact((pk, c)) => self
+                .update_contact(pk, c)
+                .map(|_| TextMessageApiResponse::ContactUpdated),
         };
 
         debug!(target: LOG_TARGET, "[{}] Replying to API: {:?}", self.get_name(), resp);
@@ -301,7 +412,7 @@ impl TextMessageService {
 /// A collection to hold a text message state
 #[derive(Debug)]
 pub struct TextMessages {
-    pub pending_messages: HashMap<Vec<u8>, TextMessage>,
+    pub pending_messages: Vec<TextMessage>,
     pub sent_messages: Vec<TextMessage>,
     pub received_messages: Vec<TextMessage>,
 }
@@ -370,14 +481,26 @@ impl Service for TextMessageService {
 pub enum TextMessageApiRequest {
     SendTextMessage((CommsPublicKey, String)),
     GetTextMessages,
+    GetTextMessagesByPubKey(CommsPublicKey),
+    SetScreenName(String),
+    GetScreenName,
+    AddContact(Contact),
+    RemoveContact(Contact),
+    GetContacts,
+    UpdateContact((CommsPublicKey, UpdateContact)),
 }
 
 /// API Response enum
 #[derive(Debug)]
 pub enum TextMessageApiResponse {
     MessageSent,
-    // This in favour of a call to the persistence engine
     TextMessages(TextMessages),
+    ScreenName(Option<String>),
+    ScreenNameSet,
+    ContactAdded,
+    ContactRemoved,
+    Contacts(Vec<Contact>),
+    ContactUpdated,
 }
 
 /// Result for all API requests
@@ -419,6 +542,62 @@ impl TextMessageServiceApi {
             })
     }
 
+    pub fn get_text_messages_by_pub_key(&self, pub_key: CommsPublicKey) -> Result<TextMessages, TextMessageError> {
+        self.send_recv(TextMessageApiRequest::GetTextMessagesByPubKey(pub_key))
+            .and_then(|resp| match resp {
+                TextMessageApiResponse::TextMessages(msgs) => Ok(msgs),
+                _ => Err(TextMessageError::UnexpectedApiResponse),
+            })
+    }
+
+    pub fn get_screen_name(&self) -> Result<Option<String>, TextMessageError> {
+        self.send_recv(TextMessageApiRequest::GetScreenName)
+            .and_then(|resp| match resp {
+                TextMessageApiResponse::ScreenName(s) => Ok(s),
+                _ => Err(TextMessageError::UnexpectedApiResponse),
+            })
+    }
+
+    pub fn set_screen_name(&self, screen_name: String) -> Result<(), TextMessageError> {
+        self.send_recv(TextMessageApiRequest::SetScreenName(screen_name))
+            .and_then(|resp| match resp {
+                TextMessageApiResponse::ScreenNameSet => Ok(()),
+                _ => Err(TextMessageError::UnexpectedApiResponse),
+            })
+    }
+
+    pub fn add_contact(&self, contact: Contact) -> Result<(), TextMessageError> {
+        self.send_recv(TextMessageApiRequest::AddContact(contact))
+            .and_then(|resp| match resp {
+                TextMessageApiResponse::ContactAdded => Ok(()),
+                _ => Err(TextMessageError::UnexpectedApiResponse),
+            })
+    }
+
+    pub fn remove_contact(&self, contact: Contact) -> Result<(), TextMessageError> {
+        self.send_recv(TextMessageApiRequest::RemoveContact(contact))
+            .and_then(|resp| match resp {
+                TextMessageApiResponse::ContactRemoved => Ok(()),
+                _ => Err(TextMessageError::UnexpectedApiResponse),
+            })
+    }
+
+    pub fn get_contacts(&self) -> Result<Vec<Contact>, TextMessageError> {
+        self.send_recv(TextMessageApiRequest::GetContacts)
+            .and_then(|resp| match resp {
+                TextMessageApiResponse::Contacts(v) => Ok(v),
+                _ => Err(TextMessageError::UnexpectedApiResponse),
+            })
+    }
+
+    pub fn update_contact(&self, pub_key: CommsPublicKey, contact: UpdateContact) -> Result<(), TextMessageError> {
+        self.send_recv(TextMessageApiRequest::UpdateContact((pub_key, contact)))
+            .and_then(|resp| match resp {
+                TextMessageApiResponse::ContactUpdated => Ok(()),
+                _ => Err(TextMessageError::UnexpectedApiResponse),
+            })
+    }
+
     fn send_recv(&self, msg: TextMessageApiRequest) -> TextMessageApiResult {
         self.lock(|| -> TextMessageApiResult {
             self.sender.send(msg).map_err(|_| TextMessageError::ApiSendFailed)?;
@@ -435,4 +614,69 @@ impl TextMessageServiceApi {
         drop(lock);
         res
     }
+}
+
+mod test {
+    use crate::text_message_service::{Contact, TextMessageError, TextMessageService, UpdateContact};
+    use tari_comms::types::CommsPublicKey;
+    use tari_crypto::keys::PublicKey;
+    #[test]
+    fn test_contacts_crud() {
+        let mut rng = rand::OsRng::new().unwrap();
+
+        let (_secret_key, public_key) = CommsPublicKey::random_keypair(&mut rng);
+
+        let mut tms = TextMessageService::new(public_key);
+
+        let mut contacts = Vec::new();
+
+        let screen_names = vec![
+            "Alice".to_string(),
+            "Bob".to_string(),
+            "Carol".to_string(),
+            "Dave".to_string(),
+            "Eric".to_string(),
+        ];
+        for i in 0..5 {
+            let (_contact_secret_key, contact_public_key) = CommsPublicKey::random_keypair(&mut rng);
+            contacts.push(Contact {
+                screen_name: screen_names[i].clone(),
+                pub_key: contact_public_key,
+                address: "127.0.0.1:12345".parse().unwrap(),
+            });
+        }
+
+        assert_eq!(tms.get_screen_name(), None);
+        tms.set_screen_name("Fred".to_string());
+        assert_eq!(tms.get_screen_name(), Some("Fred".to_string()));
+
+        for c in contacts.iter() {
+            tms.add_contact(c.clone())
+        }
+
+        assert_eq!(tms.get_contacts().len(), 5);
+
+        tms.remove_contact(contacts[0].clone()).unwrap();
+
+        assert_eq!(tms.get_contacts().len(), 4);
+
+        let update_contact = UpdateContact {
+            screen_name: "Betty".to_string(),
+            address: contacts[1].address.clone(),
+        };
+
+        tms.update_contact(contacts[1].pub_key.clone(), update_contact).unwrap();
+
+        let updated_contacts = tms.get_contacts();
+        assert_eq!(updated_contacts[0].screen_name, "Betty".to_string());
+
+        match tms.update_contact(CommsPublicKey::default(), UpdateContact {
+            screen_name: "Whatever".to_string(),
+            address: "127.0.0.1:12345".parse().unwrap(),
+        }) {
+            Err(TextMessageError::ContactNotFound) => assert!(true),
+            _ => assert!(false),
+        }
+    }
+
 }

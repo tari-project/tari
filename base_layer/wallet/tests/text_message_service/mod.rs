@@ -57,6 +57,7 @@ fn test_text_message_service() {
 
     let node_1_identity = NodeIdentity::random(&mut rng, "127.0.0.1:31523".parse().unwrap()).unwrap();
     let node_2_identity = NodeIdentity::random(&mut rng, "127.0.0.1:31545".parse().unwrap()).unwrap();
+    let node_3_identity = NodeIdentity::random(&mut rng, "127.0.0.1:31546".parse().unwrap()).unwrap();
 
     let node_1_database_name = "node_1_test_text_message_service"; // Note: every test should have unique database
     let node_1_datastore = init_datastore(node_1_database_name).unwrap();
@@ -64,10 +65,13 @@ fn test_text_message_service() {
     let node_2_database_name = "node_2_test_text_message_service"; // Note: every test should have unique database
     let node_2_datastore = init_datastore(node_2_database_name).unwrap();
     let node_2_peer_database = node_2_datastore.get_handle(node_2_database_name).unwrap();
+    let node_3_database_name = "node_3_test_text_message_service"; // Note: every test should have unique database
+    let node_3_datastore = init_datastore(node_3_database_name).unwrap();
+    let node_3_peer_database = node_3_datastore.get_handle(node_3_database_name).unwrap();
 
     let (node_1_services, node_1_tms) = setup_text_message_service(
         node_1_identity.clone(),
-        vec![node_2_identity.clone()],
+        vec![node_2_identity.clone(), node_3_identity.clone()],
         node_1_peer_database,
     );
     let (node_2_services, node_2_tms) = setup_text_message_service(
@@ -75,11 +79,18 @@ fn test_text_message_service() {
         vec![node_1_identity.clone()],
         node_2_peer_database,
     );
+    let (node_3_services, _node_3_tms) = setup_text_message_service(
+        node_3_identity.clone(),
+        vec![node_1_identity.clone()],
+        node_3_peer_database,
+    );
 
     node_1_tms
-        .send_text_message(node_2_identity.identity.public_key.clone(), "Say Hello,".to_string())
+        .send_text_message(node_2_identity.identity.public_key.clone(), "Say Hello".to_string())
         .unwrap();
-
+    node_1_tms
+        .send_text_message(node_3_identity.identity.public_key.clone(), "Say Hello".to_string())
+        .unwrap();
     node_2_tms
         .send_text_message(node_1_identity.identity.public_key.clone(), "hello?".to_string())
         .unwrap();
@@ -112,7 +123,7 @@ fn test_text_message_service() {
             let msgs = node_1_tms.get_text_messages().unwrap();
             (msgs.sent_messages.len(), msgs.received_messages.len())
         },
-        (5, 4),
+        (6, 4),
         100,
     );
 
@@ -125,9 +136,16 @@ fn test_text_message_service() {
         100,
     );
 
+    let msgs = node_1_tms
+        .get_text_messages_by_pub_key(node_2_identity.identity.public_key)
+        .unwrap();
+
+    assert_eq!(msgs.sent_messages.len(), 5);
+
     node_1_services.shutdown().unwrap();
     node_2_services.shutdown().unwrap();
-
+    node_3_services.shutdown().unwrap();
     clean_up_datastore(node_1_database_name);
     clean_up_datastore(node_2_database_name);
+    clean_up_datastore(node_3_database_name);
 }
