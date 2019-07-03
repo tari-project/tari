@@ -76,7 +76,9 @@ impl NetAddressesWithStats {
     }
 
     /// Finds and returns the highest priority net address until all connection attempts for each net address have been
-    /// reached
+    /// reached. Should the node fail to connect to the address, the address should be marked as such
+    /// using `mark_failed_connection_attempt`. If a maximum number of attempts is reached, for all addresses
+    /// a `NetAddressError::ConnectionAttemptsExceeded` error is returned.
     pub fn get_best_net_address(&mut self) -> Result<NetAddress, NetAddressError> {
         if self.addresses.len() >= 1 {
             let any_reachable = self

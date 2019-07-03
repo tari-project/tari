@@ -31,9 +31,9 @@ pub enum PeerManagerError {
     PeerNotFoundError,
     /// The Thread Safety has been breached and the data access has become poisoned
     PoisonedAccess,
-    /// Could not write or read from datastore
+    // Could not write or read from datastore
     DatastoreError(DatastoreError),
-    /// A problem occurred during the serialization of the keys or data
+    // A problem occurred during the serialization of the keys or data
     SerializationError(MessageFormatError),
     /// A problem occurred converting the serialized data into peers
     DeserializationError,
@@ -43,16 +43,15 @@ pub enum PeerManagerError {
     DatastoreUndefined,
     /// An empty response was received from the Datastore
     EmptyDatastoreQuery,
-    /// The data update could not be performed
-    DataUpdateError,
+    // A NetAddressError occurred
+    NetAddressError(NetAddressError),
     /// The PeerManager doesn't have enough peers to fill the identity request
     InsufficientPeers,
     /// The peer has been banned
     BannedPeer,
     /// Problem initializing the RNG
     RngError,
-    /// An problem has been encountered with the database
+    // An problem has been encountered with the database
     DatabaseError(CommsDataStoreError),
     NodeIdError(NodeIdError),
-    NetAddressError(NetAddressError),
 }

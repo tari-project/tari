@@ -20,15 +20,16 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use super::{outbound_message_pool::OutboundMessage, BroadcastStrategy, OutboundError};
 use crate::{
     connection::{
+        types::Linger,
         zmq::{InprocAddress, ZmqContext},
         Connection,
         Direction,
         SocketEstablishment,
     },
     message::{Frame, Message, MessageEnvelope, MessageError, MessageFlags, NodeDestination},
-    outbound_message_service::{BroadcastStrategy, OutboundError, OutboundMessage},
     peer_manager::{peer_manager::PeerManager, NodeIdentity},
 };
 use std::{convert::TryInto, sync::Arc};
@@ -100,18 +101,19 @@ impl OutboundMessageService {
         // Send message to outbound message pool
         let outbound_connection = Connection::new(&self.context, Direction::Outbound)
             .set_name("OMS to OMP")
+            .set_linger(Linger::Timeout(5000))
             .set_socket_establishment(SocketEstablishment::Connect)
             .establish(&self.outbound_address)
             .map_err(|e| OutboundError::ConnectionError(e))?;
 
-        let node_identity = &self.node_identity;
         // Use the BroadcastStrategy to select appropriate peer(s) from PeerManager and then construct and send a
         // personalised message to each selected peer
-        let selected_node_identities = self.peer_manager.get_broadcast_identities(broadcast_strategy)?;
-        for dest_node_identity in &selected_node_identities {
-            // Constructing a MessageEnvelope
+        let mut selected_node_identities = self.peer_manager.get_broadcast_identities(broadcast_strategy)?;
+
+        // Constructing a MessageEnvelope for each recipient
+        for dest_node_identity in selected_node_identities.drain(..) {
             let message_envelope = MessageEnvelope::construct(
-                &node_identity,
+                &self.node_identity,
                 dest_node_identity.public_key.clone(),
                 NodeDestination::NodeId(dest_node_identity.node_id.clone()),
                 message_envelope_body.clone(),
@@ -119,15 +121,11 @@ impl OutboundMessageService {
             )
             .map_err(|e| OutboundError::MessageSerializationError(e))?;
 
-            // Construct an OutboundMessage
-            let outbound_message =
-                OutboundMessage::<MessageEnvelope>::new(dest_node_identity.node_id.clone(), message_envelope);
+            let msg = OutboundMessage::new(dest_node_identity.node_id, message_envelope.into_frame_set());
+            let msg_buffer = msg.to_binary().map_err(OutboundError::MessageFormatError)?;
 
-            let outbound_message_buffer = vec![outbound_message
-                .to_binary()
-                .map_err(|e| OutboundError::MessageFormatError(e))?];
             outbound_connection
-                .send(&outbound_message_buffer)
+                .send(&[msg_buffer])
                 .map_err(|e| OutboundError::ConnectionError(e))?;
         }
         Ok(())
@@ -145,9 +143,10 @@ mod test {
             node_id::NodeId,
             peer::{Peer, PeerFlags},
         },
+        types::CommsPublicKey,
     };
     use log::*;
-    use std::{convert::TryFrom, path::PathBuf};
+    use std::path::PathBuf;
     use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
     use tari_storage::lmdb_store::{LMDBBuilder, LMDBError, LMDBStore};
 
@@ -224,20 +223,20 @@ mod test {
             target: "comms::outbound_message_service::outbound_message_service",
             "Received message bytes: {:?}", msg_bytes
         );
-        let outbound_message = OutboundMessage::<MessageEnvelope>::try_from(msg_bytes).unwrap();
-        assert_eq!(outbound_message.destination_node_id, dest_peer.node_id);
-        assert_eq!(outbound_message.number_of_retries(), 0);
-        assert_eq!(outbound_message.last_retry_timestamp(), None);
-        let message_envelope_header = outbound_message.message_envelope.to_header().unwrap();
+        let outbound_message = OutboundMessage::from_binary(&msg_bytes[0]).unwrap();
+        assert_eq!(outbound_message.destination_node_id(), &dest_peer.node_id);
+        assert_eq!(outbound_message.num_attempts(), 0);
+        assert_eq!(outbound_message.is_scheduled(), true);
+        let message_envelope: MessageEnvelope = outbound_message.message_frames().clone().try_into().unwrap();
+        let message_envelope_header = message_envelope.to_header::<CommsPublicKey>().unwrap();
         assert_eq!(message_envelope_header.source, node_identity.identity.public_key);
         assert_eq!(
             message_envelope_header.dest,
-            NodeDestination::<RistrettoPublicKey>::NodeId(dest_peer.node_id.clone())
+            NodeDestination::NodeId(dest_peer.node_id.clone())
         );
-        assert!(outbound_message.message_envelope.verify_signature().unwrap());
+        assert!(message_envelope.verify_signature().unwrap());
         assert_eq!(message_envelope_header.flags, MessageFlags::ENCRYPTED);
-        let decoded_message_envelope_body = outbound_message
-            .message_envelope
+        let decoded_message_envelope_body = message_envelope
             .decrypted_message_body(&dest_sk, &node_identity.identity.public_key)
             .unwrap();
         assert_eq!(message_envelope_body, decoded_message_envelope_body);

@@ -195,7 +195,7 @@ fn establish_peer_connection() {
     node_B_control_service.handle.join().unwrap().unwrap();
 
     assert_eq!(node_A_connection_manager.get_active_connection_count(), 1);
-    node_B_msg_counter.assert_count(2, 2000);
+    node_B_msg_counter.assert_count(2, 20);
 
     match Arc::try_unwrap(node_A_connection_manager) {
         Ok(manager) => manager.shutdown().into_iter().map(|r| r.unwrap()).collect::<Vec<()>>(),
