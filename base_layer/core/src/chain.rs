@@ -58,6 +58,7 @@ impl Chain {
                 let height = new_block.header.height;
                 self.current_total_pow = new_block.header.pow;
                 self.orphans.retain(|_, b| height - b.header.height < MAX_ORPHAN_AGE);
+                // todo search for new orphans that we might apply
                 Ok(())
             },
             // block seems valid, but its orphaned
