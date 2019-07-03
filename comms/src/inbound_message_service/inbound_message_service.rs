@@ -114,7 +114,7 @@ where
     }
 
     /// Spawn an InboundMessageWorker for the InboundMessageService
-    pub fn start(&mut self) {
+    pub fn start(&mut self) -> Result<(), InboundError> {
         info!(target: LOG_TARGET, "Starting inbound message service");
         let worker = InboundMessageWorker::new(
             self.config.clone(),
@@ -126,9 +126,10 @@ where
             self.outbound_message_service.clone(),
             self.peer_manager.clone(),
         );
-        let (worker_thread_handle, worker_sync_sender) = worker.start();
+        let (worker_thread_handle, worker_sync_sender) = worker.start()?;
         self.worker_thread_handle = Some(worker_thread_handle);
         self.worker_control_sender = Some(worker_sync_sender);
+        Ok(())
     }
 
     /// Tell the underlying worker thread to shut down
@@ -267,7 +268,7 @@ mod test {
             outbound_message_service,
             peer_manager,
         );
-        inbound_message_service.start();
+        inbound_message_service.start().unwrap();
 
         // Construct a test message
         let message_header = MessageHeader {

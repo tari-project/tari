@@ -41,4 +41,6 @@ pub enum InboundError {
     ThreadJoinError,
     /// The thread handle is undefined and could have not been properly created
     ThreadHandleUndefined,
+    /// Inbound message worker thread failed to start
+    ThreadInitializationError,
 }

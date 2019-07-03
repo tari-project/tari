@@ -34,6 +34,9 @@ use tari_comms::{
     message::FrameSet,
 };
 
+/// Set the allocated stack size for each AsyncRequestReplyPattern thread
+const THREAD_STACK_SIZE: usize = 32 * 1024; // 32kb
+
 /// Creates an [AsyncRequestReplyPattern].
 ///
 /// [AsyncRequestReplyPattern]: struct.AsyncRequestReplyPattern.html
@@ -109,52 +112,57 @@ where T: ZmqEndpoint + Clone + Send + Sync + 'static
         let endpoint = self.endpoint.clone().unwrap();
         let msgs = self.frames.clone().unwrap();
         let direction = self.direction;
-        thread::spawn(move || {
-            let socket = ctx.socket(SocketType::Dealer).unwrap();
-            if let Some(i) = identity {
-                socket.set_identity(i.as_bytes()).unwrap();
-            }
 
-            socket.set_linger(100).unwrap();
+        thread::Builder::new()
+            .name("async-request-reply-pattern-thread".to_string())
+            .stack_size(THREAD_STACK_SIZE)
+            .spawn(move || {
+                let socket = ctx.socket(SocketType::Dealer).unwrap();
+                if let Some(i) = identity {
+                    socket.set_identity(i.as_bytes()).unwrap();
+                }
 
-            match direction {
-                Direction::Inbound => {
-                    if let Some(sk) = secret_key {
-                        socket.set_curve_server(true).unwrap();
-                        socket.set_curve_secretkey(&sk.into_inner()).unwrap();
-                    }
-                    socket.bind(endpoint.to_zmq_endpoint().as_str()).unwrap();
+                socket.set_linger(100).unwrap();
 
-                    socket.recv_multipart(0).unwrap();
+                match direction {
+                    Direction::Inbound => {
+                        if let Some(sk) = secret_key {
+                            socket.set_curve_server(true).unwrap();
+                            socket.set_curve_secretkey(&sk.into_inner()).unwrap();
+                        }
+                        socket.bind(endpoint.to_zmq_endpoint().as_str()).unwrap();
 
-                    socket
-                        .send_multipart(msgs.iter().map(|s| s.as_slice()).collect::<Vec<&[u8]>>().as_slice(), 0)
-                        .unwrap();
+                        socket.recv_multipart(0).unwrap();
 
-                    // Send thread done signal
-                    tx.send(()).unwrap();
-                },
+                        socket
+                            .send_multipart(msgs.iter().map(|s| s.as_slice()).collect::<Vec<&[u8]>>().as_slice(), 0)
+                            .unwrap();
 
-                Direction::Outbound => {
-                    if let Some(spk) = server_public_key {
-                        socket.set_curve_serverkey(&spk.into_inner()).unwrap();
-                        let keypair = CurveEncryption::generate_keypair().unwrap();
-                        socket.set_curve_publickey(&keypair.1.into_inner()).unwrap();
-                        socket.set_curve_secretkey(&keypair.0.into_inner()).unwrap();
-                    }
+                        // Send thread done signal
+                        tx.send(()).unwrap();
+                    },
 
-                    socket.connect(endpoint.to_zmq_endpoint().as_str()).unwrap();
-                    socket
-                        .send_multipart(msgs.iter().map(|s| s.as_slice()).collect::<Vec<&[u8]>>().as_slice(), 0)
-                        .unwrap();
+                    Direction::Outbound => {
+                        if let Some(spk) = server_public_key {
+                            socket.set_curve_serverkey(&spk.into_inner()).unwrap();
+                            let keypair = CurveEncryption::generate_keypair().unwrap();
+                            socket.set_curve_publickey(&keypair.1.into_inner()).unwrap();
+                            socket.set_curve_secretkey(&keypair.0.into_inner()).unwrap();
+                        }
 
-                    socket.recv_multipart(0).unwrap();
+                        socket.connect(endpoint.to_zmq_endpoint().as_str()).unwrap();
+                        socket
+                            .send_multipart(msgs.iter().map(|s| s.as_slice()).collect::<Vec<&[u8]>>().as_slice(), 0)
+                            .unwrap();
 
-                    // Send thread done signal
-                    tx.send(()).unwrap();
-                },
-            }
-        });
+                        socket.recv_multipart(0).unwrap();
+
+                        // Send thread done signal
+                        tx.send(()).unwrap();
+                    },
+                }
+            })
+            .unwrap();
         rx
     }
 }
