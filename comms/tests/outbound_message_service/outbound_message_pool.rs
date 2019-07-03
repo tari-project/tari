@@ -271,7 +271,7 @@ fn test_outbound_message_pool_requeuing() {
     )
     .unwrap();
 
-    omp.start();
+    omp.start().unwrap();
     let message_envelope_body: Vec<u8> = vec![0, 1, 2, 3];
 
     // Now check that the requeuing happens

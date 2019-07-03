@@ -50,6 +50,9 @@ use tari_utilities::message_format::MessageFormat;
 
 const LOG_TARGET: &'static str = "comms::outbound_message_service::pool::worker";
 
+/// Set the allocated stack size for each MessagePoolWorker thread
+const THREAD_STACK_SIZE: usize = 256 * 1024; // 256kb
+
 #[derive(Debug)]
 pub enum WorkerError {
     /// Problem with inbound connection
@@ -186,21 +189,25 @@ impl MessagePoolWorker {
     }
 
     /// Start the MessagePoolWorker thread
-    pub fn start(mut self) -> (thread::JoinHandle<()>, SyncSender<ControlMessage>) {
+    pub fn start(mut self) -> Result<(thread::JoinHandle<()>, SyncSender<ControlMessage>), OutboundError> {
         self.is_running = true;
         let (control_sync_sender, control_receiver) = sync_channel(5);
         self.control_receiver = Some(control_receiver);
 
-        let thread_handle = thread::spawn(move || match self.start_worker() {
-            Ok(_) => (),
-            Err(e) => {
-                error!(
-                    target: LOG_TARGET,
-                    "Error starting Outbound Message Pool worker: {:?}", e
-                );
-            },
-        });
-        (thread_handle, control_sync_sender)
+        let thread_handle = thread::Builder::new()
+            .name("message-pool-worker-thread".to_string())
+            .stack_size(THREAD_STACK_SIZE)
+            .spawn(move || match self.start_worker() {
+                Ok(_) => (),
+                Err(e) => {
+                    error!(
+                        target: LOG_TARGET,
+                        "Error starting Outbound Message Pool worker: {:?}", e
+                    );
+                },
+            })
+            .map_err(|_| OutboundError::ThreadInitializationError)?;
+        Ok((thread_handle, control_sync_sender))
     }
 
     /// Attempt to send a message to the NodeId specified in the message. If the the attempt is not successful then mark

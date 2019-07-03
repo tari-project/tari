@@ -53,6 +53,9 @@ use std::{
 
 const LOG_TARGET: &'static str = "comms::inbound_message_service::worker";
 
+/// Set the allocated stack size for the InboundMessageWorker thread
+const THREAD_STACK_SIZE: usize = 256 * 1024; // 256kb
+
 /// The InboundMessageWorker retrieve messages from the inbound message queue, creates a MessageContext for the message
 /// that is then dispatch using the dispatcher.
 pub struct InboundMessageWorker<MType>
@@ -184,18 +187,22 @@ where
 
     /// Start the InboundMessageWorker thread, setup the control channel and start retrieving and dispatching incoming
     /// messages to handlers
-    pub fn start(mut self) -> (thread::JoinHandle<()>, SyncSender<ControlMessage>) {
+    pub fn start(mut self) -> Result<(thread::JoinHandle<()>, SyncSender<ControlMessage>), InboundError> {
         self.is_running = true;
         let (control_sync_sender, control_receiver) = sync_channel(5);
         self.control_receiver = Some(control_receiver);
 
-        let thread_handle = thread::spawn(move || match self.start_worker() {
-            Ok(_) => (),
-            Err(e) => {
-                error!(target: LOG_TARGET, "Error starting inbound message worker: {:?}", e);
-            },
-        });
-        (thread_handle, control_sync_sender)
+        let thread_handle = thread::Builder::new()
+            .name("inbound-message-worker-thread".to_string())
+            .stack_size(THREAD_STACK_SIZE)
+            .spawn(move || match self.start_worker() {
+                Ok(_) => (),
+                Err(e) => {
+                    error!(target: LOG_TARGET, "Error starting inbound message worker: {:?}", e);
+                },
+            })
+            .map_err(|_| InboundError::ThreadInitializationError)?;
+        Ok((thread_handle, control_sync_sender))
     }
 
     /// Check for control messages to manage worker thread
@@ -331,7 +338,7 @@ mod test {
             outbound_message_service,
             peer_manager,
         );
-        let (thread_handle, control_sync_sender) = worker.start();
+        let (thread_handle, control_sync_sender) = worker.start().unwrap();
         // Give worker sufficient time to spinup thread and create a socket
         std::thread::sleep(time::Duration::from_millis(100));
 

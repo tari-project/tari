@@ -44,6 +44,9 @@ use tari_comms::{
 
 const BENCH_SOCKET_ADDRESS: &'static str = "127.0.0.1:9999";
 
+/// Set the allocated stack size for each WorkerTask thread
+const THREAD_STACK_SIZE: usize = 16 * 1024; // 16kb
+
 lazy_static! {
     static ref DUMMY_DATA: FrameSet = vec![
         repeat(88u8).take(512 * 1024).collect::<Vec<u8>>(),
@@ -93,23 +96,26 @@ fn start_message_sink_consumer(
     let addr = addr.clone();
     let peer_conn = peer_conn.clone();
     let (tx, rx) = sync_channel(2);
-    thread::spawn(move || {
-        let conn = Connection::new(&ctx, Direction::Inbound).establish(&addr).unwrap();
-        loop {
-            match rx.recv().unwrap() {
-                WorkerTask::Receive => {
-                    conn.receive(1000).unwrap();
-                    signal.send(()).unwrap();
-                },
-                WorkerTask::ReceiveSend => {
-                    let data = conn.receive(1000).unwrap();
-                    peer_conn.send(data).unwrap();
-                    signal.send(()).unwrap();
-                },
-                WorkerTask::Exit => break,
+    thread::Builder::new()
+        .name("peer-connection-consumer-thread".to_string())
+        .stack_size(THREAD_STACK_SIZE)
+        .spawn(move || {
+            let conn = Connection::new(&ctx, Direction::Inbound).establish(&addr).unwrap();
+            loop {
+                match rx.recv().unwrap() {
+                    WorkerTask::Receive => {
+                        conn.receive(1000).unwrap();
+                        signal.send(()).unwrap();
+                    },
+                    WorkerTask::ReceiveSend => {
+                        let data = conn.receive(1000).unwrap();
+                        peer_conn.send(data).unwrap();
+                        signal.send(()).unwrap();
+                    },
+                    WorkerTask::Exit => break,
+                }
             }
-        }
-    });
+        });
     tx
 }
 

@@ -58,6 +58,9 @@ const LOG_TARGET: &'static str = "comms::control_service::worker";
 /// Messages will transparently drop if this size is exceeded.
 const CONTROL_SERVICE_MAX_MSG_SIZE: u64 = 1024; // 1kb
 
+/// Set the allocated stack size for each ControlServiceWorker thread
+const THREAD_STACK_SIZE: usize = 256 * 1024; // 256kb
+
 /// The [ControlService] worker is responsible for handling incoming messages
 /// to the control port and dispatching them using the message dispatcher.
 pub struct ControlServiceWorker<MType>
@@ -108,7 +111,8 @@ where
         };
 
         let handle = thread::Builder::new()
-            .name("control-service".to_string())
+            .name("control-service-worker-thread".to_string())
+            .stack_size(THREAD_STACK_SIZE)
             .spawn(move || {
                 info!(
                     target: LOG_TARGET,

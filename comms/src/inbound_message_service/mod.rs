@@ -41,3 +41,5 @@ pub mod error;
 pub mod inbound_message_broker;
 pub mod inbound_message_service;
 pub mod inbound_message_worker;
+
+pub use self::error::InboundError;
