@@ -1,0 +1,8 @@
+{
+  "peers": [
+    {"screen_name": "Bob",
+      "pub_key": "IAAAAAAAAACY+Cgi1TeA3WQm+UqoNwChJ8btAvTl/ozUVWuTJhIGFw==",
+      "address": "127.0.0.1:20000"
+    }
+  ]
+}

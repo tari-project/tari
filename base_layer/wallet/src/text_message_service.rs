@@ -116,7 +116,7 @@ impl TryInto<Message> for TextMessageAck {
 }
 
 /// A message contact
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct Contact {
     pub screen_name: String,
     pub pub_key: CommsPublicKey,

@@ -25,6 +25,7 @@ use crate::{
         server,
         Contact as ContactRpc,
         Contacts as ContactsRpc,
+        PublicKey as PublicKeyRpc,
         ReceivedTextMessage as ReceivedTextMessageRpc,
         RpcResponse,
         ScreenName as ScreenNameRpc,
@@ -58,7 +59,7 @@ impl TryFrom<TextMessage> for ReceivedTextMessageRpc {
 
     fn try_from(m: TextMessage) -> Result<Self, Self::Error> {
         Ok(ReceivedTextMessageRpc {
-            id: m.id,
+            id: m.id.to_base64().unwrap(),
             source_pub_key: m.source_pub_key.to_base64()?,
             dest_pub_key: m.dest_pub_key.to_base64()?,
             message: m.message,
@@ -76,6 +77,7 @@ pub struct WalletRPC {
 impl server::WalletRpc for WalletRPC {
     type AddContactFuture = future::FutureResult<Response<RpcResponse>, tower_grpc::Status>;
     type GetContactsFuture = future::FutureResult<Response<ContactsRpc>, tower_grpc::Status>;
+    type GetPublicKeyFuture = future::FutureResult<Response<PublicKeyRpc>, tower_grpc::Status>;
     type GetScreenNameFuture = future::FutureResult<Response<ScreenNameRpc>, tower_grpc::Status>;
     type GetTextMessagesByContactFuture = future::FutureResult<Response<TextMessagesResponseRpc>, tower_grpc::Status>;
     type GetTextMessagesFuture = future::FutureResult<Response<TextMessagesResponseRpc>, tower_grpc::Status>;
@@ -193,6 +195,21 @@ impl server::WalletRpc for WalletRPC {
             .unwrap_or("".to_string()); // Unwrap Option
 
         future::ok(Response::new(ScreenNameRpc { screen_name }))
+    }
+
+    fn get_public_key(&mut self, request: Request<VoidParams>) -> Self::GetPublicKeyFuture {
+        info!(target: LOG_TARGET, "GetPublicKey gRPC Request received: {:?}", request,);
+
+        let _msg = request.into_inner();
+
+        let public_key = self
+            .wallet
+            .public_key
+            .clone()
+            .to_base64()
+            .unwrap_or("Failed to get public key".to_string());
+
+        future::ok(Response::new(PublicKeyRpc { pub_key: public_key }))
     }
 
     fn add_contact(&mut self, request: Request<ContactRpc>) -> Self::AddContactFuture {
@@ -396,7 +413,7 @@ pub fn sort_text_messages(msgs: TextMessages) -> TextMessagesResponseRpc {
             },
         };
         body.sent_messages.push(SentTextMessageRpc {
-            id: msg.id,
+            id: msg.id.to_base64().unwrap(),
             source_pub_key: source,
             dest_pub_key: dest,
             message: msg.message,
@@ -421,7 +438,7 @@ pub fn sort_text_messages(msgs: TextMessages) -> TextMessagesResponseRpc {
             },
         };
         body.sent_messages.push(SentTextMessageRpc {
-            id: msg.id,
+            id: msg.id.to_base64().unwrap(),
             source_pub_key: source,
             dest_pub_key: dest,
             message: msg.message,

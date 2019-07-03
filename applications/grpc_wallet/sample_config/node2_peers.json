@@ -1,0 +1,8 @@
+{
+  "peers": [
+    {"screen_name": "Alice",
+      "pub_key": "IAAAAAAAAABcWUYkstZ2BQpNoUBOKp9a0OICVsU0p+fBPO+u4NP0cQ==",
+      "address": "127.0.0.1:10000"
+    }
+  ]
+}

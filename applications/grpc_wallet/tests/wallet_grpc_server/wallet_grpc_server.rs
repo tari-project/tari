@@ -42,7 +42,7 @@ use tari_grpc_wallet::grpc_interface::wallet_rpc::{
     VoidParams,
 };
 
-use tari_grpc_wallet::wallet_server::{WalletServer, WalletServerConfig};
+use tari_grpc_wallet::wallet_server::WalletServer;
 use tari_p2p::{
     initialization::CommsConfig,
     tari_message::{NetMessage, TariMessageType},
@@ -55,6 +55,7 @@ use tower_hyper::{client, util};
 use tower_util::MakeService;
 
 const LOG_TARGET: &'static str = "applications::grpc_wallet";
+const WALLET_GRPC_PORT: u32 = 26778;
 
 pub fn init() {
     let _ = simple_logger::init_with_level(Level::Debug);
@@ -63,9 +64,7 @@ pub fn init() {
 fn send_text_message_request(msg: TextMessageToSendRpc, desired_response: RpcResponse) {
     let (tx, rx) = bounded(1);
 
-    let uri: http::Uri = format!("http://127.0.0.1:{}", WalletServerConfig::default().port)
-        .parse()
-        .unwrap();
+    let uri: http::Uri = format!("http://127.0.0.1:{}", WALLET_GRPC_PORT).parse().unwrap();
 
     let dst = Destination::try_from_uri(uri.clone()).unwrap();
     let connector = util::Connector::new(HttpConnector::new(1));
@@ -114,9 +113,7 @@ fn get_text_messages_request(sent_messages: Vec<String>, received_messages: Vec<
     for _ in 0..40 {
         let move_contact = contact.clone();
         let (tx, rx) = bounded(2);
-        let uri: http::Uri = format!("http://127.0.0.1:{}", WalletServerConfig::default().port)
-            .parse()
-            .unwrap();
+        let uri: http::Uri = format!("http://127.0.0.1:{}", WALLET_GRPC_PORT).parse().unwrap();
         let dst = Destination::try_from_uri(uri.clone()).unwrap();
         let connector = util::Connector::new(HttpConnector::new(1));
         let settings = client::Builder::new().http2_only(true).clone();
@@ -182,9 +179,7 @@ fn get_text_messages_request(sent_messages: Vec<String>, received_messages: Vec<
 
 fn set_get_screen_name(name: String) {
     let requested_name = name.clone();
-    let uri: http::Uri = format!("http://127.0.0.1:{}", WalletServerConfig::default().port)
-        .parse()
-        .unwrap();
+    let uri: http::Uri = format!("http://127.0.0.1:{}", WALLET_GRPC_PORT).parse().unwrap();
 
     let dst = Destination::try_from_uri(uri.clone()).unwrap();
     let connector = util::Connector::new(HttpConnector::new(1));
@@ -217,9 +212,7 @@ fn set_get_screen_name(name: String) {
     tokio::run(set_screen_name);
     thread::sleep(Duration::from_millis(100));
     let (tx, rx) = bounded(1);
-    let uri: http::Uri = format!("http://127.0.0.1:{}", WalletServerConfig::default().port)
-        .parse()
-        .unwrap();
+    let uri: http::Uri = format!("http://127.0.0.1:{}", WALLET_GRPC_PORT).parse().unwrap();
     let connector = util::Connector::new(HttpConnector::new(1));
     let settings = client::Builder::new().http2_only(true).clone();
     let mut make_client = client::Connect::with_builder(connector, settings);
@@ -254,10 +247,46 @@ fn set_get_screen_name(name: String) {
     assert_eq!(recv_screen_name.screen_name, requested_name);
 }
 
+fn get_pub_key(pub_key: String) {
+    let (tx, rx) = bounded(1);
+    let uri: http::Uri = format!("http://127.0.0.1:{}", WALLET_GRPC_PORT).parse().unwrap();
+    let dst = Destination::try_from_uri(uri.clone()).unwrap();
+    let connector = util::Connector::new(HttpConnector::new(1));
+    let settings = client::Builder::new().http2_only(true).clone();
+    let mut make_client = client::Connect::with_builder(connector, settings);
+
+    let get_pub_key = make_client
+        .make_service(dst.clone())
+        .map_err(|e| panic!("connect error: {:?}", e))
+        .and_then(move |conn| {
+            let conn = tower_request_modifier::Builder::new()
+                .set_origin(uri.clone())
+                .build(conn)
+                .unwrap();
+
+            // Wait until the client is ready...
+            WalletRpc::new(conn).ready()
+        })
+        .and_then(|mut client| client.get_public_key(Request::new(VoidParams {})))
+        .and_then(move |response| {
+            info!(target: LOG_TARGET, "GetPubKey Response received: {:?}", response);
+
+            let _ = tx.send(response.into_inner());
+
+            Ok(())
+        })
+        .map_err(|e| {
+            panic!("RPC Client error = {:?}", e);
+        });
+
+    tokio::run(get_pub_key);
+
+    let recv_pub_key = rx.recv().unwrap();
+    assert_eq!(recv_pub_key.pub_key, pub_key);
+}
+
 fn add_contact(contact: ContactRpc) {
-    let uri: http::Uri = format!("http://127.0.0.1:{}", WalletServerConfig::default().port)
-        .parse()
-        .unwrap();
+    let uri: http::Uri = format!("http://127.0.0.1:{}", WALLET_GRPC_PORT).parse().unwrap();
     let dst = Destination::try_from_uri(uri.clone()).unwrap();
     let connector = util::Connector::new(HttpConnector::new(1));
     let settings = client::Builder::new().http2_only(true).clone();
@@ -315,9 +344,7 @@ fn contacts_crud() {
 
     // Remove a contact
     let move_contact = contacts[1].clone();
-    let uri: http::Uri = format!("http://127.0.0.1:{}", WalletServerConfig::default().port)
-        .parse()
-        .unwrap();
+    let uri: http::Uri = format!("http://127.0.0.1:{}", WALLET_GRPC_PORT).parse().unwrap();
     let dst = Destination::try_from_uri(uri.clone()).unwrap();
     let connector = util::Connector::new(HttpConnector::new(1));
     let settings = client::Builder::new().http2_only(true).clone();
@@ -357,9 +384,7 @@ fn contacts_crud() {
         pub_key: contacts[0].pub_key.clone(),
         address: contacts[0].address.clone(),
     };
-    let uri: http::Uri = format!("http://127.0.0.1:{}", WalletServerConfig::default().port)
-        .parse()
-        .unwrap();
+    let uri: http::Uri = format!("http://127.0.0.1:{}", WALLET_GRPC_PORT).parse().unwrap();
     let dst = Destination::try_from_uri(uri.clone()).unwrap();
     let connector = util::Connector::new(HttpConnector::new(1));
     let settings = client::Builder::new().http2_only(true).clone();
@@ -395,9 +420,7 @@ fn contacts_crud() {
 
     // check contacts
     let (tx, rx) = bounded(1);
-    let uri: http::Uri = format!("http://127.0.0.1:{}", WalletServerConfig::default().port)
-        .parse()
-        .unwrap();
+    let uri: http::Uri = format!("http://127.0.0.1:{}", WALLET_GRPC_PORT).parse().unwrap();
     let dst = Destination::try_from_uri(uri.clone()).unwrap();
     let connector = util::Connector::new(HttpConnector::new(1));
     let settings = client::Builder::new().http2_only(true).clone();
@@ -514,7 +537,7 @@ fn test_rpc_text_message_service() {
     let wallet1 = Wallet::new(config1).unwrap();
 
     thread::spawn(move || {
-        let wallet_server = WalletServer::new(None, Arc::new(wallet1));
+        let wallet_server = WalletServer::new(WALLET_GRPC_PORT, Arc::new(wallet1));
         let _ = wallet_server.start().unwrap();
     });
 
@@ -565,5 +588,6 @@ fn test_rpc_text_message_service() {
     get_text_messages_request(sent_messages.clone(), received_messages.clone(), None);
     get_text_messages_request(sent_messages, received_messages, Some(alice_contact));
     set_get_screen_name("Alice".to_string());
+    get_pub_key(public_key1.to_base64().unwrap());
     contacts_crud();
 }
