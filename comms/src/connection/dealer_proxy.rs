@@ -38,6 +38,9 @@ use std::{sync::mpsc::channel, thread::JoinHandle, time::Duration};
 
 const LOG_TARGET: &'static str = "comms::dealer_proxy";
 
+/// Set the allocated stack size for the DealerProxy thread
+const THREAD_STACK_SIZE: usize = 64 * 1024; // 64kb
+
 #[derive(Debug, Error)]
 pub enum DealerProxyError {
     #[error(msg_embedded, no_from, non_std)]
@@ -51,6 +54,8 @@ pub enum DealerProxyError {
     ThreadStartFailed,
     #[error(msg_embedded, no_from, non_std)]
     ZmqError(String),
+    /// Dealer proxy thread failed to start
+    ThreadInitializationError,
 }
 
 /// A DealerProxy Result
@@ -88,39 +93,40 @@ impl DealerProxy {
         let sink_address = self.sink_address.clone();
         let control_address = self.control_address.clone();
 
-        let handle = thread::Builder::new()
-            .name("dealer-proxy".to_string())
-            .spawn(move || {
-                let mut source = Connection::new(&context.clone(), Direction::Inbound)
-                    .set_name("dealer-proxy-source")
-                    .set_socket_establishment(SocketEstablishment::Bind)
-                    .establish(&source_address.clone())
-                    .map_err(|err| DealerProxyError::ConnectionError(err))?;
+        self.thread_handle = Some(
+            thread::Builder::new()
+                .name("dealer-proxy-thread".to_string())
+                .stack_size(THREAD_STACK_SIZE)
+                .spawn(move || {
+                    let mut source = Connection::new(&context.clone(), Direction::Inbound)
+                        .set_name("dealer-proxy-source")
+                        .set_socket_establishment(SocketEstablishment::Bind)
+                        .establish(&source_address.clone())
+                        .map_err(|err| DealerProxyError::ConnectionError(err))?;
 
-                let mut sink = Connection::new(&context.clone(), Direction::Outbound)
-                    .set_name("dealer-proxy-sink")
-                    .set_socket_establishment(SocketEstablishment::Bind)
-                    .establish(&sink_address.clone())
-                    .map_err(|err| DealerProxyError::ConnectionError(err))?;
+                    let mut sink = Connection::new(&context.clone(), Direction::Outbound)
+                        .set_name("dealer-proxy-sink")
+                        .set_socket_establishment(SocketEstablishment::Bind)
+                        .establish(&sink_address.clone())
+                        .map_err(|err| DealerProxyError::ConnectionError(err))?;
 
-                let mut control = context
-                    .socket(SocketType::Sub)
-                    .map_err(|err| DealerProxyError::ZmqError(err.to_string()))?;
-                control
-                    .connect(&control_address.to_zmq_endpoint())
-                    .map_err(|err| DealerProxyError::ZmqError(err.to_string()))?;
-                control
-                    .set_subscribe(&[])
-                    .map_err(|err| DealerProxyError::ZmqError(err.to_string()))?;
+                    let mut control = context
+                        .socket(SocketType::Sub)
+                        .map_err(|err| DealerProxyError::ZmqError(err.to_string()))?;
+                    control
+                        .connect(&control_address.to_zmq_endpoint())
+                        .map_err(|err| DealerProxyError::ZmqError(err.to_string()))?;
+                    control
+                        .set_subscribe(&[])
+                        .map_err(|err| DealerProxyError::ZmqError(err.to_string()))?;
 
-                let _ = ready_tx.send(()).unwrap();
+                    let _ = ready_tx.send(()).unwrap();
 
-                zmq::proxy_steerable(source.get_socket_mut(), sink.get_socket_mut(), &mut control)
-                    .map_err(|err| DealerProxyError::SocketError(err.to_string()))
-            })
-            .unwrap();
-
-        self.thread_handle = Some(handle);
+                    zmq::proxy_steerable(source.get_socket_mut(), sink.get_socket_mut(), &mut control)
+                        .map_err(|err| DealerProxyError::SocketError(err.to_string()))
+                })
+                .map_err(|_| DealerProxyError::ThreadInitializationError)?,
+        );
 
         ready_rx
             .recv_timeout(Duration::from_secs(10))

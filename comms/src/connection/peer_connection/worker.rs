@@ -57,6 +57,9 @@ const PEER_CONNECTION_SEND_HWM: i32 = 10;
 /// Receive HWM for peer connections
 const PEER_CONNECTION_RECV_HWM: i32 = 10;
 
+/// Set the allocated stack size for each PeerConnectionWorker thread
+const THREAD_STACK_SIZE: usize = 64 * 1024; // 64kb
+
 /// Worker which:
 /// - Establishes a connection to peer
 /// - Establishes a connection to the message consumer
@@ -99,7 +102,8 @@ impl PeerConnectionWorker {
         }
 
         let handle = thread::Builder::new()
-            .name(format!("peer-conn-{}", &self.context.id.to_short_id()))
+            .name(format!("peer-conn-{}-thread", &self.context.id.to_short_id()))
+            .stack_size(THREAD_STACK_SIZE)
             .spawn(move || -> Result<()> {
                 let result = self.main_loop();
 

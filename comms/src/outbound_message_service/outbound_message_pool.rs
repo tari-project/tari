@@ -119,13 +119,15 @@ impl OutboundMessagePool {
         }
     }
 
-    fn start_dealer(&mut self) {
-        let _ = self.dealer_proxy.spawn_proxy();
+    fn start_dealer(&mut self) -> Result<(), OutboundError> {
+        self.dealer_proxy
+            .spawn_proxy()
+            .map_err(|err| OutboundError::DealerProxyError(err))
     }
 
     /// Start the Outbound Message Pool. This will spawn a thread that services the message queue that is sent to the
     /// Inproc address.
-    pub fn start(&mut self) {
+    pub fn start(&mut self) -> Result<(), OutboundError> {
         info!(target: LOG_TARGET, "Starting outbound message pool");
         // Start workers
         for _i in 0..MAX_OUTBOUND_MSG_PROCESSING_WORKERS as usize {
@@ -147,12 +149,12 @@ impl OutboundMessagePool {
                 }
             }
 
-            let (worker_thread_handle, worker_sync_sender) = worker.start();
+            let (worker_thread_handle, worker_sync_sender) = worker.start()?;
             self.worker_thread_handles.push(worker_thread_handle);
             self.worker_control_senders.push(worker_sync_sender);
         }
         info!(target: LOG_TARGET, "Starting dealer");
-        self.start_dealer();
+        self.start_dealer()
     }
 
     /// Tell the underlying dealer thread and workers to shut down
@@ -367,7 +369,7 @@ mod test {
 
         let _oms =
             OutboundMessageService::new(context, node_identity, omp_inbound_address, peer_manager.clone()).unwrap();
-        omp.start();
+        omp.start().unwrap();
         thread::sleep(Duration::from_millis(100));
 
         // TODO: Add this back in when the establish_connection_to_peer does not block the thread from joining

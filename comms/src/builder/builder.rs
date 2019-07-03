@@ -29,6 +29,7 @@ use crate::{
     domain_connector::ConnectorError,
     inbound_message_service::{
         comms_msg_handlers::construct_comms_msg_dispatcher,
+        error::InboundError,
         inbound_message_broker::{BrokerError, InboundMessageBroker},
         inbound_message_service::{InboundMessageService, InboundMessageServiceConfig},
     },
@@ -360,6 +361,8 @@ pub enum CommsServicesError {
     MessageTypeNotRegistered,
     ConnectorError(ConnectorError),
     InboundMessageBrokerError(BrokerError),
+    InboundMessageServiceError(InboundError),
+    OutboundMessageServiceError(OutboundError),
 }
 
 /// Contains the built comms services
@@ -399,8 +402,12 @@ where
             );
         }
 
-        self.inbound_message_service.start();
-        self.outbound_message_pool.start();
+        self.inbound_message_service
+            .start()
+            .map_err(|err| CommsServicesError::InboundMessageServiceError(err))?;
+        self.outbound_message_pool
+            .start()
+            .map_err(|err| CommsServicesError::OutboundMessageServiceError(err))?;
 
         Ok(CommsServices {
             // Transfer ownership to CommsServices

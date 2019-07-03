@@ -68,4 +68,6 @@ pub enum OutboundError {
     DealerProxyError(DealerProxyError),
     /// Could not join the dealer or worker threads
     ThreadJoinError,
+    /// Message pool worker thread failed to start
+    ThreadInitializationError,
 }
