@@ -27,13 +27,14 @@ use std::thread;
 use derive_error::Error;
 
 use crate::connection::{
-    types::{Direction, SocketEstablishment},
+    types::{Direction, SocketEstablishment, SocketType},
+    zmq::ZmqEndpoint,
     Connection,
     ConnectionError,
     InprocAddress,
     ZmqContext,
 };
-use std::thread::JoinHandle;
+use std::{sync::mpsc::channel, thread::JoinHandle, time::Duration};
 
 const LOG_TARGET: &'static str = "comms::dealer_proxy";
 
@@ -46,6 +47,10 @@ pub enum DealerProxyError {
     DealerUndefined,
     /// Could not join the dealer thread
     ThreadJoinError,
+    /// Proxy thread failed to start within 10 seconds
+    ThreadStartFailed,
+    #[error(msg_embedded, no_from, non_std)]
+    ZmqError(String),
 }
 
 /// A DealerProxy Result
@@ -59,35 +64,6 @@ pub struct DealerProxy {
     sink_address: InprocAddress,
     control_address: InprocAddress,
     thread_handle: Option<JoinHandle<Result<()>>>,
-}
-
-/// Spawn a new steerable dealer proxy in its own thread.
-pub fn spawn_proxy(
-    context: ZmqContext,
-    source_address: InprocAddress,
-    sink_address: InprocAddress,
-    control_address: InprocAddress,
-) -> JoinHandle<Result<()>>
-{
-    thread::spawn(move || {
-        let mut source = Connection::new(&context.clone(), Direction::Inbound)
-            .set_socket_establishment(SocketEstablishment::Bind)
-            .establish(&source_address.clone())
-            .map_err(|err| DealerProxyError::ConnectionError(err))?;
-
-        let mut sink = Connection::new(&context.clone(), Direction::Outbound)
-            .set_socket_establishment(SocketEstablishment::Bind)
-            .establish(&sink_address.clone())
-            .map_err(|err| DealerProxyError::ConnectionError(err))?;
-
-        let mut control = Connection::new(&context.clone(), Direction::Inbound)
-            .set_socket_establishment(SocketEstablishment::Bind)
-            .establish(&control_address.clone())
-            .map_err(|err| DealerProxyError::ConnectionError(err))?;
-
-        zmq::proxy_steerable(source.get_socket_mut(), sink.get_socket_mut(), control.get_socket_mut())
-            .map_err(|err| DealerProxyError::SocketError(err.to_string()))
-    })
 }
 
 impl DealerProxy {
@@ -104,36 +80,86 @@ impl DealerProxy {
 
     /// Proxy the source and sink addresses. This method does not block and returns stores the [thread::JoinHandle] in
     /// the DealerProxy.
-    pub fn spawn_proxy(&mut self) {
-        self.thread_handle = Some(spawn_proxy(
-            self.context.clone(),
-            self.source_address.clone(),
-            self.sink_address.clone(),
-            self.control_address.clone(),
-        ));
+    pub fn spawn_proxy(&mut self) -> Result<()> {
+        let (ready_tx, ready_rx) = channel();
+
+        let context = self.context.clone();
+        let source_address = self.source_address.clone();
+        let sink_address = self.sink_address.clone();
+        let control_address = self.control_address.clone();
+
+        let handle = thread::Builder::new()
+            .name("dealer-proxy".to_string())
+            .spawn(move || {
+                let mut source = Connection::new(&context.clone(), Direction::Inbound)
+                    .set_name("dealer-proxy-source")
+                    .set_socket_establishment(SocketEstablishment::Bind)
+                    .establish(&source_address.clone())
+                    .map_err(|err| DealerProxyError::ConnectionError(err))?;
+
+                let mut sink = Connection::new(&context.clone(), Direction::Outbound)
+                    .set_name("dealer-proxy-sink")
+                    .set_socket_establishment(SocketEstablishment::Bind)
+                    .establish(&sink_address.clone())
+                    .map_err(|err| DealerProxyError::ConnectionError(err))?;
+
+                let mut control = context
+                    .socket(SocketType::Sub)
+                    .map_err(|err| DealerProxyError::ZmqError(err.to_string()))?;
+                control
+                    .connect(&control_address.to_zmq_endpoint())
+                    .map_err(|err| DealerProxyError::ZmqError(err.to_string()))?;
+                control
+                    .set_subscribe(&[])
+                    .map_err(|err| DealerProxyError::ZmqError(err.to_string()))?;
+
+                let _ = ready_tx.send(()).unwrap();
+
+                zmq::proxy_steerable(source.get_socket_mut(), sink.get_socket_mut(), &mut control)
+                    .map_err(|err| DealerProxyError::SocketError(err.to_string()))
+            })
+            .unwrap();
+
+        self.thread_handle = Some(handle);
+
+        ready_rx
+            .recv_timeout(Duration::from_secs(10))
+            .map_err(|_| DealerProxyError::ThreadStartFailed)
     }
 
-    /// Send a shutdown request to the dealer proxy
+    pub fn is_running(&self) -> bool {
+        self.thread_handle.is_some()
+    }
+
+    /// Send a shutdown request to the dealer proxy. If the dealer proxy has not been started
+    /// this method has no effect.
     pub fn shutdown(self) -> Result<()> {
-        match self.thread_handle {
-            Some(thread_handle) => {
-                let control = Connection::new(&self.context, Direction::Outbound)
-                    .set_socket_establishment(SocketEstablishment::Connect)
-                    .establish(&self.control_address)
-                    .map_err(|err| DealerProxyError::ConnectionError(err))?;
-                control
-                    .send(&["TERMINATE".as_bytes()])
-                    .map_err(|err| DealerProxyError::ConnectionError(err))?;
-                match thread_handle.join() {
-                    Ok(_) => Ok(()),
-                    Err(err) => {
-                        error!(target: LOG_TARGET, "Failed to join dealer thread handle: {:?}", err);
-                        Err(DealerProxyError::ThreadJoinError)
-                    },
-                }
-            },
-            None => Err(DealerProxyError::DealerUndefined),
+        if let Some(thread_handle) = self.thread_handle {
+            let control = self
+                .context
+                .socket(SocketType::Pub)
+                .map_err(|err| DealerProxyError::ZmqError(err.to_string()))?;
+            control
+                .bind(&self.control_address.to_zmq_endpoint())
+                .map_err(|err| DealerProxyError::ZmqError(err.to_string()))?;
+
+            control
+                .send("TERMINATE", 0)
+                .map_err(|err| DealerProxyError::ZmqError(err.to_string()))?;
+
+            thread_handle
+                .join()
+                .map_err(|_| DealerProxyError::ThreadJoinError)?
+                .or_else(|err| {
+                    error!(
+                        target: LOG_TARGET,
+                        "Dealer proxy thread exited with an error: {:?}", err
+                    );
+                    Err(err)
+                })?;
         }
+
+        Ok(())
     }
 }
 
@@ -146,6 +172,7 @@ mod test {
         let context = ZmqContext::new();
         let sender_addr = InprocAddress::random();
         let receiver_addr = InprocAddress::random();
+
         let sender = Connection::new(&context, Direction::Outbound)
             .establish(&sender_addr)
             .unwrap();
@@ -155,7 +182,7 @@ mod test {
             .unwrap();
 
         let mut proxy = DealerProxy::new(context, sender_addr, receiver_addr);
-        proxy.spawn_proxy();
+        proxy.spawn_proxy().unwrap();
 
         sender.send_sync(&["HELLO".as_bytes()]).unwrap();
 
