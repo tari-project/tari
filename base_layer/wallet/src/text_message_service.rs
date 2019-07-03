@@ -623,7 +623,7 @@ mod test {
 
         let mut tms = TextMessageService::new(public_key);
 
-        let mut contacts: Vec<Contact> = Vec::new();
+        let mut contacts = Vec::new();
 
         let screen_names = vec![
             "Alice".to_string(),
