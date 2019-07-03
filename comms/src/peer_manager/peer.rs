@@ -27,8 +27,11 @@ use serde::{Deserialize, Serialize};
 use tari_utilities::hex::serialize_to_hex;
 
 use crate::{
-    connection::net_address::net_addresses::NetAddressesWithStats,
-    peer_manager::node_id::NodeId,
+    connection::{
+        net_address::{net_addresses::NetAddressesWithStats, NetAddressWithStats},
+        NetAddress,
+    },
+    peer_manager::{node_id::NodeId, PeerManagerError},
     types::CommsPublicKey,
 };
 // TODO reputation metric?
@@ -68,6 +71,23 @@ impl Peer {
             addresses,
             flags,
         }
+    }
+
+    /// Constructs a new peer
+    pub fn from_public_key_and_address(
+        public_key: CommsPublicKey,
+        net_address: NetAddress,
+    ) -> Result<Peer, PeerManagerError>
+    {
+        let node_id = NodeId::from_key(&public_key)?;
+        let addresses = NetAddressesWithStats::new(vec![NetAddressWithStats::new(net_address.clone())]);
+
+        Ok(Peer {
+            public_key,
+            node_id,
+            addresses,
+            flags: PeerFlags::empty(),
+        })
     }
 
     /// Provides that date time of the last successful interaction with the peer

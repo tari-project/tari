@@ -24,10 +24,7 @@ use super::{error::ServiceError, registry::ServiceRegistry};
 use crate::tari_message::TariMessageType;
 use log::*;
 use std::{
-    sync::{
-        mpsc::{channel, Receiver, RecvTimeoutError, Sender},
-        Arc,
-    },
+    sync::{Arc, Mutex},
     thread,
     time::Duration,
 };
@@ -37,6 +34,9 @@ use tari_comms::{
     DomainConnector,
 };
 use threadpool::ThreadPool;
+
+use crossbeam_channel as channel;
+use crossbeam_channel::{Receiver, RecvTimeoutError, Sender};
 
 const LOG_TARGET: &'static str = "base_layer::p2p::services";
 
@@ -49,7 +49,7 @@ pub enum ServiceControlMessage {
 /// This is reponsible for creating and managing the thread pool for
 /// services that should be executed.
 pub struct ServiceExecutor {
-    thread_pool: ThreadPool,
+    thread_pool: Mutex<ThreadPool>,
     senders: Vec<Sender<ServiceControlMessage>>,
 }
 
@@ -65,7 +65,7 @@ impl ServiceExecutor {
         let mut senders = Vec::new();
 
         for mut service in registry.services.drain(..) {
-            let (sender, receiver) = channel();
+            let (sender, receiver) = channel::unbounded();
             senders.push(sender);
 
             let service_context = ServiceContext {
@@ -96,7 +96,10 @@ impl ServiceExecutor {
             });
         }
 
-        Self { thread_pool, senders }
+        Self {
+            thread_pool: Mutex::new(thread_pool),
+            senders,
+        }
     }
 
     /// Send a [ServiceControlMessage::Shutdown] message to all services.
@@ -122,9 +125,9 @@ impl ServiceExecutor {
 
     /// Join on all threads in the thread pool until they all exit or a given timeout is reached.
     pub fn join_timeout(self, timeout: Duration) -> Result<(), ServiceError> {
-        let (tx, rx) = channel();
+        let (tx, rx) = channel::unbounded();
         thread::spawn(move || {
-            self.thread_pool.join();
+            acquire_lock!(self.thread_pool).join();
             let _ = tx.send(());
         });
 

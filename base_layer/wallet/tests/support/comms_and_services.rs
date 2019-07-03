@@ -22,11 +22,9 @@
 
 use std::{sync::Arc, time::Duration};
 use tari_comms::{
-    connection::{net_address::NetAddressWithStats, NetAddress, NetAddressesWithStats},
     connection_manager::PeerConnectionConfig,
     control_service::ControlServiceConfig,
-    peer_manager::{peer::PeerFlags, NodeId, NodeIdentity, Peer},
-    types::CommsPublicKey,
+    peer_manager::{NodeIdentity, Peer},
     CommsBuilder,
 };
 use tari_p2p::{
@@ -35,15 +33,6 @@ use tari_p2p::{
 };
 use tari_storage::lmdb_store::LMDBDatabase;
 use tari_wallet::text_message_service::{TextMessageService, TextMessageServiceApi};
-
-fn create_peer(public_key: CommsPublicKey, net_address: NetAddress) -> Peer {
-    Peer::new(
-        public_key.clone(),
-        NodeId::from_key(&public_key).unwrap(),
-        NetAddressesWithStats::new(vec![NetAddressWithStats::new(net_address.clone())]),
-        PeerFlags::empty(),
-    )
-}
 
 pub fn setup_text_message_service(
     node_identity: NodeIdentity,
@@ -78,7 +67,9 @@ pub fn setup_text_message_service(
     for p in peers {
         comms
             .peer_manager()
-            .add_peer(create_peer(p.identity.public_key.clone(), p.control_service_address))
+            .add_peer(
+                Peer::from_public_key_and_address(p.identity.public_key.clone(), p.control_service_address).unwrap(),
+            )
             .unwrap();
     }
 
