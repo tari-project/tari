@@ -123,6 +123,13 @@ pub struct Contact {
     pub address: NetAddress,
 }
 
+/// The updatable fields of message contact
+#[derive(Clone, Debug, PartialEq)]
+pub struct UpdateContact {
+    pub screen_name: String,
+    pub address: NetAddress,
+}
+
 /// This function generates a unique ID hash for a Text Message from the message components and an index integer
 ///
 /// `index`: This value should be incremented for every message sent to the same destination. This ensures that if you
@@ -344,11 +351,11 @@ impl TextMessageService {
     }
 
     /// Updates the screen_name of a contact if an existing contact with the same pub_key is found
-    pub fn update_contact(&mut self, contact: &Contact) -> Result<(), TextMessageError> {
+    pub fn update_contact(&mut self, pub_key: CommsPublicKey, contact: UpdateContact) -> Result<(), TextMessageError> {
         let found_contact = self
             .contacts
             .iter_mut()
-            .find(|c| c.pub_key == contact.pub_key)
+            .find(|c| c.pub_key == pub_key)
             .ok_or(TextMessageError::ContactNotFound)?;
         found_contact.screen_name = contact.screen_name.clone();
         Ok(())
@@ -385,9 +392,9 @@ impl TextMessageService {
                 self.remove_contact(c).map(|_| TextMessageApiResponse::ContactAdded)
             },
             TextMessageApiRequest::GetContacts => Ok(TextMessageApiResponse::Contacts(self.get_contacts())),
-            TextMessageApiRequest::UpdateContact(c) => {
-                self.update_contact(&c).map(|_| TextMessageApiResponse::ContactUpdated)
-            },
+            TextMessageApiRequest::UpdateContact((pk, c)) => self
+                .update_contact(pk, c)
+                .map(|_| TextMessageApiResponse::ContactUpdated),
         };
 
         debug!(target: LOG_TARGET, "[{}] Replying to API: {:?}", self.get_name(), resp);
@@ -480,7 +487,7 @@ pub enum TextMessageApiRequest {
     AddContact(Contact),
     RemoveContact(Contact),
     GetContacts,
-    UpdateContact(Contact),
+    UpdateContact((CommsPublicKey, UpdateContact)),
 }
 
 /// API Response enum
@@ -583,8 +590,8 @@ impl TextMessageServiceApi {
             })
     }
 
-    pub fn update_contact(&self, contact: Contact) -> Result<(), TextMessageError> {
-        self.send_recv(TextMessageApiRequest::UpdateContact(contact))
+    pub fn update_contact(&self, pub_key: CommsPublicKey, contact: UpdateContact) -> Result<(), TextMessageError> {
+        self.send_recv(TextMessageApiRequest::UpdateContact((pub_key, contact)))
             .and_then(|resp| match resp {
                 TextMessageApiResponse::ContactUpdated => Ok(()),
                 _ => Err(TextMessageError::UnexpectedApiResponse),
@@ -610,16 +617,14 @@ impl TextMessageServiceApi {
 }
 
 mod test {
-    use crate::text_message_service::{Contact, TextMessageError, TextMessageService};
-    use tari_comms::types::{CommsPublicKey, CommsSecretKey};
-    use tari_crypto::keys::{PublicKey, SecretKey};
-
+    use crate::text_message_service::{Contact, TextMessageError, TextMessageService, UpdateContact};
+    use tari_comms::types::CommsPublicKey;
+    use tari_crypto::keys::PublicKey;
     #[test]
     fn test_contacts_crud() {
         let mut rng = rand::OsRng::new().unwrap();
 
-        let secret_key = CommsSecretKey::random(&mut rng);
-        let public_key = CommsPublicKey::from_secret_key(&secret_key);
+        let (_secret_key, public_key) = CommsPublicKey::random_keypair(&mut rng);
 
         let mut tms = TextMessageService::new(public_key);
 
@@ -633,8 +638,7 @@ mod test {
             "Eric".to_string(),
         ];
         for i in 0..5 {
-            let contact_secret_key = CommsSecretKey::random(&mut rng);
-            let contact_public_key = CommsPublicKey::from_secret_key(&contact_secret_key);
+            let (_contact_secret_key, contact_public_key) = CommsPublicKey::random_keypair(&mut rng);
             contacts.push(Contact {
                 screen_name: screen_names[i].clone(),
                 pub_key: contact_public_key,
@@ -656,16 +660,18 @@ mod test {
 
         assert_eq!(tms.get_contacts().len(), 4);
 
-        contacts[1].screen_name = "Betty".to_string();
+        let update_contact = UpdateContact {
+            screen_name: "Betty".to_string(),
+            address: contacts[1].address.clone(),
+        };
 
-        tms.update_contact(&contacts[1]).unwrap();
+        tms.update_contact(contacts[1].pub_key.clone(), update_contact).unwrap();
 
         let updated_contacts = tms.get_contacts();
         assert_eq!(updated_contacts[0].screen_name, "Betty".to_string());
 
-        match tms.update_contact(&Contact {
+        match tms.update_contact(CommsPublicKey::default(), UpdateContact {
             screen_name: "Whatever".to_string(),
-            pub_key: CommsPublicKey::default(),
             address: "127.0.0.1:12345".parse().unwrap(),
         }) {
             Err(TextMessageError::ContactNotFound) => assert!(true),
