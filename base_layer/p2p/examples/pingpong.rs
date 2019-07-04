@@ -54,7 +54,7 @@ use tari_p2p::{
     services::{ServiceExecutor, ServiceRegistry},
     tari_message::{NetMessage, TariMessageType},
 };
-use tari_utilities::message_format::MessageFormat;
+use tari_utilities::{message_format::MessageFormat, thread_join::ThreadJoinWithTimeout};
 use tempdir::TempDir;
 
 fn load_identity(path: &str) -> NodeIdentity {
@@ -197,7 +197,7 @@ fn run_ui(services: ServiceExecutor, peer_identity: PeerNodeIdentity, pingpong_a
     shutdown_tx.send(()).unwrap();
     services.shutdown().unwrap();
     services.join_timeout(Duration::from_millis(1000)).unwrap();
-    app_handle.join().unwrap();
+    app_handle.timeout_join(Duration::from_millis(100)).unwrap();
 }
 
 fn update_count(s: &mut Cursive) {

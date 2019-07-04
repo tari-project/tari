@@ -35,11 +35,15 @@ use crate::connection::{
     ZmqContext,
 };
 use std::{sync::mpsc::channel, thread::JoinHandle, time::Duration};
+use tari_utilities::thread_join::{ThreadError, ThreadJoinWithTimeout};
 
 const LOG_TARGET: &'static str = "comms::dealer_proxy";
 
 /// Set the allocated stack size for the DealerProxy thread
 const THREAD_STACK_SIZE: usize = 64 * 1024; // 64kb
+
+/// Set the maximum waiting time for DealerProxy thread to join
+const THREAD_JOIN_TIMEOUT_IN_MS: Duration = Duration::from_millis(100);
 
 #[derive(Debug, Error)]
 pub enum DealerProxyError {
@@ -49,7 +53,7 @@ pub enum DealerProxyError {
     /// The dealer [thread::JoinHandle] is unavailable
     DealerUndefined,
     /// Could not join the dealer thread
-    ThreadJoinError,
+    ThreadJoinError(ThreadError),
     /// Proxy thread failed to start within 10 seconds
     ThreadStartFailed,
     #[error(msg_embedded, no_from, non_std)]
@@ -155,12 +159,12 @@ impl DealerProxy {
                 .map_err(|err| DealerProxyError::ZmqError(err.to_string()))?;
 
             control
-                .send("TERMINATE", 0)
+                .send("TERMINATE", zmq::DONTWAIT)
                 .map_err(|err| DealerProxyError::ZmqError(err.to_string()))?;
 
             thread_handle
-                .join()
-                .map_err(|_| DealerProxyError::ThreadJoinError)?
+                .timeout_join(THREAD_JOIN_TIMEOUT_IN_MS)
+                .map_err(|err| DealerProxyError::ThreadJoinError(err))
                 .or_else(|err| {
                     error!(
                         target: LOG_TARGET,

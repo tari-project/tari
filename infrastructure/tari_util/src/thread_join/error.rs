@@ -20,28 +20,14 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    connection::{error::ConnectionError, DealerProxyError},
-    inbound_message_service::inbound_message_broker::BrokerError,
-};
 use derive_error::Error;
-use tari_utilities::thread_join::ThreadError;
 
-/// Error type for InboundMessageService subsystem
-#[derive(Debug, Error)]
-pub enum InboundError {
-    /// Failed to connect to inbound socket
-    InboundConnectionError(ConnectionError),
-    DealerProxyError(DealerProxyError),
-    BrokerError(BrokerError),
-    #[error(msg_embedded, non_std, no_from)]
-    ControlSendError(String),
-    /// Unable to send a control message as the control sync sender is undefined
-    ControlSenderUndefined,
-    /// Could not join the InboundMessageWorker thread
-    ThreadJoinError(ThreadError),
-    /// The thread handle is undefined and could have not been properly created
-    ThreadHandleUndefined,
-    /// Inbound message worker thread failed to start
-    ThreadInitializationError,
+#[derive(Debug, Error, PartialEq)]
+pub enum ThreadError {
+    /// An error occurred attempting to join the thread
+    JoinError,
+    /// The timeout period allocated to the thread joining process has been exceeded
+    TimeoutReached,
+    /// The channel has disconnected between the host and the join thread
+    ChannelDisconnected,
 }

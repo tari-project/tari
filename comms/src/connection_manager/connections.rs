@@ -35,9 +35,14 @@ use crate::connection::ConnectionError;
 use std::{
     collections::HashMap,
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
+    time::Duration,
 };
+use tari_utilities::thread_join::ThreadJoinWithTimeout;
 
 const LOG_TARGET: &'static str = "comms::connection_manager::connections";
+
+/// Set the maximum waiting time for LivePeerConnections threads to join
+const THREAD_JOIN_TIMEOUT_IN_MS: Duration = Duration::from_millis(100);
 
 /// Stores, and establishes the live peer connections
 pub(super) struct LivePeerConnections {
@@ -105,19 +110,21 @@ impl LivePeerConnections {
     }
 
     /// Send a shutdown signal to all peer connections, and wait for all of them to
-    /// shut down, returning the result of the shutdown. Warning: If a PeerConnection worker
-    /// is deadlocked, this method may never return.
+    /// shut down, returning the result of the shutdown.
     pub fn shutdown_joined(self) -> Vec<std::result::Result<(), ConnectionError>> {
         let handles = self.shutdown_all();
 
         let mut results = vec![];
         for (_, handle) in handles.into_iter() {
-            match handle.join() {
-                Ok(result) => results.push(result),
-                Err(err) => {
-                    error!(target: LOG_TARGET, "Failed to join: {:?}", err);
-                },
-            }
+            results.push(
+                handle
+                    .timeout_join(THREAD_JOIN_TIMEOUT_IN_MS)
+                    .map_err(|err| ConnectionError::ThreadJoinError(err))
+                    .or_else(|err| {
+                        error!(target: LOG_TARGET, "Failed to join: {:?}", err);
+                        Err(err)
+                    }),
+            );
         }
 
         results
