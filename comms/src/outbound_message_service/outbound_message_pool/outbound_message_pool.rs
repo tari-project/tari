@@ -36,12 +36,18 @@ use std::{
         Arc,
     },
     thread::JoinHandle,
+    time::Duration,
 };
+use tari_utilities::thread_join::ThreadJoinWithTimeout;
 
 /// The default number of processing worker threads that will be created by the OutboundMessageService
 pub const DEFAULT_OUTBOUND_MSG_PROCESSING_WORKERS: usize = 4;
 
 const LOG_TARGET: &'static str = "comms::outbound_message_service::pool";
+
+/// Set the maximum waiting time for Retry Service Threads and MessagePoolWorker threads to join
+const MSG_POOL_WORKER_THREAD_JOIN_TIMEOUT_IN_MS: Duration = Duration::from_millis(100);
+const MSG_RETRY_QUEUE_THREAD_JOIN_TIMEOUT_IN_MS: Duration = Duration::from_millis(1500);
 
 #[derive(Clone, Copy)]
 pub struct OutboundMessagePoolConfig {
@@ -188,17 +194,16 @@ impl OutboundMessagePool {
 
             if let Some(handle) = self.retry_service_thread_handle {
                 handle
-                    .join()
-                    .map_err(|_| OutboundError::ThreadJoinError)?
-                    .map_err(OutboundError::OutboundMessagePoolError)?;
+                    .timeout_join(MSG_RETRY_QUEUE_THREAD_JOIN_TIMEOUT_IN_MS)
+                    .map_err(|e| OutboundError::ThreadJoinError(e))?;
             }
         }
 
         // Join worker threads
         for worker_thread_handle in self.worker_thread_handles {
             worker_thread_handle
-                .join()
-                .map_err(|_| OutboundError::ThreadJoinError)??;
+                .timeout_join(MSG_POOL_WORKER_THREAD_JOIN_TIMEOUT_IN_MS)
+                .map_err(|e| OutboundError::ThreadJoinError(e))?;
         }
 
         self.dealer_proxy.shutdown().map_err(OutboundError::DealerProxyError)

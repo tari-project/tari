@@ -20,9 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use derive_error::Error;
-
 use super::{monitor, NetAddressError, PeerConnectionError};
+use derive_error::Error;
+use tari_utilities::thread_join::ThreadError;
 
 #[derive(Debug, Error, PartialEq)]
 pub enum ConnectionError {
@@ -37,6 +37,7 @@ pub enum ConnectionError {
     MonitorError(monitor::ConnectionMonitorError),
     #[error(msg_embedded, no_from, non_std)]
     InvalidOperation(String),
+    ThreadJoinError(ThreadError),
 }
 
 impl ConnectionError {

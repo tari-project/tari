@@ -30,6 +30,7 @@ use tari_comms::{
     connection_manager::{establisher::ConnectionEstablisher, ConnectionManagerError, PeerConnectionConfig},
 };
 use tari_storage::lmdb_store::{LMDBBuilder, LMDBError, LMDBStore};
+use tari_utilities::thread_join::ThreadJoinWithTimeout;
 
 fn make_peer_connection_config(message_sink_address: InprocAddress) -> PeerConnectionConfig {
     PeerConnectionConfig {
@@ -185,7 +186,7 @@ fn establish_peer_connection_outbound() {
 
     assert_eq!(msg_counter.count(), 2);
 
-    peer_conn_handle.join().unwrap().unwrap();
+    peer_conn_handle.timeout_join(Duration::from_millis(100)).unwrap();
 
     clean_up_datastore(database_name);
 }
@@ -249,7 +250,7 @@ fn establish_peer_connection_inbound() {
 
     assert_eq!(msg_counter.count(), 2);
 
-    peer_conn_handle.join().unwrap().unwrap();
+    peer_conn_handle.timeout_join(Duration::from_millis(100)).unwrap();
 
     clean_up_datastore(database_name);
 }

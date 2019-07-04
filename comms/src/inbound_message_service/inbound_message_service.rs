@@ -40,8 +40,12 @@ use std::{
     thread::JoinHandle,
     time::Duration,
 };
+use tari_utilities::thread_join::ThreadJoinWithTimeout;
 
 const LOG_TARGET: &'static str = "comms::inbound_message_service";
+
+/// Set the maximum waiting time for InboundMessageWorker thread to join
+const THREAD_JOIN_TIMEOUT_IN_MS: Duration = Duration::from_millis(100);
 
 #[derive(Clone, Copy)]
 pub struct InboundMessageServiceConfig {
@@ -140,8 +144,8 @@ where
             .map_err(|e| InboundError::ControlSendError(format!("Failed to send control message: {:?}", e)))?;
         self.worker_thread_handle
             .ok_or(InboundError::ThreadHandleUndefined)?
-            .join()
-            .map_err(|_| InboundError::ThreadJoinError)?;
+            .timeout_join(THREAD_JOIN_TIMEOUT_IN_MS)
+            .map_err(|e| InboundError::ThreadJoinError(e))?;
         Ok(())
     }
 }

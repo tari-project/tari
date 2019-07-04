@@ -234,6 +234,7 @@ mod test {
     };
     use std::{fs, path::PathBuf};
     use tari_storage::lmdb_store::{LMDBBuilder, LMDBError, LMDBStore};
+    use tari_utilities::thread_join::ThreadJoinWithTimeout;
 
     fn make_peer_connection_config(consumer_address: InprocAddress) -> PeerConnectionConfig {
         PeerConnectionConfig {
@@ -306,7 +307,7 @@ mod test {
         .unwrap();
 
         signal.send(()).unwrap();
-        handle.join().unwrap().unwrap();
+        handle.timeout_join(Duration::from_millis(100)).unwrap();
         clean_up_datastore("omw_start");
     }
 

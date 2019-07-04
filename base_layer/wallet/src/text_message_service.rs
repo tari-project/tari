@@ -625,10 +625,12 @@ impl TextMessageServiceApi {
     }
 }
 
+#[cfg(test)]
 mod test {
     use crate::text_message_service::{Contact, TextMessageError, TextMessageService, UpdateContact};
     use tari_comms::types::CommsPublicKey;
     use tari_crypto::keys::PublicKey;
+
     #[test]
     fn test_contacts_crud() {
         let mut rng = rand::OsRng::new().unwrap();

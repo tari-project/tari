@@ -250,7 +250,7 @@ mod test {
         time::{self, Duration},
     };
     use tari_storage::lmdb_store::LMDBBuilder;
-    use tari_utilities::message_format::MessageFormat;
+    use tari_utilities::{message_format::MessageFormat, thread_join::ThreadJoinWithTimeout};
 
     fn init() {
         let _ = simple_logger::init();
@@ -411,7 +411,7 @@ mod test {
         // Test worker clean shutdown
         control_sync_sender.send(ControlMessage::Shutdown).unwrap();
         std::thread::sleep(time::Duration::from_millis(200));
-        thread_handle.join().unwrap();
+        thread_handle.timeout_join(Duration::from_millis(100)).unwrap();
         assert!(client_connection.send(message1_frame_set).is_err());
 
         // Clear up DB folders

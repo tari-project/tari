@@ -33,6 +33,7 @@ use tari_comms::{
     types::CommsDatabase,
 };
 use tari_storage::lmdb_store::{LMDBBuilder, LMDBError, LMDBStore};
+use tari_utilities::thread_join::ThreadJoinWithTimeout;
 
 fn make_peer_connection_config(consumer_address: InprocAddress) -> PeerConnectionConfig {
     PeerConnectionConfig {
@@ -185,14 +186,17 @@ fn establish_peer_connection() {
         Ok(())
     });
 
-    handle1.join().unwrap().unwrap();
-    handle2.join().unwrap().unwrap();
+    handle1.timeout_join(Duration::from_millis(100)).unwrap();
+    handle2.timeout_join(Duration::from_millis(100)).unwrap();
 
     // Give the peer connections a moment to receive and the message sink connections to send
     pause();
 
     node_B_control_service.shutdown().unwrap();
-    node_B_control_service.handle.join().unwrap().unwrap();
+    node_B_control_service
+        .handle
+        .timeout_join(Duration::from_millis(100))
+        .unwrap();
 
     assert_eq!(node_A_connection_manager.get_active_connection_count(), 1);
     node_B_msg_counter.assert_count(2, 20);

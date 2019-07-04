@@ -97,6 +97,7 @@ impl Drop for ThreadControlMessenger {
 mod test {
     use super::*;
     use std::{sync::mpsc::sync_channel, thread, time::Duration};
+    use tari_utilities::thread_join::ThreadJoinWithTimeout;
 
     #[test]
     fn send_control_message() {
@@ -116,8 +117,7 @@ mod test {
         messenger.send(ControlMessage::Shutdown).unwrap();
 
         handle
-            .join()
-            .unwrap()
+            .timeout_join(Duration::from_millis(100))
             .map_err(|e| format!("Test thread errored: {:?}", e))
             .unwrap();
     }

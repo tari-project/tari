@@ -29,7 +29,12 @@ use crate::{
 };
 use derive_error::Error;
 use tari_crypto::signatures::SchnorrSignatureError;
-use tari_utilities::{ciphers::cipher::CipherError, message_format::MessageFormatError, ByteArrayError};
+use tari_utilities::{
+    ciphers::cipher::CipherError,
+    message_format::MessageFormatError,
+    thread_join::ThreadError,
+    ByteArrayError,
+};
 
 /// Error type for OutboundMessageService subsystem
 #[derive(Debug, Error)]
@@ -68,6 +73,6 @@ pub enum OutboundError {
     ShutdownSignalSendError(String),
     DealerProxyError(DealerProxyError),
     /// Could not join the dealer or worker threads
-    ThreadJoinError,
+    ThreadJoinError(ThreadError),
     OutboundMessagePoolError(OutboundMessagePoolError),
 }
