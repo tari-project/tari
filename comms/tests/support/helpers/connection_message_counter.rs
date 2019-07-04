@@ -59,9 +59,9 @@ impl<'c> ConnectionMessageCounter<'c> {
         *counter_lock
     }
 
-    pub fn assert_count(&self, count: u32, timeout_ms: u64) -> () {
-        for _i in 0..timeout_ms {
-            thread::sleep(Duration::from_millis(1));
+    pub fn assert_count(&self, count: u32, num_polls: usize) -> () {
+        for _i in 0..num_polls {
+            thread::sleep(Duration::from_millis(100));
             let curr_count = self.count();
             if curr_count == count {
                 return;
@@ -76,7 +76,7 @@ impl<'c> ConnectionMessageCounter<'c> {
         panic!(
             "Message count did not reach {} within {}ms. Count={}",
             count,
-            timeout_ms,
+            num_polls * 100,
             self.count()
         );
     }

@@ -24,6 +24,7 @@ use crate::{
     connection::{dealer_proxy::DealerProxyError, ConnectionError, NetAddressError, PeerConnectionError},
     connection_manager::ConnectionManagerError,
     message::MessageError,
+    outbound_message_service::outbound_message_pool::OutboundMessagePoolError,
     peer_manager::PeerManagerError,
 };
 use derive_error::Error;
@@ -64,10 +65,9 @@ pub enum OutboundError {
     /// Number of retry attempts exceeded
     RetryAttemptsExceedError,
     #[error(msg_embedded, non_std, no_from)]
-    ControlSendError(String),
+    ShutdownSignalSendError(String),
     DealerProxyError(DealerProxyError),
     /// Could not join the dealer or worker threads
     ThreadJoinError,
-    /// Message pool worker thread failed to start
-    ThreadInitializationError,
+    OutboundMessagePoolError(OutboundMessagePoolError),
 }

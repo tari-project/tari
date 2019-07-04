@@ -34,7 +34,7 @@ use crate::{
         inbound_message_service::{InboundMessageService, InboundMessageServiceConfig},
     },
     outbound_message_service::{
-        outbound_message_pool::OutboundMessagePoolConfig,
+        outbound_message_pool::{OutboundMessagePoolConfig, OutboundMessagePoolError},
         outbound_message_service::OutboundMessageService,
         OutboundError,
         OutboundMessagePool,
@@ -234,7 +234,6 @@ where
             self.zmq_context.clone(),
             // OMP can requeue back onto itself
             message_sink_address.clone(),
-            message_sink_address.clone(),
             peer_manager,
             connection_manager,
         )
@@ -361,8 +360,9 @@ pub enum CommsServicesError {
     MessageTypeNotRegistered,
     ConnectorError(ConnectorError),
     InboundMessageBrokerError(BrokerError),
+    OutboundMessagePoolError(OutboundMessagePoolError),
+    OutboundError(OutboundError),
     InboundMessageServiceError(InboundError),
-    OutboundMessageServiceError(OutboundError),
 }
 
 /// Contains the built comms services
@@ -407,7 +407,7 @@ where
             .map_err(|err| CommsServicesError::InboundMessageServiceError(err))?;
         self.outbound_message_pool
             .start()
-            .map_err(|err| CommsServicesError::OutboundMessageServiceError(err))?;
+            .map_err(CommsServicesError::OutboundMessagePoolError)?;
 
         Ok(CommsServices {
             // Transfer ownership to CommsServices
@@ -417,6 +417,7 @@ where
             connection_manager: self.connection_manager,
             inbound_message_broker: self.inbound_message_broker,
             peer_manager: self.peer_manager,
+            outbound_message_pool: self.outbound_message_pool,
             // Add handles for started services
             control_service_handle,
         })
@@ -433,9 +434,8 @@ pub struct CommsServices<MType> {
     outbound_message_service: Arc<OutboundMessageService>,
     routes: CommsRoutes<MType>,
     control_service_handle: Option<ControlServiceHandle>,
-    // TODO(sdbondi): Use these fields when able to shutdown
-    #[allow(dead_code)]
     inbound_message_broker: Arc<InboundMessageBroker<MType>>,
+    outbound_message_pool: OutboundMessagePool,
     connection_manager: Arc<ConnectionManager>,
     pub peer_manager: Arc<PeerManager>,
 }
@@ -470,7 +470,22 @@ where
             shutdown_results.push(control_service_shutdown_result.map_err(CommsServicesError::ControlServiceError));
         }
 
-        // TODO: Shutdown other services
+        // Shutdown outbound message pool
+        shutdown_results.push(
+            self.outbound_message_pool
+                .shutdown()
+                .map_err(CommsServicesError::OutboundError),
+        );
+
+        match Arc::try_unwrap(self.inbound_message_broker) {
+            Ok(broker) => drop(broker),
+            Err(_) => {
+                error!(
+                    target: LOG_TARGET,
+                    "Unable to cleanly drop inbound message broker because references are still held by other threads"
+                );
+            },
+        }
 
         // Lastly, Shutdown connection manager
         match Arc::try_unwrap(self.connection_manager) {

@@ -58,15 +58,11 @@
 
 pub mod broadcast_strategy;
 pub mod error;
-pub mod message_pool_worker;
-pub mod outbound_message;
 pub mod outbound_message_pool;
 pub mod outbound_message_service;
 
 pub use self::{
     broadcast_strategy::BroadcastStrategy,
     error::OutboundError,
-    message_pool_worker::MessagePoolWorker,
-    outbound_message::OutboundMessage,
-    outbound_message_pool::OutboundMessagePool,
+    outbound_message_pool::{OutboundMessage, OutboundMessagePool},
 };

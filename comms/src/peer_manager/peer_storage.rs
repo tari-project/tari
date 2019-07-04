@@ -327,7 +327,7 @@ impl PeerStorage {
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         peer.addresses
             .add_net_address(net_address)
-            .map_err(|_| PeerManagerError::DataUpdateError)?;
+            .map_err(PeerManagerError::NetAddressError)?;
         self.peers
             .insert(&peer_key, &peer)
             .map_err(|e| PeerManagerError::DatabaseError(e))
@@ -348,7 +348,7 @@ impl PeerStorage {
         let best_net_address = peer
             .addresses
             .get_best_net_address()
-            .map_err(|_| PeerManagerError::DataUpdateError)?;
+            .map_err(PeerManagerError::NetAddressError)?;
         self.peers
             .insert(&peer_key, &peer)
             .map_err(|e| PeerManagerError::DatabaseError(e))?;
@@ -374,7 +374,7 @@ impl PeerStorage {
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         peer.addresses
             .update_latency(net_address, latency_measurement)
-            .map_err(|_| PeerManagerError::DataUpdateError)?;
+            .map_err(PeerManagerError::NetAddressError)?;
         self.peers
             .insert(&peer_key, &peer)
             .map_err(|e| PeerManagerError::DatabaseError(e))
@@ -393,7 +393,7 @@ impl PeerStorage {
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         peer.addresses
             .mark_message_received(net_address)
-            .map_err(|_| PeerManagerError::DataUpdateError)?;
+            .map_err(PeerManagerError::NetAddressError)?;
         self.peers
             .insert(&peer_key, &peer)
             .map_err(|e| PeerManagerError::DatabaseError(e))
@@ -412,7 +412,7 @@ impl PeerStorage {
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         peer.addresses
             .mark_message_rejected(net_address)
-            .map_err(|_| PeerManagerError::DataUpdateError)?;
+            .map_err(PeerManagerError::NetAddressError)?;
         self.peers
             .insert(&peer_key, &peer)
             .map_err(|e| PeerManagerError::DatabaseError(e))
@@ -431,7 +431,7 @@ impl PeerStorage {
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         peer.addresses
             .mark_successful_connection_attempt(net_address)
-            .map_err(|_| PeerManagerError::DataUpdateError)?;
+            .map_err(PeerManagerError::NetAddressError)?;
         self.peers
             .insert(&peer_key, &peer)
             .map_err(|e| PeerManagerError::DatabaseError(e))
@@ -450,7 +450,7 @@ impl PeerStorage {
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         peer.addresses
             .mark_failed_connection_attempt(net_address)
-            .map_err(|_| PeerManagerError::DataUpdateError)?;
+            .map_err(PeerManagerError::NetAddressError)?;
         self.peers
             .insert(&peer_key, &peer)
             .map_err(|e| PeerManagerError::DatabaseError(e))

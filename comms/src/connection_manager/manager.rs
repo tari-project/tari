@@ -253,7 +253,7 @@ impl ConnectionManager {
                     target: LOG_TARGET,
                     "Failed to establish peer connection to NodeId={}", peer.node_id
                 );
-                error!(target: LOG_TARGET, "Error (NodeId={}): {}", peer.node_id, err);
+                error!(target: LOG_TARGET, "Error (NodeId={}): {:?}", peer.node_id, err);
                 Err(err)
             })
     }

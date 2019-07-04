@@ -24,18 +24,16 @@ use crate::support::{
     factories::{self, TestFactory},
     helpers::ConnectionMessageCounter,
 };
-use chrono;
-use std::{convert::TryFrom, path::PathBuf, sync::Arc, thread, time::Duration};
+use std::{fs, path::PathBuf, sync::Arc, thread, time::Duration};
 use tari_comms::{
-    connection::{Connection, ConnectionError, Direction, InprocAddress, NetAddress, ZmqContext},
+    connection::{InprocAddress, ZmqContext},
     connection_manager::{ConnectionManager, PeerConnectionConfig},
     control_service::{ControlService, ControlServiceConfig},
-    message::{FrameSet, MessageEnvelope, MessageFlags},
+    message::MessageFlags,
     outbound_message_service::{
         outbound_message_pool::OutboundMessagePoolConfig,
         outbound_message_service::OutboundMessageService,
         BroadcastStrategy,
-        OutboundMessage,
         OutboundMessagePool,
     },
     peer_manager::{Peer, PeerManager},
@@ -43,13 +41,13 @@ use tari_comms::{
 };
 use tari_storage::lmdb_store::{LMDBBuilder, LMDBError, LMDBStore};
 
-fn make_peer_connection_config(consumer_address: InprocAddress) -> PeerConnectionConfig {
+fn make_peer_connection_config(message_sink_address: InprocAddress) -> PeerConnectionConfig {
     PeerConnectionConfig {
         peer_connection_establish_timeout: Duration::from_secs(5),
         max_message_size: 1024,
         host: "127.0.0.1".parse().unwrap(),
         max_connect_retries: 3,
-        message_sink_address: consumer_address,
+        message_sink_address,
         socks_proxy_address: None,
     }
 }
@@ -64,7 +62,7 @@ fn make_peer_manager(peers: Vec<Peer>, database: CommsDatabase) -> Arc<PeerManag
     )
 }
 
-pub fn init() {
+pub fn init_logging() {
     let _ = simple_logger::init();
 }
 
@@ -77,7 +75,7 @@ fn get_path(name: &str) -> String {
 
 fn init_datastore(name: &str) -> Result<LMDBStore, LMDBError> {
     let path = get_path(name);
-    let _ = std::fs::create_dir(&path).unwrap_or_default();
+    let _ = fs::create_dir(&path).unwrap_or_default();
     LMDBBuilder::new()
         .set_path(&path)
         .set_environment_size(10)
@@ -87,23 +85,25 @@ fn init_datastore(name: &str) -> Result<LMDBStore, LMDBError> {
 }
 
 fn clean_up_datastore(name: &str) {
-    std::fs::remove_dir_all(get_path(name)).unwrap();
+    fs::remove_dir_all(get_path(name)).unwrap();
 }
 
+/// This tests a message being sent through to the OMP where a peer (Node B) is awaiting alive and accepting
+/// connections.
 #[test]
 #[allow(non_snake_case)]
-fn test_outbound_message_pool() {
-    init();
+fn outbound_message_pool_no_retry() {
+    init_logging();
     let context = ZmqContext::new();
     let node_identity = Arc::new(factories::node_identity::create().build().unwrap());
 
     //---------------------------------- Node B Setup --------------------------------------------//
 
-    let node_B_consumer_address = InprocAddress::random();
-    let node_B_control_port_address: NetAddress = "127.0.0.1:45899".parse().unwrap();
+    let node_B_msg_sink_address = InprocAddress::random();
+    let node_B_control_port_address = factories::net_address::create().build().unwrap();
 
     let node_B_msg_counter = ConnectionMessageCounter::new(&context);
-    node_B_msg_counter.start(node_B_consumer_address.clone());
+    node_B_msg_counter.start(node_B_msg_sink_address.clone());
 
     let node_B_peer = factories::peer::create()
         .with_net_addresses(vec![node_B_control_port_address.clone()])
@@ -121,7 +121,7 @@ fn test_outbound_message_pool() {
         context.clone(),
         node_identity.clone(),
         node_B_peer_manager,
-        make_peer_connection_config(node_B_consumer_address.clone()),
+        make_peer_connection_config(node_B_msg_sink_address.clone()),
     ));
 
     // Start node B's control service
@@ -136,7 +136,7 @@ fn test_outbound_message_pool() {
 
     //---------------------------------- Node A setup --------------------------------------------//
 
-    let node_A_consumer_address = InprocAddress::random();
+    let node_A_msg_sink_address = InprocAddress::random();
 
     // Add node B to node A's peer manager
     let node_A_database_name = "omp_node_A_peer_manager"; // Note: every test should have unique database
@@ -146,7 +146,7 @@ fn test_outbound_message_pool() {
     let node_A_connection_manager = Arc::new(
         factories::connection_manager::create()
             .with_peer_manager(node_A_peer_manager.clone())
-            .with_peer_connection_config(make_peer_connection_config(node_A_consumer_address))
+            .with_peer_connection_config(make_peer_connection_config(node_A_msg_sink_address))
             .build()
             .unwrap(),
     );
@@ -157,7 +157,6 @@ fn test_outbound_message_pool() {
     let mut omp = OutboundMessagePool::new(
         omp_config.clone(),
         context.clone(),
-        omp_inbound_address.clone(),
         omp_inbound_address.clone(),
         node_A_peer_manager.clone(),
         node_A_connection_manager.clone(),
@@ -170,6 +169,7 @@ fn test_outbound_message_pool() {
         node_A_peer_manager.clone(),
     )
     .unwrap();
+
     let oms2 = OutboundMessageService::new(
         context.clone(),
         node_identity.clone(),
@@ -178,7 +178,7 @@ fn test_outbound_message_pool() {
     )
     .unwrap();
 
-    let _omp = omp.start();
+    omp.start().unwrap();
     let message_envelope_body = vec![0, 1, 2, 3];
 
     // Send 8 message alternating two different OMS's
@@ -197,143 +197,138 @@ fn test_outbound_message_pool() {
         .unwrap();
     }
 
-    node_B_msg_counter.assert_count(8, 1000);
+    node_B_msg_counter.assert_count(8, 30);
     node_B_control_service.shutdown().unwrap();
     node_B_control_service.handle.join().unwrap().unwrap();
 
+    omp.shutdown().unwrap();
     clean_up_datastore(node_A_database_name);
     clean_up_datastore(node_B_database_name);
 }
 
+/// This tests the reliability of the OMP.
+///
+/// This test is quite slow as it has to allow time for messages to send after a backoff period.
+///
+/// 1. A message is sent through to node A's OMP,
+/// 2. Node B is offline so the message is sent to the message retry service
+/// 3. Node B comes online (control service is started up)
+/// 4. The message retry service eventually sends the messages
+/// 5. Assert that all messages have been received
 #[test]
 #[allow(non_snake_case)]
-fn test_outbound_message_pool_requeuing() {
-    init();
+fn test_outbound_message_pool_fail_and_retry() {
+    init_logging();
     let context = ZmqContext::new();
 
-    let node_identity = Arc::new(factories::node_identity::create().build().unwrap());
-
+    let node_A_identity = factories::node_identity::create().build().map(Arc::new).unwrap();
     //---------------------------------- Node B Setup --------------------------------------------//
-    let node_B_control_port_address: NetAddress = "127.0.0.1:45845".parse().unwrap();
+
+    let node_B_msg_sink_address = InprocAddress::random();
+    let node_B_msg_counter = ConnectionMessageCounter::new(&context);
+    node_B_msg_counter.start(node_B_msg_sink_address.clone());
+
+    let node_B_control_port_address = factories::net_address::create().build().unwrap();
+
+    let node_B_identity = factories::node_identity::create()
+        .with_control_service_address(node_B_control_port_address.clone())
+        .build()
+        .map(Arc::new)
+        .unwrap();
+
     let node_B_peer = factories::peer::create()
         .with_net_addresses(vec![node_B_control_port_address.clone()])
         // Set node B's secret key to be the same as node A's so that we can generate the same shared secret
-        .with_public_key(node_identity.identity.public_key.clone())
+        .with_public_key(node_B_identity.identity.public_key.clone())
         .build()
         .unwrap();
 
     //---------------------------------- Node A setup --------------------------------------------//
 
-    let node_A_consumer_address = InprocAddress::random();
+    let node_A_msg_sink_address = InprocAddress::random();
 
     // Add node B to node A's peer manager
     let database_name = "omp_test_outbound_message_pool_requeuing"; // Note: every test should have unique database
     let datastore = init_datastore(database_name).unwrap();
     let database = datastore.get_handle(database_name).unwrap();
-    let node_A_peer_manager = Arc::new(
-        factories::peer_manager::create()
-            .with_peers(vec![node_B_peer.clone()])
-            .with_database(database)
-            .build()
-            .unwrap(),
-    );
-    let node_A_connection_manager = Arc::new(ConnectionManager::new(
-        context.clone(),
-        node_identity.clone(),
-        node_A_peer_manager.clone(),
-        make_peer_connection_config(node_A_consumer_address),
-    ));
+    let node_A_peer_manager = factories::peer_manager::create()
+        .with_peers(vec![node_B_peer.clone()])
+        .with_database(database)
+        .build()
+        .map(Arc::new)
+        .unwrap();
+    let node_A_connection_manager = factories::connection_manager::create()
+        .with_context(context.clone())
+        .with_node_identity(node_A_identity.clone())
+        .with_peer_manager(node_A_peer_manager.clone())
+        .with_peer_connection_config(make_peer_connection_config(node_A_msg_sink_address))
+        .build()
+        .map(Arc::new)
+        .unwrap();
 
     // Setup Node A OMP and OMS
     let omp_inbound_address = InprocAddress::random();
-    let omp_requeue_address = InprocAddress::random();
 
-    let omp_config = OutboundMessagePoolConfig {
-        max_num_of_retries: 3,
-        retry_wait_time: chrono::Duration::milliseconds(100),
-        worker_timeout_in_ms: Duration::from_millis(100),
-        control_timeout_in_ms: Duration::from_millis(5),
-    };
+    let omp_config = OutboundMessagePoolConfig::default();
     let mut omp = OutboundMessagePool::new(
         omp_config.clone(),
         context.clone(),
         omp_inbound_address.clone(),
-        omp_requeue_address.clone(),
         node_A_peer_manager.clone(),
         node_A_connection_manager.clone(),
     );
 
     let oms = OutboundMessageService::new(
         context.clone(),
-        node_identity.clone(),
+        node_A_identity.clone(),
         omp_inbound_address.clone(),
         node_A_peer_manager.clone(),
     )
     .unwrap();
 
     omp.start().unwrap();
-    let message_envelope_body: Vec<u8> = vec![0, 1, 2, 3];
+    let message_envelope_body = vec![0, 1, 2, 3];
 
-    // Now check that the requeuing happens
-    let requeue_connection = Connection::new(&context.clone(), Direction::Inbound)
-        .establish(&omp_requeue_address)
+    for _ in 0..5 {
+        oms.send_raw(
+            BroadcastStrategy::DirectNodeId(node_B_peer.node_id.clone()),
+            MessageFlags::ENCRYPTED,
+            message_envelope_body.clone(),
+        )
         .unwrap();
-    let omp_inbound_connection = Connection::new(&context.clone(), Direction::Outbound)
-        .establish(&omp_inbound_address)
+    }
+
+    thread::sleep(Duration::from_millis(1000));
+
+    // Later, start node B's control service and test if we receive messages
+    let node_B_database_name = "omp_node_B_peer_manager"; // Note: every test should have unique database
+    let datastore = init_datastore(node_B_database_name).unwrap();
+    let database = datastore.get_handle(node_B_database_name).unwrap();
+    let node_B_peer_manager = make_peer_manager(vec![], database);
+    let node_B_connection_manager = factories::connection_manager::create()
+        .with_context(context.clone())
+        .with_node_identity(node_B_identity.clone())
+        .with_peer_manager(node_B_peer_manager.clone())
+        .with_peer_connection_config(make_peer_connection_config(node_B_msg_sink_address))
+        .build()
+        .map(Arc::new)
         .unwrap();
 
-    oms.send_raw(
-        BroadcastStrategy::DirectNodeId(node_B_peer.node_id.clone()),
-        MessageFlags::ENCRYPTED,
-        message_envelope_body,
-    )
+    // Start node B's control service
+    let node_B_control_service = ControlService::new(context.clone(), node_B_identity.clone(), ControlServiceConfig {
+        socks_proxy_address: None,
+        listener_address: node_B_control_port_address,
+        accept_message_type: "CUSTOM".to_string(),
+        requested_outbound_connection_timeout: Duration::from_millis(2000),
+    })
+    .serve(node_B_connection_manager)
     .unwrap();
 
-    // Receive first requeue
-    let mut frame_set = requeue_connection.receive(1000).unwrap();
-    let data: FrameSet = frame_set.drain(1..).collect();
-
-    let msg = OutboundMessage::<MessageEnvelope>::try_from(data).unwrap();
-    assert_eq!(
-        node_A_peer_manager
-            .find_with_node_id(&msg.destination_node_id.clone())
-            .unwrap()
-            .addresses
-            .addresses[0]
-            .connection_attempts,
-        0
-    );
-    assert_eq!(msg.number_of_retries(), 1);
-    omp_inbound_connection.send(vec![msg.into_frame().unwrap()]).unwrap();
-
-    // Receive second requeue that happened before retry wait time elapsed
-    let mut frame_set = requeue_connection.receive(1000).unwrap();
-    let data: FrameSet = frame_set.drain(1..).collect();
-
-    let msg = OutboundMessage::<MessageEnvelope>::try_from(data).unwrap();
-    assert_eq!(msg.number_of_retries(), 1);
-    thread::sleep(Duration::from_millis(200));
-    omp_inbound_connection.send(vec![msg.into_frame().unwrap()]).unwrap();
-
-    // Receive third requeue that happened after retry wait time elapsed
-    let mut frame_set = requeue_connection.receive(1000).unwrap();
-    let data: FrameSet = frame_set.drain(1..).collect();
-
-    let msg = OutboundMessage::<MessageEnvelope>::try_from(data).unwrap();
-    assert_eq!(msg.number_of_retries(), 2);
-    thread::sleep(Duration::from_millis(200));
-    omp_inbound_connection.send(vec![msg.into_frame().unwrap()]).unwrap();
-
-    // Receive fourth requeue that happened after retry wait time elapsed
-    let mut frame_set = requeue_connection.receive(100).unwrap();
-    let data: FrameSet = frame_set.drain(1..).collect();
-    let msg = OutboundMessage::<MessageEnvelope>::try_from(data).unwrap();
-    assert_eq!(msg.number_of_retries(), 3);
-    thread::sleep(Duration::from_millis(200));
-    omp_inbound_connection.send(vec![msg.into_frame().unwrap()]).unwrap();
-
-    // This time the requeue should not occur so this read should timeout
-    assert_eq!(requeue_connection.receive(100), Err(ConnectionError::Timeout));
+    // We wait for the message to retry sending
+    node_B_msg_counter.assert_count(5, 150);
+    node_B_control_service.shutdown().unwrap();
+    node_B_control_service.handle.join().unwrap().unwrap();
+    omp.shutdown().unwrap();
 
     clean_up_datastore(database_name);
 }
