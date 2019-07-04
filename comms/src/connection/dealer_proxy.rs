@@ -145,6 +145,11 @@ impl DealerProxy {
                 .context
                 .socket(SocketType::Pub)
                 .map_err(|err| DealerProxyError::ZmqError(err.to_string()))?;
+
+            control
+                .set_linger(3000)
+                .map_err(|err| DealerProxyError::ZmqError(err.to_string()))?;
+
             control
                 .bind(&self.control_address.to_zmq_endpoint())
                 .map_err(|err| DealerProxyError::ZmqError(err.to_string()))?;

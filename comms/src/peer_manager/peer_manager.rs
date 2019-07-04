@@ -29,7 +29,6 @@ use crate::{
 
 use crate::peer_manager::PeerManagerError;
 use std::{sync::RwLock, time::Duration};
-use tari_storage::keyvalue_store::{DataStore, DatastoreError};
 
 /// The PeerManager consist of a routing table of previously discovered peers.
 /// It also provides functionality to add, find and delete peers. A subset of peers can also be requested from the
