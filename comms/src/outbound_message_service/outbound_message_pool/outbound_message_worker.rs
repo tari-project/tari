@@ -25,6 +25,7 @@ use crate::{
     connection::{Connection, Direction, InprocAddress, SocketEstablishment, ZmqContext},
     connection_manager::ConnectionManager,
     message::FrameSet,
+    outbound_message_service::outbound_message_pool::MessageRetryService,
     peer_manager::PeerManager,
 };
 use log::*;
@@ -36,10 +37,9 @@ use std::{
     thread,
     time::Duration,
 };
-use tari_utilities::message_format::MessageFormat;
+use tari_utilities::{byte_array::ByteArray, message_format::MessageFormat};
 
 const LOG_TARGET: &'static str = "comms::outbound_message_service::pool::worker";
-
 /// Set the allocated stack size for each MessagePoolWorker thread
 const THREAD_STACK_SIZE: usize = 256 * 1024; // 256kb
 
@@ -144,12 +144,22 @@ impl MessagePoolWorker {
                     })
                     .and_then(|msg| {
                         match self.attempt_message_transmission(&msg) {
-                            Ok(_) => debug!(
-                                target: LOG_TARGET,
-                                "Message successfully sent to NodeId {} after {} attempts",
-                                msg.destination_node_id(),
-                                msg.num_attempts()
-                            ),
+                            Ok(_) => {
+                                debug!(
+                                    target: LOG_TARGET,
+                                    "Message successfully sent to NodeId {} after {} attempts",
+                                    msg.destination_node_id(),
+                                    msg.num_attempts()
+                                );
+
+                                // We have successfully sent a message to a NodeId.
+                                // Tell the MessageRetryService to send the worker all messages
+                                // for that Node ID so that they can be sent.
+                                failed_msg_connection.send(&[
+                                    MessageRetryService::CTL_FLUSH_NODE_MSGS.as_bytes(),
+                                    msg.destination_node_id().as_bytes(),
+                                ])?;
+                            },
                             Err(err) => {
                                 debug!(
                                     target: LOG_TARGET,
