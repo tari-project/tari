@@ -171,6 +171,9 @@ impl PeerConnectionWorker {
                 match msg {
                     ControlMessage::Shutdown => {
                         debug!(target: LOG_TARGET, "[{:?}] Shutdown message received", addr);
+                        // Ensure that the peer connection is dropped as soon as possible.
+                        // This somehow seemed to improve connection reliability.
+                        drop(peer_conn);
                         break Ok(());
                     },
                     ControlMessage::SendMsg(frames) => {
@@ -220,7 +223,7 @@ impl PeerConnectionWorker {
     fn handle_socket_event(&mut self, event: SocketEvent) -> Result<()> {
         use SocketEventType::*;
 
-        debug!(target: "comms::peer_connection::worker", "{:?}", event);
+        debug!(target: LOG_TARGET, "{:?}", event);
         match event.event_type {
             Disconnected => {
                 let mut lock = acquire_write_lock!(self.connection_state);
@@ -240,7 +243,7 @@ impl PeerConnectionWorker {
                         };
                         info!(
                             target: LOG_TARGET,
-                            "[{}] Inbound connection accepted", self.context.peer_address
+                            "[{}] Listening on Inbound connection", self.context.peer_address
                         );
                         *lock = PeerConnectionState::Listening(Arc::new(info));
                     },

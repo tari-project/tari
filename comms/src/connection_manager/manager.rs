@@ -213,6 +213,10 @@ impl ConnectionManager {
         self.peer_manager.clone()
     }
 
+    pub(crate) fn get_connection(&self, peer: &Peer) -> Option<Arc<PeerConnection>> {
+        self.connections.get_connection(&peer.node_id).map(|c| c.clone())
+    }
+
     /// Return the number of _active_ peer connections currently managed by this instance
     pub fn get_active_connection_count(&self) -> usize {
         self.connections.get_active_connection_count()
@@ -220,6 +224,9 @@ impl ConnectionManager {
 
     fn initiate_peer_connection(&self, peer: &Peer) -> Result<Arc<PeerConnection>> {
         let protocol = PeerConnectionProtocol::new(&self.node_identity, &self.establisher);
+        self.peer_manager
+            .reset_connection_attempts(&peer.node_id)
+            .map_err(ConnectionManagerError::PeerManagerError)?;
 
         protocol
             .negotiate_peer_connection(peer)
@@ -234,7 +241,7 @@ impl ConnectionManager {
                 new_inbound_conn
                     .wait_connected_or_failure(&config.peer_connection_establish_timeout)
                     .or_else(|err| {
-                        error!(
+                        info!(
                             target: LOG_TARGET,
                             "Peer did not accept the connection within {:?} [NodeId={}] : {:?}",
                             config.peer_connection_establish_timeout,
@@ -253,7 +260,10 @@ impl ConnectionManager {
                     target: LOG_TARGET,
                     "Failed to establish peer connection to NodeId={}", peer.node_id
                 );
-                error!(target: LOG_TARGET, "Error (NodeId={}): {:?}", peer.node_id, err);
+                warn!(
+                    target: LOG_TARGET,
+                    "Failed connection error for NodeId={}: {:?}", peer.node_id, err
+                );
                 Err(err)
             })
     }

@@ -51,6 +51,7 @@ pub enum ServiceControlMessage {
 pub struct ServiceExecutor {
     thread_pool: Mutex<ThreadPool>,
     senders: Vec<Sender<ServiceControlMessage>>,
+    comms_services: Arc<CommsServices<TariMessageType>>,
 }
 
 impl ServiceExecutor {
@@ -99,6 +100,7 @@ impl ServiceExecutor {
         Self {
             thread_pool: Mutex::new(thread_pool),
             senders,
+            comms_services,
         }
     }
 
@@ -124,14 +126,18 @@ impl ServiceExecutor {
     }
 
     /// Join on all threads in the thread pool until they all exit or a given timeout is reached.
-    pub fn join_timeout(self, timeout: Duration) -> Result<(), ServiceError> {
+    /// This function returns the unwrapped CommsServices which is released from the service executor.
+    pub fn join_timeout(self, timeout: Duration) -> Result<CommsServices<TariMessageType>, ServiceError> {
         let (tx, rx) = channel::unbounded();
+        let thread_pool = self.thread_pool;
         thread::spawn(move || {
-            acquire_lock!(self.thread_pool).join();
+            acquire_lock!(thread_pool).join();
             let _ = tx.send(());
         });
 
-        rx.recv_timeout(timeout).map_err(|_| ServiceError::JoinTimedOut)
+        rx.recv_timeout(timeout).map_err(|_| ServiceError::JoinTimedOut)?;
+
+        Arc::try_unwrap(self.comms_services).map_err(|_| ServiceError::CommsServiceOwnershipError)
     }
 }
 
@@ -257,7 +263,8 @@ mod test {
         let services = ServiceExecutor::execute(comms_services, registry);
 
         services.shutdown().unwrap();
-        services.join_timeout(Duration::from_millis(100)).unwrap();
+        let comms = services.join_timeout(Duration::from_millis(100)).unwrap();
+        comms.shutdown().unwrap();
 
         {
             let lock = acquire_read_lock!(state);

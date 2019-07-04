@@ -115,23 +115,35 @@ impl ConnectionEstablisher {
     {
         let config = &self.config;
 
-        let mut attempt = ConnectionAttempts::new(&self.context, self.peer_manager.clone(), |monitor_addr, _| {
-            let address = self
-                .peer_manager
-                .get_best_net_address(&peer.node_id)
-                .map_err(ConnectionManagerError::PeerManagerError)?;
+        self.peer_manager
+            .reset_connection_attempts(&peer.node_id)
+            .map_err(ConnectionManagerError::PeerManagerError)?;
 
-            let conn = Connection::new(&self.context, Direction::Outbound)
-                .set_linger(Linger::Timeout(3000))
-                .set_monitor_addr(monitor_addr)
-                .set_socks_proxy_addr(config.socks_proxy_address.clone())
-                .set_max_message_size(Some(config.max_message_size))
-                .set_receive_hwm(0)
-                .establish(&address)
-                .map_err(ConnectionManagerError::ConnectionError)?;
+        let mut attempt = ConnectionAttempts::new(
+            &self.context,
+            self.peer_manager.clone(),
+            |monitor_addr, _| {
+                let address = self
+                    .peer_manager
+                    .get_best_net_address(&peer.node_id)
+                    .map_err(ConnectionManagerError::PeerManagerError)?;
 
-            Ok((conn, address))
-        });
+                let conn = Connection::new(&self.context, Direction::Outbound)
+                    .set_name(format!("out-control-port-conn-{}", peer.node_id).as_str())
+                    .set_linger(Linger::Never)
+                    .set_backlog(0)
+                    .set_monitor_addr(monitor_addr)
+                    .set_socks_proxy_addr(config.socks_proxy_address.clone())
+                    .set_max_message_size(Some(config.max_message_size))
+                    .set_receive_hwm(0)
+                    .set_send_hwm(1)
+                    .establish(&address)
+                    .map_err(ConnectionManagerError::ConnectionError)?;
+
+                Ok((conn, address))
+            },
+            Duration::from_millis(3000),
+        );
 
         info!(
             target: LOG_TARGET,
@@ -139,10 +151,21 @@ impl ConnectionEstablisher {
             peer.addresses.len(),
             peer.node_id
         );
-        attempt.try_connect(peer.addresses.len()).or_else(|err| {
-            warn!(target: LOG_TARGET, "Failed to connect to peer control port",);
-            Err(err)
-        })
+        attempt
+            .try_connect(peer.addresses.len())
+            .and_then(|(conn, monitor)| {
+                conn.set_linger(Linger::Timeout(3000))
+                    .map_err(ConnectionManagerError::ConnectionError)?;
+                Ok((conn, monitor))
+            })
+            .or_else(|err| {
+                self.peer_manager
+                    .reset_connection_attempts(&peer.node_id)
+                    .map_err(ConnectionManagerError::PeerManagerError)?;
+
+                warn!(target: LOG_TARGET, "Failed to connect to peer control port: {:?}", err);
+                Err(err)
+            })
     }
 
     /// Create a new outbound PeerConnection
@@ -263,36 +286,48 @@ impl ConnectionEstablisher {
 struct ConnectionAttempts<'c, F> {
     context: &'c ZmqContext,
     attempt_fn: F,
+    attempt_timeout: Duration,
     peer_manager: Arc<PeerManager>,
 }
 
 impl<'c, F> ConnectionAttempts<'c, F>
 where F: Fn(InprocAddress, usize) -> Result<(EstablishedConnection, NetAddress)>
 {
-    pub fn new(context: &'c ZmqContext, peer_manager: Arc<PeerManager>, attempt_fn: F) -> Self {
+    pub fn new(
+        context: &'c ZmqContext,
+        peer_manager: Arc<PeerManager>,
+        attempt_fn: F,
+        attempt_timeout: Duration,
+    ) -> Self
+    {
         Self {
             context,
             attempt_fn,
+            attempt_timeout,
             peer_manager,
         }
     }
 
     pub fn try_connect(&mut self, num_attempts: usize) -> Result<(EstablishedConnection, ConnectionMonitor)> {
         let mut attempt_count = 0;
+        let monitor_addr = InprocAddress::random();
         loop {
-            let monitor_addr = InprocAddress::random();
             let monitor = ConnectionMonitor::connect(self.context, &monitor_addr)
                 .map_err(ConnectionManagerError::ConnectionError)?;
 
             attempt_count += 1;
-            let (conn, address) = (self.attempt_fn)(monitor_addr, attempt_count)?;
+            let (conn, address) = (self.attempt_fn)(monitor_addr.clone(), attempt_count)?;
 
             debug!(
                 target: LOG_TARGET,
-                "Connection attempt {} of {} to {}", attempt_count, num_attempts, address
+                "Connection attempt {} of {} to {} (timeout: {}s)",
+                attempt_count,
+                num_attempts,
+                address,
+                self.attempt_timeout.as_secs()
             );
 
-            if self.is_connected(&monitor)? {
+            if self.can_connect(&monitor)? {
                 debug!(
                     target: LOG_TARGET,
                     "Successful connection on control port: {:?}",
@@ -303,6 +338,12 @@ where F: Fn(InprocAddress, usize) -> Result<(EstablishedConnection, NetAddress)>
                     .map_err(ConnectionManagerError::PeerManagerError)?;
                 break Ok((conn, monitor));
             } else {
+                debug!(
+                    target: LOG_TARGET,
+                    "Unable to connect on address {} (attempt: {} of {})", address, attempt_count, num_attempts
+                );
+                drop(monitor);
+                drop(conn);
                 self.peer_manager
                     .mark_failed_connection_attempt(&address)
                     .map_err(ConnectionManagerError::PeerManagerError)?;
@@ -313,7 +354,8 @@ where F: Fn(InprocAddress, usize) -> Result<(EstablishedConnection, NetAddress)>
         }
     }
 
-    fn is_connected(&self, monitor: &ConnectionMonitor) -> Result<bool> {
+    fn can_connect(&self, monitor: &ConnectionMonitor) -> Result<bool> {
+        let mut num_polls = 0;
         loop {
             if let Some(event) = connection_try!(monitor.read(100)) {
                 use SocketEventType::*;
@@ -331,6 +373,10 @@ where F: Fn(InprocAddress, usize) -> Result<(EstablishedConnection, NetAddress)>
                     MonitorStopped => break Ok(false),
                     _ => {},
                 }
+            }
+            num_polls += 1;
+            if num_polls * 100 >= self.attempt_timeout.as_millis() {
+                break Err(ConnectionManagerError::TimeoutBeforeConnected);
             }
         }
     }

@@ -75,6 +75,7 @@ pub struct Connection<'a> {
     pub(super) monitor_addr: Option<InprocAddress>,
     pub(super) recv_hwm: Option<i32>,
     pub(super) send_hwm: Option<i32>,
+    pub(super) backlog: Option<i32>,
     pub(super) socket_establishment: SocketEstablishment,
     pub(super) socks_proxy_addr: Option<SocketAddress>,
 }
@@ -93,6 +94,7 @@ impl<'a> Connection<'a> {
             monitor_addr: None,
             recv_hwm: None,
             send_hwm: None,
+            backlog: None,
             socket_establishment: Default::default(),
             socks_proxy_addr: None,
         }
@@ -113,6 +115,13 @@ impl<'a> Connection<'a> {
     /// Set the connection identity
     pub fn set_identity(mut self, identity: &str) -> Self {
         self.identity = Some(identity.to_owned());
+        self
+    }
+
+    /// Set the maximum length of the queue of outstanding peer connections
+    /// for the specified outbound connection.
+    pub fn set_backlog(mut self, backlog: i32) -> Self {
+        self.backlog = Some(backlog);
         self
     }
 
@@ -197,6 +206,10 @@ impl<'a> Connection<'a> {
         }
 
         set_linger(&socket, self.linger)?;
+
+        if let Some(backlog) = self.backlog {
+            socket.set_backlog(backlog).map_err(config_error_mapper)?;
+        }
 
         match self.curve_encryption {
             CurveEncryption::None => {},
@@ -322,6 +335,15 @@ impl EstablishedConnection {
     pub fn receive_multipart(&self) -> Result<FrameSet> {
         self.socket
             .recv_multipart(0)
+            .and_then(|frames| {
+                trace!(
+                    target: LOG_TARGET,
+                    "Received {} frame(s) (name: {})",
+                    frames.len(),
+                    self.name
+                );
+                Ok(frames)
+            })
             .map_err(|e| ConnectionError::SocketError(format!("Error receiving: {} ({})", e, e.to_raw())))
     }
 

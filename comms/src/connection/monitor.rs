@@ -167,7 +167,7 @@ impl ConnectionMonitor {
 
 impl Drop for ConnectionMonitor {
     fn drop(&mut self) {
-        debug!(target: LOG_TARGET, "Connection monitor dropped")
+        debug!(target: LOG_TARGET, "Connection monitor dropped");
     }
 }
 
