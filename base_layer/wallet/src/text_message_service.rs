@@ -44,6 +44,7 @@ use tari_comms::{
     DomainConnector,
 };
 use tari_p2p::{
+    ping_pong::PingPong,
     services::{
         Service,
         ServiceApiWrapper,
@@ -331,8 +332,16 @@ impl TextMessageService {
         self.screen_name = Some(screen_name);
     }
 
-    pub fn add_contact(&mut self, contact: Contact) {
-        self.contacts.push(contact);
+    pub fn add_contact(&mut self, contact: Contact) -> Result<(), TextMessageError> {
+        self.contacts.push(contact.clone());
+        // Send ping to the contact so that if they are online they will flush all outstanding messages for this node
+        let oms = self.oms.clone().ok_or(TextMessageError::OMSNotInitialized)?;
+        oms.send_message(
+            BroadcastStrategy::DirectPublicKey(contact.pub_key),
+            MessageFlags::empty(),
+            PingPong::Ping,
+        )?;
+        Ok(())
     }
 
     pub fn remove_contact(&mut self, contact: Contact) -> Result<(), TextMessageError> {
@@ -651,7 +660,7 @@ mod test {
         assert_eq!(tms.get_screen_name(), Some("Fred".to_string()));
 
         for c in contacts.iter() {
-            tms.add_contact(c.clone())
+            let _ = tms.add_contact(c.clone());
         }
 
         assert_eq!(tms.get_contacts().len(), 5);
