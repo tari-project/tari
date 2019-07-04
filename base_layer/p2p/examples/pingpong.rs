@@ -68,7 +68,6 @@ pub fn random_string(len: usize) -> String {
 }
 
 fn main() {
-    log4rs::init_file("base_layer/p2p/examples/example-log-config.yml", Default::default()).unwrap();
     let matches = App::new("Peer file generator")
         .version("1.0")
         .about("PingPong between two peers")
@@ -90,7 +89,18 @@ fn main() {
                 .takes_value(true)
                 .required(true),
         )
+        .arg(
+            Arg::with_name("log-config")
+                .value_name("FILE")
+                .long("log-config")
+                .short("l")
+                .help("The relative path of the log config file of the other node")
+                .takes_value(true)
+                .default_value("base_layer/p2p/examples/example-log-config.yml"),
+        )
         .get_matches();
+
+    log4rs::init_file(matches.value_of("log-config").unwrap(), Default::default()).unwrap();
 
     let node_identity = load_identity(matches.value_of("node-identity").unwrap());
     let peer_identity = load_identity(matches.value_of("peer-identity").unwrap());
