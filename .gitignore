@@ -32,4 +32,4 @@ Cargo.lock
 
 # Ignore DataStore and Database files
 *.mdb
-
+.data/

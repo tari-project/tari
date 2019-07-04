@@ -40,29 +40,16 @@ pub enum WalletServerError {
     MessageFormatError(MessageFormatError),
 }
 
-pub struct WalletServerConfig {
-    pub port: u32,
-}
-
-impl Default for WalletServerConfig {
-    fn default() -> Self {
-        Self { port: 50051 }
-    }
-}
-
 /// Instance of the Wallet RPC Server with a reference to the Wallet API and the config
 pub struct WalletServer {
     // TODO some form of authentication
-    config: WalletServerConfig,
+    port: u32,
     wallet: Arc<Wallet>,
 }
 
 impl WalletServer {
-    pub fn new(config: Option<WalletServerConfig>, wallet: Arc<Wallet>) -> WalletServer {
-        WalletServer {
-            config: config.unwrap_or(WalletServerConfig::default()),
-            wallet,
-        }
+    pub fn new(port: u32, wallet: Arc<Wallet>) -> WalletServer {
+        WalletServer { port, wallet }
     }
 
     pub fn start(self) -> Result<(), WalletServerError> {
@@ -73,7 +60,7 @@ impl WalletServer {
         let mut server = Server::new(new_service);
 
         let http = Http::new().http2_only(true).clone();
-        let addr = format!("127.0.0.1:{}", self.config.port);
+        let addr = format!("127.0.0.1:{}", self.port);
         let bind = TcpListener::bind(&addr.clone().as_str().parse()?)?;
         let serve = bind
             .incoming()

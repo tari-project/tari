@@ -20,6 +20,7 @@ service WalletRpc {
     rpc GetContacts(VoidParams) returns (Contacts) {}
     //This method will update the screen_name of the contact with Pub-key contained in the argument Contact
     rpc UpdateContact(Contact) returns (RpcResponse) {}
+    rpc GetPublicKey(VoidParams) returns (PublicKey) {}
 }
 
 // A generic RPC call response message to convey the result of the call
@@ -36,7 +37,7 @@ message TextMessageToSend {
 
 // A Received Tari Text Message
 message ReceivedTextMessage {
-    bytes id = 1;
+    string id = 1;
     string source_pub_key = 2;
     string dest_pub_key = 3;
     string message = 4;
@@ -45,7 +46,7 @@ message ReceivedTextMessage {
 
 // A Sent Tari Text Message
 message SentTextMessage {
-    bytes id = 1;
+    string id = 1;
     string source_pub_key = 2;
     string dest_pub_key = 3;
     string message = 4;
@@ -77,4 +78,8 @@ message Contact {
 // A list of contacts
 message Contacts {
     repeated Contact contacts = 1;
+}
+// Returns your node's communication public key
+message PublicKey {
+    string pub_key = 1;
 }

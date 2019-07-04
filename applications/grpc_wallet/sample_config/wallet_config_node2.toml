@@ -1,0 +1,12 @@
+########################################################################################################################
+#                                                                                                                      #
+#                                          Wallet Configuration Options                                                #
+#                                                                                                                      #
+########################################################################################################################
+
+# TODO Finalize this config file
+
+control_port = 20000
+grpc_port = 20001
+secret_key = "IAAAAAAAAABRGY57eFIdqjMJS9yhyk65j7LfvryTmEA+w0Qt+6b5Dw==" # Base64 encoded Ristretto Secret Key
+data_path = "./data"

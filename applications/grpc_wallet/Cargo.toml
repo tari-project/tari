@@ -11,7 +11,6 @@ tari_utilities = { path = "../../infrastructure/tari_util", version = "^0.0"}
 tari_comms = { path = "../../comms", version = "^0.0"}
 tari_p2p = {path = "../../base_layer/p2p", version = "^0.0"}
 tari_crypto = { path = "../../infrastructure/crypto"}
-rand = "0.5"
 chrono = { version = "0.4.6", features = ["serde"]}
 config = { version = "0.9.3" }
 crossbeam-channel = "0.3.8"
@@ -28,6 +27,9 @@ hyper = "0.12"
 tower-grpc = { git = "https://github.com/tower-rs/tower-grpc.git", features = ["tower-hyper"] }
 tower-grpc-build = { git = "https://github.com/tower-rs/tower-grpc.git", features = ["tower-hyper"]}
 simple_logger = "1.2.0"
+clap = "2.33.0"
+serde = "1.0.90"
+serde_derive = "1.0.90"
 
 [dev-dependencies]
 tari_crypto = { path = "../../infrastructure/crypto"}
