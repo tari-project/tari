@@ -497,7 +497,7 @@ fn test_rpc_text_message_service() {
                 requested_outbound_connection_timeout: Duration::from_millis(5000),
             },
             socks_proxy_address: None,
-            host: "0.0.0.0".parse().unwrap(),
+            host: "127.0.0.1".parse().unwrap(),
             public_key: public_key1.clone(),
             secret_key: secret_key1,
             datastore_path: TempDir::new(random_string(8).as_str())
@@ -520,7 +520,7 @@ fn test_rpc_text_message_service() {
                 requested_outbound_connection_timeout: Duration::from_millis(5000),
             },
             socks_proxy_address: None,
-            host: "0.0.0.0".parse().unwrap(),
+            host: "127.0.0.1".parse().unwrap(),
             public_key: public_key2.clone(),
             secret_key: secret_key2,
             datastore_path: TempDir::new(random_string(8).as_str())

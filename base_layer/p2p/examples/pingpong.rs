@@ -54,7 +54,7 @@ use tari_p2p::{
     services::{ServiceExecutor, ServiceRegistry},
     tari_message::{NetMessage, TariMessageType},
 };
-use tari_utilities::{message_format::MessageFormat, thread_join::ThreadJoinWithTimeout};
+use tari_utilities::message_format::MessageFormat;
 use tempdir::TempDir;
 
 fn load_identity(path: &str) -> NodeIdentity {
