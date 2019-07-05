@@ -55,7 +55,7 @@ use tari_p2p::{
     },
     tari_message::{ExtendedMessage, TariMessageType},
 };
-use tari_utilities::{byte_array::ByteArray, message_format::MessageFormatError};
+use tari_utilities::{byte_array::ByteArray, hex::Hex, message_format::MessageFormatError};
 
 const LOG_TARGET: &'static str = "base_layer::wallet::text_messsage_service";
 
@@ -82,6 +82,8 @@ pub enum TextMessageError {
     UnexpectedApiResponse,
     /// Contact not found
     ContactNotFound,
+    /// Contact already exists
+    ContactAlreadyExists,
 }
 
 /// Represents a single Text Message
@@ -220,7 +222,14 @@ impl TextMessageService {
             MessageFlags::ENCRYPTED,
             text_message.clone(),
         )?;
-        self.pending_messages.insert(text_message.id.clone(), text_message);
+        self.pending_messages
+            .insert(text_message.id.clone(), text_message.clone());
+
+        info!(
+            target: LOG_TARGET,
+            "Text Message Sent to {:?}",
+            text_message.dest_pub_key.to_hex()
+        );
 
         Ok(())
     }
@@ -248,7 +257,12 @@ impl TextMessageService {
                 text_message_ack,
             )?;
 
-            self.received_messages.push(msg);
+            self.received_messages.push(msg.clone());
+            info!(
+                target: LOG_TARGET,
+                "Text Message Received from {:?}",
+                msg.source_pub_key.to_hex()
+            );
         }
 
         Ok(())
@@ -333,14 +347,25 @@ impl TextMessageService {
     }
 
     pub fn add_contact(&mut self, contact: Contact) -> Result<(), TextMessageError> {
+        if self.contacts.iter().any(|c| c.pub_key == contact.pub_key) {
+            return Err(TextMessageError::ContactAlreadyExists);
+        }
         self.contacts.push(contact.clone());
         // Send ping to the contact so that if they are online they will flush all outstanding messages for this node
         let oms = self.oms.clone().ok_or(TextMessageError::OMSNotInitialized)?;
         oms.send_message(
-            BroadcastStrategy::DirectPublicKey(contact.pub_key),
+            BroadcastStrategy::DirectPublicKey(contact.pub_key.clone()),
             MessageFlags::empty(),
             PingPong::Ping,
         )?;
+
+        info!(
+            target: LOG_TARGET,
+            "Contact Added: Screen name: {:?} - Pub-key: {:?} - Address: {:?}",
+            contact.screen_name.clone(),
+            contact.pub_key.clone().to_hex(),
+            contact.address.clone()
+        );
         Ok(())
     }
 
@@ -352,6 +377,15 @@ impl TextMessageService {
             .ok_or(TextMessageError::ContactNotFound)?;
 
         let _ = self.contacts.remove(position);
+
+        info!(
+            target: LOG_TARGET,
+            "Contact Added: Screen name: {:?} - Pub-key: {:?} - Address: {:?}",
+            contact.screen_name.clone(),
+            contact.pub_key.clone().to_hex(),
+            contact.address.clone()
+        );
+
         Ok(())
     }
 
@@ -367,6 +401,15 @@ impl TextMessageService {
             .find(|c| c.pub_key == pub_key)
             .ok_or(TextMessageError::ContactNotFound)?;
         found_contact.screen_name = contact.screen_name.clone();
+
+        info!(
+            target: LOG_TARGET,
+            "Contact Added: Screen name: {:?} - Pub-key: {:?} - Address: {:?}",
+            found_contact.screen_name.clone(),
+            found_contact.pub_key.clone().to_hex(),
+            found_contact.address.clone()
+        );
+
         Ok(())
     }
 
@@ -393,12 +436,9 @@ impl TextMessageService {
                 self.set_screen_name(s);
                 Ok(TextMessageApiResponse::ScreenNameSet)
             },
-            TextMessageApiRequest::AddContact(c) => {
-                self.add_contact(c);
-                Ok(TextMessageApiResponse::ContactAdded)
-            },
+            TextMessageApiRequest::AddContact(c) => self.add_contact(c).map(|_| TextMessageApiResponse::ContactAdded),
             TextMessageApiRequest::RemoveContact(c) => {
-                self.remove_contact(c).map(|_| TextMessageApiResponse::ContactAdded)
+                self.remove_contact(c).map(|_| TextMessageApiResponse::ContactRemoved)
             },
             TextMessageApiRequest::GetContacts => Ok(TextMessageApiResponse::Contacts(self.get_contacts())),
             TextMessageApiRequest::UpdateContact((pk, c)) => self

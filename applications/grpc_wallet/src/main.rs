@@ -38,9 +38,8 @@ use tari_p2p::{
     initialization::CommsConfig,
     tari_message::{NetMessage, TariMessageType},
 };
-use tari_utilities::message_format::MessageFormat;
+use tari_utilities::{hex::Hex, message_format::MessageFormat};
 use tari_wallet::{text_message_service::Contact, wallet::WalletConfig, Wallet};
-
 const LOG_TARGET: &'static str = "applications::grpc_wallet";
 
 #[derive(Debug, Default, Deserialize)]
@@ -161,9 +160,21 @@ pub fn main() {
         contacts = Peers::from_json(contents.as_str()).unwrap();
     }
 
-    let listener_address: NetAddress = format!("127.0.0.1:{}", settings.control_port.unwrap()).parse().unwrap();
-    let secret_key = CommsSecretKey::from_base64(settings.secret_key.unwrap().as_str()).unwrap();
+    let listener_address: NetAddress = format!("0.0.0.0:{}", settings.control_port.unwrap()).parse().unwrap();
+    let secret_key = CommsSecretKey::from_hex(settings.secret_key.unwrap().as_str()).unwrap();
     let public_key = CommsPublicKey::from_secret_key(&secret_key);
+
+    // TODO Use a less hacky crate to determine the local machines public IP address. This only works on Unix systems!
+    let ip = local_ip::get().unwrap();
+    let local_net_address = match format!("{}:{}", ip, settings.control_port.unwrap()).parse() {
+        Ok(na) => na,
+        Err(_) => {
+            error!(target: LOG_TARGET, "Could not resolve local IP address");
+            std::process::exit(1);
+        },
+    };
+
+    info!(target: LOG_TARGET, "Local Net Address: {:?}", local_net_address);
 
     let config = WalletConfig {
         comms: CommsConfig {
@@ -174,11 +185,12 @@ pub fn main() {
                 requested_outbound_connection_timeout: Duration::from_millis(5000),
             },
             socks_proxy_address: None,
-            host: "127.0.0.1".parse().unwrap(),
+            host: "0.0.0.0".parse().unwrap(),
             public_key: public_key.clone(),
             secret_key: secret_key.clone(),
+            public_address: local_net_address,
             datastore_path: settings.data_path.unwrap(),
-            peer_database_name: public_key.to_base64().unwrap(),
+            peer_database_name: public_key.to_hex(),
         },
         public_key: public_key.clone(),
     };
@@ -188,19 +200,18 @@ pub fn main() {
     // Add any provided peers to Peer Manager and Text Message Service Contacts
     if contacts.peers.len() > 0 {
         for p in contacts.peers.iter() {
-            if let Ok(pk) = CommsPublicKey::from_base64(p.pub_key.as_str()) {
-                if let Ok(na) = p.address.clone().parse::<NetAddress>() {
-                    let peer = Peer::from_public_key_and_address(pk.clone(), na.clone()).unwrap();
-                    wallet.comms_services.peer_manager.add_peer(peer).unwrap();
-                    wallet
-                        .text_message_service
-                        .add_contact(Contact {
-                            screen_name: p.screen_name.clone(),
-                            pub_key: pk.clone(),
-                            address: na.clone(),
-                        })
-                        .unwrap();
-                }
+            let pk = CommsPublicKey::from_hex(p.pub_key.as_str()).expect("Error parsing pub key from Hex");
+            if let Ok(na) = p.address.clone().parse::<NetAddress>() {
+                let peer = Peer::from_public_key_and_address(pk.clone(), na.clone()).unwrap();
+                wallet.comms_services.peer_manager.add_peer(peer).unwrap();
+                wallet
+                    .text_message_service
+                    .add_contact(Contact {
+                        screen_name: p.screen_name.clone(),
+                        pub_key: pk.clone(),
+                        address: na.clone(),
+                    })
+                    .unwrap();
             }
         }
     }

@@ -20,28 +20,25 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    grpc_interface::wallet_rpc::{
-        server,
-        Contact as ContactRpc,
-        Contacts as ContactsRpc,
-        PublicKey as PublicKeyRpc,
-        ReceivedTextMessage as ReceivedTextMessageRpc,
-        RpcResponse,
-        ScreenName as ScreenNameRpc,
-        SentTextMessage as SentTextMessageRpc,
-        TextMessageToSend as TextMessageToSendRpc,
-        TextMessagesResponse as TextMessagesResponseRpc,
-        VoidParams,
-    },
-    wallet_server::WalletServerError,
+use crate::grpc_interface::wallet_rpc::{
+    server,
+    Contact as ContactRpc,
+    Contacts as ContactsRpc,
+    PublicKey as PublicKeyRpc,
+    ReceivedTextMessage as ReceivedTextMessageRpc,
+    RpcResponse,
+    ScreenName as ScreenNameRpc,
+    SentTextMessage as SentTextMessageRpc,
+    TextMessageToSend as TextMessageToSendRpc,
+    TextMessagesResponse as TextMessagesResponseRpc,
+    VoidParams,
 };
 
 use futures::future;
 use log::*;
 use std::{convert::TryFrom, sync::Arc};
 use tari_comms::{connection::NetAddress, peer_manager::Peer, types::CommsPublicKey};
-use tari_utilities::message_format::MessageFormat;
+use tari_utilities::hex::Hex;
 use tari_wallet::{
     text_message_service::{Contact, TextMessage, TextMessages, UpdateContact},
     Wallet,
@@ -54,17 +51,15 @@ pub mod wallet_rpc {
     include!(concat!(env!("OUT_DIR"), "/wallet_rpc.rs"));
 }
 
-impl TryFrom<TextMessage> for ReceivedTextMessageRpc {
-    type Error = WalletServerError;
-
-    fn try_from(m: TextMessage) -> Result<Self, Self::Error> {
-        Ok(ReceivedTextMessageRpc {
-            id: m.id.to_base64().unwrap(),
-            source_pub_key: m.source_pub_key.to_base64()?,
-            dest_pub_key: m.dest_pub_key.to_base64()?,
+impl From<TextMessage> for ReceivedTextMessageRpc {
+    fn from(m: TextMessage) -> Self {
+        ReceivedTextMessageRpc {
+            id: m.id.to_hex(),
+            source_pub_key: m.source_pub_key.to_hex(),
+            dest_pub_key: m.dest_pub_key.to_hex(),
             message: m.message,
             timestamp: m.timestamp.to_string(),
-        })
+        }
     }
 }
 
@@ -87,14 +82,15 @@ impl server::WalletRpc for WalletRPC {
     type UpdateContactFuture = future::FutureResult<Response<RpcResponse>, tower_grpc::Status>;
 
     fn send_text_message(&mut self, request: Request<TextMessageToSendRpc>) -> Self::SendTextMessageFuture {
-        info!(
+        trace!(
             target: LOG_TARGET,
-            "SendTextMessage gRPC Request received: {:?}", request,
+            "SendTextMessage gRPC Request received: {:?}",
+            request,
         );
 
         let msg = request.into_inner();
 
-        let response = match CommsPublicKey::from_base64(msg.dest_pub_key.as_str()) {
+        let response = match CommsPublicKey::from_hex(msg.dest_pub_key.as_str()) {
             Ok(pk) => match self.wallet.text_message_service.send_text_message(pk, msg.message) {
                 Ok(()) => Response::new(RpcResponse {
                     success: true,
@@ -116,9 +112,10 @@ impl server::WalletRpc for WalletRPC {
     }
 
     fn get_text_messages(&mut self, request: Request<VoidParams>) -> Self::GetTextMessagesFuture {
-        info!(
+        trace!(
             target: LOG_TARGET,
-            "GetTextMessages gRPC Request received: {:?}", request
+            "GetTextMessages gRPC Request received: {:?}",
+            request
         );
 
         let response_body = match self.wallet.text_message_service.get_text_messages() {
@@ -134,14 +131,15 @@ impl server::WalletRpc for WalletRPC {
     }
 
     fn get_text_messages_by_contact(&mut self, request: Request<ContactRpc>) -> Self::GetTextMessagesFuture {
-        info!(
+        trace!(
             target: LOG_TARGET,
-            "GetTextMessages gRPC Request received: {:?}", request
+            "GetTextMessages gRPC Request received: {:?}",
+            request
         );
 
         let msg = request.into_inner();
 
-        let pub_key = match CommsPublicKey::from_base64(msg.pub_key.as_str()) {
+        let pub_key = match CommsPublicKey::from_hex(msg.pub_key.as_str()) {
             Ok(pk) => pk,
             _ => {
                 return future::ok(Response::new(TextMessagesResponseRpc {
@@ -164,7 +162,7 @@ impl server::WalletRpc for WalletRPC {
     }
 
     fn set_screen_name(&mut self, request: Request<ScreenNameRpc>) -> Self::SetScreenNameFuture {
-        info!(target: LOG_TARGET, "SetScreenName gRPC Request received: {:?}", request,);
+        trace!(target: LOG_TARGET, "SetScreenName gRPC Request received: {:?}", request,);
 
         let msg = request.into_inner();
 
@@ -183,7 +181,7 @@ impl server::WalletRpc for WalletRPC {
     }
 
     fn get_screen_name(&mut self, request: Request<VoidParams>) -> Self::GetScreenNameFuture {
-        info!(target: LOG_TARGET, "GetScreenName gRPC Request received: {:?}", request,);
+        trace!(target: LOG_TARGET, "GetScreenName gRPC Request received: {:?}", request,);
 
         let _msg = request.into_inner();
 
@@ -198,27 +196,22 @@ impl server::WalletRpc for WalletRPC {
     }
 
     fn get_public_key(&mut self, request: Request<VoidParams>) -> Self::GetPublicKeyFuture {
-        info!(target: LOG_TARGET, "GetPublicKey gRPC Request received: {:?}", request,);
+        trace!(target: LOG_TARGET, "GetPublicKey gRPC Request received: {:?}", request,);
 
         let _msg = request.into_inner();
 
-        let public_key = self
-            .wallet
-            .public_key
-            .clone()
-            .to_base64()
-            .unwrap_or("Failed to get public key".to_string());
+        let public_key = self.wallet.public_key.clone().to_hex();
 
         future::ok(Response::new(PublicKeyRpc { pub_key: public_key }))
     }
 
     fn add_contact(&mut self, request: Request<ContactRpc>) -> Self::AddContactFuture {
-        info!(target: LOG_TARGET, "AddContact gRPC Request received: {:?}", request,);
+        trace!(target: LOG_TARGET, "AddContact gRPC Request received: {:?}", request,);
 
         let msg = request.into_inner();
 
         let screen_name = msg.screen_name.clone();
-        let pub_key = match CommsPublicKey::from_base64(msg.pub_key.as_str()) {
+        let pub_key = match CommsPublicKey::from_hex(msg.pub_key.as_str()) {
             Ok(pk) => pk,
             _ => {
                 return future::ok(Response::new(RpcResponse {
@@ -256,28 +249,30 @@ impl server::WalletRpc for WalletRPC {
                 }))
             },
             _ => (),
-        }
+        };
 
-        let response = match self.wallet.text_message_service.add_contact(Contact {
+        match self.wallet.text_message_service.add_contact(Contact {
             screen_name,
             pub_key,
             address: net_address,
         }) {
-            Ok(()) => Response::new(RpcResponse {
-                success: true,
-                message: "Successfully added contact".to_string(),
-            }),
-            Err(e) => Response::new(RpcResponse {
-                success: false,
-                message: format!("Error adding contact: {:?}", e).to_string(),
-            }),
+            Ok(()) => (),
+            Err(e) => {
+                return future::ok(Response::new(RpcResponse {
+                    success: false,
+                    message: format!("Error adding contact: {:?}", e).to_string(),
+                }))
+            },
         };
 
-        return future::ok(response);
+        future::ok(Response::new(RpcResponse {
+            success: true,
+            message: "Successfully added contact".to_string(),
+        }))
     }
 
     fn remove_contact(&mut self, request: Request<ContactRpc>) -> Self::RemoveContactFuture {
-        info!(target: LOG_TARGET, "RemoveContact gRPC Request received: {:?}", request,);
+        trace!(target: LOG_TARGET, "RemoveContact gRPC Request received: {:?}", request,);
 
         let msg = request.into_inner();
 
@@ -293,7 +288,7 @@ impl server::WalletRpc for WalletRPC {
 
         let screen_name = msg.screen_name.clone();
 
-        if let Ok(pk) = CommsPublicKey::from_base64(msg.pub_key.as_str()) {
+        if let Ok(pk) = CommsPublicKey::from_hex(msg.pub_key.as_str()) {
             let response = match self.wallet.text_message_service.remove_contact(Contact {
                 screen_name,
                 pub_key: pk,
@@ -319,7 +314,7 @@ impl server::WalletRpc for WalletRPC {
     }
 
     fn update_contact(&mut self, request: Request<ContactRpc>) -> Self::RemoveContactFuture {
-        info!(target: LOG_TARGET, "UpdateContact gRPC Request received: {:?}", request,);
+        trace!(target: LOG_TARGET, "UpdateContact gRPC Request received: {:?}", request,);
 
         let msg = request.into_inner();
         let net_address = match msg.address.clone().parse::<NetAddress>() {
@@ -332,7 +327,7 @@ impl server::WalletRpc for WalletRPC {
             },
         };
         let screen_name = msg.screen_name.clone();
-        if let Ok(pk) = CommsPublicKey::from_base64(msg.pub_key.as_str()) {
+        if let Ok(pk) = CommsPublicKey::from_hex(msg.pub_key.as_str()) {
             let response = match self.wallet.text_message_service.update_contact(pk, UpdateContact {
                 screen_name,
                 address: net_address,
@@ -357,7 +352,7 @@ impl server::WalletRpc for WalletRPC {
     }
 
     fn get_contacts(&mut self, request: Request<VoidParams>) -> Self::GetContactsFuture {
-        info!(target: LOG_TARGET, "GetContacts gRPC Request received: {:?}", request,);
+        trace!(target: LOG_TARGET, "GetContacts gRPC Request received: {:?}", request,);
 
         let mut contacts_resp: Vec<ContactRpc> = Vec::new();
 
@@ -365,13 +360,12 @@ impl server::WalletRpc for WalletRPC {
             for c in contacts.iter() {
                 let sn = c.screen_name.clone();
                 let address = format!("{}", c.address.clone());
-                if let Ok(pk) = c.pub_key.to_base64() {
-                    contacts_resp.push(ContactRpc {
-                        screen_name: sn,
-                        pub_key: pk,
-                        address,
-                    });
-                }
+
+                contacts_resp.push(ContactRpc {
+                    screen_name: sn,
+                    pub_key: c.pub_key.to_hex(),
+                    address,
+                });
             }
         }
 
@@ -398,22 +392,10 @@ pub fn sort_text_messages(msgs: TextMessages) -> TextMessagesResponseRpc {
     // TODO TextMessageService will be refactored to use the boolean `acknowledged` flag rather than two
     // lists when the Sqlite backend is put in place
     for msg in msgs.pending_messages {
-        let source = match msg.source_pub_key.to_base64() {
-            Ok(pk) => pk,
-            Err(e) => {
-                error!(target: LOG_TARGET, "Error encoding Public Key to Base 64: {:?}", e);
-                continue;
-            },
-        };
-        let dest = match msg.dest_pub_key.to_base64() {
-            Ok(pk) => pk,
-            Err(e) => {
-                error!(target: LOG_TARGET, "Error encoding Public Key to Base 64: {:?}", e);
-                continue;
-            },
-        };
+        let source = msg.source_pub_key.to_hex();
+        let dest = msg.dest_pub_key.to_hex();
         body.sent_messages.push(SentTextMessageRpc {
-            id: msg.id.to_base64().unwrap(),
+            id: msg.id.to_hex(),
             source_pub_key: source,
             dest_pub_key: dest,
             message: msg.message,
@@ -423,22 +405,10 @@ pub fn sort_text_messages(msgs: TextMessages) -> TextMessagesResponseRpc {
     }
 
     for msg in msgs.sent_messages {
-        let source = match msg.source_pub_key.to_base64() {
-            Ok(pk) => pk,
-            Err(e) => {
-                error!(target: LOG_TARGET, "Error encoding Public Key to Base 64: {:?}", e);
-                continue;
-            },
-        };
-        let dest = match msg.dest_pub_key.to_base64() {
-            Ok(pk) => pk,
-            Err(e) => {
-                error!(target: LOG_TARGET, "Error encoding Public Key to Base 64: {:?}", e);
-                continue;
-            },
-        };
+        let source = msg.source_pub_key.to_hex();
+        let dest = msg.dest_pub_key.to_hex();
         body.sent_messages.push(SentTextMessageRpc {
-            id: msg.id.to_base64().unwrap(),
+            id: msg.id.to_hex(),
             source_pub_key: source,
             dest_pub_key: dest,
             message: msg.message,

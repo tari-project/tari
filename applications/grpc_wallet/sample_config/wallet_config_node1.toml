@@ -8,7 +8,7 @@
 
 control_port = 10000
 grpc_port = 10001
-secret_key = "IAAAAAAAAAA3jIh+jLlar7bQGOSfQ/QvCXMh6JAWljXoQ5DJ5TcxDA=="# Base64 encoded Ristretto Secret Key
+secret_key = "bafd4efafac9310b85c7afdc68d0c874597102bc2e1c824caa19d8b263afff05"
 data_path = "./data"
 
 

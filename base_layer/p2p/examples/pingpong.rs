@@ -116,6 +116,7 @@ fn main() {
             requested_outbound_connection_timeout: Duration::from_millis(2000),
         },
         secret_key: node_identity.secret_key.clone(),
+        public_address: node_identity.control_service_address,
         datastore_path: TempDir::new(random_string(8).as_str())
             .unwrap()
             .path()
