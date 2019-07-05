@@ -35,6 +35,8 @@ pub enum ServiceError {
     ShutdownSendFailed,
     #[error(msg_embedded, non_std, no_from)]
     InternalServiceError(String),
+    /// Unable to get sole ownership of comms services. Another thread still has a handle.
+    CommsServiceOwnershipError,
 }
 
 impl ServiceError {

@@ -145,6 +145,7 @@ impl DealerProxy {
     /// this method has no effect.
     pub fn shutdown(self) -> Result<()> {
         if let Some(thread_handle) = self.thread_handle {
+            info!(target: LOG_TARGET, "Dealer proxy SHUTDOWN");
             let control = self
                 .context
                 .socket(SocketType::Pub)

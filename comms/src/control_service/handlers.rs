@@ -102,7 +102,7 @@ where
                     if found_peer == peer {
                         info!(
                             target: LOG_TARGET,
-                            "Address {} already exists for node_id={}", message.address, found_peer.node_id
+                            "Control address {} already known for node_id={}", message.address, found_peer.node_id
                         );
                     } else {
                         warn!(
@@ -142,6 +142,17 @@ where
         target: LOG_TARGET,
         "Connecting to requested address {}", message.address
     );
+
+    if let Some(conn) = conn_manager.get_connection(&peer) {
+        if conn.is_active() {
+            debug!(
+                target: LOG_TARGET,
+                "Already have active connection to peer. Shutting down the old connection."
+            );
+            conn.shutdown().map_err(ControlServiceError::ConnectionError)?;
+        }
+    }
+
     let conn = conn_manager
         .establish_requested_outbound_connection(&peer, message.address.clone(), message.server_key)
         .map_err(ControlServiceError::ConnectionManagerError)?;

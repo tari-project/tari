@@ -196,8 +196,9 @@ fn run_ui(services: ServiceExecutor, peer_identity: PeerNodeIdentity, pingpong_a
 
     shutdown_tx.send(()).unwrap();
     services.shutdown().unwrap();
-    services.join_timeout(Duration::from_millis(1000)).unwrap();
-    app_handle.timeout_join(Duration::from_millis(100)).unwrap();
+    let comms = services.join_timeout(Duration::from_millis(1000)).unwrap();
+    comms.shutdown().unwrap();
+    app_handle.join().unwrap();
 }
 
 fn update_count(s: &mut Cursive) {

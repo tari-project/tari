@@ -54,4 +54,6 @@ pub enum ConnectionManagerError {
     ConnectionAddressNotEstablished,
     /// Problem creating or loading datastore
     DatastoreError,
+    /// Connection timed out before it was able to connect
+    TimeoutBeforeConnected,
 }

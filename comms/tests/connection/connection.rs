@@ -77,7 +77,7 @@ fn inbound_recv_send_inproc() {
         ])
         .run(ctx.clone());
 
-    let frames = conn.receive(200).unwrap();
+    let frames = conn.receive(2000).unwrap();
     assert_eq!(frames.len(), 4);
     assert_eq!("boba".as_bytes(), frames[0].as_slice());
     assert_eq!("Just".as_bytes(), frames[1].as_slice());
@@ -115,7 +115,7 @@ fn inbound_recv_send_encrypted_tcp() {
         .set_send_data(vec![(0..255).map(|i| i as u8).collect::<Vec<_>>()])
         .run(ctx.clone());
 
-    let frames = conn.receive(500).unwrap();
+    let frames = conn.receive(2000).unwrap();
     assert_eq!(frames.len(), 2);
 
     conn.send(&["the dude", "OK"]).unwrap();
@@ -145,7 +145,7 @@ fn outbound_send_recv_inproc() {
 
     conn.send(&["identity"]).unwrap();
 
-    let frames = conn.receive(500).unwrap();
+    let frames = conn.receive(2000).unwrap();
 
     assert_eq!(1, frames.len());
     assert_eq!("OK", String::from_utf8_lossy(frames[0].as_slice()));
