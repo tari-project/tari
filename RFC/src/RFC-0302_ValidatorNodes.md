@@ -154,16 +154,8 @@ The VNs will communicate using a peer-to-peer (P2P) network. To facilitate this 
 [digital asset]: Glossary.md#digital-asset
 [checkpoint]: Glossary.md#checkpoint
 [committee]: Glossary.md#committee
-[CommitteeSelectionStrategy]: Glossary.md#committeeselectionstrategy
 [ConsensusStrategy]: Glossary.md#consensusstrategy
 [validator node]: Glossary.md#validator-node
-[digital asset network]: Glossary.md#digital-asset-network
 [transaction]: Glossary.md#transaction
-[tari coin]: Glossary.md#tari-coin
 [tokens]: Glossary.md#digital-asset-tokens
-[trusted node]: Glossary.md#trusted-node
 [instructions]: Glossary.md#instructions
-[RegistrationCollateral]: Glossary.md#registrationcollateral
-[RegistrationTerm]: Glossary.md#registrationterm
-[DigitalAssetTemplate]: Glossary.md#digitalassettemplate
-[node ID]: Glossary.md#node-id
