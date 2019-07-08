@@ -159,7 +159,7 @@ impl DealerProxy {
             control
                 .send("TERMINATE", zmq::DONTWAIT)
                 .map_err(|err| DealerProxyError::ZmqError(err.to_string()))?;
-            std::thread::sleep(Duration::from_millis(10));
+            std::thread::sleep(Duration::from_millis(50));
             thread_handle
                 .timeout_join(THREAD_JOIN_TIMEOUT_IN_MS)
                 .map_err(|err| DealerProxyError::ThreadJoinError(err))
