@@ -150,12 +150,15 @@ impl DealerProxy {
                 .context
                 .socket(SocketType::Pub)
                 .map_err(|err| DealerProxyError::ZmqError(err.to_string()))?;
+            std::thread::sleep(Duration::from_millis(50));
             control
                 .set_linger(3000)
                 .map_err(|err| DealerProxyError::ZmqError(err.to_string()))?;
+            std::thread::sleep(Duration::from_millis(50));
             control
                 .bind(&self.control_address.to_zmq_endpoint())
                 .map_err(|err| DealerProxyError::ZmqError(err.to_string()))?;
+            std::thread::sleep(Duration::from_millis(50));
             control
                 .send("TERMINATE", zmq::DONTWAIT)
                 .map_err(|err| DealerProxyError::ZmqError(err.to_string()))?;
