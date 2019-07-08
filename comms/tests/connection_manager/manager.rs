@@ -39,6 +39,7 @@ fn make_peer_connection_config(consumer_address: InprocAddress) -> PeerConnectio
     PeerConnectionConfig {
         peer_connection_establish_timeout: Duration::from_secs(5),
         max_message_size: 1024,
+        max_connections: 10,
         host: "127.0.0.1".parse().unwrap(),
         max_connect_retries: 5,
         message_sink_address: consumer_address,
@@ -195,7 +196,7 @@ fn establish_peer_connection() {
     node_B_control_service.shutdown().unwrap();
     node_B_control_service
         .handle
-        .timeout_join(Duration::from_millis(100))
+        .timeout_join(Duration::from_millis(1000))
         .unwrap();
 
     assert_eq!(node_A_connection_manager.get_active_connection_count(), 1);

@@ -36,6 +36,7 @@ fn make_peer_connection_config(message_sink_address: InprocAddress) -> PeerConne
     PeerConnectionConfig {
         peer_connection_establish_timeout: Duration::from_secs(5),
         max_message_size: 1024,
+        max_connections: 10,
         host: "127.0.0.1".parse().unwrap(),
         max_connect_retries: 3,
         message_sink_address,

@@ -34,7 +34,10 @@ use tari_comms::connection::{
     ZmqContext,
 };
 
-use crate::support::factories::{self, TestFactory};
+use crate::support::{
+    factories::{self, TestFactory},
+    helpers::asserts::assert_change,
+};
 
 #[test]
 fn connection_in() {
@@ -311,4 +314,68 @@ fn connection_disconnect() {
     }
 
     conn.wait_disconnected(&Duration::from_millis(2000)).unwrap();
+}
+
+#[test]
+fn connection_stats() {
+    let addr = factories::net_address::create().build().unwrap();
+    let ctx = ZmqContext::new();
+
+    let consumer_addr = InprocAddress::random();
+
+    // Connect to the sender (peer)
+    let sender = Connection::new(&ctx, Direction::Outbound)
+        .set_linger(Linger::Indefinitely)
+        .establish(&addr)
+        .unwrap();
+
+    // Initialize and start peer connection
+    let context = PeerConnectionContextBuilder::new()
+        .set_id("123".as_bytes())
+        .set_direction(Direction::Inbound)
+        .set_context(&ctx)
+        .set_message_sink_address(consumer_addr.clone())
+        .set_address(addr)
+        .build()
+        .unwrap();
+
+    let mut conn = PeerConnection::new();
+
+    assert!(!conn.is_connected());
+    conn.start(context).unwrap();
+
+    let initial_stats = conn.connection_stats();
+
+    sender.send(&[&[1u8]]).unwrap();
+    sender.send(&[&[2u8]]).unwrap();
+    sender.send(&[&[3u8]]).unwrap();
+    sender.send(&[&[4u8]]).unwrap();
+
+    conn.wait_connected_or_failure(&Duration::from_millis(2000)).unwrap();
+
+    conn.send(vec![vec![10u8]]).unwrap();
+    conn.send(vec![vec![11u8]]).unwrap();
+    conn.send(vec![vec![12u8]]).unwrap();
+
+    // Assert that receive stats update
+    assert_change(
+        || {
+            let stats = conn.connection_stats();
+            stats.messages_recv()
+        },
+        4,
+        20,
+    );
+
+    assert_change(
+        || {
+            let stats = conn.connection_stats();
+            stats.messages_sent()
+        },
+        3,
+        20,
+    );
+
+    let stats = conn.connection_stats();
+    assert_ne!(stats.last_activity(), initial_stats.last_activity());
 }

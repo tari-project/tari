@@ -251,8 +251,11 @@ impl ConnectionManager {
                         Err(ConnectionManagerError::ConnectionError(err))
                     })?;
 
+                // TODO(sdbondi): Check if num active connections > max_connections, if so remove
+                //                the peer connection which has not seen much recent activity.
                 self.connections
-                    .add_connection(peer.node_id.clone(), new_inbound_conn.clone(), join_handle);
+                    .add_connection(peer.node_id.clone(), Arc::clone(&new_inbound_conn), join_handle);
+
                 Ok(new_inbound_conn)
             })
             .or_else(|err| {
@@ -313,6 +316,7 @@ mod test {
             max_message_size: 1024,
             host: "127.0.0.1".parse().unwrap(),
             max_connect_retries: 3,
+            max_connections: 10,
             message_sink_address: InprocAddress::random(),
             socks_proxy_address: None,
         });
