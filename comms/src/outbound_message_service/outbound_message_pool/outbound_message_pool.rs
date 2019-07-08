@@ -375,6 +375,5 @@ mod test {
 
         omp.shutdown().unwrap();
         clean_up_datastore("clean_shutdown");
-        assert!(false);
     }
 }

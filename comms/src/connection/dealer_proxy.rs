@@ -220,5 +220,8 @@ mod test {
         proxy.shutdown().unwrap();
         receiver.send_sync(&[&msg[0], "FAIL".as_bytes()]).unwrap();
         assert!(sender.receive(200).is_err());
+
+        std::thread::sleep(Duration::from_secs(5));
+        assert!(false);
     }
 }
