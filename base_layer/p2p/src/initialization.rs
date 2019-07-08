@@ -25,7 +25,7 @@ use derive_error::Error;
 use std::{net::IpAddr, sync::Arc};
 use tari_comms::{
     builder::{CommsBuilderError, CommsRoutes, CommsServices, CommsServicesError},
-    connection::net_address::ip::SocketAddress,
+    connection::{net_address::ip::SocketAddress, NetAddress},
     connection_manager::PeerConnectionConfig,
     control_service::ControlServiceConfig,
     peer_manager::{node_identity::NodeIdentityError, NodeIdentity},
@@ -48,6 +48,7 @@ pub struct CommsConfig {
     pub host: IpAddr,
     pub public_key: CommsPublicKey,
     pub secret_key: CommsSecretKey,
+    pub public_address: NetAddress,
     pub datastore_path: String,
     pub peer_database_name: String,
 }
@@ -57,12 +58,8 @@ pub fn initialize_comms(
     comms_routes: CommsRoutes<TariMessageType>,
 ) -> Result<Arc<CommsServices<TariMessageType>>, CommsInitializationError>
 {
-    let node_identity = NodeIdentity::new(
-        config.secret_key,
-        config.public_key,
-        config.control_service.listener_address.clone(),
-    )
-    .map_err(CommsInitializationError::NodeIdentityError)?;
+    let node_identity = NodeIdentity::new(config.secret_key, config.public_key, config.public_address)
+        .map_err(CommsInitializationError::NodeIdentityError)?;
 
     let _ = std::fs::create_dir(&config.datastore_path).unwrap_or_default();
     let datastore = LMDBBuilder::new()

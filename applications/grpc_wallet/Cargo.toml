@@ -30,6 +30,8 @@ simple_logger = "1.2.0"
 clap = "2.33.0"
 serde = "1.0.90"
 serde_derive = "1.0.90"
+local-ip = "0.1.0"
+
 
 [dev-dependencies]
 tari_crypto = { path = "../../infrastructure/crypto"}
