@@ -144,27 +144,27 @@ impl DealerProxy {
     /// Send a shutdown request to the dealer proxy. If the dealer proxy has not been started
     /// this method has no effect.
     pub fn shutdown(self) -> Result<()> {
-        println!("test - Some(thread_handle)");
+        println!("test - Some thread_handle");
         if let Some(thread_handle) = self.thread_handle {
             info!(target: LOG_TARGET, "Dealer proxy SHUTDOWN");
-            println!("test - socket(SocketType::Pub)");
+            println!("test - socket SocketType Pub");
             let control = self
                 .context
                 .socket(SocketType::Pub)
                 .map_err(|err| DealerProxyError::ZmqError(err.to_string()))?;
-            println!("test - set_linger(3000)");
+            println!("test - set_linger");
             control
                 .set_linger(3000)
                 .map_err(|err| DealerProxyError::ZmqError(err.to_string()))?;
-            println!("test - bind(&self.control_address.to_zmq_endpoint())");
+            println!("test - bind self.control_address.to_zmq_endpoint");
             control
                 .bind(&self.control_address.to_zmq_endpoint())
                 .map_err(|err| DealerProxyError::ZmqError(err.to_string()))?;
-            println!("test - send("TERMINATE", zmq::DONTWAIT)");
+            println!("test - send TERMINATE");
             control
                 .send("TERMINATE", zmq::DONTWAIT)
                 .map_err(|err| DealerProxyError::ZmqError(err.to_string()))?;
-            println!("test - timeout_join(THREAD_JOIN_TIMEOUT_IN_MS)");
+            println!("test - timeout_join THREAD_JOIN_TIMEOUT_IN_MS");
             thread_handle
                 .timeout_join(THREAD_JOIN_TIMEOUT_IN_MS)
                 .map_err(|err| DealerProxyError::ThreadJoinError(err))
