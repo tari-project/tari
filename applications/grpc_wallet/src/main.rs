@@ -68,6 +68,17 @@ pub fn main() {
     let matches = App::new("Tari Wallet gRPC server")
         .version("0.1")
         .arg(
+            Arg::with_name("node-num")
+                .long("node_num")
+                .short("N")
+                .help(
+                    "An integer indicating which Node number config to load from the Tari repo root (Node config is a \
+                     pair of files consisting of config + peers for that node)",
+                )
+                .takes_value(true)
+                .required(false),
+        )
+        .arg(
             Arg::with_name("config")
                 .value_name("FILE")
                 .long("config")
@@ -118,14 +129,37 @@ pub fn main() {
         .get_matches();
 
     let mut settings = Settings::default();
-    if matches.is_present("config") {
+    let mut contacts = Peers { peers: Vec::new() };
+
+    // The node-num switch overrides the config and peers switch for quick testing from the tari repo root
+    if matches.is_present("node-num") {
+        let node_num = value_t!(matches, "node-num", u32).unwrap();
+        let peer_path = format!("./applications/grpc_wallet/sample_config/node{}_peers.json", node_num);
+        let config_path = format!(
+            "./applications/grpc_wallet/sample_config/wallet_config_node{}.toml",
+            node_num
+        );
         let mut settings_file = config::Config::default();
         settings_file
-            .merge(config::File::with_name(matches.value_of("config").unwrap()))
-            .unwrap();
+            .merge(config::File::with_name(config_path.as_str()))
+            .expect("Could not open specified config file");
         settings = settings_file.try_into().unwrap();
+        let contents = fs::read_to_string(peer_path).expect("Could not open specified Peers json file");
+        contacts = Peers::from_json(contents.as_str()).expect("Could not parse JSON from specified Peers json file");
+    } else {
+        if matches.is_present("config") {
+            let mut settings_file = config::Config::default();
+            settings_file
+                .merge(config::File::with_name(matches.value_of("config").unwrap()))
+                .expect("Could not open specified config file");
+            settings = settings_file.try_into().unwrap();
+        }
+        if let Some(f) = matches.value_of("peers") {
+            let contents = fs::read_to_string(f).expect("Could not open specified Peers json file");
+            contacts =
+                Peers::from_json(contents.as_str()).expect("Could not parse JSON from specified Peers json file");
+        }
     }
-
     if let Some(_c) = matches.values_of("control-port") {
         if let Ok(v) = value_t!(matches, "control-port", u32) {
             settings.control_port = Some(v)
@@ -153,11 +187,6 @@ pub fn main() {
             "Control port, gRPC port, Data path or Secret Key has not been provided via command line or config file"
         );
         std::process::exit(1);
-    }
-    let mut contacts = Peers { peers: Vec::new() };
-    if let Some(f) = matches.value_of("peers") {
-        let contents = fs::read_to_string(f).unwrap();
-        contacts = Peers::from_json(contents.as_str()).unwrap();
     }
 
     let listener_address: NetAddress = format!("0.0.0.0:{}", settings.control_port.unwrap()).parse().unwrap();
