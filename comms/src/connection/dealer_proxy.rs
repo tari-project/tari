@@ -150,19 +150,19 @@ impl DealerProxy {
                 .context
                 .socket(SocketType::Pub)
                 .map_err(|err| DealerProxyError::ZmqError(err.to_string()))?;
-            std::thread::sleep(Duration::from_millis(50));
+            std::thread::sleep(Duration::from_millis(100));
             control
                 .set_linger(3000)
                 .map_err(|err| DealerProxyError::ZmqError(err.to_string()))?;
-            std::thread::sleep(Duration::from_millis(50));
+            std::thread::sleep(Duration::from_millis(100));
             control
                 .bind(&self.control_address.to_zmq_endpoint())
                 .map_err(|err| DealerProxyError::ZmqError(err.to_string()))?;
-            std::thread::sleep(Duration::from_millis(50));
+            std::thread::sleep(Duration::from_millis(100));
             control
                 .send("TERMINATE", zmq::DONTWAIT)
                 .map_err(|err| DealerProxyError::ZmqError(err.to_string()))?;
-            std::thread::sleep(Duration::from_millis(50));
+            std::thread::sleep(Duration::from_millis(100));
             thread_handle
                 .timeout_join(THREAD_JOIN_TIMEOUT_IN_MS)
                 .map_err(|err| DealerProxyError::ThreadJoinError(err))
@@ -173,6 +173,8 @@ impl DealerProxy {
                     );
                     Err(err)
                 })?;
+            std::thread::sleep(Duration::from_millis(100));
+            drop(control);
         }
 
         Ok(())
