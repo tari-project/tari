@@ -43,7 +43,7 @@ use tari_utilities::byte_array::ByteArray;
 /// * Constructs his output, range proof and signature
 /// * Constructs the reply
 /// If any step fails, an error is returned.
-pub(super) struct SingleReceiverTransactionProtocol {}
+pub struct SingleReceiverTransactionProtocol {}
 
 impl SingleReceiverTransactionProtocol {
     pub fn create(
