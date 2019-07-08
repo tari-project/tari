@@ -165,7 +165,7 @@ pub fn main() {
     let public_key = CommsPublicKey::from_secret_key(&secret_key);
 
     // TODO Use a less hacky crate to determine the local machines public IP address. This only works on Unix systems!
-    let ip = local_ip::get().unwrap();
+    let ip = local_ip::get().expect("Could not determine local machines public IP address");
     let local_net_address = match format!("{}:{}", ip, settings.control_port.unwrap()).parse() {
         Ok(na) => na,
         Err(_) => {
