@@ -1,7 +1,7 @@
 {
   "peers": [
-    {"screen_name": "Alice",
-      "pub_key": "IAAAAAAAAABcWUYkstZ2BQpNoUBOKp9a0OICVsU0p+fBPO+u4NP0cQ==",
+    {"screen_name": "Jason",
+      "pub_key": "e0482c31139733b954cc3e59dcfbb4a65dbec1d53c97d47b18c91f6abfd04209",
       "address": "127.0.0.1:10000"
     }
   ]
