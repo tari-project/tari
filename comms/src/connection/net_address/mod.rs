@@ -41,8 +41,6 @@ pub enum NetAddressError {
     ParseFailed,
     /// Specified port range is invalid
     InvalidPortRange,
-    /// The net address couldn't be added to net addresses as a duplicate net address exist
-    DuplicateAddress,
     /// The specified net address does not exist
     AddressNotFound,
     /// Empty set of net addresses
