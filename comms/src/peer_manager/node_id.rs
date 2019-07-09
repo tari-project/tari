@@ -455,4 +455,17 @@ mod test {
         };
         assert!(node_id.closest(&node_ids, node_ids.len() + 1).is_err());
     }
+
+    #[test]
+    fn partial_eq() {
+        let bytes = [
+            173, 218, 34, 188, 211, 173, 235, 82, 18, 159, 55, 47, 242, 24, 95, 60, 208, 53, 97, 51, 43, 71, 149, 89,
+            123, 150, 162, 67, 240, 208, 67, 56,
+        ]
+        .as_bytes();
+        let nid1 = NodeId::try_from(bytes.clone()).unwrap();
+        let nid2 = NodeId::try_from(bytes.clone()).unwrap();
+
+        assert_eq!(nid1, nid2);
+    }
 }
