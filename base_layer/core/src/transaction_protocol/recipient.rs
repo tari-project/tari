@@ -151,6 +151,7 @@ impl ReceiverTransactionProtocol {
 #[cfg(test)]
 mod test {
     use crate::{
+        tari_amount::*,
         transaction::OutputFeatures,
         transaction_protocol::{
             build_challenge,
@@ -169,12 +170,12 @@ mod test {
         let mut rng = OsRng::new().unwrap();
         let p = TestParams::new(&mut rng);
         let m = TransactionMetadata {
-            fee: 125,
+            fee: MicroTari(125),
             lock_height: 0,
         };
         let msg = SingleRoundSenderData {
             tx_id: 15,
-            amount: 500,
+            amount: MicroTari(500),
             public_excess: PublicKey::from_secret_key(&p.spend_key), // any random key will do
             public_nonce: PublicKey::from_secret_key(&p.change_key), // any random key will do
             metadata: m.clone(),

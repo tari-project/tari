@@ -29,22 +29,23 @@ use tari_core::{
     blockheader::*,
     fee::Fee,
     pow::*,
+    tari_amount::*,
     transaction::*,
     transaction_protocol::{sender::*, single_receiver::SingleReceiverTransactionProtocol},
     types::*,
 };
 use tari_crypto::{commitment::HomomorphicCommitmentFactory, common::Blake256, keys::SecretKey, ristretto::*};
-use tari_utilities::{hash::Hashable, hex::Hex};
+use tari_utilities::hash::Hashable;
 
 /// This struct is used to keep track of what the value and private key of a UTXO is.
 pub struct SpendInfo {
     pub key: PrivateKey,
-    pub value: u64,
+    pub value: MicroTari,
     pub features: OutputFeatures,
 }
 
 impl SpendInfo {
-    pub fn new(key: PrivateKey, value: u64, features: OutputFeatures) -> SpendInfo {
+    pub fn new(key: PrivateKey, value: MicroTari, features: OutputFeatures) -> SpendInfo {
         SpendInfo { key, value, features }
     }
 }
@@ -78,7 +79,7 @@ impl SimpleBlockChain {
             let priv_key = PrivateKey::random(&mut rng);
             chain.spending_keys.push(vec![SpendInfo::new(
                 priv_key.clone(),
-                calculate_coinbase(i),
+                calculate_coinbase(i.into()),
                 OutputFeatures::COINBASE_OUTPUT,
             )]);
             let header = chain.generate_new_header();
@@ -269,12 +270,12 @@ impl SimpleBlockChain {
         let new_spend_key2 = PrivateKey::random(&mut rng);
         // create values
         let old_value = self.spending_keys[block_index][utxo_index].value;
-        if old_value <= 100 || utxo_index > 4 {
+        if old_value <= MicroTari(100) || utxo_index > 4 {
             // we dont want to keep dividing for ever on a single utxo, or create very large blocks
             return None;
         }
         let new_value = self.spending_keys[block_index][utxo_index].value / 2;
-        let fee = Fee::calculate(20, 1, 2);
+        let fee = Fee::calculate(20.into(), 1, 2);
         let new_value2 = old_value - new_value - fee;
 
         // save spend info
@@ -303,7 +304,7 @@ impl SimpleBlockChain {
         let mut builder = SenderTransactionProtocol::builder(1);
         builder
             .with_lock_height(0)
-            .with_fee_per_gram(20)
+            .with_fee_per_gram(MicroTari(20))
             .with_offset(sender_offset)
             .with_private_nonce(sender_r)
             .with_change_secret(new_spend_key.clone())
