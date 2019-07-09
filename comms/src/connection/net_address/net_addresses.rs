@@ -58,21 +58,13 @@ impl NetAddressesWithStats {
         self.last_attempted
     }
 
-    /// Adds a new net address to the peer if it doesn't yet exist
+    /// Adds a new net address to the peer. This function will not add a duplicate if the address
+    /// already exists.
     pub fn add_net_address(&mut self, net_address: &NetAddress) -> Result<(), NetAddressError> {
-        let mut found_flag = false;
-        for curr_address in &self.addresses {
-            if curr_address.net_address == *net_address {
-                found_flag = true;
-                break;
-            }
+        if !self.addresses.iter().any(|x| x.net_address == *net_address) {
+            self.addresses.push(net_address.clone().into());
         }
-        if !found_flag {
-            self.addresses.push(NetAddressWithStats::from(net_address.clone()));
-            Ok(())
-        } else {
-            Err(NetAddressError::DuplicateAddress)
-        }
+        Ok(())
     }
 
     /// Finds and returns the highest priority net address until all connection attempts for each net address have been
@@ -221,7 +213,8 @@ mod test {
         let mut net_addresses = NetAddressesWithStats::from(net_address1.clone());
         assert!(net_addresses.add_net_address(&net_address2).is_ok());
         assert!(net_addresses.add_net_address(&net_address3).is_ok());
-        assert!(net_addresses.add_net_address(&net_address2).is_err()); // Add duplicate address
+        // Add duplicate address, test add_net_address is idempotent
+        assert!(net_addresses.add_net_address(&net_address2).is_ok());
         assert_eq!(net_addresses.addresses.len(), 3);
         assert_eq!(net_addresses.addresses[0].net_address, net_address1);
         assert_eq!(net_addresses.addresses[1].net_address, net_address2);
