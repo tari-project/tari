@@ -187,7 +187,7 @@ fn establish_peer_connection_outbound() {
 
     assert_eq!(msg_counter.count(), 2);
 
-    peer_conn_handle.timeout_join(Duration::from_millis(100)).unwrap();
+    peer_conn_handle.timeout_join(Duration::from_millis(1000)).unwrap();
 
     clean_up_datastore(database_name);
 }
@@ -251,7 +251,7 @@ fn establish_peer_connection_inbound() {
 
     assert_eq!(msg_counter.count(), 2);
 
-    peer_conn_handle.timeout_join(Duration::from_millis(100)).unwrap();
+    peer_conn_handle.timeout_join(Duration::from_millis(1000)).unwrap();
 
     clean_up_datastore(database_name);
 }
