@@ -190,7 +190,6 @@ impl PeerConnectionWorker {
                         );
                         let payload = self.create_payload(frames)?;
                         peer_conn.send(payload)?;
-
                         acquire_write_lock!(self.connection_stats).incr_message_sent();
                     },
                     ControlMessage::Pause => {
@@ -448,6 +447,8 @@ impl PeerConnectionWorker {
         let context = &self.context;
         Connection::new(&context.context, context.direction.clone())
             .set_linger(context.linger.clone())
+            .set_heartbeat_interval(Duration::from_millis(1000))
+            .set_heartbeat_timeout(Duration::from_millis(5000))
             .set_monitor_addr(self.monitor_addr.clone())
             .set_curve_encryption(context.curve_encryption.clone())
             .set_receive_hwm(PEER_CONNECTION_RECV_HWM)
