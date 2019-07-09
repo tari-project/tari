@@ -30,7 +30,7 @@ use crate::{
     message::FrameSet,
 };
 use log::*;
-use std::{borrow::Borrow, cmp, iter::IntoIterator, str::FromStr};
+use std::{borrow::Borrow, cmp, iter::IntoIterator, str::FromStr, time::Duration};
 
 const LOG_TARGET: &'static str = "comms::connection::Connection";
 
@@ -78,6 +78,9 @@ pub struct Connection<'a> {
     pub(super) backlog: Option<i32>,
     pub(super) socket_establishment: SocketEstablishment,
     pub(super) socks_proxy_addr: Option<SocketAddress>,
+    pub(super) heartbeat_interval: Option<Duration>,
+    pub(super) heartbeat_remote_ttl: Option<Duration>,
+    pub(super) heartbeat_timeout: Option<Duration>,
 }
 
 impl<'a> Connection<'a> {
@@ -97,6 +100,9 @@ impl<'a> Connection<'a> {
             backlog: None,
             socket_establishment: Default::default(),
             socks_proxy_addr: None,
+            heartbeat_interval: None,
+            heartbeat_remote_ttl: None,
+            heartbeat_timeout: None,
         }
     }
 
@@ -174,6 +180,26 @@ impl<'a> Connection<'a> {
         self
     }
 
+    /// Set the interval in which to send heartbeat pings.
+    pub fn set_heartbeat_interval(mut self, interval: Duration) -> Self {
+        self.heartbeat_interval = Some(interval);
+        self
+    }
+
+    /// Set the length of time to wait for a pong after sending a ping before closing the connection.
+    pub fn set_heartbeat_timeout(mut self, timeout: Duration) -> Self {
+        self.heartbeat_timeout = Some(timeout);
+        self
+    }
+
+    /// Set the interval time that the remote peer expect to receive heartbeat/other messages.
+    /// If the remote peer does not receive any message within the TTL period it should close the connection.
+    /// More info: http://api.zeromq.org/4-2:zmq-setsockopt#toc17
+    pub fn set_heartbeat_remote_ttl(mut self, ttl: Duration) -> Self {
+        self.heartbeat_remote_ttl = Some(ttl);
+        self
+    }
+
     /// Create the socket, configure it and bind/connect it to the given address
     pub fn establish<T: ZmqEndpoint>(self, addr: &T) -> Result<EstablishedConnection> {
         let socket = match self.direction {
@@ -234,6 +260,25 @@ impl<'a> Connection<'a> {
                     .set_curve_publickey(&public_key.into_inner())
                     .map_err(config_error_mapper)?;
             },
+        }
+
+        // Set heartbeat socket opts
+        if let Some(interval) = self.heartbeat_interval {
+            socket
+                .set_heartbeat_ivl(interval.as_millis() as i32)
+                .map_err(config_error_mapper)?;
+        }
+
+        if let Some(timeout) = self.heartbeat_timeout {
+            socket
+                .set_heartbeat_timeout(timeout.as_millis() as i32)
+                .map_err(config_error_mapper)?;
+        }
+
+        if let Some(ttl) = self.heartbeat_remote_ttl {
+            socket
+                .set_heartbeat_ttl(ttl.as_millis() as i32)
+                .map_err(config_error_mapper)?;
         }
 
         if let Some(v) = self.socks_proxy_addr {
@@ -451,6 +496,9 @@ mod test {
 
         let conn = Connection::new(&ctx, Direction::Inbound)
             .set_name("dummy")
+            .set_heartbeat_remote_ttl(Duration::from_millis(1000))
+            .set_heartbeat_timeout(Duration::from_millis(1001))
+            .set_heartbeat_interval(Duration::from_millis(1002))
             .set_identity("identity")
             .set_linger(Linger::Timeout(200))
             .set_max_message_size(Some(123))
@@ -466,6 +514,9 @@ mod test {
         assert!(!sock.is_curve_server().unwrap());
         assert_eq!(200, sock.get_linger().unwrap());
         assert_eq!(123, sock.get_maxmsgsize().unwrap());
+        assert_eq!(1000, sock.get_heartbeat_ttl().unwrap());
+        assert_eq!(1001, sock.get_heartbeat_timeout().unwrap());
+        assert_eq!(1002, sock.get_heartbeat_ivl().unwrap());
         assert_eq!("identity".as_bytes(), sock.get_identity().unwrap().as_slice());
         assert_eq!(1, sock.get_rcvhwm().unwrap());
         assert_eq!(2, sock.get_sndhwm().unwrap());
