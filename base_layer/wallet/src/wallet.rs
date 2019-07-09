@@ -48,7 +48,7 @@ pub struct Wallet {
     pub ping_pong_service: Arc<PingPongServiceApi>,
     pub text_message_service: Arc<TextMessageServiceApi>,
     pub comms_services: Arc<CommsServices<TariMessageType>>,
-    pub service_executor: Arc<ServiceExecutor>,
+    pub service_executor: ServiceExecutor,
     pub public_key: CommsPublicKey,
 }
 
@@ -72,7 +72,7 @@ impl Wallet {
             text_message_service: text_message_service_api,
             ping_pong_service: ping_pong_service_api,
             comms_services,
-            service_executor: Arc::new(service_executor),
+            service_executor,
             public_key: config.public_key.clone(),
         })
     }

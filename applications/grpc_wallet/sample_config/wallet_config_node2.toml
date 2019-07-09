@@ -10,3 +10,4 @@ control_port = 20000
 grpc_port = 10001
 secret_key = "7745546269487c282076ab3f54a3867c51cf71892f7f37d92323aa6f24dc8b02"
 data_path = "./data"
+screen_name = "Philip"

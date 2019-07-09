@@ -45,13 +45,14 @@ use std::{
     time::Duration,
 };
 use tari_comms::{
+    builder::CommsServices,
     control_service::ControlServiceConfig,
     peer_manager::{NodeIdentity, Peer, PeerFlags, PeerNodeIdentity},
 };
 use tari_p2p::{
     initialization::{initialize_comms, CommsConfig},
     ping_pong::{PingPongService, PingPongServiceApi},
-    services::{ServiceExecutor, ServiceRegistry},
+    services::{ServiceError, ServiceExecutor, ServiceRegistry},
     tari_message::{NetMessage, TariMessageType},
 };
 use tari_utilities::message_format::MessageFormat;
@@ -139,9 +140,15 @@ fn main() {
     );
     comms.peer_manager.add_peer(peer).unwrap();
 
-    let services = ServiceExecutor::execute(comms, services);
+    let services = ServiceExecutor::execute(comms.clone(), services);
 
     run_ui(services, peer_identity.identity, pingpong);
+
+    let comms = Arc::try_unwrap(comms)
+        .map_err(|_| ServiceError::CommsServiceOwnershipError)
+        .unwrap();
+
+    comms.shutdown().unwrap();
 }
 
 lazy_static! {
@@ -197,8 +204,7 @@ fn run_ui(services: ServiceExecutor, peer_identity: PeerNodeIdentity, pingpong_a
 
     shutdown_tx.send(()).unwrap();
     services.shutdown().unwrap();
-    let comms = services.join_timeout(Duration::from_millis(1000)).unwrap();
-    comms.shutdown().unwrap();
+    services.join_timeout(Duration::from_millis(1000)).unwrap();
     app_handle.join().unwrap();
 }
 
