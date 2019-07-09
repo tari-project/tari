@@ -38,7 +38,7 @@ use tari_utilities::byte_array::ByteArray;
 //----------------------------------------         Blocks         ----------------------------------------------------//
 
 /// A Tari block. Blocks are linked together into a blockchain.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Block {
     pub header: BlockHeader,
     pub body: AggregateBody,
@@ -67,10 +67,11 @@ impl Block {
 }
 
 // todo this probably need to move somewhere else
-/// This function will create the correct amount for the coinbase given the block height
+/// This function will create the correct amount for the coinbase given the block height, it will provide the answer in
+/// nanoTari
 pub fn calculate_coinbase(block_height: u64) -> u64 {
     // todo fill this in properly as a function and not a constant
-    (block_height * 0) + 60
+    ((block_height * 0) + 60) * 1000_000_000
 }
 
 //----------------------------------------     AggregateBody      ----------------------------------------------------//
@@ -166,6 +167,14 @@ impl AggregateBody {
             kernel.verify_signature()?;
         }
         Ok(())
+    }
+
+    pub fn get_total_fee(&self) -> u64 {
+        let mut fee = 0;
+        for kernel in &self.kernels {
+            fee += kernel.fee;
+        }
+        fee
     }
 }
 
