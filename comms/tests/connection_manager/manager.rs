@@ -187,8 +187,8 @@ fn establish_peer_connection() {
         Ok(())
     });
 
-    handle1.timeout_join(Duration::from_millis(100)).unwrap();
-    handle2.timeout_join(Duration::from_millis(100)).unwrap();
+    handle1.timeout_join(Duration::from_millis(2000)).unwrap();
+    handle2.timeout_join(Duration::from_millis(2000)).unwrap();
 
     // Give the peer connections a moment to receive and the message sink connections to send
     pause();
