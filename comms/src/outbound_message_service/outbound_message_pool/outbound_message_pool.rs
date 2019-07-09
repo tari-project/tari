@@ -228,6 +228,7 @@ mod test {
             max_message_size: 1024,
             host: "127.0.0.1".parse().unwrap(),
             max_connect_retries: 1,
+            max_connections: 10,
             message_sink_address: consumer_address,
             socks_proxy_address: None,
         }

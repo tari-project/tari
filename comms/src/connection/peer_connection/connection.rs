@@ -36,6 +36,7 @@ use crate::{
     },
     message::FrameSet,
 };
+use chrono::{NaiveDateTime, Utc};
 use std::{
     fmt,
     sync::{Arc, RwLock},
@@ -159,6 +160,56 @@ macro_rules! is_state {
     };
 }
 
+/// Basic stats for peer connections. PeerConnectionStats are updated by the [PeerConnectionWorker]
+/// and read by the [PeerConnection].
+///
+/// [PeerConnectionWorker](../worker/struct.PeerConnectionWorker.html)
+/// [PeerConnection](./struct.PeerConnection.html)
+#[derive(Clone, Debug)]
+pub struct PeerConnectionStats {
+    last_activity: NaiveDateTime,
+    messages_sent: usize,
+    messages_recv: usize,
+}
+
+impl PeerConnectionStats {
+    pub fn new() -> Self {
+        Default::default()
+    }
+
+    pub fn incr_message_recv(&mut self) {
+        self.messages_recv += 1;
+        self.last_activity = Utc::now().naive_utc();
+    }
+
+    pub fn incr_message_sent(&mut self) {
+        self.messages_sent += 1;
+        self.last_activity = Utc::now().naive_utc();
+    }
+
+    pub fn messages_sent(&self) -> usize {
+        self.messages_sent
+    }
+
+    pub fn messages_recv(&self) -> usize {
+        self.messages_recv
+    }
+
+    pub fn last_activity(&self) -> &NaiveDateTime {
+        &self.last_activity
+    }
+}
+
+impl Default for PeerConnectionStats {
+    fn default() -> Self {
+        Self {
+            last_activity: Utc::now().naive_local(),
+            messages_sent: 0,
+            messages_recv: 0,
+        }
+    }
+}
+
 /// Represents an asynchonous bi-directional connection to a Peer.
 /// A PeerConnectionContext must be given to start the underlying thread
 /// This may be easily shared and cloned across threads
@@ -208,6 +259,7 @@ macro_rules! is_state {
 #[derive(Default, Clone)]
 pub struct PeerConnection {
     state: Arc<RwLock<PeerConnectionState>>,
+    connection_stats: Arc<RwLock<PeerConnectionStats>>,
     direction: Option<Direction>,
     peer_address: Option<NetAddress>,
 }
@@ -248,7 +300,7 @@ impl PeerConnection {
         self.direction = Some(context.direction.clone());
         self.peer_address = Some(context.peer_address.clone());
 
-        let worker = PeerConnectionWorker::new(context, self.state.clone());
+        let worker = PeerConnectionWorker::new(context, self.state.clone(), self.connection_stats.clone());
         let handle = worker.spawn()?;
         Ok(handle)
     }
@@ -316,6 +368,16 @@ impl PeerConnection {
                 .map_or(self.peer_address.clone(), |addr| Some(addr.into())),
             _ => None,
         }
+    }
+
+    /// Returns a snapshot of latest connection stats from this peer connection
+    pub fn connection_stats(&self) -> PeerConnectionStats {
+        acquire_read_lock!(self.connection_stats).clone()
+    }
+
+    /// Returns the last time this connection sent or received a message
+    pub fn last_activity(&self) -> NaiveDateTime {
+        acquire_read_lock!(self.connection_stats).last_activity().clone()
     }
 
     /// Send control message to the ThreadControlMessenger.
@@ -540,6 +602,7 @@ mod test {
         };
         let conn = PeerConnection {
             state: Arc::new(RwLock::new(PeerConnectionState::Connected(Arc::new(info)))),
+            connection_stats: Arc::new(RwLock::new(PeerConnectionStats::new())),
             direction: None,
             peer_address: None,
         };
@@ -562,6 +625,7 @@ mod test {
         };
         let conn = PeerConnection {
             state: Arc::new(RwLock::new(PeerConnectionState::Listening(Arc::new(info)))),
+            connection_stats: Arc::new(RwLock::new(PeerConnectionStats::new())),
             direction: None,
             peer_address: None,
         };
@@ -580,6 +644,7 @@ mod test {
 
         let conn = PeerConnection {
             state: Arc::new(RwLock::new(PeerConnectionState::Connecting(thread_ctl))),
+            connection_stats: Arc::new(RwLock::new(PeerConnectionStats::new())),
             direction: None,
             peer_address: None,
         };
@@ -598,6 +663,7 @@ mod test {
 
         let conn = PeerConnection {
             state: Arc::new(RwLock::new(PeerConnectionState::Connecting(thread_ctl))),
+            connection_stats: Arc::new(RwLock::new(PeerConnectionStats::new())),
             direction: None,
             peer_address: None,
         };
@@ -616,6 +682,7 @@ mod test {
             state: Arc::new(RwLock::new(PeerConnectionState::Failed(
                 PeerConnectionError::ConnectFailed,
             ))),
+            connection_stats: Arc::new(RwLock::new(PeerConnectionStats::new())),
             direction: None,
             peer_address: None,
         };
@@ -632,6 +699,7 @@ mod test {
     fn state_disconnected() {
         let conn = PeerConnection {
             state: Arc::new(RwLock::new(PeerConnectionState::Disconnected)),
+            connection_stats: Arc::new(RwLock::new(PeerConnectionStats::new())),
             direction: None,
             peer_address: None,
         };
@@ -648,6 +716,7 @@ mod test {
     fn state_shutdown() {
         let conn = PeerConnection {
             state: Arc::new(RwLock::new(PeerConnectionState::Shutdown)),
+            connection_stats: Arc::new(RwLock::new(PeerConnectionStats::new())),
             direction: None,
             peer_address: None,
         };
@@ -668,6 +737,7 @@ mod test {
         };
         let conn = PeerConnection {
             state: Arc::new(RwLock::new(PeerConnectionState::Connected(Arc::new(info)))),
+            connection_stats: Arc::new(RwLock::new(PeerConnectionStats::new())),
             direction: None,
             peer_address: None,
         };
@@ -714,5 +784,14 @@ mod test {
         conn.shutdown().unwrap();
         let msg = rx.recv_timeout(Duration::from_millis(10)).unwrap();
         assert_eq!(ControlMessage::Shutdown, msg);
+    }
+
+    #[test]
+    fn connection_stats() {
+        let (conn, _) = create_connected_peer_connection();
+
+        let stats = conn.connection_stats();
+        assert_eq!(stats.messages_recv, 0);
+        assert_eq!(stats.messages_sent, 0);
     }
 }

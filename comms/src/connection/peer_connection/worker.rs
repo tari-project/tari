@@ -20,23 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use log::*;
-use std::{
-    sync::{
-        mpsc::{sync_channel, Receiver, RecvTimeoutError, SyncSender},
-        Arc,
-        RwLock,
-    },
-    thread,
-    time::Duration,
-};
-
 use crate::{
     connection::{
         connection::{Connection, EstablishedConnection},
         monitor::{ConnectionMonitor, SocketEvent, SocketEventType},
         peer_connection::{
-            connection::{ConnectionInfo, PeerConnectionSimpleState, PeerConnectionState},
+            connection::{ConnectionInfo, PeerConnectionSimpleState, PeerConnectionState, PeerConnectionStats},
             control::ControlMessage,
             PeerConnectionContext,
             PeerConnectionError,
@@ -48,7 +37,16 @@ use crate::{
     },
     message::{Frame, FrameSet},
 };
-use std::thread::JoinHandle;
+use log::*;
+use std::{
+    sync::{
+        mpsc::{sync_channel, Receiver, RecvTimeoutError, SyncSender},
+        Arc,
+        RwLock,
+    },
+    thread::{self, JoinHandle},
+    time::Duration,
+};
 
 const LOG_TARGET: &'static str = "comms::connection::peer_connection::worker";
 
@@ -74,12 +72,18 @@ pub(super) struct PeerConnectionWorker {
     paused: bool,
     monitor_addr: InprocAddress,
     connection_state: Arc<RwLock<PeerConnectionState>>,
+    connection_stats: Arc<RwLock<PeerConnectionStats>>,
     retry_count: u16,
 }
 
 impl PeerConnectionWorker {
     /// Create a new Worker from the given context
-    pub fn new(context: PeerConnectionContext, connection_state: Arc<RwLock<PeerConnectionState>>) -> Self {
+    pub fn new(
+        context: PeerConnectionContext,
+        connection_state: Arc<RwLock<PeerConnectionState>>,
+        connection_stats: Arc<RwLock<PeerConnectionStats>>,
+    ) -> Self
+    {
         let (sender, receiver) = sync_channel(5);
         Self {
             context,
@@ -89,6 +93,7 @@ impl PeerConnectionWorker {
             paused: false,
             monitor_addr: InprocAddress::random(),
             connection_state,
+            connection_stats,
             retry_count: 0,
         }
     }
@@ -185,6 +190,8 @@ impl PeerConnectionWorker {
                         );
                         let payload = self.create_payload(frames)?;
                         peer_conn.send(payload)?;
+
+                        acquire_write_lock!(self.connection_stats).incr_message_sent();
                     },
                     ControlMessage::Pause => {
                         debug!(target: LOG_TARGET, "[{:?}] Pause message received", addr);
@@ -364,6 +371,8 @@ impl PeerConnectionWorker {
     fn forward_frames(&mut self, frontend: &EstablishedConnection, backend: &EstablishedConnection) -> Result<()> {
         let context = &self.context;
         if let Some(frames) = connection_try!(frontend.receive(10)) {
+            acquire_write_lock!(self.connection_stats).incr_message_recv();
+
             match context.direction {
                 // For a ZMQ_ROUTER, the first frame is the identity
                 Direction::Inbound => match self.identity {
@@ -512,6 +521,7 @@ mod test {
             receiver,
             sender: thread_ctl.get_sender().clone(),
             connection_state: Arc::new(RwLock::new(connection_state)),
+            connection_stats: Arc::new(RwLock::new(PeerConnectionStats::new())),
             monitor_addr: InprocAddress::random(),
             retry_count: 1,
             paused: false,
