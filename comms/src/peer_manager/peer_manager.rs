@@ -385,4 +385,22 @@ mod test {
 
         clean_up_datastore(database_name);
     }
+
+    #[test]
+    fn test_adding_and_searching_by_net_address() {
+        // Create peer manager with random peers
+        let database_name = "test_adding_and_searching_by_net_address"; // Note: every test should have unique database
+        let datastore = init_datastore(database_name).unwrap();
+        let peer_database = datastore.get_handle(database_name).unwrap();
+        let peer_manager = PeerManager::new(peer_database).unwrap();
+        let mut rng = rand::OsRng::new().unwrap();
+        let peer = create_test_peer(&mut rng, false);
+        peer_manager.add_peer(peer.clone()).unwrap();
+        // Test NetAddress adding and searching
+        let net_address = NetAddress::from("1.2.3.4:7000".parse::<NetAddress>().unwrap());
+        assert!(peer_manager.add_net_address(&peer.node_id, &net_address).is_ok());
+        assert!(peer_manager.find_with_net_address(&net_address).is_ok());
+
+        clean_up_datastore(database_name);
+    }
 }

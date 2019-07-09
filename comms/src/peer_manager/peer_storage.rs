@@ -88,7 +88,6 @@ impl PeerStorage {
             None => {
                 // Add new entry
                 let peer_key = generate_peer_key(&mut self.rng); // Generate new random peer key
-                println!("generate_peer_key={:?}", peer_key);
                 self.add_hashmap_links(peer_key, &peer);
                 self.peers
                     .insert(&peer_key, &peer)
@@ -328,6 +327,7 @@ impl PeerStorage {
         peer.addresses
             .add_net_address(net_address)
             .map_err(PeerManagerError::NetAddressError)?;
+        self.net_address_hm.insert(net_address.clone(), peer_key);
         self.peers
             .insert(&peer_key, &peer)
             .map_err(|e| PeerManagerError::DatabaseError(e))
