@@ -26,7 +26,6 @@ use crate::{
     control_service::ControlServiceMessageType,
     message::{p2p::EstablishConnection, Message, MessageEnvelope, MessageFlags, MessageHeader, NodeDestination},
     peer_manager::{NodeIdentity, Peer},
-    types::CommsPublicKey,
 };
 use log::*;
 use std::sync::Arc;
@@ -88,7 +87,6 @@ impl<'e, 'ni> PeerConnectionProtocol<'e, 'ni> {
         let msg = EstablishConnection {
             address: external_address,
             control_service_address: self.node_identity.control_service_address.clone(),
-            public_key: self.node_identity.identity.public_key.clone(),
             node_id: self.node_identity.identity.node_id.clone(),
             server_key: curve_pk,
         };
@@ -109,7 +107,7 @@ impl<'e, 'ni> PeerConnectionProtocol<'e, 'ni> {
         &self,
         peer: &Peer,
         control_conn: &EstablishedConnection,
-        msg: EstablishConnection<CommsPublicKey>,
+        msg: EstablishConnection,
     ) -> Result<()>
     {
         let message_header = MessageHeader {

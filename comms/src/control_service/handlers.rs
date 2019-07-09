@@ -35,7 +35,6 @@ use crate::{
         NodeDestination,
     },
     peer_manager::{Peer, PeerFlags, PeerManagerError},
-    types::CommsPublicKey,
 };
 use log::*;
 use serde::{de::DeserializeOwned, export::PhantomData, Serialize};
@@ -79,7 +78,7 @@ where
     MType: Serialize + DeserializeOwned,
     MType: Clone,
 {
-    let message = EstablishConnection::<CommsPublicKey>::from_binary(context.message.body.as_slice())
+    let message = EstablishConnection::from_binary(context.message.body.as_slice())
         .map_err(|e| ControlServiceError::MessageFormatError(e))?;
 
     debug!(
@@ -88,40 +87,21 @@ where
     );
 
     let pm = &context.peer_manager;
-    let public_key = message.public_key.clone();
-    let node_id = message.node_id.clone();
+    let public_key = &context.envelope_header.source;
     let peer = match pm.find_with_public_key(&public_key) {
         Ok(peer) => {
             if peer.is_banned() {
                 return Err(ControlServiceError::PeerBanned);
             }
 
-            // TODO(sdbondi): add_net_address should be idempotent, once it is, we can remove this check
-            match pm.find_with_net_address(&message.control_service_address) {
-                Ok(found_peer) => {
-                    if found_peer == peer {
-                        info!(
-                            target: LOG_TARGET,
-                            "Control address {} already known for node_id={}", message.address, found_peer.node_id
-                        );
-                    } else {
-                        warn!(
-                            target: LOG_TARGET,
-                            "Address {} already used for another peer with node_id={}. Address will be replaced",
-                            message.address,
-                            found_peer.node_id
-                        );
-                    }
-                },
-                Err(PeerManagerError::PeerNotFoundError) => pm
-                    .add_net_address(&node_id, &message.control_service_address)
-                    .map_err(ControlServiceError::PeerManagerError)?,
-                Err(err) => return Err(err.into()),
-            }
+            pm.add_net_address(&peer.node_id, &message.control_service_address)
+                .map_err(ControlServiceError::PeerManagerError)?;
 
             peer
         },
         Err(PeerManagerError::PeerNotFoundError) => {
+            let node_id = &message.node_id;
+
             let peer = Peer::new(
                 public_key.clone(),
                 node_id.clone(),
@@ -172,7 +152,7 @@ where
     let envelope = MessageEnvelope::construct(
         &context.node_identity,
         public_key.clone(),
-        NodeDestination::PublicKey(public_key),
+        NodeDestination::PublicKey(public_key.clone()),
         msg.to_binary().map_err(ControlServiceError::MessageFormatError)?,
         MessageFlags::empty(),
     )

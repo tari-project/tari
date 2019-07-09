@@ -29,7 +29,7 @@ use serde::{Deserialize, Serialize};
 /// This represents a request to open a peer connection
 /// to a remote peer.
 #[derive(Serialize, Deserialize, Debug)]
-pub struct EstablishConnection<PK> {
+pub struct EstablishConnection {
     pub control_service_address: NetAddress,
     /// The zeroMQ Curve public key to use for the peer connection
     pub server_key: CurvePublicKey,
@@ -37,8 +37,6 @@ pub struct EstablishConnection<PK> {
     pub node_id: NodeId,
     /// The address to which to connect
     pub address: NetAddress,
-    /// The requesting node's public key
-    pub public_key: PK,
 }
 
 /// Sent to show that the connection has been accepted
