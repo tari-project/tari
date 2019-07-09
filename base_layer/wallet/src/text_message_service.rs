@@ -22,6 +22,7 @@
 
 use crate::types::HashDigest;
 use chrono::prelude::*;
+use core::cmp::Ordering;
 use crossbeam_channel as channel;
 use derive_error::Error;
 use digest::Digest;
@@ -56,7 +57,6 @@ use tari_p2p::{
     tari_message::{ExtendedMessage, TariMessageType},
 };
 use tari_utilities::{byte_array::ByteArray, hex::Hex, message_format::MessageFormatError};
-
 const LOG_TARGET: &'static str = "base_layer::wallet::text_messsage_service";
 
 #[derive(Debug, Error)]
@@ -87,7 +87,7 @@ pub enum TextMessageError {
 }
 
 /// Represents a single Text Message
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TextMessage {
     pub id: Vec<u8>,
     pub source_pub_key: CommsPublicKey,
@@ -101,6 +101,20 @@ impl TryInto<Message> for TextMessage {
 
     fn try_into(self) -> Result<Message, Self::Error> {
         Ok((TariMessageType::new(ExtendedMessage::Text), self).try_into()?)
+    }
+}
+
+impl PartialOrd<TextMessage> for TextMessage {
+    /// Orders OutboundMessage from least to most time remaining from being scheduled
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.timestamp.partial_cmp(&other.timestamp)
+    }
+}
+
+impl Ord for TextMessage {
+    /// Orders OutboundMessage from least to most time remaining from being scheduled
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.timestamp.cmp(&other.timestamp)
     }
 }
 
@@ -225,7 +239,7 @@ impl TextMessageService {
         self.pending_messages
             .insert(text_message.id.clone(), text_message.clone());
 
-        info!(
+        trace!(
             target: LOG_TARGET,
             "Text Message Sent to {:?}",
             text_message.dest_pub_key.to_hex()
@@ -243,10 +257,11 @@ impl TextMessageService {
             .map_err(TextMessageError::ConnectorError)?;
 
         if let Some((info, msg)) = incoming_msg {
-            debug!(
+            trace!(
                 target: LOG_TARGET,
-                "Text Message received with ID: {:?} and message: {:?}",
+                "Text Message received with ID: {:?} from {:?} with message: {:?}",
                 msg.id.clone(),
+                msg.source_pub_key.to_hex(),
                 msg.message.clone()
             );
 
@@ -258,11 +273,6 @@ impl TextMessageService {
             )?;
 
             self.received_messages.push(msg.clone());
-            info!(
-                target: LOG_TARGET,
-                "Text Message Received from {:?}",
-                msg.source_pub_key.to_hex()
-            );
         }
 
         Ok(())
@@ -359,7 +369,7 @@ impl TextMessageService {
             PingPong::Ping,
         )?;
 
-        info!(
+        trace!(
             target: LOG_TARGET,
             "Contact Added: Screen name: {:?} - Pub-key: {:?} - Address: {:?}",
             contact.screen_name.clone(),
@@ -378,7 +388,7 @@ impl TextMessageService {
 
         let _ = self.contacts.remove(position);
 
-        info!(
+        trace!(
             target: LOG_TARGET,
             "Contact Added: Screen name: {:?} - Pub-key: {:?} - Address: {:?}",
             contact.screen_name.clone(),
@@ -402,7 +412,7 @@ impl TextMessageService {
             .ok_or(TextMessageError::ContactNotFound)?;
         found_contact.screen_name = contact.screen_name.clone();
 
-        info!(
+        trace!(
             target: LOG_TARGET,
             "Contact Added: Screen name: {:?} - Pub-key: {:?} - Address: {:?}",
             found_contact.screen_name.clone(),
@@ -415,7 +425,7 @@ impl TextMessageService {
 
     /// This handler is called when the Service executor loops receives an API request
     fn handle_api_message(&mut self, msg: TextMessageApiRequest) -> Result<(), ServiceError> {
-        debug!(
+        trace!(
             target: LOG_TARGET,
             "[{}] Received API message: {:?}",
             self.get_name(),
@@ -446,7 +456,7 @@ impl TextMessageService {
                 .map(|_| TextMessageApiResponse::ContactUpdated),
         };
 
-        debug!(target: LOG_TARGET, "[{}] Replying to API: {:?}", self.get_name(), resp);
+        trace!(target: LOG_TARGET, "[{}] Replying to API: {:?}", self.get_name(), resp);
         self.api
             .send_reply(resp)
             .map_err(ServiceError::internal_service_error())
