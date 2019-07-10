@@ -73,7 +73,7 @@ impl SingleReceiverTransactionProtocol {
 
     /// Validates the sender info
     fn validate_sender_data(sender_info: &SD) -> Result<(), TPE> {
-        if sender_info.amount == 0 {
+        if sender_info.amount == 0.into() {
             return Err(TPE::ValidationError("Cannot send zero microTari".into()));
         }
         Ok(())
@@ -87,8 +87,8 @@ impl SingleReceiverTransactionProtocol {
         factory: &CommitmentFactory,
     ) -> Result<TransactionOutput, TPE>
     {
-        let commitment = factory.commit_value(&spending_key, sender_info.amount);
-        let proof = prover.construct_proof(&spending_key, sender_info.amount)?;
+        let commitment = factory.commit_value(&spending_key, sender_info.amount.into());
+        let proof = prover.construct_proof(&spending_key, sender_info.amount.into())?;
         Ok(TransactionOutput::new(
             features,
             commitment,
@@ -101,6 +101,7 @@ impl SingleReceiverTransactionProtocol {
 #[cfg(test)]
 mod test {
     use crate::{
+        tari_amount::*,
         transaction::OutputFeatures,
         transaction_protocol::{
             build_challenge,
@@ -145,12 +146,12 @@ mod test {
         let pubkey = PublicKey::from_secret_key(&k);
         let pubnonce = PublicKey::from_secret_key(&r);
         let m = TransactionMetadata {
-            fee: 100,
+            fee: MicroTari(100),
             lock_height: 0,
         };
         let info = SingleRoundSenderData {
             tx_id: 500,
-            amount: 1500,
+            amount: MicroTari(1500),
             public_excess: pub_xs.clone(),
             public_nonce: pub_rs.clone(),
             metadata: m.clone(),
@@ -168,7 +169,7 @@ mod test {
         let out = &prot.output;
         // Check the output that was constructed
         assert!(
-            COMMITMENT_FACTORY.open_value(&k, info.amount, &out.commitment),
+            COMMITMENT_FACTORY.open_value(&k, info.amount.into(), &out.commitment),
             "Output commitment is invalid"
         );
         assert!(out.verify_range_proof(&PROVER).unwrap(), "Range proof is invalid");

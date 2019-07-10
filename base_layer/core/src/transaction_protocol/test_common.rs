@@ -23,6 +23,7 @@
 // Used in tests only
 
 use crate::{
+    tari_amount::*,
     transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
     types::{PrivateKey, PublicKey, COMMITMENT_FACTORY},
 };
@@ -53,7 +54,7 @@ impl TestParams {
     }
 }
 
-pub fn make_input<R: Rng + CryptoRng>(rng: &mut R, val: u64) -> (TransactionInput, UnblindedOutput) {
+pub fn make_input<R: Rng + CryptoRng>(rng: &mut R, val: MicroTari) -> (TransactionInput, UnblindedOutput) {
     let key = PrivateKey::random(rng);
     let v = PrivateKey::from(val);
     let commitment = COMMITMENT_FACTORY.commit(&key, &v);

@@ -58,6 +58,7 @@ pub mod single_receiver;
 pub mod transaction_initializer;
 
 use crate::{
+    tari_amount::*,
     transaction::TransactionError,
     types::{Challenge, MessageHash, PublicKey},
 };
@@ -97,7 +98,7 @@ pub enum TransactionProtocolError {
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize, Serialize)]
 pub struct TransactionMetadata {
     /// The absolute fee for the transaction
-    pub fee: u64,
+    pub fee: MicroTari,
     /// The earliest block this transaction can be mined
     pub lock_height: u64,
 }
@@ -106,7 +107,7 @@ pub struct TransactionMetadata {
 pub fn build_challenge(sum_public_nonces: &PublicKey, metadata: &TransactionMetadata) -> MessageHash {
     Challenge::new()
         .chain(sum_public_nonces.as_bytes())
-        .chain(&metadata.fee.to_le_bytes())
+        .chain(&u64::from(metadata.fee).to_le_bytes())
         .chain(&metadata.lock_height.to_le_bytes())
         .result()
         .to_vec()

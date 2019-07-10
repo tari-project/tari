@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::transaction::MINIMUM_TRANSACTION_FEE;
+use crate::{tari_amount::*, transaction::MINIMUM_TRANSACTION_FEE};
 
 pub struct Fee {}
 
@@ -30,13 +30,15 @@ pub const BASE_COST: u64 = 1;
 
 impl Fee {
     /// Computes the absolute transaction fee given the fee-per-gram, and the size of the transaction
-    pub fn calculate(fee_per_gram: u64, num_inputs: usize, num_outputs: usize) -> u64 {
-        BASE_COST + (COST_PER_INPUT * num_inputs as u64 + COST_PER_OUTPUT * num_outputs as u64) * fee_per_gram
+    pub fn calculate(fee_per_gram: MicroTari, num_inputs: usize, num_outputs: usize) -> MicroTari {
+        (BASE_COST +
+            (COST_PER_INPUT * num_inputs as u64 + COST_PER_OUTPUT * num_outputs as u64) * u64::from(fee_per_gram))
+        .into()
     }
 
     /// Computes the absolute transaction fee using `calculate`, but the resulting fee will always be at least the
     /// minimum network transaction fee.
-    pub fn calculate_with_minimum(fee_per_gram: u64, num_inputs: usize, num_outputs: usize) -> u64 {
+    pub fn calculate_with_minimum(fee_per_gram: MicroTari, num_inputs: usize, num_outputs: usize) -> MicroTari {
         let fee = Fee::calculate(fee_per_gram, num_inputs, num_outputs);
         if fee < MINIMUM_TRANSACTION_FEE {
             MINIMUM_TRANSACTION_FEE

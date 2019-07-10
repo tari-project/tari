@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
+    tari_amount::*,
     transaction::{KernelFeatures, Transaction, TransactionBuilder, TransactionInput, TransactionOutput},
     types::{BlindingFactor, CommitmentFactory, PrivateKey, PublicKey, RangeProofService, Signature},
 };
@@ -48,9 +49,9 @@ use tari_utilities::ByteArray;
 pub(super) struct RawTransactionInfo {
     pub num_recipients: usize,
     // The sum of self-created outputs plus change
-    pub amount_to_self: u64,
+    pub amount_to_self: MicroTari,
     pub ids: Vec<u64>,
-    pub amounts: Vec<u64>,
+    pub amounts: Vec<MicroTari>,
     pub metadata: TransactionMetadata,
     pub inputs: Vec<TransactionInput>,
     pub outputs: Vec<TransactionOutput>,
@@ -69,8 +70,8 @@ pub(super) struct RawTransactionInfo {
 }
 
 impl RawTransactionInfo {
-    pub fn calculate_total_amount(&self) -> u64 {
-        let to_others: u64 = self.amounts.iter().sum();
+    pub fn calculate_total_amount(&self) -> MicroTari {
+        let to_others: MicroTari = self.amounts.iter().sum();
         to_others + self.amount_to_self
     }
 }
@@ -80,7 +81,7 @@ pub struct SingleRoundSenderData {
     /// The transaction id for the recipient
     pub tx_id: u64,
     /// The amount, in µT, being sent to the recipient
-    pub amount: u64,
+    pub amount: MicroTari,
     /// The offset public excess for this transaction
     pub public_excess: PublicKey,
     /// The sender's public nonce
@@ -184,12 +185,12 @@ impl SenderTransactionProtocol {
         }
     }
 
-    pub fn get_total_amount(&self) -> Result<u64, TPE> {
+    pub fn get_total_amount(&self) -> Result<MicroTari, TPE> {
         match &self.state {
             SenderState::Initializing(info) |
             SenderState::Finalizing(info) |
             SenderState::SingleRoundMessageReady(info) |
-            SenderState::CollectingSingleSignature(info) => Ok(info.amounts.iter().sum::<u64>()),
+            SenderState::CollectingSingleSignature(info) => Ok(info.amounts.iter().sum()),
             SenderState::FinalizedTransaction(_) => Err(TPE::InvalidStateError),
             SenderState::Failed(_) => Err(TPE::InvalidStateError),
         }
@@ -424,6 +425,7 @@ impl SenderState {
 mod test {
     use crate::{
         fee::Fee,
+        tari_amount::*,
         transaction::{KernelFeatures, OutputFeatures, UnblindedOutput},
         transaction_protocol::{
             sender::SenderTransactionProtocol,
@@ -441,17 +443,17 @@ mod test {
     fn zero_recipients() {
         let mut rng = OsRng::new().unwrap();
         let p = TestParams::new(&mut rng);
-        let (utxo, input) = make_input(&mut rng, 1200);
+        let (utxo, input) = make_input(&mut rng, MicroTari(1200));
         let mut builder = SenderTransactionProtocol::builder(0);
         builder
             .with_lock_height(0)
-            .with_fee_per_gram(10)
+            .with_fee_per_gram(MicroTari(10))
             .with_offset(p.offset.clone())
             .with_private_nonce(p.nonce.clone())
             .with_change_secret(p.change_key.clone())
             .with_input(utxo, input)
-            .with_output(UnblindedOutput::new(500, p.spend_key.clone(), None))
-            .with_output(UnblindedOutput::new(400, p.spend_key.clone(), None));
+            .with_output(UnblindedOutput::new(MicroTari(500), p.spend_key.clone(), None))
+            .with_output(UnblindedOutput::new(MicroTari(400), p.spend_key.clone(), None));
         let mut sender = builder.build::<Blake256>(&PROVER, &COMMITMENT_FACTORY).unwrap();
         assert_eq!(sender.is_failed(), false);
         assert!(sender.is_finalizing());
@@ -471,17 +473,17 @@ mod test {
         let a = TestParams::new(&mut rng);
         // Bob's parameters
         let b = TestParams::new(&mut rng);
-        let (utxo, input) = make_input(&mut rng, 1200);
+        let (utxo, input) = make_input(&mut rng, MicroTari(1200));
         let mut builder = SenderTransactionProtocol::builder(1);
-        let fee = Fee::calculate(20, 1, 1);
+        let fee = Fee::calculate(MicroTari(20), 1, 1);
         builder
             .with_lock_height(0)
-            .with_fee_per_gram(20)
+            .with_fee_per_gram(MicroTari(20))
             .with_offset(a.offset.clone())
             .with_private_nonce(a.nonce.clone())
             .with_input(utxo.clone(), input)
             // A little twist: Check the case where the change is less than the cost of another output
-            .with_amount(0, 1200 - fee - 10);
+            .with_amount(0, MicroTari(1200) - fee - MicroTari(10));
         let mut alice = builder.build::<Blake256>(&PROVER, &COMMITMENT_FACTORY).unwrap();
         assert!(alice.is_single_round_message_ready());
         let msg = alice.build_single_round_message().unwrap();
@@ -509,7 +511,7 @@ mod test {
         assert!(alice.is_finalized());
         let tx = alice.get_transaction().unwrap();
         assert_eq!(tx.offset, a.offset);
-        assert_eq!(tx.body.kernels[0].fee, fee + 10); // Check the twist above
+        assert_eq!(tx.body.kernels[0].fee, fee + MicroTari(10)); // Check the twist above
         assert_eq!(tx.body.inputs.len(), 1);
         assert_eq!(tx.body.inputs[0], utxo);
         assert_eq!(tx.body.outputs.len(), 1);
@@ -523,17 +525,17 @@ mod test {
         let a = TestParams::new(&mut rng);
         // Bob's parameters
         let b = TestParams::new(&mut rng);
-        let (utxo, input) = make_input(&mut rng, 2500);
+        let (utxo, input) = make_input(&mut rng, MicroTari(2500));
         let mut builder = SenderTransactionProtocol::builder(1);
-        let fee = Fee::calculate(20, 1, 2);
+        let fee = Fee::calculate(MicroTari(20), 1, 2);
         builder
             .with_lock_height(0)
-            .with_fee_per_gram(20)
+            .with_fee_per_gram(MicroTari(20))
             .with_offset(a.offset.clone())
             .with_private_nonce(a.nonce.clone())
             .with_change_secret(a.change_key.clone())
             .with_input(utxo.clone(), input)
-            .with_amount(0, 500);
+            .with_amount(0, MicroTari(500));
         let mut alice = builder.build::<Blake256>(&PROVER, &COMMITMENT_FACTORY).unwrap();
         assert!(alice.is_single_round_message_ready());
         let msg = alice.build_single_round_message().unwrap();
@@ -572,6 +574,7 @@ mod test {
             Ok(false) => panic!("{:?}", alice.failure_reason()),
             Err(e) => panic!("{:?}", e),
         };
+
         assert!(alice.is_finalized());
         let tx = alice.get_transaction().unwrap();
         assert_eq!(tx.offset, a.offset);
@@ -592,17 +595,17 @@ mod test {
         let a = TestParams::new(&mut rng);
         // Bob's parameters
         let b = TestParams::new(&mut rng);
-        let (utxo, input) = make_input(&mut rng, 2u64.pow(32) + 2001);
+        let (utxo, input) = make_input(&mut rng, (2u64.pow(32) + 2001).into());
         let mut builder = SenderTransactionProtocol::builder(1);
 
         builder
             .with_lock_height(0)
-            .with_fee_per_gram(20)
+            .with_fee_per_gram(MicroTari(20))
             .with_offset(a.offset.clone())
             .with_private_nonce(a.nonce.clone())
             .with_change_secret(a.change_key.clone())
             .with_input(utxo.clone(), input)
-            .with_amount(0, 2u64.pow(32) + 1);
+            .with_amount(0, (2u64.pow(32) + 1).into());
         let mut alice = builder.build::<Blake256>(&PROVER, &COMMITMENT_FACTORY).unwrap();
         assert!(alice.is_single_round_message_ready());
         let msg = alice.build_single_round_message().unwrap();
