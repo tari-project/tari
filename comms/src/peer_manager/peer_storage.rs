@@ -105,7 +105,7 @@ impl PeerStorage {
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         self.remove_hashmap_links(peer_key)?;
         self.peers
-            .delete(&peer_key)
+            .remove(&peer_key)
             .map_err(|e| PeerManagerError::DatabaseError(e))?;;
         Ok(())
     }
@@ -553,7 +553,7 @@ mod test {
             assert!(peer_storage.add_peer(peer2.clone()).is_ok());
             assert!(peer_storage.add_peer(peer3.clone()).is_ok());
 
-            assert_eq!(peer_storage.peers.size().unwrap(), 3);
+            assert_eq!(peer_storage.peers.len().unwrap(), 3);
             assert!(peer_storage.find_with_public_key(&peer1.public_key).is_ok());
             assert!(peer_storage.find_with_public_key(&peer2.public_key).is_ok());
             assert!(peer_storage.find_with_public_key(&peer3.public_key).is_ok());
@@ -563,7 +563,7 @@ mod test {
         let peer_database = datastore.get_handle(database_name).unwrap();
         let peer_storage = PeerStorage::new(peer_database).unwrap();
 
-        assert_eq!(peer_storage.peers.size().unwrap(), 3);
+        assert_eq!(peer_storage.peers.len().unwrap(), 3);
         assert!(peer_storage.find_with_public_key(&peer1.public_key).is_ok());
         assert!(peer_storage.find_with_public_key(&peer2.public_key).is_ok());
         assert!(peer_storage.find_with_public_key(&peer3.public_key).is_ok());
@@ -608,7 +608,7 @@ mod test {
         assert!(peer_storage.add_peer(peer2.clone()).is_ok());
         assert!(peer_storage.add_peer(peer3.clone()).is_ok());
 
-        assert_eq!(peer_storage.peers.size().unwrap(), 3);
+        assert_eq!(peer_storage.peers.len().unwrap(), 3);
 
         assert_eq!(
             peer_storage.find_with_public_key(&peer1.public_key).unwrap().public_key,
@@ -668,7 +668,7 @@ mod test {
         // Test delete of border case peer
         assert!(peer_storage.delete_peer(&peer3.node_id).is_ok());
 
-        assert_eq!(peer_storage.peers.size().unwrap(), 2);
+        assert_eq!(peer_storage.peers.len().unwrap(), 2);
 
         assert_eq!(
             peer_storage.find_with_public_key(&peer1.public_key).unwrap().public_key,
@@ -717,7 +717,7 @@ mod test {
         assert!(peer_storage.add_peer(peer3.clone()).is_ok());
         assert!(peer_storage.delete_peer(&peer2.node_id).is_ok());
 
-        assert_eq!(peer_storage.peers.size().unwrap(), 2);
+        assert_eq!(peer_storage.peers.len().unwrap(), 2);
 
         assert_eq!(
             peer_storage.find_with_public_key(&peer1.public_key).unwrap().public_key,

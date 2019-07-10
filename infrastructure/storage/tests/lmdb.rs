@@ -124,7 +124,7 @@ fn single_thread() {
         let check: User = db.get(&user.id).unwrap().unwrap();
         assert_eq!(check, *user);
     }
-    assert_eq!(db.size().unwrap(), 1000);
+    assert_eq!(db.len().unwrap(), 1000);
     clean_up("single_thread");
 }
 
@@ -200,7 +200,7 @@ fn multi_thread_writes() {
 
     let db = env.get_handle("users").unwrap();
 
-    assert_eq!(db.size().unwrap(), 1000);
+    assert_eq!(db.len().unwrap(), 1000);
     for i in 0..1000 {
         let value: i32 = db.get(&i).unwrap().unwrap();
         assert_eq!(i, value);
@@ -244,8 +244,8 @@ fn pair_iterator() {
 #[test]
 fn exists_and_delete() {
     let (_, db) = insert_all_users("delete");
-    assert!(db.exists(&525u64).unwrap());
-    db.delete(&525u64).unwrap();
-    assert_eq!(db.exists(&525u64).unwrap(), false);
+    assert!(db.contains_key(&525u64).unwrap());
+    db.remove(&525u64).unwrap();
+    assert_eq!(db.contains_key(&525u64).unwrap(), false);
     clean_up("delete");
 }
