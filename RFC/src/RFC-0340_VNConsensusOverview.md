@@ -94,7 +94,7 @@ A close reading of the algorithms presented suggest that [LinBFT](https://arxiv.
 on [HotStuff] BFT provide the best trade-offs for the goals that a DAN committee is trying to achieve:
 1. The algorithm is optimistic, i.e. as soon as quorum is reached on a particular state, the committee can move onto the
    next one. There is no need to wait for the "timeout" period as we do in e.g. Tendermint. This allows instructions to
-   be executed alomst as quickly as they are received.
+   be executed almost as quickly as they are received.
 2. The algorithm is efficient in communication, requiring O(n) messages per state agreement in most practical cases.
    This is compared to e.g. PBFT which requires O(n<sup>4</sup>) messages.
 3. The algorithm is modular and relatively simple to implement.
