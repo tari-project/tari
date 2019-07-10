@@ -27,7 +27,6 @@ use crate::{
     dispatcher::Dispatcher,
     message::{Message, MessageEnvelopeHeader},
     peer_manager::{NodeIdentity, PeerManager},
-    types::CommsPublicKey,
 };
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::sync::Arc;
@@ -69,7 +68,7 @@ where
 pub struct ControlServiceMessageContext<MType>
 where MType: Clone
 {
-    pub envelope_header: MessageEnvelopeHeader<CommsPublicKey>,
+    pub envelope_header: MessageEnvelopeHeader,
     pub message: Message,
     pub connection_manager: Arc<ConnectionManager>,
     pub peer_manager: Arc<PeerManager>,

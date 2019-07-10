@@ -38,10 +38,10 @@ const FRAMES_PER_MESSAGE: usize = 3;
 /// Represents data that every message contains.
 /// As described in [RFC-0172](https://rfc.tari.com/RFC-0172_PeerToPeerMessagingProtocol.html#messaging-structure)
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-pub struct MessageEnvelopeHeader<PK> {
+pub struct MessageEnvelopeHeader {
     pub version: u8,
-    pub source: PK,
-    pub dest: NodeDestination<PK>,
+    pub source: CommsPublicKey,
+    pub dest: NodeDestination<CommsPublicKey>,
     pub signature: Vec<u8>,
     pub flags: MessageFlags,
 }
@@ -101,7 +101,7 @@ impl MessageEnvelope {
     /// Verify that the signature provided in the message header is valid for the specified source and body of the
     /// message envelope
     pub fn verify_signature(&self) -> Result<bool, MessageError> {
-        let message_envelope_header: MessageEnvelopeHeader<CommsPublicKey> = self.to_header()?;
+        let message_envelope_header = self.to_header()?;
         crypto::verify(
             &message_envelope_header.source,
             message_envelope_header.signature,
@@ -120,11 +120,7 @@ impl MessageEnvelope {
     }
 
     /// Returns the [MessageEnvelopeHeader] deserialized from the header frame
-    pub fn to_header<PK>(&self) -> Result<MessageEnvelopeHeader<PK>, MessageError>
-    where
-        PK: PublicKey,
-        MessageEnvelopeHeader<PK>: MessageFormat,
-    {
+    pub fn to_header(&self) -> Result<MessageEnvelopeHeader, MessageError> {
         MessageEnvelopeHeader::from_binary(self.header_frame()).map_err(Into::into)
     }
 
