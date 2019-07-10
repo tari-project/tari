@@ -143,7 +143,6 @@ mod test {
             node_id::NodeId,
             peer::{Peer, PeerFlags},
         },
-        types::CommsPublicKey,
     };
     use log::*;
     use std::path::PathBuf;
@@ -228,7 +227,7 @@ mod test {
         assert_eq!(outbound_message.num_attempts(), 0);
         assert_eq!(outbound_message.is_scheduled(), true);
         let message_envelope: MessageEnvelope = outbound_message.message_frames().clone().try_into().unwrap();
-        let message_envelope_header = message_envelope.to_header::<CommsPublicKey>().unwrap();
+        let message_envelope_header = message_envelope.to_header().unwrap();
         assert_eq!(message_envelope_header.source, node_identity.identity.public_key);
         assert_eq!(
             message_envelope_header.dest,
