@@ -1,6 +1,6 @@
 //! An ergonomic, multithreaded API for an LMDB datastore
 
-use crate::lmdb_store::error::LMDBError;
+use crate::{key_val_store::error::KeyValStoreError, lmdb_store::error::LMDBError};
 use lmdb_zero::{
     db,
     error::{self, LmdbResultExt},
@@ -397,7 +397,7 @@ impl LMDBDatabase {
     }
 
     /// Returns the total number of entries in this database.
-    pub fn size(&self) -> Result<usize, LMDBError> {
+    pub fn len(&self) -> Result<usize, LMDBError> {
         self.get_stats().and_then(|s| Ok(s.entries))
     }
 
@@ -409,7 +409,7 @@ impl LMDBDatabase {
     /// `f` is a closure of form `|pair: Result<(K,V), LMDBError>| -> ()`. You will usually need to include type
     /// inference to let Rust know which type to deserialise to:
     /// ```nocompile
-    ///    let res = db.for_each_pair::<Key, User, _>(|pair| {
+    ///    let res = db.for_each::<Key, User, _>(|pair| {
     ///        let (key, user) = pair.unwrap();
     ///        //.. do stuff with key and user..
     ///    });
@@ -417,7 +417,7 @@ impl LMDBDatabase {
     where
         K: serde::de::DeserializeOwned,
         V: serde::de::DeserializeOwned,
-        F: FnMut(Result<(K, V), LMDBError>),
+        F: FnMut(Result<(K, V), KeyValStoreError>),
     {
         let env = self.env.clone();
         let db = self.db.clone();
@@ -435,14 +435,14 @@ impl LMDBDatabase {
         let iter = CursorIter::new(cursor, &access, head, ReadOnlyIterator::next).map_err(LMDBError::DatabaseError)?;
 
         for p in iter {
-            f(p.map_err(LMDBError::DatabaseError));
+            f(p.map_err(|e| KeyValStoreError::DatabaseError(e.to_string())));
         }
 
         Ok(())
     }
 
     /// Checks whether a key exists in this database
-    pub fn exists<K>(&self, key: &K) -> Result<bool, LMDBError>
+    pub fn contains_key<K>(&self, key: &K) -> Result<bool, LMDBError>
     where K: AsLmdbBytes + ?Sized {
         let txn = ReadTransaction::new(self.db.env().clone())?;
         let accessor = txn.access();
@@ -452,7 +452,7 @@ impl LMDBDatabase {
     }
 
     /// Delete a record associated with `key` from the database. If the key is not found,
-    pub fn delete<K>(&self, key: &K) -> Result<(), LMDBError>
+    pub fn remove<K>(&self, key: &K) -> Result<(), LMDBError>
     where K: AsLmdbBytes + ?Sized {
         let tx = WriteTransaction::new(self.db.env().clone())?;
         {
