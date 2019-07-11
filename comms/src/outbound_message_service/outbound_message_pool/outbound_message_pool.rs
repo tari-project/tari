@@ -218,9 +218,9 @@ mod test {
         outbound_message_service::{outbound_message_pool::OutboundMessagePoolConfig, OutboundMessagePool},
         peer_manager::{peer::PeerFlags, NodeId, NodeIdentity, Peer, PeerManager},
     };
-    use std::{fs, path::PathBuf, sync::Arc, time::Duration};
+    use std::{sync::Arc, time::Duration};
     use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
-    use tari_storage::lmdb_store::{LMDBBuilder, LMDBError, LMDBStore};
+    use tari_storage::key_val_store::HMapDatabase;
 
     fn make_peer_connection_config(consumer_address: InprocAddress) -> PeerConnectionConfig {
         PeerConnectionConfig {
@@ -234,39 +234,11 @@ mod test {
         }
     }
 
-    fn get_path(name: &str) -> String {
-        let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        path.push("tests/data");
-        path.push(name);
-        path.to_str().unwrap().to_string()
-    }
-
-    fn init_datastore(name: &str) -> Result<LMDBStore, LMDBError> {
-        let path = get_path(name);
-        let _ = fs::create_dir(&path).unwrap_or_default();
-        LMDBBuilder::new()
-            .set_path(&path)
-            .set_environment_size(10)
-            .set_max_number_of_databases(2)
-            .add_database(name, lmdb_zero::db::CREATE)
-            .build()
-    }
-
-    fn clean_up_datastore(name: &str) {
-        fs::remove_dir_all(get_path(name)).unwrap();
-    }
-
     fn outbound_message_pool_setup(
         context: &ZmqContext,
-        database_name: &str,
-    ) -> (Arc<PeerManager>, Arc<ConnectionManager>, Arc<NodeIdentity>)
-    {
+    ) -> (Arc<PeerManager>, Arc<ConnectionManager>, Arc<NodeIdentity>) {
         let node_identity = Arc::new(NodeIdentity::random_for_test(None));
-
-        // Peer Manager
-        let datastore = init_datastore(database_name).unwrap();
-        let peer_database = datastore.get_handle(database_name).unwrap();
-        let peer_manager = Arc::new(PeerManager::new(peer_database).unwrap());
+        let peer_manager = Arc::new(PeerManager::new(HMapDatabase::new()).unwrap());
 
         // Connection Manager
         let connection_manager = Arc::new(ConnectionManager::new(
@@ -282,7 +254,7 @@ mod test {
     #[test]
     fn new() {
         let context = ZmqContext::new();
-        let (peer_manager, connection_manager, _) = outbound_message_pool_setup(&context, "new");
+        let (peer_manager, connection_manager, _) = outbound_message_pool_setup(&context);
         let omp_inbound_address = InprocAddress::random();
         let omp_config = OutboundMessagePoolConfig::default();
         let omp = OutboundMessagePool::new(
@@ -296,14 +268,12 @@ mod test {
         assert_eq!(omp.worker_shutdown_signals.len(), 0);
         assert!(omp.retry_service_thread_handle.is_none());
         assert!(omp.retry_service_shutdown_signal.is_none());
-
-        clean_up_datastore("new")
     }
 
     #[test]
     fn start_dealer_proxy() {
         let context = ZmqContext::new();
-        let (peer_manager, connection_manager, _) = outbound_message_pool_setup(&context, "start_dealer_proxy");
+        let (peer_manager, connection_manager, _) = outbound_message_pool_setup(&context);
         let omp_inbound_address = InprocAddress::random();
         let omp_config = OutboundMessagePoolConfig::default();
         let mut omp = OutboundMessagePool::new(
@@ -319,14 +289,12 @@ mod test {
         assert!(omp.dealer_proxy.is_running());
 
         omp.shutdown().unwrap();
-
-        clean_up_datastore("start_dealer_proxy");
     }
 
     #[test]
     fn start_message_worker() {
         let context = ZmqContext::new();
-        let (peer_manager, connection_manager, _) = outbound_message_pool_setup(&context, "start_message_worker");
+        let (peer_manager, connection_manager, _) = outbound_message_pool_setup(&context);
         let omp_inbound_address = InprocAddress::random();
         let omp_config = OutboundMessagePoolConfig::default();
         let mut omp = OutboundMessagePool::new(
@@ -345,14 +313,12 @@ mod test {
         assert_eq!(omp.worker_thread_handles.len(), 1);
 
         omp.shutdown().unwrap();
-
-        clean_up_datastore("start_message_worker");
     }
 
     #[test]
     fn clean_shutdown() {
         let context = ZmqContext::new();
-        let (peer_manager, connection_manager, _) = outbound_message_pool_setup(&context, "clean_shutdown");
+        let (peer_manager, connection_manager, _) = outbound_message_pool_setup(&context);
 
         // Add random peer
         let mut rng = rand::OsRng::new().unwrap();
@@ -375,6 +341,5 @@ mod test {
         omp.start().unwrap();
 
         omp.shutdown().unwrap();
-        clean_up_datastore("clean_shutdown");
     }
 }
