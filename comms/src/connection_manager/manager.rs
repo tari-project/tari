@@ -276,41 +276,15 @@ impl ConnectionManager {
 mod test {
     use super::*;
     use crate::connection::{InprocAddress, ZmqContext};
-    use std::{path::PathBuf, time::Duration};
-    use tari_storage::lmdb_store::{LMDBBuilder, LMDBStore};
-
-    fn get_path(name: &str) -> String {
-        let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        path.push("tests/data");
-        path.push(name);
-        path.to_str().unwrap().to_string()
-    }
-
-    fn init_datastore(name: &str) -> Result<LMDBStore> {
-        let path = get_path(name);
-        let _ = std::fs::create_dir(&path).unwrap_or_default();
-        LMDBBuilder::new()
-            .set_path(&path)
-            .set_environment_size(10)
-            .set_max_number_of_databases(2)
-            .add_database(name, lmdb_zero::db::CREATE)
-            .build()
-            .map_err(|_| ConnectionManagerError::DatastoreError)
-    }
-
-    fn clean_up_datastore(name: &str) {
-        std::fs::remove_dir_all(get_path(name)).unwrap();
-    }
+    use std::time::Duration;
+    use tari_storage::key_val_store::HMapDatabase;
 
     #[test]
     fn get_active_connection_count() {
         let context = ZmqContext::new();
         let node_identity = Arc::new(NodeIdentity::random_for_test(None));
 
-        let database_name = "cm_get_active_connection_count"; // Note: every test should have unique database
-        let datastore = init_datastore(database_name).unwrap();
-        let peer_database = datastore.get_handle(database_name).unwrap();
-        let peer_manager = Arc::new(PeerManager::new(peer_database).unwrap());
+        let peer_manager = Arc::new(PeerManager::new(HMapDatabase::new()).unwrap());
         let manager = ConnectionManager::new(context, node_identity, peer_manager, PeerConnectionConfig {
             peer_connection_establish_timeout: Duration::from_secs(5),
             max_message_size: 1024,
@@ -321,7 +295,5 @@ mod test {
             socks_proxy_address: None,
         });
         assert_eq!(manager.get_active_connection_count(), 0);
-
-        clean_up_datastore(database_name);
     }
 }

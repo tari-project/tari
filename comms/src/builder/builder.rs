@@ -47,7 +47,6 @@ use derive_error::Error;
 use log::*;
 use serde::{de::DeserializeOwned, export::fmt::Debug, Serialize};
 use std::sync::Arc;
-use tari_storage::lmdb_store::LMDBDatabase;
 
 const LOG_TARGET: &'static str = "comms::builder";
 
@@ -126,7 +125,7 @@ where
     }
 
     /// Set the peer storage database to use. This is optional.
-    pub fn with_peer_storage(mut self, peer_storage: LMDBDatabase) -> Self {
+    pub fn with_peer_storage(mut self, peer_storage: CommsDatabase) -> Self {
         self.peer_storage = Some(peer_storage);
         self
     }
@@ -523,65 +522,30 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
-    use std::path::PathBuf;
-    use tari_storage::lmdb_store::{LMDBBuilder, LMDBError, LMDBStore};
-
-    fn get_path(name: &str) -> String {
-        let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        path.push("tests/data");
-        path.push(name);
-        path.to_str().unwrap().to_string()
-    }
-
-    fn init_datastore(name: &str) -> Result<LMDBStore, LMDBError> {
-        let path = get_path(name);
-        let _ = std::fs::create_dir(&path).unwrap_or_default();
-        LMDBBuilder::new()
-            .set_path(&path)
-            .set_environment_size(10)
-            .set_max_number_of_databases(2)
-            .add_database(name, lmdb_zero::db::CREATE)
-            .build()
-    }
-
-    fn clean_up_datastore(name: &str) {
-        std::fs::remove_dir_all(get_path(name)).unwrap();
-    }
+    use tari_storage::key_val_store::HMapDatabase;
 
     #[test]
     fn new_no_control_service() {
-        let database_name = "builder_new_no_control_service"; // Note: every test should have unique database
-        let datastore = init_datastore(database_name).unwrap();
-        let peer_database = datastore.get_handle(database_name).unwrap();
-
         let comms_services = CommsBuilder::new()
             .with_routes(CommsRoutes::new().register("hello".to_owned()))
             .with_node_identity(NodeIdentity::random_for_test(None))
-            .with_peer_storage(peer_database)
+            .with_peer_storage(HMapDatabase::new())
             .build()
             .unwrap();
 
         assert!(comms_services.control_service.is_none());
-
-        clean_up_datastore(database_name);
     }
 
     #[test]
     fn new_with_control_service() {
-        let database_name = "builder_new_with_control_service"; // Note: every test should have unique database
-        let datastore = init_datastore(database_name).unwrap();
-        let peer_database = datastore.get_handle(database_name).unwrap();
-
         let comms_services = CommsBuilder::new()
             .with_routes(CommsRoutes::new().register("hello".to_owned()))
             .with_node_identity(NodeIdentity::random_for_test(None))
-            .with_peer_storage(peer_database)
+            .with_peer_storage(HMapDatabase::new())
             .configure_control_service(ControlServiceConfig::default())
             .build()
             .unwrap();
 
         assert!(comms_services.control_service.is_some());
-
-        clean_up_datastore(database_name);
     }
 }
