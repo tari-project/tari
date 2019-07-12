@@ -35,4 +35,6 @@ pub enum KeyValStoreError {
     /// An error occurred during deserialization
     #[error(no_from, non_std)]
     DeserializationError(String),
+    /// The specified key did not exist in the key-val store
+    KeyNotFound,
 }

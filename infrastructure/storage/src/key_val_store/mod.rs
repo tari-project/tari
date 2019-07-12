@@ -21,8 +21,10 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 pub mod error;
+pub mod hmap_database;
 pub mod key_val_store;
 pub mod lmdb_database;
 
 pub use error::KeyValStoreError;
+pub use hmap_database::HMapDatabase;
 pub use key_val_store::KeyValStore;
