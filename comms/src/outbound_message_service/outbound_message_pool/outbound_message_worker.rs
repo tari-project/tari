@@ -232,8 +232,7 @@ mod test {
         connection_manager::PeerConnectionConfig,
         peer_manager::{NodeId, NodeIdentity},
     };
-    use std::{fs, path::PathBuf};
-    use tari_storage::lmdb_store::{LMDBBuilder, LMDBError, LMDBStore};
+    use tari_storage::key_val_store::HMapDatabase;
     use tari_utilities::thread_join::ThreadJoinWithTimeout;
 
     fn make_peer_connection_config(consumer_address: InprocAddress) -> PeerConnectionConfig {
@@ -248,39 +247,11 @@ mod test {
         }
     }
 
-    fn get_path(name: &str) -> String {
-        let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        path.push("tests/data");
-        path.push(name);
-        path.to_str().unwrap().to_string()
-    }
-
-    fn init_datastore(name: &str) -> Result<LMDBStore, LMDBError> {
-        let path = get_path(name);
-        let _ = fs::create_dir(&path).unwrap_or_default();
-        LMDBBuilder::new()
-            .set_path(&path)
-            .set_environment_size(10)
-            .set_max_number_of_databases(2)
-            .add_database(name, lmdb_zero::db::CREATE)
-            .build()
-    }
-
-    fn clean_up_datastore(name: &str) {
-        fs::remove_dir_all(get_path(name)).unwrap();
-    }
-
     fn outbound_message_worker_setup(
         context: &ZmqContext,
-        database_name: &str,
-    ) -> (Arc<PeerManager>, Arc<ConnectionManager>, Arc<NodeIdentity>)
-    {
+    ) -> (Arc<PeerManager>, Arc<ConnectionManager>, Arc<NodeIdentity>) {
         let node_identity = Arc::new(NodeIdentity::random_for_test(None));
-
-        // Peer Manager
-        let datastore = init_datastore(database_name).unwrap();
-        let peer_database = datastore.get_handle(database_name).unwrap();
-        let peer_manager = Arc::new(PeerManager::new(peer_database).unwrap());
+        let peer_manager = Arc::new(PeerManager::new(HMapDatabase::new()).unwrap());
 
         // Connection Manager
         let connection_manager = Arc::new(ConnectionManager::new(
@@ -296,7 +267,7 @@ mod test {
     #[test]
     fn start() {
         let context = ZmqContext::new();
-        let (peer_manager, connection_manager, _) = outbound_message_worker_setup(&context, "omw_start");
+        let (peer_manager, connection_manager, _) = outbound_message_worker_setup(&context);
         let (handle, signal) = MessagePoolWorker::start(
             OutboundMessagePoolConfig::default(),
             context,
@@ -309,7 +280,6 @@ mod test {
 
         signal.send(()).unwrap();
         handle.timeout_join(Duration::from_millis(100)).unwrap();
-        clean_up_datastore("omw_start");
     }
 
     #[test]
