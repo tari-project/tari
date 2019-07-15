@@ -237,12 +237,7 @@ pub fn main() {
 
     // get network interface and retrieve ipv4 address
     let interface = interfaces.first().unwrap().clone();
-    let mut local_ip = String::new();
-    for addr in interface.ips {
-        if addr.is_ipv4() {
-            local_ip = addr.ip().to_string();
-        }
-    }
+    let local_ip = interface.ips.iter().find(|addr| addr.is_ipv4()).unwrap().ip().to_string();
 
     let local_net_address = match format!("{}:{}", local_ip, settings.control_port.unwrap()).parse() {
         Ok(na) => na,
