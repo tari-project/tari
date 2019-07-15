@@ -23,7 +23,8 @@
 extern crate clap;
 
 extern crate pnet;
-use pnet::datalink;
+
+use pnet::datalink::{self, NetworkInterface};
 
 use clap::{App, Arg};
 use log::*;
@@ -217,30 +218,33 @@ pub fn main() {
     let secret_key = CommsSecretKey::from_hex(settings.secret_key.unwrap().as_str()).unwrap();
     let public_key = CommsPublicKey::from_secret_key(&secret_key);
 
-    let mut address_count = 0;
-    let mut ip = String::new();
-    // loop through network interfaces
-    let interfaces = datalink::interfaces();
-    for interface in interfaces.into_iter() {
-        // check for address that is not loopback
-        if interface.is_loopback() == false {
-            for net_address in interface.ips {
-                // check for ipv4 address
-                if net_address.is_ipv4() == true {
-                    ip = net_address.ip().to_string();
-                    address_count += 1;
-                }
-            }
-        }
-    }
+    // get and filter interfaces
+    let interfaces: Vec<NetworkInterface> = datalink::interfaces()
+        .into_iter()
+        .filter(|interface| {
+            !interface.is_loopback() && interface.is_up() && interface.ips.iter().any(|addr| addr.is_ipv4())
+        })
+        .collect();
 
-    // address not found
-    if address_count == 0 {
-        error!(target: LOG_TARGET, "No local address found.");
+    // select first interface
+    if interfaces.first().is_none() {
+        error!(
+            target: LOG_TARGET,
+            "No available network interface with an Ipv4 Address."
+        );
         std::process::exit(1);
     }
 
-    let local_net_address = match format!("{}:{}", ip, settings.control_port.unwrap()).parse() {
+    // get network interface and retrieve ipv4 address
+    let interface = interfaces.first().unwrap().clone();
+    let mut local_ip = String::new();
+    for addr in interface.ips {
+        if addr.is_ipv4() {
+            local_ip = addr.ip().to_string();
+        }
+    }
+
+    let local_net_address = match format!("{}:{}", local_ip, settings.control_port.unwrap()).parse() {
         Ok(na) => na,
         Err(_) => {
             error!(target: LOG_TARGET, "Could not resolve local IP address");
