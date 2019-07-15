@@ -73,15 +73,21 @@ about our system being
 
 Tari Asset [committees] are chosen by the asset issuer according to [RFC-0304](RFC-0304_VNCommittees.md). The committees
 form a fixed set of replicas, at the very least least from checkpoint to checkpoint, and will typically be limited in
-size (usually less than ten, and almost always under 100). Because nodes cannot join and leave the committees at will,
-robust yet slow and expensive consensus approaches such as Nakamoto consensus can be dropped in favour of something more
-performant.
+size, usually less than ten, and almost always under 100.
+_Note_: These numbers are highly speculative based on an intuitive guess about the main use cases for Tari DAs, where we
+have
+* many 1-3-sized committees where the asset issuer and the VN committee are the same entity,
+* semi-decentralised assets of ±4-10 where speed trumps censorship-resistance,
+* a small number of 50-100 VNs where censorship-resistance trumps speed.
+
+Because nodes cannot join and leave the committees at will, robust yet slow and expensive consensus approaches such as
+Nakamoto consensus can be dropped in favour of something more performant.
 
 There is a good survey of consensus mechanisms on
 [Tari Labs University](https://tlu.tarilabs.com/consensus-mechanisms/consensus-mechanisms.html).
 
 From the point of view of a DAN committee, the ideal consensus algorithm is one that
-1. allows a high number of transactions per second, and does does have unnecessary pauses (i.e. a partially synchronous
+1. Allows a high number of transactions per second, and does does have unnecessary pauses (i.e. a partially synchronous
    or asynchronous model).
 2. Is Byzantine Fault tolerant.
 3. Is relatively efficient from a network communication point of view (number of messages passed per state agreement).
@@ -112,7 +118,7 @@ Potential drawbacks to using HotStuff include:
 
 Given these trade-offs, there is strong evidence to suggest that [HotStuff] BFT, when implemented on the Tari DAN will
 provide BFT security guarantees with liveness performance in the sub-second scale and throughput on the order of
-thousands of instructions per second.
+thousands of instructions per second, if the benchmarks presented in the [HotStuff] paper are representative.
 
 ### Implementation
 
@@ -197,7 +203,7 @@ A Quorum certificate, or QC is proof that a super-majority of replicas have agre
 consists of
 * The type of QC (depending on the phase in which the HotStuff pipeline the QC was signed),
 * The _view number_ for the QC
-* A reference to the leaf node in the state tree being ratified,
+* A reference to the node in the state tree being ratified,
 * A signature from a super-majority of replicas.
 
 ### Tari-specific considerations
