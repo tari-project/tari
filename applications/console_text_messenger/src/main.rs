@@ -22,6 +22,9 @@
 #[macro_use]
 extern crate clap;
 
+extern crate pnet;
+use pnet::datalink;
+
 use clap::{App, Arg};
 use log::*;
 use serde::{Deserialize, Serialize};
@@ -214,8 +217,29 @@ pub fn main() {
     let secret_key = CommsSecretKey::from_hex(settings.secret_key.unwrap().as_str()).unwrap();
     let public_key = CommsPublicKey::from_secret_key(&secret_key);
 
-    // TODO Use a less hacky crate to determine the local machines public IP address. This only works on Unix systems!
-    let ip = local_ip::get().expect("Could not determine local machines public IP address");
+    let mut address_count = 0;
+    let mut ip = String::new();
+    // loop through network interfaces
+    let interfaces = datalink::interfaces();
+    for interface in interfaces.into_iter() {
+        // check for address that is not loopback
+        if interface.is_loopback() == false {
+            for net_address in interface.ips {
+                // check for ipv4 address
+                if net_address.is_ipv4() == true {
+                    ip = net_address.ip().to_string();
+                    address_count += 1;
+                }
+            }
+        }
+    }
+
+    // address not found
+    if address_count == 0 {
+        error!(target: LOG_TARGET, "No local address found.");
+        std::process::exit(1);
+    }
+
     let local_net_address = match format!("{}:{}", ip, settings.control_port.unwrap()).parse() {
         Ok(na) => na,
         Err(_) => {
