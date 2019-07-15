@@ -36,6 +36,7 @@ fn make_peer_connection_config(message_sink_address: InprocAddress) -> PeerConne
     PeerConnectionConfig {
         peer_connection_establish_timeout: Duration::from_secs(5),
         max_message_size: 1024,
+        max_connections: 10,
         host: "127.0.0.1".parse().unwrap(),
         max_connect_retries: 3,
         message_sink_address,
@@ -186,7 +187,7 @@ fn establish_peer_connection_outbound() {
 
     assert_eq!(msg_counter.count(), 2);
 
-    peer_conn_handle.timeout_join(Duration::from_millis(100)).unwrap();
+    peer_conn_handle.timeout_join(Duration::from_millis(1000)).unwrap();
 
     clean_up_datastore(database_name);
 }
@@ -250,7 +251,7 @@ fn establish_peer_connection_inbound() {
 
     assert_eq!(msg_counter.count(), 2);
 
-    peer_conn_handle.timeout_join(Duration::from_millis(100)).unwrap();
+    peer_conn_handle.timeout_join(Duration::from_millis(1000)).unwrap();
 
     clean_up_datastore(database_name);
 }

@@ -12,5 +12,6 @@ members = [
     "infrastructure/crypto",
     "infrastructure/storage",
     "infrastructure/merklemountainrange",
-    "applications/grpc_wallet"
+    "applications/grpc_wallet",
+    "applications/console_text_messenger",
 ]

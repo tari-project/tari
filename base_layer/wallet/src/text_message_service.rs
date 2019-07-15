@@ -22,6 +22,7 @@
 
 use crate::types::HashDigest;
 use chrono::prelude::*;
+use core::cmp::Ordering;
 use crossbeam_channel as channel;
 use derive_error::Error;
 use digest::Digest;
@@ -55,8 +56,7 @@ use tari_p2p::{
     },
     tari_message::{ExtendedMessage, TariMessageType},
 };
-use tari_utilities::{byte_array::ByteArray, message_format::MessageFormatError};
-
+use tari_utilities::{byte_array::ByteArray, hex::Hex, message_format::MessageFormatError};
 const LOG_TARGET: &'static str = "base_layer::wallet::text_messsage_service";
 
 #[derive(Debug, Error)]
@@ -82,10 +82,12 @@ pub enum TextMessageError {
     UnexpectedApiResponse,
     /// Contact not found
     ContactNotFound,
+    /// Contact already exists
+    ContactAlreadyExists,
 }
 
 /// Represents a single Text Message
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TextMessage {
     pub id: Vec<u8>,
     pub source_pub_key: CommsPublicKey,
@@ -99,6 +101,20 @@ impl TryInto<Message> for TextMessage {
 
     fn try_into(self) -> Result<Message, Self::Error> {
         Ok((TariMessageType::new(ExtendedMessage::Text), self).try_into()?)
+    }
+}
+
+impl PartialOrd<TextMessage> for TextMessage {
+    /// Orders OutboundMessage from least to most time remaining from being scheduled
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.timestamp.partial_cmp(&other.timestamp)
+    }
+}
+
+impl Ord for TextMessage {
+    /// Orders OutboundMessage from least to most time remaining from being scheduled
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.timestamp.cmp(&other.timestamp)
     }
 }
 
@@ -220,7 +236,14 @@ impl TextMessageService {
             MessageFlags::ENCRYPTED,
             text_message.clone(),
         )?;
-        self.pending_messages.insert(text_message.id.clone(), text_message);
+        self.pending_messages
+            .insert(text_message.id.clone(), text_message.clone());
+
+        trace!(
+            target: LOG_TARGET,
+            "Text Message Sent to {:?}",
+            text_message.dest_pub_key.to_hex()
+        );
 
         Ok(())
     }
@@ -234,10 +257,11 @@ impl TextMessageService {
             .map_err(TextMessageError::ConnectorError)?;
 
         if let Some((info, msg)) = incoming_msg {
-            debug!(
+            trace!(
                 target: LOG_TARGET,
-                "Text Message received with ID: {:?} and message: {:?}",
+                "Text Message received with ID: {:?} from {:?} with message: {:?}",
                 msg.id.clone(),
+                msg.source_pub_key.to_hex(),
                 msg.message.clone()
             );
 
@@ -248,7 +272,7 @@ impl TextMessageService {
                 text_message_ack,
             )?;
 
-            self.received_messages.push(msg);
+            self.received_messages.push(msg.clone());
         }
 
         Ok(())
@@ -333,14 +357,25 @@ impl TextMessageService {
     }
 
     pub fn add_contact(&mut self, contact: Contact) -> Result<(), TextMessageError> {
+        if self.contacts.iter().any(|c| c.pub_key == contact.pub_key) {
+            return Err(TextMessageError::ContactAlreadyExists);
+        }
         self.contacts.push(contact.clone());
         // Send ping to the contact so that if they are online they will flush all outstanding messages for this node
         let oms = self.oms.clone().ok_or(TextMessageError::OMSNotInitialized)?;
         oms.send_message(
-            BroadcastStrategy::DirectPublicKey(contact.pub_key),
+            BroadcastStrategy::DirectPublicKey(contact.pub_key.clone()),
             MessageFlags::empty(),
             PingPong::Ping,
         )?;
+
+        trace!(
+            target: LOG_TARGET,
+            "Contact Added: Screen name: {:?} - Pub-key: {:?} - Address: {:?}",
+            contact.screen_name.clone(),
+            contact.pub_key.clone().to_hex(),
+            contact.address.clone()
+        );
         Ok(())
     }
 
@@ -352,6 +387,15 @@ impl TextMessageService {
             .ok_or(TextMessageError::ContactNotFound)?;
 
         let _ = self.contacts.remove(position);
+
+        trace!(
+            target: LOG_TARGET,
+            "Contact Added: Screen name: {:?} - Pub-key: {:?} - Address: {:?}",
+            contact.screen_name.clone(),
+            contact.pub_key.clone().to_hex(),
+            contact.address.clone()
+        );
+
         Ok(())
     }
 
@@ -367,12 +411,21 @@ impl TextMessageService {
             .find(|c| c.pub_key == pub_key)
             .ok_or(TextMessageError::ContactNotFound)?;
         found_contact.screen_name = contact.screen_name.clone();
+
+        trace!(
+            target: LOG_TARGET,
+            "Contact Added: Screen name: {:?} - Pub-key: {:?} - Address: {:?}",
+            found_contact.screen_name.clone(),
+            found_contact.pub_key.clone().to_hex(),
+            found_contact.address.clone()
+        );
+
         Ok(())
     }
 
     /// This handler is called when the Service executor loops receives an API request
     fn handle_api_message(&mut self, msg: TextMessageApiRequest) -> Result<(), ServiceError> {
-        debug!(
+        trace!(
             target: LOG_TARGET,
             "[{}] Received API message: {:?}",
             self.get_name(),
@@ -393,12 +446,9 @@ impl TextMessageService {
                 self.set_screen_name(s);
                 Ok(TextMessageApiResponse::ScreenNameSet)
             },
-            TextMessageApiRequest::AddContact(c) => {
-                self.add_contact(c);
-                Ok(TextMessageApiResponse::ContactAdded)
-            },
+            TextMessageApiRequest::AddContact(c) => self.add_contact(c).map(|_| TextMessageApiResponse::ContactAdded),
             TextMessageApiRequest::RemoveContact(c) => {
-                self.remove_contact(c).map(|_| TextMessageApiResponse::ContactAdded)
+                self.remove_contact(c).map(|_| TextMessageApiResponse::ContactRemoved)
             },
             TextMessageApiRequest::GetContacts => Ok(TextMessageApiResponse::Contacts(self.get_contacts())),
             TextMessageApiRequest::UpdateContact((pk, c)) => self
@@ -406,7 +456,7 @@ impl TextMessageService {
                 .map(|_| TextMessageApiResponse::ContactUpdated),
         };
 
-        debug!(target: LOG_TARGET, "[{}] Replying to API: {:?}", self.get_name(), resp);
+        trace!(target: LOG_TARGET, "[{}] Replying to API: {:?}", self.get_name(), resp);
         self.api
             .send_reply(resp)
             .map_err(ServiceError::internal_service_error())

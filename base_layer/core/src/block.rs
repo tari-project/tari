@@ -24,6 +24,8 @@
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 use crate::{
     blockheader::BlockHeader,
+    emission::*,
+    tari_amount::*,
     transaction::*,
     transaction_protocol::{build_challenge, TransactionMetadata},
     types::*,
@@ -38,7 +40,7 @@ use tari_utilities::byte_array::ByteArray;
 //----------------------------------------         Blocks         ----------------------------------------------------//
 
 /// A Tari block. Blocks are linked together into a blockchain.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Block {
     pub header: BlockHeader,
     pub body: AggregateBody,
@@ -67,10 +69,12 @@ impl Block {
 }
 
 // todo this probably need to move somewhere else
-/// This function will create the correct amount for the coinbase given the block height
-pub fn calculate_coinbase(block_height: u64) -> u64 {
+/// This function will create the correct amount for the coinbase given the block height, it will provide the answer in
+/// µTari (micro Tari)
+pub fn calculate_coinbase(block_height: u64) -> MicroTari {
     // todo fill this in properly as a function and not a constant
-    (block_height * 0) + 60
+    let schedule = EmissionSchedule::new(MicroTari::from(10_000_000), 0.999, MicroTari::from(100));
+    schedule.block_reward(block_height)
 }
 
 //----------------------------------------     AggregateBody      ----------------------------------------------------//
@@ -167,6 +171,14 @@ impl AggregateBody {
         }
         Ok(())
     }
+
+    pub fn get_total_fee(&self) -> MicroTari {
+        let mut fee = MicroTari::from(0);
+        for kernel in &self.kernels {
+            fee += kernel.fee;
+        }
+        fee
+    }
 }
 
 /// This will strip away the offset of the transaction returning a pure aggregate body
@@ -182,7 +194,7 @@ pub struct BlockBuilder {
     pub inputs: Vec<TransactionInput>,
     pub outputs: Vec<TransactionOutput>,
     pub kernels: Vec<TransactionKernel>,
-    pub total_fee: u64,
+    pub total_fee: MicroTari,
 }
 
 impl BlockBuilder {
@@ -192,7 +204,7 @@ impl BlockBuilder {
             inputs: Vec::new(),
             outputs: Vec::new(),
             kernels: Vec::new(),
-            total_fee: 0,
+            total_fee: MicroTari::from(0),
         }
     }
 
@@ -261,10 +273,10 @@ impl BlockBuilder {
     pub fn create_coinbase(mut self, key: PrivateKey) -> Self {
         let mut rng = rand::OsRng::new().unwrap();
         // build output
-        let amount = calculate_coinbase(self.header.height) + self.total_fee;
-        let v = PrivateKey::from(amount);
+        let amount = self.total_fee + calculate_coinbase(self.header.height);
+        let v = PrivateKey::from(u64::from(amount));
         let commitment = COMMITMENT_FACTORY.commit(&key, &v);
-        let rr = PROVER.construct_proof(&v, amount).unwrap();
+        let rr = PROVER.construct_proof(&v, amount.into()).unwrap();
         let output = TransactionOutput::new(
             OutputFeatures::COINBASE_OUTPUT,
             commitment,
@@ -272,14 +284,17 @@ impl BlockBuilder {
         );
 
         // create kernel
-        let tx_meta = TransactionMetadata { fee: 0, lock_height: 0 };
+        let tx_meta = TransactionMetadata {
+            fee: 0.into(),
+            lock_height: 0,
+        };
         let r = PrivateKey::random(&mut rng);
         let e = build_challenge(&PublicKey::from_secret_key(&r), &tx_meta);
         let s = Signature::sign(key.clone(), r, &e).unwrap();
         let excess = COMMITMENT_FACTORY.commit_value(&key, 0);
         let kernel = KernelBuilder::new()
             .with_features(KernelFeatures::COINBASE_KERNEL)
-            .with_fee(0)
+            .with_fee(0.into())
             .with_lock_height(0)
             .with_excess(&excess)
             .with_signature(&s)

@@ -204,6 +204,7 @@ mod test {
     use crate::transaction_manager::{TransactionManager, TransactionManagerError};
     use rand::{CryptoRng, OsRng, Rng};
     use tari_core::{
+        tari_amount::*,
         transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
         transaction_protocol::{sender::SenderMessage, TransactionProtocolError},
         types::{PrivateKey, PublicKey, RangeProof, COMMITMENT_FACTORY, PROVER},
@@ -237,9 +238,9 @@ mod test {
         }
     }
 
-    pub fn make_input<R: Rng + CryptoRng>(rng: &mut R, val: u64) -> (TransactionInput, UnblindedOutput) {
+    pub fn make_input<R: Rng + CryptoRng>(rng: &mut R, val: MicroTari) -> (TransactionInput, UnblindedOutput) {
         let key = PrivateKey::random(rng);
-        let commitment = COMMITMENT_FACTORY.commit_value(&key, val);
+        let commitment = COMMITMENT_FACTORY.commit_value(&key, val.into());
         let input = TransactionInput::new(OutputFeatures::empty(), commitment);
         (input, UnblindedOutput::new(val, key, None))
     }
@@ -251,16 +252,16 @@ mod test {
         let a = TestParams::new(&mut rng);
         // Bob's parameters
         let b = TestParams::new(&mut rng);
-        let (utxo, input) = make_input(&mut rng, 2500);
+        let (utxo, input) = make_input(&mut rng, MicroTari(2500));
         let mut builder = SenderTransactionProtocol::builder(1);
         builder
             .with_lock_height(0)
-            .with_fee_per_gram(20)
+            .with_fee_per_gram(MicroTari(20))
             .with_offset(a.offset.clone())
             .with_private_nonce(a.nonce.clone())
             .with_change_secret(a.change_key.clone())
             .with_input(utxo.clone(), input)
-            .with_amount(0, 500);
+            .with_amount(0, MicroTari(500));
         let alice_stp = builder.build::<Blake256>(&PROVER, &COMMITMENT_FACTORY).unwrap();
 
         let mut alice_tx_manager = TransactionManager::new();
@@ -306,53 +307,53 @@ mod test {
 
         // Initializing all the sending transaction protocols
         // Alice
-        let (utxo_a1, input_a1) = make_input(&mut rng, 2500);
+        let (utxo_a1, input_a1) = make_input(&mut rng, MicroTari(2500));
         let mut builder_a1 = SenderTransactionProtocol::builder(1);
         builder_a1
             .with_lock_height(0)
-            .with_fee_per_gram(20)
+            .with_fee_per_gram(MicroTari(20))
             .with_offset(a_send1.offset.clone())
             .with_private_nonce(a_send1.nonce.clone())
             .with_change_secret(a_send1.change_key.clone())
             .with_input(utxo_a1.clone(), input_a1)
-            .with_amount(0, 500);
+            .with_amount(0, MicroTari(500));
         let alice_stp1 = builder_a1.build::<Blake256>(&PROVER, &COMMITMENT_FACTORY).unwrap();
 
-        let (utxo_a2, input_a2) = make_input(&mut rng, 2500);
+        let (utxo_a2, input_a2) = make_input(&mut rng, MicroTari(2500));
         let mut builder_a2 = SenderTransactionProtocol::builder(1);
         builder_a2
             .with_lock_height(0)
-            .with_fee_per_gram(20)
+            .with_fee_per_gram(MicroTari(20))
             .with_offset(a_send2.offset.clone())
             .with_private_nonce(a_send2.nonce.clone())
             .with_change_secret(a_send2.change_key.clone())
             .with_input(utxo_a2.clone(), input_a2)
-            .with_amount(0, 500);
+            .with_amount(0, MicroTari(500));
         let alice_stp2 = builder_a2.build::<Blake256>(&PROVER, &COMMITMENT_FACTORY).unwrap();
 
-        let (utxo_a3, input_a3) = make_input(&mut rng, 2500);
+        let (utxo_a3, input_a3) = make_input(&mut rng, MicroTari(2500));
         let mut builder_a3 = SenderTransactionProtocol::builder(1);
         builder_a3
             .with_lock_height(0)
-            .with_fee_per_gram(20)
+            .with_fee_per_gram(MicroTari(20))
             .with_offset(a_send3.offset.clone())
             .with_private_nonce(a_send3.nonce.clone())
             .with_change_secret(a_send3.change_key.clone())
             .with_input(utxo_a3.clone(), input_a3)
-            .with_amount(0, 500);
+            .with_amount(0, MicroTari(500));
         let alice_stp3 = builder_a3.build::<Blake256>(&PROVER, &COMMITMENT_FACTORY).unwrap();
 
         // Bob
-        let (utxo_b1, input_b1) = make_input(&mut rng, 2500);
+        let (utxo_b1, input_b1) = make_input(&mut rng, MicroTari(2500));
         let mut builder_b1 = SenderTransactionProtocol::builder(1);
         builder_b1
             .with_lock_height(0)
-            .with_fee_per_gram(20)
+            .with_fee_per_gram(MicroTari(20))
             .with_offset(b_send1.offset.clone())
             .with_private_nonce(b_send1.nonce.clone())
             .with_change_secret(b_send1.change_key.clone())
             .with_input(utxo_b1.clone(), input_b1)
-            .with_amount(0, 500);
+            .with_amount(0, MicroTari(500));
         let bob_stp1 = builder_b1.build::<Blake256>(&PROVER, &COMMITMENT_FACTORY).unwrap();
 
         let mut alice_tx_manager = TransactionManager::new();
@@ -470,16 +471,16 @@ mod test {
         let a = TestParams::new(&mut rng);
         // Bob's parameters
         let b = TestParams::new(&mut rng);
-        let (utxo, input) = make_input(&mut rng, 2500);
+        let (utxo, input) = make_input(&mut rng, MicroTari(2500));
         let mut builder = SenderTransactionProtocol::builder(1);
         builder
             .with_lock_height(0)
-            .with_fee_per_gram(20)
+            .with_fee_per_gram(MicroTari(20))
             .with_offset(a.offset.clone())
             .with_private_nonce(a.nonce.clone())
             .with_change_secret(a.change_key.clone())
             .with_input(utxo.clone(), input)
-            .with_amount(0, 500);
+            .with_amount(0, MicroTari(500));
         let alice_stp = builder.build::<Blake256>(&PROVER, &COMMITMENT_FACTORY).unwrap();
 
         let mut alice_tx_manager = TransactionManager::new();
@@ -528,16 +529,16 @@ mod test {
         let a = TestParams::new(&mut rng);
         // Bob's parameters
         let b = TestParams::new(&mut rng);
-        let (utxo, input) = make_input(&mut rng, 2500);
+        let (utxo, input) = make_input(&mut rng, MicroTari(2500));
         let mut builder = SenderTransactionProtocol::builder(1);
         builder
             .with_lock_height(0)
-            .with_fee_per_gram(20)
+            .with_fee_per_gram(MicroTari(20))
             .with_offset(a.offset.clone())
             .with_private_nonce(a.nonce.clone())
             .with_change_secret(a.change_key.clone())
             .with_input(utxo.clone(), input)
-            .with_amount(0, 500);
+            .with_amount(0, MicroTari(500));
         let alice_stp = builder.build::<Blake256>(&PROVER, &COMMITMENT_FACTORY).unwrap();
 
         let mut alice_tx_manager = TransactionManager::new();
@@ -573,16 +574,16 @@ mod test {
         let a = TestParams::new(&mut rng);
         // Bob's parameters
         let b = TestParams::new(&mut rng);
-        let (utxo, input) = make_input(&mut rng, 2500);
+        let (utxo, input) = make_input(&mut rng, MicroTari(2500));
         let mut builder = SenderTransactionProtocol::builder(1);
         builder
             .with_lock_height(0)
-            .with_fee_per_gram(20)
+            .with_fee_per_gram(MicroTari(20))
             .with_offset(a.offset.clone())
             .with_private_nonce(a.nonce.clone())
             .with_change_secret(a.change_key.clone())
             .with_input(utxo.clone(), input)
-            .with_amount(0, 500);
+            .with_amount(0, MicroTari(500));
         let alice_stp = builder.build::<Blake256>(&PROVER, &COMMITMENT_FACTORY).unwrap();
 
         let mut alice_tx_manager = TransactionManager::new();

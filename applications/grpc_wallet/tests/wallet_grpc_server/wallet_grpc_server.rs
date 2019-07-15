@@ -47,7 +47,7 @@ use tari_p2p::{
     initialization::CommsConfig,
     tari_message::{NetMessage, TariMessageType},
 };
-use tari_utilities::message_format::MessageFormat;
+use tari_utilities::hex::Hex;
 use tari_wallet::{wallet::WalletConfig, Wallet};
 use tempdir::TempDir;
 use tower_grpc::Request;
@@ -101,6 +101,8 @@ fn send_text_message_request(msg: TextMessageToSendRpc, desired_response: RpcRes
 
     let inbound = rx.recv().unwrap();
 
+    println!("{:?}", inbound);
+    println!("{:?}", desired_response);
     assert_eq!(inbound.success, desired_response.success);
     assert_eq!(inbound.message, desired_response.message);
 }
@@ -328,7 +330,7 @@ fn contacts_crud() {
         let contact_public_key = CommsPublicKey::from_secret_key(&contact_secret_key);
         contacts.push(ContactRpc {
             screen_name: screen_names[i].clone(),
-            pub_key: contact_public_key.to_base64().unwrap(),
+            pub_key: contact_public_key.to_hex(),
             address: "127.0.0.1:37522".to_string(),
         });
     }
@@ -500,6 +502,7 @@ fn test_rpc_text_message_service() {
             host: "127.0.0.1".parse().unwrap(),
             public_key: public_key1.clone(),
             secret_key: secret_key1,
+            public_address: listener_address1.clone(),
             datastore_path: TempDir::new(random_string(8).as_str())
                 .unwrap()
                 .path()
@@ -523,6 +526,7 @@ fn test_rpc_text_message_service() {
             host: "127.0.0.1".parse().unwrap(),
             public_key: public_key2.clone(),
             secret_key: secret_key2,
+            public_address: listener_address2.clone(),
             datastore_path: TempDir::new(random_string(8).as_str())
                 .unwrap()
                 .path()
@@ -544,7 +548,7 @@ fn test_rpc_text_message_service() {
     let screen_name = "Alice".to_string();
     let alice_contact = ContactRpc {
         screen_name: screen_name.clone(),
-        pub_key: public_key2.to_base64().unwrap(),
+        pub_key: public_key2.to_hex(),
         address: format!("{}", listener_address2.clone()),
     };
 
@@ -561,12 +565,12 @@ fn test_rpc_text_message_service() {
         .unwrap();
 
     let test_msg = TextMessageToSendRpc {
-        dest_pub_key: public_key2.clone().to_base64().unwrap(),
+        dest_pub_key: public_key2.clone().to_hex(),
         message: "Hey!".to_string(),
     };
 
     let test_msg2 = TextMessageToSendRpc {
-        dest_pub_key: public_key2.clone().to_base64().unwrap(),
+        dest_pub_key: public_key2.clone().to_hex(),
         message: "Hoh!".to_string(),
     };
 
@@ -588,6 +592,6 @@ fn test_rpc_text_message_service() {
     get_text_messages_request(sent_messages.clone(), received_messages.clone(), None);
     get_text_messages_request(sent_messages, received_messages, Some(alice_contact));
     set_get_screen_name("Alice".to_string());
-    get_pub_key(public_key1.to_base64().unwrap());
+    get_pub_key(public_key1.to_hex());
     contacts_crud();
 }

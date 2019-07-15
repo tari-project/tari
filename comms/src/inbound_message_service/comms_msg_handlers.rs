@@ -22,16 +22,8 @@
 
 use crate::{
     dispatcher::{DispatchError, DispatchResolver, DispatchableKey},
-    message::{
-        DomainMessageContext,
-        Message,
-        MessageContext,
-        MessageEnvelopeHeader,
-        MessageFlags,
-        MessageHeader,
-        NodeDestination,
-    },
-    types::{CommsPublicKey, MessageDispatcher},
+    message::{DomainMessageContext, Message, MessageContext, MessageFlags, MessageHeader, NodeDestination},
+    types::MessageDispatcher,
 };
 use log::*;
 use serde::{de::DeserializeOwned, Serialize};
@@ -84,7 +76,7 @@ where
             return Ok(CommsDispatchType::Discard);
         }
         // Check destination of message
-        let message_envelope_header: MessageEnvelopeHeader<CommsPublicKey> = message_context
+        let message_envelope_header = message_context
             .message_envelope
             .to_header()
             .map_err(|e| DispatchError::HandlerError(format!("{}", e)))?;
@@ -124,7 +116,7 @@ where
     );
 
     // Check encryption and retrieved Message
-    let message_envelope_header: MessageEnvelopeHeader<CommsPublicKey> = envelope
+    let message_envelope_header = envelope
         .to_header()
         .map_err(|e| DispatchError::HandlerError(format!("{}", e)))?;
 

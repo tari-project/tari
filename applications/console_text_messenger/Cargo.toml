@@ -1,0 +1,26 @@
+[package]
+name = "console_text_messenger"
+version = "0.1.0"
+authors = ["Philip Robinson <simian@tari.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tari_wallet = {path = "../../base_layer/wallet", version="0.0.2"}
+tari_common = {path = "../../common", version= "0.0.2"}
+tari_utilities = { path = "../../infrastructure/tari_util", version = "^0.0"}
+tari_comms = { path = "../../comms", version = "^0.0"}
+tari_p2p = {path = "../../base_layer/p2p", version = "^0.0"}
+tari_crypto = { path = "../../infrastructure/crypto"}
+clap = "2.33.0"
+serde = "1.0.90"
+serde_derive = "1.0.90"
+local-ip = "0.1.0"
+chrono = { version = "0.4.6", features = ["serde"]}
+config = { version = "0.9.3" }
+simple_logger = "1.2.0"
+log = { version = "0.4.0", features = ["std"] }
+crossbeam-channel = "0.3.8"
+log4rs = {version ="0.8.3",features = ["console_appender", "file_appender", "file", "yaml_format"]}
+ctrlc = "3.1.3"

@@ -25,7 +25,7 @@ extern crate clap;
 use clap::{App, Arg};
 use log::*;
 use serde::{Deserialize, Serialize};
-use std::{fs, sync::Arc, time::Duration};
+use std::{fs, time::Duration};
 use tari_comms::{
     connection::NetAddress,
     control_service::ControlServiceConfig,
@@ -33,14 +33,27 @@ use tari_comms::{
     types::{CommsPublicKey, CommsSecretKey},
 };
 use tari_crypto::keys::PublicKey;
-use tari_grpc_wallet::wallet_server::WalletServer;
+
+use crossbeam_channel as channel;
+use log4rs::{
+    append::file::FileAppender,
+    config::{Appender, Config, Root},
+    encode::pattern::PatternEncoder,
+};
+use std::{io, sync::Arc, thread};
 use tari_p2p::{
     initialization::CommsConfig,
+    services::ServiceError,
     tari_message::{NetMessage, TariMessageType},
 };
 use tari_utilities::{hex::Hex, message_format::MessageFormat};
-use tari_wallet::{text_message_service::Contact, wallet::WalletConfig, Wallet};
-const LOG_TARGET: &'static str = "applications::grpc_wallet";
+use tari_wallet::{
+    text_message_service::{Contact, TextMessage},
+    wallet::WalletConfig,
+    Wallet,
+};
+
+const LOG_TARGET: &'static str = "applications::cli_text_messenger";
 
 #[derive(Debug, Default, Deserialize)]
 struct Settings {
@@ -48,6 +61,7 @@ struct Settings {
     grpc_port: Option<u32>,
     secret_key: Option<String>,
     data_path: Option<String>,
+    screen_name: Option<String>,
 }
 #[derive(Debug, Serialize, Deserialize)]
 struct ConfigPeer {
@@ -61,11 +75,15 @@ struct Peers {
     peers: Vec<ConfigPeer>,
 }
 
-/// Entry point into the gRPC server binary
+/// # A Barebones console based text messege application to help with debugging the comms stack and wallet library
+/// This app uses the same command switches as the grpc_wallet server and when using the -N command to load config
+/// file/Peer list pairs will load them from the grpc_wallet/sample_config folder.
+/// ## Usage
+/// You can provide your own config files and parameters via switches (-help will explain those) or you can use the -N
+/// switch followed by an integer to load an integer label config/peer list pair
+/// `e.g. cargo run --bin console_text_messenger -- -N1` will load wallet_config_node1.toml and node1_peers.json
 pub fn main() {
-    let _ = simple_logger::init_with_level(log::Level::Info);
-
-    let matches = App::new("Tari Wallet gRPC server")
+    let matches = App::new("Tari Console Text Message Application")
         .version("0.1")
         .arg(
             Arg::with_name("node-num")
@@ -180,15 +198,18 @@ pub fn main() {
     if settings.secret_key.is_none() ||
         settings.control_port.is_none() ||
         settings.grpc_port.is_none() ||
-        settings.data_path.is_none()
+        settings.data_path.is_none() ||
+        settings.screen_name.is_none()
     {
         error!(
             target: LOG_TARGET,
-            "Control port, gRPC port, Data path or Secret Key has not been provided via command line or config file"
+            "Control port, gRPC port, Data path, Screen name or Secret Key has not been provided via command line or \
+             config file"
         );
         std::process::exit(1);
     }
 
+    // Setup the local comms stack
     let listener_address: NetAddress = format!("0.0.0.0:{}", settings.control_port.unwrap()).parse().unwrap();
     let secret_key = CommsSecretKey::from_hex(settings.secret_key.unwrap().as_str()).unwrap();
     let public_key = CommsPublicKey::from_secret_key(&secret_key);
@@ -245,6 +266,113 @@ pub fn main() {
         }
     }
 
-    let wallet_server = WalletServer::new(settings.grpc_port.unwrap(), Arc::new(wallet));
-    let _res = wallet_server.start();
+    // Setup the logging to a file (screen_name.log), the file will appear in the root where the binary is run from
+    let logfile = FileAppender::builder()
+        .encoder(Box::new(PatternEncoder::new(
+            "{d(%Y-%m-%d %H:%M:%S.%f)} [{M}#{L}] [{t}] {l:5} {m} (({T}:{I})){n}",
+        )))
+        .build(format!("{}.log", settings.screen_name.clone().unwrap()))
+        .unwrap();
+
+    let config = Config::builder()
+        .appender(Appender::builder().build("logfile", Box::new(logfile)))
+        .build(Root::builder().appender("logfile").build(LevelFilter::Debug))
+        .unwrap();
+
+    let _handle = log4rs::init_config(config).unwrap();
+
+    let contacts = wallet
+        .text_message_service
+        .get_contacts()
+        .expect("Could not read contacts");
+
+    // Print out some help messages
+    println!(
+        "┌─────────────────────────────────────┐\n│Tari Console Barebones Text \
+         Messenger│\n└─────────────────────────────────────┘"
+    );
+    println!("This node's screen name: {}", settings.screen_name.unwrap().clone());
+    for (i, c) in contacts.iter().enumerate() {
+        println!("Contact {}: {}", i, c.screen_name.clone());
+    }
+    println!("Active Contact is 0: {}", contacts[0].screen_name.clone());
+    println!("To change active contact to send to enter an integer and input_int%(# of contacts) will be made active");
+
+    // Start a text input thread which sends inputted lines to the main thread via a channel
+    let (tx, rx) = channel::unbounded();
+    let (tx_sigint, rx_sigint) = channel::unbounded();
+    thread::spawn(move || {
+        let mut input = String::new();
+        loop {
+            if let Ok(_l) = io::stdin().read_line(&mut input) {
+                tx.send(input.clone()).unwrap();
+                input = "".to_string();
+            }
+        }
+    });
+
+    // setup a handler for ctrl-c
+    ctrlc::set_handler(move || {
+        println!("Received SIGINT");
+        tx_sigint.send("shutdown").unwrap();
+    })
+    .expect("Error setting Ctrl-C handler");
+
+    // keeps track of which received messages have been printed to the console
+    let mut msg_index = 0;
+    // keeps track of which contact is currently active for sending
+    let mut active_contact: usize = 0;
+
+    // Main Loop
+    loop {
+        let mut rx_messages: Vec<TextMessage> = wallet
+            .text_message_service
+            .get_text_messages()
+            .expect("Error retrieving text messages from TMS")
+            .received_messages;
+
+        rx_messages.sort();
+
+        for i in msg_index..rx_messages.len() {
+            let contact = contacts
+                .iter()
+                .find(|c| c.pub_key == rx_messages[i].source_pub_key)
+                .expect("Message from unknown peer");
+            println!(
+                "{:?} - {:?}: {:?}",
+                rx_messages[i].timestamp, contact.screen_name, rx_messages[i].message
+            );
+            msg_index = i + 1;
+        }
+
+        if let Ok(mut input) = rx.recv_timeout(Duration::from_millis(100)) {
+            input.truncate(input.len() - 1);
+
+            if let Ok(i) = input.clone().parse::<usize>() {
+                active_contact = i % contacts.len();
+                println!("Active Contact updated to: {}", contacts[active_contact].screen_name);
+            }
+
+            wallet
+                .text_message_service
+                .send_text_message(contacts[active_contact.clone() % contacts.len()].pub_key.clone(), input)
+                .unwrap()
+        }
+
+        // check sigint to trigger shutdown
+        if let Ok(_) = rx_sigint.recv_timeout(Duration::from_millis(10)) {
+            wallet.service_executor.shutdown().unwrap();
+            wallet
+                .service_executor
+                .join_timeout(Duration::from_millis(3000))
+                .unwrap();
+            let comms = Arc::try_unwrap(wallet.comms_services)
+                .map_err(|_| ServiceError::CommsServiceOwnershipError)
+                .unwrap();
+
+            comms.shutdown().unwrap();
+            println!("Exiting");
+            break;
+        }
+    }
 }

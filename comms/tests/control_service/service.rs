@@ -66,7 +66,7 @@ lazy_static! {
 }
 
 fn test_handler(context: ControlServiceMessageContext<u8>) -> Result<(), ControlServiceError> {
-    let msg: EstablishConnection<CommsPublicKey> = context
+    let msg: EstablishConnection = context
         .message
         .to_message()
         .map_err(|err| DispatchError::HandlerError(format!("Failed to parse message: {}", err)))?;
@@ -201,7 +201,6 @@ fn recv_message() {
     let msg = EstablishConnection {
         address: requesting_node_address,
         node_id: NodeId::from_key(&node_identity.identity.public_key).unwrap(),
-        public_key: node_identity.identity.public_key.clone(),
         server_key: server_pk,
         control_service_address: control_service_address.clone(),
     };

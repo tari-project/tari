@@ -20,30 +20,21 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{tari_amount::*, transaction::MINIMUM_TRANSACTION_FEE};
+use derive_error::Error;
 
-pub struct Fee {}
-
-pub const COST_PER_INPUT: u64 = 1;
-pub const COST_PER_OUTPUT: u64 = 4;
-pub const BASE_COST: u64 = 1;
-
-impl Fee {
-    /// Computes the absolute transaction fee given the fee-per-gram, and the size of the transaction
-    pub fn calculate(fee_per_gram: MicroTari, num_inputs: usize, num_outputs: usize) -> MicroTari {
-        (BASE_COST +
-            (COST_PER_INPUT * num_inputs as u64 + COST_PER_OUTPUT * num_outputs as u64) * u64::from(fee_per_gram))
-        .into()
-    }
-
-    /// Computes the absolute transaction fee using `calculate`, but the resulting fee will always be at least the
-    /// minimum network transaction fee.
-    pub fn calculate_with_minimum(fee_per_gram: MicroTari, num_inputs: usize, num_outputs: usize) -> MicroTari {
-        let fee = Fee::calculate(fee_per_gram, num_inputs, num_outputs);
-        if fee < MINIMUM_TRANSACTION_FEE {
-            MINIMUM_TRANSACTION_FEE
-        } else {
-            fee
-        }
-    }
+#[derive(Debug, Error)]
+pub enum KeyValStoreError {
+    /// The Thread Safety has been breached and the data access has become poisoned
+    PoisonedAccess,
+    /// An error occurred with the key value query or store
+    #[error(no_from, non_std)]
+    DatabaseError(String),
+    /// An error occurred during serialization
+    #[error(no_from, non_std)]
+    SerializationError(String),
+    /// An error occurred during deserialization
+    #[error(no_from, non_std)]
+    DeserializationError(String),
+    /// The specified key did not exist in the key-val store
+    KeyNotFound,
 }

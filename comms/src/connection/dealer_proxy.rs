@@ -215,7 +215,5 @@ mod test {
 
         // Test steerable dealer shutdown
         proxy.shutdown().unwrap();
-        receiver.send_sync(&[&msg[0], "FAIL".as_bytes()]).unwrap();
-        assert!(sender.receive(200).is_err());
     }
 }

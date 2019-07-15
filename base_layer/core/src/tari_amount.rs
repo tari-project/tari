@@ -21,7 +21,11 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use newtype_ops::newtype_ops;
+use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error, Formatter};
+
+use std::{iter::Sum, ops::Add};
+use tari_crypto::ristretto::RistrettoSecretKey;
 
 /// All calculations using Tari amounts should use these newtypes to prevent bugs related to rounding errors, unit
 /// conversion errors etc.
@@ -33,13 +37,25 @@ use std::fmt::{Display, Error, Formatter};
 /// let b = MicroTari::from(50);
 /// assert_eq!(a + b, MicroTari::from(550));
 /// ```
-#[derive(Copy, Default, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
-pub struct MicroTari(u64);
+#[derive(Copy, Default, Clone, Debug, Eq, PartialEq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct MicroTari(pub u64);
 
 // You can only add or subtract µT from µT
 newtype_ops! { [MicroTari] {add sub} {:=} Self Self }
+newtype_ops! { [MicroTari] {add sub} {:=} &Self &Self }
+newtype_ops! { [MicroTari] {add sub} {:=} Self &Self }
+
 // Multiplication and division only makes sense when µT is multiplied/divided by a scalar
 newtype_ops! { [MicroTari] {mul div rem} {:=} Self u64 }
+
+impl MicroTari {
+    pub fn checked_sub(&self, v: MicroTari) -> Option<MicroTari> {
+        if self.0 >= v.0 {
+            return Some(self - &v);
+        }
+        None
+    }
+}
 
 impl Display for MicroTari {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
@@ -62,6 +78,24 @@ impl From<u64> for MicroTari {
 impl From<MicroTari> for f64 {
     fn from(v: MicroTari) -> Self {
         v.0 as f64
+    }
+}
+
+impl From<MicroTari> for RistrettoSecretKey {
+    fn from(v: MicroTari) -> Self {
+        v.0.into()
+    }
+}
+
+impl<'a> Sum<&'a MicroTari> for MicroTari {
+    fn sum<I: Iterator<Item = &'a MicroTari>>(iter: I) -> MicroTari {
+        iter.fold(MicroTari::from(0), Add::add)
+    }
+}
+
+impl Sum<MicroTari> for MicroTari {
+    fn sum<I: Iterator<Item = MicroTari>>(iter: I) -> MicroTari {
+        iter.fold(MicroTari::from(0), Add::add)
     }
 }
 

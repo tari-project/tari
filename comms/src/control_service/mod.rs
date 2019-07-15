@@ -52,6 +52,7 @@
 //! let conn_manager = Arc::new(ConnectionManager::new(context.clone(), node_identity.clone(), peer_manager.clone(), PeerConnectionConfig {
 //!      max_message_size: 1024,
 //!      max_connect_retries: 1,
+//!      max_connections: 100,
 //!      socks_proxy_address: None,
 //!      message_sink_address: InprocAddress::random(),
 //!      host: "127.0.0.1".parse().unwrap(),

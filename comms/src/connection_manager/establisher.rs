@@ -48,6 +48,9 @@ const LOG_TARGET: &'static str = "comms::connection_manager::establisher";
 /// These are the common properties which are shared across all peer connections
 #[derive(Clone)]
 pub struct PeerConnectionConfig {
+    /// Maximum number of peer connections. Newer connections will be rejected until there are
+    /// less than `max_connections` active connections.
+    pub max_connections: u64,
     /// Maximum size of inbound messages - messages larger than this will be dropped
     pub max_message_size: u64,
     /// The number of connection attempts to make to one address before giving up
@@ -67,6 +70,7 @@ pub struct PeerConnectionConfig {
 impl Default for PeerConnectionConfig {
     fn default() -> Self {
         Self {
+            max_connections: 100,
             max_message_size: 1024 * 1024,
             max_connect_retries: 5,
             socks_proxy_address: None,

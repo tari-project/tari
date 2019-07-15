@@ -126,8 +126,7 @@ impl ServiceExecutor {
     }
 
     /// Join on all threads in the thread pool until they all exit or a given timeout is reached.
-    /// This function returns the unwrapped CommsServices which is released from the service executor.
-    pub fn join_timeout(self, timeout: Duration) -> Result<CommsServices<TariMessageType>, ServiceError> {
+    pub fn join_timeout(self, timeout: Duration) -> Result<(), ServiceError> {
         let (tx, rx) = channel::unbounded();
         let thread_pool = self.thread_pool;
         thread::spawn(move || {
@@ -137,7 +136,7 @@ impl ServiceExecutor {
 
         rx.recv_timeout(timeout).map_err(|_| ServiceError::JoinTimedOut)?;
 
-        Arc::try_unwrap(self.comms_services).map_err(|_| ServiceError::CommsServiceOwnershipError)
+        Ok(())
     }
 }
 
@@ -260,10 +259,14 @@ mod test {
             .map(Arc::new)
             .unwrap();
 
-        let services = ServiceExecutor::execute(comms_services, registry);
+        let services = ServiceExecutor::execute(comms_services.clone(), registry);
 
         services.shutdown().unwrap();
-        let comms = services.join_timeout(Duration::from_millis(100)).unwrap();
+        services.join_timeout(Duration::from_millis(100)).unwrap();
+        let comms = Arc::try_unwrap(comms_services)
+            .map_err(|_| ServiceError::CommsServiceOwnershipError)
+            .unwrap();
+
         comms.shutdown().unwrap();
 
         {

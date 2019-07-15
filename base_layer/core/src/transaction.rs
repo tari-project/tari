@@ -25,6 +25,7 @@
 
 use crate::{
     block::AggregateBody,
+    tari_amount::*,
     types::{BlindingFactor, Commitment, CommitmentFactory, Signature},
 };
 
@@ -47,7 +48,7 @@ use tari_utilities::{ByteArray, Hashable};
 pub const MAX_TRANSACTION_INPUTS: usize = 500;
 pub const MAX_TRANSACTION_OUTPUTS: usize = 100;
 pub const MAX_TRANSACTION_RECIPIENTS: usize = 15;
-pub const MINIMUM_TRANSACTION_FEE: u64 = 100;
+pub const MINIMUM_TRANSACTION_FEE: MicroTari = MicroTari(100);
 
 //--------------------------------------        Bit flag features   --------------------------------------------------//
 
@@ -90,14 +91,14 @@ pub enum TransactionError {
 /// build both inputs and outputs (every input comes from an output)
 #[derive(Debug, Clone)]
 pub struct UnblindedOutput {
-    pub value: u64,
+    pub value: MicroTari,
     pub spending_key: BlindingFactor,
     pub features: OutputFeatures,
 }
 
 impl UnblindedOutput {
     /// Creates a new un-blinded output
-    pub fn new(value: u64, spending_key: BlindingFactor, features: Option<OutputFeatures>) -> UnblindedOutput {
+    pub fn new(value: MicroTari, spending_key: BlindingFactor, features: Option<OutputFeatures>) -> UnblindedOutput {
         UnblindedOutput {
             value,
             spending_key,
@@ -122,7 +123,7 @@ impl UnblindedOutput {
         let output = TransactionOutput {
             features,
             commitment,
-            proof: RangeProof::from_bytes(&prover.construct_proof(&self.spending_key, self.value)?)
+            proof: RangeProof::from_bytes(&prover.construct_proof(&self.spending_key, self.value.into())?)
                 .map_err(|_| TransactionError::RangeProofError(RangeProofError::ProofConstructionError))?,
         };
         // A range proof can be constructed for an invalid value so we should confirm that the proof can be verified.
@@ -262,7 +263,7 @@ pub struct TransactionKernel {
     /// Options for a kernel's structure or use
     pub features: KernelFeatures,
     /// Fee originally included in the transaction this proof is for.
-    pub fee: u64,
+    pub fee: MicroTari,
     /// This kernel is not valid earlier than lock_height blocks
     /// The max lock_height of all *inputs* to this transaction
     pub lock_height: u64,
@@ -278,7 +279,7 @@ pub struct TransactionKernel {
 /// A version of Transaction kernel with optional fields. This struct is only used in constructing transaction kernels
 pub struct KernelBuilder {
     features: KernelFeatures,
-    fee: u64,
+    fee: MicroTari,
     lock_height: u64,
     excess: Option<Commitment>,
     excess_sig: Option<Signature>,
@@ -298,7 +299,7 @@ impl KernelBuilder {
     }
 
     /// Build a transaction kernel with the provided fee
-    pub fn with_fee(mut self, fee: u64) -> KernelBuilder {
+    pub fn with_fee(mut self, fee: MicroTari) -> KernelBuilder {
         self.fee = fee;
         self
     }
@@ -339,7 +340,7 @@ impl Default for KernelBuilder {
     fn default() -> Self {
         KernelBuilder {
             features: KernelFeatures::empty(),
-            fee: 0,
+            fee: MicroTari::from(0),
             lock_height: 0,
             excess: None,
             excess_sig: None,
@@ -370,7 +371,7 @@ impl Hashable for TransactionKernel {
     fn hash(&self) -> Vec<u8> {
         HashDigest::new()
             .chain(&[self.features.bits])
-            .chain(self.fee.to_le_bytes())
+            .chain(u64::from(self.fee).to_le_bytes())
             .chain(self.lock_height.to_le_bytes())
             .chain(self.excess.as_bytes())
             .chain(self.excess_sig.get_public_nonce().as_bytes())
@@ -426,7 +427,7 @@ impl Transaction {
         // Sum all kernel excesses and fees
         self.body.kernels.iter().fold(
             KernelSum {
-                fees: 0u64,
+                fees: MicroTari(0),
                 sum: offset_commitment,
             },
             |acc, val| KernelSum {
@@ -439,7 +440,7 @@ impl Transaction {
     /// Confirm that the (sum of the outputs) - (sum of inputs) = Kernel excess
     fn validate_kernel_sum(&self, factory: &CommitmentFactory) -> Result<(), TransactionError> {
         let kernel_sum = self.sum_kernels();
-        let sum_io = self.sum_commitments(kernel_sum.fees, factory);
+        let sum_io = self.sum_commitments(kernel_sum.fees.into(), factory);
 
         if kernel_sum.sum != sum_io {
             return Err(TransactionError::ValidationError(
@@ -495,7 +496,7 @@ impl From<AggregateBody> for Transaction {
 /// and returns the summed commitments and the total fees
 pub struct KernelSum {
     pub sum: Commitment,
-    pub fees: u64,
+    pub fees: MicroTari,
 }
 
 pub struct TransactionBuilder {
@@ -592,7 +593,7 @@ mod test {
         let mut rng = rand::OsRng::new().unwrap();
         let k = BlindingFactor::random(&mut rng);
         let factory = PedersenCommitmentFactory::default();
-        let i = UnblindedOutput::new(10, k, None);
+        let i = UnblindedOutput::new(10.into(), k, None);
         let input = i.as_transaction_input(&factory, OutputFeatures::empty());
         assert_eq!(input.features, OutputFeatures::empty());
         assert!(input.opened_by(&i, &factory));
@@ -608,13 +609,13 @@ mod test {
         let k2 = BlindingFactor::random(&mut rng);
 
         // For testing the max range has been limited to 2^32 so this value is too large.
-        let unblinded_output1 = UnblindedOutput::new(2u64.pow(32) - 1u64, k1, None);
+        let unblinded_output1 = UnblindedOutput::new((2u64.pow(32) - 1u64).into(), k1, None);
         let tx_output1 = unblinded_output1
             .as_transaction_output(&prover, &factory, OutputFeatures::empty())
             .unwrap();
         assert!(tx_output1.verify_range_proof(&prover).unwrap());
 
-        let unblinded_output2 = UnblindedOutput::new(2u64.pow(32) + 1u64, k2.clone(), None);
+        let unblinded_output2 = UnblindedOutput::new((2u64.pow(32) + 1u64).into(), k2.clone(), None);
         let tx_output2 = unblinded_output2.as_transaction_output(&prover, &factory, OutputFeatures::empty());
 
         match tx_output2 {

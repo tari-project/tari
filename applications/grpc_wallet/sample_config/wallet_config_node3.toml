@@ -6,12 +6,8 @@
 
 # TODO Finalize this config file
 
-control_port = 10000
+control_port = 30000
 grpc_port = 10001
-secret_key = "bafd4efafac9310b85c7afdc68d0c874597102bc2e1c824caa19d8b263afff05"
+secret_key = "a6bbc534c6d390e9e8ab3626d01677a1195dd59e0594c13f786c29b9abb77102"
 data_path = "./data"
-screen_name = "Jason"
-
-
-
-
+screen_name = "Cayle"
