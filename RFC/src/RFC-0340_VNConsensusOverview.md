@@ -72,10 +72,9 @@ about our system being
 [Byzantine Fault Tolerant](https://tlu.tarilabs.com/consensus-mechanisms/BFT-consensusmechanisms/sources/PITCHME.link.html).
 
 Tari Asset [committees] are chosen by the asset issuer according to [RFC-0304](RFC-0304_VNCommittees.md). The committees
-form a fixed set of replicas, at the very least least from checkpoint to checkpoint, and will typically be limited in
-size, usually less than ten, and almost always under 100.
-_Note_: These numbers are highly speculative based on an intuitive guess about the main use cases for Tari DAs, where we
-have
+form a fixed set of replicas, at the very least from checkpoint to checkpoint, and will typically be limited in size,
+usually less than ten, and almost always under 100. _Note_: These numbers are highly speculative based on an intuitive
+guess about the main use cases for Tari DAs, where we have
 * many 1-3-sized committees where the asset issuer and the VN committee are the same entity,
 * semi-decentralised assets of ±4-10 where speed trumps censorship-resistance,
 * a small number of 50-100 VNs where censorship-resistance trumps speed.
@@ -87,8 +86,8 @@ There is a good survey of consensus mechanisms on
 [Tari Labs University](https://tlu.tarilabs.com/consensus-mechanisms/consensus-mechanisms.html).
 
 From the point of view of a DAN committee, the ideal consensus algorithm is one that
-1. Allows a high number of transactions per second, and does does have unnecessary pauses (i.e. a partially synchronous
-   or asynchronous model).
+1. Allows a high number of transactions per second, and doesn't have unnecessary pauses (i.e. a partially synchronous or
+   asynchronous model).
 2. Is Byzantine Fault tolerant.
 3. Is relatively efficient from a network communication point of view (number of messages passed per state agreement).
 4. Is relatively simple to implement (to reduce the bug and vulnerability surface in implementations).
@@ -146,10 +145,10 @@ Once a super-majority of these messages have been received, the leader composes 
 a new node to the state history graph (I'm calling it a state history graph to avoid naming confusion, but it's really a
 blockchain). It composes a message containing the new proposal, and broadcasts it to the other replicas.
 
-Replicas, on receipt on the proposal, decide whether the proposal is valid, both from a protocol point of view (i.e. did
+Replicas, on receipt of the proposal, decide whether the proposal is valid, both from a protocol point of view (i.e. did
 the leader provide a well-formed proposal) as well as whether they agree on the new state (e.g. by executing the
 instructions as given and comparing the resulting state with that of the proposal). If there is agreement, they vote on
-the proposal by signing it, and send their partial signature back to the leader.
+the proposal by signing it, and sending their partial signature back to the leader.
 
 When the leader has received a super-majority of votes, it sends a message back to the replicas with the (aggregated)
 set of signatures.
