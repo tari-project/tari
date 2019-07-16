@@ -195,7 +195,7 @@ where
             .try_into()
             .map_err(|err| ControlServiceError::MessageError(err))?;
 
-        let envelope_header = envelope.to_header()?;
+        let envelope_header = envelope.deserialize_header()?;
         if !envelope_header.flags.contains(MessageFlags::ENCRYPTED) {
             return Err(ControlServiceError::ReceivedUnencryptedMessage);
         }

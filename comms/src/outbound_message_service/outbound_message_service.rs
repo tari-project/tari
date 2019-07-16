@@ -182,12 +182,12 @@ mod test {
         // Construct and send OutboundMessage
         let message_header = "Test Message Header".as_bytes().to_vec();
         let message_body = "Test Message Body".as_bytes().to_vec();
-        let message_envelope_body = Message::from_message_format(message_header, message_body).unwrap();
+        let message = Message::from_message_format(message_header, message_body).unwrap();
         outbound_message_service
             .send_raw(
                 BroadcastStrategy::DirectNodeId(dest_peer.node_id.clone()),
                 MessageFlags::ENCRYPTED,
-                message_envelope_body.to_binary().unwrap(),
+                message.to_binary().unwrap(),
             )
             .unwrap();
 
@@ -201,17 +201,19 @@ mod test {
         assert_eq!(outbound_message.num_attempts(), 0);
         assert_eq!(outbound_message.is_scheduled(), true);
         let message_envelope: MessageEnvelope = outbound_message.message_frames().clone().try_into().unwrap();
-        let message_envelope_header = message_envelope.to_header().unwrap();
+        let message_envelope_header = message_envelope.deserialize_header().unwrap();
         assert_eq!(message_envelope_header.source, node_identity.identity.public_key);
         assert_eq!(
             message_envelope_header.dest,
             NodeDestination::NodeId(dest_peer.node_id.clone())
         );
-        assert!(message_envelope.verify_signature().unwrap());
+        assert!(message_envelope_header
+            .verify_signature(message_envelope.body_frame())
+            .unwrap());
         assert_eq!(message_envelope_header.flags, MessageFlags::ENCRYPTED);
-        let decoded_message_envelope_body = message_envelope
-            .decrypted_message_body(&dest_sk, &node_identity.identity.public_key)
+        let decrypted_message = message_envelope
+            .deserialize_encrypted_body(&dest_sk, &node_identity.identity.public_key)
             .unwrap();
-        assert_eq!(message_envelope_body, decoded_message_envelope_body);
+        assert_eq!(message, decrypted_message);
     }
 }
