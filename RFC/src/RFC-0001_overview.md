@@ -8,7 +8,7 @@
 
 # Licence
 
-[ The 3-Clause BSD License](https://opensource.org/licenses/BSD-3-Clause).
+[ The 3-Clause BSD Licence](https://opensource.org/licenses/BSD-3-Clause).
 
 Copyright 2018 The Tari Development Community
 
@@ -32,14 +32,14 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ## Language
 
-The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", 
+The keywords "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", 
 "NOT RECOMMENDED", "MAY" and "OPTIONAL" in this document are to be interpreted as described in 
 [BCP 14](https://tools.ietf.org/html/bcp14) (covering RFC2119 and RFC8174) when, and only when, they appear in all capitals, as 
 shown here.
 
 ## Disclaimer
 
-The purpose of this document and its content is for information purposes only and may be subject to change or update
+This document and its content are intended for information purposes only and may be subject to change or update
 without notice.
 
 This document may include preliminary concepts that may or may not be in the process of being developed by the Tari
