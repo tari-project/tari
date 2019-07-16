@@ -56,7 +56,7 @@ None.
 
 ## Description
 
-The code follows a domain-driven design layout (DDD), with top-level directories falling into infrastructure, domain
+The code follows a domain-driven design layout [(DDD)], with top-level directories falling into infrastructure, domain
 and application layers.
 
 ### Infrastructure Layer
@@ -93,7 +93,7 @@ As an example, the following base layer applications may be developed as part of
 
 ### Code Layout
 
-The top-level source code directories in this repository reflect the respective (DDD) layers; except that there are two
+The top-level source code directories in this repository reflect the respective [(DDD)] layers; except that there are two
 domain layer directories, corresponding to the two network layers that make up the Tari network.
 
 1. The `infrastructure` directory contains application-layer code and is not Tari-specific. It holds the following
