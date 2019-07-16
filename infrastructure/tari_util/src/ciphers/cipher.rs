@@ -40,14 +40,14 @@ pub trait Cipher<D>
 where D: ByteArray
 {
     /// Encrypt using a cipher and provided key and nonce
-    fn seal(plain_text: &D, key: &Vec<u8>, nonce: &Vec<u8>) -> Result<Vec<u8>, CipherError>;
+    fn seal(plain_text: &D, key: &[u8], nonce: &[u8]) -> Result<Vec<u8>, CipherError>;
 
     /// Decrypt using a cipher and provided key and nonce
-    fn open(cipher_text: &Vec<u8>, key: &Vec<u8>, nonce: &Vec<u8>) -> Result<D, CipherError>;
+    fn open(cipher_text: &[u8], key: &[u8], nonce: &[u8]) -> Result<D, CipherError>;
 
     /// Encrypt using a cipher and provided key, the nonce will be generate internally and appended to the cipher text
-    fn seal_with_integral_nonce(plain_text: &D, key: &Vec<u8>) -> Result<Vec<u8>, CipherError>;
+    fn seal_with_integral_nonce(plain_text: &D, key: &[u8]) -> Result<Vec<u8>, CipherError>;
 
     /// Decrypt using a cipher and provided key. The integral nonce will be read from the cipher text
-    fn open_with_integral_nonce(cipher_text: &Vec<u8>, key: &Vec<u8>) -> Result<D, CipherError>;
+    fn open_with_integral_nonce(cipher_text: &[u8], key: &[u8]) -> Result<D, CipherError>;
 }
