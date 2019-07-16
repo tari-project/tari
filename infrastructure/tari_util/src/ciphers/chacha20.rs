@@ -233,7 +233,7 @@ where D: ByteArray
         sized_key.copy_from_slice(key);
 
         let mut nonce = [0u8; 12];
-        nonce.copy_from_slice(&cipher_text.clone()[0..12]);
+        nonce.copy_from_slice(&cipher_text[0..12]);
 
         let plain_text = ChaCha20::decode_with_nonce(&cipher_text[12..], &sized_key, &nonce);
         // Clear copied private data
