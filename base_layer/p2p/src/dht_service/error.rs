@@ -20,24 +20,18 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{peer_manager::node_id::NodeId, types::CommsPublicKey};
+use derive_error::Error;
+use tari_comms::domain_connector::ConnectorError;
 
-#[derive(Debug)]
-pub struct ClosestRequest {
-    pub n: usize,
-    pub node_id: NodeId,
-}
-
-#[derive(Debug)]
-pub enum BroadcastStrategy {
-    /// Send to a particular peer matching the given node ID
-    DirectNodeId(NodeId),
-    /// Send to a particular peer matching the given Public Key
-    DirectPublicKey(CommsPublicKey),
-    /// Send to all known Communication Node peers
-    Flood,
-    /// Send to all n nearest neighbour Communication Nodes
-    Closest(ClosestRequest),
-    /// Send to a random set of peers of size n that are Communication Nodes
-    Random(usize),
+#[derive(Debug, Error)]
+pub enum DHTError {
+    /// OMS has not been initialized
+    OMSUndefined,
+    ReceiveError(ConnectorError),
+    /// Failed to send from API
+    ApiSendFailed,
+    /// Failed to receive in API from service
+    ApiReceiveFailed,
+    /// Received an unexpected response type from the API
+    UnexpectedApiResponse,
 }
