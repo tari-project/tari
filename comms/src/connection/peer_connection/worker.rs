@@ -30,7 +30,7 @@ use crate::{
             PeerConnectionContext,
             PeerConnectionError,
         },
-        types::{Direction, Result},
+        types::{Direction, Linger, Result},
         ConnectionError,
         InprocAddress,
         NetAddress,
@@ -176,6 +176,7 @@ impl PeerConnectionWorker {
                 match msg {
                     ControlMessage::Shutdown => {
                         debug!(target: LOG_TARGET, "[{:?}] Shutdown message received", addr);
+                        peer_conn.set_linger(Linger::Never)?;
                         // Ensure that the peer connection is dropped as soon as possible.
                         // This somehow seemed to improve connection reliability.
                         drop(peer_conn);
@@ -423,6 +424,13 @@ impl PeerConnectionWorker {
                 Some(ref ident) => {
                     let mut payload = vec![ident.clone()];
                     payload.extend(frames);
+
+                    debug!(
+                        target: LOG_TARGET,
+                        "Created payload with identity frame {:x?} ({} frame(s))",
+                        ident,
+                        payload.len()
+                    );
                     Ok(payload)
                 },
                 None => return Err(PeerConnectionError::IdentityNotEstablished.into()),
@@ -446,6 +454,7 @@ impl PeerConnectionWorker {
     fn establish_peer_connection(&self) -> Result<EstablishedConnection> {
         let context = &self.context;
         Connection::new(&context.context, context.direction.clone())
+            .set_name(format!("peer-conn-{}", self.context.id).as_str())
             .set_linger(context.linger.clone())
             .set_heartbeat_interval(Duration::from_millis(1000))
             .set_heartbeat_timeout(Duration::from_millis(5000))
@@ -461,7 +470,9 @@ impl PeerConnectionWorker {
     /// Establish the connection to the consumer
     fn establish_consumer_connection(&self) -> Result<EstablishedConnection> {
         let context = &self.context;
-        Connection::new(&context.context, Direction::Outbound).establish(&context.message_sink_address)
+        Connection::new(&context.context, Direction::Outbound)
+            .set_name("peer-conn-sink")
+            .establish(&context.message_sink_address)
     }
 }
 

@@ -87,7 +87,7 @@ impl From<SyncSender<ControlMessage>> for ThreadControlMessenger {
 impl Drop for ThreadControlMessenger {
     /// Send a ControlMessage::Shutdown on drop.
     fn drop(&mut self) {
-        debug!(target: LOG_TARGET, "ThreadControlMessager dropped");
+        debug!(target: LOG_TARGET, "ThreadControlMessenger dropped");
         // We assume here that the thread responds to the shutdown request.
         let _ = self.0.try_send(ControlMessage::Shutdown);
     }
