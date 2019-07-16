@@ -203,7 +203,7 @@ fn outbound_message_pool_no_retry() {
     node_B_control_service.shutdown().unwrap();
     node_B_control_service
         .handle
-        .timeout_join(Duration::from_millis(100))
+        .timeout_join(Duration::from_millis(3000))
         .unwrap();
 
     omp.shutdown().unwrap();

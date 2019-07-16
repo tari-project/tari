@@ -279,7 +279,7 @@ mod test {
         .unwrap();
 
         signal.send(()).unwrap();
-        handle.timeout_join(Duration::from_millis(100)).unwrap();
+        handle.timeout_join(Duration::from_millis(3000)).unwrap();
     }
 
     #[test]

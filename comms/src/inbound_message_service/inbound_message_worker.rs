@@ -395,7 +395,7 @@ mod test {
         // Test worker clean shutdown
         control_sync_sender.send(ControlMessage::Shutdown).unwrap();
         std::thread::sleep(time::Duration::from_millis(200));
-        thread_handle.timeout_join(Duration::from_millis(100)).unwrap();
+        thread_handle.timeout_join(Duration::from_millis(3000)).unwrap();
         assert!(client_connection.send(message1_frame_set).is_err());
     }
 }
