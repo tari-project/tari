@@ -58,9 +58,14 @@ impl ConnectionManager {
     ) -> Self
     {
         Self {
+            establisher: Arc::new(ConnectionEstablisher::new(
+                zmq_context,
+                Arc::clone(&node_identity),
+                config,
+                peer_manager.clone(),
+            )),
             node_identity,
             connections: LivePeerConnections::new(),
-            establisher: Arc::new(ConnectionEstablisher::new(zmq_context, config, peer_manager.clone())),
             peer_manager,
             establish_locks: Mutex::new(HashMap::new()),
         }
@@ -112,7 +117,7 @@ impl ConnectionManager {
     }
 
     /// Lock a critical section for the given node id during connection establishment
-    fn with_establish_lock<T>(&self, node_id: &NodeId, func: impl Fn() -> T) -> T {
+    pub fn with_establish_lock<T>(&self, node_id: &NodeId, func: impl FnOnce() -> T) -> T {
         // Return the lock for the given node id. If no lock exists create a new one and return it.
         let nid_lock = {
             let mut establish_locks = acquire_lock!(self.establish_locks);
@@ -136,6 +141,11 @@ impl ConnectionManager {
             establish_locks.remove(node_id);
         }
         ret
+    }
+
+    pub fn has_establish_lock(&self, node_id: &NodeId) -> bool {
+        let establish_locks = acquire_lock!(self.establish_locks);
+        establish_locks.get(node_id).is_some()
     }
 
     fn attempt_peer_connection(&self, peer: &Peer) -> Result<Arc<PeerConnection>> {
@@ -209,8 +219,8 @@ impl ConnectionManager {
     }
 
     /// Get the peer manager
-    pub(crate) fn get_peer_manager(&self) -> Arc<PeerManager> {
-        self.peer_manager.clone()
+    pub(crate) fn peer_manager(&self) -> &PeerManager {
+        &self.peer_manager
     }
 
     pub(crate) fn get_connection(&self, peer: &Peer) -> Option<Arc<PeerConnection>> {
@@ -231,12 +241,13 @@ impl ConnectionManager {
         protocol
             .negotiate_peer_connection(peer)
             .and_then(|(new_inbound_conn, join_handle)| {
+                let config = self.establisher.get_config();
                 debug!(
                     target: LOG_TARGET,
-                    "[{:?}] Waiting for peer connection acceptance from remote peer ",
-                    new_inbound_conn.get_address()
+                    "[{:?}] Waiting {}s for peer connection acceptance from remote peer ",
+                    new_inbound_conn.get_address(),
+                    config.peer_connection_establish_timeout.as_secs(),
                 );
-                let config = self.establisher.get_config();
                 // Wait for a message from the peer before continuing
                 new_inbound_conn
                     .wait_connected_or_failure(&config.peer_connection_establish_timeout)
@@ -250,6 +261,11 @@ impl ConnectionManager {
                         );
                         Err(ConnectionManagerError::ConnectionError(err))
                     })?;
+                debug!(
+                    target: LOG_TARGET,
+                    "[{:?}] Connection established. Adding to active peer connections.",
+                    new_inbound_conn.get_address(),
+                );
 
                 // TODO(sdbondi): Check if num active connections > max_connections, if so remove
                 //                the peer connection which has not seen much recent activity.

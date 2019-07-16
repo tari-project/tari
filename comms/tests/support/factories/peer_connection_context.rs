@@ -47,6 +47,7 @@ pub struct PeerConnectionContextFactory<'c> {
     connection_id: Option<ConnectionId>,
     message_sink_address: Option<InprocAddress>,
     server_public_key: Option<CurvePublicKey>,
+    curve_keypair: Option<(CurveSecretKey, CurvePublicKey)>,
     address: Option<NetAddress>,
     linger: Option<Linger>,
 }
@@ -65,6 +66,12 @@ impl<'c> PeerConnectionContextFactory<'c> {
 
     factory_setter!(with_server_public_key, server_public_key, Option<CurvePublicKey>);
 
+    factory_setter!(
+        with_curve_keypair,
+        curve_keypair,
+        Option<(CurveSecretKey, CurvePublicKey)>
+    );
+
     factory_setter!(with_address, address, Option<NetAddress>);
 
     factory_setter!(with_linger, linger, Option<Linger>);
@@ -76,7 +83,7 @@ impl<'c> PeerConnectionContextFactory<'c> {
 }
 
 impl<'c> TestFactory for PeerConnectionContextFactory<'c> {
-    type Object = (PeerConnectionContext, CurveSecretKey, CurvePublicKey);
+    type Object = PeerConnectionContext;
 
     fn build(self) -> Result<Self::Object, TestFactoryError> {
         let context = self.context.ok_or(TestFactoryError::BuildFailed(
@@ -97,7 +104,9 @@ impl<'c> TestFactory for PeerConnectionContextFactory<'c> {
             .set_address(address)
             .set_message_sink_address(self.message_sink_address.or(Some(InprocAddress::random())).unwrap());
 
-        let (secret_key, public_key) = CurveEncryption::generate_keypair().map_err(TestFactoryError::build_failed())?;
+        let (secret_key, public_key) = self
+            .curve_keypair
+            .unwrap_or(CurveEncryption::generate_keypair().map_err(TestFactoryError::build_failed())?);
         match direction {
             Direction::Inbound => {
                 builder = builder.set_curve_encryption(CurveEncryption::Server {
@@ -116,6 +125,6 @@ impl<'c> TestFactory for PeerConnectionContextFactory<'c> {
 
         let peer_context = builder.build().map_err(TestFactoryError::build_failed())?;
 
-        Ok((peer_context, secret_key, public_key))
+        Ok(peer_context)
     }
 }

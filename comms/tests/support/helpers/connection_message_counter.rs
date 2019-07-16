@@ -29,6 +29,7 @@ use std::{
     thread,
     time::Duration,
 };
+use tari_comms::message::FrameSet;
 
 const LOG_TARGET: &str = "comms::test_support::connection_message_counter";
 
@@ -38,6 +39,7 @@ const THREAD_STACK_SIZE: usize = 64 * 1024; // 64kb
 pub struct ConnectionMessageCounter<'c> {
     counter: Arc<RwLock<u32>>,
     context: &'c ZmqContext,
+    response: Option<FrameSet>,
 }
 
 impl<'c> ConnectionMessageCounter<'c> {
@@ -45,7 +47,13 @@ impl<'c> ConnectionMessageCounter<'c> {
         Self {
             counter: Arc::new(RwLock::new(0)),
             context,
+            response: None,
         }
+    }
+
+    pub fn set_response(&mut self, response: FrameSet) -> &mut Self {
+        self.response = Some(response);
+        self
     }
 
     pub fn reset(&self) {
@@ -84,20 +92,27 @@ impl<'c> ConnectionMessageCounter<'c> {
         let counter = self.counter.clone();
         let context = self.context.clone();
         let address = address.clone();
+        let response = self.response.clone();
         thread::Builder::new()
             .name("connection-message-counter-thread".to_string())
             .stack_size(THREAD_STACK_SIZE)
             .spawn(move || {
                 let connection = Connection::new(&context, Direction::Inbound)
+                    .set_name("Message Counter")
                     .establish(&address)
                     .unwrap();
 
                 loop {
                     match connection.receive(1000) {
-                        Ok(_) => {
+                        Ok(frames) => {
                             let mut counter_lock = acquire_write_lock!(counter);
                             *counter_lock += 1;
                             debug!(target: LOG_TARGET, "Added to message count (count={})", *counter_lock);
+                            if let Some(ref r) = response {
+                                let mut payload = vec![frames[0].clone()];
+                                payload.extend(r.clone());
+                                connection.send(payload).unwrap();
+                            }
                         },
                         _ => {
                             debug!(target: LOG_TARGET, "Nothing received for 1 second...");

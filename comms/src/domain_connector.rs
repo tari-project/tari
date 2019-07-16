@@ -78,7 +78,7 @@ impl<'de> DomainConnector<'de> {
                 },
                 domain_context
                     .message
-                    .to_message()
+                    .deserialize_message()
                     .map_err(ConnectorError::MessageError)?,
             ))),
             None => Ok(None),

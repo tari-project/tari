@@ -22,12 +22,11 @@
 
 //! # Control Service
 //!
-//! The control service listens on the configured address for [EstablishConnection] messages
+//! The control service listens on the configured address for [RequestConnection] messages
 //! and decides whether to connect to the requested address.
 //!
 //! ```edition2018
 //! # use tari_comms::{connection::*, control_service::*, dispatcher::*, connection_manager::*, peer_manager::*, types::*};
-//! # use tari_comms::control_service::handlers as comms_handlers;
 //! # use std::{time::Duration, sync::Arc};
 //! # use std::collections::HashMap;
 //! # use rand::OsRng;
@@ -68,14 +67,18 @@
 //!
 //! service.shutdown().unwrap();
 //! ```
+//!
+//! [RequestConnection]: ./messages/struct.RequestConnection.html
+mod client;
 mod error;
-pub mod handlers;
+pub mod messages;
 mod service;
 mod types;
 mod worker;
 
 pub use self::{
+    client::ControlServiceClient,
     error::ControlServiceError,
+    messages::ControlServiceMessageType,
     service::{ControlService, ControlServiceConfig, ControlServiceHandle},
-    types::{ControlServiceMessageContext, ControlServiceMessageType},
 };

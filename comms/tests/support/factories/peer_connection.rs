@@ -21,8 +21,8 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::{peer_connection_context::PeerConnectionContextFactory, TestFactory, TestFactoryError};
-
-use tari_comms::connection::{CurvePublicKey, CurveSecretKey, PeerConnection};
+use std::thread::JoinHandle;
+use tari_comms::connection::{ConnectionError, PeerConnection};
 
 pub fn create<'c>() -> PeerConnectionFactory<'c> {
     PeerConnectionFactory::default()
@@ -41,18 +41,19 @@ impl<'c> PeerConnectionFactory<'c> {
 }
 
 impl<'c> TestFactory for PeerConnectionFactory<'c> {
-    type Object = (PeerConnection, CurveSecretKey, CurvePublicKey);
+    type Object = (PeerConnection, JoinHandle<Result<(), ConnectionError>>);
 
     fn build(self) -> Result<Self::Object, TestFactoryError> {
-        let (peer_conn_context, secret_key, public_key) = self
+        let peer_conn_context = self
             .peer_connection_context_factory
             .build()
             .map_err(TestFactoryError::build_failed())?;
 
         let mut conn = PeerConnection::new();
-        conn.start(peer_conn_context)
+        let handle = conn
+            .start(peer_conn_context)
             .map_err(TestFactoryError::build_failed())?;
 
-        Ok((conn, secret_key, public_key))
+        Ok((conn, handle))
     }
 }

@@ -20,40 +20,40 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    connection::ConnectionError,
-    connection_manager::ConnectionManagerError,
-    message::MessageError,
-    peer_manager::PeerManagerError,
+use crate::support::factories::{self, TestFactory};
+use std::{sync::Arc, time::Duration};
+use tari_comms::{
+    connection::{Connection, Direction, InprocAddress, ZmqContext},
+    control_service::{messages::Ping, ControlServiceClient},
 };
-use derive_error::Error;
-use tari_utilities::{ciphers::cipher::CipherError, message_format::MessageFormatError, thread_join::ThreadError};
 
-#[derive(Debug, Error)]
-pub enum ControlServiceError {
-    #[error(no_from)]
-    BindFailed(ConnectionError),
-    MessageError(MessageError),
-    /// Received an invalid message which cannot be handled
-    InvalidMessageReceived,
-    MessageFormatError(MessageFormatError),
-    /// Failed to send control message to worker
-    ControlMessageSendFailed,
-    // Failed to join on worker thread
-    WorkerThreadJoinFailed(ThreadError),
-    PeerManagerError(PeerManagerError),
-    ConnectionError(ConnectionError),
-    ConnectionManagerError(ConnectionManagerError),
-    /// The worker thread failed to start
-    WorkerThreadFailedToStart,
-    /// Received an unencrypted message. Discarding it.
-    ReceivedUnencryptedMessage,
-    CipherError(CipherError),
-    /// Peer is banned, refusing connection request
-    PeerBanned,
-    /// Received message with an invalid signature
-    InvalidMessageSignature,
-    // Client Errors
-    /// Received an unexpected reply
-    ClientUnexpectedReply,
+#[test]
+fn send_ping_recv_pong() {
+    let context = ZmqContext::new();
+    let address = InprocAddress::random();
+
+    let outbound_conn = Connection::new(&context, Direction::Outbound)
+        .establish(&address)
+        .unwrap();
+    let inbound_conn = Connection::new(&context, Direction::Inbound)
+        .establish(&address)
+        .unwrap();
+
+    let node_identity_1 = factories::node_identity::create().build().map(Arc::new).unwrap();
+    let node_identity_2 = factories::node_identity::create().build().map(Arc::new).unwrap();
+
+    let out_client = ControlServiceClient::new(
+        node_identity_1.clone(),
+        node_identity_2.identity.public_key.clone(),
+        outbound_conn,
+    );
+    out_client.send_ping().unwrap();
+
+    let in_client = ControlServiceClient::new(
+        node_identity_2.clone(),
+        node_identity_1.identity.public_key.clone(),
+        inbound_conn,
+    );
+
+    let _msg: Ping = in_client.receive_message(Duration::from_millis(2000)).unwrap().unwrap();
 }

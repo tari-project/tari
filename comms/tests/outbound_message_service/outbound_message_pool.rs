@@ -40,7 +40,6 @@ use tari_comms::{
     types::CommsDatabase,
 };
 use tari_storage::lmdb_store::{LMDBBuilder, LMDBError, LMDBStore};
-use tari_utilities::thread_join::ThreadJoinWithTimeout;
 
 fn make_peer_connection_config(message_sink_address: InprocAddress) -> PeerConnectionConfig {
     PeerConnectionConfig {
@@ -197,7 +196,6 @@ fn outbound_message_pool_no_retry() {
     node_B_msg_counter.assert_count(8, 30);
     node_B_control_service.shutdown().unwrap();
     node_B_control_service
-        .handle
         .timeout_join(Duration::from_millis(3000))
         .unwrap();
 
@@ -326,7 +324,9 @@ fn test_outbound_message_pool_fail_and_retry() {
     // We wait for the message to retry sending
     node_B_msg_counter.assert_count(5, 150);
     node_B_control_service.shutdown().unwrap();
-    node_B_control_service.handle.join().unwrap().unwrap();
+    node_B_control_service
+        .timeout_join(Duration::from_millis(3000))
+        .unwrap();
     omp.shutdown().unwrap();
 
     clean_up_datastore(database_name);

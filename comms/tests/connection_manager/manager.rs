@@ -106,8 +106,6 @@ fn establish_peer_connection() {
 
     let node_B_peer = factories::peer::create()
         .with_net_addresses(vec![node_B_control_port_address.clone()])
-        // Set node B's secret key to be the same as node A's so that we can generate the same shared secret
-        // TODO: we'll need a way to generate separate node identities for two nodes
         .with_public_key(node_B_identity.identity.public_key.clone())
         .build()
         .unwrap();
@@ -194,7 +192,6 @@ fn establish_peer_connection() {
 
     node_B_control_service.shutdown().unwrap();
     node_B_control_service
-        .handle
         .timeout_join(Duration::from_millis(1000))
         .unwrap();
 

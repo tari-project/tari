@@ -188,6 +188,15 @@ impl MessageRetryService {
                 }
 
                 let msg = self.queue.pop().unwrap();
+
+                debug!(
+                    target: LOG_TARGET,
+                    "Message for NodeId {} scheduled for another attempt ({} of {})",
+                    msg.destination_node_id(),
+                    msg.num_attempts(),
+                    self.config.max_retries
+                );
+
                 self.send_msg(&outbound_conn, msg)?;
             }
         }

@@ -46,7 +46,7 @@ pub const DEFAULT_OUTBOUND_MSG_PROCESSING_WORKERS: usize = 4;
 const LOG_TARGET: &str = "comms::outbound_message_service::pool";
 
 /// Set the maximum waiting time for Retry Service Threads and MessagePoolWorker threads to join
-const MSG_POOL_WORKER_THREAD_JOIN_TIMEOUT_IN_MS: Duration = Duration::from_millis(100);
+const MSG_POOL_WORKER_THREAD_JOIN_TIMEOUT_IN_MS: Duration = Duration::from_millis(3000);
 const MSG_RETRY_QUEUE_THREAD_JOIN_TIMEOUT_IN_MS: Duration = Duration::from_millis(1500);
 
 #[derive(Clone, Copy)]

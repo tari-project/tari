@@ -22,14 +22,12 @@
 
 use super::{establisher::ConnectionEstablisher, types::PeerConnectionJoinHandle, ConnectionManagerError, Result};
 use crate::{
-    connection::{connection::EstablishedConnection, CurveEncryption, CurvePublicKey, PeerConnection},
-    control_service::ControlServiceMessageType,
-    message::{p2p::EstablishConnection, Message, MessageEnvelope, MessageFlags, MessageHeader, NodeDestination},
+    connection::{types::Linger, CurveEncryption, CurvePublicKey, PeerConnection},
+    control_service::messages::ConnectRequestOutcome,
     peer_manager::{NodeIdentity, Peer},
 };
 use log::*;
 use std::sync::Arc;
-use tari_utilities::message_format::MessageFormat;
 
 const LOG_TARGET: &str = "comms::connection_manager::protocol";
 
@@ -49,12 +47,17 @@ impl<'e, 'ni> PeerConnectionProtocol<'e, 'ni> {
     /// Send Establish connection message to the peers control port to request a connection
     pub fn negotiate_peer_connection(&self, peer: &Peer) -> Result<(Arc<PeerConnection>, PeerConnectionJoinHandle)> {
         info!(target: LOG_TARGET, "[NodeId={}] Negotiating connection", peer.node_id);
-        let (control_port_conn, monitor) = self.establisher.establish_control_service_connection(&peer)?;
+        let control_client = self.establisher.connect_control_service_client(&peer)?;
+        // Set the connection linger time to allow enough time to send a message after drop if required
+        control_client
+            .connection()
+            .set_linger(Linger::Timeout(3000))
+            .map_err(ConnectionManagerError::ConnectionError)?;
         info!(
             target: LOG_TARGET,
             "[NodeId={}] Established peer control port connection at address {:?}",
             peer.node_id,
-            control_port_conn.get_connected_address()
+            control_client.connection().get_connected_address()
         );
 
         let (new_inbound_conn, curve_pk, join_handle) = self.open_inbound_peer_connection(&peer)?;
@@ -84,52 +87,41 @@ impl<'e, 'ni> PeerConnectionProtocol<'e, 'ni> {
         );
 
         // Construct establish connection message
-        let msg = EstablishConnection {
-            address: external_address,
-            control_service_address: self.node_identity.control_service_address.clone(),
-            node_id: self.node_identity.identity.node_id.clone(),
-            server_key: curve_pk,
-        };
+        control_client
+            .send_request_connection(
+                self.node_identity.control_service_address.clone(),
+                self.node_identity.identity.node_id.clone(),
+                external_address,
+                curve_pk,
+            )
+            .map_err(|err| ConnectionManagerError::SendRequestConnectionFailed(format!("{:?}", err)))?;
 
-        self.send_establish_message(&peer, &control_port_conn, msg)?;
         debug!(
             target: LOG_TARGET,
-            "[NodeId={}] EstablishConnection message sent", peer.node_id
+            "[NodeId={}] RequestConnection message sent", peer.node_id
         );
 
-        drop(control_port_conn);
-        drop(monitor);
-
-        Ok((new_inbound_conn, join_handle))
-    }
-
-    fn send_establish_message(
-        &self,
-        peer: &Peer,
-        control_conn: &EstablishedConnection,
-        msg: EstablishConnection,
-    ) -> Result<()>
-    {
-        let message_header = MessageHeader {
-            message_type: ControlServiceMessageType::EstablishConnection,
-        };
-        let msg = Message::from_message_format(message_header, msg).map_err(ConnectionManagerError::MessageError)?;
-        let body = msg.to_binary().map_err(ConnectionManagerError::MessageFormatError)?;
-
-        let envelope = MessageEnvelope::construct(
-            &self.node_identity,
-            peer.public_key.clone(),
-            NodeDestination::NodeId(peer.node_id.clone()),
-            body,
-            MessageFlags::ENCRYPTED,
-        )
-        .map_err(ConnectionManagerError::MessageError)?;
-
-        control_conn
-            .send_sync(envelope.into_frame_set())
-            .map_err(ConnectionManagerError::ConnectionError)?;
-
-        Ok(())
+        let config = self.establisher.get_config();
+        control_client
+            .receive_message(config.peer_connection_establish_timeout)
+            .map_err(|_| ConnectionManagerError::ConnectionRequestOutcomeRecvFail)?
+            .ok_or(ConnectionManagerError::ConnectionRequestOutcomeTimeout)
+            .and_then(|msg| match msg {
+                ConnectRequestOutcome::Accepted => {
+                    info!(
+                        target: LOG_TARGET,
+                        "[NodeId={}] RequestConnection accepted by destination peer's control port", peer.node_id
+                    );
+                    Ok((new_inbound_conn, join_handle))
+                },
+                ConnectRequestOutcome::Rejected => {
+                    info!(
+                        target: LOG_TARGET,
+                        "[NodeId={}] RequestConnection REJECTED by destination peer's control port.", peer.node_id,
+                    );
+                    Err(ConnectionManagerError::ConnectionRejected)
+                },
+            })
     }
 
     fn open_inbound_peer_connection(

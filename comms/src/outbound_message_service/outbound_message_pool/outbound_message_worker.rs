@@ -134,6 +134,11 @@ impl MessagePoolWorker {
 
             // Read any new messages to be sent.
             if let Some(frames) = connection_try!(message_source_connection.receive(1000)) {
+                debug!(
+                    target: LOG_TARGET,
+                    "Received message to send containing {} frame(s)",
+                    frames.len()
+                );
                 let _ = Self::deserialize_outbound_message(frames)
                     .or_else(|err| {
                         warn!(

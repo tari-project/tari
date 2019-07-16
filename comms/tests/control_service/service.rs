@@ -20,114 +20,21 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::support::factories::{self, TestFactory};
-use std::{
-    path::PathBuf,
-    sync::{mpsc::channel, Arc, RwLock},
-    thread,
-    time::Duration,
+use crate::support::{
+    factories::{self, TestFactory},
+    helpers::ConnectionMessageCounter,
 };
+use std::{path::PathBuf, sync::Arc, time::Duration};
 use tari_comms::{
-    connection::{
-        types::{Direction, Linger},
-        Connection,
-        CurveEncryption,
-        NetAddress,
-        ZmqContext,
-    },
-    control_service::{
-        handlers::ControlServiceResolver,
-        ControlService,
-        ControlServiceConfig,
-        ControlServiceError,
-        ControlServiceMessageContext,
-        ControlServiceMessageType,
-    },
-    dispatcher::{DispatchError, Dispatcher},
-    message::{
-        p2p::EstablishConnection,
-        Message,
-        MessageEnvelope,
-        MessageEnvelopeHeader,
-        MessageError,
-        MessageFlags,
-        MessageHeader,
-        NodeDestination,
-    },
-    peer_manager::{NodeId, NodeIdentity, Peer, PeerManager},
-    types::{CommsCipher, CommsDatabase, CommsPublicKey, CommsSecretKey},
+    connection::{types::Direction, Connection, CurveEncryption, InprocAddress, ZmqContext},
+    connection_manager::{ConnectionManager, PeerConnectionConfig},
+    control_service::{ControlService, ControlServiceClient, ControlServiceConfig},
+    peer_manager::{NodeId, NodeIdentity, Peer, PeerFlags, PeerManager},
 };
-use tari_crypto::keys::DiffieHellmanSharedSecret;
-use tari_storage::lmdb_store::{LMDBBuilder, LMDBError, LMDBStore};
-use tari_utilities::{byte_array::ByteArray, ciphers::cipher::Cipher, message_format::MessageFormat};
+use tari_storage::lmdb_store::{LMDBBuilder, LMDBDatabase, LMDBError, LMDBStore};
+use tari_utilities::thread_join::ThreadJoinWithTimeout;
 
-lazy_static! {
-    static ref HANDLER_CALL_COUNT: RwLock<u8> = RwLock::new(0);
-}
-
-fn test_handler(context: ControlServiceMessageContext<u8>) -> Result<(), ControlServiceError> {
-    let msg: EstablishConnection = context
-        .message
-        .to_message()
-        .map_err(|err| DispatchError::HandlerError(format!("Failed to parse message: {}", err)))?;
-
-    assert!(msg.address.is_ip());
-
-    let mut lock = HANDLER_CALL_COUNT.write().unwrap();
-    *lock += 1;
-
-    Ok(())
-}
-
-fn encrypt_message(secret_key: &CommsSecretKey, public_key: &CommsPublicKey, msg: Vec<u8>) -> Vec<u8> {
-    let shared_secret = CommsPublicKey::shared_secret(secret_key, public_key);
-    CommsCipher::seal_with_integral_nonce(&msg, &shared_secret.to_vec()).unwrap()
-}
-
-fn construct_envelope<T: MessageFormat>(
-    node_identity: &Arc<NodeIdentity>,
-    message_type: ControlServiceMessageType,
-    msg: T,
-) -> Result<MessageEnvelope, MessageError>
-{
-    let msg_header = MessageHeader { message_type };
-    let msg = Message::from_message_format(msg_header, msg)?;
-    let envelope_header = MessageEnvelopeHeader {
-        source: node_identity.identity.public_key.clone(),
-        dest: NodeDestination::NodeId(node_identity.identity.node_id.clone()),
-        flags: MessageFlags::ENCRYPTED,
-        signature: vec![0],
-        version: 0,
-    };
-
-    let encrypted_body = encrypt_message(
-        &node_identity.secret_key,
-        &node_identity.identity.public_key,
-        msg.to_binary()?,
-    );
-
-    Ok(MessageEnvelope::new(
-        vec![0],
-        envelope_header.to_binary()?,
-        encrypted_body,
-    ))
-}
-
-fn poll_handler_call_count_change(initial: u8, ms: u64) -> Option<u8> {
-    for _i in 0..ms {
-        {
-            let lock = HANDLER_CALL_COUNT.read().unwrap();
-            if *lock != initial {
-                return Some(*lock);
-            }
-        }
-        thread::sleep(Duration::from_millis(1))
-    }
-
-    None
-}
-
-fn make_peer_manager(peers: Vec<Peer>, database: CommsDatabase) -> Arc<PeerManager> {
+fn make_peer_manager(peers: Vec<Peer>, database: LMDBDatabase) -> Arc<PeerManager> {
     Arc::new(
         factories::peer_manager::create()
             .with_peers(peers)
@@ -136,7 +43,6 @@ fn make_peer_manager(peers: Vec<Peer>, database: CommsDatabase) -> Arc<PeerManag
             .unwrap(),
     )
 }
-
 fn get_path(name: &str) -> String {
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     path.push("tests/data");
@@ -144,6 +50,7 @@ fn get_path(name: &str) -> String {
     path.to_str().unwrap().to_string()
 }
 
+// Initialize the datastore. Note: every test should have unique database name
 fn init_datastore(name: &str) -> Result<LMDBStore, LMDBError> {
     let path = get_path(name);
     let _ = std::fs::create_dir(&path).unwrap_or_default();
@@ -159,117 +66,141 @@ fn clean_up_datastore(name: &str) {
     std::fs::remove_dir_all(get_path(name)).unwrap();
 }
 
-#[test]
-fn recv_message() {
+fn setup(
+    database_name: &str,
+    peer_conn_config: PeerConnectionConfig,
+) -> (ZmqContext, Arc<NodeIdentity>, Arc<PeerManager>, Arc<ConnectionManager>)
+{
+    let node_identity = factories::node_identity::create().build().map(Arc::new).unwrap();
     let context = ZmqContext::new();
-    let database_name = "service_recv_message"; // Note: every test should have unique database
     let datastore = init_datastore(database_name).unwrap();
     let database = datastore.get_handle(database_name).unwrap();
     let peer_manager = make_peer_manager(vec![], database);
-    let connection_manager = Arc::new(
-        factories::connection_manager::create()
-            .with_context(context.clone())
-            .with_peer_manager(peer_manager)
-            .build()
-            .unwrap(),
-    );
-    let control_service_address = factories::net_address::create().build().unwrap();
-    let node_identity = Arc::new(
-        factories::node_identity::create()
-            .with_control_service_address(control_service_address.clone())
-            .build()
-            .unwrap(),
-    );
+    let connection_manager = factories::connection_manager::create()
+        .with_context(context.clone())
+        .with_peer_connection_config(peer_conn_config)
+        .with_peer_manager(Arc::clone(&peer_manager))
+        .build()
+        .map(Arc::new)
+        .unwrap();
 
-    let dispatcher = Dispatcher::new(ControlServiceResolver::new())
-        .route(ControlServiceMessageType::EstablishConnection, test_handler);
+    (context, node_identity, peer_manager, connection_manager)
+}
 
-    let service = ControlService::new(context.clone(), node_identity.clone(), ControlServiceConfig {
+#[test]
+fn request_connection() {
+    let database_name = "control_service_request_connection";
+
+    let message_sink_address = InprocAddress::random();
+    let peer_conn_config = PeerConnectionConfig {
+        message_sink_address,
+        ..Default::default()
+    };
+
+    let (context, node_identity_a, peer_manager, connection_manager) = setup(database_name, peer_conn_config.clone());
+
+    let msg_counter = ConnectionMessageCounter::new(&context);
+    msg_counter.start(peer_conn_config.message_sink_address.clone());
+
+    // Setup the destination peer's control service
+    let listener_address = factories::net_address::create().build().unwrap();
+    let service_handle = ControlService::new(context.clone(), Arc::clone(&node_identity_a), ControlServiceConfig {
+        listener_address: listener_address.clone(),
         socks_proxy_address: None,
-        listener_address: control_service_address.clone(),
         accept_message_type: 123,
         requested_outbound_connection_timeout: Duration::from_millis(2000),
     })
-    .with_custom_dispatcher(dispatcher)
     .serve(connection_manager)
     .unwrap();
 
-    // A "remote" node sends an EstablishConnection message to this node's control port
-    let requesting_node_address = factories::net_address::create().build().unwrap();
-    //    let (secret_key, public_key) = RistrettoPublicKey::random_keypair(&mut rand::OsRng::new().unwrap());
-    let (_sk, server_pk) = CurveEncryption::generate_keypair().unwrap();
-    let msg = EstablishConnection {
-        address: requesting_node_address,
-        node_id: NodeId::from_key(&node_identity.identity.public_key).unwrap(),
-        server_key: server_pk,
-        control_service_address: control_service_address.clone(),
-    };
+    // Setup the requesting peer
+    let node_identity_b = factories::node_identity::create().build().map(Arc::new).unwrap();
+    // --- Client connection for the destination peer's control service
+    let client_conn = Connection::new(&context, Direction::Outbound)
+        .establish(&listener_address)
+        .unwrap();
+    let client = ControlServiceClient::new(
+        Arc::clone(&node_identity_b),
+        node_identity_a.identity.public_key.clone(),
+        client_conn,
+    );
 
-    let envelope = construct_envelope(&node_identity, ControlServiceMessageType::EstablishConnection, msg).unwrap();
+    // --- Setup inbound peer connection and request that the destination connects to it
+    let peer_address = factories::net_address::create().build().unwrap();
+    let (curve_sk, curve_pk) = CurveEncryption::generate_keypair().unwrap();
 
-    let remote_conn = Connection::new(&context, Direction::Outbound)
-        .set_linger(Linger::Indefinitely)
-        .establish(&control_service_address)
+    let (peer_conn, peer_conn_handle) = factories::peer_connection::create()
+        .with_peer_connection_context_factory(
+            factories::peer_connection_context::create()
+                .with_context(&context)
+                .with_direction(Direction::Inbound)
+                .with_address(peer_address.clone())
+                .with_message_sink_address(peer_conn_config.message_sink_address.clone())
+                .with_curve_keypair((curve_sk, curve_pk.clone())),
+        )
+        .build()
         .unwrap();
 
-    let initial = {
-        let lock = HANDLER_CALL_COUNT.read().unwrap();
-        *lock
-    };
+    // --- Request a connection to the peer connection
+    client
+        .send_request_connection(
+            node_identity_b.control_service_address.clone(),
+            NodeId::from_key(&node_identity_b.identity.public_key).unwrap(),
+            peer_address,
+            curve_pk,
+        )
+        .unwrap();
 
-    remote_conn.send_sync(envelope.clone().into_frame_set()).unwrap();
+    msg_counter.assert_count(1, 20);
 
-    let call_count = poll_handler_call_count_change(initial, 2000).expect("Timeout before handler was called");
-    assert_eq!(1, call_count);
+    let peer = peer_manager
+        .find_with_public_key(&node_identity_b.identity.public_key)
+        .unwrap();
+    assert_eq!(peer.public_key, node_identity_b.identity.public_key);
+    assert_eq!(peer.node_id, node_identity_b.identity.node_id);
+    assert_eq!(
+        peer.addresses[0],
+        node_identity_b.control_service_address.clone().into()
+    );
+    assert_eq!(peer.flags, PeerFlags::empty());
 
-    let initial = {
-        let lock = HANDLER_CALL_COUNT.read().unwrap();
-        *lock
-    };
+    service_handle.shutdown().unwrap();
+    service_handle.timeout_join(Duration::from_millis(3000)).unwrap();
 
-    remote_conn.send_sync(envelope.into_frame_set()).unwrap();
-    let call_count = poll_handler_call_count_change(initial, 500).expect("Timeout before handler was called");
-    assert_eq!(2, call_count);
-
-    service.shutdown().unwrap();
+    peer_conn.shutdown().unwrap();
+    peer_conn_handle.timeout_join(Duration::from_millis(3000)).unwrap();
 
     clean_up_datastore(database_name);
 }
 
 #[test]
-fn serve_and_shutdown() {
-    let node_identity = Arc::new(factories::node_identity::create().build().unwrap());
-    let (tx, rx) = channel();
-    let context = ZmqContext::new();
-    let database_name = "service_serve_and_shutdown"; // Note: every test should have unique database
-    let datastore = init_datastore(database_name).unwrap();
-    let database = datastore.get_handle(database_name).unwrap();
-    let peer_manager = make_peer_manager(vec![], database);
-    let connection_manager = Arc::new(
-        factories::connection_manager::create()
-            .with_context(context.clone())
-            .with_peer_manager(peer_manager)
-            .build()
-            .unwrap(),
+fn ping_pong() {
+    let database_name = "control_service_ping_pong";
+    let (context, node_identity, _, connection_manager) = setup(database_name, PeerConnectionConfig::default());
+
+    let listener_address = factories::net_address::create().build().unwrap();
+    let service = ControlService::new(context.clone(), Arc::clone(&node_identity), ControlServiceConfig {
+        listener_address: listener_address.clone(),
+        socks_proxy_address: None,
+        accept_message_type: 123,
+        requested_outbound_connection_timeout: Duration::from_millis(2000),
+    })
+    .serve(connection_manager)
+    .unwrap();
+
+    let client_conn = Connection::new(&context, Direction::Outbound)
+        .establish(&listener_address)
+        .unwrap();
+    let client = ControlServiceClient::new(
+        Arc::clone(&node_identity),
+        node_identity.identity.public_key.clone(),
+        client_conn,
     );
 
-    let listener_address: NetAddress = "127.0.0.1:0".parse().unwrap(); // factories::net_address::create().use_os_port().build().unwrap();
-    thread::spawn(move || {
-        let service = ControlService::new(context, node_identity, ControlServiceConfig {
-            listener_address,
-            socks_proxy_address: None,
-            accept_message_type: 123,
-            requested_outbound_connection_timeout: Duration::from_millis(2000),
-        })
-        .serve(connection_manager)
-        .unwrap();
+    client.ping_pong(Duration::from_millis(2000)).unwrap().unwrap();
 
-        service.shutdown().unwrap();
-        tx.send(()).unwrap();
-    });
-
-    // Test that the control service loop ends within 1000ms
-    rx.recv_timeout(Duration::from_millis(1000)).unwrap();
+    service.shutdown().unwrap();
+    service.timeout_join(Duration::from_millis(3000)).unwrap();
 
     clean_up_datastore(database_name);
 }

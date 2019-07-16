@@ -26,11 +26,13 @@ use crate::support::{
 };
 use std::{path::PathBuf, sync::Arc, time::Duration};
 use tari_comms::{
-    connection::{Connection, CurveEncryption, Direction, InprocAddress, NetAddress, ZmqContext},
+    connection::{CurveEncryption, Direction, InprocAddress, NetAddress, ZmqContext},
     connection_manager::{establisher::ConnectionEstablisher, ConnectionManagerError, PeerConnectionConfig},
+    control_service::{messages::Pong, ControlServiceMessageType},
+    message::{Message, MessageEnvelope, MessageFlags, MessageHeader, NodeDestination},
 };
 use tari_storage::lmdb_store::{LMDBBuilder, LMDBError, LMDBStore};
-use tari_utilities::thread_join::ThreadJoinWithTimeout;
+use tari_utilities::{message_format::MessageFormat, thread_join::ThreadJoinWithTimeout};
 
 fn make_peer_connection_config(message_sink_address: InprocAddress) -> PeerConnectionConfig {
     PeerConnectionConfig {
@@ -66,11 +68,31 @@ fn clean_up_datastore(name: &str) {
     std::fs::remove_dir_all(get_path(name)).unwrap();
 }
 
+// This tries to break the establisher by sending malformed messages. The establisher should
+// disregard the malformed message and continue to try other addresses. Once all
+// addresses fail, the correct error should be returned.
 #[test]
 fn establish_control_service_connection_fail() {
     let context = ZmqContext::new();
-    let peers = factories::peer::create_many(2).build().unwrap();
-    let database_name = "establisher_establish_control_service_connection_fail"; // Note: every test should have unique database
+
+    let node_identity = factories::node_identity::create().build().map(Arc::new).unwrap();
+
+    let peers = factories::peer::create_many(2)
+        .with_factory(factories::peer::create().with_net_addresses_factory(factories::net_address::create_many(2)))
+        .build()
+        .unwrap();
+
+    // Setup a connection counter to act as a 'junk' endpoint for a peers control service.
+    let mut msg_counter1 = ConnectionMessageCounter::new(&context);
+    msg_counter1.set_response(vec!["JUNK".as_bytes().to_vec()]);
+    msg_counter1.start(peers[0].addresses[0].net_address.clone());
+
+    let mut msg_counter2 = ConnectionMessageCounter::new(&context);
+    msg_counter2.set_response(vec!["JUNK".as_bytes().to_vec()]);
+    msg_counter2.start(peers[0].addresses[1].net_address.clone());
+
+    // Note: every test should have unique database
+    let database_name = "establisher_establish_control_service_connection_fail";
     let datastore = init_datastore(database_name).unwrap();
     let database = datastore.get_handle(database_name).unwrap();
     let peer_manager = Arc::new(
@@ -84,14 +106,15 @@ fn establish_control_service_connection_fail() {
 
     let example_peer = &peers[0];
 
-    let establisher = ConnectionEstablisher::new(context, config, peer_manager);
-    let result = establisher.establish_control_service_connection(example_peer);
-
-    match result {
+    let establisher = ConnectionEstablisher::new(context.clone(), node_identity, config, peer_manager);
+    match establisher.connect_control_service_client(example_peer) {
         Ok(_) => panic!("Unexpected success result"),
         Err(ConnectionManagerError::MaxConnnectionAttemptsExceeded) => {},
         Err(err) => panic!("Unexpected error type: {:?}", err),
     }
+
+    msg_counter1.assert_count(1, 20);
+    msg_counter2.assert_count(1, 20);
 
     clean_up_datastore(database_name);
 }
@@ -99,20 +122,46 @@ fn establish_control_service_connection_fail() {
 #[test]
 fn establish_control_service_connection_succeed() {
     let context = ZmqContext::new();
-    let address = factories::net_address::create().use_os_port().build().unwrap();
-
-    // Setup a connection to act as an endpoint for a peers control service
-    let dummy_conn = Connection::new(&context, Direction::Inbound)
-        .establish(&address)
-        .unwrap();
-
-    let address: NetAddress = dummy_conn.get_connected_address().clone().unwrap().into();
+    let address = factories::net_address::create().build().unwrap();
+    // The node attempting to connect
+    let node_identity1 = factories::node_identity::create().build().map(Arc::new).unwrap();
+    // The node being connected to
+    let node_identity2 = factories::node_identity::create().build().map(Arc::new).unwrap();
 
     let example_peer = factories::peer::create()
+        .with_public_key(node_identity2.identity.public_key.clone())
         .with_net_addresses(vec![address])
         .build()
         .unwrap();
 
+    // Setup a connection counter to act as a control service sending back a pong
+    let pong_response = {
+        let envelope = MessageEnvelope::construct(
+            &node_identity2,
+            node_identity1.identity.public_key.clone(),
+            NodeDestination::PublicKey(node_identity1.identity.public_key.clone()),
+            Message::from_message_format(
+                MessageHeader {
+                    message_type: ControlServiceMessageType::Pong,
+                },
+                Pong {}.to_binary().unwrap(),
+            )
+            .unwrap()
+            .to_binary()
+            .unwrap(),
+            MessageFlags::ENCRYPTED,
+        )
+        .unwrap();
+        envelope.into_frame_set()
+    };
+
+    let address: NetAddress = example_peer.addresses[0].net_address.clone();
+
+    let mut msg_counter1 = ConnectionMessageCounter::new(&context);
+    msg_counter1.set_response(pong_response);
+    msg_counter1.start(address);
+
+    // Setup peer manager
     let database_name = "establisher_establish_control_service_connection_succeed"; // Note: every test should have unique database
     let datastore = init_datastore(database_name).unwrap();
     let database = datastore.get_handle(database_name).unwrap();
@@ -125,8 +174,11 @@ fn establish_control_service_connection_succeed() {
     );
 
     let config = make_peer_connection_config(InprocAddress::random());
-    let establisher = ConnectionEstablisher::new(context, config, peer_manager);
-    establisher.establish_control_service_connection(&example_peer).unwrap();
+    let establisher = ConnectionEstablisher::new(context.clone(), node_identity1, config, peer_manager);
+    let client = establisher.connect_control_service_client(&example_peer).unwrap();
+    client.ping_pong(Duration::from_millis(3000)).unwrap();
+
+    msg_counter1.assert_count(2, 20);
 
     clean_up_datastore(database_name);
 }
@@ -135,16 +187,19 @@ fn establish_control_service_connection_succeed() {
 fn establish_peer_connection_outbound() {
     let context = ZmqContext::new();
     let msg_sink_address = InprocAddress::random();
+    let node_identity = factories::node_identity::create().build().map(Arc::new).unwrap();
 
     // Setup a message counter to count the number of messages sent to the consumer address
     let msg_counter = ConnectionMessageCounter::new(&context);
     msg_counter.start(msg_sink_address.clone());
 
     // Setup a peer connection
-    let (other_peer_conn, _, peer_curve_pk) = factories::peer_connection::create()
+    let (peer_curve_sk, peer_curve_pk) = CurveEncryption::generate_keypair().unwrap();
+    let (other_peer_conn, other_peer_conn_handle) = factories::peer_connection::create()
         .with_peer_connection_context_factory(
             factories::peer_connection_context::create()
                 .with_message_sink_address(msg_sink_address.clone())
+                .with_curve_keypair((peer_curve_sk, peer_curve_pk.clone()))
                 .with_context(&context)
                 .with_direction(Direction::Inbound),
         )
@@ -174,7 +229,7 @@ fn establish_peer_connection_outbound() {
     );
 
     let config = make_peer_connection_config(InprocAddress::random());
-    let establisher = ConnectionEstablisher::new(context.clone(), config, peer_manager);
+    let establisher = ConnectionEstablisher::new(context.clone(), node_identity, config, peer_manager);
     let (connection, peer_conn_handle) = establisher
         .establish_outbound_peer_connection(example_peer.node_id.clone().into(), address, peer_curve_pk)
         .unwrap();
@@ -184,6 +239,12 @@ fn establish_peer_connection_outbound() {
 
     connection.shutdown().unwrap();
     connection.wait_disconnected(&Duration::from_millis(1000)).unwrap();
+
+    other_peer_conn.shutdown().unwrap();
+    other_peer_conn.wait_disconnected(&Duration::from_millis(1000)).unwrap();
+    other_peer_conn_handle
+        .timeout_join(Duration::from_millis(1000))
+        .unwrap();
 
     assert_eq!(msg_counter.count(), 2);
 
@@ -196,6 +257,7 @@ fn establish_peer_connection_outbound() {
 fn establish_peer_connection_inbound() {
     let context = ZmqContext::new();
     let msg_sink_address = InprocAddress::random();
+    let node_identity = factories::node_identity::create().build().map(Arc::new).unwrap();
 
     let (secret_key, public_key) = CurveEncryption::generate_keypair().unwrap();
 
@@ -218,7 +280,7 @@ fn establish_peer_connection_inbound() {
 
     // Create a connection establisher
     let config = make_peer_connection_config(msg_sink_address.clone());
-    let establisher = ConnectionEstablisher::new(context.clone(), config, peer_manager);
+    let establisher = ConnectionEstablisher::new(context.clone(), node_identity, config, peer_manager);
     let (connection, peer_conn_handle) = establisher
         .establish_inbound_peer_connection(example_peer.node_id.clone().into(), secret_key)
         .unwrap();
@@ -229,7 +291,7 @@ fn establish_peer_connection_inbound() {
     let address: NetAddress = connection.get_connected_address().unwrap().into();
 
     // Setup a peer connection which will connect to our established inbound peer connection
-    let (other_peer_conn, _, _) = factories::peer_connection::create()
+    let (other_peer_conn, other_peer_conn_handle) = factories::peer_connection::create()
         .with_peer_connection_context_factory(
             factories::peer_connection_context::create()
                 .with_context(&context)
@@ -252,6 +314,9 @@ fn establish_peer_connection_inbound() {
     assert_eq!(msg_counter.count(), 2);
 
     peer_conn_handle.timeout_join(Duration::from_millis(1000)).unwrap();
+    other_peer_conn_handle
+        .timeout_join(Duration::from_millis(1000))
+        .unwrap();
 
     clean_up_datastore(database_name);
 }

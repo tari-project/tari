@@ -22,21 +22,26 @@
 
 use super::{
     error::ControlServiceError,
+    messages::{ControlServiceMessageType, RequestConnection},
     service::ControlServiceConfig,
-    types::{ControlMessage, ControlServiceDispatcher, ControlServiceMessageContext, Result},
+    types::{ControlMessage, Result},
 };
 use crate::{
-    connection::{
-        connection::EstablishedConnection,
-        monitor::{ConnectionMonitor, SocketEvent, SocketEventType},
-        types::Direction,
-        Connection,
-        InprocAddress,
-        ZmqContext,
-    },
+    connection::{connection::EstablishedConnection, types::Direction, Connection, PeerConnection, ZmqContext},
     connection_manager::ConnectionManager,
-    message::{Frame, FrameSet, Message, MessageEnvelope, MessageFlags},
-    peer_manager::NodeIdentity,
+    control_service::messages::{ConnectRequestOutcome, Pong},
+    message::{
+        p2p::Accept,
+        Frame,
+        FrameSet,
+        Message,
+        MessageEnvelope,
+        MessageEnvelopeHeader,
+        MessageFlags,
+        MessageHeader,
+        NodeDestination,
+    },
+    peer_manager::{NodeId, NodeIdentity, Peer, PeerFlags, PeerManagerError},
     types::{CommsCipher, CommsPublicKey},
 };
 use log::*;
@@ -66,14 +71,12 @@ const THREAD_STACK_SIZE: usize = 256 * 1024; // 256kb
 pub struct ControlServiceWorker<MType>
 where MType: Clone
 {
-    context: ZmqContext,
     config: ControlServiceConfig<MType>,
-    monitor_address: InprocAddress,
     receiver: Receiver<ControlMessage>,
     is_running: bool,
-    dispatcher: ControlServiceDispatcher<MType>,
     connection_manager: Arc<ConnectionManager>,
     node_identity: Arc<NodeIdentity>,
+    listener: EstablishedConnection,
 }
 
 impl<MType> ControlServiceWorker<MType>
@@ -91,24 +94,11 @@ where
     pub fn start(
         context: ZmqContext,
         node_identity: Arc<NodeIdentity>,
-        dispatcher: ControlServiceDispatcher<MType>,
         config: ControlServiceConfig<MType>,
         connection_manager: Arc<ConnectionManager>,
     ) -> Result<(thread::JoinHandle<Result<()>>, SyncSender<ControlMessage>)>
     {
         let (sender, receiver) = sync_channel(5);
-        let listener_address = config.listener_address.clone();
-
-        let mut worker = Self {
-            config,
-            connection_manager,
-            context,
-            dispatcher,
-            is_running: false,
-            monitor_address: InprocAddress::random(),
-            node_identity,
-            receiver,
-        };
 
         let handle = thread::Builder::new()
             .name("control-service-worker-thread".to_string())
@@ -116,10 +106,14 @@ where
             .spawn(move || {
                 info!(
                     target: LOG_TARGET,
-                    "Control service starting on {}...", listener_address
+                    "Control service starting on {}...", config.listener_address
                 );
+
+                let listener = Self::establish_listener(&context, &config)?;
+                let mut worker = Self::new(node_identity, config, connection_manager, receiver, listener);
+
                 loop {
-                    match worker.main_loop() {
+                    match worker.run() {
                         Ok(_) => {
                             info!(target: LOG_TARGET, "Control service exiting loop.");
                             break;
@@ -140,26 +134,34 @@ where
         Ok((handle, sender))
     }
 
-    fn main_loop(&mut self) -> Result<()> {
-        self.is_running = true;
-        let monitor = ConnectionMonitor::connect(&self.context, &self.monitor_address)?;
-        let listener = self.establish_listener()?;
+    fn new(
+        node_identity: Arc<NodeIdentity>,
+        config: ControlServiceConfig<MType>,
+        connection_manager: Arc<ConnectionManager>,
+        receiver: Receiver<ControlMessage>,
+        listener: EstablishedConnection,
+    ) -> Self
+    {
+        Self {
+            config,
+            connection_manager,
+            is_running: true,
+            node_identity,
+            receiver,
+            listener,
+        }
+    }
 
+    fn run(&mut self) -> Result<()> {
         debug!(target: LOG_TARGET, "Control service started");
         loop {
             // Read incoming messages
-            if let Some(frames) = connection_try!(listener.receive(100)) {
+            if let Some(frames) = connection_try!(self.listener.receive(100)) {
                 debug!(target: LOG_TARGET, "Received {} frames", frames.len());
                 match self.process_message(frames) {
                     Ok(_) => info!(target: LOG_TARGET, "Message processed"),
                     Err(err) => error!(target: LOG_TARGET, "Error when processing message: {:?}", err),
                 }
-            }
-
-            // Read socket events
-            if let Some(event) = connection_try!(monitor.read(5)) {
-                debug!(target: LOG_TARGET, "Control service socket event: {:?}", event);
-                self.process_socket_event(event)?;
             }
 
             // Process control messages
@@ -187,34 +189,263 @@ where
     }
 
     fn process_message(&self, mut frames: FrameSet) -> Result<()> {
-        // Discard the first identity frame (we aren't sending replies) and
-        // build a message envelope
+        if frames.is_empty() {
+            // This case should never happen as ZMQ_ROUTER adds the identity frame
+            warn!(target: LOG_TARGET, "Received empty frames from socket.");
+            return Ok(());
+        }
+
         let envelope: MessageEnvelope = frames
             .drain(1..)
             .collect::<FrameSet>()
             .try_into()
             .map_err(ControlServiceError::MessageError)?;
 
+        let identity = frames
+            .pop()
+            .expect("Should not happen: drained all frames but the first, but then could not pop the first frame.");
+
         let envelope_header = envelope.deserialize_header()?;
         if !envelope_header.flags.contains(MessageFlags::ENCRYPTED) {
             return Err(ControlServiceError::ReceivedUnencryptedMessage);
+        }
+
+        let maybe_peer = self.get_peer(&envelope_header.source)?;
+        if maybe_peer.map(|p| p.is_banned()).unwrap_or(false) {
+            return Err(ControlServiceError::PeerBanned);
         }
 
         let decrypted_body = self.decrypt_body(envelope.body_frame(), &envelope_header.source)?;
         let message =
             Message::from_binary(decrypted_body.as_bytes()).map_err(ControlServiceError::MessageFormatError)?;
 
-        let context = ControlServiceMessageContext {
-            envelope_header,
-            message,
-            connection_manager: self.connection_manager.clone(),
-            peer_manager: self.connection_manager.get_peer_manager(),
-            node_identity: self.node_identity.clone(),
-            config: self.config.clone(),
+        debug!(target: LOG_TARGET, "Handling message");
+        self.handle_message(identity, envelope_header, message)
+    }
+
+    fn handle_message(
+        &self,
+        identity_frame: Frame,
+        envelope_header: MessageEnvelopeHeader,
+        msg: Message,
+    ) -> Result<()>
+    {
+        let header = msg.deserialize_header().map_err(ControlServiceError::MessageError)?;
+
+        match header.message_type {
+            ControlServiceMessageType::Ping => self.handle_ping(envelope_header, identity_frame),
+            ControlServiceMessageType::RequestConnection => {
+                self.handle_request_connection(envelope_header, identity_frame, msg.deserialize_message()?)
+            },
+            _ => Err(ControlServiceError::InvalidMessageReceived),
+        }
+    }
+
+    fn handle_ping(&self, envelope_header: MessageEnvelopeHeader, identity_frame: Frame) -> Result<()> {
+        debug!(target: LOG_TARGET, "Got ping message");
+        self.send_reply(
+            &envelope_header.source,
+            identity_frame,
+            ControlServiceMessageType::Pong,
+            Pong {},
+        )
+    }
+
+    fn handle_request_connection(
+        &self,
+        envelope_header: MessageEnvelopeHeader,
+        identity_frame: Frame,
+        message: RequestConnection,
+    ) -> Result<()>
+    {
+        debug!(
+            target: LOG_TARGET,
+            "RequestConnection message received (node_id={}, address={})", message.node_id, message.address
+        );
+
+        let pm = &self.connection_manager.peer_manager();
+        let public_key = &envelope_header.source;
+        let peer = match pm.find_with_public_key(&public_key) {
+            Ok(peer) => {
+                if peer.is_banned() {
+                    return Err(ControlServiceError::PeerBanned);
+                }
+
+                pm.add_net_address(&peer.node_id, &message.control_service_address)
+                    .map_err(ControlServiceError::PeerManagerError)?;
+
+                peer
+            },
+            Err(PeerManagerError::PeerNotFoundError) => {
+                let node_id = &message.node_id;
+
+                let peer = Peer::new(
+                    public_key.clone(),
+                    node_id.clone(),
+                    message.control_service_address.clone().into(),
+                    PeerFlags::empty(),
+                );
+
+                pm.add_peer(peer.clone())
+                    .map_err(ControlServiceError::PeerManagerError)?;
+                peer
+            },
+            Err(err) => return Err(ControlServiceError::PeerManagerError(err)),
         };
 
-        debug!(target: LOG_TARGET, "Dispatching message");
-        self.dispatcher.dispatch(context).map_err(Into::into)
+        // TODO: SECURITY The node ID is not a verified value at this point (PeerNotFoundError branch above).
+        //       An attacker can insert any node id they want to get information about other peers connections
+        //       to this node. For instance, if they already have an active connection.
+        //       The public key should be used as that is validated by the message signature.
+
+        let conn_manager = &self.connection_manager;
+
+        if conn_manager.has_establish_lock(&peer.node_id) {
+            warn!(
+                target: LOG_TARGET,
+                "COLLISION DETECTED: this node is attempting to connect to the same node which is asking to connect."
+            );
+            if self.should_reject_collision(&peer.node_id) {
+                warn!(
+                    target: LOG_TARGET,
+                    "This connection attempt should be rejected. Rejecting the request to connect"
+                );
+                self.reject_connection(envelope_header, identity_frame)?;
+                return Ok(());
+            }
+        }
+
+        if let Some(conn) = conn_manager.get_connection(&peer) {
+            if conn.is_active() {
+                debug!(
+                    target: LOG_TARGET,
+                    "Already have active connection to peer. Ignoring the request for connection."
+                );
+                self.reject_connection(envelope_header, identity_frame)?;
+                return Ok(());
+            }
+        }
+
+        self.accept_connection(envelope_header, identity_frame)?;
+
+        debug!(
+            target: LOG_TARGET,
+            "Connecting to requested address {}", message.address
+        );
+
+        let conn = conn_manager
+            .establish_requested_outbound_connection(&peer, message.address.clone(), message.server_key)
+            .map_err(ControlServiceError::ConnectionManagerError)?;
+
+        conn.wait_connected_or_failure(&self.config.requested_outbound_connection_timeout)
+            .map_err(ControlServiceError::ConnectionError)?;
+        debug!(
+            target: LOG_TARGET,
+            "Connection to requested address {} succeeded", message.address
+        );
+
+        self.send_message_to_peer(&conn, &peer, self.config.accept_message_type.clone(), Accept {})?;
+
+        debug!(
+            target: LOG_TARGET,
+            "Sent 'Accept' message to address {:?}",
+            conn.get_connected_address()
+        );
+
+        Ok(())
+    }
+
+    fn should_reject_collision(&self, node_id: &NodeId) -> bool {
+        &self.node_identity.identity.node_id < node_id
+    }
+
+    fn reject_connection(&self, envelope_header: MessageEnvelopeHeader, identity: Frame) -> Result<()> {
+        self.send_reply(
+            &envelope_header.source,
+            identity,
+            ControlServiceMessageType::ConnectRequestOutcome,
+            ConnectRequestOutcome::Rejected,
+        )
+    }
+
+    fn accept_connection(&self, envelope_header: MessageEnvelopeHeader, identity: Frame) -> Result<()> {
+        self.send_reply(
+            &envelope_header.source,
+            identity,
+            ControlServiceMessageType::ConnectRequestOutcome,
+            ConnectRequestOutcome::Accepted,
+        )
+    }
+
+    fn get_peer(&self, public_key: &CommsPublicKey) -> Result<Option<Peer>> {
+        let peer_manager = &self.connection_manager.peer_manager();
+        match peer_manager.find_with_public_key(public_key) {
+            Ok(peer) => Ok(Some(peer)),
+            Err(PeerManagerError::PeerNotFoundError) => Ok(None),
+            Err(err) => Err(ControlServiceError::PeerManagerError(err)),
+        }
+    }
+
+    fn send_message_to_peer<T>(
+        &self,
+        peer_conn: &PeerConnection,
+        peer: &Peer,
+        message_type: MType,
+        msg: T,
+    ) -> Result<()>
+    where
+        T: MessageFormat,
+    {
+        let envelope = self.construct_envelope(&peer.public_key, message_type, msg, MessageFlags::ENCRYPTED)?;
+
+        peer_conn
+            .send(envelope.into_frame_set())
+            .map_err(ControlServiceError::ConnectionError)?;
+
+        Ok(())
+    }
+
+    fn construct_envelope<T, MT>(
+        &self,
+        dest_public_key: &CommsPublicKey,
+        message_type: MT,
+        msg: T,
+        flags: MessageFlags,
+    ) -> Result<MessageEnvelope>
+    where
+        T: MessageFormat,
+        MT: Serialize + DeserializeOwned,
+        MT: MessageFormat,
+    {
+        let header = MessageHeader { message_type };
+        let msg = Message::from_message_format(header, msg).map_err(ControlServiceError::MessageError)?;
+
+        MessageEnvelope::construct(
+            &self.node_identity,
+            dest_public_key.clone(),
+            NodeDestination::PublicKey(dest_public_key.clone()),
+            msg.to_binary().map_err(ControlServiceError::MessageFormatError)?,
+            flags,
+        )
+        .map_err(ControlServiceError::MessageError)
+    }
+
+    fn send_reply<T>(
+        &self,
+        dest_public_key: &CommsPublicKey,
+        identity_frame: Frame,
+        message_type: ControlServiceMessageType,
+        msg: T,
+    ) -> Result<()>
+    where
+        T: MessageFormat,
+    {
+        let envelope = self.construct_envelope(dest_public_key, message_type, msg, MessageFlags::ENCRYPTED)?;
+        let mut frames = vec![identity_frame];
+
+        frames.extend(envelope.into_frame_set());
+
+        self.listener.send(frames).map_err(ControlServiceError::ConnectionError)
     }
 
     fn decrypt_body(&self, body: &Frame, public_key: &CommsPublicKey) -> Result<Frame> {
@@ -222,47 +453,14 @@ where
         CommsCipher::open_with_integral_nonce(&body, &ecdh_shared_secret).map_err(ControlServiceError::CipherError)
     }
 
-    fn process_socket_event(&mut self, event: SocketEvent) -> Result<()> {
-        use SocketEventType::*;
-
-        match event.event_type {
-            Listening => {
-                info!(target: LOG_TARGET, "Started listening on '{}'", event.address);
-            },
-            Accepted => {
-                info!(target: LOG_TARGET, "Accepted connection on '{}'", event.address);
-            },
-            Disconnected => {
-                info!(target: LOG_TARGET, "'{}' Disconnected", event.address);
-            },
-            BindFailed => {
-                self.is_running = false;
-                error!(
-                    target: LOG_TARGET,
-                    "Failed to bind on '{}'. ControlService cannot start.", event.address
-                );
-            },
-            Closed => {
-                self.is_running = false;
-                warn!(target: LOG_TARGET, "Underlying socket closed on '{}'", event.address);
-            },
-            _ => {},
-        }
-
-        Ok(())
-    }
-
-    fn establish_listener(&self) -> Result<EstablishedConnection> {
-        debug!(
-            target: LOG_TARGET,
-            "Binding on address: {}", self.config.listener_address
-        );
-        Connection::new(&self.context, Direction::Inbound)
+    fn establish_listener(context: &ZmqContext, config: &ControlServiceConfig<MType>) -> Result<EstablishedConnection> {
+        debug!(target: LOG_TARGET, "Binding on address: {}", config.listener_address);
+        Connection::new(&context, Direction::Inbound)
+            .set_name("Control Service Listener")
             .set_receive_hwm(10)
             .set_max_message_size(Some(CONTROL_SERVICE_MAX_MSG_SIZE))
-            .set_socks_proxy_addr(self.config.socks_proxy_address.clone())
-            .set_monitor_addr(self.monitor_address.clone())
-            .establish(&self.config.listener_address)
+            .set_socks_proxy_addr(config.socks_proxy_address.clone())
+            .establish(&config.listener_address)
             .map_err(ControlServiceError::BindFailed)
     }
 }

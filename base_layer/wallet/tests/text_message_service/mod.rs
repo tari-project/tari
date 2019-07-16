@@ -89,6 +89,7 @@ fn test_text_message_service() {
     node_1_tms
         .send_text_message(node_3_identity.identity.public_key.clone(), "Say Hello".to_string())
         .unwrap();
+
     node_2_tms
         .send_text_message(node_1_identity.identity.public_key.clone(), "hello?".to_string())
         .unwrap();
@@ -119,10 +120,11 @@ fn test_text_message_service() {
     assert_change(
         || {
             let msgs = node_1_tms.get_text_messages().unwrap();
+
             (msgs.sent_messages.len(), msgs.received_messages.len())
         },
         (6, 4),
-        100,
+        50,
     );
 
     assert_change(
@@ -131,7 +133,7 @@ fn test_text_message_service() {
             (msgs.sent_messages.len(), msgs.received_messages.len())
         },
         (4, 5),
-        100,
+        50,
     );
 
     let msgs = node_1_tms
