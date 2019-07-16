@@ -239,11 +239,7 @@ impl TextMessageService {
         self.pending_messages
             .insert(text_message.id.clone(), text_message.clone());
 
-        trace!(
-            target: LOG_TARGET,
-            "Text Message Sent to {:?}",
-            text_message.dest_pub_key.to_hex()
-        );
+        trace!(target: LOG_TARGET, "Text Message Sent to {}", text_message.dest_pub_key);
 
         Ok(())
     }
@@ -259,9 +255,9 @@ impl TextMessageService {
         if let Some((info, msg)) = incoming_msg {
             trace!(
                 target: LOG_TARGET,
-                "Text Message received with ID: {:?} from {:?} with message: {:?}",
+                "Text Message received with ID: {:?} from {} with message: {:?}",
                 msg.id.clone(),
-                msg.source_pub_key.to_hex(),
+                msg.source_pub_key,
                 msg.message.clone()
             );
 
@@ -371,9 +367,9 @@ impl TextMessageService {
 
         trace!(
             target: LOG_TARGET,
-            "Contact Added: Screen name: {:?} - Pub-key: {:?} - Address: {:?}",
+            "Contact Added: Screen name: {:?} - Pub-key: {} - Address: {:?}",
             contact.screen_name.clone(),
-            contact.pub_key.clone().to_hex(),
+            contact.pub_key.clone(),
             contact.address.clone()
         );
         Ok(())
@@ -390,9 +386,9 @@ impl TextMessageService {
 
         trace!(
             target: LOG_TARGET,
-            "Contact Added: Screen name: {:?} - Pub-key: {:?} - Address: {:?}",
+            "Contact Added: Screen name: {:?} - Pub-key: {} - Address: {:?}",
             contact.screen_name.clone(),
-            contact.pub_key.clone().to_hex(),
+            contact.pub_key.clone(),
             contact.address.clone()
         );
 
@@ -414,9 +410,9 @@ impl TextMessageService {
 
         trace!(
             target: LOG_TARGET,
-            "Contact Added: Screen name: {:?} - Pub-key: {:?} - Address: {:?}",
+            "Contact Added: Screen name: {:?} - Pub-key: {} - Address: {:?}",
             found_contact.screen_name.clone(),
-            found_contact.pub_key.clone().to_hex(),
+            found_contact.pub_key.clone(),
             found_contact.address.clone()
         );
 
@@ -425,12 +421,7 @@ impl TextMessageService {
 
     /// This handler is called when the Service executor loops receives an API request
     fn handle_api_message(&mut self, msg: TextMessageApiRequest) -> Result<(), ServiceError> {
-        trace!(
-            target: LOG_TARGET,
-            "[{}] Received API message: {:?}",
-            self.get_name(),
-            msg
-        );
+        trace!(target: LOG_TARGET, "[{}] Received API message", self.get_name(),);
         let resp = match msg {
             TextMessageApiRequest::SendTextMessage((destination, message)) => self
                 .send_text_message(destination, message)
@@ -456,7 +447,7 @@ impl TextMessageService {
                 .map(|_| TextMessageApiResponse::ContactUpdated),
         };
 
-        trace!(target: LOG_TARGET, "[{}] Replying to API: {:?}", self.get_name(), resp);
+        trace!(target: LOG_TARGET, "[{}] Replying to API", self.get_name());
         self.api
             .send_reply(resp)
             .map_err(ServiceError::internal_service_error())

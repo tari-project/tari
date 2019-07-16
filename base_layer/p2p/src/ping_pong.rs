@@ -162,19 +162,14 @@ impl PingPongService {
     }
 
     fn handle_api_message(&self, msg: PingPongApiRequest) -> Result<(), ServiceError> {
-        trace!(
-            target: LOG_TARGET,
-            "[{}] Received API message: {:?}",
-            self.get_name(),
-            msg
-        );
+        trace!(target: LOG_TARGET, "[{}] Received API message", self.get_name());
         let resp = match msg {
             PingPongApiRequest::Ping(pk) => self.ping(pk).map(|_| PingPongApiResponse::PingSent),
             PingPongApiRequest::GetPingCount => Ok(PingPongApiResponse::Count(self.ping_count)),
             PingPongApiRequest::GetPongCount => Ok(PingPongApiResponse::Count(self.pong_count)),
         };
 
-        trace!(target: LOG_TARGET, "[{}] Replying to API: {:?}", self.get_name(), resp);
+        trace!(target: LOG_TARGET, "[{}] Replying to API", self.get_name());
         self.api
             .send_reply(resp)
             .map_err(ServiceError::internal_service_error())
