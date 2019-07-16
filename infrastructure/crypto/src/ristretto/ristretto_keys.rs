@@ -34,10 +34,11 @@ use digest::Digest;
 use rand::{CryptoRng, Rng};
 use std::{
     cmp::Ordering,
+    fmt,
     hash::{Hash, Hasher},
     ops::{Add, Mul, Sub},
 };
-use tari_utilities::{ByteArray, ByteArrayError, ExtendBytes, Hashable};
+use tari_utilities::{hex::Hex, ByteArray, ByteArrayError, ExtendBytes, Hashable};
 
 type HashDigest = Blake2b;
 
@@ -270,6 +271,14 @@ impl Default for RistrettoPublicKey {
     }
 }
 
+//------------------------------------ PublicKey Display impl ---------------------------------------------//
+
+impl fmt::Display for RistrettoPublicKey {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.to_hex())
+    }
+}
+
 //------------------------------------ PublicKey PartialEq, Eq, Ord impl ---------------------------------------------//
 
 impl PartialEq for RistrettoPublicKey {
@@ -416,7 +425,7 @@ mod test {
     use super::*;
     use crate::{keys::PublicKey, ristretto::test_common::get_keypair};
     use rand;
-    use tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray};
+    use tari_utilities::{message_format::MessageFormat, ByteArray};
 
     fn assert_completely_equal(k1: &RistrettoPublicKey, k2: &RistrettoPublicKey) {
         assert_eq!(k1, k2);
@@ -650,5 +659,12 @@ mod test {
         assert_eq!(k, k2);
         let pk2: RistrettoPublicKey = RistrettoPublicKey::from_binary(&ser_pk).unwrap();
         assert_completely_equal(&pk, &pk2);
+    }
+
+    #[test]
+    fn display() {
+        let hex = "e2f2ae0a6abc4e71a884a961c500515f58e30b6aa582dd8db6a65945e08d2d76";
+        let pk = RistrettoPublicKey::from_hex(hex).unwrap();
+        assert_eq!(format!("{}", pk), hex);
     }
 }
