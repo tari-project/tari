@@ -148,13 +148,8 @@ mod test {
     use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
     use tari_storage::key_val_store::HMapDatabase;
 
-    pub fn init() {
-        let _ = simple_logger::init();
-    }
-
     #[test]
     fn test_outbound_send() {
-        init();
         let context = ZmqContext::new();
         let mut rng = rand::OsRng::new().unwrap();
         let outbound_address = InprocAddress::random();

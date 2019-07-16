@@ -178,17 +178,12 @@ mod test {
     use tari_storage::key_val_store::HMapDatabase;
     use tari_utilities::message_format::MessageFormat;
 
-    fn init() {
-        let _ = simple_logger::init();
-    }
-
     fn pause() {
         thread::sleep(Duration::from_millis(5));
     }
 
     #[test]
     fn test_message_queue() {
-        init();
         let context = ZmqContext::new();
         let node_identity = Arc::new(NodeIdentity::random_for_test(None));
 

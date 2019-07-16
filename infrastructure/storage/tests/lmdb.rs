@@ -130,7 +130,6 @@ fn single_thread() {
 
 #[test]
 fn multi_thread() {
-    let _ = simple_logger::init();
     let users_arc = Arc::new(load_users());
     let env = init("multi_thread").unwrap();
     let mut threads = Vec::new();
