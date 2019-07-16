@@ -22,6 +22,7 @@
 
 #[macro_use]
 mod macros;
+pub mod dht_service;
 pub mod initialization;
 pub mod peer;
 pub mod ping_pong;
