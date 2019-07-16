@@ -52,7 +52,6 @@ pub enum ServiceControlMessage {
 pub struct ServiceExecutor {
     thread_pool: Mutex<ThreadPool>,
     senders: Vec<Sender<ServiceControlMessage>>,
-    comms_services: Arc<CommsServices<TariMessageType>>,
 }
 
 impl ServiceExecutor {
@@ -101,7 +100,6 @@ impl ServiceExecutor {
         Self {
             thread_pool: Mutex::new(thread_pool),
             senders,
-            comms_services,
         }
     }
 
