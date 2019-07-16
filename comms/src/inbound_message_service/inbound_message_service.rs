@@ -174,8 +174,8 @@ mod test {
         peer_manager::{peer_manager::PeerManager, NodeId, NodeIdentity, Peer, PeerFlags},
     };
     use serde::{Deserialize, Serialize};
-    use std::{path::PathBuf, sync::Arc, thread, time::Duration};
-    use tari_storage::lmdb_store::{LMDBBuilder, LMDBError, LMDBStore};
+    use std::{sync::Arc, thread, time::Duration};
+    use tari_storage::key_val_store::HMapDatabase;
     use tari_utilities::message_format::MessageFormat;
 
     fn init() {
@@ -184,28 +184,6 @@ mod test {
 
     fn pause() {
         thread::sleep(Duration::from_millis(5));
-    }
-
-    fn get_path(name: &str) -> String {
-        let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        path.push("tests/data");
-        path.push(name);
-        path.to_str().unwrap().to_string()
-    }
-
-    fn init_datastore(name: &str) -> Result<LMDBStore, LMDBError> {
-        let path = get_path(name);
-        let _ = std::fs::create_dir(&path).unwrap_or_default();
-        LMDBBuilder::new()
-            .set_path(&path)
-            .set_environment_size(10)
-            .set_max_number_of_databases(2)
-            .add_database(name, lmdb_zero::db::CREATE)
-            .build()
-    }
-
-    fn clean_up_datastore(name: &str) {
-        std::fs::remove_dir_all(get_path(name)).unwrap();
     }
 
     #[test]
@@ -240,10 +218,7 @@ mod test {
                 .unwrap(),
         );
 
-        let database_name = "ims_test_fair_dealing"; // Note: every test should have unique database
-        let datastore = init_datastore(database_name).unwrap();
-        let peer_database = datastore.get_handle(database_name).unwrap();
-        let peer_manager = Arc::new(PeerManager::new(peer_database).unwrap());
+        let peer_manager = Arc::new(PeerManager::new(HMapDatabase::new()).unwrap());
         // Add peer to peer manager
         let peer = Peer::new(
             node_identity.identity.public_key.clone(),
@@ -316,7 +291,5 @@ mod test {
         inbound_message_service.shutdown().unwrap();
         std::thread::sleep(Duration::from_millis(200));
         assert!(client_connection.send(&message_data_buffer).is_err());
-
-        clean_up_datastore(database_name);
     }
 }

@@ -46,6 +46,13 @@ pub struct MessageEnvelopeHeader {
     pub flags: MessageFlags,
 }
 
+impl MessageEnvelopeHeader {
+    /// Verify that the signature provided is valid for the given body
+    pub fn verify_signature(&self, body: &Frame) -> Result<bool, MessageError> {
+        crypto::verify(&self.source, self.signature.as_slice(), body)
+    }
+}
+
 /// Represents a message which is about to go on or has just come off the wire.
 /// As described in [RFC-0172](https://rfc.tari.com/RFC-0172_PeerToPeerMessagingProtocol.html#messaging-structure)
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -66,21 +73,16 @@ impl MessageEnvelope {
         node_identity: &NodeIdentity,
         dest_public_key: CommsPublicKey,
         dest: NodeDestination<CommsPublicKey>,
-        body: Frame,
+        mut body: Frame,
         flags: MessageFlags,
     ) -> Result<Self, MessageError>
     {
-        let mut clear_body = body;
         if flags.contains(MessageFlags::ENCRYPTED) {
-            clear_body = encrypt_envelope_body(&node_identity.secret_key, &dest_public_key, &clear_body)?
+            body = encrypt_envelope_body(&node_identity.secret_key, &dest_public_key, &body)?
         }
 
-        let signature = crypto::sign(
-            &mut OsRng::new().unwrap(),
-            node_identity.secret_key.clone(),
-            &clear_body,
-        )
-        .map_err(MessageError::SchnorrSignatureError)?;
+        let signature = crypto::sign(&mut OsRng::new().unwrap(), node_identity.secret_key.clone(), &body)
+            .map_err(MessageError::SchnorrSignatureError)?;
         let signature = signature.to_binary().map_err(MessageError::MessageFormatError)?;
 
         let header = MessageEnvelopeHeader {
@@ -94,19 +96,8 @@ impl MessageEnvelope {
         Ok(Self::new(
             vec![WIRE_PROTOCOL_VERSION],
             header.to_binary().map_err(MessageError::MessageFormatError)?,
-            clear_body,
+            body,
         ))
-    }
-
-    /// Verify that the signature provided in the message header is valid for the specified source and body of the
-    /// message envelope
-    pub fn verify_signature(&self) -> Result<bool, MessageError> {
-        let message_envelope_header = self.to_header()?;
-        crypto::verify(
-            &message_envelope_header.source,
-            message_envelope_header.signature,
-            self.body_frame(),
-        )
     }
 
     /// Returns the frame that is expected to be version frame
@@ -120,7 +111,7 @@ impl MessageEnvelope {
     }
 
     /// Returns the [MessageEnvelopeHeader] deserialized from the header frame
-    pub fn to_header(&self) -> Result<MessageEnvelopeHeader, MessageError> {
+    pub fn deserialize_header(&self) -> Result<MessageEnvelopeHeader, MessageError> {
         MessageEnvelopeHeader::from_binary(self.header_frame()).map_err(Into::into)
     }
 
@@ -130,12 +121,12 @@ impl MessageEnvelope {
     }
 
     /// Returns the Message deserialized from the body frame
-    pub fn message_body(&self) -> Result<Message, MessageError> {
+    pub fn deserialize_body(&self) -> Result<Message, MessageError> {
         Message::from_binary(self.body_frame()).map_err(Into::into)
     }
 
     /// Returns the decrypted and deserialized Message from the body frame
-    pub fn decrypted_message_body<PK>(
+    pub fn deserialize_encrypted_body<PK>(
         &self,
         dest_secret_key: &PK::K,
         source_public_key: &PK,
@@ -143,7 +134,9 @@ impl MessageEnvelope {
     where
         PK: PublicKey + DiffieHellmanSharedSecret<PK = PK>,
     {
-        let decrypted_frame = decrypted_envelope_body(dest_secret_key, source_public_key, self.body_frame())?;
+        let ecdh_shared_secret = PK::shared_secret(dest_secret_key, source_public_key).to_vec();
+        let decrypted_frame: Frame = CommsCipher::open_with_integral_nonce(self.body_frame(), &ecdh_shared_secret)
+            .map_err(|e| MessageError::CipherError(e))?;
         Message::from_binary(&decrypted_frame).map_err(Into::into)
     }
 
@@ -177,20 +170,6 @@ where
 {
     let ecdh_shared_secret = PK::shared_secret(source_secret_key, dest_public_key).to_vec();
     CommsCipher::seal_with_integral_nonce(message_body, &ecdh_shared_secret).map_err(|e| MessageError::CipherError(e))
-}
-
-/// Decrypt the message_envelope_body with the generated shared secret
-fn decrypted_envelope_body<PK>(
-    dest_secret_key: &PK::K,
-    source_public_key: &PK,
-    encrypted_message_body: &Frame,
-) -> Result<Frame, MessageError>
-where
-    PK: PublicKey + DiffieHellmanSharedSecret<PK = PK>,
-{
-    let ecdh_shared_secret = PK::shared_secret(dest_secret_key, source_public_key).to_vec();
-    CommsCipher::open_with_integral_nonce(encrypted_message_body, &ecdh_shared_secret)
-        .map_err(|e| MessageError::CipherError(e))
 }
 
 #[cfg(test)]
@@ -242,19 +221,23 @@ mod test {
 
         let envelope = MessageEnvelope::new(vec![0u8], header.to_binary().unwrap(), vec![0u8]);
 
-        assert_eq!(header, envelope.to_header().unwrap());
+        assert_eq!(header, envelope.deserialize_header().unwrap());
+    }
+
+    fn make_test_message_frame() -> Frame {
+        let message_header = "Test Message Header".as_bytes().to_vec();
+        let message_body = "Test Message Body".as_bytes().to_vec();
+        let message_envelope_body = Message::from_message_format(message_header, message_body).unwrap();
+        message_envelope_body.to_binary().unwrap()
     }
 
     #[test]
     fn construct() {
         let node_identity = Arc::new(NodeIdentity::random_for_test(None));
-        let dest_secret_key = node_identity.secret_key.clone();
-        let dest_public_key = node_identity.identity.public_key.clone(); // Send to self
+        let dest_public_key = &node_identity.identity.public_key;
 
-        let message_header = "Test Message Header".as_bytes().to_vec();
-        let message_body = "Test Message Body".as_bytes().to_vec();
-        let message_envelope_body = Message::from_message_format(message_header, message_body.clone()).unwrap();
-        let message_envelope_body_frame = message_envelope_body.to_binary().unwrap();
+        let message_envelope_body_frame = make_test_message_frame();
+
         let envelope = MessageEnvelope::construct(
             &node_identity,
             dest_public_key.clone(),
@@ -265,14 +248,19 @@ mod test {
         .unwrap();
         assert_eq!("00", to_hex(envelope.version_frame()));
         let header = MessageEnvelopeHeader::from_binary(envelope.header_frame()).unwrap();
-        assert_eq!(dest_public_key, header.source);
+        assert_eq!(dest_public_key, &header.source);
         assert_eq!(MessageFlags::NONE, header.flags);
         assert_eq!(NodeDestination::Unknown, header.dest);
         assert!(!header.signature.is_empty());
-        assert_eq!(message_envelope_body_frame.clone(), *envelope.body_frame());
-        assert!(envelope.verify_signature().unwrap());
+        assert_eq!(&message_envelope_body_frame, envelope.body_frame());
+    }
 
-        // Check Encrypted MessageEnvelope construction
+    #[test]
+    fn construct_encrypted() {
+        let node_identity = Arc::new(NodeIdentity::random_for_test(None));
+        let dest_public_key = &node_identity.identity.public_key;
+
+        let message_envelope_body_frame = make_test_message_frame();
         let envelope = MessageEnvelope::construct(
             &node_identity,
             dest_public_key.clone(),
@@ -281,13 +269,54 @@ mod test {
             MessageFlags::ENCRYPTED,
         )
         .unwrap();
-        assert!(envelope.verify_signature().unwrap());
-        assert_ne!(message_envelope_body_frame, *envelope.body_frame());
+
+        assert_ne!(&message_envelope_body_frame, envelope.body_frame());
+    }
+
+    #[test]
+    fn envelope_decrypt_message_body() {
+        let node_identity = Arc::new(NodeIdentity::random_for_test(None));
+        let dest_secret_key = node_identity.secret_key.clone();
+        let dest_public_key = &node_identity.identity.public_key;
+
+        let message_envelope_body_frame = make_test_message_frame();
+        let envelope = MessageEnvelope::construct(
+            &node_identity,
+            dest_public_key.clone(),
+            NodeDestination::Unknown,
+            message_envelope_body_frame.clone(),
+            MessageFlags::ENCRYPTED,
+        )
+        .unwrap();
+
         assert_eq!(
             envelope
-                .decrypted_message_body(&dest_secret_key, &node_identity.identity.public_key)
+                .deserialize_encrypted_body(&dest_secret_key, &node_identity.identity.public_key)
                 .unwrap(),
-            message_envelope_body
+            Message::from_binary(&message_envelope_body_frame).unwrap()
         );
+    }
+
+    #[test]
+    fn message_header_verify_signature() {
+        let node_identity = Arc::new(NodeIdentity::random_for_test(None));
+        let dest_public_key = &node_identity.identity.public_key;
+
+        let message_envelope_body_frame = make_test_message_frame();
+        let envelope = MessageEnvelope::construct(
+            &node_identity,
+            dest_public_key.clone(),
+            NodeDestination::Unknown,
+            message_envelope_body_frame.clone(),
+            MessageFlags::NONE,
+        )
+        .unwrap();
+
+        let header = envelope.deserialize_header().unwrap();
+        let mut body = envelope.body_frame().clone();
+        assert!(header.verify_signature(&body).unwrap());
+
+        body.push(0);
+        assert!(!header.verify_signature(&body).unwrap());
     }
 }

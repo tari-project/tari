@@ -245,11 +245,10 @@ mod test {
     };
     use serde::{Deserialize, Serialize};
     use std::{
-        fs,
         sync::Arc,
         time::{self, Duration},
     };
-    use tari_storage::lmdb_store::LMDBBuilder;
+    use tari_storage::key_val_store::HMapDatabase;
     use tari_utilities::{message_format::MessageFormat, thread_join::ThreadJoinWithTimeout};
 
     fn init() {
@@ -263,21 +262,6 @@ mod test {
     #[test]
     fn test_dispatch_to_multiple_service_handlers() {
         init();
-
-        // Clear and setup DB folders
-        let test_dir = "./tests/test_peer_storage";
-        let database_name = "peer_manager";
-        if fs::metadata(test_dir).is_ok() {
-            assert!(fs::remove_dir_all(test_dir).is_ok());
-        }
-        assert!(fs::create_dir(test_dir).is_ok());
-        // Setup peer storage
-        let datastore = LMDBBuilder::new()
-            .set_path(test_dir)
-            .add_database(database_name, lmdb_zero::db::CREATE)
-            .build()
-            .unwrap();
-        let database = datastore.get_handle(database_name).unwrap();
 
         let context = ZmqContext::new();
         let node_identity = Arc::new(NodeIdentity::random_for_test(None));
@@ -309,7 +293,7 @@ mod test {
                 .start()
                 .unwrap(),
         );
-        let peer_manager = Arc::new(PeerManager::new(database).unwrap());
+        let peer_manager = Arc::new(PeerManager::new(HMapDatabase::new()).unwrap());
         // Add peer to peer manager
         let peer = Peer::new(
             node_identity.identity.public_key.clone(),
@@ -411,14 +395,7 @@ mod test {
         // Test worker clean shutdown
         control_sync_sender.send(ControlMessage::Shutdown).unwrap();
         std::thread::sleep(time::Duration::from_millis(200));
-        thread_handle.timeout_join(Duration::from_millis(100)).unwrap();
+        thread_handle.timeout_join(Duration::from_millis(3000)).unwrap();
         assert!(client_connection.send(message1_frame_set).is_err());
-
-        // Clear up DB folders
-        let _no_val = fs::remove_dir_all(test_dir);
-        if fs::metadata(test_dir).is_ok() {
-            println!("Database file handles not released, still open in {:?}!", test_dir);
-            assert!(fs::remove_dir_all(test_dir).is_ok());
-        }
     }
 }

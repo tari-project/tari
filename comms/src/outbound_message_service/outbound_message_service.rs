@@ -145,34 +145,11 @@ mod test {
         },
     };
     use log::*;
-    use std::path::PathBuf;
     use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
-    use tari_storage::lmdb_store::{LMDBBuilder, LMDBError, LMDBStore};
+    use tari_storage::key_val_store::HMapDatabase;
 
     pub fn init() {
         let _ = simple_logger::init();
-    }
-
-    fn get_path(name: &str) -> String {
-        let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        path.push("tests/data");
-        path.push(name);
-        path.to_str().unwrap().to_string()
-    }
-
-    fn init_datastore(name: &str) -> Result<LMDBStore, LMDBError> {
-        let path = get_path(name);
-        let _ = std::fs::create_dir(&path).unwrap_or_default();
-        LMDBBuilder::new()
-            .set_path(&path)
-            .set_environment_size(10)
-            .set_max_number_of_databases(2)
-            .add_database(name, lmdb_zero::db::CREATE)
-            .build()
-    }
-
-    fn clean_up_datastore(name: &str) {
-        std::fs::remove_dir_all(get_path(name)).unwrap();
     }
 
     #[test]
@@ -196,10 +173,7 @@ mod test {
         let dest_peer = Peer::new(pk, node_id, net_addresses, PeerFlags::default());
 
         // Setup OutboundMessageService and transmit a message to the destination
-        let database_name = "oms_test_outbound_send"; // Note: every test should have unique database
-        let datastore = init_datastore(database_name).unwrap();
-        let peer_database = datastore.get_handle(database_name).unwrap();
-        let peer_manager = Arc::new(PeerManager::new(peer_database).unwrap());
+        let peer_manager = Arc::new(PeerManager::new(HMapDatabase::new()).unwrap());
         peer_manager.add_peer(dest_peer.clone()).unwrap();
 
         let outbound_message_service =
@@ -208,12 +182,12 @@ mod test {
         // Construct and send OutboundMessage
         let message_header = "Test Message Header".as_bytes().to_vec();
         let message_body = "Test Message Body".as_bytes().to_vec();
-        let message_envelope_body = Message::from_message_format(message_header, message_body).unwrap();
+        let message = Message::from_message_format(message_header, message_body).unwrap();
         outbound_message_service
             .send_raw(
                 BroadcastStrategy::DirectNodeId(dest_peer.node_id.clone()),
                 MessageFlags::ENCRYPTED,
-                message_envelope_body.to_binary().unwrap(),
+                message.to_binary().unwrap(),
             )
             .unwrap();
 
@@ -227,19 +201,19 @@ mod test {
         assert_eq!(outbound_message.num_attempts(), 0);
         assert_eq!(outbound_message.is_scheduled(), true);
         let message_envelope: MessageEnvelope = outbound_message.message_frames().clone().try_into().unwrap();
-        let message_envelope_header = message_envelope.to_header().unwrap();
+        let message_envelope_header = message_envelope.deserialize_header().unwrap();
         assert_eq!(message_envelope_header.source, node_identity.identity.public_key);
         assert_eq!(
             message_envelope_header.dest,
             NodeDestination::NodeId(dest_peer.node_id.clone())
         );
-        assert!(message_envelope.verify_signature().unwrap());
+        assert!(message_envelope_header
+            .verify_signature(message_envelope.body_frame())
+            .unwrap());
         assert_eq!(message_envelope_header.flags, MessageFlags::ENCRYPTED);
-        let decoded_message_envelope_body = message_envelope
-            .decrypted_message_body(&dest_sk, &node_identity.identity.public_key)
+        let decrypted_message = message_envelope
+            .deserialize_encrypted_body(&dest_sk, &node_identity.identity.public_key)
             .unwrap();
-        assert_eq!(message_envelope_body, decoded_message_envelope_body);
-
-        clean_up_datastore(database_name);
+        assert_eq!(message, decrypted_message);
     }
 }

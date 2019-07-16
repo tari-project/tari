@@ -117,7 +117,7 @@ mod test {
         messenger.send(ControlMessage::Shutdown).unwrap();
 
         handle
-            .timeout_join(Duration::from_millis(100))
+            .timeout_join(Duration::from_millis(3000))
             .map_err(|e| format!("Test thread errored: {:?}", e))
             .unwrap();
     }

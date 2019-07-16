@@ -45,7 +45,6 @@ use std::{
     time::Duration,
 };
 use tari_comms::{
-    builder::CommsServices,
     control_service::ControlServiceConfig,
     peer_manager::{NodeIdentity, Peer, PeerFlags, PeerNodeIdentity},
 };

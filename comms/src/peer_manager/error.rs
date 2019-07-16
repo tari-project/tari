@@ -20,9 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE
 
-use crate::{connection::NetAddressError, peer_manager::node_id::NodeIdError, types::CommsDataStoreError};
+use crate::{connection::NetAddressError, peer_manager::node_id::NodeIdError};
 use derive_error::Error;
-use tari_storage::keyvalue_store::DatastoreError;
+use tari_storage::{key_val_store::KeyValStoreError, keyvalue_store::DatastoreError};
 use tari_utilities::message_format::MessageFormatError;
 
 #[derive(Debug, Error)]
@@ -52,6 +52,6 @@ pub enum PeerManagerError {
     /// Problem initializing the RNG
     RngError,
     // An problem has been encountered with the database
-    DatabaseError(CommsDataStoreError),
+    DatabaseError(KeyValStoreError),
     NodeIdError(NodeIdError),
 }

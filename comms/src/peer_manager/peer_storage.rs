@@ -29,24 +29,27 @@ use crate::{
         peer_key::{generate_peer_key, PeerKey},
         PeerManagerError,
     },
-    types::{CommsDatabase, CommsPublicKey, CommsRng},
+    types::{CommsPublicKey, CommsRng},
 };
 use rand::Rng;
 use std::{collections::HashMap, time::Duration};
+use tari_storage::key_val_store::KeyValStore;
 
 /// PeerStorage provides a mechanism to keep a datastore and a local copy of all peers in sync and allow fast searches
 /// using the node_id, public key or net_address of a peer.
-pub struct PeerStorage {
-    pub(crate) peers: CommsDatabase,
+pub struct PeerStorage<DS> {
+    pub(crate) peers: DS,
     node_id_hm: HashMap<NodeId, PeerKey>,
     public_key_hm: HashMap<CommsPublicKey, PeerKey>,
     net_address_hm: HashMap<NetAddress, PeerKey>,
     rng: CommsRng,
 }
 
-impl PeerStorage {
+impl<DS> PeerStorage<DS>
+where DS: KeyValStore
+{
     /// Constructs a new empty PeerStorage system
-    pub fn new(database: CommsDatabase) -> Result<PeerStorage, PeerManagerError> {
+    pub fn new(database: DS) -> Result<PeerStorage<DS>, PeerManagerError> {
         // Restore peers and hashmap links from database
         let mut node_id_hm: HashMap<NodeId, PeerKey> = HashMap::new();
         let mut public_key_hm: HashMap<CommsPublicKey, PeerKey> = HashMap::new();
@@ -81,7 +84,7 @@ impl PeerStorage {
                 self.remove_hashmap_links(peer_key)?;
                 self.add_hashmap_links(peer_key, &peer);
                 self.peers
-                    .insert(&peer_key, &peer)
+                    .insert_pair(&peer_key, &peer)
                     .map_err(|e| PeerManagerError::DatabaseError(e))?;
                 Ok(())
             },
@@ -90,7 +93,7 @@ impl PeerStorage {
                 let peer_key = generate_peer_key(&mut self.rng); // Generate new random peer key
                 self.add_hashmap_links(peer_key, &peer);
                 self.peers
-                    .insert(&peer_key, &peer)
+                    .insert_pair(&peer_key, &peer)
                     .map_err(|e| PeerManagerError::DatabaseError(e))?;
                 Ok(())
             },
@@ -105,7 +108,7 @@ impl PeerStorage {
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         self.remove_hashmap_links(peer_key)?;
         self.peers
-            .remove(&peer_key)
+            .delete(&peer_key)
             .map_err(|e| PeerManagerError::DatabaseError(e))?;;
         Ok(())
     }
@@ -124,7 +127,7 @@ impl PeerStorage {
     fn remove_hashmap_links(&mut self, peer_key: PeerKey) -> Result<(), PeerManagerError> {
         let peer: Peer = self
             .peers
-            .get(&peer_key)
+            .get_value(&peer_key)
             .map_err(|e| PeerManagerError::DatabaseError(e))?
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         self.node_id_hm.remove(&peer.node_id);
@@ -142,7 +145,7 @@ impl PeerStorage {
             .get(&node_id)
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         self.peers
-            .get(&peer_key)
+            .get_value(&peer_key)
             .map_err(|e| PeerManagerError::DatabaseError(e))?
             .ok_or(PeerManagerError::PeerNotFoundError)
     }
@@ -154,7 +157,7 @@ impl PeerStorage {
             .get(&public_key)
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         self.peers
-            .get(&peer_key)
+            .get_value(&peer_key)
             .map_err(|e| PeerManagerError::DatabaseError(e))?
             .ok_or(PeerManagerError::PeerNotFoundError)
     }
@@ -166,7 +169,7 @@ impl PeerStorage {
             .get(&net_address)
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         self.peers
-            .get(&peer_key)
+            .get_value(&peer_key)
             .map_err(|e| PeerManagerError::DatabaseError(e))?
             .ok_or(PeerManagerError::PeerNotFoundError)
     }
@@ -179,7 +182,7 @@ impl PeerStorage {
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         let peer: Peer = self
             .peers
-            .get(&peer_key)
+            .get_value(&peer_key)
             .map_err(|e| PeerManagerError::DatabaseError(e))?
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         if peer.is_banned() {
@@ -201,7 +204,7 @@ impl PeerStorage {
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         let peer: Peer = self
             .peers
-            .get(&peer_key)
+            .get_value(&peer_key)
             .map_err(|e| PeerManagerError::DatabaseError(e))?
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         if peer.is_banned() {
@@ -254,7 +257,7 @@ impl PeerStorage {
             }
             let peer: Peer = self
                 .peers
-                .get(&peer_keys[i])
+                .get_value(&peer_keys[i])
                 .map_err(|e| PeerManagerError::DatabaseError(e))?
                 .ok_or(PeerManagerError::PeerNotFoundError)?;
             nearest_identities.push(PeerNodeIdentity::new(peer.node_id.clone(), peer.public_key.clone()));
@@ -288,7 +291,7 @@ impl PeerStorage {
         for i in 0..n {
             let peer: Peer = self
                 .peers
-                .get(&peer_keys[i])
+                .get_value(&peer_keys[i])
                 .map_err(|e| PeerManagerError::DatabaseError(e))?
                 .ok_or(PeerManagerError::PeerNotFoundError)?;
             random_identities.push(PeerNodeIdentity::new(peer.node_id.clone(), peer.public_key.clone()));
@@ -304,12 +307,12 @@ impl PeerStorage {
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         let mut peer: Peer = self
             .peers
-            .get(&peer_key)
+            .get_value(&peer_key)
             .map_err(|e| PeerManagerError::DatabaseError(e))?
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         peer.set_banned(ban_flag);
         self.peers
-            .insert(&peer_key, &peer)
+            .insert_pair(&peer_key, &peer)
             .map_err(|e| PeerManagerError::DatabaseError(e))
     }
 
@@ -321,7 +324,7 @@ impl PeerStorage {
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         let mut peer: Peer = self
             .peers
-            .get(&peer_key)
+            .get_value(&peer_key)
             .map_err(|e| PeerManagerError::DatabaseError(e))?
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         peer.addresses
@@ -329,7 +332,7 @@ impl PeerStorage {
             .map_err(PeerManagerError::NetAddressError)?;
         self.net_address_hm.insert(net_address.clone(), peer_key);
         self.peers
-            .insert(&peer_key, &peer)
+            .insert_pair(&peer_key, &peer)
             .map_err(|e| PeerManagerError::DatabaseError(e))
     }
 
@@ -342,7 +345,7 @@ impl PeerStorage {
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         let mut peer: Peer = self
             .peers
-            .get(&peer_key)
+            .get_value(&peer_key)
             .map_err(|e| PeerManagerError::DatabaseError(e))?
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         let best_net_address = peer
@@ -350,7 +353,7 @@ impl PeerStorage {
             .get_best_net_address()
             .map_err(PeerManagerError::NetAddressError)?;
         self.peers
-            .insert(&peer_key, &peer)
+            .insert_pair(&peer_key, &peer)
             .map_err(|e| PeerManagerError::DatabaseError(e))?;
         Ok(best_net_address)
     }
@@ -369,14 +372,14 @@ impl PeerStorage {
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         let mut peer: Peer = self
             .peers
-            .get(&peer_key)
+            .get_value(&peer_key)
             .map_err(|e| PeerManagerError::DatabaseError(e))?
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         peer.addresses
             .update_latency(net_address, latency_measurement)
             .map_err(PeerManagerError::NetAddressError)?;
         self.peers
-            .insert(&peer_key, &peer)
+            .insert_pair(&peer_key, &peer)
             .map_err(|e| PeerManagerError::DatabaseError(e))
     }
 
@@ -388,14 +391,14 @@ impl PeerStorage {
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         let mut peer: Peer = self
             .peers
-            .get(&peer_key)
+            .get_value(&peer_key)
             .map_err(|e| PeerManagerError::DatabaseError(e))?
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         peer.addresses
             .mark_message_received(net_address)
             .map_err(PeerManagerError::NetAddressError)?;
         self.peers
-            .insert(&peer_key, &peer)
+            .insert_pair(&peer_key, &peer)
             .map_err(|e| PeerManagerError::DatabaseError(e))
     }
 
@@ -407,14 +410,14 @@ impl PeerStorage {
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         let mut peer: Peer = self
             .peers
-            .get(&peer_key)
+            .get_value(&peer_key)
             .map_err(|e| PeerManagerError::DatabaseError(e))?
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         peer.addresses
             .mark_message_rejected(net_address)
             .map_err(PeerManagerError::NetAddressError)?;
         self.peers
-            .insert(&peer_key, &peer)
+            .insert_pair(&peer_key, &peer)
             .map_err(|e| PeerManagerError::DatabaseError(e))
     }
 
@@ -426,14 +429,14 @@ impl PeerStorage {
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         let mut peer: Peer = self
             .peers
-            .get(&peer_key)
+            .get_value(&peer_key)
             .map_err(|e| PeerManagerError::DatabaseError(e))?
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         peer.addresses
             .mark_successful_connection_attempt(net_address)
             .map_err(PeerManagerError::NetAddressError)?;
         self.peers
-            .insert(&peer_key, &peer)
+            .insert_pair(&peer_key, &peer)
             .map_err(|e| PeerManagerError::DatabaseError(e))
     }
 
@@ -445,14 +448,14 @@ impl PeerStorage {
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         let mut peer: Peer = self
             .peers
-            .get(&peer_key)
+            .get_value(&peer_key)
             .map_err(|e| PeerManagerError::DatabaseError(e))?
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         peer.addresses
             .mark_failed_connection_attempt(net_address)
             .map_err(PeerManagerError::NetAddressError)?;
         self.peers
-            .insert(&peer_key, &peer)
+            .insert_pair(&peer_key, &peer)
             .map_err(|e| PeerManagerError::DatabaseError(e))
     }
 
@@ -465,17 +468,17 @@ impl PeerStorage {
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         let mut peer: Peer = self
             .peers
-            .get(&peer_key)
+            .get_value(&peer_key)
             .map_err(|e| PeerManagerError::DatabaseError(e))?
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         peer.addresses.reset_connection_attempts();
         self.peers
-            .insert(&peer_key, &peer)
+            .insert_pair(&peer_key, &peer)
             .map_err(|e| PeerManagerError::DatabaseError(e))
     }
 
     /// Returns the DataStore underlying PeerStorage if one exists
-    pub fn into_datastore(self) -> CommsDatabase {
+    pub fn into_datastore(self) -> DS {
         self.peers
     }
 }
@@ -489,7 +492,10 @@ mod test {
     };
     use std::path::PathBuf;
     use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
-    use tari_storage::lmdb_store::{LMDBBuilder, LMDBError, LMDBStore};
+    use tari_storage::{
+        key_val_store::HMapDatabase,
+        lmdb_store::{LMDBBuilder, LMDBError, LMDBStore},
+    };
 
     fn get_path(name: &str) -> String {
         let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -573,10 +579,7 @@ mod test {
 
     #[test]
     fn test_add_delete_find_peer() {
-        let database_name = "pm_test_add_delete_find_peer"; // Note: every test should have unique database
-        let datastore = init_datastore(database_name).unwrap();
-        let peer_database = datastore.get_handle(database_name).unwrap();
-        let mut peer_storage = PeerStorage::new(peer_database).unwrap();
+        let mut peer_storage = PeerStorage::new(HMapDatabase::new()).unwrap();
 
         // Create Peers
         let mut rng = rand::OsRng::new().unwrap();
@@ -764,7 +767,5 @@ mod test {
         assert!(peer_storage.find_with_public_key(&peer1.public_key).is_ok());
         assert!(peer_storage.find_with_public_key(&peer2.public_key).is_err());
         assert!(peer_storage.find_with_public_key(&peer3.public_key).is_ok());
-
-        clean_up_datastore(database_name);
     }
 }

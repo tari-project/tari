@@ -26,6 +26,7 @@
     - [RFC-0304: Validator Node committee selection](RFC-0304_VNCommittees.md)
     - [Asset Management](AssetManagement.md)
         - [RFC-0311: Digital Asset templates](RFC-0311_AssetTemplates.md)
+        - [RFC-0313: The asset read-only API](RFC-0313_AssetReadAPI.md)
         - [RFC-0316: Asset retirement](RFC-0316_AssetRetirement.md)
     - [RFC-0340: Validator Node Consensus](RFC-0340_VNConsensusOverview.md)
         - [RFC-0342: Validator node instructions](RFC-0342_VNInstructions.md)
