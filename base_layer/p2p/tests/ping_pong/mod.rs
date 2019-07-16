@@ -97,7 +97,6 @@ fn setup_ping_pong_service(
 #[test]
 #[allow(non_snake_case)]
 fn end_to_end() {
-    let _ = simple_logger::init();
     let node_A_tmpdir = TempDir::new(random_string(8).as_str()).unwrap();
 
     let node_B_tmpdir = TempDir::new(random_string(8).as_str()).unwrap();

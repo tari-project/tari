@@ -86,7 +86,6 @@ fn pause() {
 #[test]
 #[allow(non_snake_case)]
 fn establish_peer_connection() {
-    let _ = simple_logger::init();
     let context = ZmqContext::new();
 
     let node_A_identity = Arc::new(factories::node_identity::create().build().unwrap());
