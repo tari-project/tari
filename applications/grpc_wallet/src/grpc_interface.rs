@@ -329,8 +329,8 @@ impl server::WalletRpc for WalletRPC {
         let screen_name = msg.screen_name.clone();
         if let Ok(pk) = CommsPublicKey::from_hex(msg.pub_key.as_str()) {
             let response = match self.wallet.text_message_service.update_contact(pk, UpdateContact {
-                screen_name,
-                address: net_address,
+                screen_name: Some(screen_name),
+                address: Some(net_address),
             }) {
                 Ok(()) => Response::new(RpcResponse {
                     success: true,

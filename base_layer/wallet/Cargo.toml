@@ -17,6 +17,8 @@ crossbeam-channel = "0.3.8"
 log = "0.4.6"
 lmdb-zero = "0.4.4"
 tari_storage = { version = "0.0.2", path = "../../infrastructure/storage"}
+diesel_migrations =  "1.4"
+diesel = {version="1.4", features = ["sqlite", "serde_json", "chrono"]}
 
 [dev-dependencies]
 rand = "0.5"

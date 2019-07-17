@@ -41,7 +41,7 @@ pub trait Service: Send + Sync {
 }
 
 /// Default duration that a API 'client' will wait for a response from the service before returning a timeout error
-pub const DEFAULT_API_TIMEOUT_MS: u64 = 200;
+pub const DEFAULT_API_TIMEOUT_MS: u64 = 1000;
 
 /// Thin convenience wrapper for any service api
 pub struct ServiceApiWrapper<T, Req, Res> {
