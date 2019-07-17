@@ -235,9 +235,9 @@ impl SimpleBlockChain {
                 .clone()
                 .checked_add_signed(Duration::minutes(1))
                 .unwrap(),
-            output_mmr: [0; 32],
-            range_proof_mmr: [0; 32],
-            kernel_mmr: [0; 32],
+            output_mr: [0; 32],
+            range_proof_mr: [0; 32],
+            kernel_mr: [0; 32],
             total_kernel_offset: RistrettoSecretKey::from(0),
             pow: ProofOfWork {},
         }
