@@ -48,7 +48,6 @@ impl<'c> ConnectionMessageCounter<'c> {
         }
     }
 
-    #[allow(dead_code)]
     pub fn reset(&self) {
         let mut counter_lock = acquire_write_lock!(self.counter);
         *counter_lock = 0;

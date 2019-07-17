@@ -32,17 +32,17 @@ pub struct HashValues {
 }
 
 impl HashValues {
-    #[allow(dead_code)] // function saved for future use
+    // function saved for future use
     pub fn get_value(&self, index: usize) -> String {
         self.values[index].clone()
     }
 
-    #[allow(dead_code)] // This function is used to generate hashvalues for the hashvalue struct
+    // This function is used to generate hashvalues for the hashvalue struct
     pub fn copy_slice(&self, start: usize, end: usize) -> Vec<String> {
         self.values[start..end + 1].to_vec()
     }
 
-    #[allow(dead_code)] // This function is used to generate hashvalues for the hashvalue struct
+    // This function is used to generate hashvalues for the hashvalue struct
     pub fn copy_from_indices(&self, indices: Vec<usize>) -> Vec<String> {
         let mut result = Vec::new();
         for num in indices {
@@ -123,7 +123,7 @@ impl HashValues {
         hashvalues
     }
 
-    #[allow(dead_code)] // This function is used to generate hashvalues for the hashvalue struct
+    // This function is used to generate hashvalues for the hashvalue struct
     pub fn get_hash_in_hex<D: Digest>(hash1: &Vec<u8>, hash2: &Vec<u8>) -> String {
         let mut hasher = D::new();
         hasher.input(hash1);
@@ -132,7 +132,7 @@ impl HashValues {
         to_hex(&new_hash)
     }
 
-    #[allow(dead_code)] // This function is used to generate hashvalues for the hashvalue struct
+    // This function is used to generate hashvalues for the hashvalue struct
     pub fn get_hash_in_u8<D: Digest>(hash1: &Vec<u8>, hash2: &Vec<u8>) -> Vec<u8> {
         let mut hasher = D::new();
         hasher.input(hash1);

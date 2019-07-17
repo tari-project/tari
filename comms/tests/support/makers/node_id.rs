@@ -40,13 +40,11 @@ pub fn make_node_id() -> NodeId {
 }
 
 /// Creates a random node ID using OsRng
-#[allow(dead_code)]
 pub fn make_node_id_from_public_key<P: PublicKey + Hashable>(pk: &P) -> NodeId {
     NodeId::from_key(pk).unwrap()
 }
 
 /// Creates the same node ID
-#[allow(dead_code)]
 pub fn make_dummy_node_id() -> NodeId {
     NodeId::try_from(
         [
