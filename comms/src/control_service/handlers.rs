@@ -40,7 +40,6 @@ use log::*;
 use serde::{de::DeserializeOwned, export::PhantomData, Serialize};
 use tari_utilities::message_format::MessageFormat;
 
-#[allow(dead_code)]
 const LOG_TARGET: &'static str = "comms::control_service::handlers";
 
 #[derive(Default)]

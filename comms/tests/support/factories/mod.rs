@@ -26,19 +26,18 @@ use serde::export::fmt::Debug;
 #[macro_use]
 mod macros;
 
-#[allow(dead_code)]
 pub mod connection_manager;
-#[allow(dead_code)]
+
 pub mod net_address;
-#[allow(dead_code)]
+
 pub mod node_identity;
-#[allow(dead_code)]
+
 pub mod peer;
-#[allow(dead_code)]
+
 pub mod peer_connection;
-#[allow(dead_code)]
+
 pub mod peer_connection_context;
-#[allow(dead_code)]
+
 pub mod peer_manager;
 
 pub trait TestFactory: Default {
