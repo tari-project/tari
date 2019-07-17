@@ -66,17 +66,15 @@ fn recv_socket_events() {
     let event = events.iter().find(|e| e.event_type == SocketEventType::Listening);
     assert!(event.is_some(), "Expected to find event Listening");
     let event = event.unwrap();
-    // Note! The monitor returns events with the original address given to the socket (127.0.0.2:0, and not the
-    // actual address that is connected to (if it is different)
-    assert_eq!(event.address, address.to_zmq_endpoint());
+    assert_eq!(event.address, connected_address.to_zmq_endpoint());
 
     let event = events.iter().find(|e| e.event_type == SocketEventType::Accepted);
     assert!(event.is_some(), "Expected to find event Accepted");
     let event = event.unwrap();
-    assert_eq!(event.address, address.to_zmq_endpoint());
+    assert_eq!(event.address, connected_address.to_zmq_endpoint());
 
     let event = events.iter().find(|e| e.event_type == SocketEventType::Disconnected);
     assert!(event.is_some(), "Expected to find event Disconnected");
     let event = event.unwrap();
-    assert_eq!(event.address, address.to_zmq_endpoint());
+    assert_eq!(event.address, connected_address.to_zmq_endpoint());
 }
