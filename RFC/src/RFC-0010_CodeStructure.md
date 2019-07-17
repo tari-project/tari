@@ -56,7 +56,7 @@ None.
 
 ## Description
 
-The code follows a domain-driven design layout ([DDD]), with top-level directories falling into infrastructure, domain
+The code follows a Domain-driven Design layout [DDD], with top-level directories falling into infrastructure, domain
 and application layers.
 
 ### Infrastructure Layer
@@ -87,13 +87,13 @@ As an example, the following base layer applications may be developed as part of
 
 * A standalone miner (tari_miner)
 * A pool miner (tari_pool_miner)
-* A command line interface (CLI) wallet for the Tari cryptocurrency (cli_wallet)
+* A Command Line Interface (CLI) wallet for the Tari cryptocurrency (cli_wallet)
 * A base node executable (tari_basenode)
 * A REST Application Programming Interface (API) server for the base node
 
 ### Code Layout
 
-The top-level source code directories in this repository reflect the respective ([DDD]) layers; except that there are two
+The top-level source code directories in this repository reflect the respective [DDD] layers; except that there are two
 domain layer directories, corresponding to the two network layers that make up the Tari network.
 
 1. The `infrastructure` directory contains application-layer code and is not Tari-specific. It holds the following
