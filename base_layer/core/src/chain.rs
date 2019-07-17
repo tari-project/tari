@@ -20,8 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
-// Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
-// Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
+
+//! This file provides the structs and functions that persist the block chain state, and re-org logic. Because a re-org
+//! can happen, we need to keep track of orphan blocks. The Merkle Mountain Range crate we use allows us to rewind
+//! checkpoints. Internally it keeps track of what was changed between checkpoints. We use these rewind blocks in the
+//! case where we need to do a re-org where a forked chain with a greater accumulated pow emerges. In the case of the
+//! MMR, a checkpoint is equal to a block.
+//!
+//! The MMR also provides a method to save the MMR to disc. This is internally handled and we use LMDB to store the MMR.
 
 use crate::{block::Block, block_chain_state::BlockchainState, error::*, pow::*};
 use std::collections::HashMap;

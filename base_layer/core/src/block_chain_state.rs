@@ -20,8 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
-// Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
-// Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
 // This file is used to store the current blockchain state
 
@@ -175,8 +173,8 @@ impl BlockchainState {
     /// This function is just a wrapper function to call checkpoint on all the MMR's
     fn check_mmr_states(&mut self) -> Result<(), StateError> {
         let last_header = self.headers.get_last_added_object().unwrap(); // if this unwrap fails there is something weird wrong as the headers did not get added.
-        if (last_header.output_mmr != self.utxos.get_merkle_root()[..]) ||
-            (last_header.kernel_mmr != self.kernels.get_merkle_root()[..])
+        if (last_header.output_mr != self.utxos.get_merkle_root()[..]) ||
+            (last_header.kernel_mr != self.kernels.get_merkle_root()[..])
         {
             return Err(StateError::HeaderStateMismatch);
         }

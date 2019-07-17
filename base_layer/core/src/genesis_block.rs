@@ -52,11 +52,11 @@ pub fn get_gen_header() -> BlockHeader {
         /// Timestamp at which the block was built.
         timestamp: DateTime::<Utc>::from_utc(NaiveDate::from_ymd(2020, 1, 1).and_hms(1, 1, 1), Utc),
         /// This is the MMR root of the outputs
-        output_mmr: [0; 32],
+        output_mr: [0; 32],
         /// This is the MMR root of the range proofs
-        range_proof_mmr: [0; 32],
+        range_proof_mr: [0; 32],
         /// This is the MMR root of the kernels
-        kernel_mmr: [0; 32],
+        kernel_mr: [0; 32],
         /// Total accumulated sum of kernel offsets since genesis block. We can derive the kernel offset sum for *this*
         /// block from the total kernel offset of the previous block header.
         total_kernel_offset: RistrettoSecretKey::from(0),

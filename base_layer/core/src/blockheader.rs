@@ -23,6 +23,20 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
+//! Blockchain state
+//!
+//! For [technical reasons](https://www.tari.com/2019/07/15/tari-protocol-discussion-42.html), the commitment in
+//! block headers commits to the entire TXO set, rather than just UTXOs using a merkle mountain range.
+//! However, it's really important to commit to the actual UTXO set at a given height and have the ability to
+//! distinguish between spent and unspent outputs in the MMR.
+//!
+//! To solve this we commit to the MMR root in the header of each block. This will give as an immutable state at the
+//! given height. But this does not provide us with a UTXO, only TXO set. To identify UTXOs we create a roaring bit map
+//! of all the UTXO's positions inside of the MMR leaves. We hash this, and combine it with the MMR root, to provide us
+//! with a TXO set that will represent the UTXO state of the chain at the given height:
+//! state = Hash(Hash(mmr_root)|| Hash(roaring_bitmap))
+//! This hash is called the UTXO merkle root, and is used as the output_mr
+
 use crate::{pow::ProofOfWork, types::*};
 use chrono::{DateTime, NaiveDate, Utc};
 use digest::Input;
@@ -44,12 +58,12 @@ pub struct BlockHeader {
     pub prev_hash: BlockHash,
     /// Timestamp at which the block was built.
     pub timestamp: DateTime<Utc>,
-    /// This is the MMR root of the outputs
-    pub output_mmr: BlockHash,
-    /// This is the MMR root of the range proofs
-    pub range_proof_mmr: BlockHash,
-    /// This is the MMR root of the kernels
-    pub kernel_mmr: BlockHash,
+    /// This is the UTXO merkle root of the outputs
+    pub output_mr: BlockHash,
+    /// This is the MMRR root of the range proofs
+    pub range_proof_mr: BlockHash,
+    /// This is the MMRR root of the kernels
+    pub kernel_mr: BlockHash,
     /// Total accumulated sum of kernel offsets since genesis block. We can derive the kernel offset sum for *this*
     /// block from the total kernel offset of the previous block header.
     pub total_kernel_offset: BlindingFactor,
@@ -72,9 +86,9 @@ impl Default for BlockHeader {
             height: 0,
             prev_hash: [0; 32],
             timestamp: DateTime::<Utc>::from_utc(NaiveDate::from_ymd(1900, 1, 1).and_hms(1, 1, 1), Utc),
-            output_mmr: [0; 32],
-            range_proof_mmr: [0; 32],
-            kernel_mmr: [0; 32],
+            output_mr: [0; 32],
+            range_proof_mr: [0; 32],
+            kernel_mr: [0; 32],
             total_kernel_offset: RistrettoSecretKey::from(0),
             pow: ProofOfWork {},
         }
@@ -88,9 +102,9 @@ impl Hashable for BlockHeader {
             .chain(self.height.to_le_bytes())
             .chain(self.prev_hash.as_bytes())
             .chain(self.timestamp.timestamp().to_le_bytes())
-            .chain(self.output_mmr.as_bytes())
-            .chain(self.range_proof_mmr.as_bytes())
-            .chain(self.kernel_mmr.as_bytes())
+            .chain(self.output_mr.as_bytes())
+            .chain(self.range_proof_mr.as_bytes())
+            .chain(self.kernel_mr.as_bytes())
             .chain(self.total_kernel_offset.as_bytes())
             .chain(self.pow.as_bytes())
             .result()
