@@ -56,7 +56,7 @@ None.
 
 ## Description
 
-The code follows a Domain-driven Design layout [DDD], with top-level directories falling into infrastructure, domain
+The code follows a Domain-driven Design ([DDD]) layout, with top-level directories falling into infrastructure, domain
 and application layers.
 
 ### Infrastructure Layer
