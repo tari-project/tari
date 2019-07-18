@@ -10,7 +10,7 @@
 
 [The 3-Clause BSD Licence](https://opensource.org/licenses/BSD-3-Clause).
 
-Copyright <YEAR> <COPYRIGHT HOLDER | The Tari Development Community>
+Copyright 2019 The Tari Development Community
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 following conditions are met:
@@ -54,19 +54,20 @@ their general approach for doing so.
 ## Related Requests for Comment
 
 * [RFC-0100: Base Layer](RFC-0100_BaseLayer.md)
+* [RFC-0140: SyncAndSeeding](RFC-0140_Syncing_and_seeding.md)`
 
 ## Description
 
 ### Broad Requirements
 
 Tari Base Nodes form a peer-to-peer network for a proof-of-work based blockchain running the [Mimblewimble]
-protocol. The proof-of-work is performed via merge mining with Monero. Arguments for this design ar
+protocol. The proof-of-work is performed via merge mining with Monero. Arguments for this design are
 presented [in the overview](RFC-0001_overview.md#proof-of-work).
 
 Tari Base Nodes MUST carry out the following tasks:
 
-* validate all [Tari coin] [transaction]s;
-* propagate valid transactions to peer nodes;
+* validate all [Tari coin] transactions;
+* propagate valid [transaction]s to peer nodes;
 * validate all new [block]s received;
 * propagate validated new blocks to peer nodes;
 * connect to peer nodes to catch up (sync) with their blockchain state;
