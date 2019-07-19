@@ -98,35 +98,37 @@ impl OutboundMessageService {
         message_envelope_body: Frame,
     ) -> Result<(), OutboundError>
     {
-        // Send message to outbound message pool
-        let outbound_connection = Connection::new(&self.context, Direction::Outbound)
-            .set_name("OMS to OMP")
-            .set_linger(Linger::Timeout(5000))
-            .set_socket_establishment(SocketEstablishment::Connect)
-            .establish(&self.outbound_address)
-            .map_err(|e| OutboundError::ConnectionError(e))?;
-
         // Use the BroadcastStrategy to select appropriate peer(s) from PeerManager and then construct and send a
         // personalised message to each selected peer
-        let mut selected_node_identities = self.peer_manager.get_broadcast_identities(broadcast_strategy)?;
+        let selected_node_identities = self.peer_manager.get_broadcast_identities(broadcast_strategy)?;
 
-        // Constructing a MessageEnvelope for each recipient
-        for dest_node_identity in selected_node_identities.drain(..) {
-            let message_envelope = MessageEnvelope::construct(
-                &self.node_identity,
-                dest_node_identity.public_key.clone(),
-                NodeDestination::NodeId(dest_node_identity.node_id.clone()),
-                message_envelope_body.clone(),
-                flags,
-            )
-            .map_err(|e| OutboundError::MessageSerializationError(e))?;
-
-            let msg = OutboundMessage::new(dest_node_identity.node_id, message_envelope.into_frame_set());
-            let msg_buffer = msg.to_binary().map_err(OutboundError::MessageFormatError)?;
-
-            outbound_connection
-                .send(&[msg_buffer])
+        if selected_node_identities.len() > 0 {
+            // Send message to outbound message pool
+            let outbound_connection = Connection::new(&self.context, Direction::Outbound)
+                .set_name("OMS to OMP")
+                .set_linger(Linger::Timeout(5000))
+                .set_socket_establishment(SocketEstablishment::Connect)
+                .establish(&self.outbound_address)
                 .map_err(|e| OutboundError::ConnectionError(e))?;
+
+            // Constructing a MessageEnvelope for each recipient
+            for dest_node_identity in selected_node_identities.into_iter() {
+                let message_envelope = MessageEnvelope::construct(
+                    &self.node_identity,
+                    dest_node_identity.public_key.clone(),
+                    NodeDestination::NodeId(dest_node_identity.node_id.clone()),
+                    message_envelope_body.clone(),
+                    flags,
+                )
+                .map_err(|e| OutboundError::MessageSerializationError(e))?;
+
+                let msg = OutboundMessage::new(dest_node_identity.node_id, message_envelope.into_frame_set());
+                let msg_buffer = msg.to_binary().map_err(OutboundError::MessageFormatError)?;
+
+                outbound_connection
+                    .send(&[msg_buffer])
+                    .map_err(|e| OutboundError::ConnectionError(e))?;
+            }
         }
         Ok(())
     }

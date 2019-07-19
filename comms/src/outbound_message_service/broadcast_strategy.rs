@@ -26,6 +26,7 @@ use crate::{peer_manager::node_id::NodeId, types::CommsPublicKey};
 pub struct ClosestRequest {
     pub n: usize,
     pub node_id: NodeId,
+    pub excluded_peers: Vec<CommsPublicKey>,
 }
 
 #[derive(Debug)]
