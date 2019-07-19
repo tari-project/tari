@@ -119,7 +119,7 @@ impl Chain {
     {
         // The searched hash should always be in the orphan list
         unorphaned_blocks.push(block_hash.clone()); // save all orphans we have used
-        let block = &self.orphans[block_hash].clone(); // todo remove this clone
+        let block = &self.orphans[block_hash].clone();
         let parent = self.block_chain_state.headers.get_object(&block.header.prev_hash);
         if parent.is_some() {
             // we know of parent so we can re-org

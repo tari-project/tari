@@ -22,8 +22,6 @@
 #[macro_use]
 extern crate clap;
 
-extern crate pnet;
-
 use pnet::datalink::{self, NetworkInterface};
 
 use clap::{App, Arg};
@@ -245,7 +243,6 @@ pub fn main() {
         .ip()
         .to_string();
 
-    // println!("{}", local_ip);
     let local_net_address = match format!("{}:{}", local_ip, settings.control_port.unwrap()).parse() {
         Ok(na) => na,
         Err(_) => {

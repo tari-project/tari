@@ -50,7 +50,7 @@ use tari_utilities::{byte_array::ByteArray, hex::Hex};
 pub fn generate_id<D: Digest>(
     source_pub_key: &CommsPublicKey,
     dest_pub_key: &CommsPublicKey,
-    message: &str, //&String,
+    message: &str,
     timestamp: &NaiveDateTime,
     index: usize,
 ) -> Vec<u8>
