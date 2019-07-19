@@ -50,7 +50,7 @@ use tari_comms::{
 };
 use tari_utilities::{hex::Hex, message_format::MessageFormatError};
 
-const LOG_TARGET: &'static str = "base_layer::p2p::ping_pong";
+const LOG_TARGET: &str = "base_layer::p2p::ping_pong";
 
 #[derive(Debug, Error)]
 pub enum PingPongError {
@@ -298,7 +298,7 @@ impl PingPongServiceApi {
         self.lock(|| -> PingPongApiResult {
             self.sender.send(msg).map_err(|_| PingPongError::ApiSendFailed)?;
             self.receiver
-                .recv_timeout(self.timeout.clone())
+                .recv_timeout(self.timeout)
                 .map_err(|_| PingPongError::ApiReceiveFailed)?
         })
     }

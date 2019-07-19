@@ -5,7 +5,7 @@
 
 /// A sorted mnemonic word list of 2048 characters for the Chinese Simplified language
 #[rustfmt::skip]
-pub const MNEMONIC_CHINESE_SIMPLIFIED_WORDS: [&'static str; 2048] = [
+pub const MNEMONIC_CHINESE_SIMPLIFIED_WORDS: [&str; 2048] = [
     "一", "丁", "七", "万", "丈", "三", "上", "下", "不", "与", "专", "且", "世", "丘", "丙", "业",
     "丛", "东", "丝", "丢", "两", "严", "丧", "个", "中", "丰", "串", "临", "丹", "为", "主", "丽",
     "举", "乃", "久", "么", "义", "之", "乌", "乎", "乏", "乐", "乔", "乘", "乙", "九", "也", "习",
@@ -138,7 +138,7 @@ pub const MNEMONIC_CHINESE_SIMPLIFIED_WORDS: [&'static str; 2048] = [
 
 /// A sorted mnemonic word list of 2048 words from the English language
 #[rustfmt::skip]
-pub const MNEMONIC_ENGLISH_WORDS: [&'static str; 2048] = [
+pub const MNEMONIC_ENGLISH_WORDS: [&str; 2048] = [
     "abandon", "ability", "able", "about", "above", "absent", "absorb", "abstract", "absurd", "abuse", "access", "accident", "account", "accuse", "achieve", "acid",
     "acoustic", "acquire", "across", "act", "action", "actor", "actress", "actual", "adapt", "add", "addict", "address", "adjust", "admit", "adult", "advance",
     "advice", "aerobic", "affair", "afford", "afraid", "again", "age", "agent", "agree", "ahead", "aim", "air", "airport", "aisle", "alarm", "album",
@@ -271,7 +271,7 @@ pub const MNEMONIC_ENGLISH_WORDS: [&'static str; 2048] = [
 
 /// A sorted mnemonic word list of 2048 words from the French language
 #[rustfmt::skip]
-pub const MNEMONIC_FRENCH_WORDS: [&'static str; 2048] = [
+pub const MNEMONIC_FRENCH_WORDS: [&str; 2048] = [
     "abaisser", "abandon", "abdiquer", "abeille", "abolir", "aborder", "aboutir", "aboyer", "abrasif", "abreuver", "abriter", "abroger", "abrupt", "absence", "absolu", "absurde",
     "abusif", "abyssal", "academie", "acajou", "acarien", "accabler", "accepter", "acclamer", "accolade", "accroche", "accuser", "acerbe", "achat", "acheter", "aciduler", "acier",
     "acompte", "acquerir", "acronyme", "acteur", "actif", "actuel", "adepte", "adequat", "adhesif", "adjectif", "adjuger", "admettre", "admirer", "adopter", "adorer", "adoucir",
@@ -404,7 +404,7 @@ pub const MNEMONIC_FRENCH_WORDS: [&'static str; 2048] = [
 
 /// A sorted mnemonic word list of 2048 words from the Italian language
 #[rustfmt::skip]
-pub const MNEMONIC_ITALIAN_WORDS: [&'static str; 2048] = [
+pub const MNEMONIC_ITALIAN_WORDS: [&str; 2048] = [
     "abaco", "abbaglio", "abbinato", "abete", "abisso", "abolire", "abrasivo", "abrogato", "accadere", "accenno", "accusato", "acetone", "achille", "acido", "acqua", "acre",
     "acrilico", "acrobata", "acuto", "adagio", "addebito", "addome", "adeguato", "aderire", "adipe", "adottare", "adulare", "affabile", "affetto", "affisso", "affranto", "aforisma",
     "afoso", "africano", "agave", "agente", "agevole", "aggancio", "agire", "agitare", "agonismo", "agricolo", "agrumeto", "aguzzo", "alabarda", "alato", "albatro", "alberato",
@@ -537,7 +537,7 @@ pub const MNEMONIC_ITALIAN_WORDS: [&'static str; 2048] = [
 
 /// A sorted mnemonic word list of 2048 words from the Japanese language
 #[rustfmt::skip]
-pub const MNEMONIC_JAPANESE_WORDS: [&'static str; 2048] = [
+pub const MNEMONIC_JAPANESE_WORDS: [&str; 2048] = [
     "あいこくしん", "あいさつ", "あいだ", "あおぞら", "あかちゃん", "あきる", "あけがた", "あける", "あこがれる", "あさい", "あさひ", "あしあと", "あじわう", "あずかる", "あずき", "あそぶ",
     "あたえる", "あたためる", "あたりまえ", "あたる", "あっしゅく", "あつい", "あつかう", "あつまり", "あつめる", "あてな", "あてはまる", "あひる", "あふれる", "あぶら", "あぶる", "あまい",
     "あまど", "あまやかす", "あまり", "あみもの", "あめりか", "あやまる", "あゆむ", "あらいぐま", "あらし", "あらすじ", "あらためる", "あらゆる", "あらわす", "ありがとう", "あわせる", "あわてる",
@@ -670,7 +670,7 @@ pub const MNEMONIC_JAPANESE_WORDS: [&'static str; 2048] = [
 
 /// A sorted mnemonic word list of 2048 words from the Korean language
 #[rustfmt::skip]
-pub const MNEMONIC_KOREAN_WORDS: [&'static str; 2048] = [
+pub const MNEMONIC_KOREAN_WORDS: [&str; 2048] = [
     "가격", "가끔", "가난", "가능", "가득", "가르침", "가뭄", "가방", "가상", "가슴", "가운데", "가을", "가이드", "가입", "가장", "가정",
     "가족", "가죽", "각오", "각자", "간격", "간부", "간섭", "간장", "간접", "간판", "갈등", "갈비", "갈색", "갈증", "감각", "감기",
     "감소", "감수성", "감자", "감정", "갑자기", "강남", "강당", "강도", "강력히", "강변", "강북", "강사", "강수량", "강아지", "강원도", "강의",
@@ -803,7 +803,7 @@ pub const MNEMONIC_KOREAN_WORDS: [&'static str; 2048] = [
 
 /// A sorted mnemonic word list of 2048 words from the Spanish language
 #[rustfmt::skip]
-pub const MNEMONIC_SPANISH_WORDS: [&'static str; 2048] = [
+pub const MNEMONIC_SPANISH_WORDS: [&str; 2048] = [
     "abaco", "abdomen", "abeja", "abierto", "abogado", "abono", "aborto", "abrazo", "abrir", "abuelo", "abuso", "acabar", "academia", "acceso", "accion", "aceite",
     "acelga", "acento", "aceptar", "acido", "aclarar", "acne", "acoger", "acoso", "activo", "acto", "actriz", "actuar", "acudir", "acuerdo", "acusar", "adicto",
     "admitir", "adoptar", "adorno", "aduana", "adulto", "aereo", "afectar", "aficion", "afinar", "afirmar", "agil", "agitar", "agonia", "agosto", "agotar", "agregar",

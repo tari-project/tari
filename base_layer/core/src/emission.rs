@@ -66,7 +66,7 @@ impl EmissionSchedule {
     /// example. For those cases, use the `iter` function instead.
     pub fn supply_at_block(&self, block: u64) -> MicroTari {
         let mut total = MicroTari::from(0u64);
-        for i in 0..block + 1 {
+        for i in 0..=block {
             total += self.block_reward(i);
         }
         total

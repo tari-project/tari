@@ -57,7 +57,7 @@ where T: DeserializeOwned + Serialize
     }
 
     fn to_json(&self) -> Result<String, MessageFormatError> {
-        serde_json::to_string(self).map_err(|e| MessageFormatError::JSONError(e))
+        serde_json::to_string(self).map_err(MessageFormatError::JSONError)
     }
 
     fn to_base64(&self) -> Result<String, MessageFormatError> {
@@ -71,7 +71,7 @@ where T: DeserializeOwned + Serialize
 
     fn from_json(msg: &str) -> Result<Self, MessageFormatError> {
         let mut de = serde_json::Deserializer::from_reader(msg.as_bytes());
-        Deserialize::deserialize(&mut de).map_err(|e| MessageFormatError::JSONError(e))
+        Deserialize::deserialize(&mut de).map_err(MessageFormatError::JSONError)
     }
 
     fn from_base64(msg: &str) -> Result<Self, MessageFormatError> {

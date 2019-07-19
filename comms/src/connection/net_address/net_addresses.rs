@@ -99,7 +99,7 @@ impl NetAddressesWithStats {
     /// using `mark_failed_connection_attempt`. If a maximum number of attempts is reached, for all addresses
     /// a `NetAddressError::ConnectionAttemptsExceeded` error is returned.
     pub fn get_best_net_address(&mut self) -> Result<NetAddress, NetAddressError> {
-        if self.addresses.len() >= 1 {
+        if !self.addresses.is_empty() {
             let any_reachable = self
                 .addresses
                 .iter()
@@ -169,6 +169,11 @@ impl NetAddressesWithStats {
     pub fn len(&self) -> usize {
         self.addresses.len()
     }
+
+    /// Returns if there are addresses or not
+    pub fn is_empty(&self) -> bool {
+        self.addresses.is_empty()
+    }
 }
 
 impl Index<usize> for NetAddressesWithStats {
@@ -196,7 +201,7 @@ impl From<Vec<NetAddress>> for NetAddressesWithStats {
         NetAddressesWithStats {
             addresses: net_addresses
                 .into_iter()
-                .map(|addr| NetAddressWithStats::from(addr))
+                .map(NetAddressWithStats::from)
                 .collect::<Vec<NetAddressWithStats>>(),
             last_attempted: None,
         }

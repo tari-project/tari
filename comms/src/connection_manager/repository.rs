@@ -45,7 +45,7 @@ pub(super) struct ConnectionRepository {
 
 impl Repository<NodeId, PeerConnection> for ConnectionRepository {
     fn get(&self, node_id: &NodeId) -> Option<Arc<PeerConnection>> {
-        self.entries.get(node_id).map(|entry| entry.clone())
+        self.entries.get(node_id).cloned()
     }
 
     fn has(&self, node_id: &NodeId) -> bool {

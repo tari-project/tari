@@ -120,14 +120,14 @@ impl OutboundMessageService {
                     message_envelope_body.clone(),
                     flags,
                 )
-                .map_err(|e| OutboundError::MessageSerializationError(e))?;
+                .map_err(OutboundError::MessageSerializationError)?;
 
                 let msg = OutboundMessage::new(dest_node_identity.node_id, message_envelope.into_frame_set());
                 let msg_buffer = msg.to_binary().map_err(OutboundError::MessageFormatError)?;
 
                 outbound_connection
                     .send(&[msg_buffer])
-                    .map_err(|e| OutboundError::ConnectionError(e))?;
+                    .map_err(OutboundError::ConnectionError)?;
             }
         }
         Ok(())

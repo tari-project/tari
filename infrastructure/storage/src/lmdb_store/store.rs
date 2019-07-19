@@ -46,6 +46,7 @@ type DatabaseRef = Arc<Database<'static>>;
 ///     .build()
 ///     .unwrap();
 /// ```
+#[derive(Default)]
 pub struct LMDBBuilder {
     path: String,
     db_size_mb: usize,
@@ -76,7 +77,7 @@ impl LMDBBuilder {
     /// return `LMDBError::InvalidPath`.
     pub fn set_path(mut self, path: &str) -> LMDBBuilder {
         self.path = path.into();
-        if !self.path.ends_with("/") {
+        if !self.path.ends_with('/') {
             self.path += "/";
         }
         self
@@ -128,7 +129,7 @@ impl LMDBBuilder {
             "({}) LMDB environment created with a capacity of {} MB.", path, self.db_size_mb
         );
         let mut databases: HashMap<String, LMDBDatabase> = HashMap::new();
-        if self.db_names.len() == 0 {
+        if self.db_names.is_empty() {
             self = self.add_database("default", db::CREATE);
         }
         for (name, flags) in self.db_names.iter() {
@@ -335,7 +336,7 @@ impl LMDBDatabase {
         K: AsLmdbBytes + ?Sized,
         V: serde::Serialize,
     {
-        let env = self.db.env().clone();
+        let env = &(*self.db.env());
         let tx = WriteTransaction::new(env)?;
         {
             let mut accessor = tx.access();
@@ -354,7 +355,7 @@ impl LMDBDatabase {
         K: AsLmdbBytes + ?Sized,
         for<'t> V: serde::de::DeserializeOwned, // read this as, for *any* lifetime, t, we can convert a [u8] to V
     {
-        let env = self.db.env().clone();
+        let env = &(*self.db.env());
         let txn = ReadTransaction::new(env)?;
         let accessor = txn.access();
         let val = accessor.get(&self.db, key).to_opt();
@@ -363,7 +364,7 @@ impl LMDBDatabase {
 
     /// Return statistics about the database, See [Stat](lmdb_zero/struct.Stat.html) for more details.
     pub fn get_stats(&self) -> Result<Stat, LMDBError> {
-        let env = self.db.env().clone();
+        let env = &(*self.db.env());
         ReadTransaction::new(env)
             .and_then(|txn| txn.db_stat(&self.db))
             .map_err(LMDBError::DatabaseError)
@@ -394,6 +395,11 @@ impl LMDBDatabase {
                 );
             },
         }
+    }
+
+    /// Returns if the database is empty.
+    pub fn is_empty(&self) -> Result<bool, LMDBError> {
+        self.get_stats().and_then(|s| Ok(s.entries > 0))
     }
 
     /// Returns the total number of entries in this database.
@@ -444,7 +450,7 @@ impl LMDBDatabase {
     /// Checks whether a key exists in this database
     pub fn contains_key<K>(&self, key: &K) -> Result<bool, LMDBError>
     where K: AsLmdbBytes + ?Sized {
-        let txn = ReadTransaction::new(self.db.env().clone())?;
+        let txn = ReadTransaction::new(&(*self.db.env()))?;
         let accessor = txn.access();
         let res: error::Result<&Ignore> = accessor.get(&self.db, key);
         let res = res.to_opt()?.is_some();
@@ -454,12 +460,12 @@ impl LMDBDatabase {
     /// Delete a record associated with `key` from the database. If the key is not found,
     pub fn remove<K>(&self, key: &K) -> Result<(), LMDBError>
     where K: AsLmdbBytes + ?Sized {
-        let tx = WriteTransaction::new(self.db.env().clone())?;
+        let tx = WriteTransaction::new(&(*self.db.env()))?;
         {
             let mut accessor = tx.access();
             accessor.del_key(&self.db, key)?;
         }
-        tx.commit().map_err(|e| e.into())
+        tx.commit().map_err(Into::into)
     }
 
     /// Create a read-only transaction on the current database and execute the instructions given in the closure. The

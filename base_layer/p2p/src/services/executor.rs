@@ -39,7 +39,7 @@ use threadpool::ThreadPool;
 use crossbeam_channel as channel;
 use crossbeam_channel::{Receiver, RecvTimeoutError, Sender};
 
-const LOG_TARGET: &'static str = "base_layer::p2p::services";
+const LOG_TARGET: &str = "base_layer::p2p::services";
 
 /// Control messages for services
 pub enum ServiceControlMessage {

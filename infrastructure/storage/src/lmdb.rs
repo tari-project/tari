@@ -20,6 +20,7 @@ use std::{collections::HashMap, sync::Arc};
 ///     .build()
 ///     .unwrap();
 /// ```
+#[derive(Default)]
 pub struct LMDBBuilder {
     path: String,
     db_size_mb: usize,
@@ -144,7 +145,7 @@ impl DataStore for LMDBStore {
             let mut accessor = tx.access();
             accessor.put(&self.curr_db, key, &value, lmdb::put::Flags::empty())?;
         }
-        tx.commit().map_err(|e| e.into())
+        tx.commit().map_err(Into::into)
     }
 
     fn delete_raw(&mut self, key: &[u8]) -> Result<(), DatastoreError> {
@@ -153,7 +154,7 @@ impl DataStore for LMDBStore {
             let mut accessor = tx.access();
             accessor.del_key(&self.curr_db, key)?;
         }
-        tx.commit().map_err(|e| e.into())
+        tx.commit().map_err(Into::into)
     }
 
     fn close(self) -> Result<(), DatastoreError> {
@@ -187,7 +188,7 @@ impl<'a> BatchWrite for LMDBBatch<'a> {
     }
 
     fn commit(self) -> Result<(), DatastoreError> {
-        self.tx.commit().map_err(|e| e.into())
+        self.tx.commit().map_err(Into::into)
     }
 
     fn abort(self) -> Result<(), DatastoreError> {

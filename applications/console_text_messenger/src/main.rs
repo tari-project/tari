@@ -22,8 +22,6 @@
 #[macro_use]
 extern crate clap;
 
-extern crate pnet;
-
 use pnet::datalink::{self, NetworkInterface};
 
 use clap::{App, Arg};
@@ -57,7 +55,7 @@ use tari_wallet::{
     Wallet,
 };
 
-const LOG_TARGET: &'static str = "applications::cli_text_messenger";
+const LOG_TARGET: &str = "applications::cli_text_messenger";
 
 #[derive(Debug, Default, Deserialize)]
 struct Settings {
@@ -245,7 +243,6 @@ pub fn main() {
         .ip()
         .to_string();
 
-    println!("{}", local_ip);
     let local_net_address = match format!("{}:{}", local_ip, settings.control_port.unwrap()).parse() {
         Ok(na) => na,
         Err(_) => {
@@ -278,7 +275,7 @@ pub fn main() {
     let wallet = Wallet::new(config).unwrap();
 
     // Add any provided peers to Peer Manager and Text Message Service Contacts
-    if contacts.peers.len() > 0 {
+    if !contacts.peers.is_empty() {
         for p in contacts.peers.iter() {
             let pk = CommsPublicKey::from_hex(p.pub_key.as_str()).expect("Error parsing pub key from Hex");
             if let Ok(na) = p.address.clone().parse::<NetAddress>() {
@@ -385,12 +382,12 @@ pub fn main() {
 
             wallet
                 .text_message_service
-                .send_text_message(contacts[active_contact.clone() % contacts.len()].pub_key.clone(), input)
+                .send_text_message(contacts[active_contact % contacts.len()].pub_key.clone(), input)
                 .unwrap()
         }
 
         // check sigint to trigger shutdown
-        if let Ok(_) = rx_sigint.recv_timeout(Duration::from_millis(10)) {
+        if rx_sigint.recv_timeout(Duration::from_millis(10)).is_ok() {
             wallet.service_executor.shutdown().unwrap();
             wallet
                 .service_executor

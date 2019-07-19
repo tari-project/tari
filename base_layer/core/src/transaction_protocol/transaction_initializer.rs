@@ -295,7 +295,7 @@ impl SenderTransactionInitializer {
             recipient_info,
             signatures: Vec::new(),
         };
-        let state = SenderState::Initializing(sender_info);
+        let state = SenderState::Initializing(Box::new(sender_info));
         let state = state
             .initialize()
             .expect("It should be possible to call initialize from Initializing state");

@@ -95,7 +95,7 @@ where MType: DispatchableKey
                 Connection::new(&self.context, Direction::Outbound)
                     .set_socket_establishment(SocketEstablishment::Connect)
                     .establish(inproc_address)
-                    .map_err(|e| BrokerError::ConnectionError(e))?,
+                    .map_err(BrokerError::ConnectionError)?,
             ));
         }
         Ok(self)
@@ -103,7 +103,7 @@ where MType: DispatchableKey
 
     /// Dispatch the provided message to the handler service registered with the specified message_type
     pub fn dispatch(&self, message_type: MType, msg: &FrameSet) -> Result<(), BrokerError> {
-        if self.connections.len() == 0 {
+        if self.connections.is_empty() {
             return Err(BrokerError::BrokerNotStarted);
         }
         let index = *self
@@ -115,7 +115,7 @@ where MType: DispatchableKey
             .lock()
             .map_err(|_| BrokerError::PoisonedAccess)?
             .send(msg)
-            .map_err(|e| BrokerError::ConnectionError(e))
+            .map_err(BrokerError::ConnectionError)
     }
 }
 

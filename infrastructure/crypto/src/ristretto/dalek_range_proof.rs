@@ -51,8 +51,8 @@ impl DalekRangeProofService {
             return Err(RangeProofError::InitializationError);
         }
         let pc_gens = PedersenGens {
-            B_blinding: base.G.clone(),
-            B: base.H.clone(),
+            B_blinding: base.G,
+            B: base.H,
         };
         let bp_gens = BulletproofGens::new(64, 1);
         Ok(DalekRangeProofService {

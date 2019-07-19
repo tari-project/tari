@@ -39,7 +39,7 @@ use crate::{
 bitflags! {
     #[derive(Default, Deserialize, Serialize)]
     pub struct PeerFlags: u8 {
-        const BANNED = 0b00000001;
+        const BANNED = 0b0000_0001;
     }
 }
 

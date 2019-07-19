@@ -48,7 +48,7 @@ use log::*;
 use serde::{de::DeserializeOwned, export::fmt::Debug, Serialize};
 use std::sync::Arc;
 
-const LOG_TARGET: &'static str = "comms::builder";
+const LOG_TARGET: &str = "comms::builder";
 
 #[derive(Debug, Error)]
 pub enum CommsBuilderError {
@@ -72,6 +72,7 @@ pub enum CommsBuilderError {
 ///
 /// The [build] method will return an error if any required builder methods are not called. These
 /// are detailed further down on the method docs.
+#[derive(Default)]
 pub struct CommsBuilder<MType>
 where MType: Clone
 {
@@ -403,7 +404,7 @@ where
 
         self.inbound_message_service
             .start()
-            .map_err(|err| CommsServicesError::InboundMessageServiceError(err))?;
+            .map_err(CommsServicesError::InboundMessageServiceError)?;
         self.outbound_message_pool
             .start()
             .map_err(CommsServicesError::OutboundMessagePoolError)?;

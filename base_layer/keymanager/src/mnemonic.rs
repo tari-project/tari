@@ -58,13 +58,13 @@ pub enum MnemonicLanguage {
 
 impl MnemonicLanguage {
     /// Detects the mnemonic language of a specific word by searching all defined mnemonic word lists
-    pub fn from(mnemonic_word: &String) -> Result<MnemonicLanguage, MnemonicError> {
+    pub fn from(mnemonic_word: &str) -> Result<MnemonicLanguage, MnemonicError> {
         for language in MnemonicLanguage::iterator() {
             if find_mnemonic_index_from_word(mnemonic_word, &language).is_ok() {
                 return Ok((*language).clone());
             }
         }
-        return Err(MnemonicError::UnknownLanguage);
+        Err(MnemonicError::UnknownLanguage)
     }
 
     /// Returns an iterator for the MnemonicLanguage enum group to allow iteration over all defined languages
@@ -78,12 +78,12 @@ impl MnemonicLanguage {
             MnemonicLanguage::Korean,
             MnemonicLanguage::Spanish,
         ];
-        (MNEMONIC_LANGUAGES.into_iter())
+        (MNEMONIC_LANGUAGES.iter())
     }
 }
 
 /// Finds and returns the index of a specific word in a mnemonic word list defined by the specified language
-fn find_mnemonic_index_from_word(word: &String, language: &MnemonicLanguage) -> Result<usize, MnemonicError> {
+fn find_mnemonic_index_from_word(word: &str, language: &MnemonicLanguage) -> Result<usize, MnemonicError> {
     let search_result: Result<usize, usize>;
     let lowercase_word = word.to_lowercase();
     match language {
@@ -180,7 +180,7 @@ pub fn to_bytes_with_language(
         match find_mnemonic_index_from_word(curr_word, &language) {
             Ok(index) => {
                 let curr_bits = uint_to_bits(index, 11);
-                bits.extend(curr_bits.iter().map(|&i| i));
+                bits.extend(curr_bits.iter().cloned());
             },
             Err(err) => return Err(err),
         }

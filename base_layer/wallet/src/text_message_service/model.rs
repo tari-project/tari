@@ -50,7 +50,7 @@ use tari_utilities::{byte_array::ByteArray, hex::Hex};
 pub fn generate_id<D: Digest>(
     source_pub_key: &CommsPublicKey,
     dest_pub_key: &CommsPublicKey,
-    message: &String,
+    message: &str,
     timestamp: &NaiveDateTime,
     index: usize,
 ) -> Vec<u8>
@@ -129,27 +129,27 @@ impl SentTextMessage {
             .order_by(sent_messages::timestamp)
             .load::<SentTextMessageSql>(conn)?;
         let mut deserialized: Vec<Result<SentTextMessage, TextMessageError>> =
-            result.drain(..).map(|m| SentTextMessage::try_from(m)).collect();
+            result.drain(..).map(SentTextMessage::try_from).collect();
         // Check if there are any elements that failed to deserialize, if there are fail the whole
         // find_by_dest_pub_key() process
-        if deserialized.iter().any(|i| i.is_err()) {
+        if deserialized.iter().any(Result::is_err) {
             return Err(TextMessageError::DatabaseDeserializationError);
         }
 
-        Ok(deserialized.drain(..).filter_map(|i| i.ok()).collect())
+        Ok(deserialized.drain(..).filter_map(Result::ok).collect())
     }
 
     pub fn index(conn: &SqliteConnection) -> Result<Vec<SentTextMessage>, TextMessageError> {
         let mut result = sent_messages::table.load::<SentTextMessageSql>(conn)?;
 
         let mut deserialized: Vec<Result<SentTextMessage, TextMessageError>> =
-            result.drain(..).map(|m| SentTextMessage::try_from(m)).collect();
+            result.drain(..).map(SentTextMessage::try_from).collect();
         // Check if there are any elements that failed to deserialize, if there are fail the whole index() process
-        if deserialized.iter().any(|i| i.is_err()) {
+        if deserialized.iter().any(Result::is_err) {
             return Err(TextMessageError::DatabaseDeserializationError);
         }
 
-        Ok(deserialized.drain(..).filter_map(|i| i.ok()).collect())
+        Ok(deserialized.drain(..).filter_map(Result::ok).collect())
     }
 }
 
@@ -214,12 +214,12 @@ impl TextMessage {
     pub fn index(conn: &SqliteConnection) -> Result<Vec<TextMessage>, TextMessageError> {
         let mut result = received_messages::table.load::<TextMessageSql>(conn)?;
         let mut deserialized: Vec<Result<TextMessage, TextMessageError>> =
-            result.drain(..).map(|m| TextMessage::try_from(m)).collect();
+            result.drain(..).map(TextMessage::try_from).collect();
         // Check if there are any elements that failed to deserialize, if there are fail the whole index() process
-        if deserialized.iter().any(|i| i.is_err()) {
+        if deserialized.iter().any(Result::is_err) {
             return Err(TextMessageError::DatabaseDeserializationError);
         }
-        Ok(deserialized.drain(..).filter_map(|i| i.ok()).collect())
+        Ok(deserialized.drain(..).filter_map(Result::ok).collect())
     }
 
     pub fn find(id: &Vec<u8>, conn: &SqliteConnection) -> Result<TextMessage, TextMessageError> {
@@ -240,14 +240,14 @@ impl TextMessage {
             .order_by(received_messages::timestamp)
             .load::<TextMessageSql>(conn)?;
         let mut deserialized: Vec<Result<TextMessage, TextMessageError>> =
-            result.drain(..).map(|m| TextMessage::try_from(m)).collect();
+            result.drain(..).map(TextMessage::try_from).collect();
         // Check if there are any elements that failed to deserialize, if there are fail the whole
         // find_by_source_pub_key() process
-        if deserialized.iter().any(|i| i.is_err()) {
+        if deserialized.iter().any(Result::is_err) {
             return Err(TextMessageError::DatabaseDeserializationError);
         }
 
-        Ok(deserialized.drain(..).filter_map(|i| i.ok()).collect())
+        Ok(deserialized.drain(..).filter_map(Result::ok).collect())
     }
 }
 
@@ -361,14 +361,14 @@ impl Contact {
         let mut result = contacts::table.load::<ContactSql>(conn)?;
 
         let mut deserialized: Vec<Result<Contact, TextMessageError>> =
-            result.drain(..).map(|m| Contact::try_from(m)).collect();
+            result.drain(..).map(Contact::try_from).collect();
 
         // Check if there are any elements that failed to deserialize, if there are fail the whole index() process
-        if deserialized.iter().any(|i| i.is_err()) {
+        if deserialized.iter().any(Result::is_err) {
             return Err(TextMessageError::DatabaseDeserializationError);
         }
 
-        Ok(deserialized.drain(..).filter_map(|i| i.ok()).collect())
+        Ok(deserialized.drain(..).filter_map(Result::ok).collect())
     }
 
     pub fn find(pub_key: &CommsPublicKey, conn: &SqliteConnection) -> Result<Contact, TextMessageError> {
@@ -476,10 +476,10 @@ impl TextMessageSettings {
         let mut result = settings::table.load::<TextMessageSettingsSql>(conn)?;
 
         let mut deserialized: Vec<Result<TextMessageSettings, TextMessageError>> =
-            result.drain(..).map(|s| TextMessageSettings::try_from(s)).collect();
+            result.drain(..).map(TextMessageSettings::try_from).collect();
 
         // Check if there are any elements that failed to deserialize, if there are fail the whole index() process
-        if deserialized.iter().any(|i| i.is_err()) {
+        if deserialized.iter().any(Result::is_err) {
             return Err(TextMessageError::DatabaseDeserializationError);
         }
 

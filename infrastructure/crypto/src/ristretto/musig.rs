@@ -239,7 +239,7 @@ impl<D: Digest> RistrettoMuSig<D> {
     /// but you will also know exactly _which_ signature failed.
     /// Otherwise pass `false` to `should_validate` and verify the aggregate signature.
     pub fn add_signature(self, s: &RistrettoSchnorr, should_validate: bool) -> Self {
-        self.handle_event(MuSigEvent::AddPartialSig(s.clone(), should_validate))
+        self.handle_event(MuSigEvent::AddPartialSig(Box::new(s.clone()), should_validate))
     }
 
     /// Return a reference to the standard challenge $$ H(R_{agg} || P_{agg} || m) $$, or `None` if the requisite data
@@ -346,7 +346,7 @@ impl<D: Digest> RistrettoMuSig<D> {
             },
             // Signature collection
             MuSigState::SignatureCollection(s) => match event {
-                MuSigEvent::AddPartialSig(sig, validate) => s.add_partial_signature::<D>(sig, validate),
+                MuSigEvent::AddPartialSig(sig, validate) => s.add_partial_signature::<D>(*sig, validate),
                 _ => RistrettoMuSig::<D>::invalid_transition(),
             },
             // There's no way back from a Failed State.
@@ -375,7 +375,7 @@ pub enum MuSigEvent<'a> {
     AddNonce(&'a RistrettoPublicKey, RistrettoPublicKey),
     /// In the 3rd round of MuSig, participants provide their partial signatures, after which any party can
     /// calculate the aggregated signature.
-    AddPartialSig(RistrettoSchnorr, bool),
+    AddPartialSig(Box<RistrettoSchnorr>, bool),
 }
 
 //-------------------------------------  RistrettoMuSig State Definitions   ------------------------------------------//
@@ -387,10 +387,10 @@ pub enum MuSigEvent<'a> {
 /// transition attempt leads to the `Failed` state.
 enum MuSigState {
     Initialization(Initialization),
-    NonceHashCollection(NonceHashCollection),
-    NonceCollection(NonceCollection),
-    SignatureCollection(SignatureCollection),
-    Finalized(FinalizedMuSig),
+    NonceHashCollection(Box<NonceHashCollection>),
+    NonceCollection(Box<NonceCollection>),
+    SignatureCollection(Box<SignatureCollection>),
+    Finalized(Box<FinalizedMuSig>),
     Failed(MuSigError),
 }
 
@@ -417,7 +417,7 @@ impl Initialization {
             Ok(_) => {
                 if self.joint_key_builder.is_full() {
                     match self.joint_key_builder.build::<D>() {
-                        Ok(jk) => MuSigState::NonceHashCollection(NonceHashCollection::new(jk, self.message)),
+                        Ok(jk) => MuSigState::NonceHashCollection(Box::new(NonceHashCollection::new(jk, self.message))),
                         Err(e) => MuSigState::Failed(e),
                     }
                 } else {
@@ -458,9 +458,9 @@ impl NonceHashCollection {
             Ok(i) => {
                 self.nonce_hashes.set_item(i, hash);
                 if self.nonce_hashes.is_full() {
-                    MuSigState::NonceCollection(NonceCollection::new(self))
+                    MuSigState::NonceCollection(Box::new(NonceCollection::new(self)))
                 } else {
-                    MuSigState::NonceHashCollection(self)
+                    MuSigState::NonceHashCollection(Box::new(self))
                 }
             },
             Err(_) => MuSigState::Failed(MuSigError::ParticipantNotFound),
@@ -472,7 +472,7 @@ impl NonceHashCollection {
             return MuSigState::Failed(MuSigError::MessageAlreadySet);
         }
         self.message = Some(msg);
-        MuSigState::NonceHashCollection(self)
+        MuSigState::NonceHashCollection(Box::new(self))
     }
 }
 
@@ -514,9 +514,9 @@ impl NonceCollection {
                 self.public_nonces.set_item(i, nonce);
                 // Transition to round three iff we have all the nonces and the message has been set
                 if self.public_nonces.is_full() && self.message.is_some() {
-                    MuSigState::SignatureCollection(SignatureCollection::new::<D>(self))
+                    MuSigState::SignatureCollection(Box::new(SignatureCollection::new::<D>(self)))
                 } else {
-                    MuSigState::NonceCollection(self)
+                    MuSigState::NonceCollection(Box::new(self))
                 }
             },
             Err(_) => MuSigState::Failed(MuSigError::ParticipantNotFound),
@@ -529,9 +529,9 @@ impl NonceCollection {
         }
         self.message = Some(msg);
         if self.public_nonces.is_full() {
-            MuSigState::SignatureCollection(SignatureCollection::new::<D>(self))
+            MuSigState::SignatureCollection(Box::new(SignatureCollection::new::<D>(self)))
         } else {
-            MuSigState::NonceCollection(self)
+            MuSigState::NonceCollection(Box::new(self))
         }
     }
 }
@@ -591,9 +591,9 @@ impl SignatureCollection {
             return MuSigState::Failed(MuSigError::MismatchedSignatures);
         }
         if self.partial_signatures.is_full() {
-            MuSigState::Finalized(FinalizedMuSig::new(self))
+            MuSigState::Finalized(Box::new(FinalizedMuSig::new(self)))
         } else {
-            MuSigState::SignatureCollection(self)
+            MuSigState::SignatureCollection(Box::new(self))
         }
     }
 

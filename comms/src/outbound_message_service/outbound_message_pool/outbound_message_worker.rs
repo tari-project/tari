@@ -39,7 +39,7 @@ use std::{
 };
 use tari_utilities::{byte_array::ByteArray, message_format::MessageFormat};
 
-const LOG_TARGET: &'static str = "comms::outbound_message_service::pool::worker";
+const LOG_TARGET: &str = "comms::outbound_message_service::pool::worker";
 /// Set the allocated stack size for each MessagePoolWorker thread
 const THREAD_STACK_SIZE: usize = 256 * 1024; // 256kb
 
@@ -218,9 +218,9 @@ impl MessagePoolWorker {
         // Discard the first two identity frames from the dealer proxy
         match frames.drain(2..).next() {
             Some(frame) => OutboundMessage::from_binary(&frame).map_err(OutboundMessagePoolError::MessageFormatError),
-            None => Err(OutboundMessagePoolError::InvalidFrameFormat(format!(
-                "Outbound message pool worker received a frame set with invalid length"
-            ))),
+            None => Err(OutboundMessagePoolError::InvalidFrameFormat(
+                "Outbound message pool worker received a frame set with invalid length".to_string(),
+            )),
         }
     }
 }

@@ -30,7 +30,7 @@ use serde::{de::DeserializeOwned, Serialize};
 use std::fmt::Debug;
 use tari_utilities::message_format::MessageFormat;
 
-const LOG_TARGET: &'static str = "comms::inbound_message_service::handlers";
+const LOG_TARGET: &str = "comms::inbound_message_service::handlers";
 
 /// The comms_msg_dispatcher will determine the type of message and forward it to the the correct handler
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]

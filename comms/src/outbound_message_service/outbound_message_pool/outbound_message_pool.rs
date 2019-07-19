@@ -43,7 +43,7 @@ use tari_utilities::thread_join::ThreadJoinWithTimeout;
 /// The default number of processing worker threads that will be created by the OutboundMessageService
 pub const DEFAULT_OUTBOUND_MSG_PROCESSING_WORKERS: usize = 4;
 
-const LOG_TARGET: &'static str = "comms::outbound_message_service::pool";
+const LOG_TARGET: &str = "comms::outbound_message_service::pool";
 
 /// Set the maximum waiting time for Retry Service Threads and MessagePoolWorker threads to join
 const MSG_POOL_WORKER_THREAD_JOIN_TIMEOUT_IN_MS: Duration = Duration::from_millis(100);
@@ -147,7 +147,7 @@ impl OutboundMessagePool {
 
     fn start_message_worker(&mut self) -> Result<(), OutboundMessagePoolError> {
         let (worker_thread_handle, worker_shutdown_signal) = MessagePoolWorker::start(
-            self.config.clone(),
+            self.config,
             self.context.clone(),
             self.worker_dealer_address.clone(),
             self.failed_message_address.clone(),
@@ -165,7 +165,7 @@ impl OutboundMessagePool {
         let (mrq_sender, mrq_receiver) = sync_channel(1);
         let handle = MessageRetryService::start(
             self.context.clone(),
-            self.config.clone(),
+            self.config,
             self.failed_message_address.clone(),
             self.message_source_address.clone(),
             mrq_receiver,
@@ -195,7 +195,7 @@ impl OutboundMessagePool {
             if let Some(handle) = self.retry_service_thread_handle {
                 handle
                     .timeout_join(MSG_RETRY_QUEUE_THREAD_JOIN_TIMEOUT_IN_MS)
-                    .map_err(|e| OutboundError::ThreadJoinError(e))?;
+                    .map_err(OutboundError::ThreadJoinError)?;
             }
         }
 
@@ -203,7 +203,7 @@ impl OutboundMessagePool {
         for worker_thread_handle in self.worker_thread_handles {
             worker_thread_handle
                 .timeout_join(MSG_POOL_WORKER_THREAD_JOIN_TIMEOUT_IN_MS)
-                .map_err(|e| OutboundError::ThreadJoinError(e))?;
+                .map_err(OutboundError::ThreadJoinError)?;
         }
 
         self.dealer_proxy.shutdown().map_err(OutboundError::DealerProxyError)

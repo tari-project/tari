@@ -39,7 +39,7 @@ use std::{
 };
 use tari_utilities::thread_join::ThreadJoinWithTimeout;
 
-const LOG_TARGET: &'static str = "comms::connection_manager::connections";
+const LOG_TARGET: &str = "comms::connection_manager::connections";
 
 /// Set the maximum waiting time for LivePeerConnections threads to join
 const THREAD_JOIN_TIMEOUT_IN_MS: Duration = Duration::from_millis(100);
@@ -61,7 +61,7 @@ impl LivePeerConnections {
 
     /// Get a connection byy node id
     pub fn get_connection(&self, node_id: &NodeId) -> Option<Arc<PeerConnection>> {
-        self.atomic_read(|lock| lock.get(node_id).map(|conn| conn.clone()))
+        self.atomic_read(|lock| lock.get(node_id))
     }
 
     /// Get number of active connections
@@ -119,7 +119,7 @@ impl LivePeerConnections {
             results.push(
                 handle
                     .timeout_join(THREAD_JOIN_TIMEOUT_IN_MS)
-                    .map_err(|err| ConnectionError::ThreadJoinError(err))
+                    .map_err(ConnectionError::ThreadJoinError)
                     .or_else(|err| {
                         error!(target: LOG_TARGET, "Failed to join: {:?}", err);
                         Err(err)

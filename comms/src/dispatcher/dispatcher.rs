@@ -129,7 +129,7 @@ where
         let route_type = self.resolver.resolve(&msg)?;
         self.handlers
             .get(&route_type)
-            .or(self.catch_all.as_ref())
+            .or_else(|| self.catch_all.as_ref())
             .ok_or(DispatchError::MessageHandlerNotDefined)
             .and_then(|handler| {
                 handler(msg).map_err(|err| DispatchError::HandlerError(format!("Handler error: {:?}", err)))

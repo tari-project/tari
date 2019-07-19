@@ -24,7 +24,7 @@ use crate::connection::zmq::{ZmqEndpoint, ZmqError};
 use rand::{distributions::Alphanumeric, EntropyRng, Rng};
 use std::{fmt, iter, str::FromStr};
 
-const DEFAULT_INPROC: &'static str = "inproc://default";
+const DEFAULT_INPROC: &str = "inproc://default";
 
 /// Represents a zMQ inproc address. More information [here](http://api.zeromq.org/2-1:zmq-inproc).
 #[derive(Eq, PartialEq, Debug, Clone)]

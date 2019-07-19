@@ -40,7 +40,7 @@ use std::{
     time::Duration,
 };
 
-const LOG_TARGET: &'static str = "comms::control_service::service";
+const LOG_TARGET: &str = "comms::control_service::service";
 
 /// Configuration for [ControlService]
 #[derive(Clone)]
