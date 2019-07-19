@@ -238,7 +238,7 @@ impl BlockBuilder {
     /// This functions add the provided transactions to the block
     pub fn with_transactions(mut self, txs: Vec<Transaction>) -> Self {
         let mut iter = txs.into_iter();
-        while let Some(tx) = iter.next() {
+        for tx in iter {
             self = self.add_inputs(tx.body.inputs);
             self = self.add_outputs(tx.body.outputs);
             self = self.add_kernels(tx.body.kernels);
