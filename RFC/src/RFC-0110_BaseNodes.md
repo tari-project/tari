@@ -54,7 +54,7 @@ their general approach for doing so.
 ## Related Requests for Comment
 
 * [RFC-0100: Base Layer](RFC-0100_BaseLayer.md)
-* [RFC-0140: SyncAndSeeding](RFC-0140_Syncing_and_seeding.md)`
+* [RFC-0140: SyncAndSeeding](RFC-0140_Syncing_and_seeding.md)
 
 ## Description
 
