@@ -38,7 +38,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-const LOG_TARGET: &'static str = "comms::connection_manager::manager";
+const LOG_TARGET: &str = "comms::connection_manager::manager";
 
 pub struct ConnectionManager {
     node_identity: Arc<NodeIdentity>,
@@ -214,7 +214,7 @@ impl ConnectionManager {
     }
 
     pub(crate) fn get_connection(&self, peer: &Peer) -> Option<Arc<PeerConnection>> {
-        self.connections.get_connection(&peer.node_id).map(|c| c.clone())
+        self.connections.get_connection(&peer.node_id)
     }
 
     /// Return the number of _active_ peer connections currently managed by this instance

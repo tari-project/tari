@@ -54,7 +54,7 @@ use tari_p2p::{
     tari_message::{ExtendedMessage, TariMessageType},
 };
 
-const LOG_TARGET: &'static str = "base_layer::wallet::text_messsage_service";
+const LOG_TARGET: &str = "base_layer::wallet::text_messsage_service";
 
 /// Represents an Acknowledgement of receiving a Text Message
 #[derive(Debug, Serialize, Deserialize)]
@@ -327,26 +327,26 @@ impl TextMessageService {
         trace!(target: LOG_TARGET, "[{}] Received API message", self.get_name(),);
         let resp = match msg {
             TextMessageApiRequest::SendTextMessage((destination, message)) => self
-                .send_text_message(destination, message)
+                .send_text_message(*destination, message)
                 .map(|_| TextMessageApiResponse::MessageSent),
             TextMessageApiRequest::GetTextMessages => {
                 Ok(TextMessageApiResponse::TextMessages(self.get_current_messages()))
             },
             TextMessageApiRequest::GetTextMessagesByPubKey(pk) => Ok(TextMessageApiResponse::TextMessages(
-                self.get_current_messages_by_pub_key(pk),
+                self.get_current_messages_by_pub_key(*pk),
             )),
             TextMessageApiRequest::GetScreenName => Ok(TextMessageApiResponse::ScreenName(self.get_screen_name())),
             TextMessageApiRequest::SetScreenName(s) => {
                 self.set_screen_name(s);
                 Ok(TextMessageApiResponse::ScreenNameSet)
             },
-            TextMessageApiRequest::AddContact(c) => self.add_contact(c).map(|_| TextMessageApiResponse::ContactAdded),
+            TextMessageApiRequest::AddContact(c) => self.add_contact(*c).map(|_| TextMessageApiResponse::ContactAdded),
             TextMessageApiRequest::RemoveContact(c) => {
-                self.remove_contact(c).map(|_| TextMessageApiResponse::ContactRemoved)
+                self.remove_contact(*c).map(|_| TextMessageApiResponse::ContactRemoved)
             },
             TextMessageApiRequest::GetContacts => Ok(TextMessageApiResponse::Contacts(self.get_contacts())),
             TextMessageApiRequest::UpdateContact((pk, c)) => self
-                .update_contact(pk, c)
+                .update_contact(*pk, *c)
                 .map(|_| TextMessageApiResponse::ContactUpdated),
         };
 
@@ -432,15 +432,15 @@ impl Service for TextMessageService {
 /// API Request enum
 #[derive(Debug)]
 pub enum TextMessageApiRequest {
-    SendTextMessage((CommsPublicKey, String)),
+    SendTextMessage((Box<CommsPublicKey>, String)),
     GetTextMessages,
-    GetTextMessagesByPubKey(CommsPublicKey),
+    GetTextMessagesByPubKey(Box<CommsPublicKey>),
     SetScreenName(String),
     GetScreenName,
-    AddContact(Contact),
-    RemoveContact(Contact),
+    AddContact(Box<Contact>),
+    RemoveContact(Box<Contact>),
     GetContacts,
-    UpdateContact((CommsPublicKey, UpdateContact)),
+    UpdateContact((Box<CommsPublicKey>, Box<UpdateContact>)),
 }
 
 /// API Response enum
@@ -480,7 +480,7 @@ impl TextMessageServiceApi {
     }
 
     pub fn send_text_message(&self, destination: CommsPublicKey, message: String) -> Result<(), TextMessageError> {
-        self.send_recv(TextMessageApiRequest::SendTextMessage((destination, message)))
+        self.send_recv(TextMessageApiRequest::SendTextMessage((Box::new(destination), message)))
             .and_then(|resp| match resp {
                 TextMessageApiResponse::MessageSent => Ok(()),
                 _ => Err(TextMessageError::UnexpectedApiResponse),
@@ -496,7 +496,7 @@ impl TextMessageServiceApi {
     }
 
     pub fn get_text_messages_by_pub_key(&self, pub_key: CommsPublicKey) -> Result<TextMessages, TextMessageError> {
-        self.send_recv(TextMessageApiRequest::GetTextMessagesByPubKey(pub_key))
+        self.send_recv(TextMessageApiRequest::GetTextMessagesByPubKey(Box::new(pub_key)))
             .and_then(|resp| match resp {
                 TextMessageApiResponse::TextMessages(msgs) => Ok(msgs),
                 _ => Err(TextMessageError::UnexpectedApiResponse),
@@ -520,7 +520,7 @@ impl TextMessageServiceApi {
     }
 
     pub fn add_contact(&self, contact: Contact) -> Result<(), TextMessageError> {
-        self.send_recv(TextMessageApiRequest::AddContact(contact))
+        self.send_recv(TextMessageApiRequest::AddContact(Box::new(contact)))
             .and_then(|resp| match resp {
                 TextMessageApiResponse::ContactAdded => Ok(()),
                 _ => Err(TextMessageError::UnexpectedApiResponse),
@@ -528,7 +528,7 @@ impl TextMessageServiceApi {
     }
 
     pub fn remove_contact(&self, contact: Contact) -> Result<(), TextMessageError> {
-        self.send_recv(TextMessageApiRequest::RemoveContact(contact))
+        self.send_recv(TextMessageApiRequest::RemoveContact(Box::new(contact)))
             .and_then(|resp| match resp {
                 TextMessageApiResponse::ContactRemoved => Ok(()),
                 _ => Err(TextMessageError::UnexpectedApiResponse),
@@ -544,18 +544,21 @@ impl TextMessageServiceApi {
     }
 
     pub fn update_contact(&self, pub_key: CommsPublicKey, contact: UpdateContact) -> Result<(), TextMessageError> {
-        self.send_recv(TextMessageApiRequest::UpdateContact((pub_key, contact)))
-            .and_then(|resp| match resp {
-                TextMessageApiResponse::ContactUpdated => Ok(()),
-                _ => Err(TextMessageError::UnexpectedApiResponse),
-            })
+        self.send_recv(TextMessageApiRequest::UpdateContact((
+            Box::new(pub_key),
+            Box::new(contact),
+        )))
+        .and_then(|resp| match resp {
+            TextMessageApiResponse::ContactUpdated => Ok(()),
+            _ => Err(TextMessageError::UnexpectedApiResponse),
+        })
     }
 
     fn send_recv(&self, msg: TextMessageApiRequest) -> TextMessageApiResult {
         self.lock(|| -> TextMessageApiResult {
             self.sender.send(msg).map_err(|_| TextMessageError::ApiSendFailed)?;
             self.receiver
-                .recv_timeout(self.timeout.clone())
+                .recv_timeout(self.timeout)
                 .map_err(|_| TextMessageError::ApiReceiveFailed)?
         })
     }

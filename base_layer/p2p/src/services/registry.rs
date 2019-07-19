@@ -27,6 +27,7 @@ use tari_comms::builder::CommsRoutes;
 /// This is a container for services. Services can be registered here
 /// and given to the [ServiceExecutor] for execution. This also
 /// builds [CommsRoutes] for the given services.
+#[derive(Default)]
 pub struct ServiceRegistry {
     pub(super) services: Vec<Box<dyn Service>>,
 }

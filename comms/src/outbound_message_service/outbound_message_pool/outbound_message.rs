@@ -88,7 +88,7 @@ impl OutboundMessage {
 
     pub fn scheduled_duration(&self) -> TimeDuration {
         let now = Utc::now();
-        self.scheduled_timestamp.signed_duration_since(now).into()
+        self.scheduled_timestamp.signed_duration_since(now)
     }
 }
 

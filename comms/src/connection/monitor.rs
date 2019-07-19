@@ -37,7 +37,7 @@ use std::{
     fmt,
 };
 
-const LOG_TARGET: &'static str = "comms::connection::monitor";
+const LOG_TARGET: &str = "comms::connection::monitor";
 
 #[derive(Debug, Error, PartialEq)]
 pub enum ConnectionMonitorError {
@@ -145,7 +145,7 @@ impl ConnectionMonitor {
     }
 
     fn read_frames(&self, timeout_ms: u32) -> Result<FrameSet> {
-        match self.socket.poll(zmq::POLLIN, timeout_ms as i64) {
+        match self.socket.poll(zmq::POLLIN, i64::from(timeout_ms)) {
             Ok(rc) => {
                 match rc {
                     // Internal error when polling connection

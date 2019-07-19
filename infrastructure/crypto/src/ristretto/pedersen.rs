@@ -56,7 +56,7 @@ impl PedersenCommitmentFactory {
 /// The default Ristretto Commitment factory uses the Base point for x25519 and its first Blake256 hash.
 impl Default for PedersenCommitmentFactory {
     fn default() -> Self {
-        PedersenCommitmentFactory::new(RISTRETTO_PEDERSEN_G.clone(), RISTRETTO_PEDERSEN_H.clone())
+        PedersenCommitmentFactory::new(RISTRETTO_PEDERSEN_G, *RISTRETTO_PEDERSEN_H)
     }
 }
 
@@ -98,7 +98,7 @@ where T: Borrow<PedersenCommitment>
         let mut total = RistrettoPoint::default();
         for c in iter {
             let commitment = c.borrow();
-            total = total + (commitment.0).point
+            total += (commitment.0).point
         }
         let sum = RistrettoPublicKey::new_from_pk(total);
         HomomorphicCommitment(sum)

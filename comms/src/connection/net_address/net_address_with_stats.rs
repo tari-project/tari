@@ -98,8 +98,8 @@ impl NetAddressWithStats {
     }
 
     /// Get as a NetAddress
-    pub fn as_net_address(self) -> NetAddress {
-        self.net_address
+    pub fn as_net_address(&self) -> NetAddress {
+        self.clone().net_address
     }
 }
 

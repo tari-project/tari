@@ -31,7 +31,7 @@ use tari_wallet::Wallet;
 use tokio::net::TcpListener;
 use tower_hyper::Server;
 
-const LOG_TARGET: &'static str = "applications::grpc_wallet";
+const LOG_TARGET: &str = "applications::grpc_wallet";
 
 #[derive(Debug, Error)]
 pub enum WalletServerError {

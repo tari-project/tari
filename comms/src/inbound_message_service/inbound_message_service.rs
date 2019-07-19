@@ -42,7 +42,7 @@ use std::{
 };
 use tari_utilities::thread_join::ThreadJoinWithTimeout;
 
-const LOG_TARGET: &'static str = "comms::inbound_message_service";
+const LOG_TARGET: &str = "comms::inbound_message_service";
 
 /// Set the maximum waiting time for InboundMessageWorker thread to join
 const THREAD_JOIN_TIMEOUT_IN_MS: Duration = Duration::from_millis(100);
@@ -121,7 +121,7 @@ where
     pub fn start(&mut self) -> Result<(), InboundError> {
         info!(target: LOG_TARGET, "Starting inbound message service");
         let worker = InboundMessageWorker::new(
-            self.config.clone(),
+            self.config,
             self.context.clone(),
             self.node_identity.clone(),
             self.message_queue_address.clone(),
@@ -145,7 +145,7 @@ where
         self.worker_thread_handle
             .ok_or(InboundError::ThreadHandleUndefined)?
             .timeout_join(THREAD_JOIN_TIMEOUT_IN_MS)
-            .map_err(|e| InboundError::ThreadJoinError(e))?;
+            .map_err(InboundError::ThreadJoinError)?;
         Ok(())
     }
 }

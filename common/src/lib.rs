@@ -33,7 +33,7 @@ pub fn get_log_configuration_path(cli_path: Option<PathBuf>) -> PathBuf {
         .or_else(|| {
             env::var_os("TARI_LOG_CONFIGURATION")
                 .filter(|s| !s.is_empty())
-                .map(|s| PathBuf::from(s))
+                .map(PathBuf::from)
         })
         .or_else(|| dirs::home_dir().map(|path| path.join(".tari/log4rs.toml")))
         .or_else(|| {

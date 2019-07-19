@@ -45,7 +45,7 @@ use tari_wallet::{
 };
 use tower_grpc::{Request, Response};
 
-const LOG_TARGET: &'static str = "applications::grpc_wallet";
+const LOG_TARGET: &str = "applications::grpc_wallet";
 
 pub mod wallet_rpc {
     include!(concat!(env!("OUT_DIR"), "/wallet_rpc.rs"));
@@ -189,8 +189,8 @@ impl server::WalletRpc for WalletRPC {
             .wallet
             .text_message_service
             .get_screen_name()
-            .unwrap_or(Some("".to_string())) // Unwrap result
-            .unwrap_or("".to_string()); // Unwrap Option
+            .unwrap_or_else(|_| Some("".to_string())) // Unwrap result
+            .unwrap_or_else(|| "".to_string()); // Unwrap Option
 
         future::ok(Response::new(ScreenNameRpc { screen_name }))
     }

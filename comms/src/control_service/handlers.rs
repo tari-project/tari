@@ -40,7 +40,7 @@ use log::*;
 use serde::{de::DeserializeOwned, export::PhantomData, Serialize};
 use tari_utilities::message_format::MessageFormat;
 
-const LOG_TARGET: &'static str = "comms::control_service::handlers";
+const LOG_TARGET: &str = "comms::control_service::handlers";
 
 #[derive(Default)]
 pub struct ControlServiceResolver<MType>(PhantomData<MType>);
@@ -78,7 +78,7 @@ where
     MType: Clone,
 {
     let message = EstablishConnection::from_binary(context.message.body.as_slice())
-        .map_err(|e| ControlServiceError::MessageFormatError(e))?;
+        .map_err(ControlServiceError::MessageFormatError)?;
 
     debug!(
         target: LOG_TARGET,

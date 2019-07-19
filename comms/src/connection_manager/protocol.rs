@@ -31,7 +31,7 @@ use log::*;
 use std::sync::Arc;
 use tari_utilities::message_format::MessageFormat;
 
-const LOG_TARGET: &'static str = "comms::connection_manager::protocol";
+const LOG_TARGET: &str = "comms::connection_manager::protocol";
 
 pub(super) struct PeerConnectionProtocol<'e, 'ni> {
     node_identity: &'ni Arc<NodeIdentity>,
@@ -73,7 +73,7 @@ impl<'e, 'ni> PeerConnectionProtocol<'e, 'ni> {
         let external_address = address
             .maybe_port()
             .map(|port| format!("{}:{}", our_host, port))
-            .or(Some(our_host))
+            .or_else(|| Some(our_host))
             .unwrap()
             .parse()
             .map_err(ConnectionManagerError::NetAddressError)?;

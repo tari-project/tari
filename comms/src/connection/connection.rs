@@ -32,7 +32,7 @@ use crate::{
 use log::*;
 use std::{borrow::Borrow, cmp, iter::IntoIterator, str::FromStr, time::Duration};
 
-const LOG_TARGET: &'static str = "comms::connection::Connection";
+const LOG_TARGET: &str = "comms::connection::Connection";
 
 /// Represents a low-level connection which can be bound an address
 /// supported by [`ZeroMQ`] the `ZMQ_ROUTER` socket.
@@ -313,8 +313,8 @@ impl<'a> Connection<'a> {
             connected_address
                 .borrow()
                 .as_ref()
-                .map(|s| s.to_string())
-                .unwrap_or(endpoint.to_owned()),
+                .map(ToString::to_string)
+                .unwrap_or_else(|| endpoint.to_owned()),
             self.name,
         );
 
@@ -352,7 +352,7 @@ impl EstablishedConnection {
     /// This method may be repeatably called, probably in a loop in a separate thread, to receive multiple multipart
     /// messages.
     pub fn receive(&self, timeout_ms: u32) -> Result<FrameSet> {
-        match self.socket.poll(zmq::POLLIN, timeout_ms as i64) {
+        match self.socket.poll(zmq::POLLIN, i64::from(timeout_ms)) {
             Ok(rc) => {
                 match rc {
                     // Internal error when polling connection

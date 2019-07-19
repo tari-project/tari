@@ -36,7 +36,7 @@ use std::{
 };
 use tari_utilities::{byte_array::ByteArray, message_format::MessageFormat};
 
-const LOG_TARGET: &'static str = "comms::outbound_message_service::outbound_message_pool::message_retry_pool";
+const LOG_TARGET: &str = "comms::outbound_message_service::outbound_message_pool::message_retry_pool";
 const THREAD_STACK_SIZE: usize = 256 * 1024; // 256kb
 
 /// # MessageRetryService
@@ -234,9 +234,9 @@ impl MessageRetryService {
     fn deserialize_outbound_message(mut frames: FrameSet) -> Result<OutboundMessage, OutboundMessagePoolError> {
         match frames.drain(1..).next() {
             Some(frame) => OutboundMessage::from_binary(&frame).map_err(OutboundMessagePoolError::MessageFormatError),
-            None => Err(OutboundMessagePoolError::InvalidFrameFormat(format!(
-                "Message retry pool worker received a frame set with invalid length"
-            ))),
+            None => Err(OutboundMessagePoolError::InvalidFrameFormat(
+                "Message retry pool worker received a frame set with invalid length".to_string(),
+            )),
         }
     }
 }

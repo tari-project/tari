@@ -26,6 +26,7 @@ use std::{collections::HashMap, sync::RwLock};
 
 ///  The HMapDatabase mimics the behaviour of LMDBDatabase without keeping a persistent copy of the key-value records.
 /// It allows key-value pairs to be inserted, retrieved and removed in a thread-safe manner.
+#[derive(Default)]
 pub struct HMapDatabase {
     db: RwLock<HashMap<Vec<u8>, Vec<u8>>>,
 }
@@ -74,6 +75,11 @@ impl HMapDatabase {
             },
             None => Ok(None),
         }
+    }
+
+    /// Returns if the  key-value database is empty
+    pub fn is_empty(&self) -> Result<bool, KeyValStoreError> {
+        Ok(self.db.read().map_err(|_| KeyValStoreError::PoisonedAccess)?.is_empty())
     }
 
     /// Returns the total number of entries recorded in the key-value database.

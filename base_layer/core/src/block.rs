@@ -229,7 +229,7 @@ impl BlockBuilder {
     /// This function adds the provided transaction kernels to the block
     pub fn add_kernels(mut self, mut kernels: Vec<TransactionKernel>) -> Self {
         for kernel in &kernels {
-            self.total_fee = self.total_fee + kernel.fee;
+            self.total_fee += kernel.fee;
         }
         self.kernels.append(&mut kernels);
         self
@@ -238,16 +238,11 @@ impl BlockBuilder {
     /// This functions add the provided transactions to the block
     pub fn with_transactions(mut self, txs: Vec<Transaction>) -> Self {
         let mut iter = txs.into_iter();
-        loop {
-            match iter.next() {
-                Some(tx) => {
-                    self = self.add_inputs(tx.body.inputs);
-                    self = self.add_outputs(tx.body.outputs);
-                    self = self.add_kernels(tx.body.kernels);
-                    self.header.total_kernel_offset = self.header.total_kernel_offset + tx.offset;
-                },
-                None => break,
-            }
+        while let Some(tx) = iter.next() {
+            self = self.add_inputs(tx.body.inputs);
+            self = self.add_outputs(tx.body.outputs);
+            self = self.add_kernels(tx.body.kernels);
+            self.header.total_kernel_offset = self.header.total_kernel_offset + tx.offset;
         }
         self
     }

@@ -51,7 +51,7 @@ impl CurveEncryption {
             ConnectionError::CurveKeypairError(format!("Unable to generate new Curve25519 keypair: {}", e))
         })?;
 
-        return Ok((CurveSecretKey(keypair.secret_key), CurvePublicKey(keypair.public_key)));
+        Ok((CurveSecretKey(keypair.secret_key), CurvePublicKey(keypair.public_key)))
     }
 }
 

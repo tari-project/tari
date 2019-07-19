@@ -42,7 +42,7 @@ use crate::{
 use log::*;
 use std::{net::IpAddr, sync::Arc, time::Duration};
 
-const LOG_TARGET: &'static str = "comms::connection_manager::establisher";
+const LOG_TARGET: &str = "comms::connection_manager::establisher";
 
 /// Configuration for peer connections which are produced by the ConnectionEstablisher
 /// These are the common properties which are shared across all peer connections

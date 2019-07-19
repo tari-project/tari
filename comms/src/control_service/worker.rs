@@ -53,7 +53,7 @@ use std::{
 use tari_crypto::keys::DiffieHellmanSharedSecret;
 use tari_utilities::{byte_array::ByteArray, ciphers::cipher::Cipher, message_format::MessageFormat};
 
-const LOG_TARGET: &'static str = "comms::control_service::worker";
+const LOG_TARGET: &str = "comms::control_service::worker";
 /// The maximum message size allowed for the control service.
 /// Messages will transparently drop if this size is exceeded.
 const CONTROL_SERVICE_MAX_MSG_SIZE: u64 = 1024; // 1kb
@@ -193,7 +193,7 @@ where
             .drain(1..)
             .collect::<FrameSet>()
             .try_into()
-            .map_err(|err| ControlServiceError::MessageError(err))?;
+            .map_err(ControlServiceError::MessageError)?;
 
         let envelope_header = envelope.deserialize_header()?;
         if !envelope_header.flags.contains(MessageFlags::ENCRYPTED) {
@@ -214,7 +214,7 @@ where
         };
 
         debug!(target: LOG_TARGET, "Dispatching message");
-        self.dispatcher.dispatch(context).map_err(|e| e.into())
+        self.dispatcher.dispatch(context).map_err(Into::into)
     }
 
     fn decrypt_body(&self, body: &Frame, public_key: &CommsPublicKey) -> Result<Frame> {
@@ -263,6 +263,6 @@ where
             .set_socks_proxy_addr(self.config.socks_proxy_address.clone())
             .set_monitor_addr(self.monitor_address.clone())
             .establish(&self.config.listener_address)
-            .map_err(|e| ControlServiceError::BindFailed(e))
+            .map_err(ControlServiceError::BindFailed)
     }
 }

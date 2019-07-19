@@ -388,14 +388,14 @@ pub fn calculate_tx_id<D: Digest>(pub_nonce: &PublicKey, index: usize) -> u64 {
 #[derive(Debug)]
 pub(super) enum SenderState {
     /// Transitional state that kicks of the relevant transaction protocol
-    Initializing(RawTransactionInfo),
+    Initializing(Box<RawTransactionInfo>),
     /// The message for the recipient in a single-round scheme is ready
-    SingleRoundMessageReady(RawTransactionInfo),
+    SingleRoundMessageReady(Box<RawTransactionInfo>),
     /// Waiting for the signed transaction data in the single-round protocol
-    CollectingSingleSignature(RawTransactionInfo),
+    CollectingSingleSignature(Box<RawTransactionInfo>),
     /// The final transaction state is being validated - it will automatically transition to Failed or Finalized from
     /// here
-    Finalizing(RawTransactionInfo),
+    Finalizing(Box<RawTransactionInfo>),
     /// The final transaction is ready to be broadcast
     FinalizedTransaction(Transaction),
     /// An unrecoverable failure has occurred and the transaction must be abandoned

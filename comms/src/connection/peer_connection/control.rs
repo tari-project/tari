@@ -31,7 +31,7 @@ use crate::{
 
 use super::PeerConnectionError;
 
-const LOG_TARGET: &'static str = "comms::connections::peer_connection::control";
+const LOG_TARGET: &str = "comms::connections::peer_connection::control";
 
 /// Control messages which are sent by PeerConnection to the underlying thread.
 #[derive(Debug, Clone, Eq, PartialEq)]

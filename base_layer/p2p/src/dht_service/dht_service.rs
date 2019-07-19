@@ -45,7 +45,7 @@ use tari_comms::{
     DomainConnector,
 };
 
-const LOG_TARGET: &'static str = "base_layer::p2p::dht";
+const LOG_TARGET: &str = "base_layer::p2p::dht";
 
 /// The DHTService manages joining the network and discovery of peers.
 pub struct DHTService {
@@ -254,7 +254,7 @@ impl DHTServiceApi {
         self.lock(|| -> DHTApiResult {
             self.sender.send(msg).map_err(|_| DHTError::ApiSendFailed)?;
             self.receiver
-                .recv_timeout(self.timeout.clone())
+                .recv_timeout(self.timeout)
                 .map_err(|_| DHTError::ApiReceiveFailed)?
         })
     }

@@ -48,7 +48,7 @@ use std::{
     time::Duration,
 };
 
-const LOG_TARGET: &'static str = "comms::connection::peer_connection::worker";
+const LOG_TARGET: &str = "comms::connection::peer_connection::worker";
 
 /// Send HWM for peer connections
 const PEER_CONNECTION_SEND_HWM: i32 = 10;
@@ -330,9 +330,9 @@ impl PeerConnectionWorker {
                     }
                 },
                 Direction::Outbound => {
-                    return Err(PeerConnectionError::StateError(format!(
-                        "Should not happen: outbound connection was in listening state",
-                    ))
+                    return Err(PeerConnectionError::StateError(
+                        "Should not happen: outbound connection was in listening state".to_string(),
+                    )
                     .into());
                 },
             },
@@ -433,7 +433,7 @@ impl PeerConnectionWorker {
                     );
                     Ok(payload)
                 },
-                None => return Err(PeerConnectionError::IdentityNotEstablished.into()),
+                None => Err(PeerConnectionError::IdentityNotEstablished.into()),
             },
             Direction::Outbound => Ok(frames),
         }

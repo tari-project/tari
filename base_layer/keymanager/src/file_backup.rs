@@ -43,15 +43,15 @@ pub enum FileError {
 }
 
 pub trait FileBackup<T> {
-    fn from_file(filename: &String) -> Result<T, FileError>;
-    fn to_file(&self, filename: &String) -> Result<(), FileError>;
+    fn from_file(filename: &str) -> Result<T, FileError>;
+    fn to_file(&self, filename: &str) -> Result<(), FileError>;
 }
 
 impl<T> FileBackup<T> for T
 where T: serde::Serialize + DeserializeOwned
 {
     /// Load struct state from backup file
-    fn from_file(filename: &String) -> Result<T, FileError> {
+    fn from_file(filename: &str) -> Result<T, FileError> {
         let mut file_handle = match File::open(&filename) {
             Ok(file) => file,
             Err(_e) => return Err(FileError::FileOpen),
@@ -67,7 +67,7 @@ where T: serde::Serialize + DeserializeOwned
     }
 
     /// Backup struct state in file specified by filename
-    fn to_file(&self, filename: &String) -> Result<(), FileError> {
+    fn to_file(&self, filename: &str) -> Result<(), FileError> {
         match File::create(filename) {
             Ok(mut file_handle) => match serde_json::to_string(&self) {
                 Ok(json_data) => match file_handle.write_all(json_data.as_bytes()) {

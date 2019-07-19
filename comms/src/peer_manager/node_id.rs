@@ -46,7 +46,7 @@ pub enum NodeIdError {
 }
 
 /// Hold the XOR distance calculated between two NodeId's. This is used for DHT-style routing.
-#[derive(Clone, Debug, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, Eq, PartialOrd, Ord, Default)]
 pub struct NodeDistance(NodeIdArray);
 
 impl NodeDistance {
@@ -87,7 +87,7 @@ impl TryFrom<&[u8]> for NodeDistance {
 }
 
 /// A Node Identity is used as a unique identifier for a node in the Tari communications network.
-#[derive(Clone, Debug, Eq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, Deserialize, Serialize, Default)]
 pub struct NodeId(NodeIdArray);
 
 impl NodeId {

@@ -65,7 +65,7 @@ pub enum TransactionManagerError {
 ///
 ///
 /// `completed_transaction` - List of sent transactions that have been responded to and are completed.
-
+#[derive(Default)]
 pub struct TransactionManager {
     pending_outbound_transactions: HashMap<u64, SenderTransactionProtocol>,
     pending_inbound_transactions: HashMap<u64, ReceiverTransactionProtocol>,
@@ -99,7 +99,7 @@ impl TransactionManager {
         let msg = sender_transaction_protocol.build_single_round_message()?;
 
         self.pending_outbound_transactions
-            .insert(msg.tx_id.clone(), sender_transaction_protocol);
+            .insert(msg.tx_id, sender_transaction_protocol);
 
         Ok(SenderMessage::Single(Box::new(msg)))
     }
@@ -116,14 +116,14 @@ impl TransactionManager {
     {
         let mut marked_for_removal = None;
 
-        for (tx_id, stp) in self.pending_outbound_transactions.iter_mut() {
-            let recp_tx_id = recipient_reply.tx_id.clone();
+        for (&tx_id, stp) in self.pending_outbound_transactions.iter_mut() {
+            let recp_tx_id = recipient_reply.tx_id;
             if stp.check_tx_id(recp_tx_id) && stp.is_collecting_single_signature() {
                 stp.add_single_recipient_info(recipient_reply, prover)?;
                 stp.finalize(KernelFeatures::empty(), prover, factory)?;
                 let tx = stp.get_transaction()?;
                 self.completed_transactions.insert(recp_tx_id, tx.clone());
-                marked_for_removal = Some(tx_id.clone());
+                marked_for_removal = Some(tx_id);
                 break;
             }
         }
@@ -179,23 +179,22 @@ impl TransactionManager {
         }
 
         // Otherwise add it to our pending transaction list and return reply
-        self.pending_inbound_transactions
-            .insert(recipient_reply.tx_id.clone(), rtp);
+        self.pending_inbound_transactions.insert(recipient_reply.tx_id, rtp);
 
         Ok(recipient_reply)
     }
 
     /// Returns the list of the completed transactions
     pub fn get_completed_transactions(&self) -> &HashMap<u64, Transaction> {
-        return &self.completed_transactions;
+        &self.completed_transactions
     }
 
     pub fn num_pending_inbound_transactions(&self) -> usize {
-        return self.pending_inbound_transactions.len();
+        self.pending_inbound_transactions.len()
     }
 
     pub fn num_pending_outbound_transactions(&self) -> usize {
-        return self.pending_outbound_transactions.len();
+        self.pending_outbound_transactions.len()
     }
 }
 

@@ -54,7 +54,7 @@ use tower_grpc::Request;
 use tower_hyper::{client, util};
 use tower_util::MakeService;
 
-const LOG_TARGET: &'static str = "applications::grpc_wallet";
+const LOG_TARGET: &str = "applications::grpc_wallet";
 const WALLET_GRPC_PORT: u32 = 26778;
 
 pub fn init() {

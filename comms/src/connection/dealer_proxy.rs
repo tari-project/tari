@@ -37,7 +37,7 @@ use crate::connection::{
 use std::{sync::mpsc::channel, thread::JoinHandle, time::Duration};
 use tari_utilities::thread_join::{ThreadError, ThreadJoinWithTimeout};
 
-const LOG_TARGET: &'static str = "comms::dealer_proxy";
+const LOG_TARGET: &str = "comms::dealer_proxy";
 
 /// Set the allocated stack size for the DealerProxy thread
 const THREAD_STACK_SIZE: usize = 64 * 1024; // 64kb
@@ -106,13 +106,13 @@ impl DealerProxy {
                         .set_name("dealer-proxy-source")
                         .set_socket_establishment(SocketEstablishment::Bind)
                         .establish(&source_address.clone())
-                        .map_err(|err| DealerProxyError::ConnectionError(err))?;
+                        .map_err(DealerProxyError::ConnectionError)?;
 
                     let mut sink = Connection::new(&context.clone(), Direction::Outbound)
                         .set_name("dealer-proxy-sink")
                         .set_socket_establishment(SocketEstablishment::Bind)
                         .establish(&sink_address.clone())
-                        .map_err(|err| DealerProxyError::ConnectionError(err))?;
+                        .map_err(DealerProxyError::ConnectionError)?;
 
                     let mut control = context
                         .socket(SocketType::Sub)
@@ -124,7 +124,7 @@ impl DealerProxy {
                         .set_subscribe(&[])
                         .map_err(|err| DealerProxyError::ZmqError(err.to_string()))?;
 
-                    let _ = ready_tx.send(()).unwrap();
+                    ready_tx.send(()).unwrap();
 
                     zmq::proxy_steerable(source.get_socket_mut(), sink.get_socket_mut(), &mut control)
                         .map_err(|err| DealerProxyError::SocketError(err.to_string()))
@@ -165,7 +165,7 @@ impl DealerProxy {
 
             thread_handle
                 .timeout_join(THREAD_JOIN_TIMEOUT_IN_MS)
-                .map_err(|err| DealerProxyError::ThreadJoinError(err))
+                .map_err(DealerProxyError::ThreadJoinError)
                 .or_else(|err| {
                     error!(
                         target: LOG_TARGET,

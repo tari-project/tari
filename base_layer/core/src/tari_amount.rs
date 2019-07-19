@@ -49,9 +49,9 @@ newtype_ops! { [MicroTari] {add sub} {:=} Self &Self }
 newtype_ops! { [MicroTari] {mul div rem} {:=} Self u64 }
 
 impl MicroTari {
-    pub fn checked_sub(&self, v: MicroTari) -> Option<MicroTari> {
+    pub fn checked_sub(self, v: MicroTari) -> Option<MicroTari> {
         if self.0 >= v.0 {
-            return Some(self - &v);
+            return Some(self - v);
         }
         None
     }

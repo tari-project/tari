@@ -93,8 +93,8 @@ bitflags! {
     /// as whether the message is encrypted.
     #[derive(Deserialize, Serialize)]
     pub struct MessageFlags: u8 {
-        const NONE = 0b00000000;
-        const ENCRYPTED = 0b00000001;
+        const NONE = 0b0000_0000;
+        const ENCRYPTED = 0b0000_0001;
     }
 }
 

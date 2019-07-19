@@ -31,7 +31,7 @@ use crate::{
 };
 use std::collections::HashMap;
 pub enum RecipientState {
-    Finalized(RecipientSignedTransactionData),
+    Finalized(Box<RecipientSignedTransactionData>),
     Failed(TransactionProtocolError),
 }
 
@@ -136,7 +136,7 @@ impl ReceiverTransactionProtocol {
     {
         let signer = SingleReceiverTransactionProtocol::create(data, nonce, key, features, prover, factory);
         match signer {
-            Ok(signed_data) => RecipientState::Finalized(signed_data),
+            Ok(signed_data) => RecipientState::Finalized(Box::new(signed_data)),
             Err(e) => RecipientState::Failed(e),
         }
     }

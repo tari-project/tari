@@ -136,7 +136,7 @@ impl MessageEnvelope {
     {
         let ecdh_shared_secret = PK::shared_secret(dest_secret_key, source_public_key).to_vec();
         let decrypted_frame: Frame = CommsCipher::open_with_integral_nonce(self.body_frame(), &ecdh_shared_secret)
-            .map_err(|e| MessageError::CipherError(e))?;
+            .map_err(MessageError::CipherError)?;
         Message::from_binary(&decrypted_frame).map_err(Into::into)
     }
 
@@ -169,7 +169,7 @@ where
     PK: PublicKey + DiffieHellmanSharedSecret<PK = PK>,
 {
     let ecdh_shared_secret = PK::shared_secret(source_secret_key, dest_public_key).to_vec();
-    CommsCipher::seal_with_integral_nonce(message_body, &ecdh_shared_secret).map_err(|e| MessageError::CipherError(e))
+    CommsCipher::seal_with_integral_nonce(message_body, &ecdh_shared_secret).map_err(MessageError::CipherError)
 }
 
 #[cfg(test)]

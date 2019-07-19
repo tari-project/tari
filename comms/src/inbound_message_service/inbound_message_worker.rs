@@ -51,7 +51,7 @@ use std::{
     thread,
 };
 
-const LOG_TARGET: &'static str = "comms::inbound_message_service::worker";
+const LOG_TARGET: &str = "comms::inbound_message_service::worker";
 
 /// Set the allocated stack size for the InboundMessageWorker thread
 const THREAD_STACK_SIZE: usize = 256 * 1024; // 256kb
@@ -116,7 +116,7 @@ where
         let inbound_connection = Connection::new(&self.context, Direction::Inbound)
             .set_socket_establishment(SocketEstablishment::Bind)
             .establish(&self.message_queue_address)
-            .map_err(|e| InboundError::InboundConnectionError(e))?;
+            .map_err(InboundError::InboundConnectionError)?;
 
         // Retrieve, process and dispatch messages
         loop {

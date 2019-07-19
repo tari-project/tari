@@ -377,7 +377,7 @@ impl PeerConnection {
 
     /// Returns the last time this connection sent or received a message
     pub fn last_activity(&self) -> NaiveDateTime {
-        acquire_read_lock!(self.connection_stats).last_activity().clone()
+        *acquire_read_lock!(self.connection_stats).last_activity()
     }
 
     /// Send control message to the ThreadControlMessenger.

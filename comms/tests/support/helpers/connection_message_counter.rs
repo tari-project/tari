@@ -30,7 +30,7 @@ use std::{
     time::Duration,
 };
 
-const LOG_TARGET: &'static str = "comms::test_support::connection_message_counter";
+const LOG_TARGET: &str = "comms::test_support::connection_message_counter";
 
 /// Set the allocated stack size for each ConnectionMessageCounter thread
 const THREAD_STACK_SIZE: usize = 64 * 1024; // 64kb

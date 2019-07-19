@@ -88,16 +88,14 @@ impl<'a> AddressParser<'a> {
                 None => return None,
             }
 
-            if p.consume_char(':').is_none() {
-                return None;
-            }
+            p.consume_char(':')?;
 
             let port = match p.read_number() {
                 Some(p) => p,
                 None => return None,
             };
 
-            if port > std::u16::MAX as u64 {
+            if port > u64::from(std::u16::MAX) {
                 return None;
             }
 
@@ -131,7 +129,7 @@ impl<'a> AddressParser<'a> {
             self.pos += 1;
         }
 
-        if buf.len() > 0 {
+        if !buf.is_empty() {
             match String::from_utf8(buf) {
                 Ok(s) => Some(s),
                 Err(_) => None,
@@ -143,7 +141,7 @@ impl<'a> AddressParser<'a> {
 
     fn read_char(&mut self) -> Option<char> {
         if self.is_end() {
-            return None;
+            None
         } else {
             let ch = self.data[self.pos];
             self.pos += 1;
@@ -168,7 +166,7 @@ impl<'a> AddressParser<'a> {
             if ch < b'0' || ch > b'9' {
                 break;
             }
-            number = number * 10u64 + (ch - b'0') as u64;
+            number = number * 10u64 + u64::from(ch - b'0');
             pos += 1;
         }
 
