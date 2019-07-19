@@ -45,8 +45,6 @@ pub enum PeerManagerError {
     EmptyDatastoreQuery,
     // A NetAddressError occurred
     NetAddressError(NetAddressError),
-    /// The PeerManager doesn't have enough peers to fill the identity request
-    InsufficientPeers,
     /// The peer has been banned
     BannedPeer,
     /// Problem initializing the RNG

@@ -60,11 +60,38 @@ impl NetAddressesWithStats {
 
     /// Adds a new net address to the peer. This function will not add a duplicate if the address
     /// already exists.
-    pub fn add_net_address(&mut self, net_address: &NetAddress) -> Result<(), NetAddressError> {
+    pub fn add_net_address(&mut self, net_address: &NetAddress) {
         if !self.addresses.iter().any(|x| x.net_address == *net_address) {
             self.addresses.push(net_address.clone().into());
         }
-        Ok(())
+    }
+
+    /// Compares the existing set of net_addresses to the provided net_address set and remove missing net_addresses and
+    /// add new net_addresses without discarding the usage stats of the existing and remaining net_addresses.
+    pub fn update_net_addresses(&mut self, net_addresses: Vec<NetAddress>) {
+        // Remove missing elements
+        let mut remove_indices: Vec<usize> = Vec::new();
+        for index in 0..self.addresses.len() {
+            if !net_addresses
+                .iter()
+                .any(|new_net_address| *new_net_address == self.addresses[index].net_address)
+            {
+                remove_indices.push(index);
+            }
+        }
+        for index in remove_indices.iter().rev() {
+            self.addresses.remove(*index);
+        }
+        // Add new elements
+        for new_net_address in &net_addresses {
+            if !self
+                .addresses
+                .iter()
+                .any(|curr_net_address| curr_net_address.net_address == *new_net_address)
+            {
+                self.add_net_address(new_net_address);
+            }
+        }
     }
 
     /// Finds and returns the highest priority net address until all connection attempts for each net address have been
@@ -214,8 +241,8 @@ mod test {
         let net_address2 = "125.1.54.254:7999".parse::<NetAddress>().unwrap();
         let net_address3 = "175.6.3.145:8000".parse::<NetAddress>().unwrap();
         let mut net_addresses = NetAddressesWithStats::from(net_address1.clone());
-        assert!(net_addresses.add_net_address(&net_address2).is_ok());
-        assert!(net_addresses.add_net_address(&net_address3).is_ok());
+        net_addresses.add_net_address(&net_address2);
+        net_addresses.add_net_address(&net_address3);
 
         assert!(net_addresses.mark_successful_connection_attempt(&net_address3).is_ok());
         assert!(net_addresses.mark_successful_connection_attempt(&net_address1).is_ok());
@@ -233,10 +260,10 @@ mod test {
         let net_address2 = "125.1.54.254:7999".parse::<NetAddress>().unwrap();
         let net_address3 = "175.6.3.145:8000".parse::<NetAddress>().unwrap();
         let mut net_addresses = NetAddressesWithStats::from(net_address1.clone());
-        assert!(net_addresses.add_net_address(&net_address2).is_ok());
-        assert!(net_addresses.add_net_address(&net_address3).is_ok());
+        net_addresses.add_net_address(&net_address2);
+        net_addresses.add_net_address(&net_address3);
         // Add duplicate address, test add_net_address is idempotent
-        assert!(net_addresses.add_net_address(&net_address2).is_ok());
+        net_addresses.add_net_address(&net_address2);
         assert_eq!(net_addresses.addresses.len(), 3);
         assert_eq!(net_addresses.addresses[0].net_address, net_address1);
         assert_eq!(net_addresses.addresses[1].net_address, net_address2);
@@ -249,8 +276,8 @@ mod test {
         let net_address2 = "125.1.54.254:7999".parse::<NetAddress>().unwrap();
         let net_address3 = "175.6.3.145:8000".parse::<NetAddress>().unwrap();
         let mut net_addresses = NetAddressesWithStats::from(net_address1.clone());
-        assert!(net_addresses.add_net_address(&net_address2).is_ok());
-        assert!(net_addresses.add_net_address(&net_address3).is_ok());
+        net_addresses.add_net_address(&net_address2);
+        net_addresses.add_net_address(&net_address3);
 
         let mut priority_address = net_addresses.get_best_net_address();
         assert!(priority_address.is_ok());

@@ -62,7 +62,7 @@ pub mod outbound_message_pool;
 pub mod outbound_message_service;
 
 pub use self::{
-    broadcast_strategy::BroadcastStrategy,
+    broadcast_strategy::{BroadcastStrategy, ClosestRequest},
     error::OutboundError,
     outbound_message_pool::{OutboundMessage, OutboundMessagePool},
 };
