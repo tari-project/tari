@@ -25,14 +25,14 @@ use crate::{
     peer_manager::{
         node_id::{NodeDistance, NodeId},
         node_identity::PeerNodeIdentity,
-        peer::Peer,
+        peer::{Peer, PeerFlags},
         peer_key::{generate_peer_key, PeerKey},
         PeerManagerError,
     },
     types::{CommsPublicKey, CommsRng},
 };
 use rand::Rng;
-use std::{collections::HashMap, time::Duration};
+use std::{cmp::min, collections::HashMap, time::Duration};
 use tari_storage::key_val_store::KeyValStore;
 
 /// PeerStorage provides a mechanism to keep a datastore and a local copy of all peers in sync and allow fast searches
@@ -97,6 +97,38 @@ where DS: KeyValStore
                     .map_err(PeerManagerError::DatabaseError)?;
                 Ok(())
             },
+        }
+    }
+
+    /// Adds a peer to the routing table of the PeerManager if the peer does not already exist. When a peer already
+    /// exist, the stored version will be replaced with the newly provided peer.
+    pub fn update_peer(
+        &mut self,
+        public_key: &CommsPublicKey,
+        node_id: Option<NodeId>,
+        net_addresses: Option<Vec<NetAddress>>,
+        flags: Option<PeerFlags>,
+    ) -> Result<(), PeerManagerError>
+    {
+        match self.public_key_hm.get(public_key) {
+            Some(peer_key) => {
+                let peer_key = *peer_key;
+                self.remove_hashmap_links(peer_key)?;
+
+                let mut stored_peer: Peer = self
+                    .peers
+                    .get_value(&peer_key)
+                    .map_err(|e| PeerManagerError::DatabaseError(e))?
+                    .ok_or(PeerManagerError::PeerNotFoundError)?;
+                stored_peer.update(node_id, net_addresses, flags);
+
+                self.add_hashmap_links(peer_key, &stored_peer);
+                self.peers
+                    .insert_pair(&peer_key, &stored_peer)
+                    .map_err(|e| PeerManagerError::DatabaseError(e))?;
+                Ok(())
+            },
+            None => Err(PeerManagerError::PeerNotFoundError),
         }
     }
 
@@ -172,6 +204,11 @@ where DS: KeyValStore
             .ok_or(PeerManagerError::PeerNotFoundError)
     }
 
+    /// Check if a peer exist using the specified public_key
+    pub fn exists(&self, public_key: &CommsPublicKey) -> bool {
+        self.public_key_hm.get(&public_key).is_some()
+    }
+
     /// Constructs a single NodeIdentity for the peer corresponding to the provided NodeId
     pub fn direct_identity_node_id(&self, node_id: &NodeId) -> Result<Vec<PeerNodeIdentity>, PeerManagerError> {
         let peer_key = *self
@@ -228,25 +265,30 @@ where DS: KeyValStore
     }
 
     /// Compile a list of node identities that can be used for the closest BroadcastStrategy
-    pub fn closest_identities(&self, node_id: NodeId, n: usize) -> Result<Vec<PeerNodeIdentity>, PeerManagerError> {
+    pub fn closest_identities(
+        &self,
+        node_id: &NodeId,
+        n: usize,
+        excluded_peers: &Vec<CommsPublicKey>,
+    ) -> Result<Vec<PeerNodeIdentity>, PeerManagerError>
+    {
         let mut peer_keys: Vec<PeerKey> = Vec::new();
         let mut dists: Vec<NodeDistance> = Vec::new();
         self.peers
             .for_each::<PeerKey, Peer, _>(|pair| {
                 let (peer_key, peer) = pair.unwrap();
-                if !peer.is_banned() {
+                if !peer.is_banned() && !excluded_peers.contains(&peer.public_key) {
                     peer_keys.push(peer_key);
                     dists.push(node_id.distance(&peer.node_id));
                 }
             })
             .map_err(PeerManagerError::DatabaseError)?;
-
-        if n > peer_keys.len() {
-            return Err(PeerManagerError::InsufficientPeers);
-        }
-        // Perform partial sort of elements only up to N elements
-        let mut nearest_identities: Vec<PeerNodeIdentity> = Vec::with_capacity(n);
-        for i in 0..n {
+        // Use all available peers up to a maximum of N
+        let max_available = if n > peer_keys.len() { peer_keys.len() } else { n };
+        if max_available > 0 {
+            // Perform partial sort of elements only up to N elements
+            let mut nearest_identities: Vec<PeerNodeIdentity> = Vec::with_capacity(max_available);
+            for i in 0..max_available {
             for j in (i + 1)..peer_keys.len() {
                 if dists[i] > dists[j] {
                     dists.swap(i, j);
@@ -259,8 +301,10 @@ where DS: KeyValStore
                 .map_err(PeerManagerError::DatabaseError)?
                 .ok_or(PeerManagerError::PeerNotFoundError)?;
             nearest_identities.push(PeerNodeIdentity::new(peer.node_id.clone(), peer.public_key.clone()));
+            Ok(nearest_identities)
+        } else {
+            Ok(Vec::new())
         }
-        Ok(nearest_identities)
     }
 
     /// Compile a list of node identities that can be used for the random BroadcastStrategy
@@ -276,25 +320,28 @@ where DS: KeyValStore
             })
             .map_err(PeerManagerError::DatabaseError)?;
 
-        if n > peer_keys.len() {
-            return Err(PeerManagerError::InsufficientPeers);
+        // Use all available peers up to a maximum of N
+        let max_available = min(peer_keys.len(), n);
+        if max_available > 0 {
+            // Shuffle first n elements
+            for i in 0..max_available {
+                let j = self.rng.gen_range(0, peer_keys.len());
+                peer_keys.swap(i, j);
+            }
+            // Compile list of first n shuffled elements
+            let mut random_identities: Vec<PeerNodeIdentity> = Vec::with_capacity(max_available);
+            for i in 0..max_available {
+                let peer: Peer = self
+                    .peers
+                    .get_value(&peer_keys[i])
+                    .map_err(PeerManagerError::DatabaseError)?
+                    .ok_or(PeerManagerError::PeerNotFoundError)?;
+                random_identities.push(PeerNodeIdentity::new(peer.node_id.clone(), peer.public_key.clone()));
+            }
+            Ok(random_identities)
+      } else {
+          Ok(Vec::new())
         }
-        // Shuffle first n elements
-        for i in 0..n {
-            let j = self.rng.gen_range(0, peer_keys.len());
-            peer_keys.swap(i, j);
-        }
-        // Compile list of first n shuffled elements
-        let mut random_identities: Vec<PeerNodeIdentity> = Vec::with_capacity(n);
-        for i in 0..n {
-            let peer: Peer = self
-                .peers
-                .get_value(&peer_keys[i])
-                .map_err(PeerManagerError::DatabaseError)?
-                .ok_or(PeerManagerError::PeerNotFoundError)?;
-            random_identities.push(PeerNodeIdentity::new(peer.node_id.clone(), peer.public_key.clone()));
-        }
-        Ok(random_identities)
     }
 
     /// Enables Thread safe access - Changes the ban flag bit of the peer
@@ -325,9 +372,7 @@ where DS: KeyValStore
             .get_value(&peer_key)
             .map_err(PeerManagerError::DatabaseError)?
             .ok_or(PeerManagerError::PeerNotFoundError)?;
-        peer.addresses
-            .add_net_address(net_address)
-            .map_err(PeerManagerError::NetAddressError)?;
+        peer.addresses.add_net_address(net_address);
         self.net_address_hm.insert(net_address.clone(), peer_key);
         self.peers
             .insert_pair(&peer_key, &peer)
@@ -527,8 +572,8 @@ mod test {
         let net_address2 = NetAddress::from("5.6.7.8:8000".parse::<NetAddress>().unwrap());
         let net_address3 = NetAddress::from("5.6.7.8:7000".parse::<NetAddress>().unwrap());
         let mut net_addresses = NetAddressesWithStats::from(net_address1.clone());
-        net_addresses.add_net_address(&net_address2).unwrap();
-        net_addresses.add_net_address(&net_address3).unwrap();
+        net_addresses.add_net_address(&net_address2);
+        net_addresses.add_net_address(&net_address3);
         let peer1 = Peer::new(pk, node_id, net_addresses, PeerFlags::default());
 
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
@@ -542,7 +587,7 @@ mod test {
         let net_address5 = NetAddress::from("13.14.15.16:6000".parse::<NetAddress>().unwrap());
         let net_address6 = NetAddress::from("17.18.19.20:8000".parse::<NetAddress>().unwrap());
         let mut net_addresses = NetAddressesWithStats::from(net_address5.clone());
-        net_addresses.add_net_address(&net_address6).unwrap();
+        net_addresses.add_net_address(&net_address6);
         let peer3 = Peer::new(pk, node_id, net_addresses, PeerFlags::default());
 
         // Create new datastore with a peer database
@@ -587,8 +632,8 @@ mod test {
         let net_address2 = NetAddress::from("5.6.7.8:8000".parse::<NetAddress>().unwrap());
         let net_address3 = NetAddress::from("5.6.7.8:7000".parse::<NetAddress>().unwrap());
         let mut net_addresses = NetAddressesWithStats::from(net_address1.clone());
-        net_addresses.add_net_address(&net_address2).unwrap();
-        net_addresses.add_net_address(&net_address3).unwrap();
+        net_addresses.add_net_address(&net_address2);
+        net_addresses.add_net_address(&net_address3);
         let peer1 = Peer::new(pk, node_id, net_addresses, PeerFlags::default());
 
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
@@ -602,7 +647,7 @@ mod test {
         let net_address5 = NetAddress::from("13.14.15.16:6000".parse::<NetAddress>().unwrap());
         let net_address6 = NetAddress::from("17.18.19.20:8000".parse::<NetAddress>().unwrap());
         let mut net_addresses = NetAddressesWithStats::from(net_address5.clone());
-        net_addresses.add_net_address(&net_address6).unwrap();
+        net_addresses.add_net_address(&net_address6);
         let peer3 = Peer::new(pk, node_id, net_addresses, PeerFlags::default());
         // Test adding and searching for peers
         assert!(peer_storage.add_peer(peer1.clone()).is_ok());

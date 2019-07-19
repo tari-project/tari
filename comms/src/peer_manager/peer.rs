@@ -90,6 +90,24 @@ impl Peer {
         })
     }
 
+    pub fn update(
+        &mut self,
+        node_id: Option<NodeId>,
+        net_addresses: Option<Vec<NetAddress>>,
+        flags: Option<PeerFlags>,
+    )
+    {
+        if let Some(new_node_id) = node_id {
+            self.node_id = new_node_id
+        };
+        if let Some(new_net_addresses) = net_addresses {
+            self.addresses.update_net_addresses(new_net_addresses)
+        };
+        if let Some(new_flags) = flags {
+            self.flags = new_flags
+        };
+    }
+
     /// Provides that date time of the last successful interaction with the peer
     pub fn last_seen(&self) -> Option<DateTime<Utc>> {
         self.addresses.last_seen()
@@ -115,17 +133,13 @@ mod test {
         types::CommsPublicKey,
     };
     use serde_json::Value;
-    use tari_crypto::{
-        keys::{PublicKey, SecretKey},
-        ristretto::{RistrettoPublicKey, RistrettoSecretKey},
-    };
+    use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
     use tari_utilities::{hex::Hex, message_format::MessageFormat};
 
     #[test]
     fn test_is_and_set_banned() {
         let mut rng = rand::OsRng::new().unwrap();
-        let sk = RistrettoSecretKey::random(&mut rng);
-        let pk = RistrettoPublicKey::from_secret_key(&sk);
+        let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk).unwrap();
         let addresses = NetAddressesWithStats::from("123.0.0.123:8000".parse::<NetAddress>().unwrap());
         let mut peer: Peer = Peer::new(pk, node_id, addresses, PeerFlags::default());
@@ -134,6 +148,50 @@ mod test {
         assert_eq!(peer.is_banned(), true);
         peer.set_banned(false);
         assert_eq!(peer.is_banned(), false);
+    }
+
+    #[test]
+    fn test_update() {
+        let mut rng = rand::OsRng::new().unwrap();
+        let (_sk, public_key1) = RistrettoPublicKey::random_keypair(&mut rng);
+        let node_id = NodeId::from_key(&public_key1).unwrap();
+        let net_address1 = "124.0.0.124:7000".parse::<NetAddress>().unwrap();
+        let mut peer: Peer = Peer::new(
+            public_key1.clone(),
+            node_id,
+            NetAddressesWithStats::from(net_address1.clone()),
+            PeerFlags::default(),
+        );
+
+        let (_sk, public_key2) = RistrettoPublicKey::random_keypair(&mut rng);
+        let node_id2 = NodeId::from_key(&public_key2).unwrap();
+        let net_address2 = "125.0.0.125:8000".parse::<NetAddress>().unwrap();
+        let net_address3 = "126.0.0.126:9000".parse::<NetAddress>().unwrap();
+
+        peer.update(
+            Some(node_id2.clone()),
+            Some(vec![net_address2.clone(), net_address3.clone()]),
+            Some(PeerFlags::BANNED),
+        );
+
+        assert_eq!(peer.public_key, public_key1);
+        assert_eq!(peer.node_id, node_id2);
+        assert!(!peer
+            .addresses
+            .addresses
+            .iter()
+            .any(|net_address_with_stats| net_address_with_stats.net_address == net_address1));
+        assert!(peer
+            .addresses
+            .addresses
+            .iter()
+            .any(|net_address_with_stats| net_address_with_stats.net_address == net_address2));
+        assert!(peer
+            .addresses
+            .addresses
+            .iter()
+            .any(|net_address_with_stats| net_address_with_stats.net_address == net_address3));
+        assert_eq!(peer.flags, PeerFlags::BANNED);
     }
 
     #[test]
