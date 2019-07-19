@@ -126,8 +126,8 @@ impl OutboundMessageService {
                 let msg_buffer = msg.to_binary().map_err(OutboundError::MessageFormatError)?;
 
                 outbound_connection
-                  .send(&[msg_buffer])
-                  .map_err(OutboundError::ConnectionError)?;
+                    .send(&[msg_buffer])
+                    .map_err(OutboundError::ConnectionError)?;
             }
         }
         Ok(())

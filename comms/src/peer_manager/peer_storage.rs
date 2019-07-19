@@ -289,18 +289,19 @@ where DS: KeyValStore
             // Perform partial sort of elements only up to N elements
             let mut nearest_identities: Vec<PeerNodeIdentity> = Vec::with_capacity(max_available);
             for i in 0..max_available {
-            for j in (i + 1)..peer_keys.len() {
-                if dists[i] > dists[j] {
-                    dists.swap(i, j);
-                    peer_keys.swap(i, j);
+                for j in (i + 1)..peer_keys.len() {
+                    if dists[i] > dists[j] {
+                        dists.swap(i, j);
+                        peer_keys.swap(i, j);
+                    }
                 }
+                let peer: Peer = self
+                    .peers
+                    .get_value(&peer_keys[i])
+                    .map_err(PeerManagerError::DatabaseError)?
+                    .ok_or(PeerManagerError::PeerNotFoundError)?;
+                nearest_identities.push(PeerNodeIdentity::new(peer.node_id.clone(), peer.public_key.clone()));
             }
-            let peer: Peer = self
-                .peers
-                .get_value(&peer_keys[i])
-                .map_err(PeerManagerError::DatabaseError)?
-                .ok_or(PeerManagerError::PeerNotFoundError)?;
-            nearest_identities.push(PeerNodeIdentity::new(peer.node_id.clone(), peer.public_key.clone()));
             Ok(nearest_identities)
         } else {
             Ok(Vec::new())
@@ -339,8 +340,8 @@ where DS: KeyValStore
                 random_identities.push(PeerNodeIdentity::new(peer.node_id.clone(), peer.public_key.clone()));
             }
             Ok(random_identities)
-      } else {
-          Ok(Vec::new())
+        } else {
+            Ok(Vec::new())
         }
     }
 
