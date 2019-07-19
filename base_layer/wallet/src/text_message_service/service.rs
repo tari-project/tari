@@ -20,12 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::types::HashDigest;
+use crate::{
+    text_message_service::{error::TextMessageError, model::generate_id, Contact, TextMessage, UpdateContact},
+    types::HashDigest,
+};
 use chrono::prelude::*;
-use core::cmp::Ordering;
 use crossbeam_channel as channel;
-use derive_error::Error;
-use digest::Digest;
 use log::*;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -35,12 +35,9 @@ use std::{
     time::Duration,
 };
 use tari_comms::{
-    builder::CommsServicesError,
-    connection::NetAddress,
-    dispatcher::DispatchError,
-    domain_connector::{ConnectorError, MessageInfo},
+    domain_connector::MessageInfo,
     message::{Message, MessageError, MessageFlags},
-    outbound_message_service::{outbound_message_service::OutboundMessageService, BroadcastStrategy, OutboundError},
+    outbound_message_service::{outbound_message_service::OutboundMessageService, BroadcastStrategy},
     types::CommsPublicKey,
     DomainConnector,
 };
@@ -56,67 +53,8 @@ use tari_p2p::{
     },
     tari_message::{ExtendedMessage, TariMessageType},
 };
-use tari_utilities::{byte_array::ByteArray, hex::Hex, message_format::MessageFormatError};
+
 const LOG_TARGET: &'static str = "base_layer::wallet::text_messsage_service";
-
-#[derive(Debug, Error)]
-pub enum TextMessageError {
-    MessageFormatError(MessageFormatError),
-    DispatchError(DispatchError),
-    MessageError(MessageError),
-    OutboundError(OutboundError),
-    ServiceError(ServiceError),
-    ConnectorError(ConnectorError),
-    CommsServicesError(CommsServicesError),
-    /// If a received TextMessageAck doesn't matching any pending messages
-    MessageNotFound,
-    /// Failed to send from API
-    ApiSendFailed,
-    /// Failed to receive in API from service
-    ApiReceiveFailed,
-    /// The Outbound Message Service is not initialized
-    OMSNotInitialized,
-    /// The Comms service stack is not initialized
-    CommsNotInitialized,
-    /// Received an unexpected API response
-    UnexpectedApiResponse,
-    /// Contact not found
-    ContactNotFound,
-    /// Contact already exists
-    ContactAlreadyExists,
-}
-
-/// Represents a single Text Message
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct TextMessage {
-    pub id: Vec<u8>,
-    pub source_pub_key: CommsPublicKey,
-    pub dest_pub_key: CommsPublicKey,
-    pub message: String,
-    pub timestamp: DateTime<Utc>,
-}
-
-impl TryInto<Message> for TextMessage {
-    type Error = MessageError;
-
-    fn try_into(self) -> Result<Message, Self::Error> {
-        Ok((TariMessageType::new(ExtendedMessage::Text), self).try_into()?)
-    }
-}
-
-impl PartialOrd<TextMessage> for TextMessage {
-    /// Orders OutboundMessage from least to most time remaining from being scheduled
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.timestamp.partial_cmp(&other.timestamp)
-    }
-}
-
-impl Ord for TextMessage {
-    /// Orders OutboundMessage from least to most time remaining from being scheduled
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.timestamp.cmp(&other.timestamp)
-    }
-}
 
 /// Represents an Acknowledgement of receiving a Text Message
 #[derive(Debug, Serialize, Deserialize)]
@@ -130,43 +68,6 @@ impl TryInto<Message> for TextMessageAck {
     fn try_into(self) -> Result<Message, Self::Error> {
         Ok((TariMessageType::new(ExtendedMessage::TextAck), self).try_into()?)
     }
-}
-
-/// A message contact
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
-pub struct Contact {
-    pub screen_name: String,
-    pub pub_key: CommsPublicKey,
-    pub address: NetAddress,
-}
-
-/// The updatable fields of message contact
-#[derive(Clone, Debug, PartialEq)]
-pub struct UpdateContact {
-    pub screen_name: String,
-    pub address: NetAddress,
-}
-
-/// This function generates a unique ID hash for a Text Message from the message components and an index integer
-///
-/// `index`: This value should be incremented for every message sent to the same destination. This ensures that if you
-/// send a duplicate message to the same destination that the ID hashes will be unique
-fn generate_id<D: Digest>(
-    source_pub_key: &CommsPublicKey,
-    dest_pub_key: &CommsPublicKey,
-    message: &String,
-    timestamp: &DateTime<Utc>,
-    index: usize,
-) -> Vec<u8>
-{
-    D::new()
-        .chain(source_pub_key.as_bytes())
-        .chain(dest_pub_key.as_bytes())
-        .chain(message.as_bytes())
-        .chain(timestamp.to_string())
-        .chain(index.to_le_bytes())
-        .result()
-        .to_vec()
 }
 
 /// The TextMessageService manages the local node's text messages. It keeps track of sent messages that require an Ack
@@ -213,7 +114,7 @@ impl TextMessageService {
     fn send_text_message(&mut self, dest_pub_key: CommsPublicKey, message: String) -> Result<(), TextMessageError> {
         let oms = self.oms.clone().ok_or(TextMessageError::OMSNotInitialized)?;
 
-        let timestamp = Utc::now();
+        let timestamp = Utc::now().naive_utc();
         let count = self
             .sent_messages
             .iter()
@@ -239,11 +140,7 @@ impl TextMessageService {
         self.pending_messages
             .insert(text_message.id.clone(), text_message.clone());
 
-        trace!(
-            target: LOG_TARGET,
-            "Text Message Sent to {:?}",
-            text_message.dest_pub_key.to_hex()
-        );
+        trace!(target: LOG_TARGET, "Text Message Sent to {}", text_message.dest_pub_key);
 
         Ok(())
     }
@@ -253,15 +150,15 @@ impl TextMessageService {
         let oms = self.oms.clone().ok_or(TextMessageError::OMSNotInitialized)?;
 
         let incoming_msg: Option<(MessageInfo, TextMessage)> = connector
-            .receive_timeout(Duration::from_millis(1))
+            .receive_timeout(Duration::from_millis(10))
             .map_err(TextMessageError::ConnectorError)?;
 
         if let Some((info, msg)) = incoming_msg {
             trace!(
                 target: LOG_TARGET,
-                "Text Message received with ID: {:?} from {:?} with message: {:?}",
+                "Text Message received with ID: {:?} from {} with message: {:?}",
                 msg.id.clone(),
-                msg.source_pub_key.to_hex(),
+                msg.source_pub_key,
                 msg.message.clone()
             );
 
@@ -281,7 +178,7 @@ impl TextMessageService {
     /// Process an incoming text message Ack
     fn receive_text_message_ack(&mut self, connector: &DomainConnector<'static>) -> Result<(), TextMessageError> {
         let incoming_msg: Option<(MessageInfo, TextMessageAck)> = connector
-            .receive_timeout(Duration::from_millis(1))
+            .receive_timeout(Duration::from_millis(10))
             .map_err(TextMessageError::ConnectorError)?;
 
         if let Some((_info, msg_ack)) = incoming_msg {
@@ -371,9 +268,9 @@ impl TextMessageService {
 
         trace!(
             target: LOG_TARGET,
-            "Contact Added: Screen name: {:?} - Pub-key: {:?} - Address: {:?}",
+            "Contact Added: Screen name: {:?} - Pub-key: {} - Address: {:?}",
             contact.screen_name.clone(),
-            contact.pub_key.clone().to_hex(),
+            contact.pub_key.clone(),
             contact.address.clone()
         );
         Ok(())
@@ -390,9 +287,9 @@ impl TextMessageService {
 
         trace!(
             target: LOG_TARGET,
-            "Contact Added: Screen name: {:?} - Pub-key: {:?} - Address: {:?}",
+            "Contact Added: Screen name: {:?} - Pub-key: {} - Address: {:?}",
             contact.screen_name.clone(),
-            contact.pub_key.clone().to_hex(),
+            contact.pub_key.clone(),
             contact.address.clone()
         );
 
@@ -410,13 +307,15 @@ impl TextMessageService {
             .iter_mut()
             .find(|c| c.pub_key == pub_key)
             .ok_or(TextMessageError::ContactNotFound)?;
-        found_contact.screen_name = contact.screen_name.clone();
+        if let Some(sn) = contact.screen_name.clone() {
+            found_contact.screen_name = sn;
+        }
 
         trace!(
             target: LOG_TARGET,
-            "Contact Added: Screen name: {:?} - Pub-key: {:?} - Address: {:?}",
+            "Contact Added: Screen name: {:?} - Pub-key: {} - Address: {:?}",
             found_contact.screen_name.clone(),
-            found_contact.pub_key.clone().to_hex(),
+            found_contact.pub_key.clone(),
             found_contact.address.clone()
         );
 
@@ -425,12 +324,7 @@ impl TextMessageService {
 
     /// This handler is called when the Service executor loops receives an API request
     fn handle_api_message(&mut self, msg: TextMessageApiRequest) -> Result<(), ServiceError> {
-        trace!(
-            target: LOG_TARGET,
-            "[{}] Received API message: {:?}",
-            self.get_name(),
-            msg
-        );
+        trace!(target: LOG_TARGET, "[{}] Received API message", self.get_name(),);
         let resp = match msg {
             TextMessageApiRequest::SendTextMessage((destination, message)) => self
                 .send_text_message(destination, message)
@@ -456,7 +350,7 @@ impl TextMessageService {
                 .map(|_| TextMessageApiResponse::ContactUpdated),
         };
 
-        trace!(target: LOG_TARGET, "[{}] Replying to API: {:?}", self.get_name(), resp);
+        trace!(target: LOG_TARGET, "[{}] Replying to API", self.get_name());
         self.api
             .send_reply(resp)
             .map_err(ServiceError::internal_service_error())
@@ -524,7 +418,7 @@ impl Service for TextMessageService {
 
             if let Some(msg) = self
                 .api
-                .recv_timeout(Duration::from_millis(5))
+                .recv_timeout(Duration::from_millis(50))
                 .map_err(ServiceError::internal_service_error())?
             {
                 self.handle_api_message(msg)?;
@@ -677,7 +571,7 @@ impl TextMessageServiceApi {
 
 #[cfg(test)]
 mod test {
-    use crate::text_message_service::{Contact, TextMessageError, TextMessageService, UpdateContact};
+    use crate::text_message_service::{error::TextMessageError, Contact, TextMessageService, UpdateContact};
     use tari_comms::types::CommsPublicKey;
     use tari_crypto::keys::PublicKey;
 
@@ -700,11 +594,11 @@ mod test {
         ];
         for i in 0..5 {
             let (_contact_secret_key, contact_public_key) = CommsPublicKey::random_keypair(&mut rng);
-            contacts.push(Contact {
-                screen_name: screen_names[i].clone(),
-                pub_key: contact_public_key,
-                address: "127.0.0.1:12345".parse().unwrap(),
-            });
+            contacts.push(Contact::new(
+                screen_names[i].clone(),
+                contact_public_key,
+                "127.0.0.1:12345".parse().unwrap(),
+            ));
         }
 
         assert_eq!(tms.get_screen_name(), None);
@@ -722,8 +616,8 @@ mod test {
         assert_eq!(tms.get_contacts().len(), 4);
 
         let update_contact = UpdateContact {
-            screen_name: "Betty".to_string(),
-            address: contacts[1].address.clone(),
+            screen_name: Some("Betty".to_string()),
+            address: Some(contacts[1].address.clone()),
         };
 
         tms.update_contact(contacts[1].pub_key.clone(), update_contact).unwrap();
@@ -732,8 +626,8 @@ mod test {
         assert_eq!(updated_contacts[0].screen_name, "Betty".to_string());
 
         match tms.update_contact(CommsPublicKey::default(), UpdateContact {
-            screen_name: "Whatever".to_string(),
-            address: "127.0.0.1:12345".parse().unwrap(),
+            screen_name: Some("Whatever".to_string()),
+            address: Some("127.0.0.1:12345".parse().unwrap()),
         }) {
             Err(TextMessageError::ContactNotFound) => assert!(true),
             _ => assert!(false),

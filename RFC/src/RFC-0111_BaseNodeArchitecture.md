@@ -57,7 +57,7 @@ The Base Node architecture is designed to be modular, robust and performant.
 ![Base Layer architecture](theme/images/base_layer_arch.png)
 
 The major components are separated into separate modules. Each module exposes a public Application Programming Interface 
-(API) that typically communicates with other modules using the [Command Pattern].
+(API), which typically communicates with other modules using the [Command Pattern].
 
 ### Base Node Service
 
@@ -101,6 +101,7 @@ Peer discovery is a key service that blockchain nodes provide so that the peer m
 nodes making up the network.
 
 In Tari, the peer-to-peer network is not only used by full nodes (Base Nodes), but also by Validator Nodes, and
+
 Tari and Digital Assets Network (DAN) clients.
 
 For this reason, peer management is handled internally by the Comms layer. If a Base Node wants to propagate a message, 
@@ -135,6 +136,7 @@ The blockchain state API will be fairly rich, since it will serve not only Base 
 but also applications such as block explorers and monitoring programs via a [gRPC] interface.
 
 A non-exhaustive list of methods the blockchain state module API will expose includes:
+
 * checking whether a given Unspent Transaction Output (UTXO) is in the current UTXO set;
 * requesting the latest block height;
 * requesting the total accumulated work on the longest chain;

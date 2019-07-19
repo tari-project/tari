@@ -22,6 +22,10 @@
 #[macro_use]
 extern crate clap;
 
+extern crate pnet;
+
+use pnet::datalink::{self, NetworkInterface};
+
 use clap::{App, Arg};
 use log::*;
 use serde::{Deserialize, Serialize};
@@ -214,9 +218,35 @@ pub fn main() {
     let secret_key = CommsSecretKey::from_hex(settings.secret_key.unwrap().as_str()).unwrap();
     let public_key = CommsPublicKey::from_secret_key(&secret_key);
 
-    // TODO Use a less hacky crate to determine the local machines public IP address. This only works on Unix systems!
-    let ip = local_ip::get().expect("Could not determine local machines public IP address");
-    let local_net_address = match format!("{}:{}", ip, settings.control_port.unwrap()).parse() {
+    // get and filter interfaces
+    let interfaces: Vec<NetworkInterface> = datalink::interfaces()
+        .into_iter()
+        .filter(|interface| {
+            !interface.is_loopback() && interface.is_up() && interface.ips.iter().any(|addr| addr.is_ipv4())
+        })
+        .collect();
+
+    // select first interface
+    if interfaces.first().is_none() {
+        error!(
+            target: LOG_TARGET,
+            "No available network interface with an Ipv4 Address."
+        );
+        std::process::exit(1);
+    }
+
+    // get network interface and retrieve ipv4 address
+    let interface = interfaces.first().unwrap().clone();
+    let local_ip = interface
+        .ips
+        .iter()
+        .find(|addr| addr.is_ipv4())
+        .unwrap()
+        .ip()
+        .to_string();
+
+    println!("{}", local_ip);
+    let local_net_address = match format!("{}:{}", local_ip, settings.control_port.unwrap()).parse() {
         Ok(na) => na,
         Err(_) => {
             error!(target: LOG_TARGET, "Could not resolve local IP address");

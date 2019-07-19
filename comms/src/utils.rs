@@ -48,11 +48,10 @@ pub mod crypto {
     }
 
     /// Verify that the signature is valid for the message body
-    pub fn verify<B>(public_key: &CommsPublicKey, signature: Vec<u8>, body: B) -> Result<bool, MessageError>
+    pub fn verify<B>(public_key: &CommsPublicKey, signature: &[u8], body: B) -> Result<bool, MessageError>
     where B: AsRef<[u8]> {
-        let signature =
-            SchnorrSignature::<CommsPublicKey, <CommsPublicKey as PublicKey>::K>::from_binary(signature.as_slice())
-                .map_err(MessageError::MessageFormatError)?;
+        let signature = SchnorrSignature::<CommsPublicKey, <CommsPublicKey as PublicKey>::K>::from_binary(signature)
+            .map_err(MessageError::MessageFormatError)?;
         let challenge = Challenge::new().chain(body).result().to_vec();
         Ok(signature.verify_challenge(public_key, &challenge))
     }

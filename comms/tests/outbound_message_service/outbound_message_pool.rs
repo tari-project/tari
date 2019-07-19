@@ -64,10 +64,6 @@ fn make_peer_manager(peers: Vec<Peer>, database: CommsDatabase) -> Arc<PeerManag
     )
 }
 
-pub fn init_logging() {
-    let _ = simple_logger::init();
-}
-
 fn get_path(name: &str) -> String {
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     path.push("tests/data");
@@ -95,7 +91,6 @@ fn clean_up_datastore(name: &str) {
 #[test]
 #[allow(non_snake_case)]
 fn outbound_message_pool_no_retry() {
-    init_logging();
     let context = ZmqContext::new();
     let node_identity = Arc::new(factories::node_identity::create().build().unwrap());
 
@@ -203,7 +198,7 @@ fn outbound_message_pool_no_retry() {
     node_B_control_service.shutdown().unwrap();
     node_B_control_service
         .handle
-        .timeout_join(Duration::from_millis(100))
+        .timeout_join(Duration::from_millis(3000))
         .unwrap();
 
     omp.shutdown().unwrap();
@@ -223,7 +218,6 @@ fn outbound_message_pool_no_retry() {
 #[test]
 #[allow(non_snake_case)]
 fn test_outbound_message_pool_fail_and_retry() {
-    init_logging();
     let context = ZmqContext::new();
 
     let node_A_identity = factories::node_identity::create().build().map(Arc::new).unwrap();

@@ -51,8 +51,6 @@ fn clean_up_datastore(name: &str) {
 
 #[test]
 fn test_text_message_service() {
-    let _ = simple_logger::init();
-
     let mut rng = rand::OsRng::new().unwrap();
 
     let node_1_identity = NodeIdentity::random(&mut rng, "127.0.0.1:31523".parse().unwrap()).unwrap();

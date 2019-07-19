@@ -20,9 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// NOTE: This test uses ports 11111 and 11112
-
-use crate::support::{assert_change, random_string};
+// NOTE: This test uses ports 11113 and 11114
+use crate::support::random_string;
 use rand::rngs::OsRng;
 use std::{sync::Arc, time::Duration};
 use tari_comms::{
@@ -34,7 +33,7 @@ use tari_comms::{
     CommsBuilder,
 };
 use tari_p2p::{
-    ping_pong::{PingPongService, PingPongServiceApi},
+    dht_service::{DHTService, DHTServiceApi},
     services::{ServiceExecutor, ServiceRegistry},
     tari_message::{NetMessage, TariMessageType},
 };
@@ -63,15 +62,15 @@ fn create_peer_storage(tmpdir: &TempDir, database_name: &str, peers: Vec<Peer>) 
     storage.into_datastore()
 }
 
-fn setup_ping_pong_service(
+fn setup_dht_service(
     node_identity: NodeIdentity,
     peer_storage: CommsDatabase,
-) -> (ServiceExecutor, Arc<PingPongServiceApi>)
+) -> (ServiceExecutor, Arc<DHTServiceApi>)
 {
-    let ping_pong = PingPongService::new();
-    let pingpong_api = ping_pong.get_api();
+    let dht_service = DHTService::new();
+    let dht_api = dht_service.get_api();
 
-    let services = ServiceRegistry::new().register(ping_pong);
+    let services = ServiceRegistry::new().register(dht_service);
     let comms = CommsBuilder::new()
         .with_routes(services.build_comms_routes())
         .with_node_identity(node_identity.clone())
@@ -91,44 +90,34 @@ fn setup_ping_pong_service(
         .start()
         .unwrap();
 
-    (ServiceExecutor::execute(Arc::new(comms), services), pingpong_api)
+    (ServiceExecutor::execute(Arc::new(comms), services), dht_api)
 }
 
 #[test]
 #[allow(non_snake_case)]
-fn end_to_end() {
+fn test_dht_service() {
+    let _ = simple_logger::init();
+
+    let node_A_identity = new_node_identity("127.0.0.1:11113".parse().unwrap());
+    let node_B_identity = new_node_identity("127.0.0.1:11114".parse().unwrap());
+
+    // Setup Node A
     let node_A_tmpdir = TempDir::new(random_string(8).as_str()).unwrap();
-
-    let node_B_tmpdir = TempDir::new(random_string(8).as_str()).unwrap();
-
-    let node_A_identity = new_node_identity("127.0.0.1:11111".parse().unwrap());
-    let node_B_identity = new_node_identity("127.0.0.1:11112".parse().unwrap());
-
-    let (node_A_services, node_A_pingpong) = setup_ping_pong_service(
+    let (node_A_services, node_A_dht_service_api) = setup_dht_service(
         node_A_identity.clone(),
         create_peer_storage(&node_A_tmpdir, "node_A", vec![node_B_identity.clone().into()]),
     );
-
-    let (node_B_services, node_B_pingpong) = setup_ping_pong_service(
+    // Setup Node B
+    let node_B_tmpdir = TempDir::new(random_string(8).as_str()).unwrap();
+    let (node_B_services, node_B_dht_service_api) = setup_dht_service(
         node_B_identity.clone(),
         create_peer_storage(&node_B_tmpdir, "node_B", vec![node_A_identity.clone().into()]),
     );
 
-    // Ping node B
-    node_A_pingpong
-        .ping(node_B_identity.identity.public_key.clone())
-        .unwrap();
-
-    assert_change(|| node_B_pingpong.ping_count().unwrap(), 1, 20);
-    assert_change(|| node_A_pingpong.pong_count().unwrap(), 1, 20);
-
-    // Ping node A
-    node_B_pingpong
-        .ping(node_A_identity.identity.public_key.clone())
-        .unwrap();
-
-    assert_change(|| node_B_pingpong.pong_count().unwrap(), 1, 20);
-    assert_change(|| node_A_pingpong.ping_count().unwrap(), 1, 20);
+    assert!(node_A_dht_service_api.send_join().is_ok());
+    assert!(node_B_dht_service_api
+        .send_discover(node_A_identity.identity.public_key)
+        .is_ok());
 
     node_A_services.shutdown().unwrap();
     node_B_services.shutdown().unwrap();

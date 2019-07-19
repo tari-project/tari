@@ -67,19 +67,21 @@ where
     /// The dispatch type is determined from the content of the MessageContext, which is used to dispatch the message to
     /// the correct handler
     fn resolve(&self, message_context: &MessageContext<MType>) -> Result<CommsDispatchType, DispatchError> {
+        let message_envelope = &message_context.message_envelope;
+
+        // Check destination of message
+        let message_envelope_header = message_envelope
+            .deserialize_header()
+            .map_err(|e| DispatchError::HandlerError(format!("{}", e)))?;
+
         // Verify source node message signature
-        if !message_context
-            .message_envelope
-            .verify_signature()
+        if !message_envelope_header
+            .verify_signature(message_envelope.body_frame())
             .map_err(|e| DispatchError::HandlerError(format!("{}", e)))?
         {
             return Ok(CommsDispatchType::Discard);
         }
-        // Check destination of message
-        let message_envelope_header = message_context
-            .message_envelope
-            .to_header()
-            .map_err(|e| DispatchError::HandlerError(format!("{}", e)))?;
+
         let node_identity = &message_context.node_identity;
 
         match message_envelope_header.dest {
@@ -117,7 +119,7 @@ where
 
     // Check encryption and retrieved Message
     let message_envelope_header = envelope
-        .to_header()
+        .deserialize_header()
         .map_err(|e| DispatchError::HandlerError(format!("{}", e)))?;
 
     debug!(
@@ -130,7 +132,7 @@ where
         debug!(target: LOG_TARGET, "Attempting to decrypt message");
         match message_context
             .message_envelope
-            .decrypted_message_body(&node_identity.secret_key, &message_envelope_header.source)
+            .deserialize_encrypted_body(&node_identity.secret_key, &message_envelope_header.source)
         {
             Ok(decrypted_message_body) => {
                 debug!(target: LOG_TARGET, "Message successfully decrypted");
@@ -155,7 +157,7 @@ where
         debug!(target: LOG_TARGET, "Message not encrypted");
         message = message_context
             .message_envelope
-            .message_body()
+            .deserialize_body()
             .map_err(DispatchError::handler_error())?;
     };
 

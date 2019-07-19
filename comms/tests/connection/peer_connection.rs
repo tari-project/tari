@@ -364,7 +364,7 @@ fn connection_stats() {
             stats.messages_recv()
         },
         4,
-        20,
+        40,
     );
 
     assert_change(
@@ -377,5 +377,5 @@ fn connection_stats() {
     );
 
     let stats = conn.connection_stats();
-    assert_ne!(stats.last_activity(), initial_stats.last_activity());
+    assert!(stats.last_activity() > initial_stats.last_activity());
 }

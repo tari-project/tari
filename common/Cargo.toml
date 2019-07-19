@@ -11,5 +11,4 @@ edition = "2018"
 
 [dependencies]
 dirs = "2.0"
-
-[dependencies.log4rs]
+log4rs = "0.8.3"

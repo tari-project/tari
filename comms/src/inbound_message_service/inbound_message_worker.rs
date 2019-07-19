@@ -251,18 +251,12 @@ mod test {
     use tari_storage::key_val_store::HMapDatabase;
     use tari_utilities::{message_format::MessageFormat, thread_join::ThreadJoinWithTimeout};
 
-    fn init() {
-        let _ = simple_logger::init();
-    }
-
     fn pause() {
         thread::sleep(Duration::from_millis(5));
     }
 
     #[test]
     fn test_dispatch_to_multiple_service_handlers() {
-        init();
-
         let context = ZmqContext::new();
         let node_identity = Arc::new(NodeIdentity::random_for_test(None));
 
@@ -395,7 +389,7 @@ mod test {
         // Test worker clean shutdown
         control_sync_sender.send(ControlMessage::Shutdown).unwrap();
         std::thread::sleep(time::Duration::from_millis(200));
-        thread_handle.timeout_join(Duration::from_millis(100)).unwrap();
+        thread_handle.timeout_join(Duration::from_millis(3000)).unwrap();
         assert!(client_connection.send(message1_frame_set).is_err());
     }
 }

@@ -20,6 +20,92 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+//! This Merkle Mountain Range implementation was created to give the MMR as well as hold the data that makes up the
+//! MMR. The MMR is default a memory only MMR, although it has the option to store to some persistance store.
+//! If the MMR is enabled to be persistant, it can can rewind itself. The MMR will keep track off all changes between
+//! checkpoints, these checkpoints are saved to disc as well as a root copy. A ledger is used to keep track of all
+//! changes the happen in the MMR and all changes in the ledger are applied at checkpoints.
+//!
+//! Storage is achieved via the merkle_store trait. The controls how data should be saved and loaded. The pruning
+//! horizon is the height that is used by the MMR to control how long back changes should be kept before making them
+//! permanent. Only the pruning horizon version of the MMR and the ledger changes are saved to disc, the tip of the MMR
+//! is stored in memory only. This works as follows:
+//! We start with a small MMR with only 2 leaves, for this example out pruning horizon is 2
+//! ```plaintext
+//!     /\  
+//!    /\/\
+//! ```
+//!
+//! We now add the following and checkpoint:
+//! ```plaintext
+//!    /\
+//! ```
+//! Our MMR looks as follows
+//! ```plaintext
+//! disc mmr (pruning horizon version)
+//!     /\
+//!    /\/\
+//! ```
+//! ```plaintext
+//! disc mmr (ledger)
+//!    /\
+//! ```
+//! ```plaintext
+//! MMR on disc (used mmr)
+//!     /\
+//!    /\/\/\
+//! ```
+//!
+//! We know add the following again and checkpoint:
+//! ```plaintext
+//!    /\
+//! ```
+//! Our MMR looks as follows
+//! ```plaintext
+//! disc mmr (pruning horizon version)
+//!     /\
+//!    /\/\
+//! ```
+//! ```plaintext
+//! disc mmr (ledger)
+//!    /\
+//!
+//!    /\
+//! ```
+//! ```plaintext
+//! MMR on disc (used mmr)
+//!       /\
+//!      /  \
+//!     /\  /\
+//!    /\/\/\/\
+//! ```
+//!
+//! We now add the following again and checkpoint:
+//! ```plaintext
+//!    /\
+//! ```
+//! Our MMR looks as follows
+//! ```plaintext
+//! disc mmr (pruning horizon version)
+//!     /\
+//!    /\/\/\
+//! ```
+//! ```plaintext
+//! disc mmr (ledger)
+//!    /\
+//!
+//!    /\
+//! ```
+//! ```plaintext
+//! MMR on disc (used mmr)
+//!       /\
+//!      /  \
+//!     /\  /\
+//!    /\/\/\/\/\
+//! ```
+//!
+//! By using a ledger to track changes, we can reset the MMR to a previous state.
+
 use crate::{
     error::MerkleMountainRangeError,
     merkle_change_tracker::MerkleChangeTracker,

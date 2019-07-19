@@ -4,7 +4,7 @@ use crate::connection::{
 };
 use chrono::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
+use std::{ops::Index, time::Duration};
 
 pub const MAX_CONNECTION_ATTEMPTS: u32 = 3;
 
@@ -144,6 +144,15 @@ impl NetAddressesWithStats {
     }
 }
 
+impl Index<usize> for NetAddressesWithStats {
+    type Output = NetAddressWithStats;
+
+    /// Returns the NetAddressWithStats at the given index
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.addresses[index]
+    }
+}
+
 impl From<NetAddress> for NetAddressesWithStats {
     /// Constructs a new list of addresses with usage stats from a single net address
     fn from(net_address: NetAddress) -> Self {
@@ -185,6 +194,19 @@ mod test {
         NetAddress,
     };
     use std::thread;
+
+    #[test]
+    fn test_index_impl() {
+        let net_address1 = "123.0.0.123:8000".parse::<NetAddress>().unwrap();
+        let net_address2 = "125.1.54.254:7999".parse::<NetAddress>().unwrap();
+        let net_address3 = "175.6.3.145:8000".parse::<NetAddress>().unwrap();
+        let net_addresses: NetAddressesWithStats =
+            vec![net_address1.clone(), net_address2.clone(), net_address3.clone()].into();
+
+        assert_eq!(net_addresses[0].net_address, net_address1);
+        assert_eq!(net_addresses[1].net_address, net_address2);
+        assert_eq!(net_addresses[2].net_address, net_address3);
+    }
 
     #[test]
     fn test_last_seen() {
