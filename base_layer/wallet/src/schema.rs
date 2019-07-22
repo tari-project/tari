@@ -18,7 +18,7 @@ table! {
 
 table! {
     sent_messages (id) {
-        id -> Binary,
+        id -> Text,
         source_pub_key -> Text,
         dest_pub_key -> Text,
         message -> Text,

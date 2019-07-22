@@ -42,13 +42,14 @@ use tari_grpc_wallet::grpc_interface::wallet_rpc::{
     VoidParams,
 };
 
+use std::path::PathBuf;
 use tari_grpc_wallet::wallet_server::WalletServer;
 use tari_p2p::{
     initialization::CommsConfig,
     tari_message::{NetMessage, TariMessageType},
 };
 use tari_utilities::hex::Hex;
-use tari_wallet::{wallet::WalletConfig, Wallet};
+use tari_wallet::{text_message_service::Contact, wallet::WalletConfig, Wallet};
 use tempdir::TempDir;
 use tower_grpc::Request;
 use tower_hyper::{client, util};
@@ -59,6 +60,25 @@ const WALLET_GRPC_PORT: u32 = 26778;
 
 pub fn init() {
     let _ = simple_logger::init_with_level(Level::Debug);
+}
+
+fn get_path(name: Option<&str>) -> String {
+    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    path.push("tests/data");
+    path.push(name.unwrap_or(""));
+    path.to_str().unwrap().to_string()
+}
+
+fn clean_up_sql_database(name: &str) {
+    if std::fs::metadata(get_path(Some(name))).is_ok() {
+        std::fs::remove_file(get_path(Some(name))).unwrap();
+    }
+}
+
+fn init_sql_database(name: &str) {
+    clean_up_sql_database(name);
+    let path = get_path(None);
+    let _ = std::fs::create_dir(&path).unwrap_or_default();
 }
 
 fn send_text_message_request(msg: TextMessageToSendRpc, desired_response: RpcResponse) {
@@ -490,6 +510,14 @@ fn test_rpc_text_message_service() {
     let secret_key2 = CommsSecretKey::random(&mut rng);
     let public_key2 = CommsPublicKey::from_secret_key(&secret_key2);
 
+    let db_name1 = "test_rpc_text_message_service1.sqlite3";
+    let db_path1 = get_path(Some(db_name1));
+    init_sql_database(db_name1);
+
+    let db_name2 = "test_rpc_text_message_service2.sqlite3";
+    let db_path2 = get_path(Some(db_name2));
+    init_sql_database(db_name2);
+
     let config1 = WalletConfig {
         comms: CommsConfig {
             control_service: ControlServiceConfig {
@@ -512,6 +540,7 @@ fn test_rpc_text_message_service() {
             peer_database_name: random_string(8),
         },
         public_key: public_key1.clone(),
+        database_path: db_path1,
     };
 
     let config2 = WalletConfig {
@@ -536,6 +565,7 @@ fn test_rpc_text_message_service() {
             peer_database_name: random_string(8),
         },
         public_key: public_key2.clone(),
+        database_path: db_path2,
     };
 
     let wallet1 = Wallet::new(config1).unwrap();
@@ -545,14 +575,14 @@ fn test_rpc_text_message_service() {
         let _ = wallet_server.start().unwrap();
     });
 
-    let screen_name = "Alice".to_string();
-    let alice_contact = ContactRpc {
+    let screen_name = "Bob".to_string();
+    let bob_contact = ContactRpc {
         screen_name: screen_name.clone(),
         pub_key: public_key2.to_hex(),
         address: format!("{}", listener_address2.clone()),
     };
 
-    add_contact(alice_contact.clone());
+    add_contact(bob_contact.clone());
 
     thread::sleep(Duration::from_millis(100));
 
@@ -561,8 +591,14 @@ fn test_rpc_text_message_service() {
     wallet2
         .comms_services
         .peer_manager()
-        .add_peer(create_peer(public_key1.clone(), listener_address1))
+        .add_peer(create_peer(public_key1.clone(), listener_address1.clone()))
         .unwrap();
+    let alice_contact = Contact {
+        screen_name: "Alice".to_string(),
+        pub_key: public_key1.clone(),
+        address: listener_address1.clone(),
+    };
+    wallet2.text_message_service.add_contact(alice_contact).unwrap();
 
     let test_msg = TextMessageToSendRpc {
         dest_pub_key: public_key2.clone().to_hex(),
@@ -581,6 +617,7 @@ fn test_rpc_text_message_service() {
 
     send_text_message_request(test_msg, resp.clone());
     send_text_message_request(test_msg2, resp);
+
     wallet2
         .text_message_service
         .send_text_message(public_key1.clone(), "Here we go!".to_string())
@@ -590,8 +627,10 @@ fn test_rpc_text_message_service() {
     let received_messages = vec!["Here we go!".to_string()];
 
     get_text_messages_request(sent_messages.clone(), received_messages.clone(), None);
-    get_text_messages_request(sent_messages, received_messages, Some(alice_contact));
+    get_text_messages_request(sent_messages, received_messages, Some(bob_contact));
     set_get_screen_name("Alice".to_string());
     get_pub_key(public_key1.to_hex());
     contacts_crud();
+    clean_up_sql_database(db_name1);
+    clean_up_sql_database(db_name2);
 }

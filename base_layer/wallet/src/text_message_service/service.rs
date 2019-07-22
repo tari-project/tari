@@ -20,16 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    text_message_service::{error::TextMessageError, model::generate_id, Contact, TextMessage, UpdateContact},
-    types::HashDigest,
+use crate::text_message_service::{
+    error::TextMessageError,
+    model::{ReceivedTextMessage, SentTextMessage},
+    Contact,
+    UpdateContact,
 };
-use chrono::prelude::*;
 use crossbeam_channel as channel;
+use diesel::{connection::Connection, SqliteConnection};
 use log::*;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashMap,
     convert::TryInto,
     sync::{Arc, Mutex},
     time::Duration,
@@ -54,7 +55,7 @@ use tari_p2p::{
     tari_message::{ExtendedMessage, TariMessageType},
 };
 
-const LOG_TARGET: &str = "base_layer::wallet::text_messsage_service";
+const LOG_TARGET: &'static str = "base_layer::wallet::text_messsage_service";
 
 /// Represents an Acknowledgement of receiving a Text Message
 #[derive(Debug, Serialize, Deserialize)]
@@ -74,26 +75,20 @@ impl TryInto<Message> for TextMessageAck {
 /// (pending messages), Ack'ed sent messages and received messages.
 pub struct TextMessageService {
     pub_key: CommsPublicKey,
-    pending_messages: HashMap<Vec<u8>, TextMessage>,
-    sent_messages: Vec<TextMessage>,
-    received_messages: Vec<TextMessage>,
     screen_name: Option<String>,
-    contacts: Vec<Contact>,
     oms: Option<Arc<OutboundMessageService>>,
     api: ServiceApiWrapper<TextMessageServiceApi, TextMessageApiRequest, TextMessageApiResult>,
+    database_path: String,
 }
 
 impl TextMessageService {
-    pub fn new(pub_key: CommsPublicKey) -> TextMessageService {
+    pub fn new(pub_key: CommsPublicKey, database_path: String) -> TextMessageService {
         TextMessageService {
             pub_key,
-            pending_messages: HashMap::new(),
-            sent_messages: Vec::new(),
-            received_messages: Vec::new(),
             screen_name: None,
-            contacts: Vec::new(),
             oms: None,
             api: Self::setup_api(),
+            database_path,
         }
     }
 
@@ -111,34 +106,26 @@ impl TextMessageService {
     }
 
     /// Send a text message to the specified node using the provided OMS
-    fn send_text_message(&mut self, dest_pub_key: CommsPublicKey, message: String) -> Result<(), TextMessageError> {
+    fn send_text_message(
+        &mut self,
+        dest_pub_key: CommsPublicKey,
+        message: String,
+        conn: &SqliteConnection,
+    ) -> Result<(), TextMessageError>
+    {
         let oms = self.oms.clone().ok_or(TextMessageError::OMSNotInitialized)?;
 
-        let timestamp = Utc::now().naive_utc();
-        let count = self
-            .sent_messages
-            .iter()
-            .filter(|i| i.dest_pub_key == dest_pub_key)
-            .count() +
-            self.pending_messages
-                .values()
-                .filter(|i| i.dest_pub_key == dest_pub_key)
-                .count();
-        let text_message = TextMessage {
-            id: generate_id::<HashDigest>(&self.pub_key, &dest_pub_key, &message, &timestamp, count),
-            source_pub_key: self.pub_key.clone(),
-            dest_pub_key,
-            message,
-            timestamp,
-        };
+        let count = SentTextMessage::count_by_dest_pub_key(&dest_pub_key.clone(), conn)?;
+
+        let text_message = SentTextMessage::new(self.pub_key.clone(), dest_pub_key, message, Some(count as usize));
 
         oms.send_message(
             BroadcastStrategy::DirectPublicKey(text_message.dest_pub_key.clone()),
             MessageFlags::ENCRYPTED,
             text_message.clone(),
         )?;
-        self.pending_messages
-            .insert(text_message.id.clone(), text_message.clone());
+
+        text_message.commit(conn)?;
 
         trace!(target: LOG_TARGET, "Text Message Sent to {}", text_message.dest_pub_key);
 
@@ -146,10 +133,15 @@ impl TextMessageService {
     }
 
     /// Process an incoming text message
-    fn receive_text_message(&mut self, connector: &DomainConnector<'static>) -> Result<(), TextMessageError> {
+    fn receive_text_message(
+        &mut self,
+        connector: &DomainConnector<'static>,
+        conn: &SqliteConnection,
+    ) -> Result<(), TextMessageError>
+    {
         let oms = self.oms.clone().ok_or(TextMessageError::OMSNotInitialized)?;
 
-        let incoming_msg: Option<(MessageInfo, TextMessage)> = connector
+        let incoming_msg: Option<(MessageInfo, ReceivedTextMessage)> = connector
             .receive_timeout(Duration::from_millis(10))
             .map_err(TextMessageError::ConnectorError)?;
 
@@ -169,14 +161,19 @@ impl TextMessageService {
                 text_message_ack,
             )?;
 
-            self.received_messages.push(msg.clone());
+            msg.commit(conn)?;
         }
 
         Ok(())
     }
 
     /// Process an incoming text message Ack
-    fn receive_text_message_ack(&mut self, connector: &DomainConnector<'static>) -> Result<(), TextMessageError> {
+    fn receive_text_message_ack(
+        &mut self,
+        connector: &DomainConnector<'static>,
+        conn: &SqliteConnection,
+    ) -> Result<(), TextMessageError>
+    {
         let incoming_msg: Option<(MessageInfo, TextMessageAck)> = connector
             .receive_timeout(Duration::from_millis(10))
             .map_err(TextMessageError::ConnectorError)?;
@@ -187,54 +184,30 @@ impl TextMessageService {
                 "Text Message Ack received with ID: {:?}",
                 msg_ack.id.clone(),
             );
-            match self.pending_messages.remove(&msg_ack.id) {
-                Some(m) => self.sent_messages.push(m),
-                None => return Err(TextMessageError::MessageNotFound),
-            }
+            SentTextMessage::mark_sent_message_ack(msg_ack.id.clone(), conn)?;
         }
 
         Ok(())
     }
 
     /// Return a copy of the current lists of messages
-    /// TODO Remove this in memory storing of message in favour of Sqlite persistence
-    fn get_current_messages(&self) -> TextMessages {
-        let mut pending_messages: Vec<TextMessage> = Vec::new();
-
-        for (_k, v) in self.pending_messages.iter() {
-            pending_messages.push(v.clone());
-        }
-
-        TextMessages {
-            pending_messages,
-            sent_messages: self.sent_messages.clone(),
-            received_messages: self.received_messages.clone(),
-        }
+    fn get_current_messages(&self, conn: &SqliteConnection) -> Result<TextMessages, TextMessageError> {
+        Ok(TextMessages {
+            sent_messages: SentTextMessage::index(conn)?,
+            received_messages: ReceivedTextMessage::index(conn)?,
+        })
     }
 
-    fn get_current_messages_by_pub_key(&self, pub_key: CommsPublicKey) -> TextMessages {
-        let mut pending_messages: Vec<TextMessage> = Vec::new();
-
-        for (_k, v) in self.pending_messages.iter() {
-            if v.dest_pub_key == pub_key {
-                pending_messages.push(v.clone());
-            }
-        }
-        TextMessages {
-            pending_messages,
-            sent_messages: self
-                .sent_messages
-                .iter()
-                .filter(|t| t.dest_pub_key == pub_key)
-                .cloned()
-                .collect(),
-            received_messages: self
-                .received_messages
-                .iter()
-                .filter(|t| t.source_pub_key == pub_key)
-                .cloned()
-                .collect(),
-        }
+    fn get_current_messages_by_pub_key(
+        &self,
+        pub_key: CommsPublicKey,
+        conn: &SqliteConnection,
+    ) -> Result<TextMessages, TextMessageError>
+    {
+        Ok(TextMessages {
+            sent_messages: SentTextMessage::find_by_dest_pub_key(&pub_key, conn)?,
+            received_messages: ReceivedTextMessage::find_by_source_pub_key(&pub_key, conn)?,
+        })
     }
 
     pub fn get_pub_key(&self) -> CommsPublicKey {
@@ -253,11 +226,16 @@ impl TextMessageService {
         self.screen_name = Some(screen_name);
     }
 
-    pub fn add_contact(&mut self, contact: Contact) -> Result<(), TextMessageError> {
-        if self.contacts.iter().any(|c| c.pub_key == contact.pub_key) {
-            return Err(TextMessageError::ContactAlreadyExists);
+    pub fn add_contact(&mut self, contact: Contact, conn: &SqliteConnection) -> Result<(), TextMessageError> {
+        let found_contact = Contact::find(&contact.pub_key, conn);
+        if let Ok(c) = found_contact {
+            if c.pub_key == contact.pub_key {
+                return Err(TextMessageError::ContactAlreadyExists);
+            }
         }
-        self.contacts.push(contact.clone());
+
+        contact.commit(&conn)?;
+
         // Send ping to the contact so that if they are online they will flush all outstanding messages for this node
         let oms = self.oms.clone().ok_or(TextMessageError::OMSNotInitialized)?;
         oms.send_message(
@@ -276,18 +254,12 @@ impl TextMessageService {
         Ok(())
     }
 
-    pub fn remove_contact(&mut self, contact: Contact) -> Result<(), TextMessageError> {
-        let position = self
-            .contacts
-            .iter()
-            .position(|x| x == &contact)
-            .ok_or(TextMessageError::ContactNotFound)?;
-
-        let _ = self.contacts.remove(position);
+    pub fn remove_contact(&mut self, contact: Contact, conn: &SqliteConnection) -> Result<(), TextMessageError> {
+        contact.clone().delete(conn)?;
 
         trace!(
             target: LOG_TARGET,
-            "Contact Added: Screen name: {:?} - Pub-key: {} - Address: {:?}",
+            "Contact Deleted: Screen name: {:?} - Pub-key: {} - Address: {:?}",
             contact.screen_name.clone(),
             contact.pub_key.clone(),
             contact.address.clone()
@@ -296,57 +268,67 @@ impl TextMessageService {
         Ok(())
     }
 
-    pub fn get_contacts(&self) -> Vec<Contact> {
-        self.contacts.clone()
+    pub fn get_contacts(&self, conn: &SqliteConnection) -> Result<Vec<Contact>, TextMessageError> {
+        Contact::index(conn)
     }
 
     /// Updates the screen_name of a contact if an existing contact with the same pub_key is found
-    pub fn update_contact(&mut self, pub_key: CommsPublicKey, contact: UpdateContact) -> Result<(), TextMessageError> {
-        let found_contact = self
-            .contacts
-            .iter_mut()
-            .find(|c| c.pub_key == pub_key)
-            .ok_or(TextMessageError::ContactNotFound)?;
-        if let Some(sn) = contact.screen_name.clone() {
-            found_contact.screen_name = sn;
-        }
+    pub fn update_contact(
+        &mut self,
+        pub_key: CommsPublicKey,
+        contact_update: UpdateContact,
+        conn: &SqliteConnection,
+    ) -> Result<(), TextMessageError>
+    {
+        let contact = Contact::find(&pub_key, conn)?;
+
+        contact.clone().update(contact_update, conn)?;
 
         trace!(
             target: LOG_TARGET,
-            "Contact Added: Screen name: {:?} - Pub-key: {} - Address: {:?}",
-            found_contact.screen_name.clone(),
-            found_contact.pub_key.clone(),
-            found_contact.address.clone()
+            "Contact Updated: Screen name: {:?} - Pub-key: {} - Address: {:?}",
+            contact.screen_name.clone(),
+            contact.pub_key.clone(),
+            contact.address.clone()
         );
 
         Ok(())
     }
 
     /// This handler is called when the Service executor loops receives an API request
-    fn handle_api_message(&mut self, msg: TextMessageApiRequest) -> Result<(), ServiceError> {
+    fn handle_api_message(
+        &mut self,
+        msg: TextMessageApiRequest,
+        connection: &SqliteConnection,
+    ) -> Result<(), ServiceError>
+    {
         trace!(target: LOG_TARGET, "[{}] Received API message", self.get_name(),);
         let resp = match msg {
             TextMessageApiRequest::SendTextMessage((destination, message)) => self
-                .send_text_message(*destination, message)
+                .send_text_message(destination, message, connection)
                 .map(|_| TextMessageApiResponse::MessageSent),
-            TextMessageApiRequest::GetTextMessages => {
-                Ok(TextMessageApiResponse::TextMessages(self.get_current_messages()))
-            },
-            TextMessageApiRequest::GetTextMessagesByPubKey(pk) => Ok(TextMessageApiResponse::TextMessages(
-                self.get_current_messages_by_pub_key(*pk),
-            )),
+            TextMessageApiRequest::GetTextMessages => self
+                .get_current_messages(connection)
+                .map(|tm| TextMessageApiResponse::TextMessages(tm)),
+            TextMessageApiRequest::GetTextMessagesByPubKey(pk) => self
+                .get_current_messages_by_pub_key(pk, connection)
+                .map(|tm| TextMessageApiResponse::TextMessages(tm)),
             TextMessageApiRequest::GetScreenName => Ok(TextMessageApiResponse::ScreenName(self.get_screen_name())),
             TextMessageApiRequest::SetScreenName(s) => {
                 self.set_screen_name(s);
                 Ok(TextMessageApiResponse::ScreenNameSet)
             },
-            TextMessageApiRequest::AddContact(c) => self.add_contact(*c).map(|_| TextMessageApiResponse::ContactAdded),
-            TextMessageApiRequest::RemoveContact(c) => {
-                self.remove_contact(*c).map(|_| TextMessageApiResponse::ContactRemoved)
-            },
-            TextMessageApiRequest::GetContacts => Ok(TextMessageApiResponse::Contacts(self.get_contacts())),
+            TextMessageApiRequest::AddContact(c) => self
+                .add_contact(c, connection)
+                .map(|_| TextMessageApiResponse::ContactAdded),
+            TextMessageApiRequest::RemoveContact(c) => self
+                .remove_contact(c, connection)
+                .map(|_| TextMessageApiResponse::ContactRemoved),
+            TextMessageApiRequest::GetContacts => self
+                .get_contacts(connection)
+                .map(|c| TextMessageApiResponse::Contacts(c)),
             TextMessageApiRequest::UpdateContact((pk, c)) => self
-                .update_contact(*pk, *c)
+                .update_contact(pk, c, connection)
                 .map(|_| TextMessageApiResponse::ContactUpdated),
         };
 
@@ -356,18 +338,14 @@ impl TextMessageService {
             .map_err(ServiceError::internal_service_error())
     }
 
-    // TODO return a reference to the text messages when requested via API rather than copying them. (This will be taken
-    // care of when moving to Sqlite persistence)
-    // TODO Disk persistence of messages
     // TODO Some sort of accessor that allows for pagination of messages
 }
 
 /// A collection to hold a text message state
 #[derive(Debug)]
 pub struct TextMessages {
-    pub pending_messages: Vec<TextMessage>,
-    pub sent_messages: Vec<TextMessage>,
-    pub received_messages: Vec<TextMessage>,
+    pub received_messages: Vec<ReceivedTextMessage>,
+    pub sent_messages: Vec<SentTextMessage>,
 }
 
 /// The Domain Service trait implementation for the TestMessageService
@@ -394,6 +372,27 @@ impl Service for TextMessageService {
             })?;
 
         self.oms = Some(context.outbound_message_service());
+
+        // Check if the database file exists
+        let mut exists = false;
+        if std::fs::metadata(self.database_path.clone()).is_ok() {
+            exists = true;
+        }
+
+        let connection = SqliteConnection::establish(&self.database_path)
+            .map_err(|e| ServiceError::ServiceInitializationFailed(format!("{}", e).to_string()))?;
+
+        connection
+            .execute("PRAGMA foreign_keys = ON")
+            .map_err(|e| ServiceError::ServiceInitializationFailed(format!("{}", e).to_string()))?;
+
+        if !exists {
+            embed_migrations!("./migrations");
+            embedded_migrations::run_with_output(&connection, &mut std::io::stdout()).map_err(|e| {
+                ServiceError::ServiceInitializationFailed(format!("Database migration failed {}", e).to_string())
+            })?;
+        }
+
         debug!(target: LOG_TARGET, "Starting Text Message Service executor");
         loop {
             if let Some(msg) = context.get_control_message(Duration::from_millis(5)) {
@@ -402,14 +401,14 @@ impl Service for TextMessageService {
                 }
             }
 
-            match self.receive_text_message(&connector_text) {
+            match self.receive_text_message(&connector_text, &connection) {
                 Ok(_) => {},
                 Err(err) => {
                     error!(target: LOG_TARGET, "Text Message service had error: {:?}", err);
                 },
             }
 
-            match self.receive_text_message_ack(&connector_text_ack) {
+            match self.receive_text_message_ack(&connector_text_ack, &connection) {
                 Ok(_) => {},
                 Err(err) => {
                     error!(target: LOG_TARGET, "Text Message service had error: {:?}", err);
@@ -421,7 +420,7 @@ impl Service for TextMessageService {
                 .recv_timeout(Duration::from_millis(50))
                 .map_err(ServiceError::internal_service_error())?
             {
-                self.handle_api_message(msg)?;
+                self.handle_api_message(msg, &connection)?;
             }
         }
 
@@ -432,15 +431,15 @@ impl Service for TextMessageService {
 /// API Request enum
 #[derive(Debug)]
 pub enum TextMessageApiRequest {
-    SendTextMessage((Box<CommsPublicKey>, String)),
+    SendTextMessage((CommsPublicKey, String)),
     GetTextMessages,
-    GetTextMessagesByPubKey(Box<CommsPublicKey>),
+    GetTextMessagesByPubKey(CommsPublicKey),
     SetScreenName(String),
     GetScreenName,
-    AddContact(Box<Contact>),
-    RemoveContact(Box<Contact>),
+    AddContact(Contact),
+    RemoveContact(Contact),
     GetContacts,
-    UpdateContact((Box<CommsPublicKey>, Box<UpdateContact>)),
+    UpdateContact((CommsPublicKey, UpdateContact)),
 }
 
 /// API Response enum
@@ -480,7 +479,7 @@ impl TextMessageServiceApi {
     }
 
     pub fn send_text_message(&self, destination: CommsPublicKey, message: String) -> Result<(), TextMessageError> {
-        self.send_recv(TextMessageApiRequest::SendTextMessage((Box::new(destination), message)))
+        self.send_recv(TextMessageApiRequest::SendTextMessage((destination, message)))
             .and_then(|resp| match resp {
                 TextMessageApiResponse::MessageSent => Ok(()),
                 _ => Err(TextMessageError::UnexpectedApiResponse),
@@ -496,7 +495,7 @@ impl TextMessageServiceApi {
     }
 
     pub fn get_text_messages_by_pub_key(&self, pub_key: CommsPublicKey) -> Result<TextMessages, TextMessageError> {
-        self.send_recv(TextMessageApiRequest::GetTextMessagesByPubKey(Box::new(pub_key)))
+        self.send_recv(TextMessageApiRequest::GetTextMessagesByPubKey(pub_key))
             .and_then(|resp| match resp {
                 TextMessageApiResponse::TextMessages(msgs) => Ok(msgs),
                 _ => Err(TextMessageError::UnexpectedApiResponse),
@@ -520,7 +519,7 @@ impl TextMessageServiceApi {
     }
 
     pub fn add_contact(&self, contact: Contact) -> Result<(), TextMessageError> {
-        self.send_recv(TextMessageApiRequest::AddContact(Box::new(contact)))
+        self.send_recv(TextMessageApiRequest::AddContact(contact))
             .and_then(|resp| match resp {
                 TextMessageApiResponse::ContactAdded => Ok(()),
                 _ => Err(TextMessageError::UnexpectedApiResponse),
@@ -528,7 +527,7 @@ impl TextMessageServiceApi {
     }
 
     pub fn remove_contact(&self, contact: Contact) -> Result<(), TextMessageError> {
-        self.send_recv(TextMessageApiRequest::RemoveContact(Box::new(contact)))
+        self.send_recv(TextMessageApiRequest::RemoveContact(contact))
             .and_then(|resp| match resp {
                 TextMessageApiResponse::ContactRemoved => Ok(()),
                 _ => Err(TextMessageError::UnexpectedApiResponse),
@@ -544,21 +543,18 @@ impl TextMessageServiceApi {
     }
 
     pub fn update_contact(&self, pub_key: CommsPublicKey, contact: UpdateContact) -> Result<(), TextMessageError> {
-        self.send_recv(TextMessageApiRequest::UpdateContact((
-            Box::new(pub_key),
-            Box::new(contact),
-        )))
-        .and_then(|resp| match resp {
-            TextMessageApiResponse::ContactUpdated => Ok(()),
-            _ => Err(TextMessageError::UnexpectedApiResponse),
-        })
+        self.send_recv(TextMessageApiRequest::UpdateContact((pub_key, contact)))
+            .and_then(|resp| match resp {
+                TextMessageApiResponse::ContactUpdated => Ok(()),
+                _ => Err(TextMessageError::UnexpectedApiResponse),
+            })
     }
 
     fn send_recv(&self, msg: TextMessageApiRequest) -> TextMessageApiResult {
         self.lock(|| -> TextMessageApiResult {
             self.sender.send(msg).map_err(|_| TextMessageError::ApiSendFailed)?;
             self.receiver
-                .recv_timeout(self.timeout)
+                .recv_timeout(self.timeout.clone())
                 .map_err(|_| TextMessageError::ApiReceiveFailed)?
         })
     }
@@ -574,9 +570,33 @@ impl TextMessageServiceApi {
 
 #[cfg(test)]
 mod test {
-    use crate::text_message_service::{error::TextMessageError, Contact, TextMessageService, UpdateContact};
+    use crate::{
+        diesel::Connection,
+        text_message_service::{error::TextMessageError, Contact, TextMessageService, UpdateContact},
+    };
+    use diesel::{result::Error as DieselError, SqliteConnection};
+    use std::path::PathBuf;
     use tari_comms::types::CommsPublicKey;
     use tari_crypto::keys::PublicKey;
+
+    fn get_path(name: Option<&str>) -> String {
+        let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        path.push("tests/data");
+        path.push(name.unwrap_or(""));
+        path.to_str().unwrap().to_string()
+    }
+
+    fn clean_up(name: &str) {
+        if std::fs::metadata(get_path(Some(name))).is_ok() {
+            std::fs::remove_file(get_path(Some(name))).unwrap();
+        }
+    }
+
+    fn init(name: &str) {
+        clean_up(name);
+        let path = get_path(None);
+        let _ = std::fs::create_dir(&path).unwrap_or_default();
+    }
 
     #[test]
     fn test_contacts_crud() {
@@ -584,7 +604,15 @@ mod test {
 
         let (_secret_key, public_key) = CommsPublicKey::random_keypair(&mut rng);
 
-        let mut tms = TextMessageService::new(public_key);
+        let db_name = "test_crud.sqlite3";
+        let db_path = get_path(Some(db_name));
+        init(db_name);
+
+        let conn = SqliteConnection::establish(&db_path).unwrap();
+        embed_migrations!("./migrations");
+        embedded_migrations::run_with_output(&conn, &mut std::io::stdout()).expect("Migration failed");
+
+        let mut tms = TextMessageService::new(public_key, db_path);
 
         let mut contacts = Vec::new();
 
@@ -609,32 +637,38 @@ mod test {
         assert_eq!(tms.get_screen_name(), Some("Fred".to_string()));
 
         for c in contacts.iter() {
-            let _ = tms.add_contact(c.clone());
+            let _ = tms.add_contact(c.clone(), &conn);
         }
 
-        assert_eq!(tms.get_contacts().len(), 5);
+        assert_eq!(tms.get_contacts(&conn).unwrap().len(), 5);
 
-        tms.remove_contact(contacts[0].clone()).unwrap();
+        tms.remove_contact(contacts[0].clone(), &conn).unwrap();
 
-        assert_eq!(tms.get_contacts().len(), 4);
+        assert_eq!(tms.get_contacts(&conn).unwrap().len(), 4);
 
         let update_contact = UpdateContact {
             screen_name: Some("Betty".to_string()),
             address: Some(contacts[1].address.clone()),
         };
 
-        tms.update_contact(contacts[1].pub_key.clone(), update_contact).unwrap();
+        tms.update_contact(contacts[1].pub_key.clone(), update_contact, &conn)
+            .unwrap();
 
-        let updated_contacts = tms.get_contacts();
+        let updated_contacts = tms.get_contacts(&conn).unwrap();
         assert_eq!(updated_contacts[0].screen_name, "Betty".to_string());
 
-        match tms.update_contact(CommsPublicKey::default(), UpdateContact {
-            screen_name: Some("Whatever".to_string()),
-            address: Some("127.0.0.1:12345".parse().unwrap()),
-        }) {
-            Err(TextMessageError::ContactNotFound) => assert!(true),
+        match tms.update_contact(
+            CommsPublicKey::default(),
+            UpdateContact {
+                screen_name: Some("Whatever".to_string()),
+                address: Some("127.0.0.1:12345".parse().unwrap()),
+            },
+            &conn,
+        ) {
+            Err(TextMessageError::DatabaseError(DieselError::NotFound)) => assert!(true),
             _ => assert!(false),
         }
-    }
 
+        clean_up(db_name);
+    }
 }

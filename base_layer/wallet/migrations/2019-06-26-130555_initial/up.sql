@@ -1,5 +1,5 @@
 CREATE TABLE sent_messages (
-   id BLOB PRIMARY KEY NOT NULL,
+   id TEXT PRIMARY KEY NOT NULL,
    source_pub_key TEXT NOT NULL,
    dest_pub_key TEXT NOT NULL,
    message TEXT  NOT NULL,

@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use derive_error::Error;
-use diesel::result::Error as DieselError;
+use diesel::result::{ConnectionError as DieselConnectionError, Error as DieselError};
 use tari_comms::{
     builder::CommsServicesError,
     connection::NetAddressError,
@@ -45,6 +45,7 @@ pub enum TextMessageError {
     HexError(HexError),
     DatabaseError(DieselError),
     NetAddressError(NetAddressError),
+    DatabaseConnectionError(DieselConnectionError),
     /// If a received TextMessageAck doesn't matching any pending messages
     MessageNotFound,
     /// Failed to send from API
@@ -61,8 +62,6 @@ pub enum TextMessageError {
     ContactNotFound,
     /// Contact already exists
     ContactAlreadyExists,
-    /// Cannot deserialize database row
-    DatabaseDeserializationError,
     /// There was an error updating a row in the database
     DatabaseUpdateError,
     /// Error retrieving settings

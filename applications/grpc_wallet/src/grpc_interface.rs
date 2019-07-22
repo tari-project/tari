@@ -36,11 +36,11 @@ use crate::grpc_interface::wallet_rpc::{
 
 use futures::future;
 use log::*;
-use std::{convert::TryFrom, sync::Arc};
+use std::{convert::From, sync::Arc};
 use tari_comms::{connection::NetAddress, peer_manager::Peer, types::CommsPublicKey};
 use tari_utilities::hex::Hex;
 use tari_wallet::{
-    text_message_service::{Contact, TextMessage, TextMessages, UpdateContact},
+    text_message_service::{Contact, ReceivedTextMessage, SentTextMessage, UpdateContact},
     Wallet,
 };
 use tower_grpc::{Request, Response};
@@ -51,14 +51,27 @@ pub mod wallet_rpc {
     include!(concat!(env!("OUT_DIR"), "/wallet_rpc.rs"));
 }
 
-impl From<TextMessage> for ReceivedTextMessageRpc {
-    fn from(m: TextMessage) -> Self {
+impl From<ReceivedTextMessage> for ReceivedTextMessageRpc {
+    fn from(m: ReceivedTextMessage) -> Self {
         ReceivedTextMessageRpc {
             id: m.id.to_hex(),
             source_pub_key: m.source_pub_key.to_hex(),
             dest_pub_key: m.dest_pub_key.to_hex(),
             message: m.message,
             timestamp: m.timestamp.to_string(),
+        }
+    }
+}
+
+impl From<SentTextMessage> for SentTextMessageRpc {
+    fn from(m: SentTextMessage) -> Self {
+        SentTextMessageRpc {
+            id: m.id.to_hex(),
+            source_pub_key: m.source_pub_key.to_hex(),
+            dest_pub_key: m.dest_pub_key.to_hex(),
+            message: m.message,
+            timestamp: m.timestamp.to_string(),
+            acknowledged: m.acknowledged,
         }
     }
 }
@@ -119,7 +132,10 @@ impl server::WalletRpc for WalletRPC {
         );
 
         let response_body = match self.wallet.text_message_service.get_text_messages() {
-            Ok(msgs) => sort_text_messages(msgs),
+            Ok(mut msgs) => TextMessagesResponseRpc {
+                sent_messages: msgs.sent_messages.drain(..).map(|m| m.into()).collect(),
+                received_messages: msgs.received_messages.drain(..).map(|m| m.into()).collect(),
+            },
             _ => TextMessagesResponseRpc {
                 sent_messages: Vec::new(),
                 received_messages: Vec::new(),
@@ -150,7 +166,10 @@ impl server::WalletRpc for WalletRPC {
         };
 
         let response_body = match self.wallet.text_message_service.get_text_messages_by_pub_key(pub_key) {
-            Ok(msgs) => sort_text_messages(msgs),
+            Ok(mut msgs) => TextMessagesResponseRpc {
+                sent_messages: msgs.sent_messages.drain(..).map(|m| m.into()).collect(),
+                received_messages: msgs.received_messages.drain(..).map(|m| m.into()).collect(),
+            },
             _ => TextMessagesResponseRpc {
                 sent_messages: Vec::new(),
                 received_messages: Vec::new(),
@@ -373,48 +392,4 @@ impl server::WalletRpc for WalletRPC {
             contacts: contacts_resp,
         }))
     }
-}
-
-/// Utility function to sort out the interrim TextMessages Collection into an RPC response
-pub fn sort_text_messages(msgs: TextMessages) -> TextMessagesResponseRpc {
-    let mut body = TextMessagesResponseRpc {
-        sent_messages: Vec::new(),
-        received_messages: Vec::new(),
-    };
-
-    for m in msgs.received_messages {
-        match ReceivedTextMessageRpc::try_from(m) {
-            Ok(m) => body.received_messages.push(m),
-            Err(e) => error!("Error serializing text messages: {:?}", e),
-        }
-    }
-
-    // TODO TextMessageService will be refactored to use the boolean `acknowledged` flag rather than two
-    // lists when the Sqlite backend is put in place
-    for msg in msgs.pending_messages {
-        let source = msg.source_pub_key.to_hex();
-        let dest = msg.dest_pub_key.to_hex();
-        body.sent_messages.push(SentTextMessageRpc {
-            id: msg.id.to_hex(),
-            source_pub_key: source,
-            dest_pub_key: dest,
-            message: msg.message,
-            timestamp: msg.timestamp.to_string(),
-            acknowledged: false,
-        });
-    }
-
-    for msg in msgs.sent_messages {
-        let source = msg.source_pub_key.to_hex();
-        let dest = msg.dest_pub_key.to_hex();
-        body.sent_messages.push(SentTextMessageRpc {
-            id: msg.id.to_hex(),
-            source_pub_key: source,
-            dest_pub_key: dest,
-            message: msg.message,
-            timestamp: msg.timestamp.to_string(),
-            acknowledged: true,
-        });
-    }
-    body
 }

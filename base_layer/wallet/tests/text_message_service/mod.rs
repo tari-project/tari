@@ -26,16 +26,17 @@ use crate::support::utils::assert_change;
 use std::path::PathBuf;
 use tari_comms::peer_manager::NodeIdentity;
 use tari_storage::lmdb_store::{LMDBBuilder, LMDBError, LMDBStore};
+use tari_wallet::text_message_service::Contact;
 
-fn get_path(name: &str) -> String {
+fn get_path(name: Option<&str>) -> String {
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     path.push("tests/data");
-    path.push(name);
+    path.push(name.unwrap_or(""));
     path.to_str().unwrap().to_string()
 }
 
 fn init_datastore(name: &str) -> Result<LMDBStore, LMDBError> {
-    let path = get_path(name);
+    let path = get_path(Some(name));
     let _ = std::fs::create_dir(&path).unwrap_or_default();
     LMDBBuilder::new()
         .set_path(&path)
@@ -46,7 +47,19 @@ fn init_datastore(name: &str) -> Result<LMDBStore, LMDBError> {
 }
 
 fn clean_up_datastore(name: &str) {
-    std::fs::remove_dir_all(get_path(name)).unwrap();
+    std::fs::remove_dir_all(get_path(Some(name))).unwrap();
+}
+
+fn clean_up_sql_database(name: &str) {
+    if std::fs::metadata(get_path(Some(name))).is_ok() {
+        std::fs::remove_file(get_path(Some(name))).unwrap();
+    }
+}
+
+fn init_sql_database(name: &str) {
+    clean_up_sql_database(name);
+    let path = get_path(None);
+    let _ = std::fs::create_dir(&path).unwrap_or_default();
 }
 
 #[test]
@@ -67,24 +80,75 @@ fn test_text_message_service() {
     let node_3_datastore = init_datastore(node_3_database_name).unwrap();
     let node_3_peer_database = node_3_datastore.get_handle(node_3_database_name).unwrap();
 
+    let db_name1 = "test_text_message_service1.sqlite3";
+    let db_path1 = get_path(Some(db_name1));
+    init_sql_database(db_name1);
+
+    let db_name2 = "test_text_message_service2.sqlite3";
+    let db_path2 = get_path(Some(db_name2));
+    init_sql_database(db_name2);
+
+    let db_name3 = "test_text_message_service3.sqlite3";
+    let db_path3 = get_path(Some(db_name3));
+    init_sql_database(db_name3);
+
     let (node_1_services, node_1_tms) = setup_text_message_service(
         node_1_identity.clone(),
         vec![node_2_identity.clone(), node_3_identity.clone()],
         node_1_peer_database,
+        db_path1,
     );
     let (node_2_services, node_2_tms) = setup_text_message_service(
         node_2_identity.clone(),
         vec![node_1_identity.clone()],
         node_2_peer_database,
+        db_path2,
     );
-    let (node_3_services, _node_3_tms) = setup_text_message_service(
+    let (node_3_services, node_3_tms) = setup_text_message_service(
         node_3_identity.clone(),
         vec![node_1_identity.clone()],
         node_3_peer_database,
+        db_path3,
     );
 
     node_1_tms
-        .send_text_message(node_2_identity.identity.public_key.clone(), "Say Hello".to_string())
+        .add_contact(Contact::new(
+            "Bob".to_string(),
+            node_2_identity.identity.public_key.clone(),
+            node_2_identity.control_service_address.clone(),
+        ))
+        .unwrap();
+    node_1_tms
+        .add_contact(Contact::new(
+            "Carol".to_string(),
+            node_3_identity.identity.public_key.clone(),
+            node_3_identity.control_service_address.clone(),
+        ))
+        .unwrap();
+
+    node_2_tms
+        .add_contact(Contact::new(
+            "Alice".to_string(),
+            node_1_identity.identity.public_key.clone(),
+            node_1_identity.control_service_address.clone(),
+        ))
+        .unwrap();
+
+    node_3_tms
+        .add_contact(Contact::new(
+            "Alice".to_string(),
+            node_1_identity.identity.public_key.clone(),
+            node_1_identity.control_service_address.clone(),
+        ))
+        .unwrap();
+
+    let mut node1_to_node2_sent_messages = vec!["Say Hello".to_string(), "to my little friend!".to_string()];
+
+    node_1_tms
+        .send_text_message(
+            node_2_identity.identity.public_key.clone(),
+            node1_to_node2_sent_messages[0].clone(),
+        )
         .unwrap();
     node_1_tms
         .send_text_message(node_3_identity.identity.public_key.clone(), "Say Hello".to_string())
@@ -96,15 +160,16 @@ fn test_text_message_service() {
     node_1_tms
         .send_text_message(
             node_2_identity.identity.public_key.clone(),
-            "to my little friend!".to_string(),
+            node1_to_node2_sent_messages[1].clone(),
         )
         .unwrap();
 
     for i in 0..3 {
+        node1_to_node2_sent_messages.push(format!("Message {}", i).to_string());
         node_1_tms
             .send_text_message(
                 node_2_identity.identity.public_key.clone(),
-                format!("Message {}", i).to_string(),
+                node1_to_node2_sent_messages[2 + i].clone(),
             )
             .unwrap();
     }
@@ -136,11 +201,23 @@ fn test_text_message_service() {
         50,
     );
 
-    let msgs = node_1_tms
+    let node1_msgs = node_1_tms
         .get_text_messages_by_pub_key(node_2_identity.identity.public_key)
         .unwrap();
 
-    assert_eq!(msgs.sent_messages.len(), 5);
+    assert_eq!(node1_msgs.sent_messages.len(), node1_to_node2_sent_messages.len());
+    for i in 0..node1_to_node2_sent_messages.len() {
+        assert_eq!(node1_msgs.sent_messages[i].message, node1_to_node2_sent_messages[i]);
+    }
+
+    let node2_msgs = node_2_tms
+        .get_text_messages_by_pub_key(node_1_identity.identity.public_key)
+        .unwrap();
+
+    assert_eq!(node2_msgs.received_messages.len(), node1_to_node2_sent_messages.len());
+    for i in 0..node1_to_node2_sent_messages.len() {
+        assert_eq!(node2_msgs.received_messages[i].message, node1_to_node2_sent_messages[i]);
+    }
 
     node_1_services.shutdown().unwrap();
     node_2_services.shutdown().unwrap();
@@ -148,4 +225,7 @@ fn test_text_message_service() {
     clean_up_datastore(node_1_database_name);
     clean_up_datastore(node_2_database_name);
     clean_up_datastore(node_3_database_name);
+    clean_up_sql_database(db_name1);
+    clean_up_sql_database(db_name2);
+    clean_up_sql_database(db_name3);
 }

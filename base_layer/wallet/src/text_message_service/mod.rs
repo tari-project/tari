@@ -24,5 +24,5 @@ mod error;
 mod model;
 mod service;
 
-pub use model::{Contact, TextMessage, UpdateContact};
+pub use model::{Contact, ReceivedTextMessage, SentTextMessage, UpdateContact};
 pub use service::{TextMessageApiResponse, TextMessageService, TextMessageServiceApi, TextMessages};
