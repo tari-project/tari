@@ -50,7 +50,7 @@ use tari_p2p::{
 };
 use tari_utilities::{hex::Hex, message_format::MessageFormat};
 use tari_wallet::{
-    text_message_service::{Contact, TextMessage},
+    text_message_service::{Contact, ReceivedTextMessage},
     wallet::WalletConfig,
     Wallet,
 };
@@ -150,7 +150,7 @@ pub fn main() {
 
     let mut settings = Settings::default();
     let mut contacts = Peers { peers: Vec::new() };
-
+    let mut database_path = "./data/text_message_service.sqlite3".to_string();
     // The node-num switch overrides the config and peers switch for quick testing from the tari repo root
     if matches.is_present("node-num") {
         let node_num = value_t!(matches, "node-num", u32).unwrap();
@@ -166,6 +166,7 @@ pub fn main() {
         settings = settings_file.try_into().unwrap();
         let contents = fs::read_to_string(peer_path).expect("Could not open specified Peers json file");
         contacts = Peers::from_json(contents.as_str()).expect("Could not parse JSON from specified Peers json file");
+        database_path = format!("./data/text_message_service_node{}.sqlite3", node_num).to_string();
     } else {
         if matches.is_present("config") {
             let mut settings_file = config::Config::default();
@@ -270,6 +271,7 @@ pub fn main() {
             peer_database_name: public_key.to_hex(),
         },
         public_key: public_key.clone(),
+        database_path,
     };
 
     let wallet = Wallet::new(config).unwrap();
@@ -281,14 +283,14 @@ pub fn main() {
             if let Ok(na) = p.address.clone().parse::<NetAddress>() {
                 let peer = Peer::from_public_key_and_address(pk.clone(), na.clone()).unwrap();
                 wallet.comms_services.peer_manager.add_peer(peer).unwrap();
-                wallet
-                    .text_message_service
-                    .add_contact(Contact {
-                        screen_name: p.screen_name.clone(),
-                        pub_key: pk.clone(),
-                        address: na.clone(),
-                    })
-                    .unwrap();
+                // If the contacts already exist we don't mind
+                if let Err(e) = wallet.text_message_service.add_contact(Contact {
+                    screen_name: p.screen_name.clone(),
+                    pub_key: pk.clone(),
+                    address: na.clone(),
+                }) {
+                    println!("Error adding config file contacts: {:?}", e);
+                }
             }
         }
     }
@@ -318,6 +320,7 @@ pub fn main() {
         "┌─────────────────────────────────────┐\n│Tari Console Barebones Text \
          Messenger│\n└─────────────────────────────────────┘"
     );
+    // TODO Read this from the SQL database rather than the config file
     println!("This node's screen name: {}", settings.screen_name.unwrap().clone());
     for (i, c) in contacts.iter().enumerate() {
         println!("Contact {}: {}", i, c.screen_name.clone());
@@ -352,7 +355,7 @@ pub fn main() {
 
     // Main Loop
     loop {
-        let mut rx_messages: Vec<TextMessage> = wallet
+        let mut rx_messages: Vec<ReceivedTextMessage> = wallet
             .text_message_service
             .get_text_messages()
             .expect("Error retrieving text messages from TMS")

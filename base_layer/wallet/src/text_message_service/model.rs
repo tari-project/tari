@@ -29,7 +29,7 @@ use crate::{
     types::HashDigest,
 };
 
-use diesel::{prelude::*, query_dsl::RunQueryDsl, SqliteConnection};
+use diesel::{dsl::count, prelude::*, query_dsl::RunQueryDsl, result::Error as DieselError, SqliteConnection};
 use digest::Digest;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -41,7 +41,10 @@ use tari_comms::{
     message::{Message, MessageError},
 };
 use tari_p2p::tari_message::{ExtendedMessage, TariMessageType};
-use tari_utilities::{byte_array::ByteArray, hex::Hex};
+use tari_utilities::{
+    byte_array::ByteArray,
+    hex::{from_hex, Hex},
+};
 
 /// This function generates a unique ID hash for a Text Message from the message components and an index integer
 ///
@@ -50,7 +53,7 @@ use tari_utilities::{byte_array::ByteArray, hex::Hex};
 pub fn generate_id<D: Digest>(
     source_pub_key: &CommsPublicKey,
     dest_pub_key: &CommsPublicKey,
-    message: &str,
+    message: &String,
     timestamp: &NaiveDateTime,
     index: usize,
 ) -> Vec<u8>
@@ -79,8 +82,8 @@ pub struct SentTextMessage {
 /// The Native Sql version of the SentTextMessage model
 #[derive(Insertable, Queryable)]
 #[table_name = "sent_messages"]
-pub struct SentTextMessageSql {
-    pub id: Vec<u8>,
+struct SentTextMessageSql {
+    pub id: String,
     pub source_pub_key: String,
     pub dest_pub_key: String,
     pub message: String,
@@ -89,11 +92,20 @@ pub struct SentTextMessageSql {
 }
 
 impl SentTextMessage {
-    pub fn new(source_pub_key: CommsPublicKey, dest_pub_key: CommsPublicKey, message: String) -> SentTextMessage {
+    /// Creates a new instance of a TextMessage to be sent
+    /// `source_pub_key`: The current node's pub_key (sender)
+    /// `dest_pub_key`: Recipient's pub key
+    /// `message`: The message to be sent
+    /// `index`: An index of how many messages have been sent to this recipient in order to ensure unique IDs.
+    pub fn new(
+        source_pub_key: CommsPublicKey,
+        dest_pub_key: CommsPublicKey,
+        message: String,
+        index: Option<usize>,
+    ) -> SentTextMessage
+    {
         let timestamp = Utc::now().naive_utc();
-        // TODO implement automatic calculation of the index of messages sent to this recipient to ensure that rapid
-        // duplicate messages have different IDs
-        let id = generate_id::<HashDigest>(&source_pub_key, &dest_pub_key, &message, &timestamp, 0);
+        let id = generate_id::<HashDigest>(&source_pub_key, &dest_pub_key, &message, &timestamp, index.unwrap_or(0));
         SentTextMessage {
             id,
             source_pub_key,
@@ -114,7 +126,7 @@ impl SentTextMessage {
     pub fn find(id: &Vec<u8>, conn: &SqliteConnection) -> Result<SentTextMessage, TextMessageError> {
         SentTextMessage::try_from(
             sent_messages::table
-                .filter(sent_messages::id.eq(id))
+                .filter(sent_messages::id.eq(id.to_hex()))
                 .first::<SentTextMessageSql>(conn)?,
         )
     }
@@ -124,39 +136,60 @@ impl SentTextMessage {
         conn: &SqliteConnection,
     ) -> Result<Vec<SentTextMessage>, TextMessageError>
     {
-        let mut result = sent_messages::table
+        let messages = sent_messages::table
             .filter(sent_messages::dest_pub_key.eq(dest_pub_key.to_hex()))
             .order_by(sent_messages::timestamp)
             .load::<SentTextMessageSql>(conn)?;
-        let mut deserialized: Vec<Result<SentTextMessage, TextMessageError>> =
-            result.drain(..).map(SentTextMessage::try_from).collect();
-        // Check if there are any elements that failed to deserialize, if there are fail the whole
-        // find_by_dest_pub_key() process
-        if deserialized.iter().any(Result::is_err) {
-            return Err(TextMessageError::DatabaseDeserializationError);
+        let mut result: Vec<SentTextMessage> = Vec::new();
+
+        for m in messages {
+            result.push(SentTextMessage::try_from(m)?);
         }
 
-        Ok(deserialized.drain(..).filter_map(Result::ok).collect())
+        Ok(result)
     }
 
     pub fn index(conn: &SqliteConnection) -> Result<Vec<SentTextMessage>, TextMessageError> {
-        let mut result = sent_messages::table.load::<SentTextMessageSql>(conn)?;
+        let messages = sent_messages::table.load::<SentTextMessageSql>(conn)?;
+        let mut result: Vec<SentTextMessage> = Vec::new();
 
-        let mut deserialized: Vec<Result<SentTextMessage, TextMessageError>> =
-            result.drain(..).map(SentTextMessage::try_from).collect();
-        // Check if there are any elements that failed to deserialize, if there are fail the whole index() process
-        if deserialized.iter().any(Result::is_err) {
-            return Err(TextMessageError::DatabaseDeserializationError);
+        for m in messages {
+            result.push(SentTextMessage::try_from(m)?);
         }
 
-        Ok(deserialized.drain(..).filter_map(Result::ok).collect())
+        Ok(result)
+    }
+
+    pub fn count_by_dest_pub_key(
+        dest_pub_key: &CommsPublicKey,
+        conn: &SqliteConnection,
+    ) -> Result<i64, TextMessageError>
+    {
+        Ok(sent_messages::table
+            .filter(sent_messages::dest_pub_key.eq(dest_pub_key.to_hex()))
+            .select(count(sent_messages::dest_pub_key))
+            .first(conn)?)
+    }
+
+    pub fn mark_sent_message_ack(id: Vec<u8>, conn: &SqliteConnection) -> Result<(), TextMessageError> {
+        let num_updated = diesel::update(sent_messages::table.filter(sent_messages::id.eq(&id.to_hex())))
+            .set(UpdateAckSentTextMessage {
+                acknowledged: Some(1i32),
+            })
+            .execute(conn)?;
+
+        if num_updated == 0 {
+            return Err(TextMessageError::DatabaseUpdateError);
+        }
+
+        Ok(())
     }
 }
 
 impl From<SentTextMessage> for SentTextMessageSql {
     fn from(msg: SentTextMessage) -> SentTextMessageSql {
         SentTextMessageSql {
-            id: msg.id,
+            id: msg.id.to_hex(),
             source_pub_key: msg.source_pub_key.to_hex(),
             dest_pub_key: msg.dest_pub_key.to_hex(),
             message: msg.message,
@@ -171,7 +204,7 @@ impl TryFrom<SentTextMessageSql> for SentTextMessage {
 
     fn try_from(msg: SentTextMessageSql) -> Result<Self, Self::Error> {
         Ok(SentTextMessage {
-            id: msg.id,
+            id: from_hex(msg.id.as_str())?,
             source_pub_key: CommsPublicKey::from_hex(msg.source_pub_key.as_str())?,
             dest_pub_key: CommsPublicKey::from_hex(msg.dest_pub_key.as_str())?,
             message: msg.message,
@@ -181,9 +214,24 @@ impl TryFrom<SentTextMessageSql> for SentTextMessage {
     }
 }
 
+impl TryInto<Message> for SentTextMessage {
+    type Error = MessageError;
+
+    fn try_into(self) -> Result<Message, Self::Error> {
+        (TariMessageType::new(ExtendedMessage::Text), self).try_into()
+    }
+}
+
+/// The changeset to mark a SentTextMessage as acknowledged
+#[derive(AsChangeset)]
+#[table_name = "sent_messages"]
+pub struct UpdateAckSentTextMessage {
+    pub acknowledged: Option<i32>,
+}
+
 /// Represents a single received Text Message
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct TextMessage {
+pub struct ReceivedTextMessage {
     pub id: Vec<u8>,
     pub source_pub_key: CommsPublicKey,
     pub dest_pub_key: CommsPublicKey,
@@ -194,7 +242,7 @@ pub struct TextMessage {
 /// The Native Sql version of the TextMessage model
 #[derive(Queryable, Insertable)]
 #[table_name = "received_messages"]
-pub struct TextMessageSql {
+struct ReceivedTextMessageSql {
     pub id: Vec<u8>,
     pub source_pub_key: String,
     pub dest_pub_key: String,
@@ -202,58 +250,56 @@ pub struct TextMessageSql {
     pub timestamp: NaiveDateTime,
 }
 
-impl TextMessage {
+impl ReceivedTextMessage {
     // Does not require new as these will only ever be received
     pub fn commit(&self, conn: &SqliteConnection) -> Result<(), TextMessageError> {
         diesel::insert_into(received_messages::table)
-            .values(TextMessageSql::from(self.clone()))
+            .values(ReceivedTextMessageSql::from(self.clone()))
             .execute(conn)?;
         Ok(())
     }
 
-    pub fn index(conn: &SqliteConnection) -> Result<Vec<TextMessage>, TextMessageError> {
-        let mut result = received_messages::table.load::<TextMessageSql>(conn)?;
-        let mut deserialized: Vec<Result<TextMessage, TextMessageError>> =
-            result.drain(..).map(TextMessage::try_from).collect();
-        // Check if there are any elements that failed to deserialize, if there are fail the whole index() process
-        if deserialized.iter().any(Result::is_err) {
-            return Err(TextMessageError::DatabaseDeserializationError);
+    pub fn index(conn: &SqliteConnection) -> Result<Vec<ReceivedTextMessage>, TextMessageError> {
+        let messages = received_messages::table.load::<ReceivedTextMessageSql>(conn)?;
+        let mut result: Vec<ReceivedTextMessage> = Vec::new();
+
+        for m in messages {
+            result.push(ReceivedTextMessage::try_from(m)?);
         }
-        Ok(deserialized.drain(..).filter_map(Result::ok).collect())
+
+        Ok(result)
     }
 
-    pub fn find(id: &Vec<u8>, conn: &SqliteConnection) -> Result<TextMessage, TextMessageError> {
-        TextMessage::try_from(
+    pub fn find(id: &Vec<u8>, conn: &SqliteConnection) -> Result<ReceivedTextMessage, TextMessageError> {
+        ReceivedTextMessage::try_from(
             received_messages::table
                 .filter(received_messages::id.eq(id))
-                .first::<TextMessageSql>(conn)?,
+                .first::<ReceivedTextMessageSql>(conn)?,
         )
     }
 
     pub fn find_by_source_pub_key(
         source_pub_key: &CommsPublicKey,
         conn: &SqliteConnection,
-    ) -> Result<Vec<TextMessage>, TextMessageError>
+    ) -> Result<Vec<ReceivedTextMessage>, TextMessageError>
     {
-        let mut result = received_messages::table
+        let messages = received_messages::table
             .filter(received_messages::source_pub_key.eq(source_pub_key.to_hex()))
             .order_by(received_messages::timestamp)
-            .load::<TextMessageSql>(conn)?;
-        let mut deserialized: Vec<Result<TextMessage, TextMessageError>> =
-            result.drain(..).map(TextMessage::try_from).collect();
-        // Check if there are any elements that failed to deserialize, if there are fail the whole
-        // find_by_source_pub_key() process
-        if deserialized.iter().any(Result::is_err) {
-            return Err(TextMessageError::DatabaseDeserializationError);
+            .load::<ReceivedTextMessageSql>(conn)?;
+        let mut result: Vec<ReceivedTextMessage> = Vec::new();
+
+        for m in messages {
+            result.push(ReceivedTextMessage::try_from(m)?);
         }
 
-        Ok(deserialized.drain(..).filter_map(Result::ok).collect())
+        Ok(result)
     }
 }
 
-impl From<TextMessage> for TextMessageSql {
-    fn from(msg: TextMessage) -> TextMessageSql {
-        TextMessageSql {
+impl From<ReceivedTextMessage> for ReceivedTextMessageSql {
+    fn from(msg: ReceivedTextMessage) -> ReceivedTextMessageSql {
+        ReceivedTextMessageSql {
             id: msg.id,
             source_pub_key: msg.source_pub_key.to_hex(),
             dest_pub_key: msg.dest_pub_key.to_hex(),
@@ -263,11 +309,11 @@ impl From<TextMessage> for TextMessageSql {
     }
 }
 
-impl TryFrom<TextMessageSql> for TextMessage {
+impl TryFrom<ReceivedTextMessageSql> for ReceivedTextMessage {
     type Error = TextMessageError;
 
-    fn try_from(msg: TextMessageSql) -> Result<Self, Self::Error> {
-        Ok(TextMessage {
+    fn try_from(msg: ReceivedTextMessageSql) -> Result<Self, Self::Error> {
+        Ok(ReceivedTextMessage {
             id: msg.id,
             source_pub_key: CommsPublicKey::from_hex(msg.source_pub_key.as_str())?,
             dest_pub_key: CommsPublicKey::from_hex(msg.dest_pub_key.as_str())?,
@@ -277,8 +323,8 @@ impl TryFrom<TextMessageSql> for TextMessage {
     }
 }
 
-impl From<TextMessage> for SentTextMessage {
-    fn from(t: TextMessage) -> SentTextMessage {
+impl From<ReceivedTextMessage> for SentTextMessage {
+    fn from(t: ReceivedTextMessage) -> SentTextMessage {
         SentTextMessage {
             id: t.id,
             source_pub_key: t.source_pub_key,
@@ -290,9 +336,9 @@ impl From<TextMessage> for SentTextMessage {
     }
 }
 
-impl From<SentTextMessage> for TextMessage {
-    fn from(t: SentTextMessage) -> TextMessage {
-        TextMessage {
+impl From<SentTextMessage> for ReceivedTextMessage {
+    fn from(t: SentTextMessage) -> ReceivedTextMessage {
+        ReceivedTextMessage {
             id: t.id,
             source_pub_key: t.source_pub_key,
             dest_pub_key: t.dest_pub_key,
@@ -302,7 +348,7 @@ impl From<SentTextMessage> for TextMessage {
     }
 }
 
-impl TryInto<Message> for TextMessage {
+impl TryInto<Message> for ReceivedTextMessage {
     type Error = MessageError;
 
     fn try_into(self) -> Result<Message, Self::Error> {
@@ -310,14 +356,14 @@ impl TryInto<Message> for TextMessage {
     }
 }
 
-impl PartialOrd<TextMessage> for TextMessage {
+impl PartialOrd<ReceivedTextMessage> for ReceivedTextMessage {
     /// Orders OutboundMessage from least to most time remaining from being scheduled
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         self.timestamp.partial_cmp(&other.timestamp)
     }
 }
 
-impl Ord for TextMessage {
+impl Ord for ReceivedTextMessage {
     /// Orders OutboundMessage from least to most time remaining from being scheduled
     fn cmp(&self, other: &Self) -> Ordering {
         self.timestamp.cmp(&other.timestamp)
@@ -335,7 +381,7 @@ pub struct Contact {
 /// The Native Sql version of the Contact model
 #[derive(Queryable, Insertable)]
 #[table_name = "contacts"]
-pub struct ContactSql {
+struct ContactSql {
     pub pub_key: String,
     pub screen_name: String,
     pub address: String,
@@ -358,17 +404,14 @@ impl Contact {
     }
 
     pub fn index(conn: &SqliteConnection) -> Result<Vec<Contact>, TextMessageError> {
-        let mut result = contacts::table.load::<ContactSql>(conn)?;
+        let contacts = contacts::table.load::<ContactSql>(conn)?;
+        let mut result: Vec<Contact> = Vec::new();
 
-        let mut deserialized: Vec<Result<Contact, TextMessageError>> =
-            result.drain(..).map(Contact::try_from).collect();
-
-        // Check if there are any elements that failed to deserialize, if there are fail the whole index() process
-        if deserialized.iter().any(Result::is_err) {
-            return Err(TextMessageError::DatabaseDeserializationError);
+        for c in contacts {
+            result.push(Contact::try_from(c)?);
         }
 
-        Ok(deserialized.drain(..).filter_map(Result::ok).collect())
+        Ok(result)
     }
 
     pub fn find(pub_key: &CommsPublicKey, conn: &SqliteConnection) -> Result<Contact, TextMessageError> {
@@ -379,20 +422,25 @@ impl Contact {
         )?)
     }
 
-    pub fn update(
-        &mut self,
-        updated_contact: UpdateContact,
-        conn: &SqliteConnection,
-    ) -> Result<Contact, TextMessageError>
-    {
-        let updated = diesel::update(contacts::table.filter(contacts::pub_key.eq(&self.pub_key.to_hex())))
+    pub fn update(self, updated_contact: UpdateContact, conn: &SqliteConnection) -> Result<Contact, TextMessageError> {
+        let num_updated = diesel::update(contacts::table.filter(contacts::pub_key.eq(&self.pub_key.to_hex())))
             .set(UpdateContactSql::from(updated_contact))
             .execute(conn)?;
-        if updated == 0 {
+
+        if num_updated == 0 {
             return Err(TextMessageError::DatabaseUpdateError);
         }
 
         Ok(Contact::find(&self.pub_key, conn)?)
+    }
+
+    pub fn delete(self, conn: &SqliteConnection) -> Result<(), TextMessageError> {
+        let num_deleted =
+            diesel::delete(contacts::table.filter(contacts::pub_key.eq(&self.pub_key.to_hex()))).execute(conn)?;
+        if num_deleted == 0 {
+            return Err(TextMessageError::ContactNotFound);
+        }
+        Ok(())
     }
 }
 
@@ -428,7 +476,7 @@ pub struct UpdateContact {
 /// The Native Sql version of the UpdateContact model
 #[derive(AsChangeset)]
 #[table_name = "contacts"]
-pub struct UpdateContactSql {
+struct UpdateContactSql {
     pub screen_name: Option<String>,
     pub address: Option<String>,
 }
@@ -462,36 +510,35 @@ impl TextMessageSettings {
     }
 
     pub fn commit(&self, conn: &SqliteConnection) -> Result<(), TextMessageError> {
-        // There should only be one row in this table (until we support revisions) so first clean out the table
-        diesel::delete(settings::table).execute(conn)?;
+        conn.transaction::<_, DieselError, _>(|| {
+            // There should only be one row in this table (until we support revisions) so first clean out the table
+            diesel::delete(settings::table).execute(conn)?;
 
-        // And then insert
-        diesel::insert_into(settings::table)
-            .values(TextMessageSettingsSql::from(self.clone()))
-            .execute(conn)?;
+            // And then insert
+            diesel::insert_into(settings::table)
+                .values(TextMessageSettingsSql::from(self.clone()))
+                .execute(conn)?;
+
+            Ok(())
+        })?;
+
         Ok(())
     }
 
     pub fn read(conn: &SqliteConnection) -> Result<TextMessageSettings, TextMessageError> {
-        let mut result = settings::table.load::<TextMessageSettingsSql>(conn)?;
+        let read_settings = settings::table.load::<TextMessageSettingsSql>(conn)?;
 
-        let mut deserialized: Vec<Result<TextMessageSettings, TextMessageError>> =
-            result.drain(..).map(TextMessageSettings::try_from).collect();
+        let mut result: Vec<TextMessageSettings> = Vec::new();
 
-        // Check if there are any elements that failed to deserialize, if there are fail the whole index() process
-        if deserialized.iter().any(Result::is_err) {
-            return Err(TextMessageError::DatabaseDeserializationError);
+        for rs in read_settings {
+            result.push(TextMessageSettings::try_from(rs)?);
         }
 
-        if deserialized.len() != 1 {
+        if result.len() != 1 {
             return Err(TextMessageError::SettingsReadError);
         }
 
-        if let Ok(s) = deserialized.remove(0) {
-            Ok(s)
-        } else {
-            Err(TextMessageError::SettingsReadError)
-        }
+        Ok(result.remove(0))
     }
 }
 
@@ -520,7 +567,7 @@ mod test {
     use crate::text_message_service::{
         model::{SentTextMessage, TextMessageSettings},
         Contact,
-        TextMessage,
+        ReceivedTextMessage,
         UpdateContact,
     };
     use chrono::Utc;
@@ -554,6 +601,7 @@ mod test {
         let (_secret_key1, public_key1) = CommsPublicKey::random_keypair(&mut rng);
         let (_secret_key2, public_key2) = CommsPublicKey::random_keypair(&mut rng);
         let (_secret_key3, public_key3) = CommsPublicKey::random_keypair(&mut rng);
+        let (_secret_key4, public_key4) = CommsPublicKey::random_keypair(&mut rng);
 
         let db_name = "test.sqlite3";
         let db_path = get_path(Some(db_name));
@@ -572,7 +620,7 @@ mod test {
         let read_settings2 = TextMessageSettings::read(&conn).unwrap();
         assert_eq!(read_settings2.screen_name, "Ed".to_string());
 
-        let mut contact1 = Contact::new(
+        let contact1 = Contact::new(
             "Alice".to_string(),
             public_key2.clone(),
             "127.0.0.1:45532".parse().unwrap(),
@@ -588,9 +636,17 @@ mod test {
 
         contact2.commit(&conn).unwrap();
 
+        let contact3 = Contact::new(
+            "Carol".to_string(),
+            public_key4.clone(),
+            "127.0.0.1:45537".parse().unwrap(),
+        );
+        assert!(contact3.clone().delete(&conn).is_err());
+        contact3.commit(&conn).unwrap();
+
         let contacts = Contact::index(&conn).unwrap();
 
-        assert_eq!(contacts, vec![contact1.clone(), contact2.clone()]);
+        assert_eq!(contacts, vec![contact1.clone(), contact2.clone(), contact3.clone()]);
 
         let update = UpdateContact {
             screen_name: Some("Carol".to_string()),
@@ -601,20 +657,25 @@ mod test {
 
         let contacts = Contact::index(&conn).unwrap();
 
-        assert_eq!(contacts, vec![contact1.clone(), contact2.clone()]);
+        assert_eq!(contacts, vec![contact1.clone(), contact2.clone(), contact3.clone()]);
         assert_eq!(contact2, Contact::find(&contact2.pub_key.clone(), &conn).unwrap());
 
+        contact3.delete(&conn).unwrap();
+        let contacts = Contact::index(&conn).unwrap();
+
+        assert_eq!(contacts, vec![contact1.clone(), contact2.clone()]);
+
         assert!(
-            SentTextMessage::new(public_key1.clone(), public_key1.clone(), "Test1".to_string())
+            SentTextMessage::new(public_key1.clone(), public_key1.clone(), "Test1".to_string(), Some(0))
                 .commit(&conn)
                 .is_err()
         );
 
-        let sent_msg1 = SentTextMessage::new(public_key1.clone(), public_key2.clone(), "Test1".to_string());
+        let sent_msg1 = SentTextMessage::new(public_key1.clone(), public_key2.clone(), "Test1".to_string(), Some(0));
         sent_msg1.commit(&conn).unwrap();
-        let sent_msg2 = SentTextMessage::new(public_key1.clone(), public_key3.clone(), "Test2".to_string());
+        let sent_msg2 = SentTextMessage::new(public_key1.clone(), public_key3.clone(), "Test2".to_string(), Some(0));
         sent_msg2.commit(&conn).unwrap();
-        let sent_msg3 = SentTextMessage::new(public_key1.clone(), public_key3.clone(), "Test3".to_string());
+        let sent_msg3 = SentTextMessage::new(public_key1.clone(), public_key3.clone(), "Test3".to_string(), Some(0));
         sent_msg3.commit(&conn).unwrap();
 
         let sent_msgs = SentTextMessage::index(&conn).unwrap();
@@ -622,9 +683,17 @@ mod test {
         let find1 = SentTextMessage::find(&sent_msg1.id, &conn).unwrap();
         assert_eq!(find1, sent_msg1);
         let find2 = SentTextMessage::find_by_dest_pub_key(&public_key3.clone(), &conn).unwrap();
-        assert_eq!(find2, vec![sent_msg2, sent_msg3]);
+        assert_eq!(find2, vec![sent_msg2.clone(), sent_msg3.clone()]);
 
-        let recv_msg1 = TextMessage {
+        let count = SentTextMessage::count_by_dest_pub_key(&public_key3.clone(), &conn).unwrap();
+        assert_eq!(count, 2);
+
+        assert!(SentTextMessage::mark_sent_message_ack(vec![2u8; 32], &conn).is_err());
+        SentTextMessage::mark_sent_message_ack(sent_msg1.clone().id, &conn).unwrap();
+        let find3 = SentTextMessage::find(&sent_msg1.id, &conn).unwrap();
+        assert!(find3.acknowledged);
+
+        let recv_msg1 = ReceivedTextMessage {
             id: vec![1u8; 32],
             source_pub_key: public_key1.clone(),
             dest_pub_key: public_key2.clone(),
@@ -632,7 +701,7 @@ mod test {
             timestamp: Utc::now().naive_utc(),
         };
         recv_msg1.commit(&conn).unwrap();
-        let recv_msg2 = TextMessage {
+        let recv_msg2 = ReceivedTextMessage {
             id: vec![2u8; 32],
             source_pub_key: public_key2.clone(),
             dest_pub_key: public_key3.clone(),
@@ -640,7 +709,7 @@ mod test {
             timestamp: Utc::now().naive_utc(),
         };
         recv_msg2.commit(&conn).unwrap();
-        let recv_msg3 = TextMessage {
+        let recv_msg3 = ReceivedTextMessage {
             id: vec![3u8; 32],
             source_pub_key: public_key2.clone(),
             dest_pub_key: public_key3.clone(),
@@ -649,11 +718,11 @@ mod test {
         };
         recv_msg3.commit(&conn).unwrap();
 
-        let recv_msgs = TextMessage::index(&conn).unwrap();
+        let recv_msgs = ReceivedTextMessage::index(&conn).unwrap();
         assert_eq!(recv_msgs, vec![recv_msg1.clone(), recv_msg2.clone(), recv_msg3.clone()]);
-        let find1 = TextMessage::find(&recv_msg1.id, &conn).unwrap();
+        let find1 = ReceivedTextMessage::find(&recv_msg1.id, &conn).unwrap();
         assert_eq!(find1, recv_msg1);
-        let find2 = TextMessage::find_by_source_pub_key(&public_key2.clone(), &conn).unwrap();
+        let find2 = ReceivedTextMessage::find_by_source_pub_key(&public_key2.clone(), &conn).unwrap();
         assert_eq!(find2, vec![recv_msg2, recv_msg3]);
 
         clean_up(db_name);

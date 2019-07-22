@@ -40,6 +40,7 @@ pub enum WalletError {
 pub struct WalletConfig {
     pub comms: CommsConfig,
     pub public_key: CommsPublicKey,
+    pub database_path: String,
 }
 
 /// A structure containing the config and services that a Wallet application will require. This struct will start up all
@@ -57,7 +58,7 @@ impl Wallet {
         let ping_pong_service = PingPongService::new();
         let ping_pong_service_api = ping_pong_service.get_api();
 
-        let text_message_service = TextMessageService::new(config.public_key.clone());
+        let text_message_service = TextMessageService::new(config.public_key.clone(), config.database_path.clone());
         let text_message_service_api = text_message_service.get_api();
 
         let registry = ServiceRegistry::new()
