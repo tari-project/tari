@@ -24,6 +24,7 @@ use crate::{connection::peer_connection::ConnectionId, message::Frame};
 use derive_error::Error;
 use serde::{de, Deserialize, Deserializer, Serialize};
 use std::{
+    cmp::Ordering,
     convert::{TryFrom, TryInto},
     fmt,
     hash::{Hash, Hasher},
@@ -169,6 +170,12 @@ impl ByteArray for NodeId {
 impl PartialEq for NodeId {
     fn eq(&self, nid: &NodeId) -> bool {
         self.0 == nid.0
+    }
+}
+
+impl PartialOrd<NodeId> for NodeId {
+    fn partial_cmp(&self, other: &NodeId) -> Option<Ordering> {
+        self.0.partial_cmp(&other.0)
     }
 }
 

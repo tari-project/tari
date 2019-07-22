@@ -28,7 +28,6 @@ use super::{
 use crate::{
     connection::{net_address::ip::SocketAddress, NetAddress, ZmqContext},
     connection_manager::ConnectionManager,
-    control_service::types::ControlServiceDispatcher,
     peer_manager::NodeIdentity,
     types::DEFAULT_LISTENER_ADDRESS,
 };
@@ -39,6 +38,7 @@ use std::{
     thread,
     time::Duration,
 };
+use tari_utilities::thread_join::ThreadJoinWithTimeout;
 
 const LOG_TARGET: &str = "comms::control_service::service";
 
@@ -69,7 +69,7 @@ where
             listener_address,
             socks_proxy_address: None,
             accept_message_type: T::default(),
-            requested_outbound_connection_timeout: Duration::from_secs(2),
+            requested_outbound_connection_timeout: Duration::from_secs(5),
         }
     }
 }
@@ -81,7 +81,6 @@ pub struct ControlService<MType>
 where MType: Clone
 {
     context: ZmqContext,
-    dispatcher: ControlServiceDispatcher<MType>,
     config: ControlServiceConfig<MType>,
     node_identity: Arc<NodeIdentity>,
 }
@@ -95,7 +94,6 @@ where
     pub fn with_default_config(context: ZmqContext, node_identity: Arc<NodeIdentity>) -> Self {
         Self {
             context,
-            dispatcher: Default::default(),
             config: Default::default(),
             node_identity,
         }
@@ -108,12 +106,9 @@ where
     MType: Serialize + DeserializeOwned,
     MType: Clone,
 {
-    setter!(with_custom_dispatcher, dispatcher, ControlServiceDispatcher<MType>);
-
     pub fn new(context: ZmqContext, node_identity: Arc<NodeIdentity>, config: ControlServiceConfig<MType>) -> Self {
         Self {
             context,
-            dispatcher: Default::default(),
             config,
             node_identity,
         }
@@ -121,14 +116,7 @@ where
 
     pub fn serve(self, connection_manager: Arc<ConnectionManager>) -> Result<ControlServiceHandle> {
         let config = self.config;
-        Ok(ControlServiceWorker::start(
-            self.context.clone(),
-            self.node_identity,
-            self.dispatcher,
-            config,
-            connection_manager,
-        )?
-        .into())
+        Ok(ControlServiceWorker::start(self.context.clone(), self.node_identity, config, connection_manager)?.into())
     }
 }
 
@@ -136,7 +124,7 @@ where
 /// handle which can send control messages to the [ControlService] worker.
 #[derive(Debug)]
 pub struct ControlServiceHandle {
-    pub handle: thread::JoinHandle<Result<()>>,
+    handle: thread::JoinHandle<Result<()>>,
     sender: SyncSender<ControlMessage>,
 }
 
@@ -147,6 +135,12 @@ impl ControlServiceHandle {
         self.sender
             .send(ControlMessage::Shutdown)
             .map_err(|_| ControlServiceError::ControlMessageSendFailed)
+    }
+
+    pub fn timeout_join(self, timeout: Duration) -> Result<()> {
+        self.handle
+            .timeout_join(timeout)
+            .map_err(ControlServiceError::WorkerThreadJoinFailed)
     }
 }
 

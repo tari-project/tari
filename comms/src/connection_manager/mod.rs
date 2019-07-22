@@ -43,7 +43,7 @@
 //! - [PeerConnectionProtocol]
 //!
 //! Uses the [ConnectionEstablisher] to connect to a given peer's [ControlService],
-//! open an inbound [PeerConnection] and send an [EstablishConnection] message with
+//! open an inbound [PeerConnection] and send an [RequestConnection] message with
 //! to the peer's [ControlService].
 //!
 //! ```edition2018
@@ -87,7 +87,7 @@
 //! [ConnectionManager]: ./manager/struct.ConnectionManager.html
 //! [LivePeerConnections]: ./connections/struct.LivePeerConnections.html
 //! [ControlService]: ../control_service/index.html
-//! [EstablishConnection]: ../message/p2p/struct.EstablishConnection.html
+//! [RequestConnection]: ../message/p2p/struct.RequestConnection.html
 //! [Connecti]: ./connections/struct.LivePeerConnections.html
 //! [PeerConnection]: ../connection/peer_connection/struct.PeerConnection.html
 //! [ConnectionEstablisher]: ./establisher/struct.ConnectionEstablisher.html

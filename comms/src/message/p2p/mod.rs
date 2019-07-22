@@ -20,25 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    connection::{net_address::NetAddress, zmq::CurvePublicKey},
-    peer_manager::NodeId,
-};
 use serde::{Deserialize, Serialize};
 
-/// This represents a request to open a peer connection
-/// to a remote peer.
-#[derive(Serialize, Deserialize, Debug)]
-pub struct EstablishConnection {
-    pub control_service_address: NetAddress,
-    /// The zeroMQ Curve public key to use for the peer connection
-    pub server_key: CurvePublicKey,
-    /// The node id of this node
-    pub node_id: NodeId,
-    /// The address to which to connect
-    pub address: NetAddress,
-}
-
-/// Sent to show that the connection has been accepted
+/// Sent to a peer connection to indicate the connection has been accepted
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Accept;

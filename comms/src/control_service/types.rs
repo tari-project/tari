@@ -20,18 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::{error::ControlServiceError, handlers};
-use crate::{
-    connection_manager::ConnectionManager,
-    control_service::{handlers::ControlServiceResolver, ControlServiceConfig},
-    dispatcher::Dispatcher,
-    message::{Message, MessageEnvelopeHeader},
-    peer_manager::{NodeIdentity, PeerManager},
-};
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use std::sync::Arc;
+use super::error::ControlServiceError;
 
-/// Control Messgages for the control service worker
+/// Control Messages for the control service worker
 #[derive(Debug)]
 pub enum ControlMessage {
     Shutdown,
@@ -39,45 +30,3 @@ pub enum ControlMessage {
 
 /// ControlService result type
 pub type Result<T> = std::result::Result<T, ControlServiceError>;
-
-/// The [Dispatcher] required for ControlService.
-pub type ControlServiceDispatcher<MType> = Dispatcher<
-    ControlServiceMessageType,
-    ControlServiceMessageContext<MType>,
-    ControlServiceResolver<MType>,
-    ControlServiceError,
->;
-
-impl<MType> Default for ControlServiceDispatcher<MType>
-where
-    MType: Clone,
-    MType: Serialize + DeserializeOwned,
-{
-    fn default() -> Self {
-        ControlServiceDispatcher::new(ControlServiceResolver::new())
-            .route(
-                ControlServiceMessageType::EstablishConnection,
-                handlers::establish_connection,
-            )
-            .catch_all(handlers::discard)
-    }
-}
-
-/// The message required to use the default handlers.
-/// This contains the serialized message and envelope header
-pub struct ControlServiceMessageContext<MType>
-where MType: Clone
-{
-    pub envelope_header: MessageEnvelopeHeader,
-    pub message: Message,
-    pub connection_manager: Arc<ConnectionManager>,
-    pub peer_manager: Arc<PeerManager>,
-    pub node_identity: Arc<NodeIdentity>,
-    pub config: ControlServiceConfig<MType>,
-}
-
-/// Control service message types
-#[derive(Eq, PartialEq, Hash, Serialize, Deserialize)]
-pub enum ControlServiceMessageType {
-    EstablishConnection,
-}

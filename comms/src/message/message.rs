@@ -53,7 +53,7 @@ impl Message {
     }
 
     /// Deserialize and return the header of the message
-    pub fn to_header<MType>(&self) -> Result<MessageHeader<MType>, MessageError>
+    pub fn deserialize_header<MType>(&self) -> Result<MessageHeader<MType>, MessageError>
     where
         MessageHeader<MType>: MessageFormat,
         MType: DeserializeOwned,
@@ -61,7 +61,7 @@ impl Message {
         MessageHeader::<MType>::from_binary(&self.header).map_err(Into::into)
     }
 
-    pub fn to_message<T>(&self) -> Result<T, MessageError>
+    pub fn deserialize_message<T>(&self) -> Result<T, MessageError>
     where T: MessageFormat {
         T::from_binary(&self.body).map_err(Into::into)
     }
@@ -100,8 +100,8 @@ mod test {
 
         let msg = Message::from_message_format(header.clone(), body.clone()).unwrap();
 
-        let header2 = msg.to_header::<TestHeader>().unwrap();
-        let body2 = msg.to_message::<TestMsg>().unwrap();
+        let header2 = msg.deserialize_header::<TestHeader>().unwrap();
+        let body2 = msg.deserialize_message::<TestMsg>().unwrap();
 
         assert_eq!(header, header2.message_type);
         assert_eq!(body, body2);

@@ -56,4 +56,14 @@ pub enum ConnectionManagerError {
     DatastoreError,
     /// Connection timed out before it was able to connect
     TimeoutBeforeConnected,
+    #[error(msg_embedded, non_std, no_from)]
+    ControlServicePingPongFailed(String),
+    #[error(msg_embedded, non_std, no_from)]
+    SendRequestConnectionFailed(String),
+    /// Failed to receive a connection request outcome message
+    ConnectionRequestOutcomeRecvFail,
+    /// The request to establish a peer connection was rejected by the destination peer's control port
+    ConnectionRejected,
+    /// Failed to receive a connection request outcome before the timeout
+    ConnectionRequestOutcomeTimeout,
 }
