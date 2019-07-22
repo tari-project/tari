@@ -22,6 +22,7 @@ zmq = "0.9.1"
 digest = "0.8.0"
 time = "0.1.42"
 lmdb-zero = "0.4.4"
+ttl_cache = "0.5.1"
 
 tari_crypto = { version="^0.0",  path = "../infrastructure/crypto"}
 tari_utilities = { version="^0.0",  path = "../infrastructure/tari_util"}
