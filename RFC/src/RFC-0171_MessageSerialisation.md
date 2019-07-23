@@ -1,4 +1,4 @@
-# RFC-0711/MessageSerialisation
+# RFC-0171/MessageSerialization
 
 ## Message Serialization
 
@@ -6,9 +6,9 @@
 
 **Maintainer(s)**: [Cayle Sharrock](https://github.com/CjS77)
 
-# License
+# Licence
 
-[ The 3-Clause BSD License](https://opensource.org/licenses/BSD-3-Clause).
+[The 3-Clause BSD Licence](https://opensource.org/licenses/BSD-3-Clause).
 
 Copyright 2019. The Tari Development Community
 
@@ -22,49 +22,49 @@ following conditions are met:
 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products
    derived from this software without specific prior written permission.
 
-THIS DOCUMENT IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+THIS DOCUMENT IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS", AND ANY EXPRESS OR IMPLIED WARRANTIES,
 INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
 DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
-WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+SPECIAL, EXEMPLARY OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+WHETHER IN CONTRACT, STRICT LIABILITY OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
 THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ## Language
 
-The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED",
-"NOT RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in
-[BCP 14](https://tools.ietf.org/html/bcp14) (covering RFC2119 and RFC8174) when, and only when, they appear in all capitals, as
+The keywords "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", 
+"NOT RECOMMENDED", "MAY" and "OPTIONAL" in this document are to be interpreted as described in 
+[BCP 14](https://tools.ietf.org/html/bcp14) (covering RFC2119 and RFC8174) when, and only when, they appear in all capitals, as 
 shown here.
 
 ## Disclaimer
 
-The purpose of this document and its content is for information purposes only and may be subject to change or update
+This document and its content are intended for information purposes only and may be subject to change or update
 without notice.
 
 This document may include preliminary concepts that may or may not be in the process of being developed by the Tari
-community. The release of this document is intended solely for review and discussion by the community regarding the
+community. The release of this document is intended solely for review and discussion by the community of the
 technological merits of the potential system outlined herein.
 
 ## Goals
 
-This document describes the message serialisation formats for message payloads used in the Tari network.
+The aim of this Request for Comment (RFC) is to describe the message serialization formats for message payloads used in the Tari network.
 
-## Related RFCs
+## Related Requests for Comment
 
-[RFC-0710: The Tari Communication Network and Network Communication Protocol](RFC-0170_NetworkCommunicationProtocol.md)
+[RFC-0710: Tari Communication Network and Network Communication Protocol](RFC-0170_NetworkCommunicationProtocol.md)
 
 ## Description
 
 One way of interpreting the Tari network is that it is a large peer-to-peer messaging application. The entities chatting
-on the network include
+on the network include:
 
 * Users
 * Wallets
 * Base nodes
 * Validator nodes
 
-The types of messages that these entities send might include
+The types of messages that these entities send might include:
 
 * Text messages
 * Transaction messages
@@ -78,23 +78,23 @@ For successful communication to occur, the following needs to happen:
 * The message is translated from its memory storage format into a standard payload format that will be transported over
   the wire.
 * The communication module wraps the payload into a message format, which may entail any/all of
-  * adding a message header to describe the type of payload,
-  * encrypting the message,
-  * signing the message, and
+  * adding a message header to describe the type of payload;
+  * encrypting the message;
+  * signing the message;
   * adding destination/recipient metadata.
 * The communication module then sends the message over the wire.
 * The recipient receives the message and unwraps it, possibly performing any/all of the following:
-  * decryption,
-  * verifying signatures,
-  * extracting the payload,
-  * passing the serialised payload to modules that are interesting in that particular message type
-* The message is deserialised into the correct data structure for use by the receiving software
+  * decryption;
+  * verifying signatures;
+  * extracting the payload;
+  * passing the serialized payload to modules that are interesting in that particular message type.
+* The message is deserialized into the correct data structure for use by the receiving software
 
-This document only covers the first and last steps: _viz_: serialising data from in-memory objects to a format that can
+This document only covers the first and last steps, i.e. serializing data from in-memory objects to a format that can
 be transmitted over the wire. The other steps are handled by the Tari communication protocol.
 
-In addition to machine-to-machine communication, we also standardise on human-to-machine communication. Use cases for
-this include
+In addition to machine-to-machine communication, we also standardize on human-to-machine communication. Use cases for
+this include:
 
 * Handcrafting instructions or transactions. The ideal format here is a very human-readable format.
 * Copying transactions or instructions from cold wallets. The ideal format here is a compact but easy-to-copy format.
@@ -103,29 +103,29 @@ this include
 
 When sending a message from a human to the network, the following happens:
 
-* The message is deserialised into the native structure.
-* The deserialisation acts as an automatic validation step.
+* The message is deserialized into the native structure.
+* The deserialization acts as an automatic validation step.
 * Additional validation can be performed.
-* The usual machine-to-machine process is followed as described above.
+* The usual machine-to-machine process is followed, as described above.
 
-### Binary serialisation formats
+### Binary Serialization Formats
 
-The ideal properties for binary serialisation formats are:
+The ideal properties for binary serialization formats are:
 
-* Widely used across multiple platforms and languages, but with excellent Rust support.
-* Compact binary representation
-* Serialisation "Just Works"(TM) with little or no additional coding overhead.
+* widely used across multiple platforms and languages, but with excellent Rust support;
+* compact binary representation; and
+* serialization "Just Works"(TM) with little or no additional coding overhead.
 
-Several candidates fulfil these properties to some degree.
+Several candidates fulfill these properties to some degree.
 
 #### [ASN.1](http://www.itu.int/ITU-T/asn1/index.html)
 
 * Pros:
-  * Very mature (was developed in the 80s)
+  * Very mature (was developed in the 1980s)
   * Large number of implementations
-  * Dovetails into ZMQ nicely
+  * Dovetails nicely into ZMQ 
 * Cons:
-  * Limited Rust / Serde support
+  * Limited Rust/Serde support
   * Requires schema (additional coding overhead if no automated tools for this exist)
 
 
@@ -135,46 +135,48 @@ Several candidates fulfil these properties to some degree.
   * Very compact
   * Fast
   * Multiple language support
-  * Good Rust / Serde support
-  * Dovetails into ZMQ nicely
+  * Good Rust/Serde support
+  * Dovetails nicely into ZMQ 
 * Cons:
   * No metadata support
 
 #### [Protobuf](https://code.google.com/p/protobuf/)
 
-Similar to [Message Pack](#message-pack), but also requires schema's to be written and compiled. Serialisation performance and size
-is similar to Message Pack. Can work with ZMQ but is better designed to be used with gRPC.
+Similar to [Message Pack](#message-pack), but also requires schemas to be written and compiled. Serialization 
+performance and size
+are similar to Message Pack. It Can work with ZMQ, but is better designed to be used with gRPC.
 
 #### [Cap'n Proto](http://kentonv.github.io/capnproto/)
 
 Similar to [Protobuf](#protobuf), but claims to be much faster. Rust is supported.
 
-#### Hand-rolled serialisation
+#### Hand-rolled Serialization
 
 [Hintjens recommends](http://zguide.zeromq.org/py:chapter7#Serialization-Libraries) using hand-rolled serialization for
-bulk messaging. While Pieter usually offers sage advice, I'm going to argue against using custom serialisers at this
-point in time for the following reasons:
-* We're unlikely to improve hugely over MessagePack
-* Since serde does 95% of our work for us with MessagePack, there's significant development overhead (and new bugs)
+bulk messaging. While Pieter usually offers sage advice, I'm going to argue against using custom serializers at this
+stage for the following reasons:
+
+* We're unlikely to improve hugely over MessagePack.
+* Since Serde does 95% of our work for us with MessagePack, there's a significant development overhead (and new bugs)
   involved with a hand-rolled solution.
-* We'd have to write de/serialisers for every language that wants Tari bindings; whereas every major language has a
+* We'd have to write de/serializers for every language that wants Tari bindings; whereas every major language has a
   MessagePack implementation.
 
-### Serialisation in Tari
+### Serialization in Tari
 
-Deciding between these protocols is largely a matter of preference, since there isn't that much to choose between them.
-Given that ZMQ is used in other places in the Tari network; MessagePack looks to be a good fit while offering a compact
-data structure and highly performant de/serialisation. In Rust in particular, there's first-class support for MessagePack
-in serde.
+Deciding between these protocols is largely a matter of preference, since there isn't that much difference between them.
+Given that ZMQ is used in other places in the Tari network, MessagePack looks to be a good fit while offering a compact
+data structure and highly performant de/serialization. In Rust, in particular, there's first-class support for MessagePack
+in Serde.
 
 For human-readable formats, it makes little sense to deviate from JSON. For copy-paste semantics, the extra compression
 that Base64 offers over raw hex or Base58 makes it attractive.
 
 Many Tari data types' binary representation will be the straightforward MessagePack version of each field in the related
-Struct. In these cases, as straightforward `#[derive(Deserialize, Serialize)]` is all that is required to make the data
-structure able to be sent over the wire.
+struct. In these cases, a straightforward `#[derive(Deserialize, Serialize)]` is all that is required to enable the data
+structure to be sent over the wire.
 
-However, other structures might need fine tuning, or hand-written serialisation procedures. To capture both use cases,
+However, other structures might need fine-tuning, or hand-written serialization procedures. To capture both use cases,
 it is proposed that a `MessageFormat` trait be defined:
 
 ```rust,compile_fail
@@ -182,5 +184,5 @@ it is proposed that a `MessageFormat` trait be defined:
 ```
 
 This trait will have default implementations to cover most use cases (e.g. a simple call through to `serde_json`). Serde
-also offers significant ability to tweak how a given struct will be serialised through the use of
+also offers significant ability to tweak how a given struct will be serialized through the use of
 [attributes](https://serde.rs/attributes.html).
