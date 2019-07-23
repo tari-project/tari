@@ -20,10 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::error::OutboundMessagePoolError;
+use super::error::RetryServiceError;
 use crate::{
     connection::{Connection, Direction, EstablishedConnection, InprocAddress, ZmqContext},
-    message::FrameSet,
     outbound_message_service::{outbound_message_pool::OutboundMessagePoolConfig, OutboundMessage},
     peer_manager::NodeId,
 };
@@ -34,10 +33,18 @@ use std::{
     thread::{self, JoinHandle},
     time::Duration,
 };
-use tari_utilities::{byte_array::ByteArray, message_format::MessageFormat};
+use tari_utilities::message_format::MessageFormat;
 
 const LOG_TARGET: &str = "comms::outbound_message_service::outbound_message_pool::message_retry_pool";
 const THREAD_STACK_SIZE: usize = 256 * 1024; // 256kb
+
+pub enum RetryServiceMessage {
+    Shutdown,
+    FailedAttempt(OutboundMessage),
+    /// Indicates that all messages for a given node ID should be cleared from the
+    /// queue and sent to the message_sink.
+    Flush(NodeId),
+}
 
 /// # MessageRetryService
 ///
@@ -52,42 +59,41 @@ const THREAD_STACK_SIZE: usize = 256 * 1024; // 256kb
 pub struct MessageRetryService {
     queue: BinaryHeap<OutboundMessage>,
     config: OutboundMessagePoolConfig,
-    shutdown_signal_rx: Receiver<()>,
+    message_source: Receiver<RetryServiceMessage>,
 }
 
 impl MessageRetryService {
-    /// Control message which indicates that all messages for a node ID should be
-    /// immediately queued for sending.
-    pub(super) const CTL_FLUSH_NODE_MSGS: &'static str = "FLUSH_NODE_MSGS";
-
     /// Start the message retry service.
     ///
     /// This method will panic if the OS-level thread is unable to start.
     pub fn start(
         context: ZmqContext,
         config: OutboundMessagePoolConfig,
-        inbound_address: InprocAddress,
+        message_source: Receiver<RetryServiceMessage>,
         outbound_address: InprocAddress,
-        shutdown_signal_rx: Receiver<()>,
-    ) -> JoinHandle<Result<(), OutboundMessagePoolError>>
+    ) -> JoinHandle<Result<(), RetryServiceError>>
+    {
+        let message_retry_service = Self::new(config, message_source);
+        Self::spawn(context, outbound_address, message_retry_service)
+    }
+
+    fn spawn(
+        context: ZmqContext,
+        outbound_address: InprocAddress,
+        mut message_retry_service: Self,
+    ) -> JoinHandle<Result<(), RetryServiceError>>
     {
         thread::Builder::new()
             .name("msg-retry-service".to_string())
             .stack_size(THREAD_STACK_SIZE)
             .spawn(move || {
-                let mut message_retry_queue = Self::new(config, shutdown_signal_rx);
-                let inbound_conn = Connection::new(&context, Direction::Inbound)
-                    .set_name("omp-retry-service-inbound")
-                    .establish(&inbound_address)
-                    .map_err(OutboundMessagePoolError::ConnectionError)?;
-
                 let outbound_conn = Connection::new(&context, Direction::Outbound)
                     .set_name("omp-retry-service-outbound")
                     .establish(&outbound_address)
-                    .map_err(OutboundMessagePoolError::ConnectionError)?;
+                    .map_err(RetryServiceError::ConnectionError)?;
 
                 loop {
-                    match message_retry_queue.run(&inbound_conn, &outbound_conn) {
+                    match message_retry_service.run(&outbound_conn) {
                         Ok(_) => break,
                         Err(err) => {
                             error!(target: LOG_TARGET, "Outbound message retry pool errored: {:?}", err);
@@ -114,72 +120,66 @@ impl MessageRetryService {
             .unwrap()
     }
 
-    fn new(config: OutboundMessagePoolConfig, shutdown_signal_rx: Receiver<()>) -> Self {
+    fn new(config: OutboundMessagePoolConfig, message_source: Receiver<RetryServiceMessage>) -> Self {
         Self {
             queue: BinaryHeap::new(),
             config,
-            shutdown_signal_rx,
+            message_source,
         }
     }
 
-    fn run(
-        &mut self,
-        inbound_conn: &EstablishedConnection,
-        outbound_conn: &EstablishedConnection,
-    ) -> Result<(), OutboundMessagePoolError>
-    {
+    fn run(&mut self, outbound_conn: &EstablishedConnection) -> Result<(), RetryServiceError> {
         loop {
             trace!(
                 target: LOG_TARGET,
                 "MessageRetryService loop (queue_size: {})",
                 self.queue.len()
             );
-            if let Some(frames) = connection_try!(inbound_conn.receive(1000)) {
-                if let Some(node_id) = Self::maybe_parse_node_flush_msg(&frames) {
-                    debug!(
-                        target: LOG_TARGET,
-                        "Immediately retrying messages from NodeId={}", node_id
-                    );
-                    let num_flushed = self.flush_messages_for_node_id(&outbound_conn, &node_id)?;
-                    debug!(
-                        target: LOG_TARGET,
-                        "Flushed {} messages from NodeId={}", num_flushed, node_id
-                    );
-                    continue;
-                }
 
-                let mut msg = Self::deserialize_outbound_message(frames)?;
-                msg.mark_failed_attempt();
+            if let Some(msg) = self.receive_control_msg(Duration::from_millis(1000))? {
+                match msg {
+                    RetryServiceMessage::Shutdown => {
+                        info!(target: LOG_TARGET, "MessageRetryService shutdown signal received");
+                        break;
+                    },
+                    RetryServiceMessage::FailedAttempt(mut outbound_msg) => {
+                        outbound_msg.mark_failed_attempt();
+                        if outbound_msg.num_attempts() > self.config.max_retries {
+                            // Discard message
+                            warn!(
+                                target: LOG_TARGET,
+                                "Discarding message for NodeId {}. Max retry attempts ({}) exceeded.",
+                                outbound_msg.destination_node_id(),
+                                self.config.max_retries
+                            );
+                            continue;
+                        }
 
-                if msg.num_attempts() > self.config.max_retries {
-                    // Discard message
-                    warn!(
-                        target: LOG_TARGET,
-                        "Discarding message for NodeId {}. Max retry attempts ({}) exceeded.",
-                        msg.destination_node_id(),
-                        self.config.max_retries
-                    );
-                    continue;
-                }
-
-                // Add it to the queue for later retry
-                debug!(
-                    target: LOG_TARGET,
-                    "Message failed to send. Message will be retried in {}s",
-                    msg.scheduled_duration().num_seconds()
-                );
-                self.queue.push(msg);
-            }
-
-            match self.shutdown_signal_rx.recv_timeout(Duration::from_millis(1)) {
-                Ok(_) => {
-                    info!(target: LOG_TARGET, "SHUTDOWN SIGNAL RECEIVED");
-                    break;
-                },
-                Err(RecvTimeoutError::Timeout) => {},
-                Err(RecvTimeoutError::Disconnected) => {
-                    return Err(OutboundMessagePoolError::ControlMessageSenderDisconnected)
-                },
+                        // Add it to the queue for later retry
+                        debug!(
+                            target: LOG_TARGET,
+                            "Message failed to send. Message will be retried in {}s",
+                            outbound_msg.scheduled_duration().num_seconds()
+                        );
+                        self.queue.push(outbound_msg);
+                    },
+                    RetryServiceMessage::Flush(node_id) => {
+                        debug!(
+                            target: LOG_TARGET,
+                            "Immediately retrying messages from NodeId={}", node_id
+                        );
+                        let flushed_msgs = self.flush_messages_for_node_id(&node_id)?;
+                        debug!(
+                            target: LOG_TARGET,
+                            "Flushing {} messages for NodeId={}",
+                            flushed_msgs.len(),
+                            node_id
+                        );
+                        for msg in flushed_msgs.into_iter() {
+                            self.send_msg(outbound_conn, msg)?;
+                        }
+                    },
+                };
             }
 
             if let Some(msg) = self.queue.peek() {
@@ -197,56 +197,39 @@ impl MessageRetryService {
                     self.config.max_retries
                 );
 
-                self.send_msg(&outbound_conn, msg)?;
+                self.send_msg(outbound_conn, msg)?;
             }
         }
 
         Ok(())
     }
 
+    fn receive_control_msg(&self, timeout: Duration) -> Result<Option<RetryServiceMessage>, RetryServiceError> {
+        match self.message_source.recv_timeout(timeout) {
+            Ok(msg) => Ok(Some(msg)),
+            Err(RecvTimeoutError::Timeout) => Ok(None),
+            Err(RecvTimeoutError::Disconnected) => Err(RetryServiceError::ControlMessageSenderDisconnected),
+        }
+    }
+
     /// Flush all messages for a particular peer from the queue and add to the sending queue
     fn flush_messages_for_node_id(
         &mut self,
-        outbound_conn: &EstablishedConnection,
         node_id: &NodeId,
-    ) -> Result<usize, OutboundMessagePoolError>
+    ) -> Result<BinaryHeap<OutboundMessage>, RetryServiceError>
     {
         // TODO(sdbondi): Use drain_filter when it's available (https://github.com/rust-lang/rust/issues/43244)
         let queue = self.queue.drain().collect::<BinaryHeap<OutboundMessage>>();
-        let (msgs_to_send, queue) = queue.into_iter().partition(|msg| msg.destination_node_id() == node_id);
+        let (flushed_msgs, queue) = queue.into_iter().partition(|msg| msg.destination_node_id() == node_id);
         self.queue = queue;
 
-        let len = msgs_to_send.len();
-
-        for msg in msgs_to_send {
-            self.send_msg(&outbound_conn, msg)?;
-        }
-
-        Ok(len)
-    }
-
-    /// If the frameset is a CTL_FLUSH_NODE_MSGS, return the NodeId to flush, otherwise None
-    fn maybe_parse_node_flush_msg(frames: &FrameSet) -> Option<NodeId> {
-        match frames.len() {
-            3 if frames[1] == Self::CTL_FLUSH_NODE_MSGS.as_bytes() => NodeId::from_bytes(&frames[2]).ok(),
-            _ => None,
-        }
+        Ok(flushed_msgs)
     }
 
     /// Serialize and send a message on a given connection
-    fn send_msg(&self, conn: &EstablishedConnection, msg: OutboundMessage) -> Result<(), OutboundMessagePoolError> {
-        let frame = msg.to_binary().map_err(OutboundMessagePoolError::MessageFormatError)?;
-        conn.send(&[frame]).map_err(OutboundMessagePoolError::ConnectionError)
-    }
-
-    /// Expect the given frameset to contain an outbound message
-    fn deserialize_outbound_message(mut frames: FrameSet) -> Result<OutboundMessage, OutboundMessagePoolError> {
-        match frames.drain(1..).next() {
-            Some(frame) => OutboundMessage::from_binary(&frame).map_err(OutboundMessagePoolError::MessageFormatError),
-            None => Err(OutboundMessagePoolError::InvalidFrameFormat(
-                "Message retry pool worker received a frame set with invalid length".to_string(),
-            )),
-        }
+    fn send_msg(&self, conn: &EstablishedConnection, msg: OutboundMessage) -> Result<(), RetryServiceError> {
+        let frame = msg.to_binary().map_err(RetryServiceError::MessageFormatError)?;
+        conn.send(&[frame]).map_err(RetryServiceError::ConnectionError)
     }
 }
 
@@ -254,7 +237,8 @@ impl MessageRetryService {
 mod test {
     use super::*;
     use crate::peer_manager::NodeId;
-    use std::sync::mpsc::sync_channel;
+    use std::{iter::repeat_with, sync::mpsc::sync_channel};
+    use tari_utilities::{byte_array::ByteArray, thread_join::ThreadJoinWithTimeout};
 
     #[test]
     fn new() {
@@ -262,69 +246,6 @@ mod test {
         let (_, rx) = sync_channel(0);
         let subject = MessageRetryService::new(config.clone(), rx);
         assert!(subject.queue.is_empty());
-    }
-
-    #[test]
-    fn deserialize_outbound_message() {
-        let msg = OutboundMessage::new(NodeId::new(), vec![vec![]]);
-        let msg_frame = msg.to_binary().unwrap();
-        let frames = vec![vec![1, 2, 3, 4], msg_frame];
-        let result_msg = MessageRetryService::deserialize_outbound_message(frames).unwrap();
-        assert_eq!(result_msg, msg);
-    }
-
-    #[test]
-    fn maybe_parse_node_flush_msg() {
-        let node_id = NodeId::new();
-        let maybe_node_id = MessageRetryService::maybe_parse_node_flush_msg(&vec![
-            vec![],
-            MessageRetryService::CTL_FLUSH_NODE_MSGS.as_bytes().to_vec(),
-            node_id.as_bytes().to_vec(),
-        ]);
-
-        assert!(maybe_node_id.is_some());
-        assert_eq!(maybe_node_id.unwrap(), node_id);
-    }
-
-    #[test]
-    fn maybe_parse_node_flush_msg_fail() {
-        let node_id = NodeId::new();
-
-        // Not enough frames
-        let maybe_node_id = MessageRetryService::maybe_parse_node_flush_msg(&vec![
-            MessageRetryService::CTL_FLUSH_NODE_MSGS.as_bytes().to_vec(),
-            node_id.as_bytes().to_vec(),
-        ]);
-
-        assert!(maybe_node_id.is_none());
-
-        // Too many frames
-        let maybe_node_id = MessageRetryService::maybe_parse_node_flush_msg(&vec![
-            vec![],
-            MessageRetryService::CTL_FLUSH_NODE_MSGS.as_bytes().to_vec(),
-            node_id.as_bytes().to_vec(),
-            vec![],
-        ]);
-
-        assert!(maybe_node_id.is_none());
-
-        // Bad flush message identifier
-        let maybe_node_id = MessageRetryService::maybe_parse_node_flush_msg(&vec![
-            vec![],
-            "BAD".as_bytes().to_vec(),
-            node_id.as_bytes().to_vec(),
-        ]);
-
-        assert!(maybe_node_id.is_none());
-
-        // Bad node id
-        let maybe_node_id = MessageRetryService::maybe_parse_node_flush_msg(&vec![
-            vec![],
-            MessageRetryService::CTL_FLUSH_NODE_MSGS.as_bytes().to_vec(),
-            node_id.as_bytes().to_vec().drain(1..).collect::<Vec<u8>>(),
-        ]);
-
-        assert!(maybe_node_id.is_none());
     }
 
     #[test]
@@ -341,55 +262,94 @@ mod test {
         let (_shutdown_signal_tx, shutdown_signal_rx) = sync_channel(1);
 
         let mut service = MessageRetryService::new(OutboundMessagePoolConfig::default(), shutdown_signal_rx);
-        let dummy_frames = vec![vec![]];
-        let dummy_frames2 = vec!["EXPECTED".as_bytes().to_vec()];
-        service
-            .queue
-            .push(OutboundMessage::new(node_id1.clone(), dummy_frames.clone()));
-        service
-            .queue
-            .push(OutboundMessage::new(node_id1.clone(), dummy_frames.clone()));
-        service
-            .queue
-            .push(OutboundMessage::new(node_id2.clone(), dummy_frames2.clone()));
-        service
-            .queue
-            .push(OutboundMessage::new(node_id1.clone(), dummy_frames.clone()));
-        service
-            .queue
-            .push(OutboundMessage::new(node_id2.clone(), dummy_frames2.clone()));
-        service
-            .queue
-            .push(OutboundMessage::new(node_id2.clone(), dummy_frames2.clone()));
-        service
-            .queue
-            .push(OutboundMessage::new(node_id1.clone(), dummy_frames.clone()));
-        service
-            .queue
-            .push(OutboundMessage::new(node_id1.clone(), dummy_frames.clone()));
+        let dummy_msg = OutboundMessage::new(node_id1.clone(), vec![vec![]]);
+        let dummy_msg2 = OutboundMessage::new(node_id2.clone(), vec!["EXPECTED".as_bytes().to_vec()]);
+        let mut messages = repeat_with(|| dummy_msg.clone())
+            .take(5)
+            .collect::<Vec<OutboundMessage>>();
+        messages.extend(
+            repeat_with(|| dummy_msg2.clone())
+                .take(2)
+                .collect::<Vec<OutboundMessage>>(),
+        );
 
-        let context = ZmqContext::new();
-        let address = InprocAddress::random();
-        let out_conn = Connection::new(&context, Direction::Outbound)
-            .establish(&address)
-            .unwrap();
+        service.queue = messages.into();
 
-        let in_conn = Connection::new(&context, Direction::Inbound)
-            .establish(&address)
-            .unwrap();
-
-        service.flush_messages_for_node_id(&out_conn, &node_id2).unwrap();
-
-        let mut msg_count = 0;
-
-        for _ in 0..3 {
-            let frames = in_conn.receive(2000).unwrap();
-            let msg = OutboundMessage::from_binary(&frames[1]).unwrap();
+        let msgs = service.flush_messages_for_node_id(&node_id2).unwrap();
+        for msg in msgs {
             assert_eq!(msg.message_frames()[0], "EXPECTED".as_bytes());
-            msg_count += 1;
         }
 
-        assert_eq!(msg_count, 3);
         assert_eq!(service.queue.len(), 5);
+    }
+
+    #[test]
+    fn shutdown_msg() {
+        let context = ZmqContext::new();
+        let config = OutboundMessagePoolConfig::default();
+        let (tx, rx) = sync_channel(0);
+        let handle = MessageRetryService::start(context, config.clone(), rx, InprocAddress::random());
+        tx.send(RetryServiceMessage::Shutdown).unwrap();
+        handle.timeout_join(Duration::from_millis(10)).unwrap();
+    }
+
+    #[test]
+    fn flush_msg() {
+        let node_id = NodeId::new();
+        let context = ZmqContext::new();
+        let config = OutboundMessagePoolConfig::default();
+        let (tx, rx) = sync_channel(0);
+        let mut service = MessageRetryService::new(config.clone(), rx);
+        service.queue = repeat_with(|| OutboundMessage::new(node_id.clone(), vec![vec![]]))
+            .take(3)
+            .collect::<Vec<OutboundMessage>>()
+            .into();
+
+        let omp_addr = InprocAddress::random();
+        let omp_conn = Connection::new(&context, Direction::Inbound)
+            .establish(&omp_addr)
+            .unwrap();
+        let handle = MessageRetryService::spawn(context, omp_addr, service);
+        tx.send(RetryServiceMessage::Flush(node_id.clone())).unwrap();
+
+        for _ in 0..2 {
+            omp_conn.receive(3000).unwrap();
+        }
+        tx.send(RetryServiceMessage::Shutdown).unwrap();
+
+        handle.timeout_join(Duration::from_millis(10)).unwrap();
+    }
+
+    #[test]
+    fn failed_attempt_msg() {
+        let node_id = NodeId::new();
+        let context = ZmqContext::new();
+        let config = OutboundMessagePoolConfig::default();
+        let (tx, rx) = sync_channel(0);
+        let service = MessageRetryService::new(config.clone(), rx);
+        assert_eq!(service.queue.len(), 0);
+
+        let omp_addr = InprocAddress::random();
+        let omp_conn = Connection::new(&context, Direction::Inbound)
+            .establish(&omp_addr)
+            .unwrap();
+        let handle = MessageRetryService::spawn(context, omp_addr, service);
+        // Send a message which is scheduled to send immediately
+        tx.send(RetryServiceMessage::FailedAttempt(OutboundMessage::new(
+            node_id.clone(),
+            vec!["EXPECTED".as_bytes().to_vec()],
+        )))
+        .unwrap();
+
+        let msg = omp_conn
+            .receive(3000)
+            .map(|frames| OutboundMessage::from_binary(&frames[1]))
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(msg.message_frames()[0], "EXPECTED".as_bytes().to_vec());
+
+        tx.send(RetryServiceMessage::Shutdown).unwrap();
+        handle.timeout_join(Duration::from_millis(10)).unwrap();
     }
 }

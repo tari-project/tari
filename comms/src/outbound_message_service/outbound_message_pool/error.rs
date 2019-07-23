@@ -36,11 +36,19 @@ pub enum OutboundMessagePoolError {
     #[error(msg_embedded, non_std, no_from)]
     InvalidFrameFormat(String),
     MessageFormatError(MessageFormatError),
-    /// Control message sender disconnected without sending shutdown signal
-    ControlMessageSenderDisconnected,
     PeerManagerError(PeerManagerError),
     ConnectionManagerError(ConnectionManagerError),
     DealerProxyError(DealerProxyError),
     /// Unable to allocate message pool worker thread
     ThreadInitializationError,
+    /// The message retry service has unexpectedly disconnected from it's channel
+    MessageRetryServiceDisconnected,
+}
+
+#[derive(Error, Debug)]
+pub enum RetryServiceError {
+    ConnectionError(ConnectionError),
+    /// Control message sender disconnected without sending shutdown signal
+    ControlMessageSenderDisconnected,
+    MessageFormatError(MessageFormatError),
 }
