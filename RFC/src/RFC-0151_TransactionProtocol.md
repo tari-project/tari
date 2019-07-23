@@ -1,14 +1,14 @@
 # TransactionProtocol
 
-## Transaction protocol
+## Transaction Protocol
 
 ![status: draft](theme/images/status-draft.svg)
 
 **Maintainer(s)**: Cayle Sharrock <CjS77>
 
-# License
+# Licence
 
-[ The 3-Clause BSD License](https://opensource.org/licenses/BSD-3-Clause).
+[ The 3-Clause BSD Licence](https://opensource.org/licenses/BSD-3-Clause).
 
 Copyright 2019. The Tari Development Community
 
@@ -22,42 +22,42 @@ following conditions are met:
 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products
    derived from this software without specific prior written permission.
 
-THIS DOCUMENT IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+THIS DOCUMENT IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS", AND ANY EXPRESS OR IMPLIED WARRANTIES,
 INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
 DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
-WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+SPECIAL, EXEMPLARY OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+WHETHER IN CONTRACT, STRICT LIABILITY OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
 THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ## Language
 
-The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED",
-"NOT RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in
-[BCP 14](https://tools.ietf.org/html/bcp14) (covering RFC2119 and RFC8174) when, and only when, they appear in all capitals, as
+The keywords "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", 
+"NOT RECOMMENDED", "MAY" and "OPTIONAL" in this document are to be interpreted as described in 
+[BCP 14](https://tools.ietf.org/html/bcp14) (covering RFC2119 and RFC8174) when, and only when, they appear in all capitals, as 
 shown here.
 
 ## Disclaimer
 
-The purpose of this document and its content is for information purposes only and may be subject to change or update
+This document and its content are intended for information purposes only and may be subject to change or update
 without notice.
 
 This document may include preliminary concepts that may or may not be in the process of being developed by the Tari
-community. The release of this document is intended solely for review and discussion by the community regarding the
+community. The release of this document is intended solely for review and discussion by the community of the
 technological merits of the potential system outlined herein.
 
 ## Goals
 
-This document describes the transaction protocol for peer-to-peer Tari payments using the Mimblewimble protocol. It also
-considers some attacks that may be launched against the protocol and offers some discussion around those attacks and
-potential alternatives to the protocol.
+This Request for Comment (RFC) describes the transaction protocol for peer-to-peer Tari payments using 
+the Mimblewimble protocol. It also considers some attacks that may be launched against the protocol and offers some 
+discussion around those attacks and potential alternatives to the protocol.
 
-The goal is to describe a transaction protocol that
-* permits multiple recipients,
-* preserves privacy regarding how many parties are involved in the transaction,
+The goal is to describe a transaction protocol that:
+* permits multiple recipients;
+* preserves privacy regarding how many parties are involved in the transaction; and
 * is secure against all reasonable attacks.
 
-## Related RFCs
+## Related Requests for Comment
 
 * [RFC-0100: The Base Layer](RFC-0100_BaseLayer.md)
 
@@ -68,15 +68,15 @@ to construct a valid [Mimblewimble transaction].
 
 A valid transaction involves:
 
-* A set of one or more inputs being spent by the Sender,
-* A set of zero or more outputs being sent to the Sender,
-* A set of recipients, each of whom MUST construct exactly one output,
-* A set of partial schnorr signatures that when aggregated, validates the transaction construction and indicates every
+* a set of one or more inputs being spent by the Sender;
+* a set of zero or more outputs being sent to the Sender;
+* a set of recipients, each of whom MUST construct exactly one output; and
+* a set of partial Schnorr signatures which, when aggregated, validates the transaction construction and indicates every
   party's satisfaction with the terms.
 
-### The issue with multiple recipients
+### The Issue with Multiple Recipients
 
-Each party involved in a Tari transaction must produce a partial signature signing the same challenge. This challenge is
+Each party involved in a Tari transaction must produce a partial signature, signing the same challenge. This challenge is
 defined as
 
 $$ e = H(\Sigma R_i \Vert \Sigma P_i \Vert m) $$
@@ -90,27 +90,28 @@ every party knows how many parties are involved in the transaction, which is not
 preferable if a secure scheme could be found where each recipient interacts only with the sender and does not need to
 calculate these sums themselves.
 
-Unfortunately, as we discuss below, it seems that it's not possible using any known scheme that satisfies both this
+Unfortunately, as discussed below, it seems that using any known scheme, it's not possible to satisfy this
 privacy goal while achieving the desired security level.
 
 
-### The issue with multiple senders
+### The Issue with Multiple Senders
 
 To increase privacy, the public excess values are [offset] by a constant random value. The choice of this value, as well
 as fee selection, can only be set once per transaction. The privilege of selecting these values is generally bestowed on
-the sender, since she pays the fee. Allowing multiple sending parties (or equivalently, allowing recipients to provide
+the sender, since the sender pays the fee. Allowing multiple sending parties (or equivalently, allowing recipients to provide
 inputs) would require a negotiation round to set the fee and offset before the transaction could be constructed. This is
 a complication we don't want to deal with, and so all schemes presented here allow exactly one sender.
 
-### Two-party transactions
+### Two-party Transactions
 
-Two party transactions are fairly straightforward and are described in detail on TLU. (See [Mimblewimble transaction]).
+Two-party transactions are fairly straightforward and are described in detail by Tari Labs University (TLU). (Refer to 
+[Mimblewimble Transaction].)
 
-It is proposed that Tari implement this single-round 2-party transaction scheme as a special case to support both online
-2-party transactions as well as "offline" transactions such as via e-mail, text-message, carrier pigeon etc.
+It is proposed that Tari implement this single-round two-party transaction scheme as a special case to support both online
+two-party transactions as well as "offline" transactions such as via email, text message and carrier pigeon.
 
 
-###  Multiple recipient transaction scheme
+###  Multiple-recipient Transaction Scheme
 
 <div class="mermaid">
 sequenceDiagram
@@ -165,7 +166,7 @@ sequenceDiagram
 | tx_id  | Transaction identifier        |
 | amt_i  | Amount sent to i-th recipient |
 | Rs, Ri | Public nonce                  |
-| Xs, Pi | Public excess / key           |
+| Xs, Pi | Public excess/key           |
 | m      | Message metadata              |
 | C_i    | Commitment                    |
 | RP_i   | Range proof                   |
@@ -174,16 +175,16 @@ sequenceDiagram
 ## Transaction ID
 
 The scheme above makes use of a `tx_id` field in every peer-to-peer message. Since all messages are stateless and
-asynchronous, peers need some way of figuring out which message refers to which transaction. The transaction id fulfils
+asynchronous, peers need some way of figuring out which message refers to which transaction. The transaction ID fulfils
 this role.
 
-The ID does not appear on the blockchain in any manner; is purely used to disambiguate Tari transaction messages; and
+The ID does not appear on the blockchain in any manner; is purely used to disambiguate Tari transaction messages and
 can be discarded after the transaction is broadcast to the network.
 
-The `tx_id` is unique for every receiver so that any observers of the communication won't be able to group receivers
-together (the communication should be over secure channels in general though).
+The `tx_id` is unique for every receiver so that any observers of the communication will not be able to group receivers
+together (however, the communication should be over secure channels in general).
 
- The format of the transaction ID is a 4-byte little endian integer (u64) and is
+The format of the transaction ID is a four-byte, little-endian integer (u64) and is
 calculated as
 
 ```text
@@ -194,11 +195,11 @@ where `i` is the i-th recipient in the transaction. The sender can use the `tx_i
 differentiate recipients.
 
 
-## Replay attacks
+## Replay Attacks
 
-If any party can be convinced to sign a different message with the same nonce, their private keys will be lost. One way
+If any party can be convinced to sign a different message with the same nonce, its private keys will be lost. One way
 of achieving this would be if a virtual machine could be "snapshotted" or otherwise cloned at any point between sharing
-the public nonce and signing the message. Both copies of the victim's machine will now continue unaware that there's a
+the public nonce and signing the message. Both copies of the victim's machine will now continue, unaware that there's a
 copy participating in a signature round. What then happens is:
 
 $$
@@ -219,7 +220,7 @@ $$
   \end{align}
 $$
 
-We've demonstrated this with the attacker changing his nonce, but literally any alteration to the challenge will provide
+We've demonstrated this with the attacker changing their nonce, but literally any alteration to the challenge will provide
 a new challenge \\(e_2\\), enabling the attack.
 
 What can we do about this? In fact, it's not possible to eliminate this attack at all! The reason sits with the proof
@@ -228,31 +229,31 @@ we're trying to avoid [[GOL19]]. If we could eliminate this attack, we'd need to
 of proving the zero-knowledge property.
 
 So we can't stop it, but we can make it as tricky as possible for the attacker to trick the receiver into replaying the
-signature -- MuSig does this by requiring parties to share the hash of their nonces beforehand. At it's extreme; in the
-two-party single-round scheme for example; the attacker would need to be able to control the victim's machine code
+signature. MuSig does this by requiring parties to share the hash of their nonces beforehand. At its extreme: in the
+two-party, single-round scheme, for example, the attacker would need to be able to control the victim's machine code
 execution (like running a debugger), at which point one might think the attacker could read the private key directly
 from memory anyway.
 
-## Rogue key attacks
+## Rogue Key Attacks
 
-Another type of attack that can occur in multi-signature schemes are what's known as
-[Rogue Key attacks](https://tlu.tarilabs.com/cryptography/digital_signatures/introduction_schnorr_signatures.html#key-cancellation-attack).
+[Rogue Key attacks](https://tlu.tarilabs.com/cryptography/digital_signatures/introduction_schnorr_signatures.html#key-cancellation-attack)
+are another type of attack that can occur in multi-signature schemes.
 
-In this case, the attacker has the freedom to choose a key or nonce _after_ the victim has already disclosed his. This
-may allow the attacker to forge a valid signature on behalf of the victim. A recent paper, [[DRI19]]], suggests that
-_any_ Schnorr-based 2-round multi-signature scheme is vulnerable to a rogue key attack.
+In this case, the attacker has the freedom to choose a key or nonce _after_ the victim has already disclosed theirs. This
+may allow the attacker to forge a valid signature on behalf of the victim. A recent paper, [[DRI19]], suggests that
+_any_ Schnorr-based, two-round multi-signature scheme is vulnerable to a rogue key attack.
 
-How this might apply in an insecure 2-round Tari multi-signature scheme is as follows: A receiver sends his public
-nonce, output commitment and range proof, and public spending key to the sender, but then decides to cancel the
+How this might apply in an insecure two-round Tari multi-signature scheme is as follows: A receiver sends their public
+nonce; output commitment and range proof; and public spending key to the sender, but then decides to cancel the
 transaction by refusing to provide a signature and sending an "Abort" message to the sender instead. The sender could,
-if he wanted, forge the 2-of-2 signature using this rogue key attack and broadcast the transaction anyway.
+if they wanted, forge the 2-of-2 signature using this rogue key attack and broadcast the transaction anyway.
 
-_Note:_ This attack is not applicable in the one-round 2-party scheme since the receiver returns his information in an
-all-or-nothing manner. However, the _receiver_ could attempt to forge a signature, since he has the Sender's public
-nonce, but there's nothing he can really do with this signature; he certainly cannot broadcast a transaction with it
-because he doesn't have any of the transaction data at this stage.
+**Note:** This attack is not applicable in the one-round, two-party scheme, since the receiver returns their information in an
+all-or-nothing manner. However, the _receiver_ could attempt to forge a signature, since they have the Sender's public
+nonce, but there's nothing they can really do with this signature; they certainly cannot broadcast a transaction with it
+because they don't have any of the transaction data at this stage.
 
-We avoid rogue-key attacks in the Tari multi-recipient scheme by employing 3-rounds. In the first round, parties share a
+We avoid rogue-key attacks in the Tari multi-recipient scheme by employing three rounds. In the first round, parties share a
 hash of their public nonces, which each party can later use to verify that no nonces were changed after the actual
 public nonces were shared.
 
