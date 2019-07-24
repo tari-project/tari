@@ -171,7 +171,7 @@ mod test {
             MessageHeader,
             NodeDestination,
         },
-        peer_manager::{peer_manager::PeerManager, NodeId, NodeIdentity, Peer, PeerFlags},
+        peer_manager::{peer_manager::PeerManager, NodeIdentity, Peer, PeerFlags},
     };
     use serde::{Deserialize, Serialize};
     use std::{sync::Arc, thread, time::Duration};
@@ -180,6 +180,20 @@ mod test {
 
     fn pause() {
         thread::sleep(Duration::from_millis(5));
+    }
+
+    fn create_message_data_buffer(node_identity: Arc<NodeIdentity>, message_envelope_body: Message) -> Vec<Vec<u8>> {
+        let dest_public_key = node_identity.identity.public_key.clone(); // Send to self
+        let message_envelope = MessageEnvelope::construct(
+            &node_identity,
+            dest_public_key.clone(),
+            NodeDestination::Unknown,
+            message_envelope_body.to_binary().unwrap(),
+            MessageFlags::NONE,
+        )
+        .unwrap();
+        let message_data = MessageData::new(node_identity.identity.node_id.clone(), message_envelope);
+        message_data.clone().try_into_frame_set().unwrap()
     }
 
     #[test]
@@ -244,31 +258,21 @@ mod test {
         );
         inbound_message_service.start().unwrap();
 
-        // Construct a test message
-        let message_header = MessageHeader {
-            message_type: DomainBrokerType::Type1,
-        };
-        let message_body = "Test Message Body1".as_bytes().to_vec();
-        let message_envelope_body = Message::from_message_format(message_header, message_body).unwrap();
-        let dest_public_key = node_identity.identity.public_key.clone(); // Send to self
-        let message_envelope = MessageEnvelope::construct(
-            &node_identity,
-            dest_public_key.clone(),
-            NodeDestination::Unknown,
-            message_envelope_body.to_binary().unwrap(),
-            MessageFlags::NONE,
-        )
-        .unwrap();
-        let message_data = MessageData::new(
-            NodeId::from_key(&node_identity.identity.public_key).unwrap(),
-            message_envelope,
-        );
-        let message_data_buffer = message_data.clone().try_into_frame_set().unwrap();
-
         // Submit Messages to the InboundMessageService
         pause();
         let test_message_count = 3;
-        for _ in 0..test_message_count {
+        let mut message_envelope_body_list = Vec::new();
+        for i in 0..test_message_count {
+            // Construct a test message
+            let message_header = MessageHeader {
+                message_type: DomainBrokerType::Type1,
+            };
+            // Messages with the same message body will be discarded by the DuplicateMsgCache
+            let message_body = format!("Test Message Body {}", i).as_bytes().to_vec();
+            let message_envelope_body = Message::from_message_format(message_header, message_body).unwrap();
+            message_envelope_body_list.push(message_envelope_body.clone());
+            let message_data_buffer = create_message_data_buffer(node_identity.clone(), message_envelope_body);
+
             client_connection.send(&message_data_buffer).unwrap();
         }
 
@@ -279,12 +283,19 @@ mod test {
                 handler_queue_connection.receive(2000).unwrap().drain(1..).collect();
             let received_domain_message_context =
                 DomainMessageContext::from_binary(&received_message_data_bytes[0]).unwrap();
-            assert_eq!(received_domain_message_context.message, message_envelope_body);
+            assert!(message_envelope_body_list.contains(&received_domain_message_context.message));
         }
 
         // Test shutdown control
         inbound_message_service.shutdown().unwrap();
         std::thread::sleep(Duration::from_millis(200));
+
+        let message_header = MessageHeader {
+            message_type: DomainBrokerType::Type1,
+        };
+        let message_body = "Test Message Body".as_bytes().to_vec();
+        let message_envelope_body = Message::from_message_format(message_header, message_body).unwrap();
+        let message_data_buffer = create_message_data_buffer(node_identity.clone(), message_envelope_body);
         assert!(client_connection.send(&message_data_buffer).is_err());
     }
 }

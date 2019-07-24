@@ -57,11 +57,13 @@ fn rewind_simple() {
     mmr2.init_persistance_store(&"mmr".to_string(), 20);
     assert!(mmr2.load_from_store(&mut store).is_ok());
     assert_eq!(mmr.get_merkle_root(), mmr2.get_merkle_root());
+    assert_eq!(mmr.get_unpruned_hash(), mmr2.get_unpruned_hash());
 
     let mut mmr3: MerkleMountainRange<TestObject, Blake2b> = MerkleMountainRange::new();
     mmr3.init_persistance_store(&"mmr".to_string(), 20);
     assert!(mmr3.load_from_store(&mut store).is_ok());
     assert_eq!(mmr.get_merkle_root(), mmr3.get_merkle_root());
+    assert_eq!(mmr.get_unpruned_hash(), mmr3.get_unpruned_hash());
     // add much more leaves
     for j in 0..5 {
         for i in 1..11 {
@@ -77,9 +79,11 @@ fn rewind_simple() {
 
         assert!(mmr.rewind(&mut store, j + 1).is_ok());
         assert_eq!(mmr.get_merkle_root(), mmr2.get_merkle_root());
+        assert_eq!(mmr.get_unpruned_hash(), mmr2.get_unpruned_hash());
 
         assert!(mmr.ff_to_head(&mut store).is_ok());
         assert_eq!(mmr.get_merkle_root(), mmr3.get_merkle_root()); // are we where we are suppose to be
+        assert_eq!(mmr.get_unpruned_hash(), mmr3.get_unpruned_hash());
     }
     assert!(fs::remove_dir_all("./tests/test_mmr_r").is_ok()); // we ensure that the test dir is empty
 }
@@ -106,11 +110,13 @@ fn batch_save() {
     mmr2.init_persistance_store(&"mmr".to_string(), 20);
     assert!(mmr2.load_from_store(&mut store).is_ok());
     assert_eq!(mmr.get_merkle_root(), mmr2.get_merkle_root());
+    assert_eq!(mmr.get_unpruned_hash(), mmr2.get_unpruned_hash());
 
     let mut mmr3: MerkleMountainRange<TestObject, Blake2b> = MerkleMountainRange::new();
     mmr3.init_persistance_store(&"mmr".to_string(), 20);
     assert!(mmr3.load_from_store(&mut store).is_ok());
     assert_eq!(mmr.get_merkle_root(), mmr3.get_merkle_root());
+    assert_eq!(mmr.get_unpruned_hash(), mmr3.get_unpruned_hash());
     // add much more leaves
     for j in 0..5 {
         for i in 1..11 {
@@ -129,15 +135,18 @@ fn batch_save() {
     assert!(mmr.apply_state(&mut store).is_ok());
     assert!(mmr.rewind(&mut store, 5).is_ok());
     assert_eq!(mmr.get_merkle_root(), mmr2.get_merkle_root());
+    assert_eq!(mmr.get_unpruned_hash(), mmr2.get_unpruned_hash());
 
     assert!(mmr.ff_to_head(&mut store).is_ok());
     assert_eq!(mmr.get_merkle_root(), mmr3.get_merkle_root());
+    assert_eq!(mmr.get_unpruned_hash(), mmr3.get_unpruned_hash());
 
     // have we  saved correctly and can we load again
     let mut mmr4: MerkleMountainRange<TestObject, Blake2b> = MerkleMountainRange::new();
     mmr4.init_persistance_store(&"mmr".to_string(), 20);
     assert!(mmr4.load_from_store(&mut store).is_ok());
     assert_eq!(mmr4.get_merkle_root(), mmr3.get_merkle_root());
+    assert_eq!(mmr4.get_unpruned_hash(), mmr3.get_unpruned_hash());
 
     assert!(fs::remove_dir_all("./tests/test_mmr_bs").is_ok()); // we ensure that the test dir is empty
 }

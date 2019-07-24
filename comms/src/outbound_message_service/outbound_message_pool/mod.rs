@@ -27,8 +27,8 @@ mod outbound_message_pool;
 mod outbound_message_worker;
 
 pub use self::{
-    error::OutboundMessagePoolError,
-    message_retry_service::MessageRetryService,
+    error::{OutboundMessagePoolError, RetryServiceError},
+    message_retry_service::{MessageRetryService, RetryServiceMessage},
     outbound_message::OutboundMessage,
     outbound_message_pool::{OutboundMessagePool, OutboundMessagePoolConfig},
     outbound_message_worker::MessagePoolWorker,

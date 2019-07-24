@@ -20,16 +20,22 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use super::{
+    connection::{
+        ConnectionInfo,
+        PeerConnectionProtoMessage,
+        PeerConnectionSimpleState,
+        PeerConnectionState,
+        PeerConnectionStats,
+    },
+    control::ControlMessage,
+    PeerConnectionContext,
+    PeerConnectionError,
+};
 use crate::{
     connection::{
         connection::{Connection, EstablishedConnection},
         monitor::{ConnectionMonitor, SocketEvent, SocketEventType},
-        peer_connection::{
-            connection::{ConnectionInfo, PeerConnectionSimpleState, PeerConnectionState, PeerConnectionStats},
-            control::ControlMessage,
-            PeerConnectionContext,
-            PeerConnectionError,
-        },
         types::{Direction, Linger, Result},
         ConnectionError,
         InprocAddress,
@@ -110,10 +116,10 @@ impl PeerConnectionWorker {
             .name(format!("peer-conn-{}-thread", &self.context.id.to_short_id()))
             .stack_size(THREAD_STACK_SIZE)
             .spawn(move || -> Result<()> {
-                let result = self.main_loop();
+                let result = self.run();
 
                 // Main loop exited, let's set the shared connection state.
-                self.handle_loop_result(result)?;
+                self.handle_run_result(result)?;
 
                 Ok(())
             })
@@ -123,7 +129,7 @@ impl PeerConnectionWorker {
     }
 
     /// Handle the result for the worker loop and update connection state if necessary
-    fn handle_loop_result(&mut self, result: Result<()>) -> Result<()> {
+    fn handle_run_result(&mut self, result: Result<()>) -> Result<()> {
         let mut lock = acquire_write_lock!(self.connection_state);
         match result {
             Ok(_) => {
@@ -160,15 +166,20 @@ impl PeerConnectionWorker {
 
     /// The main loop for the worker. This is where the work is done.
     /// The required connections are set up and messages processed.
-    fn main_loop(&mut self) -> Result<()> {
+    fn run(&mut self) -> Result<()> {
         let monitor = self.connect_monitor()?;
         let peer_conn = self.establish_peer_connection()?;
-        let consumer = self.establish_consumer_connection()?;
+        let consumer = self.establish_sink_connection()?;
         let addr = peer_conn.get_connected_address();
 
         if let Some(a) = addr {
             debug!(target: LOG_TARGET, "Starting peer connection worker thread on {}", a);
             self.context.peer_address = a.clone().into();
+        }
+
+        if self.context.direction == Direction::Outbound {
+            debug!(target: LOG_TARGET, "Sending Identify to remote connection");
+            self.identify(&peer_conn)?;
         }
 
         loop {
@@ -185,20 +196,20 @@ impl PeerConnectionWorker {
                     ControlMessage::SendMsg(frames) => {
                         debug!(
                             target: LOG_TARGET,
-                            "[{:?}] SendMsg message received ({} frames)",
+                            "[{:?}] SendMsg control message received ({} frames)",
                             addr,
                             frames.len()
                         );
-                        let payload = self.create_payload(frames)?;
+                        let payload = self.create_payload(PeerConnectionProtoMessage::Message, frames)?;
                         peer_conn.send(payload)?;
                         acquire_write_lock!(self.connection_stats).incr_message_sent();
                     },
                     ControlMessage::Pause => {
-                        debug!(target: LOG_TARGET, "[{:?}] Pause message received", addr);
+                        debug!(target: LOG_TARGET, "[{:?}] Pause control message received", addr);
                         self.paused = true;
                     },
                     ControlMessage::Resume => {
-                        debug!(target: LOG_TARGET, "[{:?}] Resume message received", addr);
+                        debug!(target: LOG_TARGET, "[{:?}] Resume control message received", addr);
                         self.paused = false;
                     },
                     ControlMessage::SetLinger(linger) => {
@@ -215,12 +226,12 @@ impl PeerConnectionWorker {
                 }
             }
 
-            if !self.paused {
-                self.forward_frames(&peer_conn, &consumer)?;
-            }
-
             if let Ok(event) = monitor.read(1) {
                 self.handle_socket_event(event)?;
+            }
+
+            if !self.paused {
+                self.handle_frames(&peer_conn, &consumer)?;
             }
         }
     }
@@ -361,68 +372,125 @@ impl PeerConnectionWorker {
         Ok(())
     }
 
+    /// Send PeerMessageType::Identify to remote peer
+    fn identify(&self, peer_conn: &EstablishedConnection) -> Result<()> {
+        let payload = self.create_payload(PeerConnectionProtoMessage::Identify, vec![vec![]])?;
+        peer_conn.send(payload)
+    }
+
     /// Connects the connection monitor to this worker's peer Connection.
     fn connect_monitor(&self) -> Result<ConnectionMonitor> {
         let context = &self.context;
         ConnectionMonitor::connect(&context.context, &self.monitor_addr)
     }
 
-    /// Forwards frames from the source to the sink
-    fn forward_frames(&mut self, frontend: &EstablishedConnection, backend: &EstablishedConnection) -> Result<()> {
+    /// Handles PeerMessageType messages .Forwards frames from the source to the sink
+    fn handle_frames(&mut self, frontend: &EstablishedConnection, backend: &EstablishedConnection) -> Result<()> {
         let context = &self.context;
         if let Some(frames) = connection_try!(frontend.receive(10)) {
-            acquire_write_lock!(self.connection_stats).incr_message_recv();
-
-            match context.direction {
-                // For a ZMQ_ROUTER, the first frame is the identity
-                Direction::Inbound => match self.identity {
-                    Some(ref ident) => {
-                        if frames[0] != *ident {
-                            return Err(PeerConnectionError::UnexpectedIdentity.into());
-                        }
+            // Attempt to extract the parts of a peer message.
+            // If we can't extract the correct frames, we ignore the message
+            if let Some((identity, message_type, frames)) = self.extract_frame_parts(frames) {
+                match message_type {
+                    PeerConnectionProtoMessage::Identify => match self.identity {
+                        Some(_) => {
+                            warn!(
+                                target: LOG_TARGET,
+                                "Peer sent IDENT message when already set {:x?} {:x?}", self.identity, identity,
+                            );
+                        },
+                        None => {
+                            self.identity = identity;
+                            self.transition_connected()?;
+                            debug!(
+                                target: LOG_TARGET,
+                                "Peer sent IDENT, set peer connection identity to {:x?}", self.identity
+                            );
+                        },
                     },
-                    None => {
-                        self.identity = Some(frames[0].clone());
+                    PeerConnectionProtoMessage::Message => {
+                        acquire_write_lock!(self.connection_stats).incr_message_recv();
+
+                        match context.direction {
+                            // For a ZMQ_ROUTER, the first frame is the identity
+                            Direction::Inbound => match self.identity {
+                                Some(ref ident) => {
+                                    let identity = identity.expect(
+                                        "Invariant check: Inbound connections should always have an identity frame.",
+                                    );
+                                    if identity != *ident {
+                                        return Err(PeerConnectionError::UnexpectedIdentity.into());
+                                    }
+                                },
+                                None => {
+                                    return Err(PeerConnectionError::IdentityNotEstablished.into());
+                                },
+                            },
+                            Direction::Outbound => {},
+                        }
+
+                        let payload = self.construct_consumer_payload(frames);
+                        backend.send(&payload)?;
+                    },
+                    PeerConnectionProtoMessage::Invalid => {
                         debug!(
                             target: LOG_TARGET,
-                            "Set peer connection identity to {:x?}", self.identity
+                            "Peer sent invalid message type. Discarding the message"
                         );
-                        self.transition_connected()?;
                     },
-                },
-                Direction::Outbound => {},
+                }
             }
-
-            let payload = self.construct_consumer_payload(frames);
-            backend.send(&payload)?;
         }
         Ok(())
     }
 
-    fn construct_consumer_payload(&self, frames: FrameSet) -> FrameSet {
-        let mut payload = vec![];
-        payload.push(self.context.id.clone().into_inner());
+    fn extract_frame_parts(
+        &self,
+        mut frames: FrameSet,
+    ) -> Option<(Option<Frame>, PeerConnectionProtoMessage, FrameSet)>
+    {
         match self.context.direction {
             Direction::Inbound => {
-                payload.extend_from_slice(&frames[1..]);
+                if frames.len() < 2 {
+                    return None;
+                }
+                let identity = frames.drain(0..1).collect::<FrameSet>().remove(0);
+                let message_type_u8 = frames.drain(0..1).collect::<FrameSet>().remove(0).remove(0);
+                let message_type = PeerConnectionProtoMessage::from(message_type_u8);
+
+                Some((Some(identity), message_type, frames))
             },
             Direction::Outbound => {
-                payload.extend_from_slice(&frames);
+                if frames.len() < 1 {
+                    return None;
+                }
+                let message_type_u8 = frames.drain(0..1).collect::<FrameSet>().remove(0).remove(0);
+                let message_type = PeerConnectionProtoMessage::from(message_type_u8);
+
+                Some((None, message_type, frames))
             },
         }
+    }
+
+    fn construct_consumer_payload(&self, frames: FrameSet) -> FrameSet {
+        let mut payload = Vec::with_capacity(1 + frames.len());
+        payload.push(self.context.id.clone().into_inner());
+        payload.extend_from_slice(&frames);
         payload
     }
 
     /// Creates the payload to be sent to the underlying connection
     #[inline]
-    fn create_payload(&self, frames: FrameSet) -> Result<FrameSet> {
+    fn create_payload(&self, message_type: PeerConnectionProtoMessage, frames: FrameSet) -> Result<FrameSet> {
         let context = &self.context;
 
         match context.direction {
             // Add identity frame to the front of the payload for ROUTER socket
             Direction::Inbound => match self.identity {
                 Some(ref ident) => {
-                    let mut payload = vec![ident.clone()];
+                    let mut payload = Vec::with_capacity(2 + frames.len());
+                    payload.push(ident.clone());
+                    payload.push(vec![message_type as u8]);
                     payload.extend(frames);
 
                     debug!(
@@ -435,7 +503,13 @@ impl PeerConnectionWorker {
                 },
                 None => Err(PeerConnectionError::IdentityNotEstablished.into()),
             },
-            Direction::Outbound => Ok(frames),
+            Direction::Outbound => {
+                let mut payload = Vec::with_capacity(1 + frames.len());
+                payload.push(vec![message_type as u8]);
+                payload.extend(frames);
+
+                Ok(payload)
+            },
         }
     }
 
@@ -468,7 +542,7 @@ impl PeerConnectionWorker {
     }
 
     /// Establish the connection to the consumer
-    fn establish_consumer_connection(&self) -> Result<EstablishedConnection> {
+    fn establish_sink_connection(&self) -> Result<EstablishedConnection> {
         let context = &self.context;
         Connection::new(&context.context, Direction::Outbound)
             .set_name("peer-conn-sink")
