@@ -148,7 +148,7 @@ are similar to Message Pack. It Can work with ZMQ, but is better designed to be 
 
 #### [Cap'n Proto](http://kentonv.github.io/capnproto/)
 
-Similar to [Protobuf](#protobuf), but claims to be much faster. Rust is supported.
+Similar to Protobuf, but claims to be much faster. Rust is supported.
 
 #### Hand-rolled Serialization
 
