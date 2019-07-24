@@ -3,7 +3,7 @@
 
 ![status: draft](theme/images/status-draft.svg)
 
-**Maintainer(s)**: Philip Robinson <philipr-za>
+**Maintainer(s)**: [Philip Robinson](https://github.com/philipr-za)
 
 # Licence
 
@@ -86,15 +86,16 @@ after the time lock expires.
 The transaction will contain the following extra metadata to facilitate the registration process:
 
 1. The value of the transaction in clear text and the public spending key of the commitment so that it can be verified 
-  by third parties. A third party can verify the value of the commitment by using the information in (1) and (2) below, to calculate (3):
-   1. The output commitment is $ C = k.G + v.H $.
-   2. $ v $ and $ k.G $ are provided in the metadata.
-   3. A verifier can calculate $ C - k.G = v.H $ and verify this value by multiplying the clear text $ v $ by $ H $ 
-   themselves.
+   by third parties. A third party can verify the value of the commitment by using the information in (1) and (2) below, to calculate (3):
+   1. The output commitment is $ C
+      = k \cdot G + v \cdot H $.
+   2. $ v
+      ​$ and $ k \cdot G ​$ are provided in the metadata.
+   3. A verifier can calculate $ C - k \cdot G = v \cdot H $ and verify this value by multiplying the clear text $ v $ by $ H $ themselves.
 
 2. A commitment (hash) to the asset parameters as defined by a [DigitalAssetTemplate] described in 
-[RFC-0311](RFC-0311_AssetTemplates.md). This template will define all the parameters of the asset that the AI intends to 
-register, including information the VNs need to know, such as what  [AssetCollateral] is required to be part of the committee.
+  [RFC-0311](RFC-0311_AssetTemplates.md). This template will define all the parameters of the asset that the AI intends to 
+  register, including information the VNs need to know, such as what  [AssetCollateral] is required to be part of the committee.
 
 Once this transaction has been confirmed to the required depth on the blockchain, the nomination phase can begin.
 
