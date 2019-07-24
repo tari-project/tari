@@ -24,7 +24,7 @@ use crate::{
     connection::{dealer_proxy::DealerProxyError, ConnectionError, NetAddressError, PeerConnectionError},
     connection_manager::ConnectionManagerError,
     message::MessageError,
-    outbound_message_service::outbound_message_pool::OutboundMessagePoolError,
+    outbound_message_service::outbound_message_pool::{OutboundMessagePoolError, RetryServiceError},
     peer_manager::PeerManagerError,
 };
 use derive_error::Error;
@@ -75,4 +75,5 @@ pub enum OutboundError {
     /// Could not join the dealer or worker threads
     ThreadJoinError(ThreadError),
     OutboundMessagePoolError(OutboundMessagePoolError),
+    RetryServiceError(RetryServiceError),
 }

@@ -25,7 +25,7 @@ use crate::{
     connection::{Connection, Direction, InprocAddress, SocketEstablishment, ZmqContext},
     connection_manager::ConnectionManager,
     message::FrameSet,
-    outbound_message_service::outbound_message_pool::MessageRetryService,
+    outbound_message_service::outbound_message_pool::message_retry_service::RetryServiceMessage,
     peer_manager::PeerManager,
 };
 use log::*;
@@ -37,7 +37,7 @@ use std::{
     thread,
     time::Duration,
 };
-use tari_utilities::{byte_array::ByteArray, message_format::MessageFormat};
+use tari_utilities::message_format::MessageFormat;
 
 const LOG_TARGET: &str = "comms::outbound_message_service::pool::worker";
 /// Set the allocated stack size for each MessagePoolWorker thread
@@ -48,7 +48,7 @@ pub struct MessagePoolWorker {
     config: OutboundMessagePoolConfig,
     context: ZmqContext,
     message_source_address: InprocAddress,
-    failed_message_queue_address: InprocAddress,
+    failed_message_tx: SyncSender<RetryServiceMessage>,
     peer_manager: Arc<PeerManager>,
     connection_manager: Arc<ConnectionManager>,
     shutdown_receiver: Receiver<()>,
@@ -60,7 +60,7 @@ impl MessagePoolWorker {
         config: OutboundMessagePoolConfig,
         context: ZmqContext,
         message_source_address: InprocAddress,
-        failed_message_queue_address: InprocAddress,
+        failed_message_tx: SyncSender<RetryServiceMessage>,
         peer_manager: Arc<PeerManager>,
         connection_manager: Arc<ConnectionManager>,
     ) -> Result<(thread::JoinHandle<Result<(), OutboundMessagePoolError>>, SyncSender<()>), OutboundMessagePoolError>
@@ -70,7 +70,7 @@ impl MessagePoolWorker {
             config,
             context,
             message_source_address,
-            failed_message_queue_address,
+            failed_message_tx,
             peer_manager,
             connection_manager,
             shutdown_receiver,
@@ -114,12 +114,6 @@ impl MessagePoolWorker {
             .establish(&self.message_source_address)
             .map_err(OutboundMessagePoolError::ConnectionError)?;
 
-        let failed_msg_connection = Connection::new(&self.context, Direction::Outbound)
-            .set_name("omp-failed-message")
-            .set_socket_establishment(SocketEstablishment::Connect)
-            .establish(&self.failed_message_queue_address)
-            .map_err(OutboundMessagePoolError::ConnectionError)?;
-
         loop {
             match self.shutdown_receiver.recv_timeout(Duration::from_millis(5)) {
                 // Shut down signal received
@@ -160,10 +154,9 @@ impl MessagePoolWorker {
                                 // We have successfully sent a message to a NodeId.
                                 // Tell the MessageRetryService to send the worker all messages
                                 // for that Node ID so that they can be sent.
-                                failed_msg_connection.send(&[
-                                    MessageRetryService::CTL_FLUSH_NODE_MSGS.as_bytes(),
-                                    msg.destination_node_id().as_bytes(),
-                                ])?;
+                                self.failed_message_tx
+                                    .send(RetryServiceMessage::Flush(msg.destination_node_id().clone()))
+                                    .map_err(|_| OutboundMessagePoolError::MessageRetryServiceDisconnected)?;
                             },
                             Err(err) => {
                                 debug!(
@@ -176,8 +169,9 @@ impl MessagePoolWorker {
                                     err,
                                 );
                                 // Send to failed message queue
-                                let msg_buf = msg.to_binary().map_err(OutboundMessagePoolError::MessageFormatError)?;
-                                failed_msg_connection.send(&[msg_buf])?;
+                                self.failed_message_tx
+                                    .send(RetryServiceMessage::FailedAttempt(msg))
+                                    .map_err(|_| OutboundMessagePoolError::MessageRetryServiceDisconnected)?;
                             },
                         }
 
@@ -273,11 +267,12 @@ mod test {
     fn start() {
         let context = ZmqContext::new();
         let (peer_manager, connection_manager, _) = outbound_message_worker_setup(&context);
+        let (failed_message_tx, _) = sync_channel(1);
         let (handle, signal) = MessagePoolWorker::start(
             OutboundMessagePoolConfig::default(),
             context,
             InprocAddress::random(),
-            InprocAddress::random(),
+            failed_message_tx,
             peer_manager,
             connection_manager,
         )
