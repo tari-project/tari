@@ -178,7 +178,15 @@ However, other structures might need fine tuning, or hand-written serialisation 
 it is proposed that a `MessageFormat` trait be defined:
 
 ```rust,compile_fail
-{{#include ../../base_layer/core/src/message.rs:41:49}}
+pub trait MessageFormat: Sized {
+    fn to_binary(&self) -> Result<Vec<u8>, MessageFormatError>;
+    fn to_json(&self) -> Result<String, MessageFormatError>;
+    fn to_base64(&self) -> Result<String, MessageFormatError>;
+
+    fn from_binary(msg: &[u8]) -> Result<Self, MessageFormatError>;
+    fn from_json(msg: &str) -> Result<Self, MessageFormatError>;
+    fn from_base64(msg: &str) -> Result<Self, MessageFormatError>;
+}
 ```
 
 This trait will have default implementations to cover most use cases (e.g. a simple call through to `serde_json`). Serde

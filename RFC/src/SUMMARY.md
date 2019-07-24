@@ -31,7 +31,6 @@
     - [RFC-0340: Validator Node Consensus](RFC-0340_VNConsensusOverview.md)
         - [RFC-0342: Validator node instructions](RFC-0342_VNInstructions.md)
         - [RFC-0343: The VN consensus algorithm](RFC-0343_VNConsensusAlgorithm.md)
-    - [RFC-0350: DAN Dispute resolution mechanism](RFC-0350_DisputeResolution.md)
 - [RFC-0500: Tari payment channels](RFC-0500_PaymentChannels.md)
 - [RFC-0400: Tari Application Suite](RFC-0400_TariApplications.md)
 - [RFC-1000: Tari Use Cases](RFC-1000_TariUseCases.md)
