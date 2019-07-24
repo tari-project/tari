@@ -337,9 +337,7 @@ mod test {
             .unwrap();
 
         // Construct test message 1
-        let message_header = MessageHeader {
-            message_type: DomainBrokerType::Type1,
-        };
+        let message_header = MessageHeader::new(DomainBrokerType::Type1).unwrap();
         let message_body = "Test Message Body1".as_bytes().to_vec();
         let message_envelope_body1 = Message::from_message_format(message_header, message_body).unwrap();
         let dest_public_key = node_identity.identity.public_key.clone(); // Send to self
@@ -359,9 +357,7 @@ mod test {
         message1_frame_set.extend(message_data1.clone().try_into_frame_set().unwrap());
 
         // Construct test message 2
-        let message_header = MessageHeader {
-            message_type: DomainBrokerType::Type2,
-        };
+        let message_header = MessageHeader::new(DomainBrokerType::Type2).unwrap();
         let message_body = "Test Message Body2".as_bytes().to_vec();
         let message_envelope_body2 = Message::from_message_format(message_header, message_body).unwrap();
         let message_envelope = MessageEnvelope::construct(

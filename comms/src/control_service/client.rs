@@ -163,7 +163,7 @@ impl ControlServiceClient {
     where
         T: MessageFormat,
     {
-        let header = MessageHeader { message_type };
+        let header = MessageHeader::new(message_type)?;
         let msg = Message::from_message_format(header, msg)?;
 
         MessageEnvelope::construct(

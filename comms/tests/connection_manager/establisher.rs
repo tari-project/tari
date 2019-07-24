@@ -141,9 +141,7 @@ fn establish_control_service_connection_succeed() {
             node_identity1.identity.public_key.clone(),
             NodeDestination::PublicKey(node_identity1.identity.public_key.clone()),
             Message::from_message_format(
-                MessageHeader {
-                    message_type: ControlServiceMessageType::Pong,
-                },
+                MessageHeader::new(ControlServiceMessageType::Pong).unwrap(),
                 Pong {}.to_binary().unwrap(),
             )
             .unwrap()
