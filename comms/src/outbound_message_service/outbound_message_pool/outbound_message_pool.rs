@@ -26,13 +26,19 @@ use crate::{
         DealerProxy,
     },
     connection_manager::ConnectionManager,
-    outbound_message_service::{outbound_message_pool::error::OutboundMessagePoolError, OutboundError},
+    outbound_message_service::{
+        outbound_message_pool::{
+            error::{OutboundMessagePoolError, RetryServiceError},
+            message_retry_service::RetryServiceMessage,
+        },
+        OutboundError,
+    },
     peer_manager::PeerManager,
 };
 use log::*;
 use std::{
     sync::{
-        mpsc::{sync_channel, SyncSender},
+        mpsc::{sync_channel, Receiver, SyncSender},
         Arc,
     },
     thread::JoinHandle,
@@ -75,13 +81,12 @@ pub struct OutboundMessagePool {
     context: ZmqContext,
     worker_dealer_address: InprocAddress,
     message_source_address: InprocAddress,
-    failed_message_address: InprocAddress,
     peer_manager: Arc<PeerManager>,
     connection_manager: Arc<ConnectionManager>,
     worker_thread_handles: Vec<JoinHandle<Result<(), OutboundMessagePoolError>>>,
     worker_shutdown_signals: Vec<SyncSender<()>>,
-    retry_service_shutdown_signal: Option<SyncSender<()>>,
-    retry_service_thread_handle: Option<JoinHandle<Result<(), OutboundMessagePoolError>>>,
+    retry_service_control_tx: Option<SyncSender<RetryServiceMessage>>,
+    retry_service_thread_handle: Option<JoinHandle<Result<(), RetryServiceError>>>,
     dealer_proxy: DealerProxy,
 }
 impl OutboundMessagePool {
@@ -108,12 +113,11 @@ impl OutboundMessagePool {
             context: context.clone(),
             worker_dealer_address: worker_dealer_address.clone(),
             message_source_address: message_source_address.clone(),
-            failed_message_address: InprocAddress::random(),
             peer_manager,
             connection_manager,
             worker_thread_handles: Vec::new(),
             worker_shutdown_signals: Vec::new(),
-            retry_service_shutdown_signal: None,
+            retry_service_control_tx: None,
             retry_service_thread_handle: None,
             dealer_proxy: DealerProxy::new(context, message_source_address, worker_dealer_address.clone()),
         }
@@ -132,25 +136,31 @@ impl OutboundMessagePool {
         info!(target: LOG_TARGET, "Starting outbound message pool");
 
         info!(target: LOG_TARGET, "Starting retry message service");
-        self.start_retry_service();
+        let (failed_message_tx, failed_message_rx) = sync_channel(10);
+        self.retry_service_control_tx = Some(failed_message_tx.clone());
+        self.start_retry_service(failed_message_rx);
 
         info!(target: LOG_TARGET, "Starting OMP proxy");
         self.start_dealer_proxy()?;
 
         info!(target: LOG_TARGET, "Starting {} OMP workers", self.config.num_workers);
         for _ in 0..self.config.num_workers {
-            self.start_message_worker()?;
+            self.start_message_worker(failed_message_tx.clone())?;
         }
 
         Ok(())
     }
 
-    fn start_message_worker(&mut self) -> Result<(), OutboundMessagePoolError> {
+    fn start_message_worker(
+        &mut self,
+        failed_message_tx: SyncSender<RetryServiceMessage>,
+    ) -> Result<(), OutboundMessagePoolError>
+    {
         let (worker_thread_handle, worker_shutdown_signal) = MessagePoolWorker::start(
             self.config,
             self.context.clone(),
             self.worker_dealer_address.clone(),
-            self.failed_message_address.clone(),
+            failed_message_tx,
             self.peer_manager.clone(),
             self.connection_manager.clone(),
         )?;
@@ -161,16 +171,13 @@ impl OutboundMessagePool {
         Ok(())
     }
 
-    fn start_retry_service(&mut self) {
-        let (mrq_sender, mrq_receiver) = sync_channel(1);
+    fn start_retry_service(&mut self, failed_message_rx: Receiver<RetryServiceMessage>) {
         let handle = MessageRetryService::start(
             self.context.clone(),
             self.config,
-            self.failed_message_address.clone(),
+            failed_message_rx,
             self.message_source_address.clone(),
-            mrq_receiver,
         );
-        self.retry_service_shutdown_signal = Some(mrq_sender);
         self.retry_service_thread_handle = Some(handle);
     }
 
@@ -187,8 +194,8 @@ impl OutboundMessagePool {
         }
 
         // Send shutdown signal to message retry queue if it has been started
-        if let Some(sig) = self.retry_service_shutdown_signal {
-            sig.send(()).map_err(|e| {
+        if let Some(sender) = self.retry_service_control_tx {
+            sender.send(RetryServiceMessage::Shutdown).map_err(|e| {
                 OutboundError::ShutdownSignalSendError(format!("Failed to send shutdown signal to MRQ: {:?}", e))
             })?;
 
@@ -218,7 +225,10 @@ mod test {
         outbound_message_service::{outbound_message_pool::OutboundMessagePoolConfig, OutboundMessagePool},
         peer_manager::{peer::PeerFlags, NodeId, NodeIdentity, Peer, PeerManager},
     };
-    use std::{sync::Arc, time::Duration};
+    use std::{
+        sync::{mpsc::sync_channel, Arc},
+        time::Duration,
+    };
     use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
     use tari_storage::key_val_store::HMapDatabase;
 
@@ -267,7 +277,7 @@ mod test {
         assert_eq!(omp.worker_thread_handles.len(), 0);
         assert_eq!(omp.worker_shutdown_signals.len(), 0);
         assert!(omp.retry_service_thread_handle.is_none());
-        assert!(omp.retry_service_shutdown_signal.is_none());
+        assert!(omp.retry_service_control_tx.is_none());
     }
 
     #[test]
@@ -307,7 +317,8 @@ mod test {
         assert_eq!(omp.worker_shutdown_signals.len(), 0);
         assert_eq!(omp.worker_thread_handles.len(), 0);
 
-        omp.start_message_worker().unwrap();
+        let (tx, _) = sync_channel(1);
+        omp.start_message_worker(tx).unwrap();
 
         assert_eq!(omp.worker_shutdown_signals.len(), 1);
         assert_eq!(omp.worker_thread_handles.len(), 1);

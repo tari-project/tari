@@ -24,7 +24,7 @@ use std::sync::mpsc::sync_channel;
 use tari_comms::{
     connection::{Connection, Direction, InprocAddress, ZmqContext},
     outbound_message_service::{
-        outbound_message_pool::{MessageRetryService, OutboundMessagePoolConfig},
+        outbound_message_pool::{MessageRetryService, OutboundMessagePoolConfig, RetryServiceMessage},
         OutboundMessage,
     },
     peer_manager::NodeId,
@@ -41,29 +41,18 @@ use tari_utilities::message_format::MessageFormat;
 #[test]
 fn message_retries() {
     let context = ZmqContext::new();
-    let in_address = InprocAddress::random();
     let out_address = InprocAddress::random();
-    let (shutdown_tx, shutdown_rx) = sync_channel(1);
-
-    let sender_connection = Connection::new(&context, Direction::Outbound)
-        .establish(&in_address)
-        .unwrap();
+    let (sender, receiver) = sync_channel(1);
 
     let receive_connection = Connection::new(&context, Direction::Inbound)
         .establish(&out_address)
         .unwrap();
 
-    let join_handle = MessageRetryService::start(
-        context,
-        OutboundMessagePoolConfig::default(),
-        in_address,
-        out_address,
-        shutdown_rx,
-    );
+    let join_handle = MessageRetryService::start(context, OutboundMessagePoolConfig::default(), receiver, out_address);
 
     let mut msg = OutboundMessage::new(NodeId::new(), vec![vec![]]);
 
-    sender_connection.send(&[msg.to_binary().unwrap()]).unwrap();
+    sender.send(RetryServiceMessage::FailedAttempt(msg)).unwrap();
 
     let frames = receive_connection.receive(2000).unwrap();
     msg = OutboundMessage::from_binary(&frames[1]).unwrap();
@@ -71,7 +60,7 @@ fn message_retries() {
     assert_eq!(msg.num_attempts(), 1);
     assert_eq!(msg.scheduled_duration().num_seconds(), 0);
 
-    sender_connection.send(&[msg.to_binary().unwrap()]).unwrap();
+    sender.send(RetryServiceMessage::FailedAttempt(msg)).unwrap();
 
     let frames = receive_connection.receive(3000).unwrap();
     msg = OutboundMessage::from_binary(&frames[1]).unwrap();
@@ -79,6 +68,6 @@ fn message_retries() {
     assert_eq!(msg.num_attempts(), 2);
     assert!(msg.scheduled_duration().num_seconds() <= 0);
 
-    shutdown_tx.send(()).unwrap();
+    sender.send(RetryServiceMessage::Shutdown).unwrap();
     join_handle.join().unwrap().unwrap();
 }

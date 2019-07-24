@@ -20,35 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    connection::{ConnectionError, DealerProxyError},
-    connection_manager::ConnectionManagerError,
-    peer_manager::PeerManagerError,
-};
-use derive_error::Error;
-use tari_utilities::message_format::MessageFormatError;
+use std::time::Duration;
 
-#[derive(Error, Debug)]
-pub enum OutboundMessagePoolError {
-    ConnectionError(ConnectionError),
-    /// Worker shut down sender disconnected before sending shutdown signal
-    WorkerShutdownSignalDisconnected,
-    #[error(msg_embedded, non_std, no_from)]
-    InvalidFrameFormat(String),
-    MessageFormatError(MessageFormatError),
-    PeerManagerError(PeerManagerError),
-    ConnectionManagerError(ConnectionManagerError),
-    DealerProxyError(DealerProxyError),
-    /// Unable to allocate message pool worker thread
-    ThreadInitializationError,
-    /// The message retry service has unexpectedly disconnected from it's channel
-    MessageRetryServiceDisconnected,
-}
-
-#[derive(Error, Debug)]
-pub enum RetryServiceError {
-    ConnectionError(ConnectionError),
-    /// Control message sender disconnected without sending shutdown signal
-    ControlMessageSenderDisconnected,
-    MessageFormatError(MessageFormatError),
-}
+/// The maximum number of messages that can be stored using the MessageCache of the DHT
+pub const DHT_MSG_CACHE_STORAGE_CAPACITY: usize = 1000;
+/// The time-to-live duration used by the MessageCache for tracking received and handled messages
+pub const DHT_MSG_CACHE_TTL: Duration = Duration::from_secs(300);

@@ -61,8 +61,8 @@ The goal of this RFC is to describe the key features of the Tari second layer, a
 
 ### Abstract
 
-[Digital asset]s (DAs) are managed by committees of special nodes called [Validator node]s (VNs). VNs manage digital asset state change and ensure
-that the rules of the asset contracts are enforced.
+[Digital asset]s (DAs) are managed by committees of special nodes called [Validator Node]s (VNs). VNs manage digital
+asset state change and ensure that the rules of the asset contracts are enforced.
 * VNs form a peer-to-peer communication network that together defines the Tari [Digital Asset Network] (DAN)
 * VNs register themselves on the [base layer] and commit collateral to prevent Sybil attacks.
 * Scalability is achieved by sacrificing decentralisation. Not *all* VNs manage *every* asset. Assets are managed by
@@ -86,12 +86,12 @@ how large the committee of Validator Nodes will be for this DA and have the opti
 Any remaining spots on the committee will be filled by permissionless VNs that are selected according to a [CommitteeSelectionStrategy]. This is a strategy
 that an AI will use to select from the set of potential candidate VNs that nominated themselves for a position on the committee when the AI broadcast a public call for VNs during the asset creation process. For the VNs to accept the appointment to the committee they will need to put up the specified collateral.
 
-[asset issuer]: Glossary.md#asset-issuer
+[Asset Issuer]: Glossary.md#asset-issuer
 [base layer]: Glossary.md#base-layer
 [digital asset]: Glossary.md#digital-asset
 [committees]: Glossary.md#committee
 [CommitteeSelectionStrategy]: Glossary.md#committeeselectionstrategy
-[validator node]: Glossary.md#validator-node
+[Validator Node]: Glossary.md#validator-node
 [digital asset network]: Glossary.md#digital-asset-network
-[trusted node]: Glossary.md#trusted-node
+[Trusted Node]: Glossary.md#trusted-node
 [DigitalAssetTemplate]: Glossary.md#digitalassettemplate

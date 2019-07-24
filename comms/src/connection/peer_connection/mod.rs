@@ -88,7 +88,7 @@ mod error;
 mod worker;
 
 pub use self::{
-    connection::{ConnectionId, PeerConnection, PeerConnectionSimpleState},
+    connection::{ConnectionId, PeerConnection, PeerConnectionProtoMessage, PeerConnectionSimpleState},
     context::{PeerConnectionContext, PeerConnectionContextBuilder},
     control::ControlMessage,
     error::PeerConnectionError,
