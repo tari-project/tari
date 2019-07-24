@@ -20,26 +20,30 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use derive_error::Error;
+use crate::tari_message::{NetMessage, TariMessageType};
+use serde::{Deserialize, Serialize};
+use std::convert::TryInto;
 use tari_comms::{
-    domain_connector::ConnectorError,
-    outbound_message_service::OutboundError,
-    peer_manager::PeerManagerError,
+    connection::NetAddress,
+    message::{Message, MessageError},
+    peer_manager::NodeId,
+    types::CommsPublicKey,
 };
 
-#[derive(Debug, Error)]
-pub enum DHTError {
-    OutboundError(OutboundError),
-    ConnectorError(ConnectorError),
-    /// OMS has not been initialized
-    OMSUndefined,
-    /// PeerManager has not been initialized
-    PeerManagerUndefined,
-    PeerManagerError(PeerManagerError),
-    /// Failed to send from API
-    ApiSendFailed,
-    /// Failed to receive in API from service
-    ApiReceiveFailed,
-    /// Received an unexpected response type from the API
-    UnexpectedApiResponse,
+/// The JoinMessage stores the information required for a network join request. It has all the information required to
+/// locate and contact a specific node.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub struct JoinMessage {
+    pub node_id: NodeId,
+    pub public_key: CommsPublicKey, // TODO this should be moved to be part of received info - msg origin source
+    // TODO: node_type
+    pub net_address: Vec<NetAddress>,
+}
+
+impl TryInto<Message> for JoinMessage {
+    type Error = MessageError;
+
+    fn try_into(self) -> Result<Message, Self::Error> {
+        Ok((TariMessageType::new(NetMessage::Join), self).try_into()?)
+    }
 }

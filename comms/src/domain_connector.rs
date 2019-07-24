@@ -42,6 +42,7 @@ pub enum ConnectorError {
 }
 
 /// Information about the message received
+#[derive(Debug)]
 pub struct MessageInfo {
     pub source_identity: PeerNodeIdentity,
 }
