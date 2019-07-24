@@ -173,7 +173,7 @@ For human-readable formats, it makes little sense to deviate from JSON. For copy
 that Base64 offers over raw hex or Base58 makes it attractive.
 
 Many Tari data types' binary representation will be the straightforward MessagePack version of each field in the related
-struct. In these cases, a straightforward `#[derive(Deserialize, Serialize)]` is all that is required to enable the data
+`struct`. In these cases, a straightforward `#[derive(Deserialize, Serialize)]` is all that is required to enable the data
 structure to be sent over the wire.
 
 However, other structures might need fine-tuning, or hand-written serialization procedures. To capture both use cases,
