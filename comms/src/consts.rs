@@ -20,29 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    connection::{error::ConnectionError, DealerProxyError},
-    inbound_message_service::{inbound_message_broker::BrokerError, message_cache::MessageCacheError},
-};
-use derive_error::Error;
-use tari_utilities::thread_join::ThreadError;
+use std::time::Duration;
 
-/// Error type for InboundMessageService subsystem
-#[derive(Debug, Error)]
-pub enum InboundError {
-    /// Failed to connect to inbound socket
-    InboundConnectionError(ConnectionError),
-    DealerProxyError(DealerProxyError),
-    BrokerError(BrokerError),
-    MessageCacheError(MessageCacheError),
-    #[error(msg_embedded, non_std, no_from)]
-    ControlSendError(String),
-    /// Unable to send a control message as the control sync sender is undefined
-    ControlSenderUndefined,
-    /// Could not join the InboundMessageWorker thread
-    ThreadJoinError(ThreadError),
-    /// The thread handle is undefined and could have not been properly created
-    ThreadHandleUndefined,
-    /// Inbound message worker thread failed to start
-    ThreadInitializationError,
-}
+/// The maximum number of messages that can be stored using the MessageCache of the DHT
+pub const DHT_MSG_CACHE_STORAGE_CAPACITY: usize = 1000;
+/// The time-to-live duration used by the MessageCache for tracking received and handled messages
+pub const DHT_MSG_CACHE_TTL: Duration = Duration::from_secs(300);
