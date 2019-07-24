@@ -142,7 +142,7 @@ Several candidates fulfill these properties to some degree.
 
 #### [Protobuf](https://code.google.com/p/protobuf/)
 
-Similar to [Message Pack](#message-pack), but also requires schemas to be written and compiled. Serialization 
+Similar to Message Pack, but also requires schemas to be written and compiled. Serialization 
 performance and size
 are similar to Message Pack. It Can work with ZMQ, but is better designed to be used with gRPC.
 
