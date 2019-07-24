@@ -64,9 +64,9 @@ This means that users constructing a transaction:
 * MUST include a lock height in the kernel of their transaction; and
 * MUST include the lock height in the transaction signature to prevent lock height malleability.
 
-Tari Miners MUST NOT add any transaction to the mined [block] that has not already exceeded its lock height.
+Tari Miners [base node]s MUST NOT add any transaction to the mined [block] that has not already exceeded its lock height.
 
-This also adds the following requirement to a [Base Node]:
+This also adds the following requirement to a [base node]:
 * It MUST reject any [block] that contains a kernel with a lock height greater than the [current head].
 
 #### Time-locked UTXOs
@@ -78,8 +78,8 @@ This requires that users constructing a transaction:
 - MUST include a feature flag of their UTXO; and
 - MUST include a lock height in their UTXO.
 
-This adds the following requirement for a miner:
-- A miner MUST not allow a UTXO to be spent if the [current head] has not already exceeded the UTXO's lock height.
+This adds the following requirement for a [base node]:
+- A [base node] MUST NOT allow a UTXO to be spent if the [current head] has not already exceeded the UTXO's lock height.
 
 This also adds the following requirement for a [base node]:
 - A base node MUST reject any [block] that contains a [UTXO] with a lock height not already past the [current head].
@@ -94,7 +94,7 @@ process to construct a time-locked contract.
 The steps are as follows:
 * The sender MUST pay all the funds into an n-of-n [multisig] [UTXO].
 * All parties involved MUST construct a refund [transaction] to pay back all funds to the sender who has spent this n-of-n
-  [multisig] [UTXO]. However, this [transaction] has a [transaction lock height](#hashed-time-locked-contract) set in
+  [multisig] [UTXO]. However, this [transaction] has a transaction lock height set in
   the future and cannot be mined immediately. It therefore lives in the [mempool]. This means that if anything goes
   wrong from here on, the sender will get their money back after the time lock expires.
 * The sender MUST publish both above [transaction]s at the same time to ensure the receiver cannot hold the sender hostage.
