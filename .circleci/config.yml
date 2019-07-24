@@ -1,7 +1,7 @@
 version: 2
 
 defaults:
-  rust_image: &rust_image quay.io/tarilabs/rust_tari-build-zmq:nightly-2019-07-15
+  rust_image: &rust_image quay.io/tarilabs/rust_tari-build-with-deps:nightly-2019-07-15
 
 jobs:
   test-docs:
