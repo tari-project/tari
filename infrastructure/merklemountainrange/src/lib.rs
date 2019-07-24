@@ -115,7 +115,7 @@
 //! find peak : 2^(H+1) -2 where < total elements
 //! left down : 2^H
 //! right down: -1
-//! Note that the formulas are for direct indexes in the array, meaning the nodes count from 0 and not 1 as in
+//! Note that the formulas are for direct indices in the array, meaning the nodes count from 0 and not 1 as in
 //! the examples above. H - Height
 //! I - Index
 //!
