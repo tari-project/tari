@@ -22,6 +22,7 @@
 
 #[macro_use]
 mod macros;
+mod consts;
 pub mod dht_service;
 pub mod initialization;
 pub mod peer;

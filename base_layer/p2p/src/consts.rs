@@ -20,26 +20,5 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use derive_error::Error;
-use tari_comms::{
-    domain_connector::ConnectorError,
-    outbound_message_service::OutboundError,
-    peer_manager::PeerManagerError,
-};
-
-#[derive(Debug, Error)]
-pub enum DHTError {
-    OutboundError(OutboundError),
-    ConnectorError(ConnectorError),
-    /// OMS has not been initialized
-    OMSUndefined,
-    /// PeerManager has not been initialized
-    PeerManagerUndefined,
-    PeerManagerError(PeerManagerError),
-    /// Failed to send from API
-    ApiSendFailed,
-    /// Failed to receive in API from service
-    ApiReceiveFailed,
-    /// Received an unexpected response type from the API
-    UnexpectedApiResponse,
-}
+/// The maximum number of peer nodes that a message will be sent to
+pub const DHT_BROADCAST_NODE_COUNT: usize = 8;
