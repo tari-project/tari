@@ -27,7 +27,7 @@
 use crate::{
     block::{AggregateBody, Block},
     blockheader::BlockHeader,
-    pow::*,
+    types::*,
 };
 
 use chrono::{DateTime, NaiveDate, Utc};
@@ -62,7 +62,7 @@ pub fn get_gen_header() -> BlockHeader {
         total_kernel_offset: RistrettoSecretKey::from(0),
         /// Nonce used
         /// Proof of work summary
-        pow: ProofOfWork {},
+        pow: POW::default(),
     }
 }
 
