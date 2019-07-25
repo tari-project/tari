@@ -484,7 +484,7 @@ Methods may include:
 
 The `ConnectionManager`:
 
-- MUST call `suspend` on every [PeerConnection] if its `suspend` method is called;
+- MUST call `suspend` on every PeerConnection if its `suspend` method is called;
 - MUST call `resume` on every [PeerConnection] if its `resume` method is called;
 - MUST call `shutdown` on every PeerConnection if its `shutdown` method is called
 - MUST create a new PeerConnection with the given Peer and NetAddress, when `establish_connection` is called;
