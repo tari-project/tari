@@ -417,7 +417,7 @@ if a peer should be banned. This mechanism is yet to be decided.
 #### PeerConnection
 
 Represents direct bidirectional connection to another node or client. As connections are bidirectional,
-the [PeerConnection] need only hold a single [InboundConnection] or [OutboundConnection], depending on if the
+the PeerConnection need only hold a single [InboundConnection] or [OutboundConnection], depending on if the
 node requested a peer connect to it or if it is connecting to a peer.
 
 PeerConnection will send messages to the peer in a non-blocking, asynchronous manner as long as the connection
