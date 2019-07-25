@@ -132,7 +132,7 @@ When this RFC mentions 'multipart messages', this is what it's referring to.
 Every participating [communication node] SHOULD open a control socket (refer to [ControlService]) to allow peers to negotiate and
 establish a peer connection. The [NetAddress] of the control socket is what is stored in peers' routing tables and will
 be used to establish new ephemeral [PeerConnection]s. Any peer that wants to connect MUST establish a connection
-to the control socket of the destination peer to negotiate a new encrypted [PeerConnection].
+to the control socket of the destination peer to negotiate a new encrypted PeerConnection.
 
 Once a connection is established, messages can be sent and received directly to or from the [Peer].
 
