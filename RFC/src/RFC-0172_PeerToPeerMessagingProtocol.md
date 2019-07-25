@@ -488,7 +488,7 @@ The `ConnectionManager`:
 - MUST call `resume` on every [PeerConnection] if its `resume` method is called;
 - MUST call `shutdown` on every PeerConnection if its `shutdown` method is called
 - MUST create a new [PeerConnection] with the given Peer and NetAddress, when `establish_connection` is called;
-- MUST call `shutdown` on the [PeerConnection] and remove the connection for the given peer, when `disconnect(peer)` is called;
+- MUST call `shutdown` on the PeerConnection and remove the connection for the given peer, when `disconnect(peer)` is called;
 - MAY disconnect peers if the connection has not been used for an extended period;
 - SHOULD disconnect the least recently used peer if the connection pool is greater than `max connections`
 
