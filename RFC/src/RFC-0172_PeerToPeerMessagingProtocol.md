@@ -429,7 +429,7 @@ It has a few important functions:
 - forwarding incoming messages onto the given handler socket; and
 - sending outgoing messages.
 
-Unlike [InboundConnection] and [OutboundConnection], which are essentially stateless,
+Unlike InboundConnection and OutboundConnection, which are essentially stateless,
 `PeerConnection` maintains a particular `ConnectionState`.
 
 - `Idle` - the connection has not been established.
