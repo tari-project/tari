@@ -517,7 +517,7 @@ Alice wants to connect to Bob
    - the node's public key corresponding to its [Node ID]; and
    - the [NetAddress] of the new PeerConnection.
 4. Bob accepts this request and opens a new `PeerConnnection` socket using Alice's CURVE public key.
-5. Bob connects to the given [NetAddress] and sends a `peer::establish_connection` message.
+5. Bob connects to the given NetAddress and sends a `peer::establish_connection` message.
 6. If Alice accepts the connection, they can begin sending messages. If not, both sides terminate the connection.
 
 #### PeerManager
