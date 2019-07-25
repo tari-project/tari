@@ -703,7 +703,7 @@ If the HWM is hit:
 [inboundconnection]: #inboundconnection
 [message]: #message
 [MessageEnvelope]: #MessageEnvelope
-[MessageEnvelopeBody]: #MessageEnvelopeBody
+[MessageEnvelopeBody]: #messageenvelopebody
 [MessageEnvelopeHeader]: #MessageEnvelopeHeader
 [messageheader]: #messageheader
 [messagetype]: #messagetype
