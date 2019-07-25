@@ -283,7 +283,7 @@ All MessageTypes fall within a particular numerical range according to the messa
 | `vn`         | 97-224  | 128             | Messages related to the validator nodes, such as `execute instruction`. |
 | `extended`   | 225-255 | 30              | Reserved for future use.                                      |
 
-In documentation, [MessageType]s can be referred to by the category and name. For example, `peer::EstablishConnection` and
+In documentation, MessageTypes can be referred to by the category and name. For example, `peer::EstablishConnection` and
 `net::Discover`.
 
 #### MessageHeader
