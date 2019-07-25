@@ -242,7 +242,7 @@ The header and decrypted body MUST be deserializable as per [RFC-0171: MessageSe
 
 #### MessageEnvelopeHeader
 
-Every [MessageEnvelope] MUST have an unencrypted header containing the following fields:
+Every MessageEnvelope MUST have an unencrypted header containing the following fields:
 
 | Name      | Type                      | Description                                                                                        |
 | --------- | ------------------------- | -------------------------------------------------------------------------------------------------- |
