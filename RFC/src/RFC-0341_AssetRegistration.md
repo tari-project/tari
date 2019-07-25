@@ -87,7 +87,7 @@ The transaction will contain the following extra metadata to facilitate the regi
 
 1. The value of the transaction in clear text and the public spending key of the commitment so that it can be verified 
    by third parties. A third party can verify the value of the commitment by using the information in (1) and (2) below, to calculate (3):
-   1. The output commitment is $ C
+   1. The output commitment is $ C = k \cdot G + v \cdot H $.
       = k \cdot G + v \cdot H $.
    2. $ v
       ​$ and $ k \cdot G ​$ are provided in the metadata.
