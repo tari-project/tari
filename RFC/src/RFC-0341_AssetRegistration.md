@@ -89,7 +89,6 @@ The transaction will contain the following extra metadata to facilitate the regi
    by third parties. A third party can verify the value of the commitment by using the information in (1) and (2) below, to calculate (3):
    1. The output commitment is $ C = k \cdot G + v \cdot H $.
    2. $ v​ $ and $ k \cdot G ​$ are provided in the metadata.
-      ​$ and $ k \cdot G ​$ are provided in the metadata.
    3. A verifier can calculate $ C - k \cdot G = v \cdot H $ and verify this value by multiplying the clear text $ v $ by $ H $ themselves.
 
 2. A commitment (hash) to the asset parameters as defined by a [DigitalAssetTemplate] described in 
