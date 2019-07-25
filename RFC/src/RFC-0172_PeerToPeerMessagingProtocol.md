@@ -272,7 +272,7 @@ It consists of a [MessageHeader] and [Message] of a particular predefined [Messa
 An enumeration of the messages that are part of the Tari network. [MessageType]s are represented
 as an unsigned eight-bit integer and each value must be mapped to a corresponding Message struct.
 
-All [MessageType]s fall within a particular numerical range according to the message's concern:
+All MessageTypes fall within a particular numerical range according to the message's concern:
 
 | Category     | Range   | # Message Types | Description                                                  |
 | ------------ | ------- | --------------- | ------------------------------------------------------------ |
