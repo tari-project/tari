@@ -89,7 +89,7 @@ The Tari communication layer has a modular design to allow for the various commu
 use the same infrastructure code.
 
 The design is influenced by an open-source library called [ZeroMQ] and the ZeroMQ C bindings are a dependency of
-the project. [ZeroMQ]'s over-the-wire protocol is relatively simple, and replicating [ZeroMQ] framing in a custom
+the project. ZeroMQ's over-the-wire protocol is relatively simple, and replicating ZeroMQ framing in a custom
 implementation should not be prohibitively difficult. However, ZeroMQ offers many valuable features, which would be a 
 significantly larger undertaking to reproduce. Fortunately, bindings or native ports are available in numerous languages.
 
