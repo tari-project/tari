@@ -182,6 +182,7 @@ pub mod merkle_storage;
 pub mod merklemountainrange;
 pub mod merklenode;
 pub mod merkleproof;
+pub mod treemap_ser;
 pub mod mmr {
     pub use crate::{merklemountainrange::*, merkleproof::*};
 }
