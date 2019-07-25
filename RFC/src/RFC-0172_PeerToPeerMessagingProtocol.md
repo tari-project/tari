@@ -381,7 +381,7 @@ Methods may include:
 - `set_socks_proxy(address)`
 - `set_hwm(v)`
 
-An [OutboundConnection]:
+An OutboundConnection:
 
 - MUST perform the "client-side" [CurveZMQ](http://curvezmq.org/page:read-the-docs) encryption protocol if encryption is set.
   - Using [ZeroMQ], this means setting the socketopts `ZMQ_CURVE_SERVERKEY`, `ZMQ_CURVE_SECRETKEY` and `ZMQ_CURVE_PUBLICKEY`.
