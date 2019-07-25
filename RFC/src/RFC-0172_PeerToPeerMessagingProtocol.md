@@ -115,7 +115,7 @@ of the socket in capitals. For example, `ZMQ_ROUTER`.
 
 **Note about ZeroMQ frames and multipart messages:**
 
-[ZeroMQ] frames are length-specified blocks of binary data and can be strung together to make multipart messages.
+ZeroMQ frames are length-specified blocks of binary data and can be strung together to make multipart messages.
 
 ```text
 |5|H|E|L|L|O|*|0|*|3|F|O|O|+|
