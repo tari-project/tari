@@ -676,7 +676,7 @@ This approach has the following benefits:
 
 ### Queue Overflow Strategy
 
-Inbound/OutboundConnections (and therefore PeerConnection) have a High-water Mark (HWM) set.
+Inbound/OutboundConnections (and therefore PeerConnection) have an HWM set.
 
 If the HWM is hit:
 
