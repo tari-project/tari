@@ -264,9 +264,7 @@ mod test {
         let mut message_envelope_body_list = Vec::new();
         for i in 0..test_message_count {
             // Construct a test message
-            let message_header = MessageHeader {
-                message_type: DomainBrokerType::Type1,
-            };
+            let message_header = MessageHeader::new(DomainBrokerType::Type1).unwrap();
             // Messages with the same message body will be discarded by the DuplicateMsgCache
             let message_body = format!("Test Message Body {}", i).as_bytes().to_vec();
             let message_envelope_body = Message::from_message_format(message_header, message_body).unwrap();
@@ -290,9 +288,7 @@ mod test {
         inbound_message_service.shutdown().unwrap();
         std::thread::sleep(Duration::from_millis(200));
 
-        let message_header = MessageHeader {
-            message_type: DomainBrokerType::Type1,
-        };
+        let message_header = MessageHeader::new(DomainBrokerType::Type1).unwrap();
         let message_body = "Test Message Body".as_bytes().to_vec();
         let message_envelope_body = Message::from_message_format(message_header, message_body).unwrap();
         let message_data_buffer = create_message_data_buffer(node_identity.clone(), message_envelope_body);

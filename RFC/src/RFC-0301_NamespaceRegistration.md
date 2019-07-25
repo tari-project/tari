@@ -146,12 +146,12 @@ than one string as defined in [[2]].
 | OpenAlias TXT DNS Record Field | OpenAlias TXT DNS Record Data                                |
 | ------------------------------ | ------------------------------------------------------------ |
 | oa1:\<name\>                   | "oa1:tari"                                                   |
-| pk                             | \<256 bit public key, in hexadecimal format (64 characters), that is converted into a `Base58` encoded string (44 characters)\>. |
-| raid_id                        | \<`RAID_ID` (*refer to [RAID_ID](#raid_id)*) (15 characters)\>. |
-| nonce                          | \<256 bit public nonce, in hexadecimal format (64 characters), that is converted into a `Base58` encoded string (44 characters)\>. |
-| sig                            | \<[Asset issuer]'s 256 bit Schnorr signature for the `RAID_ID` (*refer to [RAID_ID](#raid_id)*), in hexadecimal format (64 characters), that is converted into a `Base58` encoded string (44 characters)\>. |
+| pk                             | \<256 bit public key, in hexadecimal format (64 characters), that is converted into a `Base58` encoded string (44 characters)\> |
+| raid_id                        | \<`RAID_ID` (*refer to [RAID_ID](#raid_id)*) (15 characters)\> |
+| nonce                          | \<256 bit public nonce, in hexadecimal format (64 characters), that is converted into a `Base58` encoded string (44 characters)\> |
+| sig                            | \<[Asset issuer]'s 256 bit Schnorr signature for the `RAID_ID` (*refer to [RAID_ID](#raid_id)*), in hexadecimal format (64 characters), that is converted into a `Base58` encoded string (44 characters)\> |
 | desc                           | \<Optional RAID description\>; ASCII String; Up to 48 characters for the condensed version (using only one string) and up to 235 characters (when spanning two strings). |
-| crc                            | \<CRC-32 checksum of the entire record, up to but excluding the checksum key-value pair (starting at "**oa1:tari**" and ending at the last "**;**" before the checksum key-value pair) in hexadecimal format (eight characters)\>. |
+| crc                            | \<CRC-32 checksum of the entire record, up to but excluding the checksum key-value pair (starting at "**oa1:tari**" and ending at the last "**;**" before the checksum key-value pair) in hexadecimal format (eight characters)\> |
 
 &nbsp;&nbsp;&nbsp;&nbsp;**Examples:** Two example OpenAlias TXT DNS records are shown; the first is a condensed version and 
 the second spans two strings:
@@ -170,17 +170,17 @@ public nonce  = fc2c5fce596338f43f70dc0ce14659fdfea1ba3e588a7c6fa79957fc70aa1b4b
 signature     = 7dc54ec98da2350b0c8ed0561537517ac6f93a37f08a34482824e7df3514ce0d
  -> base58    = 9TxTorviyTJAaVJ4eY4AQPixwLb6SDL4dieHff6MFUha
    
-OpenAlias TXT DNS record (condensed: 211 characters):
+OpenAlias TXT DNS record (condensed: 212 characters):
 IN   TXT = "oa1:tari pk=EcbmnM6PLosBzpyCcBz1TikpNXRKcucpm73ez6xYfLtg;id=RYqMMuSmBZFQkgp;
 nonce=5ctFNnCfBrP99rT1AFmj1WPyMD8uAdNUTESHhLoV3KBZ;sig=9TxTorviyTJAaVJ4eY4AQPixwLb6SDL4dieHff6MFUha;
-desc=Cartoon charaters;crc=B31C7CA0"
+desc=Cartoon characters;crc=176BE80C"
 
-OpenAlias TXT DNS record (spanning two strings: string 1 = 179 characters and string 2 = 249 characters):
+OpenAlias TXT DNS record (spanning two strings: string 1 = 179 characters and string 2 = 250 characters):
 IN   TXT = "oa1:tari pk=EcbmnM6PLosBzpyCcBz1TikpNXRKcucpm73ez6xYfLtg; id=RYqMMuSmBZFQkgp; 
 nonce=5ctFNnCfBrP99rT1AFmj1WPyMD8uAdNUTESHhLoV3KBZ; sig=9TxTorviyTJAaVJ4eY4AQPixwLb6SDL4dieHff6MFUha; "
-"desc=Cartoon charaters: Mickey Mouse\; Minnie Mouse\; Goofy\; Donald Duck\; Pluto\; Daisy Duck\; 
+"desc=Cartoon characters: Mickey Mouse\; Minnie Mouse\; Goofy\; Donald Duck\; Pluto\; Daisy Duck\; 
 Scrooge McDuck\; Launchpad McQuack\; Huey, Dewey and Louie\; Bambi\; Thumper\; Flower\; Faline\; 
-Tinker Bell\; Peter Pan and Captain Hook.; crc=96EC6593"
+Tinker Bell\; Peter Pan and Captain Hook.; crc=54465902"
 ```
 
 
