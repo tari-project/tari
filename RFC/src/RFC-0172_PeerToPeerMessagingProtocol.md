@@ -107,7 +107,7 @@ A quick overview of what ZeroMQ provides:
   - transparently reconnect when connections are dropped.
 - The `inproc` transport for message passing between threads without mutex locks.
 - Built-in protocol for asymmetric encryption over the wire using Curve25519.
-- Ability to send and receive multipart messages using a simple framing scheme. [More info](http://zguide.zeromq.org/php:chapter2#toc11).
+- Ability to send and receive multipart messages using a simple framing scheme. More info [here](http://zguide.zeromq.org/php:chapter2#toc11).
 - Support for Secure Socket (SOCKS) proxies.
 
 This document will refer to several [ZeroMQ socket]s. These are referred to by prepending `ZMQ_` and the name
