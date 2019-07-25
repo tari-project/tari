@@ -93,7 +93,7 @@ the project. ZeroMQ's over-the-wire protocol is relatively simple, and replicati
 implementation should not be prohibitively difficult. However, ZeroMQ offers many valuable features, which would be a 
 significantly larger undertaking to reproduce. Fortunately, bindings or native ports are available in numerous languages.
 
-To learn more about [ZeroMQ], read [the guide](http://zguide.zeromq.org/page:all). It's an enjoyable and worthwhile read.
+To learn more about ZeroMQ, read [the guide](http://zguide.zeromq.org/page:all). It's an enjoyable and worthwhile read.
 
 A quick overview of what [ZeroMQ] provides:
 
