@@ -389,7 +389,7 @@ An [OutboundConnection]:
   - For an IP [NetAddress], connect to the given host IP and port.
   - For an Onion [NetAddress], connect to the onion address using the TCP, e.g. `tcp://xyz...123.onion:1234`.
   - For an I2P [NetAddress], as yet undetermined.
-- MUST write the parts of the given [MessageEnvelope] to the socket as a multipart message consisting of, in order:
+- MUST write the parts of the given MessageEnvelope to the socket as a multipart message consisting of, in order:
   - identity;
   - version;
   - header;
