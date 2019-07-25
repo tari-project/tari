@@ -338,7 +338,7 @@ can be called again (i.e. in a loop) to continue listening for messages. Client 
 
 Fields may include
 
-- a [NetAddress];
+- a NetAddress;
 - a timeout;
 - underlying [ZeroMQ socket].
 
