@@ -384,7 +384,7 @@ Methods may include:
 An OutboundConnection:
 
 - MUST perform the "client-side" [CurveZMQ](http://curvezmq.org/page:read-the-docs) encryption protocol if encryption is set.
-  - Using [ZeroMQ], this means setting the socketopts `ZMQ_CURVE_SERVERKEY`, `ZMQ_CURVE_SECRETKEY` and `ZMQ_CURVE_PUBLICKEY`.
+  - Using ZeroMQ, this means setting the socketopts `ZMQ_CURVE_SERVERKEY`, `ZMQ_CURVE_SECRETKEY` and `ZMQ_CURVE_PUBLICKEY`.
 - MUST connect to a TCP endpoint.
   - For an IP [NetAddress], connect to the given host IP and port.
   - For an Onion [NetAddress], connect to the onion address using the TCP, e.g. `tcp://xyz...123.onion:1234`.
