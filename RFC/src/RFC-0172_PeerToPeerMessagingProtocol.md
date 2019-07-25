@@ -369,7 +369,7 @@ This connection blocks until data can be written, or a timeout is reached. The t
 
 Fields may include:
 
-- a [NetAddress];
+- a NetAddress;
 - underlying [ZeroMQ socket].
 
 Methods may include:
