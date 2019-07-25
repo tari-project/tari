@@ -64,7 +64,7 @@ This means that users constructing a transaction:
 * MUST include a lock height in the kernel of their transaction; and
 * MUST include the lock height in the transaction signature to prevent lock height malleability.
 
-Tari Miners [base node]s MUST NOT add any transaction to the mined [block] that has not already exceeded its lock height.
+Tari [base node]s MUST NOT add any transaction to the mined [block] that has not already exceeded its lock height.
 
 This also adds the following requirement to a [base node]:
 * It MUST reject any [block] that contains a kernel with a lock height greater than the [current head].
