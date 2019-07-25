@@ -702,7 +702,6 @@ If the HWM is hit:
 [duplicatemessagewindow]: #duplicatemessagewindow
 [inboundconnection]: #inboundconnection
 [message]: #message
-[MessageEnvelope]: #MessageEnvelope
 [MessageEnvelopeBody]: #messageenvelopebody
 [MessageEnvelopeHeader]: #messageenvelopeheader
 [messageheader]: #messageheader
