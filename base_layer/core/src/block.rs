@@ -51,8 +51,11 @@ impl Block {
     /// valid. It does _not_ check that the inputs exist in the current UTXO set;
     /// nor does it check that the PoW is the largest accumulated PoW value.
     pub fn check_internal_consistency(&self) -> Result<(), TransactionError> {
-        let mut trans: Transaction = self.body.clone().into(); // todo revisit this one q=whole code chain is completed
+        let mut trans: Transaction = self.body.clone().into();
         trans.offset = self.header.total_kernel_offset.clone();
+        // We need to add the coinbase off set to the block otherwise it will not balance.
+        self.add_coinbase_offset(&mut trans);
+        // no lets check the block
         trans.validate_internal_consistency(&PROVER, &COMMITMENT_FACTORY)?;
         self.check_pow()
     }
@@ -65,6 +68,17 @@ impl Block {
     pub fn calculate_pow(&mut self) -> Result<(), TransactionError> {
         // todo
         Ok(())
+    }
+
+    // Add an offset for the coinbase to the transaction
+    fn add_coinbase_offset(&self, trans: &mut Transaction) {
+        let coinbase = PrivateKey::from(calculate_coinbase(self.header.height));
+        let mut fee = MicroTari::from(0);
+        for kernel in &trans.body.kernels {
+            fee += kernel.fee;
+        }
+        let fee = PrivateKey::from(fee);
+        trans.offset = trans.offset.clone() + (fee + coinbase);
     }
 }
 
