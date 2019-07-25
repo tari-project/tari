@@ -357,7 +357,7 @@ An InboundConnection:
 - MUST listen for and accept TCP connections.
   - For an IP NetAddress, bind on the given host IP and port.
   - For an Onion NetAddress, bind on 127.0.0.1 and the given port.
-  - For an I2P [NetAddress], as yet undetermined.
+  - For an I2P NetAddress, as yet undetermined.
 - MUST read multipart messages and return them to the caller.
   - If the timeout is reached, return an error to be handled by the calling code.
 
