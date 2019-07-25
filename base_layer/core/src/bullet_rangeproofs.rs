@@ -85,7 +85,7 @@ impl<'de> Deserialize<'de> for BulletRangeProof {
             type Value = BulletRangeProof;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("a secret key in binary format")
+                formatter.write_str("a bulletproof range proof in binary format")
             }
 
             fn visit_bytes<E>(self, v: &[u8]) -> Result<BulletRangeProof, E>
