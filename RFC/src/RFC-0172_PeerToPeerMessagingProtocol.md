@@ -95,7 +95,7 @@ significantly larger undertaking to reproduce. Fortunately, bindings or native p
 
 To learn more about ZeroMQ, read [the guide](http://zguide.zeromq.org/page:all). It's an enjoyable and worthwhile read.
 
-A quick overview of what [ZeroMQ] provides:
+A quick overview of what ZeroMQ provides:
 
 - A simple socket Application Programming Interface (API).
 - Some well-defined patterns to connect sockets together.
