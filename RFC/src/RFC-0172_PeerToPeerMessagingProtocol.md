@@ -76,7 +76,7 @@ between peers. Broadly, a [communication node] or [communication client] MUST be
 - gracefully reestablishing dropped connections; and (optionally)
 - communicating to a SOCKS5 proxy (for connections over Tor and I2P).
 
-Additionally, [communication node]s MUST be capable of performing the following tasks:
+Additionally, communication nodes MUST be capable of performing the following tasks:
 
 - opening a control port for establishing secure peer channels;
 - maintaining a list of known peers in the form of a routing table;
