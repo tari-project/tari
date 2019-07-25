@@ -394,7 +394,7 @@ An OutboundConnection:
   - version;
   - header;
   - body.
-- If specified, MUST set a High Water Mark (HWM) on the underlying [ZeroMQ] socket.
+- If specified, MUST set a High Water Mark (HWM) on the underlying ZeroMQ socket.
 - If the HWM is reached, a call to `send` MUST return an error and any messages received SHOULD be discarded.
 
 #### Peer
