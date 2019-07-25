@@ -34,8 +34,10 @@ use crate::{
     inbound_message_service::{
         inbound_message_broker::InboundMessageBroker,
         inbound_message_service::InboundMessageServiceConfig,
+        MessageCache,
+        MessageCacheConfig,
     },
-    message::{FrameSet, MessageContext, MessageData},
+    message::{Frame, FrameSet, MessageContext, MessageData},
     outbound_message_service::outbound_message_service::OutboundMessageService,
     peer_manager::{peer_manager::PeerManager, NodeId, NodeIdentity, Peer},
     types::MessageDispatcher,
@@ -71,6 +73,7 @@ where
     inbound_message_broker: Arc<InboundMessageBroker<MType>>,
     outbound_message_service: Arc<OutboundMessageService>,
     peer_manager: Arc<PeerManager>,
+    msg_cache: MessageCache<Frame>,
     control_receiver: Option<Receiver<ControlMessage>>,
     is_running: bool,
 }
@@ -102,6 +105,7 @@ where
             inbound_message_broker,
             outbound_message_service,
             peer_manager,
+            msg_cache: MessageCache::new(MessageCacheConfig::default()),
             control_receiver: None,
             is_running: false,
         }
@@ -132,33 +136,40 @@ where
 
                         match MessageData::try_from(frame_set) {
                             Ok(message_data) => {
-                                let peer = match self.lookup_peer(&message_data.source_node_id) {
-                                    Some(peer) => peer,
-                                    None => {
+                                if !self.msg_cache.contains(message_data.message_envelope.body_frame()) {
+                                    self.msg_cache
+                                        .insert(message_data.message_envelope.body_frame().clone())?;
+
+                                    let peer = match self.lookup_peer(&message_data.source_node_id) {
+                                        Some(peer) => peer,
+                                        None => {
+                                            warn!(
+                                                target: LOG_TARGET,
+                                                "Received unknown node id from peer connection. Discarding message \
+                                                 from NodeId={:?}",
+                                                message_data.source_node_id
+                                            );
+                                            continue;
+                                        },
+                                    };
+
+                                    let message_context = MessageContext::new(
+                                        self.node_identity.clone(),
+                                        peer,
+                                        message_data.message_envelope,
+                                        self.outbound_message_service.clone(),
+                                        self.peer_manager.clone(),
+                                        self.inbound_message_broker.clone(),
+                                    );
+                                    self.message_dispatcher.dispatch(message_context).unwrap_or_else(|e| {
                                         warn!(
                                             target: LOG_TARGET,
-                                            "Received unknown node id from peer connection. Discarding message from \
-                                             NodeId={:?}",
-                                            message_data.source_node_id
+                                            "Could not dispatch message to handler - Error: {:?}", e
                                         );
-                                        continue;
-                                    },
-                                };
-
-                                let message_context = MessageContext::new(
-                                    self.node_identity.clone(),
-                                    peer,
-                                    message_data.message_envelope,
-                                    self.outbound_message_service.clone(),
-                                    self.peer_manager.clone(),
-                                    self.inbound_message_broker.clone(),
-                                );
-                                self.message_dispatcher.dispatch(message_context).unwrap_or_else(|e| {
-                                    warn!(
-                                        target: LOG_TARGET,
-                                        "Could not dispatch message to handler - Error: {:?}", e
-                                    );
-                                });
+                                    });
+                                } else {
+                                    debug!(target: LOG_TARGET, "Duplicate message discarded");
+                                }
                             },
                             Err(e) => {
                                 // if unable to deserialize the MessageHeader then MUST discard the
@@ -326,9 +337,7 @@ mod test {
             .unwrap();
 
         // Construct test message 1
-        let message_header = MessageHeader {
-            message_type: DomainBrokerType::Type1,
-        };
+        let message_header = MessageHeader::new(DomainBrokerType::Type1).unwrap();
         let message_body = "Test Message Body1".as_bytes().to_vec();
         let message_envelope_body1 = Message::from_message_format(message_header, message_body).unwrap();
         let dest_public_key = node_identity.identity.public_key.clone(); // Send to self
@@ -348,9 +357,7 @@ mod test {
         message1_frame_set.extend(message_data1.clone().try_into_frame_set().unwrap());
 
         // Construct test message 2
-        let message_header = MessageHeader {
-            message_type: DomainBrokerType::Type2,
-        };
+        let message_header = MessageHeader::new(DomainBrokerType::Type2).unwrap();
         let message_body = "Test Message Body2".as_bytes().to_vec();
         let message_envelope_body2 = Message::from_message_format(message_header, message_body).unwrap();
         let message_envelope = MessageEnvelope::construct(
@@ -371,6 +378,8 @@ mod test {
         // Submit Messages to the Worker
         pause();
         client_connection.send(message1_frame_set.clone()).unwrap();
+        client_connection.send(message2_frame_set.clone()).unwrap();
+        // Send duplicate message
         client_connection.send(message2_frame_set).unwrap();
 
         // Retrieve messages at handler services
@@ -385,6 +394,8 @@ mod test {
         let received_domain_message_context =
             DomainMessageContext::from_binary(&received_message_data_bytes[0]).unwrap();
         assert_eq!(received_domain_message_context.message, message_envelope_body2);
+        // Ensure duplicate message never reach handler service
+        assert!(handler2_queue_connection.receive(100).is_err());
 
         // Test worker clean shutdown
         control_sync_sender.send(ControlMessage::Shutdown).unwrap();

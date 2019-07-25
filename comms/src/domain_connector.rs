@@ -42,6 +42,7 @@ pub enum ConnectorError {
 }
 
 /// Information about the message received
+#[derive(Debug)]
 pub struct MessageInfo {
     pub source_identity: PeerNodeIdentity,
 }
@@ -323,7 +324,7 @@ mod test {
             poem: "meow meow".to_string(),
         };
 
-        let header = MessageHeader { message_type: 123 };
+        let header = MessageHeader::new(123).unwrap();
 
         let expected_pub_key = CommsPublicKey::random_keypair(&mut OsRng::new().unwrap()).1;
         let domain_message_context = DomainMessageContext {

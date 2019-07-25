@@ -45,6 +45,27 @@ use std::{
 };
 use tari_utilities::hex::to_hex;
 
+/// Represents messages that must be sent to a PeerConnection.
+pub enum PeerConnectionProtoMessage {
+    /// Sent to establish the identity frame for a PeerConnection. This must be sent by an
+    /// Outbound connection to an Inbound connection before any other communication occurs.
+    Identify = 0,
+    /// A peer message to be forwarded to the message sink (the IMS)
+    Message = 1,
+    /// Any other message is invalid and is discarded
+    Invalid,
+}
+
+impl From<u8> for PeerConnectionProtoMessage {
+    fn from(val: u8) -> Self {
+        match val {
+            0 => PeerConnectionProtoMessage::Identify,
+            1 => PeerConnectionProtoMessage::Message,
+            _ => PeerConnectionProtoMessage::Invalid,
+        }
+    }
+}
+
 /// Represents the ID of a PeerConnection. This is sent as the first frame
 /// to the message sink on the peer connection.
 #[derive(Debug, Clone, Eq, PartialEq)]

@@ -20,26 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use derive_error::Error;
-use tari_comms::{
-    domain_connector::ConnectorError,
-    outbound_message_service::OutboundError,
-    peer_manager::PeerManagerError,
-};
+use std::time::Duration;
 
-#[derive(Debug, Error)]
-pub enum DHTError {
-    OutboundError(OutboundError),
-    ConnectorError(ConnectorError),
-    /// OMS has not been initialized
-    OMSUndefined,
-    /// PeerManager has not been initialized
-    PeerManagerUndefined,
-    PeerManagerError(PeerManagerError),
-    /// Failed to send from API
-    ApiSendFailed,
-    /// Failed to receive in API from service
-    ApiReceiveFailed,
-    /// Received an unexpected response type from the API
-    UnexpectedApiResponse,
-}
+/// The maximum number of messages that can be stored using the MessageCache of the DHT
+pub const DHT_MSG_CACHE_STORAGE_CAPACITY: usize = 1000;
+/// The time-to-live duration used by the MessageCache for tracking received and handled messages
+pub const DHT_MSG_CACHE_TTL: Duration = Duration::from_secs(300);

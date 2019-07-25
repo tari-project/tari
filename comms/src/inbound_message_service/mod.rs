@@ -41,5 +41,9 @@ pub mod error;
 pub mod inbound_message_broker;
 pub mod inbound_message_service;
 pub mod inbound_message_worker;
+pub mod message_cache;
 
-pub use self::error::InboundError;
+pub use self::{
+    error::InboundError,
+    message_cache::{MessageCache, MessageCacheConfig},
+};

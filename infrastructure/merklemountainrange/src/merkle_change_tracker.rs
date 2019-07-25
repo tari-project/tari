@@ -21,13 +21,13 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{merkle_storage::*, merklenode::*};
+use croaring::Treemap;
 use serde::{de::DeserializeOwned, ser::Serialize};
 use serde_derive::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tari_utilities::hex::*;
 
 /// This struct keeps track of the changes on the MMR
-#[derive(Default)]
 pub(crate) struct MerkleChangeTracker {
     pub enabled: bool,
     objects_to_save: Vec<ObjectHash>,
@@ -41,6 +41,8 @@ pub(crate) struct MerkleChangeTracker {
     init_key: String,
     unsaved_checkpoints: Vec<MerkleCheckPoint>,
     uncleaned_checkpoints: Vec<CheckpointCleanup>,
+    unpruned_indices: Treemap,
+    pruned_indices: Treemap,
 }
 
 /// This struct is used as a temporary data struct summarizing all changes in a checkpoint.
@@ -51,6 +53,45 @@ pub(crate) struct MerkleCheckPoint {
     objects_to_add: Vec<ObjectHash>,
     pub objects_to_del: Vec<ObjectHash>,
     mmr_to_add: Vec<MerkleNode>,
+    #[serde(with = "treemap_serialize")]
+    unpruned_indices: Treemap,
+    #[serde(with = "treemap_serialize")]
+    pruned_indices: Treemap,
+}
+
+mod treemap_serialize {
+    use croaring::{treemap::NativeSerializer, Treemap};
+    use serde::{
+        self,
+        de::{self, Visitor},
+        Deserializer,
+        Serializer,
+    };
+    use std::fmt;
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Treemap, D::Error>
+    where D: Deserializer<'de> {
+        struct TreemapVisitor;
+
+        impl<'de> Visitor<'de> for TreemapVisitor {
+            type Value = Treemap;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a Roaring bitmap in binary")
+            }
+
+            fn visit_bytes<E>(self, v: &[u8]) -> Result<Treemap, E>
+            where E: de::Error {
+                Treemap::deserialize(v).map_err(serde::de::Error::custom)
+            }
+        }
+        deserializer.deserialize_bytes(TreemapVisitor)
+    }
+
+    pub fn serialize<S>(value: &Treemap, serializer: S) -> Result<S::Ok, S::Error>
+    where S: Serializer {
+        serializer.serialize_bytes(&value.serialize().unwrap())
+    }
 }
 
 pub(crate) struct CheckpointCleanup {
@@ -63,6 +104,8 @@ impl MerkleCheckPoint {
         self.objects_to_add.extend(rhs.objects_to_add.drain(..));
         self.objects_to_del = Vec::new();
         self.mmr_to_add.extend(rhs.mmr_to_add.drain(..));
+        self.unpruned_indices.or_inplace(&rhs.unpruned_indices);
+        self.pruned_indices.or_inplace(&rhs.pruned_indices);
 
         // The objects to be deleted will now be deleted without record of them as they are older than pruning horizon
         let mut i = rhs.objects_to_del.len();
@@ -103,6 +146,8 @@ impl MerkleChangeTracker {
             init_key: "".to_string(),
             unsaved_checkpoints: Vec::new(),
             uncleaned_checkpoints: Vec::new(),
+            unpruned_indices: Treemap::create(),
+            pruned_indices: Treemap::create(),
         }
     }
 
@@ -116,18 +161,20 @@ impl MerkleChangeTracker {
     }
 
     /// This function adds a ref to a object to be saved
-    pub fn add_new_data(&mut self, hash: ObjectHash) {
+    pub fn add_new_data(&mut self, hash: ObjectHash, leaf_index: usize) {
         if !self.enabled {
             return;
         }
+        self.unpruned_indices.add(leaf_index as u64);
         self.objects_to_save.push(hash);
     }
 
     /// This function adds a ref to a object to be saved
-    pub fn remove_data(&mut self, hash: ObjectHash) {
+    pub fn remove_data(&mut self, hash: ObjectHash, leaf_index: usize) {
         if !self.enabled {
             return;
         }
+        self.pruned_indices.add(leaf_index as u64);
         self.objects_to_del.push(hash);
     }
 
@@ -141,6 +188,8 @@ impl MerkleChangeTracker {
             objects_to_add: Vec::new(),
             objects_to_del: Vec::new(),
             mmr_to_add: Vec::new(),
+            pruned_indices: Treemap::create(),
+            unpruned_indices: Treemap::create(),
         };
 
         checkpoint.objects_to_add.extend(self.objects_to_save.drain(..));
@@ -150,10 +199,14 @@ impl MerkleChangeTracker {
             checkpoint.mmr_to_add.push(mmr[counter].clone());
             counter += 1;
         }
+        checkpoint.pruned_indices.or_inplace(&self.pruned_indices);
+        checkpoint.unpruned_indices.or_inplace(&self.unpruned_indices);
         self.unsaved_checkpoints.push(checkpoint);
 
         self.tree_saved = counter;
         self.current_horizon += 1;
+        self.pruned_indices = Treemap::create();
+        self.unpruned_indices = Treemap::create();
 
         Ok(())
     }
@@ -163,6 +216,7 @@ impl MerkleChangeTracker {
         &mut self,
         hashmap: &mut HashMap<ObjectHash, MerkleObject<T>>,
         mmr: &mut Vec<MerkleNode>,
+        unpruned_indices: &mut Treemap,
         store: &mut S,
     ) -> Result<(), MerkleStorageError>
     where
@@ -176,6 +230,8 @@ impl MerkleChangeTracker {
         mmr.drain(..);
         self.unsaved_checkpoints = Vec::new();
         self.uncleaned_checkpoints = Vec::new();
+        self.pruned_indices = Treemap::create();
+        self.unpruned_indices = Treemap::create();
         let amount_of_cps = store.load::<usize>(&("init").to_string(), &self.init_key)?;
         self.current_head_horizon = match amount_of_cps.checked_sub(self.pruning_horizon) {
             None => 0,
@@ -185,7 +241,7 @@ impl MerkleChangeTracker {
         while self.current_head_horizon < amount_of_cps {
             self.current_head_horizon += 1;
             let mut cp = store.load::<MerkleCheckPoint>(&self.current_head_horizon.to_string(), &self.mmr_key)?;
-            self.apply_cp(&mut cp, hashmap, mmr, store)?;
+            self.apply_cp(&mut cp, hashmap, mmr, unpruned_indices, store)?;
         }
         self.current_horizon = self.current_head_horizon;
         Ok(())
@@ -274,6 +330,7 @@ impl MerkleChangeTracker {
         &mut self,
         hashmap: &mut HashMap<ObjectHash, MerkleObject<T>>,
         mmr: &mut Vec<MerkleNode>,
+        unpruned_indices: &mut Treemap,
         store: &mut S,
     ) -> Result<(), MerkleStorageError>
     where
@@ -295,7 +352,7 @@ impl MerkleChangeTracker {
         while self.current_head_horizon < amount_of_cps {
             self.current_head_horizon += 1;
             let mut cp = store.load::<MerkleCheckPoint>(&self.current_head_horizon.to_string(), &self.mmr_key)?;
-            self.apply_cp(&mut cp, hashmap, mmr, store)?;
+            self.apply_cp(&mut cp, hashmap, mmr, unpruned_indices, store)?;
         }
         self.current_horizon = self.current_head_horizon;
         Ok(())
@@ -306,6 +363,7 @@ impl MerkleChangeTracker {
         &mut self,
         hashmap: &mut HashMap<ObjectHash, MerkleObject<T>>,
         mmr: &mut Vec<MerkleNode>,
+        unpruned_indices: &mut Treemap,
         rewind_amount: usize,
         store: &mut S,
     ) -> Result<(), MerkleStorageError>
@@ -318,7 +376,7 @@ impl MerkleChangeTracker {
 
         for _i in 0..rewind_amount {
             let mut cp = store.load::<MerkleCheckPoint>(&(self.current_horizon).to_string(), &self.mmr_key)?;
-            self.apply_cp_reverse(&mut cp, hashmap, mmr, store)?;
+            self.apply_cp_reverse(&mut cp, hashmap, mmr, unpruned_indices, store)?;
             self.uncleaned_checkpoints.push(cp.create_cleanup(self.current_horizon));
             self.current_horizon -= 1;
         }
@@ -330,6 +388,7 @@ impl MerkleChangeTracker {
         checkpoint: &mut MerkleCheckPoint,
         hashmap: &mut HashMap<ObjectHash, MerkleObject<T>>,
         mmr: &mut Vec<MerkleNode>,
+        unpruned_indices: &mut Treemap,
         store: &mut S,
     ) -> Result<(), MerkleStorageError>
     where
@@ -347,6 +406,10 @@ impl MerkleChangeTracker {
             }
             mmr[result.unwrap().vec_index].pruned = true;
         }
+        unpruned_indices.or_inplace(&checkpoint.unpruned_indices);
+        if !&checkpoint.pruned_indices.is_empty() {
+            unpruned_indices.andnot_inplace(&checkpoint.pruned_indices);
+        }
         Ok(())
     }
 
@@ -355,6 +418,7 @@ impl MerkleChangeTracker {
         checkpoint: &mut MerkleCheckPoint,
         hashmap: &mut HashMap<ObjectHash, MerkleObject<T>>,
         mmr: &mut Vec<MerkleNode>,
+        unpruned_indices: &mut Treemap,
         store: &mut S,
     ) -> Result<(), MerkleStorageError>
     where
@@ -373,6 +437,10 @@ impl MerkleChangeTracker {
             hashmap.insert(hash.clone(), object);
         }
         mmr.drain((mmr.len() - checkpoint.mmr_to_add.len())..);
+        if !&checkpoint.unpruned_indices.is_empty() {
+            unpruned_indices.andnot_inplace(&checkpoint.unpruned_indices);
+        }
+        unpruned_indices.or_inplace(&checkpoint.pruned_indices);
         Ok(())
     }
 
@@ -442,6 +510,7 @@ mod tests {
         mmr2.init_persistance_store(&"mmr".to_string(), 5);
         assert_eq!(mmr2.load_from_store(&mut store).is_ok(), true);
         assert_eq!(mmr.get_merkle_root(), mmr2.get_merkle_root());
+        assert_eq!(mmr.get_unpruned_hash(), mmr2.get_unpruned_hash());
 
         // add more leaves
         for i in 15..25 {
@@ -455,6 +524,7 @@ mod tests {
             mmr2.init_persistance_store(&"mmr".to_string(), 5);
             assert_eq!(mmr2.load_from_store(&mut store).is_ok(), true);
             assert_eq!(mmr.get_merkle_root(), mmr2.get_merkle_root());
+            assert_eq!(mmr.get_unpruned_hash(), mmr2.get_unpruned_hash());
         }
 
         // add much more leafs
@@ -473,7 +543,9 @@ mod tests {
             mmr2.init_persistance_store(&"mmr".to_string(), 5);
             assert_eq!(mmr2.load_from_store(&mut store).is_ok(), true);
             assert_eq!(mmr.get_merkle_root(), mmr2.get_merkle_root());
+            assert_eq!(mmr.get_unpruned_hash(), mmr2.get_unpruned_hash());
         }
+
         // try and find old deleted objects
         for i in 1..11 {
             let object: IWrapper = IWrapper(i);

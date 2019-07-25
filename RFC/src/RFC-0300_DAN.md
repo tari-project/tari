@@ -91,7 +91,7 @@ Any remaining spots on the committee will be filled by permissionless VNs that a
 that nominated themselves for a position on the committee when the AI broadcast a public call for VNs during the asset 
 creation process. For the VNs to accept the appointment to the committee, they will need to put up the specified collateral.
 
-[asset issuer]: Glossary.md#asset-issuer
+[Asset Issuer]: Glossary.md#asset-issuer
 [base layer]: Glossary.md#base-layer
 [committees]: Glossary.md#committee
 [CommitteeSelectionStrategy]: Glossary.md#committeeselectionstrategy

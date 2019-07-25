@@ -417,7 +417,7 @@ where
         MT: Serialize + DeserializeOwned,
         MT: MessageFormat,
     {
-        let header = MessageHeader { message_type };
+        let header = MessageHeader::new(message_type)?;
         let msg = Message::from_message_format(header, msg).map_err(ControlServiceError::MessageError)?;
 
         MessageEnvelope::construct(

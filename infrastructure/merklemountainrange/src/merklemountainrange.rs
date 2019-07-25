@@ -113,12 +113,12 @@ use crate::{
     merklenode::*,
     merkleproof::MerkleProof,
 };
+use croaring::{treemap::NativeSerializer, Treemap};
 use digest::Digest;
 use serde::{de::DeserializeOwned, Serialize};
 use std::{collections::HashMap, convert::TryFrom, marker::PhantomData};
 use tari_utilities::Hashable;
 
-#[derive(Default)]
 pub struct MerkleMountainRange<T, D> {
     // todo convert these to a bitmap
     mmr: Vec<MerkleNode>,
@@ -127,6 +127,7 @@ pub struct MerkleMountainRange<T, D> {
     current_peak_height: (usize, usize), // we store a tuple of peak height,index
     pub(crate) change_tracker: MerkleChangeTracker,
     last_added_object: ObjectHash,
+    unpruned_indices: Treemap,
 }
 
 impl<T, D> MerkleMountainRange<T, D>
@@ -143,6 +144,7 @@ where
             current_peak_height: (0, 0),
             change_tracker: MerkleChangeTracker::new(),
             last_added_object: Vec::new(),
+            unpruned_indices: Treemap::create(), // todo look at exposing this, might be help full
         }
     }
 
@@ -398,11 +400,23 @@ where
         self.mmr[self.current_peak_height.1].hash.clone()
     }
 
+    // This function will return the hash of the roaring bitmap of the unpruned object indices
+    pub fn get_unpruned_hash(&self) -> ObjectHash {
+        let mut hasher = D::new();
+        hasher.input(&self.unpruned_indices.serialize().unwrap()[..]); // this should not fail
+        return hasher.result().to_vec();
+    }
+
     /// This function adds a vec of leaf nodes to the mmr.
     /// It will return an error on a duplicate hash being added to the MMR
     pub fn append(&mut self, objects: Vec<T>) -> Result<(), MerkleMountainRangeError> {
         for object in objects {
             self.push(object)?;
+        }
+        if !self.change_tracker.enabled {
+            // We need to run optimize some where, if the change checker is active we run at checkpoints.
+            // If its not active we run here because we assumed a large amount was just added.
+            let _ = self.unpruned_indices.run_optimize();
         }
         Ok(())
     }
@@ -412,6 +426,7 @@ where
         if !self.change_tracker.enabled {
             return Err(MerkleStorageError::StoreNotEnabledError);
         }
+        let _ = self.unpruned_indices.run_optimize();
         self.change_tracker.checkpoint(&self.mmr)
     }
 
@@ -421,7 +436,7 @@ where
             return Err(MerkleStorageError::StoreNotEnabledError);
         }
         self.change_tracker
-            .reset_to_head(&mut self.data, &mut self.mmr, store)?;
+            .reset_to_head(&mut self.data, &mut self.mmr, &mut self.unpruned_indices, store)?;
         self.current_peak_height = self.calc_peak_height(); // calculate cached height after loading in data
         Ok(())
     }
@@ -441,8 +456,13 @@ where
                 "Cannot rewind past pruning horizon".to_owned(),
             ));
         }
-        self.change_tracker
-            .rewind(&mut self.data, &mut self.mmr, rewind_amount, store)?;
+        self.change_tracker.rewind(
+            &mut self.data,
+            &mut self.mmr,
+            &mut self.unpruned_indices,
+            rewind_amount,
+            store,
+        )?;
         self.current_peak_height = self.calc_peak_height(); // calculate cached height after loading in data
         Ok(())
     }
@@ -460,7 +480,8 @@ where
         if !self.change_tracker.enabled {
             return Err(MerkleStorageError::StoreNotEnabledError);
         }
-        self.change_tracker.load(&mut self.data, &mut self.mmr, store)?;
+        self.change_tracker
+            .load(&mut self.data, &mut self.mmr, &mut self.unpruned_indices, store)?;
         self.current_peak_height = self.calc_peak_height(); // calculate cached height after loading in data
         Ok(())
     }
@@ -474,10 +495,11 @@ where
             return Err(MerkleMountainRangeError::CannotAddToMMR);
         };
         if self.change_tracker.enabled {
-            self.change_tracker.add_new_data(node_hash.clone());
+            self.change_tracker.add_new_data(node_hash.clone(), self.mmr.len());
         };
         self.last_added_object = node_hash.clone();
         self.mmr.push(MerkleNode::new(node_hash));
+        self.unpruned_indices.add(self.get_last_added_index() as u64);
         if is_node_right(self.get_last_added_index()) {
             self.add_single_no_leaf(self.get_last_added_index())
         }
@@ -508,7 +530,7 @@ where
     fn bag_mmr(&self) -> Vec<ObjectHash> {
         // lets find all peaks of the mmr
         let mut peaks = Vec::new();
-        self.find_bagging_indexes(
+        self.find_bagging_indices(
             self.current_peak_height.0 as i64,
             self.current_peak_height.1,
             &mut peaks,
@@ -516,7 +538,7 @@ where
         peaks
     }
 
-    fn find_bagging_indexes(&self, mut height: i64, index: usize, peaks: &mut Vec<ObjectHash>) {
+    fn find_bagging_indices(&self, mut height: i64, index: usize, peaks: &mut Vec<ObjectHash>) {
         let mut new_index = index + (1 << (height + 1)) - 1; // go the potential right sibling
         while (new_index > self.get_last_added_index()) && (height > 0) {
             // lets go down left child till we hit a valid node or we reach height 0
@@ -526,7 +548,7 @@ where
         if (new_index <= self.get_last_added_index()) && (height >= 0) {
             // is this a valid peak which needs to be bagged
             peaks.push(self.mmr[new_index].hash.clone());
-            self.find_bagging_indexes(height, new_index, peaks); // lets go look for more peaks
+            self.find_bagging_indices(height, new_index, peaks); // lets go look for more peaks
         }
     }
 
@@ -538,14 +560,16 @@ where
             return Err(MerkleMountainRangeError::ObjectNotFound);
         };
         let object = object.unwrap();
-        if self.mmr[object.vec_index].pruned {
+        let vec_index = object.vec_index;
+        if self.mmr[vec_index].pruned {
             return Err(MerkleMountainRangeError::ObjectAlreadyPruned);
         }
-        self.mmr[object.vec_index].pruned = true;
+        self.mmr[vec_index].pruned = true;
+        self.unpruned_indices.remove(vec_index as u64);
 
         self.data.remove(hash);
         if self.change_tracker.enabled {
-            self.change_tracker.remove_data(hash.to_vec().clone());
+            self.change_tracker.remove_data(hash.to_vec().clone(), vec_index);
         };
         Ok(())
     }
@@ -588,6 +612,7 @@ where
             current_peak_height: (0, 0),
             change_tracker: MerkleChangeTracker::new(),
             last_added_object: Vec::new(),
+            unpruned_indices: Treemap::create(),
         };
         mmr.append(items)?;
         Ok(mmr)
@@ -692,6 +717,10 @@ mod tests {
         mmr
     }
 
+    fn create_object(number: u32) -> IWrapper {
+        IWrapper(number)
+    }
+
     #[test]
     fn test_inner_data_pruning_handling() {
         let mut mmr = create_mmr(2);
@@ -717,5 +746,30 @@ mod tests {
         // both are now pruned, thus deleted
         assert_eq!(mmr.data.get(&hash1).is_none(), true);
         assert_eq!(mmr.data.get(&hash0).is_none(), true);
+    }
+
+    #[test]
+    fn test_inner_roaring_bitmap_tracker() {
+        let mut mmr = create_mmr(2);
+        assert!(mmr.unpruned_indices.contains(0));
+        assert!(mmr.unpruned_indices.contains(1));
+        assert!(mmr.push(create_object(3)).is_ok());
+        assert!(mmr.unpruned_indices.contains(3));
+        assert!(mmr.push(create_object(4)).is_ok());
+        assert!(mmr.unpruned_indices.contains(4));
+        assert!(mmr.push(create_object(5)).is_ok());
+        assert!(mmr.unpruned_indices.contains(7));
+        assert!(mmr.push(create_object(6)).is_ok());
+        assert!(mmr.unpruned_indices.contains(8));
+
+        let hash1 = mmr.get_object_hash(1).unwrap();
+        assert_eq!(mmr.prune_object_hash(&hash1).is_ok(), true);
+        assert!(!mmr.unpruned_indices.contains(1));
+
+        let hash2 = mmr.get_object_hash(2).unwrap();
+
+        assert_eq!(mmr.data.get(&hash2).is_some(), true);
+        assert_eq!(mmr.prune_object_hash(&hash2).is_ok(), true);
+        assert!(!mmr.unpruned_indices.contains(3));
     }
 }
