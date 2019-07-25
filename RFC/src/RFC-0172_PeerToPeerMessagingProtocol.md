@@ -611,7 +611,7 @@ send messages to the rest of the network.
 In particular, it is responsible for:
 
 - serializing the message body;
-- constructing the [MessageEnvelope];
+- constructing the MessageEnvelope;
 - executing the required BroadcastStrategy; and
 - sending messages using the [ConnectionManager].
 
