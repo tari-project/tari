@@ -655,7 +655,7 @@ buckets and the size of each bucket SHOULD be sufficiently large as to be unlike
 large as to approach disk space problems. Individual messages should be small and responsibilities for
 storage spread over the entire network.
 
-A [communication node]
+A communication node
 
 - MUST store messages for later retransmission, if all of the following conditions are true:
   - the MessageType is permitted to be stored;
