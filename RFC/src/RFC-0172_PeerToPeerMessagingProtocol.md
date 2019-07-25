@@ -113,7 +113,7 @@ A quick overview of what ZeroMQ provides:
 This document will refer to several [ZeroMQ socket]s. These are referred to by prepending `ZMQ_` and the name
 of the socket in capitals. For example, `ZMQ_ROUTER`.
 
-**Note about [ZeroMQ] frames and multipart messages:**
+**Note about ZeroMQ frames and multipart messages:**
 
 [ZeroMQ] frames are length-specified blocks of binary data and can be strung together to make multipart messages.
 
