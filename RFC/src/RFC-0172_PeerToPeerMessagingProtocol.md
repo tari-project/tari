@@ -355,7 +355,7 @@ An InboundConnection:
 - MUST perform the "server-side" [CurveZMQ](http://curvezmq.org/page:read-the-docs) encryption protocol if encryption is set.
   - Using [ZeroMQ]. this means setting the socketopts `ZMQ_CURVE_SERVER` to 1 and `ZMQ_CURVE_SECRETKEY` to the secret key before binding.
 - MUST listen for and accept TCP connections.
-  - For an IP [NetAddress], bind on the given host IP and port.
+  - For an IP NetAddress, bind on the given host IP and port.
   - For an Onion [NetAddress], bind on 127.0.0.1 and the given port.
   - For an I2P [NetAddress], as yet undetermined.
 - MUST read multipart messages and return them to the caller.
