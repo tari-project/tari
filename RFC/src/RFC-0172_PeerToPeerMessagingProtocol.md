@@ -462,7 +462,7 @@ A `PeerConnection`:
 - MUST sequentially try to connect to one of the peer's [NetAddress]es until one succeeds or all fail using an [OutboundConnection];
 - MUST immediately reject and dispose of a multipart message not consisting of four parts, as detailed in MessageEnvelope;
 - MUST construct a MessageEnvelope from the multiple parts;
-- MUST pass the constructed [MessageEnvelope] to the message handler;
+- MUST pass the constructed MessageEnvelope to the message handler;
 - MUST transition to `Connecting` state and retry the connection, should a connection drop;
 - MUST send a `net::Disconnect` message and drop the connection when a shutdown signal is received.
 
