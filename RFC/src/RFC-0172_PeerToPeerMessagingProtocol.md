@@ -704,7 +704,7 @@ If the HWM is hit:
 [message]: #message
 [MessageEnvelope]: #MessageEnvelope
 [MessageEnvelopeBody]: #messageenvelopebody
-[MessageEnvelopeHeader]: #MessageEnvelopeHeader
+[MessageEnvelopeHeader]: #messageenvelopeheader
 [messageheader]: #messageheader
 [messagetype]: #messagetype
 [netaddress]: #netaddress
