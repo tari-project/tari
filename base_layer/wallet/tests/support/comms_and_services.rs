@@ -28,7 +28,10 @@ use tari_comms::{
     peer_manager::{NodeIdentity, Peer},
     CommsBuilder,
 };
-use tari_p2p::services::{ServiceExecutor, ServiceRegistry};
+use tari_p2p::{
+    services::{ServiceExecutor, ServiceRegistry},
+    tari_message::TariMessageType,
+};
 use tari_storage::lmdb_store::LMDBDatabase;
 use tari_wallet::text_message_service::{TextMessageService, TextMessageServiceApi};
 
