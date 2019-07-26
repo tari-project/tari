@@ -137,9 +137,9 @@ fn main() {
         peer_identity.control_service_address.into(),
         PeerFlags::empty(),
     );
-    comms.peer_manager.add_peer(peer).unwrap();
+    comms.peer_manager().add_peer(peer).unwrap();
 
-    let services = ServiceExecutor::execute(comms.clone(), services);
+    let services = ServiceExecutor::execute(&comms, services);
 
     run_ui(services, peer_identity.identity, pingpong);
 

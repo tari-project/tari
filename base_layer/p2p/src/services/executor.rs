@@ -38,6 +38,10 @@ use threadpool::ThreadPool;
 
 use crossbeam_channel as channel;
 use crossbeam_channel::{Receiver, RecvTimeoutError, Sender};
+use tari_comms::{
+    builder::{CommsRoutes, CommsServicesError},
+    connection::ZmqContext,
+};
 
 const LOG_TARGET: &str = "base_layer::p2p::services";
 
@@ -56,7 +60,7 @@ pub struct ServiceExecutor {
 
 impl ServiceExecutor {
     /// Execute the services contained in the given [ServiceRegistry].
-    pub fn execute(comms_services: Arc<CommsServices<TariMessageType>>, mut registry: ServiceRegistry) -> Self {
+    pub fn execute(comms_services: &CommsServices<TariMessageType>, registry: ServiceRegistry) -> Self {
         let thread_pool = threadpool::Builder::new()
             .thread_name("DomainServices".to_string())
             .num_threads(registry.num_services())
@@ -65,17 +69,20 @@ impl ServiceExecutor {
 
         let mut senders = Vec::new();
 
-        for mut service in registry.services.drain(..) {
+        for mut service in registry.services.into_iter() {
             let (sender, receiver) = channel::unbounded();
             senders.push(sender);
 
             let service_context = ServiceContext {
-                comms_services: comms_services.clone(),
+                oms: comms_services.outbound_message_service(),
+                peer_manager: comms_services.peer_manager(),
                 receiver,
+                routes: comms_services.routes().clone(),
+                zmq_context: comms_services.zmq_context().clone(),
             };
 
             thread_pool.execute(move || {
-                info!(target: LOG_TARGET, "Starting service {}", service.get_name(),);
+                info!(target: LOG_TARGET, "Starting service {}", service.get_name());
 
                 match service.execute(service_context) {
                     Ok(_) => {
@@ -143,8 +150,11 @@ impl ServiceExecutor {
 /// access the outbound message service and create [DomainConnector]s to receive comms messages of
 /// a particular [TariMessageType].
 pub struct ServiceContext {
-    comms_services: Arc<CommsServices<TariMessageType>>,
+    oms: Arc<OutboundMessageService>,
+    peer_manager: Arc<PeerManager>,
     receiver: Receiver<ServiceControlMessage>,
+    routes: CommsRoutes<TariMessageType>,
+    zmq_context: ZmqContext,
 }
 
 impl ServiceContext {
@@ -162,19 +172,24 @@ impl ServiceContext {
 
     /// Retrieve and `Arc` of the outbound message service. Used for sending outbound messages.
     pub fn outbound_message_service(&self) -> Arc<OutboundMessageService> {
-        self.comms_services.outbound_message_service()
+        Arc::clone(&self.oms)
     }
 
     /// Retrieve and `Arc` of the PeerManager. Used for managing peers.
     pub fn peer_manager(&self) -> Arc<PeerManager> {
-        self.comms_services.peer_manager.clone()
+        Arc::clone(&self.peer_manager)
     }
 
     /// Create a [DomainConnector] which listens for a particular [TariMessageType].
-    pub fn create_connector(&self, message_type: &TariMessageType) -> Result<DomainConnector<'static>, ServiceError> {
-        self.comms_services
-            .create_connector(message_type)
-            .map_err(ServiceError::CommsServicesError)
+    pub fn create_connector<'de>(&self, message_type: &TariMessageType) -> Result<DomainConnector<'de>, ServiceError> {
+        let addr = self
+            .routes
+            .get_address(&message_type)
+            .ok_or(ServiceError::CommsServicesError(
+                CommsServicesError::MessageTypeNotRegistered,
+            ))?;
+
+        DomainConnector::listen(&self.zmq_context, &addr).map_err(ServiceError::ConnectorError)
     }
 }
 
@@ -263,7 +278,7 @@ mod test {
             .map(Arc::new)
             .unwrap();
 
-        let services = ServiceExecutor::execute(comms_services.clone(), registry);
+        let services = ServiceExecutor::execute(&comms_services, registry);
 
         services.shutdown().unwrap();
         services.join_timeout(Duration::from_millis(100)).unwrap();

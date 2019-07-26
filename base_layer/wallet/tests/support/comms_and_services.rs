@@ -22,6 +22,7 @@
 
 use std::{sync::Arc, time::Duration};
 use tari_comms::{
+    builder::CommsServices,
     connection_manager::PeerConnectionConfig,
     control_service::ControlServiceConfig,
     peer_manager::{NodeIdentity, Peer},
@@ -39,7 +40,11 @@ pub fn setup_text_message_service(
     peers: Vec<NodeIdentity>,
     peer_database: LMDBDatabase,
     database_path: String,
-) -> (ServiceExecutor, Arc<TextMessageServiceApi>)
+) -> (
+    ServiceExecutor,
+    Arc<TextMessageServiceApi>,
+    CommsServices<TariMessageType>,
+)
 {
     let tms = TextMessageService::new(node_identity.identity.public_key.clone(), database_path);
     let tms_api = tms.get_api();
@@ -74,5 +79,5 @@ pub fn setup_text_message_service(
             .unwrap();
     }
 
-    (ServiceExecutor::execute(Arc::new(comms), services), tms_api)
+    (ServiceExecutor::execute(&comms, services), tms_api, comms)
 }

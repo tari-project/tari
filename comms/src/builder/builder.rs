@@ -437,7 +437,7 @@ pub struct CommsServices<MType> {
     inbound_message_broker: Arc<InboundMessageBroker<MType>>,
     outbound_message_pool: OutboundMessagePool,
     connection_manager: Arc<ConnectionManager>,
-    pub peer_manager: Arc<PeerManager>,
+    peer_manager: Arc<PeerManager>,
 }
 
 impl<MType> CommsServices<MType>
@@ -445,12 +445,20 @@ where
     MType: DispatchableKey,
     MType: Clone,
 {
-    pub fn peer_manager(&self) -> &PeerManager {
-        &self.peer_manager
+    pub fn zmq_context(&self) -> &ZmqContext {
+        &self.zmq_context
+    }
+
+    pub fn peer_manager(&self) -> Arc<PeerManager> {
+        Arc::clone(&self.peer_manager)
     }
 
     pub fn outbound_message_service(&self) -> Arc<OutboundMessageService> {
         Arc::clone(&self.outbound_message_service)
+    }
+
+    pub fn routes(&self) -> &CommsRoutes<MType> {
+        &self.routes
     }
 
     pub fn create_connector<'de>(&self, message_type: &MType) -> Result<DomainConnector<'de>, CommsServicesError> {
