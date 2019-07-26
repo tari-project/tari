@@ -68,7 +68,7 @@ pub struct BlockHeader {
     pub total_kernel_offset: BlindingFactor,
     /// Nonce used
     /// Proof of work summary
-    pub pow: POW,
+    pub pow: ProofOfWork,
 }
 
 impl BlockHeader {
@@ -89,7 +89,7 @@ impl Default for BlockHeader {
             range_proof_mr: [0; 32],
             kernel_mr: [0; 32],
             total_kernel_offset: RistrettoSecretKey::from(0),
-            pow: POW::default(),
+            pow: ProofOfWork::default(),
         }
     }
 }

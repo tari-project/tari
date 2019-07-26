@@ -43,7 +43,7 @@ pub struct Chain {
     /// This is all valid blocks which dont have a parent trace to the genesis block
     orphans: HashMap<BlockHash, Block>,
     /// The current head's total proof of work
-    pub current_total_pow: POW,
+    pub current_total_pow: ProofOfWork,
 }
 
 impl Chain {
@@ -51,7 +51,7 @@ impl Chain {
         let chain = Chain {
             block_chain_state: BlockchainState::new()?,
             orphans: HashMap::new(),
-            current_total_pow: POW::default(),
+            current_total_pow: ProofOfWork::default(),
         };
         Ok(chain)
     }
@@ -88,7 +88,7 @@ impl Chain {
         let pow = new_block.header.pow.clone();
         self.orphans.insert(hash, new_block);
         let mut currently_used_orphans: Vec<BlockHash> = Vec::new();
-        if self.current_total_pow.is_total_accumulated_difficulty_higher(&pow) {
+        if self.current_total_pow.has_more_accum_work_than(&pow) {
             // we have a potential re-org here
             let result = self.handle_re_org(&hash, &mut currently_used_orphans);
             let result = if result.is_err() {

@@ -62,7 +62,7 @@ pub fn get_gen_header() -> BlockHeader {
         total_kernel_offset: RistrettoSecretKey::from(0),
         /// Nonce used
         /// Proof of work summary
-        pow: POW::default(),
+        pow: ProofOfWork::default(),
     }
 }
 

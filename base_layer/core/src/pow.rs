@@ -23,9 +23,9 @@
 use crate::block::AggregateBody;
 use serde::{Deserialize, Serialize};
 /// This describes the interface the block validation will use when interacting with the proof of work.
-pub trait ProofOfWork {
+pub trait ProofOfWorkInterface {
     /// This function will compare another proof of work. It will return true if the other is higher.
-    fn is_total_accumulated_difficulty_higher(&self, other: &Self) -> bool;
+    fn has_more_accum_work_than(&self, other: &Self) -> bool;
     /// This function provides the proof that is supplied in the block header as bytes.
     fn proof_as_bytes(&self) -> Vec<u8>;
     /// This function  will validate the proof of work for the given block.
@@ -43,7 +43,7 @@ impl MockProofOfWork {
     }
 }
 
-impl ProofOfWork for MockProofOfWork {
+impl ProofOfWorkInterface for MockProofOfWork {
     fn proof_as_bytes(&self) -> Vec<u8> {
         let mut buf = Vec::new();
         bincode::serialize_into(&mut buf, self).unwrap(); // this should not fail

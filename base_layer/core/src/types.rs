@@ -69,7 +69,7 @@ pub type MessageHash = Vec<u8>;
 pub type RangeProofService = DalekRangeProofService;
 
 /// Specify the Proof of Work
-pub type POW = MockProofOfWork;
+pub type ProofOfWork = MockProofOfWork;
 
 #[cfg(test)]
 pub const MAX_RANGE_PROOF_RANGE: usize = 32; // 2^32 This is the only way to produce failing range proofs for the tests
