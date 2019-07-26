@@ -239,7 +239,6 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
-
     use crate::{
         connection::{Connection, Direction, NetAddress},
         inbound_message_service::comms_msg_handlers::construct_comms_msg_dispatcher,
@@ -254,6 +253,7 @@ mod test {
         },
         peer_manager::{peer_manager::PeerManager, NodeIdentity, PeerFlags},
     };
+    use crossbeam_channel as channel;
     use serde::{Deserialize, Serialize};
     use std::{
         sync::Arc,
@@ -306,16 +306,10 @@ mod test {
             "127.0.0.1:9000".parse::<NetAddress>().unwrap().into(),
             PeerFlags::empty(),
         );
+        let (message_sender, _) = channel::unbounded();
         peer_manager.add_peer(peer).unwrap();
-        let outbound_message_service = Arc::new(
-            OutboundMessageService::new(
-                context.clone(),
-                node_identity.clone(),
-                InprocAddress::random(),
-                peer_manager.clone(),
-            )
-            .unwrap(),
-        );
+        let outbound_message_service =
+            Arc::new(OutboundMessageService::new(node_identity.clone(), message_sender, peer_manager.clone()).unwrap());
         let ims_config = InboundMessageServiceConfig::default();
         let worker = InboundMessageWorker::new(
             ims_config,

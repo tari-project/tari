@@ -22,16 +22,10 @@
 
 use super::{outbound_message_pool::OutboundMessage, BroadcastStrategy, OutboundError};
 use crate::{
-    connection::{
-        types::Linger,
-        zmq::{InprocAddress, ZmqContext},
-        Connection,
-        Direction,
-        SocketEstablishment,
-    },
     message::{Frame, Message, MessageEnvelope, MessageError, MessageFlags, NodeDestination},
     peer_manager::{peer_manager::PeerManager, NodeIdentity},
 };
+use crossbeam_channel::Sender;
 use std::{convert::TryInto, sync::Arc};
 use tari_utilities::message_format::MessageFormat;
 
@@ -39,25 +33,21 @@ use tari_utilities::message_format::MessageFormat;
 /// messages from handlers, apply a broadcasting strategy, encrypted and serialized the messages into OutboundMessages
 /// and write them to the outbound message pool.
 pub struct OutboundMessageService {
-    context: ZmqContext,
-    outbound_address: InprocAddress,
+    message_sender: Sender<OutboundMessage>,
     node_identity: Arc<NodeIdentity>,
     peer_manager: Arc<PeerManager>,
 }
 
 impl OutboundMessageService {
-    /// Constructs a new OutboundMessageService from the context, node_identity and outbound_address
+    /// Constructs a new OutboundMessageService
     pub fn new(
-        context: ZmqContext,
         node_identity: Arc<NodeIdentity>,
-        outbound_address: InprocAddress, /* The outbound_address is an inproc that connects the OutboundMessagePool
-                                          * and the OutboundMessageService */
+        message_sender: Sender<OutboundMessage>,
         peer_manager: Arc<PeerManager>,
     ) -> Result<OutboundMessageService, OutboundError>
     {
         Ok(OutboundMessageService {
-            context,
-            outbound_address,
+            message_sender,
             node_identity,
             peer_manager,
         })
@@ -102,33 +92,21 @@ impl OutboundMessageService {
         // personalised message to each selected peer
         let selected_node_identities = self.peer_manager.get_broadcast_identities(broadcast_strategy)?;
 
-        if selected_node_identities.len() > 0 {
-            // Send message to outbound message pool
-            let outbound_connection = Connection::new(&self.context, Direction::Outbound)
-                .set_name("OMS to OMP")
-                .set_linger(Linger::Timeout(5000))
-                .set_socket_establishment(SocketEstablishment::Connect)
-                .establish(&self.outbound_address)
-                .map_err(|e| OutboundError::ConnectionError(e))?;
+        // Constructing a MessageEnvelope for each recipient
+        for dest_node_identity in selected_node_identities.into_iter() {
+            let message_envelope = MessageEnvelope::construct(
+                &self.node_identity,
+                dest_node_identity.public_key.clone(),
+                NodeDestination::NodeId(dest_node_identity.node_id.clone()),
+                message_envelope_body.clone(),
+                flags,
+            )
+            .map_err(OutboundError::MessageSerializationError)?;
 
-            // Constructing a MessageEnvelope for each recipient
-            for dest_node_identity in selected_node_identities.into_iter() {
-                let message_envelope = MessageEnvelope::construct(
-                    &self.node_identity,
-                    dest_node_identity.public_key.clone(),
-                    NodeDestination::NodeId(dest_node_identity.node_id.clone()),
-                    message_envelope_body.clone(),
-                    flags,
-                )
-                .map_err(OutboundError::MessageSerializationError)?;
-
-                let msg = OutboundMessage::new(dest_node_identity.node_id, message_envelope.into_frame_set());
-                let msg_buffer = msg.to_binary().map_err(OutboundError::MessageFormatError)?;
-
-                outbound_connection
-                    .send(&[msg_buffer])
-                    .map_err(OutboundError::ConnectionError)?;
-            }
+            let msg = OutboundMessage::new(dest_node_identity.node_id, message_envelope.into_frame_set());
+            self.message_sender
+                .send(msg)
+                .map_err(|_| OutboundError::SyncSenderError)?;
         }
         Ok(())
     }
@@ -151,29 +129,18 @@ impl OutboundMessageService {
         // received message to each selected peer
         let selected_node_identities = self.peer_manager.get_broadcast_identities(broadcast_strategy)?;
 
-        if selected_node_identities.len() > 0 {
-            // Send message to outbound message pool
-            let outbound_connection = Connection::new(&self.context, Direction::Outbound)
-                .set_name("OMS to OMP")
-                .set_linger(Linger::Timeout(5000))
-                .set_socket_establishment(SocketEstablishment::Connect)
-                .establish(&self.outbound_address)
-                .map_err(|e| OutboundError::ConnectionError(e))?;
+        // Modify MessageEnvelope for forwarding
+        let message_envelope = MessageEnvelope::forward_construct(&self.node_identity, message_envelope)
+            .map_err(OutboundError::MessageSerializationError)?;
+        let message_envelope_frames = message_envelope.into_frame_set();
 
-            // Modify MessageEnvelope for forwarding
-            let message_envelope = MessageEnvelope::forward_construct(&self.node_identity, message_envelope)
-                .map_err(OutboundError::MessageSerializationError)?;
-            let message_envelope_frames = message_envelope.into_frame_set();
+        // Constructing an OutboundMessage for each recipient
+        for dest_node_identity in selected_node_identities.into_iter() {
+            let msg = OutboundMessage::new(dest_node_identity.node_id, message_envelope_frames.clone());
 
-            // Constructing an OutboundMessage for each recipient
-            for dest_node_identity in selected_node_identities.into_iter() {
-                let msg = OutboundMessage::new(dest_node_identity.node_id, message_envelope_frames.clone());
-                let msg_buffer = msg.to_binary().map_err(OutboundError::MessageFormatError)?;
-
-                outbound_connection
-                    .send(&[msg_buffer])
-                    .map_err(OutboundError::ConnectionError)?;
-            }
+            self.message_sender
+                .send(msg)
+                .map_err(|_| OutboundError::SyncSenderError)?;
         }
         Ok(())
     }
@@ -185,13 +152,14 @@ mod test {
 
     use crate::{
         connection::net_address::NetAddress,
-        message::{FrameSet, Message},
+        message::Message,
         peer_manager::{
             node_id::NodeId,
             peer::{Peer, PeerFlags},
         },
     };
-    use log::*;
+    use bitflags::_core::time::Duration;
+    use crossbeam_channel as channel;
     use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
     use tari_storage::key_val_store::HMapDatabase;
 
@@ -204,16 +172,7 @@ mod test {
 
     #[test]
     fn test_outbound_send() {
-        let context = ZmqContext::new();
         let mut rng = rand::OsRng::new().unwrap();
-        let outbound_address = InprocAddress::random();
-
-        // Create a Outbound Message Pool connection that will receive messages from the outbound message service
-        let message_queue_connection = Connection::new(&context, Direction::Inbound)
-            .set_socket_establishment(SocketEstablishment::Bind)
-            .establish(&outbound_address)
-            .unwrap();
-
         let node_identity = Arc::new(NodeIdentity::random_for_test(None));
 
         let (dest_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
@@ -225,8 +184,9 @@ mod test {
         let peer_manager = Arc::new(PeerManager::new(HMapDatabase::new()).unwrap());
         peer_manager.add_peer(dest_peer.clone()).unwrap();
 
+        let (message_sender, message_receiver) = channel::unbounded();
         let outbound_message_service =
-            OutboundMessageService::new(context, node_identity.clone(), outbound_address, peer_manager).unwrap();
+            OutboundMessageService::new(node_identity.clone(), message_sender, peer_manager).unwrap();
 
         // Construct and send OutboundMessage
         let message_header = "Test Message Header".as_bytes().to_vec();
@@ -240,15 +200,8 @@ mod test {
             )
             .unwrap();
 
-        let msg_bytes: FrameSet = message_queue_connection.receive(100).unwrap().drain(1..).collect();
-        debug!(
-            target: "comms::outbound_message_service::outbound_message_service",
-            "Received message bytes: {:?}", msg_bytes
-        );
-        let outbound_message = OutboundMessage::from_binary(&msg_bytes[0]).unwrap();
+        let outbound_message = message_receiver.recv_timeout(Duration::from_millis(100)).unwrap();
         assert_eq!(outbound_message.destination_node_id(), &dest_peer.node_id);
-        assert_eq!(outbound_message.num_attempts(), 0);
-        assert_eq!(outbound_message.is_scheduled(), true);
         let message_envelope: MessageEnvelope = outbound_message.message_frames().clone().try_into().unwrap();
         let message_envelope_header = message_envelope.deserialize_header().unwrap();
         assert_eq!(message_envelope_header.origin_source, node_identity.identity.public_key);
@@ -269,15 +222,7 @@ mod test {
 
     #[test]
     fn test_outbound_forward() {
-        let context = ZmqContext::new();
-        let outbound_address = InprocAddress::random();
-
-        // Create a Outbound Message Pool connection that will receive messages from the outbound message service
-        let message_queue_connection = Connection::new(&context, Direction::Inbound)
-            .set_socket_establishment(SocketEstablishment::Bind)
-            .establish(&outbound_address)
-            .unwrap();
-
+        let (message_sender, message_receiver) = channel::unbounded();
         let origin_node_identity = Arc::new(NodeIdentity::random_for_test(None));
         let peer_node_identity = Arc::new(NodeIdentity::random_for_test(None));
         let dest_node_identity = Arc::new(NodeIdentity::random_for_test(None));
@@ -295,7 +240,7 @@ mod test {
         peer_manager.add_peer(dest_peer.clone()).unwrap();
 
         let outbound_message_service =
-            OutboundMessageService::new(context, peer_node_identity.clone(), outbound_address, peer_manager).unwrap();
+            OutboundMessageService::new(peer_node_identity.clone(), message_sender, peer_manager).unwrap();
 
         // Origin constructs MessageEnvelope
         let desire_message_body = make_test_message_frame();
@@ -318,15 +263,8 @@ mod test {
             )
             .unwrap();
 
-        let msg_bytes: FrameSet = message_queue_connection.receive(100).unwrap().drain(1..).collect();
-        debug!(
-            target: "comms::outbound_message_service::outbound_message_service",
-            "Received message bytes: {:?}", msg_bytes
-        );
-        let outbound_message = OutboundMessage::from_binary(&msg_bytes[0]).unwrap();
+        let outbound_message = message_receiver.recv_timeout(Duration::from_millis(100)).unwrap();
         assert_eq!(outbound_message.destination_node_id(), &dest_peer.node_id);
-        assert_eq!(outbound_message.num_attempts(), 0);
-        assert_eq!(outbound_message.is_scheduled(), true);
         let message_envelope: MessageEnvelope = outbound_message.message_frames().clone().try_into().unwrap();
         let message_envelope_header = message_envelope.deserialize_header().unwrap();
         assert_eq!(

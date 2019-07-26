@@ -173,6 +173,7 @@ mod test {
         },
         peer_manager::{peer_manager::PeerManager, NodeIdentity, Peer, PeerFlags},
     };
+    use crossbeam_channel as channel;
     use serde::{Deserialize, Serialize};
     use std::{sync::Arc, thread, time::Duration};
     use tari_storage::key_val_store::HMapDatabase;
@@ -218,7 +219,7 @@ mod test {
             Type1,
         }
 
-        // Create MessageDispatcher, InboundMessageBroker, PeerManager, OutboundMessageService and InboundMessageService
+        // Create MessageDispatcher, InboundMessageBroker, PeerManager, OutboundMessageService and
         let message_dispatcher = Arc::new(construct_comms_msg_dispatcher::<DomainBrokerType>());
         let inbound_message_broker = Arc::new(
             InboundMessageBroker::new(context.clone())
@@ -227,6 +228,7 @@ mod test {
                 .unwrap(),
         );
 
+        let (message_sender, _) = channel::unbounded();
         let peer_manager = Arc::new(PeerManager::new(HMapDatabase::new()).unwrap());
         // Add peer to peer manager
         let peer = Peer::new(
@@ -236,15 +238,8 @@ mod test {
             PeerFlags::empty(),
         );
         peer_manager.add_peer(peer).unwrap();
-        let outbound_message_service = Arc::new(
-            OutboundMessageService::new(
-                context.clone(),
-                node_identity.clone(),
-                InprocAddress::random(),
-                peer_manager.clone(),
-            )
-            .unwrap(),
-        );
+        let outbound_message_service =
+            Arc::new(OutboundMessageService::new(node_identity.clone(), message_sender, peer_manager.clone()).unwrap());
         let ims_config = InboundMessageServiceConfig::default();
         let mut inbound_message_service = InboundMessageService::new(
             ims_config,

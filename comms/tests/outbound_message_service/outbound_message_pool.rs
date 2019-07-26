@@ -147,31 +147,16 @@ fn outbound_message_pool_no_retry() {
     );
 
     // Setup Node A OMP and OMS
-    let omp_inbound_address = InprocAddress::random();
     let omp_config = OutboundMessagePoolConfig::default();
     let mut omp = OutboundMessagePool::new(
         omp_config.clone(),
-        context.clone(),
-        omp_inbound_address.clone(),
         node_A_peer_manager.clone(),
         node_A_connection_manager.clone(),
     );
 
-    let oms = OutboundMessageService::new(
-        context.clone(),
-        node_identity.clone(),
-        omp_inbound_address.clone(),
-        node_A_peer_manager.clone(),
-    )
-    .unwrap();
+    let oms = OutboundMessageService::new(node_identity.clone(), omp.sender(), node_A_peer_manager.clone()).unwrap();
 
-    let oms2 = OutboundMessageService::new(
-        context.clone(),
-        node_identity.clone(),
-        omp_inbound_address,
-        node_A_peer_manager.clone(),
-    )
-    .unwrap();
+    let oms2 = OutboundMessageService::new(node_identity.clone(), omp.sender(), node_A_peer_manager.clone()).unwrap();
 
     omp.start().unwrap();
     let message_envelope_body = vec![0, 1, 2, 3];
@@ -244,7 +229,7 @@ fn test_outbound_message_pool_fail_and_retry() {
     let node_A_msg_sink_address = InprocAddress::random();
 
     // Add node B to node A's peer manager
-    let database_name = "omp_test_outbound_message_pool_requeuing"; // Note: every test should have unique database
+    let database_name = "omp_test_outbound_message_pool_fail_and_retry"; // Note: every test should have unique database
     let datastore = init_datastore(database_name).unwrap();
     let database = datastore.get_handle(database_name).unwrap();
     let node_A_peer_manager = factories::peer_manager::create()
@@ -263,24 +248,14 @@ fn test_outbound_message_pool_fail_and_retry() {
         .unwrap();
 
     // Setup Node A OMP and OMS
-    let omp_inbound_address = InprocAddress::random();
-
     let omp_config = OutboundMessagePoolConfig::default();
     let mut omp = OutboundMessagePool::new(
         omp_config.clone(),
-        context.clone(),
-        omp_inbound_address.clone(),
         node_A_peer_manager.clone(),
         node_A_connection_manager.clone(),
     );
 
-    let oms = OutboundMessageService::new(
-        context.clone(),
-        node_A_identity.clone(),
-        omp_inbound_address.clone(),
-        node_A_peer_manager.clone(),
-    )
-    .unwrap();
+    let oms = OutboundMessageService::new(node_A_identity.clone(), omp.sender(), node_A_peer_manager.clone()).unwrap();
 
     omp.start().unwrap();
     let message_envelope_body = vec![0, 1, 2, 3];

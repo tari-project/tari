@@ -37,12 +37,14 @@ use crate::{
         outbound_message_pool::{OutboundMessagePoolConfig, OutboundMessagePoolError},
         outbound_message_service::OutboundMessageService,
         OutboundError,
+        OutboundMessage,
         OutboundMessagePool,
     },
     peer_manager::{NodeIdentity, PeerManager, PeerManagerError},
     types::CommsDatabase,
     DomainConnector,
 };
+use crossbeam_channel::Sender;
 use derive_error::Error;
 use log::*;
 use serde::{de::DeserializeOwned, export::fmt::Debug, Serialize};
@@ -206,37 +208,24 @@ where
     fn make_outbound_message_service(
         &self,
         node_identity: Arc<NodeIdentity>,
-        message_sink_address: InprocAddress,
+        message_sink: Sender<OutboundMessage>,
         peer_manager: Arc<PeerManager>,
     ) -> Result<Arc<OutboundMessageService>, CommsBuilderError>
     {
-        OutboundMessageService::new(
-            self.zmq_context.clone(),
-            node_identity,
-            message_sink_address,
-            peer_manager,
-        )
-        .map(Arc::new)
-        .map_err(CommsBuilderError::OutboundMessageServiceError)
+        OutboundMessageService::new(node_identity, message_sink, peer_manager)
+            .map(Arc::new)
+            .map_err(CommsBuilderError::OutboundMessageServiceError)
     }
 
     fn make_outbound_message_pool(
         &mut self,
-        message_sink_address: InprocAddress,
         peer_manager: Arc<PeerManager>,
         connection_manager: Arc<ConnectionManager>,
     ) -> OutboundMessagePool
     {
         let config = self.omp_config.take().unwrap_or_default();
 
-        OutboundMessagePool::new(
-            config,
-            self.zmq_context.clone(),
-            // OMP can requeue back onto itself
-            message_sink_address.clone(),
-            peer_manager,
-            connection_manager,
-        )
+        OutboundMessagePool::new(config, peer_manager, connection_manager)
     }
 
     fn make_inbound_message_service(
@@ -294,18 +283,13 @@ where
         let connection_manager =
             self.make_connection_manager(node_identity.clone(), peer_manager.clone(), peer_conn_config.clone());
 
-        let outbound_message_sink_address = InprocAddress::random();
+        let outbound_message_pool = self.make_outbound_message_pool(peer_manager.clone(), connection_manager.clone());
+
         let outbound_message_service = self.make_outbound_message_service(
             node_identity.clone(),
-            outbound_message_sink_address.clone(),
+            outbound_message_pool.sender(),
             peer_manager.clone(),
         )?;
-
-        let outbound_message_pool = self.make_outbound_message_pool(
-            outbound_message_sink_address,
-            peer_manager.clone(),
-            connection_manager.clone(),
-        );
 
         let inbound_message_broker = self.make_inbound_message_broker(&routes)?;
 
