@@ -32,7 +32,7 @@ pub trait ProofOfWorkInterface {
     fn validate_pow(&self, body: &AggregateBody) -> bool;
 }
 
-#[derive(Serialize, Deserialize, Default, Clone, Debug)]
+#[derive(Serialize, Deserialize, Default, Clone, Debug, PartialEq)]
 pub struct MockProofOfWork {
     work: u64,
 }
