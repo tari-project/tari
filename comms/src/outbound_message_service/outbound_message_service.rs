@@ -132,6 +132,51 @@ impl OutboundMessageService {
         }
         Ok(())
     }
+
+    /// Forwards a received message_envelope to other peers using the given BroadcastStrategy.
+    ///
+    /// *Arguments*
+    ///
+    /// - `broadcast_strategy`: [BroadcastStrategy]
+    /// - `message_envelope`: MessageEnvelope - The message to forward.
+    ///
+    /// [BroadcastStrategy]: ../broadcast_strategy/enum.BroadcastStrategy.html
+    pub fn forward_message(
+        &self,
+        broadcast_strategy: BroadcastStrategy,
+        message_envelope: MessageEnvelope,
+    ) -> Result<(), OutboundError>
+    {
+        // Use the BroadcastStrategy to select appropriate peer(s) from PeerManager and then forward the
+        // received message to each selected peer
+        let selected_node_identities = self.peer_manager.get_broadcast_identities(broadcast_strategy)?;
+
+        if selected_node_identities.len() > 0 {
+            // Send message to outbound message pool
+            let outbound_connection = Connection::new(&self.context, Direction::Outbound)
+                .set_name("OMS to OMP")
+                .set_linger(Linger::Timeout(5000))
+                .set_socket_establishment(SocketEstablishment::Connect)
+                .establish(&self.outbound_address)
+                .map_err(|e| OutboundError::ConnectionError(e))?;
+
+            // Modify MessageEnvelope for forwarding
+            let message_envelope = MessageEnvelope::forward_construct(&self.node_identity, message_envelope)
+                .map_err(OutboundError::MessageSerializationError)?;
+            let message_envelope_frames = message_envelope.into_frame_set();
+
+            // Constructing an OutboundMessage for each recipient
+            for dest_node_identity in selected_node_identities.into_iter() {
+                let msg = OutboundMessage::new(dest_node_identity.node_id, message_envelope_frames.clone());
+                let msg_buffer = msg.to_binary().map_err(OutboundError::MessageFormatError)?;
+
+                outbound_connection
+                    .send(&[msg_buffer])
+                    .map_err(OutboundError::ConnectionError)?;
+            }
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -149,6 +194,13 @@ mod test {
     use log::*;
     use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
     use tari_storage::key_val_store::HMapDatabase;
+
+    fn make_test_message_frame() -> Frame {
+        let message_header = "Test Message Header".as_bytes().to_vec();
+        let message_body = "Test Message Body".as_bytes().to_vec();
+        let message_envelope_body = Message::from_message_format(message_header, message_body).unwrap();
+        message_envelope_body.to_binary().unwrap()
+    }
 
     #[test]
     fn test_outbound_send() {
@@ -199,18 +251,105 @@ mod test {
         assert_eq!(outbound_message.is_scheduled(), true);
         let message_envelope: MessageEnvelope = outbound_message.message_frames().clone().try_into().unwrap();
         let message_envelope_header = message_envelope.deserialize_header().unwrap();
-        assert_eq!(message_envelope_header.source, node_identity.identity.public_key);
+        assert_eq!(message_envelope_header.origin_source, node_identity.identity.public_key);
+        assert_eq!(message_envelope_header.peer_source, node_identity.identity.public_key);
         assert_eq!(
             message_envelope_header.dest,
             NodeDestination::NodeId(dest_peer.node_id.clone())
         );
         assert!(message_envelope_header
-            .verify_signature(message_envelope.body_frame())
+            .verify_signatures(message_envelope.body_frame().clone())
             .unwrap());
         assert_eq!(message_envelope_header.flags, MessageFlags::ENCRYPTED);
         let decrypted_message = message_envelope
             .deserialize_encrypted_body(&dest_sk, &node_identity.identity.public_key)
             .unwrap();
         assert_eq!(message, decrypted_message);
+    }
+
+    #[test]
+    fn test_outbound_forward() {
+        let context = ZmqContext::new();
+        let outbound_address = InprocAddress::random();
+
+        // Create a Outbound Message Pool connection that will receive messages from the outbound message service
+        let message_queue_connection = Connection::new(&context, Direction::Inbound)
+            .set_socket_establishment(SocketEstablishment::Bind)
+            .establish(&outbound_address)
+            .unwrap();
+
+        let origin_node_identity = Arc::new(NodeIdentity::random_for_test(None));
+        let peer_node_identity = Arc::new(NodeIdentity::random_for_test(None));
+        let dest_node_identity = Arc::new(NodeIdentity::random_for_test(None));
+
+        let net_addresses = "127.0.0.1:55445".parse::<NetAddress>().unwrap().into();
+        let dest_peer = Peer::new(
+            dest_node_identity.identity.public_key.clone(),
+            dest_node_identity.identity.node_id.clone(),
+            net_addresses,
+            PeerFlags::default(),
+        );
+
+        // Setup OutboundMessageService and transmit a message to the destination
+        let peer_manager = Arc::new(PeerManager::new(HMapDatabase::new()).unwrap());
+        peer_manager.add_peer(dest_peer.clone()).unwrap();
+
+        let outbound_message_service =
+            OutboundMessageService::new(context, peer_node_identity.clone(), outbound_address, peer_manager).unwrap();
+
+        // Origin constructs MessageEnvelope
+        let desire_message_body = make_test_message_frame();
+        let origin_envelope = MessageEnvelope::construct(
+            &origin_node_identity,
+            dest_node_identity.identity.public_key.clone(),
+            NodeDestination::Unknown,
+            desire_message_body.clone(),
+            MessageFlags::ENCRYPTED,
+        )
+        .unwrap();
+
+        // Peer receives MessageEnvelope from Origin, modifies and forwards it
+        let peer_envelope = MessageEnvelope::forward_construct(&peer_node_identity, origin_envelope).unwrap();
+
+        outbound_message_service
+            .forward_message(
+                BroadcastStrategy::DirectNodeId(dest_node_identity.identity.node_id.clone()),
+                peer_envelope,
+            )
+            .unwrap();
+
+        let msg_bytes: FrameSet = message_queue_connection.receive(100).unwrap().drain(1..).collect();
+        debug!(
+            target: "comms::outbound_message_service::outbound_message_service",
+            "Received message bytes: {:?}", msg_bytes
+        );
+        let outbound_message = OutboundMessage::from_binary(&msg_bytes[0]).unwrap();
+        assert_eq!(outbound_message.destination_node_id(), &dest_peer.node_id);
+        assert_eq!(outbound_message.num_attempts(), 0);
+        assert_eq!(outbound_message.is_scheduled(), true);
+        let message_envelope: MessageEnvelope = outbound_message.message_frames().clone().try_into().unwrap();
+        let message_envelope_header = message_envelope.deserialize_header().unwrap();
+        assert_eq!(
+            message_envelope_header.origin_source,
+            origin_node_identity.identity.public_key
+        );
+        assert_eq!(
+            message_envelope_header.peer_source,
+            peer_node_identity.identity.public_key
+        );
+        assert_eq!(message_envelope_header.dest, NodeDestination::Unknown);
+        assert!(message_envelope_header
+            .verify_signatures(message_envelope.body_frame().clone())
+            .unwrap());
+        assert_eq!(message_envelope_header.flags, MessageFlags::ENCRYPTED);
+        assert_eq!(
+            desire_message_body,
+            message_envelope
+                .decrypted_body_frame(
+                    &dest_node_identity.secret_key,
+                    &origin_node_identity.identity.public_key
+                )
+                .unwrap()
+        );
     }
 }

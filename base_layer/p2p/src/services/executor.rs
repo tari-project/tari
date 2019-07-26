@@ -31,7 +31,7 @@ use std::{
 use tari_comms::{
     builder::CommsServices,
     outbound_message_service::outbound_message_service::OutboundMessageService,
-    peer_manager::PeerManager,
+    peer_manager::{NodeIdentity, PeerManager},
     DomainConnector,
 };
 use threadpool::ThreadPool;
@@ -168,6 +168,11 @@ impl ServiceContext {
     /// Retrieve and `Arc` of the PeerManager. Used for managing peers.
     pub fn peer_manager(&self) -> Arc<PeerManager> {
         self.comms_services.peer_manager.clone()
+    }
+
+    /// Retrieve and `Arc` of the NodeIdentity. Used for managing the current Nodes Identity.
+    pub fn node_identity(&self) -> Arc<NodeIdentity> {
+        self.comms_services.node_identity.clone()
     }
 
     /// Create a [DomainConnector] which listens for a particular [TariMessageType].

@@ -27,12 +27,17 @@ use tari_comms::{
     peer_manager::PeerManagerError,
 };
 
+use tari_comms::message::MessageError;
+use tari_utilities::message_format::MessageFormatError;
+
 #[derive(Debug, Error)]
 pub enum DHTError {
     OutboundError(OutboundError),
     ConnectorError(ConnectorError),
     /// OMS has not been initialized
     OMSUndefined,
+    /// The current nodes identity is undefined
+    NodeIdentityUndefined,
     /// PeerManager has not been initialized
     PeerManagerUndefined,
     PeerManagerError(PeerManagerError),
@@ -42,4 +47,6 @@ pub enum DHTError {
     ApiReceiveFailed,
     /// Received an unexpected response type from the API
     UnexpectedApiResponse,
+    MessageFormatError(MessageFormatError),
+    MessageSerializationError(MessageError),
 }

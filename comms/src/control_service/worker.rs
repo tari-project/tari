@@ -210,12 +210,12 @@ impl ControlServiceWorker {
             return Err(ControlServiceError::ReceivedUnencryptedMessage);
         }
 
-        let maybe_peer = self.get_peer(&envelope_header.source)?;
+        let maybe_peer = self.get_peer(&envelope_header.peer_source)?;
         if maybe_peer.map(|p| p.is_banned()).unwrap_or(false) {
             return Err(ControlServiceError::PeerBanned);
         }
 
-        let decrypted_body = self.decrypt_body(envelope.body_frame(), &envelope_header.source)?;
+        let decrypted_body = self.decrypt_body(envelope.body_frame(), &envelope_header.origin_source)?;
         let message =
             Message::from_binary(decrypted_body.as_bytes()).map_err(ControlServiceError::MessageFormatError)?;
 
@@ -243,7 +243,7 @@ impl ControlServiceWorker {
     fn handle_ping(&self, envelope_header: MessageEnvelopeHeader, identity_frame: Frame) -> Result<()> {
         debug!(target: LOG_TARGET, "Got ping message");
         self.send_reply(
-            &envelope_header.source,
+            &envelope_header.peer_source,
             identity_frame,
             ControlServiceResponseType::Pong,
             Pong {},
@@ -263,7 +263,7 @@ impl ControlServiceWorker {
         );
 
         let pm = &self.connection_manager.peer_manager();
-        let public_key = &envelope_header.source;
+        let public_key = &envelope_header.peer_source;
         let peer = match pm.find_with_public_key(&public_key) {
             Ok(peer) => {
                 if peer.is_banned() {
@@ -403,7 +403,7 @@ impl ControlServiceWorker {
     ) -> Result<()>
     {
         self.send_reply(
-            &envelope_header.source,
+            &envelope_header.peer_source,
             identity,
             ControlServiceResponseType::ConnectRequestOutcome,
             ConnectRequestOutcome::Rejected(reason),
@@ -419,7 +419,7 @@ impl ControlServiceWorker {
     ) -> Result<()>
     {
         self.send_reply(
-            &envelope_header.source,
+            &envelope_header.peer_source,
             identity,
             ControlServiceResponseType::ConnectRequestOutcome,
             ConnectRequestOutcome::Accepted {

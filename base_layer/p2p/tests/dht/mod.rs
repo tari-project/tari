@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// NOTE: This test uses ports 11113, 11114 and 11115
+// NOTE: These tests use ports 11113 to 11119
 use crate::support::random_string;
 use rand::rngs::OsRng;
 use std::{sync::Arc, thread, time::Duration};
@@ -28,6 +28,7 @@ use tari_comms::{
     connection::NetAddress,
     connection_manager::PeerConnectionConfig,
     control_service::ControlServiceConfig,
+    message::NodeDestination,
     peer_manager::{peer_storage::PeerStorage, NodeIdentity, Peer, PeerManager},
     types::CommsDatabase,
     CommsBuilder,
@@ -66,15 +67,11 @@ fn setup_dht_service(
     peer_storage: CommsDatabase,
 ) -> (ServiceExecutor, Arc<DHTServiceApi>)
 {
-    let dht_service = DHTService::new(
-        node_identity.identity.node_id.clone(),
-        node_identity.identity.public_key.clone(),
-        node_identity.control_service_address.clone(),
-    );
+    let control_service_address = node_identity.control_service_address.clone(); // TODO Remove
+    let dht_service = DHTService::new();
     let dht_api = dht_service.get_api();
 
     let services = ServiceRegistry::new().register(dht_service);
-    let control_service_address = node_identity.control_service_address.clone();
     let comms = CommsBuilder::new()
         .with_routes(services.build_comms_routes())
         .with_node_identity(node_identity)
@@ -97,7 +94,7 @@ fn setup_dht_service(
 }
 
 fn pause() {
-    thread::sleep(Duration::from_millis(1000));
+    thread::sleep(Duration::from_millis(3000));
 }
 
 #[test]
@@ -155,10 +152,91 @@ fn test_dht_join_propagation() {
         PeerManager::new(create_peer_storage(&node_A_tmpdir, node_A_database_name, vec![])).unwrap();
     let node_C_peer_manager =
         PeerManager::new(create_peer_storage(&node_C_tmpdir, node_C_database_name, vec![])).unwrap();
+    assert!(node_C_peer_manager
+        .exists(&node_A_identity.identity.public_key)
+        .unwrap());
     assert!(node_A_peer_manager
         .exists(&node_C_identity.identity.public_key)
         .unwrap());
-    assert!(node_C_peer_manager
+}
+
+#[test]
+#[allow(non_snake_case)]
+fn test_dht_discover_propagation() {
+    let _ = simple_logger::init();
+
+    // Create 3 nodes where only Node B knows A and C, but A and C want to talk to each other
+    let node_A_identity = new_node_identity("127.0.0.1:11116".parse().unwrap());
+    let node_B_identity = new_node_identity("127.0.0.1:11117".parse().unwrap());
+    let node_C_identity = new_node_identity("127.0.0.1:11118".parse().unwrap());
+    let node_D_identity = new_node_identity("127.0.0.1:11119".parse().unwrap());
+
+    // Setup Node A
+    let node_A_tmpdir = TempDir::new(random_string(8).as_str()).unwrap();
+    let node_A_database_name = "node_A";
+    let (node_A_services, node_A_dht_service_api) = setup_dht_service(
+        node_A_identity.clone(),
+        create_peer_storage(&node_A_tmpdir, node_A_database_name, vec![node_B_identity
+            .clone()
+            .into()]),
+    );
+    // Setup Node B
+    let node_B_tmpdir = TempDir::new(random_string(8).as_str()).unwrap();
+    let node_B_database_name = "node_B";
+    let (node_B_services, _node_B_dht_service_api) = setup_dht_service(
+        node_B_identity.clone(),
+        create_peer_storage(&node_B_tmpdir, node_B_database_name, vec![
+            node_A_identity.clone().into(),
+            node_C_identity.clone().into(),
+        ]),
+    );
+    // Setup Node C
+    let node_C_tmpdir = TempDir::new(random_string(8).as_str()).unwrap();
+    let node_C_database_name = "node_C";
+    let (node_C_services, _node_C_dht_service_api) = setup_dht_service(
+        node_C_identity.clone(),
+        create_peer_storage(&node_C_tmpdir, node_C_database_name, vec![
+            node_B_identity.clone().into(),
+            node_D_identity.clone().into(),
+        ]),
+    );
+    // Setup Node D
+    let node_D_tmpdir = TempDir::new(random_string(8).as_str()).unwrap();
+    let node_D_database_name = "node_D";
+    let (node_D_services, _node_D_dht_service_api) = setup_dht_service(
+        node_D_identity.clone(),
+        create_peer_storage(&node_D_tmpdir, node_D_database_name, vec![node_C_identity
+            .clone()
+            .into()]),
+    );
+
+    // Send a discover request from Node A, through B and C, to D. Once Node D
+    // receives the discover request from Node A, it will send a direct join request back to A.
+    pause();
+    assert!(node_A_dht_service_api
+        .send_discover(
+            node_D_identity.identity.public_key.clone(),
+            None,
+            NodeDestination::Unknown
+        )
+        .is_ok());
+
+    pause();
+    node_A_services.shutdown().unwrap();
+    node_B_services.shutdown().unwrap();
+    node_C_services.shutdown().unwrap();
+    node_D_services.shutdown().unwrap();
+
+    // Restore PeerStorage of Node A and Node D and check that they are aware of each other
+    pause();
+    let node_A_peer_manager =
+        PeerManager::new(create_peer_storage(&node_A_tmpdir, node_A_database_name, vec![])).unwrap();
+    let node_D_peer_manager =
+        PeerManager::new(create_peer_storage(&node_D_tmpdir, node_D_database_name, vec![])).unwrap();
+    assert!(node_A_peer_manager
+        .exists(&node_D_identity.identity.public_key)
+        .unwrap());
+    assert!(node_D_peer_manager
         .exists(&node_A_identity.identity.public_key)
         .unwrap());
 }
