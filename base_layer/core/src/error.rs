@@ -24,7 +24,7 @@
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
 // this file is used for all blockchain error types
-use crate::transaction::TransactionError;
+use crate::block::BlockError;
 use derive_error::Error;
 use merklemountainrange::{error::MerkleMountainRangeError, merkle_storage::MerkleStorageError};
 use tari_storage::keyvalue_store::*;
@@ -50,7 +50,7 @@ pub enum StateError {
     // provided mmr states in headers mismatch
     HeaderStateMismatch,
     // block is not correctly constructed
-    InvalidBlock(TransactionError),
+    InvalidBlock(BlockError),
     // block is orphaned
     OrphanBlock,
     // Duplicate block

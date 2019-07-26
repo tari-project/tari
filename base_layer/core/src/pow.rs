@@ -21,7 +21,9 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::block::AggregateBody;
+use derive_error::Error;
 use serde::{Deserialize, Serialize};
+
 /// This describes the interface the block validation will use when interacting with the proof of work.
 pub trait ProofOfWorkInterface {
     /// This function will compare another proof of work. It will return true if the other is higher.
@@ -29,7 +31,13 @@ pub trait ProofOfWorkInterface {
     /// This function provides the proof that is supplied in the block header as bytes.
     fn proof_as_bytes(&self) -> Vec<u8>;
     /// This function  will validate the proof of work for the given block.
-    fn validate_pow(&self, body: &AggregateBody) -> bool;
+    fn validate_pow(&self, body: &AggregateBody) -> Result<(), PoWError>;
+}
+
+#[derive(Clone, Debug, PartialEq, Error)]
+pub enum PoWError {
+    // ProofOfWorkFailed
+    InvalidProofOfWork,
 }
 
 #[derive(Serialize, Deserialize, Default, Clone, Debug)]
@@ -54,7 +62,7 @@ impl ProofOfWorkInterface for MockProofOfWork {
         self.work < other.work
     }
 
-    fn validate_pow(&self, _body: &AggregateBody) -> bool {
-        true
+    fn validate_pow(&self, _body: &AggregateBody) -> Result<(), PoWError> {
+        Ok(())
     }
 }

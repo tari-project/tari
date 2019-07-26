@@ -25,17 +25,27 @@
 use crate::{
     blockheader::BlockHeader,
     emission::*,
+    pow::{PoWError, ProofOfWorkInterface},
     tari_amount::*,
     transaction::*,
     transaction_protocol::{build_challenge, TransactionMetadata},
     types::*,
 };
+use derive_error::Error;
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::{PublicKey, SecretKey},
     range_proof::RangeProofService,
 };
 use tari_utilities::byte_array::ByteArray;
+
+#[derive(Clone, Debug, PartialEq, Error)]
+pub enum BlockError {
+    // A transaction in the block failed to validate
+    TransactionError(TransactionError),
+    // Invalid Proof of work for the block
+    ProofOfWorkError(PoWError),
+}
 
 //----------------------------------------         Blocks         ----------------------------------------------------//
 
@@ -50,7 +60,7 @@ impl Block {
     /// This function will check the block to ensure that all UTXO's are validly constructed and that all signatures are
     /// valid. It does _not_ check that the inputs exist in the current UTXO set;
     /// nor does it check that the PoW is the largest accumulated PoW value.
-    pub fn check_internal_consistency(&self) -> Result<(), TransactionError> {
+    pub fn check_internal_consistency(&self) -> Result<(), BlockError> {
         let mut trans: Transaction = self.body.clone().into();
         trans.offset = self.header.total_kernel_offset.clone();
         // We need to add the coinbase off set to the block otherwise it will not balance.
@@ -60,8 +70,11 @@ impl Block {
         self.check_pow()
     }
 
-    pub fn check_pow(&self) -> Result<(), TransactionError> {
-        Ok(())
+    pub fn check_pow(&self) -> Result<(), BlockError> {
+        self.header
+            .pow
+            .validate_pow(&self.body)
+            .map_err(BlockError::ProofOfWorkError)
     }
 
     /// This function will calculate the pow for the block and fill out the pow header field
