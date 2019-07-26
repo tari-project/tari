@@ -32,6 +32,7 @@ use crate::{
     types::*,
 };
 use derive_error::Error;
+use serde::{Deserialize, Serialize};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::{PublicKey, SecretKey},
@@ -50,7 +51,7 @@ pub enum BlockError {
 //----------------------------------------         Blocks         ----------------------------------------------------//
 
 /// A Tari block. Blocks are linked together into a blockchain.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Block {
     pub header: BlockHeader,
     pub body: AggregateBody,
@@ -108,7 +109,7 @@ pub fn calculate_coinbase(block_height: u64) -> MicroTari {
 
 /// The components of the block or transaction. The same struct can be used for either, since in Mimblewimble,
 /// cut-through means that blocks and transactions have the same structure.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct AggregateBody {
     sorted: bool,
     /// List of inputs spent by the transaction.
