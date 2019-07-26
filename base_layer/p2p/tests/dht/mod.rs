@@ -25,6 +25,7 @@ use crate::support::random_string;
 use rand::rngs::OsRng;
 use std::{sync::Arc, thread, time::Duration};
 use tari_comms::{
+    builder::CommsServices,
     connection::NetAddress,
     connection_manager::PeerConnectionConfig,
     control_service::ControlServiceConfig,
@@ -64,7 +65,7 @@ fn create_peer_storage(tmpdir: &TempDir, database_name: &str, peers: Vec<Peer>) 
 fn setup_dht_service(
     node_identity: NodeIdentity,
     peer_storage: CommsDatabase,
-) -> (ServiceExecutor, Arc<DHTServiceApi>)
+) -> (ServiceExecutor, Arc<DHTServiceApi>, Arc<CommsServices<TariMessageType>>)
 {
     let dht_service = DHTService::new(
         node_identity.identity.node_id.clone(),
@@ -91,9 +92,10 @@ fn setup_dht_service(
         .build()
         .unwrap()
         .start()
+        .map(Arc::new)
         .unwrap();
 
-    (ServiceExecutor::execute(Arc::new(comms), services), dht_api)
+    (ServiceExecutor::execute(&comms, services), dht_api, comms)
 }
 
 fn pause() {
@@ -103,8 +105,6 @@ fn pause() {
 #[test]
 #[allow(non_snake_case)]
 fn test_dht_join_propagation() {
-    let _ = simple_logger::init();
-
     // Create 3 nodes where only Node B knows A and C, but A and C want to talk to each other
     let node_A_identity = new_node_identity("127.0.0.1:11113".parse().unwrap());
     let node_B_identity = new_node_identity("127.0.0.1:11114".parse().unwrap());
@@ -113,7 +113,7 @@ fn test_dht_join_propagation() {
     // Setup Node A
     let node_A_tmpdir = TempDir::new(random_string(8).as_str()).unwrap();
     let node_A_database_name = "node_A";
-    let (node_A_services, node_A_dht_service_api) = setup_dht_service(
+    let (node_A_services, node_A_dht_service_api, _comms_A) = setup_dht_service(
         node_A_identity.clone(),
         create_peer_storage(&node_A_tmpdir, node_A_database_name, vec![node_B_identity
             .clone()
@@ -122,7 +122,7 @@ fn test_dht_join_propagation() {
     // Setup Node B
     let node_B_tmpdir = TempDir::new(random_string(8).as_str()).unwrap();
     let node_B_database_name = "node_B";
-    let (node_B_services, _node_B_dht_service_api) = setup_dht_service(
+    let (node_B_services, _node_B_dht_service_api, _comms_B) = setup_dht_service(
         node_B_identity.clone(),
         create_peer_storage(&node_B_tmpdir, node_B_database_name, vec![
             node_A_identity.clone().into(),
@@ -132,7 +132,7 @@ fn test_dht_join_propagation() {
     // Setup Node C
     let node_C_tmpdir = TempDir::new(random_string(8).as_str()).unwrap();
     let node_C_database_name = "node_C";
-    let (node_C_services, _node_C_dht_service_api) = setup_dht_service(
+    let (node_C_services, _node_C_dht_service_api, _comms_C) = setup_dht_service(
         node_C_identity.clone(),
         create_peer_storage(&node_C_tmpdir, node_C_database_name, vec![node_B_identity
             .clone()

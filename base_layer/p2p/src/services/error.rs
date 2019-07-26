@@ -22,10 +22,11 @@
 
 use derive_error::Error;
 use serde::export::fmt::Debug;
-use tari_comms::builder::CommsServicesError;
+use tari_comms::{builder::CommsServicesError, domain_connector::ConnectorError};
 
 #[derive(Debug, Error)]
 pub enum ServiceError {
+    ConnectorError(ConnectorError),
     #[error(msg_embedded, non_std, no_from)]
     ServiceInitializationFailed(String),
     CommsServicesError(CommsServicesError),

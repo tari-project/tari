@@ -258,7 +258,7 @@ pub fn main() {
             let pk = CommsPublicKey::from_hex(p.pub_key.as_str()).expect("Error parsing pub key from Hex");
             if let Ok(na) = p.address.clone().parse::<NetAddress>() {
                 let peer = Peer::from_public_key_and_address(pk.clone(), na.clone()).unwrap();
-                wallet.comms_services.peer_manager.add_peer(peer).unwrap();
+                wallet.comms_services.peer_manager().add_peer(peer).unwrap();
                 if let Err(e) = wallet.text_message_service.add_contact(Contact {
                     screen_name: p.screen_name.clone(),
                     pub_key: pk.clone(),
