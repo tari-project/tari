@@ -46,6 +46,10 @@ pub enum BlockError {
     TransactionError(TransactionError),
     // Invalid Proof of work for the block
     ProofOfWorkError(PoWError),
+    // Invalid input in block
+    InvalidInput,
+    // Invalid kernel in block
+    InvalidKernel,
 }
 
 //----------------------------------------         Blocks         ----------------------------------------------------//
@@ -62,6 +66,8 @@ impl Block {
     /// valid. It does _not_ check that the inputs exist in the current UTXO set;
     /// nor does it check that the PoW is the largest accumulated PoW value.
     pub fn check_internal_consistency(&self) -> Result<(), BlockError> {
+        self.check_kernel_rules()?;
+        self.check_spent_utxo_rules()?;
         let mut trans: Transaction = self.body.clone().into();
         trans.offset = self.header.total_kernel_offset.clone();
         // We need to add the coinbase off set to the block otherwise it will not balance.
@@ -71,6 +77,28 @@ impl Block {
         self.check_pow()
     }
 
+    /// This function will check spent utxo rules like coinbase maturity height etc
+    pub fn check_spent_utxo_rules(&self) -> Result<(), BlockError> {
+        // for txo in &self.body.inputs{
+        //     if txo.features.contains(OutputFeatures::COINBASE_OUPUT){
+        // ToDo fill this out in a seperate PR.  as this requires extra code and modifications to the MMR,
+        // we currently cannot get the creation height of a given  commitment.
+        //     }
+        // }
+        Ok(())
+    }
+
+    /// This function will check spent kernel rules like tx lock height etc
+    pub fn check_kernel_rules(&self) -> Result<(), BlockError> {
+        for kernel in &self.body.kernels {
+            if kernel.lock_height > self.header.height {
+                return Err(BlockError::InvalidKernel);
+            }
+        }
+        Ok(())
+    }
+
+    /// This function will check that the supplied PoW is valid
     pub fn check_pow(&self) -> Result<(), BlockError> {
         self.header
             .pow

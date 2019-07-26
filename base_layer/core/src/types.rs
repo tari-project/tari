@@ -83,7 +83,7 @@ pub const MAX_RANGE_PROOF_RANGE: usize = 64; // 2^64
 /// Current version of the blockchain
 pub const BLOCKCHAIN_VERSION: u16 = 0;
 /// The min required lock height before coinbase utxos are spendable
-pub const COINBASE_LOCK_HEIGHT: u64 = 1440;
+pub const COINBASE_LOCK_HEIGHT: u64 = 1;
 
 // Set up some "global" services for the Tari blockchain - These are most likely not threadsafe as written, but haven't
 // checked.

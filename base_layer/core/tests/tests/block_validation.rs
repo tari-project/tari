@@ -20,4 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod simple_block_chain;
+use crate::support::simple_block_chain::*;
+use std::fs;
+use tari_core::block::*;
+
+fn create_block_chain() -> SimpleBlockChain {
+    let read_json = fs::read_to_string("tests/chain/test_chain.json").unwrap();
+    let blockchain: SimpleBlockChain = serde_json::from_str(&read_json).unwrap();
+    blockchain
+}
+#[test]
+fn create_small_mmr() {}
