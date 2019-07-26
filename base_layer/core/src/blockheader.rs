@@ -37,13 +37,12 @@
 //! state = Hash(Hash(mmr_root)|| Hash(roaring_bitmap))
 //! This hash is called the UTXO merkle root, and is used as the output_mr
 
-use crate::{pow::ProofOfWork, types::*};
+use crate::{pow::*, types::*};
 use chrono::{DateTime, NaiveDate, Utc};
 use digest::Input;
 use serde::{Deserialize, Serialize};
 use tari_crypto::ristretto::*;
 use tari_utilities::{ByteArray, Hashable};
-
 type BlockHash = [u8; 32];
 
 /// The BlockHeader contains all the metadata for the block, including proof of work, a link to the previous block
@@ -90,7 +89,7 @@ impl Default for BlockHeader {
             range_proof_mr: [0; 32],
             kernel_mr: [0; 32],
             total_kernel_offset: RistrettoSecretKey::from(0),
-            pow: ProofOfWork {},
+            pow: ProofOfWork::default(),
         }
     }
 }
@@ -106,7 +105,7 @@ impl Hashable for BlockHeader {
             .chain(self.range_proof_mr.as_bytes())
             .chain(self.kernel_mr.as_bytes())
             .chain(self.total_kernel_offset.as_bytes())
-            .chain(self.pow.as_bytes())
+            .chain(self.pow.proof_as_bytes())
             .result()
             .to_vec()
     }

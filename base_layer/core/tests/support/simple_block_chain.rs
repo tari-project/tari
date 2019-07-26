@@ -30,7 +30,6 @@ use tari_core::{
     block::*,
     blockheader::*,
     fee::Fee,
-    pow::*,
     tari_amount::*,
     transaction::*,
     transaction_protocol::{sender::*, single_receiver::SingleReceiverTransactionProtocol},
@@ -252,7 +251,7 @@ impl SimpleBlockChainBuilder {
             range_proof_mr: [0; 32],
             kernel_mr: array_ref!(kernal_mmr, 0, 32).clone(),
             total_kernel_offset: RistrettoSecretKey::from(0),
-            pow: ProofOfWork {},
+            pow: ProofOfWork::default(),
         }
     }
 

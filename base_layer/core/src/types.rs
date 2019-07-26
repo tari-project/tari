@@ -23,8 +23,7 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
-use crate::bullet_rangeproofs::BulletRangeProof;
-
+use crate::{bullet_rangeproofs::BulletRangeProof, pow::*};
 use tari_crypto::{
     common::Blake256,
     ristretto::{
@@ -65,6 +64,9 @@ pub type MessageHash = Vec<u8>;
 
 /// Specify the range proof type
 pub type RangeProofService = DalekRangeProofService;
+
+/// Specify the Proof of Work
+pub type ProofOfWork = MockProofOfWork;
 
 /// Specify the range proof
 pub type RangeProof = BulletRangeProof;
