@@ -23,6 +23,7 @@
 use crate::{
     dispatcher::{DispatchError, DispatchResolver, DispatchableKey},
     message::{DomainMessageContext, Message, MessageContext, MessageFlags, MessageHeader, NodeDestination},
+    outbound_message_service::BroadcastStrategy,
     types::MessageDispatcher,
 };
 use log::*;
@@ -76,7 +77,7 @@ where
 
         // Verify source node message signature
         if !message_envelope_header
-            .verify_signature(message_envelope.body_frame())
+            .verify_signatures(message_envelope.body_frame().clone())
             .map_err(|e| DispatchError::HandlerError(format!("{}", e)))?
         {
             return Ok(CommsDispatchType::Discard);
@@ -93,12 +94,11 @@ where
                     Ok(CommsDispatchType::Forward)
                 }
             },
-            NodeDestination::NodeId(dest_node_id) => {
-                if node_identity.identity.node_id == dest_node_id {
-                    Ok(CommsDispatchType::Handle)
-                } else {
-                    Ok(CommsDispatchType::Forward)
-                }
+            NodeDestination::NodeId(_dest_node_id) => {
+                // TODO Check if dest_node_id is in network region by checking that its distance is closer or equal to
+                // furthest nearest neighbouring peer. If closer then handle else forward
+
+                Ok(CommsDispatchType::Handle)
             },
         }
     }
@@ -124,7 +124,7 @@ where
 
     debug!(
         target: LOG_TARGET,
-        "Handling message with signature {:x?}", message_envelope_header.signature
+        "Handling message with origin signature {:x?}", message_envelope_header.origin_signature
     );
     let node_identity = &message_context.node_identity;
     let message: Message;
@@ -132,7 +132,7 @@ where
         debug!(target: LOG_TARGET, "Attempting to decrypt message");
         match message_context
             .message_envelope
-            .deserialize_encrypted_body(&node_identity.secret_key, &message_envelope_header.source)
+            .deserialize_encrypted_body(&node_identity.secret_key, &message_envelope_header.origin_source)
         {
             Ok(decrypted_message_body) => {
                 debug!(target: LOG_TARGET, "Message successfully decrypted");
@@ -165,7 +165,12 @@ where
     let header: MessageHeader<MType> = message.deserialize_header().unwrap(); //.map_err(DispatchError::handler_error())?;
 
     debug!(target: LOG_TARGET, "Received message type: {:?}", header.message_type);
-    let domain_message_context = DomainMessageContext::new(message_context.peer.into(), message);
+    let domain_message_context = DomainMessageContext::new(
+        message_context.peer.into(),
+        message_envelope_header.origin_source,
+        message,
+        envelope.clone(),
+    );
     let domain_message_context_buffer = vec![domain_message_context
         .to_binary()
         .map_err(|e| DispatchError::HandlerError(format!("{}", e)))?];
@@ -180,14 +185,32 @@ where
         .map_err(|e| DispatchError::HandlerError(format!("{}", e)))
 }
 
-fn handler_forward<MType>(_message_context: MessageContext<MType>) -> Result<(), DispatchError>
+fn handler_forward<MType>(message_context: MessageContext<MType>) -> Result<(), DispatchError>
 where
     MType: DispatchableKey,
     MType: Serialize + DeserializeOwned,
 {
-    // TODO: Add logic for message forwarding
+    // Forward message using appropriate broadcast strategy based on the destination provided in the header
+    let envelope = message_context.message_envelope;
+    let message_envelope_header = envelope
+        .deserialize_header()
+        .map_err(|e| DispatchError::HandlerError(format!("{}", e)))?;
+    let broadcast_strategy = BroadcastStrategy::forward(
+        message_context.node_identity.identity.node_id.clone(),
+        &message_context.peer_manager,
+        message_envelope_header.dest,
+        vec![
+            message_envelope_header.origin_source,
+            message_envelope_header.peer_source,
+        ],
+    )
+    .map_err(|e| DispatchError::HandlerError(format!("{}", e)))?;
 
-    Ok(())
+    debug!(target: LOG_TARGET, "Forwarding message");
+    message_context
+        .outbound_message_service
+        .forward_message(broadcast_strategy, envelope)
+        .map_err(|e| DispatchError::HandlerError(format!("{}", e)))
 }
 
 fn handler_discard<MType>(_message_context: MessageContext<MType>) -> Result<(), DispatchError>

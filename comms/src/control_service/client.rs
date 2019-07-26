@@ -110,7 +110,7 @@ impl ControlServiceClient {
                 }
                 let envelope: MessageEnvelope = frames.try_into()?;
                 let header = envelope.deserialize_header()?;
-                if header.verify_signature(&envelope.body_frame())? {
+                if header.verify_signatures(envelope.body_frame().clone())? {
                     let msg =
                         envelope.deserialize_encrypted_body(&self.node_identity.secret_key, &self.dest_public_key)?;
                     Ok(Some(msg))
@@ -190,7 +190,8 @@ mod test {
             .unwrap();
 
         let header = envelope.deserialize_header().unwrap();
-        assert_eq!(header.source, node_identity.identity.public_key);
+        assert_eq!(header.origin_source, node_identity.identity.public_key);
+        assert_eq!(header.peer_source, node_identity.identity.public_key);
         assert_eq!(header.dest, NodeDestination::PublicKey(public_key));
         assert_eq!(header.flags, MessageFlags::ENCRYPTED);
     }

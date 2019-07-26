@@ -310,7 +310,7 @@ where
         let inbound_message_broker = self.make_inbound_message_broker(&routes)?;
 
         let inbound_message_service = self.make_inbound_message_service(
-            node_identity,
+            node_identity.clone(),
             peer_conn_config.message_sink_address,
             inbound_message_broker.clone(),
             outbound_message_service.clone(),
@@ -327,6 +327,7 @@ where
             outbound_message_pool,
             outbound_message_service,
             peer_manager,
+            node_identity,
         })
     }
 }
@@ -362,6 +363,7 @@ where
     outbound_message_pool: OutboundMessagePool,
     outbound_message_service: Arc<OutboundMessageService>,
     peer_manager: Arc<PeerManager>,
+    node_identity: Arc<NodeIdentity>,
 }
 
 impl<MType> CommsServiceContainer<MType>
@@ -399,6 +401,7 @@ where
             inbound_message_broker: self.inbound_message_broker,
             peer_manager: self.peer_manager,
             outbound_message_pool: self.outbound_message_pool,
+            node_identity: self.node_identity,
             // Add handles for started services
             control_service_handle,
         })
@@ -417,6 +420,7 @@ pub struct CommsServices<MType> {
     control_service_handle: Option<ControlServiceHandle>,
     inbound_message_broker: Arc<InboundMessageBroker<MType>>,
     outbound_message_pool: OutboundMessagePool,
+    pub node_identity: Arc<NodeIdentity>,
     connection_manager: Arc<ConnectionManager>,
     peer_manager: Arc<PeerManager>,
 }

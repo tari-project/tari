@@ -25,7 +25,7 @@ mod dht_service;
 mod error;
 
 pub use self::{
-    dht_messages::JoinMessage,
+    dht_messages::{DiscoverMessage, JoinMessage},
     dht_service::{DHTService, DHTServiceApi},
     error::DHTError,
 };
