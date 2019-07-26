@@ -37,6 +37,7 @@ use tari_comms::{
 use tari_p2p::{
     ping_pong::{PingPongService, PingPongServiceApi},
     services::{ServiceExecutor, ServiceRegistry},
+    tari_message::TariMessageType,
 };
 use tari_storage::lmdb_store::LMDBBuilder;
 use tempdir::TempDir;

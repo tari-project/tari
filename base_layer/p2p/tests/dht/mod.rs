@@ -36,6 +36,7 @@ use tari_comms::{
 use tari_p2p::{
     dht_service::{DHTService, DHTServiceApi},
     services::{ServiceExecutor, ServiceRegistry},
+    tari_message::TariMessageType,
 };
 use tari_storage::lmdb_store::LMDBBuilder;
 use tempdir::TempDir;
