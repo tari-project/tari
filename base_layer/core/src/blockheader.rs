@@ -47,7 +47,7 @@ type BlockHash = [u8; 32];
 
 /// The BlockHeader contains all the metadata for the block, including proof of work, a link to the previous block
 /// and the transaction kernels.
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct BlockHeader {
     /// Version of the block
     pub version: u16,
@@ -84,7 +84,7 @@ impl Default for BlockHeader {
             version: BLOCKCHAIN_VERSION,
             height: 0,
             prev_hash: [0; 32],
-            timestamp: DateTime::<Utc>::from_utc(NaiveDate::from_ymd(1900, 1, 1).and_hms(1, 1, 1), Utc),
+            timestamp: DateTime::<Utc>::from_utc(NaiveDate::from_ymd(2000, 1, 1).and_hms(1, 1, 1), Utc),
             output_mr: [0; 32],
             range_proof_mr: [0; 32],
             kernel_mr: [0; 32],

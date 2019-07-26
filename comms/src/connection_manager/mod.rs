@@ -99,6 +99,7 @@ mod protocol;
 mod repository;
 mod types;
 
+pub(crate) use self::types::EstablishLockResult;
 pub use self::{error::ConnectionManagerError, establisher::PeerConnectionConfig, manager::ConnectionManager};
 
 type Result<T> = std::result::Result<T, ConnectionManagerError>;

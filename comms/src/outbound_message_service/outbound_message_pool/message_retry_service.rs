@@ -290,7 +290,7 @@ mod test {
         let (tx, rx) = sync_channel(0);
         let handle = MessageRetryService::start(context, config.clone(), rx, InprocAddress::random());
         tx.send(RetryServiceMessage::Shutdown).unwrap();
-        handle.timeout_join(Duration::from_millis(10)).unwrap();
+        handle.timeout_join(Duration::from_millis(3000)).unwrap();
     }
 
     #[test]
@@ -317,7 +317,7 @@ mod test {
         }
         tx.send(RetryServiceMessage::Shutdown).unwrap();
 
-        handle.timeout_join(Duration::from_millis(10)).unwrap();
+        handle.timeout_join(Duration::from_millis(3000)).unwrap();
     }
 
     #[test]
@@ -350,6 +350,6 @@ mod test {
         assert_eq!(msg.message_frames()[0], "EXPECTED".as_bytes().to_vec());
 
         tx.send(RetryServiceMessage::Shutdown).unwrap();
-        handle.timeout_join(Duration::from_millis(10)).unwrap();
+        handle.timeout_join(Duration::from_millis(3000)).unwrap();
     }
 }

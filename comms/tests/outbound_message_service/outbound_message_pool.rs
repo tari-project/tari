@@ -124,8 +124,7 @@ fn outbound_message_pool_no_retry() {
     let node_B_control_service = ControlService::new(context.clone(), node_identity.clone(), ControlServiceConfig {
         socks_proxy_address: None,
         listener_address: node_B_control_port_address,
-        accept_message_type: "CUSTOM".to_string(),
-        requested_outbound_connection_timeout: Duration::from_millis(2000),
+        requested_connection_timeout: Duration::from_millis(2000),
     })
     .serve(node_B_connection_manager)
     .unwrap();
@@ -315,8 +314,7 @@ fn test_outbound_message_pool_fail_and_retry() {
     let node_B_control_service = ControlService::new(context.clone(), node_B_identity.clone(), ControlServiceConfig {
         socks_proxy_address: None,
         listener_address: node_B_control_port_address,
-        accept_message_type: "CUSTOM".to_string(),
-        requested_outbound_connection_timeout: Duration::from_millis(2000),
+        requested_connection_timeout: Duration::from_millis(2000),
     })
     .serve(node_B_connection_manager)
     .unwrap();

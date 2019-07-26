@@ -59,9 +59,18 @@ impl LivePeerConnections {
         }
     }
 
-    /// Get a connection byy node id
+    /// Get a connection by node id
     pub fn get_connection(&self, node_id: &NodeId) -> Option<Arc<PeerConnection>> {
         self.atomic_read(|lock| lock.get(node_id))
+    }
+
+    /// Get an active connection by node id
+    pub fn get_active_connection(&self, node_id: &NodeId) -> Option<Arc<PeerConnection>> {
+        self.atomic_read(|lock| {
+            lock.get(node_id)
+                .filter(|conn| conn.is_active())
+                .map(|conn| conn.clone())
+        })
     }
 
     /// Get number of active connections

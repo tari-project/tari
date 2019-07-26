@@ -36,7 +36,6 @@ use tari_comms::{
 use tari_p2p::{
     ping_pong::{PingPongService, PingPongServiceApi},
     services::{ServiceExecutor, ServiceRegistry},
-    tari_message::{NetMessage, TariMessageType},
 };
 use tari_storage::lmdb_store::LMDBBuilder;
 use tempdir::TempDir;
@@ -83,8 +82,7 @@ fn setup_ping_pong_service(
         .configure_control_service(ControlServiceConfig {
             socks_proxy_address: None,
             listener_address: node_identity.control_service_address.clone(),
-            accept_message_type: TariMessageType::new(NetMessage::Accept),
-            requested_outbound_connection_timeout: Duration::from_millis(5000),
+            requested_connection_timeout: Duration::from_millis(5000),
         })
         .build()
         .unwrap()
