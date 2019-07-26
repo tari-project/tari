@@ -146,7 +146,7 @@ than one string as defined in [[2]].
 | OpenAlias TXT DNS Record Field | OpenAlias TXT DNS Record Data                                |
 | ------------------------------ | ------------------------------------------------------------ |
 | oa1:\<name\>                   | "oa1:tari"                                                   |
-| pk                             | \<256 bit public key, in hexadecimal format (64 characters), that is converted into a `Base58` encoded string (44 characters)\>. |
+| pk                             | \<256 bit public key, in hexadecimal format (64 characters), that is converted into a `Base58` encoded string (44 characters)\> |
 | raid_id                        | \<`RAID_ID` (*refer to [RAID_ID](#raid_id)*) (15 characters)\>. |
 | nonce                          | \<256 bit public nonce, in hexadecimal format (64 characters), that is converted into a `Base58` encoded string (44 characters)\>. |
 | sig                            | \<[Asset issuer]'s 256 bit Schnorr signature for the `RAID_ID` (*refer to [RAID_ID](#raid_id)*), in hexadecimal format (64 characters), that is converted into a `Base58` encoded string (44 characters)\>. |
