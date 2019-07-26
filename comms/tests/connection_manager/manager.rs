@@ -129,8 +129,7 @@ fn establish_peer_connection() {
     let node_B_control_service = ControlService::new(context.clone(), node_B_identity.clone(), ControlServiceConfig {
         socks_proxy_address: None,
         listener_address: node_B_control_port_address,
-        accept_message_type: 123,
-        requested_outbound_connection_timeout: Duration::from_millis(5000),
+        requested_connection_timeout: Duration::from_millis(5000),
     })
     .serve(node_B_connection_manager)
     .unwrap();

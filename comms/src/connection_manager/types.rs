@@ -25,3 +25,9 @@ use std::thread::JoinHandle;
 use crate::connection;
 
 pub type PeerConnectionJoinHandle = JoinHandle<connection::types::Result<()>>;
+
+#[must_use]
+pub enum EstablishLockResult<T> {
+    Ok(T),
+    Collision,
+}

@@ -28,7 +28,7 @@ use std::{path::PathBuf, sync::Arc, time::Duration};
 use tari_comms::{
     connection::{CurveEncryption, Direction, InprocAddress, NetAddress, ZmqContext},
     connection_manager::{establisher::ConnectionEstablisher, ConnectionManagerError, PeerConnectionConfig},
-    control_service::{messages::Pong, ControlServiceMessageType},
+    control_service::messages::{ControlServiceResponseType, Pong},
     message::{Message, MessageEnvelope, MessageFlags, MessageHeader, NodeDestination},
 };
 use tari_storage::lmdb_store::{LMDBBuilder, LMDBError, LMDBStore};
@@ -141,7 +141,7 @@ fn establish_control_service_connection_succeed() {
             node_identity1.identity.public_key.clone(),
             NodeDestination::PublicKey(node_identity1.identity.public_key.clone()),
             Message::from_message_format(
-                MessageHeader::new(ControlServiceMessageType::Pong).unwrap(),
+                MessageHeader::new(ControlServiceResponseType::Pong).unwrap(),
                 Pong {}.to_binary().unwrap(),
             )
             .unwrap()

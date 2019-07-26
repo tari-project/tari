@@ -21,8 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    connection::ConnectionError,
-    connection_manager::ConnectionManagerError,
+    connection::{ConnectionError, NetAddressError},
     message::MessageError,
     peer_manager::PeerManagerError,
 };
@@ -35,7 +34,6 @@ pub enum ControlServiceError {
     BindFailed(ConnectionError),
     MessageError(MessageError),
     /// Received an invalid message which cannot be handled
-    InvalidMessageReceived,
     MessageFormatError(MessageFormatError),
     /// Failed to send control message to worker
     ControlMessageSendFailed,
@@ -43,7 +41,6 @@ pub enum ControlServiceError {
     WorkerThreadJoinFailed(ThreadError),
     PeerManagerError(PeerManagerError),
     ConnectionError(ConnectionError),
-    ConnectionManagerError(ConnectionManagerError),
     /// The worker thread failed to start
     WorkerThreadFailedToStart,
     /// Received an unencrypted message. Discarding it.
@@ -56,4 +53,9 @@ pub enum ControlServiceError {
     // Client Errors
     /// Received an unexpected reply
     ClientUnexpectedReply,
+    NetAddressError(NetAddressError),
+    /// The connection address could not be established
+    ConnectionAddressNotEstablished,
+    #[error(non_std, no_from, msg_embedded)]
+    ConnectionProtocolFailed(String),
 }

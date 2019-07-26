@@ -52,7 +52,6 @@ use tari_p2p::{
     initialization::{initialize_comms, CommsConfig},
     ping_pong::{PingPongService, PingPongServiceApi},
     services::{ServiceError, ServiceExecutor, ServiceRegistry},
-    tari_message::{NetMessage, TariMessageType},
 };
 use tari_utilities::message_format::MessageFormat;
 use tempdir::TempDir;
@@ -110,10 +109,9 @@ fn main() {
         host: "0.0.0.0".parse().unwrap(),
         socks_proxy_address: None,
         control_service: ControlServiceConfig {
-            accept_message_type: TariMessageType::from(NetMessage::Accept),
             listener_address: node_identity.control_service_address.clone(),
             socks_proxy_address: None,
-            requested_outbound_connection_timeout: Duration::from_millis(2000),
+            requested_connection_timeout: Duration::from_millis(2000),
         },
         secret_key: node_identity.secret_key.clone(),
         public_address: node_identity.control_service_address,

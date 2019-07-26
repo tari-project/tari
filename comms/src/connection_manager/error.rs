@@ -21,7 +21,8 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    connection::{ConnectionError, NetAddressError},
+    connection::ConnectionError,
+    control_service::{messages::RejectReason, ControlServiceError},
     message::MessageError,
     peer_manager::PeerManagerError,
 };
@@ -38,7 +39,6 @@ pub enum ConnectionManagerError {
     PeerNotFound,
     // Error establishing connection
     ConnectionError(ConnectionError),
-    NetAddressError(NetAddressError),
     #[error(no_from)]
     CurveEncryptionGenerateError(ConnectionError),
     MessageFormatError(MessageFormatError),
@@ -50,8 +50,6 @@ pub enum ConnectionManagerError {
     PeerManagerError(PeerManagerError),
     /// The connection could not connect within the maximum number of attempts
     MaxConnnectionAttemptsExceeded,
-    /// The connection address could not be established
-    ConnectionAddressNotEstablished,
     /// Problem creating or loading datastore
     DatastoreError,
     /// Connection timed out before it was able to connect
@@ -63,7 +61,8 @@ pub enum ConnectionManagerError {
     /// Failed to receive a connection request outcome message
     ConnectionRequestOutcomeRecvFail,
     /// The request to establish a peer connection was rejected by the destination peer's control port
-    ConnectionRejected,
+    ConnectionRejected(RejectReason),
     /// Failed to receive a connection request outcome before the timeout
     ConnectionRequestOutcomeTimeout,
+    ControlServiceError(ControlServiceError),
 }

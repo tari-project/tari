@@ -35,7 +35,6 @@ use tari_comms::{
 use tari_p2p::{
     dht_service::{DHTService, DHTServiceApi},
     services::{ServiceExecutor, ServiceRegistry},
-    tari_message::{NetMessage, TariMessageType},
 };
 use tari_storage::lmdb_store::LMDBBuilder;
 use tempdir::TempDir;
@@ -67,7 +66,6 @@ fn setup_dht_service(
     peer_storage: CommsDatabase,
 ) -> (ServiceExecutor, Arc<DHTServiceApi>)
 {
-    let control_service_address = node_identity.control_service_address.clone(); // TODO Remove
     let dht_service = DHTService::new(
         node_identity.identity.node_id.clone(),
         node_identity.identity.public_key.clone(),
@@ -76,6 +74,7 @@ fn setup_dht_service(
     let dht_api = dht_service.get_api();
 
     let services = ServiceRegistry::new().register(dht_service);
+    let control_service_address = node_identity.control_service_address.clone();
     let comms = CommsBuilder::new()
         .with_routes(services.build_comms_routes())
         .with_node_identity(node_identity)
@@ -87,8 +86,7 @@ fn setup_dht_service(
         .configure_control_service(ControlServiceConfig {
             socks_proxy_address: None,
             listener_address: control_service_address,
-            accept_message_type: TariMessageType::new(NetMessage::Accept),
-            requested_outbound_connection_timeout: Duration::from_millis(5000),
+            requested_connection_timeout: Duration::from_millis(5000),
         })
         .build()
         .unwrap()

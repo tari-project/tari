@@ -22,7 +22,7 @@
 
 use super::{establisher::ConnectionEstablisher, types::PeerConnectionJoinHandle, ConnectionManagerError, Result};
 use crate::{
-    connection::{types::Linger, CurveEncryption, CurvePublicKey, PeerConnection},
+    connection::{CurvePublicKey, NetAddress, PeerConnection},
     control_service::messages::ConnectRequestOutcome,
     peer_manager::{NodeIdentity, Peer},
 };
@@ -47,12 +47,9 @@ impl<'e, 'ni> PeerConnectionProtocol<'e, 'ni> {
     /// Send Establish connection message to the peers control port to request a connection
     pub fn negotiate_peer_connection(&self, peer: &Peer) -> Result<(Arc<PeerConnection>, PeerConnectionJoinHandle)> {
         info!(target: LOG_TARGET, "[NodeId={}] Negotiating connection", peer.node_id);
+
+        // 1. Establish control service connection
         let control_client = self.establisher.connect_control_service_client(&peer)?;
-        // Set the connection linger time to allow enough time to send a message after drop if required
-        control_client
-            .connection()
-            .set_linger(Linger::Timeout(3000))
-            .map_err(ConnectionManagerError::ConnectionError)?;
         info!(
             target: LOG_TARGET,
             "[NodeId={}] Established peer control port connection at address {:?}",
@@ -60,39 +57,11 @@ impl<'e, 'ni> PeerConnectionProtocol<'e, 'ni> {
             control_client.connection().get_connected_address()
         );
 
-        let (new_inbound_conn, curve_pk, join_handle) = self.open_inbound_peer_connection(&peer)?;
-
-        let address = new_inbound_conn
-            .get_address()
-            .ok_or(ConnectionManagerError::ConnectionAddressNotEstablished)?;
-
-        debug!(
-            target: LOG_TARGET,
-            "[NodeId={}] Inbound peer connection established on address {}", peer.node_id, address
-        );
-
-        // Create an address which can be connected to externally
-        let our_host = self.node_identity.control_service_address.host();
-        let external_address = address
-            .maybe_port()
-            .map(|port| format!("{}:{}", our_host, port))
-            .or_else(|| Some(our_host))
-            .unwrap()
-            .parse()
-            .map_err(ConnectionManagerError::NetAddressError)?;
-
-        debug!(
-            target: LOG_TARGET,
-            "[NodeId={}] Requesting to establish a connection on address {}", peer.node_id, external_address,
-        );
-
-        // Construct establish connection message
+        // 2. Send a request to connect
         control_client
             .send_request_connection(
                 self.node_identity.control_service_address.clone(),
                 self.node_identity.identity.node_id.clone(),
-                external_address,
-                curve_pk,
             )
             .map_err(|err| ConnectionManagerError::SendRequestConnectionFailed(format!("{:?}", err)))?;
 
@@ -102,40 +71,60 @@ impl<'e, 'ni> PeerConnectionProtocol<'e, 'ni> {
         );
 
         let config = self.establisher.get_config();
+        // 3. Receive a request to connect outcome
         control_client
             .receive_message(config.peer_connection_establish_timeout)
             .map_err(|_| ConnectionManagerError::ConnectionRequestOutcomeRecvFail)?
+            // Abort! Did not receive a connection outcome before the timeout
             .ok_or(ConnectionManagerError::ConnectionRequestOutcomeTimeout)
             .and_then(|msg| match msg {
-                ConnectRequestOutcome::Accepted => {
+                ConnectRequestOutcome::Accepted {
+                    curve_public_key,
+                    address,
+                } => {
                     info!(
                         target: LOG_TARGET,
                         "[NodeId={}] RequestConnection accepted by destination peer's control port", peer.node_id
                     );
-                    Ok((new_inbound_conn, join_handle))
+
+                    // Connect to the requested peer connection and send a identify frame
+                    let (new_peer_conn, join_handle) =
+                        self.establish_requested_peer_connection(peer, curve_public_key, address)?;
+
+                    Ok((new_peer_conn, join_handle))
                 },
-                ConnectRequestOutcome::Rejected => {
+                ConnectRequestOutcome::Rejected(reason) => {
                     info!(
                         target: LOG_TARGET,
-                        "[NodeId={}] RequestConnection REJECTED by destination peer's control port.", peer.node_id,
+                        "[NodeId={}] RequestConnection REJECTED by destination peer's control port. Reason: {}",
+                        peer.node_id,
+                        reason
                     );
-                    Err(ConnectionManagerError::ConnectionRejected)
+
+                    // Abort! The connection request was rejected
+                    Err(ConnectionManagerError::ConnectionRejected(reason))
                 },
             })
     }
 
-    fn open_inbound_peer_connection(
+    fn establish_requested_peer_connection(
         &self,
         peer: &Peer,
-    ) -> Result<(Arc<PeerConnection>, CurvePublicKey, PeerConnectionJoinHandle)>
+        curve_public_key: CurvePublicKey,
+        address: NetAddress,
+    ) -> Result<(Arc<PeerConnection>, PeerConnectionJoinHandle)>
     {
-        let (secret_key, public_key) =
-            CurveEncryption::generate_keypair().map_err(ConnectionManagerError::CurveEncryptionGenerateError)?;
+        debug!(
+            target: LOG_TARGET,
+            "[NodeId={}] Connecting to given peer connection at address {}", peer.node_id, address
+        );
 
-        let (conn, join_handle) = self
-            .establisher
-            .establish_inbound_peer_connection(peer.node_id.clone().into(), secret_key)?;
+        let (conn, join_handle) = self.establisher.establish_outbound_peer_connection(
+            peer.node_id.clone().into(),
+            address,
+            curve_public_key,
+        )?;
 
-        Ok((conn, public_key, join_handle))
+        Ok((conn, join_handle))
     }
 }
