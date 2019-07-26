@@ -149,7 +149,7 @@ than one string as defined in [[2]].
 | pk                             | \<256 bit public key, in hexadecimal format (64 characters), that is converted into a `Base58` encoded string (44 characters)\> |
 | raid_id                        | \<`RAID_ID` (*refer to [RAID_ID](#raid_id)*) (15 characters)\> |
 | nonce                          | \<256 bit public nonce, in hexadecimal format (64 characters), that is converted into a `Base58` encoded string (44 characters)\> |
-| sig                            | \<[Asset issuer]'s 256 bit Schnorr signature for the `RAID_ID` (*refer to [RAID_ID](#raid_id)*), in hexadecimal format (64 characters), that is converted into a `Base58` encoded string (44 characters)\>. |
+| sig                            | \<[Asset issuer]'s 256 bit Schnorr signature for the `RAID_ID` (*refer to [RAID_ID](#raid_id)*), in hexadecimal format (64 characters), that is converted into a `Base58` encoded string (44 characters)\> |
 | desc                           | \<Optional RAID description\>; ASCII String; Up to 48 characters for the condensed version (using only one string) and up to 235 characters (when spanning two strings). |
 | crc                            | \<CRC-32 checksum of the entire record, up to but excluding the checksum key-value pair (starting at "**oa1:tari**" and ending at the last "**;**" before the checksum key-value pair) in hexadecimal format (eight characters)\> |
 
