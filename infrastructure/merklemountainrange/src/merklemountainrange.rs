@@ -115,10 +115,11 @@ use crate::{
 };
 use croaring::{treemap::NativeSerializer, Treemap};
 use digest::Digest;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{collections::HashMap, convert::TryFrom, marker::PhantomData};
 use tari_utilities::Hashable;
 
+#[derive(Serialize, Deserialize)]
 pub struct MerkleMountainRange<T, D> {
     // todo convert these to a bitmap
     mmr: Vec<MerkleNode>,
@@ -127,6 +128,7 @@ pub struct MerkleMountainRange<T, D> {
     current_peak_height: (usize, usize), // we store a tuple of peak height,index
     pub(crate) change_tracker: MerkleChangeTracker,
     last_added_object: ObjectHash,
+    #[serde(with = "crate::treemap_ser::treemap_serialize")]
     unpruned_indices: Treemap,
 }
 
@@ -616,6 +618,26 @@ where
         };
         mmr.append(items)?;
         Ok(mmr)
+    }
+}
+
+impl<T, D> Default for MerkleMountainRange<T, D>
+where
+    T: Hashable + Serialize + DeserializeOwned,
+    D: Digest,
+{
+    fn default() -> MerkleMountainRange<T, D> {
+        MerkleMountainRange::new()
+    }
+}
+
+impl<T, D> PartialEq<MerkleMountainRange<T, D>> for MerkleMountainRange<T, D>
+where
+    T: Hashable + Serialize + DeserializeOwned,
+    D: Digest,
+{
+    fn eq(&self, other: &MerkleMountainRange<T, D>) -> bool {
+        (self.get_merkle_root() == other.get_merkle_root()) && (self.get_unpruned_hash() == other.get_unpruned_hash())
     }
 }
 

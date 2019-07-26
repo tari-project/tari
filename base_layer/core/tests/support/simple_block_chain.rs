@@ -24,6 +24,8 @@ use chrono::Duration;
 
 use merklemountainrange::mmr::*;
 use rand::OsRng;
+use serde::{Deserialize, Serialize};
+use std::{fs::File, io::prelude::*};
 use tari_core::{
     block::*,
     blockheader::*,
@@ -38,6 +40,7 @@ use tari_crypto::{commitment::HomomorphicCommitmentFactory, common::Blake256, ke
 use tari_utilities::hash::Hashable;
 
 /// This struct is used to keep track of what the value and private key of a UTXO is.
+#[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct SpendInfo {
     pub key: PrivateKey,
     pub value: MicroTari,
@@ -51,22 +54,30 @@ impl SpendInfo {
 }
 
 /// This is used to represent a block chain in memory for testing purposes
+#[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct SimpleBlockChain {
     blocks: Vec<Block>,
     spending_keys: Vec<Vec<SpendInfo>>,
+}
+
+/// This is used to represent a block chain in memory for testing purposes
+#[derive(PartialEq)]
+pub struct SimpleBlockChainBuilder {
+    blockchain: SimpleBlockChain,
     headers: MerkleMountainRange<BlockHeader, SignatureHash>,
     utxos: MerkleMountainRange<TransactionInput, SignatureHash>,
     kernels: MerkleMountainRange<TransactionKernel, SignatureHash>,
 }
-impl SimpleBlockChain {
+
+impl SimpleBlockChainBuilder {
     /// This will create a new test block_chain with empty blocks
-    pub fn new(block_amount: u64) -> SimpleBlockChain {
-        let mut chain = SimpleBlockChain::default();
+    pub fn new(block_amount: u64) -> SimpleBlockChainBuilder {
+        let mut chain = SimpleBlockChainBuilder::default();
 
         let mut rng = OsRng::new().unwrap();
         // create gen block
         let priv_key = PrivateKey::random(&mut rng);
-        chain.spending_keys.push(vec![SpendInfo::new(
+        chain.blockchain.spending_keys.push(vec![SpendInfo::new(
             priv_key.clone(),
             calculate_coinbase(0),
             OutputFeatures::COINBASE_OUTPUT,
@@ -77,7 +88,7 @@ impl SimpleBlockChain {
         // lets mine some more blocks
         for i in 1..(block_amount) {
             let priv_key = PrivateKey::random(&mut rng);
-            chain.spending_keys.push(vec![SpendInfo::new(
+            chain.blockchain.spending_keys.push(vec![SpendInfo::new(
                 priv_key.clone(),
                 calculate_coinbase(i.into()),
                 OutputFeatures::COINBASE_OUTPUT,
@@ -97,7 +108,7 @@ impl SimpleBlockChain {
         let mut rng = OsRng::new().unwrap();
         for i in 0..(block_amount) {
             let priv_key = PrivateKey::random(&mut rng);
-            self.spending_keys.push(vec![SpendInfo::new(
+            self.blockchain.spending_keys.push(vec![SpendInfo::new(
                 priv_key.clone(),
                 calculate_coinbase(i),
                 OutputFeatures::COINBASE_OUTPUT,
@@ -112,13 +123,13 @@ impl SimpleBlockChain {
     }
 
     /// This will create a new test block_chain with random txs spending all the utxo's at the spend height
-    pub fn new_with_spending(block_amount: u64, spending_height: u64) -> SimpleBlockChain {
-        let mut chain = SimpleBlockChain::default();
+    pub fn new_with_spending(block_amount: u64, spending_height: u64) -> SimpleBlockChainBuilder {
+        let mut chain = SimpleBlockChainBuilder::default();
 
         let mut rng = OsRng::new().unwrap();
         // create gen block
         let priv_key = PrivateKey::random(&mut rng);
-        chain.spending_keys.push(vec![SpendInfo::new(
+        chain.blockchain.spending_keys.push(vec![SpendInfo::new(
             priv_key.clone(),
             calculate_coinbase(0),
             OutputFeatures::COINBASE_OUTPUT,
@@ -129,7 +140,7 @@ impl SimpleBlockChain {
         // lets mine some empty blocks
         for i in 1..(spending_height) {
             let priv_key = PrivateKey::random(&mut rng);
-            chain.spending_keys.push(vec![SpendInfo::new(
+            chain.blockchain.spending_keys.push(vec![SpendInfo::new(
                 priv_key.clone(),
                 calculate_coinbase(i),
                 OutputFeatures::COINBASE_OUTPUT,
@@ -146,7 +157,7 @@ impl SimpleBlockChain {
         for i in spending_height..(block_amount) {
             let priv_key = PrivateKey::random(&mut rng);
             let header = chain.generate_new_header();
-            chain.spending_keys.push(Vec::new());
+            chain.blockchain.spending_keys.push(Vec::new());
             let (tx, mut spends) = chain.spend_block_utxos((i - spending_height) as usize);
             let block = BlockBuilder::new()
                 .with_header(header)
@@ -160,7 +171,7 @@ impl SimpleBlockChain {
                 calculate_coinbase(i) + fee,
                 OutputFeatures::COINBASE_OUTPUT,
             ));
-            chain.spending_keys[i as usize].append(&mut spends);
+            chain.blockchain.spending_keys[i as usize].append(&mut spends);
         }
         chain
     }
@@ -168,18 +179,18 @@ impl SimpleBlockChain {
     /// This will blocks to the chain with random txs spending all the utxo's at the spend height
     pub fn add_with_spending(&mut self, block_amount: u64, spending_height: u64) {
         let mut rng = OsRng::new().unwrap();
-        let len = self.blocks.len() as u64;
+        let len = self.blockchain.blocks.len() as u64;
         let mut blocks_added = 0;
         if len < spending_height {
             self.add(spending_height - len);
             blocks_added += 1;
         };
         // lets mine some more blocks, but spending the utxo's in the older blocks
-        let len = self.blocks.len() as u64;
+        let len = self.blockchain.blocks.len() as u64;
         for i in len..(len + block_amount - blocks_added) {
             let priv_key = PrivateKey::random(&mut rng);
             let header = self.generate_new_header();
-            self.spending_keys.push(Vec::new());
+            self.blockchain.spending_keys.push(Vec::new());
             let (tx, mut spends) = self.spend_block_utxos((i - spending_height) as usize);
             let block = BlockBuilder::new()
                 .with_header(header)
@@ -193,7 +204,7 @@ impl SimpleBlockChain {
                 calculate_coinbase(i) + fee,
                 OutputFeatures::COINBASE_OUTPUT,
             ));
-            self.spending_keys[i as usize].append(&mut spends);
+            self.blockchain.spending_keys[i as usize].append(&mut spends);
         }
     }
 
@@ -217,27 +228,29 @@ impl SimpleBlockChain {
                 .push(output.clone().into())
                 .expect("failed to add outputs to test chain");
         }
-        self.blocks.push(block);
+        self.blockchain.blocks.push(block);
     }
 
     /// This function will generate a new header, assuming it will follow on the last created block.
     fn generate_new_header(&self) -> BlockHeader {
-        let counter = self.blocks.len() - 1;
+        let counter = self.blockchain.blocks.len() - 1;
         let mut hash = [0; 32];
-        hash.copy_from_slice(&self.blocks[counter].header.hash());
+        hash.copy_from_slice(&self.blockchain.blocks[counter].header.hash());
+        let ouput_mmr = self.utxos.get_merkle_root();
+        let kernal_mmr = self.kernels.get_merkle_root();
         BlockHeader {
             version: BLOCKCHAIN_VERSION,
-            height: self.blocks[counter].header.height + 1,
+            height: self.blockchain.blocks[counter].header.height + 1,
             prev_hash: hash,
-            timestamp: self.blocks[counter]
+            timestamp: self.blockchain.blocks[counter]
                 .header
                 .timestamp
                 .clone()
                 .checked_add_signed(Duration::minutes(1))
                 .unwrap(),
-            output_mr: [0; 32],
+            output_mr: array_ref!(ouput_mmr, 0, 32).clone(),
             range_proof_mr: [0; 32],
-            kernel_mr: [0; 32],
+            kernel_mr: array_ref!(kernal_mmr, 0, 32).clone(),
             total_kernel_offset: RistrettoSecretKey::from(0),
             pow: ProofOfWork {},
         }
@@ -245,11 +258,12 @@ impl SimpleBlockChain {
 
     /// This function will spend the utxo's in the mentioned block
     fn spend_block_utxos(&mut self, block_index: usize) -> (Vec<Transaction>, Vec<SpendInfo>) {
-        let amount_of_utxo = self.spending_keys[block_index as usize].len();
+        let amount_of_utxo = self.blockchain.spending_keys[block_index as usize].len();
         let mut txs = Vec::new();
         let mut spends = Vec::new();
+        let mut counter = 0;
         for i in 0..amount_of_utxo {
-            let result = self.create_tx(block_index, i);
+            let result = self.create_tx(block_index, i, &mut counter);
             if result.is_some() {
                 let (tx, mut spending_info) = result.unwrap();
                 txs.push(tx);
@@ -260,22 +274,32 @@ impl SimpleBlockChain {
     }
 
     /// This function will create a new transaction, spending the utxo specified by the block and utxo index
-    fn create_tx(&self, block_index: usize, utxo_index: usize) -> Option<(Transaction, Vec<SpendInfo>)> {
+    fn create_tx(
+        &self,
+        block_index: usize,
+        utxo_index: usize,
+        counter: &mut i32,
+    ) -> Option<(Transaction, Vec<SpendInfo>)>
+    {
         let mut rng = OsRng::new().unwrap();
         let mut spend_info = Vec::new();
 
         // create keys
-        let old_spend_key = self.spending_keys[block_index][utxo_index].key.clone();
+        let old_spend_key = self.blockchain.spending_keys[block_index][utxo_index].key.clone();
         let new_spend_key = PrivateKey::random(&mut rng);
         let new_spend_key2 = PrivateKey::random(&mut rng);
         // create values
-        let old_value = self.spending_keys[block_index][utxo_index].value;
-        if old_value <= MicroTari(100) || utxo_index > 4 {
+        let old_value = self.blockchain.spending_keys[block_index][utxo_index].value;
+        if old_value <= MicroTari(100) || *counter > 4 {
             // we dont want to keep dividing for ever on a single utxo, or create very large blocks
             return None;
         }
-        let new_value = self.spending_keys[block_index][utxo_index].value / 2;
+        let new_value = self.blockchain.spending_keys[block_index][utxo_index].value / 2;
         let fee = Fee::calculate(20.into(), 1, 2);
+        if (new_value + fee + MicroTari(100)) >= (old_value) {
+            // we dont want values smaller than 100 micro tari
+            return None;
+        }
         let new_value2 = old_value - new_value - fee;
 
         // save spend info
@@ -293,7 +317,10 @@ impl SimpleBlockChain {
         // recreate input commitment
         let v_input = PrivateKey::from(old_value);
         let commitment_in = COMMITMENT_FACTORY.commit(&old_spend_key, &v_input);
-        let input = TransactionInput::new(self.spending_keys[block_index][utxo_index].features, commitment_in);
+        let input = TransactionInput::new(
+            self.blockchain.spending_keys[block_index][utxo_index].features,
+            commitment_in,
+        );
         // create unblinded value
         let old_value = UnblindedOutput::new(old_value, old_spend_key, None);
 
@@ -328,11 +355,25 @@ impl SimpleBlockChain {
             .unwrap();
         match sender.finalize(KernelFeatures::empty(), &PROVER, &COMMITMENT_FACTORY) {
             Ok(true) => (),
-            _ => return None,
+            _ => {
+                return None;
+            },
         };
 
         let tx = sender.get_transaction().unwrap().clone();
+        *counter += 1;
         Some((tx, spend_info))
+    }
+}
+
+impl Default for SimpleBlockChainBuilder {
+    fn default() -> Self {
+        SimpleBlockChainBuilder {
+            blockchain: SimpleBlockChain::default(),
+            headers: MerkleMountainRange::new(),
+            utxos: MerkleMountainRange::new(),
+            kernels: MerkleMountainRange::new(),
+        }
     }
 }
 
@@ -341,9 +382,6 @@ impl Default for SimpleBlockChain {
         SimpleBlockChain {
             blocks: Vec::new(),
             spending_keys: Vec::new(),
-            headers: MerkleMountainRange::new(),
-            utxos: MerkleMountainRange::new(),
-            kernels: MerkleMountainRange::new(),
         }
     }
 }
@@ -351,39 +389,40 @@ impl Default for SimpleBlockChain {
 #[cfg(test)]
 mod test {
     use super::*;
-
+    use std::fs;
     #[test]
     fn create_simple_block_chain() {
-        let mut chain = SimpleBlockChain::new_with_spending(5, 1);
-        assert_eq!(chain.blocks.len(), 5);
+        let mut chain = SimpleBlockChainBuilder::new(5);
+        assert_eq!(chain.blockchain.blocks.len(), 5);
         chain.add(5);
-        assert_eq!(chain.blocks.len(), 10);
+        assert_eq!(chain.blockchain.blocks.len(), 10);
 
-        assert_eq!(chain.blocks[0].header.height, 0);
+        assert_eq!(chain.blockchain.blocks[0].header.height, 0);
         for i in 1..10 {
             let mut hash = [0; 32];
-            hash.copy_from_slice(&chain.blocks[i - 1].header.hash());
-            assert_eq!(chain.blocks[i].header.prev_hash, hash);
-            assert_eq!(chain.blocks[i].header.height, i as u64);
+            hash.copy_from_slice(&chain.blockchain.blocks[i - 1].header.hash());
+            assert_eq!(chain.blockchain.blocks[i].header.prev_hash, hash);
+            assert_eq!(chain.blockchain.blocks[i].header.height, i as u64);
         }
     }
 
-    // todo fix the performance issues with issue #473
+    // we dont want to run this function function every time as it basically tests, test code and it runs slow.
     // #[test]
+    #[allow(dead_code)]
     fn create_simple_block_chain_with_spend() {
-        let mut chain = SimpleBlockChain::new_with_spending(5, 1);
-        assert_eq!(chain.blocks.len(), 5);
+        let mut chain = SimpleBlockChainBuilder::new_with_spending(5, 1);
+        assert_eq!(chain.blockchain.blocks.len(), 5);
         chain.add_with_spending(5, 1);
-        assert_eq!(chain.blocks.len(), 10);
+        assert_eq!(chain.blockchain.blocks.len(), 10);
 
-        assert_eq!(chain.blocks[0].header.height, 0);
+        assert_eq!(chain.blockchain.blocks[0].header.height, 0);
         for i in 1..10 {
             let mut hash = [0; 32];
-            hash.copy_from_slice(&chain.blocks[i - 1].header.hash());
-            assert_eq!(chain.blocks[i].header.prev_hash, hash);
-            assert_eq!(chain.blocks[i].header.height, i as u64);
-            for input in &chain.blocks[i].body.inputs {
-                assert!(chain.blocks[i - 1]
+            hash.copy_from_slice(&chain.blockchain.blocks[i - 1].header.hash());
+            assert_eq!(chain.blockchain.blocks[i].header.prev_hash, hash);
+            assert_eq!(chain.blockchain.blocks[i].header.height, i as u64);
+            for input in &chain.blockchain.blocks[i].body.inputs {
+                assert!(chain.blockchain.blocks[i - 1]
                     .body
                     .outputs
                     .iter()
@@ -391,4 +430,31 @@ mod test {
             }
         }
     }
+
+    // we dont want to run this function function every time as it basically tests, test code and it runs slow.
+    #[test]
+    #[allow(dead_code)]
+    fn test_json_file() {
+        let mut chain = SimpleBlockChainBuilder::new_with_spending(5, 1);
+        chain.add_with_spending(5, 1);
+        let mut file = File::create("tests/chain/test_chain.json").unwrap();
+        let json = serde_json::to_string_pretty(&chain.blockchain).unwrap();
+        file.write_all(json.as_bytes()).unwrap();
+        let read_json = fs::read_to_string("tests/chain/test_chain.json").unwrap();
+        let blockchain: SimpleBlockChain = serde_json::from_str(&read_json).unwrap();
+        assert_eq!(blockchain, chain.blockchain);
+        fs::remove_file("tests/chain/test_chain.json").unwrap();
+    }
+
+    // we dont want to run this function function every time as it create a test file for use in testing
+    // #[test]
+    #[allow(dead_code)]
+    fn create_json_file() {
+        let mut chain = SimpleBlockChainBuilder::new_with_spending(5, 1);
+        chain.add_with_spending(45, 1);
+        let mut file = File::create("tests/chain/chain.json").unwrap();
+        let json = serde_json::to_string_pretty(&chain.blockchain).unwrap();
+        file.write_all(json.as_bytes()).unwrap();
+    }
+
 }
