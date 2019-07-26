@@ -23,6 +23,7 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
+use crate::pow::*;
 use digest::Digest;
 use serde::{Deserialize, Serialize};
 use tari_crypto::{
@@ -66,6 +67,9 @@ pub type MessageHash = Vec<u8>;
 
 /// Specify the range proof type
 pub type RangeProofService = DalekRangeProofService;
+
+/// Specify the Proof of Work
+pub type ProofOfWork = MockProofOfWork;
 
 #[cfg(test)]
 pub const MAX_RANGE_PROOF_RANGE: usize = 32; // 2^32 This is the only way to produce failing range proofs for the tests
