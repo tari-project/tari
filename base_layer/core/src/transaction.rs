@@ -36,6 +36,7 @@ use crate::{
 use derive_error::Error;
 use digest::Input;
 use serde::{Deserialize, Serialize};
+use std::cmp::Ordering;
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::PublicKey as PK,
@@ -133,6 +134,27 @@ impl UnblindedOutput {
             ));
         }
         Ok(output)
+    }
+}
+
+// These implementations are used for order these outputs for UTXO selection which will be done by comparing the values
+impl Eq for UnblindedOutput {}
+
+impl PartialEq for UnblindedOutput {
+    fn eq(&self, other: &UnblindedOutput) -> bool {
+        self.value == other.value
+    }
+}
+
+impl PartialOrd<UnblindedOutput> for UnblindedOutput {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.value.partial_cmp(&other.value)
+    }
+}
+
+impl Ord for UnblindedOutput {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.value.cmp(&other.value)
     }
 }
 

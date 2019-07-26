@@ -20,14 +20,22 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use rand::OsRng;
-use tari_crypto::common::Blake256;
+use derive_error::Error;
+use tari_core::transaction_protocol::TransactionProtocolError;
+use tari_utilities::ByteArrayError;
 
-/// Specify the Hash function for general hashing
-pub type HashDigest = Blake256;
-
-/// Specify the Hash function used by the key manager
-pub type KeyDigest = Blake256;
-
-/// Specify the Rng to use while building transactions for this wallet
-pub type TransactionRng = OsRng;
+#[derive(Debug, Error, PartialEq)]
+pub enum OutputManagerError {
+    #[error(msg_embedded, no_from, non_std)]
+    BuildError(String),
+    ByteArrayError(ByteArrayError),
+    TransactionProtocolError(TransactionProtocolError),
+    /// If an pending transaction does not exist to be confirmed
+    PendingTransactionNotFound,
+    /// Not all the transaction inputs and outputs are present to be confirmed
+    IncompleteTransaction,
+    /// Not enough funds to fulfill transaction
+    NotEnoughFunds,
+    /// Output already exists
+    DuplicateOutput,
+}
