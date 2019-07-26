@@ -50,7 +50,7 @@ impl ProofOfWork for MockProofOfWork {
         buf
     }
 
-    fn is_total_accumulated_difficulty_higher(&self, other: &MockProofOfWork) -> bool {
+    fn has_more_accum_work_than(&self, other: &MockProofOfWork) -> bool {
         self.work < other.work
     }
 
