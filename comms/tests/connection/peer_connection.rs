@@ -20,6 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::support::{
+    factories::{self, TestFactory},
+    helpers::asserts::assert_change,
+};
 use std::time::Duration;
 use tari_comms::connection::{
     peer_connection::PeerConnectionProtoMessage,
@@ -33,11 +37,6 @@ use tari_comms::connection::{
     PeerConnectionContextBuilder,
     PeerConnectionError,
     ZmqContext,
-};
-
-use crate::support::{
-    factories::{self, TestFactory},
-    helpers::asserts::assert_change,
 };
 
 #[test]

@@ -88,7 +88,7 @@ impl<'c> ConnectionMessageCounter<'c> {
         );
     }
 
-    pub fn start<A: ZmqEndpoint + Send + Sync + Clone + 'static>(&self, address: A) -> () {
+    pub fn start<A: ZmqEndpoint + Send + Sync + Clone + 'static>(&self, address: A) {
         let counter = self.counter.clone();
         let context = self.context.clone();
         let address = address.clone();

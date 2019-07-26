@@ -25,16 +25,19 @@ use super::{
     establisher::ConnectionEstablisher,
     protocol::PeerConnectionProtocol,
     ConnectionManagerError,
+    EstablishLockResult,
     PeerConnectionConfig,
     Result,
 };
 use crate::{
-    connection::{ConnectionError, CurvePublicKey, NetAddress, PeerConnection, PeerConnectionState, ZmqContext},
+    connection::{ConnectionError, CurveEncryption, CurvePublicKey, PeerConnection, PeerConnectionState, ZmqContext},
+    control_service::messages::RejectReason,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerManager},
 };
 use log::*;
 use std::{
     collections::HashMap,
+    result,
     sync::{Arc, Mutex},
 };
 
@@ -71,84 +74,22 @@ impl ConnectionManager {
         }
     }
 
-    /// Attempt to establish a connection to a given peer. If the connection exists
-    /// the existing connection is returned.
-    pub fn establish_connection_to_peer(&self, peer: &Peer) -> Result<Arc<PeerConnection>> {
-        self.with_establish_lock(&peer.node_id, || self.attempt_peer_connection(peer))
-    }
-
     /// Attempt to establish a connection to a given NodeId. If the connection exists
     /// the existing connection is returned.
     pub fn establish_connection_to_node_id(&self, node_id: &NodeId) -> Result<Arc<PeerConnection>> {
         match self.peer_manager.find_with_node_id(node_id) {
-            Ok(peer) => self.with_establish_lock(node_id, || self.attempt_peer_connection(&peer)),
+            Ok(peer) => self.establish_connection_to_peer(&peer),
             Err(err) => Err(ConnectionManagerError::PeerManagerError(err)),
         }
     }
 
-    /// Establish an outbound connection for the given peer to the given address using the given
-    /// CurvePublicKey.
-    ///
-    /// ## Arguments
-    ///
-    /// `peer`: &Peer - The peer which issued the request
-    /// `address`: NetAddress - The address of the destination connection
-    /// `dest_public_key`: &Peer - The Curve25519 public key of the destination connection
-    pub(crate) fn establish_requested_outbound_connection(
-        &self,
-        peer: &Peer,
-        address: NetAddress,
-        dest_public_key: CurvePublicKey,
-    ) -> Result<Arc<PeerConnection>>
-    {
-        let (conn, join_handle) = self.establisher.establish_outbound_peer_connection(
-            peer.node_id.clone().into(),
-            address,
-            dest_public_key,
-        )?;
-
-        self.connections
-            .add_connection(peer.node_id.clone(), conn.clone(), join_handle);
-        Ok(conn)
+    /// Attempt to establish a connection to a given peer. If the connection exists
+    /// the existing connection is returned.
+    pub fn establish_connection_to_peer(&self, peer: &Peer) -> Result<Arc<PeerConnection>> {
+        self.with_establish_lock(&peer.node_id, || self.attempt_connection_to_peer(peer))
     }
 
-    pub fn shutdown(self) -> Vec<std::result::Result<(), ConnectionError>> {
-        self.connections.shutdown_joined()
-    }
-
-    /// Lock a critical section for the given node id during connection establishment
-    pub fn with_establish_lock<T>(&self, node_id: &NodeId, func: impl FnOnce() -> T) -> T {
-        // Return the lock for the given node id. If no lock exists create a new one and return it.
-        let nid_lock = {
-            let mut establish_locks = acquire_lock!(self.establish_locks);
-            match establish_locks.get(node_id) {
-                Some(lock) => lock.clone(),
-                None => {
-                    let new_lock = Arc::new(Mutex::new(()));
-                    establish_locks.insert(node_id.clone(), new_lock.clone());
-                    new_lock
-                },
-            }
-        };
-
-        // Lock the lock for the NodeId
-        let _nid_lock_guard = acquire_lock!(nid_lock);
-        let ret = func();
-        // Remove establish lock once done to release memory. This is safe because the function has already
-        // established the connection, so any subsequent calls will return the existing connection.
-        {
-            let mut establish_locks = acquire_lock!(self.establish_locks);
-            establish_locks.remove(node_id);
-        }
-        ret
-    }
-
-    pub fn has_establish_lock(&self, node_id: &NodeId) -> bool {
-        let establish_locks = acquire_lock!(self.establish_locks);
-        establish_locks.get(node_id).is_some()
-    }
-
-    fn attempt_peer_connection(&self, peer: &Peer) -> Result<Arc<PeerConnection>> {
+    fn attempt_connection_to_peer(&self, peer: &Peer) -> Result<Arc<PeerConnection>> {
         let maybe_conn = self.connections.get_connection(&peer.node_id);
         let peer_conn = match maybe_conn {
             Some(conn) => {
@@ -211,11 +152,91 @@ impl ConnectionManager {
                     target: LOG_TARGET,
                     "Peer connection does not exist for NodeId={}", peer.node_id
                 );
+
                 self.initiate_peer_connection(peer)?
             },
         };
 
         Ok(peer_conn.clone())
+    }
+
+    /// Establish an inbound connection for the given peer and pass it (and it's `CurvePublicKey`) to a callback.
+    /// That callback will determine whether the connection should be added to the live connection list. This
+    /// enables you to for instance, implement a connection protocol which decides if the connection manager
+    /// ultimately accepts the peer connection.
+    ///
+    /// ## Arguments
+    ///
+    /// - `peer`: &Peer - Create an inbound connection for this peer
+    /// - `with_connection`: This callback is called with the new connection. If `Ok(Some(connection))` is returned, the
+    ///   connection is added to the live connection list, otherwise it is discarded
+    pub(crate) fn with_new_inbound_connection<E>(
+        &self,
+        peer: &Peer,
+        with_connection: impl FnOnce(Arc<PeerConnection>, CurvePublicKey) -> result::Result<Option<Arc<PeerConnection>>, E>,
+    ) -> Result<()>
+    where
+        E: Into<ConnectionManagerError>,
+    {
+        let (secret_key, public_key) = CurveEncryption::generate_keypair()?;
+
+        let (conn, join_handle) = self
+            .establisher
+            .establish_inbound_peer_connection(peer.node_id.clone().into(), secret_key)?;
+
+        match with_connection(conn, public_key).map_err(Into::into)? {
+            Some(conn) => {
+                self.connections.add_connection(peer.node_id.clone(), conn, join_handle);
+            },
+            None => {},
+        }
+
+        Ok(())
+    }
+
+    /// Sends shutdown signals to all PeerConnections
+    pub fn shutdown(self) -> Vec<std::result::Result<(), ConnectionError>> {
+        self.connections.shutdown_joined()
+    }
+
+    /// Try to acquire an establish lock for the node ID. If a lock exists for the Node ID,
+    /// then return `EstablishLockResult::Collision` is returned.
+    pub fn try_acquire_establish_lock<T>(&self, node_id: &NodeId, func: impl FnOnce() -> T) -> EstablishLockResult<T> {
+        if acquire_lock!(self.establish_locks).contains_key(node_id) {
+            EstablishLockResult::Collision
+        } else {
+            self.with_establish_lock(node_id, || {
+                let res = func();
+                EstablishLockResult::Ok(res)
+            })
+        }
+    }
+
+    /// Lock a critical section for the given node id during connection establishment
+    pub fn with_establish_lock<T>(&self, node_id: &NodeId, func: impl FnOnce() -> T) -> T {
+        // Return the lock for the given node id. If no lock exists create a new one and return it.
+        let nid_lock = {
+            let mut establish_locks = acquire_lock!(self.establish_locks);
+            match establish_locks.get(node_id) {
+                Some(lock) => lock.clone(),
+                None => {
+                    let new_lock = Arc::new(Mutex::new(()));
+                    establish_locks.insert(node_id.clone(), new_lock.clone());
+                    new_lock
+                },
+            }
+        };
+
+        // Lock the lock for the NodeId
+        let _nid_lock_guard = acquire_lock!(nid_lock);
+        let ret = func();
+        // Remove establish lock once done to release memory. This is safe because the function has already
+        // established the connection, so any subsequent calls will return the existing connection.
+        {
+            let mut establish_locks = acquire_lock!(self.establish_locks);
+            establish_locks.remove(node_id);
+        }
+        ret
     }
 
     /// Get the peer manager
@@ -240,16 +261,17 @@ impl ConnectionManager {
 
         protocol
             .negotiate_peer_connection(peer)
-            .and_then(|(new_inbound_conn, join_handle)| {
+            .and_then(|(new_conn, join_handle)| {
                 let config = self.establisher.get_config();
                 debug!(
                     target: LOG_TARGET,
                     "[{:?}] Waiting {}s for peer connection acceptance from remote peer ",
-                    new_inbound_conn.get_address(),
+                    new_conn.get_address(),
                     config.peer_connection_establish_timeout.as_secs(),
                 );
-                // Wait for a message from the peer before continuing
-                new_inbound_conn
+
+                // Wait for peer connection to transition to connected state before continuing
+                new_conn
                     .wait_connected_or_failure(&config.peer_connection_establish_timeout)
                     .or_else(|err| {
                         info!(
@@ -264,27 +286,42 @@ impl ConnectionManager {
                 debug!(
                     target: LOG_TARGET,
                     "[{:?}] Connection established. Adding to active peer connections.",
-                    new_inbound_conn.get_address(),
+                    new_conn.get_address(),
                 );
 
                 // TODO(sdbondi): Check if num active connections > max_connections, if so remove
                 //                the peer connection which has not seen much recent activity.
                 self.connections
-                    .add_connection(peer.node_id.clone(), Arc::clone(&new_inbound_conn), join_handle);
+                    .add_connection(peer.node_id.clone(), Arc::clone(&new_conn), join_handle);
 
-                Ok(new_inbound_conn)
+                Ok(new_conn)
             })
-            .or_else(|err| {
-                warn!(
-                    target: LOG_TARGET,
-                    "Failed to establish peer connection to NodeId={}", peer.node_id
-                );
-                warn!(
-                    target: LOG_TARGET,
-                    "Failed connection error for NodeId={}: {:?}", peer.node_id, err
-                );
-                Err(err)
+            .or_else(|err| match err {
+                ConnectionManagerError::ConnectionRejected(reason) => self.handle_connection_rejection(peer, reason),
+                _ => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Failed to establish peer connection to NodeId={}", peer.node_id
+                    );
+                    warn!(
+                        target: LOG_TARGET,
+                        "Failed connection error for NodeId={}: {:?}", peer.node_id, err
+                    );
+                    Err(err)
+                },
             })
+    }
+
+    /// The peer is telling us that we already have a connection. This can occur if the connection has been made
+    /// by the remote peer while attempting to connect to it. Let's look for a connection and if we have one
+    fn handle_connection_rejection(&self, peer: &Peer, reason: RejectReason) -> Result<Arc<PeerConnection>> {
+        match reason {
+            RejectReason::ExistingConnection => self
+                .connections
+                .get_active_connection(&peer.node_id)
+                .ok_or(ConnectionManagerError::PeerConnectionNotFound),
+            _ => Err(ConnectionManagerError::ConnectionRejected(reason)),
+        }
     }
 }
 
