@@ -20,11 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::collections::HashMap;
-
 use crate::{connection::PeerConnection, peer_manager::node_id::NodeId};
-
-use std::sync::{Arc, RwLock};
+use chrono::Utc;
+use std::{
+    collections::HashMap,
+    sync::{Arc, RwLock},
+};
 
 lazy_static! {
     static ref PORT_ALLOCATIONS: RwLock<Vec<u16>> = RwLock::new(vec![]);
@@ -36,11 +37,6 @@ pub trait Repository<I, T> {
     fn size(&self) -> usize;
     fn insert(&mut self, id: I, value: Arc<T>);
     fn remove(&mut self, id: &I) -> Option<Arc<T>>;
-}
-
-#[derive(Default)]
-pub(super) struct ConnectionRepository {
-    entries: HashMap<NodeId, Arc<PeerConnection>>,
 }
 
 impl Repository<NodeId, PeerConnection> for ConnectionRepository {
@@ -65,7 +61,17 @@ impl Repository<NodeId, PeerConnection> for ConnectionRepository {
     }
 }
 
+#[derive(Default)]
+pub(super) struct ConnectionRepository {
+    entries: HashMap<NodeId, Arc<PeerConnection>>,
+}
+
 impl ConnectionRepository {
+    #[cfg(test)]
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
     pub fn count_where<P>(&self, predicate: P) -> usize
     where P: FnMut(&&Arc<PeerConnection>) -> bool {
         self.entries.values().filter(predicate).count()
@@ -75,6 +81,40 @@ impl ConnectionRepository {
         for entry in self.entries.values() {
             f(entry);
         }
+    }
+
+    pub fn drain_filter<F>(&mut self, predicate: F) -> Vec<(NodeId, Arc<PeerConnection>)>
+    where F: FnMut(&(&NodeId, &Arc<PeerConnection>)) -> bool {
+        let to_remove = self
+            .entries
+            .iter()
+            .filter(predicate)
+            .map(|(node_id, _)| node_id.clone())
+            .collect::<Vec<_>>();
+
+        to_remove
+            .into_iter()
+            .map(|node_id| {
+                let conn = self
+                    .entries
+                    .remove(&node_id)
+                    .expect("Invariant (drain_filter): node_id key to be removed from entries was not found");
+
+                (node_id, conn)
+            })
+            .collect::<Vec<_>>()
+    }
+
+    pub fn sorted_recent_activity(&self) -> Vec<(&NodeId, &Arc<PeerConnection>)> {
+        let now = Utc::now().naive_utc();
+
+        let mut items = self.entries.iter().collect::<Vec<_>>();
+        items.sort_by(|(_, a), (_, b)| {
+            let a_duration = now.signed_duration_since(a.last_activity());
+            let b_duration = now.signed_duration_since(b.last_activity());
+            a_duration.cmp(&b_duration)
+        });
+        items
     }
 }
 
@@ -147,5 +187,32 @@ mod test {
         });
 
         assert_eq!(2, total);
+    }
+
+    #[test]
+    fn drain_filter() {
+        let (mut repo, _) = make_repo_with_connections(4);
+
+        // Get a copy of the expected node ids from the drain
+        let cloned = repo.entries.clone();
+        let node_ids = cloned.keys().collect::<Vec<_>>();
+        let drained_node_id1 = node_ids[1].clone();
+        let drained_node_id2 = node_ids[3].clone();
+        let kept_node_id1 = node_ids[0];
+        let kept_node_id2 = node_ids[2];
+
+        let mut i = 0;
+        let drained = repo.drain_filter(|_| {
+            i += 1;
+            i % 2 == 0
+        });
+
+        assert_eq!(drained.len(), 2);
+        assert_eq!(drained[0].0, drained_node_id1);
+        assert_eq!(drained[1].0, drained_node_id2);
+
+        assert_eq!(repo.entries.len(), 2);
+        assert!(repo.entries.contains_key(kept_node_id1));
+        assert!(repo.entries.contains_key(kept_node_id2));
     }
 }
