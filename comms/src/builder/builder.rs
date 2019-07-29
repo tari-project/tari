@@ -404,7 +404,7 @@ pub struct CommsServices<MType> {
     control_service_handle: Option<ControlServiceHandle>,
     inbound_message_broker: Arc<InboundMessageBroker<MType>>,
     outbound_message_pool: OutboundMessagePool,
-    pub node_identity: Arc<NodeIdentity>,
+    node_identity: Arc<NodeIdentity>,
     connection_manager: Arc<ConnectionManager>,
     peer_manager: Arc<PeerManager>,
 }
@@ -420,6 +420,10 @@ where
 
     pub fn peer_manager(&self) -> Arc<PeerManager> {
         Arc::clone(&self.peer_manager)
+    }
+
+    pub fn node_identity(&self) -> Arc<NodeIdentity> {
+        Arc::clone(&self.node_identity)
     }
 
     pub fn outbound_message_service(&self) -> Arc<OutboundMessageService> {

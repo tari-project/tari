@@ -64,6 +64,10 @@ impl NodeDistance {
         }
         nd
     }
+
+    pub fn max_distance() -> NodeDistance {
+        NodeDistance([255; NODE_ID_ARRAY_SIZE])
+    }
 }
 
 impl PartialEq for NodeDistance {
