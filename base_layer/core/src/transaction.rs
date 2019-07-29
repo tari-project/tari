@@ -395,6 +395,8 @@ pub struct Transaction {
     pub offset: BlindingFactor,
     /// The constituents of a transaction which has the same structure as the body of a block.
     pub body: AggregateBody,
+    /// This is the value offset if a coinbase is included in the transaction this is used for validation
+    pub value_offset: BlindingFactor,
 }
 
 impl Transaction {
@@ -409,6 +411,7 @@ impl Transaction {
         Transaction {
             offset,
             body: AggregateBody::new(inputs, outputs, kernels),
+            value_offset: PrivateKey::default(),
         }
     }
 
@@ -421,14 +424,16 @@ impl Transaction {
     }
 
     /// Calculate the sum of the kernels, taking into account the offset if it exists, and their constituent fees
-    fn sum_kernels(&self) -> KernelSum {
+    fn sum_kernels(&self, factory: &CommitmentFactory) -> KernelSum {
         let public_offset = PublicKey::from_secret_key(&self.offset);
         let offset_commitment = PedersenCommitment::from_public_key(&public_offset);
+        let emmision_commitment = factory.commit(&PrivateKey::default(), &self.value_offset);
+        let init_com = &offset_commitment + &emmision_commitment;
         // Sum all kernel excesses and fees
         self.body.kernels.iter().fold(
             KernelSum {
                 fees: MicroTari(0),
-                sum: offset_commitment,
+                sum: init_com,
             },
             |acc, val| KernelSum {
                 fees: &acc.fees + &val.fee,
@@ -439,9 +444,8 @@ impl Transaction {
 
     /// Confirm that the (sum of the outputs) - (sum of inputs) = Kernel excess
     fn validate_kernel_sum(&self, factory: &CommitmentFactory) -> Result<(), TransactionError> {
-        let kernel_sum = self.sum_kernels();
+        let kernel_sum = self.sum_kernels(factory);
         let sum_io = self.sum_commitments(kernel_sum.fees.into(), factory);
-
         if kernel_sum.sum != sum_io {
             return Err(TransactionError::ValidationError(
                 "Sum of inputs and outputs did not equal sum of kernels with fees".into(),
@@ -486,6 +490,7 @@ impl From<AggregateBody> for Transaction {
         Transaction {
             body,
             offset: BlindingFactor::default(),
+            value_offset: BlindingFactor::default(),
         }
     }
 }

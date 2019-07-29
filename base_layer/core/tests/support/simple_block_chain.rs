@@ -55,8 +55,8 @@ impl SpendInfo {
 /// This is used to represent a block chain in memory for testing purposes
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct SimpleBlockChain {
-    blocks: Vec<Block>,
-    spending_keys: Vec<Vec<SpendInfo>>,
+    pub blocks: Vec<Block>,
+    pub spending_keys: Vec<Vec<SpendInfo>>,
 }
 
 /// This is used to represent a block chain in memory for testing purposes
@@ -209,6 +209,7 @@ impl SimpleBlockChainBuilder {
 
     /// This function will just add the content of the block to the MMR's
     fn processes_new_block(&mut self, block: Block) {
+        println!("Proc block nr: {:?}", self.blockchain.blocks.len());
         self.headers
             .push(block.header.clone())
             .expect("failed to add header to test chain");
@@ -251,7 +252,9 @@ impl SimpleBlockChainBuilder {
             range_proof_mr: [0; 32],
             kernel_mr: array_ref!(kernal_mmr, 0, 32).clone(),
             total_kernel_offset: RistrettoSecretKey::from(0),
-            pow: ProofOfWork::default(),
+            pow: ProofOfWork {
+                work: self.blockchain.blocks[counter].header.pow.work + 1,
+            },
         }
     }
 
@@ -431,7 +434,7 @@ mod test {
     }
 
     // we dont want to run this function function every time as it basically tests, test code and it runs slow.
-    #[test]
+    //#[test]
     #[allow(dead_code)]
     fn test_json_file() {
         let mut chain = SimpleBlockChainBuilder::new_with_spending(5, 1);
@@ -442,11 +445,11 @@ mod test {
         let read_json = fs::read_to_string("tests/chain/test_chain.json").unwrap();
         let blockchain: SimpleBlockChain = serde_json::from_str(&read_json).unwrap();
         assert_eq!(blockchain, chain.blockchain);
-        fs::remove_file("tests/chain/test_chain.json").unwrap();
+        // fs::remove_file("tests/chain/test_chain.json").unwrap();
     }
 
     // we dont want to run this function function every time as it create a test file for use in testing
-    // #[test]
+    #[test]
     #[allow(dead_code)]
     fn create_json_file() {
         let mut chain = SimpleBlockChainBuilder::new_with_spending(5, 1);

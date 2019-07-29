@@ -23,10 +23,7 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
-use crate::pow::*;
-use digest::Digest;
-use serde::{Deserialize, Serialize};
-use crate::bullet_rangeproofs::BulletRangeProof;
+use crate::{bullet_rangeproofs::BulletRangeProof, pow::*};
 
 use tari_crypto::{
     common::Blake256,

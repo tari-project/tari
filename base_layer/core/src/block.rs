@@ -120,7 +120,7 @@ impl Block {
             fee += kernel.fee;
         }
         let fee = PrivateKey::from(fee);
-        trans.offset = trans.offset.clone() + (fee + coinbase);
+        trans.value_offset = fee + coinbase;
     }
 }
 
@@ -128,7 +128,6 @@ impl Block {
 /// This function will create the correct amount for the coinbase given the block height, it will provide the answer in
 /// µTari (micro Tari)
 pub fn calculate_coinbase(block_height: u64) -> MicroTari {
-    // todo fill this in properly as a function and not a constant
     let schedule = EmissionSchedule::new(MicroTari::from(10_000_000), 0.999, MicroTari::from(100));
     schedule.block_reward(block_height)
 }
@@ -327,7 +326,7 @@ impl BlockBuilder {
         let amount = self.total_fee + calculate_coinbase(self.header.height);
         let v = PrivateKey::from(u64::from(amount));
         let commitment = COMMITMENT_FACTORY.commit(&key, &v);
-        let rr = PROVER.construct_proof(&v, amount.into()).unwrap();
+        let rr = PROVER.construct_proof(&key, amount.into()).unwrap();
         let output = TransactionOutput::new(
             OutputFeatures::COINBASE_OUTPUT,
             commitment,
