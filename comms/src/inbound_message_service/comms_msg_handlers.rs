@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
+    consts::DHT_FORWARD_NODE_COUNT,
     dispatcher::{DispatchError, DispatchResolver, DispatchableKey},
     message::{DomainMessageContext, Message, MessageContext, MessageFlags, MessageHeader, NodeDestination},
     outbound_message_service::BroadcastStrategy,
@@ -84,6 +85,7 @@ where
         }
 
         let node_identity = &message_context.node_identity;
+        let peer_manager = &message_context.peer_manager;
 
         match message_envelope_header.dest {
             NodeDestination::Unknown => Ok(CommsDispatchType::Handle),
@@ -94,11 +96,15 @@ where
                     Ok(CommsDispatchType::Forward)
                 }
             },
-            NodeDestination::NodeId(_dest_node_id) => {
-                // TODO Check if dest_node_id is in network region by checking that its distance is closer or equal to
-                // furthest nearest neighbouring peer. If closer then handle else forward
-
-                Ok(CommsDispatchType::Handle)
+            NodeDestination::NodeId(dest_node_id) => {
+                if peer_manager
+                    .in_network_region(&dest_node_id, &node_identity.identity.node_id, DHT_FORWARD_NODE_COUNT)
+                    .map_err(|e| DispatchError::HandlerError(format!("{}", e)))?
+                {
+                    Ok(CommsDispatchType::Handle)
+                } else {
+                    Ok(CommsDispatchType::Forward)
+                }
             },
         }
     }

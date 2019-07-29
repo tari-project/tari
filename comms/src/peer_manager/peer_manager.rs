@@ -158,7 +158,8 @@ impl PeerManager {
         }
     }
 
-    /// Check if a specific node_id is part of the N nearest neighbours of a network region specified by region_node_id
+    /// Check if a specific node_id is in the network region of the N nearest neighbours of the region specified by
+    /// region_node_id
     pub fn in_network_region(
         &self,
         node_id: &NodeId,
@@ -166,12 +167,10 @@ impl PeerManager {
         n: usize,
     ) -> Result<bool, PeerManagerError>
     {
-        let peers = self
-            .peer_storage
+        self.peer_storage
             .read()
             .map_err(|_| PeerManagerError::PoisonedAccess)?
-            .closest_identities(region_node_id, n, &Vec::new())?;
-        Ok(peers.iter().any(|p| p.node_id == *node_id))
+            .in_network_region(node_id, region_node_id, n)
     }
 
     /// Thread safe access to peer - Changes the ban flag bit of the peer
@@ -388,6 +387,47 @@ mod test {
             .get_broadcast_identities(BroadcastStrategy::Random(10))
             .unwrap();
         assert_ne!(identities1, identities2);
+    }
+
+    #[test]
+    fn test_in_network_region() {
+        let mut rng = rand::OsRng::new().unwrap();
+        // Create peer manager with random peers
+        let peer_manager = PeerManager::new(HMapDatabase::new()).unwrap();
+        let network_region_node_id = create_test_peer(&mut rng, false).node_id;
+        // Create peers
+        let mut test_peers: Vec<Peer> = Vec::new();
+        for _ in 0..10 {
+            test_peers.push(create_test_peer(&mut rng, false));
+            assert!(peer_manager.add_peer(test_peers[test_peers.len() - 1].clone()).is_ok());
+        }
+        test_peers[0].set_banned(true);
+        test_peers[1].set_banned(true);
+
+        // Get nearest neighbours
+        let n = 5;
+        let nearest_identities = peer_manager
+            .get_broadcast_identities(BroadcastStrategy::Closest(ClosestRequest {
+                n,
+                node_id: network_region_node_id.clone(),
+                excluded_peers: Vec::new(),
+            }))
+            .unwrap();
+
+        for peer in &test_peers {
+            if nearest_identities
+                .iter()
+                .any(|peer_identity| peer.node_id == peer_identity.node_id)
+            {
+                assert!(peer_manager
+                    .in_network_region(&peer.node_id, &network_region_node_id, n)
+                    .unwrap());
+            } else {
+                assert!(!peer_manager
+                    .in_network_region(&peer.node_id, &network_region_node_id, n)
+                    .unwrap());
+            }
+        }
     }
 
     #[test]
