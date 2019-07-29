@@ -56,11 +56,6 @@ impl<'c> ConnectionMessageCounter<'c> {
         self
     }
 
-    pub fn reset(&self) {
-        let mut counter_lock = acquire_write_lock!(self.counter);
-        *counter_lock = 0;
-    }
-
     pub fn count(&self) -> u32 {
         let counter_lock = acquire_read_lock!(self.counter);
         *counter_lock
