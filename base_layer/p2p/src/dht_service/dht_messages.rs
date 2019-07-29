@@ -27,15 +27,13 @@ use tari_comms::{
     connection::NetAddress,
     message::{Message, MessageError},
     peer_manager::NodeId,
-    types::CommsPublicKey,
 };
 
 /// The JoinMessage stores the information required for a network join request. It has all the information required to
-/// locate and contact a specific node.
+/// locate and contact the source node, but network behaviour is different compared to DiscoverMessage.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct JoinMessage {
     pub node_id: NodeId,
-    pub public_key: CommsPublicKey, // TODO this should be moved to be part of received info - msg origin source
     // TODO: node_type
     pub net_address: Vec<NetAddress>,
 }
@@ -45,5 +43,22 @@ impl TryInto<Message> for JoinMessage {
 
     fn try_into(self) -> Result<Message, Self::Error> {
         Ok((TariMessageType::new(NetMessage::Join), self).try_into()?)
+    }
+}
+
+/// The DiscoverMessage stores the information required for a network discover request. It has all the information
+/// required to locate and contact the source node, but network behaviour is different compared to JoinMessage.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub struct DiscoverMessage {
+    pub node_id: NodeId,
+    // TODO: node_type
+    pub net_address: Vec<NetAddress>,
+}
+
+impl TryInto<Message> for DiscoverMessage {
+    type Error = MessageError;
+
+    fn try_into(self) -> Result<Message, Self::Error> {
+        Ok((TariMessageType::new(NetMessage::Discover), self).try_into()?)
     }
 }

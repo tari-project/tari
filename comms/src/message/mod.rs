@@ -72,7 +72,6 @@ mod error;
 mod message;
 mod message_context;
 mod message_data;
-pub mod p2p;
 
 pub use self::{
     domain_message_context::*,

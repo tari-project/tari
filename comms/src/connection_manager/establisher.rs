@@ -50,7 +50,7 @@ const LOG_TARGET: &str = "comms::connection_manager::establisher";
 pub struct PeerConnectionConfig {
     /// Maximum number of peer connections. Newer connections will be rejected until there are
     /// less than `max_connections` active connections.
-    pub max_connections: u64,
+    pub max_connections: usize,
     /// Maximum size of inbound messages - messages larger than this will be dropped
     pub max_message_size: u64,
     /// The number of connection attempts to make to one address before giving up

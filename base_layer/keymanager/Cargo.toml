@@ -1,5 +1,5 @@
 [package]
-name = "keymanager"
+name = "tari_key_manager"
 version = "0.0.2"
 edition = "2018"
 

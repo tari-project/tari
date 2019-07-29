@@ -434,7 +434,7 @@ mod test {
     }
 
     // we dont want to run this function function every time as it basically tests, test code and it runs slow.
-    //#[test]
+    #[test]
     #[allow(dead_code)]
     fn test_json_file() {
         let mut chain = SimpleBlockChainBuilder::new_with_spending(5, 1);
@@ -445,11 +445,11 @@ mod test {
         let read_json = fs::read_to_string("tests/chain/test_chain.json").unwrap();
         let blockchain: SimpleBlockChain = serde_json::from_str(&read_json).unwrap();
         assert_eq!(blockchain, chain.blockchain);
-        // fs::remove_file("tests/chain/test_chain.json").unwrap();
+        fs::remove_file("tests/chain/test_chain.json").unwrap();
     }
 
     // we dont want to run this function function every time as it create a test file for use in testing
-    #[test]
+    // #[test]
     #[allow(dead_code)]
     fn create_json_file() {
         let mut chain = SimpleBlockChainBuilder::new_with_spending(5, 1);

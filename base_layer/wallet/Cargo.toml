@@ -9,6 +9,7 @@ tari_crypto = { path = "../../infrastructure/crypto", version = "^0.0" }
 tari_utilities = { path = "../../infrastructure/tari_util", version = "^0.0"}
 tari_comms = { path = "../../comms", version = "^0.0"}
 tari_p2p = {path = "../p2p", version = "^0.0"}
+tari_key_manager = {path = "../keymanager", version = "^0.0"}
 chrono = { version = "0.4.6", features = ["serde"]}
 derive-error = "0.0.4"
 digest = "0.8.0"
@@ -19,8 +20,8 @@ lmdb-zero = "0.4.4"
 tari_storage = { version = "0.0.2", path = "../../infrastructure/storage"}
 diesel_migrations =  "1.4"
 diesel = {version="1.4", features = ["sqlite", "serde_json", "chrono"]}
+rand = "0.5.5"
 
 [dev-dependencies]
-rand = "0.5"
 simple_logger = "1.3.0"
 

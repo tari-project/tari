@@ -20,12 +20,13 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use super::{
+    messages::{ControlServiceRequestType, Ping, Pong, RequestPeerConnection},
+    ControlServiceError,
+};
 use crate::{
-    connection::{CurvePublicKey, Direction, EstablishedConnection, NetAddress},
-    control_service::{
-        messages::{ControlServiceMessageType, Ping, Pong, RequestConnection},
-        ControlServiceError,
-    },
+    connection::{Direction, EstablishedConnection, NetAddress},
+    control_service::messages::ControlServiceResponseType,
     message::{Message, MessageEnvelope, MessageFlags, MessageHeader, NodeDestination},
     peer_manager::{NodeId, NodeIdentity},
     types::CommsPublicKey,
@@ -66,23 +67,18 @@ impl ControlServiceClient {
 
     /// Send a Ping message
     pub fn send_ping(&self) -> Result<(), ControlServiceError> {
-        self.send_msg(ControlServiceMessageType::Ping, Ping {})
-    }
-
-    /// Send a Pong message. Usually, the client will not send a Pong message.
-    pub fn send_pong(&self) -> Result<(), ControlServiceError> {
-        self.send_msg(ControlServiceMessageType::Pong, Pong {})
+        self.send_msg(ControlServiceRequestType::Ping, Ping {})
     }
 
     /// Send a Ping message and wait until the given timeout for a Pong message.
     pub fn ping_pong(&self, timeout: Duration) -> Result<Option<Pong>, ControlServiceError> {
-        self.send_msg(ControlServiceMessageType::Ping, Ping {})?;
+        self.send_msg(ControlServiceRequestType::Ping, Ping {})?;
 
         match self.receive_raw_message(timeout)? {
             Some(msg) => {
                 let header = msg.deserialize_header()?;
                 match header.message_type {
-                    ControlServiceMessageType::Pong => Ok(Some(msg.deserialize_message()?)),
+                    ControlServiceResponseType::Pong => Ok(Some(msg.deserialize_message()?)),
                     _ => Err(ControlServiceError::ClientUnexpectedReply),
                 }
             },
@@ -114,7 +110,7 @@ impl ControlServiceClient {
                 }
                 let envelope: MessageEnvelope = frames.try_into()?;
                 let header = envelope.deserialize_header()?;
-                if header.verify_signature(&envelope.body_frame())? {
+                if header.verify_signatures(envelope.body_frame().clone())? {
                     let msg =
                         envelope.deserialize_encrypted_body(&self.node_identity.secret_key, &self.dest_public_key)?;
                     Ok(Some(msg))
@@ -126,27 +122,23 @@ impl ControlServiceClient {
         }
     }
 
-    /// Send a [RequestConnection] message.
+    /// Send a [RequestPeerConnection] message.
     ///
-    /// [RequestConnection]: ../messages/struct.RequestConnection.html
+    /// [RequestPeerConnection]: ../messages/struct.RequestPeerConnection.html
     pub fn send_request_connection(
         &self,
         control_service_address: NetAddress,
         node_id: NodeId,
-        address: NetAddress,
-        server_key: CurvePublicKey,
     ) -> Result<(), ControlServiceError>
     {
-        let msg = RequestConnection {
+        let msg = RequestPeerConnection {
             control_service_address,
             node_id,
-            address,
-            server_key,
         };
-        self.send_msg(ControlServiceMessageType::RequestConnection, msg)
+        self.send_msg(ControlServiceRequestType::RequestPeerConnection, msg)
     }
 
-    fn send_msg<T>(&self, message_type: ControlServiceMessageType, msg: T) -> Result<(), ControlServiceError>
+    fn send_msg<T>(&self, message_type: ControlServiceRequestType, msg: T) -> Result<(), ControlServiceError>
     where T: MessageFormat {
         let envelope = self.construct_envelope(message_type, msg)?;
 
@@ -157,7 +149,7 @@ impl ControlServiceClient {
 
     fn construct_envelope<T>(
         &self,
-        message_type: ControlServiceMessageType,
+        message_type: ControlServiceRequestType,
         msg: T,
     ) -> Result<MessageEnvelope, ControlServiceError>
     where
@@ -194,11 +186,12 @@ mod test {
 
         let client = ControlServiceClient::new(node_identity.clone(), public_key.clone(), conn);
         let envelope = client
-            .construct_envelope(ControlServiceMessageType::Ping, Ping {})
+            .construct_envelope(ControlServiceRequestType::Ping, Ping {})
             .unwrap();
 
         let header = envelope.deserialize_header().unwrap();
-        assert_eq!(header.source, node_identity.identity.public_key);
+        assert_eq!(header.origin_source, node_identity.identity.public_key);
+        assert_eq!(header.peer_source, node_identity.identity.public_key);
         assert_eq!(header.dest, NodeDestination::PublicKey(public_key));
         assert_eq!(header.flags, MessageFlags::ENCRYPTED);
     }

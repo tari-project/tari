@@ -23,7 +23,13 @@
 use crate::block::AggregateBody;
 use derive_error::Error;
 use serde::{Deserialize, Serialize};
+use tari_infra_derive::Hashable;
+use tari_utilities::{ExtendBytes, Hashable};
 
+#[derive(Serialize, Deserialize, Default, Clone, Debug, PartialEq)]
+pub struct MockProofOfWork {
+    work: u64,
+}
 /// This describes the interface the block validation will use when interacting with the proof of work.
 pub trait ProofOfWorkInterface {
     /// This function will compare another proof of work. It will return true if the other is higher.

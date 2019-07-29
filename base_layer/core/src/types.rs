@@ -24,7 +24,6 @@
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
 use crate::{bullet_rangeproofs::BulletRangeProof, pow::*};
-
 use tari_crypto::{
     common::Blake256,
     ristretto::{
