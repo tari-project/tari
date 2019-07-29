@@ -111,7 +111,7 @@ fn establish_peer_connection() {
         .unwrap();
 
     // Node B knows no peers
-    let node_B_database_name = "connection_manager_node_B_peer_manager"; // Note: every test should have unique database
+    let node_B_database_name = "connection_manager_node_B_peer_manager";
     let datastore = init_datastore(node_B_database_name).unwrap();
     let database = datastore.get_handle(node_B_database_name).unwrap();
     let node_B_peer_manager = make_peer_manager(vec![], database);

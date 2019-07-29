@@ -283,18 +283,18 @@ fn connection_pause_resume() {
     sender.send(&[msg_type_frame, &[3u8]]).unwrap();
     sender.send(&[msg_type_frame, &[4u8]]).unwrap();
 
-    let err = consumer.receive(100).unwrap_err();
+    let err = consumer.receive(3000).unwrap_err();
     assert!(err.is_timeout());
 
     // Resume connection
     conn.resume().unwrap();
 
     // Should receive all the pending messages
-    let frames = consumer.receive(100).unwrap();
+    let frames = consumer.receive(3000).unwrap();
     assert_eq!(vec![2u8], frames[2]);
-    let frames = consumer.receive(100).unwrap();
+    let frames = consumer.receive(3000).unwrap();
     assert_eq!(vec![3u8], frames[2]);
-    let frames = consumer.receive(100).unwrap();
+    let frames = consumer.receive(3000).unwrap();
     assert_eq!(vec![4u8], frames[2]);
 }
 
