@@ -175,7 +175,7 @@ fn test_dht_discover_propagation() {
     // Setup Node A
     let node_A_tmpdir = TempDir::new(random_string(8).as_str()).unwrap();
     let node_A_database_name = "node_A";
-    let (node_A_services, node_A_dht_service_api) = setup_dht_service(
+    let (node_A_services, node_A_dht_service_api, _comms_A) = setup_dht_service(
         node_A_identity.clone(),
         create_peer_storage(&node_A_tmpdir, node_A_database_name, vec![node_B_identity
             .clone()
@@ -184,7 +184,7 @@ fn test_dht_discover_propagation() {
     // Setup Node B
     let node_B_tmpdir = TempDir::new(random_string(8).as_str()).unwrap();
     let node_B_database_name = "node_B";
-    let (node_B_services, _node_B_dht_service_api) = setup_dht_service(
+    let (node_B_services, _node_B_dht_service_api, _comms_B) = setup_dht_service(
         node_B_identity.clone(),
         create_peer_storage(&node_B_tmpdir, node_B_database_name, vec![
             node_A_identity.clone().into(),
@@ -194,7 +194,7 @@ fn test_dht_discover_propagation() {
     // Setup Node C
     let node_C_tmpdir = TempDir::new(random_string(8).as_str()).unwrap();
     let node_C_database_name = "node_C";
-    let (node_C_services, _node_C_dht_service_api) = setup_dht_service(
+    let (node_C_services, _node_C_dht_service_api, _comms_C) = setup_dht_service(
         node_C_identity.clone(),
         create_peer_storage(&node_C_tmpdir, node_C_database_name, vec![
             node_B_identity.clone().into(),
@@ -204,7 +204,7 @@ fn test_dht_discover_propagation() {
     // Setup Node D
     let node_D_tmpdir = TempDir::new(random_string(8).as_str()).unwrap();
     let node_D_database_name = "node_D";
-    let (node_D_services, _node_D_dht_service_api) = setup_dht_service(
+    let (node_D_services, _node_D_dht_service_api, _comms_D) = setup_dht_service(
         node_D_identity.clone(),
         create_peer_storage(&node_D_tmpdir, node_D_database_name, vec![node_C_identity
             .clone()

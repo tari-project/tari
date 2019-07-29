@@ -116,7 +116,7 @@ impl PingPongService {
     }
 
     fn send_msg(&self, broadcast_strategy: BroadcastStrategy, msg: PingPong) -> Result<(), PingPongError> {
-        let oms = self.oms.clone().ok_or(PingPongError::OMSNotInitialized)?;
+        let oms = self.oms.as_ref().ok_or(PingPongError::OMSNotInitialized)?;
         oms.send_message(broadcast_strategy, MessageFlags::empty(), msg)
             .map_err(PingPongError::OutboundError)
     }

@@ -74,6 +74,7 @@ impl ServiceExecutor {
             senders.push(sender);
 
             let service_context = ServiceContext {
+                node_identity: Arc::clone(&comms_services.node_identity),
                 oms: comms_services.outbound_message_service(),
                 peer_manager: comms_services.peer_manager(),
                 receiver,
@@ -150,6 +151,7 @@ impl ServiceExecutor {
 /// access the outbound message service and create [DomainConnector]s to receive comms messages of
 /// a particular [TariMessageType].
 pub struct ServiceContext {
+    node_identity: Arc<NodeIdentity>,
     oms: Arc<OutboundMessageService>,
     peer_manager: Arc<PeerManager>,
     receiver: Receiver<ServiceControlMessage>,
@@ -182,7 +184,7 @@ impl ServiceContext {
 
     /// Retrieve and `Arc` of the NodeIdentity. Used for managing the current Nodes Identity.
     pub fn node_identity(&self) -> Arc<NodeIdentity> {
-        self.comms_services.node_identity.clone()
+        Arc::clone(&self.node_identity)
     }
 
     /// Create a [DomainConnector] which listens for a particular [TariMessageType].
