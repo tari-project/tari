@@ -20,13 +20,38 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#[macro_use]
-mod macros;
-mod consts;
-pub mod dht_service;
-pub mod initialization;
-pub mod peer;
-pub mod ping_pong;
-pub mod saf_service;
-pub mod services;
-pub mod tari_message;
+use crate::tari_message::{NetMessage, TariMessageType};
+use chrono::prelude::*;
+use serde::{Deserialize, Serialize};
+use std::convert::TryInto;
+use tari_comms::message::{Message, MessageEnvelope, MessageError};
+
+/// The RetrieveMsgsMessage is used for requesting the set of stored messages from neighbouring peer nodes. If a
+/// start_time is provided then only messages after the specified time will be sent, otherwise all applicable messages
+/// will be sent.
+#[derive(Serialize, Deserialize)]
+pub struct RetrieveMsgsMessage {
+    start_time: Option<DateTime<Utc>>,
+}
+
+impl TryInto<Message> for RetrieveMsgsMessage {
+    type Error = MessageError;
+
+    fn try_into(self) -> Result<Message, Self::Error> {
+        Ok((TariMessageType::new(NetMessage::RetrieveMessages), self).try_into()?)
+    }
+}
+
+/// The StoredMsgsMessage contains the set of applicable messages retrieved from a neighbouring peer node.
+#[derive(Serialize, Deserialize)]
+pub struct StoredMsgsMessage {
+    pub messages: Vec<MessageEnvelope>,
+}
+
+impl TryInto<Message> for StoredMsgsMessage {
+    type Error = MessageError;
+
+    fn try_into(self) -> Result<Message, Self::Error> {
+        Ok((TariMessageType::new(NetMessage::StoredMessages), self).try_into()?)
+    }
+}

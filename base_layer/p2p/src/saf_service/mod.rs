@@ -20,13 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#[macro_use]
-mod macros;
-mod consts;
-pub mod dht_service;
-pub mod initialization;
-pub mod peer;
-pub mod ping_pong;
-pub mod saf_service;
-pub mod services;
-pub mod tari_message;
+mod error;
+mod saf_messages;
+mod saf_service;
+
+pub use self::{
+    error::SAFError,
+    saf_messages::{RetrieveMsgsMessage, StoredMsgsMessage},
+    saf_service::{SAFService, SAFServiceApi},
+};
