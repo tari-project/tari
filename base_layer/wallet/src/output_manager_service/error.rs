@@ -38,4 +38,10 @@ pub enum OutputManagerError {
     NotEnoughFunds,
     /// Output already exists
     DuplicateOutput,
+    /// Error sending a message to the public API
+    ApiSendFailed,
+    /// Error receiving a message from the publcic API
+    ApiReceiveFailed,
+    /// API returned something unexpected.
+    UnexpectedApiResponse,
 }

@@ -37,7 +37,7 @@ use tari_crypto::ristretto::RistrettoSecretKey;
 /// let b = MicroTari::from(50);
 /// assert_eq!(a + b, MicroTari::from(550));
 /// ```
-#[derive(Copy, Default, Clone, Debug, Eq, PartialEq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Copy, Default, Clone, Debug, Eq, Hash, PartialEq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct MicroTari(pub u64);
 
 // You can only add or subtract µT from µT
