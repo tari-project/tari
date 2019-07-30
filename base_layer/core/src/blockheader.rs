@@ -62,18 +62,18 @@ pub struct BlockHeader {
     /// Height of this block since the genesis block (height 0)
     pub height: u64,
     /// Hash of the block previous to this in the chain.
-    #[serde(with = "hash_ser")]
+    #[serde(with = "hash_serializer")]
     pub prev_hash: BlockHash,
     /// Timestamp at which the block was built.
     pub timestamp: DateTime<Utc>,
     /// This is the UTXO merkle root of the outputs
-    #[serde(with = "hash_ser")]
+    #[serde(with = "hash_serializer")]
     pub output_mr: BlockHash,
     /// This is the MMRR root of the range proofs
-    #[serde(with = "hash_ser")]
+    #[serde(with = "hash_serializer")]
     pub range_proof_mr: BlockHash,
     /// This is the MMRR root of the kernels
-    #[serde(with = "hash_ser")]
+    #[serde(with = "hash_serializer")]
     pub kernel_mr: BlockHash,
     /// Total accumulated sum of kernel offsets since genesis block. We can derive the kernel offset sum for *this*
     /// block from the total kernel offset of the previous block header.
@@ -122,7 +122,7 @@ impl Hashable for BlockHeader {
             .to_vec()
     }
 }
-mod hash_ser {
+mod hash_serializer {
     use super::*;
     pub fn serialize<S>(bytes: &BlockHash, serializer: S) -> Result<S::Ok, S::Error>
     where S: Serializer {

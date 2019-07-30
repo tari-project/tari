@@ -434,7 +434,7 @@ mod test {
     }
 
     // we dont want to run this function function every time as it basically tests, test code and it runs slow.
-    #[test]
+    //#[test]
     #[allow(dead_code)]
     fn test_json_file() {
         let mut chain = SimpleBlockChainBuilder::new_with_spending(5, 1);
@@ -449,7 +449,7 @@ mod test {
     }
 
     // we dont want to run this function function every time as it create a test file for use in testing
-    // #[test]
+    //#[test]
     #[allow(dead_code)]
     fn create_json_file() {
         let mut chain = SimpleBlockChainBuilder::new_with_spending(5, 1);
