@@ -26,7 +26,7 @@
 // this file is used for all blockchain error types
 use crate::transaction::TransactionError;
 use derive_error::Error;
-use merklemountainrange::{error::MerkleMountainRangeError, merkle_storage::MerkleStorageError};
+use merklemountainrange::error::{MerkleMountainRangeError, MerkleStorageError};
 use tari_storage::keyvalue_store::*;
 
 /// The ChainError is used to present all generic chain error of the actual blockchain
@@ -55,4 +55,6 @@ pub enum StateError {
     OrphanBlock,
     // Duplicate block
     DuplicateBlock,
+    // Coinbase not all enough
+    CoinbaseMaturityNotReached,
 }

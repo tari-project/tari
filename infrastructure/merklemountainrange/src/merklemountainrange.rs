@@ -107,7 +107,7 @@
 //! By using a ledger to track changes, we can reset the MMR to a previous state.
 
 use crate::{
-    error::MerkleMountainRangeError,
+    error::*,
     merkle_change_tracker::MerkleChangeTracker,
     merkle_storage::*,
     merklenode::*,
@@ -154,7 +154,8 @@ where
     /// store_prefix is the db file name prefix used for this mmr.
     /// pruning horizon is how far back changes are kept so that it can rewind.
     pub fn init_persistance_store(&mut self, store_prefix: &str, pruning_horizon: usize) {
-        self.change_tracker.init(store_prefix, pruning_horizon)
+        let checked_pruning_horizon = if pruning_horizon == 0 { 1 } else { pruning_horizon };
+        self.change_tracker.init(store_prefix, checked_pruning_horizon)
     }
 
     /// Allow users to change the pruning horizon after init.
@@ -432,10 +433,35 @@ where
         self.change_tracker.checkpoint(&self.mmr)
     }
 
-    /// This fast forwards the MMR back to its current head
-    pub fn ff_to_head<S: MerkleStorage>(&mut self, store: &mut S) -> Result<(), MerkleStorageError> {
+    /// This function will get the age of an object when it was added. This will only work if the persistance store is
+    /// enabled as it tracks the age at which checkpoint it was added
+    pub fn get_object_checkpoint_age<S: MerkleStorage>(
+        &self,
+        hash: &ObjectHashSlice,
+        store: &mut S,
+    ) -> Result<usize, MerkleMountainRangeError>
+    {
         if !self.change_tracker.enabled {
-            return Err(MerkleStorageError::StoreNotEnabledError);
+            return Err(MerkleMountainRangeError::MerkleStorageError(
+                MerkleStorageError::StoreNotEnabledError,
+            ));
+        }
+        let object = self.data.get(hash);
+        if object.is_none() {
+            return Err(MerkleMountainRangeError::ObjectNotFound);
+        }
+        let object = object.unwrap();
+        self.change_tracker
+            .find_mmr_len_age(object.vec_index, store)
+            .map_err(|e| MerkleMountainRangeError::MerkleStorageError(e))
+    }
+
+    /// This fast forwards the MMR back to its current head
+    pub fn ff_to_head<S: MerkleStorage>(&mut self, store: &mut S) -> Result<(), MerkleMountainRangeError> {
+        if !self.change_tracker.enabled {
+            return Err(MerkleMountainRangeError::MerkleStorageError(
+                MerkleStorageError::StoreNotEnabledError,
+            ));
         }
         self.change_tracker
             .reset_to_head(&mut self.data, &mut self.mmr, &mut self.unpruned_indices, store)?;
@@ -444,18 +470,25 @@ where
     }
 
     /// This rewinds the MMR from the store
-    pub fn rewind<S: MerkleStorage>(&mut self, store: &mut S, rewind_amount: usize) -> Result<(), MerkleStorageError> {
+    pub fn rewind<S: MerkleStorage>(
+        &mut self,
+        store: &mut S,
+        rewind_amount: usize,
+    ) -> Result<(), MerkleMountainRangeError>
+    {
         if !self.change_tracker.enabled {
-            return Err(MerkleStorageError::StoreNotEnabledError);
+            return Err(MerkleMountainRangeError::MerkleStorageError(
+                MerkleStorageError::StoreNotEnabledError,
+            ));
         }
         if self.change_tracker.current_horizon.checked_sub(rewind_amount).is_none() {
-            return Err(MerkleStorageError::InternalError(
-                "Cannot rewind past checkpoint 0".to_owned(),
+            return Err(MerkleMountainRangeError::MerkleStorageError(
+                MerkleStorageError::InternalError("Cannot rewind past checkpoint 0".to_owned()),
             ));
         }
         if rewind_amount > self.change_tracker.pruning_horizon {
-            return Err(MerkleStorageError::InternalError(
-                "Cannot rewind past pruning horizon".to_owned(),
+            return Err(MerkleMountainRangeError::MerkleStorageError(
+                MerkleStorageError::InternalError("Cannot rewind past pruning horizon".to_owned()),
             ));
         }
         self.change_tracker.rewind(

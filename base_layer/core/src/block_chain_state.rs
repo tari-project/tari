@@ -28,7 +28,7 @@ use crate::{
     blockheader::BlockHeader,
     error::*,
     genesis_block::*,
-    transaction::{TransactionInput, TransactionKernel},
+    transaction::{OutputFeatures, TransactionInput, TransactionKernel},
     types::*,
 };
 use merklemountainrange::mmr::*;
@@ -131,13 +131,26 @@ impl BlockchainState {
     }
 
     /// This function will validate the block in terms of the current state.
-    pub fn validate_new_block(&self, new_block: &Block) -> Result<(), StateError> {
+    pub fn validate_new_block(&mut self, new_block: &Block) -> Result<(), StateError> {
         new_block
             .check_internal_consistency()
             .map_err(StateError::InvalidBlock)?;
+        self.validate_coinbase(&new_block)?;
         // we assume that we have atleast in block in the headers mmr even if this is the genesis one
         if self.headers.get_last_added_object().unwrap().hash() != new_block.header.prev_hash {
             return Err(StateError::OrphanBlock);
+        }
+        Ok(())
+    }
+
+    fn validate_coinbase(&mut self, new_block: &Block) -> Result<(), StateError> {
+        for txo in &new_block.body.inputs {
+            if txo.features.contains(OutputFeatures::COINBASE_OUTPUT) {
+                let age = self.utxos.get_object_checkpoint_age(&txo.hash(), &mut self.store)?;
+                if (age as u64) < COINBASE_LOCK_HEIGHT {
+                    return Err(StateError::CoinbaseMaturityNotReached);
+                }
+            }
         }
         Ok(())
     }

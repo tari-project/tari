@@ -20,33 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use derive_error::Error;
+use crate::error::MerkleStorageError;
 use serde::{de::DeserializeOwned, Serialize};
 use tari_storage::{keyvalue_store::DataStore, lmdb::*};
 use tari_utilities::message_format::MessageFormat;
-
-#[derive(Debug, Error)]
-pub enum MerkleStorageError {
-    /// An error occurred with the underlying data store implementation
-    #[error(embedded_msg, no_from, non_std)]
-    InternalError(String),
-    /// An error occurred during serialization
-    #[error(no_from, non_std)]
-    SerializationErr(String),
-    /// An error occurred during deserialization
-    #[error(no_from, non_std)]
-    DeserializationErr(String),
-    /// An error occurred during a put query
-    #[error(embedded_msg, no_from, non_std)]
-    PutError(String),
-    /// An error occurred during a get query
-    #[error(embedded_msg, no_from, non_std)]
-    GetError(String),
-    /// Sync error, expected some value where it found none
-    SyncError,
-    /// The persistant storage was not enabled
-    StoreNotEnabledError,
-}
 
 /// This trait proves an interface for the MMR to store and retrieve data from some storage medium.
 pub trait MerkleStorage {

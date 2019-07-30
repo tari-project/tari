@@ -32,4 +32,29 @@ pub enum MerkleMountainRangeError {
     CannotAddToMMR,
     // Object was already pruned
     ObjectAlreadyPruned,
+    // PersistanceNotEnabled
+    MerkleStorageError(MerkleStorageError),
+}
+
+#[derive(Debug, Error)]
+pub enum MerkleStorageError {
+    /// An error occurred with the underlying data store implementation
+    #[error(embedded_msg, no_from, non_std)]
+    InternalError(String),
+    /// An error occurred during serialization
+    #[error(no_from, non_std)]
+    SerializationErr(String),
+    /// An error occurred during deserialization
+    #[error(no_from, non_std)]
+    DeserializationErr(String),
+    /// An error occurred during a put query
+    #[error(embedded_msg, no_from, non_std)]
+    PutError(String),
+    /// An error occurred during a get query
+    #[error(embedded_msg, no_from, non_std)]
+    GetError(String),
+    /// Sync error, expected some value where it found none
+    SyncError,
+    /// The persistant storage was not enabled
+    StoreNotEnabledError,
 }
