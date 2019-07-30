@@ -1,7 +1,3 @@
-#[macro_use]
-extern crate criterion;
-#[macro_use]
-extern crate serde_derive;
 
 use blake2::Blake2b;
 use criterion::Criterion;
@@ -61,7 +57,7 @@ fn apply_state_with_storage(c: &mut Criterion) {
     use test_structures::*;
 
     c.bench_function_over_inputs(
-        "append",
+        "apply_state_with_storage",
         move |b, &&size| {
             let name: String = OsRng.next_u64().to_string();
 
@@ -82,6 +78,7 @@ fn apply_state_with_storage(c: &mut Criterion) {
             b.iter(|| {
                 for _ in 0..size {
                     mmr.append(vec![H(OsRng.next_u64())]).unwrap();
+                    mmr.checkpoint().unwrap();
                     mmr.apply_state(&mut store).unwrap();
                 }
             });

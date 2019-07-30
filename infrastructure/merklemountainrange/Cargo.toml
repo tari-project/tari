@@ -15,7 +15,6 @@ derive-error = "0.0.4"
 digest = "0.8.0"
 tari_storage = { path = "../storage", version = "^0.0" }
 serde = "1.0.94"
-serde_derive = "1.0.95"
 rmp-serde = "0.13.7"
 croaring =  "0.4.0"
 
