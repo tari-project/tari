@@ -1,17 +1,36 @@
+// Copyright 2019 The Tari Project
+//
+// Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+// following conditions are met:
+//
+// 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+// disclaimer.
+//
+// 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+// following disclaimer in the documentation and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+// products derived from this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+// INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+// WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+#[macro_use]
+extern crate criterion;
+
+#[macro_use]
+extern crate serde;
 
 use blake2::Blake2b;
 use criterion::Criterion;
-use digest::Digest;
-use merklemountainrange::{mmr::*, to_graph::ToGraph};
-use rand::{
-    rngs::{OsRng, StdRng},
-    Rng,
-    RngCore,
-    SeedableRng,
-};
-use std::{fs, time::Duration};
-use tari_storage::{keyvalue_store::DataStore, lmdb::*};
-use tempdir::TempDir;
+use merklemountainrange::mmr::*;
+use rand::{rngs::OsRng, Rng, RngCore};
+use std::time::Duration;
 
 const TEST_SIZES: &[usize] = &[10, 100, 1000, 10_000, 100_000];
 
@@ -53,39 +72,44 @@ fn append(c: &mut Criterion) {
     );
 }
 
-fn apply_state_with_storage(c: &mut Criterion) {
-    use test_structures::*;
-
-    c.bench_function_over_inputs(
-        "apply_state_with_storage",
-        move |b, &&size| {
-            let name: String = OsRng.next_u64().to_string();
-
-            let mut mmr = MerkleMountainRange::<H, Blake2b>::new();
-            mmr.init_persistance_store(&name, 0);
-
-            let tmp_dir = TempDir::new(&name).unwrap();
-            let builder = LMDBBuilder::new();
-            let mut store = builder
-                .set_mapsize(5)
-                .set_path(tmp_dir.path().to_str().unwrap())
-                .add_database(&"mmr_mmr_checkpoints".to_string())
-                .add_database(&"mmr_mmr_objects".to_string())
-                .add_database(&"mmr_init".to_string())
-                .build()
-                .unwrap();
-
-            b.iter(|| {
-                for _ in 0..size {
-                    mmr.append(vec![H(OsRng.next_u64())]).unwrap();
-                    mmr.checkpoint().unwrap();
-                    mmr.apply_state(&mut store).unwrap();
-                }
-            });
-        },
-        TEST_SIZES,
-    );
-}
+// TODO: Can't work out the parameters needed for storage
+// fn apply_state_with_storage(c: &mut Criterion) {
+//    use test_structures::*;
+//
+//    c.bench_function_over_inputs(
+//        "apply_state_with_storage",
+//        move |b, &&size| {
+//            let name: String = OsRng.next_u64().to_string();
+//
+//
+//            let tmp_dir = TempDir::new(&name).unwrap();
+//            println!("{:?}", tmp_dir);
+//            let builder = LMDBBuilder::new();
+//            let mut store = builder
+//                .set_mapsize(5)
+//                .set_path(tmp_dir.path().to_str().unwrap())
+//                .add_database(&format!("{}_mmr_checkpoints", &name))
+//                .add_database(&format!("{}_mmr_objects", &name))
+//                .add_database(&format!("{}_init", &name))
+//                .build()
+//                .unwrap();
+//
+//            let mut mmr = MerkleMountainRange::<H, Blake2b>::new();
+//            mmr.init_persistance_store(&name, 1);
+//
+//            b.iter(|| {
+//                for _ in 0..size {
+//                    mmr.append(vec![H(OsRng.next_u64())]).unwrap();
+//                    dbg!("checkpointing");
+//                    mmr.checkpoint().unwrap();
+//                    dbg!("applying");
+//                    mmr.apply_state(&mut store).unwrap();
+//                }
+//            });
+//        },
+//        TEST_SIZES,
+//    );
+//}
 
 fn get_merkle_root(c: &mut Criterion) {
     use test_structures::*;
@@ -97,7 +121,7 @@ fn get_merkle_root(c: &mut Criterion) {
             b.iter(|| {
                 for _ in 0..size {
                     mmr.append(vec![H(OsRng.next_u64())]).unwrap();
-                    let root = mmr.get_merkle_root();
+                    mmr.get_merkle_root();
                 }
             });
         },
@@ -147,10 +171,7 @@ fn get_proof(c: &mut Criterion) {
 
             b.iter(|| {
                 let index = OsRng.gen_range(0, size);
-                dbg!(index);
                 let proof = mmr.get_hash_proof(&items[index]);
-                dbg!(proof.len());
-                // dbg!(&proof);
                 assert!(!proof.is_empty());
             });
         },
@@ -161,6 +182,6 @@ fn get_proof(c: &mut Criterion) {
 criterion_group!(
 name = merkle_mountain_range;
 config= Criterion::default().warm_up_time(Duration::from_millis(500)).sample_size(10);
-targets= append,get_merkle_root,get_object);
+targets= append,get_merkle_root,get_object,get_proof);
 
 criterion_main!(merkle_mountain_range);
