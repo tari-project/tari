@@ -20,7 +20,7 @@ See [ZeroMQ documentation](http://zeromq.org/intro:get-the-software)
 
 ## Build
 
-Make sure you are running nightly version: `nightly-2019-03-08`
+Make sure you are running nightly version: `nightly-2019-07-15`
 
 To build run
 `cargo build`
