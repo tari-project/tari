@@ -207,7 +207,7 @@ impl AggregateBody {
     {
         self.verify_kernel_signatures()?;
         self.validate_kernel_sum(offset, factory)?;
-        self.validate_range_proofs(&prover)
+        self.validate_range_proofs(prover)
     }
 
     /// Calculate the sum of the inputs and outputs including fees
