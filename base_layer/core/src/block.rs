@@ -28,15 +28,26 @@ use crate::{
     tari_amount::*,
     transaction::*,
     transaction_protocol::{build_challenge, TransactionMetadata},
-    types::*,
+    types::{
+        BlindingFactor,
+        Commitment,
+        CommitmentFactory,
+        PrivateKey,
+        RangeProof,
+        RangeProofService,
+        Signature,
+        COMMITMENT_FACTORY,
+        PROVER,
+    },
 };
 use serde::{Deserialize, Serialize};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::{PublicKey, SecretKey},
-    range_proof::RangeProofService,
+    range_proof::RangeProofService as RPS,
+    ristretto::pedersen::PedersenCommitment,
 };
-use tari_utilities::byte_array::ByteArray;
+use tari_utilities::ByteArray;
 
 //----------------------------------------         Blocks         ----------------------------------------------------//
 
@@ -52,9 +63,9 @@ impl Block {
     /// valid. It does _not_ check that the inputs exist in the current UTXO set;
     /// nor does it check that the PoW is the largest accumulated PoW value.
     pub fn check_internal_consistency(&self) -> Result<(), TransactionError> {
-        let mut trans: Transaction = self.body.clone().into(); // todo revisit this one q=whole code chain is completed
-        trans.offset = self.header.total_kernel_offset.clone();
-        trans.validate_internal_consistency(&PROVER, &COMMITMENT_FACTORY)?;
+        let offset = &self.header.total_kernel_offset;
+        self.body
+            .validate_internal_consistency(offset, &PROVER, &COMMITMENT_FACTORY)?;
         self.check_pow()
     }
 
@@ -180,6 +191,79 @@ impl AggregateBody {
         }
         fee
     }
+
+    /// Validate this transaction by checking the following:
+    /// 1. The sum of inputs, outputs and fees equal the (public excess value + offset)
+    /// 1. The signature signs the canonical message with the private excess
+    /// 1. Range proofs of the outputs are valid
+    ///
+    /// This function does NOT check that inputs come from the UTXO set
+    pub fn validate_internal_consistency(
+        &self,
+        offset: &BlindingFactor,
+        prover: &RangeProofService,
+        factory: &CommitmentFactory,
+    ) -> Result<(), TransactionError>
+    {
+        self.verify_kernel_signatures()?;
+        self.validate_kernel_sum(offset, factory)?;
+        self.validate_range_proofs(&prover)
+    }
+
+    /// Calculate the sum of the inputs and outputs including fees
+    fn sum_commitments(&self, fees: u64, factory: &CommitmentFactory) -> Commitment {
+        let fee_commitment = factory.commit_value(&PrivateKey::default(), fees);
+        let sum_inputs = &self.inputs.iter().map(|i| &i.commitment).sum::<Commitment>();
+        let sum_outputs = &self.outputs.iter().map(|o| &o.commitment).sum::<Commitment>();
+        &(sum_outputs - sum_inputs) + &fee_commitment
+    }
+
+    /// Calculate the sum of the kernels, taking into account the provided offset, and their constituent fees
+    fn sum_kernels(&self, offset: &BlindingFactor) -> KernelSum {
+        let public_offset = PublicKey::from_secret_key(offset);
+        let offset_commitment = PedersenCommitment::from_public_key(&public_offset);
+        // Sum all kernel excesses and fees
+        self.kernels.iter().fold(
+            KernelSum {
+                fees: MicroTari(0),
+                sum: offset_commitment,
+            },
+            |acc, val| KernelSum {
+                fees: &acc.fees + &val.fee,
+                sum: &acc.sum + &val.excess,
+            },
+        )
+    }
+
+    /// Confirm that the (sum of the outputs) - (sum of inputs) = Kernel excess
+    fn validate_kernel_sum(
+        &self,
+        offset: &BlindingFactor,
+        factory: &CommitmentFactory,
+    ) -> Result<(), TransactionError>
+    {
+        let kernel_sum = self.sum_kernels(offset);
+        let sum_io = self.sum_commitments(kernel_sum.fees.into(), factory);
+
+        if kernel_sum.sum != sum_io {
+            return Err(TransactionError::ValidationError(
+                "Sum of inputs and outputs did not equal sum of kernels with fees".into(),
+            ));
+        }
+
+        Ok(())
+    }
+
+    fn validate_range_proofs(&self, range_proof_service: &RangeProofService) -> Result<(), TransactionError> {
+        for o in &self.outputs {
+            if !o.verify_range_proof(&range_proof_service)? {
+                return Err(TransactionError::ValidationError(
+                    "Range proof could not be verified".into(),
+                ));
+            }
+        }
+        Ok(())
+    }
 }
 
 /// This will strip away the offset of the transaction returning a pure aggregate body
@@ -253,7 +337,7 @@ impl BlockBuilder {
         self = self.add_inputs(tx.body.inputs);
         self = self.add_outputs(tx.body.outputs);
         self = self.add_kernels(tx.body.kernels);
-        self.header.total_kernel_offset = self.header.total_kernel_offset + tx.offset;
+        self.header.total_kernel_offset = &self.header.total_kernel_offset + &tx.offset;
         self
     }
 
@@ -329,4 +413,12 @@ impl BlockBuilder {
         BlockHeader::default()
     }
 }
+
+/// This struct holds the result of calculating the sum of the kernels in a Transaction
+/// and returns the summed commitments and the total fees
+pub struct KernelSum {
+    pub sum: Commitment,
+    pub fees: MicroTari,
+}
+
 //----------------------------------------         Tests          ----------------------------------------------------//
