@@ -53,7 +53,7 @@ Tari [wallet] module. The module exposes the core wallet functionality on which 
 
 ## Related Requests for Comment
 
-* [RFC-0100: Base Layer](https://github.com/tari-project/tari/blob/master/RFC/src/RFC-0100_BaseLayer.md)
+* [RFC-0100: Base Layer](./RFC-0100_BaseLayer.md)
 
 This RFC is derived from a proposal first made in [this issue](https://github.com/tari-project/tari/issues/17).
 

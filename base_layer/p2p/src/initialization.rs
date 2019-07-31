@@ -43,7 +43,7 @@ pub enum CommsInitializationError {
 
 #[derive(Clone)]
 pub struct CommsConfig {
-    pub control_service: ControlServiceConfig<TariMessageType>,
+    pub control_service: ControlServiceConfig,
     pub socks_proxy_address: Option<SocketAddress>,
     pub host: IpAddr,
     pub public_key: CommsPublicKey,

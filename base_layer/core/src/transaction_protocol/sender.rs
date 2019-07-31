@@ -196,6 +196,18 @@ impl SenderTransactionProtocol {
         }
     }
 
+    /// This function will return the total value of outputs being sent to yourself in the transaction
+    pub fn get_amount_to_self(&self) -> Result<MicroTari, TPE> {
+        match &self.state {
+            SenderState::Initializing(info) |
+            SenderState::Finalizing(info) |
+            SenderState::SingleRoundMessageReady(info) |
+            SenderState::CollectingSingleSignature(info) => Ok(info.amount_to_self),
+            SenderState::FinalizedTransaction(_) => Err(TPE::InvalidStateError),
+            SenderState::Failed(_) => Err(TPE::InvalidStateError),
+        }
+    }
+
     /// Build the sender's message for the single-round protocol (one recipient) and move to next State
     pub fn build_single_round_message(&mut self) -> Result<SingleRoundSenderData, TPE> {
         match &self.state {

@@ -24,28 +24,66 @@ use crate::{
     connection::{net_address::NetAddress, zmq::CurvePublicKey},
     peer_manager::NodeId,
 };
+use derive_error::Error;
 use serde::{Deserialize, Serialize};
 
-/// Control service message types
+/// Control service request message types
 #[derive(Eq, PartialEq, Hash, Serialize, Deserialize)]
-pub enum ControlServiceMessageType {
-    RequestConnection,
+pub enum ControlServiceRequestType {
+    RequestPeerConnection,
     Ping,
+}
+
+/// Control service response message types
+#[derive(Eq, PartialEq, Hash, Serialize, Deserialize)]
+pub enum ControlServiceResponseType {
+    AcceptPeerConnection,
+    RejectPeerConnection,
     Pong,
     ConnectRequestOutcome,
+}
+
+/// Details required to connect to the new [PeerConnection]
+///
+/// [PeerConnection]: ../../connection/peer_connection/index.html
+#[derive(Serialize, Deserialize, Debug)]
+pub struct PeerConnectionDetails {
+    pub server_key: CurvePublicKey,
+    pub address: NetAddress,
+}
+
+/// Represents an outcome for the request to establish a new [PeerConnection].
+///
+/// [PeerConnection]: ../../connection/peer_connection/index.html
+#[derive(Serialize, Deserialize, Debug)]
+pub enum ConnectRequestOutcome {
+    /// Accept response to a request to open a peer connection from a remote peer.
+    Accepted {
+        /// The zeroMQ Curve public key to use for the peer connection
+        curve_public_key: CurvePublicKey,
+        /// The address to which to connect
+        address: NetAddress,
+    },
+    /// Reject response to a request to open a peer connection from a remote peer.
+    Rejected(RejectReason),
+}
+
+/// Represents the reason for a peer connection request being rejected
+#[derive(Error, Serialize, Deserialize, Debug)]
+pub enum RejectReason {
+    /// Peer already has an existing active peer connection
+    ExistingConnection,
+    /// A connection collision has been detected, foreign node should abandon the connection attempt
+    CollisionDetected,
 }
 
 /// This represents a request to open a peer connection
 /// to a remote peer.
 #[derive(Serialize, Deserialize, Debug)]
-pub struct RequestConnection {
+pub struct RequestPeerConnection {
     pub control_service_address: NetAddress,
-    /// The zeroMQ Curve public key to use for the peer connection
-    pub server_key: CurvePublicKey,
     /// The node id of this node
     pub node_id: NodeId,
-    /// The address to which to connect
-    pub address: NetAddress,
 }
 
 /// Sent to the control service to test liveness
@@ -55,9 +93,3 @@ pub struct Ping;
 /// Sent from the control service in response to a Ping to indicate liveness
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Pong;
-
-#[derive(Serialize, Deserialize, Debug)]
-pub(crate) enum ConnectRequestOutcome {
-    Accepted,
-    Rejected,
-}

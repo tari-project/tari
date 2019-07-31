@@ -26,3 +26,5 @@ use std::time::Duration;
 pub const DHT_MSG_CACHE_STORAGE_CAPACITY: usize = 1000;
 /// The time-to-live duration used by the MessageCache for tracking received and handled messages
 pub const DHT_MSG_CACHE_TTL: Duration = Duration::from_secs(300);
+/// The number of neighbouring nodes that a received message will be forwarded to
+pub const DHT_FORWARD_NODE_COUNT: usize = 8;

@@ -284,7 +284,7 @@ where DS: KeyValStore
             })
             .map_err(PeerManagerError::DatabaseError)?;
         // Use all available peers up to a maximum of N
-        let max_available = if n > peer_keys.len() { peer_keys.len() } else { n };
+        let max_available = min(peer_keys.len(), n);
         if max_available > 0 {
             // Perform partial sort of elements only up to N elements
             let mut nearest_identities: Vec<PeerNodeIdentity> = Vec::with_capacity(max_available);
@@ -343,6 +343,39 @@ where DS: KeyValStore
         } else {
             Ok(Vec::new())
         }
+    }
+
+    /// Check if a specific node_id is in the network region of the N nearest neighbours of the region specified by
+    /// region_node_id
+    pub fn in_network_region(
+        &self,
+        node_id: &NodeId,
+        region_node_id: &NodeId,
+        n: usize,
+    ) -> Result<bool, PeerManagerError>
+    {
+        let region2node_dist = region_node_id.distance(node_id);
+        let mut dists: Vec<NodeDistance> = vec![NodeDistance::max_distance(); n];
+        let last_index = dists.len() - 1;
+        self.peers
+            .for_each::<PeerKey, Peer, _>(|pair| {
+                let (_, peer) = pair.unwrap();
+                if !peer.is_banned() {
+                    let curr_dist = region_node_id.distance(&peer.node_id);
+                    for i in 0..dists.len() {
+                        if dists[i] > curr_dist {
+                            dists.insert(i, curr_dist.clone());
+                            dists.pop();
+                            break;
+                        }
+                    }
+                    if region2node_dist > dists[last_index] {
+                        return;
+                    }
+                }
+            })
+            .map_err(PeerManagerError::DatabaseError)?;
+        Ok(region2node_dist <= dists[last_index])
     }
 
     /// Enables Thread safe access - Changes the ban flag bit of the peer

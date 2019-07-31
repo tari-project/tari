@@ -22,9 +22,11 @@
 
 #[macro_use]
 mod macros;
+mod consts;
 pub mod dht_service;
 pub mod initialization;
 pub mod peer;
 pub mod ping_pong;
+pub mod saf_service;
 pub mod services;
 pub mod tari_message;

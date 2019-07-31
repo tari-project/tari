@@ -21,15 +21,15 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod error;
-mod message_retry_service;
 mod outbound_message;
-mod outbound_message_pool;
-mod outbound_message_worker;
+mod pool;
+mod retry_queue;
+mod worker;
 
 pub use self::{
-    error::{OutboundMessagePoolError, RetryServiceError},
-    message_retry_service::{MessageRetryService, RetryServiceMessage},
+    error::OutboundMessagePoolError,
     outbound_message::OutboundMessage,
-    outbound_message_pool::{OutboundMessagePool, OutboundMessagePoolConfig},
-    outbound_message_worker::MessagePoolWorker,
+    pool::{OutboundMessagePool, OutboundMessagePoolConfig},
+    retry_queue::RetryQueue,
+    worker::MessagePoolWorker,
 };

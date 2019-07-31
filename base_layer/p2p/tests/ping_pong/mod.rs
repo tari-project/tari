@@ -26,6 +26,7 @@ use crate::support::{assert_change, random_string};
 use rand::rngs::OsRng;
 use std::{sync::Arc, time::Duration};
 use tari_comms::{
+    builder::CommsServices,
     connection::NetAddress,
     connection_manager::PeerConnectionConfig,
     control_service::ControlServiceConfig,
@@ -36,7 +37,7 @@ use tari_comms::{
 use tari_p2p::{
     ping_pong::{PingPongService, PingPongServiceApi},
     services::{ServiceExecutor, ServiceRegistry},
-    tari_message::{NetMessage, TariMessageType},
+    tari_message::TariMessageType,
 };
 use tari_storage::lmdb_store::LMDBBuilder;
 use tempdir::TempDir;
@@ -66,7 +67,11 @@ fn create_peer_storage(tmpdir: &TempDir, database_name: &str, peers: Vec<Peer>) 
 fn setup_ping_pong_service(
     node_identity: NodeIdentity,
     peer_storage: CommsDatabase,
-) -> (ServiceExecutor, Arc<PingPongServiceApi>)
+) -> (
+    ServiceExecutor,
+    Arc<PingPongServiceApi>,
+    Arc<CommsServices<TariMessageType>>,
+)
 {
     let ping_pong = PingPongService::new();
     let pingpong_api = ping_pong.get_api();
@@ -83,15 +88,15 @@ fn setup_ping_pong_service(
         .configure_control_service(ControlServiceConfig {
             socks_proxy_address: None,
             listener_address: node_identity.control_service_address.clone(),
-            accept_message_type: TariMessageType::new(NetMessage::Accept),
-            requested_outbound_connection_timeout: Duration::from_millis(5000),
+            requested_connection_timeout: Duration::from_millis(5000),
         })
         .build()
         .unwrap()
         .start()
+        .map(Arc::new)
         .unwrap();
 
-    (ServiceExecutor::execute(Arc::new(comms), services), pingpong_api)
+    (ServiceExecutor::execute(&comms, services), pingpong_api, comms)
 }
 
 #[test]
@@ -104,12 +109,12 @@ fn end_to_end() {
     let node_A_identity = new_node_identity("127.0.0.1:11111".parse().unwrap());
     let node_B_identity = new_node_identity("127.0.0.1:11112".parse().unwrap());
 
-    let (node_A_services, node_A_pingpong) = setup_ping_pong_service(
+    let (node_A_services, node_A_pingpong, _comms_A) = setup_ping_pong_service(
         node_A_identity.clone(),
         create_peer_storage(&node_A_tmpdir, "node_A", vec![node_B_identity.clone().into()]),
     );
 
-    let (node_B_services, node_B_pingpong) = setup_ping_pong_service(
+    let (node_B_services, node_B_pingpong, _comms_B) = setup_ping_pong_service(
         node_B_identity.clone(),
         create_peer_storage(&node_B_tmpdir, "node_B", vec![node_A_identity.clone().into()]),
     );

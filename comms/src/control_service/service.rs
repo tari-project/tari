@@ -32,7 +32,6 @@ use crate::{
     types::DEFAULT_LISTENER_ADDRESS,
 };
 use log::*;
-use serde::{de::DeserializeOwned, Serialize};
 use std::{
     sync::{mpsc::SyncSender, Arc},
     thread,
@@ -44,32 +43,23 @@ const LOG_TARGET: &str = "comms::control_service::service";
 
 /// Configuration for [ControlService]
 #[derive(Clone)]
-pub struct ControlServiceConfig<T>
-where T: Clone
-{
+pub struct ControlServiceConfig {
     /// Which address to open a port
     pub listener_address: NetAddress,
     /// Optional SOCKS proxy
     pub socks_proxy_address: Option<SocketAddress>,
-    /// The message type
-    pub accept_message_type: T,
-    /// The timeout when connecting to the requesting peer's inbound connection.
-    /// If this timeout expires the peer connection will not be established.
-    pub requested_outbound_connection_timeout: Duration,
+    /// The timeout for the peer to connect to the inbound connection.
+    /// If this timeout expires the peer connection will be shut down and discarded.
+    pub requested_connection_timeout: Duration,
 }
 
-impl<T> Default for ControlServiceConfig<T>
-where
-    T: Default,
-    T: Clone,
-{
+impl Default for ControlServiceConfig {
     fn default() -> Self {
         let listener_address = DEFAULT_LISTENER_ADDRESS.parse::<NetAddress>().unwrap();
         ControlServiceConfig {
             listener_address,
             socks_proxy_address: None,
-            accept_message_type: T::default(),
-            requested_outbound_connection_timeout: Duration::from_secs(5),
+            requested_connection_timeout: Duration::from_secs(5),
         }
     }
 }
@@ -77,20 +67,13 @@ where
 /// The service responsible for establishing new [PeerConnection]s.
 /// When `serve` is called, a worker thread starts up which listens for
 /// connections on the configured `listener_address`.
-pub struct ControlService<MType>
-where MType: Clone
-{
+pub struct ControlService {
     context: ZmqContext,
-    config: ControlServiceConfig<MType>,
+    config: ControlServiceConfig,
     node_identity: Arc<NodeIdentity>,
 }
 
-impl<MType> ControlService<MType>
-where
-    MType: Default,
-    MType: Clone,
-    MType: Serialize + DeserializeOwned,
-{
+impl ControlService {
     pub fn with_default_config(context: ZmqContext, node_identity: Arc<NodeIdentity>) -> Self {
         Self {
             context,
@@ -100,13 +83,8 @@ where
     }
 }
 
-impl<MType> ControlService<MType>
-where
-    MType: Send + Sync + 'static,
-    MType: Serialize + DeserializeOwned,
-    MType: Clone,
-{
-    pub fn new(context: ZmqContext, node_identity: Arc<NodeIdentity>, config: ControlServiceConfig<MType>) -> Self {
+impl ControlService {
+    pub fn new(context: ZmqContext, node_identity: Arc<NodeIdentity>, config: ControlServiceConfig) -> Self {
         Self {
             context,
             config,
@@ -158,12 +136,11 @@ mod test {
     fn control_service_has_default() {
         let context = ZmqContext::new();
         let node_identity = Arc::new(NodeIdentity::random_for_test(None));
-        let control_service = ControlService::<u8>::with_default_config(context, node_identity);
+        let control_service = ControlService::with_default_config(context, node_identity);
         assert_eq!(
             control_service.config.listener_address,
             DEFAULT_LISTENER_ADDRESS.parse::<NetAddress>().unwrap()
         );
         assert!(control_service.config.socks_proxy_address.is_none());
-        assert_eq!(control_service.config.accept_message_type, 0);
     }
 }

@@ -44,11 +44,3 @@ pub enum OutboundMessagePoolError {
     /// The message retry service has unexpectedly disconnected from it's channel
     MessageRetryServiceDisconnected,
 }
-
-#[derive(Error, Debug)]
-pub enum RetryServiceError {
-    ConnectionError(ConnectionError),
-    /// Control message sender disconnected without sending shutdown signal
-    ControlMessageSenderDisconnected,
-    MessageFormatError(MessageFormatError),
-}

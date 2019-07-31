@@ -20,60 +20,23 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE
 
-use crate::{
-    connection::{dealer_proxy::DealerProxyError, ConnectionError, NetAddressError, PeerConnectionError},
-    connection_manager::ConnectionManagerError,
-    message::MessageError,
-    outbound_message_service::outbound_message_pool::{OutboundMessagePoolError, RetryServiceError},
-    peer_manager::PeerManagerError,
-};
+use crate::{message::MessageError, peer_manager::PeerManagerError};
 use derive_error::Error;
-use tari_crypto::signatures::SchnorrSignatureError;
-use tari_utilities::{
-    ciphers::cipher::CipherError,
-    message_format::MessageFormatError,
-    thread_join::ThreadError,
-    ByteArrayError,
-};
+use tari_utilities::{message_format::MessageFormatError, thread_join::ThreadError};
 
 /// Error type for OutboundMessageService subsystem
 #[derive(Debug, Error)]
 pub enum OutboundError {
-    /// Could not connect to the outbound message pool
-    SocketConnectionError(zmq::Error),
-    /// Problem communicating to the outbound message pool
-    ConnectionError(ConnectionError),
-    /// The secret key was not defined in the node identity
-    UndefinedSecretKey,
-    /// The message signature could not be serialized to a vector of bytes
-    SignatureSerializationError,
-    /// The generated shared secret could not be serialized to a vector of bytes
-    SharedSecretSerializationError(ByteArrayError),
     /// The message could not be serialized
     MessageSerializationError(MessageError),
-    /// Could not successfully sign the message
-    SignatureError(SchnorrSignatureError),
     /// Error during serialization or deserialization
     MessageFormatError(MessageFormatError),
     /// Problem encountered with Broadcast Strategy and PeerManager
     PeerManagerError(PeerManagerError),
-    /// The Thread Safety has been breached and the data access has become poisoned
-    PoisonedAccess,
-    /// Error requesting or updating a net address
-    NetAddressError(NetAddressError),
-    /// Error using a Cipher
-    CipherError(CipherError),
-    /// Error using the ConnectionManager
-    ConnectionManagerError(ConnectionManagerError),
-    /// Error using a PeerConnection
-    PeerConnectionError(PeerConnectionError),
-    /// Number of retry attempts exceeded
-    RetryAttemptsExceedError,
     #[error(msg_embedded, non_std, no_from)]
     ShutdownSignalSendError(String),
-    DealerProxyError(DealerProxyError),
-    /// Could not join the dealer or worker threads
+    /// Timeout exceeded while waiting for worker threads to complete
     ThreadJoinError(ThreadError),
-    OutboundMessagePoolError(OutboundMessagePoolError),
-    RetryServiceError(RetryServiceError),
+    /// Failed to send message on message sink
+    SyncSenderError,
 }
