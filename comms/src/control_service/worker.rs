@@ -22,16 +22,23 @@
 
 use super::{
     error::ControlServiceError,
-    messages::{ControlServiceMessageType, RequestConnection},
+    messages::{ControlServiceRequestType, RequestPeerConnection},
     service::ControlServiceConfig,
     types::{ControlMessage, Result},
 };
 use crate::{
-    connection::{connection::EstablishedConnection, types::Direction, Connection, PeerConnection, ZmqContext},
-    connection_manager::ConnectionManager,
-    control_service::messages::{ConnectRequestOutcome, Pong},
+    connection::{
+        connection::EstablishedConnection,
+        types::Direction,
+        Connection,
+        ConnectionError,
+        CurvePublicKey,
+        NetAddress,
+        ZmqContext,
+    },
+    connection_manager::{ConnectionManager, EstablishLockResult},
+    control_service::messages::{ConnectRequestOutcome, ControlServiceResponseType, Pong, RejectReason},
     message::{
-        p2p::Accept,
         Frame,
         FrameSet,
         Message,
@@ -68,10 +75,8 @@ const THREAD_STACK_SIZE: usize = 256 * 1024; // 256kb
 
 /// The [ControlService] worker is responsible for handling incoming messages
 /// to the control port and dispatching them using the message dispatcher.
-pub struct ControlServiceWorker<MType>
-where MType: Clone
-{
-    config: ControlServiceConfig<MType>,
+pub struct ControlServiceWorker {
+    config: ControlServiceConfig,
     receiver: Receiver<ControlMessage>,
     is_running: bool,
     connection_manager: Arc<ConnectionManager>,
@@ -79,12 +84,7 @@ where MType: Clone
     listener: EstablishedConnection,
 }
 
-impl<MType> ControlServiceWorker<MType>
-where
-    MType: Send + Sync + 'static,
-    MType: Serialize + DeserializeOwned,
-    MType: Clone,
-{
+impl ControlServiceWorker {
     /// Start the worker
     ///
     /// # Arguments
@@ -94,7 +94,7 @@ where
     pub fn start(
         context: ZmqContext,
         node_identity: Arc<NodeIdentity>,
-        config: ControlServiceConfig<MType>,
+        config: ControlServiceConfig,
         connection_manager: Arc<ConnectionManager>,
     ) -> Result<(thread::JoinHandle<Result<()>>, SyncSender<ControlMessage>)>
     {
@@ -136,7 +136,7 @@ where
 
     fn new(
         node_identity: Arc<NodeIdentity>,
-        config: ControlServiceConfig<MType>,
+        config: ControlServiceConfig,
         connection_manager: Arc<ConnectionManager>,
         receiver: Receiver<ControlMessage>,
         listener: EstablishedConnection,
@@ -201,7 +201,7 @@ where
             .try_into()
             .map_err(ControlServiceError::MessageError)?;
 
-        let identity = frames
+        let identity_frame = frames
             .pop()
             .expect("Should not happen: drained all frames but the first, but then could not pop the first frame.");
 
@@ -210,43 +210,42 @@ where
             return Err(ControlServiceError::ReceivedUnencryptedMessage);
         }
 
-        let maybe_peer = self.get_peer(&envelope_header.source)?;
+        let maybe_peer = self.get_peer(&envelope_header.peer_source)?;
         if maybe_peer.map(|p| p.is_banned()).unwrap_or(false) {
             return Err(ControlServiceError::PeerBanned);
         }
 
-        let decrypted_body = self.decrypt_body(envelope.body_frame(), &envelope_header.source)?;
+        let decrypted_body = self.decrypt_body(envelope.body_frame(), &envelope_header.origin_source)?;
         let message =
             Message::from_binary(decrypted_body.as_bytes()).map_err(ControlServiceError::MessageFormatError)?;
 
         debug!(target: LOG_TARGET, "Handling message");
-        self.handle_message(identity, envelope_header, message)
+        self.handle_message(envelope_header, identity_frame, message)
     }
 
     fn handle_message(
         &self,
-        identity_frame: Frame,
         envelope_header: MessageEnvelopeHeader,
+        identity_frame: Frame,
         msg: Message,
     ) -> Result<()>
     {
         let header = msg.deserialize_header().map_err(ControlServiceError::MessageError)?;
 
         match header.message_type {
-            ControlServiceMessageType::Ping => self.handle_ping(envelope_header, identity_frame),
-            ControlServiceMessageType::RequestConnection => {
+            ControlServiceRequestType::Ping => self.handle_ping(envelope_header, identity_frame),
+            ControlServiceRequestType::RequestPeerConnection => {
                 self.handle_request_connection(envelope_header, identity_frame, msg.deserialize_message()?)
             },
-            _ => Err(ControlServiceError::InvalidMessageReceived),
         }
     }
 
     fn handle_ping(&self, envelope_header: MessageEnvelopeHeader, identity_frame: Frame) -> Result<()> {
         debug!(target: LOG_TARGET, "Got ping message");
         self.send_reply(
-            &envelope_header.source,
+            &envelope_header.peer_source,
             identity_frame,
-            ControlServiceMessageType::Pong,
+            ControlServiceResponseType::Pong,
             Pong {},
         )
     }
@@ -255,16 +254,16 @@ where
         &self,
         envelope_header: MessageEnvelopeHeader,
         identity_frame: Frame,
-        message: RequestConnection,
+        message: RequestPeerConnection,
     ) -> Result<()>
     {
         debug!(
             target: LOG_TARGET,
-            "RequestConnection message received (node_id={}, address={})", message.node_id, message.address
+            "RequestConnection message received for NodeId {}", message.node_id
         );
 
         let pm = &self.connection_manager.peer_manager();
-        let public_key = &envelope_header.source;
+        let public_key = &envelope_header.peer_source;
         let peer = match pm.find_with_public_key(&public_key) {
             Ok(peer) => {
                 if peer.is_banned() {
@@ -299,58 +298,95 @@ where
         //       The public key should be used as that is validated by the message signature.
 
         let conn_manager = &self.connection_manager;
+        let establish_lock_result = conn_manager.try_acquire_establish_lock(&peer.node_id, || {
+            self.establish_connection_protocol(&peer, &envelope_header, identity_frame.clone())
+        });
 
-        if conn_manager.has_establish_lock(&peer.node_id) {
-            warn!(
-                target: LOG_TARGET,
-                "COLLISION DETECTED: this node is attempting to connect to the same node which is asking to connect."
-            );
-            if self.should_reject_collision(&peer.node_id) {
+        match establish_lock_result {
+            EstablishLockResult::Ok(result) => result,
+            EstablishLockResult::Collision => {
                 warn!(
                     target: LOG_TARGET,
-                    "This connection attempt should be rejected. Rejecting the request to connect"
+                    "COLLISION DETECTED: this node is attempting to connect to the same node which is asking to \
+                     connect."
                 );
-                self.reject_connection(envelope_header, identity_frame)?;
-                return Ok(());
-            }
+                if self.should_reject_collision(&peer.node_id) {
+                    warn!(
+                        target: LOG_TARGET,
+                        "This connection attempt should be rejected. Rejecting the request to connect"
+                    );
+                    self.reject_connection(&envelope_header, identity_frame, RejectReason::CollisionDetected)?;
+                    Ok(())
+                } else {
+                    conn_manager.with_establish_lock(&peer.node_id, || {
+                        self.establish_connection_protocol(&peer, &envelope_header, identity_frame)
+                    })
+                }
+            },
         }
+    }
 
-        if let Some(conn) = conn_manager.get_connection(&peer) {
+    fn establish_connection_protocol(
+        &self,
+        peer: &Peer,
+        envelope_header: &MessageEnvelopeHeader,
+        identity_frame: Frame,
+    ) -> Result<()>
+    {
+        let conn_manager = &self.connection_manager;
+        if let Some(conn) = conn_manager.get_connection(peer) {
             if conn.is_active() {
                 debug!(
                     target: LOG_TARGET,
-                    "Already have active connection to peer. Ignoring the request for connection."
+                    "Already have active connection to peer. Rejecting the request for connection."
                 );
-                self.reject_connection(envelope_header, identity_frame)?;
+                self.reject_connection(&envelope_header, identity_frame, RejectReason::ExistingConnection)?;
                 return Ok(());
             }
         }
 
-        self.accept_connection(envelope_header, identity_frame)?;
+        conn_manager
+            .with_new_inbound_connection(&peer, |new_inbound_conn, curve_public_key| {
+                let address = new_inbound_conn
+                    .get_address()
+                    .ok_or(ControlServiceError::ConnectionAddressNotEstablished)?;
 
-        debug!(
-            target: LOG_TARGET,
-            "Connecting to requested address {}", message.address
-        );
+                debug!(
+                    target: LOG_TARGET,
+                    "[NodeId={}] Inbound peer connection established on address {}", peer.node_id, address
+                );
 
-        let conn = conn_manager
-            .establish_requested_outbound_connection(&peer, message.address.clone(), message.server_key)
-            .map_err(ControlServiceError::ConnectionManagerError)?;
+                // Create an address which can be connected to externally
+                let our_host = self.node_identity.control_service_address.host();
+                let external_address = address
+                    .maybe_port()
+                    .map(|port| format!("{}:{}", our_host, port))
+                    .or(Some(our_host))
+                    .unwrap()
+                    .parse()
+                    .map_err(ControlServiceError::NetAddressError)?;
 
-        conn.wait_connected_or_failure(&self.config.requested_outbound_connection_timeout)
-            .map_err(ControlServiceError::ConnectionError)?;
-        debug!(
-            target: LOG_TARGET,
-            "Connection to requested address {} succeeded", message.address
-        );
+                debug!(
+                    target: LOG_TARGET,
+                    "Accepting peer connection request for NodeId={:?} on address {}", peer.node_id, external_address
+                );
 
-        self.send_message_to_peer(&conn, &peer, self.config.accept_message_type.clone(), Accept {})?;
+                self.accept_connection_request(&envelope_header, identity_frame, curve_public_key, external_address)?;
 
-        debug!(
-            target: LOG_TARGET,
-            "Sent 'Accept' message to address {:?}",
-            conn.get_connected_address()
-        );
+                match new_inbound_conn.wait_connected_or_failure(&self.config.requested_connection_timeout) {
+                    Ok(_) => {
+                        debug!(
+                            target: LOG_TARGET,
+                            "Connection to peer connection for NodeId {} succeeded", peer.node_id,
+                        );
+
+                        Ok(Some(new_inbound_conn))
+                    },
+                    Err(ConnectionError::Timeout) => Ok(None),
+                    Err(err) => Err(ControlServiceError::ConnectionError(err)),
+                }
+            })
+            .map_err(|err| ControlServiceError::ConnectionProtocolFailed(format!("{}", err)))?;
 
         Ok(())
     }
@@ -359,21 +395,37 @@ where
         &self.node_identity.identity.node_id < node_id
     }
 
-    fn reject_connection(&self, envelope_header: MessageEnvelopeHeader, identity: Frame) -> Result<()> {
+    fn reject_connection(
+        &self,
+        envelope_header: &MessageEnvelopeHeader,
+        identity: Frame,
+        reason: RejectReason,
+    ) -> Result<()>
+    {
         self.send_reply(
-            &envelope_header.source,
+            &envelope_header.peer_source,
             identity,
-            ControlServiceMessageType::ConnectRequestOutcome,
-            ConnectRequestOutcome::Rejected,
+            ControlServiceResponseType::ConnectRequestOutcome,
+            ConnectRequestOutcome::Rejected(reason),
         )
     }
 
-    fn accept_connection(&self, envelope_header: MessageEnvelopeHeader, identity: Frame) -> Result<()> {
+    fn accept_connection_request(
+        &self,
+        envelope_header: &MessageEnvelopeHeader,
+        identity: Frame,
+        curve_public_key: CurvePublicKey,
+        address: NetAddress,
+    ) -> Result<()>
+    {
         self.send_reply(
-            &envelope_header.source,
+            &envelope_header.peer_source,
             identity,
-            ControlServiceMessageType::ConnectRequestOutcome,
-            ConnectRequestOutcome::Accepted,
+            ControlServiceResponseType::ConnectRequestOutcome,
+            ConnectRequestOutcome::Accepted {
+                curve_public_key,
+                address,
+            },
         )
     }
 
@@ -384,25 +436,6 @@ where
             Err(PeerManagerError::PeerNotFoundError) => Ok(None),
             Err(err) => Err(ControlServiceError::PeerManagerError(err)),
         }
-    }
-
-    fn send_message_to_peer<T>(
-        &self,
-        peer_conn: &PeerConnection,
-        peer: &Peer,
-        message_type: MType,
-        msg: T,
-    ) -> Result<()>
-    where
-        T: MessageFormat,
-    {
-        let envelope = self.construct_envelope(&peer.public_key, message_type, msg, MessageFlags::ENCRYPTED)?;
-
-        peer_conn
-            .send(envelope.into_frame_set())
-            .map_err(ControlServiceError::ConnectionError)?;
-
-        Ok(())
     }
 
     fn construct_envelope<T, MT>(
@@ -417,7 +450,7 @@ where
         MT: Serialize + DeserializeOwned,
         MT: MessageFormat,
     {
-        let header = MessageHeader { message_type };
+        let header = MessageHeader::new(message_type)?;
         let msg = Message::from_message_format(header, msg).map_err(ControlServiceError::MessageError)?;
 
         MessageEnvelope::construct(
@@ -434,7 +467,7 @@ where
         &self,
         dest_public_key: &CommsPublicKey,
         identity_frame: Frame,
-        message_type: ControlServiceMessageType,
+        message_type: ControlServiceResponseType,
         msg: T,
     ) -> Result<()>
     where
@@ -453,7 +486,7 @@ where
         CommsCipher::open_with_integral_nonce(&body, &ecdh_shared_secret).map_err(ControlServiceError::CipherError)
     }
 
-    fn establish_listener(context: &ZmqContext, config: &ControlServiceConfig<MType>) -> Result<EstablishedConnection> {
+    fn establish_listener(context: &ZmqContext, config: &ControlServiceConfig) -> Result<EstablishedConnection> {
         debug!(target: LOG_TARGET, "Binding on address: {}", config.listener_address);
         Connection::new(&context, Direction::Inbound)
             .set_name("Control Service Listener")

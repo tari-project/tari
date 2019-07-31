@@ -18,6 +18,7 @@ rand = "0.6.5"
 crossbeam-channel = "0.3.8"
 lmdb-zero = "0.4.4"
 tari_storage = {version = "^0.0", path = "../../infrastructure/storage"}
+chrono = { version = "0.4.6", features = ["serde"]}
 
 [dev-dependencies]
 tempdir = "0.3.7"

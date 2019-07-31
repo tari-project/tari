@@ -20,16 +20,29 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::{
+    message::{Frame, MessageError},
+    types::CommsRng,
+};
+use rand::RngCore;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-
-use tari_utilities::message_format::MessageFormat;
-
-use crate::message::{Frame, MessageError};
 use std::convert::TryFrom;
+use tari_utilities::message_format::MessageFormat;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MessageHeader<MType> {
     pub message_type: MType,
+    pub nonce: u64,
+}
+
+impl<MType> MessageHeader<MType> {
+    /// Create a new MessageHeader with a random nonce
+    pub fn new(message_type: MType) -> Result<Self, MessageError> {
+        Ok(Self {
+            message_type,
+            nonce: CommsRng::new().map_err(|_| MessageError::RngError)?.next_u64(),
+        })
+    }
 }
 
 /// Represents a Message as described in [RFC-0172](https://rfc.tari.com/RFC-0172_PeerToPeerMessagingProtocol.html#messaging-structure).
@@ -75,7 +88,7 @@ where
     type Error = MessageError;
 
     fn try_from((message_type, msg): (MType, T)) -> Result<Self, Self::Error> {
-        Ok(Self::from_message_format(MessageHeader { message_type }, msg)?)
+        Ok(Self::from_message_format(MessageHeader::new(message_type)?, msg)?)
     }
 }
 
@@ -86,6 +99,7 @@ mod test {
     #[derive(Serialize, Deserialize, Eq, PartialEq, Debug, Clone)]
     struct TestHeader {
         a: u32,
+        b: u64,
     }
 
     #[derive(Serialize, Deserialize, Eq, PartialEq, Debug, Clone)]
@@ -95,15 +109,16 @@ mod test {
 
     #[test]
     fn from_message_format() {
-        let header = TestHeader { a: 1 };
+        let header = TestHeader { a: 1, b: 2 };
         let body = TestMsg { a: 2 };
 
         let msg = Message::from_message_format(header.clone(), body.clone()).unwrap();
 
-        let header2 = msg.deserialize_header::<TestHeader>().unwrap();
+        let header2 = msg.deserialize_header::<u32>().unwrap();
         let body2 = msg.deserialize_message::<TestMsg>().unwrap();
 
-        assert_eq!(header, header2.message_type);
+        assert_eq!(header.a, header2.message_type);
+        assert_eq!(header.b, header2.nonce);
         assert_eq!(body, body2);
     }
 }

@@ -27,6 +27,7 @@ extern crate lazy_static;
 
 pub mod block;
 pub mod blockheader;
+pub mod bullet_rangeproofs;
 pub mod fee;
 pub mod pow;
 #[allow(clippy::op_ref)]

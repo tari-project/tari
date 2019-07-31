@@ -20,8 +20,17 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use rand::{CryptoRng, Rng};
 use std::{fmt::Debug, thread, time::Duration};
-
+use tari_core::{
+    tari_amount::MicroTari,
+    transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
+    types::{PrivateKey, PublicKey, COMMITMENT_FACTORY},
+};
+use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
+    keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
+};
 pub fn assert_change<F, T>(func: F, to: T, poll_count: usize)
 where
     F: Fn() -> T,
@@ -46,4 +55,32 @@ where
 
         thread::sleep(Duration::from_millis(100));
     }
+}
+
+pub struct TestParams {
+    pub spend_key: PrivateKey,
+    pub change_key: PrivateKey,
+    pub offset: PrivateKey,
+    pub nonce: PrivateKey,
+    pub public_nonce: PublicKey,
+}
+
+impl TestParams {
+    pub fn new<R: Rng + CryptoRng>(rng: &mut R) -> TestParams {
+        let r = PrivateKey::random(rng);
+        TestParams {
+            spend_key: PrivateKey::random(rng),
+            change_key: PrivateKey::random(rng),
+            offset: PrivateKey::random(rng),
+            public_nonce: PublicKey::from_secret_key(&r),
+            nonce: r,
+        }
+    }
+}
+
+pub fn make_input<R: Rng + CryptoRng>(rng: &mut R, val: MicroTari) -> (TransactionInput, UnblindedOutput) {
+    let key = PrivateKey::random(rng);
+    let commitment = COMMITMENT_FACTORY.commit_value(&key, val.into());
+    let input = TransactionInput::new(OutputFeatures::empty(), commitment);
+    (input, UnblindedOutput::new(val, key, None))
 }

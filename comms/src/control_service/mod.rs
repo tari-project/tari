@@ -25,6 +25,26 @@
 //! The control service listens on the configured address for [RequestConnection] messages
 //! and decides whether to connect to the requested address.
 //!
+//! Once a control port connection has been established. The protocol for establishing a
+//! peer connection is as follows:
+//!
+//! Node A                  Node B
+//!  +                       +
+//!  |  ReqConn(n_id, addr)  |
+//!  | +-------------------> |
+//!  |                       | Create Inbound PeerConnection
+//!  |  Accept(c_pk, addr)   |
+//!  | <------------------+  | ---
+//!  |                       |   | Either Accept or Reject
+//!  |   Reject(reason)      |   |
+//!  | <------------------+  | ---
+//!  |                       |
+//!  |                       |
+//!  |  Connect to PeerConn  |
+//!  | +-------------------> |
+//!  |                       |
+//!  +                       +
+//!
 //! ```edition2018
 //! # use tari_comms::{connection::*, control_service::*, dispatcher::*, connection_manager::*, peer_manager::*, types::*};
 //! # use std::{time::Duration, sync::Arc};
@@ -58,7 +78,7 @@
 //!      peer_connection_establish_timeout: Duration::from_secs(4),
 //! }));
 //!
-//! let service = ControlService::<u8>::with_default_config(
+//! let service = ControlService::with_default_config(
 //!       context,
 //!       node_identity,
 //!     )
@@ -79,6 +99,6 @@ mod worker;
 pub use self::{
     client::ControlServiceClient,
     error::ControlServiceError,
-    messages::ControlServiceMessageType,
+    messages::ControlServiceRequestType,
     service::{ControlService, ControlServiceConfig, ControlServiceHandle},
 };

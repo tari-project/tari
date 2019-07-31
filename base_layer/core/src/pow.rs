@@ -20,24 +20,41 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::types::*;
-use digest::Input;
+use crate::block::AggregateBody;
 use serde::{Deserialize, Serialize};
-use tari_infra_derive::Hashable;
-use tari_utilities::{ExtendBytes, Hashable};
+/// This describes the interface the block validation will use when interacting with the proof of work.
+pub trait ProofOfWorkInterface {
+    /// This function will compare another proof of work. It will return true if the other is higher.
+    fn has_more_accum_work_than(&self, other: &Self) -> bool;
+    /// This function provides the proof that is supplied in the block header as bytes.
+    fn proof_as_bytes(&self) -> Vec<u8>;
+    /// This function  will validate the proof of work for the given block.
+    fn validate_pow(&self, body: &AggregateBody) -> bool;
+}
 
-#[derive(Clone, Debug, PartialEq, Hashable, Serialize, Deserialize)]
-#[digest = "SignatureHash"]
-pub struct ProofOfWork {}
+#[derive(Serialize, Deserialize, Default, Clone, Debug, PartialEq)]
+pub struct MockProofOfWork {
+    work: u64,
+}
 
-impl ProofOfWork {
-    pub fn as_bytes(&self) -> Vec<u8> {
-        Vec::new()
+impl MockProofOfWork {
+    pub fn new() -> MockProofOfWork {
+        MockProofOfWork { work: 0 }
+    }
+}
+
+impl ProofOfWorkInterface for MockProofOfWork {
+    fn proof_as_bytes(&self) -> Vec<u8> {
+        let mut buf = Vec::new();
+        bincode::serialize_into(&mut buf, self).unwrap(); // this should not fail
+        buf
     }
 
-    /// Return the total accumulated difficulty for the entire chain from Genesis block to this point
-    pub fn get_total_accumulated_difficulty(&self) -> u64 {
-        // todo fill out proper
-        0
+    fn has_more_accum_work_than(&self, other: &MockProofOfWork) -> bool {
+        self.work < other.work
+    }
+
+    fn validate_pow(&self, _body: &AggregateBody) -> bool {
+        true
     }
 }

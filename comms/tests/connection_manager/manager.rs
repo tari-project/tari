@@ -111,7 +111,7 @@ fn establish_peer_connection() {
         .unwrap();
 
     // Node B knows no peers
-    let node_B_database_name = "connection_manager_node_B_peer_manager"; // Note: every test should have unique database
+    let node_B_database_name = "connection_manager_node_B_peer_manager";
     let datastore = init_datastore(node_B_database_name).unwrap();
     let database = datastore.get_handle(node_B_database_name).unwrap();
     let node_B_peer_manager = make_peer_manager(vec![], database);
@@ -129,8 +129,7 @@ fn establish_peer_connection() {
     let node_B_control_service = ControlService::new(context.clone(), node_B_identity.clone(), ControlServiceConfig {
         socks_proxy_address: None,
         listener_address: node_B_control_port_address,
-        accept_message_type: 123,
-        requested_outbound_connection_timeout: Duration::from_millis(5000),
+        requested_connection_timeout: Duration::from_millis(5000),
     })
     .serve(node_B_connection_manager)
     .unwrap();

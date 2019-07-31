@@ -23,8 +23,7 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
-use digest::Digest;
-use serde::{Deserialize, Serialize};
+use crate::{bullet_rangeproofs::BulletRangeProof, pow::*};
 use tari_crypto::{
     common::Blake256,
     ristretto::{
@@ -35,7 +34,6 @@ use tari_crypto::{
         RistrettoSecretKey,
     },
 };
-use tari_utilities::{byte_array::*, hash::*};
 
 /// Define the explicit Signature implementation for the Tari base layer. A different signature scheme can be
 /// employed by redefining this type.
@@ -67,6 +65,12 @@ pub type MessageHash = Vec<u8>;
 /// Specify the range proof type
 pub type RangeProofService = DalekRangeProofService;
 
+/// Specify the Proof of Work
+pub type ProofOfWork = MockProofOfWork;
+
+/// Specify the range proof
+pub type RangeProof = BulletRangeProof;
+
 #[cfg(test)]
 pub const MAX_RANGE_PROOF_RANGE: usize = 32; // 2^32 This is the only way to produce failing range proofs for the tests
 #[cfg(not(test))]
@@ -83,31 +87,4 @@ lazy_static! {
     pub static ref COMMITMENT_FACTORY: CommitmentFactory = CommitmentFactory::default();
     pub static ref PROVER: RangeProofService =
         RangeProofService::new(MAX_RANGE_PROOF_RANGE, &COMMITMENT_FACTORY).unwrap();
-}
-
-#[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct RangeProof(pub Vec<u8>);
-/// Implement the hashing function for RangeProof for use in the MMR
-impl Hashable for RangeProof {
-    fn hash(&self) -> Vec<u8> {
-        HashDigest::new().chain(&self.0).result().to_vec()
-    }
-}
-
-impl ByteArray for RangeProof {
-    fn to_vec(&self) -> Vec<u8> {
-        self.0.clone()
-    }
-
-    fn from_vec(v: &Vec<u8>) -> Result<Self, ByteArrayError> {
-        Ok(RangeProof { 0: v.clone() })
-    }
-
-    fn from_bytes(bytes: &[u8]) -> Result<Self, ByteArrayError> {
-        Ok(RangeProof { 0: bytes.to_vec() })
-    }
-
-    fn as_bytes(&self) -> &[u8] {
-        &self.0
-    }
 }

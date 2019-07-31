@@ -5,6 +5,7 @@
 //! See [CommsBuilder] for more information on using this library.
 //!
 //! [CommsBuilder]: ./builder/index.html
+#![feature(checked_duration_since)]
 
 #[macro_use]
 extern crate lazy_static;

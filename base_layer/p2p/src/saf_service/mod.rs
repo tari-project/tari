@@ -20,8 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use serde::{Deserialize, Serialize};
+mod error;
+mod saf_messages;
+mod saf_service;
 
-/// Sent to a peer connection to indicate the connection has been accepted
-#[derive(Serialize, Deserialize, Debug)]
-pub struct Accept;
+pub use self::{
+    error::SAFError,
+    saf_messages::{RetrieveMsgsMessage, StoredMsgsMessage},
+    saf_service::{SAFService, SAFServiceApi},
+};

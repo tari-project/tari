@@ -21,12 +21,18 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    connection::{ConnectionError, NetAddressError},
+    connection::ConnectionError,
+    control_service::{messages::RejectReason, ControlServiceError},
     message::MessageError,
     peer_manager::PeerManagerError,
 };
 use derive_error::Error;
-use tari_utilities::{ciphers::cipher::CipherError, message_format::MessageFormatError, ByteArrayError};
+use tari_utilities::{
+    ciphers::cipher::CipherError,
+    message_format::MessageFormatError,
+    thread_join::ThreadError,
+    ByteArrayError,
+};
 
 #[derive(Error, Debug)]
 pub enum ConnectionManagerError {
@@ -38,7 +44,6 @@ pub enum ConnectionManagerError {
     PeerNotFound,
     // Error establishing connection
     ConnectionError(ConnectionError),
-    NetAddressError(NetAddressError),
     #[error(no_from)]
     CurveEncryptionGenerateError(ConnectionError),
     MessageFormatError(MessageFormatError),
@@ -50,12 +55,16 @@ pub enum ConnectionManagerError {
     PeerManagerError(PeerManagerError),
     /// The connection could not connect within the maximum number of attempts
     MaxConnnectionAttemptsExceeded,
-    /// The connection address could not be established
-    ConnectionAddressNotEstablished,
     /// Problem creating or loading datastore
     DatastoreError,
     /// Connection timed out before it was able to connect
     TimeoutBeforeConnected,
+    /// The maximum number of peer connections has been reached
+    MaxConnectionsReached,
+    /// Failed to shutdown a peer connection
+    #[error(no_from)]
+    ConnectionShutdownFailed(ConnectionError),
+    PeerConnectionThreadError(ThreadError),
     #[error(msg_embedded, non_std, no_from)]
     ControlServicePingPongFailed(String),
     #[error(msg_embedded, non_std, no_from)]
@@ -63,7 +72,8 @@ pub enum ConnectionManagerError {
     /// Failed to receive a connection request outcome message
     ConnectionRequestOutcomeRecvFail,
     /// The request to establish a peer connection was rejected by the destination peer's control port
-    ConnectionRejected,
+    ConnectionRejected(RejectReason),
     /// Failed to receive a connection request outcome before the timeout
     ConnectionRequestOutcomeTimeout,
+    ControlServiceError(ControlServiceError),
 }

@@ -20,7 +20,19 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{peer_manager::node_id::NodeId, types::CommsPublicKey};
+use crate::{
+    consts::DHT_FORWARD_NODE_COUNT,
+    message::NodeDestination,
+    peer_manager::{node_id::NodeId, peer_manager::PeerManager, PeerManagerError},
+    types::CommsPublicKey,
+};
+use derive_error::Error;
+use std::sync::Arc;
+
+#[derive(Debug, Error)]
+pub enum BroadcastStrategyError {
+    PeerManagerError(PeerManagerError),
+}
 
 #[derive(Debug)]
 pub struct ClosestRequest {
@@ -41,4 +53,78 @@ pub enum BroadcastStrategy {
     Closest(ClosestRequest),
     /// Send to a random set of peers of size n that are Communication Nodes
     Random(usize),
+}
+
+impl BroadcastStrategy {
+    /// The forward function selects the most appropriate broadcast strategy based on the received messages destination
+    pub fn forward(
+        source_node_id: NodeId,
+        peer_manager: &Arc<PeerManager>,
+        header_dest: NodeDestination<CommsPublicKey>,
+        excluded_peers: Vec<CommsPublicKey>,
+    ) -> Result<Self, BroadcastStrategyError>
+    {
+        Ok(match header_dest {
+            NodeDestination::Unknown => {
+                // Send to the current nodes nearest neighbours
+                BroadcastStrategy::Closest(ClosestRequest {
+                    n: DHT_FORWARD_NODE_COUNT,
+                    node_id: source_node_id,
+                    excluded_peers,
+                })
+            },
+            NodeDestination::PublicKey(dest_public_key) => {
+                if peer_manager.exists(&dest_public_key)? {
+                    // Send to destination peer directly if the current node knows that peer
+                    BroadcastStrategy::DirectPublicKey(dest_public_key)
+                } else {
+                    // Send to the current nodes nearest neighbours
+                    BroadcastStrategy::Closest(ClosestRequest {
+                        n: DHT_FORWARD_NODE_COUNT,
+                        node_id: source_node_id,
+                        excluded_peers,
+                    })
+                }
+            },
+            NodeDestination::NodeId(dest_node_id) => {
+                match peer_manager.find_with_node_id(&dest_node_id) {
+                    Ok(dest_peer) => {
+                        // Send to destination peer directly if the current node knows that peer
+                        BroadcastStrategy::DirectPublicKey(dest_peer.public_key)
+                    },
+                    Err(_) => {
+                        // Send to peers that are closest to the destination network region
+                        BroadcastStrategy::Closest(ClosestRequest {
+                            n: DHT_FORWARD_NODE_COUNT,
+                            node_id: dest_node_id,
+                            excluded_peers,
+                        })
+                    },
+                }
+            },
+        })
+    }
+
+    /// The discover function selects an appropriate broadcast strategy for the discovery of a specific node
+    pub fn discover(
+        source_node_id: NodeId,
+        dest_node_id: Option<NodeId>,
+        header_dest: NodeDestination<CommsPublicKey>,
+        excluded_peers: Vec<CommsPublicKey>,
+    ) -> Self
+    {
+        let network_location_node_id = match dest_node_id {
+            Some(node_id) => node_id,
+            None => match header_dest.clone() {
+                NodeDestination::Unknown => source_node_id,
+                NodeDestination::PublicKey(_) => source_node_id,
+                NodeDestination::NodeId(node_id) => node_id,
+            },
+        };
+        BroadcastStrategy::Closest(ClosestRequest {
+            n: DHT_FORWARD_NODE_COUNT,
+            node_id: network_location_node_id,
+            excluded_peers,
+        })
+    }
 }

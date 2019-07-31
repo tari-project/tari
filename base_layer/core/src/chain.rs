@@ -29,7 +29,7 @@
 //!
 //! The MMR also provides a method to save the MMR to disc. This is internally handled and we use LMDB to store the MMR.
 
-use crate::{block::Block, block_chain_state::BlockchainState, error::*, pow::*};
+use crate::{block::Block, block_chain_state::BlockchainState, error::*, pow::*, types::*};
 use std::collections::HashMap;
 use tari_utilities::Hashable;
 
@@ -51,7 +51,7 @@ impl Chain {
         let chain = Chain {
             block_chain_state: BlockchainState::new()?,
             orphans: HashMap::new(),
-            current_total_pow: ProofOfWork {},
+            current_total_pow: ProofOfWork::default(),
         };
         Ok(chain)
     }
@@ -88,7 +88,7 @@ impl Chain {
         let pow = new_block.header.pow.clone();
         self.orphans.insert(hash, new_block);
         let mut currently_used_orphans: Vec<BlockHash> = Vec::new();
-        if pow.get_total_accumulated_difficulty() > self.current_total_pow.get_total_accumulated_difficulty() {
+        if self.current_total_pow.has_more_accum_work_than(&pow) {
             // we have a potential re-org here
             let result = self.handle_re_org(&hash, &mut currently_used_orphans);
             let result = if result.is_err() {
