@@ -42,4 +42,6 @@ pub enum MessageError {
     /// Failed to Encode or Decode the message using the Cipher
     CipherError(CipherError),
     NodeIdError(NodeIdError),
+    /// Problem initializing the RNG
+    RngError,
 }

@@ -156,7 +156,7 @@ impl TextMessageService {
 
             let text_message_ack = TextMessageAck { id: msg.clone().id };
             oms.send_message(
-                BroadcastStrategy::DirectPublicKey(info.source_identity.public_key),
+                BroadcastStrategy::DirectPublicKey(info.origin_source),
                 MessageFlags::ENCRYPTED,
                 text_message_ack,
             )?;

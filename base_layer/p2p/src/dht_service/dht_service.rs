@@ -21,7 +21,11 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    dht_service::DHTError,
+    consts::DHT_BROADCAST_NODE_COUNT,
+    dht_service::{
+        dht_messages::{DiscoverMessage, JoinMessage},
+        DHTError,
+    },
     services::{
         Service,
         ServiceApiWrapper,
@@ -35,20 +39,25 @@ use crate::{
 use crossbeam_channel as channel;
 use log::*;
 use std::{
+    convert::TryInto,
     sync::{Arc, Mutex},
     time::Duration,
 };
 use tari_comms::{
-    outbound_message_service::outbound_message_service::OutboundMessageService,
-    peer_manager::PeerManager,
+    domain_connector::MessageInfo,
+    message::{Frame, Message, MessageEnvelope, MessageFlags, NodeDestination},
+    outbound_message_service::{outbound_message_service::OutboundMessageService, BroadcastStrategy, ClosestRequest},
+    peer_manager::{NodeId, NodeIdentity, Peer, PeerFlags, PeerManager},
     types::CommsPublicKey,
     DomainConnector,
 };
+use tari_utilities::message_format::MessageFormat;
 
 const LOG_TARGET: &str = "base_layer::p2p::dht";
 
 /// The DHTService manages joining the network and discovery of peers.
 pub struct DHTService {
+    node_identity: Option<Arc<NodeIdentity>>,
     oms: Option<Arc<OutboundMessageService>>,
     peer_manager: Option<Arc<PeerManager>>,
     api: ServiceApiWrapper<DHTServiceApi, DHTApiRequest, DHTApiResult>,
@@ -58,6 +67,7 @@ impl DHTService {
     /// Create a new DHT service
     pub fn new() -> Self {
         Self {
+            node_identity: None,
             oms: None,
             peer_manager: None,
             api: Self::setup_api(),
@@ -77,43 +87,187 @@ impl DHTService {
         ServiceApiWrapper::new(service_receiver, service_sender, api)
     }
 
-    /// Send a new network join request so that other peers are able to find this node on the network
-    fn send_join(&self) -> Result<(), DHTError> {
-        let _oms = self.oms.clone().ok_or(DHTError::OMSUndefined)?;
+    /// Construct a new join message that contains the current nodes identity and net_addresses
+    fn construct_join_msg(&self) -> Result<JoinMessage, DHTError> {
+        let node_identity = self.node_identity.as_ref().ok_or(DHTError::NodeIdentityUndefined)?;
+        Ok(JoinMessage {
+            node_id: node_identity.identity.node_id.clone(),
+            net_address: vec![node_identity.control_service_address.clone()],
+        })
+    }
 
-        // TODO: Construct join message and send to closest peers using OMS
+    /// Construct a new discover message that contains the current nodes identity and net_addresses
+    fn construct_discover_msg(&self) -> Result<DiscoverMessage, DHTError> {
+        let node_identity = self.node_identity.as_ref().ok_or(DHTError::NodeIdentityUndefined)?;
+        Ok(DiscoverMessage {
+            node_id: node_identity.identity.node_id.clone(),
+            net_address: vec![node_identity.control_service_address.clone()],
+        })
+    }
+
+    /// Send a new network join request to the peers that are closest to the current nodes network location. The Join
+    /// Request will allow other peers to be able to find this node on the network.
+    fn send_join(&self) -> Result<(), DHTError> {
+        let oms = self.oms.as_ref().ok_or(DHTError::OMSUndefined)?;
+        let node_identity = self.node_identity.as_ref().ok_or(DHTError::NodeIdentityUndefined)?;
+
+        oms.send_message(
+            BroadcastStrategy::Closest(ClosestRequest {
+                n: DHT_BROADCAST_NODE_COUNT,
+                node_id: node_identity.identity.node_id.clone(),
+                excluded_peers: Vec::new(),
+            }),
+            MessageFlags::NONE,
+            self.construct_join_msg()?,
+        )?;
+        trace!(target: LOG_TARGET, "Join Request Sent");
+
+        Ok(())
+    }
+
+    /// Send a network join update request directly to a specific known peer
+    fn send_join_direct(&self, dest_public_key: CommsPublicKey) -> Result<(), DHTError> {
+        let oms = self.oms.as_ref().ok_or(DHTError::OMSUndefined)?;
+
+        oms.send_message(
+            BroadcastStrategy::DirectPublicKey(dest_public_key),
+            MessageFlags::ENCRYPTED,
+            self.construct_join_msg()?,
+        )?;
+        trace!(target: LOG_TARGET, "Direct Join Request Sent");
 
         Ok(())
     }
 
     /// Send a discover request to find a specific peer on the network
-    fn send_discover(&self, _public_key: CommsPublicKey) -> Result<(), DHTError> {
-        let _oms = self.oms.clone().ok_or(DHTError::OMSUndefined)?;
+    fn send_discover(
+        &self,
+        dest_public_key: CommsPublicKey,
+        dest_node_id: Option<NodeId>,
+        header_dest: NodeDestination<CommsPublicKey>,
+    ) -> Result<(), DHTError>
+    {
+        let oms = self.oms.as_ref().ok_or(DHTError::OMSUndefined)?;
+        let node_identity = self.node_identity.as_ref().ok_or(DHTError::NodeIdentityUndefined)?;
 
-        // TODO: Construct discover message and send to closest peers using OMS
+        let discover_msg: Message = self
+            .construct_discover_msg()?
+            .try_into()
+            .map_err(DHTError::MessageSerializationError)?;
+        let message_envelope_body: Frame = discover_msg.to_binary().map_err(DHTError::MessageFormatError)?;
+        let message_envelope = MessageEnvelope::construct(
+            &node_identity,
+            dest_public_key,
+            header_dest.clone(),
+            message_envelope_body.clone(),
+            MessageFlags::ENCRYPTED,
+        )
+        .map_err(DHTError::MessageSerializationError)?;
+
+        let broadcast_strategy = BroadcastStrategy::discover(
+            node_identity.identity.node_id.clone(),
+            dest_node_id,
+            header_dest,
+            Vec::new(),
+        );
+        oms.forward_message(broadcast_strategy, message_envelope)?;
 
         Ok(())
     }
 
-    /// Process an incoming join request
-    fn receive_join(&mut self, _connector: &DomainConnector<'static>) -> Result<(), DHTError> {
-        let _oms = self.oms.clone().ok_or(DHTError::OMSUndefined)?;
+    /// Process an incoming join request. The peer specified in the join request will be added to the PeerManager. If
+    /// the current Node and the join request Node are from the same region of the network then the current node will
+    /// send a join request back to that peer informing it that the current node is a neighbouring node. The join
+    /// request is then forwarded to closer nodes.
+    fn receive_join(&mut self, connector: &DomainConnector<'static>) -> Result<(), DHTError> {
+        let oms = self.oms.as_ref().ok_or(DHTError::OMSUndefined)?;
+        let peer_manager = self.peer_manager.as_ref().ok_or(DHTError::PeerManagerUndefined)?;
+        let node_identity = self.node_identity.as_ref().ok_or(DHTError::NodeIdentityUndefined)?;
 
-        // TODO: receive join request from another peer
-        // - Check information and add to peer manager
-        // - If part of k nearest peers then send private join request back
-        // - Propagate to closer peers
+        let incoming_msg: Option<(MessageInfo, JoinMessage)> = connector
+            .receive_timeout(Duration::from_millis(1))
+            .map_err(DHTError::ConnectorError)?;
+        if let Some((info, join_msg)) = incoming_msg {
+            // TODO: Check/Verify the received peers information
+
+            // Add peer or modify existing peer using received join request
+            if peer_manager.exists(&info.origin_source)? {
+                peer_manager.update_peer(
+                    &info.origin_source,
+                    Some(join_msg.node_id.clone()),
+                    Some(join_msg.net_address.clone()),
+                    None,
+                )?;
+            } else {
+                let peer = Peer::new(
+                    info.origin_source.clone(),
+                    join_msg.node_id.clone(),
+                    join_msg.net_address.clone().into(),
+                    PeerFlags::default(),
+                );
+                peer_manager.add_peer(peer)?;
+            }
+
+            // Send a join request back to the source peer of the join request if that peer is from the same region
+            // of network. Also, only Send a join request back if this copy of the received join
+            // request was not sent directly from the original source peer but was forwarded. If it
+            // was not forwarded then that source peer already has the current peers info in its
+            // PeerManager.
+            if (info.origin_source != info.peer_source.public_key) &&
+                (peer_manager.in_network_region(
+                    &join_msg.node_id,
+                    &node_identity.identity.node_id,
+                    DHT_BROADCAST_NODE_COUNT,
+                )?)
+            {
+                self.send_join_direct(info.origin_source.clone())?;
+            }
+
+            // Propagate message to closer peers
+            oms.forward_message(
+                BroadcastStrategy::Closest(ClosestRequest {
+                    n: DHT_BROADCAST_NODE_COUNT,
+                    node_id: join_msg.node_id.clone(),
+                    excluded_peers: vec![info.origin_source, info.peer_source.public_key],
+                }),
+                info.message_envelope,
+            )?;
+        }
 
         Ok(())
     }
 
-    /// Process an incoming discover request
-    fn receive_discover(&mut self, _connector: &DomainConnector<'static>) -> Result<(), DHTError> {
-        let _oms = self.oms.clone().ok_or(DHTError::OMSUndefined)?;
+    /// Process an incoming discover request that was meant for the current node
+    fn receive_discover(&mut self, connector: &DomainConnector<'static>) -> Result<(), DHTError> {
+        let peer_manager = self.peer_manager.as_ref().ok_or(DHTError::PeerManagerUndefined)?;
 
-        // TODO: receive discovery request from another peer
-        // - Check information and add/update peer in PeerManager
-        // - Send join back
+        let incoming_msg: Option<(MessageInfo, DiscoverMessage)> = connector
+            .receive_timeout(Duration::from_millis(1))
+            .map_err(DHTError::ConnectorError)?;
+        if let Some((info, discover_msg)) = incoming_msg {
+            // TODO: Check/Verify the received peers information
+
+            // Add peer or modify existing peer using received discover request
+            if peer_manager.exists(&info.origin_source)? {
+                peer_manager.update_peer(
+                    &info.origin_source,
+                    Some(discover_msg.node_id.clone()),
+                    Some(discover_msg.net_address.clone()),
+                    None,
+                )?;
+            } else {
+                let peer = Peer::new(
+                    info.origin_source.clone(),
+                    discover_msg.node_id.clone(),
+                    discover_msg.net_address.clone().into(),
+                    PeerFlags::default(),
+                );
+                peer_manager.add_peer(peer)?;
+            }
+
+            // Send the origin the current nodes latest contact info
+            self.send_join_direct(info.origin_source)?;
+        }
 
         Ok(())
     }
@@ -128,9 +282,9 @@ impl DHTService {
         );
         let resp = match msg {
             DHTApiRequest::SendJoin => self.send_join().map(|_| DHTApiResponse::JoinSent),
-            DHTApiRequest::SendDiscover(public_key) => {
-                self.send_discover(public_key).map(|_| DHTApiResponse::DiscoverSent)
-            },
+            DHTApiRequest::SendDiscover(dest_public_key, dest_node_id, header_dest) => self
+                .send_discover(dest_public_key, dest_node_id, header_dest)
+                .map(|_| DHTApiResponse::DiscoverSent),
         };
 
         trace!(target: LOG_TARGET, "[{}] Replying to API: {:?}", self.get_name(), resp);
@@ -147,7 +301,7 @@ impl Service for DHTService {
     }
 
     fn get_message_types(&self) -> Vec<TariMessageType> {
-        vec![NetMessage::Join.into(), NetMessage::Discover.into()] // TODO: Where is / What is forward?
+        vec![NetMessage::Join.into(), NetMessage::Discover.into()]
     }
 
     fn execute(&mut self, context: ServiceContext) -> Result<(), ServiceError> {
@@ -161,6 +315,7 @@ impl Service for DHTService {
 
         self.oms = Some(context.outbound_message_service());
         self.peer_manager = Some(context.peer_manager());
+        self.node_identity = Some(context.node_identity());
         debug!(target: LOG_TARGET, "Starting DHT Service executor");
         loop {
             if let Some(msg) = context.get_control_message(Duration::from_millis(5)) {
@@ -202,7 +357,7 @@ pub enum DHTApiRequest {
     /// Send a join request to neighbouring peers on the network
     SendJoin,
     /// Send a discovery request to find a selected peer
-    SendDiscover(CommsPublicKey),
+    SendDiscover(CommsPublicKey, Option<NodeId>, NodeDestination<CommsPublicKey>),
 }
 
 /// API Response enum
@@ -242,8 +397,14 @@ impl DHTServiceApi {
         })
     }
 
-    pub fn send_discover(&self, public_key: CommsPublicKey) -> Result<(), DHTError> {
-        self.send_recv(DHTApiRequest::SendDiscover(public_key))
+    pub fn send_discover(
+        &self,
+        dest_public_key: CommsPublicKey,
+        dest_node_id: Option<NodeId>,
+        header_dest: NodeDestination<CommsPublicKey>,
+    ) -> Result<(), DHTError>
+    {
+        self.send_recv(DHTApiRequest::SendDiscover(dest_public_key, dest_node_id, header_dest))
             .and_then(|resp| match resp {
                 DHTApiResponse::DiscoverSent => Ok(()),
                 _ => Err(DHTError::UnexpectedApiResponse),

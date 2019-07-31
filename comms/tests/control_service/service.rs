@@ -26,9 +26,9 @@ use crate::support::{
 };
 use std::{path::PathBuf, sync::Arc, time::Duration};
 use tari_comms::{
-    connection::{types::Direction, Connection, CurveEncryption, InprocAddress, ZmqContext},
+    connection::{types::Direction, Connection, InprocAddress, ZmqContext},
     connection_manager::{ConnectionManager, PeerConnectionConfig},
-    control_service::{ControlService, ControlServiceClient, ControlServiceConfig},
+    control_service::{messages::ConnectRequestOutcome, ControlService, ControlServiceClient, ControlServiceConfig},
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFlags, PeerManager},
 };
 use tari_storage::lmdb_store::{LMDBBuilder, LMDBDatabase, LMDBError, LMDBStore};
@@ -107,8 +107,7 @@ fn request_connection() {
     let service_handle = ControlService::new(context.clone(), Arc::clone(&node_identity_a), ControlServiceConfig {
         listener_address: listener_address.clone(),
         socks_proxy_address: None,
-        accept_message_type: 123,
-        requested_outbound_connection_timeout: Duration::from_millis(2000),
+        requested_connection_timeout: Duration::from_millis(2000),
     })
     .serve(connection_manager)
     .unwrap();
@@ -125,33 +124,17 @@ fn request_connection() {
         client_conn,
     );
 
-    // --- Setup inbound peer connection and request that the destination connects to it
-    let peer_address = factories::net_address::create().build().unwrap();
-    let (curve_sk, curve_pk) = CurveEncryption::generate_keypair().unwrap();
-
-    let (peer_conn, peer_conn_handle) = factories::peer_connection::create()
-        .with_peer_connection_context_factory(
-            factories::peer_connection_context::create()
-                .with_context(&context)
-                .with_direction(Direction::Inbound)
-                .with_address(peer_address.clone())
-                .with_message_sink_address(peer_conn_config.message_sink_address.clone())
-                .with_curve_keypair((curve_sk, curve_pk.clone())),
-        )
-        .build()
-        .unwrap();
-
     // --- Request a connection to the peer connection
     client
         .send_request_connection(
             node_identity_b.control_service_address.clone(),
             NodeId::from_key(&node_identity_b.identity.public_key).unwrap(),
-            peer_address,
-            curve_pk,
         )
         .unwrap();
-
-    msg_counter.assert_count(1, 20);
+    let outcome = client
+        .receive_message::<ConnectRequestOutcome>(Duration::from_millis(3000))
+        .unwrap()
+        .unwrap();
 
     let peer = peer_manager
         .find_with_public_key(&node_identity_b.identity.public_key)
@@ -164,11 +147,35 @@ fn request_connection() {
     );
     assert_eq!(peer.flags, PeerFlags::empty());
 
+    match outcome {
+        ConnectRequestOutcome::Accepted {
+            address,
+            curve_public_key,
+        } => {
+            // --- Setup outbound peer connection to the requested address
+            let (peer_conn, peer_conn_handle) = factories::peer_connection::create()
+                .with_peer_connection_context_factory(
+                    factories::peer_connection_context::create()
+                        .with_context(&context)
+                        .with_direction(Direction::Outbound)
+                        .with_address(address.clone())
+                        .with_message_sink_address(peer_conn_config.message_sink_address.clone())
+                        .with_server_public_key(curve_public_key),
+                )
+                .build()
+                .unwrap();
+
+            peer_conn
+                .wait_connected_or_failure(&Duration::from_millis(3000))
+                .unwrap();
+
+            peer_conn.shutdown().unwrap();
+            peer_conn_handle.timeout_join(Duration::from_millis(3000)).unwrap();
+        },
+        ConnectRequestOutcome::Rejected(reason) => panic!("Connection was rejected unexpectedly: {}", reason),
+    }
     service_handle.shutdown().unwrap();
     service_handle.timeout_join(Duration::from_millis(3000)).unwrap();
-
-    peer_conn.shutdown().unwrap();
-    peer_conn_handle.timeout_join(Duration::from_millis(3000)).unwrap();
 
     clean_up_datastore(database_name);
 }
@@ -182,8 +189,7 @@ fn ping_pong() {
     let service = ControlService::new(context.clone(), Arc::clone(&node_identity), ControlServiceConfig {
         listener_address: listener_address.clone(),
         socks_proxy_address: None,
-        accept_message_type: 123,
-        requested_outbound_connection_timeout: Duration::from_millis(2000),
+        requested_connection_timeout: Duration::from_millis(2000),
     })
     .serve(connection_manager)
     .unwrap();

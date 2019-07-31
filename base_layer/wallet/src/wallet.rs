@@ -67,7 +67,7 @@ impl Wallet {
 
         let comm_routes = registry.build_comms_routes();
         let comms_services = initialize_comms(config.comms.clone(), comm_routes)?;
-        let service_executor = ServiceExecutor::execute(comms_services.clone(), registry);
+        let service_executor = ServiceExecutor::execute(&comms_services, registry);
 
         Ok(Wallet {
             text_message_service: text_message_service_api,

@@ -28,6 +28,7 @@ use std::collections::HashMap;
 use tari_utilities::hex::*;
 
 /// This struct keeps track of the changes on the MMR
+#[derive(Serialize, Deserialize)]
 pub(crate) struct MerkleChangeTracker {
     pub enabled: bool,
     objects_to_save: Vec<ObjectHash>,
@@ -41,7 +42,9 @@ pub(crate) struct MerkleChangeTracker {
     init_key: String,
     unsaved_checkpoints: Vec<MerkleCheckPoint>,
     uncleaned_checkpoints: Vec<CheckpointCleanup>,
+    #[serde(with = "crate::treemap_ser::treemap_serialize")]
     unpruned_indices: Treemap,
+    #[serde(with = "crate::treemap_ser::treemap_serialize")]
     pruned_indices: Treemap,
 }
 
@@ -53,47 +56,13 @@ pub(crate) struct MerkleCheckPoint {
     objects_to_add: Vec<ObjectHash>,
     pub objects_to_del: Vec<ObjectHash>,
     mmr_to_add: Vec<MerkleNode>,
-    #[serde(with = "treemap_serialize")]
+    #[serde(with = "crate::treemap_ser::treemap_serialize")]
     unpruned_indices: Treemap,
-    #[serde(with = "treemap_serialize")]
+    #[serde(with = "crate::treemap_ser::treemap_serialize")]
     pruned_indices: Treemap,
 }
 
-mod treemap_serialize {
-    use croaring::{treemap::NativeSerializer, Treemap};
-    use serde::{
-        self,
-        de::{self, Visitor},
-        Deserializer,
-        Serializer,
-    };
-    use std::fmt;
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Treemap, D::Error>
-    where D: Deserializer<'de> {
-        struct TreemapVisitor;
-
-        impl<'de> Visitor<'de> for TreemapVisitor {
-            type Value = Treemap;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("a Roaring bitmap in binary")
-            }
-
-            fn visit_bytes<E>(self, v: &[u8]) -> Result<Treemap, E>
-            where E: de::Error {
-                Treemap::deserialize(v).map_err(serde::de::Error::custom)
-            }
-        }
-        deserializer.deserialize_bytes(TreemapVisitor)
-    }
-
-    pub fn serialize<S>(value: &Treemap, serializer: S) -> Result<S::Ok, S::Error>
-    where S: Serializer {
-        serializer.serialize_bytes(&value.serialize().unwrap())
-    }
-}
-
+#[derive(Serialize, Deserialize)]
 pub(crate) struct CheckpointCleanup {
     pub objects_to_del: Vec<ObjectHash>,
     pub id: usize,

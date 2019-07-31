@@ -43,9 +43,14 @@ pub mod NetMessage {
     pub(super) const END_RANGE: u8 = 4; // Can be extended to 32
     /// Message sent when a request to establish a peer connection has been accepted
     pub const Accept: u8 = 1;
+    /// DHT network join, and discovery of nodes and peers
     pub const Join: u8 = 2;
     pub const Discover: u8 = 3;
+    /// Message sent for PingPong and liveness checks
     pub const PingPong: u8 = 4;
+    /// Messages sent for Store-and-forward functionality
+    pub const RetrieveMessages: u8 = 5;
+    pub const StoredMessages: u8 = 6;
 }
 
 #[allow(non_snake_case, non_upper_case_globals)]

@@ -36,10 +36,7 @@ use tari_comms::{
 };
 use tari_crypto::keys::PublicKey;
 use tari_grpc_wallet::wallet_server::WalletServer;
-use tari_p2p::{
-    initialization::CommsConfig,
-    tari_message::{NetMessage, TariMessageType},
-};
+use tari_p2p::initialization::CommsConfig;
 use tari_utilities::{hex::Hex, message_format::MessageFormat};
 use tari_wallet::{text_message_service::Contact, wallet::WalletConfig, Wallet};
 const LOG_TARGET: &str = "applications::grpc_wallet";
@@ -239,8 +236,7 @@ pub fn main() {
             control_service: ControlServiceConfig {
                 listener_address: listener_address.clone(),
                 socks_proxy_address: None,
-                accept_message_type: TariMessageType::new(NetMessage::Accept),
-                requested_outbound_connection_timeout: Duration::from_millis(5000),
+                requested_connection_timeout: Duration::from_millis(5000),
             },
             socks_proxy_address: None,
             host: "0.0.0.0".parse().unwrap(),
@@ -262,7 +258,7 @@ pub fn main() {
             let pk = CommsPublicKey::from_hex(p.pub_key.as_str()).expect("Error parsing pub key from Hex");
             if let Ok(na) = p.address.clone().parse::<NetAddress>() {
                 let peer = Peer::from_public_key_and_address(pk.clone(), na.clone()).unwrap();
-                wallet.comms_services.peer_manager.add_peer(peer).unwrap();
+                wallet.comms_services.peer_manager().add_peer(peer).unwrap();
                 if let Err(e) = wallet.text_message_service.add_contact(Contact {
                     screen_name: p.screen_name.clone(),
                     pub_key: pk.clone(),

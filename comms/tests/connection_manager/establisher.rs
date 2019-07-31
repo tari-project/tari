@@ -28,7 +28,7 @@ use std::{path::PathBuf, sync::Arc, time::Duration};
 use tari_comms::{
     connection::{CurveEncryption, Direction, InprocAddress, NetAddress, ZmqContext},
     connection_manager::{establisher::ConnectionEstablisher, ConnectionManagerError, PeerConnectionConfig},
-    control_service::{messages::Pong, ControlServiceMessageType},
+    control_service::messages::{ControlServiceResponseType, Pong},
     message::{Message, MessageEnvelope, MessageFlags, MessageHeader, NodeDestination},
 };
 use tari_storage::lmdb_store::{LMDBBuilder, LMDBError, LMDBStore};
@@ -141,9 +141,7 @@ fn establish_control_service_connection_succeed() {
             node_identity1.identity.public_key.clone(),
             NodeDestination::PublicKey(node_identity1.identity.public_key.clone()),
             Message::from_message_format(
-                MessageHeader {
-                    message_type: ControlServiceMessageType::Pong,
-                },
+                MessageHeader::new(ControlServiceResponseType::Pong).unwrap(),
                 Pong {}.to_binary().unwrap(),
             )
             .unwrap()
@@ -207,9 +205,11 @@ fn establish_peer_connection_outbound() {
         .unwrap();
 
     other_peer_conn
-        .wait_listening_or_failure(&Duration::from_millis(200))
+        .wait_listening_or_failure(&Duration::from_millis(2000))
         .unwrap();
 
+    let address = other_peer_conn.get_connected_address().unwrap().to_string();
+    assert_ne!(address, "127.0.0.1:0");
     let address: NetAddress = other_peer_conn.get_connected_address().unwrap().into();
 
     let example_peer = factories::peer::create()
@@ -238,17 +238,17 @@ fn establish_peer_connection_outbound() {
     connection.send(vec!["TARI".as_bytes().to_vec()]).unwrap();
 
     connection.shutdown().unwrap();
-    connection.wait_disconnected(&Duration::from_millis(1000)).unwrap();
+    connection.wait_disconnected(&Duration::from_millis(3000)).unwrap();
 
     other_peer_conn.shutdown().unwrap();
-    other_peer_conn.wait_disconnected(&Duration::from_millis(1000)).unwrap();
+    other_peer_conn.wait_disconnected(&Duration::from_millis(3000)).unwrap();
     other_peer_conn_handle
-        .timeout_join(Duration::from_millis(1000))
+        .timeout_join(Duration::from_millis(3000))
         .unwrap();
 
     assert_eq!(msg_counter.count(), 2);
 
-    peer_conn_handle.timeout_join(Duration::from_millis(1000)).unwrap();
+    peer_conn_handle.timeout_join(Duration::from_millis(3000)).unwrap();
 
     clean_up_datastore(database_name);
 }
@@ -286,7 +286,7 @@ fn establish_peer_connection_inbound() {
         .unwrap();
 
     connection
-        .wait_listening_or_failure(&Duration::from_millis(2000))
+        .wait_listening_or_failure(&Duration::from_millis(3000))
         .unwrap();
     let address: NetAddress = connection.get_connected_address().unwrap().into();
 
@@ -303,19 +303,19 @@ fn establish_peer_connection_inbound() {
         .unwrap();
 
     other_peer_conn
-        .wait_connected_or_failure(&Duration::from_millis(2000))
+        .wait_connected_or_failure(&Duration::from_millis(3000))
         .unwrap();
     // Start sending messages
     other_peer_conn.send(vec!["HELLO".as_bytes().to_vec()]).unwrap();
     other_peer_conn.send(vec!["TARI".as_bytes().to_vec()]).unwrap();
     let _ = other_peer_conn.shutdown();
-    other_peer_conn.wait_disconnected(&Duration::from_millis(1000)).unwrap();
+    other_peer_conn.wait_disconnected(&Duration::from_millis(3000)).unwrap();
 
     assert_eq!(msg_counter.count(), 2);
 
-    peer_conn_handle.timeout_join(Duration::from_millis(1000)).unwrap();
+    peer_conn_handle.timeout_join(Duration::from_millis(3000)).unwrap();
     other_peer_conn_handle
-        .timeout_join(Duration::from_millis(1000))
+        .timeout_join(Duration::from_millis(3000))
         .unwrap();
 
     clean_up_datastore(database_name);

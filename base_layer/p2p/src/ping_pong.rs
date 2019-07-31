@@ -116,7 +116,7 @@ impl PingPongService {
     }
 
     fn send_msg(&self, broadcast_strategy: BroadcastStrategy, msg: PingPong) -> Result<(), PingPongError> {
-        let oms = self.oms.clone().ok_or(PingPongError::OMSNotInitialized)?;
+        let oms = self.oms.as_ref().ok_or(PingPongError::OMSNotInitialized)?;
         oms.send_message(broadcast_strategy, MessageFlags::empty(), msg)
             .map_err(PingPongError::OutboundError)
     }
@@ -131,22 +131,19 @@ impl PingPongService {
                     debug!(
                         target: LOG_TARGET,
                         "Received ping from {}",
-                        info.source_identity.public_key.to_hex(),
+                        info.peer_source.public_key.to_hex(),
                     );
 
                     self.ping_count += 1;
 
                     // Reply with Pong
-                    self.send_msg(
-                        BroadcastStrategy::DirectNodeId(info.source_identity.node_id.clone()),
-                        PingPong::Pong,
-                    )?;
+                    self.send_msg(BroadcastStrategy::DirectPublicKey(info.origin_source), PingPong::Pong)?;
                 },
                 PingPong::Pong => {
                     debug!(
                         target: LOG_TARGET,
                         "Received pong from {}",
-                        info.source_identity.public_key.to_hex()
+                        info.peer_source.public_key.to_hex()
                     );
 
                     self.pong_count += 1;

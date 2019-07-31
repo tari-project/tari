@@ -71,15 +71,15 @@ impl TestFactory for ConnectionManagerFactory {
     fn build(self) -> Result<Self::Object, TestFactoryError> {
         let zmq_context = self.zmq_context.unwrap_or(ZmqContext::new());
 
-        let peer_manager = self
-            .peer_manager
-            //.or(Some(Arc::new(self.peer_manager_factory.build()?))) //Note: Cannot build it twich with persistent storage
-            .ok_or(TestFactoryError::BuildFailed("Failed to build peer manager: peer_manager undefined".into()))?;;
+        let peer_manager = match self.peer_manager {
+            Some(p) => p,
+            None => self.peer_manager_factory.build().map(Arc::new)?,
+        };
 
-        let node_identity = self
-            .node_identity
-            .or(Some(Arc::new(self.node_identity_factory.build()?)))
-            .unwrap();
+        let node_identity = match self.node_identity {
+            Some(n) => n,
+            None => self.node_identity_factory.build().map(Arc::new)?,
+        };
 
         let config = self.peer_connection_config;
 
