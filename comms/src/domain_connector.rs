@@ -22,8 +22,9 @@
 
 use crate::{
     connection::{zmq::ZmqEndpoint, Connection, ConnectionError, Direction, EstablishedConnection, ZmqContext},
-    message::{DomainMessageContext, Frame, FrameSet, MessageError},
+    message::{DomainMessageContext, Frame, FrameSet, MessageEnvelope, MessageError},
     peer_manager::PeerNodeIdentity,
+    types::CommsPublicKey,
 };
 use derive_error::Error;
 use serde::{Deserialize, Serialize};
@@ -42,8 +43,11 @@ pub enum ConnectorError {
 }
 
 /// Information about the message received
+#[derive(Debug)]
 pub struct MessageInfo {
-    pub source_identity: PeerNodeIdentity,
+    pub peer_source: PeerNodeIdentity,
+    pub origin_source: CommsPublicKey,
+    pub message_envelope: MessageEnvelope,
 }
 
 /// # DomainConnector
@@ -74,7 +78,9 @@ impl<'de> DomainConnector<'de> {
         match self.connector.receive_timeout(duration)? {
             Some(domain_context) => Ok(Some((
                 MessageInfo {
-                    source_identity: domain_context.source_identity,
+                    peer_source: domain_context.peer_source,
+                    origin_source: domain_context.origin_source,
+                    message_envelope: domain_context.message_envelope,
                 },
                 domain_context
                     .message
@@ -202,12 +208,10 @@ mod test {
     use super::*;
     use crate::{
         connection::InprocAddress,
-        message::{Message, MessageHeader},
-        peer_manager::NodeId,
-        types::CommsPublicKey,
+        message::{Message, MessageFlags, MessageHeader, NodeDestination},
+        peer_manager::NodeIdentity,
     };
-    use rand::rngs::OsRng;
-    use tari_crypto::keys::PublicKey;
+    use std::sync::Arc;
 
     #[derive(Clone, Eq, PartialEq, Debug, Serialize, Deserialize)]
     struct TestMessage {
@@ -323,15 +327,24 @@ mod test {
             poem: "meow meow".to_string(),
         };
 
-        let header = MessageHeader { message_type: 123 };
+        let node_identity = Arc::new(NodeIdentity::random_for_test(None));
+        let dest_node_identity = Arc::new(NodeIdentity::random_for_test(None));
+        let header = MessageHeader::new(123).unwrap();
+        let message = Message::from_message_format(header, expected_message.clone()).unwrap();
+        let message_envelope = MessageEnvelope::construct(
+            &node_identity,
+            dest_node_identity.identity.public_key.clone(),
+            NodeDestination::Unknown,
+            message.to_binary().unwrap(),
+            MessageFlags::NONE,
+        )
+        .unwrap();
 
-        let expected_pub_key = CommsPublicKey::random_keypair(&mut OsRng::new().unwrap()).1;
         let domain_message_context = DomainMessageContext {
-            source_identity: PeerNodeIdentity::new(
-                NodeId::from_key(&expected_pub_key).unwrap(),
-                expected_pub_key.clone(),
-            ),
-            message: Message::from_message_format(header, expected_message.clone()).unwrap(),
+            peer_source: node_identity.identity.clone(),
+            origin_source: node_identity.identity.public_key.clone(),
+            message,
+            message_envelope,
         };
 
         source.send(&[domain_message_context.to_binary().unwrap()]).unwrap();
@@ -340,7 +353,7 @@ mod test {
             Some((info, resp)) => {
                 let msg: TestMessage = resp;
                 assert_eq!(msg, expected_message);
-                assert_eq!(info.source_identity.public_key, expected_pub_key);
+                assert_eq!(info.peer_source.public_key, node_identity.identity.public_key);
             },
             None => panic!("DomainConnector Timed out"),
         }

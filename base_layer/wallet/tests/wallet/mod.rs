@@ -29,10 +29,7 @@ use tari_comms::{
     types::{CommsPublicKey, CommsSecretKey},
 };
 use tari_crypto::keys::{PublicKey, SecretKey};
-use tari_p2p::{
-    initialization::CommsConfig,
-    tari_message::{NetMessage, TariMessageType},
-};
+use tari_p2p::initialization::CommsConfig;
 use tari_wallet::{text_message_service::Contact, wallet::WalletConfig, Wallet};
 
 fn create_peer(public_key: CommsPublicKey, net_address: NetAddress) -> Peer {
@@ -88,8 +85,7 @@ fn test_wallet() {
             control_service: ControlServiceConfig {
                 listener_address: listener_address1.clone(),
                 socks_proxy_address: None,
-                accept_message_type: TariMessageType::new(NetMessage::Accept),
-                requested_outbound_connection_timeout: Duration::from_millis(5000),
+                requested_connection_timeout: Duration::from_millis(5000),
             },
             socks_proxy_address: None,
             host: "127.0.0.1".parse().unwrap(),
@@ -113,8 +109,7 @@ fn test_wallet() {
             control_service: ControlServiceConfig {
                 listener_address: listener_address2.clone(),
                 socks_proxy_address: None,
-                accept_message_type: TariMessageType::new(NetMessage::Accept),
-                requested_outbound_connection_timeout: Duration::from_millis(5000),
+                requested_connection_timeout: Duration::from_millis(5000),
             },
             socks_proxy_address: None,
             host: "127.0.0.1".parse().unwrap(),

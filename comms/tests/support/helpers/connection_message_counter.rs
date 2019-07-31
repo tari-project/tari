@@ -56,11 +56,6 @@ impl<'c> ConnectionMessageCounter<'c> {
         self
     }
 
-    pub fn reset(&self) {
-        let mut counter_lock = acquire_write_lock!(self.counter);
-        *counter_lock = 0;
-    }
-
     pub fn count(&self) -> u32 {
         let counter_lock = acquire_read_lock!(self.counter);
         *counter_lock
@@ -88,7 +83,7 @@ impl<'c> ConnectionMessageCounter<'c> {
         );
     }
 
-    pub fn start<A: ZmqEndpoint + Send + Sync + Clone + 'static>(&self, address: A) -> () {
+    pub fn start<A: ZmqEndpoint + Send + Sync + Clone + 'static>(&self, address: A) {
         let counter = self.counter.clone();
         let context = self.context.clone();
         let address = address.clone();

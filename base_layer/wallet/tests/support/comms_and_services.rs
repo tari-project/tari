@@ -22,6 +22,7 @@
 
 use std::{sync::Arc, time::Duration};
 use tari_comms::{
+    builder::CommsServices,
     connection_manager::PeerConnectionConfig,
     control_service::ControlServiceConfig,
     peer_manager::{NodeIdentity, Peer},
@@ -29,7 +30,7 @@ use tari_comms::{
 };
 use tari_p2p::{
     services::{ServiceExecutor, ServiceRegistry},
-    tari_message::{NetMessage, TariMessageType},
+    tari_message::TariMessageType,
 };
 use tari_storage::lmdb_store::LMDBDatabase;
 use tari_wallet::text_message_service::{TextMessageService, TextMessageServiceApi};
@@ -39,7 +40,11 @@ pub fn setup_text_message_service(
     peers: Vec<NodeIdentity>,
     peer_database: LMDBDatabase,
     database_path: String,
-) -> (ServiceExecutor, Arc<TextMessageServiceApi>)
+) -> (
+    ServiceExecutor,
+    Arc<TextMessageServiceApi>,
+    CommsServices<TariMessageType>,
+)
 {
     let tms = TextMessageService::new(node_identity.identity.public_key.clone(), database_path);
     let tms_api = tms.get_api();
@@ -57,8 +62,7 @@ pub fn setup_text_message_service(
         .configure_control_service(ControlServiceConfig {
             socks_proxy_address: None,
             listener_address: node_identity.control_service_address.clone(),
-            accept_message_type: TariMessageType::new(NetMessage::Accept),
-            requested_outbound_connection_timeout: Duration::from_millis(5000),
+            requested_connection_timeout: Duration::from_millis(5000),
         })
         .build()
         .unwrap()
@@ -74,5 +78,5 @@ pub fn setup_text_message_service(
             .unwrap();
     }
 
-    (ServiceExecutor::execute(Arc::new(comms), services), tms_api)
+    (ServiceExecutor::execute(&comms, services), tms_api, comms)
 }

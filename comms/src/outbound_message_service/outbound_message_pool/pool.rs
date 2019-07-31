@@ -19,41 +19,34 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use super::{MessagePoolWorker, MessageRetryService};
+use super::{MessagePoolWorker, RetryQueue};
 use crate::{
-    connection::{
-        zmq::{InprocAddress, ZmqContext},
-        DealerProxy,
-    },
     connection_manager::ConnectionManager,
     outbound_message_service::{
-        outbound_message_pool::{
-            error::{OutboundMessagePoolError, RetryServiceError},
-            message_retry_service::RetryServiceMessage,
-        },
+        outbound_message_pool::error::OutboundMessagePoolError,
         OutboundError,
+        OutboundMessage,
     },
-    peer_manager::PeerManager,
+    peer_manager::{NodeId, PeerManager},
 };
+use crossbeam_channel::{self as channel, Receiver, RecvTimeoutError, Sender};
+use crossbeam_deque::{Stealer, Worker};
 use log::*;
 use std::{
-    sync::{
-        mpsc::{sync_channel, Receiver, SyncSender},
-        Arc,
-    },
-    thread::JoinHandle,
+    sync::Arc,
+    thread::{self, JoinHandle},
     time::Duration,
 };
 use tari_utilities::thread_join::ThreadJoinWithTimeout;
 
 /// The default number of processing worker threads that will be created by the OutboundMessageService
-pub const DEFAULT_OUTBOUND_MSG_PROCESSING_WORKERS: usize = 4;
+pub const DEFAULT_NUM_OUTBOUND_MSG_WORKERS: usize = 4;
 
 const LOG_TARGET: &str = "comms::outbound_message_service::pool";
 
 /// Set the maximum waiting time for Retry Service Threads and MessagePoolWorker threads to join
-const MSG_POOL_WORKER_THREAD_JOIN_TIMEOUT_IN_MS: Duration = Duration::from_millis(3000);
-const MSG_RETRY_QUEUE_THREAD_JOIN_TIMEOUT_IN_MS: Duration = Duration::from_millis(1500);
+const MSG_POOL_WORKER_THREAD_JOIN_TIMEOUT: Duration = Duration::from_millis(3000);
+const WORK_FORWARDER_THREAD_JOIN_TIMEOUT: Duration = Duration::from_millis(1500);
 
 #[derive(Clone, Copy)]
 pub struct OutboundMessagePoolConfig {
@@ -66,101 +59,147 @@ pub struct OutboundMessagePoolConfig {
 impl Default for OutboundMessagePoolConfig {
     fn default() -> Self {
         OutboundMessagePoolConfig {
-            num_workers: DEFAULT_OUTBOUND_MSG_PROCESSING_WORKERS,
+            num_workers: DEFAULT_NUM_OUTBOUND_MSG_WORKERS,
             max_retries: 10,
         }
     }
 }
 
-/// The OutboundMessagePool will field outbound messages received from multiple OutboundMessageService instance that
-/// it will receive via the Inbound Inproc connection. It will handle the messages in the queue one at a time and
-/// attempt to send them. If they cannot be sent then the Retry count will be incremented and the message pushed to
-/// the back of the queue.
+/// # OutboundMessagePool
+///
+/// The OutboundMessagePool receives messages and forwards them to a pool of [MsgPoolWorker]s who's job it is to
+/// reliably send the message, if possible.
+///
+/// The pool starts the configured number of workers (see [OutboundMessagePoolConfig]) and distributes messages
+/// between them using a [crossbeam_deque::Worker].
+///
+/// Messages to send are received on a [crossbeam_channel::Receiver]. A copy of the [Sender] side can be obtained
+/// by calling the [OutboundMessagePool::sender] method.
+///
+/// [crossbeam_channel::Receiver]: https://docs.rs/crossbeam-channel/0.3.9/crossbeam_channel/struct.Receiver.html
+/// [Sender]: https://docs.rs/crossbeam-channel/0.3.9/crossbeam_channel/struct.Sender.html
+/// [OutboundMessagePool::sender]: #method.sender
+/// [crossbeam_deque::Worker]: https://docs.rs/crossbeam/0.7.2/crossbeam/deque/struct.Worker.html
+/// [OutboundMessage]: ../outbound_message/struct.OutboundMessage.html
+/// [OutboundMessagePoolConfig]: ./struct.OutboundMessagePoolConfig.html
+/// [MsgPoolWorker]: ../worker/struct.MsgPoolWorker.html
 pub struct OutboundMessagePool {
     config: OutboundMessagePoolConfig,
-    context: ZmqContext,
-    worker_dealer_address: InprocAddress,
-    message_source_address: InprocAddress,
+    message_tx: Sender<OutboundMessage>,
+    message_rx: Option<Receiver<OutboundMessage>>,
     peer_manager: Arc<PeerManager>,
+    retry_queue: RetryQueue<NodeId, OutboundMessage>,
     connection_manager: Arc<ConnectionManager>,
     worker_thread_handles: Vec<JoinHandle<Result<(), OutboundMessagePoolError>>>,
-    worker_shutdown_signals: Vec<SyncSender<()>>,
-    retry_service_control_tx: Option<SyncSender<RetryServiceMessage>>,
-    retry_service_thread_handle: Option<JoinHandle<Result<(), RetryServiceError>>>,
-    dealer_proxy: DealerProxy,
+    work_forwarder_handle: Option<JoinHandle<()>>,
+    worker_shutdown_signals: Vec<Sender<()>>,
+    work_forwarder_shutdown_tx: Sender<()>,
+    work_forwarder_shutdown_rx: Option<Receiver<()>>,
 }
 impl OutboundMessagePool {
     /// Construct a new Outbound Message Pool.
+    ///
     /// # Arguments
-    /// `context` - A ZeroMQ context
     /// `config` - The configuration struct to use for the Outbound Message Pool
-    /// `message_source_address` - The InProc address used to send messages to this message pool. Usually by the
-    /// outbound message service. `failed_message_queue_address` - The InProc address used for messages that have
-    /// failed to send. Typically this will be set to the MessageRetryQueue `peer_manager` - an atomic reference to
-    /// the peer manager. Used to locate destination peers. `connection_manager` - an atomic reference to the
-    /// connection manager. Used to establish peer connections.
+    /// `peer_manager` - Arc to a PeerManager
+    /// `connection_manager` - Arc to a ConnectionManager
     pub fn new(
         config: OutboundMessagePoolConfig,
-        context: ZmqContext,
-        message_source_address: InprocAddress,
         peer_manager: Arc<PeerManager>,
         connection_manager: Arc<ConnectionManager>,
     ) -> OutboundMessagePool
     {
-        let worker_dealer_address = InprocAddress::random();
+        let (message_tx, message_rx) = channel::unbounded();
+        let (shutdown_tx, shutdown_rx) = channel::bounded(1);
+        let retry_queue = RetryQueue::new();
         OutboundMessagePool {
             config,
-            context: context.clone(),
-            worker_dealer_address: worker_dealer_address.clone(),
-            message_source_address: message_source_address.clone(),
+            message_rx: Some(message_rx),
+            message_tx,
             peer_manager,
             connection_manager,
+            retry_queue,
             worker_thread_handles: Vec::new(),
             worker_shutdown_signals: Vec::new(),
-            retry_service_control_tx: None,
-            retry_service_thread_handle: None,
-            dealer_proxy: DealerProxy::new(context, message_source_address, worker_dealer_address.clone()),
+            work_forwarder_handle: None,
+            work_forwarder_shutdown_tx: shutdown_tx,
+            work_forwarder_shutdown_rx: Some(shutdown_rx),
         }
     }
 
-    /// Start the dealer proxy, which fair-deals messages to workers
-    fn start_dealer_proxy(&mut self) -> Result<(), OutboundMessagePoolError> {
-        self.dealer_proxy
-            .spawn_proxy()
-            .map_err(OutboundMessagePoolError::DealerProxyError)
+    /// Returns a copy of the Sender which can be used to send messages for processing to the
+    /// OutboundMessagePool workers
+    pub fn sender(&self) -> Sender<OutboundMessage> {
+        self.message_tx.clone()
     }
 
-    /// Start the Outbound Message Pool. This will spawn a thread that services the message queue that is sent to the
-    /// Inproc address.
+    /// Starts a thread that reads from the message_source and pushes worker on the worker queue
+    fn start_work_forwarder(&mut self, worker: Worker<OutboundMessage>) -> JoinHandle<()> {
+        let message_rx = self
+            .message_rx
+            .take()
+            .expect("Invariant: OutboundMessagePool was initialized without a message_rx");
+
+        let shutdown_rx = self
+            .work_forwarder_shutdown_rx
+            .take()
+            .expect("Invariant: OutboundMessagePool was initialized without a shutdown_rx");
+
+        thread::spawn(move || loop {
+            match shutdown_rx.recv_timeout(Duration::from_millis(1)) {
+                Ok(_) => break,
+                Err(RecvTimeoutError::Timeout) => {},
+                Err(RecvTimeoutError::Disconnected) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Work forwarder shutdown signal disconnected unexpectedly"
+                    );
+                    break;
+                },
+            }
+
+            match message_rx.recv_timeout(Duration::from_millis(1000)) {
+                Ok(msg) => worker.push(msg),
+                Err(RecvTimeoutError::Timeout) => {},
+                Err(RecvTimeoutError::Disconnected) => {
+                    warn!(target: LOG_TARGET, "Work forwarder sender disconnected unexpectedly");
+                    break;
+                },
+            }
+        })
+    }
+
+    /// Start the Outbound Message Pool.
+    ///
+    /// This starts the configured number of workers and a worker forwarder. The forwarder forwards
+    /// work to the worker queue and the workers take work from the worker queue.
     pub fn start(&mut self) -> Result<(), OutboundMessagePoolError> {
         info!(target: LOG_TARGET, "Starting outbound message pool");
 
-        info!(target: LOG_TARGET, "Starting retry message service");
-        let (failed_message_tx, failed_message_rx) = sync_channel(10);
-        self.retry_service_control_tx = Some(failed_message_tx.clone());
-        self.start_retry_service(failed_message_rx);
-
-        info!(target: LOG_TARGET, "Starting OMP proxy");
-        self.start_dealer_proxy()?;
+        let worker = Worker::new_fifo();
 
         info!(target: LOG_TARGET, "Starting {} OMP workers", self.config.num_workers);
         for _ in 0..self.config.num_workers {
-            self.start_message_worker(failed_message_tx.clone())?;
+            self.start_message_worker(worker.stealer(), self.retry_queue.clone())?;
         }
+
+        info!(target: LOG_TARGET, "Starting OMP work producer");
+        let handle = self.start_work_forwarder(worker);
+        self.work_forwarder_handle = Some(handle);
 
         Ok(())
     }
 
     fn start_message_worker(
         &mut self,
-        failed_message_tx: SyncSender<RetryServiceMessage>,
+        stealer: Stealer<OutboundMessage>,
+        retry_queue: RetryQueue<NodeId, OutboundMessage>,
     ) -> Result<(), OutboundMessagePoolError>
     {
         let (worker_thread_handle, worker_shutdown_signal) = MessagePoolWorker::start(
             self.config,
-            self.context.clone(),
-            self.worker_dealer_address.clone(),
-            failed_message_tx,
+            stealer,
+            retry_queue,
             self.peer_manager.clone(),
             self.connection_manager.clone(),
         )?;
@@ -169,16 +208,6 @@ impl OutboundMessagePool {
         self.worker_shutdown_signals.push(worker_shutdown_signal);
 
         Ok(())
-    }
-
-    fn start_retry_service(&mut self, failed_message_rx: Receiver<RetryServiceMessage>) {
-        let handle = MessageRetryService::start(
-            self.context.clone(),
-            self.config,
-            failed_message_rx,
-            self.message_source_address.clone(),
-        );
-        self.retry_service_thread_handle = Some(handle);
     }
 
     /// Tell the underlying dealer thread, nessage retry service and workers to shut down
@@ -193,27 +222,26 @@ impl OutboundMessagePool {
             })?;
         }
 
+        self.retry_queue.clear();
         // Send shutdown signal to message retry queue if it has been started
-        if let Some(sender) = self.retry_service_control_tx {
-            sender.send(RetryServiceMessage::Shutdown).map_err(|e| {
-                OutboundError::ShutdownSignalSendError(format!("Failed to send shutdown signal to MRQ: {:?}", e))
-            })?;
+        self.work_forwarder_shutdown_tx.send(()).map_err(|e| {
+            OutboundError::ShutdownSignalSendError(format!("Failed to send shutdown signal to work forwarder: {:?}", e))
+        })?;
 
-            if let Some(handle) = self.retry_service_thread_handle {
-                handle
-                    .timeout_join(MSG_RETRY_QUEUE_THREAD_JOIN_TIMEOUT_IN_MS)
-                    .map_err(OutboundError::ThreadJoinError)?;
-            }
+        if let Some(handle) = self.work_forwarder_handle {
+            handle
+                .timeout_join(WORK_FORWARDER_THREAD_JOIN_TIMEOUT)
+                .map_err(OutboundError::ThreadJoinError)?;
         }
 
         // Join worker threads
         for worker_thread_handle in self.worker_thread_handles {
             worker_thread_handle
-                .timeout_join(MSG_POOL_WORKER_THREAD_JOIN_TIMEOUT_IN_MS)
+                .timeout_join(MSG_POOL_WORKER_THREAD_JOIN_TIMEOUT)
                 .map_err(OutboundError::ThreadJoinError)?;
         }
 
-        self.dealer_proxy.shutdown().map_err(OutboundError::DealerProxyError)
+        Ok(())
     }
 }
 
@@ -222,15 +250,17 @@ mod test {
     use crate::{
         connection::{InprocAddress, NetAddress, ZmqContext},
         connection_manager::{ConnectionManager, PeerConnectionConfig},
-        outbound_message_service::{outbound_message_pool::OutboundMessagePoolConfig, OutboundMessagePool},
+        outbound_message_service::{
+            outbound_message_pool::{OutboundMessagePoolConfig, RetryQueue},
+            OutboundMessagePool,
+        },
         peer_manager::{peer::PeerFlags, NodeId, NodeIdentity, Peer, PeerManager},
     };
-    use std::{
-        sync::{mpsc::sync_channel, Arc},
-        time::Duration,
-    };
+    use crossbeam_deque::Worker;
+    use std::{sync::Arc, time::Duration};
     use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
     use tari_storage::key_val_store::HMapDatabase;
+    use tari_utilities::thread_join::ThreadJoinWithTimeout;
 
     fn make_peer_connection_config(consumer_address: InprocAddress) -> PeerConnectionConfig {
         PeerConnectionConfig {
@@ -265,60 +295,41 @@ mod test {
     fn new() {
         let context = ZmqContext::new();
         let (peer_manager, connection_manager, _) = outbound_message_pool_setup(&context);
-        let omp_inbound_address = InprocAddress::random();
         let omp_config = OutboundMessagePoolConfig::default();
-        let omp = OutboundMessagePool::new(
-            omp_config.clone(),
-            context.clone(),
-            omp_inbound_address.clone(),
-            peer_manager.clone(),
-            connection_manager.clone(),
-        );
+        let omp = OutboundMessagePool::new(omp_config.clone(), peer_manager.clone(), connection_manager.clone());
         assert_eq!(omp.worker_thread_handles.len(), 0);
         assert_eq!(omp.worker_shutdown_signals.len(), 0);
-        assert!(omp.retry_service_thread_handle.is_none());
-        assert!(omp.retry_service_control_tx.is_none());
+        assert!(omp.work_forwarder_shutdown_rx.is_some());
+        assert!(omp.work_forwarder_handle.is_none());
     }
 
     #[test]
-    fn start_dealer_proxy() {
+    fn work_forwarder_shutdown() {
         let context = ZmqContext::new();
         let (peer_manager, connection_manager, _) = outbound_message_pool_setup(&context);
-        let omp_inbound_address = InprocAddress::random();
         let omp_config = OutboundMessagePoolConfig::default();
-        let mut omp = OutboundMessagePool::new(
-            omp_config.clone(),
-            context.clone(),
-            omp_inbound_address.clone(),
-            peer_manager.clone(),
-            connection_manager.clone(),
-        );
+        let mut omp = OutboundMessagePool::new(omp_config.clone(), peer_manager.clone(), connection_manager.clone());
 
-        assert!(!omp.dealer_proxy.is_running());
-        omp.start_dealer_proxy().unwrap();
-        assert!(omp.dealer_proxy.is_running());
+        let worker = Worker::new_fifo();
+        let handle = omp.start_work_forwarder(worker);
 
         omp.shutdown().unwrap();
+        handle.timeout_join(Duration::from_millis(3000)).unwrap();
     }
 
     #[test]
     fn start_message_worker() {
         let context = ZmqContext::new();
         let (peer_manager, connection_manager, _) = outbound_message_pool_setup(&context);
-        let omp_inbound_address = InprocAddress::random();
         let omp_config = OutboundMessagePoolConfig::default();
-        let mut omp = OutboundMessagePool::new(
-            omp_config.clone(),
-            context.clone(),
-            omp_inbound_address.clone(),
-            peer_manager.clone(),
-            connection_manager.clone(),
-        );
+        let mut omp = OutboundMessagePool::new(omp_config.clone(), peer_manager.clone(), connection_manager.clone());
         assert_eq!(omp.worker_shutdown_signals.len(), 0);
         assert_eq!(omp.worker_thread_handles.len(), 0);
 
-        let (tx, _) = sync_channel(1);
-        omp.start_message_worker(tx).unwrap();
+        let worker = Worker::new_fifo();
+        let retry_queue = RetryQueue::new();
+
+        omp.start_message_worker(worker.stealer(), retry_queue).unwrap();
 
         assert_eq!(omp.worker_shutdown_signals.len(), 1);
         assert_eq!(omp.worker_thread_handles.len(), 1);
@@ -339,15 +350,8 @@ mod test {
         let dest_peer = Peer::new(pk.clone(), node_id, net_addresses, PeerFlags::default());
         peer_manager.add_peer(dest_peer.clone()).unwrap();
 
-        let omp_inbound_address = InprocAddress::random();
         let omp_config = OutboundMessagePoolConfig::default();
-        let mut omp = OutboundMessagePool::new(
-            omp_config.clone(),
-            context.clone(),
-            omp_inbound_address.clone(),
-            peer_manager.clone(),
-            connection_manager.clone(),
-        );
+        let mut omp = OutboundMessagePool::new(omp_config.clone(), peer_manager.clone(), connection_manager.clone());
 
         omp.start().unwrap();
 

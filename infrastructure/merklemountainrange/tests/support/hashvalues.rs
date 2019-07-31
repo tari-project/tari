@@ -38,11 +38,13 @@ impl HashValues {
     }
 
     // This function is used to generate hashvalues for the hashvalue struct
+    #[allow(dead_code)]
     pub fn copy_slice(&self, start: usize, end: usize) -> Vec<String> {
         self.values[start..end + 1].to_vec()
     }
 
     // This function is used to generate hashvalues for the hashvalue struct
+    #[allow(dead_code)]
     pub fn copy_from_indices(&self, indices: Vec<usize>) -> Vec<String> {
         let mut result = Vec::new();
         for num in indices {
@@ -124,6 +126,7 @@ impl HashValues {
     }
 
     // This function is used to generate hashvalues for the hashvalue struct
+    #[allow(dead_code)]
     pub fn get_hash_in_hex<D: Digest>(hash1: &Vec<u8>, hash2: &Vec<u8>) -> String {
         let mut hasher = D::new();
         hasher.input(hash1);
@@ -133,6 +136,7 @@ impl HashValues {
     }
 
     // This function is used to generate hashvalues for the hashvalue struct
+    #[allow(dead_code)]
     pub fn get_hash_in_u8<D: Digest>(hash1: &Vec<u8>, hash2: &Vec<u8>) -> Vec<u8> {
         let mut hasher = D::new();
         hasher.input(hash1);

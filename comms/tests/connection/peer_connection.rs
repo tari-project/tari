@@ -20,6 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::support::{
+    factories::{self, TestFactory},
+    helpers::asserts::assert_change,
+};
 use std::time::Duration;
 use tari_comms::connection::{
     peer_connection::PeerConnectionProtoMessage,
@@ -33,11 +37,6 @@ use tari_comms::connection::{
     PeerConnectionContextBuilder,
     PeerConnectionError,
     ZmqContext,
-};
-
-use crate::support::{
-    factories::{self, TestFactory},
-    helpers::asserts::assert_change,
 };
 
 #[test]
@@ -284,18 +283,18 @@ fn connection_pause_resume() {
     sender.send(&[msg_type_frame, &[3u8]]).unwrap();
     sender.send(&[msg_type_frame, &[4u8]]).unwrap();
 
-    let err = consumer.receive(100).unwrap_err();
+    let err = consumer.receive(3000).unwrap_err();
     assert!(err.is_timeout());
 
     // Resume connection
     conn.resume().unwrap();
 
     // Should receive all the pending messages
-    let frames = consumer.receive(100).unwrap();
+    let frames = consumer.receive(3000).unwrap();
     assert_eq!(vec![2u8], frames[2]);
-    let frames = consumer.receive(100).unwrap();
+    let frames = consumer.receive(3000).unwrap();
     assert_eq!(vec![3u8], frames[2]);
-    let frames = consumer.receive(100).unwrap();
+    let frames = consumer.receive(3000).unwrap();
     assert_eq!(vec![4u8], frames[2]);
 }
 

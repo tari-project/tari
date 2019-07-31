@@ -22,12 +22,17 @@
 #[macro_use]
 extern crate clap;
 
-use pnet::datalink::{self, NetworkInterface};
-
 use clap::{App, Arg};
+use crossbeam_channel as channel;
 use log::*;
+use log4rs::{
+    append::file::FileAppender,
+    config::{Appender, Config, Root},
+    encode::pattern::PatternEncoder,
+};
+use pnet::datalink::{self, NetworkInterface};
 use serde::{Deserialize, Serialize};
-use std::{fs, time::Duration};
+use std::{fs, io, sync::Arc, thread, time::Duration};
 use tari_comms::{
     connection::NetAddress,
     control_service::ControlServiceConfig,
@@ -35,19 +40,7 @@ use tari_comms::{
     types::{CommsPublicKey, CommsSecretKey},
 };
 use tari_crypto::keys::PublicKey;
-
-use crossbeam_channel as channel;
-use log4rs::{
-    append::file::FileAppender,
-    config::{Appender, Config, Root},
-    encode::pattern::PatternEncoder,
-};
-use std::{io, sync::Arc, thread};
-use tari_p2p::{
-    initialization::CommsConfig,
-    services::ServiceError,
-    tari_message::{NetMessage, TariMessageType},
-};
+use tari_p2p::{initialization::CommsConfig, services::ServiceError};
 use tari_utilities::{hex::Hex, message_format::MessageFormat};
 use tari_wallet::{
     text_message_service::{Contact, ReceivedTextMessage},
@@ -259,8 +252,7 @@ pub fn main() {
             control_service: ControlServiceConfig {
                 listener_address: listener_address.clone(),
                 socks_proxy_address: None,
-                accept_message_type: TariMessageType::new(NetMessage::Accept),
-                requested_outbound_connection_timeout: Duration::from_millis(5000),
+                requested_connection_timeout: Duration::from_millis(5000),
             },
             socks_proxy_address: None,
             host: "0.0.0.0".parse().unwrap(),
@@ -282,7 +274,7 @@ pub fn main() {
             let pk = CommsPublicKey::from_hex(p.pub_key.as_str()).expect("Error parsing pub key from Hex");
             if let Ok(na) = p.address.clone().parse::<NetAddress>() {
                 let peer = Peer::from_public_key_and_address(pk.clone(), na.clone()).unwrap();
-                wallet.comms_services.peer_manager.add_peer(peer).unwrap();
+                wallet.comms_services.peer_manager().add_peer(peer).unwrap();
                 // If the contacts already exist we don't mind
                 if let Err(e) = wallet.text_message_service.add_contact(Contact {
                     screen_name: p.screen_name.clone(),

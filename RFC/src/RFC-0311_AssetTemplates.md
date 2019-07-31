@@ -2,7 +2,7 @@
 
 ## Digital Asset Templates
 
-![status: draft](https://github.com/tari-project/tari/raw/master/RFC/src/theme/images/status-draft.svg)
+![status: draft](theme/images/status-draft.svg)
 
 **Maintainer(s)**: [Cayle Sharrock](https://github.com/CjS77)
 
