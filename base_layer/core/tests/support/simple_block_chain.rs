@@ -81,29 +81,18 @@ pub struct SimpleBlockChainBuilder {
 }
 
 impl SimpleBlockChainBuilder {
-    /// This will create a new test block_chain with empty blocks
-    pub fn new(block_amount: u64) -> SimpleBlockChainBuilder {
+    /// This will create a new test block_chain with a Genesis block
+    pub fn new() -> SimpleBlockChainBuilder {
         let mut chain = SimpleBlockChainBuilder::default();
         let mut rng = OsRng::new().unwrap();
         // create Genesis block
-        let priv_key = PrivateKey::random(&mut rng);
-        chain.blockchain.spending_keys.push(vec![SpendInfo::new(
-            priv_key.clone(),
-            calculate_coinbase(0),
-            OutputFeatures::COINBASE_OUTPUT,
-        )]);
-        let (cb_utxo, cb_kernel) = create_coinbase(priv_key, 0, 0.into());
-
-        let block = BlockBuilder::new().with_coinbase_utxo(cb_utxo, cb_kernel).build();
-        chain.processes_new_block(block);
-
-        chain.add_empty_blocks(&mut rng, block_amount);
+        chain.add_block(&mut rng, Vec::new());
         chain
     }
 
     /// This will add empty blocks to the chain
     pub fn add_empty_blocks<R: Rng + CryptoRng>(&mut self, rng: &mut R, count: u64) {
-        for i in 0..count {
+        for _ in 0..count {
             self.add_block(rng, Vec::new())
         }
     }
@@ -111,8 +100,12 @@ impl SimpleBlockChainBuilder {
     /// Add a block to the chain with the given metadata
     fn add_block<R: Rng + CryptoRng>(&mut self, rng: &mut R, tx: Vec<Transaction>) {
         let priv_key = PrivateKey::random(rng);
-        let height = self.blockchain.blocks.len() as u64 + 1;
-        let header = self.generate_new_header();
+        let height = self.blockchain.blocks.len() as u64;
+        let header = if height > 0 {
+            self.generate_new_header()
+        } else {
+            self.generate_genesis_block_header()
+        };
         let total_fee = tx
             .iter()
             .fold(MicroTari::default(), |tot, tx| tot + tx.get_body().get_total_fee());
@@ -199,6 +192,10 @@ impl SimpleBlockChainBuilder {
                 .expect("failed to add outputs to test chain");
         }
         self.blockchain.blocks.push(block);
+    }
+
+    fn generate_genesis_block_header(&self) -> BlockHeader {
+        BlockHeader::default()
     }
 
     /// This function will generate a new header, assuming it will follow on the last created block.
@@ -408,13 +405,14 @@ mod test {
     #[test]
     fn create_simple_block_chain() {
         let mut rng = rand::OsRng::new().unwrap();
-        let mut chain = SimpleBlockChainBuilder::new(5);
-        assert_eq!(chain.blockchain.blocks.len(), 5);
+        let mut chain = SimpleBlockChainBuilder::new();
+        assert_eq!(chain.blockchain.blocks.len(), 1);
         chain.add_empty_blocks(&mut rng, 5);
-        assert_eq!(chain.blockchain.blocks.len(), 10);
+        assert_eq!(chain.blockchain.blocks.len(), 6);
 
+        // Check that the blocks form a  chain
         assert_eq!(chain.blockchain.blocks[0].header.height, 0);
-        for i in 1..10 {
+        for i in 1..chain.blockchain.blocks.len() {
             let mut hash = [0; 32];
             hash.copy_from_slice(&chain.blockchain.blocks[i - 1].header.hash());
             assert_eq!(chain.blockchain.blocks[i].header.prev_hash, hash);
