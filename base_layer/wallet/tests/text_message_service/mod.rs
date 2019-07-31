@@ -92,19 +92,19 @@ fn test_text_message_service() {
     let db_path3 = get_path(Some(db_name3));
     init_sql_database(db_name3);
 
-    let (node_1_services, node_1_tms) = setup_text_message_service(
+    let (node_1_services, node_1_tms, _comms_1) = setup_text_message_service(
         node_1_identity.clone(),
         vec![node_2_identity.clone(), node_3_identity.clone()],
         node_1_peer_database,
         db_path1,
     );
-    let (node_2_services, node_2_tms) = setup_text_message_service(
+    let (node_2_services, node_2_tms, _comms_2) = setup_text_message_service(
         node_2_identity.clone(),
         vec![node_1_identity.clone()],
         node_2_peer_database,
         db_path2,
     );
-    let (node_3_services, node_3_tms) = setup_text_message_service(
+    let (node_3_services, node_3_tms, _comms_3) = setup_text_message_service(
         node_3_identity.clone(),
         vec![node_1_identity.clone()],
         node_3_peer_database,

@@ -60,7 +60,7 @@ pub struct PeerConnectionContext {
     pub(crate) max_msg_size: u64,
     pub(crate) max_retry_attempts: u16,
     pub(crate) socks_address: Option<SocketAddress>,
-    pub(super) linger: Linger,
+    pub(crate) linger: Linger,
 }
 
 impl<'a> TryFrom<PeerConnectionContextBuilder<'a>> for PeerConnectionContext {

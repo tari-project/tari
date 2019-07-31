@@ -173,6 +173,7 @@ mod test {
         },
         peer_manager::{peer_manager::PeerManager, NodeIdentity, Peer, PeerFlags},
     };
+    use crossbeam_channel as channel;
     use serde::{Deserialize, Serialize};
     use std::{sync::Arc, thread, time::Duration};
     use tari_storage::key_val_store::HMapDatabase;
@@ -218,7 +219,7 @@ mod test {
             Type1,
         }
 
-        // Create MessageDispatcher, InboundMessageBroker, PeerManager, OutboundMessageService and InboundMessageService
+        // Create MessageDispatcher, InboundMessageBroker, PeerManager, OutboundMessageService and
         let message_dispatcher = Arc::new(construct_comms_msg_dispatcher::<DomainBrokerType>());
         let inbound_message_broker = Arc::new(
             InboundMessageBroker::new(context.clone())
@@ -227,6 +228,7 @@ mod test {
                 .unwrap(),
         );
 
+        let (message_sender, _) = channel::unbounded();
         let peer_manager = Arc::new(PeerManager::new(HMapDatabase::new()).unwrap());
         // Add peer to peer manager
         let peer = Peer::new(
@@ -236,15 +238,8 @@ mod test {
             PeerFlags::empty(),
         );
         peer_manager.add_peer(peer).unwrap();
-        let outbound_message_service = Arc::new(
-            OutboundMessageService::new(
-                context.clone(),
-                node_identity.clone(),
-                InprocAddress::random(),
-                peer_manager.clone(),
-            )
-            .unwrap(),
-        );
+        let outbound_message_service =
+            Arc::new(OutboundMessageService::new(node_identity.clone(), message_sender, peer_manager.clone()).unwrap());
         let ims_config = InboundMessageServiceConfig::default();
         let mut inbound_message_service = InboundMessageService::new(
             ims_config,
@@ -264,9 +259,7 @@ mod test {
         let mut message_envelope_body_list = Vec::new();
         for i in 0..test_message_count {
             // Construct a test message
-            let message_header = MessageHeader {
-                message_type: DomainBrokerType::Type1,
-            };
+            let message_header = MessageHeader::new(DomainBrokerType::Type1).unwrap();
             // Messages with the same message body will be discarded by the DuplicateMsgCache
             let message_body = format!("Test Message Body {}", i).as_bytes().to_vec();
             let message_envelope_body = Message::from_message_format(message_header, message_body).unwrap();
@@ -290,9 +283,7 @@ mod test {
         inbound_message_service.shutdown().unwrap();
         std::thread::sleep(Duration::from_millis(200));
 
-        let message_header = MessageHeader {
-            message_type: DomainBrokerType::Type1,
-        };
+        let message_header = MessageHeader::new(DomainBrokerType::Type1).unwrap();
         let message_body = "Test Message Body".as_bytes().to_vec();
         let message_envelope_body = Message::from_message_format(message_header, message_body).unwrap();
         let message_data_buffer = create_message_data_buffer(node_identity.clone(), message_envelope_body);

@@ -90,7 +90,7 @@ impl PeerConnectionWorker {
         connection_stats: Arc<RwLock<PeerConnectionStats>>,
     ) -> Self
     {
-        let (sender, receiver) = sync_channel(5);
+        let (sender, receiver) = sync_channel(10);
         Self {
             context,
             sender,
@@ -280,7 +280,7 @@ impl PeerConnectionWorker {
                     },
                 }
             },
-            Accepted | Connected => {
+            Connected => {
                 self.retry_count = 0;
                 self.transition_connected()?;
             },
@@ -392,21 +392,31 @@ impl PeerConnectionWorker {
             // If we can't extract the correct frames, we ignore the message
             if let Some((identity, message_type, frames)) = self.extract_frame_parts(frames) {
                 match message_type {
-                    PeerConnectionProtoMessage::Identify => match self.identity {
-                        Some(_) => {
+                    PeerConnectionProtoMessage::Identify => {
+                        if self.context.direction == Direction::Outbound {
                             warn!(
                                 target: LOG_TARGET,
-                                "Peer sent IDENT message when already set {:x?} {:x?}", self.identity, identity,
+                                "Ignoring IDENTIFY message on outbound peer connection {:?}", self.context.id,
                             );
-                        },
-                        None => {
-                            self.identity = identity;
-                            self.transition_connected()?;
-                            debug!(
-                                target: LOG_TARGET,
-                                "Peer sent IDENT, set peer connection identity to {:x?}", self.identity
-                            );
-                        },
+                            return Ok(());
+                        }
+
+                        match self.identity {
+                            Some(_) => {
+                                warn!(
+                                    target: LOG_TARGET,
+                                    "Peer sent IDENT message when already set {:x?} {:x?}", self.identity, identity,
+                                );
+                            },
+                            None => {
+                                self.identity = identity;
+                                self.transition_connected()?;
+                                debug!(
+                                    target: LOG_TARGET,
+                                    "Peer sent IDENT, set peer connection identity to {:x?}", self.identity
+                                );
+                            },
+                        }
                     },
                     PeerConnectionProtoMessage::Message => {
                         acquire_write_lock!(self.connection_stats).incr_message_recv();
@@ -480,7 +490,6 @@ impl PeerConnectionWorker {
     }
 
     /// Creates the payload to be sent to the underlying connection
-    #[inline]
     fn create_payload(&self, message_type: PeerConnectionProtoMessage, frames: FrameSet) -> Result<FrameSet> {
         let context = &self.context;
 

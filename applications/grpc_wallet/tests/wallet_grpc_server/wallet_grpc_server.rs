@@ -25,7 +25,7 @@ use futures::future::Future;
 use hyper::client::connect::{Destination, HttpConnector};
 use log::{Level, *};
 use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
-use std::{iter, sync::Arc, thread, time::Duration};
+use std::{iter, path::PathBuf, sync::Arc, thread, time::Duration};
 use tari_comms::{
     connection::{net_address::NetAddressWithStats, NetAddress, NetAddressesWithStats},
     control_service::ControlServiceConfig,
@@ -33,21 +33,18 @@ use tari_comms::{
     types::{CommsPublicKey, CommsSecretKey},
 };
 use tari_crypto::keys::{PublicKey, SecretKey};
-use tari_grpc_wallet::grpc_interface::wallet_rpc::{
-    client::WalletRpc,
-    Contact as ContactRpc,
-    RpcResponse,
-    ScreenName as ScreenNameRpc,
-    TextMessageToSend as TextMessageToSendRpc,
-    VoidParams,
+use tari_grpc_wallet::{
+    grpc_interface::wallet_rpc::{
+        client::WalletRpc,
+        Contact as ContactRpc,
+        RpcResponse,
+        ScreenName as ScreenNameRpc,
+        TextMessageToSend as TextMessageToSendRpc,
+        VoidParams,
+    },
+    wallet_server::WalletServer,
 };
-
-use std::path::PathBuf;
-use tari_grpc_wallet::wallet_server::WalletServer;
-use tari_p2p::{
-    initialization::CommsConfig,
-    tari_message::{NetMessage, TariMessageType},
-};
+use tari_p2p::initialization::CommsConfig;
 use tari_utilities::hex::Hex;
 use tari_wallet::{text_message_service::Contact, wallet::WalletConfig, Wallet};
 use tempdir::TempDir;
@@ -523,8 +520,7 @@ fn test_rpc_text_message_service() {
             control_service: ControlServiceConfig {
                 listener_address: listener_address1.clone(),
                 socks_proxy_address: None,
-                accept_message_type: TariMessageType::new(NetMessage::Accept),
-                requested_outbound_connection_timeout: Duration::from_millis(5000),
+                requested_connection_timeout: Duration::from_millis(5000),
             },
             socks_proxy_address: None,
             host: "127.0.0.1".parse().unwrap(),
@@ -548,8 +544,7 @@ fn test_rpc_text_message_service() {
             control_service: ControlServiceConfig {
                 listener_address: listener_address2.clone(),
                 socks_proxy_address: None,
-                accept_message_type: TariMessageType::new(NetMessage::Accept),
-                requested_outbound_connection_timeout: Duration::from_millis(5000),
+                requested_connection_timeout: Duration::from_millis(5000),
             },
             socks_proxy_address: None,
             host: "127.0.0.1".parse().unwrap(),

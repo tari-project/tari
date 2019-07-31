@@ -51,6 +51,12 @@ pub enum Linger {
     Timeout(u32),
 }
 
+impl Default for Linger {
+    fn default() -> Self {
+        Linger::Never
+    }
+}
+
 /// Direction of the connection
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub enum Direction {

@@ -37,12 +37,14 @@ use crate::{
         outbound_message_pool::{OutboundMessagePoolConfig, OutboundMessagePoolError},
         outbound_message_service::OutboundMessageService,
         OutboundError,
+        OutboundMessage,
         OutboundMessagePool,
     },
     peer_manager::{NodeIdentity, PeerManager, PeerManagerError},
     types::CommsDatabase,
     DomainConnector,
 };
+use crossbeam_channel::Sender;
 use derive_error::Error;
 use log::*;
 use serde::{de::DeserializeOwned, export::fmt::Debug, Serialize};
@@ -79,7 +81,7 @@ where MType: Clone
     zmq_context: ZmqContext,
     routes: Option<CommsRoutes<MType>>,
     peer_storage: Option<CommsDatabase>,
-    control_service_config: Option<ControlServiceConfig<MType>>,
+    control_service_config: Option<ControlServiceConfig>,
     omp_config: Option<OutboundMessagePoolConfig>,
     ims_config: Option<InboundMessageServiceConfig>,
     node_identity: Option<NodeIdentity>,
@@ -134,7 +136,7 @@ where
     /// Configure the [ControlService]. This is optional.
     ///
     /// [ControlService]: ../../control_service/index.html
-    pub fn configure_control_service(mut self, config: ControlServiceConfig<MType>) -> Self {
+    pub fn configure_control_service(mut self, config: ControlServiceConfig) -> Self {
         self.control_service_config = Some(config);
         self
     }
@@ -166,7 +168,7 @@ where
         }
     }
 
-    fn make_control_service(&mut self, node_identity: Arc<NodeIdentity>) -> Option<ControlService<MType>> {
+    fn make_control_service(&mut self, node_identity: Arc<NodeIdentity>) -> Option<ControlService> {
         self.control_service_config
             .take()
             .map(|config| ControlService::new(self.zmq_context.clone(), node_identity, config))
@@ -206,37 +208,24 @@ where
     fn make_outbound_message_service(
         &self,
         node_identity: Arc<NodeIdentity>,
-        message_sink_address: InprocAddress,
+        message_sink: Sender<OutboundMessage>,
         peer_manager: Arc<PeerManager>,
     ) -> Result<Arc<OutboundMessageService>, CommsBuilderError>
     {
-        OutboundMessageService::new(
-            self.zmq_context.clone(),
-            node_identity,
-            message_sink_address,
-            peer_manager,
-        )
-        .map(Arc::new)
-        .map_err(CommsBuilderError::OutboundMessageServiceError)
+        OutboundMessageService::new(node_identity, message_sink, peer_manager)
+            .map(Arc::new)
+            .map_err(CommsBuilderError::OutboundMessageServiceError)
     }
 
     fn make_outbound_message_pool(
         &mut self,
-        message_sink_address: InprocAddress,
         peer_manager: Arc<PeerManager>,
         connection_manager: Arc<ConnectionManager>,
     ) -> OutboundMessagePool
     {
         let config = self.omp_config.take().unwrap_or_default();
 
-        OutboundMessagePool::new(
-            config,
-            self.zmq_context.clone(),
-            // OMP can requeue back onto itself
-            message_sink_address.clone(),
-            peer_manager,
-            connection_manager,
-        )
+        OutboundMessagePool::new(config, peer_manager, connection_manager)
     }
 
     fn make_inbound_message_service(
@@ -278,25 +267,6 @@ where
         Ok(Arc::new(broker))
     }
 
-    fn make_routes(&mut self) -> Result<CommsRoutes<MType>, CommsBuilderError> {
-        let mut routes = self.routes.take().ok_or(CommsBuilderError::RoutesNotDefined)?;
-
-        // If the control service is enabled and an accept route is not already defined - define one
-        // so that connections can be established
-        if let Some(ref config) = self.control_service_config {
-            if routes.get_address(&config.accept_message_type).is_none() {
-                warn!(
-                    target: LOG_TARGET,
-                    "Adding dead end route for accept message as one was not specified which matches the control \
-                     service `accept_message_type` setting"
-                );
-                routes = routes.register(config.accept_message_type.clone());
-            }
-        }
-
-        Ok(routes)
-    }
-
     /// Build the required comms services. Services will not be started.
     pub fn build(mut self) -> Result<CommsServiceContainer<MType>, CommsBuilderError> {
         let node_identity = self.make_node_identity()?;
@@ -306,30 +276,25 @@ where
         let peer_conn_config = self.make_peer_connection_config();
 
         // This must happen before control service so that it can use it's config to setup a default route for accept
-        let routes = self.make_routes()?;
+        let routes = self.routes.take().ok_or(CommsBuilderError::RoutesNotDefined)?;
 
         let control_service = self.make_control_service(node_identity.clone());
 
         let connection_manager =
             self.make_connection_manager(node_identity.clone(), peer_manager.clone(), peer_conn_config.clone());
 
-        let outbound_message_sink_address = InprocAddress::random();
+        let outbound_message_pool = self.make_outbound_message_pool(peer_manager.clone(), connection_manager.clone());
+
         let outbound_message_service = self.make_outbound_message_service(
             node_identity.clone(),
-            outbound_message_sink_address.clone(),
+            outbound_message_pool.sender(),
             peer_manager.clone(),
         )?;
-
-        let outbound_message_pool = self.make_outbound_message_pool(
-            outbound_message_sink_address,
-            peer_manager.clone(),
-            connection_manager.clone(),
-        );
 
         let inbound_message_broker = self.make_inbound_message_broker(&routes)?;
 
         let inbound_message_service = self.make_inbound_message_service(
-            node_identity,
+            node_identity.clone(),
             peer_conn_config.message_sink_address,
             inbound_message_broker.clone(),
             outbound_message_service.clone(),
@@ -346,6 +311,7 @@ where
             outbound_message_pool,
             outbound_message_service,
             peer_manager,
+            node_identity,
         })
     }
 }
@@ -375,12 +341,13 @@ where
     zmq_context: ZmqContext,
     routes: CommsRoutes<MType>,
     connection_manager: Arc<ConnectionManager>,
-    control_service: Option<ControlService<MType>>,
+    control_service: Option<ControlService>,
     inbound_message_broker: Arc<InboundMessageBroker<MType>>,
     inbound_message_service: InboundMessageService<MType>,
     outbound_message_pool: OutboundMessagePool,
     outbound_message_service: Arc<OutboundMessageService>,
     peer_manager: Arc<PeerManager>,
+    node_identity: Arc<NodeIdentity>,
 }
 
 impl<MType> CommsServiceContainer<MType>
@@ -418,6 +385,7 @@ where
             inbound_message_broker: self.inbound_message_broker,
             peer_manager: self.peer_manager,
             outbound_message_pool: self.outbound_message_pool,
+            node_identity: self.node_identity,
             // Add handles for started services
             control_service_handle,
         })
@@ -436,8 +404,9 @@ pub struct CommsServices<MType> {
     control_service_handle: Option<ControlServiceHandle>,
     inbound_message_broker: Arc<InboundMessageBroker<MType>>,
     outbound_message_pool: OutboundMessagePool,
+    node_identity: Arc<NodeIdentity>,
     connection_manager: Arc<ConnectionManager>,
-    pub peer_manager: Arc<PeerManager>,
+    peer_manager: Arc<PeerManager>,
 }
 
 impl<MType> CommsServices<MType>
@@ -445,12 +414,24 @@ where
     MType: DispatchableKey,
     MType: Clone,
 {
-    pub fn peer_manager(&self) -> &PeerManager {
-        &self.peer_manager
+    pub fn zmq_context(&self) -> &ZmqContext {
+        &self.zmq_context
+    }
+
+    pub fn peer_manager(&self) -> Arc<PeerManager> {
+        Arc::clone(&self.peer_manager)
+    }
+
+    pub fn node_identity(&self) -> Arc<NodeIdentity> {
+        Arc::clone(&self.node_identity)
     }
 
     pub fn outbound_message_service(&self) -> Arc<OutboundMessageService> {
         Arc::clone(&self.outbound_message_service)
+    }
+
+    pub fn routes(&self) -> &CommsRoutes<MType> {
+        &self.routes
     }
 
     pub fn create_connector<'de>(&self, message_type: &MType) -> Result<DomainConnector<'de>, CommsServicesError> {
