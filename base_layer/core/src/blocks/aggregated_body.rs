@@ -24,10 +24,10 @@ use crate::{
     blocks::block::KernelSum,
     tari_amount::*,
     transaction::*,
-    types::{BlindingFactor, Commitment, CommitmentFactory, PrivateKey, RangeProofService},
+    types::{BlindingFactor, Commitment, CommitmentFactory, PrivateKey, RangeProofService, COMMITMENT_FACTORY},
 };
 use serde::{Deserialize, Serialize};
-use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::PublicKey, ristretto::pedersen::PedersenCommitment};
+use tari_crypto::{commitment::HomomorphicCommitmentFactory, ristretto::pedersen::PedersenCommitment};
 
 /// The components of the block or transaction. The same struct can be used for either, since in Mimblewimble,
 /// cut-through means that blocks and transactions have the same structure.
@@ -136,15 +136,18 @@ impl AggregateBody {
     /// 1. Range proofs of the outputs are valid
     ///
     /// This function does NOT check that inputs come from the UTXO set
+    /// The reward is the amount of Tari rewarded for this block, this should be 0 for a transaction
     pub fn validate_internal_consistency(
         &self,
         offset: &BlindingFactor,
+        reward: MicroTari,
         prover: &RangeProofService,
         factory: &CommitmentFactory,
     ) -> Result<(), TransactionError>
     {
+        let total_offset = COMMITMENT_FACTORY.commit_value(&offset, reward.0);
         self.verify_kernel_signatures()?;
-        self.validate_kernel_sum(offset, factory)?;
+        self.validate_kernel_sum(total_offset, factory)?;
         self.validate_range_proofs(prover)
     }
 
@@ -157,14 +160,12 @@ impl AggregateBody {
     }
 
     /// Calculate the sum of the kernels, taking into account the provided offset, and their constituent fees
-    fn sum_kernels(&self, offset: &BlindingFactor) -> KernelSum {
-        let public_offset = PublicKey::from_secret_key(offset);
-        let offset_commitment = PedersenCommitment::from_public_key(&public_offset);
+    fn sum_kernels(&self, offset: PedersenCommitment) -> KernelSum {
         // Sum all kernel excesses and fees
         self.kernels.iter().fold(
             KernelSum {
                 fees: MicroTari(0),
-                sum: offset_commitment,
+                sum: offset,
             },
             |acc, val| KernelSum {
                 fees: &acc.fees + &val.fee,
@@ -176,7 +177,7 @@ impl AggregateBody {
     /// Confirm that the (sum of the outputs) - (sum of inputs) = Kernel excess
     fn validate_kernel_sum(
         &self,
-        offset: &BlindingFactor,
+        offset: PedersenCommitment,
         factory: &CommitmentFactory,
     ) -> Result<(), TransactionError>
     {

@@ -415,8 +415,6 @@ pub struct Transaction {
     pub offset: BlindingFactor,
     /// The constituents of a transaction which has the same structure as the body of a block.
     pub body: AggregateBody,
-    /// This is the value offset if a coinbase is included in the transaction this is used for validation
-    pub value_offset: BlindingFactor,
 }
 
 impl Transaction {
@@ -431,7 +429,6 @@ impl Transaction {
         Transaction {
             offset,
             body: AggregateBody::new(inputs, outputs, kernels),
-            value_offset: PrivateKey::default(),
         }
     }
 
@@ -447,7 +444,8 @@ impl Transaction {
         factory: &CommitmentFactory,
     ) -> Result<(), TransactionError>
     {
-        self.body.validate_internal_consistency(&self.offset, prover, factory)
+        self.body
+            .validate_internal_consistency(&self.offset, MicroTari::from(0), prover, factory)
     }
 
     pub fn get_body(&self) -> &AggregateBody {

@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::blocks::aggregated_body::AggregateBody;
-use crate::block::AggregateBody;
 use derive_error::Error;
 use serde::{Deserialize, Serialize};
 

@@ -24,8 +24,14 @@
 // This file is used to store the current blockchain state
 
 use crate::{
-    blocks::{block::Block, blockheader::BlockHeader, genesis_block::*},
+    blocks::{
+        block::{Block, BlockError},
+        blockheader::BlockHeader,
+        genesis_block::*,
+    },
+    emission::EmissionSchedule,
     error::*,
+    tari_amount::MicroTari,
     transaction::{TransactionInput, TransactionKernel},
     types::*,
 };
@@ -39,6 +45,7 @@ pub struct BlockchainState {
     pub headers: MerkleMountainRange<BlockHeader, SignatureHash>,
     utxos: MerkleMountainRange<TransactionInput, SignatureHash>,
     kernels: MerkleMountainRange<TransactionKernel, SignatureHash>,
+    schedule: EmissionSchedule,
     store: LMDBStore,
 }
 #[allow(clippy::new_without_default)]
@@ -54,10 +61,12 @@ impl BlockchainState {
         utxos.init_persistance_store(&"outputs".to_string(), 5000);
         let mut kernels = MerkleMountainRange::new();
         kernels.init_persistance_store(&"kernels".to_string(), std::usize::MAX);
+        let schedule = EmissionSchedule::new(MicroTari::from(10_000_000), 0.999, MicroTari::from(100)); // ToDo ensure these amounts are correct
         let mut block_chain_state = BlockchainState {
             headers,
             utxos,
             kernels,
+            schedule,
             store,
         };
         block_chain_state.add_genesis_block();
@@ -108,6 +117,12 @@ impl BlockchainState {
         self.utxos.set_pruning_horizon(new_pruning_horizon);
     }
 
+    /// This function will create the correct amount for the coinbase given the block height, it will provide the answer
+    /// in µTari (micro Tari)
+    fn calculate_coinbase(&self, block_height: u64) -> MicroTari {
+        self.schedule.block_reward(block_height)
+    }
+
     /// This function  will process a new block.
     /// Note the block is consumed by the function.
     pub fn process_new_block(&mut self, new_block: &Block) -> Result<(), StateError> {
@@ -131,8 +146,8 @@ impl BlockchainState {
     /// This function will validate the block in terms of the current state.
     pub fn validate_new_block(&self, new_block: &Block) -> Result<(), StateError> {
         new_block
-            .check_internal_consistency()
-            .map_err(StateError::InvalidBlock)?;
+            .check_internal_consistency(self.calculate_coinbase(new_block.header.height))
+            .map_err(|e| StateError::InvalidBlock(BlockError::TransactionError(e)))?;
         // we assume that we have atleast in block in the headers mmr even if this is the genesis one
         if self.headers.get_last_added_object().unwrap().hash() != new_block.header.prev_hash {
             return Err(StateError::OrphanBlock);
