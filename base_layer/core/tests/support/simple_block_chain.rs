@@ -27,8 +27,7 @@ use rand::{CryptoRng, OsRng, Rng};
 use serde::{Deserialize, Serialize};
 use std::{fs::File, io::prelude::*};
 use tari_core::{
-    block::*,
-    blockheader::*,
+    blocks::{block::*, blockheader::*},
     emission::EmissionSchedule,
     fee::Fee,
     tari_amount::MicroTari,

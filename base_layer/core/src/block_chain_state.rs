@@ -24,10 +24,8 @@
 // This file is used to store the current blockchain state
 
 use crate::{
-    block::Block,
-    blockheader::BlockHeader,
+    blocks::{block::Block, blockheader::BlockHeader, genesis_block::*},
     error::*,
-    genesis_block::*,
     transaction::{TransactionInput, TransactionKernel},
     types::*,
 };

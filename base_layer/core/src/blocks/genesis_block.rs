@@ -25,8 +25,7 @@
 
 // This file is used to store the genesis block
 use crate::{
-    block::{AggregateBody, Block},
-    blockheader::BlockHeader,
+    blocks::{aggregated_body::AggregateBody, block::Block, blockheader::BlockHeader},
     types::*,
 };
 

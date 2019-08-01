@@ -1,4 +1,4 @@
-// Copyright 2018 The Tari Project
+// Copyright 2019. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,25 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#[macro_use]
-extern crate bitflags;
-#[macro_use]
-extern crate lazy_static;
-
-pub mod blocks;
-pub mod bullet_rangeproofs;
-pub mod fee;
-pub mod pow;
-#[allow(clippy::op_ref)]
-pub mod transaction;
-pub mod transaction_protocol;
-pub mod types;
-
-pub mod block_chain_state;
-pub mod chain;
-pub mod emission;
-pub mod error;
-pub mod tari_amount;
-
-// Re-export commonly used structs
-pub use transaction_protocol::{recipient::ReceiverTransactionProtocol, sender::SenderTransactionProtocol};
+pub mod aggregated_body;
+pub mod block;
+pub mod blockheader;
+pub mod genesis_block;
