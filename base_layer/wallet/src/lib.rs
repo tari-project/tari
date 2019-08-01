@@ -1,3 +1,5 @@
+#![feature(drain_filter)]
+
 #[macro_use]
 extern crate diesel;
 #[macro_use]

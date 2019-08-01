@@ -24,8 +24,12 @@ use crate::{
     output_manager_service::error::OutputManagerError,
     types::{HashDigest, KeyDigest, TransactionRng},
 };
-use chrono::{Duration, NaiveDateTime, Utc};
-use std::{collections::HashMap, sync::Mutex};
+use chrono::{Duration as ChronoDuration, NaiveDateTime, Utc};
+use crossbeam_channel as channel;
+use std::{collections::HashMap, sync::Mutex, time::Duration};
+
+use log::*;
+use std::sync::Arc;
 use tari_core::{
     fee::Fee,
     tari_amount::MicroTari,
@@ -35,6 +39,19 @@ use tari_core::{
 };
 use tari_crypto::keys::SecretKey;
 use tari_key_manager::keymanager::KeyManager;
+use tari_p2p::{
+    services::{
+        Service,
+        ServiceApiWrapper,
+        ServiceContext,
+        ServiceControlMessage,
+        ServiceError,
+        DEFAULT_API_TIMEOUT_MS,
+    },
+    tari_message::TariMessageType,
+};
+
+const LOG_TARGET: &'static str = "base_layer::wallet::output_manager_service";
 
 /// This service will manage a wallet's available outputs and the key manager that produces the keys for these outputs.
 /// The service will assemble transactions to be sent from the wallets available outputs and provide keys to receive
@@ -45,6 +62,7 @@ pub struct OutputManagerService {
     unspent_outputs: Vec<UnblindedOutput>,
     spent_outputs: Vec<UnblindedOutput>,
     pending_transactions: HashMap<u64, PendingTransactionOutputs>,
+    api: ServiceApiWrapper<OutputManagerServiceApi, OutputManagerApiRequest, OutputManagerApiResult>,
 }
 
 impl OutputManagerService {
@@ -58,7 +76,21 @@ impl OutputManagerService {
             unspent_outputs: Vec::new(),
             spent_outputs: Vec::new(),
             pending_transactions: HashMap::new(),
+            api: Self::setup_api(),
         }
+    }
+
+    /// Return this service's API
+    pub fn get_api(&self) -> Arc<OutputManagerServiceApi> {
+        self.api.get_api()
+    }
+
+    fn setup_api() -> ServiceApiWrapper<OutputManagerServiceApi, OutputManagerApiRequest, OutputManagerApiResult> {
+        let (api_sender, service_receiver) = channel::bounded(0);
+        let (service_sender, api_receiver) = channel::bounded(0);
+
+        let api = Arc::new(OutputManagerServiceApi::new(api_sender, api_receiver));
+        ServiceApiWrapper::new(service_receiver, service_sender, api)
     }
 
     /// Add an unblinded output to the unspent outputs list
@@ -73,11 +105,17 @@ impl OutputManagerService {
         Ok(())
     }
 
+    pub fn get_balance(&self) -> MicroTari {
+        self.unspent_outputs
+            .iter()
+            .fold(MicroTari::from(0), |acc, x| acc + x.value)
+    }
+
     /// Request a spending key to be used to accept a transaction from a sender.
     pub fn get_recipient_spending_key(
         &mut self,
         tx_id: u64,
-        value: MicroTari,
+        amount: MicroTari,
     ) -> Result<PrivateKey, OutputManagerError>
     {
         let mut km = acquire_lock!(self.key_manager);
@@ -88,7 +126,7 @@ impl OutputManagerService {
             tx_id,
             outputs_to_be_spent: Vec::new(),
             outputs_to_be_received: vec![UnblindedOutput {
-                value,
+                value: amount,
                 spending_key: key.clone(),
                 features: OutputFeatures::empty(),
             }],
@@ -111,6 +149,7 @@ impl OutputManagerService {
             .get_mut(&tx_id)
             .ok_or(OutputManagerError::PendingTransactionNotFound)?;
 
+        // Assumption: We are only allowing a single output per receiver in the current transaction protocols.
         if pending_transaction.outputs_to_be_received.len() != 1 ||
             pending_transaction.outputs_to_be_received[0]
                 .as_transaction_input(&COMMITMENT_FACTORY, OutputFeatures::empty())
@@ -174,8 +213,10 @@ impl OutputManagerService {
 
         // The Transaction Protocol built successfully so we will pull the unspent outputs out of the unspent list and
         // store them until the transaction times out OR is confirmed
-        let mut outputs_to_be_spent = self.unspent_outputs.clone();
-        outputs_to_be_spent.retain(|uo| outputs.iter().any(|o| uo.spending_key == o.spending_key));
+        let outputs_to_be_spent = self
+            .unspent_outputs
+            .drain_filter(|uo| outputs.iter().any(|o| uo.spending_key == o.spending_key))
+            .collect();
 
         let mut pending_transaction = PendingTransactionOutputs {
             tx_id: stp.get_tx_id()?,
@@ -183,9 +224,6 @@ impl OutputManagerService {
             outputs_to_be_received: Vec::new(),
             timestamp: Utc::now().naive_utc(),
         };
-
-        self.unspent_outputs
-            .retain(|uo| !outputs.iter().any(|o| uo.spending_key == o.spending_key));
 
         // If a change output was created add it to the pending_outputs list.
         if let Some(key) = change_key {
@@ -261,7 +299,7 @@ impl OutputManagerService {
     }
 
     /// Go through the pending transaction and if any have existed longer than the specified duration, cancel them
-    pub fn timeout_pending_transactions(&mut self, period: Duration) -> Result<(), OutputManagerError> {
+    pub fn timeout_pending_transactions(&mut self, period: ChronoDuration) -> Result<(), OutputManagerError> {
         let mut transactions_to_be_cancelled = Vec::new();
         for (tx_id, pt) in self.pending_transactions.iter() {
             if pt.timestamp + period < Utc::now().naive_utc() {
@@ -342,6 +380,39 @@ impl OutputManagerService {
                     .any(|o| o.value == output.value && o.spending_key == output.spending_key)
             })
     }
+
+    /// This handler is called when the Service executor loops receives an API request
+    fn handle_api_message(&mut self, msg: OutputManagerApiRequest) -> Result<(), ServiceError> {
+        debug!(target: LOG_TARGET, "[{}] Received API message", self.get_name(),);
+        let resp = match msg {
+            OutputManagerApiRequest::AddOutput(uo) => {
+                self.add_output(uo).map(|_| OutputManagerApiResponse::OutputAdded)
+            },
+            OutputManagerApiRequest::GetBalance => Ok(OutputManagerApiResponse::Balance(self.get_balance())),
+            OutputManagerApiRequest::GetRecipientKey((tx_id, amount)) => self
+                .get_recipient_spending_key(tx_id, amount)
+                .map(|k| OutputManagerApiResponse::RecipientKeyGenerated(k)),
+            OutputManagerApiRequest::PrepareToSendTransaction((amount, fee_per_gram, lock_height)) => self
+                .prepare_transaction_to_send(amount, fee_per_gram, lock_height)
+                .map(|stp| OutputManagerApiResponse::TransactionToSend(stp)),
+            OutputManagerApiRequest::ConfirmReceivedOutput((tx_id, output)) => self
+                .confirm_received_transaction_output(tx_id, &output)
+                .map(|_| OutputManagerApiResponse::OutputConfirmed),
+            OutputManagerApiRequest::ConfirmSentTransaction((tx_id, spent_outputs, received_outputs)) => self
+                .confirm_sent_transaction(tx_id, &spent_outputs, &received_outputs)
+                .map(|_| OutputManagerApiResponse::TransactionConfirmed),
+            OutputManagerApiRequest::CancelTransaction(tx_id) => self
+                .cancel_transaction(tx_id)
+                .map(|_| OutputManagerApiResponse::TransactionCancelled),
+            OutputManagerApiRequest::TimeoutTransactions(period) => self
+                .timeout_pending_transactions(period)
+                .map(|_| OutputManagerApiResponse::TransactionsTimedOut),
+        };
+        debug!(target: LOG_TARGET, "[{}] Replying to API", self.get_name());
+        self.api
+            .send_reply(resp)
+            .map_err(ServiceError::internal_service_error())
+    }
 }
 
 /// Holds the outputs that have been selected for a given pending transaction waiting for confirmation
@@ -358,6 +429,195 @@ pub enum UTXOSelectionStrategy {
     // Start from the smallest UTXOs and work your way up until the amount is covered. Main benefit is removing small
     // UTXOs from the blockchain, con is that it costs more in fees
     Smallest,
+}
+
+/// The Domain Service trait implementation for the TestMessageService
+impl Service for OutputManagerService {
+    fn get_name(&self) -> String {
+        "Output Manager service".to_string()
+    }
+
+    fn get_message_types(&self) -> Vec<TariMessageType> {
+        Vec::new()
+    }
+
+    /// Function called by the Service Executor in its own thread. This function polls for both API request and Comms
+    /// layer messages from the Message Broker
+    fn execute(&mut self, context: ServiceContext) -> Result<(), ServiceError> {
+        debug!(target: LOG_TARGET, "Starting Text Message Service executor");
+        loop {
+            if let Some(msg) = context.get_control_message(Duration::from_millis(5)) {
+                match msg {
+                    ServiceControlMessage::Shutdown => break,
+                }
+            } else {
+            }
+            if let Some(msg) = self
+                .api
+                .recv_timeout(Duration::from_millis(50))
+                .map_err(ServiceError::internal_service_error())?
+            {
+                self.handle_api_message(msg)?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+/// API Request enum
+#[derive(Debug)]
+pub enum OutputManagerApiRequest {
+    GetBalance,
+    AddOutput(UnblindedOutput),
+    GetRecipientKey((u64, MicroTari)),
+    ConfirmReceivedOutput((u64, TransactionOutput)),
+    ConfirmSentTransaction((u64, Vec<TransactionInput>, Vec<TransactionOutput>)),
+    PrepareToSendTransaction((MicroTari, MicroTari, Option<u64>)),
+    CancelTransaction(u64),
+    TimeoutTransactions(ChronoDuration),
+}
+
+/// API Reply enum
+#[derive(Debug)]
+pub enum OutputManagerApiResponse {
+    Balance(MicroTari),
+    OutputAdded,
+    RecipientKeyGenerated(PrivateKey),
+    OutputConfirmed,
+    TransactionConfirmed,
+    TransactionToSend(SenderTransactionProtocol),
+    TransactionCancelled,
+    TransactionsTimedOut,
+}
+
+/// Result for all API requests
+pub type OutputManagerApiResult = Result<OutputManagerApiResponse, OutputManagerError>;
+
+/// The Output Manager service public API that other services and application will use to interact with this service.
+/// The requests and responses are transmitted via channels into the Service Executor thread where this service is
+/// running
+pub struct OutputManagerServiceApi {
+    sender: channel::Sender<OutputManagerApiRequest>,
+    receiver: channel::Receiver<OutputManagerApiResult>,
+    mutex: Mutex<()>,
+    timeout: Duration,
+}
+
+impl OutputManagerServiceApi {
+    fn new(
+        sender: channel::Sender<OutputManagerApiRequest>,
+        receiver: channel::Receiver<OutputManagerApiResult>,
+    ) -> Self
+    {
+        Self {
+            sender,
+            receiver,
+            mutex: Mutex::new(()),
+            timeout: Duration::from_millis(DEFAULT_API_TIMEOUT_MS),
+        }
+    }
+
+    pub fn add_output(&self, output: UnblindedOutput) -> Result<(), OutputManagerError> {
+        self.send_recv(OutputManagerApiRequest::AddOutput(output))
+            .and_then(|resp| match resp {
+                OutputManagerApiResponse::OutputAdded => Ok(()),
+                _ => Err(OutputManagerError::UnexpectedApiResponse),
+            })
+    }
+
+    pub fn get_balance(&self) -> Result<MicroTari, OutputManagerError> {
+        self.send_recv(OutputManagerApiRequest::GetBalance)
+            .and_then(|resp| match resp {
+                OutputManagerApiResponse::Balance(b) => Ok(b),
+                _ => Err(OutputManagerError::UnexpectedApiResponse),
+            })
+    }
+
+    pub fn get_recipient_spending_key(&self, tx_id: u64, amount: MicroTari) -> Result<PrivateKey, OutputManagerError> {
+        self.send_recv(OutputManagerApiRequest::GetRecipientKey((tx_id, amount)))
+            .and_then(|resp| match resp {
+                OutputManagerApiResponse::RecipientKeyGenerated(k) => Ok(k),
+                _ => Err(OutputManagerError::UnexpectedApiResponse),
+            })
+    }
+
+    pub fn prepare_transaction_to_send(
+        &self,
+        amount: MicroTari,
+        fee_per_gram: MicroTari,
+        lock_height: Option<u64>,
+    ) -> Result<SenderTransactionProtocol, OutputManagerError>
+    {
+        self.send_recv(OutputManagerApiRequest::PrepareToSendTransaction((
+            amount,
+            fee_per_gram,
+            lock_height,
+        )))
+        .and_then(|resp| match resp {
+            OutputManagerApiResponse::TransactionToSend(stp) => Ok(stp),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        })
+    }
+
+    pub fn confirm_received_output(&self, tx_id: u64, output: TransactionOutput) -> Result<(), OutputManagerError> {
+        self.send_recv(OutputManagerApiRequest::ConfirmReceivedOutput((tx_id, output)))
+            .and_then(|resp| match resp {
+                OutputManagerApiResponse::OutputConfirmed => Ok(()),
+                _ => Err(OutputManagerError::UnexpectedApiResponse),
+            })
+    }
+
+    pub fn confirm_sent_transaction(
+        &self,
+        tx_id: u64,
+        spent_outputs: Vec<TransactionInput>,
+        received_outputs: Vec<TransactionOutput>,
+    ) -> Result<(), OutputManagerError>
+    {
+        self.send_recv(OutputManagerApiRequest::ConfirmSentTransaction((
+            tx_id,
+            spent_outputs,
+            received_outputs,
+        )))
+        .and_then(|resp| match resp {
+            OutputManagerApiResponse::TransactionConfirmed => Ok(()),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        })
+    }
+
+    pub fn cancel_transaction(&self, tx_id: u64) -> Result<(), OutputManagerError> {
+        self.send_recv(OutputManagerApiRequest::CancelTransaction(tx_id))
+            .and_then(|resp| match resp {
+                OutputManagerApiResponse::TransactionCancelled => Ok(()),
+                _ => Err(OutputManagerError::UnexpectedApiResponse),
+            })
+    }
+
+    pub fn timeout_transactions(&self, period: ChronoDuration) -> Result<(), OutputManagerError> {
+        self.send_recv(OutputManagerApiRequest::TimeoutTransactions(period))
+            .and_then(|resp| match resp {
+                OutputManagerApiResponse::TransactionsTimedOut => Ok(()),
+                _ => Err(OutputManagerError::UnexpectedApiResponse),
+            })
+    }
+
+    fn send_recv(&self, msg: OutputManagerApiRequest) -> OutputManagerApiResult {
+        self.lock(|| -> OutputManagerApiResult {
+            self.sender.send(msg).map_err(|_| OutputManagerError::ApiSendFailed)?;
+            self.receiver
+                .recv_timeout(self.timeout.clone())
+                .map_err(|_| OutputManagerError::ApiReceiveFailed)?
+        })
+    }
+
+    fn lock<F, T>(&self, func: F) -> T
+    where F: FnOnce() -> T {
+        let lock = acquire_lock!(self.mutex);
+        let res = func();
+        drop(lock);
+        res
+    }
 }
 
 #[cfg(test)]
@@ -383,9 +643,10 @@ mod test {
         let (secret_key, _public_key) = PublicKey::random_keypair(&mut rng);
 
         let mut oms = OutputManagerService::new(secret_key, "".to_string(), 0);
-
+        let mut balance = MicroTari::from(0);
         for _i in 0..3 {
             let uo = make_output(&mut rng.clone(), MicroTari::from(100 + rng.next_u64() % 1000));
+            balance += uo.value.clone();
             oms.add_output(uo).unwrap();
         }
 
@@ -409,5 +670,7 @@ mod test {
             timestamp: Utc::now().naive_utc(),
         });
         assert!(oms.contains_output(&uo3));
+
+        assert_eq!(uo1.value + balance, oms.get_balance());
     }
 }
