@@ -23,7 +23,7 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
-extern crate criterion;
+use criterion::criterion_main;
 
 pub mod range_proof;
 pub mod signatures;
