@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::block::AggregateBody;
+use crate::blocks::aggregated_body::AggregateBody;
 use serde::{Deserialize, Serialize};
 /// This describes the interface the block validation will use when interacting with the proof of work.
 pub trait ProofOfWorkInterface {

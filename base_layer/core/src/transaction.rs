@@ -24,7 +24,7 @@
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
 use crate::{
-    block::AggregateBody,
+    blocks::aggregated_body::AggregateBody,
     tari_amount::MicroTari,
     types::{BlindingFactor, Commitment, CommitmentFactory, Signature},
 };
