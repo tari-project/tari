@@ -187,7 +187,7 @@ impl MerkleChangeTracker {
 
     /// This function steps through all the checkpoints and looks at which len their mmr's ended.
     /// It will compare the given len and give age at which the len was exceeded.
-    pub fn find_mmr_len_age<S: MerkleStorage>(&self, len: usize, store: &mut S) -> Result<usize, MerkleStorageError> {
+    pub fn get_checkpoint_age_at_index<S: MerkleStorage>(&self, index: usize, store: &mut S) -> Result<usize, MerkleStorageError> {
         let mut age = 0;
         for i in (0..self.unsaved_checkpoints.len()).rev() {
             if len >= self.unsaved_checkpoints[i].tree_height_at_checkpoint[0]

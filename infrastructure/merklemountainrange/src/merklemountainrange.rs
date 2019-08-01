@@ -435,7 +435,7 @@ where
 
     /// This function will get the age of an object when it was added. This will only work if the persistance store is
     /// enabled as it tracks the age at which checkpoint it was added
-    pub fn get_object_checkpoint_age<S: MerkleStorage>(
+    pub fn get_checkpoint_age<S: MerkleStorage>(
         &self,
         hash: &ObjectHashSlice,
         store: &mut S,
