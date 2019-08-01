@@ -153,8 +153,10 @@ where
     /// This allows the DB to store its data on a persistent medium using the tari::keyvalue_store trait
     /// store_prefix is the db file name prefix used for this mmr.
     /// pruning horizon is how far back changes are kept so that it can rewind.
+    /// the persistance store will always create more than 2 checkpoints.
     pub fn init_persistance_store(&mut self, store_prefix: &str, pruning_horizon: usize) {
-        self.change_tracker.init(store_prefix, pruning_horizon)
+        let checked_pruning_horizon = if pruning_horizon < 2 { 2 } else { pruning_horizon };
+        self.change_tracker.init(store_prefix, checked_pruning_horizon)
     }
 
     /// Allow users to change the pruning horizon after init.
@@ -719,7 +721,7 @@ mod tests {
 
     use super::*;
     use blake2::Blake2b;
-    use serde_derive::{Deserialize, Serialize};
+    use serde::{Deserialize, Serialize};
 
     #[derive(Serialize, Deserialize)]
     pub struct IWrapper(u32);
