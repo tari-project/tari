@@ -20,47 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::support::comms_and_services::setup_text_message_service;
-
-use crate::support::utils::assert_change;
-use std::path::PathBuf;
+use crate::support::{comms_and_services::setup_text_message_service, data::*, utils::assert_change};
 use tari_comms::peer_manager::NodeIdentity;
-use tari_storage::lmdb_store::{LMDBBuilder, LMDBError, LMDBStore};
 use tari_wallet::text_message_service::Contact;
-
-fn get_path(name: Option<&str>) -> String {
-    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.push("tests/data");
-    path.push(name.unwrap_or(""));
-    path.to_str().unwrap().to_string()
-}
-
-fn init_datastore(name: &str) -> Result<LMDBStore, LMDBError> {
-    let path = get_path(Some(name));
-    let _ = std::fs::create_dir(&path).unwrap_or_default();
-    LMDBBuilder::new()
-        .set_path(&path)
-        .set_environment_size(10)
-        .set_max_number_of_databases(1)
-        .add_database(name, lmdb_zero::db::CREATE)
-        .build()
-}
-
-fn clean_up_datastore(name: &str) {
-    std::fs::remove_dir_all(get_path(Some(name))).unwrap();
-}
-
-fn clean_up_sql_database(name: &str) {
-    if std::fs::metadata(get_path(Some(name))).is_ok() {
-        std::fs::remove_file(get_path(Some(name))).unwrap();
-    }
-}
-
-fn init_sql_database(name: &str) {
-    clean_up_sql_database(name);
-    let path = get_path(None);
-    let _ = std::fs::create_dir(&path).unwrap_or_default();
-}
 
 #[test]
 fn test_text_message_service() {

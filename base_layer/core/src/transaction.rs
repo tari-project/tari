@@ -24,14 +24,14 @@
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
 use crate::{
-    block::AggregateBody,
-    tari_amount::*,
+    blocks::aggregated_body::AggregateBody,
+    tari_amount::MicroTari,
     types::{BlindingFactor, Commitment, CommitmentFactory, Signature},
 };
 
 use crate::{
     transaction_protocol::{build_challenge, TransactionMetadata},
-    types::{HashDigest, PrivateKey, PublicKey, RangeProof, RangeProofService},
+    types::{HashDigest, RangeProof, RangeProofService},
 };
 use derive_error::Error;
 use digest::Input;
@@ -39,9 +39,7 @@ use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
-    keys::PublicKey as PK,
     range_proof::{RangeProofError, RangeProofService as RangeProofServiceTrait},
-    ristretto::pedersen::PedersenCommitment,
 };
 use tari_utilities::{ByteArray, Hashable};
 
@@ -90,7 +88,7 @@ pub enum TransactionError {
 
 /// An unblinded output is one where the value and spending key (blinding factor) are known. This can be used to
 /// build both inputs and outputs (every input comes from an output)
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash)]
 pub struct UnblindedOutput {
     pub value: MicroTari,
     pub spending_key: BlindingFactor,
@@ -437,57 +435,6 @@ impl Transaction {
         }
     }
 
-    /// Calculate the sum of the inputs and outputs including the fees
-    fn sum_commitments(&self, fees: u64, factory: &CommitmentFactory) -> Commitment {
-        let fee_commitment = factory.commit(&PrivateKey::default(), &PrivateKey::from(fees));
-        let sum_inputs = &self.body.inputs.iter().map(|i| &i.commitment).sum::<Commitment>();
-        let sum_outputs = &self.body.outputs.iter().map(|o| &o.commitment).sum::<Commitment>();
-        &(sum_outputs - sum_inputs) + &fee_commitment
-    }
-
-    /// Calculate the sum of the kernels, taking into account the offset if it exists, and their constituent fees
-    fn sum_kernels(&self, factory: &CommitmentFactory) -> KernelSum {
-        let public_offset = PublicKey::from_secret_key(&self.offset);
-        let offset_commitment = PedersenCommitment::from_public_key(&public_offset);
-        let emmision_commitment = factory.commit(&PrivateKey::default(), &self.value_offset);
-        let init_com = &offset_commitment + &emmision_commitment;
-        // Sum all kernel excesses and fees
-        self.body.kernels.iter().fold(
-            KernelSum {
-                fees: MicroTari(0),
-                sum: init_com,
-            },
-            |acc, val| KernelSum {
-                fees: &acc.fees + &val.fee,
-                sum: &acc.sum + &val.excess,
-            },
-        )
-    }
-
-    /// Confirm that the (sum of the outputs) - (sum of inputs) = Kernel excess
-    fn validate_kernel_sum(&self, factory: &CommitmentFactory) -> Result<(), TransactionError> {
-        let kernel_sum = self.sum_kernels(factory);
-        let sum_io = self.sum_commitments(kernel_sum.fees.into(), factory);
-        if kernel_sum.sum != sum_io {
-            return Err(TransactionError::ValidationError(
-                "Sum of inputs and outputs did not equal sum of kernels with fees".into(),
-            ));
-        }
-
-        Ok(())
-    }
-
-    fn validate_range_proofs(&self, range_proof_service: &RangeProofService) -> Result<(), TransactionError> {
-        for o in &self.body.outputs {
-            if !o.verify_range_proof(&range_proof_service)? {
-                return Err(TransactionError::ValidationError(
-                    "Range proof could not be verified".into(),
-                ));
-            }
-        }
-        Ok(())
-    }
-
     /// Validate this transaction by checking the following:
     /// 1. The sum of inputs, outputs and fees equal the (public excess value + offset)
     /// 1. The signature signs the canonical message with the private excess
@@ -500,32 +447,15 @@ impl Transaction {
         factory: &CommitmentFactory,
     ) -> Result<(), TransactionError>
     {
-        self.body.verify_kernel_signatures()?;
-        self.validate_kernel_sum(factory)?;
-        self.validate_range_proofs(&prover)
+        self.body.validate_internal_consistency(&self.offset, prover, factory)
     }
-}
 
-/// This will ecapsulate the aggregatebody inside a transaction with a zero offset.
-impl From<AggregateBody> for Transaction {
-    fn from(body: AggregateBody) -> Self {
-        Transaction {
-            body,
-            offset: BlindingFactor::default(),
-            value_offset: BlindingFactor::default(),
-        }
+    pub fn get_body(&self) -> &AggregateBody {
+        &self.body
     }
 }
 
 //----------------------------------------  Transaction Builder   ----------------------------------------------------//
-
-/// This struct holds the result of calculating the sum of the kernels in a Transaction
-/// and returns the summed commitments and the total fees
-pub struct KernelSum {
-    pub sum: Commitment,
-    pub fees: MicroTari,
-}
-
 pub struct TransactionBuilder {
     body: AggregateBody,
     offset: Option<BlindingFactor>,
@@ -607,7 +537,7 @@ mod test {
     use super::*;
     use crate::{
         transaction::OutputFeatures,
-        types::{BlindingFactor, RangeProof},
+        types::{BlindingFactor, PrivateKey, RangeProof},
     };
     use rand;
     use tari_crypto::{

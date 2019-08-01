@@ -20,9 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::support::utils::{make_input, TestParams};
+use crate::support::{
+    comms_and_services::setup_comms_services,
+    data::{clean_up_datastore, init_datastore},
+    utils::{make_input, TestParams},
+};
+use chrono::Duration as ChronoDuration;
+use log::Level;
 use rand::RngCore;
 use std::{thread, time::Duration};
+use tari_comms::peer_manager::NodeIdentity;
 use tari_core::{
     fee::Fee,
     tari_amount::MicroTari,
@@ -35,6 +42,7 @@ use tari_crypto::{
     keys::{PublicKey as PublicKeyTrait, SecretKey},
     range_proof::RangeProofService,
 };
+use tari_p2p::services::{ServiceExecutor, ServiceRegistry};
 use tari_utilities::ByteArray;
 use tari_wallet::output_manager_service::{error::OutputManagerError, output_manager_service::OutputManagerService};
 
@@ -287,4 +295,96 @@ fn timeout_transaction() {
         .unwrap();
 
     assert_eq!(oms.unspent_outputs().len(), num_outputs);
+}
+
+#[test]
+fn test_api() {
+    let _ = simple_logger::init_with_level(Level::Debug);
+    let mut rng = rand::OsRng::new().unwrap();
+    let (secret_key, _public_key) = PublicKey::random_keypair(&mut rng);
+
+    let oms = OutputManagerService::new(secret_key, "".to_string(), 0);
+    let api = oms.get_api();
+    let services = ServiceRegistry::new().register(oms);
+
+    // The Service Executor needs a comms stack even though the OMS doesn't use the comms stack.
+    let node_1_identity = NodeIdentity::random(&mut rng, "127.0.0.1:32569".parse().unwrap()).unwrap();
+    let node_1_database_name = "node_1_output_manager_service_api_test"; // Note: every test should have unique database
+    let node_1_datastore = init_datastore(node_1_database_name).unwrap();
+    let node_1_peer_database = node_1_datastore.get_handle(node_1_database_name).unwrap();
+    let comms = setup_comms_services(node_1_identity.clone(), Vec::new(), node_1_peer_database, &services);
+
+    let executor = ServiceExecutor::execute(&comms, services);
+
+    assert_eq!(api.get_balance().unwrap(), MicroTari::from(0));
+
+    let num_outputs = 20;
+    let mut balance = MicroTari::from(0);
+    for _i in 0..num_outputs {
+        let (_ti, uo) = make_input(&mut rng.clone(), MicroTari::from(100 + rng.next_u64() % 1000));
+        balance += uo.clone().value;
+        api.add_output(uo).unwrap();
+    }
+    let amount_to_send = MicroTari::from(1000);
+    let fee_per_gram = MicroTari::from(20);
+    let stp = api
+        .prepare_transaction_to_send(amount_to_send, fee_per_gram, None)
+        .unwrap();
+
+    assert_ne!(api.get_balance().unwrap(), balance);
+    api.cancel_transaction(stp.get_tx_id().unwrap()).unwrap();
+    assert_eq!(api.get_balance().unwrap(), balance);
+    let _stp = api
+        .prepare_transaction_to_send(amount_to_send, fee_per_gram, None)
+        .unwrap();
+    assert_ne!(api.get_balance().unwrap(), balance);
+    thread::sleep(Duration::from_millis(10));
+    api.timeout_transactions(ChronoDuration::milliseconds(1)).unwrap();
+    assert_eq!(api.get_balance().unwrap(), balance);
+
+    let mut stp = api
+        .prepare_transaction_to_send(amount_to_send, fee_per_gram, None)
+        .unwrap();
+
+    let sender_tx_id = stp.get_tx_id().unwrap();
+    let msg = stp.build_single_round_message().unwrap();
+
+    let b = TestParams::new(&mut rng);
+
+    let recv_info = SingleReceiverTransactionProtocol::create(
+        &msg,
+        b.nonce,
+        b.spend_key,
+        OutputFeatures::empty(),
+        &PROVER,
+        &COMMITMENT_FACTORY,
+    )
+    .unwrap();
+
+    stp.add_single_recipient_info(recv_info.clone(), &PROVER).unwrap();
+
+    stp.finalize(KernelFeatures::empty(), &PROVER, &COMMITMENT_FACTORY)
+        .unwrap();
+    let tx = stp.get_transaction().unwrap();
+    let fee = Fee::calculate(fee_per_gram, tx.body.inputs.len(), tx.body.outputs.len());
+
+    api.confirm_sent_transaction(sender_tx_id, tx.body.inputs.clone(), tx.body.outputs.clone())
+        .unwrap();
+
+    assert_eq!(api.get_balance().unwrap(), balance - amount_to_send - fee);
+    let balance = api.get_balance().unwrap();
+    let value = MicroTari::from(5000);
+    let recv_key = api.get_recipient_spending_key(1, value).unwrap();
+    let commitment = COMMITMENT_FACTORY.commit(&recv_key, &value.into());
+    let rr = PROVER.construct_proof(&recv_key, value.into()).unwrap();
+    let output = TransactionOutput::new(
+        OutputFeatures::COINBASE_OUTPUT,
+        commitment,
+        RangeProof::from_bytes(&rr).unwrap(),
+    );
+    api.confirm_received_output(1, output).unwrap();
+
+    assert_eq!(api.get_balance().unwrap(), balance + value);
+    executor.shutdown().unwrap();
+    clean_up_datastore(node_1_database_name);
 }

@@ -25,8 +25,7 @@ extern crate bitflags;
 #[macro_use]
 extern crate lazy_static;
 
-pub mod block;
-pub mod blockheader;
+pub mod blocks;
 pub mod bullet_rangeproofs;
 pub mod fee;
 pub mod pow;
@@ -39,7 +38,6 @@ pub mod block_chain_state;
 pub mod chain;
 pub mod emission;
 pub mod error;
-pub mod genesis_block;
 pub mod tari_amount;
 
 // Re-export commonly used structs

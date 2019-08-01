@@ -31,7 +31,10 @@ fn create_block_chain() -> SimpleBlockChain {
 #[test]
 fn test_valid_blocks() {
     let chain = create_block_chain();
-    for block in chain.blocks {
-        block.check_internal_consistency().expect("Block validation failed")
+    for i in 0..chain.blocks.len() {
+        let coinbase = calculate_coinbase(i as u64);
+        chain.blocks[i]
+            .check_internal_consistency(coinbase)
+            .expect("Block validation failed")
     }
 }

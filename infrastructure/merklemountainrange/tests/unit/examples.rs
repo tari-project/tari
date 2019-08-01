@@ -1,7 +1,7 @@
 use blake2::Blake2b;
 use digest::Digest;
 use merklemountainrange::mmr::{self, *};
-use serde_derive::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use std::convert::TryInto;
 use tari_utilities::Hashable;
 
