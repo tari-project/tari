@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use blake2::Blake2b;
-use criterion::{Criterion, *};
+use criterion::{criterion_group, criterion_main, Criterion};
 use merklemountainrange::mmr::*;
 use rand::{rngs::OsRng, Rng, RngCore};
 use serde::{Deserialize, Serialize};
