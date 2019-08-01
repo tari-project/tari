@@ -22,8 +22,7 @@
 
 use crate::{merkle_storage::*, merklenode::*};
 use croaring::Treemap;
-use serde::{de::DeserializeOwned, ser::Serialize};
-use serde_derive::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::collections::HashMap;
 use tari_utilities::hex::*;
 
@@ -434,7 +433,7 @@ mod tests {
     use crate::mmr::*;
     use blake2::Blake2b;
     use digest::Digest;
-    use serde_derive::{Deserialize, Serialize};
+    use serde::{Deserialize, Serialize};
     use std::fs;
     use tari_storage::lmdb::*;
     use tari_utilities::Hashable;

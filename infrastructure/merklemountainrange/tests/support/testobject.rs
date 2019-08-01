@@ -22,7 +22,8 @@
 
 use blake2::Blake2b;
 use digest::Digest;
-use serde_derive::{Deserialize, Serialize};
+
+use serde::{Deserialize, Serialize};
 use tari_infra_derive::Hashable;
 use tari_utilities::{ExtendBytes, Hashable};
 
