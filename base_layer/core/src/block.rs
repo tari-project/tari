@@ -24,30 +24,21 @@
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 use crate::{
     blockheader::BlockHeader,
-    emission::*,
     tari_amount::*,
     transaction::*,
-    transaction_protocol::{build_challenge, TransactionMetadata},
     types::{
         BlindingFactor,
         Commitment,
         CommitmentFactory,
         PrivateKey,
-        RangeProof,
+        ProofOfWork,
         RangeProofService,
-        Signature,
         COMMITMENT_FACTORY,
         PROVER,
     },
 };
 use serde::{Deserialize, Serialize};
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    keys::{PublicKey, SecretKey},
-    range_proof::RangeProofService as RPS,
-    ristretto::pedersen::PedersenCommitment,
-};
-use tari_utilities::ByteArray;
+use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::PublicKey, ristretto::pedersen::PedersenCommitment};
 
 //----------------------------------------         Blocks         ----------------------------------------------------//
 
@@ -72,21 +63,6 @@ impl Block {
     pub fn check_pow(&self) -> Result<(), TransactionError> {
         Ok(())
     }
-
-    /// This function will calculate the pow for the block and fill out the pow header field
-    pub fn calculate_pow(&mut self) -> Result<(), TransactionError> {
-        // todo
-        Ok(())
-    }
-}
-
-// todo this probably need to move somewhere else
-/// This function will create the correct amount for the coinbase given the block height, it will provide the answer in
-/// µTari (micro Tari)
-pub fn calculate_coinbase(block_height: u64) -> MicroTari {
-    // todo fill this in properly as a function and not a constant
-    let schedule = EmissionSchedule::new(MicroTari::from(10_000_000), 0.999, MicroTari::from(100));
-    schedule.block_reward(block_height)
 }
 
 //----------------------------------------     AggregateBody      ----------------------------------------------------//
@@ -348,43 +324,6 @@ impl BlockBuilder {
         self
     }
 
-    /// This function will create a coinbase from the provided secret key. The coinbase will be added to the outputs and
-    /// kernels.
-    pub fn create_coinbase(mut self, key: PrivateKey) -> Self {
-        let mut rng = rand::OsRng::new().unwrap();
-        // build output
-        let amount = self.total_fee + calculate_coinbase(self.header.height);
-        let v = PrivateKey::from(u64::from(amount));
-        let commitment = COMMITMENT_FACTORY.commit(&key, &v);
-        let rr = PROVER.construct_proof(&v, amount.into()).unwrap();
-        let output = TransactionOutput::new(
-            OutputFeatures::COINBASE_OUTPUT,
-            commitment,
-            RangeProof::from_bytes(&rr).unwrap(),
-        );
-
-        // create kernel
-        let tx_meta = TransactionMetadata {
-            fee: 0.into(),
-            lock_height: 0,
-        };
-        let r = PrivateKey::random(&mut rng);
-        let e = build_challenge(&PublicKey::from_secret_key(&r), &tx_meta);
-        let s = Signature::sign(key.clone(), r, &e).unwrap();
-        let excess = COMMITMENT_FACTORY.commit_value(&key, 0);
-        let kernel = KernelBuilder::new()
-            .with_features(KernelFeatures::COINBASE_KERNEL)
-            .with_fee(0.into())
-            .with_lock_height(0)
-            .with_excess(&excess)
-            .with_signature(&s)
-            .build()
-            .unwrap();
-        self.kernels.push(kernel);
-        self.outputs.push(output);
-        self
-    }
-
     /// This will finish construction of the block and create the block
     pub fn build(self) -> Block {
         let mut block = Block {
@@ -395,17 +334,10 @@ impl BlockBuilder {
         block
     }
 
-    /// This will finish construction of the block, do proof of work and create the block
-    pub fn build_with_pow(self) -> Block {
-        let mut block = Block {
-            header: self.header,
-            body: AggregateBody::new(self.inputs, self.outputs, self.kernels),
-        };
-        block.body.sort();
-        block
-            .calculate_pow()
-            .expect("failure to calculate the block proof of work");
-        block
+    /// Add the provided ProofOfWork to the block
+    pub fn with_pow(self, _pow: ProofOfWork) -> Self {
+        // TODO
+        self
     }
 
     /// This is just a wrapper function to return a blank header

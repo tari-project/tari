@@ -446,15 +446,9 @@ impl Transaction {
     {
         self.body.validate_internal_consistency(&self.offset, prover, factory)
     }
-}
 
-/// This will encapsulate the aggregate body inside a transaction with a zero offset.
-impl From<AggregateBody> for Transaction {
-    fn from(body: AggregateBody) -> Self {
-        Transaction {
-            body,
-            offset: BlindingFactor::default(),
-        }
+    pub fn get_body(&self) -> &AggregateBody {
+        &self.body
     }
 }
 
