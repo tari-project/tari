@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// NOTE: These tests use ports 11113 to 11119
+// NOTE: These tests use ports 11113 to 11122
 use crate::support::random_string;
 use rand::rngs::OsRng;
 use std::{sync::Arc, thread, time::Duration};
@@ -69,7 +69,7 @@ fn setup_dht_service(
     peer_storage: CommsDatabase,
 ) -> (ServiceExecutor, Arc<DHTServiceApi>, Arc<CommsServices<TariMessageType>>)
 {
-    let control_service_address = node_identity.control_service_address.clone(); // TODO Remove
+    let control_service_address = node_identity.control_service_address().unwrap();
     let dht_service = DHTService::new();
     let dht_api = dht_service.get_api();
 
@@ -164,8 +164,6 @@ fn test_dht_join_propagation() {
 #[test]
 #[allow(non_snake_case)]
 fn test_dht_discover_propagation() {
-    let _ = simple_logger::init();
-
     // Create 3 nodes where only Node B knows A and C, but A and C want to talk to each other
     let node_A_identity = new_node_identity("127.0.0.1:11116".parse().unwrap());
     let node_B_identity = new_node_identity("127.0.0.1:11117".parse().unwrap());
@@ -240,4 +238,73 @@ fn test_dht_discover_propagation() {
     assert!(node_D_peer_manager
         .exists(&node_A_identity.identity.public_key)
         .unwrap());
+}
+
+#[test]
+#[allow(non_snake_case)]
+fn test_dht_join_on_service_start() {
+    // Create 2 nodes where Node A has a old control_service_address for Node B
+    let node_A_identity = new_node_identity("127.0.0.1:11120".parse().unwrap());
+    let outdated_node_B_identity = new_node_identity("127.0.0.1:11121".parse().unwrap());
+    let node_B_identity = outdated_node_B_identity.clone(); // new_node_identity("127.0.0.1:11122".parse().unwrap());
+    node_B_identity
+        .set_control_service_address("127.0.0.1:11121".parse().unwrap())
+        .unwrap();
+
+    // Setup Node A
+    let node_A_tmpdir = TempDir::new(random_string(8).as_str()).unwrap();
+    let node_A_database_name = "node_A";
+    let (node_A_services, _node_A_dht_service_api, comms_A) = setup_dht_service(
+        node_A_identity.clone(),
+        create_peer_storage(&node_A_tmpdir, node_A_database_name, vec![outdated_node_B_identity
+            .clone()
+            .into()]),
+    );
+    // Wait for Node A to startup
+    pause();
+
+    // Setup Node B
+    let node_B_tmpdir = TempDir::new(random_string(8).as_str()).unwrap();
+    let node_B_database_name = "node_B";
+    let (node_B_services, _node_B_dht_service_api, _comms_B) = setup_dht_service(
+        node_B_identity.clone(),
+        create_peer_storage(&node_B_tmpdir, node_B_database_name, vec![node_A_identity
+            .clone()
+            .into()]),
+    );
+    // Node A and B are aware of each other on startup but Node A has outdated information for Node B
+    // As Node B comes online it will send a join request to all its neighbouring peers
+
+    pause();
+    // The NetAddress of Node A has changed, the DHT Service will detect the change and inform the neighbouring peers
+    // using a join request
+    let node_A_updated_net_address: NetAddress = "127.0.0.1:11122".parse().unwrap();
+    comms_A
+        .node_identity()
+        .set_control_service_address(node_A_updated_net_address.clone())
+        .unwrap();
+
+    pause();
+    node_A_services.shutdown().unwrap();
+    node_B_services.shutdown().unwrap();
+
+    // Restore PeerStorage of Node A and B
+    pause();
+    let node_A_peer_manager =
+        PeerManager::new(create_peer_storage(&node_A_tmpdir, node_A_database_name, vec![])).unwrap();
+    let node_B_peer_manager =
+        PeerManager::new(create_peer_storage(&node_B_tmpdir, node_B_database_name, vec![])).unwrap();
+    // Check that Node A is aware of the updated NetAddress of Node B
+    let mut peer = node_A_peer_manager
+        .find_with_public_key(&node_B_identity.identity.public_key)
+        .unwrap();
+    assert!(peer
+        .addresses
+        .find_address_mut(&node_B_identity.control_service_address().unwrap())
+        .is_ok());
+    // Check that Node B is aware of the updated NetAddress of Node A
+    let mut peer = node_B_peer_manager
+        .find_with_public_key(&node_A_identity.identity.public_key)
+        .unwrap();
+    assert!(peer.addresses.find_address_mut(&node_A_updated_net_address).is_ok());
 }

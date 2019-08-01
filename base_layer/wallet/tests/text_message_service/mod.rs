@@ -77,14 +77,14 @@ fn test_text_message_service() {
         .add_contact(Contact::new(
             "Bob".to_string(),
             node_2_identity.identity.public_key.clone(),
-            node_2_identity.control_service_address.clone(),
+            node_2_identity.control_service_address().unwrap(),
         ))
         .unwrap();
     node_1_tms
         .add_contact(Contact::new(
             "Carol".to_string(),
             node_3_identity.identity.public_key.clone(),
-            node_3_identity.control_service_address.clone(),
+            node_3_identity.control_service_address().unwrap(),
         ))
         .unwrap();
 
@@ -92,7 +92,7 @@ fn test_text_message_service() {
         .add_contact(Contact::new(
             "Alice".to_string(),
             node_1_identity.identity.public_key.clone(),
-            node_1_identity.control_service_address.clone(),
+            node_1_identity.control_service_address().unwrap(),
         ))
         .unwrap();
 
@@ -100,7 +100,7 @@ fn test_text_message_service() {
         .add_contact(Contact::new(
             "Alice".to_string(),
             node_1_identity.identity.public_key.clone(),
-            node_1_identity.control_service_address.clone(),
+            node_1_identity.control_service_address().unwrap(),
         ))
         .unwrap();
 

@@ -44,6 +44,7 @@ use std::{
     time::Duration,
 };
 use tari_comms::{
+    connection::NetAddress,
     domain_connector::MessageInfo,
     message::{Frame, Message, MessageEnvelope, MessageFlags, NodeDestination},
     outbound_message_service::{outbound_message_service::OutboundMessageService, BroadcastStrategy, ClosestRequest},
@@ -58,6 +59,7 @@ const LOG_TARGET: &str = "base_layer::p2p::dht";
 /// The DHTService manages joining the network and discovery of peers.
 pub struct DHTService {
     node_identity: Option<Arc<NodeIdentity>>,
+    prev_control_service_address: Option<NetAddress>,
     oms: Option<Arc<OutboundMessageService>>,
     peer_manager: Option<Arc<PeerManager>>,
     api: ServiceApiWrapper<DHTServiceApi, DHTApiRequest, DHTApiResult>,
@@ -68,6 +70,7 @@ impl DHTService {
     pub fn new() -> Self {
         Self {
             node_identity: None,
+            prev_control_service_address: None,
             oms: None,
             peer_manager: None,
             api: Self::setup_api(),
@@ -92,7 +95,7 @@ impl DHTService {
         let node_identity = self.node_identity.as_ref().ok_or(DHTError::NodeIdentityUndefined)?;
         Ok(JoinMessage {
             node_id: node_identity.identity.node_id.clone(),
-            net_address: vec![node_identity.control_service_address.clone()],
+            net_address: vec![node_identity.control_service_address()?],
         })
     }
 
@@ -101,7 +104,7 @@ impl DHTService {
         let node_identity = self.node_identity.as_ref().ok_or(DHTError::NodeIdentityUndefined)?;
         Ok(DiscoverMessage {
             node_id: node_identity.identity.node_id.clone(),
-            net_address: vec![node_identity.control_service_address.clone()],
+            net_address: vec![node_identity.control_service_address()?],
         })
     }
 
@@ -272,6 +275,21 @@ impl DHTService {
         Ok(())
     }
 
+    /// The auto_join function sends a join request on startup or on the detection of a control_service_address change
+    fn auto_join(&mut self) -> Result<(), DHTError> {
+        let node_identity = self.node_identity.as_ref().ok_or(DHTError::NodeIdentityUndefined)?;
+
+        if match self.prev_control_service_address.as_ref() {
+            Some(control_service_address) => *control_service_address != node_identity.control_service_address()?, /* Identity change detected */
+            None => true, // Startup detected
+        } {
+            self.prev_control_service_address = Some(node_identity.control_service_address()?);
+            self.send_join()?;
+        }
+
+        Ok(())
+    }
+
     /// This handler is called when the Service executor loops receives an API request
     fn handle_api_message(&self, msg: DHTApiRequest) -> Result<(), ServiceError> {
         trace!(
@@ -335,6 +353,13 @@ impl Service for DHTService {
                 Ok(_) => {},
                 Err(err) => {
                     error!(target: LOG_TARGET, "DHT service had error: {:?}", err);
+                },
+            }
+
+            match self.auto_join() {
+                Ok(_) => {},
+                Err(err) => {
+                    error!(target: LOG_TARGET, "DHT service had an auto join error: {:?}", err);
                 },
             }
 
