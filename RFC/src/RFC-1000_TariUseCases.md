@@ -165,7 +165,6 @@ manifested are provided here:
 * Drives advance purchase, e.g. if you are one of the first 100,000 people to buy tickets to Indiana Jones World, you 
 have a chance of winning this 
   1 of 5 artefact.
-
 * Has superpowers and utility, e.g. if you have this item while visiting Indiana Jones World, you get to skip the line 
 three times.
 
