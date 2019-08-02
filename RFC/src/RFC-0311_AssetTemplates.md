@@ -88,29 +88,30 @@ it to the Tari Digital Assets Network (DAN).
 
 The instruction is in JSON format and MUST contain the following fields:
 
-| Name                               | Type          | Description                                                  |
-| :--------------------------------- | :------------ | :----------------------------------------------------------- |
-| **Asset Description**              |               |                                                              |
-| issuer                             | PubKey        | The public key of the creator of the asset. Refer to [issuer](#issuer). |
-| name                               | `string[64]`  | The name or identifier for the asset. Refer to [Name and Description](#name-and-description). |
-| description                        | `string[216]` | A short description of the asset - with name, fits in a tweet. Refer to [Name and Description](#name-and-description). |
-| raid_id                            | `string[15]`  | The [Registered Asset Issuer Domain (RAID_ID)](#raid-id) for the asset. |
-| fqdn                               | `string[*]`   | The Fully Qualified Domain Name (FQDN) corresponding to the `raid_id`. Up to 255 characters in length; or "No_FQDN" to use the default. |
-| public_nonce                       | PubKey        | Public nonce part of the creator signature.                  |
-| template_id                        | `u64`         | The template descriptor. Refer to [Template ID](#template-id). |
-| asset_expiry                       | `u64`         | A timestamp or block height after which the asset will automatically expire. Zero for arbitrarily long-lived assets. |
-| **Validation Committee Selection** |               |                                                              |
-| committee_mode                     | `u8`          | The validation committee nomination mode, either `CREATOR_NOMINATION` (0) or `PUBLIC_NOMINATION` (1). |
-| committee_parameters               | Object        | Refer to [Committee Parameters](#committee-parameters).      |
-| asset_creation_fee                 | `u64`         | The fee the issuer is paying, in microTari, for the asset creation process. |
-| commitment                         | `u256`        | A time-locked commitment for the asset creation fee.         |
-| initial_state_hash                 | `u256`        | The hash of the canonical serialization of the initial template state (of the template-specific data). |
-| initial_state_length               | `u64`         | Size in bytes of initial state.                              |
-| **Template-specific Data**         | Object        | Template-specific metadata can be defined in this section.   |
-| **Signatures**                     |               |                                                              |
-| metadata_hash                      | `u256`        | A hash of the previous three sections' data, in canonical format (`m`). |
+| Name                               | Type          | Description                                                                                                                                             |
+| ---------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Asset Description**              |               |                                                                                                                                                         |
+| issuer                             | PubKey        | The public key of the creator of the asset. Refer to [issuer](#issuer).                                                                                 |
+| name                               | `string[64]`  | The name or identifier for the asset. Refer to [Name and Description](#name-and-description).                                                           |
+| description                        | `string[216]` | A short description of the asset - with name, fits in a tweet. Refer to [Name and Description](#name-and-description).                                  |
+| raid_id                            | `string[15]`  | The [Registered Asset Issuer Domain (RAID_ID)](#raid-id) for the asset.                                                                                 |
+| fqdn                               | `string[*]`   | The Fully Qualified Domain Name (FQDN) corresponding to the `raid_id`. Up to 255 characters in length; or "No_FQDN" to use the default.                 |
+| public_nonce                       | PubKey        | Public nonce part of the creator signature.                                                                                                             |
+| template_id                        | `u64`         | The template descriptor. Refer to [Template ID](#template-id).                                                                                          |
+| asset_expiry                       | `u64`         | A timestamp or block height after which the asset will automatically expire. Zero for arbitrarily long-lived assets.                                    |
+| **Validation Committee Selection** |               |                                                                                                                                                         |
+| committee_mode                     | `u8`          | The validation committee nomination mode, either `CREATOR_NOMINATION` (0) or `PUBLIC_NOMINATION` (1).                                                   |
+| committee_parameters               | Object        | Refer to [Committee Parameters](#committee-parameters).                                                                                                 |
+| asset_creation_fee                 | `u64`         | The fee the issuer is paying, in microTari, for the asset creation process.                                                                             |
+| commitment                         | `u256`        | A time-locked commitment for the asset creation fee.                                                                                                    |
+| initial_state_hash                 | `u256`        | The hash of the canonical serialization of the initial template state (of the template-specific data).                                                  |
+| initial_state_length               | `u64`         | Size in bytes of initial state.                                                                                                                         |
+| **Template-specific Data**         | Object        | Template-specific metadata can be defined in this section.                                                                                              |
+| **Signatures**                     |               |                                                                                                                                                         |
+| metadata_hash                      | `u256`        | A hash of the previous three sections' data, in canonical format (`m`).                                                                                 |
 | creator_sig                        | `u256`        | A digital signature of the message `H(R ‖ P ‖ RAID_ID ‖ m)`, using the asset creator’s private key corresponding to the `issuer` Public Key Hash (PKH). |
-| commitment_sig                     | `u256`        | A signature proving the issuer is able to spend the commitment to the asset fee. |
+| commitment_sig                     | `u256`        | A signature proving the issuer is able to spend the commitment to the asset fee.                                                                        |
+
 
 #### Committee Parameters
 
@@ -126,9 +127,9 @@ If `committee_mode` is `PUBLIC_NOMINATION`, the `committee_parameters` object is
 
 | Name                    | Type  | Description                                                                                                           |
 |:------------------------|:------|:----------------------------------------------------------------------------------------------------------------------|
-| node_threshold          | `u32` | The required number of Validator Nodes (VNs) that must register to execute instructions for this asset.                     |
-| minimum_collateral      | `u64` | The minimum amount of Tari a VN must put up in collateral in order to execute instructions for this asset.|
-| node_selection_strategy | `u32` | The selection strategy to employ allowing nodes to register to manage this asset.                                      |
+| node_threshold          | `u32` | The required number of Validator Nodes (VNs) that must register to execute instructions for this asset.               |
+| minimum_collateral      | `u64` | The minimum amount of Tari a VN must put up in collateral in order to execute instructions for this asset.            |
+| node_selection_strategy | `u32` | The selection strategy to employ allowing nodes to register to manage this asset.                                     |
 
 
 #### Issuer
