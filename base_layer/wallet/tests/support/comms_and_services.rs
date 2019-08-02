@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{sync::Arc, time::Duration};
+use std::time::Duration;
 use tari_comms::{
     builder::CommsServices,
     connection_manager::PeerConnectionConfig,
@@ -28,34 +28,8 @@ use tari_comms::{
     peer_manager::{NodeIdentity, Peer},
     CommsBuilder,
 };
-use tari_p2p::{
-    services::{ServiceExecutor, ServiceRegistry},
-    tari_message::TariMessageType,
-};
+use tari_p2p::{services::ServiceRegistry, tari_message::TariMessageType};
 use tari_storage::lmdb_store::LMDBDatabase;
-use tari_wallet::text_message_service::{TextMessageService, TextMessageServiceApi};
-
-pub fn setup_text_message_service(
-    node_identity: NodeIdentity,
-    peers: Vec<NodeIdentity>,
-    peer_database: LMDBDatabase,
-    database_path: String,
-) -> (
-    ServiceExecutor,
-    Arc<TextMessageServiceApi>,
-    CommsServices<TariMessageType>,
-)
-{
-    let tms = TextMessageService::new(node_identity.identity.public_key.clone(), database_path);
-    let tms_api = tms.get_api();
-
-    let services = ServiceRegistry::new().register(tms);
-
-    let comms = setup_comms_services(node_identity, peers, peer_database, &services);
-
-    (ServiceExecutor::execute(&comms, services), tms_api, comms)
-}
-
 pub fn setup_comms_services(
     node_identity: NodeIdentity,
     peers: Vec<NodeIdentity>,

@@ -20,9 +20,36 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::support::{comms_and_services::setup_text_message_service, data::*, utils::assert_change};
-use tari_comms::peer_manager::NodeIdentity;
-use tari_wallet::text_message_service::Contact;
+use crate::support::{comms_and_services::setup_comms_services, data::*, utils::assert_change};
+use std::sync::Arc;
+use tari_comms::{builder::CommsServices, peer_manager::NodeIdentity};
+use tari_p2p::{
+    services::{ServiceExecutor, ServiceRegistry},
+    tari_message::TariMessageType,
+};
+use tari_storage::lmdb_store::LMDBDatabase;
+use tari_wallet::text_message_service::{Contact, TextMessageService, TextMessageServiceApi};
+
+pub fn setup_text_message_service(
+    node_identity: NodeIdentity,
+    peers: Vec<NodeIdentity>,
+    peer_database: LMDBDatabase,
+    database_path: String,
+) -> (
+    ServiceExecutor,
+    Arc<TextMessageServiceApi>,
+    CommsServices<TariMessageType>,
+)
+{
+    let tms = TextMessageService::new(node_identity.identity.public_key.clone(), database_path);
+    let tms_api = tms.get_api();
+
+    let services = ServiceRegistry::new().register(tms);
+
+    let comms = setup_comms_services(node_identity, peers, peer_database, &services);
+
+    (ServiceExecutor::execute(&comms, services), tms_api, comms)
+}
 
 #[test]
 fn test_text_message_service() {
