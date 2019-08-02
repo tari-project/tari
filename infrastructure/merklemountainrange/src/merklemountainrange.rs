@@ -275,14 +275,14 @@ where
             } else if peaks[i - 1] == result[cur_proof_len - 1].clone().unwrap() {
                 result.insert(result.len() - 1, Some(peaks[i - 2].clone()));
                 if cur_proof_len > 2 {
-                    result[cur_proof_len - 1] = None; // this is a calculated result, so we can remove this, we only remove if there was more than 2
-                                                      // values
+                    result[cur_proof_len - 1] = None; // this is a calculated result, so we can remove this, we only
+                                                      // remove if there was more than 2 values
                 }
                 was_on_correct_peak = true;
             } else if peaks[i - 2] == result[cur_proof_len - 1].clone().unwrap() {
                 if cur_proof_len > 2 {
-                    result[cur_proof_len - 1] = None; // this is a calculated result, so we can remove this, we only remove if there was more than 2
-                                                      // values
+                    result[cur_proof_len - 1] = None; // this is a calculated result, so we can remove this, we only
+                                                      // remove if there was more than 2 values
                 }
                 result.push(Some(peaks[i - 1].clone()));
                 was_on_correct_peak = true;
@@ -521,7 +521,8 @@ where
         if is_node_right(self.get_last_added_index()) {
             self.add_single_no_leaf(self.get_last_added_index())
         } else {
-            self.current_peak_height = self.calc_peak_height(); // because we have now stopped adding right nodes, we need to update the height of the mmr
+            self.current_peak_height = self.calc_peak_height(); // because we have now stopped adding right nodes, we
+                                                                // need to update the height of the mmr
         }
     }
 

@@ -607,5 +607,4 @@ mod test {
             Err(TransactionManagerError::TransactionDoesNotExistError)
         );
     }
-
 }

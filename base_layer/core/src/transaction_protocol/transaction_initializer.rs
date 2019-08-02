@@ -593,5 +593,4 @@ mod test {
             Err(e) => assert_eq!(e.message, "Range proof could not be verified".to_string()),
         }
     }
-
 }

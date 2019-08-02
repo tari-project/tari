@@ -99,7 +99,6 @@ impl SAFService {
 
             // TODO: check that the request came from a peer that is in a similar region of the network
             // TODO: construct a response message with all the messages that are applicable to that peer
-
         }
 
         Ok(())
@@ -117,7 +116,6 @@ impl SAFService {
             // TODO: submit each message in the message set to the InboundMessageService to get handled and forwarded to
             // the correct service. Duplicate retrieved messages will be discarded by the MessageCache of
             // the comms system
-
         }
 
         Ok(())
