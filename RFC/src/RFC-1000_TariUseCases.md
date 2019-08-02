@@ -157,7 +157,6 @@ manifested are provided here:
 #### Crystal Skull of Akador
 
 * Is rare, it is 1 of 5.
-
 * Is legendary:
   * https://indianajones.fandom.com/wiki/Crystal_Skull_of_Akator;
   * press reports that this artefact could be worth $X.
