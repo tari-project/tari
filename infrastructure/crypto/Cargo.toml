@@ -34,6 +34,11 @@ avx2 = ["curve25519-dalek/avx2_backend", "bulletproofs/avx2_backend"]
 criterion = "0.2"
 bincode = "1.1.4"
 
+[lib]
+# Disable benchmarks to allow Criterion to take over
+bench = false
+
 [[bench]]
-name = "signatures"
+name = "benches"
+path = "benches/mod.rs"
 harness = false

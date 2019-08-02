@@ -23,8 +23,7 @@
 pub type ObjectHash = Vec<u8>;
 pub type ObjectHashSlice = [u8];
 
-use serde::{de::DeserializeOwned, ser::Serialize};
-use serde_derive::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 /// This is the MerkleNode struct. This struct represents a merkle node in the tree,
 #[derive(Debug, Clone, Serialize, Deserialize)]

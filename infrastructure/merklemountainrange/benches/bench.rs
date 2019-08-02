@@ -20,21 +20,19 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#[macro_use]
-extern crate criterion;
-
-#[macro_use]
-extern crate serde;
-
 use blake2::Blake2b;
-use criterion::Criterion;
+use criterion::{criterion_group, criterion_main, Criterion};
 use merklemountainrange::mmr::*;
 use rand::{rngs::OsRng, Rng, RngCore};
+use serde::{Deserialize, Serialize};
 use std::time::Duration;
+use tari_storage::lmdb::*;
+use tempdir::TempDir;
 
 const TEST_SIZES: &[usize] = &[10, 100, 1000, 10_000, 100_000];
 
 mod test_structures {
+    use super::*;
     use std::slice;
 
     use std::mem;
@@ -72,44 +70,40 @@ fn append(c: &mut Criterion) {
     );
 }
 
-// TODO: Can't work out the parameters needed for storage
-// fn apply_state_with_storage(c: &mut Criterion) {
-//    use test_structures::*;
-//
-//    c.bench_function_over_inputs(
-//        "apply_state_with_storage",
-//        move |b, &&size| {
-//            let name: String = OsRng.next_u64().to_string();
-//
-//
-//            let tmp_dir = TempDir::new(&name).unwrap();
-//            println!("{:?}", tmp_dir);
-//            let builder = LMDBBuilder::new();
-//            let mut store = builder
-//                .set_mapsize(5)
-//                .set_path(tmp_dir.path().to_str().unwrap())
-//                .add_database(&format!("{}_mmr_checkpoints", &name))
-//                .add_database(&format!("{}_mmr_objects", &name))
-//                .add_database(&format!("{}_init", &name))
-//                .build()
-//                .unwrap();
-//
-//            let mut mmr = MerkleMountainRange::<H, Blake2b>::new();
-//            mmr.init_persistance_store(&name, 1);
-//
-//            b.iter(|| {
-//                for _ in 0..size {
-//                    mmr.append(vec![H(OsRng.next_u64())]).unwrap();
-//                    dbg!("checkpointing");
-//                    mmr.checkpoint().unwrap();
-//                    dbg!("applying");
-//                    mmr.apply_state(&mut store).unwrap();
-//                }
-//            });
-//        },
-//        TEST_SIZES,
-//    );
-//}
+fn apply_state_with_storage(c: &mut Criterion) {
+    use test_structures::*;
+
+    c.bench_function_over_inputs(
+        "apply_state_with_storage",
+        move |b, &&size| {
+            let name: String = OsRng.next_u64().to_string();
+
+            let tmp_dir = TempDir::new(&name).unwrap();
+            println!("{:?}", tmp_dir);
+            let builder = LMDBBuilder::new();
+            let mut store = builder
+                .set_mapsize(50)
+                .set_path(tmp_dir.path().to_str().unwrap())
+                .add_database(&format!("{}_mmr_checkpoints", &name))
+                .add_database(&format!("{}_mmr_objects", &name))
+                .add_database(&format!("{}_init", &name))
+                .build()
+                .unwrap();
+
+            let mut mmr = MerkleMountainRange::<H, Blake2b>::new();
+            mmr.init_persistance_store(&name, 0);
+
+            b.iter(|| {
+                for _ in 0..size {
+                    mmr.append(vec![H(OsRng.next_u64())]).unwrap();
+                    mmr.checkpoint().unwrap();
+                    mmr.apply_state(&mut store).unwrap();
+                }
+            });
+        },
+        TEST_SIZES,
+    );
+}
 
 fn get_merkle_root(c: &mut Criterion) {
     use test_structures::*;
@@ -182,6 +176,6 @@ fn get_proof(c: &mut Criterion) {
 criterion_group!(
 name = merkle_mountain_range;
 config= Criterion::default().warm_up_time(Duration::from_millis(500)).sample_size(10);
-targets= append,get_merkle_root,get_object,get_proof);
+targets= append,get_merkle_root,get_object,get_proof,apply_state_with_storage);
 
 criterion_main!(merkle_mountain_range);

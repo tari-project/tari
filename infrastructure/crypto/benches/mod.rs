@@ -23,49 +23,12 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
-// This file is used to store the genesis block
-use crate::{
-    block::{AggregateBody, Block},
-    blockheader::BlockHeader,
-    types::*,
-};
+use criterion::criterion_main;
 
-use chrono::{DateTime, NaiveDate, Utc};
-use tari_crypto::ristretto::*;
+pub mod range_proof;
+pub mod signatures;
 
-pub fn get_genesis_block() -> Block {
-    let blockheaders = get_gen_header();
-    let body = get_gen_body();
-    Block {
-        header: blockheaders,
-        body,
-    }
-}
+use range_proof::range_proofs;
+use signatures::signatures;
 
-pub fn get_gen_header() -> BlockHeader {
-    BlockHeader {
-        version: 0,
-        /// Height of this block since the genesis block (height 0)
-        height: 0,
-        /// Hash of the block previous to this in the chain.
-        prev_hash: [0; 32],
-        /// Timestamp at which the block was built.
-        timestamp: DateTime::<Utc>::from_utc(NaiveDate::from_ymd(2020, 1, 1).and_hms(1, 1, 1), Utc),
-        /// This is the MMR root of the outputs
-        output_mr: [0; 32],
-        /// This is the MMR root of the range proofs
-        range_proof_mr: [0; 32],
-        /// This is the MMR root of the kernels
-        kernel_mr: [0; 32],
-        /// Total accumulated sum of kernel offsets since genesis block. We can derive the kernel offset sum for *this*
-        /// block from the total kernel offset of the previous block header.
-        total_kernel_offset: RistrettoSecretKey::from(0),
-        /// Nonce used
-        /// Proof of work summary
-        pow: ProofOfWork::default(),
-    }
-}
-
-pub fn get_gen_body() -> AggregateBody {
-    AggregateBody::empty()
-}
+criterion_main!(signatures, range_proofs);

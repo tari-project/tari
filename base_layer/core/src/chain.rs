@@ -29,7 +29,7 @@
 //!
 //! The MMR also provides a method to save the MMR to disc. This is internally handled and we use LMDB to store the MMR.
 
-use crate::{block::Block, block_chain_state::BlockchainState, error::*, pow::*, types::*};
+use crate::{block_chain_state::BlockchainState, blocks::block::Block, error::*, pow::*, types::*};
 use std::collections::HashMap;
 use tari_utilities::Hashable;
 

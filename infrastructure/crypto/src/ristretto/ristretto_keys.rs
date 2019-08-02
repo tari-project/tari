@@ -119,6 +119,13 @@ impl ByteArray for RistrettoSecretKey {
     }
 }
 
+impl Hash for RistrettoSecretKey {
+    /// Require the implementation of the Hash trait for Hashmaps
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.as_bytes().hash(state);
+    }
+}
+
 //----------------------------------   RistrettoSecretKey Mul / Add / Sub --------------------------------------------//
 
 impl<'a, 'b> Mul<&'b RistrettoPublicKey> for &'a RistrettoSecretKey {

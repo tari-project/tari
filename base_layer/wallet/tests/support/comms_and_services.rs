@@ -51,6 +51,18 @@ pub fn setup_text_message_service(
 
     let services = ServiceRegistry::new().register(tms);
 
+    let comms = setup_comms_services(node_identity, peers, peer_database, &services);
+
+    (ServiceExecutor::execute(&comms, services), tms_api, comms)
+}
+
+pub fn setup_comms_services(
+    node_identity: NodeIdentity,
+    peers: Vec<NodeIdentity>,
+    peer_database: LMDBDatabase,
+    services: &ServiceRegistry,
+) -> CommsServices<TariMessageType>
+{
     let comms = CommsBuilder::new()
         .with_routes(services.build_comms_routes())
         .with_node_identity(node_identity.clone())
@@ -78,5 +90,5 @@ pub fn setup_text_message_service(
             .unwrap();
     }
 
-    (ServiceExecutor::execute(&comms, services), tms_api, comms)
+    comms
 }
