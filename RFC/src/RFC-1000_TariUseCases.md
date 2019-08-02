@@ -160,7 +160,6 @@ manifested are provided here:
 * Is legendary:
   * https://indianajones.fandom.com/wiki/Crystal_Skull_of_Akator;
   * press reports that this artefact could be worth $X.
-
 * Drives collectability.
 * Drives advance purchase, e.g. if you are one of the first 100,000 people to buy tickets to Indiana Jones World, you 
 have a chance of winning this 
