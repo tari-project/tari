@@ -444,7 +444,7 @@ impl Service for OutputManagerService {
     /// Function called by the Service Executor in its own thread. This function polls for both API request and Comms
     /// layer messages from the Message Broker
     fn execute(&mut self, context: ServiceContext) -> Result<(), ServiceError> {
-        debug!(target: LOG_TARGET, "Starting Text Message Service executor");
+        debug!(target: LOG_TARGET, "Starting Output Manager Service executor");
         loop {
             if let Some(msg) = context.get_control_message(Duration::from_millis(5)) {
                 match msg {

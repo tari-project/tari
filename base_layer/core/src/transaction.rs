@@ -105,7 +105,7 @@ impl UnblindedOutput {
         }
     }
 
-    /// Commits an UnblindedOutput into a Transaction input with default output features.
+    /// Commits an UnblindedOutput into a Transaction input
     pub fn as_transaction_input(&self, factory: &CommitmentFactory, features: OutputFeatures) -> TransactionInput {
         let commitment = factory.commit(&self.spending_key, &self.value.into());
         TransactionInput { commitment, features }

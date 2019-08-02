@@ -30,7 +30,7 @@ use crate::{
     transaction::{KernelBuilder, MAX_TRANSACTION_INPUTS, MAX_TRANSACTION_OUTPUTS, MINIMUM_TRANSACTION_FEE},
     transaction_protocol::{
         build_challenge,
-        recipient::{RecipientInfo, RecipientSignedTransactionData},
+        recipient::{RecipientInfo, RecipientSignedMessage},
         transaction_initializer::SenderTransactionInitializer,
         TransactionMetadata,
         TransactionProtocolError as TPE,
@@ -38,7 +38,10 @@ use crate::{
 };
 use digest::Digest;
 use serde::{Deserialize, Serialize};
+use std::convert::TryInto;
+use tari_comms::message::{Message, MessageError};
 use tari_crypto::ristretto::pedersen::PedersenCommitment;
+use tari_p2p::tari_message::{BlockchainMessage, TariMessageType};
 use tari_utilities::ByteArray;
 
 //----------------------------------------   Local Data types     ----------------------------------------------------//
@@ -91,15 +94,24 @@ pub struct SingleRoundSenderData {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-pub enum SenderMessage {
+pub enum TransactionSenderMessage {
     None,
     Single(Box<SingleRoundSenderData>),
     // TODO: Three round types
     Multiple,
 }
 
+/// Convert `SenderMessage` into a Tari Message that can be sent via the tari comms stack
+impl TryInto<Message> for TransactionSenderMessage {
+    type Error = MessageError;
+
+    fn try_into(self) -> Result<Message, Self::Error> {
+        Ok((TariMessageType::new(BlockchainMessage::Transaction), self).try_into()?)
+    }
+}
+
 //----------------------------------------  Sender State Protocol ----------------------------------------------------//
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct SenderTransactionProtocol {
     pub(super) state: SenderState,
 }
@@ -229,7 +241,7 @@ impl SenderTransactionProtocol {
     /// Add the signed transaction from the recipient and move to the next state
     pub fn add_single_recipient_info(
         &mut self,
-        rec: RecipientSignedTransactionData,
+        rec: RecipientSignedMessage,
         prover: &RangeProofService,
     ) -> Result<(), TPE>
     {
@@ -397,7 +409,7 @@ pub fn calculate_tx_id<D: Digest>(pub_nonce: &PublicKey, index: usize) -> u64 {
 //----------------------------------------      Sender State      ----------------------------------------------------//
 
 /// This enum contains all the states of the Sender state machine
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(super) enum SenderState {
     /// Transitional state that kicks of the relevant transaction protocol
     Initializing(Box<RawTransactionInfo>),

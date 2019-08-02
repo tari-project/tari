@@ -63,8 +63,10 @@ pub mod PeerMessage {
 #[allow(non_snake_case, non_upper_case_globals)]
 pub mod BlockchainMessage {
     pub(super) const START_RANGE: u8 = 65;
-    pub(super) const END_RANGE: u8 = 65; // Can be extended to 96
+    pub(super) const END_RANGE: u8 = 67; // Can be extended to 96
     pub const NewBlock: u8 = 65;
+    pub const Transaction: u8 = 66;
+    pub const TransactionReply: u8 = 67;
 }
 
 #[allow(non_snake_case, non_upper_case_globals)]
