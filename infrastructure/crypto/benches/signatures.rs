@@ -1,7 +1,4 @@
-#[macro_use]
-extern crate criterion;
-
-use criterion::{BatchSize, Criterion};
+use criterion::{criterion_group, BatchSize, Criterion};
 use rand::{OsRng, RngCore};
 use std::time::Duration;
 use tari_crypto::{
@@ -11,7 +8,7 @@ use tari_crypto::{
 use tari_utilities::byte_array::ByteArray;
 
 fn generate_secret_key(c: &mut Criterion) {
-    c.bench_function("generate secret key", |b| {
+    c.bench_function("Generate secret key", |b| {
         let mut rng = OsRng::new().unwrap();
         b.iter(|| {
             let _ = RistrettoSecretKey::random(&mut rng);
@@ -76,4 +73,3 @@ name = signatures;
 config = Criterion::default().warm_up_time(Duration::from_millis(500));
 targets = generate_secret_key, native_keypair, sign_message, verify_message
 );
-criterion_main!(signatures);
