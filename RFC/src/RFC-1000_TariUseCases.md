@@ -162,7 +162,6 @@ manifested are provided here:
   * press reports that this artefact could be worth $X.
 
 * Drives collectability.
-
 * Drives advance purchase, e.g. if you are one of the first 100,000 people to buy tickets to Indiana Jones World, you 
 have a chance of winning this 
   1 of 5 artefact.
