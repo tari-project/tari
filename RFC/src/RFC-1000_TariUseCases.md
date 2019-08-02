@@ -170,7 +170,6 @@ three times.
 * Is a contingency for another asset, e.g. if you collect this item, two Sankara stones and the Cross of Coronado, you 
   can buy the ark of the covenant:
   - Ark of the covenant is rare. It is 1 of 1.
-
   - Ark of the covenant is legendary.
 
   - Ark of the covenant gives you lifetime access to Indiana Jones World.
