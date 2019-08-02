@@ -176,7 +176,6 @@ three times.
   - Ark of the covenant is legendary.
 
   - Ark of the covenant gives you lifetime access to Indiana Jones World.
-
   - Ark of the covenant has rules; 20% of the resale price goes to Indiana Jones World.
 
 #### AB de Villiers' bat
