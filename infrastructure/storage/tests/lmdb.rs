@@ -142,7 +142,6 @@ fn multi_thread() {
                 db.insert(&user.id, user).unwrap();
             }
         }));
-        ;
     }
 
     for thread in threads {
@@ -190,7 +189,6 @@ fn multi_thread_writes() {
             });
             assert!(res.is_ok());
         }));
-        ;
     }
     for thread in threads {
         thread.join().unwrap()

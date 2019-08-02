@@ -379,5 +379,4 @@ mod test {
         assert_eq!(net_addresses.addresses[1].connection_attempts, 0);
         assert_eq!(net_addresses.addresses[2].connection_attempts, 0);
     }
-
 }
