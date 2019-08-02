@@ -120,7 +120,7 @@ record of the DA state on the base layer. There will be two types of checkpoints
   * summarize the DA state on the base layer;
   * release the fee payouts;
   * release the collateral for the committee members for this checkpoint period; and
-  * allow for committee members to resign from the committee
+  * allow for committee members to resign from the committee.
 
 After a DA is issued, there will immediately be an OC. After a checkpoint period there will then be a 
 CC, followed
