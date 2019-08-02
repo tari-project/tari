@@ -167,7 +167,6 @@ have a chance of winning this
   1 of 5 artefact.
 * Has superpowers and utility, e.g. if you have this item while visiting Indiana Jones World, you get to skip the line 
 three times.
-
 * Is a contingency for another asset, e.g. if you collect this item, two Sankara stones and the Cross of Coronado, you 
   can buy the ark of the covenant:
   - Ark of the covenant is rare. It is 1 of 1.
