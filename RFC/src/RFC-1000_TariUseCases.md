@@ -188,7 +188,7 @@ One Day International (ODI) century bat:
   - ODI century bats are rare, they are 1 of 10;
   - ODI century bats are legendary.
 - Has no superpowers.
-* Has no utility.
+- Has no utility.
 * Has no rules.
 
 #### OVO Owl x Supreme
