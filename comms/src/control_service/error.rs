@@ -23,7 +23,7 @@
 use crate::{
     connection::{ConnectionError, NetAddressError},
     message::MessageError,
-    peer_manager::PeerManagerError,
+    peer_manager::{node_identity::NodeIdentityError, PeerManagerError},
 };
 use derive_error::Error;
 use tari_utilities::{ciphers::cipher::CipherError, message_format::MessageFormatError, thread_join::ThreadError};
@@ -58,4 +58,5 @@ pub enum ControlServiceError {
     ConnectionAddressNotEstablished,
     #[error(non_std, no_from, msg_embedded)]
     ConnectionProtocolFailed(String),
+    NodeIdentityError(NodeIdentityError),
 }

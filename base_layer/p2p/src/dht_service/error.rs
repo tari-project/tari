@@ -27,7 +27,7 @@ use tari_comms::{
     peer_manager::PeerManagerError,
 };
 
-use tari_comms::message::MessageError;
+use tari_comms::{message::MessageError, peer_manager::node_identity::NodeIdentityError};
 use tari_utilities::message_format::MessageFormatError;
 
 #[derive(Debug, Error)]
@@ -49,4 +49,5 @@ pub enum DHTError {
     UnexpectedApiResponse,
     MessageFormatError(MessageFormatError),
     MessageSerializationError(MessageError),
+    NodeIdentityError(NodeIdentityError),
 }

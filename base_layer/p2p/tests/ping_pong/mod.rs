@@ -87,7 +87,7 @@ fn setup_ping_pong_service(
         })
         .configure_control_service(ControlServiceConfig {
             socks_proxy_address: None,
-            listener_address: node_identity.control_service_address.clone(),
+            listener_address: node_identity.control_service_address().unwrap(),
             requested_connection_timeout: Duration::from_millis(5000),
         })
         .build()

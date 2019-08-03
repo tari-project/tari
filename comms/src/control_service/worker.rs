@@ -270,8 +270,12 @@ impl ControlServiceWorker {
                     return Err(ControlServiceError::PeerBanned);
                 }
 
-                pm.add_net_address(&peer.node_id, &message.control_service_address)
-                    .map_err(ControlServiceError::PeerManagerError)?;
+                pm.update_peer(
+                    &peer.public_key,
+                    None,
+                    Some(vec![message.control_service_address.clone()]),
+                    None,
+                )?;
 
                 peer
             },
@@ -357,7 +361,7 @@ impl ControlServiceWorker {
                 );
 
                 // Create an address which can be connected to externally
-                let our_host = self.node_identity.control_service_address.host();
+                let our_host = self.node_identity.control_service_address()?.host();
                 let external_address = address
                     .maybe_port()
                     .map(|port| format!("{}:{}", our_host, port))

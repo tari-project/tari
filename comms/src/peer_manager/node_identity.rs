@@ -33,12 +33,15 @@ use crate::{
 use derive_error::Error;
 use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize};
+use std::sync::RwLock;
 use tari_crypto::keys::{PublicKey, SecretKey};
 use tari_utilities::hex::serialize_to_hex;
 
 #[derive(Debug, Error)]
 pub enum NodeIdentityError {
     NodeIdError(NodeIdError),
+    /// The Thread Safety has been breached and the data access has become poisoned
+    PoisonedAccess,
 }
 
 /// Identity of this node
@@ -48,11 +51,11 @@ pub enum NodeIdentityError {
 /// `secret_key`: The secret key corresponding to the public key of this node
 ///
 /// `control_service_address`: The NetAddress of the local node's Control port
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct NodeIdentity {
     pub identity: PeerNodeIdentity,
     pub secret_key: CommsSecretKey,
-    pub control_service_address: NetAddress,
+    control_service_address: RwLock<NetAddress>,
 }
 
 impl NodeIdentity {
@@ -68,7 +71,7 @@ impl NodeIdentity {
         Ok(NodeIdentity {
             identity: PeerNodeIdentity::new(node_id, public_key),
             secret_key,
-            control_service_address,
+            control_service_address: RwLock::new(control_service_address),
         })
     }
 
@@ -82,8 +85,26 @@ impl NodeIdentity {
         Ok(NodeIdentity {
             identity: PeerNodeIdentity::new(node_id, public_key),
             secret_key,
-            control_service_address,
+            control_service_address: RwLock::new(control_service_address),
         })
+    }
+
+    /// Retrieve the control_service_address
+    pub fn control_service_address(&self) -> Result<NetAddress, NodeIdentityError> {
+        Ok(self
+            .control_service_address
+            .read()
+            .map_err(|_| NodeIdentityError::PoisonedAccess)?
+            .clone())
+    }
+
+    /// Modify the control_service_address
+    pub fn set_control_service_address(&self, control_service_address: NetAddress) -> Result<(), NodeIdentityError> {
+        *self
+            .control_service_address
+            .write()
+            .map_err(|_| NodeIdentityError::PoisonedAccess)? = control_service_address;
+        Ok(())
     }
 
     /// This returns a random NodeIdentity for testing purposes. This function can panic. If a control_service_address
@@ -104,9 +125,19 @@ impl From<NodeIdentity> for Peer {
         Peer::new(
             node_identity.identity.public_key,
             node_identity.identity.node_id,
-            node_identity.control_service_address.into(),
+            node_identity.control_service_address.read().unwrap().clone().into(),
             PeerFlags::empty(),
         )
+    }
+}
+
+impl Clone for NodeIdentity {
+    fn clone(&self) -> Self {
+        Self {
+            identity: self.identity.clone(),
+            secret_key: self.secret_key.clone(),
+            control_service_address: RwLock::new(self.control_service_address().unwrap()),
+        }
     }
 }
 
