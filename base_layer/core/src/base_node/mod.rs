@@ -1,4 +1,4 @@
-// Copyright 2018 The Tari Project
+// Copyright 2019. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,25 +20,21 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#[macro_use]
-extern crate bitflags;
-#[macro_use]
-extern crate lazy_static;
-
-pub mod blocks;
-pub mod bullet_rangeproofs;
-pub mod fee;
-pub mod pow;
-#[allow(clippy::op_ref)]
-pub mod transaction;
-pub mod transaction_protocol;
-pub mod types;
-
-pub mod emission;
-pub mod tari_amount;
+//! The Tari base node implementation.
+//!
+//! Base nodes are the key pieces of infrastructure that maintain the security and integrity of the Tari
+//! cryptocurrency. The role of the base node is to provide the following services:
+//! * New transaction validation
+//! * New block validation
+//! * Chain synchronisation service
+//! * A gRPC API exposing metrics and data about the blockchain state
+//!
+//! More details about the implementation are presented in
+//! [RFC-0111](https://rfc.tari.com/RFC-0111_BaseNodeArchitecture.html).
 
 mod base_node;
-mod blockchain;
+mod block_validation_service;
+mod transaction_validation_service;
 
-// Re-export commonly used structs
-pub use transaction_protocol::{recipient::ReceiverTransactionProtocol, sender::SenderTransactionProtocol};
+// Public re-exports
+pub use base_node::BaseNode;

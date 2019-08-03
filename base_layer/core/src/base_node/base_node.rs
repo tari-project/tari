@@ -1,4 +1,4 @@
-// Copyright 2018 The Tari Project
+// Copyright 2019. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,25 +20,20 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#[macro_use]
-extern crate bitflags;
-#[macro_use]
-extern crate lazy_static;
+use crate::{
+    base_node::{
+        block_validation_service::BlockValidationService,
+        transaction_validation_service::TransactionValidationService,
+    },
+    blockchain::BlockchainStateService,
+};
+use std::sync::Arc;
 
-pub mod blocks;
-pub mod bullet_rangeproofs;
-pub mod fee;
-pub mod pow;
-#[allow(clippy::op_ref)]
-pub mod transaction;
-pub mod transaction_protocol;
-pub mod types;
-
-pub mod emission;
-pub mod tari_amount;
-
-mod base_node;
-mod blockchain;
-
-// Re-export commonly used structs
-pub use transaction_protocol::{recipient::ReceiverTransactionProtocol, sender::SenderTransactionProtocol};
+/// `BaseNode` is the highest-level struct of the Tari full node implementation. `BaseNode` collects all the
+/// sub-pieces of the Tari blockchain together, and exposes a unified API using a futures-based request-response model
+pub struct BaseNode {
+    transaction_validation_service: Arc<TransactionValidationService>,
+    block_validation_service: Arc<BlockValidationService>,
+    // TODO mempool: Arc<MempoolService>,
+    chain_state: Arc<BlockchainStateService>,
+}
