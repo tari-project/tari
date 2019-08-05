@@ -444,7 +444,8 @@ impl Transaction {
         factory: &CommitmentFactory,
     ) -> Result<(), TransactionError>
     {
-        self.body.validate_internal_consistency(&self.offset, prover, factory)
+        self.body
+            .validate_internal_consistency(&self.offset, MicroTari::from(0), prover, factory)
     }
 
     pub fn get_body(&self) -> &AggregateBody {

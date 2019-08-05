@@ -40,10 +40,18 @@
 use crate::{pow::*, types::*};
 use chrono::{DateTime, NaiveDate, Utc};
 use digest::Input;
-use serde::{Deserialize, Serialize};
+use serde::{
+    de::{self, Visitor},
+    Deserialize,
+    Deserializer,
+    Serialize,
+    Serializer,
+};
 use tari_crypto::ristretto::*;
 use tari_utilities::{ByteArray, Hashable};
 type BlockHash = [u8; 32];
+use std::fmt;
+use tari_utilities::hex::*;
 
 /// The BlockHeader contains all the metadata for the block, including proof of work, a link to the previous block
 /// and the transaction kernels.
@@ -54,14 +62,18 @@ pub struct BlockHeader {
     /// Height of this block since the genesis block (height 0)
     pub height: u64,
     /// Hash of the block previous to this in the chain.
+    #[serde(with = "hash_serializer")]
     pub prev_hash: BlockHash,
     /// Timestamp at which the block was built.
     pub timestamp: DateTime<Utc>,
     /// This is the UTXO merkle root of the outputs
+    #[serde(with = "hash_serializer")]
     pub output_mr: BlockHash,
     /// This is the MMRR root of the range proofs
+    #[serde(with = "hash_serializer")]
     pub range_proof_mr: BlockHash,
     /// This is the MMRR root of the kernels
+    #[serde(with = "hash_serializer")]
     pub kernel_mr: BlockHash,
     /// Total accumulated sum of kernel offsets since genesis block. We can derive the kernel offset sum for *this*
     /// block from the total kernel offset of the previous block header.
@@ -108,5 +120,41 @@ impl Hashable for BlockHeader {
             .chain(self.pow.proof_as_bytes())
             .result()
             .to_vec()
+    }
+}
+mod hash_serializer {
+    use super::*;
+    pub fn serialize<S>(bytes: &BlockHash, serializer: S) -> Result<S::Ok, S::Error>
+    where S: Serializer {
+        if serializer.is_human_readable() {
+            bytes.to_hex().serialize(serializer)
+        } else {
+            serializer.serialize_bytes(bytes.as_bytes())
+        }
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<BlockHash, D::Error>
+    where D: Deserializer<'de> {
+        struct BlockHashVisitor;
+
+        impl<'de> Visitor<'de> for BlockHashVisitor {
+            type Value = BlockHash;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a bulletproof range proof in binary format")
+            }
+
+            fn visit_bytes<E>(self, v: &[u8]) -> Result<BlockHash, E>
+            where E: de::Error {
+                BlockHash::from_bytes(v).map_err(E::custom)
+            }
+        }
+
+        if deserializer.is_human_readable() {
+            let s = String::deserialize(deserializer)?;
+            BlockHash::from_hex(&s).map_err(de::Error::custom)
+        } else {
+            deserializer.deserialize_bytes(BlockHashVisitor)
+        }
     }
 }

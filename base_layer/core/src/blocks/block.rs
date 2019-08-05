@@ -24,13 +24,24 @@
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 use crate::{
     blocks::{aggregated_body::AggregateBody, blockheader::BlockHeader},
+    pow::PoWError,
     tari_amount::*,
     transaction::*,
     types::{Commitment, ProofOfWork, COMMITMENT_FACTORY, PROVER},
 };
+use derive_error::Error;
 use serde::{Deserialize, Serialize};
-
-//----------------------------------------         Blocks         ----------------------------------------------------//
+#[derive(Clone, Debug, PartialEq, Error)]
+pub enum BlockError {
+    // A transaction in the block failed to validate
+    TransactionError(TransactionError),
+    // Invalid Proof of work for the block
+    ProofOfWorkError(PoWError),
+    // Invalid input in block
+    InvalidInput,
+    // Invalid kernel in block
+    InvalidKernel,
+}
 
 /// A Tari block. Blocks are linked together into a blockchain.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -43,14 +54,35 @@ impl Block {
     /// This function will check the block to ensure that all UTXO's are validly constructed and that all signatures are
     /// valid. It does _not_ check that the inputs exist in the current UTXO set;
     /// nor does it check that the PoW is the largest accumulated PoW value.
-    pub fn check_internal_consistency(&self) -> Result<(), TransactionError> {
+    /// The block reward is the amount the miner was rewarded for the block
+    pub fn check_internal_consistency(&self, block_reward: MicroTari) -> Result<(), TransactionError> {
         let offset = &self.header.total_kernel_offset;
+        let total_coinbase = self.create_coinbase_offset(block_reward);
         self.body
-            .validate_internal_consistency(offset, &PROVER, &COMMITMENT_FACTORY)?;
+            .validate_internal_consistency(&offset, total_coinbase, &PROVER, &COMMITMENT_FACTORY)?;
         self.check_pow()
     }
 
+    // create a total_coinbase offset containing all fees for the validation
+    fn create_coinbase_offset(&self, block_reward: MicroTari) -> MicroTari {
+        let mut coinbase = block_reward;
+        for kernel in &self.body.kernels {
+            coinbase += kernel.fee;
+        }
+        coinbase
+    }
+
     pub fn check_pow(&self) -> Result<(), TransactionError> {
+        Ok(())
+    }
+
+    /// This function will check spent kernel rules like tx lock height etc
+    pub fn check_kernel_rules(&self) -> Result<(), BlockError> {
+        for kernel in &self.body.kernels {
+            if kernel.lock_height > self.header.height {
+                return Err(BlockError::InvalidKernel);
+            }
+        }
         Ok(())
     }
 }

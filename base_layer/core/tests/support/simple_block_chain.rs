@@ -66,8 +66,8 @@ impl SpendInfo {
 /// This is used to represent a block chain in memory for testing purposes
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct SimpleBlockChain {
-    blocks: Vec<Block>,
-    spending_keys: Vec<Vec<SpendInfo>>,
+    pub blocks: Vec<Block>,
+    pub spending_keys: Vec<Vec<SpendInfo>>,
 }
 
 /// This is used to represent a block chain in memory for testing purposes
@@ -117,7 +117,7 @@ impl SimpleBlockChainBuilder {
         let block = BlockBuilder::new()
             .with_header(header)
             .with_coinbase_utxo(cb_utxo, cb_kernel)
-//            .with_pow(pow) // TODO
+            .with_transactions(tx)
             .build();
         self.processes_new_block(block);
     }
@@ -139,7 +139,9 @@ impl SimpleBlockChainBuilder {
         chain.processes_new_block(block);
 
         // lets mine some empty blocks
-        chain.add_empty_blocks(&mut rng, spending_height);
+        if spending_height > 1 {
+            chain.add_empty_blocks(&mut rng, spending_height - 1);
+        }
 
         // lets mine some more blocks, but spending the utxo's in the older blocks
         for i in spending_height..(block_amount) {
@@ -172,6 +174,7 @@ impl SimpleBlockChainBuilder {
 
     /// This function will just add the content of the block to the MMR's
     fn processes_new_block(&mut self, block: Block) {
+        println!("Proc block nr: {:?}", self.blockchain.blocks.len());
         self.headers
             .push(block.header.clone())
             .expect("failed to add header to test chain");
@@ -218,7 +221,9 @@ impl SimpleBlockChainBuilder {
             range_proof_mr: [0; 32],
             kernel_mr: array_ref!(kernal_mmr, 0, 32).clone(),
             total_kernel_offset: RistrettoSecretKey::from(0),
-            pow: ProofOfWork::default(),
+            pow: ProofOfWork {
+                work: self.blockchain.blocks[counter].header.pow.work + 1,
+            },
         }
     }
 
@@ -355,7 +360,7 @@ impl Default for SimpleBlockChain {
 // todo this probably need to move somewhere else
 /// This function will create the correct amount for the coinbase given the block height, it will provide the answer in
 /// µTari (micro Tari)
-fn calculate_coinbase(block_height: u64) -> MicroTari {
+pub fn calculate_coinbase(block_height: u64) -> MicroTari {
     // todo fill this in properly as a function and not a constant
     let schedule = EmissionSchedule::new(MicroTari::from(10_000_000), 0.999, MicroTari::from(100));
     schedule.block_reward(block_height)
@@ -369,7 +374,7 @@ fn create_coinbase(key: PrivateKey, height: u64, total_fee: MicroTari) -> (Trans
     let amount = total_fee + calculate_coinbase(height);
     let v = PrivateKey::from(u64::from(amount));
     let commitment = COMMITMENT_FACTORY.commit(&key, &v);
-    let rr = PROVER.construct_proof(&v, amount.into()).unwrap();
+    let rr = PROVER.construct_proof(&key, amount.into()).unwrap();
     let output = TransactionOutput::new(
         OutputFeatures::COINBASE_OUTPUT,
         commitment,
@@ -445,7 +450,7 @@ mod test {
     }
 
     // we dont want to run this function function every time as it basically tests, test code and it runs slow.
-    #[test]
+    //#[test]
     #[allow(dead_code)]
     fn test_json_file() {
         let mut chain = SimpleBlockChainBuilder::new_with_spending(5, 1);
@@ -460,7 +465,7 @@ mod test {
     }
 
     // we dont want to run this function function every time as it create a test file for use in testing
-    // #[test]
+    //#[test]
     #[allow(dead_code)]
     fn create_json_file() {
         let mut chain = SimpleBlockChainBuilder::new_with_spending(5, 1);
