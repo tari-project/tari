@@ -175,12 +175,7 @@ impl AggregateBody {
     }
 
     /// Confirm that the (sum of the outputs) - (sum of inputs) = Kernel excess
-    fn validate_kernel_sum(
-        &self,
-        offset: PedersenCommitment,
-        factory: &CommitmentFactory,
-    ) -> Result<(), TransactionError>
-    {
+    fn validate_kernel_sum(&self, offset: Commitment, factory: &CommitmentFactory) -> Result<(), TransactionError> {
         let kernel_sum = self.sum_kernels(offset);
         let sum_io = self.sum_commitments(kernel_sum.fees.into(), factory);
 

@@ -20,50 +20,20 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::time::Duration;
-use tari_comms::{
-    builder::CommsServices,
-    connection_manager::PeerConnectionConfig,
-    control_service::ControlServiceConfig,
-    peer_manager::{NodeIdentity, Peer},
-    CommsBuilder,
+use crate::{
+    base_node::{
+        block_validation_service::BlockValidationService,
+        transaction_validation_service::TransactionValidationService,
+    },
+    blockchain::BlockchainStateService,
 };
-use tari_p2p::{services::ServiceRegistry, tari_message::TariMessageType};
-use tari_storage::lmdb_store::LMDBDatabase;
-pub fn setup_comms_services(
-    node_identity: NodeIdentity,
-    peers: Vec<NodeIdentity>,
-    peer_database: LMDBDatabase,
-    services: &ServiceRegistry,
-) -> CommsServices<TariMessageType>
-{
-    let comms = CommsBuilder::new()
-        .with_routes(services.build_comms_routes())
-        .with_node_identity(node_identity.clone())
-        .with_peer_storage(peer_database)
-        .configure_peer_connections(PeerConnectionConfig {
-            host: "127.0.0.1".parse().unwrap(),
-            ..Default::default()
-        })
-        .configure_control_service(ControlServiceConfig {
-            socks_proxy_address: None,
-            listener_address: node_identity.control_service_address().unwrap(),
-            requested_connection_timeout: Duration::from_millis(5000),
-        })
-        .build()
-        .unwrap()
-        .start()
-        .unwrap();
+use std::sync::Arc;
 
-    for p in peers {
-        comms
-            .peer_manager()
-            .add_peer(
-                Peer::from_public_key_and_address(p.identity.public_key.clone(), p.control_service_address().unwrap())
-                    .unwrap(),
-            )
-            .unwrap();
-    }
-
-    comms
+/// `BaseNode` is the highest-level struct of the Tari full node implementation. `BaseNode` collects all the
+/// sub-pieces of the Tari blockchain together, and exposes a unified API using a futures-based request-response model
+pub struct BaseNode {
+    transaction_validation_service: Arc<TransactionValidationService>,
+    block_validation_service: Arc<BlockValidationService>,
+    // TODO mempool: Arc<MempoolService>,
+    chain_state: Arc<BlockchainStateService>,
 }

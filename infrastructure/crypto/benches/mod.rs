@@ -19,51 +19,16 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+//
+// Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
+// Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
-use std::time::Duration;
-use tari_comms::{
-    builder::CommsServices,
-    connection_manager::PeerConnectionConfig,
-    control_service::ControlServiceConfig,
-    peer_manager::{NodeIdentity, Peer},
-    CommsBuilder,
-};
-use tari_p2p::{services::ServiceRegistry, tari_message::TariMessageType};
-use tari_storage::lmdb_store::LMDBDatabase;
-pub fn setup_comms_services(
-    node_identity: NodeIdentity,
-    peers: Vec<NodeIdentity>,
-    peer_database: LMDBDatabase,
-    services: &ServiceRegistry,
-) -> CommsServices<TariMessageType>
-{
-    let comms = CommsBuilder::new()
-        .with_routes(services.build_comms_routes())
-        .with_node_identity(node_identity.clone())
-        .with_peer_storage(peer_database)
-        .configure_peer_connections(PeerConnectionConfig {
-            host: "127.0.0.1".parse().unwrap(),
-            ..Default::default()
-        })
-        .configure_control_service(ControlServiceConfig {
-            socks_proxy_address: None,
-            listener_address: node_identity.control_service_address().unwrap(),
-            requested_connection_timeout: Duration::from_millis(5000),
-        })
-        .build()
-        .unwrap()
-        .start()
-        .unwrap();
+use criterion::criterion_main;
 
-    for p in peers {
-        comms
-            .peer_manager()
-            .add_peer(
-                Peer::from_public_key_and_address(p.identity.public_key.clone(), p.control_service_address().unwrap())
-                    .unwrap(),
-            )
-            .unwrap();
-    }
+pub mod range_proof;
+pub mod signatures;
 
-    comms
-}
+use range_proof::range_proofs;
+use signatures::signatures;
+
+criterion_main!(signatures, range_proofs);

@@ -20,9 +20,36 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::support::{comms_and_services::setup_text_message_service, data::*, utils::assert_change};
-use tari_comms::peer_manager::NodeIdentity;
-use tari_wallet::text_message_service::Contact;
+use crate::support::{comms_and_services::setup_comms_services, data::*, utils::assert_change};
+use std::sync::Arc;
+use tari_comms::{builder::CommsServices, peer_manager::NodeIdentity};
+use tari_p2p::{
+    services::{ServiceExecutor, ServiceRegistry},
+    tari_message::TariMessageType,
+};
+use tari_storage::lmdb_store::LMDBDatabase;
+use tari_wallet::text_message_service::{Contact, TextMessageService, TextMessageServiceApi};
+
+pub fn setup_text_message_service(
+    node_identity: NodeIdentity,
+    peers: Vec<NodeIdentity>,
+    peer_database: LMDBDatabase,
+    database_path: String,
+) -> (
+    ServiceExecutor,
+    Arc<TextMessageServiceApi>,
+    CommsServices<TariMessageType>,
+)
+{
+    let tms = TextMessageService::new(node_identity.identity.public_key.clone(), database_path);
+    let tms_api = tms.get_api();
+
+    let services = ServiceRegistry::new().register(tms);
+
+    let comms = setup_comms_services(node_identity, peers, peer_database, &services);
+
+    (ServiceExecutor::execute(&comms, services), tms_api, comms)
+}
 
 #[test]
 fn test_text_message_service() {
@@ -77,14 +104,14 @@ fn test_text_message_service() {
         .add_contact(Contact::new(
             "Bob".to_string(),
             node_2_identity.identity.public_key.clone(),
-            node_2_identity.control_service_address.clone(),
+            node_2_identity.control_service_address().unwrap(),
         ))
         .unwrap();
     node_1_tms
         .add_contact(Contact::new(
             "Carol".to_string(),
             node_3_identity.identity.public_key.clone(),
-            node_3_identity.control_service_address.clone(),
+            node_3_identity.control_service_address().unwrap(),
         ))
         .unwrap();
 
@@ -92,7 +119,7 @@ fn test_text_message_service() {
         .add_contact(Contact::new(
             "Alice".to_string(),
             node_1_identity.identity.public_key.clone(),
-            node_1_identity.control_service_address.clone(),
+            node_1_identity.control_service_address().unwrap(),
         ))
         .unwrap();
 
@@ -100,7 +127,7 @@ fn test_text_message_service() {
         .add_contact(Contact::new(
             "Alice".to_string(),
             node_1_identity.identity.public_key.clone(),
-            node_1_identity.control_service_address.clone(),
+            node_1_identity.control_service_address().unwrap(),
         ))
         .unwrap();
 

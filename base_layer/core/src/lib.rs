@@ -34,11 +34,11 @@ pub mod transaction;
 pub mod transaction_protocol;
 pub mod types;
 
-pub mod block_chain_state;
-pub mod chain;
 pub mod emission;
-pub mod error;
 pub mod tari_amount;
+
+mod base_node;
+mod blockchain;
 
 // Re-export commonly used structs
 pub use transaction_protocol::{recipient::ReceiverTransactionProtocol, sender::SenderTransactionProtocol};

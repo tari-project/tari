@@ -19,7 +19,6 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
 
 //! This file provides the structs and functions that persist the block chain state, and re-org logic. Because a re-org
 //! can happen, we need to keep track of orphan blocks. The Merkle Mountain Range crate we use allows us to rewind
@@ -29,7 +28,15 @@
 //!
 //! The MMR also provides a method to save the MMR to disc. This is internally handled and we use LMDB to store the MMR.
 
-use crate::{block_chain_state::BlockchainState, blocks::block::Block, error::*, pow::*, types::*};
+use crate::{
+    blockchain::{
+        block_chain_state::BlockchainState,
+        error::{ChainError, StateError},
+    },
+    blocks::block::Block,
+    pow::*,
+    types::*,
+};
 use std::collections::HashMap;
 use tari_utilities::Hashable;
 

@@ -23,15 +23,20 @@
 use crate::{
     transaction::{OutputFeatures, TransactionOutput},
     transaction_protocol::{
-        sender::{SenderMessage, SingleRoundSenderData as SD},
+        sender::{SingleRoundSenderData as SD, TransactionSenderMessage},
         single_receiver::SingleReceiverTransactionProtocol,
         TransactionProtocolError,
     },
     types::{CommitmentFactory, MessageHash, PrivateKey, PublicKey, RangeProofService, Signature},
 };
-use std::collections::HashMap;
+use serde::{Deserialize, Serialize};
+use std::{collections::HashMap, convert::TryInto};
+use tari_comms::message::{Message, MessageError};
+use tari_p2p::tari_message::{BlockchainMessage, TariMessageType};
+
+#[derive(Clone, Debug)]
 pub enum RecipientState {
-    Finalized(Box<RecipientSignedTransactionData>),
+    Finalized(Box<RecipientSignedMessage>),
     Failed(TransactionProtocolError),
 }
 
@@ -39,29 +44,39 @@ pub enum RecipientState {
 #[derive(Debug, Clone)]
 pub(super) enum RecipientInfo {
     None,
-    Single(Option<Box<RecipientSignedTransactionData>>),
+    Single(Option<Box<RecipientSignedMessage>>),
     Multiple(HashMap<u64, MultiRecipientInfo>),
 }
 
 #[derive(Debug, Clone)]
 pub(super) struct MultiRecipientInfo {
     pub commitment: MessageHash,
-    pub data: RecipientSignedTransactionData,
+    pub data: RecipientSignedMessage,
 }
 
 /// This is the message containing the public data that the Receiver will send back to the Sender
-#[derive(Clone, Debug, PartialEq)]
-pub struct RecipientSignedTransactionData {
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct RecipientSignedMessage {
     pub tx_id: u64,
     pub output: TransactionOutput,
     pub public_spend_key: PublicKey,
     pub partial_signature: Signature,
 }
 
+/// Convert `RecipientSignedMessage` into a Tari Message that can be sent via the tari comms stack
+impl TryInto<Message> for RecipientSignedMessage {
+    type Error = MessageError;
+
+    fn try_into(self) -> Result<Message, Self::Error> {
+        Ok((TariMessageType::new(BlockchainMessage::TransactionReply), self).try_into()?)
+    }
+}
+
 /// The generalised transaction recipient protocol. A different state transition network is followed depending on
 /// whether this is a single recipient or one of many.
+#[derive(Clone, Debug)]
 pub struct ReceiverTransactionProtocol {
-    state: RecipientState,
+    pub state: RecipientState,
 }
 
 /// Initiate a new recipient protocol state.
@@ -74,7 +89,7 @@ pub struct ReceiverTransactionProtocol {
 /// already be finalised, and the return message will be accessible from the `get_signed_data` method.
 impl ReceiverTransactionProtocol {
     pub fn new(
-        info: SenderMessage,
+        info: TransactionSenderMessage,
         nonce: PrivateKey,
         spending_key: PrivateKey,
         features: OutputFeatures,
@@ -83,11 +98,11 @@ impl ReceiverTransactionProtocol {
     ) -> ReceiverTransactionProtocol
     {
         let state = match info {
-            SenderMessage::None => RecipientState::Failed(TransactionProtocolError::InvalidStateError),
-            SenderMessage::Single(v) => {
+            TransactionSenderMessage::None => RecipientState::Failed(TransactionProtocolError::InvalidStateError),
+            TransactionSenderMessage::Single(v) => {
                 ReceiverTransactionProtocol::single_round(nonce, spending_key, features, &v, prover, factory)
             },
-            SenderMessage::Multiple => Self::multi_round(),
+            TransactionSenderMessage::Multiple => Self::multi_round(),
         };
         ReceiverTransactionProtocol { state }
     }
@@ -117,7 +132,7 @@ impl ReceiverTransactionProtocol {
     }
 
     /// Retrieve the final signature data to be returned to the sender to complete the transaction.
-    pub fn get_signed_data(&self) -> Result<&RecipientSignedTransactionData, TransactionProtocolError> {
+    pub fn get_signed_data(&self) -> Result<&RecipientSignedMessage, TransactionProtocolError> {
         match &self.state {
             RecipientState::Finalized(data) => Ok(data),
             _ => Err(TransactionProtocolError::InvalidStateError),
@@ -155,7 +170,7 @@ mod test {
         transaction::OutputFeatures,
         transaction_protocol::{
             build_challenge,
-            sender::{SenderMessage, SingleRoundSenderData},
+            sender::{SingleRoundSenderData, TransactionSenderMessage},
             test_common::TestParams,
             TransactionMetadata,
         },
@@ -180,7 +195,7 @@ mod test {
             public_nonce: PublicKey::from_secret_key(&p.change_key), // any random key will do
             metadata: m.clone(),
         };
-        let sender_info = SenderMessage::Single(Box::new(msg.clone()));
+        let sender_info = TransactionSenderMessage::Single(Box::new(msg.clone()));
         let pubkey = PublicKey::from_secret_key(&p.spend_key);
         let receiver = ReceiverTransactionProtocol::new(
             sender_info,

@@ -23,11 +23,11 @@
 use rand::OsRng;
 use tari_crypto::common::Blake256;
 
-/// Specify the Hash function for general hashing
-pub type HashDigest = Blake256;
-
 /// Specify the Hash function used by the key manager
 pub type KeyDigest = Blake256;
+
+/// Specify the Hash function used when constructing challenges during transaction building
+pub type HashDigest = Blake256;
 
 /// Specify the Rng to use while building transactions for this wallet
 pub type TransactionRng = OsRng;

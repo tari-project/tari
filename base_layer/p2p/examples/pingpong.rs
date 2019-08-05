@@ -109,12 +109,12 @@ fn main() {
         host: "0.0.0.0".parse().unwrap(),
         socks_proxy_address: None,
         control_service: ControlServiceConfig {
-            listener_address: node_identity.control_service_address.clone(),
+            listener_address: node_identity.control_service_address().unwrap(),
             socks_proxy_address: None,
             requested_connection_timeout: Duration::from_millis(2000),
         },
         secret_key: node_identity.secret_key.clone(),
-        public_address: node_identity.control_service_address,
+        public_address: node_identity.control_service_address().unwrap(),
         datastore_path: TempDir::new(random_string(8).as_str())
             .unwrap()
             .path()
@@ -132,7 +132,7 @@ fn main() {
     let peer = Peer::new(
         peer_identity.identity.public_key.clone(),
         peer_identity.identity.node_id.clone(),
-        peer_identity.control_service_address.into(),
+        peer_identity.control_service_address().unwrap().into(),
         PeerFlags::empty(),
     );
     comms.peer_manager().add_peer(peer).unwrap();
