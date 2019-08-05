@@ -67,6 +67,7 @@ pub struct BlockHeader {
     /// Timestamp at which the block was built.
     pub timestamp: DateTime<Utc>,
     /// This is the UTXO merkle root of the outputs
+    /// This is calculated as Hash (txo MMR root  || roaring bitmap hash of UTXO indices)
     #[serde(with = "hash_serializer")]
     pub output_mr: BlockHash,
     /// This is the MMRR root of the range proofs

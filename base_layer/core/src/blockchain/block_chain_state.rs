@@ -37,6 +37,7 @@ use crate::{
     transaction::{TransactionInput, TransactionKernel},
     types::*,
 };
+use digest::Digest;
 use merklemountainrange::mmr::*;
 use std::fs;
 use tari_storage::{keyvalue_store::*, lmdb::*};
@@ -47,6 +48,7 @@ pub struct BlockchainState {
     pub headers: MerkleMountainRange<BlockHeader, SignatureHash>,
     utxos: MerkleMountainRange<TransactionInput, SignatureHash>,
     kernels: MerkleMountainRange<TransactionKernel, SignatureHash>,
+    rangeproofs: MerkleMountainRange<RangeProof, SignatureHash>,
     schedule: EmissionSchedule,
     store: LMDBStore,
 }
@@ -64,11 +66,14 @@ impl BlockchainState {
         let mut kernels = MerkleMountainRange::new();
         kernels.init_persistance_store(&"kernels".to_string(), std::usize::MAX);
         let schedule = EmissionSchedule::new(MicroTari::from(10_000_000), 0.999, MicroTari::from(100)); // ToDo ensure these amounts are correct
+        let mut rangeproofs = MerkleMountainRange::new();
+        rangeproofs.init_persistance_store(&"rangeproofs".to_string(), 5000);
         let mut block_chain_state = BlockchainState {
             headers,
             utxos,
             kernels,
             schedule,
+            rangeproofs,
             store,
         };
         block_chain_state.add_genesis_block();
@@ -110,9 +115,9 @@ impl BlockchainState {
             .add_database(&"outputs_mmr_objects".to_string())
             .add_database(&"outputs_init".to_string())
             //create for range_proofs mmr
-            .add_database(&"range_proofs_mmr_checkpoints".to_string())
-            .add_database(&"range_proofs_mmr_objects".to_string())
-            .add_database(&"range_proofs_init".to_string())
+            .add_database(&"rangeproofs_mmr_checkpoints".to_string())
+            .add_database(&"rangeproofs_mmr_objects".to_string())
+            .add_database(&"rangeproofs_init".to_string())
             //create for kernels mmr
             .add_database(&"kernels_mmr_checkpoints".to_string())
             .add_database(&"kernels_mmr_objects".to_string())
@@ -133,6 +138,10 @@ impl BlockchainState {
             return Err(StateError::DuplicateBlock);
         }
         self.validate_new_block(&new_block)?;
+        // let add the rangeproofs
+        for output in &new_block.body.outputs {
+            self.rangeproofs.push(output.proof().clone())?;
+        }
         self.prune_all_inputs(&new_block)?;
         // All seems valid, lets add the objects to the state
         for output in &new_block.body.outputs {
@@ -162,6 +171,7 @@ impl BlockchainState {
         self.headers.ff_to_head(&mut self.store)?;
         self.utxos.ff_to_head(&mut self.store)?;
         self.kernels.ff_to_head(&mut self.store)?;
+        self.rangeproofs.ff_to_head(&mut self.store)?;
         Ok(())
     }
 
@@ -174,6 +184,11 @@ impl BlockchainState {
                 .prune_object_hash(&hash)
                 .map_err(StateError::SpentUnknownCommitment)?;
         }
+        // We can prune RangeProof immediately as we only really care about the MR
+        for output in &new_block.body.outputs {
+            let hash = output.proof.hash();
+            self.rangeproofs.prune_object_hash(&hash).unwrap(); // this should not break as we just added all these
+        }
         Ok(())
     }
 
@@ -182,16 +197,26 @@ impl BlockchainState {
         self.headers.checkpoint()?;
         self.kernels.checkpoint()?;
         self.utxos.checkpoint()?;
+        self.rangeproofs.checkpoint()?;
         Ok(())
     }
 
     /// This function is just a wrapper function to call checkpoint on all the MMR's
     fn check_mmr_states(&mut self) -> Result<(), StateError> {
         let last_header = self.headers.get_last_added_object().unwrap(); // if this unwrap fails there is something weird wrong as the headers did not get added.
+
+        // Compute output merkle root per concensus rules
+        let mut hasher = SignatureHash::new();
+        hasher.input(&self.utxos.get_merkle_root()[..]);
+        hasher.input(&self.utxos.get_unpruned_hash());
+        let output_mr = hasher.result().to_vec();
+
         if (last_header.output_mr != self.utxos.get_merkle_root()[..]) ||
-            (last_header.kernel_mr != self.kernels.get_merkle_root()[..])
+            (last_header.kernel_mr != output_mr[..]) ||
+            (last_header.range_proof_mr != self.rangeproofs.get_merkle_root()[..])
         {
-            return Err(StateError::HeaderStateMismatch);
+            return Err(StateError::HeaderStateMismatch); // Todo investigate returning a specific error which mmr state
+                                                         // failed
         }
         Ok(())
     }
@@ -201,6 +226,7 @@ impl BlockchainState {
         self.headers.apply_state(&mut self.store)?;
         self.kernels.apply_state(&mut self.store)?;
         self.utxos.apply_state(&mut self.store)?;
+        self.rangeproofs.apply_state(&mut self.store)?;
         Ok(())
     }
 

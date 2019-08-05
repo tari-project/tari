@@ -22,6 +22,7 @@
 
 use chrono::Duration;
 
+use digest::Digest;
 use merklemountainrange::mmr::*;
 use rand::{CryptoRng, OsRng, Rng};
 use serde::{Deserialize, Serialize};
@@ -205,7 +206,10 @@ impl SimpleBlockChainBuilder {
         let counter = self.blockchain.blocks.len() - 1;
         let mut hash = [0; 32];
         hash.copy_from_slice(&self.blockchain.blocks[counter].header.hash());
-        let ouput_mmr = self.utxos.get_merkle_root();
+        let mut hasher = SignatureHash::new();
+        hasher.input(&self.utxos.get_merkle_root()[..]);
+        hasher.input(&self.utxos.get_unpruned_hash());
+        let output_mr = hasher.result().to_vec();
         let kernal_mmr = self.kernels.get_merkle_root();
         BlockHeader {
             version: BLOCKCHAIN_VERSION,
@@ -217,7 +221,7 @@ impl SimpleBlockChainBuilder {
                 .clone()
                 .checked_add_signed(Duration::minutes(1))
                 .unwrap(),
-            output_mr: array_ref!(ouput_mmr, 0, 32).clone(),
+            output_mr: array_ref!(output_mr, 0, 32).clone(),
             range_proof_mr: [0; 32],
             kernel_mr: array_ref!(kernal_mmr, 0, 32).clone(),
             total_kernel_offset: RistrettoSecretKey::from(0),
