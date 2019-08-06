@@ -56,15 +56,16 @@ The Base Node architecture is designed to be modular, robust and performant.
 
 ![Base Layer architecture](theme/images/base_layer_arch.png)
 
-The major components are separated into separate modules. Each module exposes a public Application Programming Interface 
-(API), which typically communicates with other modules using the [Command Pattern].
+The major components are separated into separate modules. Each module exposes a public Application Programming Interface
+(API), which communicates with other modules using asynchronous messages via futures.
 
 ### Base Node Service
 
 The Base Node Service is an instantiation of a Tari Comms Service, which subscribes to and handles specific messages
 coming from the P2P Tari network via the Comms Module of a live Tari communications node. The Base Node Service's job is
-to delegate the jobs required by those messages to its submodules, consisting primarily of the Transaction Validation
-Service and the Block Validation Service.
+to delegate the jobs required by those messages to its sub-modules, consisting primarily of the Transaction Validation
+Service, the Block Validation Service and the Block synchronisation service, using an asynchronous Request-Response
+pattern.
 
 The Base Node Service will pass messages back to the P2P network via the Comms Module, based on the results of its
 actions.
@@ -93,7 +94,7 @@ The primary messages that a Base Node will subscribe to are:
 The validation procedures are complex and are thus encapsulated in their own sub-services. These services hold
 references to the blockchain state API, the mempool API, a range proof service and whatever other modules they need to
 complete their work. Each validation module has a single primary method, `validate_xxx()`, which takes in the
-transaction or block to be validated and carries out the validation logic.
+transaction or block to be validated and returns a future that resolves once the validation task is complete.
 
 ### Distributed Hash Table (DHT) Service
 
@@ -118,35 +119,24 @@ Tari, this is delivered using the Lightning Memory-mapped Database (LMDB). LMDB 
 straightforward to use. An LMDB is essentially treated as a hash map data structure that transparently handles
 memory caching, disk Input/Output (I/O) and multi-threaded access.
 
-The blockchain module is able to run as a standalone service. All communication with clients is done via message
-channels. This allows the blockchain state service to completely control and manage read and write access to the
-underlying blockchain state, reducing the scope for race conditions and deadlocks.
+The blockchain module is able to run as a standalone service, but must be thread-safe. Block and transaction validation
+requests are futures-based. These are asynchronous requests, which means that multiple validation requests can and
+should be handled in parallel, in separate threads. Initially, all the logic for a single block or transaction
+validation can be executed in sequence, wrapped inside a single future. However, there is scope to optimise this in
+future; for example: Validating a block entails checking the proof-of-work (very slow), checking signatures (fast, but
+many of them), and checking the accounting (slow). Each of these sub-tasks could also be spun off as a future, with a
+master future co-ordinating the sub-futures and assembling the final results.
 
-Since a message-based approach is employed, _no read-write locks are required_ at the blockchain state module level.
+Tokio is becoming the _de facto_ standard for asynchronous programming in Rust.
 
-Rust's channel infrastructure in the standard library is fairly limited. Therefore we propose that the
-[crossbeam-channel] and [crossbeam-queue] libraries be used for managing message passing between the blockchain state 
-module and its clients. Messages are constructed using Rust enums and the [Command Pattern].
+Tokio's default task executor provides multi-threaded work-stealing work queues and CPU-bound worker threads out of the
+box. This is a good fit for the type of work that base nodes must perform. In addition, the
+[Tower project](https://github.com/tower-rs) provides a set of traits and middleware that will be very useful in Tari
+services, and so it is recommended to follow the Services pattern as used by that project.
 
-Inside the Blockchain state module, data access could be managed by a single thread. However, since we're managing
-requests via a single message queue, and LMDB can handle multiple thread access, it is fairly straightforward to extend
-data access to multiple threads using a [thread pool].
+This RFC proposes that the 0.1 version of tokio is used in the Tari project until the standard
+[futures](https://doc.rust-lang.org/std/future/index.html) library has stabilised before making a switch.
 
-The blockchain state API will be fairly rich, since it will serve not only Base Nodes talking to the Tari P2P network,
-but also applications such as block explorers and monitoring programs via a [gRPC] interface.
-
-A non-exhaustive list of methods the blockchain state module API will expose includes:
-
-* checking whether a given Unspent Transaction Output (UTXO) is in the current UTXO set;
-* requesting the latest block height;
-* requesting the total accumulated work on the longest chain;
-* requesting a specific block at a given height;
-* requesting the Merklish root commitment of the current UTXO set;
-* requesting a block header for a given height;
-* requesting the block header for the chain tip;
-* validating signatures for a given transaction kernel;
-* validating a new block without adding it to the state tree;
-* validating and adding a (validated) new block to the state, and informing of the result (orphaned, fork, re-org, etc.).
 
 ### Mempool Module
 
@@ -156,9 +146,8 @@ a large mempool is far more important for Base Nodes serving miners than those s
 rebuild after a node reboots.
 
 That said, the mempool module must be thread safe. The Tari mempool module handles requests in the same way as the
-Blockchain state module: via [crossbeam-channel] queues. The mempool structure itself is a set of hash maps as
-described in [RFC-0190]. For performance reasons, it may be worthwhile using a [concurrent hash map] implementation
-backed by a [thread pool], although a single thread may suffice.
+Blockchain state module: via futures. The mempool structure itself is a set of hash maps as described in [RFC-0190]. For
+performance reasons, it may be worthwhile using a [concurrent hash map] implementation.
 
 ### gRPC Interface
 
@@ -166,15 +155,32 @@ Base Nodes need to provide a local communication interface in addition to the P2
 best achieved using [gRPC]. The Base Node gRPC interface provides access to the public API methods of the Base Node
 Service, the mempool module and the blockchain state module, as discussed above.
 
-gRPC access is useful for tools such as local User Interfaces (UIs) to a running Base Node; client wallets running on 
-the same machine as the Base Node that want a more direct communication interface to the node than the P2P network 
+gRPC access is useful for tools such as local User Interfaces (UIs) to a running Base Node; client wallets running on
+the same machine as the Base Node that want a more direct communication interface to the node than the P2P network
 provides; third-party applications such as block explorers; and, of course, miners.
 
+A non-exhaustive list of methods the base node module API will expose includes:
 
-[crossbeam-channel]: https://crates.io/crates/crossbeam-channel
-[crossbeam-queue]: https://crates.io/crates/crossbeam-queue
-[thread pool]: https://crates.io/crates/threadpool
+* Blockchain state calls, including:
+    * checking whether a given Unspent Transaction Output (UTXO) is in the current UTXO set;
+    * requesting the latest block height;
+    * requesting the total accumulated work on the longest chain;
+    * requesting a specific block at a given height;
+    * requesting the Merklish root commitment of the current UTXO set;
+    * requesting a block header for a given height;
+    * requesting the block header for the chain tip;
+    * validating signatures for a given transaction kernel;
+    * validating a new block without adding it to the state tree;
+    * validating and adding a (validated) new block to the state, and informing of the result (orphaned, fork, re-org, etc.).
+* Mempool calls
+  * The number of unconfirmed transactions
+  * The number of orphaned transactions
+  * Returning a list of transaction ranked by some criterion (of interest to miners)
+  * The current size of the mempool (in transaction weight)
+* Block and transaction validation calls
+* Block synchronisation calls
+
+
 [concurrent hash map]: https://crates.io/crates/chashmap
 [gRPC]: https://grpc.io/
-[Command Pattern]: https://en.wikipedia.org/wiki/Command_pattern
 [RFC-0190]: RFC-0190_Mempool.md
