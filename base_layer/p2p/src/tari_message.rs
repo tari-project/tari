@@ -40,17 +40,15 @@ pub struct TariMessageType(u8);
 #[allow(non_snake_case, non_upper_case_globals)]
 pub mod NetMessage {
     pub(super) const START_RANGE: u8 = 1;
-    pub(super) const END_RANGE: u8 = 4; // Can be extended to 32
-    /// Message sent when a request to establish a peer connection has been accepted
-    pub const Accept: u8 = 1;
+    pub(super) const END_RANGE: u8 = 5; // Can be extended to 32
     /// DHT network join, and discovery of nodes and peers
-    pub const Join: u8 = 2;
-    pub const Discover: u8 = 3;
+    pub const Join: u8 = 1;
+    pub const Discover: u8 = 2;
     /// Message sent for PingPong and liveness checks
-    pub const PingPong: u8 = 4;
+    pub const PingPong: u8 = 3;
     /// Messages sent for Store-and-forward functionality
-    pub const RetrieveMessages: u8 = 5;
-    pub const StoredMessages: u8 = 6;
+    pub const RetrieveMessages: u8 = 4;
+    pub const StoredMessages: u8 = 5;
 }
 
 #[allow(non_snake_case, non_upper_case_globals)]
@@ -132,7 +130,7 @@ mod test {
     #[test]
     fn create_message() {
         // When reading from the wire, the message type will be a byte value
-        let t = TariMessageType::from(3);
+        let t = TariMessageType::from(2);
         assert_eq!(t.value(), NetMessage::Discover);
         assert!(t.is_net_message());
         assert!(t.is_known_message());
