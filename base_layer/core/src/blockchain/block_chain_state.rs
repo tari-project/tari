@@ -28,7 +28,7 @@
 use crate::{
     blockchain::error::StateError,
     blocks::{
-        block::{Block, BlockError},
+        block::{Block, BlockValidationError},
         blockheader::BlockHeader,
         genesis_block::*,
     },
@@ -158,7 +158,7 @@ impl BlockchainState {
     pub fn validate_new_block(&self, new_block: &Block) -> Result<(), StateError> {
         new_block
             .check_internal_consistency(self.calculate_coinbase(new_block.header.height))
-            .map_err(|e| StateError::InvalidBlock(BlockError::TransactionError(e)))?;
+            .map_err(|e| StateError::InvalidBlock(e))?;
         // we assume that we have atleast in block in the headers mmr even if this is the genesis one
         if self.headers.get_last_added_object().unwrap().hash() != new_block.header.prev_hash {
             return Err(StateError::OrphanBlock);

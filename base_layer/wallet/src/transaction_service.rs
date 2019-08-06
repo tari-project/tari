@@ -255,7 +255,7 @@ impl TransactionService {
                 sender_message,
                 nonce,
                 spending_key,
-                OutputFeatures::empty(),
+                OutputFeatures::default(),
                 &PROVER,
                 &COMMITMENT_FACTORY,
             );

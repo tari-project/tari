@@ -249,7 +249,7 @@ impl SenderTransactionInitializer {
         let outputs = match self
             .outputs
             .iter()
-            .map(|o| o.as_transaction_output(prover, factory, OutputFeatures::empty()))
+            .map(|o| o.as_transaction_output(prover, factory, OutputFeatures::default()))
             .collect::<Result<Vec<TransactionOutput>, _>>()
         {
             Ok(o) => o,

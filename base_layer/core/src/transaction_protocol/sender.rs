@@ -518,7 +518,7 @@ mod test {
             &msg,
             b.nonce,
             b.spend_key,
-            OutputFeatures::empty(),
+            OutputFeatures::default(),
             &PROVER,
             &COMMITMENT_FACTORY,
         )
@@ -577,7 +577,7 @@ mod test {
             &msg,
             b.nonce,
             b.spend_key,
-            OutputFeatures::empty(),
+            OutputFeatures::default(),
             &PROVER,
             &COMMITMENT_FACTORY,
         )
@@ -640,7 +640,7 @@ mod test {
             &msg,
             b.nonce,
             b.spend_key,
-            OutputFeatures::empty(),
+            OutputFeatures::default(),
             &PROVER,
             &COMMITMENT_FACTORY,
         )

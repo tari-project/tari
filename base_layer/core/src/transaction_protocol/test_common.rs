@@ -58,6 +58,6 @@ pub fn make_input<R: Rng + CryptoRng>(rng: &mut R, val: MicroTari) -> (Transacti
     let key = PrivateKey::random(rng);
     let v = PrivateKey::from(val);
     let commitment = COMMITMENT_FACTORY.commit(&key, &v);
-    let input = TransactionInput::new(OutputFeatures::empty(), commitment);
+    let input = TransactionInput::new(OutputFeatures::default(), commitment);
     (input, UnblindedOutput::new(val, key, None))
 }

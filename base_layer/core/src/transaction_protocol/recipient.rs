@@ -201,7 +201,7 @@ mod test {
             sender_info,
             p.nonce.clone(),
             p.spend_key.clone(),
-            OutputFeatures::empty(),
+            OutputFeatures::default(),
             &PROVER,
             &COMMITMENT_FACTORY,
         );
