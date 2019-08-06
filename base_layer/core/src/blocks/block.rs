@@ -27,20 +27,24 @@ use crate::{
     pow::PoWError,
     tari_amount::*,
     transaction::*,
-    types::{Commitment, ProofOfWork, COMMITMENT_FACTORY, PROVER},
+    types::{Commitment, ProofOfWork, COINBASE_LOCK_HEIGHT, COMMITMENT_FACTORY, PROVER},
 };
 use derive_error::Error;
 use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, PartialEq, Error)]
-pub enum BlockError {
+pub enum BlockValidationError {
     // A transaction in the block failed to validate
     TransactionError(TransactionError),
     // Invalid Proof of work for the block
     ProofOfWorkError(PoWError),
-    // Invalid input in block
-    InvalidInput,
     // Invalid kernel in block
     InvalidKernel,
+    // Invalid input in block
+    InvalidInput,
+    // Input maturity not reached
+    InputMaturity,
+    // Invalid coinbase maturity in block or more than one coinbase
+    InvalidCoinbase,
 }
 
 /// A Tari block. Blocks are linked together into a blockchain.
@@ -55,16 +59,18 @@ impl Block {
     /// valid. It does _not_ check that the inputs exist in the current UTXO set;
     /// nor does it check that the PoW is the largest accumulated PoW value.
     /// The block reward is the amount the miner was rewarded for the block
-    pub fn check_internal_consistency(&self, block_reward: MicroTari) -> Result<(), TransactionError> {
+    pub fn check_internal_consistency(&self, block_reward: MicroTari) -> Result<(), BlockValidationError> {
         let offset = &self.header.total_kernel_offset;
-        let total_coinbase = self.create_coinbase_offset(block_reward);
+        let total_coinbase = self.calculate_coinbase_value(block_reward);
         self.body
             .validate_internal_consistency(&offset, total_coinbase, &PROVER, &COMMITMENT_FACTORY)?;
+        self.check_stxo_rules()?;
+        self.check_utxo_rules()?;
         self.check_pow()
     }
 
     // create a total_coinbase offset containing all fees for the validation
-    fn create_coinbase_offset(&self, block_reward: MicroTari) -> MicroTari {
+    fn calculate_coinbase_value(&self, block_reward: MicroTari) -> MicroTari {
         let mut coinbase = block_reward;
         for kernel in &self.body.kernels {
             coinbase += kernel.fee;
@@ -72,15 +78,43 @@ impl Block {
         coinbase
     }
 
-    pub fn check_pow(&self) -> Result<(), TransactionError> {
+    pub fn check_pow(&self) -> Result<(), BlockValidationError> {
         Ok(())
     }
 
     /// This function will check spent kernel rules like tx lock height etc
-    pub fn check_kernel_rules(&self) -> Result<(), BlockError> {
+    pub fn check_kernel_rules(&self) -> Result<(), BlockValidationError> {
         for kernel in &self.body.kernels {
             if kernel.lock_height > self.header.height {
-                return Err(BlockError::InvalidKernel);
+                return Err(BlockValidationError::InvalidKernel);
+            }
+        }
+        Ok(())
+    }
+
+    /// This function will check all new utxo to ensure that feature flags where set
+    pub fn check_utxo_rules(&self) -> Result<(), BlockValidationError> {
+        let mut coinbase_counter = 0; // there should be exactly 1 coinbase
+        for utxo in &self.body.outputs {
+            if utxo.features.flags.contains(OutputFlags::COINBASE_OUTPUT) {
+                coinbase_counter += 1;
+                if utxo.features.maturity < (self.header.height + COINBASE_LOCK_HEIGHT) {
+                    return Err(BlockValidationError::InvalidCoinbase);
+                }
+            }
+        }
+        if coinbase_counter != 1 {
+            return Err(BlockValidationError::InvalidCoinbase);
+        }
+        Ok(())
+    }
+
+    /// This function will check all stxo to ensure that feature flags where followed
+    pub fn check_stxo_rules(&self) -> Result<(), BlockValidationError> {
+        for input in &self.body.inputs {
+            if input.features.maturity > self.header.height {
+                dbg!(&input.features.maturity, &self.header.height);
+                return Err(BlockValidationError::InputMaturity);
             }
         }
         Ok(())

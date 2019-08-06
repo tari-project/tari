@@ -79,7 +79,7 @@ pub fn setup_transaction_service(
 pub fn make_input<R: Rng + CryptoRng>(rng: &mut R, val: MicroTari) -> (TransactionInput, UnblindedOutput) {
     let key = PrivateKey::random(rng);
     let commitment = COMMITMENT_FACTORY.commit_value(&key, val.into());
-    let input = TransactionInput::new(OutputFeatures::empty(), commitment);
+    let input = TransactionInput::new(OutputFeatures::default(), commitment);
     (input, UnblindedOutput::new(val, key, None))
 }
 

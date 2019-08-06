@@ -87,7 +87,7 @@ fn sending_transaction_and_confirmation() {
         &msg,
         b.nonce,
         b.spend_key,
-        OutputFeatures::empty(),
+        OutputFeatures::default(),
         &PROVER,
         &COMMITMENT_FACTORY,
     )
@@ -167,7 +167,7 @@ fn send_no_change() {
         &msg,
         b.nonce,
         b.spend_key,
-        OutputFeatures::empty(),
+        OutputFeatures::default(),
         &PROVER,
         &COMMITMENT_FACTORY,
     )
@@ -229,7 +229,7 @@ fn receiving_and_confirmation() {
     let commitment = COMMITMENT_FACTORY.commit(&recv_key, &value.into());
     let rr = PROVER.construct_proof(&recv_key, value.into()).unwrap();
     let output = TransactionOutput::new(
-        OutputFeatures::COINBASE_OUTPUT,
+        OutputFeatures::create_coinbase(0),
         commitment,
         RangeProof::from_bytes(&rr).unwrap(),
     );
@@ -355,7 +355,7 @@ fn test_api() {
         &msg,
         b.nonce,
         b.spend_key,
-        OutputFeatures::empty(),
+        OutputFeatures::default(),
         &PROVER,
         &COMMITMENT_FACTORY,
     )
@@ -378,7 +378,7 @@ fn test_api() {
     let commitment = COMMITMENT_FACTORY.commit(&recv_key, &value.into());
     let rr = PROVER.construct_proof(&recv_key, value.into()).unwrap();
     let output = TransactionOutput::new(
-        OutputFeatures::COINBASE_OUTPUT,
+        OutputFeatures::create_coinbase(0),
         commitment,
         RangeProof::from_bytes(&rr).unwrap(),
     );

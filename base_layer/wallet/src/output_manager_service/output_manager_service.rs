@@ -128,7 +128,7 @@ impl OutputManagerService {
             outputs_to_be_received: vec![UnblindedOutput {
                 value: amount,
                 spending_key: key.clone(),
-                features: OutputFeatures::empty(),
+                features: OutputFeatures::default(),
             }],
             timestamp: Utc::now().naive_utc(),
         });
@@ -152,7 +152,7 @@ impl OutputManagerService {
         // Assumption: We are only allowing a single output per receiver in the current transaction protocols.
         if pending_transaction.outputs_to_be_received.len() != 1 ||
             pending_transaction.outputs_to_be_received[0]
-                .as_transaction_input(&COMMITMENT_FACTORY, OutputFeatures::empty())
+                .as_transaction_input(&COMMITMENT_FACTORY, OutputFeatures::default())
                 .commitment !=
                 received_output.commitment
         {
@@ -191,7 +191,7 @@ impl OutputManagerService {
 
         for uo in outputs.iter() {
             builder.with_input(
-                uo.as_transaction_input(&COMMITMENT_FACTORY, OutputFeatures::empty()),
+                uo.as_transaction_input(&COMMITMENT_FACTORY, OutputFeatures::default()),
                 uo.clone(),
             );
         }
@@ -230,7 +230,7 @@ impl OutputManagerService {
             pending_transaction.outputs_to_be_received.push(UnblindedOutput {
                 value: stp.get_amount_to_self()?,
                 spending_key: key,
-                features: OutputFeatures::empty(),
+                features: OutputFeatures::default(),
             })
         }
 
@@ -261,7 +261,7 @@ impl OutputManagerService {
             !pending_transaction.outputs_to_be_spent.iter().fold(true, |acc, i| {
                 acc && spent_outputs.iter().any(|o| {
                     o.commitment ==
-                        i.as_transaction_input(&COMMITMENT_FACTORY, OutputFeatures::empty())
+                        i.as_transaction_input(&COMMITMENT_FACTORY, OutputFeatures::default())
                             .commitment
                 })
             }) ||
@@ -269,7 +269,7 @@ impl OutputManagerService {
             !pending_transaction.outputs_to_be_received.iter().fold(true, |acc, i| {
                 acc && received_outputs.iter().any(|o| {
                     o.commitment ==
-                        i.as_transaction_input(&COMMITMENT_FACTORY, OutputFeatures::empty())
+                        i.as_transaction_input(&COMMITMENT_FACTORY, OutputFeatures::default())
                             .commitment
                 })
             })

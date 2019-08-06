@@ -41,6 +41,7 @@ use tari_core::{
     },
     types::*,
 };
+
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     common::Blake256,
@@ -78,6 +79,7 @@ pub struct SimpleBlockChainBuilder {
     headers: MerkleMountainRange<BlockHeader, SignatureHash>,
     utxos: MerkleMountainRange<TransactionInput, SignatureHash>,
     kernels: MerkleMountainRange<TransactionKernel, SignatureHash>,
+    rangeproofs: MerkleMountainRange<RangeProof, SignatureHash>,
 }
 
 impl SimpleBlockChainBuilder {
@@ -113,7 +115,7 @@ impl SimpleBlockChainBuilder {
         self.blockchain.spending_keys.push(vec![SpendInfo::new(
             priv_key,
             calculate_coinbase(height) + total_fee,
-            OutputFeatures::COINBASE_OUTPUT,
+            OutputFeatures::create_coinbase(height),
         )]);
         let block = BlockBuilder::new()
             .with_header(header)
@@ -133,7 +135,7 @@ impl SimpleBlockChainBuilder {
         chain.blockchain.spending_keys.push(vec![SpendInfo::new(
             priv_key.clone(),
             calculate_coinbase(0),
-            OutputFeatures::COINBASE_OUTPUT,
+            OutputFeatures::create_coinbase(0),
         )]);
         let (cb_utxo, cb_kernel) = create_coinbase(priv_key, 0, 0.into());
         let block = BlockBuilder::new().with_coinbase_utxo(cb_utxo, cb_kernel).build();
@@ -190,6 +192,9 @@ impl SimpleBlockChainBuilder {
                 .expect("failed to add pruned inputs");
         }
         for output in &block.body.outputs {
+            self.rangeproofs
+                .push(output.clone().proof)
+                .expect("failed to add proofs to test chain");
             self.utxos
                 .push(output.clone().into())
                 .expect("failed to add outputs to test chain");
@@ -211,6 +216,7 @@ impl SimpleBlockChainBuilder {
         hasher.input(&self.utxos.get_unpruned_hash());
         let output_mr = hasher.result().to_vec();
         let kernal_mmr = self.kernels.get_merkle_root();
+        let rr_mmr = self.rangeproofs.get_merkle_root();
         BlockHeader {
             version: BLOCKCHAIN_VERSION,
             height: self.blockchain.blocks[counter].header.height + 1,
@@ -222,7 +228,7 @@ impl SimpleBlockChainBuilder {
                 .checked_add_signed(Duration::minutes(1))
                 .unwrap(),
             output_mr: array_ref!(output_mr, 0, 32).clone(),
-            range_proof_mr: [0; 32],
+            range_proof_mr: array_ref!(rr_mmr, 0, 32).clone(),
             kernel_mr: array_ref!(kernal_mmr, 0, 32).clone(),
             total_kernel_offset: RistrettoSecretKey::from(0),
             pow: ProofOfWork {
@@ -281,19 +287,19 @@ impl SimpleBlockChainBuilder {
         spend_info.push(SpendInfo::new(
             new_spend_key.clone(),
             new_value,
-            OutputFeatures::empty(),
+            OutputFeatures::default(),
         ));
         spend_info.push(SpendInfo::new(
             new_spend_key2.clone(),
             new_value2,
-            OutputFeatures::empty(),
+            OutputFeatures::default(),
         ));
 
         // recreate input commitment
         let v_input = PrivateKey::from(old_value);
         let commitment_in = COMMITMENT_FACTORY.commit(&old_spend_key, &v_input);
         let input = TransactionInput::new(
-            self.blockchain.spending_keys[block_index][utxo_index].features,
+            self.blockchain.spending_keys[block_index][utxo_index].features.clone(),
             commitment_in,
         );
         // create unblinded value
@@ -319,7 +325,7 @@ impl SimpleBlockChainBuilder {
             &msg,
             receiver_r,
             new_spend_key2,
-            OutputFeatures::empty(),
+            OutputFeatures::default(),
             &PROVER,
             &COMMITMENT_FACTORY,
         )
@@ -348,6 +354,7 @@ impl Default for SimpleBlockChainBuilder {
             headers: MerkleMountainRange::new(),
             utxos: MerkleMountainRange::new(),
             kernels: MerkleMountainRange::new(),
+            rangeproofs: MerkleMountainRange::new(),
         }
     }
 }
@@ -380,7 +387,7 @@ fn create_coinbase(key: PrivateKey, height: u64, total_fee: MicroTari) -> (Trans
     let commitment = COMMITMENT_FACTORY.commit(&key, &v);
     let rr = PROVER.construct_proof(&key, amount.into()).unwrap();
     let output = TransactionOutput::new(
-        OutputFeatures::COINBASE_OUTPUT,
+        OutputFeatures::create_coinbase(height),
         commitment,
         RangeProof::from_bytes(&rr).unwrap(),
     );

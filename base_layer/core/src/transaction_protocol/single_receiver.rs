@@ -122,7 +122,7 @@ mod test {
         let mut rng = OsRng::new().unwrap();
         let r = PrivateKey::random(&mut rng);
         let k = PrivateKey::random(&mut rng);
-        let of = OutputFeatures::empty();
+        let of = OutputFeatures::default();
         (r, k, of)
     }
 
@@ -173,6 +173,6 @@ mod test {
             "Output commitment is invalid"
         );
         assert!(out.verify_range_proof(&PROVER).unwrap(), "Range proof is invalid");
-        assert!(out.features.is_empty(), "Output features have changed");
+        assert!(out.features.flags.is_empty(), "Output features flags have changed");
     }
 }

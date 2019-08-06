@@ -26,7 +26,7 @@
 use crate::{
     blocks::aggregated_body::AggregateBody,
     tari_amount::MicroTari,
-    types::{BlindingFactor, Commitment, CommitmentFactory, Signature},
+    types::{BlindingFactor, Commitment, CommitmentFactory, Signature, COINBASE_LOCK_HEIGHT},
 };
 
 use crate::{
@@ -49,7 +49,7 @@ pub const MAX_TRANSACTION_OUTPUTS: usize = 100;
 pub const MAX_TRANSACTION_RECIPIENTS: usize = 15;
 pub const MINIMUM_TRANSACTION_FEE: MicroTari = MicroTari(100);
 
-//--------------------------------------        Bit flag features   --------------------------------------------------//
+//--------------------------------------        Output features   --------------------------------------------------//
 
 bitflags! {
     /// Options for a kernel's structure or use.
@@ -61,9 +61,55 @@ bitflags! {
     }
 }
 
+/// Options for UTXO's
+#[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
+pub struct OutputFeatures {
+    /// Flags are the feature flags that differentiate between outputs, eg Coinbase all of which has different rules
+    pub flags: OutputFlags,
+    /// the maturity of the specific UTXO. This is the min lock height at which an UTXO can be spend. Coinbase UTXO
+    /// require a min maturity of the Coinbase_lock_height, this should be checked on receiving new blocks.
+    pub maturity: u64,
+}
+
+impl OutputFeatures {
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut buf = Vec::new();
+        bincode::serialize_into(&mut buf, self).unwrap(); // this should not fail
+        buf
+    }
+
+    pub fn create_coinbase(current_block_height: u64) -> OutputFeatures {
+        OutputFeatures {
+            flags: OutputFlags::COINBASE_OUTPUT,
+            maturity: COINBASE_LOCK_HEIGHT + current_block_height,
+        }
+    }
+}
+
+impl Default for OutputFeatures {
+    fn default() -> Self {
+        OutputFeatures {
+            flags: OutputFlags::empty(),
+            maturity: 0,
+        }
+    }
+}
+
+impl PartialOrd for OutputFeatures {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for OutputFeatures {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.maturity.cmp(&other.maturity)
+    }
+}
+
 bitflags! {
     #[derive(Deserialize, Serialize)]
-    pub struct OutputFeatures: u8 {
+    pub struct OutputFlags: u8 {
         /// Output is a coinbase output, must not be spent until maturity
         const COINBASE_OUTPUT = 0b0000_0001;
     }
@@ -101,7 +147,7 @@ impl UnblindedOutput {
         UnblindedOutput {
             value,
             spending_key,
-            features: features.unwrap_or_else(OutputFeatures::empty),
+            features: features.unwrap_or_else(|| OutputFeatures::default()),
         }
     }
 
@@ -163,7 +209,7 @@ impl Ord for UnblindedOutput {
 /// Primarily a reference to an output being spent by the transaction.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct TransactionInput {
-    /// The features of the output being spent. We will check maturity for coinbase output.
+    /// The features of the output being spent. We will check maturity for all outputs.
     pub features: OutputFeatures,
     /// The commitment referencing the output being spent.
     pub commitment: Commitment,
@@ -200,7 +246,7 @@ impl From<TransactionOutput> for TransactionInput {
 impl Hashable for TransactionInput {
     fn hash(&self) -> Vec<u8> {
         HashDigest::new()
-            .chain(vec![self.features.bits])
+            .chain(self.features.to_bytes())
             .chain(self.commitment.as_bytes())
             .result()
             .to_vec()
@@ -253,7 +299,7 @@ impl TransactionOutput {
 impl Hashable for TransactionOutput {
     fn hash(&self) -> Vec<u8> {
         HashDigest::new()
-            .chain(vec![self.features.bits])
+            .chain(self.features.to_bytes())
             .chain(self.commitment.as_bytes())
             .chain(self.proof.as_bytes())
             .result()
@@ -264,7 +310,7 @@ impl Hashable for TransactionOutput {
 impl Default for TransactionOutput {
     fn default() -> Self {
         TransactionOutput::new(
-            OutputFeatures::empty(),
+            OutputFeatures::default(),
             CommitmentFactory::default().zero(),
             RangeProof::default(),
         )
@@ -549,8 +595,8 @@ mod test {
         let k = BlindingFactor::random(&mut rng);
         let factory = PedersenCommitmentFactory::default();
         let i = UnblindedOutput::new(10.into(), k, None);
-        let input = i.as_transaction_input(&factory, OutputFeatures::empty());
-        assert_eq!(input.features, OutputFeatures::empty());
+        let input = i.as_transaction_input(&factory, OutputFeatures::default());
+        assert_eq!(input.features, OutputFeatures::default());
         assert!(input.opened_by(&i, &factory));
     }
 
@@ -566,12 +612,12 @@ mod test {
         // For testing the max range has been limited to 2^32 so this value is too large.
         let unblinded_output1 = UnblindedOutput::new((2u64.pow(32) - 1u64).into(), k1, None);
         let tx_output1 = unblinded_output1
-            .as_transaction_output(&prover, &factory, OutputFeatures::empty())
+            .as_transaction_output(&prover, &factory, OutputFeatures::default())
             .unwrap();
         assert!(tx_output1.verify_range_proof(&prover).unwrap());
 
         let unblinded_output2 = UnblindedOutput::new((2u64.pow(32) + 1u64).into(), k2.clone(), None);
-        let tx_output2 = unblinded_output2.as_transaction_output(&prover, &factory, OutputFeatures::empty());
+        let tx_output2 = unblinded_output2.as_transaction_output(&prover, &factory, OutputFeatures::default());
 
         match tx_output2 {
             Ok(_) => panic!("Range proof should have failed to verify"),
@@ -583,7 +629,7 @@ mod test {
         let v = PrivateKey::from(2u64.pow(32) + 1);
         let c = factory.commit(&k2, &v);
         let proof = prover.construct_proof(&k2, 2u64.pow(32) + 1).unwrap();
-        let tx_output3 = TransactionOutput::new(OutputFeatures::empty(), c, RangeProof::from_bytes(&proof).unwrap());
+        let tx_output3 = TransactionOutput::new(OutputFeatures::default(), c, RangeProof::from_bytes(&proof).unwrap());
         assert_eq!(tx_output3.verify_range_proof(&prover).unwrap(), false);
     }
 }
