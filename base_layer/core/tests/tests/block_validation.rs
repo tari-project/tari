@@ -22,6 +22,7 @@
 
 use crate::support::simple_block_chain::*;
 use std::fs;
+use tari_core::consensus::ConsensusRules;
 
 fn create_block_chain() -> SimpleBlockChain {
     let read_json = fs::read_to_string("tests/chain/chain.json").unwrap();
@@ -30,6 +31,7 @@ fn create_block_chain() -> SimpleBlockChain {
 }
 #[test]
 fn test_valid_blocks() {
+    ConsensusRules::set_integration_test();
     let chain = create_block_chain();
     for i in 0..chain.blocks.len() {
         let coinbase = calculate_coinbase(i as u64);

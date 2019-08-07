@@ -24,10 +24,11 @@
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 use crate::{
     blocks::{aggregated_body::AggregateBody, blockheader::BlockHeader},
+    consensus::ConsensusRules,
     pow::PoWError,
     tari_amount::*,
     transaction::*,
-    types::{Commitment, ProofOfWork, COINBASE_LOCK_HEIGHT, COMMITMENT_FACTORY, PROVER},
+    types::{Commitment, ProofOfWork, COMMITMENT_FACTORY, PROVER},
 };
 use derive_error::Error;
 use serde::{Deserialize, Serialize};
@@ -98,7 +99,7 @@ impl Block {
         for utxo in &self.body.outputs {
             if utxo.features.flags.contains(OutputFlags::COINBASE_OUTPUT) {
                 coinbase_counter += 1;
-                if utxo.features.maturity < (self.header.height + COINBASE_LOCK_HEIGHT) {
+                if utxo.features.maturity < (self.header.height + ConsensusRules::get_coinbase_lock_height()) {
                     return Err(BlockValidationError::InvalidCoinbase);
                 }
             }

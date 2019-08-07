@@ -23,7 +23,8 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
-use crate::{bullet_rangeproofs::BulletRangeProof, pow::*};
+use crate::{bullet_rangeproofs::BulletRangeProof, consensus::ConsensusRules, pow::*};
+use std::env;
 use tari_crypto::{
     common::Blake256,
     ristretto::{
@@ -71,26 +72,29 @@ pub type RangeProof = BulletRangeProof;
 /// Specify the Proof of Work
 pub type ProofOfWork = MockProofOfWork;
 
-#[cfg(test)]
-pub const MAX_RANGE_PROOF_RANGE: usize = 32; // 2^32 This is the only way to produce failing range proofs for the tests
-#[cfg(not(test))]
-pub const MAX_RANGE_PROOF_RANGE: usize = 64; // 2^64
-
-/// Current version of the blockchain
-pub const BLOCKCHAIN_VERSION: u16 = 0;
-
-// ToDo move this to some other consensus like struct to be passed around. cfg test is not set during integration tests.
-// We also might want to change this per test. See issue: #641
-/// The min required lock height before coinbase utxos are spendable
-// #[cfg(test)]
-pub const COINBASE_LOCK_HEIGHT: u64 = 1;
-// #[cfg(not(test))]
-// pub const COINBASE_LOCK_HEIGHT: u64 = 1440;
-
 // Set up some "global" services for the Tari blockchain - These are most likely not threadsafe as written, but haven't
 // checked.
+
+// This looks for a CONSENSUSRULES in the env vars.
+// This is used to "pass-in" a parameter to lazy static so that it knows which constructor to use.
+lazy_static! {
+    pub static ref CONSENSUS_RULES: ConsensusRules = {
+        let key = "CONSENSUSRULES";
+        let consensus = match env::var(key) {
+            Ok(val) => match val.as_ref() {
+                "PRODUCTION" => ConsensusRules::new_as_prod(),
+                "UNIT_TEST" => ConsensusRules::new_as_test(),
+                "INTEGRATION_TEST" => ConsensusRules::new_as_integration_test(),
+                _ => ConsensusRules::new_as_test(),
+            },
+            Err(_e) => ConsensusRules::new_as_test(),
+        };
+        env::remove_var(key); //we dont want to leave the key in the env
+        consensus
+    };
+}
 lazy_static! {
     pub static ref COMMITMENT_FACTORY: CommitmentFactory = CommitmentFactory::default();
     pub static ref PROVER: RangeProofService =
-        RangeProofService::new(MAX_RANGE_PROOF_RANGE, &COMMITMENT_FACTORY).unwrap();
+        RangeProofService::new(ConsensusRules::get_max_range_proof_range(), &COMMITMENT_FACTORY).unwrap();
 }

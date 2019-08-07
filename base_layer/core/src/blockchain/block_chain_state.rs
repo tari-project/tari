@@ -27,11 +27,7 @@
 
 use crate::{
     blockchain::error::StateError,
-    blocks::{
-        block::{Block, BlockValidationError},
-        blockheader::BlockHeader,
-        genesis_block::*,
-    },
+    blocks::{block::Block, blockheader::BlockHeader, genesis_block::*},
     emission::EmissionSchedule,
     tari_amount::MicroTari,
     transaction::{TransactionInput, TransactionKernel},
@@ -65,9 +61,9 @@ impl BlockchainState {
         utxos.init_persistance_store(&"outputs".to_string(), 5000);
         let mut kernels = MerkleMountainRange::new();
         kernels.init_persistance_store(&"kernels".to_string(), std::usize::MAX);
-        let schedule = EmissionSchedule::new(MicroTari::from(10_000_000), 0.999, MicroTari::from(100)); // ToDo ensure these amounts are correct
         let mut rangeproofs = MerkleMountainRange::new();
         rangeproofs.init_persistance_store(&"rangeproofs".to_string(), 5000);
+        let schedule = EmissionSchedule::new();
         let mut block_chain_state = BlockchainState {
             headers,
             utxos,

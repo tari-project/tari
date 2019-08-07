@@ -34,6 +34,7 @@ pub mod transaction;
 pub mod transaction_protocol;
 pub mod types;
 
+pub mod consensus;
 pub mod emission;
 pub mod tari_amount;
 

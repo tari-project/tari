@@ -29,6 +29,7 @@ use serde::{Deserialize, Serialize};
 use std::{fs::File, io::prelude::*};
 use tari_core::{
     blocks::{block::*, blockheader::*},
+    consensus::ConsensusRules,
     emission::EmissionSchedule,
     fee::Fee,
     tari_amount::MicroTari,
@@ -218,7 +219,7 @@ impl SimpleBlockChainBuilder {
         let kernal_mmr = self.kernels.get_merkle_root();
         let rr_mmr = self.rangeproofs.get_merkle_root();
         BlockHeader {
-            version: BLOCKCHAIN_VERSION,
+            version: ConsensusRules::get_blockchain_version(),
             height: self.blockchain.blocks[counter].header.height + 1,
             prev_hash: hash,
             timestamp: self.blockchain.blocks[counter]
@@ -373,7 +374,7 @@ impl Default for SimpleBlockChain {
 /// µTari (micro Tari)
 pub fn calculate_coinbase(block_height: u64) -> MicroTari {
     // todo fill this in properly as a function and not a constant
-    let schedule = EmissionSchedule::new(MicroTari::from(10_000_000), 0.999, MicroTari::from(100));
+    let schedule = EmissionSchedule::new();
     schedule.block_reward(block_height)
 }
 
