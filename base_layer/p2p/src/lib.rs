@@ -24,6 +24,7 @@
 mod macros;
 mod consts;
 pub mod dht_service;
+pub mod executor;
 pub mod initialization;
 pub mod peer;
 pub mod ping_pong;
