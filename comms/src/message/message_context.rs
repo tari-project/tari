@@ -31,6 +31,7 @@ use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct MessageContext<MType> {
+    pub forwardable: bool,
     pub message_envelope: MessageEnvelope,
     pub peer: Peer,
     pub outbound_message_service: Arc<OutboundMessageService>,
@@ -49,6 +50,7 @@ where
     pub fn new(
         node_identity: Arc<NodeIdentity>,
         peer: Peer,
+        forwardable: bool,
         message_envelope: MessageEnvelope,
         outbound_message_service: Arc<OutboundMessageService>,
         peer_manager: Arc<PeerManager>,
@@ -56,6 +58,7 @@ where
     ) -> Self
     {
         MessageContext {
+            forwardable,
             message_envelope,
             peer,
             node_identity,

@@ -30,7 +30,15 @@ use super::{
     Result,
 };
 use crate::{
-    connection::{ConnectionError, CurveEncryption, CurvePublicKey, PeerConnection, PeerConnectionState, ZmqContext},
+    connection::{
+        zmq::InprocAddress,
+        ConnectionError,
+        CurveEncryption,
+        CurvePublicKey,
+        PeerConnection,
+        PeerConnectionState,
+        ZmqContext,
+    },
     control_service::messages::RejectReason,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerManager},
 };
@@ -277,6 +285,10 @@ impl ConnectionManager {
     /// Return the number of _active_ peer connections currently managed by this instance
     pub fn get_active_connection_count(&self) -> usize {
         self.connections.get_active_connection_count()
+    }
+
+    pub fn get_message_sink_address(&self) -> &InprocAddress {
+        &self.establisher.get_config().message_sink_address
     }
 
     fn initiate_peer_connection(&self, peer: &Peer) -> Result<Arc<PeerConnection>> {

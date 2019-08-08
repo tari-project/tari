@@ -21,17 +21,35 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use derive_error::Error;
-use tari_comms::domain_connector::ConnectorError;
+use tari_comms::{
+    connection::ConnectionError,
+    domain_connector::ConnectorError,
+    message::MessageError,
+    outbound_message_service::OutboundError,
+    peer_manager::PeerManagerError,
+};
 
 #[derive(Debug, Error)]
 pub enum SAFError {
+    OutboundError(OutboundError),
     ConnectorError(ConnectorError),
     /// OMS has not been initialized
     OMSUndefined,
+    /// The current nodes identity is undefined
+    NodeIdentityUndefined,
+    /// PeerManager has not been initialized
+    PeerManagerUndefined,
+    PeerManagerError(PeerManagerError),
+    ///  ZMQContext has not been initialized
+    ZMQContextUndefined,
+    /// Message Sink Address for InboundMessageService has not been initialized
+    IMSMessageSinkAddressUndefined,
     /// Failed to send from API
     ApiSendFailed,
     /// Failed to receive in API from service
     ApiReceiveFailed,
     /// Received an unexpected response type from the API
     UnexpectedApiResponse,
+    MessageError(MessageError),
+    ConnectionError(ConnectionError),
 }

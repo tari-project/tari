@@ -426,6 +426,10 @@ where
         Arc::clone(&self.node_identity)
     }
 
+    pub fn connection_manager(&self) -> Arc<ConnectionManager> {
+        Arc::clone(&self.connection_manager)
+    }
+
     pub fn outbound_message_service(&self) -> Arc<OutboundMessageService> {
         Arc::clone(&self.outbound_message_service)
     }

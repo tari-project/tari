@@ -109,6 +109,15 @@ impl PeerManager {
             .exists(public_key))
     }
 
+    /// Check if a peer exist using the specified node_id
+    pub fn exists_node_id(&self, node_id: &NodeId) -> Result<bool, PeerManagerError> {
+        Ok(self
+            .peer_storage
+            .read()
+            .map_err(|_| PeerManagerError::PoisonedAccess)?
+            .exists_node_id(node_id))
+    }
+
     /// Request a sub-set of peers based on the provided BroadcastStrategy
     pub fn get_broadcast_identities(
         &self,

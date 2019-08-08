@@ -193,8 +193,8 @@ mod test {
             MessageFlags::NONE,
         )
         .unwrap();
-        let message_data = MessageData::new(node_identity.identity.node_id.clone(), message_envelope);
-        message_data.clone().try_into_frame_set().unwrap()
+        let message_data = MessageData::new(node_identity.identity.node_id.clone(), true, message_envelope);
+        message_data.clone().into_frame_set()
     }
 
     #[test]

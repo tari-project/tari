@@ -156,6 +156,7 @@ where
                                     let message_context = MessageContext::new(
                                         self.node_identity.clone(),
                                         peer,
+                                        message_data.forwardable,
                                         message_data.message_envelope,
                                         self.outbound_message_service.clone(),
                                         self.peer_manager.clone(),
@@ -345,10 +346,11 @@ mod test {
         .unwrap();
         let message_data1 = MessageData::new(
             NodeId::from_key(&node_identity.identity.public_key).unwrap(),
+            true,
             message_envelope,
         );
         let mut message1_frame_set = Vec::new();
-        message1_frame_set.extend(message_data1.clone().try_into_frame_set().unwrap());
+        message1_frame_set.extend(message_data1.clone().into_frame_set());
 
         // Construct test message 2
         let message_header = MessageHeader::new(DomainBrokerType::Type2).unwrap();
@@ -364,10 +366,11 @@ mod test {
         .unwrap();
         let message_data2 = MessageData::new(
             NodeId::from_key(&node_identity.identity.public_key).unwrap(),
+            true,
             message_envelope,
         );
         let mut message2_frame_set = Vec::new();
-        message2_frame_set.extend(message_data2.clone().try_into_frame_set().unwrap());
+        message2_frame_set.extend(message_data2.clone().into_frame_set());
 
         // Submit Messages to the Worker
         pause();
