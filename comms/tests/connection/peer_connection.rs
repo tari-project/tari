@@ -157,7 +157,8 @@ fn connection_out() {
         .unwrap();
     let frames = consumer.receive(2000).unwrap();
     assert_eq!(conn_id.to_vec(), frames[1]);
-    assert_eq!(vec![123u8], frames[2]);
+    assert_eq!(vec![1u8], frames[2]);
+    assert_eq!(vec![123u8], frames[3]);
 }
 
 #[test]
@@ -291,11 +292,11 @@ fn connection_pause_resume() {
 
     // Should receive all the pending messages
     let frames = consumer.receive(3000).unwrap();
-    assert_eq!(vec![2u8], frames[2]);
+    assert_eq!(vec![2u8], frames[3]);
     let frames = consumer.receive(3000).unwrap();
-    assert_eq!(vec![3u8], frames[2]);
+    assert_eq!(vec![3u8], frames[3]);
     let frames = consumer.receive(3000).unwrap();
-    assert_eq!(vec![4u8], frames[2]);
+    assert_eq!(vec![4u8], frames[3]);
 }
 
 #[test]
@@ -454,6 +455,7 @@ fn ignore_invalid_message_types() {
     let frames = consumer.receive(2000).unwrap();
     assert_eq!("123".as_bytes().to_vec(), frames[1]);
     assert_eq!(vec![1u8], frames[2]);
+    assert_eq!(vec![1u8], frames[3]);
 
     // Test no more messages to receive. Since we have received above, the invalid message
     // should be already ready to receive (10ms) if it was forwarded by the peer connection.

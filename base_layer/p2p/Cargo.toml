@@ -22,6 +22,7 @@ chrono = { version = "0.4.6", features = ["serde"]}
 tokio = "0.1.22"
 futures = "0.1.28"
 tower-service = "0.2.0"
+ttl_cache = "0.5.1"
 
 [dev-dependencies]
 tempdir = "0.3.7"

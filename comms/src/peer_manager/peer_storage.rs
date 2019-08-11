@@ -209,6 +209,11 @@ where DS: KeyValStore
         self.public_key_hm.get(&public_key).is_some()
     }
 
+    /// Check if a peer exist using the specified node_id
+    pub fn exists_node_id(&self, node_id: &NodeId) -> bool {
+        self.node_id_hm.get(&node_id).is_some()
+    }
+
     /// Constructs a single NodeIdentity for the peer corresponding to the provided NodeId
     pub fn direct_identity_node_id(&self, node_id: &NodeId) -> Result<Vec<PeerNodeIdentity>, PeerManagerError> {
         let peer_key = *self

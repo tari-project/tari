@@ -20,5 +20,14 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::time::Duration;
+
 /// The maximum number of peer nodes that a message will be sent to
 pub const DHT_BROADCAST_NODE_COUNT: usize = 8;
+
+/// The maximum number of messages that can be stored using the Store-and-forward service
+pub const SAF_MSG_CACHE_STORAGE_CAPACITY: usize = 10000;
+/// The time-to-live duration used for storage of low priority messages by the Store-and-forward service
+pub const SAF_LOW_PRIORITY_MSG_STORAGE_TTL: Duration = Duration::from_secs(6 * 60 * 60);
+/// The time-to-live duration used for storage of high priority messages by the Store-and-forward service
+pub const SAF_HIGH_PRIORITY_MSG_STORAGE_TTL: Duration = Duration::from_secs(24 * 60 * 60);

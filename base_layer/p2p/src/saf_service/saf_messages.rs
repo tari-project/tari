@@ -31,7 +31,7 @@ use tari_comms::message::{Message, MessageEnvelope, MessageError};
 /// will be sent.
 #[derive(Serialize, Deserialize)]
 pub struct RetrieveMsgsMessage {
-    start_time: Option<DateTime<Utc>>,
+    pub start_time: Option<DateTime<Utc>>,
 }
 
 impl TryInto<Message> for RetrieveMsgsMessage {
@@ -45,7 +45,7 @@ impl TryInto<Message> for RetrieveMsgsMessage {
 /// The StoredMsgsMessage contains the set of applicable messages retrieved from a neighbouring peer node.
 #[derive(Serialize, Deserialize)]
 pub struct StoredMsgsMessage {
-    pub messages: Vec<MessageEnvelope>,
+    pub message_envelopes: Vec<MessageEnvelope>,
 }
 
 impl TryInto<Message> for StoredMsgsMessage {

@@ -40,7 +40,7 @@ use crossbeam_channel as channel;
 use crossbeam_channel::{Receiver, RecvTimeoutError, Sender};
 use tari_comms::{
     builder::{CommsRoutes, CommsServicesError},
-    connection::ZmqContext,
+    connection::{InprocAddress, ZmqContext},
 };
 
 const LOG_TARGET: &str = "base_layer::p2p::services";
@@ -75,6 +75,7 @@ impl ServiceExecutor {
 
             let service_context = ServiceContext {
                 oms: comms_services.outbound_message_service(),
+                ims_message_sink_address: comms_services.connection_manager().get_message_sink_address().clone(),
                 peer_manager: comms_services.peer_manager(),
                 node_identity: comms_services.node_identity(),
                 receiver,
@@ -152,6 +153,7 @@ impl ServiceExecutor {
 /// a particular [TariMessageType].
 pub struct ServiceContext {
     oms: Arc<OutboundMessageService>,
+    ims_message_sink_address: InprocAddress,
     peer_manager: Arc<PeerManager>,
     node_identity: Arc<NodeIdentity>,
     receiver: Receiver<ServiceControlMessage>,
@@ -185,6 +187,16 @@ impl ServiceContext {
     /// Retrieve and `Arc` of the NodeIdentity. Used for managing the current Nodes Identity.
     pub fn node_identity(&self) -> Arc<NodeIdentity> {
         Arc::clone(&self.node_identity)
+    }
+
+    /// Retrieve a reference to the message sink address of the InboundMessageService
+    pub fn ims_message_sink_address(&self) -> &InprocAddress {
+        &self.ims_message_sink_address
+    }
+
+    /// Retrieve a reference to the ZmqContext
+    pub fn zmq_context(&self) -> &ZmqContext {
+        &self.zmq_context
     }
 
     /// Create a [DomainConnector] which listens for a particular [TariMessageType].

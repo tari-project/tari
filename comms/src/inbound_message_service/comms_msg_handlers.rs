@@ -92,8 +92,10 @@ where
             NodeDestination::PublicKey(dest_public_key) => {
                 if node_identity.identity.public_key == dest_public_key {
                     Ok(CommsDispatchType::Handle)
-                } else {
+                } else if message_context.forwardable {
                     Ok(CommsDispatchType::Forward)
+                } else {
+                    Ok(CommsDispatchType::Discard)
                 }
             },
             NodeDestination::NodeId(dest_node_id) => {
@@ -102,8 +104,10 @@ where
                     .map_err(|e| DispatchError::HandlerError(format!("{}", e)))?
                 {
                     Ok(CommsDispatchType::Handle)
-                } else {
+                } else if message_context.forwardable {
                     Ok(CommsDispatchType::Forward)
+                } else {
+                    Ok(CommsDispatchType::Discard)
                 }
             },
         }
@@ -150,8 +154,12 @@ where
                         target: LOG_TARGET,
                         "Unable to decrypt message with unknown recipient, forwarding..."
                     );
-                    // Message might have been for this node if it could have been decrypted
-                    return handler_forward(message_context);
+                    // Message might have been for this node if it was able to decrypt it
+                    if message_context.forwardable {
+                        return handler_forward(message_context);
+                    } else {
+                        return handler_discard(message_context);
+                    }
                 } else {
                     warn!(target: LOG_TARGET, "Unable to decrypt message addressed to this node");
                     // Message was for this node but could not be decrypted

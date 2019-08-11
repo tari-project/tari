@@ -21,6 +21,12 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
+    consts::{
+        DHT_BROADCAST_NODE_COUNT,
+        SAF_HIGH_PRIORITY_MSG_STORAGE_TTL,
+        SAF_LOW_PRIORITY_MSG_STORAGE_TTL,
+        SAF_MSG_CACHE_STORAGE_CAPACITY,
+    },
     saf_service::{RetrieveMsgsMessage, SAFError, StoredMsgsMessage},
     services::{
         Service,
@@ -32,6 +38,7 @@ use crate::{
     },
     tari_message::{NetMessage, TariMessageType},
 };
+use chrono::prelude::*;
 use crossbeam_channel as channel;
 use log::*;
 use std::{
@@ -39,30 +46,58 @@ use std::{
     time::Duration,
 };
 use tari_comms::{
+    connection::{Connection, Direction, InprocAddress, SocketEstablishment, ZmqContext},
     domain_connector::MessageInfo,
-    message::MessageEnvelope,
-    outbound_message_service::outbound_message_service::OutboundMessageService,
-    peer_manager::PeerManager,
+    message::{Frame, MessageData, MessageEnvelope, MessageEnvelopeHeader, MessageFlags, NodeDestination},
+    outbound_message_service::{outbound_message_service::OutboundMessageService, BroadcastStrategy, ClosestRequest},
+    peer_manager::{NodeIdentity, PeerManager},
     DomainConnector,
 };
+use ttl_cache::TtlCache;
 
 const LOG_TARGET: &str = "base_layer::p2p::saf";
+
+/// Storage for a single message envelope, including the date and time when the element was stored
+pub struct StoredMessage {
+    store_time: DateTime<Utc>,
+    message_envelope: MessageEnvelope,
+    message_envelope_header: MessageEnvelopeHeader,
+}
+
+impl StoredMessage {
+    /// Create a new StorageMessage from a MessageEnvelope
+    pub fn from(message_envelope: MessageEnvelope, message_envelope_header: MessageEnvelopeHeader) -> Self {
+        Self {
+            store_time: Utc::now(),
+            message_envelope,
+            message_envelope_header,
+        }
+    }
+}
 
 /// The Store-and-forward Service manages the storage of forwarded message and provides an api for neighbouring peers to
 /// retrieve the stored messages.
 pub struct SAFService {
+    node_identity: Option<Arc<NodeIdentity>>,
     oms: Option<Arc<OutboundMessageService>>,
     peer_manager: Option<Arc<PeerManager>>,
+    zmq_context: Option<ZmqContext>,
+    ims_message_sink_address: Option<InprocAddress>,
     api: ServiceApiWrapper<SAFServiceApi, SAFApiRequest, SAFApiResult>,
+    msg_storage: TtlCache<Frame, StoredMessage>,
 }
 
 impl SAFService {
     /// Create a new Store-and-forward service.
     pub fn new() -> Self {
         Self {
+            node_identity: None,
             oms: None,
             peer_manager: None,
+            zmq_context: None,
+            ims_message_sink_address: None,
             api: Self::setup_api(),
+            msg_storage: TtlCache::new(SAF_MSG_CACHE_STORAGE_CAPACITY),
         }
     }
 
@@ -80,25 +115,82 @@ impl SAFService {
     }
 
     /// Send a message retrieval request to all neighbouring peers that are in the same network region.
-    fn send_retrieval_request(&self) -> Result<(), SAFError> {
-        let _oms = self.oms.as_ref().ok_or(SAFError::OMSUndefined)?;
+    fn send_retrieval_request(&self, start_time: Option<DateTime<Utc>>) -> Result<(), SAFError> {
+        let oms = self.oms.as_ref().ok_or(SAFError::OMSUndefined)?;
+        let node_identity = self.node_identity.as_ref().ok_or(SAFError::NodeIdentityUndefined)?;
 
-        // TODO: construct and send a message retrieval request to all neighbouring peers using oms
+        oms.send_message(
+            BroadcastStrategy::Closest(ClosestRequest {
+                n: DHT_BROADCAST_NODE_COUNT,
+                node_id: node_identity.identity.node_id.clone(),
+                excluded_peers: Vec::new(),
+            }),
+            MessageFlags::ENCRYPTED,
+            RetrieveMsgsMessage { start_time },
+        )?;
+        trace!(target: LOG_TARGET, "Message retrieval request sent");
 
         Ok(())
     }
 
     /// Process an incoming message retrieval request.
     fn receive_retrieval_request(&mut self, connector: &DomainConnector<'static>) -> Result<(), SAFError> {
-        let _oms = self.oms.as_ref().ok_or(SAFError::OMSUndefined)?;
+        let oms = self.oms.as_ref().ok_or(SAFError::OMSUndefined)?;
+        let peer_manager = self.peer_manager.as_ref().ok_or(SAFError::PeerManagerUndefined)?;
+        let node_identity = self.node_identity.as_ref().ok_or(SAFError::NodeIdentityUndefined)?;
 
-        let incoming_msg: Option<(MessageInfo, StoredMsgsMessage)> = connector
+        let incoming_msg: Option<(MessageInfo, RetrieveMsgsMessage)> = connector
             .receive_timeout(Duration::from_millis(1))
             .map_err(SAFError::ConnectorError)?;
-        if let Some((_info, _stored_msgs)) = incoming_msg {
+        if let Some((info, retrieval_request_msg)) = incoming_msg {
+            if peer_manager.in_network_region(
+                &info.peer_source.node_id,
+                &node_identity.identity.node_id,
+                DHT_BROADCAST_NODE_COUNT,
+            )? {
+                // Compile a set of stored messages for the requesting peer
+                // TODO: compiling the bundle of messages is slow, especially when there are many stored messages, a
+                // better approach should be used
+                let mut stored_msgs_response = StoredMsgsMessage {
+                    message_envelopes: Vec::new(),
+                };
+                for (_, stored_message) in self.msg_storage.iter() {
+                    if retrieval_request_msg
+                        .start_time
+                        .map(|start_time| start_time <= stored_message.store_time)
+                        .unwrap_or(true)
+                    {
+                        match stored_message.message_envelope_header.dest.clone() {
+                            NodeDestination::Unknown => {
+                                stored_msgs_response
+                                    .message_envelopes
+                                    .push(stored_message.message_envelope.clone());
+                            },
+                            NodeDestination::PublicKey(dest_public_key) => {
+                                if dest_public_key == info.peer_source.public_key {
+                                    stored_msgs_response
+                                        .message_envelopes
+                                        .push(stored_message.message_envelope.clone());
+                                }
+                            },
+                            NodeDestination::NodeId(dest_node_id) => {
+                                if dest_node_id == info.peer_source.node_id {
+                                    stored_msgs_response
+                                        .message_envelopes
+                                        .push(stored_message.message_envelope.clone());
+                                }
+                            },
+                        };
+                    }
+                }
 
-            // TODO: check that the request came from a peer that is in a similar region of the network
-            // TODO: construct a response message with all the messages that are applicable to that peer
+                oms.send_message(
+                    BroadcastStrategy::DirectPublicKey(info.peer_source.public_key),
+                    MessageFlags::ENCRYPTED,
+                    stored_msgs_response,
+                )?;
+                trace!(target: LOG_TARGET, "Responded to received message retrieval request");
+            }
         }
 
         Ok(())
@@ -106,34 +198,77 @@ impl SAFService {
 
     /// Process an incoming set of retrieved messages.
     fn receive_stored_messages(&mut self, connector: &DomainConnector<'static>) -> Result<(), SAFError> {
-        let _oms = self.oms.as_ref().ok_or(SAFError::OMSUndefined)?;
+        let ims_message_sink_address = self
+            .ims_message_sink_address
+            .as_ref()
+            .ok_or(SAFError::IMSMessageSinkAddressUndefined)?;
+        let zmq_context = self.zmq_context.as_ref().ok_or(SAFError::ZMQContextUndefined)?;
 
-        let incoming_msg: Option<(MessageInfo, RetrieveMsgsMessage)> = connector
+        let incoming_msg: Option<(MessageInfo, StoredMsgsMessage)> = connector
             .receive_timeout(Duration::from_millis(1))
             .map_err(SAFError::ConnectorError)?;
-        if let Some((_info, _retrieve_msg)) = incoming_msg {
-
-            // TODO: submit each message in the message set to the InboundMessageService to get handled and forwarded to
-            // the correct service. Duplicate retrieved messages will be discarded by the MessageCache of
-            // the comms system
+        if let Some((info, stored_msgs)) = incoming_msg {
+            // Send each received MessageEnvelope to the InboundMessageService
+            let ims_connection = Connection::new(&zmq_context, Direction::Outbound)
+                .set_socket_establishment(SocketEstablishment::Connect)
+                .establish(&ims_message_sink_address)?;
+            for message_envelope in stored_msgs.message_envelopes {
+                let message_data = MessageData::new(info.peer_source.node_id.clone(), false, message_envelope);
+                let message_data_frame_set = message_data.into_frame_set();
+                ims_connection.send(message_data_frame_set.clone())?;
+            }
+            trace!(target: LOG_TARGET, "Received stored messages from neighbouring peer");
         }
 
         Ok(())
     }
 
-    /// Store message of known neighbouring peers and forwarded messages
-    fn store_message(&self, _message_envelope: MessageEnvelope) -> Result<(), SAFError> {
-        // TODO store a single copy of the message when:
-        //   (a) it was a forwarded messages or
-        //   (b) message is for current network region or
-        //   (c) the message is for a known neighbouring peer
-        // Old messages should be removed to make space for new messages
+    /// Store messages of known neighbouring peers, this network region and messages with undefined destinations.
+    /// Undefined destinations have a lower priority TTL.
+    fn store_message(&mut self, message_envelope: MessageEnvelope) -> Result<(), SAFError> {
+        let peer_manager = self.peer_manager.as_ref().ok_or(SAFError::PeerManagerUndefined)?;
+        let node_identity = self.node_identity.as_ref().ok_or(SAFError::NodeIdentityUndefined)?;
+
+        let message_envelope_header = message_envelope.deserialize_header()?;
+        match message_envelope_header.dest.clone() {
+            NodeDestination::Unknown => {
+                self.msg_storage.insert(
+                    message_envelope.body_frame().clone(),
+                    StoredMessage::from(message_envelope, message_envelope_header),
+                    SAF_LOW_PRIORITY_MSG_STORAGE_TTL,
+                );
+            },
+            NodeDestination::PublicKey(dest_public_key) => {
+                if peer_manager.exists(&dest_public_key)? {
+                    self.msg_storage.insert(
+                        message_envelope.body_frame().clone(),
+                        StoredMessage::from(message_envelope, message_envelope_header),
+                        SAF_HIGH_PRIORITY_MSG_STORAGE_TTL,
+                    );
+                }
+            },
+            NodeDestination::NodeId(dest_node_id) => {
+                if (peer_manager.exists_node_id(&dest_node_id)?) |
+                    (peer_manager.in_network_region(
+                        &dest_node_id,
+                        &node_identity.identity.node_id,
+                        DHT_BROADCAST_NODE_COUNT,
+                    )?)
+                {
+                    self.msg_storage.insert(
+                        message_envelope.body_frame().clone(),
+                        StoredMessage::from(message_envelope, message_envelope_header),
+                        SAF_HIGH_PRIORITY_MSG_STORAGE_TTL,
+                    );
+                }
+            },
+        };
 
         Ok(())
     }
 
     /// This handler is called when the Service executor loops receives an API request
-    fn handle_api_message(&self, msg: SAFApiRequest) -> Result<(), ServiceError> {
+    fn handle_api_message(&mut self, msg: SAFApiRequest) -> Result<(), ServiceError> {
         trace!(
             target: LOG_TARGET,
             "[{}] Received API message: {:?}",
@@ -141,8 +276,8 @@ impl SAFService {
             msg
         );
         let resp = match msg {
-            SAFApiRequest::SendRetrievalRequest => self
-                .send_retrieval_request()
+            SAFApiRequest::SendRetrievalRequest(start_time) => self
+                .send_retrieval_request(start_time)
                 .map(|_| SAFApiResponse::RetrievalRequestSent),
             SAFApiRequest::StoreMessage(message_envelope) => self
                 .store_message(message_envelope)
@@ -187,8 +322,12 @@ impl Service for SAFService {
                     ))
                 })?;
 
+        self.node_identity = Some(context.node_identity());
         self.oms = Some(context.outbound_message_service());
         self.peer_manager = Some(context.peer_manager());
+        self.zmq_context = Some(context.zmq_context().clone());
+        self.ims_message_sink_address = Some(context.ims_message_sink_address().clone());
+
         debug!(target: LOG_TARGET, "Starting Store-and-forward Service executor");
         loop {
             if let Some(msg) = context.get_control_message(Duration::from_millis(5)) {
@@ -228,7 +367,7 @@ impl Service for SAFService {
 #[derive(Debug)]
 pub enum SAFApiRequest {
     /// Send a request to retrieve stored messages from neighbouring peers
-    SendRetrievalRequest,
+    SendRetrievalRequest(Option<DateTime<Utc>>),
     /// Store message of known neighbouring peers and forwarded messages
     StoreMessage(MessageEnvelope),
 }
@@ -263,8 +402,8 @@ impl SAFServiceApi {
         }
     }
 
-    pub fn retrieve(&self) -> Result<(), SAFError> {
-        self.send_recv(SAFApiRequest::SendRetrievalRequest)
+    pub fn retrieve(&self, start_time: Option<DateTime<Utc>>) -> Result<(), SAFError> {
+        self.send_recv(SAFApiRequest::SendRetrievalRequest(start_time))
             .and_then(|resp| match resp {
                 SAFApiResponse::RetrievalRequestSent => Ok(()),
                 _ => Err(SAFError::UnexpectedApiResponse),
