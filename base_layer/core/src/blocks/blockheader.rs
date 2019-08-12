@@ -37,7 +37,7 @@
 //! state = Hash(Hash(mmr_root)|| Hash(roaring_bitmap))
 //! This hash is called the UTXO merkle root, and is used as the output_mr
 
-use crate::{consensus::*, pow::*, types::*};
+use crate::{pow::*, types::*};
 use chrono::{DateTime, NaiveDate, Utc};
 use digest::Input;
 use serde::{
@@ -89,12 +89,10 @@ impl BlockHeader {
     pub fn validate_pow(&self) -> bool {
         unimplemented!();
     }
-}
 
-impl Default for BlockHeader {
-    fn default() -> Self {
+    pub fn new(blockchain_version: u16) -> BlockHeader {
         BlockHeader {
-            version: ConsensusRules::get_blockchain_version(),
+            version: blockchain_version,
             height: 0,
             prev_hash: [0; 32],
             timestamp: DateTime::<Utc>::from_utc(NaiveDate::from_ymd(2000, 1, 1).and_hms(1, 1, 1), Utc),

@@ -20,114 +20,40 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{tari_amount::MicroTari, types::CONSENSUS_RULES};
-use std::env;
+use crate::emission::EmissionSchedule;
 
 /// This is used to control all consensus values.
-#[derive(Clone, Copy)]
 pub struct ConsensusRules {
     /// The min height maturity a coinbase utxo must have
-    pub coinbase_lock_height: u64,
-    /// The max range proof size that is allowed to be created
-    pub max_range_proof_range: usize,
-    /// This is emission schedule initial amount, the decay and the tail emission
-    pub emission_schedule: EmissionParameters,
+    coinbase_lock_height: u64,
+    /// The emission schedule to use for coinbase rewards
+    emission_schedule: EmissionSchedule,
     /// Current version of the blockchain
-    pub blockchain_version: u16,
-}
-
-#[derive(Clone, Copy)]
-pub struct EmissionParameters {
-    pub initial: MicroTari,
-    pub decay: f64,
-    pub tail: MicroTari,
-}
-
-impl Default for ConsensusRules {
-    fn default() -> Self {
-        ConsensusRules {
-            coinbase_lock_height: 1440,
-            max_range_proof_range: 64,
-            emission_schedule: EmissionParameters {
-                initial: MicroTari::from(10_000_000),
-                decay: 0.999,
-                tail: MicroTari::from(100),
-            },
-            blockchain_version: 0,
-        }
-    }
+    blockchain_version: u16,
 }
 
 impl ConsensusRules {
-    pub fn new_as_test() -> Self {
+    pub fn current() -> Self {
+        //        CONSENSUS_RULES
         ConsensusRules {
             coinbase_lock_height: 1,
-            max_range_proof_range: 32,
-            emission_schedule: EmissionParameters {
-                initial: MicroTari::from(10_000_000),
-                decay: 0.999,
-                tail: MicroTari::from(100),
-            },
-            blockchain_version: 0,
+            emission_schedule: EmissionSchedule::new(10_000_000.into(), 0.999, 100.into()),
+            blockchain_version: 1,
         }
     }
 
-    pub fn new_as_integration_test() -> Self {
-        ConsensusRules {
-            coinbase_lock_height: 1,
-            max_range_proof_range: 64,
-            emission_schedule: EmissionParameters {
-                initial: MicroTari::from(10_000_000),
-                decay: 0.999,
-                tail: MicroTari::from(100),
-            },
-            blockchain_version: 0,
-        }
+    /// The min height maturity a coinbase utxo must have
+    pub fn coinbase_lock_height(&self) -> u64 {
+        self.coinbase_lock_height
     }
 
-    pub fn new_as_prod() -> Self {
-        ConsensusRules::default()
+    /// Current version of the blockchain
+    pub fn blockchain_version(&self) -> u16 {
+        self.blockchain_version
     }
 
-    pub fn get_coinbase_lock_height() -> u64 {
-        CONSENSUS_RULES.coinbase_lock_height
-    }
-
-    pub fn get_max_range_proof_range() -> usize {
-        CONSENSUS_RULES.max_range_proof_range
-    }
-
-    pub fn get_blockchain_version() -> u16 {
-        CONSENSUS_RULES.blockchain_version
-    }
-
-    pub fn set_prod() {
-        let key = "CONSENSUSRULES";
-        env::set_var(key, "PRODUCTION");
-    }
-
-    pub fn set_test() {
-        let key = "CONSENSUSRULES";
-        env::set_var(key, "UNIT_TEST");
-    }
-
-    pub fn set_integration_test() {
-        let key = "CONSENSUSRULES";
-        env::set_var(key, "INTEGRATION_TEST");
-    }
-
-    pub fn get_emission_parameters() -> EmissionParameters {
-        CONSENSUS_RULES.emission_schedule
-    }
-}
-#[cfg(test)]
-mod test1 {
-    use super::*;
-
-    #[test]
-    fn debug() {
-        ConsensusRules::set_test();
-        assert_eq!(ConsensusRules::get_coinbase_lock_height(), 1);
-        assert_eq!(ConsensusRules::get_max_range_proof_range(), 32);
+    /// The emission schedule to use for coinbase rewards
+    pub fn emission_schedule(&self) -> &EmissionSchedule {
+        &self.emission_schedule
     }
 }

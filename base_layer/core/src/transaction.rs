@@ -79,10 +79,10 @@ impl OutputFeatures {
         buf
     }
 
-    pub fn create_coinbase(current_block_height: u64) -> OutputFeatures {
+    pub fn create_coinbase(current_block_height: u64, consensus_rules: &ConsensusRules) -> OutputFeatures {
         OutputFeatures {
             flags: OutputFlags::COINBASE_OUTPUT,
-            maturity: ConsensusRules::get_coinbase_lock_height() + current_block_height,
+            maturity: consensus_rules.coinbase_lock_height() + current_block_height,
         }
     }
 }

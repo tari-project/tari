@@ -31,6 +31,7 @@ use rand::RngCore;
 use std::{thread, time::Duration};
 use tari_comms::peer_manager::NodeIdentity;
 use tari_core::{
+    consensus::ConsensusRules,
     fee::Fee,
     tari_amount::MicroTari,
     transaction::{KernelFeatures, OutputFeatures, TransactionOutput, UnblindedOutput},
@@ -229,7 +230,7 @@ fn receiving_and_confirmation() {
     let commitment = COMMITMENT_FACTORY.commit(&recv_key, &value.into());
     let rr = PROVER.construct_proof(&recv_key, value.into()).unwrap();
     let output = TransactionOutput::new(
-        OutputFeatures::create_coinbase(0),
+        OutputFeatures::create_coinbase(0, &ConsensusRules::current()),
         commitment,
         RangeProof::from_bytes(&rr).unwrap(),
     );
@@ -378,7 +379,7 @@ fn test_api() {
     let commitment = COMMITMENT_FACTORY.commit(&recv_key, &value.into());
     let rr = PROVER.construct_proof(&recv_key, value.into()).unwrap();
     let output = TransactionOutput::new(
-        OutputFeatures::create_coinbase(0),
+        OutputFeatures::create_coinbase(0, &ConsensusRules::current()),
         commitment,
         RangeProof::from_bytes(&rr).unwrap(),
     );

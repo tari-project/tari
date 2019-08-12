@@ -20,13 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{consensus::ConsensusRules, tari_amount::MicroTari};
+use crate::tari_amount::MicroTari;
 
 /// The Tari emission schedule. The emission schedule determines how much Tari is mined as a block reward at every
 /// block.
 ///
 /// NB: We don't know what the final emission schedule will be on Tari yet, so do not give any weight to values or
 /// formulae provided in this file, they will almost certainly change ahead of main-net release.
+#[derive(Clone)]
 pub struct EmissionSchedule {
     initial: MicroTari,
     decay: f64,
@@ -46,18 +47,8 @@ impl EmissionSchedule {
     ///  * $$A_0$$ is the genesis block reward
     ///  * $$1-r$$ is the decay rate
     ///  * $$t$$ is the constant tail emission rate
-    pub fn new_with(initial: MicroTari, decay: f64, tail: MicroTari) -> EmissionSchedule {
+    pub fn new(initial: MicroTari, decay: f64, tail: MicroTari) -> EmissionSchedule {
         EmissionSchedule { initial, decay, tail }
-    }
-
-    /// Creates a new emssion schedule instance from the conensus rules
-    pub fn new() -> EmissionSchedule {
-        let emission = ConsensusRules::get_emission_parameters();
-        EmissionSchedule {
-            initial: emission.initial,
-            decay: emission.decay,
-            tail: emission.tail,
-        }
     }
 
     /// Calculate the block reward for the given block height, in µTari
@@ -91,7 +82,7 @@ impl EmissionSchedule {
     /// use tari_core::emission::EmissionSchedule;
     /// use tari_core::tari_amount::MicroTari;
     /// // Print the reward and supply for first 100 blocks
-    /// let schedule = EmissionSchedule::new();
+    /// let schedule = EmissionSchedule::new(10.into(), 0.9, 1.into());
     /// for (n, reward, supply) in schedule.iter().take(100) {
     ///     println!("{:3} {:9} {:9}", n, reward, supply);
     /// }
@@ -137,7 +128,7 @@ mod test {
 
     #[test]
     fn schedule() {
-        let schedule = EmissionSchedule::new_with(MicroTari::from(10_000_000), 0.999, MicroTari::from(100));
+        let schedule = EmissionSchedule::new(MicroTari::from(10_000_000), 0.999, MicroTari::from(100));
         let r0 = schedule.block_reward(0);
         assert_eq!(r0, MicroTari::from(10_000_100));
         let s0 = schedule.supply_at_block(0);
@@ -149,7 +140,7 @@ mod test {
     #[test]
     fn huge_block_number() {
         let mut n = (std::i32::MAX - 1) as u64;
-        let schedule = EmissionSchedule::new_with(MicroTari::from(1e21 as u64), 0.999_9999, MicroTari::from(100));
+        let schedule = EmissionSchedule::new(MicroTari::from(1e21 as u64), 0.999_9999, MicroTari::from(100));
         for _ in 0..3 {
             assert_eq!(schedule.block_reward(n), MicroTari::from(100));
             n += 1;
@@ -157,47 +148,8 @@ mod test {
     }
 
     #[test]
-    fn iterator() {
-        let schedule = EmissionSchedule::new_with(MicroTari::from(10_000_000), 0.999, MicroTari::from(100));
-        let values: Vec<(u64, MicroTari, MicroTari)> = schedule.iter().take(101).collect();
-        assert_eq!(values[0].0, 0);
-        assert_eq!(values[0].1, MicroTari::from(10_000_100));
-        assert_eq!(values[0].2, MicroTari::from(10_000_100));
-        assert_eq!(values[100].0, 100);
-        assert_eq!(values[100].1, MicroTari::from(9_048_021));
-        assert_eq!(values[100].2, MicroTari::from(961_136_499));
-
-        let mut tot_supply = MicroTari::default();
-        for (_, reward, supply) in schedule.iter().take(1000) {
-            tot_supply += reward;
-            assert_eq!(tot_supply, supply);
-        }
-    }
-
-    #[test]
-    fn schedule_with_consensus() {
-        let schedule = EmissionSchedule::new();
-        let r0 = schedule.block_reward(0);
-        assert_eq!(r0, MicroTari::from(10_000_100));
-        let s0 = schedule.supply_at_block(0);
-        assert_eq!(s0, MicroTari::from(10_000_100));
-        assert_eq!(schedule.block_reward(100), MicroTari::from(9_048_021));
-        assert_eq!(schedule.supply_at_block(100), MicroTari::from(961_136_499));
-    }
-
-    #[test]
-    fn huge_block_number_with_consensus() {
-        let mut n = (std::i32::MAX - 1) as u64;
-        let schedule = EmissionSchedule::new();
-        for _ in 0..3 {
-            assert_eq!(schedule.block_reward(n), MicroTari::from(100));
-            n += 1;
-        }
-    }
-
-    #[test]
-    fn iterator_with_consensus() {
-        let schedule = EmissionSchedule::new();
+    fn generate_emission_schedule_as_iterator() {
+        let schedule = EmissionSchedule::new(MicroTari::from(10_000_000), 0.999, MicroTari::from(100));
         let values: Vec<(u64, MicroTari, MicroTari)> = schedule.iter().take(101).collect();
         assert_eq!(values[0].0, 0);
         assert_eq!(values[0].1, MicroTari::from(10_000_100));

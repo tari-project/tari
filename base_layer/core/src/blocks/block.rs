@@ -59,19 +59,19 @@ impl Block {
     /// This function will check the block to ensure that all UTXO's are validly constructed and that all signatures are
     /// valid. It does _not_ check that the inputs exist in the current UTXO set;
     /// nor does it check that the PoW is the largest accumulated PoW value.
-    /// The block reward is the amount the miner was rewarded for the block
-    pub fn check_internal_consistency(&self, block_reward: MicroTari) -> Result<(), BlockValidationError> {
+    pub fn check_internal_consistency(&self, rules: &ConsensusRules) -> Result<(), BlockValidationError> {
+        let block_reward = rules.emission_schedule().block_reward(self.header.height);
         let offset = &self.header.total_kernel_offset;
-        let total_coinbase = self.calculate_coinbase_value(block_reward);
+        let total_coinbase = self.calculate_coinbase_and_fees(block_reward);
         self.body
             .validate_internal_consistency(&offset, total_coinbase, &PROVER, &COMMITMENT_FACTORY)?;
         self.check_stxo_rules()?;
-        self.check_utxo_rules()?;
+        self.check_utxo_rules(rules)?;
         self.check_pow()
     }
 
     // create a total_coinbase offset containing all fees for the validation
-    fn calculate_coinbase_value(&self, block_reward: MicroTari) -> MicroTari {
+    fn calculate_coinbase_and_fees(&self, block_reward: MicroTari) -> MicroTari {
         let mut coinbase = block_reward;
         for kernel in &self.body.kernels {
             coinbase += kernel.fee;
@@ -94,12 +94,12 @@ impl Block {
     }
 
     /// This function will check all new utxo to ensure that feature flags where set
-    pub fn check_utxo_rules(&self) -> Result<(), BlockValidationError> {
+    pub fn check_utxo_rules(&self, current_rules: &ConsensusRules) -> Result<(), BlockValidationError> {
         let mut coinbase_counter = 0; // there should be exactly 1 coinbase
         for utxo in &self.body.outputs {
             if utxo.features.flags.contains(OutputFlags::COINBASE_OUTPUT) {
                 coinbase_counter += 1;
-                if utxo.features.maturity < (self.header.height + ConsensusRules::get_coinbase_lock_height()) {
+                if utxo.features.maturity < (self.header.height + current_rules.coinbase_lock_height()) {
                     return Err(BlockValidationError::InvalidCoinbase);
                 }
             }
@@ -114,7 +114,6 @@ impl Block {
     pub fn check_stxo_rules(&self) -> Result<(), BlockValidationError> {
         for input in &self.body.inputs {
             if input.features.maturity > self.header.height {
-                dbg!(&input.features.maturity, &self.header.height);
                 return Err(BlockValidationError::InputMaturity);
             }
         }
@@ -122,7 +121,6 @@ impl Block {
     }
 }
 
-#[derive(Default)]
 pub struct BlockBuilder {
     pub header: BlockHeader,
     pub inputs: Vec<TransactionInput>,
@@ -134,7 +132,7 @@ pub struct BlockBuilder {
 impl BlockBuilder {
     pub fn new() -> BlockBuilder {
         BlockBuilder {
-            header: BlockBuilder::gen_blank_header(),
+            header: BlockHeader::new(ConsensusRules::current().blockchain_version()),
             inputs: Vec::new(),
             outputs: Vec::new(),
             kernels: Vec::new(),
@@ -211,11 +209,6 @@ impl BlockBuilder {
     pub fn with_pow(self, _pow: ProofOfWork) -> Self {
         // TODO
         self
-    }
-
-    /// This is just a wrapper function to return a blank header
-    fn gen_blank_header() -> BlockHeader {
-        BlockHeader::default()
     }
 }
 
