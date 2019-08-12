@@ -23,12 +23,7 @@
 
 use digest::Digest;
 use tari_crypto::common::Blake256;
-use tari_mmr::{
-    Hash,
-    HashSlice,
-    MerkleMountainRange,
-    VectorBackend,
-};
+use tari_mmr::{Hash, HashSlice, MerkleMountainRange, VectorBackend};
 
 pub type Hasher = Blake256;
 
