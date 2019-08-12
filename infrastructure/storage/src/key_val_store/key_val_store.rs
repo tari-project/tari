@@ -21,21 +21,14 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::key_val_store::KeyValStoreError;
-use lmdb_zero::traits::AsLmdbBytes;
 
 /// General CRUD behaviour of Key-value store implementations.
-pub trait KeyValStore {
+pub trait KeyValStore<K, V> {
     /// Inserts a key-value pair into the key-value database.
-    fn insert_pair<K, V>(&self, key: &K, value: &V) -> Result<(), KeyValStoreError>
-    where
-        K: AsLmdbBytes + ?Sized,
-        V: serde::Serialize;
+    fn insert_pair(&self, key: K, value: V) -> Result<(), KeyValStoreError>;
 
     /// Get the value corresponding to the provided key from the key-value database.
-    fn get_value<K, V>(&self, key: &K) -> Result<Option<V>, KeyValStoreError>
-    where
-        K: AsLmdbBytes + ?Sized,
-        for<'t> V: serde::de::DeserializeOwned;
+    fn get_value(&self, key: &K) -> Result<Option<V>, KeyValStoreError>;
 
     /// Returns the total number of entries recorded in the key-value database.
     fn size(&self) -> Result<usize, KeyValStoreError>;
@@ -49,17 +42,12 @@ pub trait KeyValStore {
     ///        let (key, val) = pair.unwrap();
     ///        //.. do stuff with key and val..
     ///    });
-    fn for_each<K, V, F>(&self, f: F) -> Result<(), KeyValStoreError>
-    where
-        K: serde::de::DeserializeOwned,
-        V: serde::de::DeserializeOwned,
-        F: FnMut(Result<(K, V), KeyValStoreError>);
+    fn for_each<F>(&self, f: F) -> Result<(), KeyValStoreError>
+    where F: FnMut(Result<(K, V), KeyValStoreError>);
 
     /// Checks whether the provided `key` exists in the key-value database.
-    fn exists<K>(&self, key: &K) -> Result<bool, KeyValStoreError>
-    where K: AsLmdbBytes + ?Sized;
+    fn exists(&self, key: &K) -> Result<bool, KeyValStoreError>;
 
     /// Delete a key-pair record associated with the provided `key` from the key-pair database.
-    fn delete<K>(&self, key: &K) -> Result<(), KeyValStoreError>
-    where K: AsLmdbBytes + ?Sized;
+    fn delete(&self, key: &K) -> Result<(), KeyValStoreError>;
 }

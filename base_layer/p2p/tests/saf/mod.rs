@@ -40,7 +40,7 @@ use tari_p2p::{
     services::{ServiceExecutor, ServiceRegistry},
     tari_message::TariMessageType,
 };
-use tari_storage::lmdb_store::LMDBBuilder;
+use tari_storage::{key_val_store::lmdb_database::LMDBWrapper, lmdb_store::LMDBBuilder};
 use tari_utilities::message_format::MessageFormat;
 use tempdir::TempDir;
 
@@ -58,6 +58,7 @@ fn create_peer_storage(tmpdir: &TempDir, database_name: &str, peers: Vec<Peer>) 
         .unwrap();
 
     let peer_database = datastore.get_handle(database_name).unwrap();
+    let peer_database = LMDBWrapper::new(Arc::new(peer_database));
     let mut storage = PeerStorage::new(peer_database).unwrap();
     for peer in peers {
         storage.add_peer(peer).unwrap();

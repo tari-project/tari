@@ -23,13 +23,14 @@
 use crate::{
     dispatcher::{DispatchError, Dispatcher},
     inbound_message_service::comms_msg_handlers::{CommsDispatchType, InboundMessageServiceResolver},
+    peer_manager::{peer_key::PeerKey, Peer},
 };
 use tari_crypto::{common::Blake256, keys::PublicKey, ristretto::RistrettoPublicKey};
 #[cfg(test)]
 use tari_storage::key_val_store::HMapDatabase;
 #[cfg(not(test))]
 use tari_storage::lmdb_store::LMDBDatabase;
-use tari_storage::lmdb_store::LMDBStore;
+use tari_storage::{key_val_store::lmdb_database::LMDBWrapper, lmdb_store::LMDBStore};
 use tari_utilities::ciphers::chacha20::ChaCha20;
 
 /// The message protocol version for the MessageEnvelopeHeader
@@ -58,9 +59,9 @@ pub type CommsCipher = ChaCha20;
 pub type CommsDataStore = LMDBStore;
 
 #[cfg(not(test))]
-pub type CommsDatabase = LMDBDatabase;
+pub type CommsDatabase = LMDBWrapper<PeerKey, Peer>;
 #[cfg(test)]
-pub type CommsDatabase = HMapDatabase;
+pub type CommsDatabase = HMapDatabase<PeerKey, Peer>;
 
 /// Dispatcher format for comms level dispatching to handlers
 pub type MessageDispatcher<M> = Dispatcher<CommsDispatchType, M, InboundMessageServiceResolver, DispatchError>;

@@ -31,7 +31,10 @@ use tari_comms::{
     control_service::messages::{ControlServiceResponseType, Pong},
     message::{Message, MessageEnvelope, MessageFlags, MessageHeader, NodeDestination},
 };
-use tari_storage::lmdb_store::{LMDBBuilder, LMDBError, LMDBStore};
+use tari_storage::{
+    key_val_store::lmdb_database::LMDBWrapper,
+    lmdb_store::{LMDBBuilder, LMDBError, LMDBStore},
+};
 use tari_utilities::{message_format::MessageFormat, thread_join::ThreadJoinWithTimeout};
 
 fn make_peer_connection_config(message_sink_address: InprocAddress) -> PeerConnectionConfig {
@@ -95,6 +98,7 @@ fn establish_control_service_connection_fail() {
     let database_name = "establisher_establish_control_service_connection_fail";
     let datastore = init_datastore(database_name).unwrap();
     let database = datastore.get_handle(database_name).unwrap();
+    let database = LMDBWrapper::new(Arc::new(database));
     let peer_manager = Arc::new(
         factories::peer_manager::create()
             .with_database(database)
@@ -163,6 +167,7 @@ fn establish_control_service_connection_succeed() {
     let database_name = "establisher_establish_control_service_connection_succeed"; // Note: every test should have unique database
     let datastore = init_datastore(database_name).unwrap();
     let database = datastore.get_handle(database_name).unwrap();
+    let database = LMDBWrapper::new(Arc::new(database));
     let peer_manager = Arc::new(
         factories::peer_manager::create()
             .with_database(database)
@@ -220,6 +225,7 @@ fn establish_peer_connection_outbound() {
     let database_name = "establisher_establish_peer_connection_outbound"; // Note: every test should have unique database
     let datastore = init_datastore(database_name).unwrap();
     let database = datastore.get_handle(database_name).unwrap();
+    let database = LMDBWrapper::new(Arc::new(database));
     let peer_manager = Arc::new(
         factories::peer_manager::create()
             .with_database(database)
@@ -266,6 +272,7 @@ fn establish_peer_connection_inbound() {
     let database_name = "establish_peer_connection_inbound"; // Note: every test should have unique database
     let datastore = init_datastore(database_name).unwrap();
     let database = datastore.get_handle(database_name).unwrap();
+    let database = LMDBWrapper::new(Arc::new(database));
     let peer_manager = Arc::new(
         factories::peer_manager::create()
             .with_database(database)

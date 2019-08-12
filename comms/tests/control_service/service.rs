@@ -31,14 +31,17 @@ use tari_comms::{
     control_service::{messages::ConnectRequestOutcome, ControlService, ControlServiceClient, ControlServiceConfig},
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFlags, PeerManager},
 };
-use tari_storage::lmdb_store::{LMDBBuilder, LMDBDatabase, LMDBError, LMDBStore};
+use tari_storage::{
+    key_val_store::lmdb_database::LMDBWrapper,
+    lmdb_store::{LMDBBuilder, LMDBDatabase, LMDBError, LMDBStore},
+};
 use tari_utilities::thread_join::ThreadJoinWithTimeout;
 
 fn make_peer_manager(peers: Vec<Peer>, database: LMDBDatabase) -> Arc<PeerManager> {
     Arc::new(
         factories::peer_manager::create()
             .with_peers(peers)
-            .with_database(database)
+            .with_database(LMDBWrapper::new(Arc::new(database)))
             .build()
             .unwrap(),
     )

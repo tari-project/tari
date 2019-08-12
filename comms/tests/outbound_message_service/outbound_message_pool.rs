@@ -39,7 +39,10 @@ use tari_comms::{
     peer_manager::{Peer, PeerManager},
     types::CommsDatabase,
 };
-use tari_storage::lmdb_store::{LMDBBuilder, LMDBError, LMDBStore};
+use tari_storage::{
+    key_val_store::lmdb_database::LMDBWrapper,
+    lmdb_store::{LMDBBuilder, LMDBError, LMDBStore},
+};
 
 fn make_peer_connection_config(message_sink_address: InprocAddress) -> PeerConnectionConfig {
     PeerConnectionConfig {
@@ -112,6 +115,7 @@ fn outbound_message_pool_no_retry() {
     let node_B_database_name = "omp_node_B_peer_manager"; // Note: every test should have unique database
     let datastore = init_datastore(node_B_database_name).unwrap();
     let database = datastore.get_handle(node_B_database_name).unwrap();
+    let database = LMDBWrapper::new(Arc::new(database));
     let node_B_peer_manager = make_peer_manager(vec![], database);
     let node_B_connection_manager = Arc::new(ConnectionManager::new(
         context.clone(),
@@ -137,6 +141,7 @@ fn outbound_message_pool_no_retry() {
     let node_A_database_name = "omp_node_A_peer_manager"; // Note: every test should have unique database
     let datastore = init_datastore(node_A_database_name).unwrap();
     let database = datastore.get_handle(node_A_database_name).unwrap();
+    let database = LMDBWrapper::new(Arc::new(database));
     let node_A_peer_manager = make_peer_manager(vec![node_B_peer.clone()], database);
     let node_A_connection_manager = Arc::new(
         factories::connection_manager::create()
@@ -232,6 +237,7 @@ fn test_outbound_message_pool_fail_and_retry() {
     let database_name = "omp_test_outbound_message_pool_fail_and_retry"; // Note: every test should have unique database
     let datastore = init_datastore(database_name).unwrap();
     let database = datastore.get_handle(database_name).unwrap();
+    let database = LMDBWrapper::new(Arc::new(database));
     let node_A_peer_manager = factories::peer_manager::create()
         .with_peers(vec![node_B_peer.clone()])
         .with_database(database)
@@ -275,6 +281,7 @@ fn test_outbound_message_pool_fail_and_retry() {
     let node_B_database_name = "omp_node_B_peer_manager"; // Note: every test should have unique database
     let datastore = init_datastore(node_B_database_name).unwrap();
     let database = datastore.get_handle(node_B_database_name).unwrap();
+    let database = LMDBWrapper::new(Arc::new(database));
     let node_B_peer_manager = make_peer_manager(vec![], database);
     let node_B_connection_manager = factories::connection_manager::create()
         .with_context(context.clone())

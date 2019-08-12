@@ -21,17 +21,16 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::key_val_store::{error::KeyValStoreError, key_val_store::KeyValStore};
-use lmdb_zero::traits::AsLmdbBytes;
-use std::{collections::HashMap, sync::RwLock};
+use std::{collections::HashMap, hash::Hash, sync::RwLock};
 
 ///  The HMapDatabase mimics the behaviour of LMDBDatabase without keeping a persistent copy of the key-value records.
 /// It allows key-value pairs to be inserted, retrieved and removed in a thread-safe manner.
 #[derive(Default)]
-pub struct HMapDatabase {
-    db: RwLock<HashMap<Vec<u8>, Vec<u8>>>,
+pub struct HMapDatabase<K: Eq + Hash, V> {
+    db: RwLock<HashMap<K, V>>,
 }
 
-impl HMapDatabase {
+impl<K: Clone + Eq + Hash, V: Clone> HMapDatabase<K, V> {
     /// Creates a new empty HMapDatabase with the specified name
     pub fn new() -> Self {
         Self {
@@ -41,38 +40,18 @@ impl HMapDatabase {
 
     /// Inserts a key-value record into the database. Internally, `insert` serializes the key and value using bincode
     /// and adds the pair into HashMap guarded with a RwLock.
-    pub fn insert<K, V>(&self, key: &K, value: &V) -> Result<(), KeyValStoreError>
-    where
-        K: AsLmdbBytes + ?Sized,
-        V: serde::Serialize,
-    {
-        let mut value_buf = Vec::with_capacity(512);
-        bincode::serialize_into(&mut value_buf, value)
-            .map_err(|e| KeyValStoreError::SerializationError(e.to_string()))?;
-
+    pub fn insert(&self, key: K, value: V) -> Result<(), KeyValStoreError> {
         self.db
             .write()
             .map_err(|_| KeyValStoreError::PoisonedAccess)?
-            .insert(key.as_lmdb_bytes().to_vec(), value_buf);
+            .insert(key, value);
         Ok(())
     }
 
     /// Get a value from the key-value database. The retrieved value is deserialized from bincode into `V`
-    pub fn get<K, V>(&self, key: &K) -> Result<Option<V>, KeyValStoreError>
-    where
-        K: AsLmdbBytes + ?Sized,
-        for<'t> V: serde::de::DeserializeOwned, // read this as, for *any* lifetime, t, we can convert a [u8] to V
-    {
-        match self
-            .db
-            .read()
-            .map_err(|_| KeyValStoreError::PoisonedAccess)?
-            .get(&key.as_lmdb_bytes().to_vec())
-        {
-            Some(val_buf) => match bincode::deserialize(val_buf) {
-                Ok(val) => Ok(Some(val)),
-                Err(_) => Ok(None),
-            },
+    pub fn get(&self, key: &K) -> Result<Option<V>, KeyValStoreError> {
+        match self.db.read().map_err(|_| KeyValStoreError::PoisonedAccess)?.get(key) {
+            Some(val) => Ok(Some(val.clone())),
             None => Ok(None),
         }
     }
@@ -88,48 +67,30 @@ impl HMapDatabase {
     }
 
     /// Iterate over all the stored records and execute the function `f` for each pair in the key-value database.
-    pub fn for_each<K, V, F>(&self, mut f: F) -> Result<(), KeyValStoreError>
-    where
-        K: serde::de::DeserializeOwned,
-        V: serde::de::DeserializeOwned,
-        F: FnMut(Result<(K, V), KeyValStoreError>),
-    {
-        for (key_buf, val_buf) in self
-            .db
-            .read()
-            .map_err(|_| KeyValStoreError::PoisonedAccess)?
-            .clone()
-            .into_iter()
-        {
-            let key =
-                bincode::deserialize(&key_buf).map_err(|e| KeyValStoreError::DeserializationError(e.to_string()))?;
-            let val =
-                bincode::deserialize(&val_buf).map_err(|e| KeyValStoreError::DeserializationError(e.to_string()))?;
-
-            f(Ok((key, val)));
+    pub fn for_each<F>(&self, mut f: F) -> Result<(), KeyValStoreError>
+    where F: FnMut(Result<(K, V), KeyValStoreError>) {
+        for (key, val) in self.db.read().map_err(|_| KeyValStoreError::PoisonedAccess)?.iter() {
+            f(Ok((key.clone(), val.clone())));
         }
-
         Ok(())
     }
 
     /// Checks whether a record exist in the key-value database that corresponds to the provided `key`.
-    pub fn contains_key<K>(&self, key: &K) -> Result<bool, KeyValStoreError>
-    where K: AsLmdbBytes + ?Sized {
+    pub fn contains_key(&self, key: &K) -> Result<bool, KeyValStoreError> {
         Ok(self
             .db
             .read()
             .map_err(|_| KeyValStoreError::PoisonedAccess)?
-            .contains_key(&key.as_lmdb_bytes().to_vec()))
+            .contains_key(key))
     }
 
     /// Remove the record from the key-value database that corresponds with the provided `key`.
-    pub fn remove<K>(&self, key: &K) -> Result<(), KeyValStoreError>
-    where K: AsLmdbBytes + ?Sized {
+    pub fn remove(&self, key: &K) -> Result<(), KeyValStoreError> {
         match self
             .db
             .write()
             .map_err(|_| KeyValStoreError::PoisonedAccess)?
-            .remove(&key.as_lmdb_bytes().to_vec())
+            .remove(key)
         {
             Some(_) => Ok(()),
             None => Err(KeyValStoreError::KeyNotFound),
@@ -137,23 +98,15 @@ impl HMapDatabase {
     }
 }
 
-impl KeyValStore for HMapDatabase {
+impl<K: Clone + Eq + Hash, V: Clone> KeyValStore<K, V> for HMapDatabase<K, V> {
     /// Inserts a key-value pair into the key-value database.
-    fn insert_pair<K, V>(&self, key: &K, value: &V) -> Result<(), KeyValStoreError>
-    where
-        K: AsLmdbBytes + ?Sized,
-        V: serde::Serialize,
-    {
-        self.insert::<K, V>(key, value)
+    fn insert_pair(&self, key: K, value: V) -> Result<(), KeyValStoreError> {
+        self.insert(key, value)
     }
 
     /// Get the value corresponding to the provided key from the key-value database.
-    fn get_value<K, V>(&self, key: &K) -> Result<Option<V>, KeyValStoreError>
-    where
-        K: AsLmdbBytes + ?Sized,
-        for<'t> V: serde::de::DeserializeOwned,
-    {
-        self.get::<K, V>(key)
+    fn get_value(&self, key: &K) -> Result<Option<V>, KeyValStoreError> {
+        self.get(key)
     }
 
     /// Returns the total number of entries recorded in the key-value database.
@@ -162,25 +115,19 @@ impl KeyValStore for HMapDatabase {
     }
 
     /// Iterate over all the stored records and execute the function `f` for each pair in the key-value database.
-    fn for_each<K, V, F>(&self, f: F) -> Result<(), KeyValStoreError>
-    where
-        K: serde::de::DeserializeOwned,
-        V: serde::de::DeserializeOwned,
-        F: FnMut(Result<(K, V), KeyValStoreError>),
-    {
-        self.for_each::<K, V, F>(f)
+    fn for_each<F>(&self, f: F) -> Result<(), KeyValStoreError>
+    where F: FnMut(Result<(K, V), KeyValStoreError>) {
+        self.for_each(f)
     }
 
     /// Checks whether a record exist in the key-value database that corresponds to the provided `key`.
-    fn exists<K>(&self, key: &K) -> Result<bool, KeyValStoreError>
-    where K: AsLmdbBytes + ?Sized {
-        self.contains_key::<K>(key)
+    fn exists(&self, key: &K) -> Result<bool, KeyValStoreError> {
+        self.contains_key(key)
     }
 
     /// Remove the record from the key-value database that corresponds with the provided `key`.
-    fn delete<K>(&self, key: &K) -> Result<(), KeyValStoreError>
-    where K: AsLmdbBytes + ?Sized {
-        self.remove::<K>(key)
+    fn delete(&self, key: &K) -> Result<(), KeyValStoreError> {
+        self.remove(key)
     }
 }
 
@@ -194,56 +141,54 @@ mod test {
         let db = HMapDatabase::new();
 
         #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
-        struct R {
+        struct Foo {
             value: String,
         }
-        let key1 = 1 as u64;
-        let key2 = 2 as u64;
-        let key3 = 3 as u64;
-        let key4 = 4 as u64;
-        let val1 = R {
+
+        let val1 = Foo {
             value: "one".to_string(),
         };
-        let val2 = R {
+        let val2 = Foo {
             value: "two".to_string(),
         };
-        let val3 = R {
+        let val3 = Foo {
             value: "three".to_string(),
         };
-        db.insert_pair(&key1, &val1).unwrap();
-        db.insert_pair(&key2, &val2).unwrap();
-        db.insert_pair(&key3, &val3).unwrap();
 
-        assert_eq!(db.get_value::<u64, R>(&key1).unwrap().unwrap(), val1);
-        assert_eq!(db.get_value::<u64, R>(&key2).unwrap().unwrap(), val2);
-        assert_eq!(db.get_value::<u64, R>(&key3).unwrap().unwrap(), val3);
-        assert!(db.get_value::<u64, R>(&key4).unwrap().is_none());
+        db.insert_pair(1, val1.clone()).unwrap();
+        db.insert_pair(2, val2.clone()).unwrap();
+        db.insert_pair(3, val3.clone()).unwrap();
+
+        assert_eq!(db.get_value(&1).unwrap().unwrap(), val1);
+        assert_eq!(db.get_value(&2).unwrap().unwrap(), val2);
+        assert_eq!(db.get_value(&3).unwrap().unwrap(), val3);
+        assert!(db.get_value(&4).unwrap().is_none());
         assert_eq!(db.size().unwrap(), 3);
-        assert!(db.exists(&key1).unwrap());
-        assert!(db.exists(&key2).unwrap());
-        assert!(db.exists(&key3).unwrap());
-        assert!(!db.exists(&key4).unwrap());
+        assert!(db.exists(&1).unwrap());
+        assert!(db.exists(&2).unwrap());
+        assert!(db.exists(&3).unwrap());
+        assert!(!db.exists(&4).unwrap());
 
-        db.remove(&key2).unwrap();
-        assert_eq!(db.get_value::<u64, R>(&key1).unwrap().unwrap(), val1);
-        assert!(db.get_value::<u64, R>(&key2).unwrap().is_none());
-        assert_eq!(db.get_value::<u64, R>(&key3).unwrap().unwrap(), val3);
-        assert!(db.get_value::<u64, R>(&key4).unwrap().is_none());
+        db.remove(&2).unwrap();
+        assert_eq!(db.get_value(&1).unwrap().unwrap(), val1);
+        assert!(db.get_value(&2).unwrap().is_none());
+        assert_eq!(db.get_value(&3).unwrap().unwrap(), val3);
+        assert!(db.get_value(&4).unwrap().is_none());
         assert_eq!(db.size().unwrap(), 2);
-        assert!(db.exists(&key1).unwrap());
-        assert!(!db.exists(&key2).unwrap());
-        assert!(db.exists(&key3).unwrap());
-        assert!(!db.exists(&key4).unwrap());
+        assert!(db.exists(&1).unwrap());
+        assert!(!db.exists(&2).unwrap());
+        assert!(db.exists(&3).unwrap());
+        assert!(!db.exists(&4).unwrap());
 
         // Only Key1 and Key3 should be in key-value database, but order is not known
         let mut key1_found = false;
         let mut key3_found = false;
-        let _res = db.for_each::<u64, R, _>(|pair| {
+        let _res = db.for_each(|pair| {
             let (key, val) = pair.unwrap();
-            if key == key1 {
+            if key == 1 {
                 key1_found = true;
                 assert_eq!(val, val1);
-            } else if key == key3 {
+            } else if key == 3 {
                 key3_found = true;
                 assert_eq!(val, val3);
             }

@@ -34,6 +34,7 @@
 //! # use rand::OsRng;
 //! # use tari_storage::lmdb_store::LMDBBuilder;
 //! # use lmdb_zero::db;
+//! # use tari_storage::key_val_store::lmdb_database::LMDBWrapper;
 //!
 //! // This should be loaded up from storage
 //! let my_node_identity = NodeIdentity::random(&mut OsRng::new().unwrap(), "127.0.0.1:9000".parse().unwrap()).unwrap();
@@ -51,6 +52,7 @@
 //!            .add_database(database_name, lmdb_zero::db::CREATE)
 //!           .build().unwrap();
 //! let peer_database = datastore.get_handle(database_name).unwrap();
+//! let peer_database = LMDBWrapper::new(Arc::new(peer_database));
 //!
 //! let services = CommsBuilder::new()
 //!    .with_routes(CommsRoutes::<u8>::new())

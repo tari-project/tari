@@ -22,6 +22,7 @@ use lmdb_zero::{
     WriteTransaction,
 };
 use log::*;
+use serde::{de::DeserializeOwned, Serialize};
 use std::{cmp::max, collections::HashMap, path::Path, sync::Arc};
 
 const LOG_TARGET: &str = "lmdb";
@@ -334,7 +335,7 @@ impl LMDBDatabase {
     pub fn insert<K, V>(&self, key: &K, value: &V) -> Result<(), LMDBError>
     where
         K: AsLmdbBytes + ?Sized,
-        V: serde::Serialize,
+        V: Serialize,
     {
         let env = &(*self.db.env());
         let tx = WriteTransaction::new(env)?;
@@ -353,7 +354,7 @@ impl LMDBDatabase {
     pub fn get<K, V>(&self, key: &K) -> Result<Option<V>, LMDBError>
     where
         K: AsLmdbBytes + ?Sized,
-        for<'t> V: serde::de::DeserializeOwned, // read this as, for *any* lifetime, t, we can convert a [u8] to V
+        for<'t> V: DeserializeOwned, // read this as, for *any* lifetime, t, we can convert a [u8] to V
     {
         let env = &(*self.db.env());
         let txn = ReadTransaction::new(env)?;
@@ -421,8 +422,8 @@ impl LMDBDatabase {
     ///    });
     pub fn for_each<K, V, F>(&self, mut f: F) -> Result<(), LMDBError>
     where
-        K: serde::de::DeserializeOwned,
-        V: serde::de::DeserializeOwned,
+        K: DeserializeOwned,
+        V: DeserializeOwned,
         F: FnMut(Result<(K, V), KeyValStoreError>),
     {
         let env = self.env.clone();
@@ -433,7 +434,7 @@ impl LMDBDatabase {
         let cursor = txn.cursor(db).map_err(LMDBError::DatabaseError)?;
 
         let head = |c: &mut Cursor, a: &ConstAccessor| {
-            let (key_bytes, val_bytes) = c.first::<[u8], [u8]>(a)?;
+            let (key_bytes, val_bytes) = c.first(a)?;
             ReadOnlyIterator::deserialize::<K, V>(key_bytes, val_bytes)
         };
 
@@ -512,7 +513,7 @@ impl ReadOnlyIterator {
         K: serde::de::DeserializeOwned,
         V: serde::de::DeserializeOwned,
     {
-        let (key_bytes, val_bytes) = c.next::<[u8], [u8]>(access)?;
+        let (key_bytes, val_bytes) = c.next(access)?;
         ReadOnlyIterator::deserialize(key_bytes, val_bytes)
     }
 }

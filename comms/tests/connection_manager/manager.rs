@@ -32,7 +32,10 @@ use tari_comms::{
     peer_manager::{Peer, PeerManager},
     types::CommsDatabase,
 };
-use tari_storage::lmdb_store::{LMDBBuilder, LMDBError, LMDBStore};
+use tari_storage::{
+    key_val_store::lmdb_database::LMDBWrapper,
+    lmdb_store::{LMDBBuilder, LMDBError, LMDBStore},
+};
 use tari_utilities::thread_join::ThreadJoinWithTimeout;
 
 fn make_peer_connection_config(consumer_address: InprocAddress) -> PeerConnectionConfig {
@@ -114,6 +117,7 @@ fn establish_peer_connection() {
     let node_B_database_name = "connection_manager_node_B_peer_manager";
     let datastore = init_datastore(node_B_database_name).unwrap();
     let database = datastore.get_handle(node_B_database_name).unwrap();
+    let database = LMDBWrapper::new(Arc::new(database));
     let node_B_peer_manager = make_peer_manager(vec![], database);
     let node_B_connection_manager = Arc::new(
         factories::connection_manager::create()
@@ -145,6 +149,7 @@ fn establish_peer_connection() {
     let node_A_database_name = "connection_manager_node_A_peer_manager"; // Note: every test should have unique database
     let datastore = init_datastore(node_A_database_name).unwrap();
     let database = datastore.get_handle(node_A_database_name).unwrap();
+    let database = LMDBWrapper::new(Arc::new(database));
     let node_A_peer_manager = make_peer_manager(vec![node_B_peer.clone()], database);
     let node_A_connection_manager = Arc::new(
         factories::connection_manager::create()

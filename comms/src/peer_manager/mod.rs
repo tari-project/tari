@@ -37,6 +37,8 @@
 //! # use tari_crypto::keys::PublicKey;
 //! # use tari_storage::lmdb_store::LMDBBuilder;
 //! # use lmdb_zero::db;
+//! # use std::sync::Arc;
+//! # use tari_storage::key_val_store::lmdb_database::LMDBWrapper;
 //!
 //! let mut rng = rand::OsRng::new().unwrap();
 //! let (dest_sk, pk) = CommsPublicKey::random_keypair(&mut rng);
@@ -51,6 +53,7 @@
 //!            .add_database(database_name, lmdb_zero::db::CREATE)
 //!           .build().unwrap();
 //! let peer_database = datastore.get_handle(database_name).unwrap();
+//! let peer_database = LMDBWrapper::new(Arc::new(peer_database));
 //! let peer_manager = PeerManager::new(peer_database).unwrap();
 //!
 //! peer_manager.add_peer(peer.clone());
