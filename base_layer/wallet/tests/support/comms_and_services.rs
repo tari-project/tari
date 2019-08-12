@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 use tari_comms::{
     builder::CommsServices,
     connection_manager::PeerConnectionConfig,
@@ -29,7 +29,8 @@ use tari_comms::{
     CommsBuilder,
 };
 use tari_p2p::{services::ServiceRegistry, tari_message::TariMessageType};
-use tari_storage::lmdb_store::LMDBDatabase;
+use tari_storage::{key_val_store::lmdb_database::LMDBWrapper, lmdb_store::LMDBDatabase};
+
 pub fn setup_comms_services(
     node_identity: NodeIdentity,
     peers: Vec<NodeIdentity>,
@@ -37,6 +38,7 @@ pub fn setup_comms_services(
     services: &ServiceRegistry,
 ) -> CommsServices<TariMessageType>
 {
+    let peer_database = LMDBWrapper::new(Arc::new(peer_database));
     let comms = CommsBuilder::new()
         .with_routes(services.build_comms_routes())
         .with_node_identity(node_identity.clone())

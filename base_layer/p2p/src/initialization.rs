@@ -32,7 +32,7 @@ use tari_comms::{
     types::{CommsPublicKey, CommsSecretKey},
     CommsBuilder,
 };
-use tari_storage::lmdb_store::LMDBBuilder;
+use tari_storage::{key_val_store::lmdb_database::LMDBWrapper, lmdb_store::LMDBBuilder};
 
 #[derive(Debug, Error)]
 pub enum CommsInitializationError {
@@ -70,6 +70,7 @@ pub fn initialize_comms(
         .build()
         .unwrap();
     let peer_database = datastore.get_handle(&config.peer_database_name).unwrap();
+    let peer_database = LMDBWrapper::new(Arc::new(peer_database));
 
     let builder = CommsBuilder::new()
         .with_routes(comms_routes.clone())

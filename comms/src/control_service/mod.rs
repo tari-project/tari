@@ -52,6 +52,7 @@
 //! # use rand::OsRng;
 //! # use tari_storage::lmdb_store::LMDBBuilder;
 //! # use lmdb_zero::db;
+//! # use tari_storage::key_val_store::lmdb_database::LMDBWrapper;
 //!
 //! let node_identity = Arc::new(NodeIdentity::random(&mut OsRng::new().unwrap(), "127.0.0.1:9000".parse().unwrap()).unwrap());
 //!
@@ -66,6 +67,7 @@
 //!            .add_database(database_name, lmdb_zero::db::CREATE)
 //!           .build().unwrap();
 //! let peer_database = datastore.get_handle(database_name).unwrap();
+//!     let peer_database = LMDBWrapper::new(Arc::new(peer_database));
 //! let peer_manager = Arc::new(PeerManager::new(peer_database).unwrap());
 //!
 //! let conn_manager = Arc::new(ConnectionManager::new(context.clone(), node_identity.clone(), peer_manager.clone(), PeerConnectionConfig {

@@ -51,7 +51,7 @@ pub enum ServiceControlMessage {
     Shutdown,
 }
 
-/// This is reponsible for creating and managing the thread pool for
+/// This is responsible for creating and managing the thread pool for
 /// services that should be executed.
 pub struct ServiceExecutor {
     thread_pool: Mutex<ThreadPool>,
@@ -219,7 +219,10 @@ mod test {
     use rand::rngs::OsRng;
     use std::{path::PathBuf, sync::RwLock};
     use tari_comms::{peer_manager::NodeIdentity, CommsBuilder};
-    use tari_storage::lmdb_store::{LMDBBuilder, LMDBError, LMDBStore};
+    use tari_storage::{
+        key_val_store::lmdb_database::LMDBWrapper,
+        lmdb_store::{LMDBBuilder, LMDBError, LMDBStore},
+    };
 
     #[derive(Clone)]
     struct AddWordService(Arc<RwLock<String>>, &'static str);
@@ -286,6 +289,7 @@ mod test {
         let database_name = "executor_execute"; // Note: every test should have unique database
         let datastore = init_datastore(database_name).unwrap();
         let peer_database = datastore.get_handle(database_name).unwrap();
+        let peer_database = LMDBWrapper::new(Arc::new(peer_database));
 
         let comms_services = CommsBuilder::new()
             .with_routes(registry.build_comms_routes())

@@ -25,55 +25,80 @@ use crate::{
     lmdb_store::LMDBDatabase,
 };
 use lmdb_zero::traits::AsLmdbBytes;
+use serde::{de::DeserializeOwned, export::PhantomData, Serialize};
+use std::sync::Arc;
 
-impl KeyValStore for LMDBDatabase {
+/// This is a simple wrapper struct that lifts the generic parameters so that KeyValStore can be implemented on
+/// LMDBDatabase. LMDBDatabase doesn't have the generics at the struct level because the LMDBStore can contain many
+/// instances of LMDBDatabase each with different K and V types.
+pub struct LMDBWrapper<K, V> {
+    inner: Arc<LMDBDatabase>,
+    _k: PhantomData<K>,
+    _v: PhantomData<V>,
+}
+
+impl<K, V> LMDBWrapper<K, V> {
+    /// Wrap a LMDBDatabase instance so that it implements [KeyValueStore]
+    pub fn new(db: Arc<LMDBDatabase>) -> LMDBWrapper<K, V> {
+        LMDBWrapper {
+            inner: db,
+            _k: PhantomData,
+            _v: PhantomData,
+        }
+    }
+
+    /// Get access to the underlying LMDB database
+    pub fn inner(&self) -> Arc<LMDBDatabase> {
+        Arc::clone(&self.inner)
+    }
+}
+
+impl<K, V> KeyValStore<K, V> for LMDBWrapper<K, V>
+where
+    K: AsLmdbBytes + DeserializeOwned,
+    V: Serialize + DeserializeOwned,
+{
     /// Inserts a key-value pair into the key-value database.
-    fn insert_pair<K, V>(&self, key: &K, value: &V) -> Result<(), KeyValStoreError>
-    where
-        K: AsLmdbBytes + ?Sized,
-        V: serde::Serialize,
-    {
-        self.insert::<K, V>(key, value)
+    fn insert_pair(&self, key: K, value: V) -> Result<(), KeyValStoreError> {
+        self.inner
+            .insert::<K, V>(&key, &value)
             .map_err(|e| KeyValStoreError::DatabaseError(e.to_string()))
     }
 
     /// Get the value corresponding to the provided key from the key-value database.
-    fn get_value<K, V>(&self, key: &K) -> Result<Option<V>, KeyValStoreError>
-    where
-        K: AsLmdbBytes + ?Sized,
-        for<'t> V: serde::de::DeserializeOwned,
-    {
-        self.get::<K, V>(key)
+    fn get_value(&self, key: &K) -> Result<Option<V>, KeyValStoreError>
+    where for<'t> V: serde::de::DeserializeOwned {
+        self.inner
+            .get::<K, V>(key)
             .map_err(|e| KeyValStoreError::DatabaseError(e.to_string()))
     }
 
     /// Returns the total number of entries recorded in the key-value database.
     fn size(&self) -> Result<usize, KeyValStoreError> {
-        self.len().map_err(|e| KeyValStoreError::DatabaseError(e.to_string()))
+        self.inner
+            .len()
+            .map_err(|e| KeyValStoreError::DatabaseError(e.to_string()))
     }
 
     /// Iterate over all the stored records and execute the function `f` for each pair in the key-value database.
-    fn for_each<K, V, F>(&self, f: F) -> Result<(), KeyValStoreError>
-    where
-        K: serde::de::DeserializeOwned,
-        V: serde::de::DeserializeOwned,
-        F: FnMut(Result<(K, V), KeyValStoreError>),
-    {
-        self.for_each::<K, V, F>(f)
+    fn for_each<F>(&self, f: F) -> Result<(), KeyValStoreError>
+    where F: FnMut(Result<(K, V), KeyValStoreError>) {
+        self.inner
+            .for_each::<K, V, F>(f)
             .map_err(|e| KeyValStoreError::DatabaseError(e.to_string()))
     }
 
     /// Checks whether a record exist in the key-value database that corresponds to the provided `key`.
-    fn exists<K>(&self, key: &K) -> Result<bool, KeyValStoreError>
-    where K: AsLmdbBytes + ?Sized {
-        self.contains_key::<K>(key)
+    fn exists(&self, key: &K) -> Result<bool, KeyValStoreError> {
+        self.inner
+            .contains_key::<K>(key)
             .map_err(|e| KeyValStoreError::DatabaseError(e.to_string()))
     }
 
     /// Remove the record from the key-value database that corresponds with the provided `key`.
-    fn delete<K>(&self, key: &K) -> Result<(), KeyValStoreError>
-    where K: AsLmdbBytes + ?Sized {
-        self.remove::<K>(key)
+    fn delete(&self, key: &K) -> Result<(), KeyValStoreError> {
+        self.inner
+            .remove::<K>(key)
             .map_err(|e| KeyValStoreError::DatabaseError(e.to_string()))
     }
 }
@@ -112,43 +137,43 @@ mod test {
         let database_name = "test_lmdb_kvstore"; // Note: every test should have unique database
         let datastore = init_datastore(database_name).unwrap();
         let db = datastore.get_handle(database_name).unwrap();
-
+        let db = LMDBWrapper::new(Arc::new(db));
         #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
-        struct R {
+        struct Foo {
             value: String,
         }
         let key1 = 1 as u64;
         let key2 = 2 as u64;
         let key3 = 3 as u64;
         let key4 = 4 as u64;
-        let val1 = R {
+        let val1 = Foo {
             value: "one".to_string(),
         };
-        let val2 = R {
+        let val2 = Foo {
             value: "two".to_string(),
         };
-        let val3 = R {
+        let val3 = Foo {
             value: "three".to_string(),
         };
-        db.insert_pair(&key1, &val1).unwrap();
-        db.insert_pair(&key2, &val2).unwrap();
-        db.insert_pair(&key3, &val3).unwrap();
+        db.insert_pair(1, val1.clone()).unwrap();
+        db.insert_pair(2, val2.clone()).unwrap();
+        db.insert_pair(3, val3.clone()).unwrap();
 
-        assert_eq!(db.get_value::<u64, R>(&key1).unwrap().unwrap(), val1);
-        assert_eq!(db.get_value::<u64, R>(&key2).unwrap().unwrap(), val2);
-        assert_eq!(db.get_value::<u64, R>(&key3).unwrap().unwrap(), val3);
-        assert!(db.get_value::<u64, R>(&key4).unwrap().is_none());
+        assert_eq!(db.get_value(&1).unwrap().unwrap(), val1);
+        assert_eq!(db.get_value(&2).unwrap().unwrap(), val2);
+        assert_eq!(db.get_value(&3).unwrap().unwrap(), val3);
+        assert!(db.get_value(&4).unwrap().is_none());
         assert_eq!(db.size().unwrap(), 3);
         assert!(db.exists(&key1).unwrap());
         assert!(db.exists(&key2).unwrap());
         assert!(db.exists(&key3).unwrap());
         assert!(!db.exists(&key4).unwrap());
 
-        db.remove(&key2).unwrap();
-        assert_eq!(db.get_value::<u64, R>(&key1).unwrap().unwrap(), val1);
-        assert!(db.get_value::<u64, R>(&key2).unwrap().is_none());
-        assert_eq!(db.get_value::<u64, R>(&key3).unwrap().unwrap(), val3);
-        assert!(db.get_value::<u64, R>(&key4).unwrap().is_none());
+        db.delete(&key2).unwrap();
+        assert_eq!(db.get_value(&key1).unwrap().unwrap(), val1);
+        assert!(db.get_value(&key2).unwrap().is_none());
+        assert_eq!(db.get_value(&key3).unwrap().unwrap(), val3);
+        assert!(db.get_value(&key4).unwrap().is_none());
         assert_eq!(db.size().unwrap(), 2);
         assert!(db.exists(&key1).unwrap());
         assert!(!db.exists(&key2).unwrap());
@@ -158,7 +183,7 @@ mod test {
         // Only Key1 and Key3 should be in key-value database, but order is not known
         let mut key1_found = false;
         let mut key3_found = false;
-        let _res = db.for_each::<u64, R, _>(|pair| {
+        let _res = db.for_each(|pair| {
             let (key, val) = pair.unwrap();
             if key == key1 {
                 key1_found = true;
