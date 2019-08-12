@@ -29,7 +29,7 @@ use serde::{Deserialize, Serialize};
 use std::{fs::File, io::prelude::*};
 use tari_core::{
     blocks::{block::*, blockheader::*},
-    emission::EmissionSchedule,
+    consensus::ConsensusRules,
     fee::Fee,
     tari_amount::MicroTari,
     transaction::*,
@@ -73,22 +73,60 @@ pub struct SimpleBlockChain {
 }
 
 /// This is used to represent a block chain in memory for testing purposes
-#[derive(PartialEq)]
 pub struct SimpleBlockChainBuilder {
     blockchain: SimpleBlockChain,
     headers: MerkleMountainRange<BlockHeader, SignatureHash>,
     utxos: MerkleMountainRange<TransactionInput, SignatureHash>,
     kernels: MerkleMountainRange<TransactionKernel, SignatureHash>,
     rangeproofs: MerkleMountainRange<RangeProof, SignatureHash>,
+    rules: ConsensusRules,
 }
 
 impl SimpleBlockChainBuilder {
     /// This will create a new test block_chain with a Genesis block
     pub fn new() -> SimpleBlockChainBuilder {
-        let mut chain = SimpleBlockChainBuilder::default();
+        let mut chain = SimpleBlockChainBuilder {
+            blockchain: Default::default(),
+            headers: Default::default(),
+            utxos: Default::default(),
+            kernels: Default::default(),
+            rangeproofs: Default::default(),
+            rules: ConsensusRules::current(),
+        };
         let mut rng = OsRng::new().unwrap();
         // create Genesis block
         chain.add_block(&mut rng, Vec::new());
+        chain
+    }
+
+    /// This will create a new test block_chain with random txs spending all the utxo's at the spend height
+    pub fn new_with_spending(block_amount: u64, spending_height: u64) -> SimpleBlockChainBuilder {
+        let mut chain = SimpleBlockChainBuilder::new();
+
+        let mut rng = OsRng::new().unwrap();
+        // create gen block
+        let priv_key = PrivateKey::random(&mut rng);
+        chain.blockchain.spending_keys.push(vec![SpendInfo::new(
+            priv_key.clone(),
+            chain.rules.emission_schedule().block_reward(0),
+            OutputFeatures::create_coinbase(0, &chain.rules),
+        )]);
+        let (cb_utxo, cb_kernel) = create_coinbase(priv_key, 0, 0.into(), &chain.rules);
+        let block = BlockBuilder::new().with_coinbase_utxo(cb_utxo, cb_kernel).build();
+        chain.processes_new_block(block);
+
+        // lets mine some empty blocks
+        if spending_height > 1 {
+            chain.add_empty_blocks(&mut rng, spending_height - 1);
+        }
+
+        // lets mine some more blocks, but spending the utxo's in the older blocks
+        for i in spending_height..(block_amount) {
+            chain.blockchain.spending_keys.push(Vec::new());
+            let (tx, mut spends) = chain.spend_block_utxos((i - spending_height) as usize);
+            chain.add_block(&mut rng, tx);
+            chain.blockchain.spending_keys[i as usize].append(&mut spends);
+        }
         chain
     }
 
@@ -111,11 +149,11 @@ impl SimpleBlockChainBuilder {
         let total_fee = tx
             .iter()
             .fold(MicroTari::default(), |tot, tx| tot + tx.get_body().get_total_fee());
-        let (cb_utxo, cb_kernel) = create_coinbase(priv_key.clone(), header.height, total_fee);
+        let (cb_utxo, cb_kernel) = create_coinbase(priv_key.clone(), header.height, total_fee, &self.rules);
         self.blockchain.spending_keys.push(vec![SpendInfo::new(
             priv_key,
-            calculate_coinbase(height) + total_fee,
-            OutputFeatures::create_coinbase(height),
+            self.rules.emission_schedule().block_reward(height) + total_fee,
+            OutputFeatures::create_coinbase(height, &self.rules),
         )]);
         let block = BlockBuilder::new()
             .with_header(header)
@@ -123,37 +161,6 @@ impl SimpleBlockChainBuilder {
             .with_transactions(tx)
             .build();
         self.processes_new_block(block);
-    }
-
-    /// This will create a new test block_chain with random txs spending all the utxo's at the spend height
-    pub fn new_with_spending(block_amount: u64, spending_height: u64) -> SimpleBlockChainBuilder {
-        let mut chain = SimpleBlockChainBuilder::default();
-
-        let mut rng = OsRng::new().unwrap();
-        // create gen block
-        let priv_key = PrivateKey::random(&mut rng);
-        chain.blockchain.spending_keys.push(vec![SpendInfo::new(
-            priv_key.clone(),
-            calculate_coinbase(0),
-            OutputFeatures::create_coinbase(0),
-        )]);
-        let (cb_utxo, cb_kernel) = create_coinbase(priv_key, 0, 0.into());
-        let block = BlockBuilder::new().with_coinbase_utxo(cb_utxo, cb_kernel).build();
-        chain.processes_new_block(block);
-
-        // lets mine some empty blocks
-        if spending_height > 1 {
-            chain.add_empty_blocks(&mut rng, spending_height - 1);
-        }
-
-        // lets mine some more blocks, but spending the utxo's in the older blocks
-        for i in spending_height..(block_amount) {
-            chain.blockchain.spending_keys.push(Vec::new());
-            let (tx, mut spends) = chain.spend_block_utxos((i - spending_height) as usize);
-            chain.add_block(&mut rng, tx);
-            chain.blockchain.spending_keys[i as usize].append(&mut spends);
-        }
-        chain
     }
 
     /// This will blocks to the chain with random txs spending all the utxo's at the spend height
@@ -203,7 +210,7 @@ impl SimpleBlockChainBuilder {
     }
 
     fn generate_genesis_block_header(&self) -> BlockHeader {
-        BlockHeader::default()
+        BlockHeader::new(self.rules.blockchain_version())
     }
 
     /// This function will generate a new header, assuming it will follow on the last created block.
@@ -218,7 +225,7 @@ impl SimpleBlockChainBuilder {
         let kernal_mmr = self.kernels.get_merkle_root();
         let rr_mmr = self.rangeproofs.get_merkle_root();
         BlockHeader {
-            version: BLOCKCHAIN_VERSION,
+            version: self.rules.blockchain_version(),
             height: self.blockchain.blocks[counter].header.height + 1,
             prev_hash: hash,
             timestamp: self.blockchain.blocks[counter]
@@ -347,18 +354,6 @@ impl SimpleBlockChainBuilder {
     }
 }
 
-impl Default for SimpleBlockChainBuilder {
-    fn default() -> Self {
-        SimpleBlockChainBuilder {
-            blockchain: SimpleBlockChain::default(),
-            headers: MerkleMountainRange::new(),
-            utxos: MerkleMountainRange::new(),
-            kernels: MerkleMountainRange::new(),
-            rangeproofs: MerkleMountainRange::new(),
-        }
-    }
-}
-
 impl Default for SimpleBlockChain {
     fn default() -> Self {
         SimpleBlockChain {
@@ -368,26 +363,23 @@ impl Default for SimpleBlockChain {
     }
 }
 
-// todo this probably need to move somewhere else
-/// This function will create the correct amount for the coinbase given the block height, it will provide the answer in
-/// µTari (micro Tari)
-pub fn calculate_coinbase(block_height: u64) -> MicroTari {
-    // todo fill this in properly as a function and not a constant
-    let schedule = EmissionSchedule::new(MicroTari::from(10_000_000), 0.999, MicroTari::from(100));
-    schedule.block_reward(block_height)
-}
-
 /// This function will create a coinbase from the provided secret key. The coinbase will be added to the outputs and
 /// kernels.
-fn create_coinbase(key: PrivateKey, height: u64, total_fee: MicroTari) -> (TransactionOutput, TransactionKernel) {
+fn create_coinbase(
+    key: PrivateKey,
+    height: u64,
+    total_fee: MicroTari,
+    rules: &ConsensusRules,
+) -> (TransactionOutput, TransactionKernel)
+{
     let mut rng = rand::OsRng::new().unwrap();
     // build output
-    let amount = total_fee + calculate_coinbase(height);
+    let amount = total_fee + rules.emission_schedule().block_reward(height);
     let v = PrivateKey::from(u64::from(amount));
     let commitment = COMMITMENT_FACTORY.commit(&key, &v);
     let rr = PROVER.construct_proof(&key, amount.into()).unwrap();
     let output = TransactionOutput::new(
-        OutputFeatures::create_coinbase(height),
+        OutputFeatures::create_coinbase(height, rules),
         commitment,
         RangeProof::from_bytes(&rr).unwrap(),
     );

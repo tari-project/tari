@@ -27,6 +27,7 @@ use crate::tari_amount::MicroTari;
 ///
 /// NB: We don't know what the final emission schedule will be on Tari yet, so do not give any weight to values or
 /// formulae provided in this file, they will almost certainly change ahead of main-net release.
+#[derive(Clone)]
 pub struct EmissionSchedule {
     initial: MicroTari,
     decay: f64,
@@ -81,7 +82,7 @@ impl EmissionSchedule {
     /// use tari_core::emission::EmissionSchedule;
     /// use tari_core::tari_amount::MicroTari;
     /// // Print the reward and supply for first 100 blocks
-    /// let schedule = EmissionSchedule::new(MicroTari::from(1000), 0.999, MicroTari::from(10));
+    /// let schedule = EmissionSchedule::new(10.into(), 0.9, 1.into());
     /// for (n, reward, supply) in schedule.iter().take(100) {
     ///     println!("{:3} {:9} {:9}", n, reward, supply);
     /// }
@@ -147,7 +148,7 @@ mod test {
     }
 
     #[test]
-    fn iterator() {
+    fn generate_emission_schedule_as_iterator() {
         let schedule = EmissionSchedule::new(MicroTari::from(10_000_000), 0.999, MicroTari::from(100));
         let values: Vec<(u64, MicroTari, MicroTari)> = schedule.iter().take(101).collect();
         assert_eq!(values[0].0, 0);

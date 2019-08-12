@@ -89,12 +89,10 @@ impl BlockHeader {
     pub fn validate_pow(&self) -> bool {
         unimplemented!();
     }
-}
 
-impl Default for BlockHeader {
-    fn default() -> Self {
+    pub fn new(blockchain_version: u16) -> BlockHeader {
         BlockHeader {
-            version: BLOCKCHAIN_VERSION,
+            version: blockchain_version,
             height: 0,
             prev_hash: [0; 32],
             timestamp: DateTime::<Utc>::from_utc(NaiveDate::from_ymd(2000, 1, 1).and_hms(1, 1, 1), Utc),

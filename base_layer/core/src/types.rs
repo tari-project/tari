@@ -70,25 +70,11 @@ pub type RangeProof = BulletRangeProof;
 
 /// Specify the Proof of Work
 pub type ProofOfWork = MockProofOfWork;
-
 #[cfg(test)]
 pub const MAX_RANGE_PROOF_RANGE: usize = 32; // 2^32 This is the only way to produce failing range proofs for the tests
 #[cfg(not(test))]
 pub const MAX_RANGE_PROOF_RANGE: usize = 64; // 2^64
 
-/// Current version of the blockchain
-pub const BLOCKCHAIN_VERSION: u16 = 0;
-
-// ToDo move this to some other consensus like struct to be passed around. cfg test is not set during integration tests.
-// We also might want to change this per test. See issue: #641
-/// The min required lock height before coinbase utxos are spendable
-// #[cfg(test)]
-pub const COINBASE_LOCK_HEIGHT: u64 = 1;
-// #[cfg(not(test))]
-// pub const COINBASE_LOCK_HEIGHT: u64 = 1440;
-
-// Set up some "global" services for the Tari blockchain - These are most likely not threadsafe as written, but haven't
-// checked.
 lazy_static! {
     pub static ref COMMITMENT_FACTORY: CommitmentFactory = CommitmentFactory::default();
     pub static ref PROVER: RangeProofService =

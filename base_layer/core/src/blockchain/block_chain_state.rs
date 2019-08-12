@@ -27,13 +27,8 @@
 
 use crate::{
     blockchain::error::StateError,
-    blocks::{
-        block::{Block, BlockValidationError},
-        blockheader::BlockHeader,
-        genesis_block::*,
-    },
-    emission::EmissionSchedule,
-    tari_amount::MicroTari,
+    blocks::{block::Block, blockheader::BlockHeader, genesis_block::*},
+    consensus::ConsensusRules,
     transaction::{TransactionInput, TransactionKernel},
     types::*,
 };
@@ -49,9 +44,9 @@ pub struct BlockchainState {
     utxos: MerkleMountainRange<TransactionInput, SignatureHash>,
     kernels: MerkleMountainRange<TransactionKernel, SignatureHash>,
     rangeproofs: MerkleMountainRange<RangeProof, SignatureHash>,
-    schedule: EmissionSchedule,
     store: LMDBStore,
 }
+
 #[allow(clippy::new_without_default)]
 impl BlockchainState {
     /// Creates a new empty blockchainstate
@@ -65,26 +60,18 @@ impl BlockchainState {
         utxos.init_persistance_store(&"outputs".to_string(), 5000);
         let mut kernels = MerkleMountainRange::new();
         kernels.init_persistance_store(&"kernels".to_string(), std::usize::MAX);
-        let schedule = EmissionSchedule::new(MicroTari::from(10_000_000), 0.999, MicroTari::from(100)); // ToDo ensure these amounts are correct
         let mut rangeproofs = MerkleMountainRange::new();
         rangeproofs.init_persistance_store(&"rangeproofs".to_string(), 5000);
         let mut block_chain_state = BlockchainState {
             headers,
             utxos,
             kernels,
-            schedule,
             rangeproofs,
             store,
         };
         block_chain_state.add_genesis_block();
 
         Ok(block_chain_state)
-    }
-
-    /// This function will create the correct amount for the coinbase given the block height, it will provide the answer
-    /// in µTari (micro Tari)
-    fn calculate_coinbase(&self, block_height: u64) -> MicroTari {
-        self.schedule.block_reward(block_height)
     }
 
     // add the genesis block
@@ -132,12 +119,12 @@ impl BlockchainState {
 
     /// This function  will process a new block.
     /// Note the block is consumed by the function.
-    pub fn process_new_block(&mut self, new_block: &Block) -> Result<(), StateError> {
+    pub fn process_new_block(&mut self, new_block: &Block, consensus_rules: &ConsensusRules) -> Result<(), StateError> {
         let found = self.headers.get_object(&new_block.header.hash());
         if found.is_some() {
             return Err(StateError::DuplicateBlock);
         }
-        self.validate_new_block(&new_block)?;
+        self.validate_new_block(&new_block, consensus_rules)?;
         // let add the rangeproofs
         for output in &new_block.body.outputs {
             self.rangeproofs.push(output.proof().clone())?;
@@ -155,9 +142,9 @@ impl BlockchainState {
     }
 
     /// This function will validate the block in terms of the current state.
-    pub fn validate_new_block(&self, new_block: &Block) -> Result<(), StateError> {
+    pub fn validate_new_block(&self, new_block: &Block, consensus_rules: &ConsensusRules) -> Result<(), StateError> {
         new_block
-            .check_internal_consistency(self.calculate_coinbase(new_block.header.height))
+            .check_internal_consistency(consensus_rules)
             .map_err(|e| StateError::InvalidBlock(e))?;
         // we assume that we have atleast in block in the headers mmr even if this is the genesis one
         if self.headers.get_last_added_object().unwrap().hash() != new_block.header.prev_hash {

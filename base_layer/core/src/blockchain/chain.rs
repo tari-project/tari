@@ -34,6 +34,7 @@ use crate::{
         error::{ChainError, StateError},
     },
     blocks::block::Block,
+    consensus::ConsensusRules,
     pow::*,
     types::*,
 };
@@ -64,8 +65,8 @@ impl Chain {
     }
 
     /// This function will process a newly received block
-    pub fn process_new_block(&mut self, new_block: Block) -> Result<(), ChainError> {
-        let result = match self.block_chain_state.process_new_block(&new_block) {
+    pub fn process_new_block(&mut self, new_block: Block, consensus_rules: &ConsensusRules) -> Result<(), ChainError> {
+        let result = match self.block_chain_state.process_new_block(&new_block, consensus_rules) {
             // block was processed fine and added to chain
             Ok(_) => {
                 let height = new_block.header.height;
@@ -75,7 +76,7 @@ impl Chain {
                 Ok(())
             },
             // block seems valid, but its orphaned
-            Err(StateError::OrphanBlock) => self.orphaned_block(new_block),
+            Err(StateError::OrphanBlock) => self.orphaned_block(new_block, consensus_rules),
             Err(e) => Err(ChainError::StateProcessingError(e)),
         };
         if result.is_err() {
@@ -86,7 +87,7 @@ impl Chain {
 
     /// Internal helper function to do orphan logic
     /// The function will store the new orphan block and check if it contains a re-org
-    fn orphaned_block(&mut self, new_block: Block) -> Result<(), ChainError> {
+    fn orphaned_block(&mut self, new_block: Block, consensus_rules: &ConsensusRules) -> Result<(), ChainError> {
         if self.orphans.contains_key(&new_block.header.hash()[..]) {
             return Err(ChainError::StateProcessingError(StateError::DuplicateBlock));
         };
@@ -97,7 +98,7 @@ impl Chain {
         let mut currently_used_orphans: Vec<BlockHash> = Vec::new();
         if self.current_total_pow.has_more_accum_work_than(&pow) {
             // we have a potential re-org here
-            let result = self.handle_re_org(&hash, &mut currently_used_orphans);
+            let result = self.handle_re_org(&hash, &mut currently_used_orphans, consensus_rules);
             let result = if result.is_err() {
                 self.block_chain_state.reset_chain_state()?;
                 result
@@ -122,6 +123,7 @@ impl Chain {
         &mut self,
         block_hash: &BlockHash,
         mut unorphaned_blocks: &mut Vec<BlockHash>,
+        consensus_rules: &ConsensusRules,
     ) -> Result<(), ChainError>
     {
         // The searched hash should always be in the orphan list
@@ -135,7 +137,7 @@ impl Chain {
                 .rewind_state((self.block_chain_state.get_tip_height() - h) as usize)?;
             return self
                 .block_chain_state
-                .process_new_block(&block)
+                .process_new_block(&block, consensus_rules)
                 .map_err(ChainError::StateProcessingError);
         };
         let prev_block = self.orphans.get(&block.header.prev_hash);
@@ -145,12 +147,12 @@ impl Chain {
 
         let mut hash = [0; 32];
         hash.copy_from_slice(&prev_block.unwrap().header.hash());
-        let result = self.handle_re_org(&hash, &mut unorphaned_blocks);
+        let result = self.handle_re_org(&hash, &mut unorphaned_blocks, consensus_rules);
 
         if result.is_ok() {
             return self
                 .block_chain_state
-                .process_new_block(&block)
+                .process_new_block(&block, consensus_rules)
                 .map_err(ChainError::StateProcessingError);
         }
 

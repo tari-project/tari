@@ -1,4 +1,4 @@
-// Copyright 2019 The Tari Project
+// Copyright 2019. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,22 +20,40 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::support::simple_block_chain::*;
-use std::fs;
-use tari_core::consensus::ConsensusRules;
+use crate::emission::EmissionSchedule;
 
-fn load_test_block_chain_from_file() -> SimpleBlockChain {
-    let read_json = fs::read_to_string("tests/chain/chain.json").unwrap();
-    let blockchain: SimpleBlockChain = serde_json::from_str(&read_json).unwrap();
-    blockchain
+/// This is used to control all consensus values.
+pub struct ConsensusRules {
+    /// The min height maturity a coinbase utxo must have
+    coinbase_lock_height: u64,
+    /// The emission schedule to use for coinbase rewards
+    emission_schedule: EmissionSchedule,
+    /// Current version of the blockchain
+    blockchain_version: u16,
 }
-#[test]
-fn test_valid_blocks() {
-    let rules = ConsensusRules::current();
-    let chain = load_test_block_chain_from_file();
-    for i in 0..chain.blocks.len() {
-        chain.blocks[i]
-            .check_internal_consistency(&rules)
-            .expect("Block validation failed")
+
+impl ConsensusRules {
+    pub fn current() -> Self {
+        //        CONSENSUS_RULES
+        ConsensusRules {
+            coinbase_lock_height: 1,
+            emission_schedule: EmissionSchedule::new(10_000_000.into(), 0.999, 100.into()),
+            blockchain_version: 1,
+        }
+    }
+
+    /// The min height maturity a coinbase utxo must have
+    pub fn coinbase_lock_height(&self) -> u64 {
+        self.coinbase_lock_height
+    }
+
+    /// Current version of the blockchain
+    pub fn blockchain_version(&self) -> u16 {
+        self.blockchain_version
+    }
+
+    /// The emission schedule to use for coinbase rewards
+    pub fn emission_schedule(&self) -> &EmissionSchedule {
+        &self.emission_schedule
     }
 }

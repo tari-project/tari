@@ -26,10 +26,11 @@
 use crate::{
     blocks::aggregated_body::AggregateBody,
     tari_amount::MicroTari,
-    types::{BlindingFactor, Commitment, CommitmentFactory, Signature, COINBASE_LOCK_HEIGHT},
+    types::{BlindingFactor, Commitment, CommitmentFactory, Signature},
 };
 
 use crate::{
+    consensus::ConsensusRules,
     transaction_protocol::{build_challenge, TransactionMetadata},
     types::{HashDigest, RangeProof, RangeProofService},
 };
@@ -78,10 +79,10 @@ impl OutputFeatures {
         buf
     }
 
-    pub fn create_coinbase(current_block_height: u64) -> OutputFeatures {
+    pub fn create_coinbase(current_block_height: u64, consensus_rules: &ConsensusRules) -> OutputFeatures {
         OutputFeatures {
             flags: OutputFlags::COINBASE_OUTPUT,
-            maturity: COINBASE_LOCK_HEIGHT + current_block_height,
+            maturity: consensus_rules.coinbase_lock_height() + current_block_height,
         }
     }
 }
