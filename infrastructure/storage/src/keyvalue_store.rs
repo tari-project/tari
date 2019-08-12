@@ -44,6 +44,7 @@ impl From<bincode::Error> for DatastoreError {
 /// does assume that key-value pairs are stored using byte arrays (`&[u8]`). You can use `get_raw` or `put_raw` to
 /// read and write binary data directly, or use `#[derive(Serialize, Deserialize, PartialEq, Debug)]` on a trait to
 /// generate code for automatically de/serializing your data structures to byte strings using `bincode`.
+#[deprecated(since = "0.0.2", note = "Use [key_val_store::KeyValStore] instead")]
 pub trait DataStore {
     /// Connect to the logical database with `name`. If the Datastore does not support multiple logical databases,
     /// this function has no effect
