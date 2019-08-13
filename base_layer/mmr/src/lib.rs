@@ -138,6 +138,7 @@ pub type HashSlice = [u8];
 mod backend;
 mod merkle_mountain_range;
 mod merkle_proof;
+mod mutable_mmr;
 
 // Less commonly used exports
 pub mod common;
@@ -150,3 +151,5 @@ pub use backend::VectorBackend;
 pub use merkle_mountain_range::MerkleMountainRange;
 /// A data structure for proving a hash inclusion in an MMR
 pub use merkle_proof::{MerkleProof, MerkleProofError};
+/// An append-only Merkle Mountain range (MMR) data structure that allows deletion of existing leaf nodes.
+pub use mutable_mmr::MutableMmr;

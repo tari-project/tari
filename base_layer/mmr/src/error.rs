@@ -30,4 +30,6 @@ pub enum MerkleMountainRangeError {
     BackendPushError,
     // The Merkle tree is not internally consistent. A parent hash isn't equal to the hash of its children
     InvalidMerkleTree,
+    // The tree has reached its maximum size
+    MaximumSizeReached,
 }

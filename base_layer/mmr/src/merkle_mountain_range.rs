@@ -75,8 +75,8 @@ where
     }
 
     /// This function returns the hash of the leaf index provided, indexed from 0
-    pub fn get_object_hash(&self, object_index: usize) -> Option<&Hash> {
-        self.get_node_hash(leaf_index(object_index))
+    pub fn get_leaf_hash(&self, leaf_node_index: usize) -> Option<&Hash> {
+        self.get_node_hash(leaf_index(leaf_node_index))
     }
 
     /// This function will return the single merkle root of the MMR by simply hashing the peaks together.
@@ -86,14 +86,16 @@ where
         if self.is_empty() {
             return MerkleMountainRange::<D, B>::null_hash();
         }
-        let peaks = find_peaks(self.hashes.len());
         let hasher = D::new();
+        self.hash_to_root(hasher).result().to_vec()
+    }
+
+    pub(crate) fn hash_to_root(&self, hasher: D) -> D {
+        let peaks = find_peaks(self.hashes.len());
         peaks
             .into_iter()
             .map(|i| self.hashes.get_or_panic(i))
             .fold(hasher, |hasher, h| hasher.chain(h))
-            .result()
-            .to_vec()
     }
 
     /// Push a new element into the MMR. Computes new related peaks at
@@ -122,7 +124,7 @@ where
         Ok(pos)
     }
 
-    /// Walks the nodes in the MMR and revalidate all parent hashes
+    /// Walks the nodes in the MMR and revalidates all parent hashes
     pub fn validate(&self) -> Result<(), MerkleMountainRangeError> {
         // iterate on all parent nodes
         for n in 0..self.len() {
@@ -149,7 +151,7 @@ where
         Ok(())
     }
 
-    fn null_hash() -> Hash {
+    pub(crate) fn null_hash() -> Hash {
         D::digest(b"").to_vec()
     }
 
