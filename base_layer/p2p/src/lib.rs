@@ -20,14 +20,23 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+// Used to eliminate the need for boxing futures in many cases.
+// Detais here: https://github.com/rust-lang/rfcs/pull/2071
+#![feature(existential_type)]
+
+#[macro_use]
+extern crate futures;
+
 #[macro_use]
 mod macros;
 mod consts;
+
 pub mod dht_service;
 pub mod executor;
 pub mod initialization;
 pub mod peer;
 pub mod ping_pong;
 pub mod saf_service;
+pub mod service_name;
 pub mod services;
 pub mod tari_message;
