@@ -85,17 +85,17 @@
 //! Due to the unique way the MMR is constructed we can easily represent the MMR as a linear list of the nodes. Lets
 //! take the following MMR and number the nodes in the order we create them.
 //! ```plaintext
-//!        7
+//!         6
 //!       /  \
 //!      /    \
-//!     3      6
+//!     2      5
 //!    / \    / \
-//!   1   2  4   5
+//!   0   1  3   4
 //! ```
-//! Looking above at the example of when you create the nodes, you will see the nodes will have been created in the
+//! Looking above at the example of when you create the nodes, you will see the MMR nodes will have been created in the
 //! order as they are named. This means we can easily represent them as a list:
 //! Height:  0 | 0 | 1 | 0 | 0 | 1 | 2
-//! Node:    1 | 2 | 3 | 4 | 5 | 6 | 7
+//! Node:    0 | 1 | 2 | 3 | 4 | 5 | 6
 //!
 //! Because of the list nature of the MMR we can easily navigate around the MMR using the following formulas:
 //!
@@ -104,6 +104,33 @@
 //! peak of binary tree : $$ 2^{ H+1 } - 2 $$
 //! left down : $$ n - 2^H $$
 //! right down: $$ n-1 $$
+//!
+//! ## Node numbering
+//!
+//! There can be some confusion about how nodes are numbered in an MMR. The following conventions are used in this
+//! crate:
+//!
+//! * _All_ indices are numbered starting from zero.
+//! * MMR nodes refer to all the nodes in the Merkle Mountain Range and are ordered in the canonical mmr ordering
+//! described above.
+//! * Leaf nodes are numbered counting from zero and increment by one each time a leaf is added.
+//!
+//! To illustrate, consider this MMR:
+//!
+//! //! ```plaintext
+//!            14
+//!          /     \
+//!         /       \
+//!        6        13          21          <-- MMR indices
+//!      /  \      /  \        /  \
+//!     /    \    /    \      /    \
+//!     2    5    9    12    17    21
+//!    / \  / \  / \  / \   / \   / \
+//!    0 1  3 4  7 8 10 11 15 16 18 19 22
+//!    ----------------------------------
+//!    0 1  2 3  4 5  6  7  8  9 10 11 12  <-- Leaf node indices
+//!    ----------------------------------
+//! ```
 
 pub type Hash = Vec<u8>;
 pub type HashSlice = [u8];

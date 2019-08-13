@@ -78,6 +78,8 @@ impl MerkleProof {
     /// Build a Merkle Proof the given MMR at the given *leaf* position. This is usually the version you'll want to
     /// call, since you'll know the leaf index more often than the MMR index.
     ///
+    /// For the difference between leaf node and MMR node indices, see the [mod level](:tari_mmr) documentation.
+    ///
     /// See [MerkleProof::for_node] for more details on how the proof is constructed.
     pub fn for_leaf_node<D, B>(
         mmr: &MerkleMountainRange<D, B>,
@@ -88,11 +90,12 @@ impl MerkleProof {
         B: ArrayLike<Value = Hash>,
     {
         let pos = leaf_index(leaf_pos);
-        MerkleProof::for_node::<D, B>(mmr, pos)
+        MerkleProof::generate_proof(mmr, pos)
     }
 
     /// Build a Merkle proof for the candidate node at the given MMR index. If you want to build a proof using the
-    /// leaf position, call [MerkleProof::for_leaf_node] instead.
+    /// leaf position, call [MerkleProof::for_leaf_node] instead. The given node position must be a leaf node,
+    /// otherwise a `MerkleProofError::NonLeafNode` error will be returned.
     ///
     /// The proof for the MMR consists of two parts:
     /// a) A list of sibling node hashes starting from the candidate node and walking up the tree to the local root
@@ -110,6 +113,14 @@ impl MerkleProof {
             return Err(MerkleProofError::NonLeafNode);
         }
 
+        MerkleProof::generate_proof(mmr, pos)
+    }
+
+    fn generate_proof<D, B>(mmr: &MerkleMountainRange<D, B>, pos: usize) -> Result<MerkleProof, MerkleProofError>
+    where
+        D: Digest,
+        B: ArrayLike<Value = Hash>,
+    {
         // check we actually have a hash in the MMR at this pos
         mmr.get_node_hash(pos).ok_or(MerkleProofError::HashNotFound(pos))?;
         let mmr_size = mmr.len();
