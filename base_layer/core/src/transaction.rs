@@ -454,7 +454,7 @@ impl Hashable for TransactionKernel {
 /// This struct is used to describe single transactions only. The common part between transactions and Tari blocks is
 /// accessible via the `body` field, but single transactions also need to carry the public offset around with them so
 /// that these can be aggregated into block offsets.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Transaction {
     /// This kernel offset will be accumulated when transactions are aggregated to prevent the "subset" problem where
     /// kernels can be linked to inputs and outputs by testing a series of subsets and see which produce valid

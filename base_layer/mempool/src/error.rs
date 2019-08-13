@@ -20,8 +20,14 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#[macro_use]
-mod macros;
-pub mod error;
-pub mod mempool_messages;
-pub mod mempool_service;
+use derive_error::Error;
+
+#[derive(Debug, Error)]
+pub enum MempoolError {
+    /// Failed to send from API
+    ApiSendFailed,
+    /// Failed to receive in API from service
+    ApiReceiveFailed,
+    /// Received an unexpected response type from the API
+    UnexpectedApiResponse,
+}

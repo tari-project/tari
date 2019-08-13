@@ -1,5 +1,13 @@
 [package]
 name = "mempool"
 version = "0.0.2"
+edition = "2018"
 
 [dependencies]
+derive-error = "0.0.4"
+crossbeam-channel = "0.3.8"
+tari_p2p = {version = "^0.0", path = "../p2p"}
+tari_comms = { version = "^0.0", path = "../../comms"}
+tari_core = { version = "^0.0", path = "../core"}
+log = "0.4.6"
+serde = "1.0.90"

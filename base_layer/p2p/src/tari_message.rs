@@ -65,6 +65,14 @@ pub mod BlockchainMessage {
     pub const NewBlock: u8 = 65;
     pub const Transaction: u8 = 66;
     pub const TransactionReply: u8 = 67;
+    /// Mempool Messages
+    pub const MempoolSyncRequest: u8 = 68;
+    pub const MempoolSync: u8 = 69;
+    pub const MempoolStatsRequest: u8 = 70;
+    pub const MempoolStats: u8 = 71;
+    pub const UTxs: u8 = 72;
+    pub const UTxStatusRequest: u8 = 73;
+    pub const UTxStatus: u8 = 74;
 }
 
 #[allow(non_snake_case, non_upper_case_globals)]
