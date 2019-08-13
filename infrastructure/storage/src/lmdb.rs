@@ -21,6 +21,7 @@ use std::{collections::HashMap, sync::Arc};
 ///     .unwrap();
 /// ```
 #[derive(Default)]
+#[deprecated(since = "0.0.2", note = "Use [lmdb_store::LMDBBuilder] instead")]
 pub struct LMDBBuilder {
     path: String,
     db_size_mb: usize,
@@ -98,6 +99,7 @@ impl LMDBBuilder {
 
 /// A Struct for holding state for the LMDB implementation of DataStore and BatchWrite. To create an instance of
 /// LMDBStore, use [LMDBBuilder](struct.lmdbbuilder.html).
+#[deprecated(since = "0.0.2", note = "Use [lmdb_store::LMDBStore] instead")]
 pub struct LMDBStore {
     pub(crate) env: Arc<lmdb::Environment>,
     pub(crate) databases: HashMap<String, Arc<lmdb::Database<'static>>>,
