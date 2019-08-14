@@ -33,9 +33,10 @@ pub trait MakeServicePair<N> {
     fn make_pair(self, handles: Arc<ServiceHandles<N>>) -> (Self::Handle, Self::Future);
 }
 
-impl<FN, F, H, N> MakeServicePair<N> for FN
+/// Implementation of MakeServicePair for any function taking a ServiceHandle and returning a (Handle, Future) pair.
+impl<TFunc, F, H, N> MakeServicePair<N> for TFunc
 where
-    FN: FnOnce(Arc<ServiceHandles<N>>) -> (H, F),
+    TFunc: FnOnce(Arc<ServiceHandles<N>>) -> (H, F),
     F: Future<Item = (), Error = ()> + Send,
     H: Any,
     H: Send + Sync,
