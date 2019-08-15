@@ -360,8 +360,6 @@ mod test {
 
                 existential type Future: Future<Item = String, Error = ()>;
 
-                // = Box<dyn Future<Item=(), Error=()>>;
-
                 fn poll_ready(&mut self) -> Poll<(), Self::Error> {
                     Ok(().into())
                 }
