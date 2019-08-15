@@ -27,8 +27,8 @@ use crate::{
         zmq::{InprocAddress, ZmqContext},
     },
     dispatcher::DispatchableKey,
-    inbound_message_service::inbound_message_broker::InboundMessageBroker,
-    message::MessageContext,
+    inbound_message_service::inbound_message_publisher::InboundMessagePublisher,
+    message::{DomainMessageContext, MessageContext},
     outbound_message_service::outbound_message_service::OutboundMessageService,
     peer_manager::{peer_manager::PeerManager, NodeIdentity},
     types::MessageDispatcher,
@@ -36,7 +36,8 @@ use crate::{
 use log::*;
 use serde::{de::DeserializeOwned, Serialize};
 use std::{
-    sync::{mpsc::SyncSender, Arc},
+    fmt::Debug,
+    sync::{mpsc::SyncSender, Arc, RwLock},
     thread::JoinHandle,
     time::Duration,
 };
@@ -72,13 +73,14 @@ pub struct InboundMessageService<MType>
 where
     MType: DispatchableKey,
     MType: Serialize + DeserializeOwned,
+    MType: Debug,
 {
     config: InboundMessageServiceConfig,
     context: ZmqContext,
     node_identity: Arc<NodeIdentity>,
     message_queue_address: InprocAddress,
     message_dispatcher: Arc<MessageDispatcher<MessageContext<MType>>>,
-    inbound_message_broker: Arc<InboundMessageBroker<MType>>,
+    inbound_message_publisher: Arc<RwLock<InboundMessagePublisher<MType, DomainMessageContext>>>,
     outbound_message_service: Arc<OutboundMessageService>,
     peer_manager: Arc<PeerManager>,
     worker_thread_handle: Option<JoinHandle<()>>,
@@ -89,6 +91,7 @@ impl<MType> InboundMessageService<MType>
 where
     MType: DispatchableKey,
     MType: Serialize + DeserializeOwned,
+    MType: Debug,
 {
     /// Creates a new InboundMessageService that will receive message on the message_queue_address that it will then
     /// dispatch
@@ -98,7 +101,7 @@ where
         node_identity: Arc<NodeIdentity>,
         message_queue_address: InprocAddress,
         message_dispatcher: Arc<MessageDispatcher<MessageContext<MType>>>,
-        inbound_message_broker: Arc<InboundMessageBroker<MType>>,
+        inbound_message_publisher: Arc<RwLock<InboundMessagePublisher<MType, DomainMessageContext>>>,
         outbound_message_service: Arc<OutboundMessageService>,
         peer_manager: Arc<PeerManager>,
     ) -> Self
@@ -109,7 +112,7 @@ where
             node_identity,
             message_queue_address,
             message_dispatcher,
-            inbound_message_broker,
+            inbound_message_publisher,
             outbound_message_service,
             peer_manager,
             worker_thread_handle: None,
@@ -126,7 +129,7 @@ where
             self.node_identity.clone(),
             self.message_queue_address.clone(),
             self.message_dispatcher.clone(),
-            self.inbound_message_broker.clone(),
+            self.inbound_message_publisher.clone(),
             self.outbound_message_service.clone(),
             self.peer_manager.clone(),
         );
@@ -163,7 +166,6 @@ mod test {
         inbound_message_service::comms_msg_handlers::*,
         message::{
             DomainMessageContext,
-            FrameSet,
             Message,
             MessageData,
             MessageEnvelope,
@@ -172,12 +174,14 @@ mod test {
             NodeDestination,
         },
         peer_manager::{peer_manager::PeerManager, NodeIdentity, Peer, PeerFlags},
+        pub_sub_channel::SubscriptionReader,
     };
     use crossbeam_channel as channel;
     use serde::{Deserialize, Serialize};
     use std::{sync::Arc, thread, time::Duration};
     use tari_storage::key_val_store::HMapDatabase;
     use tari_utilities::message_format::MessageFormat;
+    use tokio::runtime::Runtime;
 
     fn pause() {
         thread::sleep(Duration::from_millis(5));
@@ -208,25 +212,17 @@ mod test {
             .establish(&message_queue_address)
             .unwrap();
 
-        // Create Handler Service
-        let handler_inproc_address = InprocAddress::random();
-        let handler_queue_connection = Connection::new(&context, Direction::Inbound)
-            .establish(&handler_inproc_address)
-            .unwrap();
-
         #[derive(Debug, Hash, Eq, PartialEq, Serialize, Deserialize)]
         pub enum DomainBrokerType {
             Type1,
         }
 
-        // Create MessageDispatcher, InboundMessageBroker, PeerManager, OutboundMessageService and
+        // Create MessageDispatcher, InboundMessagePublisher, PeerManager, OutboundMessageService and
         let message_dispatcher = Arc::new(construct_comms_msg_dispatcher::<DomainBrokerType>());
-        let inbound_message_broker = Arc::new(
-            InboundMessageBroker::new(context.clone())
-                .route(DomainBrokerType::Type1, handler_inproc_address)
-                .start()
-                .unwrap(),
-        );
+
+        let imp = InboundMessagePublisher::new(100);
+        let message_subscription = imp.subscriber.subscription(DomainBrokerType::Type1);
+        let inbound_message_publisher = Arc::new(RwLock::new(imp));
 
         let (message_sender, _) = channel::unbounded();
         let peer_manager = Arc::new(PeerManager::new(HMapDatabase::new()).unwrap());
@@ -247,7 +243,7 @@ mod test {
             node_identity.clone(),
             message_queue_address,
             message_dispatcher,
-            inbound_message_broker,
+            inbound_message_publisher,
             outbound_message_service,
             peer_manager,
         );
@@ -261,7 +257,7 @@ mod test {
             // Construct a test message
             let message_header = MessageHeader::new(DomainBrokerType::Type1).unwrap();
             // Messages with the same message body will be discarded by the DuplicateMsgCache
-            let message_body = format!("Test Message Body {}", i).as_bytes().to_vec();
+            let message_body = format!("Test Message Body {}", i).to_string().as_bytes().to_vec();
             let message_envelope_body = Message::from_message_format(message_header, message_body).unwrap();
             message_envelope_body_list.push(message_envelope_body.clone());
             let message_data_buffer = create_message_data_buffer(node_identity.clone(), message_envelope_body);
@@ -269,14 +265,14 @@ mod test {
             client_connection.send(&message_data_buffer).unwrap();
         }
 
-        // Check that all messages reached handler service queue
-        pause();
-        for _ in 0..test_message_count {
-            let received_message_data_bytes: FrameSet =
-                handler_queue_connection.receive(2000).unwrap().drain(1..).collect();
-            let received_domain_message_context =
-                DomainMessageContext::from_binary(&received_message_data_bytes[0]).unwrap();
-            assert!(message_envelope_body_list.contains(&received_domain_message_context.message));
+        // Check that all messages reached subscribers
+        std::thread::sleep(Duration::from_millis(500));
+        let mut rt = Runtime::new().unwrap();
+        let sr = SubscriptionReader::new(Arc::new(message_subscription));
+        let (msgs, _): (Vec<DomainMessageContext>, _) = rt.block_on(sr).unwrap();
+        assert_eq!(msgs.len(), test_message_count);
+        for m in msgs.iter() {
+            assert!(message_envelope_body_list.contains(&m.message));
         }
 
         // Test shutdown control

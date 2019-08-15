@@ -30,7 +30,6 @@ use crate::{
 use log::*;
 use serde::{de::DeserializeOwned, Serialize};
 use std::fmt::Debug;
-use tari_utilities::message_format::MessageFormat;
 
 const LOG_TARGET: &str = "comms::inbound_message_service::handlers";
 
@@ -65,6 +64,7 @@ impl<MType> DispatchResolver<CommsDispatchType, MessageContext<MType>> for Inbou
 where
     MType: DispatchableKey,
     MType: Serialize + DeserializeOwned,
+    MType: Debug,
 {
     /// The dispatch type is determined from the content of the MessageContext, which is used to dispatch the message to
     /// the correct handler
@@ -183,26 +183,23 @@ where
         message_context.peer.into(),
         message_envelope_header.origin_source,
         message,
-        envelope.clone(),
     );
-    let domain_message_context_buffer = vec![domain_message_context
-        .to_binary()
-        .map_err(|e| DispatchError::HandlerError(format!("{}", e)))?];
 
     debug!(
         target: LOG_TARGET,
         "Dispatching message type: {:?}", header.message_type
     );
-    message_context
-        .inbound_message_broker
-        .dispatch(header.message_type, &domain_message_context_buffer)
-        .map_err(|e| DispatchError::HandlerError(format!("{}", e)))
+
+    let mut imp = acquire_write_lock!(message_context.inbound_message_publisher);
+    imp.publish(header.message_type, domain_message_context)?;
+    Ok(())
 }
 
 fn handler_forward<MType>(message_context: MessageContext<MType>) -> Result<(), DispatchError>
 where
     MType: DispatchableKey,
     MType: Serialize + DeserializeOwned,
+    MType: Debug,
 {
     // Forward message using appropriate broadcast strategy based on the destination provided in the header
     let envelope = message_context.message_envelope;
@@ -231,6 +228,7 @@ fn handler_discard<MType>(_message_context: MessageContext<MType>) -> Result<(),
 where
     MType: DispatchableKey,
     MType: Serialize + DeserializeOwned,
+    MType: Debug,
 {
     // TODO: Add logic for discarding a message
 

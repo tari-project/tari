@@ -19,7 +19,6 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 use crate::support::{
     comms_and_services::setup_comms_services,
     data::{clean_up_datastore, init_datastore},
@@ -309,11 +308,11 @@ fn test_api() {
     let services = ServiceRegistry::new().register(oms);
 
     // The Service Executor needs a comms stack even though the OMS doesn't use the comms stack.
-    let node_1_identity = NodeIdentity::random(&mut rng, "127.0.0.1:32569".parse().unwrap()).unwrap();
+    let node_1_identity = NodeIdentity::random(&mut rng, "127.0.0.1:32563".parse().unwrap()).unwrap();
     let node_1_database_name = "node_1_output_manager_service_api_test"; // Note: every test should have unique database
     let node_1_datastore = init_datastore(node_1_database_name).unwrap();
     let node_1_peer_database = node_1_datastore.get_handle(node_1_database_name).unwrap();
-    let comms = setup_comms_services(node_1_identity.clone(), Vec::new(), node_1_peer_database, &services);
+    let comms = setup_comms_services(node_1_identity.clone(), Vec::new(), node_1_peer_database);
 
     let executor = ServiceExecutor::execute(&comms, services);
 

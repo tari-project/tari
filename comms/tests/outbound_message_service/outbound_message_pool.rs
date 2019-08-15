@@ -234,7 +234,7 @@ fn test_outbound_message_pool_fail_and_retry() {
     let node_A_msg_sink_address = InprocAddress::random();
 
     // Add node B to node A's peer manager
-    let database_name = "omp_test_outbound_message_pool_fail_and_retry"; // Note: every test should have unique database
+    let database_name = "omp_test_outbound_message_pool_fail_and_retry1"; // Note: every test should have unique database
     let datastore = init_datastore(database_name).unwrap();
     let database = datastore.get_handle(database_name).unwrap();
     let database = LMDBWrapper::new(Arc::new(database));

@@ -46,7 +46,7 @@ pub fn setup_text_message_service(
 
     let services = ServiceRegistry::new().register(tms);
 
-    let comms = setup_comms_services(node_identity, peers, peer_database, &services);
+    let comms = setup_comms_services(node_identity, peers, peer_database);
 
     (ServiceExecutor::execute(&comms, services), tms_api, comms)
 }
@@ -56,7 +56,7 @@ fn test_text_message_service() {
     let mut rng = rand::OsRng::new().unwrap();
 
     let node_1_identity = NodeIdentity::random(&mut rng, "127.0.0.1:31523".parse().unwrap()).unwrap();
-    let node_2_identity = NodeIdentity::random(&mut rng, "127.0.0.1:31545".parse().unwrap()).unwrap();
+    let node_2_identity = NodeIdentity::random(&mut rng, "127.0.0.1:31145".parse().unwrap()).unwrap();
     let node_3_identity = NodeIdentity::random(&mut rng, "127.0.0.1:31546".parse().unwrap()).unwrap();
 
     let node_1_database_name = "node_1_test_text_message_service"; // Note: every test should have unique database

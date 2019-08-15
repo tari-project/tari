@@ -36,11 +36,10 @@ use std::{
     time::Duration,
 };
 use tari_comms::{
-    domain_connector::MessageInfo,
+    domain_subscriber::MessageInfo,
     message::{Message, MessageError, MessageFlags},
     outbound_message_service::{outbound_message_service::OutboundMessageService, BroadcastStrategy},
     types::CommsPublicKey,
-    DomainConnector,
 };
 use tari_p2p::{
     ping_pong::PingPong,
@@ -135,34 +134,29 @@ impl TextMessageService {
     /// Process an incoming text message
     fn receive_text_message(
         &mut self,
-        connector: &DomainConnector<'static>,
+        info: MessageInfo,
+        message: ReceivedTextMessage,
         conn: &SqliteConnection,
     ) -> Result<(), TextMessageError>
     {
         let oms = self.oms.clone().ok_or(TextMessageError::OMSNotInitialized)?;
 
-        let incoming_msg: Option<(MessageInfo, ReceivedTextMessage)> = connector
-            .receive_timeout(Duration::from_millis(10))
-            .map_err(TextMessageError::ConnectorError)?;
+        trace!(
+            target: LOG_TARGET,
+            "Text Message received with ID: {:?} from {} with message: {:?}",
+            message.id.clone(),
+            message.source_pub_key,
+            message.message.clone()
+        );
 
-        if let Some((info, msg)) = incoming_msg {
-            trace!(
-                target: LOG_TARGET,
-                "Text Message received with ID: {:?} from {} with message: {:?}",
-                msg.id.clone(),
-                msg.source_pub_key,
-                msg.message.clone()
-            );
+        let text_message_ack = TextMessageAck { id: message.clone().id };
+        oms.send_message(
+            BroadcastStrategy::DirectPublicKey(info.origin_source),
+            MessageFlags::ENCRYPTED,
+            text_message_ack,
+        )?;
 
-            let text_message_ack = TextMessageAck { id: msg.clone().id };
-            oms.send_message(
-                BroadcastStrategy::DirectPublicKey(info.origin_source),
-                MessageFlags::ENCRYPTED,
-                text_message_ack,
-            )?;
-
-            msg.commit(conn)?;
-        }
+        message.commit(conn)?;
 
         Ok(())
     }
@@ -170,22 +164,16 @@ impl TextMessageService {
     /// Process an incoming text message Ack
     fn receive_text_message_ack(
         &mut self,
-        connector: &DomainConnector<'static>,
+        message_ack: TextMessageAck,
         conn: &SqliteConnection,
     ) -> Result<(), TextMessageError>
     {
-        let incoming_msg: Option<(MessageInfo, TextMessageAck)> = connector
-            .receive_timeout(Duration::from_millis(10))
-            .map_err(TextMessageError::ConnectorError)?;
-
-        if let Some((_info, msg_ack)) = incoming_msg {
-            debug!(
-                target: LOG_TARGET,
-                "Text Message Ack received with ID: {:?}",
-                msg_ack.id.clone(),
-            );
-            SentTextMessage::mark_sent_message_ack(msg_ack.id.clone(), conn)?;
-        }
+        debug!(
+            target: LOG_TARGET,
+            "Text Message Ack received with ID: {:?}",
+            message_ack.id.clone(),
+        );
+        SentTextMessage::mark_sent_message_ack(message_ack.id.clone(), conn)?;
 
         Ok(())
     }
@@ -361,15 +349,8 @@ impl Service for TextMessageService {
     /// Function called by the Service Executor in its own thread. This function polls for both API request and Comms
     /// layer messages from the Message Broker
     fn execute(&mut self, context: ServiceContext) -> Result<(), ServiceError> {
-        let connector_text = context.create_connector(&ExtendedMessage::Text.into()).map_err(|err| {
-            ServiceError::ServiceInitializationFailed(format!("Failed to create connector for service: {}", err))
-        })?;
-
-        let connector_text_ack = context
-            .create_connector(&ExtendedMessage::TextAck.into())
-            .map_err(|err| {
-                ServiceError::ServiceInitializationFailed(format!("Failed to create connector for service: {}", err))
-            })?;
+        let mut subscription_text = context.create_domain_subscriber(ExtendedMessage::Text.into());
+        let mut subscription_text_ack = context.create_domain_subscriber(ExtendedMessage::Text.into());
 
         self.oms = Some(context.outbound_message_service());
 
@@ -400,21 +381,22 @@ impl Service for TextMessageService {
                     ServiceControlMessage::Shutdown => break,
                 }
             }
-
-            match self.receive_text_message(&connector_text, &connection) {
-                Ok(_) => {},
-                Err(err) => {
-                    error!(target: LOG_TARGET, "Text Message service had error: {:?}", err);
-                },
+            for m in subscription_text.receive_messages()?.drain(..) {
+                match self.receive_text_message(m.0, m.1, &connection) {
+                    Ok(_) => {},
+                    Err(err) => {
+                        error!(target: LOG_TARGET, "Text Message service had error: {:?}", err);
+                    },
+                }
             }
-
-            match self.receive_text_message_ack(&connector_text_ack, &connection) {
-                Ok(_) => {},
-                Err(err) => {
-                    error!(target: LOG_TARGET, "Text Message service had error: {:?}", err);
-                },
+            for m in subscription_text_ack.receive_messages()?.drain(..) {
+                match self.receive_text_message_ack(m.1, &connection) {
+                    Ok(_) => {},
+                    Err(err) => {
+                        error!(target: LOG_TARGET, "Text Message service had error: {:?}", err);
+                    },
+                }
             }
-
             if let Some(msg) = self
                 .api
                 .recv_timeout(Duration::from_millis(50))

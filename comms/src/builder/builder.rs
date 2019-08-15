@@ -21,18 +21,17 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    builder::CommsRoutes,
     connection::{ConnectionError, DealerProxyError, InprocAddress, ZmqContext},
     connection_manager::{ConnectionManager, PeerConnectionConfig},
     control_service::{ControlService, ControlServiceConfig, ControlServiceError, ControlServiceHandle},
     dispatcher::DispatchableKey,
-    domain_connector::ConnectorError,
     inbound_message_service::{
         comms_msg_handlers::construct_comms_msg_dispatcher,
         error::InboundError,
-        inbound_message_broker::{BrokerError, InboundMessageBroker},
+        inbound_message_publisher::{InboundMessagePublisher, PublisherError},
         inbound_message_service::{InboundMessageService, InboundMessageServiceConfig},
     },
+    message::DomainMessageContext,
     outbound_message_service::{
         outbound_message_pool::{OutboundMessagePoolConfig, OutboundMessagePoolError},
         outbound_message_service::OutboundMessageService,
@@ -42,13 +41,16 @@ use crate::{
     },
     peer_manager::{NodeIdentity, PeerManager, PeerManagerError},
     types::CommsDatabase,
-    DomainConnector,
 };
+use bitflags::_core::marker::PhantomData;
 use crossbeam_channel::Sender;
 use derive_error::Error;
 use log::*;
-use serde::{de::DeserializeOwned, export::fmt::Debug, Serialize};
-use std::sync::Arc;
+use serde::{de::DeserializeOwned, Serialize};
+use std::{
+    fmt::Debug,
+    sync::{Arc, RwLock},
+};
 
 const LOG_TARGET: &str = "comms::builder";
 
@@ -64,9 +66,6 @@ pub enum CommsBuilderError {
     NodeIdentityNotSet,
     #[error(no_from)]
     DealerProxyError(DealerProxyError),
-    /// Comms routes have not been defined. Call `with_routes` on [CommsBuilder]
-    RoutesNotDefined,
-    BrokerStartError(BrokerError),
     DatastoreUndefined,
 }
 
@@ -75,17 +74,16 @@ pub enum CommsBuilderError {
 /// The [build] method will return an error if any required builder methods are not called. These
 /// are detailed further down on the method docs.
 #[derive(Default)]
-pub struct CommsBuilder<MType>
-where MType: Clone
-{
+pub struct CommsBuilder<MType> {
     zmq_context: ZmqContext,
-    routes: Option<CommsRoutes<MType>>,
     peer_storage: Option<CommsDatabase>,
     control_service_config: Option<ControlServiceConfig>,
     omp_config: Option<OutboundMessagePoolConfig>,
     ims_config: Option<InboundMessageServiceConfig>,
     node_identity: Option<NodeIdentity>,
     peer_conn_config: Option<PeerConnectionConfig>,
+    inbound_message_buffer_size: Option<usize>,
+    _m: PhantomData<MType>,
 }
 
 impl<MType> CommsBuilder<MType>
@@ -105,18 +103,10 @@ where
             omp_config: None,
             ims_config: None,
             peer_storage: None,
-            routes: None,
             node_identity: None,
+            inbound_message_buffer_size: None,
+            _m: PhantomData,
         }
-    }
-
-    /// Set the [CommsRoute]s to use. This is required.
-    ///
-    /// [CommsRoute]: ../routes/CommsRoutes.html
-    pub fn with_routes(mut self, routes: CommsRoutes<MType>) -> Self {
-        self.routes = Some(routes);
-        debug!(target: LOG_TARGET, "Comms routes: {:#?}", self.routes);
-        self
     }
 
     /// Set the [NodeIdentity] for this comms instance. This is required.
@@ -130,6 +120,12 @@ where
     /// Set the peer storage database to use. This is optional.
     pub fn with_peer_storage(mut self, peer_storage: CommsDatabase) -> Self {
         self.peer_storage = Some(peer_storage);
+        self
+    }
+
+    /// Configure inbound message publisher/subscriber buffer size. This is optional
+    pub fn configure_inbound_message_publisher_buffer_size(mut self, size: usize) -> Self {
+        self.inbound_message_buffer_size = Some(size);
         self
     }
 
@@ -228,11 +224,18 @@ where
         OutboundMessagePool::new(config, peer_manager, connection_manager)
     }
 
+    // TODO Remove this Arc + RwLock when the IMS worker is refactored to be future based.
+    fn make_inbound_message_publisher(&mut self) -> Arc<RwLock<InboundMessagePublisher<MType, DomainMessageContext>>> {
+        Arc::new(RwLock::new(InboundMessagePublisher::new(
+            self.inbound_message_buffer_size.unwrap_or(1000),
+        )))
+    }
+
     fn make_inbound_message_service(
         &mut self,
         node_identity: Arc<NodeIdentity>,
         message_sink_address: InprocAddress,
-        inbound_message_broker: Arc<InboundMessageBroker<MType>>,
+        inbound_message_publisher: Arc<RwLock<InboundMessagePublisher<MType, DomainMessageContext>>>,
         oms: Arc<OutboundMessageService>,
         peer_manager: Arc<PeerManager>,
     ) -> InboundMessageService<MType>
@@ -245,26 +248,10 @@ where
             node_identity,
             message_sink_address,
             Arc::new(construct_comms_msg_dispatcher()),
-            inbound_message_broker,
+            inbound_message_publisher,
             oms,
             peer_manager,
         )
-    }
-
-    fn make_inbound_message_broker(
-        &mut self,
-        routes: &CommsRoutes<MType>,
-    ) -> Result<Arc<InboundMessageBroker<MType>>, CommsBuilderError>
-    {
-        let broker = routes.inner().iter().fold(
-            InboundMessageBroker::new(self.zmq_context.clone()),
-            |broker, (message_type, address)| broker.route(message_type.clone(), address.clone()),
-        )
-            // FIXME(sdbondi): We have to start the broker here because we cannot mutate it once inUse these fields when
-            // able to shutdown
-            .start().map_err(CommsBuilderError::BrokerStartError)?;
-
-        Ok(Arc::new(broker))
     }
 
     /// Build the required comms services. Services will not be started.
@@ -274,9 +261,6 @@ where
         let peer_manager = self.make_peer_manager()?;
 
         let peer_conn_config = self.make_peer_connection_config();
-
-        // This must happen before control service so that it can use it's config to setup a default route for accept
-        let routes = self.routes.take().ok_or(CommsBuilderError::RoutesNotDefined)?;
 
         let control_service = self.make_control_service(node_identity.clone());
 
@@ -291,27 +275,26 @@ where
             peer_manager.clone(),
         )?;
 
-        let inbound_message_broker = self.make_inbound_message_broker(&routes)?;
+        let inbound_message_publisher = self.make_inbound_message_publisher();
 
         let inbound_message_service = self.make_inbound_message_service(
             node_identity.clone(),
             peer_conn_config.message_sink_address,
-            inbound_message_broker.clone(),
+            inbound_message_publisher.clone(),
             outbound_message_service.clone(),
             peer_manager.clone(),
         );
 
         Ok(CommsServiceContainer {
             zmq_context: self.zmq_context,
-            routes,
             control_service,
             inbound_message_service,
-            inbound_message_broker,
             connection_manager,
             outbound_message_pool,
             outbound_message_service,
             peer_manager,
             node_identity,
+            inbound_message_publisher,
         })
     }
 }
@@ -324,11 +307,10 @@ pub enum CommsServicesError {
     UncleanShutdown,
     /// The message type was not registered
     MessageTypeNotRegistered,
-    ConnectorError(ConnectorError),
-    InboundMessageBrokerError(BrokerError),
     OutboundMessagePoolError(OutboundMessagePoolError),
     OutboundError(OutboundError),
     InboundMessageServiceError(InboundError),
+    PublisherError(PublisherError),
 }
 
 /// Contains the built comms services
@@ -336,14 +318,13 @@ pub struct CommsServiceContainer<MType>
 where
     MType: Serialize + DeserializeOwned,
     MType: DispatchableKey,
-    MType: Clone,
+    MType: Clone + Debug,
 {
     zmq_context: ZmqContext,
-    routes: CommsRoutes<MType>,
     connection_manager: Arc<ConnectionManager>,
     control_service: Option<ControlService>,
-    inbound_message_broker: Arc<InboundMessageBroker<MType>>,
     inbound_message_service: InboundMessageService<MType>,
+    inbound_message_publisher: Arc<RwLock<InboundMessagePublisher<MType, DomainMessageContext>>>,
     outbound_message_pool: OutboundMessagePool,
     outbound_message_service: Arc<OutboundMessageService>,
     peer_manager: Arc<PeerManager>,
@@ -354,7 +335,7 @@ impl<MType> CommsServiceContainer<MType>
 where
     MType: Serialize + DeserializeOwned,
     MType: DispatchableKey,
-    MType: Clone,
+    MType: Clone + Send + Debug,
 {
     /// Start all the comms services and return a [CommsServices] object
     ///
@@ -380,10 +361,9 @@ where
             // Transfer ownership to CommsServices
             zmq_context: self.zmq_context,
             outbound_message_service: self.outbound_message_service,
-            routes: self.routes,
             connection_manager: self.connection_manager,
-            inbound_message_broker: self.inbound_message_broker,
             peer_manager: self.peer_manager,
+            inbound_message_publisher: self.inbound_message_publisher,
             outbound_message_pool: self.outbound_message_pool,
             node_identity: self.node_identity,
             // Add handles for started services
@@ -397,13 +377,14 @@ where
 /// This struct provides a handle to and control over all the running comms services.
 /// You can get a [DomainConnector] from which to receive messages by using the `create_connector`
 /// method. Use the `shutdown` method to attempt to cleanly shut all comms services down.
-pub struct CommsServices<MType> {
+pub struct CommsServices<MType>
+where MType: Send + Sync + Debug
+{
     zmq_context: ZmqContext,
     outbound_message_service: Arc<OutboundMessageService>,
-    routes: CommsRoutes<MType>,
     control_service_handle: Option<ControlServiceHandle>,
-    inbound_message_broker: Arc<InboundMessageBroker<MType>>,
     outbound_message_pool: OutboundMessagePool,
+    inbound_message_publisher: Arc<RwLock<InboundMessagePublisher<MType, DomainMessageContext>>>,
     node_identity: Arc<NodeIdentity>,
     connection_manager: Arc<ConnectionManager>,
     peer_manager: Arc<PeerManager>,
@@ -412,7 +393,7 @@ pub struct CommsServices<MType> {
 impl<MType> CommsServices<MType>
 where
     MType: DispatchableKey,
-    MType: Clone,
+    MType: Clone + Send + Debug,
 {
     pub fn zmq_context(&self) -> &ZmqContext {
         &self.zmq_context
@@ -434,17 +415,8 @@ where
         Arc::clone(&self.outbound_message_service)
     }
 
-    pub fn routes(&self) -> &CommsRoutes<MType> {
-        &self.routes
-    }
-
-    pub fn create_connector<'de>(&self, message_type: &MType) -> Result<DomainConnector<'de>, CommsServicesError> {
-        let addr = self
-            .routes
-            .get_address(&message_type)
-            .ok_or(CommsServicesError::MessageTypeNotRegistered)?;
-
-        DomainConnector::listen(&self.zmq_context, &addr).map_err(CommsServicesError::ConnectorError)
+    pub fn inbound_message_publisher(&self) -> Arc<RwLock<InboundMessagePublisher<MType, DomainMessageContext>>> {
+        Arc::clone(&self.inbound_message_publisher)
     }
 
     pub fn shutdown(self) -> Result<(), CommsServicesError> {
@@ -461,16 +433,6 @@ where
                 .shutdown()
                 .map_err(CommsServicesError::OutboundError),
         );
-
-        match Arc::try_unwrap(self.inbound_message_broker) {
-            Ok(broker) => drop(broker),
-            Err(_) => {
-                error!(
-                    target: LOG_TARGET,
-                    "Unable to cleanly drop inbound message broker because references are still held by other threads"
-                );
-            },
-        }
 
         // Lastly, Shutdown connection manager
         match Arc::try_unwrap(self.connection_manager) {
@@ -512,8 +474,7 @@ mod test {
 
     #[test]
     fn new_no_control_service() {
-        let comms_services = CommsBuilder::new()
-            .with_routes(CommsRoutes::new().register("hello".to_owned()))
+        let comms_services: CommsServiceContainer<String> = CommsBuilder::new()
             .with_node_identity(NodeIdentity::random_for_test(None))
             .with_peer_storage(HMapDatabase::new())
             .build()
@@ -524,8 +485,7 @@ mod test {
 
     #[test]
     fn new_with_control_service() {
-        let comms_services = CommsBuilder::new()
-            .with_routes(CommsRoutes::new().register("hello".to_owned()))
+        let comms_services: CommsServiceContainer<String> = CommsBuilder::new()
             .with_node_identity(NodeIdentity::random_for_test(None))
             .with_peer_storage(HMapDatabase::new())
             .configure_control_service(ControlServiceConfig::default())

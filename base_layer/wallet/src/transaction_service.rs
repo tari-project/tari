@@ -331,17 +331,9 @@ impl Service for TransactionService {
     /// Function called by the Service Executor in its own thread. This function polls for both API request and Comms
     /// layer messages from the Message Broker
     fn execute(&mut self, context: ServiceContext) -> Result<(), ServiceError> {
-        let connector_transaction = context
-            .create_connector(&BlockchainMessage::Transaction.into())
-            .map_err(|err| {
-                ServiceError::ServiceInitializationFailed(format!("Failed to create connector for service: {}", err))
-            })?;
-
-        let connector_transaction_reply = context
-            .create_connector(&BlockchainMessage::TransactionReply.into())
-            .map_err(|err| {
-                ServiceError::ServiceInitializationFailed(format!("Failed to create connector for service: {}", err))
-            })?;
+        let mut subscription_transaction = context.create_domain_subscriber(BlockchainMessage::Transaction.into());
+        let mut subscription_transaction_reply =
+            context.create_domain_subscriber(BlockchainMessage::TransactionReply.into());
 
         self.outbound_message_service = Some(context.outbound_message_service());
         debug!(target: LOG_TARGET, "Starting Transaction Service executor");
@@ -352,24 +344,16 @@ impl Service for TransactionService {
                 }
             }
 
-            match connector_transaction.receive_timeout(Duration::from_millis(10)) {
-                Ok(Some((msg_info, tsm))) => {
-                    if let Err(e) = self.accept_transaction(msg_info.origin_source.clone(), tsm) {
-                        error!(target: LOG_TARGET, "Transaction service had error: {:?}", e);
-                    }
-                },
-                Ok(None) => (),
-                Err(e) => error!(target: LOG_TARGET, "Transaction service had error: {:?}", e),
+            for m in subscription_transaction.receive_messages()?.drain(..) {
+                if let Err(e) = self.accept_transaction(m.0.origin_source.clone(), m.1) {
+                    error!(target: LOG_TARGET, "Transaction service had error: {:?}", e);
+                }
             }
 
-            match connector_transaction_reply.receive_timeout(Duration::from_millis(10)) {
-                Ok(Some((_msg_info, rsm))) => {
-                    if let Err(e) = self.accept_recipient_reply(rsm) {
-                        error!(target: LOG_TARGET, "Transaction service had error: {:?}", e);
-                    }
-                },
-                Ok(None) => (),
-                Err(e) => error!(target: LOG_TARGET, "Transaction service had error: {:?}", e),
+            for m in subscription_transaction_reply.receive_messages()?.drain(..) {
+                if let Err(e) = self.accept_recipient_reply(m.1) {
+                    error!(target: LOG_TARGET, "Transaction service had error: {:?}", e);
+                }
             }
 
             if let Some(msg) = self

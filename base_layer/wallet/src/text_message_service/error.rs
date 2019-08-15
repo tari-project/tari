@@ -26,7 +26,6 @@ use tari_comms::{
     builder::CommsServicesError,
     connection::NetAddressError,
     dispatcher::DispatchError,
-    domain_connector::ConnectorError,
     message::MessageError,
     outbound_message_service::OutboundError,
 };
@@ -40,7 +39,6 @@ pub enum TextMessageError {
     MessageError(MessageError),
     OutboundError(OutboundError),
     ServiceError(ServiceError),
-    ConnectorError(ConnectorError),
     CommsServicesError(CommsServicesError),
     HexError(HexError),
     DatabaseError(DieselError),

@@ -29,8 +29,7 @@ use std::{sync::Arc, time::Duration};
 pub trait Service: Send + Sync {
     /// A 'friendly' name used for logging purposes
     fn get_name(&self) -> String;
-    /// Returns the message types this service requires. These will be
-    /// registered in the comms routing.
+    /// Returns the message types this service requires. These will be subscribed to.
     fn get_message_types(&self) -> Vec<TariMessageType>;
     /// The entry point of the service. This will be executed in a dedicated thread.
     /// The service should use `context.create_connector(message_type)` to create a `DomainConnector`

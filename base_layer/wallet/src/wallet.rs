@@ -65,8 +65,7 @@ impl Wallet {
             .register(ping_pong_service)
             .register(text_message_service);
 
-        let comm_routes = registry.build_comms_routes();
-        let comms_services = initialize_comms(config.comms.clone(), comm_routes)?;
+        let comms_services = initialize_comms(config.comms.clone())?;
         let service_executor = ServiceExecutor::execute(&comms_services, registry);
 
         Ok(Wallet {

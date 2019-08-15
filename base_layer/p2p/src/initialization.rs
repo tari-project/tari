@@ -24,7 +24,7 @@ use crate::tari_message::TariMessageType;
 use derive_error::Error;
 use std::{net::IpAddr, sync::Arc};
 use tari_comms::{
-    builder::{CommsBuilderError, CommsRoutes, CommsServices, CommsServicesError},
+    builder::{CommsBuilderError, CommsServices, CommsServicesError},
     connection::{net_address::ip::SocketAddress, NetAddress},
     connection_manager::PeerConnectionConfig,
     control_service::ControlServiceConfig,
@@ -53,11 +53,7 @@ pub struct CommsConfig {
     pub peer_database_name: String,
 }
 
-pub fn initialize_comms(
-    config: CommsConfig,
-    comms_routes: CommsRoutes<TariMessageType>,
-) -> Result<Arc<CommsServices<TariMessageType>>, CommsInitializationError>
-{
+pub fn initialize_comms(config: CommsConfig) -> Result<Arc<CommsServices<TariMessageType>>, CommsInitializationError> {
     let node_identity = NodeIdentity::new(config.secret_key, config.public_key, config.public_address)
         .map_err(CommsInitializationError::NodeIdentityError)?;
 
@@ -73,7 +69,6 @@ pub fn initialize_comms(
     let peer_database = LMDBWrapper::new(Arc::new(peer_database));
 
     let builder = CommsBuilder::new()
-        .with_routes(comms_routes.clone())
         .with_node_identity(node_identity)
         .with_peer_storage(peer_database)
         .configure_control_service(config.control_service)

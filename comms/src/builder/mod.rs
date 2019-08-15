@@ -25,7 +25,7 @@
 //! The [CommsBuilder] provides a simple builder API for getting Tari comms p2p messaging up and running.
 //!
 //! ```edition2018
-//! # use tari_comms::builder::{CommsBuilder, CommsRoutes};
+//! # use tari_comms::builder::CommsBuilder;
 //! # use tari_comms::dispatcher::HandlerError;
 //! # use tari_comms::message::DomainMessageContext;
 //! # use tari_comms::control_service::ControlServiceConfig;
@@ -54,8 +54,7 @@
 //! let peer_database = datastore.get_handle(database_name).unwrap();
 //! let peer_database = LMDBWrapper::new(Arc::new(peer_database));
 //!
-//! let services = CommsBuilder::new()
-//!    .with_routes(CommsRoutes::<u8>::new())
+//! let services = CommsBuilder::<String>::new()
 //!    // This enables the control service - allowing another peer to connect to this node
 //!    .configure_control_service(ControlServiceConfig::default())
 //!    .with_node_identity(my_node_identity)

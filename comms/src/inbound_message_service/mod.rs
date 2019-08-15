@@ -38,7 +38,7 @@
 //! [InboundMessageBroker]: ./inbound_message_broker/struct.InboundMessageBroker.html
 pub mod comms_msg_handlers;
 pub mod error;
-pub mod inbound_message_broker;
+pub mod inbound_message_publisher;
 pub mod inbound_message_service;
 pub mod inbound_message_worker;
 pub mod message_cache;
