@@ -24,12 +24,12 @@ mod support;
 
 use digest::Digest;
 use support::{combine_hashes, create_mmr, int_to_hash, Hasher};
-use tari_mmr::{MerkleMountainRange, VectorBackend};
+use tari_mmr::MerkleMountainRange;
 
 /// MMRs with no elements should provide sane defaults. The merkle root must be the hash of an empty string, b"".
 #[test]
 fn zero_length_mmr() {
-    let mmr = MerkleMountainRange::<Hasher, _>::new(VectorBackend::default());
+    let mmr = MerkleMountainRange::<Hasher, _>::new(Vec::default());
     assert_eq!(mmr.len(), 0);
     assert!(mmr.is_empty());
     let empty_hash = Hasher::digest(b"").to_vec();
@@ -39,7 +39,7 @@ fn zero_length_mmr() {
 /// Successively build up an MMR and check that the roots, heights and indices are all correct.
 #[test]
 fn build_mmr() {
-    let mut mmr = MerkleMountainRange::<Hasher, _>::new(VectorBackend::default());
+    let mut mmr = MerkleMountainRange::<Hasher, _>::new(Vec::default());
     // Add a single item
     let h0 = int_to_hash(0);
 
@@ -97,8 +97,8 @@ fn build_mmr() {
 
 #[test]
 fn equality_check() {
-    let mut ma = MerkleMountainRange::<Hasher, _>::new(VectorBackend::default());
-    let mut mb = MerkleMountainRange::<Hasher, _>::new(VectorBackend::default());
+    let mut ma = MerkleMountainRange::<Hasher, _>::new(Vec::default());
+    let mut mb = MerkleMountainRange::<Hasher, _>::new(Vec::default());
     assert!(ma == mb);
     assert!(ma.push(&int_to_hash(1)).is_ok());
     assert!(ma != mb);

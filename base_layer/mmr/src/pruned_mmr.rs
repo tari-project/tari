@@ -20,45 +20,26 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::error::MerkleMountainRangeError;
+use crate::{error::MerkleMountainRangeError, pruned_hashset::PrunedHashSet, ArrayLike, Hash, MerkleMountainRange};
+use digest::Digest;
+use serde::export::PhantomData;
+use std::convert::TryFrom;
 
-/// A trait describing generic array-like behaviour, without imposing any specific details on how this is actually done.
-pub trait ArrayLike {
-    type Value;
-    type Error: std::error::Error;
+type PrunedMmr<D> = MerkleMountainRange<D, PrunedHashSet>;
 
-    /// Returns the number of hashes stored in the backend
-    fn len(&self) -> usize;
-
-    /// Store a new item and return the index of the stored item
-    fn push(&mut self, item: Self::Value) -> Result<usize, Self::Error>;
-
-    /// Return the item at the given index
-    fn get(&self, index: usize) -> Option<&Self::Value>;
-
-    /// Return the item at the given index. Use this if you *know* that the index is valid. Requesting a hash for an
-    /// invalid index may cause the a panic
-    fn get_or_panic(&self, index: usize) -> &Self::Value;
-}
-
-impl<T> ArrayLike for Vec<T> {
-    type Error = MerkleMountainRangeError;
-    type Value = T;
-
-    fn len(&self) -> usize {
-        Vec::len(self)
-    }
-
-    fn push(&mut self, item: Self::Value) -> Result<usize, Self::Error> {
-        Vec::push(self, item);
-        Ok(self.len() - 1)
-    }
-
-    fn get(&self, index: usize) -> Option<&Self::Value> {
-        (self as &[Self::Value]).get(index)
-    }
-
-    fn get_or_panic(&self, index: usize) -> &Self::Value {
-        &self[index]
-    }
+/// Create a pruned Merkle Mountain Range from the provided MMR. Pruning entails throwing all the hashes of the
+/// pruned MMR away, except for the current peaks. A new MMR instance is returned that allows you to continue
+/// adding onto the MMR as before. Most functions of the pruned MMR will work as expected, but obviously, any
+/// leaf hashes prior to the base point won't be available. `get_leaf_hash` will return `None` for those nodes, and
+/// `validate` will throw an error.
+pub fn prune_mmr<D, B>(mmr: &MerkleMountainRange<D, B>) -> Result<PrunedMmr<D>, MerkleMountainRangeError>
+where
+    D: Digest,
+    B: ArrayLike<Value = Hash>,
+{
+    let backend = PrunedHashSet::try_from(mmr)?;
+    Ok(MerkleMountainRange {
+        hashes: backend,
+        _hasher: PhantomData,
+    })
 }

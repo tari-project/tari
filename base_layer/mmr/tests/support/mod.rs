@@ -23,12 +23,12 @@
 
 use digest::Digest;
 use tari_crypto::common::Blake256;
-use tari_mmr::{Hash, HashSlice, MerkleMountainRange, VectorBackend};
+use tari_mmr::{Hash, HashSlice, MerkleMountainRange};
 
 pub type Hasher = Blake256;
 
-pub fn create_mmr(size: usize) -> MerkleMountainRange<Hasher, VectorBackend> {
-    let mut mmr = MerkleMountainRange::<Hasher, _>::new(VectorBackend::default());
+pub fn create_mmr(size: usize) -> MerkleMountainRange<Hasher, Vec<Hash>> {
+    let mut mmr = MerkleMountainRange::<Hasher, _>::new(Vec::default());
     for i in 0..size {
         let hash = int_to_hash(i);
         assert!(mmr.push(&hash).is_ok());

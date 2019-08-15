@@ -37,11 +37,11 @@ where
     B: ArrayLike<Value = Hash>,
 {
     pub(crate) mmr: MerkleMountainRange<D, B>,
-    deleted: Bitmap,
+    pub(crate) deleted: Bitmap,
     // The number of leaf nodes in the MutableMmr. Bitmap is limited to 4 billion elements, which is plenty.
     // [croaring::Treemap] is a 64bit alternative, but this would break things on 32bit systems. A good TODO would be
     // to select the bitmap backend using a feature flag
-    size: u32,
+    pub(crate) size: u32,
 }
 
 impl<D, B> MutableMmr<D, B>

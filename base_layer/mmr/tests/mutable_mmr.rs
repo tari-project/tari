@@ -24,8 +24,8 @@ mod support;
 
 use croaring::Bitmap;
 use digest::Digest;
-use support::{combine_hashes, create_mmr, int_to_hash, Hasher};
-use tari_mmr::{Hash, HashSlice, MerkleMountainRange, MutableMmr, VectorBackend};
+use support::{create_mmr, int_to_hash, Hasher};
+use tari_mmr::{Hash, HashSlice, MutableMmr};
 use tari_utilities::hex::Hex;
 
 fn hash_with_bitmap(hash: &HashSlice, bitmap: &mut Bitmap) -> Hash {
@@ -37,7 +37,7 @@ fn hash_with_bitmap(hash: &HashSlice, bitmap: &mut Bitmap) -> Hash {
 /// MMRs with no elements should provide sane defaults. The merkle root must be the hash of an empty string, b"".
 #[test]
 fn zero_length_mmr() {
-    let mmr = MutableMmr::<Hasher, _>::new(VectorBackend::default());
+    let mmr = MutableMmr::<Hasher, _>::new(Vec::default());
     assert_eq!(mmr.len(), 0);
     assert!(mmr.is_empty());
     let empty_hash = Hasher::digest(b"").to_vec();
@@ -50,28 +50,33 @@ fn zero_length_mmr() {
 #[test]
 // Note the hardcoded hashes are only valid when using Blake256 as the Hasher
 fn delete() {
-    let mut mmr = MutableMmr::<Hasher, _>::new(VectorBackend::default());
+    let mut mmr = MutableMmr::<Hasher, _>::new(Vec::default());
     assert!(mmr.is_empty());
     for i in 0..5 {
         assert!(mmr.push(&int_to_hash(i)).is_ok());
     }
     assert_eq!(mmr.len(), 5);
     let root = mmr.get_merkle_root();
+    assert_eq!(
+        &root.to_hex(),
+        "7b7ddec2af4f3d0b9b165750cf2ff15813e965d29ecd5318e0c8fea901ceaef4"
+    );
     // Can't delete past bounds
     assert_eq!(mmr.delete_and_compress(5, true), false);
     assert_eq!(mmr.len(), 5);
     assert!(!mmr.is_empty());
     assert_eq!(mmr.get_merkle_root(), root);
     // Delete some nodes
+    assert!(mmr.push(&int_to_hash(5)).is_ok());
     assert!(mmr.delete_and_compress(0, false));
     assert!(mmr.delete_and_compress(2, false));
     assert!(mmr.delete_and_compress(4, true));
     let root = mmr.get_merkle_root();
     assert_eq!(
         &root.to_hex(),
-        "e749ef3a776f13003426520911474f412dfeddf3f16b9783df935c9b4a9eb51c"
+        "69e69ba0c6222f2d9caa68282de0ba7f1259a0fa2b8d84af68f907ef4ec05054"
     );
-    assert_eq!(mmr.len(), 2);
+    assert_eq!(mmr.len(), 3);
     assert!(!mmr.is_empty());
     // Can't delete that which has already been deleted
     assert!(!mmr.delete_and_compress(0, false));
@@ -79,18 +84,19 @@ fn delete() {
     assert!(!mmr.delete_and_compress(0, true));
     // .. or beyond bounds of MMR
     assert!(!mmr.delete_and_compress(99, true));
-    assert_eq!(mmr.len(), 2);
+    assert_eq!(mmr.len(), 3);
     assert!(!mmr.is_empty());
     // Merkle root should not have changed:
     assert_eq!(mmr.get_merkle_root(), root);
     assert!(mmr.delete_and_compress(1, false));
+    assert!(mmr.delete_and_compress(5, false));
     assert!(mmr.delete(3));
     assert_eq!(mmr.len(), 0);
     assert!(mmr.is_empty());
     let root = mmr.get_merkle_root();
     assert_eq!(
         &root.to_hex(),
-        "f7a7378dd83853047f889fad5bab3d5fb0f9c2864a89cbb6edcb1cb6897103db"
+        "2a540797d919e63cff8051e54ae13197315000bcfde53efd3f711bb3d24995bc"
     );
 }
 
@@ -98,11 +104,11 @@ fn delete() {
 #[test]
 fn build_mmr() {
     // Check the mutable MMR against a standard MMR and a roaring bitmap. Create one with 5 leaf nodes *8 MMR nodes)
-    let mut mmr_check = create_mmr(5);
+    let mmr_check = create_mmr(5);
     assert_eq!(mmr_check.len(), 8);
     let mut bitmap = Bitmap::create();
     // Create a small mutable MMR
-    let mut mmr = MutableMmr::<Hasher, _>::new(VectorBackend::default());
+    let mut mmr = MutableMmr::<Hasher, _>::new(Vec::default());
     for i in 0..5 {
         assert!(mmr.push(&int_to_hash(i)).is_ok());
     }
@@ -120,8 +126,8 @@ fn build_mmr() {
 
 #[test]
 fn equality_check() {
-    let mut ma = MutableMmr::<Hasher, _>::new(VectorBackend::default());
-    let mut mb = MutableMmr::<Hasher, _>::new(VectorBackend::default());
+    let mut ma = MutableMmr::<Hasher, _>::new(Vec::default());
+    let mut mb = MutableMmr::<Hasher, _>::new(Vec::default());
     assert!(ma == mb);
     assert!(ma.push(&int_to_hash(1)).is_ok());
     assert!(ma != mb);
