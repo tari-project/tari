@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    services::{
+    sync_services::{
         Service,
         ServiceApiWrapper,
         ServiceContext,

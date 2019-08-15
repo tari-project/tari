@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019 The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -21,47 +21,16 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use derive_error::Error;
-use diesel::result::{ConnectionError as DieselConnectionError, Error as DieselError};
-use tari_comms::{
-    builder::CommsServicesError,
-    connection::NetAddressError,
-    dispatcher::DispatchError,
-    message::MessageError,
-    outbound_message_service::OutboundError,
-};
-use tari_p2p::sync_services::ServiceError;
-use tari_utilities::{hex::HexError, message_format::MessageFormatError};
+use tari_comms::{message::MessageError, outbound_message_service::OutboundError};
+use tari_utilities::message_format::MessageFormatError;
+use tokio_threadpool::BlockingError;
 
 #[derive(Debug, Error)]
-pub enum TextMessageError {
-    MessageFormatError(MessageFormatError),
-    DispatchError(DispatchError),
-    MessageError(MessageError),
+pub enum CommsOutboundServiceError {
+    // Comms errors
     OutboundError(OutboundError),
-    ServiceError(ServiceError),
-    CommsServicesError(CommsServicesError),
-    HexError(HexError),
-    DatabaseError(DieselError),
-    NetAddressError(NetAddressError),
-    DatabaseConnectionError(DieselConnectionError),
-    /// If a received TextMessageAck doesn't matching any pending messages
-    MessageNotFound,
-    /// Failed to send from API
-    ApiSendFailed,
-    /// Failed to receive in API from service
-    ApiReceiveFailed,
-    /// The Outbound Message Service is not initialized
-    OMSNotInitialized,
-    /// The Comms service stack is not initialized
-    CommsNotInitialized,
-    /// Received an unexpected API response
-    UnexpectedApiResponse,
-    /// Contact not found
-    ContactNotFound,
-    /// Contact already exists
-    ContactAlreadyExists,
-    /// There was an error updating a row in the database
-    DatabaseUpdateError,
-    /// Error retrieving settings
-    SettingsReadError,
+    MessageSerializationError(MessageError),
+    MessageFormatError(MessageFormatError),
+    #[error(non_std)]
+    BlockingError(BlockingError),
 }

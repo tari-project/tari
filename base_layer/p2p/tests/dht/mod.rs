@@ -36,7 +36,7 @@ use tari_comms::{
 };
 use tari_p2p::{
     dht_service::{DHTService, DHTServiceApi},
-    services::{ServiceExecutor, ServiceRegistry},
+    sync_services::{ServiceExecutor, ServiceRegistry},
     tari_message::TariMessageType,
 };
 use tari_storage::{key_val_store::lmdb_database::LMDBWrapper, lmdb_store::LMDBBuilder};

@@ -51,7 +51,7 @@ use tari_comms::{
 use tari_p2p::{
     initialization::{initialize_comms, CommsConfig},
     ping_pong::{PingPongService, PingPongServiceApi},
-    services::{ServiceError, ServiceExecutor, ServiceRegistry},
+    sync_services::{ServiceError, ServiceExecutor, ServiceRegistry},
 };
 use tari_utilities::message_format::MessageFormat;
 use tempdir::TempDir;
@@ -67,7 +67,7 @@ pub fn random_string(len: usize) -> String {
 }
 
 fn main() {
-    let matches = App::new("Peer file generator")
+    let matches = App::new("Tari comms peer to peer ping pong example")
         .version("1.0")
         .about("PingPong between two peers")
         .arg(

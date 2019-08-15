@@ -27,7 +27,7 @@ use tari_comms::{builder::CommsServices, types::CommsPublicKey};
 use tari_p2p::{
     initialization::{initialize_comms, CommsConfig, CommsInitializationError},
     ping_pong::{PingPongService, PingPongServiceApi},
-    services::{ServiceExecutor, ServiceRegistry},
+    sync_services::{ServiceExecutor, ServiceRegistry},
     tari_message::TariMessageType,
 };
 

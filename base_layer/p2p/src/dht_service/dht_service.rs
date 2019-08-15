@@ -26,7 +26,7 @@ use crate::{
         dht_messages::{DiscoverMessage, JoinMessage},
         DHTError,
     },
-    services::{
+    sync_services::{
         Service,
         ServiceApiWrapper,
         ServiceContext,

@@ -42,7 +42,7 @@ use tari_crypto::{
     keys::{PublicKey as PublicKeyTrait, SecretKey},
     range_proof::RangeProofService,
 };
-use tari_p2p::services::{ServiceExecutor, ServiceRegistry};
+use tari_p2p::sync_services::{ServiceExecutor, ServiceRegistry};
 use tari_utilities::ByteArray;
 use tari_wallet::output_manager_service::{error::OutputManagerError, output_manager_service::OutputManagerService};
 

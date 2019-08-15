@@ -20,11 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod comms_outbound;
-mod service_name;
-
-use crate::executor::handles;
-
-pub use self::service_name::ServiceName;
-
-pub type ServiceHandles = handles::ServiceHandles<ServiceName>;
+/// Used to name services and retrieve service handles
+#[derive(Eq, PartialEq, Hash)]
+pub enum ServiceName {
+    /// Outbound comms service
+    CommsOutbound,
+    /// Liveness service
+    Liveness,
+}
