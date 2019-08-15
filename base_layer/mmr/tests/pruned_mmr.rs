@@ -20,45 +20,37 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::error::MerkleMountainRangeError;
+mod support;
 
-/// A trait describing generic array-like behaviour, without imposing any specific details on how this is actually done.
-pub trait ArrayLike {
-    type Value;
-    type Error: std::error::Error;
+use support::{create_mmr, int_to_hash};
+use tari_mmr::pruned_mmr::prune_mmr;
 
-    /// Returns the number of hashes stored in the backend
-    fn len(&self) -> usize;
-
-    /// Store a new item and return the index of the stored item
-    fn push(&mut self, item: Self::Value) -> Result<usize, Self::Error>;
-
-    /// Return the item at the given index
-    fn get(&self, index: usize) -> Option<&Self::Value>;
-
-    /// Return the item at the given index. Use this if you *know* that the index is valid. Requesting a hash for an
-    /// invalid index may cause the a panic
-    fn get_or_panic(&self, index: usize) -> &Self::Value;
+#[test]
+fn pruned_mmr_empty() {
+    let mmr = create_mmr(0);
+    let root = mmr.get_merkle_root();
+    let pruned = prune_mmr(&mmr).expect("Could not create empty pruned MMR");
+    assert!(pruned.is_empty());
+    assert_eq!(pruned.get_merkle_root(), root);
 }
 
-impl<T> ArrayLike for Vec<T> {
-    type Error = MerkleMountainRangeError;
-    type Value = T;
+#[test]
+fn pruned_mmrs() {
+    for size in &[6, 14, 63, 64, 65, 127] {
+        let mmr = create_mmr(*size);
+        let mmr2 = create_mmr(size + 2);
 
-    fn len(&self) -> usize {
-        Vec::len(self)
-    }
-
-    fn push(&mut self, item: Self::Value) -> Result<usize, Self::Error> {
-        Vec::push(self, item);
-        Ok(self.len() - 1)
-    }
-
-    fn get(&self, index: usize) -> Option<&Self::Value> {
-        (self as &[Self::Value]).get(index)
-    }
-
-    fn get_or_panic(&self, index: usize) -> &Self::Value {
-        &self[index]
+        let root = mmr.get_merkle_root();
+        let mut pruned = prune_mmr(&mmr).expect("Could not create empty pruned MMR");
+        assert_eq!(pruned.len(), mmr.len());
+        assert_eq!(pruned.get_merkle_root(), root);
+        // The pruned MMR works just like the normal one
+        let new_hash = int_to_hash(*size);
+        assert!(pruned.push(&new_hash).is_ok());
+        assert!(pruned.push(&int_to_hash(*size + 1)).is_ok());
+        assert_eq!(pruned.get_merkle_root(), mmr2.get_merkle_root());
+        // But you can only get recent hashes
+        assert!(pruned.get_leaf_hash(*size / 2).is_none());
+        assert_eq!(pruned.get_leaf_hash(*size).unwrap(), &new_hash)
     }
 }

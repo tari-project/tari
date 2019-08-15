@@ -139,14 +139,17 @@ mod backend;
 mod merkle_mountain_range;
 mod merkle_proof;
 mod mutable_mmr;
+mod pruned_hashset;
 
 // Less commonly used exports
 pub mod common;
 pub mod error;
+/// A function for snapshotting and pruning a Merkle Mountain Range
+pub mod pruned_mmr;
 
 // Commonly used exports
 /// A vector-based backend for [MerkleMountainRange]
-pub use backend::VectorBackend;
+pub use backend::ArrayLike;
 /// An immutable, append-only Merkle Mountain range (MMR) data structure
 pub use merkle_mountain_range::MerkleMountainRange;
 /// A data structure for proving a hash inclusion in an MMR

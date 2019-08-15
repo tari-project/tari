@@ -32,4 +32,7 @@ pub enum MerkleMountainRangeError {
     InvalidMerkleTree,
     // The tree has reached its maximum size
     MaximumSizeReached,
+    // A node hash was not found for the given node index
+    #[error(non_std, no_from)]
+    HashNotFound(usize),
 }

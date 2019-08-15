@@ -41,8 +41,8 @@ const LOG_TARGET: &str = "mmr::merkle_mountain_range";
 pub struct MerkleMountainRange<D, B>
 where B: ArrayLike
 {
-    hashes: B,
-    _hasher: PhantomData<D>,
+    pub(crate) hashes: B,
+    pub(crate) _hasher: PhantomData<D>,
 }
 
 impl<D, B> MerkleMountainRange<D, B>
