@@ -31,12 +31,13 @@ extern crate futures;
 mod macros;
 mod consts;
 
-pub mod dht_service;
+// TODO Put these back in after Futures Comms stack refactor
+// pub mod saf_service;
+// pub mod dht_service;
 pub mod executor;
 pub mod initialization;
 pub mod peer;
 pub mod ping_pong;
-pub mod saf_service;
 pub mod service_name;
 pub mod services;
 pub mod tari_message;

@@ -79,7 +79,6 @@ fn setup_ping_pong_service(
 
     let services = ServiceRegistry::new().register(ping_pong);
     let comms = CommsBuilder::new()
-        .with_routes(services.build_comms_routes())
         .with_node_identity(node_identity.clone())
         .with_peer_storage(peer_storage)
         .configure_peer_connections(PeerConnectionConfig {

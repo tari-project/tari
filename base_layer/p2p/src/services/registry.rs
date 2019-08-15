@@ -21,8 +21,6 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::service::Service;
-use crate::tari_message::TariMessageType;
-use tari_comms::builder::CommsRoutes;
 
 /// This is a container for services. Services can be registered here
 /// and given to the [ServiceExecutor] for execution. This also
@@ -49,19 +47,6 @@ impl ServiceRegistry {
     pub fn num_services(&self) -> usize {
         self.services.len()
     }
-
-    /// Builds the [CommsRoutes] for the services contained in this registry.
-    pub fn build_comms_routes(&self) -> CommsRoutes<TariMessageType> {
-        let mut routes = CommsRoutes::new();
-        for service in &self.services {
-            routes = service
-                .get_message_types()
-                .iter()
-                .fold(routes, |routes, message_type| routes.register(message_type.clone()));
-        }
-
-        routes
-    }
 }
 
 #[cfg(test)]
@@ -69,7 +54,7 @@ mod test {
     use super::*;
     use crate::{
         services::{ServiceContext, ServiceError},
-        tari_message::NetMessage,
+        tari_message::{NetMessage, TariMessageType},
     };
 
     struct DummyService;
@@ -96,14 +81,5 @@ mod test {
         let service = DummyService {};
         registry = registry.register(service);
         assert_eq!(registry.num_services(), 1);
-    }
-
-    #[test]
-    fn build_comms_routes() {
-        let service = DummyService {};
-        let registry = ServiceRegistry::new().register(service);
-
-        let routes = registry.build_comms_routes();
-        routes.get_address(&NetMessage::PingPong.into()).unwrap();
     }
 }

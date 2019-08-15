@@ -128,7 +128,7 @@ fn main() {
     let pingpong = pingpong_service.get_api();
     let services = ServiceRegistry::new().register(pingpong_service);
 
-    let comms = initialize_comms(comms_config, services.build_comms_routes()).unwrap();
+    let comms = initialize_comms(comms_config).unwrap();
     let peer = Peer::new(
         peer_identity.identity.public_key.clone(),
         peer_identity.identity.node_id.clone(),

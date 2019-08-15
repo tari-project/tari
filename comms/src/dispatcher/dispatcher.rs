@@ -20,6 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::inbound_message_service::inbound_message_publisher::PublisherError;
 use derive_error::Error;
 use std::{collections::HashMap, error::Error, hash::Hash};
 
@@ -31,6 +32,7 @@ pub enum DispatchError {
     ResolveFailed(String),
     #[error(msg_embedded, non_std, no_from)]
     HandlerError(String),
+    PublisherError(PublisherError),
 }
 
 impl DispatchError {

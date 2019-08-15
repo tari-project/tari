@@ -19,7 +19,6 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 use crate::support::{
     comms_and_services::setup_comms_services,
     data::{clean_up_datastore, init_datastore},
@@ -48,7 +47,6 @@ use tari_wallet::{
     output_manager_service::output_manager_service::{OutputManagerService, OutputManagerServiceApi},
     transaction_service::{TransactionService, TransactionServiceApi},
 };
-
 pub fn setup_transaction_service(
     seed_key: PrivateKey,
     node_identity: NodeIdentity,
@@ -66,7 +64,7 @@ pub fn setup_transaction_service(
     let tx_service = TransactionService::new(output_manager_api.clone());
     let tx_service_api = tx_service.get_api();
     let services = ServiceRegistry::new().register(tx_service).register(output_manager);
-    let comms = setup_comms_services(node_identity, peers, peer_database, &services);
+    let comms = setup_comms_services(node_identity, peers, peer_database);
 
     (
         ServiceExecutor::execute(&comms, services),
@@ -75,14 +73,12 @@ pub fn setup_transaction_service(
         comms,
     )
 }
-
 pub fn make_input<R: Rng + CryptoRng>(rng: &mut R, val: MicroTari) -> (TransactionInput, UnblindedOutput) {
     let key = PrivateKey::random(rng);
     let commitment = COMMITMENT_FACTORY.commit_value(&key, val.into());
     let input = TransactionInput::new(OutputFeatures::default(), commitment);
     (input, UnblindedOutput::new(val, key, None))
 }
-
 pub struct TestParams {
     pub spend_key: PrivateKey,
     pub change_key: PrivateKey,
@@ -105,7 +101,6 @@ impl TestParams {
 
 #[test]
 fn manage_single_transaction() {
-    let _ = simple_logger::init_with_level(Level::Debug);
     let mut rng = OsRng::new().unwrap();
     // Alice's parameters
     let alice_seed = PrivateKey::random(&mut rng);
@@ -307,9 +302,9 @@ fn manage_multiple_transactions() {
     clean_up_datastore(carol_database_name);
 }
 
-// TODO Test the following once the Tokio future based service architecture is in place. The current architecture makes
-// it impossible to test this service without a running Service and Comms stack but then you cannot access the internals
-// of the service as it is running the ServiceExecutor Thread
+// TODO Test the following once the Tokio future based service architecture is in place. The current architecture
+// makes it impossible to test this service without a running Service and Comms stack but then you cannot access the
+// internals of the service as it is running the ServiceExecutor Thread
 //
 // What happens when repeated tx_id are sent to be accepted
 // What happens with malformed sender message

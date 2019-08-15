@@ -28,19 +28,16 @@ use tari_comms::{
     peer_manager::{NodeIdentity, Peer},
     CommsBuilder,
 };
-use tari_p2p::{services::ServiceRegistry, tari_message::TariMessageType};
+use tari_p2p::tari_message::TariMessageType;
 use tari_storage::{key_val_store::lmdb_database::LMDBWrapper, lmdb_store::LMDBDatabase};
-
 pub fn setup_comms_services(
     node_identity: NodeIdentity,
     peers: Vec<NodeIdentity>,
     peer_database: LMDBDatabase,
-    services: &ServiceRegistry,
 ) -> CommsServices<TariMessageType>
 {
     let peer_database = LMDBWrapper::new(Arc::new(peer_database));
     let comms = CommsBuilder::new()
-        .with_routes(services.build_comms_routes())
         .with_node_identity(node_identity.clone())
         .with_peer_storage(peer_database)
         .configure_peer_connections(PeerConnectionConfig {

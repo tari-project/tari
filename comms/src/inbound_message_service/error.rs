@@ -22,7 +22,7 @@
 
 use crate::{
     connection::{error::ConnectionError, DealerProxyError},
-    inbound_message_service::{inbound_message_broker::BrokerError, message_cache::MessageCacheError},
+    inbound_message_service::message_cache::MessageCacheError,
 };
 use derive_error::Error;
 use tari_utilities::thread_join::ThreadError;
@@ -33,7 +33,6 @@ pub enum InboundError {
     /// Failed to connect to inbound socket
     InboundConnectionError(ConnectionError),
     DealerProxyError(DealerProxyError),
-    BrokerError(BrokerError),
     MessageCacheError(MessageCacheError),
     #[error(msg_embedded, non_std, no_from)]
     ControlSendError(String),

@@ -32,15 +32,17 @@ use tari_comms::{
     builder::CommsServices,
     outbound_message_service::outbound_message_service::OutboundMessageService,
     peer_manager::{NodeIdentity, PeerManager},
-    DomainConnector,
 };
 use threadpool::ThreadPool;
 
 use crossbeam_channel as channel;
 use crossbeam_channel::{Receiver, RecvTimeoutError, Sender};
+use std::sync::RwLock;
 use tari_comms::{
-    builder::{CommsRoutes, CommsServicesError},
-    connection::{InprocAddress, ZmqContext},
+    connection::InprocAddress,
+    domain_subscriber::DomainSubscriber,
+    inbound_message_service::inbound_message_publisher::InboundMessagePublisher,
+    message::DomainMessageContext,
 };
 
 const LOG_TARGET: &str = "base_layer::p2p::services";
@@ -79,8 +81,7 @@ impl ServiceExecutor {
                 peer_manager: comms_services.peer_manager(),
                 node_identity: comms_services.node_identity(),
                 receiver,
-                routes: comms_services.routes().clone(),
-                zmq_context: comms_services.zmq_context().clone(),
+                inbound_message_publisher: comms_services.inbound_message_publisher(),
             };
 
             thread_pool.execute(move || {
@@ -157,8 +158,7 @@ pub struct ServiceContext {
     peer_manager: Arc<PeerManager>,
     node_identity: Arc<NodeIdentity>,
     receiver: Receiver<ServiceControlMessage>,
-    routes: CommsRoutes<TariMessageType>,
-    zmq_context: ZmqContext,
+    inbound_message_publisher: Arc<RwLock<InboundMessagePublisher<TariMessageType, DomainMessageContext>>>,
 }
 
 impl ServiceContext {
@@ -194,21 +194,9 @@ impl ServiceContext {
         &self.ims_message_sink_address
     }
 
-    /// Retrieve a reference to the ZmqContext
-    pub fn zmq_context(&self) -> &ZmqContext {
-        &self.zmq_context
-    }
-
-    /// Create a [DomainConnector] which listens for a particular [TariMessageType].
-    pub fn create_connector<'de>(&self, message_type: &TariMessageType) -> Result<DomainConnector<'de>, ServiceError> {
-        let addr = self
-            .routes
-            .get_address(&message_type)
-            .ok_or(ServiceError::CommsServicesError(
-                CommsServicesError::MessageTypeNotRegistered,
-            ))?;
-
-        DomainConnector::listen(&self.zmq_context, &addr).map_err(ServiceError::ConnectorError)
+    /// Create a DomainSubscriber for the specified message type
+    pub fn create_domain_subscriber(&self, message_type: TariMessageType) -> DomainSubscriber<TariMessageType> {
+        DomainSubscriber::new(self.inbound_message_publisher.clone(), message_type)
     }
 }
 
@@ -292,7 +280,6 @@ mod test {
         let peer_database = LMDBWrapper::new(Arc::new(peer_database));
 
         let comms_services = CommsBuilder::new()
-            .with_routes(registry.build_comms_routes())
             .with_node_identity(node_identity)
             .with_peer_storage(peer_database)
             .build()

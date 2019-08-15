@@ -227,14 +227,14 @@ impl DHTService {
             }
 
             // Propagate message to closer peers
-            oms.forward_message(
-                BroadcastStrategy::Closest(ClosestRequest {
-                    n: DHT_BROADCAST_NODE_COUNT,
-                    node_id: join_msg.node_id.clone(),
-                    excluded_peers: vec![info.origin_source, info.peer_source.public_key],
-                }),
-                info.message_envelope,
-            )?;
+            //            oms.forward_message(
+            //                BroadcastStrategy::Closest(ClosestRequest {
+            //                    n: DHT_BROADCAST_NODE_COUNT,
+            //                    node_id: join_msg.node_id.clone(),
+            //                    excluded_peers: vec![info.origin_source, info.peer_source.public_key],
+            //                }),
+            //                info.message_envelope,
+            //            )?;
         }
 
         Ok(())

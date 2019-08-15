@@ -21,22 +21,27 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use crate::{
     dispatcher::DispatchableKey,
-    inbound_message_service::inbound_message_broker::InboundMessageBroker,
-    message::MessageEnvelope,
+    inbound_message_service::inbound_message_publisher::InboundMessagePublisher,
+    message::{DomainMessageContext, MessageEnvelope},
     outbound_message_service::outbound_message_service::OutboundMessageService,
     peer_manager::{peer_manager::PeerManager, NodeIdentity, Peer},
 };
 use serde::{de::DeserializeOwned, Serialize};
-use std::sync::Arc;
+use std::{
+    fmt::Debug,
+    sync::{Arc, RwLock},
+};
 
 #[derive(Clone)]
-pub struct MessageContext<MType> {
+pub struct MessageContext<MType>
+where MType: Send + Sync + Debug
+{
     pub forwardable: bool,
     pub message_envelope: MessageEnvelope,
     pub peer: Peer,
     pub outbound_message_service: Arc<OutboundMessageService>,
     pub peer_manager: Arc<PeerManager>,
-    pub inbound_message_broker: Arc<InboundMessageBroker<MType>>,
+    pub inbound_message_publisher: Arc<RwLock<InboundMessagePublisher<MType, DomainMessageContext>>>,
     pub node_identity: Arc<NodeIdentity>,
 }
 
@@ -44,6 +49,7 @@ impl<MType> MessageContext<MType>
 where
     MType: DispatchableKey,
     MType: Serialize + DeserializeOwned,
+    MType: Debug,
 {
     /// Construct a new MessageContext that consist of the peer connection information and the received message header
     /// and body
@@ -54,7 +60,7 @@ where
         message_envelope: MessageEnvelope,
         outbound_message_service: Arc<OutboundMessageService>,
         peer_manager: Arc<PeerManager>,
-        inbound_message_broker: Arc<InboundMessageBroker<MType>>,
+        inbound_message_publisher: Arc<RwLock<InboundMessagePublisher<MType, DomainMessageContext>>>,
     ) -> Self
     {
         MessageContext {
@@ -64,7 +70,7 @@ where
             node_identity,
             outbound_message_service,
             peer_manager,
-            inbound_message_broker,
+            inbound_message_publisher,
         }
     }
 }

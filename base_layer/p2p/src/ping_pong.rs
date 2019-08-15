@@ -42,11 +42,10 @@ use std::{
     time::Duration,
 };
 use tari_comms::{
-    domain_connector::ConnectorError,
+    domain_subscriber::MessageInfo,
     message::{Message, MessageError, MessageFlags},
     outbound_message_service::{outbound_message_service::OutboundMessageService, BroadcastStrategy, OutboundError},
     types::CommsPublicKey,
-    DomainConnector,
 };
 use tari_utilities::{hex::Hex, message_format::MessageFormatError};
 
@@ -58,7 +57,6 @@ pub enum PingPongError {
     /// OMS has not been initialized
     OMSNotInitialized,
     SerializationFailed(MessageFormatError),
-    ReceiveError(ConnectorError),
     MessageError(MessageError),
     /// Failed to send from API
     ApiSendFailed,
@@ -121,34 +119,29 @@ impl PingPongService {
             .map_err(PingPongError::OutboundError)
     }
 
-    fn receive_ping(&mut self, connector: &DomainConnector<'static>) -> Result<(), PingPongError> {
-        if let Some((info, msg)) = connector
-            .receive_timeout(Duration::from_millis(1))
-            .map_err(PingPongError::ReceiveError)?
-        {
-            match msg {
-                PingPong::Ping => {
-                    debug!(
-                        target: LOG_TARGET,
-                        "Received ping from {}",
-                        info.peer_source.public_key.to_hex(),
-                    );
+    fn receive_ping(&mut self, info: MessageInfo, message: PingPong) -> Result<(), PingPongError> {
+        match message {
+            PingPong::Ping => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Received ping from {}",
+                    info.peer_source.public_key.to_hex(),
+                );
 
-                    self.ping_count += 1;
+                self.ping_count += 1;
 
-                    // Reply with Pong
-                    self.send_msg(BroadcastStrategy::DirectPublicKey(info.origin_source), PingPong::Pong)?;
-                },
-                PingPong::Pong => {
-                    debug!(
-                        target: LOG_TARGET,
-                        "Received pong from {}",
-                        info.peer_source.public_key.to_hex()
-                    );
+                // Reply with Pong
+                self.send_msg(BroadcastStrategy::DirectPublicKey(info.origin_source), PingPong::Pong)?;
+            },
+            PingPong::Pong => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Received pong from {}",
+                    info.peer_source.public_key.to_hex()
+                );
 
-                    self.pong_count += 1;
-                },
-            }
+                self.pong_count += 1;
+            },
         }
 
         Ok(())
@@ -183,9 +176,7 @@ impl Service for PingPongService {
     }
 
     fn execute(&mut self, context: ServiceContext) -> Result<(), ServiceError> {
-        let connector = context.create_connector(&NetMessage::PingPong.into()).map_err(|err| {
-            ServiceError::ServiceInitializationFailed(format!("Failed to create connector for service: {}", err))
-        })?;
+        let mut subscription = context.create_domain_subscriber(NetMessage::PingPong.into());
 
         self.oms = Some(context.outbound_message_service());
 
@@ -196,11 +187,13 @@ impl Service for PingPongService {
                 }
             }
 
-            match self.receive_ping(&connector) {
-                Ok(_) => {},
-                Err(err) => {
-                    error!(target: LOG_TARGET, "PingPong service had error: {}", err);
-                },
+            for m in subscription.receive_messages()?.drain(..) {
+                match self.receive_ping(m.0, m.1) {
+                    Ok(_) => {},
+                    Err(err) => {
+                        error!(target: LOG_TARGET, "PingPong service had error: {}", err);
+                    },
+                }
             }
 
             if let Some(msg) = self

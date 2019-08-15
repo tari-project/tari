@@ -22,11 +22,10 @@
 
 use derive_error::Error;
 use serde::export::fmt::Debug;
-use tari_comms::{builder::CommsServicesError, domain_connector::ConnectorError};
+use tari_comms::{builder::CommsServicesError, domain_subscriber::DomainSubscriberError};
 
 #[derive(Debug, Error)]
 pub enum ServiceError {
-    ConnectorError(ConnectorError),
     #[error(msg_embedded, non_std, no_from)]
     ServiceInitializationFailed(String),
     CommsServicesError(CommsServicesError),
@@ -38,6 +37,7 @@ pub enum ServiceError {
     InternalServiceError(String),
     /// Unable to get sole ownership of comms services. Another thread still has a handle.
     CommsServiceOwnershipError,
+    DomainSubscriberError(DomainSubscriberError),
 }
 
 impl ServiceError {
