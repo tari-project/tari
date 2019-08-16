@@ -39,6 +39,16 @@ pub trait ArrayLike {
     /// Return the item at the given index. Use this if you *know* that the index is valid. Requesting a hash for an
     /// invalid index may cause the a panic
     fn get_or_panic(&self, index: usize) -> &Self::Value;
+
+    /// Shortens the array, keeping the first len elements and dropping the rest. If this feature is not supported,
+    /// the function should return `Err(MerkleMountainRangeError:NotSupported)`
+    fn truncate(&mut self, _len: usize) -> Result<(), MerkleMountainRangeError> {
+        Err(MerkleMountainRangeError::NotSupported)
+    }
+
+    /// Execute the given closure for each value in the array
+    fn for_each<F>(&self, f: F) -> Result<(), MerkleMountainRangeError>
+    where F: FnMut(Result<&Self::Value, MerkleMountainRangeError>);
 }
 
 impl<T> ArrayLike for Vec<T> {
@@ -60,5 +70,16 @@ impl<T> ArrayLike for Vec<T> {
 
     fn get_or_panic(&self, index: usize) -> &Self::Value {
         &self[index]
+    }
+
+    fn truncate(&mut self, len: usize) -> Result<(), MerkleMountainRangeError> {
+        self.truncate(len);
+        Ok(())
+    }
+
+    fn for_each<F>(&self, f: F) -> Result<(), MerkleMountainRangeError>
+    where F: FnMut(Result<&Self::Value, MerkleMountainRangeError>) {
+        self.iter().map(|v| Ok(v)).for_each(f);
+        Ok(())
     }
 }

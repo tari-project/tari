@@ -35,4 +35,6 @@ pub enum MerkleMountainRangeError {
     // A node hash was not found for the given node index
     #[error(non_std, no_from)]
     HashNotFound(usize),
+    // The requested feature is not available on this type of MMR
+    NotSupported,
 }

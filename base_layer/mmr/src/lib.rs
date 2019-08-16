@@ -136,6 +136,7 @@ pub type Hash = Vec<u8>;
 pub type HashSlice = [u8];
 
 mod backend;
+mod change_tracker;
 mod merkle_mountain_range;
 mod merkle_proof;
 mod mutable_mmr;
@@ -150,6 +151,8 @@ pub mod pruned_mmr;
 // Commonly used exports
 /// A vector-based backend for [MerkleMountainRange]
 pub use backend::ArrayLike;
+/// A data structure that maintains a list of diffs on an MMR, enabling you to rewind to a previous state
+pub use change_tracker::MerkleChangeTracker;
 /// An immutable, append-only Merkle Mountain range (MMR) data structure
 pub use merkle_mountain_range::MerkleMountainRange;
 /// A data structure for proving a hash inclusion in an MMR

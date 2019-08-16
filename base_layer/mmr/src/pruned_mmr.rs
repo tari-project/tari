@@ -20,12 +20,20 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{error::MerkleMountainRangeError, pruned_hashset::PrunedHashSet, ArrayLike, Hash, MerkleMountainRange};
+use crate::{
+    error::MerkleMountainRangeError,
+    pruned_hashset::PrunedHashSet,
+    ArrayLike,
+    Hash,
+    MerkleMountainRange,
+    MutableMmr,
+};
 use digest::Digest;
 use serde::export::PhantomData;
 use std::convert::TryFrom;
 
-type PrunedMmr<D> = MerkleMountainRange<D, PrunedHashSet>;
+pub type PrunedMmr<D> = MerkleMountainRange<D, PrunedHashSet>;
+pub type PrunedMutableMmr<D> = MutableMmr<D, PrunedHashSet>;
 
 /// Create a pruned Merkle Mountain Range from the provided MMR. Pruning entails throwing all the hashes of the
 /// pruned MMR away, except for the current peaks. A new MMR instance is returned that allows you to continue
@@ -41,5 +49,19 @@ where
     Ok(MerkleMountainRange {
         hashes: backend,
         _hasher: PhantomData,
+    })
+}
+
+/// A convenience function in the same vein as [prune_mmr], but applied to `MutableMmr` instances.
+pub fn prune_mutable_mmr<D, B>(mmr: &MutableMmr<D, B>) -> Result<PrunedMutableMmr<D>, MerkleMountainRangeError>
+where
+    D: Digest,
+    B: ArrayLike<Value = Hash>,
+{
+    let backend = PrunedHashSet::try_from(&mmr.mmr)?;
+    Ok(MutableMmr {
+        mmr: MerkleMountainRange::new(backend),
+        deleted: mmr.deleted.clone(),
+        size: mmr.size,
     })
 }
