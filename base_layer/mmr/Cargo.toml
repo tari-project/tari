@@ -18,7 +18,8 @@ rand="0.7.0"
 blake2 = "0.8.0"
 tari_infra_derive= {path = "../../infrastructure/derive"}
 tari_crypto = {path = "../../infrastructure/crypto"}
-
+serde_json = "1.0"
+bincode = "1.1"
 [lib]
 # Disable libtest from intercepting Criterion bench arguments
 bench = false

@@ -141,6 +141,7 @@ mod merkle_mountain_range;
 mod merkle_proof;
 mod mutable_mmr;
 mod pruned_hashset;
+mod serde_support;
 
 // Less commonly used exports
 pub mod common;
