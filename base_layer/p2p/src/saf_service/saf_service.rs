@@ -28,7 +28,7 @@ use crate::{
         SAF_MSG_CACHE_STORAGE_CAPACITY,
     },
     saf_service::{RetrieveMsgsMessage, SAFError, StoredMsgsMessage},
-    services::{
+    sync_services::{
         Service,
         ServiceApiWrapper,
         ServiceContext,

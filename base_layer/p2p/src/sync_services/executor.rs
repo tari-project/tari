@@ -203,7 +203,7 @@ impl ServiceContext {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{services::Service, tari_message::NetMessage};
+    use crate::{sync_services::Service, tari_message::NetMessage};
     use rand::rngs::OsRng;
     use std::{path::PathBuf, sync::RwLock};
     use tari_comms::{peer_manager::NodeIdentity, CommsBuilder};

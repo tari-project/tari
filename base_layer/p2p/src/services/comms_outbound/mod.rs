@@ -20,11 +20,45 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod comms_outbound;
-mod service_name;
+mod error;
+mod handle;
+mod messages;
+mod service;
 
-use crate::executor::handles;
+use crate::{
+    executor::{
+        transport::{self, Responder},
+        MakeServicePair,
+    },
+    services::ServiceName,
+    tari_message::TariMessageType,
+};
+use std::sync::Arc;
+use tari_comms::builder::CommsServices;
 
-pub use self::service_name::ServiceName;
+use self::service::CommsOutboundService;
+use crate::services::{comms_outbound::messages::CommsOutboundRequest, ServiceHandles};
+pub use error::CommsOutboundServiceError;
+pub use handle::CommsOutboundHandle;
 
-pub type ServiceHandles = handles::ServiceHandles<ServiceName>;
+pub struct MakeCommsOutboundService<'a> {
+    comms: &'a CommsServices<TariMessageType>,
+}
+
+impl<'a> MakeCommsOutboundService<'a> {
+    pub fn new(comms: &'a CommsServices<TariMessageType>) -> Self {
+        Self { comms }
+    }
+}
+
+impl<'a> MakeServicePair<ServiceName> for MakeCommsOutboundService<'a> {
+    type Future = Responder<CommsOutboundService, CommsOutboundRequest>;
+    type Handle = CommsOutboundHandle;
+
+    fn make_pair(self, _: Arc<ServiceHandles>) -> (Self::Handle, Self::Future) {
+        let oms = self.comms.outbound_message_service();
+        let service = CommsOutboundService::new(oms);
+        let (requester, responder) = transport::channel(service);
+        (CommsOutboundHandle::new(requester), responder)
+    }
+}

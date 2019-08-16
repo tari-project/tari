@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::executor::ServiceContext;
-use crate::{services::ServiceError, tari_message::TariMessageType};
+use crate::{sync_services::ServiceError, tari_message::TariMessageType};
 use crossbeam_channel as channel;
 use std::{sync::Arc, time::Duration};
 

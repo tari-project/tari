@@ -53,7 +53,7 @@ impl ServiceRegistry {
 mod test {
     use super::*;
     use crate::{
-        services::{ServiceContext, ServiceError},
+        sync_services::{ServiceContext, ServiceError},
         tari_message::{NetMessage, TariMessageType},
     };
 

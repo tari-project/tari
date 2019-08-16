@@ -43,7 +43,7 @@ use tari_comms::{
 };
 use tari_p2p::{
     ping_pong::PingPong,
-    services::{
+    sync_services::{
         Service,
         ServiceApiWrapper,
         ServiceContext,

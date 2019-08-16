@@ -39,7 +39,7 @@ use tari_crypto::{
     keys::{PublicKey as PK, SecretKey as SK},
 };
 use tari_p2p::{
-    services::{ServiceExecutor, ServiceRegistry},
+    sync_services::{ServiceExecutor, ServiceRegistry},
     tari_message::TariMessageType,
 };
 use tari_storage::lmdb_store::LMDBDatabase;

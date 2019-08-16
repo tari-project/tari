@@ -40,7 +40,7 @@ use tari_core::{
 use tari_crypto::keys::SecretKey;
 use tari_key_manager::keymanager::KeyManager;
 use tari_p2p::{
-    services::{
+    sync_services::{
         Service,
         ServiceApiWrapper,
         ServiceContext,

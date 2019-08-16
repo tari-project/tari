@@ -20,10 +20,26 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::executor::handles;
+use tari_comms::{
+    message::{Frame, MessageEnvelope, MessageFlags},
+    outbound_message_service::BroadcastStrategy,
+};
 
-pub enum ServiceName {
-    Liveness,
+/// Represents requests to the CommsOutboundService
+pub enum CommsOutboundRequest {
+    /// Send a message using the given broadcast strategy
+    SendMsg {
+        broadcast_strategy: BroadcastStrategy,
+        flags: MessageFlags,
+        body: Box<Frame>,
+    },
+    /// Forward a message envelope
+    Forward {
+        broadcast_strategy: BroadcastStrategy,
+        message_envelope: Box<MessageEnvelope>,
+    },
 }
 
-pub type ServiceHandles = handles::ServiceHandles<ServiceName>;
+/// Represents a response from the CommsOutboundService. Currently, there are no requests
+/// which result in a value.
+pub type CommsOutboundResponse = ();

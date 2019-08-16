@@ -24,7 +24,7 @@ use crate::support::{comms_and_services::setup_comms_services, data::*, utils::a
 use std::sync::Arc;
 use tari_comms::{builder::CommsServices, peer_manager::NodeIdentity};
 use tari_p2p::{
-    services::{ServiceExecutor, ServiceRegistry},
+    sync_services::{ServiceExecutor, ServiceRegistry},
     tari_message::TariMessageType,
 };
 use tari_storage::lmdb_store::LMDBDatabase;
