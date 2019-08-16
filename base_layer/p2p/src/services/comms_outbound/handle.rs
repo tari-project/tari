@@ -57,7 +57,7 @@ impl CommsOutboundHandle {
 
     /// Send a comms message
     pub fn send_message<T>(
-        mut self,
+        &mut self,
         broadcast_strategy: BroadcastStrategy,
         flags: MessageFlags,
         message_type: TariMessageType,
@@ -66,10 +66,11 @@ impl CommsOutboundHandle {
     where
         T: MessageFormat + 'static,
     {
+        let mut requester = self.requester.clone();
         Self::message_body_serializer(message_type, message)
             .or_else(|err| future::ok(Err(CommsOutboundServiceError::BlockingError(err))))
             .and_then(move |res| match res {
-                Ok(body) => Either::A(self.requester.call(CommsOutboundRequest::SendMsg {
+                Ok(body) => Either::A(requester.call(CommsOutboundRequest::SendMsg {
                     broadcast_strategy,
                     flags,
                     body: Box::new(body),
@@ -178,7 +179,7 @@ mod test {
 
         rt.spawn(res);
 
-        let handle = CommsOutboundHandle::new(req);
+        let mut handle = CommsOutboundHandle::new(req);
         let fut = handle.send_message(
             BroadcastStrategy::Flood,
             MessageFlags::empty(),

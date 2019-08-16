@@ -20,12 +20,22 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod comms_outbound;
-mod liveness;
-mod service_name;
+use tari_comms::types::CommsPublicKey;
 
-use crate::executor::handles;
+/// API Request enum
+#[derive(Debug)]
+pub enum LivenessRequest {
+    /// Send a ping to the given public key
+    SendPing(CommsPublicKey),
+    /// Retrieve the total number of pings received
+    GetPingCount,
+    /// Retrieve the total number of pongs received
+    GetPongCount,
+}
 
-pub use self::service_name::ServiceName;
-
-pub type ServiceHandles = handles::ServiceHandles<ServiceName>;
+/// API Response enum
+#[derive(Debug)]
+pub enum LivenessResponse {
+    PingSent,
+    Count(usize),
+}
