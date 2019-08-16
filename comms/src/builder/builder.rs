@@ -23,6 +23,7 @@
 use crate::{
     connection::{ConnectionError, DealerProxyError, InprocAddress, ZmqContext},
     connection_manager::{ConnectionManager, PeerConnectionConfig},
+    consts::COMMS_BUILDER_IMS_DEFAULT_PUB_SUB_BUFFER_LENGTH,
     control_service::{ControlService, ControlServiceConfig, ControlServiceError, ControlServiceHandle},
     dispatcher::DispatchableKey,
     inbound_message_service::{
@@ -30,6 +31,7 @@ use crate::{
         error::InboundError,
         inbound_message_publisher::{InboundMessagePublisher, PublisherError},
         inbound_message_service::{InboundMessageService, InboundMessageServiceConfig},
+        InboundTopicSubscriber,
     },
     message::DomainMessageContext,
     outbound_message_service::{
@@ -40,6 +42,7 @@ use crate::{
         OutboundMessagePool,
     },
     peer_manager::{NodeIdentity, PeerManager, PeerManagerError},
+    pub_sub_channel::{pubsub_channel, TopicPublisher},
     types::CommsDatabase,
 };
 use bitflags::_core::marker::PhantomData;
@@ -225,10 +228,12 @@ where
     }
 
     // TODO Remove this Arc + RwLock when the IMS worker is refactored to be future based.
-    fn make_inbound_message_publisher(&mut self) -> Arc<RwLock<InboundMessagePublisher<MType, DomainMessageContext>>> {
-        Arc::new(RwLock::new(InboundMessagePublisher::new(
-            self.inbound_message_buffer_size.unwrap_or(1000),
-        )))
+    fn make_inbound_message_publisher(
+        &mut self,
+        publisher: TopicPublisher<MType, DomainMessageContext>,
+    ) -> Arc<RwLock<InboundMessagePublisher<MType, DomainMessageContext>>>
+    {
+        Arc::new(RwLock::new(InboundMessagePublisher::new(publisher)))
     }
 
     fn make_inbound_message_service(
@@ -275,12 +280,18 @@ where
             peer_manager.clone(),
         )?;
 
-        let inbound_message_publisher = self.make_inbound_message_publisher();
+        // Create pub/sub channel for IMS
+        let (publisher, inbound_message_subscriber) = pubsub_channel(
+            self.inbound_message_buffer_size
+                .or(Some(COMMS_BUILDER_IMS_DEFAULT_PUB_SUB_BUFFER_LENGTH))
+                .unwrap(),
+        );
+        let inbound_message_publisher = self.make_inbound_message_publisher(publisher);
 
         let inbound_message_service = self.make_inbound_message_service(
             node_identity.clone(),
             peer_conn_config.message_sink_address,
-            inbound_message_publisher.clone(),
+            inbound_message_publisher,
             outbound_message_service.clone(),
             peer_manager.clone(),
         );
@@ -294,7 +305,7 @@ where
             outbound_message_service,
             peer_manager,
             node_identity,
-            inbound_message_publisher,
+            inbound_message_subscriber: Arc::new(inbound_message_subscriber),
         })
     }
 }
@@ -324,11 +335,11 @@ where
     connection_manager: Arc<ConnectionManager>,
     control_service: Option<ControlService>,
     inbound_message_service: InboundMessageService<MType>,
-    inbound_message_publisher: Arc<RwLock<InboundMessagePublisher<MType, DomainMessageContext>>>,
     outbound_message_pool: OutboundMessagePool,
     outbound_message_service: Arc<OutboundMessageService>,
     peer_manager: Arc<PeerManager>,
     node_identity: Arc<NodeIdentity>,
+    inbound_message_subscriber: Arc<InboundTopicSubscriber<MType>>,
 }
 
 impl<MType> CommsServiceContainer<MType>
@@ -363,7 +374,7 @@ where
             outbound_message_service: self.outbound_message_service,
             connection_manager: self.connection_manager,
             peer_manager: self.peer_manager,
-            inbound_message_publisher: self.inbound_message_publisher,
+            inbound_message_subscriber: self.inbound_message_subscriber,
             outbound_message_pool: self.outbound_message_pool,
             node_identity: self.node_identity,
             // Add handles for started services
@@ -384,10 +395,10 @@ where MType: Send + Sync + Debug
     outbound_message_service: Arc<OutboundMessageService>,
     control_service_handle: Option<ControlServiceHandle>,
     outbound_message_pool: OutboundMessagePool,
-    inbound_message_publisher: Arc<RwLock<InboundMessagePublisher<MType, DomainMessageContext>>>,
     node_identity: Arc<NodeIdentity>,
     connection_manager: Arc<ConnectionManager>,
     peer_manager: Arc<PeerManager>,
+    inbound_message_subscriber: Arc<InboundTopicSubscriber<MType>>,
 }
 
 impl<MType> CommsServices<MType>
@@ -415,8 +426,8 @@ where
         Arc::clone(&self.outbound_message_service)
     }
 
-    pub fn inbound_message_publisher(&self) -> Arc<RwLock<InboundMessagePublisher<MType, DomainMessageContext>>> {
-        Arc::clone(&self.inbound_message_publisher)
+    pub fn inbound_message_subscriber(&self) -> Arc<InboundTopicSubscriber<MType>> {
+        Arc::clone(&self.inbound_message_subscriber)
     }
 
     pub fn shutdown(self) -> Result<(), CommsServicesError> {

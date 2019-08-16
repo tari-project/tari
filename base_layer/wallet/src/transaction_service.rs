@@ -331,9 +331,9 @@ impl Service for TransactionService {
     /// Function called by the Service Executor in its own thread. This function polls for both API request and Comms
     /// layer messages from the Message Broker
     fn execute(&mut self, context: ServiceContext) -> Result<(), ServiceError> {
-        let mut subscription_transaction = context.create_domain_subscriber(BlockchainMessage::Transaction.into());
+        let mut subscription_transaction = context.create_sync_subscription(BlockchainMessage::Transaction.into());
         let mut subscription_transaction_reply =
-            context.create_domain_subscriber(BlockchainMessage::TransactionReply.into());
+            context.create_sync_subscription(BlockchainMessage::TransactionReply.into());
 
         self.outbound_message_service = Some(context.outbound_message_service());
         debug!(target: LOG_TARGET, "Starting Transaction Service executor");

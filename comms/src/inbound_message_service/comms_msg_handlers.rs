@@ -190,7 +190,7 @@ where
         "Dispatching message type: {:?}", header.message_type
     );
 
-    let mut imp = acquire_write_lock!(message_context.inbound_message_publisher);
+    let imp = acquire_write_lock!(message_context.inbound_message_publisher);
     imp.publish(header.message_type, domain_message_context)?;
     Ok(())
 }

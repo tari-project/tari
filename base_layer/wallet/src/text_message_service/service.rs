@@ -349,8 +349,8 @@ impl Service for TextMessageService {
     /// Function called by the Service Executor in its own thread. This function polls for both API request and Comms
     /// layer messages from the Message Broker
     fn execute(&mut self, context: ServiceContext) -> Result<(), ServiceError> {
-        let mut subscription_text = context.create_domain_subscriber(ExtendedMessage::Text.into());
-        let mut subscription_text_ack = context.create_domain_subscriber(ExtendedMessage::Text.into());
+        let mut subscription_text = context.create_sync_subscription(ExtendedMessage::Text.into());
+        let mut subscription_text_ack = context.create_sync_subscription(ExtendedMessage::Text.into());
 
         self.oms = Some(context.outbound_message_service());
 

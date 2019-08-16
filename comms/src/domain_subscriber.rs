@@ -21,17 +21,13 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    inbound_message_service::inbound_message_publisher::InboundMessagePublisher,
     message::DomainMessageContext,
     peer_manager::PeerNodeIdentity,
-    pub_sub_channel::{SubscriptionReader, TopicPublisherSubscriberError},
+    pub_sub_channel::{SubscriptionReader, TopicPublisherSubscriberError, TopicSubscription},
     types::CommsPublicKey,
 };
 use derive_error::Error;
-use std::{
-    fmt::Debug,
-    sync::{Arc, RwLock},
-};
+use std::{fmt::Debug, sync::Arc};
 use tari_utilities::message_format::MessageFormat;
 use tokio::runtime::Runtime;
 
@@ -54,26 +50,19 @@ pub struct MessageInfo {
     pub origin_source: CommsPublicKey,
 }
 
-pub struct DomainSubscriber<MType>
+pub struct SyncDomainSubscription<MType>
 where MType: Eq + Send + Debug
 {
     reader: Option<SubscriptionReader<MType, DomainMessageContext>>,
     runtime: Runtime,
 }
 
-impl<MType> DomainSubscriber<MType>
+impl<MType> SyncDomainSubscription<MType>
 where MType: Eq + Send + Debug + Sync + 'static
 {
-    pub fn new(
-        inbound_message_publisher: Arc<RwLock<InboundMessagePublisher<MType, DomainMessageContext>>>,
-        message_type: MType,
-    ) -> DomainSubscriber<MType>
-    {
-        let imp = acquire_read_lock!(inbound_message_publisher);
-        let topic_subscription = imp.subscriber.subscription(message_type);
-
-        DomainSubscriber {
-            reader: Some(SubscriptionReader::new(Arc::new(topic_subscription))),
+    pub fn new(subscription: TopicSubscription<MType, DomainMessageContext>) -> Self {
+        SyncDomainSubscription {
+            reader: Some(SubscriptionReader::new(Arc::new(subscription))),
             runtime: Runtime::new().expect("Tokio could not create a Runtime"),
         }
     }

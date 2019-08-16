@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::pub_sub_channel::{pubsub_channel, TopicPayload, TopicPublisher, TopicSubscriber};
+use crate::pub_sub_channel::{TopicPayload, TopicPublisher};
 use bus_queue::async_::Publisher;
 use derive_error::Error;
 use futures::prelude::*;
@@ -39,30 +39,28 @@ pub enum PublisherError {
     /// Publisher could not send message
     PublisherSendError,
 }
+
 pub struct InboundMessagePublisher<MType, T>
 where
     MType: Send + Sync + Debug,
     T: Clone + Send + Sync,
 {
     publisher: Mutex<Option<TopicPublisher<MType, T>>>,
-    pub subscriber: TopicSubscriber<MType, T>,
 }
+
 impl<MType, T> InboundMessagePublisher<MType, T>
 where
     MType: Send + Sync + 'static + Debug,
     T: Clone + Send + Sync + 'static,
 {
-    pub fn new(buffer_size: usize) -> InboundMessagePublisher<MType, T> {
-        let (publisher, subscriber): (Publisher<TopicPayload<MType, T>>, TopicSubscriber<MType, T>) =
-            pubsub_channel(buffer_size);
+    pub fn new(publisher: Publisher<TopicPayload<MType, T>>) -> InboundMessagePublisher<MType, T> {
         info!(target: LOG_TARGET, "Inbound Message Publisher created");
         InboundMessagePublisher {
             publisher: Mutex::new(Some(publisher)),
-            subscriber,
         }
     }
 
-    pub fn publish(&mut self, message_type: MType, message: T) -> Result<(), PublisherError> {
+    pub fn publish(&self, message_type: MType, message: T) -> Result<(), PublisherError> {
         // TODO This mutex should not be required and is only present do the IMS workers being in their own threads.
         // Future refactor will remove the need for the lock and this Option container
         let mut publisher_lock = self.publisher.lock().map_err(|_| PublisherError::PoisonedAccess)?;

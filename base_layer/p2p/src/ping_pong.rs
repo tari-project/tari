@@ -176,7 +176,7 @@ impl Service for PingPongService {
     }
 
     fn execute(&mut self, context: ServiceContext) -> Result<(), ServiceError> {
-        let mut subscription = context.create_domain_subscriber(NetMessage::PingPong.into());
+        let mut subscription = context.create_sync_subscription(NetMessage::PingPong.into());
 
         self.oms = Some(context.outbound_message_service());
 
