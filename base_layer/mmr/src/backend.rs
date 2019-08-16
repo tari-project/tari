@@ -41,6 +41,17 @@ pub trait ArrayLike {
     fn get_or_panic(&self, index: usize) -> &Self::Value;
 }
 
+pub trait ArrayLikeExt {
+    type Value;
+
+    /// Shortens the array, keeping the first len elements and dropping the rest.
+    fn truncate(&mut self, _len: usize) -> Result<(), MerkleMountainRangeError>;
+
+    /// Execute the given closure for each value in the array
+    fn for_each<F>(&self, f: F) -> Result<(), MerkleMountainRangeError>
+    where F: FnMut(Result<&Self::Value, MerkleMountainRangeError>);
+}
+
 impl<T> ArrayLike for Vec<T> {
     type Error = MerkleMountainRangeError;
     type Value = T;
@@ -60,5 +71,20 @@ impl<T> ArrayLike for Vec<T> {
 
     fn get_or_panic(&self, index: usize) -> &Self::Value {
         &self[index]
+    }
+}
+
+impl<T> ArrayLikeExt for Vec<T> {
+    type Value = T;
+
+    fn truncate(&mut self, len: usize) -> Result<(), MerkleMountainRangeError> {
+        self.truncate(len);
+        Ok(())
+    }
+
+    fn for_each<F>(&self, f: F) -> Result<(), MerkleMountainRangeError>
+    where F: FnMut(Result<&Self::Value, MerkleMountainRangeError>) {
+        self.iter().map(|v| Ok(v)).for_each(f);
+        Ok(())
     }
 }

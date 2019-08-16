@@ -20,7 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{backend::ArrayLike, common::leaf_index, error::MerkleMountainRangeError, Hash, MerkleMountainRange};
+use crate::{
+    backend::ArrayLike,
+    common::{leaf_index, n_leaves},
+    error::MerkleMountainRangeError,
+    Hash,
+    MerkleMountainRange,
+};
 use croaring::Bitmap;
 use digest::Digest;
 
@@ -178,5 +184,20 @@ where
 {
     fn eq(&self, other: &MutableMmr<D, B2>) -> bool {
         (self.get_merkle_root() == other.get_merkle_root())
+    }
+}
+
+impl<D, B> From<MerkleMountainRange<D, B>> for MutableMmr<D, B>
+where
+    D: Digest,
+    B: ArrayLike<Value = Hash>,
+{
+    fn from(mmr: MerkleMountainRange<D, B>) -> Self {
+        let size = n_leaves(mmr.len()) as u32;
+        MutableMmr {
+            mmr,
+            deleted: Bitmap::create(),
+            size,
+        }
     }
 }

@@ -142,6 +142,28 @@ pub fn peak_map_height(mut pos: usize) -> (usize, usize) {
     (bitmap, pos)
 }
 
+/// sizes of peaks and height of next node in mmr of given size
+/// Example: on input 5 returns ([3,1], 1) as mmr state before adding 5 was
+///    2
+///   / \
+///  0   1   3   4
+pub fn peak_sizes_height(size: usize) -> (Vec<usize>, usize) {
+    if size == 0 {
+        return (vec![], 0);
+    }
+    let mut peak_size = ALL_ONES >> size.leading_zeros();
+    let mut sizes = vec![];
+    let mut size_left = size;
+    while peak_size != 0 {
+        if size_left >= peak_size {
+            sizes.push(peak_size);
+            size_left -= peak_size;
+        }
+        peak_size >>= 1;
+    }
+    (sizes, size_left)
+}
+
 /// Is the node at this pos the "left" sibling of its parent?
 pub fn is_left_sibling(pos: usize) -> bool {
     let (peak_map, height) = peak_map_height(pos);
@@ -151,6 +173,17 @@ pub fn is_left_sibling(pos: usize) -> bool {
 
 pub fn hash_together<D: Digest>(left: &[u8], right: &[u8]) -> Hash {
     D::new().chain(left).chain(right).result().to_vec()
+}
+
+/// The number of leaves in a MMR of the provided size.
+pub fn n_leaves(size: usize) -> usize {
+    let (sizes, height) = peak_sizes_height(size);
+    let nleaves = sizes.iter().map(|n| (n + 1) / 2).sum();
+    if height == 0 {
+        nleaves
+    } else {
+        nleaves + 1
+    }
 }
 
 #[cfg(test)]
@@ -168,6 +201,19 @@ mod test {
         assert_eq!(leaf_index(7), 11);
         assert_eq!(leaf_index(8), 15);
     }
+
+    #[test]
+    fn n_leaf_nodes() {
+        assert_eq!(n_leaves(0), 0);
+        assert_eq!(n_leaves(1), 1);
+        assert_eq!(n_leaves(3), 2);
+        assert_eq!(n_leaves(4), 3);
+        assert_eq!(n_leaves(8), 5);
+        assert_eq!(n_leaves(10), 6);
+        assert_eq!(n_leaves(11), 7);
+        assert_eq!(n_leaves(15), 8);
+    }
+
     #[test]
     fn peak_vectors() {
         assert_eq!(find_peaks(0), Vec::<usize>::new());
