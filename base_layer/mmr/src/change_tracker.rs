@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    backend::ArrayLike,
+    backend::{ArrayLike, ArrayLikeExt},
     error::MerkleMountainRangeError,
     pruned_mmr::{prune_mutable_mmr, PrunedMutableMmr},
     Hash,
@@ -57,16 +57,16 @@ where
     mmr: PrunedMutableMmr<D>,
     checkpoints: CpBackend,
     // The hashes added since the last commit
-    current_hashes: Vec<Hash>,
+    current_additions: Vec<Hash>,
     // The deletions since the last commit
     current_deletions: Bitmap,
 }
 
-impl<D, BaseBackend, DiffBackend> MerkleChangeTracker<D, BaseBackend, DiffBackend>
+impl<D, BaseBackend, CpBackend> MerkleChangeTracker<D, BaseBackend, CpBackend>
 where
     D: Digest,
     BaseBackend: ArrayLike<Value = Hash>,
-    DiffBackend: ArrayLike<Value = MerkleCheckPoint>,
+    CpBackend: ArrayLike<Value = MerkleCheckPoint> + ArrayLikeExt<Value = MerkleCheckPoint>,
 {
     /// Wrap an MMR inside a change tracker.
     ///
@@ -80,15 +80,15 @@ where
     /// A new `MerkleChangeTracker` instance that is configured using the MMR and ChangeTRacker instances provided.
     pub fn new(
         base: MutableMmr<D, BaseBackend>,
-        diffs: DiffBackend,
-    ) -> Result<MerkleChangeTracker<D, BaseBackend, DiffBackend>, MerkleMountainRangeError>
+        diffs: CpBackend,
+    ) -> Result<MerkleChangeTracker<D, BaseBackend, CpBackend>, MerkleMountainRangeError>
     {
-        let mut mmr = prune_mutable_mmr::<D, _>(&base)?;
+        let mmr = prune_mutable_mmr::<D, _>(&base)?;
         Ok(MerkleChangeTracker {
             base,
             mmr,
             checkpoints: diffs,
-            current_hashes: Vec::new(),
+            current_additions: Vec::new(),
             current_deletions: Bitmap::create(),
         })
     }
@@ -101,7 +101,7 @@ where
     /// Push the given hash into the MMR and update the current change-set
     pub fn push(&mut self, hash: &Hash) -> Result<usize, MerkleMountainRangeError> {
         let result = self.mmr.push(hash)?;
-        self.current_hashes.push(hash.clone());
+        self.current_additions.push(hash.clone());
         Ok(result)
     }
 
@@ -132,9 +132,9 @@ where
     }
 
     /// Commit the change history since the last commit to a new [MerkleCheckPoint] and clear the current change set.
-    pub fn commit(&mut self) -> Result<(), DiffBackend::Error> {
+    pub fn commit(&mut self) -> Result<(), CpBackend::Error> {
         let mut hash_set = Vec::new();
-        mem::swap(&mut hash_set, &mut self.current_hashes);
+        mem::swap(&mut hash_set, &mut self.current_additions);
         let mut deleted_set = Bitmap::create();
         mem::swap(&mut deleted_set, &mut self.current_deletions);
         let diff = MerkleCheckPoint::new(hash_set, deleted_set);
@@ -184,7 +184,7 @@ where
     fn revert_mmr_to_base(&mut self) -> Result<PrunedMutableMmr<D>, MerkleMountainRangeError> {
         let mmr = prune_mutable_mmr::<D, _>(&self.base)?;
         self.current_deletions = Bitmap::create();
-        self.current_hashes = Vec::new();
+        self.current_additions = Vec::new();
         Ok(mmr)
     }
 

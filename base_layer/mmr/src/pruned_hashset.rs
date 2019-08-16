@@ -99,9 +99,4 @@ impl ArrayLike for PrunedHashSet {
         self.get(index)
             .expect("PrunedHashSet only tracks peaks before the offset")
     }
-
-    fn for_each<F>(&self, f: F) -> Result<(), MerkleMountainRangeError>
-    where F: FnMut(Result<&Self::Value, MerkleMountainRangeError>) {
-        return Err(MerkleMountainRangeError::NotSupported);
-    }
 }
