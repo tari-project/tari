@@ -26,6 +26,7 @@
 use crate::{
     backend::ArrayLike,
     common::{family, family_branch, find_peaks, hash_together, is_leaf, is_left_sibling, leaf_index},
+    serde_support,
     Hash,
     HashSlice,
     MerkleMountainRange,
@@ -35,7 +36,7 @@ use digest::Digest;
 use log::error;
 use serde::{Deserialize, Serialize};
 use std::fmt::{self, Display, Formatter};
-use tari_utilities::hex::{to_hex, Hex};
+use tari_utilities::hex::Hex;
 
 /// Merkle proof errors.
 #[derive(Clone, Debug, PartialEq, Error)]
@@ -59,8 +60,10 @@ pub struct MerkleProof {
     /// The size of the MMR at the time the proof was created.
     mmr_size: usize,
     /// The sibling path from the leaf up to the final sibling hashing to the local root.
+    #[serde(with = "serde_support::hash")]
     path: Vec<Hash>,
     /// The set of MMR peaks, not including the local peak for the candidate node
+    #[serde(with = "serde_support::hash")]
     peaks: Vec<Hash>,
 }
 
@@ -202,16 +205,13 @@ impl MerkleProof {
         let hasher = D::new();
         // We're going to hash the peaks together, but insert the provided hash in the correct position.
         let peak_hashes = self.peaks.iter();
-        println!("Peak list: {:?}", peaks);
         let (hasher, _) = peaks
             .iter()
             .fold((hasher, peak_hashes), |(hasher, mut peak_hashes), i| {
                 if *i == pos {
-                    println!("Adding hash *{}*", to_hex(hash));
                     (hasher.chain(hash), peak_hashes)
                 } else {
                     let hash = peak_hashes.next().unwrap();
-                    println!("Adding hash {}", hash.to_hex());
                     (hasher.chain(hash), peak_hashes)
                 }
             });

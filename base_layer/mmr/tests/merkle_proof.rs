@@ -29,6 +29,7 @@ use tari_mmr::{
     MerkleProof,
     MerkleProofError,
 };
+use tari_utilities::hex::{self, Hex};
 
 #[test]
 fn zero_size_mmr() {
@@ -90,4 +91,33 @@ fn for_leaf_node() {
     let hash = int_to_hash(leaf_pos);
     let proof = MerkleProof::for_leaf_node(&mmr, leaf_pos).unwrap();
     assert!(proof.verify_leaf::<Hasher>(&root, &hash, leaf_pos).is_ok())
+}
+
+const JSON_PROOF: &str = r#"{"mmr_size":8,"path":["e88b43fded6323ef02ffeffbd8c40846ee09bf316271bd22369659c959dd733a","8bdd601372fd4d8242591e4b42815bc35826b0209ce5b78eb06609110b002b9d"],"peaks":["e96760d274653a39b429a87ebaae9d3aa4fdf58b9096cf0bebc7c4e5a4c2ed8d"]}"#;
+const BINCODE_PROOF: &str = "080000000000000002000000000000002000000000000000e88b43fded6323ef02ffeffbd8c40846ee09bf316271bd22369659c959dd733a20000000000000008bdd601372fd4d8242591e4b42815bc35826b0209ce5b78eb06609110b002b9d01000000000000002000000000000000e96760d274653a39b429a87ebaae9d3aa4fdf58b9096cf0bebc7c4e5a4c2ed8d";
+
+#[test]
+fn serialisation() {
+    let mmr = create_mmr(5);
+    let proof = MerkleProof::for_leaf_node(&mmr, 3).unwrap();
+    let json_proof = serde_json::to_string(&proof).unwrap();
+    assert_eq!(&json_proof, JSON_PROOF);
+
+    let bincode_proof = bincode::serialize(&proof).unwrap();
+    assert_eq!(bincode_proof.to_hex(), BINCODE_PROOF);
+}
+
+#[test]
+fn deserialization() {
+    let root = hex::from_hex("167a34de2d13b7911093344cd2697b4c6311c5308a9f45476d094e3b3ef6e669").unwrap();
+    // Verify JSON-derived proof
+    let proof: MerkleProof = serde_json::from_str(JSON_PROOF).unwrap();
+    println!("{}", proof);
+    assert!(proof.verify_leaf::<Hasher>(&root, &int_to_hash(3), 3).is_ok());
+
+    // Verify bincode-derived proof
+    let bin_proof = hex::from_hex(BINCODE_PROOF).unwrap();
+    let proof: MerkleProof = bincode::deserialize(&bin_proof).unwrap();
+    println!("{}", proof);
+    assert!(proof.verify_leaf::<Hasher>(&root, &int_to_hash(3), 3).is_ok());
 }
