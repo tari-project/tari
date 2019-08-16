@@ -249,7 +249,7 @@ mod test {
         inbound_message_service::comms_msg_handlers::construct_comms_msg_dispatcher,
         message::{DomainMessageContext, Message, MessageEnvelope, MessageFlags, MessageHeader, NodeDestination},
         peer_manager::{peer_manager::PeerManager, NodeIdentity, PeerFlags},
-        pub_sub_channel::SubscriptionReader,
+        pub_sub_channel::{pubsub_channel, SubscriptionReader},
     };
     use crossbeam_channel as channel;
     use serde::{Deserialize, Serialize};
@@ -260,6 +260,7 @@ mod test {
     use tari_storage::key_val_store::HMapDatabase;
     use tari_utilities::{message_format::MessageFormat, thread_join::ThreadJoinWithTimeout};
     use tokio::runtime::Runtime;
+
     fn pause() {
         thread::sleep(Duration::from_millis(5));
     }
@@ -278,9 +279,10 @@ mod test {
         let message_queue_address = InprocAddress::random();
         let message_dispatcher = Arc::new(construct_comms_msg_dispatcher::<DomainBrokerType>());
 
-        let imp = InboundMessagePublisher::new(100);
-        let message_subscription_type1 = imp.subscriber.subscription(DomainBrokerType::Type1);
-        let message_subscription_type2 = imp.subscriber.subscription(DomainBrokerType::Type2);
+        let (publisher, subscriber) = pubsub_channel(10);
+        let imp = InboundMessagePublisher::new(publisher);
+        let message_subscription_type1 = subscriber.subscription(DomainBrokerType::Type1);
+        let message_subscription_type2 = subscriber.subscription(DomainBrokerType::Type2);
         let inbound_message_publisher = Arc::new(RwLock::new(imp));
 
         let peer_manager = Arc::new(PeerManager::new(HMapDatabase::new()).unwrap());

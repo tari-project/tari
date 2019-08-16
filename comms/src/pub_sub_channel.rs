@@ -119,7 +119,7 @@ where
 /// The Subscription reader holds a reference to a subscription stream and provides a Future that will read any items
 /// that are currently in the stream and yield them to the synchronous caller WITHOUT ending the stream. The Stream is
 /// passed back to the caller so that it can checked for new messages in the future. This is allows non-futures code to
-/// read interrim values in a stream without the stream needing to end like the `.collect()` combinator requires.
+/// read interim values in a stream without the stream needing to end like the `.collect()` combinator requires.
 pub struct SubscriptionReader<T, M>
 where
     T: Eq + Send,

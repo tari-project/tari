@@ -174,7 +174,7 @@ mod test {
             NodeDestination,
         },
         peer_manager::{peer_manager::PeerManager, NodeIdentity, Peer, PeerFlags},
-        pub_sub_channel::SubscriptionReader,
+        pub_sub_channel::{pubsub_channel, SubscriptionReader},
     };
     use crossbeam_channel as channel;
     use serde::{Deserialize, Serialize};
@@ -220,8 +220,10 @@ mod test {
         // Create MessageDispatcher, InboundMessagePublisher, PeerManager, OutboundMessageService and
         let message_dispatcher = Arc::new(construct_comms_msg_dispatcher::<DomainBrokerType>());
 
-        let imp = InboundMessagePublisher::new(100);
-        let message_subscription = imp.subscriber.subscription(DomainBrokerType::Type1);
+        const TEST_MESSAGE_COUNT: usize = 3;
+        let (publisher, subscriber) = pubsub_channel(TEST_MESSAGE_COUNT);
+        let imp = InboundMessagePublisher::new(publisher);
+        let message_subscription = subscriber.subscription(DomainBrokerType::Type1);
         let inbound_message_publisher = Arc::new(RwLock::new(imp));
 
         let (message_sender, _) = channel::unbounded();
@@ -251,9 +253,8 @@ mod test {
 
         // Submit Messages to the InboundMessageService
         pause();
-        let test_message_count = 3;
         let mut message_envelope_body_list = Vec::new();
-        for i in 0..test_message_count {
+        for i in 0..TEST_MESSAGE_COUNT {
             // Construct a test message
             let message_header = MessageHeader::new(DomainBrokerType::Type1).unwrap();
             // Messages with the same message body will be discarded by the DuplicateMsgCache
@@ -270,7 +271,7 @@ mod test {
         let mut rt = Runtime::new().unwrap();
         let sr = SubscriptionReader::new(Arc::new(message_subscription));
         let (msgs, _): (Vec<DomainMessageContext>, _) = rt.block_on(sr).unwrap();
-        assert_eq!(msgs.len(), test_message_count);
+        assert_eq!(msgs.len(), TEST_MESSAGE_COUNT);
         for m in msgs.iter() {
             assert!(message_envelope_body_list.contains(&m.message));
         }
