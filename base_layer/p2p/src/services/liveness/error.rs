@@ -20,12 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod comms_outbound;
-mod liveness;
-mod service_name;
+use crate::services::comms_outbound::CommsOutboundServiceError;
+use derive_error::Error;
 
-use crate::executor::handles;
-
-pub use self::service_name::ServiceName;
-
-pub type ServiceHandles = handles::ServiceHandles<ServiceName>;
+#[derive(Debug, Error)]
+pub enum LivenessError {
+    CommsOutboundError(CommsOutboundServiceError),
+    /// Failed to send a ping
+    SendPingFailed,
+}
