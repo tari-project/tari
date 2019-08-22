@@ -21,8 +21,8 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 // Used to eliminate the need for boxing futures in many cases.
-// Detais here: https://github.com/rust-lang/rfcs/pull/2071
-#![feature(existential_type)]
+// Tracking issue: https://github.com/rust-lang/rust/issues/63063
+#![feature(type_alias_impl_trait)]
 
 #[macro_use]
 extern crate futures;
