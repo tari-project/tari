@@ -38,8 +38,8 @@
 //!   `Responder` receives a `(request, oneshot::Sender)` tuple, calls the given tower service with that request and
 //!   sends the result on the `oneshot::Sender`. The `Responder` handles many requests simultaneously.
 
-mod builder;
 pub mod handles;
+mod stack;
 pub mod transport;
 
-pub use self::builder::{MakeServicePair, StackBuilder};
+pub use self::stack::{ServiceInitializationError, ServiceInitializer, StackBuilder};

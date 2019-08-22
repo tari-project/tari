@@ -44,7 +44,7 @@ pub enum DomainSubscriberError {
 }
 
 /// Information about the message received
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MessageInfo {
     pub peer_source: PeerNodeIdentity,
     pub origin_source: CommsPublicKey,

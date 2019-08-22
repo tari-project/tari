@@ -20,32 +20,33 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::executor::handles::ServiceHandles;
-use futures::{future, Future, IntoFuture};
-use std::{any::Any, hash::Hash, sync::Arc};
+use crate::executor::handles::{ServiceHandles, ServiceHandlesFuture};
+use derive_error::Error;
+use futures::{
+    future::{self, Either},
+    Future,
+};
+use std::{hash::Hash, sync::Arc};
+
+#[derive(Debug, Error)]
+pub enum ServiceInitializationError {
+    #[error(msg_embedded, non_std, no_from)]
+    InvariantError(String),
+}
 
 /// Builder trait for creating a service/handle pair.
 /// The `StackBuilder` builds impls of this trait.
-pub trait MakeServicePair<N> {
-    type Future: Future<Item = (), Error = ()> + Send;
-    type Handle: Any + Send + Sync;
-
-    fn make_pair(self, handles: Arc<ServiceHandles<N>>) -> (Self::Handle, Self::Future);
+pub trait ServiceInitializer<N> {
+    fn initialize(self: Box<Self>, handles: ServiceHandlesFuture<N>) -> Result<(), ServiceInitializationError>;
 }
 
 /// Implementation of MakeServicePair for any function taking a ServiceHandle and returning a (Handle, Future) pair.
-impl<TFunc, F, H, N> MakeServicePair<N> for TFunc
+impl<TFunc, N> ServiceInitializer<N> for TFunc
 where
-    TFunc: FnOnce(Arc<ServiceHandles<N>>) -> (H, F),
-    F: Future<Item = (), Error = ()> + Send,
-    H: Any,
-    H: Send + Sync,
     N: Eq + Hash,
+    TFunc: FnOnce(ServiceHandlesFuture<N>) -> Result<(), ServiceInitializationError>,
 {
-    type Future = F;
-    type Handle = H;
-
-    fn make_pair(self, handles: Arc<ServiceHandles<N>>) -> (Self::Handle, Self::Future) {
+    fn initialize(self: Box<Self>, handles: ServiceHandlesFuture<N>) -> Result<(), ServiceInitializationError> {
         (self)(handles)
     }
 }
@@ -54,38 +55,39 @@ where
 /// This can be converted into a future which resolves once all contained service futures are complete
 /// by using the `IntoFuture` implementation.
 pub struct StackBuilder<N> {
-    handles: Arc<ServiceHandles<N>>,
-    futures: Vec<Box<dyn Future<Item = (), Error = ()> + Send>>,
+    initializers: Vec<Box<dyn ServiceInitializer<N> + Send>>,
 }
 
 impl<N> StackBuilder<N>
-where
-    N: Eq + Hash,
-    N: Send + Sync + 'static,
+where N: Eq + Hash
 {
     pub fn new() -> Self {
-        let handles = Arc::new(ServiceHandles::new());
         Self {
-            handles,
-            futures: Vec::new(),
+            initializers: Vec::new(),
         }
     }
 
-    pub fn add_service(mut self, name: N, maker: impl MakeServicePair<N> + Send + 'static) -> Self {
-        let (handle, fut) = maker.make_pair(self.handles.clone());
-        self.handles.insert(name, handle);
-        self.futures.push(Box::new(fut));
+    pub fn add_initializer(mut self, initializer: impl ServiceInitializer<N> + Send + 'static) -> Self {
+        self.initializers.push(Box::new(initializer));
         self
     }
-}
 
-impl<N> IntoFuture for StackBuilder<N> {
-    type Error = ();
-    type Future = impl Future<Item = (), Error = ()> + Send;
-    type Item = ();
+    pub fn finish(self) -> impl Future<Item = Arc<ServiceHandles<N>>, Error = ServiceInitializationError> {
+        future::lazy(move || {
+            let handles = ServiceHandlesFuture::new();
 
-    fn into_future(self) -> Self::Future {
-        future::join_all(self.futures).map(|_| ())
+            for init in self.initializers.into_iter() {
+                if let Err(err) = init.initialize(handles.clone()) {
+                    return Either::B(future::err(err));
+                }
+            }
+
+            handles.notify_ready();
+
+            Either::A(handles.map_err(|_| {
+                ServiceInitializationError::InvariantError("ServiceHandlesFuture cannot fail".to_string())
+            }))
+        })
     }
 }
 
@@ -99,7 +101,9 @@ mod test {
     fn service_stack_new() {
         let state = Arc::new(AtomicBool::new(false));
         let state_inner = Arc::clone(&state.clone());
-        let service_pair_factory = |handles: Arc<ServiceHandles<&'static str>>| {
+        let service_initializer = |handles: ServiceHandlesFuture<&'static str>| {
+            handles.insert("test-service", "Fake Handle");
+
             let fut = poll_fn(move || {
                 // Test that this futures own handle is available
                 let fake_handle = handles.get_handle::<&str>(&"test-service").unwrap();
@@ -115,13 +119,20 @@ mod test {
                 Ok(Async::Ready(()))
             });
 
-            ("Fake Handle", fut)
+            tokio::spawn(fut);
+            Ok(())
         };
 
         tokio::run(
             StackBuilder::new()
-                .add_service("test-service", service_pair_factory)
-                .into_future(),
+                .add_initializer(service_initializer)
+                .finish()
+                .map(|_| ())
+                .or_else(|err| {
+                    panic!("{:?}", err);
+                    #[allow(unreachable_code)]
+                    future::err(())
+                }),
         );
 
         assert!(state.load(Ordering::Acquire))

@@ -25,40 +25,34 @@ mod handle;
 mod messages;
 mod service;
 
+use self::service::CommsOutboundService;
 use crate::{
-    executor::{
-        transport::{self, Responder},
-        MakeServicePair,
-    },
-    services::ServiceName,
-    tari_message::TariMessageType,
+    executor::{transport, ServiceInitializationError, ServiceInitializer},
+    services::{ServiceHandlesFuture, ServiceName},
 };
 use std::sync::Arc;
-use tari_comms::builder::CommsServices;
+use tari_comms::outbound_message_service::outbound_message_service::OutboundMessageService;
 
-use self::service::CommsOutboundService;
-use crate::services::{comms_outbound::messages::CommsOutboundRequest, ServiceHandles};
-pub use error::CommsOutboundServiceError;
-pub use handle::CommsOutboundHandle;
+pub use self::{error::CommsOutboundServiceError, handle::CommsOutboundHandle, messages::CommsOutboundRequest};
 
-pub struct MakeCommsOutboundService<'a> {
-    comms: &'a CommsServices<TariMessageType>,
+/// Initializer for CommsOutbound service
+pub struct CommsOutboundServiceInitializer {
+    oms: Arc<OutboundMessageService>,
 }
 
-impl<'a> MakeCommsOutboundService<'a> {
-    pub fn new(comms: &'a CommsServices<TariMessageType>) -> Self {
-        Self { comms }
+impl CommsOutboundServiceInitializer {
+    pub fn new(oms: Arc<OutboundMessageService>) -> Self {
+        Self { oms }
     }
 }
 
-impl<'a> MakeServicePair<ServiceName> for MakeCommsOutboundService<'a> {
-    type Future = Responder<CommsOutboundService, CommsOutboundRequest>;
-    type Handle = CommsOutboundHandle;
-
-    fn make_pair(self, _: Arc<ServiceHandles>) -> (Self::Handle, Self::Future) {
-        let oms = self.comms.outbound_message_service();
-        let service = CommsOutboundService::new(oms);
+impl ServiceInitializer<ServiceName> for CommsOutboundServiceInitializer {
+    fn initialize(self: Box<Self>, handles: ServiceHandlesFuture) -> Result<(), ServiceInitializationError> {
+        let service = CommsOutboundService::new(self.oms);
         let (requester, responder) = transport::channel(service);
-        (CommsOutboundHandle::new(requester), responder)
+
+        tokio::spawn(responder);
+        handles.insert(ServiceName::CommsOutbound, CommsOutboundHandle::new(requester));
+        Ok(())
     }
 }
