@@ -28,7 +28,7 @@ use crate::{
     },
     dispatcher::DispatchableKey,
     inbound_message_service::inbound_message_publisher::InboundMessagePublisher,
-    message::{DomainMessageContext, MessageContext},
+    message::{InboundMessage, MessageContext},
     outbound_message_service::outbound_message_service::OutboundMessageService,
     peer_manager::{peer_manager::PeerManager, NodeIdentity},
     types::MessageDispatcher,
@@ -80,7 +80,7 @@ where
     node_identity: Arc<NodeIdentity>,
     message_queue_address: InprocAddress,
     message_dispatcher: Arc<MessageDispatcher<MessageContext<MType>>>,
-    inbound_message_publisher: Arc<RwLock<InboundMessagePublisher<MType, DomainMessageContext>>>,
+    inbound_message_publisher: Arc<RwLock<InboundMessagePublisher<MType, InboundMessage>>>,
     outbound_message_service: Arc<OutboundMessageService>,
     peer_manager: Arc<PeerManager>,
     worker_thread_handle: Option<JoinHandle<()>>,
@@ -101,7 +101,7 @@ where
         node_identity: Arc<NodeIdentity>,
         message_queue_address: InprocAddress,
         message_dispatcher: Arc<MessageDispatcher<MessageContext<MType>>>,
-        inbound_message_publisher: Arc<RwLock<InboundMessagePublisher<MType, DomainMessageContext>>>,
+        inbound_message_publisher: Arc<RwLock<InboundMessagePublisher<MType, InboundMessage>>>,
         outbound_message_service: Arc<OutboundMessageService>,
         peer_manager: Arc<PeerManager>,
     ) -> Self
@@ -165,7 +165,7 @@ mod test {
         },
         inbound_message_service::comms_msg_handlers::*,
         message::{
-            DomainMessageContext,
+            InboundMessage,
             Message,
             MessageData,
             MessageEnvelope,
@@ -270,7 +270,7 @@ mod test {
         std::thread::sleep(Duration::from_millis(500));
         let mut rt = Runtime::new().unwrap();
         let sr = SubscriptionReader::new(Arc::new(message_subscription));
-        let (msgs, _): (Vec<DomainMessageContext>, _) = rt.block_on(sr).unwrap();
+        let (msgs, _): (Vec<InboundMessage>, _) = rt.block_on(sr).unwrap();
         assert_eq!(msgs.len(), TEST_MESSAGE_COUNT);
         for m in msgs.iter() {
             assert!(message_envelope_body_list.contains(&m.message));

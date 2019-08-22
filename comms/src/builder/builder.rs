@@ -33,7 +33,7 @@ use crate::{
         inbound_message_service::{InboundMessageService, InboundMessageServiceConfig},
         InboundTopicSubscriber,
     },
-    message::DomainMessageContext,
+    message::InboundMessage,
     outbound_message_service::{
         outbound_message_pool::{OutboundMessagePoolConfig, OutboundMessagePoolError},
         outbound_message_service::OutboundMessageService,
@@ -230,8 +230,8 @@ where
     // TODO Remove this Arc + RwLock when the IMS worker is refactored to be future based.
     fn make_inbound_message_publisher(
         &mut self,
-        publisher: TopicPublisher<MType, DomainMessageContext>,
-    ) -> Arc<RwLock<InboundMessagePublisher<MType, DomainMessageContext>>>
+        publisher: TopicPublisher<MType, InboundMessage>,
+    ) -> Arc<RwLock<InboundMessagePublisher<MType, InboundMessage>>>
     {
         Arc::new(RwLock::new(InboundMessagePublisher::new(publisher)))
     }
@@ -240,7 +240,7 @@ where
         &mut self,
         node_identity: Arc<NodeIdentity>,
         message_sink_address: InprocAddress,
-        inbound_message_publisher: Arc<RwLock<InboundMessagePublisher<MType, DomainMessageContext>>>,
+        inbound_message_publisher: Arc<RwLock<InboundMessagePublisher<MType, InboundMessage>>>,
         oms: Arc<OutboundMessageService>,
         peer_manager: Arc<PeerManager>,
     ) -> InboundMessageService<MType>

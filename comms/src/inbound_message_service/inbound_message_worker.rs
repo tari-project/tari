@@ -37,7 +37,7 @@ use crate::{
         MessageCache,
         MessageCacheConfig,
     },
-    message::{DomainMessageContext, Frame, FrameSet, MessageContext, MessageData},
+    message::{Frame, FrameSet, InboundMessage, MessageContext, MessageData},
     outbound_message_service::outbound_message_service::OutboundMessageService,
     peer_manager::{peer_manager::PeerManager, NodeId, NodeIdentity, Peer},
     types::MessageDispatcher,
@@ -73,7 +73,7 @@ where
     node_identity: Arc<NodeIdentity>,
     message_queue_address: InprocAddress,
     message_dispatcher: Arc<MessageDispatcher<MessageContext<MType>>>,
-    inbound_message_publisher: Arc<RwLock<InboundMessagePublisher<MType, DomainMessageContext>>>,
+    inbound_message_publisher: Arc<RwLock<InboundMessagePublisher<MType, InboundMessage>>>,
     outbound_message_service: Arc<OutboundMessageService>,
     peer_manager: Arc<PeerManager>,
     msg_cache: MessageCache<Frame>,
@@ -95,7 +95,7 @@ where
         node_identity: Arc<NodeIdentity>,
         message_queue_address: InprocAddress,
         message_dispatcher: Arc<MessageDispatcher<MessageContext<MType>>>,
-        inbound_message_publisher: Arc<RwLock<InboundMessagePublisher<MType, DomainMessageContext>>>,
+        inbound_message_publisher: Arc<RwLock<InboundMessagePublisher<MType, InboundMessage>>>,
         outbound_message_service: Arc<OutboundMessageService>,
         peer_manager: Arc<PeerManager>,
     ) -> Self
@@ -247,7 +247,7 @@ mod test {
     use crate::{
         connection::{Connection, Direction, NetAddress},
         inbound_message_service::comms_msg_handlers::construct_comms_msg_dispatcher,
-        message::{DomainMessageContext, Message, MessageEnvelope, MessageFlags, MessageHeader, NodeDestination},
+        message::{InboundMessage, Message, MessageEnvelope, MessageFlags, MessageHeader, NodeDestination},
         peer_manager::{peer_manager::PeerManager, NodeIdentity, PeerFlags},
         pub_sub_channel::{pubsub_channel, SubscriptionReader},
     };
@@ -370,7 +370,7 @@ mod test {
 
         let mut rt = Runtime::new().unwrap();
         let sr = SubscriptionReader::new(Arc::new(message_subscription_type1));
-        let (msgs_type1, _): (Vec<DomainMessageContext>, _) = rt.block_on(sr).unwrap();
+        let (msgs_type1, _): (Vec<InboundMessage>, _) = rt.block_on(sr).unwrap();
         assert_eq!(msgs_type1.len(), 1);
         assert_eq!(msgs_type1[0].message, message_envelope_body1);
 

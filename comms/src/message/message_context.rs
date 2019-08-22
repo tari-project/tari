@@ -22,7 +22,7 @@
 use crate::{
     dispatcher::DispatchableKey,
     inbound_message_service::inbound_message_publisher::InboundMessagePublisher,
-    message::{DomainMessageContext, MessageEnvelope},
+    message::{InboundMessage, MessageEnvelope},
     outbound_message_service::outbound_message_service::OutboundMessageService,
     peer_manager::{peer_manager::PeerManager, NodeIdentity, Peer},
 };
@@ -41,7 +41,7 @@ where MType: Send + Sync + Debug
     pub peer: Peer,
     pub outbound_message_service: Arc<OutboundMessageService>,
     pub peer_manager: Arc<PeerManager>,
-    pub inbound_message_publisher: Arc<RwLock<InboundMessagePublisher<MType, DomainMessageContext>>>,
+    pub inbound_message_publisher: Arc<RwLock<InboundMessagePublisher<MType, InboundMessage>>>,
     pub node_identity: Arc<NodeIdentity>,
 }
 
@@ -60,7 +60,7 @@ where
         message_envelope: MessageEnvelope,
         outbound_message_service: Arc<OutboundMessageService>,
         peer_manager: Arc<PeerManager>,
-        inbound_message_publisher: Arc<RwLock<InboundMessagePublisher<MType, DomainMessageContext>>>,
+        inbound_message_publisher: Arc<RwLock<InboundMessagePublisher<MType, InboundMessage>>>,
     ) -> Self
     {
         MessageContext {

@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    message::DomainMessageContext,
+    message::InboundMessage,
     peer_manager::PeerNodeIdentity,
     pub_sub_channel::{SubscriptionReader, TopicPublisherSubscriberError, TopicSubscription},
     types::CommsPublicKey,
@@ -53,14 +53,14 @@ pub struct MessageInfo {
 pub struct SyncDomainSubscription<MType>
 where MType: Eq + Send + Debug
 {
-    reader: Option<SubscriptionReader<MType, DomainMessageContext>>,
+    reader: Option<SubscriptionReader<MType, InboundMessage>>,
     runtime: Runtime,
 }
 
 impl<MType> SyncDomainSubscription<MType>
 where MType: Eq + Send + Debug + Sync + 'static
 {
-    pub fn new(subscription: TopicSubscription<MType, DomainMessageContext>) -> Self {
+    pub fn new(subscription: TopicSubscription<MType, InboundMessage>) -> Self {
         SyncDomainSubscription {
             reader: Some(SubscriptionReader::new(Arc::new(subscription))),
             runtime: Runtime::new().expect("Tokio could not create a Runtime"),

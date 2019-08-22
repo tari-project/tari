@@ -27,7 +27,7 @@
 //! ```edition2018
 //! # use tari_comms::builder::CommsBuilder;
 //! # use tari_comms::dispatcher::HandlerError;
-//! # use tari_comms::message::DomainMessageContext;
+//! # use tari_comms::message::InboundMessage;
 //! # use tari_comms::control_service::ControlServiceConfig;
 //! # use tari_comms::peer_manager::NodeIdentity;
 //! # use std::sync::Arc;
@@ -39,7 +39,7 @@
 //! // This should be loaded up from storage
 //! let my_node_identity = NodeIdentity::random(&mut OsRng::new().unwrap(), "127.0.0.1:9000".parse().unwrap()).unwrap();
 //!
-//! fn my_handler(_: DomainMessageContext) -> Result<(), HandlerError> {
+//! fn my_handler(_: InboundMessage) -> Result<(), HandlerError> {
 //!     println!("Your handler is called!");
 //!     Ok(())
 //! }
