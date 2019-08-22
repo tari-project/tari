@@ -1,4 +1,4 @@
-// Copyright 2018 The Tari Project
+// Copyright 2019. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,28 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#[macro_use]
-extern crate bitflags;
-#[macro_use]
-extern crate lazy_static;
+mod error;
+mod priority;
+mod unconfirmed_pool;
+mod unconfirmed_pool_storage;
 
-pub mod blocks;
-pub mod bullet_rangeproofs;
-pub mod consts;
-pub mod fee;
-pub mod mempool;
-pub mod pow;
-#[allow(clippy::op_ref)]
-pub mod transaction;
-pub mod transaction_protocol;
-pub mod types;
-
-pub mod consensus;
-pub mod emission;
-pub mod tari_amount;
-
-mod base_node;
-mod blockchain;
-
-// Re-export commonly used structs
-pub use transaction_protocol::{recipient::ReceiverTransactionProtocol, sender::SenderTransactionProtocol};
+// Public re-exports
+pub use error::UnconfirmedPoolError;
+pub use priority::{PrioritizedTransaction, TxPriority};
+pub use unconfirmed_pool::{UnconfirmedPool, UnconfirmedPoolConfig};
+pub use unconfirmed_pool_storage::UnconfirmedPoolStorage;

@@ -18,7 +18,7 @@ pub enum SchnorrSignatureError {
 }
 
 #[allow(non_snake_case)]
-#[derive(PartialEq, Eq, Copy, Debug, Clone, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Copy, Debug, Clone, Serialize, Deserialize, Hash)]
 pub struct SchnorrSignature<P, K> {
     public_nonce: P,
     signature: K,

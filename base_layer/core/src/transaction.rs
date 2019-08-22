@@ -42,7 +42,11 @@ use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     range_proof::{RangeProofError, RangeProofService as RangeProofServiceTrait},
 };
-use tari_utilities::{ByteArray, Hashable};
+use tari_utilities::{
+    message_format::{MessageFormat, MessageFormatError},
+    ByteArray,
+    Hashable,
+};
 
 // These are set fairly arbitrarily at the moment. We'll need to do some modelling / testing to tune these values.
 pub const MAX_TRANSACTION_INPUTS: usize = 500;
@@ -208,7 +212,7 @@ impl Ord for UnblindedOutput {
 /// A transaction input.
 ///
 /// Primarily a reference to an output being spent by the transaction.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Hash)]
 pub struct TransactionInput {
     /// The features of the output being spent. We will check maturity for all outputs.
     pub features: OutputFeatures,
@@ -259,7 +263,7 @@ impl Hashable for TransactionInput {
 /// Output for a transaction, defining the new ownership of coins that are being transferred. The commitment is a
 /// blinded value for the output while the range proof guarantees the commitment includes a positive value without
 /// overflow and the ownership of the private key.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Hash)]
 pub struct TransactionOutput {
     /// Options for an output's structure or use
     pub features: OutputFeatures,
@@ -325,7 +329,7 @@ impl Default for TransactionOutput {
 /// [Mimblewimble TLU post](https://tlu.tarilabs.com/protocols/mimblewimble-1/sources/PITCHME.link.html?highlight=mimblewimble#mimblewimble).
 /// The kernel also tracks other transaction metadata, such as the lock height for the transaction (i.e. the earliest
 /// this transaction can be mined) and the transaction fee, in cleartext.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Hash)]
 pub struct TransactionKernel {
     /// Options for a kernel's structure or use
     pub features: KernelFeatures,
@@ -454,7 +458,7 @@ impl Hashable for TransactionKernel {
 /// This struct is used to describe single transactions only. The common part between transactions and Tari blocks is
 /// accessible via the `body` field, but single transactions also need to carry the public offset around with them so
 /// that these can be aggregated into block offsets.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Transaction {
     /// This kernel offset will be accumulated when transactions are aggregated to prevent the "subset" problem where
     /// kernels can be linked to inputs and outputs by testing a series of subsets and see which produce valid
@@ -497,6 +501,10 @@ impl Transaction {
 
     pub fn get_body(&self) -> &AggregateBody {
         &self.body
+    }
+
+    pub fn get_weight(&self) -> Result<usize, MessageFormatError> {
+        Ok(self.to_binary()?.len())
     }
 }
 

@@ -44,7 +44,7 @@ use tari_utilities::{ByteArray, ByteArrayError};
 ///   C_2 &= v_2.G + k_2.H \\\\
 ///   \therefore C_1 + C_2 &= (v_1 + v_2)G + (k_1 + k_2)H
 /// \end{aligned} $$
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, Hash)]
 #[serde(bound(deserialize = "P: PublicKey"))]
 pub struct HomomorphicCommitment<P>(pub(crate) P)
 where P: PublicKey;
