@@ -44,11 +44,6 @@ mod state;
 
 use self::{error::LivenessError, handler::LivenessHandler, service::LivenessService, state::LivenessState};
 use crate::{
-    executor::{
-        transport::{self, Requester},
-        ServiceInitializationError,
-        ServiceInitializer,
-    },
     services::{
         comms_outbound::CommsOutboundHandle,
         domain_deserializer::DomainMessageDeserializer,
@@ -61,6 +56,11 @@ use futures::{future, Future, Stream};
 use log::*;
 use std::{fmt::Debug, sync::Arc};
 use tari_comms::{builder::CommsServices, domain_subscriber::MessageInfo};
+use tari_service_framework::{
+    transport::{self, Requester},
+    ServiceInitializationError,
+    ServiceInitializer,
+};
 
 pub use self::messages::{LivenessRequest, LivenessResponse, PingPong};
 use tari_comms::inbound_message_service::InboundTopicSubscriber;

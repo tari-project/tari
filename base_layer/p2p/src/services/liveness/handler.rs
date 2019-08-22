@@ -91,11 +91,12 @@ impl LivenessHandler {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{executor::transport, services::comms_outbound::CommsOutboundRequest};
+    use crate::services::comms_outbound::CommsOutboundRequest;
     use rand::rngs::OsRng;
     use std::sync::mpsc;
     use tari_comms::peer_manager::{NodeId, PeerNodeIdentity};
     use tari_crypto::keys::PublicKey;
+    use tari_service_framework::transport;
     use tokio::runtime::Runtime;
     use tower_util::service_fn;
 

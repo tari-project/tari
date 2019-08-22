@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::executor::handles::{ServiceHandles, ServiceHandlesFuture};
+use crate::handles::{ServiceHandles, ServiceHandlesFuture};
 use derive_error::Error;
 use futures::{
     future::{self, Either},

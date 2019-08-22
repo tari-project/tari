@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    executor::transport::{AwaitResponseError, Requester},
     services::comms_outbound::{
         error::CommsOutboundServiceError,
         messages::{CommsOutboundRequest, CommsOutboundResponse},
@@ -36,6 +35,7 @@ use tari_comms::{
     message::{Frame, Message, MessageEnvelope, MessageFlags, MessageHeader},
     outbound_message_service::BroadcastStrategy,
 };
+use tari_service_framework::transport::{AwaitResponseError, Requester};
 use tari_utilities::message_format::MessageFormat;
 use tokio_threadpool::{blocking, BlockingError};
 use tower_service::Service;
@@ -137,13 +137,13 @@ where T: MessageFormat
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::executor::transport;
     use rand::rngs::OsRng;
     use tari_comms::{
         message::{MessageEnvelopeHeader, NodeDestination},
         types::CommsPublicKey,
     };
     use tari_crypto::keys::PublicKey;
+    use tari_service_framework::transport;
     use tokio::runtime::Runtime;
     use tower_util::service_fn;
 

@@ -26,12 +26,10 @@ mod messages;
 mod service;
 
 use self::service::CommsOutboundService;
-use crate::{
-    executor::{transport, ServiceInitializationError, ServiceInitializer},
-    services::{ServiceHandlesFuture, ServiceName},
-};
+use crate::services::{ServiceHandlesFuture, ServiceName};
 use std::sync::Arc;
 use tari_comms::outbound_message_service::outbound_message_service::OutboundMessageService;
+use tari_service_framework::{transport, ServiceInitializationError, ServiceInitializer};
 
 pub use self::{error::CommsOutboundServiceError, handle::CommsOutboundHandle, messages::CommsOutboundRequest};
 

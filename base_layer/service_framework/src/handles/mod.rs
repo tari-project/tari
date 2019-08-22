@@ -27,6 +27,21 @@ mod lazy_service;
 
 pub use self::{future::ServiceHandlesFuture, lazy_service::LazyService};
 
+/// This macro unlocks a Mutex or RwLock. If the lock is
+/// poisoned (i.e. panic while unlocked) the last value
+/// before the panic is used.
+macro_rules! acquire_lock {
+    ($e:expr, $m:ident) => {
+        match $e.$m() {
+            Ok(lock) => lock,
+            Err(poisoned) => poisoned.into_inner(),
+        }
+    };
+    ($e:expr) => {
+        acquire_lock!($e, lock)
+    };
+}
+
 /// Simple collection for named handles
 pub struct ServiceHandles<N> {
     handles: Mutex<HashMap<N, Box<dyn Any + Sync + Send>>>,
