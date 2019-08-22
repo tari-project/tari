@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use serde::{Deserialize, Serialize};
 use tari_comms::types::CommsPublicKey;
 
 /// API Request enum
@@ -38,4 +39,11 @@ pub enum LivenessRequest {
 pub enum LivenessResponse {
     PingSent,
     Count(usize),
+}
+
+/// The PingPong message
+#[derive(Debug, Serialize, Deserialize)]
+pub enum PingPong {
+    Ping,
+    Pong,
 }

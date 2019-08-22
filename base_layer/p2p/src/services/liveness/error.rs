@@ -22,10 +22,15 @@
 
 use crate::services::comms_outbound::CommsOutboundServiceError;
 use derive_error::Error;
+use tari_comms::message::MessageError;
 
 #[derive(Debug, Error)]
 pub enum LivenessError {
     CommsOutboundError(CommsOutboundServiceError),
-    /// Failed to send a ping
+    /// Failed to send a pong message
+    SendPongFailed,
+    /// Failed to send a ping message
     SendPingFailed,
+    // Occurs when a message cannot deserialize into a PingPong message
+    MessageError(MessageError),
 }

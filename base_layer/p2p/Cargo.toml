@@ -4,34 +4,36 @@ version = "0.0.2"
 edition = "2018"
 
 [dependencies]
-tari_crypto = { version = "^0.0", path = "../../infrastructure/crypto"}
 tari_comms = { version = "^0.0", path = "../../comms"}
-#tari_core = { version = "^0.0", path = "../core"}
+tari_crypto = { version = "^0.0", path = "../../infrastructure/crypto"}
 tari_utilities = { version = "^0.0", path = "../../infrastructure/tari_util"}
+
+chrono = { version = "0.4.6", features = ["serde"]}
+crossbeam-channel = "0.3.8"
+derive-error = "0.0.4"
+futures = "0.1.28"
+lmdb-zero = "0.4.4"
+log = "0.4.6"
+rand = "0.6.5"
 rmp-serde = "0.13.7"
 serde = "1.0.90"
 serde_derive = "1.0.90"
-threadpool = "1.7.1"
-derive-error = "0.0.4"
-log = "0.4.6"
-rand = "0.6.5"
-crossbeam-channel = "0.3.8"
-lmdb-zero = "0.4.4"
 tari_storage = {version = "^0.0", path = "../../infrastructure/storage"}
-chrono = { version = "0.4.6", features = ["serde"]}
+threadpool = "1.7.1"
 tokio = "0.1.22"
-futures = "0.1.28"
+tokio-threadpool = "0.1.15"
 tower-service = "0.2.0"
 tower-util = "0.1.0"
+tracing = "0.1.5"
 ttl_cache = "0.5.1"
-tokio-threadpool = "0.1.15"
 
 [dev-dependencies]
-tempdir = "0.3.7"
-cursive = "0.12.0"
 clap = "2.33.0"
+cursive = "0.12.0"
 lazy_static = "1.3.0"
 simple_logger = "1.3.0"
+stream-cancel = "0.4.4"
+tempdir = "0.3.7"
 tokio-mock-task = "0.1.1"
 
 [dev-dependencies.log4rs]

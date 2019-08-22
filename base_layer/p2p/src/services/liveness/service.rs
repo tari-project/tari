@@ -22,7 +22,7 @@
 
 use super::{error::LivenessError, state::LivenessState, LivenessRequest, LivenessResponse};
 use crate::{
-    services::{comms_outbound::CommsOutboundHandle, ServiceHandles, ServiceName},
+    services::{comms_outbound::CommsOutboundHandle, liveness::messages::PingPong},
     tari_message::{NetMessage, TariMessageType},
 };
 use futures::{
@@ -30,29 +30,9 @@ use futures::{
     Future,
     Poll,
 };
-use serde::{Deserialize, Serialize};
-use std::{convert::TryInto, sync::Arc};
-use tari_comms::{
-    message::{Message, MessageError, MessageFlags},
-    outbound_message_service::BroadcastStrategy,
-    types::CommsPublicKey,
-};
+use std::sync::Arc;
+use tari_comms::{message::MessageFlags, outbound_message_service::BroadcastStrategy, types::CommsPublicKey};
 use tower_service::Service;
-
-/// The PingPong message
-#[derive(Serialize, Deserialize)]
-pub enum PingPong {
-    Ping,
-    Pong,
-}
-
-impl TryInto<Message> for PingPong {
-    type Error = MessageError;
-
-    fn try_into(self) -> Result<Message, Self::Error> {
-        Ok((TariMessageType::new(NetMessage::PingPong), self).try_into()?)
-    }
-}
 
 /// Service responsible for testing Liveness for Peers.
 ///
@@ -60,35 +40,12 @@ impl TryInto<Message> for PingPong {
 /// peer latency and availability stats will be added.
 pub struct LivenessService {
     state: Arc<LivenessState>,
-    handles: Arc<ServiceHandles>,
-    oms_handle: Option<CommsOutboundHandle>,
+    oms_handle: CommsOutboundHandle,
 }
 
 impl LivenessService {
-    pub fn new(state: Arc<LivenessState>, handles: Arc<ServiceHandles>) -> Self {
-        Self {
-            state,
-            handles,
-            oms_handle: None,
-        }
-    }
-
-    /// Get the CommsOutboundHandle.
-    ///
-    /// This function will panic if the handle does not exist.
-    fn oms_handle(&mut self) -> &mut CommsOutboundHandle {
-        match self.oms_handle {
-            Some(ref mut h) => h,
-            None => {
-                // Memoize the handle for later use
-                self.oms_handle = Some(
-                    self.handles
-                        .get_handle::<CommsOutboundHandle>(&ServiceName::CommsOutbound)
-                        .expect("LivenessService requires CommsOutboundHandle"),
-                );
-                self.oms_handle()
-            },
-        }
+    pub fn new(state: Arc<LivenessState>, oms_handle: CommsOutboundHandle) -> Self {
+        Self { state, oms_handle }
     }
 
     fn send_ping(
@@ -97,7 +54,7 @@ impl LivenessService {
     ) -> impl Future<Item = Result<LivenessResponse, LivenessError>, Error = ()>
     {
         let state = self.state.clone();
-        self.oms_handle()
+        self.oms_handle
             .send_message(
                 BroadcastStrategy::DirectPublicKey(pub_key),
                 MessageFlags::empty(),
@@ -164,9 +121,12 @@ mod test {
         state.inc_pings_received();
         state.inc_pongs_received();
         state.inc_pongs_received();
-        let handles = Arc::new(ServiceHandles::new());
 
-        let mut service = LivenessService::new(state, handles);
+        let outbound_service = service_fn(|_| future::ok::<_, ()>(Ok(())));
+        let (req, _res) = transport::channel(outbound_service);
+        let oms_handle = CommsOutboundHandle::new(req);
+
+        let mut service = LivenessService::new(state, oms_handle);
 
         let mut fut = service.call(LivenessRequest::GetPingCount);
         match fut.poll().unwrap() {
@@ -185,7 +145,6 @@ mod test {
     fn send_ping() {
         let mut rt = Runtime::new().unwrap();
         let state = Arc::new(LivenessState::new());
-        let handles = Arc::new(ServiceHandles::new());
 
         // This service stubs out CommsOutboundService and always returns a successful result.
         // Therefore, LivenessService will behave as if it was able to send the ping
@@ -194,9 +153,9 @@ mod test {
         let (req, res) = transport::channel(outbound_service);
         rt.spawn(res);
 
-        handles.insert(ServiceName::CommsOutbound, CommsOutboundHandle::new(req));
+        let oms_handle = CommsOutboundHandle::new(req);
 
-        let mut service = LivenessService::new(Arc::clone(&state), handles);
+        let mut service = LivenessService::new(Arc::clone(&state), oms_handle);
 
         let mut rng = OsRng::new().unwrap();
         let (_, pk) = CommsPublicKey::random_keypair(&mut rng);
@@ -208,15 +167,5 @@ mod test {
         }
 
         assert_eq!(state.pings_sent(), 1);
-    }
-
-    #[test]
-    #[should_panic]
-    fn oms_handle_no_handle() {
-        let state = Arc::new(LivenessState::new());
-        let handles = Arc::new(ServiceHandles::new());
-        let mut service = LivenessService::new(Arc::clone(&state), handles);
-
-        service.oms_handle();
     }
 }
