@@ -125,9 +125,8 @@ impl LivenessService {
 
 impl Service<LivenessRequest> for LivenessService {
     type Error = ();
+    type Future = impl Future<Item = Self::Response, Error = Self::Error>;
     type Response = Result<LivenessResponse, LivenessError>;
-
-    existential type Future: Future<Item = Self::Response, Error = Self::Error>;
 
     fn poll_ready(&mut self) -> Poll<(), Self::Error> {
         Ok(().into())

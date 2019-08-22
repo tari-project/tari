@@ -356,9 +356,8 @@ mod test {
             struct EchoService(Option<oneshot::Receiver<()>>);
             impl Service<String> for EchoService {
                 type Error = ();
+                type Future = impl Future<Item = String, Error = ()>;
                 type Response = String;
-
-                existential type Future: Future<Item = String, Error = ()>;
 
                 fn poll_ready(&mut self) -> Poll<(), Self::Error> {
                     Ok(().into())

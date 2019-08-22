@@ -81,9 +81,8 @@ where
 
 impl<N> IntoFuture for StackBuilder<N> {
     type Error = ();
+    type Future = impl Future<Item = (), Error = ()> + Send;
     type Item = ();
-
-    existential type Future: Future<Item = (), Error = ()> + Send;
 
     fn into_future(self) -> Self::Future {
         future::join_all(self.futures).map(|_| ())
