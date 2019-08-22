@@ -1,0 +1,395 @@
+//  Copyright 2019 The Tari Project
+//
+//  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+//  following conditions are met:
+//
+//  1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+//  disclaimer.
+//
+//  2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+//  following disclaimer in the documentation and/or other materials provided with the distribution.
+//
+//  3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+//  products derived from this software without specific prior written permission.
+//
+//  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+//  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+//  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+//  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+//  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+//  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+//  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+use crate::{
+    blocks::block::Block,
+    consts::{MEMPOOL_UNCONFIRMED_POOL_STORAGE_CAPACITY, MEMPOOL_UNCONFIRMED_POOL_WEIGHT_TRANSACTION_SKIP_COUNT},
+    mempool::unconfirmed_pool::{UnconfirmedPoolError, UnconfirmedPoolStorage},
+    transaction::Transaction,
+    types::Signature,
+};
+use std::sync::{Arc, RwLock};
+
+/// Configuration for the UnconfirmedPool
+#[derive(Clone, Copy)]
+pub struct UnconfirmedPoolConfig {
+    /// The maximum number of transactions that can be stored in the Unconfirmed Transaction pool
+    pub storage_capacity: usize,
+    /// The maximum number of transactions that can be skipped when compiling a set of highest priority transactions,
+    /// skipping over large transactions are performed in an attempt to fit more transactions into the remaining space.
+    pub weight_tx_skip_count: usize,
+}
+
+impl Default for UnconfirmedPoolConfig {
+    fn default() -> Self {
+        Self {
+            storage_capacity: MEMPOOL_UNCONFIRMED_POOL_STORAGE_CAPACITY,
+            weight_tx_skip_count: MEMPOOL_UNCONFIRMED_POOL_WEIGHT_TRANSACTION_SKIP_COUNT,
+        }
+    }
+}
+
+/// The Unconfirmed Transaction Pool consists of all unconfirmed transactions that are ready to be included in a block
+/// and they are prioritised according to the priority metric.
+pub struct UnconfirmedPool {
+    pool_storage: RwLock<UnconfirmedPoolStorage>,
+}
+
+impl UnconfirmedPool {
+    /// Create a new UnconfirmedPool with the specified configuration
+    pub fn new(config: UnconfirmedPoolConfig) -> Self {
+        Self {
+            pool_storage: RwLock::new(UnconfirmedPoolStorage::new(config)),
+        }
+    }
+
+    /// Insert a new transaction into the UnconfirmedPool. Low priority transactions will be removed to make space for
+    /// higher priority transactions. The lowest priority transactions will be removed when the maximum capacity is
+    /// reached and the new transaction has a higher priority than the currently stored lowest priority transaction.
+    pub fn insert(&mut self, transaction: Transaction) -> Result<(), UnconfirmedPoolError> {
+        self.pool_storage
+            .write()
+            .map_err(|_| UnconfirmedPoolError::PoisonedAccess)?
+            .insert(transaction)
+    }
+
+    ///  Insert a set of new transactions into the UnconfirmedPool
+    pub fn insert_txs(&mut self, transactions: Vec<Transaction>) -> Result<(), UnconfirmedPoolError> {
+        self.pool_storage
+            .write()
+            .map_err(|_| UnconfirmedPoolError::PoisonedAccess)?
+            .insert_txs(transactions)
+    }
+
+    /// Check if a transaction is available in the UnconfirmedPool
+    pub fn has_tx_with_excess_sig(&self, excess_sig: &Signature) -> Result<bool, UnconfirmedPoolError> {
+        Ok(self
+            .pool_storage
+            .read()
+            .map_err(|_| UnconfirmedPoolError::PoisonedAccess)?
+            .has_tx_with_excess_sig(excess_sig))
+    }
+
+    /// Returns a set of the highest priority unconfirmed transactions, that can be included in a block
+    pub fn highest_priority_txs(&self, total_weight: usize) -> Result<Vec<Arc<Transaction>>, UnconfirmedPoolError> {
+        self.pool_storage
+            .read()
+            .map_err(|_| UnconfirmedPoolError::PoisonedAccess)?
+            .highest_priority_txs(total_weight)
+    }
+
+    /// Remove all published transactions from the UnconfirmedPool
+    pub fn remove_published_and_discard_double_spends(
+        &mut self,
+        published_block: &Block,
+    ) -> Result<Vec<Arc<Transaction>>, UnconfirmedPoolError>
+    {
+        Ok(self
+            .pool_storage
+            .write()
+            .map_err(|_| UnconfirmedPoolError::PoisonedAccess)?
+            .remove_published_and_discard_double_spends(published_block))
+    }
+
+    /// Returns the total number of unconfirmed transactions stored in the UnconfirmedPool
+    pub fn len(&self) -> Result<usize, UnconfirmedPoolError> {
+        Ok(self
+            .pool_storage
+            .read()
+            .map_err(|_| UnconfirmedPoolError::PoisonedAccess)?
+            .len())
+    }
+
+    #[cfg(test)]
+    /// Checks the consistency status of the Hashmap and BtreeMap
+    pub fn check_status(&self) -> Result<bool, UnconfirmedPoolError> {
+        Ok(self
+            .pool_storage
+            .read()
+            .map_err(|_| UnconfirmedPoolError::PoisonedAccess)?
+            .check_status())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::{
+        blocks::{aggregated_body::AggregateBody, blockheader::BlockHeader},
+        tari_amount::MicroTari,
+        transaction::{KernelBuilder, OutputFeatures, TransactionInput},
+        transaction_protocol::{build_challenge, TransactionMetadata},
+        types::{PrivateKey, PublicKey, COMMITMENT_FACTORY},
+    };
+    use tari_crypto::{
+        commitment::HomomorphicCommitmentFactory,
+        keys::{PublicKey as PK, SecretKey},
+    };
+
+    // Create an unconfirmed transaction for testing with a valid fee, unique access_sig and random inputs, the
+    // transaction is only partially constructed
+    fn create_test_tx(fee: MicroTari, input_count: usize) -> Transaction {
+        let mut rng = rand::OsRng::new().unwrap();
+
+        let tx_meta = TransactionMetadata {
+            fee: fee.clone(),
+            lock_height: 0,
+        };
+        let key = PrivateKey::random(&mut rng);
+        let r = PrivateKey::random(&mut rng);
+        let e = build_challenge(&PublicKey::from_secret_key(&r), &tx_meta);
+        let s = Signature::sign(key.clone(), r, &e).unwrap();
+        let excess = COMMITMENT_FACTORY.commit_value(&key, 0);
+        let kernel = KernelBuilder::new()
+            .with_fee(fee)
+            .with_lock_height(0)
+            .with_excess(&excess)
+            .with_signature(&s)
+            .build()
+            .unwrap();
+
+        let mut body = AggregateBody::empty();
+        body.kernels.push(kernel);
+
+        for _ in 0..input_count {
+            let input = TransactionInput {
+                commitment: COMMITMENT_FACTORY.commit(&PrivateKey::random(&mut rng), &MicroTari(10).into()),
+                features: OutputFeatures::default(),
+            };
+            body.inputs.push(input);
+        }
+
+        Transaction {
+            offset: PrivateKey::random(&mut rng),
+            body,
+        }
+    }
+
+    // Create a partially constructed block for testing
+    fn create_test_block(transactions: Vec<Transaction>) -> Block {
+        let mut body = AggregateBody::empty();
+        transactions.iter().for_each(|tx| {
+            body.kernels.push(tx.body.kernels[0].clone());
+            body.inputs.append(&mut tx.body.inputs.clone());
+        });
+
+        Block {
+            header: BlockHeader::new(0),
+            body,
+        }
+    }
+
+    #[test]
+    fn test_insert_and_retrieve_highest_priority_txs() {
+        let tx1 = create_test_tx(MicroTari(500), 2);
+        let tx2 = create_test_tx(MicroTari(100), 4);
+        let tx3 = create_test_tx(MicroTari(1000), 5);
+        let tx4 = create_test_tx(MicroTari(200), 3);
+        let tx5 = create_test_tx(MicroTari(500), 5);
+
+        let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
+            storage_capacity: 4,
+            weight_tx_skip_count: 3,
+        });
+        unconfirmed_pool
+            .insert_txs(vec![tx1.clone(), tx2.clone(), tx3.clone(), tx4.clone(), tx5.clone()])
+            .unwrap();
+        // Check that lowest priority tx was removed to make room for new incoming transactions
+        assert_eq!(
+            unconfirmed_pool
+                .has_tx_with_excess_sig(&tx1.body.kernels[0].excess_sig)
+                .unwrap(),
+            true
+        );
+        assert_eq!(
+            unconfirmed_pool
+                .has_tx_with_excess_sig(&tx2.body.kernels[0].excess_sig)
+                .unwrap(),
+            false
+        );
+        assert_eq!(
+            unconfirmed_pool
+                .has_tx_with_excess_sig(&tx3.body.kernels[0].excess_sig)
+                .unwrap(),
+            true
+        );
+        assert_eq!(
+            unconfirmed_pool
+                .has_tx_with_excess_sig(&tx4.body.kernels[0].excess_sig)
+                .unwrap(),
+            true
+        );
+        assert_eq!(
+            unconfirmed_pool
+                .has_tx_with_excess_sig(&tx5.body.kernels[0].excess_sig)
+                .unwrap(),
+            true
+        );
+        // Retrieve the set of highest priority unspent transactions
+        let desired_weight = tx1.get_weight().unwrap() + tx3.get_weight().unwrap() + tx4.get_weight().unwrap();
+        let selected_txs = unconfirmed_pool.highest_priority_txs(desired_weight).unwrap();
+        assert_eq!(selected_txs.len(), 3);
+        assert_eq!(selected_txs[0].body.kernels[0].fee, MicroTari(1000));
+        assert_eq!(selected_txs[1].body.kernels[0].fee, MicroTari(500));
+        assert_eq!(selected_txs[2].body.kernels[0].fee, MicroTari(200));
+        // Note that transaction tx5 could not be included as its weight was to big to fit into the remaining allocated
+        // space, the second best transaction was then included
+
+        assert!(unconfirmed_pool.check_status().unwrap());
+    }
+
+    #[test]
+    fn test_remove_published_txs() {
+        let tx1 = create_test_tx(MicroTari(500), 2);
+        let tx2 = create_test_tx(MicroTari(100), 3);
+        let tx3 = create_test_tx(MicroTari(1000), 2);
+        let tx4 = create_test_tx(MicroTari(200), 4);
+        let tx5 = create_test_tx(MicroTari(500), 3);
+        let tx6 = create_test_tx(MicroTari(750), 2);
+
+        let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
+            storage_capacity: 10,
+            weight_tx_skip_count: 3,
+        });
+        unconfirmed_pool
+            .insert_txs(vec![tx1.clone(), tx2.clone(), tx3.clone(), tx4.clone(), tx5.clone()])
+            .unwrap();
+        // utx6 should not be added to unconfirmed_pool as it is an unknown transactions that was included in the block
+        // by another node
+
+        let published_block = create_test_block(vec![tx1.clone(), tx3.clone(), tx5.clone()]);
+        let _ = unconfirmed_pool.remove_published_and_discard_double_spends(&published_block);
+
+        assert_eq!(
+            unconfirmed_pool
+                .has_tx_with_excess_sig(&tx1.body.kernels[0].excess_sig)
+                .unwrap(),
+            false
+        );
+        assert_eq!(
+            unconfirmed_pool
+                .has_tx_with_excess_sig(&tx2.body.kernels[0].excess_sig)
+                .unwrap(),
+            true
+        );
+        assert_eq!(
+            unconfirmed_pool
+                .has_tx_with_excess_sig(&tx3.body.kernels[0].excess_sig)
+                .unwrap(),
+            false
+        );
+        assert_eq!(
+            unconfirmed_pool
+                .has_tx_with_excess_sig(&tx4.body.kernels[0].excess_sig)
+                .unwrap(),
+            true
+        );
+        assert_eq!(
+            unconfirmed_pool
+                .has_tx_with_excess_sig(&tx5.body.kernels[0].excess_sig)
+                .unwrap(),
+            false
+        );
+        assert_eq!(
+            unconfirmed_pool
+                .has_tx_with_excess_sig(&tx6.body.kernels[0].excess_sig)
+                .unwrap(),
+            false
+        );
+
+        assert!(unconfirmed_pool.check_status().unwrap());
+    }
+
+    #[test]
+    fn test_discard_double_spend_txs() {
+        let tx1 = create_test_tx(MicroTari(500), 2);
+        let tx2 = create_test_tx(MicroTari(100), 3);
+        let tx3 = create_test_tx(MicroTari(1000), 2);
+        let tx4 = create_test_tx(MicroTari(200), 2);
+        let mut tx5 = create_test_tx(MicroTari(500), 3);
+        let mut tx6 = create_test_tx(MicroTari(750), 2);
+        // tx1 and tx5 have a shared input. Also, tx3 and tx6 have a shared input
+        tx5.body.inputs[0] = tx1.body.inputs[0].clone();
+        tx6.body.inputs[1] = tx3.body.inputs[1].clone();
+
+        let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
+            storage_capacity: 10,
+            weight_tx_skip_count: 3,
+        });
+        unconfirmed_pool
+            .insert_txs(vec![
+                tx1.clone(),
+                tx2.clone(),
+                tx3.clone(),
+                tx4.clone(),
+                tx5.clone(),
+                tx6.clone(),
+            ])
+            .unwrap();
+
+        // The publishing of tx1 and tx3 will be double-spends and orphan tx5 and tx6
+        let published_block = create_test_block(vec![tx1.clone(), tx2.clone(), tx3.clone()]);
+
+        let _ = unconfirmed_pool
+            .remove_published_and_discard_double_spends(&published_block)
+            .unwrap(); // Double spends are discarded
+
+        assert_eq!(
+            unconfirmed_pool
+                .has_tx_with_excess_sig(&tx1.body.kernels[0].excess_sig)
+                .unwrap(),
+            false
+        );
+        assert_eq!(
+            unconfirmed_pool
+                .has_tx_with_excess_sig(&tx2.body.kernels[0].excess_sig)
+                .unwrap(),
+            false
+        );
+        assert_eq!(
+            unconfirmed_pool
+                .has_tx_with_excess_sig(&tx3.body.kernels[0].excess_sig)
+                .unwrap(),
+            false
+        );
+        assert_eq!(
+            unconfirmed_pool
+                .has_tx_with_excess_sig(&tx4.body.kernels[0].excess_sig)
+                .unwrap(),
+            true
+        );
+        assert_eq!(
+            unconfirmed_pool
+                .has_tx_with_excess_sig(&tx5.body.kernels[0].excess_sig)
+                .unwrap(),
+            false
+        );
+        assert_eq!(
+            unconfirmed_pool
+                .has_tx_with_excess_sig(&tx6.body.kernels[0].excess_sig)
+                .unwrap(),
+            false
+        );
+
+        assert!(unconfirmed_pool.check_status().unwrap());
+    }
+}

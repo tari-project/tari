@@ -32,7 +32,7 @@ use serde::{
 use std::fmt;
 use tari_utilities::{byte_array::*, hash::*, hex::*};
 
-#[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BulletRangeProof(pub Vec<u8>);
 /// Implement the hashing function for RangeProof for use in the MMR
 impl Hashable for BulletRangeProof {
