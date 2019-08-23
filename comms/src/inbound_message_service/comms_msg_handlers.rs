@@ -23,7 +23,7 @@
 use crate::{
     consts::DHT_FORWARD_NODE_COUNT,
     dispatcher::{DispatchError, DispatchResolver, DispatchableKey},
-    message::{DomainMessageContext, Message, MessageContext, MessageFlags, MessageHeader, NodeDestination},
+    message::{InboundMessage, Message, MessageContext, MessageFlags, MessageHeader, NodeDestination},
     outbound_message_service::BroadcastStrategy,
     types::MessageDispatcher,
 };
@@ -175,11 +175,11 @@ where
             .map_err(DispatchError::handler_error())?;
     };
 
-    // Construct DomainMessageContext and dispatch to handler services using domain message broker
+    // Construct InboundMessage and dispatch to handler services using domain message broker
     let header: MessageHeader<MType> = message.deserialize_header().unwrap(); //.map_err(DispatchError::handler_error())?;
 
     debug!(target: LOG_TARGET, "Received message type: {:?}", header.message_type);
-    let domain_message_context = DomainMessageContext::new(
+    let domain_message_context = InboundMessage::new(
         message_context.peer.into(),
         message_envelope_header.origin_source,
         message,

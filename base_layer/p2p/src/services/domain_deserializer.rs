@@ -24,21 +24,21 @@ use futures::{Future, Poll};
 use serde::export::PhantomData;
 use tari_comms::{
     domain_subscriber::MessageInfo,
-    message::{DomainMessageContext, MessageError},
+    message::{InboundMessage, MessageError},
 };
 use tari_utilities::message_format::MessageFormat;
 use tokio_threadpool::{blocking, BlockingError};
 
-/// Future which asynchonously attempts to deserialize DomainMessageContext into
+/// Future which asynchonously attempts to deserialize InboundMessage into
 /// a `(MessageInfo, T)` tuple where T is [MessageFormat].
 pub struct DomainMessageDeserializer<T> {
-    message: Option<DomainMessageContext>,
+    message: Option<InboundMessage>,
     _t: PhantomData<T>,
 }
 
 impl<T> DomainMessageDeserializer<T> {
-    /// Create a new DomainMessageDeserializer from the given DomainMessageContext
-    pub fn new(message: DomainMessageContext) -> Self {
+    /// Create a new DomainMessageDeserializer from the given InboundMessage
+    pub fn new(message: InboundMessage) -> Self {
         Self {
             message: Some(message),
             _t: PhantomData,
@@ -75,13 +75,13 @@ mod test {
     use tari_crypto::keys::PublicKey;
     use tokio::runtime::Runtime;
 
-    fn create_domain_message<T: MessageFormat>(message_type: u8, inner_msg: T) -> DomainMessageContext {
+    fn create_domain_message<T: MessageFormat>(message_type: u8, inner_msg: T) -> InboundMessage {
         let mut rng = OsRng::new().unwrap();
         let (_, pk) = CommsPublicKey::random_keypair(&mut rng);
         let peer_source = PeerNodeIdentity::new(NodeId::from_key(&pk).unwrap(), pk.clone());
         let header = MessageHeader::new(message_type).unwrap();
         let msg = Message::from_message_format(header, inner_msg).unwrap();
-        DomainMessageContext::new(peer_source, pk, msg)
+        InboundMessage::new(peer_source, pk, msg)
     }
 
     #[test]
