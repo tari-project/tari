@@ -134,77 +134,17 @@ impl UnconfirmedPool {
 mod test {
     use super::*;
     use crate::{
-        blocks::{aggregated_body::AggregateBody, blockheader::BlockHeader},
         tari_amount::MicroTari,
-        transaction::{KernelBuilder, OutputFeatures, TransactionInput},
-        transaction_protocol::{build_challenge, TransactionMetadata},
-        types::{PrivateKey, PublicKey, COMMITMENT_FACTORY},
+        test_utils::builders::{create_test_block, create_test_tx},
     };
-    use tari_crypto::{
-        commitment::HomomorphicCommitmentFactory,
-        keys::{PublicKey as PK, SecretKey},
-    };
-
-    // Create an unconfirmed transaction for testing with a valid fee, unique access_sig and random inputs, the
-    // transaction is only partially constructed
-    fn create_test_tx(fee: MicroTari, input_count: usize) -> Transaction {
-        let mut rng = rand::OsRng::new().unwrap();
-
-        let tx_meta = TransactionMetadata {
-            fee: fee.clone(),
-            lock_height: 0,
-        };
-        let key = PrivateKey::random(&mut rng);
-        let r = PrivateKey::random(&mut rng);
-        let e = build_challenge(&PublicKey::from_secret_key(&r), &tx_meta);
-        let s = Signature::sign(key.clone(), r, &e).unwrap();
-        let excess = COMMITMENT_FACTORY.commit_value(&key, 0);
-        let kernel = KernelBuilder::new()
-            .with_fee(fee)
-            .with_lock_height(0)
-            .with_excess(&excess)
-            .with_signature(&s)
-            .build()
-            .unwrap();
-
-        let mut body = AggregateBody::empty();
-        body.kernels.push(kernel);
-
-        for _ in 0..input_count {
-            let input = TransactionInput {
-                commitment: COMMITMENT_FACTORY.commit(&PrivateKey::random(&mut rng), &MicroTari(10).into()),
-                features: OutputFeatures::default(),
-            };
-            body.inputs.push(input);
-        }
-
-        Transaction {
-            offset: PrivateKey::random(&mut rng),
-            body,
-        }
-    }
-
-    // Create a partially constructed block for testing
-    fn create_test_block(transactions: Vec<Transaction>) -> Block {
-        let mut body = AggregateBody::empty();
-        transactions.iter().for_each(|tx| {
-            body.kernels.push(tx.body.kernels[0].clone());
-            body.inputs.append(&mut tx.body.inputs.clone());
-        });
-
-        Block {
-            header: BlockHeader::new(0),
-            body,
-        }
-    }
 
     #[test]
     fn test_insert_and_retrieve_highest_priority_txs() {
-        let tx1 = create_test_tx(MicroTari(500), 2);
-        let tx2 = create_test_tx(MicroTari(100), 4);
-        let tx3 = create_test_tx(MicroTari(1000), 5);
-        let tx4 = create_test_tx(MicroTari(200), 3);
-        let tx5 = create_test_tx(MicroTari(500), 5);
+        let tx1 = create_test_tx(MicroTari(5_000), MicroTari(500), 2);
+        let tx2 = create_test_tx(MicroTari(5_000), MicroTari(100), 4);
+        let tx3 = create_test_tx(MicroTari(5_000), MicroTari(1000), 5);
+        let tx4 = create_test_tx(MicroTari(5_000), MicroTari(200), 3);
+        let tx5 = create_test_tx(MicroTari(5_000), MicroTari(500), 5);
 
         let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
             storage_capacity: 4,
@@ -259,12 +199,12 @@ mod test {
 
     #[test]
     fn test_remove_published_txs() {
-        let tx1 = create_test_tx(MicroTari(500), 2);
-        let tx2 = create_test_tx(MicroTari(100), 3);
-        let tx3 = create_test_tx(MicroTari(1000), 2);
-        let tx4 = create_test_tx(MicroTari(200), 4);
-        let tx5 = create_test_tx(MicroTari(500), 3);
-        let tx6 = create_test_tx(MicroTari(750), 2);
+        let tx1 = create_test_tx(MicroTari(10_000), MicroTari(500), 2);
+        let tx2 = create_test_tx(MicroTari(10_000), MicroTari(100), 3);
+        let tx3 = create_test_tx(MicroTari(10_000), MicroTari(1000), 2);
+        let tx4 = create_test_tx(MicroTari(10_000), MicroTari(200), 4);
+        let tx5 = create_test_tx(MicroTari(10_000), MicroTari(500), 3);
+        let tx6 = create_test_tx(MicroTari(10_000), MicroTari(750), 2);
 
         let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
             storage_capacity: 10,
@@ -321,12 +261,12 @@ mod test {
 
     #[test]
     fn test_discard_double_spend_txs() {
-        let tx1 = create_test_tx(MicroTari(500), 2);
-        let tx2 = create_test_tx(MicroTari(100), 3);
-        let tx3 = create_test_tx(MicroTari(1000), 2);
-        let tx4 = create_test_tx(MicroTari(200), 2);
-        let mut tx5 = create_test_tx(MicroTari(500), 3);
-        let mut tx6 = create_test_tx(MicroTari(750), 2);
+        let tx1 = create_test_tx(MicroTari(5_000), MicroTari(500), 2);
+        let tx2 = create_test_tx(MicroTari(5_000), MicroTari(100), 3);
+        let tx3 = create_test_tx(MicroTari(5_000), MicroTari(1000), 2);
+        let tx4 = create_test_tx(MicroTari(5_000), MicroTari(200), 2);
+        let mut tx5 = create_test_tx(MicroTari(5_000), MicroTari(500), 3);
+        let mut tx6 = create_test_tx(MicroTari(5_000), MicroTari(750), 2);
         // tx1 and tx5 have a shared input. Also, tx3 and tx6 have a shared input
         tx5.body.inputs[0] = tx1.body.inputs[0].clone();
         tx6.body.inputs[1] = tx3.body.inputs[1].clone();
