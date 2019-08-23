@@ -26,7 +26,7 @@ mod domain_deserializer;
 pub mod liveness;
 mod service_name;
 
-use crate::executor::handles;
+use tari_service_framework::handles;
 
 pub use self::service_name::ServiceName;
 

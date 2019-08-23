@@ -25,16 +25,12 @@
 #![feature(type_alias_impl_trait)]
 
 #[macro_use]
-extern crate futures;
-
-#[macro_use]
 mod macros;
 mod consts;
 
 // TODO Put these back in after Futures Comms stack refactor
 // pub mod saf_service;
 // pub mod dht_service;
-pub mod executor;
 pub mod initialization;
 pub mod peer;
 pub mod ping_pong;

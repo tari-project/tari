@@ -29,7 +29,7 @@ use futures::{
     Poll,
     Stream,
 };
-use serde::export::PhantomData;
+use std::marker::PhantomData;
 use tower_service::Service;
 
 /// Create a new Requester/Responder pair which wraps and calls the given service

@@ -108,10 +108,10 @@ impl Service<LivenessRequest> for LivenessService {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::executor::transport;
     use futures::Async;
     use rand::rngs::OsRng;
     use tari_crypto::keys::PublicKey;
+    use tari_service_framework::transport;
     use tokio::runtime::Runtime;
     use tower_util::service_fn;
 
