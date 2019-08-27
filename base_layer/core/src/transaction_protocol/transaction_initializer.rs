@@ -308,7 +308,7 @@ impl SenderTransactionInitializer {
 #[cfg(test)]
 mod test {
     use crate::{
-        fee::{Fee, BASE_COST, COST_PER_INPUT, COST_PER_OUTPUT},
+        fee::{Fee, BASE_COST, WEIGHT_PER_INPUT, WEIGHT_PER_OUTPUT},
         tari_amount::*,
         transaction::{UnblindedOutput, MAX_TRANSACTION_INPUTS},
         transaction_protocol::{
@@ -409,8 +409,8 @@ mod test {
         let mut rng = OsRng::new().unwrap();
         let p = TestParams::new(&mut rng);
         let (utxo, input) = make_input(&mut rng, MicroTari(500));
-        let expected_fee = MicroTari::from(BASE_COST + (COST_PER_INPUT + 1 * COST_PER_OUTPUT) * 20); // 101, output = 80
-                                                                                                     // Pay out so that I should get change, but not enough to pay for the output
+        let expected_fee = MicroTari::from(BASE_COST + (WEIGHT_PER_INPUT + 1 * WEIGHT_PER_OUTPUT) * 20); // 101, output = 80
+                                                                                                         // Pay out so that I should get change, but not enough to pay for the output
         let output = UnblindedOutput::new(MicroTari(500) - expected_fee - MicroTari(50), p.spend_key, None);
         // Start the builder
         let mut builder = SenderTransactionInitializer::new(0);

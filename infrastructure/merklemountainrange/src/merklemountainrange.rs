@@ -171,6 +171,12 @@ where
         Some(&object.object)
     }
 
+    /// This function checks if the provided object is stored in the mmr.
+    /// It will return false if the object does not exist
+    pub fn contains(&self, object: &T) -> bool {
+        self.get_object(&object.hash()).is_some()
+    }
+
     /// This function returns a reference to the last added data stored in the mmr
     /// It will return none if the hash does not exist
     pub fn get_last_added_object(&self) -> Option<&T> {

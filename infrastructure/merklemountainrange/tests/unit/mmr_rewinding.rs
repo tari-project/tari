@@ -51,7 +51,7 @@ fn rewind_simple() {
         .build()
         .unwrap();
     assert!(mmr.checkpoint().is_ok());
-    assert!(mmr.apply_state(&mut store).is_ok());;
+    assert!(mmr.apply_state(&mut store).is_ok());
 
     let mut mmr2: MerkleMountainRange<TestObject, Blake2b> = MerkleMountainRange::new();
     mmr2.init_persistance_store(&"mmr".to_string(), 20);
@@ -104,7 +104,7 @@ fn batch_save() {
         .build()
         .unwrap();
     assert!(mmr.checkpoint().is_ok());
-    assert!(mmr.apply_state(&mut store).is_ok());;
+    assert!(mmr.apply_state(&mut store).is_ok());
 
     let mut mmr2: MerkleMountainRange<TestObject, Blake2b> = MerkleMountainRange::new();
     mmr2.init_persistance_store(&"mmr".to_string(), 20);

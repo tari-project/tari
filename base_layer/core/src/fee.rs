@@ -24,16 +24,14 @@ use crate::{tari_amount::*, transaction::MINIMUM_TRANSACTION_FEE};
 
 pub struct Fee {}
 
-pub const COST_PER_INPUT: u64 = 1;
-pub const COST_PER_OUTPUT: u64 = 4;
+pub const WEIGHT_PER_INPUT: u64 = 1;
+pub const WEIGHT_PER_OUTPUT: u64 = 4;
 pub const BASE_COST: u64 = 1;
 
 impl Fee {
     /// Computes the absolute transaction fee given the fee-per-gram, and the size of the transaction
     pub fn calculate(fee_per_gram: MicroTari, num_inputs: usize, num_outputs: usize) -> MicroTari {
-        (BASE_COST +
-            (COST_PER_INPUT * num_inputs as u64 + COST_PER_OUTPUT * num_outputs as u64) * u64::from(fee_per_gram))
-        .into()
+        (BASE_COST + Fee::calculate_weight(num_inputs, num_outputs) * u64::from(fee_per_gram)).into()
     }
 
     /// Computes the absolute transaction fee using `calculate`, but the resulting fee will always be at least the
@@ -45,5 +43,10 @@ impl Fee {
         } else {
             fee
         }
+    }
+
+    /// Calculate the weight of a transaction based on the number of inputs and outputs
+    pub fn calculate_weight(num_inputs: usize, num_outputs: usize) -> u64 {
+        WEIGHT_PER_INPUT * num_inputs as u64 + WEIGHT_PER_OUTPUT * num_outputs as u64
     }
 }

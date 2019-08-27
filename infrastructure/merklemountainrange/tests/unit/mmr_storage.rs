@@ -125,7 +125,7 @@ fn create_large_mmr() {
         .build()
         .unwrap();
     assert!(mmr.checkpoint().is_ok());
-    assert!(mmr.apply_state(&mut store).is_ok());;
+    assert!(mmr.apply_state(&mut store).is_ok());
     let mut mmr2: MerkleMountainRange<TestObject, Blake2b> = MerkleMountainRange::new();
     mmr2.init_persistance_store(&"mmr".to_string(), 5);
     assert!(mmr2.load_from_store(&mut store).is_ok());
