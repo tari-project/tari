@@ -77,7 +77,7 @@ where
     /// * `diffs`: The (usually empty) collection of diffs that will be used to store the MMR checkpoints.
     ///
     /// # Returns
-    /// A new `MerkleChangeTracker` instance that is configured using the MMR and ChangeTRacker instances provided.
+    /// A new `MerkleChangeTracker` instance that is configured using the MMR and ChangeTracker instances provided.
     pub fn new(
         base: MutableMmr<D, BaseBackend>,
         diffs: CpBackend,

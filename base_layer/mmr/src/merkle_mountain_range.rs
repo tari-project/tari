@@ -98,8 +98,8 @@ where
             .fold(hasher, |hasher, h| hasher.chain(h))
     }
 
-    /// Push a new element into the MMR. Computes new related peaks at
-    /// the same time if applicable.
+    /// Push a new element into the MMR. Computes new related peaks at the same time if applicable.
+    /// Returns the new length of the merkle mountain range (the number of all nodes, not just leaf nodes).
     pub fn push(&mut self, hash: &Hash) -> Result<usize, MerkleMountainRangeError> {
         if self.is_empty() {
             return self.push_hash(hash.clone());
