@@ -21,10 +21,10 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod error;
-mod unconfirmed_pool;
-mod unconfirmed_pool_storage;
+mod pending_pool;
+mod pending_pool_storage;
 
 // Public re-exports
-pub use error::UnconfirmedPoolError;
-pub use unconfirmed_pool::{UnconfirmedPool, UnconfirmedPoolConfig};
-pub use unconfirmed_pool_storage::UnconfirmedPoolStorage;
+pub use error::PendingPoolError;
+pub use pending_pool::{PendingPool, PendingPoolConfig};
+pub use pending_pool_storage::PendingPoolStorage;

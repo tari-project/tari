@@ -23,6 +23,8 @@
 mod error;
 mod mempool;
 mod orphan_pool;
+mod pending_pool;
+mod priority;
 mod unconfirmed_pool;
 
 // Public re-exports

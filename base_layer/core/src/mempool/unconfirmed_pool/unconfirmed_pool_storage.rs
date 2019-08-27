@@ -22,7 +22,10 @@
 
 use crate::{
     blocks::block::Block,
-    mempool::unconfirmed_pool::{PrioritizedTransaction, TxPriority, UnconfirmedPoolConfig, UnconfirmedPoolError},
+    mempool::{
+        priority::{FeePriority, PrioritizedTransaction},
+        unconfirmed_pool::{UnconfirmedPoolConfig, UnconfirmedPoolError},
+    },
     transaction::Transaction,
     types::Signature,
 };
@@ -42,7 +45,7 @@ use std::{
 pub struct UnconfirmedPoolStorage {
     config: UnconfirmedPoolConfig,
     txs_by_signature: HashMap<Signature, PrioritizedTransaction>,
-    txs_by_priority: BTreeMap<TxPriority, Signature>,
+    txs_by_priority: BTreeMap<FeePriority, Signature>,
 }
 
 impl UnconfirmedPoolStorage {
@@ -55,7 +58,7 @@ impl UnconfirmedPoolStorage {
         }
     }
 
-    fn lowest_priority(&self) -> &TxPriority {
+    fn lowest_priority(&self) -> &FeePriority {
         self.txs_by_priority.iter().next().unwrap().0
     }
 

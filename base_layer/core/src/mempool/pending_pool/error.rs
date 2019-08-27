@@ -24,7 +24,7 @@ use crate::mempool::priority::PriorityError;
 use derive_error::Error;
 
 #[derive(Debug, Error)]
-pub enum UnconfirmedPoolError {
+pub enum PendingPoolError {
     /// The HashMap and BTreeMap are out of sync
     StorageOutofSync,
     /// The Thread Safety has been breached and the data access has become poisoned

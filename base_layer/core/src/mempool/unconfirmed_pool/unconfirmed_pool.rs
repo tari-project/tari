@@ -97,7 +97,7 @@ impl UnconfirmedPool {
             .highest_priority_txs(total_weight)
     }
 
-    /// Remove all published transactions from the UnconfirmedPool
+    /// Remove all published transactions from the UnconfirmedPool and discard all double spend transactions
     pub fn remove_published_and_discard_double_spends(
         &mut self,
         published_block: &Block,

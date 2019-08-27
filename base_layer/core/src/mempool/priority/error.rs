@@ -20,14 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::mempool::priority::PriorityError;
 use derive_error::Error;
+use tari_utilities::message_format::MessageFormatError;
 
 #[derive(Debug, Error)]
-pub enum UnconfirmedPoolError {
-    /// The HashMap and BTreeMap are out of sync
-    StorageOutofSync,
-    /// The Thread Safety has been breached and the data access has become poisoned
-    PoisonedAccess,
-    PriorityError(PriorityError),
+pub enum PriorityError {
+    MessageFormatError(MessageFormatError),
 }
