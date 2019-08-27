@@ -25,6 +25,7 @@ use crate::{
     mempool::{
         error::MempoolError,
         orphan_pool::{OrphanPool, OrphanPoolConfig},
+        pending_pool::{PendingPool, PendingPoolConfig},
         unconfirmed_pool::{UnconfirmedPool, UnconfirmedPoolConfig},
     },
     transaction::Transaction,
@@ -37,7 +38,8 @@ use std::sync::Arc;
 pub struct MempoolConfig {
     pub unconfirmed_pool_config: UnconfirmedPoolConfig,
     pub orphan_pool_config: OrphanPoolConfig,
-    // TODO: Add configs for PendingPool and ReOrgPool
+    pub pending_pool_config: PendingPoolConfig,
+    // TODO: Add configs for ReOrgPool
 }
 
 impl Default for MempoolConfig {
@@ -45,6 +47,7 @@ impl Default for MempoolConfig {
         Self {
             unconfirmed_pool_config: UnconfirmedPoolConfig::default(),
             orphan_pool_config: OrphanPoolConfig::default(),
+            pending_pool_config: PendingPoolConfig::default(),
         }
     }
 }
@@ -55,7 +58,8 @@ impl Default for MempoolConfig {
 pub struct Mempool {
     unconfirmed_pool: UnconfirmedPool,
     orphan_pool: OrphanPool,
-    // TODO: Add PendingPool and ReOrgPool
+    pending_pool: PendingPool,
+    // TODO: Add ReOrgPool
 }
 
 impl Mempool {
@@ -64,6 +68,7 @@ impl Mempool {
         Self {
             unconfirmed_pool: UnconfirmedPool::new(config.unconfirmed_pool_config),
             orphan_pool: OrphanPool::new(config.orphan_pool_config),
+            pending_pool: PendingPool::new(config.pending_pool_config),
         }
     }
 

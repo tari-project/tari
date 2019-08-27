@@ -20,47 +20,49 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{mempool::unconfirmed_pool::UnconfirmedPoolError, transaction::Transaction};
+use crate::{
+    mempool::priority::{FeePriority, PriorityError},
+    transaction::Transaction,
+};
 use std::{convert::TryFrom, sync::Arc};
 use tari_utilities::message_format::MessageFormat;
 
-/// Create a unique unspent transaction priority based on the transaction fee, age of the oldest input UTXO and the
-/// excess_sig. The excess_sig is included to ensure the the priority key unique so it can be used with a BTreeMap.
-/// Normally, duplicate keys will be overwritten in a BTreeMap.
+/// Create a unique transaction priority based on the lock_height and the excess_sig, allowing transactions to be sorted
+/// according to their time-lock expiry. The excess_sig is included to ensure the priority key is unique so it can be
+/// used with a BTreeMap.
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug)]
-pub struct TxPriority(Vec<u8>);
+pub struct TimelockPriority(Vec<u8>);
 
-impl TxPriority {
-    pub fn try_from(transaction: &Transaction) -> Result<Self, UnconfirmedPoolError> {
-        let fee_per_byte = (transaction.calculate_ave_fee_per_gram() * 1000.0) as usize; // Include 3 decimal places before flooring
-        let mut priority = fee_per_byte.to_binary()?;
-        priority.reverse(); // Fee needs to be in Big-endian for sorting with BtreeMap to work correctly
-                            // TODO: Add oldest input UTXO age
+impl TimelockPriority {
+    pub fn try_from(transaction: &Transaction) -> Result<Self, PriorityError> {
+        let mut priority = transaction.body.kernels[0].lock_height.to_binary()?;
+        priority.reverse(); // Timelock needs to be in Big-endian for sorting with BtreeMap to work correctly
         priority.append(&mut transaction.body.kernels[0].to_binary()?);
         Ok(Self(priority))
     }
 }
 
-impl Clone for TxPriority {
+impl Clone for TimelockPriority {
     fn clone(&self) -> Self {
-        TxPriority(self.0.clone())
+        TimelockPriority(self.0.clone())
     }
 }
 
-/// A prioritized transaction includes a transaction and the calculated priority of the transaction.
-pub struct PrioritizedTransaction {
+/// A Timelocked prioritized transaction includes a transaction and the calculated FeePriority and TimelockPriority of
+/// the transaction.
+pub struct TimelockedTransaction {
     pub transaction: Arc<Transaction>,
-    pub priority: TxPriority,
-    pub weight: u64,
+    pub fee_priority: FeePriority,
+    pub timelock_priority: TimelockPriority,
 }
 
-impl TryFrom<Transaction> for PrioritizedTransaction {
-    type Error = UnconfirmedPoolError;
+impl TryFrom<Transaction> for TimelockedTransaction {
+    type Error = PriorityError;
 
     fn try_from(transaction: Transaction) -> Result<Self, Self::Error> {
         Ok(Self {
-            priority: TxPriority::try_from(&transaction)?,
-            weight: transaction.calculate_weight(),
+            fee_priority: FeePriority::try_from(&transaction)?,
+            timelock_priority: TimelockPriority::try_from(&transaction)?,
             transaction: Arc::new(transaction),
         })
     }

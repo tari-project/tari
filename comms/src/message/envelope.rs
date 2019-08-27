@@ -369,7 +369,7 @@ mod test {
         .unwrap();
 
         // Forwarded MessageEnvelope
-        let peer_envelope = MessageEnvelope::forward_construct(&peer_node_identity, origin_envelope).unwrap();;
+        let peer_envelope = MessageEnvelope::forward_construct(&peer_node_identity, origin_envelope).unwrap();
         let peer_header = MessageEnvelopeHeader::from_binary(peer_envelope.header_frame()).unwrap();
 
         assert_eq!(peer_header.origin_source, origin_node_identity.identity.public_key);
