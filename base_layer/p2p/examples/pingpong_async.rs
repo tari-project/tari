@@ -46,7 +46,6 @@ use tari_comms::{
     peer_manager::{NodeIdentity, Peer, PeerFlags, PeerNodeIdentity},
 };
 use tari_p2p::{
-    executor::StackBuilder,
     initialization::{initialize_comms, CommsConfig},
     services::{
         comms_outbound::CommsOutboundServiceInitializer,
@@ -55,6 +54,7 @@ use tari_p2p::{
         ServiceName,
     },
 };
+use tari_service_framework::StackBuilder;
 use tari_utilities::message_format::MessageFormat;
 use tempdir::TempDir;
 use tokio::{runtime::Runtime, timer::Interval};
