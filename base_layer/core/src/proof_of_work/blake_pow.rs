@@ -96,10 +96,7 @@ impl Hashable for BlakePow {
 
 #[cfg(test)]
 mod test {
-    use crate::{
-        blocks::blockheader::BlockHeader,
-        proof_of_work::{ProofOfWork},
-    };
+    use crate::{blocks::blockheader::BlockHeader, proof_of_work::ProofOfWork};
 
     #[test]
     fn validate_max_target() {
