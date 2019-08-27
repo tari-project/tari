@@ -31,8 +31,8 @@ use tari_utilities::message_format::MessageFormat;
 pub struct TxPriority(Vec<u8>);
 
 impl TxPriority {
-    pub fn try_from(transaction: &Transaction, weight: usize) -> Result<Self, UnconfirmedPoolError> {
-        let fee_per_byte = ((transaction.body.get_total_fee().0 as f64) / weight as f64 * 1000.0) as usize; // Include 3 decimal places before flooring
+    pub fn try_from(transaction: &Transaction) -> Result<Self, UnconfirmedPoolError> {
+        let fee_per_byte = (transaction.calculate_ave_fee_per_gram() * 1000.0) as usize; // Include 3 decimal places before flooring
         let mut priority = fee_per_byte.to_binary()?;
         priority.reverse(); // Fee needs to be in Big-endian for sorting with BtreeMap to work correctly
                             // TODO: Add oldest input UTXO age
@@ -51,19 +51,17 @@ impl Clone for TxPriority {
 pub struct PrioritizedTransaction {
     pub transaction: Arc<Transaction>,
     pub priority: TxPriority,
-    pub weight: usize,
+    pub weight: u64,
 }
 
 impl TryFrom<Transaction> for PrioritizedTransaction {
     type Error = UnconfirmedPoolError;
 
     fn try_from(transaction: Transaction) -> Result<Self, Self::Error> {
-        let weight = transaction.get_weight()?;
-        let priority = TxPriority::try_from(&transaction, weight)?;
         Ok(Self {
+            priority: TxPriority::try_from(&transaction)?,
+            weight: transaction.calculate_weight(),
             transaction: Arc::new(transaction),
-            priority,
-            weight,
         })
     }
 }

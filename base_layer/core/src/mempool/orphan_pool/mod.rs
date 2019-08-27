@@ -20,11 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod error;
-mod mempool;
 mod orphan_pool;
-mod unconfirmed_pool;
 
 // Public re-exports
-pub use error::MempoolError;
-pub use mempool::Mempool;
+pub use orphan_pool::{OrphanPool, OrphanPoolConfig};

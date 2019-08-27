@@ -31,6 +31,7 @@ use crate::{
 
 use crate::{
     consensus::ConsensusRules,
+    fee::Fee,
     transaction_protocol::{build_challenge, TransactionMetadata},
     types::{HashDigest, RangeProof, RangeProofService},
 };
@@ -42,11 +43,7 @@ use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     range_proof::{RangeProofError, RangeProofService as RangeProofServiceTrait},
 };
-use tari_utilities::{
-    message_format::{MessageFormat, MessageFormatError},
-    ByteArray,
-    Hashable,
-};
+use tari_utilities::{ByteArray, Hashable};
 
 // These are set fairly arbitrarily at the moment. We'll need to do some modelling / testing to tune these values.
 pub const MAX_TRANSACTION_INPUTS: usize = 500;
@@ -503,8 +500,14 @@ impl Transaction {
         &self.body
     }
 
-    pub fn get_weight(&self) -> Result<usize, MessageFormatError> {
-        Ok(self.to_binary()?.len())
+    /// Returns the byte size or weight of a transaction
+    pub fn calculate_weight(&self) -> u64 {
+        Fee::calculate_weight(self.body.inputs.len(), self.body.outputs.len())
+    }
+
+    /// Returns the total fee allocated to each byte of the transaction
+    pub fn calculate_ave_fee_per_gram(&self) -> f64 {
+        (self.body.get_total_fee().0 as f64) / self.calculate_weight() as f64
     }
 }
 

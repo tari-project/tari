@@ -24,6 +24,7 @@ use crate::{
     blocks::block::Block,
     mempool::{
         error::MempoolError,
+        orphan_pool::{OrphanPool, OrphanPoolConfig},
         unconfirmed_pool::{UnconfirmedPool, UnconfirmedPoolConfig},
     },
     transaction::Transaction,
@@ -34,13 +35,16 @@ use std::sync::Arc;
 /// Configuration for the Mempool
 #[derive(Clone, Copy)]
 pub struct MempoolConfig {
-    pub unconfirmed_pool_config: UnconfirmedPoolConfig, // TODO: Add configs for OrphanPool, PendingPool and ReOrgPool
+    pub unconfirmed_pool_config: UnconfirmedPoolConfig,
+    pub orphan_pool_config: OrphanPoolConfig,
+    // TODO: Add configs for PendingPool and ReOrgPool
 }
 
 impl Default for MempoolConfig {
     fn default() -> Self {
         Self {
             unconfirmed_pool_config: UnconfirmedPoolConfig::default(),
+            orphan_pool_config: OrphanPoolConfig::default(),
         }
     }
 }
@@ -50,7 +54,8 @@ impl Default for MempoolConfig {
 /// that have recently been included in a block.
 pub struct Mempool {
     unconfirmed_pool: UnconfirmedPool,
-    // TODO: Add OrphanPool, PendingPool and ReOrgPool
+    orphan_pool: OrphanPool,
+    // TODO: Add PendingPool and ReOrgPool
 }
 
 impl Mempool {
@@ -58,6 +63,7 @@ impl Mempool {
     pub fn new(config: MempoolConfig) -> Self {
         Self {
             unconfirmed_pool: UnconfirmedPool::new(config.unconfirmed_pool_config),
+            orphan_pool: OrphanPool::new(config.orphan_pool_config),
         }
     }
 
@@ -88,7 +94,7 @@ impl Mempool {
     }
 
     /// Update the Mempool based on the received published block
-    pub fn process_published_block(&mut self, published_block: &Block) -> Result<(), MempoolError> {
+    pub fn process_published_block(&mut self, _published_block: &Block) -> Result<(), MempoolError> {
         // Move published txs to ReOrgPool and discard double spends
         // reorg_pool.insert_txs(unconfirmed_pool.remove_published_and_discard_double_spends(published_block)?)?;
 
@@ -97,7 +103,7 @@ impl Mempool {
 
         // Move Time-locked txs that have input UTXOs that have recently become valid to PendingPool. Move txs with no
         // or recently expired time-locks that have input UTXOs that have recently become valid to the UnconfirmedPool
-        // let (txs,time_locked_txs)=orphan_pool.remove_valid()?;
+        // let (txs,time_locked_txs)=orphan_pool.remove_valid(published_block.header.height,utxos)?;
         // pending_pool.insert_txs(time_locked_txs)?;
         // unconfirmed_pool.insert_txs(txs)?;
 
@@ -124,6 +130,7 @@ impl Mempool {
     }
 
     /// Returns all unconfirmed transaction stored in the Mempool, except the transactions stored in the ReOrgPool.
+    // TODO: Investigate returning an iterator rather than a large vector of transactions
     pub fn snapshot(&self) -> Result<Vec<Arc<Transaction>>, MempoolError> {
         // return content of UnconfirmedPool, OrphanPool and PendingPool
 
