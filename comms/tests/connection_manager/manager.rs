@@ -33,8 +33,8 @@ use tari_comms::{
     types::CommsDatabase,
 };
 use tari_storage::{
-    key_val_store::lmdb_database::LMDBWrapper,
     lmdb_store::{LMDBBuilder, LMDBError, LMDBStore},
+    LMDBWrapper,
 };
 use tari_utilities::thread_join::ThreadJoinWithTimeout;
 

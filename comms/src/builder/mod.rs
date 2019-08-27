@@ -34,7 +34,7 @@
 //! # use rand::OsRng;
 //! # use tari_storage::lmdb_store::LMDBBuilder;
 //! # use lmdb_zero::db;
-//! # use tari_storage::key_val_store::lmdb_database::LMDBWrapper;
+//! # use tari_storage::LMDBWrapper;
 //!
 //! // This should be loaded up from storage
 //! let my_node_identity = NodeIdentity::random(&mut OsRng::new().unwrap(), "127.0.0.1:9000".parse().unwrap()).unwrap();

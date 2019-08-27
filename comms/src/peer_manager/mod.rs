@@ -38,7 +38,7 @@
 //! # use tari_storage::lmdb_store::LMDBBuilder;
 //! # use lmdb_zero::db;
 //! # use std::sync::Arc;
-//! # use tari_storage::key_val_store::lmdb_database::LMDBWrapper;
+//! # use tari_storage::LMDBWrapper;
 //!
 //! let mut rng = rand::OsRng::new().unwrap();
 //! let (dest_sk, pk) = CommsPublicKey::random_keypair(&mut rng);

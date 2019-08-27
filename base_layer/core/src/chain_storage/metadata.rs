@@ -1,4 +1,4 @@
-// Copyright 2019 The Tari Project
+// Copyright 2019. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,5 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod support;
-mod unit;
+#[derive(Debug, Clone, Default)]
+pub struct ChainMetadata {
+    pub height_of_longest_chain: u64,
+    pub greatest_accumulated_work: u64,
+}
+
+impl ChainMetadata {
+    pub fn new(height: u64, work: u64) -> ChainMetadata {
+        ChainMetadata {
+            height_of_longest_chain: height,
+            greatest_accumulated_work: work,
+        }
+    }
+}

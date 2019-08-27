@@ -32,8 +32,8 @@ use tari_comms::{
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFlags, PeerManager},
 };
 use tari_storage::{
-    key_val_store::lmdb_database::LMDBWrapper,
     lmdb_store::{LMDBBuilder, LMDBDatabase, LMDBError, LMDBStore},
+    LMDBWrapper,
 };
 use tari_utilities::thread_join::ThreadJoinWithTimeout;
 

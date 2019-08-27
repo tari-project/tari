@@ -26,12 +26,12 @@ use crate::{
     tari_amount::MicroTari,
     transaction::{KernelBuilder, OutputFeatures, Transaction, TransactionInput, TransactionKernel, TransactionOutput},
     transaction_protocol::{build_challenge, TransactionMetadata},
-    types::{PrivateKey, PublicKey, RangeProof, Signature, SignatureHash, COMMITMENT_FACTORY},
+    types::{Commitment, PrivateKey, PublicKey, RangeProof, Signature, COMMITMENT_FACTORY, PROVER},
 };
-use merklemountainrange::merklemountainrange::MerkleMountainRange;
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::{PublicKey as PK, SecretKey},
+    range_proof::RangeProofService,
 };
 
 /// Create an unconfirmed transaction for testing with a valid fee, unique access_sig, random inputs and outputs, the
@@ -61,7 +61,7 @@ pub fn create_test_tx(
         let output = TransactionOutput::new(
             OutputFeatures::default(),
             COMMITMENT_FACTORY.commit(&PrivateKey::random(&mut rng), &MicroTari(10).into()),
-            RangeProof { 0: Vec::new() },
+            RangeProof::default(),
         );
         body.outputs.push(output);
     }
@@ -74,17 +74,11 @@ pub fn create_test_tx(
 
 /// Create a transaction kernel with the given fee, using random keys to generate the signature
 pub fn create_test_kernel(fee: MicroTari, lock_height: u64) -> TransactionKernel {
-    let mut rng = rand::OsRng::new().unwrap();
-    let tx_meta = TransactionMetadata { fee, lock_height: 0 };
-    let key = PrivateKey::random(&mut rng);
-    let r = PrivateKey::random(&mut rng);
-    let e = build_challenge(&PublicKey::from_secret_key(&r), &tx_meta);
-    let excess = COMMITMENT_FACTORY.commit_value(&key, 0);
-    let s = Signature::sign(key.clone(), r, &e).unwrap();
+    let (excess, s) = create_random_signature(fee);
     KernelBuilder::new()
         .with_fee(fee)
         .with_lock_height(lock_height)
-        .with_excess(&excess)
+        .with_excess(&Commitment::from_public_key(&excess))
         .with_signature(&s)
         .build()
         .unwrap()
@@ -105,18 +99,45 @@ pub fn create_test_block(block_height: u64, transactions: Vec<Transaction>) -> B
 }
 
 /// Create a partially constructed utxo set using the outputs of a test block
-pub fn create_test_utxos(published_block: &Block) -> MerkleMountainRange<TransactionInput, SignatureHash> {
-    let mut utxos = MerkleMountainRange::<TransactionInput, SignatureHash>::new();
-    extend_test_utxos(&mut utxos, published_block);
-    utxos
-}
-
-/// Extend an existing partially constructed utxo set using the outputs of the provided test block
-pub fn extend_test_utxos(utxos: &mut MerkleMountainRange<TransactionInput, SignatureHash>, published_block: &Block) {
+pub fn extract_outputs_as_inputs(utxos: &mut Vec<TransactionInput>, published_block: &Block) {
     for output in &published_block.body.outputs {
         let input = TransactionInput::from(output.clone());
         if !utxos.contains(&input) {
-            utxos.push(input).unwrap();
+            utxos.push(input);
         }
     }
+}
+
+/// Generate a random signature, returning the public key (excess) and the signature.
+pub fn create_random_signature(fee: MicroTari) -> (PublicKey, Signature) {
+    let mut rng = rand::OsRng::new().unwrap();
+    let r = SecretKey::random(&mut rng);
+    let (k, p) = PublicKey::random_keypair(&mut rng);
+    let tx_meta = TransactionMetadata { fee, lock_height: 0 };
+    let e = build_challenge(&PublicKey::from_secret_key(&r), &tx_meta);
+    (p, Signature::sign(k, r, &e).unwrap())
+}
+
+/// A convenience struct for a set of public-private keys and a public-private nonce
+pub struct TestKeySet {
+    k: PrivateKey,
+    pk: PublicKey,
+    r: PrivateKey,
+    pr: PublicKey,
+}
+
+pub fn generate_keys() -> TestKeySet {
+    let mut rng = rand::OsRng::new().unwrap();
+    let (k, pk) = PublicKey::random_keypair(&mut rng);
+    let (r, pr) = PublicKey::random_keypair(&mut rng);
+    TestKeySet { k, pk, r, pr }
+}
+
+/// Create a new UTXO for the specified value and return the output and spending key
+pub fn create_utxo(value: MicroTari) -> (TransactionOutput, PrivateKey) {
+    let keys = generate_keys();
+    let commitment = COMMITMENT_FACTORY.commit_value(&keys.k, value.into());
+    let proof = PROVER.construct_proof(&keys.k, value.into()).unwrap();
+    let utxo = TransactionOutput::new(OutputFeatures::default(), commitment, proof.into());
+    (utxo, keys.k)
 }

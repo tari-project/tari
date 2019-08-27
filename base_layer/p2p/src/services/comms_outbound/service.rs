@@ -116,7 +116,7 @@ mod test {
         types::CommsPublicKey,
     };
     use tari_crypto::keys::PublicKey;
-    use tari_storage::{key_val_store::lmdb_database::LMDBWrapper, lmdb_store::LMDBBuilder};
+    use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
     use tari_utilities::message_format::MessageFormat;
     use tempdir::TempDir;
 

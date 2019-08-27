@@ -372,7 +372,7 @@ mod test {
     use rand::rngs::OsRng;
     use std::{thread, time::Duration};
     use tari_crypto::keys::PublicKey;
-    use tari_storage::key_val_store::HMapDatabase;
+    use tari_storage::HMapDatabase;
 
     fn setup() -> (ZmqContext, Arc<NodeIdentity>, Arc<PeerManager>) {
         let context = ZmqContext::new();

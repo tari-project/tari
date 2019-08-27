@@ -29,7 +29,7 @@ fn load_test_block_chain_from_file() -> SimpleBlockChain {
     let blockchain: SimpleBlockChain = serde_json::from_str(&read_json).unwrap();
     blockchain
 }
-#[test]
+//#[test]
 fn test_valid_blocks() {
     let rules = ConsensusRules::current();
     let chain = load_test_block_chain_from_file();

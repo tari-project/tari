@@ -55,7 +55,7 @@
 //! # use rand::OsRng;
 //! # use tari_storage::lmdb_store::LMDBBuilder;
 //! # use lmdb_zero::db;
-//! # use tari_storage::key_val_store::lmdb_database::LMDBWrapper;
+//! # use tari_storage::LMDBWrapper;
 //!
 //! let node_identity = Arc::new(NodeIdentity::random(&mut OsRng::new().unwrap(), "127.0.0.1:9000".parse().unwrap()).unwrap());
 //!

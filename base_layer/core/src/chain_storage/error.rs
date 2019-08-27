@@ -1,4 +1,4 @@
-// Copyright 2018 The Tari Project
+// Copyright 2019. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,48 +20,23 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::blocks::aggregated_body::AggregateBody;
 use derive_error::Error;
-use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Default, Clone, Debug, PartialEq)]
-pub struct MockProofOfWork {
-    pub work: u64,
-}
-/// This describes the interface the block validation will use when interacting with the proof of work.
-pub trait ProofOfWorkInterface {
-    /// This function will compare another proof of work. It will return true if the other is higher.
-    fn has_more_accum_work_than(&self, other: &Self) -> bool;
-    /// This function provides the proof that is supplied in the block header as bytes.
-    fn proof_as_bytes(&self) -> Vec<u8>;
-    /// This function  will validate the proof of work for the given block.
-    fn validate_pow(&self, body: &AggregateBody) -> Result<(), PoWError>;
-}
-
-#[derive(Clone, Debug, PartialEq, Error)]
-pub enum PoWError {
-    // ProofOfWorkFailed
-    InvalidProofOfWork,
-}
-
-impl MockProofOfWork {
-    pub fn new() -> MockProofOfWork {
-        MockProofOfWork { work: 0 }
-    }
-}
-
-impl ProofOfWorkInterface for MockProofOfWork {
-    fn proof_as_bytes(&self) -> Vec<u8> {
-        let mut buf = Vec::new();
-        bincode::serialize_into(&mut buf, self).unwrap(); // this should not fail
-        buf
-    }
-
-    fn has_more_accum_work_than(&self, other: &MockProofOfWork) -> bool {
-        self.work < other.work
-    }
-
-    fn validate_pow(&self, _body: &AggregateBody) -> Result<(), PoWError> {
-        Ok(())
-    }
+#[derive(Debug, Error)]
+pub enum ChainStorageError {
+    // Access to the underlying storage mechanism failed
+    #[error(non_std, no_from)]
+    AccessError(String),
+    // The database may be corrupted or otherwise be in an inconsistent state. Please check logs to try and identify
+    // the issue
+    #[error(non_std, no_from)]
+    CorruptedDatabase(String),
+    // A given input could not be spent because it was not in the UTXO set
+    UnspendableInput,
+    // An unexpected result type was received for the given database request. This suggests that there is an internal
+    // error or bug of sorts.
+    UnexpectedResult,
+    // You tried to execute an invalid Database operation
+    #[error(msg_embedded, non_std, no_from)]
+    InvalidOperation(String),
 }

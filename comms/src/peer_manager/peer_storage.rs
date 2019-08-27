@@ -33,7 +33,7 @@ use crate::{
 };
 use rand::Rng;
 use std::{cmp::min, collections::HashMap, time::Duration};
-use tari_storage::key_val_store::KeyValStore;
+use tari_storage::KeyValueStore;
 
 /// PeerStorage provides a mechanism to keep a datastore and a local copy of all peers in sync and allow fast searches
 /// using the node_id, public key or net_address of a peer.
@@ -46,7 +46,7 @@ pub struct PeerStorage<DS> {
 }
 
 impl<DS> PeerStorage<DS>
-where DS: KeyValStore<PeerKey, Peer>
+where DS: KeyValueStore<PeerKey, Peer>
 {
     /// Constructs a new empty PeerStorage system
     pub fn new(database: DS) -> Result<PeerStorage<DS>, PeerManagerError> {
@@ -83,7 +83,7 @@ where DS: KeyValStore<PeerKey, Peer>
                 self.remove_hashmap_links(peer_key)?;
                 self.add_hashmap_links(peer_key, &peer);
                 self.peers
-                    .insert_pair(peer_key, peer)
+                    .insert(peer_key, peer)
                     .map_err(PeerManagerError::DatabaseError)?;
                 Ok(())
             },
@@ -92,7 +92,7 @@ where DS: KeyValStore<PeerKey, Peer>
                 let peer_key = generate_peer_key(&mut self.rng); // Generate new random peer key
                 self.add_hashmap_links(peer_key, &peer);
                 self.peers
-                    .insert_pair(peer_key, peer)
+                    .insert(peer_key, peer)
                     .map_err(PeerManagerError::DatabaseError)?;
                 Ok(())
             },
@@ -116,14 +116,14 @@ where DS: KeyValStore<PeerKey, Peer>
 
                 let mut stored_peer: Peer = self
                     .peers
-                    .get_value(&peer_key)
+                    .get(&peer_key)
                     .map_err(|e| PeerManagerError::DatabaseError(e))?
                     .ok_or(PeerManagerError::PeerNotFoundError)?;
                 stored_peer.update(node_id, net_addresses, flags);
 
                 self.add_hashmap_links(peer_key, &stored_peer);
                 self.peers
-                    .insert_pair(peer_key, stored_peer)
+                    .insert(peer_key, stored_peer)
                     .map_err(|e| PeerManagerError::DatabaseError(e))?;
                 Ok(())
             },
@@ -156,7 +156,7 @@ where DS: KeyValStore<PeerKey, Peer>
     fn remove_hashmap_links(&mut self, peer_key: PeerKey) -> Result<(), PeerManagerError> {
         let peer: Peer = self
             .peers
-            .get_value(&peer_key)
+            .get(&peer_key)
             .map_err(PeerManagerError::DatabaseError)?
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         self.node_id_hm.remove(&peer.node_id);
@@ -174,7 +174,7 @@ where DS: KeyValStore<PeerKey, Peer>
             .get(&node_id)
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         self.peers
-            .get_value(&peer_key)
+            .get(&peer_key)
             .map_err(PeerManagerError::DatabaseError)?
             .ok_or(PeerManagerError::PeerNotFoundError)
     }
@@ -186,7 +186,7 @@ where DS: KeyValStore<PeerKey, Peer>
             .get(&public_key)
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         self.peers
-            .get_value(&peer_key)
+            .get(&peer_key)
             .map_err(PeerManagerError::DatabaseError)?
             .ok_or(PeerManagerError::PeerNotFoundError)
     }
@@ -198,7 +198,7 @@ where DS: KeyValStore<PeerKey, Peer>
             .get(&net_address)
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         self.peers
-            .get_value(&peer_key)
+            .get(&peer_key)
             .map_err(PeerManagerError::DatabaseError)?
             .ok_or(PeerManagerError::PeerNotFoundError)
     }
@@ -221,7 +221,7 @@ where DS: KeyValStore<PeerKey, Peer>
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         let peer: Peer = self
             .peers
-            .get_value(&peer_key)
+            .get(&peer_key)
             .map_err(PeerManagerError::DatabaseError)?
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         if peer.is_banned() {
@@ -243,7 +243,7 @@ where DS: KeyValStore<PeerKey, Peer>
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         let peer: Peer = self
             .peers
-            .get_value(&peer_key)
+            .get(&peer_key)
             .map_err(PeerManagerError::DatabaseError)?
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         if peer.is_banned() {
@@ -301,7 +301,7 @@ where DS: KeyValStore<PeerKey, Peer>
                 }
                 let peer: Peer = self
                     .peers
-                    .get_value(&peer_keys[i])
+                    .get(&peer_keys[i])
                     .map_err(PeerManagerError::DatabaseError)?
                     .ok_or(PeerManagerError::PeerNotFoundError)?;
                 nearest_identities.push(PeerNodeIdentity::new(peer.node_id.clone(), peer.public_key.clone()));
@@ -338,7 +338,7 @@ where DS: KeyValStore<PeerKey, Peer>
             for i in 0..max_available {
                 let peer: Peer = self
                     .peers
-                    .get_value(&peer_keys[i])
+                    .get(&peer_keys[i])
                     .map_err(PeerManagerError::DatabaseError)?
                     .ok_or(PeerManagerError::PeerNotFoundError)?;
                 random_identities.push(PeerNodeIdentity::new(peer.node_id.clone(), peer.public_key.clone()));
@@ -390,12 +390,12 @@ where DS: KeyValStore<PeerKey, Peer>
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         let mut peer: Peer = self
             .peers
-            .get_value(&peer_key)
+            .get(&peer_key)
             .map_err(PeerManagerError::DatabaseError)?
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         peer.set_banned(ban_flag);
         self.peers
-            .insert_pair(peer_key, peer)
+            .insert(peer_key, peer)
             .map_err(PeerManagerError::DatabaseError)
     }
 
@@ -407,13 +407,13 @@ where DS: KeyValStore<PeerKey, Peer>
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         let mut peer: Peer = self
             .peers
-            .get_value(&peer_key)
+            .get(&peer_key)
             .map_err(PeerManagerError::DatabaseError)?
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         peer.addresses.add_net_address(net_address);
         self.net_address_hm.insert(net_address.clone(), peer_key);
         self.peers
-            .insert_pair(peer_key, peer)
+            .insert(peer_key, peer)
             .map_err(PeerManagerError::DatabaseError)
     }
 
@@ -426,7 +426,7 @@ where DS: KeyValStore<PeerKey, Peer>
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         let mut peer: Peer = self
             .peers
-            .get_value(&peer_key)
+            .get(&peer_key)
             .map_err(PeerManagerError::DatabaseError)?
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         let best_net_address = peer
@@ -434,7 +434,7 @@ where DS: KeyValStore<PeerKey, Peer>
             .get_best_net_address()
             .map_err(PeerManagerError::NetAddressError)?;
         self.peers
-            .insert_pair(peer_key, peer)
+            .insert(peer_key, peer)
             .map_err(PeerManagerError::DatabaseError)?;
         Ok(best_net_address)
     }
@@ -453,14 +453,14 @@ where DS: KeyValStore<PeerKey, Peer>
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         let mut peer: Peer = self
             .peers
-            .get_value(&peer_key)
+            .get(&peer_key)
             .map_err(PeerManagerError::DatabaseError)?
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         peer.addresses
             .update_latency(net_address, latency_measurement)
             .map_err(PeerManagerError::NetAddressError)?;
         self.peers
-            .insert_pair(peer_key, peer)
+            .insert(peer_key, peer)
             .map_err(PeerManagerError::DatabaseError)
     }
 
@@ -472,14 +472,14 @@ where DS: KeyValStore<PeerKey, Peer>
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         let mut peer: Peer = self
             .peers
-            .get_value(&peer_key)
+            .get(&peer_key)
             .map_err(PeerManagerError::DatabaseError)?
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         peer.addresses
             .mark_message_received(net_address)
             .map_err(PeerManagerError::NetAddressError)?;
         self.peers
-            .insert_pair(peer_key, peer)
+            .insert(peer_key, peer)
             .map_err(PeerManagerError::DatabaseError)
     }
 
@@ -491,14 +491,14 @@ where DS: KeyValStore<PeerKey, Peer>
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         let mut peer: Peer = self
             .peers
-            .get_value(&peer_key)
+            .get(&peer_key)
             .map_err(PeerManagerError::DatabaseError)?
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         peer.addresses
             .mark_message_rejected(net_address)
             .map_err(PeerManagerError::NetAddressError)?;
         self.peers
-            .insert_pair(peer_key, peer)
+            .insert(peer_key, peer)
             .map_err(PeerManagerError::DatabaseError)
     }
 
@@ -510,14 +510,14 @@ where DS: KeyValStore<PeerKey, Peer>
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         let mut peer: Peer = self
             .peers
-            .get_value(&peer_key)
+            .get(&peer_key)
             .map_err(PeerManagerError::DatabaseError)?
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         peer.addresses
             .mark_successful_connection_attempt(net_address)
             .map_err(PeerManagerError::NetAddressError)?;
         self.peers
-            .insert_pair(peer_key, peer)
+            .insert(peer_key, peer)
             .map_err(PeerManagerError::DatabaseError)
     }
 
@@ -529,14 +529,14 @@ where DS: KeyValStore<PeerKey, Peer>
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         let mut peer: Peer = self
             .peers
-            .get_value(&peer_key)
+            .get(&peer_key)
             .map_err(PeerManagerError::DatabaseError)?
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         peer.addresses
             .mark_failed_connection_attempt(net_address)
             .map_err(PeerManagerError::NetAddressError)?;
         self.peers
-            .insert_pair(peer_key, peer)
+            .insert(peer_key, peer)
             .map_err(PeerManagerError::DatabaseError)
     }
 
@@ -549,12 +549,12 @@ where DS: KeyValStore<PeerKey, Peer>
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         let mut peer: Peer = self
             .peers
-            .get_value(&peer_key)
+            .get(&peer_key)
             .map_err(PeerManagerError::DatabaseError)?
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         peer.addresses.reset_connection_attempts();
         self.peers
-            .insert_pair(peer_key, peer)
+            .insert(peer_key, peer)
             .map_err(PeerManagerError::DatabaseError)
     }
 
@@ -574,8 +574,9 @@ mod test {
     use std::{path::PathBuf, sync::Arc};
     use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
     use tari_storage::{
-        key_val_store::{lmdb_database::LMDBWrapper, HMapDatabase},
         lmdb_store::{LMDBBuilder, LMDBError, LMDBStore},
+        HMapDatabase,
+        LMDBWrapper,
     };
 
     fn get_path(name: &str) -> String {

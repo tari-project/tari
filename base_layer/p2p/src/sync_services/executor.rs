@@ -206,8 +206,8 @@ mod test {
     use std::{path::PathBuf, sync::RwLock};
     use tari_comms::{peer_manager::NodeIdentity, CommsBuilder};
     use tari_storage::{
-        key_val_store::lmdb_database::LMDBWrapper,
         lmdb_store::{LMDBBuilder, LMDBError, LMDBStore},
+        LMDBWrapper,
     };
 
     #[derive(Clone)]

@@ -27,4 +27,4 @@ pub mod lmdb_database;
 
 pub use error::KeyValStoreError;
 pub use hmap_database::HMapDatabase;
-pub use key_val_store::KeyValStore;
+pub use key_val_store::KeyValueStore;

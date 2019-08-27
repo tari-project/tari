@@ -24,6 +24,7 @@ use crate::keys::PublicKey;
 use serde::{Deserialize, Serialize};
 use std::{
     cmp::Ordering,
+    hash::{Hash, Hasher},
     ops::{Add, Sub},
 };
 use tari_utilities::{ByteArray, ByteArrayError};
@@ -44,7 +45,7 @@ use tari_utilities::{ByteArray, ByteArrayError};
 ///   C_2 &= v_2.G + k_2.H \\\\
 ///   \therefore C_1 + C_2 &= (v_1 + v_2)G + (k_1 + k_2)H
 /// \end{aligned} $$
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, Hash)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 #[serde(bound(deserialize = "P: PublicKey"))]
 pub struct HomomorphicCommitment<P>(pub(crate) P)
 where P: PublicKey;
@@ -113,6 +114,12 @@ where
 
     fn sub(self, rhs: &'b HomomorphicCommitment<P>) -> Self::Output {
         HomomorphicCommitment(&self.0 - &rhs.0)
+    }
+}
+
+impl<P: PublicKey> Hash for HomomorphicCommitment<P> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        state.write(self.as_bytes())
     }
 }
 

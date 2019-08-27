@@ -12,7 +12,6 @@ members = [
     "digital_assets_layer/core",
     "infrastructure/crypto",
     "infrastructure/storage",
-    "infrastructure/merklemountainrange",
     "applications/grpc_wallet",
     "applications/console_text_messenger",
 ]

@@ -39,7 +39,7 @@ use tari_p2p::{
     sync_services::{ServiceExecutor, ServiceRegistry},
     tari_message::TariMessageType,
 };
-use tari_storage::{key_val_store::lmdb_database::LMDBWrapper, lmdb_store::LMDBBuilder};
+use tari_storage::{LMDBWrapper, lmdb_store::LMDBBuilder};
 use tempdir::TempDir;
 
 fn new_node_identity(control_service_address: NetAddress) -> NodeIdentity {
