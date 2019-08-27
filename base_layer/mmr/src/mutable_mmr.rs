@@ -103,8 +103,8 @@ where
         self.hash_deleted(hasher).result().to_vec()
     }
 
-    /// Push a new element into the MMR. Computes new related peaks at
-    /// the same time if applicable.
+    /// Push a new element into the MMR. Computes new related peaks at the same time if applicable.
+    /// Returns the new number of leaf nodes (regardless of deleted state) in the mutable MMR
     pub fn push(&mut self, hash: &Hash) -> Result<usize, MerkleMountainRangeError> {
         if self.size >= std::u32::MAX {
             return Err(MerkleMountainRangeError::MaximumSizeReached);
@@ -113,7 +113,7 @@ where
         if result.is_ok() {
             self.size += 1;
         }
-        result
+        Ok(self.size as usize)
     }
 
     /// Mark a node for deletion and optionally compress the deletion bitmap. Don't call this function unless you're
