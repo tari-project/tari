@@ -102,9 +102,9 @@ impl UnconfirmedPoolStorage {
     }
 
     /// Returns a set of the highest priority unconfirmed transactions, that can be included in a block.
-    pub fn highest_priority_txs(&self, total_weight: usize) -> Result<Vec<Arc<Transaction>>, UnconfirmedPoolError> {
+    pub fn highest_priority_txs(&self, total_weight: u64) -> Result<Vec<Arc<Transaction>>, UnconfirmedPoolError> {
         let mut selected_txs: Vec<Arc<Transaction>> = Vec::new();
-        let mut curr_weight: usize = 0;
+        let mut curr_weight: u64 = 0;
         let mut curr_skip_count: usize = 0;
         for (_, tx_key) in self.txs_by_priority.iter().rev() {
             let ptx = self

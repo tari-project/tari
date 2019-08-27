@@ -20,8 +20,15 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::time::Duration;
+
 /// The maximum number of transactions that can be stored in the Unconfirmed Transaction pool
 pub const MEMPOOL_UNCONFIRMED_POOL_STORAGE_CAPACITY: usize = 1000;
 /// The maximum number of transactions that can be skipped when compiling a set of highest priority transactions,
 /// skipping over large transactions are performed in an attempt to fit more transactions into the remaining space.
 pub const MEMPOOL_UNCONFIRMED_POOL_WEIGHT_TRANSACTION_SKIP_COUNT: usize = 20;
+
+/// The maximum number of transactions that can be stored in the Orphan pool
+pub const MEMPOOL_ORPHAN_POOL_STORAGE_CAPACITY: usize = 1000;
+/// The time-to-live duration used for transactions stored in the OrphanPool
+pub const MEMPOOL_ORPHAN_POOL_CACHE_TTL: Duration = Duration::from_secs(300);

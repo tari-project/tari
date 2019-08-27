@@ -138,7 +138,7 @@ where DS: KeyValStore<PeerKey, Peer>
             .get(&node_id)
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         self.remove_hashmap_links(peer_key)?;
-        self.peers.delete(&peer_key).map_err(PeerManagerError::DatabaseError)?;;
+        self.peers.delete(&peer_key).map_err(PeerManagerError::DatabaseError)?;
         Ok(())
     }
 
