@@ -23,7 +23,7 @@
 
 use crate::{
     blocks::blockheader::BlockHeader,
-    chain_storage::{transaction::DbKey::TransactionKernel, BlockChainDatabase, DbTransaction, MemoryDatabase},
+    chain_storage::{transaction::DbKey::TransactionKernel, BlockchainDatabase, DbTransaction, MemoryDatabase},
     tari_amount::MicroTari,
     test_utils::builders::{create_test_block, create_test_kernel, create_test_tx, create_utxo},
     types::HashDigest,
@@ -34,13 +34,13 @@ use tari_utilities::{hex::Hex, Hashable};
 
 #[test]
 fn fetch_nonexistent_kernel() {
-    let store = BlockChainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
+    let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
     assert!(store.fetch_kernel(vec![0u8; 32]).unwrap().is_none());
 }
 
 #[test]
 fn insert_and_fetch_kernel() {
-    let mut store = BlockChainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
+    let mut store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
     let kernel = create_test_kernel(5.into(), 0);
     let hash = kernel.hash();
 
@@ -52,12 +52,12 @@ fn insert_and_fetch_kernel() {
 
 #[test]
 fn fetch_nonexistent_header() {
-    let store = BlockChainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
+    let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
     assert!(store.fetch_header(0).unwrap().is_none());
 }
 #[test]
 fn insert_and_fetch_header() {
-    let mut store = BlockChainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
+    let mut store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
     let mut header = BlockHeader::new(0);
     header.height = 42;
 
@@ -69,7 +69,7 @@ fn insert_and_fetch_header() {
 
 #[test]
 fn insert_and_fetch_utxo() {
-    let mut store = BlockChainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
+    let mut store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
     let (utxo, _) = create_utxo(MicroTari(10_000));
     let hash = utxo.hash();
     assert_eq!(store.is_utxo(hash.clone()).unwrap(), false);
@@ -82,7 +82,7 @@ fn insert_and_fetch_utxo() {
 
 #[test]
 fn insert_and_fetch_orphan() {
-    let mut store = BlockChainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
+    let mut store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
     let txs = vec![
         create_test_tx(1000.into(), 10.into(), 0, 2, 1),
         create_test_tx(2000.into(), 20.into(), 0, 1, 1),
@@ -97,7 +97,7 @@ fn insert_and_fetch_orphan() {
 
 #[test]
 fn multiple_threads() {
-    let store = BlockChainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
+    let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
     // Save a kernel in thread A
     let mut store_a = store.clone();
     let a = thread::spawn(move || {
@@ -129,7 +129,7 @@ fn multiple_threads() {
 
 #[test]
 fn utxo_and_rp_merkle_root() {
-    let mut store = BlockChainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
+    let mut store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
     let root = store.get_utxo_root().unwrap();
     // This is the zero-length MMR of a mutable MMR with Blake256 as hasher
     assert_eq!(
@@ -160,7 +160,7 @@ fn utxo_and_rp_merkle_root() {
 
 #[test]
 fn header_merkle_root() {
-    let mut store = BlockChainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
+    let mut store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
     let root = store.get_header_root().unwrap();
     // This is the zero-length MMR of a mutable MMR with Blake256 as hasher
     assert_eq!(
@@ -185,7 +185,7 @@ fn header_merkle_root() {
 
 #[test]
 fn kernel_merkle_root() {
-    let mut store = BlockChainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
+    let mut store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
     let root = store.get_header_root().unwrap();
     // This is the zero-length MMR of a mutable MMR with Blake256 as hasher
     assert_eq!(

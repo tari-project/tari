@@ -64,16 +64,25 @@ macro_rules! fetch {
     }};
 }
 
-pub struct BlockChainDatabase<T>
+pub struct BlockchainDatabase<T>
 where T: BlockchainBackend
 {
     metadata: Arc<RwLock<ChainMetadata>>,
     db: Arc<T>,
 }
 
-impl<T> BlockChainDatabase<T>
+impl<T> BlockchainDatabase<T>
 where T: BlockchainBackend
 {
+    /// Creates a new `BlockchainDatabase` using the provided backend.
+    pub fn new(db: T) -> Result<Self, ChainStorageError> {
+        let metadata = Self::read_metadata(&db)?;
+        Ok(BlockchainDatabase {
+            metadata: Arc::new(RwLock::new(metadata)),
+            db: Arc::new(db),
+        })
+    }
+
     /// Reads the blockchain metadata (block height etc) from the underlying backend and returns it.
     fn read_metadata(db: &T) -> Result<ChainMetadata, ChainStorageError> {
         let height = match db.get(&DbKey::Metadata(MetadataKey::ChainHeight)) {
@@ -108,15 +117,6 @@ where T: BlockchainBackend
         })
     }
 
-    /// Creates a new `BlockchainDatabase` using the provided backend.
-    pub fn new(db: T) -> Result<Self, ChainStorageError> {
-        let metadata = Self::read_metadata(&db)?;
-        Ok(BlockChainDatabase {
-            metadata: Arc::new(RwLock::new(metadata)),
-            db: Arc::new(db),
-        })
-    }
-
     /// If a call to any metadata function fails, you can try and force a re-sync with this function. If the RWLock
     /// is poisoned because a write attempt failed, this function will replace the old lock with a new one with data
     /// freshly read from the underlying database. If this still fails, there's probably something badly wrong and
@@ -126,7 +126,7 @@ where T: BlockchainBackend
             // metadata is fine. Nothing to do here
             return false;
         }
-        match BlockChainDatabase::read_metadata(self.db.as_ref()) {
+        match BlockchainDatabase::read_metadata(self.db.as_ref()) {
             Ok(data) => {
                 self.metadata = Arc::new(RwLock::new(data));
                 true
@@ -247,11 +247,11 @@ fn log_error<T>(req: DbKey, err: ChainStorageError) -> Result<T, ChainStorageErr
     Err(err)
 }
 
-impl<T> Clone for BlockChainDatabase<T>
+impl<T> Clone for BlockchainDatabase<T>
 where T: BlockchainBackend
 {
     fn clone(&self) -> Self {
-        BlockChainDatabase {
+        BlockchainDatabase {
             metadata: self.metadata.clone(),
             db: self.db.clone(),
         }

@@ -35,7 +35,7 @@ mod test;
 mod transaction;
 
 // Public API exports
-pub use blockchain_database::BlockChainDatabase;
+pub use blockchain_database::BlockchainDatabase;
 pub use memory_db::MemoryDatabase;
 pub use metadata::ChainMetadata;
 pub use transaction::DbTransaction;
