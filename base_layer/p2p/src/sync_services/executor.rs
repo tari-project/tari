@@ -37,12 +37,8 @@ use threadpool::ThreadPool;
 
 use crossbeam_channel as channel;
 use crossbeam_channel::{Receiver, RecvTimeoutError, Sender};
-use tari_comms::{
-    connection::InprocAddress,
-    domain_subscriber::SyncDomainSubscription,
-    inbound_message_service::InboundTopicSubscriber,
-};
 
+use tari_comms::{connection::InprocAddress, inbound_message_service::InboundTopicSubscriptionFactory};
 const LOG_TARGET: &str = "base_layer::p2p::services";
 
 /// Control messages for services
@@ -79,7 +75,7 @@ impl ServiceExecutor {
                 peer_manager: comms_services.peer_manager(),
                 node_identity: comms_services.node_identity(),
                 receiver,
-                inbound_message_subscriber: comms_services.inbound_message_subscriber(),
+                inbound_message_subscription_factory: comms_services.inbound_message_subscription_factory(),
             };
 
             thread_pool.execute(move || {
@@ -156,7 +152,7 @@ pub struct ServiceContext {
     peer_manager: Arc<PeerManager>,
     node_identity: Arc<NodeIdentity>,
     receiver: Receiver<ServiceControlMessage>,
-    inbound_message_subscriber: Arc<InboundTopicSubscriber<TariMessageType>>,
+    inbound_message_subscription_factory: Arc<InboundTopicSubscriptionFactory<TariMessageType>>,
 }
 
 impl ServiceContext {
@@ -192,9 +188,8 @@ impl ServiceContext {
         &self.ims_message_sink_address
     }
 
-    /// Create a DomainSubscriber for the specified message type
-    pub fn create_sync_subscription(&self, message_type: TariMessageType) -> SyncDomainSubscription<TariMessageType> {
-        SyncDomainSubscription::new(self.inbound_message_subscriber.subscription(message_type))
+    pub fn inbound_message_subscription_factory(&self) -> Arc<InboundTopicSubscriptionFactory<TariMessageType>> {
+        Arc::clone(&self.inbound_message_subscription_factory)
     }
 }
 

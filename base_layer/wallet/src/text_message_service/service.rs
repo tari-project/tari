@@ -36,7 +36,7 @@ use std::{
     time::Duration,
 };
 use tari_comms::{
-    domain_subscriber::MessageInfo,
+    domain_subscriber::{MessageInfo, SyncDomainSubscription},
     message::{Message, MessageError, MessageFlags},
     outbound_message_service::{outbound_message_service::OutboundMessageService, BroadcastStrategy},
     types::CommsPublicKey,
@@ -349,8 +349,16 @@ impl Service for TextMessageService {
     /// Function called by the Service Executor in its own thread. This function polls for both API request and Comms
     /// layer messages from the Message Broker
     fn execute(&mut self, context: ServiceContext) -> Result<(), ServiceError> {
-        let mut subscription_text = context.create_sync_subscription(ExtendedMessage::Text.into());
-        let mut subscription_text_ack = context.create_sync_subscription(ExtendedMessage::Text.into());
+        let mut subscription_text = SyncDomainSubscription::new(
+            context
+                .inbound_message_subscription_factory()
+                .get_subscription_fused(ExtendedMessage::Text.into()),
+        );
+        let mut subscription_text_ack = SyncDomainSubscription::new(
+            context
+                .inbound_message_subscription_factory()
+                .get_subscription_fused(ExtendedMessage::TextAck.into()),
+        );
 
         self.oms = Some(context.outbound_message_service());
 

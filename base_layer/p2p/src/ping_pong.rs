@@ -42,7 +42,7 @@ use std::{
     time::Duration,
 };
 use tari_comms::{
-    domain_subscriber::MessageInfo,
+    domain_subscriber::{MessageInfo, SyncDomainSubscription},
     message::{Message, MessageError, MessageFlags},
     outbound_message_service::{outbound_message_service::OutboundMessageService, BroadcastStrategy, OutboundError},
     types::CommsPublicKey,
@@ -176,7 +176,11 @@ impl Service for PingPongService {
     }
 
     fn execute(&mut self, context: ServiceContext) -> Result<(), ServiceError> {
-        let mut subscription = context.create_sync_subscription(NetMessage::PingPong.into());
+        let mut subscription = SyncDomainSubscription::new(
+            context
+                .inbound_message_subscription_factory()
+                .get_subscription_fused(NetMessage::PingPong.into()),
+        );
 
         self.oms = Some(context.outbound_message_service());
 

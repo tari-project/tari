@@ -63,7 +63,7 @@ use tari_service_framework::{
 };
 
 pub use self::messages::{LivenessRequest, LivenessResponse, PingPong};
-use tari_comms::inbound_message_service::InboundTopicSubscriber;
+use tari_comms::inbound_message_service::InboundTopicSubscriptionFactory;
 
 pub type LivenessHandle = Requester<LivenessRequest, Result<LivenessResponse, LivenessError>>;
 
@@ -71,31 +71,31 @@ const LOG_TARGET: &'static str = "base_layer::p2p::services::liveness";
 
 /// Initializer for the Liveness service handle and service future.
 pub struct LivenessInitializer {
-    inbound_message_subscriber: Arc<InboundTopicSubscriber<TariMessageType>>,
+    inbound_message_subscription_factory: Arc<InboundTopicSubscriptionFactory<TariMessageType>>,
 }
 
 impl LivenessInitializer {
     /// Create a new LivenessInitializer from comms
     pub fn new(comms: Arc<CommsServices<TariMessageType>>) -> Self {
         Self {
-            inbound_message_subscriber: comms.inbound_message_subscriber(),
+            inbound_message_subscription_factory: comms.inbound_message_subscription_factory(),
         }
     }
 
     /// Create a new LivenessInitializer from the inbound message subscriber
     #[cfg(test)]
-    pub fn from_inbound_message_subscriber(
-        inbound_message_subscriber: Arc<InboundTopicSubscriber<TariMessageType>>,
+    pub fn inbound_message_subscription_factory(
+        inbound_message_subscription_factory: Arc<InboundTopicSubscriptionFactory<TariMessageType>>,
     ) -> Self {
         Self {
-            inbound_message_subscriber,
+            inbound_message_subscription_factory,
         }
     }
 
     /// Get a stream of inbound PingPong messages
     fn ping_stream(&self) -> impl Stream<Item = (MessageInfo, PingPong), Error = ()> {
-        self.inbound_message_subscriber
-            .subscription(TariMessageType::new(NetMessage::PingPong))
+        self.inbound_message_subscription_factory
+            .get_subscription_compat(TariMessageType::new(NetMessage::PingPong))
             .and_then(|msg| {
                 DomainMessageDeserializer::<PingPong>::new(msg).or_else(|_| {
                     error!(target: LOG_TARGET, "thread pool shut down");
