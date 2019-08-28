@@ -137,7 +137,7 @@ where D: Digest + Send + Sync
         Ok(())
     }
 
-    fn get(&self, key: &DbKey) -> Result<Option<DbValue>, ChainStorageError> {
+    fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, ChainStorageError> {
         let db = self
             .db
             .read()
@@ -178,7 +178,7 @@ where D: Digest + Send + Sync
         Ok(result)
     }
 
-    fn get_mmr_root(&self, tree: MmrTree) -> Result<Vec<u8>, ChainStorageError> {
+    fn fetch_mmr_root(&self, tree: MmrTree) -> Result<Vec<u8>, ChainStorageError> {
         let db = self
             .db
             .read()

@@ -46,16 +46,17 @@ pub enum MmrTree {
 
 pub trait BlockchainBackend: Send + Sync {
     fn write(&self, tx: DbTransaction) -> Result<(), ChainStorageError>;
-    fn get(&self, key: &DbKey) -> Result<Option<DbValue>, ChainStorageError>;
+    fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, ChainStorageError>;
     fn contains(&self, key: &DbKey) -> Result<bool, ChainStorageError>;
-    fn get_mmr_root(&self, tree: MmrTree) -> Result<HashOutput, ChainStorageError>;
+    fn fetch_mmr_root(&self, tree: MmrTree) -> Result<HashOutput, ChainStorageError>;
+    // TODO fetch_mmr_proof(tree: MmrTRee, pos: u64) -> Result<MerkleProof, ChainStorageError>
 }
 
 // Private macro that pulls out all the boiler plate of extracting a DB query result from its variants
 macro_rules! fetch {
     ($self:ident, $key_val:expr, $key_var:ident) => {{
         let key = DbKey::$key_var($key_val);
-        match $self.db.get(&key) {
+        match $self.db.fetch(&key) {
             Ok(None) => Ok(None),
             Ok(Some(DbValue::$key_var(k))) => Ok(Some(*k)),
             Ok(Some(other)) => unexpected_result(key, other),
@@ -85,7 +86,7 @@ where T: BlockchainBackend
 
     /// Reads the blockchain metadata (block height etc) from the underlying backend and returns it.
     fn read_metadata(db: &T) -> Result<ChainMetadata, ChainStorageError> {
-        let height = match db.get(&DbKey::Metadata(MetadataKey::ChainHeight)) {
+        let height = match db.fetch(&DbKey::Metadata(MetadataKey::ChainHeight)) {
             Ok(Some(DbValue::Metadata(MetadataValue::ChainHeight(v)))) => v,
             Ok(None) => {
                 warn!(
@@ -98,7 +99,7 @@ where T: BlockchainBackend
             Ok(Some(other)) => return unexpected_result(DbKey::Metadata(MetadataKey::ChainHeight), other),
         };
 
-        let work = match db.get(&DbKey::Metadata(MetadataKey::AccumulatedWork)) {
+        let work = match db.fetch(&DbKey::Metadata(MetadataKey::AccumulatedWork)) {
             Ok(Some(DbValue::Metadata(MetadataValue::AccumulatedWork(v)))) => v,
             Ok(None) => {
                 warn!(
@@ -119,17 +120,23 @@ where T: BlockchainBackend
 
     /// If a call to any metadata function fails, you can try and force a re-sync with this function. If the RWLock
     /// is poisoned because a write attempt failed, this function will replace the old lock with a new one with data
-    /// freshly read from the underlying database. If this still fails, there's probably something badly wrong and
-    /// the thread will panic.
-    pub fn try_recover_metadata(&mut self) -> bool {
+    /// freshly read from the underlying database. If this still fails, there's probably something badly wrong.
+    ///
+    /// # Returns
+    ///  Ok(true) - The lock was refreshed and data was successfully re-read from the database. Proceed with caution.
+    ///             The database *may* be inconsistent.
+    /// Ok(false) - Everything looks fine. Why did you call this function again?
+    /// Err(ChainStorageError::CriticalError) - Refreshing the lock failed. We couldn't refresh the metadata from the DB
+    ///             backend, so you should probably just shut things down and look at the logs.
+    pub fn try_recover_metadata(&mut self) -> Result<bool, ChainStorageError> {
         if !self.metadata.is_poisoned() {
             // metadata is fine. Nothing to do here
-            return false;
+            return Ok(false);
         }
         match BlockchainDatabase::read_metadata(self.db.as_ref()) {
             Ok(data) => {
                 self.metadata = Arc::new(RwLock::new(data));
-                true
+                Ok(true)
             },
             Err(e) => {
                 error!(
@@ -138,7 +145,7 @@ where T: BlockchainBackend
                      fix things",
                     e.to_string()
                 );
-                panic!("Blockchain metadata is compromised and the recovery attempt failed.")
+                Err(ChainStorageError::CriticalError)
             },
         }
     }
@@ -205,22 +212,22 @@ where T: BlockchainBackend
 
     /// Calculate the Merklish root of the current UTXO set.
     pub fn get_utxo_root(&self) -> Result<HashOutput, ChainStorageError> {
-        self.db.get_mmr_root(MmrTree::Utxo)
+        self.db.fetch_mmr_root(MmrTree::Utxo)
     }
 
     /// Calculate the Merklish root of the kernel set.
     pub fn get_kernel_root(&self) -> Result<HashOutput, ChainStorageError> {
-        self.db.get_mmr_root(MmrTree::Kernel)
+        self.db.fetch_mmr_root(MmrTree::Kernel)
     }
 
     /// Calculate the Merklish root of the kernel set.
     pub fn get_header_root(&self) -> Result<HashOutput, ChainStorageError> {
-        self.db.get_mmr_root(MmrTree::Header)
+        self.db.fetch_mmr_root(MmrTree::Header)
     }
 
     /// Calculate the Merklish root of the range proof set.
     pub fn get_range_proof_root(&self) -> Result<HashOutput, ChainStorageError> {
-        self.db.get_mmr_root(MmrTree::RangeProof)
+        self.db.fetch_mmr_root(MmrTree::RangeProof)
     }
 
     /// Atomically commit the provided transaction to the database backend. This function does not update the metadata.

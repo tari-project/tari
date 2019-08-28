@@ -39,4 +39,7 @@ pub enum ChainStorageError {
     // You tried to execute an invalid Database operation
     #[error(msg_embedded, non_std, no_from)]
     InvalidOperation(String),
+    // There appears to be a critical error on the back end. The database might be in an inconsistent state. Check
+    // the logs for more information.
+    CriticalError,
 }

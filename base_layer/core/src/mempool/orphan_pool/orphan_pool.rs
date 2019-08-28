@@ -25,7 +25,6 @@ use crate::{
     transaction::{Transaction, TransactionInput},
     types::Signature,
 };
-use merklemountainrange::mmr::MerkleMountainRange;
 use std::{sync::Arc, time::Duration};
 use ttl_cache::TtlCache;
 
@@ -91,7 +90,7 @@ impl OrphanPool {
     pub fn scan_for_and_remove_unorphaned_txs(
         &mut self,
         block_height: u64,
-        utxos: &MerkleMountainRange<TransactionInput, SignatureHash>,
+        utxos: &[TransactionInput],
     ) -> (Vec<Arc<Transaction>>, Vec<Arc<Transaction>>)
     {
         let mut removed_tx_keys: Vec<Signature> = Vec::new();
