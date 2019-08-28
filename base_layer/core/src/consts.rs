@@ -35,3 +35,8 @@ pub const MEMPOOL_ORPHAN_POOL_CACHE_TTL: Duration = Duration::from_secs(300);
 
 /// The maximum number of transactions that can be stored in the Pending pool
 pub const MEMPOOL_PENDING_POOL_STORAGE_CAPACITY: usize = 1000;
+
+/// The maximum number of transactions that can be stored in the Reorg pool
+pub const MEMPOOL_REORG_POOL_STORAGE_CAPACITY: usize = 1000;
+/// The time-to-live duration used for transactions stored in the ReorgPool
+pub const MEMPOOL_REORG_POOL_CACHE_TTL: Duration = Duration::from_secs(300);
