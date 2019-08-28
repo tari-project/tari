@@ -26,6 +26,7 @@ use crate::{
         error::MempoolError,
         orphan_pool::{OrphanPool, OrphanPoolConfig},
         pending_pool::{PendingPool, PendingPoolConfig},
+        reorg_pool::{ReorgPool, ReorgPoolConfig},
         unconfirmed_pool::{UnconfirmedPool, UnconfirmedPoolConfig},
     },
     transaction::Transaction,
@@ -39,7 +40,7 @@ pub struct MempoolConfig {
     pub unconfirmed_pool_config: UnconfirmedPoolConfig,
     pub orphan_pool_config: OrphanPoolConfig,
     pub pending_pool_config: PendingPoolConfig,
-    // TODO: Add configs for ReOrgPool
+    pub reorg_pool_config: ReorgPoolConfig,
 }
 
 impl Default for MempoolConfig {
@@ -48,6 +49,7 @@ impl Default for MempoolConfig {
             unconfirmed_pool_config: UnconfirmedPoolConfig::default(),
             orphan_pool_config: OrphanPoolConfig::default(),
             pending_pool_config: PendingPoolConfig::default(),
+            reorg_pool_config: ReorgPoolConfig::default(),
         }
     }
 }
@@ -59,7 +61,7 @@ pub struct Mempool {
     unconfirmed_pool: UnconfirmedPool,
     orphan_pool: OrphanPool,
     pending_pool: PendingPool,
-    // TODO: Add ReOrgPool
+    reorg_pool: ReorgPool,
 }
 
 impl Mempool {
@@ -69,6 +71,7 @@ impl Mempool {
             unconfirmed_pool: UnconfirmedPool::new(config.unconfirmed_pool_config),
             orphan_pool: OrphanPool::new(config.orphan_pool_config),
             pending_pool: PendingPool::new(config.pending_pool_config),
+            reorg_pool: ReorgPool::new(config.reorg_pool_config),
         }
     }
 
@@ -101,7 +104,8 @@ impl Mempool {
     /// Update the Mempool based on the received published block
     pub fn process_published_block(&mut self, _published_block: &Block) -> Result<(), MempoolError> {
         // Move published txs to ReOrgPool and discard double spends
-        // reorg_pool.insert_txs(unconfirmed_pool.remove_published_and_discard_double_spends(published_block)?)?;
+        // self.reorg_pool.insert_txs(self.unconfirmed_pool.remove_published_and_discard_double_spends(published_block)?
+        // )?;
 
         // Move txs with valid input UTXOs and expired time-locks to UnconfirmedPool and discard double spends
         // unconfirmed_pool.insert_txs(pending_pool.remove_unlocked_and_discard_double_spends()?)?;
@@ -128,9 +132,9 @@ impl Mempool {
     /// In the event of a ReOrg, resubmit all ReOrged transactions into the Mempool and process each newly introduced
     /// block from the latest longest chain
     pub fn process_reorg(&mut self, _removed_blocks: Vec<Block>, _new_blocks: Vec<Block>) -> Result<(), MempoolError> {
-        // self.insert_txs(reorg_pool.remove_unconfirmed(removed_blocks)?)?;
-        // self.process_published_blocks(new_blocks)?;
-
+        // let reorg_txs=self.reorg_pool.scan_for_and_remove_reorged_txs(removed_blocks);
+        // self.insert_txs(reorg_txs)?;
+        // self.process_published_blocks(&new_blocks)?;
         Ok(())
     }
 

@@ -25,7 +25,8 @@ use crate::{
     transaction::{Transaction, TransactionInput},
     types::Signature,
 };
-use std::time::Duration;
+use merklemountainrange::mmr::MerkleMountainRange;
+use std::{sync::Arc, time::Duration};
 use ttl_cache::TtlCache;
 
 /// Configuration for the OrphanPool
@@ -51,7 +52,7 @@ impl Default for OrphanPoolConfig {
 /// in a specific order. Some of these transactions might still be constrained by pending time-locks.
 pub struct OrphanPool {
     config: OrphanPoolConfig,
-    txs_by_signature: TtlCache<Signature, Transaction>,
+    txs_by_signature: TtlCache<Signature, Arc<Transaction>>,
 }
 
 impl OrphanPool {
@@ -67,7 +68,7 @@ impl OrphanPool {
     /// discarded if the UTXOs they require are not created before the Time-to-live threshold is reached.
     pub fn insert(&mut self, tx: Transaction) {
         let tx_key = tx.body.kernels[0].excess_sig.clone();
-        let _ = self.txs_by_signature.insert(tx_key, tx, self.config.tx_ttl);
+        let _ = self.txs_by_signature.insert(tx_key, Arc::new(tx), self.config.tx_ttl);
     }
 
     /// Insert a set of new transactions into the OrphanPool
@@ -90,8 +91,8 @@ impl OrphanPool {
     pub fn scan_for_and_remove_unorphaned_txs(
         &mut self,
         block_height: u64,
-        utxos: &[TransactionInput],
-    ) -> (Vec<Transaction>, Vec<Transaction>)
+        utxos: &MerkleMountainRange<TransactionInput, SignatureHash>,
+    ) -> (Vec<Arc<Transaction>>, Vec<Arc<Transaction>>)
     {
         let mut removed_tx_keys: Vec<Signature> = Vec::new();
         let mut removed_timelocked_tx_keys: Vec<Signature> = Vec::new();
@@ -105,14 +106,14 @@ impl OrphanPool {
             }
         }
 
-        let mut removed_txs: Vec<Transaction> = Vec::with_capacity(removed_tx_keys.len());
+        let mut removed_txs: Vec<Arc<Transaction>> = Vec::with_capacity(removed_tx_keys.len());
         removed_tx_keys.iter().for_each(|tx_key| {
             if let Some(tx) = self.txs_by_signature.remove(&tx_key) {
                 removed_txs.push(tx);
             }
         });
 
-        let mut removed_timelocked_txs: Vec<Transaction> = Vec::with_capacity(removed_timelocked_tx_keys.len());
+        let mut removed_timelocked_txs: Vec<Arc<Transaction>> = Vec::with_capacity(removed_timelocked_tx_keys.len());
         removed_timelocked_tx_keys.iter().for_each(|tx_key| {
             if let Some(tx) = self.txs_by_signature.remove(&tx_key) {
                 removed_timelocked_txs.push(tx);
@@ -163,12 +164,30 @@ mod test {
         // Check that transactions that have been in the pool for longer than their Time-to-live have been removed
         thread::sleep(Duration::from_millis(51));
         orphan_pool.insert_txs(vec![tx5.clone(), tx6.clone()]);
-        assert!(!orphan_pool.has_tx_with_excess_sig(&tx1.body.kernels[0].excess_sig));
-        assert!(!orphan_pool.has_tx_with_excess_sig(&tx2.body.kernels[0].excess_sig));
-        assert!(!orphan_pool.has_tx_with_excess_sig(&tx3.body.kernels[0].excess_sig));
-        assert!(!orphan_pool.has_tx_with_excess_sig(&tx4.body.kernels[0].excess_sig));
-        assert!(orphan_pool.has_tx_with_excess_sig(&tx5.body.kernels[0].excess_sig));
-        assert!(orphan_pool.has_tx_with_excess_sig(&tx6.body.kernels[0].excess_sig));
+        assert_eq!(
+            orphan_pool.has_tx_with_excess_sig(&tx1.body.kernels[0].excess_sig),
+            false
+        );
+        assert_eq!(
+            orphan_pool.has_tx_with_excess_sig(&tx2.body.kernels[0].excess_sig),
+            false
+        );
+        assert_eq!(
+            orphan_pool.has_tx_with_excess_sig(&tx3.body.kernels[0].excess_sig),
+            false
+        );
+        assert_eq!(
+            orphan_pool.has_tx_with_excess_sig(&tx4.body.kernels[0].excess_sig),
+            false
+        );
+        assert_eq!(
+            orphan_pool.has_tx_with_excess_sig(&tx5.body.kernels[0].excess_sig),
+            true
+        );
+        assert_eq!(
+            orphan_pool.has_tx_with_excess_sig(&tx6.body.kernels[0].excess_sig),
+            true
+        );
         assert_eq!(orphan_pool.len(), 2);
     }
 
@@ -216,7 +235,7 @@ mod test {
         assert_eq!(txs.len(), 1);
         assert_eq!(timelocked_txs.len(), 1);
         assert!(orphan_pool.has_tx_with_excess_sig(&tx3.body.kernels[0].excess_sig));
-        assert!(txs.contains(&tx4));
-        assert!(timelocked_txs.contains(&tx5));
+        assert!(txs.iter().any(|tx| **tx == tx4));
+        assert!(timelocked_txs.iter().any(|tx| **tx == tx5));
     }
 }

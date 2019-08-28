@@ -195,7 +195,7 @@ mod test {
         let tx3 = create_test_tx(MicroTari(10_000), MicroTari(1000), 1000, 2, 1);
         let tx4 = create_test_tx(MicroTari(10_000), MicroTari(200), 2450, 2, 2);
         let tx5 = create_test_tx(MicroTari(10_000), MicroTari(500), 1000, 3, 3);
-        let tx6 = create_test_tx(MicroTari(10_000), MicroTari(750), 1850, 2, 2);
+        let tx6 = create_test_tx(MicroTari(10_000), MicroTari(750), 1450, 2, 2);
 
         let mut pending_pool = PendingPool::new(PendingPoolConfig { storage_capacity: 10 });
         pending_pool
