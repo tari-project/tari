@@ -33,6 +33,7 @@ use std::{
     time::Duration,
 };
 use tari_comms::{
+    domain_subscriber::SyncDomainSubscription,
     message::MessageFlags,
     outbound_message_service::{outbound_message_service::OutboundMessageService, BroadcastStrategy, OutboundError},
     types::CommsPublicKey,
@@ -331,9 +332,17 @@ impl Service for TransactionService {
     /// Function called by the Service Executor in its own thread. This function polls for both API request and Comms
     /// layer messages from the Message Broker
     fn execute(&mut self, context: ServiceContext) -> Result<(), ServiceError> {
-        let mut subscription_transaction = context.create_sync_subscription(BlockchainMessage::Transaction.into());
-        let mut subscription_transaction_reply =
-            context.create_sync_subscription(BlockchainMessage::TransactionReply.into());
+        let mut subscription_transaction = SyncDomainSubscription::new(
+            context
+                .inbound_message_subscription_factory()
+                .get_subscription_fused(BlockchainMessage::Transaction.into()),
+        );
+
+        let mut subscription_transaction_reply = SyncDomainSubscription::new(
+            context
+                .inbound_message_subscription_factory()
+                .get_subscription_fused(BlockchainMessage::TransactionReply.into()),
+        );
 
         self.outbound_message_service = Some(context.outbound_message_service());
         debug!(target: LOG_TARGET, "Starting Transaction Service executor");

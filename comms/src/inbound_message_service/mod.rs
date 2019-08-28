@@ -43,11 +43,11 @@ pub mod inbound_message_service;
 pub mod inbound_message_worker;
 pub mod message_cache;
 
-use crate::{message::InboundMessage, pub_sub_channel::TopicSubscriber};
+use crate::{message::InboundMessage, pub_sub_channel::TopicSubscriptionFactory};
 
 pub use self::{
     error::InboundError,
     message_cache::{MessageCache, MessageCacheConfig},
 };
 
-pub type InboundTopicSubscriber<MType> = TopicSubscriber<MType, InboundMessage>;
+pub type InboundTopicSubscriptionFactory<MType> = TopicSubscriptionFactory<MType, InboundMessage>;

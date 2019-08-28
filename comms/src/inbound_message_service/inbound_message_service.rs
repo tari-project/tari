@@ -163,6 +163,7 @@ mod test {
             Direction,
             NetAddress,
         },
+        futures::StreamExt,
         inbound_message_service::comms_msg_handlers::*,
         message::{
             InboundMessage,
@@ -174,15 +175,14 @@ mod test {
             NodeDestination,
         },
         peer_manager::{peer_manager::PeerManager, NodeIdentity, Peer, PeerFlags},
-        pub_sub_channel::{pubsub_channel, SubscriptionReader},
+        pub_sub_channel::pubsub_channel,
     };
     use crossbeam_channel as channel;
+    use futures::{executor::block_on, future::select};
     use serde::{Deserialize, Serialize};
     use std::{sync::Arc, thread, time::Duration};
     use tari_storage::key_val_store::HMapDatabase;
     use tari_utilities::message_format::MessageFormat;
-    use tokio::runtime::Runtime;
-
     fn pause() {
         thread::sleep(Duration::from_millis(5));
     }
@@ -223,7 +223,7 @@ mod test {
         const TEST_MESSAGE_COUNT: usize = 3;
         let (publisher, subscriber) = pubsub_channel(TEST_MESSAGE_COUNT);
         let imp = InboundMessagePublisher::new(publisher);
-        let message_subscription = subscriber.subscription(DomainBrokerType::Type1);
+        let mut message_subscription = subscriber.get_subscription(DomainBrokerType::Type1).fuse();
         let inbound_message_publisher = Arc::new(RwLock::new(imp));
 
         let (message_sender, _) = channel::unbounded();
@@ -267,17 +267,27 @@ mod test {
         }
 
         // Check that all messages reached subscribers
-        std::thread::sleep(Duration::from_millis(500));
-        let mut rt = Runtime::new().unwrap();
-        let sr = SubscriptionReader::new(Arc::new(message_subscription));
-        let (msgs, _): (Vec<InboundMessage>, _) = rt.block_on(sr).unwrap();
+        std::thread::sleep(Duration::from_millis(1000));
+
+        let msgs: Vec<InboundMessage> = block_on(async {
+            let mut result = Vec::new();
+
+            loop {
+                select!(
+                    item = message_subscription.next() => {if let Some(i) = item {result.push(i)}},
+                    default => break,
+                );
+            }
+            result
+        });
+
         assert_eq!(msgs.len(), TEST_MESSAGE_COUNT);
         for m in msgs.iter() {
             assert!(message_envelope_body_list.contains(&m.message));
         }
 
         // Test shutdown control
-        inbound_message_service.shutdown().unwrap();
+        let _ = inbound_message_service.shutdown();
         std::thread::sleep(Duration::from_millis(200));
 
         let message_header = MessageHeader::new(DomainBrokerType::Type1).unwrap();

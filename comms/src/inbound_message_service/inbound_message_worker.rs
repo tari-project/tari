@@ -246,12 +246,14 @@ mod test {
     use super::*;
     use crate::{
         connection::{Connection, Direction, NetAddress},
+        futures::StreamExt,
         inbound_message_service::comms_msg_handlers::construct_comms_msg_dispatcher,
         message::{InboundMessage, Message, MessageEnvelope, MessageFlags, MessageHeader, NodeDestination},
         peer_manager::{peer_manager::PeerManager, NodeIdentity, PeerFlags},
-        pub_sub_channel::{pubsub_channel, SubscriptionReader},
+        pub_sub_channel::pubsub_channel,
     };
     use crossbeam_channel as channel;
+    use futures::{executor::block_on, future::select};
     use serde::{Deserialize, Serialize};
     use std::{
         sync::Arc,
@@ -259,8 +261,6 @@ mod test {
     };
     use tari_storage::key_val_store::HMapDatabase;
     use tari_utilities::{message_format::MessageFormat, thread_join::ThreadJoinWithTimeout};
-    use tokio::runtime::Runtime;
-
     fn pause() {
         thread::sleep(Duration::from_millis(5));
     }
@@ -281,8 +281,8 @@ mod test {
 
         let (publisher, subscriber) = pubsub_channel(10);
         let imp = InboundMessagePublisher::new(publisher);
-        let message_subscription_type1 = subscriber.subscription(DomainBrokerType::Type1);
-        let message_subscription_type2 = subscriber.subscription(DomainBrokerType::Type2);
+        let mut message_subscription_type1 = subscriber.get_subscription(DomainBrokerType::Type1).fuse();
+        let mut message_subscription_type2 = subscriber.get_subscription(DomainBrokerType::Type2).fuse();
         let inbound_message_publisher = Arc::new(RwLock::new(imp));
 
         let peer_manager = Arc::new(PeerManager::new(HMapDatabase::new()).unwrap());
@@ -368,14 +368,31 @@ mod test {
         // Retrieve messages at handler services
         std::thread::sleep(Duration::from_millis(100));
 
-        let mut rt = Runtime::new().unwrap();
-        let sr = SubscriptionReader::new(Arc::new(message_subscription_type1));
-        let (msgs_type1, _): (Vec<InboundMessage>, _) = rt.block_on(sr).unwrap();
+        let msgs_type1: Vec<InboundMessage> = block_on(async {
+            let mut result = Vec::new();
+
+            loop {
+                select!(
+                    item = message_subscription_type1.next() => {if let Some(i) = item {result.push(i)}},
+                    default => break,
+                );
+            }
+            result
+        });
         assert_eq!(msgs_type1.len(), 1);
         assert_eq!(msgs_type1[0].message, message_envelope_body1);
 
-        let sr2 = SubscriptionReader::new(Arc::new(message_subscription_type2));
-        let (msgs_type2, _) = rt.block_on(sr2).unwrap();
+        let msgs_type2: Vec<InboundMessage> = block_on(async {
+            let mut result = Vec::new();
+
+            loop {
+                select!(
+                    item = message_subscription_type2.next() => {if let Some(i) = item {result.push(i)}},
+                    default => break,
+                );
+            }
+            result
+        });
         // Should only be 1 message as the duplicate must be rejected
         assert_eq!(msgs_type2.len(), 1);
         assert_eq!(msgs_type2[0].message, message_envelope_body2);
@@ -383,7 +400,7 @@ mod test {
         // Test worker clean shutdown
         control_sync_sender.send(ControlMessage::Shutdown).unwrap();
         std::thread::sleep(time::Duration::from_millis(200));
-        thread_handle.timeout_join(Duration::from_millis(3000)).unwrap();
+        let _ = thread_handle.timeout_join(Duration::from_millis(3000));
         assert!(client_connection.send(message1_frame_set).is_err());
     }
 }

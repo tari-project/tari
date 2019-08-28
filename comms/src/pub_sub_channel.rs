@@ -22,30 +22,13 @@
 // use super::async_::channel as async_channel;
 // use super::async_::Publisher;
 // use super::async_::Subscriber;
-use bus_queue::async_::{channel as async_channel, Publisher, Subscriber};
-use derive_error::Error;
-use futures::prelude::*;
-use log::*;
-use std::{fmt::Debug, sync::Arc};
+use bus_queue::{bounded, Publisher, Subscriber};
+use futures::{compat::Compat, future, prelude::*, stream::Fuse};
+use std::fmt::Debug;
 
-const LOG_TARGET: &str = "comms::pub_sub_channel";
-
-#[derive(Debug, Error)]
-pub enum TopicPublisherSubscriberError {
-    /// Subscription Arc Reference error occurred, this means there was a problem getting a mutable ref to the arc
-    /// during a read.
-    SubscriptionArcReferenceError,
-    /// Subscription Error, an error was returned from the subscription stream,
-    SubscriptionError,
-}
-
-/// Create a Topic filtered Pub-Sub channel pair.
-pub fn pubsub_channel<T: Send, M: Send>(size: usize) -> (TopicPublisher<T, M>, TopicSubscriber<T, M>) {
-    let (publisher, subscriber) = async_channel(size);
-    (publisher, TopicSubscriber::new(subscriber))
-}
-
-/// A message that is passed along the channel contains a Topic to define the type of message and the message itself.
+/// The container for a message that is passed along the pub-sub channel that contains a Topic to define the type of
+/// message and the message itself.
+#[derive(Debug)]
 pub struct TopicPayload<T, M> {
     topic: T,
     message: M,
@@ -58,121 +41,64 @@ impl<T: Send + Debug, M: Send> TopicPayload<T, M> {
 }
 
 pub type TopicPublisher<T, M> = Publisher<TopicPayload<T, M>>;
+pub type TopicSubscriber<T, M> = Subscriber<TopicPayload<T, M>>;
 
-pub struct TopicSubscriber<T: Send, M: Send> {
-    inner: Subscriber<TopicPayload<T, M>>,
+pub struct TopicSubscriptionFactory<T, M> {
+    subscriber: TopicSubscriber<T, M>,
 }
 
-impl<T: Send, M: Send> TopicSubscriber<T, M> {
-    fn new(subscriber: Subscriber<TopicPayload<T, M>>) -> Self {
-        Self { inner: subscriber }
-    }
-}
-
-impl<T: Eq + Send, M: Clone + Send> TopicSubscriber<T, M> {
-    pub fn subscription(&self, topic: T) -> TopicSubscription<T, M> {
-        TopicSubscription::<_, M>::new(topic, self.inner.clone())
-    }
-}
-
-/// A TopicSubscription will receive messages of the Topic it is initialized with and ignore other topics.
-pub struct TopicSubscription<T: Send, M: Send> {
-    topic: T,
-    inner: Subscriber<TopicPayload<T, M>>,
-}
-
-impl<T: Eq + Send, M: Clone + Send> TopicSubscription<T, M> {
-    fn new(topic: T, subscriber: Subscriber<TopicPayload<T, M>>) -> Self {
-        Self {
-            topic,
-            inner: subscriber,
-        }
-    }
-}
-
-impl<T, M> Stream for TopicSubscription<T, M>
-where
-    T: Eq + Send + Debug,
-    M: Clone + Send,
-{
-    type Error = ();
-    type Item = M;
-
-    fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
-        loop {
-            match try_ready!(self.inner.poll()) {
-                Some(payload) => {
-                    if payload.topic == self.topic {
-                        debug!(
-                            target: LOG_TARGET,
-                            "Subscriber yielded message of type: {:?}", payload.topic
-                        );
-                        return Ok(Async::Ready(Some(payload.message.clone())));
-                    }
-                },
-                None => return Ok(Async::Ready(None)),
-            }
-        }
-    }
-}
-
-/// The Subscription reader holds a reference to a subscription stream and provides a Future that will read any items
-/// that are currently in the stream and yield them to the synchronous caller WITHOUT ending the stream. The Stream is
-/// passed back to the caller so that it can checked for new messages in the future. This is allows non-futures code to
-/// read interim values in a stream without the stream needing to end like the `.collect()` combinator requires.
-pub struct SubscriptionReader<T, M>
+impl<T, M> TopicSubscriptionFactory<T, M>
 where
     T: Eq + Send,
     M: Clone + Send,
 {
-    stream: Arc<TopicSubscription<T, M>>,
-}
+    pub fn new(subscriber: TopicSubscriber<T, M>) -> Self {
+        TopicSubscriptionFactory { subscriber }
+    }
 
-impl<T, M> SubscriptionReader<T, M>
-where
-    T: Eq + Send,
-    M: Clone + Send,
-{
-    pub fn new(stream: Arc<TopicSubscription<T, M>>) -> SubscriptionReader<T, M> {
-        SubscriptionReader { stream }
+    /// Provide a subscriber (which will be consumed) and a topic to filter it by and this function will return a stream
+    /// that yields only the desired messages
+    pub fn get_subscription(&self, topic: T) -> impl Stream<Item = M> {
+        self.subscriber.clone().filter_map(move |item| {
+            let result = if item.topic == topic {
+                Some(item.message.clone())
+            } else {
+                None
+            };
+            future::ready(result)
+        })
+    }
+
+    /// Provide a Compat wrapped version of the subscription stream for things that want to consume old-style streams
+    pub fn get_subscription_compat(&self, topic: T) -> Compat<impl Stream<Item = Result<M, ()>>> {
+        self.get_subscription(topic).map(|i| Ok(i)).compat()
+    }
+
+    /// Provide a fused version of the subscription stream so that domain modules don't need to know about fuse()
+    pub fn get_subscription_fused(&self, topic: T) -> Fuse<impl Stream<Item = M>> {
+        self.get_subscription(topic).fuse()
     }
 }
 
-impl<T, M> Future for SubscriptionReader<T, M>
-where
-    T: Eq + Send + Debug,
-    M: Clone + Send,
-{
-    type Error = TopicPublisherSubscriberError;
-    type Item = (Vec<M>, Option<Arc<TopicSubscription<T, M>>>);
+/// Create Topic based Pub-Sub channel which returns the Publisher side of the channel and TopicSubscriptionFactory
+/// which can produce multiple subscribers for provided topics.
+pub fn pubsub_channel<T: Send + Eq, M: Send + Clone>(
+    size: usize,
+) -> (TopicPublisher<T, M>, TopicSubscriptionFactory<T, M>) {
+    let (publisher, subscriber): (TopicPublisher<T, M>, TopicSubscriber<T, M>) = bounded(size);
 
-    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        let mut items = Vec::new();
-        loop {
-            match Arc::get_mut(&mut self.stream) {
-                Some(s) => match s.poll() {
-                    Ok(Async::Ready(Some(v))) => items.push(v),
-                    Ok(Async::Ready(None)) => return Ok(Async::Ready((items, None))),
-                    Ok(Async::NotReady) => return Ok(Async::Ready((items, Some(self.stream.clone())))),
-                    Err(_) => return Err(TopicPublisherSubscriberError::SubscriptionError),
-                },
-                None => return Err(TopicPublisherSubscriberError::SubscriptionArcReferenceError),
-            }
-        }
-    }
+    (publisher, TopicSubscriptionFactory::new(subscriber))
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
-    use std::sync::Arc;
-    use tokio::runtime::Runtime;
+    use futures::{executor::block_on, future::select};
 
     #[test]
     fn topic_pub_sub() {
-        let mut rt = Runtime::new().unwrap();
+        let (mut publisher, subscriber_factory) = pubsub_channel(10);
 
-        let (mut publisher, subscriber) = pubsub_channel(10);
         #[derive(Debug, Clone)]
         struct Dummy {
             a: u32,
@@ -210,16 +136,26 @@ mod test {
             }),
         ];
 
-        for m in messages {
-            publisher = rt.block_on(publisher.send(m)).unwrap();
-        }
+        block_on(async {
+            for m in messages {
+                publisher.send(m).await.unwrap();
+            }
+        });
 
-        let sub1 = subscriber.subscription("Topic1");
-        let mut sub1_arc = Arc::new(sub1);
-        let sr = SubscriptionReader::new(sub1_arc);
+        let mut sub1 = subscriber_factory.get_subscription("Topic1").fuse();
 
-        let (topic1a, returned_arc) = rt.block_on(sr).unwrap();
-        sub1_arc = returned_arc.unwrap();
+        let topic1a = block_on(async {
+            let mut result = Vec::new();
+
+            loop {
+                select!(
+                    item = sub1.next() => {if let Some(i) = item {result.push(i)}},
+                    default => break,
+                );
+            }
+            result
+        });
+
         assert_eq!(topic1a.len(), 4);
         assert_eq!(topic1a[0].a, 1);
         assert_eq!(topic1a[1].a, 3);
@@ -241,19 +177,19 @@ mod test {
             }),
         ];
 
-        for m in messages2 {
-            publisher = rt.block_on(publisher.send(m)).unwrap();
-        }
+        block_on(async move {
+            stream::iter(messages2).map(|i| Ok(i)).forward(publisher).await.unwrap();
+        });
 
-        let sr = SubscriptionReader::new(sub1_arc);
-        let (topic1b, _) = rt.block_on(sr).unwrap();
+        let topic1b = block_on(async { sub1.collect::<Vec<Dummy>>().await });
+
         assert_eq!(topic1b.len(), 2);
         assert_eq!(topic1b[0].a, 11);
         assert_eq!(topic1b[1].a, 33);
 
-        let sub2 = subscriber.subscription("Topic2");
-        let sr = SubscriptionReader::new(Arc::new(sub2));
-        let (topic2, _) = rt.block_on(sr).unwrap();
+        let sub2 = subscriber_factory.get_subscription("Topic2");
+
+        let topic2 = block_on(async { sub2.collect::<Vec<Dummy>>().await });
 
         assert_eq!(topic2.len(), 4);
         assert_eq!(topic2[0].a, 2);
