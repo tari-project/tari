@@ -275,7 +275,7 @@ mod test {
     };
     use rand::OsRng;
     use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
-    use tari_storage::key_val_store::HMapDatabase;
+    use tari_storage::HMapDatabase;
 
     fn create_test_peer(rng: &mut OsRng, ban_flag: bool) -> Peer {
         let (_sk, pk) = RistrettoPublicKey::random_keypair(rng);

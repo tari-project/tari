@@ -23,9 +23,8 @@
 use crate::{
     consts::{MEMPOOL_ORPHAN_POOL_CACHE_TTL, MEMPOOL_ORPHAN_POOL_STORAGE_CAPACITY},
     transaction::{Transaction, TransactionInput},
-    types::{Signature, SignatureHash},
+    types::Signature,
 };
-use merklemountainrange::mmr::MerkleMountainRange;
 use std::{sync::Arc, time::Duration};
 use ttl_cache::TtlCache;
 
@@ -91,7 +90,7 @@ impl OrphanPool {
     pub fn scan_for_and_remove_unorphaned_txs(
         &mut self,
         block_height: u64,
-        utxos: &MerkleMountainRange<TransactionInput, SignatureHash>,
+        utxos: &[TransactionInput],
     ) -> (Vec<Arc<Transaction>>, Vec<Arc<Transaction>>)
     {
         let mut removed_tx_keys: Vec<Signature> = Vec::new();
@@ -136,7 +135,7 @@ mod test {
     use super::*;
     use crate::{
         tari_amount::MicroTari,
-        test_utils::builders::{create_test_block, create_test_tx, create_test_utxos, extend_test_utxos},
+        test_utils::builders::{create_test_block, create_test_tx, extract_outputs_as_inputs},
         transaction::TransactionInput,
     };
     use std::{thread, time::Duration};
@@ -216,7 +215,8 @@ mod test {
         orphan_pool.insert_txs(vec![tx3.clone(), tx4.clone(), tx5.clone()]);
 
         let published_block = create_test_block(3000, vec![tx6.clone()]);
-        let mut utxos = create_test_utxos(&published_block);
+        let mut utxos = Vec::new();
+        extract_outputs_as_inputs(&mut utxos, &published_block);
         let (txs, timelocked_txs) =
             orphan_pool.scan_for_and_remove_unorphaned_txs(published_block.header.height, &utxos);
         assert_eq!(orphan_pool.len(), 3);
@@ -227,7 +227,7 @@ mod test {
         assert!(orphan_pool.has_tx_with_excess_sig(&tx5.body.kernels[0].excess_sig));
 
         let published_block = create_test_block(3500, vec![tx1.clone(), tx2.clone()]);
-        extend_test_utxos(&mut utxos, &published_block);
+        extract_outputs_as_inputs(&mut utxos, &published_block);
         let (txs, timelocked_txs) =
             orphan_pool.scan_for_and_remove_unorphaned_txs(published_block.header.height, &utxos);
         assert_eq!(orphan_pool.len(), 1);

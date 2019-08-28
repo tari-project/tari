@@ -303,7 +303,7 @@ mod test {
         peer_manager::NodeIdentity,
     };
     use crossbeam_deque::Worker;
-    use tari_storage::key_val_store::HMapDatabase;
+    use tari_storage::HMapDatabase;
     use tari_utilities::thread_join::ThreadJoinWithTimeout;
 
     fn make_peer_connection_config(consumer_address: InprocAddress) -> PeerConnectionConfig {

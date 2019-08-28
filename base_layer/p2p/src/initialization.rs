@@ -32,7 +32,7 @@ use tari_comms::{
     types::{CommsPublicKey, CommsSecretKey},
     CommsBuilder,
 };
-use tari_storage::{key_val_store::lmdb_database::LMDBWrapper, lmdb_store::LMDBBuilder};
+use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
 
 #[derive(Debug, Error)]
 pub enum CommsInitializationError {

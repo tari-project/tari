@@ -20,20 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    base_node::{
-        block_validation_service::BlockValidationService,
-        transaction_validation_service::TransactionValidationService,
-    },
-    blockchain::BlockchainStateService,
-};
-use std::sync::Arc;
-
 /// `BaseNode` is the highest-level struct of the Tari full node implementation. `BaseNode` collects all the
 /// sub-pieces of the Tari blockchain together, and exposes a unified API using a futures-based request-response model
-pub struct BaseNode {
-    transaction_validation_service: Arc<TransactionValidationService>,
-    block_validation_service: Arc<BlockValidationService>,
-    // TODO mempool: Arc<MempoolService>,
-    chain_state: Arc<BlockchainStateService>,
-}
+pub struct BaseNode {}

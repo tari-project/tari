@@ -33,8 +33,9 @@
 //! [RFC-0111](https://rfc.tari.com/RFC-0111_BaseNodeArchitecture.html).
 
 mod base_node;
-mod block_validation_service;
-mod transaction_validation_service;
+// mod block_validation_service;
+// mod synchronisation_service;
+// mod transaction_validation_service;
 
 // Public re-exports
 pub use base_node::BaseNode;

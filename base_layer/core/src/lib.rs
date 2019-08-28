@@ -33,7 +33,7 @@ pub mod bullet_rangeproofs;
 pub mod consts;
 pub mod fee;
 pub mod mempool;
-pub mod pow;
+pub mod proof_of_work;
 #[allow(clippy::op_ref)]
 pub mod transaction;
 pub mod transaction_protocol;
@@ -44,7 +44,9 @@ pub mod emission;
 pub mod tari_amount;
 
 mod base_node;
-mod blockchain;
+// mod blockchain; TODO refactoring
+
+pub mod chain_storage;
 
 // Re-export commonly used structs
 pub use transaction_protocol::{recipient::ReceiverTransactionProtocol, sender::SenderTransactionProtocol};

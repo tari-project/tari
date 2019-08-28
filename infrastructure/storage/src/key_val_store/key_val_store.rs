@@ -23,12 +23,12 @@
 use crate::key_val_store::KeyValStoreError;
 
 /// General CRUD behaviour of Key-value store implementations.
-pub trait KeyValStore<K, V> {
+pub trait KeyValueStore<K, V> {
     /// Inserts a key-value pair into the key-value database.
-    fn insert_pair(&self, key: K, value: V) -> Result<(), KeyValStoreError>;
+    fn insert(&self, key: K, value: V) -> Result<(), KeyValStoreError>;
 
     /// Get the value corresponding to the provided key from the key-value database.
-    fn get_value(&self, key: &K) -> Result<Option<V>, KeyValStoreError>;
+    fn get(&self, key: &K) -> Result<Option<V>, KeyValStoreError>;
 
     /// Returns the total number of entries recorded in the key-value database.
     fn size(&self) -> Result<usize, KeyValStoreError>;
@@ -43,7 +43,9 @@ pub trait KeyValStore<K, V> {
     ///        //.. do stuff with key and val..
     ///    });
     fn for_each<F>(&self, f: F) -> Result<(), KeyValStoreError>
-    where F: FnMut(Result<(K, V), KeyValStoreError>);
+    where
+        Self: Sized,
+        F: FnMut(Result<(K, V), KeyValStoreError>);
 
     /// Checks whether the provided `key` exists in the key-value database.
     fn exists(&self, key: &K) -> Result<bool, KeyValStoreError>;

@@ -31,7 +31,7 @@ use tari_crypto::{commitment::HomomorphicCommitmentFactory, ristretto::pedersen:
 
 /// The components of the block or transaction. The same struct can be used for either, since in Mimblewimble,
 /// cut-through means that blocks and transactions have the same structure.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct AggregateBody {
     sorted: bool,
     /// List of inputs spent by the transaction.

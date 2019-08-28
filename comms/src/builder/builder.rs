@@ -481,7 +481,7 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
-    use tari_storage::key_val_store::HMapDatabase;
+    use tari_storage::HMapDatabase;
 
     #[test]
     fn new_no_control_service() {

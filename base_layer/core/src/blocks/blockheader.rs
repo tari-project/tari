@@ -37,9 +37,7 @@
 //! state = Hash(Hash(mmr_root)|| Hash(roaring_bitmap))
 //! This hash is called the UTXO merkle root, and is used as the output_mr
 
-use crate::{pow::*, types::*};
 use chrono::{DateTime, NaiveDate, Utc};
-use digest::Input;
 use serde::{
     de::{self, Visitor},
     Deserialize,
@@ -47,15 +45,18 @@ use serde::{
     Serialize,
     Serializer,
 };
-use tari_crypto::ristretto::*;
 use tari_utilities::{ByteArray, Hashable};
 type BlockHash = [u8; 32];
+use crate::{
+    proof_of_work::Difficulty,
+    types::{BlindingFactor, HashDigest, TariProofOfWork},
+};
+use digest::Digest;
 use std::fmt;
-use tari_utilities::hex::*;
 
 /// The BlockHeader contains all the metadata for the block, including proof of work, a link to the previous block
 /// and the transaction kernels.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct BlockHeader {
     /// Version of the block
     pub version: u16,
@@ -79,17 +80,15 @@ pub struct BlockHeader {
     /// Total accumulated sum of kernel offsets since genesis block. We can derive the kernel offset sum for *this*
     /// block from the total kernel offset of the previous block header.
     pub total_kernel_offset: BlindingFactor,
-    /// Nonce used
+    /// Total accumulated difficulty since genesis block
+    pub total_difficulty: Difficulty,
+    /// Nonce increment used to mine this block.
+    pub nonce: u64,
     /// Proof of work summary
-    pub pow: ProofOfWork,
+    pub pow: TariProofOfWork,
 }
 
 impl BlockHeader {
-    /// This function will validate the proof of work in the header
-    pub fn validate_pow(&self) -> bool {
-        unimplemented!();
-    }
-
     pub fn new(blockchain_version: u16) -> BlockHeader {
         BlockHeader {
             version: blockchain_version,
@@ -99,8 +98,10 @@ impl BlockHeader {
             output_mr: [0; 32],
             range_proof_mr: [0; 32],
             kernel_mr: [0; 32],
-            total_kernel_offset: RistrettoSecretKey::from(0),
-            pow: ProofOfWork::default(),
+            total_kernel_offset: BlindingFactor::default(),
+            total_difficulty: Difficulty::default(),
+            nonce: 0,
+            pow: TariProofOfWork::default(),
         }
     }
 }
@@ -116,13 +117,24 @@ impl Hashable for BlockHeader {
             .chain(self.range_proof_mr.as_bytes())
             .chain(self.kernel_mr.as_bytes())
             .chain(self.total_kernel_offset.as_bytes())
-            .chain(self.pow.proof_as_bytes())
+            .chain(self.pow.as_bytes())
             .result()
             .to_vec()
     }
 }
+
+impl PartialEq for BlockHeader {
+    fn eq(&self, other: &Self) -> bool {
+        self.hash() == other.hash()
+    }
+}
+
+impl Eq for BlockHeader {}
+
 mod hash_serializer {
     use super::*;
+    use tari_utilities::hex::Hex;
+
     pub fn serialize<S>(bytes: &BlockHash, serializer: S) -> Result<S::Ok, S::Error>
     where S: Serializer {
         if serializer.is_human_readable() {
@@ -140,7 +152,7 @@ mod hash_serializer {
             type Value = BlockHash;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("a bulletproof range proof in binary format")
+                formatter.write_str("A block header hash in binary format")
             }
 
             fn visit_bytes<E>(self, v: &[u8]) -> Result<BlockHash, E>

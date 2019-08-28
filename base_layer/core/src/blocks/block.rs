@@ -25,19 +25,21 @@
 use crate::{
     blocks::{aggregated_body::AggregateBody, blockheader::BlockHeader},
     consensus::ConsensusRules,
-    pow::PoWError,
+    proof_of_work::PowError,
     tari_amount::*,
     transaction::*,
-    types::{Commitment, ProofOfWork, COMMITMENT_FACTORY, PROVER},
+    types::{Commitment, HashDigest, TariProofOfWork, COMMITMENT_FACTORY, PROVER},
 };
 use derive_error::Error;
 use serde::{Deserialize, Serialize};
+use tari_utilities::Hashable;
+
 #[derive(Clone, Debug, PartialEq, Error)]
 pub enum BlockValidationError {
     // A transaction in the block failed to validate
     TransactionError(TransactionError),
     // Invalid Proof of work for the block
-    ProofOfWorkError(PoWError),
+    ProofOfWorkError(PowError),
     // Invalid kernel in block
     InvalidKernel,
     // Invalid input in block
@@ -118,6 +120,18 @@ impl Block {
             }
         }
         Ok(())
+    }
+
+    /// Destroys the block and returns the pieces of the block: header, inputs, outputs and kernels
+    pub fn dissolve(
+        self,
+    ) -> (
+        BlockHeader,
+        Vec<TransactionInput>,
+        Vec<TransactionOutput>,
+        Vec<TransactionKernel>,
+    ) {
+        (self.header, self.body.inputs, self.body.outputs, self.body.kernels)
     }
 }
 
@@ -206,7 +220,7 @@ impl BlockBuilder {
     }
 
     /// Add the provided ProofOfWork to the block
-    pub fn with_pow(self, _pow: ProofOfWork) -> Self {
+    pub fn with_pow(self, _pow: TariProofOfWork) -> Self {
         // TODO
         self
     }
@@ -217,6 +231,14 @@ impl BlockBuilder {
 pub struct KernelSum {
     pub sum: Commitment,
     pub fees: MicroTari,
+}
+
+impl Hashable for Block {
+    /// The block hash is just the header hash, since the inputs, outputs and range proofs are captured by their
+    /// respective MMR roots in the header itself.
+    fn hash(&self) -> Vec<u8> {
+        self.header.hash()
+    }
 }
 
 //----------------------------------------         Tests          ----------------------------------------------------//

@@ -257,7 +257,7 @@ mod test {
         sync::Arc,
         time::{self, Duration},
     };
-    use tari_storage::key_val_store::HMapDatabase;
+    use tari_storage::HMapDatabase;
     use tari_utilities::{message_format::MessageFormat, thread_join::ThreadJoinWithTimeout};
     use tokio::runtime::Runtime;
 

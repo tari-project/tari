@@ -23,7 +23,7 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
-use crate::{bullet_rangeproofs::BulletRangeProof, pow::*};
+use crate::{bullet_rangeproofs::BulletRangeProof, proof_of_work::BlakePow};
 use tari_crypto::{
     common::Blake256,
     ristretto::{
@@ -51,10 +51,13 @@ pub type BlindingFactor = RistrettoSecretKey;
 pub type PublicKey = RistrettoPublicKey;
 
 /// Define the hash function that will be used to produce a signature challenge
-pub type SignatureHash = Blake256;
+pub type SignatureHasher = Blake256;
 
 /// Specify the Hash function for general hashing
 pub type HashDigest = Blake256;
+
+/// Define the data type that is used to store results of `HashDigest`
+pub type HashOutput = Vec<u8>;
 
 /// Specify the digest type for signature challenges
 pub type Challenge = Blake256;
@@ -68,8 +71,9 @@ pub type RangeProofService = DalekRangeProofService;
 /// Specify the range proof
 pub type RangeProof = BulletRangeProof;
 
-/// Specify the Proof of Work
-pub type ProofOfWork = MockProofOfWork;
+/// Select the Proof of work algorithm used
+pub type TariProofOfWork = BlakePow;
+
 #[cfg(test)]
 pub const MAX_RANGE_PROOF_RANGE: usize = 32; // 2^32 This is the only way to produce failing range proofs for the tests
 #[cfg(not(test))]

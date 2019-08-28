@@ -32,8 +32,8 @@ use tari_comms::{
     message::{Message, MessageEnvelope, MessageFlags, MessageHeader, NodeDestination},
 };
 use tari_storage::{
-    key_val_store::lmdb_database::LMDBWrapper,
     lmdb_store::{LMDBBuilder, LMDBError, LMDBStore},
+    LMDBWrapper,
 };
 use tari_utilities::{message_format::MessageFormat, thread_join::ThreadJoinWithTimeout};
 

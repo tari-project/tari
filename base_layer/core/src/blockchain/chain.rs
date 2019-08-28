@@ -35,8 +35,6 @@ use crate::{
     },
     blocks::block::Block,
     consensus::ConsensusRules,
-    pow::*,
-    types::*,
 };
 use std::collections::HashMap;
 use tari_utilities::Hashable;
@@ -55,18 +53,44 @@ pub struct Chain {
 }
 
 impl Chain {
-    pub fn new() -> Result<Chain, ChainError> {
-        let chain = Chain {
-            block_chain_state: BlockchainState::new()?,
-            orphans: HashMap::new(),
-            current_total_pow: ProofOfWork::default(),
-        };
-        Ok(chain)
+
+    /// Adds a new block to the persistent state.
+    ///
+    /// This process includes:
+    ///   * Adds the range proof hashes to the range proof MMR
+    ///   * Marks all inputs in the block as spent
+    ///   * Adds all outputs to the UTXO set and MMR
+    ///   * Adds the transaction kernels to the kernel MMR
+    ///   * Adds the block header to the header MMR
+    /// An error is returned if:
+    ///   * the block has already been added (by checking whether the block header hash exists already)
+    ///   * any of the inputs were not in the UTXO set or were marked as spent already
+    ///   * There was a problem creating the checkpoints
+    pub fn add_new_block(&mut self, new_block: &Block) -> Result<(), StateError> {
+        if let Some(_) = self.headers.get_object(&new_block.header.hash()) {
+            return Err(StateError::DuplicateBlock);
+        }
+        // We add the range proofs just to strip them out again 2 lines later???
+        // TODO Clearly there's an optimisation here somewhere
+        for output in &new_block.body.outputs {
+            self.range_proofs.push(output.proof().clone())?;
+        }
+        self.mark_outputs_as_spent(&new_block.body.inputs)?;
+        self.strip_range_proofs(&new_block.body.outputs);
+        // All seems valid, lets add the objects to the state
+        for output in &new_block.body.outputs {
+            self.utxos.push(output.clone().into())?;
+        }
+        self.kernels.append(new_block.body.kernels.clone())?;
+        self.headers.push(new_block.header.clone())?;
+        // Apply a new checkpoint so that we can rewind to this point in the future if necessary
+        self.check_point_state()
     }
 
+
     /// This function will process a newly received block
-    pub fn process_new_block(&mut self, new_block: Block, consensus_rules: &ConsensusRules) -> Result<(), ChainError> {
-        let result = match self.block_chain_state.process_new_block(&new_block, consensus_rules) {
+    pub fn add_new_block(&mut self, new_block: Block, consensus_rules: &ConsensusRules) -> Result<(), ChainError> {
+        let result = match self.block_chain_state.add_new_block(&new_block) {
             // block was processed fine and added to chain
             Ok(_) => {
                 let height = new_block.header.height;
@@ -87,7 +111,7 @@ impl Chain {
 
     /// Internal helper function to do orphan logic
     /// The function will store the new orphan block and check if it contains a re-org
-    fn orphaned_block(&mut self, new_block: Block, consensus_rules: &ConsensusRules) -> Result<(), ChainError> {
+    fn orphaned_block(&mut self, new_block: Block) -> Result<(), ChainError> {
         if self.orphans.contains_key(&new_block.header.hash()[..]) {
             return Err(ChainError::StateProcessingError(StateError::DuplicateBlock));
         };
@@ -98,7 +122,7 @@ impl Chain {
         let mut currently_used_orphans: Vec<BlockHash> = Vec::new();
         if self.current_total_pow.has_more_accum_work_than(&pow) {
             // we have a potential re-org here
-            let result = self.handle_re_org(&hash, &mut currently_used_orphans, consensus_rules);
+            let result = self.handle_re_org(&hash, &mut currently_used_orphans);
             let result = if result.is_err() {
                 self.block_chain_state.reset_chain_state()?;
                 result
@@ -123,7 +147,6 @@ impl Chain {
         &mut self,
         block_hash: &BlockHash,
         mut unorphaned_blocks: &mut Vec<BlockHash>,
-        consensus_rules: &ConsensusRules,
     ) -> Result<(), ChainError>
     {
         // The searched hash should always be in the orphan list
@@ -137,7 +160,7 @@ impl Chain {
                 .rewind_state((self.block_chain_state.get_tip_height() - h) as usize)?;
             return self
                 .block_chain_state
-                .process_new_block(&block, consensus_rules)
+                .add_new_block(&block)
                 .map_err(ChainError::StateProcessingError);
         };
         let prev_block = self.orphans.get(&block.header.prev_hash);
@@ -147,12 +170,12 @@ impl Chain {
 
         let mut hash = [0; 32];
         hash.copy_from_slice(&prev_block.unwrap().header.hash());
-        let result = self.handle_re_org(&hash, &mut unorphaned_blocks, consensus_rules);
+        let result = self.handle_re_org(&hash, &mut unorphaned_blocks);
 
         if result.is_ok() {
             return self
                 .block_chain_state
-                .process_new_block(&block, consensus_rules)
+                .add_new_block(&block)
                 .map_err(ChainError::StateProcessingError);
         }
 

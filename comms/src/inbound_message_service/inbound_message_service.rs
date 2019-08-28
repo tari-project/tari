@@ -179,7 +179,7 @@ mod test {
     use crossbeam_channel as channel;
     use serde::{Deserialize, Serialize};
     use std::{sync::Arc, thread, time::Duration};
-    use tari_storage::key_val_store::HMapDatabase;
+    use tari_storage::HMapDatabase;
     use tari_utilities::message_format::MessageFormat;
     use tokio::runtime::Runtime;
 

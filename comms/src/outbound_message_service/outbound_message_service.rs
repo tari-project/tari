@@ -161,7 +161,7 @@ mod test {
     use bitflags::_core::time::Duration;
     use crossbeam_channel as channel;
     use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
-    use tari_storage::key_val_store::HMapDatabase;
+    use tari_storage::HMapDatabase;
 
     fn make_test_message_frame() -> Frame {
         let message_header = "Test Message Header".as_bytes().to_vec();

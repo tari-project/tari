@@ -26,7 +26,6 @@ use crate::{
     transaction::Transaction,
     types::Signature,
 };
-use merklemountainrange::mmr::MerkleMountainRange;
 use std::{sync::Arc, time::Duration};
 use ttl_cache::TtlCache;
 
@@ -113,7 +112,7 @@ mod test {
     use super::*;
     use crate::{
         tari_amount::MicroTari,
-        test_utils::builders::{create_test_block, create_test_tx, create_test_utxos, extend_test_utxos},
+        test_utils::builders::{create_test_block, create_test_tx},
         transaction::TransactionInput,
     };
     use std::{thread, time::Duration};

@@ -209,7 +209,7 @@ impl Ord for UnblindedOutput {
 /// A transaction input.
 ///
 /// Primarily a reference to an output being spent by the transaction.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct TransactionInput {
     /// The features of the output being spent. We will check maturity for all outputs.
     pub features: OutputFeatures,
@@ -260,7 +260,7 @@ impl Hashable for TransactionInput {
 /// Output for a transaction, defining the new ownership of coins that are being transferred. The commitment is a
 /// blinded value for the output while the range proof guarantees the commitment includes a positive value without
 /// overflow and the ownership of the private key.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct TransactionOutput {
     /// Options for an output's structure or use
     pub features: OutputFeatures,
@@ -297,13 +297,18 @@ impl TransactionOutput {
     }
 }
 
-/// Implement the canonical hashing function for TransactionOutput for use in ordering
+/// Implement the canonical hashing function for TransactionOutput for use in ordering.
+///
+/// We can exclude the range proof from this hash. The rationale for this is:
+/// a) It is a significant performance boost, since the RP is the biggest part of an output
+/// b) Range proofs are committed to elsewhere and so we'd be hashing them twice (and as mentioned, this is slow)
+/// c) TransactionInputs will now have the same hash as UTXOs, which makes locating STXOs easier when doing re-orgs
 impl Hashable for TransactionOutput {
     fn hash(&self) -> Vec<u8> {
         HashDigest::new()
             .chain(self.features.to_bytes())
             .chain(self.commitment.as_bytes())
-            .chain(self.proof.as_bytes())
+            // .chain(range proof) // See docs as to why we exclude this
             .result()
             .to_vec()
     }
@@ -326,7 +331,7 @@ impl Default for TransactionOutput {
 /// [Mimblewimble TLU post](https://tlu.tarilabs.com/protocols/mimblewimble-1/sources/PITCHME.link.html?highlight=mimblewimble#mimblewimble).
 /// The kernel also tracks other transaction metadata, such as the lock height for the transaction (i.e. the earliest
 /// this transaction can be mined) and the transaction fee, in cleartext.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct TransactionKernel {
     /// Options for a kernel's structure or use
     pub features: KernelFeatures,
@@ -455,7 +460,7 @@ impl Hashable for TransactionKernel {
 /// This struct is used to describe single transactions only. The common part between transactions and Tari blocks is
 /// accessible via the `body` field, but single transactions also need to carry the public offset around with them so
 /// that these can be aggregated into block offsets.
-#[derive(Clone, Debug, Hash, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Transaction {
     /// This kernel offset will be accumulated when transactions are aggregated to prevent the "subset" problem where
     /// kernels can be linked to inputs and outputs by testing a series of subsets and see which produce valid

@@ -40,8 +40,8 @@ use tari_comms::{
     types::CommsDatabase,
 };
 use tari_storage::{
-    key_val_store::lmdb_database::LMDBWrapper,
     lmdb_store::{LMDBBuilder, LMDBError, LMDBStore},
+    LMDBWrapper,
 };
 
 fn make_peer_connection_config(message_sink_address: InprocAddress) -> PeerConnectionConfig {

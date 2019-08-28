@@ -24,11 +24,9 @@
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
 // This file is used to store the genesis block
-use crate::{
-    blocks::{aggregated_body::AggregateBody, block::Block, blockheader::BlockHeader},
-    types::*,
-};
+use crate::blocks::{aggregated_body::AggregateBody, block::Block};
 
+use crate::{blocks::blockheader::BlockHeader, types::TariProofOfWork};
 use chrono::{DateTime, NaiveDate, Utc};
 use tari_crypto::ristretto::*;
 
@@ -59,9 +57,11 @@ pub fn get_gen_header() -> BlockHeader {
         /// Total accumulated sum of kernel offsets since genesis block. We can derive the kernel offset sum for *this*
         /// block from the total kernel offset of the previous block header.
         total_kernel_offset: RistrettoSecretKey::from(0),
-        /// Nonce used
         /// Proof of work summary
-        pow: ProofOfWork::default(),
+        total_difficulty: Default::default(),
+        /// Nonce used
+        nonce: 0,
+        pow: TariProofOfWork::default(),
     }
 }
 

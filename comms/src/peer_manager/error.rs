@@ -22,7 +22,7 @@
 
 use crate::{connection::NetAddressError, peer_manager::node_id::NodeIdError};
 use derive_error::Error;
-use tari_storage::{key_val_store::KeyValStoreError, keyvalue_store::DatastoreError};
+use tari_storage::KeyValStoreError;
 use tari_utilities::message_format::MessageFormatError;
 
 #[derive(Debug, Error)]
@@ -31,8 +31,6 @@ pub enum PeerManagerError {
     PeerNotFoundError,
     /// The Thread Safety has been breached and the data access has become poisoned
     PoisonedAccess,
-    // Could not write or read from datastore
-    DatastoreError(DatastoreError),
     // A problem occurred during the serialization of the keys or data
     SerializationError(MessageFormatError),
     /// A problem occurred converting the serialized data into peers

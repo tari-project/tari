@@ -29,7 +29,7 @@ use tari_comms::{
     CommsBuilder,
 };
 use tari_p2p::tari_message::TariMessageType;
-use tari_storage::{key_val_store::lmdb_database::LMDBWrapper, lmdb_store::LMDBDatabase};
+use tari_storage::{lmdb_store::LMDBDatabase, LMDBWrapper};
 pub fn setup_comms_services(
     node_identity: NodeIdentity,
     peers: Vec<NodeIdentity>,

@@ -26,11 +26,11 @@ use crate::{
     peer_manager::{peer_key::PeerKey, Peer},
 };
 use tari_crypto::{common::Blake256, keys::PublicKey, ristretto::RistrettoPublicKey};
+use tari_storage::lmdb_store::LMDBStore;
 #[cfg(test)]
-use tari_storage::key_val_store::HMapDatabase;
+use tari_storage::HMapDatabase;
 #[cfg(not(test))]
-use tari_storage::lmdb_store::LMDBDatabase;
-use tari_storage::{key_val_store::lmdb_database::LMDBWrapper, lmdb_store::LMDBStore};
+use tari_storage::LMDBWrapper;
 use tari_utilities::ciphers::chacha20::ChaCha20;
 
 /// The message protocol version for the MessageEnvelopeHeader

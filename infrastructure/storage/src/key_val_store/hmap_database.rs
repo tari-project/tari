@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::key_val_store::{error::KeyValStoreError, key_val_store::KeyValStore};
+use crate::key_val_store::{error::KeyValStoreError, key_val_store::KeyValueStore};
 use std::{collections::HashMap, hash::Hash, sync::RwLock};
 
 ///  The HMapDatabase mimics the behaviour of LMDBDatabase without keeping a persistent copy of the key-value records.
@@ -98,14 +98,14 @@ impl<K: Clone + Eq + Hash, V: Clone> HMapDatabase<K, V> {
     }
 }
 
-impl<K: Clone + Eq + Hash, V: Clone> KeyValStore<K, V> for HMapDatabase<K, V> {
+impl<K: Clone + Eq + Hash, V: Clone> KeyValueStore<K, V> for HMapDatabase<K, V> {
     /// Inserts a key-value pair into the key-value database.
-    fn insert_pair(&self, key: K, value: V) -> Result<(), KeyValStoreError> {
+    fn insert(&self, key: K, value: V) -> Result<(), KeyValStoreError> {
         self.insert(key, value)
     }
 
     /// Get the value corresponding to the provided key from the key-value database.
-    fn get_value(&self, key: &K) -> Result<Option<V>, KeyValStoreError> {
+    fn get(&self, key: &K) -> Result<Option<V>, KeyValStoreError> {
         self.get(key)
     }
 
@@ -155,14 +155,14 @@ mod test {
             value: "three".to_string(),
         };
 
-        db.insert_pair(1, val1.clone()).unwrap();
-        db.insert_pair(2, val2.clone()).unwrap();
-        db.insert_pair(3, val3.clone()).unwrap();
+        db.insert(1, val1.clone()).unwrap();
+        db.insert(2, val2.clone()).unwrap();
+        db.insert(3, val3.clone()).unwrap();
 
-        assert_eq!(db.get_value(&1).unwrap().unwrap(), val1);
-        assert_eq!(db.get_value(&2).unwrap().unwrap(), val2);
-        assert_eq!(db.get_value(&3).unwrap().unwrap(), val3);
-        assert!(db.get_value(&4).unwrap().is_none());
+        assert_eq!(db.get(&1).unwrap().unwrap(), val1);
+        assert_eq!(db.get(&2).unwrap().unwrap(), val2);
+        assert_eq!(db.get(&3).unwrap().unwrap(), val3);
+        assert!(db.get(&4).unwrap().is_none());
         assert_eq!(db.size().unwrap(), 3);
         assert!(db.exists(&1).unwrap());
         assert!(db.exists(&2).unwrap());
@@ -170,10 +170,10 @@ mod test {
         assert!(!db.exists(&4).unwrap());
 
         db.remove(&2).unwrap();
-        assert_eq!(db.get_value(&1).unwrap().unwrap(), val1);
-        assert!(db.get_value(&2).unwrap().is_none());
-        assert_eq!(db.get_value(&3).unwrap().unwrap(), val3);
-        assert!(db.get_value(&4).unwrap().is_none());
+        assert_eq!(db.get(&1).unwrap().unwrap(), val1);
+        assert!(db.get(&2).unwrap().is_none());
+        assert_eq!(db.get(&3).unwrap().unwrap(), val3);
+        assert!(db.get(&4).unwrap().is_none());
         assert_eq!(db.size().unwrap(), 2);
         assert!(db.exists(&1).unwrap());
         assert!(!db.exists(&2).unwrap());
