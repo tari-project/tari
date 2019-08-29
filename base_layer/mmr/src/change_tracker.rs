@@ -208,6 +208,13 @@ where
         self.mmr = mmr;
         result
     }
+
+    pub fn get_checkpoint(&self, index: usize) -> Result<MerkleCheckPoint, MerkleMountainRangeError> {
+        match self.checkpoints.get(index) {
+            None => Err(MerkleMountainRangeError::OutOfRange),
+            Some(cp) => Ok(cp.clone()),
+        }
+    }
 }
 
 impl<D, BaseBackend, DiffBackend> Deref for MerkleChangeTracker<D, BaseBackend, DiffBackend>
@@ -222,6 +229,7 @@ where
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct MerkleCheckPoint {
     nodes_added: Vec<Hash>,
     nodes_deleted: Bitmap,
@@ -247,5 +255,13 @@ impl MerkleCheckPoint {
         }
         mmr.deleted.or_inplace(&self.nodes_deleted);
         Ok(())
+    }
+
+    pub fn nodes_added(&self) -> &Vec<Hash> {
+        &self.nodes_added
+    }
+
+    pub fn nodes_deleted(&self) -> &Bitmap {
+        &self.nodes_deleted
     }
 }

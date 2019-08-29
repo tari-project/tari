@@ -20,30 +20,22 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use derive_error::Error;
+use crate::blocks::block::Block;
 
-#[derive(Debug, Error)]
-pub enum ChainStorageError {
-    // Access to the underlying storage mechanism failed
-    #[error(non_std, no_from)]
-    AccessError(String),
-    // The database may be corrupted or otherwise be in an inconsistent state. Please check logs to try and identify
-    // the issue
-    #[error(non_std, no_from)]
-    CorruptedDatabase(String),
-    // A given input could not be spent because it was not in the UTXO set
-    UnspendableInput,
-    // A problem occurred trying to move a STXO back into the UTXO pool during a re-org.
-    UnspendError,
-    // An unexpected result type was received for the given database request. This suggests that there is an internal
-    // error or bug of sorts.
-    UnexpectedResult,
-    // You tried to execute an invalid Database operation
-    #[error(msg_embedded, non_std, no_from)]
-    InvalidOperation(String),
-    // There appears to be a critical error on the back end. The database might be in an inconsistent state. Check
-    // the logs for more information.
-    CriticalError,
-    // Cannot return data for requests older than the current pruning horizon
-    BeyondPruningHorizon,
+/// The representation of a historical block in the blockchain. It is essentially identical to a protocol-defined
+/// block but contains some extra metadata that clients such as Block Explorers will find interesting.
+pub struct HistoricalBlock {
+    /// The number of blocks that have been mined since this block, including this one. The current tip will have one
+    /// confirmation.
+    confirmations: u64,
+    /// A boolean array indicating whether the outputs of this block have subsequently been spent.
+    spent_outputs: Vec<bool>,
+    /// The underlying block
+    block: Block,
+}
+
+impl From<HistoricalBlock> for Block {
+    fn from(block: HistoricalBlock) -> Self {
+        block.block
+    }
 }
