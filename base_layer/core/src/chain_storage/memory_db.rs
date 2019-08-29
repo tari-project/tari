@@ -57,6 +57,9 @@ where D: Digest
     range_proof_mmr: MerkleChangeTracker<D, Vec<MmrHash>, Vec<MerkleCheckPoint>>,
 }
 
+/// A memory-backed blockchain database. The data is stored in RAM; and so all data will be lost when the program
+/// terminates. Thus this DB is intended for testing purposes. It's also not very efficient since a single Mutex
+/// protects the entire database. Again: testing.
 #[derive(Default)]
 pub struct MemoryDatabase<D>
 where D: Digest
@@ -81,7 +84,7 @@ where D: Digest + Send + Sync
                         db.metadata.height_of_longest_chain = h;
                     },
                     DbKeyValuePair::Metadata(_, MetadataValue::AccumulatedWork(w)) => {
-                        db.metadata.greatest_accumulated_work = w;
+                        db.metadata.total_accumulated_difficulty = w;
                     },
                     DbKeyValuePair::BlockHeader(k, v) => {
                         let hash = v.hash();
@@ -147,7 +150,7 @@ where D: Digest + Send + Sync
                 db.metadata.height_of_longest_chain,
             ))),
             DbKey::Metadata(MetadataKey::AccumulatedWork) => Some(DbValue::Metadata(MetadataValue::AccumulatedWork(
-                db.metadata.greatest_accumulated_work,
+                db.metadata.total_accumulated_difficulty,
             ))),
             DbKey::BlockHeader(k) => db.headers.get(k).map(|v| DbValue::BlockHeader(Box::new(v.clone()))),
             DbKey::UnspentOutput(k) => db.utxos.get(k).map(|v| DbValue::UnspentOutput(Box::new(v.clone()))),

@@ -44,10 +44,27 @@ pub enum MmrTree {
     Header,
 }
 
+/// Identify behaviour for Blockchain database backends. Implementations must support `Send` and `Sync` so that
+/// `BlockchainDatabase` can be thread-safe. The backend *must* also execute transactions atomically; i.e., every
+/// operation within it must succeed, or they all fail. Failure to support this contract could lead to
+/// synchronisation issues in your database backend.
+///
+/// Data is passed to and from the backend via the [DbKey], [DbValue], and [DbValueKey] enums. This strategy allows
+/// us to keep the reading and writing API extremely simple. Extending the types of data that the back ends can handle
+/// will entail adding to those enums, and the back ends, while this trait can remain unchanged.
 pub trait BlockchainBackend: Send + Sync {
+    /// Commit the transaction given to the backend. If there is an error, the transaction must be rolled back, and
+    /// the error condition returned. On success, every operation in the transaction will have been committed, and
+    /// the function will return `Ok(())`.
     fn write(&self, tx: DbTransaction) -> Result<(), ChainStorageError>;
+    /// Fetch a value from the back end corresponding to the given key. If the value is not found, `get` must return
+    /// `Ok(None)`. It should only error if there is an access or integrity issue with the underlying back end.
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, ChainStorageError>;
+    /// Checks to see whether the given key exists in the back end. This function should only fail if there is an
+    /// access or integrity issue with the back end.
     fn contains(&self, key: &DbKey) -> Result<bool, ChainStorageError>;
+    /// Fetches the merklish root for the MMR tree identified by the key. This function should only fail if there is an
+    /// access or integrity issue with the back end.
     fn fetch_mmr_root(&self, tree: MmrTree) -> Result<HashOutput, ChainStorageError>;
     // TODO fetch_mmr_proof(tree: MmrTRee, pos: u64) -> Result<MerkleProof, ChainStorageError>
 }
@@ -65,6 +82,24 @@ macro_rules! fetch {
     }};
 }
 
+/// A generic blockchain storage mechanism. This struct defines the API for storing and retrieving Tari blockchain
+/// components without being opinionated about the actual backend used.
+///
+/// `BlockChainDatabase` is thread-safe, since the backend must implement `Sync` and `Send`.
+///
+/// You typically don't interact with `BlockChainDatabase` directly, since it doesn't enforce any consensus rules; it
+/// only really stores and fetches blockchain components. To create an instance of `BlockchainDatabase', you must
+/// provide it with the backend it is going to use; for example, for a memory-backed DB:
+///
+/// ```
+/// use tari_core::{
+///     chain_storage::{BlockchainDatabase, MemoryDatabase},
+///     types::HashDigest,
+/// };
+/// let db_backend = MemoryDatabase::<HashDigest>::default();
+/// let mut db = BlockchainDatabase::new(db_backend).unwrap();
+/// // Do stuff with db
+/// ```
 pub struct BlockchainDatabase<T>
 where T: BlockchainBackend
 {
@@ -114,7 +149,7 @@ where T: BlockchainBackend
 
         Ok(ChainMetadata {
             height_of_longest_chain: height,
-            greatest_accumulated_work: work,
+            total_accumulated_difficulty: work,
         })
     }
 
@@ -176,7 +211,7 @@ where T: BlockchainBackend
     /// just exit the program.
     pub fn get_total_work(&self) -> Result<Difficulty, ChainStorageError> {
         let metadata = self.get_metadata()?;
-        Ok(metadata.greatest_accumulated_work.into())
+        Ok(metadata.total_accumulated_difficulty.into())
     }
 
     /// Returns the transaction kernel with the given hash.

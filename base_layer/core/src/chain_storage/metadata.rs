@@ -23,14 +23,14 @@
 #[derive(Debug, Clone, Default)]
 pub struct ChainMetadata {
     pub height_of_longest_chain: u64,
-    pub greatest_accumulated_work: u64,
+    pub total_accumulated_difficulty: u64,
 }
 
 impl ChainMetadata {
     pub fn new(height: u64, work: u64) -> ChainMetadata {
         ChainMetadata {
             height_of_longest_chain: height,
-            greatest_accumulated_work: work,
+            total_accumulated_difficulty: work,
         }
     }
 }

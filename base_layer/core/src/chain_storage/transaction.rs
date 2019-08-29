@@ -59,21 +59,26 @@ impl DbTransaction {
         self.operations.push(WriteOperation::Delete(delete));
     }
 
+    /// Inserts a transaction kernel into the current transaction.
     pub fn insert_kernel(&mut self, kernel: TransactionKernel) {
         let hash = kernel.hash();
         self.insert(DbKeyValuePair::TransactionKernel(hash, Box::new(kernel)));
     }
 
+    /// Inserts a block header into the current transaction.
     pub fn insert_header(&mut self, header: BlockHeader) {
         let height = header.height;
         self.insert(DbKeyValuePair::BlockHeader(height, Box::new(header)));
     }
 
+    /// Adds a UTXO into the current transaction.
     pub fn insert_utxo(&mut self, utxo: TransactionOutput) {
         let hash = utxo.hash();
         self.insert(DbKeyValuePair::UnspentOutput(hash, Box::new(utxo)));
     }
 
+    /// Stores an orphan block. No checks are made as to whether this is actually an orphan. That responsibility lies
+    /// with the calling function.
     pub fn insert_orphan(&mut self, orphan: Block) {
         let hash = orphan.hash();
         self.insert(DbKeyValuePair::OrphanBlock(hash, Box::new(orphan)));
