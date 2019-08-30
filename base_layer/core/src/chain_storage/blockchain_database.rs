@@ -240,7 +240,7 @@ where T: BlockchainBackend
         self.db.fetch_mmr_root(tree)
     }
 
-    /// Fetch a Merklish proof the given hash, tree and position in the MMR
+    /// Fetch a Merklish proof for the given hash, tree and position in the MMR
     pub fn fetch_mmr_proof(&self, tree: MmrTree, pos: u64) -> Result<MerkleProof, ChainStorageError> {
         self.db.fetch_mmr_proof(tree, pos)
     }
