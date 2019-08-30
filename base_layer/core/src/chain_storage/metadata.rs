@@ -20,17 +20,29 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct ChainMetadata {
     pub height_of_longest_chain: u64,
     pub total_accumulated_difficulty: u64,
+    pub pruning_horizon: u64,
 }
 
 impl ChainMetadata {
-    pub fn new(height: u64, work: u64) -> ChainMetadata {
+    pub fn new(height: u64, work: u64, horizon: u64) -> ChainMetadata {
         ChainMetadata {
             height_of_longest_chain: height,
             total_accumulated_difficulty: work,
+            pruning_horizon: horizon,
+        }
+    }
+}
+
+impl Default for ChainMetadata {
+    fn default() -> Self {
+        ChainMetadata {
+            height_of_longest_chain: 0,
+            total_accumulated_difficulty: 0,
+            pruning_horizon: 2880,
         }
     }
 }

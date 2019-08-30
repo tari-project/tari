@@ -98,6 +98,27 @@ impl DbTransaction {
             self.move_utxo(input_hash);
         }
     }
+
+    /// Set the horizon beyond which we cannot be guaranteed provide detailed blockchain information anymore.
+    /// A value of zero indicates that no pruning should be carried out at all. That is, this state should act as a
+    /// archival node.
+    ///
+    /// This operation just sets the new horizon value. No pruning is done at this point.
+    pub fn set_pruning_horizon(&mut self, new_pruning_horizon: u64) {
+        self.operations.push(WriteOperation::Insert(DbKeyValuePair::Metadata(
+            MetadataKey::PruningHorizon,
+            MetadataValue::PruningHorizon(new_pruning_horizon),
+        )));
+    }
+
+    /// Rewind the blockchain state to the block height given.
+    ///
+    /// The operation will fail if
+    /// * The block height is in the future
+    /// * The block height is before pruning horizon
+    pub fn rewind_to_height(&mut self, _height: u64) {
+        unimplemented!()
+    }
 }
 
 #[derive(Debug)]
@@ -121,12 +142,14 @@ pub enum DbKeyValuePair {
 pub enum MetadataKey {
     ChainHeight,
     AccumulatedWork,
+    PruningHorizon,
 }
 
 #[derive(Debug)]
 pub enum MetadataValue {
     ChainHeight(u64),
     AccumulatedWork(u64),
+    PruningHorizon(u64),
 }
 
 #[derive(Debug)]
@@ -154,6 +177,7 @@ impl Display for DbValue {
         match self {
             DbValue::Metadata(MetadataValue::ChainHeight(_)) => f.write_str("Current chain height"),
             DbValue::Metadata(MetadataValue::AccumulatedWork(_)) => f.write_str("Total accumulated work"),
+            DbValue::Metadata(MetadataValue::PruningHorizon(_)) => f.write_str("Pruning horizon"),
             DbValue::BlockHeader(_) => f.write_str("Block header"),
             DbValue::UnspentOutput(_) => f.write_str("Unspent output"),
             DbValue::SpentOutput(_) => f.write_str("Spent output"),
@@ -168,6 +192,7 @@ impl Display for DbKey {
         match self {
             DbKey::Metadata(MetadataKey::ChainHeight) => f.write_str("Current chain height"),
             DbKey::Metadata(MetadataKey::AccumulatedWork) => f.write_str("Total accumulated work"),
+            DbKey::Metadata(MetadataKey::PruningHorizon) => f.write_str("Pruning horizon"),
             DbKey::BlockHeader(v) => f.write_str(&format!("Block header (#{})", v)),
             DbKey::UnspentOutput(v) => f.write_str(&format!("Unspent output ({})", to_hex(v))),
             DbKey::SpentOutput(v) => f.write_str(&format!("Spent output ({})", to_hex(v))),

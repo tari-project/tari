@@ -45,11 +45,9 @@ impl BlakePow {
     /// A simple miner. It starts at nonce = 0 and iterates until it finds a header hash that meets the desired target
     pub fn mine(target_difficulty: Difficulty, header: &BlockHeader) -> u64 {
         let mut nonce = 0u64;
-        let mut difficulty = Difficulty::default();
         // We're mining over here!
         while let Ok(d) = header.pow.calculate_difficulty(nonce, &header) {
             if d >= target_difficulty {
-                difficulty = d;
                 break;
             }
             nonce += 1;
@@ -81,7 +79,7 @@ impl Default for BlakePow {
 }
 
 impl ByteArray for BlakePow {
-    fn from_bytes(bytes: &[u8]) -> Result<Self, ByteArrayError> {
+    fn from_bytes(_bytes: &[u8]) -> Result<Self, ByteArrayError> {
         Ok(BlakePow)
     }
 
@@ -98,10 +96,7 @@ impl Hashable for BlakePow {
 
 #[cfg(test)]
 mod test {
-    use crate::{
-        blocks::blockheader::BlockHeader,
-        proof_of_work::{Difficulty, ProofOfWork},
-    };
+    use crate::{blocks::blockheader::BlockHeader, proof_of_work::ProofOfWork};
 
     #[test]
     fn validate_max_target() {

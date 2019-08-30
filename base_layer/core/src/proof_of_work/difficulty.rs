@@ -79,6 +79,7 @@ impl From<u64> for Difficulty {
 mod test {
     use crate::proof_of_work::difficulty::Difficulty;
 
+    #[test]
     fn add_difficulty() {
         assert_eq!(
             Difficulty::from(1_000) + Difficulty::from(8_000),

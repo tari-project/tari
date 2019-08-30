@@ -86,6 +86,9 @@ where D: Digest + Send + Sync
                     DbKeyValuePair::Metadata(_, MetadataValue::AccumulatedWork(w)) => {
                         db.metadata.total_accumulated_difficulty = w;
                     },
+                    DbKeyValuePair::Metadata(_, MetadataValue::PruningHorizon(h)) => {
+                        db.metadata.pruning_horizon = h;
+                    },
                     DbKeyValuePair::BlockHeader(k, v) => {
                         let hash = v.hash();
                         db.header_mmr.push(&hash).unwrap();
@@ -151,6 +154,9 @@ where D: Digest + Send + Sync
             ))),
             DbKey::Metadata(MetadataKey::AccumulatedWork) => Some(DbValue::Metadata(MetadataValue::AccumulatedWork(
                 db.metadata.total_accumulated_difficulty,
+            ))),
+            DbKey::Metadata(MetadataKey::PruningHorizon) => Some(DbValue::Metadata(MetadataValue::PruningHorizon(
+                db.metadata.pruning_horizon,
             ))),
             DbKey::BlockHeader(k) => db.headers.get(k).map(|v| DbValue::BlockHeader(Box::new(v.clone()))),
             DbKey::UnspentOutput(k) => db.utxos.get(k).map(|v| DbValue::UnspentOutput(Box::new(v.clone()))),

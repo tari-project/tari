@@ -28,7 +28,7 @@ use crate::{
     proof_of_work::PowError,
     tari_amount::*,
     transaction::*,
-    types::{Commitment, HashDigest, TariProofOfWork, COMMITMENT_FACTORY, PROVER},
+    types::{Commitment, TariProofOfWork, COMMITMENT_FACTORY, PROVER},
 };
 use derive_error::Error;
 use serde::{Deserialize, Serialize};

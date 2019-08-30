@@ -80,6 +80,22 @@ macro_rules! fetch {
             Err(e) => log_error(key, e),
         }
     }};
+
+    (meta $db:expr, $meta_key:ident, $default:expr) => {{
+        match $db.fetch(&DbKey::Metadata(MetadataKey::$meta_key)) {
+            Ok(None) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "The {} entry is not present in the database. Assuming the database is empty.",
+                    DbKey::Metadata(MetadataKey::$meta_key)
+                );
+                $default
+            },
+            Ok(Some(DbValue::Metadata(MetadataValue::$meta_key(v)))) => v,
+            Ok(Some(other)) => return unexpected_result(DbKey::Metadata(MetadataKey::$meta_key), other),
+            Err(e) => return log_error(DbKey::Metadata(MetadataKey::$meta_key), e),
+        }
+    }};
 }
 
 /// A generic blockchain storage mechanism. This struct defines the API for storing and retrieving Tari blockchain
@@ -121,35 +137,13 @@ where T: BlockchainBackend
 
     /// Reads the blockchain metadata (block height etc) from the underlying backend and returns it.
     fn read_metadata(db: &T) -> Result<ChainMetadata, ChainStorageError> {
-        let height = match db.fetch(&DbKey::Metadata(MetadataKey::ChainHeight)) {
-            Ok(Some(DbValue::Metadata(MetadataValue::ChainHeight(v)))) => v,
-            Ok(None) => {
-                warn!(
-                    target: LOG_TARGET,
-                    "The chain height entry is not present in the database. Assuming the database is empty."
-                );
-                0
-            },
-            Err(e) => return log_error(DbKey::Metadata(MetadataKey::ChainHeight), e),
-            Ok(Some(other)) => return unexpected_result(DbKey::Metadata(MetadataKey::ChainHeight), other),
-        };
-
-        let work = match db.fetch(&DbKey::Metadata(MetadataKey::AccumulatedWork)) {
-            Ok(Some(DbValue::Metadata(MetadataValue::AccumulatedWork(v)))) => v,
-            Ok(None) => {
-                warn!(
-                    target: LOG_TARGET,
-                    "The accumulated work entry is not present in the database. Assuming the database is empty."
-                );
-                0
-            },
-            Err(e) => return log_error(DbKey::Metadata(MetadataKey::AccumulatedWork), e),
-            Ok(Some(other)) => return unexpected_result(DbKey::Metadata(MetadataKey::AccumulatedWork), other),
-        };
-
+        let height = fetch!(meta db, ChainHeight, 0);
+        let work = fetch!(meta db, AccumulatedWork, 0);
+        let horizon = fetch!(meta db, PruningHorizon, 0);
         Ok(ChainMetadata {
             height_of_longest_chain: height,
             total_accumulated_difficulty: work,
+            pruning_horizon: horizon,
         })
     }
 
