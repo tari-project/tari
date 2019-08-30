@@ -28,6 +28,7 @@
 
 mod blockchain_database;
 mod error;
+mod historical_block;
 mod memory_db;
 mod metadata;
 #[cfg(test)]
@@ -36,6 +37,7 @@ mod transaction;
 
 // Public API exports
 pub use blockchain_database::BlockchainDatabase;
+pub use historical_block::HistoricalBlock;
 pub use memory_db::MemoryDatabase;
 pub use metadata::ChainMetadata;
-pub use transaction::DbTransaction;
+pub use transaction::{DbTransaction, MmrTree};

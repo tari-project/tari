@@ -87,7 +87,7 @@ impl DbTransaction {
     /// Moves a UTXO. If the UTXO is not in the UTXO set, the transaction will fail with an `UnspendableOutput` error.
     pub fn move_utxo(&mut self, utxo_hash: HashOutput) {
         self.operations
-            .push(WriteOperation::Move(DbKey::UnspentOutput(utxo_hash)));
+            .push(WriteOperation::Spend(DbKey::UnspentOutput(utxo_hash)));
     }
 
     /// Moves the given set of transaction inputs from the UTXO set to the STXO set. All the inputs *must* currently
@@ -125,7 +125,9 @@ impl DbTransaction {
 pub enum WriteOperation {
     Insert(DbKeyValuePair),
     Delete(DbKey),
-    Move(DbKey),
+    Spend(DbKey),
+    UnSpend(DbKey),
+    CreateMmrCheckpoint(MmrTree),
 }
 
 #[derive(Debug)]
@@ -136,6 +138,14 @@ pub enum DbKeyValuePair {
     SpentOutput(HashOutput, Box<TransactionOutput>),
     TransactionKernel(HashOutput, Box<TransactionKernel>),
     OrphanBlock(HashOutput, Box<Block>),
+}
+
+#[derive(Debug)]
+pub enum MmrTree {
+    Utxo,
+    Kernel,
+    RangeProof,
+    Header,
 }
 
 #[derive(Debug)]

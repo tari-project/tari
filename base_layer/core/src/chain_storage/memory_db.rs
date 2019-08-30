@@ -25,9 +25,18 @@
 use crate::{
     blocks::{block::Block, blockheader::BlockHeader},
     chain_storage::{
-        blockchain_database::{BlockchainBackend, MmrTree},
+        blockchain_database::BlockchainBackend,
         error::ChainStorageError,
-        transaction::{DbKey, DbKeyValuePair, DbTransaction, DbValue, MetadataKey, MetadataValue, WriteOperation},
+        transaction::{
+            DbKey,
+            DbKeyValuePair,
+            DbTransaction,
+            DbValue,
+            MetadataKey,
+            MetadataValue,
+            MmrTree,
+            WriteOperation,
+        },
         ChainMetadata,
     },
     transaction::{TransactionKernel, TransactionOutput},
@@ -38,7 +47,7 @@ use std::{
     collections::HashMap,
     sync::{Arc, RwLock, RwLockWriteGuard},
 };
-use tari_mmr::{Hash as MmrHash, MerkleChangeTracker, MerkleCheckPoint, MutableMmr};
+use tari_mmr::{Hash as MmrHash, MerkleChangeTracker, MerkleCheckPoint, MerkleProof, MutableMmr};
 use tari_utilities::hash::Hashable;
 
 struct InnerDatabase<D>
@@ -129,14 +138,41 @@ where D: Digest + Send + Sync
                         db.orphans.remove(&k);
                     },
                 },
-                WriteOperation::Move(key) => match key {
+                WriteOperation::Spend(key) => match key {
                     DbKey::UnspentOutput(hash) => {
                         let moved = spend_utxo(&mut db, hash);
                         if !moved {
                             return Err(ChainStorageError::UnspendableInput);
                         }
                     },
-                    _ => return Err(ChainStorageError::InvalidOperation("Only UTXOs can be moved".into())),
+                    _ => return Err(ChainStorageError::InvalidOperation("Only UTXOs can be spent".into())),
+                },
+                WriteOperation::UnSpend(key) => match key {
+                    DbKey::SpentOutput(hash) => {
+                        let moved = unspend_stxo(&mut db, hash);
+                        if !moved {
+                            return Err(ChainStorageError::UnspendError);
+                        }
+                    },
+                    _ => return Err(ChainStorageError::InvalidOperation("Only STXOs can be unspent".into())),
+                },
+                WriteOperation::CreateMmrCheckpoint(tree) => match tree {
+                    MmrTree::Header => db
+                        .header_mmr
+                        .commit()
+                        .map_err(|e| ChainStorageError::AccessError(e.to_string()))?,
+                    MmrTree::Kernel => db
+                        .kernel_mmr
+                        .commit()
+                        .map_err(|e| ChainStorageError::AccessError(e.to_string()))?,
+                    MmrTree::Utxo => db
+                        .utxo_mmr
+                        .commit()
+                        .map_err(|e| ChainStorageError::AccessError(e.to_string()))?,
+                    MmrTree::RangeProof => db
+                        .range_proof_mmr
+                        .commit()
+                        .map_err(|e| ChainStorageError::AccessError(e.to_string()))?,
                 },
             }
         }
@@ -200,6 +236,39 @@ where D: Digest + Send + Sync
         };
         Ok(root)
     }
+
+    fn fetch_mmr_proof(&self, _tree: MmrTree, _pos: u64) -> Result<MerkleProof, ChainStorageError> {
+        unimplemented!()
+    }
+
+    fn fetch_mmr_checkpoint(&self, tree: MmrTree, height: u64) -> Result<MerkleCheckPoint, ChainStorageError> {
+        let db = self
+            .db
+            .read()
+            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+        let index = match height.checked_sub(db.metadata.height_of_longest_chain - db.metadata.pruning_horizon + 1) {
+            None => return Err(ChainStorageError::BeyondPruningHorizon),
+            Some(v) => v,
+        };
+        match tree {
+            MmrTree::Kernel => db
+                .kernel_mmr
+                .get_checkpoint(index as usize)
+                .map_err(|_| ChainStorageError::BeyondPruningHorizon),
+            MmrTree::Utxo => db
+                .utxo_mmr
+                .get_checkpoint(index as usize)
+                .map_err(|_| ChainStorageError::BeyondPruningHorizon),
+            MmrTree::RangeProof => db
+                .range_proof_mmr
+                .get_checkpoint(index as usize)
+                .map_err(|_| ChainStorageError::BeyondPruningHorizon),
+            MmrTree::Header => db
+                .header_mmr
+                .get_checkpoint(index as usize)
+                .map_err(|_| ChainStorageError::BeyondPruningHorizon),
+        }
+    }
 }
 
 impl<D> Clone for MemoryDatabase<D>
@@ -239,6 +308,17 @@ fn spend_utxo<D: Digest>(db: &mut RwLockWriteGuard<InnerDatabase<D>>, hash: Hash
         None => false,
         Some(utxo) => {
             db.stxos.insert(hash, utxo);
+            true
+        },
+    }
+}
+
+// This is a private helper function. When it is called, we are guaranteed to have a write lock on self.db
+fn unspend_stxo<D: Digest>(db: &mut RwLockWriteGuard<InnerDatabase<D>>, hash: HashOutput) -> bool {
+    match db.stxos.remove(&hash) {
+        None => false,
+        Some(stxo) => {
+            db.utxos.insert(hash, stxo);
             true
         },
     }

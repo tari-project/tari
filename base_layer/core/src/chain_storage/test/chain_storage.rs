@@ -23,7 +23,7 @@
 
 use crate::{
     blocks::blockheader::BlockHeader,
-    chain_storage::{transaction::DbKey::TransactionKernel, BlockchainDatabase, DbTransaction, MemoryDatabase},
+    chain_storage::{BlockchainDatabase, DbTransaction, MemoryDatabase, MmrTree},
     tari_amount::MicroTari,
     test_utils::builders::{create_test_block, create_test_kernel, create_test_tx, create_utxo},
     types::HashDigest,
@@ -130,7 +130,7 @@ fn multiple_threads() {
 #[test]
 fn utxo_and_rp_merkle_root() {
     let mut store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
-    let root = store.get_utxo_root().unwrap();
+    let root = store.fetch_mmr_root(MmrTree::Utxo).unwrap();
     // This is the zero-length MMR of a mutable MMR with Blake256 as hasher
     assert_eq!(
         &root.to_hex(),
@@ -149,8 +149,8 @@ fn utxo_and_rp_merkle_root() {
     txn.insert_utxo(utxo1);
     txn.insert_utxo(utxo2);
     assert!(store.commit(txn).is_ok());
-    let root = store.get_utxo_root().unwrap();
-    let rp_root = store.get_range_proof_root().unwrap();
+    let root = store.fetch_mmr_root(MmrTree::Utxo).unwrap();
+    let rp_root = store.fetch_mmr_root(MmrTree::RangeProof).unwrap();
     let mut mmr_check = MutableMmr::<HashDigest, _>::new(Vec::new());
     assert!(mmr_check.push(&hash1).is_ok());
     assert!(mmr_check.push(&hash2).is_ok());
@@ -161,7 +161,7 @@ fn utxo_and_rp_merkle_root() {
 #[test]
 fn header_merkle_root() {
     let mut store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
-    let root = store.get_header_root().unwrap();
+    let root = store.fetch_mmr_root(MmrTree::Header).unwrap();
     // This is the zero-length MMR of a mutable MMR with Blake256 as hasher
     assert_eq!(
         &root.to_hex(),
@@ -176,7 +176,7 @@ fn header_merkle_root() {
     txn.insert_header(header1);
     txn.insert_header(header2);
     assert!(store.commit(txn).is_ok());
-    let root = store.get_header_root().unwrap();
+    let root = store.fetch_mmr_root(MmrTree::Header).unwrap();
     let mut mmr_check = MutableMmr::<HashDigest, _>::new(Vec::new());
     assert!(mmr_check.push(&hash1).is_ok());
     assert!(mmr_check.push(&hash2).is_ok());
@@ -186,7 +186,7 @@ fn header_merkle_root() {
 #[test]
 fn kernel_merkle_root() {
     let mut store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
-    let root = store.get_header_root().unwrap();
+    let root = store.fetch_mmr_root(MmrTree::Kernel).unwrap();
     // This is the zero-length MMR of a mutable MMR with Blake256 as hasher
     assert_eq!(
         &root.to_hex(),
@@ -203,7 +203,7 @@ fn kernel_merkle_root() {
     txn.insert_kernel(kernel2);
     txn.insert_kernel(kernel3);
     assert!(store.commit(txn).is_ok());
-    let root = store.get_kernel_root().unwrap();
+    let root = store.fetch_mmr_root(MmrTree::Kernel).unwrap();
     let mut mmr_check = MutableMmr::<HashDigest, _>::new(Vec::new());
     assert!(mmr_check.push(&hash1).is_ok());
     assert!(mmr_check.push(&hash2).is_ok());

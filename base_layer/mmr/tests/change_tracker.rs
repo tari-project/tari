@@ -22,6 +22,7 @@
 
 mod support;
 
+use croaring::Bitmap;
 use support::{create_mmr, int_to_hash, Hasher};
 use tari_mmr::{MerkleChangeTracker, MutableMmr};
 use tari_utilities::hex::Hex;
@@ -99,11 +100,8 @@ fn checkpoints() {
 fn reset_and_replay() {
     // You don't have to use a Pruned MMR... any MMR implementation is fine
     let base = MutableMmr::from(create_mmr(5));
-    println!("mmr-size: {}", base.len());
-
     let mut mmr = MerkleChangeTracker::new(base, Vec::new()).unwrap();
     let root = mmr.get_merkle_root();
-    println!("Base: {}", root.to_hex());
     // Add some new nodes etc
     assert!(mmr.push(&int_to_hash(10)).is_ok());
     assert!(mmr.push(&int_to_hash(11)).is_ok());
@@ -116,23 +114,37 @@ fn reset_and_replay() {
     // Change some more state
     assert!(mmr.delete(1));
     assert!(mmr.delete(3));
-    assert!(mmr.commit().is_ok());
+    assert!(mmr.commit().is_ok()); //--- Checkpoint 0 ---
     let root = mmr.get_merkle_root();
-    println!("PosA: {}", root.to_hex());
 
     // Change a bunch more things
-    assert!(mmr.push(&int_to_hash(5)).is_ok());
-    assert!(mmr.commit().is_ok());
+    let hash_5 = int_to_hash(5);
+    assert!(mmr.push(&hash_5).is_ok());
+    assert!(mmr.commit().is_ok()); //--- Checkpoint 1 ---
     assert!(mmr.push(&int_to_hash(6)).is_ok());
-    assert!(mmr.commit().is_ok());
+    assert!(mmr.commit().is_ok()); //--- Checkpoint 2 ---
+
     assert!(mmr.push(&int_to_hash(7)).is_ok());
-    assert!(mmr.commit().is_ok());
+    assert!(mmr.commit().is_ok()); //--- Checkpoint 3 ---
     assert!(mmr.delete(0));
     assert!(mmr.delete(6));
-    assert!(mmr.commit().is_ok());
+    assert!(mmr.commit().is_ok()); //--- Checkpoint 4 ---
+
+    // Get checkpoint 1
+    let cp = mmr.get_checkpoint(1).unwrap();
+    assert_eq!(cp.nodes_added(), &[hash_5]);
+    assert_eq!(*cp.nodes_deleted(), Bitmap::create());
+
+    // Get checkpoint 0
+    let cp = mmr.get_checkpoint(0).unwrap();
+    assert!(cp.nodes_added().is_empty());
+    let mut deleted = Bitmap::create();
+    deleted.add(1);
+    deleted.add(3);
+    assert_eq!(*cp.nodes_deleted(), deleted);
+
     // Roll back to last time we save the root
     assert!(mmr.replay(1).is_ok());
-    println!("PosB: {}", mmr.get_merkle_root().to_hex());
     assert_eq!(mmr.len(), 3);
 
     assert_eq!(mmr.get_merkle_root(), root);

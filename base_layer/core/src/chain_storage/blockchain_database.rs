@@ -25,8 +25,9 @@ use crate::{
     blocks::{block::Block, blockheader::BlockHeader},
     chain_storage::{
         error::ChainStorageError,
-        transaction::{DbKey, DbTransaction, DbValue, MetadataKey, MetadataValue},
+        transaction::{DbKey, DbTransaction, DbValue, MetadataKey, MetadataValue, MmrTree},
         ChainMetadata,
+        HistoricalBlock,
     },
     proof_of_work::Difficulty,
     transaction::{TransactionKernel, TransactionOutput},
@@ -34,15 +35,9 @@ use crate::{
 };
 use log::*;
 use std::sync::{Arc, RwLock, RwLockReadGuard};
+use tari_mmr::{MerkleCheckPoint, MerkleProof};
 
 const LOG_TARGET: &str = "core::chain_storage::database";
-
-pub enum MmrTree {
-    Utxo,
-    Kernel,
-    RangeProof,
-    Header,
-}
 
 /// Identify behaviour for Blockchain database backends. Implementations must support `Send` and `Sync` so that
 /// `BlockchainDatabase` can be thread-safe. The backend *must* also execute transactions atomically; i.e., every
@@ -66,7 +61,8 @@ pub trait BlockchainBackend: Send + Sync {
     /// Fetches the merklish root for the MMR tree identified by the key. This function should only fail if there is an
     /// access or integrity issue with the back end.
     fn fetch_mmr_root(&self, tree: MmrTree) -> Result<HashOutput, ChainStorageError>;
-    // TODO fetch_mmr_proof(tree: MmrTRee, pos: u64) -> Result<MerkleProof, ChainStorageError>
+    fn fetch_mmr_proof(&self, tree: MmrTree, pos: u64) -> Result<MerkleProof, ChainStorageError>;
+    fn fetch_mmr_checkpoint(&self, tree: MmrTree, height: u64) -> Result<MerkleCheckPoint, ChainStorageError>;
 }
 
 // Private macro that pulls out all the boiler plate of extracting a DB query result from its variants
@@ -239,24 +235,30 @@ where T: BlockchainBackend
         self.db.contains(&key)
     }
 
-    /// Calculate the Merklish root of the current UTXO set.
-    pub fn get_utxo_root(&self) -> Result<HashOutput, ChainStorageError> {
-        self.db.fetch_mmr_root(MmrTree::Utxo)
+    /// Calculate the Merklish root of the specified merkle mountain range.
+    pub fn fetch_mmr_root(&self, tree: MmrTree) -> Result<HashOutput, ChainStorageError> {
+        self.db.fetch_mmr_root(tree)
     }
 
-    /// Calculate the Merklish root of the kernel set.
-    pub fn get_kernel_root(&self) -> Result<HashOutput, ChainStorageError> {
-        self.db.fetch_mmr_root(MmrTree::Kernel)
+    /// Fetch a Merklish proof for the given hash, tree and position in the MMR
+    pub fn fetch_mmr_proof(&self, tree: MmrTree, pos: u64) -> Result<MerkleProof, ChainStorageError> {
+        self.db.fetch_mmr_proof(tree, pos)
     }
 
-    /// Calculate the Merklish root of the kernel set.
-    pub fn get_header_root(&self) -> Result<HashOutput, ChainStorageError> {
-        self.db.fetch_mmr_root(MmrTree::Header)
-    }
-
-    /// Calculate the Merklish root of the range proof set.
-    pub fn get_range_proof_root(&self) -> Result<HashOutput, ChainStorageError> {
-        self.db.fetch_mmr_root(MmrTree::RangeProof)
+    /// Fetch a block from the blockchain database.
+    ///
+    /// # Returns
+    /// This function returns an [HistoricalBlock] instance, which can be converted into a standard [Block], but also
+    /// contains some additional information given its retrospective perspective that will be of interest to block
+    /// explorers. For example, we know whether the outputs of this block have subsequently been spent or not and how
+    /// many blocks have been mined on top of this block.
+    ///
+    /// `fetch_block` can return a `ChainStorageError` in the following cases:
+    /// * There is an access problem on the back end.
+    /// * The height is beyond the current chain tip.
+    /// * The height is lower than the block at the pruning horizon.
+    pub fn fetch_block(&self, height: u64) -> Result<HistoricalBlock, ChainStorageError> {
+        unimplemented!()
     }
 
     /// Atomically commit the provided transaction to the database backend. This function does not update the metadata.

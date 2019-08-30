@@ -35,4 +35,6 @@ pub enum MerkleMountainRangeError {
     // A node hash was not found for the given node index
     #[error(non_std, no_from)]
     HashNotFound(usize),
+    // A request was out of range
+    OutOfRange,
 }
