@@ -22,7 +22,7 @@
 //
 
 use crate::{
-    blocks::blockheader::BlockHeader,
+    blocks::BlockHeader,
     proof_of_work::{difficulty::Difficulty, error::PowError},
 };
 use tari_utilities::{ByteArray, Hashable};

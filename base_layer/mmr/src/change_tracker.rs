@@ -257,11 +257,18 @@ impl MerkleCheckPoint {
         Ok(())
     }
 
+    /// Return a reference to the hashes of the nodes added in the checkpoint
     pub fn nodes_added(&self) -> &Vec<Hash> {
         &self.nodes_added
     }
 
+    /// Return a reference to the roaring bitmap of nodes that were deleted in this checkpoint
     pub fn nodes_deleted(&self) -> &Bitmap {
         &self.nodes_deleted
+    }
+
+    /// Break a checkpoint up into its constituent parts
+    pub fn into_parts(self) -> (Vec<Hash>, Bitmap) {
+        (self.nodes_added, self.nodes_deleted)
     }
 }

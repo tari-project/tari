@@ -20,9 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::chain_storage::db_transaction::DbKey;
 use derive_error::Error;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, PartialEq)]
 pub enum ChainStorageError {
     // Access to the underlying storage mechanism failed
     #[error(non_std, no_from)]
@@ -37,7 +38,8 @@ pub enum ChainStorageError {
     UnspendError,
     // An unexpected result type was received for the given database request. This suggests that there is an internal
     // error or bug of sorts.
-    UnexpectedResult,
+    #[error(msg_embedded, non_std, no_from)]
+    UnexpectedResult(String),
     // You tried to execute an invalid Database operation
     #[error(msg_embedded, non_std, no_from)]
     InvalidOperation(String),
@@ -46,4 +48,10 @@ pub enum ChainStorageError {
     CriticalError,
     // Cannot return data for requests older than the current pruning horizon
     BeyondPruningHorizon,
+    // A parameter to the request was invalid
+    #[error(msg_embedded, non_std, no_from)]
+    InvalidQuery(String),
+    // The requested value was not found in the database
+    #[error(non_std, no_from)]
+    ValueNotFound(DbKey),
 }

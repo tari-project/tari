@@ -22,7 +22,7 @@
 //
 
 use crate::{
-    blocks::{aggregated_body::AggregateBody, block::Block, blockheader::BlockHeader},
+    blocks::{aggregated_body::AggregateBody, Block, BlockHeader},
     tari_amount::MicroTari,
     transaction::{KernelBuilder, OutputFeatures, Transaction, TransactionInput, TransactionKernel, TransactionOutput},
     transaction_protocol::{build_challenge, TransactionMetadata},

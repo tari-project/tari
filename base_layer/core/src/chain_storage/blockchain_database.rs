@@ -22,24 +22,34 @@
 //
 
 use crate::{
-    blocks::{block::Block, blockheader::BlockHeader},
+    blocks::{Block, BlockBuilder, BlockHeader},
     chain_storage::{
+        db_transaction::{DbKey, DbTransaction, DbValue, MetadataKey, MetadataValue, MmrTree},
         error::ChainStorageError,
-        transaction::{DbKey, DbTransaction, DbValue, MetadataKey, MetadataValue, MmrTree},
         ChainMetadata,
         HistoricalBlock,
     },
     proof_of_work::Difficulty,
-    transaction::{TransactionKernel, TransactionOutput},
-    types::HashOutput,
+    transaction::{TransactionInput, TransactionKernel, TransactionOutput},
+    types::{Commitment, HashOutput},
 };
+use croaring::Bitmap;
 use log::*;
 use std::sync::{Arc, RwLock, RwLockReadGuard};
-use tari_mmr::{MerkleCheckPoint, MerkleProof};
+use tari_mmr::{Hash, MerkleCheckPoint, MerkleProof};
+use tari_utilities::Hashable;
 
 const LOG_TARGET: &str = "core::chain_storage::database";
 
-/// Identify behaviour for Blockchain database backends. Implementations must support `Send` and `Sync` so that
+#[derive(Clone, Debug, PartialEq)]
+pub enum BlockAddResult {
+    Ok,
+    BlockExists,
+    OrphanBlock,
+    ChainReorg,
+}
+
+/// Identify behaviour for Blockchain database back ends. Implementations must support `Send` and `Sync` so that
 /// `BlockchainDatabase` can be thread-safe. The backend *must* also execute transactions atomically; i.e., every
 /// operation within it must succeed, or they all fail. Failure to support this contract could lead to
 /// synchronisation issues in your database backend.
@@ -61,8 +71,13 @@ pub trait BlockchainBackend: Send + Sync {
     /// Fetches the merklish root for the MMR tree identified by the key. This function should only fail if there is an
     /// access or integrity issue with the back end.
     fn fetch_mmr_root(&self, tree: MmrTree) -> Result<HashOutput, ChainStorageError>;
+    /// Constructs a merkle proof for the specified merkle mountain range and the given leaf position.
     fn fetch_mmr_proof(&self, tree: MmrTree, pos: u64) -> Result<MerkleProof, ChainStorageError>;
-    fn fetch_mmr_checkpoint(&self, tree: MmrTree, height: u64) -> Result<MerkleCheckPoint, ChainStorageError>;
+    /// The nth MMR checkpoint (the list of nodes added & deleted) for the given Merkle tree. The index is the n-th
+    /// checkpoint (block) from the pruning horizon block.
+    fn fetch_mmr_checkpoint(&self, tree: MmrTree, index: u64) -> Result<MerkleCheckPoint, ChainStorageError>;
+    /// Fetches the leaf node hash and its deletion status for the nth leaf node in the given MMR tree.
+    fn fetch_mmr_node(&self, tree: MmrTree, pos: u32) -> Result<(Hash, bool), ChainStorageError>;
 }
 
 // Private macro that pulls out all the boiler plate of extracting a DB query result from its variants
@@ -70,8 +85,8 @@ macro_rules! fetch {
     ($self:ident, $key_val:expr, $key_var:ident) => {{
         let key = DbKey::$key_var($key_val);
         match $self.db.fetch(&key) {
-            Ok(None) => Ok(None),
-            Ok(Some(DbValue::$key_var(k))) => Ok(Some(*k)),
+            Ok(None) => Err(ChainStorageError::ValueNotFound(key)),
+            Ok(Some(DbValue::$key_var(k))) => Ok(*k),
             Ok(Some(other)) => unexpected_result(key, other),
             Err(e) => log_error(key, e),
         }
@@ -133,11 +148,13 @@ where T: BlockchainBackend
 
     /// Reads the blockchain metadata (block height etc) from the underlying backend and returns it.
     fn read_metadata(db: &T) -> Result<ChainMetadata, ChainStorageError> {
-        let height = fetch!(meta db, ChainHeight, 0);
+        let height = fetch!(meta db, ChainHeight, None);
+        let hash = fetch!(meta db, BestBlock, None);
         let work = fetch!(meta db, AccumulatedWork, 0);
-        let horizon = fetch!(meta db, PruningHorizon, 0);
+        let horizon = fetch!(meta db, PruningHorizon, 2880);
         Ok(ChainMetadata {
             height_of_longest_chain: height,
+            best_block: hash,
             total_accumulated_difficulty: work,
             pruning_horizon: horizon,
         })
@@ -175,7 +192,7 @@ where T: BlockchainBackend
         }
     }
 
-    fn get_metadata(&self) -> Result<RwLockReadGuard<ChainMetadata>, ChainStorageError> {
+    fn access_metadata(&self) -> Result<RwLockReadGuard<ChainMetadata>, ChainStorageError> {
         self.metadata.read().map_err(|e| {
             error!(
                 target: LOG_TARGET,
@@ -186,12 +203,31 @@ where T: BlockchainBackend
         })
     }
 
+    fn update_metadata(&self, new_height: u64, new_hash: Vec<u8>) -> Result<(), ChainStorageError> {
+        let mut db = self.metadata.write().map_err(|_| {
+            ChainStorageError::AccessError(
+                "Could not obtain write access to blockchain metadata after storing block".into(),
+            )
+        })?;
+        db.height_of_longest_chain = Some(new_height);
+        db.best_block = Some(new_hash);
+        Ok(())
+    }
+
     /// Returns the height of the current longest chain. This method will only fail if there's a fairly serious
     /// synchronisation problem on the database. You can try calling [BlockchainDatabase::try_recover_metadata] in
     /// that case to re-sync the metadata; or else just exit the program.
-    pub fn get_height(&self) -> Result<u64, ChainStorageError> {
-        let metadata = self.get_metadata()?;
+    ///
+    /// If the chain is empty (the genesis block hasn't been added yet), this function returns `None`
+    pub fn get_height(&self) -> Result<Option<u64>, ChainStorageError> {
+        let metadata = self.access_metadata()?;
         Ok(metadata.height_of_longest_chain)
+    }
+
+    /// Returns a copy of the current blockchain database metadata
+    pub fn get_metadata(&self) -> Result<ChainMetadata, ChainStorageError> {
+        let db = self.access_metadata()?;
+        Ok(db.clone())
     }
 
     /// Returns the total accumulated work/difficulty of the longest chain.
@@ -200,32 +236,32 @@ where T: BlockchainBackend
     /// calling [BlockchainDatabase::try_recover_metadata] in that case to re-sync the metadata; or else
     /// just exit the program.
     pub fn get_total_work(&self) -> Result<Difficulty, ChainStorageError> {
-        let metadata = self.get_metadata()?;
+        let metadata = self.access_metadata()?;
         Ok(metadata.total_accumulated_difficulty.into())
     }
 
     /// Returns the transaction kernel with the given hash.
-    pub fn fetch_kernel(&self, hash: HashOutput) -> Result<Option<TransactionKernel>, ChainStorageError> {
+    pub fn fetch_kernel(&self, hash: HashOutput) -> Result<TransactionKernel, ChainStorageError> {
         fetch!(self, hash, TransactionKernel)
     }
 
     /// Returns the block header at the given block height.
-    pub fn fetch_header(&self, block_num: u64) -> Result<Option<BlockHeader>, ChainStorageError> {
+    pub fn fetch_header(&self, block_num: u64) -> Result<BlockHeader, ChainStorageError> {
         fetch!(self, block_num, BlockHeader)
     }
 
     /// Returns the UTXO with the given hash.
-    pub fn fetch_utxo(&self, hash: HashOutput) -> Result<Option<TransactionOutput>, ChainStorageError> {
+    pub fn fetch_utxo(&self, hash: HashOutput) -> Result<TransactionOutput, ChainStorageError> {
         fetch!(self, hash, UnspentOutput)
     }
 
     /// Returns the STXO with the given hash.
-    pub fn fetch_stxo(&self, hash: HashOutput) -> Result<Option<TransactionOutput>, ChainStorageError> {
+    pub fn fetch_stxo(&self, hash: HashOutput) -> Result<TransactionOutput, ChainStorageError> {
         fetch!(self, hash, SpentOutput)
     }
 
     /// Returns the orphan block with the given hash.
-    pub fn fetch_orphan(&self, hash: HashOutput) -> Result<Option<Block>, ChainStorageError> {
+    pub fn fetch_orphan(&self, hash: HashOutput) -> Result<Block, ChainStorageError> {
         fetch!(self, hash, OrphanBlock)
     }
 
@@ -245,6 +281,67 @@ where T: BlockchainBackend
         self.db.fetch_mmr_proof(tree, pos)
     }
 
+    /// Add a block to the longest chain. This function does some basic checks to maintain the chain integrity, but
+    /// does not perform a full block validation (this should have been done by this point).
+    ///
+    /// On completion, this function will have
+    ///   * Checked that the previous block builds on the longest chain.
+    ///       * If not - add orphan block and possibly re-org
+    ///   * That the total accumulated work has increased.
+    ///   * Mark all inputs in the block as spent.
+    ///   * Updated the database metadata
+    ///
+    /// An error is returned if:
+    ///   * the block has already been added
+    ///   * any of the inputs were not in the UTXO set or were marked as spent already
+    ///
+    /// If an error does occur while writing the new block parts, all changes are reverted before returning.
+    pub fn add_block(&mut self, block: Block) -> Result<BlockAddResult, ChainStorageError> {
+        if !self.is_new_best_block(&block)? {
+            return self.handle_possible_reorg(block);
+        }
+        let block_hash = block.hash();
+        let block_height = block.header.height;
+        if self.db.contains(&DbKey::BlockHash(block_hash.clone()))? {
+            return Ok(BlockAddResult::BlockExists);
+        }
+        let mut txn = DbTransaction::new();
+        let (header, inputs, outputs, kernels) = block.dissolve();
+        txn.insert_header(header);
+        txn.spend_inputs(&inputs);
+        outputs.into_iter().for_each(|utxo| txn.insert_utxo(utxo));
+        kernels.into_iter().for_each(|k| txn.insert_kernel(k));
+        txn.commit_block();
+        self.commit(txn)?;
+        self.update_metadata(block_height, block_hash)?;
+        Ok(BlockAddResult::Ok)
+    }
+
+    /// Returns true if the given block -- assuming everything else is valid -- would be added to the tip of the
+    /// longest chain; i.e. the following conditions are met:
+    ///   * The blockchain is empty,
+    ///   * or ALL of:
+    ///     * the block's parent hash is the hash of the block at the current chain tip,
+    ///     * the block height is one greater than the parent block
+    ///     * the total accumulated work has increased
+    pub fn is_new_best_block(&self, block: &Block) -> Result<bool, ChainStorageError> {
+        let (height, parent_hash) = {
+            let db = self.access_metadata()?;
+            if db.height_of_longest_chain.is_none() {
+                return Ok(true);
+            }
+            (
+                db.height_of_longest_chain.clone().unwrap(),
+                db.best_block.clone().unwrap(),
+            )
+        };
+        let best_block = self.fetch_header(height - 1)?;
+        let result = block.header.prev_hash == parent_hash &&
+            block.header.height == best_block.height + 1 &&
+            block.header.total_difficulty > best_block.total_difficulty;
+        Ok(result)
+    }
+
     /// Fetch a block from the blockchain database.
     ///
     /// # Returns
@@ -258,21 +355,127 @@ where T: BlockchainBackend
     /// * The height is beyond the current chain tip.
     /// * The height is lower than the block at the pruning horizon.
     pub fn fetch_block(&self, height: u64) -> Result<HistoricalBlock, ChainStorageError> {
-        unimplemented!()
+        let metadata = self.check_for_valid_height(height)?;
+        let header = self.fetch_header(height)?;
+        println!("Got header");
+        let kernel_cp = self.fetch_mmr_checkpoint(MmrTree::Kernel, height)?;
+        println!("Got kernel checkpoint");
+        let (kernel_hashes, _) = kernel_cp.into_parts();
+        let kernels = self.fetch_kernels(kernel_hashes)?;
+        let utxo_cp = self.db.fetch_mmr_checkpoint(MmrTree::Utxo, height)?;
+        let (utxo_hashes, deleted_nodes) = utxo_cp.into_parts();
+        let inputs = self.fetch_inputs(deleted_nodes)?;
+        let (outputs, spent) = self.fetch_outputs(utxo_hashes)?;
+        let block = BlockBuilder::new()
+            .with_header(header)
+            .add_inputs(inputs)
+            .add_outputs(outputs)
+            .add_kernels(kernels)
+            .build();
+        Ok(HistoricalBlock::new(
+            block,
+            metadata.height_of_longest_chain.unwrap() - height + 1,
+            spent,
+        ))
+    }
+
+    fn check_for_valid_height(&self, height: u64) -> Result<ChainMetadata, ChainStorageError> {
+        let metadata = self.get_metadata()?;
+        if metadata.height_of_longest_chain.is_none() {
+            return Err(ChainStorageError::InvalidQuery(
+                "Cannot retrieve block. Blockchain DB is empty".into(),
+            ));
+        }
+        if height > metadata.height_of_longest_chain.unwrap() {
+            return Err(ChainStorageError::InvalidQuery(format!(
+                "Cannot get block at height {}. Chain tip is at {}",
+                height,
+                metadata.height_of_longest_chain.unwrap()
+            )));
+        }
+        // We can't actually provide full block beyond the pruning horizon
+        if height < metadata.horizon_block().unwrap() {
+            return Err(ChainStorageError::BeyondPruningHorizon);
+        }
+        Ok(metadata)
+    }
+
+    fn fetch_kernels(&self, hashes: Vec<Hash>) -> Result<Vec<TransactionKernel>, ChainStorageError> {
+        hashes.into_iter().map(|hash| self.fetch_kernel(hash)).collect()
+    }
+
+    fn fetch_inputs(&self, deleted_nodes: Bitmap) -> Result<Vec<TransactionInput>, ChainStorageError> {
+        // The inputs must all the in the current STXO set
+        let inputs: Result<Vec<TransactionInput>, ChainStorageError> = deleted_nodes
+            .iter()
+            .map(|pos| {
+                self.db
+                    .fetch_mmr_node(MmrTree::Utxo, pos)
+                    .and_then(|(hash, deleted)| {
+                        assert!(deleted);
+                        self.fetch_stxo(hash)
+                    })
+                    .and_then(|stxo| Ok(TransactionInput::from(stxo)))
+            })
+            .collect();
+        inputs
+    }
+
+    fn fetch_outputs(&self, hashes: Vec<Hash>) -> Result<(Vec<TransactionOutput>, Vec<Commitment>), ChainStorageError> {
+        let mut outputs = Vec::with_capacity(hashes.len());
+        let mut spent = Vec::with_capacity(hashes.len());
+        for hash in hashes.into_iter() {
+            // The outputs could come from either the UTXO or STXO set
+            match self.fetch_utxo(hash.clone()) {
+                Ok(utxo) => {
+                    outputs.push(utxo);
+                    continue;
+                },
+                Err(ChainStorageError::ValueNotFound(_)) => {}, // Check STXO set below
+                Err(e) => return Err(e),                        // Something bad happened. Abort.
+            }
+            // Check the STXO set
+            let stxo = self.fetch_stxo(hash)?;
+            spent.push(stxo.commitment.clone());
+            outputs.push(stxo);
+        }
+        Ok((outputs, spent))
+    }
+
+    fn fetch_mmr_checkpoint(&self, tree: MmrTree, height: u64) -> Result<MerkleCheckPoint, ChainStorageError> {
+        let metadata = self.get_metadata()?;
+        let horizon_block = match metadata.horizon_block() {
+            None => return Err(ChainStorageError::InvalidQuery("Blockchain database is empty".into())),
+            Some(i) => i,
+        };
+        let index = height
+            .checked_sub(horizon_block)
+            .ok_or(ChainStorageError::BeyondPruningHorizon)? as u64;
+        self.db.fetch_mmr_checkpoint(tree, index)
     }
 
     /// Atomically commit the provided transaction to the database backend. This function does not update the metadata.
     pub(crate) fn commit(&mut self, txn: DbTransaction) -> Result<(), ChainStorageError> {
         self.db.write(txn)
     }
+
+    /// Checks whether we should add the block as an orphan. If it is the case, the orphan block is added and the chain
+    /// is reorganised if necessary
+    fn handle_possible_reorg(&mut self, _block: Block) -> Result<BlockAddResult, ChainStorageError> {
+        // TODO - check if block height > pruning horizon
+        // TODO - check if proof of work is valid and above some spam minimum??
+        unimplemented!()
+    }
+
+    fn handle_reorg(&mut self, _orphan_hash: Hash) -> Result<(), ChainStorageError> {
+        unimplemented!()
+    }
 }
 
 fn unexpected_result<T>(req: DbKey, res: DbValue) -> Result<T, ChainStorageError> {
-    error!(
-        target: LOG_TARGET,
-        "Unexpected result for database query {}. Response: {}", req, res
-    );
-    Err(ChainStorageError::UnexpectedResult)
+    let msg = format!("Unexpected result for database query {}. Response: {}", req, res);
+    error!(target: LOG_TARGET, "{}", msg);
+    Err(ChainStorageError::UnexpectedResult(msg))
 }
 
 fn log_error<T>(req: DbKey, err: ChainStorageError) -> Result<T, ChainStorageError> {

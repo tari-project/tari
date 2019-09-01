@@ -22,8 +22,16 @@
 //
 
 use crate::{
-    blocks::blockheader::BlockHeader,
-    chain_storage::{BlockchainDatabase, DbTransaction, MemoryDatabase, MmrTree},
+    blocks::{genesis_block::get_genesis_block, Block, BlockHeader},
+    chain_storage::{
+        blockchain_database::BlockAddResult,
+        db_transaction::DbKey,
+        error::ChainStorageError,
+        BlockchainDatabase,
+        DbTransaction,
+        MemoryDatabase,
+        MmrTree,
+    },
     tari_amount::MicroTari,
     test_utils::builders::{create_test_block, create_test_kernel, create_test_tx, create_utxo},
     types::HashDigest,
@@ -35,7 +43,11 @@ use tari_utilities::{hex::Hex, Hashable};
 #[test]
 fn fetch_nonexistent_kernel() {
     let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
-    assert!(store.fetch_kernel(vec![0u8; 32]).unwrap().is_none());
+    let h = vec![0u8; 32];
+    assert_eq!(
+        store.fetch_kernel(h.clone()),
+        Err(ChainStorageError::ValueNotFound(DbKey::TransactionKernel(h)))
+    );
 }
 
 #[test]
@@ -47,13 +59,16 @@ fn insert_and_fetch_kernel() {
     let mut txn = DbTransaction::new();
     txn.insert_kernel(kernel.clone());
     assert!(store.commit(txn).is_ok());
-    assert_eq!(store.fetch_kernel(hash).unwrap(), Some(kernel));
+    assert_eq!(store.fetch_kernel(hash), Ok(kernel));
 }
 
 #[test]
 fn fetch_nonexistent_header() {
     let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
-    assert!(store.fetch_header(0).unwrap().is_none());
+    assert_eq!(
+        store.fetch_header(0),
+        Err(ChainStorageError::ValueNotFound(DbKey::BlockHeader(0)))
+    );
 }
 #[test]
 fn insert_and_fetch_header() {
@@ -64,7 +79,11 @@ fn insert_and_fetch_header() {
     let mut txn = DbTransaction::new();
     txn.insert_header(header.clone());
     assert!(store.commit(txn).is_ok());
-    assert!(store.fetch_header(0).unwrap().is_none());
+    assert_eq!(
+        store.fetch_header(0),
+        Err(ChainStorageError::ValueNotFound(DbKey::BlockHeader(0)))
+    );
+    assert_eq!(store.fetch_header(42), Ok(header));
 }
 
 #[test]
@@ -77,7 +96,7 @@ fn insert_and_fetch_utxo() {
     txn.insert_utxo(utxo.clone());
     assert!(store.commit(txn).is_ok());
     assert_eq!(store.is_utxo(hash.clone()).unwrap(), true);
-    assert_eq!(store.fetch_utxo(hash).unwrap(), Some(utxo));
+    assert_eq!(store.fetch_utxo(hash), Ok(utxo));
 }
 
 #[test]
@@ -92,7 +111,7 @@ fn insert_and_fetch_orphan() {
     let mut txn = DbTransaction::new();
     txn.insert_orphan(orphan.clone());
     assert!(store.commit(txn).is_ok());
-    assert_eq!(store.fetch_orphan(orphan_hash).unwrap(), Some(orphan));
+    assert_eq!(store.fetch_orphan(orphan_hash), Ok(orphan));
 }
 
 #[test]
@@ -121,9 +140,9 @@ fn multiple_threads() {
     let hash_a = a.join().unwrap();
     let hash_b = b.join().unwrap();
     // Get the kernels back
-    let kernel_a = store.fetch_kernel(hash_a).unwrap().unwrap();
+    let kernel_a = store.fetch_kernel(hash_a).unwrap();
     assert_eq!(kernel_a.fee, 5.into());
-    let kernel_b = store.fetch_kernel(hash_b).unwrap().unwrap();
+    let kernel_b = store.fetch_kernel(hash_b).unwrap();
     assert_eq!(kernel_b.fee, 10.into());
 }
 
@@ -209,4 +228,31 @@ fn kernel_merkle_root() {
     assert!(mmr_check.push(&hash2).is_ok());
     assert!(mmr_check.push(&hash3).is_ok());
     assert_eq!(root.to_hex(), mmr_check.get_merkle_root().to_hex());
+}
+
+#[test]
+fn store_and_retrieve_block() {
+    // Create new database
+    let mut store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
+    let metadata = store.get_metadata().unwrap();
+    assert_eq!(metadata.height_of_longest_chain, None);
+    assert_eq!(metadata.best_block, None);
+    // Add the Genesis block
+    let block = get_genesis_block();
+    let hash = block.hash();
+    assert_eq!(store.add_block(block.clone()), Ok(BlockAddResult::Ok));
+    println!("Added genesis block");
+    // Check the metadata
+    let metadata = store.get_metadata().unwrap();
+    assert_eq!(metadata.height_of_longest_chain, Some(0));
+    assert_eq!(metadata.best_block, Some(hash));
+    assert_eq!(metadata.horizon_block(), Some(0));
+    // Fetch the block back
+    println!("Fetching genesis block");
+    let block2 = store.fetch_block(0).unwrap();
+    println!("Fetched genesis block");
+    assert_eq!(block2.confirmations(), 1);
+    // Compare the blocks
+    let block2 = Block::from(block2);
+    assert_eq!(block, block2);
 }
