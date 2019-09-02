@@ -27,17 +27,17 @@
 //! backed by LMDB, while the merkle trees are stored in flat files for example.
 
 mod blockchain_database;
+mod db_transaction;
 mod error;
 mod historical_block;
 mod memory_db;
 mod metadata;
 #[cfg(test)]
 mod test;
-mod transaction;
 
 // Public API exports
 pub use blockchain_database::BlockchainDatabase;
+pub use db_transaction::{DbTransaction, MmrTree};
 pub use historical_block::HistoricalBlock;
 pub use memory_db::MemoryDatabase;
 pub use metadata::ChainMetadata;
-pub use transaction::{DbTransaction, MmrTree};

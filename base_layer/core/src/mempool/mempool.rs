@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    blocks::block::Block,
+    blocks::Block,
     mempool::{
         error::MempoolError,
         orphan_pool::{OrphanPool, OrphanPoolConfig},

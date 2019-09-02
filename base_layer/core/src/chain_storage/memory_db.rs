@@ -23,11 +23,10 @@
 //! This is a memory-based blockchain database, generally only useful for testing purposes
 
 use crate::{
-    blocks::{block::Block, blockheader::BlockHeader},
+    blocks::{Block, BlockHeader},
     chain_storage::{
         blockchain_database::BlockchainBackend,
-        error::ChainStorageError,
-        transaction::{
+        db_transaction::{
             DbKey,
             DbKeyValuePair,
             DbTransaction,
@@ -37,7 +36,7 @@ use crate::{
             MmrTree,
             WriteOperation,
         },
-        ChainMetadata,
+        error::ChainStorageError,
     },
     transaction::{TransactionKernel, TransactionOutput},
     types::HashOutput,
@@ -45,7 +44,7 @@ use crate::{
 use digest::Digest;
 use std::{
     collections::HashMap,
-    sync::{Arc, RwLock, RwLockWriteGuard},
+    sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 use tari_mmr::{Hash as MmrHash, MerkleChangeTracker, MerkleCheckPoint, MerkleProof, MutableMmr};
 use tari_utilities::hash::Hashable;
@@ -53,8 +52,8 @@ use tari_utilities::hash::Hashable;
 struct InnerDatabase<D>
 where D: Digest
 {
-    metadata: ChainMetadata,
     headers: HashMap<u64, BlockHeader>,
+    block_hashes: HashMap<HashOutput, u64>,
     utxos: HashMap<HashOutput, TransactionOutput>,
     stxos: HashMap<HashOutput, TransactionOutput>,
     kernels: HashMap<HashOutput, TransactionKernel>,
@@ -76,6 +75,16 @@ where D: Digest
     db: Arc<RwLock<InnerDatabase<D>>>,
 }
 
+impl<D> MemoryDatabase<D>
+where D: Digest
+{
+    pub(self) fn db_access(&self) -> Result<RwLockReadGuard<InnerDatabase<D>>, ChainStorageError> {
+        self.db
+            .read()
+            .map_err(|e| ChainStorageError::AccessError(e.to_string()))
+    }
+}
+
 impl<D> BlockchainBackend for MemoryDatabase<D>
 where D: Digest + Send + Sync
 {
@@ -89,15 +98,7 @@ where D: Digest + Send + Sync
         for op in tx.operations.into_iter() {
             match op {
                 WriteOperation::Insert(insert) => match insert {
-                    DbKeyValuePair::Metadata(_, MetadataValue::ChainHeight(h)) => {
-                        db.metadata.height_of_longest_chain = h;
-                    },
-                    DbKeyValuePair::Metadata(_, MetadataValue::AccumulatedWork(w)) => {
-                        db.metadata.total_accumulated_difficulty = w;
-                    },
-                    DbKeyValuePair::Metadata(_, MetadataValue::PruningHorizon(h)) => {
-                        db.metadata.pruning_horizon = h;
-                    },
+                    DbKeyValuePair::Metadata(_, _) => {}, // no-op. Memory-based DB, so we don't store metadata
                     DbKeyValuePair::BlockHeader(k, v) => {
                         let hash = v.hash();
                         db.header_mmr.push(&hash).unwrap();
@@ -119,11 +120,24 @@ where D: Digest + Send + Sync
                     DbKeyValuePair::OrphanBlock(k, v) => {
                         db.orphans.insert(k, *v);
                     },
+                    DbKeyValuePair::CommitBlock => db
+                        .kernel_mmr
+                        .commit()
+                        .and(db.range_proof_mmr.commit())
+                        .and(db.utxo_mmr.commit())
+                        .and(db.header_mmr.commit())
+                        .map_err(|e| ChainStorageError::AccessError(e.to_string()))?,
                 },
                 WriteOperation::Delete(delete) => match delete {
                     DbKey::Metadata(_) => {}, // no-op
                     DbKey::BlockHeader(k) => {
                         db.headers.remove(&k);
+                    },
+                    DbKey::BlockHash(hash) => match db.block_hashes.remove(&hash) {
+                        Some(i) => {
+                            db.headers.remove(&i);
+                        },
+                        None => {},
                     },
                     DbKey::UnspentOutput(k) => {
                         db.utxos.remove(&k);
@@ -180,21 +194,18 @@ where D: Digest + Send + Sync
     }
 
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, ChainStorageError> {
-        let db = self
-            .db
-            .read()
-            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+        let db = self.db_access()?;
         let result = match key {
-            DbKey::Metadata(MetadataKey::ChainHeight) => Some(DbValue::Metadata(MetadataValue::ChainHeight(
-                db.metadata.height_of_longest_chain,
-            ))),
-            DbKey::Metadata(MetadataKey::AccumulatedWork) => Some(DbValue::Metadata(MetadataValue::AccumulatedWork(
-                db.metadata.total_accumulated_difficulty,
-            ))),
-            DbKey::Metadata(MetadataKey::PruningHorizon) => Some(DbValue::Metadata(MetadataValue::PruningHorizon(
-                db.metadata.pruning_horizon,
-            ))),
+            DbKey::Metadata(MetadataKey::ChainHeight) => Some(DbValue::Metadata(MetadataValue::ChainHeight(None))),
+            DbKey::Metadata(MetadataKey::AccumulatedWork) => Some(DbValue::Metadata(MetadataValue::AccumulatedWork(0))),
+            DbKey::Metadata(MetadataKey::PruningHorizon) => Some(DbValue::Metadata(MetadataValue::PruningHorizon(0))),
+            DbKey::Metadata(MetadataKey::BestBlock) => Some(DbValue::Metadata(MetadataValue::BestBlock(None))),
             DbKey::BlockHeader(k) => db.headers.get(k).map(|v| DbValue::BlockHeader(Box::new(v.clone()))),
+            DbKey::BlockHash(hash) => db
+                .block_hashes
+                .get(hash)
+                .and_then(|i| db.headers.get(i))
+                .map(|v| DbValue::BlockHeader(Box::new(v.clone()))),
             DbKey::UnspentOutput(k) => db.utxos.get(k).map(|v| DbValue::UnspentOutput(Box::new(v.clone()))),
             DbKey::SpentOutput(k) => db.stxos.get(k).map(|v| DbValue::SpentOutput(Box::new(v.clone()))),
             DbKey::TransactionKernel(k) => db
@@ -207,27 +218,21 @@ where D: Digest + Send + Sync
     }
 
     fn contains(&self, key: &DbKey) -> Result<bool, ChainStorageError> {
-        let db = self
-            .db
-            .read()
-            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+        let db = self.db_access()?;
         let result = match key {
             DbKey::Metadata(_) => true,
             DbKey::BlockHeader(k) => db.headers.contains_key(k),
+            DbKey::BlockHash(h) => db.block_hashes.contains_key(h),
             DbKey::UnspentOutput(k) => db.utxos.contains_key(k),
             DbKey::SpentOutput(k) => db.stxos.contains_key(k),
             DbKey::TransactionKernel(k) => db.kernels.contains_key(k),
             DbKey::OrphanBlock(k) => db.orphans.contains_key(k),
         };
-
         Ok(result)
     }
 
     fn fetch_mmr_root(&self, tree: MmrTree) -> Result<Vec<u8>, ChainStorageError> {
-        let db = self
-            .db
-            .read()
-            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+        let db = self.db_access()?;
         let root = match tree {
             MmrTree::Utxo => db.utxo_mmr.get_merkle_root(),
             MmrTree::Kernel => db.kernel_mmr.get_merkle_root(),
@@ -241,33 +246,33 @@ where D: Digest + Send + Sync
         unimplemented!()
     }
 
-    fn fetch_mmr_checkpoint(&self, tree: MmrTree, height: u64) -> Result<MerkleCheckPoint, ChainStorageError> {
-        let db = self
-            .db
-            .read()
-            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
-        let index = match height.checked_sub(db.metadata.height_of_longest_chain - db.metadata.pruning_horizon + 1) {
-            None => return Err(ChainStorageError::BeyondPruningHorizon),
-            Some(v) => v,
+    fn fetch_mmr_checkpoint(&self, tree: MmrTree, index: u64) -> Result<MerkleCheckPoint, ChainStorageError> {
+        let db = self.db_access()?;
+        let index = index as usize;
+        let cp = match tree {
+            MmrTree::Kernel => db.kernel_mmr.get_checkpoint(index),
+            MmrTree::Utxo => db.utxo_mmr.get_checkpoint(index),
+            MmrTree::RangeProof => db.range_proof_mmr.get_checkpoint(index),
+            MmrTree::Header => db.header_mmr.get_checkpoint(index),
         };
-        match tree {
-            MmrTree::Kernel => db
-                .kernel_mmr
-                .get_checkpoint(index as usize)
-                .map_err(|_| ChainStorageError::BeyondPruningHorizon),
-            MmrTree::Utxo => db
-                .utxo_mmr
-                .get_checkpoint(index as usize)
-                .map_err(|_| ChainStorageError::BeyondPruningHorizon),
-            MmrTree::RangeProof => db
-                .range_proof_mmr
-                .get_checkpoint(index as usize)
-                .map_err(|_| ChainStorageError::BeyondPruningHorizon),
-            MmrTree::Header => db
-                .header_mmr
-                .get_checkpoint(index as usize)
-                .map_err(|_| ChainStorageError::BeyondPruningHorizon),
-        }
+        cp.map_err(|e| ChainStorageError::AccessError(format!("MMR Checkpoint error: {}", e.to_string())))
+    }
+
+    fn fetch_mmr_node(&self, tree: MmrTree, pos: u32) -> Result<(Vec<u8>, bool), ChainStorageError> {
+        let db = self.db_access()?;
+        let (hash, deleted) = match tree {
+            MmrTree::Kernel => db.kernel_mmr.get_leaf_status(pos),
+            MmrTree::Header => db.kernel_mmr.get_leaf_status(pos),
+            MmrTree::Utxo => db.kernel_mmr.get_leaf_status(pos),
+            MmrTree::RangeProof => db.kernel_mmr.get_leaf_status(pos),
+        };
+        let hash = hash
+            .ok_or(ChainStorageError::UnexpectedResult(format!(
+                "A leaf node hash in the {} MMR tree was not found",
+                tree
+            )))?
+            .clone();
+        Ok((hash, deleted))
     }
 }
 
@@ -288,8 +293,8 @@ where D: Digest
         let kernel_mmr = MerkleChangeTracker::<D, _, _>::new(MutableMmr::new(Vec::new()), Vec::new()).unwrap();
         let range_proof_mmr = MerkleChangeTracker::<D, _, _>::new(MutableMmr::new(Vec::new()), Vec::new()).unwrap();
         InnerDatabase {
-            metadata: ChainMetadata::default(),
             headers: HashMap::default(),
+            block_hashes: HashMap::default(),
             utxos: HashMap::default(),
             stxos: HashMap::default(),
             kernels: HashMap::default(),

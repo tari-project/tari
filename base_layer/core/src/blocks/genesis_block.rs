@@ -24,19 +24,15 @@
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
 // This file is used to store the genesis block
-use crate::blocks::{aggregated_body::AggregateBody, block::Block};
+use crate::blocks::{aggregated_body::AggregateBody, block::Block, BlockBuilder};
 
-use crate::{blocks::blockheader::BlockHeader, types::TariProofOfWork};
+use crate::{blocks::BlockHeader, types::TariProofOfWork};
 use chrono::{DateTime, NaiveDate, Utc};
 use tari_crypto::ristretto::*;
 
 pub fn get_genesis_block() -> Block {
-    let blockheaders = get_gen_header();
-    let body = get_gen_body();
-    Block {
-        header: blockheaders,
-        body,
-    }
+    let header = get_gen_header();
+    BlockBuilder::new().with_header(header).build()
 }
 
 pub fn get_gen_header() -> BlockHeader {
@@ -45,15 +41,15 @@ pub fn get_gen_header() -> BlockHeader {
         /// Height of this block since the genesis block (height 0)
         height: 0,
         /// Hash of the block previous to this in the chain.
-        prev_hash: [0; 32],
+        prev_hash: vec![0; 32],
         /// Timestamp at which the block was built.
         timestamp: DateTime::<Utc>::from_utc(NaiveDate::from_ymd(2020, 1, 1).and_hms(1, 1, 1), Utc),
         /// This is the MMR root of the outputs
-        output_mr: [0; 32],
+        output_mr: vec![0; 32],
         /// This is the MMR root of the range proofs
-        range_proof_mr: [0; 32],
+        range_proof_mr: vec![0; 32],
         /// This is the MMR root of the kernels
-        kernel_mr: [0; 32],
+        kernel_mr: vec![0; 32],
         /// Total accumulated sum of kernel offsets since genesis block. We can derive the kernel offset sum for *this*
         /// block from the total kernel offset of the previous block header.
         total_kernel_offset: RistrettoSecretKey::from(0),
@@ -63,8 +59,4 @@ pub fn get_gen_header() -> BlockHeader {
         nonce: 0,
         pow: TariProofOfWork::default(),
     }
-}
-
-pub fn get_gen_body() -> AggregateBody {
-    AggregateBody::empty()
 }

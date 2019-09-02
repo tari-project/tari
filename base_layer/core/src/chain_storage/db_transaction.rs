@@ -22,7 +22,7 @@
 //
 
 use crate::{
-    blocks::{block::Block, blockheader::BlockHeader},
+    blocks::{blockheader::BlockHash, Block, BlockHeader},
     transaction::{TransactionInput, TransactionKernel, TransactionOutput},
     types::HashOutput,
 };
@@ -91,12 +91,19 @@ impl DbTransaction {
     }
 
     /// Moves the given set of transaction inputs from the UTXO set to the STXO set. All the inputs *must* currently
-    /// exist in the UTXO set, or the method will error with `ChainStorageError::UnspendableOutput`
+    /// exist in the UTXO set, or the transaction will error with `ChainStorageError::UnspendableOutput`
     pub fn spend_inputs(&mut self, inputs: &[TransactionInput]) {
         for input in inputs {
             let input_hash = input.hash();
             self.move_utxo(input_hash);
         }
+    }
+
+    /// Adds a marker operation that allows the database to perform any additional work after adding a new block to
+    /// the database.
+    pub fn commit_block(&mut self) {
+        self.operations
+            .push(WriteOperation::Insert(DbKeyValuePair::CommitBlock));
     }
 
     /// Set the horizon beyond which we cannot be guaranteed provide detailed blockchain information anymore.
@@ -138,6 +145,7 @@ pub enum DbKeyValuePair {
     SpentOutput(HashOutput, Box<TransactionOutput>),
     TransactionKernel(HashOutput, Box<TransactionKernel>),
     OrphanBlock(HashOutput, Box<Block>),
+    CommitBlock,
 }
 
 #[derive(Debug)]
@@ -148,24 +156,27 @@ pub enum MmrTree {
     Header,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum MetadataKey {
     ChainHeight,
+    BestBlock,
     AccumulatedWork,
     PruningHorizon,
 }
 
 #[derive(Debug)]
 pub enum MetadataValue {
-    ChainHeight(u64),
+    ChainHeight(Option<u64>),
+    BestBlock(Option<BlockHash>),
     AccumulatedWork(u64),
     PruningHorizon(u64),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum DbKey {
     Metadata(MetadataKey),
     BlockHeader(u64),
+    BlockHash(BlockHash),
     UnspentOutput(HashOutput),
     SpentOutput(HashOutput),
     TransactionKernel(HashOutput),
@@ -176,6 +187,7 @@ pub enum DbKey {
 pub enum DbValue {
     Metadata(MetadataValue),
     BlockHeader(Box<BlockHeader>),
+    BlockHash(Box<BlockHeader>),
     UnspentOutput(Box<TransactionOutput>),
     SpentOutput(Box<TransactionOutput>),
     TransactionKernel(Box<TransactionKernel>),
@@ -188,7 +200,9 @@ impl Display for DbValue {
             DbValue::Metadata(MetadataValue::ChainHeight(_)) => f.write_str("Current chain height"),
             DbValue::Metadata(MetadataValue::AccumulatedWork(_)) => f.write_str("Total accumulated work"),
             DbValue::Metadata(MetadataValue::PruningHorizon(_)) => f.write_str("Pruning horizon"),
+            DbValue::Metadata(MetadataValue::BestBlock(_)) => f.write_str("Chain tip block hash"),
             DbValue::BlockHeader(_) => f.write_str("Block header"),
+            DbValue::BlockHash(_) => f.write_str("Block hash"),
             DbValue::UnspentOutput(_) => f.write_str("Unspent output"),
             DbValue::SpentOutput(_) => f.write_str("Spent output"),
             DbValue::TransactionKernel(_) => f.write_str("Transaction kernel"),
@@ -203,11 +217,24 @@ impl Display for DbKey {
             DbKey::Metadata(MetadataKey::ChainHeight) => f.write_str("Current chain height"),
             DbKey::Metadata(MetadataKey::AccumulatedWork) => f.write_str("Total accumulated work"),
             DbKey::Metadata(MetadataKey::PruningHorizon) => f.write_str("Pruning horizon"),
+            DbKey::Metadata(MetadataKey::BestBlock) => f.write_str("Chain tip block hash"),
             DbKey::BlockHeader(v) => f.write_str(&format!("Block header (#{})", v)),
+            DbKey::BlockHash(v) => f.write_str(&format!("Block hash (#{})", to_hex(v))),
             DbKey::UnspentOutput(v) => f.write_str(&format!("Unspent output ({})", to_hex(v))),
             DbKey::SpentOutput(v) => f.write_str(&format!("Spent output ({})", to_hex(v))),
             DbKey::TransactionKernel(v) => f.write_str(&format!("Transaction kernel ({})", to_hex(v))),
             DbKey::OrphanBlock(v) => f.write_str(&format!("Orphan block hash ({})", to_hex(v))),
+        }
+    }
+}
+
+impl Display for MmrTree {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        match self {
+            MmrTree::RangeProof => f.write_str("Range Proof"),
+            MmrTree::Utxo => f.write_str("UTXO"),
+            MmrTree::Kernel => f.write_str("Kernel"),
+            MmrTree::Header => f.write_str("Block header"),
         }
     }
 }
