@@ -5,7 +5,7 @@ infrastructure/derive
 infrastructure/storage
 infrastructure/tari_util
 base_layer/core
-base_layer/tari_key_manager
+base_layer/keymanager
 base_layer/mining
 base_layer/mmr
 base_layer/p2p
