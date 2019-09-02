@@ -22,11 +22,11 @@
 
 use super::{outbound_message_pool::OutboundMessage, BroadcastStrategy, OutboundError};
 use crate::{
-    message::{Frame, Message, MessageEnvelope, MessageError, MessageFlags, NodeDestination},
+    message::{Frame, Message, MessageEnvelope, MessageError, MessageFlags, MessageHeader, NodeDestination},
     peer_manager::{peer_manager::PeerManager, NodeIdentity},
 };
 use crossbeam_channel::Sender;
-use std::{convert::TryInto, sync::Arc};
+use std::sync::Arc;
 use tari_utilities::message_format::MessageFormat;
 
 /// Handler functions use the OutboundMessageService to send messages to peers. The OutboundMessage service will receive
@@ -63,17 +63,19 @@ impl OutboundMessageService {
     ///
     /// [BroadcastStrategy]: ../broadcast_strategy/enum.BroadcastStrategy.html
     /// [message module docs]: ../../message/index.html
-    pub fn send_message<T>(
+    pub fn send_message<T, MType>(
         &self,
         broadcast_strategy: BroadcastStrategy,
         flags: MessageFlags,
+        message_type: MType,
         message: T,
     ) -> Result<(), OutboundError>
     where
-        T: TryInto<Message, Error = MessageError>,
+        MessageHeader<MType>: MessageFormat,
         T: MessageFormat,
     {
-        let msg = message.try_into().map_err(OutboundError::MessageSerializationError)?;
+        let header = MessageHeader::new(message_type)?;
+        let msg = Message::from_message_format(header, message).map_err(OutboundError::MessageSerializationError)?;
 
         let message_envelope_body = msg.to_binary().map_err(OutboundError::MessageFormatError)?;
         self.send_raw(broadcast_strategy, flags, message_envelope_body)
@@ -160,6 +162,7 @@ mod test {
     };
     use bitflags::_core::time::Duration;
     use crossbeam_channel as channel;
+    use std::convert::TryInto;
     use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
     use tari_storage::HMapDatabase;
 

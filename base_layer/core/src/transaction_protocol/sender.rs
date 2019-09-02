@@ -38,10 +38,7 @@ use crate::{
 };
 use digest::Digest;
 use serde::{Deserialize, Serialize};
-use std::convert::TryInto;
-use tari_comms::message::{Message, MessageError};
 use tari_crypto::ristretto::pedersen::PedersenCommitment;
-use tari_p2p::tari_message::{BlockchainMessage, TariMessageType};
 use tari_utilities::ByteArray;
 
 //----------------------------------------   Local Data types     ----------------------------------------------------//
@@ -99,15 +96,6 @@ pub enum TransactionSenderMessage {
     Single(Box<SingleRoundSenderData>),
     // TODO: Three round types
     Multiple,
-}
-
-/// Convert `SenderMessage` into a Tari Message that can be sent via the tari comms stack
-impl TryInto<Message> for TransactionSenderMessage {
-    type Error = MessageError;
-
-    fn try_into(self) -> Result<Message, Self::Error> {
-        Ok((TariMessageType::new(BlockchainMessage::Transaction), self).try_into()?)
-    }
 }
 
 //----------------------------------------  Sender State Protocol ----------------------------------------------------//
