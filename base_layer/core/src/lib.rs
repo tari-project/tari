@@ -22,11 +22,31 @@
 
 #[macro_use]
 extern crate bitflags;
+#[macro_use]
+extern crate lazy_static;
 
-pub mod block;
-pub mod blockheader;
-pub mod message;
-pub mod pow;
-pub mod range_proof;
+#[cfg(test)]
+pub mod test_utils;
+
+pub mod blocks;
+pub mod bullet_rangeproofs;
+pub mod consts;
+pub mod fee;
+pub mod mempool;
+pub mod proof_of_work;
+#[allow(clippy::op_ref)]
 pub mod transaction;
+pub mod transaction_protocol;
 pub mod types;
+
+pub mod consensus;
+pub mod emission;
+pub mod tari_amount;
+
+mod base_node;
+// mod blockchain; TODO refactoring
+
+pub mod chain_storage;
+
+// Re-export commonly used structs
+pub use transaction_protocol::{recipient::ReceiverTransactionProtocol, sender::SenderTransactionProtocol};

@@ -1,0 +1,44 @@
+[package]
+name = "tari_grpc_wallet"
+version = "0.1.0"
+authors = ["Philip Robinson <simian@tari.com>"]
+edition = "2018"
+
+[dependencies]
+tari_wallet = {path = "../../base_layer/wallet", version="^0.0"}
+tari_common = {path = "../../common", version= "^0.0"}
+tari_utilities = { path = "../../infrastructure/tari_util", version = "^0.0"}
+tari_comms = { path = "../../comms", version = "^0.0"}
+tari_p2p = {path = "../../base_layer/p2p", version = "^0.0"}
+tari_crypto = { path = "../../infrastructure/crypto"}
+chrono = { version = "0.4.6", features = ["serde"]}
+config = { version = "0.9.3" }
+crossbeam-channel = "0.3.8"
+bytes = "0.4"
+derive-error = "0.0.4"
+futures = "0.1"
+http = "0.1"
+log = { version = "0.4.0", features = ["std"] }
+prost = "0.5"
+tokio = "0.1"
+tower-request-modifier = { git = "https://github.com/tower-rs/tower-http" }
+tower-hyper = "0.1"
+hyper = "0.12"
+tower-grpc = { git = "https://github.com/tower-rs/tower-grpc.git", features = ["tower-hyper"] }
+tower-grpc-build = { git = "https://github.com/tower-rs/tower-grpc.git", features = ["tower-hyper"]}
+simple_logger = "1.2.0"
+clap = "2.33.0"
+serde = "1.0.90"
+serde_derive = "1.0.90"
+pnet = "0.22.0"
+
+
+[dev-dependencies]
+tari_crypto = { path = "../../infrastructure/crypto"}
+tower-util = "0.1"
+tempdir = "0.3.7"
+rand = "0.5"
+
+[build-dependencies]
+tower-grpc-build = { git = "https://github.com/tower-rs/tower-grpc.git",  features = ["tower-hyper"]  }
+

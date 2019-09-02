@@ -1,0 +1,29 @@
+[package]
+name = "tari_mmr"
+version = "0.0.5"
+edition = "2018"
+
+[dependencies]
+tari_utilities = { path = "../../infrastructure/tari_util", version = "^0.0" }
+derive-error = "0.0.4"
+digest = "0.8.0"
+log = "0.4"
+serde = { version = "1.0.97", features = ["derive"] }
+croaring =  "0.4.0"
+tari_storage = { path = "../../infrastructure/storage", version = "^0.0" }
+
+[dev-dependencies]
+criterion = "0.2"
+rand="0.7.0"
+blake2 = "0.8.0"
+tari_infra_derive= {path = "../../infrastructure/derive"}
+tari_crypto = {path = "../../infrastructure/crypto"}
+serde_json = "1.0"
+bincode = "1.1"
+[lib]
+# Disable libtest from intercepting Criterion bench arguments
+bench = false
+
+[[bench]]
+name = "bench"
+harness = false

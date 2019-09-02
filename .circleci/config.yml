@@ -1,7 +1,7 @@
 version: 2
 
 defaults:
-  rust_image: &rust_image quay.io/tarilabs/rust_tari-build-zmq:nightly-2019-03-08
+  rust_image: &rust_image quay.io/tarilabs/rust_tari-build-with-deps:nightly-2019-08-21
 
 jobs:
   test-docs:
@@ -70,10 +70,11 @@ jobs:
       - run:
           name: Tari source code
           command: |
-            TOOLCHAIN_VERSION=nightly-2019-03-08
+            TOOLCHAIN_VERSION=nightly-2019-08-21
             rustup component add --toolchain $TOOLCHAIN_VERSION rustfmt
             cargo fmt --all -- --check
             cargo test --all
+            cargo test --release
 
 workflows:
   version: 2

@@ -24,6 +24,7 @@ use crate::keys::PublicKey;
 use serde::{Deserialize, Serialize};
 use std::{
     cmp::Ordering,
+    hash::{Hash, Hasher},
     ops::{Add, Sub},
 };
 use tari_utilities::{ByteArray, ByteArrayError};
@@ -113,6 +114,12 @@ where
 
     fn sub(self, rhs: &'b HomomorphicCommitment<P>) -> Self::Output {
         HomomorphicCommitment(&self.0 - &rhs.0)
+    }
+}
+
+impl<P: PublicKey> Hash for HomomorphicCommitment<P> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        state.write(self.as_bytes())
     }
 }
 

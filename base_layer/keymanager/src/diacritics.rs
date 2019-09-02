@@ -1,5 +1,5 @@
 /// Remove diacritic marks, points and accents on lowercase characters
-pub fn remove_diacritics(word: &String) -> String {
+pub fn remove_diacritics(word: &str) -> String {
     // Replace diacritics accents
     let clean_string: String =
         word.to_lowercase()

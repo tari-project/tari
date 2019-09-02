@@ -1,0 +1,29 @@
+#  See https://docs.rs/log4rs/0.8.3/log4rs/encode/pattern/index.html for deciphering the log pattern.
+appenders:
+  # An appender named "network" that writes to a file with a custom pattern encoder
+  network:
+    kind: file
+    path: "base_layer/p2p/examples/log/comms-debug.log"
+    encoder:
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{M}#{L}] [{t}] {l:5} {m} (({T}:{I})){n}"
+
+  # An appender named "pingpong" that writes to a file with a custom pattern encoder
+  pingpong:
+    kind: file
+    path: "base_layer/p2p/examples/log/pingpong-debug.log"
+    encoder:
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{M}#{L}] [{t}] {l:5} {m} (({T}:{I})){n}"
+
+# Set the default logging level to "debug" and attach the "base_layer" appender to the root
+root:
+  level: debug
+  appenders:
+    - pingpong
+
+loggers:
+  # Route log events sent to the "comms" logger to the "network" appender
+  comms:
+    level: debug
+    appenders:
+      - network
+    additive: false

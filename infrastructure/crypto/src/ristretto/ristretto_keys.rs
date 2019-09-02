@@ -32,13 +32,13 @@ use curve25519_dalek::{
 };
 use digest::Digest;
 use rand::{CryptoRng, Rng};
-use serde::{Deserialize, Serialize};
 use std::{
     cmp::Ordering,
+    fmt,
     hash::{Hash, Hasher},
     ops::{Add, Mul, Sub},
 };
-use tari_utilities::{ByteArray, ByteArrayError, ExtendBytes, Hashable};
+use tari_utilities::{hex::Hex, ByteArray, ByteArrayError, ExtendBytes, Hashable};
 
 type HashDigest = Blake2b;
 
@@ -61,7 +61,7 @@ type HashDigest = Blake2b;
 /// let _k2 = RistrettoSecretKey::from_hex(&"100000002000000030000000040000000");
 /// let _k3 = RistrettoSecretKey::random(&mut rng);
 /// ```
-#[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Clone, Debug)]
 pub struct RistrettoSecretKey(pub(crate) Scalar);
 
 const SCALAR_LENGTH: usize = 32;
@@ -116,6 +116,13 @@ impl ByteArray for RistrettoSecretKey {
     /// Return the byte array for the secret key in little-endian order
     fn as_bytes(&self) -> &[u8] {
         self.0.as_bytes()
+    }
+}
+
+impl Hash for RistrettoSecretKey {
+    /// Require the implementation of the Hash trait for Hashmaps
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.as_bytes().hash(state);
     }
 }
 
@@ -193,10 +200,9 @@ impl From<u64> for RistrettoSecretKey {
 /// let sk = RistrettoSecretKey::random(&mut rng);
 /// let _p3 = RistrettoPublicKey::from_secret_key(&sk);
 /// ```
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
 pub struct RistrettoPublicKey {
     pub(crate) point: RistrettoPoint,
-    #[serde(skip)]
     pub(crate) compressed: CompressedRistretto,
 }
 
@@ -260,7 +266,7 @@ impl ExtendBytes for RistrettoPublicKey {
 impl Hash for RistrettoPublicKey {
     /// Require the implementation of the Hash trait for Hashmaps
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.to_vec().hash(state);
+        self.as_bytes().hash(state);
     }
 }
 
@@ -269,6 +275,14 @@ impl Hash for RistrettoPublicKey {
 impl Default for RistrettoPublicKey {
     fn default() -> Self {
         RistrettoPublicKey::new_from_pk(RistrettoPoint::default())
+    }
+}
+
+//------------------------------------ PublicKey Display impl ---------------------------------------------//
+
+impl fmt::Display for RistrettoPublicKey {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.to_hex())
     }
 }
 
@@ -418,7 +432,13 @@ mod test {
     use super::*;
     use crate::{keys::PublicKey, ristretto::test_common::get_keypair};
     use rand;
-    use tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray};
+    use tari_utilities::{message_format::MessageFormat, ByteArray};
+
+    fn assert_completely_equal(k1: &RistrettoPublicKey, k2: &RistrettoPublicKey) {
+        assert_eq!(k1, k2);
+        assert_eq!(k1.point, k2.point);
+        assert_eq!(k1.compressed, k2.compressed);
+    }
 
     #[test]
     fn test_generation() {
@@ -482,7 +502,7 @@ mod test {
         let pk = RistrettoPublicKey::from_secret_key(&sk);
         let hex = pk.to_hex();
         let pk2 = RistrettoPublicKey::from_hex(&hex).unwrap();
-        assert_eq!(pk, pk2);
+        assert_completely_equal(&pk, &pk2);
     }
 
     #[test]
@@ -501,7 +521,7 @@ mod test {
         let pk = RistrettoPublicKey::from_secret_key(&sk);
         let vec = pk.to_vec();
         let pk2 = RistrettoPublicKey::from_vec(&vec).unwrap();
-        assert_eq!(pk, pk2);
+        assert_completely_equal(&pk, &pk2);
     }
 
     #[test]
@@ -563,14 +583,14 @@ mod test {
         let (k2, p2) = get_keypair();
         let p_slow = &(&k1 * &p1) + &(&k2 * &p2);
         let b_batch = RistrettoPublicKey::batch_mul(&[k1, k2], &vec![p1, p2]);
-        assert_eq!(p_slow, b_batch);
+        assert_completely_equal(&p_slow, &b_batch);
     }
 
     #[test]
     fn create_keypair() {
         let mut rng = rand::OsRng::new().unwrap();
         let (k, pk) = RistrettoPublicKey::random_keypair(&mut rng);
-        assert_eq!(pk, RistrettoPublicKey::from_secret_key(&k));
+        assert_completely_equal(&pk, &RistrettoPublicKey::from_secret_key(&k));
     }
 
     #[test]
@@ -620,6 +640,38 @@ mod test {
         let k2: RistrettoSecretKey = RistrettoSecretKey::from_base64(&ser_k).unwrap();
         assert_eq!(k, k2, "Deserialised secret key");
         let pk2: RistrettoPublicKey = RistrettoPublicKey::from_base64(&ser_pk).unwrap();
-        assert_eq!(pk, pk2, "Deserialized public key");
+        assert_completely_equal(&pk, &pk2);
+    }
+
+    #[test]
+    fn serialize_deserialize_json() {
+        let mut rng = rand::OsRng::new().unwrap();
+        let (k, pk) = RistrettoPublicKey::random_keypair(&mut rng);
+        let ser_k = k.to_json().unwrap();
+        let ser_pk = pk.to_json().unwrap();
+        println!("JSON pubkey: {} privkey: {}", ser_pk, ser_k);
+        let k2: RistrettoSecretKey = RistrettoSecretKey::from_json(&ser_k).unwrap();
+        assert_eq!(k, k2, "Deserialised secret key");
+        let pk2: RistrettoPublicKey = RistrettoPublicKey::from_json(&ser_pk).unwrap();
+        assert_completely_equal(&pk, &pk2);
+    }
+
+    #[test]
+    fn serialize_deserialize_binary() {
+        let mut rng = rand::OsRng::new().unwrap();
+        let (k, pk) = RistrettoPublicKey::random_keypair(&mut rng);
+        let ser_k = k.to_binary().unwrap();
+        let ser_pk = pk.to_binary().unwrap();
+        let k2: RistrettoSecretKey = RistrettoSecretKey::from_binary(&ser_k).unwrap();
+        assert_eq!(k, k2);
+        let pk2: RistrettoPublicKey = RistrettoPublicKey::from_binary(&ser_pk).unwrap();
+        assert_completely_equal(&pk, &pk2);
+    }
+
+    #[test]
+    fn display() {
+        let hex = "e2f2ae0a6abc4e71a884a961c500515f58e30b6aa582dd8db6a65945e08d2d76";
+        let pk = RistrettoPublicKey::from_hex(hex).unwrap();
+        assert_eq!(format!("{}", pk), hex);
     }
 }

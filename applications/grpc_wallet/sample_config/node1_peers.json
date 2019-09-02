@@ -1,0 +1,14 @@
+{
+  "peers": [
+    {
+      "screen_name": "Philip",
+      "pub_key": "daa67142abc315b1149b54b8f086eb16596b15ee0e70e37f0aa15294fdcbd65b",
+      "address": "127.0.0.1:20000"
+    },
+    {
+      "screen_name": "Cayle",
+      "pub_key": "a091006a3c606b6dacc4d165688ef137becdcaeb00acbba61dbb15f6c2df1900",
+      "address": "127.0.0.1:30000"
+    }
+  ]
+}

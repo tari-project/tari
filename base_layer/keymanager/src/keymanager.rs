@@ -28,7 +28,7 @@ use serde::de::DeserializeOwned;
 use serde_derive::{Deserialize, Serialize};
 use std::marker::PhantomData;
 use tari_crypto::keys::SecretKey;
-use tari_utilities::byte_array::ByteArrayError;
+use tari_utilities::{byte_array::ByteArrayError, hex::Hex};
 
 #[derive(Debug, Error)]
 pub enum KeyManagerError {

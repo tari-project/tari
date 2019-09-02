@@ -19,3 +19,21 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+// Used to eliminate the need for boxing futures in many cases.
+// Tracking issue: https://github.com/rust-lang/rust/issues/63063
+#![feature(type_alias_impl_trait)]
+
+#[macro_use]
+mod macros;
+mod consts;
+
+// TODO Put these back in after Futures Comms stack refactor
+// pub mod saf_service;
+// pub mod dht_service;
+pub mod initialization;
+pub mod peer;
+pub mod ping_pong;
+pub mod services;
+pub mod sync_services;
+pub mod tari_message;

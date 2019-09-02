@@ -10,7 +10,7 @@ member_crate_name=$1
 member_source_dir=$2
 source_root_dir="tari"
 build_dir="target/debug/"
-report_dir="report/"
+report_dir="report/$member_crate_name"
 
 echo "Check if in correct directory":
 path=$(pwd)
@@ -64,21 +64,23 @@ else
 fi
 # Make clean directories for Build and Report
 mkdir $build_dir
-mkdir $report_dir
+mkdir -p $report_dir
 
-echo "Build project.."
+echo "Setup project.."
 export CARGO_INCREMENTAL=0
-export RUSTFLAGS="-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Zno-landing-pads"
-cargo +nightly build --verbose $CARGO_OPTIONS
+export RUSTFLAGS="-Zprofile -Ccodegen-units=1 -Clink-dead-code -Copt-level=0 -Coverflow-checks=off -Zno-landing-pads"
+echo "Build project.."
+cargo +nightly build $CARGO_OPTIONS
 
 echo "Perform project Tests.."
 cargo_filename="Cargo.toml"
-cargo +nightly test --verbose $CARGO_OPTIONS --manifest-path="$member_source_dir$cargo_filename"
+cargo +nightly test $CARGO_OPTIONS --manifest-path="$member_source_dir$cargo_filename"
 
 echo "Acquire all build and test files for coverage check.."
 ccov_filename="ccov.zip"
 ccov_path="$report_dir$ccov_filename"
-zip -0 $ccov_path `find $build_dir \( -name "$member_crate_name*.gc*" \) -print`;
+
+zip $ccov_path `find $build_dir \( -name "$member_crate_name*.gc*" \) -print`;
 
 echo "Perform grcov code coverage.."
 lcov_filename="lcov.info"
@@ -91,4 +93,4 @@ genhtml -o $report_dir --show-details --highlight --title $member_crate_name --l
 
 echo "Launch report in browser.."
 index_str="index.html"
-open "$report_dir$index_str"
+open "$report_dir/$index_str"

@@ -41,63 +41,89 @@
 //!   }
 //! ```
 
-use crate::keys::{PublicKey, SecretKey};
-use serde::{de, Deserializer, Serializer};
-use std::{fmt, marker::PhantomData};
-use tari_utilities::hex::Hex;
+use crate::ristretto::{RistrettoPublicKey, RistrettoSecretKey};
+use serde::{
+    de::{self, Visitor},
+    Deserialize,
+    Deserializer,
+    Serialize,
+    Serializer,
+};
+use std::fmt;
+use tari_utilities::{byte_array::ByteArray, hex::Hex};
 
-pub fn serialize_to_hex<S, K>(k: &K, ser: S) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-    K: Hex,
-{
-    ser.serialize_str(&k.to_hex())
-}
+impl<'de> Deserialize<'de> for RistrettoPublicKey {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where D: Deserializer<'de> {
+        struct RistrettoPubKeyVisitor;
 
-pub fn secret_from_hex<'de, D, K>(des: D) -> Result<K, D::Error>
-where
-    D: Deserializer<'de>,
-    K: Hex + SecretKey,
-{
-    struct KeyStringVisitor<K> {
-        marker: PhantomData<K>,
-    };
+        impl<'de> Visitor<'de> for RistrettoPubKeyVisitor {
+            type Value = RistrettoPublicKey;
 
-    impl<'de, K: SecretKey> de::Visitor<'de> for KeyStringVisitor<K> {
-        type Value = K;
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a public key in binary format")
+            }
 
-        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-            formatter.write_str("a secret key in hex format")
+            fn visit_bytes<E>(self, v: &[u8]) -> Result<RistrettoPublicKey, E>
+            where E: de::Error {
+                RistrettoPublicKey::from_bytes(v).map_err(E::custom)
+            }
         }
 
-        fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-        where E: de::Error {
-            K::from_hex(v).map_err(E::custom)
-        }
-    }
-    des.deserialize_str(KeyStringVisitor { marker: PhantomData })
-}
-
-pub fn pubkey_from_hex<'de, D, K>(des: D) -> Result<K, D::Error>
-where
-    D: Deserializer<'de>,
-    K: Hex + PublicKey,
-{
-    struct KeyStringVisitor<K> {
-        marker: PhantomData<K>,
-    };
-
-    impl<'de, K: PublicKey> de::Visitor<'de> for KeyStringVisitor<K> {
-        type Value = K;
-
-        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-            formatter.write_str("a public key in hex format")
-        }
-
-        fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-        where E: de::Error {
-            K::from_hex(v).map_err(E::custom)
+        if deserializer.is_human_readable() {
+            let s = String::deserialize(deserializer)?;
+            RistrettoPublicKey::from_hex(&s).map_err(de::Error::custom)
+        } else {
+            deserializer.deserialize_bytes(RistrettoPubKeyVisitor)
         }
     }
-    des.deserialize_str(KeyStringVisitor { marker: PhantomData })
+}
+
+impl Serialize for RistrettoPublicKey {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where S: Serializer {
+        if serializer.is_human_readable() {
+            self.to_hex().serialize(serializer)
+        } else {
+            serializer.serialize_bytes(self.as_bytes())
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for RistrettoSecretKey {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where D: Deserializer<'de> {
+        struct RistrettoVisitor;
+
+        impl<'de> Visitor<'de> for RistrettoVisitor {
+            type Value = RistrettoSecretKey;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a secret key in binary format")
+            }
+
+            fn visit_bytes<E>(self, v: &[u8]) -> Result<RistrettoSecretKey, E>
+            where E: de::Error {
+                RistrettoSecretKey::from_bytes(v).map_err(E::custom)
+            }
+        }
+
+        if deserializer.is_human_readable() {
+            let s = String::deserialize(deserializer)?;
+            RistrettoSecretKey::from_hex(&s).map_err(de::Error::custom)
+        } else {
+            deserializer.deserialize_bytes(RistrettoVisitor)
+        }
+    }
+}
+
+impl Serialize for RistrettoSecretKey {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where S: Serializer {
+        if serializer.is_human_readable() {
+            self.to_hex().serialize(serializer)
+        } else {
+            serializer.serialize_bytes(self.as_bytes())
+        }
+    }
 }

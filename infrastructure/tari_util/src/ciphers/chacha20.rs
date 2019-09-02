@@ -138,7 +138,7 @@ impl ChaCha20 {
 impl<D> Cipher<D> for ChaCha20
 where D: ByteArray
 {
-    fn seal(plain_text: &D, key: &Vec<u8>, nonce: &Vec<u8>) -> Result<Vec<u8>, CipherError> {
+    fn seal(plain_text: &D, key: &[u8], nonce: &[u8]) -> Result<Vec<u8>, CipherError> {
         // Validation
         if key.len() != 32 {
             return Err(CipherError::KeyLengthError);
@@ -146,15 +146,15 @@ where D: ByteArray
         if nonce.len() != 12 {
             return Err(CipherError::NonceLengthError);
         }
-        if plain_text.as_bytes().len() == 0 {
+        if plain_text.as_bytes().is_empty() {
             return Err(CipherError::NoDataError);
         }
 
         let mut sized_key = [0; 32];
-        sized_key.copy_from_slice(key.as_slice());
+        sized_key.copy_from_slice(key);
 
         let mut sized_nonce = [0; 12];
-        sized_nonce.copy_from_slice(nonce.as_slice());
+        sized_nonce.copy_from_slice(nonce);
 
         let cipher_text = ChaCha20::encode_with_nonce(plain_text.as_bytes(), &sized_key, &sized_nonce);
         // Clear copied private data
@@ -164,7 +164,7 @@ where D: ByteArray
         Ok(cipher_text)
     }
 
-    fn open(cipher_text: &Vec<u8>, key: &Vec<u8>, nonce: &Vec<u8>) -> Result<D, CipherError> {
+    fn open(cipher_text: &[u8], key: &[u8], nonce: &[u8]) -> Result<D, CipherError> {
         // Validation
         if key.len() != 32 {
             return Err(CipherError::KeyLengthError);
@@ -172,15 +172,15 @@ where D: ByteArray
         if nonce.len() != 12 {
             return Err(CipherError::NonceLengthError);
         }
-        if cipher_text.len() == 0 {
+        if cipher_text.is_empty() {
             return Err(CipherError::NoDataError);
         }
 
         let mut sized_key = [0; 32];
-        sized_key.copy_from_slice(key.as_slice());
+        sized_key.copy_from_slice(key);
 
         let mut sized_nonce = [0; 12];
-        sized_nonce.copy_from_slice(nonce.as_slice());
+        sized_nonce.copy_from_slice(nonce);
 
         let plain_text = ChaCha20::decode_with_nonce(cipher_text, &sized_key, &sized_nonce);
         // Clear copied private data
@@ -190,17 +190,17 @@ where D: ByteArray
         Ok(D::from_vec(&plain_text)?)
     }
 
-    fn seal_with_integral_nonce(plain_text: &D, key: &Vec<u8>) -> Result<Vec<u8>, CipherError> {
+    fn seal_with_integral_nonce(plain_text: &D, key: &[u8]) -> Result<Vec<u8>, CipherError> {
         // Validation
         if key.len() != 32 {
             return Err(CipherError::KeyLengthError);
         }
-        if plain_text.as_bytes().len() == 0 {
+        if plain_text.as_bytes().is_empty() {
             return Err(CipherError::NoDataError);
         }
 
         let mut sized_key = [0; 32];
-        sized_key.copy_from_slice(key.as_slice());
+        sized_key.copy_from_slice(key);
 
         let mut rng = OsRng::new().unwrap();
         let mut nonce = [0u8; 12];
@@ -217,7 +217,7 @@ where D: ByteArray
         Ok(nonce_with_cipher_text)
     }
 
-    fn open_with_integral_nonce(cipher_text: &Vec<u8>, key: &Vec<u8>) -> Result<D, CipherError> {
+    fn open_with_integral_nonce(cipher_text: &[u8], key: &[u8]) -> Result<D, CipherError> {
         // Validation
         if key.len() != 32 {
             return Err(CipherError::KeyLengthError);
@@ -230,10 +230,10 @@ where D: ByteArray
         }
 
         let mut sized_key = [0; 32];
-        sized_key.copy_from_slice(key.as_slice());
+        sized_key.copy_from_slice(key);
 
         let mut nonce = [0u8; 12];
-        nonce.copy_from_slice(&cipher_text.clone()[0..12]);
+        nonce.copy_from_slice(&cipher_text[0..12]);
 
         let plain_text = ChaCha20::decode_with_nonce(&cipher_text[12..], &sized_key, &nonce);
         // Clear copied private data
