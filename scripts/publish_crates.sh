@@ -1,5 +1,19 @@
 #!/usr/bin/env bash
-packages=${@:-'infrastructure/tari_util infrastructure/derive infrastructure/crypto infrastructure/merklemountainrange base_layer/core'}
+packages=${@:-'
+infrastructure/crypto
+infrastructure/derive
+infrastructure/storage
+infrastructure/tari_util
+base_layer/core
+base_layer/tari_key_manager
+base_layer/mining
+base_layer/mmr
+base_layer/p2p
+base_layer/service_framework
+base_layer/wallet
+common
+comms
+'}
 p_arr=($packages)
 
 function build_package {
