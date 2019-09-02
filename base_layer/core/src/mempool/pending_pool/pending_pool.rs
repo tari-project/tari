@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    blocks::block::Block,
+    blocks::Block,
     consts::MEMPOOL_PENDING_POOL_STORAGE_CAPACITY,
     mempool::pending_pool::{PendingPoolError, PendingPoolStorage},
     transaction::Transaction,

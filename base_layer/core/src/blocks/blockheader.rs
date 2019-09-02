@@ -37,7 +37,12 @@
 //! state = Hash(Hash(mmr_root)|| Hash(roaring_bitmap))
 //! This hash is called the UTXO merkle root, and is used as the output_mr
 
+use crate::{
+    proof_of_work::Difficulty,
+    types::{BlindingFactor, HashDigest, TariProofOfWork},
+};
 use chrono::{DateTime, NaiveDate, Utc};
+use digest::Digest;
 use serde::{
     de::{self, Visitor},
     Deserialize,
@@ -45,14 +50,10 @@ use serde::{
     Serialize,
     Serializer,
 };
-use tari_utilities::{ByteArray, Hashable};
-type BlockHash = [u8; 32];
-use crate::{
-    proof_of_work::Difficulty,
-    types::{BlindingFactor, HashDigest, TariProofOfWork},
-};
-use digest::Digest;
 use std::fmt;
+use tari_utilities::{ByteArray, Hashable};
+
+pub type BlockHash = Vec<u8>;
 
 /// The BlockHeader contains all the metadata for the block, including proof of work, a link to the previous block
 /// and the transaction kernels.
@@ -71,10 +72,10 @@ pub struct BlockHeader {
     /// This is calculated as Hash (txo MMR root  || roaring bitmap hash of UTXO indices)
     #[serde(with = "hash_serializer")]
     pub output_mr: BlockHash,
-    /// This is the MMRR root of the range proofs
+    /// This is the MMR root of the range proofs
     #[serde(with = "hash_serializer")]
     pub range_proof_mr: BlockHash,
-    /// This is the MMRR root of the kernels
+    /// This is the MMR root of the kernels
     #[serde(with = "hash_serializer")]
     pub kernel_mr: BlockHash,
     /// Total accumulated sum of kernel offsets since genesis block. We can derive the kernel offset sum for *this*
@@ -93,11 +94,11 @@ impl BlockHeader {
         BlockHeader {
             version: blockchain_version,
             height: 0,
-            prev_hash: [0; 32],
+            prev_hash: vec![0; 32],
             timestamp: DateTime::<Utc>::from_utc(NaiveDate::from_ymd(2000, 1, 1).and_hms(1, 1, 1), Utc),
-            output_mr: [0; 32],
-            range_proof_mr: [0; 32],
-            kernel_mr: [0; 32],
+            output_mr: vec![0; 32],
+            range_proof_mr: vec![0; 32],
+            kernel_mr: vec![0; 32],
             total_kernel_offset: BlindingFactor::default(),
             total_difficulty: Difficulty::default(),
             nonce: 0,
