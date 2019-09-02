@@ -147,10 +147,13 @@ where T: BlockchainBackend
     }
 
     /// Reads the blockchain metadata (block height etc) from the underlying backend and returns it.
+    /// If the metadata values aren't in the database, (e.g. when running a node for the first time),
+    /// then log as much and return a reasonable default.
     fn read_metadata(db: &T) -> Result<ChainMetadata, ChainStorageError> {
         let height = fetch!(meta db, ChainHeight, None);
         let hash = fetch!(meta db, BestBlock, None);
         let work = fetch!(meta db, AccumulatedWork, 0);
+        // Set a default of 2880 blocks (2 days with 1min blocks)
         let horizon = fetch!(meta db, PruningHorizon, 2880);
         Ok(ChainMetadata {
             height_of_longest_chain: height,
@@ -357,9 +360,7 @@ where T: BlockchainBackend
     pub fn fetch_block(&self, height: u64) -> Result<HistoricalBlock, ChainStorageError> {
         let metadata = self.check_for_valid_height(height)?;
         let header = self.fetch_header(height)?;
-        println!("Got header");
         let kernel_cp = self.fetch_mmr_checkpoint(MmrTree::Kernel, height)?;
-        println!("Got kernel checkpoint");
         let (kernel_hashes, _) = kernel_cp.into_parts();
         let kernels = self.fetch_kernels(kernel_hashes)?;
         let utxo_cp = self.db.fetch_mmr_checkpoint(MmrTree::Utxo, height)?;
