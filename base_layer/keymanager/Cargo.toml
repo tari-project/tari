@@ -1,11 +1,15 @@
 [package]
 name = "tari_key_manager"
-version = "0.0.2"
+authors = ["The Tari Development Community"]
+description = "Tari cryptocurrency wallet key management"
+repository = "https://github.com/tari-project/tari"
+license = "BSD-3-Clause"
+version = "0.0.5"
 edition = "2018"
 
 [dependencies]
-tari_crypto = { path = "../../infrastructure/crypto"}
-tari_utilities = { path = "../../infrastructure/tari_util"}
+tari_crypto = { path = "../../infrastructure/crypto", version = "^0.0" }
+tari_utilities = { path = "../../infrastructure/tari_util", version = "^0.0" }
 rand = "0.5.5"
 digest = "0.8.0"
 sha2 = "0.8.0"

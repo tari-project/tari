@@ -1,7 +1,8 @@
 [package]
 name = "tari_service_framework"
-version = "0.0.2"
+version = "0.0.5"
 authors = ["The Tari Development Community"]
+description = "The Tari communication stack service framework"
 repository = "https://github.com/tari-project/tari"
 edition = "2018"
 

@@ -7,12 +7,12 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tari_wallet = {path = "../../base_layer/wallet", version="0.0.2"}
-tari_common = {path = "../../common", version= "0.0.2"}
+tari_wallet = {path = "../../base_layer/wallet", version="^0.0"}
+tari_common = {path = "../../common", version= "^0.0"}
 tari_utilities = { path = "../../infrastructure/tari_util", version = "^0.0"}
 tari_comms = { path = "../../comms", version = "^0.0"}
 tari_p2p = {path = "../../base_layer/p2p", version = "^0.0"}
-tari_crypto = { path = "../../infrastructure/crypto"}
+tari_crypto = { path = "../../infrastructure/crypto", version = "^0.0"}
 clap = "2.33.0"
 serde = "1.0.90"
 serde_derive = "1.0.90"
