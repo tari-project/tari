@@ -20,10 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{any::Any, collections::HashMap, hash::Hash, sync::Mutex};
+
 mod future;
 mod lazy_service;
-
-use std::{any::Any, collections::HashMap, hash::Hash, sync::Mutex};
 
 pub use self::{future::ServiceHandlesFuture, lazy_service::LazyService};
 
