@@ -5,8 +5,8 @@ authors = ["Philip Robinson <simian@tari.com>"]
 edition = "2018"
 
 [dependencies]
-tari_wallet = {path = "../../base_layer/wallet", version="0.0.2"}
-tari_common = {path = "../../common", version= "0.0.2"}
+tari_wallet = {path = "../../base_layer/wallet", version="^0.0"}
+tari_common = {path = "../../common", version= "^0.0"}
 tari_utilities = { path = "../../infrastructure/tari_util", version = "^0.0"}
 tari_comms = { path = "../../comms", version = "^0.0"}
 tari_p2p = {path = "../../base_layer/p2p", version = "^0.0"}

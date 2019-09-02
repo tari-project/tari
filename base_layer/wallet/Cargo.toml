@@ -1,6 +1,6 @@
 [package]
 name = "tari_wallet"
-version = "0.0.2"
+version = "0.0.5"
 edition = "2018"
 
 [dependencies]
@@ -17,7 +17,7 @@ serde = {version = "1.0.89", features = ["derive"] }
 crossbeam-channel = "0.3.8"
 log = "0.4.6"
 lmdb-zero = "0.4.4"
-tari_storage = { version = "0.0.2", path = "../../infrastructure/storage"}
+tari_storage = { version = "^0.0", path = "../../infrastructure/storage"}
 diesel_migrations =  "1.4"
 diesel = {version="1.4", features = ["sqlite", "serde_json", "chrono"]}
 rand = "0.5.5"
