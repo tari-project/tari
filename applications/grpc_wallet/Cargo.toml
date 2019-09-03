@@ -26,7 +26,7 @@ tower-hyper = "0.1"
 hyper = "0.12"
 tower-grpc = { git = "https://github.com/tower-rs/tower-grpc.git", features = ["tower-hyper"] }
 tower-grpc-build = { git = "https://github.com/tower-rs/tower-grpc.git", features = ["tower-hyper"]}
-simple_logger = "1.2.0"
+env_logger = "0.6.2"
 clap = "2.33.0"
 serde = "1.0.90"
 serde_derive = "1.0.90"

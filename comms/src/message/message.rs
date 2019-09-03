@@ -26,7 +26,6 @@ use crate::{
 };
 use rand::RngCore;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use std::convert::TryFrom;
 use tari_utilities::message_format::MessageFormat;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -77,18 +76,6 @@ impl Message {
     pub fn deserialize_message<T>(&self) -> Result<T, MessageError>
     where T: MessageFormat {
         T::from_binary(&self.body).map_err(Into::into)
-    }
-}
-
-impl<MType, T> TryFrom<(MType, T)> for Message
-where
-    MessageHeader<MType>: MessageFormat,
-    T: MessageFormat,
-{
-    type Error = MessageError;
-
-    fn try_from((message_type, msg): (MType, T)) -> Result<Self, Self::Error> {
-        Ok(Self::from_message_format(MessageHeader::new(message_type)?, msg)?)
     }
 }
 

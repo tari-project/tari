@@ -299,7 +299,7 @@ where T: BlockchainBackend
     ///   * any of the inputs were not in the UTXO set or were marked as spent already
     ///
     /// If an error does occur while writing the new block parts, all changes are reverted before returning.
-    pub fn add_block(&mut self, block: Block) -> Result<BlockAddResult, ChainStorageError> {
+    pub fn add_block(&self, block: Block) -> Result<BlockAddResult, ChainStorageError> {
         if !self.is_new_best_block(&block)? {
             return self.handle_possible_reorg(block);
         }
@@ -338,7 +338,7 @@ where T: BlockchainBackend
                 db.best_block.clone().unwrap(),
             )
         };
-        let best_block = self.fetch_header(height - 1)?;
+        let best_block = self.fetch_header(height)?;
         let result = block.header.prev_hash == parent_hash &&
             block.header.height == best_block.height + 1 &&
             block.header.total_difficulty > best_block.total_difficulty;
@@ -456,13 +456,13 @@ where T: BlockchainBackend
     }
 
     /// Atomically commit the provided transaction to the database backend. This function does not update the metadata.
-    pub(crate) fn commit(&mut self, txn: DbTransaction) -> Result<(), ChainStorageError> {
+    pub(crate) fn commit(&self, txn: DbTransaction) -> Result<(), ChainStorageError> {
         self.db.write(txn)
     }
 
     /// Checks whether we should add the block as an orphan. If it is the case, the orphan block is added and the chain
     /// is reorganised if necessary
-    fn handle_possible_reorg(&mut self, _block: Block) -> Result<BlockAddResult, ChainStorageError> {
+    fn handle_possible_reorg(&self, _block: Block) -> Result<BlockAddResult, ChainStorageError> {
         // TODO - check if block height > pruning horizon
         // TODO - check if proof of work is valid and above some spam minimum??
         unimplemented!()

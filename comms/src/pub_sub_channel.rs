@@ -22,9 +22,9 @@
 // use super::async_::channel as async_channel;
 // use super::async_::Publisher;
 // use super::async_::Subscriber;
-use bus_queue::{bounded, Publisher, Subscriber};
 use futures::{compat::Compat, future, prelude::*, stream::Fuse};
 use std::fmt::Debug;
+use tari_broadcast_channel::{bounded, Publisher, Subscriber};
 
 /// The container for a message that is passed along the pub-sub channel that contains a Topic to define the type of
 /// message and the message itself.

@@ -30,9 +30,7 @@ use crate::{
     types::{CommitmentFactory, MessageHash, PrivateKey, PublicKey, RangeProofService, Signature},
 };
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, convert::TryInto};
-use tari_comms::message::{Message, MessageError};
-use tari_p2p::tari_message::{BlockchainMessage, TariMessageType};
+use std::collections::HashMap;
 
 #[derive(Clone, Debug)]
 pub enum RecipientState {
@@ -61,15 +59,6 @@ pub struct RecipientSignedMessage {
     pub output: TransactionOutput,
     pub public_spend_key: PublicKey,
     pub partial_signature: Signature,
-}
-
-/// Convert `RecipientSignedMessage` into a Tari Message that can be sent via the tari comms stack
-impl TryInto<Message> for RecipientSignedMessage {
-    type Error = MessageError;
-
-    fn try_into(self) -> Result<Message, Self::Error> {
-        Ok((TariMessageType::new(BlockchainMessage::TransactionReply), self).try_into()?)
-    }
 }
 
 /// The generalised transaction recipient protocol. A different state transition network is followed depending on

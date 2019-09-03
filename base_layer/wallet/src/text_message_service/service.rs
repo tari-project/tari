@@ -31,13 +31,12 @@ use diesel::{connection::Connection, SqliteConnection};
 use log::*;
 use serde::{Deserialize, Serialize};
 use std::{
-    convert::TryInto,
     sync::{Arc, Mutex},
     time::Duration,
 };
 use tari_comms::{
     domain_subscriber::{MessageInfo, SyncDomainSubscription},
-    message::{Message, MessageError, MessageFlags},
+    message::MessageFlags,
     outbound_message_service::{outbound_message_service::OutboundMessageService, BroadcastStrategy},
     types::CommsPublicKey,
 };
@@ -51,7 +50,7 @@ use tari_p2p::{
         ServiceError,
         DEFAULT_API_TIMEOUT_MS,
     },
-    tari_message::{ExtendedMessage, TariMessageType},
+    tari_message::{ExtendedMessage, NetMessage, TariMessageType},
 };
 
 const LOG_TARGET: &'static str = "base_layer::wallet::text_messsage_service";
@@ -60,14 +59,6 @@ const LOG_TARGET: &'static str = "base_layer::wallet::text_messsage_service";
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TextMessageAck {
     id: Vec<u8>,
-}
-
-impl TryInto<Message> for TextMessageAck {
-    type Error = MessageError;
-
-    fn try_into(self) -> Result<Message, Self::Error> {
-        Ok((TariMessageType::new(ExtendedMessage::TextAck), self).try_into()?)
-    }
 }
 
 /// The TextMessageService manages the local node's text messages. It keeps track of sent messages that require an Ack
@@ -121,6 +112,7 @@ impl TextMessageService {
         oms.send_message(
             BroadcastStrategy::DirectPublicKey(text_message.dest_pub_key.clone()),
             MessageFlags::ENCRYPTED,
+            TariMessageType::new(ExtendedMessage::Text),
             text_message.clone(),
         )?;
 
@@ -153,6 +145,7 @@ impl TextMessageService {
         oms.send_message(
             BroadcastStrategy::DirectPublicKey(info.origin_source),
             MessageFlags::ENCRYPTED,
+            TariMessageType::new(ExtendedMessage::TextAck),
             text_message_ack,
         )?;
 
@@ -229,6 +222,7 @@ impl TextMessageService {
         oms.send_message(
             BroadcastStrategy::DirectPublicKey(contact.pub_key.clone()),
             MessageFlags::empty(),
+            TariMessageType::new(NetMessage::PingPong),
             PingPong::Ping,
         )?;
 

@@ -65,7 +65,7 @@ impl UnconfirmedPool {
     /// Insert a new transaction into the UnconfirmedPool. Low priority transactions will be removed to make space for
     /// higher priority transactions. The lowest priority transactions will be removed when the maximum capacity is
     /// reached and the new transaction has a higher priority than the currently stored lowest priority transaction.
-    pub fn insert(&mut self, transaction: Transaction) -> Result<(), UnconfirmedPoolError> {
+    pub fn insert(&self, transaction: Arc<Transaction>) -> Result<(), UnconfirmedPoolError> {
         self.pool_storage
             .write()
             .map_err(|_| UnconfirmedPoolError::PoisonedAccess)?
@@ -73,7 +73,7 @@ impl UnconfirmedPool {
     }
 
     ///  Insert a set of new transactions into the UnconfirmedPool
-    pub fn insert_txs(&mut self, transactions: Vec<Transaction>) -> Result<(), UnconfirmedPoolError> {
+    pub fn insert_txs(&self, transactions: Vec<Arc<Transaction>>) -> Result<(), UnconfirmedPoolError> {
         self.pool_storage
             .write()
             .map_err(|_| UnconfirmedPoolError::PoisonedAccess)?
@@ -99,7 +99,7 @@ impl UnconfirmedPool {
 
     /// Remove all published transactions from the UnconfirmedPool and discard all double spend transactions
     pub fn remove_published_and_discard_double_spends(
-        &mut self,
+        &self,
         published_block: &Block,
     ) -> Result<Vec<Arc<Transaction>>, UnconfirmedPoolError>
     {
@@ -117,6 +117,24 @@ impl UnconfirmedPool {
             .read()
             .map_err(|_| UnconfirmedPoolError::PoisonedAccess)?
             .len())
+    }
+
+    /// Returns all transaction stored in the UnconfirmedPool.
+    pub fn snapshot(&self) -> Result<Vec<Arc<Transaction>>, UnconfirmedPoolError> {
+        Ok(self
+            .pool_storage
+            .read()
+            .map_err(|_| UnconfirmedPoolError::PoisonedAccess)?
+            .snapshot())
+    }
+
+    /// Returns the total weight of all transactions stored in the pool.
+    pub fn calculate_weight(&self) -> Result<u64, UnconfirmedPoolError> {
+        Ok(self
+            .pool_storage
+            .read()
+            .map_err(|_| UnconfirmedPoolError::PoisonedAccess)?
+            .calculate_weight())
     }
 
     #[cfg(test)]
@@ -140,13 +158,13 @@ mod test {
 
     #[test]
     fn test_insert_and_retrieve_highest_priority_txs() {
-        let tx1 = create_test_tx(MicroTari(5_000), MicroTari(500), 0, 2, 1);
-        let tx2 = create_test_tx(MicroTari(5_000), MicroTari(100), 0, 4, 1);
-        let tx3 = create_test_tx(MicroTari(5_000), MicroTari(1000), 0, 5, 1);
-        let tx4 = create_test_tx(MicroTari(5_000), MicroTari(200), 0, 3, 1);
-        let tx5 = create_test_tx(MicroTari(5_000), MicroTari(500), 0, 5, 1);
+        let tx1 = Arc::new(create_test_tx(MicroTari(5_000), MicroTari(50), 0, 2, 0, 1));
+        let tx2 = Arc::new(create_test_tx(MicroTari(5_000), MicroTari(20), 0, 4, 0, 1));
+        let tx3 = Arc::new(create_test_tx(MicroTari(5_000), MicroTari(100), 0, 5, 0, 1));
+        let tx4 = Arc::new(create_test_tx(MicroTari(5_000), MicroTari(30), 0, 3, 0, 1));
+        let tx5 = Arc::new(create_test_tx(MicroTari(5_000), MicroTari(50), 0, 5, 0, 1));
 
-        let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
+        let unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
             storage_capacity: 4,
             weight_tx_skip_count: 3,
         });
@@ -188,9 +206,9 @@ mod test {
         let desired_weight = tx1.calculate_weight() + tx3.calculate_weight() + tx4.calculate_weight();
         let selected_txs = unconfirmed_pool.highest_priority_txs(desired_weight).unwrap();
         assert_eq!(selected_txs.len(), 3);
-        assert_eq!(selected_txs[0].body.kernels[0].fee, MicroTari(1000));
-        assert_eq!(selected_txs[1].body.kernels[0].fee, MicroTari(500));
-        assert_eq!(selected_txs[2].body.kernels[0].fee, MicroTari(200));
+        assert!(selected_txs.contains(&tx1));
+        assert!(selected_txs.contains(&tx3));
+        assert!(selected_txs.contains(&tx4));
         // Note that transaction tx5 could not be included as its weight was to big to fit into the remaining allocated
         // space, the second best transaction was then included
 
@@ -199,14 +217,14 @@ mod test {
 
     #[test]
     fn test_remove_published_txs() {
-        let tx1 = create_test_tx(MicroTari(10_000), MicroTari(500), 0, 2, 1);
-        let tx2 = create_test_tx(MicroTari(10_000), MicroTari(100), 0, 3, 1);
-        let tx3 = create_test_tx(MicroTari(10_000), MicroTari(1000), 0, 2, 1);
-        let tx4 = create_test_tx(MicroTari(10_000), MicroTari(200), 0, 4, 1);
-        let tx5 = create_test_tx(MicroTari(10_000), MicroTari(500), 0, 3, 1);
-        let tx6 = create_test_tx(MicroTari(10_000), MicroTari(750), 0, 2, 1);
+        let tx1 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(50), 0, 2, 0, 1));
+        let tx2 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(20), 0, 3, 0, 1));
+        let tx3 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(100), 0, 2, 0, 1));
+        let tx4 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(30), 0, 4, 0, 1));
+        let tx5 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(50), 0, 3, 0, 1));
+        let tx6 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(75), 0, 2, 0, 1));
 
-        let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
+        let unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
             storage_capacity: 10,
             weight_tx_skip_count: 3,
         });
@@ -216,7 +234,15 @@ mod test {
         // utx6 should not be added to unconfirmed_pool as it is an unknown transactions that was included in the block
         // by another node
 
-        let published_block = create_test_block(0, vec![tx1.clone(), tx3.clone(), tx5.clone()]);
+        let snapshot_txs = unconfirmed_pool.snapshot().unwrap();
+        assert_eq!(snapshot_txs.len(), 5);
+        assert!(snapshot_txs.contains(&tx1));
+        assert!(snapshot_txs.contains(&tx2));
+        assert!(snapshot_txs.contains(&tx3));
+        assert!(snapshot_txs.contains(&tx4));
+        assert!(snapshot_txs.contains(&tx5));
+
+        let published_block = create_test_block(0, None, vec![(*tx1).clone(), (*tx3).clone(), (*tx5).clone()]);
         let _ = unconfirmed_pool.remove_published_and_discard_double_spends(&published_block);
 
         assert_eq!(
@@ -261,17 +287,19 @@ mod test {
 
     #[test]
     fn test_discard_double_spend_txs() {
-        let tx1 = create_test_tx(MicroTari(5_000), MicroTari(500), 0, 2, 1);
-        let tx2 = create_test_tx(MicroTari(5_000), MicroTari(100), 0, 3, 1);
-        let tx3 = create_test_tx(MicroTari(5_000), MicroTari(1000), 0, 2, 1);
-        let tx4 = create_test_tx(MicroTari(5_000), MicroTari(200), 0, 2, 1);
-        let mut tx5 = create_test_tx(MicroTari(5_000), MicroTari(500), 0, 3, 1);
-        let mut tx6 = create_test_tx(MicroTari(5_000), MicroTari(750), 0, 2, 1);
+        let tx1 = Arc::new(create_test_tx(MicroTari(5_000), MicroTari(50), 0, 2, 0, 1));
+        let tx2 = Arc::new(create_test_tx(MicroTari(5_000), MicroTari(20), 0, 3, 0, 1));
+        let tx3 = Arc::new(create_test_tx(MicroTari(5_000), MicroTari(100), 0, 2, 0, 1));
+        let tx4 = Arc::new(create_test_tx(MicroTari(5_000), MicroTari(30), 0, 2, 0, 1));
+        let mut tx5 = create_test_tx(MicroTari(5_000), MicroTari(50), 0, 3, 0, 1);
+        let mut tx6 = create_test_tx(MicroTari(5_000), MicroTari(75), 0, 2, 0, 1);
         // tx1 and tx5 have a shared input. Also, tx3 and tx6 have a shared input
         tx5.body.inputs[0] = tx1.body.inputs[0].clone();
         tx6.body.inputs[1] = tx3.body.inputs[1].clone();
+        let tx5 = Arc::new(tx5);
+        let tx6 = Arc::new(tx6);
 
-        let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
+        let unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
             storage_capacity: 10,
             weight_tx_skip_count: 3,
         });
@@ -287,7 +315,7 @@ mod test {
             .unwrap();
 
         // The publishing of tx1 and tx3 will be double-spends and orphan tx5 and tx6
-        let published_block = create_test_block(0, vec![tx1.clone(), tx2.clone(), tx3.clone()]);
+        let published_block = create_test_block(0, None, vec![(*tx1).clone(), (*tx2).clone(), (*tx3).clone()]);
 
         let _ = unconfirmed_pool
             .remove_published_and_discard_double_spends(&published_block)

@@ -12,6 +12,7 @@ members = [
     "comms",
     "digital_assets_layer/core",
     "infrastructure/crypto",
+    "infrastructure/broadcast_channel",
     "infrastructure/storage",
     "applications/grpc_wallet",
     "applications/console_text_messenger",

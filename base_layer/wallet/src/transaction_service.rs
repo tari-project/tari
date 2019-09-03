@@ -169,6 +169,7 @@ impl TransactionService {
         outbound_message_service.send_message(
             BroadcastStrategy::DirectPublicKey(dest_pubkey.clone()),
             MessageFlags::ENCRYPTED,
+            TariMessageType::new(BlockchainMessage::Transaction),
             TransactionSenderMessage::Single(Box::new(msg.clone())),
         )?;
 
@@ -274,6 +275,7 @@ impl TransactionService {
             outbound_message_service.send_message(
                 BroadcastStrategy::DirectPublicKey(source_pubkey.clone()),
                 MessageFlags::ENCRYPTED,
+                TariMessageType::new(BlockchainMessage::TransactionReply),
                 recipient_reply.clone(),
             )?;
 

@@ -32,15 +32,8 @@ use crate::{
 use diesel::{dsl::count, prelude::*, query_dsl::RunQueryDsl, result::Error as DieselError, SqliteConnection};
 use digest::Digest;
 use serde::{Deserialize, Serialize};
-use std::{
-    cmp::Ordering,
-    convert::{TryFrom, TryInto},
-};
-use tari_comms::{
-    connection::NetAddress,
-    message::{Message, MessageError},
-};
-use tari_p2p::tari_message::{ExtendedMessage, TariMessageType};
+use std::{cmp::Ordering, convert::TryFrom};
+use tari_comms::connection::NetAddress;
 use tari_utilities::{
     byte_array::ByteArray,
     hex::{from_hex, Hex},
@@ -214,14 +207,6 @@ impl TryFrom<SentTextMessageSql> for SentTextMessage {
     }
 }
 
-impl TryInto<Message> for SentTextMessage {
-    type Error = MessageError;
-
-    fn try_into(self) -> Result<Message, Self::Error> {
-        (TariMessageType::new(ExtendedMessage::Text), self).try_into()
-    }
-}
-
 /// The changeset to mark a SentTextMessage as acknowledged
 #[derive(AsChangeset)]
 #[table_name = "sent_messages"]
@@ -345,14 +330,6 @@ impl From<SentTextMessage> for ReceivedTextMessage {
             message: t.message,
             timestamp: t.timestamp,
         }
-    }
-}
-
-impl TryInto<Message> for ReceivedTextMessage {
-    type Error = MessageError;
-
-    fn try_into(self) -> Result<Message, Self::Error> {
-        (TariMessageType::new(ExtendedMessage::Text), self).try_into()
     }
 }
 
