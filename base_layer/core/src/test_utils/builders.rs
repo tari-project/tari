@@ -22,59 +22,158 @@
 //
 
 use crate::{
-    blocks::{aggregated_body::AggregateBody, Block, BlockHeader},
+    blocks::{aggregated_body::AggregateBody, blockheader::BlockHeader, Block},
+    fee::Fee,
+    proof_of_work::Difficulty,
     tari_amount::MicroTari,
-    transaction::{KernelBuilder, OutputFeatures, Transaction, TransactionInput, TransactionKernel, TransactionOutput},
-    transaction_protocol::{build_challenge, TransactionMetadata},
-    types::{Commitment, PrivateKey, PublicKey, RangeProof, Signature, COMMITMENT_FACTORY, PROVER},
+    transaction::{
+        KernelBuilder,
+        KernelFeatures,
+        OutputFeatures,
+        Transaction,
+        TransactionInput,
+        TransactionKernel,
+        TransactionOutput,
+        UnblindedOutput,
+    },
+    transaction_protocol::{
+        build_challenge,
+        sender::SenderTransactionProtocol,
+        test_common::TestParams,
+        TransactionMetadata,
+    },
+    types::{Commitment, PrivateKey, PublicKey, Signature, COMMITMENT_FACTORY, PROVER},
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
+    common::Blake256,
     keys::{PublicKey as PK, SecretKey},
     range_proof::RangeProofService,
 };
+use tari_utilities::hash::Hashable;
+
+/// Create a test input UTXO for a transaction with its unblinded output set with a specified maturity.
+pub fn create_test_input(amount: MicroTari, maturity: u64) -> (TransactionInput, UnblindedOutput) {
+    let mut rng = rand::OsRng::new().unwrap();
+    let spending_key = PrivateKey::random(&mut rng);
+    let commitment = COMMITMENT_FACTORY.commit(&spending_key, &PrivateKey::from(amount.clone()));
+    let mut features = OutputFeatures::default();
+    features.maturity = maturity;
+    let input = TransactionInput::new(features.clone(), commitment);
+    let unblinded_output = UnblindedOutput::new(amount, spending_key, Some(features));
+    (input, unblinded_output)
+}
 
 /// Create an unconfirmed transaction for testing with a valid fee, unique access_sig, random inputs and outputs, the
 /// transaction is only partially constructed
 pub fn create_test_tx(
     amount: MicroTari,
-    fee: MicroTari,
+    fee_per_gram: MicroTari,
     lock_height: u64,
-    input_count: usize,
-    output_count: usize,
+    input_count: u64,
+    input_maturity: u64,
+    output_count: u64,
 ) -> Transaction
 {
     let mut rng = rand::OsRng::new().unwrap();
-    let kernel = create_test_kernel(fee, lock_height);
-    let mut body = AggregateBody::empty();
-    body.kernels.push(kernel);
+    let test_params = TestParams::new(&mut rng);
+    let mut stx_builder = SenderTransactionProtocol::builder(0);
+    stx_builder
+        .with_lock_height(lock_height)
+        .with_fee_per_gram(fee_per_gram)
+        .with_offset(test_params.offset.clone())
+        .with_private_nonce(test_params.nonce.clone())
+        .with_change_secret(test_params.change_key.clone());
 
-    for _ in 0..input_count {
-        let input = TransactionInput::new(
-            OutputFeatures::default(),
-            COMMITMENT_FACTORY.commit(&PrivateKey::random(&mut rng), &amount.into()),
-        );
-        body.inputs.push(input);
+    let amount_per_input = amount / input_count;
+    let amount_for_last_input = amount - amount_per_input * (input_count - 1);
+    for i in 0..input_count {
+        let input_amount = if i < input_count - 1 {
+            amount_per_input
+        } else {
+            amount_for_last_input
+        };
+        let (utxo, input) = create_test_input(input_amount, input_maturity);
+        stx_builder.with_input(utxo, input);
     }
 
-    for _ in 0..output_count {
-        let output = TransactionOutput::new(
-            OutputFeatures::default(),
-            COMMITMENT_FACTORY.commit(&PrivateKey::random(&mut rng), &MicroTari(10).into()),
-            RangeProof::default(),
-        );
-        body.outputs.push(output);
+    let estimated_fee = Fee::calculate(fee_per_gram, input_count as usize, output_count as usize);
+    let amount_per_output = (amount - estimated_fee) / output_count;
+    let amount_for_last_output = (amount - estimated_fee) - amount_per_output * (output_count - 1);
+    for i in 0..output_count {
+        let output_amount = if i < output_count - 1 {
+            amount_per_output
+        } else {
+            amount_for_last_output
+        };
+        stx_builder.with_output(UnblindedOutput::new(
+            output_amount.into(),
+            test_params.spend_key.clone(),
+            None,
+        ));
     }
 
-    Transaction {
-        offset: PrivateKey::random(&mut rng),
-        body,
+    let mut stx_protocol = stx_builder.build::<Blake256>(&PROVER, &COMMITMENT_FACTORY).unwrap();
+    match stx_protocol.finalize(KernelFeatures::empty(), &PROVER, &COMMITMENT_FACTORY) {
+        Ok(true) => (),
+        Ok(false) => panic!("{:?}", stx_protocol.failure_reason()),
+        Err(e) => panic!("{:?}", e),
     }
+    stx_protocol.get_transaction().unwrap().clone()
+}
+
+pub fn create_test_tx_spending_utxos(
+    fee_per_gram: MicroTari,
+    lock_height: u64,
+    utxos: Vec<(TransactionInput, UnblindedOutput)>,
+    output_count: u64,
+) -> Transaction
+{
+    let mut rng = rand::OsRng::new().unwrap();
+    let test_params = TestParams::new(&mut rng);
+    let mut stx_builder = SenderTransactionProtocol::builder(0);
+    stx_builder
+        .with_lock_height(lock_height)
+        .with_fee_per_gram(fee_per_gram)
+        .with_offset(test_params.offset.clone())
+        .with_private_nonce(test_params.nonce.clone())
+        .with_change_secret(test_params.change_key.clone());
+
+    for (utxo, input) in &utxos {
+        stx_builder.with_input(utxo.clone(), input.clone());
+    }
+
+    let input_count = utxos.len();
+    let mut amount = MicroTari(0);
+    utxos.iter().for_each(|(_, input)| amount += input.value);
+    let estimated_fee = Fee::calculate(fee_per_gram, input_count as usize, output_count as usize);
+    let amount_per_output = (amount - estimated_fee) / output_count;
+    let amount_for_last_output = (amount - estimated_fee) - amount_per_output * (output_count - 1);
+    for i in 0..output_count {
+        let output_amount = if i < output_count - 1 {
+            amount_per_output
+        } else {
+            amount_for_last_output
+        };
+        stx_builder.with_output(UnblindedOutput::new(
+            output_amount.into(),
+            test_params.spend_key.clone(),
+            None,
+        ));
+    }
+
+    let mut stx_protocol = stx_builder.build::<Blake256>(&PROVER, &COMMITMENT_FACTORY).unwrap();
+    match stx_protocol.finalize(KernelFeatures::empty(), &PROVER, &COMMITMENT_FACTORY) {
+        Ok(true) => (),
+        Ok(false) => panic!("{:?}", stx_protocol.failure_reason()),
+        Err(e) => panic!("{:?}", e),
+    }
+    stx_protocol.get_transaction().unwrap().clone()
 }
 
 /// Create a transaction kernel with the given fee, using random keys to generate the signature
 pub fn create_test_kernel(fee: MicroTari, lock_height: u64) -> TransactionKernel {
-    let (excess, s) = create_random_signature(fee);
+    let (excess, s) = create_random_signature(fee, lock_height);
     KernelBuilder::new()
         .with_fee(fee)
         .with_lock_height(lock_height)
@@ -85,9 +184,13 @@ pub fn create_test_kernel(fee: MicroTari, lock_height: u64) -> TransactionKernel
 }
 
 /// Create a partially constructed block using the provided set of transactions
-pub fn create_test_block(block_height: u64, transactions: Vec<Transaction>) -> Block {
+pub fn create_test_block(block_height: u64, prev_block: Option<Block>, transactions: Vec<Transaction>) -> Block {
     let mut header = BlockHeader::new(0);
     header.height = block_height;
+    if let Some(block) = prev_block {
+        header.prev_hash = block.hash();
+        header.total_difficulty = block.header.total_difficulty + Difficulty::from(1);
+    }
     let mut body = AggregateBody::empty();
     transactions.iter().for_each(|tx| {
         body.kernels.push(tx.body.kernels[0].clone());
@@ -109,11 +212,11 @@ pub fn extract_outputs_as_inputs(utxos: &mut Vec<TransactionInput>, published_bl
 }
 
 /// Generate a random signature, returning the public key (excess) and the signature.
-pub fn create_random_signature(fee: MicroTari) -> (PublicKey, Signature) {
+pub fn create_random_signature(fee: MicroTari, lock_height: u64) -> (PublicKey, Signature) {
     let mut rng = rand::OsRng::new().unwrap();
     let r = SecretKey::random(&mut rng);
     let (k, p) = PublicKey::random_keypair(&mut rng);
-    let tx_meta = TransactionMetadata { fee, lock_height: 0 };
+    let tx_meta = TransactionMetadata { fee, lock_height };
     let e = build_challenge(&PublicKey::from_secret_key(&r), &tx_meta);
     (p, Signature::sign(k, r, &e).unwrap())
 }

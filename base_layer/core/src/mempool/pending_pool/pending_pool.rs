@@ -61,7 +61,7 @@ impl PendingPool {
     /// Insert a new transaction into the PendingPool. Low priority transactions will be removed to make space for
     /// higher priority transactions. The lowest priority transactions will be removed when the maximum capacity is
     /// reached and the new transaction has a higher priority than the currently stored lowest priority transaction.
-    pub fn insert(&mut self, transaction: Transaction) -> Result<(), PendingPoolError> {
+    pub fn insert(&self, transaction: Arc<Transaction>) -> Result<(), PendingPoolError> {
         self.pool_storage
             .write()
             .map_err(|_| PendingPoolError::PoisonedAccess)?
@@ -69,7 +69,7 @@ impl PendingPool {
     }
 
     /// Insert a set of new transactions into the PendingPool.
-    pub fn insert_txs(&mut self, transactions: Vec<Transaction>) -> Result<(), PendingPoolError> {
+    pub fn insert_txs(&self, transactions: Vec<Arc<Transaction>>) -> Result<(), PendingPoolError> {
         self.pool_storage
             .write()
             .map_err(|_| PendingPoolError::PoisonedAccess)?
@@ -88,7 +88,7 @@ impl PendingPool {
     /// Remove transactions with expired time-locks so that they can be move to the UnconfirmedPool. Double spend
     /// transactions are also removed.
     pub fn remove_unlocked_and_discard_double_spends(
-        &mut self,
+        &self,
         published_block: &Block,
     ) -> Result<Vec<Arc<Transaction>>, PendingPoolError>
     {
@@ -105,6 +105,24 @@ impl PendingPool {
             .read()
             .map_err(|_| PendingPoolError::PoisonedAccess)?
             .len())
+    }
+
+    /// Returns all transaction stored in the PendingPool.
+    pub fn snapshot(&self) -> Result<Vec<Arc<Transaction>>, PendingPoolError> {
+        Ok(self
+            .pool_storage
+            .read()
+            .map_err(|_| PendingPoolError::PoisonedAccess)?
+            .snapshot())
+    }
+
+    /// Returns the total weight of all transactions stored in the pool.
+    pub fn calculate_weight(&self) -> Result<u64, PendingPoolError> {
+        Ok(self
+            .pool_storage
+            .read()
+            .map_err(|_| PendingPoolError::PoisonedAccess)?
+            .calculate_weight())
     }
 
     #[cfg(test)]
@@ -128,14 +146,14 @@ mod test {
 
     #[test]
     fn test_insert_and_lru() {
-        let tx1 = create_test_tx(MicroTari(10_000), MicroTari(500), 500, 2, 1);
-        let tx2 = create_test_tx(MicroTari(10_000), MicroTari(100), 2150, 1, 2);
-        let tx3 = create_test_tx(MicroTari(10_000), MicroTari(1000), 1000, 2, 1);
-        let tx4 = create_test_tx(MicroTari(10_000), MicroTari(200), 2450, 2, 2);
-        let tx5 = create_test_tx(MicroTari(10_000), MicroTari(500), 1000, 3, 3);
-        let tx6 = create_test_tx(MicroTari(10_000), MicroTari(750), 1850, 2, 2);
+        let tx1 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(50), 500, 2, 0, 1));
+        let tx2 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(20), 2150, 1, 0, 2));
+        let tx3 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(100), 1000, 2, 0, 1));
+        let tx4 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(30), 2450, 2, 0, 2));
+        let tx5 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(50), 1000, 3, 0, 3));
+        let tx6 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(75), 1850, 2, 0, 2));
 
-        let mut pending_pool = PendingPool::new(PendingPoolConfig { storage_capacity: 3 });
+        let pending_pool = PendingPool::new(PendingPoolConfig { storage_capacity: 3 });
         pending_pool
             .insert_txs(vec![
                 tx1.clone(),
@@ -190,14 +208,14 @@ mod test {
 
     #[test]
     fn test_remove_unlocked_and_discard_double_spends() {
-        let tx1 = create_test_tx(MicroTari(10_000), MicroTari(500), 500, 2, 1);
-        let tx2 = create_test_tx(MicroTari(10_000), MicroTari(100), 2150, 1, 2);
-        let tx3 = create_test_tx(MicroTari(10_000), MicroTari(1000), 1000, 2, 1);
-        let tx4 = create_test_tx(MicroTari(10_000), MicroTari(200), 2450, 2, 2);
-        let tx5 = create_test_tx(MicroTari(10_000), MicroTari(500), 1000, 3, 3);
-        let tx6 = create_test_tx(MicroTari(10_000), MicroTari(750), 1450, 2, 2);
+        let tx1 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(50), 500, 2, 0, 1));
+        let tx2 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(20), 0, 1, 2150, 2));
+        let tx3 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(100), 0, 2, 1000, 1));
+        let tx4 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(30), 2450, 2, 0, 2));
+        let tx5 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(50), 1000, 3, 0, 3));
+        let tx6 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(75), 1450, 2, 1400, 2));
 
-        let mut pending_pool = PendingPool::new(PendingPoolConfig { storage_capacity: 10 });
+        let pending_pool = PendingPool::new(PendingPoolConfig { storage_capacity: 10 });
         pending_pool
             .insert_txs(vec![
                 tx1.clone(),
@@ -210,7 +228,16 @@ mod test {
             .unwrap();
         assert_eq!(pending_pool.len().unwrap(), 6);
 
-        let published_block = create_test_block(1500, vec![tx6.clone()]);
+        let snapshot_txs = pending_pool.snapshot().unwrap();
+        assert_eq!(snapshot_txs.len(), 6);
+        assert!(snapshot_txs.contains(&tx1));
+        assert!(snapshot_txs.contains(&tx2));
+        assert!(snapshot_txs.contains(&tx3));
+        assert!(snapshot_txs.contains(&tx4));
+        assert!(snapshot_txs.contains(&tx5));
+        assert!(snapshot_txs.contains(&tx6));
+
+        let published_block = create_test_block(1500, None, vec![(*tx6).clone()]);
         let unlocked_txs = pending_pool
             .remove_unlocked_and_discard_double_spends(&published_block)
             .unwrap();
@@ -230,9 +257,9 @@ mod test {
         );
 
         assert_eq!(unlocked_txs.len(), 3);
-        assert!(unlocked_txs.iter().any(|tx| **tx == tx1));
-        assert!(unlocked_txs.iter().any(|tx| **tx == tx3));
-        assert!(unlocked_txs.iter().any(|tx| **tx == tx5));
+        assert!(unlocked_txs.contains(&tx1));
+        assert!(unlocked_txs.contains(&tx3));
+        assert!(unlocked_txs.contains(&tx5));
 
         assert!(pending_pool.check_status().unwrap());
     }

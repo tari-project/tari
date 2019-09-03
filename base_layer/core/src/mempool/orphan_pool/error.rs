@@ -20,18 +20,14 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::mempool::{
-    orphan_pool::OrphanPoolError,
-    pending_pool::PendingPoolError,
-    reorg_pool::ReorgPoolError,
-    unconfirmed_pool::UnconfirmedPoolError,
-};
+use crate::chain_storage::ChainStorageError;
 use derive_error::Error;
 
 #[derive(Debug, Error)]
-pub enum MempoolError {
-    UnconfirmedPoolError(UnconfirmedPoolError),
-    OrphanPoolError(OrphanPoolError),
-    PendingPoolError(PendingPoolError),
-    ReorgPoolError(ReorgPoolError),
+pub enum OrphanPoolError {
+    /// The Thread Safety has been breached and the data access has become poisoned
+    PoisonedAccess,
+    ChainStorageError(ChainStorageError),
+    /// The Blockchain height is undefined
+    ChainHeightUndefined,
 }
