@@ -21,11 +21,11 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::pub_sub_channel::{TopicPayload, TopicPublisher};
-use bus_queue::Publisher;
 use derive_error::Error;
 use futures::{executor::block_on, prelude::*};
 use log::*;
 use std::{fmt::Debug, sync::Mutex};
+use tari_broadcast_channel::Publisher;
 
 const LOG_TARGET: &str = "comms::inbound_message_service::inbound_message_publisher";
 

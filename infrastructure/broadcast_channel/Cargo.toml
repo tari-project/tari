@@ -1,0 +1,24 @@
+[package]
+name = "tari_broadcast_channel"
+version = "0.0.5"
+authors = ["Filip Dulic <filip.dulic@gmail.com>", "Vladan Popovic <vladanovic@gmail.com>", "Bojan Petrovic <bojan_petrovic@fastmail.fm>", "The Tari Development Community"]
+description = "Bounded non-blocking single-producer-multi-consumer broadcast channel"
+license = "Apache-2.0/MIT"
+keywords = ["pubsub", "lock-free", "queue","async","futures"]
+repository = "https://github.com/tari-project/tari"
+homepage = "https://tari.com"
+readme = "README.md"
+edition = "2018"
+
+[dependencies]
+arc-swap = "0.4.2"
+futures = { version = "=0.3.0-alpha.18", package = "futures-preview" }
+crossbeam-channel = "0.3.9"
+
+[[example]]
+name = "raw-simple"
+path = "examples/raw-simple.rs"
+
+[[example]]
+name = "async-simple"
+path = "examples/async-simple.rs"
