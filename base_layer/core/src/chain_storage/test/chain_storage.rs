@@ -53,7 +53,7 @@ fn fetch_nonexistent_kernel() {
 
 #[test]
 fn insert_and_fetch_kernel() {
-    let mut store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
+    let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
     let kernel = create_test_kernel(5.into(), 0);
     let hash = kernel.hash();
 
@@ -73,7 +73,7 @@ fn fetch_nonexistent_header() {
 }
 #[test]
 fn insert_and_fetch_header() {
-    let mut store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
+    let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
     let mut header = BlockHeader::new(0);
     header.height = 42;
 
@@ -89,7 +89,7 @@ fn insert_and_fetch_header() {
 
 #[test]
 fn insert_and_fetch_utxo() {
-    let mut store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
+    let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
     let (utxo, _) = create_utxo(MicroTari(10_000));
     let hash = utxo.hash();
     assert_eq!(store.is_utxo(hash.clone()).unwrap(), false);
@@ -102,12 +102,12 @@ fn insert_and_fetch_utxo() {
 
 #[test]
 fn insert_and_fetch_orphan() {
-    let mut store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
+    let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
     let txs = vec![
-        create_test_tx(1000.into(), 10.into(), 0, 2, 1),
-        create_test_tx(2000.into(), 20.into(), 0, 1, 1),
+        create_test_tx(1000.into(), 20.into(), 0, 2, 0, 1),
+        create_test_tx(2000.into(), 30.into(), 0, 1, 0, 1),
     ];
-    let orphan = create_test_block(10, txs);
+    let orphan = create_test_block(10, None, txs);
     let orphan_hash = orphan.hash();
     let mut txn = DbTransaction::new();
     txn.insert_orphan(orphan.clone());
@@ -119,7 +119,7 @@ fn insert_and_fetch_orphan() {
 fn multiple_threads() {
     let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
     // Save a kernel in thread A
-    let mut store_a = store.clone();
+    let store_a = store.clone();
     let a = thread::spawn(move || {
         let kernel = create_test_kernel(5.into(), 0);
         let hash = kernel.hash();
@@ -129,7 +129,7 @@ fn multiple_threads() {
         hash
     });
     // Save a kernel in thread B
-    let mut store_b = store.clone();
+    let store_b = store.clone();
     let b = thread::spawn(move || {
         let kernel = create_test_kernel(10.into(), 0);
         let hash = kernel.hash();
@@ -149,7 +149,7 @@ fn multiple_threads() {
 
 #[test]
 fn utxo_and_rp_merkle_root() {
-    let mut store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
+    let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
     let root = store.fetch_mmr_root(MmrTree::Utxo).unwrap();
     // This is the zero-length MMR of a mutable MMR with Blake256 as hasher
     assert_eq!(
@@ -180,7 +180,7 @@ fn utxo_and_rp_merkle_root() {
 
 #[test]
 fn header_merkle_root() {
-    let mut store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
+    let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
     let root = store.fetch_mmr_root(MmrTree::Header).unwrap();
     // This is the zero-length MMR of a mutable MMR with Blake256 as hasher
     assert_eq!(
@@ -205,7 +205,7 @@ fn header_merkle_root() {
 
 #[test]
 fn kernel_merkle_root() {
-    let mut store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
+    let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
     let root = store.fetch_mmr_root(MmrTree::Kernel).unwrap();
     // This is the zero-length MMR of a mutable MMR with Blake256 as hasher
     assert_eq!(
@@ -234,7 +234,7 @@ fn kernel_merkle_root() {
 #[test]
 fn store_and_retrieve_block() {
     // Create new database
-    let mut store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
+    let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
     let metadata = store.get_metadata().unwrap();
     assert_eq!(metadata.height_of_longest_chain, None);
     assert_eq!(metadata.best_block, None);
@@ -258,7 +258,7 @@ fn store_and_retrieve_block() {
 #[test]
 fn add_multiple_blocks() {
     // Create new database
-    let mut store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
+    let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
     let metadata = store.get_metadata().unwrap();
     assert_eq!(metadata.height_of_longest_chain, None);
     assert_eq!(metadata.best_block, None);
@@ -267,7 +267,7 @@ fn add_multiple_blocks() {
     let hash = block.hash();
     assert_eq!(store.add_block(block.clone()), Ok(BlockAddResult::Ok));
     // Add another block
-    let mut block = create_test_block(1, vec![]);
+    let mut block = create_test_block(1, None, vec![]);
     block.header.prev_hash = hash.clone();
     block.header.total_difficulty = Difficulty::from(100);
     let hash = block.hash();

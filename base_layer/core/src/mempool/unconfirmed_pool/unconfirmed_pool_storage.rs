@@ -73,10 +73,10 @@ impl UnconfirmedPoolStorage {
     /// space for higher priority transactions. The lowest priority transactions will be removed when the maximum
     /// capacity is reached and the new transaction has a higher priority than the currently stored lowest priority
     /// transaction.
-    pub fn insert(&mut self, tx: Transaction) -> Result<(), UnconfirmedPoolError> {
+    pub fn insert(&mut self, tx: Arc<Transaction>) -> Result<(), UnconfirmedPoolError> {
         let tx_key = tx.body.kernels[0].excess_sig.clone();
         if !self.txs_by_signature.contains_key(&tx_key) {
-            let prioritized_tx = PrioritizedTransaction::try_from(tx)?;
+            let prioritized_tx = PrioritizedTransaction::try_from((*tx).clone())?;
             if self.txs_by_signature.len() >= self.config.storage_capacity {
                 if prioritized_tx.priority < *self.lowest_priority() {
                     return Ok(());
@@ -92,7 +92,7 @@ impl UnconfirmedPoolStorage {
     }
 
     /// Insert a set of new transactions into the UnconfirmedPoolStorage
-    pub fn insert_txs(&mut self, txs: Vec<Transaction>) -> Result<(), UnconfirmedPoolError> {
+    pub fn insert_txs(&mut self, txs: Vec<Arc<Transaction>>) -> Result<(), UnconfirmedPoolError> {
         for tx in txs.into_iter() {
             self.insert(tx)?;
         }
@@ -150,8 +150,6 @@ impl UnconfirmedPoolStorage {
 
     /// Remove all published transactions from the UnconfirmedPoolStorage and discard double spends
     pub fn remove_published_and_discard_double_spends(&mut self, published_block: &Block) -> Vec<Arc<Transaction>> {
-        self.discard_double_spends(published_block);
-
         let mut removed_txs: Vec<Arc<Transaction>> = Vec::new();
         published_block.body.kernels.iter().for_each(|kernel| {
             if let Some(ptx) = self.txs_by_signature.get(&kernel.excess_sig) {
@@ -159,12 +157,33 @@ impl UnconfirmedPoolStorage {
                 removed_txs.push(self.txs_by_signature.remove(&kernel.excess_sig).unwrap().transaction);
             }
         });
+        // First remove published transactions before discarding double spends
+        self.discard_double_spends(published_block);
+
         removed_txs
     }
 
     /// Returns the total number of unconfirmed transactions stored in the UnconfirmedPoolStorage
     pub fn len(&self) -> usize {
         self.txs_by_signature.len()
+    }
+
+    /// Returns all transaction stored in the UnconfirmedPoolStorage.
+    pub fn snapshot(&self) -> Vec<Arc<Transaction>> {
+        let mut txs: Vec<Arc<Transaction>> = Vec::with_capacity(self.txs_by_signature.len());
+        self.txs_by_signature
+            .iter()
+            .for_each(|(_, ptx)| txs.push(ptx.transaction.clone()));
+        txs
+    }
+
+    /// Returns the total weight of all transactions stored in the pool.
+    pub fn calculate_weight(&self) -> u64 {
+        let mut weight: u64 = 0;
+        self.txs_by_signature
+            .iter()
+            .for_each(|(_, ptx)| weight += ptx.transaction.calculate_weight());
+        (weight)
     }
 
     #[cfg(test)]

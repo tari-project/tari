@@ -36,8 +36,9 @@ mod metadata;
 mod test;
 
 // Public API exports
-pub use blockchain_database::BlockchainDatabase;
+pub use blockchain_database::{BlockchainBackend, BlockchainDatabase};
 pub use db_transaction::{DbTransaction, MmrTree};
+pub use error::ChainStorageError;
 pub use historical_block::HistoricalBlock;
 pub use memory_db::MemoryDatabase;
 pub use metadata::ChainMetadata;
