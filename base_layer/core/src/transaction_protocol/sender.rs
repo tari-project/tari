@@ -371,7 +371,7 @@ impl SenderTransactionProtocol {
                     self.state = SenderState::Failed(e);
                     return Ok(false);
                 }
-                let mut transaction = result.unwrap();
+                let transaction = result.unwrap();
                 let result = transaction
                     .validate_internal_consistency(prover, factory)
                     .map_err(TPE::TransactionBuildError);

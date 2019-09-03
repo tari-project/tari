@@ -38,7 +38,7 @@ use crate::{
 use derive_error::Error;
 use digest::Input;
 use serde::{Deserialize, Serialize};
-use std::cmp::Ordering;
+use std::cmp::{max, min, Ordering};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     range_proof::{RangeProofError, RangeProofService as RangeProofServiceTrait},
@@ -492,7 +492,7 @@ impl Transaction {
     ///
     /// This function does NOT check that inputs come from the UTXO set
     pub fn validate_internal_consistency(
-        &mut self,
+        &self,
         prover: &RangeProofService,
         factory: &CommitmentFactory,
     ) -> Result<(), TransactionError>
@@ -513,6 +513,32 @@ impl Transaction {
     /// Returns the total fee allocated to each byte of the transaction
     pub fn calculate_ave_fee_per_gram(&self) -> f64 {
         (self.body.get_total_fee().0 as f64) / self.calculate_weight() as f64
+    }
+
+    /// Returns the minimum maturity of the input UTXOs
+    pub fn min_input_maturity(&self) -> u64 {
+        let mut min_maturity = std::u64::MAX;
+        self.body
+            .inputs
+            .iter()
+            .for_each(|input| min_maturity = min(min_maturity, input.features.maturity));
+        min_maturity
+    }
+
+    /// Returns the maximum maturity of the input UTXOs
+    pub fn max_input_maturity(&self) -> u64 {
+        let mut max_maturity = 0;
+        self.body
+            .inputs
+            .iter()
+            .for_each(|input| max_maturity = max(max_maturity, input.features.maturity));
+        max_maturity
+    }
+
+    /// Returns the height of the maximum time-lock restriction calculated from the transaction lock_height and the
+    /// maturity of the input UTXOs
+    pub fn max_timelock_height(&self) -> u64 {
+        max(self.body.kernels[0].lock_height, self.max_input_maturity())
     }
 }
 
@@ -571,7 +597,7 @@ impl TransactionBuilder {
     ) -> Result<Transaction, TransactionError>
     {
         if let Some(offset) = self.offset {
-            let mut tx = Transaction::new(self.body.inputs, self.body.outputs, self.body.kernels, offset);
+            let tx = Transaction::new(self.body.inputs, self.body.outputs, self.body.kernels, offset);
             tx.validate_internal_consistency(prover, factory)?;
             Ok(tx)
         } else {

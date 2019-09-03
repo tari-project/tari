@@ -80,10 +80,10 @@ impl PendingPoolStorage {
 
     /// Insert a new transaction into the PendingPoolStorage. Low priority transactions will be removed to make space
     /// for higher priority transactions.
-    pub fn insert(&mut self, tx: Transaction) -> Result<(), PendingPoolError> {
+    pub fn insert(&mut self, tx: Arc<Transaction>) -> Result<(), PendingPoolError> {
         let tx_key = tx.body.kernels[0].excess_sig.clone();
         if !self.txs_by_signature.contains_key(&tx_key) {
-            let prioritized_tx = TimelockedTransaction::try_from(tx)?;
+            let prioritized_tx = TimelockedTransaction::try_from((*tx).clone())?;
             if self.txs_by_signature.len() >= self.config.storage_capacity {
                 if prioritized_tx.fee_priority < *self.lowest_fee_priority() {
                     return Ok(());
@@ -101,7 +101,7 @@ impl PendingPoolStorage {
     }
 
     /// Insert a set of new transactions into the PendingPoolStorage
-    pub fn insert_txs(&mut self, txs: Vec<Transaction>) -> Result<(), PendingPoolError> {
+    pub fn insert_txs(&mut self, txs: Vec<Arc<Transaction>>) -> Result<(), PendingPoolError> {
         for tx in txs.into_iter() {
             self.insert(tx)?;
         }
@@ -148,10 +148,7 @@ impl PendingPoolStorage {
                 .txs_by_signature
                 .get(tx_key)
                 .ok_or(PendingPoolError::StorageOutofSync)?
-                .transaction
-                .body
-                .kernels[0]
-                .lock_height >
+                .max_timelock_height >
                 published_block.header.height
             {
                 break;
@@ -174,6 +171,24 @@ impl PendingPoolStorage {
     /// Returns the total number of unconfirmed transactions stored in the PendingPoolStorage
     pub fn len(&self) -> usize {
         self.txs_by_signature.len()
+    }
+
+    /// Returns all transaction stored in the PendingPoolStorage.
+    pub fn snapshot(&self) -> Vec<Arc<Transaction>> {
+        let mut txs: Vec<Arc<Transaction>> = Vec::with_capacity(self.txs_by_signature.len());
+        self.txs_by_signature
+            .iter()
+            .for_each(|(_, ptx)| txs.push(ptx.transaction.clone()));
+        txs
+    }
+
+    /// Returns the total weight of all transactions stored in the pool.
+    pub fn calculate_weight(&self) -> u64 {
+        let mut weight: u64 = 0;
+        self.txs_by_signature
+            .iter()
+            .for_each(|(_, ptx)| weight += ptx.transaction.calculate_weight());
+        (weight)
     }
 
     #[cfg(test)]
