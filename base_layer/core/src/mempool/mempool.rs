@@ -22,6 +22,7 @@
 
 use crate::{
     blocks::Block,
+    chain_storage::{BlockchainBackend, BlockchainDatabase},
     mempool::{
         error::MempoolError,
         orphan_pool::{OrphanPool, OrphanPoolConfig},
@@ -57,19 +58,25 @@ impl Default for MempoolConfig {
 /// The Mempool consists of an Unconfirmed Transaction Pool, Pending Pool, Orphan Pool and Reorg Pool and is responsible
 /// for managing and maintaining all unconfirmed transactions have not yet been included in a block, and transactions
 /// that have recently been included in a block.
-pub struct Mempool {
+pub struct Mempool<T>
+where T: BlockchainBackend
+{
+    blockchain_db: Arc<BlockchainDatabase<T>>,
     unconfirmed_pool: UnconfirmedPool,
-    orphan_pool: OrphanPool,
+    orphan_pool: OrphanPool<T>,
     pending_pool: PendingPool,
     reorg_pool: ReorgPool,
 }
 
-impl Mempool {
-    /// Create a new Mempool with a UnconfirmedPool, OrphanPool, PendingPool and ReOrgPool
-    pub fn new(config: MempoolConfig) -> Self {
+impl<T> Mempool<T>
+where T: BlockchainBackend
+{
+    /// Create a new Mempool with an UnconfirmedPool, OrphanPool, PendingPool and ReOrgPool.
+    pub fn new(blockchain_db: Arc<BlockchainDatabase<T>>, config: MempoolConfig) -> Self {
         Self {
+            blockchain_db: blockchain_db.clone(),
             unconfirmed_pool: UnconfirmedPool::new(config.unconfirmed_pool_config),
-            orphan_pool: OrphanPool::new(config.orphan_pool_config),
+            orphan_pool: OrphanPool::new(blockchain_db, config.orphan_pool_config),
             pending_pool: PendingPool::new(config.pending_pool_config),
             reorg_pool: ReorgPool::new(config.reorg_pool_config),
         }
