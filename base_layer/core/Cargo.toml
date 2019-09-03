@@ -13,9 +13,7 @@ edition = "2018"
 tari_utilities = { path = "../../infrastructure/tari_util", version = "^0.0", features = ["chrono_dt"]}
 tari_infra_derive = { path = "../../infrastructure/derive", version = "^0.0" }
 tari_crypto = { path = "../../infrastructure/crypto", version = "^0.0" }
-tari_p2p = {path = "../../base_layer/p2p", version = "^0.0"}
 tari_storage = { path = "../../infrastructure/storage", version = "^0.0" }
-tari_comms = { version = "^0.0", path = "../../comms"}
 tari_mmr = { path = "../../base_layer/mmr", version = "^0.0" }
 bitflags = "1.0.4"
 chrono = { version = "0.4.6", features = ["serde"]}

@@ -24,7 +24,6 @@ use crate::support::{
     data::{clean_up_datastore, init_datastore},
     utils::assert_change,
 };
-use log::Level;
 use rand::{CryptoRng, OsRng, Rng};
 use std::sync::Arc;
 use tari_comms::{builder::CommsServices, peer_manager::NodeIdentity};
@@ -189,7 +188,7 @@ fn manage_single_transaction() {
 
 #[test]
 fn manage_multiple_transactions() {
-    let _ = simple_logger::init_with_level(Level::Debug);
+    let _ = env_logger::builder().is_test(true).try_init();
     let mut rng = OsRng::new().unwrap();
     // Alice's parameters
     let alice_seed = PrivateKey::random(&mut rng);

@@ -24,7 +24,7 @@
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
 // This file is used to store the genesis block
-use crate::blocks::{aggregated_body::AggregateBody, block::Block, BlockBuilder};
+use crate::blocks::{block::Block, BlockBuilder};
 
 use crate::{blocks::BlockHeader, types::TariProofOfWork};
 use chrono::{DateTime, NaiveDate, Utc};
