@@ -20,11 +20,15 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::mempool::{
-    orphan_pool::OrphanPoolError,
-    pending_pool::PendingPoolError,
-    reorg_pool::ReorgPoolError,
-    unconfirmed_pool::UnconfirmedPoolError,
+use crate::{
+    chain_storage::ChainStorageError,
+    mempool::{
+        orphan_pool::OrphanPoolError,
+        pending_pool::PendingPoolError,
+        reorg_pool::ReorgPoolError,
+        unconfirmed_pool::UnconfirmedPoolError,
+    },
+    transaction::TransactionError,
 };
 use derive_error::Error;
 
@@ -34,4 +38,8 @@ pub enum MempoolError {
     OrphanPoolError(OrphanPoolError),
     PendingPoolError(PendingPoolError),
     ReorgPoolError(ReorgPoolError),
+    TransactionError(TransactionError),
+    ChainStorageError(ChainStorageError),
+    /// The Blockchain height is undefined
+    ChainHeightUndefined,
 }
