@@ -36,14 +36,13 @@ use derive_error::Error;
 use log::*;
 use serde::{Deserialize, Serialize};
 use std::{
-    convert::TryInto,
     fmt,
     sync::{Arc, Mutex},
     time::Duration,
 };
 use tari_comms::{
     domain_subscriber::{MessageInfo, SyncDomainSubscription},
-    message::{Message, MessageError, MessageFlags},
+    message::{MessageError, MessageFlags},
     outbound_message_service::{outbound_message_service::OutboundMessageService, BroadcastStrategy, OutboundError},
     types::CommsPublicKey,
 };
@@ -71,14 +70,6 @@ pub enum PingPongError {
 pub enum PingPong {
     Ping,
     Pong,
-}
-
-impl TryInto<Message> for PingPong {
-    type Error = MessageError;
-
-    fn try_into(self) -> Result<Message, Self::Error> {
-        Ok((TariMessageType::new(NetMessage::PingPong), self).try_into()?)
-    }
 }
 
 pub struct PingPongService {
@@ -115,8 +106,13 @@ impl PingPongService {
 
     fn send_msg(&self, broadcast_strategy: BroadcastStrategy, msg: PingPong) -> Result<(), PingPongError> {
         let oms = self.oms.as_ref().ok_or(PingPongError::OMSNotInitialized)?;
-        oms.send_message(broadcast_strategy, MessageFlags::empty(), msg)
-            .map_err(PingPongError::OutboundError)
+        oms.send_message(
+            broadcast_strategy,
+            MessageFlags::empty(),
+            TariMessageType::new(NetMessage::PingPong),
+            msg,
+        )
+        .map_err(PingPongError::OutboundError)
     }
 
     fn receive_ping(&mut self, info: MessageInfo, message: PingPong) -> Result<(), PingPongError> {
