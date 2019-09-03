@@ -32,6 +32,7 @@ use crate::{
         MemoryDatabase,
         MmrTree,
     },
+    proof_of_work::Difficulty,
     tari_amount::MicroTari,
     test_utils::builders::{create_test_block, create_test_kernel, create_test_tx, create_utxo},
     types::HashDigest,
@@ -241,18 +242,38 @@ fn store_and_retrieve_block() {
     let block = get_genesis_block();
     let hash = block.hash();
     assert_eq!(store.add_block(block.clone()), Ok(BlockAddResult::Ok));
-    println!("Added genesis block");
     // Check the metadata
     let metadata = store.get_metadata().unwrap();
     assert_eq!(metadata.height_of_longest_chain, Some(0));
     assert_eq!(metadata.best_block, Some(hash));
     assert_eq!(metadata.horizon_block(), Some(0));
     // Fetch the block back
-    println!("Fetching genesis block");
     let block2 = store.fetch_block(0).unwrap();
-    println!("Fetched genesis block");
     assert_eq!(block2.confirmations(), 1);
     // Compare the blocks
     let block2 = Block::from(block2);
     assert_eq!(block, block2);
+}
+
+#[test]
+fn add_multiple_blocks() {
+    // Create new database
+    let mut store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
+    let metadata = store.get_metadata().unwrap();
+    assert_eq!(metadata.height_of_longest_chain, None);
+    assert_eq!(metadata.best_block, None);
+    // Add the Genesis block
+    let block = get_genesis_block();
+    let hash = block.hash();
+    assert_eq!(store.add_block(block.clone()), Ok(BlockAddResult::Ok));
+    // Add another block
+    let mut block = create_test_block(1, vec![]);
+    block.header.prev_hash = hash.clone();
+    block.header.total_difficulty = Difficulty::from(100);
+    let hash = block.hash();
+    assert_eq!(store.add_block(block.clone()), Ok(BlockAddResult::Ok));
+    // Check the metadata
+    let metadata = store.get_metadata().unwrap();
+    assert_eq!(metadata.height_of_longest_chain, Some(1));
+    assert_eq!(metadata.best_block, Some(hash));
 }

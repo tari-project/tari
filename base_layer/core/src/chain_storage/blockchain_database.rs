@@ -338,7 +338,7 @@ where T: BlockchainBackend
                 db.best_block.clone().unwrap(),
             )
         };
-        let best_block = self.fetch_header(height - 1)?;
+        let best_block = self.fetch_header(height)?;
         let result = block.header.prev_hash == parent_hash &&
             block.header.height == best_block.height + 1 &&
             block.header.total_difficulty > best_block.total_difficulty;
