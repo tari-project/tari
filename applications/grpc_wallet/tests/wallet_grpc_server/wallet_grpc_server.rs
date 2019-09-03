@@ -56,7 +56,7 @@ const LOG_TARGET: &str = "applications::grpc_wallet";
 const WALLET_GRPC_PORT: u32 = 26778;
 
 pub fn init() {
-    let _ = simple_logger::init_with_level(Level::Debug);
+    let _ = env_logger::builder().is_test(true).try_init();
 }
 
 fn get_path(name: Option<&str>) -> String {

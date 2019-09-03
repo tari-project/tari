@@ -25,7 +25,6 @@ use crate::support::{
     utils::{make_input, TestParams},
 };
 use chrono::Duration as ChronoDuration;
-use log::Level;
 use rand::RngCore;
 use std::{thread, time::Duration};
 use tari_comms::peer_manager::NodeIdentity;
@@ -299,7 +298,7 @@ fn timeout_transaction() {
 
 #[test]
 fn test_api() {
-    let _ = simple_logger::init_with_level(Level::Debug);
+    let _ = env_logger::builder().is_test(true).try_init();
     let mut rng = rand::OsRng::new().unwrap();
     let (secret_key, _public_key) = PublicKey::random_keypair(&mut rng);
 
