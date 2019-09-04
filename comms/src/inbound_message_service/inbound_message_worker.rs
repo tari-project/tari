@@ -246,14 +246,13 @@ mod test {
     use super::*;
     use crate::{
         connection::{Connection, Direction, NetAddress},
-        futures::StreamExt,
         inbound_message_service::comms_msg_handlers::construct_comms_msg_dispatcher,
         message::{InboundMessage, Message, MessageEnvelope, MessageFlags, MessageHeader, NodeDestination},
         peer_manager::{peer_manager::PeerManager, NodeIdentity, PeerFlags},
         pub_sub_channel::pubsub_channel,
     };
     use crossbeam_channel as channel;
-    use futures::{executor::block_on, future::select};
+    use futures::{executor::block_on, StreamExt};
     use serde::{Deserialize, Serialize};
     use std::{
         sync::Arc,
@@ -372,8 +371,8 @@ mod test {
             let mut result = Vec::new();
 
             loop {
-                select!(
-                    item = message_subscription_type1.next() => {if let Some(i) = item {result.push(i)}},
+                futures::select!(
+                    item = message_subscription_type1.select_next_some() => result.push(item),
                     default => break,
                 );
             }
@@ -386,8 +385,8 @@ mod test {
             let mut result = Vec::new();
 
             loop {
-                select!(
-                    item = message_subscription_type2.next() => {if let Some(i) = item {result.push(i)}},
+                futures::select!(
+                    item = message_subscription_type2.select_next_some() => result.push(item),
                     default => break,
                 );
             }

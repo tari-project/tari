@@ -93,7 +93,7 @@ pub fn pubsub_channel<T: Send + Eq, M: Send + Clone>(
 #[cfg(test)]
 mod test {
     use super::*;
-    use futures::{executor::block_on, future::select};
+    use futures::executor::block_on;
 
     #[test]
     fn topic_pub_sub() {
@@ -148,8 +148,8 @@ mod test {
             let mut result = Vec::new();
 
             loop {
-                select!(
-                    item = sub1.next() => {if let Some(i) = item {result.push(i)}},
+                futures::select!(
+                    item = sub1.select_next_some() => result.push(item),
                     default => break,
                 );
             }
