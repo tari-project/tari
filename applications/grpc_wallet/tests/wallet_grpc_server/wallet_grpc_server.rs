@@ -23,7 +23,7 @@
 use crossbeam_channel::bounded;
 use futures::future::Future;
 use hyper::client::connect::{Destination, HttpConnector};
-use log::{Level, *};
+use log::*;
 use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
 use std::{iter, path::PathBuf, sync::Arc, thread, time::Duration};
 use tari_comms::{

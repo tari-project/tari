@@ -22,7 +22,7 @@
 
 use super::{outbound_message_pool::OutboundMessage, BroadcastStrategy, OutboundError};
 use crate::{
-    message::{Frame, Message, MessageEnvelope, MessageError, MessageFlags, MessageHeader, NodeDestination},
+    message::{Frame, Message, MessageEnvelope, MessageFlags, MessageHeader, NodeDestination},
     peer_manager::{peer_manager::PeerManager, NodeIdentity},
 };
 use crossbeam_channel::Sender;

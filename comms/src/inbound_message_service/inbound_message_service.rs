@@ -163,7 +163,6 @@ mod test {
             Direction,
             NetAddress,
         },
-        futures::StreamExt,
         inbound_message_service::comms_msg_handlers::*,
         message::{
             InboundMessage,
@@ -178,7 +177,7 @@ mod test {
         pub_sub_channel::pubsub_channel,
     };
     use crossbeam_channel as channel;
-    use futures::{executor::block_on, future::select};
+    use futures::{executor::block_on, StreamExt};
     use serde::{Deserialize, Serialize};
     use std::{sync::Arc, thread, time::Duration};
     use tari_storage::HMapDatabase;
@@ -273,7 +272,7 @@ mod test {
             let mut result = Vec::new();
 
             loop {
-                select!(
+                futures::select!(
                     item = message_subscription.next() => {if let Some(i) = item {result.push(i)}},
                     default => break,
                 );
