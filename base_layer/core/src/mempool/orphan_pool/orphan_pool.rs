@@ -79,8 +79,8 @@ where T: BlockchainBackend
             .insert(transaction))
     }
 
+    #[cfg(test)]
     /// Insert a set of new transactions into the OrphanPool
-    #[allow(dead_code)]
     pub fn insert_txs(&self, transactions: Vec<Arc<Transaction>>) -> Result<(), OrphanPoolError> {
         Ok(self
             .pool_storage

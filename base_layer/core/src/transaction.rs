@@ -517,22 +517,17 @@ impl Transaction {
 
     /// Returns the minimum maturity of the input UTXOs
     pub fn min_input_maturity(&self) -> u64 {
-        let mut min_maturity = std::u64::MAX;
-        self.body
-            .inputs
-            .iter()
-            .for_each(|input| min_maturity = min(min_maturity, input.features.maturity));
-        min_maturity
+        self.body.inputs.iter().fold(std::u64::MAX, |min_maturity, input| {
+            min(min_maturity, input.features.maturity)
+        })
     }
 
     /// Returns the maximum maturity of the input UTXOs
     pub fn max_input_maturity(&self) -> u64 {
-        let mut max_maturity = 0;
         self.body
             .inputs
             .iter()
-            .for_each(|input| max_maturity = max(max_maturity, input.features.maturity));
-        max_maturity
+            .fold(0, |max_maturity, input| max(max_maturity, input.features.maturity))
     }
 
     /// Returns the height of the maximum time-lock restriction calculated from the transaction lock_height and the
