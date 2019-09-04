@@ -19,9 +19,9 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use crate::{futures::StreamExt, message::InboundMessage, peer_manager::PeerNodeIdentity, types::CommsPublicKey};
+use crate::{message::InboundMessage, peer_manager::PeerNodeIdentity, types::CommsPublicKey};
 use derive_error::Error;
-use futures::{executor::block_on, future::select, stream::FusedStream, Stream};
+use futures::{executor::block_on, stream::FusedStream, Stream, StreamExt};
 use std::fmt::Debug;
 use tari_utilities::message_format::MessageFormat;
 
@@ -65,7 +65,7 @@ where S: Stream<Item = InboundMessage> + Unpin + FusedStream
                     let mut result = Vec::new();
                     let mut complete = false;
                     loop {
-                        select!(
+                        futures::select!(
                             item = s.next() => {
                                 if let Some(item) = item {
                                     result.push(item)
@@ -114,9 +114,8 @@ mod test {
         peer_manager::NodeIdentity,
         pub_sub_channel::{pubsub_channel, TopicPayload},
     };
-    use futures::{executor::block_on, future::select, stream::TryStreamExt, SinkExt};
+    use futures::{executor::block_on, SinkExt};
     use serde::{Deserialize, Serialize};
-    use std::sync::Arc;
     #[test]
     fn topic_pub_sub() {
         let (mut publisher, subscriber_factory) = pubsub_channel(10);
