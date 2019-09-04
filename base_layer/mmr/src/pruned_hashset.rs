@@ -84,19 +84,20 @@ impl ArrayLike for PrunedHashSet {
         Ok(self.len() - 1)
     }
 
-    fn get(&self, index: usize) -> Option<&Self::Value> {
+    fn get(&self, index: usize) -> Option<Self::Value> {
         // If the index is from before we started adding hashes, we can return the hash *if and only if* it is a peak
         if index < self.base_offset {
             return match self.peak_indices.binary_search(&index) {
-                Ok(nth_peak) => Some(&self.peak_hashes[nth_peak]),
+                Ok(nth_peak) => Some(self.peak_hashes[nth_peak].clone()),
                 Err(_) => None,
             };
         }
-        self.hashes.get(index - self.base_offset)
+        self.hashes.get(index - self.base_offset).map(|v| v.clone())
     }
 
-    fn get_or_panic(&self, index: usize) -> &Self::Value {
+    fn get_or_panic(&self, index: usize) -> Self::Value {
         self.get(index)
             .expect("PrunedHashSet only tracks peaks before the offset")
+            .clone()
     }
 }
