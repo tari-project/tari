@@ -70,12 +70,12 @@ where
     }
 
     /// This function returns the hash of the node index provided indexed from 0
-    pub fn get_node_hash(&self, node_index: usize) -> Option<&Hash> {
+    pub fn get_node_hash(&self, node_index: usize) -> Option<Hash> {
         self.hashes.get(node_index)
     }
 
     /// This function returns the hash of the leaf index provided, indexed from 0
-    pub fn get_leaf_hash(&self, leaf_node_index: usize) -> Option<&Hash> {
+    pub fn get_leaf_hash(&self, leaf_node_index: usize) -> Option<Hash> {
         self.get_node_hash(leaf_index(leaf_node_index))
     }
 
@@ -142,8 +142,8 @@ where
                     .get_node_hash(right_pos)
                     .ok_or(MerkleMountainRangeError::CorruptDataStructure)?;
                 // hash the two child nodes together with parent_pos and compare
-                let hash_check = hash_together::<D>(left_child_hash, right_child_hash);
-                if &hash_check != hash {
+                let hash_check = hash_together::<D>(&left_child_hash, &right_child_hash);
+                if hash_check != hash {
                     return Err(MerkleMountainRangeError::InvalidMerkleTree);
                 }
             }

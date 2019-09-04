@@ -34,11 +34,11 @@ pub trait ArrayLike {
     fn push(&mut self, item: Self::Value) -> Result<usize, Self::Error>;
 
     /// Return the item at the given index
-    fn get(&self, index: usize) -> Option<&Self::Value>;
+    fn get(&self, index: usize) -> Option<Self::Value>;
 
     /// Return the item at the given index. Use this if you *know* that the index is valid. Requesting a hash for an
     /// invalid index may cause the a panic
-    fn get_or_panic(&self, index: usize) -> &Self::Value;
+    fn get_or_panic(&self, index: usize) -> Self::Value;
 }
 
 pub trait ArrayLikeExt {
@@ -49,10 +49,10 @@ pub trait ArrayLikeExt {
 
     /// Execute the given closure for each value in the array
     fn for_each<F>(&self, f: F) -> Result<(), MerkleMountainRangeError>
-    where F: FnMut(Result<&Self::Value, MerkleMountainRangeError>);
+    where F: FnMut(Result<Self::Value, MerkleMountainRangeError>);
 }
 
-impl<T> ArrayLike for Vec<T> {
+impl<T: Clone> ArrayLike for Vec<T> {
     type Error = MerkleMountainRangeError;
     type Value = T;
 
@@ -65,16 +65,16 @@ impl<T> ArrayLike for Vec<T> {
         Ok(self.len() - 1)
     }
 
-    fn get(&self, index: usize) -> Option<&Self::Value> {
-        (self as &[Self::Value]).get(index)
+    fn get(&self, index: usize) -> Option<Self::Value> {
+        (self as &[Self::Value]).get(index).map(Clone::clone)
     }
 
-    fn get_or_panic(&self, index: usize) -> &Self::Value {
-        &self[index]
+    fn get_or_panic(&self, index: usize) -> Self::Value {
+        self[index].clone()
     }
 }
 
-impl<T> ArrayLikeExt for Vec<T> {
+impl<T: Clone> ArrayLikeExt for Vec<T> {
     type Value = T;
 
     fn truncate(&mut self, len: usize) -> Result<(), MerkleMountainRangeError> {
@@ -83,8 +83,8 @@ impl<T> ArrayLikeExt for Vec<T> {
     }
 
     fn for_each<F>(&self, f: F) -> Result<(), MerkleMountainRangeError>
-    where F: FnMut(Result<&Self::Value, MerkleMountainRangeError>) {
-        self.iter().map(|v| Ok(v)).for_each(f);
+    where F: FnMut(Result<Self::Value, MerkleMountainRangeError>) {
+        self.iter().map(|v| Ok(v.clone())).for_each(f);
         Ok(())
     }
 }

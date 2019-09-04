@@ -82,7 +82,7 @@ where
 
     /// This function returns the hash of the leaf index provided, indexed from 0. If the hash does not exist, or if it
     /// has been marked for deletion, `None` is returned.
-    pub fn get_leaf_hash(&self, leaf_node_index: u32) -> Option<&Hash> {
+    pub fn get_leaf_hash(&self, leaf_node_index: u32) -> Option<Hash> {
         if self.deleted.contains(leaf_node_index) {
             return None;
         }
@@ -91,7 +91,7 @@ where
 
     /// Returns the hash of the leaf index provided, as well as its deletion status. The node has been marked for
     /// deletion if the boolean value is true.
-    pub fn get_leaf_status(&self, leaf_node_index: u32) -> (Option<&Hash>, bool) {
+    pub fn get_leaf_status(&self, leaf_node_index: u32) -> (Option<Hash>, bool) {
         let hash = self.mmr.get_node_hash(leaf_index(leaf_node_index as usize));
         let deleted = self.deleted.contains(leaf_node_index);
         (hash, deleted)

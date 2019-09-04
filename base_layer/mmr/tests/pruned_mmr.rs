@@ -51,6 +51,6 @@ fn pruned_mmrs() {
         assert_eq!(pruned.get_merkle_root(), mmr2.get_merkle_root());
         // But you can only get recent hashes
         assert!(pruned.get_leaf_hash(*size / 2).is_none());
-        assert_eq!(pruned.get_leaf_hash(*size).unwrap(), &new_hash)
+        assert_eq!(pruned.get_leaf_hash(*size).unwrap(), new_hash)
     }
 }
