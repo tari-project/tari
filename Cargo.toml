@@ -16,4 +16,5 @@ members = [
     "infrastructure/storage",
     "applications/grpc_wallet",
     "applications/console_text_messenger",
+    "ffi"
 ]
