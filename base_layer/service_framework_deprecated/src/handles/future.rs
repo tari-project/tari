@@ -20,17 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::ServiceHandles;
-use crate::handles::LazyService;
-use futures::{
-    task::{AtomicWaker, Context},
-    Future,
-    Poll,
-};
+use super::{LazyService, ServiceHandles};
+use futures::{task::AtomicTask, Async, Future, Poll};
 use std::{
     any::Any,
     hash::Hash,
-    pin::Pin,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -39,71 +33,68 @@ use std::{
 
 /// Future which resolves to `ServiceHandles` once it is signaled to
 /// do so.
-pub struct ServiceHandlesFuture<TName> {
-    handles: Arc<ServiceHandles<TName>>,
+pub struct ServiceHandlesFuture<N> {
+    handles: Arc<ServiceHandles<N>>,
     is_ready: Arc<AtomicBool>,
-    waker: Arc<AtomicWaker>,
+    task: Arc<AtomicTask>,
 }
 
-impl<TName> Clone for ServiceHandlesFuture<TName> {
+impl<N> Clone for ServiceHandlesFuture<N> {
     fn clone(&self) -> Self {
         Self {
             handles: Arc::clone(&self.handles),
             is_ready: Arc::clone(&self.is_ready),
-            waker: Arc::clone(&self.waker),
+            task: Arc::clone(&self.task),
         }
     }
 }
 
-impl<TName> ServiceHandlesFuture<TName>
-where TName: Eq + Hash
+impl<N> ServiceHandlesFuture<N>
+where N: Eq + Hash
 {
     /// Create a new ServiceHandlesFuture with empty handles
     pub fn new() -> Self {
         Self {
             handles: Arc::new(ServiceHandles::new()),
             is_ready: Arc::new(AtomicBool::new(false)),
-            waker: Arc::new(AtomicWaker::new()),
+            task: Arc::new(AtomicTask::new()),
         }
     }
 
     /// Insert a service handle with the given name
-    pub fn insert(&self, service_name: TName, value: impl Any + Send + Sync) {
+    pub fn insert(&self, service_name: N, value: impl Any + Send + Sync) {
         self.handles.insert(service_name, value);
     }
 
     /// Retrieve a handle and downcast it to return type and return a copy, otherwise None is returned
-    pub fn get_handle<V>(&self, service_name: TName) -> Option<V>
+    pub fn get_handle<V>(&self, service_name: N) -> Option<V>
     where V: Clone + 'static {
         self.handles.get_handle(service_name)
     }
 
     /// Call the given function with the final handles once this future is ready (`notify_ready` is called).
     pub fn lazy_service<F, S>(&self, service_fn: F) -> LazyService<F, Self, S>
-    where F: FnOnce(Arc<ServiceHandles<TName>>) -> S {
+    where F: FnOnce(Arc<ServiceHandles<N>>) -> S {
         LazyService::new(self.clone(), service_fn)
     }
 
     /// Notify that all handles are collected and the task should resolve
     pub fn notify_ready(&self) {
         self.is_ready.store(true, Ordering::SeqCst);
-        self.waker.wake();
-    }
-
-    pub fn into_inner(self) -> Arc<ServiceHandles<TName>> {
-        self.handles
+        self.task.notify();
     }
 }
 
-impl<TName> Future for ServiceHandlesFuture<TName> {
-    type Output = Arc<ServiceHandles<TName>>;
+impl<N> Future for ServiceHandlesFuture<N> {
+    type Error = ();
+    type Item = Arc<ServiceHandles<N>>;
 
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         if self.is_ready.load(Ordering::SeqCst) {
-            Poll::Ready(Arc::clone(&self.handles))
+            Ok(Async::Ready(Arc::clone(&self.handles)))
         } else {
-            self.waker.register(cx.waker());
-            Poll::Pending
+            self.task.register();
+            Ok(Async::NotReady)
         }
     }
 }
@@ -111,8 +102,7 @@ impl<TName> Future for ServiceHandlesFuture<TName> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use futures::FutureExt;
-    use tari_test_utils::counter_context;
+    use tokio_mock_task::MockTask;
 
     #[test]
     fn insert_get() {
@@ -127,17 +117,16 @@ mod test {
 
     #[test]
     fn notify_ready() {
-        let mut handles = ServiceHandlesFuture::<()>::new();
-        let mut clone = handles.clone();
+        let mut task = MockTask::new();
+        task.enter(|| {
+            let mut handles = ServiceHandlesFuture::<()>::new();
+            let mut clone = handles.clone();
 
-        counter_context!(cx, wake_count);
-
-        assert!(handles.poll_unpin(&mut cx).is_pending());
-        assert!(clone.poll_unpin(&mut cx).is_pending());
-        assert_eq!(wake_count.get(), 0);
-        handles.notify_ready();
-        assert_eq!(wake_count.get(), 1);
-        assert!(handles.poll_unpin(&mut cx).is_ready());
-        assert!(clone.poll_unpin(&mut cx).is_ready());
+            assert!(handles.poll().unwrap().is_not_ready());
+            assert!(clone.poll().unwrap().is_not_ready());
+            handles.notify_ready();
+            assert!(handles.poll().unwrap().is_ready());
+            assert!(clone.poll().unwrap().is_ready());
+        })
     }
 }

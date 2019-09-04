@@ -12,7 +12,7 @@ edition = "2018"
 tari_comms = { version = "^0.0", path = "../../comms"}
 tari_crypto = { version = "^0.0", path = "../../infrastructure/crypto"}
 tari_utilities = { version = "^0.0", path = "../../infrastructure/tari_util"}
-tari_service_framework = { version = "^0.0", path = "../service_framework"}
+tari_service_framework = { version = "^0.0", package="tari_service_framework_deprecated", path = "../service_framework_deprecated"}
 
 chrono = { version = "0.4.6", features = ["serde"]}
 crossbeam-channel = "0.3.8"
