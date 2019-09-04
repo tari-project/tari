@@ -78,7 +78,7 @@ where TName: Eq + Hash
         self.handles.get_handle(service_name)
     }
 
-    // /// Call the given function with the final handles once this future is ready (`notify_ready` is called).
+    /// Call the given function with the final handles once this future is ready (`notify_ready` is called).
     pub fn lazy_service<F, S>(&self, service_fn: F) -> LazyService<F, Self, S>
     where F: FnOnce(Arc<ServiceHandles<TName>>) -> S {
         LazyService::new(self.clone(), service_fn)
