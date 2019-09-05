@@ -27,136 +27,102 @@ use crate::{
     },
     tari_message::TariMessageType,
 };
-use futures::{
-    future::{self, Either, Future},
-    Poll,
-};
 use tari_comms::{
     message::{Frame, Message, MessageEnvelope, MessageFlags, MessageHeader},
     outbound_message_service::BroadcastStrategy,
 };
-use tari_service_framework::transport::{AwaitResponseError, Requester};
+use tari_service_framework::{reply_channel::TransportChannelError, tower::ServiceExt};
 use tari_utilities::message_format::MessageFormat;
-use tokio_threadpool::{blocking, BlockingError};
 use tower_service::Service;
-
-type CommsOutboundRequester = Requester<CommsOutboundRequest, Result<CommsOutboundResponse, CommsOutboundServiceError>>;
 
 /// Handle for the CommsOutboundService.
 #[derive(Clone)]
-pub struct CommsOutboundHandle {
-    requester: CommsOutboundRequester,
+pub struct CommsOutboundHandle<S> {
+    service: S,
 }
 
-impl CommsOutboundHandle {
+impl<S> CommsOutboundHandle<S>
+where
+    S: Service<
+            CommsOutboundRequest,
+            Response = Result<CommsOutboundResponse, CommsOutboundServiceError>,
+            Error = TransportChannelError,
+        > + Unpin,
+    S::Future: Unpin,
+{
     /// Create a new CommsOutboundHandle, which makes requests using the
     /// given Requester
-    pub fn new(requester: CommsOutboundRequester) -> Self {
-        Self { requester }
+    pub fn new(service: S) -> Self {
+        Self { service }
     }
 
     /// Send a comms message
-    pub fn send_message<T>(
+    pub async fn send_message<T>(
         &mut self,
         broadcast_strategy: BroadcastStrategy,
         flags: MessageFlags,
         message_type: TariMessageType,
         message: T,
-    ) -> impl Future<Item = Result<CommsOutboundResponse, CommsOutboundServiceError>, Error = AwaitResponseError> + 'static
+    ) -> Result<CommsOutboundResponse, CommsOutboundServiceError>
     where
-        T: MessageFormat + 'static,
+        T: MessageFormat,
     {
-        let mut requester = self.requester.clone();
-        Self::message_body_serializer(message_type, message)
-            .or_else(|err| future::ok(Err(CommsOutboundServiceError::BlockingError(err))))
-            .and_then(move |res| match res {
-                Ok(body) => Either::A(requester.call(CommsOutboundRequest::SendMsg {
-                    broadcast_strategy,
-                    flags,
-                    body: Box::new(body),
-                })),
-                Err(err) => Either::B(future::ok(Err(err))),
+        let frame = serialize_message(message_type, message)?;
+        self
+            .service
+            .call_ready(CommsOutboundRequest::SendMsg {
+                broadcast_strategy,
+                flags,
+                body: Box::new(frame),
             })
+            .await
+             // Convert the transport channel error into the local error
+            .unwrap_or_else(|err| Err(err.into()))
     }
 
     /// Forward a comms message
-    pub fn forward_message(
+    pub async fn forward_message(
         mut self,
         broadcast_strategy: BroadcastStrategy,
         envelope: MessageEnvelope,
-    ) -> impl Future<Item = Result<CommsOutboundResponse, CommsOutboundServiceError>, Error = AwaitResponseError>
+    ) -> Result<CommsOutboundResponse, CommsOutboundServiceError>
     {
-        self.requester.call(CommsOutboundRequest::Forward {
-            broadcast_strategy,
-            message_envelope: Box::new(envelope),
-        })
-    }
-
-    /// Return a message body serializer future
-    fn message_body_serializer<T>(message_type: TariMessageType, message: T) -> MessageBodySerializer<T>
-    where T: MessageFormat {
-        MessageBodySerializer::new(message_type, message)
+        self.service
+            .call_ready(CommsOutboundRequest::Forward {
+                broadcast_strategy,
+                message_envelope: Box::new(envelope),
+            })
+            .await
+            // Convert the transport channel error into the local error
+            .unwrap_or_else(|err| Err(err.into()))
     }
 }
 
-#[must_use = "futures do nothing unless polled"]
-struct MessageBodySerializer<T> {
-    message: Option<T>,
-    message_type: Option<TariMessageType>,
-}
+fn serialize_message<T>(message_type: TariMessageType, message: T) -> Result<Frame, CommsOutboundServiceError>
+where T: MessageFormat {
+    let header = MessageHeader::new(message_type)?;
+    let msg = Message::from_message_format(header, message)?;
 
-impl<T> MessageBodySerializer<T> {
-    fn new(message_type: TariMessageType, message: T) -> Self {
-        Self {
-            message: Some(message),
-            message_type: Some(message_type),
-        }
-    }
-}
-
-impl<T> Future for MessageBodySerializer<T>
-where T: MessageFormat
-{
-    type Error = BlockingError;
-    type Item = Result<Frame, CommsOutboundServiceError>;
-
-    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        let message_type = self.message_type.take().expect("called poll twice");
-        let message = self.message.take().expect("called poll twice");
-        blocking(move || {
-            let header =
-                MessageHeader::new(message_type).map_err(CommsOutboundServiceError::MessageSerializationError)?;
-            let msg = Message::from_message_format(header, message)
-                .map_err(CommsOutboundServiceError::MessageSerializationError)?;
-
-            msg.to_binary().map_err(CommsOutboundServiceError::MessageFormatError)
-        })
-    }
+    msg.to_binary().map_err(Into::into)
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
+    use futures::{executor::block_on, future};
     use rand::rngs::OsRng;
     use tari_comms::{
         message::{MessageEnvelopeHeader, NodeDestination},
         types::CommsPublicKey,
     };
     use tari_crypto::keys::PublicKey;
-    use tari_service_framework::transport;
-    use tokio::runtime::Runtime;
-    use tower_util::service_fn;
+    use tari_service_framework::tower::service_fn;
 
     #[test]
-    fn message_body_serializer() {
-        // Require tokio threadpool for blocking call
-        let mut rt = Runtime::new().unwrap();
-
+    fn serialize_message() {
         let message_type = TariMessageType::new(0);
         let message = "FOO".to_string();
-        let fut = CommsOutboundHandle::message_body_serializer(message_type.clone(), message);
-
-        let body = rt.block_on(fut).unwrap().unwrap();
+        let body = super::serialize_message(message_type.clone(), message).unwrap();
 
         let msg = Message::from_binary(&body).unwrap();
         let header: MessageHeader<TariMessageType> = msg.deserialize_header().unwrap();
@@ -167,44 +133,40 @@ mod test {
 
     #[test]
     fn send_message() {
-        let mut rt = Runtime::new().unwrap();
-
-        let (req, res) = transport::channel(service_fn(|req| {
+        let service = service_fn(|req| {
             match req {
                 CommsOutboundRequest::SendMsg { .. } => {},
                 _ => panic!("Unexpected request"),
             }
-            future::ok::<_, ()>(Ok(()))
-        }));
+            future::ok(Ok(()))
+        });
 
-        rt.spawn(res);
+        let mut handle = CommsOutboundHandle::new(service);
 
-        let mut handle = CommsOutboundHandle::new(req);
-        let fut = handle.send_message(
-            BroadcastStrategy::Flood,
-            MessageFlags::empty(),
-            TariMessageType::new(0),
-            "FOO".to_string(),
-        );
-
-        rt.block_on(fut).unwrap().unwrap();
+        block_on(async move {
+            handle
+                .send_message(
+                    BroadcastStrategy::Flood,
+                    MessageFlags::empty(),
+                    TariMessageType::new(0),
+                    "FOO".to_string(),
+                )
+                .await
+                .unwrap();
+        });
     }
 
     #[test]
     fn forward() {
-        let mut rt = Runtime::new().unwrap();
-
-        let (req, res) = transport::channel(service_fn(|req| {
+        let service = service_fn(|req| {
             match req {
                 CommsOutboundRequest::Forward { .. } => {},
                 _ => panic!("Unexpected request"),
             }
-            future::ok::<_, ()>(Ok(()))
-        }));
+            future::ok(Ok(()))
+        });
 
-        rt.spawn(res);
-
-        let handle = CommsOutboundHandle::new(req);
+        let handle = CommsOutboundHandle::new(service);
         let mut rng = OsRng::new().unwrap();
         let header = MessageEnvelopeHeader {
             version: 0,
@@ -216,11 +178,14 @@ mod test {
             flags: MessageFlags::empty(),
         };
 
-        let fut = handle.forward_message(
-            BroadcastStrategy::Flood,
-            MessageEnvelope::new(vec![0], header.to_binary().unwrap(), vec![]),
-        );
-
-        rt.block_on(fut).unwrap().unwrap();
+        block_on(async move {
+            handle
+                .forward_message(
+                    BroadcastStrategy::Flood,
+                    MessageEnvelope::new(vec![0], header.to_binary().unwrap(), vec![]),
+                )
+                .await
+                .unwrap();
+        });
     }
 }

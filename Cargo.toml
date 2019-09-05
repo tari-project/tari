@@ -6,7 +6,6 @@ members = [
     "base_layer/mmr",
     "base_layer/mining",
     "base_layer/p2p",
-    "base_layer/service_framework_deprecated",
     "base_layer/service_framework",
     "base_layer/test_utils",
     "base_layer/wallet",

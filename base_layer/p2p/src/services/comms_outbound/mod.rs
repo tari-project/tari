@@ -27,11 +27,21 @@ mod service;
 
 use self::service::CommsOutboundService;
 use crate::services::{ServiceHandlesFuture, ServiceName};
+use futures::{
+    future::{self, Future},
+    task::SpawnExt,
+};
 use std::sync::Arc;
 use tari_comms::outbound_message_service::outbound_message_service::OutboundMessageService;
-use tari_service_framework::{transport, ServiceInitializationError, ServiceInitializer};
+use tari_service_framework::{reply_channel, ServiceInitializationError, ServiceInitializer};
 
-pub use self::{error::CommsOutboundServiceError, handle::CommsOutboundHandle, messages::CommsOutboundRequest};
+pub use self::{error::CommsOutboundServiceError, messages::CommsOutboundRequest};
+use crate::services::comms_outbound::messages::CommsOutboundResponse;
+
+type CommsOutboundRequestSender =
+    reply_channel::SenderService<CommsOutboundRequest, Result<CommsOutboundResponse, CommsOutboundServiceError>>;
+/// Convenience type alias for external services that want to use this services handle
+pub type CommsOutboundHandle = handle::CommsOutboundHandle<CommsOutboundRequestSender>;
 
 /// Initializer for CommsOutbound service
 pub struct CommsOutboundServiceInitializer {
@@ -44,13 +54,18 @@ impl CommsOutboundServiceInitializer {
     }
 }
 
-impl ServiceInitializer<ServiceName> for CommsOutboundServiceInitializer {
-    fn initialize(self: Box<Self>, handles: ServiceHandlesFuture) -> Result<(), ServiceInitializationError> {
-        let service = CommsOutboundService::new(self.oms);
-        let (requester, responder) = transport::channel(service);
+impl<TExec> ServiceInitializer<ServiceName, TExec> for CommsOutboundServiceInitializer
+where TExec: SpawnExt
+{
+    type Future = impl Future<Output = Result<(), ServiceInitializationError>>;
 
-        tokio::spawn(responder);
+    fn initialize(&mut self, executor: &mut TExec, handles: ServiceHandlesFuture) -> Self::Future {
+        let (requester, responder) = reply_channel::unbounded();
         handles.insert(ServiceName::CommsOutbound, CommsOutboundHandle::new(requester));
-        Ok(())
+
+        let service = CommsOutboundService::new(responder, Arc::clone(&self.oms));
+        let spawn_res = executor.spawn(service.run()).map_err(Into::into);
+
+        future::ready(spawn_res)
     }
 }

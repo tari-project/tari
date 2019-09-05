@@ -25,10 +25,9 @@
 //! This service is responsible for sending pings to any peer as well as maintaining
 //! some very basic counters for the number of ping/pongs sent and received.
 //!
-//! It consists of:
-//! - A service handle which makes requests to the Liveness backend. Types of requests can be found in the
-//!   [LivenessRequest] enum.
-//! - A handler for incoming [PingPong] messages.
+//! It is responsible for:
+//! - handling requests to the Liveness backend. Types of requests can be found in the [LivenessRequest] enum, and
+//! - reading incoming [PingPong] messages and processing them.
 //!
 //! In future, this service may be expanded to included periodic pings to maintain
 //! latency and availability statistics for peers.
@@ -37,35 +36,30 @@
 //! [PingPong]: ./messages/enum.PingPong.html
 
 mod error;
-mod handler;
 mod messages;
 mod service;
 mod state;
 
-use self::{error::LivenessError, handler::LivenessHandler, service::LivenessService, state::LivenessState};
+use self::{error::LivenessError, service::LivenessService, state::LivenessState};
 use crate::{
-    services::{
-        comms_outbound::CommsOutboundHandle,
-        domain_deserializer::DomainMessageDeserializer,
-        ServiceHandlesFuture,
-        ServiceName,
-    },
+    services::{comms_outbound::CommsOutboundHandle, ServiceHandlesFuture, ServiceName},
     tari_message::{NetMessage, TariMessageType},
 };
-use futures::{future, Future, Stream};
-use log::*;
+use futures::{future, task::SpawnExt, Future, Stream, StreamExt};
 use std::{fmt::Debug, sync::Arc};
-use tari_comms::{builder::CommsServices, domain_subscriber::MessageInfo};
-use tari_service_framework::{
-    transport::{self, Requester},
-    ServiceInitializationError,
-    ServiceInitializer,
+use tari_comms::{
+    builder::CommsServices,
+    domain_subscriber::MessageInfo,
+    inbound_message_service::InboundTopicSubscriptionFactory,
+    message::{InboundMessage, MessageError},
 };
+use tari_service_framework::{reply_channel, ServiceInitializationError, ServiceInitializer};
 
 pub use self::messages::{LivenessRequest, LivenessResponse, PingPong};
-use tari_comms::inbound_message_service::InboundTopicSubscriptionFactory;
+use tari_service_framework::reply_channel::SenderService;
+use tari_utilities::message_format::MessageFormat;
 
-pub type LivenessHandle = Requester<LivenessRequest, Result<LivenessResponse, LivenessError>>;
+pub type LivenessHandle = SenderService<LivenessRequest, Result<LivenessResponse, LivenessError>>;
 
 const LOG_TARGET: &'static str = "base_layer::p2p::services::liveness";
 
@@ -93,52 +87,51 @@ impl LivenessInitializer {
     }
 
     /// Get a stream of inbound PingPong messages
-    fn ping_stream(&self) -> impl Stream<Item = (MessageInfo, PingPong), Error = ()> {
+    fn ping_stream(&self) -> impl Stream<Item = (MessageInfo, PingPong)> {
         self.inbound_message_subscription_factory
-            .get_subscription_compat(TariMessageType::new(NetMessage::PingPong))
-            .and_then(|msg| {
-                DomainMessageDeserializer::<PingPong>::new(msg).or_else(|_| {
-                    error!(target: LOG_TARGET, "thread pool shut down");
-                    future::err(())
-                })
-            })
+            .get_subscription(TariMessageType::new(NetMessage::PingPong))
+            .map(map_deserialized::<PingPong>)
             .filter_map(ok_or_skip_result)
     }
 }
 
-impl ServiceInitializer<ServiceName> for LivenessInitializer {
-    fn initialize(self: Box<Self>, handles: ServiceHandlesFuture) -> Result<(), ServiceInitializationError> {
-        let liveness_service = handles.lazy_service(move |handles| {
-            // All handles are ready
-            let state = Arc::new(LivenessState::new());
-            let outbound_handle = handles
-                .get_handle::<CommsOutboundHandle>(ServiceName::CommsOutbound)
-                .expect("Liveness service requires CommsOutbound service handle");
+impl<TExec> ServiceInitializer<ServiceName, TExec> for LivenessInitializer
+where TExec: SpawnExt
+{
+    type Future = impl Future<Output = Result<(), ServiceInitializationError>>;
 
-            // Setup and start the inbound message handler
-            let mut handler = LivenessHandler::new(Arc::clone(&state), outbound_handle.clone());
-            let inbound_handler = self.ping_stream().for_each(move |(info, msg)| {
-                handler.handle_message(info, msg).or_else(|err| {
-                    error!("Error when processing message: {:?}", err);
-                    future::err(())
-                })
-            });
+    fn initialize(&mut self, executor: &mut TExec, handles_fut: ServiceHandlesFuture) -> Self::Future {
+        let (sender, receiver) = reply_channel::unbounded();
 
-            tokio::spawn(inbound_handler);
+        // Register handle before waiting for handles to be ready
+        handles_fut.insert(ServiceName::Liveness, sender);
 
-            LivenessService::new(state, outbound_handle)
-        });
+        // Create a stream which receives PingPong messages from comms
+        let ping_stream = self.ping_stream();
 
-        let (requester, responder) = transport::channel(liveness_service);
-        // Register handle and spawn the responder service
-        handles.insert(ServiceName::Liveness, requester);
-        tokio::spawn(responder);
+        let spawn_result = executor
+            .spawn(async move {
+                // Wait for all handles to become available
+                let handles = handles_fut.await;
 
-        Ok(())
+                let outbound_handle = handles
+                    .get_handle::<CommsOutboundHandle>(ServiceName::CommsOutbound)
+                    .expect("Liveness service requires CommsOutbound service handle");
+
+                let state = Arc::new(LivenessState::new());
+
+                // Spawn the Liveness service on the executor
+                let service = LivenessService::new(receiver, ping_stream, state, outbound_handle);
+                service.run().await;
+            })
+            .map_err(Into::into);
+
+        future::ready(spawn_result)
     }
 }
 
-fn ok_or_skip_result<T, E>(res: Result<T, E>) -> Option<T>
+/// For use with `StreamExt::filter_map`. Log and filter any errors.
+async fn ok_or_skip_result<T, E>(res: Result<T, E>) -> Option<T>
 where E: Debug {
     match res {
         Ok(t) => Some(t),
@@ -149,14 +142,28 @@ where E: Debug {
     }
 }
 
+fn map_deserialized<T>(msg: InboundMessage) -> Result<(MessageInfo, T), MessageError>
+where T: MessageFormat {
+    let deserialized = msg.message.deserialize_message::<T>()?;
+    let info = MessageInfo {
+        peer_source: msg.peer_source,
+        origin_source: msg.origin_source,
+    };
+    Ok((info, deserialized))
+}
+
 #[cfg(test)]
 mod test {
+    use futures::executor::block_on;
+
     #[test]
     fn ok_or_skip_result() {
-        let res = Result::<_, ()>::Ok(());
-        assert_eq!(super::ok_or_skip_result(res).unwrap(), ());
+        block_on(async {
+            let res = Result::<_, ()>::Ok(());
+            assert_eq!(super::ok_or_skip_result(res).await.unwrap(), ());
 
-        let res = Result::<(), _>::Err(());
-        assert!(super::ok_or_skip_result(res).is_none());
+            let res = Result::<(), _>::Err(());
+            assert!(super::ok_or_skip_result(res).await.is_none());
+        });
     }
 }

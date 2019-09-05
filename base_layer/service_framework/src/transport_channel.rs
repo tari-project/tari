@@ -135,16 +135,12 @@ impl<T> Future for TransportResponseFuture<T> {
     }
 }
 
-/// This is the object received on the Receiver-side of this channel.
-/// It's a simple wrapper with some convenience functions used to reply to the
-/// request.
 pub struct RequestContext<TReq, TResp> {
     reply_tx: oneshot::Sender<TResp>,
     request: Option<TReq>,
 }
 
 impl<TReq, TResp> RequestContext<TReq, TResp> {
-    /// Create a new RequestContect
     pub fn new(request: TReq, reply_tx: oneshot::Sender<TResp>) -> Self {
         Self {
             request: Some(request),
@@ -152,20 +148,14 @@ impl<TReq, TResp> RequestContext<TReq, TResp> {
         }
     }
 
-    /// Return a reference to the request object. None is returned after take_request has
-    /// been called.
-    pub fn request(&self) -> Option<&TReq> {
+    pub fn request_ref(&self) -> Option<&TReq> {
         self.request.as_ref()
     }
 
-    /// Take ownership of the request object, if ownership has not already been taken,
-    /// otherwise None is returned.
     pub fn take_request(&mut self) -> Option<TReq> {
         self.request.take()
     }
 
-    /// Consume this object and return it's parts. Namely, the request object and
-    /// the reply oneshot channel.
     pub fn split(self) -> (TReq, oneshot::Sender<TResp>) {
         (
             self.request.expect("RequestContext must be initialized with a request"),
@@ -173,16 +163,15 @@ impl<TReq, TResp> RequestContext<TReq, TResp> {
         )
     }
 
-    /// Sends a reply to the caller
     pub fn reply(self, resp: TResp) -> Result<(), TResp> {
         self.reply_tx.send(resp)
     }
 }
-
-/// Receiver side of the reply channel.
-/// This is functionally equivalent to `rx.map(|(req, reply_tx)| RequestContext::new(req, reply_tx))`
-/// but is ergonomically better to use with the `futures::select` macro (implements FusedStream)
-/// and has a short type signature.
+// Future that calls a given Service with requests that are received from a mpsc Receiver
+// and sends the response back on the requests oneshot channel.
+//
+// As requests come through the futures resulting from Service::call is added to a pending queue
+// for concurrent processing.
 pub struct Receiver<TReq, TResp> {
     rx: Rx<TReq, TResp>,
 }
@@ -192,6 +181,8 @@ impl<TReq, TResp> FusedStream for Receiver<TReq, TResp> {
         self.rx.is_terminated()
     }
 }
+// Pinning is never projected to children.
+// impl<TReq, TResp> Unpin for Responder<TReq, TResp> {}
 
 impl<TReq, TResp> Receiver<TReq, TResp> {
     // Create a new Responder

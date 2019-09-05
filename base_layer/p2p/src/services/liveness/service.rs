@@ -22,38 +22,135 @@
 
 use super::{error::LivenessError, state::LivenessState, LivenessRequest, LivenessResponse};
 use crate::{
-    services::{comms_outbound::CommsOutboundHandle, liveness::messages::PingPong},
+    services::{
+        comms_outbound::{CommsOutboundHandle, CommsOutboundServiceError},
+        liveness::messages::PingPong,
+    },
     tari_message::{NetMessage, TariMessageType},
 };
-use futures::{
-    future::{self, Either},
-    Future,
-    Poll,
-};
+use futures::{pin_mut, stream::StreamExt, Stream};
+use log::*;
 use std::sync::Arc;
-use tari_comms::{message::MessageFlags, outbound_message_service::BroadcastStrategy, types::CommsPublicKey};
-use tower_service::Service;
+use tari_comms::{
+    domain_subscriber::MessageInfo,
+    message::MessageFlags,
+    outbound_message_service::BroadcastStrategy,
+    types::CommsPublicKey,
+};
+use tari_service_framework::RequestContext;
+
+const LOG_TARGET: &'static str = "tari_p2p::services::liveness";
+
+/// Convenience type alias for a request receiver which receives LivenessRequests and sends back
+/// a Result.
+// type LivenessRequestRx = Receiver<LivenessRequest, Result<LivenessResponse, LivenessError>>;
 
 /// Service responsible for testing Liveness for Peers.
 ///
 /// Very basic global ping and pong counter stats are implemented. In future,
 /// peer latency and availability stats will be added.
-pub struct LivenessService {
+pub struct LivenessService<THandleStream, TPingStream> {
+    request_rx: Option<THandleStream>,
+    ping_stream: Option<TPingStream>,
     state: Arc<LivenessState>,
     oms_handle: CommsOutboundHandle,
 }
 
-impl LivenessService {
-    pub fn new(state: Arc<LivenessState>, oms_handle: CommsOutboundHandle) -> Self {
-        Self { state, oms_handle }
+impl<THandleStream, TPingStream> LivenessService<THandleStream, TPingStream> {
+    pub fn new(
+        request_rx: THandleStream,
+        ping_stream: TPingStream,
+        state: Arc<LivenessState>,
+        oms_handle: CommsOutboundHandle,
+    ) -> Self
+    {
+        Self {
+            request_rx: Some(request_rx),
+            ping_stream: Some(ping_stream),
+            state,
+            oms_handle,
+        }
+    }
+}
+
+impl<THandleStream, TPingStream> LivenessService<THandleStream, TPingStream>
+where
+    TPingStream: Stream<Item = (MessageInfo, PingPong)>,
+    THandleStream: Stream<Item = RequestContext<LivenessRequest, Result<LivenessResponse, LivenessError>>>,
+{
+    pub async fn run(mut self) {
+        let ping_stream = self.ping_stream.take().expect("ping_stream cannot be None").fuse();
+        pin_mut!(ping_stream);
+
+        let request_stream = self.request_rx.take().expect("ping_stream cannot be None").fuse();
+        pin_mut!(request_stream);
+        loop {
+            futures::select! {
+                // Requests from the handle
+                request_context = request_stream.select_next_some() => {
+                    let (request, reply_tx) = request_context.split();
+                    let _ = reply_tx.send(self.handle_request(request).await).or_else(|resp| {
+                        error!(target: LOG_TARGET, "Failed to send reply");
+                        Err(resp)
+                    });
+                },
+                // Incoming messages from the Comms layer
+                (info, msg) = ping_stream.select_next_some() => {
+                    let _ = self.handle_incoming_message(info, msg).await.or_else(|err| {
+                        error!(target: LOG_TARGET, "Failed to handle incoming PingPong message: {:?}", err);
+                        Err(err)
+                    });
+                },
+                complete => break,
+            }
+        }
     }
 
-    fn send_ping(
-        &mut self,
-        pub_key: CommsPublicKey,
-    ) -> impl Future<Item = Result<LivenessResponse, LivenessError>, Error = ()>
-    {
-        let state = self.state.clone();
+    async fn handle_incoming_message(&mut self, info: MessageInfo, msg: PingPong) -> Result<(), LivenessError> {
+        match msg {
+            PingPong::Ping => {
+                self.state.inc_pings_received();
+                self.send_pong(info.origin_source).await.unwrap();
+                self.state.inc_pongs_sent();
+            },
+            PingPong::Pong => {
+                self.state.inc_pongs_received();
+            },
+        }
+        Ok(())
+    }
+
+    async fn send_pong(&mut self, dest: CommsPublicKey) -> Result<(), LivenessError> {
+        self.oms_handle
+            .send_message(
+                BroadcastStrategy::DirectPublicKey(dest),
+                MessageFlags::empty(),
+                TariMessageType::new(NetMessage::PingPong),
+                PingPong::Pong,
+            )
+            .await
+            .map_err(Into::into)
+    }
+
+    async fn handle_request(&mut self, request: LivenessRequest) -> Result<LivenessResponse, LivenessError> {
+        match request {
+            LivenessRequest::SendPing(pub_key) => {
+                self.send_ping(pub_key).await?;
+                self.state.inc_pings_sent();
+                Ok(LivenessResponse::PingSent)
+            },
+            LivenessRequest::GetPingCount => {
+                let ping_count = self.get_ping_count();
+                Ok(LivenessResponse::Count(ping_count))
+            },
+            LivenessRequest::GetPongCount => {
+                let pong_count = self.get_pong_count();
+                Ok(LivenessResponse::Count(pong_count))
+            },
+        }
+    }
+
+    async fn send_ping(&mut self, pub_key: CommsPublicKey) -> Result<(), LivenessError> {
         self.oms_handle
             .send_message(
                 BroadcastStrategy::DirectPublicKey(pub_key),
@@ -61,14 +158,10 @@ impl LivenessService {
                 TariMessageType::new(NetMessage::PingPong),
                 PingPong::Ping,
             )
-            .and_then(move |res| {
-                state.inc_pings_sent();
-                future::ok(
-                    res.map(|_| LivenessResponse::PingSent)
-                        .map_err(LivenessError::CommsOutboundError),
-                )
-            })
-            .or_else(|_| future::ok(Err(LivenessError::SendPingFailed)))
+            .await
+            .map_err(Into::<CommsOutboundServiceError>::into)?;
+
+        Ok(())
     }
 
     fn get_ping_count(&self) -> usize {
@@ -80,40 +173,16 @@ impl LivenessService {
     }
 }
 
-impl Service<LivenessRequest> for LivenessService {
-    type Error = ();
-    type Future = impl Future<Item = Self::Response, Error = Self::Error>;
-    type Response = Result<LivenessResponse, LivenessError>;
-
-    fn poll_ready(&mut self) -> Poll<(), Self::Error> {
-        Ok(().into())
-    }
-
-    fn call(&mut self, req: LivenessRequest) -> Self::Future {
-        match req {
-            LivenessRequest::SendPing(pub_key) => Either::A(
-                self.send_ping(pub_key)
-                    .or_else(|_| future::ok(Err(LivenessError::SendPingFailed))),
-            ),
-            LivenessRequest::GetPingCount => Either::B(future::ok(Result::<_, LivenessError>::Ok(
-                LivenessResponse::Count(self.get_ping_count()),
-            ))),
-            LivenessRequest::GetPongCount => Either::B(future::ok(Result::<_, LivenessError>::Ok(
-                LivenessResponse::Count(self.get_pong_count()),
-            ))),
-        }
-    }
-}
-
 #[cfg(test)]
 mod test {
     use super::*;
-    use futures::Async;
+    use crate::services::comms_outbound::CommsOutboundRequest;
+    use futures::{executor::LocalPool, stream, task::SpawnExt};
     use rand::rngs::OsRng;
+    use tari_comms::peer_manager::{NodeId, PeerNodeIdentity};
     use tari_crypto::keys::PublicKey;
-    use tari_service_framework::transport;
-    use tokio::runtime::Runtime;
-    use tower_util::service_fn;
+    use tari_service_framework::reply_channel;
+    use tower_service::Service;
 
     #[test]
     fn get_ping_pong_count() {
@@ -122,50 +191,136 @@ mod test {
         state.inc_pongs_received();
         state.inc_pongs_received();
 
-        let outbound_service = service_fn(|_| future::ok::<_, ()>(Ok(())));
-        let (req, _res) = transport::channel(outbound_service);
-        let oms_handle = CommsOutboundHandle::new(req);
+        // Setup a CommsOutbound service handle which is not connected to the actual CommsOutbound service
+        let (outbound_tx, _) = reply_channel::unbounded();
+        let oms_handle = CommsOutboundHandle::new(outbound_tx);
 
-        let mut service = LivenessService::new(state, oms_handle);
+        // Setup liveness service
+        let (mut sender_service, receiver) = reply_channel::unbounded();
+        let service = LivenessService::new(receiver, stream::empty(), state, oms_handle);
 
-        let mut fut = service.call(LivenessRequest::GetPingCount);
-        match fut.poll().unwrap() {
-            Async::Ready(Ok(LivenessResponse::Count(n))) => assert_eq!(n, 1),
-            _ => panic!(),
+        let mut pool = LocalPool::new();
+        // Run the service
+        pool.spawner().spawn(service.run()).unwrap();
+
+        let res = pool.run_until(sender_service.call(LivenessRequest::GetPingCount));
+        match res.unwrap() {
+            Ok(LivenessResponse::Count(n)) => assert_eq!(n, 1),
+            _ => panic!("Unexpected service result"),
         }
 
-        let mut fut = service.call(LivenessRequest::GetPongCount);
-        match fut.poll().unwrap() {
-            Async::Ready(Ok(LivenessResponse::Count(n))) => assert_eq!(n, 2),
-            _ => panic!(),
+        let res = pool.run_until(sender_service.call(LivenessRequest::GetPongCount));
+        match res.unwrap() {
+            Ok(LivenessResponse::Count(n)) => assert_eq!(n, 2),
+            _ => panic!("Unexpected service result"),
         }
     }
 
     #[test]
     fn send_ping() {
-        let mut rt = Runtime::new().unwrap();
         let state = Arc::new(LivenessState::new());
+        let mut pool = LocalPool::new();
 
-        // This service stubs out CommsOutboundService and always returns a successful result.
-        // Therefore, LivenessService will behave as if it was able to send the ping
-        // without actually sending it.
-        let outbound_service = service_fn(|_| future::ok::<_, ()>(Ok(())));
-        let (req, res) = transport::channel(outbound_service);
-        rt.spawn(res);
+        // Setup a CommsOutbound service handle which is not connected to the actual CommsOutbound service
+        // TODO(sdbondi): Setting up a "dummy" CommsOutbound service should be moved into testing utilities
+        let (outbound_tx, mut outbound_rx) = reply_channel::unbounded();
+        let oms_handle = CommsOutboundHandle::new(outbound_tx);
 
-        let oms_handle = CommsOutboundHandle::new(req);
+        // Following block receives one CommsOutboundRequest and send an "all ok" reply
+        pool.spawner()
+            .spawn(async move {
+                let ctx = outbound_rx.select_next_some().await;
+                ctx.reply(Ok(())).unwrap();
+            })
+            .unwrap();
 
-        let mut service = LivenessService::new(Arc::clone(&state), oms_handle);
+        // Setup liveness service
+        let (mut sender_service, receiver) = reply_channel::unbounded();
+        let service = LivenessService::new(receiver, stream::empty(), Arc::clone(&state), oms_handle);
+
+        // Run the LivenessService
+        pool.spawner().spawn(service.run()).unwrap();
 
         let mut rng = OsRng::new().unwrap();
         let (_, pk) = CommsPublicKey::random_keypair(&mut rng);
-        let fut = service.call(LivenessRequest::SendPing(pk));
-        match rt.block_on(fut).unwrap() {
+        let res = pool.run_until(sender_service.call(LivenessRequest::SendPing(pk)));
+        match res.unwrap() {
             Ok(LivenessResponse::PingSent) => {},
             Ok(_) => panic!("received unexpected response from liveness service"),
             Err(err) => panic!("received unexpected error from liveness service: {:?}", err),
         }
 
         assert_eq!(state.pings_sent(), 1);
+    }
+
+    fn create_dummy_message_info() -> MessageInfo {
+        let mut rng = OsRng::new().unwrap();
+        let (_, pk) = CommsPublicKey::random_keypair(&mut rng);
+        let peer_source = PeerNodeIdentity::new(NodeId::from_key(&pk).unwrap(), pk.clone());
+        MessageInfo {
+            origin_source: peer_source.public_key.clone(),
+            peer_source,
+        }
+    }
+
+    #[test]
+    fn handle_message_ping() {
+        let state = Arc::new(LivenessState::new());
+        let mut pool = LocalPool::new();
+
+        // Setup a CommsOutbound service handle which is not connected to the actual CommsOutbound service
+        // TODO(sdbondi): Setting up a "dummy" CommsOutbound service should be moved into testing utilities
+        let (outbound_tx, mut outbound_rx) = reply_channel::unbounded();
+        let oms_handle = CommsOutboundHandle::new(outbound_tx);
+
+        let info = create_dummy_message_info();
+        // A stream which emits one message and then closes
+        let pingpong_stream = stream::iter(std::iter::once((info, PingPong::Ping)));
+
+        // Setup liveness service
+        let service = LivenessService::new(stream::empty(), pingpong_stream, Arc::clone(&state), oms_handle);
+
+        pool.spawner().spawn(service.run()).unwrap();
+
+        let oms_request = pool.run_until(outbound_rx.next()).unwrap();
+        let (request, reply_tx) = oms_request.split();
+
+        match request {
+            CommsOutboundRequest::SendMsg { .. } => {
+                // Send a fake reply from the OMS, saying we've sent the requested message
+                assert!(!reply_tx.is_canceled());
+                reply_tx.send(Ok(())).unwrap();
+            },
+            _ => panic!(),
+        }
+
+        pool.run_until_stalled();
+
+        assert_eq!(state.pings_received(), 1);
+        assert_eq!(state.pongs_sent(), 1);
+    }
+
+    #[test]
+    fn handle_message_pong() {
+        let state = Arc::new(LivenessState::new());
+        let mut pool = LocalPool::new();
+
+        // Setup a CommsOutbound service handle which is not connected to the actual CommsOutbound service
+        // TODO(sdbondi): Setting up a "dummy" CommsOutbound service should be moved into testing utilities
+        let (outbound_tx, _) = reply_channel::unbounded();
+        let oms_handle = CommsOutboundHandle::new(outbound_tx);
+
+        let info = create_dummy_message_info();
+        // A stream which emits one message and then closes
+        let pingpong_stream = stream::iter(std::iter::once((info, PingPong::Pong)));
+
+        // Setup liveness service
+        let service = LivenessService::new(stream::empty(), pingpong_stream, Arc::clone(&state), oms_handle);
+
+        pool.spawner().spawn(service.run()).unwrap();
+
+        pool.run_until_stalled();
+
+        assert_eq!(state.pongs_received(), 1);
     }
 }

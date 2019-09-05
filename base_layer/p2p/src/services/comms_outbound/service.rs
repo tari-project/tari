@@ -24,26 +24,60 @@ use crate::services::comms_outbound::{
     error::CommsOutboundServiceError,
     messages::{CommsOutboundRequest, CommsOutboundResponse},
 };
-use futures::{
-    future::{self, Either},
-    Future,
-    Poll,
-};
+use futures::{future, Future, StreamExt};
+use log::*;
 use std::sync::Arc;
 use tari_comms::{
     message::{Frame, MessageEnvelope, MessageFlags},
     outbound_message_service::{outbound_message_service::OutboundMessageService, BroadcastStrategy},
 };
-use tower_service::Service;
+use tari_service_framework::reply_channel::Receiver;
+
+const LOG_TARGET: &'static str = "tari_p2p::services::comms_outbound";
+
+/// Convenience type alias for the RequestStream
+type CommsOutboundRequestRx = Receiver<CommsOutboundRequest, Result<CommsOutboundResponse, CommsOutboundServiceError>>;
 
 /// Service responsible for sending messages to the comms OMS
 pub struct CommsOutboundService {
+    request_rx: CommsOutboundRequestRx,
     oms: Arc<OutboundMessageService>,
 }
 
 impl CommsOutboundService {
-    pub fn new(oms: Arc<OutboundMessageService>) -> Self {
-        Self { oms }
+    pub fn new(request_rx: CommsOutboundRequestRx, oms: Arc<OutboundMessageService>) -> Self {
+        Self { request_rx, oms }
+    }
+
+    pub async fn run(mut self) {
+        loop {
+            futures::select! {
+                request_context = self.request_rx.select_next_some() => {
+                    let (request, reply_tx) = request_context.split();
+                    let _ = reply_tx.send(self.handle_request(request).await).or_else(log_and_discard);
+                }
+                complete => break,
+            }
+        }
+    }
+
+    pub async fn handle_request(
+        &self,
+        request: CommsOutboundRequest,
+    ) -> Result<CommsOutboundResponse, CommsOutboundServiceError>
+    {
+        match request {
+            CommsOutboundRequest::SendMsg {
+                broadcast_strategy,
+                flags,
+                body,
+            } => self.send_msg(broadcast_strategy, flags, *body).await,
+
+            CommsOutboundRequest::Forward {
+                broadcast_strategy,
+                message_envelope,
+            } => self.forward_message(broadcast_strategy, *message_envelope).await,
+        }
     }
 
     fn send_msg(
@@ -51,61 +85,40 @@ impl CommsOutboundService {
         broadcast_strategy: BroadcastStrategy,
         flags: MessageFlags,
         body: Frame,
-    ) -> impl Future<Item = Result<(), CommsOutboundServiceError>, Error = CommsOutboundServiceError>
+    ) -> impl Future<Output = Result<(), CommsOutboundServiceError>>
     {
-        // TODO(sdbondi): Change required when oms is async
-        future::ok(
-            self.oms
-                .send_raw(broadcast_strategy, flags, body)
-                .map_err(CommsOutboundServiceError::OutboundError),
-        )
+        future::ready(self.oms.send_raw(broadcast_strategy, flags, body).map_err(Into::into))
     }
 
     fn forward_message(
         &self,
         broadcast_strategy: BroadcastStrategy,
         envelope: MessageEnvelope,
-    ) -> impl Future<Item = Result<(), CommsOutboundServiceError>, Error = CommsOutboundServiceError>
+    ) -> impl Future<Output = Result<(), CommsOutboundServiceError>>
     {
-        // TODO(sdbondi): Change required when oms is async
-        future::ok(
+        future::ready(
             self.oms
                 .forward_message(broadcast_strategy, envelope)
-                .map_err(CommsOutboundServiceError::OutboundError),
+                .map_err(Into::into),
         )
     }
 }
 
-impl Service<CommsOutboundRequest> for CommsOutboundService {
-    type Error = CommsOutboundServiceError;
-    type Future = impl Future<Item = Self::Response, Error = Self::Error>;
-    type Response = Result<CommsOutboundResponse, CommsOutboundServiceError>;
-
-    fn poll_ready(&mut self) -> Poll<(), Self::Error> {
-        Ok(().into())
-    }
-
-    fn call(&mut self, req: CommsOutboundRequest) -> Self::Future {
-        match req {
-            // Send a ping synchronously for now until comms is async
-            CommsOutboundRequest::SendMsg {
-                broadcast_strategy,
-                flags,
-                body,
-            } => Either::A(self.send_msg(broadcast_strategy, flags, *body)),
-            CommsOutboundRequest::Forward {
-                broadcast_strategy,
-                message_envelope,
-            } => Either::B(self.forward_message(broadcast_strategy, *message_envelope)),
-        }
-    }
+fn log_and_discard<T, E>(_: Result<T, E>) -> Result<(), E> {
+    error!(target: LOG_TARGET, "Failed to send reply");
+    Ok(())
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
     use crossbeam_channel as channel;
-    use futures::Async;
+    use futures::{
+        executor::{block_on, LocalPool},
+        pin_mut,
+        task::SpawnExt,
+        FutureExt,
+    };
     use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
     use std::iter;
     use tari_comms::{
@@ -116,9 +129,11 @@ mod test {
         types::CommsPublicKey,
     };
     use tari_crypto::keys::PublicKey;
+    use tari_service_framework::reply_channel;
     use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
     use tari_utilities::message_format::MessageFormat;
     use tempdir::TempDir;
+    use tower_service::Service;
 
     pub fn random_string(len: usize) -> String {
         let mut rng = OsRng::new().unwrap();
@@ -163,30 +178,41 @@ mod test {
     }
 
     #[test]
-    fn poll_ready() {
+    fn dead_request_stream() {
         let (oms, _) = setup_oms();
-        let mut service = CommsOutboundService::new(oms);
+        let (sender, receiver) = reply_channel::unbounded();
+        let service = CommsOutboundService::new(receiver, oms);
+        // Drop the sender, the service should stop running
+        drop(sender);
 
-        // Always ready
-        assert!(service.poll_ready().unwrap().is_ready());
+        let fut = service.run().fuse();
+        pin_mut!(fut);
+
+        // Test that the run future immediately completes because the receiver stream is closed
+        block_on(async {
+            futures::select! {
+                _ = fut => {},
+                complete => {panic!("run() future was not ready immediately")},
+            }
+        });
     }
 
     #[test]
     fn call_send_message() {
         let (oms, oms_rx) = setup_oms();
-        let mut service = CommsOutboundService::new(oms);
+        let (mut sender, receiver) = reply_channel::unbounded();
+        let service = CommsOutboundService::new(receiver, oms);
 
-        let mut fut = service.call(CommsOutboundRequest::SendMsg {
+        let mut pool = LocalPool::new();
+        pool.spawner().spawn(service.run()).unwrap();
+
+        let res = pool.run_until(sender.call(CommsOutboundRequest::SendMsg {
             broadcast_strategy: BroadcastStrategy::Flood,
             flags: MessageFlags::empty(),
             body: Box::new(Vec::new()),
-        });
+        }));
 
-        match fut.poll().unwrap() {
-            Async::Ready(Ok(_)) => {},
-            Async::Ready(Err(err)) => panic!("unexpected failed result for send_message: {:?}", err),
-            _ => panic!("future is not ready"),
-        }
+        assert!(res.is_ok());
 
         // We only care that OMS got called (i.e the Receiver received something)
         assert!(!oms_rx.is_empty());
@@ -195,7 +221,13 @@ mod test {
     #[test]
     fn call_forward() {
         let (oms, oms_rx) = setup_oms();
-        let mut service = CommsOutboundService::new(oms);
+        let (mut sender, receiver) = reply_channel::unbounded();
+        let service = CommsOutboundService::new(receiver, oms);
+
+        let mut pool = LocalPool::new();
+        // Run the service
+        pool.spawner().spawn(service.run()).unwrap();
+
         let mut rng = OsRng::new().unwrap();
         let header = MessageEnvelopeHeader {
             version: 0,
@@ -207,16 +239,12 @@ mod test {
             flags: MessageFlags::empty(),
         };
 
-        let mut fut = service.call(CommsOutboundRequest::Forward {
+        let res = pool.run_until(sender.call(CommsOutboundRequest::Forward {
             broadcast_strategy: BroadcastStrategy::Flood,
             message_envelope: Box::new(MessageEnvelope::new(vec![0], header.to_binary().unwrap(), vec![])),
-        });
+        }));
 
-        match fut.poll().unwrap() {
-            Async::Ready(Ok(_)) => {},
-            Async::Ready(Err(err)) => panic!("unexpected failed result for forward: {:?}", err),
-            _ => panic!("future is not ready"),
-        }
+        assert!(res.is_ok());
 
         // We only care that OMS got called (i.e the Receiver received something)
         assert!(!oms_rx.is_empty());
