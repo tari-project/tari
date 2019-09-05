@@ -14,5 +14,5 @@ futures = { version = "=0.3.0-alpha.18", package = "futures-preview", features=[
 tower-service = { version="0.3.0-alpha.1" }
 
 [dev-dependencies]
-tari_test_utils = { version = "^0.0", path="../test_utils" }
+tari_test_utils = { version = "^0.0", path="../../infrastructure/test_utils" }
 futures-test = { version = "0.3.0-alpha.18", package = "futures-test-preview" }

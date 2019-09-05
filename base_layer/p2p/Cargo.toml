@@ -31,7 +31,7 @@ tracing = "0.1.5"
 ttl_cache = "0.5.1"
 
 [dev-dependencies]
-tari_test_utils = { version = "^0.0", path="../test_utils" }
+tari_test_utils = { version = "^0.0", path="../../infrastructure/test_utils" }
 
 clap = "2.33.0"
 cursive = "0.12.0"
