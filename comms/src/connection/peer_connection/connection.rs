@@ -245,15 +245,15 @@ impl Default for PeerConnectionStats {
 /// 
 /// # use tari_comms::connection::*;
 /// # use std::time::Duration;
-///
+/// # use futures::channel::mpsc::channel;
 /// let ctx = ZmqContext::new();
 /// let addr: NetAddress = "127.0.0.1:8080".parse().unwrap();
-///
+/// let (message_sink_tx, _message_sink_rx) = channel(10);
 /// let peer_context = PeerConnectionContextBuilder::new()
 ///    .set_id("123")
 ///    .set_context(&ctx)
 ///    .set_direction(Direction::Outbound)
-///    .set_message_sink_address(InprocAddress::random())
+///    .set_message_sink_channel(message_sink_tx)
 ///    .set_address(addr.clone())
 ///    .build()
 ///    .unwrap();
@@ -358,20 +358,6 @@ impl PeerConnection {
     /// `linger` - The Linger to set
     pub fn set_linger(&self, linger: Linger) -> Result<()> {
         self.send_control_message(ControlMessage::SetLinger(linger))
-    }
-
-    /// Temporarily suspend messages from being processed and forwarded to the consumer.
-    /// Pending messages will be buffered until reaching the receive HWM. Once resumed,
-    /// buffered messages will be released to the consumer.
-    /// An Err will be returned if the connection is not in a Connected state.
-    pub fn pause(&self) -> Result<()> {
-        self.send_control_message(ControlMessage::Pause)
-    }
-
-    /// Unpause the connection and resume message processing from the peer.
-    /// An Err will be returned if the connection is not in a Connected state.
-    pub fn resume(&self) -> Result<()> {
-        self.send_control_message(ControlMessage::Resume)
     }
 
     /// Return the actual address this connection is bound to. If the connection is not over a TCP socket, or the
@@ -799,24 +785,6 @@ mod test {
             },
             m => panic!("Unexpected control message '{}'", m),
         }
-    }
-
-    #[test]
-    fn pause() {
-        let (conn, rx) = create_connected_peer_connection();
-
-        conn.pause().unwrap();
-        let msg = rx.recv_timeout(Duration::from_millis(10)).unwrap();
-        assert_eq!(ControlMessage::Pause, msg);
-    }
-
-    #[test]
-    fn resume() {
-        let (conn, rx) = create_connected_peer_connection();
-
-        conn.resume().unwrap();
-        let msg = rx.recv_timeout(Duration::from_millis(10)).unwrap();
-        assert_eq!(ControlMessage::Resume, msg);
     }
 
     #[test]

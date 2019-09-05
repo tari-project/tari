@@ -38,6 +38,9 @@ pub enum ConnectionError {
     #[error(msg_embedded, no_from, non_std)]
     InvalidOperation(String),
     ThreadJoinError(ThreadError),
+    /// Futures::MPSC Channel error,
+    #[error(msg_embedded, no_from, non_std)]
+    ChannelError(String),
 }
 
 impl ConnectionError {

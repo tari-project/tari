@@ -22,6 +22,7 @@
 
 use crossbeam_channel::bounded;
 use futures::future::Future;
+use futures03::executor::ThreadPool;
 use hyper::client::connect::{Destination, HttpConnector};
 use log::*;
 use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
@@ -497,7 +498,6 @@ pub fn random_string(len: usize) -> String {
 
 #[test]
 fn test_rpc_text_message_service() {
-    init();
     let mut rng = rand::OsRng::new().unwrap();
     let listener_address1: NetAddress = "127.0.0.1:32775".parse().unwrap();
     let secret_key1 = CommsSecretKey::random(&mut rng);
@@ -563,7 +563,9 @@ fn test_rpc_text_message_service() {
         database_path: db_path2,
     };
 
-    let wallet1 = Wallet::new(config1).unwrap();
+    let mut thread_pool = ThreadPool::new().expect("Cannot create Futures ThreadPool");
+
+    let wallet1 = Wallet::new(config1, &mut thread_pool).unwrap();
 
     thread::spawn(move || {
         let wallet_server = WalletServer::new(WALLET_GRPC_PORT, Arc::new(wallet1));
@@ -581,7 +583,7 @@ fn test_rpc_text_message_service() {
 
     thread::sleep(Duration::from_millis(100));
 
-    let wallet2 = Wallet::new(config2).unwrap();
+    let wallet2 = Wallet::new(config2, &mut thread_pool).unwrap();
 
     wallet2
         .comms_services

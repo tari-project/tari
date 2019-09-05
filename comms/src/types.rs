@@ -20,11 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    dispatcher::{DispatchError, Dispatcher},
-    inbound_message_service::comms_msg_handlers::{CommsDispatchType, InboundMessageServiceResolver},
-    peer_manager::{peer_key::PeerKey, Peer},
-};
+use crate::peer_manager::{peer_key::PeerKey, Peer};
 use tari_crypto::{common::Blake256, keys::PublicKey, ristretto::RistrettoPublicKey};
 use tari_storage::lmdb_store::LMDBStore;
 #[cfg(test)]
@@ -62,6 +58,3 @@ pub type CommsDataStore = LMDBStore;
 pub type CommsDatabase = LMDBWrapper<PeerKey, Peer>;
 #[cfg(test)]
 pub type CommsDatabase = HMapDatabase<PeerKey, Peer>;
-
-/// Dispatcher format for comms level dispatching to handlers
-pub type MessageDispatcher<M> = Dispatcher<CommsDispatchType, M, InboundMessageServiceResolver, DispatchError>;

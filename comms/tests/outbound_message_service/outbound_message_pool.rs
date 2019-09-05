@@ -22,11 +22,12 @@
 
 use crate::support::{
     factories::{self, TestFactory},
-    helpers::ConnectionMessageCounter,
+    helpers::streams::stream_assert_count,
 };
+use futures::{channel::mpsc::channel, StreamExt};
 use std::{fs, path::PathBuf, sync::Arc, thread, time::Duration};
 use tari_comms::{
-    connection::{InprocAddress, ZmqContext},
+    connection::ZmqContext,
     connection_manager::{ConnectionManager, PeerConnectionConfig},
     control_service::{ControlService, ControlServiceConfig},
     message::MessageFlags,
@@ -44,14 +45,13 @@ use tari_storage::{
     LMDBWrapper,
 };
 
-fn make_peer_connection_config(message_sink_address: InprocAddress) -> PeerConnectionConfig {
+fn make_peer_connection_config() -> PeerConnectionConfig {
     PeerConnectionConfig {
         peer_connection_establish_timeout: Duration::from_secs(5),
         max_message_size: 1024,
         max_connections: 10,
         host: "127.0.0.1".parse().unwrap(),
         max_connect_retries: 3,
-        message_sink_address,
         socks_proxy_address: None,
     }
 }
@@ -97,19 +97,14 @@ fn outbound_message_pool_no_retry() {
     let node_identity = Arc::new(factories::node_identity::create().build().unwrap());
 
     //---------------------------------- Node B Setup --------------------------------------------//
-
-    let node_B_msg_sink_address = InprocAddress::random();
     let node_B_control_port_address = factories::net_address::create().build().unwrap();
 
-    let node_B_msg_counter = ConnectionMessageCounter::new(&context);
-    node_B_msg_counter.start(node_B_msg_sink_address.clone());
-
     let node_B_peer = factories::peer::create()
-        .with_net_addresses(vec![node_B_control_port_address.clone()])
-        // Set node B's secret key to be the same as node A's so that we can generate the same shared secret
-        .with_public_key(node_identity.identity.public_key.clone())
-        .build()
-        .unwrap();
+                .with_net_addresses(vec![node_B_control_port_address.clone()])
+                // Set node B's secret key to be the same as node A's so that we can generate the same shared secret
+                .with_public_key(node_identity.identity.public_key.clone())
+                .build()
+                .unwrap();
 
     // Node B knows no peers
     let node_B_database_name = "omp_node_B_peer_manager"; // Note: every test should have unique database
@@ -117,11 +112,13 @@ fn outbound_message_pool_no_retry() {
     let database = datastore.get_handle(node_B_database_name).unwrap();
     let database = LMDBWrapper::new(Arc::new(database));
     let node_B_peer_manager = make_peer_manager(vec![], database);
+    let (message_sink_tx_b, message_sink_rx_b) = channel(10);
     let node_B_connection_manager = Arc::new(ConnectionManager::new(
         context.clone(),
         node_identity.clone(),
         node_B_peer_manager,
-        make_peer_connection_config(node_B_msg_sink_address.clone()),
+        make_peer_connection_config(),
+        message_sink_tx_b.clone(),
     ));
 
     // Start node B's control service
@@ -135,18 +132,18 @@ fn outbound_message_pool_no_retry() {
 
     //---------------------------------- Node A setup --------------------------------------------//
 
-    let node_A_msg_sink_address = InprocAddress::random();
-
     // Add node B to node A's peer manager
     let node_A_database_name = "omp_node_A_peer_manager"; // Note: every test should have unique database
     let datastore = init_datastore(node_A_database_name).unwrap();
     let database = datastore.get_handle(node_A_database_name).unwrap();
     let database = LMDBWrapper::new(Arc::new(database));
     let node_A_peer_manager = make_peer_manager(vec![node_B_peer.clone()], database);
+    let (message_sink_tx_a, _message_sink_rx_a) = channel(10);
     let node_A_connection_manager = Arc::new(
         factories::connection_manager::create()
             .with_peer_manager(node_A_peer_manager.clone())
-            .with_peer_connection_config(make_peer_connection_config(node_A_msg_sink_address))
+            .with_peer_connection_config(make_peer_connection_config())
+            .with_message_sink_sender(message_sink_tx_a)
             .build()
             .unwrap(),
     );
@@ -182,7 +179,7 @@ fn outbound_message_pool_no_retry() {
         .unwrap();
     }
 
-    node_B_msg_counter.assert_count(8, 30);
+    let (_, _) = stream_assert_count(message_sink_rx_b.fuse(), 8, 8000).unwrap();
     node_B_control_service.shutdown().unwrap();
     node_B_control_service
         .timeout_join(Duration::from_millis(3000))
@@ -210,9 +207,7 @@ fn test_outbound_message_pool_fail_and_retry() {
     let node_A_identity = factories::node_identity::create().build().map(Arc::new).unwrap();
     //---------------------------------- Node B Setup --------------------------------------------//
 
-    let node_B_msg_sink_address = InprocAddress::random();
-    let node_B_msg_counter = ConnectionMessageCounter::new(&context);
-    node_B_msg_counter.start(node_B_msg_sink_address.clone());
+    let (message_sink_tx_b, message_sink_rx_b) = channel(10);
 
     let node_B_control_port_address = factories::net_address::create().build().unwrap();
 
@@ -223,21 +218,20 @@ fn test_outbound_message_pool_fail_and_retry() {
         .unwrap();
 
     let node_B_peer = factories::peer::create()
-        .with_net_addresses(vec![node_B_control_port_address.clone()])
-        // Set node B's secret key to be the same as node A's so that we can generate the same shared secret
-        .with_public_key(node_B_identity.identity.public_key.clone())
-        .build()
-        .unwrap();
+                .with_net_addresses(vec![node_B_control_port_address.clone()])
+                // Set node B's secret key to be the same as node A's so that we can generate the same shared secret
+                .with_public_key(node_B_identity.identity.public_key.clone())
+                .build()
+                .unwrap();
 
     //---------------------------------- Node A setup --------------------------------------------//
-
-    let node_A_msg_sink_address = InprocAddress::random();
 
     // Add node B to node A's peer manager
     let database_name = "omp_test_outbound_message_pool_fail_and_retry1"; // Note: every test should have unique database
     let datastore = init_datastore(database_name).unwrap();
     let database = datastore.get_handle(database_name).unwrap();
     let database = LMDBWrapper::new(Arc::new(database));
+    let (message_sink_tx_a, _message_sink_rx_a) = channel(10);
     let node_A_peer_manager = factories::peer_manager::create()
         .with_peers(vec![node_B_peer.clone()])
         .with_database(database)
@@ -248,7 +242,8 @@ fn test_outbound_message_pool_fail_and_retry() {
         .with_context(context.clone())
         .with_node_identity(node_A_identity.clone())
         .with_peer_manager(node_A_peer_manager.clone())
-        .with_peer_connection_config(make_peer_connection_config(node_A_msg_sink_address))
+        .with_peer_connection_config(make_peer_connection_config())
+        .with_message_sink_sender(message_sink_tx_a)
         .build()
         .map(Arc::new)
         .unwrap();
@@ -287,7 +282,8 @@ fn test_outbound_message_pool_fail_and_retry() {
         .with_context(context.clone())
         .with_node_identity(node_B_identity.clone())
         .with_peer_manager(node_B_peer_manager.clone())
-        .with_peer_connection_config(make_peer_connection_config(node_B_msg_sink_address))
+        .with_peer_connection_config(make_peer_connection_config())
+        .with_message_sink_sender(message_sink_tx_b)
         .build()
         .map(Arc::new)
         .unwrap();
@@ -302,7 +298,7 @@ fn test_outbound_message_pool_fail_and_retry() {
     .unwrap();
 
     // We wait for the message to retry sending
-    node_B_msg_counter.assert_count(5, 150);
+    let (_, _) = stream_assert_count(message_sink_rx_b.fuse(), 5, 2000).unwrap();
     node_B_control_service.shutdown().unwrap();
     node_B_control_service
         .timeout_join(Duration::from_millis(3000))

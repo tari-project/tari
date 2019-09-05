@@ -21,19 +21,14 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    connection::{ConnectionError, DealerProxyError, InprocAddress, ZmqContext},
+    connection::{ConnectionError, DealerProxyError, ZmqContext},
     connection_manager::{ConnectionManager, PeerConnectionConfig},
-    consts::COMMS_BUILDER_IMS_DEFAULT_PUB_SUB_BUFFER_LENGTH,
     control_service::{ControlService, ControlServiceConfig, ControlServiceError, ControlServiceHandle},
-    dispatcher::DispatchableKey,
-    inbound_message_service::{
-        comms_msg_handlers::construct_comms_msg_dispatcher,
-        error::InboundError,
-        inbound_message_publisher::{InboundMessagePublisher, PublisherError},
-        inbound_message_service::{InboundMessageService, InboundMessageServiceConfig},
+    inbound_message_pipeline::{
+        inbound_message_pipeline::{InboundMessagePipeline, InboundMessageSubscriptionFactories},
         InboundTopicSubscriptionFactory,
     },
-    message::InboundMessage,
+    message::FrameSet,
     outbound_message_service::{
         outbound_message_pool::{OutboundMessagePoolConfig, OutboundMessagePoolError},
         outbound_message_service::OutboundMessageService,
@@ -42,18 +37,18 @@ use crate::{
         OutboundMessagePool,
     },
     peer_manager::{NodeIdentity, PeerManager, PeerManagerError},
-    pub_sub_channel::{pubsub_channel, TopicPublisher},
     types::CommsDatabase,
 };
 use bitflags::_core::marker::PhantomData;
-use crossbeam_channel::Sender;
+use crossbeam_channel::Sender as CrossbeamSender;
 use derive_error::Error;
+use futures::{
+    channel::mpsc::{channel, Sender},
+    executor::ThreadPool,
+};
 use log::*;
 use serde::{de::DeserializeOwned, Serialize};
-use std::{
-    fmt::Debug,
-    sync::{Arc, RwLock},
-};
+use std::{fmt::Debug, sync::Arc};
 
 const LOG_TARGET: &str = "comms::builder";
 
@@ -72,6 +67,21 @@ pub enum CommsBuilderError {
     DatastoreUndefined,
 }
 
+#[derive(Clone)]
+pub struct CommsBuilderConfig {
+    inbound_publisher_subscriber_buffer_size: usize,
+    inbound_message_sink_buffer_size: usize,
+}
+
+impl Default for CommsBuilderConfig {
+    fn default() -> Self {
+        Self {
+            inbound_publisher_subscriber_buffer_size: 1000,
+            inbound_message_sink_buffer_size: 1000,
+        }
+    }
+}
+
 /// The `CommsBuilder` provides a simple builder API for getting Tari comms p2p messaging up and running.
 ///
 /// The [build] method will return an error if any required builder methods are not called. These
@@ -82,18 +92,14 @@ pub struct CommsBuilder<MType> {
     peer_storage: Option<CommsDatabase>,
     control_service_config: Option<ControlServiceConfig>,
     omp_config: Option<OutboundMessagePoolConfig>,
-    ims_config: Option<InboundMessageServiceConfig>,
     node_identity: Option<NodeIdentity>,
     peer_conn_config: Option<PeerConnectionConfig>,
-    inbound_message_buffer_size: Option<usize>,
+    comms_builder_config: Option<CommsBuilderConfig>,
     _m: PhantomData<MType>,
 }
 
 impl<MType> CommsBuilder<MType>
-where
-    MType: DispatchableKey,
-    MType: Serialize + DeserializeOwned,
-    MType: Clone + Debug,
+where MType: Clone + Debug + Sync + Send + Eq + Serialize + DeserializeOwned + 'static
 {
     /// Create a new CommsBuilder
     pub fn new() -> Self {
@@ -104,10 +110,9 @@ where
             control_service_config: None,
             peer_conn_config: None,
             omp_config: None,
-            ims_config: None,
             peer_storage: None,
             node_identity: None,
-            inbound_message_buffer_size: None,
+            comms_builder_config: None,
             _m: PhantomData,
         }
     }
@@ -127,8 +132,8 @@ where
     }
 
     /// Configure inbound message publisher/subscriber buffer size. This is optional
-    pub fn configure_inbound_message_publisher_buffer_size(mut self, size: usize) -> Self {
-        self.inbound_message_buffer_size = Some(size);
+    pub fn configure_comms_builder_config(mut self, config: CommsBuilderConfig) -> Self {
+        self.comms_builder_config = Some(config);
         self
     }
 
@@ -178,6 +183,7 @@ where
         node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,
         config: PeerConnectionConfig,
+        message_sink_sender: Sender<FrameSet>,
     ) -> Arc<ConnectionManager>
     {
         Arc::new(ConnectionManager::new(
@@ -185,15 +191,12 @@ where
             node_identity,
             peer_manager,
             config,
+            message_sink_sender,
         ))
     }
 
     fn make_peer_connection_config(&mut self) -> PeerConnectionConfig {
-        let mut config = self.peer_conn_config.take().unwrap_or_default();
-        // If the message_sink_address is not set (is default) set it to a random inproc address
-        if config.message_sink_address.is_default() {
-            config.message_sink_address = InprocAddress::random();
-        }
+        let config = self.peer_conn_config.take().unwrap_or_default();
         config
     }
 
@@ -207,7 +210,7 @@ where
     fn make_outbound_message_service(
         &self,
         node_identity: Arc<NodeIdentity>,
-        message_sink: Sender<OutboundMessage>,
+        message_sink: CrossbeamSender<OutboundMessage>,
         peer_manager: Arc<PeerManager>,
     ) -> Result<Arc<OutboundMessageService>, CommsBuilderError>
     {
@@ -227,50 +230,27 @@ where
         OutboundMessagePool::new(config, peer_manager, connection_manager)
     }
 
-    // TODO Remove this Arc + RwLock when the IMS worker is refactored to be future based.
-    fn make_inbound_message_publisher(
-        &mut self,
-        publisher: TopicPublisher<MType, InboundMessage>,
-    ) -> Arc<RwLock<InboundMessagePublisher<MType, InboundMessage>>>
-    {
-        Arc::new(RwLock::new(InboundMessagePublisher::new(publisher)))
-    }
-
-    fn make_inbound_message_service(
-        &mut self,
-        node_identity: Arc<NodeIdentity>,
-        message_sink_address: InprocAddress,
-        inbound_message_publisher: Arc<RwLock<InboundMessagePublisher<MType, InboundMessage>>>,
-        oms: Arc<OutboundMessageService>,
-        peer_manager: Arc<PeerManager>,
-    ) -> InboundMessageService<MType>
-    {
-        let config = self.ims_config.take().unwrap_or_default();
-
-        InboundMessageService::new(
-            config,
-            self.zmq_context.clone(),
-            node_identity,
-            message_sink_address,
-            Arc::new(construct_comms_msg_dispatcher()),
-            inbound_message_publisher,
-            oms,
-            peer_manager,
-        )
-    }
-
     /// Build the required comms services. Services will not be started.
     pub fn build(mut self) -> Result<CommsServiceContainer<MType>, CommsBuilderError> {
+        let comms_builder_config = self.comms_builder_config.clone().unwrap_or_default();
+
         let node_identity = self.make_node_identity()?;
 
         let peer_manager = self.make_peer_manager()?;
+
+        let (message_sink_sender, message_sink_receiver) =
+            channel(comms_builder_config.inbound_message_sink_buffer_size);
 
         let peer_conn_config = self.make_peer_connection_config();
 
         let control_service = self.make_control_service(node_identity.clone());
 
-        let connection_manager =
-            self.make_connection_manager(node_identity.clone(), peer_manager.clone(), peer_conn_config.clone());
+        let connection_manager = self.make_connection_manager(
+            node_identity.clone(),
+            peer_manager.clone(),
+            peer_conn_config.clone(),
+            message_sink_sender,
+        );
 
         let outbound_message_pool = self.make_outbound_message_pool(peer_manager.clone(), connection_manager.clone());
 
@@ -280,32 +260,24 @@ where
             peer_manager.clone(),
         )?;
 
-        // Create pub/sub channel for IMS
-        let (publisher, inbound_message_subscription_factory) = pubsub_channel(
-            self.inbound_message_buffer_size
-                .or(Some(COMMS_BUILDER_IMS_DEFAULT_PUB_SUB_BUFFER_LENGTH))
-                .unwrap(),
-        );
-        let inbound_message_publisher = self.make_inbound_message_publisher(publisher);
-
-        let inbound_message_service = self.make_inbound_message_service(
+        let (inbound_message_pipeline, inbound_message_subscription_factories) = InboundMessagePipeline::new(
             node_identity.clone(),
-            peer_conn_config.message_sink_address,
-            inbound_message_publisher,
-            outbound_message_service.clone(),
+            message_sink_receiver,
             peer_manager.clone(),
+            outbound_message_service.clone(),
+            comms_builder_config.inbound_publisher_subscriber_buffer_size,
         );
 
         Ok(CommsServiceContainer {
             zmq_context: self.zmq_context,
             control_service,
-            inbound_message_service,
             connection_manager,
             outbound_message_pool,
             outbound_message_service,
             peer_manager,
             node_identity,
-            inbound_message_subscription_factory: Arc::new(inbound_message_subscription_factory),
+            inbound_message_pipeline,
+            inbound_message_subscription_factories: Arc::new(inbound_message_subscription_factories),
         })
     }
 }
@@ -320,33 +292,25 @@ pub enum CommsServicesError {
     MessageTypeNotRegistered,
     OutboundMessagePoolError(OutboundMessagePoolError),
     OutboundError(OutboundError),
-    InboundMessageServiceError(InboundError),
-    PublisherError(PublisherError),
 }
 
 /// Contains the built comms services
 pub struct CommsServiceContainer<MType>
-where
-    MType: Serialize + DeserializeOwned,
-    MType: DispatchableKey,
-    MType: Clone + Debug,
+where MType: Clone + Debug + Sync + Send
 {
     zmq_context: ZmqContext,
     connection_manager: Arc<ConnectionManager>,
     control_service: Option<ControlService>,
-    inbound_message_service: InboundMessageService<MType>,
     outbound_message_pool: OutboundMessagePool,
     outbound_message_service: Arc<OutboundMessageService>,
     peer_manager: Arc<PeerManager>,
     node_identity: Arc<NodeIdentity>,
-    inbound_message_subscription_factory: Arc<InboundTopicSubscriptionFactory<MType>>,
+    inbound_message_pipeline: InboundMessagePipeline<MType>,
+    inbound_message_subscription_factories: Arc<InboundMessageSubscriptionFactories<MType>>,
 }
 
 impl<MType> CommsServiceContainer<MType>
-where
-    MType: Serialize + DeserializeOwned,
-    MType: DispatchableKey,
-    MType: Clone + Send + Debug,
+where MType: Eq + Clone + Send + Debug + Sync + Serialize + DeserializeOwned + 'static
 {
     /// Start all the comms services and return a [CommsServices] object
     ///
@@ -361,9 +325,6 @@ where
             );
         }
 
-        self.inbound_message_service
-            .start()
-            .map_err(CommsServicesError::InboundMessageServiceError)?;
         self.outbound_message_pool
             .start()
             .map_err(CommsServicesError::OutboundMessagePoolError)?;
@@ -374,9 +335,10 @@ where
             outbound_message_service: self.outbound_message_service,
             connection_manager: self.connection_manager,
             peer_manager: self.peer_manager,
-            inbound_message_subscription_factory: self.inbound_message_subscription_factory,
+            inbound_message_subscription_factories: self.inbound_message_subscription_factories,
             outbound_message_pool: self.outbound_message_pool,
             node_identity: self.node_identity,
+            inbound_message_pipeline: Some(self.inbound_message_pipeline),
             // Add handles for started services
             control_service_handle,
         })
@@ -398,13 +360,12 @@ where MType: Send + Sync + Debug
     node_identity: Arc<NodeIdentity>,
     connection_manager: Arc<ConnectionManager>,
     peer_manager: Arc<PeerManager>,
-    inbound_message_subscription_factory: Arc<InboundTopicSubscriptionFactory<MType>>,
+    inbound_message_subscription_factories: Arc<InboundMessageSubscriptionFactories<MType>>,
+    inbound_message_pipeline: Option<InboundMessagePipeline<MType>>,
 }
 
 impl<MType> CommsServices<MType>
-where
-    MType: DispatchableKey,
-    MType: Clone + Send + Debug,
+where MType: Clone + Send + Eq + Debug + Sync + Serialize + DeserializeOwned + 'static
 {
     pub fn zmq_context(&self) -> &ZmqContext {
         &self.zmq_context
@@ -426,8 +387,21 @@ where
         Arc::clone(&self.outbound_message_service)
     }
 
-    pub fn inbound_message_subscription_factory(&self) -> Arc<InboundTopicSubscriptionFactory<MType>> {
-        Arc::clone(&self.inbound_message_subscription_factory)
+    pub fn handle_inbound_message_subscription_factory(&self) -> Arc<InboundTopicSubscriptionFactory<MType>> {
+        Arc::clone(
+            &self
+                .inbound_message_subscription_factories
+                .handle_message_subscription_factory,
+        )
+    }
+
+    pub fn spawn_tasks(&mut self, thread_pool: &mut ThreadPool) {
+        let imp = self
+            .inbound_message_pipeline
+            .take()
+            .expect("The Inbound Message Pipeline must be available");
+
+        thread_pool.spawn_ok(imp.run());
     }
 
     pub fn shutdown(self) -> Result<(), CommsServicesError> {

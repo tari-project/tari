@@ -28,7 +28,3 @@ pub const DHT_MSG_CACHE_STORAGE_CAPACITY: usize = 1000;
 pub const DHT_MSG_CACHE_TTL: Duration = Duration::from_secs(300);
 /// The number of neighbouring nodes that a received message will be forwarded to
 pub const DHT_FORWARD_NODE_COUNT: usize = 8;
-
-/// The default length of the underlying pub/sub buffer using to publish comms messages.
-/// This const is used in the CommsBuilder.
-pub const COMMS_BUILDER_IMS_DEFAULT_PUB_SUB_BUFFER_LENGTH: usize = 100;

@@ -43,6 +43,8 @@ impl<T: Send + Debug, M: Send> TopicPayload<T, M> {
 pub type TopicPublisher<T, M> = Publisher<TopicPayload<T, M>>;
 pub type TopicSubscriber<T, M> = Subscriber<TopicPayload<T, M>>;
 
+/// This structure hold the Subscriber end of a Pub-Sub channel and can be used to create new filtered subscriber
+/// channels.
 pub struct TopicSubscriptionFactory<T, M> {
     subscriber: TopicSubscriber<T, M>,
 }

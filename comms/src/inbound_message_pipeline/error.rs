@@ -21,27 +21,30 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    connection::{error::ConnectionError, DealerProxyError},
-    inbound_message_service::message_cache::MessageCacheError,
+    message::MessageError,
+    outbound_message_service::{broadcast_strategy::BroadcastStrategyError, OutboundError},
+    peer_manager::PeerManagerError,
 };
 use derive_error::Error;
-use tari_utilities::thread_join::ThreadError;
 
-/// Error type for InboundMessageService subsystem
 #[derive(Debug, Error)]
-pub enum InboundError {
-    /// Failed to connect to inbound socket
-    InboundConnectionError(ConnectionError),
-    DealerProxyError(DealerProxyError),
-    MessageCacheError(MessageCacheError),
-    #[error(msg_embedded, non_std, no_from)]
-    ControlSendError(String),
-    /// Unable to send a control message as the control sync sender is undefined
-    ControlSenderUndefined,
-    /// Could not join the InboundMessageWorker thread
-    ThreadJoinError(ThreadError),
-    /// The thread handle is undefined and could have not been properly created
-    ThreadHandleUndefined,
-    /// Inbound message worker thread failed to start
-    ThreadInitializationError,
+pub enum InboundMessagePipelineError {
+    /// The incoming message already existed in the message cache and was thus discarded
+    DuplicateMessageDiscarded,
+    /// Could not deserialize incoming message data
+    DeserializationError,
+    /// Inbound message signatures are invalid
+    InvalidMessageSignature,
+    /// Invalid Destination that cannot be routed
+    InvalidDestination,
+    /// Message destined for this node cannot be decrypted
+    DecryptionFailure,
+    /// The source peer did not exist in the peer manager
+    CannotFindSourcePeer,
+    /// Error publishing message
+    PublisherError,
+    MessageError(MessageError),
+    PeerManagerError(PeerManagerError),
+    BroadcastStrategyError(BroadcastStrategyError),
+    OutboundError(OutboundError),
 }

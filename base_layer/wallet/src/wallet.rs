@@ -22,6 +22,7 @@
 
 use crate::text_message_service::{TextMessageService, TextMessageServiceApi};
 use derive_error::Error;
+use futures::executor::ThreadPool;
 use std::sync::Arc;
 use tari_comms::{builder::CommsServices, types::CommsPublicKey};
 use tari_p2p::{
@@ -54,7 +55,7 @@ pub struct Wallet {
 }
 
 impl Wallet {
-    pub fn new(config: WalletConfig) -> Result<Wallet, WalletError> {
+    pub fn new(config: WalletConfig, thread_pool: &mut ThreadPool) -> Result<Wallet, WalletError> {
         let ping_pong_service = PingPongService::new();
         let ping_pong_service_api = ping_pong_service.get_api();
 
@@ -65,13 +66,14 @@ impl Wallet {
             .register(ping_pong_service)
             .register(text_message_service);
 
-        let comms_services = initialize_comms(config.comms.clone())?;
+        let mut comms_services = initialize_comms(config.comms.clone())?;
+        comms_services.spawn_tasks(thread_pool);
         let service_executor = ServiceExecutor::execute(&comms_services, registry);
 
         Ok(Wallet {
             text_message_service: text_message_service_api,
             ping_pong_service: ping_pong_service_api,
-            comms_services,
+            comms_services: Arc::new(comms_services),
             service_executor,
             public_key: config.public_key.clone(),
         })

@@ -20,46 +20,28 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use derive_error::Error;
-use diesel::result::{ConnectionError as DieselConnectionError, Error as DieselError};
-use tari_comms::{
-    builder::CommsServicesError,
-    connection::NetAddressError,
-    message::MessageError,
-    outbound_message_service::OutboundError,
-};
-use tari_p2p::sync_services::ServiceError;
-use tari_utilities::{hex::HexError, message_format::MessageFormatError};
+use std::path::PathBuf;
+use tari_storage::lmdb_store::{LMDBBuilder, LMDBError, LMDBStore};
 
-#[derive(Debug, Error)]
-pub enum TextMessageError {
-    MessageFormatError(MessageFormatError),
-    MessageError(MessageError),
-    OutboundError(OutboundError),
-    ServiceError(ServiceError),
-    CommsServicesError(CommsServicesError),
-    HexError(HexError),
-    DatabaseError(DieselError),
-    NetAddressError(NetAddressError),
-    DatabaseConnectionError(DieselConnectionError),
-    /// If a received TextMessageAck doesn't matching any pending messages
-    MessageNotFound,
-    /// Failed to send from API
-    ApiSendFailed,
-    /// Failed to receive in API from service
-    ApiReceiveFailed,
-    /// The Outbound Message Service is not initialized
-    OMSNotInitialized,
-    /// The Comms service stack is not initialized
-    CommsNotInitialized,
-    /// Received an unexpected API response
-    UnexpectedApiResponse,
-    /// Contact not found
-    ContactNotFound,
-    /// Contact already exists
-    ContactAlreadyExists,
-    /// There was an error updating a row in the database
-    DatabaseUpdateError,
-    /// Error retrieving settings
-    SettingsReadError,
+pub fn get_path(name: &str) -> String {
+    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    path.push("tests/data");
+    path.push(name);
+    path.to_str().unwrap().to_string()
+}
+
+// Initialize the datastore. Note: every test should have unique database name
+pub fn init_datastore(name: &str) -> Result<LMDBStore, LMDBError> {
+    let path = get_path(name);
+    let _ = std::fs::create_dir(&path).unwrap_or_default();
+    LMDBBuilder::new()
+        .set_path(&path)
+        .set_environment_size(10)
+        .set_max_number_of_databases(2)
+        .add_database(name, lmdb_zero::db::CREATE)
+        .build()
+}
+
+pub fn clean_up_datastore(name: &str) {
+    std::fs::remove_dir_all(get_path(name)).unwrap();
 }

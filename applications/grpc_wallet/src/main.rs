@@ -25,6 +25,7 @@ extern crate clap;
 use pnet::datalink::{self, NetworkInterface};
 
 use clap::{App, Arg};
+use futures03::executor::ThreadPool;
 use log::*;
 use serde::{Deserialize, Serialize};
 use std::{fs, sync::Arc, time::Duration};
@@ -39,6 +40,7 @@ use tari_grpc_wallet::wallet_server::WalletServer;
 use tari_p2p::initialization::CommsConfig;
 use tari_utilities::{hex::Hex, message_format::MessageFormat};
 use tari_wallet::{text_message_service::Contact, wallet::WalletConfig, Wallet};
+
 const LOG_TARGET: &str = "applications::grpc_wallet";
 
 #[derive(Debug, Default, Deserialize)]
@@ -249,7 +251,9 @@ pub fn main() {
         database_path,
     };
 
-    let wallet = Wallet::new(config).unwrap();
+    let mut thread_pool = ThreadPool::new().expect("Could not start a Futures ThreadPool");
+
+    let wallet = Wallet::new(config, &mut thread_pool).unwrap();
 
     // Add any provided peers to Peer Manager and Text Message Service Contacts
     if !contacts.peers.is_empty() {

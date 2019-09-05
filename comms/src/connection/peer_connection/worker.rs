@@ -76,7 +76,6 @@ pub(super) struct PeerConnectionWorker {
     sender: SyncSender<ControlMessage>,
     receiver: Receiver<ControlMessage>,
     identity: Option<Frame>,
-    paused: bool,
     monitor_addr: InprocAddress,
     connection_state: Arc<RwLock<PeerConnectionState>>,
     connection_stats: Arc<RwLock<PeerConnectionStats>>,
@@ -97,7 +96,6 @@ impl PeerConnectionWorker {
             sender,
             receiver,
             identity: None,
-            paused: false,
             monitor_addr: InprocAddress::random(),
             connection_state,
             connection_stats,
@@ -170,7 +168,6 @@ impl PeerConnectionWorker {
     fn run(&mut self) -> Result<()> {
         let monitor = self.connect_monitor()?;
         let peer_conn = self.establish_peer_connection()?;
-        let consumer = self.establish_sink_connection()?;
         let addr = peer_conn.get_connected_address();
 
         if let Some(a) = addr {
@@ -205,14 +202,6 @@ impl PeerConnectionWorker {
                         peer_conn.send(payload)?;
                         acquire_write_lock!(self.connection_stats).incr_message_sent();
                     },
-                    ControlMessage::Pause => {
-                        debug!(target: LOG_TARGET, "[{:?}] Pause control message received", addr);
-                        self.paused = true;
-                    },
-                    ControlMessage::Resume => {
-                        debug!(target: LOG_TARGET, "[{:?}] Resume control message received", addr);
-                        self.paused = false;
-                    },
                     ControlMessage::SetLinger(linger) => {
                         debug!(
                             target: LOG_TARGET,
@@ -231,9 +220,7 @@ impl PeerConnectionWorker {
                 self.handle_socket_event(event)?;
             }
 
-            if !self.paused {
-                self.handle_frames(&peer_conn, &consumer)?;
-            }
+            self.handle_frames(&peer_conn)?;
         }
     }
 
@@ -386,7 +373,7 @@ impl PeerConnectionWorker {
     }
 
     /// Handles PeerMessageType messages .Forwards frames from the source to the sink
-    fn handle_frames(&mut self, frontend: &EstablishedConnection, backend: &EstablishedConnection) -> Result<()> {
+    fn handle_frames(&mut self, frontend: &EstablishedConnection) -> Result<()> {
         let context = &self.context;
         if let Some(frames) = connection_try!(frontend.receive(10)) {
             // Attempt to extract the parts of a peer message.
@@ -441,7 +428,22 @@ impl PeerConnectionWorker {
                         }
 
                         let payload = self.construct_consumer_payload(frames);
-                        backend.send(&payload)?;
+                        return match self.context.message_sink_channel.try_send(payload) {
+                            Ok(_) => Ok(()),
+                            Err(e) => {
+                                if e.is_full() {
+                                    error!(
+                                        target: LOG_TARGET,
+                                        "Message Sink MPSC channel is full. Message is being discarded"
+                                    );
+                                    Ok(())
+                                } else {
+                                    Err(ConnectionError::ChannelError(
+                                        "Futures::MPSC Channel is disconnected".to_string(),
+                                    ))
+                                }
+                            },
+                        };
                     },
                     PeerConnectionProtoMessage::Invalid => {
                         debug!(
@@ -552,14 +554,6 @@ impl PeerConnectionWorker {
             .set_max_message_size(Some(context.max_msg_size))
             .establish(&context.peer_address)
     }
-
-    /// Establish the connection to the consumer
-    fn establish_sink_connection(&self) -> Result<EstablishedConnection> {
-        let context = &self.context;
-        Connection::new(&context.context, Direction::Outbound)
-            .set_name("peer-conn-sink")
-            .establish(&context.message_sink_address)
-    }
 }
 
 #[cfg(test)]
@@ -571,6 +565,7 @@ mod test {
         CurveEncryption,
         ZmqContext,
     };
+    use futures::channel::mpsc::channel;
 
     fn make_thread_ctl() -> (Arc<ThreadControlMessenger>, Receiver<ControlMessage>) {
         let (tx, rx) = sync_channel(1);
@@ -601,9 +596,10 @@ mod test {
             PeerConnectionSimpleState::Failed(err) => PeerConnectionState::Failed(err),
         };
 
+        let (tx, _rx) = channel(100);
         let context = PeerConnectionContext {
             context,
-            message_sink_address: InprocAddress::random(),
+            message_sink_channel: tx,
             peer_address,
             direction,
             linger: Linger::Indefinitely,
@@ -622,7 +618,6 @@ mod test {
             connection_stats: Arc::new(RwLock::new(PeerConnectionStats::new())),
             monitor_addr: InprocAddress::random(),
             retry_count: 1,
-            paused: false,
         }
     }
 

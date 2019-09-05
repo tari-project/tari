@@ -22,7 +22,7 @@
 
 use crate::consts::{DHT_MSG_CACHE_STORAGE_CAPACITY, DHT_MSG_CACHE_TTL};
 use derive_error::Error;
-use std::{hash::Hash, time::Duration};
+use std::{hash::Hash, sync::RwLock, time::Duration};
 use ttl_cache::TtlCache;
 
 #[derive(Debug, Error)]
@@ -52,7 +52,7 @@ impl Default for MessageCacheConfig {
 /// duplicate messages and that these duplicate messages are not sent to services or propagate through the network.
 pub struct MessageCache<K: Eq + Hash> {
     config: MessageCacheConfig,
-    cache: TtlCache<K, ()>,
+    cache: RwLock<TtlCache<K, ()>>,
 }
 
 impl<K> MessageCache<K>
@@ -62,14 +62,16 @@ where K: Eq + Hash
     pub fn new(config: MessageCacheConfig) -> Self {
         Self {
             config,
-            cache: TtlCache::new(config.storage_capacity),
+            cache: RwLock::new(TtlCache::new(config.storage_capacity)),
         }
     }
 
     /// Insert a new message into the MessageCache with a time-to-live starting at the insertion time. It will
     /// return a DuplicateEntry Error if the message has already been added into the cache.
     pub fn insert(&mut self, msg: K) -> Result<(), MessageCacheError> {
-        match self.cache.insert(msg, (), self.config.msg_ttl) {
+        let mut cache_lock = acquire_write_lock!(self.cache);
+
+        match cache_lock.insert(msg, (), self.config.msg_ttl) {
             Some(_) => Err(MessageCacheError::DuplicateEntry),
             None => Ok(()),
         }
@@ -77,53 +79,57 @@ where K: Eq + Hash
 
     /// Check if the message is available in the MessageCache
     pub fn contains(&self, msg: &K) -> bool {
-        self.cache.contains_key(msg)
+        let cache_lock = acquire_read_lock!(self.cache);
+        cache_lock.contains_key(msg)
     }
 }
 #[cfg(test)]
 mod test {
     use super::*;
+    use futures::executor::block_on;
     use std::{thread, time::Duration};
 
     #[test]
     fn test_msg_rlu_and_ttl() {
-        let mut msg_cache: MessageCache<String> = MessageCache::new(MessageCacheConfig {
-            storage_capacity: 3,
-            msg_ttl: Duration::from_millis(100),
-        });
-        let msg1 = "msg1".to_string();
-        let msg2 = "msg2".to_string();
-        let msg3 = "msg3".to_string();
-        let msg4 = "msg4".to_string();
+        block_on(async {
+            let mut msg_cache: MessageCache<String> = MessageCache::new(MessageCacheConfig {
+                storage_capacity: 3,
+                msg_ttl: Duration::from_millis(100),
+            });
+            let msg1 = "msg1".to_string();
+            let msg2 = "msg2".to_string();
+            let msg3 = "msg3".to_string();
+            let msg4 = "msg4".to_string();
 
-        msg_cache.insert(msg1.clone()).unwrap();
-        assert!(msg_cache.contains(&msg1));
-        assert!(!msg_cache.contains(&msg2));
+            msg_cache.insert(msg1.clone()).unwrap();
+            assert!(msg_cache.contains(&msg1));
+            assert!(!msg_cache.contains(&msg2));
 
-        msg_cache.insert(msg2.clone()).unwrap();
-        assert!(msg_cache.contains(&msg1));
-        assert!(msg_cache.contains(&msg2));
-        assert!(!msg_cache.contains(&msg3));
+            msg_cache.insert(msg2.clone()).unwrap();
+            assert!(msg_cache.contains(&msg1));
+            assert!(msg_cache.contains(&msg2));
+            assert!(!msg_cache.contains(&msg3));
 
-        msg_cache.insert(msg3.clone()).unwrap();
-        assert!(msg_cache.contains(&msg1));
-        assert!(msg_cache.contains(&msg2));
-        assert!(msg_cache.contains(&msg3));
-        assert!(!msg_cache.contains(&msg4));
+            msg_cache.insert(msg3.clone()).unwrap();
+            assert!(msg_cache.contains(&msg1));
+            assert!(msg_cache.contains(&msg2));
+            assert!(msg_cache.contains(&msg3));
+            assert!(!msg_cache.contains(&msg4));
 
-        thread::sleep(Duration::from_millis(50));
-        msg_cache.insert(msg4.clone()).unwrap();
+            thread::sleep(Duration::from_millis(50));
+            msg_cache.insert(msg4.clone()).unwrap();
 
-        // Due to storage limits, msg1 was removed when msg4 was added
-        assert!(!msg_cache.contains(&msg1));
-        assert!(msg_cache.contains(&msg2));
-        assert!(msg_cache.contains(&msg3));
-        assert!(msg_cache.contains(&msg4));
+            // Due to storage limits, msg1 was removed when msg4 was added
+            assert!(!msg_cache.contains(&msg1));
+            assert!(msg_cache.contains(&msg2));
+            assert!(msg_cache.contains(&msg3));
+            assert!(msg_cache.contains(&msg4));
 
-        // msg2 and msg3 would have reached their ttl thresholds
-        thread::sleep(Duration::from_millis(51));
-        assert!(!msg_cache.contains(&msg2));
-        assert!(!msg_cache.contains(&msg3));
-        assert!(msg_cache.contains(&msg4));
+            // msg2 and msg3 would have reached their ttl thresholds
+            thread::sleep(Duration::from_millis(51));
+            assert!(!msg_cache.contains(&msg2));
+            assert!(!msg_cache.contains(&msg3));
+            assert!(msg_cache.contains(&msg4));
+        })
     }
 }

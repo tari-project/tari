@@ -30,18 +30,12 @@ use super::{
     Result,
 };
 use crate::{
-    connection::{
-        zmq::InprocAddress,
-        ConnectionError,
-        CurveEncryption,
-        CurvePublicKey,
-        PeerConnection,
-        PeerConnectionState,
-        ZmqContext,
-    },
+    connection::{ConnectionError, CurveEncryption, CurvePublicKey, PeerConnection, PeerConnectionState, ZmqContext},
     control_service::messages::RejectReason,
+    message::FrameSet,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerManager},
 };
+use futures::channel::mpsc::Sender;
 use log::*;
 use std::{
     collections::HashMap,
@@ -68,6 +62,7 @@ impl ConnectionManager {
         node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,
         config: PeerConnectionConfig,
+        message_sink_channel: Sender<FrameSet>,
     ) -> Self
     {
         Self {
@@ -77,6 +72,7 @@ impl ConnectionManager {
                 Arc::clone(&node_identity),
                 config,
                 Arc::clone(&peer_manager),
+                message_sink_channel,
             )),
             node_identity,
             peer_manager,
@@ -287,10 +283,6 @@ impl ConnectionManager {
         self.connections.get_active_connection_count()
     }
 
-    pub fn get_message_sink_address(&self) -> &InprocAddress {
-        &self.establisher.get_config().message_sink_address
-    }
-
     fn initiate_peer_connection(&self, peer: &Peer) -> Result<Arc<PeerConnection>> {
         let protocol = PeerConnectionProtocol::new(&self.node_identity, &self.establisher);
         self.peer_manager
@@ -365,22 +357,22 @@ impl ConnectionManager {
 mod test {
     use super::*;
     use crate::{
-        connection::{InprocAddress, NetAddress, ZmqContext},
+        connection::{NetAddress, ZmqContext},
         peer_manager::PeerFlags,
         types::CommsPublicKey,
     };
+    use futures::channel::mpsc::channel;
     use rand::rngs::OsRng;
     use std::{thread, time::Duration};
     use tari_crypto::keys::PublicKey;
     use tari_storage::HMapDatabase;
 
-    fn setup() -> (ZmqContext, Arc<NodeIdentity>, Arc<PeerManager>) {
+    fn setup() -> (ZmqContext, Arc<NodeIdentity>, Arc<PeerManager>, Sender<FrameSet>) {
         let context = ZmqContext::new();
         let node_identity = Arc::new(NodeIdentity::random_for_test(None));
-
         let peer_manager = Arc::new(PeerManager::new(HMapDatabase::new()).unwrap());
-
-        (context, node_identity, peer_manager)
+        let (tx, _rx) = channel(10);
+        (context, node_identity, peer_manager, tx)
     }
 
     fn create_peer(address: NetAddress) -> Peer {
@@ -391,32 +383,43 @@ mod test {
 
     #[test]
     fn get_active_connection_count() {
-        let (context, node_identity, peer_manager) = setup();
-        let manager = ConnectionManager::new(context, node_identity, peer_manager, PeerConnectionConfig {
-            peer_connection_establish_timeout: Duration::from_secs(5),
-            max_message_size: 1024,
-            host: "127.0.0.1".parse().unwrap(),
-            max_connect_retries: 3,
-            max_connections: 10,
-            message_sink_address: InprocAddress::random(),
-            socks_proxy_address: None,
-        });
+        let (context, node_identity, peer_manager, sender) = setup();
+        let manager = ConnectionManager::new(
+            context,
+            node_identity,
+            peer_manager,
+            PeerConnectionConfig {
+                peer_connection_establish_timeout: Duration::from_secs(5),
+                max_message_size: 1024,
+                host: "127.0.0.1".parse().unwrap(),
+                max_connect_retries: 3,
+                max_connections: 10,
+
+                socks_proxy_address: None,
+            },
+            sender,
+        );
 
         assert_eq!(manager.get_active_connection_count(), 0);
     }
 
     #[test]
     fn shutdown_connection_for_peer() {
-        let (context, node_identity, peer_manager) = setup();
-        let manager = ConnectionManager::new(context, node_identity, peer_manager, PeerConnectionConfig {
-            peer_connection_establish_timeout: Duration::from_secs(5),
-            max_message_size: 1024,
-            host: "127.0.0.1".parse().unwrap(),
-            max_connect_retries: 3,
-            max_connections: 10,
-            message_sink_address: InprocAddress::random(),
-            socks_proxy_address: None,
-        });
+        let (context, node_identity, peer_manager, sender) = setup();
+        let manager = ConnectionManager::new(
+            context,
+            node_identity,
+            peer_manager,
+            PeerConnectionConfig {
+                peer_connection_establish_timeout: Duration::from_secs(5),
+                max_message_size: 1024,
+                host: "127.0.0.1".parse().unwrap(),
+                max_connect_retries: 3,
+                max_connections: 10,
+                socks_proxy_address: None,
+            },
+            sender,
+        );
 
         assert_eq!(manager.get_active_connection_count(), 0);
 
