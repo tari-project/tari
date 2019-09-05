@@ -67,12 +67,12 @@
 // Tracking issue: https://github.com/rust-lang/rust/issues/63063
 #![feature(type_alias_impl_trait)]
 
-pub mod tower;
+mod initializer;
+mod stack;
 
 pub mod handles;
-mod initializer;
 pub mod reply_channel;
-mod stack;
+pub mod tower;
 
 pub use self::{
     initializer::{ServiceInitializationError, ServiceInitializer},

@@ -22,15 +22,14 @@
 
 use derive_error::Error;
 use tari_comms::{message::MessageError, outbound_message_service::OutboundError};
+use tari_service_framework::reply_channel::TransportChannelError;
 use tari_utilities::message_format::MessageFormatError;
-use tokio_threadpool::BlockingError;
 
 #[derive(Debug, Error)]
 pub enum CommsOutboundServiceError {
+    InternalResponseError(TransportChannelError),
     // Comms errors
     OutboundError(OutboundError),
     MessageSerializationError(MessageError),
     MessageFormatError(MessageFormatError),
-    #[error(non_std)]
-    BlockingError(BlockingError),
 }

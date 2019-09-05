@@ -23,7 +23,7 @@
 use serde::{Deserialize, Serialize};
 use tari_comms::types::CommsPublicKey;
 
-/// API Request enum
+/// Request types made through the `LivenessHandle` and are handled by the `LivenessService`
 #[derive(Debug)]
 pub enum LivenessRequest {
     /// Send a ping to the given public key
@@ -34,14 +34,14 @@ pub enum LivenessRequest {
     GetPongCount,
 }
 
-/// API Response enum
+/// Response type for `LivenessService`
 #[derive(Debug)]
 pub enum LivenessResponse {
     PingSent,
     Count(usize),
 }
 
-/// The PingPong message
+/// The PingPong comms-level message
 #[derive(Debug, Serialize, Deserialize)]
 pub enum PingPong {
     Ping,

@@ -30,34 +30,41 @@ use clap::{App, Arg};
 use cursive::{
     view::Identifiable,
     views::{Dialog, TextView},
+    CbFunc,
     Cursive,
 };
-use futures::{future, sync::mpsc, Future, Sink, Stream};
+use futures::{
+    channel::mpsc,
+    executor::{block_on, ThreadPool},
+    join,
+    stream::StreamExt,
+    task::SpawnExt,
+    Stream,
+};
+use futures_timer::Interval;
 use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
 use std::{
     fs,
     iter,
     sync::{Arc, RwLock},
-    time::{Duration, Instant},
+    time::Duration,
 };
-use stream_cancel::{StreamExt, Tripwire};
 use tari_comms::{
     control_service::ControlServiceConfig,
-    peer_manager::{NodeIdentity, Peer, PeerFlags, PeerNodeIdentity},
+    peer_manager::{NodeIdentity, Peer, PeerFlags},
+    types::CommsPublicKey,
 };
 use tari_p2p::{
     initialization::{initialize_comms, CommsConfig},
     services::{
         comms_outbound::CommsOutboundServiceInitializer,
         liveness::{LivenessHandle, LivenessInitializer, LivenessRequest, LivenessResponse},
-        ServiceHandles,
         ServiceName,
     },
 };
 use tari_service_framework::StackBuilder;
 use tari_utilities::message_format::MessageFormat;
 use tempdir::TempDir;
-use tokio::{runtime::Runtime, timer::Interval};
 use tower_service::Service;
 
 fn load_identity(path: &str) -> NodeIdentity {
@@ -136,106 +143,143 @@ fn main() {
         PeerFlags::empty(),
     );
     comms.peer_manager().add_peer(peer).unwrap();
+    let mut thread_pool = ThreadPool::new().unwrap();
 
-    let mut rt = Runtime::new().unwrap();
-
-    let initialize = StackBuilder::new()
+    let fut = StackBuilder::new(&mut thread_pool)
         .add_initializer(CommsOutboundServiceInitializer::new(comms.outbound_message_service()))
         .add_initializer(LivenessInitializer::new(Arc::clone(&comms)))
         .finish();
 
-    let handles = rt.block_on(initialize).unwrap();
+    let handles = block_on(fut).expect("Service initialization failed");
 
-    run_ui(peer_identity.identity, handles);
+    let mut app = setup_ui();
 
+    // Updates the UI when pings/pongs are received
+    let ui_update_signal = app.cb_sink().clone();
+    let liveness_handle = handles.get_handle::<LivenessHandle>(ServiceName::Liveness).unwrap();
+    thread_pool
+        .spawn(update_ui(ui_update_signal, liveness_handle.clone()))
+        .unwrap();
+
+    // Send pings when 'p' is pressed
+    let (mut send_ping_tx, send_ping_rx) = mpsc::channel(10);
+    app.add_global_callback('p', move |_| {
+        let _ = send_ping_tx.start_send(());
+    });
+
+    let ui_update_signal = app.cb_sink().clone();
+    let pk_to_ping = peer_identity.identity.public_key.clone();
+    thread_pool
+        .spawn(send_ping_on_trigger(
+            send_ping_rx,
+            ui_update_signal,
+            liveness_handle,
+            pk_to_ping,
+        ))
+        .unwrap();
+
+    app.add_global_callback('q', |s| s.quit());
+    app.run();
     let comms = Arc::try_unwrap(comms).map_err(|_| ()).unwrap();
 
     comms.shutdown().unwrap();
 }
 
+fn setup_ui() -> Cursive {
+    let mut app = Cursive::default();
+
+    app.add_layer(
+        Dialog::around(TextView::new("Loading...").with_id("counter"))
+            .title("PingPong")
+            .button("Quit", |s| s.quit()),
+    );
+
+    app
+}
+
 lazy_static! {
-    /// Used to keep track of the counts displayed in the UI
-    /// (sent ping count, recv ping count, recv pong count)
+/// Used to keep track of the counts displayed in the UI
+/// (sent ping count, recv ping count, recv pong count)
     static ref COUNTER_STATE: Arc<RwLock<(usize, usize, usize)>> = Arc::new(RwLock::new((0, 0, 0)));
 }
 
-fn run_ui(peer_identity: PeerNodeIdentity, handles: Arc<ServiceHandles>) {
-    tokio::run(future::lazy(move || {
-        let mut app = Cursive::default();
+type CursiveSignal = crossbeam_channel::Sender<Box<dyn CbFunc>>;
 
-        app.add_layer(
-            Dialog::around(TextView::new("Loading...").with_id("counter"))
-                .title("PingPong")
-                .button("Quit", |s| s.quit()),
+async fn update_ui(update_sink: CursiveSignal, mut liveness_handle: LivenessHandle) {
+    // TODO: This should ideally be a stream of events which we subscribe to here
+    let mut interval = Interval::new(Duration::from_millis(100));
+    while let Some(_) = interval.next().await {
+        let (ping_count, pong_count) = join!(
+            liveness_handle.call(LivenessRequest::GetPingCount),
+            liveness_handle.call(LivenessRequest::GetPongCount)
         );
 
-        let (trigger, trip_wire) = Tripwire::new();
-
-        let update_sink = app.cb_sink().clone();
-
-        let mut liveness_handle = handles.get_handle::<LivenessHandle>(ServiceName::Liveness).unwrap();
-        let update_ui_stream = Interval::new(Instant::now(), Duration::from_millis(100))
-            .take_until(trip_wire.clone())
-            .map_err(|_| ())
-            .for_each(move |_| {
-                let update_inner = update_sink.clone();
-                liveness_handle
-                    .call(LivenessRequest::GetPingCount)
-                    .join(liveness_handle.call(LivenessRequest::GetPongCount))
-                    .and_then(move |(pings, pongs)| {
-                        match (pings, pongs) {
-                            (Ok(LivenessResponse::Count(num_pings)), Ok(LivenessResponse::Count(num_pongs))) => {
-                                {
-                                    let mut lock = COUNTER_STATE.write().unwrap();
-                                    *lock = (lock.0, num_pings, num_pongs);
-                                }
-                                let _ = update_inner.send(Box::new(update_count));
-                            },
-                            _ => {},
-                        }
-
-                        future::ok(())
-                    })
-                    .map_err(|_| ())
-            });
-
-        tokio::spawn(update_ui_stream);
-
-        let ping_update_cb = app.cb_sink().clone();
-        let mut liveness_handle = handles.get_handle::<LivenessHandle>(ServiceName::Liveness).unwrap();
-        let pk_to_ping = peer_identity.public_key.clone();
-
-        let (mut send_ping_tx, send_ping_rx) = mpsc::channel(10);
-        app.add_global_callback('p', move |_| {
-            let _ = send_ping_tx.start_send(());
-        });
-
-        let p_stream = send_ping_rx.take_until(trip_wire).for_each(move |_| {
-            let ping_update_inner = ping_update_cb.clone();
-            liveness_handle
-                .call(LivenessRequest::SendPing(pk_to_ping.clone()))
-                .map_err(|_| ())
-                .and_then(move |_| {
-                    {
-                        let mut lock = COUNTER_STATE.write().unwrap();
-                        *lock = (lock.0 + 1, lock.1, lock.2);
-                    }
-                    ping_update_inner.send(Box::new(update_count)).unwrap();
-                    future::ok(())
-                })
-        });
-
-        tokio::spawn(p_stream);
-
-        app.add_global_callback('q', |s| s.quit());
-
-        app.run();
-
-        // Signal UI streams to stop
-        trigger.cancel();
-        future::ok(())
-    }));
+        match (ping_count.unwrap(), pong_count.unwrap()) {
+            (Ok(LivenessResponse::Count(num_pings)), Ok(LivenessResponse::Count(num_pongs))) => {
+                {
+                    let mut lock = COUNTER_STATE.write().unwrap();
+                    *lock = (lock.0, num_pings, num_pongs);
+                }
+                let _ = update_sink.send(Box::new(update_count));
+            },
+            _ => {},
+        }
+    }
 }
+
+async fn send_ping_on_trigger(
+    mut send_ping_trigger: impl Stream<Item = ()> + Unpin,
+    update_signal: CursiveSignal,
+    mut liveness_handle: LivenessHandle,
+    pk_to_ping: CommsPublicKey,
+)
+{
+    while let Some(_) = send_ping_trigger.next().await {
+        liveness_handle
+            .call(LivenessRequest::SendPing(pk_to_ping.clone()))
+            .await
+            .unwrap()
+            .unwrap();
+
+        {
+            let mut lock = COUNTER_STATE.write().unwrap();
+            *lock = (lock.0 + 1, lock.1, lock.2);
+        }
+        update_signal.send(Box::new(update_count)).unwrap();
+    }
+}
+
+// async fn run_ui(mut app: Cursive, peer_identity: PeerNodeIdentity, handles: Arc<ServiceHandles>) {
+
+//    let ping_update_cb = app.cb_sink().clone();
+//    let mut liveness_handle = handles.get_handle::<LivenessHandle>(ServiceName::Liveness).unwrap();
+//
+//    let (mut send_ping_tx, send_ping_rx) = mpsc::channel(10);
+//    app.add_global_callback('p', move |_| {
+//        let _ = send_ping_tx.start_send(());
+//    });
+//
+//    let p_stream = send_ping_rx.take_until(trip_wire).for_each(move |_| {
+//        let ping_update_inner = ping_update_cb.clone();
+//        liveness_handle
+//            .call(LivenessRequest::SendPing(pk_to_ping.clone()))
+//            .map_err(|_| ())
+//            .and_then(move |_| {
+//                {
+//                    let mut lock = COUNTER_STATE.write().unwrap();
+//                    *lock = (lock.0 + 1, lock.1, lock.2);
+//                }
+//                ping_update_inner.send(Box::new(update_count)).unwrap();
+//                future::ok(())
+//            })
+//    });
+//
+//    thread_pool.spawn(p_stream);
+
+//    app.run();
+
+//    kill_switch.store(true, Ordering::Relaxed);
+//}
 
 fn update_count(s: &mut Cursive) {
     s.call_on_id("counter", move |view: &mut TextView| {

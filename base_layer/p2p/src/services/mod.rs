@@ -22,7 +22,6 @@
 
 // mod initialization;
 pub mod comms_outbound;
-mod domain_deserializer;
 pub mod liveness;
 mod service_name;
 
