@@ -253,38 +253,6 @@ async fn send_ping_on_trigger(
     }
 }
 
-// async fn run_ui(mut app: Cursive, peer_identity: PeerNodeIdentity, handles: Arc<ServiceHandles>) {
-
-//    let ping_update_cb = app.cb_sink().clone();
-//    let mut liveness_handle = handles.get_handle::<LivenessHandle>(ServiceName::Liveness).unwrap();
-//
-//    let (mut send_ping_tx, send_ping_rx) = mpsc::channel(10);
-//    app.add_global_callback('p', move |_| {
-//        let _ = send_ping_tx.start_send(());
-//    });
-//
-//    let p_stream = send_ping_rx.take_until(trip_wire).for_each(move |_| {
-//        let ping_update_inner = ping_update_cb.clone();
-//        liveness_handle
-//            .call(LivenessRequest::SendPing(pk_to_ping.clone()))
-//            .map_err(|_| ())
-//            .and_then(move |_| {
-//                {
-//                    let mut lock = COUNTER_STATE.write().unwrap();
-//                    *lock = (lock.0 + 1, lock.1, lock.2);
-//                }
-//                ping_update_inner.send(Box::new(update_count)).unwrap();
-//                future::ok(())
-//            })
-//    });
-//
-//    thread_pool.spawn(p_stream);
-
-//    app.run();
-
-//    kill_switch.store(true, Ordering::Relaxed);
-//}
-
 fn update_count(s: &mut Cursive) {
     s.call_on_id("counter", move |view: &mut TextView| {
         let lock = COUNTER_STATE.read().unwrap();
