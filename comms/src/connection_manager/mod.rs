@@ -56,6 +56,7 @@
 //! # use tari_storage::lmdb_store::LMDBBuilder;
 //! # use lmdb_zero::db;
 //! # use tari_storage::LMDBWrapper;
+//! # use futures::channel::mpsc::channel;
 //!
 //! let node_identity = Arc::new(NodeIdentity::random(&mut OsRng::new().unwrap(), "127.0.0.1:9000".parse().unwrap()).unwrap());
 //!
@@ -71,16 +72,17 @@
 //! let peer_database = datastore.get_handle(database_name).unwrap();
 //! let peer_database = LMDBWrapper::new(Arc::new(peer_database));
 //! let peer_manager = Arc::new(PeerManager::new(peer_database).unwrap());
-//!
+//! let (message_sink_tx, _message_sink_rx) = channel(10);
 //! let manager = ConnectionManager::new(context, node_identity, peer_manager, PeerConnectionConfig {
 //!     peer_connection_establish_timeout: Duration::from_secs(5),
 //!     max_message_size: 1024,
 //!     max_connections: 10,
 //!     host: "127.0.0.1".parse().unwrap(),
 //!     max_connect_retries: 3,
-//!     message_sink_address: InprocAddress::random(),
 //!     socks_proxy_address: None,
-//! });
+//!     },
+//!     message_sink_tx,
+//! );
 //!
 //! // No active connections
 //! assert_eq!(manager.get_active_connection_count(), 0);

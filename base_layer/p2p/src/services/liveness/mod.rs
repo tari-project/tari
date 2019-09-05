@@ -50,7 +50,7 @@ use std::{fmt::Debug, sync::Arc};
 use tari_comms::{
     builder::CommsServices,
     domain_subscriber::MessageInfo,
-    inbound_message_service::InboundTopicSubscriptionFactory,
+    inbound_message_pipeline::InboundTopicSubscriptionFactory,
     message::{InboundMessage, MessageError},
 };
 use tari_service_framework::{reply_channel, ServiceInitializationError, ServiceInitializer};
@@ -72,7 +72,7 @@ impl LivenessInitializer {
     /// Create a new LivenessInitializer from comms
     pub fn new(comms: Arc<CommsServices<TariMessageType>>) -> Self {
         Self {
-            inbound_message_subscription_factory: comms.inbound_message_subscription_factory(),
+            inbound_message_subscription_factory: comms.handle_inbound_message_subscription_factory(),
         }
     }
 

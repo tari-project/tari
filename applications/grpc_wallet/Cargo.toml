@@ -17,6 +17,7 @@ crossbeam-channel = "0.3.8"
 bytes = "0.4"
 derive-error = "0.0.4"
 futures = "0.1"
+futures03 =  { version = "=0.3.0-alpha.18", package = "futures-preview", features =["compat", "std"]}
 http = "0.1"
 log = { version = "0.4.0", features = ["std"] }
 prost = "0.5"

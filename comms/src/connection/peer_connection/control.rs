@@ -40,10 +40,6 @@ pub enum ControlMessage {
     Shutdown,
     /// Send the given frames to the peer
     SendMsg(FrameSet),
-    /// Temporarily pause receiving messages from this connection
-    Pause,
-    /// Resume receiving messages from peer
-    Resume,
     /// Sets the linger on the peer connection
     SetLinger(Linger),
 }

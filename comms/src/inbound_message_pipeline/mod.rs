@@ -36,18 +36,12 @@
 //! [PeerConnection]: ../connection/peer_connection/index.html
 //! [comms_msg_handlers]: ./comms_msg_handlers/struct.InboundMessageServiceResolver.html
 //! [InboundMessageBroker]: ./inbound_message_broker/struct.InboundMessageBroker.html
-pub mod comms_msg_handlers;
 pub mod error;
-pub mod inbound_message_publisher;
-pub mod inbound_message_service;
-pub mod inbound_message_worker;
+pub mod inbound_message_pipeline;
 pub mod message_cache;
 
 use crate::{message::InboundMessage, pub_sub_channel::TopicSubscriptionFactory};
 
-pub use self::{
-    error::InboundError,
-    message_cache::{MessageCache, MessageCacheConfig},
-};
+pub use self::message_cache::{MessageCache, MessageCacheConfig};
 
 pub type InboundTopicSubscriptionFactory<MType> = TopicSubscriptionFactory<MType, InboundMessage>;

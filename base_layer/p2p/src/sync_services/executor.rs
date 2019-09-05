@@ -38,7 +38,7 @@ use threadpool::ThreadPool;
 use crossbeam_channel as channel;
 use crossbeam_channel::{Receiver, RecvTimeoutError, Sender};
 
-use tari_comms::{connection::InprocAddress, inbound_message_service::InboundTopicSubscriptionFactory};
+use tari_comms::inbound_message_pipeline::InboundTopicSubscriptionFactory;
 const LOG_TARGET: &str = "base_layer::p2p::services";
 
 /// Control messages for services
@@ -62,20 +62,17 @@ impl ServiceExecutor {
             .num_threads(registry.num_services())
             .thread_stack_size(1_000_000)
             .build();
-
         let mut senders = Vec::new();
-
         for mut service in registry.services.into_iter() {
             let (sender, receiver) = channel::unbounded();
             senders.push(sender);
 
             let service_context = ServiceContext {
                 oms: comms_services.outbound_message_service(),
-                ims_message_sink_address: comms_services.connection_manager().get_message_sink_address().clone(),
                 peer_manager: comms_services.peer_manager(),
                 node_identity: comms_services.node_identity(),
                 receiver,
-                inbound_message_subscription_factory: comms_services.inbound_message_subscription_factory(),
+                inbound_message_subscription_factory: comms_services.handle_inbound_message_subscription_factory(),
             };
 
             thread_pool.execute(move || {
@@ -148,7 +145,6 @@ impl ServiceExecutor {
 /// a particular [TariMessageType].
 pub struct ServiceContext {
     oms: Arc<OutboundMessageService>,
-    ims_message_sink_address: InprocAddress,
     peer_manager: Arc<PeerManager>,
     node_identity: Arc<NodeIdentity>,
     receiver: Receiver<ServiceControlMessage>,
@@ -181,11 +177,6 @@ impl ServiceContext {
     /// Retrieve and `Arc` of the NodeIdentity. Used for managing the current Nodes Identity.
     pub fn node_identity(&self) -> Arc<NodeIdentity> {
         Arc::clone(&self.node_identity)
-    }
-
-    /// Retrieve a reference to the message sink address of the InboundMessageService
-    pub fn ims_message_sink_address(&self) -> &InprocAddress {
-        &self.ims_message_sink_address
     }
 
     pub fn inbound_message_subscription_factory(&self) -> Arc<InboundTopicSubscriptionFactory<TariMessageType>> {

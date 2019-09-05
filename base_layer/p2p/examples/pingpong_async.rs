@@ -135,7 +135,7 @@ fn main() {
         peer_database_name: random_string(8),
     };
 
-    let comms = initialize_comms(comms_config).unwrap();
+    let mut comms = initialize_comms(comms_config).unwrap();
     let peer = Peer::new(
         peer_identity.identity.public_key.clone(),
         peer_identity.identity.node_id.clone(),
@@ -143,7 +143,11 @@ fn main() {
         PeerFlags::empty(),
     );
     comms.peer_manager().add_peer(peer).unwrap();
-    let mut thread_pool = ThreadPool::new().unwrap();
+
+    let mut thread_pool = ThreadPool::new().expect("Could not start Futures ThreadPool");
+    comms.spawn_tasks(&mut thread_pool);
+
+    let comms = Arc::new(comms);
 
     let fut = StackBuilder::new(&mut thread_pool)
         .add_initializer(CommsOutboundServiceInitializer::new(comms.outbound_message_service()))

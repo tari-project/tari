@@ -46,14 +46,14 @@
 //!  +                       +
 //!
 //! ```edition2018
-//! # use tari_comms::{connection::*, control_service::*, dispatcher::*, connection_manager::*, peer_manager::*, types::*};
+//! # use tari_comms::{connection::*, control_service::*, connection_manager::*, peer_manager::*, types::*};
 //! # use std::{time::Duration, sync::Arc};
 //! # use std::collections::HashMap;
 //! # use rand::OsRng;
 //! # use tari_storage::lmdb_store::LMDBBuilder;
 //! # use lmdb_zero::db;
 //! # use tari_storage::LMDBWrapper;
-//!
+//! # use futures::channel::mpsc::channel;
 //! let node_identity = Arc::new(NodeIdentity::random(&mut OsRng::new().unwrap(), "127.0.0.1:9000".parse().unwrap()).unwrap());
 //!
 //! let context = ZmqContext::new();
@@ -67,18 +67,18 @@
 //!            .add_database(database_name, lmdb_zero::db::CREATE)
 //!           .build().unwrap();
 //! let peer_database = datastore.get_handle(database_name).unwrap();
-//!     let peer_database = LMDBWrapper::new(Arc::new(peer_database));
+//! let peer_database = LMDBWrapper::new(Arc::new(peer_database));
 //! let peer_manager = Arc::new(PeerManager::new(peer_database).unwrap());
-//!
+//! let (message_sink_tx, _message_sink_rx) = channel(10);
 //! let conn_manager = Arc::new(ConnectionManager::new(context.clone(), node_identity.clone(), peer_manager.clone(), PeerConnectionConfig {
 //!      max_message_size: 1024,
 //!      max_connect_retries: 1,
 //!      max_connections: 100,
 //!      socks_proxy_address: None,
-//!      message_sink_address: InprocAddress::random(),
 //!      host: "127.0.0.1".parse().unwrap(),
 //!      peer_connection_establish_timeout: Duration::from_secs(4),
-//! }));
+//! },
+//!     message_sink_tx,));
 //!
 //! let service = ControlService::with_default_config(
 //!       context,

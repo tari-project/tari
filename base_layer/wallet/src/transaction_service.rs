@@ -473,9 +473,10 @@ impl TransactionServiceApi {
 
     fn send_recv(&self, msg: TransactionServiceApiRequest) -> TransactionServiceApiResult {
         self.lock(|| -> TransactionServiceApiResult {
-            self.sender
-                .send(msg)
-                .map_err(|_| TransactionServiceError::ApiSendFailed)?;
+            let res = self.sender.send(msg);
+            println!("{:?}", res);
+            res.map_err(|_| TransactionServiceError::ApiSendFailed)?;
+
             self.receiver
                 .recv_timeout(self.timeout.clone())
                 .map_err(|_| TransactionServiceError::ApiReceiveFailed)?

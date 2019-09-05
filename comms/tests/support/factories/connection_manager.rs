@@ -27,9 +27,11 @@ use super::{TestFactory, TestFactoryError};
 use crate::support::factories::peer_manager::PeerManagerFactory;
 
 use crate::support::factories::node_identity::NodeIdentityFactory;
+use futures::channel::mpsc::Sender;
 use tari_comms::{
     connection::ZmqContext,
     connection_manager::{ConnectionManager, PeerConnectionConfig},
+    message::FrameSet,
     peer_manager::{NodeIdentity, PeerManager},
 };
 
@@ -45,6 +47,7 @@ pub struct ConnectionManagerFactory {
     peer_manager_factory: PeerManagerFactory,
     node_identity_factory: NodeIdentityFactory,
     node_identity: Option<Arc<NodeIdentity>>,
+    message_sink_sender: Option<Sender<FrameSet>>,
 }
 
 impl ConnectionManagerFactory {
@@ -63,6 +66,8 @@ impl ConnectionManagerFactory {
     factory_setter!(with_node_identity, node_identity, Option<Arc<NodeIdentity>>);
 
     factory_setter!(with_node_identity_factory, node_identity_factory, NodeIdentityFactory);
+
+    factory_setter!(with_message_sink_sender, message_sink_sender, Option<Sender<FrameSet>>);
 }
 
 impl TestFactory for ConnectionManagerFactory {
@@ -83,7 +88,14 @@ impl TestFactory for ConnectionManagerFactory {
 
         let config = self.peer_connection_config;
 
-        let conn_manager = ConnectionManager::new(zmq_context, node_identity, peer_manager, config);
+        if self.message_sink_sender.is_none() {
+            return Err(TestFactoryError::BuildFailed("Missing Message Sink Sender".to_string()));
+        }
+
+        let message_sink_sender = self.message_sink_sender.unwrap();
+
+        let conn_manager =
+            ConnectionManager::new(zmq_context, node_identity, peer_manager, config, message_sink_sender);
 
         Ok(conn_manager)
     }

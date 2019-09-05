@@ -53,7 +53,7 @@ pub struct CommsConfig {
     pub peer_database_name: String,
 }
 
-pub fn initialize_comms(config: CommsConfig) -> Result<Arc<CommsServices<TariMessageType>>, CommsInitializationError> {
+pub fn initialize_comms(config: CommsConfig) -> Result<CommsServices<TariMessageType>, CommsInitializationError> {
     let node_identity = NodeIdentity::new(config.secret_key, config.public_key, config.public_address)
         .map_err(CommsInitializationError::NodeIdentityError)?;
 
@@ -82,7 +82,6 @@ pub fn initialize_comms(config: CommsConfig) -> Result<Arc<CommsServices<TariMes
         .build()
         .map_err(CommsInitializationError::CommsBuilderError)?
         .start()
-        .map(Arc::new)
         .map_err(CommsInitializationError::CommsServicesError)?;
 
     Ok(comms)

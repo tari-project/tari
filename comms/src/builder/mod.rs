@@ -26,8 +26,6 @@
 //!
 //! ```edition2018
 //! # use tari_comms::builder::CommsBuilder;
-//! # use tari_comms::dispatcher::HandlerError;
-//! # use tari_comms::message::InboundMessage;
 //! # use tari_comms::control_service::ControlServiceConfig;
 //! # use tari_comms::peer_manager::NodeIdentity;
 //! # use std::sync::Arc;
@@ -35,14 +33,9 @@
 //! # use tari_storage::lmdb_store::LMDBBuilder;
 //! # use lmdb_zero::db;
 //! # use tari_storage::LMDBWrapper;
-//!
+//! # use futures::executor::ThreadPool;
 //! // This should be loaded up from storage
 //! let my_node_identity = NodeIdentity::random(&mut OsRng::new().unwrap(), "127.0.0.1:9000".parse().unwrap()).unwrap();
-//!
-//! fn my_handler(_: InboundMessage) -> Result<(), HandlerError> {
-//!     println!("Your handler is called!");
-//!     Ok(())
-//! }
 //!
 //! let database_name = "b_peer_database";
 //! let datastore = LMDBBuilder::new()
@@ -62,7 +55,11 @@
 //!    .build()
 //!    .unwrap();
 //!
-//! let handle = services.start().unwrap();
+//! let mut handle = services.start().unwrap();
+//!
+//! let mut thread_pool = ThreadPool::new().expect("Could not start a Futures ThreadPool");
+//! handle.spawn_tasks(&mut thread_pool);
+//!
 //! // Call shutdown when program shuts down
 //! handle.shutdown();
 //! ```
@@ -70,9 +67,5 @@
 //! [CommsBuilder]: ./builder/struct.CommsBuilder.html
 
 mod builder;
-mod routes;
 
-pub use self::{
-    builder::{CommsBuilder, CommsBuilderError, CommsServices, CommsServicesError},
-    routes::CommsRoutes,
-};
+pub use self::builder::{CommsBuilder, CommsBuilderError, CommsServices, CommsServicesError};

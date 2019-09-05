@@ -248,7 +248,7 @@ impl OutboundMessagePool {
 #[cfg(test)]
 mod test {
     use crate::{
-        connection::{InprocAddress, NetAddress, ZmqContext},
+        connection::{NetAddress, ZmqContext},
         connection_manager::{ConnectionManager, PeerConnectionConfig},
         outbound_message_service::{
             outbound_message_pool::{OutboundMessagePoolConfig, RetryQueue},
@@ -257,19 +257,19 @@ mod test {
         peer_manager::{peer::PeerFlags, NodeId, NodeIdentity, Peer, PeerManager},
     };
     use crossbeam_deque::Worker;
+    use futures::channel::mpsc::channel;
     use std::{sync::Arc, time::Duration};
     use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
     use tari_storage::HMapDatabase;
     use tari_utilities::thread_join::ThreadJoinWithTimeout;
 
-    fn make_peer_connection_config(consumer_address: InprocAddress) -> PeerConnectionConfig {
+    fn make_peer_connection_config() -> PeerConnectionConfig {
         PeerConnectionConfig {
             peer_connection_establish_timeout: Duration::from_millis(10),
             max_message_size: 1024,
             host: "127.0.0.1".parse().unwrap(),
             max_connect_retries: 1,
             max_connections: 10,
-            message_sink_address: consumer_address,
             socks_proxy_address: None,
         }
     }
@@ -279,13 +279,14 @@ mod test {
     ) -> (Arc<PeerManager>, Arc<ConnectionManager>, Arc<NodeIdentity>) {
         let node_identity = Arc::new(NodeIdentity::random_for_test(None));
         let peer_manager = Arc::new(PeerManager::new(HMapDatabase::new()).unwrap());
-
+        let (tx, _rx) = channel(100);
         // Connection Manager
         let connection_manager = Arc::new(ConnectionManager::new(
             context.clone(),
             node_identity.clone(),
             peer_manager.clone(),
-            make_peer_connection_config(InprocAddress::random()),
+            make_peer_connection_config(),
+            tx,
         ));
 
         (peer_manager, connection_manager, node_identity)

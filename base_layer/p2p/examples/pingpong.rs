@@ -32,6 +32,7 @@ use cursive::{
     views::{Dialog, TextView},
     Cursive,
 };
+use futures::executor::ThreadPool;
 use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
 use std::{
     fs,
@@ -51,7 +52,7 @@ use tari_comms::{
 use tari_p2p::{
     initialization::{initialize_comms, CommsConfig},
     ping_pong::{PingPongService, PingPongServiceApi},
-    sync_services::{ServiceError, ServiceExecutor, ServiceRegistry},
+    sync_services::{ServiceExecutor, ServiceRegistry},
 };
 use tari_utilities::message_format::MessageFormat;
 use tempdir::TempDir;
@@ -128,7 +129,7 @@ fn main() {
     let pingpong = pingpong_service.get_api();
     let services = ServiceRegistry::new().register(pingpong_service);
 
-    let comms = initialize_comms(comms_config).unwrap();
+    let mut comms = initialize_comms(comms_config).unwrap();
     let peer = Peer::new(
         peer_identity.identity.public_key.clone(),
         peer_identity.identity.node_id.clone(),
@@ -137,13 +138,12 @@ fn main() {
     );
     comms.peer_manager().add_peer(peer).unwrap();
 
+    let mut thread_pool = ThreadPool::new().expect("Could not start a Futures ThreadPool");
+    comms.spawn_tasks(&mut thread_pool);
+
     let services = ServiceExecutor::execute(&comms, services);
 
     run_ui(services, peer_identity.identity, pingpong);
-
-    let comms = Arc::try_unwrap(comms)
-        .map_err(|_| ServiceError::CommsServiceOwnershipError)
-        .unwrap();
 
     comms.shutdown().unwrap();
 }

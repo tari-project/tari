@@ -26,5 +26,6 @@ extern crate lazy_static;
 mod connection;
 mod connection_manager;
 mod control_service;
+mod inbound_message_pipeline;
 mod outbound_message_service;
 mod support;

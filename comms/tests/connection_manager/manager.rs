@@ -22,13 +22,15 @@
 
 use crate::support::{
     factories::{self, TestFactory},
-    helpers::ConnectionMessageCounter,
+    helpers::streams::stream_assert_count,
 };
+use futures::channel::mpsc::{channel, Sender};
 use std::{path::PathBuf, sync::Arc, thread, time::Duration};
 use tari_comms::{
-    connection::{types::Linger, InprocAddress, ZmqContext},
+    connection::{types::Linger, ZmqContext},
     connection_manager::PeerConnectionConfig,
     control_service::{ControlService, ControlServiceConfig},
+    message::FrameSet,
     peer_manager::{Peer, PeerManager},
     types::CommsDatabase,
 };
@@ -38,14 +40,14 @@ use tari_storage::{
 };
 use tari_utilities::thread_join::ThreadJoinWithTimeout;
 
-fn make_peer_connection_config(consumer_address: InprocAddress) -> PeerConnectionConfig {
+fn make_peer_connection_config() -> PeerConnectionConfig {
     PeerConnectionConfig {
         peer_connection_establish_timeout: Duration::from_secs(5),
         max_message_size: 1024,
         max_connections: 10,
         host: "127.0.0.1".parse().unwrap(),
         max_connect_retries: 5,
-        message_sink_address: consumer_address,
+
         socks_proxy_address: None,
     }
 }
@@ -93,10 +95,6 @@ fn establish_peer_connection() {
 
     let node_A_identity = Arc::new(factories::node_identity::create().build().unwrap());
 
-    let node_B_consumer_address = InprocAddress::random();
-    let node_B_msg_counter = ConnectionMessageCounter::new(&context);
-    node_B_msg_counter.start(node_B_consumer_address.clone());
-
     //---------------------------------- Node B Setup --------------------------------------------//
 
     let node_B_control_port_address = factories::net_address::create().build().unwrap();
@@ -114,6 +112,7 @@ fn establish_peer_connection() {
         .unwrap();
 
     // Node B knows no peers
+    let (consumer_tx_b, consumer_rx_b): (Sender<FrameSet>, _) = channel(10);
     let node_B_database_name = "connection_manager_node_B_peer_manager";
     let datastore = init_datastore(node_B_database_name).unwrap();
     let database = datastore.get_handle(node_B_database_name).unwrap();
@@ -124,7 +123,8 @@ fn establish_peer_connection() {
             .with_context(context.clone())
             .with_node_identity(node_B_identity.clone())
             .with_peer_manager(node_B_peer_manager)
-            .with_peer_connection_config(make_peer_connection_config(node_B_consumer_address.clone()))
+            .with_peer_connection_config(make_peer_connection_config())
+            .with_message_sink_sender(consumer_tx_b)
             .build()
             .unwrap(),
     );
@@ -143,9 +143,8 @@ fn establish_peer_connection() {
 
     //---------------------------------- Node A setup --------------------------------------------//
 
-    let node_A_consumer_address = InprocAddress::random();
-
     // Add node B to node A's peer manager
+    let (consumer_tx_a, _consumer_rx_a) = channel(10);
     let node_A_database_name = "connection_manager_node_A_peer_manager"; // Note: every test should have unique database
     let datastore = init_datastore(node_A_database_name).unwrap();
     let database = datastore.get_handle(node_A_database_name).unwrap();
@@ -156,7 +155,8 @@ fn establish_peer_connection() {
             .with_context(context.clone())
             .with_node_identity(node_A_identity.clone())
             .with_peer_manager(node_A_peer_manager)
-            .with_peer_connection_config(make_peer_connection_config(node_A_consumer_address))
+            .with_peer_connection_config(make_peer_connection_config())
+            .with_message_sink_sender(consumer_tx_a)
             .build()
             .unwrap(),
     );
@@ -200,7 +200,7 @@ fn establish_peer_connection() {
         .unwrap();
 
     assert_eq!(node_A_connection_manager.get_active_connection_count(), 1);
-    node_B_msg_counter.assert_count(2, 20);
+    let (_, _items) = stream_assert_count(consumer_rx_b, 2, 2000).unwrap();
 
     match Arc::try_unwrap(node_A_connection_manager) {
         Ok(manager) => manager.shutdown().into_iter().map(|r| r.unwrap()).collect::<Vec<()>>(),

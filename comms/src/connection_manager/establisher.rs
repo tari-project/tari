@@ -30,15 +30,16 @@ use crate::{
         Connection,
         CurveEncryption,
         EstablishedConnection,
-        InprocAddress,
         NetAddress,
         PeerConnection,
         PeerConnectionContextBuilder,
         ZmqContext,
     },
     control_service::ControlServiceClient,
+    message::FrameSet,
     peer_manager::{NodeIdentity, Peer, PeerManager},
 };
+use futures::channel::mpsc::Sender;
 use log::*;
 use std::{net::IpAddr, sync::Arc, time::Duration};
 
@@ -57,8 +58,6 @@ pub struct PeerConnectionConfig {
     pub max_connect_retries: u16,
     /// The address of the SOCKS proxy to use for this connection
     pub socks_proxy_address: Option<SocketAddress>,
-    /// The address to forward all the messages received from this peer connection
-    pub message_sink_address: InprocAddress,
     /// The host to bind to when creating inbound connections
     pub host: IpAddr,
     /// The length of time to wait for the requested peer connection to be established before timing out.
@@ -74,7 +73,6 @@ impl Default for PeerConnectionConfig {
             max_message_size: 1024 * 1024,
             max_connect_retries: 5,
             socks_proxy_address: None,
-            message_sink_address: Default::default(),
             peer_connection_establish_timeout: Duration::from_secs(10),
             host: "0.0.0.0".parse().unwrap(),
         }
@@ -87,11 +85,18 @@ impl Default for PeerConnectionConfig {
 /// the peer stats for failed/successful connection attempts. This component does not hold any
 /// connections, but returns them so that the caller may use them as needed. This component does
 /// not complete the peer connection protocol, it simply creates connections with some reliability.
+/// # Arguments
+/// `context`: The ZMQ context for created connections
+/// `config`: Parameters used when intantiating new PeerConnections
+/// `node_identity`: This node's identity
+/// `peer_manager`: This node's Peer Manager
+/// `message_sink_channel`: The Sender side of the MPSC channel to which Peer Connections will send received messages
 pub struct ConnectionEstablisher {
     context: ZmqContext,
     config: PeerConnectionConfig,
     node_identity: Arc<NodeIdentity>,
     peer_manager: Arc<PeerManager>,
+    message_sink_channel: Sender<FrameSet>,
 }
 
 impl ConnectionEstablisher {
@@ -101,6 +106,7 @@ impl ConnectionEstablisher {
         node_identity: Arc<NodeIdentity>,
         config: PeerConnectionConfig,
         peer_manager: Arc<PeerManager>,
+        message_sink_channel: Sender<FrameSet>,
     ) -> Self
     {
         Self {
@@ -108,6 +114,7 @@ impl ConnectionEstablisher {
             node_identity,
             config,
             peer_manager,
+            message_sink_channel,
         }
     }
 
@@ -229,6 +236,7 @@ impl ConnectionEstablisher {
                 public_key,
                 server_public_key: curve_public_key,
             })
+            .set_message_sink_channel(self.message_sink_channel.clone())
             .build()?;
 
         let mut connection = PeerConnection::new();
@@ -271,6 +279,7 @@ impl ConnectionEstablisher {
             .set_curve_encryption(CurveEncryption::Server {
                 secret_key: curve_secret_key,
             })
+            .set_message_sink_channel(self.message_sink_channel.clone())
             .build()?;
 
         let mut connection = PeerConnection::new();
@@ -300,7 +309,6 @@ impl ConnectionEstablisher {
         let mut builder = PeerConnectionContextBuilder::new()
             .set_context(&self.context)
             .set_max_msg_size(config.max_message_size)
-            .set_message_sink_address(config.message_sink_address.clone())
             .set_max_retry_attempts(config.max_connect_retries);
 
         if let Some(ref addr) = config.socks_proxy_address {

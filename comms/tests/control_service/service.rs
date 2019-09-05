@@ -20,15 +20,14 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::support::{
-    factories::{self, TestFactory},
-    helpers::ConnectionMessageCounter,
-};
+use crate::support::factories::{self, TestFactory};
+use futures::channel::mpsc::{channel, Sender};
 use std::{path::PathBuf, sync::Arc, time::Duration};
 use tari_comms::{
-    connection::{types::Direction, Connection, InprocAddress, ZmqContext},
+    connection::{types::Direction, Connection, ZmqContext},
     connection_manager::{ConnectionManager, PeerConnectionConfig},
     control_service::{messages::ConnectRequestOutcome, ControlService, ControlServiceClient, ControlServiceConfig},
+    message::FrameSet,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFlags, PeerManager},
 };
 use tari_storage::{
@@ -36,7 +35,6 @@ use tari_storage::{
     LMDBWrapper,
 };
 use tari_utilities::thread_join::ThreadJoinWithTimeout;
-
 fn make_peer_manager(peers: Vec<Peer>, database: LMDBDatabase) -> Arc<PeerManager> {
     Arc::new(
         factories::peer_manager::create()
@@ -72,6 +70,7 @@ fn clean_up_datastore(name: &str) {
 fn setup(
     database_name: &str,
     peer_conn_config: PeerConnectionConfig,
+    message_sink_sender: Sender<FrameSet>,
 ) -> (ZmqContext, Arc<NodeIdentity>, Arc<PeerManager>, Arc<ConnectionManager>)
 {
     let node_identity = factories::node_identity::create().build().map(Arc::new).unwrap();
@@ -83,6 +82,7 @@ fn setup(
         .with_context(context.clone())
         .with_peer_connection_config(peer_conn_config)
         .with_peer_manager(Arc::clone(&peer_manager))
+        .with_message_sink_sender(message_sink_sender)
         .build()
         .map(Arc::new)
         .unwrap();
@@ -94,16 +94,11 @@ fn setup(
 fn request_connection() {
     let database_name = "control_service_request_connection";
 
-    let message_sink_address = InprocAddress::random();
-    let peer_conn_config = PeerConnectionConfig {
-        message_sink_address,
-        ..Default::default()
-    };
+    let (message_sink_tx, _message_sink_rx) = channel(10);
+    let peer_conn_config = PeerConnectionConfig { ..Default::default() };
 
-    let (context, node_identity_a, peer_manager, connection_manager) = setup(database_name, peer_conn_config.clone());
-
-    let msg_counter = ConnectionMessageCounter::new(&context);
-    msg_counter.start(peer_conn_config.message_sink_address.clone());
+    let (context, node_identity_a, peer_manager, connection_manager) =
+        setup(database_name, peer_conn_config.clone(), message_sink_tx);
 
     // Setup the destination peer's control service
     let listener_address = factories::net_address::create().build().unwrap();
@@ -156,13 +151,14 @@ fn request_connection() {
             curve_public_key,
         } => {
             // --- Setup outbound peer connection to the requested address
+            let (message_sink_tx2, _message_sink_rx2) = channel(10);
             let (peer_conn, peer_conn_handle) = factories::peer_connection::create()
                 .with_peer_connection_context_factory(
                     factories::peer_connection_context::create()
                         .with_context(&context)
                         .with_direction(Direction::Outbound)
                         .with_address(address.clone())
-                        .with_message_sink_address(peer_conn_config.message_sink_address.clone())
+                        .with_message_sink_channel(message_sink_tx2)
                         .with_server_public_key(curve_public_key),
                 )
                 .build()
@@ -186,7 +182,9 @@ fn request_connection() {
 #[test]
 fn ping_pong() {
     let database_name = "control_service_ping_pong";
-    let (context, node_identity, _, connection_manager) = setup(database_name, PeerConnectionConfig::default());
+    let (message_sink_tx, _message_sink_rx) = channel(10);
+    let (context, node_identity, _, connection_manager) =
+        setup(database_name, PeerConnectionConfig::default(), message_sink_tx);
 
     let listener_address = factories::net_address::create().build().unwrap();
     let service = ControlService::new(context.clone(), Arc::clone(&node_identity), ControlServiceConfig {

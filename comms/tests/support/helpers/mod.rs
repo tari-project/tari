@@ -22,6 +22,8 @@
 
 pub mod asserts;
 pub mod connection_message_counter;
+pub mod database;
 pub mod ports;
+pub mod streams;
 
 pub use self::connection_message_counter::ConnectionMessageCounter;

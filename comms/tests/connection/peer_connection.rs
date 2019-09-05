@@ -22,21 +22,24 @@
 
 use crate::support::{
     factories::{self, TestFactory},
-    helpers::asserts::assert_change,
+    helpers::{asserts::assert_change, streams::stream_assert_count},
 };
+use futures::{channel::mpsc::channel, executor::block_on, StreamExt};
 use std::time::Duration;
-use tari_comms::connection::{
-    peer_connection::PeerConnectionProtoMessage,
-    types::{Direction, Linger},
-    Connection,
-    ConnectionError,
-    CurveEncryption,
-    InprocAddress,
-    NetAddress,
-    PeerConnection,
-    PeerConnectionContextBuilder,
-    PeerConnectionError,
-    ZmqContext,
+use tari_comms::{
+    connection::{
+        peer_connection::PeerConnectionProtoMessage,
+        types::{Direction, Linger},
+        Connection,
+        ConnectionError,
+        CurveEncryption,
+        NetAddress,
+        PeerConnection,
+        PeerConnectionContextBuilder,
+        PeerConnectionError,
+        ZmqContext,
+    },
+    message::FrameSet,
 };
 
 #[test]
@@ -47,14 +50,14 @@ fn connection_in() {
     let (server_sk, server_pk) = CurveEncryption::generate_keypair().unwrap();
     let (client_sk, client_pk) = CurveEncryption::generate_keypair().unwrap();
 
-    let consumer_addr = InprocAddress::random();
+    let (consumer_tx, consumer_rx) = channel(10);
 
     // Initialize and start peer connection
     let context = PeerConnectionContextBuilder::new()
         .set_id("123")
         .set_direction(Direction::Inbound)
         .set_context(&ctx)
-        .set_message_sink_address(consumer_addr.clone())
+        .set_message_sink_channel(consumer_tx)
         .set_curve_encryption(CurveEncryption::Server { secret_key: server_sk })
         .set_address(addr.clone())
         .build()
@@ -63,11 +66,6 @@ fn connection_in() {
     let mut conn = PeerConnection::new();
     conn.start(context).unwrap();
     conn.wait_listening_or_failure(&Duration::from_millis(1000)).unwrap();
-
-    // Connect the message consumer
-    let consumer = Connection::new(&ctx, Direction::Inbound)
-        .establish(&consumer_addr)
-        .unwrap();
 
     // Connect to the inbound connection and send a message
     let sender = Connection::new(&ctx, Direction::Outbound)
@@ -83,13 +81,12 @@ fn connection_in() {
         .send(&[&[PeerConnectionProtoMessage::Message as u8], &[1u8]])
         .unwrap();
 
-    // Receive the message from the consumer socket
-    let frames = consumer.receive(2000).unwrap();
-    assert_eq!("123".as_bytes().to_vec(), frames[1]);
-    assert_eq!(vec![1u8], frames[2]);
+    // Receive the message from the consumer channel
+    let frames: Vec<FrameSet> = block_on(consumer_rx.take(1).collect());
 
+    assert_eq!("123".as_bytes().to_vec(), frames[0][0]);
+    assert_eq!(vec![1u8], frames[0][1]);
     conn.send(vec![vec![111u8]]).unwrap();
-
     let reply = sender.receive(100).unwrap();
     assert_eq!(
         vec![vec![PeerConnectionProtoMessage::Message as u8], vec![111u8]],
@@ -105,8 +102,6 @@ fn connection_out() {
     let (server_sk, server_pk) = CurveEncryption::generate_keypair().unwrap();
     let (client_sk, client_pk) = CurveEncryption::generate_keypair().unwrap();
 
-    let consumer_addr = InprocAddress::random();
-
     // Connect to the sender (peer)
     let sender = Connection::new(&ctx, Direction::Inbound)
         .set_name("Test sender")
@@ -115,13 +110,13 @@ fn connection_out() {
         .unwrap();
 
     let conn_id = "123".as_bytes();
-
+    let (consumer_tx, consumer_rx) = channel(10);
     // Initialize and start peer connection
     let context = PeerConnectionContextBuilder::new()
         .set_id(conn_id.clone())
         .set_direction(Direction::Outbound)
         .set_context(&ctx)
-        .set_message_sink_address(consumer_addr.clone())
+        .set_message_sink_channel(consumer_tx)
         .set_curve_encryption(CurveEncryption::Client {
             server_public_key: server_pk,
             secret_key: client_sk,
@@ -137,12 +132,6 @@ fn connection_out() {
     conn.start(context).unwrap();
     conn.wait_connected_or_failure(&Duration::from_millis(2000)).unwrap();
 
-    // Connect the message consumer
-    let consumer = Connection::new(&ctx, Direction::Inbound)
-        .set_name("Test message sink")
-        .establish(&consumer_addr)
-        .unwrap();
-
     conn.send(vec![vec![123u8]]).unwrap();
 
     let ident = sender.receive(2000).unwrap();
@@ -155,10 +144,11 @@ fn connection_out() {
             123u8,
         ]])
         .unwrap();
-    let frames = consumer.receive(2000).unwrap();
-    assert_eq!(conn_id.to_vec(), frames[1]);
-    assert_eq!(vec![1u8], frames[2]);
-    assert_eq!(vec![123u8], frames[3]);
+
+    let frames: Vec<FrameSet> = block_on(consumer_rx.take(1).collect());
+    assert_eq!(conn_id.to_vec(), frames[0][0]);
+    assert_eq!(vec![1u8], frames[0][1]);
+    assert_eq!(vec![123u8], frames[0][2]);
 }
 
 #[test]
@@ -168,13 +158,13 @@ fn connection_wait_connect_shutdown() {
 
     let receiver = Connection::new(&ctx, Direction::Inbound).establish(&addr).unwrap();
 
-    let consumer_addr = InprocAddress::random();
+    let (consumer_tx, _consumer_rx) = channel(10);
 
     let context = PeerConnectionContextBuilder::new()
         .set_id("123")
         .set_direction(Direction::Outbound)
         .set_context(&ctx)
-        .set_message_sink_address(consumer_addr.clone())
+        .set_message_sink_channel(consumer_tx)
         .set_address(addr)
         .build()
         .unwrap();
@@ -201,7 +191,7 @@ fn connection_wait_connect_failed() {
     let addr = factories::net_address::create().use_os_port().build().unwrap();
     let ctx = ZmqContext::new();
 
-    let consumer_addr = InprocAddress::random();
+    let (consumer_tx, _consumer_rx) = channel(10);
 
     // This has nothing to connect to
     let context = PeerConnectionContextBuilder::new()
@@ -209,7 +199,7 @@ fn connection_wait_connect_failed() {
         .set_direction(Direction::Outbound)
         .set_max_retry_attempts(1)
         .set_context(&ctx)
-        .set_message_sink_address(consumer_addr.clone())
+        .set_message_sink_channel(consumer_tx)
         .set_address(addr.clone())
         .build()
         .unwrap();
@@ -234,84 +224,18 @@ fn connection_wait_connect_failed() {
 }
 
 #[test]
-fn connection_pause_resume() {
-    let addr = factories::net_address::create().build().unwrap();
-    let ctx = ZmqContext::new();
-
-    let consumer_addr = InprocAddress::random();
-
-    // Connect to the sender (peer)
-    let sender = Connection::new(&ctx, Direction::Outbound)
-        .set_linger(Linger::Indefinitely)
-        .establish(&addr)
-        .unwrap();
-    let conn_id = "123".as_bytes();
-
-    // Initialize and start peer connection
-    let context = PeerConnectionContextBuilder::new()
-        .set_id(conn_id.clone())
-        .set_direction(Direction::Inbound)
-        .set_context(&ctx)
-        .set_message_sink_address(consumer_addr.clone())
-        .set_address(addr)
-        .build()
-        .unwrap();
-
-    let mut conn = PeerConnection::new();
-
-    assert!(!conn.is_connected());
-    conn.start(context).unwrap();
-
-    conn.wait_listening_or_failure(&Duration::from_millis(2000)).unwrap();
-
-    // Connect the message consumer
-    let consumer = Connection::new(&ctx, Direction::Inbound)
-        .establish(&consumer_addr)
-        .unwrap();
-
-    let msg_type_frame = &[PeerConnectionProtoMessage::Message as u8];
-    sender.send(&[&[PeerConnectionProtoMessage::Identify as u8]]).unwrap();
-    sender.send(&[msg_type_frame, &[1u8]]).unwrap();
-
-    let frames = consumer.receive(2000).unwrap();
-    assert_eq!(conn_id.to_vec(), frames[1]);
-    assert_eq!(vec![1u8], frames[2]);
-
-    // Pause the connection
-    conn.pause().unwrap();
-
-    sender.send(&[msg_type_frame, &[2u8]]).unwrap();
-    sender.send(&[msg_type_frame, &[3u8]]).unwrap();
-    sender.send(&[msg_type_frame, &[4u8]]).unwrap();
-
-    let err = consumer.receive(3000).unwrap_err();
-    assert!(err.is_timeout());
-
-    // Resume connection
-    conn.resume().unwrap();
-
-    // Should receive all the pending messages
-    let frames = consumer.receive(3000).unwrap();
-    assert_eq!(vec![2u8], frames[3]);
-    let frames = consumer.receive(3000).unwrap();
-    assert_eq!(vec![3u8], frames[3]);
-    let frames = consumer.receive(3000).unwrap();
-    assert_eq!(vec![4u8], frames[3]);
-}
-
-#[test]
 fn connection_disconnect() {
     let addr = factories::net_address::create().use_os_port().build().unwrap();
     let ctx = ZmqContext::new();
 
-    let consumer_addr = InprocAddress::random();
+    let (consumer_tx, _consumer_rx) = channel(10);
 
     // Initialize and start peer connection
     let context = PeerConnectionContextBuilder::new()
         .set_id("123")
         .set_direction(Direction::Inbound)
         .set_context(&ctx)
-        .set_message_sink_address(consumer_addr.clone())
+        .set_message_sink_channel(consumer_tx)
         .set_address(addr)
         .build()
         .unwrap();
@@ -341,7 +265,7 @@ fn connection_stats() {
     let addr = factories::net_address::create().build().unwrap();
     let ctx = ZmqContext::new();
 
-    let consumer_addr = InprocAddress::random();
+    let (consumer_tx, _consumer_rx) = channel(10);
 
     // Connect to the sender (peer)
     let sender = Connection::new(&ctx, Direction::Outbound)
@@ -354,7 +278,7 @@ fn connection_stats() {
         .set_id("123".as_bytes())
         .set_direction(Direction::Inbound)
         .set_context(&ctx)
-        .set_message_sink_address(consumer_addr.clone())
+        .set_message_sink_channel(consumer_tx)
         .set_address(addr)
         .build()
         .unwrap();
@@ -410,14 +334,14 @@ fn ignore_invalid_message_types() {
     let (server_sk, server_pk) = CurveEncryption::generate_keypair().unwrap();
     let (client_sk, client_pk) = CurveEncryption::generate_keypair().unwrap();
 
-    let consumer_addr = InprocAddress::random();
+    let (consumer_tx, consumer_rx) = channel(10);
 
     // Initialize and start peer connection
     let context = PeerConnectionContextBuilder::new()
         .set_id("123")
         .set_direction(Direction::Inbound)
         .set_context(&ctx)
-        .set_message_sink_address(consumer_addr.clone())
+        .set_message_sink_channel(consumer_tx)
         .set_curve_encryption(CurveEncryption::Server { secret_key: server_sk })
         .set_address(addr.clone())
         .build()
@@ -426,11 +350,6 @@ fn ignore_invalid_message_types() {
     let mut conn = PeerConnection::new();
     conn.start(context).unwrap();
     conn.wait_listening_or_failure(&Duration::from_millis(1000)).unwrap();
-
-    // Connect the message consumer
-    let consumer = Connection::new(&ctx, Direction::Inbound)
-        .establish(&consumer_addr)
-        .unwrap();
 
     // Connect to the inbound connection and send a message
     let sender = Connection::new(&ctx, Direction::Outbound)
@@ -451,13 +370,6 @@ fn ignore_invalid_message_types() {
         .send(&[&[PeerConnectionProtoMessage::Message as u8], &[1u8]])
         .unwrap();
 
-    // Receive the message from the consumer socket
-    let frames = consumer.receive(2000).unwrap();
-    assert_eq!("123".as_bytes().to_vec(), frames[1]);
-    assert_eq!(vec![1u8], frames[2]);
-    assert_eq!(vec![1u8], frames[3]);
-
-    // Test no more messages to receive. Since we have received above, the invalid message
-    // should be already ready to receive (10ms) if it was forwarded by the peer connection.
-    assert!(consumer.receive(10).is_err());
+    let result = stream_assert_count(consumer_rx, 2, 500);
+    assert!(result.is_err());
 }

@@ -51,8 +51,6 @@
 //!
 //! - [MessageData]
 //!
-//! This message is dispatched by the [InboundMessageBroker] to a [DomainConnector].
-//!
 //! [Frame]: ./tyoe.Frame.html
 //! [FrameSet]: ./tyoe.FrameSet.html
 //! [MessageEnvelope]: ./envelope/struct.MessageEnvelope.html
@@ -60,7 +58,6 @@
 //! [Message]: ./message/struct.Message.html
 //! [MessageHeader]: ./message/struct.MessageHeader.html
 //! [MessageData]: ./message/struct.MessageData.html
-//! [InboundMessageBroker]: ../inbound_message_service/inbound_message_broker/struct.InboundMessageBroker.html
 //! [DomainConnector]: ../domain_connector/struct.DomainConnector.html
 use crate::peer_manager::node_id::NodeId;
 use bitflags::*;
@@ -70,7 +67,6 @@ mod domain_message_context;
 mod envelope;
 mod error;
 mod message;
-mod message_context;
 mod message_data;
 
 pub use self::{
@@ -78,7 +74,6 @@ pub use self::{
     envelope::{MessageEnvelope, MessageEnvelopeHeader},
     error::MessageError,
     message::{Message, MessageHeader},
-    message_context::MessageContext,
     message_data::*,
 };
 

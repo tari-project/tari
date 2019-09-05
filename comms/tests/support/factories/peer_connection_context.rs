@@ -22,18 +22,21 @@
 
 use super::{TestFactory, TestFactoryError};
 
+use futures::channel::mpsc::Sender;
 use rand::{OsRng, Rng};
-use tari_comms::connection::{
-    peer_connection::{ConnectionId, PeerConnectionContext},
-    types::Linger,
-    CurveEncryption,
-    CurvePublicKey,
-    CurveSecretKey,
-    Direction,
-    InprocAddress,
-    NetAddress,
-    PeerConnectionContextBuilder,
-    ZmqContext,
+use tari_comms::{
+    connection::{
+        peer_connection::{ConnectionId, PeerConnectionContext},
+        types::Linger,
+        CurveEncryption,
+        CurvePublicKey,
+        CurveSecretKey,
+        Direction,
+        NetAddress,
+        PeerConnectionContextBuilder,
+        ZmqContext,
+    },
+    message::FrameSet,
 };
 
 pub fn create<'c>() -> PeerConnectionContextFactory<'c> {
@@ -45,7 +48,7 @@ pub struct PeerConnectionContextFactory<'c> {
     direction: Option<Direction>,
     context: Option<&'c ZmqContext>,
     connection_id: Option<ConnectionId>,
-    message_sink_address: Option<InprocAddress>,
+    message_sink_channel: Option<Sender<FrameSet>>,
     server_public_key: Option<CurvePublicKey>,
     curve_keypair: Option<(CurveSecretKey, CurvePublicKey)>,
     address: Option<NetAddress>,
@@ -62,7 +65,11 @@ impl<'c> PeerConnectionContextFactory<'c> {
 
     factory_setter!(with_connection_id, connection_id, Option<ConnectionId>);
 
-    factory_setter!(with_message_sink_address, message_sink_address, Option<InprocAddress>);
+    factory_setter!(
+        with_message_sink_channel,
+        message_sink_channel,
+        Option<Sender<FrameSet>>
+    );
 
     factory_setter!(with_server_public_key, server_public_key, Option<CurvePublicKey>);
 
@@ -102,7 +109,7 @@ impl<'c> TestFactory for PeerConnectionContextFactory<'c> {
             .set_direction(direction.clone())
             .set_context(context)
             .set_address(address)
-            .set_message_sink_address(self.message_sink_address.or(Some(InprocAddress::random())).unwrap());
+            .set_message_sink_channel(self.message_sink_channel.unwrap());
 
         let (secret_key, public_key) = self
             .curve_keypair

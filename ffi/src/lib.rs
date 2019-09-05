@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 extern crate libc;
 
+use futures::executor::ThreadPool;
 use libc::{c_char, c_int};
 use pnet::datalink::{self, NetworkInterface};
 use serde::{Deserialize, Serialize};
@@ -41,7 +42,6 @@ use tari_crypto::keys::PublicKey;
 use tari_p2p::{initialization::CommsConfig, sync_services::ServiceError};
 use tari_utilities::hex::Hex;
 use tari_wallet::{text_message_service::Contact, wallet::WalletConfig};
-
 /// TODO: Replace expect() methods within functions.
 
 /// Once bindings are generated via cbindgen, change the using to struct, remove the equals sign and anything after it
@@ -230,8 +230,8 @@ pub unsafe extern "C" fn create_wallet(
         public_key: public_key.clone(),
         database_path: (*settings_p).database_path.clone().unwrap(),
     };
-
-    Box::into_raw(Box::new(Wallet::new(config).unwrap()))
+    let mut thread_pool = ThreadPool::new().unwrap();
+    Box::into_raw(Box::new(Wallet::new(config, &mut thread_pool).unwrap()))
 }
 
 /// Shuts down services and frees memory for wallet pointer
