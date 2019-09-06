@@ -26,17 +26,21 @@ mod messages;
 mod service;
 
 use self::service::CommsOutboundService;
-use crate::services::{ServiceHandlesFuture, ServiceName};
+use crate::services::comms_outbound::messages::CommsOutboundResponse;
 use futures::{
     future::{self, Future},
     task::SpawnExt,
 };
 use std::sync::Arc;
 use tari_comms::outbound_message_service::outbound_message_service::OutboundMessageService;
-use tari_service_framework::{reply_channel, ServiceInitializationError, ServiceInitializer};
+use tari_service_framework::{
+    handles::ServiceHandlesFuture,
+    reply_channel,
+    ServiceInitializationError,
+    ServiceInitializer,
+};
 
 pub use self::{error::CommsOutboundServiceError, messages::CommsOutboundRequest};
-use crate::services::comms_outbound::messages::CommsOutboundResponse;
 
 type CommsOutboundRequestSender =
     reply_channel::SenderService<CommsOutboundRequest, Result<CommsOutboundResponse, CommsOutboundServiceError>>;
@@ -54,14 +58,14 @@ impl CommsOutboundServiceInitializer {
     }
 }
 
-impl<TExec> ServiceInitializer<ServiceName, TExec> for CommsOutboundServiceInitializer
+impl<TExec> ServiceInitializer<TExec> for CommsOutboundServiceInitializer
 where TExec: SpawnExt
 {
     type Future = impl Future<Output = Result<(), ServiceInitializationError>>;
 
     fn initialize(&mut self, executor: &mut TExec, handles: ServiceHandlesFuture) -> Self::Future {
         let (requester, responder) = reply_channel::unbounded();
-        handles.insert(ServiceName::CommsOutbound, CommsOutboundHandle::new(requester));
+        handles.register(CommsOutboundHandle::new(requester));
 
         let service = CommsOutboundService::new(responder, Arc::clone(&self.oms));
         let spawn_res = executor.spawn(service.run()).map_err(Into::into);

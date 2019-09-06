@@ -23,7 +23,7 @@
 use crate::handles::ServiceHandlesFuture;
 use derive_error::Error;
 use futures::{future::FutureExt, task::SpawnError, Future};
-use std::{hash::Hash, pin::Pin};
+use std::pin::Pin;
 
 #[derive(Debug, Error)]
 pub enum ServiceInitializationError {
@@ -37,15 +37,15 @@ pub enum ServiceInitializationError {
 
 /// Implementors of this trait will initialize a service
 /// The `StackBuilder` builds impls of this trait.
-pub trait ServiceInitializer<TName, TExec> {
+pub trait ServiceInitializer<TExec> {
     /// The future returned from the initialize function
     type Future: Future<Output = Result<(), ServiceInitializationError>>;
 
     /// Async initialization code for a service
-    fn initialize(&mut self, executor: &mut TExec, handles_fut: ServiceHandlesFuture<TName>) -> Self::Future;
+    fn initialize(&mut self, executor: &mut TExec, handles_fut: ServiceHandlesFuture) -> Self::Future;
 
     /// Create a boxed version of this ServiceInitializer.
-    fn boxed(self) -> BoxedServiceInitializer<TName, TExec>
+    fn boxed(self) -> BoxedServiceInitializer<TExec>
     where
         Self: Sized + Send + 'static,
         Self::Future: Send + 'static,
@@ -60,20 +60,19 @@ pub trait ServiceInitializer<TName, TExec> {
 /// ```no_run
 /// # use futures::executor::ThreadPool;
 /// # use tari_service_framework::handles::ServiceHandlesFuture;
-/// let my_initializer = |executor: &mut ThreadPool, handles_fut: ServiceHandlesFuture<String>| {
+/// let my_initializer = |executor: &mut ThreadPool, handles_fut: ServiceHandlesFuture| {
 ///     // initialization code
 ///     futures::future::ready(Result::<_, ()>::Ok(()))
 /// };
 /// ```
-impl<TFunc, TName, TExec, TFut> ServiceInitializer<TName, TExec> for TFunc
+impl<TFunc, TExec, TFut> ServiceInitializer<TExec> for TFunc
 where
-    TName: Eq + Hash,
-    TFunc: FnMut(&mut TExec, ServiceHandlesFuture<TName>) -> TFut,
+    TFunc: FnMut(&mut TExec, ServiceHandlesFuture) -> TFut,
     TFut: Future<Output = Result<(), ServiceInitializationError>>,
 {
     type Future = TFut;
 
-    fn initialize(&mut self, executor: &mut TExec, handles: ServiceHandlesFuture<TName>) -> Self::Future {
+    fn initialize(&mut self, executor: &mut TExec, handles: ServiceHandlesFuture) -> Self::Future {
         (self)(executor, handles)
     }
 }
@@ -90,26 +89,17 @@ type ServiceInitializationFuture = Pin<Box<dyn Future<Output = Result<(), Servic
 /// of always returning a boxed future (aliased ServiceInitializationFuture type),
 /// therefore it does not need the `Future` associated type. This makes it
 /// possible to store a boxed dyn `AbstractServiceInitializer<TName, TExec>`.
-pub trait AbstractServiceInitializer<TName, TExec> {
-    fn initialize(
-        &mut self,
-        executor: &mut TExec,
-        handles_fut: ServiceHandlesFuture<TName>,
-    ) -> ServiceInitializationFuture;
+pub trait AbstractServiceInitializer<TExec> {
+    fn initialize(&mut self, executor: &mut TExec, handles_fut: ServiceHandlesFuture) -> ServiceInitializationFuture;
 }
 
 /// AbstractServiceInitializer impl for every T: ServiceInitializer.
-impl<T, TName, TExec> AbstractServiceInitializer<TName, TExec> for T
+impl<T, TExec> AbstractServiceInitializer<TExec> for T
 where
-    T: ServiceInitializer<TName, TExec>,
+    T: ServiceInitializer<TExec>,
     T::Future: Send + 'static,
 {
-    fn initialize(
-        &mut self,
-        executor: &mut TExec,
-        handles: ServiceHandlesFuture<TName>,
-    ) -> ServiceInitializationFuture
-    {
+    fn initialize(&mut self, executor: &mut TExec, handles: ServiceHandlesFuture) -> ServiceInitializationFuture {
         let initialization = self.initialize(executor, handles);
         initialization.boxed() as ServiceInitializationFuture
     }
@@ -118,14 +108,14 @@ where
 /// A concrete boxed version of a ServiceInitializer. This makes it possible
 /// to have a collection of ServiceInitializers which return various boxed future types.
 /// This type is used in StackBuilder's internal vec.
-pub struct BoxedServiceInitializer<TName, TExec> {
-    inner: Box<dyn AbstractServiceInitializer<TName, TExec> + Send + 'static>,
+pub struct BoxedServiceInitializer<TExec> {
+    inner: Box<dyn AbstractServiceInitializer<TExec> + Send + 'static>,
 }
 
-impl<TName, TExec> BoxedServiceInitializer<TName, TExec> {
+impl<TExec> BoxedServiceInitializer<TExec> {
     pub(super) fn new<T>(initializer: T) -> Self
     where
-        T: ServiceInitializer<TName, TExec> + Send + 'static,
+        T: ServiceInitializer<TExec> + Send + 'static,
         T::Future: Send + 'static,
     {
         Self {
@@ -134,10 +124,10 @@ impl<TName, TExec> BoxedServiceInitializer<TName, TExec> {
     }
 }
 
-impl<TName, TExec> ServiceInitializer<TName, TExec> for BoxedServiceInitializer<TName, TExec> {
+impl<TExec> ServiceInitializer<TExec> for BoxedServiceInitializer<TExec> {
     type Future = ServiceInitializationFuture;
 
-    fn initialize(&mut self, executor: &mut TExec, handles_fut: ServiceHandlesFuture<TName>) -> Self::Future {
+    fn initialize(&mut self, executor: &mut TExec, handles_fut: ServiceHandlesFuture) -> Self::Future {
         self.inner.initialize(executor, handles_fut)
     }
 }

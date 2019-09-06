@@ -59,7 +59,6 @@ use tari_p2p::{
     services::{
         comms_outbound::CommsOutboundServiceInitializer,
         liveness::{LivenessHandle, LivenessInitializer, LivenessRequest, LivenessResponse},
-        ServiceName,
     },
 };
 use tari_service_framework::StackBuilder;
@@ -160,7 +159,7 @@ fn main() {
 
     // Updates the UI when pings/pongs are received
     let ui_update_signal = app.cb_sink().clone();
-    let liveness_handle = handles.get_handle::<LivenessHandle>(ServiceName::Liveness).unwrap();
+    let liveness_handle = handles.get_handle::<LivenessHandle>().unwrap();
     thread_pool
         .spawn(update_ui(ui_update_signal, liveness_handle.clone()))
         .unwrap();
