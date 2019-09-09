@@ -22,12 +22,16 @@
 
 use crate::{
     connection::net_address::NetAddress,
-    outbound_message_service::broadcast_strategy::BroadcastStrategy,
-    peer_manager::{node_id::NodeId, node_identity::PeerNodeIdentity, peer::Peer, peer_storage::PeerStorage},
+    outbound_message_service::BroadcastStrategy,
+    peer_manager::{
+        node_id::NodeId,
+        node_identity::PeerNodeIdentity,
+        peer::{Peer, PeerFlags},
+        peer_storage::PeerStorage,
+        PeerManagerError,
+    },
     types::{CommsDatabase, CommsPublicKey},
 };
-
-use crate::peer_manager::{peer::PeerFlags, PeerManagerError};
 use std::{sync::RwLock, time::Duration};
 
 /// The PeerManager consist of a routing table of previously discovered peers.
