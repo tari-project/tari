@@ -111,6 +111,11 @@ where
         self.hash_deleted(hasher).result().to_vec()
     }
 
+    /// Returns only the MMR merkle root without the compressed serialisation of the bitmap
+    pub fn get_mmr_only_root(&self) -> Hash {
+        self.mmr.get_merkle_root()
+    }
+
     /// Push a new element into the MMR. Computes new related peaks at the same time if applicable.
     /// Returns the new number of leaf nodes (regardless of deleted state) in the mutable MMR
     pub fn push(&mut self, hash: &Hash) -> Result<usize, MerkleMountainRangeError> {
@@ -181,6 +186,11 @@ where
         let bitmap_ser = self.deleted.serialize();
         hasher.input(&bitmap_ser);
         hasher
+    }
+
+    /// Expose the MerkleMountainRange for verifying proofs
+    pub fn mmr(&self) -> &MerkleMountainRange<D, B> {
+        &self.mmr
     }
 }
 

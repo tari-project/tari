@@ -232,6 +232,78 @@ fn kernel_merkle_root() {
 }
 
 #[test]
+fn utxo_and_rp_mmr_proof() {
+    let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
+
+    let (utxo1, _) = create_utxo(MicroTari(5_000));
+    let (utxo2, _) = create_utxo(MicroTari(10_000));
+    let (utxo3, _) = create_utxo(MicroTari(15_000));
+    let mut txn = DbTransaction::new();
+    txn.insert_utxo(utxo1.clone());
+    txn.insert_utxo(utxo2.clone());
+    txn.insert_utxo(utxo3.clone());
+    assert!(store.commit(txn).is_ok());
+
+    let root = store.fetch_mmr_only_root(MmrTree::Utxo).unwrap();
+    let proof1 = store.fetch_mmr_proof(MmrTree::Utxo, 0).unwrap();
+    let proof2 = store.fetch_mmr_proof(MmrTree::Utxo, 1).unwrap();
+    let proof3 = store.fetch_mmr_proof(MmrTree::Utxo, 2).unwrap();
+    store.fetch_mmr_proof(MmrTree::RangeProof, 0).unwrap();
+    store.fetch_mmr_proof(MmrTree::RangeProof, 1).unwrap();
+    store.fetch_mmr_proof(MmrTree::RangeProof, 2).unwrap();
+    assert!(proof1.verify_leaf::<HashDigest>(&root, &utxo1.hash(), 0).is_ok());
+    assert!(proof2.verify_leaf::<HashDigest>(&root, &utxo2.hash(), 1).is_ok());
+    assert!(proof3.verify_leaf::<HashDigest>(&root, &utxo3.hash(), 2).is_ok());
+}
+
+#[test]
+fn header_mmr_proof() {
+    let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
+
+    let mut header1 = BlockHeader::new(0);
+    header1.height = 1;
+    let mut header2 = BlockHeader::new(0);
+    header2.height = 2;
+    let mut header3 = BlockHeader::new(0);
+    header3.height = 3;
+    let mut txn = DbTransaction::new();
+    txn.insert_header(header1.clone());
+    txn.insert_header(header2.clone());
+    txn.insert_header(header3.clone());
+    assert!(store.commit(txn).is_ok());
+
+    let root = store.fetch_mmr_only_root(MmrTree::Header).unwrap();
+    let proof1 = store.fetch_mmr_proof(MmrTree::Header, 0).unwrap();
+    let proof2 = store.fetch_mmr_proof(MmrTree::Header, 1).unwrap();
+    let proof3 = store.fetch_mmr_proof(MmrTree::Header, 2).unwrap();
+    assert!(proof1.verify_leaf::<HashDigest>(&root, &header1.hash(), 0).is_ok());
+    assert!(proof2.verify_leaf::<HashDigest>(&root, &header2.hash(), 1).is_ok());
+    assert!(proof3.verify_leaf::<HashDigest>(&root, &header3.hash(), 2).is_ok());
+}
+
+#[test]
+fn kernel_mmr_proof() {
+    let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
+
+    let kernel1 = create_test_kernel(100.into(), 0);
+    let kernel2 = create_test_kernel(200.into(), 1);
+    let kernel3 = create_test_kernel(300.into(), 2);
+    let mut txn = DbTransaction::new();
+    txn.insert_kernel(kernel1.clone());
+    txn.insert_kernel(kernel2.clone());
+    txn.insert_kernel(kernel3.clone());
+    assert!(store.commit(txn).is_ok());
+
+    let root = store.fetch_mmr_only_root(MmrTree::Kernel).unwrap();
+    let proof1 = store.fetch_mmr_proof(MmrTree::Kernel, 0).unwrap();
+    let proof2 = store.fetch_mmr_proof(MmrTree::Kernel, 1).unwrap();
+    let proof3 = store.fetch_mmr_proof(MmrTree::Kernel, 2).unwrap();
+    assert!(proof1.verify_leaf::<HashDigest>(&root, &kernel1.hash(), 0).is_ok());
+    assert!(proof2.verify_leaf::<HashDigest>(&root, &kernel2.hash(), 1).is_ok());
+    assert!(proof3.verify_leaf::<HashDigest>(&root, &kernel3.hash(), 2).is_ok());
+}
+
+#[test]
 fn store_and_retrieve_block() {
     // Create new database
     let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();

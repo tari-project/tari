@@ -22,6 +22,7 @@
 
 use crate::chain_storage::db_transaction::DbKey;
 use derive_error::Error;
+use tari_mmr::{error::MerkleMountainRangeError, MerkleProofError};
 
 #[derive(Debug, Error, PartialEq)]
 pub enum ChainStorageError {
@@ -54,4 +55,6 @@ pub enum ChainStorageError {
     // The requested value was not found in the database
     #[error(non_std, no_from)]
     ValueNotFound(DbKey),
+    MerkleMountainRangeError(MerkleMountainRangeError),
+    MerkleProofError(MerkleProofError),
 }
