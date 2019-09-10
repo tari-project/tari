@@ -20,31 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use rand::{distributions::Alphanumeric, thread_rng, Rng};
-use std::iter;
+use std::future::Future;
 
-/// Generate a random string of the given size using the default `ThreadRng`.
-pub fn string(len: usize) -> String {
-    let mut rng = thread_rng();
-    iter::repeat(()).map(|_| rng.sample(Alphanumeric)).take(len).collect()
-}
+/// Encapsulates the ability to asynchronously establish connections.
+pub trait Dialer<T> {
+    /// What this dialer produces when it's work is done. Typically a PeerConnection / TcpStream
+    type Output;
+    /// The error type that this dialer can produce
+    type Error;
+    /// The future returned from the dial function
+    type Future: Future<Output = Result<Self::Output, Self::Error>>;
 
-/// Generate a random string of the given size using the default `ThreadRng`.
-pub fn prefixed_string(prefix: &str, len: usize) -> String {
-    let mut rng = thread_rng();
-    let rand_str = iter::repeat(())
-        .map(|_| rng.sample(Alphanumeric))
-        .take(len)
-        .collect::<String>();
-    format!("{}{}", prefix, rand_str)
-}
-
-#[cfg(test)]
-mod test {
-    #[test]
-    fn string() {
-        let sample = super::string(8);
-        assert_ne!(sample, super::string(8));
-        assert_eq!(sample.len(), 8);
-    }
+    /// Asynchronously establish a connection (dial) to a remote peer
+    fn dial(&self, dial_key: &T) -> Self::Future;
 }

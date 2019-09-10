@@ -77,4 +77,9 @@ pub enum ConnectionManagerError {
     ConnectionRequestOutcomeTimeout,
     ControlServiceError(ControlServiceError),
     NodeIdentityError(NodeIdentityError),
+    //---------------------------------- Async --------------------------------------------//
+    /// Failed to send request to ConnectionManagerActor. Channel closed.
+    SendToActorFailed,
+    /// Request was canceled before the response could be sent
+    ActorRequestCanceled,
 }

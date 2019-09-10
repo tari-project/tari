@@ -30,7 +30,6 @@ use futures::{
     Future,
     FutureExt,
     Poll,
-    StreamExt,
 };
 use std::pin::Pin;
 use tower_service::Service;
@@ -192,7 +191,7 @@ impl<TReq, TResp> RequestContext<TReq, TResp> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use futures::executor::block_on;
+    use futures::{executor::block_on, StreamExt};
     use std::fmt::Debug;
     use tari_test_utils::{counter_context, panic_context};
 

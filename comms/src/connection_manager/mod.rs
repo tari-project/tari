@@ -95,7 +95,9 @@
 //! [Connecti]: ./connections/struct.LivePeerConnections.html
 //! [PeerConnection]: ../connection/peer_connection/struct.PeerConnection.html
 //! [ConnectionEstablisher]: ./establisher/struct.ConnectionEstablisher.html
+mod actor;
 mod connections;
+mod dialer;
 mod error;
 pub mod establisher;
 mod manager;
@@ -104,6 +106,12 @@ mod repository;
 mod types;
 
 pub(crate) use self::types::EstablishLockResult;
-pub use self::{error::ConnectionManagerError, establisher::PeerConnectionConfig, manager::ConnectionManager};
+pub use self::{
+    actor::{create as create_connection_manager_actor, ConnectionManagerRequester},
+    dialer::Dialer,
+    error::ConnectionManagerError,
+    establisher::PeerConnectionConfig,
+    manager::ConnectionManager,
+};
 
 type Result<T> = std::result::Result<T, ConnectionManagerError>;

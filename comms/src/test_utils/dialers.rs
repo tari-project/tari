@@ -20,31 +20,46 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use rand::{distributions::Alphanumeric, thread_rng, Rng};
-use std::iter;
+use crate::{
+    connection::PeerConnection,
+    connection_manager::{ConnectionManagerError, Dialer},
+};
+use futures::{future, Future};
+use std::{
+    marker::PhantomData,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
+};
 
-/// Generate a random string of the given size using the default `ThreadRng`.
-pub fn string(len: usize) -> String {
-    let mut rng = thread_rng();
-    iter::repeat(()).map(|_| rng.sample(Alphanumeric)).take(len).collect()
+/// Count the number of dial attempts. Resolving into a test peer connection.
+pub struct CountDialer<T> {
+    count: AtomicUsize,
+    _t: PhantomData<T>,
 }
 
-/// Generate a random string of the given size using the default `ThreadRng`.
-pub fn prefixed_string(prefix: &str, len: usize) -> String {
-    let mut rng = thread_rng();
-    let rand_str = iter::repeat(())
-        .map(|_| rng.sample(Alphanumeric))
-        .take(len)
-        .collect::<String>();
-    format!("{}{}", prefix, rand_str)
+impl<T> CountDialer<T> {
+    pub fn new() -> Self {
+        Self {
+            count: AtomicUsize::new(0),
+            _t: PhantomData,
+        }
+    }
+
+    pub fn count(&self) -> usize {
+        self.count.load(Ordering::SeqCst)
+    }
 }
 
-#[cfg(test)]
-mod test {
-    #[test]
-    fn string() {
-        let sample = super::string(8);
-        assert_ne!(sample, super::string(8));
-        assert_eq!(sample.len(), 8);
+impl<T> Dialer<T> for CountDialer<T> {
+    type Error = ConnectionManagerError;
+    type Future = impl Future<Output = Result<Self::Output, Self::Error>>;
+    type Output = Arc<PeerConnection>;
+
+    fn dial(&self, _: &T) -> Self::Future {
+        let (conn, _) = PeerConnection::new_with_connecting_state_for_test();
+        self.count.fetch_add(1, Ordering::AcqRel);
+        future::ready(Ok(Arc::new(conn)))
     }
 }

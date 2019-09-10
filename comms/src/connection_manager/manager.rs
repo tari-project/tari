@@ -31,6 +31,7 @@ use super::{
 };
 use crate::{
     connection::{ConnectionError, CurveEncryption, CurvePublicKey, PeerConnection, PeerConnectionState, ZmqContext},
+    connection_manager::dialer::Dialer,
     control_service::messages::RejectReason,
     message::FrameSet,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerManager},
@@ -341,7 +342,7 @@ impl ConnectionManager {
     }
 
     /// The peer is telling us that we already have a connection. This can occur if the connection has been made
-    /// by the remote peer while attempting to connect to it. Let's look for a connection and if we have one
+    /// by the remote peer while attempting to connect to it. Let's look for a connection and return it if we have one.
     fn handle_connection_rejection(&self, peer: &Peer, reason: RejectReason) -> Result<Arc<PeerConnection>> {
         match reason {
             RejectReason::ExistingConnection => self
@@ -350,6 +351,28 @@ impl ConnectionManager {
                 .ok_or(ConnectionManagerError::PeerConnectionNotFound),
             _ => Err(ConnectionManagerError::ConnectionRejected(reason)),
         }
+    }
+}
+
+impl Dialer<Peer> for ConnectionManager {
+    type Error = ConnectionManagerError;
+    type Future = impl std::future::Future<Output = Result<Self::Output>>;
+    type Output = Arc<PeerConnection>;
+
+    fn dial(&self, peer: &Peer) -> Self::Future {
+        // TODO: This is synchronous until we can make connection manager fully async
+        futures::future::ready(self.establish_connection_to_peer(peer))
+    }
+}
+
+impl Dialer<NodeId> for ConnectionManager {
+    type Error = ConnectionManagerError;
+    type Future = impl std::future::Future<Output = Result<Self::Output>>;
+    type Output = Arc<PeerConnection>;
+
+    fn dial(&self, node_id: &NodeId) -> Self::Future {
+        // TODO: This is synchronous until we can make connection manager fully async
+        futures::future::ready(self.establish_connection_to_node_id(node_id))
     }
 }
 

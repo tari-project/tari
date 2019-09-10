@@ -69,7 +69,7 @@ pub enum ConnectRequestOutcome {
 }
 
 /// Represents the reason for a peer connection request being rejected
-#[derive(Error, Serialize, Deserialize, Debug)]
+#[derive(Error, Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub enum RejectReason {
     /// Peer already has an existing active peer connection
     ExistingConnection,

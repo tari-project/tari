@@ -20,72 +20,28 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::support::{
-    factories::{self, TestFactory},
-    helpers::streams::stream_assert_count,
+use crate::{
+    connection_manager::helpers::make_peer_connection_config,
+    support::{
+        factories::{self, TestFactory},
+        helpers::{
+            database::{clean_up_datastore, init_datastore},
+            streams::stream_assert_count,
+        },
+    },
 };
 use futures::channel::mpsc::{channel, Sender};
-use std::{path::PathBuf, sync::Arc, thread, time::Duration};
+use std::{sync::Arc, thread, time::Duration};
 use tari_comms::{
     connection::{types::Linger, ZmqContext},
-    connection_manager::PeerConnectionConfig,
     control_service::{ControlService, ControlServiceConfig},
     message::FrameSet,
-    peer_manager::{Peer, PeerManager},
-    types::CommsDatabase,
 };
-use tari_storage::{
-    lmdb_store::{LMDBBuilder, LMDBError, LMDBStore},
-    LMDBWrapper,
-};
+use tari_storage::LMDBWrapper;
 use tari_utilities::thread_join::ThreadJoinWithTimeout;
 
-fn make_peer_connection_config() -> PeerConnectionConfig {
-    PeerConnectionConfig {
-        peer_connection_establish_timeout: Duration::from_secs(5),
-        max_message_size: 1024,
-        max_connections: 10,
-        host: "127.0.0.1".parse().unwrap(),
-        max_connect_retries: 5,
-
-        socks_proxy_address: None,
-    }
-}
-
-fn make_peer_manager(peers: Vec<Peer>, database: CommsDatabase) -> Arc<PeerManager> {
-    Arc::new(
-        factories::peer_manager::create()
-            .with_peers(peers)
-            .with_database(database)
-            .build()
-            .unwrap(),
-    )
-}
-
-fn get_path(name: &str) -> String {
-    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.push("tests/data");
-    path.push(name);
-    path.to_str().unwrap().to_string()
-}
-
-fn init_datastore(name: &str) -> Result<LMDBStore, LMDBError> {
-    let path = get_path(name);
-    let _ = std::fs::create_dir(&path).unwrap_or_default();
-    LMDBBuilder::new()
-        .set_path(&path)
-        .set_environment_size(10)
-        .set_max_number_of_databases(2)
-        .add_database(name, lmdb_zero::db::CREATE)
-        .build()
-}
-
-fn clean_up_datastore(name: &str) {
-    std::fs::remove_dir_all(get_path(name)).unwrap();
-}
-
 fn pause() {
-    thread::sleep(Duration::from_millis(200));
+    thread::sleep(Duration::from_millis(100));
 }
 
 #[test]
@@ -117,7 +73,11 @@ fn establish_peer_connection() {
     let datastore = init_datastore(node_B_database_name).unwrap();
     let database = datastore.get_handle(node_B_database_name).unwrap();
     let database = LMDBWrapper::new(Arc::new(database));
-    let node_B_peer_manager = make_peer_manager(vec![], database);
+    let node_B_peer_manager = factories::peer_manager::create()
+        .with_database(database)
+        .build()
+        .map(Arc::new)
+        .unwrap();
     let node_B_connection_manager = Arc::new(
         factories::connection_manager::create()
             .with_context(context.clone())
@@ -149,7 +109,12 @@ fn establish_peer_connection() {
     let datastore = init_datastore(node_A_database_name).unwrap();
     let database = datastore.get_handle(node_A_database_name).unwrap();
     let database = LMDBWrapper::new(Arc::new(database));
-    let node_A_peer_manager = make_peer_manager(vec![node_B_peer.clone()], database);
+    let node_A_peer_manager = factories::peer_manager::create()
+        .with_peers(vec![node_B_peer.clone()])
+        .with_database(database)
+        .build()
+        .map(Arc::new)
+        .unwrap();
     let node_A_connection_manager = Arc::new(
         factories::connection_manager::create()
             .with_context(context.clone())

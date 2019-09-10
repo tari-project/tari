@@ -49,7 +49,7 @@ pub trait MessageFormat: Sized {
     fn from_base64(msg: &str) -> Result<Self, MessageFormatError>;
 }
 
-impl<'de, T> MessageFormat for T
+impl<T> MessageFormat for T
 where T: DeserializeOwned + Serialize
 {
     fn to_binary(&self) -> Result<Vec<u8>, MessageFormatError> {

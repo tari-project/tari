@@ -6,6 +6,8 @@
 //!
 //! [CommsBuilder]: ./builder/index.html
 #![feature(checked_duration_since)]
+// Allow `type Future = impl Future`
+#![feature(type_alias_impl_trait)]
 
 #[macro_use]
 extern crate lazy_static;
@@ -28,5 +30,8 @@ pub mod pub_sub_channel;
 pub mod reply_channel;
 pub mod types;
 mod utils;
+
+#[cfg(test)]
+pub(crate) mod test_utils;
 
 pub use self::builder::CommsBuilder;
