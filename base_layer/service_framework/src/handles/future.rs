@@ -29,7 +29,6 @@ use futures::{
 };
 use std::{
     any::Any,
-    hash::Hash,
     pin::Pin,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -39,13 +38,13 @@ use std::{
 
 /// Future which resolves to `ServiceHandles` once it is signaled to
 /// do so.
-pub struct ServiceHandlesFuture<TName> {
-    handles: Arc<ServiceHandles<TName>>,
+pub struct ServiceHandlesFuture {
+    handles: Arc<ServiceHandles>,
     is_ready: Arc<AtomicBool>,
     waker: Arc<AtomicWaker>,
 }
 
-impl<TName> Clone for ServiceHandlesFuture<TName> {
+impl Clone for ServiceHandlesFuture {
     fn clone(&self) -> Self {
         Self {
             handles: Arc::clone(&self.handles),
@@ -55,9 +54,7 @@ impl<TName> Clone for ServiceHandlesFuture<TName> {
     }
 }
 
-impl<TName> ServiceHandlesFuture<TName>
-where TName: Eq + Hash
-{
+impl ServiceHandlesFuture {
     /// Create a new ServiceHandlesFuture with empty handles
     pub fn new() -> Self {
         Self {
@@ -68,19 +65,20 @@ where TName: Eq + Hash
     }
 
     /// Insert a service handle with the given name
-    pub fn insert(&self, service_name: TName, value: impl Any + Send + Sync) {
-        self.handles.insert(service_name, value);
+    pub fn register<H>(&self, handle: H)
+    where H: Any + Send + Sync {
+        self.handles.register(handle);
     }
 
     /// Retrieve a handle and downcast it to return type and return a copy, otherwise None is returned
-    pub fn get_handle<V>(&self, service_name: TName) -> Option<V>
-    where V: Clone + 'static {
-        self.handles.get_handle(service_name)
+    pub fn get_handle<H>(&self) -> Option<H>
+    where H: Clone + 'static {
+        self.handles.get_handle()
     }
 
     // /// Call the given function with the final handles once this future is ready (`notify_ready` is called).
     pub fn lazy_service<F, S>(&self, service_fn: F) -> LazyService<F, Self, S>
-    where F: FnOnce(Arc<ServiceHandles<TName>>) -> S {
+    where F: FnOnce(Arc<ServiceHandles>) -> S {
         LazyService::new(self.clone(), service_fn)
     }
 
@@ -90,13 +88,13 @@ where TName: Eq + Hash
         self.waker.wake();
     }
 
-    pub fn into_inner(self) -> Arc<ServiceHandles<TName>> {
+    pub fn into_inner(self) -> Arc<ServiceHandles> {
         self.handles
     }
 }
 
-impl<TName> Future for ServiceHandlesFuture<TName> {
-    type Output = Arc<ServiceHandles<TName>>;
+impl Future for ServiceHandlesFuture {
+    type Output = Arc<ServiceHandles>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         if self.is_ready.load(Ordering::SeqCst) {
@@ -119,15 +117,14 @@ mod test {
         #[derive(Clone)]
         struct TestHandle;
         let handles = ServiceHandlesFuture::new();
-        handles.insert(1, TestHandle);
-        handles.get_handle::<TestHandle>(1).unwrap();
-        assert!(handles.get_handle::<()>(1).is_none());
-        assert!(handles.get_handle::<()>(2).is_none());
+        handles.register(TestHandle);
+        handles.get_handle::<TestHandle>().unwrap();
+        assert!(handles.get_handle::<()>().is_none());
     }
 
     #[test]
     fn notify_ready() {
-        let mut handles = ServiceHandlesFuture::<()>::new();
+        let mut handles = ServiceHandlesFuture::new();
         let mut clone = handles.clone();
 
         counter_context!(cx, wake_count);

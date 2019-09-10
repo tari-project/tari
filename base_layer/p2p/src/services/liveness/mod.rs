@@ -42,7 +42,7 @@ mod state;
 
 use self::{error::LivenessError, service::LivenessService, state::LivenessState};
 use crate::{
-    services::{comms_outbound::CommsOutboundHandle, ServiceHandlesFuture, ServiceName},
+    services::comms_outbound::CommsOutboundHandle,
     tari_message::{NetMessage, TariMessageType},
 };
 use futures::{future, task::SpawnExt, Future, Stream, StreamExt};
@@ -53,11 +53,15 @@ use tari_comms::{
     inbound_message_pipeline::InboundTopicSubscriptionFactory,
     message::{InboundMessage, MessageError},
 };
-use tari_service_framework::{reply_channel, ServiceInitializationError, ServiceInitializer};
+use tari_service_framework::{
+    handles::ServiceHandlesFuture,
+    reply_channel::{self, SenderService},
+    ServiceInitializationError,
+    ServiceInitializer,
+};
+use tari_utilities::message_format::MessageFormat;
 
 pub use self::messages::{LivenessRequest, LivenessResponse, PingPong};
-use tari_service_framework::reply_channel::SenderService;
-use tari_utilities::message_format::MessageFormat;
 
 pub type LivenessHandle = SenderService<LivenessRequest, Result<LivenessResponse, LivenessError>>;
 
@@ -95,7 +99,7 @@ impl LivenessInitializer {
     }
 }
 
-impl<TExec> ServiceInitializer<ServiceName, TExec> for LivenessInitializer
+impl<TExec> ServiceInitializer<TExec> for LivenessInitializer
 where TExec: SpawnExt
 {
     type Future = impl Future<Output = Result<(), ServiceInitializationError>>;
@@ -104,7 +108,7 @@ where TExec: SpawnExt
         let (sender, receiver) = reply_channel::unbounded();
 
         // Register handle before waiting for handles to be ready
-        handles_fut.insert(ServiceName::Liveness, sender);
+        handles_fut.register(sender);
 
         // Create a stream which receives PingPong messages from comms
         let ping_stream = self.ping_stream();
@@ -115,7 +119,7 @@ where TExec: SpawnExt
                 let handles = handles_fut.await;
 
                 let outbound_handle = handles
-                    .get_handle::<CommsOutboundHandle>(ServiceName::CommsOutbound)
+                    .get_handle::<CommsOutboundHandle>()
                     .expect("Liveness service requires CommsOutbound service handle");
 
                 let state = Arc::new(LivenessState::new());
