@@ -71,8 +71,10 @@ pub trait BlockchainBackend: Send + Sync {
     /// Fetches the merklish root for the MMR tree identified by the key. This function should only fail if there is an
     /// access or integrity issue with the back end.
     fn fetch_mmr_root(&self, tree: MmrTree) -> Result<HashOutput, ChainStorageError>;
+    /// Returns only the MMR merkle root without the state of the roaring bitmap.
+    fn fetch_mmr_only_root(&self, tree: MmrTree) -> Result<HashOutput, ChainStorageError>;
     /// Constructs a merkle proof for the specified merkle mountain range and the given leaf position.
-    fn fetch_mmr_proof(&self, tree: MmrTree, pos: u64) -> Result<MerkleProof, ChainStorageError>;
+    fn fetch_mmr_proof(&self, tree: MmrTree, pos: usize) -> Result<MerkleProof, ChainStorageError>;
     /// The nth MMR checkpoint (the list of nodes added & deleted) for the given Merkle tree. The index is the n-th
     /// checkpoint (block) from the pruning horizon block.
     fn fetch_mmr_checkpoint(&self, tree: MmrTree, index: u64) -> Result<MerkleCheckPoint, ChainStorageError>;
@@ -279,8 +281,13 @@ where T: BlockchainBackend
         self.db.fetch_mmr_root(tree)
     }
 
+    /// Returns only the MMR merkle root without the state of the roaring bitmap.
+    pub fn fetch_mmr_only_root(&self, tree: MmrTree) -> Result<HashOutput, ChainStorageError> {
+        self.db.fetch_mmr_only_root(tree)
+    }
+
     /// Fetch a Merklish proof for the given hash, tree and position in the MMR
-    pub fn fetch_mmr_proof(&self, tree: MmrTree, pos: u64) -> Result<MerkleProof, ChainStorageError> {
+    pub fn fetch_mmr_proof(&self, tree: MmrTree, pos: usize) -> Result<MerkleProof, ChainStorageError> {
         self.db.fetch_mmr_proof(tree, pos)
     }
 

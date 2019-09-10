@@ -242,8 +242,28 @@ where D: Digest + Send + Sync
         Ok(root)
     }
 
-    fn fetch_mmr_proof(&self, _tree: MmrTree, _pos: u64) -> Result<MerkleProof, ChainStorageError> {
-        unimplemented!()
+    fn fetch_mmr_only_root(&self, tree: MmrTree) -> Result<Vec<u8>, ChainStorageError> {
+        let db = self.db_access()?;
+        let root = match tree {
+            MmrTree::Utxo => db.utxo_mmr.get_mmr_only_root(),
+            MmrTree::Kernel => db.kernel_mmr.get_mmr_only_root(),
+            MmrTree::RangeProof => db.range_proof_mmr.get_mmr_only_root(),
+            MmrTree::Header => db.header_mmr.get_mmr_only_root(),
+        };
+        Ok(root)
+    }
+
+    /// Returns an MMR proof extracted from the full Merkle mountain range without trimming the MMR using the roaring
+    /// bitmap
+    fn fetch_mmr_proof(&self, tree: MmrTree, leaf_pos: usize) -> Result<MerkleProof, ChainStorageError> {
+        let db = self.db_access()?;
+        let proof = match tree {
+            MmrTree::Utxo => MerkleProof::for_leaf_node(&db.utxo_mmr.mmr(), leaf_pos)?,
+            MmrTree::Kernel => MerkleProof::for_leaf_node(&db.kernel_mmr.mmr(), leaf_pos)?,
+            MmrTree::RangeProof => MerkleProof::for_leaf_node(&db.range_proof_mmr.mmr(), leaf_pos)?,
+            MmrTree::Header => MerkleProof::for_leaf_node(&db.header_mmr.mmr(), leaf_pos)?,
+        };
+        Ok(proof)
     }
 
     fn fetch_mmr_checkpoint(&self, tree: MmrTree, index: u64) -> Result<MerkleCheckPoint, ChainStorageError> {
