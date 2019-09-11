@@ -62,7 +62,7 @@ pub fn generate_id<D: Digest>(
 }
 
 /// Represents a single Text Message to be sent that includes an acknowledged field
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SentTextMessage {
     pub id: Vec<u8>,
     pub source_pub_key: CommsPublicKey,
@@ -70,6 +70,7 @@ pub struct SentTextMessage {
     pub message: String,
     pub timestamp: NaiveDateTime,
     pub acknowledged: bool,
+    pub is_read: bool,
 }
 
 /// The Native Sql version of the SentTextMessage model
@@ -82,6 +83,7 @@ struct SentTextMessageSql {
     pub message: String,
     pub timestamp: NaiveDateTime,
     pub acknowledged: i32,
+    pub is_read: i32,
 }
 
 impl SentTextMessage {
@@ -106,6 +108,7 @@ impl SentTextMessage {
             message,
             timestamp,
             acknowledged: false,
+            is_read: false,
         }
     }
 
@@ -177,6 +180,18 @@ impl SentTextMessage {
 
         Ok(())
     }
+
+    pub fn mark_sent_message_opened(id: Vec<u8>, conn: &SqliteConnection) -> Result<(), TextMessageError> {
+        let num_updated = diesel::update(sent_messages::table.filter(sent_messages::id.eq(&id.to_hex())))
+            .set(UpdateOpenedSentTextMessage { is_read: Some(1i32) })
+            .execute(conn)?;
+
+        if num_updated == 0 {
+            return Err(TextMessageError::DatabaseUpdateError);
+        }
+
+        Ok(())
+    }
 }
 
 impl From<SentTextMessage> for SentTextMessageSql {
@@ -188,6 +203,7 @@ impl From<SentTextMessage> for SentTextMessageSql {
             message: msg.message,
             timestamp: msg.timestamp,
             acknowledged: msg.acknowledged as i32,
+            is_read: msg.is_read as i32,
         }
     }
 }
@@ -203,6 +219,7 @@ impl TryFrom<SentTextMessageSql> for SentTextMessage {
             message: msg.message,
             timestamp: msg.timestamp,
             acknowledged: msg.acknowledged != 0,
+            is_read: msg.is_read != 0,
         })
     }
 }
@@ -212,6 +229,13 @@ impl TryFrom<SentTextMessageSql> for SentTextMessage {
 #[table_name = "sent_messages"]
 pub struct UpdateAckSentTextMessage {
     pub acknowledged: Option<i32>,
+}
+
+/// The changeset to mark a SentTextMessage as read
+#[derive(AsChangeset)]
+#[table_name = "sent_messages"]
+pub struct UpdateOpenedSentTextMessage {
+    pub is_read: Option<i32>,
 }
 
 /// Represents a single received Text Message
@@ -317,6 +341,7 @@ impl From<ReceivedTextMessage> for SentTextMessage {
             message: t.message,
             timestamp: t.timestamp,
             acknowledged: false,
+            is_read: false,
         }
     }
 }
@@ -342,6 +367,20 @@ impl PartialOrd<ReceivedTextMessage> for ReceivedTextMessage {
 
 impl Ord for ReceivedTextMessage {
     /// Orders OutboundMessage from least to most time remaining from being scheduled
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.timestamp.cmp(&other.timestamp)
+    }
+}
+
+impl PartialOrd<SentTextMessage> for SentTextMessage {
+    /// Orders InboundMessage from least to most time remaining from being scheduled
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.timestamp.partial_cmp(&other.timestamp)
+    }
+}
+
+impl Ord for SentTextMessage {
+    /// Orders InboundMessage from least to most time remaining from being scheduled
     fn cmp(&self, other: &Self) -> Ordering {
         self.timestamp.cmp(&other.timestamp)
     }
@@ -666,9 +705,14 @@ mod test {
         assert_eq!(count, 2);
 
         assert!(SentTextMessage::mark_sent_message_ack(vec![2u8; 32], &conn).is_err());
-        SentTextMessage::mark_sent_message_ack(sent_msg1.clone().id, &conn).unwrap();
+        SentTextMessage::mark_sent_message_ack(sent_msg1.id.clone(), &conn).unwrap();
         let find3 = SentTextMessage::find(&sent_msg1.id, &conn).unwrap();
         assert!(find3.acknowledged);
+
+        assert!(SentTextMessage::mark_sent_message_opened(vec![2u8; 32], &conn).is_err());
+        SentTextMessage::mark_sent_message_opened(sent_msg1.id.clone(), &conn).unwrap();
+        let find4 = SentTextMessage::find(&sent_msg1.id, &conn).unwrap();
+        assert!(find4.acknowledged);
 
         let recv_msg1 = ReceivedTextMessage {
             id: vec![1u8; 32],

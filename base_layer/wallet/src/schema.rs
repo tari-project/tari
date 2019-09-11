@@ -24,6 +24,7 @@ table! {
         message -> Text,
         timestamp -> Timestamp,
         acknowledged -> Integer,
+        is_read -> Integer,
     }
 }
 

@@ -42,16 +42,20 @@ use tari_crypto::keys::PublicKey;
 use tari_p2p::{initialization::CommsConfig, sync_services::ServiceError};
 use tari_utilities::hex::Hex;
 use tari_wallet::{text_message_service::Contact, wallet::WalletConfig};
-/// TODO: Replace expect() methods within functions.
 
 /// Once bindings are generated via cbindgen, change the using to struct, remove the equals sign and anything after it
 /// on the line. These are used as opaque pointers
 pub type Wallet = tari_wallet::Wallet;
 pub type ReceivedTextMessage = tari_wallet::text_message_service::ReceivedTextMessage;
+pub type SentTextMessage = tari_wallet::text_message_service::SentTextMessage;
 
 /// Received Messages
 #[derive(Debug)]
 pub struct ReceivedMessages(Vec<ReceivedTextMessage>);
+
+/// Sent Messages
+#[derive(Debug)]
+pub struct SentMessages(Vec<SentTextMessage>);
 
 /// Wallet Settings
 #[derive(Debug, Default, Deserialize)]
@@ -78,6 +82,66 @@ pub struct Peers {
     peers: Vec<ConfigPeer>,
 }
 
+/// Sets the is_read of a SentText Message, returns if successful or not
+#[no_mangle]
+pub unsafe extern "C" fn senttextmessage_set_opened(o: *mut SentTextMessage, w: *mut Wallet) -> bool {
+    if !w.is_null() && !o.is_null() {
+        if !(*o).acknowledged {
+            return false; // can't be opened before being delivered
+        }
+
+        if (*o).is_read {
+            return true; // already read, no change needed
+        }
+
+        let mut rx_messages: Vec<SentTextMessage>;
+        match (*w).text_message_service.get_text_messages() {
+            Ok(rx) => rx_messages = rx.sent_messages,
+            Err(_) => {
+                // TODO: log this to file or database
+                return false;
+            },
+        };
+
+        for i in 0..rx_messages.len() {
+            if rx_messages[i].id == (*o).id {
+                rx_messages[i].is_read = true; // set for original
+                (*o).is_read = true; // set for clone
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+/// Returns the is_read of a SentText Message as bool
+#[no_mangle]
+pub unsafe extern "C" fn senttextmessage_get_opened(o: *const SentTextMessage) -> bool {
+    if !o.is_null() {
+        return (*o).is_read;
+    }
+    false
+}
+
+/// Returns the acknowledged of a SentText Message as bool
+#[no_mangle]
+pub unsafe extern "C" fn senttextmessage_get_acknowledged(o: *const SentTextMessage) -> bool {
+    if !o.is_null() {
+        return (*o).acknowledged;
+    }
+    false
+}
+
+/// Returns the timestamp of a SentText Message as string
+#[no_mangle]
+pub unsafe extern "C" fn senttextmessage_get_timestamp(o: *const SentTextMessage) -> *mut c_char {
+    let mut m = CString::new("").unwrap();
+    if !o.is_null() {
+        m = CString::new((*o).timestamp.to_string().clone()).unwrap();
+    }
+    CString::into_raw(m)
+}
+
 /// Returns the timestamp of a ReceivedText Message as string
 #[no_mangle]
 pub unsafe extern "C" fn receivedtextmessage_get_timestamp(o: *const ReceivedTextMessage) -> *mut c_char {
@@ -88,7 +152,7 @@ pub unsafe extern "C" fn receivedtextmessage_get_timestamp(o: *const ReceivedTex
     CString::into_raw(m)
 }
 
-/// Returns the display name from the ReceivedTextMessage for the the peer as string
+/// Returns the display name from the ReceivedTextMessage as string
 #[no_mangle]
 pub unsafe extern "C" fn receivedtextmessage_get_screenname(
     o: *const ReceivedTextMessage,
@@ -97,31 +161,86 @@ pub unsafe extern "C" fn receivedtextmessage_get_screenname(
 {
     let mut m = CString::new("").unwrap();
     if !o.is_null() {
-        let contacts = (*w)
-            .text_message_service
-            .get_contacts()
-            .expect("Could not read contacts");
-        let contact = contacts
-            .iter()
-            .find(|c| c.pub_key == (*o).source_pub_key)
-            .expect("Message from unknown peer");
-
-        m = CString::new(contact.screen_name.to_string().clone()).unwrap();
+        match (*w).text_message_service.get_contacts() {
+            Ok(cv) => {
+                match cv.iter().find(|c| c.pub_key == (*o).source_pub_key) {
+                    Some(c) => {
+                        m = CString::new(c.screen_name.to_string().clone()).unwrap();
+                    },
+                    None => {},
+                };
+            },
+            Err(_) => {
+                // TODO: log this to file or database
+            },
+        };
     }
     CString::into_raw(m)
 }
 
-/// Returns the identifier from the ReceivedTextMessage for the the peer as char*
+/// Returns the identifier from the ReceivedTextMessage as char*
 #[no_mangle]
-pub unsafe extern "C" fn receivedtextmessage_get_public_key(o: *const ReceivedTextMessage) -> *mut c_char {
+pub unsafe extern "C" fn receivedtextmessage_get_identifier(o: *const ReceivedTextMessage) -> *mut c_char {
     let mut m = CString::new("").unwrap();
     if !o.is_null() {
-        m = CString::new((*o).source_pub_key.to_string().clone()).unwrap();
+        let l = (*o).id.clone().to_hex();
+        m = CString::new(l).unwrap();
     }
     CString::into_raw(m)
 }
 
-/// Returns the message from the ReceivedTextMessage for the the peer as char*
+/// Returns the identifier from the SentTextMessage as char*
+#[no_mangle]
+pub unsafe extern "C" fn senttextmessage_get_identifier(o: *const SentTextMessage) -> *mut c_char {
+    let mut m = CString::new("").unwrap();
+    if !o.is_null() {
+        let l = (*o).id.clone().to_hex();
+        m = CString::new(l).unwrap();
+    }
+    CString::into_raw(m)
+}
+
+/// Returns the source from the ReceivedTextMessage as char*
+#[no_mangle]
+pub unsafe extern "C" fn receivedtextmessage_get_source_public_key(o: *const ReceivedTextMessage) -> *mut c_char {
+    let mut m = CString::new("").unwrap();
+    if !o.is_null() {
+        m = CString::new((*o).source_pub_key.to_hex()).unwrap();
+    }
+    CString::into_raw(m)
+}
+
+/// Returns the destination from the ReceivedTextMessage as char*
+#[no_mangle]
+pub unsafe extern "C" fn receivedtextmessage_get_destination_public_key(o: *const ReceivedTextMessage) -> *mut c_char {
+    let mut m = CString::new("").unwrap();
+    if !o.is_null() {
+        m = CString::new((*o).dest_pub_key.to_hex()).unwrap();
+    }
+    CString::into_raw(m)
+}
+
+/// Returns the source from the SentTextMessage as char*
+#[no_mangle]
+pub unsafe extern "C" fn senttextmessage_get_source_public_key(o: *const SentTextMessage) -> *mut c_char {
+    let mut m = CString::new("").unwrap();
+    if !o.is_null() {
+        m = CString::new((*o).source_pub_key.to_hex()).unwrap();
+    }
+    CString::into_raw(m)
+}
+
+/// Returns the destination from the SentTextMessage as char*
+#[no_mangle]
+pub unsafe extern "C" fn senttextmessage_get_destination_public_key(o: *const SentTextMessage) -> *mut c_char {
+    let mut m = CString::new("").unwrap();
+    if !o.is_null() {
+        m = CString::new((*o).dest_pub_key.to_hex()).unwrap();
+    }
+    CString::into_raw(m)
+}
+
+/// Returns the message from the ReceivedTextMessage as char*
 #[no_mangle]
 pub unsafe extern "C" fn receivedtextmessage_get_message(o: *const ReceivedTextMessage) -> *mut c_char {
     let mut m = CString::new("").unwrap();
@@ -129,6 +248,27 @@ pub unsafe extern "C" fn receivedtextmessage_get_message(o: *const ReceivedTextM
         m = CString::new((*o).message.clone()).unwrap();
     }
     CString::into_raw(m)
+}
+
+/// Returns the message from the SentTextMessage as char*
+#[no_mangle]
+pub unsafe extern "C" fn senttextmessage_get_message(o: *const SentTextMessage) -> *mut c_char {
+    let mut m = CString::new("").unwrap();
+    if !o.is_null() {
+        m = CString::new((*o).message.clone()).unwrap();
+    }
+    CString::into_raw(m)
+}
+
+/// Frees memory for SentMessages pointer
+#[no_mangle]
+pub unsafe extern "C" fn destroy_sentmessages(obj: *mut SentMessages) {
+    // as a rule of thumb, freeing a null pointer is just a noop.
+    if obj.is_null() {
+        return;
+    }
+
+    Box::from_raw(obj);
 }
 
 /// Frees memory for ReceivedMessages pointer
@@ -182,6 +322,7 @@ pub unsafe extern "C" fn create_wallet(
     let local_net_address = match format!("{}:{}", public, (*settings_p).control_port.unwrap()).parse() {
         Ok(na) => na,
         Err(_) => {
+            // TODO: log this to file or database
             std::process::exit(1);
         },
     };
@@ -242,7 +383,7 @@ pub unsafe extern "C" fn destroy_wallet(w: *mut Wallet) {
         wallet.service_executor.shutdown().unwrap();
         wallet
             .service_executor
-            .join_timeout(Duration::from_millis(3000))
+            .join_timeout(Duration::from_millis(5000))
             .unwrap();
         let comms = Arc::try_unwrap(wallet.comms_services)
             .map_err(|_| ServiceError::CommsServiceOwnershipError)
@@ -255,34 +396,43 @@ pub unsafe extern "C" fn destroy_wallet(w: *mut Wallet) {
 /// Adds peer to wallet and adds peer as contact to wallet message service
 #[no_mangle]
 pub unsafe extern "C" fn wallet_add_peer(o: *mut ConfigPeer, w: *mut Wallet) {
-    let pk = CommsPublicKey::from_hex((*o).pub_key.as_str()).expect("Error parsing pub key from Hex");
-    if let Ok(na) = (*o).address.clone().parse::<NetAddress>() {
-        let peer = Peer::from_public_key_and_address(pk.clone(), na.clone()).unwrap();
-        (*w).comms_services.peer_manager().add_peer(peer).unwrap();
+    if let Ok(pk) = CommsPublicKey::from_hex((*o).pub_key.as_str()) {
+        if let Ok(na) = (*o).address.clone().parse::<NetAddress>() {
+            let peer = Peer::from_public_key_and_address(pk.clone(), na.clone()).unwrap();
+            (*w).comms_services.peer_manager().add_peer(peer).unwrap();
 
-        if let Err(e) = (*w).text_message_service.add_contact(Contact {
-            screen_name: (*o).screen_name.clone(),
-            pub_key: pk.clone(),
-            address: na.clone(),
-        }) {
-            println!("{:?}", e);
-        };
+            if let Err(_e) = (*w).text_message_service.add_contact(Contact {
+                screen_name: (*o).screen_name.clone(),
+                pub_key: pk.clone(),
+                address: na.clone(),
+            }) {
+                // TODO: log this to file or database
+            };
+        }
     }
 }
 
 /// Returns a pointer to the received messages
 #[no_mangle]
 pub unsafe extern "C" fn wallet_get_receivedmessages(w: *mut Wallet) -> *mut ReceivedMessages {
-    let contacts = (*w)
-        .text_message_service
-        .get_contacts()
-        .expect("Could not read contacts");
+    let mut rx_messages: Vec<ReceivedTextMessage> = Vec::new();
+    let mut contacts: Vec<Contact> = Vec::new();
 
-    let mut rx_messages: Vec<ReceivedTextMessage> = (*w)
-        .text_message_service
-        .get_text_messages()
-        .expect("Error retrieving text messages from TMS")
-        .received_messages;
+    match (*w).text_message_service.get_contacts() {
+        Ok(cv) => {
+            contacts = cv;
+        },
+        Err(_) => {
+            // TODO: log this to file or database
+        },
+    };
+
+    match (*w).text_message_service.get_text_messages() {
+        Ok(rx) => rx_messages = rx.received_messages,
+        Err(_) => {
+            // TODO: log this to file or database
+        },
+    };
 
     rx_messages.sort();
 
@@ -293,7 +443,6 @@ pub unsafe extern "C" fn wallet_get_receivedmessages(w: *mut Wallet) -> *mut Rec
             .iter()
             .find(|c| c.pub_key == rx_messages[i].source_pub_key)
             .is_none()
-        //.expect("Message from unknown peer");
         {
             messages.0.push(rx_messages[i].clone());
         }
@@ -301,6 +450,42 @@ pub unsafe extern "C" fn wallet_get_receivedmessages(w: *mut Wallet) -> *mut Rec
 
     let boxed = Box::new(messages);
     Box::into_raw(boxed)
+}
+
+/// Returns a pointer to the sent messages
+#[no_mangle]
+pub unsafe extern "C" fn wallet_get_sentmessages(w: *mut Wallet) -> *mut SentMessages {
+    let mut rx_messages: Vec<SentTextMessage> = Vec::new();
+
+    match (*w).text_message_service.get_text_messages() {
+        Ok(rx) => rx_messages = rx.sent_messages,
+        Err(_) => {
+            // TODO: log this to file or database
+        },
+    };
+
+    rx_messages.sort();
+
+    let mut messages = SentMessages(Vec::new());
+
+    for i in 0..rx_messages.len() {
+        {
+            messages.0.push(rx_messages[i].clone());
+        }
+    }
+
+    let boxed = Box::new(messages);
+    Box::into_raw(boxed)
+}
+
+/// Returns the number of sent messages, zero-indexed
+#[no_mangle]
+pub unsafe extern "C" fn wallet_get_sentmessages_length(vec: *const SentMessages) -> c_int {
+    if vec.is_null() {
+        return 0;
+    }
+
+    (&*vec).0.len() as c_int
 }
 
 /// Returns the number of received messages, zero-indexed
@@ -327,6 +512,16 @@ pub unsafe extern "C" fn wallet_get_receivedmessages_contents(
     &((list.0)[i as usize])
 }
 
+/// Returns a pointer to the received messages vector
+#[no_mangle]
+pub unsafe extern "C" fn wallet_get_sentmessages_contents(msgs: *mut SentMessages, i: c_int) -> *const SentTextMessage {
+    if msgs.is_null() {
+        return std::ptr::null_mut();
+    }
+    let list = &mut *msgs;
+    &((list.0)[i as usize])
+}
+
 /// Sends a message from the wallet to the peers wallet
 #[no_mangle]
 pub unsafe extern "C" fn wallet_send_message(w: *mut Wallet, o: *mut ConfigPeer, s: *mut c_char) {
@@ -335,7 +530,7 @@ pub unsafe extern "C" fn wallet_send_message(w: *mut Wallet, o: *mut ConfigPeer,
             if !s.is_null() {
                 let c_str = CStr::from_ptr(s);
                 let r_str = c_str.to_str().unwrap();
-                let destination = CommsPublicKey::from_hex(r_str).unwrap();
+                let destination = CommsPublicKey::from_hex(&(*o).pub_key).unwrap();
                 (*w).text_message_service
                     .send_text_message(destination, r_str.to_string())
                     .unwrap()
@@ -563,3 +758,6 @@ pub unsafe extern "C" fn free_string(o: *mut c_char) {
         let _ = CString::from_raw(o);
     }
 }
+
+#[cfg(test)]
+mod test;
