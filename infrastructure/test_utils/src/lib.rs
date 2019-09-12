@@ -7,3 +7,4 @@
 //! - `futures` - Contains utilities which make testing future-based code easier
 pub mod futures;
 pub mod random;
+// pub mod stream;

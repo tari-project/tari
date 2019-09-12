@@ -37,7 +37,7 @@ use std::{
 use tari_comms::{
     domain_subscriber::{MessageInfo, SyncDomainSubscription},
     message::MessageFlags,
-    outbound_message_service::{outbound_message_service::OutboundMessageService, BroadcastStrategy},
+    outbound_message_service::{BroadcastStrategy, OutboundServiceRequester},
     types::CommsPublicKey,
 };
 use tari_p2p::{
@@ -52,6 +52,7 @@ use tari_p2p::{
     },
     tari_message::{ExtendedMessage, NetMessage, TariMessageType},
 };
+use tokio::runtime::Runtime;
 
 const LOG_TARGET: &'static str = "base_layer::wallet::text_messsage_service";
 
@@ -66,19 +67,23 @@ pub struct TextMessageAck {
 pub struct TextMessageService {
     pub_key: CommsPublicKey,
     screen_name: Option<String>,
-    oms: Option<Arc<OutboundMessageService>>,
+    oms: Option<OutboundServiceRequester>,
     api: ServiceApiWrapper<TextMessageServiceApi, TextMessageApiRequest, TextMessageApiResult>,
     database_path: String,
+    runtime: Runtime,
 }
 
 impl TextMessageService {
     pub fn new(pub_key: CommsPublicKey, database_path: String) -> TextMessageService {
+        // TODO: Hack to allow async code to work, remove in next PR
+        let runtime = Runtime::new().unwrap();
         TextMessageService {
             pub_key,
             screen_name: None,
             oms: None,
             api: Self::setup_api(),
             database_path,
+            runtime,
         }
     }
 
@@ -103,18 +108,18 @@ impl TextMessageService {
         conn: &SqliteConnection,
     ) -> Result<(), TextMessageError>
     {
-        let oms = self.oms.clone().ok_or(TextMessageError::OMSNotInitialized)?;
+        let mut oms = self.oms.clone().ok_or(TextMessageError::OMSNotInitialized)?;
 
         let count = SentTextMessage::count_by_dest_pub_key(&dest_pub_key.clone(), conn)?;
 
         let text_message = SentTextMessage::new(self.pub_key.clone(), dest_pub_key, message, Some(count as usize));
 
-        oms.send_message(
+        self.runtime.block_on(oms.send_message(
             BroadcastStrategy::DirectPublicKey(text_message.dest_pub_key.clone()),
             MessageFlags::ENCRYPTED,
             TariMessageType::new(ExtendedMessage::Text),
             text_message.clone(),
-        )?;
+        ))?;
 
         text_message.commit(conn)?;
 
@@ -131,7 +136,7 @@ impl TextMessageService {
         conn: &SqliteConnection,
     ) -> Result<(), TextMessageError>
     {
-        let oms = self.oms.clone().ok_or(TextMessageError::OMSNotInitialized)?;
+        let mut oms = self.oms.clone().ok_or(TextMessageError::OMSNotInitialized)?;
 
         trace!(
             target: LOG_TARGET,
@@ -142,12 +147,12 @@ impl TextMessageService {
         );
 
         let text_message_ack = TextMessageAck { id: message.clone().id };
-        oms.send_message(
+        self.runtime.block_on(oms.send_message(
             BroadcastStrategy::DirectPublicKey(info.origin_source),
             MessageFlags::ENCRYPTED,
             TariMessageType::new(ExtendedMessage::TextAck),
             text_message_ack,
-        )?;
+        ))?;
 
         message.commit(conn)?;
 
@@ -218,13 +223,13 @@ impl TextMessageService {
         contact.commit(&conn)?;
 
         // Send ping to the contact so that if they are online they will flush all outstanding messages for this node
-        let oms = self.oms.clone().ok_or(TextMessageError::OMSNotInitialized)?;
-        oms.send_message(
+        let mut oms = self.oms.clone().ok_or(TextMessageError::OMSNotInitialized)?;
+        self.runtime.block_on(oms.send_message(
             BroadcastStrategy::DirectPublicKey(contact.pub_key.clone()),
             MessageFlags::empty(),
             TariMessageType::new(NetMessage::PingPong),
             PingPong::Ping,
-        )?;
+        ))?;
 
         trace!(
             target: LOG_TARGET,

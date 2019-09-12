@@ -20,26 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_comms::{
-    message::{Frame, MessageEnvelope, MessageFlags},
-    outbound_message_service::BroadcastStrategy,
-};
+use futures::Stream;
 
-/// Represents requests to the CommsOutboundService
-pub enum CommsOutboundRequest {
-    /// Send a message using the given broadcast strategy
-    SendMsg {
-        broadcast_strategy: BroadcastStrategy,
-        flags: MessageFlags,
-        body: Box<Frame>,
-    },
-    /// Forward a message envelope
-    Forward {
-        broadcast_strategy: BroadcastStrategy,
-        message_envelope: Box<MessageEnvelope>,
-    },
+fn collect_burst<S, T>(stream: S) -> Vec<T> where S: Stream<Item = T> {
+    while let Some(s) = stream.
 }
-
-/// Represents a response from the CommsOutboundService. Currently, there are no requests
-/// which result in a value.
-pub type CommsOutboundResponse = ();

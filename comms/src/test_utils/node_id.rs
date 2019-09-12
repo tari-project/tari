@@ -20,22 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    connection::ConnectionError,
-    connection_manager::ConnectionManagerError,
-    message::MessageError,
-    peer_manager::PeerManagerError,
-};
-use derive_error::Error;
-use futures::channel::mpsc::SendError;
-use tari_utilities::message_format::MessageFormatError;
+use crate::{peer_manager::NodeId, types::CommsPublicKey};
+use rand::rngs::OsRng;
+use tari_crypto::keys::PublicKey;
 
-#[derive(Debug, Error)]
-pub enum OutboundServiceError {
-    SendError(SendError),
-    MessageSerializationError(MessageError),
-    MessageFormatError(MessageFormatError),
-    PeerManagerError(PeerManagerError),
-    ConnectionManagerError(ConnectionManagerError),
-    ConnectionError(ConnectionError),
+pub fn random() -> NodeId {
+    let (_, pk) = CommsPublicKey::random_keypair(&mut OsRng::new().unwrap());
+    NodeId::from_key(&pk).unwrap()
 }

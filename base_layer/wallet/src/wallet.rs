@@ -22,15 +22,15 @@
 
 use crate::text_message_service::{TextMessageService, TextMessageServiceApi};
 use derive_error::Error;
-use futures::executor::ThreadPool;
 use std::sync::Arc;
-use tari_comms::{builder::CommsServices, types::CommsPublicKey};
+use tari_comms::{builder::CommsNode, types::CommsPublicKey};
 use tari_p2p::{
     initialization::{initialize_comms, CommsConfig, CommsInitializationError},
     ping_pong::{PingPongService, PingPongServiceApi},
     sync_services::{ServiceExecutor, ServiceRegistry},
     tari_message::TariMessageType,
 };
+use tokio::runtime::{Runtime, TaskExecutor};
 
 #[derive(Debug, Error)]
 pub enum WalletError {
@@ -47,15 +47,17 @@ pub struct WalletConfig {
 /// A structure containing the config and services that a Wallet application will require. This struct will start up all
 /// the services and provide the APIs that applications will use to interact with the services
 pub struct Wallet {
+    runtime: Runtime,
     pub ping_pong_service: Arc<PingPongServiceApi>,
     pub text_message_service: Arc<TextMessageServiceApi>,
-    pub comms_services: Arc<CommsServices<TariMessageType>>,
+    pub comms_services: Arc<CommsNode<TariMessageType>>,
     pub service_executor: ServiceExecutor,
     pub public_key: CommsPublicKey,
 }
 
 impl Wallet {
-    pub fn new(config: WalletConfig, thread_pool: &mut ThreadPool) -> Result<Wallet, WalletError> {
+    pub fn new(config: WalletConfig) -> Result<Wallet, WalletError> {
+        let runtime = Runtime::new().expect("Failure to create tokio runtime");
         let ping_pong_service = PingPongService::new();
         let ping_pong_service_api = ping_pong_service.get_api();
 
@@ -66,16 +68,21 @@ impl Wallet {
             .register(ping_pong_service)
             .register(text_message_service);
 
-        let mut comms_services = initialize_comms(config.comms.clone())?;
-        comms_services.spawn_tasks(thread_pool);
+        let comms_services = initialize_comms(runtime.executor(), config.comms.clone())?;
         let service_executor = ServiceExecutor::execute(&comms_services, registry);
 
         Ok(Wallet {
+            runtime,
             text_message_service: text_message_service_api,
             ping_pong_service: ping_pong_service_api,
             comms_services: Arc::new(comms_services),
             service_executor,
             public_key: config.public_key.clone(),
         })
+    }
+
+    /// Return the TaskExecutor used by this wallet instance
+    pub fn get_executor(&self) -> TaskExecutor {
+        self.runtime.executor()
     }
 }

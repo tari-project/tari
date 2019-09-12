@@ -20,16 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use derive_error::Error;
-use tari_comms::{message::MessageError, outbound_message_service::OutboundError};
-use tari_service_framework::reply_channel::TransportChannelError;
-use tari_utilities::message_format::MessageFormatError;
+use crate::{connection::NetAddress, peer_manager::NodeIdentity};
+use rand::rngs::OsRng;
 
-#[derive(Debug, Error)]
-pub enum CommsOutboundServiceError {
-    InternalResponseError(TransportChannelError),
-    // Comms errors
-    OutboundError(OutboundError),
-    MessageSerializationError(MessageError),
-    MessageFormatError(MessageFormatError),
+/// This returns a random NodeIdentity for testing purposes. This function can panic. If a control_service_address
+/// is None, 127.0.0.1:9000 will be used (i.e. the caller doesn't care what the control_service_address is).
+pub fn random(control_service_address: Option<NetAddress>) -> NodeIdentity {
+    NodeIdentity::random(
+        &mut OsRng::new().unwrap(),
+        control_service_address.or("127.0.0.1:9000".parse().ok()).unwrap(),
+    )
+    .unwrap()
 }

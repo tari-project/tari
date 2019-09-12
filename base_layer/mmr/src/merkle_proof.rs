@@ -35,7 +35,10 @@ use derive_error::Error;
 use digest::Digest;
 use log::error;
 use serde::{Deserialize, Serialize};
-use std::fmt::{self, Display, Formatter};
+use std::{
+    char::from_digit,
+    fmt::{self, Display, Formatter},
+};
 use tari_utilities::hex::Hex;
 
 /// Merkle proof errors.

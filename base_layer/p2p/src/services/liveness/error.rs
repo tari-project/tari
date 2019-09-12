@@ -20,13 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::services::comms_outbound::CommsOutboundServiceError;
 use derive_error::Error;
-use tari_comms::message::MessageError;
+use tari_comms::{message::MessageError, outbound_message_service::OutboundServiceError};
 
 #[derive(Debug, Error)]
 pub enum LivenessError {
-    CommsOutboundError(CommsOutboundServiceError),
+    CommsOutboundError(OutboundServiceError),
     /// Failed to send a pong message
     SendPongFailed,
     /// Failed to send a ping message

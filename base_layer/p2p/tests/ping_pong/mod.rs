@@ -27,7 +27,7 @@ use futures::executor::ThreadPool;
 use rand::rngs::OsRng;
 use std::{sync::Arc, time::Duration};
 use tari_comms::{
-    builder::CommsServices,
+    builder::CommsNode,
     connection::NetAddress,
     connection_manager::PeerConnectionConfig,
     control_service::ControlServiceConfig,
@@ -69,7 +69,7 @@ fn create_peer_storage(tmpdir: &TempDir, database_name: &str, peers: Vec<Peer>) 
 fn setup_ping_pong_service(
     node_identity: NodeIdentity,
     peer_storage: CommsDatabase,
-) -> (ServiceExecutor, Arc<PingPongServiceApi>, CommsServices<TariMessageType>)
+) -> (ServiceExecutor, Arc<PingPongServiceApi>, CommsNode<TariMessageType>)
 {
     let ping_pong = PingPongService::new();
     let pingpong_api = ping_pong.get_api();

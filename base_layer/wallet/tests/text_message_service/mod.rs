@@ -21,39 +21,37 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::support::{comms_and_services::setup_comms_services, data::*, utils::assert_change};
-use futures::executor::ThreadPool;
 use std::sync::Arc;
-use tari_comms::{builder::CommsServices, peer_manager::NodeIdentity};
+use tari_comms::{builder::CommsNode, peer_manager::NodeIdentity};
 use tari_p2p::{
     sync_services::{ServiceExecutor, ServiceRegistry},
     tari_message::TariMessageType,
 };
 use tari_storage::lmdb_store::LMDBDatabase;
 use tari_wallet::text_message_service::{Contact, TextMessageService, TextMessageServiceApi};
+use tokio::runtime::{Runtime, TaskExecutor};
 
 pub fn setup_text_message_service(
+    executor: TaskExecutor,
     node_identity: NodeIdentity,
     peers: Vec<NodeIdentity>,
     peer_database: LMDBDatabase,
     database_path: String,
-) -> (
-    ServiceExecutor,
-    Arc<TextMessageServiceApi>,
-    CommsServices<TariMessageType>,
-)
+) -> (ServiceExecutor, Arc<TextMessageServiceApi>, CommsNode<TariMessageType>)
 {
     let tms = TextMessageService::new(node_identity.identity.public_key.clone(), database_path);
     let tms_api = tms.get_api();
 
     let services = ServiceRegistry::new().register(tms);
 
-    let comms = setup_comms_services(node_identity, peers, peer_database);
+    let comms = setup_comms_services(executor, node_identity, peers, peer_database);
 
     (ServiceExecutor::execute(&comms, services), tms_api, comms)
 }
 
 #[test]
 fn test_text_message_service() {
+    let runtime = Runtime::new().unwrap();
     let mut rng = rand::OsRng::new().unwrap();
 
     let node_1_identity = NodeIdentity::random(&mut rng, "127.0.0.1:31523".parse().unwrap()).unwrap();
@@ -82,29 +80,27 @@ fn test_text_message_service() {
     let db_path3 = get_path(Some(db_name3));
     init_sql_database(db_name3);
 
-    let (node_1_services, node_1_tms, mut comms_1) = setup_text_message_service(
+    let (node_1_services, node_1_tms, _comms_1) = setup_text_message_service(
+        runtime.executor(),
         node_1_identity.clone(),
         vec![node_2_identity.clone(), node_3_identity.clone()],
         node_1_peer_database,
         db_path1,
     );
-    let (node_2_services, node_2_tms, mut comms_2) = setup_text_message_service(
+    let (node_2_services, node_2_tms, _comms_2) = setup_text_message_service(
+        runtime.executor(),
         node_2_identity.clone(),
         vec![node_1_identity.clone()],
         node_2_peer_database,
         db_path2,
     );
-    let (node_3_services, node_3_tms, mut comms_3) = setup_text_message_service(
+    let (node_3_services, node_3_tms, _comms_3) = setup_text_message_service(
+        runtime.executor(),
         node_3_identity.clone(),
         vec![node_1_identity.clone()],
         node_3_peer_database,
         db_path3,
     );
-
-    let mut thread_pool = ThreadPool::new().unwrap();
-    comms_1.spawn_tasks(&mut thread_pool);
-    comms_2.spawn_tasks(&mut thread_pool);
-    comms_3.spawn_tasks(&mut thread_pool);
 
     node_1_tms
         .add_contact(Contact::new(

@@ -22,10 +22,7 @@
 
 use super::{error::LivenessError, state::LivenessState, LivenessRequest, LivenessResponse};
 use crate::{
-    services::{
-        comms_outbound::{CommsOutboundHandle, CommsOutboundServiceError},
-        liveness::messages::PingPong,
-    },
+    services::{comms_outbound::CommsOutboundHandle, liveness::messages::PingPong},
     tari_message::{NetMessage, TariMessageType},
 };
 use futures::{pin_mut, stream::StreamExt, Stream};
@@ -34,7 +31,7 @@ use std::sync::Arc;
 use tari_comms::{
     domain_subscriber::MessageInfo,
     message::MessageFlags,
-    outbound_message_service::BroadcastStrategy,
+    outbound_message_service::{BroadcastStrategy, OutboundServiceError},
     types::CommsPublicKey,
 };
 use tari_service_framework::RequestContext;
@@ -159,7 +156,7 @@ where
                 PingPong::Ping,
             )
             .await
-            .map_err(Into::<CommsOutboundServiceError>::into)?;
+            .map_err(Into::<OutboundServiceError>::into)?;
 
         Ok(())
     }
@@ -176,10 +173,12 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::services::comms_outbound::CommsOutboundRequest;
-    use futures::{executor::LocalPool, stream, task::SpawnExt};
+    use futures::{channel::mpsc, executor::LocalPool, stream, task::SpawnExt};
     use rand::rngs::OsRng;
-    use tari_comms::peer_manager::{NodeId, PeerNodeIdentity};
+    use tari_comms::{
+        outbound_message_service::OutboundRequest,
+        peer_manager::{NodeId, PeerNodeIdentity},
+    };
     use tari_crypto::keys::PublicKey;
     use tari_service_framework::reply_channel;
     use tower_service::Service;
@@ -192,7 +191,7 @@ mod test {
         state.inc_pongs_received();
 
         // Setup a CommsOutbound service handle which is not connected to the actual CommsOutbound service
-        let (outbound_tx, _) = reply_channel::unbounded();
+        let (outbound_tx, _) = mpsc::unbounded();
         let oms_handle = CommsOutboundHandle::new(outbound_tx);
 
         // Setup liveness service
@@ -223,16 +222,8 @@ mod test {
 
         // Setup a CommsOutbound service handle which is not connected to the actual CommsOutbound service
         // TODO(sdbondi): Setting up a "dummy" CommsOutbound service should be moved into testing utilities
-        let (outbound_tx, mut outbound_rx) = reply_channel::unbounded();
+        let (outbound_tx, mut outbound_rx) = mpsc::unbounded();
         let oms_handle = CommsOutboundHandle::new(outbound_tx);
-
-        // Following block receives one CommsOutboundRequest and send an "all ok" reply
-        pool.spawner()
-            .spawn(async move {
-                let ctx = outbound_rx.select_next_some().await;
-                ctx.reply(Ok(())).unwrap();
-            })
-            .unwrap();
 
         // Setup liveness service
         let (mut sender_service, receiver) = reply_channel::unbounded();
@@ -249,6 +240,15 @@ mod test {
             Ok(_) => panic!("received unexpected response from liveness service"),
             Err(err) => panic!("received unexpected error from liveness service: {:?}", err),
         }
+
+        // Receive outbound request
+        pool.run_until(async move {
+            let request = outbound_rx.select_next_some().await;
+            match request {
+                OutboundRequest::SendMsg { .. } => {},
+                _ => panic!("Unexpected OutboundRequest"),
+            }
+        });
 
         assert_eq!(state.pings_sent(), 1);
     }
@@ -270,7 +270,7 @@ mod test {
 
         // Setup a CommsOutbound service handle which is not connected to the actual CommsOutbound service
         // TODO(sdbondi): Setting up a "dummy" CommsOutbound service should be moved into testing utilities
-        let (outbound_tx, mut outbound_rx) = reply_channel::unbounded();
+        let (outbound_tx, mut outbound_rx) = mpsc::unbounded();
         let oms_handle = CommsOutboundHandle::new(outbound_tx);
 
         let info = create_dummy_message_info();
@@ -283,15 +283,10 @@ mod test {
         pool.spawner().spawn(service.run()).unwrap();
 
         let oms_request = pool.run_until(outbound_rx.next()).unwrap();
-        let (request, reply_tx) = oms_request.split();
 
-        match request {
-            CommsOutboundRequest::SendMsg { .. } => {
-                // Send a fake reply from the OMS, saying we've sent the requested message
-                assert!(!reply_tx.is_canceled());
-                reply_tx.send(Ok(())).unwrap();
-            },
-            _ => panic!(),
+        match oms_request {
+            OutboundRequest::SendMsg { .. } => {},
+            _ => panic!("Unpexpected OMS request"),
         }
 
         pool.run_until_stalled();
@@ -307,7 +302,7 @@ mod test {
 
         // Setup a CommsOutbound service handle which is not connected to the actual CommsOutbound service
         // TODO(sdbondi): Setting up a "dummy" CommsOutbound service should be moved into testing utilities
-        let (outbound_tx, _) = reply_channel::unbounded();
+        let (outbound_tx, _) = mpsc::unbounded();
         let oms_handle = CommsOutboundHandle::new(outbound_tx);
 
         let info = create_dummy_message_info();

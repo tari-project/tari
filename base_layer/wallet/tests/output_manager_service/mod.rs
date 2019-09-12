@@ -44,6 +44,7 @@ use tari_crypto::{
 use tari_p2p::sync_services::{ServiceExecutor, ServiceRegistry};
 use tari_utilities::ByteArray;
 use tari_wallet::output_manager_service::{error::OutputManagerError, output_manager_service::OutputManagerService};
+use tokio::runtime::Runtime;
 
 #[test]
 fn sending_transaction_and_confirmation() {
@@ -298,6 +299,7 @@ fn timeout_transaction() {
 
 #[test]
 fn test_api() {
+    let runtime = Runtime::new().unwrap();
     let _ = env_logger::builder().is_test(true).try_init();
     let mut rng = rand::OsRng::new().unwrap();
     let (secret_key, _public_key) = PublicKey::random_keypair(&mut rng);
@@ -311,7 +313,12 @@ fn test_api() {
     let node_1_database_name = "node_1_output_manager_service_api_test"; // Note: every test should have unique database
     let node_1_datastore = init_datastore(node_1_database_name).unwrap();
     let node_1_peer_database = node_1_datastore.get_handle(node_1_database_name).unwrap();
-    let comms = setup_comms_services(node_1_identity.clone(), Vec::new(), node_1_peer_database);
+    let comms = setup_comms_services(
+        runtime.executor(),
+        node_1_identity.clone(),
+        Vec::new(),
+        node_1_peer_database,
+    );
 
     let executor = ServiceExecutor::execute(&comms, services);
 

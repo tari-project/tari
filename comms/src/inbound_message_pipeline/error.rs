@@ -22,7 +22,7 @@
 
 use crate::{
     message::MessageError,
-    outbound_message_service::{broadcast_strategy::BroadcastStrategyError, OutboundError},
+    outbound_message_service::{broadcast_strategy::BroadcastStrategyError, OutboundServiceError},
     peer_manager::PeerManagerError,
 };
 use derive_error::Error;
@@ -46,5 +46,5 @@ pub enum InboundMessagePipelineError {
     MessageError(MessageError),
     PeerManagerError(PeerManagerError),
     BroadcastStrategyError(BroadcastStrategyError),
-    OutboundError(OutboundError),
+    OutboundServiceError(OutboundServiceError),
 }
