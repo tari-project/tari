@@ -37,7 +37,7 @@ use croaring::Bitmap;
 use log::*;
 use std::sync::{Arc, RwLock, RwLockReadGuard};
 use tari_mmr::{Hash, MerkleCheckPoint, MerkleProof};
-use tari_utilities::Hashable;
+use tari_utilities::{hex::Hex, Hashable};
 
 const LOG_TARGET: &str = "core::chain_storage::database";
 
@@ -307,13 +307,13 @@ where T: BlockchainBackend
     ///
     /// If an error does occur while writing the new block parts, all changes are reverted before returning.
     pub fn add_block(&self, block: Block) -> Result<BlockAddResult, ChainStorageError> {
-        if !self.is_new_best_block(&block)? {
-            return self.handle_possible_reorg(block);
-        }
         let block_hash = block.hash();
         let block_height = block.header.height;
         if self.db.contains(&DbKey::BlockHash(block_hash.clone()))? {
             return Ok(BlockAddResult::BlockExists);
+        }
+        if !self.is_new_best_block(&block)? {
+            return self.handle_possible_reorg(block);
         }
         let mut txn = DbTransaction::new();
         let (header, inputs, outputs, kernels) = block.dissolve();
@@ -371,6 +371,7 @@ where T: BlockchainBackend
         let (kernel_hashes, _) = kernel_cp.into_parts();
         let kernels = self.fetch_kernels(kernel_hashes)?;
         let utxo_cp = self.db.fetch_mmr_checkpoint(MmrTree::Utxo, height)?;
+        println!("{:?}", utxo_cp);
         let (utxo_hashes, deleted_nodes) = utxo_cp.into_parts();
         let inputs = self.fetch_inputs(deleted_nodes)?;
         let (outputs, spent) = self.fetch_outputs(utxo_hashes)?;

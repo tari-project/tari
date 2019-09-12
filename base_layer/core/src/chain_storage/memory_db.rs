@@ -47,16 +47,23 @@ use std::{
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 use tari_mmr::{Hash as MmrHash, MerkleChangeTracker, MerkleCheckPoint, MerkleProof, MutableMmr};
-use tari_utilities::hash::Hashable;
+use tari_utilities::{hash::Hashable, hex::Hex};
+
+/// A generic struct for storing node objects in the BlockchainDB that also form part of an MMR. The index field makes
+/// reverse lookups (find by hash) possible.
+struct MerkleNode<T> {
+    index: usize,
+    value: T,
+}
 
 struct InnerDatabase<D>
 where D: Digest
 {
-    headers: HashMap<u64, BlockHeader>,
+    headers: HashMap<u64, MerkleNode<BlockHeader>>,
     block_hashes: HashMap<HashOutput, u64>,
-    utxos: HashMap<HashOutput, TransactionOutput>,
-    stxos: HashMap<HashOutput, TransactionOutput>,
-    kernels: HashMap<HashOutput, TransactionKernel>,
+    utxos: HashMap<HashOutput, MerkleNode<TransactionOutput>>,
+    stxos: HashMap<HashOutput, MerkleNode<TransactionOutput>>,
+    kernels: HashMap<HashOutput, MerkleNode<TransactionKernel>>,
     orphans: HashMap<HashOutput, Block>,
     // Define MMRs to use both a memory-backed base and a memory-backed pruned MMR
     utxo_mmr: MerkleChangeTracker<D, Vec<MmrHash>, Vec<MerkleCheckPoint>>,
@@ -101,21 +108,22 @@ where D: Digest + Send + Sync
                     DbKeyValuePair::Metadata(_, _) => {}, // no-op. Memory-based DB, so we don't store metadata
                     DbKeyValuePair::BlockHeader(k, v) => {
                         let hash = v.hash();
-                        db.header_mmr.push(&hash).unwrap();
-                        db.headers.insert(k, *v);
+                        db.block_hashes.insert(hash.clone(), k);
+                        let index = db.header_mmr.push(&hash)? - 1 as usize;
+                        let v = MerkleNode { index, value: *v };
+                        db.headers.insert(k, v);
                     },
                     DbKeyValuePair::UnspentOutput(k, v) => {
                         db.utxo_mmr.push(&k).unwrap();
                         let proof_hash = v.proof().hash();
-                        let _ = db.range_proof_mmr.push(&proof_hash);
-                        db.utxos.insert(k, *v);
-                    },
-                    DbKeyValuePair::SpentOutput(k, v) => {
-                        db.stxos.insert(k, *v);
+                        let index = db.range_proof_mmr.push(&proof_hash)? - 1;
+                        let v = MerkleNode { index, value: *v };
+                        db.utxos.insert(k, v);
                     },
                     DbKeyValuePair::TransactionKernel(k, v) => {
-                        db.kernel_mmr.push(&k).unwrap();
-                        db.kernels.insert(k, *v);
+                        let index = db.kernel_mmr.push(&k)? - 1;
+                        let v = MerkleNode { index, value: *v };
+                        db.kernels.insert(k, v);
                     },
                     DbKeyValuePair::OrphanBlock(k, v) => {
                         db.orphans.insert(k, *v);
@@ -200,18 +208,24 @@ where D: Digest + Send + Sync
             DbKey::Metadata(MetadataKey::AccumulatedWork) => Some(DbValue::Metadata(MetadataValue::AccumulatedWork(0))),
             DbKey::Metadata(MetadataKey::PruningHorizon) => Some(DbValue::Metadata(MetadataValue::PruningHorizon(0))),
             DbKey::Metadata(MetadataKey::BestBlock) => Some(DbValue::Metadata(MetadataValue::BestBlock(None))),
-            DbKey::BlockHeader(k) => db.headers.get(k).map(|v| DbValue::BlockHeader(Box::new(v.clone()))),
+            DbKey::BlockHeader(k) => db
+                .headers
+                .get(k)
+                .map(|v| DbValue::BlockHeader(Box::new(v.value.clone()))),
             DbKey::BlockHash(hash) => db
                 .block_hashes
                 .get(hash)
                 .and_then(|i| db.headers.get(i))
-                .map(|v| DbValue::BlockHeader(Box::new(v.clone()))),
-            DbKey::UnspentOutput(k) => db.utxos.get(k).map(|v| DbValue::UnspentOutput(Box::new(v.clone()))),
-            DbKey::SpentOutput(k) => db.stxos.get(k).map(|v| DbValue::SpentOutput(Box::new(v.clone()))),
+                .map(|v| DbValue::BlockHeader(Box::new(v.value.clone()))),
+            DbKey::UnspentOutput(k) => db
+                .utxos
+                .get(k)
+                .map(|v| DbValue::UnspentOutput(Box::new(v.value.clone()))),
+            DbKey::SpentOutput(k) => db.stxos.get(k).map(|v| DbValue::SpentOutput(Box::new(v.value.clone()))),
             DbKey::TransactionKernel(k) => db
                 .kernels
                 .get(k)
-                .map(|v| DbValue::TransactionKernel(Box::new(v.clone()))),
+                .map(|v| DbValue::TransactionKernel(Box::new(v.value.clone()))),
             DbKey::OrphanBlock(k) => db.orphans.get(k).map(|v| DbValue::OrphanBlock(Box::new(v.clone()))),
         };
         Ok(result)
@@ -282,9 +296,9 @@ where D: Digest + Send + Sync
         let db = self.db_access()?;
         let (hash, deleted) = match tree {
             MmrTree::Kernel => db.kernel_mmr.get_leaf_status(pos),
-            MmrTree::Header => db.kernel_mmr.get_leaf_status(pos),
-            MmrTree::Utxo => db.kernel_mmr.get_leaf_status(pos),
-            MmrTree::RangeProof => db.kernel_mmr.get_leaf_status(pos),
+            MmrTree::Header => db.header_mmr.get_leaf_status(pos),
+            MmrTree::Utxo => db.utxo_mmr.get_leaf_status(pos),
+            MmrTree::RangeProof => db.range_proof_mmr.get_leaf_status(pos),
         };
         let hash = hash
             .ok_or(ChainStorageError::UnexpectedResult(format!(
@@ -332,6 +346,7 @@ fn spend_utxo<D: Digest>(db: &mut RwLockWriteGuard<InnerDatabase<D>>, hash: Hash
     match db.utxos.remove(&hash) {
         None => false,
         Some(utxo) => {
+            db.utxo_mmr.delete(utxo.index as u32);
             db.stxos.insert(hash, utxo);
             true
         },
