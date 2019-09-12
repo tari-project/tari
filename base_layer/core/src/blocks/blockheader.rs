@@ -50,7 +50,7 @@ use serde::{
     Serialize,
     Serializer,
 };
-use std::fmt;
+use std::{fmt, time::Instant};
 use tari_utilities::{ByteArray, Hashable};
 
 pub type BlockHash = Vec<u8>;
@@ -95,7 +95,24 @@ impl BlockHeader {
             version: blockchain_version,
             height: 0,
             prev_hash: vec![0; 32],
-            timestamp: DateTime::<Utc>::from_utc(NaiveDate::from_ymd(2000, 1, 1).and_hms(1, 1, 1), Utc),
+            timestamp: Utc::now(),
+            output_mr: vec![0; 32],
+            range_proof_mr: vec![0; 32],
+            kernel_mr: vec![0; 32],
+            total_kernel_offset: BlindingFactor::default(),
+            total_difficulty: Difficulty::default(),
+            nonce: 0,
+            pow: TariProofOfWork::default(),
+        }
+    }
+
+    pub fn from_previous(prev: &BlockHeader) -> BlockHeader {
+        let prev_hash = prev.hash();
+        BlockHeader {
+            version: prev.version,
+            height: prev.height + 1,
+            prev_hash,
+            timestamp: Utc::now(),
             output_mr: vec![0; 32],
             range_proof_mr: vec![0; 32],
             kernel_mr: vec![0; 32],

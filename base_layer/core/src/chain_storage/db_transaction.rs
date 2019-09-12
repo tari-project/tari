@@ -71,7 +71,7 @@ impl DbTransaction {
         self.insert(DbKeyValuePair::BlockHeader(height, Box::new(header)));
     }
 
-    /// Adds a UTXO into the current transaction.
+    /// Adds a UTXO into the current transaction and update the TXO MMR.
     pub fn insert_utxo(&mut self, utxo: TransactionOutput) {
         let hash = utxo.hash();
         self.insert(DbKeyValuePair::UnspentOutput(hash, Box::new(utxo)));
@@ -84,8 +84,9 @@ impl DbTransaction {
         self.insert(DbKeyValuePair::OrphanBlock(hash, Box::new(orphan)));
     }
 
-    /// Moves a UTXO. If the UTXO is not in the UTXO set, the transaction will fail with an `UnspendableOutput` error.
-    pub fn move_utxo(&mut self, utxo_hash: HashOutput) {
+    /// Moves a UTXO to the STXO set and mark it as spent on the MRR. If the UTXO is not in the UTXO set, the
+    /// transaction will fail with an `UnspendableOutput` error.
+    pub fn spend_utxo(&mut self, utxo_hash: HashOutput) {
         self.operations
             .push(WriteOperation::Spend(DbKey::UnspentOutput(utxo_hash)));
     }
@@ -95,7 +96,7 @@ impl DbTransaction {
     pub fn spend_inputs(&mut self, inputs: &[TransactionInput]) {
         for input in inputs {
             let input_hash = input.hash();
-            self.move_utxo(input_hash);
+            self.spend_utxo(input_hash);
         }
     }
 
@@ -137,18 +138,18 @@ pub enum WriteOperation {
     CreateMmrCheckpoint(MmrTree),
 }
 
+/// A list of key-value pairs that are required for each insert operation
 #[derive(Debug)]
 pub enum DbKeyValuePair {
     Metadata(MetadataKey, MetadataValue),
     BlockHeader(u64, Box<BlockHeader>),
     UnspentOutput(HashOutput, Box<TransactionOutput>),
-    SpentOutput(HashOutput, Box<TransactionOutput>),
     TransactionKernel(HashOutput, Box<TransactionKernel>),
     OrphanBlock(HashOutput, Box<Block>),
     CommitBlock,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum MmrTree {
     Utxo,
     Kernel,

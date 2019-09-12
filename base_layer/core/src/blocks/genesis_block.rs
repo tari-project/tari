@@ -26,9 +26,7 @@
 // This file is used to store the genesis block
 use crate::blocks::{block::Block, BlockBuilder};
 
-use crate::{blocks::BlockHeader, types::TariProofOfWork};
-use chrono::{DateTime, NaiveDate, Utc};
-use tari_crypto::ristretto::*;
+use crate::{blocks::BlockHeader, proof_of_work::Difficulty};
 
 pub fn get_genesis_block() -> Block {
     let header = get_gen_header();
@@ -36,27 +34,7 @@ pub fn get_genesis_block() -> Block {
 }
 
 pub fn get_gen_header() -> BlockHeader {
-    BlockHeader {
-        version: 0,
-        /// Height of this block since the genesis block (height 0)
-        height: 0,
-        /// Hash of the block previous to this in the chain.
-        prev_hash: vec![0; 32],
-        /// Timestamp at which the block was built.
-        timestamp: DateTime::<Utc>::from_utc(NaiveDate::from_ymd(2020, 1, 1).and_hms(1, 1, 1), Utc),
-        /// This is the MMR root of the outputs
-        output_mr: vec![0; 32],
-        /// This is the MMR root of the range proofs
-        range_proof_mr: vec![0; 32],
-        /// This is the MMR root of the kernels
-        kernel_mr: vec![0; 32],
-        /// Total accumulated sum of kernel offsets since genesis block. We can derive the kernel offset sum for *this*
-        /// block from the total kernel offset of the previous block header.
-        total_kernel_offset: RistrettoSecretKey::from(0),
-        /// Proof of work summary
-        total_difficulty: Default::default(),
-        /// Nonce used
-        nonce: 0,
-        pow: TariProofOfWork::default(),
-    }
+    let mut header = BlockHeader::new(0);
+    header.total_difficulty = Difficulty::from(1);
+    header
 }
