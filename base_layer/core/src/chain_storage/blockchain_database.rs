@@ -371,7 +371,6 @@ where T: BlockchainBackend
         let (kernel_hashes, _) = kernel_cp.into_parts();
         let kernels = self.fetch_kernels(kernel_hashes)?;
         let utxo_cp = self.db.fetch_mmr_checkpoint(MmrTree::Utxo, height)?;
-        println!("{:?}", utxo_cp);
         let (utxo_hashes, deleted_nodes) = utxo_cp.into_parts();
         let inputs = self.fetch_inputs(deleted_nodes)?;
         let (outputs, spent) = self.fetch_outputs(utxo_hashes)?;
