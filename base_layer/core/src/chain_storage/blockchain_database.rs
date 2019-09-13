@@ -37,7 +37,7 @@ use croaring::Bitmap;
 use log::*;
 use std::sync::{Arc, RwLock, RwLockReadGuard};
 use tari_mmr::{Hash, MerkleCheckPoint, MerkleProof};
-use tari_utilities::{hex::Hex, Hashable};
+use tari_utilities::Hashable;
 
 const LOG_TARGET: &str = "core::chain_storage::database";
 
@@ -413,7 +413,7 @@ where T: BlockchainBackend
     }
 
     fn fetch_inputs(&self, deleted_nodes: Bitmap) -> Result<Vec<TransactionInput>, ChainStorageError> {
-        // The inputs must all the in the current STXO set
+        // The inputs must all be in the current STXO set
         let inputs: Result<Vec<TransactionInput>, ChainStorageError> = deleted_nodes
             .iter()
             .map(|pos| {
@@ -452,10 +452,9 @@ where T: BlockchainBackend
 
     fn fetch_mmr_checkpoint(&self, tree: MmrTree, height: u64) -> Result<MerkleCheckPoint, ChainStorageError> {
         let metadata = self.get_metadata()?;
-        let horizon_block = match metadata.horizon_block() {
-            None => return Err(ChainStorageError::InvalidQuery("Blockchain database is empty".into())),
-            Some(i) => i,
-        };
+        let horizon_block = metadata
+            .horizon_block()
+            .ok_or(ChainStorageError::InvalidQuery("Blockchain database is empty".into()))?;
         let index = height
             .checked_sub(horizon_block)
             .ok_or(ChainStorageError::BeyondPruningHorizon)? as u64;
@@ -465,6 +464,69 @@ where T: BlockchainBackend
     /// Atomically commit the provided transaction to the database backend. This function does not update the metadata.
     pub(crate) fn commit(&self, txn: DbTransaction) -> Result<(), ChainStorageError> {
         self.db.write(txn)
+    }
+
+    /// Rewind the blockchain state to the block height given.
+    ///
+    /// The operation will fail if
+    /// * The block height is in the future
+    /// * The block height is before pruning horizon
+    pub fn rewind_to_height(&self, height: u64) -> Result<(), ChainStorageError> {
+        self.check_for_valid_height(height)?;
+
+        let chain_height = self
+            .get_height()?
+            .ok_or(ChainStorageError::InvalidQuery("Blockchain database is empty".into()))?;
+        if height == chain_height {
+            return Ok(()); // Rewind unnecessary, already on correct height
+        }
+
+        let steps_back = (chain_height - height) as usize;
+        let mut txn = DbTransaction::new();
+        for rewind_height in (height + 1)..=chain_height {
+            // Reconstruct block at height and add to orphan block pool
+            let orphaned_block = self.fetch_block(rewind_height)?.block().clone();
+            txn.insert_orphan(orphaned_block);
+
+            // Remove Headers
+            txn.delete(DbKey::BlockHeader(rewind_height));
+            // Remove block_hashes
+            self.fetch_mmr_checkpoint(MmrTree::Header, rewind_height)?
+                .nodes_added()
+                .iter()
+                .for_each(|hash_output| {
+                    txn.delete(DbKey::BlockHash(hash_output.clone()));
+                });
+            // Remove Kernels
+            self.fetch_mmr_checkpoint(MmrTree::Kernel, rewind_height)?
+                .nodes_added()
+                .iter()
+                .for_each(|hash_output| {
+                    txn.delete(DbKey::TransactionKernel(hash_output.clone()));
+                });
+
+            // Remove UTXOs and move STXOs back to UTXO set
+            let (nodes_added, nodes_deleted) = self.fetch_mmr_checkpoint(MmrTree::Utxo, rewind_height)?.into_parts();
+            nodes_added.iter().for_each(|hash_output| {
+                txn.delete(DbKey::UnspentOutput(hash_output.clone()));
+            });
+            for pos in nodes_deleted.iter() {
+                self.db
+                    .fetch_mmr_node(MmrTree::Utxo, pos)
+                    .and_then(|(stxo_hash, deleted)| {
+                        assert!(deleted);
+                        txn.unspend_stxo(stxo_hash);
+                        Ok(())
+                    })?;
+            }
+        }
+        // Rewind MMRs
+        txn.rewind_header_mmr(steps_back);
+        txn.rewind_kernel_mmr(steps_back);
+        txn.rewind_utxo_mmr(steps_back);
+        txn.rewind_rp_mmr(steps_back);
+
+        self.commit(txn)
     }
 
     /// Checks whether we should add the block as an orphan. If it is the case, the orphan block is added and the chain

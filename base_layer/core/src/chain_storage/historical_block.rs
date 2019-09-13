@@ -51,6 +51,11 @@ impl HistoricalBlock {
     pub fn is_spent(&self, output: &TransactionOutput) -> bool {
         self.spent_commitments.contains(&output.commitment)
     }
+
+    /// Returns a reference to the block of the HistoricalBlock
+    pub fn block(&self) -> &Block {
+        &self.block
+    }
 }
 
 impl From<HistoricalBlock> for Block {
