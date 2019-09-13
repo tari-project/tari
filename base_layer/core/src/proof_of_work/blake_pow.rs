@@ -97,22 +97,28 @@ impl Hashable for BlakePow {
 #[cfg(test)]
 mod test {
     use crate::{blocks::BlockHeader, proof_of_work::ProofOfWork};
+    use chrono::{DateTime, NaiveDate, Utc};
 
+    fn get_header() -> BlockHeader {
+        let mut header = BlockHeader::new(0);
+        header.timestamp = DateTime::<Utc>::from_utc(NaiveDate::from_ymd(2000, 1, 1).and_hms(1, 1, 1), Utc);
+        header
+    }
     #[test]
     fn validate_max_target() {
-        let header = BlockHeader::new(0);
+        let header = get_header();
         assert_eq!(header.pow.calculate_difficulty(2, &header), Ok(1.into()));
     }
 
     #[test]
     fn difficulty_1000() {
-        let header = BlockHeader::new(0);
+        let header = get_header();
         assert_eq!(header.pow.calculate_difficulty(108, &header), Ok(1273.into()));
     }
 
     #[test]
     fn difficulty_1mil() {
-        let header = BlockHeader::new(0);
+        let header = get_header();
         assert_eq!(header.pow.calculate_difficulty(134_390, &header), Ok(3_250_351.into()));
     }
 }

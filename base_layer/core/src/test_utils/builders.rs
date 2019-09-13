@@ -22,7 +22,7 @@
 //
 
 use crate::{
-    blocks::{aggregated_body::AggregateBody, blockheader::BlockHeader, Block},
+    blocks::{blockheader::BlockHeader, Block, BlockBuilder},
     fee::Fee,
     proof_of_work::Difficulty,
     tari_amount::MicroTari,
@@ -52,7 +52,8 @@ use tari_crypto::{
 };
 use tari_utilities::hash::Hashable;
 
-/// Create a test input UTXO for a transaction with its unblinded output set with a specified maturity.
+/// Create a random transaction input for the given amount and maturity period. The input and its unblinded
+/// parameters are returned.
 pub fn create_test_input(amount: MicroTari, maturity: u64) -> (TransactionInput, UnblindedOutput) {
     let mut rng = rand::OsRng::new().unwrap();
     let spending_key = PrivateKey::random(&mut rng);
@@ -66,6 +67,7 @@ pub fn create_test_input(amount: MicroTari, maturity: u64) -> (TransactionInput,
 
 /// Create an unconfirmed transaction for testing with a valid fee, unique access_sig, random inputs and outputs, the
 /// transaction is only partially constructed
+#[deprecated(note = "Use create_tx instead")]
 pub fn create_test_tx(
     amount: MicroTari,
     fee_per_gram: MicroTari,
@@ -122,12 +124,74 @@ pub fn create_test_tx(
     stx_protocol.get_transaction().unwrap().clone()
 }
 
+/// Create an unconfirmed transaction for testing with a valid fee, unique access_sig, random inputs and outputs, the
+/// transaction is only partially constructed
+pub fn create_tx(
+    amount: MicroTari,
+    fee_per_gram: MicroTari,
+    lock_height: u64,
+    input_count: u64,
+    input_maturity: u64,
+    output_count: u64,
+) -> (Transaction, Vec<UnblindedOutput>, Vec<UnblindedOutput>)
+{
+    let mut rng = rand::OsRng::new().unwrap();
+    let test_params = TestParams::new(&mut rng);
+    let mut stx_builder = SenderTransactionProtocol::builder(0);
+    stx_builder
+        .with_lock_height(lock_height)
+        .with_fee_per_gram(fee_per_gram)
+        .with_offset(test_params.offset.clone())
+        .with_private_nonce(test_params.nonce.clone())
+        .with_change_secret(test_params.change_key.clone());
+
+    let mut unblinded_inputs = Vec::with_capacity(input_count as usize);
+    let mut unblinded_outputs = Vec::with_capacity(output_count as usize);
+    let amount_per_input = amount / input_count;
+    for _ in 0..input_count - 1 {
+        let (utxo, input) = create_test_input(amount_per_input, input_maturity);
+        unblinded_inputs.push(input.clone());
+        stx_builder.with_input(utxo, input);
+    }
+    let amount_for_last_input = amount - amount_per_input * (input_count - 1);
+    let (utxo, input) = create_test_input(amount_for_last_input, input_maturity);
+    unblinded_inputs.push(input.clone());
+    stx_builder.with_input(utxo, input);
+
+    let estimated_fee = Fee::calculate(fee_per_gram, input_count as usize, output_count as usize);
+    let amount_per_output = (amount - estimated_fee) / output_count;
+    let amount_for_last_output = (amount - estimated_fee) - amount_per_output * (output_count - 1);
+    for i in 0..output_count {
+        let output_amount = if i < output_count - 1 {
+            amount_per_output
+        } else {
+            amount_for_last_output
+        };
+        let utxo = UnblindedOutput::new(output_amount.into(), test_params.spend_key.clone(), None);
+        unblinded_outputs.push(utxo.clone());
+        stx_builder.with_output(utxo);
+    }
+
+    let mut stx_protocol = stx_builder.build::<Blake256>(&PROVER, &COMMITMENT_FACTORY).unwrap();
+    match stx_protocol.finalize(KernelFeatures::empty(), &PROVER, &COMMITMENT_FACTORY) {
+        Ok(true) => (),
+        Ok(false) => panic!("{:?}", stx_protocol.failure_reason()),
+        Err(e) => panic!("{:?}", e),
+    }
+    (
+        stx_protocol.get_transaction().unwrap().clone(),
+        unblinded_inputs,
+        unblinded_outputs,
+    )
+}
+
+/// Spend the provided UTXOs by creating a new transaction that breaking the inputs up into equally sized outputs
 pub fn create_test_tx_spending_utxos(
     fee_per_gram: MicroTari,
     lock_height: u64,
     utxos: Vec<(TransactionInput, UnblindedOutput)>,
     output_count: u64,
-) -> Transaction
+) -> (Transaction, Vec<UnblindedOutput>)
 {
     let mut rng = rand::OsRng::new().unwrap();
     let test_params = TestParams::new(&mut rng);
@@ -149,17 +213,16 @@ pub fn create_test_tx_spending_utxos(
     let estimated_fee = Fee::calculate(fee_per_gram, input_count as usize, output_count as usize);
     let amount_per_output = (amount - estimated_fee) / output_count;
     let amount_for_last_output = (amount - estimated_fee) - amount_per_output * (output_count - 1);
+    let mut unblinded_outputs = Vec::with_capacity(output_count as usize);
     for i in 0..output_count {
         let output_amount = if i < output_count - 1 {
             amount_per_output
         } else {
             amount_for_last_output
         };
-        stx_builder.with_output(UnblindedOutput::new(
-            output_amount.into(),
-            test_params.spend_key.clone(),
-            None,
-        ));
+        let utxo = UnblindedOutput::new(output_amount.into(), test_params.spend_key.clone(), None);
+        unblinded_outputs.push(utxo.clone());
+        stx_builder.with_output(utxo);
     }
 
     let mut stx_protocol = stx_builder.build::<Blake256>(&PROVER, &COMMITMENT_FACTORY).unwrap();
@@ -168,7 +231,8 @@ pub fn create_test_tx_spending_utxos(
         Ok(false) => panic!("{:?}", stx_protocol.failure_reason()),
         Err(e) => panic!("{:?}", e),
     }
-    stx_protocol.get_transaction().unwrap().clone()
+    let txn = stx_protocol.get_transaction().unwrap().clone();
+    (txn, unblinded_outputs)
 }
 
 /// Create a transaction kernel with the given fee, using random keys to generate the signature
@@ -183,7 +247,35 @@ pub fn create_test_kernel(fee: MicroTari, lock_height: u64) -> TransactionKernel
         .unwrap()
 }
 
+/// Create a genesis block returning it with the spending key for the coinbase utxo
+///
+/// Right now this function does not use consensus rules to generate the block. The coinbase output has an arbitrary
+/// value, and the maturity is zero.
+pub fn create_genesis_block() -> (Block, UnblindedOutput) {
+    let mut header = BlockHeader::new(0);
+    header.total_difficulty = Difficulty::from(1);
+    let value = MicroTari::from(100_000_000);
+    let excess = Commitment::from_public_key(&PublicKey::default());
+    let (utxo, key) = create_utxo(value);
+    let (pk, sig) = create_random_signature(0.into(), 0);
+    let kernel = KernelBuilder::new()
+        .with_signature(&sig)
+        .with_excess(&excess)
+        .with_features(KernelFeatures::COINBASE_KERNEL)
+        .build()
+        .unwrap();
+    let block = BlockBuilder::new()
+        .with_header(header)
+        .with_coinbase_utxo(utxo, kernel)
+        .build();
+    // TODO right now it matters not that it's not flagged as a Coinbase output
+    let output = UnblindedOutput::new(value, key, None);
+    (block, output)
+}
+
 /// Create a partially constructed block using the provided set of transactions
+/// TODO - as we move to creating ever more correct blocks in tests, maybe we should deprecate this method since there
+/// is chain_block, or rename it to `create_orphan_block` and drop the prev_block argument
 pub fn create_test_block(block_height: u64, prev_block: Option<Block>, transactions: Vec<Transaction>) -> Block {
     let mut header = BlockHeader::new(0);
     header.height = block_height;
@@ -191,24 +283,21 @@ pub fn create_test_block(block_height: u64, prev_block: Option<Block>, transacti
         header.prev_hash = block.hash();
         header.total_difficulty = block.header.total_difficulty + Difficulty::from(1);
     }
-    let mut body = AggregateBody::empty();
-    transactions.iter().for_each(|tx| {
-        body.kernels.push(tx.body.kernels[0].clone());
-        body.inputs.append(&mut tx.body.inputs.clone());
-        body.outputs.append(&mut tx.body.outputs.clone());
-    });
-
-    Block { header, body }
+    BlockBuilder::new()
+        .with_header(header)
+        .with_transactions(transactions)
+        .build()
 }
 
-/// Create a partially constructed utxo set using the outputs of a test block
-pub fn extract_outputs_as_inputs(utxos: &mut Vec<TransactionInput>, published_block: &Block) {
-    for output in &published_block.body.outputs {
-        let input = TransactionInput::from(output.clone());
-        if !utxos.contains(&input) {
-            utxos.push(input);
-        }
-    }
+/// Create a new block using the provided transactions that adds to the blockchain given in `prev_block`
+pub fn chain_block(prev_block: &Block, transactions: Vec<Transaction>) -> Block {
+    let mut header = BlockHeader::from_previous(&prev_block.header);
+    header.total_difficulty = prev_block.header.total_difficulty + Difficulty::from(1);
+
+    BlockBuilder::new()
+        .with_header(header)
+        .with_transactions(transactions)
+        .build()
 }
 
 /// Generate a random signature, returning the public key (excess) and the signature.
@@ -229,6 +318,9 @@ pub struct TestKeySet {
     pr: PublicKey,
 }
 
+/// Generate a new random key set. The key set includes
+/// * a public-private keypair (k, pk)
+/// * a public-private nonce keypair (r, pr)
 pub fn generate_keys() -> TestKeySet {
     let mut rng = rand::OsRng::new().unwrap();
     let (k, pk) = PublicKey::random_keypair(&mut rng);

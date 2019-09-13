@@ -283,7 +283,7 @@ mod test {
             );
             blockchain_db.commit(db_txn).unwrap();
 
-            create_test_tx_spending_utxos(fee_per_gram, lock_height, vec![utxo1, utxo2], 2)
+            create_test_tx_spending_utxos(fee_per_gram, lock_height, vec![utxo1, utxo2], 2).0
         }
     }
 

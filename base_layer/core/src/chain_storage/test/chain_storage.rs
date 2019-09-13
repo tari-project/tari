@@ -34,8 +34,18 @@ use crate::{
     },
     proof_of_work::Difficulty,
     tari_amount::MicroTari,
-    test_utils::builders::{create_test_block, create_test_kernel, create_test_tx, create_utxo},
-    types::HashDigest,
+    test_utils::builders::{
+        chain_block,
+        create_genesis_block,
+        create_test_block,
+        create_test_input,
+        create_test_kernel,
+        create_test_tx_spending_utxos,
+        create_tx,
+        create_utxo,
+    },
+    transaction::TransactionInput,
+    types::{HashDigest, COMMITMENT_FACTORY, PROVER},
 };
 use std::thread;
 use tari_mmr::MutableMmr;
@@ -104,8 +114,8 @@ fn insert_and_fetch_utxo() {
 fn insert_and_fetch_orphan() {
     let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
     let txs = vec![
-        create_test_tx(1000.into(), 20.into(), 0, 2, 0, 1),
-        create_test_tx(2000.into(), 30.into(), 0, 1, 0, 1),
+        create_tx(1000.into(), 20.into(), 0, 2, 0, 1).0,
+        create_tx(2000.into(), 30.into(), 0, 1, 0, 1).0,
     ];
     let orphan = create_test_block(10, None, txs);
     let orphan_hash = orphan.hash();
@@ -344,8 +354,31 @@ fn add_multiple_blocks() {
     block.header.total_difficulty = Difficulty::from(100);
     let hash = block.hash();
     assert_eq!(store.add_block(block.clone()), Ok(BlockAddResult::Ok));
+    // Adding blocks is idempotent
+    assert_eq!(store.add_block(block.clone()), Ok(BlockAddResult::BlockExists));
     // Check the metadata
     let metadata = store.get_metadata().unwrap();
     assert_eq!(metadata.height_of_longest_chain, Some(1));
     assert_eq!(metadata.best_block, Some(hash));
+}
+
+#[test]
+fn test_checkpoints() {
+    let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
+    // Add the Genesis block
+    let (block0, output) = create_genesis_block();
+    let gen_utxo = TransactionInput::from(block0.body.outputs[0].clone());
+    assert_eq!(store.add_block(block0.clone()), Ok(BlockAddResult::Ok));
+    let (txn, _) = create_test_tx_spending_utxos(50.into(), 0, vec![(gen_utxo, output)], 2);
+    let block1 = chain_block(&block0, vec![txn]);
+    assert_eq!(store.add_block(block1.clone()), Ok(BlockAddResult::Ok));
+    // Get the checkpoint
+    let block_a = store.fetch_block(0).unwrap();
+    assert_eq!(block_a.confirmations(), 2);
+    assert_eq!(block0, Block::from(block_a));
+    let block_b = store.fetch_block(1).unwrap();
+    assert_eq!(block_b.confirmations(), 1);
+    let block1 = serde_json::to_string(&block1).unwrap();
+    let block_b = serde_json::to_string(&Block::from(block_b)).unwrap();
+    assert_eq!(block1, block_b);
 }

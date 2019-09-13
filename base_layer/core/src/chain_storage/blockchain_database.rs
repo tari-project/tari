@@ -37,7 +37,7 @@ use croaring::Bitmap;
 use log::*;
 use std::sync::{Arc, RwLock, RwLockReadGuard};
 use tari_mmr::{Hash, MerkleCheckPoint, MerkleProof};
-use tari_utilities::Hashable;
+use tari_utilities::{hex::Hex, Hashable};
 
 const LOG_TARGET: &str = "core::chain_storage::database";
 
@@ -307,13 +307,13 @@ where T: BlockchainBackend
     ///
     /// If an error does occur while writing the new block parts, all changes are reverted before returning.
     pub fn add_block(&self, block: Block) -> Result<BlockAddResult, ChainStorageError> {
-        if !self.is_new_best_block(&block)? {
-            return self.handle_possible_reorg(block);
-        }
         let block_hash = block.hash();
         let block_height = block.header.height;
         if self.db.contains(&DbKey::BlockHash(block_hash.clone()))? {
             return Ok(BlockAddResult::BlockExists);
+        }
+        if !self.is_new_best_block(&block)? {
+            return self.handle_possible_reorg(block);
         }
         let mut txn = DbTransaction::new();
         let (header, inputs, outputs, kernels) = block.dissolve();

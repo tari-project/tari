@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019 The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -19,22 +19,16 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
-// Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
-// This file is used to store the genesis block
-use crate::blocks::{block::Block, BlockBuilder};
+pub mod broadcast_strategy;
+mod error;
+mod messages;
+mod service;
+mod worker;
 
-use crate::{blocks::BlockHeader, proof_of_work::Difficulty};
-
-pub fn get_genesis_block() -> Block {
-    let header = get_gen_header();
-    BlockBuilder::new().with_header(header).build()
-}
-
-pub fn get_gen_header() -> BlockHeader {
-    let mut header = BlockHeader::new(0);
-    header.total_difficulty = Difficulty::from(1);
-    header
-}
+pub use self::{
+    broadcast_strategy::BroadcastStrategy,
+    error::OutboundServiceError,
+    messages::OutboundRequest,
+    service::{OutboundMessageService, OutboundServiceConfig, OutboundServiceRequester},
+};
