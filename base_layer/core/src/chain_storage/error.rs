@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::chain_storage::db_transaction::DbKey;
+use crate::{blocks::BlockValidationError, chain_storage::db_transaction::DbKey};
 use derive_error::Error;
 use tari_mmr::{error::MerkleMountainRangeError, MerkleProofError};
 
@@ -57,4 +57,5 @@ pub enum ChainStorageError {
     ValueNotFound(DbKey),
     MerkleMountainRangeError(MerkleMountainRangeError),
     MerkleProofError(MerkleProofError),
+    BlockValidationError(BlockValidationError),
 }

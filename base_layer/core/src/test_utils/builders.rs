@@ -257,7 +257,7 @@ pub fn create_genesis_block() -> (Block, UnblindedOutput) {
     let value = MicroTari::from(100_000_000);
     let excess = Commitment::from_public_key(&PublicKey::default());
     let (utxo, key) = create_utxo(value);
-    let (pk, sig) = create_random_signature(0.into(), 0);
+    let (_pk, sig) = create_random_signature(0.into(), 0);
     let kernel = KernelBuilder::new()
         .with_signature(&sig)
         .with_excess(&excess)
