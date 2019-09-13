@@ -95,7 +95,7 @@
 //! [Connecti]: ./connections/struct.LivePeerConnections.html
 //! [PeerConnection]: ../connection/peer_connection/struct.PeerConnection.html
 //! [ConnectionEstablisher]: ./establisher/struct.ConnectionEstablisher.html
-mod actor;
+pub mod actor;
 mod connections;
 mod dialer;
 mod error;

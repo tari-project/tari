@@ -35,7 +35,7 @@ use std::{
 use tari_comms::{
     domain_subscriber::SyncDomainSubscription,
     message::MessageFlags,
-    outbound_message_service::{outbound_message_service::OutboundMessageService, BroadcastStrategy, OutboundError},
+    outbound_message_service::{BroadcastStrategy, OutboundServiceError, OutboundServiceRequester},
     types::CommsPublicKey,
 };
 use tari_core::{
@@ -62,6 +62,7 @@ use tari_p2p::{
     },
     tari_message::{BlockchainMessage, TariMessageType},
 };
+use tokio::runtime::Runtime;
 
 const LOG_TARGET: &'static str = "base_layer::wallet::transaction_service";
 
@@ -85,7 +86,7 @@ pub enum TransactionServiceError {
     ApiSendFailed,
     /// Failed to receive in API from service
     ApiReceiveFailed,
-    OutboundError(OutboundError),
+    OutboundError(OutboundServiceError),
     OutputManagerError(OutputManagerError),
 }
 
@@ -109,13 +110,16 @@ pub struct TransactionService {
     pending_outbound_transactions: HashMap<u64, SenderTransactionProtocol>,
     pending_inbound_transactions: HashMap<u64, ReceiverTransactionProtocol>,
     completed_transactions: HashMap<u64, Transaction>,
-    outbound_message_service: Option<Arc<OutboundMessageService>>,
+    outbound_message_service: Option<OutboundServiceRequester>,
     api: ServiceApiWrapper<TransactionServiceApi, TransactionServiceApiRequest, TransactionServiceApiResult>,
     output_manager_service: Arc<OutputManagerServiceApi>,
+    runtime: Runtime,
 }
 
 impl TransactionService {
     pub fn new(output_manager_service: Arc<OutputManagerServiceApi>) -> TransactionService {
+        // TODO: Hack to get async to work in sync services - remove in next PR
+        let runtime = Runtime::new().unwrap();
         TransactionService {
             pending_outbound_transactions: HashMap::new(),
             pending_inbound_transactions: HashMap::new(),
@@ -123,6 +127,7 @@ impl TransactionService {
             outbound_message_service: None,
             api: Self::setup_api(),
             output_manager_service,
+            runtime,
         }
     }
 
@@ -152,7 +157,7 @@ impl TransactionService {
         fee_per_gram: MicroTari,
     ) -> Result<(), TransactionServiceError>
     {
-        let outbound_message_service = self
+        let mut outbound_message_service = self
             .outbound_message_service
             .clone()
             .ok_or(TransactionServiceError::OutboundMessageServiceNotInitialized)?;
@@ -166,12 +171,12 @@ impl TransactionService {
         }
 
         let msg = stp.build_single_round_message()?;
-        outbound_message_service.send_message(
+        self.runtime.block_on(outbound_message_service.send_message(
             BroadcastStrategy::DirectPublicKey(dest_pubkey.clone()),
             MessageFlags::ENCRYPTED,
             TariMessageType::new(BlockchainMessage::Transaction),
             TransactionSenderMessage::Single(Box::new(msg.clone())),
-        )?;
+        ))?;
 
         self.pending_outbound_transactions.insert(msg.tx_id.clone(), stp);
 
@@ -240,7 +245,7 @@ impl TransactionService {
         sender_message: TransactionSenderMessage,
     ) -> Result<(), TransactionServiceError>
     {
-        let outbound_message_service = self
+        let mut outbound_message_service = self
             .outbound_message_service
             .clone()
             .ok_or(TransactionServiceError::OutboundMessageServiceNotInitialized)?;
@@ -272,12 +277,12 @@ impl TransactionService {
                 return Err(TransactionServiceError::RepeatedMessageError);
             }
 
-            outbound_message_service.send_message(
+            self.runtime.block_on(outbound_message_service.send_message(
                 BroadcastStrategy::DirectPublicKey(source_pubkey.clone()),
                 MessageFlags::ENCRYPTED,
                 TariMessageType::new(BlockchainMessage::TransactionReply),
                 recipient_reply.clone(),
-            )?;
+            ))?;
 
             // Otherwise add it to our pending transaction list and return reply
             self.pending_inbound_transactions

@@ -24,7 +24,7 @@ use crate::tari_message::TariMessageType;
 use derive_error::Error;
 use std::{net::IpAddr, sync::Arc};
 use tari_comms::{
-    builder::{CommsBuilderError, CommsServices, CommsServicesError},
+    builder::{CommsBuilderError, CommsNode, CommsServicesError},
     connection::{net_address::ip::SocketAddress, NetAddress},
     connection_manager::PeerConnectionConfig,
     control_service::ControlServiceConfig,
@@ -33,6 +33,7 @@ use tari_comms::{
     CommsBuilder,
 };
 use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
+use tokio::runtime::TaskExecutor;
 
 #[derive(Debug, Error)]
 pub enum CommsInitializationError {
@@ -53,7 +54,11 @@ pub struct CommsConfig {
     pub peer_database_name: String,
 }
 
-pub fn initialize_comms(config: CommsConfig) -> Result<CommsServices<TariMessageType>, CommsInitializationError> {
+pub fn initialize_comms(
+    executor: TaskExecutor,
+    config: CommsConfig,
+) -> Result<CommsNode<TariMessageType>, CommsInitializationError>
+{
     let node_identity = NodeIdentity::new(config.secret_key, config.public_key, config.public_address)
         .map_err(CommsInitializationError::NodeIdentityError)?;
 
@@ -68,7 +73,7 @@ pub fn initialize_comms(config: CommsConfig) -> Result<CommsServices<TariMessage
     let peer_database = datastore.get_handle(&config.peer_database_name).unwrap();
     let peer_database = LMDBWrapper::new(Arc::new(peer_database));
 
-    let builder = CommsBuilder::new()
+    let builder = CommsBuilder::new(executor)
         .with_node_identity(node_identity)
         .with_peer_storage(peer_database)
         .configure_control_service(config.control_service)

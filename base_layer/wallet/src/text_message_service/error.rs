@@ -26,7 +26,7 @@ use tari_comms::{
     builder::CommsServicesError,
     connection::NetAddressError,
     message::MessageError,
-    outbound_message_service::OutboundError,
+    outbound_message_service::OutboundServiceError,
 };
 use tari_p2p::sync_services::ServiceError;
 use tari_utilities::{hex::HexError, message_format::MessageFormatError};
@@ -35,7 +35,7 @@ use tari_utilities::{hex::HexError, message_format::MessageFormatError};
 pub enum TextMessageError {
     MessageFormatError(MessageFormatError),
     MessageError(MessageError),
-    OutboundError(OutboundError),
+    OutboundError(OutboundServiceError),
     ServiceError(ServiceError),
     CommsServicesError(CommsServicesError),
     HexError(HexError),

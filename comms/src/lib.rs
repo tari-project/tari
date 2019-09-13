@@ -5,7 +5,8 @@
 //! See [CommsBuilder] for more information on using this library.
 //!
 //! [CommsBuilder]: ./builder/index.html
-#![feature(checked_duration_since)]
+// Recursion limit for futures::select!
+#![recursion_limit = "256"]
 // Allow `type Future = impl Future`
 #![feature(type_alias_impl_trait)]
 

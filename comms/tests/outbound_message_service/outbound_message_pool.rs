@@ -24,19 +24,14 @@ use crate::support::{
     factories::{self, TestFactory},
     helpers::streams::stream_assert_count,
 };
-use futures::{channel::mpsc::channel, StreamExt};
-use std::{fs, path::PathBuf, sync::Arc, thread, time::Duration};
+use futures::{channel::mpsc, StreamExt};
+use std::{fs, path::PathBuf, sync::Arc, time::Duration};
 use tari_comms::{
     connection::ZmqContext,
-    connection_manager::{ConnectionManager, PeerConnectionConfig},
+    connection_manager::{create_connection_manager_actor, ConnectionManager, PeerConnectionConfig},
     control_service::{ControlService, ControlServiceConfig},
     message::MessageFlags,
-    outbound_message_service::{
-        outbound_message_pool::OutboundMessagePoolConfig,
-        outbound_message_service::OutboundMessageService,
-        BroadcastStrategy,
-        OutboundMessagePool,
-    },
+    outbound_message_service::{BroadcastStrategy, OutboundMessageService, OutboundServiceRequester},
     peer_manager::{Peer, PeerManager},
     types::CommsDatabase,
 };
@@ -44,6 +39,7 @@ use tari_storage::{
     lmdb_store::{LMDBBuilder, LMDBError, LMDBStore},
     LMDBWrapper,
 };
+use tokio::runtime::Runtime;
 
 fn make_peer_connection_config() -> PeerConnectionConfig {
     PeerConnectionConfig {
@@ -93,6 +89,7 @@ fn clean_up_datastore(name: &str) {
 #[test]
 #[allow(non_snake_case)]
 fn outbound_message_pool_no_retry() {
+    let rt = Runtime::new().unwrap();
     let context = ZmqContext::new();
     let node_identity = Arc::new(factories::node_identity::create().build().unwrap());
 
@@ -112,7 +109,7 @@ fn outbound_message_pool_no_retry() {
     let database = datastore.get_handle(node_B_database_name).unwrap();
     let database = LMDBWrapper::new(Arc::new(database));
     let node_B_peer_manager = make_peer_manager(vec![], database);
-    let (message_sink_tx_b, message_sink_rx_b) = channel(10);
+    let (message_sink_tx_b, message_sink_rx_b) = mpsc::channel(10);
     let node_B_connection_manager = Arc::new(ConnectionManager::new(
         context.clone(),
         node_identity.clone(),
@@ -127,8 +124,11 @@ fn outbound_message_pool_no_retry() {
         listener_address: node_B_control_port_address,
         requested_connection_timeout: Duration::from_millis(2000),
     })
-    .serve(node_B_connection_manager)
+    .serve(Arc::clone(&node_B_connection_manager))
     .unwrap();
+
+    let (_, node_B_connection_manager_actor) = create_connection_manager_actor(10, node_B_connection_manager);
+    rt.spawn(node_B_connection_manager_actor.start());
 
     //---------------------------------- Node A setup --------------------------------------------//
 
@@ -138,7 +138,7 @@ fn outbound_message_pool_no_retry() {
     let database = datastore.get_handle(node_A_database_name).unwrap();
     let database = LMDBWrapper::new(Arc::new(database));
     let node_A_peer_manager = make_peer_manager(vec![node_B_peer.clone()], database);
-    let (message_sink_tx_a, _message_sink_rx_a) = channel(10);
+    let (message_sink_tx_a, _message_sink_rx_a) = mpsc::channel(10);
     let node_A_connection_manager = Arc::new(
         factories::connection_manager::create()
             .with_peer_manager(node_A_peer_manager.clone())
@@ -148,35 +148,40 @@ fn outbound_message_pool_no_retry() {
             .unwrap(),
     );
 
-    // Setup Node A OMP and OMS
-    let omp_config = OutboundMessagePoolConfig::default();
-    let mut omp = OutboundMessagePool::new(
-        omp_config.clone(),
-        node_A_peer_manager.clone(),
-        node_A_connection_manager.clone(),
+    let (node_A_connection_manager_requester, node_A_connection_manager_actor) =
+        create_connection_manager_actor(10, node_A_connection_manager);
+    rt.spawn(node_A_connection_manager_actor.start());
+
+    // Setup Node A OMS
+    let (outbound_tx, outbound_rx) = mpsc::unbounded();
+    let oms = OutboundMessageService::new(
+        Default::default(),
+        rt.executor(),
+        outbound_rx,
+        node_A_peer_manager,
+        node_A_connection_manager_requester,
+        Arc::clone(&node_identity),
     );
+    rt.spawn(oms.start());
+    let oms = OutboundServiceRequester::new(outbound_tx);
 
-    let oms = OutboundMessageService::new(node_identity.clone(), omp.sender(), node_A_peer_manager.clone()).unwrap();
-
-    let oms2 = OutboundMessageService::new(node_identity.clone(), omp.sender(), node_A_peer_manager.clone()).unwrap();
-
-    omp.start().unwrap();
     let message_envelope_body = vec![0, 1, 2, 3];
 
-    // Send 8 message alternating two different OMS's
-    for _ in 0..4 {
-        oms.send_raw(
-            BroadcastStrategy::DirectNodeId(node_B_peer.node_id.clone()),
-            MessageFlags::ENCRYPTED,
-            message_envelope_body.clone(),
-        )
-        .unwrap();
-        oms2.send_raw(
-            BroadcastStrategy::DirectNodeId(node_B_peer.node_id.clone()),
-            MessageFlags::ENCRYPTED,
-            message_envelope_body.clone(),
-        )
-        .unwrap();
+    // Spawn 8 message sending tasks
+    for _ in 0..8 {
+        let mut oms_clone = oms.clone();
+        let node_id = node_B_peer.node_id.clone();
+        let body_clone = message_envelope_body.clone();
+        rt.spawn(async move {
+            oms_clone
+                .send_raw(
+                    BroadcastStrategy::DirectNodeId(node_id),
+                    MessageFlags::ENCRYPTED,
+                    body_clone,
+                )
+                .await
+                .unwrap()
+        });
     }
 
     let (_, _) = stream_assert_count(message_sink_rx_b.fuse(), 8, 8000).unwrap();
@@ -185,7 +190,6 @@ fn outbound_message_pool_no_retry() {
         .timeout_join(Duration::from_millis(3000))
         .unwrap();
 
-    omp.shutdown().unwrap();
     clean_up_datastore(node_A_database_name);
     clean_up_datastore(node_B_database_name);
 }
@@ -202,12 +206,13 @@ fn outbound_message_pool_no_retry() {
 #[test]
 #[allow(non_snake_case)]
 fn test_outbound_message_pool_fail_and_retry() {
+    let rt = Runtime::new().unwrap();
     let context = ZmqContext::new();
 
     let node_A_identity = factories::node_identity::create().build().map(Arc::new).unwrap();
     //---------------------------------- Node B Setup --------------------------------------------//
 
-    let (message_sink_tx_b, message_sink_rx_b) = channel(10);
+    let (message_sink_tx_b, message_sink_rx_b) = mpsc::channel(10);
 
     let node_B_control_port_address = factories::net_address::create().build().unwrap();
 
@@ -227,11 +232,11 @@ fn test_outbound_message_pool_fail_and_retry() {
     //---------------------------------- Node A setup --------------------------------------------//
 
     // Add node B to node A's peer manager
-    let database_name = "omp_test_outbound_message_pool_fail_and_retry1"; // Note: every test should have unique database
+    let database_name = "omp_test_outbound_message_pool_fail_and_retry1"; // Note: every test should have unique
     let datastore = init_datastore(database_name).unwrap();
     let database = datastore.get_handle(database_name).unwrap();
     let database = LMDBWrapper::new(Arc::new(database));
-    let (message_sink_tx_a, _message_sink_rx_a) = channel(10);
+    let (message_sink_tx_a, _message_sink_rx_a) = mpsc::channel(10);
     let node_A_peer_manager = factories::peer_manager::create()
         .with_peers(vec![node_B_peer.clone()])
         .with_database(database)
@@ -248,29 +253,43 @@ fn test_outbound_message_pool_fail_and_retry() {
         .map(Arc::new)
         .unwrap();
 
-    // Setup Node A OMP and OMS
-    let omp_config = OutboundMessagePoolConfig::default();
-    let mut omp = OutboundMessagePool::new(
-        omp_config.clone(),
-        node_A_peer_manager.clone(),
-        node_A_connection_manager.clone(),
+    let (node_A_connection_manager_requester, node_A_connection_manager_actor) =
+        create_connection_manager_actor(10, node_A_connection_manager);
+    rt.spawn(node_A_connection_manager_actor.start());
+
+    // Setup Node A OMS
+    let (outbound_tx, outbound_rx) = mpsc::unbounded();
+    let oms = OutboundMessageService::new(
+        Default::default(),
+        rt.executor(),
+        outbound_rx,
+        node_A_peer_manager,
+        node_A_connection_manager_requester,
+        Arc::clone(&node_A_identity),
     );
+    rt.spawn(oms.start());
+    let oms = OutboundServiceRequester::new(outbound_tx);
 
-    let oms = OutboundMessageService::new(node_A_identity.clone(), omp.sender(), node_A_peer_manager.clone()).unwrap();
-
-    omp.start().unwrap();
     let message_envelope_body = vec![0, 1, 2, 3];
 
+    // Spawn 8 message sending tasks
     for _ in 0..5 {
-        oms.send_raw(
-            BroadcastStrategy::DirectNodeId(node_B_peer.node_id.clone()),
-            MessageFlags::ENCRYPTED,
-            message_envelope_body.clone(),
-        )
-        .unwrap();
+        let mut oms_clone = oms.clone();
+        let node_id = node_B_peer.node_id.clone();
+        let body_clone = message_envelope_body.clone();
+        rt.spawn(async move {
+            oms_clone
+                .send_raw(
+                    BroadcastStrategy::DirectNodeId(node_id),
+                    MessageFlags::ENCRYPTED,
+                    body_clone,
+                )
+                .await
+                .unwrap()
+        });
     }
 
-    thread::sleep(Duration::from_millis(1000));
+    //    thread::sleep(Duration::from_millis(1000));
 
     // Later, start node B's control service and test if we receive messages
     let node_B_database_name = "omp_node_B_peer_manager"; // Note: every test should have unique database
@@ -298,12 +317,11 @@ fn test_outbound_message_pool_fail_and_retry() {
     .unwrap();
 
     // We wait for the message to retry sending
-    let (_, _) = stream_assert_count(message_sink_rx_b.fuse(), 5, 2000).unwrap();
+    let (_, _) = stream_assert_count(message_sink_rx_b.fuse(), 5, 3000).unwrap();
     node_B_control_service.shutdown().unwrap();
     node_B_control_service
         .timeout_join(Duration::from_millis(3000))
         .unwrap();
-    omp.shutdown().unwrap();
 
     clean_up_datastore(database_name);
 }

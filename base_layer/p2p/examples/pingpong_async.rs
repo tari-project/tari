@@ -64,6 +64,7 @@ use tari_p2p::{
 use tari_service_framework::StackBuilder;
 use tari_utilities::message_format::MessageFormat;
 use tempdir::TempDir;
+use tokio::runtime::Runtime;
 use tower_service::Service;
 
 fn load_identity(path: &str) -> NodeIdentity {
@@ -133,8 +134,11 @@ fn main() {
             .to_string(),
         peer_database_name: random_string(8),
     };
+    let rt = Runtime::new().expect("Failed to create tokio Runtime");
+    // TODO: Use only tokio runtime
+    let mut thread_pool = ThreadPool::new().expect("Could not start Futures ThreadPool");
 
-    let mut comms = initialize_comms(comms_config).unwrap();
+    let comms = initialize_comms(rt.executor(), comms_config).unwrap();
     let peer = Peer::new(
         peer_identity.identity.public_key.clone(),
         peer_identity.identity.node_id.clone(),
@@ -142,9 +146,6 @@ fn main() {
         PeerFlags::empty(),
     );
     comms.peer_manager().add_peer(peer).unwrap();
-
-    let mut thread_pool = ThreadPool::new().expect("Could not start Futures ThreadPool");
-    comms.spawn_tasks(&mut thread_pool);
 
     let comms = Arc::new(comms);
 

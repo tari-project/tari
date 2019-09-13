@@ -22,7 +22,7 @@
 
 use crate::{
     connection::net_address::NetAddress,
-    outbound_message_service::BroadcastStrategy,
+    outbound_message_service::broadcast_strategy::BroadcastStrategy,
     peer_manager::{
         node_id::NodeId,
         node_identity::PeerNodeIdentity,

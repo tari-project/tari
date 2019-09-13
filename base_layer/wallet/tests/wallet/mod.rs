@@ -21,7 +21,6 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::support::utils::assert_change;
-use futures::executor::ThreadPool;
 use std::{path::PathBuf, time::Duration};
 use tari_comms::{
     connection::{net_address::NetAddressWithStats, NetAddress, NetAddressesWithStats},
@@ -99,9 +98,8 @@ fn test_wallet() {
         public_key: public_key1.clone(),
         database_path: db_path1,
     };
-    let mut thread_pool = ThreadPool::new().expect("Could not start Futures ThreadPool");
 
-    let wallet1 = Wallet::new(config1, &mut thread_pool).unwrap();
+    let wallet1 = Wallet::new(config1).unwrap();
 
     let listener_address2: NetAddress = "127.0.0.1:32776".parse().unwrap();
     let secret_key2 = CommsSecretKey::random(&mut rng);
@@ -126,7 +124,7 @@ fn test_wallet() {
         database_path: db_path2,
     };
 
-    let wallet2 = Wallet::new(config2, &mut thread_pool).unwrap();
+    let wallet2 = Wallet::new(config2).unwrap();
 
     wallet1
         .comms_services
