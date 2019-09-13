@@ -33,14 +33,7 @@ use cursive::{
     CbFunc,
     Cursive,
 };
-use futures::{
-    channel::mpsc,
-    executor::{block_on, ThreadPool},
-    join,
-    stream::StreamExt,
-    task::SpawnExt,
-    Stream,
-};
+use futures::{channel::mpsc, join, stream::StreamExt, Stream};
 use futures_timer::Interval;
 use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
 use std::{
@@ -135,8 +128,6 @@ fn main() {
         peer_database_name: random_string(8),
     };
     let rt = Runtime::new().expect("Failed to create tokio Runtime");
-    // TODO: Use only tokio runtime
-    let mut thread_pool = ThreadPool::new().expect("Could not start Futures ThreadPool");
 
     let comms = initialize_comms(rt.executor(), comms_config).unwrap();
     let peer = Peer::new(
@@ -149,21 +140,19 @@ fn main() {
 
     let comms = Arc::new(comms);
 
-    let fut = StackBuilder::new(&mut thread_pool)
+    let fut = StackBuilder::new(rt.executor())
         .add_initializer(CommsOutboundServiceInitializer::new(comms.outbound_message_service()))
         .add_initializer(LivenessInitializer::new(Arc::clone(&comms)))
         .finish();
 
-    let handles = block_on(fut).expect("Service initialization failed");
+    let handles = rt.block_on(fut).expect("Service initialization failed");
 
     let mut app = setup_ui();
 
     // Updates the UI when pings/pongs are received
     let ui_update_signal = app.cb_sink().clone();
     let liveness_handle = handles.get_handle::<LivenessHandle>().unwrap();
-    thread_pool
-        .spawn(update_ui(ui_update_signal, liveness_handle.clone()))
-        .unwrap();
+    rt.spawn(update_ui(ui_update_signal, liveness_handle.clone()));
 
     // Send pings when 'p' is pressed
     let (mut send_ping_tx, send_ping_rx) = mpsc::channel(10);
@@ -173,19 +162,17 @@ fn main() {
 
     let ui_update_signal = app.cb_sink().clone();
     let pk_to_ping = peer_identity.identity.public_key.clone();
-    thread_pool
-        .spawn(send_ping_on_trigger(
-            send_ping_rx,
-            ui_update_signal,
-            liveness_handle,
-            pk_to_ping,
-        ))
-        .unwrap();
+    rt.spawn(send_ping_on_trigger(
+        send_ping_rx,
+        ui_update_signal,
+        liveness_handle,
+        pk_to_ping,
+    ));
 
     app.add_global_callback('q', |s| s.quit());
     app.run();
-    let comms = Arc::try_unwrap(comms).map_err(|_| ()).unwrap();
 
+    let comms = Arc::try_unwrap(comms).map_err(|_| ()).unwrap();
     comms.shutdown().unwrap();
 }
 

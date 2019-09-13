@@ -408,6 +408,7 @@ where MType: Clone + Send + Eq + Debug + Sync + Serialize + DeserializeOwned + '
 
         // This shuts down the ConnectionManagerActor (releasing Arc<ConnectionManager>)
         drop(self.connection_manager_requester);
+        drop(self.outbound_service_requester);
 
         let mut shutdown_results = Vec::new();
         // Shutdown control service

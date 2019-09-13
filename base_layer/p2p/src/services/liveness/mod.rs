@@ -62,6 +62,7 @@ use tari_service_framework::{
 use tari_utilities::message_format::MessageFormat;
 
 pub use self::messages::{LivenessRequest, LivenessResponse, PingPong};
+use tokio::runtime::TaskExecutor;
 
 pub type LivenessHandle = SenderService<LivenessRequest, Result<LivenessResponse, LivenessError>>;
 
@@ -99,12 +100,10 @@ impl LivenessInitializer {
     }
 }
 
-impl<TExec> ServiceInitializer<TExec> for LivenessInitializer
-where TExec: SpawnExt
-{
+impl ServiceInitializer for LivenessInitializer {
     type Future = impl Future<Output = Result<(), ServiceInitializationError>>;
 
-    fn initialize(&mut self, executor: &mut TExec, handles_fut: ServiceHandlesFuture) -> Self::Future {
+    fn initialize(&mut self, executor: TaskExecutor, handles_fut: ServiceHandlesFuture) -> Self::Future {
         let (sender, receiver) = reply_channel::unbounded();
 
         // Register handle before waiting for handles to be ready
@@ -113,24 +112,22 @@ where TExec: SpawnExt
         // Create a stream which receives PingPong messages from comms
         let ping_stream = self.ping_stream();
 
-        let spawn_result = executor
-            .spawn(async move {
-                // Wait for all handles to become available
-                let handles = handles_fut.await;
+        executor.spawn(async move {
+            // Wait for all handles to become available
+            let handles = handles_fut.await;
 
-                let outbound_handle = handles
-                    .get_handle::<CommsOutboundHandle>()
-                    .expect("Liveness service requires CommsOutbound service handle");
+            let outbound_handle = handles
+                .get_handle::<CommsOutboundHandle>()
+                .expect("Liveness service requires CommsOutbound service handle");
 
-                let state = Arc::new(LivenessState::new());
+            let state = Arc::new(LivenessState::new());
 
-                // Spawn the Liveness service on the executor
-                let service = LivenessService::new(receiver, ping_stream, state, outbound_handle);
-                service.run().await;
-            })
-            .map_err(Into::into);
+            // Spawn the Liveness service on the executor
+            let service = LivenessService::new(receiver, ping_stream, state, outbound_handle);
+            service.run().await;
+        });
 
-        future::ready(spawn_result)
+        future::ready(Ok(()))
     }
 }
 
