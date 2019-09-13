@@ -24,11 +24,10 @@ use crate::support::{
     data::{clean_up_datastore, init_datastore},
     utils::assert_change,
 };
-use futures::executor::ThreadPool;
 
 use rand::{CryptoRng, OsRng, Rng};
 use std::{sync::Arc, thread, time::Duration};
-use tari_comms::{builder::CommsServices, peer_manager::NodeIdentity};
+use tari_comms::{builder::CommsNode, peer_manager::NodeIdentity};
 use tari_core::{
     tari_amount::*,
     transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
@@ -48,8 +47,10 @@ use tari_wallet::{
     output_manager_service::output_manager_service::{OutputManagerService, OutputManagerServiceApi},
     transaction_service::{TransactionService, TransactionServiceApi},
 };
+use tokio::runtime::{Runtime, TaskExecutor};
 
 pub fn setup_transaction_service(
+    executor: TaskExecutor,
     seed_key: PrivateKey,
     node_identity: NodeIdentity,
     peers: Vec<NodeIdentity>,
@@ -58,7 +59,7 @@ pub fn setup_transaction_service(
     ServiceExecutor,
     Arc<TransactionServiceApi>,
     Arc<OutputManagerServiceApi>,
-    CommsServices<TariMessageType>,
+    CommsNode<TariMessageType>,
 )
 {
     let output_manager = OutputManagerService::new(seed_key, "".to_string(), 0);
@@ -66,7 +67,7 @@ pub fn setup_transaction_service(
     let tx_service = TransactionService::new(output_manager_api.clone());
     let tx_service_api = tx_service.get_api();
     let services = ServiceRegistry::new().register(tx_service).register(output_manager);
-    let comms = setup_comms_services(node_identity, peers, peer_database);
+    let comms = setup_comms_services(executor, node_identity, peers, peer_database);
 
     (
         ServiceExecutor::execute(&comms, services),
@@ -103,6 +104,7 @@ impl TestParams {
 
 #[test]
 fn manage_single_transaction() {
+    let runtime = Runtime::new().unwrap();
     let mut rng = OsRng::new().unwrap();
     // Alice's parameters
     let alice_seed = PrivateKey::random(&mut rng);
@@ -117,15 +119,13 @@ fn manage_single_transaction() {
     let bob_datastore = init_datastore(bob_database_name).unwrap();
     let bob_peer_database = bob_datastore.get_handle(bob_database_name).unwrap();
 
-    let (alice_services, alice_tx_api, alice_oms_api, mut alice_comms) = setup_transaction_service(
+    let (alice_services, alice_tx_api, alice_oms_api, _alice_comms) = setup_transaction_service(
+        runtime.executor(),
         alice_seed,
         alice_node_identity.clone(),
         vec![bob_node_identity.clone()],
         alice_peer_database,
     );
-
-    let mut thread_pool = ThreadPool::new().unwrap();
-    alice_comms.spawn_tasks(&mut thread_pool);
 
     thread::sleep(Duration::from_millis(500));
 
@@ -155,13 +155,13 @@ fn manage_single_transaction() {
     assert_eq!(alice_pending_outbound.len(), 1);
     assert_eq!(alice_completed_tx.len(), 0);
 
-    let (bob_services, bob_tx_api, bob_oms_api, mut bob_comms) = setup_transaction_service(
+    let (bob_services, bob_tx_api, bob_oms_api, _bob_comms) = setup_transaction_service(
+        runtime.executor(),
         bob_seed,
         bob_node_identity.clone(),
         vec![alice_node_identity.clone()],
         bob_peer_database,
     );
-    bob_comms.spawn_tasks(&mut thread_pool);
 
     assert_change(|| alice_tx_api.get_completed_transaction().unwrap().len(), 1, 50);
 
@@ -197,6 +197,7 @@ fn manage_single_transaction() {
 
 #[test]
 fn manage_multiple_transactions() {
+    let runtime = Runtime::new().unwrap();
     let _ = env_logger::builder().is_test(true).try_init();
     let mut rng = OsRng::new().unwrap();
     // Alice's parameters
@@ -217,15 +218,13 @@ fn manage_multiple_transactions() {
     let carol_database_name = "carol_test_tx_service2"; // Note: every test should have unique database
     let carol_datastore = init_datastore(carol_database_name).unwrap();
     let carol_peer_database = carol_datastore.get_handle(carol_database_name).unwrap();
-    let (alice_services, alice_tx_api, alice_oms_api, mut alice_comms) = setup_transaction_service(
+    let (alice_services, alice_tx_api, alice_oms_api, _alice_comms) = setup_transaction_service(
+        runtime.executor(),
         alice_seed,
         alice_node_identity.clone(),
         vec![bob_node_identity.clone(), carol_node_identity.clone()],
         alice_peer_database,
     );
-
-    let mut thread_pool = ThreadPool::new().unwrap();
-    alice_comms.spawn_tasks(&mut thread_pool);
 
     // Add some funds to Alices wallet
     let (_utxo, uo1a) = make_input(&mut rng, MicroTari(5500));
@@ -260,21 +259,20 @@ fn manage_multiple_transactions() {
     assert_eq!(alice_completed_tx.len(), 0);
 
     // Spin up Bob and Carol
-    let (bob_services, bob_tx_api, bob_oms_api, mut bob_comms) = setup_transaction_service(
+    let (bob_services, bob_tx_api, bob_oms_api, _bob_comms) = setup_transaction_service(
+        runtime.executor(),
         bob_seed,
         bob_node_identity.clone(),
         vec![alice_node_identity.clone()],
         bob_peer_database,
     );
-    let (carol_services, carol_tx_api, carol_oms_api, mut carol_comms) = setup_transaction_service(
+    let (carol_services, carol_tx_api, carol_oms_api, _carol_comms) = setup_transaction_service(
+        runtime.executor(),
         carol_seed,
         carol_node_identity.clone(),
         vec![alice_node_identity.clone()],
         carol_peer_database,
     );
-
-    bob_comms.spawn_tasks(&mut thread_pool);
-    carol_comms.spawn_tasks(&mut thread_pool);
 
     let (_utxo, uo2) = make_input(&mut rng, MicroTari(3500));
     bob_oms_api.add_output(uo2).unwrap();

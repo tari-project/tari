@@ -38,7 +38,7 @@ use crate::{
         MessageHeader,
         NodeDestination,
     },
-    outbound_message_service::{outbound_message_service::OutboundMessageService, BroadcastStrategy},
+    outbound_message_service::{broadcast_strategy::BroadcastStrategy, OutboundServiceRequester},
     peer_manager::{NodeId, NodeIdentity, Peer, PeerManager},
     pub_sub_channel::{pubsub_channel, TopicPayload, TopicPublisher},
     types::CommsPublicKey,
@@ -77,7 +77,7 @@ where MType: Send + Sync + Debug
     peer_manager: Arc<PeerManager>,
     // TODO Remove this and replace it with a forward_message_publisher that will contain the logic for how and when to
     // forward messages
-    outbound_message_service: Arc<OutboundMessageService>,
+    outbound_service: OutboundServiceRequester,
     handle_message_publisher: TopicPublisher<MType, InboundMessage>,
 }
 
@@ -88,7 +88,7 @@ where MType: Eq + Send + Sync + Debug + Serialize + DeserializeOwned + 'static
         node_identity: Arc<NodeIdentity>,
         message_sink_receiver: Receiver<FrameSet>,
         peer_manager: Arc<PeerManager>,
-        outbound_message_service: Arc<OutboundMessageService>,
+        outbound_message_service: OutboundServiceRequester,
         pub_sub_buffer_size: usize,
     ) -> (
         InboundMessagePipeline<MType>,
@@ -105,7 +105,7 @@ where MType: Eq + Send + Sync + Debug + Serialize + DeserializeOwned + 'static
                 message_sink_receiver,
                 message_cache,
                 peer_manager,
-                outbound_message_service,
+                outbound_service: outbound_message_service,
                 handle_message_publisher,
             },
             InboundMessageSubscriptionFactories {
@@ -125,7 +125,6 @@ where MType: Eq + Send + Sync + Debug + Serialize + DeserializeOwned + 'static
             }
         }
         info!(target: LOG_TARGET, "Closing Inbound Message Pipeline");
-        ()
     }
 
     /// Process a single received message from its raw serialized form i.e. a FrameSet
@@ -151,7 +150,10 @@ where MType: Eq + Send + Sync + Debug + Serialize + DeserializeOwned + 'static
                 self.handle_message_route(message_envelope_header, message_data, &peer)
                     .await?
             },
-            InboundMessageRoute::Forward => self.forward_message_route(message_envelope_header, message_data)?,
+            InboundMessageRoute::Forward => {
+                self.forward_message_route(message_envelope_header, message_data)
+                    .await?
+            },
         }
 
         Ok(())
@@ -190,7 +192,7 @@ where MType: Eq + Send + Sync + Debug + Serialize + DeserializeOwned + 'static
                         );
 
                         if message_data.forwardable {
-                            return self.forward_message_route(message_envelope_header, message_data);
+                            return self.forward_message_route(message_envelope_header, message_data).await;
                         } else {
                             return Err(InboundMessagePipelineError::InvalidDestination);
                         }
@@ -232,8 +234,8 @@ where MType: Eq + Send + Sync + Debug + Serialize + DeserializeOwned + 'static
     }
 
     /// This function defines the logic to handle sending messages along the `Message Forward` route.
-    fn forward_message_route(
-        &self,
+    async fn forward_message_route(
+        &mut self,
         message_envelope_header: MessageEnvelopeHeader,
         message_data: MessageData,
     ) -> Result<(), InboundMessagePipelineError>
@@ -249,8 +251,9 @@ where MType: Eq + Send + Sync + Debug + Serialize + DeserializeOwned + 'static
         )?;
 
         debug!(target: LOG_TARGET, "Forwarding message");
-        self.outbound_message_service
-            .forward_message(broadcast_strategy, message_data.message_envelope)?;
+        self.outbound_service
+            .forward_message(broadcast_strategy, message_data.message_envelope)
+            .await?;
 
         Ok(())
     }

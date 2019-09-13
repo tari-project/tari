@@ -29,26 +29,25 @@ use crate::{
         InboundTopicSubscriptionFactory,
     },
     message::FrameSet,
-    outbound_message_service::{
-        outbound_message_pool::{OutboundMessagePoolConfig, OutboundMessagePoolError},
-        outbound_message_service::OutboundMessageService,
-        OutboundError,
-        OutboundMessage,
-        OutboundMessagePool,
-    },
+    outbound_message_service::{OutboundMessageService, OutboundServiceConfig, OutboundServiceError},
     peer_manager::{NodeIdentity, PeerManager, PeerManagerError},
     types::CommsDatabase,
 };
-use bitflags::_core::marker::PhantomData;
-use crossbeam_channel::Sender as CrossbeamSender;
-use derive_error::Error;
-use futures::{
-    channel::mpsc::{channel, Sender},
-    executor::ThreadPool,
+use std::marker::PhantomData;
+// use crossbeam_channel::Sender as CrossbeamSender;
+use crate::{
+    connection_manager::{
+        actor::{ConnectionManagerActor, ConnectionManagerRequest},
+        ConnectionManagerRequester,
+    },
+    outbound_message_service::OutboundServiceRequester,
 };
+use derive_error::Error;
+use futures::channel::mpsc;
 use log::*;
 use serde::{de::DeserializeOwned, Serialize};
 use std::{fmt::Debug, sync::Arc};
+use tokio::runtime::TaskExecutor;
 
 const LOG_TARGET: &str = "comms::builder";
 
@@ -56,10 +55,7 @@ const LOG_TARGET: &str = "comms::builder";
 pub enum CommsBuilderError {
     PeerManagerError(PeerManagerError),
     InboundMessageServiceError(ConnectionError),
-    #[error(no_from)]
-    OutboundMessageServiceError(OutboundError),
-    #[error(no_from)]
-    OutboundMessagePoolError(OutboundError),
+    OutboundServiceError(OutboundServiceError),
     /// Node identity not set. Call `with_node_identity(node_identity)` on [CommsBuilder]
     NodeIdentityNotSet,
     #[error(no_from)]
@@ -82,19 +78,21 @@ impl Default for CommsBuilderConfig {
     }
 }
 
+type CommsConnectionManagerActor = ConnectionManagerActor<ConnectionManager, mpsc::Receiver<ConnectionManagerRequest>>;
+
 /// The `CommsBuilder` provides a simple builder API for getting Tari comms p2p messaging up and running.
 ///
 /// The [build] method will return an error if any required builder methods are not called. These
 /// are detailed further down on the method docs.
-#[derive(Default)]
 pub struct CommsBuilder<MType> {
     zmq_context: ZmqContext,
     peer_storage: Option<CommsDatabase>,
     control_service_config: Option<ControlServiceConfig>,
-    omp_config: Option<OutboundMessagePoolConfig>,
+    outbound_service_config: Option<OutboundServiceConfig>,
     node_identity: Option<NodeIdentity>,
     peer_conn_config: Option<PeerConnectionConfig>,
     comms_builder_config: Option<CommsBuilderConfig>,
+    executor: TaskExecutor,
     _m: PhantomData<MType>,
 }
 
@@ -102,17 +100,18 @@ impl<MType> CommsBuilder<MType>
 where MType: Clone + Debug + Sync + Send + Eq + Serialize + DeserializeOwned + 'static
 {
     /// Create a new CommsBuilder
-    pub fn new() -> Self {
+    pub fn new(executor: TaskExecutor) -> Self {
         let zmq_context = ZmqContext::new();
 
         Self {
             zmq_context,
             control_service_config: None,
             peer_conn_config: None,
-            omp_config: None,
+            outbound_service_config: None,
             peer_storage: None,
             node_identity: None,
             comms_builder_config: None,
+            executor,
             _m: PhantomData,
         }
     }
@@ -145,11 +144,11 @@ where MType: Clone + Debug + Sync + Send + Eq + Serialize + DeserializeOwned + '
         self
     }
 
-    /// Configure the [OutboundMessagePool]. This is optional. If omitted the default configuration is used.
+    /// Configure the [OutboundService]. This is optional. If omitted the default configuration is used.
     ///
-    /// [OutboundMessagePool]: ../../outbound_message_service/index.html#outbound-message-pool
-    pub fn configure_outbound_message_pool(mut self, config: OutboundMessagePoolConfig) -> Self {
-        self.omp_config = Some(config);
+    /// [OutboundService]: ../../outbound_service/index.html#outbound-service
+    pub fn configure_outbound_service(mut self, config: OutboundServiceConfig) -> Self {
+        self.outbound_service_config = Some(config);
         self
     }
 
@@ -183,7 +182,7 @@ where MType: Clone + Debug + Sync + Send + Eq + Serialize + DeserializeOwned + '
         node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,
         config: PeerConnectionConfig,
-        message_sink_sender: Sender<FrameSet>,
+        message_sink_sender: mpsc::Sender<FrameSet>,
     ) -> Arc<ConnectionManager>
     {
         Arc::new(ConnectionManager::new(
@@ -193,6 +192,18 @@ where MType: Clone + Debug + Sync + Send + Eq + Serialize + DeserializeOwned + '
             config,
             message_sink_sender,
         ))
+    }
+
+    fn make_connection_manager_actor(
+        &mut self,
+        connection_manager: Arc<ConnectionManager>,
+    ) -> (ConnectionManagerRequester, CommsConnectionManagerActor)
+    {
+        let (tx, rx) = mpsc::channel(10);
+        let requester = ConnectionManagerRequester::new(tx);
+        let actor = ConnectionManagerActor::new(connection_manager, rx);
+
+        (requester, actor)
     }
 
     fn make_peer_connection_config(&mut self) -> PeerConnectionConfig {
@@ -208,30 +219,31 @@ where MType: Clone + Debug + Sync + Send + Eq + Serialize + DeserializeOwned + '
     }
 
     fn make_outbound_message_service(
-        &self,
-        node_identity: Arc<NodeIdentity>,
-        message_sink: CrossbeamSender<OutboundMessage>,
-        peer_manager: Arc<PeerManager>,
-    ) -> Result<Arc<OutboundMessageService>, CommsBuilderError>
-    {
-        OutboundMessageService::new(node_identity, message_sink, peer_manager)
-            .map(Arc::new)
-            .map_err(CommsBuilderError::OutboundMessageServiceError)
-    }
-
-    fn make_outbound_message_pool(
         &mut self,
+        executor: TaskExecutor,
+        node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,
-        connection_manager: Arc<ConnectionManager>,
-    ) -> OutboundMessagePool
+        conn_manager: ConnectionManagerRequester,
+    ) -> (OutboundServiceRequester, OutboundMessageService)
     {
-        let config = self.omp_config.take().unwrap_or_default();
+        let (tx, rx) = mpsc::unbounded();
 
-        OutboundMessagePool::new(config, peer_manager, connection_manager)
+        let requester = OutboundServiceRequester::new(tx);
+
+        let service = OutboundMessageService::new(
+            self.outbound_service_config.take().unwrap_or_default(),
+            executor,
+            rx,
+            peer_manager,
+            conn_manager,
+            node_identity,
+        );
+
+        (requester, service)
     }
 
     /// Build the required comms services. Services will not be started.
-    pub fn build(mut self) -> Result<CommsServiceContainer<MType>, CommsBuilderError> {
+    pub fn build(mut self) -> Result<CommsContainer<MType>, CommsBuilderError> {
         let comms_builder_config = self.comms_builder_config.clone().unwrap_or_default();
 
         let node_identity = self.make_node_identity()?;
@@ -239,7 +251,7 @@ where MType: Clone + Debug + Sync + Send + Eq + Serialize + DeserializeOwned + '
         let peer_manager = self.make_peer_manager()?;
 
         let (message_sink_sender, message_sink_receiver) =
-            channel(comms_builder_config.inbound_message_sink_buffer_size);
+            mpsc::channel(comms_builder_config.inbound_message_sink_buffer_size);
 
         let peer_conn_config = self.make_peer_connection_config();
 
@@ -252,32 +264,36 @@ where MType: Clone + Debug + Sync + Send + Eq + Serialize + DeserializeOwned + '
             message_sink_sender,
         );
 
-        let outbound_message_pool = self.make_outbound_message_pool(peer_manager.clone(), connection_manager.clone());
+        let (connection_manager_requester, connection_manager_actor) =
+            self.make_connection_manager_actor(Arc::clone(&connection_manager));
 
-        let outbound_message_service = self.make_outbound_message_service(
-            node_identity.clone(),
-            outbound_message_pool.sender(),
-            peer_manager.clone(),
-        )?;
+        let (outbound_service_requester, outbound_message_service) = self.make_outbound_message_service(
+            self.executor.clone(),
+            Arc::clone(&node_identity),
+            Arc::clone(&peer_manager),
+            connection_manager_requester.clone(),
+        );
 
         let (inbound_message_pipeline, inbound_message_subscription_factories) = InboundMessagePipeline::new(
             node_identity.clone(),
             message_sink_receiver,
             peer_manager.clone(),
-            outbound_message_service.clone(),
+            outbound_service_requester.clone(),
             comms_builder_config.inbound_publisher_subscriber_buffer_size,
         );
 
-        Ok(CommsServiceContainer {
-            zmq_context: self.zmq_context,
-            control_service,
+        Ok(CommsContainer {
             connection_manager,
-            outbound_message_pool,
-            outbound_message_service,
-            peer_manager,
-            node_identity,
+            connection_manager_actor,
+            connection_manager_requester,
+            control_service,
+            executor: self.executor,
             inbound_message_pipeline,
             inbound_message_subscription_factories: Arc::new(inbound_message_subscription_factories),
+            node_identity,
+            outbound_service_requester,
+            outbound_message_service,
+            peer_manager,
         })
     }
 }
@@ -290,87 +306,83 @@ pub enum CommsServicesError {
     UncleanShutdown,
     /// The message type was not registered
     MessageTypeNotRegistered,
-    OutboundMessagePoolError(OutboundMessagePoolError),
-    OutboundError(OutboundError),
 }
 
 /// Contains the built comms services
-pub struct CommsServiceContainer<MType>
+pub struct CommsContainer<MType>
 where MType: Clone + Debug + Sync + Send
 {
-    zmq_context: ZmqContext,
     connection_manager: Arc<ConnectionManager>,
+    connection_manager_actor: CommsConnectionManagerActor,
+    connection_manager_requester: ConnectionManagerRequester,
+
     control_service: Option<ControlService>,
-    outbound_message_pool: OutboundMessagePool,
-    outbound_message_service: Arc<OutboundMessageService>,
-    peer_manager: Arc<PeerManager>,
-    node_identity: Arc<NodeIdentity>,
+
+    executor: TaskExecutor,
+
     inbound_message_pipeline: InboundMessagePipeline<MType>,
     inbound_message_subscription_factories: Arc<InboundMessageSubscriptionFactories<MType>>,
+
+    node_identity: Arc<NodeIdentity>,
+
+    outbound_service_requester: OutboundServiceRequester,
+    outbound_message_service: OutboundMessageService,
+
+    peer_manager: Arc<PeerManager>,
 }
 
-impl<MType> CommsServiceContainer<MType>
+impl<MType> CommsContainer<MType>
 where MType: Eq + Clone + Send + Debug + Sync + Serialize + DeserializeOwned + 'static
 {
     /// Start all the comms services and return a [CommsServices] object
     ///
     /// [CommsServices]: ./struct.CommsServices.html
-    pub fn start(mut self) -> Result<CommsServices<MType>, CommsServicesError> {
+    pub fn start(self) -> Result<CommsNode<MType>, CommsServicesError> {
         let mut control_service_handle = None;
         if let Some(control_service) = self.control_service {
             control_service_handle = Some(
                 control_service
-                    .serve(self.connection_manager.clone())
+                    .serve(Arc::clone(&self.connection_manager))
                     .map_err(CommsServicesError::ControlServiceError)?,
             );
         }
 
-        self.outbound_message_pool
-            .start()
-            .map_err(CommsServicesError::OutboundMessagePoolError)?;
+        self.executor.spawn(self.connection_manager_actor.start());
+        self.executor.spawn(self.outbound_message_service.start());
+        self.executor.spawn(self.inbound_message_pipeline.run());
 
-        Ok(CommsServices {
-            // Transfer ownership to CommsServices
-            zmq_context: self.zmq_context,
-            outbound_message_service: self.outbound_message_service,
+        Ok(CommsNode {
             connection_manager: self.connection_manager,
-            peer_manager: self.peer_manager,
-            inbound_message_subscription_factories: self.inbound_message_subscription_factories,
-            outbound_message_pool: self.outbound_message_pool,
-            node_identity: self.node_identity,
-            inbound_message_pipeline: Some(self.inbound_message_pipeline),
-            // Add handles for started services
+            connection_manager_requester: self.connection_manager_requester,
             control_service_handle,
+            inbound_message_subscription_factories: self.inbound_message_subscription_factories,
+            node_identity: self.node_identity,
+            outbound_service_requester: self.outbound_service_requester,
+            peer_manager: self.peer_manager,
         })
     }
 }
 
-/// # CommsServices
+/// # CommsNode
 ///
 /// This struct provides a handle to and control over all the running comms services.
 /// You can get a [DomainConnector] from which to receive messages by using the `create_connector`
 /// method. Use the `shutdown` method to attempt to cleanly shut all comms services down.
-pub struct CommsServices<MType>
+pub struct CommsNode<MType>
 where MType: Send + Sync + Debug
 {
-    zmq_context: ZmqContext,
-    outbound_message_service: Arc<OutboundMessageService>,
-    control_service_handle: Option<ControlServiceHandle>,
-    outbound_message_pool: OutboundMessagePool,
-    node_identity: Arc<NodeIdentity>,
     connection_manager: Arc<ConnectionManager>,
-    peer_manager: Arc<PeerManager>,
+    connection_manager_requester: ConnectionManagerRequester,
+    control_service_handle: Option<ControlServiceHandle>,
     inbound_message_subscription_factories: Arc<InboundMessageSubscriptionFactories<MType>>,
-    inbound_message_pipeline: Option<InboundMessagePipeline<MType>>,
+    node_identity: Arc<NodeIdentity>,
+    outbound_service_requester: OutboundServiceRequester,
+    peer_manager: Arc<PeerManager>,
 }
 
-impl<MType> CommsServices<MType>
+impl<MType> CommsNode<MType>
 where MType: Clone + Send + Eq + Debug + Sync + Serialize + DeserializeOwned + 'static
 {
-    pub fn zmq_context(&self) -> &ZmqContext {
-        &self.zmq_context
-    }
-
     pub fn peer_manager(&self) -> Arc<PeerManager> {
         Arc::clone(&self.peer_manager)
     }
@@ -379,12 +391,8 @@ where MType: Clone + Send + Eq + Debug + Sync + Serialize + DeserializeOwned + '
         Arc::clone(&self.node_identity)
     }
 
-    pub fn connection_manager(&self) -> Arc<ConnectionManager> {
-        Arc::clone(&self.connection_manager)
-    }
-
-    pub fn outbound_message_service(&self) -> Arc<OutboundMessageService> {
-        Arc::clone(&self.outbound_message_service)
+    pub fn outbound_message_service(&self) -> OutboundServiceRequester {
+        self.outbound_service_requester.clone()
     }
 
     pub fn handle_inbound_message_subscription_factory(&self) -> Arc<InboundTopicSubscriptionFactory<MType>> {
@@ -395,29 +403,17 @@ where MType: Clone + Send + Eq + Debug + Sync + Serialize + DeserializeOwned + '
         )
     }
 
-    pub fn spawn_tasks(&mut self, thread_pool: &mut ThreadPool) {
-        let imp = self
-            .inbound_message_pipeline
-            .take()
-            .expect("The Inbound Message Pipeline must be available");
-
-        thread_pool.spawn_ok(imp.run());
-    }
-
     pub fn shutdown(self) -> Result<(), CommsServicesError> {
         info!(target: LOG_TARGET, "Comms is shutting down");
+
+        // This shuts down the ConnectionManagerActor (releasing Arc<ConnectionManager>)
+        drop(self.connection_manager_requester);
+
         let mut shutdown_results = Vec::new();
         // Shutdown control service
         if let Some(control_service_shutdown_result) = self.control_service_handle.map(|hnd| hnd.shutdown()) {
             shutdown_results.push(control_service_shutdown_result.map_err(CommsServicesError::ControlServiceError));
         }
-
-        // Shutdown outbound message pool
-        shutdown_results.push(
-            self.outbound_message_pool
-                .shutdown()
-                .map_err(CommsServicesError::OutboundError),
-        );
 
         // Lastly, Shutdown connection manager
         match Arc::try_unwrap(self.connection_manager) {
@@ -456,10 +452,12 @@ where MType: Clone + Send + Eq + Debug + Sync + Serialize + DeserializeOwned + '
 mod test {
     use super::*;
     use tari_storage::HMapDatabase;
+    use tokio::runtime::Runtime;
 
     #[test]
     fn new_no_control_service() {
-        let comms_services: CommsServiceContainer<String> = CommsBuilder::new()
+        let rt = Runtime::new().unwrap();
+        let comms_services: CommsContainer<String> = CommsBuilder::new(rt.executor())
             .with_node_identity(NodeIdentity::random_for_test(None))
             .with_peer_storage(HMapDatabase::new())
             .build()
@@ -470,7 +468,8 @@ mod test {
 
     #[test]
     fn new_with_control_service() {
-        let comms_services: CommsServiceContainer<String> = CommsBuilder::new()
+        let rt = Runtime::new().unwrap();
+        let comms_services: CommsContainer<String> = CommsBuilder::new(rt.executor())
             .with_node_identity(NodeIdentity::random_for_test(None))
             .with_peer_storage(HMapDatabase::new())
             .configure_control_service(ControlServiceConfig::default())

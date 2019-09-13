@@ -22,7 +22,7 @@
 
 use std::{sync::Arc, time::Duration};
 use tari_comms::{
-    builder::CommsServices,
+    builder::CommsNode,
     connection_manager::PeerConnectionConfig,
     control_service::ControlServiceConfig,
     peer_manager::{NodeIdentity, Peer},
@@ -30,14 +30,17 @@ use tari_comms::{
 };
 use tari_p2p::tari_message::TariMessageType;
 use tari_storage::{lmdb_store::LMDBDatabase, LMDBWrapper};
+use tokio::runtime::TaskExecutor;
+
 pub fn setup_comms_services(
+    executor: TaskExecutor,
     node_identity: NodeIdentity,
     peers: Vec<NodeIdentity>,
     peer_database: LMDBDatabase,
-) -> CommsServices<TariMessageType>
+) -> CommsNode<TariMessageType>
 {
     let peer_database = LMDBWrapper::new(Arc::new(peer_database));
-    let comms = CommsBuilder::new()
+    let comms = CommsBuilder::new(executor)
         .with_node_identity(node_identity.clone())
         .with_peer_storage(peer_database)
         .configure_peer_connections(PeerConnectionConfig {

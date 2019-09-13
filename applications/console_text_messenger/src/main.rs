@@ -24,7 +24,6 @@ extern crate clap;
 
 use clap::{App, Arg};
 use crossbeam_channel as channel;
-use futures::executor::ThreadPool;
 use log::*;
 use log4rs::{
     append::file::FileAppender,
@@ -266,9 +265,7 @@ pub fn main() {
         database_path,
     };
 
-    let mut thread_pool = ThreadPool::new().expect("Cannot create Futures ThreadPool");
-
-    let wallet = Wallet::new(config, &mut thread_pool).unwrap();
+    let wallet = Wallet::new(config).unwrap();
 
     // Add any provided peers to Peer Manager and Text Message Service Contacts
     if !contacts.peers.is_empty() {

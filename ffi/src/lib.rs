@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 extern crate libc;
 
-use futures::executor::ThreadPool;
 use libc::{c_char, c_int};
 use pnet::datalink::{self, NetworkInterface};
 use serde::{Deserialize, Serialize};
@@ -230,8 +229,8 @@ pub unsafe extern "C" fn create_wallet(
         public_key: public_key.clone(),
         database_path: (*settings_p).database_path.clone().unwrap(),
     };
-    let mut thread_pool = ThreadPool::new().unwrap();
-    Box::into_raw(Box::new(Wallet::new(config, &mut thread_pool).unwrap()))
+
+    Box::into_raw(Box::new(Wallet::new(config).unwrap()))
 }
 
 /// Shuts down services and frees memory for wallet pointer

@@ -20,16 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use derive_error::Error;
-use tari_comms::{message::MessageError, outbound_message_service::OutboundError};
-use tari_service_framework::reply_channel::TransportChannelError;
-use tari_utilities::message_format::MessageFormatError;
+use crate::{peer_manager::NodeId, types::CommsPublicKey};
+use rand::rngs::OsRng;
+use tari_crypto::keys::PublicKey;
 
-#[derive(Debug, Error)]
-pub enum CommsOutboundServiceError {
-    InternalResponseError(TransportChannelError),
-    // Comms errors
-    OutboundError(OutboundError),
-    MessageSerializationError(MessageError),
-    MessageFormatError(MessageFormatError),
+pub fn random() -> NodeId {
+    let (_, pk) = CommsPublicKey::random_keypair(&mut OsRng::new().unwrap());
+    NodeId::from_key(&pk).unwrap()
 }

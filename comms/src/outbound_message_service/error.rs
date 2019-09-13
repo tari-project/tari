@@ -18,25 +18,24 @@
 // SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
-// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE
+// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{message::MessageError, peer_manager::PeerManagerError};
+use crate::{
+    connection::ConnectionError,
+    connection_manager::ConnectionManagerError,
+    message::MessageError,
+    peer_manager::PeerManagerError,
+};
 use derive_error::Error;
-use tari_utilities::{message_format::MessageFormatError, thread_join::ThreadError};
+use futures::channel::mpsc::SendError;
+use tari_utilities::message_format::MessageFormatError;
 
-/// Error type for OutboundMessageService subsystem
 #[derive(Debug, Error)]
-pub enum OutboundError {
-    /// The message could not be serialized
+pub enum OutboundServiceError {
+    SendError(SendError),
     MessageSerializationError(MessageError),
-    /// Error during serialization or deserialization
     MessageFormatError(MessageFormatError),
-    /// Problem encountered with Broadcast Strategy and PeerManager
     PeerManagerError(PeerManagerError),
-    #[error(msg_embedded, non_std, no_from)]
-    ShutdownSignalSendError(String),
-    /// Timeout exceeded while waiting for worker threads to complete
-    ThreadJoinError(ThreadError),
-    /// Failed to send message on message sink
-    SyncSenderError,
+    ConnectionManagerError(ConnectionManagerError),
+    ConnectionError(ConnectionError),
 }

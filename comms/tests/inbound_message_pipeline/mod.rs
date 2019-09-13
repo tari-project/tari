@@ -43,7 +43,7 @@ use tari_comms::{
         MessageHeader,
         NodeDestination,
     },
-    outbound_message_service::outbound_message_service::OutboundMessageService,
+    outbound_message_service::OutboundMessageService,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFlags},
     types::CommsPublicKey,
 };

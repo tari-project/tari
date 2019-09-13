@@ -48,7 +48,7 @@ use crate::{
 use futures::{future, task::SpawnExt, Future, Stream, StreamExt};
 use std::{fmt::Debug, sync::Arc};
 use tari_comms::{
-    builder::CommsServices,
+    builder::CommsNode,
     domain_subscriber::MessageInfo,
     inbound_message_pipeline::InboundTopicSubscriptionFactory,
     message::{InboundMessage, MessageError},
@@ -74,7 +74,7 @@ pub struct LivenessInitializer {
 
 impl LivenessInitializer {
     /// Create a new LivenessInitializer from comms
-    pub fn new(comms: Arc<CommsServices<TariMessageType>>) -> Self {
+    pub fn new(comms: Arc<CommsNode<TariMessageType>>) -> Self {
         Self {
             inbound_message_subscription_factory: comms.handle_inbound_message_subscription_factory(),
         }

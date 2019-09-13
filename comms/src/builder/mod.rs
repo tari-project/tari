@@ -34,6 +34,7 @@
 //! # use lmdb_zero::db;
 //! # use tari_storage::LMDBWrapper;
 //! # use futures::executor::ThreadPool;
+//! # use tokio::runtime::Runtime;
 //! // This should be loaded up from storage
 //! let my_node_identity = NodeIdentity::random(&mut OsRng::new().unwrap(), "127.0.0.1:9000".parse().unwrap()).unwrap();
 //!
@@ -47,7 +48,8 @@
 //! let peer_database = datastore.get_handle(database_name).unwrap();
 //! let peer_database = LMDBWrapper::new(Arc::new(peer_database));
 //!
-//! let services = CommsBuilder::<String>::new()
+//! let runtime = Runtime::new().unwrap();
+//! let services = CommsBuilder::<String>::new(runtime.executor())
 //!    // This enables the control service - allowing another peer to connect to this node
 //!    .configure_control_service(ControlServiceConfig::default())
 //!    .with_node_identity(my_node_identity)
@@ -57,9 +59,6 @@
 //!
 //! let mut handle = services.start().unwrap();
 //!
-//! let mut thread_pool = ThreadPool::new().expect("Could not start a Futures ThreadPool");
-//! handle.spawn_tasks(&mut thread_pool);
-//!
 //! // Call shutdown when program shuts down
 //! handle.shutdown();
 //! ```
@@ -68,4 +67,4 @@
 
 mod builder;
 
-pub use self::builder::{CommsBuilder, CommsBuilderError, CommsServices, CommsServicesError};
+pub use self::builder::{CommsBuilder, CommsBuilderError, CommsNode, CommsServicesError};

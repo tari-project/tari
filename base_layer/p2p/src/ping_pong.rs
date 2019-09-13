@@ -43,16 +43,17 @@ use std::{
 use tari_comms::{
     domain_subscriber::{MessageInfo, SyncDomainSubscription},
     message::{MessageError, MessageFlags},
-    outbound_message_service::{outbound_message_service::OutboundMessageService, BroadcastStrategy, OutboundError},
+    outbound_message_service::{BroadcastStrategy, OutboundServiceError, OutboundServiceRequester},
     types::CommsPublicKey,
 };
 use tari_utilities::{hex::Hex, message_format::MessageFormatError};
+use tokio::runtime::Runtime;
 
 const LOG_TARGET: &str = "base_layer::p2p::ping_pong";
 
 #[derive(Debug, Error)]
 pub enum PingPongError {
-    OutboundError(OutboundError),
+    OutboundError(OutboundServiceError),
     /// OMS has not been initialized
     OMSNotInitialized,
     SerializationFailed(MessageFormatError),
@@ -74,20 +75,24 @@ pub enum PingPong {
 
 pub struct PingPongService {
     // Needed because the public ping method needs OMS
-    oms: Option<Arc<OutboundMessageService>>,
+    oms: Option<OutboundServiceRequester>,
     ping_count: usize,
     pong_count: usize,
     api: ServiceApiWrapper<PingPongServiceApi, PingPongApiRequest, PingPongApiResult>,
+    runtime: Runtime,
 }
 
 impl PingPongService {
     /// Create a new ping pong service
     pub fn new() -> Self {
+        // TOOD: Temporary hack to get this to work with async - remove in next PR
+        let runtime = Runtime::new().unwrap();
         Self {
             oms: None,
             ping_count: 0,
             pong_count: 0,
             api: Self::setup_api(),
+            runtime,
         }
     }
 
@@ -104,15 +109,17 @@ impl PingPongService {
         ServiceApiWrapper::new(service_receiver, service_sender, api)
     }
 
-    fn send_msg(&self, broadcast_strategy: BroadcastStrategy, msg: PingPong) -> Result<(), PingPongError> {
-        let oms = self.oms.as_ref().ok_or(PingPongError::OMSNotInitialized)?;
-        oms.send_message(
-            broadcast_strategy,
-            MessageFlags::empty(),
-            TariMessageType::new(NetMessage::PingPong),
-            msg,
-        )
-        .map_err(PingPongError::OutboundError)
+    fn send_msg(&mut self, broadcast_strategy: BroadcastStrategy, msg: PingPong) -> Result<(), PingPongError> {
+        let oms = self.oms.as_mut().ok_or(PingPongError::OMSNotInitialized)?;
+
+        self.runtime
+            .block_on(oms.send_message(
+                broadcast_strategy,
+                MessageFlags::empty(),
+                TariMessageType::new(NetMessage::PingPong),
+                msg,
+            ))
+            .map_err(Into::into)
     }
 
     fn receive_ping(&mut self, info: MessageInfo, message: PingPong) -> Result<(), PingPongError> {
@@ -143,11 +150,11 @@ impl PingPongService {
         Ok(())
     }
 
-    fn ping(&self, pub_key: CommsPublicKey) -> Result<(), PingPongError> {
+    fn ping(&mut self, pub_key: CommsPublicKey) -> Result<(), PingPongError> {
         self.send_msg(BroadcastStrategy::DirectPublicKey(pub_key), PingPong::Ping)
     }
 
-    fn handle_api_message(&self, msg: PingPongApiRequest) -> Result<(), ServiceError> {
+    fn handle_api_message(&mut self, msg: PingPongApiRequest) -> Result<(), ServiceError> {
         trace!(target: LOG_TARGET, "[{}] Received API message", self.get_name());
         let resp = match msg {
             PingPongApiRequest::Ping(pk) => self.ping(pk).map(|_| PingPongApiResponse::PingSent),

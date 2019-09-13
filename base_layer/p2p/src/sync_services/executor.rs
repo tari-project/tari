@@ -29,8 +29,7 @@ use std::{
     time::Duration,
 };
 use tari_comms::{
-    builder::CommsServices,
-    outbound_message_service::outbound_message_service::OutboundMessageService,
+    builder::CommsNode,
     peer_manager::{NodeIdentity, PeerManager},
 };
 use threadpool::ThreadPool;
@@ -38,7 +37,11 @@ use threadpool::ThreadPool;
 use crossbeam_channel as channel;
 use crossbeam_channel::{Receiver, RecvTimeoutError, Sender};
 
-use tari_comms::inbound_message_pipeline::InboundTopicSubscriptionFactory;
+use tari_comms::{
+    inbound_message_pipeline::InboundTopicSubscriptionFactory,
+    outbound_message_service::OutboundServiceRequester,
+};
+
 const LOG_TARGET: &str = "base_layer::p2p::services";
 
 /// Control messages for services
@@ -56,7 +59,7 @@ pub struct ServiceExecutor {
 
 impl ServiceExecutor {
     /// Execute the services contained in the given [ServiceRegistry].
-    pub fn execute(comms_services: &CommsServices<TariMessageType>, registry: ServiceRegistry) -> Self {
+    pub fn execute(comms_services: &CommsNode<TariMessageType>, registry: ServiceRegistry) -> Self {
         let thread_pool = threadpool::Builder::new()
             .thread_name("DomainServices".to_string())
             .num_threads(registry.num_services())
@@ -144,7 +147,7 @@ impl ServiceExecutor {
 /// access the outbound message service and create [DomainConnector]s to receive comms messages of
 /// a particular [TariMessageType].
 pub struct ServiceContext {
-    oms: Arc<OutboundMessageService>,
+    oms: OutboundServiceRequester,
     peer_manager: Arc<PeerManager>,
     node_identity: Arc<NodeIdentity>,
     receiver: Receiver<ServiceControlMessage>,
@@ -165,8 +168,8 @@ impl ServiceContext {
     }
 
     /// Retrieve and `Arc` of the outbound message service. Used for sending outbound messages.
-    pub fn outbound_message_service(&self) -> Arc<OutboundMessageService> {
-        Arc::clone(&self.oms)
+    pub fn outbound_message_service(&self) -> OutboundServiceRequester {
+        self.oms.clone()
     }
 
     /// Retrieve and `Arc` of the PeerManager. Used for managing peers.
@@ -195,6 +198,7 @@ mod test {
         lmdb_store::{LMDBBuilder, LMDBError, LMDBStore},
         LMDBWrapper,
     };
+    use tokio::runtime::Runtime;
 
     #[derive(Clone)]
     struct AddWordService(Arc<RwLock<String>>, &'static str);
@@ -263,7 +267,9 @@ mod test {
         let peer_database = datastore.get_handle(database_name).unwrap();
         let peer_database = LMDBWrapper::new(Arc::new(peer_database));
 
-        let comms_services = CommsBuilder::new()
+        let rt = Runtime::new().unwrap();
+
+        let comms_services = CommsBuilder::new(rt.executor())
             .with_node_identity(node_identity)
             .with_peer_storage(peer_database)
             .build()
