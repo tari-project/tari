@@ -41,7 +41,7 @@ use crate::{
     proof_of_work::Difficulty,
     types::{BlindingFactor, HashDigest, TariProofOfWork},
 };
-use chrono::{DateTime, NaiveDate, Utc};
+use chrono::{DateTime, Utc};
 use digest::Digest;
 use serde::{
     de::{self, Visitor},
@@ -50,7 +50,7 @@ use serde::{
     Serialize,
     Serializer,
 };
-use std::{fmt, time::Instant};
+use std::fmt;
 use tari_utilities::{ByteArray, Hashable};
 
 pub type BlockHash = Vec<u8>;

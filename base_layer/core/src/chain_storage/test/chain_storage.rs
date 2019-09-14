@@ -38,14 +38,13 @@ use crate::{
         chain_block,
         create_genesis_block,
         create_test_block,
-        create_test_input,
         create_test_kernel,
         create_test_tx_spending_utxos,
-        create_tx,
         create_utxo,
     },
     transaction::TransactionInput,
-    types::{HashDigest, COMMITMENT_FACTORY, PROVER},
+    tx,
+    types::HashDigest,
 };
 use std::thread;
 use tari_mmr::MutableMmr;
@@ -114,8 +113,8 @@ fn insert_and_fetch_utxo() {
 fn insert_and_fetch_orphan() {
     let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
     let txs = vec![
-        create_tx(1000.into(), 20.into(), 0, 2, 0, 1).0,
-        create_tx(2000.into(), 30.into(), 0, 1, 0, 1).0,
+        (tx!(1000.into(), fee: 20.into(), inputs: 2, outputs: 1)).0,
+        (tx!(2000.into(), fee: 30.into(), inputs: 1, outputs: 1)).0,
     ];
     let orphan = create_test_block(10, None, txs);
     let orphan_hash = orphan.hash();

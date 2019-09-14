@@ -250,7 +250,8 @@ mod test {
         blocks::genesis_block::get_genesis_block,
         chain_storage::{DbTransaction, MemoryDatabase},
         tari_amount::MicroTari,
-        test_utils::builders::{create_test_block, create_test_input, create_test_tx, create_test_tx_spending_utxos},
+        test_utils::builders::{create_test_block, create_test_input, create_test_tx_spending_utxos},
+        tx,
         types::HashDigest,
     };
 
@@ -263,7 +264,7 @@ mod test {
     ) -> Transaction
     {
         if orphaned {
-            create_test_tx(MicroTari(5_000), fee_per_gram, lock_height, 2, input_maturity, 2)
+            (tx!( MicroTari(5_000), fee: fee_per_gram, lock: lock_height, inputs: 2, maturity: input_maturity, outputs: 2)).0
         } else {
             let utxo1 = create_test_input(2_500.into(), input_maturity.clone());
             let utxo2 = create_test_input(2_500.into(), input_maturity);

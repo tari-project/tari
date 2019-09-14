@@ -47,7 +47,7 @@ use std::{
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 use tari_mmr::{Hash as MmrHash, MerkleChangeTracker, MerkleCheckPoint, MerkleProof, MutableMmr};
-use tari_utilities::{hash::Hashable, hex::Hex};
+use tari_utilities::hash::Hashable;
 
 /// A generic struct for storing node objects in the BlockchainDB that also form part of an MMR. The index field makes
 /// reverse lookups (find by hash) possible.

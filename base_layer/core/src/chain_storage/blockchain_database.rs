@@ -37,7 +37,7 @@ use croaring::Bitmap;
 use log::*;
 use std::sync::{Arc, RwLock, RwLockReadGuard};
 use tari_mmr::{Hash, MerkleCheckPoint, MerkleProof};
-use tari_utilities::{hex::Hex, Hashable};
+use tari_utilities::Hashable;
 
 const LOG_TARGET: &str = "core::chain_storage::database";
 
