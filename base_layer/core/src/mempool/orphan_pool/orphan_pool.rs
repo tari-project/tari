@@ -144,20 +144,20 @@ mod test {
         blocks::genesis_block::get_genesis_block,
         chain_storage::{DbTransaction, MemoryDatabase},
         tari_amount::MicroTari,
-        test_utils::builders::create_test_tx,
         transaction::TransactionInput,
+        tx,
         types::HashDigest,
     };
     use std::{thread, time::Duration};
 
     #[test]
     fn test_insert_rlu_and_ttl() {
-        let tx1 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(500), 4000, 2, 0, 1));
-        let tx2 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(300), 3000, 2, 0, 1));
-        let tx3 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(100), 2500, 2, 0, 1));
-        let tx4 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(200), 1000, 2, 0, 1));
-        let tx5 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(500), 2000, 2, 0, 1));
-        let tx6 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(600), 5500, 2, 0, 1));
+        let tx1 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(500), lock: 4000, inputs: 2, outputs: 1).0);
+        let tx2 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(300), lock: 3000, inputs: 2, outputs: 1).0);
+        let tx3 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(100), lock: 2500, inputs: 2, outputs: 1).0);
+        let tx4 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(200), lock: 1000, inputs: 2, outputs: 1).0);
+        let tx5 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(500), lock: 2000, inputs: 2, outputs: 1).0);
+        let tx6 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(600), lock: 5500, inputs: 2, outputs: 1).0);
 
         let store = Arc::new(BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap());
         let orphan_pool = OrphanPool::new(store, OrphanPoolConfig {
@@ -243,12 +243,12 @@ mod test {
 
     #[test]
     fn test_scan_for_and_remove_unorphaned() {
-        let tx1 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(500), 1100, 2, 0, 1));
-        let tx2 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(300), 1700, 2, 0, 1));
-        let tx3 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(100), 0, 1, 0, 1));
-        let mut tx4 = create_test_tx(MicroTari(10_000), MicroTari(200), 0, 2, 0, 1);
-        let mut tx5 = create_test_tx(MicroTari(10_000), MicroTari(500), 1000, 2, 0, 1);
-        let tx6 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(600), 5200, 2, 0, 1));
+        let tx1 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(500), lock: 1100, inputs: 2, outputs: 1).0);
+        let tx2 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(300), lock: 1700, inputs: 2, outputs: 1).0);
+        let tx3 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(100), lock: 0, inputs: 1, outputs: 1).0);
+        let mut tx4 = tx!(MicroTari(10_000), fee: MicroTari(200), inputs: 2, outputs: 1).0;
+        let mut tx5 = tx!(MicroTari(10_000), fee: MicroTari(500), lock: 1000, inputs: 2, outputs: 1).0;
+        let tx6 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(600), lock: 5200, inputs: 2, outputs: 1).0);
         // Publishing of tx1 and tx2 will create the UTXOs required by tx4 and tx5
         tx4.body.inputs.clear();
         tx1.body

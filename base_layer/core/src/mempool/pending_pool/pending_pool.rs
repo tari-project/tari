@@ -139,19 +139,16 @@ impl PendingPool {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{
-        tari_amount::MicroTari,
-        test_utils::builders::{create_test_block, create_test_tx},
-    };
+    use crate::{tari_amount::MicroTari, test_utils::builders::create_test_block, tx};
 
     #[test]
     fn test_insert_and_lru() {
-        let tx1 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(50), 500, 2, 0, 1));
-        let tx2 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(20), 2150, 1, 0, 2));
-        let tx3 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(100), 1000, 2, 0, 1));
-        let tx4 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(30), 2450, 2, 0, 2));
-        let tx5 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(50), 1000, 3, 0, 3));
-        let tx6 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(75), 1850, 2, 0, 2));
+        let tx1 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(50), lock: 500, inputs: 2, outputs: 1).0);
+        let tx2 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(20), lock: 2150, inputs: 1, outputs: 2).0);
+        let tx3 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(100), lock: 1000, inputs: 2, outputs: 1).0);
+        let tx4 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(30), lock: 2450, inputs: 2, outputs: 2).0);
+        let tx5 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(50), lock: 1000, inputs: 3, outputs: 3).0);
+        let tx6 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(75), lock: 1850, inputs: 2, outputs: 2).0);
 
         let pending_pool = PendingPool::new(PendingPoolConfig { storage_capacity: 3 });
         pending_pool
@@ -208,12 +205,18 @@ mod test {
 
     #[test]
     fn test_remove_unlocked_and_discard_double_spends() {
-        let tx1 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(50), 500, 2, 0, 1));
-        let tx2 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(20), 0, 1, 2150, 2));
-        let tx3 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(100), 0, 2, 1000, 1));
-        let tx4 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(30), 2450, 2, 0, 2));
-        let tx5 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(50), 1000, 3, 0, 3));
-        let tx6 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(75), 1450, 2, 1400, 2));
+        let tx1 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(50), lock: 500, inputs: 2, outputs: 1).0);
+        let tx2 =
+            Arc::new(tx!(MicroTari(10_000), fee: MicroTari(20), lock: 0, inputs: 1, maturity: 2150, outputs: 2).0);
+        let tx3 = Arc::new(
+            tx!(MicroTari(10_000), fee: MicroTari(100), lock: 0, inputs: 2, maturity: 1000, outputs:
+        1)
+            .0,
+        );
+        let tx4 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(30), lock: 2450, inputs: 2, outputs: 2).0);
+        let tx5 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(50), lock: 1000, inputs: 3, outputs: 3).0);
+        let tx6 =
+            Arc::new(tx!(MicroTari(10_000), fee: MicroTari(75), lock: 1450, inputs: 2, maturity: 1400, outputs: 2).0);
 
         let pending_pool = PendingPool::new(PendingPoolConfig { storage_capacity: 10 });
         pending_pool

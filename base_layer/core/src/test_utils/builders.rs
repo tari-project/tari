@@ -52,6 +52,38 @@ use tari_crypto::{
 };
 use tari_utilities::hash::Hashable;
 
+#[macro_export]
+macro_rules! tx {
+  ($amount:expr, fee: $fee:expr, lock: $lock:expr, inputs: $n_in:expr, maturity: $mat:expr, outputs: $n_out:expr) => {{
+    use crate::test_utils::builders::create_tx;
+    create_tx($amount, $fee, $lock, $n_in, $mat, $n_out)
+  }};
+
+  ($amount:expr, fee: $fee:expr, lock: $lock:expr, inputs: $n_in:expr, outputs: $n_out:expr) => {
+    tx!($amount, fee: $fee, lock: $lock, inputs: $n_in, maturity: 0, outputs: $n_out)
+  };
+
+  ($amount:expr, fee: $fee:expr, inputs: $n_in:expr, outputs: $n_out:expr) => {
+    tx!($amount, fee: $fee, lock: 0, inputs: $n_in, maturity: 0, outputs: $n_out)
+  };
+
+  ($amount:expr, fee: $fee:expr) => {
+    tx!($amount, fee: $fee, lock: 0, inputs: 1, maturity: 0, outputs: 2)
+  }
+}
+
+#[macro_export]
+macro_rules! spend {
+    ($utxos:expr, to: $values:expr, fee: $fee:expr, lock:$lock:expr) => {{
+        use crate::test_utils::builders::spend_utxos;
+        spend_utxos($utxos, $values, $fee, $lock)
+    }};
+
+    ($utxos:expr, to: $values:expr) => {
+        spend!($utxos, to:$values, fee:MicroTari(25), lock:0)
+    };
+}
+
 /// Create a random transaction input for the given amount and maturity period. The input and its unblinded
 /// parameters are returned.
 pub fn create_test_input(amount: MicroTari, maturity: u64) -> (TransactionInput, UnblindedOutput) {
@@ -63,65 +95,6 @@ pub fn create_test_input(amount: MicroTari, maturity: u64) -> (TransactionInput,
     let input = TransactionInput::new(features.clone(), commitment);
     let unblinded_output = UnblindedOutput::new(amount, spending_key, Some(features));
     (input, unblinded_output)
-}
-
-/// Create an unconfirmed transaction for testing with a valid fee, unique access_sig, random inputs and outputs, the
-/// transaction is only partially constructed
-#[deprecated(note = "Use create_tx instead")]
-pub fn create_test_tx(
-    amount: MicroTari,
-    fee_per_gram: MicroTari,
-    lock_height: u64,
-    input_count: u64,
-    input_maturity: u64,
-    output_count: u64,
-) -> Transaction
-{
-    let mut rng = rand::OsRng::new().unwrap();
-    let test_params = TestParams::new(&mut rng);
-    let mut stx_builder = SenderTransactionProtocol::builder(0);
-    stx_builder
-        .with_lock_height(lock_height)
-        .with_fee_per_gram(fee_per_gram)
-        .with_offset(test_params.offset.clone())
-        .with_private_nonce(test_params.nonce.clone())
-        .with_change_secret(test_params.change_key.clone());
-
-    let amount_per_input = amount / input_count;
-    let amount_for_last_input = amount - amount_per_input * (input_count - 1);
-    for i in 0..input_count {
-        let input_amount = if i < input_count - 1 {
-            amount_per_input
-        } else {
-            amount_for_last_input
-        };
-        let (utxo, input) = create_test_input(input_amount, input_maturity);
-        stx_builder.with_input(utxo, input);
-    }
-
-    let estimated_fee = Fee::calculate(fee_per_gram, input_count as usize, output_count as usize);
-    let amount_per_output = (amount - estimated_fee) / output_count;
-    let amount_for_last_output = (amount - estimated_fee) - amount_per_output * (output_count - 1);
-    for i in 0..output_count {
-        let output_amount = if i < output_count - 1 {
-            amount_per_output
-        } else {
-            amount_for_last_output
-        };
-        stx_builder.with_output(UnblindedOutput::new(
-            output_amount.into(),
-            test_params.spend_key.clone(),
-            None,
-        ));
-    }
-
-    let mut stx_protocol = stx_builder.build::<Blake256>(&PROVER, &COMMITMENT_FACTORY).unwrap();
-    match stx_protocol.finalize(KernelFeatures::empty(), &PROVER, &COMMITMENT_FACTORY) {
-        Ok(true) => (),
-        Ok(false) => panic!("{:?}", stx_protocol.failure_reason()),
-        Err(e) => panic!("{:?}", e),
-    }
-    stx_protocol.get_transaction().unwrap().clone()
 }
 
 /// Create an unconfirmed transaction for testing with a valid fee, unique access_sig, random inputs and outputs, the
@@ -183,6 +156,48 @@ pub fn create_tx(
         unblinded_inputs,
         unblinded_outputs,
     )
+}
+
+/// Spend the provided UTXOs by to the given amounts. Change will be created with any outstanding amount.
+/// You only need to provide the unblinded outputs to spend. This function will calculate the commitment for you.
+/// This is obviously less efficient, but is offered as a convenience.
+pub fn spend_utxos(
+    utxos: Vec<UnblindedOutput>,
+    new_outputs: &[MicroTari],
+    fee_per_gram: MicroTari,
+    lock_height: u64,
+) -> (Transaction, Vec<UnblindedOutput>, TestParams)
+{
+    let mut rng = rand::OsRng::new().unwrap();
+    let test_params = TestParams::new(&mut rng);
+    let mut stx_builder = SenderTransactionProtocol::builder(0);
+    stx_builder
+        .with_lock_height(lock_height)
+        .with_fee_per_gram(fee_per_gram)
+        .with_offset(test_params.offset.clone())
+        .with_private_nonce(test_params.nonce.clone())
+        .with_change_secret(test_params.change_key.clone());
+
+    for input in &utxos {
+        let utxo = input.as_transaction_input(&COMMITMENT_FACTORY, OutputFeatures::default());
+        stx_builder.with_input(utxo, input.clone());
+    }
+    let mut outputs = Vec::with_capacity(new_outputs.len());
+    for val in new_outputs {
+        let k = PrivateKey::random(&mut rng);
+        let utxo = UnblindedOutput::new(val.clone(), k, None);
+        outputs.push(utxo.clone());
+        stx_builder.with_output(utxo);
+    }
+
+    let mut stx_protocol = stx_builder.build::<Blake256>(&PROVER, &COMMITMENT_FACTORY).unwrap();
+    match stx_protocol.finalize(KernelFeatures::empty(), &PROVER, &COMMITMENT_FACTORY) {
+        Ok(true) => (),
+        Ok(false) => panic!("{:?}", stx_protocol.failure_reason()),
+        Err(e) => panic!("{:?}", e),
+    }
+    let txn = stx_protocol.get_transaction().unwrap().clone();
+    (txn, outputs, test_params)
 }
 
 /// Spend the provided UTXOs by creating a new transaction that breaking the inputs up into equally sized outputs
