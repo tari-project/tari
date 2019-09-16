@@ -33,17 +33,17 @@ use crate::{
         MmrTree,
     },
     proof_of_work::Difficulty,
+    spend,
     tari_amount::MicroTari,
     test_utils::builders::{
         chain_block,
         create_genesis_block,
         create_test_block,
         create_test_kernel,
-        create_test_tx_spending_utxos,
         create_tx,
         create_utxo,
     },
-    transaction::TransactionInput,
+    tx,
     types::{HashDigest, COMMITMENT_FACTORY, PROVER},
 };
 use std::thread;
@@ -113,8 +113,8 @@ fn insert_and_fetch_utxo() {
 fn insert_and_fetch_orphan() {
     let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
     let txs = vec![
-        create_tx(1000.into(), 20.into(), 0, 2, 0, 1).0,
-        create_tx(2000.into(), 30.into(), 0, 1, 0, 1).0,
+        (tx!(1000.into(), fee: 20.into(), inputs: 2, outputs: 1)).0,
+        (tx!(2000.into(), fee: 30.into(), inputs: 1, outputs: 1)).0,
     ];
     let orphan = create_test_block(10, None, txs);
     let orphan_hash = orphan.hash();
@@ -366,9 +366,8 @@ fn test_checkpoints() {
     let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
     // Add the Genesis block
     let (block0, output) = create_genesis_block();
-    let gen_utxo = TransactionInput::from(block0.body.outputs[0].clone());
     assert_eq!(store.add_block(block0.clone()), Ok(BlockAddResult::Ok));
-    let (txn, _) = create_test_tx_spending_utxos(50.into(), 0, vec![(gen_utxo, output)], 2);
+    let (txn, _, _) = spend!(vec![output], to: &[MicroTari(5_000), MicroTari(6_000)]);
     let block1 = chain_block(&block0, vec![txn]);
     assert_eq!(store.add_block(block1.clone()), Ok(BlockAddResult::Ok));
     // Get the checkpoint

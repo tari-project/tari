@@ -122,20 +122,17 @@ impl ReorgPool {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{
-        tari_amount::MicroTari,
-        test_utils::builders::{create_test_block, create_test_tx},
-    };
+    use crate::{tari_amount::MicroTari, test_utils::builders::create_test_block, tx};
     use std::{thread, time::Duration};
 
     #[test]
     fn test_insert_rlu_and_ttl() {
-        let tx1 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(500), 4000, 2, 0, 1));
-        let tx2 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(300), 3000, 2, 0, 1));
-        let tx3 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(100), 2500, 2, 0, 1));
-        let tx4 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(200), 1000, 2, 0, 1));
-        let tx5 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(500), 2000, 2, 0, 1));
-        let tx6 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(600), 5500, 2, 0, 1));
+        let tx1 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(500), lock: 4000, inputs: 2, outputs: 1).0);
+        let tx2 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(300), lock: 3000, inputs: 2, outputs: 1).0);
+        let tx3 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(100), lock: 2500, inputs: 2, outputs: 1).0);
+        let tx4 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(200), lock: 1000, inputs: 2, outputs: 1).0);
+        let tx5 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(500), lock: 2000, inputs: 2, outputs: 1).0);
+        let tx6 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(600), lock: 5500, inputs: 2, outputs: 1).0);
 
         let reorg_pool = ReorgPool::new(ReorgPoolConfig {
             storage_capacity: 3,
@@ -214,12 +211,12 @@ mod test {
 
     #[test]
     fn remove_scan_for_and_remove_reorged_txs() {
-        let tx1 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(50), 4000, 2, 0, 1));
-        let tx2 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(30), 3000, 2, 0, 1));
-        let tx3 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(20), 2500, 2, 0, 1));
-        let tx4 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(20), 1000, 2, 0, 1));
-        let tx5 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(50), 2000, 2, 0, 1));
-        let tx6 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(60), 5500, 2, 0, 1));
+        let tx1 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(50), lock: 4000, inputs: 2, outputs: 1).0);
+        let tx2 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(30), lock: 3000, inputs: 2, outputs: 1).0);
+        let tx3 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(20), lock: 2500, inputs: 2, outputs: 1).0);
+        let tx4 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(20), lock: 1000, inputs: 2, outputs: 1).0);
+        let tx5 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(50), lock: 2000, inputs: 2, outputs: 1).0);
+        let tx6 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(60), lock: 5500, inputs: 2, outputs: 1).0);
 
         let reorg_pool = ReorgPool::new(ReorgPoolConfig {
             storage_capacity: 5,

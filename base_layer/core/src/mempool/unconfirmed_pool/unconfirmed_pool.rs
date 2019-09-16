@@ -151,18 +151,15 @@ impl UnconfirmedPool {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{
-        tari_amount::MicroTari,
-        test_utils::builders::{create_test_block, create_test_tx},
-    };
+    use crate::{tari_amount::MicroTari, test_utils::builders::create_test_block, tx};
 
     #[test]
     fn test_insert_and_retrieve_highest_priority_txs() {
-        let tx1 = Arc::new(create_test_tx(MicroTari(5_000), MicroTari(50), 0, 2, 0, 1));
-        let tx2 = Arc::new(create_test_tx(MicroTari(5_000), MicroTari(20), 0, 4, 0, 1));
-        let tx3 = Arc::new(create_test_tx(MicroTari(5_000), MicroTari(100), 0, 5, 0, 1));
-        let tx4 = Arc::new(create_test_tx(MicroTari(5_000), MicroTari(30), 0, 3, 0, 1));
-        let tx5 = Arc::new(create_test_tx(MicroTari(5_000), MicroTari(50), 0, 5, 0, 1));
+        let tx1 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(50), inputs: 2, outputs: 1).0);
+        let tx2 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(20), inputs: 4, outputs: 1).0);
+        let tx3 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(100), inputs: 5, outputs: 1).0);
+        let tx4 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(30), inputs: 3, outputs: 1).0);
+        let tx5 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(50), inputs: 5, outputs: 1).0);
 
         let unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
             storage_capacity: 4,
@@ -217,12 +214,12 @@ mod test {
 
     #[test]
     fn test_remove_published_txs() {
-        let tx1 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(50), 0, 2, 0, 1));
-        let tx2 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(20), 0, 3, 0, 1));
-        let tx3 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(100), 0, 2, 0, 1));
-        let tx4 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(30), 0, 4, 0, 1));
-        let tx5 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(50), 0, 3, 0, 1));
-        let tx6 = Arc::new(create_test_tx(MicroTari(10_000), MicroTari(75), 0, 2, 0, 1));
+        let tx1 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(50), inputs:2, outputs: 1).0);
+        let tx2 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(20), inputs:3, outputs: 1).0);
+        let tx3 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(100), inputs:2, outputs: 1).0);
+        let tx4 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(30), inputs:4, outputs: 1).0);
+        let tx5 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(50), inputs:3, outputs: 1).0);
+        let tx6 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(75), inputs:2, outputs: 1).0);
 
         let unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
             storage_capacity: 10,
@@ -287,12 +284,12 @@ mod test {
 
     #[test]
     fn test_discard_double_spend_txs() {
-        let tx1 = Arc::new(create_test_tx(MicroTari(5_000), MicroTari(50), 0, 2, 0, 1));
-        let tx2 = Arc::new(create_test_tx(MicroTari(5_000), MicroTari(20), 0, 3, 0, 1));
-        let tx3 = Arc::new(create_test_tx(MicroTari(5_000), MicroTari(100), 0, 2, 0, 1));
-        let tx4 = Arc::new(create_test_tx(MicroTari(5_000), MicroTari(30), 0, 2, 0, 1));
-        let mut tx5 = create_test_tx(MicroTari(5_000), MicroTari(50), 0, 3, 0, 1);
-        let mut tx6 = create_test_tx(MicroTari(5_000), MicroTari(75), 0, 2, 0, 1);
+        let tx1 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(50), inputs:2, outputs:1).0);
+        let tx2 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(20), inputs:3, outputs:1).0);
+        let tx3 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(100), inputs:2, outputs:1).0);
+        let tx4 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(30), inputs:2, outputs:1).0);
+        let mut tx5 = tx!(MicroTari(5_000), fee:MicroTari(50), inputs:3, outputs:1).0;
+        let mut tx6 = tx!(MicroTari(5_000), fee:MicroTari(75), inputs: 2, outputs: 1).0;
         // tx1 and tx5 have a shared input. Also, tx3 and tx6 have a shared input
         tx5.body.inputs[0] = tx1.body.inputs[0].clone();
         tx6.body.inputs[1] = tx3.body.inputs[1].clone();
