@@ -26,17 +26,18 @@ use crate::{
 };
 use futures::future::join_all;
 use std::sync::Arc;
+use tokio::runtime::TaskExecutor;
 
 /// Responsible for building and collecting handles and (usually long-running) service futures.
 /// `finish` is an async function which resolves once all the services are initialized, or returns
 /// an error if any one of the services fails to initialize.
-pub struct StackBuilder<'a, TExec> {
-    initializers: Vec<BoxedServiceInitializer<TExec>>,
-    executor: &'a mut TExec,
+pub struct StackBuilder {
+    initializers: Vec<BoxedServiceInitializer>,
+    executor: TaskExecutor,
 }
 
-impl<'a, TExec> StackBuilder<'a, TExec> {
-    pub fn new(executor: &'a mut TExec) -> Self {
+impl StackBuilder {
+    pub fn new(executor: TaskExecutor) -> Self {
         Self {
             initializers: Vec::new(),
             executor,
@@ -44,18 +45,18 @@ impl<'a, TExec> StackBuilder<'a, TExec> {
     }
 }
 
-impl<'a, TExec> StackBuilder<'a, TExec> {
+impl StackBuilder {
     /// Add an impl of ServiceInitializer to the stack
     pub fn add_initializer<I>(self, initializer: I) -> Self
     where
-        I: ServiceInitializer<TExec> + Send + 'static,
+        I: ServiceInitializer + Send + 'static,
         I::Future: Send + 'static,
     {
         self.add_initializer_boxed(initializer.boxed())
     }
 
     /// Add a ServiceInitializer which has been boxed using `ServiceInitializer::boxed`
-    pub fn add_initializer_boxed(mut self, initializer: BoxedServiceInitializer<TExec>) -> Self {
+    pub fn add_initializer_boxed(mut self, initializer: BoxedServiceInitializer) -> Self {
         self.initializers.push(initializer);
         self
     }
@@ -72,7 +73,7 @@ impl<'a, TExec> StackBuilder<'a, TExec> {
         let init_futures = self
             .initializers
             .into_iter()
-            .map(|mut init| ServiceInitializer::initialize(&mut init, executor, handles_fut.clone()));
+            .map(|mut init| ServiceInitializer::initialize(&mut init, executor.clone(), handles_fut.clone()));
 
         // Run all the initializers concurrently and check each Result returning an error
         // on the first one that failed.
@@ -90,21 +91,21 @@ impl<'a, TExec> StackBuilder<'a, TExec> {
 mod test {
     use super::*;
     use crate::{handles::ServiceHandlesFuture, initializer::ServiceInitializer, tower::service_fn};
-    use futures::{executor::block_on, future, task::SpawnExt, Future};
-    use futures_test::task::NoopSpawner;
+    use futures::{executor::block_on, future, Future};
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use tokio::runtime::Runtime;
 
     #[test]
     fn service_defn_simple() {
+        let rt = Runtime::new().unwrap();
         // This is less of a test and more of a demo of using the short-hand implementation of ServiceInitializer
-        let simple_initializer = |executor: &mut NoopSpawner, _: ServiceHandlesFuture| {
-            executor.spawn(future::ready(())).unwrap();
+        let simple_initializer = |executor: TaskExecutor, _: ServiceHandlesFuture| {
+            executor.spawn(future::ready(()));
             future::ok(())
         };
 
-        let mut executor = NoopSpawner::new();
         let handles = block_on(
-            StackBuilder::new(&mut executor)
+            StackBuilder::new(rt.executor())
                 .add_initializer(simple_initializer)
                 .finish(),
         );
@@ -124,14 +125,12 @@ mod test {
         }
     }
 
-    impl<TExec> ServiceInitializer<TExec> for DummyInitializer
-    where TExec: SpawnExt
-    {
+    impl ServiceInitializer for DummyInitializer {
         type Future = impl Future<Output = Result<(), ServiceInitializationError>>;
 
-        fn initialize(&mut self, executor: &mut TExec, handles_fut: ServiceHandlesFuture) -> Self::Future {
-            // Spawn some task on the given executor (in this case, NoopSpawner)
-            executor.spawn(future::ready(())).unwrap();
+        fn initialize(&mut self, executor: TaskExecutor, handles_fut: ServiceHandlesFuture) -> Self::Future {
+            // Spawn some task on the given TaskExecutor
+            executor.spawn(future::ready(()));
             // Add a handle
             handles_fut.register(DummyServiceHandle(123));
 
@@ -142,30 +141,28 @@ mod test {
             //
             // Critically, you should never wait for handles in the initialize method because
             // handles are only resolved after all initialization methods have completed.
-            let spawn_result = executor
-                .spawn(async move {
-                    let final_handles = handles_fut.await;
+            executor.spawn(async move {
+                let final_handles = handles_fut.await;
 
-                    let handle = final_handles.get_handle::<DummyServiceHandle>().unwrap();
-                    assert_eq!(handle.0, 123);
-                    // Something which uses the handle
-                    service_fn(|_: ()| future::ok::<_, ()>(handle.0));
-                })
-                .map_err(Into::into);
+                let handle = final_handles.get_handle::<DummyServiceHandle>().unwrap();
+                assert_eq!(handle.0, 123);
+                // Something which uses the handle
+                service_fn(|_: ()| future::ok::<_, ()>(handle.0));
+            });
 
             self.state.fetch_add(1, Ordering::AcqRel);
-            future::ready(spawn_result)
+            future::ready(Ok(()))
         }
     }
 
     #[test]
     fn service_stack_new() {
+        let rt = Runtime::new().unwrap();
         let shared_state = Arc::new(AtomicUsize::new(0));
 
         let initializer = DummyInitializer::new(Arc::clone(&shared_state));
 
-        let mut executor = NoopSpawner::new();
-        let handles = block_on(StackBuilder::new(&mut executor).add_initializer(initializer).finish()).unwrap();
+        let handles = block_on(StackBuilder::new(rt.executor()).add_initializer(initializer).finish()).unwrap();
 
         handles.get_handle::<DummyServiceHandle>().unwrap();
 
