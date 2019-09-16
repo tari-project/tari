@@ -110,12 +110,13 @@ where S: Stream<Item = InboundMessage> + Unpin + FusedStream
 mod test {
     use super::*;
     use crate::{
-        message::Message,
+        message::{Message, NodeDestination},
         peer_manager::NodeIdentity,
         pub_sub_channel::{pubsub_channel, TopicPayload},
     };
     use futures::{executor::block_on, SinkExt};
     use serde::{Deserialize, Serialize};
+
     #[test]
     fn topic_pub_sub() {
         let (mut publisher, subscriber_factory) = pubsub_channel(10);
@@ -165,6 +166,7 @@ mod test {
                 InboundMessage::new(
                     node_id.identity.clone(),
                     node_id.identity.public_key.clone(),
+                    NodeDestination::Unknown,
                     Message::from_message_format(m.0.clone(), m.1.clone()).unwrap(),
                 ),
             )
