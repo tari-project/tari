@@ -219,7 +219,8 @@ where MType: Eq + Send + Sync + Debug + Serialize + DeserializeOwned + 'static
         debug!(target: LOG_TARGET, "Received message type: {:?}", header.message_type);
         let inbound_message = InboundMessage::new(
             source_peer.clone().into(),
-            message_envelope_header.origin_source.clone(),
+            message_envelope_header.origin_source,
+            message_envelope_header.dest,
             message,
         );
 

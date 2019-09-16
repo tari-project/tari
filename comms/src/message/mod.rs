@@ -63,16 +63,16 @@ use crate::peer_manager::node_id::NodeId;
 use bitflags::*;
 use serde::{Deserialize, Serialize};
 
-mod domain_message_context;
 mod envelope;
 mod error;
+mod inbound_message;
 mod message;
 mod message_data;
 
 pub use self::{
-    domain_message_context::*,
     envelope::{MessageEnvelope, MessageEnvelopeHeader},
     error::MessageError,
+    inbound_message::*,
     message::{Message, MessageHeader},
     message_data::*,
 };
