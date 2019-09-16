@@ -49,4 +49,5 @@ mod base_node;
 pub mod chain_storage;
 
 // Re-export commonly used structs
+pub use base_node::BaseNode;
 pub use transaction_protocol::{recipient::ReceiverTransactionProtocol, sender::SenderTransactionProtocol};
