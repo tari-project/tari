@@ -42,12 +42,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use futures::{
-    future::{self, Future},
-    task::SpawnExt,
-};
+use futures::future::{self, Future};
 use tari_comms::outbound_message_service::OutboundServiceRequester;
 use tari_service_framework::{handles::ServiceHandlesFuture, ServiceInitializationError, ServiceInitializer};
+use tokio::runtime::TaskExecutor;
 
 /// Convenience type alias for external services that want to use this services handle
 pub type CommsOutboundHandle = OutboundServiceRequester;
@@ -63,12 +61,10 @@ impl CommsOutboundServiceInitializer {
     }
 }
 
-impl<TExec> ServiceInitializer<TExec> for CommsOutboundServiceInitializer
-where TExec: SpawnExt
-{
+impl ServiceInitializer for CommsOutboundServiceInitializer {
     type Future = impl Future<Output = Result<(), ServiceInitializationError>>;
 
-    fn initialize(&mut self, _: &mut TExec, handles: ServiceHandlesFuture) -> Self::Future {
+    fn initialize(&mut self, _: TaskExecutor, handles: ServiceHandlesFuture) -> Self::Future {
         handles.register(
             self.oms
                 .take()

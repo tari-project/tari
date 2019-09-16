@@ -381,3 +381,171 @@ fn test_checkpoints() {
     let block_b = serde_json::to_string(&Block::from(block_b)).unwrap();
     assert_eq!(block1, block_b);
 }
+
+#[test]
+fn rewind_to_height() {
+    let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
+    let (block0, _) = create_genesis_block();
+    assert!(store.add_block(block0.clone()).is_ok());
+
+    let (tx1, inputs1, _) = create_tx(MicroTari(10_000), MicroTari(50), 0, 1, 0, 1);
+    let (tx2, inputs2, _) = create_tx(MicroTari(10_000), MicroTari(20), 0, 1, 0, 1);
+    let (tx3, inputs3, _) = create_tx(MicroTari(10_000), MicroTari(100), 0, 1, 0, 1);
+    let (tx4, inputs4, _) = create_tx(MicroTari(10_000), MicroTari(30), 0, 1, 0, 1);
+    let (tx5, inputs5, _) = create_tx(MicroTari(10_000), MicroTari(50), 0, 1, 0, 1);
+    let (tx6, inputs6, _) = create_tx(MicroTari(10_000), MicroTari(75), 0, 1, 0, 1);
+    let mut txn = DbTransaction::new();
+    txn.insert_utxo(
+        inputs1[0]
+            .as_transaction_output(&PROVER, &COMMITMENT_FACTORY, inputs1[0].features.clone())
+            .unwrap(),
+    );
+    txn.insert_utxo(
+        inputs2[0]
+            .as_transaction_output(&PROVER, &COMMITMENT_FACTORY, inputs2[0].features.clone())
+            .unwrap(),
+    );
+    txn.insert_utxo(
+        inputs3[0]
+            .as_transaction_output(&PROVER, &COMMITMENT_FACTORY, inputs3[0].features.clone())
+            .unwrap(),
+    );
+    txn.insert_utxo(
+        inputs4[0]
+            .as_transaction_output(&PROVER, &COMMITMENT_FACTORY, inputs4[0].features.clone())
+            .unwrap(),
+    );
+    txn.insert_utxo(
+        inputs5[0]
+            .as_transaction_output(&PROVER, &COMMITMENT_FACTORY, inputs5[0].features.clone())
+            .unwrap(),
+    );
+    txn.insert_utxo(
+        inputs6[0]
+            .as_transaction_output(&PROVER, &COMMITMENT_FACTORY, inputs6[0].features.clone())
+            .unwrap(),
+    );
+    assert!(store.commit(txn).is_ok());
+
+    let block1 = chain_block(&block0, vec![tx1.clone(), tx2.clone()]);
+    assert!(store.add_block(block1.clone()).is_ok());
+    let block2 = chain_block(&block1, vec![tx3.clone()]);
+    assert!(store.add_block(block2.clone()).is_ok());
+    let block3 = chain_block(&block2, vec![tx4.clone(), tx5.clone(), tx6.clone()]);
+    assert!(store.add_block(block3.clone()).is_ok());
+
+    assert!(store.rewind_to_height(3).is_ok());
+    assert!(store.rewind_to_height(4).is_err());
+
+    let tx1_input_hash = tx1.body.inputs[0].hash();
+    let tx2_input_hash = tx2.body.inputs[0].hash();
+    let tx3_input_hash = tx3.body.inputs[0].hash();
+    let tx4_input_hash = tx4.body.inputs[0].hash();
+    let tx5_input_hash = tx5.body.inputs[0].hash();
+    let tx6_input_hash = tx6.body.inputs[0].hash();
+    let tx1_output_hash = tx1.body.outputs[0].hash();
+    let tx2_output_hash = tx2.body.outputs[0].hash();
+    let tx3_output_hash = tx3.body.outputs[0].hash();
+    let tx4_output_hash = tx4.body.outputs[0].hash();
+    let tx5_output_hash = tx5.body.outputs[0].hash();
+    let tx6_output_hash = tx6.body.outputs[0].hash();
+    let tx1_kernel_hash = tx1.body.kernels[0].hash();
+    let tx2_kernel_hash = tx2.body.kernels[0].hash();
+    let tx3_kernel_hash = tx3.body.kernels[0].hash();
+    let tx4_kernel_hash = tx4.body.kernels[0].hash();
+    let tx5_kernel_hash = tx5.body.kernels[0].hash();
+    let tx6_kernel_hash = tx6.body.kernels[0].hash();
+    let block0_header_hash = block0.header.hash();
+    let block1_header_hash = block1.header.hash();
+    let block2_header_hash = block2.header.hash();
+    let block3_header_hash = block3.header.hash();
+
+    assert_eq!(store.fetch_header(0).unwrap().height, 0);
+    assert_eq!(store.fetch_header(1).unwrap().height, 1);
+    assert_eq!(store.fetch_header(2).unwrap().height, 2);
+    assert_eq!(store.fetch_header(3).unwrap().height, 3);
+    assert_eq!(store.fetch_header(4).is_ok(), false);
+
+    assert!(store.fetch_kernel(tx1_kernel_hash.clone()).is_ok());
+    assert!(store.fetch_kernel(tx2_kernel_hash.clone()).is_ok());
+    assert!(store.fetch_kernel(tx3_kernel_hash.clone()).is_ok());
+    assert!(store.fetch_kernel(tx4_kernel_hash.clone()).is_ok());
+    assert!(store.fetch_kernel(tx5_kernel_hash.clone()).is_ok());
+    assert!(store.fetch_kernel(tx6_kernel_hash.clone()).is_ok());
+
+    assert_eq!(store.is_utxo(tx1_input_hash.clone()), Ok(false));
+    assert_eq!(store.is_utxo(tx2_input_hash.clone()), Ok(false));
+    assert_eq!(store.is_utxo(tx3_input_hash.clone()), Ok(false));
+    assert_eq!(store.is_utxo(tx4_input_hash.clone()), Ok(false));
+    assert_eq!(store.is_utxo(tx5_input_hash.clone()), Ok(false));
+    assert_eq!(store.is_utxo(tx6_input_hash.clone()), Ok(false));
+    assert_eq!(store.is_utxo(tx1_output_hash.clone()), Ok(true));
+    assert_eq!(store.is_utxo(tx2_output_hash.clone()), Ok(true));
+    assert_eq!(store.is_utxo(tx3_output_hash.clone()), Ok(true));
+    assert_eq!(store.is_utxo(tx4_output_hash.clone()), Ok(true));
+    assert_eq!(store.is_utxo(tx5_output_hash.clone()), Ok(true));
+    assert_eq!(store.is_utxo(tx6_output_hash.clone()), Ok(true));
+
+    assert!(store.fetch_stxo(tx1_input_hash.clone()).is_ok());
+    assert!(store.fetch_stxo(tx2_input_hash.clone()).is_ok());
+    assert!(store.fetch_stxo(tx3_input_hash.clone()).is_ok());
+    assert!(store.fetch_stxo(tx4_input_hash.clone()).is_ok());
+    assert!(store.fetch_stxo(tx5_input_hash.clone()).is_ok());
+    assert!(store.fetch_stxo(tx6_input_hash.clone()).is_ok());
+    assert!(store.fetch_stxo(tx1_output_hash.clone()).is_err());
+    assert!(store.fetch_stxo(tx2_output_hash.clone()).is_err());
+    assert!(store.fetch_stxo(tx3_output_hash.clone()).is_err());
+    assert!(store.fetch_stxo(tx4_output_hash.clone()).is_err());
+    assert!(store.fetch_stxo(tx5_output_hash.clone()).is_err());
+    assert!(store.fetch_stxo(tx6_output_hash.clone()).is_err());
+
+    assert!(store.fetch_orphan(block0_header_hash.clone()).is_err());
+    assert!(store.fetch_orphan(block1_header_hash.clone()).is_err());
+    assert!(store.fetch_orphan(block2_header_hash.clone()).is_err());
+    assert!(store.fetch_orphan(block3_header_hash.clone()).is_err());
+
+    assert!(store.rewind_to_height(1).is_ok());
+
+    assert_eq!(store.fetch_header(0).unwrap().height, 0);
+    assert_eq!(store.fetch_header(1).unwrap().height, 1);
+    assert_eq!(store.fetch_header(2).is_ok(), false);
+    assert_eq!(store.fetch_header(3).is_ok(), false);
+
+    assert!(store.fetch_kernel(tx1_kernel_hash).is_ok());
+    assert!(store.fetch_kernel(tx2_kernel_hash).is_ok());
+    assert!(store.fetch_kernel(tx3_kernel_hash).is_err());
+    assert!(store.fetch_kernel(tx4_kernel_hash).is_err());
+    assert!(store.fetch_kernel(tx5_kernel_hash).is_err());
+    assert!(store.fetch_kernel(tx6_kernel_hash).is_err());
+
+    assert_eq!(store.is_utxo(tx1_input_hash.clone()), Ok(false));
+    assert_eq!(store.is_utxo(tx2_input_hash.clone()), Ok(false));
+    assert_eq!(store.is_utxo(tx3_input_hash.clone()), Ok(true));
+    assert_eq!(store.is_utxo(tx4_input_hash.clone()), Ok(true));
+    assert_eq!(store.is_utxo(tx5_input_hash.clone()), Ok(true));
+    assert_eq!(store.is_utxo(tx6_input_hash.clone()), Ok(true));
+    assert_eq!(store.is_utxo(tx1_output_hash.clone()), Ok(true));
+    assert_eq!(store.is_utxo(tx2_output_hash.clone()), Ok(true));
+    assert_eq!(store.is_utxo(tx3_output_hash.clone()), Ok(false));
+    assert_eq!(store.is_utxo(tx4_output_hash.clone()), Ok(false));
+    assert_eq!(store.is_utxo(tx5_output_hash.clone()), Ok(false));
+    assert_eq!(store.is_utxo(tx6_output_hash.clone()), Ok(false));
+
+    assert!(store.fetch_stxo(tx1_input_hash).is_ok());
+    assert!(store.fetch_stxo(tx2_input_hash).is_ok());
+    assert!(store.fetch_stxo(tx3_input_hash).is_err());
+    assert!(store.fetch_stxo(tx4_input_hash).is_err());
+    assert!(store.fetch_stxo(tx5_input_hash).is_err());
+    assert!(store.fetch_stxo(tx6_input_hash).is_err());
+    assert!(store.fetch_stxo(tx1_output_hash).is_err());
+    assert!(store.fetch_stxo(tx2_output_hash).is_err());
+    assert!(store.fetch_stxo(tx3_output_hash).is_err());
+    assert!(store.fetch_stxo(tx4_output_hash).is_err());
+    assert!(store.fetch_stxo(tx5_output_hash).is_err());
+    assert!(store.fetch_stxo(tx6_output_hash).is_err());
+
+    assert!(store.fetch_orphan(block0_header_hash).is_err());
+    assert!(store.fetch_orphan(block1_header_hash).is_err());
+    assert!(store.fetch_orphan(block2_header_hash).is_ok());
+    assert!(store.fetch_orphan(block3_header_hash).is_ok());
+}

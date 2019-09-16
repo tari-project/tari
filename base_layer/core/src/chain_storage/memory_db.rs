@@ -196,6 +196,24 @@ where D: Digest + Send + Sync
                         .commit()
                         .map_err(|e| ChainStorageError::AccessError(e.to_string()))?,
                 },
+                WriteOperation::RewindMmr(tree, steps_back) => match tree {
+                    MmrTree::Header => db
+                        .header_mmr
+                        .rewind(steps_back)
+                        .map_err(|e| ChainStorageError::AccessError(e.to_string()))?,
+                    MmrTree::Kernel => db
+                        .kernel_mmr
+                        .rewind(steps_back)
+                        .map_err(|e| ChainStorageError::AccessError(e.to_string()))?,
+                    MmrTree::Utxo => db
+                        .utxo_mmr
+                        .rewind(steps_back)
+                        .map_err(|e| ChainStorageError::AccessError(e.to_string()))?,
+                    MmrTree::RangeProof => db
+                        .range_proof_mmr
+                        .rewind(steps_back)
+                        .map_err(|e| ChainStorageError::AccessError(e.to_string()))?,
+                },
             }
         }
         Ok(())

@@ -509,29 +509,49 @@ mod test {
         assert_eq!(stats.timelocked_txs, 0);
         assert_eq!(stats.published_txs, 6);
 
-        // TODO: Add code back in when rewind_to_height has been implemented.
-        // let mut db_txn = DbTransaction::new();
-        // db_txn.rewind_to_height(1);
-        // store.commit(db_txn).unwrap();
-        // let new_block1 = create_test_block(2, Some(published_block1), vec![(*tx7).clone()]);
-        // let new_block2 = create_test_block(3, Some(new_block1.clone()), vec![(*tx8).clone()]);
-        // mempool
-        // .process_reorg(vec![published_block2, published_block3], vec![new_block1, new_block2])
-        // .unwrap();
-        // let stats = mempool.stats().unwrap();
-        // assert_eq!(stats.unconfirmed_txs, 3);
-        // assert_eq!(stats.timelocked_txs, 0);
-        // assert_eq!(stats.published_txs, 5);
-        //
-        // assert_eq!(mempool.has_tx_with_excess_sig(&tx1.body.kernels[0].excess_sig).unwrap(),TxStorageResponse::
-        // ReorgPool); assert_eq!(mempool.has_tx_with_excess_sig(&tx2.body.kernels[0].excess_sig).unwrap(),
-        // TxStorageResponse::ReorgPool); assert_eq!(mempool.has_tx_with_excess_sig(&tx3.body.kernels[0].
-        // excess_sig).unwrap(),TxStorageResponse::ReorgPool); assert_eq!(mempool.has_tx_with_excess_sig(&tx4.
-        // body.kernels[0].excess_sig).unwrap(),TxStorageResponse::UnconfirmedPool); assert_eq!(mempool.
-        // has_tx_with_excess_sig(&tx5.body.kernels[0].excess_sig).unwrap(),TxStorageResponse::UnconfirmedPool);
-        // assert_eq!(mempool.has_tx_with_excess_sig(&tx6.body.kernels[0].excess_sig).unwrap(),TxStorageResponse::
-        // UnconfirmedPool); assert_eq!(mempool.has_tx_with_excess_sig(&tx7.body.kernels[0].excess_sig).
-        // unwrap(),TxStorageResponse::ReorgPool); assert_eq!(mempool.has_tx_with_excess_sig(&tx8.body.
-        // kernels[0].excess_sig).unwrap(),TxStorageResponse::ReorgPool);
+        assert!(store.rewind_to_height(1).is_ok());
+
+        let new_block1 = create_test_block(2, Some(published_block1), vec![(*tx7).clone()]);
+        let new_block2 = create_test_block(3, Some(new_block1.clone()), vec![(*tx8).clone()]);
+        mempool
+            .process_reorg(vec![published_block2, published_block3], vec![new_block1, new_block2])
+            .unwrap();
+        let stats = mempool.stats().unwrap();
+        assert_eq!(stats.unconfirmed_txs, 3);
+        assert_eq!(stats.timelocked_txs, 0);
+        assert_eq!(stats.published_txs, 5);
+
+        assert_eq!(
+            mempool.has_tx_with_excess_sig(&tx1.body.kernels[0].excess_sig).unwrap(),
+            TxStorageResponse::ReorgPool
+        );
+        assert_eq!(
+            mempool.has_tx_with_excess_sig(&tx2.body.kernels[0].excess_sig).unwrap(),
+            TxStorageResponse::ReorgPool
+        );
+        assert_eq!(
+            mempool.has_tx_with_excess_sig(&tx3.body.kernels[0].excess_sig).unwrap(),
+            TxStorageResponse::ReorgPool
+        );
+        assert_eq!(
+            mempool.has_tx_with_excess_sig(&tx4.body.kernels[0].excess_sig).unwrap(),
+            TxStorageResponse::UnconfirmedPool
+        );
+        assert_eq!(
+            mempool.has_tx_with_excess_sig(&tx5.body.kernels[0].excess_sig).unwrap(),
+            TxStorageResponse::UnconfirmedPool
+        );
+        assert_eq!(
+            mempool.has_tx_with_excess_sig(&tx6.body.kernels[0].excess_sig).unwrap(),
+            TxStorageResponse::UnconfirmedPool
+        );
+        assert_eq!(
+            mempool.has_tx_with_excess_sig(&tx7.body.kernels[0].excess_sig).unwrap(),
+            TxStorageResponse::ReorgPool
+        );
+        assert_eq!(
+            mempool.has_tx_with_excess_sig(&tx8.body.kernels[0].excess_sig).unwrap(),
+            TxStorageResponse::ReorgPool
+        );
     }
 }

@@ -91,6 +91,13 @@ impl DbTransaction {
             .push(WriteOperation::Spend(DbKey::UnspentOutput(utxo_hash)));
     }
 
+    /// Moves an STXO to the UTXO set.  If the STXO is not in the STXO set, the transaction will fail with an
+    /// `UnspendError`.
+    pub fn unspend_stxo(&mut self, stxo_hash: HashOutput) {
+        self.operations
+            .push(WriteOperation::UnSpend(DbKey::SpentOutput(stxo_hash)));
+    }
+
     /// Moves the given set of transaction inputs from the UTXO set to the STXO set. All the inputs *must* currently
     /// exist in the UTXO set, or the transaction will error with `ChainStorageError::UnspendableOutput`
     pub fn spend_inputs(&mut self, inputs: &[TransactionInput]) {
@@ -119,13 +126,28 @@ impl DbTransaction {
         )));
     }
 
-    /// Rewind the blockchain state to the block height given.
-    ///
-    /// The operation will fail if
-    /// * The block height is in the future
-    /// * The block height is before pruning horizon
-    pub fn rewind_to_height(&mut self, _height: u64) {
-        unimplemented!()
+    /// Rewinds the Header MMR state by the given number of Checkpoints.
+    pub fn rewind_header_mmr(&mut self, steps_back: usize) {
+        self.operations
+            .push(WriteOperation::RewindMmr(MmrTree::Header, steps_back));
+    }
+
+    /// Rewinds the Kernel MMR state by the given number of Checkpoints.
+    pub fn rewind_kernel_mmr(&mut self, steps_back: usize) {
+        self.operations
+            .push(WriteOperation::RewindMmr(MmrTree::Kernel, steps_back));
+    }
+
+    /// Rewinds the UTXO MMR state by the given number of Checkpoints.
+    pub fn rewind_utxo_mmr(&mut self, steps_back: usize) {
+        self.operations
+            .push(WriteOperation::RewindMmr(MmrTree::Utxo, steps_back));
+    }
+
+    /// Rewinds the RangeProof MMR state by the given number of Checkpoints.
+    pub fn rewind_rp_mmr(&mut self, steps_back: usize) {
+        self.operations
+            .push(WriteOperation::RewindMmr(MmrTree::RangeProof, steps_back));
     }
 }
 
@@ -136,6 +158,7 @@ pub enum WriteOperation {
     Spend(DbKey),
     UnSpend(DbKey),
     CreateMmrCheckpoint(MmrTree),
+    RewindMmr(MmrTree, usize),
 }
 
 /// A list of key-value pairs that are required for each insert operation
