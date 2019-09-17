@@ -19,9 +19,6 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-// use super::async_::channel as async_channel;
-// use super::async_::Publisher;
-// use super::async_::Subscriber;
 use futures::{compat::Compat, future, prelude::*, stream::Fuse};
 use std::fmt::Debug;
 use tari_broadcast_channel::{bounded, Publisher, Subscriber};

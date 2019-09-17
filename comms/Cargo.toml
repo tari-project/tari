@@ -9,10 +9,10 @@ version = "0.0.5"
 edition = "2018"
 
 [dependencies]
-tari_broadcast_channel = { version="^0.0",  path = "../infrastructure/broadcast_channel" }
 tari_crypto = { version="^0.0",  path = "../infrastructure/crypto" }
-tari_utilities = { version="^0.0",  path = "../infrastructure/tari_util" }
+tari_pubsub = { version="^0.0", path = "../infrastructure/pubsub" }
 tari_storage = { version="^0.0", path = "../infrastructure/storage" }
+tari_utilities = { version="^0.0",  path = "../infrastructure/tari_util" }
 
 bitflags ="1.0.4"
 chrono = { version = "0.4.6", features = ["serde"] }
