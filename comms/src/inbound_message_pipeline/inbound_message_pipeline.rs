@@ -40,13 +40,13 @@ use crate::{
     },
     outbound_message_service::{broadcast_strategy::BroadcastStrategy, OutboundServiceRequester},
     peer_manager::{NodeId, NodeIdentity, Peer, PeerManager},
-    pub_sub_channel::{pubsub_channel, TopicPayload, TopicPublisher},
     types::CommsPublicKey,
 };
 use futures::{channel::mpsc::Receiver, SinkExt, StreamExt};
 use log::*;
 use serde::{de::DeserializeOwned, Serialize};
 use std::{convert::TryFrom, fmt::Debug, sync::Arc};
+use tari_pubsub::{pubsub_channel, TopicPayload, TopicPublisher};
 
 const LOG_TARGET: &str = "comms::inbound_message_pipeline";
 

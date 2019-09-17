@@ -26,7 +26,6 @@ pub mod inbound_message_pipeline;
 pub mod message;
 pub mod outbound_message_service;
 pub mod peer_manager;
-pub mod pub_sub_channel;
 pub mod reply_channel;
 pub mod types;
 mod utils;

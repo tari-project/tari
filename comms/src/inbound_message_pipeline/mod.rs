@@ -40,7 +40,8 @@ pub mod error;
 pub mod inbound_message_pipeline;
 pub mod message_cache;
 
-use crate::{message::InboundMessage, pub_sub_channel::TopicSubscriptionFactory};
+use crate::message::InboundMessage;
+use tari_pubsub::TopicSubscriptionFactory;
 
 pub use self::message_cache::{MessageCache, MessageCacheConfig};
 

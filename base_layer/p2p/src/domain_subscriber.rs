@@ -126,8 +126,8 @@ mod test {
     use tari_comms::{
         message::{Message, NodeDestination},
         peer_manager::NodeIdentity,
-        pub_sub_channel::{pubsub_channel, TopicPayload},
     };
+    use tari_pubsub::{pubsub_channel, TopicPayload};
 
     #[test]
     fn topic_pub_sub() {
