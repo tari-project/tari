@@ -32,6 +32,7 @@ mod consts;
 // TODO Put these back in after Futures Comms stack refactor
 // pub mod saf_service;
 // pub mod dht_service;
+pub mod domain_subscriber;
 pub mod initialization;
 pub mod peer;
 pub mod ping_pong;

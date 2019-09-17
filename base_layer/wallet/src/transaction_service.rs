@@ -33,7 +33,6 @@ use std::{
     time::Duration,
 };
 use tari_comms::{
-    domain_subscriber::SyncDomainSubscription,
     message::MessageFlags,
     outbound_message_service::{BroadcastStrategy, OutboundServiceError, OutboundServiceRequester},
     types::CommsPublicKey,
@@ -52,6 +51,7 @@ use tari_core::{
 };
 use tari_crypto::keys::SecretKey;
 use tari_p2p::{
+    domain_subscriber::{DomainMessage, SyncDomainSubscription},
     sync_services::{
         Service,
         ServiceApiWrapper,
@@ -360,14 +360,17 @@ impl Service for TransactionService {
                 }
             }
 
-            for m in subscription_transaction.receive_messages()?.drain(..) {
-                if let Err(e) = self.accept_transaction(m.0.origin_source.clone(), m.1) {
+            for msg in subscription_transaction.receive_messages()?.drain(..) {
+                let DomainMessage {
+                    origin_source, inner, ..
+                } = msg;
+                if let Err(e) = self.accept_transaction(origin_source, inner) {
                     error!(target: LOG_TARGET, "Transaction service had error: {:?}", e);
                 }
             }
 
             for m in subscription_transaction_reply.receive_messages()?.drain(..) {
-                if let Err(e) = self.accept_recipient_reply(m.1) {
+                if let Err(e) = self.accept_recipient_reply(m.into_inner()) {
                     error!(target: LOG_TARGET, "Transaction service had error: {:?}", e);
                 }
             }

@@ -22,6 +22,7 @@
 
 use super::{error::LivenessError, state::LivenessState, LivenessRequest, LivenessResponse};
 use crate::{
+    domain_subscriber::DomainMessage,
     services::{comms_outbound::CommsOutboundHandle, liveness::messages::PingPong},
     tari_message::{NetMessage, TariMessageType},
 };
@@ -29,7 +30,6 @@ use futures::{pin_mut, stream::StreamExt, Stream};
 use log::*;
 use std::sync::Arc;
 use tari_comms::{
-    domain_subscriber::MessageInfo,
     message::MessageFlags,
     outbound_message_service::{BroadcastStrategy, OutboundServiceError},
     types::CommsPublicKey,
@@ -72,7 +72,7 @@ impl<THandleStream, TPingStream> LivenessService<THandleStream, TPingStream> {
 
 impl<THandleStream, TPingStream> LivenessService<THandleStream, TPingStream>
 where
-    TPingStream: Stream<Item = (MessageInfo, PingPong)>,
+    TPingStream: Stream<Item = DomainMessage<PingPong>>,
     THandleStream: Stream<Item = RequestContext<LivenessRequest, Result<LivenessResponse, LivenessError>>>,
 {
     pub async fn run(mut self) {
@@ -92,8 +92,8 @@ where
                     });
                 },
                 // Incoming messages from the Comms layer
-                (info, msg) = ping_stream.select_next_some() => {
-                    let _ = self.handle_incoming_message(info, msg).await.or_else(|err| {
+                msg = ping_stream.select_next_some() => {
+                    let _ = self.handle_incoming_message(msg).await.or_else(|err| {
                         error!(target: LOG_TARGET, "Failed to handle incoming PingPong message: {:?}", err);
                         Err(err)
                     });
@@ -103,11 +103,11 @@ where
         }
     }
 
-    async fn handle_incoming_message(&mut self, info: MessageInfo, msg: PingPong) -> Result<(), LivenessError> {
-        match msg {
+    async fn handle_incoming_message(&mut self, msg: DomainMessage<PingPong>) -> Result<(), LivenessError> {
+        match msg.inner() {
             PingPong::Ping => {
                 self.state.inc_pings_received();
-                self.send_pong(info.origin_source).await.unwrap();
+                self.send_pong(msg.origin_source).await.unwrap();
                 self.state.inc_pongs_sent();
             },
             PingPong::Pong => {
@@ -253,13 +253,14 @@ mod test {
         assert_eq!(state.pings_sent(), 1);
     }
 
-    fn create_dummy_message_info() -> MessageInfo {
+    fn create_dummy_message<T>(inner: T) -> DomainMessage<T> {
         let mut rng = OsRng::new().unwrap();
         let (_, pk) = CommsPublicKey::random_keypair(&mut rng);
         let peer_source = PeerNodeIdentity::new(NodeId::from_key(&pk).unwrap(), pk.clone());
-        MessageInfo {
+        DomainMessage {
             origin_source: peer_source.public_key.clone(),
             peer_source,
+            inner,
         }
     }
 
@@ -273,9 +274,9 @@ mod test {
         let (outbound_tx, mut outbound_rx) = mpsc::unbounded();
         let oms_handle = CommsOutboundHandle::new(outbound_tx);
 
-        let info = create_dummy_message_info();
+        let msg = create_dummy_message(PingPong::Ping);
         // A stream which emits one message and then closes
-        let pingpong_stream = stream::iter(std::iter::once((info, PingPong::Ping)));
+        let pingpong_stream = stream::iter(std::iter::once(msg));
 
         // Setup liveness service
         let service = LivenessService::new(stream::empty(), pingpong_stream, Arc::clone(&state), oms_handle);
@@ -305,9 +306,9 @@ mod test {
         let (outbound_tx, _) = mpsc::unbounded();
         let oms_handle = CommsOutboundHandle::new(outbound_tx);
 
-        let info = create_dummy_message_info();
+        let msg = create_dummy_message(PingPong::Pong);
         // A stream which emits one message and then closes
-        let pingpong_stream = stream::iter(std::iter::once((info, PingPong::Pong)));
+        let pingpong_stream = stream::iter(std::iter::once(msg));
 
         // Setup liveness service
         let service = LivenessService::new(stream::empty(), pingpong_stream, Arc::clone(&state), oms_handle);

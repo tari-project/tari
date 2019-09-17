@@ -22,7 +22,6 @@ pub mod connection;
 pub mod connection_manager;
 mod consts;
 pub mod control_service;
-pub mod domain_subscriber;
 pub mod inbound_message_pipeline;
 pub mod message;
 pub mod outbound_message_service;

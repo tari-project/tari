@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -19,10 +19,10 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use crate::{message::InboundMessage, peer_manager::PeerNodeIdentity, types::CommsPublicKey};
 use derive_error::Error;
 use futures::{executor::block_on, stream::FusedStream, Stream, StreamExt};
 use std::fmt::Debug;
+use tari_comms::{message::InboundMessage, peer_manager::PeerNodeIdentity, types::CommsPublicKey};
 use tari_utilities::message_format::MessageFormat;
 
 #[derive(Debug, Error, PartialEq)]
@@ -39,10 +39,22 @@ pub enum DomainSubscriberError {
 
 /// Information about the message received
 #[derive(Debug, Clone)]
-pub struct MessageInfo {
+pub struct DomainMessage<T> {
     pub peer_source: PeerNodeIdentity,
     pub origin_source: CommsPublicKey,
+    pub inner: T,
 }
+
+impl<T> DomainMessage<T> {
+    pub fn inner(&self) -> &T {
+        &self.inner
+    }
+
+    pub fn into_inner(self) -> T {
+        self.inner
+    }
+}
+
 pub struct SyncDomainSubscription<S> {
     subscription: Option<S>,
 }
@@ -55,7 +67,7 @@ where S: Stream<Item = InboundMessage> + Unpin + FusedStream
         }
     }
 
-    pub fn receive_messages<T>(&mut self) -> Result<Vec<(MessageInfo, T)>, DomainSubscriberError>
+    pub fn receive_messages<T>(&mut self) -> Result<Vec<DomainMessage<T>>, DomainSubscriberError>
     where T: MessageFormat {
         let subscription = self.subscription.take();
 
@@ -84,15 +96,14 @@ where S: Stream<Item = InboundMessage> + Unpin + FusedStream
                 let mut messages = Vec::new();
 
                 for m in stream_messages {
-                    messages.push((
-                        MessageInfo {
-                            peer_source: m.peer_source,
-                            origin_source: m.origin_source,
-                        },
-                        m.message
+                    messages.push(DomainMessage {
+                        peer_source: m.peer_source,
+                        origin_source: m.origin_source,
+                        inner: m
+                            .message
                             .deserialize_message()
                             .map_err(|_| DomainSubscriberError::MessageError)?,
-                    ));
+                    });
                 }
 
                 if !stream_complete {
@@ -109,13 +120,14 @@ where S: Stream<Item = InboundMessage> + Unpin + FusedStream
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{
+    use futures::{executor::block_on, SinkExt};
+    use rand::rngs::EntropyRng;
+    use serde::{Deserialize, Serialize};
+    use tari_comms::{
         message::{Message, NodeDestination},
         peer_manager::NodeIdentity,
         pub_sub_channel::{pubsub_channel, TopicPayload},
     };
-    use futures::{executor::block_on, SinkExt};
-    use serde::{Deserialize, Serialize};
 
     #[test]
     fn topic_pub_sub() {
@@ -127,7 +139,7 @@ mod test {
             b: String,
         }
 
-        let node_id = NodeIdentity::random_for_test(None);
+        let node_id = NodeIdentity::random(&mut EntropyRng::new(), "127.0.0.1:9000".parse().unwrap()).unwrap();
 
         let messages = vec![
             ("Topic1".to_string(), Dummy {
@@ -190,9 +202,9 @@ mod test {
         );
 
         assert_eq!(messages.len(), 4);
-        assert_eq!(messages[0].1.a, 1);
-        assert_eq!(messages[1].1.a, 3);
-        assert_eq!(messages[2].1.a, 5);
-        assert_eq!(messages[3].1.a, 7);
+        assert_eq!(messages[0].inner().a, 1);
+        assert_eq!(messages[1].inner().a, 3);
+        assert_eq!(messages[2].inner().a, 5);
+        assert_eq!(messages[3].inner().a, 7);
     }
 }
