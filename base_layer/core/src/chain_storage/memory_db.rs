@@ -234,7 +234,7 @@ where D: Digest + Send + Sync
                 .block_hashes
                 .get(hash)
                 .and_then(|i| db.headers.get(i))
-                .map(|v| DbValue::BlockHeader(Box::new(v.value.clone()))),
+                .map(|v| DbValue::BlockHash(Box::new(v.value.clone()))),
             DbKey::UnspentOutput(k) => db
                 .utxos
                 .get(k)
@@ -325,6 +325,16 @@ where D: Digest + Send + Sync
             )))?
             .clone();
         Ok((hash, deleted))
+    }
+
+    /// Iterate over all the stored orphan blocks and execute the function `f` for each block.
+    fn for_each_orphan<F>(&self, mut f: F) -> Result<(), ChainStorageError>
+    where F: FnMut(Result<(HashOutput, Block), ChainStorageError>) {
+        let db = self.db_access()?;
+        for (key, val) in db.orphans.iter() {
+            f(Ok((key.clone(), val.clone())));
+        }
+        Ok(())
     }
 }
 

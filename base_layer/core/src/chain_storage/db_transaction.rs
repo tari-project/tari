@@ -91,8 +91,9 @@ impl DbTransaction {
             .push(WriteOperation::Spend(DbKey::UnspentOutput(utxo_hash)));
     }
 
-    /// Moves an STXO to the UTXO set.  If the STXO is not in the STXO set, the transaction will fail with an
+    /// Moves a STXO to the UTXO set.  If the STXO is not in the STXO set, the transaction will fail with an
     /// `UnspendError`.
+    // TODO: unspend_utxo in memory_db doesn't unmark the node in the roaring bitmap.0
     pub fn unspend_stxo(&mut self, stxo_hash: HashOutput) {
         self.operations
             .push(WriteOperation::UnSpend(DbKey::SpentOutput(stxo_hash)));

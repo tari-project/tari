@@ -548,3 +548,93 @@ fn rewind_to_height() {
     assert!(store.fetch_orphan(block2_header_hash).is_ok());
     assert!(store.fetch_orphan(block3_header_hash).is_ok());
 }
+
+#[test]
+fn handle_reorg() {
+    //   /--> C1 (Orphan block)
+    // GB --> A1 --> A2(Main Chain)
+    //          \--> B1(?) --> B2 --> B3 (Orphan Chain)
+    // Initially, the main chain is GB->A1-A2 with orphaned blocks B2, B3 and C1. When B1 arrives late and is added to
+    // the blockchain then a reorg is triggered and the main chain is reorganized to GB->A1->B1->B2->B3
+
+    let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
+    let (block_gb, _) = create_genesis_block();
+    assert!(store.add_block(block_gb.clone()).is_ok());
+
+    let (tx1, inputs1, _) = tx!(10_000.into(), fee:50.into(), inputs: 1, outputs:1);
+    let (tx2, inputs2, _) = tx!(10_000.into(), fee:20.into(), inputs:1, outputs:1);
+    let (tx3, inputs3, _) = tx!(10_000.into(), fee:100.into(), inputs: 1, outputs:1);
+    let (tx4, inputs4, _) = tx!(10_000.into(), fee:30.into(), inputs:1, outputs:1);
+    let (_, inputs5, _) = tx!(10_000.into(), fee:50.into(), inputs: 1, outputs:1);
+    let utxo1 = inputs1[0]
+        .as_transaction_output(&PROVER, &COMMITMENT_FACTORY, inputs1[0].features.clone())
+        .unwrap();
+    let utxo2 = inputs2[0]
+        .as_transaction_output(&PROVER, &COMMITMENT_FACTORY, inputs2[0].features.clone())
+        .unwrap();
+    let utxo3 = inputs3[0]
+        .as_transaction_output(&PROVER, &COMMITMENT_FACTORY, inputs3[0].features.clone())
+        .unwrap();
+    let utxo4 = inputs4[0]
+        .as_transaction_output(&PROVER, &COMMITMENT_FACTORY, inputs4[0].features.clone())
+        .unwrap();
+    let utxo5 = inputs5[0]
+        .as_transaction_output(&PROVER, &COMMITMENT_FACTORY, inputs5[0].features.clone())
+        .unwrap();
+    let utxo1_hash = utxo1.hash();
+    let utxo2_hash = utxo2.hash();
+    let utxo3_hash = utxo3.hash();
+    let utxo4_hash = utxo4.hash();
+    let utxo5_hash = utxo5.hash();
+    let mut txn = DbTransaction::new();
+    txn.insert_utxo(utxo1);
+    txn.insert_utxo(utxo2);
+    txn.insert_utxo(utxo3);
+    txn.insert_utxo(utxo4);
+    txn.insert_utxo(utxo5);
+    assert!(store.commit(txn).is_ok());
+
+    let block_a1 = chain_block(&block_gb, vec![tx1.clone()]);
+    assert!(store.add_block(block_a1.clone()).is_ok());
+    let block_c1 = chain_block(&block_gb, vec![tx3.clone()]);
+    assert!(store.add_block(block_c1.clone()).is_ok());
+
+    let block_a2 = chain_block(&block_a1, vec![tx2.clone()]);
+    assert!(store.add_block(block_a2.clone()).is_ok());
+
+    let block_b1 = chain_block(&block_a1, vec![tx4]);
+    let block_b2 = chain_block(&block_b1, vec![tx2]);
+    let block_b3 = chain_block(&block_b2, vec![tx3]);
+
+    assert!(store.add_block(block_b2.clone()).is_ok());
+    assert!(store.add_block(block_b3.clone()).is_ok());
+    assert_eq!(store.get_height(), Ok(Some(2)));
+    assert_eq!(store.fetch_header(0), Ok(block_gb.header.clone()));
+    assert_eq!(store.fetch_header(1), Ok(block_a1.header.clone()));
+    assert_eq!(store.fetch_header(2), Ok(block_a2.header.clone()));
+    assert!(store.fetch_header(3).is_err());
+    assert!(store.fetch_orphan(block_b2.hash()).is_ok());
+    assert!(store.fetch_orphan(block_b3.hash()).is_ok());
+
+    assert_eq!(store.is_utxo(utxo1_hash.clone()), Ok(false));
+    assert_eq!(store.is_utxo(utxo2_hash.clone()), Ok(false));
+    assert_eq!(store.is_utxo(utxo3_hash.clone()), Ok(true));
+    assert_eq!(store.is_utxo(utxo4_hash.clone()), Ok(true));
+    assert_eq!(store.is_utxo(utxo5_hash.clone()), Ok(true));
+
+    assert!(store.add_block(block_b1.clone()).is_ok());
+    assert_eq!(store.get_height(), Ok(Some(4)));
+    assert_eq!(store.fetch_header(0), Ok(block_gb.header));
+    assert_eq!(store.fetch_header(1), Ok(block_a1.header));
+    assert_eq!(store.fetch_header(2), Ok(block_b1.header));
+    assert_eq!(store.fetch_header(3), Ok(block_b2.header));
+    assert_eq!(store.fetch_header(4), Ok(block_b3.header));
+    assert!(store.fetch_header(5).is_err());
+    assert!(store.fetch_orphan(block_a2.hash()).is_ok());
+
+    assert_eq!(store.is_utxo(utxo1_hash), Ok(false));
+    assert_eq!(store.is_utxo(utxo2_hash), Ok(false));
+    assert_eq!(store.is_utxo(utxo3_hash), Ok(false));
+    assert_eq!(store.is_utxo(utxo4_hash), Ok(false));
+    assert_eq!(store.is_utxo(utxo5_hash), Ok(true));
+}

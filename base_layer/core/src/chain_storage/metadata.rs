@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::blocks::blockheader::BlockHash;
+use crate::{blocks::blockheader::BlockHash, proof_of_work::Difficulty};
 
 #[derive(Debug, Clone)]
 pub struct ChainMetadata {
@@ -29,14 +29,14 @@ pub struct ChainMetadata {
     /// The block hash of the current tip of the longest valid chain, or `None` for an empty chain
     pub best_block: Option<BlockHash>,
     /// The total accumulated difficulty, or work, on the longest valid chain since the genesis block.
-    pub total_accumulated_difficulty: u64,
+    pub total_accumulated_difficulty: Difficulty,
     /// The number of blocks back from the tip that this database tracks. A value of 0 indicates that all blocks are
     /// tracked (i.e. the database is in full archival mode).
     pub pruning_horizon: u64,
 }
 
 impl ChainMetadata {
-    pub fn new(height: u64, hash: BlockHash, work: u64, horizon: u64) -> ChainMetadata {
+    pub fn new(height: u64, hash: BlockHash, work: Difficulty, horizon: u64) -> ChainMetadata {
         ChainMetadata {
             height_of_longest_chain: Some(height),
             best_block: Some(hash),
@@ -72,7 +72,7 @@ impl Default for ChainMetadata {
         ChainMetadata {
             height_of_longest_chain: None,
             best_block: None,
-            total_accumulated_difficulty: 0,
+            total_accumulated_difficulty: Difficulty::default(),
             pruning_horizon: 2880,
         }
     }
