@@ -42,14 +42,14 @@ mod state;
 
 use self::{error::LivenessError, service::LivenessService, state::LivenessState};
 use crate::{
+    domain_subscriber::DomainMessage,
     services::comms_outbound::CommsOutboundHandle,
     tari_message::{NetMessage, TariMessageType},
 };
-use futures::{future, task::SpawnExt, Future, Stream, StreamExt};
+use futures::{future, Future, Stream, StreamExt};
 use std::{fmt::Debug, sync::Arc};
 use tari_comms::{
     builder::CommsNode,
-    domain_subscriber::MessageInfo,
     inbound_message_pipeline::InboundTopicSubscriptionFactory,
     message::{InboundMessage, MessageError},
 };
@@ -92,7 +92,7 @@ impl LivenessInitializer {
     }
 
     /// Get a stream of inbound PingPong messages
-    fn ping_stream(&self) -> impl Stream<Item = (MessageInfo, PingPong)> {
+    fn ping_stream(&self) -> impl Stream<Item = DomainMessage<PingPong>> {
         self.inbound_message_subscription_factory
             .get_subscription(TariMessageType::new(NetMessage::PingPong))
             .map(map_deserialized::<PingPong>)
@@ -143,14 +143,15 @@ where E: Debug {
     }
 }
 
-fn map_deserialized<T>(msg: InboundMessage) -> Result<(MessageInfo, T), MessageError>
+fn map_deserialized<T>(msg: InboundMessage) -> Result<DomainMessage<T>, MessageError>
 where T: MessageFormat {
     let deserialized = msg.message.deserialize_message::<T>()?;
-    let info = MessageInfo {
+    let msg = DomainMessage {
         peer_source: msg.peer_source,
         origin_source: msg.origin_source,
+        inner: deserialized,
     };
-    Ok((info, deserialized))
+    Ok(msg)
 }
 
 #[cfg(test)]

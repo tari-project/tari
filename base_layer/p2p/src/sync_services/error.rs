@@ -20,9 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::domain_subscriber::DomainSubscriberError;
 use derive_error::Error;
 use serde::export::fmt::Debug;
-use tari_comms::{builder::CommsServicesError, domain_subscriber::DomainSubscriberError};
+use tari_comms::builder::CommsServicesError;
 
 #[derive(Debug, Error)]
 pub enum ServiceError {

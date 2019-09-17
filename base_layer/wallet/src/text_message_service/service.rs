@@ -35,12 +35,12 @@ use std::{
     time::Duration,
 };
 use tari_comms::{
-    domain_subscriber::{MessageInfo, SyncDomainSubscription},
     message::MessageFlags,
     outbound_message_service::{BroadcastStrategy, OutboundServiceRequester},
     types::CommsPublicKey,
 };
 use tari_p2p::{
+    domain_subscriber::{DomainMessage, SyncDomainSubscription},
     ping_pong::PingPong,
     sync_services::{
         Service,
@@ -131,24 +131,29 @@ impl TextMessageService {
     /// Process an incoming text message
     fn receive_text_message(
         &mut self,
-        info: MessageInfo,
-        message: ReceivedTextMessage,
+        message: DomainMessage<ReceivedTextMessage>,
         conn: &SqliteConnection,
     ) -> Result<(), TextMessageError>
     {
         let mut oms = self.oms.clone().ok_or(TextMessageError::OMSNotInitialized)?;
 
+        let DomainMessage {
+            origin_source,
+            inner: message,
+            ..
+        } = message;
+
         trace!(
             target: LOG_TARGET,
             "Text Message received with ID: {:?} from {} with message: {:?}",
-            message.id.clone(),
+            message.id,
             message.source_pub_key,
-            message.message.clone()
+            message.message,
         );
 
-        let text_message_ack = TextMessageAck { id: message.clone().id };
+        let text_message_ack = TextMessageAck { id: message.id.clone() };
         self.runtime.block_on(oms.send_message(
-            BroadcastStrategy::DirectPublicKey(info.origin_source),
+            BroadcastStrategy::DirectPublicKey(origin_source),
             MessageFlags::ENCRYPTED,
             TariMessageType::new(ExtendedMessage::TextAck),
             text_message_ack,
@@ -162,16 +167,16 @@ impl TextMessageService {
     /// Process an incoming text message Ack
     fn receive_text_message_ack(
         &mut self,
-        message_ack: TextMessageAck,
+        message: DomainMessage<TextMessageAck>,
         conn: &SqliteConnection,
     ) -> Result<(), TextMessageError>
     {
+        let message_ack = message.into_inner();
         debug!(
             target: LOG_TARGET,
-            "Text Message Ack received with ID: {:?}",
-            message_ack.id.clone(),
+            "Text Message Ack received with ID: {:?}", message_ack.id,
         );
-        SentTextMessage::mark_sent_message_ack(message_ack.id.clone(), conn)?;
+        SentTextMessage::mark_sent_message_ack(message_ack.id, conn)?;
 
         Ok(())
     }
@@ -389,7 +394,7 @@ impl Service for TextMessageService {
                 }
             }
             for m in subscription_text.receive_messages()?.drain(..) {
-                match self.receive_text_message(m.0, m.1, &connection) {
+                match self.receive_text_message(m, &connection) {
                     Ok(_) => {},
                     Err(err) => {
                         error!(target: LOG_TARGET, "Text Message service had error: {:?}", err);
@@ -397,7 +402,7 @@ impl Service for TextMessageService {
                 }
             }
             for m in subscription_text_ack.receive_messages()?.drain(..) {
-                match self.receive_text_message_ack(m.1, &connection) {
+                match self.receive_text_message_ack(m, &connection) {
                     Ok(_) => {},
                     Err(err) => {
                         error!(target: LOG_TARGET, "Text Message service had error: {:?}", err);

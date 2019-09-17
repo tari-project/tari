@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
+    domain_subscriber::{DomainMessage, SyncDomainSubscription},
     sync_services::{
         Service,
         ServiceApiWrapper,
@@ -41,7 +42,6 @@ use std::{
     time::Duration,
 };
 use tari_comms::{
-    domain_subscriber::{MessageInfo, SyncDomainSubscription},
     message::{MessageError, MessageFlags},
     outbound_message_service::{BroadcastStrategy, OutboundServiceError, OutboundServiceRequester},
     types::CommsPublicKey,
@@ -122,25 +122,28 @@ impl PingPongService {
             .map_err(Into::into)
     }
 
-    fn receive_ping(&mut self, info: MessageInfo, message: PingPong) -> Result<(), PingPongError> {
-        match message {
+    fn receive_ping(&mut self, message: DomainMessage<PingPong>) -> Result<(), PingPongError> {
+        match message.inner() {
             PingPong::Ping => {
                 debug!(
                     target: LOG_TARGET,
                     "Received ping from {}",
-                    info.peer_source.public_key.to_hex(),
+                    message.peer_source.public_key.to_hex(),
                 );
 
                 self.ping_count += 1;
 
                 // Reply with Pong
-                self.send_msg(BroadcastStrategy::DirectPublicKey(info.origin_source), PingPong::Pong)?;
+                self.send_msg(
+                    BroadcastStrategy::DirectPublicKey(message.origin_source),
+                    PingPong::Pong,
+                )?;
             },
             PingPong::Pong => {
                 debug!(
                     target: LOG_TARGET,
                     "Received pong from {}",
-                    info.peer_source.public_key.to_hex()
+                    message.peer_source.public_key.to_hex()
                 );
 
                 self.pong_count += 1;
@@ -195,7 +198,7 @@ impl Service for PingPongService {
             }
 
             for m in subscription.receive_messages()?.drain(..) {
-                match self.receive_ping(m.0, m.1) {
+                match self.receive_ping(m) {
                     Ok(_) => {},
                     Err(err) => {
                         error!(target: LOG_TARGET, "PingPong service had error: {}", err);
