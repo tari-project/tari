@@ -5,6 +5,7 @@ CREATE TABLE sent_messages (
    message TEXT  NOT NULL,
    timestamp DATETIME NOT NULL,
    acknowledged INTEGER NOT NULL DEFAULT 0,
+   is_read INTEGER NOT NULL DEFAULT 0,
    FOREIGN KEY(dest_pub_key) REFERENCES contacts(pub_key)
 );
 
