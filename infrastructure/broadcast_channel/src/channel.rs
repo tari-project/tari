@@ -41,7 +41,7 @@ pub fn bounded<T>(size: usize) -> (Sender<T>, Receiver<T>) {
 }
 
 /// Bare implementation of the publisher.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Sender<T> {
     /// Shared reference to the circular buffer
     buffer: Arc<Vec<ArcSwapOption<T>>>,

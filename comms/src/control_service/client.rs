@@ -192,7 +192,7 @@ mod test {
         let header = envelope.deserialize_header().unwrap();
         assert_eq!(header.origin_source, node_identity.identity.public_key);
         assert_eq!(header.peer_source, node_identity.identity.public_key);
-        assert_eq!(header.dest, NodeDestination::PublicKey(public_key));
+        assert_eq!(header.destination, NodeDestination::PublicKey(public_key));
         assert_eq!(header.flags, MessageFlags::ENCRYPTED);
     }
 }

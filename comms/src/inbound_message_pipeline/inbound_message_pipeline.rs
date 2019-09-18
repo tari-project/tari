@@ -145,7 +145,7 @@ where MType: Eq + Send + Sync + Debug + Serialize + DeserializeOwned + 'static
             return Err(InboundMessagePipelineError::InvalidMessageSignature);
         }
 
-        match self.resolve_message_route(&message_envelope_header.dest, message_data.forwardable)? {
+        match self.resolve_message_route(&message_envelope_header.destination, message_data.forwardable)? {
             InboundMessageRoute::Handle => {
                 self.handle_message_route(message_envelope_header, message_data, &peer)
                     .await?
@@ -185,7 +185,7 @@ where MType: Eq + Send + Sync + Debug + Serialize + DeserializeOwned + 'static
                 Err(_) => {
                     // Message might have been for this node if it was able to decrypt it but because it could nto be
                     // decrypted it will be forwarded.
-                    if message_envelope_header.dest == NodeDestination::Unknown {
+                    if message_envelope_header.destination == NodeDestination::Unknown {
                         debug!(
                             target: LOG_TARGET,
                             "Unable to decrypt message with unknown recipient, forwarding..."
@@ -220,7 +220,7 @@ where MType: Eq + Send + Sync + Debug + Serialize + DeserializeOwned + 'static
         let inbound_message = InboundMessage::new(
             source_peer.clone().into(),
             message_envelope_header.origin_source,
-            message_envelope_header.dest,
+            message_envelope_header.destination,
             message,
         );
 
@@ -244,7 +244,7 @@ where MType: Eq + Send + Sync + Debug + Serialize + DeserializeOwned + 'static
         let broadcast_strategy = BroadcastStrategy::forward(
             self.node_identity.identity.node_id.clone(),
             &self.peer_manager,
-            message_envelope_header.dest,
+            message_envelope_header.destination,
             vec![
                 message_envelope_header.origin_source,
                 message_envelope_header.peer_source,

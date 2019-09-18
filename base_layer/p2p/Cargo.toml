@@ -11,9 +11,10 @@ edition = "2018"
 [dependencies]
 tari_comms = { version = "^0.0", path = "../../comms"}
 tari_crypto = { version = "^0.0", path = "../../infrastructure/crypto"}
-tari_utilities = { version = "^0.0", path = "../../infrastructure/tari_util"}
-tari_service_framework = { version = "^0.0", path = "../service_framework"}
 tari_pubsub = { version = "^0.0", path = "../../infrastructure/pubsub"}
+tari_service_framework = { version = "^0.0", path = "../service_framework"}
+tari_storage = {version = "^0.0", path = "../../infrastructure/storage"}
+tari_utilities = { version = "^0.0", path = "../../infrastructure/tari_util"}
 
 chrono = { version = "0.4.6", features = ["serde"]}
 crossbeam-channel = "0.3.8"
@@ -25,7 +26,6 @@ rand = "0.6.5"
 rmp-serde = "0.13.7"
 serde = "1.0.90"
 serde_derive = "1.0.90"
-tari_storage = {version = "^0.0", path = "../../infrastructure/storage"}
 threadpool = "1.7.1"
 tokio = "0.2.0-alpha.4"
 tower-service = { version="0.3.0-alpha.1" }

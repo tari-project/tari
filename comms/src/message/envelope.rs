@@ -88,7 +88,7 @@ pub struct MessageEnvelopeHeader {
     pub version: u8,
     pub origin_source: CommsPublicKey,
     pub peer_source: CommsPublicKey,
-    pub dest: NodeDestination<CommsPublicKey>,
+    pub destination: NodeDestination<CommsPublicKey>,
     pub origin_signature: Vec<u8>,
     pub peer_signature: Vec<u8>,
     pub flags: MessageFlags,
@@ -100,7 +100,7 @@ impl MessageEnvelopeHeader {
         let origin_verif = crypto::verify(
             &self.origin_source,
             self.origin_signature.as_slice(),
-            origin_challenge(self.dest.clone(), body.clone())?,
+            origin_challenge(self.destination.clone(), body.clone())?,
         )?;
         let peer_verif = crypto::verify(
             &self.peer_source,
@@ -146,7 +146,7 @@ impl MessageEnvelope {
             version: MESSAGE_PROTOCOL_VERSION,
             origin_source: node_identity.identity.public_key.clone(),
             peer_source: node_identity.identity.public_key.clone(),
-            dest,
+            destination: dest,
             origin_signature,
             peer_signature,
             flags,
@@ -309,7 +309,7 @@ mod test {
             version: 0,
             origin_source: pk.clone(),
             peer_source: pk,
-            dest: NodeDestination::Unknown,
+            destination: NodeDestination::Unknown,
             origin_signature: vec![0],
             peer_signature: vec![0],
             flags: MessageFlags::ENCRYPTED,
@@ -346,7 +346,7 @@ mod test {
         let header = MessageEnvelopeHeader::from_binary(envelope.header_frame()).unwrap();
         assert_eq!(dest_public_key, &header.origin_source);
         assert_eq!(MessageFlags::NONE, header.flags);
-        assert_eq!(NodeDestination::Unknown, header.dest);
+        assert_eq!(NodeDestination::Unknown, header.destination);
         assert!(!header.origin_signature.is_empty());
         assert_eq!(&message_envelope_body_frame, envelope.body_frame());
     }

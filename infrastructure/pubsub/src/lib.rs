@@ -31,9 +31,17 @@ pub struct TopicPayload<T, M> {
     message: M,
 }
 
-impl<T: Send + Debug, M: Send> TopicPayload<T, M> {
+impl<T, M> TopicPayload<T, M> {
     pub fn new(topic: T, message: M) -> Self {
         Self { topic, message }
+    }
+
+    pub fn topic(&self) -> &T {
+        &self.topic
+    }
+
+    pub fn message(&self) -> &M {
+        &self.message
     }
 }
 
@@ -59,7 +67,7 @@ where
     /// that yields only the desired messages
     pub fn get_subscription(&self, topic: T) -> impl Stream<Item = M> {
         self.subscriber.clone().filter_map(move |item| {
-            let result = if item.topic == topic {
+            let result = if item.topic() == &topic {
                 Some(item.message.clone())
             } else {
                 None
@@ -85,7 +93,6 @@ pub fn pubsub_channel<T: Send + Eq, M: Send + Clone>(
     size: usize,
 ) -> (TopicPublisher<T, M>, TopicSubscriptionFactory<T, M>) {
     let (publisher, subscriber): (TopicPublisher<T, M>, TopicSubscriber<T, M>) = bounded(size);
-
     (publisher, TopicSubscriptionFactory::new(subscriber))
 }
 
