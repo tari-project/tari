@@ -1,0 +1,90 @@
+// Copyright 2019, The Tari Project
+//
+// Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+// following conditions are met:
+//
+// 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+// disclaimer.
+//
+// 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+// following disclaimer in the documentation and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+// products derived from this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+// INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+// WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+use crate::inbound_message::InboundMessage;
+use rand::rngs::OsRng;
+use tari_comms::{
+    connection::NetAddress,
+    message::{MessageEnvelopeHeader, MessageFlags, NodeDestination},
+    peer_manager::{NodeIdentity, Peer, PeerFlags},
+};
+
+pub fn make_node_identity() -> NodeIdentity {
+    NodeIdentity::random(&mut OsRng::new().unwrap(), "127.0.0.1:9000".parse().unwrap()).unwrap()
+}
+
+pub fn make_inbound_message(node_identity: &NodeIdentity, message: Vec<u8>, flags: MessageFlags) -> InboundMessage {
+    InboundMessage::new(
+        Peer::new(
+            node_identity.identity.public_key.clone(),
+            node_identity.identity.node_id.clone(),
+            Vec::<NetAddress>::new().into(),
+            PeerFlags::empty(),
+        ),
+        MessageEnvelopeHeader {
+            version: 0,
+            origin_source: node_identity.identity.public_key.clone(),
+            peer_source: node_identity.identity.public_key.clone(),
+            destination: NodeDestination::Unknown,
+            origin_signature: Vec::new(),
+            peer_signature: Vec::new(),
+            flags,
+        },
+        0,
+        message,
+    )
+}
+
+//---------------------------------- ServiceFn --------------------------------------------//
+
+// TODO: Remove this when https://github.com/tower-rs/tower/pull/318 is published
+use futures::{task::Context, Future, Poll};
+use tower::Service;
+
+/// Returns a new `ServiceFn` with the given closure.
+pub fn service_fn<T>(f: T) -> ServiceFn<T> {
+    ServiceFn { f }
+}
+
+/// A `Service` implemented by a closure.
+#[derive(Copy, Clone, Debug)]
+pub struct ServiceFn<T> {
+    f: T,
+}
+
+impl<T, F, Request, R, E> Service<Request> for ServiceFn<T>
+where
+    T: FnMut(Request) -> F,
+    F: Future<Output = Result<R, E>>,
+{
+    type Error = E;
+    type Future = F;
+    type Response = R;
+
+    fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), E>> {
+        Ok(()).into()
+    }
+
+    fn call(&mut self, req: Request) -> Self::Future {
+        (self.f)(req)
+    }
+}

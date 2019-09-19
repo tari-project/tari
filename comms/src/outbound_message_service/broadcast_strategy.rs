@@ -27,7 +27,6 @@ use crate::{
     types::CommsPublicKey,
 };
 use derive_error::Error;
-use std::sync::Arc;
 
 #[derive(Debug, Error)]
 pub enum BroadcastStrategyError {
@@ -58,8 +57,9 @@ pub enum BroadcastStrategy {
 impl BroadcastStrategy {
     /// The forward function selects the most appropriate broadcast strategy based on the received messages destination
     pub fn forward(
+        // This node's node ID
         source_node_id: NodeId,
-        peer_manager: &Arc<PeerManager>,
+        peer_manager: &PeerManager,
         header_dest: NodeDestination<CommsPublicKey>,
         excluded_peers: Vec<CommsPublicKey>,
     ) -> Result<Self, BroadcastStrategyError>
