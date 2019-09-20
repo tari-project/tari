@@ -65,8 +65,9 @@ impl<MType> Service<DecryptedInboundMessage> for PubsubService<MType>
 where MType: Serialize + DeserializeOwned + Eq + Clone
 {
     type Error = MiddlewareError;
-    type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
     type Response = ();
+
+    type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         Pin::new(&mut self.sender).poll_ready(cx).map_err(Into::into)
