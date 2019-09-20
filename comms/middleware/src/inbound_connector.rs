@@ -20,49 +20,34 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{encryption::DecryptedInboundMessage, error::MiddlewareError, pubsub::message::DomainMessage};
-use derive_error::Error;
-use futures::{channel::mpsc, task::Context, Future, Poll, Sink, SinkExt};
+use crate::{encryption::DecryptedInboundMessage, error::MiddlewareError, message::DomainMessage};
+use futures::{task::Context, Future, Poll, Sink, SinkExt};
 use log::*;
 use serde::{de::DeserializeOwned, Serialize};
-use std::{error::Error, pin::Pin, sync::Arc};
-use tari_comms::message::MessageError;
-use tari_pubsub::TopicPayload;
-use tokio::sync::mpsc::error::SendError;
+use std::{error::Error, marker::PhantomData, pin::Pin, sync::Arc};
 use tower::Service;
 
-const LOG_TARGET: &'static str = "comms::middleware::pubsub";
-
-#[derive(Debug, Error)]
-pub enum PubsubError {
-    DeserializationFailed(MessageError),
-    SendError(SendError),
-}
+const LOG_TARGET: &'static str = "comms::middleware::inbound_domain_connector";
 
 /// This service receives DecryptedInboundMessages, deserializes the MessageHeader and
-/// sends a `TopicPayload<DomainMessage>` on the given sender.
-// TODO: Can be generalized into a service which "constructs a DomainMessage<MType> and sends that on the given sink".
-//       It need not know about TopicPayloads, as the receiving side of the channel could simply map to that
-pub struct PubsubService<MType> {
-    sender: mpsc::Sender<TopicPayload<MType, Arc<DomainMessage<MType>>>>,
+/// sends a `DomainMessage<MType>` on the given sink.
+#[derive(Clone)]
+pub struct InboundDomainConnector<MType, TSink> {
+    sink: TSink,
+    _mt: PhantomData<MType>,
 }
 
-impl<MType> Clone for PubsubService<MType> {
-    fn clone(&self) -> Self {
-        Self {
-            sender: self.sender.clone(),
-        }
+impl<MType, TSink> InboundDomainConnector<MType, TSink> {
+    pub fn new(sink: TSink) -> Self {
+        Self { sink, _mt: PhantomData }
     }
 }
 
-impl<MType> PubsubService<MType> {
-    pub fn new(sender: mpsc::Sender<TopicPayload<MType, Arc<DomainMessage<MType>>>>) -> Self {
-        Self { sender }
-    }
-}
-
-impl<MType> Service<DecryptedInboundMessage> for PubsubService<MType>
-where MType: Serialize + DeserializeOwned + Eq + Clone
+impl<MType, TSink> Service<DecryptedInboundMessage> for InboundDomainConnector<MType, TSink>
+where
+    MType: Serialize + DeserializeOwned + Eq,
+    TSink: Sink<Arc<DomainMessage<MType>>> + Unpin + Clone,
+    TSink::Error: Into<MiddlewareError> + Error + 'static,
 {
     type Error = MiddlewareError;
     type Response = ();
@@ -70,25 +55,21 @@ where MType: Serialize + DeserializeOwned + Eq + Clone
     type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Pin::new(&mut self.sender).poll_ready(cx).map_err(Into::into)
+        Pin::new(&mut self.sink).poll_ready(cx).map_err(Into::into)
     }
 
     fn call(&mut self, msg: DecryptedInboundMessage) -> Self::Future {
-        Self::publish_message(self.sender.clone(), msg)
+        Self::handle_message(self.sink.clone(), msg)
     }
 }
 
-impl<MType> PubsubService<MType>
-where MType: Serialize + DeserializeOwned + Eq + Clone
+impl<MType, TSink> InboundDomainConnector<MType, TSink>
+where
+    MType: Serialize + DeserializeOwned + Eq,
+    TSink: Sink<Arc<DomainMessage<MType>>> + Unpin,
+    TSink::Error: Into<MiddlewareError> + Error + 'static,
 {
-    async fn publish_message<TSink>(
-        mut sink: TSink,
-        inbound_message: DecryptedInboundMessage,
-    ) -> Result<(), MiddlewareError>
-    where
-        TSink: Sink<TopicPayload<MType, Arc<DomainMessage<MType>>>> + Unpin,
-        TSink::Error: Into<MiddlewareError> + Error + 'static,
-    {
+    async fn handle_message(mut sink: TSink, inbound_message: DecryptedInboundMessage) -> Result<(), MiddlewareError> {
         match inbound_message.succeeded() {
             Some(message) => {
                 match message.deserialize_header::<MType>() {
@@ -111,11 +92,7 @@ where MType: Serialize + DeserializeOwned + Eq + Clone
 
                         // If this fails there is something wrong with the sink and the pubsub middleware should not
                         // continue
-                        sink.send(TopicPayload::new(
-                            domain_message.message_header.message_type.clone(),
-                            Arc::new(domain_message),
-                        ))
-                        .await?;
+                        sink.send(Arc::new(domain_message)).await?;
                     },
                     Err(err) => {
                         warn!(
@@ -145,23 +122,22 @@ where MType: Serialize + DeserializeOwned + Eq + Clone
 mod test {
     use super::*;
     use crate::test_utils::{make_inbound_message, make_node_identity};
-    use futures::{executor::block_on, StreamExt};
+    use futures::{channel::mpsc, executor::block_on, StreamExt};
     use tari_comms::message::{Message, MessageFlags, MessageHeader};
     use tari_utilities::message_format::MessageFormat;
 
     #[test]
-    fn publish_message() {
+    fn handle_message() {
         let (tx, mut rx) = mpsc::channel(1);
         let header = MessageHeader::new(123).unwrap();
         let msg = Message::from_message_format(header, "my message".to_string()).unwrap();
         let inbound_message =
             make_inbound_message(&make_node_identity(), msg.to_binary().unwrap(), MessageFlags::empty());
         let decrypted = DecryptedInboundMessage::succeed(msg, inbound_message);
-        block_on(PubsubService::<i32>::publish_message(tx, decrypted)).unwrap();
+        block_on(InboundDomainConnector::<i32, _>::handle_message(tx, decrypted)).unwrap();
 
-        let payload = block_on(rx.next()).unwrap();
-        assert_eq!(payload.topic(), &123);
-        let domain_message = payload.message();
+        let domain_message = block_on(rx.next()).unwrap();
+        assert_eq!(domain_message.message_header.message_type, 123);
         assert_eq!(
             domain_message.message.deserialize_message::<String>().unwrap(),
             "my message"
@@ -169,19 +145,19 @@ mod test {
     }
 
     #[test]
-    fn publish_message_fail_deserialize() {
+    fn handle_message_fail_deserialize() {
         let (tx, mut rx) = mpsc::channel(1);
         let msg = Message::from_message_format((), "my message".to_string()).unwrap();
         let inbound_message =
             make_inbound_message(&make_node_identity(), msg.to_binary().unwrap(), MessageFlags::empty());
         let decrypted = DecryptedInboundMessage::succeed(msg, inbound_message);
-        block_on(PubsubService::<i32>::publish_message(tx, decrypted)).unwrap();
+        block_on(InboundDomainConnector::<i32, _>::handle_message(tx, decrypted)).unwrap();
 
         assert!(rx.try_next().unwrap().is_none());
     }
 
     #[test]
-    fn publish_message_fail_send() {
+    fn handle_message_fail_send() {
         // Drop the receiver of the channel, this is the only reason this middleware should return an error
         // from it's call function
         let (tx, _) = mpsc::channel(1);
@@ -190,7 +166,7 @@ mod test {
         let inbound_message =
             make_inbound_message(&make_node_identity(), msg.to_binary().unwrap(), MessageFlags::empty());
         let decrypted = DecryptedInboundMessage::succeed(msg, inbound_message);
-        let result = block_on(PubsubService::<i32>::publish_message(tx, decrypted));
+        let result = block_on(InboundDomainConnector::<i32, _>::handle_message(tx, decrypted));
         assert!(result.is_err());
     }
 }
