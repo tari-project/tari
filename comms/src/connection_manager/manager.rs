@@ -356,8 +356,9 @@ impl ConnectionManager {
 
 impl Dialer<Peer> for ConnectionManager {
     type Error = ConnectionManagerError;
-    type Future = impl std::future::Future<Output = Result<Self::Output>>;
     type Output = Arc<PeerConnection>;
+
+    type Future = impl std::future::Future<Output = Result<Self::Output>>;
 
     fn dial(&self, peer: &Peer) -> Self::Future {
         // TODO: This is synchronous until we can make connection manager fully async
@@ -367,8 +368,9 @@ impl Dialer<Peer> for ConnectionManager {
 
 impl Dialer<NodeId> for ConnectionManager {
     type Error = ConnectionManagerError;
-    type Future = impl std::future::Future<Output = Result<Self::Output>>;
     type Output = Arc<PeerConnection>;
+
+    type Future = impl std::future::Future<Output = Result<Self::Output>>;
 
     fn dial(&self, node_id: &NodeId) -> Self::Future {
         // TODO: This is synchronous until we can make connection manager fully async

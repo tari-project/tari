@@ -54,8 +54,9 @@ impl<T> CountDialer<T> {
 
 impl<T> Dialer<T> for CountDialer<T> {
     type Error = ConnectionManagerError;
-    type Future = impl Future<Output = Result<Self::Output, Self::Error>>;
     type Output = Arc<PeerConnection>;
+
+    type Future = impl Future<Output = Result<Self::Output, Self::Error>>;
 
     fn dial(&self, _: &T) -> Self::Future {
         let (conn, _) = PeerConnection::new_with_connecting_state_for_test();

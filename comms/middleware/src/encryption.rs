@@ -130,8 +130,9 @@ impl<S> Service<InboundMessage> for DecryptionService<S>
 where S: Service<DecryptedInboundMessage, Response = ()> + Clone + Unpin
 {
     type Error = S::Error;
-    type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
     type Response = ();
+
+    type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         self.inner.poll_ready(cx)

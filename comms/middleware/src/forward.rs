@@ -99,8 +99,9 @@ where
     S::Error: Into<MiddlewareError>,
 {
     type Error = MiddlewareError;
-    type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
     type Response = ();
+
+    type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         self.inner.poll_ready(cx).map_err(Into::into)

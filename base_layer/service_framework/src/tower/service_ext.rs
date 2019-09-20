@@ -117,8 +117,9 @@ mod test {
 
         impl Service<u32> for ReadyLater {
             type Error = ();
-            type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
             type Response = u32;
+
+            type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
 
             fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
                 if self.flag.load(Ordering::Acquire) {
