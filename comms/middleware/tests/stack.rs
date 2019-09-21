@@ -91,7 +91,7 @@ fn create_peer_storage(tmpdir: &TempDir, database_name: &str, peers: Vec<Peer>) 
 fn stack_unencrypted() {
     let node_identity = Arc::new(make_node_identity());
     let rt = Runtime::new().unwrap();
-    let (service, subscription_factory) = pubsub_service(rt.executor(), 1);
+    let (pubsub_service, subscription_factory) = pubsub_service(rt.executor(), 1);
 
     let tmpdir = TempDir::new(random::string(8).as_str()).unwrap();
     let database_name = "middleware_stack";
@@ -108,7 +108,7 @@ fn stack_unencrypted() {
             Arc::clone(&node_identity),
             oms.clone(),
         ))
-        .service(service);
+        .service(pubsub_service);
 
     let header = MessageHeader::new("fake_type".to_string()).unwrap();
     let msg = Message::from_message_format(header, "secret".to_string()).unwrap();
@@ -128,7 +128,7 @@ fn stack_unencrypted() {
 #[test]
 fn stack_encrypted() {
     let rt = Runtime::new().unwrap();
-    let (pubsub, subscription_factory) = pubsub_service(rt.executor(), 1);
+    let (pubsub_service, subscription_factory) = pubsub_service(rt.executor(), 1);
 
     let node_identity = Arc::new(make_node_identity());
     let tmpdir = TempDir::new(random::string(8).as_str()).unwrap();
@@ -146,7 +146,7 @@ fn stack_encrypted() {
             Arc::clone(&node_identity),
             oms.clone(),
         ))
-        .service(pubsub);
+        .service(pubsub_service);
 
     let header = MessageHeader::new("fake_type".to_string()).unwrap();
     let msg = Message::from_message_format(header, "secret".to_string()).unwrap();
@@ -169,7 +169,7 @@ fn stack_encrypted() {
 #[test]
 fn stack_forward() {
     let rt = Runtime::new().unwrap();
-    let (pubsub, _) = pubsub_service::<()>(rt.executor(), 1);
+    let (pubsub_service, _) = pubsub_service::<()>(rt.executor(), 1);
 
     let node_identity = Arc::new(make_node_identity());
     let tmpdir = TempDir::new(random::string(8).as_str()).unwrap();
@@ -187,7 +187,7 @@ fn stack_forward() {
             Arc::clone(&node_identity),
             oms.clone(),
         ))
-        .service(pubsub);
+        .service(pubsub_service);
 
     let msg = "garbage".as_bytes().to_vec();
     // Encrypt for self

@@ -25,11 +25,14 @@ use tari_comms::{
     peer_manager::Peer,
 };
 
-/// Information about the message received
-#[derive(Debug)]
+/// A domain-level message
 pub struct DomainMessage<MType> {
-    pub envelope_header: MessageEnvelopeHeader,
-    pub message_header: MessageHeader<MType>,
-    pub source_peer: Peer,
+    /// Serialized message data
     pub message: Message,
+    /// Domain message header
+    pub message_header: MessageHeader<MType>,
+    /// The message envelope header
+    pub envelope_header: MessageEnvelopeHeader,
+    /// The connected peer which sent this message
+    pub source_peer: Peer,
 }

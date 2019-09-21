@@ -20,42 +20,46 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod message;
-mod service;
-
-use crate::pubsub::service::PubsubService;
+use crate::{inbound_connector::InboundDomainConnector, message::DomainMessage};
 use futures::{channel::mpsc, FutureExt, StreamExt};
 use log::*;
 use std::sync::Arc;
-use tari_pubsub::{pubsub_channel, TopicSubscriptionFactory};
+use tari_pubsub::{pubsub_channel, TopicPayload, TopicSubscriptionFactory};
 use tokio::runtime::TaskExecutor;
 
 const LOG_TARGET: &'static str = "comms::middleware::pubsub";
 
+/// Connects `InboundDomainConnector` to a `tari_pubsub::TopicPublisher` through a buffered channel
 pub fn pubsub_service<MType>(
     executor: TaskExecutor,
     buf_size: usize,
 ) -> (
-    PubsubService<MType>,
-    TopicSubscriptionFactory<MType, Arc<message::DomainMessage<MType>>>,
+    InboundDomainConnector<MType, mpsc::Sender<Arc<DomainMessage<MType>>>>,
+    TopicSubscriptionFactory<MType, Arc<DomainMessage<MType>>>,
 )
 where
-    MType: Eq + Sync + Send + 'static,
+    MType: Eq + Sync + Send + Clone + 'static,
 {
     let (publisher, subscription_factory) = pubsub_channel(buf_size);
     let (sender, receiver) = mpsc::channel(buf_size);
 
     // Spawn a task which forwards messages from the pubsub service to the TopicPublisher
-    let forwarder = receiver.map(|msg| Ok(msg)).forward(publisher).map(|result| {
-        if let Err(err) = result {
-            error!(
-                target: LOG_TARGET,
-                "Error forwarding pubsub messages to publisher: {}", err
-            );
-        }
-        ()
-    });
+    let forwarder = receiver
+        // Map DomainMessage into a TopicPayload
+        .map(|msg: Arc<DomainMessage<MType>>| Ok(TopicPayload::new(msg.message_header.message_type.clone(), msg)))
+        // Forward TopicPayloads to the publisher
+        .forward(publisher)
+        // Log error and return unit
+        .map(|result| {
+            if let Err(err) = result {
+                error!(
+                    target: LOG_TARGET,
+                    "Error forwarding pubsub messages to publisher: {}", err
+                );
+            }
+            ()
+        });
     executor.spawn(forwarder);
 
-    (PubsubService::new(sender), subscription_factory)
+    (InboundDomainConnector::new(sender), subscription_factory)
 }
