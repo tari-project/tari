@@ -140,7 +140,8 @@ fn map_deserialized<T>(serialized: Arc<PeerMessage<TariMessageType>>) -> Result<
 where T: MessageFormat {
     Ok(DomainMessage {
         source_peer: serialized.source_peer.clone(),
-        origin_pubkey: serialized.envelope_header.origin_pubkey.clone(),
+        // TODO: origin_pubkey should be used when the DHT middleware is hooked up
+        origin_pubkey: serialized.envelope_header.peer_pubkey.clone(),
         inner: serialized.deserialize_message()?,
     })
 }

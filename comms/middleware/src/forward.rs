@@ -34,6 +34,8 @@ use tower::{layer::Layer, Service};
 
 const LOG_TARGET: &'static str = "comms::middleware::forward";
 
+// TODO: Remove: This is now redundant and should become part of dht functionality
+
 /// This layer is responsible for forwarding messages which have failed to decrypt
 pub struct ForwardLayer {
     peer_manager: Arc<PeerManager>,
@@ -169,12 +171,12 @@ where
             self.node_identity.identity.node_id.clone(),
             &self.peer_manager,
             envelope_header.destination.clone(),
-            vec![envelope_header.origin_pubkey.clone(), envelope_header.peer_source],
+            vec![envelope_header.peer_pubkey.clone()],
         )?;
 
         let envelope = MessageEnvelope::construct(
             &self.node_identity,
-            envelope_header.origin_pubkey,
+            envelope_header.peer_pubkey,
             envelope_header.destination,
             body,
             envelope_header.flags,

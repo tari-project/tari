@@ -20,5 +20,39 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod messages;
-mod serialization;
+pub mod crypto {
+    use digest::Digest;
+    use rand::{CryptoRng, Rng};
+    use tari_comms::{
+        message::MessageError,
+        types::{Challenge, CommsPublicKey},
+    };
+    use tari_crypto::{
+        keys::{PublicKey, SecretKey},
+        signatures::{SchnorrSignature, SchnorrSignatureError},
+    };
+    use tari_utilities::message_format::MessageFormat;
+
+    pub fn sign<R, B>(
+        rng: &mut R,
+        secret_key: <CommsPublicKey as PublicKey>::K,
+        body: B,
+    ) -> Result<SchnorrSignature<CommsPublicKey, <CommsPublicKey as PublicKey>::K>, SchnorrSignatureError>
+    where
+        R: CryptoRng + Rng,
+        B: AsRef<[u8]>,
+    {
+        let challenge = Challenge::new().chain(body).result().to_vec();
+        let nonce = <CommsPublicKey as PublicKey>::K::random(rng);
+        SchnorrSignature::sign(secret_key, nonce, &challenge)
+    }
+
+    /// Verify that the signature is valid for the message body
+    pub fn verify<B>(public_key: &CommsPublicKey, signature: &[u8], body: B) -> Result<bool, MessageError>
+    where B: AsRef<[u8]> {
+        let signature = SchnorrSignature::<CommsPublicKey, <CommsPublicKey as PublicKey>::K>::from_binary(signature)
+            .map_err(MessageError::MessageFormatError)?;
+        let challenge = Challenge::new().chain(body).result().to_vec();
+        Ok(signature.verify_challenge(public_key, &challenge))
+    }
+}

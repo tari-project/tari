@@ -84,7 +84,8 @@ where S: Stream<Item = Arc<PeerMessage<MType>>> + Unpin + FusedStream
                         .map_err(|_| DomainSubscriberError::MessageError)?;
                     messages.push(DomainMessage {
                         source_peer: message.source_peer.clone(),
-                        origin_pubkey: message.envelope_header.origin_pubkey.clone(),
+                        // TODO: origin_pubkey should be used when the DHT middleware is hooked up
+                        origin_pubkey: message.envelope_header.peer_pubkey.clone(),
                         inner: msg,
                     });
                 }
@@ -164,10 +165,8 @@ mod test {
                     MessageHeader::new(()).unwrap(),
                     MessageEnvelopeHeader {
                         version: 0,
-                        origin_pubkey: node_identity.identity.public_key.clone(),
-                        peer_source: node_identity.identity.public_key.clone(),
+                        peer_pubkey: node_identity.identity.public_key.clone(),
                         destination: NodeDestination::Unknown,
-                        origin_signature: Vec::new(),
                         peer_signature: Vec::new(),
                         flags: MessageFlags::empty(),
                     },

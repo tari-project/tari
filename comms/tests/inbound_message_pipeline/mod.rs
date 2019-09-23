@@ -131,7 +131,7 @@ fn smoke_test() {
     for i in 0..sent_messages.len() {
         assert_eq!(messages[i].body, sent_messages[i]);
         assert_eq!(messages[i].source_peer, peer);
-        assert_eq!(messages[i].envelope_header.origin_pubkey, peer.public_key);
+        assert_eq!(messages[i].envelope_header.peer_pubkey, peer.public_key);
     }
 
     clean_up_datastore(database_name);

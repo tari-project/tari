@@ -159,7 +159,7 @@ where S: Service<DecryptedInboundMessage, Response = ()>
         }
 
         debug!(target: LOG_TARGET, "Attempting to decrypt message");
-        let shared_secret = generate_ecdh_secret(&node_identity.secret_key, &envelope_header.origin_pubkey);
+        let shared_secret = generate_ecdh_secret(&node_identity.secret_key, &envelope_header.peer_pubkey);
         match decrypt(&shared_secret, &message.body) {
             Ok(decrypted) => Self::decryption_succeeded(next_service, message, decrypted).await,
             Err(err) => {

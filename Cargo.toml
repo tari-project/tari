@@ -9,6 +9,7 @@ members = [
     "base_layer/service_framework",
     "base_layer/wallet",
     "comms",
+    "comms/dht",
     "comms/middleware",
     "digital_assets_layer/core",
     "infrastructure/broadcast_channel",

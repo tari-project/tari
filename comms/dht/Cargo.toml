@@ -1,8 +1,8 @@
 [package]
-name = "tari_comms_middleware"
+name = "tari_comms_dht"
 version = "0.0.5"
 authors = ["The Tari Development Community"]
-description = "Tari comms middleware modules used to add functionality to the base tari_comms library"
+description = "Tari comms DHT module"
 repository = "https://github.com/tari-project/tari"
 homepage = "https://tari.com"
 readme = "README.md"
@@ -14,22 +14,15 @@ edition = "2018"
 [dependencies]
 tari_comms = { version = "^0.0", path = "../"}
 tari_crypto = { version = "^0.0", path = "../../infrastructure/crypto"}
-tari_pubsub = { version="^0.0", path="../../infrastructure/pubsub"}
 tari_utilities = { version = "^0.0", path = "../../infrastructure/tari_util"}
+tari_comms_middleware = { version = "^0.0", path = "../middleware"}
 
-derive-error = "0.0.4"
 futures= {version= "0.3.0-alpha.18", package="futures-preview"}
-log = "0.4.8"
+rand = "0.5.5"
 serde = "1.0.90"
 serde_derive = "1.0.90"
 tokio = "0.2.0-alpha.4"
 tower= "0.3.0-alpha.1a"
-rand = "0.5.5"
-
-[dev-dependencies]
-tari_test_utils = {version="^0.0", path="../../infrastructure/test_utils"}
-tari_storage = {version = "^0.0", path = "../../infrastructure/storage"}
-
-futures-test = { version = "0.3.0-alpha.18", package = "futures-test-preview" }
-lmdb-zero = "0.4.4"
-tempdir = "0.3.7"
+tracing = "0.1.9"
+serde_repr = "0.1.5"
+digest = "0.8.1"
