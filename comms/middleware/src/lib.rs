@@ -53,10 +53,8 @@
 #![feature(type_alias_impl_trait)]
 
 pub mod encryption;
-pub mod error;
 pub mod forward;
 pub mod inbound_connector;
-pub mod inbound_message;
 pub mod message;
 pub mod pubsub;
 

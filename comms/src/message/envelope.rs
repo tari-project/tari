@@ -86,7 +86,7 @@ fn peer_signature(
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct MessageEnvelopeHeader {
     pub version: u8,
-    pub origin_source: CommsPublicKey,
+    pub origin_pubkey: CommsPublicKey,
     pub peer_source: CommsPublicKey,
     pub destination: NodeDestination<CommsPublicKey>,
     pub origin_signature: Vec<u8>,
@@ -98,7 +98,7 @@ impl MessageEnvelopeHeader {
     /// Verify that the signature provided is valid for the given body
     pub fn verify_signatures(&self, body: Frame) -> Result<bool, MessageError> {
         let origin_verif = crypto::verify(
-            &self.origin_source,
+            &self.origin_pubkey,
             self.origin_signature.as_slice(),
             origin_challenge(self.destination.clone(), body.clone())?,
         )?;
@@ -107,7 +107,7 @@ impl MessageEnvelopeHeader {
             self.peer_signature.as_slice(),
             peer_challenge(self.origin_signature.clone(), body)?,
         )?;
-        Ok(origin_verif & peer_verif)
+        Ok(origin_verif && peer_verif)
     }
 }
 
@@ -144,7 +144,7 @@ impl MessageEnvelope {
 
         let header = MessageEnvelopeHeader {
             version: MESSAGE_PROTOCOL_VERSION,
-            origin_source: node_identity.identity.public_key.clone(),
+            origin_pubkey: node_identity.identity.public_key.clone(),
             peer_source: node_identity.identity.public_key.clone(),
             destination: dest,
             origin_signature,
@@ -202,7 +202,22 @@ impl MessageEnvelope {
         &self.frames[2]
     }
 
-    /// Returns the frame that is expected to be body frame
+    /// Consumes the envelope and returns the body frame
+    pub fn into_body_frame(mut self) -> Frame {
+        self.frames.remove(2)
+    }
+
+    /// Returns the version of this envelope
+    pub fn version(&self) -> u8 {
+        let frame = self.version_frame();
+        // If version not specified, it's assumed to be 0
+        if frame.len() == 0 {
+            return 0;
+        }
+        frame[0]
+    }
+
+    /// Returns a decrypted version of the body frame
     pub fn decrypted_body_frame<PK>(
         &self,
         dest_secret_key: &PK::K,
@@ -307,7 +322,7 @@ mod test {
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rand::OsRng::new().unwrap());
         let header = MessageEnvelopeHeader {
             version: 0,
-            origin_source: pk.clone(),
+            origin_pubkey: pk.clone(),
             peer_source: pk,
             destination: NodeDestination::Unknown,
             origin_signature: vec![0],
@@ -344,7 +359,7 @@ mod test {
         .unwrap();
         assert_eq!("00", to_hex(envelope.version_frame()));
         let header = MessageEnvelopeHeader::from_binary(envelope.header_frame()).unwrap();
-        assert_eq!(dest_public_key, &header.origin_source);
+        assert_eq!(dest_public_key, &header.origin_pubkey);
         assert_eq!(MessageFlags::NONE, header.flags);
         assert_eq!(NodeDestination::Unknown, header.destination);
         assert!(!header.origin_signature.is_empty());
@@ -372,7 +387,7 @@ mod test {
         let peer_envelope = MessageEnvelope::forward_construct(&peer_node_identity, origin_envelope).unwrap();
         let peer_header = MessageEnvelopeHeader::from_binary(peer_envelope.header_frame()).unwrap();
 
-        assert_eq!(peer_header.origin_source, origin_node_identity.identity.public_key);
+        assert_eq!(peer_header.origin_pubkey, origin_node_identity.identity.public_key);
         assert_eq!(peer_header.peer_source, peer_node_identity.identity.public_key);
         assert_eq!(
             peer_envelope

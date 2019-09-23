@@ -47,6 +47,7 @@ use tari_comms::{
     peer_manager::{NodeIdentity, Peer, PeerFlags},
     types::CommsPublicKey,
 };
+use tari_comms_middleware::pubsub::pubsub_connector;
 use tari_p2p::{
     initialization::{initialize_comms, CommsConfig},
     services::{
@@ -64,12 +65,10 @@ fn load_identity(path: &str) -> NodeIdentity {
     let contents = fs::read_to_string(path).unwrap();
     NodeIdentity::from_json(contents.as_str()).unwrap()
 }
-
 pub fn random_string(len: usize) -> String {
     let mut rng = OsRng::new().unwrap();
     iter::repeat(()).map(|_| rng.sample(Alphanumeric)).take(len).collect()
 }
-
 fn main() {
     let matches = App::new("Tari comms peer to peer ping pong example")
         .version("1.0")
@@ -105,11 +104,11 @@ fn main() {
 
     log4rs::init_file(matches.value_of("log-config").unwrap(), Default::default()).unwrap();
 
-    let node_identity = load_identity(matches.value_of("node-identity").unwrap());
+    let node_identity = Arc::new(load_identity(matches.value_of("node-identity").unwrap()));
     let peer_identity = load_identity(matches.value_of("peer-identity").unwrap());
 
     let comms_config = CommsConfig {
-        public_key: node_identity.identity.public_key.clone(),
+        node_identity: Arc::clone(&node_identity),
         host: "0.0.0.0".parse().unwrap(),
         socks_proxy_address: None,
         control_service: ControlServiceConfig {
@@ -117,8 +116,6 @@ fn main() {
             socks_proxy_address: None,
             requested_connection_timeout: Duration::from_millis(2000),
         },
-        secret_key: node_identity.secret_key.clone(),
-        public_address: node_identity.control_service_address().unwrap(),
         datastore_path: TempDir::new(random_string(8).as_str())
             .unwrap()
             .path()
@@ -129,7 +126,9 @@ fn main() {
     };
     let rt = Runtime::new().expect("Failed to create tokio Runtime");
 
-    let comms = initialize_comms(rt.executor(), comms_config).unwrap();
+    let (publisher, subscription_factory) = pubsub_connector(rt.executor(), 100);
+    let subscription_factory = Arc::new(subscription_factory);
+    let comms = initialize_comms(rt.executor(), comms_config, publisher).unwrap();
     let peer = Peer::new(
         peer_identity.identity.public_key.clone(),
         peer_identity.identity.node_id.clone(),
@@ -142,7 +141,7 @@ fn main() {
 
     let fut = StackBuilder::new(rt.executor())
         .add_initializer(CommsOutboundServiceInitializer::new(comms.outbound_message_service()))
-        .add_initializer(LivenessInitializer::new(Arc::clone(&comms)))
+        .add_initializer(LivenessInitializer::new(Arc::clone(&subscription_factory)))
         .finish();
 
     let handles = rt.block_on(fut).expect("Service initialization failed");
@@ -175,7 +174,6 @@ fn main() {
     let comms = Arc::try_unwrap(comms).map_err(|_| ()).unwrap();
     comms.shutdown().unwrap();
 }
-
 fn setup_ui() -> Cursive {
     let mut app = Cursive::default();
 
@@ -187,13 +185,11 @@ fn setup_ui() -> Cursive {
 
     app
 }
-
 lazy_static! {
 /// Used to keep track of the counts displayed in the UI
 /// (sent ping count, recv ping count, recv pong count)
     static ref COUNTER_STATE: Arc<RwLock<(usize, usize, usize)>> = Arc::new(RwLock::new((0, 0, 0)));
 }
-
 type CursiveSignal = crossbeam_channel::Sender<Box<dyn CbFunc>>;
 
 async fn update_ui(update_sink: CursiveSignal, mut liveness_handle: LivenessHandle) {
@@ -217,7 +213,6 @@ async fn update_ui(update_sink: CursiveSignal, mut liveness_handle: LivenessHand
         }
     }
 }
-
 async fn send_ping_on_trigger(
     mut send_ping_trigger: impl Stream<Item = ()> + Unpin,
     update_signal: CursiveSignal,
@@ -239,7 +234,6 @@ async fn send_ping_on_trigger(
         update_signal.send(Box::new(update_count)).unwrap();
     }
 }
-
 fn update_count(s: &mut Cursive) {
     s.call_on_id("counter", move |view: &mut TextView| {
         let lock = COUNTER_STATE.read().unwrap();

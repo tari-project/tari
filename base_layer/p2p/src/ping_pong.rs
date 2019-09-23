@@ -21,7 +21,8 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    domain_subscriber::{DomainMessage, SyncDomainSubscription},
+    domain_message::DomainMessage,
+    domain_subscriber::SyncDomainSubscription,
     sync_services::{
         Service,
         ServiceApiWrapper,
@@ -128,14 +129,14 @@ impl PingPongService {
                 debug!(
                     target: LOG_TARGET,
                     "Received ping from {}",
-                    message.peer_source.public_key.to_hex(),
+                    message.source_peer.public_key.to_hex(),
                 );
 
                 self.ping_count += 1;
 
                 // Reply with Pong
                 self.send_msg(
-                    BroadcastStrategy::DirectPublicKey(message.origin_source),
+                    BroadcastStrategy::DirectPublicKey(message.origin_pubkey),
                     PingPong::Pong,
                 )?;
             },
@@ -143,7 +144,7 @@ impl PingPongService {
                 debug!(
                     target: LOG_TARGET,
                     "Received pong from {}",
-                    message.peer_source.public_key.to_hex()
+                    message.source_peer.public_key.to_hex()
                 );
 
                 self.pong_count += 1;

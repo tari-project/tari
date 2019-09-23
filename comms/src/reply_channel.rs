@@ -32,7 +32,7 @@ use futures::{
     Poll,
 };
 use std::pin::Pin;
-use tower_service::Service;
+use tower::Service;
 
 /// Receiver for a (Request, Reply) tuple, where Reply is a oneshot::Sender
 pub type Rx<TReq, TRes> = mpsc::UnboundedReceiver<RequestContext<TReq, TRes>>;

@@ -29,7 +29,7 @@ use std::{iter, path::PathBuf, sync::Arc, thread, time::Duration};
 use tari_comms::{
     connection::{net_address::NetAddressWithStats, NetAddress, NetAddressesWithStats},
     control_service::ControlServiceConfig,
-    peer_manager::{peer::PeerFlags, NodeId, Peer},
+    peer_manager::{peer::PeerFlags, NodeId, NodeIdentity, Peer},
     types::{CommsPublicKey, CommsSecretKey},
 };
 use tari_crypto::keys::{PublicKey, SecretKey};
@@ -118,8 +118,8 @@ fn send_text_message_request(msg: TextMessageToSendRpc, desired_response: RpcRes
 
     let inbound = rx.recv().unwrap();
 
-    println!("{:?}", inbound);
-    println!("{:?}", desired_response);
+    println!("Inbound: {:?}", inbound);
+    println!("Response: {:?}", desired_response);
     assert_eq!(inbound.success, desired_response.success);
     assert_eq!(inbound.message, desired_response.message);
 }
@@ -165,8 +165,8 @@ fn get_text_messages_request(sent_messages: Vec<String>, received_messages: Vec<
 
                 let sent_msg = inbound.sent_messages.iter().map(|m| m.message.clone()).collect();
 
-                let _ = tx.send(recv_msg);
-                let _ = tx.send(sent_msg);
+                tx.send(recv_msg).unwrap();
+                tx.send(sent_msg).unwrap();
 
                 Ok(())
             })
@@ -497,6 +497,7 @@ pub fn random_string(len: usize) -> String {
 
 #[test]
 fn test_rpc_text_message_service() {
+    env_logger::init();
     let mut rng = rand::OsRng::new().unwrap();
     let listener_address1: NetAddress = "127.0.0.1:32775".parse().unwrap();
     let secret_key1 = CommsSecretKey::random(&mut rng);
@@ -514,6 +515,9 @@ fn test_rpc_text_message_service() {
     let db_path2 = get_path(Some(db_name2));
     init_sql_database(db_name2);
 
+    let node_identity1 = NodeIdentity::new(secret_key1, public_key1.clone(), listener_address1.clone())
+        .map(Arc::new)
+        .unwrap();
     let config1 = WalletConfig {
         comms: CommsConfig {
             control_service: ControlServiceConfig {
@@ -523,9 +527,7 @@ fn test_rpc_text_message_service() {
             },
             socks_proxy_address: None,
             host: "127.0.0.1".parse().unwrap(),
-            public_key: public_key1.clone(),
-            secret_key: secret_key1,
-            public_address: listener_address1.clone(),
+            node_identity: node_identity1,
             datastore_path: TempDir::new(random_string(8).as_str())
                 .unwrap()
                 .path()
@@ -534,10 +536,14 @@ fn test_rpc_text_message_service() {
                 .to_string(),
             peer_database_name: random_string(8),
         },
+        inbound_message_buffer_size: 10,
         public_key: public_key1.clone(),
         database_path: db_path1,
     };
 
+    let node_identity2 = NodeIdentity::new(secret_key2, public_key2.clone(), listener_address2.clone())
+        .map(Arc::new)
+        .unwrap();
     let config2 = WalletConfig {
         comms: CommsConfig {
             control_service: ControlServiceConfig {
@@ -547,9 +553,7 @@ fn test_rpc_text_message_service() {
             },
             socks_proxy_address: None,
             host: "127.0.0.1".parse().unwrap(),
-            public_key: public_key2.clone(),
-            secret_key: secret_key2,
-            public_address: listener_address2.clone(),
+            node_identity: node_identity2,
             datastore_path: TempDir::new(random_string(8).as_str())
                 .unwrap()
                 .path()
@@ -558,6 +562,7 @@ fn test_rpc_text_message_service() {
                 .to_string(),
             peer_database_name: random_string(8),
         },
+        inbound_message_buffer_size: 10,
         public_key: public_key2.clone(),
         database_path: db_path2,
     };

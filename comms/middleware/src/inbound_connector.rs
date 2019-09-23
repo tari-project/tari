@@ -20,11 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{encryption::DecryptedInboundMessage, error::MiddlewareError, message::DomainMessage};
+use crate::{encryption::DecryptedInboundMessage, message::PeerMessage};
 use futures::{task::Context, Future, Poll, Sink, SinkExt};
 use log::*;
 use serde::{de::DeserializeOwned, Serialize};
 use std::{error::Error, marker::PhantomData, pin::Pin, sync::Arc};
+use tari_comms::middleware::MiddlewareError;
 use tower::Service;
 
 const LOG_TARGET: &'static str = "comms::middleware::inbound_domain_connector";
@@ -46,8 +47,8 @@ impl<MType, TSink> InboundDomainConnector<MType, TSink> {
 impl<MType, TSink> Service<DecryptedInboundMessage> for InboundDomainConnector<MType, TSink>
 where
     MType: Serialize + DeserializeOwned + Eq,
-    TSink: Sink<Arc<DomainMessage<MType>>> + Unpin + Clone,
-    TSink::Error: Into<MiddlewareError> + Error + 'static,
+    TSink: Sink<Arc<PeerMessage<MType>>> + Unpin + Clone,
+    TSink::Error: Into<MiddlewareError> + Error + Send + 'static,
 {
     type Error = MiddlewareError;
     type Response = ();
@@ -66,8 +67,8 @@ where
 impl<MType, TSink> InboundDomainConnector<MType, TSink>
 where
     MType: Serialize + DeserializeOwned + Eq,
-    TSink: Sink<Arc<DomainMessage<MType>>> + Unpin,
-    TSink::Error: Into<MiddlewareError> + Error + 'static,
+    TSink: Sink<Arc<PeerMessage<MType>>> + Unpin,
+    TSink::Error: Into<MiddlewareError> + Error + Send + 'static,
 {
     async fn handle_message(mut sink: TSink, inbound_message: DecryptedInboundMessage) -> Result<(), MiddlewareError> {
         match inbound_message.succeeded() {
@@ -81,18 +82,19 @@ where
                             ..
                         } = inbound_message;
 
-                        let domain_message = DomainMessage {
+                        let peer_message = PeerMessage {
                             message_header: header,
                             source_peer,
                             envelope_header,
                             message: decryption_result
+                                .map(|m| m.body)
                                 .ok()
                                 .expect("Already checked that decrypted message succeeded"),
                         };
 
                         // If this fails there is something wrong with the sink and the pubsub middleware should not
                         // continue
-                        sink.send(Arc::new(domain_message)).await?;
+                        sink.send(Arc::new(peer_message)).await?;
                     },
                     Err(err) => {
                         warn!(
@@ -136,12 +138,9 @@ mod test {
         let decrypted = DecryptedInboundMessage::succeed(msg, inbound_message);
         block_on(InboundDomainConnector::<i32, _>::handle_message(tx, decrypted)).unwrap();
 
-        let domain_message = block_on(rx.next()).unwrap();
-        assert_eq!(domain_message.message_header.message_type, 123);
-        assert_eq!(
-            domain_message.message.deserialize_message::<String>().unwrap(),
-            "my message"
-        );
+        let peer_message = block_on(rx.next()).unwrap();
+        assert_eq!(peer_message.message_header.message_type, 123);
+        assert_eq!(peer_message.deserialize_message::<String>().unwrap(), "my message");
     }
 
     #[test]

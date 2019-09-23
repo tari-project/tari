@@ -26,24 +26,22 @@ use crate::{
 };
 use serde_derive::{Deserialize, Serialize};
 use std::convert::{TryFrom, TryInto};
-use tari_utilities::message_format::MessageFormat;
 
+const NUM_MESSAGE_DATA_FRAMES: usize = 4;
 /// Messages submitted to the inbound message pool are of type MessageData. This struct contains the received message
 /// envelope from a peer, its node identity and the connection id associated with the received message.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct MessageData {
     pub source_node_id: NodeId,
-    pub forwardable: bool,
     pub message_envelope: MessageEnvelope,
 }
 
 impl MessageData {
     /// Construct a new MessageData that consist of the peer connection information and the received message envelope
     /// header and body
-    pub fn new(source_node_id: NodeId, forwardable: bool, message_envelope: MessageEnvelope) -> MessageData {
+    pub fn new(source_node_id: NodeId, message_envelope: MessageEnvelope) -> MessageData {
         MessageData {
             source_node_id,
-            forwardable,
             message_envelope,
         }
     }
@@ -52,7 +50,6 @@ impl MessageData {
     pub fn into_frame_set(self) -> FrameSet {
         let mut frame_set = Vec::new();
         frame_set.push(self.source_node_id.as_ref().to_vec());
-        frame_set.extend(self.forwardable.to_binary());
         frame_set.extend(self.message_envelope.into_frame_set());
         frame_set
     }
@@ -63,15 +60,13 @@ impl TryFrom<FrameSet> for MessageData {
 
     /// Attempt to create a MessageData from a FrameSet
     fn try_from(mut frames: FrameSet) -> Result<Self, Self::Error> {
-        if frames.len() < 5 {
+        if frames.len() < NUM_MESSAGE_DATA_FRAMES {
             return Err(MessageError::MalformedMultipart);
         };
         let source_node_id: NodeId = frames.remove(0).try_into().map_err(MessageError::NodeIdError)?;
-        let forwardable = bool::from_binary(&frames.remove(0))?;
         let message_envelope: MessageEnvelope = frames.try_into()?;
         Ok(MessageData {
             message_envelope,
-            forwardable,
             source_node_id,
         })
     }
@@ -92,7 +87,7 @@ mod test {
         let body_frame: Frame = vec![5, 6, 7, 8, 9];
         let message_envelope = MessageEnvelope::new(version_frame, header_frame, body_frame);
         let expected_message_data =
-            MessageData::new(NodeId::from_key(&source_node_identity).unwrap(), true, message_envelope);
+            MessageData::new(NodeId::from_key(&source_node_identity).unwrap(), message_envelope);
         // Convert MessageData to FrameSet
         let message_data_buffer = expected_message_data.clone().into_frame_set();
         // Create MessageData from FrameSet

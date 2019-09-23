@@ -25,7 +25,7 @@
 //! The [CommsBuilder] provides a simple builder API for getting Tari comms p2p messaging up and running.
 //!
 //! ```edition2018
-//! # use tari_comms::builder::CommsBuilder;
+//! # use tari_comms::builder::{CommsBuilder, CommsServices};
 //! # use tari_comms::control_service::ControlServiceConfig;
 //! # use tari_comms::peer_manager::NodeIdentity;
 //! # use std::sync::Arc;
@@ -35,6 +35,8 @@
 //! # use tari_storage::LMDBWrapper;
 //! # use futures::executor::ThreadPool;
 //! # use tokio::runtime::Runtime;
+//! # use futures::channel::mpsc;
+//! # use tari_comms::middleware::SinkMiddleware;
 //! // This should be loaded up from storage
 //! let my_node_identity = NodeIdentity::random(&mut OsRng::new().unwrap(), "127.0.0.1:9000".parse().unwrap()).unwrap();
 //!
@@ -48,16 +50,22 @@
 //! let peer_database = datastore.get_handle(database_name).unwrap();
 //! let peer_database = LMDBWrapper::new(Arc::new(peer_database));
 //!
+//! // Futures mpsc channel where all incoming messages will be received
+//! let (sender, _receiver) = mpsc::channel(100);
 //! let runtime = Runtime::new().unwrap();
-//! let services = CommsBuilder::<String>::new(runtime.executor())
+//! let services = CommsBuilder::new(runtime.executor())
+//!    .with_inbound_middleware(|_: CommsServices| SinkMiddleware::new(sender))
 //!    // This enables the control service - allowing another peer to connect to this node
 //!    .configure_control_service(ControlServiceConfig::default())
-//!    .with_node_identity(my_node_identity)
+//!    .with_node_identity(Arc::new(my_node_identity))
 //!    .with_peer_storage(peer_database)
 //!    .build()
 //!    .unwrap();
 //!
 //! let mut handle = services.start().unwrap();
+//!
+//! // use _receiver to receive comms messages
+//! // _receiver.next().await
 //!
 //! // Call shutdown when program shuts down
 //! handle.shutdown();
@@ -67,4 +75,4 @@
 
 mod builder;
 
-pub use self::builder::{CommsBuilder, CommsBuilderError, CommsNode, CommsServicesError};
+pub use self::builder::{CommsBuilder, CommsBuilderError, CommsError, CommsNode, CommsServices};

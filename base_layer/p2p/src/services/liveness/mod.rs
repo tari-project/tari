@@ -42,27 +42,24 @@ mod state;
 
 use self::{error::LivenessError, service::LivenessService, state::LivenessState};
 use crate::{
-    domain_subscriber::DomainMessage,
+    domain_message::DomainMessage,
     services::comms_outbound::CommsOutboundHandle,
     tari_message::{NetMessage, TariMessageType},
 };
 use futures::{future, Future, Stream, StreamExt};
 use std::{fmt::Debug, sync::Arc};
-use tari_comms::{
-    builder::CommsNode,
-    inbound_message_pipeline::InboundTopicSubscriptionFactory,
-    message::{InboundMessage, MessageError},
-};
+use tari_comms_middleware::message::PeerMessage;
+use tari_pubsub::TopicSubscriptionFactory;
 use tari_service_framework::{
     handles::ServiceHandlesFuture,
     reply_channel::{self, SenderService},
     ServiceInitializationError,
     ServiceInitializer,
 };
-use tari_utilities::message_format::MessageFormat;
+use tari_utilities::message_format::{MessageFormat, MessageFormatError};
+use tokio::runtime::TaskExecutor;
 
 pub use self::messages::{LivenessRequest, LivenessResponse, PingPong};
-use tokio::runtime::TaskExecutor;
 
 pub type LivenessHandle = SenderService<LivenessRequest, Result<LivenessResponse, LivenessError>>;
 
@@ -70,22 +67,18 @@ const LOG_TARGET: &'static str = "base_layer::p2p::services::liveness";
 
 /// Initializer for the Liveness service handle and service future.
 pub struct LivenessInitializer {
-    inbound_message_subscription_factory: Arc<InboundTopicSubscriptionFactory<TariMessageType>>,
+    inbound_message_subscription_factory:
+        Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage<TariMessageType>>>>,
 }
 
 impl LivenessInitializer {
-    /// Create a new LivenessInitializer from comms
-    pub fn new(comms: Arc<CommsNode<TariMessageType>>) -> Self {
-        Self {
-            inbound_message_subscription_factory: comms.handle_inbound_message_subscription_factory(),
-        }
-    }
-
     /// Create a new LivenessInitializer from the inbound message subscriber
-    #[cfg(test)]
-    pub fn inbound_message_subscription_factory(
-        inbound_message_subscription_factory: Arc<InboundTopicSubscriptionFactory<TariMessageType>>,
-    ) -> Self {
+    pub fn new(
+        inbound_message_subscription_factory: Arc<
+            TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage<TariMessageType>>>,
+        >,
+    ) -> Self
+    {
         Self {
             inbound_message_subscription_factory,
         }
@@ -143,15 +136,13 @@ where E: Debug {
     }
 }
 
-fn map_deserialized<T>(msg: InboundMessage) -> Result<DomainMessage<T>, MessageError>
+fn map_deserialized<T>(serialized: Arc<PeerMessage<TariMessageType>>) -> Result<DomainMessage<T>, MessageFormatError>
 where T: MessageFormat {
-    let deserialized = msg.message.deserialize_message::<T>()?;
-    let msg = DomainMessage {
-        peer_source: msg.peer_source,
-        origin_source: msg.origin_source,
-        inner: deserialized,
-    };
-    Ok(msg)
+    Ok(DomainMessage {
+        source_peer: serialized.source_peer.clone(),
+        origin_pubkey: serialized.envelope_header.origin_pubkey.clone(),
+        inner: serialized.deserialize_message()?,
+    })
 }
 
 #[cfg(test)]

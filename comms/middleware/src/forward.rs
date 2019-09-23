@@ -20,12 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{encryption::DecryptedInboundMessage, error::MiddlewareError};
+use crate::encryption::DecryptedInboundMessage;
 use futures::{task::Context, Future, Poll};
 use log::*;
 use std::sync::Arc;
 use tari_comms::{
     message::MessageEnvelope,
+    middleware::MiddlewareError,
     outbound_message_service::{BroadcastStrategy, OutboundServiceRequester},
     peer_manager::{NodeIdentity, PeerManager},
 };
@@ -168,12 +169,12 @@ where
             self.node_identity.identity.node_id.clone(),
             &self.peer_manager,
             envelope_header.destination.clone(),
-            vec![envelope_header.origin_source.clone(), envelope_header.peer_source],
+            vec![envelope_header.origin_pubkey.clone(), envelope_header.peer_source],
         )?;
 
         let envelope = MessageEnvelope::construct(
             &self.node_identity,
-            envelope_header.origin_source,
+            envelope_header.origin_pubkey,
             envelope_header.destination,
             body,
             envelope_header.flags,

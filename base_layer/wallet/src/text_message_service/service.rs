@@ -40,7 +40,8 @@ use tari_comms::{
     types::CommsPublicKey,
 };
 use tari_p2p::{
-    domain_subscriber::{DomainMessage, SyncDomainSubscription},
+    domain_message::DomainMessage,
+    domain_subscriber::SyncDomainSubscription,
     ping_pong::PingPong,
     sync_services::{
         Service,
@@ -138,7 +139,7 @@ impl TextMessageService {
         let mut oms = self.oms.clone().ok_or(TextMessageError::OMSNotInitialized)?;
 
         let DomainMessage {
-            origin_source,
+            origin_pubkey,
             inner: message,
             ..
         } = message;
@@ -153,7 +154,7 @@ impl TextMessageService {
 
         let text_message_ack = TextMessageAck { id: message.id.clone() };
         self.runtime.block_on(oms.send_message(
-            BroadcastStrategy::DirectPublicKey(origin_source),
+            BroadcastStrategy::DirectPublicKey(origin_pubkey),
             MessageFlags::ENCRYPTED,
             TariMessageType::new(ExtendedMessage::TextAck),
             text_message_ack,

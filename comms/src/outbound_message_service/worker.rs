@@ -105,10 +105,10 @@ impl DialState {
 pub struct OutboundMessageWorker<TMsgStream> {
     config: OutboundServiceConfig,
     connection_manager: ConnectionManagerRequester,
+    dial_cancel_signals: HashMap<NodeId, oneshot::Sender<()>>,
     incoming_message_stream: TMsgStream,
     pending_connect_requests: HashMap<NodeId, Vec<OutboundMessage>>,
     shutdown_rx: Option<oneshot::Receiver<()>>,
-    dial_cancel_signals: HashMap<NodeId, oneshot::Sender<()>>,
 }
 
 impl<TMsgStream> OutboundMessageWorker<TMsgStream>
@@ -251,7 +251,7 @@ where TMsgStream: Stream<Item = Vec<OutboundMessage>> + FusedStream + Unpin
                 None
             },
             Err(err) => {
-                error!(target: LOG_TARGET, "Failed to connect to node: {}", err);
+                error!(target: LOG_TARGET, "Failed to connect to node: {:?}", err);
                 Some(state)
             },
         }

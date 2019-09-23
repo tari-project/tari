@@ -23,13 +23,13 @@
 use crate::domain_subscriber::DomainSubscriberError;
 use derive_error::Error;
 use serde::export::fmt::Debug;
-use tari_comms::builder::CommsServicesError;
+use tari_comms::builder::CommsError;
 
 #[derive(Debug, Error)]
 pub enum ServiceError {
     #[error(msg_embedded, non_std, no_from)]
     ServiceInitializationFailed(String),
-    CommsServicesError(CommsServicesError),
+    CommsServicesError(CommsError),
     /// Timeout waiting for service threads to complete
     JoinTimedOut,
     /// Failed to send shut

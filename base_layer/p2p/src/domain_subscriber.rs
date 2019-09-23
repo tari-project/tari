@@ -19,10 +19,11 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use crate::domain_message::DomainMessage;
 use derive_error::Error;
 use futures::{executor::block_on, stream::FusedStream, Stream, StreamExt};
-use std::fmt::Debug;
-use tari_comms::{message::InboundMessage, peer_manager::PeerNodeIdentity, types::CommsPublicKey};
+use std::{fmt::Debug, sync::Arc};
+use tari_comms_middleware::message::PeerMessage;
 use tari_utilities::message_format::MessageFormat;
 
 #[derive(Debug, Error, PartialEq)]
@@ -37,29 +38,11 @@ pub enum DomainSubscriberError {
     SubscriptionReaderNotInitialized,
 }
 
-/// Information about the message received
-#[derive(Debug, Clone)]
-pub struct DomainMessage<T> {
-    pub peer_source: PeerNodeIdentity,
-    pub origin_source: CommsPublicKey,
-    pub inner: T,
-}
-
-impl<T> DomainMessage<T> {
-    pub fn inner(&self) -> &T {
-        &self.inner
-    }
-
-    pub fn into_inner(self) -> T {
-        self.inner
-    }
-}
-
 pub struct SyncDomainSubscription<S> {
     subscription: Option<S>,
 }
-impl<S> SyncDomainSubscription<S>
-where S: Stream<Item = InboundMessage> + Unpin + FusedStream
+impl<S, MType> SyncDomainSubscription<S>
+where S: Stream<Item = Arc<PeerMessage<MType>>> + Unpin + FusedStream
 {
     pub fn new(stream: S) -> Self {
         SyncDomainSubscription {
@@ -73,7 +56,7 @@ where S: Stream<Item = InboundMessage> + Unpin + FusedStream
 
         match subscription {
             Some(mut s) => {
-                let (stream_messages, stream_complete): (Vec<InboundMessage>, bool) = block_on(async {
+                let (stream_messages, stream_complete): (Vec<Arc<PeerMessage<MType>>>, bool) = block_on(async {
                     let mut result = Vec::new();
                     let mut complete = false;
                     loop {
@@ -95,14 +78,14 @@ where S: Stream<Item = InboundMessage> + Unpin + FusedStream
 
                 let mut messages = Vec::new();
 
-                for m in stream_messages {
+                for message in stream_messages {
+                    let msg = message
+                        .deserialize_message::<T>()
+                        .map_err(|_| DomainSubscriberError::MessageError)?;
                     messages.push(DomainMessage {
-                        peer_source: m.peer_source,
-                        origin_source: m.origin_source,
-                        inner: m
-                            .message
-                            .deserialize_message()
-                            .map_err(|_| DomainSubscriberError::MessageError)?,
+                        source_peer: message.source_peer.clone(),
+                        origin_pubkey: message.envelope_header.origin_pubkey.clone(),
+                        inner: msg,
                     });
                 }
 
@@ -124,8 +107,9 @@ mod test {
     use rand::rngs::EntropyRng;
     use serde::{Deserialize, Serialize};
     use tari_comms::{
-        message::{Message, NodeDestination},
-        peer_manager::NodeIdentity,
+        connection::NetAddress,
+        message::{MessageEnvelopeHeader, MessageFlags, MessageHeader, NodeDestination},
+        peer_manager::{NodeIdentity, Peer, PeerFlags},
     };
     use tari_pubsub::{pubsub_channel, TopicPayload};
 
@@ -139,7 +123,7 @@ mod test {
             b: String,
         }
 
-        let node_id = NodeIdentity::random(&mut EntropyRng::new(), "127.0.0.1:9000".parse().unwrap()).unwrap();
+        let node_identity = NodeIdentity::random(&mut EntropyRng::new(), "127.0.0.1:9000".parse().unwrap()).unwrap();
 
         let messages = vec![
             ("Topic1".to_string(), Dummy {
@@ -175,12 +159,25 @@ mod test {
         let serialized_messages = messages.iter().map(|m| {
             TopicPayload::new(
                 m.0.clone(),
-                InboundMessage::new(
-                    node_id.identity.clone(),
-                    node_id.identity.public_key.clone(),
-                    NodeDestination::Unknown,
-                    Message::from_message_format(m.0.clone(), m.1.clone()).unwrap(),
-                ),
+                Arc::new(PeerMessage::new(
+                    m.1.to_binary().unwrap(),
+                    MessageHeader::new(()).unwrap(),
+                    MessageEnvelopeHeader {
+                        version: 0,
+                        origin_pubkey: node_identity.identity.public_key.clone(),
+                        peer_source: node_identity.identity.public_key.clone(),
+                        destination: NodeDestination::Unknown,
+                        origin_signature: Vec::new(),
+                        peer_signature: Vec::new(),
+                        flags: MessageFlags::empty(),
+                    },
+                    Peer::new(
+                        node_identity.identity.public_key.clone(),
+                        node_identity.identity.node_id.clone(),
+                        Vec::<NetAddress>::new().into(),
+                        PeerFlags::empty(),
+                    ),
+                )),
             )
         });
 

@@ -215,7 +215,7 @@ impl ControlServiceWorker {
             return Err(ControlServiceError::PeerBanned);
         }
 
-        let decrypted_body = self.decrypt_body(envelope.body_frame(), &envelope_header.origin_source)?;
+        let decrypted_body = self.decrypt_body(envelope.body_frame(), &envelope_header.origin_pubkey)?;
         let message =
             Message::from_binary(decrypted_body.as_bytes()).map_err(ControlServiceError::MessageFormatError)?;
 

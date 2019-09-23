@@ -20,11 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::inbound_message::InboundMessage;
 use rand::rngs::OsRng;
 use tari_comms::{
     connection::NetAddress,
-    message::{MessageEnvelopeHeader, MessageFlags, NodeDestination},
+    message::{InboundMessage, MessageEnvelopeHeader, MessageFlags, NodeDestination},
     peer_manager::{NodeIdentity, Peer, PeerFlags},
 };
 
@@ -42,7 +41,7 @@ pub fn make_inbound_message(node_identity: &NodeIdentity, message: Vec<u8>, flag
         ),
         MessageEnvelopeHeader {
             version: 0,
-            origin_source: node_identity.identity.public_key.clone(),
+            origin_pubkey: node_identity.identity.public_key.clone(),
             peer_source: node_identity.identity.public_key.clone(),
             destination: NodeDestination::Unknown,
             origin_signature: Vec::new(),

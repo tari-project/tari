@@ -26,10 +26,12 @@ use crate::{
 };
 use chrono::{Duration as ChronoDuration, NaiveDateTime, Utc};
 use crossbeam_channel as channel;
-use std::{collections::HashMap, sync::Mutex, time::Duration};
-
 use log::*;
-use std::sync::Arc;
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 use tari_core::{
     fee::Fee,
     tari_amount::MicroTari,

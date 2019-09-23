@@ -21,18 +21,41 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_comms::{
-    message::{Message, MessageEnvelopeHeader, MessageHeader},
+    message::{MessageEnvelopeHeader, MessageHeader},
     peer_manager::Peer,
 };
+use tari_utilities::message_format::{MessageFormat, MessageFormatError};
 
 /// A domain-level message
-pub struct DomainMessage<MType> {
+pub struct PeerMessage<MType> {
     /// Serialized message data
-    pub message: Message,
+    pub message: Vec<u8>,
     /// Domain message header
     pub message_header: MessageHeader<MType>,
     /// The message envelope header
     pub envelope_header: MessageEnvelopeHeader,
     /// The connected peer which sent this message
     pub source_peer: Peer,
+}
+
+impl<MType> PeerMessage<MType> {
+    pub fn new(
+        message: Vec<u8>,
+        message_header: MessageHeader<MType>,
+        envelope_header: MessageEnvelopeHeader,
+        source_peer: Peer,
+    ) -> Self
+    {
+        Self {
+            message,
+            message_header,
+            envelope_header,
+            source_peer,
+        }
+    }
+
+    pub fn deserialize_message<T>(&self) -> Result<T, MessageFormatError>
+    where T: MessageFormat {
+        T::from_binary(&self.message)
+    }
 }

@@ -51,7 +51,8 @@ use tari_core::{
 };
 use tari_crypto::keys::SecretKey;
 use tari_p2p::{
-    domain_subscriber::{DomainMessage, SyncDomainSubscription},
+    domain_message::DomainMessage,
+    domain_subscriber::SyncDomainSubscription,
     sync_services::{
         Service,
         ServiceApiWrapper,
@@ -362,9 +363,9 @@ impl Service for TransactionService {
 
             for msg in subscription_transaction.receive_messages()?.drain(..) {
                 let DomainMessage {
-                    origin_source, inner, ..
+                    origin_pubkey, inner, ..
                 } = msg;
-                if let Err(e) = self.accept_transaction(origin_source, inner) {
+                if let Err(e) = self.accept_transaction(origin_pubkey, inner) {
                     error!(target: LOG_TARGET, "Transaction service had error: {:?}", e);
                 }
             }

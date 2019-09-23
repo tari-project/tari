@@ -22,6 +22,8 @@
 
 use super::{error::ServiceError, registry::ServiceRegistry};
 use crate::tari_message::TariMessageType;
+use crossbeam_channel as channel;
+use crossbeam_channel::{Receiver, RecvTimeoutError, Sender};
 use log::*;
 use std::{
     sync::{Arc, Mutex},
@@ -30,17 +32,12 @@ use std::{
 };
 use tari_comms::{
     builder::CommsNode,
+    outbound_message_service::OutboundServiceRequester,
     peer_manager::{NodeIdentity, PeerManager},
 };
+use tari_comms_middleware::message::PeerMessage;
+use tari_pubsub::TopicSubscriptionFactory;
 use threadpool::ThreadPool;
-
-use crossbeam_channel as channel;
-use crossbeam_channel::{Receiver, RecvTimeoutError, Sender};
-
-use tari_comms::{
-    inbound_message_pipeline::InboundTopicSubscriptionFactory,
-    outbound_message_service::OutboundServiceRequester,
-};
 
 const LOG_TARGET: &str = "base_layer::p2p::services";
 
@@ -59,7 +56,12 @@ pub struct ServiceExecutor {
 
 impl ServiceExecutor {
     /// Execute the services contained in the given [ServiceRegistry].
-    pub fn execute(comms_services: &CommsNode<TariMessageType>, registry: ServiceRegistry) -> Self {
+    pub fn execute(
+        comms_services: &CommsNode,
+        registry: ServiceRegistry,
+        subscription_factory: Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage<TariMessageType>>>>,
+    ) -> Self
+    {
         let thread_pool = threadpool::Builder::new()
             .thread_name("DomainServices".to_string())
             .num_threads(registry.num_services())
@@ -75,7 +77,7 @@ impl ServiceExecutor {
                 peer_manager: comms_services.peer_manager(),
                 node_identity: comms_services.node_identity(),
                 receiver,
-                inbound_message_subscription_factory: comms_services.handle_inbound_message_subscription_factory(),
+                inbound_message_subscription_factory: Arc::clone(&subscription_factory),
             };
 
             thread_pool.execute(move || {
@@ -151,7 +153,8 @@ pub struct ServiceContext {
     peer_manager: Arc<PeerManager>,
     node_identity: Arc<NodeIdentity>,
     receiver: Receiver<ServiceControlMessage>,
-    inbound_message_subscription_factory: Arc<InboundTopicSubscriptionFactory<TariMessageType>>,
+    inbound_message_subscription_factory:
+        Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage<TariMessageType>>>>,
 }
 
 impl ServiceContext {
@@ -182,7 +185,9 @@ impl ServiceContext {
         Arc::clone(&self.node_identity)
     }
 
-    pub fn inbound_message_subscription_factory(&self) -> Arc<InboundTopicSubscriptionFactory<TariMessageType>> {
+    pub fn inbound_message_subscription_factory(
+        &self,
+    ) -> Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage<TariMessageType>>>> {
         Arc::clone(&self.inbound_message_subscription_factory)
     }
 }
@@ -190,14 +195,16 @@ impl ServiceContext {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{sync_services::Service, tari_message::NetMessage};
+    use crate::{
+        initialization::{initialize_comms, CommsConfig},
+        sync_services::Service,
+        tari_message::NetMessage,
+    };
     use rand::rngs::OsRng;
     use std::{path::PathBuf, sync::RwLock};
-    use tari_comms::{peer_manager::NodeIdentity, CommsBuilder};
-    use tari_storage::{
-        lmdb_store::{LMDBBuilder, LMDBError, LMDBStore},
-        LMDBWrapper,
-    };
+    use tari_comms::peer_manager::NodeIdentity;
+    use tari_comms_middleware::pubsub::pubsub_connector;
+    use tari_storage::lmdb_store::{LMDBBuilder, LMDBError, LMDBStore};
     use tokio::runtime::Runtime;
 
     #[derive(Clone)]
@@ -255,38 +262,36 @@ mod test {
 
     #[test]
     fn execute() {
-        let node_identity =
-            NodeIdentity::random(&mut OsRng::new().unwrap(), "127.0.0.1:9000".parse().unwrap()).unwrap();
+        let node_identity = NodeIdentity::random(&mut OsRng::new().unwrap(), "127.0.0.1:9000".parse().unwrap())
+            .map(Arc::new)
+            .unwrap();
 
         let state = Arc::new(RwLock::new("Hello".to_string()));
         let service = AddWordService(state.clone(), "Tari");
         let registry = ServiceRegistry::new().register(service);
 
-        let database_name = "executor_execute"; // Note: every test should have unique database
-        let datastore = init_datastore(database_name).unwrap();
-        let peer_database = datastore.get_handle(database_name).unwrap();
-        let peer_database = LMDBWrapper::new(Arc::new(peer_database));
-
         let rt = Runtime::new().unwrap();
 
-        let comms_services = CommsBuilder::new(rt.executor())
-            .with_node_identity(node_identity)
-            .with_peer_storage(peer_database)
-            .build()
-            .unwrap()
-            .start()
-            .map(Arc::new)
-            .unwrap();
+        let database_name = "sync_services_executor_execute"; // Note: every test should have unique database
+        let (publisher, subscription_factory) = pubsub_connector(rt.executor(), 1);
+        let config = CommsConfig {
+            node_identity,
+            control_service: Default::default(),
+            datastore_path: get_path(database_name),
+            host: "127.0.0.1".parse().unwrap(),
+            peer_database_name: database_name.to_string(),
+            socks_proxy_address: None,
+        };
+        let comms_node = initialize_comms(rt.executor(), config, publisher).unwrap();
 
-        let services = ServiceExecutor::execute(&comms_services, registry);
+        //        let (pubsub_tx, pubsub_subscription_factory) = pubsub_channel(1);
+
+        let services = ServiceExecutor::execute(&comms_node, registry, Arc::new(subscription_factory));
 
         services.shutdown().unwrap();
         services.join_timeout(Duration::from_millis(100)).unwrap();
-        let comms = Arc::try_unwrap(comms_services)
-            .map_err(|_| ServiceError::CommsServiceOwnershipError)
-            .unwrap();
 
-        comms.shutdown().unwrap();
+        comms_node.shutdown().unwrap();
 
         {
             let lock = acquire_read_lock!(state);

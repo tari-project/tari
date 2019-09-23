@@ -20,13 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::inbound_message::InboundMessage;
 use derive_error::Error;
 use futures::{task::Context, Future, Poll};
 use log::*;
 use std::sync::Arc;
 use tari_comms::{
-    message::{Message, MessageEnvelopeHeader, MessageFlags},
+    message::{InboundMessage, Message, MessageEnvelopeHeader, MessageFlags},
     peer_manager::{NodeIdentity, Peer},
     types::CommsCipher,
 };
@@ -160,7 +159,7 @@ where S: Service<DecryptedInboundMessage, Response = ()>
         }
 
         debug!(target: LOG_TARGET, "Attempting to decrypt message");
-        let shared_secret = generate_ecdh_secret(&node_identity.secret_key, &envelope_header.origin_source);
+        let shared_secret = generate_ecdh_secret(&node_identity.secret_key, &envelope_header.origin_pubkey);
         match decrypt(&shared_secret, &message.body) {
             Ok(decrypted) => Self::decryption_succeeded(next_service, message, decrypted).await,
             Err(err) => {

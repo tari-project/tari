@@ -10,6 +10,7 @@ edition = "2018"
 
 [dependencies]
 tari_comms = { version = "^0.0", path = "../../comms"}
+tari_comms_middleware = { version = "^0.0", path = "../../comms/middleware"}
 tari_crypto = { version = "^0.0", path = "../../infrastructure/crypto"}
 tari_pubsub = { version = "^0.0", path = "../../infrastructure/pubsub"}
 tari_service_framework = { version = "^0.0", path = "../service_framework"}
@@ -31,6 +32,7 @@ tokio = "0.2.0-alpha.4"
 tower-service = { version="0.3.0-alpha.1" }
 tracing = "0.1.5"
 ttl_cache = "0.5.1"
+tower = "0.3.0-alpha.1a"
 
 [dev-dependencies]
 tari_test_utils = { version = "^0.0", path="../../infrastructure/test_utils" }

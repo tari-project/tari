@@ -41,8 +41,8 @@ pub enum InboundMessagePipelineError {
     DecryptionFailure,
     /// The source peer did not exist in the peer manager
     CannotFindSourcePeer,
-    /// Error publishing message
-    PublisherError,
+    #[error(msg_embedded, non_std, no_from)]
+    MiddlewareError(String),
     MessageError(MessageError),
     PeerManagerError(PeerManagerError),
     BroadcastStrategyError(BroadcastStrategyError),
