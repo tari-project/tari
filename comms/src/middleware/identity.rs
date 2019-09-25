@@ -24,16 +24,16 @@ use crate::middleware::MiddlewareError;
 use futures::{future, task::Context, Poll};
 use tower::Service;
 
-/// A middleware which does nothing
-pub struct IdentityMiddleware;
+/// Identity inbound middleware
+pub struct IdentityInboundMiddleware;
 
-impl IdentityMiddleware {
+impl IdentityInboundMiddleware {
     pub fn new() -> Self {
-        IdentityMiddleware
+        IdentityInboundMiddleware
     }
 }
 
-impl<T> Service<T> for IdentityMiddleware {
+impl<T> Service<T> for IdentityInboundMiddleware {
     type Error = MiddlewareError;
     type Future = future::Ready<Result<Self::Response, Self::Error>>;
     type Response = ();
@@ -44,5 +44,28 @@ impl<T> Service<T> for IdentityMiddleware {
 
     fn call(&mut self, _: T) -> Self::Future {
         future::ready(Ok(()))
+    }
+}
+
+/// Identity outbound middleware
+pub struct IdentityOutboundMiddleware;
+
+impl IdentityOutboundMiddleware {
+    pub fn new() -> Self {
+        IdentityOutboundMiddleware
+    }
+}
+
+impl<T> Service<T> for IdentityOutboundMiddleware {
+    type Error = MiddlewareError;
+    type Future = future::Ready<Result<Self::Response, Self::Error>>;
+    type Response = Option<T>;
+
+    fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn call(&mut self, item: T) -> Self::Future {
+        future::ready(Ok(Some(item)))
     }
 }

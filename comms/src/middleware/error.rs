@@ -22,6 +22,7 @@
 
 use std::{error::Error, fmt};
 
+/// Middleware error containing any kind of error that could be produced from middleware
 pub struct MiddlewareError {
     inner: Box<dyn Error + Send>,
 }

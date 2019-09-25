@@ -25,7 +25,7 @@ use derive_error::Error;
 use futures::Sink;
 use std::{error::Error, net::IpAddr, sync::Arc};
 use tari_comms::{
-    builder::{CommsBuilderError, CommsError, CommsNode, CommsServices},
+    builder::{CommsBuilderError, CommsError, CommsNode, CommsParts},
     connection::net_address::ip::SocketAddress,
     connection_manager::PeerConnectionConfig,
     control_service::ControlServiceConfig,
@@ -81,7 +81,7 @@ where
     let peer_database = datastore.get_handle(&config.peer_database_name).unwrap();
     let peer_database = LMDBWrapper::new(Arc::new(peer_database));
 
-    let inbound_middleware = |comms: CommsServices| {
+    let inbound_middleware = |comms: CommsParts| {
         ServiceBuilder::new()
             .layer(DecryptionLayer::new(Arc::clone(&comms.node_identity)))
             .layer(ForwardLayer::new(

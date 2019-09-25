@@ -31,6 +31,7 @@ use tari_comms::{
     connection_manager::{create_connection_manager_actor, ConnectionManager, PeerConnectionConfig},
     control_service::{ControlService, ControlServiceConfig},
     message::MessageFlags,
+    middleware::IdentityOutboundMiddleware,
     outbound_message_service::{BroadcastStrategy, OutboundMessageService, OutboundServiceRequester},
     peer_manager::{Peer, PeerManager},
     types::CommsDatabase,
@@ -97,11 +98,11 @@ fn outbound_message_pool_no_retry() {
     let node_B_control_port_address = factories::net_address::create().build().unwrap();
 
     let node_B_peer = factories::peer::create()
-                .with_net_addresses(vec![node_B_control_port_address.clone()])
-                // Set node B's secret key to be the same as node A's so that we can generate the same shared secret
-                .with_public_key(node_identity.identity.public_key.clone())
-                .build()
-                .unwrap();
+        .with_net_addresses(vec![node_B_control_port_address.clone()])
+        // Set node B's secret key to be the same as node A's so that we can generate the same shared secret
+        .with_public_key(node_identity.identity.public_key.clone())
+        .build()
+        .unwrap();
 
     // Node B knows no peers
     let node_B_database_name = "omp_node_B_peer_manager"; // Note: every test should have unique database
@@ -157,6 +158,7 @@ fn outbound_message_pool_no_retry() {
     let oms = OutboundMessageService::new(
         Default::default(),
         rt.executor(),
+        IdentityOutboundMiddleware::new(),
         outbound_rx,
         node_A_peer_manager,
         node_A_connection_manager_requester,
@@ -223,11 +225,11 @@ fn test_outbound_message_pool_fail_and_retry() {
         .unwrap();
 
     let node_B_peer = factories::peer::create()
-                .with_net_addresses(vec![node_B_control_port_address.clone()])
-                // Set node B's secret key to be the same as node A's so that we can generate the same shared secret
-                .with_public_key(node_B_identity.identity.public_key.clone())
-                .build()
-                .unwrap();
+        .with_net_addresses(vec![node_B_control_port_address.clone()])
+        // Set node B's secret key to be the same as node A's so that we can generate the same shared secret
+        .with_public_key(node_B_identity.identity.public_key.clone())
+        .build()
+        .unwrap();
 
     //---------------------------------- Node A setup --------------------------------------------//
 
@@ -262,6 +264,7 @@ fn test_outbound_message_pool_fail_and_retry() {
     let oms = OutboundMessageService::new(
         Default::default(),
         rt.executor(),
+        IdentityOutboundMiddleware::new(),
         outbound_rx,
         node_A_peer_manager,
         node_A_connection_manager_requester,
