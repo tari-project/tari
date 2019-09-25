@@ -252,16 +252,11 @@ impl ConnectionManager {
         ret
     }
 
-    /// Get the peer manager
-    pub(crate) fn peer_manager(&self) -> &PeerManager {
-        &self.peer_manager
-    }
-
-    /// Shutdown a given peer's [PeerConnection] and return it if one exists,
+    /// Disconnects a given peer's [PeerConnection] and return it if one exists,
     /// otherwise None is returned.
     ///
     /// [PeerConnection]: ../../connection/peer_connection/index.html
-    pub(crate) fn shutdown_connection_for_peer(&self, peer: &Peer) -> Result<Option<Arc<PeerConnection>>> {
+    pub fn disconnect_peer(&self, peer: &Peer) -> Result<Option<Arc<PeerConnection>>> {
         match self.connections.shutdown_connection(&peer.node_id) {
             Ok((conn, handle)) => {
                 handle
@@ -272,6 +267,11 @@ impl ConnectionManager {
             Err(ConnectionManagerError::PeerConnectionNotFound) => Ok(None),
             Err(err) => Err(err),
         }
+    }
+
+    /// Get the peer manager
+    pub(crate) fn peer_manager(&self) -> &PeerManager {
+        &self.peer_manager
     }
 
     /// Return a connection for a peer if one exists, otherwise None is returned
@@ -429,7 +429,7 @@ mod test {
     }
 
     #[test]
-    fn shutdown_connection_for_peer() {
+    fn disconnect_peer() {
         let (context, node_identity, peer_manager, sender) = setup();
         let manager = ConnectionManager::new(
             context,
@@ -451,7 +451,7 @@ mod test {
         let address = "127.0.0.1:43456".parse::<NetAddress>().unwrap();
         let peer = create_peer(address.clone());
 
-        assert!(manager.shutdown_connection_for_peer(&peer).unwrap().is_none());
+        assert!(manager.disconnect_peer(&peer).unwrap().is_none());
 
         let (peer_conn, rx) = PeerConnection::new_with_connecting_state_for_test();
         let peer_conn = Arc::new(peer_conn);
@@ -461,9 +461,9 @@ mod test {
             .add_connection(peer.node_id.clone(), peer_conn, join_handle)
             .unwrap();
 
-        match manager.shutdown_connection_for_peer(&peer).unwrap() {
+        match manager.disconnect_peer(&peer).unwrap() {
             Some(_) => {},
-            None => panic!("shutdown_connection_for_peer did not return active peer connection"),
+            None => panic!("disconnect_peer did not return active peer connection"),
         }
 
         drop(rx);

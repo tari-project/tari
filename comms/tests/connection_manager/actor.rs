@@ -20,7 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::helpers::make_peer_connection_config;
 use crate::support::{
     factories::{self, TestFactory},
     helpers::database::{clean_up_datastore, init_datastore},
@@ -84,7 +83,6 @@ fn with_alice_and_bob(cb: impl FnOnce(CommsTestNode, CommsTestNode)) {
             .with_context(context.clone())
             .with_node_identity(Arc::clone(&bob_identity.clone()))
             .with_peer_manager(Arc::clone(&bob_peer_manager))
-            .with_peer_connection_config(make_peer_connection_config())
             .with_message_sink_sender(consumer_tx_b)
             .build()
             .unwrap(),
@@ -117,7 +115,6 @@ fn with_alice_and_bob(cb: impl FnOnce(CommsTestNode, CommsTestNode)) {
             .with_context(context.clone())
             .with_node_identity(Arc::clone(&alice_identity))
             .with_peer_manager(Arc::clone(&alice_peer_manager))
-            .with_peer_connection_config(make_peer_connection_config())
             .with_message_sink_sender(consumer_tx_a)
             .build()
             .unwrap(),
@@ -194,35 +191,47 @@ fn establish_connection_simultaneous_connect() {
     with_alice_and_bob(|alice, bob| {
         let rt = Runtime::new().unwrap();
         //        let mut pool = ThreadPool::new().unwrap();
-        let (mut requester_alice, service) = create_connection_manager_actor(1, Arc::clone(&alice.connection_manager));
+        let (requester_alice, service) = create_connection_manager_actor(1, Arc::clone(&alice.connection_manager));
         rt.spawn(service.start());
 
-        let (mut requester_bob, service) = create_connection_manager_actor(1, Arc::clone(&bob.connection_manager));
+        let (requester_bob, service) = create_connection_manager_actor(1, Arc::clone(&bob.connection_manager));
         bob.peer_manager.add_peer(alice.peer.clone()).unwrap();
         rt.spawn(service.start());
 
         let alice_node_id = alice.node_identity.identity.node_id.clone();
         let bob_node_id = bob.node_identity.identity.node_id.clone();
 
-        let (alice_result, bob_result) = rt.block_on(async move {
-            futures::join!(
-                requester_alice.dial_node(bob_node_id),
-                requester_bob.dial_node(alice_node_id)
-            )
-        });
+        let mut attempt_count = 0;
+        loop {
+            let mut requester_alice_inner = requester_alice.clone();
+            let mut requester_bob_inner = requester_bob.clone();
+            let (alice_result, bob_result) = rt.block_on(async {
+                futures::join!(
+                    requester_alice_inner.dial_node(bob_node_id.clone()),
+                    requester_bob_inner.dial_node(alice_node_id.clone())
+                )
+            });
 
-        match (alice_result, bob_result) {
-            // Alice rejected Bob's connection attempt
-            (Ok(conn), Err(ConnectionManagerError::ConnectionRejected(reason))) => {
-                assert_eq!(reason, RejectReason::CollisionDetected);
-                assert!(conn.is_active());
-            },
-            // Bob rejected Alice's connection attempt
-            (Err(ConnectionManagerError::ConnectionRejected(reason)), Ok(conn)) => {
-                assert_eq!(reason, RejectReason::CollisionDetected);
-                assert!(conn.is_active());
-            },
-            _ => panic!("Unexpected result when simultaneously connecting"),
+            match (alice_result, bob_result) {
+                // Alice rejected Bob's connection attempt
+                (Ok(conn), Err(ConnectionManagerError::ConnectionRejected(reason))) => {
+                    assert_eq!(reason, RejectReason::CollisionDetected);
+                    assert!(conn.is_active());
+                    break;
+                },
+                // Bob rejected Alice's connection attempt
+                (Err(ConnectionManagerError::ConnectionRejected(reason)), Ok(conn)) => {
+                    assert_eq!(reason, RejectReason::CollisionDetected);
+                    assert!(conn.is_active());
+                    break;
+                },
+                (Ok(_), Ok(_)) if attempt_count < 5 => {
+                    alice.connection_manager.disconnect_peer(&bob.peer).unwrap();
+                    bob.connection_manager.disconnect_peer(&alice.peer).unwrap();
+                    attempt_count += 1;
+                },
+                _ => panic!("Unable to trigger simultaneous connection conflict after 5 attempts"),
+            }
         }
     })
 }

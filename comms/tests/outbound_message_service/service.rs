@@ -25,7 +25,7 @@ use crate::support::{
     helpers::streams::stream_assert_count,
 };
 use futures::{channel::mpsc, StreamExt};
-use std::{fs, path::PathBuf, sync::Arc, time::Duration};
+use std::{fs, path::PathBuf, sync::Arc, thread, time::Duration};
 use tari_comms::{
     connection::ZmqContext,
     connection_manager::{create_connection_manager_actor, ConnectionManager, PeerConnectionConfig},
@@ -292,7 +292,7 @@ fn test_outbound_message_pool_fail_and_retry() {
         });
     }
 
-    //    thread::sleep(Duration::from_millis(1000));
+    thread::sleep(Duration::from_millis(1000));
 
     // Later, start node B's control service and test if we receive messages
     let node_B_database_name = "omp_node_B_peer_manager"; // Note: every test should have unique database

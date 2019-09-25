@@ -42,7 +42,7 @@ pub fn create() -> ConnectionManagerFactory {
 #[derive(Default)]
 pub struct ConnectionManagerFactory {
     zmq_context: Option<ZmqContext>,
-    peer_connection_config: PeerConnectionConfig,
+    peer_connection_config: Option<PeerConnectionConfig>,
     peer_manager: Option<Arc<PeerManager>>,
     peer_manager_factory: PeerManagerFactory,
     node_identity_factory: NodeIdentityFactory,
@@ -54,7 +54,7 @@ impl ConnectionManagerFactory {
     factory_setter!(
         with_peer_connection_config,
         peer_connection_config,
-        PeerConnectionConfig
+        Option<PeerConnectionConfig>
     );
 
     factory_setter!(with_peer_manager, peer_manager, Option<Arc<PeerManager>>);
@@ -86,7 +86,13 @@ impl TestFactory for ConnectionManagerFactory {
             None => self.node_identity_factory.build().map(Arc::new)?,
         };
 
-        let config = self.peer_connection_config;
+        let config = self
+            .peer_connection_config
+            .or(Some(PeerConnectionConfig {
+                host: "127.0.0.1".parse().expect("correctly formatted address"),
+                ..Default::default()
+            }))
+            .unwrap();
 
         if self.message_sink_sender.is_none() {
             return Err(TestFactoryError::BuildFailed("Missing Message Sink Sender".to_string()));

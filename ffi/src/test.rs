@@ -122,11 +122,11 @@ fn ffi_test_wallet() {
         let sk2 = CommsSecretKey::random(&mut rng);
         let pk2 = CommsPublicKey::from_secret_key(&sk2);
 
-        let listener = CString::new("0.0.0.0:10000").unwrap();
+        let listener = CString::new("127.0.0.1:10000").unwrap();
         let listener_ptr = CString::into_raw(listener.clone()) as *const c_char;
         let public_address = CString::new("127.0.0.1").unwrap();
         let public_address_ptr = CString::into_raw(public_address.clone()) as *const c_char;
-        let host_address = CString::new("0.0.0.0").unwrap();
+        let host_address = CString::new("127.0.0.1").unwrap();
         let host_address_ptr = CString::into_raw(host_address.clone()) as *const c_char;
         let socks = ptr::null();
         let duration: u64 = 5000;

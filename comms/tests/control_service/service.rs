@@ -25,7 +25,7 @@ use futures::channel::mpsc::{channel, Sender};
 use std::{path::PathBuf, sync::Arc, time::Duration};
 use tari_comms::{
     connection::{types::Direction, Connection, ZmqContext},
-    connection_manager::{ConnectionManager, PeerConnectionConfig},
+    connection_manager::ConnectionManager,
     control_service::{messages::ConnectRequestOutcome, ControlService, ControlServiceClient, ControlServiceConfig},
     message::FrameSet,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFlags, PeerManager},
@@ -35,6 +35,7 @@ use tari_storage::{
     LMDBWrapper,
 };
 use tari_utilities::thread_join::ThreadJoinWithTimeout;
+
 fn make_peer_manager(peers: Vec<Peer>, database: LMDBDatabase) -> Arc<PeerManager> {
     Arc::new(
         factories::peer_manager::create()
@@ -69,7 +70,6 @@ fn clean_up_datastore(name: &str) {
 
 fn setup(
     database_name: &str,
-    peer_conn_config: PeerConnectionConfig,
     message_sink_sender: Sender<FrameSet>,
 ) -> (ZmqContext, Arc<NodeIdentity>, Arc<PeerManager>, Arc<ConnectionManager>)
 {
@@ -80,7 +80,6 @@ fn setup(
     let peer_manager = make_peer_manager(vec![], database);
     let connection_manager = factories::connection_manager::create()
         .with_context(context.clone())
-        .with_peer_connection_config(peer_conn_config)
         .with_peer_manager(Arc::clone(&peer_manager))
         .with_message_sink_sender(message_sink_sender)
         .build()
@@ -95,10 +94,8 @@ fn request_connection() {
     let database_name = "control_service_request_connection";
 
     let (message_sink_tx, _message_sink_rx) = channel(10);
-    let peer_conn_config = PeerConnectionConfig { ..Default::default() };
 
-    let (context, node_identity_a, peer_manager, connection_manager) =
-        setup(database_name, peer_conn_config.clone(), message_sink_tx);
+    let (context, node_identity_a, peer_manager, connection_manager) = setup(database_name, message_sink_tx);
 
     // Setup the destination peer's control service
     let listener_address = factories::net_address::create().build().unwrap();
@@ -183,8 +180,7 @@ fn request_connection() {
 fn ping_pong() {
     let database_name = "control_service_ping_pong";
     let (message_sink_tx, _message_sink_rx) = channel(10);
-    let (context, node_identity, _, connection_manager) =
-        setup(database_name, PeerConnectionConfig::default(), message_sink_tx);
+    let (context, node_identity, _, connection_manager) = setup(database_name, message_sink_tx);
 
     let listener_address = factories::net_address::create().build().unwrap();
     let service = ControlService::new(context.clone(), Arc::clone(&node_identity), ControlServiceConfig {
