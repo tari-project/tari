@@ -22,6 +22,6 @@
 
 pub mod output_manager_service;
 pub mod support;
-pub mod text_message_service;
-pub mod transaction_service;
-pub mod wallet;
+// pub mod text_message_service;
+// pub mod transaction_service;
+// pub mod wallet;

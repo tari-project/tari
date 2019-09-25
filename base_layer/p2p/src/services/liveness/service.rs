@@ -22,7 +22,7 @@
 
 use super::{error::LivenessError, state::LivenessState, LivenessRequest, LivenessResponse};
 use crate::{
-    domain_subscriber::DomainMessage,
+    domain_message::DomainMessage,
     services::{comms_outbound::CommsOutboundHandle, liveness::messages::PingPong},
     tari_message::{NetMessage, TariMessageType},
 };
@@ -107,7 +107,7 @@ where
         match msg.inner() {
             PingPong::Ping => {
                 self.state.inc_pings_received();
-                self.send_pong(msg.origin_source).await.unwrap();
+                self.send_pong(msg.origin_pubkey).await.unwrap();
                 self.state.inc_pongs_sent();
             },
             PingPong::Pong => {
@@ -176,8 +176,9 @@ mod test {
     use futures::{channel::mpsc, executor::LocalPool, stream, task::SpawnExt};
     use rand::rngs::OsRng;
     use tari_comms::{
+        connection::NetAddress,
         outbound_message_service::OutboundRequest,
-        peer_manager::{NodeId, PeerNodeIdentity},
+        peer_manager::{NodeId, Peer, PeerFlags},
     };
     use tari_crypto::keys::PublicKey;
     use tari_service_framework::reply_channel;
@@ -256,10 +257,15 @@ mod test {
     fn create_dummy_message<T>(inner: T) -> DomainMessage<T> {
         let mut rng = OsRng::new().unwrap();
         let (_, pk) = CommsPublicKey::random_keypair(&mut rng);
-        let peer_source = PeerNodeIdentity::new(NodeId::from_key(&pk).unwrap(), pk.clone());
+        let peer_source = Peer::new(
+            pk.clone(),
+            NodeId::from_key(&pk).unwrap(),
+            Vec::<NetAddress>::new().into(),
+            PeerFlags::empty(),
+        );
         DomainMessage {
-            origin_source: peer_source.public_key.clone(),
-            peer_source,
+            origin_pubkey: peer_source.public_key.clone(),
+            source_peer: peer_source,
             inner,
         }
     }

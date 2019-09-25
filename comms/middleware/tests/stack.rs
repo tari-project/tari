@@ -25,7 +25,7 @@ use rand::rngs::OsRng;
 use std::sync::Arc;
 use tari_comms::{
     connection::NetAddress,
-    message::{Message, MessageEnvelopeHeader, MessageFlags, MessageHeader, NodeDestination},
+    message::{InboundMessage, Message, MessageEnvelopeHeader, MessageFlags, MessageHeader, NodeDestination},
     outbound_message_service::{OutboundRequest, OutboundServiceRequester},
     peer_manager::{peer_storage::PeerStorage, NodeIdentity, Peer, PeerFlags, PeerManager},
     types::CommsDatabase,
@@ -33,8 +33,7 @@ use tari_comms::{
 use tari_comms_middleware::{
     encryption::{encrypt, generate_ecdh_secret, DecryptionLayer},
     forward::ForwardLayer,
-    inbound_message::InboundMessage,
-    pubsub::pubsub_service,
+    pubsub::pubsub_connector,
 };
 use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
 use tari_test_utils::random;
@@ -57,7 +56,7 @@ pub fn make_inbound_message(node_identity: &NodeIdentity, message: Vec<u8>, flag
         ),
         MessageEnvelopeHeader {
             version: 0,
-            origin_source: node_identity.identity.public_key.clone(),
+            origin_pubkey: node_identity.identity.public_key.clone(),
             peer_source: node_identity.identity.public_key.clone(),
             destination: NodeDestination::Unknown,
             origin_signature: Vec::new(),
@@ -91,7 +90,7 @@ fn create_peer_storage(tmpdir: &TempDir, database_name: &str, peers: Vec<Peer>) 
 fn stack_unencrypted() {
     let node_identity = Arc::new(make_node_identity());
     let rt = Runtime::new().unwrap();
-    let (pubsub_service, subscription_factory) = pubsub_service(rt.executor(), 1);
+    let (pubsub_service, subscription_factory) = pubsub_connector(rt.executor(), 1);
 
     let tmpdir = TempDir::new(random::string(8).as_str()).unwrap();
     let database_name = "middleware_stack";
@@ -119,7 +118,7 @@ fn stack_unencrypted() {
     let msg = rt.block_on(async move {
         stack.call(inbound_message).await.unwrap();
         let msg = subscriber.next().await.unwrap();
-        msg.message.deserialize_message::<String>().unwrap()
+        msg.deserialize_message::<String>().unwrap()
     });
 
     assert_eq!(msg, "secret");
@@ -128,7 +127,7 @@ fn stack_unencrypted() {
 #[test]
 fn stack_encrypted() {
     let rt = Runtime::new().unwrap();
-    let (pubsub_service, subscription_factory) = pubsub_service(rt.executor(), 1);
+    let (pubsub_service, subscription_factory) = pubsub_connector(rt.executor(), 1);
 
     let node_identity = Arc::new(make_node_identity());
     let tmpdir = TempDir::new(random::string(8).as_str()).unwrap();
@@ -160,7 +159,7 @@ fn stack_encrypted() {
     let msg = rt.block_on(async move {
         stack.call(inbound_message).await.unwrap();
         let msg = subscriber.next().await.unwrap();
-        msg.message.deserialize_message::<String>().unwrap()
+        msg.deserialize_message::<String>().unwrap()
     });
 
     assert_eq!(msg, "secret");
@@ -169,7 +168,7 @@ fn stack_encrypted() {
 #[test]
 fn stack_forward() {
     let rt = Runtime::new().unwrap();
-    let (pubsub_service, _) = pubsub_service::<()>(rt.executor(), 1);
+    let (pubsub_service, _) = pubsub_connector::<()>(rt.executor(), 1);
 
     let node_identity = Arc::new(make_node_identity());
     let tmpdir = TempDir::new(random::string(8).as_str()).unwrap();

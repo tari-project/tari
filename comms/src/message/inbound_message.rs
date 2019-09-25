@@ -21,9 +21,8 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    message::{message::Message, NodeDestination},
-    peer_manager::PeerNodeIdentity,
-    types::CommsPublicKey,
+    message::{Frame, MessageEnvelopeHeader},
+    peer_manager::Peer,
 };
 use serde::{Deserialize, Serialize};
 
@@ -31,27 +30,25 @@ use serde::{Deserialize, Serialize};
 /// message and source identity after the comms level envelope has been removed.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct InboundMessage {
-    pub peer_source: PeerNodeIdentity,
-    pub origin_source: CommsPublicKey,
-    pub message: Message,
-    pub destination: NodeDestination<CommsPublicKey>,
+    /// The message envelope header
+    pub envelope_header: MessageEnvelopeHeader,
+    /// The connected peer which sent this message
+    pub source_peer: Peer,
+    /// The version of the incoming message envelope
+    pub version: u8,
+    /// The raw message envelope
+    pub body: Frame,
 }
 
 impl InboundMessage {
     /// Construct a new InboundMessage that consist of the peer connection information and the received message
     /// header and body
-    pub fn new(
-        peer_source: PeerNodeIdentity,
-        origin_source: CommsPublicKey,
-        destination: NodeDestination<CommsPublicKey>,
-        message: Message,
-    ) -> Self
-    {
+    pub fn new(source_peer: Peer, envelope_header: MessageEnvelopeHeader, version: u8, body: Frame) -> Self {
         Self {
-            peer_source,
-            origin_source,
-            message,
-            destination,
+            source_peer,
+            envelope_header,
+            version,
+            body,
         }
     }
 }

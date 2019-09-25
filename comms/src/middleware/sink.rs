@@ -1,4 +1,4 @@
-// Copyright 2019 The Tari Project
+// Copyright 2019, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,15 +20,36 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod broadcast_strategy;
-mod error;
-mod messages;
-mod service;
-mod worker;
+use crate::middleware::MiddlewareError;
+use futures::{task::Context, Future, Poll, Sink, SinkExt};
+use std::{error::Error, pin::Pin};
+use tower::Service;
 
-pub use self::{
-    broadcast_strategy::BroadcastStrategy,
-    error::OutboundServiceError,
-    messages::{OutboundMessage, OutboundRequest},
-    service::{OutboundMessageService, OutboundServiceConfig, OutboundServiceRequester},
-};
+/// A middleware which forwards and messages it gets to the given Sink
+pub struct SinkMiddleware<TSink>(TSink);
+
+impl<TSink> SinkMiddleware<TSink> {
+    pub fn new(sink: TSink) -> Self {
+        SinkMiddleware(sink)
+    }
+}
+
+impl<T, TSink> Service<T> for SinkMiddleware<TSink>
+where
+    TSink: Sink<T> + Unpin + Clone + 'static,
+    TSink::Error: Error + Send + 'static,
+{
+    type Error = MiddlewareError;
+    type Response = ();
+
+    type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
+
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Pin::new(&mut self.0).poll_ready(cx).map_err(Into::into)
+    }
+
+    fn call(&mut self, item: T) -> Self::Future {
+        let mut sink = self.0.clone();
+        async move { sink.send(item).await.map_err(Into::into) }
+    }
+}

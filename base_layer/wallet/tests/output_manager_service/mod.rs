@@ -26,7 +26,7 @@ use crate::support::{
 };
 use chrono::Duration as ChronoDuration;
 use rand::RngCore;
-use std::{thread, time::Duration};
+use std::{sync::Arc, thread, time::Duration};
 use tari_comms::peer_manager::NodeIdentity;
 use tari_core::{
     consensus::ConsensusRules,
@@ -42,6 +42,7 @@ use tari_crypto::{
     range_proof::RangeProofService,
 };
 use tari_p2p::sync_services::{ServiceExecutor, ServiceRegistry};
+use tari_pubsub::pubsub_channel;
 use tari_utilities::ByteArray;
 use tari_wallet::output_manager_service::{error::OutputManagerError, output_manager_service::OutputManagerService};
 use tokio::runtime::Runtime;
@@ -309,18 +310,19 @@ fn test_api() {
     let services = ServiceRegistry::new().register(oms);
 
     // The Service Executor needs a comms stack even though the OMS doesn't use the comms stack.
-    let node_1_identity = NodeIdentity::random(&mut rng, "127.0.0.1:32563".parse().unwrap()).unwrap();
+    let node_1_identity = Arc::new(NodeIdentity::random(&mut rng, "127.0.0.1:32563".parse().unwrap()).unwrap());
     let node_1_database_name = "node_1_output_manager_service_api_test"; // Note: every test should have unique database
     let node_1_datastore = init_datastore(node_1_database_name).unwrap();
     let node_1_peer_database = node_1_datastore.get_handle(node_1_database_name).unwrap();
     let comms = setup_comms_services(
         runtime.executor(),
-        node_1_identity.clone(),
+        Arc::clone(&node_1_identity),
         Vec::new(),
         node_1_peer_database,
     );
 
-    let executor = ServiceExecutor::execute(&comms, services);
+    let (_publisher, topic_subscriber) = pubsub_channel(1);
+    let executor = ServiceExecutor::execute(&comms, services, Arc::new(topic_subscriber));
 
     assert_eq!(api.get_balance().unwrap(), MicroTari::from(0));
 

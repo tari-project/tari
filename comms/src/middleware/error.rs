@@ -20,38 +20,28 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// TODO: This is a temporary copy of what InboundMessage will become.
-//      Remove this in the comms refactor
+use std::{error::Error, fmt};
 
-use serde::{Deserialize, Serialize};
-use tari_comms::{
-    message::{Frame, MessageEnvelopeHeader},
-    peer_manager::Peer,
-};
-
-/// The InboundMessage is the container that will be dispatched to the domain handlers. It contains the received
-/// message and source identity after the comms level envelope has been removed.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct InboundMessage {
-    /// The message envelope header
-    pub envelope_header: MessageEnvelopeHeader,
-    /// The connected peer which sent this message
-    pub source_peer: Peer,
-    /// The version of the incoming message envelope
-    pub version: u8,
-    /// The raw message envelope
-    pub body: Frame,
+pub struct MiddlewareError {
+    inner: Box<dyn Error + Send>,
 }
 
-impl InboundMessage {
-    /// Construct a new InboundMessage that consist of the peer connection information and the received message
-    /// header and body
-    pub fn new(source_peer: Peer, envelope_header: MessageEnvelopeHeader, version: u8, body: Frame) -> Self {
-        Self {
-            source_peer,
-            envelope_header,
-            version,
-            body,
-        }
+impl<T> From<T> for MiddlewareError
+where T: Error + Send + 'static
+{
+    fn from(err: T) -> Self {
+        Self { inner: Box::new(err) }
+    }
+}
+
+impl fmt::Display for MiddlewareError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.inner)
+    }
+}
+
+impl fmt::Debug for MiddlewareError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self.inner)
     }
 }

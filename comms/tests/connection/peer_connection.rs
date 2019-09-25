@@ -147,8 +147,7 @@ fn connection_out() {
 
     let frames: Vec<FrameSet> = block_on(consumer_rx.take(1).collect());
     assert_eq!(conn_id.to_vec(), frames[0][0]);
-    assert_eq!(vec![1u8], frames[0][1]);
-    assert_eq!(vec![123u8], frames[0][2]);
+    assert_eq!(vec![123u8], frames[0][1]);
 }
 
 #[test]

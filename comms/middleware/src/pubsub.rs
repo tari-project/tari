@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{inbound_connector::InboundDomainConnector, message::DomainMessage};
+use crate::{inbound_connector::InboundDomainConnector, message::PeerMessage};
 use futures::{channel::mpsc, FutureExt, StreamExt};
 use log::*;
 use std::sync::Arc;
@@ -29,13 +29,16 @@ use tokio::runtime::TaskExecutor;
 
 const LOG_TARGET: &'static str = "comms::middleware::pubsub";
 
+/// Alias for a pubsub-type domain connector
+pub type PubsubDomainConnector<MType> = InboundDomainConnector<MType, mpsc::Sender<Arc<PeerMessage<MType>>>>;
+
 /// Connects `InboundDomainConnector` to a `tari_pubsub::TopicPublisher` through a buffered channel
-pub fn pubsub_service<MType>(
+pub fn pubsub_connector<MType>(
     executor: TaskExecutor,
     buf_size: usize,
 ) -> (
-    InboundDomainConnector<MType, mpsc::Sender<Arc<DomainMessage<MType>>>>,
-    TopicSubscriptionFactory<MType, Arc<DomainMessage<MType>>>,
+    PubsubDomainConnector<MType>,
+    TopicSubscriptionFactory<MType, Arc<PeerMessage<MType>>>,
 )
 where
     MType: Eq + Sync + Send + Clone + 'static,
@@ -46,7 +49,7 @@ where
     // Spawn a task which forwards messages from the pubsub service to the TopicPublisher
     let forwarder = receiver
         // Map DomainMessage into a TopicPayload
-        .map(|msg: Arc<DomainMessage<MType>>| Ok(TopicPayload::new(msg.message_header.message_type.clone(), msg)))
+        .map(|msg: Arc<PeerMessage<MType>>| Ok(TopicPayload::new(msg.message_header.message_type.clone(), msg)))
         // Forward TopicPayloads to the publisher
         .forward(publisher)
         // Log error and return unit

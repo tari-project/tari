@@ -1,4 +1,4 @@
-// Copyright 2019 The Tari Project
+// Copyright 2019, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,15 +20,22 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod broadcast_strategy;
-mod error;
-mod messages;
-mod service;
-mod worker;
+use tari_comms::{peer_manager::Peer, types::CommsPublicKey};
 
-pub use self::{
-    broadcast_strategy::BroadcastStrategy,
-    error::OutboundServiceError,
-    messages::{OutboundMessage, OutboundRequest},
-    service::{OutboundMessageService, OutboundServiceConfig, OutboundServiceRequester},
-};
+/// Wrapper around a received message. Provides source peer and origin information
+#[derive(Debug, Clone)]
+pub struct DomainMessage<T> {
+    pub source_peer: Peer,
+    pub origin_pubkey: CommsPublicKey,
+    pub inner: T,
+}
+
+impl<T> DomainMessage<T> {
+    pub fn inner(&self) -> &T {
+        &self.inner
+    }
+
+    pub fn into_inner(self) -> T {
+        self.inner
+    }
+}

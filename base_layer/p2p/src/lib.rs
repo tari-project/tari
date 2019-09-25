@@ -20,6 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+// Needed to make futures::select! work
 #![recursion_limit = "256"]
 // Used to eliminate the need for boxing futures in many cases.
 // Tracking issue: https://github.com/rust-lang/rust/issues/63063
@@ -32,6 +33,7 @@ mod consts;
 // TODO Put these back in after Futures Comms stack refactor
 // pub mod saf_service;
 // pub mod dht_service;
+pub mod domain_message;
 pub mod domain_subscriber;
 pub mod initialization;
 pub mod peer;

@@ -53,7 +53,6 @@ use std::{
     thread::{self, JoinHandle},
     time::Duration,
 };
-use tari_utilities::message_format::MessageFormat;
 
 const LOG_TARGET: &str = "comms::connection::peer_connection::worker";
 
@@ -488,8 +487,6 @@ impl PeerConnectionWorker {
     fn construct_consumer_payload(&self, frames: FrameSet) -> FrameSet {
         let mut payload = Vec::with_capacity(2 + frames.len());
         payload.push(self.context.id.clone().into_inner());
-        let forwardable = true;
-        payload.extend(forwardable.to_binary());
         payload.extend_from_slice(&frames);
         payload
     }

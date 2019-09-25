@@ -36,7 +36,7 @@ use std::{fs, io, sync::Arc, thread, time::Duration};
 use tari_comms::{
     connection::NetAddress,
     control_service::ControlServiceConfig,
-    peer_manager::Peer,
+    peer_manager::{NodeIdentity, Peer},
     types::{CommsPublicKey, CommsSecretKey},
 };
 use tari_crypto::keys::PublicKey;
@@ -47,6 +47,7 @@ use tari_wallet::{
     wallet::WalletConfig,
     Wallet,
 };
+
 const LOG_TARGET: &str = "applications::cli_text_messenger";
 
 #[derive(Debug, Default, Deserialize)]
@@ -245,6 +246,9 @@ pub fn main() {
     };
 
     info!(target: LOG_TARGET, "Local Net Address: {:?}", local_net_address);
+    let node_identity = NodeIdentity::new(secret_key, public_key.clone(), local_net_address)
+        .map(Arc::new)
+        .unwrap();
 
     let config = WalletConfig {
         comms: CommsConfig {
@@ -255,12 +259,11 @@ pub fn main() {
             },
             socks_proxy_address: None,
             host: "0.0.0.0".parse().unwrap(),
-            public_key: public_key.clone(),
-            secret_key: secret_key.clone(),
-            public_address: local_net_address,
+            node_identity,
             datastore_path: settings.data_path.unwrap(),
             peer_database_name: public_key.to_hex(),
         },
+        inbound_message_buffer_size: 100,
         public_key: public_key.clone(),
         database_path,
     };

@@ -23,7 +23,7 @@
 use derive_error::Error;
 use diesel::result::{ConnectionError as DieselConnectionError, Error as DieselError};
 use tari_comms::{
-    builder::CommsServicesError,
+    builder::CommsError,
     connection::NetAddressError,
     message::MessageError,
     outbound_message_service::OutboundServiceError,
@@ -37,7 +37,7 @@ pub enum TextMessageError {
     MessageError(MessageError),
     OutboundError(OutboundServiceError),
     ServiceError(ServiceError),
-    CommsServicesError(CommsServicesError),
+    CommsServicesError(CommsError),
     HexError(HexError),
     DatabaseError(DieselError),
     NetAddressError(NetAddressError),

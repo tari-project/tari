@@ -37,7 +37,7 @@ pub fn setup_text_message_service(
     peers: Vec<NodeIdentity>,
     peer_database: LMDBDatabase,
     database_path: String,
-) -> (ServiceExecutor, Arc<TextMessageServiceApi>, CommsNode<TariMessageType>)
+) -> (ServiceExecutor, Arc<TextMessageServiceApi>, CommsNode)
 {
     let tms = TextMessageService::new(node_identity.identity.public_key.clone(), database_path);
     let tms_api = tms.get_api();

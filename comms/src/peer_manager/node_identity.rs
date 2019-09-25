@@ -118,6 +118,14 @@ impl NodeIdentity {
         )
         .unwrap()
     }
+
+    pub fn node_id(&self) -> &NodeId {
+        &self.identity.node_id
+    }
+
+    pub fn public_key(&self) -> &CommsPublicKey {
+        &self.identity.public_key
+    }
 }
 
 impl From<NodeIdentity> for Peer {

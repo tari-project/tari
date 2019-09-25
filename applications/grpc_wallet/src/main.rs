@@ -31,7 +31,7 @@ use std::{fs, sync::Arc, time::Duration};
 use tari_comms::{
     connection::NetAddress,
     control_service::ControlServiceConfig,
-    peer_manager::Peer,
+    peer_manager::{NodeIdentity, Peer},
     types::{CommsPublicKey, CommsSecretKey},
 };
 use tari_crypto::keys::PublicKey;
@@ -231,6 +231,11 @@ pub fn main() {
 
     info!(target: LOG_TARGET, "Local Net Address: {:?}", local_net_address);
 
+    let peer_database_name = public_key.to_hex();
+    let node_identity = NodeIdentity::new(secret_key, public_key.clone(), local_net_address)
+        .map(Arc::new)
+        .unwrap();
+
     let config = WalletConfig {
         comms: CommsConfig {
             control_service: ControlServiceConfig {
@@ -240,13 +245,12 @@ pub fn main() {
             },
             socks_proxy_address: None,
             host: "0.0.0.0".parse().unwrap(),
-            public_key: public_key.clone(),
-            secret_key: secret_key.clone(),
-            public_address: local_net_address,
+            node_identity,
             datastore_path: settings.data_path.unwrap(),
-            peer_database_name: public_key.to_hex(),
+            peer_database_name,
         },
-        public_key: public_key.clone(),
+        inbound_message_buffer_size: 100,
+        public_key,
         database_path,
     };
 

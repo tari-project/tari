@@ -163,9 +163,7 @@ impl OutboundMessageService {
             worker_shutdown_tx,
         }
     }
-}
 
-impl OutboundMessageService {
     pub async fn start(mut self) {
         self.start_outbound_worker();
 

@@ -24,11 +24,11 @@ use crate::text_message_service::{TextMessageService, TextMessageServiceApi};
 use derive_error::Error;
 use std::sync::Arc;
 use tari_comms::{builder::CommsNode, types::CommsPublicKey};
+use tari_comms_middleware::pubsub::pubsub_connector;
 use tari_p2p::{
     initialization::{initialize_comms, CommsConfig, CommsInitializationError},
     ping_pong::{PingPongService, PingPongServiceApi},
     sync_services::{ServiceExecutor, ServiceRegistry},
-    tari_message::TariMessageType,
 };
 use tokio::runtime::{Runtime, TaskExecutor};
 
@@ -40,6 +40,7 @@ pub enum WalletError {
 #[derive(Clone)]
 pub struct WalletConfig {
     pub comms: CommsConfig,
+    pub inbound_message_buffer_size: usize,
     pub public_key: CommsPublicKey,
     pub database_path: String,
 }
@@ -50,7 +51,7 @@ pub struct Wallet {
     runtime: Runtime,
     pub ping_pong_service: Arc<PingPongServiceApi>,
     pub text_message_service: Arc<TextMessageServiceApi>,
-    pub comms_services: Arc<CommsNode<TariMessageType>>,
+    pub comms_services: Arc<CommsNode>,
     pub service_executor: ServiceExecutor,
     pub public_key: CommsPublicKey,
 }
@@ -68,8 +69,11 @@ impl Wallet {
             .register(ping_pong_service)
             .register(text_message_service);
 
-        let comms_services = initialize_comms(runtime.executor(), config.comms.clone())?;
-        let service_executor = ServiceExecutor::execute(&comms_services, registry);
+        let (publisher, subscription_factory) =
+            pubsub_connector(runtime.executor(), config.inbound_message_buffer_size);
+
+        let comms_services = initialize_comms(runtime.executor(), config.comms.clone(), publisher)?;
+        let service_executor = ServiceExecutor::execute(&comms_services, registry, Arc::new(subscription_factory));
 
         Ok(Wallet {
             runtime,

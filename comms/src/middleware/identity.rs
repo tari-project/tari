@@ -20,28 +20,29 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{error::Error, fmt};
+use crate::middleware::MiddlewareError;
+use futures::{future, task::Context, Poll};
+use tower::Service;
 
-pub struct MiddlewareError {
-    inner: Box<dyn Error>,
-}
+/// A middleware which does nothing
+pub struct IdentityMiddleware;
 
-impl<T> From<T> for MiddlewareError
-where T: Error + 'static
-{
-    fn from(err: T) -> Self {
-        Self { inner: Box::new(err) }
+impl IdentityMiddleware {
+    pub fn new() -> Self {
+        IdentityMiddleware
     }
 }
 
-impl fmt::Display for MiddlewareError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.inner)
-    }
-}
+impl<T> Service<T> for IdentityMiddleware {
+    type Error = MiddlewareError;
+    type Future = future::Ready<Result<Self::Response, Self::Error>>;
+    type Response = ();
 
-impl fmt::Debug for MiddlewareError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}", self.inner)
+    fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn call(&mut self, _: T) -> Self::Future {
+        future::ready(Ok(()))
     }
 }

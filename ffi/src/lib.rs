@@ -34,7 +34,7 @@ use std::{
 use tari_comms::{
     connection::{net_address::ip::SocketAddress, NetAddress},
     control_service::ControlServiceConfig,
-    peer_manager::Peer,
+    peer_manager::{NodeIdentity, Peer},
     types::{CommsPublicKey, CommsSecretKey},
 };
 use tari_crypto::keys::PublicKey;
@@ -351,6 +351,10 @@ pub unsafe extern "C" fn create_wallet(
 
     let secret_key = CommsSecretKey::from_hex((*settings_p).secret_key.clone().unwrap().as_str()).unwrap();
     let public_key = CommsPublicKey::from_secret_key(&secret_key);
+    let peer_database_name = public_key.to_hex();
+    let node_identity = NodeIdentity::new(secret_key, public_key.clone(), local_net_address)
+        .map(Arc::new)
+        .unwrap();
 
     let config = WalletConfig {
         comms: CommsConfig {
@@ -361,13 +365,12 @@ pub unsafe extern "C" fn create_wallet(
             },
             socks_proxy_address: socks.clone(),
             host: host_address.parse().unwrap(),
-            public_key: public_key.clone(),
-            secret_key: secret_key.clone(),
-            public_address: local_net_address,
+            node_identity,
             datastore_path: (*settings_p).data_path.clone().unwrap(),
-            peer_database_name: public_key.to_hex(),
+            peer_database_name,
         },
-        public_key: public_key.clone(),
+        inbound_message_buffer_size: 100,
+        public_key,
         database_path: (*settings_p).database_path.clone().unwrap(),
     };
 

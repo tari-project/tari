@@ -28,16 +28,15 @@ use tari_comms::{
     peer_manager::{NodeIdentity, Peer},
     CommsBuilder,
 };
-use tari_p2p::tari_message::TariMessageType;
 use tari_storage::{lmdb_store::LMDBDatabase, LMDBWrapper};
 use tokio::runtime::TaskExecutor;
 
 pub fn setup_comms_services(
     executor: TaskExecutor,
-    node_identity: NodeIdentity,
+    node_identity: Arc<NodeIdentity>,
     peers: Vec<NodeIdentity>,
     peer_database: LMDBDatabase,
-) -> CommsNode<TariMessageType>
+) -> CommsNode
 {
     let peer_database = LMDBWrapper::new(Arc::new(peer_database));
     let comms = CommsBuilder::new(executor)
