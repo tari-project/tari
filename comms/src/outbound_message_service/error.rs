@@ -38,4 +38,6 @@ pub enum OutboundServiceError {
     PeerManagerError(PeerManagerError),
     ConnectionManagerError(ConnectionManagerError),
     ConnectionError(ConnectionError),
+    #[error(msg_embedded, non_std, no_from)]
+    MiddlewareError(String),
 }

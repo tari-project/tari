@@ -23,6 +23,7 @@
 use crate::{
     connection::PeerConnection,
     connection_manager::ConnectionManagerRequester,
+    middleware::MiddlewareError,
     outbound_message_service::{
         error::OutboundServiceError,
         messages::OutboundMessage,
@@ -46,6 +47,7 @@ use std::{
     time::{Duration, Instant},
 };
 use tokio::timer;
+use tower::{Service, ServiceExt};
 
 const LOG_TARGET: &'static str = "comms::outbound_message_service::worker";
 
@@ -102,20 +104,24 @@ impl DialState {
 }
 
 /// Responsible for dialing peers and sending queued messages
-pub struct OutboundMessageWorker<TMsgStream> {
+pub struct OutboundMessageWorker<TMiddleware, TMsgStream> {
     config: OutboundServiceConfig,
     connection_manager: ConnectionManagerRequester,
     dial_cancel_signals: HashMap<NodeId, oneshot::Sender<()>>,
     incoming_message_stream: TMsgStream,
+    middleware: TMiddleware,
     pending_connect_requests: HashMap<NodeId, Vec<OutboundMessage>>,
     shutdown_rx: Option<oneshot::Receiver<()>>,
 }
 
-impl<TMsgStream> OutboundMessageWorker<TMsgStream>
-where TMsgStream: Stream<Item = Vec<OutboundMessage>> + FusedStream + Unpin
+impl<TMiddleware, TMsgStream> OutboundMessageWorker<TMiddleware, TMsgStream>
+where
+    TMsgStream: Stream<Item = Vec<OutboundMessage>> + FusedStream + Unpin,
+    TMiddleware: Service<OutboundMessage, Response = Option<OutboundMessage>, Error = MiddlewareError>, /* Send + Unpin + 'static */
 {
     pub fn new(
         config: OutboundServiceConfig,
+        middleware: TMiddleware,
         incoming_message_stream: TMsgStream,
         connection_manager: ConnectionManagerRequester,
         shutdown_rx: oneshot::Receiver<()>,
@@ -125,6 +131,7 @@ where TMsgStream: Stream<Item = Vec<OutboundMessage>> + FusedStream + Unpin
             config,
             connection_manager,
             incoming_message_stream,
+            middleware,
             pending_connect_requests: HashMap::new(),
             shutdown_rx: Some(shutdown_rx),
             dial_cancel_signals: HashMap::new(),
@@ -159,7 +166,7 @@ where TMsgStream: Stream<Item = Vec<OutboundMessage>> + FusedStream + Unpin
                 maybe_result = pending_connects.select_next_some() => {
                     // maybe_result could be None if the connection attempt was canceled
                     if let Some((state, result)) = maybe_result {
-                        if let Some(mut state) = self.handle_connect_result(state, result) {
+                        if let Some(mut state) = self.handle_connect_result(state, result).await {
                             if state.attempts >= self.config.max_attempts {
                                 warn!(target: LOG_TARGET, "Failed to connect to NodeId={}", state.node_id);
                             } else {
@@ -234,7 +241,7 @@ where TMsgStream: Stream<Item = Vec<OutboundMessage>> + FusedStream + Unpin
         pending_node_ids
     }
 
-    fn handle_connect_result(
+    async fn handle_connect_result(
         &mut self,
         state: DialState,
         connect_result: Result<Arc<PeerConnection>, OutboundServiceError>,
@@ -242,7 +249,7 @@ where TMsgStream: Stream<Item = Vec<OutboundMessage>> + FusedStream + Unpin
     {
         match connect_result {
             Ok(conn) => {
-                if let Err(err) = self.handle_new_connection(&state.node_id, conn) {
+                if let Err(err) = self.handle_new_connection(&state.node_id, conn).await {
                     error!(
                         target: LOG_TARGET,
                         "Error when sending messages for new connection: {:?}", err
@@ -257,7 +264,7 @@ where TMsgStream: Stream<Item = Vec<OutboundMessage>> + FusedStream + Unpin
         }
     }
 
-    fn handle_new_connection(
+    async fn handle_new_connection(
         &mut self,
         node_id: &NodeId,
         conn: Arc<PeerConnection>,
@@ -267,12 +274,28 @@ where TMsgStream: Stream<Item = Vec<OutboundMessage>> + FusedStream + Unpin
         match self.pending_connect_requests.remove(node_id) {
             Some(messages) => {
                 for message in messages {
-                    conn.send(message.message_frames().clone())
-                        .map_err(OutboundServiceError::ConnectionError)?;
+                    self.middleware
+                        .ready()
+                        .await
+                        .map_err(|err| OutboundServiceError::MiddlewareError(format!("{}", err)))?;
+                    match self
+                        .middleware
+                        .call(message)
+                        .await
+                        .map_err(|err| OutboundServiceError::MiddlewareError(format!("{}", err)))?
+                    {
+                        Some(message) => {
+                            conn.send(message.message_frames().clone())
+                                .map_err(OutboundServiceError::ConnectionError)?;
+                        },
+                        None => {
+                            debug!(target: LOG_TARGET, "Middleware discarded outbound message");
+                        },
+                    }
                 }
             },
             None => {
-                // This should never happen
+                // Shouldn't happen: no pending messages to send but we've connected to a peer?
                 warn!(
                     target: LOG_TARGET,
                     "No messages to send for new connection to NodeId {}", node_id
@@ -290,6 +313,7 @@ mod test {
     use crate::{
         connection::peer_connection,
         connection_manager::actor::ConnectionManagerRequest,
+        middleware::IdentityOutboundMiddleware,
         test_utils::node_id,
     };
     use futures::{channel::mpsc, SinkExt};
@@ -310,6 +334,7 @@ mod test {
 
         let service = OutboundMessageWorker::new(
             OutboundServiceConfig::default(),
+            IdentityOutboundMiddleware::new(),
             new_message_rx,
             conn_manager,
             shutdown_rx,

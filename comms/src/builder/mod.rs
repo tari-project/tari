@@ -25,7 +25,7 @@
 //! The [CommsBuilder] provides a simple builder API for getting Tari comms p2p messaging up and running.
 //!
 //! ```edition2018
-//! # use tari_comms::builder::{CommsBuilder, CommsServices};
+//! # use tari_comms::builder::{CommsBuilder, CommsParts};
 //! # use tari_comms::control_service::ControlServiceConfig;
 //! # use tari_comms::peer_manager::NodeIdentity;
 //! # use std::sync::Arc;
@@ -54,7 +54,7 @@
 //! let (sender, _receiver) = mpsc::channel(100);
 //! let runtime = Runtime::new().unwrap();
 //! let services = CommsBuilder::new(runtime.executor())
-//!    .with_inbound_middleware(|_: CommsServices| SinkMiddleware::new(sender))
+//!    .with_inbound_middleware(|_: CommsParts| SinkMiddleware::new(sender))
 //!    // This enables the control service - allowing another peer to connect to this node
 //!    .configure_control_service(ControlServiceConfig::default())
 //!    .with_node_identity(Arc::new(my_node_identity))
@@ -75,4 +75,4 @@
 
 mod builder;
 
-pub use self::builder::{CommsBuilder, CommsBuilderError, CommsError, CommsNode, CommsServices};
+pub use self::builder::{CommsBuilder, CommsBuilderError, CommsError, CommsNode, CommsParts};

@@ -24,6 +24,7 @@ use super::messages::OutboundRequest;
 use crate::{
     connection_manager::ConnectionManagerRequester,
     message::{Frame, Message, MessageEnvelope, MessageFlags, MessageHeader, NodeDestination},
+    middleware::MiddlewareError,
     outbound_message_service::{
         broadcast_strategy::BroadcastStrategy,
         error::OutboundServiceError,
@@ -41,6 +42,7 @@ use log::*;
 use std::{error::Error, sync::Arc};
 use tari_utilities::message_format::MessageFormat;
 use tokio::runtime::TaskExecutor;
+use tower::Service;
 
 const LOG_TARGET: &'static str = "comms::outbound_message_service::service";
 
@@ -129,20 +131,25 @@ where
 
 /// Responsible for constructing messages using a broadcast strategy and passing them on to
 /// the worker task.
-pub struct OutboundMessageService {
+pub struct OutboundMessageService<TMiddleware> {
     executor: TaskExecutor,
     outbound_tx: mpsc::UnboundedSender<Vec<OutboundMessage>>,
     request_rx: mpsc::UnboundedReceiver<OutboundRequest>,
-    worker: Option<OutboundMessageWorker<mpsc::UnboundedReceiver<Vec<OutboundMessage>>>>,
+    worker: Option<OutboundMessageWorker<TMiddleware, mpsc::UnboundedReceiver<Vec<OutboundMessage>>>>,
     peer_manager: Arc<PeerManager>,
     node_identity: Arc<NodeIdentity>,
     worker_shutdown_tx: oneshot::Sender<()>,
 }
 
-impl OutboundMessageService {
+impl<TMiddleware> OutboundMessageService<TMiddleware>
+where
+    TMiddleware: Service<OutboundMessage, Response = Option<OutboundMessage>, Error = MiddlewareError> + Send + 'static, /* Unpin + 'static */
+    TMiddleware::Future: Send,
+{
     pub fn new(
         config: OutboundServiceConfig,
         executor: TaskExecutor,
+        middleware: TMiddleware,
         request_rx: mpsc::UnboundedReceiver<OutboundRequest>,
         peer_manager: Arc<PeerManager>,
         conn_manager: ConnectionManagerRequester,
@@ -151,7 +158,7 @@ impl OutboundMessageService {
     {
         let (outbound_tx, outbound_rx) = mpsc::unbounded();
         let (worker_shutdown_tx, worker_shutdown_rx) = oneshot::channel();
-        let worker = OutboundMessageWorker::new(config, outbound_rx, conn_manager, worker_shutdown_rx);
+        let worker = OutboundMessageWorker::new(config, middleware, outbound_rx, conn_manager, worker_shutdown_rx);
 
         Self {
             executor,
@@ -277,6 +284,7 @@ mod test {
     use crate::{
         connection::NetAddress,
         connection_manager::actor::ConnectionManagerRequest,
+        middleware::IdentityOutboundMiddleware,
         peer_manager::{NodeId, Peer, PeerFlags},
         test_utils::node_identity,
         types::{CommsDatabase, CommsPublicKey},
@@ -306,6 +314,7 @@ mod test {
         let service = OutboundMessageService::new(
             Default::default(),
             rt.executor(),
+            IdentityOutboundMiddleware::new(),
             request_rx,
             peer_manager,
             conn_manager,
@@ -356,6 +365,7 @@ mod test {
         let service = OutboundMessageService::new(
             Default::default(),
             rt.executor(),
+            IdentityOutboundMiddleware::new(),
             request_rx,
             peer_manager,
             conn_manager,
