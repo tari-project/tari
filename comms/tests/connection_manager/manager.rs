@@ -20,14 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    connection_manager::helpers::make_peer_connection_config,
-    support::{
-        factories::{self, TestFactory},
-        helpers::{
-            database::{clean_up_datastore, init_datastore},
-            streams::stream_assert_count,
-        },
+use crate::support::{
+    factories::{self, TestFactory},
+    helpers::{
+        database::{clean_up_datastore, init_datastore},
+        streams::stream_assert_count,
     },
 };
 use futures::channel::mpsc::{channel, Sender};
@@ -83,7 +80,6 @@ fn establish_peer_connection() {
             .with_context(context.clone())
             .with_node_identity(node_B_identity.clone())
             .with_peer_manager(node_B_peer_manager)
-            .with_peer_connection_config(make_peer_connection_config())
             .with_message_sink_sender(consumer_tx_b)
             .build()
             .unwrap(),
@@ -120,7 +116,6 @@ fn establish_peer_connection() {
             .with_context(context.clone())
             .with_node_identity(node_A_identity.clone())
             .with_peer_manager(node_A_peer_manager)
-            .with_peer_connection_config(make_peer_connection_config())
             .with_message_sink_sender(consumer_tx_a)
             .build()
             .unwrap(),
