@@ -20,42 +20,31 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::dht::messages::DhtEnvelope;
-use futures::{Future, Poll};
-use futures_test::futures_core_reexport::task::Context;
+use crate::messages::{DhtEnvelope, DhtInboundMessage};
+use futures::{task::Context, Future, Poll};
 use std::pin::Pin;
-use tari_comms::{message::InboundMessage, peer_manager::error::PeerManagerError::DeserializationError};
+use tari_comms::message::InboundMessage;
 use tari_utilities::message_format::{MessageFormat, MessageFormatError};
-use tower_layer::Layer;
-use tower_service::Service;
-
-pub struct DhtDeserializedMessage {
-    dht_envelope: DhtEnvelope,
-    inbound_message: InboundMessage,
-}
-
-impl DhtDeserializedMessage {
-    pub fn new(inbound_message: InboundMessage, dht_envelope: DhtEnvelope) -> Self {
-        Self {
-            inbound_message,
-            dht_envelope,
-        }
-    }
-}
+use tower::{layer::Layer, Service};
+use tracing::{error, metadata::Level, span, trace, warn, Span};
 
 pub struct DhtDeserialize<S> {
     inner: S,
+    span: tracing::Span,
 }
 
 impl<S> DhtDeserialize<S> {
     pub fn new(service: S) -> Self {
-        Self { inner: service }
+        Self {
+            inner: service,
+            span: span!(Level::TRACE, "comms::dht::deserialize"),
+        }
     }
 }
 
 impl<S> Service<InboundMessage> for DhtDeserialize<S>
 where
-    S: Service<DhtDeserializedMessage, Response = ()> + Clone + Unpin + 'static,
+    S: Service<DhtInboundMessage, Response = ()> + Clone + Unpin + 'static,
     S::Error: From<MessageFormatError>,
 {
     type Error = S::Error;
@@ -68,43 +57,61 @@ where
     }
 
     fn call(&mut self, msg: InboundMessage) -> Self::Future {
-        Deserialize::new(self.inner.clone()).deserialize(msg)
+        let span = self.span.clone();
+        Self::deserialize(self.inner.clone(), msg, span)
+    }
+}
+
+impl<S> DhtDeserialize<S>
+where
+    S: Service<DhtInboundMessage, Response = ()>,
+    S::Error: From<MessageFormatError>,
+{
+    pub async fn deserialize(mut service: S, message: InboundMessage, span: Span) -> Result<(), S::Error> {
+        let _enter = span.enter();
+        trace!("Deserializing InboundMessage");
+        match DhtEnvelope::from_binary(&message.body) {
+            Ok(dht_envelope) => {
+                trace!("Deserialization succeeded. Checking signatures");
+                if !dht_envelope.is_signature_valid() {
+                    // The origin signature is not valid, this message should never have been sent
+                    warn!(
+                        "SECURITY: Origin signature verification failed. Discarding message from NodeId {}",
+                        message.source_peer.node_id
+                    );
+                    return Ok(());
+                }
+
+                trace!("Origin signature validation passed.");
+                service
+                    .call(DhtInboundMessage::new(
+                        dht_envelope.header,
+                        message.source_peer,
+                        message.envelope_header,
+                        dht_envelope.body,
+                    ))
+                    .await
+            },
+            Err(err) => {
+                error!("DHT deserialization failed: {}", err);
+                Err(err.into())
+            },
+        }
     }
 }
 
 pub struct DhtDeserializeLayer;
+
+impl DhtDeserializeLayer {
+    pub fn new() -> Self {
+        DhtDeserializeLayer
+    }
+}
 
 impl<S> Layer<S> for DhtDeserializeLayer {
     type Service = DhtDeserialize<S>;
 
     fn layer(&self, service: S) -> Self::Service {
         DhtDeserialize::new(service)
-    }
-}
-
-struct Deserialize<S> {
-    inner: S,
-}
-
-impl<S> Deserialize<S> {
-    pub fn new(inner: S) -> Self {
-        Self { inner }
-    }
-}
-
-impl<S> Deserialize<S>
-where
-    S: Service<DhtDeserializedMessage, Response = ()>,
-    S::Error: From<MessageFormatError>,
-{
-    pub async fn deserialize(mut self, message: InboundMessage) -> Result<(), S::Error> {
-        match DhtEnvelope::from_binary(&message.body) {
-            Ok(dht_envelope) => {
-                self.inner
-                    .call(DhtDeserializedMessage::new(message, dht_envelope))
-                    .await
-            },
-            Err(err) => Err(err.into()),
-        }
     }
 }

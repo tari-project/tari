@@ -41,10 +41,8 @@ pub fn make_inbound_message(node_identity: &NodeIdentity, message: Vec<u8>, flag
         ),
         MessageEnvelopeHeader {
             version: 0,
-            origin_pubkey: node_identity.identity.public_key.clone(),
-            peer_source: node_identity.identity.public_key.clone(),
+            peer_pubkey: node_identity.identity.public_key.clone(),
             destination: NodeDestination::Unknown,
-            origin_signature: Vec::new(),
             peer_signature: Vec::new(),
             flags,
         },

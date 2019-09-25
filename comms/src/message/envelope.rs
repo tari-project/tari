@@ -35,49 +35,10 @@ use tari_utilities::{ciphers::cipher::Cipher, message_format::MessageFormat};
 
 const FRAMES_PER_MESSAGE: usize = 3;
 
-/// Generate the challenge for the origin signature
-fn origin_challenge(dest: NodeDestination<CommsPublicKey>, mut body: Vec<u8>) -> Result<Vec<u8>, MessageError> {
-    let mut challenge = dest.to_binary().map_err(MessageError::MessageFormatError)?;
-    challenge.append(&mut body);
-    Ok(challenge)
-}
-
-/// Generate the challenge for the peer signature
-fn peer_challenge(origin_signature: Vec<u8>, mut body: Vec<u8>) -> Result<Vec<u8>, MessageError> {
-    let mut challenge = origin_signature;
-    challenge.append(&mut body);
-    Ok(challenge)
-}
-
-/// Generate a signature for the origin that confirms the dest and body
-fn origin_signature(
-    node_identity: &NodeIdentity,
-    dest: NodeDestination<CommsPublicKey>,
-    body: Vec<u8>,
-) -> Result<Vec<u8>, MessageError>
-{
-    let origin_signature = crypto::sign(
-        &mut OsRng::new().unwrap(),
-        node_identity.secret_key.clone(),
-        &origin_challenge(dest, body)?,
-    )
-    .map_err(MessageError::SchnorrSignatureError)?;
-    origin_signature.to_binary().map_err(MessageError::MessageFormatError)
-}
-
 /// Generate a signature for the peer that confirms the origin_source and body
-fn peer_signature(
-    node_identity: &NodeIdentity,
-    origin_signature: Vec<u8>,
-    body: Vec<u8>,
-) -> Result<Vec<u8>, MessageError>
-{
-    let peer_signature = crypto::sign(
-        &mut OsRng::new().unwrap(),
-        node_identity.secret_key.clone(),
-        &peer_challenge(origin_signature, body)?,
-    )
-    .map_err(MessageError::SchnorrSignatureError)?;
+fn peer_signature(node_identity: &NodeIdentity, body: Vec<u8>) -> Result<Vec<u8>, MessageError> {
+    let peer_signature = crypto::sign(&mut OsRng::new().unwrap(), node_identity.secret_key.clone(), &body)
+        .map_err(MessageError::SchnorrSignatureError)?;
     peer_signature.to_binary().map_err(MessageError::MessageFormatError)
 }
 
@@ -86,10 +47,8 @@ fn peer_signature(
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct MessageEnvelopeHeader {
     pub version: u8,
-    pub origin_pubkey: CommsPublicKey,
-    pub peer_source: CommsPublicKey,
+    pub peer_pubkey: CommsPublicKey,
     pub destination: NodeDestination<CommsPublicKey>,
-    pub origin_signature: Vec<u8>,
     pub peer_signature: Vec<u8>,
     pub flags: MessageFlags,
 }
@@ -97,17 +56,8 @@ pub struct MessageEnvelopeHeader {
 impl MessageEnvelopeHeader {
     /// Verify that the signature provided is valid for the given body
     pub fn verify_signatures(&self, body: Frame) -> Result<bool, MessageError> {
-        let origin_verif = crypto::verify(
-            &self.origin_pubkey,
-            self.origin_signature.as_slice(),
-            origin_challenge(self.destination.clone(), body.clone())?,
-        )?;
-        let peer_verif = crypto::verify(
-            &self.peer_source,
-            self.peer_signature.as_slice(),
-            peer_challenge(self.origin_signature.clone(), body)?,
-        )?;
-        Ok(origin_verif && peer_verif)
+        let peer_verif = crypto::verify(&self.peer_pubkey, self.peer_signature.as_slice(), &body)?;
+        Ok(peer_verif)
     }
 }
 
@@ -139,15 +89,12 @@ impl MessageEnvelope {
             body = encrypt_envelope_body(&node_identity.secret_key, &dest_public_key, &body)?
         }
 
-        let origin_signature = origin_signature(node_identity, dest.clone(), body.clone())?;
-        let peer_signature = peer_signature(node_identity, origin_signature.clone(), body.clone())?;
+        let peer_signature = peer_signature(node_identity, body.clone())?;
 
         let header = MessageEnvelopeHeader {
             version: MESSAGE_PROTOCOL_VERSION,
-            origin_pubkey: node_identity.identity.public_key.clone(),
-            peer_source: node_identity.identity.public_key.clone(),
+            peer_pubkey: node_identity.identity.public_key.clone(),
             destination: dest,
-            origin_signature,
             peer_signature,
             flags,
         };
@@ -166,12 +113,8 @@ impl MessageEnvelope {
     ) -> Result<Self, MessageError>
     {
         let mut message_envelope_header = message_envelope.deserialize_header()?;
-        message_envelope_header.peer_source = node_identity.identity.public_key.clone();
-        message_envelope_header.peer_signature = peer_signature(
-            node_identity,
-            message_envelope_header.origin_signature.clone(),
-            message_envelope.body_frame().clone(),
-        )?;
+        message_envelope_header.peer_pubkey = node_identity.identity.public_key.clone();
+        message_envelope_header.peer_signature = peer_signature(node_identity, message_envelope.body_frame().clone())?;
 
         Ok(Self::new(
             vec![WIRE_PROTOCOL_VERSION],
@@ -322,10 +265,8 @@ mod test {
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rand::OsRng::new().unwrap());
         let header = MessageEnvelopeHeader {
             version: 0,
-            origin_pubkey: pk.clone(),
-            peer_source: pk,
+            peer_pubkey: pk,
             destination: NodeDestination::Unknown,
-            origin_signature: vec![0],
             peer_signature: vec![0],
             flags: MessageFlags::ENCRYPTED,
         };
@@ -359,10 +300,8 @@ mod test {
         .unwrap();
         assert_eq!("00", to_hex(envelope.version_frame()));
         let header = MessageEnvelopeHeader::from_binary(envelope.header_frame()).unwrap();
-        assert_eq!(dest_public_key, &header.origin_pubkey);
         assert_eq!(MessageFlags::NONE, header.flags);
         assert_eq!(NodeDestination::Unknown, header.destination);
-        assert!(!header.origin_signature.is_empty());
         assert_eq!(&message_envelope_body_frame, envelope.body_frame());
     }
 
@@ -387,8 +326,7 @@ mod test {
         let peer_envelope = MessageEnvelope::forward_construct(&peer_node_identity, origin_envelope).unwrap();
         let peer_header = MessageEnvelopeHeader::from_binary(peer_envelope.header_frame()).unwrap();
 
-        assert_eq!(peer_header.origin_pubkey, origin_node_identity.identity.public_key);
-        assert_eq!(peer_header.peer_source, peer_node_identity.identity.public_key);
+        assert_eq!(peer_header.peer_pubkey, peer_node_identity.identity.public_key);
         assert_eq!(
             peer_envelope
                 .decrypted_body_frame(
