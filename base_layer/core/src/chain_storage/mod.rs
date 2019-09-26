@@ -32,6 +32,7 @@ mod error;
 mod historical_block;
 mod memory_db;
 mod metadata;
+mod async_db;
 #[cfg(test)]
 mod test;
 

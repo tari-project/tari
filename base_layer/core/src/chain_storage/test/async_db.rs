@@ -19,7 +19,15 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
 
-mod chain_storage;
-mod async_db;
+
+use crate::chain_storage::async_db::AsyncBlockchainDatabase;
+use crate::chain_storage::MemoryDatabase;
+use crate::types::HashDigest;
+
+#[test]
+fn create_async_db() {
+    let db = AsyncBlockchainDatabase::new(MemoryDatabase::<HashDigest>::default());
+    assert!(db.is_ok());
+}
+

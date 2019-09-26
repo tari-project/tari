@@ -19,7 +19,22 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
 
-mod chain_storage;
-mod async_db;
+use crate::chain_storage::{BlockchainBackend, BlockchainDatabase, ChainStorageError};
+
+/// An asynchronous wrapper around a [BlockchainDatabase] instance. Most of the API is retained, but wrapped in a 
+/// non-blocking asynchronous call.
+pub struct AsyncBlockchainDatabase<T> where T: BlockchainBackend {
+    db: BlockchainDatabase<T>    
+}
+
+impl<T> AsyncBlockchainDatabase<T> where T: BlockchainBackend {
+    /// Creates a new `AsyncBlockchainDatabase` using the provided backend.
+    pub fn new(db: T) -> Result<Self, ChainStorageError> {
+        let db = BlockchainDatabase::new(db)?;
+        Ok(AsyncBlockchainDatabase { db })
+    }
+    
+    
+}
+
