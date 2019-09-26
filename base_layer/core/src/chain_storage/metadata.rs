@@ -65,6 +65,11 @@ impl ChainMetadata {
             },
         }
     }
+
+    /// Set the pruning horizon to indicate that the chain is in archival mode (i.e. a pruning horizon of zero)
+    pub fn archival_mode(&mut self) {
+        self.pruning_horizon = 0;
+    }
 }
 
 impl Default for ChainMetadata {
@@ -75,5 +80,44 @@ impl Default for ChainMetadata {
             total_accumulated_difficulty: Difficulty::default(),
             pruning_horizon: 2880,
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::ChainMetadata;
+
+    #[test]
+    fn horizon_block_on_default() {
+        let metadata = ChainMetadata::default();
+        assert_eq!(metadata.horizon_block(), None);
+    }
+
+    #[test]
+    fn horizon_block() {
+        let mut metadata = ChainMetadata::default();
+        metadata.height_of_longest_chain = Some(0);
+        assert_eq!(metadata.horizon_block(), Some(0));
+        metadata.height_of_longest_chain = Some(100);
+        assert_eq!(metadata.horizon_block(), Some(0));
+        metadata.height_of_longest_chain = Some(2880);
+        assert_eq!(metadata.horizon_block(), Some(0));
+        metadata.height_of_longest_chain = Some(2881);
+        assert_eq!(metadata.horizon_block(), Some(1));
+    }
+
+    #[test]
+    fn archival_node() {
+        let mut metadata = ChainMetadata::default();
+        metadata.archival_mode();
+        // Chain is still empty
+        assert_eq!(metadata.horizon_block(), None);
+        // When pruning horizon is zero, the horizon block is always 0, the genesis block
+        metadata.height_of_longest_chain = Some(0);
+        assert_eq!(metadata.horizon_block(), Some(0));
+        metadata.height_of_longest_chain = Some(100);
+        assert_eq!(metadata.horizon_block(), Some(0));
+        metadata.height_of_longest_chain = Some(2881);
+        assert_eq!(metadata.horizon_block(), Some(0));
     }
 }
