@@ -84,7 +84,7 @@ macro_rules! spend {
     };
 
     ($utxos:expr, to: $values:expr) => {
-        spend!($utxos, to:$values, fee:MicroTari(25), lock:0)
+        spend!($utxos, to:$values, fee:25.into(), lock:0)
     };
 }
 

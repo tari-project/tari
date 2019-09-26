@@ -20,10 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::test_utils::sample_blockchains::create_blockchain_db;
+use crate::test_utils::sample_blockchains::create_blockchain_db_no_cut_through;
 
 #[test]
 fn fetch_async_kernel() {
-    let db = create_blockchain_db();
+    let db = create_blockchain_db_no_cut_through();
 }
 

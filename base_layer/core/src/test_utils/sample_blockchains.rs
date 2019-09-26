@@ -37,20 +37,33 @@ use crate::tari_amount::{uT, T};
 ///   A      -> 20_000_000 (B)
 ///              5_000_000 (C)
 ///              1_000_000 (D)
-///              change
+///              change    (H)
 ///              120 fee/g
-///   B     -> 15_000_000
+///   F     -> 15_000_000  (E)
 ///             change
 ///             75 fee/g
 /// Block 3:
-///  C + D  -> 6_000_000 - fee (E)
+///  C + D  -> 6_000_000 - fee
 ///            25 uT fee/g
-///  E + F  -> 40_000_000  (G)
-///            change
+///  E + H  -> 40_000_000  (G)
+///            change      (J)
 ///            100 fee/g
 /// Block 4:
-///
-pub fn create_blockchain_db() -> BlockchainDatabase<MemoryDatabase<HashDigest>> {
+///  B     -> 1_000_000 (4a)
+///        -> 2_000_000 (4b)
+///        -> 3_000_000 (4c)
+///        -> 4_000_000 (4d)
+/// Block 5:
+///  4d + G -> 20_000_000 (5a)
+///         -> 21_000_000 (5b)
+///         -> change     (5c)
+/// 4b      -> 500_000    (6a)
+///         -> 1_300_00   (6b)
+///         -> change     (6c)
+/// J       -> 500_000    (7a)
+///         -> change     (7b)
+
+pub fn create_blockchain_db_no_cut_through() -> BlockchainDatabase<MemoryDatabase<HashDigest>> {
     let db = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
     // Genesis Block
     let (block0, utxo) = create_genesis_block();
@@ -59,14 +72,25 @@ pub fn create_blockchain_db() -> BlockchainDatabase<MemoryDatabase<HashDigest>> 
     let block1 = chain_block(&block0, vec![tx]);
     // Block 2
     let (tx1, utxos_2a, _) = spend!(vec![utxos_1[0].clone()], to: &[20*T, 5*T, 1*T], fee: 120*uT);
-    let (tx2, utxos_2b, _) = spend!(vec![utxos_2a[0].clone()], to: &[15*T], fee: 75*uT);
+    let (tx2, utxos_2b, _) = spend!(vec![utxos_1[1].clone()], to: &[15*T], fee: 75*uT);
     let block2 = chain_block(&block1, vec![tx1, tx2]);
     // Block 3
     let (tx1, utxos_3a, _) = spend!(vec![utxos_2a[1].clone(), utxos_2a[2].clone()], to: &[], fee: 75*uT);
-    let (tx2, utxos_3b, _) = spend!(vec![utxos_3a[0].clone(), utxos_1[1].clone()], to: &[40*T], fee: 100*uT);
+    let (tx2, utxos_3b, _) = spend!(vec![utxos_2b[0].clone(), utxos_2a[3].clone()], to: &[40*T], fee: 100*uT);
+    let block3 = chain_block(&block2, vec![tx1, tx2]);
     // Block 4
+    let (tx1, utxos_4, _) = spend!(vec![utxos_2a[0].clone()], to: &[1*T, 2*T, 3*T, 4*T]);
+    let block4 = chain_block(&block3, vec![tx1]);
+    // Block 5
+    let (tx1, _, _) = spend!(vec![utxos_4[3].clone(), utxos_3b[0].clone()], to: &[20*T, 21*T]);
+    let (tx2, _, _) = spend!(vec![utxos_4[1].clone()], to: &[500_000*uT, 1_300_000 * uT]);
+    let (tx3, _, _) = spend!(vec![utxos_3b[1].clone()], to: &[500_000*uT]);
+    let block5 = chain_block(&block4, vec![tx1, tx2, tx3]);
     db.add_block(block0).expect("Could not create Genesis block");
     db.add_block(block1).expect("Could not save block 1");
     db.add_block(block2).expect("Could not save block 2");
+    db.add_block(block3).expect("Could not save block 3");
+    db.add_block(block4).expect("Could not save block 4");
+    db.add_block(block5).expect("Could not save block 5");
     db
 }
