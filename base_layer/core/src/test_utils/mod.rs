@@ -21,4 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 /// Helper functions to simplify generated test blockchain data
+#[macro_use]
 pub mod builders;
+/// Hardcoded sample blockchain databases
+pub mod sample_blockchains;

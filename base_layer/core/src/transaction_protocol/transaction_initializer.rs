@@ -153,8 +153,8 @@ impl SenderTransactionInitializer {
     }
 
     /// Tries to make a change output with the given transaction parameters and add it to the set of outputs. The total
-    /// fee, including the additional change output (if any) is returned
-    fn add_change_if_required(&mut self) -> Result<MicroTari, String> {
+    /// fee, including the additional change output (if any) is returned along with the amount of change
+    fn add_change_if_required(&mut self) -> Result<(MicroTari, MicroTari), String> {
         // The number of outputs excluding a possible residual change output
         let num_outputs = self.outputs.len() + self.num_recipients;
         let num_inputs = self.inputs.len();
@@ -170,14 +170,14 @@ impl SenderTransactionInitializer {
         let change_amount = total_being_spent.checked_sub(total_to_self + total_amount + fee_without_change);
         match change_amount {
             None => Err("You are spending more than you're providing".into()),
-            Some(MicroTari(0)) => Ok(fee_without_change),
+            Some(MicroTari(0)) => Ok((fee_without_change, MicroTari(0))),
             Some(v) => {
                 let change_amount = v.checked_sub(extra_fee);
                 match change_amount {
                     // You can't win. Just add the change to the fee (which is less than the cost of adding another
                     // output and go without a change output
-                    None => Ok(fee_without_change + v),
-                    Some(MicroTari(0)) => Ok(fee_without_change + v),
+                    None => Ok((fee_without_change + v, MicroTari(0))),
+                    Some(MicroTari(0)) => Ok((fee_without_change + v, MicroTari(0))),
                     Some(v) => {
                         let change_key = self
                             .change_secret
@@ -185,7 +185,7 @@ impl SenderTransactionInitializer {
                             .ok_or("Change spending key was not provided")?;
                         let change_key = change_key.clone();
                         self.with_output(UnblindedOutput::new(v, change_key, None));
-                        Ok(fee_with_change)
+                        Ok((fee_with_change, v))
                     },
                 }
             },
@@ -237,8 +237,8 @@ impl SenderTransactionInitializer {
         }
         // Everything is here. Let's send some Tari!
         // Calculate the fee based on whether we need to add a residual change output or not
-        let total_fee = match self.add_change_if_required() {
-            Ok(fee) => fee,
+        let (total_fee, change) = match self.add_change_if_required() {
+            Ok((fee, change)) => (fee, change),
             Err(e) => return self.build_err(&e),
         };
         // Some checks on the fee
@@ -280,6 +280,7 @@ impl SenderTransactionInitializer {
             amount_to_self,
             ids,
             amounts: self.amounts.into_vec(),
+            change,
             metadata: TransactionMetadata {
                 fee: total_fee,
                 lock_height: self.lock_height.unwrap(),

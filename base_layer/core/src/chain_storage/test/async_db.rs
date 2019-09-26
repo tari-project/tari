@@ -20,14 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-
-use crate::chain_storage::async_db::AsyncBlockchainDatabase;
-use crate::chain_storage::MemoryDatabase;
-use crate::types::HashDigest;
+use crate::test_utils::sample_blockchains::create_blockchain_db;
 
 #[test]
-fn create_async_db() {
-    let db = AsyncBlockchainDatabase::new(MemoryDatabase::<HashDigest>::default());
-    assert!(db.is_ok());
+fn fetch_async_kernel() {
+    let db = create_blockchain_db();
 }
 

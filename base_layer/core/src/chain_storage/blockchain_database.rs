@@ -208,7 +208,7 @@ where T: BlockchainBackend
         self.metadata.read().map_err(|e| {
             error!(
                 target: LOG_TARGET,
-                "An attempt to get sa read lock on the blockchain metadata failed. {}",
+                "An attempt to get a read lock on the blockchain metadata failed. {}",
                 e.to_string()
             );
             ChainStorageError::AccessError("Read lock on blockchain metadata failed".into())

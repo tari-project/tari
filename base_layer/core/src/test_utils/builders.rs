@@ -79,6 +79,10 @@ macro_rules! spend {
         spend_utxos($utxos, $values, $fee, $lock)
     }};
 
+    ($utxos:expr, to: $values:expr, fee: $fee:expr) => {
+        spend!($utxos, to:$values, fee:$fee, lock:0)
+    };
+
     ($utxos:expr, to: $values:expr) => {
         spend!($utxos, to:$values, fee:MicroTari(25), lock:0)
     };
@@ -191,6 +195,13 @@ pub fn spend_utxos(
     }
 
     let mut stx_protocol = stx_builder.build::<Blake256>(&PROVER, &COMMITMENT_FACTORY).unwrap();
+    let change = stx_protocol.get_change_amount().unwrap();
+    let change_output = UnblindedOutput {
+        value: change,
+        spending_key: test_params.change_key.clone(),
+        features: OutputFeatures::default(),
+    };
+    outputs.push(change_output);
     match stx_protocol.finalize(KernelFeatures::empty(), &PROVER, &COMMITMENT_FACTORY) {
         Ok(true) => (),
         Ok(false) => panic!("{:?}", stx_protocol.failure_reason()),

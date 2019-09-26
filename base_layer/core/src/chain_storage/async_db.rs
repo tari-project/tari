@@ -20,21 +20,40 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::chain_storage::{BlockchainBackend, BlockchainDatabase, ChainStorageError};
+use crate::chain_storage::{BlockchainBackend, BlockchainDatabase, ChainStorageError, ChainMetadata};
+use tokio_executor::threadpool::blocking;
+use crate::types::HashOutput;
+use crate::transaction::TransactionKernel;
+use std::future::Future;
+use std::task::{Poll, Context};
+use std::pin::Pin;
 
-/// An asynchronous wrapper around a [BlockchainDatabase] instance. Most of the API is retained, but wrapped in a 
-/// non-blocking asynchronous call.
-pub struct AsyncBlockchainDatabase<T> where T: BlockchainBackend {
-    db: BlockchainDatabase<T>    
+pub struct KernelQuery<T> where T: BlockchainBackend {
+    hash: HashOutput,
+    db: BlockchainDatabase<T>
 }
 
-impl<T> AsyncBlockchainDatabase<T> where T: BlockchainBackend {
-    /// Creates a new `AsyncBlockchainDatabase` using the provided backend.
-    pub fn new(db: T) -> Result<Self, ChainStorageError> {
-        let db = BlockchainDatabase::new(db)?;
-        Ok(AsyncBlockchainDatabase { db })
+impl<T> Future for KernelQuery<T> where T: BlockchainBackend {
+    type Output = Result<TransactionKernel, ChainStorageError>;
+
+    fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
+        match blocking(|| self.db.fetch_kernel(self.hash.clone())) {
+            Poll::Pending => Poll::Pending,
+            // Map BlockingError -> ChainStorageError
+            Poll::Ready(Err(_)) => Poll::Ready(Err(
+                ChainStorageError::AccessError("Could not find a blocking thread to execute DB query".into()))),
+            // Unwrap and lift ChainStorageError
+            Poll::Ready(Ok(Err(e))) => Poll::Ready(Err(e)),
+            // Unwrap and return result
+            Poll::Ready(Ok(Ok(v))) => Poll::Ready(Ok(v)),
+        }
     }
-    
-    
 }
+
+/// Returns the transaction kernel with the given hash.
+pub fn fetch_kernel<T: BlockchainBackend>(db: BlockchainDatabase<T>, hash: HashOutput) -> KernelQuery<T>  {
+    KernelQuery { hash, db: db.clone() }
+}
+
+
 
