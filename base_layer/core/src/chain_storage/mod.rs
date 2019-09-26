@@ -32,9 +32,11 @@ mod error;
 mod historical_block;
 mod memory_db;
 mod metadata;
-mod async_db;
 #[cfg(test)]
 mod test;
+
+// public modules
+pub mod async_db;
 
 // Public API exports
 pub use blockchain_database::{BlockchainBackend, BlockchainDatabase};

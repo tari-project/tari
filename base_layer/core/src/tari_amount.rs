@@ -24,9 +24,11 @@ use newtype_ops::newtype_ops;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error, Formatter};
 
-use std::{iter::Sum, ops::Mul};
+use std::{
+    iter::Sum,
+    ops::{Add, Mul},
+};
 use tari_crypto::ristretto::RistrettoSecretKey;
-use std::ops::Add;
 
 /// All calculations using Tari amounts should use these newtypes to prevent bugs related to rounding errors, unit
 /// conversion errors etc.

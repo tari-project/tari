@@ -21,10 +21,13 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-use crate::chain_storage::{MemoryDatabase, BlockchainDatabase};
-use crate::types::{HashDigest, HashOutput};
-use crate::test_utils::builders::{create_genesis_block, chain_block};
-use crate::tari_amount::{uT, T};
+use crate::{
+    blocks::Block,
+    chain_storage::{BlockchainDatabase, MemoryDatabase},
+    tari_amount::{uT, T},
+    test_utils::builders::{chain_block, create_genesis_block},
+    types::{HashDigest, HashOutput},
+};
 
 /// Create a simple 5 block memory-backed database.
 /// Genesis block:
@@ -63,7 +66,7 @@ use crate::tari_amount::{uT, T};
 /// J       -> 500_000    (7a)
 ///         -> change     (7b)
 
-pub fn create_blockchain_db_no_cut_through() -> BlockchainDatabase<MemoryDatabase<HashDigest>> {
+pub fn create_blockchain_db_no_cut_through() -> (BlockchainDatabase<MemoryDatabase<HashDigest>>, Vec<Block>) {
     let db = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
     // Genesis Block
     let (block0, utxo) = create_genesis_block();
@@ -86,11 +89,7 @@ pub fn create_blockchain_db_no_cut_through() -> BlockchainDatabase<MemoryDatabas
     let (tx2, _, _) = spend!(vec![utxos_4[1].clone()], to: &[500_000*uT, 1_300_000 * uT]);
     let (tx3, _, _) = spend!(vec![utxos_3b[1].clone()], to: &[500_000*uT]);
     let block5 = chain_block(&block4, vec![tx1, tx2, tx3]);
-    db.add_block(block0).expect("Could not create Genesis block");
-    db.add_block(block1).expect("Could not save block 1");
-    db.add_block(block2).expect("Could not save block 2");
-    db.add_block(block3).expect("Could not save block 3");
-    db.add_block(block4).expect("Could not save block 4");
-    db.add_block(block5).expect("Could not save block 5");
-    db
+    let blocks = vec![block0, block1, block2, block3, block4, block5];
+    blocks.iter().for_each(|b| assert!(db.add_block(b.clone()).is_ok()));
+    (db, blocks)
 }

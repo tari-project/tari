@@ -20,28 +20,39 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::chain_storage::{BlockchainBackend, BlockchainDatabase, ChainStorageError, ChainMetadata};
+use crate::{
+    chain_storage::{BlockchainBackend, BlockchainDatabase, ChainStorageError},
+    transaction::TransactionKernel,
+    types::HashOutput,
+};
+use futures::future::poll_fn;
+use std::{
+    future::Future,
+    pin::Pin,
+    task::{Context, Poll},
+};
 use tokio_executor::threadpool::blocking;
-use crate::types::HashOutput;
-use crate::transaction::TransactionKernel;
-use std::future::Future;
-use std::task::{Poll, Context};
-use std::pin::Pin;
 
-pub struct KernelQuery<T> where T: BlockchainBackend {
+pub struct KernelQuery<T>
+where T: BlockchainBackend
+{
     hash: HashOutput,
-    db: BlockchainDatabase<T>
+    db: BlockchainDatabase<T>,
 }
 
-impl<T> Future for KernelQuery<T> where T: BlockchainBackend {
+impl<T> Future for KernelQuery<T>
+where T: BlockchainBackend
+{
     type Output = Result<TransactionKernel, ChainStorageError>;
 
     fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
         match blocking(|| self.db.fetch_kernel(self.hash.clone())) {
             Poll::Pending => Poll::Pending,
             // Map BlockingError -> ChainStorageError
-            Poll::Ready(Err(_)) => Poll::Ready(Err(
-                ChainStorageError::AccessError("Could not find a blocking thread to execute DB query".into()))),
+            Poll::Ready(Err(e)) => Poll::Ready(Err(ChainStorageError::AccessError(format!(
+                "Could not find a blocking thread to execute DB query. {}",
+                e.to_string()
+            )))),
             // Unwrap and lift ChainStorageError
             Poll::Ready(Ok(Err(e))) => Poll::Ready(Err(e)),
             // Unwrap and return result
@@ -51,9 +62,28 @@ impl<T> Future for KernelQuery<T> where T: BlockchainBackend {
 }
 
 /// Returns the transaction kernel with the given hash.
-pub fn fetch_kernel<T: BlockchainBackend>(db: BlockchainDatabase<T>, hash: HashOutput) -> KernelQuery<T>  {
-    KernelQuery { hash, db: db.clone() }
+pub async fn fetch_kernel<T>(
+    db: BlockchainDatabase<T>,
+    hash: HashOutput,
+) -> Result<TransactionKernel, ChainStorageError>
+where
+    T: BlockchainBackend,
+{
+    poll_fn(move |_| {
+        let db = db.clone();
+        let hash = hash.clone();
+        match blocking(move || db.fetch_kernel(hash)) {
+            Poll::Pending => Poll::Pending,
+            // Map BlockingError -> ChainStorageError
+            Poll::Ready(Err(e)) => Poll::Ready(Err(ChainStorageError::AccessError(format!(
+                "Could not find a blocking thread to execute DB query. {}",
+                e.to_string()
+            )))),
+            // Unwrap and lift ChainStorageError
+            Poll::Ready(Ok(Err(e))) => Poll::Ready(Err(e)),
+            // Unwrap and return result
+            Poll::Ready(Ok(Ok(v))) => Poll::Ready(Ok(v)),
+        }
+    })
+    .await
 }
-
-
-
