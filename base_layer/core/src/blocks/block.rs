@@ -32,6 +32,7 @@ use crate::{
 };
 use derive_error::Error;
 use serde::{Deserialize, Serialize};
+use std::fmt::{Display, Formatter};
 use tari_utilities::Hashable;
 
 #[derive(Clone, Debug, PartialEq, Error)]
@@ -132,6 +133,16 @@ impl Block {
         Vec<TransactionKernel>,
     ) {
         (self.header, self.body.inputs, self.body.outputs, self.body.kernels)
+    }
+}
+
+impl Display for Block {
+    fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        fmt.write_str("----------------- Block -----------------\n")?;
+        fmt.write_str("--- Header ---\n")?;
+        fmt.write_str(&format!("{}\n", self.header))?;
+        fmt.write_str("---  Body  ---\n")?;
+        fmt.write_str(&format!("{}\n", self.body))
     }
 }
 

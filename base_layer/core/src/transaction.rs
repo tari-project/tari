@@ -38,12 +38,15 @@ use crate::{
 use derive_error::Error;
 use digest::Input;
 use serde::{Deserialize, Serialize};
-use std::cmp::{max, min, Ordering};
+use std::{
+    cmp::{max, min, Ordering},
+    fmt::{Display, Formatter},
+};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     range_proof::{RangeProofError, RangeProofService as RangeProofServiceTrait},
 };
-use tari_utilities::{ByteArray, Hashable};
+use tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray, Hashable};
 
 // These are set fairly arbitrarily at the moment. We'll need to do some modelling / testing to tune these values.
 pub const MAX_TRANSACTION_INPUTS: usize = 500;
@@ -255,6 +258,12 @@ impl Hashable for TransactionInput {
     }
 }
 
+impl Display for TransactionInput {
+    fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        fmt.write_str(&format!("{} [{:?}]\n", self.commitment.to_hex(), self.features))
+    }
+}
+
 //----------------------------------------   TransactionOutput    ----------------------------------------------------//
 
 /// Output for a transaction, defining the new ownership of coins that are being transferred. The commitment is a
@@ -324,6 +333,18 @@ impl Default for TransactionOutput {
     }
 }
 
+impl Display for TransactionOutput {
+    fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        let proof = self.proof.to_hex();
+        fmt.write_str(&format!(
+            "{} [{:?}] Proof: {}..{}\n",
+            self.commitment.to_hex(),
+            self.features,
+            proof[0..16].to_string(),
+            proof[proof.len() - 16..proof.len()].to_string()
+        ))
+    }
+}
 //----------------------------------------   Transaction Kernel   ----------------------------------------------------//
 
 /// The transaction kernel tracks the excess for a given transaction. For an explanation of what the excess is, and
@@ -454,6 +475,21 @@ impl Hashable for TransactionKernel {
     }
 }
 
+impl Display for TransactionKernel {
+    fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        let msg = format!(
+            "Fee: {}\nLock height: {}\nFeatures: {:?}\nExcess: {}\nExcess signature: {}\n",
+            self.fee,
+            self.lock_height,
+            self.features,
+            self.excess.to_hex(),
+            self.excess_sig
+                .to_json()
+                .unwrap_or("Failed to serialize signature".into())
+        );
+        fmt.write_str(&msg)
+    }
+}
 //----------------------------------------      Transaction       ----------------------------------------------------//
 
 /// A transaction which consists of a kernel offset and an aggregate body made up of inputs, outputs and kernels.
