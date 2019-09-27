@@ -50,8 +50,11 @@ use serde::{
     Serialize,
     Serializer,
 };
-use std::fmt;
-use tari_utilities::{ByteArray, Hashable};
+use std::{
+    fmt,
+    fmt::{Display, Error, Formatter},
+};
+use tari_utilities::{hex::Hex, ByteArray, Hashable};
 
 pub type BlockHash = Vec<u8>;
 
@@ -148,6 +151,31 @@ impl PartialEq for BlockHeader {
 }
 
 impl Eq for BlockHeader {}
+
+impl Display for BlockHeader {
+    fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
+        let msg = format!(
+            "Version: {}\nBlock height: {}\nPrevious block hash: {}\nTimestamp: {}\n",
+            self.version,
+            self.height,
+            self.prev_hash.to_hex(),
+            self.timestamp.to_rfc2822()
+        );
+        fmt.write_str(&msg)?;
+        let msg = format!(
+            "Accumulated difficulty: {}\nNonce: {}\n",
+            self.total_difficulty, self.nonce
+        );
+        fmt.write_str(&msg)?;
+        let msg = format!(
+            "Merkle roots:\nOutputs: {}\nRange proofs: {}\nKernels: {}\n",
+            self.output_mr.to_hex(),
+            self.range_proof_mr.to_hex(),
+            self.kernel_mr.to_hex()
+        );
+        fmt.write_str(&msg)
+    }
+}
 
 mod hash_serializer {
     use super::*;

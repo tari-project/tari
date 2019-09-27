@@ -27,6 +27,7 @@ use crate::{
     types::{BlindingFactor, Commitment, CommitmentFactory, PrivateKey, RangeProofService, COMMITMENT_FACTORY},
 };
 use serde::{Deserialize, Serialize};
+use std::fmt::{Display, Error, Formatter};
 use tari_crypto::{commitment::HomomorphicCommitmentFactory, ristretto::pedersen::PedersenCommitment};
 
 /// The components of the block or transaction. The same struct can be used for either, since in Mimblewimble,
@@ -204,5 +205,27 @@ impl AggregateBody {
 impl From<Transaction> for AggregateBody {
     fn from(transaction: Transaction) -> Self {
         transaction.body
+    }
+}
+
+impl Display for AggregateBody {
+    fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
+        if !self.sorted {
+            fmt.write_str("WARNING: Block body is not sorted.\n")?;
+        }
+        fmt.write_str("--- Transaction Kernels ---\n")?;
+        for (i, kernel) in self.kernels.iter().enumerate() {
+            fmt.write_str(&format!("Kernel {}:\n", i))?;
+            fmt.write_str(&format!("{}\n", kernel))?;
+        }
+        fmt.write_str(&format!("--- Inputs ({}) ---\n", self.inputs.len()))?;
+        for input in self.inputs.iter() {
+            fmt.write_str(&format!("{}", input))?;
+        }
+        fmt.write_str(&format!("--- Outputs ({}) ---\n", self.outputs.len()))?;
+        for output in self.outputs.iter() {
+            fmt.write_str(&format!("{}", output))?;
+        }
+        Ok(())
     }
 }
