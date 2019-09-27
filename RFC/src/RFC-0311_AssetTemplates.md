@@ -60,7 +60,7 @@ contracts are not Turing complete, such as those executed by the Ethereum Virtua
 * [RFC-0300: The Digital Assets Network](RFC-0300_DAN.md)
 * [RFC-0301: Namespace Registration](RFC-0301_NamespaceRegistration.md)
 * [RFC-0340: Validator Node Consensus](RFC-0340_VNConsensusOverview.md)
-* [RFC-0374: Asset Creation and Management](RFC-0374_TCAssetManagement.md)
+* [RFC-0345: Asset Life cycle](RFC-0345_AssetLifeCycle.md)
 
 ## Description
 
