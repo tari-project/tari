@@ -26,7 +26,7 @@ use crate::{
     chain_storage::{BlockchainDatabase, MemoryDatabase},
     tari_amount::{uT, T},
     test_utils::builders::{chain_block, create_genesis_block},
-    types::{HashDigest, HashOutput},
+    types::{HashDigest},
 };
 
 /// Create a simple 5 block memory-backed database.
