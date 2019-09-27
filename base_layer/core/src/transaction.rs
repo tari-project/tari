@@ -485,7 +485,7 @@ impl Display for TransactionKernel {
             self.excess.to_hex(),
             self.excess_sig
                 .to_json()
-                .unwrap_or("Failed to serilaise signture".into())
+                .unwrap_or("Failed to serialize signature".into())
         );
         fmt.write_str(&msg)
     }
