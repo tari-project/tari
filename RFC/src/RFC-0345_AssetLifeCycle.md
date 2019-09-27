@@ -135,7 +135,11 @@ To resurrect an asset, the following conditions must be met:
   original `create_asset` instruction with the following exceptions:
    *   The “initial state” merkle root must be equal to the final state checkpoint merkle root.
    *  The asset owner public key will be provided by the new asset issuer.
-
+*  Third parties can interrogate the new committee asking them to provide a Merkle Proof for pieces of state that the
+   third party (perhaps former asset owners) knows about. This can mitigate fraud attempts where parties can attempt to
+   resurrect assets without actually having a copy of the smart contract state. If enough random state proofs are
+   requested, or a single proof of enough random pieces of state, we can be confident that the asset resurrection is
+   legitimate.
 
 The VN committee for the resurrected asset need not bear any relation to the original VN committee.
 Once confirmed, the resurrected asset operates exactly like any other asset.
