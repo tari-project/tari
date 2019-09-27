@@ -26,40 +26,8 @@ use crate::{
     types::HashOutput,
 };
 use futures::future::poll_fn;
-use std::{
-    future::Future,
-    pin::Pin,
-    task::{Context, Poll},
-};
 use tokio_executor::threadpool::blocking;
-
-pub struct KernelQuery<T>
-where T: BlockchainBackend
-{
-    hash: HashOutput,
-    db: BlockchainDatabase<T>,
-}
-
-impl<T> Future for KernelQuery<T>
-where T: BlockchainBackend
-{
-    type Output = Result<TransactionKernel, ChainStorageError>;
-
-    fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
-        match blocking(|| self.db.fetch_kernel(self.hash.clone())) {
-            Poll::Pending => Poll::Pending,
-            // Map BlockingError -> ChainStorageError
-            Poll::Ready(Err(e)) => Poll::Ready(Err(ChainStorageError::AccessError(format!(
-                "Could not find a blocking thread to execute DB query. {}",
-                e.to_string()
-            )))),
-            // Unwrap and lift ChainStorageError
-            Poll::Ready(Ok(Err(e))) => Poll::Ready(Err(e)),
-            // Unwrap and return result
-            Poll::Ready(Ok(Ok(v))) => Poll::Ready(Ok(v)),
-        }
-    }
-}
+use std::task::Poll;
 
 /// Returns the transaction kernel with the given hash.
 pub async fn fetch_kernel<T>(

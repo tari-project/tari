@@ -28,12 +28,15 @@ use crate::{
 };
 use tari_utilities::Hashable;
 use tokio;
+use bitflags::_core::sync::atomic::{ Ordering, AtomicBool};
+use std::sync::Arc;
 
-fn create_runtime() -> tokio::runtime::Runtime {
+fn create_runtime(passed: Arc<AtomicBool>) -> tokio::runtime::Runtime {
     let rt = tokio::runtime::Builder::new()
         .blocking_threads(4)
         // Run the work scheduler on one thread so we can really see the effects of using `blocking` above
         .core_threads(1)
+        .panic_handler(move |_| { passed.store(false, Ordering::Relaxed) })
         .build()
         .expect("Could not create runtime");
     rt
@@ -46,7 +49,8 @@ async fn test_kernel(db: BlockchainDatabase<MemoryDatabase<HashDigest>>, kernel:
 
 #[test]
 fn fetch_async_kernel() {
-    let rt = create_runtime();
+    let passed = Arc::new(AtomicBool::new(true));
+    let rt = create_runtime(passed.clone());
     let (db, blocks) = create_blockchain_db_no_cut_through();
     // Fetch all the kernels in parallel
     for block in blocks.iter() {
@@ -55,4 +59,5 @@ fn fetch_async_kernel() {
         })
     }
     rt.shutdown_on_idle();
+    assert!(passed.load(Ordering::SeqCst), "Loading kernels failed");
 }
