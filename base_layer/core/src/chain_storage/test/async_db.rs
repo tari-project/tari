@@ -23,7 +23,10 @@
 use crate::{
     blocks::Block,
     chain_storage::{async_db, BlockchainDatabase, MemoryDatabase, MmrTree},
-    test_utils::sample_blockchains::create_blockchain_db_no_cut_through,
+    test_utils::{
+        builders::create_test_block,
+        sample_blockchains::{create_blockchain_db_no_cut_through, generate_new_block},
+    },
     transaction::{TransactionOutput, UnblindedOutput},
     types::{HashDigest, COMMITMENT_FACTORY},
 };
@@ -202,6 +205,21 @@ fn fetch_async_mmr_roots() {
             let kernel_mmr = root.1.unwrap().to_hex();
             assert_eq!(utxo_mmr, header.output_mr.to_hex(), "{}", dump_logs(&dbc, &blocks));
             assert_eq!(kernel_mmr, header.kernel_mr.to_hex(), "Kernel MMR roots don't match");
+        });
+    });
+}
+
+#[test]
+fn async_add_block_fetch_orphan() {
+    let (db, blocks, _) = create_blockchain_db_no_cut_through();
+    let orphan = create_test_block(7, None, vec![]);
+    let block_hash = orphan.hash();
+    test_async(move |rt| {
+        let dbc = db.clone();
+        rt.spawn(async move {
+            async_db::add_block(dbc.clone(), orphan.clone()).await.unwrap();
+            let block = async_db::fetch_orphan(dbc.clone(), block_hash).await.unwrap();
+            assert_eq!(orphan, block);
         });
     });
 }
