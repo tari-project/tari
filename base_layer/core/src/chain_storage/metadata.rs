@@ -21,6 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{blocks::blockheader::BlockHash, proof_of_work::Difficulty};
+use std::fmt::{Display, Error, Formatter};
+use tari_utilities::hex::Hex;
 
 #[derive(Debug, Clone)]
 pub struct ChainMetadata {
@@ -80,6 +82,24 @@ impl Default for ChainMetadata {
             total_accumulated_difficulty: Difficulty::default(),
             pruning_horizon: 2880,
         }
+    }
+}
+
+impl Display for ChainMetadata {
+    fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
+        let height = self.height_of_longest_chain.unwrap_or(0);
+        let best_block = self
+            .best_block
+            .clone()
+            .map(|b| b.to_hex())
+            .unwrap_or("Empty Database".into());
+        fmt.write_str(&format!("Height of longest chain : {}\n", height))?;
+        fmt.write_str(&format!("Best_block : {}\n", best_block))?;
+        fmt.write_str(&format!(
+            "Total accumulated difficulty : {}\n",
+            self.total_accumulated_difficulty
+        ))?;
+        fmt.write_str(&format!("Pruning horizon : {}\n", self.pruning_horizon))
     }
 }
 

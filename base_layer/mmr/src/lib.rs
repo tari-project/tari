@@ -140,13 +140,13 @@ mod change_tracker;
 mod merkle_mountain_range;
 mod merkle_proof;
 mod mutable_mmr;
-mod pruned_hashset;
 mod serde_support;
 
 // Less commonly used exports
 pub mod common;
 pub mod error;
 /// A function for snapshotting and pruning a Merkle Mountain Range
+pub mod pruned_hashset;
 pub mod pruned_mmr;
 
 // Commonly used exports

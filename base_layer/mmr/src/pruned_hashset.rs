@@ -33,6 +33,7 @@ use std::convert::TryFrom;
 /// MMR with n_0 leaf nodes.
 ///
 /// The awesome thing is that this struct can be dropped into [MerkleMountainRange] as a backend and it. just. works.
+#[derive(Debug)]
 pub struct PrunedHashSet {
     /// The size of the base MMR. Only peaks are available for indices less than this value
     base_offset: usize,

@@ -51,11 +51,13 @@ use tari_utilities::hash::Hashable;
 
 /// A generic struct for storing node objects in the BlockchainDB that also form part of an MMR. The index field makes
 /// reverse lookups (find by hash) possible.
+#[derive(Debug)]
 struct MerkleNode<T> {
     index: usize,
     value: T,
 }
 
+#[derive(Debug)]
 struct InnerDatabase<D>
 where D: Digest
 {
@@ -75,7 +77,7 @@ where D: Digest
 /// A memory-backed blockchain database. The data is stored in RAM; and so all data will be lost when the program
 /// terminates. Thus this DB is intended for testing purposes. It's also not very efficient since a single Mutex
 /// protects the entire database. Again: testing.
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct MemoryDatabase<D>
 where D: Digest
 {

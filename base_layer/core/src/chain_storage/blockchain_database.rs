@@ -37,13 +37,13 @@ use croaring::Bitmap;
 use log::*;
 use std::sync::{Arc, RwLock, RwLockReadGuard};
 use tari_mmr::{Hash, MerkleCheckPoint, MerkleProof};
-use tari_utilities::Hashable;
+use tari_utilities::{hex::Hex, Hashable};
 
 const LOG_TARGET: &str = "core::chain_storage::database";
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum BlockAddResult {
-    Ok,
+    Ok(BlockHeader),
     BlockExists,
     OrphanBlock,
     ChainReorg,
@@ -136,6 +136,7 @@ macro_rules! fetch {
 /// let mut db = BlockchainDatabase::new(db_backend).unwrap();
 /// // Do stuff with db
 /// ```
+#[derive(Debug)]
 pub struct BlockchainDatabase<T>
 where T: BlockchainBackend
 {
@@ -208,7 +209,7 @@ where T: BlockchainBackend
         self.metadata.read().map_err(|e| {
             error!(
                 target: LOG_TARGET,
-                "An attempt to get sa read lock on the blockchain metadata failed. {}",
+                "An attempt to get a read lock on the blockchain metadata failed. {}",
                 e.to_string()
             );
             ChainStorageError::AccessError("Read lock on blockchain metadata failed".into())
@@ -319,13 +320,41 @@ where T: BlockchainBackend
     ///   * That the total accumulated work has increased.
     ///   * Mark all inputs in the block as spent.
     ///   * Updated the database metadata
+    ///   * Checked the MMR roots
     ///
-    /// An error is returned if:
-    ///   * the block has already been added
-    ///   * any of the inputs were not in the UTXO set or were marked as spent already
+    /// # Returns
+    ///
+    /// An error is returned if
+    /// * there was a problem accessing the database,
+    /// * if an invalid input tries to be spent,
+    ///
+    /// Otherwise the function returns successfully.
+    /// A successful return value can be one of
+    ///   * `BlockExists`: the block has already been added; No action was taken.
+    ///   * `Ok`: The block was added and all validation checks passed
+    ///   * `OrphanBlock`: The block did not form part of the main chain and was added as an orphan.
+    ///   * `ChainReorg`: The block was added, which resulted in a chain-reorg.
+    /// The block header is returned with the result, which will have been updated with the MMR roots if
+    /// `modify_header` was true.
     ///
     /// If an error does occur while writing the new block parts, all changes are reverted before returning.
     pub fn add_block(&self, block: Block) -> Result<BlockAddResult, ChainStorageError> {
+        self.add_block_impl(block, false)
+    }
+
+    /// Add a new block and set the MMR roots in the header
+    ///
+    /// As for [add_block], but the block header will be modified to include the MMR roots for the kernels, outputs
+    /// and range proofs. Note that when making this call, the block *must* build onto the longest chain. We cannot
+    /// accept orphan blocks without valid MMR roots because there is no way that these can be correctly calculated
+    /// by this node. On the other hand, if the miner that _produced_ the block was honest, it would have been
+    /// building on _its_ longest chain, so this restriction wouldn't apply.
+    pub fn add_new_block(&self, block: Block) -> Result<BlockAddResult, ChainStorageError> {
+        self.add_block_impl(block, true)
+    }
+
+    /// The actual add_block implementation
+    fn add_block_impl(&self, block: Block, modify_header: bool) -> Result<BlockAddResult, ChainStorageError> {
         let block_hash = block.hash();
         let block_height = block.header.height;
         let block_total_difficulty = block.header.total_difficulty;
@@ -333,18 +362,81 @@ where T: BlockchainBackend
             return Ok(BlockAddResult::BlockExists);
         }
         if !self.is_new_best_block(&block)? {
+            if modify_header {
+                info!(
+                    target: LOG_TARGET,
+                    "A new block with uninitialized MMR roots was submitted that does not build on the longest chain. \
+                     The MMR roots cannot be calculated, so rejecting this block."
+                );
+                debug!(target: LOG_TARGET, "{}", block);
+                return Err(ChainStorageError::InvalidBlock);
+            }
+            info!(
+                target: LOG_TARGET,
+                "Candidate block {} does not build on chain tip. Checking for a possible re-org .",
+                block_hash.to_hex(),
+            );
             return self.handle_possible_reorg(block);
         }
+        let (mut header, inputs, outputs, kernels) = block.dissolve();
+        // Insert the outputs and kernels first, calculate the new MMR roots; letting us roll back if necessary
+        self.commit_body(&inputs, &outputs, &kernels)?;
+        if let Err(e) = self.check_or_insert_mmr_roots(modify_header, &mut header) {
+            self.rollback_body_commit(&inputs, &outputs, &kernels, e, header.height)?;
+        }
+        // The header now has the correct MMR roots; we can go ahead and save the block header and tidy up.
         let mut txn = DbTransaction::new();
-        let (header, inputs, outputs, kernels) = block.dissolve();
-        txn.insert_header(header);
-        txn.spend_inputs(&inputs);
-        outputs.into_iter().for_each(|utxo| txn.insert_utxo(utxo));
-        kernels.into_iter().for_each(|k| txn.insert_kernel(k));
+        txn.insert_header(header.clone());
         txn.commit_block();
-        self.commit(txn)?;
+        // Uh oh. There was an error saving the header, so must revert the in/output and kernel commit.
+        if let Err(e) = self.commit(txn) {
+            self.rollback_body_commit(&inputs, &outputs, &kernels, e, header.height)?;
+        }
+        // This is a bit of a hack. The block hash *is* the header hash; so I just call header.hash here to avoid
+        // having to reconstruct the block. BUT, things will break if block.hash() changes.
+        let block_hash = header.hash();
         self.update_metadata(block_height, block_hash, block_total_difficulty)?;
-        Ok(BlockAddResult::Ok)
+        Ok(BlockAddResult::Ok(header))
+    }
+
+    /// Checks the MMR roots for consistency (if `modify` is `false`) or else inserts the mmr roots into the header.
+    /// This method is called _after_ the new inputs, outputs and kernels have been added to the database.
+    fn check_or_insert_mmr_roots(&self, modify: bool, header: &mut BlockHeader) -> Result<(), ChainStorageError> {
+        let kernel_root = self.db.fetch_mmr_root(MmrTree::Kernel)?;
+        let utxo_root = self.db.fetch_mmr_root(MmrTree::Utxo)?;
+        let rp_root = self.db.fetch_mmr_root(MmrTree::RangeProof)?;
+        if modify {
+            header.kernel_mr = kernel_root;
+            header.output_mr = utxo_root;
+            header.range_proof_mr = rp_root;
+        } else {
+            if kernel_root != header.kernel_mr {
+                return Err(ChainStorageError::MismatchedMmrRoot(MmrTree::Kernel));
+            }
+            if utxo_root != header.output_mr {
+                return Err(ChainStorageError::MismatchedMmrRoot(MmrTree::Utxo));
+            }
+            if rp_root != header.range_proof_mr {
+                return Err(ChainStorageError::MismatchedMmrRoot(MmrTree::RangeProof));
+            }
+        }
+        Ok(())
+    }
+
+    /// Commits the outputs, inputs and kernels of a new block to the database. Inputs are also moved from the UTXO
+    /// set to the STXO set. If an input is not a valid UTXO, an error is returned
+    fn commit_body(
+        &self,
+        inputs: &[TransactionInput],
+        outputs: &[TransactionOutput],
+        kernels: &Vec<TransactionKernel>,
+    ) -> Result<(), ChainStorageError>
+    {
+        let mut txn = DbTransaction::new();
+        txn.spend_inputs(&inputs);
+        outputs.iter().for_each(|utxo| txn.insert_utxo(utxo.clone()));
+        kernels.iter().for_each(|k| txn.insert_kernel(k.clone()));
+        self.commit(txn)
     }
 
     /// Returns true if the given block -- assuming everything else is valid -- would be added to the tip of the
@@ -570,16 +662,14 @@ where T: BlockchainBackend
         self.commit(txn)?;
 
         // Trigger a reorg check for all blocks in the orphan block pool
-        self.handle_reorg()?;
-
-        Ok(BlockAddResult::OrphanBlock)
+        self.handle_reorg()
     }
 
     /// The handle_reorg function is triggered by the adding of orphaned blocks. Reorg chains are constructed by
     /// building a chain of orphaned blocks from the leaf blocks with the highest accumulated difficulties back to the
     /// main chain. When a valid reorg chain is constructed with a higher accumulated difficulty, then the main chain is
-    /// rewinded and updated with the newly unorphaned blocks from the reorg chain.
-    fn handle_reorg(&self) -> Result<(), ChainStorageError> {
+    /// rewound and updated with the newly un-orphaned blocks from the reorg chain.
+    fn handle_reorg(&self) -> Result<BlockAddResult, ChainStorageError> {
         // Find all orphan blocks with higher accumulated difficulty compared to the main chain. These orphan blocks
         // are potential leaf nodes on reorg chains.
         struct LeafBlock {
@@ -626,7 +716,7 @@ where T: BlockchainBackend
                                 txn.delete(DbKey::OrphanBlock(orphan_hash.clone()));
                             }
                             self.commit(txn)?;
-                            break 'leaf_block_loop;
+                            return Ok(BlockAddResult::ChainReorg);
                         }
                         break 'chain_construction_loop;
                     },
@@ -634,7 +724,42 @@ where T: BlockchainBackend
                 }
             }
         }
-        Ok(())
+        Ok(BlockAddResult::OrphanBlock)
+    }
+
+    /// Reverses the recent insertion of spent outputs, utxos and kernels because MMR roots don't match.
+    fn rollback_body_commit(
+        &self,
+        inputs: &[TransactionInput],
+        outputs: &[TransactionOutput],
+        kernels: &[TransactionKernel],
+        err: ChainStorageError,
+        height: u64,
+    ) -> Result<(), ChainStorageError>
+    {
+        warn!(
+            target: LOG_TARGET,
+            "There was an error while adding block {} to the database. Aborting. {}",
+            height,
+            err.to_string()
+        );
+        let mut txn = DbTransaction::new();
+        inputs.iter().map(|inp| inp.hash()).for_each(|h| txn.unspend_stxo(h));
+        outputs
+            .iter()
+            .map(|out| out.hash())
+            .for_each(|h| txn.delete(DbKey::UnspentOutput(h)));
+        kernels
+            .iter()
+            .map(|k| k.hash())
+            .for_each(|h| txn.delete(DbKey::TransactionKernel(h)));
+        self.commit(txn)?;
+        Err(err)
+    }
+
+    // TODO debugging only. Remove before mainnet
+    pub(crate) fn db(&self) -> Arc<T> {
+        self.db.clone()
     }
 }
 

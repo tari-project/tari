@@ -52,6 +52,7 @@ pub(super) struct RawTransactionInfo {
     pub amount_to_self: MicroTari,
     pub ids: Vec<u64>,
     pub amounts: Vec<MicroTari>,
+    pub change: MicroTari,
     pub metadata: TransactionMetadata,
     pub inputs: Vec<TransactionInput>,
     pub outputs: Vec<TransactionOutput>,
@@ -203,6 +204,18 @@ impl SenderTransactionProtocol {
             SenderState::Finalizing(info) |
             SenderState::SingleRoundMessageReady(info) |
             SenderState::CollectingSingleSignature(info) => Ok(info.amount_to_self),
+            SenderState::FinalizedTransaction(_) => Err(TPE::InvalidStateError),
+            SenderState::Failed(_) => Err(TPE::InvalidStateError),
+        }
+    }
+
+    /// This function will return the value of the change transaction
+    pub fn get_change_amount(&self) -> Result<MicroTari, TPE> {
+        match &self.state {
+            SenderState::Initializing(info) |
+            SenderState::Finalizing(info) |
+            SenderState::SingleRoundMessageReady(info) |
+            SenderState::CollectingSingleSignature(info) => Ok(info.change),
             SenderState::FinalizedTransaction(_) => Err(TPE::InvalidStateError),
             SenderState::Failed(_) => Err(TPE::InvalidStateError),
         }

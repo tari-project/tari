@@ -89,6 +89,14 @@ impl OutputFeatures {
             maturity: consensus_rules.coinbase_lock_height() + current_block_height,
         }
     }
+
+    /// Create an `OutputFeatures` with the given maturity and all other values at their default setting
+    pub fn with_maturity(maturity: u64) -> OutputFeatures {
+        OutputFeatures {
+            maturity,
+            ..OutputFeatures::default()
+        }
+    }
 }
 
 impl Default for OutputFeatures {
@@ -166,12 +174,11 @@ impl UnblindedOutput {
         &self,
         prover: &RangeProofService,
         factory: &CommitmentFactory,
-        features: OutputFeatures,
     ) -> Result<TransactionOutput, TransactionError>
     {
         let commitment = factory.commit(&self.spending_key, &self.value.into());
         let output = TransactionOutput {
-            features,
+            features: self.features.clone(),
             commitment,
             proof: RangeProof::from_bytes(&prover.construct_proof(&self.spending_key, self.value.into())?)
                 .map_err(|_| TransactionError::RangeProofError(RangeProofError::ProofConstructionError))?,
@@ -567,7 +574,7 @@ impl Transaction {
     }
 
     /// Returns the height of the maximum time-lock restriction calculated from the transaction lock_height and the
-    /// maturity of the input UTXOs
+    /// maturity of the input UTXOs.
     pub fn max_timelock_height(&self) -> u64 {
         max(self.body.kernels[0].lock_height, self.max_input_maturity())
     }
@@ -675,6 +682,13 @@ mod test {
     }
 
     #[test]
+    fn with_maturity() {
+        let features = OutputFeatures::with_maturity(42);
+        assert_eq!(features.maturity, 42);
+        assert_eq!(features.flags, OutputFlags::empty());
+    }
+
+    #[test]
     fn range_proof_verification() {
         let mut rng = rand::OsRng::new().unwrap();
         let factory = PedersenCommitmentFactory::default();
@@ -685,13 +699,11 @@ mod test {
 
         // For testing the max range has been limited to 2^32 so this value is too large.
         let unblinded_output1 = UnblindedOutput::new((2u64.pow(32) - 1u64).into(), k1, None);
-        let tx_output1 = unblinded_output1
-            .as_transaction_output(&prover, &factory, OutputFeatures::default())
-            .unwrap();
+        let tx_output1 = unblinded_output1.as_transaction_output(&prover, &factory).unwrap();
         assert!(tx_output1.verify_range_proof(&prover).unwrap());
 
         let unblinded_output2 = UnblindedOutput::new((2u64.pow(32) + 1u64).into(), k2.clone(), None);
-        let tx_output2 = unblinded_output2.as_transaction_output(&prover, &factory, OutputFeatures::default());
+        let tx_output2 = unblinded_output2.as_transaction_output(&prover, &factory);
 
         match tx_output2 {
             Ok(_) => panic!("Range proof should have failed to verify"),

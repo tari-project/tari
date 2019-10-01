@@ -173,7 +173,7 @@ pub enum DbKeyValuePair {
     CommitBlock,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum MmrTree {
     Utxo,
     Kernel,
@@ -181,7 +181,7 @@ pub enum MmrTree {
     Header,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum MetadataKey {
     ChainHeight,
     BestBlock,
@@ -197,7 +197,7 @@ pub enum MetadataValue {
     PruningHorizon(u64),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum DbKey {
     Metadata(MetadataKey),
     BlockHeader(u64),

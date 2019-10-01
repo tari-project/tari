@@ -48,6 +48,7 @@ use std::{mem, ops::Deref};
 /// similar functions.
 /// * You can `reset` the ChangeTracker, which clears the current change-set and moves you back to the most recent
 /// checkpoint ('HEAD')
+#[derive(Debug)]
 pub struct MerkleChangeTracker<D, BaseBackend, CpBackend>
 where
     D: Digest,

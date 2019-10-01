@@ -35,8 +35,11 @@ mod metadata;
 #[cfg(test)]
 mod test;
 
+// public modules
+pub mod async_db;
+
 // Public API exports
-pub use blockchain_database::{BlockchainBackend, BlockchainDatabase};
+pub use blockchain_database::{BlockAddResult, BlockchainBackend, BlockchainDatabase};
 pub use db_transaction::{DbTransaction, MmrTree};
 pub use error::ChainStorageError;
 pub use historical_block::HistoricalBlock;

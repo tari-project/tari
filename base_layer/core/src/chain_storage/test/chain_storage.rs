@@ -32,23 +32,32 @@ use crate::{
         MemoryDatabase,
         MmrTree,
     },
-    proof_of_work::Difficulty,
-    spend,
-    tari_amount::MicroTari,
-    test_utils::builders::{
-        chain_block,
-        create_genesis_block,
-        create_test_block,
-        create_test_kernel,
-        create_tx,
-        create_utxo,
+    tari_amount::{MicroTari, T},
+    test_utils::{
+        builders::{
+            add_block_and_update_header,
+            chain_block,
+            create_genesis_block,
+            create_test_block,
+            create_test_kernel,
+            create_tx,
+            create_utxo,
+            spend_utxos,
+        },
+        sample_blockchains::{create_new_blockchain, generate_new_block},
     },
     tx,
+    txn_schema,
     types::{HashDigest, COMMITMENT_FACTORY, PROVER},
 };
+use env_logger;
 use std::thread;
 use tari_mmr::MutableMmr;
 use tari_utilities::{hex::Hex, Hashable};
+
+fn init_log() {
+    let _ = env_logger::builder().is_test(true).try_init();
+}
 
 #[test]
 fn fetch_nonexistent_kernel() {
@@ -80,6 +89,7 @@ fn fetch_nonexistent_header() {
         Err(ChainStorageError::ValueNotFound(DbKey::BlockHeader(0)))
     );
 }
+
 #[test]
 fn insert_and_fetch_header() {
     let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
@@ -315,14 +325,8 @@ fn kernel_mmr_proof() {
 #[test]
 fn store_and_retrieve_block() {
     // Create new database
-    let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
-    let metadata = store.get_metadata().unwrap();
-    assert_eq!(metadata.height_of_longest_chain, None);
-    assert_eq!(metadata.best_block, None);
-    // Add the Genesis block
-    let block = get_genesis_block();
-    let hash = block.hash();
-    assert_eq!(store.add_block(block.clone()), Ok(BlockAddResult::Ok));
+    let (store, blocks, _) = create_new_blockchain();
+    let hash = blocks[0].hash();
     // Check the metadata
     let metadata = store.get_metadata().unwrap();
     assert_eq!(metadata.height_of_longest_chain, Some(0));
@@ -333,26 +337,27 @@ fn store_and_retrieve_block() {
     assert_eq!(block2.confirmations(), 1);
     // Compare the blocks
     let block2 = Block::from(block2);
-    assert_eq!(block, block2);
+    assert_eq!(blocks[0], block2);
 }
 
 #[test]
 fn add_multiple_blocks() {
+    init_log();
     // Create new database
     let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
     let metadata = store.get_metadata().unwrap();
     assert_eq!(metadata.height_of_longest_chain, None);
     assert_eq!(metadata.best_block, None);
     // Add the Genesis block
-    let block = get_genesis_block();
-    let hash = block.hash();
-    assert_eq!(store.add_block(block.clone()), Ok(BlockAddResult::Ok));
+    let block_gb = add_block_and_update_header(&store, get_genesis_block());
+    println!("{}\nHash={}", block_gb, block_gb.hash().to_hex());
     // Add another block
-    let mut block = create_test_block(1, None, vec![]);
-    block.header.prev_hash = hash.clone();
-    block.header.total_difficulty = Difficulty::from(100);
+    let mut block = chain_block(&block_gb, vec![]);
+    println!("{}", block);
+    let metadata = store.get_metadata().unwrap();
+    println!("{}", metadata);
+    block = add_block_and_update_header(&store, block);
     let hash = block.hash();
-    assert_eq!(store.add_block(block.clone()), Ok(BlockAddResult::Ok));
     // Adding blocks is idempotent
     assert_eq!(store.add_block(block.clone()), Ok(BlockAddResult::BlockExists));
     // Check the metadata
@@ -365,11 +370,12 @@ fn add_multiple_blocks() {
 fn test_checkpoints() {
     let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
     // Add the Genesis block
-    let (block0, output) = create_genesis_block();
-    assert_eq!(store.add_block(block0.clone()), Ok(BlockAddResult::Ok));
-    let (txn, _, _) = spend!(vec![output], to: &[MicroTari(5_000), MicroTari(6_000)]);
-    let block1 = chain_block(&block0, vec![txn]);
-    assert_eq!(store.add_block(block1.clone()), Ok(BlockAddResult::Ok));
+    let (mut block0, output) = create_genesis_block();
+    block0 = add_block_and_update_header(&store, block0);
+    let txn = txn_schema!(from: vec![output], to: vec![MicroTari(5_000), MicroTari(6_000)]);
+    let (txn, _, _) = spend_utxos(txn);
+    let mut block1 = chain_block(&block0, vec![txn]);
+    block1 = add_block_and_update_header(&store, block1);
     // Get the checkpoint
     let block_a = store.fetch_block(0).unwrap();
     assert_eq!(block_a.confirmations(), 2);
@@ -384,8 +390,7 @@ fn test_checkpoints() {
 #[test]
 fn rewind_to_height() {
     let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
-    let (block0, _) = create_genesis_block();
-    assert!(store.add_block(block0.clone()).is_ok());
+    let block0 = add_block_and_update_header(&store, create_genesis_block().0);
 
     let (tx1, inputs1, _) = create_tx(MicroTari(10_000), MicroTari(50), 0, 1, 0, 1);
     let (tx2, inputs2, _) = create_tx(MicroTari(10_000), MicroTari(20), 0, 1, 0, 1);
@@ -394,44 +399,20 @@ fn rewind_to_height() {
     let (tx5, inputs5, _) = create_tx(MicroTari(10_000), MicroTari(50), 0, 1, 0, 1);
     let (tx6, inputs6, _) = create_tx(MicroTari(10_000), MicroTari(75), 0, 1, 0, 1);
     let mut txn = DbTransaction::new();
-    txn.insert_utxo(
-        inputs1[0]
-            .as_transaction_output(&PROVER, &COMMITMENT_FACTORY, inputs1[0].features.clone())
-            .unwrap(),
-    );
-    txn.insert_utxo(
-        inputs2[0]
-            .as_transaction_output(&PROVER, &COMMITMENT_FACTORY, inputs2[0].features.clone())
-            .unwrap(),
-    );
-    txn.insert_utxo(
-        inputs3[0]
-            .as_transaction_output(&PROVER, &COMMITMENT_FACTORY, inputs3[0].features.clone())
-            .unwrap(),
-    );
-    txn.insert_utxo(
-        inputs4[0]
-            .as_transaction_output(&PROVER, &COMMITMENT_FACTORY, inputs4[0].features.clone())
-            .unwrap(),
-    );
-    txn.insert_utxo(
-        inputs5[0]
-            .as_transaction_output(&PROVER, &COMMITMENT_FACTORY, inputs5[0].features.clone())
-            .unwrap(),
-    );
-    txn.insert_utxo(
-        inputs6[0]
-            .as_transaction_output(&PROVER, &COMMITMENT_FACTORY, inputs6[0].features.clone())
-            .unwrap(),
-    );
+    txn.insert_utxo(inputs1[0].as_transaction_output(&PROVER, &COMMITMENT_FACTORY).unwrap());
+    txn.insert_utxo(inputs2[0].as_transaction_output(&PROVER, &COMMITMENT_FACTORY).unwrap());
+    txn.insert_utxo(inputs3[0].as_transaction_output(&PROVER, &COMMITMENT_FACTORY).unwrap());
+    txn.insert_utxo(inputs4[0].as_transaction_output(&PROVER, &COMMITMENT_FACTORY).unwrap());
+    txn.insert_utxo(inputs5[0].as_transaction_output(&PROVER, &COMMITMENT_FACTORY).unwrap());
+    txn.insert_utxo(inputs6[0].as_transaction_output(&PROVER, &COMMITMENT_FACTORY).unwrap());
     assert!(store.commit(txn).is_ok());
 
-    let block1 = chain_block(&block0, vec![tx1.clone(), tx2.clone()]);
-    assert!(store.add_block(block1.clone()).is_ok());
-    let block2 = chain_block(&block1, vec![tx3.clone()]);
-    assert!(store.add_block(block2.clone()).is_ok());
-    let block3 = chain_block(&block2, vec![tx4.clone(), tx5.clone(), tx6.clone()]);
-    assert!(store.add_block(block3.clone()).is_ok());
+    let mut block1 = chain_block(&block0, vec![tx1.clone(), tx2.clone()]);
+    block1 = add_block_and_update_header(&store, block1);
+    let mut block2 = chain_block(&block1, vec![tx3.clone()]);
+    block2 = add_block_and_update_header(&store, block2);
+    let mut block3 = chain_block(&block2, vec![tx4.clone(), tx5.clone(), tx6.clone()]);
+    block3 = add_block_and_update_header(&store, block3);
 
     assert!(store.rewind_to_height(3).is_ok());
     assert!(store.rewind_to_height(4).is_err());
@@ -551,90 +532,51 @@ fn rewind_to_height() {
 
 #[test]
 fn handle_reorg() {
-    //   /--> C1 (Orphan block)
     // GB --> A1 --> A2(Main Chain)
-    //          \--> B1(?) --> B2 --> B3 (Orphan Chain)
-    // Initially, the main chain is GB->A1-A2 with orphaned blocks B2, B3 and C1. When B1 arrives late and is added to
-    // the blockchain then a reorg is triggered and the main chain is reorganized to GB->A1->B1->B2->B3
+    //          \--> B2(?) --> B3 --> B4 (Orphan Chain)
+    // Initially, the main chain is GB->A1-A2 with orphaned blocks B3, B4. When B2 arrives late and is added to
+    // the blockchain then a reorg is triggered and the main chain is reorganized to GB->A1->B2->B3->B4
 
-    let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
-    let (block_gb, _) = create_genesis_block();
-    assert!(store.add_block(block_gb.clone()).is_ok());
+    let (mut store, mut blocks, mut outputs) = create_new_blockchain();
+    // A parallel store that will "mine" the orphan chain
+    let mut orphan_store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
+    println!("Genesis block:\n{}", blocks[0]);
+    orphan_store.add_block(blocks[0].clone()).unwrap();
 
-    let (tx1, inputs1, _) = tx!(10_000.into(), fee:50.into(), inputs: 1, outputs:1);
-    let (tx2, inputs2, _) = tx!(10_000.into(), fee:20.into(), inputs:1, outputs:1);
-    let (tx3, inputs3, _) = tx!(10_000.into(), fee:100.into(), inputs: 1, outputs:1);
-    let (tx4, inputs4, _) = tx!(10_000.into(), fee:30.into(), inputs:1, outputs:1);
-    let (_, inputs5, _) = tx!(10_000.into(), fee:50.into(), inputs: 1, outputs:1);
-    let utxo1 = inputs1[0]
-        .as_transaction_output(&PROVER, &COMMITMENT_FACTORY, inputs1[0].features.clone())
-        .unwrap();
-    let utxo2 = inputs2[0]
-        .as_transaction_output(&PROVER, &COMMITMENT_FACTORY, inputs2[0].features.clone())
-        .unwrap();
-    let utxo3 = inputs3[0]
-        .as_transaction_output(&PROVER, &COMMITMENT_FACTORY, inputs3[0].features.clone())
-        .unwrap();
-    let utxo4 = inputs4[0]
-        .as_transaction_output(&PROVER, &COMMITMENT_FACTORY, inputs4[0].features.clone())
-        .unwrap();
-    let utxo5 = inputs5[0]
-        .as_transaction_output(&PROVER, &COMMITMENT_FACTORY, inputs5[0].features.clone())
-        .unwrap();
-    let utxo1_hash = utxo1.hash();
-    let utxo2_hash = utxo2.hash();
-    let utxo3_hash = utxo3.hash();
-    let utxo4_hash = utxo4.hash();
-    let utxo5_hash = utxo5.hash();
-    let mut txn = DbTransaction::new();
-    txn.insert_utxo(utxo1);
-    txn.insert_utxo(utxo2);
-    txn.insert_utxo(utxo3);
-    txn.insert_utxo(utxo4);
-    txn.insert_utxo(utxo5);
-    assert!(store.commit(txn).is_ok());
+    // Block A1
+    let txs = vec![txn_schema!(
+        from: vec![outputs[0][0].clone()],
+        to: vec![10 * T, 10 * T, 10 * T, 10 * T]
+    )];
+    assert!(generate_new_block(&mut store, &mut blocks, &mut outputs, txs).is_ok());
+    orphan_store.add_block(blocks[1].clone()).unwrap();
+    let mut orphan_blocks = blocks.clone();
+    let mut orphan_outputs = outputs.clone();
 
-    let block_a1 = chain_block(&block_gb, vec![tx1.clone()]);
-    assert!(store.add_block(block_a1.clone()).is_ok());
-    let block_c1 = chain_block(&block_gb, vec![tx3.clone()]);
-    assert!(store.add_block(block_c1.clone()).is_ok());
+    // Fork happens from here.
 
-    let block_a2 = chain_block(&block_a1, vec![tx2.clone()]);
-    assert!(store.add_block(block_a2.clone()).is_ok());
+    // Block A2 - main chain
+    let txs = vec![txn_schema!(from: vec![outputs[1][3].clone()], to: vec![6 * T])];
+    assert!(generate_new_block(&mut store, &mut blocks, &mut outputs, txs).is_ok());
 
-    let block_b1 = chain_block(&block_a1, vec![tx4]);
-    let block_b2 = chain_block(&block_b1, vec![tx2]);
-    let block_b3 = chain_block(&block_b2, vec![tx3]);
+    // Block B2 - forked chain
+    let txs = vec![txn_schema!(from: vec![orphan_outputs[1][0].clone()], to: vec![5 * T])];
+    assert!(generate_new_block(&mut orphan_store, &mut orphan_blocks, &mut orphan_outputs, txs).is_ok());
+    // Block B3
+    let txs = vec![
+        txn_schema!(from: vec![orphan_outputs[1][3].clone()], to: vec![3 * T]),
+        txn_schema!(from: vec![orphan_outputs[2][0].clone()], to: vec![3 * T]),
+    ];
+    assert!(generate_new_block(&mut orphan_store, &mut orphan_blocks, &mut orphan_outputs, txs).is_ok());
+    // Block B3
+    let txs = vec![txn_schema!(from: vec![orphan_outputs[3][0].clone()], to: vec![1 * T])];
+    assert!(generate_new_block(&mut orphan_store, &mut orphan_blocks, &mut orphan_outputs, txs).is_ok());
 
-    assert!(store.add_block(block_b2.clone()).is_ok());
-    assert!(store.add_block(block_b3.clone()).is_ok());
-    assert_eq!(store.get_height(), Ok(Some(2)));
-    assert_eq!(store.fetch_header(0), Ok(block_gb.header.clone()));
-    assert_eq!(store.fetch_header(1), Ok(block_a1.header.clone()));
-    assert_eq!(store.fetch_header(2), Ok(block_a2.header.clone()));
-    assert!(store.fetch_header(3).is_err());
-    assert!(store.fetch_orphan(block_b2.hash()).is_ok());
-    assert!(store.fetch_orphan(block_b3.hash()).is_ok());
-
-    assert_eq!(store.is_utxo(utxo1_hash.clone()), Ok(false));
-    assert_eq!(store.is_utxo(utxo2_hash.clone()), Ok(false));
-    assert_eq!(store.is_utxo(utxo3_hash.clone()), Ok(true));
-    assert_eq!(store.is_utxo(utxo4_hash.clone()), Ok(true));
-    assert_eq!(store.is_utxo(utxo5_hash.clone()), Ok(true));
-
-    assert!(store.add_block(block_b1.clone()).is_ok());
-    assert_eq!(store.get_height(), Ok(Some(4)));
-    assert_eq!(store.fetch_header(0), Ok(block_gb.header));
-    assert_eq!(store.fetch_header(1), Ok(block_a1.header));
-    assert_eq!(store.fetch_header(2), Ok(block_b1.header));
-    assert_eq!(store.fetch_header(3), Ok(block_b2.header));
-    assert_eq!(store.fetch_header(4), Ok(block_b3.header));
-    assert!(store.fetch_header(5).is_err());
-    assert!(store.fetch_orphan(block_a2.hash()).is_ok());
-
-    assert_eq!(store.is_utxo(utxo1_hash), Ok(false));
-    assert_eq!(store.is_utxo(utxo2_hash), Ok(false));
-    assert_eq!(store.is_utxo(utxo3_hash), Ok(false));
-    assert_eq!(store.is_utxo(utxo4_hash), Ok(false));
-    assert_eq!(store.is_utxo(utxo5_hash), Ok(true));
+    // Now add the fork blocks to the first DB and observe a re-org
+    store.add_block(orphan_blocks[3].clone()).unwrap();
+    store.add_block(orphan_blocks[4].clone()).unwrap();
+    assert_eq!(
+        store.add_block(orphan_blocks[2].clone()),
+        Ok(BlockAddResult::ChainReorg)
+    );
 }

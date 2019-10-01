@@ -37,6 +37,7 @@ use digest::Digest;
 ///
 /// The `MutableMmr` API maps nearly 1:1 to that of MerkleMountainRange so that you should be able to use it as a
 /// drop-in replacement for the latter in most cases.
+#[derive(Debug)]
 pub struct MutableMmr<D, B>
 where
     D: Digest,
@@ -114,6 +115,11 @@ where
     /// Returns only the MMR merkle root without the compressed serialisation of the bitmap
     pub fn get_mmr_only_root(&self) -> Hash {
         self.mmr.get_merkle_root()
+    }
+
+    /// See [MerkleMountainRange::find_merkle_root]
+    pub fn find_leaf_node(&self, hash: &Hash) -> Option<usize> {
+        self.mmr.find_leaf_node(hash)
     }
 
     /// Push a new element into the MMR. Computes new related peaks at the same time if applicable.

@@ -141,11 +141,15 @@ where T: BlockchainBackend
 mod test {
     use super::*;
     use crate::{
-        blocks::genesis_block::get_genesis_block,
-        chain_storage::{DbTransaction, MemoryDatabase},
-        tari_amount::MicroTari,
-        transaction::TransactionInput,
+        chain_storage::MemoryDatabase,
+        tari_amount::{uT, MicroTari, T},
+        test_utils::{
+            builders::schema_to_transaction,
+            sample_blockchains::{create_new_blockchain, generate_new_block},
+        },
+        transaction::OutputFeatures,
         tx,
+        txn_schema,
         types::HashDigest,
     };
     use std::{thread, time::Duration};
@@ -243,65 +247,62 @@ mod test {
 
     #[test]
     fn test_scan_for_and_remove_unorphaned() {
-        let tx1 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(500), lock: 1100, inputs: 2, outputs: 1).0);
-        let tx2 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(300), lock: 1700, inputs: 2, outputs: 1).0);
-        let tx3 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(100), lock: 0, inputs: 1, outputs: 1).0);
-        let mut tx4 = tx!(MicroTari(10_000), fee: MicroTari(200), inputs: 2, outputs: 1).0;
-        let mut tx5 = tx!(MicroTari(10_000), fee: MicroTari(500), lock: 1000, inputs: 2, outputs: 1).0;
-        let tx6 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(600), lock: 5200, inputs: 2, outputs: 1).0);
-        // Publishing of tx1 and tx2 will create the UTXOs required by tx4 and tx5
-        tx4.body.inputs.clear();
-        tx1.body
-            .outputs
-            .iter()
-            .for_each(|output| tx4.body.inputs.push(TransactionInput::from(output.clone())));
+        let (store, mut blocks, mut outputs) = create_new_blockchain();
+        // A parallel store that will "mine" the orphan chain
+        let mut miner = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
+        miner.add_block(blocks[0].clone()).unwrap();
+        let orphan_pool = OrphanPool::new(Arc::new(store.clone()), OrphanPoolConfig::default());
+        let schemas = vec![txn_schema!(
+            from: vec![outputs[0][0].clone()],
+            to: vec![2 * T, 2 * T, 2 * T, 2 * T, 2 * T]
+        )];
+        generate_new_block(&mut miner, &mut blocks, &mut outputs, schemas.clone()).unwrap();
+        store.add_block(blocks[1].clone()).unwrap();
+        let schemas = vec![
+            txn_schema!(from: vec![outputs[1][0].clone(), outputs[1][1].clone()], to: vec![], fee: 500*uT, lock: 1100, OutputFeatures::default()),
+            txn_schema!(from: vec![outputs[1][2].clone()], to: vec![], fee: 300*uT, lock: 1700, OutputFeatures::default()),
+            txn_schema!(from: vec![outputs[1][3].clone()], to: vec![], fee: 100*uT),
+        ];
+        let (txns, _) = schema_to_transaction(&schemas.clone());
+        generate_new_block(&mut miner, &mut blocks, &mut outputs, schemas).unwrap();
+        // tx3 and tx4 depend on tx0 and tx1
+        let schemas = vec![
+            txn_schema!(from: vec![outputs[2][0].clone()], to: vec![], fee: 200*uT),
+            txn_schema!(from: vec![outputs[2][2].clone()], to: vec![], fee: 500*uT, lock: 1000, OutputFeatures::default()),
+            txn_schema!(from: vec![outputs[1][4].clone()], to: vec![], fee: 600*uT, lock: 5200, OutputFeatures::default()),
+        ];
+        let (txns2, _) = schema_to_transaction(&schemas.clone());
+        generate_new_block(&mut miner, &mut blocks, &mut outputs, schemas).unwrap();
 
-        tx5.body.inputs.clear();
-        tx2.body
-            .outputs
-            .iter()
-            .for_each(|output| tx5.body.inputs.push(TransactionInput::from(output.clone())));
-        let tx4 = Arc::new(tx4);
-        let tx5 = Arc::new(tx5);
-
-        let store = Arc::new(BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap());
-        store.add_block(get_genesis_block().clone()).unwrap();
-        let orphan_pool = OrphanPool::new(store.clone(), OrphanPoolConfig::default());
+        // There are 2 orphan txs
         orphan_pool
-            .insert_txs(vec![tx3.clone(), tx4.clone(), tx5.clone(), tx6.clone()])
+            .insert_txs(vec![
+                txns[2].clone(),
+                txns2[0].clone(),
+                txns2[1].clone(),
+                txns2[2].clone(),
+            ])
             .unwrap();
-
-        let (txs, timelocked_txs) = orphan_pool.scan_for_and_remove_unorphaned_txs().unwrap();
-        assert_eq!(orphan_pool.len().unwrap(), 4);
-        assert_eq!(txs.len(), 0);
-        assert_eq!(timelocked_txs.len(), 0);
-        assert!(orphan_pool
-            .has_tx_with_excess_sig(&tx3.body.kernels[0].excess_sig)
-            .unwrap());
-        assert!(orphan_pool
-            .has_tx_with_excess_sig(&tx4.body.kernels[0].excess_sig)
-            .unwrap());
-        assert!(orphan_pool
-            .has_tx_with_excess_sig(&tx5.body.kernels[0].excess_sig)
-            .unwrap());
-
-        // Create UTXOs produced by tx1 and tx2
-        let mut db_txn = DbTransaction::new();
-        db_txn.insert_utxo(tx1.body.outputs[0].clone());
-        db_txn.insert_utxo(tx2.body.outputs[0].clone());
-        assert!(store.commit(db_txn).is_ok());
 
         let (txs, timelocked_txs) = orphan_pool.scan_for_and_remove_unorphaned_txs().unwrap();
         assert_eq!(orphan_pool.len().unwrap(), 2);
         assert_eq!(txs.len(), 1);
         assert_eq!(timelocked_txs.len(), 1);
         assert!(orphan_pool
-            .has_tx_with_excess_sig(&tx3.body.kernels[0].excess_sig)
+            .has_tx_with_excess_sig(&txns2[0].body.kernels[0].excess_sig)
             .unwrap());
         assert!(orphan_pool
-            .has_tx_with_excess_sig(&tx6.body.kernels[0].excess_sig)
+            .has_tx_with_excess_sig(&txns2[1].body.kernels[0].excess_sig)
             .unwrap());
-        assert!(txs.contains(&tx4));
-        assert!(timelocked_txs.contains(&tx5));
+
+        // Un-orphan the transactions
+        orphan_pool.insert_txs(vec![txns[0].clone(), txns[1].clone()]).unwrap();
+        store.add_block(blocks[2].clone()).unwrap();
+        let (txs, timelocked_txs) = orphan_pool.scan_for_and_remove_unorphaned_txs().unwrap();
+        assert_eq!(orphan_pool.len().unwrap(), 2);
+        assert_eq!(txs.len(), 1);
+        assert_eq!(timelocked_txs.len(), 1);
+        assert!(txs.contains(&txns2[0]));
+        assert!(timelocked_txs.contains(&txns2[1]));
     }
 }
