@@ -57,7 +57,7 @@ pub struct ForwardRequest {
     pub body: Vec<u8>,
 }
 
-/// Represents requests to the CommsOutboundService
+/// Represents a request to the DHT broadcast middleware
 #[derive(Debug)]
 pub enum DhtOutboundRequest {
     /// Send a message using the given broadcast strategy
@@ -75,8 +75,8 @@ impl fmt::Display for DhtOutboundRequest {
     }
 }
 
-/// The DhtOutboundMessage has a copy of the MessageEnvelope. OutboundMessageService will create the
-/// DhtOutboundMessage and forward it to the OutboundMessagePool.
+/// DhtOutboundMessage consists of the DHT and comms information required to
+/// send a message
 #[derive(Clone, Debug)]
 pub struct DhtOutboundMessage {
     pub peer_node_identity: PeerNodeIdentity,
@@ -87,7 +87,7 @@ pub struct DhtOutboundMessage {
 }
 
 impl DhtOutboundMessage {
-    /// Create a new DhtOutboundMessage from the peer_node_identity and message_frames
+    /// Create a new DhtOutboundMessage
     pub fn new(
         peer_node_identity: PeerNodeIdentity,
         dht_header: DhtHeader,

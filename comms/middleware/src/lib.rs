@@ -52,11 +52,12 @@
 
 #![feature(type_alias_impl_trait)]
 
-pub mod encryption;
-pub mod forward;
-pub mod inbound_connector;
+pub mod error;
 pub mod message;
-pub mod pubsub;
+pub mod pipeline;
+pub mod sink;
 
 #[cfg(test)]
 mod test_utils;
+
+pub use error::MiddlewareError;

@@ -20,4 +20,42 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod stack;
+use futures::{task::Context, Poll, Sink};
+use std::{marker::PhantomData, pin::Pin};
+
+/// Sink to nowhere. This is used as an initial type for the CommsBuilder
+/// and should be replaced with a working sink (otherwise inbound messages
+/// will just be discarded)
+pub struct NullSink<T, E> {
+    _t: PhantomData<T>,
+    _e: PhantomData<E>,
+}
+
+impl<T, E> NullSink<T, E> {
+    pub fn new() -> Self {
+        Self {
+            _t: PhantomData,
+            _e: PhantomData,
+        }
+    }
+}
+
+impl<T, E> Sink<T> for NullSink<T, E> {
+    type Error = E;
+
+    fn poll_ready(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn start_send(self: Pin<&mut Self>, _: T) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn poll_close(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+}

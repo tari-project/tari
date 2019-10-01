@@ -24,15 +24,14 @@ use crate::support::{
     factories::{self, TestFactory},
     helpers::streams::stream_assert_count,
 };
-use futures::{channel::mpsc, StreamExt};
+use futures::{channel::mpsc, SinkExt, StreamExt};
 use std::{fs, path::PathBuf, sync::Arc, thread, time::Duration};
 use tari_comms::{
     connection::ZmqContext,
     connection_manager::{create_connection_manager_actor, ConnectionManager, PeerConnectionConfig},
     control_service::{ControlService, ControlServiceConfig},
     message::MessageFlags,
-    middleware::IdentityOutboundMiddleware,
-    outbound_message_service::{BroadcastStrategy, OutboundMessageService, OutboundServiceRequester},
+    outbound_message_service::{OutboundMessage, OutboundMessageService},
     peer_manager::{Peer, PeerManager},
     types::CommsDatabase,
 };
@@ -157,30 +156,19 @@ fn outbound_message_pool_no_retry() {
     let (outbound_tx, outbound_rx) = mpsc::unbounded();
     let oms = OutboundMessageService::new(
         Default::default(),
-        rt.executor(),
-        IdentityOutboundMiddleware::new(),
         outbound_rx,
-        node_A_peer_manager,
+        node_identity,
         node_A_connection_manager_requester,
-        Arc::clone(&node_identity),
     );
     rt.spawn(oms.start());
-    let oms = OutboundServiceRequester::new(outbound_tx);
-
-    let message_envelope_body = vec![0, 1, 2, 3];
 
     // Spawn 8 message sending tasks
     for _ in 0..8 {
-        let mut oms_clone = oms.clone();
+        let mut sink_clone = outbound_tx.clone();
         let node_id = node_B_peer.node_id.clone();
-        let body_clone = message_envelope_body.clone();
         rt.spawn(async move {
-            oms_clone
-                .send_raw(
-                    BroadcastStrategy::DirectNodeId(node_id),
-                    MessageFlags::ENCRYPTED,
-                    body_clone,
-                )
+            sink_clone
+                .send(OutboundMessage::new(node_id, MessageFlags::NONE, vec![0]))
                 .await
                 .unwrap()
         });
@@ -263,36 +251,26 @@ fn test_outbound_message_pool_fail_and_retry() {
     let (outbound_tx, outbound_rx) = mpsc::unbounded();
     let oms = OutboundMessageService::new(
         Default::default(),
-        rt.executor(),
-        IdentityOutboundMiddleware::new(),
         outbound_rx,
-        node_A_peer_manager,
+        node_A_identity,
         node_A_connection_manager_requester,
-        Arc::clone(&node_A_identity),
     );
     rt.spawn(oms.start());
-    let oms = OutboundServiceRequester::new(outbound_tx);
-
-    let message_envelope_body = vec![0, 1, 2, 3];
 
     // Spawn 8 message sending tasks
-    for _ in 0..5 {
-        let mut oms_clone = oms.clone();
+    for _ in 0..8 {
+        let mut sink_clone = outbound_tx.clone();
         let node_id = node_B_peer.node_id.clone();
-        let body_clone = message_envelope_body.clone();
         rt.spawn(async move {
-            oms_clone
-                .send_raw(
-                    BroadcastStrategy::DirectNodeId(node_id),
-                    MessageFlags::ENCRYPTED,
-                    body_clone,
-                )
+            sink_clone
+                .send(OutboundMessage::new(node_id, MessageFlags::empty(), vec![0]))
                 .await
                 .unwrap()
         });
     }
 
-    thread::sleep(Duration::from_millis(1000));
+    // Keep this thread sleep, it's testing send retry
+    thread::sleep(Duration::from_millis(1500));
 
     // Later, start node B's control service and test if we receive messages
     let node_B_database_name = "omp_node_B_peer_manager"; // Note: every test should have unique database

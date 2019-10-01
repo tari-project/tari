@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::{error::ServiceError, registry::ServiceRegistry};
-use crate::tari_message::TariMessageType;
+use crate::{comms_connector::PeerMessage, tari_message::TariMessageType};
 use crossbeam_channel as channel;
 use crossbeam_channel::{Receiver, RecvTimeoutError, Sender};
 use log::*;
@@ -32,10 +32,9 @@ use std::{
 };
 use tari_comms::{
     builder::CommsNode,
-    outbound_message_service::OutboundServiceRequester,
     peer_manager::{NodeIdentity, PeerManager},
 };
-use tari_comms_middleware::message::PeerMessage;
+use tari_comms_dht::{outbound::OutboundMessageRequester, Dht};
 use tari_pubsub::TopicSubscriptionFactory;
 use threadpool::ThreadPool;
 
@@ -58,6 +57,7 @@ impl ServiceExecutor {
     /// Execute the services contained in the given [ServiceRegistry].
     pub fn execute(
         comms_services: &CommsNode,
+        dht: &Dht,
         registry: ServiceRegistry,
         subscription_factory: Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage<TariMessageType>>>>,
     ) -> Self
@@ -73,7 +73,7 @@ impl ServiceExecutor {
             senders.push(sender);
 
             let service_context = ServiceContext {
-                oms: comms_services.outbound_message_service(),
+                oms: dht.outbound_requester(),
                 peer_manager: comms_services.peer_manager(),
                 node_identity: comms_services.node_identity(),
                 receiver,
@@ -149,7 +149,7 @@ impl ServiceExecutor {
 /// access the outbound message service and create [DomainConnector]s to receive comms messages of
 /// a particular [TariMessageType].
 pub struct ServiceContext {
-    oms: OutboundServiceRequester,
+    oms: OutboundMessageRequester,
     peer_manager: Arc<PeerManager>,
     node_identity: Arc<NodeIdentity>,
     receiver: Receiver<ServiceControlMessage>,
@@ -171,7 +171,7 @@ impl ServiceContext {
     }
 
     /// Retrieve and `Arc` of the outbound message service. Used for sending outbound messages.
-    pub fn outbound_message_service(&self) -> OutboundServiceRequester {
+    pub fn outbound_message_service(&self) -> OutboundMessageRequester {
         self.oms.clone()
     }
 
@@ -196,6 +196,7 @@ impl ServiceContext {
 mod test {
     use super::*;
     use crate::{
+        comms_connector::pubsub_connector,
         initialization::{initialize_comms, CommsConfig},
         sync_services::Service,
         tari_message::NetMessage,
@@ -203,8 +204,6 @@ mod test {
     use rand::rngs::OsRng;
     use std::{path::PathBuf, sync::RwLock};
     use tari_comms::peer_manager::NodeIdentity;
-    use tari_comms_middleware::pubsub::pubsub_connector;
-    use tari_storage::lmdb_store::{LMDBBuilder, LMDBError, LMDBStore};
     use tokio::runtime::Runtime;
 
     #[derive(Clone)]
@@ -245,17 +244,6 @@ mod test {
         path.to_str().unwrap().to_string()
     }
 
-    fn init_datastore(name: &str) -> Result<LMDBStore, LMDBError> {
-        let path = get_path(name);
-        let _ = std::fs::create_dir(&path).unwrap_or_default();
-        LMDBBuilder::new()
-            .set_path(&path)
-            .set_environment_size(10)
-            .set_max_number_of_databases(2)
-            .add_database(name, lmdb_zero::db::CREATE)
-            .build()
-    }
-
     fn clean_up_datastore(name: &str) {
         std::fs::remove_dir_all(get_path(name)).unwrap();
     }
@@ -281,12 +269,13 @@ mod test {
             host: "127.0.0.1".parse().unwrap(),
             peer_database_name: database_name.to_string(),
             socks_proxy_address: None,
+            inbound_buffer_size: 1,
+            outbound_buffer_size: 1,
+            dht: Default::default(),
         };
-        let comms_node = initialize_comms(rt.executor(), config, publisher).unwrap();
+        let (comms_node, dht) = initialize_comms(rt.executor(), config, publisher).unwrap();
 
-        //        let (pubsub_tx, pubsub_subscription_factory) = pubsub_channel(1);
-
-        let services = ServiceExecutor::execute(&comms_node, registry, Arc::new(subscription_factory));
+        let services = ServiceExecutor::execute(&comms_node, &dht, registry, Arc::new(subscription_factory));
 
         services.shutdown().unwrap();
         services.join_timeout(Duration::from_millis(100)).unwrap();

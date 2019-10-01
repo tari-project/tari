@@ -24,7 +24,7 @@ use crate::{
     connection::ConnectionError,
     control_service::{messages::RejectReason, ControlServiceError},
     message::MessageError,
-    peer_manager::{node_identity::NodeIdentityError, PeerManagerError},
+    peer_manager::PeerManagerError,
 };
 use derive_error::Error;
 use tari_utilities::{
@@ -76,7 +76,7 @@ pub enum ConnectionManagerError {
     /// Failed to receive a connection request outcome before the timeout
     ConnectionRequestOutcomeTimeout,
     ControlServiceError(ControlServiceError),
-    NodeIdentityError(NodeIdentityError),
+    //    NodeIdentityError(NodeIdentityError),
     //---------------------------------- Async --------------------------------------------//
     /// Failed to send request to ConnectionManagerActor. Channel closed.
     SendToActorFailed,

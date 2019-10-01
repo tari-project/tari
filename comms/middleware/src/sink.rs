@@ -1,4 +1,4 @@
-// Copyright 2019 The Tari Project
+// Copyright 2019, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,35 +20,39 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use futures::future::{self, Future};
-use tari_comms_dht::outbound::OutboundMessageRequester;
-use tari_service_framework::{handles::ServiceHandlesFuture, ServiceInitializationError, ServiceInitializer};
-use tokio::runtime::TaskExecutor;
+use crate::error::MiddlewareError;
+use futures::{task::Context, Future, Poll, Sink, SinkExt};
+use std::{error::Error, pin::Pin};
+use tower::Service;
 
-/// Convenience type alias for external services that want to use this services handle
-pub type CommsOutboundHandle = OutboundMessageRequester;
+/// A middleware which forwards and messages it gets to the given Sink
+#[derive(Clone)]
+pub struct SinkMiddleware<TSink>(TSink);
 
-/// This initializer simply adds a comms OutboundMessageRequester as a handle for use in services.
-pub struct CommsOutboundServiceInitializer {
-    oms: Option<OutboundMessageRequester>,
-}
-
-impl CommsOutboundServiceInitializer {
-    pub fn new(oms: OutboundMessageRequester) -> Self {
-        Self { oms: Some(oms) }
+impl<TSink> SinkMiddleware<TSink> {
+    pub fn new(sink: TSink) -> Self {
+        SinkMiddleware(sink)
     }
 }
 
-impl ServiceInitializer for CommsOutboundServiceInitializer {
-    type Future = impl Future<Output = Result<(), ServiceInitializationError>>;
+impl<T, TSink> Service<T> for SinkMiddleware<TSink>
+where
+    TSink: Sink<T> + Unpin + Clone + 'static,
+    TSink::Error: Error + Send + 'static,
+{
+    type Error = MiddlewareError;
+    type Response = ();
 
-    fn initialize(&mut self, _: TaskExecutor, handles: ServiceHandlesFuture) -> Self::Future {
-        handles.register(
-            self.oms
-                .take()
-                .expect("CommsOutboundServiceInitializer initialized without OutboundMessageRequester"),
-        );
+    type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
 
-        future::ready(Ok(()))
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Pin::new(&mut self.0)
+            .poll_ready(cx)
+            .map_err(|err| Box::new(err) as MiddlewareError)
+    }
+
+    fn call(&mut self, item: T) -> Self::Future {
+        let mut sink = self.0.clone();
+        async move { sink.send(item).await.map_err(|err| Box::new(err) as MiddlewareError) }
     }
 }

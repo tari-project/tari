@@ -19,11 +19,10 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use crate::domain_message::DomainMessage;
+use crate::{comms_connector::PeerMessage, domain_message::DomainMessage};
 use derive_error::Error;
 use futures::{executor::block_on, stream::FusedStream, Stream, StreamExt};
 use std::{fmt::Debug, sync::Arc};
-use tari_comms_middleware::message::PeerMessage;
 use tari_utilities::message_format::MessageFormat;
 
 #[derive(Debug, Error, PartialEq)]
@@ -84,8 +83,7 @@ where S: Stream<Item = Arc<PeerMessage<MType>>> + Unpin + FusedStream
                         .map_err(|_| DomainSubscriberError::MessageError)?;
                     messages.push(DomainMessage {
                         source_peer: message.source_peer.clone(),
-                        // TODO: origin_pubkey should be used when the DHT middleware is hooked up
-                        origin_pubkey: message.envelope_header.peer_pubkey.clone(),
+                        origin_pubkey: message.dht_header.origin_public_key.clone(),
                         inner: msg,
                     });
                 }
@@ -112,6 +110,7 @@ mod test {
         message::{MessageEnvelopeHeader, MessageFlags, MessageHeader, NodeDestination},
         peer_manager::{NodeIdentity, Peer, PeerFlags},
     };
+    use tari_comms_dht::message::{DhtHeader, DhtMessageFlags, DhtMessageType};
     use tari_pubsub::{pubsub_channel, TopicPayload};
 
     #[test]
@@ -165,11 +164,17 @@ mod test {
                     MessageHeader::new(()).unwrap(),
                     MessageEnvelopeHeader {
                         version: 0,
-                        peer_pubkey: node_identity.identity.public_key.clone(),
-                        destination: NodeDestination::Unknown,
-                        peer_signature: Vec::new(),
+                        message_public_key: node_identity.identity.public_key.clone(),
+                        message_signature: Vec::new(),
                         flags: MessageFlags::empty(),
                     },
+                    DhtHeader::new(
+                        NodeDestination::Undisclosed,
+                        node_identity.identity.public_key.clone(),
+                        Vec::new(),
+                        DhtMessageType::None,
+                        DhtMessageFlags::empty(),
+                    ),
                     Peer::new(
                         node_identity.identity.public_key.clone(),
                         node_identity.identity.node_id.clone(),

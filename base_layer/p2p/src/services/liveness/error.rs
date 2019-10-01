@@ -21,11 +21,12 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use derive_error::Error;
-use tari_comms::{message::MessageError, outbound_message_service::OutboundServiceError};
+use tari_comms::message::MessageError;
+use tari_comms_dht::outbound::DhtOutboundError;
 
 #[derive(Debug, Error)]
 pub enum LivenessError {
-    CommsOutboundError(OutboundServiceError),
+    DhtOutboundError(DhtOutboundError),
     /// Failed to send a pong message
     SendPongFailed,
     /// Failed to send a ping message

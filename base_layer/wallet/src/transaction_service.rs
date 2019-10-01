@@ -32,10 +32,10 @@ use std::{
     sync::{Arc, Mutex},
     time::Duration,
 };
-use tari_comms::{
-    message::MessageFlags,
-    outbound_message_service::{BroadcastStrategy, OutboundServiceError, OutboundServiceRequester},
-    types::CommsPublicKey,
+use tari_comms::{message::NodeDestination, types::CommsPublicKey};
+use tari_comms_dht::{
+    message::DhtMessageFlags,
+    outbound::{BroadcastStrategy, DhtOutboundError, OutboundMessageRequester},
 };
 use tari_core::{
     tari_amount::MicroTari,
@@ -87,7 +87,7 @@ pub enum TransactionServiceError {
     ApiSendFailed,
     /// Failed to receive in API from service
     ApiReceiveFailed,
-    OutboundError(OutboundServiceError),
+    OutboundError(DhtOutboundError),
     OutputManagerError(OutputManagerError),
 }
 
@@ -111,7 +111,7 @@ pub struct TransactionService {
     pending_outbound_transactions: HashMap<u64, SenderTransactionProtocol>,
     pending_inbound_transactions: HashMap<u64, ReceiverTransactionProtocol>,
     completed_transactions: HashMap<u64, Transaction>,
-    outbound_message_service: Option<OutboundServiceRequester>,
+    outbound_message_service: Option<OutboundMessageRequester>,
     api: ServiceApiWrapper<TransactionServiceApi, TransactionServiceApiRequest, TransactionServiceApiResult>,
     output_manager_service: Arc<OutputManagerServiceApi>,
     runtime: Runtime,
@@ -174,7 +174,8 @@ impl TransactionService {
         let msg = stp.build_single_round_message()?;
         self.runtime.block_on(outbound_message_service.send_message(
             BroadcastStrategy::DirectPublicKey(dest_pubkey.clone()),
-            MessageFlags::ENCRYPTED,
+            NodeDestination::Undisclosed,
+            DhtMessageFlags::ENCRYPTED,
             TariMessageType::new(BlockchainMessage::Transaction),
             TransactionSenderMessage::Single(Box::new(msg.clone())),
         ))?;
@@ -280,7 +281,8 @@ impl TransactionService {
 
             self.runtime.block_on(outbound_message_service.send_message(
                 BroadcastStrategy::DirectPublicKey(source_pubkey.clone()),
-                MessageFlags::ENCRYPTED,
+                NodeDestination::Undisclosed,
+                DhtMessageFlags::ENCRYPTED,
                 TariMessageType::new(BlockchainMessage::TransactionReply),
                 recipient_reply.clone(),
             ))?;

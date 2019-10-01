@@ -42,13 +42,13 @@ mod state;
 
 use self::{error::LivenessError, service::LivenessService, state::LivenessState};
 use crate::{
+    comms_connector::PeerMessage,
     domain_message::DomainMessage,
     services::comms_outbound::CommsOutboundHandle,
     tari_message::{NetMessage, TariMessageType},
 };
 use futures::{future, Future, Stream, StreamExt};
 use std::{fmt::Debug, sync::Arc};
-use tari_comms_middleware::message::PeerMessage;
 use tari_pubsub::TopicSubscriptionFactory;
 use tari_service_framework::{
     handles::ServiceHandlesFuture,
@@ -141,7 +141,7 @@ where T: MessageFormat {
     Ok(DomainMessage {
         source_peer: serialized.source_peer.clone(),
         // TODO: origin_pubkey should be used when the DHT middleware is hooked up
-        origin_pubkey: serialized.envelope_header.peer_pubkey.clone(),
+        origin_pubkey: serialized.comms_header.message_public_key.clone(),
         inner: serialized.deserialize_message()?,
     })
 }

@@ -535,6 +535,10 @@ fn test_rpc_text_message_service() {
                 .unwrap()
                 .to_string(),
             peer_database_name: random_string(8),
+            // TODO: configureable
+            inbound_buffer_size: 30,
+            outbound_buffer_size: 30,
+            dht: Default::default(),
         },
         inbound_message_buffer_size: 10,
         public_key: public_key1.clone(),
@@ -561,6 +565,10 @@ fn test_rpc_text_message_service() {
                 .unwrap()
                 .to_string(),
             peer_database_name: random_string(8),
+            // TODO: configureable
+            inbound_buffer_size: 30,
+            outbound_buffer_size: 30,
+            dht: Default::default(),
         },
         inbound_message_buffer_size: 10,
         public_key: public_key2.clone(),

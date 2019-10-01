@@ -48,7 +48,7 @@ pub fn setup_comms_services(
         })
         .configure_control_service(ControlServiceConfig {
             socks_proxy_address: None,
-            listener_address: node_identity.control_service_address().unwrap(),
+            listener_address: node_identity.control_service_address(),
             requested_connection_timeout: Duration::from_millis(5000),
         })
         .build()
@@ -60,8 +60,7 @@ pub fn setup_comms_services(
         comms
             .peer_manager()
             .add_peer(
-                Peer::from_public_key_and_address(p.identity.public_key.clone(), p.control_service_address().unwrap())
-                    .unwrap(),
+                Peer::from_public_key_and_address(p.identity.public_key.clone(), p.control_service_address()).unwrap(),
             )
             .unwrap();
     }

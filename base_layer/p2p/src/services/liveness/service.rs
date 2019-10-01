@@ -29,10 +29,10 @@ use crate::{
 use futures::{pin_mut, stream::StreamExt, Stream};
 use log::*;
 use std::sync::Arc;
-use tari_comms::{
-    message::MessageFlags,
-    outbound_message_service::{BroadcastStrategy, OutboundServiceError},
-    types::CommsPublicKey,
+use tari_comms::{message::NodeDestination, types::CommsPublicKey};
+use tari_comms_dht::{
+    message::DhtMessageFlags,
+    outbound::{BroadcastStrategy, DhtOutboundError},
 };
 use tari_service_framework::RequestContext;
 
@@ -120,8 +120,9 @@ where
     async fn send_pong(&mut self, dest: CommsPublicKey) -> Result<(), LivenessError> {
         self.oms_handle
             .send_message(
-                BroadcastStrategy::DirectPublicKey(dest),
-                MessageFlags::empty(),
+                BroadcastStrategy::DirectPublicKey(dest.clone()),
+                NodeDestination::PublicKey(dest),
+                DhtMessageFlags::ENCRYPTED,
                 TariMessageType::new(NetMessage::PingPong),
                 PingPong::Pong,
             )
@@ -150,13 +151,14 @@ where
     async fn send_ping(&mut self, pub_key: CommsPublicKey) -> Result<(), LivenessError> {
         self.oms_handle
             .send_message(
-                BroadcastStrategy::DirectPublicKey(pub_key),
-                MessageFlags::empty(),
+                BroadcastStrategy::DirectPublicKey(pub_key.clone()),
+                NodeDestination::PublicKey(pub_key),
+                DhtMessageFlags::ENCRYPTED,
                 TariMessageType::new(NetMessage::PingPong),
                 PingPong::Ping,
             )
             .await
-            .map_err(Into::<OutboundServiceError>::into)?;
+            .map_err(Into::<DhtOutboundError>::into)?;
 
         Ok(())
     }
@@ -177,9 +179,9 @@ mod test {
     use rand::rngs::OsRng;
     use tari_comms::{
         connection::NetAddress,
-        outbound_message_service::OutboundRequest,
         peer_manager::{NodeId, Peer, PeerFlags},
     };
+    use tari_comms_dht::outbound::DhtOutboundRequest;
     use tari_crypto::keys::PublicKey;
     use tari_service_framework::reply_channel;
     use tower_service::Service;
@@ -192,7 +194,7 @@ mod test {
         state.inc_pongs_received();
 
         // Setup a CommsOutbound service handle which is not connected to the actual CommsOutbound service
-        let (outbound_tx, _) = mpsc::unbounded();
+        let (outbound_tx, _) = mpsc::channel(10);
         let oms_handle = CommsOutboundHandle::new(outbound_tx);
 
         // Setup liveness service
@@ -223,7 +225,7 @@ mod test {
 
         // Setup a CommsOutbound service handle which is not connected to the actual CommsOutbound service
         // TODO(sdbondi): Setting up a "dummy" CommsOutbound service should be moved into testing utilities
-        let (outbound_tx, mut outbound_rx) = mpsc::unbounded();
+        let (outbound_tx, mut outbound_rx) = mpsc::channel(10);
         let oms_handle = CommsOutboundHandle::new(outbound_tx);
 
         // Setup liveness service
@@ -246,7 +248,7 @@ mod test {
         pool.run_until(async move {
             let request = outbound_rx.select_next_some().await;
             match request {
-                OutboundRequest::SendMsg { .. } => {},
+                DhtOutboundRequest::SendMsg { .. } => {},
                 _ => panic!("Unexpected OutboundRequest"),
             }
         });
@@ -277,7 +279,7 @@ mod test {
 
         // Setup a CommsOutbound service handle which is not connected to the actual CommsOutbound service
         // TODO(sdbondi): Setting up a "dummy" CommsOutbound service should be moved into testing utilities
-        let (outbound_tx, mut outbound_rx) = mpsc::unbounded();
+        let (outbound_tx, mut outbound_rx) = mpsc::channel(10);
         let oms_handle = CommsOutboundHandle::new(outbound_tx);
 
         let msg = create_dummy_message(PingPong::Ping);
@@ -292,7 +294,7 @@ mod test {
         let oms_request = pool.run_until(outbound_rx.next()).unwrap();
 
         match oms_request {
-            OutboundRequest::SendMsg { .. } => {},
+            DhtOutboundRequest::SendMsg { .. } => {},
             _ => panic!("Unpexpected OMS request"),
         }
 
@@ -309,7 +311,7 @@ mod test {
 
         // Setup a CommsOutbound service handle which is not connected to the actual CommsOutbound service
         // TODO(sdbondi): Setting up a "dummy" CommsOutbound service should be moved into testing utilities
-        let (outbound_tx, _) = mpsc::unbounded();
+        let (outbound_tx, _) = mpsc::channel(10);
         let oms_handle = CommsOutboundHandle::new(outbound_tx);
 
         let msg = create_dummy_message(PingPong::Pong);

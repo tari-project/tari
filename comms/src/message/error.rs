@@ -25,6 +25,7 @@ use derive_error::Error;
 use tari_crypto::signatures::SchnorrSignatureError;
 use tari_utilities::{ciphers::cipher::CipherError, message_format::MessageFormatError};
 
+// TODO: only used by control service, so belongs in that module
 #[derive(Error, Debug)]
 pub enum MessageError {
     /// Multipart message is malformed

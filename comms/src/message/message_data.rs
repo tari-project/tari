@@ -82,10 +82,9 @@ mod test {
     fn test_try_from_and_into() {
         let mut rng = rand::OsRng::new().unwrap();
         let (_, source_node_identity) = RistrettoPublicKey::random_keypair(&mut rng);
-        let version_frame: Frame = vec![10];
         let header_frame: Frame = vec![0, 1, 2, 3, 4];
         let body_frame: Frame = vec![5, 6, 7, 8, 9];
-        let message_envelope = MessageEnvelope::new(version_frame, header_frame, body_frame);
+        let message_envelope = MessageEnvelope::new(header_frame, body_frame);
         let expected_message_data =
             MessageData::new(NodeId::from_key(&source_node_identity).unwrap(), message_envelope);
         // Convert MessageData to FrameSet

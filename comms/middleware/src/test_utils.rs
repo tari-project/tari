@@ -20,37 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use rand::rngs::OsRng;
-use tari_comms::{
-    connection::NetAddress,
-    message::{InboundMessage, MessageEnvelopeHeader, MessageFlags, NodeDestination},
-    peer_manager::{NodeIdentity, Peer, PeerFlags},
-};
-
-pub fn make_node_identity() -> NodeIdentity {
-    NodeIdentity::random(&mut OsRng::new().unwrap(), "127.0.0.1:9000".parse().unwrap()).unwrap()
-}
-
-pub fn make_inbound_message(node_identity: &NodeIdentity, message: Vec<u8>, flags: MessageFlags) -> InboundMessage {
-    InboundMessage::new(
-        Peer::new(
-            node_identity.identity.public_key.clone(),
-            node_identity.identity.node_id.clone(),
-            Vec::<NetAddress>::new().into(),
-            PeerFlags::empty(),
-        ),
-        MessageEnvelopeHeader {
-            version: 0,
-            peer_pubkey: node_identity.identity.public_key.clone(),
-            destination: NodeDestination::Unknown,
-            peer_signature: Vec::new(),
-            flags,
-        },
-        0,
-        message,
-    )
-}
-
 //---------------------------------- ServiceFn --------------------------------------------//
 
 // TODO: Remove this when https://github.com/tower-rs/tower/pull/318 is published

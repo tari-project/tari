@@ -203,7 +203,10 @@ mod test {
     #[test]
     fn bounded_channel_no_subs() {
         let (sender, receiver) = bounded(1);
+        let rx2 = receiver.clone();
         drop(receiver);
+        assert!(sender.broadcast(123).is_ok());
+        drop(rx2);
         let err = sender.broadcast(123);
         assert!(err.is_err());
     }

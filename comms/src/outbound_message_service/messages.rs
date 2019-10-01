@@ -20,59 +20,25 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    message::{Frame, FrameSet, MessageEnvelope, MessageFlags},
-    outbound_message_service::broadcast_strategy::BroadcastStrategy,
-    peer_manager::node_id::NodeId,
-};
-use serde::{Deserialize, Serialize};
-
-/// Represents requests to the CommsOutboundService
-#[derive(Debug)]
-pub enum OutboundRequest {
-    /// Send a message using the given broadcast strategy
-    SendMsg {
-        broadcast_strategy: BroadcastStrategy,
-        flags: MessageFlags,
-        body: Box<Frame>,
-    },
-    /// Forward a message envelope
-    Forward {
-        broadcast_strategy: BroadcastStrategy,
-        message_envelope: Box<MessageEnvelope>,
-    },
-}
+use crate::{message::MessageFlags, peer_manager::node_id::NodeId};
 
 /// The OutboundMessage has a copy of the MessageEnvelope. OutboundMessageService will create the
 /// OutboundMessage and forward it to the OutboundMessagePool.
-#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct OutboundMessage {
-    destination_node_id: NodeId,
-    message_frames: FrameSet,
+    pub peer_node_id: NodeId,
+    pub flags: MessageFlags,
+    pub body: Vec<u8>,
 }
 
 impl OutboundMessage {
     /// Create a new OutboundMessage from the destination_node_id and message_frames
-    pub fn new(destination: NodeId, message_frames: FrameSet) -> OutboundMessage {
+    pub fn new(peer_node_id: NodeId, flags: MessageFlags, body: Vec<u8>) -> OutboundMessage {
         OutboundMessage {
-            destination_node_id: destination,
-            message_frames,
+            peer_node_id,
+            flags,
+            body,
         }
-    }
-
-    /// Get a reference to the destination NodeID
-    pub fn destination_node_id(&self) -> &NodeId {
-        &self.destination_node_id
-    }
-
-    /// Get a reference to the message frames
-    pub fn message_frames(&self) -> &FrameSet {
-        &self.message_frames
-    }
-
-    /// Consume this wrapper and return ownership of the frames
-    pub fn into_frames(self) -> FrameSet {
-        self.message_frames
     }
 }
 
@@ -83,19 +49,8 @@ mod test {
     #[test]
     fn new() {
         let node_id = NodeId::new();
-        let subject = OutboundMessage::new(node_id.clone(), vec![vec![1]]);
-        assert_eq!(subject.message_frames[0].len(), 1);
-        assert_eq!(subject.destination_node_id, node_id);
-    }
-
-    #[test]
-    fn getters() {
-        let node_id = NodeId::new();
-        let frames = vec![vec![1]];
-        let subject = OutboundMessage::new(node_id.clone(), frames.clone());
-
-        assert_eq!(subject.destination_node_id(), &node_id);
-        assert_eq!(subject.message_frames(), &frames);
-        assert_eq!(subject.into_frames(), frames);
+        let subject = OutboundMessage::new(node_id.clone(), MessageFlags::empty(), vec![1]);
+        assert_eq!(subject.body, vec![1]);
+        assert_eq!(subject.peer_node_id, node_id);
     }
 }

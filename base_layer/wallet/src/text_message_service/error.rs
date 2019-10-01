@@ -22,12 +22,8 @@
 
 use derive_error::Error;
 use diesel::result::{ConnectionError as DieselConnectionError, Error as DieselError};
-use tari_comms::{
-    builder::CommsError,
-    connection::NetAddressError,
-    message::MessageError,
-    outbound_message_service::OutboundServiceError,
-};
+use tari_comms::{builder::CommsError, connection::NetAddressError, message::MessageError};
+use tari_comms_dht::outbound::DhtOutboundError;
 use tari_p2p::sync_services::ServiceError;
 use tari_utilities::{hex::HexError, message_format::MessageFormatError};
 
@@ -35,7 +31,7 @@ use tari_utilities::{hex::HexError, message_format::MessageFormatError};
 pub enum TextMessageError {
     MessageFormatError(MessageFormatError),
     MessageError(MessageError),
-    OutboundError(OutboundServiceError),
+    OutboundError(DhtOutboundError),
     ServiceError(ServiceError),
     CommsServicesError(CommsError),
     HexError(HexError),

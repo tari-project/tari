@@ -38,18 +38,10 @@ use crate::{
     },
     connection_manager::{ConnectionManager, EstablishLockResult},
     control_service::messages::{ConnectRequestOutcome, ControlServiceResponseType, Pong, RejectReason},
-    message::{
-        Frame,
-        FrameSet,
-        Message,
-        MessageEnvelope,
-        MessageEnvelopeHeader,
-        MessageFlags,
-        MessageHeader,
-        NodeDestination,
-    },
+    message::{Frame, FrameSet, Message, MessageEnvelope, MessageEnvelopeHeader, MessageFlags, MessageHeader},
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFlags, PeerManagerError},
-    types::{CommsCipher, CommsPublicKey},
+    types::CommsPublicKey,
+    utils::crypt,
 };
 use log::*;
 use serde::{de::DeserializeOwned, Serialize};
@@ -62,8 +54,7 @@ use std::{
     thread,
     time::Duration,
 };
-use tari_crypto::keys::DiffieHellmanSharedSecret;
-use tari_utilities::{byte_array::ByteArray, ciphers::cipher::Cipher, message_format::MessageFormat};
+use tari_utilities::{byte_array::ByteArray, message_format::MessageFormat};
 
 const LOG_TARGET: &str = "comms::control_service::worker";
 /// The maximum message size allowed for the control service.
@@ -210,12 +201,12 @@ impl ControlServiceWorker {
             return Err(ControlServiceError::ReceivedUnencryptedMessage);
         }
 
-        let maybe_peer = self.get_peer(&envelope_header.peer_pubkey)?;
+        let maybe_peer = self.get_peer(&envelope_header.message_public_key)?;
         if maybe_peer.map(|p| p.is_banned()).unwrap_or(false) {
             return Err(ControlServiceError::PeerBanned);
         }
 
-        let decrypted_body = self.decrypt_body(envelope.body_frame(), &envelope_header.peer_pubkey)?;
+        let decrypted_body = self.decrypt_body(envelope.body_frame(), &envelope_header.message_public_key)?;
         let message =
             Message::from_binary(decrypted_body.as_bytes()).map_err(ControlServiceError::MessageFormatError)?;
 
@@ -243,7 +234,7 @@ impl ControlServiceWorker {
     fn handle_ping(&self, envelope_header: MessageEnvelopeHeader, identity_frame: Frame) -> Result<()> {
         debug!(target: LOG_TARGET, "Got ping message");
         self.send_reply(
-            &envelope_header.peer_pubkey,
+            &envelope_header.message_public_key,
             identity_frame,
             ControlServiceResponseType::Pong,
             Pong {},
@@ -263,7 +254,7 @@ impl ControlServiceWorker {
         );
 
         let pm = &self.connection_manager.peer_manager();
-        let public_key = &envelope_header.peer_pubkey;
+        let public_key = &envelope_header.message_public_key;
         let peer = match pm.find_with_public_key(&public_key) {
             Ok(peer) => {
                 if peer.is_banned() {
@@ -361,7 +352,7 @@ impl ControlServiceWorker {
                 );
 
                 // Create an address which can be connected to externally
-                let our_host = self.node_identity.control_service_address()?.host();
+                let our_host = self.node_identity.control_service_address().host();
                 let external_address = address
                     .maybe_port()
                     .map(|port| format!("{}:{}", our_host, port))
@@ -407,7 +398,7 @@ impl ControlServiceWorker {
     ) -> Result<()>
     {
         self.send_reply(
-            &envelope_header.peer_pubkey,
+            &envelope_header.message_public_key,
             identity,
             ControlServiceResponseType::ConnectRequestOutcome,
             ConnectRequestOutcome::Rejected(reason),
@@ -423,7 +414,7 @@ impl ControlServiceWorker {
     ) -> Result<()>
     {
         self.send_reply(
-            &envelope_header.peer_pubkey,
+            &envelope_header.message_public_key,
             identity,
             ControlServiceResponseType::ConnectRequestOutcome,
             ConnectRequestOutcome::Accepted {
@@ -460,7 +451,6 @@ impl ControlServiceWorker {
         MessageEnvelope::construct(
             &self.node_identity,
             dest_public_key.clone(),
-            NodeDestination::PublicKey(dest_public_key.clone()),
             msg.to_binary().map_err(ControlServiceError::MessageFormatError)?,
             flags,
         )
@@ -486,8 +476,8 @@ impl ControlServiceWorker {
     }
 
     fn decrypt_body(&self, body: &Frame, public_key: &CommsPublicKey) -> Result<Frame> {
-        let ecdh_shared_secret = CommsPublicKey::shared_secret(&self.node_identity.secret_key, public_key).to_vec();
-        CommsCipher::open_with_integral_nonce(&body, &ecdh_shared_secret).map_err(ControlServiceError::CipherError)
+        let ecdh_shared_secret = crypt::generate_ecdh_secret(&self.node_identity.secret_key, public_key);
+        crypt::decrypt(&ecdh_shared_secret, &body).map_err(ControlServiceError::CipherError)
     }
 
     fn establish_listener(context: &ZmqContext, config: &ControlServiceConfig) -> Result<EstablishedConnection> {

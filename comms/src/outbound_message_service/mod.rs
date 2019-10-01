@@ -20,15 +20,20 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod broadcast_strategy;
+// pub mod broadcast_strategy;
 mod error;
 mod messages;
 mod service;
-mod worker;
 
-pub use self::{
-    broadcast_strategy::BroadcastStrategy,
-    error::OutboundServiceError,
-    messages::{OutboundMessage, OutboundRequest},
-    service::{OutboundMessageService, OutboundServiceConfig, OutboundServiceRequester},
-};
+pub use self::{error::OutboundServiceError, messages::OutboundMessage, service::OutboundMessageService};
+
+/// Configuration for the OutboundService
+pub struct OutboundServiceConfig {
+    pub max_attempts: usize,
+}
+
+impl Default for OutboundServiceConfig {
+    fn default() -> Self {
+        Self { max_attempts: 5 }
+    }
+}

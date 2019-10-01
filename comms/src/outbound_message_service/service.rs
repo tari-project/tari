@@ -20,261 +20,301 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::messages::OutboundRequest;
 use crate::{
+    connection::PeerConnection,
     connection_manager::ConnectionManagerRequester,
-    message::{Frame, Message, MessageEnvelope, MessageFlags, MessageHeader, NodeDestination},
-    middleware::MiddlewareError,
-    outbound_message_service::{
-        broadcast_strategy::BroadcastStrategy,
-        error::OutboundServiceError,
-        messages::OutboundMessage,
-        worker::OutboundMessageWorker,
-    },
-    peer_manager::{NodeIdentity, PeerManager},
+    consts::COMMS_RNG,
+    message::{MessageEnvelope, MessageEnvelopeHeader},
+    outbound_message_service::{error::OutboundServiceError, messages::OutboundMessage, OutboundServiceConfig},
+    peer_manager::{NodeId, NodeIdentity},
+    types::MESSAGE_PROTOCOL_VERSION,
+    utils::signature,
 };
 use futures::{
-    channel::{mpsc, oneshot},
-    SinkExt,
+    channel::oneshot,
+    future,
+    stream::{self, FuturesUnordered},
+    FutureExt,
+    Stream,
     StreamExt,
 };
 use log::*;
-use std::{error::Error, sync::Arc};
+use std::{
+    cmp,
+    collections::HashMap,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 use tari_utilities::message_format::MessageFormat;
-use tokio::runtime::TaskExecutor;
-use tower::Service;
+use tokio::timer;
 
-const LOG_TARGET: &'static str = "comms::outbound_message_service::service";
+const LOG_TARGET: &'static str = "comms::outbound_message_service::worker";
 
-/// Configuration for the OutboundService
-pub struct OutboundServiceConfig {
-    pub max_attempts: usize,
+/// The state of the dial request
+pub struct DialState {
+    /// Number of dial attempts
+    attempts: usize,
+    /// The node id being dialed
+    node_id: NodeId,
+    /// Cancel signal
+    cancel_rx: Option<future::Fuse<oneshot::Receiver<()>>>,
 }
 
-impl Default for OutboundServiceConfig {
-    fn default() -> Self {
-        Self { max_attempts: 10 }
+impl DialState {
+    /// Create a new DialState for the given NodeId
+    pub fn new(node_id: NodeId) -> Self {
+        Self {
+            node_id,
+            attempts: 1,
+            cancel_rx: None,
+        }
+    }
+
+    /// Set the cancel receiver for this DialState
+    pub fn set_cancel_receiver(&mut self, cancel_rx: future::Fuse<oneshot::Receiver<()>>) -> &mut Self {
+        self.cancel_rx = Some(cancel_rx);
+        self
+    }
+
+    /// Take ownership of the cancel receiver if this DialState has ownership of one
+    pub fn take_cancel_receiver(&mut self) -> Option<future::Fuse<oneshot::Receiver<()>>> {
+        self.cancel_rx.take()
+    }
+
+    /// Increment the number of attempts
+    pub fn inc_attempts(&mut self) -> &mut Self {
+        self.attempts += 1;
+        self
+    }
+
+    /// Calculates the time from now that this dial attempt should be retried.
+    pub fn backoff_duration(&mut self) -> Duration {
+        Duration::from_secs(self.exponential_backoff_offset())
+    }
+
+    /// Calculates the offset in seconds based on `self.attempts`.
+    fn exponential_backoff_offset(&self) -> u64 {
+        if self.attempts <= 1 {
+            return 0;
+        }
+        let secs = 0.5 * (f32::powf(2.0, self.attempts as f32) - 1.0);
+        cmp::max(2, secs.ceil() as u64)
     }
 }
 
-#[derive(Clone)]
-pub struct OutboundServiceRequester {
-    sender: mpsc::UnboundedSender<OutboundRequest>,
-}
-
-impl OutboundServiceRequester {
-    pub fn new(sender: mpsc::UnboundedSender<OutboundRequest>) -> Self {
-        Self { sender }
-    }
-
-    /// Send a comms message
-    pub async fn send_message<T, MType>(
-        &mut self,
-        broadcast_strategy: BroadcastStrategy,
-        flags: MessageFlags,
-        message_type: MType,
-        message: T,
-    ) -> Result<(), OutboundServiceError>
-    where
-        MessageHeader<MType>: MessageFormat,
-        T: MessageFormat,
-    {
-        let frame = serialize_message(message_type, message)?;
-        self.send_raw(broadcast_strategy, flags, frame).await
-    }
-
-    /// Send a raw comms message
-    pub async fn send_raw(
-        &mut self,
-        broadcast_strategy: BroadcastStrategy,
-        flags: MessageFlags,
-        frame: Frame,
-    ) -> Result<(), OutboundServiceError>
-    {
-        self.sender
-            .send(OutboundRequest::SendMsg {
-                broadcast_strategy,
-                flags,
-                body: Box::new(frame),
-            })
-            .await
-            .map_err(Into::into)
-    }
-
-    /// Forward a comms message
-    pub async fn forward_message(
-        &mut self,
-        broadcast_strategy: BroadcastStrategy,
-        envelope: MessageEnvelope,
-    ) -> Result<(), OutboundServiceError>
-    {
-        self.sender
-            .send(OutboundRequest::Forward {
-                broadcast_strategy,
-                message_envelope: Box::new(envelope),
-            })
-            .await
-            .map_err(Into::into)
-    }
-}
-
-fn serialize_message<T, MType>(message_type: MType, message: T) -> Result<Frame, OutboundServiceError>
-where
-    T: MessageFormat,
-    MessageHeader<MType>: MessageFormat,
-{
-    let header = MessageHeader::new(message_type)?;
-    let msg = Message::from_message_format(header, message)?;
-
-    msg.to_binary().map_err(Into::into)
-}
-
-/// Responsible for constructing messages using a broadcast strategy and passing them on to
-/// the worker task.
-pub struct OutboundMessageService<TMiddleware> {
-    executor: TaskExecutor,
-    outbound_tx: mpsc::UnboundedSender<Vec<OutboundMessage>>,
-    request_rx: mpsc::UnboundedReceiver<OutboundRequest>,
-    worker: Option<OutboundMessageWorker<TMiddleware, mpsc::UnboundedReceiver<Vec<OutboundMessage>>>>,
-    peer_manager: Arc<PeerManager>,
+/// Responsible for dialing peers and sending queued messages
+pub struct OutboundMessageService<TMsgStream> {
+    config: OutboundServiceConfig,
+    connection_manager: ConnectionManagerRequester,
+    dial_cancel_signals: HashMap<NodeId, oneshot::Sender<()>>,
+    message_stream: stream::Fuse<TMsgStream>,
     node_identity: Arc<NodeIdentity>,
-    worker_shutdown_tx: oneshot::Sender<()>,
+    pending_connect_requests: HashMap<NodeId, Vec<OutboundMessage>>,
 }
 
-impl<TMiddleware> OutboundMessageService<TMiddleware>
-where
-    TMiddleware: Service<OutboundMessage, Response = Option<OutboundMessage>, Error = MiddlewareError> + Send + 'static, /* Unpin + 'static */
-    TMiddleware::Future: Send,
+impl<TMsgStream> OutboundMessageService<TMsgStream>
+where TMsgStream: Stream<Item = OutboundMessage> + Unpin
 {
     pub fn new(
         config: OutboundServiceConfig,
-        executor: TaskExecutor,
-        middleware: TMiddleware,
-        request_rx: mpsc::UnboundedReceiver<OutboundRequest>,
-        peer_manager: Arc<PeerManager>,
-        conn_manager: ConnectionManagerRequester,
+        message_stream: TMsgStream,
         node_identity: Arc<NodeIdentity>,
+        connection_manager: ConnectionManagerRequester,
     ) -> Self
     {
-        let (outbound_tx, outbound_rx) = mpsc::unbounded();
-        let (worker_shutdown_tx, worker_shutdown_rx) = oneshot::channel();
-        let worker = OutboundMessageWorker::new(config, middleware, outbound_rx, conn_manager, worker_shutdown_rx);
-
         Self {
-            executor,
-            outbound_tx,
-            worker: Some(worker),
-            request_rx,
-            peer_manager,
+            config,
+            connection_manager,
             node_identity,
-            worker_shutdown_tx,
+            message_stream: message_stream.fuse(),
+            pending_connect_requests: HashMap::new(),
+            dial_cancel_signals: HashMap::new(),
         }
     }
 
     pub async fn start(mut self) {
-        self.start_outbound_worker();
-
+        let mut pending_connects = FuturesUnordered::new();
         loop {
             futures::select! {
-                request = self.request_rx.select_next_some() => {
-                    if let Err(err) = self.handle_request(request).await {
-                        error!(target: LOG_TARGET, "{}", err.description());
+                new_message = self.message_stream.select_next_some() => {
+                    if let Some(mut dial_state) = self.enqueue_new_message(new_message) {
+                        let (cancel_tx, cancel_rx) = oneshot::channel();
+                        self.dial_cancel_signals.insert(dial_state.node_id.clone(), cancel_tx);
+                        dial_state.set_cancel_receiver(cancel_rx.fuse());
+                        pending_connects.push(
+                            Self::connect_to(self.connection_manager.clone(), dial_state)
+                        );
+                    }
+                },
+
+                maybe_result = pending_connects.select_next_some() => {
+                    // maybe_result could be None if the connection attempt was canceled
+                    if let Some((state, result)) = maybe_result {
+                        if let Some(mut state) = self.handle_connect_result(state, result).await {
+                            debug!(
+                                target: LOG_TARGET,
+                                "[Attempt {} of {}] Failed to connect to NodeId={}",
+                                state.attempts,
+                                self.config.max_attempts,
+                                state.node_id
+                            );
+                            if state.attempts >= self.config.max_attempts {
+                                self.dial_cancel_signals.remove(&state.node_id);
+                                debug!(target: LOG_TARGET, "NodeId={} Maximum attempts reached. Discarding messages.", state.node_id);
+                            } else {
+                                // Should retry this connection attempt
+                                state.inc_attempts();
+                                pending_connects.push(
+                                    Self::connect_to(self.connection_manager.clone(), state)
+                                );
+                            }
+                        }
                     }
                 },
 
                 complete => {
-                    info!(target: LOG_TARGET, "OutboundService shutting down");
-                    let _ = self.worker_shutdown_tx.send(());
+                    info!(target: LOG_TARGET, "Outbound message service shutting because the message stream ended.");
+                    self.cancel_pending_connection_attempts();
                     break;
                 }
             }
         }
     }
 
-    fn start_outbound_worker(&mut self) {
-        let worker = self.worker.take().expect("start_outbound_worker called more than once");
-        self.executor.spawn(worker.start())
-    }
-
-    async fn handle_request(&mut self, request: OutboundRequest) -> Result<(), OutboundServiceError> {
-        match request {
-            OutboundRequest::SendMsg {
-                broadcast_strategy,
-                flags,
-                body,
-            } => self.send_msg(broadcast_strategy, flags, body).await,
-
-            OutboundRequest::Forward {
-                broadcast_strategy,
-                message_envelope,
-            } => self.forward_message(broadcast_strategy, message_envelope).await,
+    fn cancel_pending_connection_attempts(&mut self) {
+        for (_, cancel_tx) in self.dial_cancel_signals.drain() {
+            let _ = cancel_tx.send(());
         }
     }
 
-    async fn send_msg(
+    async fn connect_to(
+        mut connection_manager: ConnectionManagerRequester,
+        mut state: DialState,
+    ) -> Option<(DialState, Result<Arc<PeerConnection>, OutboundServiceError>)>
+    {
+        let mut cancel_rx = state
+            .take_cancel_receiver()
+            .expect("It is incorrect to attempt to connect without setting a cancel receiver");
+
+        let offset = state.backoff_duration();
+        debug!(
+            target: LOG_TARGET,
+            "[Attempt {}] Attempting to send message in {} second(s)",
+            state.attempts,
+            offset.as_secs()
+        );
+        let mut delay = timer::delay(Instant::now() + offset).fuse();
+        futures::select! {
+            _ = delay => {
+                debug!(target: LOG_TARGET, "Retry delay expired. Attempting to connect...");
+                let result = connection_manager
+                    .dial_node(state.node_id.clone())
+                    .await
+                    .map_err(Into::into);
+                // Put the cancel receiver back
+                state.set_cancel_receiver(cancel_rx);
+                Some((state, result))
+            },
+            _ = cancel_rx => None,
+        }
+    }
+
+    /// Returns a DialState for the NodeId if a connection is not currently being attempted
+    fn enqueue_new_message(&mut self, msg: OutboundMessage) -> Option<DialState> {
+        match self.pending_connect_requests.get_mut(&msg.peer_node_id) {
+            // Connection being attempted for peer. Add the message to the queue to be sent once connected.
+            Some(msgs) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Connection attempt already in progress for NodeId={}. {} messages waiting to be sent. ",
+                    msg.peer_node_id,
+                    msgs.len() + 1,
+                );
+                msgs.push(msg);
+                None
+            },
+
+            // No connection currently being attempted for this peer.
+            None => {
+                let node_id = msg.peer_node_id.clone();
+                debug!(
+                    target: LOG_TARGET,
+                    "New connection attempt required for NodeId={}.", node_id
+                );
+                self.pending_connect_requests.insert(node_id.clone(), vec![msg]);
+                Some(DialState::new(node_id))
+            },
+        }
+    }
+
+    /// Handle the connection result. Returns Some(DialState) of the connection attempt failed,
+    /// otherwise None is returned
+    async fn handle_connect_result(
         &mut self,
-        broadcast_strategy: BroadcastStrategy,
-        flags: MessageFlags,
-        body: Box<Frame>,
+        state: DialState,
+        connect_result: Result<Arc<PeerConnection>, OutboundServiceError>,
+    ) -> Option<DialState>
+    {
+        match connect_result {
+            Ok(conn) => {
+                if let Err(err) = self.handle_new_connection(&state.node_id, conn).await {
+                    error!(
+                        target: LOG_TARGET,
+                        "Error when sending messages for new connection: {:?}", err
+                    );
+                }
+                None
+            },
+            Err(err) => {
+                error!(target: LOG_TARGET, "Failed to connect to node: {:?}", err);
+                Some(state)
+            },
+        }
+    }
+
+    async fn handle_new_connection(
+        &mut self,
+        node_id: &NodeId,
+        conn: Arc<PeerConnection>,
     ) -> Result<(), OutboundServiceError>
     {
-        // Use the BroadcastStrategy to select appropriate peer(s) from PeerManager and then construct and send a
-        // individually wrapped MessageEnvelope to each selected peer
-        let selected_node_identities = self.peer_manager.get_broadcast_identities(broadcast_strategy)?;
-
-        // Construct a MessageEnvelope for each recipient
-        let mut outbound_messages = Vec::with_capacity(selected_node_identities.len());
-        for dest_node_identity in selected_node_identities {
-            let message_envelope = MessageEnvelope::construct(
-                &self.node_identity,
-                dest_node_identity.public_key.clone(),
-                NodeDestination::NodeId(dest_node_identity.node_id.clone()),
-                *body.clone(),
-                flags,
-            )?;
-
-            outbound_messages.push(OutboundMessage::new(
-                dest_node_identity.node_id,
-                message_envelope.into_frame_set(),
-            ));
-        }
-
-        if !outbound_messages.is_empty() {
-            self.outbound_tx
-                .send(outbound_messages)
-                .await
-                .map_err(OutboundServiceError::SendError)?;
+        self.dial_cancel_signals.remove(&node_id);
+        match self.pending_connect_requests.remove(node_id) {
+            Some(messages) => {
+                for message in messages {
+                    let envelope = self.construct_message_envelope(message)?;
+                    conn.send(envelope.into_frame_set())
+                        .map_err(OutboundServiceError::ConnectionError)?;
+                }
+            },
+            None => {
+                // Shouldn't happen: no pending messages to send but we've connected to a peer?
+                warn!(
+                    target: LOG_TARGET,
+                    "No messages to send for new connection to NodeId {}", node_id
+                );
+            },
         }
 
         Ok(())
     }
 
-    async fn forward_message(
-        &mut self,
-        broadcast_strategy: BroadcastStrategy,
-        envelope: Box<MessageEnvelope>,
-    ) -> Result<(), OutboundServiceError>
-    {
-        // Use the BroadcastStrategy to select appropriate peer(s) from PeerManager and then forward the
-        // received message to each selected peer
-        let selected_node_identities = self.peer_manager.get_broadcast_identities(broadcast_strategy)?;
-        // Modify MessageEnvelope for forwarding
-        let message_envelope = MessageEnvelope::forward_construct(&self.node_identity, *envelope)?;
-        let message_envelope_frames = message_envelope.into_frame_set();
+    fn construct_message_envelope(&self, message: OutboundMessage) -> Result<MessageEnvelope, OutboundServiceError> {
+        let OutboundMessage { flags, body, .. } = message;
 
-        let outbound_messages = selected_node_identities
-            .into_iter()
-            .map(|dest_node_identity| OutboundMessage::new(dest_node_identity.node_id, message_envelope_frames.clone()))
-            .collect::<Vec<_>>();
+        // Sign the comms envelope
+        let mut rng = COMMS_RNG.with(|rng| rng.clone());
+        let signature = signature::sign(&mut rng, self.node_identity.secret_key.clone(), &body)?;
 
-        if !outbound_messages.is_empty() {
-            self.outbound_tx
-                .send(outbound_messages)
-                .await
-                .map_err(OutboundServiceError::SendError)?;
-        }
+        let header = MessageEnvelopeHeader {
+            version: MESSAGE_PROTOCOL_VERSION,
+            flags,
+            message_public_key: self.node_identity.identity.public_key.clone(),
+            message_signature: signature.to_binary()?,
+        };
+        assert!(header.verify_signatures(&body).unwrap());
 
-        Ok(())
+        Ok(MessageEnvelope::new(header.to_binary()?, body))
     }
 }
 
@@ -282,116 +322,146 @@ where
 mod test {
     use super::*;
     use crate::{
-        connection::NetAddress,
+        connection::peer_connection,
         connection_manager::actor::ConnectionManagerRequest,
-        middleware::IdentityOutboundMiddleware,
-        peer_manager::{NodeId, Peer, PeerFlags},
-        test_utils::node_identity,
-        types::{CommsDatabase, CommsPublicKey},
+        message::MessageFlags,
+        test_utils::{node_id, node_identity},
     };
+    use futures::{channel::mpsc, stream, SinkExt};
+    use std::convert::TryFrom;
     use tokio::runtime::Runtime;
 
     #[test]
-    fn send_msg_then_shutdown() {
+    fn multiple_send_in_batch() {
+        env_logger::init();
+        // Tests sending a number of messages to 2 recipients simultaneously.
+        // This checks that messages from separate requests are batched and a single dial request per
+        // peer is made.
         let rt = Runtime::new().unwrap();
-        let (request_tx, request_rx) = mpsc::unbounded();
-        let mut sender = OutboundServiceRequester::new(request_tx);
+        let (mut new_message_tx, new_message_rx) = mpsc::unbounded();
 
-        let (conn_man_tx, mut conn_man_rx) = mpsc::channel(1);
+        let (conn_man_tx, mut conn_man_rx) = mpsc::channel(2);
         let conn_manager = ConnectionManagerRequester::new(conn_man_tx);
 
-        let peer_manager = PeerManager::new(CommsDatabase::new()).map(Arc::new).unwrap();
-        let pk = CommsPublicKey::default();
-        let example_peer = Peer::new(
-            pk.clone(),
-            NodeId::from_key(&pk).unwrap(),
-            vec!["127.0.0.1:9999".parse::<NetAddress>().unwrap()].into(),
-            PeerFlags::empty(),
-        );
-        peer_manager.add_peer(example_peer.clone()).unwrap();
-
         let node_identity = Arc::new(node_identity::random(None));
+
         let service = OutboundMessageService::new(
-            Default::default(),
-            rt.executor(),
-            IdentityOutboundMiddleware::new(),
-            request_rx,
-            peer_manager,
-            conn_manager,
+            OutboundServiceConfig::default(),
+            new_message_rx,
             node_identity,
+            conn_manager,
         );
         rt.spawn(service.start());
 
-        rt.block_on(sender.send_message(
-            BroadcastStrategy::Flood,
-            MessageFlags::NONE,
-            "custom_msg".to_string(),
-            "Hi everyone!".to_string(),
-        ))
-        .unwrap();
+        let node_id1 = node_id::random();
+        let node_id2 = node_id::random();
 
-        let msg = rt.block_on(conn_man_rx.next()).unwrap();
-        match msg {
+        // Send a batch of messages
+        let mut messages = stream::iter(
+            vec![
+                (node_id1.clone(), b"A".to_vec()),
+                (node_id2.clone(), b"B".to_vec()),
+                (node_id1.clone(), b"C".to_vec()),
+                (node_id1.clone(), b"D".to_vec()),
+            ]
+            .into_iter()
+            .map(|(node_id, msg)| OutboundMessage::new(node_id, MessageFlags::empty(), msg)),
+        );
+
+        rt.block_on(new_message_tx.send_all(&mut messages)).unwrap();
+
+        // There should be 2 connection requests.
+        let conn_man_req1 = rt.block_on(conn_man_rx.next()).unwrap();
+        // Followed by the next connection message
+        let conn_man_req2 = rt.block_on(conn_man_rx.next()).unwrap();
+        // Then, the stream should be empty (try_next errors on Poll::Pending)
+        assert!(conn_man_rx.try_next().is_err());
+
+        // Check that the dial request for node_id1 is made and, when a peer connection is passed back,
+        // that peer connection is used to send the correct messages
+        match conn_man_req1 {
             ConnectionManagerRequest::DialPeer(boxed) => {
-                let (node_id, _) = *boxed;
-                assert_eq!(node_id, example_peer.node_id);
+                let (node_id, reply_tx) = *boxed;
+                let (conn, rx) = PeerConnection::new_with_connecting_state_for_test();
+                assert!(reply_tx.send(Ok(Arc::new(conn))).is_ok());
+                assert_eq!(node_id, node_id1);
+
+                // Check that pending messages are sent
+                let msg = rx.recv_timeout(Duration::from_millis(100)).unwrap();
+                match msg {
+                    peer_connection::ControlMessage::SendMsg(frames) => {
+                        let envelope = MessageEnvelope::try_from(frames).unwrap();
+                        assert_eq!(envelope.body_frame(), b"A");
+                    },
+                    _ => panic!(),
+                }
+                let msg = rx.recv_timeout(Duration::from_millis(100)).unwrap();
+                match msg {
+                    peer_connection::ControlMessage::SendMsg(frames) => {
+                        let envelope = MessageEnvelope::try_from(frames).unwrap();
+                        assert_eq!(envelope.body_frame(), b"C");
+                    },
+                    _ => panic!(),
+                }
+                let msg = rx.recv_timeout(Duration::from_millis(100)).unwrap();
+                match msg {
+                    peer_connection::ControlMessage::SendMsg(frames) => {
+                        let envelope = MessageEnvelope::try_from(frames).unwrap();
+                        assert_eq!(envelope.body_frame(), b"D");
+                    },
+                    _ => panic!(),
+                }
             },
         }
 
-        drop(sender);
+        // Check that the dial request for node_id2 is made
+        match conn_man_req2 {
+            ConnectionManagerRequest::DialPeer(boxed) => {
+                let (node_id, reply_tx) = *boxed;
+                assert_eq!(node_id, node_id2);
+
+                let (conn, rx) = PeerConnection::new_with_connecting_state_for_test();
+                assert!(reply_tx.send(Ok(Arc::new(conn))).is_ok());
+                let msg = rx.recv_timeout(Duration::from_millis(100)).unwrap();
+                match msg {
+                    peer_connection::ControlMessage::SendMsg(frames) => {
+                        let envelope = MessageEnvelope::try_from(frames).unwrap();
+                        assert_eq!(envelope.body_frame(), b"B");
+                    },
+                    _ => panic!(),
+                }
+            },
+        }
+
+        // Abort pending connections and shutdown the service
+        drop(new_message_tx);
         rt.shutdown_on_idle();
     }
 
     #[test]
-    fn forward_msg_then_shutdown() {
-        let rt = Runtime::new().unwrap();
-        let (request_tx, request_rx) = mpsc::unbounded();
-        let mut sender = OutboundServiceRequester::new(request_tx);
-
-        let (conn_man_tx, mut conn_man_rx) = mpsc::channel(1);
-        let conn_manager = ConnectionManagerRequester::new(conn_man_tx);
-
-        let peer_manager = PeerManager::new(CommsDatabase::new()).map(Arc::new).unwrap();
-        let pk = CommsPublicKey::default();
-        let example_peer = Peer::new(
-            pk.clone(),
-            NodeId::from_key(&pk).unwrap(),
-            vec!["127.0.0.1:9999".parse::<NetAddress>().unwrap()].into(),
-            PeerFlags::empty(),
-        );
-        peer_manager.add_peer(example_peer.clone()).unwrap();
-
-        let node_identity = Arc::new(node_identity::random(None));
-        let service = OutboundMessageService::new(
-            Default::default(),
-            rt.executor(),
-            IdentityOutboundMiddleware::new(),
-            request_rx,
-            peer_manager,
-            conn_manager,
-            Arc::clone(&node_identity),
-        );
-        rt.spawn(service.start());
-        let envelope = MessageEnvelope::construct(
-            &node_identity,
-            example_peer.public_key.clone(),
-            NodeDestination::Unknown,
-            vec![],
-            MessageFlags::empty(),
-        )
-        .unwrap();
-        rt.block_on(sender.forward_message(BroadcastStrategy::Flood, envelope))
-            .unwrap();
-
-        let msg = rt.block_on(conn_man_rx.next()).unwrap();
-        match msg {
-            ConnectionManagerRequest::DialPeer(boxed) => {
-                let (node_id, _) = *boxed;
-                assert_eq!(node_id, example_peer.node_id);
-            },
-        }
-
-        drop(sender);
-        rt.shutdown_on_idle();
+    fn exponential_backoff_calc() {
+        let mut state = DialState::new(NodeId::new());
+        state.attempts = 0;
+        assert_eq!(state.exponential_backoff_offset(), 0);
+        state.attempts = 1;
+        assert_eq!(state.exponential_backoff_offset(), 0);
+        state.attempts = 2;
+        assert_eq!(state.exponential_backoff_offset(), 2);
+        state.attempts = 3;
+        assert_eq!(state.exponential_backoff_offset(), 4);
+        state.attempts = 4;
+        assert_eq!(state.exponential_backoff_offset(), 8);
+        state.attempts = 5;
+        assert_eq!(state.exponential_backoff_offset(), 16);
+        state.attempts = 6;
+        assert_eq!(state.exponential_backoff_offset(), 32);
+        state.attempts = 7;
+        assert_eq!(state.exponential_backoff_offset(), 64);
+        state.attempts = 8;
+        assert_eq!(state.exponential_backoff_offset(), 128);
+        state.attempts = 9;
+        assert_eq!(state.exponential_backoff_offset(), 256);
+        state.attempts = 10;
+        assert_eq!(state.exponential_backoff_offset(), 512);
     }
 }

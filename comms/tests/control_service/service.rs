@@ -122,7 +122,7 @@ fn request_connection() {
     // --- Request a connection to the peer connection
     client
         .send_request_connection(
-            node_identity_b.control_service_address().unwrap(),
+            node_identity_b.control_service_address(),
             NodeId::from_key(&node_identity_b.identity.public_key).unwrap(),
         )
         .unwrap();
@@ -136,10 +136,7 @@ fn request_connection() {
         .unwrap();
     assert_eq!(peer.public_key, node_identity_b.identity.public_key);
     assert_eq!(peer.node_id, node_identity_b.identity.node_id);
-    assert_eq!(
-        peer.addresses[0],
-        node_identity_b.control_service_address().unwrap().into()
-    );
+    assert_eq!(peer.addresses[0], node_identity_b.control_service_address().into());
     assert_eq!(peer.flags, PeerFlags::empty());
 
     match outcome {

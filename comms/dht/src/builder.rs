@@ -1,4 +1,4 @@
-// Copyright 2019 The Tari Project
+// Copyright 2019, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,35 +20,38 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use futures::future::{self, Future};
-use tari_comms_dht::outbound::OutboundMessageRequester;
-use tari_service_framework::{handles::ServiceHandlesFuture, ServiceInitializationError, ServiceInitializer};
-use tokio::runtime::TaskExecutor;
+use crate::{Dht, DhtConfig};
+use std::sync::Arc;
+use tari_comms::{
+    builder::CommsNode,
+    peer_manager::{NodeIdentity, PeerManager},
+};
 
-/// Convenience type alias for external services that want to use this services handle
-pub type CommsOutboundHandle = OutboundMessageRequester;
-
-/// This initializer simply adds a comms OutboundMessageRequester as a handle for use in services.
-pub struct CommsOutboundServiceInitializer {
-    oms: Option<OutboundMessageRequester>,
+pub struct DhtBuilder {
+    node_identity: Arc<NodeIdentity>,
+    peer_manager: Arc<PeerManager>,
+    config: Option<DhtConfig>,
 }
 
-impl CommsOutboundServiceInitializer {
-    pub fn new(oms: OutboundMessageRequester) -> Self {
-        Self { oms: Some(oms) }
+impl DhtBuilder {
+    pub fn from_comms(comms: &CommsNode) -> Self {
+        Self::new(comms.node_identity(), comms.peer_manager())
     }
-}
 
-impl ServiceInitializer for CommsOutboundServiceInitializer {
-    type Future = impl Future<Output = Result<(), ServiceInitializationError>>;
+    pub fn new(node_identity: Arc<NodeIdentity>, peer_manager: Arc<PeerManager>) -> Self {
+        Self {
+            node_identity,
+            peer_manager,
+            config: None,
+        }
+    }
 
-    fn initialize(&mut self, _: TaskExecutor, handles: ServiceHandlesFuture) -> Self::Future {
-        handles.register(
-            self.oms
-                .take()
-                .expect("CommsOutboundServiceInitializer initialized without OutboundMessageRequester"),
-        );
+    pub fn with_config(mut self, config: DhtConfig) -> Self {
+        self.config = Some(config);
+        self
+    }
 
-        future::ready(Ok(()))
+    pub fn finish(self) -> Dht {
+        Dht::new(self.config.unwrap_or_default(), self.node_identity, self.peer_manager)
     }
 }

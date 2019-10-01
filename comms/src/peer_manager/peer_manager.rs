@@ -22,7 +22,6 @@
 
 use crate::{
     connection::net_address::NetAddress,
-    outbound_message_service::broadcast_strategy::BroadcastStrategy,
     peer_manager::{
         node_id::NodeId,
         node_identity::PeerNodeIdentity,
@@ -122,53 +121,55 @@ impl PeerManager {
             .exists_node_id(node_id))
     }
 
-    /// Request a sub-set of peers based on the provided BroadcastStrategy
-    pub fn get_broadcast_identities(
+    /// Get a peer matching the given node ID
+    pub fn direct_identity_node_id(&self, node_id: &NodeId) -> Result<PeerNodeIdentity, PeerManagerError> {
+        self.peer_storage
+            .read()
+            .map_err(|_| PeerManagerError::PoisonedAccess)?
+            .direct_identity_node_id(&node_id)
+    }
+
+    /// Get a peer matching the given public key
+    pub fn direct_identity_public_key(
         &self,
-        broadcast_strategy: BroadcastStrategy,
+        public_key: &CommsPublicKey,
+    ) -> Result<PeerNodeIdentity, PeerManagerError>
+    {
+        self.peer_storage
+            .read()
+            .map_err(|_| PeerManagerError::PoisonedAccess)?
+            .direct_identity_public_key(public_key)
+    }
+
+    /// Fetch all peers (except banned ones)
+    pub fn flood_identities(&self) -> Result<Vec<PeerNodeIdentity>, PeerManagerError> {
+        self.peer_storage
+            .read()
+            .map_err(|_| PeerManagerError::PoisonedAccess)?
+            .flood_identities()
+    }
+
+    /// Fetch n nearest neighbour Communication Nodes
+    pub fn closest_identities(
+        &self,
+        node_id: &NodeId,
+        n: usize,
+        excluded_peers: &Vec<CommsPublicKey>,
     ) -> Result<Vec<PeerNodeIdentity>, PeerManagerError>
     {
-        match broadcast_strategy {
-            BroadcastStrategy::DirectNodeId(node_id) => {
-                // Send to a particular peer matching the given node ID
-                self.peer_storage
-                    .read()
-                    .map_err(|_| PeerManagerError::PoisonedAccess)?
-                    .direct_identity_node_id(&node_id)
-            },
-            BroadcastStrategy::DirectPublicKey(public_key) => {
-                // Send to a particular peer matching the given node ID
-                self.peer_storage
-                    .read()
-                    .map_err(|_| PeerManagerError::PoisonedAccess)?
-                    .direct_identity_public_key(&public_key)
-            },
-            BroadcastStrategy::Flood => {
-                // Send to all known Communication Node peers
-                self.peer_storage
-                    .read()
-                    .map_err(|_| PeerManagerError::PoisonedAccess)?
-                    .flood_identities()
-            },
-            BroadcastStrategy::Closest(closest_request) => {
-                // Send to all n nearest neighbour Communication Nodes
-                self.peer_storage
-                    .read()
-                    .map_err(|_| PeerManagerError::PoisonedAccess)?
-                    .closest_identities(
-                        &closest_request.node_id,
-                        closest_request.n,
-                        &closest_request.excluded_peers,
-                    )
-            },
-            BroadcastStrategy::Random(n) => {
-                // Send to a random set of peers of size n that are Communication Nodes
-                self.peer_storage
-                    .write()
-                    .map_err(|_| PeerManagerError::PoisonedAccess)?
-                    .random_identities(n)
-            },
-        }
+        self.peer_storage
+            .read()
+            .map_err(|_| PeerManagerError::PoisonedAccess)?
+            .closest_identities(node_id, n, excluded_peers)
+    }
+
+    /// Fetch n random identioties
+    pub fn random_identities(&self, n: usize) -> Result<Vec<PeerNodeIdentity>, PeerManagerError> {
+        // Send to a random set of peers of size n that are Communication Nodes
+        self.peer_storage
+            .write()
+            .map_err(|_| PeerManagerError::PoisonedAccess)?
+            .random_identities(n)
     }
 
     /// Check if a specific node_id is in the network region of the N nearest neighbours of the region specified by
@@ -271,7 +272,6 @@ mod test {
     use super::*;
     use crate::{
         connection::net_address::{net_addresses::NetAddressesWithStats, NetAddress},
-        outbound_message_service::broadcast_strategy::ClosestRequest,
         peer_manager::{
             node_id::NodeId,
             peer::{Peer, PeerFlags},
@@ -307,20 +307,15 @@ mod test {
         assert!(peer_manager.add_peer(test_peers[test_peers.len() - 1].clone()).is_ok());
 
         // Test Valid Direct
-        let identities = peer_manager
-            .get_broadcast_identities(BroadcastStrategy::DirectNodeId(test_peers[2].node_id.clone()))
-            .unwrap();
-        assert_eq!(identities.len(), 1);
-        assert_eq!(identities[0].node_id, test_peers[2].node_id);
-        assert_eq!(identities[0].public_key, test_peers[2].public_key);
+        let identities = peer_manager.direct_identity_node_id(&test_peers[2].node_id).unwrap();
+        assert_eq!(identities.node_id, test_peers[2].node_id);
+        assert_eq!(identities.public_key, test_peers[2].public_key);
         // Test Invalid Direct
         let unmanaged_peer = create_test_peer(&mut rng, false);
-        assert!(peer_manager
-            .get_broadcast_identities(BroadcastStrategy::DirectNodeId(unmanaged_peer.node_id.clone()))
-            .is_err());
+        assert!(peer_manager.direct_identity_node_id(&unmanaged_peer.node_id).is_err());
 
         // Test Flood
-        let identities = peer_manager.get_broadcast_identities(BroadcastStrategy::Flood).unwrap();
+        let identities = peer_manager.flood_identities().unwrap();
         assert_eq!(identities.len(), 18);
         for peer_identity in &identities {
             assert_eq!(
@@ -334,11 +329,7 @@ mod test {
 
         // Test Closest - No exclusions
         let identities = peer_manager
-            .get_broadcast_identities(BroadcastStrategy::Closest(ClosestRequest {
-                n: 3,
-                node_id: unmanaged_peer.node_id.clone(),
-                excluded_peers: Vec::new(),
-            }))
+            .closest_identities(&unmanaged_peer.node_id, 3, &Vec::new())
             .unwrap();
         assert_eq!(identities.len(), 3);
         // Remove current identity nodes from test peers
@@ -365,13 +356,8 @@ mod test {
             identities[0].public_key.clone(), // ,identities[1].public_key.clone()
         ];
         let identities = peer_manager
-            .get_broadcast_identities(BroadcastStrategy::Closest(ClosestRequest {
-                n: 3,
-                node_id: unmanaged_peer.node_id.clone(),
-                excluded_peers: excluded_peers.clone(),
-            }))
+            .closest_identities(&unmanaged_peer.node_id, 3, &excluded_peers)
             .unwrap();
-        println!("identities.len()={:?}", identities.len());
         assert_eq!(identities.len(), 3);
         // Remove current identity nodes from test peers
         let mut unused_peers: Vec<Peer> = Vec::new();
@@ -393,12 +379,8 @@ mod test {
         }
 
         // Test Random
-        let identities1 = peer_manager
-            .get_broadcast_identities(BroadcastStrategy::Random(10))
-            .unwrap();
-        let identities2 = peer_manager
-            .get_broadcast_identities(BroadcastStrategy::Random(10))
-            .unwrap();
+        let identities1 = peer_manager.random_identities(10).unwrap();
+        let identities2 = peer_manager.random_identities(10).unwrap();
         assert_ne!(identities1, identities2);
     }
 
@@ -420,11 +402,7 @@ mod test {
         // Get nearest neighbours
         let n = 5;
         let nearest_identities = peer_manager
-            .get_broadcast_identities(BroadcastStrategy::Closest(ClosestRequest {
-                n,
-                node_id: network_region_node_id.clone(),
-                excluded_peers: Vec::new(),
-            }))
+            .closest_identities(&network_region_node_id, n, &Vec::new())
             .unwrap();
 
         for peer in &test_peers {

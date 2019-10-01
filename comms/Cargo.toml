@@ -27,7 +27,6 @@ serde = "1.0.90"
 serde_derive = "1.0.90"
 time = "0.1.42"
 tokio = "0.2.0-alpha.4"
-tower = "0.3.0-alpha.1a"
 ttl_cache = "0.5.1"
 zmq = "0.9.1"
 

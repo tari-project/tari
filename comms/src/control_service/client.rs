@@ -27,7 +27,7 @@ use super::{
 use crate::{
     connection::{Direction, EstablishedConnection, NetAddress},
     control_service::messages::ControlServiceResponseType,
-    message::{Message, MessageEnvelope, MessageFlags, MessageHeader, NodeDestination},
+    message::{Message, MessageEnvelope, MessageFlags, MessageHeader},
     peer_manager::{NodeId, NodeIdentity},
     types::CommsPublicKey,
 };
@@ -110,7 +110,7 @@ impl ControlServiceClient {
                 }
                 let envelope: MessageEnvelope = frames.try_into()?;
                 let header = envelope.deserialize_header()?;
-                if header.verify_signatures(envelope.body_frame().clone())? {
+                if header.verify_signatures(envelope.body_frame())? {
                     let msg =
                         envelope.deserialize_encrypted_body(&self.node_identity.secret_key, &self.dest_public_key)?;
                     Ok(Some(msg))
@@ -161,7 +161,6 @@ impl ControlServiceClient {
         MessageEnvelope::construct(
             &self.node_identity,
             self.dest_public_key.clone(),
-            NodeDestination::PublicKey(self.dest_public_key.clone()),
             msg.to_binary()?,
             MessageFlags::ENCRYPTED,
         )
@@ -190,8 +189,7 @@ mod test {
             .unwrap();
 
         let header = envelope.deserialize_header().unwrap();
-        assert_eq!(header.peer_pubkey, node_identity.identity.public_key);
-        assert_eq!(header.destination, NodeDestination::PublicKey(public_key));
+        assert_eq!(header.message_public_key, node_identity.identity.public_key);
         assert_eq!(header.flags, MessageFlags::ENCRYPTED);
     }
 }

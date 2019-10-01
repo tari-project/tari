@@ -248,6 +248,10 @@ pub fn main() {
             node_identity,
             datastore_path: settings.data_path.unwrap(),
             peer_database_name,
+            // TODO: configureable
+            inbound_buffer_size: 30,
+            outbound_buffer_size: 30,
+            dht: Default::default(),
         },
         inbound_message_buffer_size: 100,
         public_key,
