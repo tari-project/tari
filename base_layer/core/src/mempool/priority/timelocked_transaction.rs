@@ -64,7 +64,10 @@ impl TryFrom<Transaction> for TimelockedTransaction {
         Ok(Self {
             fee_priority: FeePriority::try_from(&transaction)?,
             timelock_priority: TimelockPriority::try_from(&transaction)?,
-            max_timelock_height: transaction.max_timelock_height(),
+            max_timelock_height: match transaction.max_timelock_height() {
+                0 => 0,
+                v => v - 1,
+            },
             transaction: Arc::new(transaction),
         })
     }

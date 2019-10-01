@@ -38,6 +38,7 @@ const LOG_TARGET: &str = "mmr::merkle_mountain_range";
 /// An implementation of a Merkle Mountain Range (MMR). The MMR is append-only and immutable. Only the hashes are
 /// stored in this data structure. The data itself can be stored anywhere as long as you can maintain a 1:1 mapping
 /// of the hash of that data to the leaf nodes in the MMR.
+#[derive(Debug)]
 pub struct MerkleMountainRange<D, B>
 where B: ArrayLike
 {
@@ -149,6 +150,18 @@ where
             }
         }
         Ok(())
+    }
+
+    /// Search for a given hash in the leaf node array. This is a very slow function, being O(n). In general, it's
+    /// better to cache the index of the hash when storing it rather than using this function, but it's here for
+    /// completeness. The index that is returned is the index of the _leaf node_, and not the MMR node index.
+    pub fn find_leaf_node(&self, hash: &Hash) -> Option<usize> {
+        for i in 0..self.hashes.len() {
+            if *hash == self.hashes.get_or_panic(i) {
+                return Some(i);
+            }
+        }
+        None
     }
 
     pub(crate) fn null_hash() -> Hash {

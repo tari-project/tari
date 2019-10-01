@@ -22,7 +22,7 @@
 
 use derive_error::Error;
 
-#[derive(Debug, Error, PartialEq)]
+#[derive(Debug, Clone, Error, PartialEq)]
 pub enum MerkleMountainRangeError {
     // The next position was not a leaf node as expected
     CorruptDataStructure,

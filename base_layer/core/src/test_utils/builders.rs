@@ -23,6 +23,7 @@
 
 use crate::{
     blocks::{blockheader::BlockHeader, Block, BlockBuilder},
+    chain_storage::{BlockAddResult, BlockchainDatabase, MemoryDatabase},
     fee::Fee,
     proof_of_work::Difficulty,
     tari_amount::MicroTari,
@@ -42,8 +43,9 @@ use crate::{
         test_common::TestParams,
         TransactionMetadata,
     },
-    types::{Commitment, PrivateKey, PublicKey, Signature, COMMITMENT_FACTORY, PROVER},
+    types::{Commitment, HashDigest, PrivateKey, PublicKey, Signature, COMMITMENT_FACTORY, PROVER},
 };
+use std::sync::Arc;
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     common::Blake256,
@@ -73,15 +75,41 @@ macro_rules! tx {
 }
 
 #[macro_export]
-macro_rules! spend {
-    ($utxos:expr, to: $values:expr, fee: $fee:expr, lock:$lock:expr) => {{
-        use crate::test_utils::builders::spend_utxos;
-        spend_utxos($utxos, $values, $fee, $lock)
+macro_rules! txn_schema {
+    (from: $input:expr, to: $outputs:expr, fee: $fee:expr, lock: $lock:expr, $features:expr) => {{
+        use crate::test_utils::builders::TransactionSchema;
+        TransactionSchema {
+            from: $input.clone(),
+            to: $outputs.clone(),
+            fee: $fee,
+            lock_height: $lock,
+            features: $features
+        }
     }};
 
-    ($utxos:expr, to: $values:expr) => {
-        spend!($utxos, to:$values, fee:MicroTari(25), lock:0)
+    (from: $input:expr, to: $outputs:expr, fee: $fee:expr) => {
+        txn_schema!(from: $input, to:$outputs, fee:$fee, lock:0, crate::transaction::OutputFeatures::default())
     };
+
+    (from: $input:expr, to: $outputs:expr) => {
+        txn_schema!(from: $input, to:$outputs, fee: 25.into(), lock:0, crate::transaction::OutputFeatures::default())
+    };
+
+    // Spend inputs to ± half the first input value, with default fee and lock height
+    (from: $input:expr) => {{
+        let out_val = $input[0].value / 2u64;
+        txn_schema!(from: $input, to:vec![out_val])
+    }};
+}
+
+/// A convenience struct that holds plaintext versions of transactions
+#[derive(Clone, Debug)]
+pub struct TransactionSchema {
+    pub from: Vec<UnblindedOutput>,
+    pub to: Vec<MicroTari>,
+    pub fee: MicroTari,
+    pub lock_height: u64,
+    pub features: OutputFeatures,
 }
 
 /// Create a random transaction input for the given amount and maturity period. The input and its unblinded
@@ -90,8 +118,7 @@ pub fn create_test_input(amount: MicroTari, maturity: u64) -> (TransactionInput,
     let mut rng = rand::OsRng::new().unwrap();
     let spending_key = PrivateKey::random(&mut rng);
     let commitment = COMMITMENT_FACTORY.commit(&spending_key, &PrivateKey::from(amount.clone()));
-    let mut features = OutputFeatures::default();
-    features.maturity = maturity;
+    let features = OutputFeatures::with_maturity(maturity);
     let input = TransactionInput::new(features.clone(), commitment);
     let unblinded_output = UnblindedOutput::new(amount, spending_key, Some(features));
     (input, unblinded_output)
@@ -161,36 +188,38 @@ pub fn create_tx(
 /// Spend the provided UTXOs by to the given amounts. Change will be created with any outstanding amount.
 /// You only need to provide the unblinded outputs to spend. This function will calculate the commitment for you.
 /// This is obviously less efficient, but is offered as a convenience.
-pub fn spend_utxos(
-    utxos: Vec<UnblindedOutput>,
-    new_outputs: &[MicroTari],
-    fee_per_gram: MicroTari,
-    lock_height: u64,
-) -> (Transaction, Vec<UnblindedOutput>, TestParams)
-{
+/// The output features will be applied to every output
+pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutput>, TestParams) {
     let mut rng = rand::OsRng::new().unwrap();
     let test_params = TestParams::new(&mut rng);
     let mut stx_builder = SenderTransactionProtocol::builder(0);
     stx_builder
-        .with_lock_height(lock_height)
-        .with_fee_per_gram(fee_per_gram)
+        .with_lock_height(schema.lock_height)
+        .with_fee_per_gram(schema.fee)
         .with_offset(test_params.offset.clone())
         .with_private_nonce(test_params.nonce.clone())
         .with_change_secret(test_params.change_key.clone());
 
-    for input in &utxos {
-        let utxo = input.as_transaction_input(&COMMITMENT_FACTORY, OutputFeatures::default());
+    for input in &schema.from {
+        let utxo = input.as_transaction_input(&COMMITMENT_FACTORY, input.features.clone());
         stx_builder.with_input(utxo, input.clone());
     }
-    let mut outputs = Vec::with_capacity(new_outputs.len());
-    for val in new_outputs {
+    let mut outputs = Vec::with_capacity(schema.to.len());
+    for val in schema.to {
         let k = PrivateKey::random(&mut rng);
-        let utxo = UnblindedOutput::new(val.clone(), k, None);
+        let utxo = UnblindedOutput::new(val.clone(), k, Some(schema.features.clone()));
         outputs.push(utxo.clone());
         stx_builder.with_output(utxo);
     }
 
     let mut stx_protocol = stx_builder.build::<Blake256>(&PROVER, &COMMITMENT_FACTORY).unwrap();
+    let change = stx_protocol.get_change_amount().unwrap();
+    let change_output = UnblindedOutput {
+        value: change,
+        spending_key: test_params.change_key.clone(),
+        features: schema.features.clone(),
+    };
+    outputs.push(change_output);
     match stx_protocol.finalize(KernelFeatures::empty(), &PROVER, &COMMITMENT_FACTORY) {
         Ok(true) => (),
         Ok(false) => panic!("{:?}", stx_protocol.failure_reason()),
@@ -288,6 +317,15 @@ pub fn create_genesis_block() -> (Block, UnblindedOutput) {
     (block, output)
 }
 
+pub fn add_block_and_update_header(store: &BlockchainDatabase<MemoryDatabase<HashDigest>>, mut block: Block) -> Block {
+    if let Ok(BlockAddResult::Ok(h)) = store.add_new_block(block.clone()) {
+        block.header = h;
+    } else {
+        panic!("Error adding block.\n{}", block);
+    }
+    block
+}
+
 /// Create a partially constructed block using the provided set of transactions
 /// TODO - as we move to creating ever more correct blocks in tests, maybe we should deprecate this method since there
 /// is chain_block, or rename it to `create_orphan_block` and drop the prev_block argument
@@ -350,4 +388,15 @@ pub fn create_utxo(value: MicroTari) -> (TransactionOutput, PrivateKey) {
     let proof = PROVER.construct_proof(&keys.k, value.into()).unwrap();
     let utxo = TransactionOutput::new(OutputFeatures::default(), commitment, proof.into());
     (utxo, keys.k)
+}
+
+pub fn schema_to_transaction(txns: &[TransactionSchema]) -> (Vec<Arc<Transaction>>, Vec<UnblindedOutput>) {
+    let mut tx = Vec::new();
+    let mut utxos = Vec::new();
+    txns.iter().for_each(|schema| {
+        let (txn, mut output, _) = spend_utxos(schema.clone());
+        tx.push(Arc::new(txn));
+        utxos.append(&mut output);
+    });
+    (tx, utxos)
 }

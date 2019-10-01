@@ -24,7 +24,10 @@ use newtype_ops::newtype_ops;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error, Formatter};
 
-use std::{iter::Sum, ops::Add};
+use std::{
+    iter::Sum,
+    ops::{Add, Mul},
+};
 use tari_crypto::ristretto::RistrettoSecretKey;
 
 /// All calculations using Tari amounts should use these newtypes to prevent bugs related to rounding errors, unit
@@ -40,6 +43,17 @@ use tari_crypto::ristretto::RistrettoSecretKey;
 #[derive(Copy, Default, Clone, Debug, Eq, Hash, PartialEq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct MicroTari(pub u64);
 
+/// A convenience constant that makes it easier to define Tari amounts.
+/// ```edition2018
+///   use tari_core::tari_amount::{MicroTari, uT, T};
+///   assert_eq!(MicroTari::from(42), 42 * uT);
+///   assert_eq!(1 * T, 1_000_000.into());
+///   assert_eq!(3_000_000 * uT, 3 * T);
+/// ```
+#[allow(non_upper_case_globals)]
+pub const uT: MicroTari = MicroTari(1);
+pub const T: MicroTari = MicroTari(1_000_000);
+
 // You can only add or subtract µT from µT
 newtype_ops! { [MicroTari] {add sub} {:=} Self Self }
 newtype_ops! { [MicroTari] {add sub} {:=} &Self &Self }
@@ -47,6 +61,14 @@ newtype_ops! { [MicroTari] {add sub} {:=} Self &Self }
 
 // Multiplication and division only makes sense when µT is multiplied/divided by a scalar
 newtype_ops! { [MicroTari] {mul div rem} {:=} Self u64 }
+
+impl Mul<MicroTari> for u64 {
+    type Output = MicroTari;
+
+    fn mul(self, rhs: MicroTari) -> Self::Output {
+        MicroTari(self * rhs.0)
+    }
+}
 
 impl MicroTari {
     pub fn checked_sub(self, v: MicroTari) -> Option<MicroTari> {

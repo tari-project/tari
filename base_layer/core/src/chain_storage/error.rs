@@ -20,11 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{blocks::BlockValidationError, chain_storage::db_transaction::DbKey};
+use crate::{
+    blocks::BlockValidationError,
+    chain_storage::{db_transaction::DbKey, MmrTree},
+};
 use derive_error::Error;
 use tari_mmr::{error::MerkleMountainRangeError, MerkleProofError};
 
-#[derive(Debug, Error, PartialEq)]
+#[derive(Debug, Clone, Error, PartialEq)]
 pub enum ChainStorageError {
     // Access to the underlying storage mechanism failed
     #[error(non_std, no_from)]
@@ -58,4 +61,9 @@ pub enum ChainStorageError {
     MerkleMountainRangeError(MerkleMountainRangeError),
     MerkleProofError(MerkleProofError),
     BlockValidationError(BlockValidationError),
+    // An MMR root in the provided block header did not match the MMR root in the database
+    #[error(non_std, no_from)]
+    MismatchedMmrRoot(MmrTree),
+    // An invalid block was submitted to the database
+    InvalidBlock,
 }

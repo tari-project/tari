@@ -112,10 +112,13 @@ where T: BlockchainBackend
     }
 
     fn check_timelocks(&mut self, tx: &Transaction) -> Result<bool, MempoolError> {
-        Ok(tx.max_timelock_height() >
-            self.blockchain_db
-                .get_height()?
-                .ok_or(MempoolError::ChainHeightUndefined)?)
+        match tx.max_timelock_height() {
+            0 => Ok(false),
+            v => Ok(v - 1 >
+                self.blockchain_db
+                    .get_height()?
+                    .ok_or(MempoolError::ChainHeightUndefined)?),
+        }
     }
 
     /// Insert an unconfirmed transaction into the Mempool.
@@ -247,73 +250,65 @@ where T: BlockchainBackend
 mod test {
     use super::*;
     use crate::{
-        blocks::genesis_block::get_genesis_block,
-        chain_storage::{DbTransaction, MemoryDatabase},
-        tari_amount::MicroTari,
-        test_utils::builders::{create_test_block, create_test_input, create_test_tx_spending_utxos},
+        tari_amount::{uT, T},
+        test_utils::{
+            builders::{schema_to_transaction, spend_utxos},
+            sample_blockchains::{create_new_blockchain, generate_block, generate_new_block},
+        },
+        transaction::OutputFeatures,
         tx,
-        types::HashDigest,
+        txn_schema,
     };
-
-    fn create_test_tx_spending_utxo<T: BlockchainBackend>(
-        blockchain_db: &Arc<BlockchainDatabase<T>>,
-        orphaned: bool,
-        fee_per_gram: MicroTari,
-        lock_height: u64,
-        input_maturity: u64,
-    ) -> Transaction
-    {
-        if orphaned {
-            (tx!( MicroTari(5_000), fee: fee_per_gram, lock: lock_height, inputs: 2, maturity: input_maturity, outputs: 2)).0
-        } else {
-            let utxo1 = create_test_input(2_500.into(), input_maturity.clone());
-            let utxo2 = create_test_input(2_500.into(), input_maturity);
-
-            let mut db_txn = DbTransaction::new();
-            db_txn.insert_utxo(
-                utxo1
-                    .1
-                    .as_transaction_output(&PROVER, &COMMITMENT_FACTORY, utxo1.0.features.clone())
-                    .unwrap(),
-            );
-            db_txn.insert_utxo(
-                utxo2
-                    .1
-                    .as_transaction_output(&PROVER, &COMMITMENT_FACTORY, utxo2.0.features.clone())
-                    .unwrap(),
-            );
-            blockchain_db.commit(db_txn).unwrap();
-
-            create_test_tx_spending_utxos(fee_per_gram, lock_height, vec![utxo1, utxo2], 2).0
-        }
-    }
+    use std::ops::Deref;
 
     #[test]
     fn test_insert_and_process_published_block() {
-        let store = Arc::new(BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap());
-        let genesis_block = get_genesis_block();
-        store.add_block(genesis_block.clone()).unwrap();
-        let mut mempool = Mempool::new(store.clone(), MempoolConfig::default());
+        let (mut store, mut blocks, mut outputs) = create_new_blockchain();
+        // TODO - BlockchainDB is cheap to clone, so there's no need to wrap it in an Arc
+        let mut mempool = Mempool::new(Arc::new(store.clone()), MempoolConfig::default());
+        // Create a block with 4 outputs
+        let txs = vec![txn_schema!(
+            from: vec![outputs[0][0].clone()],
+            to: vec![2 * T, 2 * T, 2 * T, 2 * T]
+        )];
+        generate_new_block(&mut store, &mut blocks, &mut outputs, txs).unwrap();
+        // Create 6 new transactions to add to the mempool
+        let (orphan, _, _) = tx!(1*T, fee: 100*uT);
+        let orphan = Arc::new(orphan);
 
-        let tx1 = Arc::new(create_test_tx_spending_utxo(&store, true, MicroTari(20), 0, 0));
-        let tx2 = Arc::new(create_test_tx_spending_utxo(&store, false, MicroTari(20), 0, 1));
-        let tx3 = Arc::new(create_test_tx_spending_utxo(&store, false, MicroTari(20), 2, 1));
-        let tx4 = Arc::new(create_test_tx_spending_utxo(&store, false, MicroTari(20), 0, 0));
-        let tx5 = Arc::new(create_test_tx_spending_utxo(&store, false, MicroTari(20), 1, 2));
-        let tx6 = Arc::new(create_test_tx_spending_utxo(&store, false, MicroTari(20), 3, 2));
+        let tx2 = txn_schema!(from: vec![outputs[1][0].clone()], to: vec![1*T], fee: 20*uT);
+        let tx2 = Arc::new(spend_utxos(tx2).0);
 
-        mempool.insert(tx1.clone()).unwrap();
+        let tx3 = txn_schema!(
+            from: vec![outputs[1][1].clone()],
+            to: vec![1*T],
+            fee: 20*uT,
+            lock: 4,
+            OutputFeatures::with_maturity(1)
+        );
+        let tx3 = Arc::new(spend_utxos(tx3).0);
+
+        let tx5 = txn_schema!(
+            from: vec![outputs[1][2].clone()],
+            to: vec![1*T],
+            fee: 20*uT,
+            lock: 3,
+            OutputFeatures::with_maturity(2)
+        );
+        let tx5 = Arc::new(spend_utxos(tx5).0);
+        let tx6 = txn_schema!(from: vec![outputs[1][3].clone()], to: vec![1 * T]);
+        let tx6 = spend_utxos(tx6).0;
+
+        mempool.insert(orphan.clone()).unwrap();
         mempool.insert(tx2.clone()).unwrap();
         mempool.insert(tx3.clone()).unwrap();
-        mempool.insert(tx4.clone()).unwrap();
         mempool.insert(tx5.clone()).unwrap();
-
-        let published_block = create_test_block(1, Some(genesis_block), vec![(*tx4).clone()]);
-        store.add_block(published_block.clone()).unwrap();
-        mempool.process_published_block(&published_block).unwrap();
+        mempool.process_published_block(&blocks[1]).unwrap();
 
         assert_eq!(
-            mempool.has_tx_with_excess_sig(&tx1.body.kernels[0].excess_sig).unwrap(),
+            mempool
+                .has_tx_with_excess_sig(&orphan.body.kernels[0].excess_sig)
+                .unwrap(),
             TxStorageResponse::OrphanPool
         );
         assert_eq!(
@@ -324,10 +319,7 @@ mod test {
             mempool.has_tx_with_excess_sig(&tx3.body.kernels[0].excess_sig).unwrap(),
             TxStorageResponse::PendingPool
         );
-        assert_eq!(
-            mempool.has_tx_with_excess_sig(&tx4.body.kernels[0].excess_sig).unwrap(),
-            TxStorageResponse::ReorgPool
-        );
+
         assert_eq!(
             mempool.has_tx_with_excess_sig(&tx5.body.kernels[0].excess_sig).unwrap(),
             TxStorageResponse::PendingPool
@@ -339,25 +331,27 @@ mod test {
 
         let snapshot_txs = mempool.snapshot().unwrap();
         assert_eq!(snapshot_txs.len(), 4);
-        assert!(snapshot_txs.contains(&tx1));
+        assert!(snapshot_txs.contains(&orphan));
         assert!(snapshot_txs.contains(&tx2));
         assert!(snapshot_txs.contains(&tx3));
         assert!(snapshot_txs.contains(&tx5));
 
         let stats = mempool.stats().unwrap();
-        assert_eq!(stats.total_txs, 5);
+        assert_eq!(stats.total_txs, 4);
         assert_eq!(stats.unconfirmed_txs, 1);
         assert_eq!(stats.orphan_txs, 1);
         assert_eq!(stats.timelocked_txs, 2);
-        assert_eq!(stats.published_txs, 1);
-        assert_eq!(stats.total_weight, 50);
+        assert_eq!(stats.published_txs, 0);
+        assert_eq!(stats.total_weight, 36);
 
-        let published_block = create_test_block(2, Some(published_block), vec![(*tx2).clone()]);
-        store.add_block(published_block.clone()).unwrap();
-        mempool.process_published_block(&published_block).unwrap();
+        // Spend tx2, so it goes in Reorg pool, tx5 matures, so goes in Unconfirmed pool
+        generate_block(&mut store, &mut blocks, vec![tx2.deref().clone()]).unwrap();
+        mempool.process_published_block(&blocks[2]).unwrap();
 
         assert_eq!(
-            mempool.has_tx_with_excess_sig(&tx1.body.kernels[0].excess_sig).unwrap(),
+            mempool
+                .has_tx_with_excess_sig(&orphan.body.kernels[0].excess_sig)
+                .unwrap(),
             TxStorageResponse::OrphanPool
         );
         assert_eq!(
@@ -366,11 +360,7 @@ mod test {
         );
         assert_eq!(
             mempool.has_tx_with_excess_sig(&tx3.body.kernels[0].excess_sig).unwrap(),
-            TxStorageResponse::UnconfirmedPool
-        );
-        assert_eq!(
-            mempool.has_tx_with_excess_sig(&tx4.body.kernels[0].excess_sig).unwrap(),
-            TxStorageResponse::ReorgPool
+            TxStorageResponse::PendingPool
         );
         assert_eq!(
             mempool.has_tx_with_excess_sig(&tx5.body.kernels[0].excess_sig).unwrap(),
@@ -383,175 +373,157 @@ mod test {
 
         let snapshot_txs = mempool.snapshot().unwrap();
         assert_eq!(snapshot_txs.len(), 3);
-        assert!(snapshot_txs.contains(&tx1));
+        assert!(snapshot_txs.contains(&orphan));
         assert!(snapshot_txs.contains(&tx3));
         assert!(snapshot_txs.contains(&tx5));
 
         let stats = mempool.stats().unwrap();
-        assert_eq!(stats.total_txs, 5);
-        assert_eq!(stats.unconfirmed_txs, 2);
+        assert_eq!(stats.total_txs, 4);
+        assert_eq!(stats.unconfirmed_txs, 1);
         assert_eq!(stats.orphan_txs, 1);
-        assert_eq!(stats.timelocked_txs, 0);
-        assert_eq!(stats.published_txs, 2);
-        assert_eq!(stats.total_weight, 50);
+        assert_eq!(stats.timelocked_txs, 1);
+        assert_eq!(stats.published_txs, 1);
+        assert_eq!(stats.total_weight, 36);
     }
 
     #[test]
     fn test_retrieve() {
-        let store = Arc::new(BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap());
-        let genesis_block = get_genesis_block();
-        store.add_block(genesis_block.clone()).unwrap();
-        let mut mempool = Mempool::new(store.clone(), MempoolConfig::default());
-
-        let tx1 = Arc::new(create_test_tx_spending_utxo(&store, false, MicroTari(30), 0, 0));
-        let tx2 = Arc::new(create_test_tx_spending_utxo(&store, false, MicroTari(20), 0, 0));
-        let tx3 = Arc::new(create_test_tx_spending_utxo(&store, false, MicroTari(40), 0, 0));
-        let tx4 = Arc::new(create_test_tx_spending_utxo(&store, false, MicroTari(50), 0, 0));
-        let tx5 = Arc::new(create_test_tx_spending_utxo(&store, false, MicroTari(20), 1, 0));
-        let tx6 = Arc::new(create_test_tx_spending_utxo(&store, false, MicroTari(20), 1, 0));
-        let tx7 = Arc::new(create_test_tx_spending_utxo(&store, false, MicroTari(60), 0, 1));
-        let tx8 = Arc::new(create_test_tx_spending_utxo(&store, false, MicroTari(30), 0, 1));
-
-        mempool.insert(tx1.clone()).unwrap();
-        mempool.insert(tx2.clone()).unwrap();
-        mempool.insert(tx3.clone()).unwrap();
-        mempool.insert(tx4.clone()).unwrap();
-        mempool.insert(tx5.clone()).unwrap();
-        mempool.insert(tx6.clone()).unwrap();
-        mempool.insert(tx7.clone()).unwrap();
-        mempool.insert(tx8.clone()).unwrap();
-
-        let weight = tx1.calculate_weight() + tx3.calculate_weight() + tx4.calculate_weight();
+        let (mut store, mut blocks, mut outputs) = create_new_blockchain();
+        let mut mempool = Mempool::new(Arc::new(store.clone()), MempoolConfig::default());
+        let txs = vec![txn_schema!(
+            from: vec![outputs[0][0].clone()],
+            to: vec![1 * T, 1 * T, 1 * T, 1 * T, 1 * T, 1 * T, 1 * T]
+        )];
+        // "Mine" Block 1
+        generate_new_block(&mut store, &mut blocks, &mut outputs, txs).unwrap();
+        mempool.process_published_block(&blocks[1]).unwrap();
+        // 1-Block, 8 UTXOs, empty mempool
+        let txs = vec![
+            txn_schema!(from: vec![outputs[1][0].clone()], to: vec![], fee: 30*uT),
+            txn_schema!(from: vec![outputs[1][1].clone()], to: vec![], fee: 20*uT),
+            txn_schema!(from: vec![outputs[1][2].clone()], to: vec![], fee: 40*uT),
+            txn_schema!(from: vec![outputs[1][3].clone()], to: vec![], fee: 50*uT),
+            txn_schema!(from: vec![outputs[1][4].clone()], to: vec![], fee: 20*uT, lock: 2, OutputFeatures::default()),
+            txn_schema!(from: vec![outputs[1][5].clone()], to: vec![], fee: 20*uT, lock: 3, OutputFeatures::default()),
+            // Will be time locked when a tx is added to mempool with this as an input:
+            txn_schema!(from: vec![outputs[1][6].clone()], to: vec![800_000*uT], fee: 60*uT, lock: 0,
+                        OutputFeatures::with_maturity(4)),
+            // Will be time locked when a tx is added to mempool with this as an input:
+            txn_schema!(from: vec![outputs[1][7].clone()], to: vec![800_000*uT], fee: 25*uT, lock: 0,
+                        OutputFeatures::with_maturity(3)),
+        ];
+        let (tx, utxos) = schema_to_transaction(&txs);
+        tx.iter().for_each(|t| {
+            mempool.insert(t.clone()).unwrap();
+        });
+        // 1-block, 8 UTXOs, 8 txs in mempool
+        let weight = tx[6].calculate_weight() + tx[2].calculate_weight() + tx[3].calculate_weight();
         let retrieved_txs = mempool.retrieve(weight).unwrap();
         assert_eq!(retrieved_txs.len(), 3);
-        assert!(retrieved_txs.contains(&tx1));
-        assert!(retrieved_txs.contains(&tx3));
-        assert!(retrieved_txs.contains(&tx4));
+        assert!(retrieved_txs.contains(&tx[6]));
+        assert!(retrieved_txs.contains(&tx[2]));
+        assert!(retrieved_txs.contains(&tx[3]));
         let stats = mempool.stats().unwrap();
-        assert_eq!(stats.unconfirmed_txs, 4);
-        assert_eq!(stats.timelocked_txs, 4);
+        println!("After block 1: {:?}", stats);
+        assert_eq!(stats.unconfirmed_txs, 7);
+        assert_eq!(stats.timelocked_txs, 1);
         assert_eq!(stats.published_txs, 0);
 
-        let published_block = create_test_block(1, Some(genesis_block), vec![
-            (*retrieved_txs[0]).clone(),
-            (*retrieved_txs[1]).clone(),
-            (*retrieved_txs[2]).clone(),
-        ]);
-        store.add_block(published_block.clone()).unwrap();
-        mempool.process_published_block(&published_block).unwrap();
-
-        let weight = tx7.calculate_weight() + tx8.calculate_weight();
-        let retrieved_txs = mempool.retrieve(weight).unwrap();
-        assert_eq!(retrieved_txs.len(), 2);
-        assert!(retrieved_txs.contains(&tx7));
-        assert!(retrieved_txs.contains(&tx8));
+        let block2_txns = vec![
+            tx[0].deref().clone(),
+            tx[1].deref().clone(),
+            tx[2].deref().clone(),
+            tx[6].deref().clone(),
+            tx[7].deref().clone(),
+        ];
+        // "Mine" block 2
+        generate_block(&mut store, &mut blocks, block2_txns).unwrap();
+        println!("{}", blocks[2]);
+        outputs.push(utxos);
+        mempool.process_published_block(&blocks[2]).unwrap();
+        // 2-blocks, 2 unconfirmed txs in mempool, 0 time locked (tx5 time-lock will expire)
         let stats = mempool.stats().unwrap();
-        assert_eq!(stats.unconfirmed_txs, 5);
+        assert_eq!(stats.unconfirmed_txs, 3);
         assert_eq!(stats.timelocked_txs, 0);
-        assert_eq!(stats.published_txs, 3);
+        assert_eq!(stats.published_txs, 5);
+        // Create transactions wih time-locked inputs
+        let txs = vec![
+            txn_schema!(from: vec![outputs[2][6].clone()], to: vec![], fee: 80*uT),
+            // account for change output
+            txn_schema!(from: vec![outputs[2][8].clone()], to: vec![], fee: 40*uT),
+        ];
+        let (tx2, _) = schema_to_transaction(&txs);
+        tx2.iter().for_each(|t| {
+            mempool.insert(t.clone()).unwrap();
+        });
+        // 2 blocks, 3 unconfirmed txs in mempool, 2 time locked
+
+        // Top 2 txs are tx[3] (fee/g = 50) and tx2[1] (fee/g = 40). tx2[0] (fee/g = 80) is still not matured.
+        let weight = tx[3].calculate_weight() + tx2[1].calculate_weight();
+        let retrieved_txs = mempool.retrieve(weight).unwrap();
+        let stats = mempool.stats().unwrap();
+        println!("{:?}", stats);
+        assert_eq!(stats.unconfirmed_txs, 4);
+        assert_eq!(stats.timelocked_txs, 1);
+        assert_eq!(stats.published_txs, 5);
+        assert_eq!(retrieved_txs.len(), 2);
+        assert!(retrieved_txs.contains(&tx[3]));
+        assert!(retrieved_txs.contains(&tx2[1]));
     }
 
     #[test]
     fn test_reorg() {
-        let store = Arc::new(BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap());
-        let genesis_block = get_genesis_block();
-        store.add_block(genesis_block.clone()).unwrap();
-        let mut mempool = Mempool::new(store.clone(), MempoolConfig::default());
+        let (mut db, mut blocks, mut outputs) = create_new_blockchain();
+        let mut mempool = Mempool::new(Arc::new(db.clone()), MempoolConfig::default());
 
-        let tx1 = Arc::new(create_test_tx_spending_utxo(&store, false, MicroTari(20), 0, 0));
-        let tx2 = Arc::new(create_test_tx_spending_utxo(&store, false, MicroTari(20), 0, 0));
-        let tx3 = Arc::new(create_test_tx_spending_utxo(&store, false, MicroTari(20), 0, 0));
-        let tx4 = Arc::new(create_test_tx_spending_utxo(&store, false, MicroTari(20), 1, 0));
-        let tx5 = Arc::new(create_test_tx_spending_utxo(&store, false, MicroTari(20), 0, 1));
-        let tx6 = Arc::new(create_test_tx_spending_utxo(&store, false, MicroTari(20), 2, 2));
-        let tx7 = Arc::new(create_test_tx_spending_utxo(&store, false, MicroTari(20), 1, 0));
-        let tx8 = Arc::new(create_test_tx_spending_utxo(&store, false, MicroTari(20), 2, 0));
+        // "Mine" Block 1
+        let txs = vec![txn_schema!(from: vec![outputs[0][0].clone()], to: vec![1 * T, 1 * T])];
+        generate_new_block(&mut db, &mut blocks, &mut outputs, txs).unwrap();
+        mempool.process_published_block(&blocks[1]).unwrap();
 
-        mempool.insert(tx1.clone()).unwrap();
-        mempool.insert(tx2.clone()).unwrap();
-        mempool.insert(tx3.clone()).unwrap();
-        mempool.insert(tx4.clone()).unwrap();
-        mempool.insert(tx5.clone()).unwrap();
-        mempool.insert(tx6.clone()).unwrap();
-        mempool.insert(tx7.clone()).unwrap();
-        mempool.insert(tx8.clone()).unwrap();
+        // "Mine" block 2
+        let schemas = vec![
+            txn_schema!(from: vec![outputs[1][0].clone()], to: vec![]),
+            txn_schema!(from: vec![outputs[1][1].clone()], to: vec![]),
+            txn_schema!(from: vec![outputs[1][2].clone()], to: vec![]),
+        ];
+        let (txns2, utxos) = schema_to_transaction(&schemas);
+        outputs.push(utxos);
+        txns2.iter().for_each(|tx| {
+            mempool.insert(tx.clone()).unwrap();
+        });
         let stats = mempool.stats().unwrap();
         assert_eq!(stats.unconfirmed_txs, 3);
-        assert_eq!(stats.timelocked_txs, 5);
-        assert_eq!(stats.published_txs, 0);
+        let txns2 = txns2.iter().map(|t| t.deref().clone()).collect();
+        generate_block(&mut db, &mut blocks, txns2).unwrap();
+        mempool.process_published_block(&blocks[2]).unwrap();
 
-        let published_block1 = create_test_block(1, Some(genesis_block), vec![
-            (*tx1).clone(),
-            (*tx2).clone(),
-            (*tx3).clone(),
-        ]);
-        store.add_block(published_block1.clone()).unwrap();
-        mempool.process_published_block(&published_block1).unwrap();
+        // "Mine" block 3
+        let schemas = vec![
+            txn_schema!(from: vec![outputs[2][0].clone()], to: vec![]),
+            txn_schema!(from: vec![outputs[2][1].clone()], to: vec![], fee: 25*uT, lock: 5, OutputFeatures::default()),
+            txn_schema!(from: vec![outputs[2][2].clone()], to: vec![], fee: 25*uT),
+        ];
+        let (txns3, utxos) = schema_to_transaction(&schemas);
+        outputs.push(utxos);
+        txns3.iter().for_each(|tx| {
+            mempool.insert(tx.clone()).unwrap();
+        });
+        let txns3: Vec<Transaction> = txns3.iter().map(|t| t.deref().clone()).collect();
+
+        generate_block(&mut db, &mut blocks, vec![txns3[0].clone(), txns3[2].clone()]).unwrap();
+        mempool.process_published_block(&blocks[3]).unwrap();
+
         let stats = mempool.stats().unwrap();
-        assert_eq!(stats.unconfirmed_txs, 3);
-        assert_eq!(stats.timelocked_txs, 2);
-        assert_eq!(stats.published_txs, 3);
+        assert_eq!(stats.unconfirmed_txs, 0);
+        assert_eq!(stats.timelocked_txs, 1);
 
-        let published_block2 =
-            create_test_block(2, Some(published_block1.clone()), vec![(*tx4).clone(), (*tx5).clone()]);
-        store.add_block(published_block2.clone()).unwrap();
-        mempool.process_published_block(&published_block2).unwrap();
-        let stats = mempool.stats().unwrap();
-        assert_eq!(stats.unconfirmed_txs, 3);
-        assert_eq!(stats.timelocked_txs, 0);
-        assert_eq!(stats.published_txs, 5);
+        db.rewind_to_height(2).unwrap();
 
-        let published_block3 = create_test_block(3, Some(published_block2.clone()), vec![(*tx6).clone()]);
-        store.add_block(published_block3.clone()).unwrap();
-        mempool.process_published_block(&published_block3).unwrap();
+        mempool.process_reorg(vec![blocks[3].clone()], vec![]).unwrap();
         let stats = mempool.stats().unwrap();
         assert_eq!(stats.unconfirmed_txs, 2);
-        assert_eq!(stats.timelocked_txs, 0);
-        assert_eq!(stats.published_txs, 6);
-
-        assert!(store.rewind_to_height(1).is_ok());
-
-        let new_block1 = create_test_block(2, Some(published_block1), vec![(*tx7).clone()]);
-        let new_block2 = create_test_block(3, Some(new_block1.clone()), vec![(*tx8).clone()]);
-        mempool
-            .process_reorg(vec![published_block2, published_block3], vec![new_block1, new_block2])
-            .unwrap();
-        let stats = mempool.stats().unwrap();
-        assert_eq!(stats.unconfirmed_txs, 3);
-        assert_eq!(stats.timelocked_txs, 0);
-        assert_eq!(stats.published_txs, 5);
-
-        assert_eq!(
-            mempool.has_tx_with_excess_sig(&tx1.body.kernels[0].excess_sig).unwrap(),
-            TxStorageResponse::ReorgPool
-        );
-        assert_eq!(
-            mempool.has_tx_with_excess_sig(&tx2.body.kernels[0].excess_sig).unwrap(),
-            TxStorageResponse::ReorgPool
-        );
-        assert_eq!(
-            mempool.has_tx_with_excess_sig(&tx3.body.kernels[0].excess_sig).unwrap(),
-            TxStorageResponse::ReorgPool
-        );
-        assert_eq!(
-            mempool.has_tx_with_excess_sig(&tx4.body.kernels[0].excess_sig).unwrap(),
-            TxStorageResponse::UnconfirmedPool
-        );
-        assert_eq!(
-            mempool.has_tx_with_excess_sig(&tx5.body.kernels[0].excess_sig).unwrap(),
-            TxStorageResponse::UnconfirmedPool
-        );
-        assert_eq!(
-            mempool.has_tx_with_excess_sig(&tx6.body.kernels[0].excess_sig).unwrap(),
-            TxStorageResponse::UnconfirmedPool
-        );
-        assert_eq!(
-            mempool.has_tx_with_excess_sig(&tx7.body.kernels[0].excess_sig).unwrap(),
-            TxStorageResponse::ReorgPool
-        );
-        assert_eq!(
-            mempool.has_tx_with_excess_sig(&tx8.body.kernels[0].excess_sig).unwrap(),
-            TxStorageResponse::ReorgPool
-        );
+        assert_eq!(stats.timelocked_txs, 1);
+        assert_eq!(stats.published_txs, 3);
     }
 }
