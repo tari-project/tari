@@ -24,12 +24,10 @@ mod consts;
 pub mod control_service;
 pub mod inbound_message_pipeline;
 pub mod message;
-pub mod middleware;
 pub mod outbound_message_service;
 pub mod peer_manager;
-pub mod reply_channel;
 pub mod types;
-mod utils;
+pub mod utils;
 
 #[cfg(test)]
 pub(crate) mod test_utils;

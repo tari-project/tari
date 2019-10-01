@@ -24,8 +24,8 @@ use crate::text_message_service::{TextMessageService, TextMessageServiceApi};
 use derive_error::Error;
 use std::sync::Arc;
 use tari_comms::{builder::CommsNode, types::CommsPublicKey};
-use tari_comms_middleware::pubsub::pubsub_connector;
 use tari_p2p::{
+    comms_connector::pubsub_connector,
     initialization::{initialize_comms, CommsConfig, CommsInitializationError},
     ping_pong::{PingPongService, PingPongServiceApi},
     sync_services::{ServiceExecutor, ServiceRegistry},
@@ -72,8 +72,9 @@ impl Wallet {
         let (publisher, subscription_factory) =
             pubsub_connector(runtime.executor(), config.inbound_message_buffer_size);
 
-        let comms_services = initialize_comms(runtime.executor(), config.comms.clone(), publisher)?;
-        let service_executor = ServiceExecutor::execute(&comms_services, registry, Arc::new(subscription_factory));
+        let (comms_services, dht) = initialize_comms(runtime.executor(), config.comms.clone(), publisher)?;
+        let service_executor =
+            ServiceExecutor::execute(&comms_services, &dht, registry, Arc::new(subscription_factory));
 
         Ok(Wallet {
             runtime,

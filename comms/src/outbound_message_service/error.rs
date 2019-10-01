@@ -28,6 +28,7 @@ use crate::{
 };
 use derive_error::Error;
 use futures::channel::mpsc::SendError;
+use tari_crypto::signatures::SchnorrSignatureError;
 use tari_utilities::message_format::MessageFormatError;
 
 #[derive(Debug, Error)]
@@ -38,6 +39,5 @@ pub enum OutboundServiceError {
     PeerManagerError(PeerManagerError),
     ConnectionManagerError(ConnectionManagerError),
     ConnectionError(ConnectionError),
-    #[error(msg_embedded, non_std, no_from)]
-    MiddlewareError(String),
+    SignatureError(SchnorrSignatureError),
 }

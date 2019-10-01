@@ -20,19 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-//! # Middleware
-//!
-//! This module contains:
-//! `MiddlewareError` - General error for middleware
-//! `IdentityInboundMiddleware` - Identity service matching the required type signature for inbound middleware.
-//! `IdentityOutboundMiddleware` - Identity service matching the required type signature for outbound middleware.
-//! `SinkMiddleware` - Forwards inputs on the given sink
-mod error;
-mod identity;
-mod sink;
+mod inbound_connector;
+mod peer_message;
+mod pubsub;
 
-pub use self::{
-    error::MiddlewareError,
-    identity::{IdentityInboundMiddleware, IdentityOutboundMiddleware},
-    sink::SinkMiddleware,
-};
+pub use self::{inbound_connector::InboundDomainConnector, peer_message::PeerMessage, pubsub::pubsub_connector};

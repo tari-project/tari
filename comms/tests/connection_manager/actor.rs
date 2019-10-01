@@ -225,7 +225,7 @@ fn establish_connection_simultaneous_connect() {
                     assert!(conn.is_active());
                     break;
                 },
-                (Ok(_), Ok(_)) if attempt_count < 5 => {
+                (Ok(_), Ok(_)) if attempt_count < 10 => {
                     alice.connection_manager.disconnect_peer(&bob.peer).unwrap();
                     bob.connection_manager.disconnect_peer(&alice.peer).unwrap();
                     attempt_count += 1;

@@ -22,13 +22,11 @@
 use crate::{
     inbound_message_pipeline::{error::InboundMessagePipelineError, MessageCache, MessageCacheConfig},
     message::{Frame, FrameSet, InboundMessage, MessageData},
-    middleware::MiddlewareError,
     peer_manager::{NodeId, Peer, PeerManager},
 };
-use futures::{channel::mpsc, Stream, StreamExt};
+use futures::{channel::mpsc, Sink, SinkExt, Stream, StreamExt};
 use log::*;
 use std::{convert::TryFrom, sync::Arc};
-use tower::{Service, ServiceExt};
 
 const LOG_TARGET: &str = "comms::inbound_message_pipeline";
 
@@ -38,23 +36,24 @@ pub type InboundMessagePipeline<TSink> = InnerInboundMessagePipeline<mpsc::Recei
 /// routing it via one of the InboundMessageRoutes. This pipeline contains the logic for the various validations and
 /// check done to decide whether this message should be passed further along the pipeline and, eventually, be sent along
 /// out of the output routes which are Publisher-Subscriber channels which other services will subscribe to.
-pub struct InnerInboundMessagePipeline<TStream, TMiddleware> {
+pub struct InnerInboundMessagePipeline<TStream, TSink> {
     raw_message_stream: TStream,
-    middleware: TMiddleware,
     message_cache: MessageCache<Frame>,
+    message_sink: TSink,
     peer_manager: Arc<PeerManager>,
 }
 
-impl<TStream, TMiddleware> InnerInboundMessagePipeline<TStream, TMiddleware>
+impl<TStream, TSink> InnerInboundMessagePipeline<TStream, TSink>
 where
     TStream: Stream<Item = FrameSet> + Unpin,
-    TMiddleware: Service<InboundMessage, Response = (), Error = MiddlewareError> + Unpin,
+    TSink: Sink<InboundMessage> + Unpin,
+    TSink::Error: Into<InboundMessagePipelineError>,
 {
-    pub fn new(raw_message_stream: TStream, middleware: TMiddleware, peer_manager: Arc<PeerManager>) -> Self {
+    pub fn new(raw_message_stream: TStream, message_sink: TSink, peer_manager: Arc<PeerManager>) -> Self {
         let message_cache = MessageCache::new(MessageCacheConfig::default());
         Self {
             raw_message_stream,
-            middleware,
+            message_sink,
             message_cache,
             peer_manager,
         }
@@ -78,20 +77,20 @@ where
         let message_data =
             MessageData::try_from(frame_set).map_err(|_| InboundMessagePipelineError::DeserializationError)?;
 
-        self.message_cache_check(&message_data)?;
-
         let message_envelope_header = message_data
             .message_envelope
             .deserialize_header()
             .map_err(|_| InboundMessagePipelineError::DeserializationError)?;
 
-        if !message_envelope_header.verify_signatures(message_data.message_envelope.body_frame().clone())? {
+        if !message_envelope_header.verify_signatures(message_data.message_envelope.body_frame())? {
             return Err(InboundMessagePipelineError::InvalidMessageSignature);
         }
 
+        self.message_cache_check(&message_envelope_header.message_signature)?;
+
         let peer = self.find_known_peer(&message_data.source_node_id)?;
 
-        // Message is authenticated
+        // Message is deduped and authenticated
 
         let inbound_message = InboundMessage::new(
             peer,
@@ -100,15 +99,7 @@ where
             message_data.message_envelope.into_body_frame(),
         );
 
-        self.middleware
-            .ready()
-            .await
-            .map_err(|err| InboundMessagePipelineError::MiddlewareError(format!("{}", err)))?;
-
-        self.middleware
-            .call(inbound_message)
-            .await
-            .map_err(|err| InboundMessagePipelineError::MiddlewareError(format!("{}", err)))?;
+        self.message_sink.send(inbound_message).await.map_err(Into::into)?;
 
         Ok(())
     }
@@ -116,12 +107,9 @@ where
     /// Utility Functions that require the Pipeline context resources
     /// Check whether this message body has been received before (within the cache TTL period). If it has then reject
     /// the message, else add it to the cache.
-    fn message_cache_check(&mut self, message_data: &MessageData) -> Result<(), InboundMessagePipelineError> {
-        if !self.message_cache.contains(message_data.message_envelope.body_frame()) {
-            if let Err(_e) = self
-                .message_cache
-                .insert(message_data.message_envelope.body_frame().clone())
-            {
+    fn message_cache_check(&mut self, signature: &Vec<u8>) -> Result<(), InboundMessagePipelineError> {
+        if !self.message_cache.contains(signature) {
+            if let Err(_e) = self.message_cache.insert(signature.clone()) {
                 error!(
                     target: LOG_TARGET,
                     "Duplicate message found in Message Cache AFTER checking the cache for the message"

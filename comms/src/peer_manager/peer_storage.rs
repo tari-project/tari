@@ -214,7 +214,7 @@ where DS: KeyValueStore<PeerKey, Peer>
     }
 
     /// Constructs a single NodeIdentity for the peer corresponding to the provided NodeId
-    pub fn direct_identity_node_id(&self, node_id: &NodeId) -> Result<Vec<PeerNodeIdentity>, PeerManagerError> {
+    pub fn direct_identity_node_id(&self, node_id: &NodeId) -> Result<PeerNodeIdentity, PeerManagerError> {
         let peer_key = *self
             .node_id_hm
             .get(&node_id)
@@ -227,7 +227,7 @@ where DS: KeyValueStore<PeerKey, Peer>
         if peer.is_banned() {
             Err(PeerManagerError::BannedPeer)
         } else {
-            Ok(vec![PeerNodeIdentity::new(node_id.clone(), peer.public_key.clone())])
+            Ok(PeerNodeIdentity::new(node_id.clone(), peer.public_key.clone()))
         }
     }
 
@@ -235,7 +235,7 @@ where DS: KeyValueStore<PeerKey, Peer>
     pub fn direct_identity_public_key(
         &self,
         public_key: &CommsPublicKey,
-    ) -> Result<Vec<PeerNodeIdentity>, PeerManagerError>
+    ) -> Result<PeerNodeIdentity, PeerManagerError>
     {
         let peer_key = *self
             .public_key_hm
@@ -249,7 +249,7 @@ where DS: KeyValueStore<PeerKey, Peer>
         if peer.is_banned() {
             Err(PeerManagerError::BannedPeer)
         } else {
-            Ok(vec![PeerNodeIdentity::new(peer.node_id.clone(), public_key.clone())])
+            Ok(PeerNodeIdentity::new(peer.node_id.clone(), public_key.clone()))
         }
     }
 

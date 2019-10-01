@@ -43,9 +43,12 @@ use std::{
     time::Duration,
 };
 use tari_comms::{
-    message::{MessageError, MessageFlags},
-    outbound_message_service::{BroadcastStrategy, OutboundServiceError, OutboundServiceRequester},
+    message::{MessageError, NodeDestination},
     types::CommsPublicKey,
+};
+use tari_comms_dht::{
+    message::DhtMessageFlags,
+    outbound::{BroadcastStrategy, DhtOutboundError, OutboundMessageRequester},
 };
 use tari_utilities::{hex::Hex, message_format::MessageFormatError};
 use tokio::runtime::Runtime;
@@ -54,7 +57,7 @@ const LOG_TARGET: &str = "base_layer::p2p::ping_pong";
 
 #[derive(Debug, Error)]
 pub enum PingPongError {
-    OutboundError(OutboundServiceError),
+    DhtOutboundError(DhtOutboundError),
     /// OMS has not been initialized
     OMSNotInitialized,
     SerializationFailed(MessageFormatError),
@@ -76,7 +79,7 @@ pub enum PingPong {
 
 pub struct PingPongService {
     // Needed because the public ping method needs OMS
-    oms: Option<OutboundServiceRequester>,
+    oms: Option<OutboundMessageRequester>,
     ping_count: usize,
     pong_count: usize,
     api: ServiceApiWrapper<PingPongServiceApi, PingPongApiRequest, PingPongApiResult>,
@@ -116,7 +119,8 @@ impl PingPongService {
         self.runtime
             .block_on(oms.send_message(
                 broadcast_strategy,
-                MessageFlags::empty(),
+                NodeDestination::Undisclosed,
+                DhtMessageFlags::ENCRYPTED,
                 TariMessageType::new(NetMessage::PingPong),
                 msg,
             ))

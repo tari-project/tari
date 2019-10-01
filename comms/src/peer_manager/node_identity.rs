@@ -90,12 +90,8 @@ impl NodeIdentity {
     }
 
     /// Retrieve the control_service_address
-    pub fn control_service_address(&self) -> Result<NetAddress, NodeIdentityError> {
-        Ok(self
-            .control_service_address
-            .read()
-            .map_err(|_| NodeIdentityError::PoisonedAccess)?
-            .clone())
+    pub fn control_service_address(&self) -> NetAddress {
+        acquire_read_lock!(self.control_service_address).clone()
     }
 
     /// Modify the control_service_address
@@ -144,7 +140,7 @@ impl Clone for NodeIdentity {
         Self {
             identity: self.identity.clone(),
             secret_key: self.secret_key.clone(),
-            control_service_address: RwLock::new(self.control_service_address().unwrap()),
+            control_service_address: RwLock::new(self.control_service_address()),
         }
     }
 }

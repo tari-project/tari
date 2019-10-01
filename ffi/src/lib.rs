@@ -368,6 +368,10 @@ pub unsafe extern "C" fn create_wallet(
             node_identity,
             datastore_path: (*settings_p).data_path.clone().unwrap(),
             peer_database_name,
+            // TODO: Configurable
+            inbound_buffer_size: 30,
+            outbound_buffer_size: 30,
+            dht: Default::default(),
         },
         inbound_message_buffer_size: 100,
         public_key,

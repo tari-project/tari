@@ -30,7 +30,7 @@ use tari_comms::{
     connection::{CurveEncryption, Direction, NetAddress, ZmqContext},
     connection_manager::{establisher::ConnectionEstablisher, ConnectionManagerError, PeerConnectionConfig},
     control_service::messages::{ControlServiceResponseType, Pong},
-    message::{Message, MessageEnvelope, MessageFlags, MessageHeader, NodeDestination},
+    message::{Message, MessageEnvelope, MessageFlags, MessageHeader},
 };
 use tari_storage::{
     lmdb_store::{LMDBBuilder, LMDBError, LMDBStore},
@@ -144,7 +144,6 @@ fn establish_control_service_connection_succeed() {
         let envelope = MessageEnvelope::construct(
             &node_identity2,
             node_identity1.identity.public_key.clone(),
-            NodeDestination::PublicKey(node_identity1.identity.public_key.clone()),
             Message::from_message_format(
                 MessageHeader::new(ControlServiceResponseType::Pong).unwrap(),
                 Pong {}.to_binary().unwrap(),

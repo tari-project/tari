@@ -334,7 +334,7 @@ impl ConnectionManager {
                     );
                     warn!(
                         target: LOG_TARGET,
-                        "Failed connection error for NodeId={}: {:?}", peer.node_id, err
+                        "Connection error for NodeId={}: {:?}", peer.node_id, err
                     );
                     Err(err)
                 },

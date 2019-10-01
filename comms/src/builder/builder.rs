@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
+    builder::null_sink::NullSink,
     connection::{ConnectionError, DealerProxyError, ZmqContext},
     connection_manager::{
         actor::{ConnectionManagerActor, ConnectionManagerRequest},
@@ -31,24 +32,15 @@ use crate::{
     control_service::{ControlService, ControlServiceConfig, ControlServiceError, ControlServiceHandle},
     inbound_message_pipeline::inbound_message_pipeline::InboundMessagePipeline,
     message::{FrameSet, InboundMessage},
-    middleware::{IdentityInboundMiddleware, IdentityOutboundMiddleware, MiddlewareError},
-    outbound_message_service::{
-        OutboundMessage,
-        OutboundMessageService,
-        OutboundRequest,
-        OutboundServiceConfig,
-        OutboundServiceError,
-        OutboundServiceRequester,
-    },
+    outbound_message_service::{OutboundMessage, OutboundMessageService, OutboundServiceConfig, OutboundServiceError},
     peer_manager::{NodeIdentity, PeerManager, PeerManagerError},
     types::CommsDatabase,
 };
 use derive_error::Error;
-use futures::channel::mpsc;
+use futures::{channel::mpsc, stream, Sink, Stream};
 use log::*;
 use std::{fmt::Debug, sync::Arc};
 use tokio::runtime::TaskExecutor;
-use tower::Service;
 
 const LOG_TARGET: &str = "comms::builder";
 
@@ -85,27 +77,22 @@ type CommsConnectionManagerActor = ConnectionManagerActor<ConnectionManager, mps
 ///
 /// The [build] method will return an error if any required builder methods are not called. These
 /// are detailed further down on the method docs.
-pub struct CommsBuilder<TInMiddlewareBuilder, TOutMiddlewareBuilder> {
+pub struct CommsBuilder<TInSink, TOutStream> {
     /// Zmq Context to use
     zmq_context: ZmqContext,
     ///
     peer_storage: Option<CommsDatabase>,
     control_service_config: Option<ControlServiceConfig>,
     outbound_service_config: Option<OutboundServiceConfig>,
-    inbound_middleware_builder: Option<TInMiddlewareBuilder>,
-    outbound_middleware_builder: Option<TOutMiddlewareBuilder>,
+    inbound_sink: Option<TInSink>,
+    outbound_stream: Option<TOutStream>,
     node_identity: Option<Arc<NodeIdentity>>,
     peer_conn_config: Option<PeerConnectionConfig>,
     comms_builder_config: Option<CommsBuilderConfig>,
     executor: TaskExecutor,
 }
 
-impl
-    CommsBuilder<
-        Box<dyn FnOnce(CommsParts) -> IdentityInboundMiddleware>,
-        Box<dyn FnOnce(CommsParts) -> IdentityOutboundMiddleware>,
-    >
-{
+impl CommsBuilder<NullSink<InboundMessage, mpsc::SendError>, stream::Empty<OutboundMessage>> {
     /// Create a new CommsBuilder
     pub fn new(executor: TaskExecutor) -> Self {
         let zmq_context = ZmqContext::new();
@@ -114,8 +101,8 @@ impl
             zmq_context,
             control_service_config: None,
             peer_conn_config: None,
-            inbound_middleware_builder: Some(Box::new(|_| IdentityInboundMiddleware::new())),
-            outbound_middleware_builder: Some(Box::new(|_| IdentityOutboundMiddleware::new())),
+            inbound_sink: Some(NullSink::new()),
+            outbound_stream: Some(stream::empty()),
             outbound_service_config: None,
             peer_storage: None,
             node_identity: None,
@@ -125,15 +112,10 @@ impl
     }
 }
 
-impl<TInMiddlewareBuilder, TInMiddleware, TOutMiddlewareBuilder, TOutMiddleware>
-    CommsBuilder<TInMiddlewareBuilder, TOutMiddlewareBuilder>
+impl<TInSink, TOutStream> CommsBuilder<TInSink, TOutStream>
 where
-    TInMiddlewareBuilder: FnOnce(CommsParts) -> TInMiddleware,
-    TInMiddleware: Service<InboundMessage, Response = (), Error = MiddlewareError> + Send + Unpin + 'static,
-    TOutMiddlewareBuilder: FnOnce(CommsParts) -> TOutMiddleware,
-    TOutMiddleware:
-        Service<OutboundMessage, Response = Option<OutboundMessage>, Error = MiddlewareError> + Send + Unpin + 'static,
-    TOutMiddleware::Future: Send,
+    TInSink: Sink<InboundMessage, Error = mpsc::SendError> + Unpin + Send + 'static,
+    TOutStream: Stream<Item = OutboundMessage> + Send + Unpin + 'static,
 {
     /// Set the [NodeIdentity] for this comms instance. This is required.
     ///
@@ -180,21 +162,18 @@ where
         self
     }
 
-    /// Use this closure to produce inbound middleware
-    pub fn with_inbound_middleware<B, M>(self, inbound_middleware_builder: B) -> CommsBuilder<B, TOutMiddlewareBuilder>
-    where
-        B: FnOnce(CommsParts) -> M,
-        M: Service<InboundMessage, Response = (), Error = MiddlewareError> + Send + Unpin + 'static,
-    {
+    /// Set the sink to use to consume all inbound messages
+    pub fn with_inbound_sink<S>(self, sink: S) -> CommsBuilder<S, TOutStream>
+    where S: Sink<InboundMessage> + Send + 'static {
         CommsBuilder {
-            inbound_middleware_builder: Some(inbound_middleware_builder),
+            inbound_sink: Some(sink),
             // This unofficial RFC would avoid repeated fields.
             // https://github.com/jturner314/rust-rfcs/blob/type-changing-struct-update-syntax/text/0000-type-changing-struct-update-syntax.md
             zmq_context: self.zmq_context,
             control_service_config: self.control_service_config,
             peer_conn_config: self.peer_conn_config,
             outbound_service_config: self.outbound_service_config,
-            outbound_middleware_builder: self.outbound_middleware_builder,
+            outbound_stream: self.outbound_stream,
             peer_storage: self.peer_storage,
             node_identity: self.node_identity,
             comms_builder_config: self.comms_builder_config,
@@ -202,22 +181,15 @@ where
         }
     }
 
-    /// Use this closure to produce outbound middleware
-    pub fn with_outbound_middleware<B, M>(self, outbound_middleware_builder: B) -> CommsBuilder<TInMiddlewareBuilder, B>
-    where
-        B: FnOnce(CommsParts) -> M,
-        M: Service<OutboundMessage, Response = Option<OutboundMessage>, Error = MiddlewareError>
-            + Send
-            + Unpin
-            + 'static,
-        M::Future: Send,
-    {
+    /// Set the stream which emits messages to be sent by the OMS
+    pub fn with_outbound_stream<S>(self, stream: S) -> CommsBuilder<TInSink, S>
+    where S: Stream<Item = OutboundMessage> + Send + 'static {
         CommsBuilder {
-            outbound_middleware_builder: Some(outbound_middleware_builder),
+            outbound_stream: Some(stream),
             // This unofficial RFC would avoid repeated fields.
             // https://github.com/jturner314/rust-rfcs/blob/type-changing-struct-update-syntax/text/0000-type-changing-struct-update-syntax.md
             zmq_context: self.zmq_context,
-            inbound_middleware_builder: self.inbound_middleware_builder,
+            inbound_sink: self.inbound_sink,
             control_service_config: self.control_service_config,
             peer_conn_config: self.peer_conn_config,
             outbound_service_config: self.outbound_service_config,
@@ -284,32 +256,21 @@ where
 
     fn make_outbound_message_service(
         &mut self,
-        middleware: TOutMiddleware,
-        comms_parts: CommsParts,
-        outbound_rx: mpsc::UnboundedReceiver<OutboundRequest>,
-    ) -> OutboundMessageService<TOutMiddleware>
+        node_identity: Arc<NodeIdentity>,
+        connection_manager_requester: ConnectionManagerRequester,
+    ) -> OutboundMessageService<TOutStream>
     {
-        let CommsParts {
-            executor,
-            node_identity,
-            peer_manager,
-            connection_manager_requester,
-            ..
-        } = comms_parts;
-
+        let outbound_stream = self.outbound_stream.take().expect("outbound_stream cannot be None");
         OutboundMessageService::new(
             self.outbound_service_config.take().unwrap_or_default(),
-            executor,
-            middleware,
-            outbound_rx,
-            peer_manager,
-            connection_manager_requester,
+            outbound_stream,
             node_identity,
+            connection_manager_requester,
         )
     }
 
     /// Build the required comms services. Services will not be started.
-    pub fn build(mut self) -> Result<CommsContainer<TInMiddleware, TOutMiddleware>, CommsBuilderError> {
+    pub fn build(mut self) -> Result<CommsContainer<TInSink, TOutStream>, CommsBuilderError> {
         let config = self.comms_builder_config.clone().unwrap_or_default();
 
         let node_identity = self.make_node_identity()?;
@@ -336,28 +297,14 @@ where
         let (connection_manager_requester, connection_manager_actor) =
             self.make_connection_manager_actor(Arc::clone(&connection_manager));
 
-        // Build the channel required for [domain service] -> [outbound message service]
-        let (outbound_tx, outbound_rx) = mpsc::unbounded();
-        let outbound_service_requester = OutboundServiceRequester::new(outbound_tx);
-
-        // Conveniently assemble parts required to build other services and their middleware
-        let comms_parts = CommsParts {
-            executor: self.executor.clone(),
-            peer_manager: Arc::clone(&peer_manager),
-            connection_manager_requester: connection_manager_requester.clone(),
-            node_identity: Arc::clone(&node_identity),
-            outbound_service_requester: outbound_service_requester.clone(),
-        };
-
         //---------------------------------- Outbound message service --------------------------------------------//
-        let middleware = (self.outbound_middleware_builder.take().expect("always some"))(comms_parts.clone());
-        let outbound_message_service = self.make_outbound_message_service(middleware, comms_parts.clone(), outbound_rx);
+        let outbound_message_service =
+            self.make_outbound_message_service(Arc::clone(&node_identity), connection_manager_requester.clone());
 
         //---------------------------------- Inbound message pipeline --------------------------------------------//
-        let inbound_middleware = (self.inbound_middleware_builder.take().expect("always some"))(comms_parts);
         let inbound_message_pipeline = InboundMessagePipeline::new(
             peer_connection_message_receiver,
-            inbound_middleware,
+            self.inbound_sink.take().expect("inbound_sink cannot be None"),
             Arc::clone(&peer_manager),
         );
 
@@ -369,20 +316,10 @@ where
             executor: self.executor,
             inbound_message_pipeline,
             node_identity,
-            outbound_service_requester,
             outbound_message_service,
             peer_manager,
         })
     }
-}
-
-#[derive(Clone)]
-pub struct CommsParts {
-    pub executor: TaskExecutor,
-    pub peer_manager: Arc<PeerManager>,
-    pub connection_manager_requester: ConnectionManagerRequester,
-    pub outbound_service_requester: OutboundServiceRequester,
-    pub node_identity: Arc<NodeIdentity>,
 }
 
 #[derive(Debug, Error)]
@@ -396,7 +333,7 @@ pub enum CommsError {
 }
 
 /// Contains the built comms services
-pub struct CommsContainer<TInMiddleware, TOutMiddleware> {
+pub struct CommsContainer<TInSink, TOutStream> {
     connection_manager: Arc<ConnectionManager>,
     connection_manager_actor: CommsConnectionManagerActor,
     connection_manager_requester: ConnectionManagerRequester,
@@ -405,23 +342,19 @@ pub struct CommsContainer<TInMiddleware, TOutMiddleware> {
 
     executor: TaskExecutor,
 
-    inbound_message_pipeline: InboundMessagePipeline<TInMiddleware>,
+    inbound_message_pipeline: InboundMessagePipeline<TInSink>,
 
     node_identity: Arc<NodeIdentity>,
 
-    outbound_service_requester: OutboundServiceRequester,
-    outbound_message_service: OutboundMessageService<TOutMiddleware>,
+    outbound_message_service: OutboundMessageService<TOutStream>,
 
     peer_manager: Arc<PeerManager>,
 }
 
-impl<TInMiddleware, TOutMiddleware> CommsContainer<TInMiddleware, TOutMiddleware>
+impl<TInSink, TOutStream> CommsContainer<TInSink, TOutStream>
 where
-    TInMiddleware: Service<InboundMessage, Response = (), Error = MiddlewareError> + Send + Unpin + 'static,
-    TInMiddleware::Future: Send,
-    TOutMiddleware:
-        Service<OutboundMessage, Response = Option<OutboundMessage>, Error = MiddlewareError> + Send + Unpin + 'static,
-    TOutMiddleware::Future: Send,
+    TInSink: Sink<InboundMessage, Error = mpsc::SendError> + Unpin + Send + 'static,
+    TOutStream: Stream<Item = OutboundMessage> + Unpin + Send + 'static,
 {
     /// Start all the comms services and return a [CommsServices] object
     ///
@@ -445,7 +378,6 @@ where
             connection_manager_requester: self.connection_manager_requester,
             control_service_handle,
             node_identity: self.node_identity,
-            outbound_service_requester: self.outbound_service_requester,
             peer_manager: self.peer_manager,
         })
     }
@@ -461,7 +393,6 @@ pub struct CommsNode {
     connection_manager_requester: ConnectionManagerRequester,
     control_service_handle: Option<ControlServiceHandle>,
     node_identity: Arc<NodeIdentity>,
-    outbound_service_requester: OutboundServiceRequester,
     peer_manager: Arc<PeerManager>,
 }
 
@@ -474,16 +405,11 @@ impl CommsNode {
         Arc::clone(&self.node_identity)
     }
 
-    pub fn outbound_message_service(&self) -> OutboundServiceRequester {
-        self.outbound_service_requester.clone()
-    }
-
     pub fn shutdown(self) -> Result<(), CommsError> {
         info!(target: LOG_TARGET, "Comms is shutting down");
 
         // This shuts down the ConnectionManagerActor (releasing Arc<ConnectionManager>)
         drop(self.connection_manager_requester);
-        drop(self.outbound_service_requester);
 
         let mut shutdown_results = Vec::new();
         // Shutdown control service

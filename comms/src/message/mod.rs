@@ -93,9 +93,12 @@ bitflags! {
 }
 
 /// Represents the ways a destination node can be represented.
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub enum NodeDestination<P> {
-    Unknown,
+    /// The sender has chosen not to disclose the message destination
+    Undisclosed,
+    /// Destined for a particular public key
     PublicKey(P),
+    /// Destined for a particular node id, or network region
     NodeId(NodeId),
 }

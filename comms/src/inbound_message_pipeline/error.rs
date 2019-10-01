@@ -20,12 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    message::MessageError,
-    outbound_message_service::{broadcast_strategy::BroadcastStrategyError, OutboundServiceError},
-    peer_manager::PeerManagerError,
-};
+use crate::{message::MessageError, outbound_message_service::OutboundServiceError, peer_manager::PeerManagerError};
 use derive_error::Error;
+use futures::channel::mpsc;
 
 #[derive(Debug, Error)]
 pub enum InboundMessagePipelineError {
@@ -41,10 +38,9 @@ pub enum InboundMessagePipelineError {
     DecryptionFailure,
     /// The source peer did not exist in the peer manager
     CannotFindSourcePeer,
-    #[error(msg_embedded, non_std, no_from)]
-    MiddlewareError(String),
+    /// Error when sending inbound message
+    SendError(mpsc::SendError),
     MessageError(MessageError),
     PeerManagerError(PeerManagerError),
-    BroadcastStrategyError(BroadcastStrategyError),
     OutboundServiceError(OutboundServiceError),
 }

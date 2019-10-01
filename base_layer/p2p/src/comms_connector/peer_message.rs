@@ -20,36 +20,47 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::middleware::MiddlewareError;
-use futures::{task::Context, Future, Poll, Sink, SinkExt};
-use std::{error::Error, pin::Pin};
-use tower::Service;
+use tari_comms::{
+    message::{MessageEnvelopeHeader, MessageHeader},
+    peer_manager::Peer,
+};
+use tari_comms_dht::message::DhtHeader;
+use tari_utilities::message_format::{MessageFormat, MessageFormatError};
 
-/// A middleware which forwards and messages it gets to the given Sink
-pub struct SinkMiddleware<TSink>(TSink);
-
-impl<TSink> SinkMiddleware<TSink> {
-    pub fn new(sink: TSink) -> Self {
-        SinkMiddleware(sink)
-    }
+/// A domain-level message
+pub struct PeerMessage<MType> {
+    /// Serialized message data
+    pub body: Vec<u8>,
+    /// Domain message header
+    pub message_header: MessageHeader<MType>,
+    /// The message envelope header
+    pub comms_header: MessageEnvelopeHeader,
+    /// The message envelope header
+    pub dht_header: DhtHeader,
+    /// The connected peer which sent this message
+    pub source_peer: Peer,
 }
 
-impl<T, TSink> Service<T> for SinkMiddleware<TSink>
-where
-    TSink: Sink<T> + Unpin + Clone + 'static,
-    TSink::Error: Error + Send + 'static,
-{
-    type Error = MiddlewareError;
-    type Response = ();
-
-    type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
-
-    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Pin::new(&mut self.0).poll_ready(cx).map_err(Into::into)
+impl<MType> PeerMessage<MType> {
+    pub fn new(
+        message: Vec<u8>,
+        message_header: MessageHeader<MType>,
+        comms_header: MessageEnvelopeHeader,
+        dht_header: DhtHeader,
+        source_peer: Peer,
+    ) -> Self
+    {
+        Self {
+            body: message,
+            message_header,
+            comms_header,
+            dht_header,
+            source_peer,
+        }
     }
 
-    fn call(&mut self, item: T) -> Self::Future {
-        let mut sink = self.0.clone();
-        async move { sink.send(item).await.map_err(Into::into) }
+    pub fn deserialize_message<T>(&self) -> Result<T, MessageFormatError>
+    where T: MessageFormat {
+        T::from_binary(&self.body)
     }
 }

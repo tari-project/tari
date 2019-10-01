@@ -20,35 +20,23 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::utils::crypto;
+use crate::consts::DHT_ENVELOPE_HEADER_VERSION;
+use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
-use tari_comms::{
-    connection::NetAddress,
-    message::{MessageEnvelopeHeader, MessageFlags, NodeDestination},
-    peer_manager::{NodeId, Peer},
-    types::CommsPublicKey,
-};
+use tari_comms::{message::NodeDestination, types::CommsPublicKey, utils::signature};
 
-/// The JoinMessage stores the information required for a network join request. It has all the information required to
-/// locate and contact the source node, but network behaviour is different compared to DiscoverMessage.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub struct JoinMessage {
-    pub node_id: NodeId,
-    // TODO: node_type
-    pub net_address: Vec<NetAddress>,
+bitflags! {
+    /// Used to indicate characteristics of the incoming or outgoing message, such
+    /// as whether the message is encrypted.
+    #[derive(Deserialize, Serialize)]
+    pub struct DhtMessageFlags: u8 {
+        const NONE = 0b0000_0000;
+        const ENCRYPTED = 0b0000_0001;
+    }
 }
 
-/// The DiscoverMessage stores the information required for a network discover request. It has all the information
-/// required to locate and contact the source node, but network behaviour is different compared to JoinMessage.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub struct DiscoverMessage {
-    pub node_id: NodeId,
-    // TODO: node_type
-    pub net_address: Vec<NetAddress>,
-}
-
-#[derive(Serialize_repr, Deserialize_repr, Debug, Clone)]
+#[derive(Serialize_repr, Deserialize_repr, Debug, Clone, PartialEq, Eq)]
 #[repr(u8)]
 pub enum DhtMessageType {
     None = 0,
@@ -56,14 +44,34 @@ pub enum DhtMessageType {
     Discover = 2,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct DhtHeader {
     pub version: u8,
     pub destination: NodeDestination<CommsPublicKey>,
-    pub origin_pubkey: CommsPublicKey,
+    pub origin_public_key: CommsPublicKey,
     pub origin_signature: Vec<u8>,
     pub message_type: DhtMessageType,
-    pub flags: MessageFlags,
+    pub flags: DhtMessageFlags,
+}
+
+impl DhtHeader {
+    pub fn new(
+        destination: NodeDestination<CommsPublicKey>,
+        origin_pubkey: CommsPublicKey,
+        origin_signature: Vec<u8>,
+        message_type: DhtMessageType,
+        flags: DhtMessageFlags,
+    ) -> Self
+    {
+        Self {
+            version: DHT_ENVELOPE_HEADER_VERSION,
+            destination,
+            origin_public_key: origin_pubkey,
+            origin_signature,
+            message_type,
+            flags,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -73,29 +81,19 @@ pub struct DhtEnvelope {
 }
 
 impl DhtEnvelope {
+    pub fn new(header: DhtHeader, body: Vec<u8>) -> Self {
+        Self { header, body }
+    }
+
     pub fn is_signature_valid(&self) -> bool {
         // error here means that the signature could not deserialize, so is invalid
-        match crypto::verify(&self.header.origin_pubkey, &self.header.origin_signature, &self.body) {
+        match signature::verify(
+            &self.header.origin_public_key,
+            &self.header.origin_signature,
+            &self.body,
+        ) {
             Ok(is_valid) => is_valid,
             Err(_) => false,
-        }
-    }
-}
-
-pub struct DhtInboundMessage {
-    pub source_peer: Peer,
-    pub comms_header: MessageEnvelopeHeader,
-    pub dht_header: DhtHeader,
-    pub body: Vec<u8>,
-}
-
-impl DhtInboundMessage {
-    pub fn new(dht_header: DhtHeader, source_peer: Peer, comms_header: MessageEnvelopeHeader, body: Vec<u8>) -> Self {
-        Self {
-            dht_header,
-            source_peer,
-            comms_header,
-            body,
         }
     }
 }

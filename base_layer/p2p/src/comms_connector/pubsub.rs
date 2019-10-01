@@ -20,7 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{inbound_connector::InboundDomainConnector, message::PeerMessage};
+use super::peer_message::PeerMessage;
+use crate::comms_connector::InboundDomainConnector;
 use futures::{channel::mpsc, FutureExt, StreamExt};
 use log::*;
 use std::sync::Arc;

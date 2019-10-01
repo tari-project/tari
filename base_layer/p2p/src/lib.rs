@@ -32,12 +32,17 @@ mod consts;
 
 // TODO Put these back in after Futures Comms stack refactor
 // pub mod saf_service;
-// pub mod dht_service;
+pub mod comms_connector;
 pub mod domain_message;
-pub mod domain_subscriber;
 pub mod initialization;
 pub mod peer;
-pub mod ping_pong;
 pub mod services;
-pub mod sync_services;
 pub mod tari_message;
+
+#[cfg(test)]
+pub mod test_utils;
+
+// TODO: These can be removed once everything has been converted to async
+pub mod domain_subscriber;
+pub mod ping_pong;
+pub mod sync_services;

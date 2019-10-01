@@ -1,4 +1,4 @@
-// Copyright 2019 The Tari Project
+// Copyright 2019, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,35 +20,5 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use futures::future::{self, Future};
-use tari_comms_dht::outbound::OutboundMessageRequester;
-use tari_service_framework::{handles::ServiceHandlesFuture, ServiceInitializationError, ServiceInitializer};
-use tokio::runtime::TaskExecutor;
-
-/// Convenience type alias for external services that want to use this services handle
-pub type CommsOutboundHandle = OutboundMessageRequester;
-
-/// This initializer simply adds a comms OutboundMessageRequester as a handle for use in services.
-pub struct CommsOutboundServiceInitializer {
-    oms: Option<OutboundMessageRequester>,
-}
-
-impl CommsOutboundServiceInitializer {
-    pub fn new(oms: OutboundMessageRequester) -> Self {
-        Self { oms: Some(oms) }
-    }
-}
-
-impl ServiceInitializer for CommsOutboundServiceInitializer {
-    type Future = impl Future<Output = Result<(), ServiceInitializationError>>;
-
-    fn initialize(&mut self, _: TaskExecutor, handles: ServiceHandlesFuture) -> Self::Future {
-        handles.register(
-            self.oms
-                .take()
-                .expect("CommsOutboundServiceInitializer initialized without OutboundMessageRequester"),
-        );
-
-        future::ready(Ok(()))
-    }
-}
+pub mod crypt;
+pub mod signature;

@@ -29,10 +29,8 @@ use std::sync::Arc;
 use tari_comms::{
     connection::NetAddress,
     inbound_message_pipeline::inbound_message_pipeline::InboundMessagePipeline,
-    message::{FrameSet, MessageData, MessageEnvelope, MessageFlags, NodeDestination},
-    middleware::SinkMiddleware,
+    message::{FrameSet, MessageData, MessageEnvelope, MessageFlags},
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFlags},
-    types::CommsPublicKey,
 };
 use tari_storage::LMDBWrapper;
 use tokio::runtime::Runtime;
@@ -45,7 +43,6 @@ fn construct_message(
     message_body: Vec<u8>,
     source_node_id: Arc<NodeIdentity>,
     dest_node_id: Arc<NodeIdentity>,
-    destination: NodeDestination<CommsPublicKey>,
 ) -> FrameSet
 {
     // Construct test message
@@ -53,7 +50,6 @@ fn construct_message(
     let message_envelope = MessageEnvelope::construct(
         &source_node_id,
         dest_public_key.clone(),
-        destination,
         message_body,
         MessageFlags::NONE,
     )
@@ -97,12 +93,7 @@ fn smoke_test() {
     // Send some messages NodeDestination::Unknown and unencrypted
     let mut sent_messages = Vec::new();
     let body = "First message".as_bytes().to_vec();
-    let msg_body = construct_message(
-        body.clone(),
-        Arc::clone(&node_identity),
-        Arc::clone(&node_identity),
-        NodeDestination::Unknown,
-    );
+    let msg_body = construct_message(body.clone(), Arc::clone(&node_identity), Arc::clone(&node_identity));
     sent_messages.push(body);
     rt.block_on(async {
         inbound_message_sink_tx.send(msg_body.clone()).await.unwrap();
@@ -119,9 +110,7 @@ fn smoke_test() {
 
     // Construct Pipeline
     let (inbound_tx, inbound_rx) = mpsc::channel(100);
-    // Create a middleware which simply forwards requests to the given sink
-    let middleware = SinkMiddleware::new(inbound_tx);
-    let inbound_message_pipeline = InboundMessagePipeline::new(inbound_message_sink_rx, middleware, peer_manager);
+    let inbound_message_pipeline = InboundMessagePipeline::new(inbound_message_sink_rx, inbound_tx, peer_manager);
 
     rt.block_on(inbound_message_pipeline.run());
 
@@ -131,7 +120,7 @@ fn smoke_test() {
     for i in 0..sent_messages.len() {
         assert_eq!(messages[i].body, sent_messages[i]);
         assert_eq!(messages[i].source_peer, peer);
-        assert_eq!(messages[i].envelope_header.peer_pubkey, peer.public_key);
+        assert_eq!(messages[i].envelope_header.message_public_key, peer.public_key);
     }
 
     clean_up_datastore(database_name);

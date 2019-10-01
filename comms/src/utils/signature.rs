@@ -20,29 +20,37 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{error::Error, fmt};
+use crate::{
+    message::MessageError,
+    types::{Challenge, CommsPublicKey},
+};
+use digest::Digest;
+use rand::{CryptoRng, Rng};
+use tari_crypto::{
+    keys::{PublicKey, SecretKey},
+    signatures::{SchnorrSignature, SchnorrSignatureError},
+};
+use tari_utilities::message_format::MessageFormat;
 
-/// Middleware error containing any kind of error that could be produced from middleware
-pub struct MiddlewareError {
-    inner: Box<dyn Error + Send>,
-}
-
-impl<T> From<T> for MiddlewareError
-where T: Error + Send + 'static
+pub fn sign<R, B>(
+    rng: &mut R,
+    secret_key: <CommsPublicKey as PublicKey>::K,
+    body: B,
+) -> Result<SchnorrSignature<CommsPublicKey, <CommsPublicKey as PublicKey>::K>, SchnorrSignatureError>
+where
+    R: CryptoRng + Rng,
+    B: AsRef<[u8]>,
 {
-    fn from(err: T) -> Self {
-        Self { inner: Box::new(err) }
-    }
+    let challenge = Challenge::new().chain(body).result().to_vec();
+    let nonce = <CommsPublicKey as PublicKey>::K::random(rng);
+    SchnorrSignature::sign(secret_key, nonce, &challenge)
 }
 
-impl fmt::Display for MiddlewareError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.inner)
-    }
-}
-
-impl fmt::Debug for MiddlewareError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}", self.inner)
-    }
+/// Verify that the signature is valid for the message body
+pub fn verify<B>(public_key: &CommsPublicKey, signature: &[u8], body: B) -> Result<bool, MessageError>
+where B: AsRef<[u8]> {
+    let signature = SchnorrSignature::<CommsPublicKey, <CommsPublicKey as PublicKey>::K>::from_binary(signature)
+        .map_err(MessageError::MessageFormatError)?;
+    let challenge = Challenge::new().chain(body).result().to_vec();
+    Ok(signature.verify_challenge(public_key, &challenge))
 }

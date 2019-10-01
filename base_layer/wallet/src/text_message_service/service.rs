@@ -34,10 +34,10 @@ use std::{
     sync::{Arc, Mutex},
     time::Duration,
 };
-use tari_comms::{
-    message::MessageFlags,
-    outbound_message_service::{BroadcastStrategy, OutboundServiceRequester},
-    types::CommsPublicKey,
+use tari_comms::{message::NodeDestination, types::CommsPublicKey};
+use tari_comms_dht::{
+    message::DhtMessageFlags,
+    outbound::{BroadcastStrategy, OutboundMessageRequester},
 };
 use tari_p2p::{
     domain_message::DomainMessage,
@@ -68,7 +68,7 @@ pub struct TextMessageAck {
 pub struct TextMessageService {
     pub_key: CommsPublicKey,
     screen_name: Option<String>,
-    oms: Option<OutboundServiceRequester>,
+    oms: Option<OutboundMessageRequester>,
     api: ServiceApiWrapper<TextMessageServiceApi, TextMessageApiRequest, TextMessageApiResult>,
     database_path: String,
     runtime: Runtime,
@@ -117,7 +117,8 @@ impl TextMessageService {
 
         self.runtime.block_on(oms.send_message(
             BroadcastStrategy::DirectPublicKey(text_message.dest_pub_key.clone()),
-            MessageFlags::ENCRYPTED,
+            NodeDestination::Undisclosed,
+            DhtMessageFlags::ENCRYPTED,
             TariMessageType::new(ExtendedMessage::Text),
             text_message.clone(),
         ))?;
@@ -155,7 +156,8 @@ impl TextMessageService {
         let text_message_ack = TextMessageAck { id: message.id.clone() };
         self.runtime.block_on(oms.send_message(
             BroadcastStrategy::DirectPublicKey(origin_pubkey),
-            MessageFlags::ENCRYPTED,
+            NodeDestination::Undisclosed,
+            DhtMessageFlags::ENCRYPTED,
             TariMessageType::new(ExtendedMessage::TextAck),
             text_message_ack,
         ))?;
@@ -232,7 +234,8 @@ impl TextMessageService {
         let mut oms = self.oms.clone().ok_or(TextMessageError::OMSNotInitialized)?;
         self.runtime.block_on(oms.send_message(
             BroadcastStrategy::DirectPublicKey(contact.pub_key.clone()),
-            MessageFlags::empty(),
+            NodeDestination::Undisclosed,
+            DhtMessageFlags::ENCRYPTED,
             TariMessageType::new(NetMessage::PingPong),
             PingPong::Ping,
         ))?;

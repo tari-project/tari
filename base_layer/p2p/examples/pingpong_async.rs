@@ -47,8 +47,8 @@ use tari_comms::{
     peer_manager::{NodeIdentity, Peer, PeerFlags},
     types::CommsPublicKey,
 };
-use tari_comms_middleware::pubsub::pubsub_connector;
 use tari_p2p::{
+    comms_connector::pubsub_connector,
     initialization::{initialize_comms, CommsConfig},
     services::{
         comms_outbound::CommsOutboundServiceInitializer,
@@ -112,7 +112,7 @@ fn main() {
         host: "0.0.0.0".parse().unwrap(),
         socks_proxy_address: None,
         control_service: ControlServiceConfig {
-            listener_address: node_identity.control_service_address().unwrap(),
+            listener_address: node_identity.control_service_address(),
             socks_proxy_address: None,
             requested_connection_timeout: Duration::from_millis(2000),
         },
@@ -123,24 +123,29 @@ fn main() {
             .unwrap()
             .to_string(),
         peer_database_name: random_string(8),
+        inbound_buffer_size: 10,
+        outbound_buffer_size: 10,
+        dht: Default::default(),
     };
     let rt = Runtime::new().expect("Failed to create tokio Runtime");
 
     let (publisher, subscription_factory) = pubsub_connector(rt.executor(), 100);
     let subscription_factory = Arc::new(subscription_factory);
-    let comms = initialize_comms(rt.executor(), comms_config, publisher).unwrap();
+
+    let (comms, dht) = initialize_comms(rt.executor(), comms_config, publisher)
+        .map(|(comms, dht)| (Arc::new(comms), dht))
+        .unwrap();
+
     let peer = Peer::new(
         peer_identity.identity.public_key.clone(),
         peer_identity.identity.node_id.clone(),
-        peer_identity.control_service_address().unwrap().into(),
+        peer_identity.control_service_address().into(),
         PeerFlags::empty(),
     );
     comms.peer_manager().add_peer(peer).unwrap();
 
-    let comms = Arc::new(comms);
-
     let fut = StackBuilder::new(rt.executor())
-        .add_initializer(CommsOutboundServiceInitializer::new(comms.outbound_message_service()))
+        .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))
         .add_initializer(LivenessInitializer::new(Arc::clone(&subscription_factory)))
         .finish();
 
@@ -173,6 +178,7 @@ fn main() {
 
     let comms = Arc::try_unwrap(comms).map_err(|_| ()).unwrap();
     comms.shutdown().unwrap();
+    //    rt.shutdown_on_idle();
 }
 fn setup_ui() -> Cursive {
     let mut app = Cursive::default();
@@ -186,8 +192,8 @@ fn setup_ui() -> Cursive {
     app
 }
 lazy_static! {
-/// Used to keep track of the counts displayed in the UI
-/// (sent ping count, recv ping count, recv pong count)
+    /// Used to keep track of the counts displayed in the UI
+    /// (sent ping count, recv ping count, recv pong count)
     static ref COUNTER_STATE: Arc<RwLock<(usize, usize, usize)>> = Arc::new(RwLock::new((0, 0, 0)));
 }
 type CursiveSignal = crossbeam_channel::Sender<Box<dyn CbFunc>>;

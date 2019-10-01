@@ -25,7 +25,7 @@
 //! The [CommsBuilder] provides a simple builder API for getting Tari comms p2p messaging up and running.
 //!
 //! ```edition2018
-//! # use tari_comms::builder::{CommsBuilder, CommsParts};
+//! # use tari_comms::builder::{CommsBuilder};
 //! # use tari_comms::control_service::ControlServiceConfig;
 //! # use tari_comms::peer_manager::NodeIdentity;
 //! # use std::sync::Arc;
@@ -36,7 +36,6 @@
 //! # use futures::executor::ThreadPool;
 //! # use tokio::runtime::Runtime;
 //! # use futures::channel::mpsc;
-//! # use tari_comms::middleware::SinkMiddleware;
 //! // This should be loaded up from storage
 //! let my_node_identity = NodeIdentity::random(&mut OsRng::new().unwrap(), "127.0.0.1:9000".parse().unwrap()).unwrap();
 //!
@@ -51,10 +50,12 @@
 //! let peer_database = LMDBWrapper::new(Arc::new(peer_database));
 //!
 //! // Futures mpsc channel where all incoming messages will be received
-//! let (sender, _receiver) = mpsc::channel(100);
+//! let (inbound_tx, _inbound_rx) = mpsc::channel(10);
+//! let (_outbound_tx, outbound_rx) = mpsc::channel(10);
 //! let runtime = Runtime::new().unwrap();
 //! let services = CommsBuilder::new(runtime.executor())
-//!    .with_inbound_middleware(|_: CommsParts| SinkMiddleware::new(sender))
+//!    .with_inbound_sink(inbound_tx)
+//!    .with_outbound_stream(outbound_rx)
 //!    // This enables the control service - allowing another peer to connect to this node
 //!    .configure_control_service(ControlServiceConfig::default())
 //!    .with_node_identity(Arc::new(my_node_identity))
@@ -64,8 +65,11 @@
 //!
 //! let mut handle = services.start().unwrap();
 //!
-//! // use _receiver to receive comms messages
-//! // _receiver.next().await
+//! // use _inbound_rx to receive comms messages
+//! // _inbound_rx.next().await
+//!
+//! // use _outbound_tx to send messages
+//! // _outbound_tx.send(OutboundMessage { .. }).await
 //!
 //! // Call shutdown when program shuts down
 //! handle.shutdown();
@@ -74,5 +78,6 @@
 //! [CommsBuilder]: ./builder/struct.CommsBuilder.html
 
 mod builder;
+mod null_sink;
 
-pub use self::builder::{CommsBuilder, CommsBuilderError, CommsError, CommsNode, CommsParts};
+pub use self::builder::{CommsBuilder, CommsBuilderError, CommsError, CommsNode};

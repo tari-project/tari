@@ -68,6 +68,7 @@ impl ThreadControlMessenger {
         })
     }
 
+    #[cfg(test)]
     pub fn get_sender(&self) -> &SyncSender<ControlMessage> {
         &self.0
     }

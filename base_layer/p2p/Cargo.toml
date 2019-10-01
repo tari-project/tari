@@ -16,6 +16,7 @@ tari_pubsub = { version = "^0.0", path = "../../infrastructure/pubsub"}
 tari_service_framework = { version = "^0.0", path = "../service_framework"}
 tari_storage = {version = "^0.0", path = "../../infrastructure/storage"}
 tari_utilities = { version = "^0.0", path = "../../infrastructure/tari_util"}
+tari_comms_dht = { version = "^0.0", path = "../../comms/dht"}
 
 chrono = { version = "0.4.6", features = ["serde"]}
 crossbeam-channel = "0.3.8"

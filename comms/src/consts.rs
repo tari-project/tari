@@ -20,11 +20,15 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::types::CommsRng;
 use std::time::Duration;
+
+thread_local! {
+    /// Thread local RNG for comms
+    pub(crate) static COMMS_RNG: CommsRng = CommsRng::new().expect("Failed to initialize CommsRng");
+}
 
 /// The maximum number of messages that can be stored using the MessageCache of the DHT
 pub const DHT_MSG_CACHE_STORAGE_CAPACITY: usize = 1000;
 /// The time-to-live duration used by the MessageCache for tracking received and handled messages
 pub const DHT_MSG_CACHE_TTL: Duration = Duration::from_secs(300);
-/// The number of neighbouring nodes that a received message will be forwarded to
-pub const DHT_FORWARD_NODE_COUNT: usize = 8;
