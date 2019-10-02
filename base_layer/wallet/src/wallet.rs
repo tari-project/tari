@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::text_message_service::{TextMessageService, TextMessageServiceApi};
+// use crate::text_message_service_sync::{TextMessageService, TextMessageServiceApi};
 use derive_error::Error;
 use std::sync::Arc;
 use tari_comms::{builder::CommsNode, types::CommsPublicKey};
@@ -50,7 +50,7 @@ pub struct WalletConfig {
 pub struct Wallet {
     runtime: Runtime,
     pub ping_pong_service: Arc<PingPongServiceApi>,
-    pub text_message_service: Arc<TextMessageServiceApi>,
+    //  pub text_message_service: Arc<TextMessageServiceApi>,
     pub comms_services: Arc<CommsNode>,
     pub service_executor: ServiceExecutor,
     pub public_key: CommsPublicKey,
@@ -62,12 +62,11 @@ impl Wallet {
         let ping_pong_service = PingPongService::new();
         let ping_pong_service_api = ping_pong_service.get_api();
 
-        let text_message_service = TextMessageService::new(config.public_key.clone(), config.database_path.clone());
-        let text_message_service_api = text_message_service.get_api();
+        //        let text_message_service = TextMessageService::new(config.public_key.clone(),
+        // config.database_path.clone());        let text_message_service_api = text_message_service.get_api();
 
-        let registry = ServiceRegistry::new()
-            .register(ping_pong_service)
-            .register(text_message_service);
+        let registry = ServiceRegistry::new().register(ping_pong_service);
+        //  .register(text_message_service);
 
         let (publisher, subscription_factory) =
             pubsub_connector(runtime.executor(), config.inbound_message_buffer_size);
@@ -78,7 +77,7 @@ impl Wallet {
 
         Ok(Wallet {
             runtime,
-            text_message_service: text_message_service_api,
+            //   text_message_service: text_message_service_api,
             ping_pong_service: ping_pong_service_api,
             comms_services: Arc::new(comms_services),
             service_executor,

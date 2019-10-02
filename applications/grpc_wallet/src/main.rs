@@ -38,7 +38,7 @@ use tari_crypto::keys::PublicKey;
 use tari_grpc_wallet::wallet_server::WalletServer;
 use tari_p2p::initialization::CommsConfig;
 use tari_utilities::{hex::Hex, message_format::MessageFormat};
-use tari_wallet::{text_message_service::Contact, wallet::WalletConfig, Wallet};
+use tari_wallet::{text_message_service_sync::Contact, wallet::WalletConfig, Wallet};
 
 const LOG_TARGET: &str = "applications::grpc_wallet";
 

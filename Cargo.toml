@@ -17,7 +17,8 @@ members = [
     "infrastructure/pubsub",
     "infrastructure/storage",
     "infrastructure/test_utils",
-    "applications/grpc_wallet",
-    "applications/console_text_messenger",
-    "ffi"
+    #TODO Reintroduce these once the comms stack and wallet is stable
+    #"applications/grpc_wallet",
+    #"applications/console_text_messenger",
+    #"ffi"
 ]

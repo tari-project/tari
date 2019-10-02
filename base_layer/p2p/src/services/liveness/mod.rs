@@ -35,7 +35,7 @@
 //! [LivenessRequest]: ./messages/enum.LivenessRequets.html
 //! [PingPong]: ./messages/enum.PingPong.html
 
-mod error;
+pub mod error;
 mod messages;
 mod service;
 mod state;
@@ -60,10 +60,9 @@ use tari_utilities::message_format::{MessageFormat, MessageFormatError};
 use tokio::runtime::TaskExecutor;
 
 pub use self::messages::{LivenessRequest, LivenessResponse, PingPong};
+use crate::services::utils::{map_deserialized, ok_or_skip_result};
 
 pub type LivenessHandle = SenderService<LivenessRequest, Result<LivenessResponse, LivenessError>>;
-
-const LOG_TARGET: &'static str = "base_layer::p2p::services::liveness";
 
 /// Initializer for the Liveness service handle and service future.
 pub struct LivenessInitializer {
@@ -121,43 +120,5 @@ impl ServiceInitializer for LivenessInitializer {
         });
 
         future::ready(Ok(()))
-    }
-}
-
-/// For use with `StreamExt::filter_map`. Log and filter any errors.
-async fn ok_or_skip_result<T, E>(res: Result<T, E>) -> Option<T>
-where E: Debug {
-    match res {
-        Ok(t) => Some(t),
-        Err(err) => {
-            tracing::error!(target: LOG_TARGET, "{:?}", err);
-            None
-        },
-    }
-}
-
-fn map_deserialized<T>(serialized: Arc<PeerMessage<TariMessageType>>) -> Result<DomainMessage<T>, MessageFormatError>
-where T: MessageFormat {
-    Ok(DomainMessage {
-        source_peer: serialized.source_peer.clone(),
-        // TODO: origin_pubkey should be used when the DHT middleware is hooked up
-        origin_pubkey: serialized.comms_header.message_public_key.clone(),
-        inner: serialized.deserialize_message()?,
-    })
-}
-
-#[cfg(test)]
-mod test {
-    use futures::executor::block_on;
-
-    #[test]
-    fn ok_or_skip_result() {
-        block_on(async {
-            let res = Result::<_, ()>::Ok(());
-            assert_eq!(super::ok_or_skip_result(res).await.unwrap(), ());
-
-            let res = Result::<(), _>::Err(());
-            assert!(super::ok_or_skip_result(res).await.is_none());
-        });
     }
 }

@@ -20,9 +20,134 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod error;
-mod model;
+pub mod error;
+pub mod messages;
+pub mod model;
 mod service;
 
-pub use model::{Contact, ReceivedTextMessage, SentTextMessage, UpdateContact};
-pub use service::{TextMessageApiResponse, TextMessageService, TextMessageServiceApi, TextMessages};
+use self::service::TextMessageService;
+use crate::text_message_service::{
+    error::TextMessageError,
+    messages::{TextMessageRequest, TextMessageResponse},
+    model::ReceivedTextMessage,
+    service::TextMessageAck,
+};
+use futures::{future, stream::StreamExt, Future, Stream};
+use log::*;
+use std::sync::Arc;
+use tari_comms::types::CommsPublicKey;
+use tari_comms_dht::outbound::OutboundMessageRequester;
+use tari_p2p::{
+    comms_connector::PeerMessage,
+    domain_message::DomainMessage,
+    services::{
+        liveness::LivenessHandle,
+        utils::{map_deserialized, ok_or_skip_result},
+    },
+    tari_message::{ExtendedMessage, TariMessageType},
+};
+use tari_pubsub::TopicSubscriptionFactory;
+use tari_service_framework::{
+    handles::ServiceHandlesFuture,
+    reply_channel,
+    reply_channel::SenderService,
+    ServiceInitializationError,
+    ServiceInitializer,
+};
+use tokio::runtime::TaskExecutor;
+
+const LOG_TARGET: &'static str = "wallet::text_message_service::initializer";
+
+pub type TextMessageHandle = SenderService<TextMessageRequest, Result<TextMessageResponse, TextMessageError>>;
+
+pub struct TextMessageServiceInitializer {
+    pub_key: Option<CommsPublicKey>,
+    database_path: Option<String>,
+    subscription_factory: Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage<TariMessageType>>>>,
+}
+
+impl TextMessageServiceInitializer {
+    pub fn new(
+        subscription_factory: Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage<TariMessageType>>>>,
+        pub_key: CommsPublicKey,
+        database_path: String,
+    ) -> Self
+    {
+        Self {
+            pub_key: Some(pub_key),
+            database_path: Some(database_path),
+            subscription_factory,
+        }
+    }
+
+    /// Get a stream of inbound Text messages
+    fn text_message_stream(&self) -> impl Stream<Item = DomainMessage<ReceivedTextMessage>> {
+        self.subscription_factory
+            .get_subscription(TariMessageType::new(ExtendedMessage::Text))
+            .map(map_deserialized::<ReceivedTextMessage>)
+            .filter_map(ok_or_skip_result)
+    }
+
+    fn text_message_ack_stream(&self) -> impl Stream<Item = DomainMessage<TextMessageAck>> {
+        self.subscription_factory
+            .get_subscription(TariMessageType::new(ExtendedMessage::TextAck))
+            .map(map_deserialized::<TextMessageAck>)
+            .filter_map(ok_or_skip_result)
+    }
+}
+
+impl ServiceInitializer for TextMessageServiceInitializer {
+    type Future = impl Future<Output = Result<(), ServiceInitializationError>>;
+
+    fn initialize(&mut self, executor: TaskExecutor, handles_fut: ServiceHandlesFuture) -> Self::Future {
+        let pub_key = self
+            .pub_key
+            .take()
+            .expect("text message service initializer already called");
+
+        let database_path = self
+            .database_path
+            .take()
+            .expect("text message service initializer already called");
+
+        let (sender, receiver) = reply_channel::unbounded();
+
+        let text_message_stream = self.text_message_stream();
+        let text_message_ack_stream = self.text_message_ack_stream();
+
+        // Register handle before waiting for handles to be ready
+        handles_fut.register(sender);
+
+        executor.spawn(async move {
+            let handles = handles_fut.await;
+
+            let oms = handles
+                .get_handle::<OutboundMessageRequester>()
+                .expect("OMS handle required for TextMessageService");
+            let liveness = handles
+                .get_handle::<LivenessHandle>()
+                .expect("Liveness handle required for TextMessageService");
+
+            let service = TextMessageService::new(
+                receiver,
+                text_message_stream,
+                text_message_ack_stream,
+                pub_key,
+                database_path,
+                oms,
+                liveness,
+            );
+
+            match service.start().await {
+                Ok(_) => {
+                    info!(target: LOG_TARGET, "Text message service initializer exited cleanly");
+                },
+                Err(err) => {
+                    error!(target: LOG_TARGET, "Text message service failed to start: {}", err);
+                },
+            }
+        });
+
+        future::ready(Ok(()))
+    }
+}

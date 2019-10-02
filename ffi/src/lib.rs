@@ -40,12 +40,12 @@ use tari_comms::{
 use tari_crypto::keys::PublicKey;
 use tari_p2p::{initialization::CommsConfig, sync_services::ServiceError};
 use tari_utilities::hex::Hex;
-use tari_wallet::{text_message_service::Contact, wallet::WalletConfig};
+use tari_wallet::{text_message_service_sync::Contact, wallet::WalletConfig};
 
 /// Once bindings are generated via cbindgen, change the using to struct, remove the equals sign and anything after it
 /// on the line. These are used as opaque pointers
 pub type Wallet = tari_wallet::Wallet;
-pub type ReceivedTextMessage = tari_wallet::text_message_service::ReceivedTextMessage;
+pub type ReceivedTextMessage = tari_wallet::text_message_service_sync::ReceivedTextMessage;
 pub type SentTextMessage = tari_wallet::text_message_service::SentTextMessage;
 
 /// Received Messages

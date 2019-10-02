@@ -30,7 +30,7 @@ use tari_comms::{
 };
 use tari_crypto::keys::{PublicKey, SecretKey};
 use tari_p2p::initialization::CommsConfig;
-use tari_wallet::{text_message_service::Contact, wallet::WalletConfig, Wallet};
+use tari_wallet::{text_message_service_sync::Contact, wallet::WalletConfig, Wallet};
 
 fn create_peer(public_key: CommsPublicKey, net_address: NetAddress) -> Peer {
     Peer::new(
