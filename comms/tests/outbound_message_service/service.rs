@@ -24,7 +24,11 @@ use crate::support::{
     factories::{self, TestFactory},
     helpers::streams::stream_assert_count,
 };
-use futures::{channel::mpsc, SinkExt, StreamExt};
+use futures::{
+    channel::{mpsc, oneshot},
+    SinkExt,
+    StreamExt,
+};
 use std::{fs, path::PathBuf, sync::Arc, thread, time::Duration};
 use tari_comms::{
     connection::ZmqContext,
@@ -154,11 +158,13 @@ fn outbound_message_pool_no_retry() {
 
     // Setup Node A OMS
     let (outbound_tx, outbound_rx) = mpsc::unbounded();
+    let (shutdown_tx, shutdown_rx) = oneshot::channel();
     let oms = OutboundMessageService::new(
         Default::default(),
         outbound_rx,
         node_identity,
         node_A_connection_manager_requester,
+        shutdown_rx,
     );
     rt.spawn(oms.start());
 
@@ -179,6 +185,8 @@ fn outbound_message_pool_no_retry() {
     node_B_control_service
         .timeout_join(Duration::from_millis(3000))
         .unwrap();
+
+    shutdown_tx.send(()).unwrap();
 
     clean_up_datastore(node_A_database_name);
     clean_up_datastore(node_B_database_name);
@@ -249,11 +257,13 @@ fn test_outbound_message_pool_fail_and_retry() {
 
     // Setup Node A OMS
     let (outbound_tx, outbound_rx) = mpsc::unbounded();
+    let (shutdown_tx, shutdown_rx) = oneshot::channel();
     let oms = OutboundMessageService::new(
         Default::default(),
         outbound_rx,
         node_A_identity,
         node_A_connection_manager_requester,
+        shutdown_rx,
     );
     rt.spawn(oms.start());
 
@@ -303,6 +313,8 @@ fn test_outbound_message_pool_fail_and_retry() {
     node_B_control_service
         .timeout_join(Duration::from_millis(3000))
         .unwrap();
+
+    shutdown_tx.send(()).unwrap();
 
     clean_up_datastore(database_name);
 }

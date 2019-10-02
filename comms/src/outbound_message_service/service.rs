@@ -110,6 +110,8 @@ pub struct OutboundMessageService<TMsgStream> {
     message_stream: stream::Fuse<TMsgStream>,
     node_identity: Arc<NodeIdentity>,
     pending_connect_requests: HashMap<NodeId, Vec<OutboundMessage>>,
+    active_connections: HashMap<NodeId, Arc<PeerConnection>>,
+    shutdown_rx: Option<future::Fuse<oneshot::Receiver<()>>>,
 }
 
 impl<TMsgStream> OutboundMessageService<TMsgStream>
@@ -120,30 +122,52 @@ where TMsgStream: Stream<Item = OutboundMessage> + Unpin
         message_stream: TMsgStream,
         node_identity: Arc<NodeIdentity>,
         connection_manager: ConnectionManagerRequester,
+        shutdown_signal: oneshot::Receiver<()>,
     ) -> Self
     {
         Self {
+            active_connections: HashMap::with_capacity(config.max_cached_connections),
             config,
             connection_manager,
             node_identity,
             message_stream: message_stream.fuse(),
             pending_connect_requests: HashMap::new(),
             dial_cancel_signals: HashMap::new(),
+            shutdown_rx: Some(shutdown_signal.fuse()),
         }
     }
 
     pub async fn start(mut self) {
         let mut pending_connects = FuturesUnordered::new();
+        let mut shutdown_rx = self
+            .shutdown_rx
+            .take()
+            .expect("OutboundMessageActor initialized without shutdown_rx");
         loop {
             futures::select! {
                 new_message = self.message_stream.select_next_some() => {
-                    if let Some(mut dial_state) = self.enqueue_new_message(new_message) {
-                        let (cancel_tx, cancel_rx) = oneshot::channel();
-                        self.dial_cancel_signals.insert(dial_state.node_id.clone(), cancel_tx);
-                        dial_state.set_cancel_receiver(cancel_rx.fuse());
-                        pending_connects.push(
-                            Self::connect_to(self.connection_manager.clone(), dial_state)
+                    if let Some(conn) = self.get_active_connection(&new_message.peer_node_id) {
+                        debug!(
+                            target: LOG_TARGET,
+                            "Cached connection found for NodeId={}",
+                            new_message.peer_node_id
                         );
+                        if let Err(err) = self.send_message(&conn, new_message).await {
+                            warn!(
+                                target: LOG_TARGET,
+                                "Message failed to send from existing active connection",
+                            );
+                            // TODO: Enqueue message for resending
+                        }
+                    } else {
+                        if let Some(mut dial_state) = self.enqueue_new_message(new_message) {
+                            let (cancel_tx, cancel_rx) = oneshot::channel();
+                            self.dial_cancel_signals.insert(dial_state.node_id.clone(), cancel_tx);
+                            dial_state.set_cancel_receiver(cancel_rx.fuse());
+                            pending_connects.push(
+                                Self::connect_to(self.connection_manager.clone(), dial_state)
+                            );
+                        }
                     }
                 },
 
@@ -172,12 +196,33 @@ where TMsgStream: Stream<Item = OutboundMessage> + Unpin
                     }
                 },
 
+                _ = shutdown_rx => {
+                    info!(target: LOG_TARGET, "Outbound message service shutting because the shutdown signal was received.");
+                    self.cancel_pending_connection_attempts();
+                    break;
+                }
+
                 complete => {
                     info!(target: LOG_TARGET, "Outbound message service shutting because the message stream ended.");
                     self.cancel_pending_connection_attempts();
                     break;
                 }
             }
+        }
+    }
+
+    fn get_active_connection(&mut self, node_id: &NodeId) -> Option<Arc<PeerConnection>> {
+        match self.active_connections.get(node_id) {
+            Some(conn) => {
+                if conn.is_active() {
+                    Some(Arc::clone(&conn))
+                } else {
+                    // Side effect: remove the inactive connection
+                    self.active_connections.remove(node_id);
+                    None
+                }
+            },
+            None => None,
         }
     }
 
@@ -279,12 +324,12 @@ where TMsgStream: Stream<Item = OutboundMessage> + Unpin
     ) -> Result<(), OutboundServiceError>
     {
         self.dial_cancel_signals.remove(&node_id);
+        self.cache_connection(node_id.clone(), Arc::clone(&conn));
         match self.pending_connect_requests.remove(node_id) {
             Some(messages) => {
                 for message in messages {
-                    let envelope = self.construct_message_envelope(message)?;
-                    conn.send(envelope.into_frame_set())
-                        .map_err(OutboundServiceError::ConnectionError)?;
+                    // TODO: Error here will mean messages are discarded
+                    self.send_message(&conn, message).await?;
                 }
             },
             None => {
@@ -297,6 +342,46 @@ where TMsgStream: Stream<Item = OutboundMessage> + Unpin
         }
 
         Ok(())
+    }
+
+    fn cache_connection(&mut self, node_id: NodeId, conn: Arc<PeerConnection>) {
+        if self.active_connections.len() + 1 > self.active_connections.capacity() {
+            // Clear dead connections
+            self.clear_dead_connections();
+            // Still at capacity?
+            if self.active_connections.len() + 1 > self.active_connections.capacity() {
+                // Remove the "first" (oldest?) peer connection.
+                if let Some(last) = self.active_connections.keys().next().cloned() {
+                    trace!(
+                        target: LOG_TARGET,
+                        "Dropping recent active connection for NodeId {}",
+                        last
+                    );
+                    self.active_connections.remove(&last);
+                }
+            }
+        }
+        self.active_connections.insert(node_id, conn);
+        trace!(
+            target: LOG_TARGET,
+            "Recent active connection cache size: {} of {}",
+            self.active_connections.len(),
+            self.active_connections.capacity()
+        );
+    }
+
+    fn clear_dead_connections(&mut self) {
+        let mut new_hm = HashMap::with_capacity(self.active_connections.capacity());
+        for (node_id, conn) in self.active_connections.drain().filter(|(_, conn)| conn.is_active()) {
+            new_hm.insert(node_id, conn);
+        }
+        self.active_connections = new_hm;
+    }
+
+    async fn send_message(&self, conn: &PeerConnection, message: OutboundMessage) -> Result<(), OutboundServiceError> {
+        let envelope = self.construct_message_envelope(message)?;
+        conn.send(envelope.into_frame_set())
+            .map_err(OutboundServiceError::ConnectionError)
     }
 
     fn construct_message_envelope(&self, message: OutboundMessage) -> Result<MessageEnvelope, OutboundServiceError> {
@@ -333,7 +418,6 @@ mod test {
 
     #[test]
     fn multiple_send_in_batch() {
-        env_logger::init();
         // Tests sending a number of messages to 2 recipients simultaneously.
         // This checks that messages from separate requests are batched and a single dial request per
         // peer is made.
@@ -344,12 +428,14 @@ mod test {
         let conn_manager = ConnectionManagerRequester::new(conn_man_tx);
 
         let node_identity = Arc::new(node_identity::random(None));
+        let (shutdown_tx, shutdown_rx) = oneshot::channel();
 
         let service = OutboundMessageService::new(
             OutboundServiceConfig::default(),
             new_message_rx,
             node_identity,
             conn_manager,
+            shutdown_rx,
         );
         rt.spawn(service.start());
 
@@ -379,38 +465,22 @@ mod test {
 
         // Check that the dial request for node_id1 is made and, when a peer connection is passed back,
         // that peer connection is used to send the correct messages
+        let (conn, conn_rx) = PeerConnection::new_with_connecting_state_for_test();
         match conn_man_req1 {
             ConnectionManagerRequest::DialPeer(boxed) => {
                 let (node_id, reply_tx) = *boxed;
-                let (conn, rx) = PeerConnection::new_with_connecting_state_for_test();
                 assert!(reply_tx.send(Ok(Arc::new(conn))).is_ok());
                 assert_eq!(node_id, node_id1);
 
                 // Check that pending messages are sent
-                let msg = rx.recv_timeout(Duration::from_millis(100)).unwrap();
-                match msg {
-                    peer_connection::ControlMessage::SendMsg(frames) => {
-                        let envelope = MessageEnvelope::try_from(frames).unwrap();
-                        assert_eq!(envelope.body_frame(), b"A");
-                    },
-                    _ => panic!(),
-                }
-                let msg = rx.recv_timeout(Duration::from_millis(100)).unwrap();
-                match msg {
-                    peer_connection::ControlMessage::SendMsg(frames) => {
-                        let envelope = MessageEnvelope::try_from(frames).unwrap();
-                        assert_eq!(envelope.body_frame(), b"C");
-                    },
-                    _ => panic!(),
-                }
-                let msg = rx.recv_timeout(Duration::from_millis(100)).unwrap();
-                match msg {
-                    peer_connection::ControlMessage::SendMsg(frames) => {
-                        let envelope = MessageEnvelope::try_from(frames).unwrap();
-                        assert_eq!(envelope.body_frame(), b"D");
-                    },
-                    _ => panic!(),
-                }
+                let msg = conn_rx.recv_timeout(Duration::from_millis(100)).unwrap();
+                assert_send_msg(msg, b"A");
+
+                let msg = conn_rx.recv_timeout(Duration::from_millis(100)).unwrap();
+                assert_send_msg(msg, b"C");
+
+                let msg = conn_rx.recv_timeout(Duration::from_millis(100)).unwrap();
+                assert_send_msg(msg, b"D");
             },
         }
 
@@ -423,19 +493,36 @@ mod test {
                 let (conn, rx) = PeerConnection::new_with_connecting_state_for_test();
                 assert!(reply_tx.send(Ok(Arc::new(conn))).is_ok());
                 let msg = rx.recv_timeout(Duration::from_millis(100)).unwrap();
-                match msg {
-                    peer_connection::ControlMessage::SendMsg(frames) => {
-                        let envelope = MessageEnvelope::try_from(frames).unwrap();
-                        assert_eq!(envelope.body_frame(), b"B");
-                    },
-                    _ => panic!(),
-                }
+                assert_send_msg(msg, b"B");
             },
         }
 
+        rt.block_on(new_message_tx.send(OutboundMessage::new(
+            node_id1.clone(),
+            MessageFlags::empty(),
+            b"E".to_vec(),
+        )))
+        .unwrap();
+
+        let msg = conn_rx.recv_timeout(Duration::from_millis(100)).unwrap();
+        assert_send_msg(msg, b"E");
+
+        // Connection should be reused, so connection manager should not receive another request to connect.
+        assert!(conn_man_rx.try_next().is_err());
+
         // Abort pending connections and shutdown the service
-        drop(new_message_tx);
+        shutdown_tx.send(()).unwrap();
         rt.shutdown_on_idle();
+    }
+
+    fn assert_send_msg(control_msg: peer_connection::ControlMessage, msg: &[u8]) {
+        match control_msg {
+            peer_connection::ControlMessage::SendMsg(frames) => {
+                let envelope = MessageEnvelope::try_from(frames).unwrap();
+                assert_eq!(envelope.body_frame().as_slice(), msg);
+            },
+            _ => panic!(),
+        }
     }
 
     #[test]
