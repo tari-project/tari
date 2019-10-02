@@ -128,6 +128,22 @@ fn fetch_async_headers() {
 }
 
 #[test]
+fn async_rewind_to_height() {
+    let (db, blocks, _) = create_blockchain_db_no_cut_through();
+    test_async(move |rt| {
+        let dbc = db.clone();
+        rt.spawn(async move {
+            async_db::rewind_to_height(dbc.clone(), 2).await.unwrap();
+            let result = async_db::fetch_block(dbc.clone(), 3).await;
+            assert!(result.is_err());
+            let block = async_db::fetch_block(dbc.clone(), 2).await.unwrap();
+            assert_eq!(block.confirmations(), 1);
+            assert_eq!(blocks[2], Block::from(block));
+        });
+    });
+}
+
+#[test]
 fn fetch_async_utxo() {
     let (db, blocks, outputs) = create_blockchain_db_no_cut_through();
     // Retrieve a UTXO and an STXO
