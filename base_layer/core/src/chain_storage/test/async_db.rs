@@ -22,16 +22,18 @@
 
 use crate::{
     blocks::Block,
-    chain_storage::{async_db, BlockchainDatabase, MemoryDatabase, MmrTree},
+    chain_storage::{async_db, BlockAddResult, BlockchainDatabase, MemoryDatabase, MmrTree},
+    tari_amount::T,
     test_utils::{
-        builders::create_test_block,
-        sample_blockchains::{create_blockchain_db_no_cut_through, generate_new_block},
+        builders::{chain_block, create_test_block, schema_to_transaction},
+        sample_blockchains::{create_blockchain_db_no_cut_through, create_new_blockchain},
     },
     transaction::{TransactionOutput, UnblindedOutput},
+    txn_schema,
     types::{HashDigest, COMMITMENT_FACTORY},
 };
 use bitflags::_core::sync::atomic::{AtomicBool, Ordering};
-use std::{fs::File, io::Write, sync::Arc};
+use std::{fs::File, io::Write, ops::Deref, sync::Arc};
 use tari_crypto::commitment::HomomorphicCommitmentFactory;
 use tari_utilities::{hex::Hex, Hashable};
 use tokio::{self, runtime::Runtime};
@@ -205,6 +207,29 @@ fn fetch_async_block() {
 }
 
 #[test]
+fn async_add_new_block() {
+    let (db, blocks, outputs) = create_new_blockchain();
+    let schema = vec![txn_schema!(from: vec![outputs[0][0].clone()], to: vec![20 * T, 20 * T])];
+    let txns = schema_to_transaction(&schema)
+        .0
+        .iter()
+        .map(|t| t.deref().clone())
+        .collect();
+    let new_block = chain_block(&blocks.last().unwrap(), txns);
+    test_async(|rt| {
+        let dbc = db.clone();
+        rt.spawn(async move {
+            let result = async_db::add_new_block(dbc.clone(), new_block.clone()).await.unwrap();
+            let block = async_db::fetch_block(dbc.clone(), 1).await.unwrap();
+            match result {
+                BlockAddResult::Ok(h) => assert_eq!(Block::from(block).hash(), h.hash()),
+                _ => panic!("Unexpected result"),
+            }
+        });
+    });
+}
+
+#[test]
 fn fetch_async_mmr_roots() {
     let (db, blocks, _) = create_blockchain_db_no_cut_through();
     let metadata = db.get_metadata().unwrap();
@@ -227,7 +252,7 @@ fn fetch_async_mmr_roots() {
 
 #[test]
 fn async_add_block_fetch_orphan() {
-    let (db, blocks, _) = create_blockchain_db_no_cut_through();
+    let (db, _, _) = create_blockchain_db_no_cut_through();
     let orphan = create_test_block(7, None, vec![]);
     let block_hash = orphan.hash();
     test_async(move |rt| {
