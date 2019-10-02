@@ -29,11 +29,18 @@ pub use self::{error::OutboundServiceError, messages::OutboundMessage, service::
 
 /// Configuration for the OutboundService
 pub struct OutboundServiceConfig {
+    /// Maximum attempts to send a message before discarding it. Default: 5
     pub max_attempts: usize,
+    /// Maximum size of the recent connection cache. This cache keeps active connections
+    /// for reuse with subsequent messages without querying the connection manager. Default: 20
+    pub max_cached_connections: usize,
 }
 
 impl Default for OutboundServiceConfig {
     fn default() -> Self {
-        Self { max_attempts: 5 }
+        Self {
+            max_attempts: 5,
+            max_cached_connections: 20,
+        }
     }
 }

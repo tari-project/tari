@@ -6,7 +6,7 @@
 //!
 //! [CommsBuilder]: ./builder/index.html
 // Recursion limit for futures::select!
-#![recursion_limit = "256"]
+#![recursion_limit = "512"]
 // Allow `type Future = impl Future`
 #![feature(type_alias_impl_trait)]
 

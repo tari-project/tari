@@ -37,7 +37,12 @@ use crate::{
     types::CommsDatabase,
 };
 use derive_error::Error;
-use futures::{channel::mpsc, stream, Sink, Stream};
+use futures::{
+    channel::{mpsc, oneshot},
+    stream,
+    Sink,
+    Stream,
+};
 use log::*;
 use std::{fmt::Debug, sync::Arc};
 use tokio::runtime::TaskExecutor;
@@ -115,7 +120,7 @@ impl CommsBuilder<NullSink<InboundMessage, mpsc::SendError>, stream::Empty<Outbo
 impl<TInSink, TOutStream> CommsBuilder<TInSink, TOutStream>
 where
     TInSink: Sink<InboundMessage, Error = mpsc::SendError> + Unpin + Send + 'static,
-    TOutStream: Stream<Item = OutboundMessage> + Send + Unpin + 'static,
+    TOutStream: Stream<Item = OutboundMessage> + Send + Sync + Unpin + 'static,
 {
     /// Set the [NodeIdentity] for this comms instance. This is required.
     ///
@@ -258,6 +263,7 @@ where
         &mut self,
         node_identity: Arc<NodeIdentity>,
         connection_manager_requester: ConnectionManagerRequester,
+        shutdown_signal: oneshot::Receiver<()>,
     ) -> OutboundMessageService<TOutStream>
     {
         let outbound_stream = self.outbound_stream.take().expect("outbound_stream cannot be None");
@@ -266,6 +272,7 @@ where
             outbound_stream,
             node_identity,
             connection_manager_requester,
+            shutdown_signal,
         )
     }
 
@@ -298,8 +305,12 @@ where
             self.make_connection_manager_actor(Arc::clone(&connection_manager));
 
         //---------------------------------- Outbound message service --------------------------------------------//
-        let outbound_message_service =
-            self.make_outbound_message_service(Arc::clone(&node_identity), connection_manager_requester.clone());
+        let (oms_shutdown_tx, oms_shutdown_rx) = oneshot::channel();
+        let outbound_message_service = self.make_outbound_message_service(
+            Arc::clone(&node_identity),
+            connection_manager_requester.clone(),
+            oms_shutdown_rx,
+        );
 
         //---------------------------------- Inbound message pipeline --------------------------------------------//
         let inbound_message_pipeline = InboundMessagePipeline::new(
@@ -314,6 +325,7 @@ where
             connection_manager_requester,
             control_service,
             executor: self.executor,
+            oms_shutdown_tx,
             inbound_message_pipeline,
             node_identity,
             outbound_message_service,
@@ -347,6 +359,7 @@ pub struct CommsContainer<TInSink, TOutStream> {
     node_identity: Arc<NodeIdentity>,
 
     outbound_message_service: OutboundMessageService<TOutStream>,
+    oms_shutdown_tx: oneshot::Sender<()>,
 
     peer_manager: Arc<PeerManager>,
 }
@@ -354,7 +367,7 @@ pub struct CommsContainer<TInSink, TOutStream> {
 impl<TInSink, TOutStream> CommsContainer<TInSink, TOutStream>
 where
     TInSink: Sink<InboundMessage, Error = mpsc::SendError> + Unpin + Send + 'static,
-    TOutStream: Stream<Item = OutboundMessage> + Unpin + Send + 'static,
+    TOutStream: Stream<Item = OutboundMessage> + Unpin + Send + Sync + 'static,
 {
     /// Start all the comms services and return a [CommsServices] object
     ///
@@ -376,6 +389,7 @@ where
         Ok(CommsNode {
             connection_manager: self.connection_manager,
             connection_manager_requester: self.connection_manager_requester,
+            oms_shutdown_tx: Some(self.oms_shutdown_tx),
             control_service_handle,
             node_identity: self.node_identity,
             peer_manager: self.peer_manager,
@@ -392,6 +406,7 @@ pub struct CommsNode {
     connection_manager: Arc<ConnectionManager>,
     connection_manager_requester: ConnectionManagerRequester,
     control_service_handle: Option<ControlServiceHandle>,
+    oms_shutdown_tx: Option<oneshot::Sender<()>>,
     node_identity: Arc<NodeIdentity>,
     peer_manager: Arc<PeerManager>,
 }
@@ -405,11 +420,14 @@ impl CommsNode {
         Arc::clone(&self.node_identity)
     }
 
-    pub fn shutdown(self) -> Result<(), CommsError> {
+    pub fn shutdown(mut self) -> Result<(), CommsError> {
         info!(target: LOG_TARGET, "Comms is shutting down");
 
         // This shuts down the ConnectionManagerActor (releasing Arc<ConnectionManager>)
         drop(self.connection_manager_requester);
+
+        // Shutdown oms
+        self.oms_shutdown_tx.take().map(|tx| tx.send(()));
 
         let mut shutdown_results = Vec::new();
         // Shutdown control service

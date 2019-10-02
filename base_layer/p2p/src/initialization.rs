@@ -143,7 +143,7 @@ where
             .layer(dht.outbound_middleware_layer())
             .service(SinkMiddleware::new(outbound_tx)),
     );
-    outbound_pipeline.spawn_with(executor.clone());
+    outbound_pipeline.spawn_with(executor);
 
     Ok((comms, dht))
 }
