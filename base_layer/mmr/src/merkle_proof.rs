@@ -26,6 +26,7 @@
 use crate::{
     backend::ArrayLike,
     common::{family, family_branch, find_peaks, hash_together, is_leaf, is_left_sibling, leaf_index},
+    error::MerkleMountainRangeError,
     serde_support,
     Hash,
     HashSlice,
@@ -52,6 +53,7 @@ pub enum MerkleProofError {
     IncorrectPeakMap,
     // Unexpected
     Unexpected,
+    MerkleMountainRangeError(MerkleMountainRangeError),
 }
 
 /// A Merkle proof that proves a particular element at a particular position exists in an MMR.
@@ -125,15 +127,15 @@ impl MerkleProof {
         B: ArrayLike<Value = Hash>,
     {
         // check we actually have a hash in the MMR at this pos
-        mmr.get_node_hash(pos).ok_or(MerkleProofError::HashNotFound(pos))?;
-        let mmr_size = mmr.len();
+        mmr.get_node_hash(pos)?.ok_or(MerkleProofError::HashNotFound(pos))?;
+        let mmr_size = mmr.len()?;
         let family_branch = family_branch(pos, mmr_size);
 
         // Construct a vector of sibling hashes from the candidate node's position to the local peak
         let path = family_branch
             .iter()
             .map(|(_, sibling)| {
-                mmr.get_node_hash(*sibling)
+                mmr.get_node_hash(*sibling)?
                     .map(|v| v.clone())
                     .ok_or(MerkleProofError::HashNotFound(*sibling))
             })
@@ -151,7 +153,7 @@ impl MerkleProof {
         for peak_index in peaks {
             if peak_index != peak_pos {
                 let hash = mmr
-                    .get_node_hash(peak_index)
+                    .get_node_hash(peak_index)?
                     .ok_or(MerkleProofError::HashNotFound(peak_index))?
                     .clone();
                 peak_hashes.push(hash);

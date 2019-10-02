@@ -45,9 +45,9 @@ fn zero_size_mmr() {
 fn merkle_proof_small_mmrs() {
     for size in 1..32 {
         let mmr = create_mmr(size);
-        let root = mmr.get_merkle_root();
+        let root = mmr.get_merkle_root().unwrap();
         let mut hash_value = 0usize;
-        for pos in 0..mmr.len() {
+        for pos in 0..mmr.len().unwrap() {
             if is_leaf(pos) {
                 let hash = int_to_hash(hash_value);
                 hash_value += 1;
@@ -64,7 +64,7 @@ fn merkle_proof_small_mmrs() {
 fn med_mmr() {
     let size = 500;
     let mmr = create_mmr(size);
-    let root = mmr.get_merkle_root();
+    let root = mmr.get_merkle_root().unwrap();
     let i = 499;
     let pos = leaf_index(i);
     let hash = int_to_hash(i);
@@ -77,7 +77,7 @@ fn a_big_proof() {
     let mmr = create_mmr(100_000);
     let leaf_pos = 28_543;
     let mmr_index = leaf_index(leaf_pos);
-    let root = mmr.get_merkle_root();
+    let root = mmr.get_merkle_root().unwrap();
     let hash = int_to_hash(leaf_pos);
     let proof = MerkleProof::for_node(&mmr, mmr_index).unwrap();
     assert!(proof.verify::<Hasher>(&root, &hash, mmr_index).is_ok())
@@ -86,7 +86,7 @@ fn a_big_proof() {
 #[test]
 fn for_leaf_node() {
     let mmr = create_mmr(100);
-    let root = mmr.get_merkle_root();
+    let root = mmr.get_merkle_root().unwrap();
     let leaf_pos = 28;
     let hash = int_to_hash(leaf_pos);
     let proof = MerkleProof::for_leaf_node(&mmr, leaf_pos).unwrap();

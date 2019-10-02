@@ -95,8 +95,10 @@ where
     }
 
     /// Return the number of Checkpoints this change tracker has recorded
-    pub fn checkpoint_count(&self) -> usize {
-        self.checkpoints.len()
+    pub fn checkpoint_count(&self) -> Result<usize, MerkleMountainRangeError> {
+        self.checkpoints
+            .len()
+            .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))
     }
 
     /// Push the given hash into the MMR and update the current change-set
@@ -108,7 +110,7 @@ where
 
     /// Discards the current change-set and resets the MMR state to that of the last checkpoint
     pub fn reset(&mut self) -> Result<(), MerkleMountainRangeError> {
-        self.replay(self.checkpoint_count())
+        self.replay(self.checkpoint_count()?)
     }
 
     /// Mark a node for deletion and optionally compress the deletion bitmap. See [MutableMmr::delete_and_compress]
@@ -172,7 +174,7 @@ where
     /// x
     /// ```
     pub fn rewind(&mut self, steps_back: usize) -> Result<(), MerkleMountainRangeError> {
-        self.replay(self.checkpoint_count() - steps_back)
+        self.replay(self.checkpoint_count()? - steps_back)
     }
 
     /// Rewinds the MMR back to the state of the base MMR; essentially discarding all the history accumulated to date.
@@ -211,7 +213,11 @@ where
     }
 
     pub fn get_checkpoint(&self, index: usize) -> Result<MerkleCheckPoint, MerkleMountainRangeError> {
-        match self.checkpoints.get(index) {
+        match self
+            .checkpoints
+            .get(index)
+            .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))?
+        {
             None => Err(MerkleMountainRangeError::OutOfRange),
             Some(cp) => Ok(cp.clone()),
         }

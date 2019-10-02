@@ -92,9 +92,9 @@ fn create_mmr() -> MerkleMountainRange<Blake2b, Vec<Vec<u8>>> {
 fn check_mmr_hashes() {
     let mmr = create_mmr();
     let hashes = hash_values();
-    assert_eq!(mmr.len(), 42);
+    assert_eq!(mmr.len(), Ok(42));
     for i in 0..42 {
-        let hash = mmr.get_node_hash(i).unwrap();
+        let hash = mmr.get_node_hash(i).unwrap().unwrap();
         assert_eq!(hash.to_hex(), hashes[i]);
     }
 }

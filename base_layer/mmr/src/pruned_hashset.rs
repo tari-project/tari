@@ -53,11 +53,11 @@ where
     type Error = MerkleMountainRangeError;
 
     fn try_from(base_mmr: &MerkleMountainRange<D, B>) -> Result<Self, Self::Error> {
-        let base_offset = base_mmr.len();
+        let base_offset = base_mmr.len()?;
         let peak_indices = find_peaks(base_offset);
         let peak_hashes = peak_indices
             .iter()
-            .map(|i| match base_mmr.get_node_hash(*i) {
+            .map(|i| match base_mmr.get_node_hash(*i)? {
                 Some(h) => Ok(h.clone()),
                 None => Err(MerkleMountainRangeError::HashNotFound(*i)),
             })
@@ -76,28 +76,29 @@ impl ArrayLike for PrunedHashSet {
     type Value = Hash;
 
     #[inline(always)]
-    fn len(&self) -> usize {
-        self.base_offset + self.hashes.len()
+    fn len(&self) -> Result<usize, Self::Error> {
+        Ok(self.base_offset + self.hashes.len())
     }
 
     fn push(&mut self, item: Self::Value) -> Result<usize, Self::Error> {
         self.hashes.push(item);
-        Ok(self.len() - 1)
+        Ok(self.len()? - 1)
     }
 
-    fn get(&self, index: usize) -> Option<Self::Value> {
+    fn get(&self, index: usize) -> Result<Option<Self::Value>, Self::Error> {
         // If the index is from before we started adding hashes, we can return the hash *if and only if* it is a peak
         if index < self.base_offset {
-            return match self.peak_indices.binary_search(&index) {
+            return Ok(match self.peak_indices.binary_search(&index) {
                 Ok(nth_peak) => Some(self.peak_hashes[nth_peak].clone()),
                 Err(_) => None,
-            };
+            });
         }
-        self.hashes.get(index - self.base_offset).map(|v| v.clone())
+        Ok(self.hashes.get(index - self.base_offset)?.map(|v| v.clone()))
     }
 
     fn get_or_panic(&self, index: usize) -> Self::Value {
         self.get(index)
+            .unwrap()
             .expect("PrunedHashSet only tracks peaks before the offset")
             .clone()
     }

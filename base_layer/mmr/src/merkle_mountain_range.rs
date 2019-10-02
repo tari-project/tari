@@ -61,51 +61,59 @@ where
 
     /// Return the number of nodes in the full Merkle Mountain range, excluding bagged hashes
     #[inline(always)]
-    pub fn len(&self) -> usize {
-        self.hashes.len()
+    pub fn len(&self) -> Result<usize, MerkleMountainRangeError> {
+        self.hashes
+            .len()
+            .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))
     }
 
     /// Returns true if the MMR contains no hashes
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
+    pub fn is_empty(&self) -> Result<bool, MerkleMountainRangeError> {
+        Ok(self.len()? == 0)
     }
 
     /// This function returns the hash of the node index provided indexed from 0
-    pub fn get_node_hash(&self, node_index: usize) -> Option<Hash> {
-        self.hashes.get(node_index)
+    pub fn get_node_hash(&self, node_index: usize) -> Result<Option<Hash>, MerkleMountainRangeError> {
+        self.hashes
+            .get(node_index)
+            .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))
     }
 
     /// This function returns the hash of the leaf index provided, indexed from 0
-    pub fn get_leaf_hash(&self, leaf_node_index: usize) -> Option<Hash> {
+    pub fn get_leaf_hash(&self, leaf_node_index: usize) -> Result<Option<Hash>, MerkleMountainRangeError> {
         self.get_node_hash(leaf_index(leaf_node_index))
     }
 
     /// This function will return the single merkle root of the MMR by simply hashing the peaks together.
     ///
     /// Note that this differs from the bagging strategy used in other MMR implementations, and saves you a few hashes
-    pub fn get_merkle_root(&self) -> Hash {
-        if self.is_empty() {
-            return MerkleMountainRange::<D, B>::null_hash();
+    pub fn get_merkle_root(&self) -> Result<Hash, MerkleMountainRangeError> {
+        if self.is_empty()? {
+            return Ok(MerkleMountainRange::<D, B>::null_hash());
         }
         let hasher = D::new();
-        self.hash_to_root(hasher).result().to_vec()
+        Ok(self.hash_to_root(hasher)?.result().to_vec())
     }
 
-    pub(crate) fn hash_to_root(&self, hasher: D) -> D {
-        let peaks = find_peaks(self.hashes.len());
-        peaks
+    pub(crate) fn hash_to_root(&self, hasher: D) -> Result<D, MerkleMountainRangeError> {
+        let peaks = find_peaks(
+            self.hashes
+                .len()
+                .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))?,
+        );
+        Ok(peaks
             .into_iter()
             .map(|i| self.hashes.get_or_panic(i))
-            .fold(hasher, |hasher, h| hasher.chain(h))
+            .fold(hasher, |hasher, h| hasher.chain(h)))
     }
 
     /// Push a new element into the MMR. Computes new related peaks at the same time if applicable.
     /// Returns the new length of the merkle mountain range (the number of all nodes, not just leaf nodes).
     pub fn push(&mut self, hash: &Hash) -> Result<usize, MerkleMountainRangeError> {
-        if self.is_empty() {
+        if self.is_empty()? {
             return self.push_hash(hash.clone());
         }
-        let mut pos = self.len();
+        let mut pos = self.len()?;
         let (peak_map, height) = peak_map_height(pos);
         if height != 0 {
             return Err(MerkleMountainRangeError::CorruptDataStructure);
@@ -118,7 +126,11 @@ where
             let left_hash = &self.hashes.get_or_panic(left_sibling);
             peak *= 2;
             pos += 1;
-            let last_hash = &self.hashes.get_or_panic(self.hashes.len() - 1);
+            let hash_count = self
+                .hashes
+                .len()
+                .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))?;
+            let last_hash = &self.hashes.get_or_panic(hash_count - 1);
             let new_hash = hash_together::<D>(left_hash, last_hash);
             self.push_hash(new_hash)?;
         }
@@ -128,19 +140,22 @@ where
     /// Walks the nodes in the MMR and revalidates all parent hashes
     pub fn validate(&self) -> Result<(), MerkleMountainRangeError> {
         // iterate on all parent nodes
-        for n in 0..self.len() {
+        for n in 0..self
+            .len()
+            .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))?
+        {
             let height = bintree_height(n);
             if height > 0 {
                 let hash = self
-                    .get_node_hash(n)
+                    .get_node_hash(n)?
                     .ok_or(MerkleMountainRangeError::CorruptDataStructure)?;
                 let left_pos = n - (1 << height);
                 let right_pos = n - 1;
                 let left_child_hash = self
-                    .get_node_hash(left_pos)
+                    .get_node_hash(left_pos)?
                     .ok_or(MerkleMountainRangeError::CorruptDataStructure)?;
                 let right_child_hash = self
-                    .get_node_hash(right_pos)
+                    .get_node_hash(right_pos)?
                     .ok_or(MerkleMountainRangeError::CorruptDataStructure)?;
                 // hash the two child nodes together with parent_pos and compare
                 let hash_check = hash_together::<D>(&left_child_hash, &right_child_hash);
@@ -155,13 +170,17 @@ where
     /// Search for a given hash in the leaf node array. This is a very slow function, being O(n). In general, it's
     /// better to cache the index of the hash when storing it rather than using this function, but it's here for
     /// completeness. The index that is returned is the index of the _leaf node_, and not the MMR node index.
-    pub fn find_leaf_node(&self, hash: &Hash) -> Option<usize> {
-        for i in 0..self.hashes.len() {
+    pub fn find_leaf_node(&self, hash: &Hash) -> Result<Option<usize>, MerkleMountainRangeError> {
+        for i in 0..self
+            .hashes
+            .len()
+            .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))?
+        {
             if *hash == self.hashes.get_or_panic(i) {
-                return Some(i);
+                return Ok(Some(i));
             }
         }
-        None
+        Ok(None)
     }
 
     pub(crate) fn null_hash() -> Hash {
@@ -171,7 +190,7 @@ where
     fn push_hash(&mut self, hash: Hash) -> Result<usize, MerkleMountainRangeError> {
         self.hashes.push(hash).map_err(|e| {
             error!(target: LOG_TARGET, "{:?}", e);
-            MerkleMountainRangeError::BackendPushError
+            MerkleMountainRangeError::BackendError(e.to_string())
         })
     }
 }
