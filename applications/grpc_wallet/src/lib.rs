@@ -20,5 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod grpc_interface;
-pub mod wallet_server;
+// TODO Reintroduce the FFI once the comms stack and wallet is stable
+// pub mod grpc_interface;
+// pub mod wallet_server;

@@ -25,7 +25,9 @@ use diesel::result::{ConnectionError as DieselConnectionError, Error as DieselEr
 use tari_comms::{builder::CommsError, connection::NetAddressError, message::MessageError};
 use tari_comms_dht::outbound::DhtOutboundError;
 use tari_p2p::sync_services::ServiceError;
+use tari_service_framework::reply_channel::TransportChannelError;
 use tari_utilities::{hex::HexError, message_format::MessageFormatError};
+use tokio_executor::threadpool::BlockingError;
 
 #[derive(Debug, Error)]
 pub enum TextMessageError {
@@ -36,8 +38,13 @@ pub enum TextMessageError {
     CommsServicesError(CommsError),
     HexError(HexError),
     DatabaseError(DieselError),
+    TransportChannelError(TransportChannelError),
+    #[error(msg_embedded, no_from, non_std)]
+    DatabaseMigrationError(String),
     NetAddressError(NetAddressError),
     DatabaseConnectionError(DieselConnectionError),
+    BlockingError(BlockingError),
+    R2d2Error,
     /// If a received TextMessageAck doesn't matching any pending messages
     MessageNotFound,
     /// Failed to send from API

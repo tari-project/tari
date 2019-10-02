@@ -29,7 +29,14 @@ use crate::{
     types::HashDigest,
 };
 
-use diesel::{dsl::count, prelude::*, query_dsl::RunQueryDsl, result::Error as DieselError, SqliteConnection};
+use diesel::{
+    dsl::count,
+    prelude::*,
+    query_dsl::RunQueryDsl,
+    r2d2::{ConnectionManager, PooledConnection},
+    result::Error as DieselError,
+    SqliteConnection,
+};
 use digest::Digest;
 use serde::{Deserialize, Serialize};
 use std::{cmp::Ordering, convert::TryFrom};
@@ -112,14 +119,18 @@ impl SentTextMessage {
         }
     }
 
-    pub fn commit(&self, conn: &SqliteConnection) -> Result<(), TextMessageError> {
+    pub fn commit(&self, conn: &PooledConnection<ConnectionManager<SqliteConnection>>) -> Result<(), TextMessageError> {
         diesel::insert_into(sent_messages::table)
             .values(SentTextMessageSql::from(self.clone()))
             .execute(conn)?;
         Ok(())
     }
 
-    pub fn find(id: &Vec<u8>, conn: &SqliteConnection) -> Result<SentTextMessage, TextMessageError> {
+    pub fn find(
+        id: &Vec<u8>,
+        conn: &PooledConnection<ConnectionManager<SqliteConnection>>,
+    ) -> Result<SentTextMessage, TextMessageError>
+    {
         SentTextMessage::try_from(
             sent_messages::table
                 .filter(sent_messages::id.eq(id.to_hex()))
@@ -129,7 +140,7 @@ impl SentTextMessage {
 
     pub fn find_by_dest_pub_key(
         dest_pub_key: &CommsPublicKey,
-        conn: &SqliteConnection,
+        conn: &PooledConnection<ConnectionManager<SqliteConnection>>,
     ) -> Result<Vec<SentTextMessage>, TextMessageError>
     {
         let messages = sent_messages::table
@@ -145,7 +156,9 @@ impl SentTextMessage {
         Ok(result)
     }
 
-    pub fn index(conn: &SqliteConnection) -> Result<Vec<SentTextMessage>, TextMessageError> {
+    pub fn index(
+        conn: &PooledConnection<ConnectionManager<SqliteConnection>>,
+    ) -> Result<Vec<SentTextMessage>, TextMessageError> {
         let messages = sent_messages::table.load::<SentTextMessageSql>(conn)?;
         let mut result: Vec<SentTextMessage> = Vec::new();
 
@@ -158,7 +171,7 @@ impl SentTextMessage {
 
     pub fn count_by_dest_pub_key(
         dest_pub_key: &CommsPublicKey,
-        conn: &SqliteConnection,
+        conn: &PooledConnection<ConnectionManager<SqliteConnection>>,
     ) -> Result<i64, TextMessageError>
     {
         Ok(sent_messages::table
@@ -167,7 +180,11 @@ impl SentTextMessage {
             .first(conn)?)
     }
 
-    pub fn mark_sent_message_ack(id: Vec<u8>, conn: &SqliteConnection) -> Result<(), TextMessageError> {
+    pub fn mark_sent_message_ack(
+        id: &Vec<u8>,
+        conn: &PooledConnection<ConnectionManager<SqliteConnection>>,
+    ) -> Result<(), TextMessageError>
+    {
         let num_updated = diesel::update(sent_messages::table.filter(sent_messages::id.eq(&id.to_hex())))
             .set(UpdateAckSentTextMessage {
                 acknowledged: Some(1i32),
@@ -181,7 +198,11 @@ impl SentTextMessage {
         Ok(())
     }
 
-    pub fn mark_sent_message_opened(id: Vec<u8>, conn: &SqliteConnection) -> Result<(), TextMessageError> {
+    pub fn mark_sent_message_opened(
+        id: Vec<u8>,
+        conn: &PooledConnection<ConnectionManager<SqliteConnection>>,
+    ) -> Result<(), TextMessageError>
+    {
         let num_updated = diesel::update(sent_messages::table.filter(sent_messages::id.eq(&id.to_hex())))
             .set(UpdateOpenedSentTextMessage { is_read: Some(1i32) })
             .execute(conn)?;
@@ -261,14 +282,16 @@ struct ReceivedTextMessageSql {
 
 impl ReceivedTextMessage {
     // Does not require new as these will only ever be received
-    pub fn commit(&self, conn: &SqliteConnection) -> Result<(), TextMessageError> {
+    pub fn commit(&self, conn: &PooledConnection<ConnectionManager<SqliteConnection>>) -> Result<(), TextMessageError> {
         diesel::insert_into(received_messages::table)
             .values(ReceivedTextMessageSql::from(self.clone()))
             .execute(conn)?;
         Ok(())
     }
 
-    pub fn index(conn: &SqliteConnection) -> Result<Vec<ReceivedTextMessage>, TextMessageError> {
+    pub fn index(
+        conn: &PooledConnection<ConnectionManager<SqliteConnection>>,
+    ) -> Result<Vec<ReceivedTextMessage>, TextMessageError> {
         let messages = received_messages::table.load::<ReceivedTextMessageSql>(conn)?;
         let mut result: Vec<ReceivedTextMessage> = Vec::new();
 
@@ -279,7 +302,11 @@ impl ReceivedTextMessage {
         Ok(result)
     }
 
-    pub fn find(id: &Vec<u8>, conn: &SqliteConnection) -> Result<ReceivedTextMessage, TextMessageError> {
+    pub fn find(
+        id: &Vec<u8>,
+        conn: &PooledConnection<ConnectionManager<SqliteConnection>>,
+    ) -> Result<ReceivedTextMessage, TextMessageError>
+    {
         ReceivedTextMessage::try_from(
             received_messages::table
                 .filter(received_messages::id.eq(id))
@@ -289,7 +316,7 @@ impl ReceivedTextMessage {
 
     pub fn find_by_source_pub_key(
         source_pub_key: &CommsPublicKey,
-        conn: &SqliteConnection,
+        conn: &PooledConnection<ConnectionManager<SqliteConnection>>,
     ) -> Result<Vec<ReceivedTextMessage>, TextMessageError>
     {
         let messages = received_messages::table
@@ -412,14 +439,16 @@ impl Contact {
         }
     }
 
-    pub fn commit(&self, conn: &SqliteConnection) -> Result<(), TextMessageError> {
+    pub fn commit(&self, conn: &PooledConnection<ConnectionManager<SqliteConnection>>) -> Result<(), TextMessageError> {
         diesel::insert_into(contacts::table)
             .values(ContactSql::from(self.clone()))
             .execute(conn)?;
         Ok(())
     }
 
-    pub fn index(conn: &SqliteConnection) -> Result<Vec<Contact>, TextMessageError> {
+    pub fn index(
+        conn: &PooledConnection<ConnectionManager<SqliteConnection>>,
+    ) -> Result<Vec<Contact>, TextMessageError> {
         let contacts = contacts::table.load::<ContactSql>(conn)?;
         let mut result: Vec<Contact> = Vec::new();
 
@@ -430,7 +459,11 @@ impl Contact {
         Ok(result)
     }
 
-    pub fn find(pub_key: &CommsPublicKey, conn: &SqliteConnection) -> Result<Contact, TextMessageError> {
+    pub fn find(
+        pub_key: &CommsPublicKey,
+        conn: &PooledConnection<ConnectionManager<SqliteConnection>>,
+    ) -> Result<Contact, TextMessageError>
+    {
         Ok(Contact::try_from(
             contacts::table
                 .filter(contacts::pub_key.eq(pub_key.to_hex()))
@@ -438,7 +471,12 @@ impl Contact {
         )?)
     }
 
-    pub fn update(self, updated_contact: UpdateContact, conn: &SqliteConnection) -> Result<Contact, TextMessageError> {
+    pub fn update(
+        &self,
+        updated_contact: UpdateContact,
+        conn: &PooledConnection<ConnectionManager<SqliteConnection>>,
+    ) -> Result<Contact, TextMessageError>
+    {
         let num_updated = diesel::update(contacts::table.filter(contacts::pub_key.eq(&self.pub_key.to_hex())))
             .set(UpdateContactSql::from(updated_contact))
             .execute(conn)?;
@@ -450,7 +488,7 @@ impl Contact {
         Ok(Contact::find(&self.pub_key, conn)?)
     }
 
-    pub fn delete(self, conn: &SqliteConnection) -> Result<(), TextMessageError> {
+    pub fn delete(&self, conn: &PooledConnection<ConnectionManager<SqliteConnection>>) -> Result<(), TextMessageError> {
         let num_deleted =
             diesel::delete(contacts::table.filter(contacts::pub_key.eq(&self.pub_key.to_hex()))).execute(conn)?;
         if num_deleted == 0 {
@@ -525,7 +563,7 @@ impl TextMessageSettings {
         TextMessageSettings { screen_name, pub_key }
     }
 
-    pub fn commit(&self, conn: &SqliteConnection) -> Result<(), TextMessageError> {
+    pub fn commit(&self, conn: &PooledConnection<ConnectionManager<SqliteConnection>>) -> Result<(), TextMessageError> {
         conn.transaction::<_, DieselError, _>(|| {
             // There should only be one row in this table (until we support revisions) so first clean out the table
             diesel::delete(settings::table).execute(conn)?;
@@ -541,7 +579,9 @@ impl TextMessageSettings {
         Ok(())
     }
 
-    pub fn read(conn: &SqliteConnection) -> Result<TextMessageSettings, TextMessageError> {
+    pub fn read(
+        conn: &PooledConnection<ConnectionManager<SqliteConnection>>,
+    ) -> Result<TextMessageSettings, TextMessageError> {
         let read_settings = settings::table.load::<TextMessageSettingsSql>(conn)?;
 
         let mut result: Vec<TextMessageSettings> = Vec::new();
@@ -580,12 +620,7 @@ impl TryFrom<TextMessageSettingsSql> for TextMessageSettings {
 
 #[cfg(test)]
 mod test {
-    use crate::text_message_service::{
-        model::{SentTextMessage, TextMessageSettings},
-        Contact,
-        ReceivedTextMessage,
-        UpdateContact,
-    };
+    use super::*;
     use chrono::Utc;
     use diesel::{Connection, SqliteConnection};
     use std::path::PathBuf;
@@ -625,10 +660,14 @@ mod test {
 
         embed_migrations!("./migrations");
         let conn = SqliteConnection::establish(&db_path).unwrap_or_else(|_| panic!("Error connecting to {}", db_path));
-        conn.execute("PRAGMA foreign_keys = ON").unwrap();
 
         embedded_migrations::run_with_output(&conn, &mut std::io::stdout()).expect("Migration failed");
 
+        let manager = ConnectionManager::<SqliteConnection>::new(db_path);
+        let pool = diesel::r2d2::Pool::builder().max_size(1).build(manager).unwrap();
+
+        let conn = pool.get().unwrap();
+        conn.execute("PRAGMA foreign_keys = ON").unwrap();
         let _settings1 = TextMessageSettings::new("Bob".to_string(), public_key1.clone()).commit(&conn);
         let read_settings1 = TextMessageSettings::read(&conn).unwrap();
         assert_eq!(read_settings1.screen_name, "Bob".to_string());
@@ -704,8 +743,8 @@ mod test {
         let count = SentTextMessage::count_by_dest_pub_key(&public_key3.clone(), &conn).unwrap();
         assert_eq!(count, 2);
 
-        assert!(SentTextMessage::mark_sent_message_ack(vec![2u8; 32], &conn).is_err());
-        SentTextMessage::mark_sent_message_ack(sent_msg1.id.clone(), &conn).unwrap();
+        assert!(SentTextMessage::mark_sent_message_ack(&vec![2u8; 32], &conn).is_err());
+        SentTextMessage::mark_sent_message_ack(&sent_msg1.id.clone(), &conn).unwrap();
         let find3 = SentTextMessage::find(&sent_msg1.id, &conn).unwrap();
         assert!(find3.acknowledged);
 

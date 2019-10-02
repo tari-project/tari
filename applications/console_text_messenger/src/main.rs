@@ -43,7 +43,7 @@ use tari_crypto::keys::PublicKey;
 use tari_p2p::{initialization::CommsConfig, sync_services::ServiceError};
 use tari_utilities::{hex::Hex, message_format::MessageFormat};
 use tari_wallet::{
-    text_message_service::{Contact, ReceivedTextMessage},
+    text_message_service_sync::{Contact, ReceivedTextMessage},
     wallet::WalletConfig,
     Wallet,
 };

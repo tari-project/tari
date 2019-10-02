@@ -20,6 +20,49 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod comms_outbound;
-pub mod liveness;
-pub mod utils;
+use crate::{comms_connector::PeerMessage, domain_message::DomainMessage, tari_message::TariMessageType};
+use std::{fmt::Debug, sync::Arc};
+use tari_comms::message::{InboundMessage, MessageError};
+use tari_utilities::message_format::{MessageFormat, MessageFormatError};
+
+const LOG_TARGET: &'static str = "base_layer::p2p::services";
+
+/// For use with `StreamExt::filter_map`. Log and filter any errors.
+pub async fn ok_or_skip_result<T, E>(res: Result<T, E>) -> Option<T>
+where E: Debug {
+    match res {
+        Ok(t) => Some(t),
+        Err(err) => {
+            tracing::error!(target: LOG_TARGET, "{:?}", err);
+            None
+        },
+    }
+}
+
+pub fn map_deserialized<T>(
+    serialized: Arc<PeerMessage<TariMessageType>>,
+) -> Result<DomainMessage<T>, MessageFormatError>
+where T: MessageFormat {
+    Ok(DomainMessage {
+        source_peer: serialized.source_peer.clone(),
+        // TODO: origin_pubkey should be used when the DHT middleware is hooked up
+        origin_pubkey: serialized.comms_header.message_public_key.clone(),
+        inner: serialized.deserialize_message()?,
+    })
+}
+
+#[cfg(test)]
+mod test {
+    use futures::executor::block_on;
+
+    #[test]
+    fn ok_or_skip_result() {
+        block_on(async {
+            let res = Result::<_, ()>::Ok(());
+            assert_eq!(super::ok_or_skip_result(res).await.unwrap(), ());
+
+            let res = Result::<(), _>::Err(());
+            assert!(super::ok_or_skip_result(res).await.is_none());
+        });
+    }
+}

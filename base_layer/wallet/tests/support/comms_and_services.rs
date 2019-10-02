@@ -20,40 +20,56 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{sync::Arc, time::Duration};
+use crate::support::utils::random_string;
+use futures::Sink;
+use std::{error::Error, sync::Arc, time::Duration};
 use tari_comms::{
     builder::CommsNode,
-    connection_manager::PeerConnectionConfig,
     control_service::ControlServiceConfig,
     peer_manager::{NodeIdentity, Peer},
-    CommsBuilder,
 };
-use tari_storage::{lmdb_store::LMDBDatabase, LMDBWrapper};
+use tari_comms_dht::Dht;
+use tari_p2p::{
+    comms_connector::{InboundDomainConnector, PeerMessage},
+    initialization::{initialize_comms, CommsConfig},
+    tari_message::TariMessageType,
+};
+use tempdir::TempDir;
 use tokio::runtime::TaskExecutor;
 
-pub fn setup_comms_services(
+pub fn setup_comms_services<TSink>(
     executor: TaskExecutor,
     node_identity: Arc<NodeIdentity>,
     peers: Vec<NodeIdentity>,
-    peer_database: LMDBDatabase,
-) -> CommsNode
+    publisher: InboundDomainConnector<TariMessageType, TSink>,
+) -> (Arc<CommsNode>, Dht)
+where
+    TSink: Sink<Arc<PeerMessage<TariMessageType>>> + Clone + Unpin + Send + 'static,
+    TSink::Error: Error + Send,
 {
-    let peer_database = LMDBWrapper::new(Arc::new(peer_database));
-    let comms = CommsBuilder::new(executor)
-        .with_node_identity(node_identity.clone())
-        .with_peer_storage(peer_database)
-        .configure_peer_connections(PeerConnectionConfig {
-            host: "127.0.0.1".parse().unwrap(),
-            ..Default::default()
-        })
-        .configure_control_service(ControlServiceConfig {
-            socks_proxy_address: None,
+    let comms_config = CommsConfig {
+        node_identity: Arc::clone(&node_identity),
+        host: "127.0.0.1".parse().unwrap(),
+        socks_proxy_address: None,
+        control_service: ControlServiceConfig {
             listener_address: node_identity.control_service_address(),
-            requested_connection_timeout: Duration::from_millis(5000),
-        })
-        .build()
-        .unwrap()
-        .start()
+            socks_proxy_address: None,
+            requested_connection_timeout: Duration::from_millis(2000),
+        },
+        datastore_path: TempDir::new(random_string(8).as_str())
+            .unwrap()
+            .path()
+            .to_str()
+            .unwrap()
+            .to_string(),
+        peer_database_name: random_string(8),
+        inbound_buffer_size: 10,
+        outbound_buffer_size: 10,
+        dht: Default::default(),
+    };
+
+    let (comms, dht) = initialize_comms(executor, comms_config, publisher)
+        .map(|(comms, dht)| (Arc::new(comms), dht))
         .unwrap();
 
     for p in peers {
@@ -65,5 +81,5 @@ pub fn setup_comms_services(
             .unwrap();
     }
 
-    comms
+    (comms, dht)
 }

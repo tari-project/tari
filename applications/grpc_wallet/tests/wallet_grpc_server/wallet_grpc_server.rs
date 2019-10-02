@@ -46,7 +46,7 @@ use tari_grpc_wallet::{
 };
 use tari_p2p::initialization::CommsConfig;
 use tari_utilities::hex::Hex;
-use tari_wallet::{text_message_service::Contact, wallet::WalletConfig, Wallet};
+use tari_wallet::{text_message_service_sync::Contact, wallet::WalletConfig, Wallet};
 use tempdir::TempDir;
 use tower_grpc::Request;
 use tower_hyper::{client, util};

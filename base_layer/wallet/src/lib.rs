@@ -1,4 +1,6 @@
+#![recursion_limit = "256"]
 #![feature(drain_filter)]
+#![feature(type_alias_impl_trait)]
 
 #[macro_use]
 extern crate diesel;
