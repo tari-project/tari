@@ -26,14 +26,14 @@
 use crate::{
     blocks::aggregated_body::AggregateBody,
     tari_amount::MicroTari,
-    types::{BlindingFactor, Commitment, CommitmentFactory, Signature},
+    types::{BlindingFactor, Commitment, CommitmentFactory, MessageHash, Signature},
 };
 
 use crate::{
     consensus::ConsensusRules,
     fee::Fee,
     transaction_protocol::{build_challenge, TransactionMetadata},
-    types::{HashDigest, RangeProof, RangeProofService},
+    types::{HashDigest, HashOutput, RangeProof, RangeProofService},
 };
 use derive_error::Error;
 use digest::Input;
@@ -368,6 +368,11 @@ pub struct TransactionKernel {
     /// This kernel is not valid earlier than lock_height blocks
     /// The max lock_height of all *inputs* to this transaction
     pub lock_height: u64,
+    /// This is an optional field used by committing to additional tx meta data between the two parties
+    pub meta_info: Option<HashOutput>,
+    /// This is an optional field and is the hash of the kernel this kernel is linked to.
+    /// This field is for example for relative time-locked transactions
+    pub linked_kernel: Option<HashOutput>,
     /// Remainder of the sum of all transaction commitments. If the transaction
     /// is well formed, amounts components should sum to zero and the excess
     /// is hence a valid public key.
@@ -382,6 +387,8 @@ pub struct KernelBuilder {
     features: KernelFeatures,
     fee: MicroTari,
     lock_height: u64,
+    meta_info: Option<MessageHash>,
+    linked_kernel: Option<MessageHash>,
     excess: Option<Commitment>,
     excess_sig: Option<Signature>,
 }
@@ -423,6 +430,16 @@ impl KernelBuilder {
         self
     }
 
+    pub fn with_linked_kernel(mut self, linked_kernel_hash: MessageHash) -> KernelBuilder {
+        self.linked_kernel = Some(linked_kernel_hash);
+        self
+    }
+
+    pub fn with_meta_info(mut self, meta_info: MessageHash) -> KernelBuilder {
+        self.meta_info = Some(meta_info);
+        self
+    }
+
     pub fn build(self) -> Result<TransactionKernel, TransactionError> {
         if self.excess.is_none() || self.excess_sig.is_none() {
             return Err(TransactionError::NoSignatureError);
@@ -431,6 +448,8 @@ impl KernelBuilder {
             features: self.features,
             fee: self.fee,
             lock_height: self.lock_height,
+            linked_kernel: self.linked_kernel,
+            meta_info: self.meta_info,
             excess: self.excess.unwrap(),
             excess_sig: self.excess_sig.unwrap(),
         })
@@ -443,6 +462,8 @@ impl Default for KernelBuilder {
             features: KernelFeatures::empty(),
             fee: MicroTari::from(0),
             lock_height: 0,
+            linked_kernel: None,
+            meta_info: None,
             excess: None,
             excess_sig: None,
         }
@@ -477,6 +498,8 @@ impl Hashable for TransactionKernel {
             .chain(self.excess.as_bytes())
             .chain(self.excess_sig.get_public_nonce().as_bytes())
             .chain(self.excess_sig.get_signature().as_bytes())
+            .chain(self.meta_info.as_ref().unwrap_or(&vec![0]))
+            .chain(self.linked_kernel.as_ref().unwrap_or(&vec![0]))
             .result()
             .to_vec()
     }
@@ -485,14 +508,23 @@ impl Hashable for TransactionKernel {
 impl Display for TransactionKernel {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         let msg = format!(
-            "Fee: {}\nLock height: {}\nFeatures: {:?}\nExcess: {}\nExcess signature: {}\n",
+            "Fee: {}\nLock height: {}\nFeatures: {:?}\nExcess: {}\nExcess signature: {}\nMeta_info: \
+             {}\nLinked_kernel: {}\n",
             self.fee,
             self.lock_height,
             self.features,
             self.excess.to_hex(),
             self.excess_sig
                 .to_json()
-                .unwrap_or("Failed to serialize signature".into())
+                .unwrap_or("Failed to serialize signature".into()),
+            match &self.meta_info {
+                None => "None".to_string(),
+                Some(v) => v.to_hex(),
+            },
+            match &self.linked_kernel {
+                None => "None".to_string(),
+                Some(v) => v.to_hex(),
+            },
         );
         fmt.write_str(&msg)
     }
@@ -662,7 +694,7 @@ mod test {
     use super::*;
     use crate::{
         transaction::OutputFeatures,
-        types::{BlindingFactor, PrivateKey, RangeProof},
+        types::{BlindingFactor, PrivateKey, PublicKey, RangeProof},
     };
     use rand;
     use tari_crypto::{
@@ -717,5 +749,47 @@ mod test {
         let proof = prover.construct_proof(&k2, 2u64.pow(32) + 1).unwrap();
         let tx_output3 = TransactionOutput::new(OutputFeatures::default(), c, RangeProof::from_bytes(&proof).unwrap());
         assert_eq!(tx_output3.verify_range_proof(&prover).unwrap(), false);
+    }
+
+    #[test]
+    fn kernel_hash() {
+        let s = PrivateKey::from_hex("6c6eebc5a9c02e1f3c16a69ba4331f9f63d0718401dea10adc4f9d3b879a2c09").unwrap();
+        let r = PublicKey::from_hex("28e8efe4e5576aac931d358d0f6ace43c55fa9d4186d1d259d1436caa876d43b").unwrap();
+        let sig = Signature::new(r, s);
+        let excess = Commitment::from_hex("9017be5092b85856ce71061cadeb20c2d1fabdf664c4b3f082bf44cf5065e650").unwrap();
+        let k = KernelBuilder::new()
+            .with_signature(&sig)
+            .with_fee(100.into())
+            .with_excess(&excess)
+            .with_lock_height(500)
+            .build()
+            .unwrap();
+        assert_eq!(
+            &k.hash().to_hex(),
+            "4471024385680c8bfa36979c588a0e06d3c3af3dd9ecff57540e01c18445f4e7"
+        );
+    }
+
+    #[test]
+    fn kernel_metadata() {
+        let s = PrivateKey::from_hex("df9a004360b1cf6488d8ff7fb625bc5877f4b013f9b2b20d84932172e605b207").unwrap();
+        let r = PublicKey::from_hex("5c6bfaceaa1c83fa4482a816b5f82ca3975cb9b61b6e8be4ee8f01c5f1bee561").unwrap();
+        let sig = Signature::new(r, s);
+        let excess = Commitment::from_hex("e0bd3f743b566272277c357075b0584fc840d79efac49e9b3b6dbaa8a351bc0c").unwrap();
+        let linked_kernel = Vec::from_hex("e605e109a5723053181e22e9a14cb9a9981dc8a2368d5aa3d09d9261e340e928").unwrap();
+        let meta = Vec::from_hex("c45d3f7903471c55e0fe77f644c1ed9b87151b50c0394f806187138eb36a4200").unwrap();
+        let k = KernelBuilder::new()
+            .with_signature(&sig)
+            .with_fee(100.into())
+            .with_excess(&excess)
+            .with_linked_kernel(linked_kernel)
+            .with_meta_info(meta)
+            .with_lock_height(500)
+            .build()
+            .unwrap();
+        assert_eq!(
+            &k.hash().to_hex(),
+            "988ed705e6509684eb78ba81cd49525692002ab4dc79025bfd3fc051e45eb0b2"
+        )
     }
 }
