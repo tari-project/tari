@@ -28,13 +28,13 @@ pub trait ArrayLike {
     type Error: std::error::Error;
 
     /// Returns the number of hashes stored in the backend
-    fn len(&self) -> usize;
+    fn len(&self) -> Result<usize, Self::Error>;
 
     /// Store a new item and return the index of the stored item
     fn push(&mut self, item: Self::Value) -> Result<usize, Self::Error>;
 
     /// Return the item at the given index
-    fn get(&self, index: usize) -> Option<Self::Value>;
+    fn get(&self, index: usize) -> Result<Option<Self::Value>, Self::Error>;
 
     /// Return the item at the given index. Use this if you *know* that the index is valid. Requesting a hash for an
     /// invalid index may cause the a panic
@@ -56,8 +56,8 @@ impl<T: Clone> ArrayLike for Vec<T> {
     type Error = MerkleMountainRangeError;
     type Value = T;
 
-    fn len(&self) -> usize {
-        Vec::len(self)
+    fn len(&self) -> Result<usize, Self::Error> {
+        Ok(Vec::len(self))
     }
 
     fn push(&mut self, item: Self::Value) -> Result<usize, Self::Error> {
@@ -65,8 +65,8 @@ impl<T: Clone> ArrayLike for Vec<T> {
         Ok(self.len() - 1)
     }
 
-    fn get(&self, index: usize) -> Option<Self::Value> {
-        (self as &[Self::Value]).get(index).map(Clone::clone)
+    fn get(&self, index: usize) -> Result<Option<Self::Value>, Self::Error> {
+        Ok((self as &[Self::Value]).get(index).map(Clone::clone))
     }
 
     fn get_or_panic(&self, index: usize) -> Self::Value {

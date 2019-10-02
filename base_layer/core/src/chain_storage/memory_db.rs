@@ -268,10 +268,10 @@ where D: Digest + Send + Sync
     fn fetch_mmr_root(&self, tree: MmrTree) -> Result<Vec<u8>, ChainStorageError> {
         let db = self.db_access()?;
         let root = match tree {
-            MmrTree::Utxo => db.utxo_mmr.get_merkle_root(),
-            MmrTree::Kernel => db.kernel_mmr.get_merkle_root(),
-            MmrTree::RangeProof => db.range_proof_mmr.get_merkle_root(),
-            MmrTree::Header => db.header_mmr.get_merkle_root(),
+            MmrTree::Utxo => db.utxo_mmr.get_merkle_root()?,
+            MmrTree::Kernel => db.kernel_mmr.get_merkle_root()?,
+            MmrTree::RangeProof => db.range_proof_mmr.get_merkle_root()?,
+            MmrTree::Header => db.header_mmr.get_merkle_root()?,
         };
         Ok(root)
     }
@@ -279,10 +279,10 @@ where D: Digest + Send + Sync
     fn fetch_mmr_only_root(&self, tree: MmrTree) -> Result<Vec<u8>, ChainStorageError> {
         let db = self.db_access()?;
         let root = match tree {
-            MmrTree::Utxo => db.utxo_mmr.get_mmr_only_root(),
-            MmrTree::Kernel => db.kernel_mmr.get_mmr_only_root(),
-            MmrTree::RangeProof => db.range_proof_mmr.get_mmr_only_root(),
-            MmrTree::Header => db.header_mmr.get_mmr_only_root(),
+            MmrTree::Utxo => db.utxo_mmr.get_mmr_only_root()?,
+            MmrTree::Kernel => db.kernel_mmr.get_mmr_only_root()?,
+            MmrTree::RangeProof => db.range_proof_mmr.get_mmr_only_root()?,
+            MmrTree::Header => db.header_mmr.get_mmr_only_root()?,
         };
         Ok(root)
     }
@@ -315,10 +315,10 @@ where D: Digest + Send + Sync
     fn fetch_mmr_node(&self, tree: MmrTree, pos: u32) -> Result<(Vec<u8>, bool), ChainStorageError> {
         let db = self.db_access()?;
         let (hash, deleted) = match tree {
-            MmrTree::Kernel => db.kernel_mmr.get_leaf_status(pos),
-            MmrTree::Header => db.header_mmr.get_leaf_status(pos),
-            MmrTree::Utxo => db.utxo_mmr.get_leaf_status(pos),
-            MmrTree::RangeProof => db.range_proof_mmr.get_leaf_status(pos),
+            MmrTree::Kernel => db.kernel_mmr.get_leaf_status(pos)?,
+            MmrTree::Header => db.header_mmr.get_leaf_status(pos)?,
+            MmrTree::Utxo => db.utxo_mmr.get_leaf_status(pos)?,
+            MmrTree::RangeProof => db.range_proof_mmr.get_leaf_status(pos)?,
         };
         let hash = hash
             .ok_or(ChainStorageError::UnexpectedResult(format!(

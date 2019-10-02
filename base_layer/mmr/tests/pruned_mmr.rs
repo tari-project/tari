@@ -30,7 +30,7 @@ fn pruned_mmr_empty() {
     let mmr = create_mmr(0);
     let root = mmr.get_merkle_root();
     let pruned = prune_mmr(&mmr).expect("Could not create empty pruned MMR");
-    assert!(pruned.is_empty());
+    assert_eq!(pruned.is_empty(), Ok(true));
     assert_eq!(pruned.get_merkle_root(), root);
 }
 
@@ -50,7 +50,7 @@ fn pruned_mmrs() {
         assert!(pruned.push(&int_to_hash(*size + 1)).is_ok());
         assert_eq!(pruned.get_merkle_root(), mmr2.get_merkle_root());
         // But you can only get recent hashes
-        assert!(pruned.get_leaf_hash(*size / 2).is_none());
-        assert_eq!(pruned.get_leaf_hash(*size).unwrap(), new_hash)
+        assert_eq!(pruned.get_leaf_hash(*size / 2), Ok(None));
+        assert_eq!(pruned.get_leaf_hash(*size), Ok(Some(new_hash)))
     }
 }

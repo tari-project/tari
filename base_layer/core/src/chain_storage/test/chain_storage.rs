@@ -193,8 +193,8 @@ fn utxo_and_rp_merkle_root() {
     let mut mmr_check = MutableMmr::<HashDigest, _>::new(Vec::new());
     assert!(mmr_check.push(&hash1).is_ok());
     assert!(mmr_check.push(&hash2).is_ok());
-    assert_eq!(root.to_hex(), mmr_check.get_merkle_root().to_hex());
-    assert_eq!(rp_root.to_hex(), rp_mmr_check.get_merkle_root().to_hex());
+    assert_eq!(root.to_hex(), mmr_check.get_merkle_root().unwrap().to_hex());
+    assert_eq!(rp_root.to_hex(), rp_mmr_check.get_merkle_root().unwrap().to_hex());
 }
 
 #[test]
@@ -219,7 +219,7 @@ fn header_merkle_root() {
     let mut mmr_check = MutableMmr::<HashDigest, _>::new(Vec::new());
     assert!(mmr_check.push(&hash1).is_ok());
     assert!(mmr_check.push(&hash2).is_ok());
-    assert_eq!(root.to_hex(), mmr_check.get_merkle_root().to_hex());
+    assert_eq!(root.to_hex(), mmr_check.get_merkle_root().unwrap().to_hex());
 }
 
 #[test]
@@ -247,7 +247,7 @@ fn kernel_merkle_root() {
     assert!(mmr_check.push(&hash1).is_ok());
     assert!(mmr_check.push(&hash2).is_ok());
     assert!(mmr_check.push(&hash3).is_ok());
-    assert_eq!(root.to_hex(), mmr_check.get_merkle_root().to_hex());
+    assert_eq!(root.to_hex(), mmr_check.get_merkle_root().unwrap().to_hex());
 }
 
 #[test]

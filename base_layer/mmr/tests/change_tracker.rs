@@ -31,8 +31,8 @@ use tari_utilities::hex::Hex;
 fn change_tracker() {
     let mmr = MutableMmr::<Hasher, _>::new(Vec::default());
     let mmr = MerkleChangeTracker::new(mmr, Vec::new()).unwrap();
-    assert_eq!(mmr.checkpoint_count(), 0);
-    assert!(mmr.is_empty());
+    assert_eq!(mmr.checkpoint_count(), Ok(0));
+    assert_eq!(mmr.is_empty(), Ok(true));
 }
 
 #[test]
@@ -45,11 +45,11 @@ fn checkpoints() {
         assert!(mmr.push(&int_to_hash(i)).is_ok());
     }
     assert_eq!(mmr.len(), 5);
-    assert_eq!(mmr.checkpoint_count(), 0);
+    assert_eq!(mmr.checkpoint_count(), Ok(0));
     //----------- Commit the history thus far  -----------------------------------
     assert!(mmr.commit().is_ok());
-    assert_eq!(mmr.checkpoint_count(), 1);
-    let root_at_1 = mmr.get_merkle_root();
+    assert_eq!(mmr.checkpoint_count(), Ok(1));
+    let root_at_1 = mmr.get_merkle_root().unwrap();
     assert_eq!(
         &root_at_1.to_hex(),
         "7b7ddec2af4f3d0b9b165750cf2ff15813e965d29ecd5318e0c8fea901ceaef4"
@@ -60,40 +60,40 @@ fn checkpoints() {
     assert!(mmr.delete_and_compress(2, false));
     assert!(mmr.delete_and_compress(4, true));
     //----------- Commit the history again, and check the expected sizes  --------
-    let root_at_2 = mmr.get_merkle_root();
+    let root_at_2 = mmr.get_merkle_root().unwrap();
     assert_eq!(
         &root_at_2.to_hex(),
         "69e69ba0c6222f2d9caa68282de0ba7f1259a0fa2b8d84af68f907ef4ec05054"
     );
     assert!(mmr.commit().is_ok());
     assert_eq!(mmr.len(), 3);
-    assert_eq!(mmr.checkpoint_count(), 2);
+    assert_eq!(mmr.checkpoint_count(), Ok(2));
     //----------- Generate another checkpoint, the MMR is now empty  --------
     assert!(mmr.delete_and_compress(1, false));
     assert!(mmr.delete_and_compress(5, false));
     assert!(mmr.delete(3));
     assert!(mmr.commit().is_ok());
-    assert!(mmr.is_empty());
-    assert_eq!(mmr.checkpoint_count(), 3);
-    let root = mmr.get_merkle_root();
+    assert_eq!(mmr.is_empty(), Ok(true));
+    assert_eq!(mmr.checkpoint_count(), Ok(3));
+    let root = mmr.get_merkle_root().unwrap();
     assert_eq!(
         &root.to_hex(),
         "2a540797d919e63cff8051e54ae13197315000bcfde53efd3f711bb3d24995bc"
     );
     //----------- Create an empty checkpoint -------------------------------
     assert!(mmr.commit().is_ok());
-    assert_eq!(mmr.checkpoint_count(), 4);
+    assert_eq!(mmr.checkpoint_count(), Ok(4));
     assert_eq!(
-        &mmr.get_merkle_root().to_hex(),
+        &mmr.get_merkle_root().unwrap().to_hex(),
         "2a540797d919e63cff8051e54ae13197315000bcfde53efd3f711bb3d24995bc"
     );
     //----------- Rewind the MMR two commits----------------------------------
     assert!(mmr.rewind(2).is_ok());
-    assert_eq!(mmr.get_merkle_root().to_hex(), root_at_2.to_hex());
+    assert_eq!(mmr.get_merkle_root().unwrap().to_hex(), root_at_2.to_hex());
     //----------- Perform an empty commit ------------------------------------
     assert!(mmr.commit().is_ok());
     assert_eq!(mmr.len(), 3);
-    assert_eq!(mmr.checkpoint_count(), 3);
+    assert_eq!(mmr.checkpoint_count(), Ok(3));
 }
 
 #[test]
