@@ -27,6 +27,7 @@ use crate::{
     fee::Fee,
     proof_of_work::Difficulty,
     tari_amount::MicroTari,
+    test_utils::primitives::{create_random_signature, generate_keys},
     transaction::{
         KernelBuilder,
         KernelFeatures,
@@ -37,23 +38,20 @@ use crate::{
         TransactionOutput,
         UnblindedOutput,
     },
-    transaction_protocol::{
-        build_challenge,
-        sender::SenderTransactionProtocol,
-        test_common::TestParams,
-        TransactionMetadata,
-    },
-    types::{Commitment, HashDigest, PrivateKey, PublicKey, Signature, COMMITMENT_FACTORY, PROVER},
+    transaction_protocol::{sender::SenderTransactionProtocol, test_common::TestParams},
+    types::{Commitment, HashDigest, PrivateKey, PublicKey, COMMITMENT_FACTORY, PROVER},
 };
 use std::sync::Arc;
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     common::Blake256,
-    keys::{PublicKey as PK, SecretKey},
+    keys::SecretKey,
     range_proof::RangeProofService,
 };
 use tari_utilities::hash::Hashable;
 
+/// The tx macro is a convenience wrapper around the [create_tx] function, making the arguments optional and explicit
+/// via keywords.
 #[macro_export]
 macro_rules! tx {
   ($amount:expr, fee: $fee:expr, lock: $lock:expr, inputs: $n_in:expr, maturity: $mat:expr, outputs: $n_out:expr) => {{
@@ -74,6 +72,23 @@ macro_rules! tx {
   }
 }
 
+/// A utility macro to help make it easy to build test transactions.
+///
+/// The full syntax allows maximum flexibility, but most arguments are optional with sane defaults
+/// ```edition2018
+/// use tari_core::txn_schema;
+/// use tari_core::transaction::{UnblindedOutput, OutputFeatures};
+/// use tari_core::tari_amount::{MicroTari, T, uT};
+///
+///   let inputs: Vec<UnblindedOutput> = Vec::new();
+///   let outputs: Vec<MicroTari> = vec![2*T, 1*T, 500_000*uT];
+///   txn_schema!(from: inputs, to: outputs, fee: 50*uT, lock: 1250, OutputFeatures::with_maturity(1320));
+///   txn_schema!(from: inputs, to: outputs, fee: 50*uT); // Uses default features and zero lock height
+///   txn_schema!(from: inputs, to: outputs); // min fee of 25µT, zero lock height and default features
+///   // as above, and transaction splits the first input in roughly half, returning remainder as change
+///   txn_schema!(from: inputs);
+/// ```
+/// The output of this macro is intended to be used in [spend_utxos].
 #[macro_export]
 macro_rules! txn_schema {
     (from: $input:expr, to: $outputs:expr, fee: $fee:expr, lock: $lock:expr, $features:expr) => {{
@@ -229,56 +244,6 @@ pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutp
     (txn, outputs, test_params)
 }
 
-/// Spend the provided UTXOs by creating a new transaction that breaking the inputs up into equally sized outputs
-pub fn create_test_tx_spending_utxos(
-    fee_per_gram: MicroTari,
-    lock_height: u64,
-    utxos: Vec<(TransactionInput, UnblindedOutput)>,
-    output_count: u64,
-) -> (Transaction, Vec<UnblindedOutput>)
-{
-    let mut rng = rand::OsRng::new().unwrap();
-    let test_params = TestParams::new(&mut rng);
-    let mut stx_builder = SenderTransactionProtocol::builder(0);
-    stx_builder
-        .with_lock_height(lock_height)
-        .with_fee_per_gram(fee_per_gram)
-        .with_offset(test_params.offset.clone())
-        .with_private_nonce(test_params.nonce.clone())
-        .with_change_secret(test_params.change_key.clone());
-
-    for (utxo, input) in &utxos {
-        stx_builder.with_input(utxo.clone(), input.clone());
-    }
-
-    let input_count = utxos.len();
-    let mut amount = MicroTari(0);
-    utxos.iter().for_each(|(_, input)| amount += input.value);
-    let estimated_fee = Fee::calculate(fee_per_gram, input_count as usize, output_count as usize);
-    let amount_per_output = (amount - estimated_fee) / output_count;
-    let amount_for_last_output = (amount - estimated_fee) - amount_per_output * (output_count - 1);
-    let mut unblinded_outputs = Vec::with_capacity(output_count as usize);
-    for i in 0..output_count {
-        let output_amount = if i < output_count - 1 {
-            amount_per_output
-        } else {
-            amount_for_last_output
-        };
-        let utxo = UnblindedOutput::new(output_amount.into(), test_params.spend_key.clone(), None);
-        unblinded_outputs.push(utxo.clone());
-        stx_builder.with_output(utxo);
-    }
-
-    let mut stx_protocol = stx_builder.build::<Blake256>(&PROVER, &COMMITMENT_FACTORY).unwrap();
-    match stx_protocol.finalize(KernelFeatures::empty(), &PROVER, &COMMITMENT_FACTORY) {
-        Ok(true) => (),
-        Ok(false) => panic!("{:?}", stx_protocol.failure_reason()),
-        Err(e) => panic!("{:?}", e),
-    }
-    let txn = stx_protocol.get_transaction().unwrap().clone();
-    (txn, unblinded_outputs)
-}
-
 /// Create a transaction kernel with the given fee, using random keys to generate the signature
 pub fn create_test_kernel(fee: MicroTari, lock_height: u64) -> TransactionKernel {
     let (excess, s) = create_random_signature(fee, lock_height);
@@ -351,34 +316,6 @@ pub fn chain_block(prev_block: &Block, transactions: Vec<Transaction>) -> Block 
         .with_header(header)
         .with_transactions(transactions)
         .build()
-}
-
-/// Generate a random signature, returning the public key (excess) and the signature.
-pub fn create_random_signature(fee: MicroTari, lock_height: u64) -> (PublicKey, Signature) {
-    let mut rng = rand::OsRng::new().unwrap();
-    let r = SecretKey::random(&mut rng);
-    let (k, p) = PublicKey::random_keypair(&mut rng);
-    let tx_meta = TransactionMetadata { fee, lock_height };
-    let e = build_challenge(&PublicKey::from_secret_key(&r), &tx_meta);
-    (p, Signature::sign(k, r, &e).unwrap())
-}
-
-/// A convenience struct for a set of public-private keys and a public-private nonce
-pub struct TestKeySet {
-    k: PrivateKey,
-    pk: PublicKey,
-    r: PrivateKey,
-    pr: PublicKey,
-}
-
-/// Generate a new random key set. The key set includes
-/// * a public-private keypair (k, pk)
-/// * a public-private nonce keypair (r, pr)
-pub fn generate_keys() -> TestKeySet {
-    let mut rng = rand::OsRng::new().unwrap();
-    let (k, pk) = PublicKey::random_keypair(&mut rng);
-    let (r, pr) = PublicKey::random_keypair(&mut rng);
-    TestKeySet { k, pk, r, pr }
 }
 
 /// Create a new UTXO for the specified value and return the output and spending key

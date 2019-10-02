@@ -32,7 +32,7 @@ use crate::{
         MemoryDatabase,
         MmrTree,
     },
-    tari_amount::{MicroTari, T},
+    tari_amount::{uT, MicroTari, T},
     test_utils::{
         builders::{
             add_block_and_update_header,
@@ -40,7 +40,6 @@ use crate::{
             create_genesis_block,
             create_test_block,
             create_test_kernel,
-            create_tx,
             create_utxo,
             spend_utxos,
         },
@@ -392,12 +391,12 @@ fn rewind_to_height() {
     let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
     let block0 = add_block_and_update_header(&store, create_genesis_block().0);
 
-    let (tx1, inputs1, _) = create_tx(MicroTari(10_000), MicroTari(50), 0, 1, 0, 1);
-    let (tx2, inputs2, _) = create_tx(MicroTari(10_000), MicroTari(20), 0, 1, 0, 1);
-    let (tx3, inputs3, _) = create_tx(MicroTari(10_000), MicroTari(100), 0, 1, 0, 1);
-    let (tx4, inputs4, _) = create_tx(MicroTari(10_000), MicroTari(30), 0, 1, 0, 1);
-    let (tx5, inputs5, _) = create_tx(MicroTari(10_000), MicroTari(50), 0, 1, 0, 1);
-    let (tx6, inputs6, _) = create_tx(MicroTari(10_000), MicroTari(75), 0, 1, 0, 1);
+    let (tx1, inputs1, _) = tx!(10_000*uT, fee: 50*uT, inputs: 1, outputs: 1);
+    let (tx2, inputs2, _) = tx!(10_000*uT, fee: 20*uT, inputs: 1, outputs: 1);
+    let (tx3, inputs3, _) = tx!(10_000*uT, fee: 100*uT, inputs: 1, outputs: 1);
+    let (tx4, inputs4, _) = tx!(10_000*uT, fee: 30*uT, inputs: 1, outputs: 1);
+    let (tx5, inputs5, _) = tx!(10_000*uT, fee: 50*uT, inputs: 1, outputs: 1);
+    let (tx6, inputs6, _) = tx!(10_000*uT, fee: 75*uT, inputs: 1, outputs: 1);
     let mut txn = DbTransaction::new();
     txn.insert_utxo(inputs1[0].as_transaction_output(&PROVER, &COMMITMENT_FACTORY).unwrap());
     txn.insert_utxo(inputs2[0].as_transaction_output(&PROVER, &COMMITMENT_FACTORY).unwrap());
