@@ -51,7 +51,12 @@ pub fn create_random_signature(fee: MicroTari, lock_height: u64) -> (PublicKey, 
     let mut rng = rand::OsRng::new().unwrap();
     let r = PrivateKey::random(&mut rng);
     let (k, p) = PublicKey::random_keypair(&mut rng);
-    let tx_meta = TransactionMetadata { fee, lock_height };
+    let tx_meta = TransactionMetadata {
+        fee,
+        lock_height,
+        meta_info: None,
+        linked_kernel: None,
+    };
     let e = build_challenge(&PublicKey::from_secret_key(&r), &tx_meta);
     (p, Signature::sign(k, r, &e).unwrap())
 }
