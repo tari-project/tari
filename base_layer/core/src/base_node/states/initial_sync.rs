@@ -19,24 +19,51 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+//
 
-//! The Tari base node implementation.
-//!
-//! Base nodes are the key pieces of infrastructure that maintain the security and integrity of the Tari
-//! cryptocurrency. The role of the base node is to provide the following services:
-//! * New transaction validation
-//! * New block validation
-//! * Chain synchronisation service
-//! * A gRPC API exposing metrics and data about the blockchain state
-//!
-//! More details about the implementation are presented in
-//! [RFC-0111](https://rfc.tari.com/RFC-0111_BaseNodeArchitecture.html).
+use crate::{
+    base_node::states::{Starting, StateEvent, StateEvent::FatalError},
+    chain_storage::{BlockchainBackend, BlockchainDatabase},
+};
+use log::*;
 
-mod base_node;
-mod config;
+const LOG_TARGET: &str = "base_node::initial_sync";
 
-pub mod states;
+pub struct InitialSync<B>
+where B: BlockchainBackend
+{
+    pub(crate) db: BlockchainDatabase<B>,
+}
 
-// Public re-exports
-pub use base_node::BaseNodeStateMachine;
-pub use config::BaseNodeConfig;
+impl<B: BlockchainBackend> InitialSync<B> {
+    pub fn next_event(&mut self) -> StateEvent {
+        info!(target: LOG_TARGET, "Starting blockchain metadata sync");
+        self.sync_metadata()
+    }
+
+    /// Fetch the blockchain metadata from our internal database and compare it to data received from peers to decide
+    /// on the next phase of the blockchain synchronisation.
+    fn sync_metadata(&self) -> StateEvent {
+        info!(target: LOG_TARGET, "Loading local blockchain metadata.");
+        let metadata = match self.db.get_metadata() {
+            Ok(m) => m,
+            Err(e) => {
+                let msg = format!("Could not get local blockchain metadata. {}", e.to_string());
+                return FatalError(msg);
+            },
+        };
+        info!(
+            target: LOG_TARGET,
+            "Current local blockchain database information:\n {}", metadata
+        );
+        // TODO async fetch peer metadata
+
+        FatalError("Unimplemented".into())
+    }
+}
+
+impl<B: BlockchainBackend> From<Starting<B>> for InitialSync<B> {
+    fn from(old_state: Starting<B>) -> Self {
+        InitialSync { db: old_state.db }
+    }
+}

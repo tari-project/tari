@@ -1,4 +1,4 @@
-// Copyright 2018 The Tari Project
+// Copyright 2019. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -19,33 +19,37 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+//
+use crate::{
+    base_node::{states::StateEvent, BaseNodeConfig},
+    chain_storage::{BlockchainBackend, BlockchainDatabase},
+};
+use log::*;
 
-#[macro_use]
-extern crate bitflags;
-#[macro_use]
-extern crate lazy_static;
+const LOG_TARGET: &str = "base_node::starting_state";
 
-#[cfg(test)]
-pub mod test_utils;
+// The data structure handling Base Node Startup
+pub struct Starting<B>
+where B: BlockchainBackend
+{
+    pub(crate) config: BaseNodeConfig,
+    pub(crate) db: BlockchainDatabase<B>,
+}
 
-pub mod blocks;
-pub mod bullet_rangeproofs;
-pub mod consts;
-pub mod fee;
-pub mod mempool;
-pub mod proof_of_work;
-#[allow(clippy::op_ref)]
-pub mod transaction;
-pub mod transaction_protocol;
-pub mod types;
+impl<B: BlockchainBackend> Starting<B> {
+    pub fn new(config: BaseNodeConfig, db: BlockchainDatabase<B>) -> Self {
+        Starting { config, db }
+    }
 
-pub mod consensus;
-pub mod emission;
-pub mod tari_amount;
+    /// Apply the configuration settings for this node.
+    fn apply_config(&mut self) {
+        // TODO apply configuration
+    }
 
-pub mod base_node;
-
-pub mod chain_storage;
-
-// Re-export commonly used structs
-pub use transaction_protocol::{recipient::ReceiverTransactionProtocol, sender::SenderTransactionProtocol};
+    pub fn next_event(&mut self) -> StateEvent {
+        info!(target: LOG_TARGET, "Configuring node.");
+        self.apply_config();
+        info!(target: LOG_TARGET, "Node configuration complete.");
+        StateEvent::Initialized
+    }
+}

@@ -21,7 +21,11 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    base_node::node_state::BaseNodeState,
+    base_node::{
+        states,
+        states::{BaseNodeState, StateEvent, StateEvent::FatalError},
+        BaseNodeConfig,
+    },
     chain_storage::{BlockchainBackend, BlockchainDatabase},
 };
 use log::*;
@@ -46,62 +50,69 @@ const TARGET: &str = "core::base_node";
 /// receive an entire block from a peer and then try to add to the `BlockchainDB` instance.
 ///
 /// See the [SynchronizationSate] documentation for more details.
-pub struct BaseNode<B>
-where B: BlockchainBackend
-{
-    state: BaseNodeState,
-    db: BlockchainDatabase<B>,
+pub struct BaseNodeStateMachine<B: BlockchainBackend> {
+    state: BaseNodeState<B>,
 }
 
-impl<B> BaseNode<B>
-where B: BlockchainBackend
-{
+impl<B: BlockchainBackend> BaseNodeStateMachine<B> {
     /// Instantiate a new Base Node.
     ///
     /// ```
-    /// # use tari_core::chain_storage::{BlockchainDatabase, BlockchainBackend, MemoryDatabase};
-    /// # use tari_core::types::HashDigest;
-    /// # use tari_core::BaseNode;
-    /// // Create and configure database backend.
+    /// use tari_core::{
+    ///     base_node::{BaseNodeConfig, BaseNodeStateMachine},
+    ///     chain_storage::{BlockchainBackend, BlockchainDatabase, MemoryDatabase},
+    ///     types::HashDigest,
+    /// };
+    ///
     /// let db = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
-    /// // Cloning a BlockchainDatabase is a light copy, so cloning it is the preferred way to pass in the instance:
-    /// let base_node = BaseNode::new(db.clone());
-    /// base_node.start();
+    /// let config = BaseNodeConfig;
+    /// let mut node = BaseNodeStateMachine::<MemoryDatabase<HashDigest>>::new(db, config);
+    /// node.run();
     /// ```
-    pub fn new(db: BlockchainDatabase<B>) -> Self {
-        BaseNode {
-            state: BaseNodeState::Startup,
-            db,
+    pub fn new(db: BlockchainDatabase<B>, config: BaseNodeConfig) -> Self {
+        Self {
+            state: BaseNodeState::Starting(states::Starting::new(config, db)),
+        }
+    }
+
+    /// Describe the Finite State Machine for the base node. This function describes _every possible_ state
+    /// transition for the node given its current state and an event that gets triggered.
+    pub fn transition(state: BaseNodeState<B>, event: StateEvent) -> BaseNodeState<B> {
+        use crate::base_node::states::{BaseNodeState::*, StateEvent::*};
+        match (state, event) {
+            (Starting(s), Initialized) => InitialSync(s.into()),
+            (InitialSync(_s), MetadataSynced) => FetchingHorizonState,
+            (FetchingHorizonState, HorizonStateFetched) => BlockSync,
+            (BlockSync, BlocksSynchronized) => Listening,
+            (Listening, FallenBehind) => BlockSync,
+            (_, FatalError(s)) => Shutdown(states::Shutdown::with_reason(s)),
+            (s, e) => {
+                debug!(
+                    target: TARGET,
+                    "No state transition occurs for event {:?} in state {}", e, s
+                );
+                s
+            },
         }
     }
 
     /// Start the base node runtime.
-    pub fn start(&self) -> bool {
-        match self.state {
-            BaseNodeState::Startup => {
-                info!(target: TARGET, "Starting up base node");
-                true
-            },
-            _ => {
-                warn!(target: TARGET, "Node is already running. It can't be started again.");
-                false
-            },
+    pub fn run(&mut self) {
+        use crate::base_node::states::BaseNodeState::*;
+        loop {
+            // Replace the node state with a dummy state
+            let next_event = match &mut self.state {
+                Starting(s) => s.next_event(),
+                InitialSync(s) => s.next_event(),
+                FetchingHorizonState => FatalError("Unimplemented".into()),
+                BlockSync => FatalError("Unimplemented".into()),
+                Listening => FatalError("Unimplemented".into()),
+                Shutdown(_) => break,
+                None => unreachable!("Node cannot be in a `None` state"),
+            };
+            let old_state = std::mem::replace(&mut self.state, BaseNodeState::None);
+            self.state = BaseNodeStateMachine::transition(old_state, next_event);
         }
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use crate::{
-        chain_storage::{BlockchainDatabase, MemoryDatabase},
-        types::HashDigest,
-        BaseNode,
-    };
-
-    #[test]
-    fn create_node() {
-        let db = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
-        let base_node = BaseNode::new(db);
-        assert!(base_node.start());
+        info!(target: TARGET, "Goodbye!");
     }
 }
