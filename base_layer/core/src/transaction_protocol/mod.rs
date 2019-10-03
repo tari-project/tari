@@ -60,7 +60,7 @@ pub mod transaction_initializer;
 use crate::{
     tari_amount::*,
     transaction::TransactionError,
-    types::{Challenge, MessageHash, PublicKey},
+    types::{Challenge, HashOutput, MessageHash, PublicKey},
 };
 use derive_error::Error;
 use digest::Digest;
@@ -101,6 +101,11 @@ pub struct TransactionMetadata {
     pub fee: MicroTari,
     /// The earliest block this transaction can be mined
     pub lock_height: u64,
+    /// This is an optional field used by committing to additional tx meta data between the two parties
+    pub meta_info: Option<HashOutput>,
+    /// This is an optional field and is the hash of the kernel this kernel is linked to.
+    /// This field is for example for relative time-locked transactions
+    pub linked_kernel: Option<HashOutput>,
 }
 
 /// Convenience function that calculates the challenge for the Schnorr signatures
@@ -109,6 +114,8 @@ pub fn build_challenge(sum_public_nonces: &PublicKey, metadata: &TransactionMeta
         .chain(sum_public_nonces.as_bytes())
         .chain(&u64::from(metadata.fee).to_le_bytes())
         .chain(&metadata.lock_height.to_le_bytes())
+        .chain(metadata.meta_info.as_ref().unwrap_or(&vec![0]))
+        .chain(metadata.linked_kernel.as_ref().unwrap_or(&vec![0]))
         .result()
         .to_vec()
 }

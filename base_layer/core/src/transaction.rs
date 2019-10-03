@@ -477,6 +477,8 @@ impl TransactionKernel {
         let m = TransactionMetadata {
             lock_height: self.lock_height,
             fee: self.fee,
+            meta_info: None,
+            linked_kernel: None,
         };
         let c = build_challenge(r, &m);
         if self.excess_sig.verify_challenge(excess, &c) {
