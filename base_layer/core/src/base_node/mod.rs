@@ -34,10 +34,8 @@
 
 mod base_node;
 mod config;
-mod initial_sync_state;
-mod node_state;
-mod shutdown_state;
-mod starting_state;
+
+pub mod states;
 
 // Public re-exports
 pub use base_node::BaseNodeStateMachine;

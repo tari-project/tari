@@ -22,9 +22,8 @@
 
 use crate::{
     base_node::{
-        node_state::{BaseNodeState, StateEvent, StateEvent::FatalError},
-        shutdown_state::Shutdown as ShutdownState,
-        starting_state::Starting,
+        states,
+        states::{BaseNodeState, StateEvent, StateEvent::FatalError},
         BaseNodeConfig,
     },
     chain_storage::{BlockchainBackend, BlockchainDatabase},
@@ -72,21 +71,21 @@ impl<B: BlockchainBackend> BaseNodeStateMachine<B> {
     /// ```
     pub fn new(db: BlockchainDatabase<B>, config: BaseNodeConfig) -> Self {
         Self {
-            state: BaseNodeState::Starting(Starting::new(config, db)),
+            state: BaseNodeState::Starting(states::Starting::new(config, db)),
         }
     }
 
     /// Describe the Finite State Machine for the base node. This function describes _every possible_ state
     /// transition for the node given its current state and an event that gets triggered.
     pub fn transition(state: BaseNodeState<B>, event: StateEvent) -> BaseNodeState<B> {
-        use crate::base_node::node_state::{BaseNodeState::*, StateEvent::*};
+        use crate::base_node::states::{BaseNodeState::*, StateEvent::*};
         match (state, event) {
             (Starting(s), Initialized) => InitialSync(s.into()),
             (InitialSync(_s), MetadataSynced) => FetchingHorizonState,
             (FetchingHorizonState, HorizonStateFetched) => BlockSync,
             (BlockSync, BlocksSynchronized) => Listening,
             (Listening, FallenBehind) => BlockSync,
-            (_, FatalError(s)) => Shutdown(ShutdownState::with_reason(s)),
+            (_, FatalError(s)) => Shutdown(states::Shutdown::with_reason(s)),
             (s, e) => {
                 debug!(
                     target: TARGET,
@@ -99,7 +98,7 @@ impl<B: BlockchainBackend> BaseNodeStateMachine<B> {
 
     /// Start the base node runtime.
     pub fn run(&mut self) {
-        use crate::base_node::node_state::BaseNodeState::*;
+        use crate::base_node::states::BaseNodeState::*;
         loop {
             // Replace the node state with a dummy state
             let next_event = match &mut self.state {
