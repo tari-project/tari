@@ -15,6 +15,11 @@ arc-swap = "0.4.2"
 futures = { version = "=0.3.0-alpha.18", package = "futures-preview" }
 crossbeam-channel = "0.3.9"
 
+[dev-dependencies]
+criterion = "0.3.0"
+tokio = "0.2.0-alpha.4"
+futures =  { version = "=0.3.0-alpha.18", package = "futures-preview"}
+
 [[example]]
 name = "raw-simple"
 path = "examples/raw-simple.rs"
@@ -22,3 +27,8 @@ path = "examples/raw-simple.rs"
 [[example]]
 name = "async-simple"
 path = "examples/async-simple.rs"
+
+[[bench]]
+name = "benches_main"
+harness = false
+
