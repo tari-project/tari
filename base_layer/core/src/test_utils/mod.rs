@@ -20,6 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+// Commonly used test utilities, like generating key sets, signatures and the like
+pub mod primitives;
 /// Helper functions to simplify generated test blockchain data
 #[macro_use]
 pub mod builders;
