@@ -20,10 +20,20 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::{
+    base_node::{initial_sync_state::InitialSync, shutdown_state::Shutdown, starting_state::Starting},
+    chain_storage::BlockchainBackend,
+};
+use std::fmt::{Display, Error, Formatter};
+
 /// The base node state represents the FSM of the base node synchronisation process.
 ///
-/// ## Startup State
-/// When the node starts up, it is in the `Startup` state. In this state, we need to obtain
+/// ## Starting state
+/// The node is in the `Starting`` state when it's first created. After basic internal setup and configuration, it will
+/// move to the `InitialSync` state.
+///
+/// ## Initial Sync State
+/// In this state, we need to obtain
 /// i. The height of our chain tip,
 /// ii. The height of the chain tip from the network.
 ///
@@ -81,11 +91,37 @@
 ///
 /// Reject all new requests with a `Shutdown` message, complete current validations / tasks, flush all state if
 /// required, and then shutdown.
-#[derive(Clone, Debug, PartialEq)]
-pub enum BaseNodeState {
-    Startup,
-    LoadingHorizonState,
+pub enum BaseNodeState<B: BlockchainBackend> {
+    None,
+    Starting(Starting<B>),
+    InitialSync(InitialSync<B>),
+    FetchingHorizonState,
     BlockSync,
     Listening,
-    Shutdown,
+    Shutdown(Shutdown),
+}
+
+#[derive(Debug)]
+pub enum StateEvent {
+    Initialized,
+    MetadataSynced,
+    HorizonStateFetched,
+    BlocksSynchronized,
+    FallenBehind,
+    FatalError(String),
+}
+
+impl<B: BlockchainBackend> Display for BaseNodeState<B> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        let s = match self {
+            Self::Starting(_) => "Initializing",
+            Self::InitialSync(_) => "Synchronizing blockchain metadata",
+            Self::FetchingHorizonState => "Fetching horizon state",
+            Self::BlockSync => "Synchronizing blocks",
+            Self::Listening => "Listening",
+            Self::Shutdown(_) => "Shutting down",
+            Self::None => "None",
+        };
+        f.write_str(s)
+    }
 }

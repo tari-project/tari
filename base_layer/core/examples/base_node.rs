@@ -1,4 +1,4 @@
-// Copyright 2018 The Tari Project
+// Copyright 2019. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -19,33 +19,19 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+//
 
-#[macro_use]
-extern crate bitflags;
-#[macro_use]
-extern crate lazy_static;
+use tari_core::{
+    base_node::{BaseNodeConfig, BaseNodeStateMachine},
+    chain_storage::{BlockchainDatabase, MemoryDatabase},
+    types::HashDigest,
+};
 
-#[cfg(test)]
-pub mod test_utils;
-
-pub mod blocks;
-pub mod bullet_rangeproofs;
-pub mod consts;
-pub mod fee;
-pub mod mempool;
-pub mod proof_of_work;
-#[allow(clippy::op_ref)]
-pub mod transaction;
-pub mod transaction_protocol;
-pub mod types;
-
-pub mod consensus;
-pub mod emission;
-pub mod tari_amount;
-
-pub mod base_node;
-
-pub mod chain_storage;
-
-// Re-export commonly used structs
-pub use transaction_protocol::{recipient::ReceiverTransactionProtocol, sender::SenderTransactionProtocol};
+// This is a temporary example used while developing the node software
+fn main() {
+    let _ = env_logger::init();
+    let db = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
+    let config = BaseNodeConfig;
+    let mut node = BaseNodeStateMachine::<MemoryDatabase<HashDigest>>::new(db, config);
+    node.run();
+}
