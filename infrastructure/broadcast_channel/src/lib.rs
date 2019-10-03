@@ -89,9 +89,9 @@
 //! [`Err`]: ../../../std/result/enum.Result.html#variant.Err
 //! [`unwrap`]: ../../../std/result/enum.Result.html#method.unwrap
 
+mod async_channel;
 pub(crate) mod atomic_counter;
-mod bus;
 mod channel;
 
-pub use bus::{bounded, Publisher, Subscriber};
+pub use async_channel::{bounded, Publisher, Subscriber};
 pub use channel::bounded as raw_bounded;
