@@ -20,47 +20,26 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-//! This module is responsible for handling logic responsible for storing the blockchain state.
-//!
-//! It is structured in such a way that clients (e.g. base nodes) can configure the various components of the state
-//! (kernels, utxos, etc) in whichever way they like. It's possible to have the UTXO set in memory, and the kernels
-//! backed by LMDB, while the merkle trees are stored in flat files for example.
-
-mod blockchain_database;
-mod db_transaction;
-mod error;
-mod historical_block;
+mod lmdb;
 mod lmdb_db;
-mod memory_db;
-mod metadata;
-#[cfg(test)]
-mod test;
-
-// public modules
-pub mod async_db;
+mod lmdb_vec;
 
 // Public API exports
-pub use blockchain_database::{BlockAddResult, BlockchainBackend, BlockchainDatabase};
-pub use db_transaction::{DbTransaction, MmrTree};
-pub use error::ChainStorageError;
-pub use historical_block::HistoricalBlock;
-pub use lmdb_db::{
-    LMDBDatabase,
-    LMDB_DB_BLOCK_HASHES,
-    LMDB_DB_HEADERS,
-    LMDB_DB_HEADER_MMR_BASE_BACKEND,
-    LMDB_DB_HEADER_MMR_CP_BACKEND,
-    LMDB_DB_KERNELS,
-    LMDB_DB_KERNEL_MMR_BASE_BACKEND,
-    LMDB_DB_KERNEL_MMR_CP_BACKEND,
-    LMDB_DB_METADATA,
-    LMDB_DB_ORPHANS,
-    LMDB_DB_RANGE_PROOF_MMR_BASE_BACKEND,
-    LMDB_DB_RANGE_PROOF_MMR_CP_BACKEND,
-    LMDB_DB_STXOS,
-    LMDB_DB_UTXOS,
-    LMDB_DB_UTXO_MMR_BASE_BACKEND,
-    LMDB_DB_UTXO_MMR_CP_BACKEND,
-};
-pub use memory_db::MemoryDatabase;
-pub use metadata::ChainMetadata;
+pub use lmdb_db::{create_lmdb_database, LMDBDatabase};
+pub use lmdb_vec::LMDBVec;
+
+pub const LMDB_DB_METADATA: &str = "metadata";
+pub const LMDB_DB_HEADERS: &str = "headers";
+pub const LMDB_DB_BLOCK_HASHES: &str = "block_hashes";
+pub const LMDB_DB_UTXOS: &str = "utxos";
+pub const LMDB_DB_STXOS: &str = "stxos";
+pub const LMDB_DB_KERNELS: &str = "kernels";
+pub const LMDB_DB_ORPHANS: &str = "orphans";
+pub const LMDB_DB_UTXO_MMR_BASE_BACKEND: &str = "utxo_mmr_base_backend";
+pub const LMDB_DB_UTXO_MMR_CP_BACKEND: &str = "utxo_mmr_cp_backend";
+pub const LMDB_DB_HEADER_MMR_BASE_BACKEND: &str = "header_mmr_base_backend";
+pub const LMDB_DB_HEADER_MMR_CP_BACKEND: &str = "header_mmr_cp_backend";
+pub const LMDB_DB_KERNEL_MMR_BASE_BACKEND: &str = "kernel_mmr_base_backend";
+pub const LMDB_DB_KERNEL_MMR_CP_BACKEND: &str = "kernel_mmr_cp_backend";
+pub const LMDB_DB_RANGE_PROOF_MMR_BASE_BACKEND: &str = "range_proof_mmr_base_backend";
+pub const LMDB_DB_RANGE_PROOF_MMR_CP_BACKEND: &str = "range_proof_mmr_cp_backend";
