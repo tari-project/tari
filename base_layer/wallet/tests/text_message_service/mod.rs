@@ -20,8 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::support::{comms_and_services::setup_comms_services, data::*, utils::assert_change};
-use std::sync::Arc;
+use crate::support::{comms_and_services::setup_comms_services, data::*, utils::event_stream_count};
+use std::{sync::Arc, time::Duration};
 use tari_comms::{builder::CommsNode, peer_manager::NodeIdentity};
 use tari_comms_dht::Dht;
 use tari_p2p::{
@@ -30,9 +30,8 @@ use tari_p2p::{
 };
 use tari_service_framework::StackBuilder;
 use tari_wallet::text_message_service::{
-    messages::TextMessageServiceRequester,
+    handle::{TextMessageEvent, TextMessageHandle},
     model::{Contact, UpdateContact},
-    TextMessageHandle,
     TextMessageServiceInitializer,
 };
 use tokio::runtime::Runtime;
@@ -42,7 +41,7 @@ pub fn setup_text_message_service(
     node_identity: NodeIdentity,
     peers: Vec<NodeIdentity>,
     database_path: String,
-) -> (TextMessageServiceRequester, Arc<CommsNode>, Dht)
+) -> (TextMessageHandle, Arc<CommsNode>, Dht)
 {
     let (publisher, subscription_factory) = pubsub_connector(runtime.executor(), 100);
     let subscription_factory = Arc::new(subscription_factory);
@@ -60,7 +59,7 @@ pub fn setup_text_message_service(
 
     let handles = runtime.block_on(fut).expect("Service initialization failed");
 
-    let tms_api = TextMessageServiceRequester::new(handles.get_handle::<TextMessageHandle>().unwrap());
+    let tms_api = handles.get_handle::<TextMessageHandle>().unwrap();
 
     (tms_api, comms, dht)
 }
@@ -178,24 +177,15 @@ fn test_text_message_service() {
             .unwrap();
     }
 
-    assert_change(
-        || {
-            let msgs = runtime.block_on(node_1_tms.get_text_messages()).unwrap();
+    let mut result = runtime
+        .block_on(async { event_stream_count(node_1_tms.get_event_stream_fused(), 10, Duration::from_secs(10)).await });
+    assert_eq!(result.remove(&TextMessageEvent::ReceivedTextMessage), Some(4));
+    assert_eq!(result.remove(&TextMessageEvent::ReceivedTextMessageAck), Some(6));
 
-            (msgs.sent_messages.len(), msgs.received_messages.len())
-        },
-        (6, 4),
-        50,
-    );
-
-    assert_change(
-        || {
-            let msgs = runtime.block_on(node_2_tms.get_text_messages()).unwrap();
-            (msgs.sent_messages.len(), msgs.received_messages.len())
-        },
-        (4, 5),
-        50,
-    );
+    let mut result = runtime
+        .block_on(async { event_stream_count(node_2_tms.get_event_stream_fused(), 9, Duration::from_secs(10)).await });
+    assert_eq!(result.remove(&TextMessageEvent::ReceivedTextMessage), Some(5));
+    assert_eq!(result.remove(&TextMessageEvent::ReceivedTextMessageAck), Some(4));
 
     let node1_msgs = runtime
         .block_on(node_1_tms.get_text_messages_by_pub_key(node_2_identity.identity.public_key))

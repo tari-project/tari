@@ -22,19 +22,21 @@
 
 use super::{
     error::TextMessageError,
-    messages::{TextMessageRequest, TextMessageResponse},
+    handle::{TextMessageRequest, TextMessageResponse},
     model::{Contact, ReceivedTextMessage, SentTextMessage, UpdateContact},
 };
 
+use crate::text_message_service::handle::TextMessageEvent;
 use diesel::{
     r2d2::{ConnectionManager, Pool},
     Connection,
     SqliteConnection,
 };
-use futures::{future::poll_fn, pin_mut, Stream, StreamExt};
+use futures::{future::poll_fn, pin_mut, SinkExt, Stream, StreamExt};
 use log::*;
 use serde::{Deserialize, Serialize};
 use std::{io, path::Path, time::Duration};
+use tari_broadcast_channel::Publisher;
 use tari_comms::{message::NodeDestination, types::CommsPublicKey};
 use tari_comms_dht::{
     message::DhtMessageFlags,
@@ -74,6 +76,7 @@ pub struct TextMessageService<TTextStream, TAckStream> {
     text_message_stream: Option<TTextStream>,
     text_message_ack_stream: Option<TAckStream>,
     liveness: LivenessHandle,
+    event_publisher: Publisher<TextMessageEvent>,
 }
 
 impl<TTextStream, TAckStream> TextMessageService<TTextStream, TAckStream>
@@ -89,6 +92,7 @@ where
         database_path: String,
         oms: OutboundMessageRequester,
         liveness: LivenessHandle,
+        event_publisher: Publisher<TextMessageEvent>,
     ) -> Self
     {
         let pool = Self::establish_db_connection_pool(database_path).expect("Could not establish database connection");
@@ -102,6 +106,7 @@ where
             oms,
             database_connection_pool: pool,
             liveness,
+            event_publisher,
         }
     }
 
@@ -282,6 +287,11 @@ where
         let message_inner = message.clone().into_inner();
         poll_fn(move |_| blocking(|| message_inner.commit(&conn))).await??;
 
+        self.event_publisher
+            .send(TextMessageEvent::ReceivedTextMessage)
+            .await
+            .map_err(|_| TextMessageError::EventStreamError)?;
+
         Ok(())
     }
 
@@ -305,7 +315,10 @@ where
         );
 
         poll_fn(move |_| blocking(|| SentTextMessage::mark_sent_message_ack(&message_ack_inner.id, &conn))).await??;
-
+        self.event_publisher
+            .send(TextMessageEvent::ReceivedTextMessageAck)
+            .await
+            .map_err(|_| TextMessageError::EventStreamError)?;
         Ok(())
     }
 

@@ -24,8 +24,11 @@ use super::{
     model::{Contact, UpdateContact},
     service::TextMessages,
 };
-use crate::text_message_service::{error::TextMessageError, TextMessageHandle};
+use crate::text_message_service::error::TextMessageError;
+use futures::{stream::Fuse, StreamExt};
+use tari_broadcast_channel::Subscriber;
 use tari_comms::types::CommsPublicKey;
+use tari_service_framework::reply_channel::SenderService;
 use tower::Service;
 
 /// API Request enum
@@ -55,13 +58,30 @@ pub enum TextMessageResponse {
     ContactUpdated,
 }
 
-pub struct TextMessageServiceRequester {
-    handle: TextMessageHandle,
+/// Events that can be published on the Text Message Service Event Stream
+#[derive(Debug, Hash, PartialEq, Eq)]
+pub enum TextMessageEvent {
+    ReceivedTextMessage,
+    ReceivedTextMessageAck,
 }
 
-impl TextMessageServiceRequester {
-    pub fn new(handle: TextMessageHandle) -> Self {
-        Self { handle }
+#[derive(Clone)]
+pub struct TextMessageHandle {
+    handle: SenderService<TextMessageRequest, Result<TextMessageResponse, TextMessageError>>,
+    event_stream: Subscriber<TextMessageEvent>,
+}
+
+impl TextMessageHandle {
+    pub fn new(
+        handle: SenderService<TextMessageRequest, Result<TextMessageResponse, TextMessageError>>,
+        event_stream: Subscriber<TextMessageEvent>,
+    ) -> Self
+    {
+        Self { handle, event_stream }
+    }
+
+    pub fn get_event_stream_fused(&self) -> Fuse<Subscriber<TextMessageEvent>> {
+        self.event_stream.clone().fuse()
     }
 
     pub async fn send_text_message(

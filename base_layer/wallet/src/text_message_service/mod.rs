@@ -21,20 +21,16 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 pub mod error;
-pub mod messages;
+pub mod handle;
 pub mod model;
 mod service;
 
 use self::service::TextMessageService;
-use crate::text_message_service::{
-    error::TextMessageError,
-    messages::{TextMessageRequest, TextMessageResponse},
-    model::ReceivedTextMessage,
-    service::TextMessageAck,
-};
+use crate::text_message_service::{handle::TextMessageHandle, model::ReceivedTextMessage, service::TextMessageAck};
 use futures::{future, stream::StreamExt, Future, Stream};
 use log::*;
 use std::sync::Arc;
+use tari_broadcast_channel::bounded;
 use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_p2p::{
@@ -50,15 +46,12 @@ use tari_pubsub::TopicSubscriptionFactory;
 use tari_service_framework::{
     handles::ServiceHandlesFuture,
     reply_channel,
-    reply_channel::SenderService,
     ServiceInitializationError,
     ServiceInitializer,
 };
 use tokio::runtime::TaskExecutor;
 
 const LOG_TARGET: &'static str = "wallet::text_message_service::initializer";
-
-pub type TextMessageHandle = SenderService<TextMessageRequest, Result<TextMessageResponse, TextMessageError>>;
 
 pub struct TextMessageServiceInitializer {
     pub_key: Option<CommsPublicKey>,
@@ -112,11 +105,15 @@ impl ServiceInitializer for TextMessageServiceInitializer {
 
         let (sender, receiver) = reply_channel::unbounded();
 
+        let (publisher, subscriber) = bounded(100);
+
         let text_message_stream = self.text_message_stream();
         let text_message_ack_stream = self.text_message_ack_stream();
 
+        let tms_handle = TextMessageHandle::new(sender, subscriber);
+
         // Register handle before waiting for handles to be ready
-        handles_fut.register(sender);
+        handles_fut.register(tms_handle);
 
         executor.spawn(async move {
             let handles = handles_fut.await;
@@ -136,6 +133,7 @@ impl ServiceInitializer for TextMessageServiceInitializer {
                 database_path,
                 oms,
                 liveness,
+                publisher,
             );
 
             match service.start().await {
