@@ -20,10 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::message::NodeDestination;
 use derive_error::Error;
 use std::{fmt, fmt::Formatter};
 use tari_comms::{
-    message::NodeDestination,
     peer_manager::{node_id::NodeId, peer_manager::PeerManager, PeerManagerError},
     types::CommsPublicKey,
 };
@@ -93,7 +93,7 @@ impl BroadcastStrategy {
         // This node's node ID
         source_node_id: NodeId,
         peer_manager: &PeerManager,
-        header_dest: NodeDestination<CommsPublicKey>,
+        header_dest: NodeDestination,
         excluded_peers: Vec<CommsPublicKey>,
     ) -> Result<Self, BroadcastStrategyError>
     {
@@ -142,7 +142,7 @@ impl BroadcastStrategy {
     pub fn discover(
         source_node_id: NodeId,
         dest_node_id: Option<NodeId>,
-        header_dest: NodeDestination<CommsPublicKey>,
+        header_dest: NodeDestination,
         excluded_peers: Vec<CommsPublicKey>,
     ) -> Self
     {

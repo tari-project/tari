@@ -29,14 +29,14 @@ use std::sync::{
 };
 use tari_comms::{
     connection::NetAddress,
-    message::{InboundMessage, MessageEnvelopeHeader, MessageFlags, NodeDestination},
+    message::{InboundMessage, MessageEnvelopeHeader, MessageFlags},
     peer_manager::{NodeIdentity, Peer, PeerFlags, PeerManager},
     types::CommsDatabase,
     utils::signature,
 };
 use tari_comms_dht::{
     inbound::DhtInboundMessage,
-    message::{DhtEnvelope, DhtHeader, DhtMessageFlags, DhtMessageType},
+    message::{DhtEnvelope, DhtHeader, DhtMessageFlags, DhtMessageType, NodeDestination},
 };
 use tari_storage::lmdb_store::LMDBBuilder;
 use tari_test_utils::{paths::create_random_database_path, random};

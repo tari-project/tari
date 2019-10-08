@@ -107,10 +107,10 @@ mod test {
     use serde::{Deserialize, Serialize};
     use tari_comms::{
         connection::NetAddress,
-        message::{MessageEnvelopeHeader, MessageFlags, MessageHeader, NodeDestination},
+        message::{MessageEnvelopeHeader, MessageFlags, MessageHeader},
         peer_manager::{NodeIdentity, Peer, PeerFlags},
     };
-    use tari_comms_dht::message::{DhtHeader, DhtMessageFlags, DhtMessageType};
+    use tari_comms_dht::message::{DhtHeader, DhtMessageFlags, DhtMessageType, NodeDestination};
     use tari_pubsub::{pubsub_channel, TopicPayload};
 
     #[test]

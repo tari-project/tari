@@ -29,9 +29,9 @@ use crate::{
 use futures::{pin_mut, stream::StreamExt, Stream};
 use log::*;
 use std::sync::Arc;
-use tari_comms::{message::NodeDestination, types::CommsPublicKey};
+use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::{
-    message::DhtMessageFlags,
+    message::{DhtMessageFlags, NodeDestination},
     outbound::{BroadcastStrategy, DhtOutboundError},
 };
 use tari_service_framework::RequestContext;

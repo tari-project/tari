@@ -59,7 +59,6 @@
 //! [MessageHeader]: ./message/struct.MessageHeader.html
 //! [MessageData]: ./message/struct.MessageData.html
 //! [DomainConnector]: ../domain_connector/struct.DomainConnector.html
-use crate::peer_manager::node_id::NodeId;
 use bitflags::*;
 use serde::{Deserialize, Serialize};
 
@@ -90,15 +89,4 @@ bitflags! {
         const NONE = 0b0000_0000;
         const ENCRYPTED = 0b0000_0001;
     }
-}
-
-/// Represents the ways a destination node can be represented.
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-pub enum NodeDestination<P> {
-    /// The sender has chosen not to disclose the message destination
-    Undisclosed,
-    /// Destined for a particular public key
-    PublicKey(P),
-    /// Destined for a particular node id, or network region
-    NodeId(NodeId),
 }

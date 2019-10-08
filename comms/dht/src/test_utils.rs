@@ -22,7 +22,7 @@
 
 use crate::{
     inbound::DhtInboundMessage,
-    message::{DhtEnvelope, DhtHeader, DhtMessageFlags, DhtMessageType},
+    message::{DhtEnvelope, DhtHeader, DhtMessageFlags, DhtMessageType, NodeDestination},
 };
 use futures::{future, task::Context, Future, Poll};
 use rand::rngs::OsRng;
@@ -33,7 +33,7 @@ use std::sync::{
 };
 use tari_comms::{
     connection::NetAddress,
-    message::{InboundMessage, MessageEnvelopeHeader, MessageFlags, NodeDestination},
+    message::{InboundMessage, MessageEnvelopeHeader, MessageFlags},
     peer_manager::{NodeIdentity, Peer, PeerFlags, PeerManager},
     types::CommsDatabase,
     utils::signature,
