@@ -320,6 +320,10 @@ impl LMDBStore {
             None => None,
         }
     }
+
+    pub fn env(&self) -> Arc<Environment> {
+        self.env.clone()
+    }
 }
 
 #[derive(Clone)]
@@ -492,6 +496,10 @@ impl LMDBDatabase {
         let wrapper = LMDBWriteTransaction { db: &self.db, access };
         f(wrapper)?;
         txn.commit().map_err(|e| LMDBError::CommitError(e.to_string()))
+    }
+
+    pub fn db(&self) -> &DatabaseRef {
+        &self.db
     }
 }
 

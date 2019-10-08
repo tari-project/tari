@@ -142,6 +142,7 @@ where D: Digest + Send + Sync
                     DbKey::Metadata(_) => {}, // no-op
                     DbKey::BlockHeader(k) => {
                         db.headers.remove(&k);
+                        // TODO: shouldn't blockhash also be deleted
                     },
                     DbKey::BlockHash(hash) => match db.block_hashes.remove(&hash) {
                         Some(i) => {

@@ -151,7 +151,7 @@ pub mod pruned_mmr;
 
 // Commonly used exports
 /// A vector-based backend for [MerkleMountainRange]
-pub use backend::ArrayLike;
+pub use backend::{ArrayLike, ArrayLikeExt};
 /// A data structure that maintains a list of diffs on an MMR, enabling you to rewind to a previous state
 pub use change_tracker::{MerkleChangeTracker, MerkleCheckPoint};
 /// An immutable, append-only Merkle Mountain range (MMR) data structure

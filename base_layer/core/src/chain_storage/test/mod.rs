@@ -22,4 +22,5 @@
 //
 
 mod async_db;
+mod chain_backend;
 mod chain_storage;

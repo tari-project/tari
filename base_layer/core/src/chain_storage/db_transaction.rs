@@ -26,6 +26,7 @@ use crate::{
     transaction::{TransactionInput, TransactionKernel, TransactionOutput},
     types::HashOutput,
 };
+use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error, Formatter};
 use tari_utilities::{hex::to_hex, Hashable};
 
@@ -189,7 +190,7 @@ pub enum MetadataKey {
     PruningHorizon,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Deserialize, Serialize)]
 pub enum MetadataValue {
     ChainHeight(Option<u64>),
     BestBlock(Option<BlockHash>),

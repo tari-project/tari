@@ -24,7 +24,7 @@ mod support;
 
 use croaring::Bitmap;
 use support::{create_mmr, int_to_hash, Hasher};
-use tari_mmr::{MerkleChangeTracker, MutableMmr};
+use tari_mmr::{MerkleChangeTracker, MerkleCheckPoint, MutableMmr};
 use tari_utilities::hex::Hex;
 
 #[test]
@@ -148,4 +148,17 @@ fn reset_and_replay() {
     assert_eq!(mmr.len(), 3);
 
     assert_eq!(mmr.get_merkle_root(), root);
+}
+
+#[test]
+fn serialize_and_deserialize_merklecheckpoint() {
+    let nodes_added = vec![int_to_hash(0), int_to_hash(1)];
+    let mut nodes_deleted = Bitmap::create();
+    nodes_deleted.add(1);
+    nodes_deleted.add(5);
+    let mcp = MerkleCheckPoint::new(nodes_added, nodes_deleted);
+
+    let ser_buf = bincode::serialize(&mcp).unwrap();
+    let des_mcp: MerkleCheckPoint = bincode::deserialize(&ser_buf).unwrap();
+    assert_eq!(mcp.into_parts(), des_mcp.into_parts());
 }
