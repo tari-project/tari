@@ -37,9 +37,9 @@ use log::*;
 use serde::{Deserialize, Serialize};
 use std::{io, path::Path, time::Duration};
 use tari_broadcast_channel::Publisher;
-use tari_comms::{message::NodeDestination, types::CommsPublicKey};
+use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::{
-    message::DhtMessageFlags,
+    message::{DhtMessageFlags, NodeDestination},
     outbound::{BroadcastStrategy, OutboundMessageRequester},
 };
 use tari_p2p::{

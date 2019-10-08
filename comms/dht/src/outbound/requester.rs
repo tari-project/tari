@@ -22,17 +22,14 @@
 
 use super::{broadcast_strategy::BroadcastStrategy, message::DhtOutboundRequest};
 use crate::{
-    message::{DhtHeader, DhtMessageFlags, DhtMessageType},
+    message::{DhtHeader, DhtMessageFlags, DhtMessageType, NodeDestination},
     outbound::{
         message::{ForwardRequest, SendMessageRequest},
         DhtOutboundError,
     },
 };
 use futures::{channel::mpsc, SinkExt};
-use tari_comms::{
-    message::{Frame, Message, MessageFlags, MessageHeader, NodeDestination},
-    types::CommsPublicKey,
-};
+use tari_comms::message::{Frame, Message, MessageFlags, MessageHeader};
 use tari_utilities::message_format::MessageFormat;
 
 #[derive(Clone)]
@@ -49,7 +46,7 @@ impl OutboundMessageRequester {
     pub async fn send_message<T, MType>(
         &mut self,
         broadcast_strategy: BroadcastStrategy,
-        destination: NodeDestination<CommsPublicKey>,
+        destination: NodeDestination,
         dht_flags: DhtMessageFlags,
         message_type: MType,
         message: T,
@@ -67,7 +64,7 @@ impl OutboundMessageRequester {
     pub async fn send_dht_message<T>(
         &mut self,
         broadcast_strategy: BroadcastStrategy,
-        destination: NodeDestination<CommsPublicKey>,
+        destination: NodeDestination,
         dht_flags: DhtMessageFlags,
         message_type: DhtMessageType,
         message: T,
@@ -84,7 +81,7 @@ impl OutboundMessageRequester {
     pub async fn send_raw(
         &mut self,
         broadcast_strategy: BroadcastStrategy,
-        destination: NodeDestination<CommsPublicKey>,
+        destination: NodeDestination,
         dht_flags: DhtMessageFlags,
         dht_message_type: DhtMessageType,
         body: Frame,

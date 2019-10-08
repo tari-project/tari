@@ -21,20 +21,16 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::broadcast_strategy::BroadcastStrategy;
-use crate::message::{DhtHeader, DhtMessageFlags, DhtMessageType};
+use crate::message::{DhtHeader, DhtMessageFlags, DhtMessageType, NodeDestination};
 use std::fmt;
-use tari_comms::{
-    message::{MessageFlags, NodeDestination},
-    peer_manager::PeerNodeIdentity,
-    types::CommsPublicKey,
-};
+use tari_comms::{message::MessageFlags, peer_manager::PeerNodeIdentity, types::CommsPublicKey};
 
 #[derive(Debug, Clone)]
 pub struct SendMessageRequest {
     /// Broadcast strategy to use when sending the message
     pub broadcast_strategy: BroadcastStrategy,
     /// The intended destination for this message
-    pub destination: NodeDestination<CommsPublicKey>,
+    pub destination: NodeDestination,
     /// Comms-level message flags
     pub comms_flags: MessageFlags,
     /// Dht-level message flags

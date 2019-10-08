@@ -24,7 +24,7 @@ use crate::consts::DHT_ENVELOPE_HEADER_VERSION;
 use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
-use tari_comms::{message::NodeDestination, types::CommsPublicKey, utils::signature};
+use tari_comms::{peer_manager::NodeId, types::CommsPublicKey, utils::signature};
 
 bitflags! {
     /// Used to indicate characteristics of the incoming or outgoing message, such
@@ -47,7 +47,7 @@ pub enum DhtMessageType {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct DhtHeader {
     pub version: u8,
-    pub destination: NodeDestination<CommsPublicKey>,
+    pub destination: NodeDestination,
     pub origin_public_key: CommsPublicKey,
     pub origin_signature: Vec<u8>,
     pub message_type: DhtMessageType,
@@ -56,7 +56,7 @@ pub struct DhtHeader {
 
 impl DhtHeader {
     pub fn new(
-        destination: NodeDestination<CommsPublicKey>,
+        destination: NodeDestination,
         origin_pubkey: CommsPublicKey,
         origin_signature: Vec<u8>,
         message_type: DhtMessageType,
@@ -95,5 +95,22 @@ impl DhtEnvelope {
             Ok(is_valid) => is_valid,
             Err(_) => false,
         }
+    }
+}
+
+/// Represents the ways a destination node can be represented.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub enum NodeDestination {
+    /// The sender has chosen not to disclose the message destination
+    Undisclosed,
+    /// Destined for a particular public key
+    PublicKey(CommsPublicKey),
+    /// Destined for a particular node id, or network region
+    NodeId(NodeId),
+}
+
+impl Default for NodeDestination {
+    fn default() -> Self {
+        NodeDestination::Undisclosed
     }
 }

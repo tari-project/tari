@@ -32,9 +32,9 @@ use std::{
     sync::{Arc, Mutex},
     time::Duration,
 };
-use tari_comms::{message::NodeDestination, types::CommsPublicKey};
+use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::{
-    message::DhtMessageFlags,
+    message::{DhtMessageFlags, NodeDestination},
     outbound::{BroadcastStrategy, DhtOutboundError, OutboundMessageRequester},
 };
 use tari_core::{

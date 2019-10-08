@@ -24,14 +24,13 @@ use super::message::{DiscoverMessage, JoinMessage};
 use crate::{
     config::DhtConfig,
     inbound::{error::DhtInboundError, message::DecryptedDhtMessage},
-    message::{DhtMessageFlags, DhtMessageType},
+    message::{DhtMessageFlags, DhtMessageType, NodeDestination},
     outbound::{BroadcastStrategy, OutboundMessageRequester},
 };
 use log::*;
 use std::sync::Arc;
 use tari_comms::{
     connection::NetAddress,
-    message::NodeDestination,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFlags, PeerManager},
     types::CommsPublicKey,
 };

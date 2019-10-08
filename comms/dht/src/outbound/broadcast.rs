@@ -277,7 +277,7 @@ where
 mod test {
     use super::*;
     use crate::{
-        message::{DhtMessageFlags, DhtMessageType},
+        message::{DhtMessageFlags, DhtMessageType, NodeDestination},
         test_utils::{make_peer_manager, service_fn},
     };
     use futures::future;
@@ -285,7 +285,7 @@ mod test {
     use std::sync::Mutex;
     use tari_comms::{
         connection::NetAddress,
-        message::{MessageFlags, NodeDestination},
+        message::MessageFlags,
         peer_manager::{NodeId, Peer, PeerFlags},
         types::CommsPublicKey,
     };

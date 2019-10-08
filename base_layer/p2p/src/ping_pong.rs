@@ -42,12 +42,9 @@ use std::{
     sync::{Arc, Mutex},
     time::Duration,
 };
-use tari_comms::{
-    message::{MessageError, NodeDestination},
-    types::CommsPublicKey,
-};
+use tari_comms::{message::MessageError, types::CommsPublicKey};
 use tari_comms_dht::{
-    message::DhtMessageFlags,
+    message::{DhtMessageFlags, NodeDestination},
     outbound::{BroadcastStrategy, DhtOutboundError, OutboundMessageRequester},
 };
 use tari_utilities::{hex::Hex, message_format::MessageFormatError};
