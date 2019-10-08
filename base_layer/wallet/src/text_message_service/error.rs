@@ -44,6 +44,7 @@ pub enum TextMessageError {
     NetAddressError(NetAddressError),
     DatabaseConnectionError(DieselConnectionError),
     BlockingError(BlockingError),
+    EventStreamError,
     R2d2Error,
     /// If a received TextMessageAck doesn't matching any pending messages
     MessageNotFound,
