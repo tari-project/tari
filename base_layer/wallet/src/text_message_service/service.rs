@@ -39,8 +39,8 @@ use std::{io, path::Path, time::Duration};
 use tari_broadcast_channel::Publisher;
 use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::{
-    message::{DhtMessageFlags, NodeDestination},
-    outbound::{BroadcastStrategy, OutboundMessageRequester},
+    envelope::NodeDestination,
+    outbound::{BroadcastStrategy, OutboundEncryption, OutboundMessageRequester},
 };
 use tari_p2p::{
     domain_message::DomainMessage,
@@ -239,7 +239,7 @@ where
             .send_message(
                 BroadcastStrategy::DirectPublicKey(text_message.dest_pub_key.clone()),
                 NodeDestination::Undisclosed,
-                DhtMessageFlags::ENCRYPTED,
+                OutboundEncryption::EncryptForDestination,
                 TariMessageType::new(ExtendedMessage::Text),
                 text_message.clone(),
             )
@@ -273,7 +273,7 @@ where
             .send_message(
                 BroadcastStrategy::DirectPublicKey(message.clone().origin_pubkey),
                 NodeDestination::Undisclosed,
-                DhtMessageFlags::ENCRYPTED,
+                OutboundEncryption::EncryptForDestination,
                 TariMessageType::new(ExtendedMessage::TextAck),
                 text_message_ack,
             )

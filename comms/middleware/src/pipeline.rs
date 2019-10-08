@@ -87,7 +87,7 @@ where
             .map(|fut| fut.map(|_| true))
             .map(FutureExt::fuse)
             .map(Either::Left)
-            // By default, ready(false) is used to indicate that the pipeline 
+            // By default, ready(false) is used to indicate that the pipeline
             // shouldn't shutdown. This is to make the shutdown signal optional.
             .unwrap_or(Either::Right(future::ready(false)));
 

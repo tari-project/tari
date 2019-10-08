@@ -81,8 +81,8 @@ pub fn initialize_comms<TSink>(
     connector: InboundDomainConnector<TariMessageType, TSink>,
 ) -> Result<(CommsNode, Dht), CommsInitializationError>
 where
-    TSink: Sink<Arc<PeerMessage<TariMessageType>>> + Unpin + Clone + Send + 'static,
-    TSink::Error: Error + Send, //+ 'static,
+    TSink: Sink<Arc<PeerMessage<TariMessageType>>> + Unpin + Clone + Send + Sync + 'static,
+    TSink::Error: Error + Send + Sync,
 {
     let _ = std::fs::create_dir(&config.datastore_path).unwrap_or_default();
     let datastore = LMDBBuilder::new()

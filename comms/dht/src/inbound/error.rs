@@ -20,10 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::outbound::{BroadcastStrategyError, DhtOutboundError};
+use crate::outbound::DhtOutboundError;
 use derive_error::Error;
 use tari_comms::{message::MessageError, peer_manager::PeerManagerError};
-use tari_comms_middleware::impl_into_middleware_error;
 use tari_utilities::message_format::MessageFormatError;
 
 #[derive(Debug, Error)]
@@ -32,7 +31,4 @@ pub enum DhtInboundError {
     MessageFormatError(MessageFormatError),
     PeerManagerError(PeerManagerError),
     DhtOutboundError(DhtOutboundError),
-    BroadcastStrategyError(BroadcastStrategyError),
 }
-
-impl_into_middleware_error!(DhtInboundError);

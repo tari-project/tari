@@ -30,10 +30,10 @@ mod serialize;
 
 pub use self::{
     broadcast::BroadcastLayer,
-    broadcast_strategy::{BroadcastStrategy, BroadcastStrategyError},
+    broadcast_strategy::{BroadcastClosestRequest, BroadcastStrategy},
     encryption::EncryptionLayer,
     error::DhtOutboundError,
-    message::DhtOutboundRequest,
+    message::{DhtOutboundRequest, OutboundEncryption},
     requester::OutboundMessageRequester,
     serialize::SerializeLayer,
 };

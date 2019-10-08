@@ -22,9 +22,9 @@
 
 use super::{broadcast_strategy::BroadcastStrategy, message::DhtOutboundRequest};
 use crate::{
-    message::{DhtHeader, DhtMessageFlags, DhtMessageType, NodeDestination},
+    envelope::{DhtHeader, DhtMessageFlags, DhtMessageType, NodeDestination},
     outbound::{
-        message::{ForwardRequest, SendMessageRequest},
+        message::{ForwardRequest, OutboundEncryption, SendMessageRequest},
         DhtOutboundError,
     },
 };
@@ -42,12 +42,12 @@ impl OutboundMessageRequester {
         Self { sender }
     }
 
-    /// Send a message
+    /// Send a unencrypted message
     pub async fn send_message<T, MType>(
         &mut self,
         broadcast_strategy: BroadcastStrategy,
         destination: NodeDestination,
-        dht_flags: DhtMessageFlags,
+        encryption: OutboundEncryption,
         message_type: MType,
         message: T,
     ) -> Result<(), DhtOutboundError>
@@ -55,9 +55,17 @@ impl OutboundMessageRequester {
         MessageHeader<MType>: MessageFormat,
         T: MessageFormat,
     {
+        let flags = encryption.flags();
         let body = serialize_message(message_type, message)?;
-        self.send_raw(broadcast_strategy, destination, dht_flags, DhtMessageType::None, body)
-            .await
+        self.send(
+            broadcast_strategy,
+            destination,
+            encryption,
+            flags,
+            DhtMessageType::None,
+            body,
+        )
+        .await
     }
 
     /// Send a DHT-level message
@@ -65,23 +73,26 @@ impl OutboundMessageRequester {
         &mut self,
         broadcast_strategy: BroadcastStrategy,
         destination: NodeDestination,
-        dht_flags: DhtMessageFlags,
+        encryption: OutboundEncryption,
         message_type: DhtMessageType,
         message: T,
     ) -> Result<(), DhtOutboundError>
     where
         T: MessageFormat,
     {
-        let body = serialize_message(message_type.clone(), message)?;
-        self.send_raw(broadcast_strategy, destination, dht_flags, message_type, body)
+        let flags = encryption.flags();
+        // DHT has the message type in the DhtHeader, so no need to duplicate it in the Message wrapper.
+        let body = serialize_message((), message)?;
+        self.send(broadcast_strategy, destination, encryption, flags, message_type, body)
             .await
     }
 
     /// Send a raw message
-    pub async fn send_raw(
+    pub async fn send(
         &mut self,
         broadcast_strategy: BroadcastStrategy,
         destination: NodeDestination,
+        encryption: OutboundEncryption,
         dht_flags: DhtMessageFlags,
         dht_message_type: DhtMessageType,
         body: Frame,
@@ -91,6 +102,7 @@ impl OutboundMessageRequester {
             .send(DhtOutboundRequest::SendMsg(Box::new(SendMessageRequest {
                 broadcast_strategy,
                 destination,
+                encryption,
                 // Since NONE is the only option here, hard code to empty() rather than make this part of the public
                 // interface. If comms-level message flags become useful, it should be easy to add that to the public
                 // API from here up to domain-level
@@ -114,7 +126,7 @@ impl OutboundMessageRequester {
         self.sender
             .send(DhtOutboundRequest::Forward(Box::new(ForwardRequest {
                 broadcast_strategy,
-                comms_flags: MessageFlags::empty(),
+                comms_flags: MessageFlags::FORWARDED,
                 dht_header,
                 body,
             })))

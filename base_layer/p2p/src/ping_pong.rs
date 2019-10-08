@@ -44,8 +44,8 @@ use std::{
 };
 use tari_comms::{message::MessageError, types::CommsPublicKey};
 use tari_comms_dht::{
-    message::{DhtMessageFlags, NodeDestination},
-    outbound::{BroadcastStrategy, DhtOutboundError, OutboundMessageRequester},
+    envelope::NodeDestination,
+    outbound::{BroadcastStrategy, DhtOutboundError, OutboundEncryption, OutboundMessageRequester},
 };
 use tari_utilities::{hex::Hex, message_format::MessageFormatError};
 use tokio::runtime::Runtime;
@@ -117,7 +117,7 @@ impl PingPongService {
             .block_on(oms.send_message(
                 broadcast_strategy,
                 NodeDestination::Undisclosed,
-                DhtMessageFlags::ENCRYPTED,
+                OutboundEncryption::EncryptForDestination,
                 TariMessageType::new(NetMessage::PingPong),
                 msg,
             ))

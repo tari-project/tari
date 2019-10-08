@@ -36,7 +36,7 @@ const FRAMES_PER_MESSAGE: usize = 3;
 /// Generate a signature for the peer that confirms the origin_source and body
 fn peer_signature(secret_key: CommsSecretKey, body: &Vec<u8>) -> Result<Vec<u8>, MessageError> {
     let mut rng = COMMS_RNG.with(|rng| rng.clone());
-    let peer_signature = signature::sign(&mut rng, secret_key, &body).map_err(MessageError::SchnorrSignatureError)?;
+    let peer_signature = signature::sign(&mut rng, secret_key, body).map_err(MessageError::SchnorrSignatureError)?;
     peer_signature.to_binary().map_err(MessageError::MessageFormatError)
 }
 
@@ -52,7 +52,7 @@ pub struct MessageEnvelopeHeader {
 
 impl MessageEnvelopeHeader {
     /// Verify that the signature provided is valid for the given body
-    pub fn verify_signatures(&self, body: &Vec<u8>) -> Result<bool, MessageError> {
+    pub fn verify_signature(&self, body: &Vec<u8>) -> Result<bool, MessageError> {
         signature::verify(&self.message_public_key, self.message_signature.as_slice(), &body)
     }
 }

@@ -20,12 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{consts::DHT_RNG, message::DhtEnvelope, outbound::message::DhtOutboundMessage};
+use crate::{consts::DHT_RNG, envelope::DhtEnvelope, outbound::message::DhtOutboundMessage};
 use futures::{task::Context, Future, Poll};
 use log::*;
 use std::sync::Arc;
-use tari_comms::{outbound_message_service::OutboundMessage, peer_manager::NodeIdentity, utils::signature};
-use tari_comms_middleware::{error::box_as_middleware_error, MiddlewareError};
+use tari_comms::{
+    message::MessageFlags,
+    outbound_message_service::OutboundMessage,
+    peer_manager::NodeIdentity,
+    utils::signature,
+};
+use tari_comms_middleware::MiddlewareError;
 use tari_utilities::message_format::MessageFormat;
 use tower::{layer::Layer, Service, ServiceExt};
 
@@ -71,13 +76,12 @@ where
     S::Error: Into<MiddlewareError>,
 {
     pub async fn serialize(
-        mut next_service: S,
+        next_service: S,
         node_identity: Arc<NodeIdentity>,
         message: DhtOutboundMessage,
     ) -> Result<(), MiddlewareError>
     {
-        trace!(target: LOG_TARGET, "Serializing DhtOutboundMessage");
-        next_service.ready().await.map_err(Into::into)?;
+        debug!(target: LOG_TARGET, "Serializing outbound message");
 
         let mut rng = DHT_RNG.with(|rng| rng.clone());
 
@@ -89,17 +93,20 @@ where
             ..
         } = message;
 
-        // Sign the body
-        let signature =
-            signature::sign(&mut rng, node_identity.secret_key.clone(), &*body).map_err(box_as_middleware_error)?;
-        dht_header.origin_signature = signature.to_binary().map_err(box_as_middleware_error)?;
+        // If forwarding the message, the DhtHeader already has a signature that should not change
+        if !comms_flags.contains(MessageFlags::FORWARDED) {
+            // Sign the body
+            let signature = signature::sign(&mut rng, node_identity.secret_key.clone(), &body)?;
+            dht_header.origin_signature = signature.to_binary()?;
+            trace!(target: LOG_TARGET, "Signed message: {:?}", dht_header);
+        }
 
         let envelope = DhtEnvelope::new(dht_header, body);
 
-        let body = envelope.to_binary().map_err(box_as_middleware_error)?;
+        let body = envelope.to_binary()?;
 
         next_service
-            .call(OutboundMessage::new(peer_node_identity.node_id, comms_flags, body))
+            .oneshot(OutboundMessage::new(peer_node_identity.node_id, comms_flags, body))
             .await
             .map_err(Into::into)
     }
@@ -127,7 +134,8 @@ impl<S> Layer<S> for SerializeLayer {
 mod test {
     use super::*;
     use crate::{
-        message::DhtMessageFlags,
+        envelope::DhtMessageFlags,
+        outbound::OutboundEncryption,
         test_utils::{make_dht_header, make_node_identity, service_spy},
     };
     use futures::executor::block_on;
@@ -151,7 +159,7 @@ mod test {
         let msg = DhtOutboundMessage::new(
             PeerNodeIdentity::new(NodeId::default(), CommsPublicKey::default()),
             make_dht_header(&node_identity, &body, DhtMessageFlags::empty()),
-            CommsPublicKey::default(),
+            OutboundEncryption::None,
             MessageFlags::empty(),
             body,
         );

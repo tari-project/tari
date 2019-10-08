@@ -230,8 +230,7 @@ fn establish_connection_simultaneous_connect() {
                     assert!(conn.is_active());
                     break;
                 },
-                (Err(err), _) => panic!("{:?}", err),
-                (_, Err(err)) => panic!("{:?}", err),
+                (Err(err_a), Err(err_b)) => panic!("Alice error: {:?}, Bob error: {:?}", err_a, err_b),
                 (Ok(_), Ok(_)) if attempt_count < 10 => {
                     alice.connection_manager.disconnect_peer(&bob.peer).unwrap();
                     bob.connection_manager.disconnect_peer(&alice.peer).unwrap();

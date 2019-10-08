@@ -34,8 +34,8 @@ use std::{
 };
 use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::{
-    message::{DhtMessageFlags, NodeDestination},
-    outbound::{BroadcastStrategy, DhtOutboundError, OutboundMessageRequester},
+    envelope::NodeDestination,
+    outbound::{BroadcastStrategy, DhtOutboundError, OutboundEncryption, OutboundMessageRequester},
 };
 use tari_core::{
     tari_amount::MicroTari,
@@ -175,7 +175,7 @@ impl TransactionService {
         self.runtime.block_on(outbound_message_service.send_message(
             BroadcastStrategy::DirectPublicKey(dest_pubkey.clone()),
             NodeDestination::Undisclosed,
-            DhtMessageFlags::ENCRYPTED,
+            OutboundEncryption::EncryptForDestination,
             TariMessageType::new(BlockchainMessage::Transaction),
             TransactionSenderMessage::Single(Box::new(msg.clone())),
         ))?;
@@ -282,7 +282,7 @@ impl TransactionService {
             self.runtime.block_on(outbound_message_service.send_message(
                 BroadcastStrategy::DirectPublicKey(source_pubkey.clone()),
                 NodeDestination::Undisclosed,
-                DhtMessageFlags::ENCRYPTED,
+                OutboundEncryption::EncryptForDestination,
                 TariMessageType::new(BlockchainMessage::TransactionReply),
                 recipient_reply.clone(),
             ))?;

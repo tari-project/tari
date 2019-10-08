@@ -31,8 +31,8 @@ use log::*;
 use std::sync::Arc;
 use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::{
-    message::{DhtMessageFlags, NodeDestination},
-    outbound::{BroadcastStrategy, DhtOutboundError},
+    envelope::NodeDestination,
+    outbound::{BroadcastStrategy, DhtOutboundError, OutboundEncryption},
 };
 use tari_service_framework::RequestContext;
 
@@ -125,7 +125,7 @@ where
             .send_message(
                 BroadcastStrategy::DirectPublicKey(dest.clone()),
                 NodeDestination::PublicKey(dest),
-                DhtMessageFlags::ENCRYPTED,
+                OutboundEncryption::EncryptForDestination,
                 TariMessageType::new(NetMessage::PingPong),
                 PingPong::Pong,
             )
@@ -156,7 +156,7 @@ where
             .send_message(
                 BroadcastStrategy::DirectPublicKey(pub_key.clone()),
                 NodeDestination::PublicKey(pub_key),
-                DhtMessageFlags::ENCRYPTED,
+                OutboundEncryption::EncryptForDestination,
                 TariMessageType::new(NetMessage::PingPong),
                 PingPong::Ping,
             )

@@ -20,9 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-//
-///// Box any Error and coerce into a MiddlewareError
-// pub fn box_as_middleware_error<E>(err: E) -> MiddlewareError
-// where E: std::error::Error + Send + Sync + 'static {
-//    Box::new(err) as MiddlewareError
-//}
+macro_rules! unwrap_oms_send_msg {
+    ($var:expr) => {
+        match $var {
+            crate::outbound::DhtOutboundRequest::SendMsg(boxed) => *boxed,
+            _ => panic!("Unexpected DhtOutboundRequest"),
+        }
+    };
+}
+
+mod makers;
+mod service;
+
+pub use makers::*;
+pub use service::{service_fn, service_spy};

@@ -110,7 +110,7 @@ mod test {
         message::{MessageEnvelopeHeader, MessageFlags, MessageHeader},
         peer_manager::{NodeIdentity, Peer, PeerFlags},
     };
-    use tari_comms_dht::message::{DhtHeader, DhtMessageFlags, DhtMessageType, NodeDestination};
+    use tari_comms_dht::envelope::{DhtHeader, DhtMessageFlags, DhtMessageType, NodeDestination};
     use tari_pubsub::{pubsub_channel, TopicPayload};
 
     #[test]

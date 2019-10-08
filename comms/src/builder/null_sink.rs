@@ -40,6 +40,12 @@ impl<T, E> NullSink<T, E> {
     }
 }
 
+impl<T, E> Clone for NullSink<T, E> {
+    fn clone(&self) -> Self {
+        Self::new()
+    }
+}
+
 impl<T, E> Sink<T> for NullSink<T, E> {
     type Error = E;
 
