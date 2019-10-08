@@ -20,7 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use futures::{stream::FusedStream, Stream, StreamExt, TryFutureExt};
+use futures::{
+    channel::oneshot,
+    future,
+    future::Either,
+    stream::FusedStream,
+    FutureExt,
+    Stream,
+    StreamExt,
+    TryFutureExt,
+};
 use log::*;
 use std::fmt::Debug;
 use tokio::runtime::TaskExecutor;
@@ -35,6 +44,7 @@ const LOG_TARGET: &'static str = "comms::middleware::pipeline";
 pub struct ServicePipeline<TSvc, TStream> {
     service: TSvc,
     stream: TStream,
+    shutdown_signal: Option<oneshot::Receiver<()>>,
 }
 
 impl<TSvc, TStream> ServicePipeline<TSvc, TStream>
@@ -46,7 +56,16 @@ where
     TSvc::Future: Send,
 {
     pub fn new(stream: TStream, service: TSvc) -> Self {
-        Self { stream, service }
+        Self {
+            stream,
+            service,
+            shutdown_signal: None,
+        }
+    }
+
+    pub fn with_shutdown_signal(mut self, shutdown_signal: oneshot::Receiver<()>) -> Self {
+        self.shutdown_signal = Some(shutdown_signal);
+        self
     }
 
     pub fn spawn_with(self, executor: TaskExecutor) {
@@ -61,23 +80,51 @@ where
         // to create back pressure on the stream if there is some
         // hold up with the service
         self.service.ready().await?;
-        while let Some(item) = self.stream.next().await {
-            let mut service = self.service.clone();
-            executor.spawn(async move {
-                match service.ready().await {
-                    Ok(_) => {
-                        if let Err(err) = service.call(item).await {
-                            // TODO: might want to dispatch this to tracing or provide an on_error callback
-                            error!(target: LOG_TARGET, "ServicePipeline error: {:?}", err);
+        let mut stream = self.stream.fuse();
+        let mut shutdown_signal = self
+            .shutdown_signal
+            .take()
+            .map(|fut| fut.map(|_| true))
+            .map(FutureExt::fuse)
+            .map(Either::Left)
+            // By default, ready(false) is used to indicate that the pipeline 
+            // shouldn't shutdown. This is to make the shutdown signal optional.
+            .unwrap_or(Either::Right(future::ready(false)));
+
+        loop {
+            futures::select! {
+                item = stream.select_next_some() => {
+                    let mut service = self.service.clone();
+                    // Call the service on it's own spawned task
+                    executor.spawn(async move {
+                        match service.ready().await {
+                            Ok(_) => {
+                                if let Err(err) = service.call(item).await {
+                                    // TODO: might want to dispatch this to tracing or provide an on_error callback
+                                    error!(target: LOG_TARGET, "ServicePipeline error: {:?}", err);
+                                }
+                            },
+                            Err(err) => {
+                                // TODO: we shouldn't call the service again if poll_ready errors
+                                error!(target: LOG_TARGET, "ServicePipeline error: {:?}", err);
+                            },
                         }
-                    },
-                    Err(err) => {
-                        // TODO: we shouldn't call the service again if poll_ready errors
-                        error!(target: LOG_TARGET, "ServicePipeline error: {:?}", err);
-                    },
+                    })
+                },
+
+                should_shutdown = shutdown_signal => {
+                    if should_shutdown {
+                        debug!(target: LOG_TARGET, "ServicePipeline shut down");
+                        break;
+                    }
+                },
+                complete => {
+                    debug!(target: LOG_TARGET, "ServicePipeline completed");
+                    break;
                 }
-            })
+            }
         }
+
         Ok(())
     }
 }

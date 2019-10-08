@@ -27,6 +27,7 @@ use crate::{
     message::{MessageEnvelope, MessageEnvelopeHeader},
     outbound_message_service::{error::OutboundServiceError, messages::OutboundMessage, OutboundServiceConfig},
     peer_manager::{NodeId, NodeIdentity},
+    shutdown::ShutdownSignal,
     types::MESSAGE_PROTOCOL_VERSION,
     utils::signature,
 };
@@ -111,7 +112,7 @@ pub struct OutboundMessageService<TMsgStream> {
     node_identity: Arc<NodeIdentity>,
     pending_connect_requests: HashMap<NodeId, Vec<OutboundMessage>>,
     active_connections: HashMap<NodeId, Arc<PeerConnection>>,
-    shutdown_rx: Option<future::Fuse<oneshot::Receiver<()>>>,
+    shutdown_signal: Option<ShutdownSignal>,
 }
 
 impl<TMsgStream> OutboundMessageService<TMsgStream>
@@ -122,7 +123,7 @@ where TMsgStream: Stream<Item = OutboundMessage> + Unpin
         message_stream: TMsgStream,
         node_identity: Arc<NodeIdentity>,
         connection_manager: ConnectionManagerRequester,
-        shutdown_signal: oneshot::Receiver<()>,
+        shutdown_signal: ShutdownSignal,
     ) -> Self
     {
         Self {
@@ -133,16 +134,17 @@ where TMsgStream: Stream<Item = OutboundMessage> + Unpin
             message_stream: message_stream.fuse(),
             pending_connect_requests: HashMap::new(),
             dial_cancel_signals: HashMap::new(),
-            shutdown_rx: Some(shutdown_signal.fuse()),
+            shutdown_signal: Some(shutdown_signal),
         }
     }
 
     pub async fn start(mut self) {
         let mut pending_connects = FuturesUnordered::new();
-        let mut shutdown_rx = self
-            .shutdown_rx
+        let mut shutdown_signal = self
+            .shutdown_signal
             .take()
-            .expect("OutboundMessageActor initialized without shutdown_rx");
+            .expect("OutboundMessageActor initialized without shutdown_rx")
+            .fuse();
         loop {
             futures::select! {
                 new_message = self.message_stream.select_next_some() => {
@@ -196,9 +198,10 @@ where TMsgStream: Stream<Item = OutboundMessage> + Unpin
                     }
                 },
 
-                _ = shutdown_rx => {
+                ready_signal = shutdown_signal => {
                     info!(target: LOG_TARGET, "Outbound message service shutting because the shutdown signal was received.");
                     self.cancel_pending_connection_attempts();
+                    let _ = ready_signal.map(|tx| tx.send(()));
                     break;
                 }
 
@@ -511,7 +514,9 @@ mod test {
         assert!(conn_man_rx.try_next().is_err());
 
         // Abort pending connections and shutdown the service
-        shutdown_tx.send(()).unwrap();
+        let (tx, rx) = oneshot::channel();
+        shutdown_tx.send(tx).unwrap();
+        rt.block_on(rx).unwrap();
         rt.shutdown_on_idle();
     }
 

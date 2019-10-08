@@ -25,7 +25,10 @@ use crate::{
     tari_message::TariMessageType,
 };
 use derive_error::Error;
-use futures::{channel::mpsc, Sink};
+use futures::{
+    channel::{mpsc, oneshot},
+    Sink,
+};
 use std::{error::Error, net::IpAddr, sync::Arc};
 use tari_comms::{
     builder::{CommsBuilderError, CommsError, CommsNode},
@@ -98,6 +101,9 @@ where
     let (inbound_tx, inbound_rx) = mpsc::channel(config.inbound_buffer_size);
     let (outbound_tx, outbound_rx) = mpsc::channel(config.outbound_buffer_size);
 
+    let (inbound_pipeline_signal, inbound_pipeline_rx) = oneshot::channel();
+    let (outbound_pipeline_signal, outbound_pipeline_rx) = oneshot::channel();
+
     let comms = CommsBuilder::new(executor.clone())
         .with_node_identity(config.node_identity)
         .with_peer_storage(peer_database)
@@ -108,6 +114,10 @@ where
             socks_proxy_address: config.socks_proxy_address,
             host: config.host,
             ..Default::default()
+        })
+        .on_shutdown(move || {
+            let _ = inbound_pipeline_signal.send(());
+            let _ = outbound_pipeline_signal.send(());
         })
         .build()
         .map_err(CommsInitializationError::CommsBuilderError)?
@@ -122,28 +132,30 @@ where
     //---------------------------------- Inbound Pipeline --------------------------------------------//
 
     // Connect inbound comms messages to the inbound pipeline and run it
-    let inbound_pipeline = ServicePipeline::new(
+    ServicePipeline::new(
         // Messages coming IN from comms to DHT
         inbound_rx,
         // Messages going OUT from DHT to connector (pubsub)
         ServiceBuilder::new()
             .layer(dht.inbound_middleware_layer())
             .service(connector),
-    );
-    inbound_pipeline.spawn_with(executor.clone());
+    )
+    .with_shutdown_signal(inbound_pipeline_rx)
+    .spawn_with(executor.clone());
 
     //---------------------------------- Outbound Pipeline --------------------------------------------//
 
-    //    // Connect outbound message pipeline to comms, and run it
-    let outbound_pipeline = ServicePipeline::new(
+    // Connect outbound message pipeline to comms, and run it
+    ServicePipeline::new(
         // Requests coming IN from services to DHT
         dht.take_outbound_receiver().expect("take outbound receiver only once"),
         // Messages going OUT from DHT to comms
         ServiceBuilder::new()
             .layer(dht.outbound_middleware_layer())
             .service(SinkMiddleware::new(outbound_tx)),
-    );
-    outbound_pipeline.spawn_with(executor);
+    )
+    .with_shutdown_signal(outbound_pipeline_rx)
+    .spawn_with(executor);
 
     Ok((comms, dht))
 }

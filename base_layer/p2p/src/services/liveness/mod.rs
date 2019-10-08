@@ -48,7 +48,7 @@ use crate::{
     tari_message::{NetMessage, TariMessageType},
 };
 use futures::{future, Future, Stream, StreamExt};
-use std::{fmt::Debug, sync::Arc};
+use std::sync::Arc;
 use tari_pubsub::TopicSubscriptionFactory;
 use tari_service_framework::{
     handles::ServiceHandlesFuture,
@@ -56,7 +56,6 @@ use tari_service_framework::{
     ServiceInitializationError,
     ServiceInitializer,
 };
-use tari_utilities::message_format::{MessageFormat, MessageFormatError};
 use tokio::runtime::TaskExecutor;
 
 pub use self::messages::{LivenessRequest, LivenessResponse, PingPong};

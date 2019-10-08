@@ -98,7 +98,10 @@ where
                         Err(err)
                     });
                 },
-                complete => break,
+                complete => {
+                    info!(target: LOG_TARGET, "Liveness service shutting down because all streams finished");
+                    break;
+                }
             }
         }
     }
