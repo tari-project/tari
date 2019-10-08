@@ -160,24 +160,24 @@ impl LivePeerConnections {
     }
 
     /// Send a shutdown signal to all peer connections, returning their worker thread handles
-    pub fn shutdown_all(self) -> HashMap<NodeId, PeerConnectionJoinHandle> {
+    pub fn shutdown_all(&self) {
         info!(target: LOG_TARGET, "Shutting down all peer connections");
         self.atomic_read(|repo| {
             repo.for_each(|conn| {
                 let _ = conn.shutdown();
             });
         });
-
-        acquire_lock!(self.connection_thread_handles, into_inner)
     }
 
     /// Send a shutdown signal to all peer connections, and wait for all of them to
     /// shut down, returning the result of the shutdown.
-    pub fn shutdown_joined(self) -> Vec<std::result::Result<(), ConnectionError>> {
-        let handles = self.shutdown_all();
+    pub fn shutdown_joined(&self) -> Vec<std::result::Result<(), ConnectionError>> {
+        self.shutdown_all();
+
+        let mut handles = acquire_write_lock!(self.connection_thread_handles);
 
         let mut results = vec![];
-        for (_, handle) in handles.into_iter() {
+        for (_, handle) in handles.drain() {
             results.push(
                 handle
                     .timeout_join(THREAD_JOIN_TIMEOUT_IN_MS)

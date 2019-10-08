@@ -20,6 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+// Required to use futures::select! macro
+#![recursion_limit = "256"]
+
 /// A basic ncurses UI that sends ping and receives pong messages to a single peer using the `tari_p2p` library.
 /// Press 'p' to send a ping.
 
@@ -33,7 +36,13 @@ use cursive::{
     CbFunc,
     Cursive,
 };
-use futures::{channel::mpsc, join, stream::StreamExt, Stream};
+use futures::{
+    channel::{mpsc, oneshot},
+    future::FutureExt,
+    join,
+    stream::StreamExt,
+    Stream,
+};
 use futures_timer::Interval;
 use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
 use std::{
@@ -156,7 +165,8 @@ fn main() {
     // Updates the UI when pings/pongs are received
     let ui_update_signal = app.cb_sink().clone();
     let liveness_handle = handles.get_handle::<LivenessHandle>().unwrap();
-    rt.spawn(update_ui(ui_update_signal, liveness_handle.clone()));
+    let (ui_shutdown_tx, shutdown_rx) = oneshot::channel();
+    rt.spawn(update_ui(ui_update_signal, liveness_handle.clone(), shutdown_rx));
 
     // Send pings when 'p' is pressed
     let (mut send_ping_tx, send_ping_rx) = mpsc::channel(10);
@@ -175,10 +185,11 @@ fn main() {
 
     app.add_global_callback('q', |s| s.quit());
     app.run();
+    ui_shutdown_tx.send(()).unwrap();
 
     let comms = Arc::try_unwrap(comms).map_err(|_| ()).unwrap();
-    comms.shutdown().unwrap();
-    //    rt.shutdown_on_idle();
+    rt.block_on(comms.shutdown()).unwrap();
+    rt.shutdown_on_idle();
 }
 fn setup_ui() -> Cursive {
     let mut app = Cursive::default();
@@ -198,24 +209,38 @@ lazy_static! {
 }
 type CursiveSignal = crossbeam_channel::Sender<Box<dyn CbFunc>>;
 
-async fn update_ui(update_sink: CursiveSignal, mut liveness_handle: LivenessHandle) {
+async fn update_ui(
+    update_sink: CursiveSignal,
+    mut liveness_handle: LivenessHandle,
+    shutdown_rx: oneshot::Receiver<()>,
+)
+{
     // TODO: This should ideally be a stream of events which we subscribe to here
-    let mut interval = Interval::new(Duration::from_millis(100));
-    while let Some(_) = interval.next().await {
-        let (ping_count, pong_count) = join!(
-            liveness_handle.call(LivenessRequest::GetPingCount),
-            liveness_handle.call(LivenessRequest::GetPongCount)
-        );
+    let mut shutdown_rx = shutdown_rx.fuse();
+    let mut interval = Interval::new(Duration::from_millis(100)).fuse();
+    loop {
+        ::futures::select! {
+            _ = interval.next() => {
+                let (ping_count, pong_count) = join!(
+                    liveness_handle.call(LivenessRequest::GetPingCount),
+                    liveness_handle.call(LivenessRequest::GetPongCount)
+                );
 
-        match (ping_count.unwrap(), pong_count.unwrap()) {
-            (Ok(LivenessResponse::Count(num_pings)), Ok(LivenessResponse::Count(num_pongs))) => {
-                {
-                    let mut lock = COUNTER_STATE.write().unwrap();
-                    *lock = (lock.0, num_pings, num_pongs);
+                match (ping_count.unwrap(), pong_count.unwrap()) {
+                    (Ok(LivenessResponse::Count(num_pings)), Ok(LivenessResponse::Count(num_pongs))) => {
+                        {
+                            let mut lock = COUNTER_STATE.write().unwrap();
+                            *lock = (lock.0, num_pings, num_pongs);
+                        }
+                        let _ = update_sink.send(Box::new(update_count));
+                    },
+                    _ => {},
                 }
-                let _ = update_sink.send(Box::new(update_count));
             },
-            _ => {},
+            _ = shutdown_rx =>  {
+                log::debug!("Ping pong example UI exiting");
+                break;
+            }
         }
     }
 }

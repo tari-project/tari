@@ -22,7 +22,6 @@
 
 use crate::{comms_connector::PeerMessage, domain_message::DomainMessage, tari_message::TariMessageType};
 use std::{fmt::Debug, sync::Arc};
-use tari_comms::message::{InboundMessage, MessageError};
 use tari_utilities::message_format::{MessageFormat, MessageFormatError};
 
 const LOG_TARGET: &'static str = "base_layer::p2p::services";

@@ -131,7 +131,9 @@ fn outbound_message_pool_no_retry() {
     .serve(Arc::clone(&node_B_connection_manager))
     .unwrap();
 
-    let (_, node_B_connection_manager_actor) = create_connection_manager_actor(10, node_B_connection_manager);
+    let (_shutdown_tx, shutdown_rx) = oneshot::channel();
+    let (_, node_B_connection_manager_actor) =
+        create_connection_manager_actor(10, node_B_connection_manager, shutdown_rx);
     rt.spawn(node_B_connection_manager_actor.start());
 
     //---------------------------------- Node A setup --------------------------------------------//
@@ -152,8 +154,9 @@ fn outbound_message_pool_no_retry() {
             .unwrap(),
     );
 
+    let (_shutdown_tx, shutdown_rx) = oneshot::channel();
     let (node_A_connection_manager_requester, node_A_connection_manager_actor) =
-        create_connection_manager_actor(10, node_A_connection_manager);
+        create_connection_manager_actor(10, node_A_connection_manager, shutdown_rx);
     rt.spawn(node_A_connection_manager_actor.start());
 
     // Setup Node A OMS
@@ -186,7 +189,9 @@ fn outbound_message_pool_no_retry() {
         .timeout_join(Duration::from_millis(3000))
         .unwrap();
 
-    shutdown_tx.send(()).unwrap();
+    let (tx, rx) = oneshot::channel();
+    shutdown_tx.send(tx).unwrap();
+    rt.block_on(rx).unwrap();
 
     clean_up_datastore(node_A_database_name);
     clean_up_datastore(node_B_database_name);
@@ -251,8 +256,9 @@ fn test_outbound_message_pool_fail_and_retry() {
         .map(Arc::new)
         .unwrap();
 
+    let (_shutdown_tx, shutdown_rx) = oneshot::channel();
     let (node_A_connection_manager_requester, node_A_connection_manager_actor) =
-        create_connection_manager_actor(10, node_A_connection_manager);
+        create_connection_manager_actor(10, node_A_connection_manager, shutdown_rx);
     rt.spawn(node_A_connection_manager_actor.start());
 
     // Setup Node A OMS
@@ -314,7 +320,9 @@ fn test_outbound_message_pool_fail_and_retry() {
         .timeout_join(Duration::from_millis(3000))
         .unwrap();
 
-    shutdown_tx.send(()).unwrap();
+    let (tx, rx) = oneshot::channel();
+    shutdown_tx.send(tx).unwrap();
+    rt.block_on(rx).unwrap();
 
     clean_up_datastore(database_name);
 }

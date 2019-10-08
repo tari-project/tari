@@ -24,6 +24,7 @@ use crate::{
     connection::PeerConnection,
     connection_manager::{dialer::Dialer, ConnectionManagerError},
     peer_manager::NodeId,
+    shutdown::ShutdownSignal,
 };
 use futures::{
     channel::{mpsc, oneshot},
@@ -43,13 +44,14 @@ const LOG_TARGET: &'static str = "comms::dialer::actor";
 pub fn create<TDialer>(
     buffer_size: usize,
     dialer: Arc<TDialer>,
+    shutdown_signal: ShutdownSignal,
 ) -> (
     ConnectionManagerRequester,
     ConnectionManagerActor<TDialer, mpsc::Receiver<ConnectionManagerRequest>>,
 )
 {
     let (sender, receiver) = mpsc::channel(buffer_size);
-    let actor = ConnectionManagerActor::new(dialer, receiver);
+    let actor = ConnectionManagerActor::new(dialer, receiver, shutdown_signal);
     let requester = ConnectionManagerRequester::new(sender);
     (requester, actor)
 }
@@ -98,15 +100,17 @@ pub struct ConnectionManagerActor<TDialer, TStream> {
     dialer: Arc<TDialer>,
     pending_dial_tasks: FuturesUnordered<BoxFuture<'static, ()>>,
     request_rx: TStream,
+    shutdown_signal: Option<ShutdownSignal>,
 }
 
 impl<TDialer, TStream> ConnectionManagerActor<TDialer, TStream> {
     /// Create a new ConnectionManagerActor
-    pub fn new(dialer: Arc<TDialer>, request_rx: TStream) -> Self {
+    pub fn new(dialer: Arc<TDialer>, request_rx: TStream, shutdown_signal: ShutdownSignal) -> Self {
         Self {
             dialer,
             request_rx,
             pending_dial_tasks: FuturesUnordered::new(),
+            shutdown_signal: Some(shutdown_signal),
         }
     }
 }
@@ -119,13 +123,32 @@ where
 {
     /// Start the connection manager actor
     pub async fn start(mut self) {
+        let mut shutdown_signal = self
+            .shutdown_signal
+            .take()
+            .expect("ConnectionManagerActor initialized without shutdown signal")
+            .fuse();
         loop {
             ::futures::select! {
                 // Handle requests to the ConnectionManagerActor
                 request = self.request_rx.select_next_some() => { self.handle_request(request); },
                 // Make progress pending connection tasks
                 () = self.pending_dial_tasks.select_next_some() => { },
-                complete => break,
+                reply_tx = shutdown_signal => {
+                    info!(
+                        target: LOG_TARGET,
+                        "Shutting down connection manager actor because the shutdown signal was received",
+                    );
+                    let _ = reply_tx.map(|tx| tx.send(()));
+                    break;
+                },
+                complete => {
+                    info!(
+                        target: LOG_TARGET,
+                        "Shutting down connection manager actor because the request stream and all tasks completed",
+                    );
+                    break;
+                },
             }
         }
     }
@@ -193,7 +216,8 @@ mod test {
         let mut rt = current_thread::Runtime::new().unwrap();
 
         let dialer = Arc::new(CountDialer::<NodeId>::new());
-        let (mut requester, service) = create(1, Arc::clone(&dialer));
+        let (_shutdown_tx, shutdown_rx) = oneshot::channel();
+        let (mut requester, service) = create(1, Arc::clone(&dialer), shutdown_rx);
 
         rt.spawn(service.start());
 

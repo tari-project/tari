@@ -34,17 +34,13 @@ use crate::{
     message::{FrameSet, InboundMessage},
     outbound_message_service::{OutboundMessage, OutboundMessageService, OutboundServiceConfig, OutboundServiceError},
     peer_manager::{NodeIdentity, PeerManager, PeerManagerError},
+    shutdown::{Shutdown, ShutdownSignal},
     types::CommsDatabase,
 };
 use derive_error::Error;
-use futures::{
-    channel::{mpsc, oneshot},
-    stream,
-    Sink,
-    Stream,
-};
+use futures::{channel::mpsc, stream, Sink, Stream};
 use log::*;
-use std::{fmt::Debug, sync::Arc};
+use std::{fmt::Debug, sync::Arc, time::Duration};
 use tokio::runtime::TaskExecutor;
 
 const LOG_TARGET: &str = "comms::builder";
@@ -95,6 +91,7 @@ pub struct CommsBuilder<TInSink, TOutStream> {
     peer_conn_config: Option<PeerConnectionConfig>,
     comms_builder_config: Option<CommsBuilderConfig>,
     executor: TaskExecutor,
+    on_shutdown: Option<Box<dyn FnOnce() + Send + Sync>>,
 }
 
 impl CommsBuilder<NullSink<InboundMessage, mpsc::SendError>, stream::Empty<OutboundMessage>> {
@@ -112,6 +109,7 @@ impl CommsBuilder<NullSink<InboundMessage, mpsc::SendError>, stream::Empty<Outbo
             peer_storage: None,
             node_identity: None,
             comms_builder_config: None,
+            on_shutdown: None,
             executor,
         }
     }
@@ -183,6 +181,7 @@ where
             node_identity: self.node_identity,
             comms_builder_config: self.comms_builder_config,
             executor: self.executor,
+            on_shutdown: self.on_shutdown,
         }
     }
 
@@ -202,7 +201,14 @@ where
             node_identity: self.node_identity,
             comms_builder_config: self.comms_builder_config,
             executor: self.executor,
+            on_shutdown: self.on_shutdown,
         }
+    }
+
+    pub fn on_shutdown<F>(mut self, on_shutdown: F) -> Self
+    where F: FnOnce() + Send + Sync + 'static {
+        self.on_shutdown = Some(Box::new(on_shutdown));
+        self
     }
 
     fn make_peer_manager(&mut self) -> Result<Arc<PeerManager>, CommsBuilderError> {
@@ -241,11 +247,12 @@ where
     fn make_connection_manager_actor(
         &mut self,
         connection_manager: Arc<ConnectionManager>,
+        shutdown_signal: ShutdownSignal,
     ) -> (ConnectionManagerRequester, CommsConnectionManagerActor)
     {
         let (tx, rx) = mpsc::channel(10);
         let requester = ConnectionManagerRequester::new(tx);
-        let actor = ConnectionManagerActor::new(connection_manager, rx);
+        let actor = ConnectionManagerActor::new(connection_manager, rx, shutdown_signal);
 
         (requester, actor)
     }
@@ -263,7 +270,7 @@ where
         &mut self,
         node_identity: Arc<NodeIdentity>,
         connection_manager_requester: ConnectionManagerRequester,
-        shutdown_signal: oneshot::Receiver<()>,
+        shutdown_signal: ShutdownSignal,
     ) -> OutboundMessageService<TOutStream>
     {
         let outbound_stream = self.outbound_stream.take().expect("outbound_stream cannot be None");
@@ -301,15 +308,20 @@ where
             peer_conn_config.clone(),
             peer_connection_message_sender,
         );
-        let (connection_manager_requester, connection_manager_actor) =
-            self.make_connection_manager_actor(Arc::clone(&connection_manager));
 
-        //---------------------------------- Outbound message service --------------------------------------------//
-        let (oms_shutdown_tx, oms_shutdown_rx) = oneshot::channel();
+        let mut shutdown = Shutdown::new().with_timeout(Duration::from_secs(5));
+
+        if let Some(on_shutdown) = self.on_shutdown.take() {
+            shutdown.on_triggered(on_shutdown);
+        }
+
+        let (connection_manager_requester, connection_manager_actor) =
+            self.make_connection_manager_actor(Arc::clone(&connection_manager), shutdown.new_signal());
+
         let outbound_message_service = self.make_outbound_message_service(
             Arc::clone(&node_identity),
             connection_manager_requester.clone(),
-            oms_shutdown_rx,
+            shutdown.new_signal(),
         );
 
         //---------------------------------- Inbound message pipeline --------------------------------------------//
@@ -322,10 +334,9 @@ where
         Ok(CommsContainer {
             connection_manager,
             connection_manager_actor,
-            connection_manager_requester,
             control_service,
             executor: self.executor,
-            oms_shutdown_tx,
+            shutdown,
             inbound_message_pipeline,
             node_identity,
             outbound_message_service,
@@ -342,14 +353,14 @@ pub enum CommsError {
     UncleanShutdown,
     /// The message type was not registered
     MessageTypeNotRegistered,
+    /// Failed to send shutdown signals
+    FailedSendShutdownSignals,
 }
 
 /// Contains the built comms services
 pub struct CommsContainer<TInSink, TOutStream> {
     connection_manager: Arc<ConnectionManager>,
     connection_manager_actor: CommsConnectionManagerActor,
-    connection_manager_requester: ConnectionManagerRequester,
-
     control_service: Option<ControlService>,
 
     executor: TaskExecutor,
@@ -359,7 +370,7 @@ pub struct CommsContainer<TInSink, TOutStream> {
     node_identity: Arc<NodeIdentity>,
 
     outbound_message_service: OutboundMessageService<TOutStream>,
-    oms_shutdown_tx: oneshot::Sender<()>,
+    shutdown: Shutdown,
 
     peer_manager: Arc<PeerManager>,
 }
@@ -388,8 +399,7 @@ where
 
         Ok(CommsNode {
             connection_manager: self.connection_manager,
-            connection_manager_requester: self.connection_manager_requester,
-            oms_shutdown_tx: Some(self.oms_shutdown_tx),
+            shutdown: self.shutdown,
             control_service_handle,
             node_identity: self.node_identity,
             peer_manager: self.peer_manager,
@@ -404,9 +414,8 @@ where
 /// method. Use the `shutdown` method to attempt to cleanly shut all comms services down.
 pub struct CommsNode {
     connection_manager: Arc<ConnectionManager>,
-    connection_manager_requester: ConnectionManagerRequester,
     control_service_handle: Option<ControlServiceHandle>,
-    oms_shutdown_tx: Option<oneshot::Sender<()>>,
+    shutdown: Shutdown,
     node_identity: Arc<NodeIdentity>,
     peer_manager: Arc<PeerManager>,
 }
@@ -420,32 +429,27 @@ impl CommsNode {
         Arc::clone(&self.node_identity)
     }
 
-    pub fn shutdown(mut self) -> Result<(), CommsError> {
+    pub async fn shutdown(mut self) -> Result<(), CommsError> {
         info!(target: LOG_TARGET, "Comms is shutting down");
 
-        // This shuts down the ConnectionManagerActor (releasing Arc<ConnectionManager>)
-        drop(self.connection_manager_requester);
-
-        // Shutdown oms
-        self.oms_shutdown_tx.take().map(|tx| tx.send(()));
-
         let mut shutdown_results = Vec::new();
+
+        // Send shutdown signals and wait for shutdown
+        shutdown_results.push(
+            self.shutdown
+                .trigger()
+                .await
+                .map_err(|_| CommsError::FailedSendShutdownSignals),
+        );
+
         // Shutdown control service
         if let Some(control_service_shutdown_result) = self.control_service_handle.map(|hnd| hnd.shutdown()) {
             shutdown_results.push(control_service_shutdown_result.map_err(CommsError::ControlServiceError));
         }
 
         // Lastly, Shutdown connection manager
-        match Arc::try_unwrap(self.connection_manager) {
-            Ok(conn_manager) => {
-                for result in conn_manager.shutdown() {
-                    shutdown_results.push(result.map_err(CommsError::ConnectionManagerError));
-                }
-            },
-            Err(_) => error!(
-                target: LOG_TARGET,
-                "Unable to cleanly shutdown connection manager because references are still held by other threads"
-            ),
+        for result in self.connection_manager.shutdown() {
+            shutdown_results.push(result.map_err(CommsError::ConnectionManagerError));
         }
 
         Self::check_clean_shutdown(shutdown_results)

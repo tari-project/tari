@@ -49,7 +49,8 @@
 //!   // (...)
 //!   .build();
 //! ```
-
+// Needed to make futures::select! work
+#![recursion_limit = "256"]
 #![feature(type_alias_impl_trait)]
 
 pub mod error;

@@ -208,7 +208,7 @@ impl ConnectionManager {
     }
 
     /// Sends shutdown signals to all PeerConnections
-    pub fn shutdown(self) -> Vec<std::result::Result<(), ConnectionError>> {
+    pub fn shutdown(&self) -> Vec<std::result::Result<(), ConnectionError>> {
         self.connections.shutdown_joined()
     }
 
