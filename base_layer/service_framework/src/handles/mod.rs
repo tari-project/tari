@@ -30,6 +30,7 @@ use std::{
 };
 
 pub use self::{future::ServiceHandlesFuture, lazy_service::LazyService};
+pub(crate) use future::handle_notifier_pair;
 
 /// This macro unlocks a Mutex or RwLock. If the lock is
 /// poisoned (i.e. panic while unlocked) the last value
