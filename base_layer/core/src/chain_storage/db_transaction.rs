@@ -113,7 +113,12 @@ impl DbTransaction {
     /// the database.
     pub fn commit_block(&mut self) {
         self.operations
-            .push(WriteOperation::Insert(DbKeyValuePair::CommitBlock));
+            .push(WriteOperation::CreateMmrCheckpoint(MmrTree::Header));
+        self.operations
+            .push(WriteOperation::CreateMmrCheckpoint(MmrTree::Kernel));
+        self.operations.push(WriteOperation::CreateMmrCheckpoint(MmrTree::Utxo));
+        self.operations
+            .push(WriteOperation::CreateMmrCheckpoint(MmrTree::RangeProof));
     }
 
     /// Set the horizon beyond which we cannot be guaranteed provide detailed blockchain information anymore.
@@ -171,7 +176,6 @@ pub enum DbKeyValuePair {
     UnspentOutput(HashOutput, Box<TransactionOutput>),
     TransactionKernel(HashOutput, Box<TransactionKernel>),
     OrphanBlock(HashOutput, Box<Block>),
-    CommitBlock,
 }
 
 #[derive(Debug, Clone, PartialEq)]

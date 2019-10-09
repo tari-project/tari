@@ -216,6 +216,7 @@ where
         result
     }
 
+    /// Returns the Merkle Checkpoint specified by the provided index.
     pub fn get_checkpoint(&self, index: usize) -> Result<MerkleCheckPoint, MerkleMountainRangeError> {
         match self
             .checkpoints
@@ -225,6 +226,14 @@ where
             None => Err(MerkleMountainRangeError::OutOfRange),
             Some(cp) => Ok(cp.clone()),
         }
+    }
+
+    /// Returns the MMR index of a newly added hash, this index is only valid if the change history is Committed.
+    pub fn index(&self, hash: &Hash) -> Option<usize> {
+        self.current_additions
+            .iter()
+            .position(|h| h == hash)
+            .map(|i| self.mmr.len() as usize - self.current_additions.len() + i)
     }
 }
 

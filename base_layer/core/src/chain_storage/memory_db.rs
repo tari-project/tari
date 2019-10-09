@@ -61,11 +61,11 @@ struct MerkleNode<T> {
 struct InnerDatabase<D>
 where D: Digest
 {
-    headers: HashMap<u64, MerkleNode<BlockHeader>>,
+    headers: HashMap<u64, BlockHeader>,
     block_hashes: HashMap<HashOutput, u64>,
     utxos: HashMap<HashOutput, MerkleNode<TransactionOutput>>,
     stxos: HashMap<HashOutput, MerkleNode<TransactionOutput>>,
-    kernels: HashMap<HashOutput, MerkleNode<TransactionKernel>>,
+    kernels: HashMap<HashOutput, TransactionKernel>,
     orphans: HashMap<HashOutput, Block>,
     // Define MMRs to use both a memory-backed base and a memory-backed pruned MMR
     utxo_mmr: MerkleChangeTracker<D, Vec<MmrHash>, Vec<MerkleCheckPoint>>,
@@ -111,44 +111,33 @@ where D: Digest + Send + Sync
                     DbKeyValuePair::BlockHeader(k, v) => {
                         let hash = v.hash();
                         db.block_hashes.insert(hash.clone(), k);
-                        let index = db.header_mmr.push(&hash)? - 1 as usize;
-                        let v = MerkleNode { index, value: *v };
-                        db.headers.insert(k, v);
+                        db.header_mmr.push(&hash)?;
+                        db.headers.insert(k, *v);
                     },
                     DbKeyValuePair::UnspentOutput(k, v) => {
-                        db.utxo_mmr.push(&k).unwrap();
+                        db.utxo_mmr.push(&k)?;
                         let proof_hash = v.proof().hash();
-                        let index = db.range_proof_mmr.push(&proof_hash)? - 1;
-                        let v = MerkleNode { index, value: *v };
-                        db.utxos.insert(k, v);
+                        db.range_proof_mmr.push(&proof_hash)?;
+                        if let Some(index) = db.range_proof_mmr.index(&proof_hash) {
+                            let v = MerkleNode { index, value: *v };
+                            db.utxos.insert(k, v);
+                        }
                     },
                     DbKeyValuePair::TransactionKernel(k, v) => {
-                        let index = db.kernel_mmr.push(&k)? - 1;
-                        let v = MerkleNode { index, value: *v };
-                        db.kernels.insert(k, v);
+                        db.kernel_mmr.push(&k)?;
+                        db.kernels.insert(k, *v);
                     },
                     DbKeyValuePair::OrphanBlock(k, v) => {
                         db.orphans.insert(k, *v);
                     },
-                    DbKeyValuePair::CommitBlock => db
-                        .kernel_mmr
-                        .commit()
-                        .and(db.range_proof_mmr.commit())
-                        .and(db.utxo_mmr.commit())
-                        .and(db.header_mmr.commit())
-                        .map_err(|e| ChainStorageError::AccessError(e.to_string()))?,
                 },
                 WriteOperation::Delete(delete) => match delete {
                     DbKey::Metadata(_) => {}, // no-op
                     DbKey::BlockHeader(k) => {
-                        db.headers.remove(&k);
-                        // TODO: shouldn't blockhash also be deleted
+                        db.headers.remove(&k).and_then(|v| db.block_hashes.remove(&v.hash()));
                     },
-                    DbKey::BlockHash(hash) => match db.block_hashes.remove(&hash) {
-                        Some(i) => {
-                            db.headers.remove(&i);
-                        },
-                        None => {},
+                    DbKey::BlockHash(hash) => {
+                        db.block_hashes.remove(&hash).and_then(|i| db.headers.remove(&i));
                     },
                     DbKey::UnspentOutput(k) => {
                         db.utxos.remove(&k);
@@ -229,15 +218,12 @@ where D: Digest + Send + Sync
             DbKey::Metadata(MetadataKey::AccumulatedWork) => Some(DbValue::Metadata(MetadataValue::AccumulatedWork(0))),
             DbKey::Metadata(MetadataKey::PruningHorizon) => Some(DbValue::Metadata(MetadataValue::PruningHorizon(0))),
             DbKey::Metadata(MetadataKey::BestBlock) => Some(DbValue::Metadata(MetadataValue::BestBlock(None))),
-            DbKey::BlockHeader(k) => db
-                .headers
-                .get(k)
-                .map(|v| DbValue::BlockHeader(Box::new(v.value.clone()))),
+            DbKey::BlockHeader(k) => db.headers.get(k).map(|v| DbValue::BlockHeader(Box::new(v.clone()))),
             DbKey::BlockHash(hash) => db
                 .block_hashes
                 .get(hash)
                 .and_then(|i| db.headers.get(i))
-                .map(|v| DbValue::BlockHash(Box::new(v.value.clone()))),
+                .map(|v| DbValue::BlockHash(Box::new(v.clone()))),
             DbKey::UnspentOutput(k) => db
                 .utxos
                 .get(k)
@@ -246,7 +232,7 @@ where D: Digest + Send + Sync
             DbKey::TransactionKernel(k) => db
                 .kernels
                 .get(k)
-                .map(|v| DbValue::TransactionKernel(Box::new(v.value.clone()))),
+                .map(|v| DbValue::TransactionKernel(Box::new(v.clone()))),
             DbKey::OrphanBlock(k) => db.orphans.get(k).map(|v| DbValue::OrphanBlock(Box::new(v.clone()))),
         };
         Ok(result)
@@ -384,7 +370,9 @@ fn spend_utxo<D: Digest>(db: &mut RwLockWriteGuard<InnerDatabase<D>>, hash: Hash
     }
 }
 
-// This is a private helper function. When it is called, we are guaranteed to have a write lock on self.db
+// This is a private helper function. When it is called, we are guaranteed to have a write lock on self.db. Unspend_stxo
+// is only called for rewind operations and doesn't have to re-insert the utxo entry into the utxo_mmr as the MMR will
+// be rolled back.
 fn unspend_stxo<D: Digest>(db: &mut RwLockWriteGuard<InnerDatabase<D>>, hash: HashOutput) -> bool {
     match db.stxos.remove(&hash) {
         None => false,

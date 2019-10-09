@@ -509,10 +509,9 @@ fn commit_block_and_create_fetch_checkpoint_and_rewind_mmr<T: BlockchainBackend>
     txn.insert_utxo(utxo1);
     txn.insert_kernel(kernel1);
     txn.insert_header(header1);
-    assert!(db.write(txn).is_ok());
-    let mut txn = DbTransaction::new();
     txn.commit_block();
     assert!(db.write(txn).is_ok());
+
     let (utxo2, _) = create_utxo(MicroTari(15_000));
     let kernel2 = create_test_kernel(200.into(), 0);
     let mut header2 = BlockHeader::new(0);
@@ -526,8 +525,6 @@ fn commit_block_and_create_fetch_checkpoint_and_rewind_mmr<T: BlockchainBackend>
     txn.insert_utxo(utxo2);
     txn.insert_kernel(kernel2);
     txn.insert_header(header2);
-    assert!(db.write(txn).is_ok());
-    let mut txn = DbTransaction::new();
     txn.commit_block();
     assert!(db.write(txn).is_ok());
 
@@ -660,4 +657,145 @@ fn lmdb_for_each_orphan() {
     for_each_orphan(db);
 }
 
-// TODO: Restore from persistent backend test needed
+#[test]
+fn lmdb_backend_restore() {
+    let txs = vec![(tx!(1000.into(), fee: 20.into(), inputs: 2, outputs: 1)).0];
+    let orphan = create_test_block(10, None, txs);
+    let (utxo1, _) = create_utxo(MicroTari(10_000));
+    let (utxo2, _) = create_utxo(MicroTari(15_000));
+    let kernel = create_test_kernel(100.into(), 0);
+    let mut header = BlockHeader::new(0);
+    header.height = 1;
+    let orphan_hash = orphan.hash();
+    let utxo_hash = utxo1.hash();
+    let stxo_hash = utxo2.hash();
+    let kernel_hash = kernel.hash();
+    let header_hash = header.hash();
+
+    // Create backend storage
+    let path = create_random_database_path();
+    {
+        let db = create_lmdb_database(&path).unwrap();
+        let mut txn = DbTransaction::new();
+        txn.insert_orphan(orphan.clone());
+        txn.insert_utxo(utxo1);
+        txn.insert_utxo(utxo2);
+        txn.insert_kernel(kernel);
+        txn.insert_header(header.clone());
+        txn.commit_block();
+        assert!(db.write(txn).is_ok());
+        let mut txn = DbTransaction::new();
+        txn.spend_utxo(stxo_hash.clone());
+        assert!(db.write(txn).is_ok());
+
+        assert_eq!(db.contains(&DbKey::BlockHeader(header.height)), Ok(true));
+        assert_eq!(db.contains(&DbKey::BlockHash(header_hash.clone())), Ok(true));
+        assert_eq!(db.contains(&DbKey::UnspentOutput(utxo_hash.clone())), Ok(true));
+        assert_eq!(db.contains(&DbKey::SpentOutput(stxo_hash.clone())), Ok(true));
+        assert_eq!(db.contains(&DbKey::TransactionKernel(kernel_hash.clone())), Ok(true));
+        assert_eq!(db.contains(&DbKey::OrphanBlock(orphan_hash.clone())), Ok(true));
+    }
+    // Restore backend storage
+    let db = create_lmdb_database(&path).unwrap();
+    assert_eq!(db.contains(&DbKey::BlockHeader(header.height)), Ok(true));
+    assert_eq!(db.contains(&DbKey::BlockHash(header_hash)), Ok(true));
+    assert_eq!(db.contains(&DbKey::UnspentOutput(utxo_hash)), Ok(true));
+    assert_eq!(db.contains(&DbKey::SpentOutput(stxo_hash)), Ok(true));
+    assert_eq!(db.contains(&DbKey::TransactionKernel(kernel_hash)), Ok(true));
+    assert_eq!(db.contains(&DbKey::OrphanBlock(orphan_hash)), Ok(true));
+}
+
+#[test]
+fn lmdb_mmr_reset_and_commit() {
+    let db = create_lmdb_database(&create_random_database_path()).unwrap();
+
+    let (utxo1, _) = create_utxo(MicroTari(10_000));
+    let (utxo2, _) = create_utxo(MicroTari(15_000));
+    let kernel1 = create_test_kernel(100.into(), 0);
+    let kernel2 = create_test_kernel(200.into(), 0);
+    let mut header1 = BlockHeader::new(0);
+    header1.height = 1;
+    let utxo_hash1 = utxo1.hash();
+    let utxo_hash2 = utxo2.hash();
+    let kernel_hash1 = kernel1.hash();
+    let kernel_hash2 = kernel2.hash();
+    let rp_hash1 = utxo1.proof.hash();
+    let header_hash1 = header1.hash();
+
+    let mut txn = DbTransaction::new();
+    txn.insert_utxo(utxo1);
+    txn.insert_kernel(kernel1);
+    txn.insert_header(header1);
+    txn.commit_block();
+    assert!(db.write(txn).is_ok());
+
+    // Reset mmrs as a mmr txn failed without applying storage txns.
+    let mut txn = DbTransaction::new();
+    txn.spend_utxo(utxo_hash2.clone());
+    txn.commit_block();
+    assert!(db.write(txn).is_err());
+
+    assert_eq!(db.contains(&DbKey::UnspentOutput(utxo_hash1.clone())), Ok(true));
+    assert_eq!(db.contains(&DbKey::UnspentOutput(utxo_hash2.clone())), Ok(false));
+    assert_eq!(db.contains(&DbKey::SpentOutput(utxo_hash1.clone())), Ok(false));
+    assert_eq!(db.contains(&DbKey::SpentOutput(utxo_hash2.clone())), Ok(false));
+    assert_eq!(db.contains(&DbKey::TransactionKernel(kernel_hash1.clone())), Ok(true));
+    assert_eq!(db.contains(&DbKey::TransactionKernel(kernel_hash2.clone())), Ok(false));
+    assert_eq!(db.contains(&DbKey::BlockHash(header_hash1.clone())), Ok(true));
+    assert_eq!(
+        db.fetch_mmr_checkpoint(MmrTree::Utxo, 0).unwrap().nodes_added()[0],
+        utxo_hash1
+    );
+    assert_eq!(
+        db.fetch_mmr_checkpoint(MmrTree::Kernel, 0).unwrap().nodes_added()[0],
+        kernel_hash1
+    );
+    assert_eq!(
+        db.fetch_mmr_checkpoint(MmrTree::RangeProof, 0).unwrap().nodes_added()[0],
+        rp_hash1
+    );
+    assert_eq!(
+        db.fetch_mmr_checkpoint(MmrTree::Header, 0).unwrap().nodes_added()[0],
+        header_hash1
+    );
+    assert!(db.fetch_mmr_checkpoint(MmrTree::Utxo, 1).is_err());
+    assert!(db.fetch_mmr_checkpoint(MmrTree::Kernel, 1).is_err());
+    assert!(db.fetch_mmr_checkpoint(MmrTree::RangeProof, 1).is_err());
+    assert!(db.fetch_mmr_checkpoint(MmrTree::Header, 1).is_err());
+
+    // Reset mmrs as a storage txn failed after the mmr txns were applied, ensure the previous state was preserved.
+    let mut txn = DbTransaction::new();
+    txn.spend_utxo(utxo_hash1.clone());
+    txn.delete(DbKey::TransactionKernel(kernel_hash1.clone()));
+    txn.delete(DbKey::TransactionKernel(kernel_hash2.clone()));
+    txn.commit_block();
+    assert!(db.write(txn).is_err());
+
+    assert_eq!(db.contains(&DbKey::UnspentOutput(utxo_hash1.clone())), Ok(true));
+    assert_eq!(db.contains(&DbKey::UnspentOutput(utxo_hash2.clone())), Ok(false));
+    assert_eq!(db.contains(&DbKey::SpentOutput(utxo_hash1.clone())), Ok(false));
+    assert_eq!(db.contains(&DbKey::SpentOutput(utxo_hash2)), Ok(false));
+    assert_eq!(db.contains(&DbKey::TransactionKernel(kernel_hash1.clone())), Ok(true));
+    assert_eq!(db.contains(&DbKey::TransactionKernel(kernel_hash2)), Ok(false));
+    assert_eq!(db.contains(&DbKey::BlockHash(header_hash1.clone())), Ok(true));
+    assert_eq!(
+        db.fetch_mmr_checkpoint(MmrTree::Utxo, 0).unwrap().nodes_added()[0],
+        utxo_hash1
+    );
+    assert_eq!(
+        db.fetch_mmr_checkpoint(MmrTree::Kernel, 0).unwrap().nodes_added()[0],
+        kernel_hash1
+    );
+    assert_eq!(
+        db.fetch_mmr_checkpoint(MmrTree::RangeProof, 0).unwrap().nodes_added()[0],
+        rp_hash1
+    );
+    assert_eq!(
+        db.fetch_mmr_checkpoint(MmrTree::Header, 0).unwrap().nodes_added()[0],
+        header_hash1
+    );
+    assert!(db.fetch_mmr_checkpoint(MmrTree::Utxo, 1).is_err());
+    assert!(db.fetch_mmr_checkpoint(MmrTree::Kernel, 1).is_err());
+    assert!(db.fetch_mmr_checkpoint(MmrTree::RangeProof, 1).is_err());
+    assert!(db.fetch_mmr_checkpoint(MmrTree::Header, 1).is_err());
+}
