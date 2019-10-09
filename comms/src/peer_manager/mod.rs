@@ -61,8 +61,9 @@
 //! let returned_peer = peer_manager.find_with_node_id(&node_id).unwrap();
 //! ```
 
-mod error;
+mod node_features;
 
+mod error;
 pub mod node_id;
 pub mod node_identity;
 pub mod peer;

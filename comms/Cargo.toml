@@ -29,6 +29,7 @@ time = "0.1.42"
 tokio = "0.2.0-alpha.4"
 ttl_cache = "0.5.1"
 zmq = "0.9.1"
+serde_repr = "0.1.5"
 
 [dev-dependencies]
 tari_test_utils = {path="../infrastructure/test_utils"}
