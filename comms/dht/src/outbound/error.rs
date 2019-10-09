@@ -23,7 +23,6 @@
 use derive_error::Error;
 use futures::channel::mpsc::SendError;
 use tari_comms::{connection::ConnectionError, message::MessageError, peer_manager::PeerManagerError};
-use tari_comms_middleware::impl_into_middleware_error;
 use tari_crypto::signatures::SchnorrSignatureError;
 use tari_utilities::message_format::MessageFormatError;
 
@@ -36,5 +35,3 @@ pub enum DhtOutboundError {
     ConnectionError(ConnectionError),
     SignatureError(SchnorrSignatureError),
 }
-
-impl_into_middleware_error!(DhtOutboundError);

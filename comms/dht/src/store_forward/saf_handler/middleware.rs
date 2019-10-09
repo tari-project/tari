@@ -20,8 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::task::ProcessDhtMessage;
-use crate::{config::DhtConfig, inbound::DecryptedDhtMessage, outbound::OutboundMessageRequester};
+use super::task::MessageHandlerTask;
+use crate::{
+    config::DhtConfig,
+    inbound::DecryptedDhtMessage,
+    outbound::OutboundMessageRequester,
+    store_forward::SAFStorage,
+};
 use futures::{task::Context, Future, Poll};
 use std::sync::Arc;
 use tari_comms::peer_manager::{NodeIdentity, PeerManager};
@@ -29,18 +34,20 @@ use tari_comms_middleware::MiddlewareError;
 use tower::Service;
 
 #[derive(Clone)]
-pub struct DhtHandlerMiddleware<S> {
+pub struct MessageHandlerMiddleware<S> {
     config: DhtConfig,
     next_service: S,
+    store: Arc<SAFStorage>,
     peer_manager: Arc<PeerManager>,
     node_identity: Arc<NodeIdentity>,
     outbound_service: OutboundMessageRequester,
 }
 
-impl<S> DhtHandlerMiddleware<S> {
+impl<S> MessageHandlerMiddleware<S> {
     pub fn new(
         config: DhtConfig,
         next_service: S,
+        store: Arc<SAFStorage>,
         node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,
         outbound_service: OutboundMessageRequester,
@@ -48,6 +55,7 @@ impl<S> DhtHandlerMiddleware<S> {
     {
         Self {
             config,
+            store,
             next_service,
             node_identity,
             peer_manager,
@@ -56,10 +64,8 @@ impl<S> DhtHandlerMiddleware<S> {
     }
 }
 
-impl<S> Service<DecryptedDhtMessage> for DhtHandlerMiddleware<S>
-where
-    S: Service<DecryptedDhtMessage, Response = ()> + Clone,
-    S::Error: Into<MiddlewareError>,
+impl<S> Service<DecryptedDhtMessage> for MessageHandlerMiddleware<S>
+where S: Service<DecryptedDhtMessage, Response = (), Error = MiddlewareError> + Clone + Sync + Send
 {
     type Error = MiddlewareError;
     type Response = ();
@@ -71,9 +77,10 @@ where
     }
 
     fn call(&mut self, message: DecryptedDhtMessage) -> Self::Future {
-        ProcessDhtMessage::new(
+        MessageHandlerTask::new(
             self.config.clone(),
             self.next_service.clone(),
+            Arc::clone(&self.store),
             Arc::clone(&self.peer_manager),
             self.outbound_service.clone(),
             Arc::clone(&self.node_identity),

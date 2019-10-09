@@ -81,3 +81,4 @@ mod builder;
 mod null_sink;
 
 pub use self::builder::{CommsBuilder, CommsBuilderError, CommsError, CommsNode};
+pub use null_sink::NullSink;

@@ -44,8 +44,8 @@ pub fn setup_comms_services<TSink>(
     publisher: InboundDomainConnector<TariMessageType, TSink>,
 ) -> (Arc<CommsNode>, Dht)
 where
-    TSink: Sink<Arc<PeerMessage<TariMessageType>>> + Clone + Unpin + Send + 'static,
-    TSink::Error: Error + Send,
+    TSink: Sink<Arc<PeerMessage<TariMessageType>>> + Clone + Unpin + Send + Sync + 'static,
+    TSink::Error: Error + Send + Sync,
 {
     let comms_config = CommsConfig {
         node_identity: Arc::clone(&node_identity),

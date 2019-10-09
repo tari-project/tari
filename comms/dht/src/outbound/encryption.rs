@@ -20,12 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{message::DhtMessageFlags, outbound::message::DhtOutboundMessage};
+use crate::outbound::message::{DhtOutboundMessage, OutboundEncryption};
 use futures::{task::Context, Future, Poll};
 use log::*;
 use std::sync::Arc;
 use tari_comms::{peer_manager::NodeIdentity, utils::crypt};
-use tari_comms_middleware::{error::box_as_middleware_error, MiddlewareError};
+use tari_comms_middleware::MiddlewareError;
 use tower::{layer::Layer, Service, ServiceExt};
 
 const LOG_TARGET: &'static str = "comms::middleware::encryption";
@@ -95,12 +95,26 @@ where
         mut message: DhtOutboundMessage,
     ) -> Result<(), MiddlewareError>
     {
-        if message.dht_header.flags.contains(DhtMessageFlags::ENCRYPTED) {
-            debug!(target: LOG_TARGET, "Encrypting message");
-            let shared_secret = crypt::generate_ecdh_secret(&node_identity.secret_key, &message.destination_public_key);
-            let encrypted = crypt::encrypt(&shared_secret, &message.body).map_err(box_as_middleware_error)?;
-            message.body = encrypted;
-        }
+        trace!(target: LOG_TARGET, "DHT Message flags: {:?}", message.dht_header.flags);
+        match &message.encryption {
+            OutboundEncryption::EncryptFor(public_key) => {
+                debug!(target: LOG_TARGET, "Encrypting message for {}", public_key);
+                let shared_secret = crypt::generate_ecdh_secret(&node_identity.secret_key, public_key);
+                message.body = crypt::encrypt(&shared_secret, &message.body)?;
+            },
+            OutboundEncryption::EncryptForDestination => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Encrypting message for peer with public key {}", message.peer_node_identity.public_key
+                );
+                let shared_secret =
+                    crypt::generate_ecdh_secret(&node_identity.secret_key, &message.peer_node_identity.public_key);
+                message.body = crypt::encrypt(&shared_secret, &message.body)?
+            },
+            OutboundEncryption::None => {
+                debug!(target: LOG_TARGET, "Encryption not set for message",);
+            },
+        };
 
         next_service.ready().await.map_err(Into::into)?;
         next_service.call(message).await.map_err(Into::into)
@@ -111,7 +125,7 @@ where
 mod test {
     use super::*;
     use crate::{
-        message::DhtMessageFlags,
+        envelope::DhtMessageFlags,
         test_utils::{make_dht_header, make_node_identity, service_spy},
     };
     use futures::executor::block_on;
@@ -135,7 +149,7 @@ mod test {
         let msg = DhtOutboundMessage::new(
             PeerNodeIdentity::new(NodeId::default(), CommsPublicKey::default()),
             make_dht_header(&node_identity, &body, DhtMessageFlags::empty()),
-            CommsPublicKey::default(),
+            OutboundEncryption::None,
             MessageFlags::empty(),
             body.clone(),
         );
@@ -159,7 +173,7 @@ mod test {
         let msg = DhtOutboundMessage::new(
             PeerNodeIdentity::new(NodeId::default(), CommsPublicKey::default()),
             make_dht_header(&node_identity, &body, DhtMessageFlags::ENCRYPTED),
-            CommsPublicKey::default(),
+            OutboundEncryption::EncryptForDestination,
             MessageFlags::empty(),
             body.clone(),
         );

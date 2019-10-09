@@ -20,9 +20,35 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-//
-///// Box any Error and coerce into a MiddlewareError
-// pub fn box_as_middleware_error<E>(err: E) -> MiddlewareError
-// where E: std::error::Error + Send + Sync + 'static {
-//    Box::new(err) as MiddlewareError
-//}
+use crate::store_forward::message::StoredMessage;
+use bitflags::_core::time::Duration;
+use std::sync::{RwLock, RwLockWriteGuard};
+use ttl_cache::TtlCache;
+
+pub type SignatureBytes = Vec<u8>;
+
+pub struct SAFStorage {
+    message_cache: RwLock<TtlCache<SignatureBytes, StoredMessage>>,
+}
+
+impl SAFStorage {
+    pub fn new(cache_capacity: usize) -> Self {
+        Self {
+            message_cache: RwLock::new(TtlCache::new(cache_capacity)),
+        }
+    }
+
+    pub fn insert(&self, key: SignatureBytes, message: StoredMessage, ttl: Duration) -> Option<StoredMessage> {
+        acquire_write_lock!(self.message_cache).insert(key, message, ttl)
+    }
+
+    pub fn with_inner<F, T>(&self, f: F) -> T
+    where F: FnOnce(RwLockWriteGuard<TtlCache<SignatureBytes, StoredMessage>>) -> T {
+        f(acquire_write_lock!(self.message_cache))
+    }
+
+    #[cfg(test)]
+    pub fn remove(&self, key: &SignatureBytes) -> Option<StoredMessage> {
+        acquire_write_lock!(self.message_cache).remove(key)
+    }
+}

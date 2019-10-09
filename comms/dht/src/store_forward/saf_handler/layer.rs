@@ -20,9 +20,50 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-//
-///// Box any Error and coerce into a MiddlewareError
-// pub fn box_as_middleware_error<E>(err: E) -> MiddlewareError
-// where E: std::error::Error + Send + Sync + 'static {
-//    Box::new(err) as MiddlewareError
-//}
+use super::middleware::MessageHandlerMiddleware;
+use crate::{config::DhtConfig, outbound::OutboundMessageRequester, store_forward::SAFStorage};
+use std::sync::Arc;
+use tari_comms::peer_manager::{NodeIdentity, PeerManager};
+use tower::layer::Layer;
+
+pub struct MessageHandlerLayer {
+    config: DhtConfig,
+    store: Arc<SAFStorage>,
+    peer_manager: Arc<PeerManager>,
+    node_identity: Arc<NodeIdentity>,
+    outbound_service: OutboundMessageRequester,
+}
+
+impl MessageHandlerLayer {
+    pub fn new(
+        config: DhtConfig,
+        store: Arc<SAFStorage>,
+        node_identity: Arc<NodeIdentity>,
+        peer_manager: Arc<PeerManager>,
+        outbound_service: OutboundMessageRequester,
+    ) -> Self
+    {
+        Self {
+            config,
+            store,
+            node_identity,
+            peer_manager,
+            outbound_service,
+        }
+    }
+}
+
+impl<S> Layer<S> for MessageHandlerLayer {
+    type Service = MessageHandlerMiddleware<S>;
+
+    fn layer(&self, service: S) -> Self::Service {
+        MessageHandlerMiddleware::new(
+            self.config.clone(),
+            service,
+            Arc::clone(&self.store),
+            Arc::clone(&self.node_identity),
+            Arc::clone(&self.peer_manager),
+            self.outbound_service.clone(),
+        )
+    }
+}

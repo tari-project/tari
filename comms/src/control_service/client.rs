@@ -110,7 +110,7 @@ impl ControlServiceClient {
                 }
                 let envelope: MessageEnvelope = frames.try_into()?;
                 let header = envelope.deserialize_header()?;
-                if header.verify_signatures(envelope.body_frame())? {
+                if header.verify_signature(envelope.body_frame())? {
                     let msg =
                         envelope.deserialize_encrypted_body(&self.node_identity.secret_key, &self.dest_public_key)?;
                     Ok(Some(msg))

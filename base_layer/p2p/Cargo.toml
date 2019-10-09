@@ -32,7 +32,6 @@ threadpool = "1.7.1"
 tokio = "0.2.0-alpha.4"
 tower-service = { version="0.3.0-alpha.1" }
 tracing = "0.1.5"
-ttl_cache = "0.5.1"
 tower = "0.3.0-alpha.1a"
 
 [dev-dependencies]

@@ -20,47 +20,71 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_comms::{
-    message::{MessageEnvelopeHeader, MessageHeader},
-    peer_manager::Peer,
-};
-use tari_comms_dht::envelope::DhtHeader;
-use tari_utilities::message_format::{MessageFormat, MessageFormatError};
+use crate::envelope::DhtHeader;
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use tari_comms::message::MessageEnvelopeHeader;
 
-/// A domain-level message
-pub struct PeerMessage<MType> {
-    /// Serialized message data
-    pub body: Vec<u8>,
-    /// Domain message header
-    pub message_header: MessageHeader<MType>,
-    /// The message envelope header
-    pub comms_header: MessageEnvelopeHeader,
-    /// The message envelope header
-    pub dht_header: DhtHeader,
-    /// The connected peer which sent this message
-    pub source_peer: Peer,
+/// The RetrieveMessageRequest is used for requesting the set of stored messages from neighbouring peer nodes. If a
+/// start_time is provided then only messages after the specified time will be sent, otherwise all applicable messages
+/// will be sent.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub struct StoredMessagesRequest {
+    pub since: Option<DateTime<Utc>>,
 }
 
-impl<MType> PeerMessage<MType> {
+impl StoredMessagesRequest {
+    pub fn new() -> Self {
+        Self { since: None }
+    }
+
+    pub fn since(since: DateTime<Utc>) -> Self {
+        Self { since: Some(since) }
+    }
+}
+
+/// Storage for a single message envelope, including the date and time when the element was stored
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct StoredMessage {
+    pub stored_at: DateTime<Utc>,
+    pub version: u8,
+    pub comms_header: MessageEnvelopeHeader,
+    pub dht_header: DhtHeader,
+    pub encrypted_body: Vec<u8>,
+}
+
+impl StoredMessage {
     pub fn new(
-        message: Vec<u8>,
-        message_header: MessageHeader<MType>,
+        version: u8,
         comms_header: MessageEnvelopeHeader,
         dht_header: DhtHeader,
-        source_peer: Peer,
+        encrypted_body: Vec<u8>,
     ) -> Self
     {
         Self {
-            body: message,
-            message_header,
+            version,
             comms_header,
             dht_header,
-            source_peer,
+            encrypted_body,
+            stored_at: Utc::now(),
         }
     }
+}
 
-    pub fn deserialize_message<T>(&self) -> Result<T, MessageFormatError>
-    where T: MessageFormat {
-        T::from_binary(&self.body)
+/// The StoredMessages contains the set of applicable messages retrieved from a neighbouring peer node.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct StoredMessagesResponse {
+    pub messages: Vec<StoredMessage>,
+}
+
+impl StoredMessagesResponse {
+    pub fn len(&self) -> usize {
+        self.messages.len()
+    }
+}
+
+impl From<Vec<StoredMessage>> for StoredMessagesResponse {
+    fn from(messages: Vec<StoredMessage>) -> Self {
+        Self { messages }
     }
 }

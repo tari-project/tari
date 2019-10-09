@@ -20,9 +20,22 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-//
-///// Box any Error and coerce into a MiddlewareError
-// pub fn box_as_middleware_error<E>(err: E) -> MiddlewareError
-// where E: std::error::Error + Send + Sync + 'static {
-//    Box::new(err) as MiddlewareError
-//}
+use crate::outbound::DhtOutboundError;
+use derive_error::Error;
+use tari_comms::{message::MessageError, peer_manager::PeerManagerError};
+use tari_utilities::{ciphers::cipher::CipherError, message_format::MessageFormatError};
+
+#[derive(Debug, Error)]
+pub enum StoreAndForwardError {
+    MessageError(MessageError),
+    PeerManagerError(PeerManagerError),
+    MessageFormatError(MessageFormatError),
+    DhtOutboundError(DhtOutboundError),
+    /// Received stored message has an invalid destination
+    InvalidDestination,
+    /// Received stored message has an invalid origin signature
+    InvalidSignature,
+    /// Unable to decrypt received stored message
+    DecryptionFailed,
+    CipherError(CipherError),
+}

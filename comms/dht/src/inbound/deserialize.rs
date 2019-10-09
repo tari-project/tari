@@ -20,11 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{inbound::DhtInboundMessage, message::DhtEnvelope};
+use crate::{envelope::DhtEnvelope, inbound::DhtInboundMessage};
 use futures::{task::Context, Future, Poll};
 use log::*;
 use tari_comms::message::InboundMessage;
-use tari_comms_middleware::{error::box_as_middleware_error, MiddlewareError};
+use tari_comms_middleware::MiddlewareError;
 use tari_utilities::message_format::MessageFormat;
 use tower::{layer::Layer, Service, ServiceExt};
 
@@ -73,33 +73,37 @@ where
     pub async fn deserialize(mut next_service: S, message: InboundMessage) -> Result<(), MiddlewareError> {
         trace!(target: LOG_TARGET, "Deserializing InboundMessage");
         next_service.ready().await.map_err(Into::into)?;
-        match DhtEnvelope::from_binary(&message.body) {
+
+        let InboundMessage {
+            source_peer,
+            envelope_header,
+            body,
+            ..
+        } = message;
+
+        match DhtEnvelope::from_binary(&body) {
             Ok(dht_envelope) => {
                 trace!(target: LOG_TARGET, "Deserialization succeeded. Checking signatures");
                 if !dht_envelope.is_signature_valid() {
+                    eprintln!("GET DHT HEADER = {:?}", dht_envelope.header);
                     // The origin signature is not valid, this message should never have been sent
                     warn!(
                         target: LOG_TARGET,
                         "SECURITY: Origin signature verification failed. Discarding message from NodeId {}",
-                        message.source_peer.node_id
+                        source_peer.node_id
                     );
                     return Ok(());
                 }
 
                 trace!(target: LOG_TARGET, "Origin signature validation passed.");
-                next_service
-                    .call(DhtInboundMessage::new(
-                        dht_envelope.header,
-                        message.source_peer,
-                        message.envelope_header,
-                        dht_envelope.body,
-                    ))
-                    .await
-                    .map_err(Into::into)
+
+                let inbound_msg =
+                    DhtInboundMessage::new(dht_envelope.header, source_peer, envelope_header, dht_envelope.body);
+                next_service.call(inbound_msg).await.map_err(Into::into)
             },
             Err(err) => {
                 error!(target: LOG_TARGET, "DHT deserialization failed: {}", err);
-                Err(box_as_middleware_error(err))
+                Err(err.into())
             },
         }
     }
@@ -125,7 +129,7 @@ impl<S> Layer<S> for DeserializeLayer {
 mod test {
     use super::*;
     use crate::{
-        message::DhtMessageFlags,
+        envelope::DhtMessageFlags,
         test_utils::{make_comms_inbound_message, make_dht_envelope, make_node_identity, service_spy},
     };
     use futures::executor::block_on;

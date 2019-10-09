@@ -26,7 +26,7 @@ use log::*;
 use serde::{de::DeserializeOwned, Serialize};
 use std::{error::Error, marker::PhantomData, pin::Pin, sync::Arc};
 use tari_comms_dht::inbound::DecryptedDhtMessage;
-use tari_comms_middleware::error::MiddlewareError;
+use tari_comms_middleware::MiddlewareError;
 use tower::Service;
 
 const LOG_TARGET: &'static str = "comms::middleware::inbound_domain_connector";
@@ -49,7 +49,7 @@ impl<MType, TSink> Service<DecryptedDhtMessage> for InboundDomainConnector<MType
 where
     MType: Serialize + DeserializeOwned + Eq,
     TSink: Sink<Arc<PeerMessage<MType>>> + Unpin + Clone,
-    TSink::Error: Error + Send + 'static,
+    TSink::Error: Error + Send + Sync + 'static,
 {
     type Error = MiddlewareError;
     type Response = ();
@@ -57,9 +57,7 @@ where
     type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Pin::new(&mut self.sink)
-            .poll_ready(cx)
-            .map_err(|err| Box::new(err) as MiddlewareError)
+        Pin::new(&mut self.sink).poll_ready(cx).map_err(Into::into)
     }
 
     fn call(&mut self, msg: DecryptedDhtMessage) -> Self::Future {
@@ -71,10 +69,10 @@ impl<MType, TSink> InboundDomainConnector<MType, TSink>
 where
     MType: Serialize + DeserializeOwned + Eq,
     TSink: Sink<Arc<PeerMessage<MType>>> + Unpin,
-    TSink::Error: Error + Send + 'static,
+    TSink::Error: Error + Send + Sync + 'static,
 {
     async fn handle_message(mut sink: TSink, inbound_message: DecryptedDhtMessage) -> Result<(), MiddlewareError> {
-        match inbound_message.succeeded() {
+        match inbound_message.success() {
             Some(message) => {
                 match message.deserialize_header::<MType>() {
                     Ok(header) => {
@@ -99,9 +97,7 @@ where
 
                         // If this fails there is something wrong with the sink and the pubsub middleware should not
                         // continue
-                        sink.send(Arc::new(peer_message))
-                            .await
-                            .map_err(|err| Box::new(err) as MiddlewareError)?;
+                        sink.send(Arc::new(peer_message)).await.map_err(|err| Box::new(err))?;
                     },
                     Err(err) => {
                         warn!(
@@ -114,10 +110,7 @@ where
                 Ok(())
             },
             None => {
-                // Although a message which failed to decrypt/deserialize should never reach here
-                // as 'forward' should have forwarded the message and stopped it from propagation up the middleware
-                // we still have to handle this case (because we are accepting a DecryptedDhtMessage)
-                warn!(
+                debug!(
                     target: LOG_TARGET,
                     "Pubsub middleware discarded inbound message: Message failed to decrypt."
                 );
@@ -133,7 +126,7 @@ mod test {
     use crate::test_utils::{make_dht_inbound_message, make_node_identity};
     use futures::{channel::mpsc, executor::block_on, StreamExt};
     use tari_comms::message::{Message, MessageHeader};
-    use tari_comms_dht::message::DhtMessageFlags;
+    use tari_comms_dht::envelope::DhtMessageFlags;
     use tari_utilities::message_format::MessageFormat;
 
     #[test]
@@ -146,7 +139,7 @@ mod test {
             msg.to_binary().unwrap(),
             DhtMessageFlags::empty(),
         );
-        let decrypted = DecryptedDhtMessage::succeed(msg, inbound_message);
+        let decrypted = DecryptedDhtMessage::succeeded(msg, inbound_message);
         block_on(InboundDomainConnector::<i32, _>::handle_message(tx, decrypted)).unwrap();
 
         let peer_message = block_on(rx.next()).unwrap();
@@ -163,7 +156,7 @@ mod test {
             msg.to_binary().unwrap(),
             DhtMessageFlags::empty(),
         );
-        let decrypted = DecryptedDhtMessage::succeed(msg, inbound_message);
+        let decrypted = DecryptedDhtMessage::succeeded(msg, inbound_message);
         block_on(InboundDomainConnector::<i32, _>::handle_message(tx, decrypted)).unwrap();
 
         assert!(rx.try_next().unwrap().is_none());
@@ -181,7 +174,7 @@ mod test {
             msg.to_binary().unwrap(),
             DhtMessageFlags::empty(),
         );
-        let decrypted = DecryptedDhtMessage::succeed(msg, inbound_message);
+        let decrypted = DecryptedDhtMessage::succeeded(msg, inbound_message);
         let result = block_on(InboundDomainConnector::<i32, _>::handle_message(tx, decrypted));
         assert!(result.is_err());
     }
