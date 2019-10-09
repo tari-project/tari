@@ -32,6 +32,7 @@ pub const LMDB_DB_METADATA: &str = "metadata";
 pub const LMDB_DB_HEADERS: &str = "headers";
 pub const LMDB_DB_BLOCK_HASHES: &str = "block_hashes";
 pub const LMDB_DB_UTXOS: &str = "utxos";
+pub const LMDB_DB_TXOS_HASH_TO_INDEX: &str = "txos_hash_to_index";
 pub const LMDB_DB_STXOS: &str = "stxos";
 pub const LMDB_DB_KERNELS: &str = "kernels";
 pub const LMDB_DB_ORPHANS: &str = "orphans";

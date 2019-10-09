@@ -41,6 +41,7 @@ use crate::{
             LMDB_DB_RANGE_PROOF_MMR_BASE_BACKEND,
             LMDB_DB_RANGE_PROOF_MMR_CP_BACKEND,
             LMDB_DB_STXOS,
+            LMDB_DB_TXOS_HASH_TO_INDEX,
             LMDB_DB_UTXOS,
             LMDB_DB_UTXO_MMR_BASE_BACKEND,
             LMDB_DB_UTXO_MMR_CP_BACKEND,
@@ -51,7 +52,6 @@ use crate::{
 };
 use digest::Digest;
 use lmdb_zero::{Database, Environment, WriteTransaction};
-use serde::{Deserialize, Serialize};
 use std::{
     path::Path,
     sync::{Arc, RwLock},
@@ -61,14 +61,6 @@ use tari_storage::lmdb_store::{db, LMDBBuilder, LMDBStore};
 use tari_utilities::hash::Hashable;
 
 type DatabaseRef = Arc<Database<'static>>;
-
-/// A generic struct for storing node objects in the BlockchainDB that also form part of an MMR. The index field makes
-/// reverse lookups (find by hash) possible.
-#[derive(Serialize, Deserialize)]
-struct MerkleNode<T> {
-    index: usize,
-    value: T,
-}
 
 /// This is a lmdb-based blockchain database for persistent storage of the chain state.
 pub struct LMDBDatabase<D>
@@ -80,13 +72,13 @@ where D: Digest
     block_hashes_db: DatabaseRef,
     utxos_db: DatabaseRef,
     stxos_db: DatabaseRef,
+    txos_hash_to_index_db: DatabaseRef,
     kernels_db: DatabaseRef,
     orphans_db: DatabaseRef,
-    utxo_mmr: RwLock<MerkleChangeTracker<D, LMDBVec<MmrHash>, Vec<MerkleCheckPoint> /* LMDBVec<MerkleCheckPoint> */>>,
-    header_mmr: RwLock<MerkleChangeTracker<D, LMDBVec<MmrHash>, Vec<MerkleCheckPoint> /* LMDBVec<MerkleCheckPoint> */>>,
-    kernel_mmr: RwLock<MerkleChangeTracker<D, LMDBVec<MmrHash>, Vec<MerkleCheckPoint> /* LMDBVec<MerkleCheckPoint> */>>,
-    range_proof_mmr:
-        RwLock<MerkleChangeTracker<D, LMDBVec<MmrHash>, Vec<MerkleCheckPoint> /* LMDBVec<MerkleCheckPoint> */>>,
+    utxo_mmr: RwLock<MerkleChangeTracker<D, LMDBVec<MmrHash>, LMDBVec<MerkleCheckPoint>>>,
+    header_mmr: RwLock<MerkleChangeTracker<D, LMDBVec<MmrHash>, LMDBVec<MerkleCheckPoint>>>,
+    kernel_mmr: RwLock<MerkleChangeTracker<D, LMDBVec<MmrHash>, LMDBVec<MerkleCheckPoint>>>,
+    range_proof_mmr: RwLock<MerkleChangeTracker<D, LMDBVec<MmrHash>, LMDBVec<MerkleCheckPoint>>>,
 }
 
 impl<D> LMDBDatabase<D>
@@ -101,14 +93,14 @@ where D: Digest + Send + Sync
                 .db()
                 .clone(),
         );
-        // let utxo_mmr_cp_backend = LMDBVec::new(
-        // store.env(),
-        // store
-        // .get_handle(LMDB_DB_UTXO_MMR_CP_BACKEND)
-        // .ok_or(ChainStorageError::CriticalError)?
-        // .db()
-        // .clone(),
-        // );
+        let utxo_mmr_cp_backend = LMDBVec::new(
+            store.env(),
+            store
+                .get_handle(LMDB_DB_UTXO_MMR_CP_BACKEND)
+                .ok_or(ChainStorageError::CriticalError)?
+                .db()
+                .clone(),
+        );
         let header_mmr_base_backend = LMDBVec::new(
             store.env(),
             store
@@ -117,12 +109,14 @@ where D: Digest + Send + Sync
                 .db()
                 .clone(),
         );
-        // let header_mmr_cp_backend = LMDBVec::new(store.env(),
-        // store
-        // .get_handle(LMDB_DB_HEADER_MMR_CP_BACKEND)
-        // .ok_or(ChainStorageError::CriticalError)?.db()
-        //                .clone(),
-        // );
+        let header_mmr_cp_backend = LMDBVec::new(
+            store.env(),
+            store
+                .get_handle(LMDB_DB_HEADER_MMR_CP_BACKEND)
+                .ok_or(ChainStorageError::CriticalError)?
+                .db()
+                .clone(),
+        );
         let kernel_mmr_base_backend = LMDBVec::new(
             store.env(),
             store
@@ -131,12 +125,14 @@ where D: Digest + Send + Sync
                 .db()
                 .clone(),
         );
-        // let kernel_mmr_cp_backend = LMDBVec::new(store.env(),
-        // store
-        // .get_handle(LMDB_DB_KERNEL_MMR_CP_BACKEND)
-        // .ok_or(ChainStorageError::CriticalError)?.db()
-        //                .clone(),
-        // );
+        let kernel_mmr_cp_backend = LMDBVec::new(
+            store.env(),
+            store
+                .get_handle(LMDB_DB_KERNEL_MMR_CP_BACKEND)
+                .ok_or(ChainStorageError::CriticalError)?
+                .db()
+                .clone(),
+        );
         let range_proof_mmr_base_backend = LMDBVec::new(
             store.env(),
             store
@@ -145,12 +141,14 @@ where D: Digest + Send + Sync
                 .db()
                 .clone(),
         );
-        // let range_proof_mmr_cp_backend = LMDBVec::new(store.env(),
-        // store
-        // .get_handle(LMDB_DB_RANGE_PROOF_MMR_CP_BACKEND)
-        // .ok_or(ChainStorageError::CriticalError)?.db()
-        //                .clone(),
-        // );
+        let range_proof_mmr_cp_backend = LMDBVec::new(
+            store.env(),
+            store
+                .get_handle(LMDB_DB_RANGE_PROOF_MMR_CP_BACKEND)
+                .ok_or(ChainStorageError::CriticalError)?
+                .db()
+                .clone(),
+        );
         Ok(Self {
             metadata_db: store
                 .get_handle(LMDB_DB_METADATA)
@@ -177,6 +175,11 @@ where D: Digest + Send + Sync
                 .ok_or(ChainStorageError::CriticalError)?
                 .db()
                 .clone(),
+            txos_hash_to_index_db: store
+                .get_handle(LMDB_DB_TXOS_HASH_TO_INDEX)
+                .ok_or(ChainStorageError::CriticalError)?
+                .db()
+                .clone(),
             kernels_db: store
                 .get_handle(LMDB_DB_KERNELS)
                 .ok_or(ChainStorageError::CriticalError)?
@@ -189,22 +192,267 @@ where D: Digest + Send + Sync
                 .clone(),
             utxo_mmr: RwLock::new(MerkleChangeTracker::new(
                 MutableMmr::new(utxo_mmr_base_backend),
-                Vec::new(), // utxo_mmr_cp_backend,
+                utxo_mmr_cp_backend,
             )?),
             header_mmr: RwLock::new(MerkleChangeTracker::new(
                 MutableMmr::new(header_mmr_base_backend),
-                Vec::new(), // header_mmr_cp_backend
+                header_mmr_cp_backend,
             )?),
             kernel_mmr: RwLock::new(MerkleChangeTracker::new(
                 MutableMmr::new(kernel_mmr_base_backend),
-                Vec::new(), // kernel_mmr_cp_backend
+                kernel_mmr_cp_backend,
             )?),
             range_proof_mmr: RwLock::new(MerkleChangeTracker::new(
                 MutableMmr::new(range_proof_mmr_base_backend),
-                Vec::new(), // range_proof_mmr_cp_backend
+                range_proof_mmr_cp_backend,
             )?),
             env: store.env(),
         })
+    }
+
+    // Applies all MMR transactions excluding CreateMmrCheckpoint and RewindMmr on the header_mmr, utxo_mmr,
+    // range_proof_mmr and kernel_mmr. CreateMmrCheckpoint and RewindMmr txns will be performed after the the storage
+    // txns have been successfully applied.
+    fn apply_mmr_txs(&self, tx: &DbTransaction) -> Result<(), ChainStorageError> {
+        for op in tx.operations.iter() {
+            match op {
+                WriteOperation::Insert(insert) => match insert {
+                    DbKeyValuePair::BlockHeader(_k, v) => {
+                        let hash = v.hash();
+                        self.header_mmr
+                            .write()
+                            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
+                            .push(&hash)?;
+                    },
+                    DbKeyValuePair::UnspentOutput(k, v) => {
+                        self.utxo_mmr
+                            .write()
+                            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
+                            .push(&k)?;
+                        let proof_hash = v.proof().hash();
+                        self.range_proof_mmr
+                            .write()
+                            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
+                            .push(&proof_hash)?;
+                    },
+                    DbKeyValuePair::TransactionKernel(k, _v) => {
+                        self.kernel_mmr
+                            .write()
+                            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
+                            .push(&k)?;
+                    },
+                    _ => {},
+                },
+                WriteOperation::Spend(key) => match key {
+                    DbKey::UnspentOutput(hash) => {
+                        let index_result: Option<usize> = lmdb_get(&self.env, &self.txos_hash_to_index_db, &hash)?;
+                        match index_result {
+                            Some(index) => {
+                                self.utxo_mmr
+                                    .write()
+                                    .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
+                                    .delete(index as u32);
+                            },
+                            None => return Err(ChainStorageError::UnspendableInput),
+                        }
+                    },
+                    _ => return Err(ChainStorageError::InvalidOperation("Only UTXOs can be spent".into())),
+                },
+                _ => {},
+            }
+        }
+        Ok(())
+    }
+
+    // Perform the RewindMmr and CreateMmrCheckpoint operations after MMR txns and storage txns have been applied.
+    fn commit_mmrs(&self, tx: DbTransaction) -> Result<(), ChainStorageError> {
+        for op in tx.operations.into_iter() {
+            match op {
+                WriteOperation::RewindMmr(tree, steps_back) => match tree {
+                    MmrTree::Header => {
+                        self.header_mmr
+                            .write()
+                            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
+                            .rewind(steps_back)
+                            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+                    },
+                    MmrTree::Kernel => {
+                        self.kernel_mmr
+                            .write()
+                            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
+                            .rewind(steps_back)
+                            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+                    },
+                    MmrTree::Utxo => {
+                        self.utxo_mmr
+                            .write()
+                            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
+                            .rewind(steps_back)
+                            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+                    },
+                    MmrTree::RangeProof => {
+                        self.range_proof_mmr
+                            .write()
+                            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
+                            .rewind(steps_back)
+                            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+                    },
+                },
+                WriteOperation::CreateMmrCheckpoint(tree) => match tree {
+                    MmrTree::Header => {
+                        self.header_mmr
+                            .write()
+                            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
+                            .commit()
+                            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+                    },
+                    MmrTree::Kernel => {
+                        self.kernel_mmr
+                            .write()
+                            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
+                            .commit()
+                            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+                    },
+                    MmrTree::Utxo => {
+                        self.utxo_mmr
+                            .write()
+                            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
+                            .commit()
+                            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+                    },
+                    MmrTree::RangeProof => {
+                        self.range_proof_mmr
+                            .write()
+                            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
+                            .commit()
+                            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+                    },
+                },
+                _ => {},
+            }
+        }
+        Ok(())
+    }
+
+    // Reset any mmr txns that have been applied.
+    fn reset_mmrs(&self) -> Result<(), ChainStorageError> {
+        self.header_mmr
+            .write()
+            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
+            .reset()?;
+        self.kernel_mmr
+            .write()
+            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
+            .reset()?;
+        self.utxo_mmr
+            .write()
+            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
+            .reset()?;
+        self.range_proof_mmr
+            .write()
+            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
+            .reset()?;
+        Ok(())
+    }
+
+    // Perform all the storage txns, excluding any MMR operations. Only when all the txns can successfully be applied is
+    // the changes committed to the backend databases.
+    fn apply_storage_txs(&self, tx: &DbTransaction) -> Result<(), ChainStorageError> {
+        let txn = WriteTransaction::new(self.env.clone()).map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+        {
+            for op in tx.operations.iter() {
+                match op {
+                    WriteOperation::Insert(insert) => match insert {
+                        DbKeyValuePair::Metadata(k, v) => {
+                            lmdb_insert(&txn, &self.metadata_db, &(k.clone() as u32), &v)?;
+                        },
+                        DbKeyValuePair::BlockHeader(k, v) => {
+                            let hash = v.hash();
+                            lmdb_insert(&txn, &self.block_hashes_db, &hash, &k)?;
+                            lmdb_insert(&txn, &self.headers_db, &k, &v)?;
+                        },
+                        DbKeyValuePair::UnspentOutput(k, v) => {
+                            let proof_hash = v.proof().hash();
+                            if let Some(index) = self
+                                .range_proof_mmr
+                                .read()
+                                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
+                                .index(&proof_hash)
+                            {
+                                lmdb_insert(&txn, &self.utxos_db, &k, &v)?;
+                                lmdb_insert(&txn, &self.txos_hash_to_index_db, &k, &index)?;
+                            }
+                        },
+                        DbKeyValuePair::TransactionKernel(k, v) => {
+                            lmdb_insert(&txn, &self.kernels_db, &k, &v)?;
+                        },
+                        DbKeyValuePair::OrphanBlock(k, v) => {
+                            lmdb_insert(&txn, &self.orphans_db, &k, &v)?;
+                        },
+                    },
+                    WriteOperation::Delete(delete) => match delete {
+                        DbKey::Metadata(_) => {}, // no-op
+                        DbKey::BlockHeader(k) => {
+                            let val: Option<BlockHeader> = lmdb_get(&self.env, &self.headers_db, &k)?;
+                            if let Some(v) = val {
+                                let hash = v.hash();
+                                lmdb_delete(&txn, &self.block_hashes_db, &hash)?;
+                                lmdb_delete(&txn, &self.headers_db, &k)?;
+                            }
+                        },
+                        DbKey::BlockHash(hash) => {
+                            let result: Option<u64> = lmdb_get(&self.env, &self.block_hashes_db, &hash)?;
+                            if let Some(k) = result {
+                                lmdb_delete(&txn, &self.block_hashes_db, &hash)?;
+                                lmdb_delete(&txn, &self.headers_db, &k)?;
+                            }
+                        },
+                        DbKey::UnspentOutput(k) => {
+                            lmdb_delete(&txn, &self.utxos_db, &k)?;
+                            lmdb_delete(&txn, &self.txos_hash_to_index_db, &k)?;
+                        },
+                        DbKey::SpentOutput(k) => {
+                            lmdb_delete(&txn, &self.stxos_db, &k)?;
+                            lmdb_delete(&txn, &self.txos_hash_to_index_db, &k)?;
+                        },
+                        DbKey::TransactionKernel(k) => {
+                            lmdb_delete(&txn, &self.kernels_db, &k)?;
+                        },
+                        DbKey::OrphanBlock(k) => {
+                            lmdb_delete(&txn, &self.orphans_db, &k)?;
+                        },
+                    },
+                    WriteOperation::Spend(key) => match key {
+                        DbKey::UnspentOutput(hash) => {
+                            let utxo_result: Option<TransactionOutput> = lmdb_get(&self.env, &self.utxos_db, &hash)?;
+                            match utxo_result {
+                                Some(utxo) => {
+                                    lmdb_delete(&txn, &self.utxos_db, &hash)?;
+                                    lmdb_insert(&txn, &self.stxos_db, &hash, &utxo)?;
+                                },
+                                None => return Err(ChainStorageError::UnspendableInput),
+                            }
+                        },
+                        _ => return Err(ChainStorageError::InvalidOperation("Only UTXOs can be spent".into())),
+                    },
+                    WriteOperation::UnSpend(key) => match key {
+                        DbKey::SpentOutput(hash) => {
+                            let stxo_result: Option<TransactionOutput> = lmdb_get(&self.env, &self.stxos_db, &hash)?;
+                            match stxo_result {
+                                Some(stxo) => {
+                                    lmdb_delete(&txn, &self.stxos_db, &hash)?;
+                                    lmdb_insert(&txn, &self.utxos_db, &hash, &stxo)?;
+                                },
+                                None => return Err(ChainStorageError::UnspendError),
+                            }
+                        },
+                        _ => return Err(ChainStorageError::InvalidOperation("Only STXOs can be unspent".into())),
+                    },
+                    _ => {},
+                }
+            }
+        }
+        txn.commit().map_err(|e| ChainStorageError::AccessError(e.to_string()))
     }
 }
 
@@ -220,6 +468,7 @@ pub fn create_lmdb_database(path: &Path) -> Result<LMDBDatabase<HashDigest>, Cha
         .add_database(LMDB_DB_BLOCK_HASHES, db::CREATE)
         .add_database(LMDB_DB_UTXOS, db::CREATE)
         .add_database(LMDB_DB_STXOS, db::CREATE)
+        .add_database(LMDB_DB_TXOS_HASH_TO_INDEX, db::CREATE)
         .add_database(LMDB_DB_KERNELS, db::CREATE)
         .add_database(LMDB_DB_ORPHANS, db::CREATE)
         .add_database(LMDB_DB_UTXO_MMR_BASE_BACKEND, db::CREATE)
@@ -239,199 +488,19 @@ impl<D> BlockchainBackend for LMDBDatabase<D>
 where D: Digest + Send + Sync
 {
     fn write(&self, tx: DbTransaction) -> Result<(), ChainStorageError> {
-        let txn = WriteTransaction::new(self.env.clone()).map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
-        {
-            for op in tx.operations.into_iter() {
-                match op {
-                    WriteOperation::Insert(insert) => match insert {
-                        DbKeyValuePair::Metadata(k, v) => {
-                            lmdb_insert(&txn, &self.metadata_db, &(k as u32), &v)?;
-                        },
-                        DbKeyValuePair::BlockHeader(k, v) => {
-                            let hash = v.hash();
-                            lmdb_insert(&txn, &self.block_hashes_db, &hash, &k)?;
-                            let index = self
-                                .header_mmr
-                                .write()
-                                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
-                                .push(&hash)? -
-                                1 as usize;
-                            let v = MerkleNode { index, value: *v };
-                            lmdb_insert(&txn, &self.headers_db, &k, &v)?;
-                        },
-                        DbKeyValuePair::UnspentOutput(k, v) => {
-                            self.utxo_mmr
-                                .write()
-                                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
-                                .push(&k)?;
-                            let proof_hash = v.proof().hash();
-                            let index = self
-                                .range_proof_mmr
-                                .write()
-                                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
-                                .push(&proof_hash)? -
-                                1;
-                            let v = MerkleNode { index, value: *v };
-                            lmdb_insert(&txn, &self.utxos_db, &k, &v)?;
-                        },
-                        DbKeyValuePair::TransactionKernel(k, v) => {
-                            let index = self
-                                .kernel_mmr
-                                .write()
-                                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
-                                .push(&k)? -
-                                1;
-                            let v = MerkleNode { index, value: *v };
-                            lmdb_insert(&txn, &self.kernels_db, &k, &v)?;
-                        },
-                        DbKeyValuePair::OrphanBlock(k, v) => {
-                            lmdb_insert(&txn, &self.orphans_db, &k, &v)?;
-                        },
-                        DbKeyValuePair::CommitBlock => {
-                            self.utxo_mmr
-                                .write()
-                                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
-                                .commit()
-                                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
-                            self.header_mmr
-                                .write()
-                                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
-                                .commit()
-                                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
-                            self.range_proof_mmr
-                                .write()
-                                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
-                                .commit()
-                                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
-                            self.kernel_mmr
-                                .write()
-                                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
-                                .commit()
-                                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
-                        },
-                    },
-                    WriteOperation::Delete(delete) => match delete {
-                        DbKey::Metadata(_) => {}, // no-op
-                        DbKey::BlockHeader(k) => {
-                            lmdb_delete(&txn, &self.headers_db, &k)?;
-                            // TODO: shouldn't blockhash also be deleted
-                        },
-                        DbKey::BlockHash(hash) => {
-                            let result: Option<u64> = lmdb_get(&self.env, &self.block_hashes_db, &hash)?;
-                            if let Some(k) = result {
-                                lmdb_delete(&txn, &self.block_hashes_db, &hash)?;
-                                lmdb_delete(&txn, &self.headers_db, &k)?;
-                            }
-                        },
-                        DbKey::UnspentOutput(k) => {
-                            lmdb_delete(&txn, &self.utxos_db, &k)?;
-                        },
-                        DbKey::SpentOutput(k) => {
-                            lmdb_delete(&txn, &self.stxos_db, &k)?;
-                        },
-                        DbKey::TransactionKernel(k) => {
-                            lmdb_delete(&txn, &self.kernels_db, &k)?;
-                        },
-                        DbKey::OrphanBlock(k) => {
-                            lmdb_delete(&txn, &self.orphans_db, &k)?;
-                        },
-                    },
-                    WriteOperation::Spend(key) => match key {
-                        DbKey::UnspentOutput(hash) => {
-                            let utxo_result: Option<MerkleNode<TransactionOutput>> =
-                                lmdb_get(&self.env, &self.utxos_db, &hash)?;
-                            match utxo_result {
-                                Some(utxo) => {
-                                    lmdb_delete(&txn, &self.utxos_db, &hash)?;
-                                    self.utxo_mmr
-                                        .write()
-                                        .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
-                                        .delete(utxo.index as u32);
-                                    lmdb_insert(&txn, &self.stxos_db, &hash, &utxo)?;
-                                },
-                                None => return Err(ChainStorageError::UnspendableInput),
-                            }
-                        },
-                        _ => return Err(ChainStorageError::InvalidOperation("Only UTXOs can be spent".into())),
-                    },
-                    WriteOperation::UnSpend(key) => match key {
-                        DbKey::SpentOutput(hash) => {
-                            let stxo_result: Option<MerkleNode<TransactionOutput>> =
-                                lmdb_get(&self.env, &self.stxos_db, &hash)?;
-                            match stxo_result {
-                                Some(stxo) => {
-                                    lmdb_delete(&txn, &self.stxos_db, &hash)?;
-                                    lmdb_insert(&txn, &self.utxos_db, &hash, &stxo)?;
-                                },
-                                None => return Err(ChainStorageError::UnspendError),
-                            }
-                        },
-                        _ => return Err(ChainStorageError::InvalidOperation("Only STXOs can be unspent".into())),
-                    },
-                    WriteOperation::CreateMmrCheckpoint(tree) => match tree {
-                        MmrTree::Header => {
-                            self.header_mmr
-                                .write()
-                                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
-                                .commit()
-                                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
-                        },
-                        MmrTree::Kernel => {
-                            self.kernel_mmr
-                                .write()
-                                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
-                                .commit()
-                                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
-                        },
-                        MmrTree::Utxo => {
-                            self.utxo_mmr
-                                .write()
-                                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
-                                .commit()
-                                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
-                        },
-                        MmrTree::RangeProof => {
-                            self.range_proof_mmr
-                                .write()
-                                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
-                                .commit()
-                                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
-                        },
-                    },
-                    WriteOperation::RewindMmr(tree, steps_back) => match tree {
-                        MmrTree::Header => {
-                            self.header_mmr
-                                .write()
-                                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
-                                .rewind(steps_back)
-                                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
-                        },
-                        MmrTree::Kernel => {
-                            self.kernel_mmr
-                                .write()
-                                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
-                                .rewind(steps_back)
-                                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
-                        },
-                        MmrTree::Utxo => {
-                            self.utxo_mmr
-                                .write()
-                                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
-                                .rewind(steps_back)
-                                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
-                        },
-                        MmrTree::RangeProof => {
-                            self.range_proof_mmr
-                                .write()
-                                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
-                                .rewind(steps_back)
-                                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
-                        },
-                    },
-                }
-            }
+        match self.apply_mmr_txs(&tx) {
+            Ok(_) => match self.apply_storage_txs(&tx) {
+                Ok(_) => self.commit_mmrs(tx),
+                Err(e) => {
+                    self.reset_mmrs()?;
+                    Err(e)
+                },
+            },
+            Err(e) => {
+                self.reset_mmrs()?;
+                Err(e)
+            },
         }
-        txn.commit().map_err(|e| ChainStorageError::AccessError(e.to_string()))
     }
 
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, ChainStorageError> {
@@ -441,30 +510,30 @@ where D: Digest + Send + Sync
                 val.map(|val| DbValue::Metadata(val))
             },
             DbKey::BlockHeader(k) => {
-                let val: Option<MerkleNode<BlockHeader>> = lmdb_get(&self.env, &self.headers_db, k)?;
-                val.map(|val| DbValue::BlockHeader(Box::new(val.value)))
+                let val: Option<BlockHeader> = lmdb_get(&self.env, &self.headers_db, k)?;
+                val.map(|val| DbValue::BlockHeader(Box::new(val)))
             },
             DbKey::BlockHash(hash) => {
                 let k: Option<u64> = lmdb_get(&self.env, &self.block_hashes_db, hash)?;
                 match k {
                     Some(k) => {
-                        let val: Option<MerkleNode<BlockHeader>> = lmdb_get(&self.env, &self.headers_db, &k)?;
-                        val.map(|val| DbValue::BlockHash(Box::new(val.value)))
+                        let val: Option<BlockHeader> = lmdb_get(&self.env, &self.headers_db, &k)?;
+                        val.map(|val| DbValue::BlockHash(Box::new(val)))
                     },
                     None => None,
                 }
             },
             DbKey::UnspentOutput(k) => {
-                let val: Option<MerkleNode<TransactionOutput>> = lmdb_get(&self.env, &self.utxos_db, k)?;
-                val.map(|val| DbValue::UnspentOutput(Box::new(val.value)))
+                let val: Option<TransactionOutput> = lmdb_get(&self.env, &self.utxos_db, k)?;
+                val.map(|val| DbValue::UnspentOutput(Box::new(val)))
             },
             DbKey::SpentOutput(k) => {
-                let val: Option<MerkleNode<TransactionOutput>> = lmdb_get(&self.env, &self.stxos_db, k)?;
-                val.map(|val| DbValue::SpentOutput(Box::new(val.value)))
+                let val: Option<TransactionOutput> = lmdb_get(&self.env, &self.stxos_db, k)?;
+                val.map(|val| DbValue::SpentOutput(Box::new(val)))
             },
             DbKey::TransactionKernel(k) => {
-                let val: Option<MerkleNode<TransactionKernel>> = lmdb_get(&self.env, &self.kernels_db, k)?;
-                val.map(|val| DbValue::TransactionKernel(Box::new(val.value)))
+                let val: Option<TransactionKernel> = lmdb_get(&self.env, &self.kernels_db, k)?;
+                val.map(|val| DbValue::TransactionKernel(Box::new(val)))
             },
             DbKey::OrphanBlock(k) => {
                 let val: Option<Block> = lmdb_get(&self.env, &self.orphans_db, k)?;
