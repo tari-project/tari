@@ -28,7 +28,7 @@ use futures::{channel::mpsc, SinkExt, StreamExt};
 use std::sync::Arc;
 use tari_comms::{
     connection::NetAddress,
-    inbound_message_pipeline::inbound_message_pipeline::InboundMessagePipeline,
+    inbound_message_service::inbound_message_service::InboundMessagePipeline,
     message::{FrameSet, MessageData, MessageEnvelope, MessageFlags},
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFlags},
 };
@@ -110,9 +110,9 @@ fn smoke_test() {
 
     // Construct Pipeline
     let (inbound_tx, inbound_rx) = mpsc::channel(100);
-    let inbound_message_pipeline = InboundMessagePipeline::new(inbound_message_sink_rx, inbound_tx, peer_manager);
+    let inbound_message_service = InboundMessagePipeline::new(inbound_message_sink_rx, inbound_tx, peer_manager);
 
-    rt.block_on(inbound_message_pipeline.run());
+    rt.block_on(inbound_message_service.run());
 
     let messages = rt.block_on(inbound_rx.collect::<Vec<_>>());
 

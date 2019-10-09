@@ -460,44 +460,44 @@ mod test {
 
         // There should be 2 connection requests.
         let conn_man_req1 = rt.block_on(conn_man_rx.next()).unwrap();
-        // Followed by the next connection message
         let conn_man_req2 = rt.block_on(conn_man_rx.next()).unwrap();
         // Then, the stream should be empty (try_next errors on Poll::Pending)
         assert!(conn_man_rx.try_next().is_err());
 
-        // Check that the dial request for node_id1 is made and, when a peer connection is passed back,
-        // that peer connection is used to send the correct messages
         let (conn, conn_rx) = PeerConnection::new_with_connecting_state_for_test();
-        match conn_man_req1 {
-            ConnectionManagerRequest::DialPeer(boxed) => {
-                let (node_id, reply_tx) = *boxed;
-                assert!(reply_tx.send(Ok(Arc::new(conn))).is_ok());
-                assert_eq!(node_id, node_id1);
+        let conn = Arc::new(conn);
 
-                // Check that pending messages are sent
-                let msg = conn_rx.recv_timeout(Duration::from_millis(100)).unwrap();
-                assert_send_msg(msg, b"A");
+        // Check that the dial request for node_id1 is made and, when a peer connection is passed back,
+        // that peer connection is used to send the correct messages. They can happen in any order.
+        vec![conn_man_req1, conn_man_req2].into_iter().for_each(|conn_man_req| {
+            let conn = conn.clone();
+            match conn_man_req {
+                ConnectionManagerRequest::DialPeer(boxed) => {
+                    let (node_id, reply_tx) = *boxed;
+                    match node_id {
+                        _ if node_id == node_id1 => {
+                            assert!(reply_tx.send(Ok(conn)).is_ok());
+                            // Check that pending messages are sent
+                            let msg = conn_rx.recv_timeout(Duration::from_millis(100)).unwrap();
+                            assert_send_msg(msg, b"A");
 
-                let msg = conn_rx.recv_timeout(Duration::from_millis(100)).unwrap();
-                assert_send_msg(msg, b"C");
+                            let msg = conn_rx.recv_timeout(Duration::from_millis(100)).unwrap();
+                            assert_send_msg(msg, b"C");
 
-                let msg = conn_rx.recv_timeout(Duration::from_millis(100)).unwrap();
-                assert_send_msg(msg, b"D");
-            },
-        }
-
-        // Check that the dial request for node_id2 is made
-        match conn_man_req2 {
-            ConnectionManagerRequest::DialPeer(boxed) => {
-                let (node_id, reply_tx) = *boxed;
-                assert_eq!(node_id, node_id2);
-
-                let (conn, rx) = PeerConnection::new_with_connecting_state_for_test();
-                assert!(reply_tx.send(Ok(Arc::new(conn))).is_ok());
-                let msg = rx.recv_timeout(Duration::from_millis(100)).unwrap();
-                assert_send_msg(msg, b"B");
-            },
-        }
+                            let msg = conn_rx.recv_timeout(Duration::from_millis(100)).unwrap();
+                            assert_send_msg(msg, b"D");
+                        },
+                        _ if node_id == node_id2 => {
+                            let (conn2, rx) = PeerConnection::new_with_connecting_state_for_test();
+                            assert!(reply_tx.send(Ok(Arc::new(conn2))).is_ok());
+                            let msg = rx.recv_timeout(Duration::from_millis(100)).unwrap();
+                            assert_send_msg(msg, b"B");
+                        },
+                        _ => panic!("unexpected node id in connection manager request"),
+                    }
+                },
+            }
+        });
 
         rt.block_on(new_message_tx.send(OutboundMessage::new(
             node_id1.clone(),

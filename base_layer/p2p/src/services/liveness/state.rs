@@ -45,10 +45,12 @@ impl LivenessState {
         self.pongs_sent.fetch_add(1, Ordering::Relaxed)
     }
 
+    #[cfg(test)]
     pub fn pings_sent(&self) -> usize {
         self.pings_sent.load(Ordering::Relaxed)
     }
 
+    #[cfg(test)]
     pub fn pongs_sent(&self) -> usize {
         self.pongs_sent.load(Ordering::Relaxed)
     }

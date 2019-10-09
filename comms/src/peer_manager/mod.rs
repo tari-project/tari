@@ -61,12 +61,13 @@
 //! let returned_peer = peer_manager.find_with_node_id(&node_id).unwrap();
 //! ```
 
-pub mod error;
+mod error;
+
 pub mod node_id;
 pub mod node_identity;
 pub mod peer;
 pub mod peer_key;
-pub mod peer_manager;
+mod peer_manager;
 pub mod peer_storage;
 
 pub use self::{

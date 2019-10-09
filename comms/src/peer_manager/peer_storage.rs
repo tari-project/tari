@@ -29,7 +29,7 @@ use crate::{
         peer_key::{generate_peer_key, PeerKey},
         PeerManagerError,
     },
-    types::{CommsPublicKey, CommsRng},
+    types::{CommsDatabase, CommsPublicKey, CommsRng},
 };
 use rand::Rng;
 use std::{cmp::min, collections::HashMap, time::Duration};
@@ -561,9 +561,10 @@ where DS: KeyValueStore<PeerKey, Peer>
             .insert(peer_key, peer)
             .map_err(PeerManagerError::DatabaseError)
     }
+}
 
-    /// Returns the DataStore underlying PeerStorage if one exists
-    pub fn into_datastore(self) -> DS {
+impl Into<CommsDatabase> for PeerStorage<CommsDatabase> {
+    fn into(self) -> CommsDatabase {
         self.peers
     }
 }

@@ -28,7 +28,6 @@
 
 #[macro_use]
 mod macros;
-mod consts;
 
 // TODO Put these back in after Futures Comms stack refactor
 // pub mod saf_service;
