@@ -350,7 +350,7 @@ where DS: KeyValueStore<PeerKey, Peer>
     }
 
     /// Check if a specific node_id is in the network region of the N nearest neighbours of the region specified by
-    /// region_node_id. If there are less than N known peers, this will _always_ return true
+    /// region_node_id
     pub fn in_network_region(
         &self,
         node_id: &NodeId,
@@ -359,30 +359,26 @@ where DS: KeyValueStore<PeerKey, Peer>
     ) -> Result<bool, PeerManagerError>
     {
         let region2node_dist = region_node_id.distance(node_id);
-        let mut dists = vec![NodeDistance::max_distance(); n];
+        let mut dists: Vec<NodeDistance> = vec![NodeDistance::max_distance(); n];
         let last_index = dists.len() - 1;
         self.peers
             .for_each(|pair| {
-                if let Ok((_, peer)) = pair {
-                    if !peer.is_banned() {
-                        let curr_dist = region_node_id.distance(&peer.node_id);
-                        for i in 0..dists.len() {
-                            if dists[i] > curr_dist {
-                                dists.insert(i, curr_dist);
-                                dists.pop();
-                                break;
-                            }
+                let (_, peer) = pair.unwrap();
+                if !peer.is_banned() {
+                    let curr_dist = region_node_id.distance(&peer.node_id);
+                    for i in 0..dists.len() {
+                        if dists[i] > curr_dist {
+                            dists.insert(i, curr_dist.clone());
+                            dists.pop();
+                            break;
                         }
-
-                        // This does nothing
-                        //                        if region2node_dist > dists[last_index] {
-                        //                            return;
-                        //                        }
+                    }
+                    if region2node_dist > dists[last_index] {
+                        return;
                     }
                 }
             })
             .map_err(PeerManagerError::DatabaseError)?;
-
         Ok(region2node_dist <= dists[last_index])
     }
 

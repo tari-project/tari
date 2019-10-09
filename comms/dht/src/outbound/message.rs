@@ -21,32 +21,9 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::broadcast_strategy::BroadcastStrategy;
-use crate::envelope::{DhtHeader, DhtMessageFlags, DhtMessageType, NodeDestination};
+use crate::message::{DhtHeader, DhtMessageFlags, DhtMessageType, NodeDestination};
 use std::fmt;
 use tari_comms::{message::MessageFlags, peer_manager::PeerNodeIdentity, types::CommsPublicKey};
-
-/// Determines if an outbound message should be Encrypted and, if so, for which public key
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum OutboundEncryption {
-    /// Message should be encrypted using a shared secret derived from the given public key
-    EncryptFor(CommsPublicKey),
-    /// Message should be encrypted using a shared secret derived from the destination peer's
-    /// public key. Each message sent according to the broadcast strategy will be encrypted for
-    /// the destination peer.
-    EncryptForDestination,
-    /// Message should not be encrypted
-    None,
-}
-
-impl OutboundEncryption {
-    /// Return the correct DHT flags for the encryption setting
-    pub fn flags(&self) -> DhtMessageFlags {
-        match self {
-            OutboundEncryption::EncryptFor(_) | OutboundEncryption::EncryptForDestination => DhtMessageFlags::ENCRYPTED,
-            _ => DhtMessageFlags::NONE,
-        }
-    }
-}
 
 #[derive(Debug, Clone)]
 pub struct SendMessageRequest {
@@ -54,8 +31,6 @@ pub struct SendMessageRequest {
     pub broadcast_strategy: BroadcastStrategy,
     /// The intended destination for this message
     pub destination: NodeDestination,
-    /// Encryption setting for message
-    pub encryption: OutboundEncryption,
     /// Comms-level message flags
     pub comms_flags: MessageFlags,
     /// Dht-level message flags
@@ -103,7 +78,7 @@ pub struct DhtOutboundMessage {
     pub peer_node_identity: PeerNodeIdentity,
     pub dht_header: DhtHeader,
     pub comms_flags: MessageFlags,
-    pub encryption: OutboundEncryption,
+    pub destination_public_key: CommsPublicKey,
     pub body: Vec<u8>,
 }
 
@@ -112,7 +87,7 @@ impl DhtOutboundMessage {
     pub fn new(
         peer_node_identity: PeerNodeIdentity,
         dht_header: DhtHeader,
-        encryption: OutboundEncryption,
+        destination_public_key: CommsPublicKey,
         comms_flags: MessageFlags,
         body: Vec<u8>,
     ) -> Self
@@ -120,7 +95,7 @@ impl DhtOutboundMessage {
         Self {
             peer_node_identity,
             dht_header,
-            encryption,
+            destination_public_key,
             comms_flags,
             body,
         }

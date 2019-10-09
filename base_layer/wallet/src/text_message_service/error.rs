@@ -24,7 +24,7 @@ use derive_error::Error;
 use diesel::result::{ConnectionError as DieselConnectionError, Error as DieselError};
 use tari_comms::{builder::CommsError, connection::NetAddressError, message::MessageError};
 use tari_comms_dht::outbound::DhtOutboundError;
-use tari_p2p::sync_services::ServiceError;
+use tari_p2p::{services::liveness::error::LivenessError, sync_services::ServiceError};
 use tari_service_framework::reply_channel::TransportChannelError;
 use tari_utilities::{hex::HexError, message_format::MessageFormatError};
 use tokio_executor::threadpool::BlockingError;
@@ -44,8 +44,10 @@ pub enum TextMessageError {
     NetAddressError(NetAddressError),
     DatabaseConnectionError(DieselConnectionError),
     BlockingError(BlockingError),
-    EventStreamError,
     R2d2Error,
+    LivenessError(LivenessError),
+    /// An error has occurred reading from the event subscriber stream
+    EventStreamError,
     /// If a received TextMessageAck doesn't matching any pending messages
     MessageNotFound,
     /// Failed to send from API

@@ -24,9 +24,7 @@ use crate::consts::DHT_ENVELOPE_HEADER_VERSION;
 use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
-use std::fmt;
 use tari_comms::{peer_manager::NodeId, types::CommsPublicKey, utils::signature};
-use tari_utilities::hex::Hex;
 
 bitflags! {
     /// Used to indicate characteristics of the incoming or outgoing message, such
@@ -41,41 +39,15 @@ bitflags! {
 #[derive(Serialize_repr, Deserialize_repr, Debug, Clone, PartialEq, Eq)]
 #[repr(u8)]
 pub enum DhtMessageType {
-    /// Not a DHT message
     None = 0,
-    // DHT
-    /// Join Request
     Join = 1,
-    /// Discover Request
     Discover = 2,
-    // Store and Forward
-    /// Request messages from a node
-    SAFRequestMessages = 3,
-    /// Message contains the stored messages
-    SAFStoredMessages = 4,
 }
 
-impl DhtMessageType {
-    pub fn is_dht_message(&self) -> bool {
-        match self {
-            DhtMessageType::None => false,
-            _ => true,
-        }
-    }
-}
-
-impl Default for DhtMessageType {
-    fn default() -> Self {
-        DhtMessageType::None
-    }
-}
-
-#[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct DhtHeader {
     pub version: u8,
     pub destination: NodeDestination,
-    /// Origin public key of the message. This can be the same peer that sent the message
-    /// or another peer if the message should be forwarded.
     pub origin_public_key: CommsPublicKey,
     pub origin_signature: Vec<u8>,
     pub message_type: DhtMessageType,
@@ -99,19 +71,6 @@ impl DhtHeader {
             message_type,
             flags,
         }
-    }
-}
-
-impl fmt::Debug for DhtHeader {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("DhtHeader")
-            .field("version", &self.version)
-            .field("destination", &self.destination)
-            .field("origin_public_key", &self.origin_public_key.to_hex())
-            .field("origin_signature", &self.origin_signature.to_hex())
-            .field("message_type", &self.message_type)
-            .field("flags", &self.flags)
-            .finish()
     }
 }
 

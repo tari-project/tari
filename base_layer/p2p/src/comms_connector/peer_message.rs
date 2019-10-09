@@ -24,7 +24,7 @@ use tari_comms::{
     message::{MessageEnvelopeHeader, MessageHeader},
     peer_manager::Peer,
 };
-use tari_comms_dht::envelope::DhtHeader;
+use tari_comms_dht::message::DhtHeader;
 use tari_utilities::message_format::{MessageFormat, MessageFormatError};
 
 /// A domain-level message

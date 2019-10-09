@@ -20,50 +20,19 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::time::Duration;
-
-/// The default maximum number of messages that can be stored using the Store-and-forward middleware
-pub const SAF_MSG_CACHE_STORAGE_CAPACITY: usize = 10_000;
-/// The default time-to-live duration used for storage of low priority messages by the Store-and-forward middleware
-pub const SAF_LOW_PRIORITY_MSG_STORAGE_TTL: Duration = Duration::from_secs(6 * 60 * 60);
-/// The default time-to-live duration used for storage of high priority messages by the Store-and-forward middleware
-pub const SAF_HIGH_PRIORITY_MSG_STORAGE_TTL: Duration = Duration::from_secs(24 * 60 * 60);
-
 #[derive(Debug, Clone)]
 pub struct DhtConfig {
-    /// The size of the buffer (channel) which holds pending outbound message requests.
-    /// Default: 20
+    /// The maximum number of peer nodes that a message will be sent to
+    pub max_nodes_join_request: usize,
+    /// The size of the buffer (channel) which holds pending outbound message requests
     pub outbound_buffer_size: usize,
-    /// The maximum number of peer nodes that a message has to be closer to, to be considered a neighbour
-    /// Default: 8
-    pub num_regional_nodes: usize,
-    /// A request to retrieve stored messages will be ignored if the requesting node is
-    /// not within one of this nodes _n_ closest nodes.
-    /// Default 8
-    pub saf_num_closest_nodes: usize,
-    /// The maximum number of messages to return from a store and forward retrieval request.
-    /// Default: 100
-    pub saf_max_returned_messages: usize,
-    /// The maximum number of messages that can be stored using the Store-and-forward middleware. Default: 10_000
-    pub saf_msg_cache_storage_capacity: usize,
-    /// The time-to-live duration used for storage of low priority messages by the Store-and-forward middleware.
-    /// Default: 6 hours
-    pub saf_low_priority_msg_storage_ttl: Duration,
-    /// The time-to-live duration used for storage of high priority messages by the Store-and-forward middleware.
-    /// Default: 24 hours
-    pub saf_high_priority_msg_storage_ttl: Duration,
 }
 
 impl Default for DhtConfig {
     fn default() -> Self {
         Self {
-            num_regional_nodes: 8,
-            saf_num_closest_nodes: 8,
-            saf_max_returned_messages: 100,
+            max_nodes_join_request: 8,
             outbound_buffer_size: 20,
-            saf_msg_cache_storage_capacity: SAF_MSG_CACHE_STORAGE_CAPACITY,
-            saf_low_priority_msg_storage_ttl: SAF_LOW_PRIORITY_MSG_STORAGE_TTL,
-            saf_high_priority_msg_storage_ttl: SAF_HIGH_PRIORITY_MSG_STORAGE_TTL,
         }
     }
 }

@@ -24,11 +24,13 @@ mod decryption;
 mod deserialize;
 mod dht_handler;
 mod error;
+mod forward;
 mod message;
 
 pub use self::{
     decryption::DecryptionLayer,
     deserialize::DeserializeLayer,
-    dht_handler::{DhtHandlerLayer, DiscoverMessage, JoinMessage},
+    dht_handler::layer::DhtHandlerLayer,
+    forward::ForwardLayer,
     message::{DecryptedDhtMessage, DhtInboundMessage},
 };

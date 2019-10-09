@@ -21,11 +21,16 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    envelope::{DhtEnvelope, DhtHeader, DhtMessageFlags, DhtMessageType, NodeDestination},
     inbound::DhtInboundMessage,
+    message::{DhtEnvelope, DhtHeader, DhtMessageFlags, DhtMessageType, NodeDestination},
 };
+use futures::{future, task::Context, Future, Poll};
 use rand::rngs::OsRng;
-use std::sync::Arc;
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc,
+    Mutex,
+};
 use tari_comms::{
     connection::NetAddress,
     message::{InboundMessage, MessageEnvelopeHeader, MessageFlags},
@@ -36,6 +41,7 @@ use tari_comms::{
 use tari_storage::lmdb_store::LMDBBuilder;
 use tari_test_utils::{paths::create_random_database_path, random};
 use tari_utilities::message_format::MessageFormat;
+use tower::Service;
 
 pub fn make_node_identity() -> Arc<NodeIdentity> {
     Arc::new(NodeIdentity::random(&mut OsRng::new().unwrap(), "127.0.0.1:9000".parse().unwrap()).unwrap())
@@ -69,7 +75,7 @@ pub fn make_dht_header(node_identity: &NodeIdentity, message: &Vec<u8>, flags: D
     DhtHeader {
         version: 0,
         destination: NodeDestination::Undisclosed,
-        origin_public_key: node_identity.public_key().clone(),
+        origin_public_key: node_identity.identity.public_key.clone(),
         origin_signature: signature::sign(&mut OsRng::new().unwrap(), node_identity.secret_key.clone(), message)
             .unwrap()
             .to_binary()
@@ -81,12 +87,12 @@ pub fn make_dht_header(node_identity: &NodeIdentity, message: &Vec<u8>, flags: D
 
 pub fn make_dht_inbound_message(
     node_identity: &NodeIdentity,
-    body: Vec<u8>,
+    message: Vec<u8>,
     flags: DhtMessageFlags,
 ) -> DhtInboundMessage
 {
     DhtInboundMessage::new(
-        make_dht_header(node_identity, &body, flags),
+        make_dht_header(node_identity, &message, flags),
         Peer::new(
             node_identity.identity.public_key.clone(),
             node_identity.identity.node_id.clone(),
@@ -99,7 +105,7 @@ pub fn make_dht_inbound_message(
             message_signature: Vec::new(),
             flags: MessageFlags::empty(),
         },
-        body,
+        message,
     )
 }
 
@@ -123,4 +129,94 @@ pub fn make_peer_manager() -> Arc<PeerManager> {
     PeerManager::new(CommsDatabase::new(Arc::new(peer_database)))
         .map(Arc::new)
         .unwrap()
+}
+
+pub fn service_spy<TReq>() -> ServiceSpy<TReq>
+where TReq: 'static {
+    ServiceSpy::new()
+}
+
+#[derive(Clone)]
+pub struct ServiceSpy<TReq> {
+    requests: Arc<Mutex<Vec<TReq>>>,
+    call_count: Arc<AtomicUsize>,
+}
+
+impl<TReq> ServiceSpy<TReq>
+where TReq: 'static
+{
+    pub fn new() -> Self {
+        let requests = Arc::new(Mutex::new(Vec::new()));
+        Self {
+            requests,
+            call_count: Arc::new(AtomicUsize::new(0)),
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn reset(&self) {
+        self.call_count.store(0, Ordering::SeqCst);
+        self.requests.lock().unwrap().clear();
+    }
+
+    pub fn service<TErr>(&self) -> impl Service<TReq, Response = (), Error = TErr> + Clone {
+        let req_inner = Arc::clone(&self.requests);
+        let call_count = Arc::clone(&self.call_count);
+        service_fn(move |req: TReq| {
+            req_inner.lock().unwrap().push(req);
+            call_count.fetch_add(1, Ordering::SeqCst);
+            future::ready(Result::<_, TErr>::Ok(()))
+        })
+    }
+
+    #[allow(dead_code)]
+    pub fn take_requests(&self) -> Vec<TReq> {
+        self.requests.lock().unwrap().drain(..).collect()
+    }
+
+    pub fn pop_request(&self) -> Option<TReq> {
+        self.requests.lock().unwrap().pop()
+    }
+
+    pub fn is_called(&self) -> bool {
+        self.call_count() > 0
+    }
+
+    #[allow(dead_code)]
+    pub fn call_count(&self) -> usize {
+        self.call_count.load(Ordering::SeqCst)
+    }
+}
+
+//---------------------------------- ServiceFn --------------------------------------------//
+
+// TODO: Remove this when https://github.com/tower-rs/tower/pull/318 is published
+
+/// Returns a new `ServiceFn` with the given closure.
+pub fn service_fn<T>(f: T) -> ServiceFn<T> {
+    ServiceFn { f }
+}
+
+/// A `Service` implemented by a closure.
+#[derive(Copy, Clone, Debug)]
+pub struct ServiceFn<T> {
+    f: T,
+}
+
+impl<T, F, Request, R, E> Service<Request> for ServiceFn<T>
+where
+    T: FnMut(Request) -> F,
+    F: Future<Output = Result<R, E>>,
+{
+    type Error = E;
+    type Future = F;
+    type Response = R;
+
+    fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), E>> {
+        Ok(()).into()
+    }
+
+    fn call(&mut self, req: Request) -> Self::Future {
+        (self.f)(req)
+    }
 }

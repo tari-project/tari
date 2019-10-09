@@ -20,13 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{consts::DHT_ENVELOPE_HEADER_VERSION, envelope::DhtHeader};
+use crate::{consts::DHT_ENVELOPE_HEADER_VERSION, message::DhtHeader};
 use tari_comms::{
     message::{Message, MessageEnvelopeHeader},
     peer_manager::Peer,
 };
 
-#[derive(Debug, Clone)]
 pub struct DhtInboundMessage {
     pub version: u8,
     pub source_peer: Peer,
@@ -47,11 +46,8 @@ impl DhtInboundMessage {
 }
 
 /// Represents a decrypted InboundMessage.
-#[derive(Debug, Clone)]
 pub struct DecryptedDhtMessage {
     pub version: u8,
-    /// The _connected_ peer which sent or forwarded this message. This may not be the peer
-    /// which created this message.
     pub source_peer: Peer,
     pub comms_header: MessageEnvelopeHeader,
     pub dht_header: DhtHeader,
@@ -59,7 +55,7 @@ pub struct DecryptedDhtMessage {
 }
 
 impl DecryptedDhtMessage {
-    pub fn succeeded(decrypted_message: Message, message: DhtInboundMessage) -> Self {
+    pub fn succeed(decrypted_message: Message, message: DhtInboundMessage) -> Self {
         Self {
             version: message.version,
             source_peer: message.source_peer,
@@ -69,7 +65,7 @@ impl DecryptedDhtMessage {
         }
     }
 
-    pub fn failed(message: DhtInboundMessage) -> Self {
+    pub fn fail(message: DhtInboundMessage) -> Self {
         Self {
             version: message.version,
             source_peer: message.source_peer,
@@ -79,11 +75,26 @@ impl DecryptedDhtMessage {
         }
     }
 
-    pub fn fail(&self) -> Option<&Vec<u8>> {
+    pub fn inner_success(&self) -> &Message {
+        // Expect the caller to know that the decryption has succeeded
+        self.decryption_result
+            .as_ref()
+            .expect("called inner_success on failed decryption message")
+    }
+
+    pub fn inner_fail(&self) -> &Vec<u8> {
+        // Expect the caller to know that the decryption has succeeded
+        self.decryption_result
+            .as_ref()
+            .err()
+            .expect("called inner_fail on succesfully decrypted message")
+    }
+
+    pub fn failed(&self) -> Option<&Vec<u8>> {
         self.decryption_result.as_ref().err()
     }
 
-    pub fn success(&self) -> Option<&Message> {
+    pub fn succeeded(&self) -> Option<&Message> {
         self.decryption_result.as_ref().ok()
     }
 

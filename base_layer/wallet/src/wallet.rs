@@ -21,16 +21,21 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 // use crate::text_message_service_sync::{TextMessageService, TextMessageServiceApi};
+use crate::text_message_service::{handle::TextMessageHandle, TextMessageServiceInitializer};
 use derive_error::Error;
 use std::sync::Arc;
 use tari_comms::{builder::CommsNode, types::CommsPublicKey};
+use tari_comms_dht::Dht;
 use tari_p2p::{
     comms_connector::pubsub_connector,
     initialization::{initialize_comms, CommsConfig, CommsInitializationError},
-    ping_pong::{PingPongService, PingPongServiceApi},
-    sync_services::{ServiceExecutor, ServiceRegistry},
+    services::{
+        comms_outbound::CommsOutboundServiceInitializer,
+        liveness::{handle::LivenessHandle, LivenessInitializer},
+    },
 };
-use tokio::runtime::{Runtime, TaskExecutor};
+use tari_service_framework::StackBuilder;
+use tokio::runtime::Runtime;
 
 #[derive(Debug, Error)]
 pub enum WalletError {
@@ -39,7 +44,7 @@ pub enum WalletError {
 
 #[derive(Clone)]
 pub struct WalletConfig {
-    pub comms: CommsConfig,
+    pub comms_config: CommsConfig,
     pub inbound_message_buffer_size: usize,
     pub public_key: CommsPublicKey,
     pub database_path: String,
@@ -48,45 +53,52 @@ pub struct WalletConfig {
 /// A structure containing the config and services that a Wallet application will require. This struct will start up all
 /// the services and provide the APIs that applications will use to interact with the services
 pub struct Wallet {
-    runtime: Runtime,
-    pub ping_pong_service: Arc<PingPongServiceApi>,
-    //  pub text_message_service: Arc<TextMessageServiceApi>,
-    pub comms_services: Arc<CommsNode>,
-    pub service_executor: ServiceExecutor,
+    pub comms_service: CommsNode,
+    pub dht_service: Dht,
+    pub text_message_service: TextMessageHandle,
+    pub liveness_service: LivenessHandle,
     pub public_key: CommsPublicKey,
+    pub runtime: Runtime,
 }
 
 impl Wallet {
-    pub fn new(config: WalletConfig) -> Result<Wallet, WalletError> {
-        let runtime = Runtime::new().expect("Failure to create tokio runtime");
-        let ping_pong_service = PingPongService::new();
-        let ping_pong_service_api = ping_pong_service.get_api();
-
-        //        let text_message_service = TextMessageService::new(config.public_key.clone(),
-        // config.database_path.clone());        let text_message_service_api = text_message_service.get_api();
-
-        let registry = ServiceRegistry::new().register(ping_pong_service);
-        //  .register(text_message_service);
-
+    pub fn new(config: WalletConfig, runtime: Runtime) -> Result<Wallet, WalletError> {
         let (publisher, subscription_factory) =
             pubsub_connector(runtime.executor(), config.inbound_message_buffer_size);
+        let subscription_factory = Arc::new(subscription_factory);
 
-        let (comms_services, dht) = initialize_comms(runtime.executor(), config.comms.clone(), publisher)?;
-        let service_executor =
-            ServiceExecutor::execute(&comms_services, &dht, registry, Arc::new(subscription_factory));
+        let (comms_service, dht) = initialize_comms(runtime.executor(), config.comms_config, publisher)?;
+
+        let fut = StackBuilder::new(runtime.executor())
+            .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))
+            .add_initializer(LivenessInitializer::new(Arc::clone(&subscription_factory)))
+            .add_initializer(TextMessageServiceInitializer::new(
+                subscription_factory,
+                config.public_key.clone(),
+                config.database_path,
+            ))
+            .finish();
+
+        let handles = runtime.block_on(fut).expect("Service initialization failed");
 
         Ok(Wallet {
-            runtime,
-            //   text_message_service: text_message_service_api,
-            ping_pong_service: ping_pong_service_api,
-            comms_services: Arc::new(comms_services),
-            service_executor,
+            comms_service,
+            dht_service: dht,
+            text_message_service: handles
+                .get_handle::<TextMessageHandle>()
+                .expect("Could not get Text Message Service Handle"),
+            liveness_service: handles
+                .get_handle::<LivenessHandle>()
+                .expect("Could not get Liveness Service Handle"),
             public_key: config.public_key.clone(),
+            runtime,
         })
     }
 
-    /// Return the TaskExecutor used by this wallet instance
-    pub fn get_executor(&self) -> TaskExecutor {
-        self.runtime.executor()
+    // This method consumes the wallet so that the handles are dropped which will result in the services async loops
+    // exiting.
+    pub fn shutdown(self) -> Result<(), WalletError> {
+        let _ = self.comms_service.shutdown();
+        Ok(())
     }
 }

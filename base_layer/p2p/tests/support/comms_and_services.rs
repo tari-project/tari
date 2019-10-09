@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::support::utils::random_string;
+use crate::support::random_string;
 use futures::Sink;
 use std::{error::Error, sync::Arc, time::Duration};
 use tari_comms::{
@@ -63,8 +63,8 @@ where
             .unwrap()
             .to_string(),
         peer_database_name: random_string(8),
-        inbound_buffer_size: 100,
-        outbound_buffer_size: 100,
+        inbound_buffer_size: 10,
+        outbound_buffer_size: 10,
         dht: Default::default(),
     };
 

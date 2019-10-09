@@ -106,21 +106,16 @@
 // Details: https://doc.rust-lang.org/beta/unstable-book/language-features/type-alias-impl-trait.html
 #![feature(type_alias_impl_trait)]
 
-#[macro_use]
-mod macros;
-
-#[cfg(test)]
-#[macro_use]
-mod test_utils;
-
 mod builder;
 mod config;
 mod consts;
 mod dht;
-pub mod envelope;
 pub mod inbound;
+pub mod message;
 pub mod outbound;
-pub mod store_forward;
+
+#[cfg(test)]
+mod test_utils;
 
 pub use builder::DhtBuilder;
 pub use config::DhtConfig;

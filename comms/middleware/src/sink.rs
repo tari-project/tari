@@ -20,13 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::MiddlewareError;
+use crate::error::MiddlewareError;
 use futures::{task::Context, Future, Poll, Sink, SinkExt};
-use log::*;
 use std::{error::Error, pin::Pin};
 use tower::Service;
-
-const LOG_TARGET: &'static str = "comms::middleware::sink";
 
 /// A middleware which forwards and messages it gets to the given Sink
 #[derive(Clone)]
@@ -41,7 +38,7 @@ impl<TSink> SinkMiddleware<TSink> {
 impl<T, TSink> Service<T> for SinkMiddleware<TSink>
 where
     TSink: Sink<T> + Unpin + Clone + 'static,
-    TSink::Error: Error + Send + Sync + 'static,
+    TSink::Error: Error + Send + 'static,
 {
     type Error = MiddlewareError;
     type Response = ();
@@ -49,12 +46,13 @@ where
     type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Pin::new(&mut self.0).poll_ready(cx).map_err(Into::into)
+        Pin::new(&mut self.0)
+            .poll_ready(cx)
+            .map_err(|err| Box::new(err) as MiddlewareError)
     }
 
     fn call(&mut self, item: T) -> Self::Future {
         let mut sink = self.0.clone();
-        trace!(target: LOG_TARGET, "Sending item to sink");
-        async move { sink.send(item).await.map_err(Into::into) }
+        async move { sink.send(item).await.map_err(|err| Box::new(err) as MiddlewareError) }
     }
 }

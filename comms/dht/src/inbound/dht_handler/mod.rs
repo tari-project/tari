@@ -20,10 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod layer;
-mod message;
-mod middleware;
-mod task;
-
-pub use layer::DhtHandlerLayer;
-pub use message::{DiscoverMessage, JoinMessage};
+pub mod layer;
+pub mod message;
+pub mod middleware;
+pub mod task;

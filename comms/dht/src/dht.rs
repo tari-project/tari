@@ -21,28 +21,16 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use self::outbound::OutboundMessageRequester;
-use crate::{
-    envelope::{DhtMessageType, NodeDestination},
-    inbound,
-    inbound::{DecryptedDhtMessage, DiscoverMessage, JoinMessage},
-    outbound,
-    outbound::{BroadcastClosestRequest, BroadcastStrategy, DhtOutboundError, DhtOutboundRequest, OutboundEncryption},
-    store_forward,
-    DhtConfig,
-};
+use crate::{inbound, inbound::DecryptedDhtMessage, outbound, outbound::DhtOutboundRequest, DhtConfig};
 use futures::{channel::mpsc, Future};
-use log::debug;
 use std::sync::Arc;
 use tari_comms::{
     message::InboundMessage,
     outbound_message_service::OutboundMessage,
-    peer_manager::{NodeId, NodeIdentity, PeerManager},
-    types::CommsPublicKey,
+    peer_manager::{NodeIdentity, PeerManager},
 };
-use tari_comms_middleware::MiddlewareError;
+use tari_comms_middleware::error::MiddlewareError;
 use tower::{layer::Layer, Service, ServiceBuilder};
-
-const LOG_TARGET: &'static str = "comms::dht";
 
 pub struct Dht {
     node_identity: Arc<NodeIdentity>,
@@ -90,33 +78,15 @@ impl Dht {
                       + Send,
     >
     where
-        S: Service<DecryptedDhtMessage, Response = (), Error = MiddlewareError> + Clone + Send + Sync + 'static,
+        S: Service<DecryptedDhtMessage, Response = (), Error = MiddlewareError> + Clone + Send + 'static,
         S::Future: Send,
     {
-        let saf_storage = Arc::new(store_forward::SAFStorage::new(
-            self.config.saf_msg_cache_storage_capacity,
-        ));
-
         ServiceBuilder::new()
             .layer(inbound::DeserializeLayer::new())
             .layer(inbound::DecryptionLayer::new(Arc::clone(&self.node_identity)))
-            .layer(store_forward::ForwardLayer::new(
-                Arc::clone(&self.peer_manager),
-                self.config.clone(),
-                Arc::clone(&self.node_identity),
-                self.outbound_requester(),
-            ))
-            .layer(store_forward::StoreLayer::new(
-                self.config.clone(),
+            .layer(inbound::ForwardLayer::new(
                 Arc::clone(&self.peer_manager),
                 Arc::clone(&self.node_identity),
-                Arc::clone(&saf_storage),
-            ))
-            .layer(store_forward::MessageHandlerLayer::new(
-                self.config.clone(),
-                saf_storage,
-                Arc::clone(&self.node_identity),
-                Arc::clone(&self.peer_manager),
                 self.outbound_requester(),
             ))
             .layer(inbound::DhtHandlerLayer::new(
@@ -155,83 +125,12 @@ impl Dht {
             .layer(outbound::SerializeLayer::new(Arc::clone(&self.node_identity)))
             .into_inner()
     }
-
-    pub async fn send_join(&self) -> Result<(), DhtOutboundError> {
-        let message = JoinMessage {
-            node_id: self.node_identity.identity.node_id.clone(),
-            net_addresses: vec![self.node_identity.control_service_address()],
-        };
-
-        debug!(
-            target: LOG_TARGET,
-            "Sending Join message to (at most) {} closest peers", self.config.num_regional_nodes
-        );
-
-        self.outbound_requester()
-            .send_dht_message(
-                BroadcastStrategy::Closest(BroadcastClosestRequest {
-                    n: self.config.num_regional_nodes,
-                    node_id: self.node_identity.identity.node_id.clone(),
-                    excluded_peers: Vec::new(),
-                }),
-                NodeDestination::Undisclosed,
-                OutboundEncryption::None,
-                DhtMessageType::Join,
-                message,
-            )
-            .await?;
-
-        Ok(())
-    }
-
-    pub async fn send_discover(
-        &self,
-        dest_public_key: CommsPublicKey,
-        dest_node_id: Option<NodeId>,
-        destination: NodeDestination,
-    ) -> Result<(), DhtOutboundError>
-    {
-        let discover_msg = DiscoverMessage {
-            node_id: self.node_identity.identity.node_id.clone(),
-            net_addresses: vec![self.node_identity.control_service_address()],
-        };
-        debug!(
-            target: LOG_TARGET,
-            "Sending Discover message to (at most) {} closest peers", self.config.num_regional_nodes
-        );
-
-        // If the destination node is is known, send to the closest peers we know. Otherwise...
-        let network_location_node_id = dest_node_id.unwrap_or(match &destination {
-            // ... if the destination is undisclosed or a public key, send discover to our closest peers
-            NodeDestination::Undisclosed | NodeDestination::PublicKey(_) => self.node_identity.node_id().clone(),
-            // otherwise, send it to the closest peers to the given NodeId destination we know
-            NodeDestination::NodeId(node_id) => node_id.clone(),
-        });
-
-        let broadcast_strategy = BroadcastStrategy::Closest(BroadcastClosestRequest {
-            n: self.config.num_regional_nodes,
-            node_id: network_location_node_id,
-            excluded_peers: Vec::new(),
-        });
-
-        self.outbound_requester()
-            .send_dht_message(
-                broadcast_strategy,
-                destination,
-                OutboundEncryption::EncryptFor(dest_public_key),
-                DhtMessageType::Discover,
-                discover_msg,
-            )
-            .await?;
-
-        Ok(())
-    }
 }
 
 #[cfg(test)]
 mod test {
     use crate::{
-        envelope::DhtMessageFlags,
+        message::DhtMessageFlags,
         outbound::DhtOutboundRequest,
         test_utils::{make_comms_inbound_message, make_dht_envelope, make_node_identity, make_peer_manager},
         DhtBuilder,
@@ -269,7 +168,7 @@ mod test {
         let msg = rt.block_on(async move {
             service.call(inbound_message).await.unwrap();
             let msg = out_rx.next().await.unwrap();
-            msg.success().unwrap().deserialize_message::<String>().unwrap()
+            msg.inner_success().deserialize_message::<String>().unwrap()
         });
 
         assert_eq!(msg, "secret");
@@ -300,7 +199,7 @@ mod test {
         let msg = rt.block_on(async move {
             service.call(inbound_message).await.unwrap();
             let msg = out_rx.next().await.unwrap();
-            msg.success().unwrap().deserialize_message::<String>().unwrap()
+            msg.inner_success().deserialize_message::<String>().unwrap()
         });
 
         assert_eq!(msg, "secret");

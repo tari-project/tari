@@ -29,8 +29,10 @@ use std::{
     sync::Mutex,
 };
 
-pub use self::{future::ServiceHandlesFuture, lazy_service::LazyService};
-pub(crate) use future::handle_notifier_pair;
+pub use self::{
+    future::{handle_notifier, ServiceHandlesFuture},
+    lazy_service::LazyService,
+};
 
 /// This macro unlocks a Mutex or RwLock. If the lock is
 /// poisoned (i.e. panic while unlocked) the last value

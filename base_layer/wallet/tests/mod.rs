@@ -22,7 +22,8 @@
 
 pub mod support;
 pub mod text_message_service;
+pub mod wallet;
+
 // TODO These were removed due to Comms layer upgrades, put back once Comms layer is stable
 // pub mod transaction_service;
 // pub mod output_manager_service;
-// pub mod wallet;

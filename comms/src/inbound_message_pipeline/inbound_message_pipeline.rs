@@ -63,7 +63,7 @@ where
     /// an error occurs while processing a message it is logged and the pipeline will move onto the next message. Most
     /// errors represent a reason why a message didn't make it through the pipeline.
     pub async fn run(mut self) -> () {
-        info!(target: LOG_TARGET, "Inbound Message Pipeline started");
+        info!(target: LOG_TARGET, "Starting Inbound Message Pipeline");
         while let Some(frame_set) = self.raw_message_stream.next().await {
             if let Err(e) = self.process_message(frame_set).await {
                 info!(target: LOG_TARGET, "Inbound Message Pipeline Error: {:?}", e);
@@ -82,7 +82,7 @@ where
             .deserialize_header()
             .map_err(|_| InboundMessagePipelineError::DeserializationError)?;
 
-        if !message_envelope_header.verify_signature(message_data.message_envelope.body_frame())? {
+        if !message_envelope_header.verify_signatures(message_data.message_envelope.body_frame())? {
             return Err(InboundMessagePipelineError::InvalidMessageSignature);
         }
 

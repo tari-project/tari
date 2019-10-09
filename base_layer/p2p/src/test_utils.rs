@@ -35,8 +35,8 @@ use tari_comms::{
     utils::signature,
 };
 use tari_comms_dht::{
-    envelope::{DhtEnvelope, DhtHeader, DhtMessageFlags, DhtMessageType, NodeDestination},
     inbound::DhtInboundMessage,
+    message::{DhtEnvelope, DhtHeader, DhtMessageFlags, DhtMessageType, NodeDestination},
 };
 use tari_storage::lmdb_store::LMDBBuilder;
 use tari_test_utils::{paths::create_random_database_path, random};

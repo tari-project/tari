@@ -22,20 +22,14 @@
 
 use super::{broadcast_strategy::BroadcastStrategy, error::DhtOutboundError, message::DhtOutboundRequest};
 use crate::{
-    envelope::DhtHeader,
-    outbound::message::{DhtOutboundMessage, ForwardRequest, OutboundEncryption, SendMessageRequest},
+    message::DhtHeader,
+    outbound::message::{DhtOutboundMessage, ForwardRequest, SendMessageRequest},
 };
-use futures::{
-    future,
-    stream::{self, StreamExt},
-    task::Context,
-    Future,
-    Poll,
-};
+use futures::{task::Context, Future, Poll};
 use log::*;
 use std::sync::Arc;
 use tari_comms::peer_manager::{NodeIdentity, PeerManager, PeerNodeIdentity};
-use tari_comms_middleware::MiddlewareError;
+use tari_comms_middleware::error::MiddlewareError;
 use tower::{layer::Layer, Service, ServiceExt};
 
 pub struct BroadcastLayer {
@@ -81,7 +75,9 @@ impl<S> BroadcastMiddleware<S> {
 }
 
 impl<S> Service<DhtOutboundRequest> for BroadcastMiddleware<S>
-where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError> + Clone
+where
+    S: Service<DhtOutboundMessage> + Clone,
+    S::Error: Into<MiddlewareError>,
 {
     type Error = MiddlewareError;
     type Response = ();
@@ -111,7 +107,9 @@ struct BroadcastTask<S> {
 }
 
 impl<S> BroadcastTask<S>
-where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
+where
+    S: Service<DhtOutboundMessage>,
+    S::Error: Into<MiddlewareError>,
 {
     pub fn new(
         service: S,
@@ -132,22 +130,13 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
         let request = self.request.take().expect("request cannot be None");
         // TODO: use blocking threadpool to generate messages
         debug!(target: LOG_TARGET, "Processing outbound request {}", request);
-        let messages = self.generate_outbound_messages(request)?;
-        debug!(
-            target: LOG_TARGET,
-            "Passing {} message(s) to next_service",
-            messages.len()
-        );
+        let messages = self.generate_outbound_messages(request).map_err(Into::into)?;
+        debug!(target: LOG_TARGET, "Sending {} message(s)", messages.len());
 
-        self.service
-            .call_all(stream::iter(messages))
-            .unordered()
-            .filter_map(|result| future::ready(result.err()))
-            .for_each(|err| {
-                error!(target: LOG_TARGET, "Error when sending broadcast messages: {}", err);
-                future::ready(())
-            })
-            .await;
+        for message in messages {
+            self.service.ready().await.map_err(Into::into)?;
+            self.service.call(message).await.map_err(Into::into)?;
+        }
 
         Ok(())
     }
@@ -212,7 +201,6 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
         let SendMessageRequest {
             broadcast_strategy,
             destination,
-            encryption,
             comms_flags,
             dht_flags,
             dht_message_type,
@@ -230,7 +218,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
             // Origin public key used to identify the origin and verify the signature
             self.node_identity.identity.public_key.clone(),
             // Signing will happen later in the pipeline (SerializeMiddleware) to prevent double work
-            Vec::new(),
+            Vec::default(),
             dht_message_type,
             dht_flags,
         );
@@ -239,10 +227,11 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
         let messages = selected_node_identities
             .into_iter()
             .map(|peer_node_identity| {
+                let dest_public_key = peer_node_identity.public_key.clone();
                 DhtOutboundMessage::new(
                     peer_node_identity,
                     dht_header.clone(),
-                    encryption.clone(),
+                    dest_public_key,
                     comms_flags,
                     body.clone(),
                 )
@@ -273,8 +262,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
                 DhtOutboundMessage::new(
                     peer_node_identity,
                     dht_header.clone(),
-                    // Forwarding the message as is, no encryption
-                    OutboundEncryption::None,
+                    dht_header.origin_public_key.clone(),
                     comms_flags,
                     body.clone(),
                 )
@@ -289,8 +277,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
 mod test {
     use super::*;
     use crate::{
-        envelope::{DhtMessageFlags, DhtMessageType, NodeDestination},
-        outbound::message::OutboundEncryption,
+        message::{DhtMessageFlags, DhtMessageType, NodeDestination},
         test_utils::{make_peer_manager, service_fn},
     };
     use futures::future;
@@ -341,7 +328,6 @@ mod test {
             broadcast_strategy: BroadcastStrategy::Flood,
             comms_flags: MessageFlags::NONE,
             destination: NodeDestination::Undisclosed,
-            encryption: OutboundEncryption::None,
             dht_message_type: DhtMessageType::None,
             dht_flags: DhtMessageFlags::NONE,
             body: "custom_msg".as_bytes().to_vec(),

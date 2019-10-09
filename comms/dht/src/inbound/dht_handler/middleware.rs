@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::task::ProcessDhtMessage;
+use super::task::ProcessDhtMessages;
 use crate::{config::DhtConfig, inbound::DecryptedDhtMessage, outbound::OutboundMessageRequester};
 use futures::{task::Context, Future, Poll};
 use std::sync::Arc;
@@ -71,7 +71,7 @@ where
     }
 
     fn call(&mut self, message: DecryptedDhtMessage) -> Self::Future {
-        ProcessDhtMessage::new(
+        ProcessDhtMessages::new(
             self.config.clone(),
             self.next_service.clone(),
             Arc::clone(&self.peer_manager),

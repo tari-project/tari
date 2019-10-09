@@ -21,8 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    envelope::DhtMessageFlags,
     inbound::message::{DecryptedDhtMessage, DhtInboundMessage},
+    message::DhtMessageFlags,
 };
 use futures::{task::Context, Future, Poll};
 use log::*;
@@ -116,18 +116,19 @@ where
     }
 
     async fn decryption_succeeded(
-        next_service: S,
+        mut next_service: S,
         message: DhtInboundMessage,
         decrypted: Vec<u8>,
     ) -> Result<(), MiddlewareError>
     {
+        next_service.ready().await.map_err(Into::into)?;
         // This `Message` was created in the OutboundMessageRequester. Deserialization is done here
         // to determine if the decryption produced valid bytes or not.
         match Message::from_binary(&decrypted) {
             Ok(deserialized) => {
                 debug!(target: LOG_TARGET, "Message successfully decrypted");
-                let msg = DecryptedDhtMessage::succeeded(deserialized, message);
-                next_service.oneshot(msg).await.map_err(Into::into)
+                let msg = DecryptedDhtMessage::succeed(deserialized, message);
+                next_service.call(msg).await.map_err(Into::into)
             },
             Err(err) => {
                 debug!(target: LOG_TARGET, "Unable to deserialize message: {}", err);
@@ -136,31 +137,25 @@ where
         }
     }
 
-    async fn success_not_encrypted(next_service: S, message: DhtInboundMessage) -> Result<(), MiddlewareError> {
+    async fn success_not_encrypted(mut next_service: S, message: DhtInboundMessage) -> Result<(), MiddlewareError> {
         match Message::from_binary(&message.body) {
             Ok(deserialized) => {
-                debug!(
-                    target: LOG_TARGET,
-                    "Message is not encrypted. Passing onto next service"
-                );
-                let msg = DecryptedDhtMessage::succeeded(deserialized, message);
-                next_service.oneshot(msg).await.map_err(Into::into)
+                debug!(target: LOG_TARGET, "Message successfully decrypted");
+                let msg = DecryptedDhtMessage::succeed(deserialized, message);
+                next_service.ready().await.map_err(Into::into)?;
+                next_service.call(msg).await.map_err(Into::into)
             },
             Err(err) => {
-                // Message was not encrypted but failed to deserialize - immediately discard
-                // TODO: Bad node behaviour?
-                debug!(
-                    target: LOG_TARGET,
-                    "Unable to deserialize message: {}. Message will be discarded.", err
-                );
-                Ok(())
+                debug!(target: LOG_TARGET, "Unable to deserialize message: {}", err);
+                Self::decryption_failed(next_service, message).await
             },
         }
     }
 
-    async fn decryption_failed(next_service: S, message: DhtInboundMessage) -> Result<(), MiddlewareError> {
-        let msg = DecryptedDhtMessage::failed(message);
-        next_service.oneshot(msg).await.map_err(Into::into)
+    async fn decryption_failed(mut next_service: S, message: DhtInboundMessage) -> Result<(), MiddlewareError> {
+        let msg = DecryptedDhtMessage::fail(message);
+        next_service.ready().await.map_err(Into::into)?;
+        next_service.call(msg).await.map_err(Into::into)
     }
 }
 
@@ -168,7 +163,7 @@ where
 mod test {
     use super::*;
     use crate::{
-        envelope::DhtMessageFlags,
+        message::DhtMessageFlags,
         test_utils::{make_dht_inbound_message, make_node_identity, service_fn},
     };
     use futures::{executor::block_on, future};

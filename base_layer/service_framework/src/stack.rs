@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    handles::{handle_notifier_pair, ServiceHandles},
+    handles::{handle_notifier, ServiceHandles},
     initializer::{BoxedServiceInitializer, ServiceInitializationError, ServiceInitializer},
 };
 use futures::future::join_all;
@@ -65,7 +65,7 @@ impl StackBuilder {
     /// is called, which completes initialization for those services which  . The resulting service handles are
     /// returned. If ANY of the services fail to initialize, an error is returned.
     pub async fn finish(self) -> Result<Arc<ServiceHandles>, ServiceInitializationError> {
-        let (notifier, handles_fut) = handle_notifier_pair();
+        let (notifier, handles_fut) = handle_notifier();
 
         let executor = self.executor;
 

@@ -37,16 +37,12 @@ use std::{
     },
 };
 
-/// Create a Notifier, ServiceHandlesFuture pair.
-///
-/// The `Notifier::notify` method will notify all cloned `ServiceHandlesFuture`s
-/// and which will resolve with the collected `ServiceHandles`.
-pub fn handle_notifier_pair() -> (Notifier, ServiceHandlesFuture) {
+pub fn handle_notifier() -> (Notifier, ServiceHandlesFuture) {
     let (tx, rx) = mpsc::channel();
     let ready_flag = Arc::new(AtomicBool::new(false));
     (
         Notifier::new(Arc::clone(&ready_flag), rx),
-        ServiceHandlesFuture::new(ready_flag, tx),
+        ServiceHandlesFuture::new(Arc::clone(&ready_flag), tx),
     )
 }
 
@@ -84,9 +80,7 @@ pub struct ServiceHandlesFuture {
 impl Clone for ServiceHandlesFuture {
     fn clone(&self) -> Self {
         let waker = Arc::new(AtomicWaker::new());
-        self.wake_sender
-            .send(Arc::clone(&waker))
-            .expect("notifier receiver has been dropped");
+        self.wake_sender.send(Arc::clone(&waker)).expect("unable to send waker");
         Self {
             handles: Arc::clone(&self.handles),
             ready_flag: Arc::clone(&self.ready_flag),
@@ -154,7 +148,7 @@ mod test {
     fn insert_get() {
         #[derive(Clone)]
         struct TestHandle;
-        let (_, handles) = handle_notifier_pair();
+        let (_notifier, handles) = handle_notifier();
         handles.register(TestHandle);
         handles.get_handle::<TestHandle>().unwrap();
         assert!(handles.get_handle::<()>().is_none());
@@ -162,7 +156,7 @@ mod test {
 
     #[test]
     fn notify_ready() {
-        let (notifier, mut handles) = handle_notifier_pair();
+        let (notifier, mut handles) = handle_notifier();
         let mut clone = handles.clone();
 
         counter_context!(cx, wake_count);
@@ -178,7 +172,7 @@ mod test {
 
     #[test]
     fn notify_many() {
-        let (notifier, mut handles) = handle_notifier_pair();
+        let (notifier, mut handles) = handle_notifier();
         let mut clones = repeat_with(|| handles.clone()).take(10).collect::<Vec<_>>();
 
         counter_context!(cx, wake_count);

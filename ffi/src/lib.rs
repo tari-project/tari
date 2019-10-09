@@ -45,7 +45,7 @@ use tari_wallet::{text_message_service_sync::Contact, wallet::WalletConfig};
 /// Once bindings are generated via cbindgen, change the using to struct, remove the equals sign and anything after it
 /// on the line. These are used as opaque pointers
 pub type Wallet = tari_wallet::Wallet;
-pub type ReceivedTextMessage = tari_wallet::text_message_service_sync::ReceivedTextMessage;
+pub type ReceivedTextMessage = tari_wallet::text_message_service::ReceivedTextMessage;
 pub type SentTextMessage = tari_wallet::text_message_service::SentTextMessage;
 
 /// Received Messages
@@ -357,7 +357,7 @@ pub unsafe extern "C" fn create_wallet(
         .unwrap();
 
     let config = WalletConfig {
-        comms: CommsConfig {
+        comms_config: CommsConfig {
             control_service: ControlServiceConfig {
                 listener_address: listener.clone(),
                 socks_proxy_address: socks.clone(),
@@ -377,25 +377,15 @@ pub unsafe extern "C" fn create_wallet(
         public_key,
         database_path: (*settings_p).database_path.clone().unwrap(),
     };
-
-    Box::into_raw(Box::new(Wallet::new(config).unwrap()))
+    let runtime = Runtime::new().expect("Could not create a Tokio Runtime");
+    Box::into_raw(Box::new(Wallet::new(config, runtime).unwrap()))
 }
 
 /// Shuts down services and frees memory for wallet pointer
 #[no_mangle]
 pub unsafe extern "C" fn destroy_wallet(w: *mut Wallet) {
     if !w.is_null() {
-        let wallet = Box::from_raw(w);
-        wallet.service_executor.shutdown().unwrap();
-        wallet
-            .service_executor
-            .join_timeout(Duration::from_millis(5000))
-            .unwrap();
-        let comms = Arc::try_unwrap(wallet.comms_services)
-            .map_err(|_| ServiceError::CommsServiceOwnershipError)
-            .unwrap();
-
-        comms.shutdown().unwrap();
+        w.shutdown();
     }
 }
 

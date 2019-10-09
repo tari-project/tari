@@ -400,6 +400,7 @@ where TMsgStream: Stream<Item = OutboundMessage> + Unpin
             message_public_key: self.node_identity.identity.public_key.clone(),
             message_signature: signature.to_binary()?,
         };
+        assert!(header.verify_signatures(&body).unwrap());
 
         Ok(MessageEnvelope::new(header.to_binary()?, body))
     }

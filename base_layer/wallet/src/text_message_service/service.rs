@@ -39,12 +39,12 @@ use std::{io, path::Path, time::Duration};
 use tari_broadcast_channel::Publisher;
 use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::{
-    envelope::NodeDestination,
-    outbound::{BroadcastStrategy, OutboundEncryption, OutboundMessageRequester},
+    message::{DhtMessageFlags, NodeDestination},
+    outbound::{BroadcastStrategy, OutboundMessageRequester},
 };
 use tari_p2p::{
     domain_message::DomainMessage,
-    services::liveness::LivenessHandle,
+    services::liveness::handle::LivenessHandle,
     tari_message::{ExtendedMessage, TariMessageType},
 };
 use tari_service_framework::reply_channel;
@@ -169,7 +169,7 @@ where
         let connection = SqliteConnection::establish(&database_path)?;
 
         connection.execute("PRAGMA foreign_keys = ON")?;
-
+        println!("establish DB? {:?} PAth: {:?}", db_exists, database_path);
         if !db_exists {
             embed_migrations!("./migrations");
             embedded_migrations::run_with_output(&connection, &mut io::stdout()).map_err(|err| {
@@ -239,7 +239,7 @@ where
             .send_message(
                 BroadcastStrategy::DirectPublicKey(text_message.dest_pub_key.clone()),
                 NodeDestination::Undisclosed,
-                OutboundEncryption::EncryptForDestination,
+                DhtMessageFlags::ENCRYPTED,
                 TariMessageType::new(ExtendedMessage::Text),
                 text_message.clone(),
             )
@@ -273,7 +273,7 @@ where
             .send_message(
                 BroadcastStrategy::DirectPublicKey(message.clone().origin_pubkey),
                 NodeDestination::Undisclosed,
-                OutboundEncryption::EncryptForDestination,
+                DhtMessageFlags::ENCRYPTED,
                 TariMessageType::new(ExtendedMessage::TextAck),
                 text_message_ack,
             )
@@ -415,16 +415,7 @@ where
         );
 
         // Send ping to the contact so that if they are online they will flush all outstanding messages for this node
-        // TODO This was removed as it created random lock ups in the tests, Once the new Future based comms Middleware
-        // is in put this back
-        //        let _ = self
-        //            .liveness
-        //            .call(LivenessRequest::SendPing(contact.pub_key))
-        //            .await
-        //            .or_else(|err| {
-        //                error!(target: LOG_TARGET, "{:?}", err);
-        //                Err(err)
-        //            });
+        self.liveness.send_ping(contact.pub_key).await?;
 
         Ok(())
     }

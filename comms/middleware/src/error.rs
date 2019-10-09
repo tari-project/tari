@@ -20,9 +20,21 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-//
-///// Box any Error and coerce into a MiddlewareError
-// pub fn box_as_middleware_error<E>(err: E) -> MiddlewareError
-// where E: std::error::Error + Send + Sync + 'static {
-//    Box::new(err) as MiddlewareError
-//}
+pub type MiddlewareError = Box<dyn std::error::Error + Send + 'static>;
+
+#[macro_export]
+macro_rules! impl_into_middleware_error {
+    ($t:ty) => {
+        impl Into<tari_comms_middleware::error::MiddlewareError> for $t {
+            fn into(self) -> tari_comms_middleware::error::MiddlewareError {
+                Box::new(self)
+            }
+        }
+    };
+}
+
+/// Box any Error and coerse into a MiddlewareError
+pub fn box_as_middleware_error<E>(err: E) -> MiddlewareError
+where E: std::error::Error + Send + 'static {
+    Box::new(err) as MiddlewareError
+}

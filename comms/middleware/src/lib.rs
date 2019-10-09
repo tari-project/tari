@@ -53,11 +53,12 @@
 #![recursion_limit = "256"]
 #![feature(type_alias_impl_trait)]
 
-pub type MiddlewareError = Box<dyn std::error::Error + Send + Sync>;
-
+pub mod error;
 pub mod message;
 pub mod pipeline;
 pub mod sink;
 
 #[cfg(test)]
 mod test_utils;
+
+pub use error::MiddlewareError;

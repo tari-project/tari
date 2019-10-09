@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2019. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,22 +20,37 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::outbound::DhtOutboundError;
-use derive_error::Error;
-use tari_comms::{message::MessageError, peer_manager::PeerManagerError};
-use tari_utilities::{ciphers::cipher::CipherError, message_format::MessageFormatError};
+use futures::{select, stream::FusedStream, FutureExt, Stream, StreamExt};
+use std::{
+    collections::HashMap,
+    hash::Hash,
+    time::{Duration, Instant},
+};
 
-#[derive(Debug, Error)]
-pub enum StoreAndForwardError {
-    MessageError(MessageError),
-    PeerManagerError(PeerManagerError),
-    MessageFormatError(MessageFormatError),
-    DhtOutboundError(DhtOutboundError),
-    /// Received stored message has an invalid destination
-    InvalidDestination,
-    /// Received stored message has an invalid origin signature
-    InvalidSignature,
-    /// Unable to decrypt received stored message
-    DecryptionFailed,
-    CipherError(CipherError),
+/// This method will read the specified number of items from a stream and assemble a HashMap with the received item as a
+/// key and the number of occurences as a value. If the stream does not yield the desired number of items the function
+/// will return what it is has received
+pub async fn event_stream_count<TStream, I>(mut stream: TStream, num_items: usize, timeout: Duration) -> HashMap<I, u32>
+where
+    TStream: Stream<Item = I> + FusedStream + Unpin,
+    I: Hash + Eq + Clone,
+{
+    let mut result = HashMap::new();
+    let mut count = 0;
+    loop {
+        select! {
+            item = stream.select_next_some() => {
+                let e = result.entry(item.clone()).or_insert(0);
+                *e += 1;
+                count += 1;
+                if count >= num_items {
+                    break;
+                }
+             },
+            _ = tokio::timer::delay(Instant::now() + timeout).fuse() => { break; },
+            complete => { break; },
+        }
+    }
+
+    result
 }
