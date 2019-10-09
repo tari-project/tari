@@ -22,7 +22,7 @@ pub mod connection;
 pub mod connection_manager;
 mod consts;
 pub mod control_service;
-pub mod inbound_message_pipeline;
+pub mod inbound_message_service;
 pub mod message;
 pub mod outbound_message_service;
 pub mod peer_manager;

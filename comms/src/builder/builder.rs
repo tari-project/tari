@@ -30,7 +30,7 @@ use crate::{
         PeerConnectionConfig,
     },
     control_service::{ControlService, ControlServiceConfig, ControlServiceError, ControlServiceHandle},
-    inbound_message_pipeline::inbound_message_pipeline::InboundMessagePipeline,
+    inbound_message_service::inbound_message_service::InboundMessagePipeline,
     message::{FrameSet, InboundMessage},
     outbound_message_service::{OutboundMessage, OutboundMessageService, OutboundServiceConfig, OutboundServiceError},
     peer_manager::{NodeIdentity, PeerManager, PeerManagerError},
@@ -325,7 +325,7 @@ where
         );
 
         //---------------------------------- Inbound message pipeline --------------------------------------------//
-        let inbound_message_pipeline = InboundMessagePipeline::new(
+        let inbound_message_service = InboundMessagePipeline::new(
             peer_connection_message_receiver,
             self.inbound_sink.take().expect("inbound_sink cannot be None"),
             Arc::clone(&peer_manager),
@@ -337,7 +337,7 @@ where
             control_service,
             executor: self.executor,
             shutdown,
-            inbound_message_pipeline,
+            inbound_message_service,
             node_identity,
             outbound_message_service,
             peer_manager,
@@ -365,7 +365,7 @@ pub struct CommsContainer<TInSink, TOutStream> {
 
     executor: TaskExecutor,
 
-    inbound_message_pipeline: InboundMessagePipeline<TInSink>,
+    inbound_message_service: InboundMessagePipeline<TInSink>,
 
     node_identity: Arc<NodeIdentity>,
 
@@ -395,7 +395,7 @@ where
 
         self.executor.spawn(self.connection_manager_actor.start());
         self.executor.spawn(self.outbound_message_service.start());
-        self.executor.spawn(self.inbound_message_pipeline.run());
+        self.executor.spawn(self.inbound_message_service.run());
 
         Ok(CommsNode {
             connection_manager: self.connection_manager,

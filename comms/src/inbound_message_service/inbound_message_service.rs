@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use crate::{
-    inbound_message_pipeline::{error::InboundMessagePipelineError, MessageCache, MessageCacheConfig},
+    inbound_message_service::{error::InboundMessagePipelineError, MessageCache, MessageCacheConfig},
     message::{Frame, FrameSet, InboundMessage, MessageData},
     peer_manager::{NodeId, Peer, PeerManager},
 };
@@ -28,7 +28,7 @@ use futures::{channel::mpsc, Sink, SinkExt, Stream, StreamExt};
 use log::*;
 use std::{convert::TryFrom, sync::Arc};
 
-const LOG_TARGET: &str = "comms::inbound_message_pipeline";
+const LOG_TARGET: &str = "comms::inbound_message_service";
 
 pub type InboundMessagePipeline<TSink> = InnerInboundMessagePipeline<mpsc::Receiver<FrameSet>, TSink>;
 

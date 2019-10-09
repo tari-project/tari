@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::consts::{DHT_MSG_CACHE_STORAGE_CAPACITY, DHT_MSG_CACHE_TTL};
+use crate::consts::{IMS_MSG_CACHE_STORAGE_CAPACITY, IMS_MSG_CACHE_TTL};
 use derive_error::Error;
 use std::{hash::Hash, sync::RwLock, time::Duration};
 use ttl_cache::TtlCache;
@@ -42,8 +42,8 @@ pub struct MessageCacheConfig {
 impl Default for MessageCacheConfig {
     fn default() -> Self {
         MessageCacheConfig {
-            storage_capacity: DHT_MSG_CACHE_STORAGE_CAPACITY,
-            msg_ttl: DHT_MSG_CACHE_TTL,
+            storage_capacity: IMS_MSG_CACHE_STORAGE_CAPACITY,
+            msg_ttl: IMS_MSG_CACHE_TTL,
         }
     }
 }

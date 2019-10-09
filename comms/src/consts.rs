@@ -29,6 +29,6 @@ thread_local! {
 }
 
 /// The maximum number of messages that can be stored using the MessageCache of the DHT
-pub const DHT_MSG_CACHE_STORAGE_CAPACITY: usize = 1000;
+pub const IMS_MSG_CACHE_STORAGE_CAPACITY: usize = 1000;
 /// The time-to-live duration used by the MessageCache for tracking received and handled messages
-pub const DHT_MSG_CACHE_TTL: Duration = Duration::from_secs(300);
+pub const IMS_MSG_CACHE_TTL: Duration = Duration::from_secs(300);

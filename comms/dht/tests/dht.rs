@@ -63,7 +63,7 @@ fn create_peer_storage(peers: Vec<Peer>) -> CommsDatabase {
         storage.add_peer(peer).unwrap();
     }
 
-    storage.into_datastore()
+    storage.into()
 }
 
 fn setup_comms_dht(

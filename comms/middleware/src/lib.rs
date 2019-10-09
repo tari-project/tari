@@ -55,7 +55,7 @@
 
 pub type MiddlewareError = Box<dyn std::error::Error + Send + Sync>;
 
-pub mod message;
+pub mod error;
 pub mod pipeline;
 pub mod sink;
 
