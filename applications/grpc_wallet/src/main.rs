@@ -38,7 +38,12 @@ use tari_crypto::keys::PublicKey;
 use tari_grpc_wallet::wallet_server::WalletServer;
 use tari_p2p::initialization::CommsConfig;
 use tari_utilities::{hex::Hex, message_format::MessageFormat};
-use tari_wallet::{text_message_service_sync::Contact, wallet::WalletConfig, Wallet};
+use tari_wallet::{
+    text_message_service::model::Contact,
+    text_message_service_sync::Contact,
+    wallet::WalletConfig,
+    Wallet,
+};
 
 const LOG_TARGET: &str = "applications::grpc_wallet";
 
@@ -237,7 +242,7 @@ pub fn main() {
         .unwrap();
 
     let config = WalletConfig {
-        comms: CommsConfig {
+        comms_config: CommsConfig {
             control_service: ControlServiceConfig {
                 listener_address: listener_address.clone(),
                 socks_proxy_address: None,
@@ -257,8 +262,8 @@ pub fn main() {
         public_key,
         database_path,
     };
-
-    let wallet = Wallet::new(config).unwrap();
+    let runtime = Runtime::new().unwrap();
+    let mut wallet = Wallet::new(config, &runtime).unwrap();
 
     // Add any provided peers to Peer Manager and Text Message Service Contacts
     if !contacts.peers.is_empty() {

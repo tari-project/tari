@@ -23,6 +23,7 @@
 use derive_error::Error;
 use tari_comms::message::MessageError;
 use tari_comms_dht::outbound::DhtOutboundError;
+use tari_service_framework::reply_channel::TransportChannelError;
 
 #[derive(Debug, Error)]
 pub enum LivenessError {
@@ -31,6 +32,11 @@ pub enum LivenessError {
     SendPongFailed,
     /// Failed to send a ping message
     SendPingFailed,
-    // Occurs when a message cannot deserialize into a PingPong message
+    /// Occurs when a message cannot deserialize into a PingPong message
     MessageError(MessageError),
+    /// The Handle repsonse was not what was expected for this request
+    UnexpectedApiResponse,
+    /// An error has occurred reading from the event subscriber stream
+    EventStreamError,
+    TransportChannelError(TransportChannelError),
 }

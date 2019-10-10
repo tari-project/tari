@@ -20,8 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::services::liveness::error::LivenessError;
+use futures::{stream::Fuse, StreamExt};
 use serde::{Deserialize, Serialize};
+use tari_broadcast_channel::Subscriber;
 use tari_comms::types::CommsPublicKey;
+use tari_service_framework::reply_channel::SenderService;
+use tower::Service;
 
 /// Request types made through the `LivenessHandle` and are handled by the `LivenessService`
 #[derive(Debug)]
@@ -46,4 +51,51 @@ pub enum LivenessResponse {
 pub enum PingPong {
     Ping,
     Pong,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub enum LivenessEvent {
+    ReceivedPing,
+    ReceivedPong,
+}
+
+#[derive(Clone)]
+pub struct LivenessHandle {
+    handle: SenderService<LivenessRequest, Result<LivenessResponse, LivenessError>>,
+    event_stream: Subscriber<LivenessEvent>,
+}
+
+impl LivenessHandle {
+    pub fn new(
+        handle: SenderService<LivenessRequest, Result<LivenessResponse, LivenessError>>,
+        event_stream: Subscriber<LivenessEvent>,
+    ) -> Self
+    {
+        Self { handle, event_stream }
+    }
+
+    pub fn get_event_stream_fused(&self) -> Fuse<Subscriber<LivenessEvent>> {
+        self.event_stream.clone().fuse()
+    }
+
+    pub async fn send_ping(&mut self, pub_key: CommsPublicKey) -> Result<(), LivenessError> {
+        match self.handle.call(LivenessRequest::SendPing(pub_key)).await?? {
+            LivenessResponse::PingSent => Ok(()),
+            _ => Err(LivenessError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn get_ping_count(&mut self) -> Result<usize, LivenessError> {
+        match self.handle.call(LivenessRequest::GetPingCount).await?? {
+            LivenessResponse::Count(c) => Ok(c),
+            _ => Err(LivenessError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn get_pong_count(&mut self) -> Result<usize, LivenessError> {
+        match self.handle.call(LivenessRequest::GetPongCount).await?? {
+            LivenessResponse::Count(c) => Ok(c),
+            _ => Err(LivenessError::UnexpectedApiResponse),
+        }
+    }
 }

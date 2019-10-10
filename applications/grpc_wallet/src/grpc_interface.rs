@@ -79,6 +79,7 @@ impl From<SentTextMessage> for SentTextMessageRpc {
 #[derive(Clone)]
 pub struct WalletRPC {
     pub wallet: Arc<Wallet>,
+    pub runtime: Runtime,
 }
 
 /// Implementation of the the gRPC service methods.

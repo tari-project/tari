@@ -23,16 +23,17 @@
 use super::{error::LivenessError, state::LivenessState, LivenessRequest, LivenessResponse};
 use crate::{
     domain_message::DomainMessage,
-    services::{comms_outbound::CommsOutboundHandle, liveness::messages::PingPong},
+    services::liveness::handle::{LivenessEvent, PingPong},
     tari_message::{NetMessage, TariMessageType},
 };
-use futures::{pin_mut, stream::StreamExt, Stream};
+use futures::{pin_mut, stream::StreamExt, SinkExt, Stream};
 use log::*;
 use std::sync::Arc;
+use tari_broadcast_channel::Publisher;
 use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::{
     envelope::NodeDestination,
-    outbound::{BroadcastStrategy, DhtOutboundError, OutboundEncryption},
+    outbound::{BroadcastStrategy, DhtOutboundError, OutboundEncryption, OutboundMessageRequester},
 };
 use tari_service_framework::RequestContext;
 
@@ -50,7 +51,8 @@ pub struct LivenessService<THandleStream, TPingStream> {
     request_rx: Option<THandleStream>,
     ping_stream: Option<TPingStream>,
     state: Arc<LivenessState>,
-    oms_handle: CommsOutboundHandle,
+    oms_handle: OutboundMessageRequester,
+    event_publisher: Publisher<LivenessEvent>,
 }
 
 impl<THandleStream, TPingStream> LivenessService<THandleStream, TPingStream> {
@@ -58,7 +60,8 @@ impl<THandleStream, TPingStream> LivenessService<THandleStream, TPingStream> {
         request_rx: THandleStream,
         ping_stream: TPingStream,
         state: Arc<LivenessState>,
-        oms_handle: CommsOutboundHandle,
+        oms_handle: OutboundMessageRequester,
+        event_publisher: Publisher<LivenessEvent>,
     ) -> Self
     {
         Self {
@@ -66,6 +69,7 @@ impl<THandleStream, TPingStream> LivenessService<THandleStream, TPingStream> {
             ping_stream: Some(ping_stream),
             state,
             oms_handle,
+            event_publisher,
         }
     }
 }
@@ -86,6 +90,7 @@ where
                 // Requests from the handle
                 request_context = request_stream.select_next_some() => {
                     let (request, reply_tx) = request_context.split();
+                    error!("LIVENESS REQUEST {:?}", request);
                     let _ = reply_tx.send(self.handle_request(request).await).or_else(|resp| {
                         error!(target: LOG_TARGET, "Failed to send reply");
                         Err(resp)
@@ -112,9 +117,17 @@ where
                 self.state.inc_pings_received();
                 self.send_pong(msg.origin_pubkey).await.unwrap();
                 self.state.inc_pongs_sent();
+                self.event_publisher
+                    .send(LivenessEvent::ReceivedPing)
+                    .await
+                    .map_err(|_| LivenessError::EventStreamError)?;
             },
             PingPong::Pong => {
                 self.state.inc_pongs_received();
+                self.event_publisher
+                    .send(LivenessEvent::ReceivedPong)
+                    .await
+                    .map_err(|_| LivenessError::EventStreamError)?;
             },
         }
         Ok(())
@@ -178,8 +191,10 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::services::liveness::handle::LivenessHandle;
     use futures::{channel::mpsc, executor::LocalPool, stream, task::SpawnExt};
     use rand::rngs::OsRng;
+    use tari_broadcast_channel::bounded;
     use tari_comms::{
         connection::NetAddress,
         peer_manager::{NodeId, Peer, PeerFlags},
@@ -187,7 +202,6 @@ mod test {
     use tari_comms_dht::outbound::DhtOutboundRequest;
     use tari_crypto::keys::PublicKey;
     use tari_service_framework::reply_channel;
-    use tower_service::Service;
 
     #[test]
     fn get_ping_pong_count() {
@@ -198,27 +212,23 @@ mod test {
 
         // Setup a CommsOutbound service handle which is not connected to the actual CommsOutbound service
         let (outbound_tx, _) = mpsc::channel(10);
-        let oms_handle = CommsOutboundHandle::new(outbound_tx);
+        let oms_handle = OutboundMessageRequester::new(outbound_tx);
 
         // Setup liveness service
-        let (mut sender_service, receiver) = reply_channel::unbounded();
-        let service = LivenessService::new(receiver, stream::empty(), state, oms_handle);
+        let (sender_service, receiver) = reply_channel::unbounded();
+        let (publisher, subscriber) = bounded(100);
+        let mut liveness_handle = LivenessHandle::new(sender_service, subscriber);
+        let service = LivenessService::new(receiver, stream::empty(), state, oms_handle, publisher);
 
         let mut pool = LocalPool::new();
         // Run the service
         pool.spawner().spawn(service.run()).unwrap();
 
-        let res = pool.run_until(sender_service.call(LivenessRequest::GetPingCount));
-        match res.unwrap() {
-            Ok(LivenessResponse::Count(n)) => assert_eq!(n, 1),
-            _ => panic!("Unexpected service result"),
-        }
+        let res = pool.run_until(liveness_handle.get_ping_count()).unwrap();
+        assert_eq!(res, 1);
 
-        let res = pool.run_until(sender_service.call(LivenessRequest::GetPongCount));
-        match res.unwrap() {
-            Ok(LivenessResponse::Count(n)) => assert_eq!(n, 2),
-            _ => panic!("Unexpected service result"),
-        }
+        let res = pool.run_until(liveness_handle.get_pong_count()).unwrap();
+        assert_eq!(res, 2);
     }
 
     #[test]
@@ -229,23 +239,20 @@ mod test {
         // Setup a CommsOutbound service handle which is not connected to the actual CommsOutbound service
         // TODO(sdbondi): Setting up a "dummy" CommsOutbound service should be moved into testing utilities
         let (outbound_tx, mut outbound_rx) = mpsc::channel(10);
-        let oms_handle = CommsOutboundHandle::new(outbound_tx);
+        let oms_handle = OutboundMessageRequester::new(outbound_tx);
 
         // Setup liveness service
-        let (mut sender_service, receiver) = reply_channel::unbounded();
-        let service = LivenessService::new(receiver, stream::empty(), Arc::clone(&state), oms_handle);
+        let (sender_service, receiver) = reply_channel::unbounded();
+        let (publisher, subscriber) = bounded(100);
+        let mut liveness_handle = LivenessHandle::new(sender_service, subscriber);
+        let service = LivenessService::new(receiver, stream::empty(), Arc::clone(&state), oms_handle, publisher);
 
         // Run the LivenessService
         pool.spawner().spawn(service.run()).unwrap();
 
         let mut rng = OsRng::new().unwrap();
         let (_, pk) = CommsPublicKey::random_keypair(&mut rng);
-        let res = pool.run_until(sender_service.call(LivenessRequest::SendPing(pk)));
-        match res.unwrap() {
-            Ok(LivenessResponse::PingSent) => {},
-            Ok(_) => panic!("received unexpected response from liveness service"),
-            Err(err) => panic!("received unexpected error from liveness service: {:?}", err),
-        }
+        let _res = pool.run_until(liveness_handle.send_ping(pk)).unwrap();
 
         // Receive outbound request
         pool.run_until(async move {
@@ -283,14 +290,21 @@ mod test {
         // Setup a CommsOutbound service handle which is not connected to the actual CommsOutbound service
         // TODO(sdbondi): Setting up a "dummy" CommsOutbound service should be moved into testing utilities
         let (outbound_tx, mut outbound_rx) = mpsc::channel(10);
-        let oms_handle = CommsOutboundHandle::new(outbound_tx);
+        let oms_handle = OutboundMessageRequester::new(outbound_tx);
 
         let msg = create_dummy_message(PingPong::Ping);
         // A stream which emits one message and then closes
         let pingpong_stream = stream::iter(std::iter::once(msg));
 
         // Setup liveness service
-        let service = LivenessService::new(stream::empty(), pingpong_stream, Arc::clone(&state), oms_handle);
+        let (publisher, _subscriber) = bounded(100);
+        let service = LivenessService::new(
+            stream::empty(),
+            pingpong_stream,
+            Arc::clone(&state),
+            oms_handle,
+            publisher,
+        );
 
         pool.spawner().spawn(service.run()).unwrap();
 
@@ -315,14 +329,21 @@ mod test {
         // Setup a CommsOutbound service handle which is not connected to the actual CommsOutbound service
         // TODO(sdbondi): Setting up a "dummy" CommsOutbound service should be moved into testing utilities
         let (outbound_tx, _) = mpsc::channel(10);
-        let oms_handle = CommsOutboundHandle::new(outbound_tx);
+        let oms_handle = OutboundMessageRequester::new(outbound_tx);
 
         let msg = create_dummy_message(PingPong::Pong);
         // A stream which emits one message and then closes
         let pingpong_stream = stream::iter(std::iter::once(msg));
 
         // Setup liveness service
-        let service = LivenessService::new(stream::empty(), pingpong_stream, Arc::clone(&state), oms_handle);
+        let (publisher, _subscriber) = bounded(100);
+        let service = LivenessService::new(
+            stream::empty(),
+            pingpong_stream,
+            Arc::clone(&state),
+            oms_handle,
+            publisher,
+        );
 
         pool.spawner().spawn(service.run()).unwrap();
 

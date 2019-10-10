@@ -40,13 +40,14 @@ use tari_comms::{
     types::{CommsPublicKey, CommsSecretKey},
 };
 use tari_crypto::keys::PublicKey;
-use tari_p2p::{initialization::CommsConfig, sync_services::ServiceError};
+use tari_p2p::initialization::CommsConfig;
 use tari_utilities::{hex::Hex, message_format::MessageFormat};
 use tari_wallet::{
-    text_message_service_sync::{Contact, ReceivedTextMessage},
+    text_message_service::model::{Contact, ReceivedTextMessage},
     wallet::WalletConfig,
     Wallet,
 };
+use tokio::runtime::Runtime;
 
 const LOG_TARGET: &str = "applications::cli_text_messenger";
 
@@ -251,7 +252,7 @@ pub fn main() {
         .unwrap();
 
     let config = WalletConfig {
-        comms: CommsConfig {
+        comms_config: CommsConfig {
             control_service: ControlServiceConfig {
                 listener_address: listener_address.clone(),
                 socks_proxy_address: None,
@@ -272,7 +273,9 @@ pub fn main() {
         database_path,
     };
 
-    let wallet = Wallet::new(config).unwrap();
+    let wallet_runtime = Runtime::new().unwrap();
+    let runtime = Runtime::new().unwrap();
+    let mut wallet = Wallet::new(config, wallet_runtime).unwrap();
 
     // Add any provided peers to Peer Manager and Text Message Service Contacts
     if !contacts.peers.is_empty() {
@@ -280,13 +283,13 @@ pub fn main() {
             let pk = CommsPublicKey::from_hex(p.pub_key.as_str()).expect("Error parsing pub key from Hex");
             if let Ok(na) = p.address.clone().parse::<NetAddress>() {
                 let peer = Peer::from_public_key_and_address(pk.clone(), na.clone()).unwrap();
-                wallet.comms_services.peer_manager().add_peer(peer).unwrap();
+                wallet.comms_service.peer_manager().add_peer(peer).unwrap();
                 // If the contacts already exist we don't mind
-                if let Err(e) = wallet.text_message_service.add_contact(Contact {
+                if let Err(e) = runtime.block_on(wallet.text_message_service.add_contact(Contact {
                     screen_name: p.screen_name.clone(),
                     pub_key: pk.clone(),
                     address: na.clone(),
-                }) {
+                })) {
                     println!("Error adding config file contacts: {:?}", e);
                 }
             }
@@ -308,9 +311,8 @@ pub fn main() {
 
     let _handle = log4rs::init_config(config).unwrap();
 
-    let contacts = wallet
-        .text_message_service
-        .get_contacts()
+    let contacts = runtime
+        .block_on(wallet.text_message_service.get_contacts())
         .expect("Could not read contacts");
 
     // Print out some help messages
@@ -353,9 +355,8 @@ pub fn main() {
 
     // Main Loop
     loop {
-        let mut rx_messages: Vec<ReceivedTextMessage> = wallet
-            .text_message_service
-            .get_text_messages()
+        let mut rx_messages: Vec<ReceivedTextMessage> = runtime
+            .block_on(wallet.text_message_service.get_text_messages())
             .expect("Error retrieving text messages from TMS")
             .received_messages;
 
@@ -381,24 +382,18 @@ pub fn main() {
                 println!("Active Contact updated to: {}", contacts[active_contact].screen_name);
             }
 
-            wallet
-                .text_message_service
-                .send_text_message(contacts[active_contact % contacts.len()].pub_key.clone(), input)
+            runtime
+                .block_on(
+                    wallet
+                        .text_message_service
+                        .send_text_message(contacts[active_contact % contacts.len()].pub_key.clone(), input),
+                )
                 .unwrap()
         }
 
         // check sigint to trigger shutdown
         if rx_sigint.recv_timeout(Duration::from_millis(10)).is_ok() {
-            wallet.service_executor.shutdown().unwrap();
-            wallet
-                .service_executor
-                .join_timeout(Duration::from_millis(3000))
-                .unwrap();
-            let comms = Arc::try_unwrap(wallet.comms_services)
-                .map_err(|_| ServiceError::CommsServiceOwnershipError)
-                .unwrap();
-
-            comms.shutdown().unwrap();
+            wallet.shutdown().unwrap();
             println!("Exiting");
             break;
         }

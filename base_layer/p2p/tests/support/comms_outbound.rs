@@ -20,8 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use futures::future;
+use futures::{future, Future, StreamExt};
 use std::sync::mpsc;
+use tari_comms_dht::outbound::{DhtOutboundError, DhtOutboundRequest, OutboundMessageRequester};
 use tari_p2p::{
     executor::{transport, ServiceInitializationError, ServiceInitializer},
     services::{
@@ -30,27 +31,47 @@ use tari_p2p::{
         ServiceName,
     },
 };
-use tower_util::service_fn;
+use tari_service_framework::{
+    handles::ServiceHandlesFuture,
+    reply_channel,
+    reply_channel::Receiver,
+    ServiceInitializationError,
+    ServiceInitializer,
+};
 
-pub struct TestCommsOutboundInitializer {
-    sender: Option<mpsc::Sender<CommsOutboundRequest>>,
+async fn oms_reponder(mut oms_receiver: Receiver<DhtOutboundRequest, Result<(), DhtOutboundError>>) {
+    while let Some(request_context) = oms_receiver.next() {
+        let (request, reply_tx) = request_context.split();
+        reply_tx.send(Ok(()));
+    }
 }
 
-impl TestCommsOutboundInitializer {
-    pub fn new(sender: mpsc::Sender<CommsOutboundRequest>) -> Self {
+pub struct TestOutboundMessageServiceInitializer {
+    sender: Option<mpsc::Sender<DhtOutboundRequest>>,
+}
+
+impl TestOutboundMessageServiceInitializer {
+    pub fn new(sender: mpsc::Sender<DhtOutboundRequest>) -> Self {
         Self { sender: Some(sender) }
     }
 }
 
-impl ServiceInitializer<ServiceName> for TestCommsOutboundInitializer {
-    fn initialize(mut self: Box<Self>, handles: ServiceHandlesFuture) -> Result<(), ServiceInitializationError> {
-        let sender = self.sender.take().expect("cannot be None");
-        let (oms_requester, oms_responder) = transport::channel(service_fn(move |req| {
-            sender.send(req).unwrap();
-            future::ok::<_, ()>(Ok(()))
-        }));
-        tokio::spawn(oms_responder);
-        handles.insert(ServiceName::CommsOutbound, CommsOutboundHandle::new(oms_requester));
-        Ok(())
+impl ServiceInitializer<ServiceName> for TestOutboundMessageServiceInitializer {
+    type Future = impl Future<Output = Result<(), ServiceInitializationError>>;
+
+    fn initialize(&mut self, executor: TaskExecutor, handles_fut: ServiceHandlesFuture) -> Self::Future {
+        let sender = self.sender.take().expect("sender cannot be None");
+        let (oms_sender, oms_receiver) = reply_channel::unbounded();
+
+        handles_fut.register(OutboundMessageRequester::new(oms_sender));
+
+        executor.spawn(async move {
+            // Wait for all handles to become available
+            let handles = handles_fut.await;
+
+            oms_reponder(oms_receiver).await;
+        });
+
+        future::ready(Ok(()))
     }
 }

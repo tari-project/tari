@@ -37,7 +37,7 @@ use tari_p2p::{
     comms_connector::PeerMessage,
     domain_message::DomainMessage,
     services::{
-        liveness::LivenessHandle,
+        liveness::handle::LivenessHandle,
         utils::{map_deserialized, ok_or_skip_result},
     },
     tari_message::{ExtendedMessage, TariMessageType},
