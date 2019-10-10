@@ -391,8 +391,8 @@ where TMsgStream: Stream<Item = OutboundMessage> + Unpin
         let OutboundMessage { flags, body, .. } = message;
 
         // Sign the comms envelope
-        let mut rng = COMMS_RNG.with(|rng| rng.clone());
-        let signature = signature::sign(&mut rng, self.node_identity.secret_key.clone(), &body)?;
+        let signature = COMMS_RNG
+            .with(|rng| signature::sign(&mut *rng.borrow_mut(), self.node_identity.secret_key.clone(), &body))?;
 
         let header = MessageEnvelopeHeader {
             version: MESSAGE_PROTOCOL_VERSION,

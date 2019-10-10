@@ -35,9 +35,11 @@ const FRAMES_PER_MESSAGE: usize = 3;
 
 /// Generate a signature for the peer that confirms the origin_source and body
 fn peer_signature(secret_key: CommsSecretKey, body: &Vec<u8>) -> Result<Vec<u8>, MessageError> {
-    let mut rng = COMMS_RNG.with(|rng| rng.clone());
-    let peer_signature = signature::sign(&mut rng, secret_key, body).map_err(MessageError::SchnorrSignatureError)?;
-    peer_signature.to_binary().map_err(MessageError::MessageFormatError)
+    COMMS_RNG.with(|rng| {
+        let peer_signature =
+            signature::sign(&mut *rng.borrow_mut(), secret_key, body).map_err(MessageError::SchnorrSignatureError)?;
+        peer_signature.to_binary().map_err(MessageError::MessageFormatError)
+    })
 }
 
 /// Represents data that every message contains.
