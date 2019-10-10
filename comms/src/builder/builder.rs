@@ -475,6 +475,7 @@ impl CommsNode {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::peer_manager::PeerFeatures;
     use tari_storage::HMapDatabase;
     use tokio::runtime::Runtime;
 
@@ -482,7 +483,7 @@ mod test {
     fn new_no_control_service() {
         let rt = Runtime::new().unwrap();
         let container = CommsBuilder::new(rt.executor())
-            .with_node_identity(Arc::new(NodeIdentity::random_for_test(None)))
+            .with_node_identity(Arc::new(NodeIdentity::random_for_test(None, PeerFeatures::default())))
             .with_peer_storage(HMapDatabase::new())
             .build()
             .unwrap();
@@ -494,7 +495,7 @@ mod test {
     fn new_with_control_service() {
         let rt = Runtime::new().unwrap();
         let container = CommsBuilder::new(rt.executor())
-            .with_node_identity(Arc::new(NodeIdentity::random_for_test(None)))
+            .with_node_identity(Arc::new(NodeIdentity::random_for_test(None, PeerFeatures::default())))
             .with_peer_storage(HMapDatabase::new())
             .configure_control_service(ControlServiceConfig::default())
             .build()

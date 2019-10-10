@@ -148,6 +148,7 @@ fn main() {
         peer_identity.identity.node_id.clone(),
         peer_identity.control_service_address().into(),
         PeerFlags::empty(),
+        peer_identity.features().clone(),
     );
     comms.peer_manager().add_peer(peer).unwrap();
 

@@ -30,7 +30,7 @@ use tari_comms::{
     connection::NetAddress,
     inbound_message_service::inbound_message_service::InboundMessagePipeline,
     message::{FrameSet, MessageData, MessageEnvelope, MessageFlags},
-    peer_manager::{NodeId, NodeIdentity, Peer, PeerFlags},
+    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
 };
 use tari_storage::LMDBWrapper;
 use tokio::runtime::Runtime;
@@ -74,6 +74,7 @@ fn smoke_test() {
         node_identity.identity.node_id.clone(),
         "127.0.0.1:9000".parse::<NetAddress>().unwrap().into(),
         PeerFlags::empty(),
+        PeerFeatures::default(),
     );
 
     let database_name = "pipeline_test1"; // Note: every test should have unique database

@@ -28,7 +28,7 @@ use rand::{rngs::OsRng, Rng};
 use std::{env::current_dir, fs, net::Ipv4Addr, path::Path};
 use tari_comms::{
     connection::{net_address::ip::SocketAddress, NetAddress},
-    peer_manager::NodeIdentity,
+    peer_manager::{NodeIdentity, PeerFeatures},
 };
 use tari_utilities::message_format::MessageFormat;
 
@@ -67,7 +67,7 @@ fn main() {
 
     let mut rng = OsRng::new().unwrap();
     let address = random_address();
-    let node_identity = NodeIdentity::random(&mut rng, address).unwrap();
+    let node_identity = NodeIdentity::random(&mut rng, address, PeerFeatures::communication_node_default()).unwrap();
     let json = node_identity.to_json().unwrap();
     let out_path = to_abs_path(matches.value_of("output").unwrap());
     fs::write(out_path, json).unwrap();

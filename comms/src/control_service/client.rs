@@ -28,7 +28,7 @@ use crate::{
     connection::{Direction, EstablishedConnection, NetAddress},
     control_service::messages::ControlServiceResponseType,
     message::{Message, MessageEnvelope, MessageFlags, MessageHeader},
-    peer_manager::{NodeId, NodeIdentity},
+    peer_manager::{NodeId, NodeIdentity, PeerFeatures},
     types::CommsPublicKey,
 };
 use std::{convert::TryInto, sync::Arc, time::Duration};
@@ -129,11 +129,13 @@ impl ControlServiceClient {
         &self,
         control_service_address: NetAddress,
         node_id: NodeId,
+        features: PeerFeatures,
     ) -> Result<(), ControlServiceError>
     {
         let msg = RequestPeerConnection {
             control_service_address,
             node_id,
+            features,
         };
         self.send_msg(ControlServiceRequestType::RequestPeerConnection, msg)
     }
@@ -180,7 +182,10 @@ mod test {
         let addr = InprocAddress::random();
         let context = ZmqContext::new();
         let conn = Connection::new(&context, Direction::Outbound).establish(&addr).unwrap();
-        let node_identity = Arc::new(NodeIdentity::random_for_test(Some("127.0.0.1:9000".parse().unwrap())));
+        let node_identity = Arc::new(NodeIdentity::random_for_test(
+            Some("127.0.0.1:9000".parse().unwrap()),
+            PeerFeatures::default(),
+        ));
         let (_, public_key) = CommsPublicKey::random_keypair(&mut OsRng::new().unwrap());
 
         let client = ControlServiceClient::new(node_identity.clone(), public_key.clone(), conn);

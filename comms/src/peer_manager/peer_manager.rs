@@ -27,6 +27,7 @@ use crate::{
         node_identity::PeerNodeIdentity,
         peer::{Peer, PeerFlags},
         peer_storage::PeerStorage,
+        PeerFeatures,
         PeerManagerError,
     },
     types::{CommsDatabase, CommsPublicKey},
@@ -63,12 +64,13 @@ impl PeerManager {
         node_id: Option<NodeId>,
         net_addresses: Option<Vec<NetAddress>>,
         flags: Option<PeerFlags>,
+        peer_features: Option<PeerFeatures>,
     ) -> Result<(), PeerManagerError>
     {
         self.peer_storage
             .write()
             .map_err(|_| PeerManagerError::PoisonedAccess)?
-            .update_peer(public_key, node_id, net_addresses, flags)
+            .update_peer(public_key, node_id, net_addresses, flags, peer_features)
     }
 
     /// The peer with the specified public_key will be removed from the PeerManager
@@ -275,6 +277,7 @@ mod test {
         peer_manager::{
             node_id::NodeId,
             peer::{Peer, PeerFlags},
+            PeerFeature,
         },
     };
     use rand::OsRng;
@@ -285,7 +288,13 @@ mod test {
         let (_sk, pk) = RistrettoPublicKey::random_keypair(rng);
         let node_id = NodeId::from_key(&pk).unwrap();
         let net_addresses = NetAddressesWithStats::from("1.2.3.4:8000".parse::<NetAddress>().unwrap());
-        let mut peer = Peer::new(pk, node_id, net_addresses, PeerFlags::default());
+        let mut peer = Peer::new(
+            pk,
+            node_id,
+            net_addresses,
+            PeerFlags::default(),
+            [PeerFeature::MessagePropagation].into(),
+        );
         peer.set_banned(ban_flag);
         peer
     }

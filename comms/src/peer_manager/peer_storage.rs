@@ -28,6 +28,8 @@ use crate::{
         node_identity::PeerNodeIdentity,
         peer::{Peer, PeerFlags},
         peer_key::{generate_peer_key, PeerKey},
+        PeerFeature,
+        PeerFeatures,
         PeerManagerError,
     },
     types::{CommsDatabase, CommsPublicKey},
@@ -107,6 +109,7 @@ where DS: KeyValueStore<PeerKey, Peer>
         node_id: Option<NodeId>,
         net_addresses: Option<Vec<NetAddress>>,
         flags: Option<PeerFlags>,
+        peer_features: Option<PeerFeatures>,
     ) -> Result<(), PeerManagerError>
     {
         match self.public_key_hm.get(public_key) {
@@ -119,7 +122,7 @@ where DS: KeyValueStore<PeerKey, Peer>
                     .get(&peer_key)
                     .map_err(|e| PeerManagerError::DatabaseError(e))?
                     .ok_or(PeerManagerError::PeerNotFoundError)?;
-                stored_peer.update(node_id, net_addresses, flags);
+                stored_peer.update(node_id, net_addresses, flags, peer_features);
 
                 self.add_hashmap_links(peer_key, &stored_peer);
                 self.peers
@@ -227,7 +230,7 @@ where DS: KeyValueStore<PeerKey, Peer>
         if peer.is_banned() {
             Err(PeerManagerError::BannedPeer)
         } else {
-            Ok(PeerNodeIdentity::new(node_id.clone(), peer.public_key.clone()))
+            Ok(peer.into())
         }
     }
 
@@ -255,9 +258,10 @@ where DS: KeyValueStore<PeerKey, Peer>
 
     /// Compile a list of all known node identities that can be used for the flood BroadcastStrategy
     pub fn flood_identities(&self) -> Result<Vec<PeerNodeIdentity>, PeerManagerError> {
-        // TODO: this list should only contain Communication Nodes
         self.peers
-            .filter_take(PEER_MANAGER_MAX_FLOOD_PEERS, |(_, peer)| !peer.is_banned())
+            .filter_take(PEER_MANAGER_MAX_FLOOD_PEERS, |(_, peer)| {
+                !peer.is_banned() && peer.has_feature(&PeerFeature::MessagePropagation)
+            })
             .map(|pairs| pairs.into_iter().map(|(_, peer)| peer.into()).collect())
             .map_err(PeerManagerError::DatabaseError)
     }
@@ -567,7 +571,7 @@ mod test {
     use super::*;
     use crate::{
         connection::net_address::{net_addresses::NetAddressesWithStats, NetAddress},
-        peer_manager::peer::PeerFlags,
+        peer_manager::{peer::PeerFlags, PeerFeatures},
     };
     use std::{path::PathBuf, sync::Arc};
     use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
@@ -611,13 +615,25 @@ mod test {
         let mut net_addresses = NetAddressesWithStats::from(net_address1.clone());
         net_addresses.add_net_address(&net_address2);
         net_addresses.add_net_address(&net_address3);
-        let peer1 = Peer::new(pk, node_id, net_addresses, PeerFlags::default());
+        let peer1 = Peer::new(
+            pk,
+            node_id,
+            net_addresses,
+            PeerFlags::default(),
+            PeerFeatures::default(),
+        );
 
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk).unwrap();
         let net_address4 = NetAddress::from("9.10.11.12:7000".parse::<NetAddress>().unwrap());
         let net_addresses = NetAddressesWithStats::from(net_address4.clone());
-        let peer2: Peer = Peer::new(pk, node_id, net_addresses, PeerFlags::default());
+        let peer2: Peer = Peer::new(
+            pk,
+            node_id,
+            net_addresses,
+            PeerFlags::default(),
+            PeerFeatures::default(),
+        );
 
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk).unwrap();
@@ -625,7 +641,13 @@ mod test {
         let net_address6 = NetAddress::from("17.18.19.20:8000".parse::<NetAddress>().unwrap());
         let mut net_addresses = NetAddressesWithStats::from(net_address5.clone());
         net_addresses.add_net_address(&net_address6);
-        let peer3 = Peer::new(pk, node_id, net_addresses, PeerFlags::default());
+        let peer3 = Peer::new(
+            pk,
+            node_id,
+            net_addresses,
+            PeerFlags::default(),
+            PeerFeatures::default(),
+        );
 
         // Create new datastore with a peer database
         let database_name = "pm_test_restore"; // Note: every test should have unique database
@@ -673,13 +695,25 @@ mod test {
         let mut net_addresses = NetAddressesWithStats::from(net_address1.clone());
         net_addresses.add_net_address(&net_address2);
         net_addresses.add_net_address(&net_address3);
-        let peer1 = Peer::new(pk, node_id, net_addresses, PeerFlags::default());
+        let peer1 = Peer::new(
+            pk,
+            node_id,
+            net_addresses,
+            PeerFlags::default(),
+            PeerFeatures::default(),
+        );
 
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk).unwrap();
         let net_address4 = NetAddress::from("9.10.11.12:7000".parse::<NetAddress>().unwrap());
         let net_addresses = NetAddressesWithStats::from(net_address4.clone());
-        let peer2: Peer = Peer::new(pk, node_id, net_addresses, PeerFlags::default());
+        let peer2: Peer = Peer::new(
+            pk,
+            node_id,
+            net_addresses,
+            PeerFlags::default(),
+            PeerFeatures::default(),
+        );
 
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk).unwrap();
@@ -687,7 +721,13 @@ mod test {
         let net_address6 = NetAddress::from("17.18.19.20:8000".parse::<NetAddress>().unwrap());
         let mut net_addresses = NetAddressesWithStats::from(net_address5.clone());
         net_addresses.add_net_address(&net_address6);
-        let peer3 = Peer::new(pk, node_id, net_addresses, PeerFlags::default());
+        let peer3 = Peer::new(
+            pk,
+            node_id,
+            net_addresses,
+            PeerFlags::default(),
+            PeerFeatures::default(),
+        );
         // Test adding and searching for peers
         assert!(peer_storage.add_peer(peer1.clone()).is_ok());
         assert!(peer_storage.add_peer(peer2.clone()).is_ok());

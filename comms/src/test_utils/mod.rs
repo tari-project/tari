@@ -22,4 +22,3 @@
 
 pub mod dialers;
 pub mod node_id;
-pub mod node_identity;

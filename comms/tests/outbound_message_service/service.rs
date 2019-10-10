@@ -43,6 +43,7 @@ use tari_storage::{
     lmdb_store::{LMDBBuilder, LMDBError, LMDBStore},
     LMDBWrapper,
 };
+use tari_test_utils::random;
 use tokio::runtime::Runtime;
 
 fn make_peer_connection_config() -> PeerConnectionConfig {
@@ -108,9 +109,9 @@ fn outbound_message_pool_no_retry() {
         .unwrap();
 
     // Node B knows no peers
-    let node_B_database_name = "omp_node_B_peer_manager"; // Note: every test should have unique database
-    let datastore = init_datastore(node_B_database_name).unwrap();
-    let database = datastore.get_handle(node_B_database_name).unwrap();
+    let node_B_database_name = random::string(8);
+    let datastore = init_datastore(&node_B_database_name).unwrap();
+    let database = datastore.get_handle(&node_B_database_name).unwrap();
     let database = LMDBWrapper::new(Arc::new(database));
     let node_B_peer_manager = make_peer_manager(vec![], database);
     let (message_sink_tx_b, message_sink_rx_b) = mpsc::channel(10);
@@ -139,9 +140,9 @@ fn outbound_message_pool_no_retry() {
     //---------------------------------- Node A setup --------------------------------------------//
 
     // Add node B to node A's peer manager
-    let node_A_database_name = "omp_node_A_peer_manager"; // Note: every test should have unique database
-    let datastore = init_datastore(node_A_database_name).unwrap();
-    let database = datastore.get_handle(node_A_database_name).unwrap();
+    let node_A_database_name = random::string(8);
+    let datastore = init_datastore(&node_A_database_name).unwrap();
+    let database = datastore.get_handle(&node_A_database_name).unwrap();
     let database = LMDBWrapper::new(Arc::new(database));
     let node_A_peer_manager = make_peer_manager(vec![node_B_peer.clone()], database);
     let (message_sink_tx_a, _message_sink_rx_a) = mpsc::channel(10);
@@ -193,8 +194,8 @@ fn outbound_message_pool_no_retry() {
     shutdown_tx.send(tx).unwrap();
     rt.block_on(rx).unwrap();
 
-    clean_up_datastore(node_A_database_name);
-    clean_up_datastore(node_B_database_name);
+    clean_up_datastore(&node_A_database_name);
+    clean_up_datastore(&node_B_database_name);
 }
 
 /// This tests the reliability of the OMP.
@@ -235,9 +236,9 @@ fn test_outbound_message_pool_fail_and_retry() {
     //---------------------------------- Node A setup --------------------------------------------//
 
     // Add node B to node A's peer manager
-    let database_name = "omp_test_outbound_message_pool_fail_and_retry1"; // Note: every test should have unique
-    let datastore = init_datastore(database_name).unwrap();
-    let database = datastore.get_handle(database_name).unwrap();
+    let database_name = random::string(8);
+    let datastore = init_datastore(&database_name).unwrap();
+    let database = datastore.get_handle(&database_name).unwrap();
     let database = LMDBWrapper::new(Arc::new(database));
     let (message_sink_tx_a, _message_sink_rx_a) = mpsc::channel(10);
     let node_A_peer_manager = factories::peer_manager::create()
@@ -289,9 +290,9 @@ fn test_outbound_message_pool_fail_and_retry() {
     thread::sleep(Duration::from_millis(1500));
 
     // Later, start node B's control service and test if we receive messages
-    let node_B_database_name = "omp_node_B_peer_manager"; // Note: every test should have unique database
-    let datastore = init_datastore(node_B_database_name).unwrap();
-    let database = datastore.get_handle(node_B_database_name).unwrap();
+    let node_B_database_name = random::string(8);
+    let datastore = init_datastore(&node_B_database_name).unwrap();
+    let database = datastore.get_handle(&node_B_database_name).unwrap();
     let database = LMDBWrapper::new(Arc::new(database));
     let node_B_peer_manager = make_peer_manager(vec![], database);
     let node_B_connection_manager = factories::connection_manager::create()
@@ -324,5 +325,5 @@ fn test_outbound_message_pool_fail_and_retry() {
     shutdown_tx.send(tx).unwrap();
     rt.block_on(rx).unwrap();
 
-    clean_up_datastore(database_name);
+    clean_up_datastore(&database_name);
 }

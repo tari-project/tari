@@ -26,7 +26,7 @@ use std::{error::Error, sync::Arc, time::Duration};
 use tari_comms::{
     builder::CommsNode,
     control_service::ControlServiceConfig,
-    peer_manager::{NodeIdentity, Peer},
+    peer_manager::{NodeIdentity, Peer, PeerFeatures, PeerFlags},
 };
 use tari_comms_dht::Dht;
 use tari_p2p::{
@@ -73,11 +73,17 @@ where
         .unwrap();
 
     for p in peers {
+        let addr = p.control_service_address();
+        let NodeIdentity { identity, .. } = p;
         comms
             .peer_manager()
-            .add_peer(
-                Peer::from_public_key_and_address(p.identity.public_key.clone(), p.control_service_address()).unwrap(),
-            )
+            .add_peer(Peer::new(
+                identity.public_key,
+                identity.node_id,
+                addr.into(),
+                PeerFlags::empty(),
+                PeerFeatures::empty(),
+            ))
             .unwrap();
     }
 

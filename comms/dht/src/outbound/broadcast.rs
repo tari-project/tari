@@ -299,7 +299,7 @@ mod test {
     use tari_comms::{
         connection::NetAddress,
         message::MessageFlags,
-        peer_manager::{NodeId, Peer, PeerFlags},
+        peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
         types::CommsPublicKey,
     };
     use tari_crypto::keys::PublicKey;
@@ -316,6 +316,7 @@ mod test {
             NodeId::from_key(&pk).unwrap(),
             vec!["127.0.0.1:9999".parse::<NetAddress>().unwrap()].into(),
             PeerFlags::empty(),
+            PeerFeatures::communication_node_default(),
         );
         peer_manager.add_peer(example_peer.clone()).unwrap();
         let other_peer = {
@@ -326,8 +327,12 @@ mod test {
             p
         };
         peer_manager.add_peer(other_peer.clone()).unwrap();
-        let node_identity =
-            NodeIdentity::random(&mut OsRng::new().unwrap(), "127.0.0.1:9000".parse().unwrap()).unwrap();
+        let node_identity = NodeIdentity::random(
+            &mut OsRng::new().unwrap(),
+            "127.0.0.1:9000".parse().unwrap(),
+            PeerFeatures::communication_node_default(),
+        )
+        .unwrap();
 
         let response = Arc::new(Mutex::new(Vec::new()));
         let next_service = service_fn(|out_msg: DhtOutboundMessage| {

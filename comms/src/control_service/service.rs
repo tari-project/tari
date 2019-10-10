@@ -131,11 +131,12 @@ impl From<(thread::JoinHandle<Result<()>>, SyncSender<ControlMessage>)> for Cont
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::peer_manager::PeerFeatures;
 
     #[test]
     fn control_service_has_default() {
         let context = ZmqContext::new();
-        let node_identity = Arc::new(NodeIdentity::random_for_test(None));
+        let node_identity = Arc::new(NodeIdentity::random_for_test(None, PeerFeatures::default()));
         let control_service = ControlService::with_default_config(context, node_identity);
         assert_eq!(
             control_service.config.listener_address,

@@ -383,7 +383,7 @@ mod test {
     use super::*;
     use crate::{
         connection::{NetAddress, ZmqContext},
-        peer_manager::PeerFlags,
+        peer_manager::{PeerFeatures, PeerFlags},
         types::CommsPublicKey,
     };
     use futures::channel::mpsc::channel;
@@ -394,7 +394,7 @@ mod test {
 
     fn setup() -> (ZmqContext, Arc<NodeIdentity>, Arc<PeerManager>, Sender<FrameSet>) {
         let context = ZmqContext::new();
-        let node_identity = Arc::new(NodeIdentity::random_for_test(None));
+        let node_identity = Arc::new(NodeIdentity::random_for_test(None, PeerFeatures::default()));
         let peer_manager = Arc::new(PeerManager::new(HMapDatabase::new()).unwrap());
         let (tx, _rx) = channel(10);
         (context, node_identity, peer_manager, tx)
@@ -403,7 +403,7 @@ mod test {
     fn create_peer(address: NetAddress) -> Peer {
         let (_, pk) = CommsPublicKey::random_keypair(&mut OsRng::new().unwrap());
         let node_id = NodeId::from_key(&pk).unwrap();
-        Peer::new(pk, node_id, address.into(), PeerFlags::empty())
+        Peer::new(pk, node_id, address.into(), PeerFlags::empty(), PeerFeatures::empty())
     }
 
     #[test]

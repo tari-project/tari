@@ -31,6 +31,7 @@ use tari_comms::{
 use crate::support::makers::{comms_keys as ristretto_maker, node_id as node_id_maker};
 
 use std::iter::repeat_with;
+use tari_comms::peer_manager::PeerFeatures;
 
 pub fn create_many(n: usize) -> PeersFactory {
     PeersFactory::default().with_count(n)
@@ -47,6 +48,7 @@ pub struct PeerFactory {
     public_key: Option<CommsPublicKey>,
     net_addresses_factory: NetAddressesFactory,
     net_addresses: Option<Vec<NetAddress>>,
+    peer_features: PeerFeatures,
 }
 
 impl PeerFactory {
@@ -55,6 +57,8 @@ impl PeerFactory {
     factory_setter!(with_flags, flags, Option<PeerFlags>);
 
     factory_setter!(with_public_key, public_key, Option<CommsPublicKey>);
+
+    factory_setter!(with_peer_features, peer_features, PeerFeatures);
 
     factory_setter!(with_net_addresses_factory, net_addresses_factory, NetAddressesFactory);
 
@@ -88,6 +92,7 @@ impl TestFactory for PeerFactory {
             flags,
             public_key,
             addresses: addresses.into(),
+            features: self.peer_features,
         })
     }
 }

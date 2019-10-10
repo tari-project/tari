@@ -54,7 +54,7 @@
 //! # use lmdb_zero::db;
 //! # use tari_storage::LMDBWrapper;
 //! # use futures::channel::mpsc::channel;
-//! let node_identity = Arc::new(NodeIdentity::random(&mut OsRng::new().unwrap(), "127.0.0.1:9000".parse().unwrap()).unwrap());
+//! let node_identity = Arc::new(NodeIdentity::random(&mut OsRng::new().unwrap(), "127.0.0.1:9000".parse().unwrap(), PeerFeatures::communication_node_default()).unwrap());
 //!
 //! let context = ZmqContext::new();
 //! let listener_address = "127.0.0.1:9000".parse::<NetAddress>().unwrap();

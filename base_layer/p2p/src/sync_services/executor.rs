@@ -203,7 +203,7 @@ mod test {
     };
     use rand::rngs::OsRng;
     use std::{path::PathBuf, sync::RwLock};
-    use tari_comms::peer_manager::NodeIdentity;
+    use tari_comms::peer_manager::{NodeIdentity, PeerFeatures};
     use tokio::runtime::Runtime;
 
     #[derive(Clone)]
@@ -250,9 +250,13 @@ mod test {
 
     #[test]
     fn execute() {
-        let node_identity = NodeIdentity::random(&mut OsRng::new().unwrap(), "127.0.0.1:9000".parse().unwrap())
-            .map(Arc::new)
-            .unwrap();
+        let node_identity = NodeIdentity::random(
+            &mut OsRng::new().unwrap(),
+            "127.0.0.1:9000".parse().unwrap(),
+            PeerFeatures::communication_node_default(),
+        )
+        .map(Arc::new)
+        .unwrap();
 
         let state = Arc::new(RwLock::new("Hello".to_string()));
         let service = AddWordService(state.clone(), "Tari");

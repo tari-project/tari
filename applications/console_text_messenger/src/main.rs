@@ -36,7 +36,7 @@ use std::{fs, io, sync::Arc, thread, time::Duration};
 use tari_comms::{
     connection::NetAddress,
     control_service::ControlServiceConfig,
-    peer_manager::{NodeIdentity, Peer},
+    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
     types::{CommsPublicKey, CommsSecretKey},
 };
 use tari_crypto::keys::PublicKey;
@@ -247,9 +247,14 @@ pub fn main() {
     };
 
     info!(target: LOG_TARGET, "Local Net Address: {:?}", local_net_address);
-    let node_identity = NodeIdentity::new(secret_key, public_key.clone(), local_net_address)
-        .map(Arc::new)
-        .unwrap();
+    let node_identity = NodeIdentity::new(
+        secret_key,
+        public_key.clone(),
+        local_net_address,
+        PeerFeatures::communication_client_default(),
+    )
+    .map(Arc::new)
+    .unwrap();
 
     let config = WalletConfig {
         comms_config: CommsConfig {
@@ -282,7 +287,14 @@ pub fn main() {
         for p in contacts.peers.iter() {
             let pk = CommsPublicKey::from_hex(p.pub_key.as_str()).expect("Error parsing pub key from Hex");
             if let Ok(na) = p.address.clone().parse::<NetAddress>() {
-                let peer = Peer::from_public_key_and_address(pk.clone(), na.clone()).unwrap();
+                let peer = Peer::new(
+                    pk.clone(),
+                    NodeId::from_key(&pk).unwrap(),
+                    na.clone().into(),
+                    PeerFlags::default(),
+                    // TODO: Load features from database
+                    PeerFeatures::communication_node_default(),
+                );
                 wallet.comms_service.peer_manager().add_peer(peer).unwrap();
                 // If the contacts already exist we don't mind
                 if let Err(e) = runtime.block_on(wallet.text_message_service.add_contact(Contact {
