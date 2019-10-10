@@ -17,7 +17,7 @@ tari_service_framework = { version = "^0.0", path = "../service_framework"}
 tari_storage = {version = "^0.0", path = "../../infrastructure/storage"}
 tari_utilities = { version = "^0.0", path = "../../infrastructure/tari_util"}
 tari_comms_dht = { version = "^0.0", path = "../../comms/dht"}
-
+tari_broadcast_channel = { version="^0.0",  path = "../../infrastructure/broadcast_channel" }
 chrono = { version = "0.4.6", features = ["serde"]}
 crossbeam-channel = "0.3.8"
 derive-error = "0.0.4"
@@ -32,6 +32,7 @@ threadpool = "1.7.1"
 tokio = "0.2.0-alpha.4"
 tower-service = { version="0.3.0-alpha.1" }
 tracing = "0.1.5"
+ttl_cache = "0.5.1"
 tower = "0.3.0-alpha.1a"
 
 [dev-dependencies]

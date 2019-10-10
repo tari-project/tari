@@ -23,5 +23,5 @@
 // TODO Put this back in after Futures Comms stack refactor
 // mod dht;
 // mod saf;
-// mod ping_pong;
-// mod support;
+mod services;
+mod support;

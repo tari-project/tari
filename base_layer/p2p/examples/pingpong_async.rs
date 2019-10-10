@@ -39,7 +39,6 @@ use cursive::{
 use futures::{
     channel::{mpsc, oneshot},
     future::FutureExt,
-    join,
     stream::StreamExt,
     Stream,
 };
@@ -61,14 +60,13 @@ use tari_p2p::{
     initialization::{initialize_comms, CommsConfig},
     services::{
         comms_outbound::CommsOutboundServiceInitializer,
-        liveness::{LivenessHandle, LivenessInitializer, LivenessRequest, LivenessResponse},
+        liveness::{handle::LivenessHandle, LivenessInitializer},
     },
 };
 use tari_service_framework::StackBuilder;
 use tari_utilities::message_format::MessageFormat;
 use tempdir::TempDir;
 use tokio::runtime::Runtime;
-use tower_service::Service;
 
 fn load_identity(path: &str) -> NodeIdentity {
     let contents = fs::read_to_string(path).unwrap();
@@ -221,13 +219,12 @@ async fn update_ui(
     loop {
         ::futures::select! {
             _ = interval.next() => {
-                let (ping_count, pong_count) = join!(
-                    liveness_handle.call(LivenessRequest::GetPingCount),
-                    liveness_handle.call(LivenessRequest::GetPongCount)
-                );
+
+                let ping_count = liveness_handle.get_ping_count().await;
+                let pong_count = liveness_handle.get_pong_count().await;
 
                 match (ping_count.unwrap(), pong_count.unwrap()) {
-                    (Ok(LivenessResponse::Count(num_pings)), Ok(LivenessResponse::Count(num_pongs))) => {
+                    (num_pings, num_pongs) => {
                         {
                             let mut lock = COUNTER_STATE.write().unwrap();
                             *lock = (lock.0, num_pings, num_pongs);
@@ -252,11 +249,7 @@ async fn send_ping_on_trigger(
 )
 {
     while let Some(_) = send_ping_trigger.next().await {
-        liveness_handle
-            .call(LivenessRequest::SendPing(pk_to_ping.clone()))
-            .await
-            .unwrap()
-            .unwrap();
+        liveness_handle.send_ping(pk_to_ping.clone()).await.unwrap();
 
         {
             let mut lock = COUNTER_STATE.write().unwrap();

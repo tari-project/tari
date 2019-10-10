@@ -215,7 +215,6 @@ fn test_text_message_requester_crud() {
     let runtime = Runtime::new().unwrap();
     let mut rng = rand::OsRng::new().unwrap();
     let node_1_identity = NodeIdentity::random(&mut rng, "127.0.0.1:30123".parse().unwrap()).unwrap();
-    let node_2_identity = NodeIdentity::random(&mut rng, "127.0.0.1:30145".parse().unwrap()).unwrap();
     let node_3_identity = NodeIdentity::random(&mut rng, "127.0.0.1:30546".parse().unwrap()).unwrap();
 
     // Note: every test should have unique database
@@ -226,7 +225,7 @@ fn test_text_message_requester_crud() {
     let (mut node_1_tms, _comms_1, _dht_1) = setup_text_message_service(
         &runtime,
         node_1_identity.clone(),
-        vec![node_2_identity.clone(), node_3_identity.clone()],
+        vec![node_3_identity.clone()],
         db_path1,
     );
 
@@ -237,14 +236,6 @@ fn test_text_message_requester_crud() {
     let sn = runtime.block_on(node_1_tms.get_screen_name()).unwrap();
 
     assert_eq!(sn, Some("Alice".to_string()));
-
-    runtime
-        .block_on(node_1_tms.add_contact(Contact::new(
-            "Bob".to_string(),
-            node_2_identity.identity.public_key.clone(),
-            node_2_identity.control_service_address(),
-        )))
-        .unwrap();
 
     runtime
         .block_on(node_1_tms.add_contact(Contact::new(
@@ -263,13 +254,12 @@ fn test_text_message_requester_crud() {
         .is_err());
 
     let contacts = runtime.block_on(node_1_tms.get_contacts()).unwrap();
-    assert_eq!(contacts.len(), 2);
-    assert_eq!(contacts[0].screen_name, "Bob".to_string());
-    assert_eq!(contacts[1].screen_name, "Carol".to_string());
+    assert_eq!(contacts.len(), 1);
+    assert_eq!(contacts[0].screen_name, "Carol".to_string());
 
     runtime
         .block_on(
-            node_1_tms.update_contact(node_2_identity.identity.public_key.clone(), UpdateContact {
+            node_1_tms.update_contact(node_3_identity.identity.public_key.clone(), UpdateContact {
                 screen_name: Some("Dave".to_string()),
                 address: None,
             }),
@@ -278,21 +268,20 @@ fn test_text_message_requester_crud() {
 
     let contacts = runtime.block_on(node_1_tms.get_contacts()).unwrap();
 
-    assert_eq!(contacts.len(), 2);
+    assert_eq!(contacts.len(), 1);
     assert_eq!(contacts[0].screen_name, "Dave".to_string());
 
     runtime
         .block_on(node_1_tms.remove_contact(Contact::new(
             "Dave".to_string(),
-            node_2_identity.identity.public_key.clone(),
-            node_2_identity.control_service_address(),
+            node_3_identity.identity.public_key.clone(),
+            node_3_identity.control_service_address(),
         )))
         .unwrap();
 
     let contacts = runtime.block_on(node_1_tms.get_contacts()).unwrap();
 
-    assert_eq!(contacts.len(), 1);
-    assert_eq!(contacts[0].screen_name, "Carol".to_string());
+    assert_eq!(contacts.len(), 0);
 
     clean_up_sql_database(db_name1);
 }

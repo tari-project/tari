@@ -36,32 +36,33 @@
 //! [PingPong]: ./messages/enum.PingPong.html
 
 pub mod error;
-mod messages;
+pub mod handle;
 mod service;
 mod state;
 
-use self::{error::LivenessError, service::LivenessService, state::LivenessState};
+pub use self::handle::{LivenessRequest, LivenessResponse, PingPong};
+use self::{service::LivenessService, state::LivenessState};
 use crate::{
     comms_connector::PeerMessage,
     domain_message::DomainMessage,
-    services::comms_outbound::CommsOutboundHandle,
+    services::{
+        liveness::handle::LivenessHandle,
+        utils::{map_deserialized, ok_or_skip_result},
+    },
     tari_message::{NetMessage, TariMessageType},
 };
 use futures::{future, Future, Stream, StreamExt};
 use std::sync::Arc;
+use tari_broadcast_channel::bounded;
+use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_pubsub::TopicSubscriptionFactory;
 use tari_service_framework::{
     handles::ServiceHandlesFuture,
-    reply_channel::{self, SenderService},
+    reply_channel,
     ServiceInitializationError,
     ServiceInitializer,
 };
 use tokio::runtime::TaskExecutor;
-
-pub use self::messages::{LivenessRequest, LivenessResponse, PingPong};
-use crate::services::utils::{map_deserialized, ok_or_skip_result};
-
-pub type LivenessHandle = SenderService<LivenessRequest, Result<LivenessResponse, LivenessError>>;
 
 /// Initializer for the Liveness service handle and service future.
 pub struct LivenessInitializer {
@@ -97,8 +98,12 @@ impl ServiceInitializer for LivenessInitializer {
     fn initialize(&mut self, executor: TaskExecutor, handles_fut: ServiceHandlesFuture) -> Self::Future {
         let (sender, receiver) = reply_channel::unbounded();
 
+        let (publisher, subscriber) = bounded(100);
+
+        let liveness_handle = LivenessHandle::new(sender, subscriber);
+
         // Register handle before waiting for handles to be ready
-        handles_fut.register(sender);
+        handles_fut.register(liveness_handle);
 
         // Create a stream which receives PingPong messages from comms
         let ping_stream = self.ping_stream();
@@ -108,13 +113,13 @@ impl ServiceInitializer for LivenessInitializer {
             let handles = handles_fut.await;
 
             let outbound_handle = handles
-                .get_handle::<CommsOutboundHandle>()
+                .get_handle::<OutboundMessageRequester>()
                 .expect("Liveness service requires CommsOutbound service handle");
 
             let state = Arc::new(LivenessState::new());
 
             // Spawn the Liveness service on the executor
-            let service = LivenessService::new(receiver, ping_stream, state, outbound_handle);
+            let service = LivenessService::new(receiver, ping_stream, state, outbound_handle, publisher);
             service.run().await;
         });
 
