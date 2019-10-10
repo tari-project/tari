@@ -123,11 +123,22 @@ pub enum BaseNodeState<B: BlockchainBackend> {
 #[derive(Debug)]
 pub enum StateEvent {
     Initialized,
-    MetadataSynced,
+    MetadataSynced(SyncStatus),
     HorizonStateFetched,
     BlocksSynchronized,
-    FallenBehind,
+    FallenBehind(SyncStatus),
     FatalError(String),
+}
+
+/// Some state transition functions must return `SyncStatus`. The sync status indicates how far behind the network's
+/// blockchain the local node is. It can either be very far behind (`BehindHorizon`), in which case we will just
+/// synchronise against the pruning horizon; we're somewhat behind (`Lagging`) and need to download the missing
+/// blocks to catch up, or we are `UpToDate`.
+#[derive(Debug)]
+pub enum SyncStatus {
+    BehindHorizon,
+    Lagging,
+    UpToDate,
 }
 
 impl<B: BlockchainBackend> Display for BaseNodeState<B> {

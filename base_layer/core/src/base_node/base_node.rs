@@ -78,13 +78,16 @@ impl<B: BlockchainBackend> BaseNodeStateMachine<B> {
     /// Describe the Finite State Machine for the base node. This function describes _every possible_ state
     /// transition for the node given its current state and an event that gets triggered.
     pub fn transition(state: BaseNodeState<B>, event: StateEvent) -> BaseNodeState<B> {
-        use crate::base_node::states::{BaseNodeState::*, StateEvent::*};
+        use crate::base_node::states::{BaseNodeState::*, StateEvent::*, SyncStatus::*};
         match (state, event) {
             (Starting(s), Initialized) => InitialSync(s.into()),
-            (InitialSync(_s), MetadataSynced) => FetchingHorizonState,
+            (InitialSync(_s), MetadataSynced(BehindHorizon)) => FetchingHorizonState,
+            (InitialSync(_s), MetadataSynced(Lagging)) => BlockSync,
+            (InitialSync(_s), MetadataSynced(UpToDate)) => Listening,
             (FetchingHorizonState, HorizonStateFetched) => BlockSync,
             (BlockSync, BlocksSynchronized) => Listening,
-            (Listening, FallenBehind) => BlockSync,
+            (Listening, FallenBehind(BehindHorizon)) => FetchingHorizonState,
+            (Listening, FallenBehind(Lagging)) => BlockSync,
             (_, FatalError(s)) => Shutdown(states::Shutdown::with_reason(s)),
             (s, e) => {
                 debug!(
