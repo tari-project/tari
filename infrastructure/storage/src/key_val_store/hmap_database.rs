@@ -20,7 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::key_val_store::{error::KeyValStoreError, key_val_store::KeyValueStore};
+use crate::key_val_store::{
+    error::KeyValStoreError,
+    key_val_store::{IterationResult, KeyValueStore},
+};
 use std::{collections::HashMap, hash::Hash, sync::RwLock};
 
 ///  The HMapDatabase mimics the behaviour of LMDBDatabase without keeping a persistent copy of the key-value records.
@@ -68,9 +71,12 @@ impl<K: Clone + Eq + Hash, V: Clone> HMapDatabase<K, V> {
 
     /// Iterate over all the stored records and execute the function `f` for each pair in the key-value database.
     pub fn for_each<F>(&self, mut f: F) -> Result<(), KeyValStoreError>
-    where F: FnMut(Result<(K, V), KeyValStoreError>) {
+    where F: FnMut(Result<(K, V), KeyValStoreError>) -> IterationResult {
         for (key, val) in self.db.read().map_err(|_| KeyValStoreError::PoisonedAccess)?.iter() {
-            f(Ok((key.clone(), val.clone())));
+            match f(Ok((key.clone(), val.clone()))) {
+                IterationResult::Break => break,
+                IterationResult::Continue => {},
+            }
         }
         Ok(())
     }
@@ -116,7 +122,7 @@ impl<K: Clone + Eq + Hash, V: Clone> KeyValueStore<K, V> for HMapDatabase<K, V> 
 
     /// Iterate over all the stored records and execute the function `f` for each pair in the key-value database.
     fn for_each<F>(&self, f: F) -> Result<(), KeyValStoreError>
-    where F: FnMut(Result<(K, V), KeyValStoreError>) {
+    where F: FnMut(Result<(K, V), KeyValStoreError>) -> IterationResult {
         self.for_each(f)
     }
 
@@ -192,6 +198,7 @@ mod test {
                 key3_found = true;
                 assert_eq!(val, val3);
             }
+            IterationResult::Continue
         });
         assert!(key1_found);
         assert!(key3_found);

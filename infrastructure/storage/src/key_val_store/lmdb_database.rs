@@ -21,7 +21,10 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    key_val_store::{key_val_store::KeyValueStore, KeyValStoreError},
+    key_val_store::{
+        key_val_store::{IterationResult, KeyValueStore},
+        KeyValStoreError,
+    },
     lmdb_store::LMDBDatabase,
 };
 use lmdb_zero::traits::AsLmdbBytes;
@@ -82,7 +85,7 @@ where
 
     /// Iterate over all the stored records and execute the function `f` for each pair in the key-value database.
     fn for_each<F>(&self, f: F) -> Result<(), KeyValStoreError>
-    where F: FnMut(Result<(K, V), KeyValStoreError>) {
+    where F: FnMut(Result<(K, V), KeyValStoreError>) -> IterationResult {
         self.inner
             .for_each::<K, V, F>(f)
             .map_err(|e| KeyValStoreError::DatabaseError(e.to_string()))
@@ -192,6 +195,7 @@ mod test {
                 key3_found = true;
                 assert_eq!(val, val3);
             }
+            IterationResult::Continue
         });
         assert!(key1_found);
         assert!(key3_found);

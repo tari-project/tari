@@ -21,14 +21,17 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::types::CommsRng;
-use std::time::Duration;
+use std::{cell::RefCell, time::Duration};
 
 thread_local! {
     /// Thread local RNG for comms
-    pub(crate) static COMMS_RNG: CommsRng = CommsRng::new().expect("Failed to initialize CommsRng");
+    pub(crate) static COMMS_RNG: RefCell<CommsRng> = RefCell::new(CommsRng::new().expect("Failed to initialize CommsRng"));
 }
 
 /// The maximum number of messages that can be stored using the MessageCache of the DHT
 pub const IMS_MSG_CACHE_STORAGE_CAPACITY: usize = 1000;
 /// The time-to-live duration used by the MessageCache for tracking received and handled messages
 pub const IMS_MSG_CACHE_TTL: Duration = Duration::from_secs(300);
+
+/// The maximum number of peers to return from the flood_identities method in peer manager
+pub const PEER_MANAGER_MAX_FLOOD_PEERS: usize = 1000;

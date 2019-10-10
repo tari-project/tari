@@ -22,7 +22,10 @@
 
 use serde::{Deserialize, Serialize};
 use std::{net::Ipv4Addr, path::PathBuf, str::FromStr, sync::Arc, thread};
-use tari_storage::lmdb_store::{db, LMDBBuilder, LMDBDatabase, LMDBError, LMDBStore};
+use tari_storage::{
+    lmdb_store::{db, LMDBBuilder, LMDBDatabase, LMDBError, LMDBStore},
+    IterationResult,
+};
 use tari_utilities::ExtendBytes;
 
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -233,6 +236,7 @@ fn pair_iterator() {
         let (key, user) = pair.unwrap();
         assert_eq!(user.id, key);
         assert_eq!(users[key as usize - 1], user);
+        IterationResult::Continue
     });
     assert!(res.is_ok());
     clean_up("pair_iterator");
