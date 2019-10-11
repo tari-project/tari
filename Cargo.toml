@@ -17,9 +17,9 @@ members = [
     "infrastructure/pubsub",
     "infrastructure/storage",
     "infrastructure/test_utils",
-    "applications/console_text_messenger",
     #Needs to be updated to make its calls using an Tokio runtime block_on function.
     #"ffi"
     #The wallet gRPC is based on the old Futures and not part of the Testnet scope
     #"applications/grpc_wallet",
+#    "applications/console_text_messenger",
 ]

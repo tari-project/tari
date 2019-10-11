@@ -21,8 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 pub mod support;
-pub mod text_message_service;
-pub mod wallet;
+// pub mod text_message_service;
+// pub mod wallet;
 
 // TODO These were removed due to Comms layer upgrades, put back once Comms layer is stable
 // pub mod transaction_service;

@@ -23,8 +23,9 @@ serde = {version = "1.0.89", features = ["derive"] }
 crossbeam-channel = "0.3.8"
 log = "0.4.6"
 lmdb-zero = "0.4.4"
-diesel_migrations =  "1.4"
-diesel = {version="1.4", features = ["sqlite", "serde_json", "chrono", "r2d2"]}
+# TODO: Put back after MVP
+#diesel_migrations =  "1.4"
+#diesel = {version="1.4", features = ["sqlite", "serde_json", "chrono", "r2d2"]}
 rand = "0.5.5"
 futures =  { version = "=0.3.0-alpha.18", package = "futures-preview", features =["compat", "std"]}
 tokio = "0.2.0-alpha.4"

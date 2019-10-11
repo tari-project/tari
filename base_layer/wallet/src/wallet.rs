@@ -20,8 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// use crate::text_message_service_sync::{TextMessageService, TextMessageServiceApi};
-use crate::text_message_service::{handle::TextMessageHandle, TextMessageServiceInitializer};
+// use crate::text_message_service::{handle::TextMessageHandle, TextMessageServiceInitializer};
 use derive_error::Error;
 use std::sync::Arc;
 use tari_comms::{builder::CommsNode, types::CommsPublicKey};
@@ -55,7 +54,7 @@ pub struct WalletConfig {
 pub struct Wallet {
     pub comms_service: CommsNode,
     pub dht_service: Dht,
-    pub text_message_service: TextMessageHandle,
+    //    pub text_message_service: TextMessageHandle,
     pub liveness_service: LivenessHandle,
     pub public_key: CommsPublicKey,
     pub runtime: Runtime,
@@ -72,11 +71,11 @@ impl Wallet {
         let fut = StackBuilder::new(runtime.executor())
             .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))
             .add_initializer(LivenessInitializer::new(Arc::clone(&subscription_factory)))
-            .add_initializer(TextMessageServiceInitializer::new(
-                subscription_factory,
-                config.public_key.clone(),
-                config.database_path,
-            ))
+//            .add_initializer(TextMessageServiceInitializer::new(
+//                subscription_factory,
+//                config.public_key.clone(),
+//                config.database_path,
+//            ))
             .finish();
 
         let handles = runtime.block_on(fut).expect("Service initialization failed");
@@ -84,9 +83,9 @@ impl Wallet {
         Ok(Wallet {
             comms_service,
             dht_service: dht,
-            text_message_service: handles
-                .get_handle::<TextMessageHandle>()
-                .expect("Could not get Text Message Service Handle"),
+            //            text_message_service: handles
+            //                .get_handle::<TextMessageHandle>()
+            //                .expect("Could not get Text Message Service Handle"),
             liveness_service: handles
                 .get_handle::<LivenessHandle>()
                 .expect("Could not get Liveness Service Handle"),
