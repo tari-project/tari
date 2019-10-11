@@ -21,7 +21,7 @@ tari_broadcast_channel = { version="^0.0",  path = "../../infrastructure/broadca
 chrono = { version = "0.4.6", features = ["serde"]}
 crossbeam-channel = "0.3.8"
 derive-error = "0.0.4"
-futures = { version = "=0.3.0-alpha.18", package = "futures-preview"}
+futures = { version = "=0.3.0-alpha.19", package = "futures-preview"}
 lmdb-zero = "0.4.4"
 log = "0.4.6"
 rand = "0.6.5"
@@ -29,11 +29,11 @@ rmp-serde = "0.13.7"
 serde = "1.0.90"
 serde_derive = "1.0.90"
 threadpool = "1.7.1"
-tokio = "0.2.0-alpha.4"
-tower-service = { version="0.3.0-alpha.1" }
+tokio = "0.2.0-alpha.6"
+tower-service = { version="0.3.0-alpha.2" }
 tracing = "0.1.5"
 ttl_cache = "0.5.1"
-tower = "0.3.0-alpha.1a"
+tower = "0.3.0-alpha.2"
 
 [dev-dependencies]
 tari_test_utils = { version = "^0.0", path="../../infrastructure/test_utils" }

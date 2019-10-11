@@ -33,9 +33,9 @@ blake2 = "^0.8.0"
 bigint = "^4.4.1"
 ttl_cache = "0.5.1"
 croaring = "^0.4.0"
-tokio = { version="^0.2.0-alpha.4" }
-tokio-executor = { version ="^0.2.0-alpha.4", features = ["threadpool"] }
-futures-preview = {version = "0.3.0-alpha.18", features = ["nightly", "async-await"] }
+tokio = { version="^0.2.0-alpha.6" }
+tokio-executor = { version ="^0.2.0-alpha.6", features = ["threadpool"] }
+futures-preview = {version = "0.3.0-alpha.19", features = ["async-await"] }
 lmdb-zero = "0.4.4"
 
 [dev-dependencies]
