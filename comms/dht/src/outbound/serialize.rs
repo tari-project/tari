@@ -141,7 +141,7 @@ mod test {
     use futures::executor::block_on;
     use tari_comms::{
         message::MessageFlags,
-        peer_manager::{NodeId, PeerNodeIdentity},
+        peer_manager::{NodeId, PeerFeatures, PeerNodeIdentity},
         types::CommsPublicKey,
     };
     use tari_test_utils::panic_context;
@@ -157,7 +157,11 @@ mod test {
         assert!(serialize.poll_ready(&mut cx).is_ready());
         let body = b"A".to_vec();
         let msg = DhtOutboundMessage::new(
-            PeerNodeIdentity::new(NodeId::default(), CommsPublicKey::default()),
+            PeerNodeIdentity::new(
+                NodeId::default(),
+                CommsPublicKey::default(),
+                PeerFeatures::communication_node_default(),
+            ),
             make_dht_header(&node_identity, &body, DhtMessageFlags::empty()),
             OutboundEncryption::None,
             MessageFlags::empty(),

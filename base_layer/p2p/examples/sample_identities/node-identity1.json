@@ -1,8 +1,14 @@
 {
   "identity": {
-    "node_id": "b3892370783330158ac6f40b7d38029ee33d554cd4522d0548058c6d9cb0ce7b",
-    "public_key": "b6663ccdec9546d8bc528cba869cb57c28826da2dbe2df2735b795eff6605117"
+    "node_id": "789f7715cf6603d78080a6f37fdf9a83bf3d7688562ff9b9245ad0b71dc2486b",
+    "public_key": "fcefb7b6a569b76210b08b9adc43f2fa0d3054048d467e95802024454d559d71",
+    "features": [
+      0,
+      1
+    ]
   },
-  "secret_key": "7756a61d2911481492e7156ce6ddb1e46c5ea24a24157c599486f929ea288c02",
-  "control_service_address": {"IP": "127.0.0.1:57203"}
+  "secret_key": "bba19bb0a453f22cc241a50b1a0e1f5d9649f19af7275ef11d1e1cfaa715fb00",
+  "control_service_address": {
+    "IP": "127.0.0.1:30380"
+  }
 }

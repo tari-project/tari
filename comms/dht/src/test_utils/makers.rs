@@ -29,7 +29,7 @@ use std::sync::Arc;
 use tari_comms::{
     connection::NetAddress,
     message::{InboundMessage, MessageEnvelopeHeader, MessageFlags},
-    peer_manager::{NodeIdentity, Peer, PeerFlags, PeerManager},
+    peer_manager::{NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManager},
     types::CommsDatabase,
     utils::signature,
 };
@@ -38,7 +38,14 @@ use tari_test_utils::{paths::create_random_database_path, random};
 use tari_utilities::message_format::MessageFormat;
 
 pub fn make_node_identity() -> Arc<NodeIdentity> {
-    Arc::new(NodeIdentity::random(&mut OsRng::new().unwrap(), "127.0.0.1:9000".parse().unwrap()).unwrap())
+    Arc::new(
+        NodeIdentity::random(
+            &mut OsRng::new().unwrap(),
+            "127.0.0.1:9000".parse().unwrap(),
+            PeerFeatures::communication_node_default(),
+        )
+        .unwrap(),
+    )
 }
 
 pub fn make_comms_inbound_message(
@@ -53,6 +60,7 @@ pub fn make_comms_inbound_message(
             node_identity.identity.node_id.clone(),
             Vec::<NetAddress>::new().into(),
             PeerFlags::empty(),
+            PeerFeatures::communication_node_default(),
         ),
         MessageEnvelopeHeader {
             version: 0,
@@ -92,6 +100,7 @@ pub fn make_dht_inbound_message(
             node_identity.identity.node_id.clone(),
             Vec::<NetAddress>::new().into(),
             PeerFlags::empty(),
+            PeerFeatures::communication_node_default(),
         ),
         MessageEnvelopeHeader {
             version: 0,

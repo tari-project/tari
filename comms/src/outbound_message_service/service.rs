@@ -412,7 +412,8 @@ mod test {
         connection::peer_connection,
         connection_manager::actor::ConnectionManagerRequest,
         message::MessageFlags,
-        test_utils::{node_id, node_identity},
+        peer_manager::PeerFeatures,
+        test_utils::node_id,
     };
     use futures::{channel::mpsc, stream, SinkExt};
     use std::convert::TryFrom;
@@ -429,7 +430,7 @@ mod test {
         let (conn_man_tx, mut conn_man_rx) = mpsc::channel(2);
         let conn_manager = ConnectionManagerRequester::new(conn_man_tx);
 
-        let node_identity = Arc::new(node_identity::random(None));
+        let node_identity = Arc::new(NodeIdentity::random_for_test(None, PeerFeatures::default()));
         let (shutdown_tx, shutdown_rx) = oneshot::channel();
 
         let service = OutboundMessageService::new(

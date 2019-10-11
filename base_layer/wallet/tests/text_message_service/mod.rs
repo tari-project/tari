@@ -22,7 +22,10 @@
 
 use crate::support::{comms_and_services::setup_comms_services, data::*, utils::event_stream_count};
 use std::{sync::Arc, time::Duration};
-use tari_comms::{builder::CommsNode, peer_manager::NodeIdentity};
+use tari_comms::{
+    builder::CommsNode,
+    peer_manager::{NodeIdentity, PeerFeatures},
+};
 use tari_comms_dht::Dht;
 use tari_p2p::{
     comms_connector::pubsub_connector,
@@ -70,9 +73,24 @@ fn test_text_message_service() {
 
     let mut rng = rand::OsRng::new().unwrap();
 
-    let node_1_identity = NodeIdentity::random(&mut rng, "127.0.0.1:31523".parse().unwrap()).unwrap();
-    let node_2_identity = NodeIdentity::random(&mut rng, "127.0.0.1:31145".parse().unwrap()).unwrap();
-    let node_3_identity = NodeIdentity::random(&mut rng, "127.0.0.1:31546".parse().unwrap()).unwrap();
+    let node_1_identity = NodeIdentity::random(
+        &mut rng,
+        "127.0.0.1:31523".parse().unwrap(),
+        PeerFeatures::communication_node_default(),
+    )
+    .unwrap();
+    let node_2_identity = NodeIdentity::random(
+        &mut rng,
+        "127.0.0.1:31145".parse().unwrap(),
+        PeerFeatures::communication_node_default(),
+    )
+    .unwrap();
+    let node_3_identity = NodeIdentity::random(
+        &mut rng,
+        "127.0.0.1:31546".parse().unwrap(),
+        PeerFeatures::communication_node_default(),
+    )
+    .unwrap();
 
     let db_name1 = "test_text_message_service1.sqlite3";
     let db_path1 = get_path(Some(db_name1));
@@ -214,8 +232,18 @@ fn test_text_message_service() {
 fn test_text_message_requester_crud() {
     let runtime = Runtime::new().unwrap();
     let mut rng = rand::OsRng::new().unwrap();
-    let node_1_identity = NodeIdentity::random(&mut rng, "127.0.0.1:30123".parse().unwrap()).unwrap();
-    let node_3_identity = NodeIdentity::random(&mut rng, "127.0.0.1:30546".parse().unwrap()).unwrap();
+    let node_1_identity = NodeIdentity::random(
+        &mut rng,
+        "127.0.0.1:30123".parse().unwrap(),
+        PeerFeatures::communication_node_default(),
+    )
+    .unwrap();
+    let node_3_identity = NodeIdentity::random(
+        &mut rng,
+        "127.0.0.1:30546".parse().unwrap(),
+        PeerFeatures::communication_node_default(),
+    )
+    .unwrap();
 
     // Note: every test should have unique database
     let db_name1 = "test_tms_crud1.sqlite3";

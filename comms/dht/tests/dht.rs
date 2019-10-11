@@ -31,7 +31,7 @@ use tari_comms::{
     connection::NetAddress,
     connection_manager::PeerConnectionConfig,
     control_service::ControlServiceConfig,
-    peer_manager::{peer_storage::PeerStorage, NodeIdentity, Peer},
+    peer_manager::{peer_storage::PeerStorage, NodeIdentity, Peer, PeerFeatures},
     types::CommsDatabase,
     CommsBuilder,
 };
@@ -43,7 +43,12 @@ use tokio::runtime::TaskExecutor;
 use tower::ServiceBuilder;
 
 fn new_node_identity(control_service_address: NetAddress) -> NodeIdentity {
-    NodeIdentity::random(&mut OsRng::new().unwrap(), control_service_address).unwrap()
+    NodeIdentity::random(
+        &mut OsRng::new().unwrap(),
+        control_service_address,
+        PeerFeatures::communication_node_default(),
+    )
+    .unwrap()
 }
 
 fn create_peer_storage(peers: Vec<Peer>) -> CommsDatabase {
@@ -187,6 +192,11 @@ fn dht_join_propagation() {
                 max_attempts = 10,
                 interval = Duration::from_millis(500)
             );
+
+            let node_C_peer = node_A_peer_manager
+                .find_with_public_key(node_C_node_identity.public_key())
+                .unwrap();
+            assert_eq!(&node_C_peer.features, node_C_node_identity.features());
 
             // Make sure these variables only drop after the test is done
             drop(ims_rx_A);

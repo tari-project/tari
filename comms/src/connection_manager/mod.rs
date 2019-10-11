@@ -50,7 +50,7 @@
 //! # use std::time::Duration;
 //! # use std::sync::Arc;
 //! # use tari_comms::connection_manager::{ConnectionManager, PeerConnectionConfig};
-//! # use tari_comms::peer_manager::{PeerManager, NodeIdentity};
+//! # use tari_comms::peer_manager::{PeerManager, NodeIdentity, PeerFeatures};
 //! # use tari_comms::connection::{ZmqContext, InprocAddress};
 //! # use rand::OsRng;
 //! # use tari_storage::lmdb_store::LMDBBuilder;
@@ -58,7 +58,7 @@
 //! # use tari_storage::LMDBWrapper;
 //! # use futures::channel::mpsc::channel;
 //!
-//! let node_identity = Arc::new(NodeIdentity::random(&mut OsRng::new().unwrap(), "127.0.0.1:9000".parse().unwrap()).unwrap());
+//! let node_identity = Arc::new(NodeIdentity::random(&mut OsRng::new().unwrap(), "127.0.0.1:9000".parse().unwrap(), PeerFeatures::communication_node_default()).unwrap());
 //!
 //! let context = ZmqContext::new();
 //!

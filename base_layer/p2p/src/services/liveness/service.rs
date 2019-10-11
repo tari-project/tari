@@ -197,7 +197,7 @@ mod test {
     use tari_broadcast_channel::bounded;
     use tari_comms::{
         connection::NetAddress,
-        peer_manager::{NodeId, Peer, PeerFlags},
+        peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
     };
     use tari_comms_dht::outbound::DhtOutboundRequest;
     use tari_crypto::keys::PublicKey;
@@ -274,6 +274,7 @@ mod test {
             NodeId::from_key(&pk).unwrap(),
             Vec::<NetAddress>::new().into(),
             PeerFlags::empty(),
+            PeerFeatures::communication_node_default(),
         );
         DomainMessage {
             origin_pubkey: peer_source.public_key.clone(),

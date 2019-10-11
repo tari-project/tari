@@ -22,7 +22,7 @@
 
 use crate::{
     connection::{net_address::NetAddress, zmq::CurvePublicKey},
-    peer_manager::NodeId,
+    peer_manager::{NodeId, PeerFeatures},
 };
 use derive_error::Error;
 use serde::{Deserialize, Serialize};
@@ -84,6 +84,7 @@ pub struct RequestPeerConnection {
     pub control_service_address: NetAddress,
     /// The node id of this node
     pub node_id: NodeId,
+    pub features: PeerFeatures,
 }
 
 /// Sent to the control service to test liveness

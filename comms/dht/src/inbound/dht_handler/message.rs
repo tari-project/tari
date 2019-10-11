@@ -21,15 +21,18 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use serde::{Deserialize, Serialize};
-use tari_comms::{connection::NetAddress, peer_manager::NodeId};
+use tari_comms::{
+    connection::NetAddress,
+    peer_manager::{NodeId, PeerFeatures},
+};
 
 /// The JoinMessage stores the information required for a network join request. It has all the information required to
 /// locate and contact the source node, but network behaviour is different compared to DiscoverMessage.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct JoinMessage {
     pub node_id: NodeId,
-    // TODO: node_type
     pub net_addresses: Vec<NetAddress>,
+    pub peer_features: PeerFeatures,
 }
 
 /// The DiscoverMessage stores the information required for a network discover request. It has all the information
@@ -37,6 +40,6 @@ pub struct JoinMessage {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct DiscoverMessage {
     pub node_id: NodeId,
-    // TODO: node_type
     pub net_addresses: Vec<NetAddress>,
+    pub peer_features: PeerFeatures,
 }

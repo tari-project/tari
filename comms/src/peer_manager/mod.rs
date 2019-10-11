@@ -31,7 +31,7 @@
 //! implementation.
 //!
 //! ```edition2018
-//! # use tari_comms::peer_manager::{NodeId, Peer, PeerManager, PeerFlags};
+//! # use tari_comms::peer_manager::{NodeId, Peer, PeerManager, PeerFlags, PeerFeatures};
 //! # use tari_comms::types::CommsPublicKey;
 //! # use tari_comms::connection::{NetAddress, NetAddressesWithStats};
 //! # use tari_crypto::keys::PublicKey;
@@ -44,7 +44,7 @@
 //! let (dest_sk, pk) = CommsPublicKey::random_keypair(&mut rng);
 //! let node_id = NodeId::from_key(&pk).unwrap();
 //! let net_addresses = NetAddressesWithStats::from("1.2.3.4:8000".parse::<NetAddress>().unwrap());
-//! let peer = Peer::new(pk, node_id.clone(), net_addresses, PeerFlags::default());
+//! let peer = Peer::new(pk, node_id.clone(), net_addresses, PeerFlags::default(), PeerFeatures::communication_node_default());
 //! let database_name = "pm_peer_database";
 //! let datastore = LMDBBuilder::new()
 //!            .set_path("/tmp/")
@@ -61,7 +61,7 @@
 //! let returned_peer = peer_manager.find_with_node_id(&node_id).unwrap();
 //! ```
 
-mod node_features;
+mod peer_features;
 
 mod error;
 pub mod node_id;
@@ -76,5 +76,6 @@ pub use self::{
     node_id::NodeId,
     node_identity::{NodeIdentity, PeerNodeIdentity},
     peer::{Peer, PeerFlags},
+    peer_features::{PeerFeature, PeerFeatures},
     peer_manager::PeerManager,
 };

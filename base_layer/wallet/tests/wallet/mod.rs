@@ -29,7 +29,7 @@ use std::{sync::Arc, time::Duration};
 use tari_comms::{
     connection::{net_address::NetAddressWithStats, NetAddress, NetAddressesWithStats},
     control_service::ControlServiceConfig,
-    peer_manager::{peer::PeerFlags, NodeId, NodeIdentity, Peer},
+    peer_manager::{peer::PeerFlags, NodeId, NodeIdentity, Peer, PeerFeatures},
     types::CommsPublicKey,
 };
 use tari_p2p::{initialization::CommsConfig, services::liveness::handle::LivenessEvent};
@@ -47,6 +47,7 @@ fn create_peer(public_key: CommsPublicKey, net_address: NetAddress) -> Peer {
         NodeId::from_key(&public_key).unwrap(),
         NetAddressesWithStats::new(vec![NetAddressWithStats::new(net_address.clone())]),
         PeerFlags::empty(),
+        PeerFeatures::communication_node_default(),
     )
 }
 
@@ -64,8 +65,18 @@ fn test_wallet() {
     let db_path2 = get_path(Some(db_name2));
     init_sql_database(db_name2);
 
-    let node_1_identity = NodeIdentity::random(&mut rng, "127.0.0.1:22523".parse().unwrap()).unwrap();
-    let node_2_identity = NodeIdentity::random(&mut rng, "127.0.0.1:22145".parse().unwrap()).unwrap();
+    let node_1_identity = NodeIdentity::random(
+        &mut rng,
+        "127.0.0.1:22523".parse().unwrap(),
+        PeerFeatures::communication_node_default(),
+    )
+    .unwrap();
+    let node_2_identity = NodeIdentity::random(
+        &mut rng,
+        "127.0.0.1:22145".parse().unwrap(),
+        PeerFeatures::communication_node_default(),
+    )
+    .unwrap();
     let comms_config1 = CommsConfig {
         node_identity: Arc::new(node_1_identity.clone()),
         host: "127.0.0.1".parse().unwrap(),

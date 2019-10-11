@@ -25,9 +25,9 @@
 //! The [CommsBuilder] provides a simple builder API for getting Tari comms p2p messaging up and running.
 //!
 //! ```edition2018
-//! # use tari_comms::builder::{CommsBuilder};
+//! # use tari_comms::builder::CommsBuilder;
 //! # use tari_comms::control_service::ControlServiceConfig;
-//! # use tari_comms::peer_manager::NodeIdentity;
+//! # use tari_comms::peer_manager::{NodeIdentity, PeerFeatures};
 //! # use std::sync::Arc;
 //! # use rand::OsRng;
 //! # use tari_storage::lmdb_store::LMDBBuilder;
@@ -37,7 +37,7 @@
 //! # use tokio::runtime::Runtime;
 //! # use futures::channel::mpsc;
 //! // This should be loaded up from storage
-//! let my_node_identity = NodeIdentity::random(&mut OsRng::new().unwrap(), "127.0.0.1:9000".parse().unwrap()).unwrap();
+//! let my_node_identity = NodeIdentity::random(&mut OsRng::new().unwrap(), "127.0.0.1:9000".parse().unwrap(), PeerFeatures::communication_node_default()).unwrap();
 //!
 //! let database_name = "b_peer_database";
 //! let datastore = LMDBBuilder::new()

@@ -22,7 +22,10 @@
 
 use crate::support::{comms_and_services::setup_comms_services, utils::event_stream_count};
 use std::{sync::Arc, time::Duration};
-use tari_comms::{builder::CommsNode, peer_manager::NodeIdentity};
+use tari_comms::{
+    builder::CommsNode,
+    peer_manager::{NodeIdentity, PeerFeatures},
+};
 use tari_comms_dht::Dht;
 use tari_p2p::{
     comms_connector::pubsub_connector,
@@ -65,8 +68,18 @@ fn end_to_end() {
 
     let mut rng = rand::rngs::OsRng::new().unwrap();
 
-    let node_1_identity = NodeIdentity::random(&mut rng, "127.0.0.1:31593".parse().unwrap()).unwrap();
-    let node_2_identity = NodeIdentity::random(&mut rng, "127.0.0.1:31195".parse().unwrap()).unwrap();
+    let node_1_identity = NodeIdentity::random(
+        &mut rng,
+        "127.0.0.1:31593".parse().unwrap(),
+        PeerFeatures::communication_node_default(),
+    )
+    .unwrap();
+    let node_2_identity = NodeIdentity::random(
+        &mut rng,
+        "127.0.0.1:31195".parse().unwrap(),
+        PeerFeatures::communication_node_default(),
+    )
+    .unwrap();
 
     let (mut liveness1, _comms_1, _dht_1) =
         setup_liveness_service(&runtime, node_1_identity.clone(), vec![node_2_identity.clone()]);

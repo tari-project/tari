@@ -26,6 +26,8 @@ use crate::{
     peer_manager::{
         node_id::{NodeId, NodeIdError},
         Peer,
+        PeerFeature,
+        PeerFeatures,
         PeerFlags,
     },
     types::{CommsPublicKey, CommsSecretKey},
@@ -64,26 +66,33 @@ impl NodeIdentity {
         secret_key: CommsSecretKey,
         public_key: CommsPublicKey,
         control_service_address: NetAddress,
+        features: PeerFeatures,
     ) -> Result<Self, NodeIdentityError>
     {
         let node_id = NodeId::from_key(&public_key).map_err(NodeIdentityError::NodeIdError)?;
 
         Ok(NodeIdentity {
-            identity: PeerNodeIdentity::new(node_id, public_key),
+            identity: PeerNodeIdentity::new(node_id, public_key, features),
             secret_key,
             control_service_address: RwLock::new(control_service_address),
         })
     }
 
     /// Generates a new random NodeIdentity for CommsPublicKey
-    pub fn random<R>(rng: &mut R, control_service_address: NetAddress) -> Result<Self, NodeIdentityError>
-    where R: CryptoRng + Rng {
+    pub fn random<R>(
+        rng: &mut R,
+        control_service_address: NetAddress,
+        features: PeerFeatures,
+    ) -> Result<Self, NodeIdentityError>
+    where
+        R: CryptoRng + Rng,
+    {
         let secret_key = CommsSecretKey::random(rng);
         let public_key = CommsPublicKey::from_secret_key(&secret_key);
         let node_id = NodeId::from_key(&public_key).map_err(NodeIdentityError::NodeIdError)?;
 
         Ok(NodeIdentity {
-            identity: PeerNodeIdentity::new(node_id, public_key),
+            identity: PeerNodeIdentity::new(node_id, public_key, features),
             secret_key,
             control_service_address: RwLock::new(control_service_address),
         })
@@ -106,11 +115,12 @@ impl NodeIdentity {
     /// This returns a random NodeIdentity for testing purposes. This function can panic. If a control_service_address
     /// is None, 127.0.0.1:9000 will be used (i.e. the caller doesn't care what the control_service_address is).
     #[cfg(test)]
-    pub fn random_for_test(control_service_address: Option<NetAddress>) -> Self {
+    pub fn random_for_test(control_service_address: Option<NetAddress>, features: PeerFeatures) -> Self {
         use rand::OsRng;
         Self::random(
             &mut OsRng::new().unwrap(),
             control_service_address.or("127.0.0.1:9000".parse().ok()).unwrap(),
+            features,
         )
         .unwrap()
     }
@@ -122,6 +132,14 @@ impl NodeIdentity {
     pub fn public_key(&self) -> &CommsPublicKey {
         &self.identity.public_key
     }
+
+    pub fn features(&self) -> &PeerFeatures {
+        &self.identity.features
+    }
+
+    pub fn has_peer_feature(&self, peer_feature: &PeerFeature) -> bool {
+        self.features().contains(peer_feature)
+    }
 }
 
 impl From<NodeIdentity> for Peer {
@@ -131,6 +149,7 @@ impl From<NodeIdentity> for Peer {
             node_identity.identity.node_id,
             node_identity.control_service_address.read().unwrap().clone().into(),
             PeerFlags::empty(),
+            node_identity.identity.features,
         )
     }
 }
@@ -153,12 +172,17 @@ pub struct PeerNodeIdentity {
     #[serde(deserialize_with = "deserialize_node_id_from_hex")]
     pub node_id: NodeId,
     pub public_key: CommsPublicKey,
+    pub features: PeerFeatures,
 }
 
 impl PeerNodeIdentity {
     /// Construct a new identity for a node that contains its NodeId and identification key pair
-    pub fn new(node_id: NodeId, public_key: CommsPublicKey) -> PeerNodeIdentity {
-        PeerNodeIdentity { node_id, public_key }
+    pub fn new(node_id: NodeId, public_key: CommsPublicKey, features: PeerFeatures) -> PeerNodeIdentity {
+        PeerNodeIdentity {
+            node_id,
+            public_key,
+            features,
+        }
     }
 }
 
@@ -168,6 +192,7 @@ impl From<Peer> for PeerNodeIdentity {
         Self {
             public_key: peer.public_key,
             node_id: peer.node_id,
+            features: peer.features,
         }
     }
 }

@@ -248,9 +248,15 @@ impl ControlServiceWorker {
         message: RequestPeerConnection,
     ) -> Result<()>
     {
+        let RequestPeerConnection {
+            node_id,
+            control_service_address,
+            features,
+        } = message;
+
         debug!(
             target: LOG_TARGET,
-            "RequestConnection message received for NodeId {}", message.node_id
+            "RequestConnection message received with NodeId {}", node_id
         );
 
         let pm = &self.connection_manager.peer_manager();
@@ -264,20 +270,20 @@ impl ControlServiceWorker {
                 pm.update_peer(
                     &peer.public_key,
                     None,
-                    Some(vec![message.control_service_address.clone()]),
+                    Some(vec![control_service_address.clone()]),
                     None,
+                    Some(features),
                 )?;
 
                 peer
             },
             Err(PeerManagerError::PeerNotFoundError) => {
-                let node_id = &message.node_id;
-
                 let peer = Peer::new(
                     public_key.clone(),
-                    node_id.clone(),
-                    message.control_service_address.clone().into(),
+                    node_id,
+                    control_service_address.into(),
                     PeerFlags::empty(),
+                    features,
                 );
 
                 pm.add_peer(peer.clone())

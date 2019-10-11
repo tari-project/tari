@@ -28,7 +28,7 @@ use tari_comms::{
     connection_manager::ConnectionManager,
     control_service::{messages::ConnectRequestOutcome, ControlService, ControlServiceClient, ControlServiceConfig},
     message::FrameSet,
-    peer_manager::{NodeId, NodeIdentity, Peer, PeerFlags, PeerManager},
+    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManager},
 };
 use tari_storage::{
     lmdb_store::{LMDBBuilder, LMDBDatabase, LMDBError, LMDBStore},
@@ -108,7 +108,11 @@ fn request_connection() {
     .unwrap();
 
     // Setup the requesting peer
-    let node_identity_b = factories::node_identity::create().build().map(Arc::new).unwrap();
+    let node_identity_b = factories::node_identity::create()
+        .with_peer_features(PeerFeatures::communication_node_default())
+        .build()
+        .map(Arc::new)
+        .unwrap();
     // --- Client connection for the destination peer's control service
     let client_conn = Connection::new(&context, Direction::Outbound)
         .establish(&listener_address)
@@ -124,6 +128,7 @@ fn request_connection() {
         .send_request_connection(
             node_identity_b.control_service_address(),
             NodeId::from_key(&node_identity_b.identity.public_key).unwrap(),
+            node_identity_b.features().clone(),
         )
         .unwrap();
     let outcome = client
@@ -138,6 +143,7 @@ fn request_connection() {
     assert_eq!(peer.node_id, node_identity_b.identity.node_id);
     assert_eq!(peer.addresses[0], node_identity_b.control_service_address().into());
     assert_eq!(peer.flags, PeerFlags::empty());
+    assert_eq!(peer.features, PeerFeatures::communication_node_default());
 
     match outcome {
         ConnectRequestOutcome::Accepted {

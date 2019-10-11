@@ -108,7 +108,7 @@ mod test {
     use tari_comms::{
         connection::NetAddress,
         message::{MessageEnvelopeHeader, MessageFlags, MessageHeader},
-        peer_manager::{NodeIdentity, Peer, PeerFlags},
+        peer_manager::{NodeIdentity, Peer, PeerFeatures, PeerFlags},
     };
     use tari_comms_dht::envelope::{DhtHeader, DhtMessageFlags, DhtMessageType, NodeDestination};
     use tari_pubsub::{pubsub_channel, TopicPayload};
@@ -123,7 +123,12 @@ mod test {
             b: String,
         }
 
-        let node_identity = NodeIdentity::random(&mut EntropyRng::new(), "127.0.0.1:9000".parse().unwrap()).unwrap();
+        let node_identity = NodeIdentity::random(
+            &mut EntropyRng::new(),
+            "127.0.0.1:9000".parse().unwrap(),
+            PeerFeatures::communication_node_default(),
+        )
+        .unwrap();
 
         let messages = vec![
             ("Topic1".to_string(), Dummy {
@@ -180,6 +185,7 @@ mod test {
                         node_identity.identity.node_id.clone(),
                         Vec::<NetAddress>::new().into(),
                         PeerFlags::empty(),
+                        PeerFeatures::communication_node_default(),
                     ),
                 )),
             )

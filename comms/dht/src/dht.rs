@@ -160,6 +160,7 @@ impl Dht {
         let message = JoinMessage {
             node_id: self.node_identity.identity.node_id.clone(),
             net_addresses: vec![self.node_identity.control_service_address()],
+            peer_features: self.node_identity.features().clone(),
         };
 
         debug!(
@@ -194,6 +195,7 @@ impl Dht {
         let discover_msg = DiscoverMessage {
             node_id: self.node_identity.identity.node_id.clone(),
             net_addresses: vec![self.node_identity.control_service_address()],
+            peer_features: self.node_identity.features().clone(),
         };
         debug!(
             target: LOG_TARGET,

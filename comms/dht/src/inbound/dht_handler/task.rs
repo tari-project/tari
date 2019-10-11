@@ -31,7 +31,7 @@ use log::*;
 use std::sync::Arc;
 use tari_comms::{
     connection::NetAddress,
-    peer_manager::{NodeId, NodeIdentity, Peer, PeerFlags, PeerManager},
+    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManager},
     types::CommsPublicKey,
 };
 use tari_comms_middleware::MiddlewareError;
@@ -103,18 +103,20 @@ where
         pubkey: &CommsPublicKey,
         node_id: NodeId,
         net_addresses: Vec<NetAddress>,
+        peer_features: PeerFeatures,
     ) -> Result<Peer, DhtInboundError>
     {
         let peer_manager = &self.peer_manager;
         // Add peer or modify existing peer using received join request
         if peer_manager.exists(pubkey)? {
-            peer_manager.update_peer(pubkey, Some(node_id), Some(net_addresses), None)?;
+            peer_manager.update_peer(pubkey, Some(node_id), Some(net_addresses), None, Some(peer_features))?;
         } else {
             peer_manager.add_peer(Peer::new(
                 pubkey.clone(),
                 node_id,
                 net_addresses.into(),
                 PeerFlags::default(),
+                peer_features,
             ))?;
         }
 
@@ -146,6 +148,7 @@ where
             &dht_header.origin_public_key,
             join_msg.node_id.clone(),
             join_msg.net_addresses,
+            join_msg.peer_features,
         )?;
 
         // Send a join request back to the origin peer of the join request if:
@@ -197,6 +200,7 @@ where
             &message.dht_header.origin_public_key,
             discover_msg.node_id,
             discover_msg.net_addresses,
+            discover_msg.peer_features,
         )?;
 
         // Send the origin the current nodes latest contact info
@@ -210,6 +214,7 @@ where
         let join_msg = JoinMessage {
             node_id: self.node_identity.identity.node_id.clone(),
             net_addresses: vec![self.node_identity.control_service_address()],
+            peer_features: self.node_identity.features().clone(),
         };
 
         trace!("Sending direct join request to {}", dest_public_key);
