@@ -24,23 +24,24 @@ use self::outbound::OutboundMessageRequester;
 use crate::{
     envelope::{DhtMessageType, NodeDestination},
     inbound,
-    inbound::{DecryptedDhtMessage, DiscoverMessage, JoinMessage},
+    inbound::{DecryptedDhtMessage, DhtInboundMessage, DiscoverMessage, JoinMessage},
     outbound,
     outbound::{BroadcastClosestRequest, BroadcastStrategy, DhtOutboundError, DhtOutboundRequest, OutboundEncryption},
     store_forward,
     DhtConfig,
 };
-use futures::{channel::mpsc, Future};
-use log::debug;
+use futures::{channel::mpsc, future, Future};
+use log::*;
 use std::sync::Arc;
 use tari_comms::{
     message::InboundMessage,
     outbound_message_service::OutboundMessage,
-    peer_manager::{NodeId, NodeIdentity, PeerManager},
+    peer_manager::{NodeId, NodeIdentity, PeerFeature, PeerManager},
     types::CommsPublicKey,
 };
 use tari_comms_middleware::MiddlewareError;
 use tower::{layer::Layer, Service, ServiceBuilder};
+use tower_filter::error::Error as FilterError;
 
 const LOG_TARGET: &'static str = "comms::dht";
 
@@ -99,6 +100,7 @@ impl Dht {
 
         ServiceBuilder::new()
             .layer(inbound::DeserializeLayer::new())
+            .layer(tower_filter::FilterLayer::new(self.unsupported_saf_messages_filter()))
             .layer(inbound::DecryptionLayer::new(Arc::clone(&self.node_identity)))
             .layer(store_forward::ForwardLayer::new(
                 Arc::clone(&self.peer_manager),
@@ -185,6 +187,33 @@ impl Dht {
         Ok(())
     }
 
+    /// Produces a filter predicate which disallows store and forward messages if that feature is not
+    /// supported by the node.
+    fn unsupported_saf_messages_filter(
+        &self,
+    ) -> impl tower_filter::Predicate<DhtInboundMessage, Future = future::Ready<Result<(), FilterError>>> + Clone + Send
+    {
+        let node_identity = Arc::clone(&self.node_identity);
+        move |msg: &DhtInboundMessage| {
+            if node_identity.has_peer_feature(&PeerFeature::DhtStoreForward) {
+                return future::ready(Ok(()));
+            }
+
+            match msg.dht_header.message_type {
+                DhtMessageType::SAFRequestMessages | DhtMessageType::SAFStoredMessages => {
+                    // TODO: This is an indication of node misbehaviour
+                    warn!(
+                        "Received store and forward message from PublicKey={}. Store and forward feature is not \
+                         supported by this node. Discarding message.",
+                        msg.dht_header.origin_public_key
+                    );
+                    future::ready(Err(FilterError::rejected()))
+                },
+                _ => future::ready(Ok(())),
+            }
+        }
+    }
+
     pub async fn send_discover(
         &self,
         dest_public_key: CommsPublicKey,
@@ -233,9 +262,15 @@ impl Dht {
 #[cfg(test)]
 mod test {
     use crate::{
-        envelope::DhtMessageFlags,
+        envelope::{DhtMessageFlags, DhtMessageType},
         outbound::DhtOutboundRequest,
-        test_utils::{make_comms_inbound_message, make_dht_envelope, make_node_identity, make_peer_manager},
+        test_utils::{
+            make_client_identity,
+            make_comms_inbound_message,
+            make_dht_envelope,
+            make_node_identity,
+            make_peer_manager,
+        },
         DhtBuilder,
     };
     use futures::{channel::mpsc, StreamExt};
@@ -348,5 +383,35 @@ mod test {
         }
         // Check the next service was not called
         assert!(rt.block_on(next_service_rx.next()).is_none());
+    }
+
+    #[test]
+    fn stack_filter_saf_message() {
+        let node_identity = make_client_identity();
+        let peer_manager = make_peer_manager();
+
+        let dht = DhtBuilder::new(Arc::clone(&node_identity), peer_manager).finish();
+
+        let rt = Runtime::new().unwrap();
+
+        let (next_service_tx, mut next_service_rx) = mpsc::channel(10);
+
+        let mut service = dht
+            .inbound_middleware_layer()
+            .layer(SinkMiddleware::new(next_service_tx));
+
+        let msg = Message::from_message_format((), "secret".to_string()).unwrap();
+        let mut dht_envelope = make_dht_envelope(&node_identity, msg.to_binary().unwrap(), DhtMessageFlags::empty());
+        dht_envelope.header.message_type = DhtMessageType::SAFStoredMessages;
+        let inbound_message =
+            make_comms_inbound_message(&node_identity, dht_envelope.to_binary().unwrap(), MessageFlags::empty());
+
+        let err = rt.block_on(service.call(inbound_message));
+        assert!(err.is_err());
+        // This seems like the best way to tell that an open channel is empty without the test blocking indefinitely
+        assert_eq!(
+            format!("{}", next_service_rx.try_next().unwrap_err()),
+            "receiver channel is empty"
+        );
     }
 }
