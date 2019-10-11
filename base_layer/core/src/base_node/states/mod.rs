@@ -114,9 +114,9 @@ pub enum BaseNodeState<B: BlockchainBackend> {
     None,
     Starting(Starting<B>),
     InitialSync(InitialSync<B>),
-    FetchingHorizonState,
-    BlockSync,
-    Listening,
+    FetchingHorizonState(FetchHorizonState),
+    BlockSync(BlockSync),
+    Listening(Listening),
     Shutdown(Shutdown),
 }
 
@@ -146,9 +146,9 @@ impl<B: BlockchainBackend> Display for BaseNodeState<B> {
         let s = match self {
             Self::Starting(_) => "Initializing",
             Self::InitialSync(_) => "Synchronizing blockchain metadata",
-            Self::FetchingHorizonState => "Fetching horizon state",
-            Self::BlockSync => "Synchronizing blocks",
-            Self::Listening => "Listening",
+            Self::FetchingHorizonState(_) => "Fetching horizon state",
+            Self::BlockSync(_) => "Synchronizing blocks",
+            Self::Listening(_) => "Listening",
             Self::Shutdown(_) => "Shutting down",
             Self::None => "None",
         };
@@ -156,10 +156,18 @@ impl<B: BlockchainBackend> Display for BaseNodeState<B> {
     }
 }
 
+mod block_sync;
+mod fetching_horizon_state;
 mod initial_sync;
+mod listening;
 mod shutdown_state;
 mod starting_state;
 
+use crate::base_node::states::{
+    block_sync::BlockSync,
+    fetching_horizon_state::FetchHorizonState,
+    listening::Listening,
+};
 pub use initial_sync::InitialSync;
 pub use shutdown_state::Shutdown;
 pub use starting_state::Starting;

@@ -23,7 +23,7 @@
 use crate::{
     base_node::{
         states,
-        states::{BaseNodeState, StateEvent, StateEvent::FatalError},
+        states::{BaseNodeState, StateEvent},
         BaseNodeConfig,
     },
     chain_storage::{BlockchainBackend, BlockchainDatabase},
@@ -81,13 +81,13 @@ impl<B: BlockchainBackend> BaseNodeStateMachine<B> {
         use crate::base_node::states::{BaseNodeState::*, StateEvent::*, SyncStatus::*};
         match (state, event) {
             (Starting(s), Initialized) => InitialSync(s.into()),
-            (InitialSync(_s), MetadataSynced(BehindHorizon)) => FetchingHorizonState,
-            (InitialSync(_s), MetadataSynced(Lagging)) => BlockSync,
-            (InitialSync(_s), MetadataSynced(UpToDate)) => Listening,
-            (FetchingHorizonState, HorizonStateFetched) => BlockSync,
-            (BlockSync, BlocksSynchronized) => Listening,
-            (Listening, FallenBehind(BehindHorizon)) => FetchingHorizonState,
-            (Listening, FallenBehind(Lagging)) => BlockSync,
+            (InitialSync(s), MetadataSynced(BehindHorizon)) => FetchingHorizonState(s.into()),
+            (InitialSync(s), MetadataSynced(Lagging)) => BlockSync(s.into()),
+            (InitialSync(s), MetadataSynced(UpToDate)) => Listening(s.into()),
+            (FetchingHorizonState(s), HorizonStateFetched) => BlockSync(s.into()),
+            (BlockSync(s), BlocksSynchronized) => Listening(s.into()),
+            (Listening(s), FallenBehind(BehindHorizon)) => FetchingHorizonState(s.into()),
+            (Listening(s), FallenBehind(Lagging)) => BlockSync(s.into()),
             (_, FatalError(s)) => Shutdown(states::Shutdown::with_reason(s)),
             (s, e) => {
                 debug!(
@@ -107,9 +107,9 @@ impl<B: BlockchainBackend> BaseNodeStateMachine<B> {
             let next_event = match &mut self.state {
                 Starting(s) => s.next_event(),
                 InitialSync(s) => s.next_event(),
-                FetchingHorizonState => FatalError("Unimplemented".into()),
-                BlockSync => FatalError("Unimplemented".into()),
-                Listening => FatalError("Unimplemented".into()),
+                FetchingHorizonState(s) => s.next_event(),
+                BlockSync(s) => s.next_event(),
+                Listening(s) => s.next_event(),
                 Shutdown(_) => break,
                 None => unreachable!("Node cannot be in a `None` state"),
             };

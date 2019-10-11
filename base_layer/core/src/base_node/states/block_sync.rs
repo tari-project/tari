@@ -19,52 +19,50 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
 
 use crate::{
-    base_node::states::{Starting, StateEvent, StateEvent::FatalError},
-    chain_storage::{BlockchainBackend, BlockchainDatabase},
+    base_node::states::{
+        fetching_horizon_state::FetchHorizonState,
+        listening::Listening,
+        InitialSync,
+        StateEvent,
+        StateEvent::FatalError,
+    },
+    chain_storage::BlockchainBackend,
 };
 use log::*;
 
-const LOG_TARGET: &str = "base_node::initial_sync";
+const LOG_TARGET: &str = "base_node::block_sync";
 
-pub struct InitialSync<B>
-where B: BlockchainBackend
-{
-    pub(crate) db: BlockchainDatabase<B>,
-}
+pub struct BlockSync;
 
-impl<B: BlockchainBackend> InitialSync<B> {
+impl BlockSync {
     pub fn next_event(&mut self) -> StateEvent {
-        info!(target: LOG_TARGET, "Starting blockchain metadata sync");
-        self.sync_metadata()
-    }
-
-    /// Fetch the blockchain metadata from our internal database and compare it to data received from peers to decide
-    /// on the next phase of the blockchain synchronisation.
-    fn sync_metadata(&self) -> StateEvent {
-        info!(target: LOG_TARGET, "Loading local blockchain metadata.");
-        let metadata = match self.db.get_metadata() {
-            Ok(m) => m,
-            Err(e) => {
-                let msg = format!("Could not get local blockchain metadata. {}", e.to_string());
-                return FatalError(msg);
-            },
-        };
-        info!(
-            target: LOG_TARGET,
-            "Current local blockchain database information:\n {}", metadata
-        );
-        // TODO async fetch peer metadata
-
+        info!(target: LOG_TARGET, "Synchronizing missing blocks");
         FatalError("Unimplemented".into())
     }
 }
 
-/// State management for Starting -> InitialSync. This state change occurs every time a node is restarted.
-impl<B: BlockchainBackend> From<Starting<B>> for InitialSync<B> {
-    fn from(old_state: Starting<B>) -> Self {
-        InitialSync { db: old_state.db }
+/// State management for FetchingHorizonState -> BlockSync. This is a typical transition for new nodes joining the
+/// network.
+impl From<FetchHorizonState> for BlockSync {
+    fn from(_old: FetchHorizonState) -> Self {
+        unimplemented!()
+    }
+}
+
+/// State management for Listening -> BlockSync. This change happens when a node has been temporarily disconnected
+/// from the network, or a reorg has occurred.
+impl From<Listening> for BlockSync {
+    fn from(_old: Listening) -> Self {
+        unimplemented!()
+    }
+}
+
+/// State management for InitialSync -> BlockSync. This change happens when a (previously synced) node is restarted
+/// after being offline for some time.
+impl<B: BlockchainBackend> From<InitialSync<B>> for BlockSync {
+    fn from(_old: InitialSync<B>) -> Self {
+        unimplemented!()
     }
 }
