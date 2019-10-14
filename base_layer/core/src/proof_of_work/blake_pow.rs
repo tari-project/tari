@@ -46,7 +46,7 @@ impl BlakePow {
     pub fn mine(target_difficulty: Difficulty, header: &BlockHeader) -> u64 {
         let mut nonce = 0u64;
         // We're mining over here!
-        while let Ok(d) = header.pow.calculate_difficulty(nonce, &header) {
+        while let Ok(d) = header.pow.achieved_difficulty(nonce, &header) {
             if d >= target_difficulty {
                 break;
             }
@@ -57,7 +57,7 @@ impl BlakePow {
 }
 
 impl ProofOfWork for BlakePow {
-    fn calculate_difficulty(&self, nonce: u64, header: &BlockHeader) -> Result<Difficulty, PowError> {
+    fn achieved_difficulty(&self, nonce: u64, header: &BlockHeader) -> Result<Difficulty, PowError> {
         let bytes = header.hash();
         let hash = Blake2b::new()
             .chain(&bytes)
@@ -107,18 +107,18 @@ mod test {
     #[test]
     fn validate_max_target() {
         let header = get_header();
-        assert_eq!(header.pow.calculate_difficulty(2, &header), Ok(1.into()));
+        assert_eq!(header.pow.achieved_difficulty(2, &header), Ok(1.into()));
     }
 
     #[test]
     fn difficulty_1000() {
         let header = get_header();
-        assert_eq!(header.pow.calculate_difficulty(108, &header), Ok(1273.into()));
+        assert_eq!(header.pow.achieved_difficulty(108, &header), Ok(1273.into()));
     }
 
     #[test]
     fn difficulty_1mil() {
         let header = get_header();
-        assert_eq!(header.pow.calculate_difficulty(134_390, &header), Ok(3_250_351.into()));
+        assert_eq!(header.pow.achieved_difficulty(134_390, &header), Ok(3_250_351.into()));
     }
 }
