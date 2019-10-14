@@ -35,6 +35,8 @@ pub enum StoreAndForwardError {
     InvalidDestination,
     /// Received stored message has an invalid origin signature
     InvalidSignature,
+    /// Received stored message which is not encrypted
+    StoredMessageNotEncrypted,
     /// Unable to decrypt received stored message
     DecryptionFailed,
     CipherError(CipherError),

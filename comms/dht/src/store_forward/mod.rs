@@ -27,8 +27,11 @@ mod saf_handler;
 mod state;
 mod store;
 
-pub use error::StoreAndForwardError;
-pub use forward::ForwardLayer;
-pub use saf_handler::MessageHandlerLayer;
-pub use state::SAFStorage;
-pub use store::StoreLayer;
+pub use self::{
+    error::StoreAndForwardError,
+    forward::ForwardLayer,
+    message::StoredMessagesRequest,
+    saf_handler::MessageHandlerLayer,
+    state::SAFStorage,
+    store::StoreLayer,
+};
