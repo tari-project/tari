@@ -20,26 +20,33 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-//! The Tari base node implementation.
-//!
-//! Base nodes are the key pieces of infrastructure that maintain the security and integrity of the Tari
-//! cryptocurrency. The role of the base node is to provide the following services:
-//! * New transaction validation
-//! * New block validation
-//! * Chain synchronisation service
-//! * A gRPC API exposing metrics and data about the blockchain state
-//!
-//! More details about the implementation are presented in
-//! [RFC-0111](https://rfc.tari.com/RFC-0111_BaseNodeArchitecture.html).
+use crate::{
+    base_node::comms_interface::{error::CommsInterfaceError, NodeCommsRequest, NodeCommsResponse},
+    chain_storage::{BlockchainBackend, BlockchainDatabase},
+};
+use std::sync::Arc;
 
-mod base_node;
-mod comms_interface;
-mod config;
-#[cfg(test)]
-mod test;
+/// The InboundNodeCommsInterface is used to handle all received inbound requests from remote nodes.
+pub struct InboundNodeCommsInterface<T>
+where T: BlockchainBackend
+{
+    blockchain_db: Arc<BlockchainDatabase<T>>,
+}
 
-pub mod states;
+impl<T> InboundNodeCommsInterface<T>
+where T: BlockchainBackend
+{
+    /// Construct a new InboundNodeCommsInterface.
+    pub fn new(blockchain_db: Arc<BlockchainDatabase<T>>) -> Self {
+        Self { blockchain_db }
+    }
 
-// Public re-exports
-pub use base_node::BaseNodeStateMachine;
-pub use config::BaseNodeConfig;
+    /// Handle inbound node comms requests from remote nodes.
+    pub async fn handle_request(&self, request: NodeCommsRequest) -> Result<NodeCommsResponse, CommsInterfaceError> {
+        match request {
+            NodeCommsRequest::GetChainMetadata => Ok(NodeCommsResponse::ChainMetadata(vec![self
+                .blockchain_db
+                .get_metadata()?])), // TODO: replace with async call
+        }
+    }
+}

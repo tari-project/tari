@@ -15,6 +15,7 @@ tari_infra_derive = { path = "../../infrastructure/derive", version = "^0.0" }
 tari_crypto = { path = "../../infrastructure/crypto", version = "^0.0" }
 tari_storage = { path = "../../infrastructure/storage", version = "^0.0" }
 tari_mmr = { path = "../../base_layer/mmr", version = "^0.0" }
+tari_service_framework = { version = "^0.0", path = "../service_framework"}
 bitflags = "1.0.4"
 chrono = { version = "0.4.6", features = ["serde"]}
 digest = "0.8.0"
@@ -37,6 +38,7 @@ tokio = { version="^0.2.0-alpha.6" }
 tokio-executor = { version ="^0.2.0-alpha.6", features = ["threadpool"] }
 futures-preview = {version = "0.3.0-alpha.19", features = ["async-await"] }
 lmdb-zero = "0.4.4"
+tower-service = { version="0.3.0-alpha.2" }
 
 [dev-dependencies]
 env_logger = "0.7.0"

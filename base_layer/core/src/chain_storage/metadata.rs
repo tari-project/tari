@@ -24,7 +24,7 @@ use crate::{blocks::blockheader::BlockHash, proof_of_work::Difficulty};
 use std::fmt::{Display, Error, Formatter};
 use tari_utilities::hex::Hex;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ChainMetadata {
     /// The current chain height, or the block number of the longest valid chain, or `None` if there is no chain
     pub height_of_longest_chain: Option<u64>,
