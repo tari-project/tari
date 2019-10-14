@@ -34,7 +34,7 @@ use futures::{
 };
 use log::*;
 use std::sync::Arc;
-use tari_comms::peer_manager::{NodeIdentity, PeerManager, PeerNodeIdentity};
+use tari_comms::peer_manager::{NodeIdentity, PeerFeature, PeerManager, PeerNodeIdentity};
 use tari_comms_middleware::MiddlewareError;
 use tower::{layer::Layer, Service, ServiceExt};
 
@@ -159,7 +159,17 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
     {
         match msg {
             DhtOutboundRequest::SendMsg(request) => self.generate_send_messages(*request),
-            DhtOutboundRequest::Forward(request) => self.generate_forward_messages(*request),
+            DhtOutboundRequest::Forward(request) => {
+                if self.node_identity.has_peer_feature(&PeerFeature::MessagePropagation) {
+                    self.generate_forward_messages(*request)
+                } else {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Message propagation is not enabled on this node. Discarding request to propagate message"
+                    );
+                    Ok(Vec::new())
+                }
+            },
         }
     }
 

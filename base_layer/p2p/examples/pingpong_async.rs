@@ -188,7 +188,7 @@ fn main() {
 
     let comms = Arc::try_unwrap(comms).map_err(|_| ()).unwrap();
     rt.block_on(comms.shutdown()).unwrap();
-    rt.shutdown_on_idle();
+    //    rt.shutdown_on_idle();
 }
 fn setup_ui() -> Cursive {
     let mut app = Cursive::default();

@@ -26,10 +26,33 @@ use tokio::future::FutureExt;
 
 /// Receiver end of a shutdown signal. Once the oneshot sender has been received
 /// the receiver should send on the received oneshot to indicate that it has shut down.
-pub type ShutdownSignal = oneshot::Receiver<oneshot::Sender<()>>;
+pub type ShutdownSignal = oneshot::Receiver<ShutdownSignalGuard>;
+
+pub struct ShutdownSignalGuard(Option<oneshot::Sender<()>>);
+
+impl ShutdownSignalGuard {
+    pub fn signal(&mut self) -> Result<(), ()> {
+        match self.0.take() {
+            Some(signal) => signal.send(()),
+            None => Ok(()),
+        }
+    }
+}
+
+impl From<oneshot::Sender<()>> for ShutdownSignalGuard {
+    fn from(signal: oneshot::Sender<()>) -> Self {
+        Self(Some(signal))
+    }
+}
+
+impl Drop for ShutdownSignalGuard {
+    fn drop(&mut self) {
+        let _ = self.signal();
+    }
+}
 
 pub struct Shutdown {
-    signals: Vec<oneshot::Sender<oneshot::Sender<()>>>,
+    signals: Vec<oneshot::Sender<ShutdownSignalGuard>>,
     is_triggered: bool,
     timeout: Duration,
     on_triggered: Option<Box<dyn FnOnce() + Send + Sync>>,
@@ -74,7 +97,7 @@ impl Shutdown {
             let mut receivers = Vec::with_capacity(self.signals.len());
             for signal in self.signals.drain(..) {
                 let (sender, receiver) = oneshot::channel();
-                signal.send(sender).map_err(|_| ())?;
+                signal.send(sender.into()).map_err(|_| ())?;
                 receivers.push(receiver);
             }
 
@@ -114,7 +137,7 @@ mod test {
         let signal = shutdown.new_signal();
         assert_eq!(shutdown.is_triggered(), false);
         rt.spawn(async move {
-            signal.await.unwrap().send(()).unwrap();
+            signal.await.unwrap().signal().unwrap();
         });
         rt.block_on(shutdown.trigger()).unwrap();
         assert_eq!(shutdown.is_triggered(), true);
@@ -127,8 +150,9 @@ mod test {
         let signal = shutdown.new_signal();
         assert_eq!(shutdown.is_triggered(), false);
         rt.spawn(async move {
+            let guard = signal.await.unwrap();
             timer::delay(Instant::now() + Duration::from_secs(1)).await;
-            signal.await.unwrap().send(()).unwrap();
+            drop(guard);
         });
         assert!(rt.block_on(shutdown.trigger()).is_err());
         assert_eq!(shutdown.is_triggered(), true);
@@ -145,7 +169,7 @@ mod test {
         });
         let signal = shutdown.new_signal();
         rt.spawn(async move {
-            signal.await.unwrap().send(()).unwrap();
+            let _ = signal.await.unwrap();
         });
         rt.block_on(shutdown.trigger()).unwrap();
         assert_eq!(spy.load(Ordering::SeqCst), true);

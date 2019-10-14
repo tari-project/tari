@@ -39,7 +39,7 @@ pub fn create_runtime(passed: Arc<AtomicBool>) -> Runtime {
 /// Create a runtime and report if it panics. If there are tasks still running after the panic, this
 /// will carry on running forever.
 /// TODO: Create a test harness which allows test cleanup or at least fail the test after a timeout
-pub fn run<F>(f: F)
+pub fn test_async<F>(f: F)
 where F: FnOnce(&Runtime) {
     let passed = Arc::new(AtomicBool::new(true));
     let rt = create_runtime(passed.clone());

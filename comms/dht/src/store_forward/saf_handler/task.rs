@@ -326,7 +326,7 @@ mod test {
 
     #[test]
     fn request_stored_messages() {
-        runtime::run(|rt| {
+        runtime::test_async(|rt| {
             let spy = service_spy();
             let storage = Arc::new(SAFStorage::new(10));
 
@@ -389,7 +389,7 @@ mod test {
 
     #[test]
     fn receive_stored_messages() {
-        runtime::run(|rt| {
+        runtime::test_async(|rt| {
             let spy = service_spy();
             let storage = Arc::new(SAFStorage::new(10));
 

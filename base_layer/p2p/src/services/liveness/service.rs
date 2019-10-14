@@ -90,7 +90,6 @@ where
                 // Requests from the handle
                 request_context = request_stream.select_next_some() => {
                     let (request, reply_tx) = request_context.split();
-                    error!("LIVENESS REQUEST {:?}", request);
                     let _ = reply_tx.send(self.handle_request(request).await).or_else(|resp| {
                         error!(target: LOG_TARGET, "Failed to send reply");
                         Err(resp)

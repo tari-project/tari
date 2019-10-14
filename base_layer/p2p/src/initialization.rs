@@ -38,7 +38,7 @@ use tari_comms::{
     peer_manager::{node_identity::NodeIdentityError, NodeIdentity},
     CommsBuilder,
 };
-use tari_comms_dht as dht;
+use tari_comms_dht as comms_dht;
 use tari_comms_dht::{Dht, DhtConfig};
 use tari_comms_middleware::{pipeline::ServicePipeline, sink::SinkMiddleware};
 use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
@@ -104,7 +104,7 @@ where
     let (inbound_pipeline_signal, inbound_pipeline_rx) = oneshot::channel();
     let (outbound_pipeline_signal, outbound_pipeline_rx) = oneshot::channel();
 
-    let comms = CommsBuilder::new(executor.clone())
+    let mut comms = CommsBuilder::new(executor.clone())
         .with_node_identity(config.node_identity)
         .with_peer_storage(peer_database)
         .with_inbound_sink(inbound_tx)
@@ -125,8 +125,8 @@ where
         .map_err(CommsInitializationError::CommsServicesError)?;
 
     // Create a channel for outbound requests
-    let mut dht = dht::DhtBuilder::from_comms(&comms)
-        .with_config(dht::DhtConfig::default())
+    let mut dht = comms_dht::DhtBuilder::from_comms(&mut comms)
+        .with_config(comms_dht::DhtConfig::default())
         .finish();
 
     //---------------------------------- Inbound Pipeline --------------------------------------------//

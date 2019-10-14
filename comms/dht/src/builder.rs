@@ -25,24 +25,41 @@ use std::sync::Arc;
 use tari_comms::{
     builder::CommsNode,
     peer_manager::{NodeIdentity, PeerManager},
+    shutdown::ShutdownSignal,
 };
+use tokio::runtime::TaskExecutor;
 
 pub struct DhtBuilder {
     node_identity: Arc<NodeIdentity>,
     peer_manager: Arc<PeerManager>,
     config: Option<DhtConfig>,
+    executor: TaskExecutor,
+    shutdown_signal: ShutdownSignal,
 }
 
 impl DhtBuilder {
-    pub fn from_comms(comms: &CommsNode) -> Self {
-        Self::new(comms.node_identity(), comms.peer_manager())
+    pub fn from_comms(comms: &mut CommsNode) -> Self {
+        Self::new(
+            comms.node_identity(),
+            comms.peer_manager(),
+            comms.executor().clone(),
+            comms.new_shutdown_signal(),
+        )
     }
 
-    pub fn new(node_identity: Arc<NodeIdentity>, peer_manager: Arc<PeerManager>) -> Self {
+    pub fn new(
+        node_identity: Arc<NodeIdentity>,
+        peer_manager: Arc<PeerManager>,
+        executor: TaskExecutor,
+        shutdown_signal: ShutdownSignal,
+    ) -> Self
+    {
         Self {
             node_identity,
             peer_manager,
             config: None,
+            executor,
+            shutdown_signal,
         }
     }
 
@@ -52,6 +69,12 @@ impl DhtBuilder {
     }
 
     pub fn finish(self) -> Dht {
-        Dht::new(self.config.unwrap_or_default(), self.node_identity, self.peer_manager)
+        Dht::new(
+            self.config.unwrap_or_default(),
+            self.executor,
+            self.node_identity,
+            self.peer_manager,
+            self.shutdown_signal,
+        )
     }
 }

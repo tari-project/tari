@@ -22,11 +22,12 @@
 
 use self::outbound::OutboundMessageRequester;
 use crate::{
-    envelope::{DhtMessageType, NodeDestination},
+    actor::{DhtActor, DhtRequest, DhtRequester},
+    envelope::DhtMessageType,
     inbound,
-    inbound::{DecryptedDhtMessage, DhtInboundMessage, DiscoverMessage, JoinMessage},
+    inbound::{DecryptedDhtMessage, DhtInboundMessage},
     outbound,
-    outbound::{BroadcastClosestRequest, BroadcastStrategy, DhtOutboundError, DhtOutboundRequest, OutboundEncryption},
+    outbound::DhtOutboundRequest,
     store_forward,
     DhtConfig,
 };
@@ -36,33 +37,66 @@ use std::sync::Arc;
 use tari_comms::{
     message::InboundMessage,
     outbound_message_service::OutboundMessage,
-    peer_manager::{NodeId, NodeIdentity, PeerFeature, PeerManager},
-    types::CommsPublicKey,
+    peer_manager::{NodeIdentity, PeerFeature, PeerManager},
+    shutdown::ShutdownSignal,
 };
 use tari_comms_middleware::MiddlewareError;
+use tokio::runtime::TaskExecutor;
 use tower::{layer::Layer, Service, ServiceBuilder};
 use tower_filter::error::Error as FilterError;
 
-const LOG_TARGET: &'static str = "comms::dht";
-
+/// Responsible for starting the DHT actor, building the DHT middleware stack and as a factory
+/// for producing DHT requesters.
 pub struct Dht {
+    /// Node identity of this node
     node_identity: Arc<NodeIdentity>,
+    /// Comms peer manager
     peer_manager: Arc<PeerManager>,
+    /// Dht configuration
     config: DhtConfig,
+    /// Used to create a OutboundMessageRequester.
     outbound_sender: mpsc::Sender<DhtOutboundRequest>,
+    /// Receiver for DHT outbound requests.
     outbound_receiver: Option<mpsc::Receiver<DhtOutboundRequest>>,
+    /// Sender for DHT requests
+    dht_sender: mpsc::Sender<DhtRequest>,
 }
 
 impl Dht {
-    pub fn new(config: DhtConfig, node_identity: Arc<NodeIdentity>, peer_manager: Arc<PeerManager>) -> Self {
-        let (tx, rx) = mpsc::channel(config.outbound_buffer_size);
-        Self {
+    pub fn new(
+        config: DhtConfig,
+        executor: TaskExecutor,
+        node_identity: Arc<NodeIdentity>,
+        peer_manager: Arc<PeerManager>,
+        shutdown_signal: ShutdownSignal,
+    ) -> Self
+    {
+        let (outbound_sender, outbound_receiver) = mpsc::channel(config.outbound_buffer_size);
+        let (dht_sender, dht_receiver) = mpsc::channel(10);
+
+        let dht = Self {
             node_identity,
             peer_manager,
             config,
-            outbound_sender: tx,
-            outbound_receiver: Some(rx),
-        }
+            outbound_sender,
+            outbound_receiver: Some(outbound_receiver),
+            dht_sender,
+        };
+
+        executor.spawn(dht.actor(dht_receiver, shutdown_signal).start());
+
+        dht
+    }
+
+    /// Create an actor
+    fn actor(&self, request_receiver: mpsc::Receiver<DhtRequest>, shutdown_signal: ShutdownSignal) -> DhtActor {
+        DhtActor::new(
+            self.config.clone(),
+            Arc::clone(&self.node_identity),
+            self.outbound_requester(),
+            request_receiver,
+            shutdown_signal,
+        )
     }
 
     /// Return a new OutboundMessageRequester connected to the receiver
@@ -158,35 +192,6 @@ impl Dht {
             .into_inner()
     }
 
-    pub async fn send_join(&self) -> Result<(), DhtOutboundError> {
-        let message = JoinMessage {
-            node_id: self.node_identity.identity.node_id.clone(),
-            net_addresses: vec![self.node_identity.control_service_address()],
-            peer_features: self.node_identity.features().clone(),
-        };
-
-        debug!(
-            target: LOG_TARGET,
-            "Sending Join message to (at most) {} closest peers", self.config.num_regional_nodes
-        );
-
-        self.outbound_requester()
-            .send_dht_message(
-                BroadcastStrategy::Closest(BroadcastClosestRequest {
-                    n: self.config.num_regional_nodes,
-                    node_id: self.node_identity.identity.node_id.clone(),
-                    excluded_peers: Vec::new(),
-                }),
-                NodeDestination::Undisclosed,
-                OutboundEncryption::None,
-                DhtMessageType::Join,
-                message,
-            )
-            .await?;
-
-        Ok(())
-    }
-
     /// Produces a filter predicate which disallows store and forward messages if that feature is not
     /// supported by the node.
     fn unsupported_saf_messages_filter(
@@ -214,48 +219,8 @@ impl Dht {
         }
     }
 
-    pub async fn send_discover(
-        &self,
-        dest_public_key: CommsPublicKey,
-        dest_node_id: Option<NodeId>,
-        destination: NodeDestination,
-    ) -> Result<(), DhtOutboundError>
-    {
-        let discover_msg = DiscoverMessage {
-            node_id: self.node_identity.identity.node_id.clone(),
-            net_addresses: vec![self.node_identity.control_service_address()],
-            peer_features: self.node_identity.features().clone(),
-        };
-        debug!(
-            target: LOG_TARGET,
-            "Sending Discover message to (at most) {} closest peers", self.config.num_regional_nodes
-        );
-
-        // If the destination node is is known, send to the closest peers we know. Otherwise...
-        let network_location_node_id = dest_node_id.unwrap_or(match &destination {
-            // ... if the destination is undisclosed or a public key, send discover to our closest peers
-            NodeDestination::Undisclosed | NodeDestination::PublicKey(_) => self.node_identity.node_id().clone(),
-            // otherwise, send it to the closest peers to the given NodeId destination we know
-            NodeDestination::NodeId(node_id) => node_id.clone(),
-        });
-
-        let broadcast_strategy = BroadcastStrategy::Closest(BroadcastClosestRequest {
-            n: self.config.num_regional_nodes,
-            node_id: network_location_node_id,
-            excluded_peers: Vec::new(),
-        });
-
-        self.outbound_requester()
-            .send_dht_message(
-                broadcast_strategy,
-                destination,
-                OutboundEncryption::EncryptFor(dest_public_key),
-                DhtMessageType::Discover,
-                discover_msg,
-            )
-            .await?;
-
-        Ok(())
+    pub fn dht_requester(&self) -> DhtRequester {
+        DhtRequester::new(self.dht_sender.clone())
     }
 }
 
@@ -272,11 +237,13 @@ mod test {
             make_peer_manager,
         },
         DhtBuilder,
+        DhtConfig,
     };
     use futures::{channel::mpsc, StreamExt};
     use std::sync::Arc;
     use tari_comms::{
         message::{Message, MessageFlags, MessageHeader},
+        shutdown::Shutdown,
         utils::crypt::{encrypt, generate_ecdh_secret},
     };
     use tari_comms_middleware::sink::SinkMiddleware;
@@ -288,10 +255,16 @@ mod test {
     fn stack_unencrypted() {
         let node_identity = make_node_identity();
         let peer_manager = make_peer_manager();
-
-        let dht = DhtBuilder::new(Arc::clone(&node_identity), peer_manager).finish();
-
         let rt = Runtime::new().unwrap();
+
+        let mut shutdown = Shutdown::new();
+        let dht = DhtBuilder::new(
+            Arc::clone(&node_identity),
+            peer_manager,
+            rt.executor(),
+            shutdown.new_signal(),
+        )
+        .finish();
 
         let (out_tx, mut out_rx) = mpsc::channel(10);
 
@@ -309,6 +282,7 @@ mod test {
             msg.success().unwrap().deserialize_message::<String>().unwrap()
         });
 
+        rt.block_on(shutdown.trigger()).unwrap();
         assert_eq!(msg, "secret");
     }
 
@@ -317,9 +291,15 @@ mod test {
         let node_identity = make_node_identity();
         let peer_manager = make_peer_manager();
 
-        let dht = DhtBuilder::new(Arc::clone(&node_identity), peer_manager).finish();
-
         let rt = Runtime::new().unwrap();
+        let mut shutdown = Shutdown::new();
+        let dht = DhtBuilder::new(
+            Arc::clone(&node_identity),
+            peer_manager,
+            rt.executor(),
+            shutdown.new_signal(),
+        )
+        .finish();
 
         let (out_tx, mut out_rx) = mpsc::channel(10);
 
@@ -340,6 +320,7 @@ mod test {
             msg.success().unwrap().deserialize_message::<String>().unwrap()
         });
 
+        rt.block_on(shutdown.trigger()).unwrap();
         assert_eq!(msg, "secret");
     }
 
@@ -348,7 +329,20 @@ mod test {
         let node_identity = make_node_identity();
         let peer_manager = make_peer_manager();
 
-        let mut dht = DhtBuilder::new(Arc::clone(&node_identity), peer_manager).finish();
+        let rt = Runtime::new().unwrap();
+        let mut shutdown = Shutdown::new();
+        let mut dht = DhtBuilder::new(
+            Arc::clone(&node_identity),
+            peer_manager,
+            rt.executor(),
+            shutdown.new_signal(),
+        )
+        .with_config(DhtConfig {
+            // Do not want to have the auto join interfering by sending on the outbound requester
+            enable_auto_join: false,
+            ..Default::default()
+        })
+        .finish();
 
         let rt = Runtime::new().unwrap();
 
@@ -390,9 +384,15 @@ mod test {
         let node_identity = make_client_identity();
         let peer_manager = make_peer_manager();
 
-        let dht = DhtBuilder::new(Arc::clone(&node_identity), peer_manager).finish();
-
         let rt = Runtime::new().unwrap();
+        let mut shutdown = Shutdown::new();
+        let dht = DhtBuilder::new(
+            Arc::clone(&node_identity),
+            peer_manager,
+            rt.executor(),
+            shutdown.new_signal(),
+        )
+        .finish();
 
         let (next_service_tx, mut next_service_rx) = mpsc::channel(10);
 

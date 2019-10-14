@@ -134,12 +134,11 @@ where
                 request = self.request_rx.select_next_some() => { self.handle_request(request); },
                 // Make progress pending connection tasks
                 () = self.pending_dial_tasks.select_next_some() => { },
-                reply_tx = shutdown_signal => {
+                _guard = shutdown_signal => {
                     info!(
                         target: LOG_TARGET,
                         "Shutting down connection manager actor because the shutdown signal was received",
                     );
-                    let _ = reply_tx.map(|tx| tx.send(()));
                     break;
                 },
                 complete => {

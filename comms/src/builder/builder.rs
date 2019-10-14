@@ -399,6 +399,7 @@ where
 
         Ok(CommsNode {
             connection_manager: self.connection_manager,
+            executor: self.executor,
             shutdown: self.shutdown,
             control_service_handle,
             node_identity: self.node_identity,
@@ -418,17 +419,31 @@ pub struct CommsNode {
     shutdown: Shutdown,
     node_identity: Arc<NodeIdentity>,
     peer_manager: Arc<PeerManager>,
+    executor: TaskExecutor,
 }
 
 impl CommsNode {
+    /// Return a cloned atomic reference of the PeerManager
     pub fn peer_manager(&self) -> Arc<PeerManager> {
         Arc::clone(&self.peer_manager)
     }
 
+    /// Return a cloned atomic reference of the NodeIdentity
     pub fn node_identity(&self) -> Arc<NodeIdentity> {
         Arc::clone(&self.node_identity)
     }
 
+    /// Return a reference to the executor used to run comms tasks
+    pub fn executor(&self) -> &TaskExecutor {
+        &self.executor
+    }
+
+    /// Returns a new `ShutdownSignal`
+    pub fn new_shutdown_signal(&mut self) -> ShutdownSignal {
+        self.shutdown.new_signal()
+    }
+
+    /// Shuts comms down. This function returns an error if any of the services failed to shutdown
     pub async fn shutdown(mut self) -> Result<(), CommsError> {
         info!(target: LOG_TARGET, "Comms is shutting down");
 
