@@ -11,6 +11,8 @@ members = [
     "comms",
     "comms/dht",
     "comms/middleware",
+    # TODO: Remove this once tower filter (0.3.0-alpha.3) is released
+    "comms/middleware/tower-filter",
     "digital_assets_layer/core",
     "infrastructure/broadcast_channel",
     "infrastructure/crypto",

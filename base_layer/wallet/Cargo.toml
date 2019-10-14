@@ -27,10 +27,10 @@ lmdb-zero = "0.4.4"
 #diesel_migrations =  "1.4"
 #diesel = {version="1.4", features = ["sqlite", "serde_json", "chrono", "r2d2"]}
 rand = "0.5.5"
-futures =  { version = "=0.3.0-alpha.18", package = "futures-preview", features =["compat", "std"]}
+futures =  { version = "=0.3.0-alpha.19", package = "futures-preview", features =["compat", "std"]}
 tokio = "0.2.0-alpha.4"
-tower = "0.3.0-alpha.1a"
-tokio-executor = { version ="^0.2.0-alpha.4", features = ["threadpool"] }
+tower = "0.3.0-alpha.2"
+tokio-executor = { version ="^0.2.0-alpha.6", features = ["threadpool"] }
 
 [dev-dependencies]
 env_logger = "0.6.2"

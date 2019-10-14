@@ -48,6 +48,17 @@ pub fn make_node_identity() -> Arc<NodeIdentity> {
     )
 }
 
+pub fn make_client_identity() -> Arc<NodeIdentity> {
+    Arc::new(
+        NodeIdentity::random(
+            &mut OsRng::new().unwrap(),
+            "127.0.0.1:9000".parse().unwrap(),
+            PeerFeatures::communication_client_default(),
+        )
+        .unwrap(),
+    )
+}
+
 pub fn make_comms_inbound_message(
     node_identity: &NodeIdentity,
     message: Vec<u8>,

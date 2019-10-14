@@ -18,12 +18,12 @@ tari_pubsub = { version="^0.0", path="../../infrastructure/pubsub"}
 tari_utilities = { version = "^0.0", path = "../../infrastructure/tari_util"}
 
 derive-error = "0.0.4"
-futures= {version= "0.3.0-alpha.18", package="futures-preview"}
+futures= {version= "0.3.0-alpha.19", package="futures-preview"}
 log = "0.4.8"
 serde = "1.0.90"
 serde_derive = "1.0.90"
-tokio = "0.2.0-alpha.4"
-tower= "0.3.0-alpha.1a"
+tokio = "0.2.0-alpha.6"
+tower= "0.3.0-alpha.2"
 rand = "0.5.5"
 
 [dev-dependencies]

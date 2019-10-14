@@ -10,9 +10,9 @@ edition = "2018"
 
 [dependencies]
 derive-error = "0.0.4"
-futures = { version = "=0.3.0-alpha.18", package = "futures-preview", features=["async-await", "nightly"]}
-tower-service = { version="0.3.0-alpha.1" }
-tokio = "0.2.0-alpha.4"
+futures = { version = "=0.3.0-alpha.19", package = "futures-preview", features=["async-await"]}
+tower-service = { version="0.3.0-alpha.2" }
+tokio = "0.2.0-alpha.6"
 
 [dev-dependencies]
 tari_test_utils = { version = "^0.0", path="../../infrastructure/test_utils" }

@@ -19,7 +19,7 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use futures::{compat::Compat, future, prelude::*, stream::Fuse};
+use futures::{future, prelude::*, stream::Fuse};
 use std::fmt::Debug;
 use tari_broadcast_channel::{bounded, Publisher, Subscriber};
 
@@ -74,11 +74,6 @@ where
             };
             future::ready(result)
         })
-    }
-
-    /// Provide a Compat wrapped version of the subscription stream for things that want to consume old-style streams
-    pub fn get_subscription_compat(&self, topic: T) -> Compat<impl Stream<Item = Result<M, ()>>> {
-        self.get_subscription(topic).map(|i| Ok(i)).compat()
     }
 
     /// Provide a fused version of the subscription stream so that domain modules don't need to know about fuse()
