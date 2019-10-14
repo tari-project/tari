@@ -37,6 +37,7 @@ use tari_comms::{
     message::MessageFlags,
     outbound_message_service::{OutboundMessage, OutboundMessageService},
     peer_manager::{Peer, PeerManager},
+    shutdown::Shutdown,
     types::CommsDatabase,
 };
 use tari_storage::{
@@ -162,13 +163,13 @@ fn outbound_message_pool_no_retry() {
 
     // Setup Node A OMS
     let (outbound_tx, outbound_rx) = mpsc::unbounded();
-    let (shutdown_tx, shutdown_rx) = oneshot::channel();
+    let mut shutdown = Shutdown::new();
     let oms = OutboundMessageService::new(
         Default::default(),
         outbound_rx,
         node_identity,
         node_A_connection_manager_requester,
-        shutdown_rx,
+        shutdown.new_signal(),
     );
     rt.spawn(oms.start());
 
@@ -190,9 +191,7 @@ fn outbound_message_pool_no_retry() {
         .timeout_join(Duration::from_millis(3000))
         .unwrap();
 
-    let (tx, rx) = oneshot::channel();
-    shutdown_tx.send(tx).unwrap();
-    rt.block_on(rx).unwrap();
+    rt.block_on(shutdown.trigger()).unwrap();
 
     clean_up_datastore(&node_A_database_name);
     clean_up_datastore(&node_B_database_name);
@@ -257,20 +256,19 @@ fn test_outbound_message_pool_fail_and_retry() {
         .map(Arc::new)
         .unwrap();
 
-    let (_shutdown_tx, shutdown_rx) = oneshot::channel();
+    let mut shutdown = Shutdown::new();
     let (node_A_connection_manager_requester, node_A_connection_manager_actor) =
-        create_connection_manager_actor(10, node_A_connection_manager, shutdown_rx);
+        create_connection_manager_actor(10, node_A_connection_manager, shutdown.new_signal());
     rt.spawn(node_A_connection_manager_actor.start());
 
     // Setup Node A OMS
     let (outbound_tx, outbound_rx) = mpsc::unbounded();
-    let (shutdown_tx, shutdown_rx) = oneshot::channel();
     let oms = OutboundMessageService::new(
         Default::default(),
         outbound_rx,
         node_A_identity,
         node_A_connection_manager_requester,
-        shutdown_rx,
+        shutdown.new_signal(),
     );
     rt.spawn(oms.start());
 
@@ -321,9 +319,7 @@ fn test_outbound_message_pool_fail_and_retry() {
         .timeout_join(Duration::from_millis(3000))
         .unwrap();
 
-    let (tx, rx) = oneshot::channel();
-    shutdown_tx.send(tx).unwrap();
-    rt.block_on(rx).unwrap();
+    rt.block_on(shutdown.trigger()).unwrap();
 
     clean_up_datastore(&database_name);
 }

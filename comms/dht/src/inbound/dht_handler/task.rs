@@ -165,9 +165,19 @@ where
                 self.config.num_regional_nodes,
             )?
         {
+            trace!(
+                target: LOG_TARGET,
+                "Sending Join to joining peer with public key '{}'",
+                origin_peer.public_key
+            );
             self.send_join_direct(origin_peer.public_key).await?;
         }
 
+        trace!(
+            target: LOG_TARGET,
+            "Propagating join message to at most {} peer(s)",
+            self.config.num_regional_nodes
+        );
         // Propagate message to closer peers
         self.outbound_service
             .forward_message(

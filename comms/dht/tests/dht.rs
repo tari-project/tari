@@ -82,7 +82,7 @@ fn setup_comms_dht(
     let (inbound_tx, inbound_rx) = mpsc::channel(10);
     let (outbound_tx, outbound_rx) = mpsc::channel(10);
 
-    let comms = CommsBuilder::new(executor.clone())
+    let mut comms = CommsBuilder::new(executor.clone())
         .with_peer_storage(storage)
         .with_inbound_sink(inbound_tx)
         .with_outbound_stream(outbound_rx)
@@ -101,7 +101,7 @@ fn setup_comms_dht(
         .unwrap();
 
     // Create a channel for outbound requests
-    let mut dht = DhtBuilder::from_comms(&comms)
+    let mut dht = DhtBuilder::from_comms(&mut comms)
         .with_config(DhtConfig::default())
         .finish();
 
@@ -137,7 +137,7 @@ fn setup_comms_dht(
 #[test]
 #[allow(non_snake_case)]
 fn dht_join_propagation() {
-    runtime::run(|rt| {
+    runtime::test_async(|rt| {
         // Create 3 nodes where only Node B knows A and C, but A and C want to talk to each other
         let node_A_identity = new_node_identity("127.0.0.1:11113".parse().unwrap());
         let node_B_identity = new_node_identity("127.0.0.1:11114".parse().unwrap());
@@ -172,7 +172,7 @@ fn dht_join_propagation() {
             // Send a join request from Node A, through B to C. As all Nodes are in the same network region, once
             // Node C receives the join request from Node A, it will send a direct join request back
             // to A.
-            node_A_dht.send_join().await.unwrap();
+            node_A_dht.dht_requester().send_join().await.unwrap();
 
             let node_A_peer_manager = node_A_comms.peer_manager();
             let node_A_node_identity = node_A_comms.node_identity();
@@ -222,7 +222,7 @@ fn dht_discover_propagation() {
     let node_C_identity = new_node_identity("127.0.0.1:11118".parse().unwrap());
     let node_D_identity = new_node_identity("127.0.0.1:11119".parse().unwrap());
 
-    runtime::run(|rt| {
+    runtime::test_async(|rt| {
         // Node A knows about Node B
         let (tx, ims_rx_A) = mpsc::channel(1);
         let (node_A_comms, node_A_dht) = setup_comms_dht(
@@ -261,6 +261,7 @@ fn dht_discover_propagation() {
             // receives the discover request from Node A, it should send a direct join
             // request back to A.
             node_A_dht
+                .dht_requester()
                 .send_discover(
                     node_D_identity.identity.public_key.clone(),
                     None,

@@ -113,6 +113,7 @@ mod macros;
 #[macro_use]
 mod test_utils;
 
+mod actor;
 mod builder;
 mod config;
 mod consts;

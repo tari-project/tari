@@ -198,10 +198,9 @@ where TMsgStream: Stream<Item = OutboundMessage> + Unpin
                     }
                 },
 
-                ready_signal = shutdown_signal => {
+                _guard = shutdown_signal => {
                     info!(target: LOG_TARGET, "Outbound message service shutting because the shutdown signal was received.");
                     self.cancel_pending_connection_attempts();
-                    let _ = ready_signal.map(|tx| tx.send(()));
                     break;
                 }
 
@@ -413,6 +412,7 @@ mod test {
         connection_manager::actor::ConnectionManagerRequest,
         message::MessageFlags,
         peer_manager::PeerFeatures,
+        shutdown::Shutdown,
         test_utils::node_id,
     };
     use futures::{channel::mpsc, stream, SinkExt};
@@ -431,14 +431,14 @@ mod test {
         let conn_manager = ConnectionManagerRequester::new(conn_man_tx);
 
         let node_identity = Arc::new(NodeIdentity::random_for_test(None, PeerFeatures::default()));
-        let (shutdown_tx, shutdown_rx) = oneshot::channel();
+        let mut shutdown = Shutdown::new();
 
         let service = OutboundMessageService::new(
             OutboundServiceConfig::default(),
             new_message_rx,
             node_identity,
             conn_manager,
-            shutdown_rx,
+            shutdown.new_signal(),
         );
         rt.spawn(service.start());
 
@@ -514,9 +514,7 @@ mod test {
         assert!(conn_man_rx.try_next().is_err());
 
         // Abort pending connections and shutdown the service
-        let (tx, rx) = oneshot::channel();
-        shutdown_tx.send(tx).unwrap();
-        rt.block_on(rx).unwrap();
+        rt.block_on(shutdown.trigger()).unwrap();
         rt.shutdown_on_idle();
     }
 
