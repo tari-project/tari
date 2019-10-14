@@ -20,26 +20,29 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-//! The Tari base node implementation.
-//!
-//! Base nodes are the key pieces of infrastructure that maintain the security and integrity of the Tari
-//! cryptocurrency. The role of the base node is to provide the following services:
-//! * New transaction validation
-//! * New block validation
-//! * Chain synchronisation service
-//! * A gRPC API exposing metrics and data about the blockchain state
-//!
-//! More details about the implementation are presented in
-//! [RFC-0111](https://rfc.tari.com/RFC-0111_BaseNodeArchitecture.html).
+use crate::{
+    base_node::comms_interface::{error::CommsInterfaceError, NodeCommsRequest, NodeCommsResponse},
+    chain_storage::ChainMetadata,
+};
+use tari_service_framework::reply_channel::SenderService;
+use tower_service::Service;
 
-mod base_node;
-mod comms_interface;
-mod config;
-#[cfg(test)]
-mod test;
+/// The OutboundNodeCommsInterface provides an interface to request information from remove nodes.
+pub struct OutboundNodeCommsInterface {
+    sender: SenderService<NodeCommsRequest, Result<NodeCommsResponse, CommsInterfaceError>>,
+}
 
-pub mod states;
+impl OutboundNodeCommsInterface {
+    /// Construct a new OutboundNodeCommsInterface with the specified SenderService.
+    pub fn new(sender: SenderService<NodeCommsRequest, Result<NodeCommsResponse, CommsInterfaceError>>) -> Self {
+        Self { sender }
+    }
 
-// Public re-exports
-pub use base_node::BaseNodeStateMachine;
-pub use config::BaseNodeConfig;
+    /// Request metadata from remote base nodes.
+    pub async fn get_metadata(&mut self) -> Result<Vec<ChainMetadata>, CommsInterfaceError> {
+        match self.sender.call(NodeCommsRequest::GetChainMetadata).await?? {
+            NodeCommsResponse::ChainMetadata(v) => Ok(v),
+            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+        }
+    }
+}
