@@ -24,7 +24,6 @@ use crate::{
     connection::PeerConnection,
     connection_manager::{dialer::Dialer, ConnectionManagerError},
     peer_manager::NodeId,
-    shutdown::ShutdownSignal,
 };
 use futures::{
     channel::{mpsc, oneshot},
@@ -35,6 +34,7 @@ use futures::{
 };
 use log::*;
 use std::sync::Arc;
+use tari_shutdown::ShutdownSignal;
 
 const LOG_TARGET: &'static str = "comms::dialer::actor";
 
@@ -182,6 +182,7 @@ where
 mod test {
     use super::*;
     use crate::test_utils::dialers::CountDialer;
+    use tari_shutdown::Shutdown;
     use tokio::runtime::current_thread;
 
     #[test]
@@ -215,8 +216,8 @@ mod test {
         let mut rt = current_thread::Runtime::new().unwrap();
 
         let dialer = Arc::new(CountDialer::<NodeId>::new());
-        let (_shutdown_tx, shutdown_rx) = oneshot::channel();
-        let (mut requester, service) = create(1, Arc::clone(&dialer), shutdown_rx);
+        let shutdown = Shutdown::new();
+        let (mut requester, service) = create(1, Arc::clone(&dialer), shutdown.to_signal());
 
         rt.spawn(service.start());
 

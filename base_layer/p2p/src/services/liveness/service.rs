@@ -39,10 +39,6 @@ use tari_service_framework::RequestContext;
 
 const LOG_TARGET: &'static str = "tari_p2p::services::liveness";
 
-/// Convenience type alias for a request receiver which receives LivenessRequests and sends back
-/// a Result.
-// type LivenessRequestRx = Receiver<LivenessRequest, Result<LivenessResponse, LivenessError>>;
-
 /// Service responsible for testing Liveness for Peers.
 ///
 /// Very basic global ping and pong counter stats are implemented. In future,

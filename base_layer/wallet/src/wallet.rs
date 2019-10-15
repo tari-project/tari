@@ -23,7 +23,10 @@
 // use crate::text_message_service::{handle::TextMessageHandle, TextMessageServiceInitializer};
 use derive_error::Error;
 use std::sync::Arc;
-use tari_comms::{builder::CommsNode, types::CommsPublicKey};
+use tari_comms::{
+    builder::{CommsError, CommsNode},
+    types::CommsPublicKey,
+};
 use tari_comms_dht::Dht;
 use tari_p2p::{
     comms_connector::pubsub_connector,
@@ -39,6 +42,7 @@ use tokio::runtime::Runtime;
 #[derive(Debug, Error)]
 pub enum WalletError {
     CommsInitializationError(CommsInitializationError),
+    CommsError(CommsError),
 }
 
 #[derive(Clone)]
@@ -96,8 +100,8 @@ impl Wallet {
 
     // This method consumes the wallet so that the handles are dropped which will result in the services async loops
     // exiting.
-    pub fn shutdown(self) -> Result<(), WalletError> {
-        let _ = self.comms_service.shutdown();
+    pub async fn shutdown(self) -> Result<(), WalletError> {
+        self.comms_service.shutdown().await?;
         Ok(())
     }
 }

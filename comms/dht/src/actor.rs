@@ -51,9 +51,9 @@ use log::*;
 use std::sync::Arc;
 use tari_comms::{
     peer_manager::{NodeId, NodeIdentity},
-    shutdown::ShutdownSignal,
     types::CommsPublicKey,
 };
+use tari_shutdown::ShutdownSignal;
 
 const LOG_TARGET: &'static str = "comms::dht::actor";
 
@@ -300,7 +300,7 @@ impl DhtActor {
 mod test {
     use super::*;
     use crate::test_utils::make_node_identity;
-    use tari_comms::shutdown::Shutdown;
+    use tari_shutdown::Shutdown;
     use tari_test_utils::runtime;
 
     #[test]
@@ -310,13 +310,13 @@ mod test {
             let (out_tx, mut out_rx) = mpsc::channel(1);
             let (_actor_tx, actor_rx) = mpsc::channel(1);
             let outbound_requester = OutboundMessageRequester::new(out_tx);
-            let mut shutdown = Shutdown::new();
+            let shutdown = Shutdown::new();
             let actor = DhtActor::new(
                 DhtConfig::default(),
                 node_identity,
                 outbound_requester,
                 actor_rx,
-                shutdown.new_signal(),
+                shutdown.to_signal(),
             );
 
             rt.spawn(actor.start());
@@ -326,7 +326,6 @@ mod test {
                 assert_eq!(request.dht_message_type, DhtMessageType::Join);
                 let request = unwrap_oms_send_msg!(out_rx.next().await.unwrap());
                 assert_eq!(request.dht_message_type, DhtMessageType::SAFRequestMessages);
-                shutdown.trigger().await.unwrap();
             });
         });
     }
@@ -339,7 +338,7 @@ mod test {
             let (actor_tx, actor_rx) = mpsc::channel(1);
             let mut requester = DhtRequester::new(actor_tx);
             let outbound_requester = OutboundMessageRequester::new(out_tx);
-            let mut shutdown = Shutdown::new();
+            let shutdown = Shutdown::new();
             let actor = DhtActor::new(
                 DhtConfig {
                     enable_auto_join: false,
@@ -349,7 +348,7 @@ mod test {
                 node_identity,
                 outbound_requester,
                 actor_rx,
-                shutdown.new_signal(),
+                shutdown.to_signal(),
             );
 
             rt.spawn(actor.start());
@@ -358,7 +357,6 @@ mod test {
                 requester.send_join().await.unwrap();
                 let request = unwrap_oms_send_msg!(out_rx.next().await.unwrap());
                 assert_eq!(request.dht_message_type, DhtMessageType::Join);
-                shutdown.trigger().await.unwrap();
             });
         });
     }
@@ -371,7 +369,7 @@ mod test {
             let (actor_tx, actor_rx) = mpsc::channel(1);
             let mut requester = DhtRequester::new(actor_tx);
             let outbound_requester = OutboundMessageRequester::new(out_tx);
-            let mut shutdown = Shutdown::new();
+            let shutdown = Shutdown::new();
             let actor = DhtActor::new(
                 DhtConfig {
                     enable_auto_join: false,
@@ -381,7 +379,7 @@ mod test {
                 node_identity,
                 outbound_requester,
                 actor_rx,
-                shutdown.new_signal(),
+                shutdown.to_signal(),
             );
 
             rt.spawn(actor.start());
@@ -393,7 +391,6 @@ mod test {
                     .unwrap();
                 let request = unwrap_oms_send_msg!(out_rx.next().await.unwrap());
                 assert_eq!(request.dht_message_type, DhtMessageType::Discover);
-                shutdown.trigger().await.unwrap();
             });
         });
     }

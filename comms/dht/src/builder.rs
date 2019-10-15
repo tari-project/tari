@@ -25,8 +25,8 @@ use std::sync::Arc;
 use tari_comms::{
     builder::CommsNode,
     peer_manager::{NodeIdentity, PeerManager},
-    shutdown::ShutdownSignal,
 };
+use tari_shutdown::ShutdownSignal;
 use tokio::runtime::TaskExecutor;
 
 pub struct DhtBuilder {
