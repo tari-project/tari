@@ -30,4 +30,3 @@ path = "examples/async-simple.rs"
 [[bench]]
 name = "benches_main"
 harness = false
-

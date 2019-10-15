@@ -41,7 +41,7 @@ tari_test_utils = { version = "^0.0", path="../../infrastructure/test_utils" }
 clap = "2.33.0"
 cursive = "0.12.0"
 env_logger = "0.6.2"
-futures-test = { version = "0.3.0-alpha.18", package = "futures-test-preview" }
+futures-test = { version = "0.3.0-alpha.19", package = "futures-test-preview" }
 futures-timer = "0.3.0"
 lazy_static = "1.3.0"
 stream-cancel = "0.4.4"
