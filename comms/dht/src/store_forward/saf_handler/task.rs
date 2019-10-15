@@ -22,7 +22,7 @@
 
 use crate::{
     config::DhtConfig,
-    envelope::{DhtMessageType, NodeDestination},
+    envelope::{DhtMessageFlags, DhtMessageType, NodeDestination},
     inbound::{DecryptedDhtMessage, DhtInboundMessage},
     outbound::{BroadcastStrategy, OutboundEncryption, OutboundMessageRequester},
     store_forward::{
@@ -263,27 +263,59 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = MiddlewareError>
     {
         let node_identity = Arc::clone(&self.node_identity);
         let peer_manager = Arc::clone(&self.peer_manager);
+        let config = self.config.clone();
         blocking::run(move || {
-            Self::check_destination(&node_identity, &message)?;
-            // Check signature
+            // Check that the destination is either undisclosed
+            Self::check_destination(&config, &peer_manager, &node_identity, &message)?;
+            // Verify the signature
             Self::check_signature(&message)?;
-            // Decrypt
+            // Check the DhtMessageFlags - should indicate that the message is encrypted
+            Self::check_flags(&message)?;
+            // TODO: Check a shared message signature cache to remove possible duplicates
+
+            // Attempt to decrypt the message
             let decrypted_message = Self::try_decrypt(&node_identity, &message)?;
 
+            // TODO: We may not know the peer. The following line rejects these messages,
+            //       however we may want to accept (some?) messages from unknown peers
             let peer = peer_manager.find_with_public_key(&message.dht_header.origin_public_key)?;
 
-            let inbound_msg = DhtInboundMessage::new(message.dht_header, peer, message.comms_header, vec![]);
+            let inbound_msg =
+                DhtInboundMessage::new(message.dht_header, peer, message.comms_header, message.encrypted_body);
 
             Ok(DecryptedDhtMessage::succeeded(decrypted_message, inbound_msg))
         })
     }
 
-    fn check_destination(node_identity: &NodeIdentity, msg: &StoredMessage) -> Result<(), StoreAndForwardError> {
+    fn check_flags(msg: &StoredMessage) -> Result<(), StoreAndForwardError> {
+        match msg.dht_header.flags.contains(DhtMessageFlags::ENCRYPTED) {
+            true => Ok(()),
+            false => Err(StoreAndForwardError::StoredMessageNotEncrypted),
+        }
+    }
+
+    fn check_destination(
+        config: &DhtConfig,
+        peer_manager: &PeerManager,
+        node_identity: &NodeIdentity,
+        msg: &StoredMessage,
+    ) -> Result<(), StoreAndForwardError>
+    {
         Some(&msg.dht_header.destination)
             .filter(|destination| match destination {
                 NodeDestination::Undisclosed => true,
                 NodeDestination::PublicKey(pk) => node_identity.public_key() == pk,
-                NodeDestination::NodeId(node_id) => node_identity.node_id() == node_id,
+                NodeDestination::NodeId(node_id) => {
+                    // Pass this check if the node id equals ours or is in this node's region
+                    if node_identity.node_id() == node_id {
+                        return true;
+                    }
+
+                    peer_manager
+                        .in_network_region(node_identity.node_id(), node_id, config.num_regional_nodes)
+                        .or(Result::<_, ()>::Ok(false))
+                        .expect("cannot fail")
+                },
             })
             .map(|_| ())
             .ok_or(StoreAndForwardError::InvalidDestination)
@@ -316,9 +348,9 @@ mod test {
         envelope::DhtMessageFlags,
         test_utils::{make_dht_inbound_message, make_node_identity, make_peer_manager, service_spy},
     };
-    use bitflags::_core::time::Duration;
     use chrono::Utc;
     use futures::channel::mpsc;
+    use std::time::Duration;
     use tari_comms::message::MessageHeader;
     use tari_test_utils::runtime;
 

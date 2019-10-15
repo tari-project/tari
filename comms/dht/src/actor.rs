@@ -37,6 +37,7 @@ use crate::{
         OutboundEncryption,
         OutboundMessageRequester,
     },
+    store_forward::StoredMessagesRequest,
     DhtConfig,
 };
 use futures::{
@@ -133,6 +134,23 @@ impl DhtActor {
                     error!(
                         target: LOG_TARGET,
                         "Failed to send join message on startup because '{}'", err
+                    );
+                },
+            }
+        }
+
+        if self.config.enable_auto_stored_message_request {
+            match self.request_stored_messages().await {
+                Ok(_) => {
+                    trace!(
+                        target: LOG_TARGET,
+                        "Stored message request has been sent to closest peers",
+                    );
+                },
+                Err(err) => {
+                    error!(
+                        target: LOG_TARGET,
+                        "Failed to send stored message on startup because '{}'", err
                     );
                 },
             }
@@ -254,6 +272,28 @@ impl DhtActor {
 
         Ok(())
     }
+
+    async fn request_stored_messages(&mut self) -> Result<(), DhtOutboundError> {
+        let broadcast_strategy = BroadcastStrategy::Closest(BroadcastClosestRequest {
+            n: self.config.num_regional_nodes,
+            node_id: self.node_identity.node_id().clone(),
+            excluded_peers: Vec::new(),
+        });
+
+        self.outbound_requester
+            .send_dht_message(
+                broadcast_strategy,
+                NodeDestination::Undisclosed,
+                OutboundEncryption::EncryptForDestination,
+                DhtMessageType::SAFRequestMessages,
+                // TODO: We should track when this node last requested stored messages and ask
+                //       for messages after that date
+                StoredMessagesRequest::new(),
+            )
+            .await?;
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -264,7 +304,7 @@ mod test {
     use tari_test_utils::runtime;
 
     #[test]
-    fn send_join_on_start() {
+    fn auto_messages() {
         runtime::test_async(|rt| {
             let node_identity = make_node_identity();
             let (out_tx, mut out_rx) = mpsc::channel(1);
@@ -284,6 +324,8 @@ mod test {
             rt.block_on(async move {
                 let request = unwrap_oms_send_msg!(out_rx.next().await.unwrap());
                 assert_eq!(request.dht_message_type, DhtMessageType::Join);
+                let request = unwrap_oms_send_msg!(out_rx.next().await.unwrap());
+                assert_eq!(request.dht_message_type, DhtMessageType::SAFRequestMessages);
                 shutdown.trigger().await.unwrap();
             });
         });
@@ -301,6 +343,7 @@ mod test {
             let actor = DhtActor::new(
                 DhtConfig {
                     enable_auto_join: false,
+                    enable_auto_stored_message_request: false,
                     ..Default::default()
                 },
                 node_identity,
@@ -332,6 +375,7 @@ mod test {
             let actor = DhtActor::new(
                 DhtConfig {
                     enable_auto_join: false,
+                    enable_auto_stored_message_request: false,
                     ..Default::default()
                 },
                 node_identity,

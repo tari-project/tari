@@ -340,6 +340,7 @@ mod test {
         .with_config(DhtConfig {
             // Do not want to have the auto join interfering by sending on the outbound requester
             enable_auto_join: false,
+            enable_auto_stored_message_request: false,
             ..Default::default()
         })
         .finish();
