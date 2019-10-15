@@ -37,7 +37,7 @@ tari_test_utils = {path="../infrastructure/test_utils"}
 criterion = "0.2"
 rand = "0.5.5"
 env_logger = "0.7.0"
-futures-test = { version = "0.3.0-alpha.18", package = "futures-test-preview" }
+futures-test = { version = "0.3.0-alpha.19", package = "futures-test-preview" }
 serde_json = "1.0.39"
 tari_common = { path = "../common", version = "^0.0" }
 tokio-mock-task = "0.1.1"
