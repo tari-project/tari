@@ -50,7 +50,7 @@ pub fn setup_liveness_service(
     let subscription_factory = Arc::new(subscription_factory);
     let (comms, dht) = setup_comms_services(runtime.executor(), Arc::new(node_identity.clone()), peers, publisher);
 
-    let fut = StackBuilder::new(runtime.executor())
+    let fut = StackBuilder::new(runtime.executor(), comms.shutdown_signal())
         .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))
         .add_initializer(LivenessInitializer::new(Arc::clone(&subscription_factory)))
         .finish();

@@ -111,7 +111,7 @@ pub use self::{
     dialer::Dialer,
     error::ConnectionManagerError,
     establisher::PeerConnectionConfig,
-    manager::ConnectionManager,
+    manager::{ConnectionManager, ConnectionManagerDialer},
 };
 
 type Result<T> = std::result::Result<T, ConnectionManagerError>;

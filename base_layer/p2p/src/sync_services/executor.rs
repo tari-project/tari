@@ -284,7 +284,7 @@ mod test {
         services.shutdown().unwrap();
         services.join_timeout(Duration::from_millis(100)).unwrap();
 
-        rt.block_on(comms_node.shutdown()).unwrap();
+        comms_node.shutdown().unwrap();
 
         {
             let lock = acquire_read_lock!(state);

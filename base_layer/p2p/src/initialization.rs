@@ -25,10 +25,7 @@ use crate::{
     tari_message::TariMessageType,
 };
 use derive_error::Error;
-use futures::{
-    channel::{mpsc, oneshot},
-    Sink,
-};
+use futures::{channel::mpsc, Sink};
 use std::{error::Error, net::IpAddr, sync::Arc};
 use tari_comms::{
     builder::{CommsBuilderError, CommsError, CommsNode},
@@ -101,9 +98,6 @@ where
     let (inbound_tx, inbound_rx) = mpsc::channel(config.inbound_buffer_size);
     let (outbound_tx, outbound_rx) = mpsc::channel(config.outbound_buffer_size);
 
-    let (inbound_pipeline_signal, inbound_pipeline_rx) = oneshot::channel();
-    let (outbound_pipeline_signal, outbound_pipeline_rx) = oneshot::channel();
-
     let mut comms = CommsBuilder::new(executor.clone())
         .with_node_identity(config.node_identity)
         .with_peer_storage(peer_database)
@@ -114,10 +108,6 @@ where
             socks_proxy_address: config.socks_proxy_address,
             host: config.host,
             ..Default::default()
-        })
-        .on_shutdown(move || {
-            let _ = inbound_pipeline_signal.send(());
-            let _ = outbound_pipeline_signal.send(());
         })
         .build()
         .map_err(CommsInitializationError::CommsBuilderError)?
@@ -140,7 +130,7 @@ where
             .layer(dht.inbound_middleware_layer())
             .service(connector),
     )
-    .with_shutdown_signal(inbound_pipeline_rx)
+    .with_shutdown_signal(comms.shutdown_signal())
     .spawn_with(executor.clone());
 
     //---------------------------------- Outbound Pipeline --------------------------------------------//
@@ -154,7 +144,7 @@ where
             .layer(dht.outbound_middleware_layer())
             .service(SinkMiddleware::new(outbound_tx)),
     )
-    .with_shutdown_signal(outbound_pipeline_rx)
+    .with_shutdown_signal(comms.shutdown_signal())
     .spawn_with(executor);
 
     Ok((comms, dht))

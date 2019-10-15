@@ -37,12 +37,10 @@ use cursive::{
     Cursive,
 };
 use futures::{
-    channel::{mpsc, oneshot},
-    future::FutureExt,
-    stream::StreamExt,
+    channel::mpsc,
+    stream::{FusedStream, StreamExt},
     Stream,
 };
-use futures_timer::Interval;
 use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
 use std::{
     fs,
@@ -60,10 +58,14 @@ use tari_p2p::{
     initialization::{initialize_comms, CommsConfig},
     services::{
         comms_outbound::CommsOutboundServiceInitializer,
-        liveness::{handle::LivenessHandle, LivenessInitializer},
+        liveness::{
+            handle::{LivenessEvent, LivenessHandle},
+            LivenessInitializer,
+        },
     },
 };
 use tari_service_framework::StackBuilder;
+use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_utilities::message_format::MessageFormat;
 use tempdir::TempDir;
 use tokio::runtime::Runtime;
@@ -139,9 +141,7 @@ fn main() {
     let (publisher, subscription_factory) = pubsub_connector(rt.executor(), 100);
     let subscription_factory = Arc::new(subscription_factory);
 
-    let (comms, dht) = initialize_comms(rt.executor(), comms_config, publisher)
-        .map(|(comms, dht)| (Arc::new(comms), dht))
-        .unwrap();
+    let (comms, dht) = initialize_comms(rt.executor(), comms_config, publisher).unwrap();
 
     let peer = Peer::new(
         peer_identity.identity.public_key.clone(),
@@ -152,7 +152,7 @@ fn main() {
     );
     comms.peer_manager().add_peer(peer).unwrap();
 
-    let fut = StackBuilder::new(rt.executor())
+    let fut = StackBuilder::new(rt.executor(), comms.shutdown_signal())
         .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))
         .add_initializer(LivenessInitializer::new(Arc::clone(&subscription_factory)))
         .finish();
@@ -164,8 +164,12 @@ fn main() {
     // Updates the UI when pings/pongs are received
     let ui_update_signal = app.cb_sink().clone();
     let liveness_handle = handles.get_handle::<LivenessHandle>().unwrap();
-    let (ui_shutdown_tx, shutdown_rx) = oneshot::channel();
-    rt.spawn(update_ui(ui_update_signal, liveness_handle.clone(), shutdown_rx));
+    let mut shutdown = Shutdown::new();
+    rt.spawn(update_ui(
+        ui_update_signal,
+        liveness_handle.clone(),
+        shutdown.to_signal(),
+    ));
 
     // Send pings when 'p' is pressed
     let (mut send_ping_tx, send_ping_rx) = mpsc::channel(10);
@@ -176,20 +180,21 @@ fn main() {
     let ui_update_signal = app.cb_sink().clone();
     let pk_to_ping = peer_identity.identity.public_key.clone();
     rt.spawn(send_ping_on_trigger(
-        send_ping_rx,
+        send_ping_rx.fuse(),
         ui_update_signal,
         liveness_handle,
         pk_to_ping,
+        shutdown.to_signal(),
     ));
 
     app.add_global_callback('q', |s| s.quit());
     app.run();
-    ui_shutdown_tx.send(()).unwrap();
 
-    let comms = Arc::try_unwrap(comms).map_err(|_| ()).unwrap();
-    rt.block_on(comms.shutdown()).unwrap();
-    //    rt.shutdown_on_idle();
+    shutdown.trigger().unwrap();
+    comms.shutdown().unwrap();
+    rt.shutdown_on_idle();
 }
+
 fn setup_ui() -> Cursive {
     let mut app = Cursive::default();
 
@@ -208,34 +213,38 @@ lazy_static! {
 }
 type CursiveSignal = crossbeam_channel::Sender<Box<dyn CbFunc>>;
 
-async fn update_ui(
-    update_sink: CursiveSignal,
-    mut liveness_handle: LivenessHandle,
-    shutdown_rx: oneshot::Receiver<()>,
-)
-{
-    // TODO: This should ideally be a stream of events which we subscribe to here
-    let mut shutdown_rx = shutdown_rx.fuse();
-    let mut interval = Interval::new(Duration::from_millis(100)).fuse();
+async fn update_ui(update_sink: CursiveSignal, mut liveness_handle: LivenessHandle, mut shutdown: ShutdownSignal) {
+    let mut event_stream = liveness_handle.get_event_stream_fused();
+    let ping_count = liveness_handle.get_ping_count().await.unwrap_or(0);
+    let pong_count = liveness_handle.get_pong_count().await.unwrap_or(0);
+
+    {
+        let mut lock = COUNTER_STATE.write().unwrap();
+        *lock = (lock.0, ping_count, pong_count);
+    }
+    let _ = update_sink.send(Box::new(update_count));
+
     loop {
         ::futures::select! {
-            _ = interval.next() => {
+        event = event_stream.select_next_some() => {
+            match *event {
+                LivenessEvent::ReceivedPing => {
+                    {
+                        let mut lock = COUNTER_STATE.write().unwrap();
+                        *lock = (lock.0, lock.1 + 1, lock.2);
+                    }
+                },
+                LivenessEvent::ReceivedPong => {
+                    {
+                        let mut lock = COUNTER_STATE.write().unwrap();
+                        *lock = (lock.0, lock.1, lock.2 + 1);
+                    }
+                },
+            }
 
-                let ping_count = liveness_handle.get_ping_count().await;
-                let pong_count = liveness_handle.get_pong_count().await;
-
-                match (ping_count.unwrap(), pong_count.unwrap()) {
-                    (num_pings, num_pongs) => {
-                        {
-                            let mut lock = COUNTER_STATE.write().unwrap();
-                            *lock = (lock.0, num_pings, num_pongs);
-                        }
-                        let _ = update_sink.send(Box::new(update_count));
-                    },
-                    _ => {},
-                }
-            },
-            _ = shutdown_rx =>  {
+            let _ = update_sink.send(Box::new(update_count));
+        },
+            _ = shutdown =>  {
                 log::debug!("Ping pong example UI exiting");
                 break;
             }
@@ -243,20 +252,28 @@ async fn update_ui(
     }
 }
 async fn send_ping_on_trigger(
-    mut send_ping_trigger: impl Stream<Item = ()> + Unpin,
+    mut send_ping_trigger: impl Stream<Item = ()> + FusedStream + Unpin,
     update_signal: CursiveSignal,
     mut liveness_handle: LivenessHandle,
     pk_to_ping: CommsPublicKey,
+    mut shutdown: ShutdownSignal,
 )
 {
-    while let Some(_) = send_ping_trigger.next().await {
-        liveness_handle.send_ping(pk_to_ping.clone()).await.unwrap();
+    loop {
+        futures::select! {
+            _ = send_ping_trigger.next() => {
+                liveness_handle.send_ping(pk_to_ping.clone()).await.unwrap();
 
-        {
-            let mut lock = COUNTER_STATE.write().unwrap();
-            *lock = (lock.0 + 1, lock.1, lock.2);
+                {
+                    let mut lock = COUNTER_STATE.write().unwrap();
+                    *lock = (lock.0 + 1, lock.1, lock.2);
+                }
+                update_signal.send(Box::new(update_count)).unwrap();
+            },
+            _ = shutdown => {
+                break;
+            }
         }
-        update_signal.send(Box::new(update_count)).unwrap();
     }
 }
 fn update_count(s: &mut Cursive) {

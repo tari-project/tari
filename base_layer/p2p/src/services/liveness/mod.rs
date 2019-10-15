@@ -52,6 +52,7 @@ use crate::{
     tari_message::{NetMessage, TariMessageType},
 };
 use futures::{future, Future, Stream, StreamExt};
+use log::*;
 use std::sync::Arc;
 use tari_broadcast_channel::bounded;
 use tari_comms_dht::outbound::OutboundMessageRequester;
@@ -62,7 +63,10 @@ use tari_service_framework::{
     ServiceInitializationError,
     ServiceInitializer,
 };
+use tari_shutdown::ShutdownSignal;
 use tokio::runtime::TaskExecutor;
+
+const LOG_TARGET: &'static str = "p2p::services::liveness";
 
 /// Initializer for the Liveness service handle and service future.
 pub struct LivenessInitializer {
@@ -95,7 +99,13 @@ impl LivenessInitializer {
 impl ServiceInitializer for LivenessInitializer {
     type Future = impl Future<Output = Result<(), ServiceInitializationError>>;
 
-    fn initialize(&mut self, executor: TaskExecutor, handles_fut: ServiceHandlesFuture) -> Self::Future {
+    fn initialize(
+        &mut self,
+        executor: TaskExecutor,
+        handles_fut: ServiceHandlesFuture,
+        shutdown: ShutdownSignal,
+    ) -> Self::Future
+    {
         let (sender, receiver) = reply_channel::unbounded();
 
         let (publisher, subscriber) = bounded(100);
@@ -119,8 +129,10 @@ impl ServiceInitializer for LivenessInitializer {
             let state = Arc::new(LivenessState::new());
 
             // Spawn the Liveness service on the executor
-            let service = LivenessService::new(receiver, ping_stream, state, outbound_handle, publisher);
-            service.run().await;
+            let service = LivenessService::new(receiver, ping_stream, state, outbound_handle, publisher).run();
+            futures::pin_mut!(service);
+            future::select(service, shutdown).await;
+            debug!(target: LOG_TARGET, "Liveness service has shut down");
         });
 
         future::ready(Ok(()))

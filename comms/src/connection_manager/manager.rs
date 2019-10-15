@@ -36,7 +36,7 @@ use crate::{
     message::FrameSet,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerManager},
 };
-use futures::channel::mpsc::Sender;
+use futures::{channel::mpsc::Sender, Future};
 use log::*;
 use std::{
     collections::HashMap,
@@ -45,6 +45,7 @@ use std::{
     time::Duration,
 };
 use tari_utilities::thread_join::thread_join::ThreadJoinWithTimeout;
+use tokio_executor::blocking;
 
 const LOG_TARGET: &str = "comms::connection_manager::manager";
 
@@ -354,27 +355,56 @@ impl ConnectionManager {
     }
 }
 
-impl Dialer<Peer> for ConnectionManager {
-    type Error = ConnectionManagerError;
-    type Output = Arc<PeerConnection>;
+#[derive(Clone)]
+pub struct ConnectionManagerDialer {
+    inner: Arc<ConnectionManager>,
+}
 
-    type Future = impl std::future::Future<Output = Result<Self::Output>>;
-
-    fn dial(&self, peer: &Peer) -> Self::Future {
-        // TODO: This is synchronous until we can make connection manager fully async
-        futures::future::ready(self.establish_connection_to_peer(peer))
+impl ConnectionManagerDialer {
+    pub fn new(connection_manager: Arc<ConnectionManager>) -> Self {
+        Self {
+            inner: connection_manager,
+        }
     }
 }
 
-impl Dialer<NodeId> for ConnectionManager {
+impl From<Arc<ConnectionManager>> for ConnectionManagerDialer {
+    fn from(connection_manager: Arc<ConnectionManager>) -> Self {
+        Self {
+            inner: connection_manager,
+        }
+    }
+}
+
+impl Dialer<Peer> for ConnectionManagerDialer {
     type Error = ConnectionManagerError;
     type Output = Arc<PeerConnection>;
 
-    type Future = impl std::future::Future<Output = Result<Self::Output>>;
+    type Future = impl Future<Output = Result<Self::Output>>;
+
+    fn dial(&self, peer: &Peer) -> Self::Future {
+        let inner = Arc::clone(&self.inner);
+        let peer = peer.clone();
+        blocking::run(move || {
+            // TODO: This is synchronous until we can make connection manager fully async
+            inner.establish_connection_to_peer(&peer)
+        })
+    }
+}
+
+impl Dialer<NodeId> for ConnectionManagerDialer {
+    type Error = ConnectionManagerError;
+    type Output = Arc<PeerConnection>;
+
+    type Future = impl Future<Output = Result<Self::Output>>;
 
     fn dial(&self, node_id: &NodeId) -> Self::Future {
-        // TODO: This is synchronous until we can make connection manager fully async
-        futures::future::ready(self.establish_connection_to_node_id(node_id))
+        let inner = Arc::clone(&self.inner);
+        let node_id = node_id.clone();
+        blocking::run(move || {
+            // TODO: This is synchronous until we can make connection manager fully async
+            inner.establish_connection_to_node_id(&node_id)
+        })
     }
 }
 

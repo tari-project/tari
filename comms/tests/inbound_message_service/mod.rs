@@ -28,10 +28,11 @@ use futures::{channel::mpsc, SinkExt, StreamExt};
 use std::sync::Arc;
 use tari_comms::{
     connection::NetAddress,
-    inbound_message_service::inbound_message_service::InboundMessagePipeline,
+    inbound_message_service::inbound_message_service::InboundMessageService,
     message::{FrameSet, MessageData, MessageEnvelope, MessageFlags},
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
 };
+use tari_shutdown::Shutdown;
 use tari_storage::LMDBWrapper;
 use tokio::runtime::Runtime;
 
@@ -98,24 +99,20 @@ fn smoke_test() {
     sent_messages.push(body);
     rt.block_on(async {
         inbound_message_sink_tx.send(msg_body.clone()).await.unwrap();
-    });
-    // Send it twice to check the duplicate rejection is working
-    rt.block_on(async {
+        // Send it twice to check the duplicate rejection is working
         inbound_message_sink_tx.send(msg_body).await.unwrap();
     });
 
-    // This means that the pipeline run() future will read the message_sink stream until it is empty and because the
-    // stream has completed the run function will return. If you don't do this the run will block waiting for the next
-    // message to arrive on the stream
-    drop(inbound_message_sink_tx);
-
     // Construct Pipeline
     let (inbound_tx, inbound_rx) = mpsc::channel(100);
-    let inbound_message_service = InboundMessagePipeline::new(inbound_message_sink_rx, inbound_tx, peer_manager);
+    let shutdown = Shutdown::new();
+    let inbound_message_service =
+        InboundMessageService::new(inbound_message_sink_rx, inbound_tx, peer_manager, shutdown.to_signal());
 
-    rt.block_on(inbound_message_service.run());
+    rt.spawn(inbound_message_service.run());
 
-    let messages = rt.block_on(inbound_rx.collect::<Vec<_>>());
+    let num_messages = sent_messages.len();
+    let messages = rt.block_on(inbound_rx.take(num_messages as u64).collect::<Vec<_>>());
 
     assert_eq!(messages.len(), sent_messages.len());
     for i in 0..sent_messages.len() {

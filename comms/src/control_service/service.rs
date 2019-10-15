@@ -109,7 +109,7 @@ pub struct ControlServiceHandle {
 impl ControlServiceHandle {
     /// Send a [ControlMessage::Shutdown] message to the worker thread.
     pub fn shutdown(&self) -> Result<()> {
-        warn!(target: LOG_TARGET, "CONTROL SERVICE SHUTDOWN");
+        warn!(target: LOG_TARGET, "Sending control service shutdown message");
         self.sender
             .send(ControlMessage::Shutdown)
             .map_err(|_| ControlServiceError::ControlMessageSendFailed)

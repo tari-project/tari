@@ -16,14 +16,14 @@ appenders:
 
 # Set the default logging level to "debug" and attach the "base_layer" appender to the root
 root:
-  level: debug
+  level: trace
   appenders:
     - pingpong
 
 loggers:
   # Route log events sent to the "comms" logger to the "network" appender
   comms:
-    level: debug
+    level: trace
     appenders:
       - network
     additive: false

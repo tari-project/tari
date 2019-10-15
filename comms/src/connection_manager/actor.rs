@@ -27,13 +27,13 @@ use crate::{
 };
 use futures::{
     channel::{mpsc, oneshot},
-    future::{BoxFuture, FutureExt},
+    future::{self, BoxFuture, Either, FutureExt},
     sink::SinkExt,
     stream::{FusedStream, FuturesUnordered, StreamExt},
     Stream,
 };
 use log::*;
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 use tari_shutdown::ShutdownSignal;
 
 const LOG_TARGET: &'static str = "comms::dialer::actor";
@@ -43,7 +43,7 @@ const LOG_TARGET: &'static str = "comms::dialer::actor";
 /// make requests to the started ConnectionManagerService.
 pub fn create<TDialer>(
     buffer_size: usize,
-    dialer: Arc<TDialer>,
+    dialer: TDialer,
     shutdown_signal: ShutdownSignal,
 ) -> (
     ConnectionManagerRequester,
@@ -97,20 +97,22 @@ impl ConnectionManagerRequester {
 ///
 /// Responsible for executing connection requests.
 pub struct ConnectionManagerActor<TDialer, TStream> {
-    dialer: Arc<TDialer>,
+    dialer: TDialer,
     pending_dial_tasks: FuturesUnordered<BoxFuture<'static, ()>>,
     request_rx: TStream,
     shutdown_signal: Option<ShutdownSignal>,
+    dial_cancel_signals: HashMap<NodeId, oneshot::Sender<()>>,
 }
 
 impl<TDialer, TStream> ConnectionManagerActor<TDialer, TStream> {
     /// Create a new ConnectionManagerActor
-    pub fn new(dialer: Arc<TDialer>, request_rx: TStream, shutdown_signal: ShutdownSignal) -> Self {
+    pub fn new(dialer: TDialer, request_rx: TStream, shutdown_signal: ShutdownSignal) -> Self {
         Self {
             dialer,
             request_rx,
             pending_dial_tasks: FuturesUnordered::new(),
             shutdown_signal: Some(shutdown_signal),
+            dial_cancel_signals: HashMap::new(),
         }
     }
 }
@@ -118,8 +120,9 @@ impl<TDialer, TStream> ConnectionManagerActor<TDialer, TStream> {
 impl<TDialer, TStream> ConnectionManagerActor<TDialer, TStream>
 where
     TStream: Stream<Item = ConnectionManagerRequest> + FusedStream + Unpin,
-    TDialer: Dialer<NodeId, Output = Arc<PeerConnection>, Error = ConnectionManagerError> + Send + Sync + 'static,
-    TDialer::Future: Send,
+    TDialer:
+        Dialer<NodeId, Output = Arc<PeerConnection>, Error = ConnectionManagerError> + Clone + Send + Sync + 'static,
+    TDialer::Future: Send + Unpin,
 {
     /// Start the connection manager actor
     pub async fn start(mut self) {
@@ -128,17 +131,20 @@ where
             .take()
             .expect("ConnectionManagerActor initialized without shutdown signal")
             .fuse();
+
         loop {
             ::futures::select! {
                 // Handle requests to the ConnectionManagerActor
-                request = self.request_rx.select_next_some() => { self.handle_request(request); },
+                request = self.request_rx.select_next_some() => self.handle_request(request),
+
                 // Make progress pending connection tasks
-                () = self.pending_dial_tasks.select_next_some() => { },
-                _guard = shutdown_signal => {
+                _ = self.pending_dial_tasks.select_next_some() => { },
+                _ = shutdown_signal => {
                     info!(
                         target: LOG_TARGET,
                         "Shutting down connection manager actor because the shutdown signal was received",
                     );
+                    self.cancel_pending_connection_attempts();
                     break;
                 },
                 complete => {
@@ -152,22 +158,38 @@ where
         }
     }
 
+    fn cancel_pending_connection_attempts(&mut self) {
+        self.dial_cancel_signals
+            .drain()
+            .filter_map(|(_, cancel_tx)| if cancel_tx.is_canceled() { None } else { Some(cancel_tx) })
+            .for_each(|cancel_tx| {
+                let _ = cancel_tx.send(());
+            });
+    }
+
     fn handle_request(&mut self, request: ConnectionManagerRequest) {
         match request {
             ConnectionManagerRequest::DialPeer(boxed) => {
                 let (node_id, reply_tx) = *boxed;
-                let dialer = Arc::clone(&self.dialer);
+                let dialer = self.dialer.clone();
+                let (cancel_tx, cancel_rx) = oneshot::channel();
+                self.dial_cancel_signals.insert(node_id.clone(), cancel_tx);
 
                 let connect_future = async move {
-                    let result = dialer.dial(&node_id).await;
-
-                    match reply_tx.send(result) {
-                        Ok(_) => {},
-                        Err(_msg) => {
-                            error!(
-                                target: LOG_TARGET,
-                                "Unable to send connection result back to requester. Request was cancelled.",
-                            );
+                    let either = future::select(dialer.dial(&node_id), cancel_rx).await;
+                    match either {
+                        Either::Left((result, _)) => match reply_tx.send(result) {
+                            Ok(_) => {},
+                            Err(_msg) => {
+                                error!(
+                                    target: LOG_TARGET,
+                                    "Unable to send connection result back to requester. Request was cancelled.",
+                                );
+                            },
+                        },
+                        // Cancel resolved first
+                        Either::Right((_, _)) => {
+                            trace!(target: LOG_TARGET, "Pending dial request cancelled",);
                         },
                     }
                 };
@@ -215,9 +237,9 @@ mod test {
     fn connection_manager_service_calls_dialer() {
         let mut rt = current_thread::Runtime::new().unwrap();
 
-        let dialer = Arc::new(CountDialer::<NodeId>::new());
+        let dialer = CountDialer::<NodeId>::new();
         let shutdown = Shutdown::new();
-        let (mut requester, service) = create(1, Arc::clone(&dialer), shutdown.to_signal());
+        let (mut requester, service) = create(1, dialer.clone(), shutdown.to_signal());
 
         rt.spawn(service.start());
 

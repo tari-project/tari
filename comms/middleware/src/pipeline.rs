@@ -20,18 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use futures::{
-    channel::oneshot,
-    future,
-    future::Either,
-    stream::FusedStream,
-    FutureExt,
-    Stream,
-    StreamExt,
-    TryFutureExt,
-};
+use futures::{future, future::Either, stream::FusedStream, FutureExt, Stream, StreamExt, TryFutureExt};
 use log::*;
 use std::fmt::Debug;
+use tari_shutdown::ShutdownSignal;
 use tokio::runtime::TaskExecutor;
 use tower::{Service, ServiceExt};
 
@@ -44,7 +36,7 @@ const LOG_TARGET: &'static str = "comms::middleware::pipeline";
 pub struct ServicePipeline<TSvc, TStream> {
     service: TSvc,
     stream: TStream,
-    shutdown_signal: Option<oneshot::Receiver<()>>,
+    shutdown_signal: Option<ShutdownSignal>,
 }
 
 impl<TSvc, TStream> ServicePipeline<TSvc, TStream>
@@ -63,7 +55,7 @@ where
         }
     }
 
-    pub fn with_shutdown_signal(mut self, shutdown_signal: oneshot::Receiver<()>) -> Self {
+    pub fn with_shutdown_signal(mut self, shutdown_signal: ShutdownSignal) -> Self {
         self.shutdown_signal = Some(shutdown_signal);
         self
     }

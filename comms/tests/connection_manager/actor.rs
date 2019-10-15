@@ -28,7 +28,12 @@ use futures::channel::mpsc;
 use std::{sync::Arc, time::Duration};
 use tari_comms::{
     connection::ZmqContext,
-    connection_manager::{create_connection_manager_actor, ConnectionManager, ConnectionManagerError},
+    connection_manager::{
+        create_connection_manager_actor,
+        ConnectionManager,
+        ConnectionManagerDialer,
+        ConnectionManagerError,
+    },
     control_service::{messages::RejectReason, ControlService, ControlServiceConfig},
     message::FrameSet,
     peer_manager::{NodeIdentity, Peer, PeerManager},
@@ -153,10 +158,10 @@ fn with_alice_and_bob(cb: impl FnOnce(CommsTestNode, CommsTestNode)) {
 
     cb(alice.clone(), bob.clone());
 
-    alice_control_service.shutdown().unwrap();
+    let _ = alice_control_service.shutdown();
     alice_control_service.timeout_join(Duration::from_millis(1000)).unwrap();
 
-    bob_control_service.shutdown().unwrap();
+    let _ = bob_control_service.shutdown();
     bob_control_service.timeout_join(Duration::from_millis(1000)).unwrap();
 
     match Arc::try_unwrap(alice.connection_manager) {
@@ -177,8 +182,11 @@ fn establish_connection_simple() {
     with_alice_and_bob(|alice, bob| {
         let rt = Runtime::new().unwrap();
         let shutdown = Shutdown::new();
-        let (mut requester, service) =
-            create_connection_manager_actor(1, alice.connection_manager, shutdown.to_signal());
+        let (mut requester, service) = create_connection_manager_actor(
+            1,
+            ConnectionManagerDialer::new(alice.connection_manager),
+            shutdown.to_signal(),
+        );
 
         rt.spawn(service.start());
 
@@ -194,12 +202,18 @@ fn establish_connection_simultaneous_connect() {
     with_alice_and_bob(|alice, bob| {
         let rt = Runtime::new().unwrap();
         let shutdown = Shutdown::new();
-        let (requester_alice, service) =
-            create_connection_manager_actor(1, Arc::clone(&alice.connection_manager), shutdown.to_signal());
+        let (requester_alice, service) = create_connection_manager_actor(
+            1,
+            ConnectionManagerDialer::new(Arc::clone(&alice.connection_manager)),
+            shutdown.to_signal(),
+        );
         rt.spawn(service.start());
 
-        let (requester_bob, service) =
-            create_connection_manager_actor(1, Arc::clone(&bob.connection_manager), shutdown.to_signal());
+        let (requester_bob, service) = create_connection_manager_actor(
+            1,
+            ConnectionManagerDialer::new(Arc::clone(&bob.connection_manager)),
+            shutdown.to_signal(),
+        );
         bob.peer_manager.add_peer(alice.peer.clone()).unwrap();
         rt.spawn(service.start());
 
