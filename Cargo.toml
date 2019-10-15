@@ -17,6 +17,7 @@ members = [
     "infrastructure/broadcast_channel",
     "infrastructure/crypto",
     "infrastructure/pubsub",
+    "infrastructure/shutdown",
     "infrastructure/storage",
     "infrastructure/test_utils",
     "applications/tari_testnet_miner",

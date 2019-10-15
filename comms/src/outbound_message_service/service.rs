@@ -27,7 +27,6 @@ use crate::{
     message::{MessageEnvelope, MessageEnvelopeHeader},
     outbound_message_service::{error::OutboundServiceError, messages::OutboundMessage, OutboundServiceConfig},
     peer_manager::{NodeId, NodeIdentity},
-    shutdown::ShutdownSignal,
     types::MESSAGE_PROTOCOL_VERSION,
     utils::signature,
 };
@@ -46,6 +45,7 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
+use tari_shutdown::ShutdownSignal;
 use tari_utilities::message_format::MessageFormat;
 use tokio::timer;
 
@@ -412,11 +412,11 @@ mod test {
         connection_manager::actor::ConnectionManagerRequest,
         message::MessageFlags,
         peer_manager::PeerFeatures,
-        shutdown::Shutdown,
         test_utils::node_id,
     };
     use futures::{channel::mpsc, stream, SinkExt};
     use std::convert::TryFrom;
+    use tari_shutdown::Shutdown;
     use tokio::runtime::Runtime;
 
     #[test]
@@ -438,7 +438,7 @@ mod test {
             new_message_rx,
             node_identity,
             conn_manager,
-            shutdown.new_signal(),
+            shutdown.to_signal(),
         );
         rt.spawn(service.start());
 
@@ -514,7 +514,7 @@ mod test {
         assert!(conn_man_rx.try_next().is_err());
 
         // Abort pending connections and shutdown the service
-        rt.block_on(shutdown.trigger()).unwrap();
+        shutdown.trigger().unwrap();
         rt.shutdown_on_idle();
     }
 

@@ -34,13 +34,13 @@ use crate::{
     message::{FrameSet, InboundMessage},
     outbound_message_service::{OutboundMessage, OutboundMessageService, OutboundServiceConfig, OutboundServiceError},
     peer_manager::{NodeIdentity, PeerManager, PeerManagerError},
-    shutdown::{Shutdown, ShutdownSignal},
     types::CommsDatabase,
 };
 use derive_error::Error;
 use futures::{channel::mpsc, stream, Sink, Stream};
 use log::*;
-use std::{fmt::Debug, sync::Arc, time::Duration};
+use std::{fmt::Debug, sync::Arc};
+use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::runtime::TaskExecutor;
 
 const LOG_TARGET: &str = "comms::builder";
@@ -309,19 +309,19 @@ where
             peer_connection_message_sender,
         );
 
-        let mut shutdown = Shutdown::new().with_timeout(Duration::from_secs(5));
+        let mut shutdown = Shutdown::new();
 
         if let Some(on_shutdown) = self.on_shutdown.take() {
             shutdown.on_triggered(on_shutdown);
         }
 
         let (connection_manager_requester, connection_manager_actor) =
-            self.make_connection_manager_actor(Arc::clone(&connection_manager), shutdown.new_signal());
+            self.make_connection_manager_actor(Arc::clone(&connection_manager), shutdown.to_signal());
 
         let outbound_message_service = self.make_outbound_message_service(
             Arc::clone(&node_identity),
             connection_manager_requester.clone(),
-            shutdown.new_signal(),
+            shutdown.to_signal(),
         );
 
         //---------------------------------- Inbound message pipeline --------------------------------------------//
@@ -440,7 +440,7 @@ impl CommsNode {
 
     /// Returns a new `ShutdownSignal`
     pub fn new_shutdown_signal(&mut self) -> ShutdownSignal {
-        self.shutdown.new_signal()
+        self.shutdown.to_signal()
     }
 
     /// Shuts comms down. This function returns an error if any of the services failed to shutdown
@@ -453,7 +453,6 @@ impl CommsNode {
         shutdown_results.push(
             self.shutdown
                 .trigger()
-                .await
                 .map_err(|_| CommsError::FailedSendShutdownSignals),
         );
 

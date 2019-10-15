@@ -24,11 +24,7 @@ use crate::support::{
     factories::{self, TestFactory},
     helpers::streams::stream_assert_count,
 };
-use futures::{
-    channel::{mpsc, oneshot},
-    SinkExt,
-    StreamExt,
-};
+use futures::{channel::mpsc, SinkExt, StreamExt};
 use std::{fs, path::PathBuf, sync::Arc, thread, time::Duration};
 use tari_comms::{
     connection::ZmqContext,
@@ -37,9 +33,9 @@ use tari_comms::{
     message::MessageFlags,
     outbound_message_service::{OutboundMessage, OutboundMessageService},
     peer_manager::{Peer, PeerManager},
-    shutdown::Shutdown,
     types::CommsDatabase,
 };
+use tari_shutdown::Shutdown;
 use tari_storage::{
     lmdb_store::{LMDBBuilder, LMDBError, LMDBStore},
     LMDBWrapper,
@@ -98,6 +94,7 @@ fn outbound_message_pool_no_retry() {
     let rt = Runtime::new().unwrap();
     let context = ZmqContext::new();
     let node_identity = Arc::new(factories::node_identity::create().build().unwrap());
+    let shutdown = Shutdown::new();
 
     //---------------------------------- Node B Setup --------------------------------------------//
     let node_B_control_port_address = factories::net_address::create().build().unwrap();
@@ -133,9 +130,8 @@ fn outbound_message_pool_no_retry() {
     .serve(Arc::clone(&node_B_connection_manager))
     .unwrap();
 
-    let (_shutdown_tx, shutdown_rx) = oneshot::channel();
     let (_, node_B_connection_manager_actor) =
-        create_connection_manager_actor(10, node_B_connection_manager, shutdown_rx);
+        create_connection_manager_actor(10, node_B_connection_manager, shutdown.to_signal());
     rt.spawn(node_B_connection_manager_actor.start());
 
     //---------------------------------- Node A setup --------------------------------------------//
@@ -156,9 +152,8 @@ fn outbound_message_pool_no_retry() {
             .unwrap(),
     );
 
-    let (_shutdown_tx, shutdown_rx) = oneshot::channel();
     let (node_A_connection_manager_requester, node_A_connection_manager_actor) =
-        create_connection_manager_actor(10, node_A_connection_manager, shutdown_rx);
+        create_connection_manager_actor(10, node_A_connection_manager, shutdown.to_signal());
     rt.spawn(node_A_connection_manager_actor.start());
 
     // Setup Node A OMS
@@ -169,7 +164,7 @@ fn outbound_message_pool_no_retry() {
         outbound_rx,
         node_identity,
         node_A_connection_manager_requester,
-        shutdown.new_signal(),
+        shutdown.to_signal(),
     );
     rt.spawn(oms.start());
 
@@ -191,7 +186,7 @@ fn outbound_message_pool_no_retry() {
         .timeout_join(Duration::from_millis(3000))
         .unwrap();
 
-    rt.block_on(shutdown.trigger()).unwrap();
+    shutdown.trigger().unwrap();
 
     clean_up_datastore(&node_A_database_name);
     clean_up_datastore(&node_B_database_name);
@@ -258,7 +253,7 @@ fn test_outbound_message_pool_fail_and_retry() {
 
     let mut shutdown = Shutdown::new();
     let (node_A_connection_manager_requester, node_A_connection_manager_actor) =
-        create_connection_manager_actor(10, node_A_connection_manager, shutdown.new_signal());
+        create_connection_manager_actor(10, node_A_connection_manager, shutdown.to_signal());
     rt.spawn(node_A_connection_manager_actor.start());
 
     // Setup Node A OMS
@@ -268,7 +263,7 @@ fn test_outbound_message_pool_fail_and_retry() {
         outbound_rx,
         node_A_identity,
         node_A_connection_manager_requester,
-        shutdown.new_signal(),
+        shutdown.to_signal(),
     );
     rt.spawn(oms.start());
 
@@ -319,7 +314,7 @@ fn test_outbound_message_pool_fail_and_retry() {
         .timeout_join(Duration::from_millis(3000))
         .unwrap();
 
-    rt.block_on(shutdown.trigger()).unwrap();
+    shutdown.trigger().unwrap();
 
     clean_up_datastore(&database_name);
 }

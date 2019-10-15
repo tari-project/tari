@@ -38,9 +38,9 @@ use tari_comms::{
     message::InboundMessage,
     outbound_message_service::OutboundMessage,
     peer_manager::{NodeIdentity, PeerFeature, PeerManager},
-    shutdown::ShutdownSignal,
 };
 use tari_comms_middleware::MiddlewareError;
+use tari_shutdown::ShutdownSignal;
 use tokio::runtime::TaskExecutor;
 use tower::{layer::Layer, Service, ServiceBuilder};
 use tower_filter::error::Error as FilterError;
@@ -243,10 +243,10 @@ mod test {
     use std::sync::Arc;
     use tari_comms::{
         message::{Message, MessageFlags, MessageHeader},
-        shutdown::Shutdown,
         utils::crypt::{encrypt, generate_ecdh_secret},
     };
     use tari_comms_middleware::sink::SinkMiddleware;
+    use tari_shutdown::Shutdown;
     use tari_utilities::message_format::MessageFormat;
     use tokio::runtime::Runtime;
     use tower::{layer::Layer, Service};
@@ -257,12 +257,12 @@ mod test {
         let peer_manager = make_peer_manager();
         let rt = Runtime::new().unwrap();
 
-        let mut shutdown = Shutdown::new();
+        let shutdown = Shutdown::new();
         let dht = DhtBuilder::new(
             Arc::clone(&node_identity),
             peer_manager,
             rt.executor(),
-            shutdown.new_signal(),
+            shutdown.to_signal(),
         )
         .finish();
 
@@ -282,7 +282,6 @@ mod test {
             msg.success().unwrap().deserialize_message::<String>().unwrap()
         });
 
-        rt.block_on(shutdown.trigger()).unwrap();
         assert_eq!(msg, "secret");
     }
 
@@ -292,12 +291,12 @@ mod test {
         let peer_manager = make_peer_manager();
 
         let rt = Runtime::new().unwrap();
-        let mut shutdown = Shutdown::new();
+        let shutdown = Shutdown::new();
         let dht = DhtBuilder::new(
             Arc::clone(&node_identity),
             peer_manager,
             rt.executor(),
-            shutdown.new_signal(),
+            shutdown.to_signal(),
         )
         .finish();
 
@@ -320,7 +319,6 @@ mod test {
             msg.success().unwrap().deserialize_message::<String>().unwrap()
         });
 
-        rt.block_on(shutdown.trigger()).unwrap();
         assert_eq!(msg, "secret");
     }
 
@@ -330,12 +328,12 @@ mod test {
         let peer_manager = make_peer_manager();
 
         let rt = Runtime::new().unwrap();
-        let mut shutdown = Shutdown::new();
+        let shutdown = Shutdown::new();
         let mut dht = DhtBuilder::new(
             Arc::clone(&node_identity),
             peer_manager,
             rt.executor(),
-            shutdown.new_signal(),
+            shutdown.to_signal(),
         )
         .with_config(DhtConfig {
             // Do not want to have the auto join interfering by sending on the outbound requester
@@ -386,12 +384,12 @@ mod test {
         let peer_manager = make_peer_manager();
 
         let rt = Runtime::new().unwrap();
-        let mut shutdown = Shutdown::new();
+        let shutdown = Shutdown::new();
         let dht = DhtBuilder::new(
             Arc::clone(&node_identity),
             peer_manager,
             rt.executor(),
-            shutdown.new_signal(),
+            shutdown.to_signal(),
         )
         .finish();
 

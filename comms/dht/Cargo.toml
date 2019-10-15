@@ -15,6 +15,7 @@ edition = "2018"
 tari_comms = { version = "^0.0", path = "../"}
 tari_crypto = { version = "^0.0", path = "../../infrastructure/crypto"}
 tari_utilities = { version = "^0.0", path = "../../infrastructure/tari_util"}
+tari_shutdown = { version = "^0.0", path = "../../infrastructure/shutdown"}
 tari_comms_middleware = { version = "^0.0", path = "../middleware"}
 
 bitflags = "1.2.0"

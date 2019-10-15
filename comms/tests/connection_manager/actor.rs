@@ -24,7 +24,7 @@ use crate::support::{
     factories::{self, TestFactory},
     helpers::database::{clean_up_datastore, init_datastore},
 };
-use futures::channel::{mpsc, oneshot};
+use futures::channel::mpsc;
 use std::{sync::Arc, time::Duration};
 use tari_comms::{
     connection::ZmqContext,
@@ -33,6 +33,7 @@ use tari_comms::{
     message::FrameSet,
     peer_manager::{NodeIdentity, Peer, PeerManager},
 };
+use tari_shutdown::Shutdown;
 use tari_storage::LMDBWrapper;
 use tari_test_utils::random;
 use tokio::runtime::Runtime;
@@ -175,8 +176,9 @@ fn with_alice_and_bob(cb: impl FnOnce(CommsTestNode, CommsTestNode)) {
 fn establish_connection_simple() {
     with_alice_and_bob(|alice, bob| {
         let rt = Runtime::new().unwrap();
-        let (_shutdown_tx, shutdown_rx) = oneshot::channel();
-        let (mut requester, service) = create_connection_manager_actor(1, alice.connection_manager, shutdown_rx);
+        let shutdown = Shutdown::new();
+        let (mut requester, service) =
+            create_connection_manager_actor(1, alice.connection_manager, shutdown.to_signal());
 
         rt.spawn(service.start());
 
@@ -191,15 +193,13 @@ fn establish_connection_simple() {
 fn establish_connection_simultaneous_connect() {
     with_alice_and_bob(|alice, bob| {
         let rt = Runtime::new().unwrap();
-        //        let mut pool = ThreadPool::new().unwrap();
-        let (_alice_shutdown_tx, alice_shutdown_rx) = oneshot::channel();
+        let shutdown = Shutdown::new();
         let (requester_alice, service) =
-            create_connection_manager_actor(1, Arc::clone(&alice.connection_manager), alice_shutdown_rx);
+            create_connection_manager_actor(1, Arc::clone(&alice.connection_manager), shutdown.to_signal());
         rt.spawn(service.start());
 
-        let (_bob_shutdown_tx, bob_shutdown_rx) = oneshot::channel();
         let (requester_bob, service) =
-            create_connection_manager_actor(1, Arc::clone(&bob.connection_manager), bob_shutdown_rx);
+            create_connection_manager_actor(1, Arc::clone(&bob.connection_manager), shutdown.to_signal());
         bob.peer_manager.add_peer(alice.peer.clone()).unwrap();
         rt.spawn(service.start());
 
