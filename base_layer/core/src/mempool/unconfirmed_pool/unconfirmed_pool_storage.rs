@@ -74,7 +74,7 @@ impl UnconfirmedPoolStorage {
     /// capacity is reached and the new transaction has a higher priority than the currently stored lowest priority
     /// transaction.
     pub fn insert(&mut self, tx: Arc<Transaction>) -> Result<(), UnconfirmedPoolError> {
-        let tx_key = tx.body.kernels[0].excess_sig.clone();
+        let tx_key = tx.body.kernels()[0].excess_sig.clone();
         if !self.txs_by_signature.contains_key(&tx_key) {
             let prioritized_tx = PrioritizedTransaction::try_from((*tx).clone())?;
             if self.txs_by_signature.len() >= self.config.storage_capacity {
@@ -135,8 +135,8 @@ impl UnconfirmedPoolStorage {
     fn discard_double_spends(&mut self, published_block: &Block) {
         let mut removed_tx_keys: Vec<Signature> = Vec::new();
         for (tx_key, ptx) in self.txs_by_signature.iter() {
-            for input in &ptx.transaction.body.inputs {
-                if published_block.body.inputs.contains(input) {
+            for input in ptx.transaction.body.inputs() {
+                if published_block.body.inputs().contains(input) {
                     self.txs_by_priority.remove(&ptx.priority);
                     removed_tx_keys.push(tx_key.clone());
                 }
@@ -151,7 +151,7 @@ impl UnconfirmedPoolStorage {
     /// Remove all published transactions from the UnconfirmedPoolStorage and discard double spends
     pub fn remove_published_and_discard_double_spends(&mut self, published_block: &Block) -> Vec<Arc<Transaction>> {
         let mut removed_txs: Vec<Arc<Transaction>> = Vec::new();
-        published_block.body.kernels.iter().for_each(|kernel| {
+        published_block.body.kernels().iter().for_each(|kernel| {
             if let Some(ptx) = self.txs_by_signature.get(&kernel.excess_sig) {
                 self.txs_by_priority.remove(&ptx.priority);
                 removed_txs.push(self.txs_by_signature.remove(&kernel.excess_sig).unwrap().transaction);

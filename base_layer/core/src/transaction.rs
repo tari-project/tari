@@ -584,7 +584,7 @@ impl Transaction {
 
     /// Returns the byte size or weight of a transaction
     pub fn calculate_weight(&self) -> u64 {
-        Fee::calculate_weight(self.body.inputs.len(), self.body.outputs.len())
+        Fee::calculate_weight(self.body.inputs().len(), self.body.outputs().len())
     }
 
     /// Returns the total fee allocated to each byte of the transaction
@@ -594,7 +594,7 @@ impl Transaction {
 
     /// Returns the minimum maturity of the input UTXOs
     pub fn min_input_maturity(&self) -> u64 {
-        self.body.inputs.iter().fold(std::u64::MAX, |min_maturity, input| {
+        self.body.inputs().iter().fold(std::u64::MAX, |min_maturity, input| {
             min(min_maturity, input.features.maturity)
         })
     }
@@ -602,7 +602,7 @@ impl Transaction {
     /// Returns the maximum maturity of the input UTXOs
     pub fn max_input_maturity(&self) -> u64 {
         self.body
-            .inputs
+            .inputs()
             .iter()
             .fold(0, |max_maturity, input| max(max_maturity, input.features.maturity))
     }
@@ -610,7 +610,7 @@ impl Transaction {
     /// Returns the height of the maximum time-lock restriction calculated from the transaction lock_height and the
     /// maturity of the input UTXOs.
     pub fn max_timelock_height(&self) -> u64 {
-        max(self.body.kernels[0].lock_height, self.max_input_maturity())
+        max(self.body.kernels()[0].lock_height, self.max_input_maturity())
     }
 }
 
@@ -669,7 +669,8 @@ impl TransactionBuilder {
     ) -> Result<Transaction, TransactionError>
     {
         if let Some(offset) = self.offset {
-            let tx = Transaction::new(self.body.inputs, self.body.outputs, self.body.kernels, offset);
+            let (i, o, k) = self.body.dissolve();
+            let tx = Transaction::new(i, o, k, offset);
             tx.validate_internal_consistency(prover, factory)?;
             Ok(tx)
         } else {

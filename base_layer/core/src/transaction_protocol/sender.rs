@@ -536,11 +536,11 @@ mod test {
         assert!(alice.is_finalized());
         let tx = alice.get_transaction().unwrap();
         assert_eq!(tx.offset, a.offset);
-        assert_eq!(tx.body.kernels[0].fee, fee + MicroTari(10)); // Check the twist above
-        assert_eq!(tx.body.inputs.len(), 1);
-        assert_eq!(tx.body.inputs[0], utxo);
-        assert_eq!(tx.body.outputs.len(), 1);
-        assert_eq!(tx.body.outputs[0], bob_info.output);
+        assert_eq!(tx.body.kernels()[0].fee, fee + MicroTari(10)); // Check the twist above
+        assert_eq!(tx.body.inputs().len(), 1);
+        assert_eq!(tx.body.inputs()[0], utxo);
+        assert_eq!(tx.body.outputs().len(), 1);
+        assert_eq!(tx.body.outputs()[0], bob_info.output);
     }
 
     #[test]
@@ -603,10 +603,10 @@ mod test {
         assert!(alice.is_finalized());
         let tx = alice.get_transaction().unwrap();
         assert_eq!(tx.offset, a.offset);
-        assert_eq!(tx.body.kernels[0].fee, fee);
-        assert_eq!(tx.body.inputs.len(), 1);
-        assert_eq!(tx.body.inputs[0], utxo);
-        assert_eq!(tx.body.outputs.len(), 2);
+        assert_eq!(tx.body.kernels()[0].fee, fee);
+        assert_eq!(tx.body.inputs().len(), 1);
+        assert_eq!(tx.body.inputs()[0], utxo);
+        assert_eq!(tx.body.outputs().len(), 2);
         assert!(tx
             .clone()
             .validate_internal_consistency(&PROVER, &COMMITMENT_FACTORY)

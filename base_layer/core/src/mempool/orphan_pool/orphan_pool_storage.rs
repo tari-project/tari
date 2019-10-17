@@ -57,7 +57,7 @@ where T: BlockchainBackend
     /// Insert a new transaction into the OrphanPoolStorage. Orphaned transactions will have a limited Time-to-live and
     /// will be discarded if the UTXOs they require are not created before the Time-to-live threshold is reached.
     pub fn insert(&mut self, tx: Arc<Transaction>) {
-        let tx_key = tx.body.kernels[0].excess_sig.clone();
+        let tx_key = tx.body.kernels()[0].excess_sig.clone();
         let _ = self.txs_by_signature.insert(tx_key, tx, self.config.tx_ttl);
     }
 
@@ -87,7 +87,7 @@ where T: BlockchainBackend
             .get_height()?
             .ok_or(OrphanPoolError::ChainHeightUndefined)?;
         'outer: for (tx_key, tx) in self.txs_by_signature.iter() {
-            for input in &tx.body.inputs {
+            for input in tx.body.inputs() {
                 if !self.blockchain_db.is_utxo(input.hash())? {
                     continue 'outer;
                 }

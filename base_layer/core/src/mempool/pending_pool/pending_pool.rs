@@ -165,37 +165,37 @@ mod test {
         assert_eq!(pending_pool.len().unwrap(), 3);
         assert_eq!(
             pending_pool
-                .has_tx_with_excess_sig(&tx1.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx1.body.kernels()[0].excess_sig)
                 .unwrap(),
             true
         );
         assert_eq!(
             pending_pool
-                .has_tx_with_excess_sig(&tx2.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig)
                 .unwrap(),
             false
         );
         assert_eq!(
             pending_pool
-                .has_tx_with_excess_sig(&tx3.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx3.body.kernels()[0].excess_sig)
                 .unwrap(),
             true
         );
         assert_eq!(
             pending_pool
-                .has_tx_with_excess_sig(&tx4.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx4.body.kernels()[0].excess_sig)
                 .unwrap(),
             false
         );
         assert_eq!(
             pending_pool
-                .has_tx_with_excess_sig(&tx5.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx5.body.kernels()[0].excess_sig)
                 .unwrap(),
             false
         );
         assert_eq!(
             pending_pool
-                .has_tx_with_excess_sig(&tx6.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx6.body.kernels()[0].excess_sig)
                 .unwrap(),
             true
         );
@@ -248,13 +248,13 @@ mod test {
         assert_eq!(pending_pool.len().unwrap(), 2);
         assert_eq!(
             pending_pool
-                .has_tx_with_excess_sig(&tx2.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig)
                 .unwrap(),
             true
         );
         assert_eq!(
             pending_pool
-                .has_tx_with_excess_sig(&tx4.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx4.body.kernels()[0].excess_sig)
                 .unwrap(),
             true
         );
