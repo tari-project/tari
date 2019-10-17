@@ -206,9 +206,9 @@ fn dht_join_propagation() {
             drop(node_A_dht);
             drop(node_B_dht);
             drop(node_C_dht);
-            node_A_comms.shutdown().await.unwrap();
-            node_B_comms.shutdown().await.unwrap();
-            node_C_comms.shutdown().await.unwrap();
+            node_A_comms.shutdown().unwrap();
+            node_B_comms.shutdown().unwrap();
+            node_C_comms.shutdown().unwrap();
         });
     });
 }
@@ -301,10 +301,10 @@ fn dht_discover_propagation() {
             drop(node_C_dht);
             drop(node_D_dht);
 
-            node_A_comms.shutdown().await.unwrap();
-            node_B_comms.shutdown().await.unwrap();
-            node_C_comms.shutdown().await.unwrap();
-            node_D_comms.shutdown().await.unwrap();
+            node_A_comms.shutdown().unwrap();
+            node_B_comms.shutdown().unwrap();
+            node_C_comms.shutdown().unwrap();
+            node_D_comms.shutdown().unwrap();
         });
     });
 }

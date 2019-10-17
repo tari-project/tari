@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::{error::LivenessError, state::LivenessState, LivenessRequest, LivenessResponse};
+use super::{error::LivenessError, state::LivenessState, LivenessRequest, LivenessResponse, LOG_TARGET};
 use crate::{
     domain_message::DomainMessage,
     services::liveness::handle::{LivenessEvent, PingPong},
@@ -36,8 +36,6 @@ use tari_comms_dht::{
     outbound::{BroadcastStrategy, DhtOutboundError, OutboundEncryption, OutboundMessageRequester},
 };
 use tari_service_framework::RequestContext;
-
-const LOG_TARGET: &'static str = "tari_p2p::services::liveness";
 
 /// Service responsible for testing Liveness for Peers.
 ///

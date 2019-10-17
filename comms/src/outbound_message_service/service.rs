@@ -143,7 +143,7 @@ where TMsgStream: Stream<Item = OutboundMessage> + Unpin
         let mut shutdown_signal = self
             .shutdown_signal
             .take()
-            .expect("OutboundMessageActor initialized without shutdown_rx")
+            .expect("OutboundMessageService initialized without shutdown_rx")
             .fuse();
         loop {
             futures::select! {

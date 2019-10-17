@@ -43,7 +43,7 @@ impl DhtBuilder {
             comms.node_identity(),
             comms.peer_manager(),
             comms.executor().clone(),
-            comms.new_shutdown_signal(),
+            comms.shutdown_signal(),
         )
     }
 

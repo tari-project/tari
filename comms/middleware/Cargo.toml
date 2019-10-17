@@ -16,6 +16,7 @@ tari_comms = { version = "^0.0", path = "../"}
 tari_crypto = { version = "^0.0", path = "../../infrastructure/crypto"}
 tari_pubsub = { version="^0.0", path="../../infrastructure/pubsub"}
 tari_utilities = { version = "^0.0", path = "../../infrastructure/tari_util"}
+tari_shutdown = { version="^0.0",  path = "../../infrastructure/shutdown" }
 
 derive-error = "0.0.4"
 futures= {version= "0.3.0-alpha.19", package="futures-preview"}

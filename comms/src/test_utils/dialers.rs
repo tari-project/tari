@@ -35,14 +35,23 @@ use std::{
 
 /// Count the number of dial attempts. Resolving into a test peer connection.
 pub struct CountDialer<T> {
-    count: AtomicUsize,
+    count: Arc<AtomicUsize>,
     _t: PhantomData<T>,
+}
+
+impl<T> Clone for CountDialer<T> {
+    fn clone(&self) -> Self {
+        Self {
+            count: Arc::clone(&self.count),
+            _t: PhantomData,
+        }
+    }
 }
 
 impl<T> CountDialer<T> {
     pub fn new() -> Self {
         Self {
-            count: AtomicUsize::new(0),
+            count: Arc::new(AtomicUsize::new(0)),
             _t: PhantomData,
         }
     }
@@ -56,7 +65,7 @@ impl<T> Dialer<T> for CountDialer<T> {
     type Error = ConnectionManagerError;
     type Output = Arc<PeerConnection>;
 
-    type Future = impl Future<Output = Result<Self::Output, Self::Error>>;
+    type Future = impl Future<Output = Result<Self::Output, Self::Error>> + Send + Unpin;
 
     fn dial(&self, _: &T) -> Self::Future {
         let (conn, _) = PeerConnection::new_with_connecting_state_for_test();

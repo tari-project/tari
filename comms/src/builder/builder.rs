@@ -26,11 +26,12 @@ use crate::{
     connection_manager::{
         actor::{ConnectionManagerActor, ConnectionManagerRequest},
         ConnectionManager,
+        ConnectionManagerDialer,
         ConnectionManagerRequester,
         PeerConnectionConfig,
     },
     control_service::{ControlService, ControlServiceConfig, ControlServiceError, ControlServiceHandle},
-    inbound_message_service::inbound_message_service::InboundMessagePipeline,
+    inbound_message_service::inbound_message_service::InboundMessageService,
     message::{FrameSet, InboundMessage},
     outbound_message_service::{OutboundMessage, OutboundMessageService, OutboundServiceConfig, OutboundServiceError},
     peer_manager::{NodeIdentity, PeerManager, PeerManagerError},
@@ -72,7 +73,8 @@ impl Default for CommsBuilderConfig {
     }
 }
 
-type CommsConnectionManagerActor = ConnectionManagerActor<ConnectionManager, mpsc::Receiver<ConnectionManagerRequest>>;
+type CommsConnectionManagerActor =
+    ConnectionManagerActor<ConnectionManagerDialer, mpsc::Receiver<ConnectionManagerRequest>>;
 
 /// The `CommsBuilder` provides a simple builder API for getting Tari comms p2p messaging up and running.
 ///
@@ -252,7 +254,7 @@ where
     {
         let (tx, rx) = mpsc::channel(10);
         let requester = ConnectionManagerRequester::new(tx);
-        let actor = ConnectionManagerActor::new(connection_manager, rx, shutdown_signal);
+        let actor = ConnectionManagerActor::new(ConnectionManagerDialer::new(connection_manager), rx, shutdown_signal);
 
         (requester, actor)
     }
@@ -325,10 +327,11 @@ where
         );
 
         //---------------------------------- Inbound message pipeline --------------------------------------------//
-        let inbound_message_service = InboundMessagePipeline::new(
+        let inbound_message_service = InboundMessageService::new(
             peer_connection_message_receiver,
             self.inbound_sink.take().expect("inbound_sink cannot be None"),
             Arc::clone(&peer_manager),
+            shutdown.to_signal(),
         );
 
         Ok(CommsContainer {
@@ -365,7 +368,7 @@ pub struct CommsContainer<TInSink, TOutStream> {
 
     executor: TaskExecutor,
 
-    inbound_message_service: InboundMessagePipeline<TInSink>,
+    inbound_message_service: InboundMessageService<TInSink>,
 
     node_identity: Arc<NodeIdentity>,
 
@@ -439,12 +442,12 @@ impl CommsNode {
     }
 
     /// Returns a new `ShutdownSignal`
-    pub fn new_shutdown_signal(&mut self) -> ShutdownSignal {
+    pub fn shutdown_signal(&self) -> ShutdownSignal {
         self.shutdown.to_signal()
     }
 
     /// Shuts comms down. This function returns an error if any of the services failed to shutdown
-    pub async fn shutdown(mut self) -> Result<(), CommsError> {
+    pub fn shutdown(mut self) -> Result<(), CommsError> {
         info!(target: LOG_TARGET, "Comms is shutting down");
 
         let mut shutdown_results = Vec::new();

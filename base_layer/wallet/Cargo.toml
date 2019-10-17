@@ -4,18 +4,20 @@ version = "0.0.5"
 edition = "2018"
 
 [dependencies]
+tari_broadcast_channel = { version="^0.0",  path = "../../infrastructure/broadcast_channel" }
 tari_comms = { path = "../../comms", version = "^0.0"}
-tari_comms_middleware = { path = "../../comms/middleware", version = "^0.0"}
 tari_comms_dht = { path = "../../comms/dht", version = "^0.0"}
+tari_comms_middleware = { path = "../../comms/middleware", version = "^0.0"}
 tari_core = { path = "../core", version="^0.0"}
 tari_crypto = { path = "../../infrastructure/crypto", version = "^0.0" }
 tari_key_manager = {path = "../keymanager", version = "^0.0"}
 tari_p2p = {path = "../p2p", version = "^0.0"}
 tari_pubsub = {path = "../../infrastructure/pubsub", version = "^0.0"}
-tari_utilities = { path = "../../infrastructure/tari_util", version = "^0.0"}
-tari_storage = { version = "^0.0", path = "../../infrastructure/storage"}
 tari_service_framework = { version = "^0.0", path = "../service_framework"}
-tari_broadcast_channel = { version="^0.0",  path = "../../infrastructure/broadcast_channel" }
+tari_storage = { version = "^0.0", path = "../../infrastructure/storage"}
+tari_utilities = { path = "../../infrastructure/tari_util", version = "^0.0"}
+tari_shutdown = { path = "../../infrastructure/shutdown", version = "^0.0"}
+
 chrono = { version = "0.4.6", features = ["serde"]}
 derive-error = "0.0.4"
 digest = "0.8.0"

@@ -26,6 +26,7 @@ use crate::{
 };
 use futures::future::join_all;
 use std::sync::Arc;
+use tari_shutdown::ShutdownSignal;
 use tokio::runtime::TaskExecutor;
 
 /// Responsible for building and collecting handles and (usually long-running) service futures.
@@ -34,13 +35,15 @@ use tokio::runtime::TaskExecutor;
 pub struct StackBuilder {
     initializers: Vec<BoxedServiceInitializer>,
     executor: TaskExecutor,
+    shutdown_signal: ShutdownSignal,
 }
 
 impl StackBuilder {
-    pub fn new(executor: TaskExecutor) -> Self {
+    pub fn new(executor: TaskExecutor, shutdown_signal: ShutdownSignal) -> Self {
         Self {
             initializers: Vec::new(),
             executor,
+            shutdown_signal,
         }
     }
 }
@@ -62,18 +65,26 @@ impl StackBuilder {
     }
 
     /// Concurrently initialize the services. Once all service have been initialized, `notify_ready`
-    /// is called, which completes initialization for those services which  . The resulting service handles are
+    /// is called, which completes initialization for those services. The resulting service handles are
     /// returned. If ANY of the services fail to initialize, an error is returned.
     pub async fn finish(self) -> Result<Arc<ServiceHandles>, ServiceInitializationError> {
         let (notifier, handles_fut) = handle_notifier_pair();
 
-        let executor = self.executor;
+        let StackBuilder {
+            executor,
+            shutdown_signal,
+            initializers,
+        } = self;
 
         // Collect all the initialization futures
-        let init_futures = self
-            .initializers
-            .into_iter()
-            .map(|mut init| ServiceInitializer::initialize(&mut init, executor.clone(), handles_fut.clone()));
+        let init_futures = initializers.into_iter().map(|mut init| {
+            ServiceInitializer::initialize(
+                &mut init,
+                executor.clone(),
+                handles_fut.clone(),
+                shutdown_signal.clone(),
+            )
+        });
 
         // Run all the initializers concurrently and check each Result returning an error
         // on the first one that failed.
@@ -93,19 +104,22 @@ mod test {
     use crate::{handles::ServiceHandlesFuture, initializer::ServiceInitializer, tower::service_fn};
     use futures::{executor::block_on, future, Future};
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use tari_shutdown::Shutdown;
     use tokio::runtime::Runtime;
 
     #[test]
     fn service_defn_simple() {
         let rt = Runtime::new().unwrap();
         // This is less of a test and more of a demo of using the short-hand implementation of ServiceInitializer
-        let simple_initializer = |executor: TaskExecutor, _: ServiceHandlesFuture| {
+        let simple_initializer = |executor: TaskExecutor, _: ServiceHandlesFuture, _: ShutdownSignal| {
             executor.spawn(future::ready(()));
             future::ok(())
         };
 
+        let shutdown = Shutdown::new();
+
         let handles = block_on(
-            StackBuilder::new(rt.executor())
+            StackBuilder::new(rt.executor(), shutdown.to_signal())
                 .add_initializer(simple_initializer)
                 .finish(),
         );
@@ -128,7 +142,13 @@ mod test {
     impl ServiceInitializer for DummyInitializer {
         type Future = impl Future<Output = Result<(), ServiceInitializationError>>;
 
-        fn initialize(&mut self, executor: TaskExecutor, handles_fut: ServiceHandlesFuture) -> Self::Future {
+        fn initialize(
+            &mut self,
+            executor: TaskExecutor,
+            handles_fut: ServiceHandlesFuture,
+            _shutdown: ShutdownSignal,
+        ) -> Self::Future
+        {
             // Spawn some task on the given TaskExecutor
             executor.spawn(future::ready(()));
             // Add a handle
@@ -160,9 +180,15 @@ mod test {
         let rt = Runtime::new().unwrap();
         let shared_state = Arc::new(AtomicUsize::new(0));
 
+        let shutdown = Shutdown::new();
         let initializer = DummyInitializer::new(Arc::clone(&shared_state));
 
-        let handles = block_on(StackBuilder::new(rt.executor()).add_initializer(initializer).finish()).unwrap();
+        let handles = block_on(
+            StackBuilder::new(rt.executor(), shutdown.to_signal())
+                .add_initializer(initializer)
+                .finish(),
+        )
+        .unwrap();
 
         handles.get_handle::<DummyServiceHandle>().unwrap();
 

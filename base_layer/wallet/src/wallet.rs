@@ -56,7 +56,7 @@ pub struct WalletConfig {
 /// A structure containing the config and services that a Wallet application will require. This struct will start up all
 /// the services and provide the APIs that applications will use to interact with the services
 pub struct Wallet {
-    pub comms_service: CommsNode,
+    pub comms: CommsNode,
     pub dht_service: Dht,
     //    pub text_message_service: TextMessageHandle,
     pub liveness_service: LivenessHandle,
@@ -70,9 +70,9 @@ impl Wallet {
             pubsub_connector(runtime.executor(), config.inbound_message_buffer_size);
         let subscription_factory = Arc::new(subscription_factory);
 
-        let (comms_service, dht) = initialize_comms(runtime.executor(), config.comms_config, publisher)?;
+        let (comms, dht) = initialize_comms(runtime.executor(), config.comms_config, publisher)?;
 
-        let fut = StackBuilder::new(runtime.executor())
+        let fut = StackBuilder::new(runtime.executor(), comms.shutdown_signal())
             .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))
             .add_initializer(LivenessInitializer::new(Arc::clone(&subscription_factory)))
 //            .add_initializer(TextMessageServiceInitializer::new(
@@ -85,7 +85,7 @@ impl Wallet {
         let handles = runtime.block_on(fut).expect("Service initialization failed");
 
         Ok(Wallet {
-            comms_service,
+            comms,
             dht_service: dht,
             //            text_message_service: handles
             //                .get_handle::<TextMessageHandle>()
@@ -100,8 +100,8 @@ impl Wallet {
 
     // This method consumes the wallet so that the handles are dropped which will result in the services async loops
     // exiting.
-    pub async fn shutdown(self) -> Result<(), WalletError> {
-        self.comms_service.shutdown().await?;
+    pub fn shutdown(self) -> Result<(), WalletError> {
+        self.comms.shutdown()?;
         Ok(())
     }
 }

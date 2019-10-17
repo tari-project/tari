@@ -24,52 +24,81 @@ use crate::{
     message::{Frame, FrameSet, InboundMessage, MessageData},
     peer_manager::{NodeId, Peer, PeerManager},
 };
-use futures::{channel::mpsc, Sink, SinkExt, Stream, StreamExt};
+use futures::{channel::mpsc, FutureExt, Sink, SinkExt, Stream, StreamExt};
 use log::*;
 use std::{convert::TryFrom, sync::Arc};
+use tari_shutdown::ShutdownSignal;
 
 const LOG_TARGET: &str = "comms::inbound_message_service";
 
-pub type InboundMessagePipeline<TSink> = InnerInboundMessagePipeline<mpsc::Receiver<FrameSet>, TSink>;
+pub type InboundMessageService<TSink> = InnerInboundMessageService<mpsc::Receiver<FrameSet>, TSink>;
 
-/// The InboundMessagePipeline contains the logic for processing a raw MessageEnvelope received via a PeerConnection and
+/// The InboundMessageService contains the logic for processing a raw MessageEnvelope received via a PeerConnection and
 /// routing it via one of the InboundMessageRoutes. This pipeline contains the logic for the various validations and
-/// check done to decide whether this message should be passed further along the pipeline and, eventually, be sent along
-/// out of the output routes which are Publisher-Subscriber channels which other services will subscribe to.
-pub struct InnerInboundMessagePipeline<TStream, TSink> {
-    raw_message_stream: TStream,
+/// check done to decide whether this message should be passed further along the pipeline and, be sent to
+/// the given message_sink.
+pub struct InnerInboundMessageService<TStream, TSink> {
+    raw_message_stream: Option<TStream>,
     message_cache: MessageCache<Frame>,
     message_sink: TSink,
     peer_manager: Arc<PeerManager>,
+    shutdown_signal: Option<ShutdownSignal>,
 }
 
-impl<TStream, TSink> InnerInboundMessagePipeline<TStream, TSink>
+impl<TStream, TSink> InnerInboundMessageService<TStream, TSink>
 where
     TStream: Stream<Item = FrameSet> + Unpin,
     TSink: Sink<InboundMessage> + Unpin,
     TSink::Error: Into<InboundMessagePipelineError>,
 {
-    pub fn new(raw_message_stream: TStream, message_sink: TSink, peer_manager: Arc<PeerManager>) -> Self {
+    pub fn new(
+        raw_message_stream: TStream,
+        message_sink: TSink,
+        peer_manager: Arc<PeerManager>,
+        shutdown_signal: ShutdownSignal,
+    ) -> Self
+    {
         let message_cache = MessageCache::new(MessageCacheConfig::default());
         Self {
-            raw_message_stream,
+            raw_message_stream: Some(raw_message_stream),
             message_sink,
             message_cache,
             peer_manager,
+            shutdown_signal: Some(shutdown_signal),
         }
     }
 
-    /// Run the Inbound Message Pipeline on the set `message_sink_receiver` processing each message in that stream. If
-    /// an error occurs while processing a message it is logged and the pipeline will move onto the next message. Most
+    /// Run the Inbound Message Service on the set `message_sink_receiver` processing each message in that stream. If
+    /// an error occurs while processing a message it is logged and the service will move onto the next message. Most
     /// errors represent a reason why a message didn't make it through the pipeline.
     pub async fn run(mut self) -> () {
+        let mut shutdown_signal = self
+            .shutdown_signal
+            .take()
+            .expect("InboundMessageService initialized without shutdown_rx")
+            .fuse();
+
+        let mut raw_message_stream = self
+            .raw_message_stream
+            .take()
+            .expect("InboundMessageService initialized without raw_message_stream")
+            .fuse();
+
         info!(target: LOG_TARGET, "Inbound Message Pipeline started");
-        while let Some(frame_set) = self.raw_message_stream.next().await {
-            if let Err(e) = self.process_message(frame_set).await {
-                info!(target: LOG_TARGET, "Inbound Message Pipeline Error: {:?}", e);
+        loop {
+            futures::select! {
+                frames = raw_message_stream.select_next_some() => {
+                    if let Err(e) = self.process_message(frames).await {
+                        info!(target: LOG_TARGET, "Inbound Message Pipeline Error: {:?}", e);
+                    }
+                },
+
+                _ = shutdown_signal => {
+                    info!(target: LOG_TARGET, "Inbound message service shutting down because it received the shutdown signal");
+                    break;
+                }
             }
         }
-        info!(target: LOG_TARGET, "Closing Inbound Message Pipeline");
     }
 
     /// Process a single received message from its raw serialized form i.e. a FrameSet

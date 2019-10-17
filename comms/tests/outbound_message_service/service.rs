@@ -28,7 +28,12 @@ use futures::{channel::mpsc, SinkExt, StreamExt};
 use std::{fs, path::PathBuf, sync::Arc, thread, time::Duration};
 use tari_comms::{
     connection::ZmqContext,
-    connection_manager::{create_connection_manager_actor, ConnectionManager, PeerConnectionConfig},
+    connection_manager::{
+        create_connection_manager_actor,
+        ConnectionManager,
+        ConnectionManagerDialer,
+        PeerConnectionConfig,
+    },
     control_service::{ControlService, ControlServiceConfig},
     message::MessageFlags,
     outbound_message_service::{OutboundMessage, OutboundMessageService},
@@ -130,8 +135,11 @@ fn outbound_message_pool_no_retry() {
     .serve(Arc::clone(&node_B_connection_manager))
     .unwrap();
 
-    let (_, node_B_connection_manager_actor) =
-        create_connection_manager_actor(10, node_B_connection_manager, shutdown.to_signal());
+    let (_, node_B_connection_manager_actor) = create_connection_manager_actor(
+        10,
+        ConnectionManagerDialer::new(node_B_connection_manager),
+        shutdown.to_signal(),
+    );
     rt.spawn(node_B_connection_manager_actor.start());
 
     //---------------------------------- Node A setup --------------------------------------------//
@@ -152,8 +160,11 @@ fn outbound_message_pool_no_retry() {
             .unwrap(),
     );
 
-    let (node_A_connection_manager_requester, node_A_connection_manager_actor) =
-        create_connection_manager_actor(10, node_A_connection_manager, shutdown.to_signal());
+    let (node_A_connection_manager_requester, node_A_connection_manager_actor) = create_connection_manager_actor(
+        10,
+        ConnectionManagerDialer::new(node_A_connection_manager),
+        shutdown.to_signal(),
+    );
     rt.spawn(node_A_connection_manager_actor.start());
 
     // Setup Node A OMS
@@ -252,8 +263,11 @@ fn test_outbound_message_pool_fail_and_retry() {
         .unwrap();
 
     let mut shutdown = Shutdown::new();
-    let (node_A_connection_manager_requester, node_A_connection_manager_actor) =
-        create_connection_manager_actor(10, node_A_connection_manager, shutdown.to_signal());
+    let (node_A_connection_manager_requester, node_A_connection_manager_actor) = create_connection_manager_actor(
+        10,
+        ConnectionManagerDialer::new(node_A_connection_manager),
+        shutdown.to_signal(),
+    );
     rt.spawn(node_A_connection_manager_actor.start());
 
     // Setup Node A OMS
