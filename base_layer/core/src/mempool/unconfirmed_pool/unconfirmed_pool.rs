@@ -172,31 +172,31 @@ mod test {
         // Check that lowest priority tx was removed to make room for new incoming transactions
         assert_eq!(
             unconfirmed_pool
-                .has_tx_with_excess_sig(&tx1.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx1.body.kernels()[0].excess_sig)
                 .unwrap(),
             true
         );
         assert_eq!(
             unconfirmed_pool
-                .has_tx_with_excess_sig(&tx2.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig)
                 .unwrap(),
             false
         );
         assert_eq!(
             unconfirmed_pool
-                .has_tx_with_excess_sig(&tx3.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx3.body.kernels()[0].excess_sig)
                 .unwrap(),
             true
         );
         assert_eq!(
             unconfirmed_pool
-                .has_tx_with_excess_sig(&tx4.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx4.body.kernels()[0].excess_sig)
                 .unwrap(),
             true
         );
         assert_eq!(
             unconfirmed_pool
-                .has_tx_with_excess_sig(&tx5.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx5.body.kernels()[0].excess_sig)
                 .unwrap(),
             true
         );
@@ -245,37 +245,37 @@ mod test {
 
         assert_eq!(
             unconfirmed_pool
-                .has_tx_with_excess_sig(&tx1.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx1.body.kernels()[0].excess_sig)
                 .unwrap(),
             false
         );
         assert_eq!(
             unconfirmed_pool
-                .has_tx_with_excess_sig(&tx2.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig)
                 .unwrap(),
             true
         );
         assert_eq!(
             unconfirmed_pool
-                .has_tx_with_excess_sig(&tx3.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx3.body.kernels()[0].excess_sig)
                 .unwrap(),
             false
         );
         assert_eq!(
             unconfirmed_pool
-                .has_tx_with_excess_sig(&tx4.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx4.body.kernels()[0].excess_sig)
                 .unwrap(),
             true
         );
         assert_eq!(
             unconfirmed_pool
-                .has_tx_with_excess_sig(&tx5.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx5.body.kernels()[0].excess_sig)
                 .unwrap(),
             false
         );
         assert_eq!(
             unconfirmed_pool
-                .has_tx_with_excess_sig(&tx6.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx6.body.kernels()[0].excess_sig)
                 .unwrap(),
             false
         );
@@ -292,8 +292,8 @@ mod test {
         let mut tx5 = tx!(MicroTari(5_000), fee:MicroTari(50), inputs:3, outputs:1).0;
         let mut tx6 = tx!(MicroTari(5_000), fee:MicroTari(75), inputs: 2, outputs: 1).0;
         // tx1 and tx5 have a shared input. Also, tx3 and tx6 have a shared input
-        tx5.body.inputs[0] = tx1.body.inputs[0].clone();
-        tx6.body.inputs[1] = tx3.body.inputs[1].clone();
+        tx5.body.inputs_mut()[0] = tx1.body.inputs()[0].clone();
+        tx6.body.inputs_mut()[1] = tx3.body.inputs()[1].clone();
         let tx5 = Arc::new(tx5);
         let tx6 = Arc::new(tx6);
 
@@ -321,37 +321,37 @@ mod test {
 
         assert_eq!(
             unconfirmed_pool
-                .has_tx_with_excess_sig(&tx1.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx1.body.kernels()[0].excess_sig)
                 .unwrap(),
             false
         );
         assert_eq!(
             unconfirmed_pool
-                .has_tx_with_excess_sig(&tx2.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig)
                 .unwrap(),
             false
         );
         assert_eq!(
             unconfirmed_pool
-                .has_tx_with_excess_sig(&tx3.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx3.body.kernels()[0].excess_sig)
                 .unwrap(),
             false
         );
         assert_eq!(
             unconfirmed_pool
-                .has_tx_with_excess_sig(&tx4.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx4.body.kernels()[0].excess_sig)
                 .unwrap(),
             true
         );
         assert_eq!(
             unconfirmed_pool
-                .has_tx_with_excess_sig(&tx5.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx5.body.kernels()[0].excess_sig)
                 .unwrap(),
             false
         );
         assert_eq!(
             unconfirmed_pool
-                .has_tx_with_excess_sig(&tx6.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx6.body.kernels()[0].excess_sig)
                 .unwrap(),
             false
         );

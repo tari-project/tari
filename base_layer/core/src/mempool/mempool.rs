@@ -103,7 +103,7 @@ where T: BlockchainBackend
     }
 
     fn check_input_utxos(&mut self, tx: &Transaction) -> Result<bool, MempoolError> {
-        for input in &tx.body.inputs {
+        for input in tx.body.inputs() {
             if !self.blockchain_db.is_utxo(input.hash())? {
                 return Ok(false);
             }
@@ -307,25 +307,33 @@ mod test {
 
         assert_eq!(
             mempool
-                .has_tx_with_excess_sig(&orphan.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&orphan.body.kernels()[0].excess_sig)
                 .unwrap(),
             TxStorageResponse::OrphanPool
         );
         assert_eq!(
-            mempool.has_tx_with_excess_sig(&tx2.body.kernels[0].excess_sig).unwrap(),
+            mempool
+                .has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig)
+                .unwrap(),
             TxStorageResponse::UnconfirmedPool
         );
         assert_eq!(
-            mempool.has_tx_with_excess_sig(&tx3.body.kernels[0].excess_sig).unwrap(),
+            mempool
+                .has_tx_with_excess_sig(&tx3.body.kernels()[0].excess_sig)
+                .unwrap(),
             TxStorageResponse::PendingPool
         );
 
         assert_eq!(
-            mempool.has_tx_with_excess_sig(&tx5.body.kernels[0].excess_sig).unwrap(),
+            mempool
+                .has_tx_with_excess_sig(&tx5.body.kernels()[0].excess_sig)
+                .unwrap(),
             TxStorageResponse::PendingPool
         );
         assert_eq!(
-            mempool.has_tx_with_excess_sig(&tx6.body.kernels[0].excess_sig).unwrap(),
+            mempool
+                .has_tx_with_excess_sig(&tx6.body.kernels()[0].excess_sig)
+                .unwrap(),
             TxStorageResponse::NotStored
         );
 
@@ -350,24 +358,32 @@ mod test {
 
         assert_eq!(
             mempool
-                .has_tx_with_excess_sig(&orphan.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&orphan.body.kernels()[0].excess_sig)
                 .unwrap(),
             TxStorageResponse::OrphanPool
         );
         assert_eq!(
-            mempool.has_tx_with_excess_sig(&tx2.body.kernels[0].excess_sig).unwrap(),
+            mempool
+                .has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig)
+                .unwrap(),
             TxStorageResponse::ReorgPool
         );
         assert_eq!(
-            mempool.has_tx_with_excess_sig(&tx3.body.kernels[0].excess_sig).unwrap(),
+            mempool
+                .has_tx_with_excess_sig(&tx3.body.kernels()[0].excess_sig)
+                .unwrap(),
             TxStorageResponse::PendingPool
         );
         assert_eq!(
-            mempool.has_tx_with_excess_sig(&tx5.body.kernels[0].excess_sig).unwrap(),
+            mempool
+                .has_tx_with_excess_sig(&tx5.body.kernels()[0].excess_sig)
+                .unwrap(),
             TxStorageResponse::UnconfirmedPool
         );
         assert_eq!(
-            mempool.has_tx_with_excess_sig(&tx6.body.kernels[0].excess_sig).unwrap(),
+            mempool
+                .has_tx_with_excess_sig(&tx6.body.kernels()[0].excess_sig)
+                .unwrap(),
             TxStorageResponse::NotStored
         );
 

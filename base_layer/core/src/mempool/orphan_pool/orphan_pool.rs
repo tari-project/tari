@@ -174,25 +174,25 @@ mod test {
         // Check that oldest utx was removed to make room for new incoming transaction
         assert_eq!(
             orphan_pool
-                .has_tx_with_excess_sig(&tx1.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx1.body.kernels()[0].excess_sig)
                 .unwrap(),
             false
         );
         assert_eq!(
             orphan_pool
-                .has_tx_with_excess_sig(&tx2.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig)
                 .unwrap(),
             true
         );
         assert_eq!(
             orphan_pool
-                .has_tx_with_excess_sig(&tx3.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx3.body.kernels()[0].excess_sig)
                 .unwrap(),
             true
         );
         assert_eq!(
             orphan_pool
-                .has_tx_with_excess_sig(&tx4.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx4.body.kernels()[0].excess_sig)
                 .unwrap(),
             true
         );
@@ -209,37 +209,37 @@ mod test {
         assert_eq!(orphan_pool.len().unwrap(), 2);
         assert_eq!(
             orphan_pool
-                .has_tx_with_excess_sig(&tx1.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx1.body.kernels()[0].excess_sig)
                 .unwrap(),
             false
         );
         assert_eq!(
             orphan_pool
-                .has_tx_with_excess_sig(&tx2.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig)
                 .unwrap(),
             false
         );
         assert_eq!(
             orphan_pool
-                .has_tx_with_excess_sig(&tx3.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx3.body.kernels()[0].excess_sig)
                 .unwrap(),
             false
         );
         assert_eq!(
             orphan_pool
-                .has_tx_with_excess_sig(&tx4.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx4.body.kernels()[0].excess_sig)
                 .unwrap(),
             false
         );
         assert_eq!(
             orphan_pool
-                .has_tx_with_excess_sig(&tx5.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx5.body.kernels()[0].excess_sig)
                 .unwrap(),
             true
         );
         assert_eq!(
             orphan_pool
-                .has_tx_with_excess_sig(&tx6.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx6.body.kernels()[0].excess_sig)
                 .unwrap(),
             true
         );
@@ -289,10 +289,10 @@ mod test {
         assert_eq!(txs.len(), 1);
         assert_eq!(timelocked_txs.len(), 1);
         assert!(orphan_pool
-            .has_tx_with_excess_sig(&txns2[0].body.kernels[0].excess_sig)
+            .has_tx_with_excess_sig(&txns2[0].body.kernels()[0].excess_sig)
             .unwrap());
         assert!(orphan_pool
-            .has_tx_with_excess_sig(&txns2[1].body.kernels[0].excess_sig)
+            .has_tx_with_excess_sig(&txns2[1].body.kernels()[0].excess_sig)
             .unwrap());
 
         // Un-orphan the transactions

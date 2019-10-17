@@ -128,13 +128,13 @@ fn sending_transaction_and_confirmation() {
     let tx = stp.get_transaction().unwrap();
 
     runtime
-        .block_on(oms.confirm_sent_transaction(sender_tx_id, tx.body.inputs.clone(), tx.body.outputs.clone()))
+        .block_on(oms.confirm_sent_transaction(sender_tx_id, tx.body.inputs().clone(), tx.body.outputs().clone()))
         .unwrap();
 
     assert_eq!(runtime.block_on(oms.get_pending_transactions()).unwrap().len(), 0);
     assert_eq!(
         runtime.block_on(oms.get_spent_outputs()).unwrap().len(),
-        tx.body.inputs.len()
+        tx.body.inputs().len()
     );
     assert_eq!(
         runtime.block_on(oms.get_unspent_outputs()).unwrap().len(),
@@ -222,13 +222,13 @@ fn send_no_change() {
     let tx = stp.get_transaction().unwrap();
 
     runtime
-        .block_on(oms.confirm_sent_transaction(sender_tx_id, tx.body.inputs.clone(), tx.body.outputs.clone()))
+        .block_on(oms.confirm_sent_transaction(sender_tx_id, tx.body.inputs().clone(), tx.body.outputs().clone()))
         .unwrap();
 
     assert_eq!(runtime.block_on(oms.get_pending_transactions()).unwrap().len(), 0);
     assert_eq!(
         runtime.block_on(oms.get_spent_outputs()).unwrap().len(),
-        tx.body.inputs.len()
+        tx.body.inputs().len()
     );
     assert_eq!(runtime.block_on(oms.get_unspent_outputs()).unwrap().len(), 0);
 }

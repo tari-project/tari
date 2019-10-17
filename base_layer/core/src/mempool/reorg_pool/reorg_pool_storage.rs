@@ -52,7 +52,7 @@ impl ReorgPoolStorage {
     /// Insert a new transaction into the ReorgPoolStorage. Published transactions will have a limited Time-to-live in
     /// the ReorgPoolStorage and will be discarded once the Time-to-live threshold has been reached.
     pub fn insert(&mut self, tx: Arc<Transaction>) {
-        let tx_key = tx.body.kernels[0].excess_sig.clone();
+        let tx_key = tx.body.kernels()[0].excess_sig.clone();
         let _ = self.txs_by_signature.insert(tx_key, tx, self.config.tx_ttl);
     }
 
@@ -73,7 +73,7 @@ impl ReorgPoolStorage {
     pub fn scan_for_and_remove_reorged_txs(&mut self, removed_blocks: Vec<Block>) -> Vec<Arc<Transaction>> {
         let mut removed_txs: Vec<Arc<Transaction>> = Vec::new();
         for block in &removed_blocks {
-            for kernel in &block.body.kernels {
+            for kernel in block.body.kernels() {
                 if let Some(removed_tx) = self.txs_by_signature.remove(&kernel.excess_sig) {
                     removed_txs.push(removed_tx);
                 }

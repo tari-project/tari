@@ -87,7 +87,7 @@ fn dump_logs(db: &BlockchainDatabase<MemoryDatabase<HashDigest>>, blocks: &[Bloc
 /// Finds the UTXO in a block corresponding to the unblinded output. We have to search for outputs because UTXOs get
 /// sorted in blocks, and so the order they were inserted in can change.
 fn find_utxo(output: &UnblindedOutput, block: &Block) -> Option<TransactionOutput> {
-    for utxo in block.body.outputs.iter() {
+    for utxo in block.body.outputs().iter() {
         if COMMITMENT_FACTORY.open_value(&output.spending_key, output.value.into(), &utxo.commitment) {
             return Some(utxo.clone());
         }
@@ -100,13 +100,15 @@ fn fetch_async_kernel() {
     let (db, blocks, _) = create_blockchain_db_no_cut_through();
     test_async(|rt| {
         for block in blocks.into_iter() {
-            block.body.kernels.into_iter().for_each(|k| {
+            block.body.kernels().into_iter().for_each(|k| {
                 let db = db.clone();
+                let k = k.clone();
+                let hash = k.hash();
                 rt.spawn(async move {
-                    let kern_db = async_db::fetch_kernel(db, k.hash()).await;
+                    let kern_db = async_db::fetch_kernel(db, hash).await;
                     assert_eq!(k, kern_db.unwrap());
                 });
-            })
+            });
         }
     });
 }

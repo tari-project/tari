@@ -81,7 +81,7 @@ impl PendingPoolStorage {
     /// Insert a new transaction into the PendingPoolStorage. Low priority transactions will be removed to make space
     /// for higher priority transactions.
     pub fn insert(&mut self, tx: Arc<Transaction>) -> Result<(), PendingPoolError> {
-        let tx_key = tx.body.kernels[0].excess_sig.clone();
+        let tx_key = tx.body.kernels()[0].excess_sig.clone();
         if !self.txs_by_signature.contains_key(&tx_key) {
             let prioritized_tx = TimelockedTransaction::try_from((*tx).clone())?;
             if self.txs_by_signature.len() >= self.config.storage_capacity {
@@ -119,8 +119,8 @@ impl PendingPoolStorage {
     fn discard_double_spends(&mut self, published_block: &Block) {
         let mut removed_tx_keys: Vec<Signature> = Vec::new();
         for (tx_key, ptx) in self.txs_by_signature.iter() {
-            for input in &ptx.transaction.body.inputs {
-                if published_block.body.inputs.contains(input) {
+            for input in ptx.transaction.body.inputs() {
+                if published_block.body.inputs().contains(input) {
                     self.txs_by_fee_priority.remove(&ptx.fee_priority);
                     self.txs_by_timelock_priority.remove(&ptx.timelock_priority);
                     removed_tx_keys.push(tx_key.clone());

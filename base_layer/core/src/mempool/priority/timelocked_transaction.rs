@@ -37,7 +37,7 @@ impl TimelockPriority {
     pub fn try_from(transaction: &Transaction) -> Result<Self, PriorityError> {
         let mut priority = transaction.max_timelock_height().to_binary()?;
         priority.reverse(); // Requires Big-endian for BtreeMap sorting
-        priority.append(&mut transaction.body.kernels[0].excess_sig.to_binary()?);
+        priority.append(&mut transaction.body.kernels()[0].excess_sig.to_binary()?);
         Ok(Self(priority))
     }
 }

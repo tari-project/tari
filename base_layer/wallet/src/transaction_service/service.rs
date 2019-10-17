@@ -269,7 +269,7 @@ where
                 // TODO Broadcast this to the chain
                 // TODO Only confirm this transaction once it is detected on chain. For now just confirming it directly.
                 self.output_manager_service
-                    .confirm_sent_transaction(recp_tx_id, tx.body.inputs.clone(), tx.body.outputs.clone())
+                    .confirm_sent_transaction(recp_tx_id, tx.body.inputs().clone(), tx.body.outputs().clone())
                     .await?;
 
                 marked_for_removal = Some(tx_id.clone());

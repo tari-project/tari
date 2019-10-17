@@ -36,11 +36,11 @@ use tari_crypto::{commitment::HomomorphicCommitmentFactory, ristretto::pedersen:
 pub struct AggregateBody {
     sorted: bool,
     /// List of inputs spent by the transaction.
-    pub inputs: Vec<TransactionInput>,
+    inputs: Vec<TransactionInput>,
     /// List of outputs the transaction produces.
-    pub outputs: Vec<TransactionOutput>,
+    outputs: Vec<TransactionOutput>,
     /// Kernels contain the excesses and their signatures for transaction
-    pub kernels: Vec<TransactionKernel>,
+    kernels: Vec<TransactionKernel>,
 }
 
 impl AggregateBody {
@@ -67,6 +67,27 @@ impl AggregateBody {
             outputs,
             kernels,
         }
+    }
+
+    /// Provide read-only access to the input list
+    pub fn inputs(&self) -> &Vec<TransactionInput> {
+        &self.inputs
+    }
+
+    /// Provide read-only access to the output list
+    pub fn outputs(&self) -> &Vec<TransactionOutput> {
+        &self.outputs
+    }
+
+    /// Provide read-only access to the kernel list
+    pub fn kernels(&self) -> &Vec<TransactionKernel> {
+        &self.kernels
+    }
+
+    /// Available for tests only. Get a mutable reference to the inputs
+    #[cfg(test)]
+    pub fn inputs_mut(&mut self) -> &mut Vec<TransactionInput> {
+        &mut self.inputs
     }
 
     /// Add an input to the existing aggregate body
@@ -150,6 +171,10 @@ impl AggregateBody {
         self.verify_kernel_signatures()?;
         self.validate_kernel_sum(total_offset, factory)?;
         self.validate_range_proofs(prover)
+    }
+
+    pub fn dissolve(self) -> (Vec<TransactionInput>, Vec<TransactionOutput>, Vec<TransactionKernel>) {
+        (self.inputs, self.outputs, self.kernels)
     }
 
     /// Calculate the sum of the inputs and outputs including fees

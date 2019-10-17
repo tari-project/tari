@@ -41,7 +41,7 @@ impl FeePriority {
 
         let mut priority = fee_priority;
         priority.append(&mut maturity_priority);
-        priority.append(&mut transaction.body.kernels[0].excess_sig.to_binary()?);
+        priority.append(&mut transaction.body.kernels()[0].excess_sig.to_binary()?);
         Ok(Self(priority))
     }
 }
