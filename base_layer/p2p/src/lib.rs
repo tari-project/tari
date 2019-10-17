@@ -26,8 +26,6 @@
 // Tracking issue: https://github.com/rust-lang/rust/issues/63063
 #![feature(type_alias_impl_trait)]
 
-// TODO Put these back in after Futures Comms stack refactor
-// pub mod saf_service;
 pub mod comms_connector;
 pub mod domain_message;
 pub mod initialization;
