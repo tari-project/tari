@@ -22,15 +22,20 @@
 
 use crate::support::utils::random_string;
 use futures::Sink;
+use rand::rngs::OsRng;
 use std::{error::Error, sync::Arc, time::Duration};
 use tari_comms::{
     builder::CommsNode,
+    connection::NetAddress,
     control_service::ControlServiceConfig,
-    peer_manager::{NodeIdentity, Peer, PeerFeatures, PeerFlags},
+    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
+    types::CommsPublicKey,
 };
 use tari_comms_dht::Dht;
+use tari_crypto::keys::PublicKey;
 use tari_p2p::{
     comms_connector::{InboundDomainConnector, PeerMessage},
+    domain_message::DomainMessage,
     initialization::{initialize_comms, CommsConfig},
     tari_message::TariMessageType,
 };
@@ -42,7 +47,7 @@ pub fn setup_comms_services<TSink>(
     node_identity: Arc<NodeIdentity>,
     peers: Vec<NodeIdentity>,
     publisher: InboundDomainConnector<TariMessageType, TSink>,
-) -> (Arc<CommsNode>, Dht)
+) -> (CommsNode, Dht)
 where
     TSink: Sink<Arc<PeerMessage<TariMessageType>>> + Clone + Unpin + Send + Sync + 'static,
     TSink::Error: Error + Send + Sync,
@@ -68,9 +73,7 @@ where
         dht: Default::default(),
     };
 
-    let (comms, dht) = initialize_comms(executor, comms_config, publisher)
-        .map(|(comms, dht)| (Arc::new(comms), dht))
-        .unwrap();
+    let (comms, dht) = initialize_comms(executor, comms_config, publisher).unwrap();
 
     for p in peers {
         let addr = p.control_service_address();
@@ -88,4 +91,21 @@ where
     }
 
     (comms, dht)
+}
+
+pub fn create_dummy_message<T>(inner: T) -> DomainMessage<T> {
+    let mut rng = OsRng::new().unwrap();
+    let (_, pk) = CommsPublicKey::random_keypair(&mut rng);
+    let peer_source = Peer::new(
+        pk.clone(),
+        NodeId::from_key(&pk).unwrap(),
+        Vec::<NetAddress>::new().into(),
+        PeerFlags::empty(),
+        PeerFeatures::communication_node_default(),
+    );
+    DomainMessage {
+        origin_pubkey: peer_source.public_key.clone(),
+        source_peer: peer_source,
+        inner,
+    }
 }

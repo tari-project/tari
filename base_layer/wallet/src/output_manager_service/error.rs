@@ -22,7 +22,9 @@
 
 use derive_error::Error;
 use tari_core::transaction_protocol::TransactionProtocolError;
+use tari_service_framework::reply_channel::TransportChannelError;
 use tari_utilities::ByteArrayError;
+use time::OutOfRangeError;
 
 #[derive(Debug, Error, PartialEq)]
 pub enum OutputManagerError {
@@ -30,6 +32,8 @@ pub enum OutputManagerError {
     BuildError(String),
     ByteArrayError(ByteArrayError),
     TransactionProtocolError(TransactionProtocolError),
+    TransportChannelError(TransportChannelError),
+    OutOfRangeError(OutOfRangeError),
     /// If an pending transaction does not exist to be confirmed
     PendingTransactionNotFound,
     /// Not all the transaction inputs and outputs are present to be confirmed
