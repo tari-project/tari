@@ -63,9 +63,8 @@ impl Block {
     /// valid. It does _not_ check that the inputs exist in the current UTXO set;
     /// nor does it check that the PoW is the largest accumulated PoW value.
     pub fn check_internal_consistency(&self, rules: &ConsensusRules) -> Result<(), BlockValidationError> {
-        let block_reward = rules.emission_schedule().block_reward(self.header.height);
         let offset = &self.header.total_kernel_offset;
-        let total_coinbase = self.calculate_coinbase_and_fees(block_reward);
+        let total_coinbase = self.calculate_coinbase_and_fees(rules);
         self.body
             .validate_internal_consistency(&offset, total_coinbase, &PROVER, &COMMITMENT_FACTORY)?;
         self.check_stxo_rules()?;
@@ -74,8 +73,8 @@ impl Block {
     }
 
     // create a total_coinbase offset containing all fees for the validation
-    fn calculate_coinbase_and_fees(&self, block_reward: MicroTari) -> MicroTari {
-        let mut coinbase = block_reward;
+    pub fn calculate_coinbase_and_fees(&self, rules: &ConsensusRules) -> MicroTari {
+        let mut coinbase = rules.emission_schedule().block_reward(self.header.height);
         for kernel in self.body.kernels() {
             coinbase += kernel.fee;
         }

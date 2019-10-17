@@ -134,7 +134,6 @@ pub fn create_new_blockchain() -> (
 }
 
 /// Generate a new block using the given transaction schema and add it to the provided database.
-///
 /// The blocks and UTXO vectors are also updated with the info from the new block.
 pub fn generate_new_block(
     db: &mut BlockchainDatabase<MemoryDatabase<HashDigest>>,

@@ -20,6 +20,15 @@ clap = "2.33.0"
 serde = { version = "1.0.101", features = ["derive"] }
 config = { version = "0.9.3" }
 env_logger = "0.7"
+rand = "0.5.5"
+digest = "0.8.1"
+derive-error = "0.0.4"
+chrono = { version = "0.4.6", features = ["serde"]}
+
+tari_utilities = { path = "../../infrastructure/tari_util", version = "^0.0"}
+tari_common = {path = "../../common", version= "^0.0"}
+tari_core = {path = "../../base_layer/core", version= "^0.0"}
+tari_crypto = { path = "../../infrastructure/crypto", version = "^0.0" }
 
 [build-dependencies]
 tonic-build = "0.1.0-alpha.3"

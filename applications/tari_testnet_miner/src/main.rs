@@ -40,6 +40,37 @@ struct Settings {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _ = env_logger::init();
+
+    let settings = read_settings();
+
+    if settings.wallet_address.is_none() || settings.base_node_address.is_none() {
+        error!(
+            target: LOG_TARGET,
+            "Not all data has not been provided via command line or config file"
+        );
+        std::process::exit(1);
+    };
+
+    info!(target: LOG_TARGET, "Settings loaded");
+
+    // ToDo run logic
+
+    let mut base_node = TestNetMinerClient::connect(settings.base_node_address.unwrap())?;
+    let request = tonic::Request::new(VoidParams {});
+
+    let response = base_node.get_block(request).await?;
+
+    // ToDo miner logic
+
+    // ToDo get private key logic
+
+    // ToDo send mined block to base node
+    Ok(())
+}
+
+/// Function to read in the settings, either from the config file or the cli
+fn read_settings() -> Settings {
+    let mut settings = Settings::default();
     let matches = App::new("Tari test-net miner")
         .version("0.1")
         .arg(
@@ -68,9 +99,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .required(false),
         )
         .get_matches();
-
-    let mut settings = Settings::default();
-
     if matches.is_present("config") {
         let mut settings_file = config::Config::default();
         settings_file
@@ -88,28 +116,5 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             settings.base_node_address = Some(v);
         }
     }
-
-    if settings.wallet_address.is_none() || settings.base_node_address.is_none() {
-        error!(
-            target: LOG_TARGET,
-            "Not all data has not been provided via command line or config file"
-        );
-        std::process::exit(1);
-    };
-
-    info!(target: LOG_TARGET, "Settings loaded");
-
-    // ToDo run logic
-
-    let mut base_node = TestNetMinerClient::connect(settings.base_node_address.unwrap())?;
-    let request = tonic::Request::new(VoidParams {});
-
-    let response = base_node.get_block(request).await?;
-
-    // ToDo miner logic
-
-    // ToDo get private key logic
-
-    // ToDo send mined block to base node
-    Ok(())
+    settings
 }

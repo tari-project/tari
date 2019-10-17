@@ -43,6 +43,8 @@ pub struct BlakePow;
 
 impl BlakePow {
     /// A simple miner. It starts at nonce = 0 and iterates until it finds a header hash that meets the desired target
+    // ToDo convert to future, with ability to break function. We need to be able to stop this if we receive a mined
+    // block
     pub fn mine(target_difficulty: Difficulty, header: &BlockHeader) -> u64 {
         let mut nonce = 0u64;
         // We're mining over here!
