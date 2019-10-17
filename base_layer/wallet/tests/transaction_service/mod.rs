@@ -19,69 +19,142 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use crate::support::{
-    comms_and_services::setup_comms_services,
-    data::{clean_up_datastore, init_datastore},
-    utils::assert_change,
+use crate::support::{comms_and_services::setup_comms_services, utils::event_stream_count};
+use futures::{
+    channel::{
+        mpsc,
+        mpsc::{Receiver, Sender},
+    },
+    SinkExt,
+    StreamExt,
 };
 
+use crate::support::comms_and_services::create_dummy_message;
 use rand::{CryptoRng, OsRng, Rng};
-use std::{sync::Arc, thread, time::Duration};
-use tari_comms::{builder::CommsNode, peer_manager::NodeIdentity};
+use std::{sync::Arc, time::Duration};
+use tari_broadcast_channel::bounded;
+use tari_comms::{
+    builder::CommsNode,
+    message::Message,
+    peer_manager::{NodeIdentity, PeerFeatures},
+};
+use tari_comms_dht::outbound::{DhtOutboundRequest, OutboundMessageRequester};
 use tari_core::{
     tari_amount::*,
     transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
-    transaction_protocol::recipient::RecipientState,
-    types::{PrivateKey, PublicKey, COMMITMENT_FACTORY},
+    transaction_protocol::{
+        recipient::{RecipientSignedMessage, RecipientState},
+        sender::TransactionSenderMessage,
+    },
+    types::{PrivateKey, PublicKey, COMMITMENT_FACTORY, PROVER},
+    ReceiverTransactionProtocol,
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::{PublicKey as PK, SecretKey as SK},
 };
 use tari_p2p::{
-    sync_services::{ServiceExecutor, ServiceRegistry},
-    tari_message::TariMessageType,
+    comms_connector::pubsub_connector,
+    domain_message::DomainMessage,
+    services::comms_outbound::CommsOutboundServiceInitializer,
 };
-use tari_storage::lmdb_store::LMDBDatabase;
+use tari_service_framework::{reply_channel, StackBuilder};
+use tari_utilities::message_format::MessageFormat;
 use tari_wallet::{
-    output_manager_service::output_manager_service::{OutputManagerService, OutputManagerServiceApi},
-    transaction_service::{TransactionService, TransactionServiceApi},
+    output_manager_service::{
+        handle::OutputManagerHandle,
+        service::OutputManagerService,
+        OutputManagerServiceInitializer,
+    },
+    transaction_service::{
+        handle::{TransactionEvent, TransactionServiceHandle},
+        service::TransactionService,
+        TransactionServiceInitializer,
+    },
 };
-use tokio::runtime::{Runtime, TaskExecutor};
+use tokio::runtime::Runtime;
 
 pub fn setup_transaction_service(
-    executor: TaskExecutor,
-    seed_key: PrivateKey,
+    runtime: &Runtime,
+    master_key: PrivateKey,
     node_identity: NodeIdentity,
     peers: Vec<NodeIdentity>,
-    peer_database: LMDBDatabase,
+) -> (TransactionServiceHandle, OutputManagerHandle, CommsNode)
+{
+    let (publisher, subscription_factory) = pubsub_connector(runtime.executor(), 100);
+    let subscription_factory = Arc::new(subscription_factory);
+    let (comms, dht) = setup_comms_services(runtime.executor(), Arc::new(node_identity.clone()), peers, publisher);
+
+    let fut = StackBuilder::new(runtime.executor(), comms.shutdown_signal())
+        .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))
+        .add_initializer(OutputManagerServiceInitializer::new(master_key, "".to_string(), 0))
+        .add_initializer(TransactionServiceInitializer::new(subscription_factory))
+        .finish();
+
+    let handles = runtime.block_on(fut).expect("Service initialization failed");
+
+    let output_manager_handle = handles.get_handle::<OutputManagerHandle>().unwrap();
+    let transaction_service_handle = handles.get_handle::<TransactionServiceHandle>().unwrap();
+
+    (transaction_service_handle, output_manager_handle, comms)
+}
+
+/// This utility function creates a Transaction service without using the Service Framework Stack and exposes all the
+/// streams for testing purposes.
+pub fn setup_transaction_service_no_comms(
+    runtime: &Runtime,
+    master_key: PrivateKey,
 ) -> (
-    ServiceExecutor,
-    Arc<TransactionServiceApi>,
-    Arc<OutputManagerServiceApi>,
-    CommsNode<TariMessageType>,
+    TransactionServiceHandle,
+    OutputManagerHandle,
+    Receiver<DhtOutboundRequest>,
+    Sender<DomainMessage<TransactionSenderMessage>>,
+    Sender<DomainMessage<RecipientSignedMessage>>,
 )
 {
-    let output_manager = OutputManagerService::new(seed_key, "".to_string(), 0);
-    let output_manager_api = output_manager.get_api();
-    let tx_service = TransactionService::new(output_manager_api.clone());
-    let tx_service_api = tx_service.get_api();
-    let services = ServiceRegistry::new().register(tx_service).register(output_manager);
-    let comms = setup_comms_services(executor, node_identity, peers, peer_database);
+    let (oms_request_sender, oms_request_receiver) = reply_channel::unbounded();
+    let output_manager_service = OutputManagerService::new(oms_request_receiver, master_key, "".to_string(), 0);
+    let output_manager_service_handle = OutputManagerHandle::new(oms_request_sender);
 
+    let (ts_request_sender, ts_request_receiver) = reply_channel::unbounded();
+    let (event_publisher, event_subscriber) = bounded(100);
+    let ts_handle = TransactionServiceHandle::new(ts_request_sender, event_subscriber);
+    let (tx_sender, tx_receiver) = mpsc::channel(20);
+    let (tx_ack_sender, tx_ack_receiver) = mpsc::channel(20);
+
+    let (outbound_message_sender, outbound_message_receiver) = mpsc::channel(20);
+    let outbound_message_requester = OutboundMessageRequester::new(outbound_message_sender);
+
+    let ts_service = TransactionService::new(
+        ts_request_receiver,
+        tx_receiver,
+        tx_ack_receiver,
+        output_manager_service_handle.clone(),
+        outbound_message_requester.clone(),
+        event_publisher,
+    );
+    runtime.executor().spawn(async move {
+        let _ = output_manager_service.start().await.unwrap();
+    });
+    runtime.executor().spawn(async move {
+        let _ = ts_service.start().await.unwrap();
+    });
     (
-        ServiceExecutor::execute(&comms, services),
-        tx_service_api,
-        output_manager_api,
-        comms,
+        ts_handle,
+        output_manager_service_handle,
+        outbound_message_receiver,
+        tx_sender,
+        tx_ack_sender,
     )
 }
+
 pub fn make_input<R: Rng + CryptoRng>(rng: &mut R, val: MicroTari) -> (TransactionInput, UnblindedOutput) {
     let key = PrivateKey::random(rng);
     let commitment = COMMITMENT_FACTORY.commit_value(&key, val.into());
     let input = TransactionInput::new(OutputFeatures::default(), commitment);
     (input, UnblindedOutput::new(val, key, None))
 }
+
 pub struct TestParams {
     pub spend_key: PrivateKey,
     pub change_key: PrivateKey,
@@ -108,69 +181,68 @@ fn manage_single_transaction() {
     let mut rng = OsRng::new().unwrap();
     // Alice's parameters
     let alice_seed = PrivateKey::random(&mut rng);
-    let alice_node_identity = NodeIdentity::random(&mut rng, "127.0.0.1:31583".parse().unwrap()).unwrap();
-    let alice_database_name = "alice_test_tx_service1"; // Note: every test should have unique database
-    let alice_datastore = init_datastore(alice_database_name).unwrap();
-    let alice_peer_database = alice_datastore.get_handle(alice_database_name).unwrap();
+    let alice_node_identity = NodeIdentity::random(
+        &mut rng,
+        "127.0.0.1:31583".parse().unwrap(),
+        PeerFeatures::communication_node_default(),
+    )
+    .unwrap();
+
     // Bob's parameters
     let bob_seed = PrivateKey::random(&mut rng);
-    let bob_node_identity = NodeIdentity::random(&mut rng, "127.0.0.1:31582".parse().unwrap()).unwrap();
-    let bob_database_name = "bob_test_tx_service1"; // Note: every test should have unique database
-    let bob_datastore = init_datastore(bob_database_name).unwrap();
-    let bob_peer_database = bob_datastore.get_handle(bob_database_name).unwrap();
+    let bob_node_identity = NodeIdentity::random(
+        &mut rng,
+        "127.0.0.1:31582".parse().unwrap(),
+        PeerFeatures::communication_node_default(),
+    )
+    .unwrap();
 
-    let (alice_services, alice_tx_api, alice_oms_api, _alice_comms) = setup_transaction_service(
-        runtime.executor(),
-        alice_seed,
-        alice_node_identity.clone(),
-        vec![bob_node_identity.clone()],
-        alice_peer_database,
-    );
-
-    thread::sleep(Duration::from_millis(500));
+    let (mut alice_ts, mut alice_oms, alice_comms) =
+        setup_transaction_service(&runtime, alice_seed, alice_node_identity.clone(), vec![
+            bob_node_identity.clone(),
+        ]);
+    let alice_event_stream = alice_ts.get_event_stream_fused();
 
     let value = MicroTari::from(1000);
     let (_utxo, uo1) = make_input(&mut rng, MicroTari(2500));
 
-    assert!(alice_tx_api
-        .send_transaction(
+    assert!(runtime
+        .block_on(alice_ts.send_transaction(
             bob_node_identity.identity.public_key.clone(),
             value,
             MicroTari::from(20),
-        )
+        ))
         .is_err());
 
-    alice_oms_api.add_output(uo1).unwrap();
+    runtime.block_on(alice_oms.add_output(uo1)).unwrap();
 
-    alice_tx_api
-        .send_transaction(
+    runtime
+        .block_on(alice_ts.send_transaction(
             bob_node_identity.identity.public_key.clone(),
             value,
             MicroTari::from(20),
-        )
+        ))
         .unwrap();
-
-    let alice_pending_outbound = alice_tx_api.get_pending_outbound_transaction().unwrap();
-    let alice_completed_tx = alice_tx_api.get_completed_transaction().unwrap();
+    let alice_pending_outbound = runtime.block_on(alice_ts.get_pending_outbound_transactions()).unwrap();
+    let alice_completed_tx = runtime.block_on(alice_ts.get_completed_transactions()).unwrap();
     assert_eq!(alice_pending_outbound.len(), 1);
     assert_eq!(alice_completed_tx.len(), 0);
 
-    let (bob_services, bob_tx_api, bob_oms_api, _bob_comms) = setup_transaction_service(
-        runtime.executor(),
-        bob_seed,
-        bob_node_identity.clone(),
-        vec![alice_node_identity.clone()],
-        bob_peer_database,
-    );
+    let (mut bob_ts, mut bob_oms, bob_comms) =
+        setup_transaction_service(&runtime, bob_seed, bob_node_identity.clone(), vec![
+            alice_node_identity.clone()
+        ]);
 
-    assert_change(|| alice_tx_api.get_completed_transaction().unwrap().len(), 1, 50);
+    let mut result =
+        runtime.block_on(async { event_stream_count(alice_event_stream, 1, Duration::from_secs(10)).await });
+    assert_eq!(result.remove(&TransactionEvent::ReceivedTransactionReply), Some(1));
 
-    let alice_pending_outbound = alice_tx_api.get_pending_outbound_transaction().unwrap();
-    let alice_completed_tx = alice_tx_api.get_completed_transaction().unwrap();
+    let alice_pending_outbound = runtime.block_on(alice_ts.get_pending_outbound_transactions()).unwrap();
+    let alice_completed_tx = runtime.block_on(alice_ts.get_completed_transactions()).unwrap();
     assert_eq!(alice_pending_outbound.len(), 0);
     assert_eq!(alice_completed_tx.len(), 1);
 
-    let bob_pending_inbound_tx = bob_tx_api.get_pending_inbound_transaction().unwrap();
+    let bob_pending_inbound_tx = runtime.block_on(bob_ts.get_pending_inbound_transactions()).unwrap();
     assert_eq!(bob_pending_inbound_tx.len(), 1);
 
     let mut alice_tx_id = 0;
@@ -180,146 +252,249 @@ fn manage_single_transaction() {
     for (k, v) in bob_pending_inbound_tx.iter() {
         assert_eq!(*k, alice_tx_id);
         if let RecipientState::Finalized(rsm) = &v.state {
-            bob_oms_api
-                .confirm_received_output(alice_tx_id, rsm.output.clone())
+            runtime
+                .block_on(bob_oms.confirm_received_output(alice_tx_id, rsm.output.clone()))
                 .unwrap();
-            assert_eq!(bob_oms_api.get_balance().unwrap(), value);
+            assert_eq!(runtime.block_on(bob_oms.get_balance()).unwrap(), value);
         } else {
             assert!(false);
         }
     }
-
-    alice_services.shutdown().unwrap();
-    bob_services.shutdown().unwrap();
-    clean_up_datastore(alice_database_name);
-    clean_up_datastore(bob_database_name);
+    alice_comms.shutdown().unwrap();
+    bob_comms.shutdown().unwrap();
 }
 
 #[test]
 fn manage_multiple_transactions() {
     let runtime = Runtime::new().unwrap();
-    let _ = env_logger::builder().is_test(true).try_init();
     let mut rng = OsRng::new().unwrap();
     // Alice's parameters
     let alice_seed = PrivateKey::random(&mut rng);
-    let alice_node_identity = NodeIdentity::random(&mut rng, "127.0.0.1:31584".parse().unwrap()).unwrap();
-    let alice_database_name = "alice_test_tx_service2"; // Note: every test should have unique database
-    let alice_datastore = init_datastore(alice_database_name).unwrap();
-    let alice_peer_database = alice_datastore.get_handle(alice_database_name).unwrap();
+    let alice_node_identity = NodeIdentity::random(
+        &mut rng,
+        "127.0.0.1:31584".parse().unwrap(),
+        PeerFeatures::communication_node_default(),
+    )
+    .unwrap();
+
     // Bob's parameters
     let bob_seed = PrivateKey::random(&mut rng);
-    let bob_node_identity = NodeIdentity::random(&mut rng, "127.0.0.1:31585".parse().unwrap()).unwrap();
-    let bob_database_name = "bob_test_tx_service2"; // Note: every test should have unique database
-    let bob_datastore = init_datastore(bob_database_name).unwrap();
-    let bob_peer_database = bob_datastore.get_handle(bob_database_name).unwrap();
+    let bob_node_identity = NodeIdentity::random(
+        &mut rng,
+        "127.0.0.1:31585".parse().unwrap(),
+        PeerFeatures::communication_node_default(),
+    )
+    .unwrap();
+
     // Carols's parameters
     let carol_seed = PrivateKey::random(&mut rng);
-    let carol_node_identity = NodeIdentity::random(&mut rng, "127.0.0.1:31586".parse().unwrap()).unwrap();
-    let carol_database_name = "carol_test_tx_service2"; // Note: every test should have unique database
-    let carol_datastore = init_datastore(carol_database_name).unwrap();
-    let carol_peer_database = carol_datastore.get_handle(carol_database_name).unwrap();
-    let (alice_services, alice_tx_api, alice_oms_api, _alice_comms) = setup_transaction_service(
-        runtime.executor(),
-        alice_seed,
-        alice_node_identity.clone(),
-        vec![bob_node_identity.clone(), carol_node_identity.clone()],
-        alice_peer_database,
-    );
+    let carol_node_identity = NodeIdentity::random(
+        &mut rng,
+        "127.0.0.1:31586".parse().unwrap(),
+        PeerFeatures::communication_node_default(),
+    )
+    .unwrap();
+
+    let (mut alice_ts, mut alice_oms, alice_comms) =
+        setup_transaction_service(&runtime, alice_seed, alice_node_identity.clone(), vec![
+            bob_node_identity.clone(),
+            carol_node_identity.clone(),
+        ]);
+    let alice_event_stream = alice_ts.get_event_stream_fused();
 
     // Add some funds to Alices wallet
     let (_utxo, uo1a) = make_input(&mut rng, MicroTari(5500));
-    alice_oms_api.add_output(uo1a).unwrap();
+    runtime.block_on(alice_oms.add_output(uo1a)).unwrap();
     let (_utxo, uo1b) = make_input(&mut rng, MicroTari(3000));
-    alice_oms_api.add_output(uo1b).unwrap();
+    runtime.block_on(alice_oms.add_output(uo1b)).unwrap();
     let (_utxo, uo1c) = make_input(&mut rng, MicroTari(3000));
-    alice_oms_api.add_output(uo1c).unwrap();
+    runtime.block_on(alice_oms.add_output(uo1c)).unwrap();
 
     // A series of interleaved transactions. First with Bob and Carol offline and then two with them online
     let value_a_to_b_1 = MicroTari::from(1000);
     let value_a_to_b_2 = MicroTari::from(800);
     let value_b_to_a_1 = MicroTari::from(1100);
     let value_a_to_c_1 = MicroTari::from(1400);
-    alice_tx_api
-        .send_transaction(
+    runtime
+        .block_on(alice_ts.send_transaction(
             bob_node_identity.identity.public_key.clone(),
             value_a_to_b_1,
             MicroTari::from(20),
-        )
+        ))
         .unwrap();
-    alice_tx_api
-        .send_transaction(
+    runtime
+        .block_on(alice_ts.send_transaction(
             carol_node_identity.identity.public_key.clone(),
             value_a_to_c_1,
             MicroTari::from(20),
-        )
+        ))
         .unwrap();
-    let alice_pending_outbound = alice_tx_api.get_pending_outbound_transaction().unwrap();
-    let alice_completed_tx = alice_tx_api.get_completed_transaction().unwrap();
+    let alice_pending_outbound = runtime.block_on(alice_ts.get_pending_outbound_transactions()).unwrap();
+    let alice_completed_tx = runtime.block_on(alice_ts.get_completed_transactions()).unwrap();
     assert_eq!(alice_pending_outbound.len(), 2);
     assert_eq!(alice_completed_tx.len(), 0);
 
     // Spin up Bob and Carol
-    let (bob_services, bob_tx_api, bob_oms_api, _bob_comms) = setup_transaction_service(
-        runtime.executor(),
-        bob_seed,
-        bob_node_identity.clone(),
-        vec![alice_node_identity.clone()],
-        bob_peer_database,
-    );
-    let (carol_services, carol_tx_api, carol_oms_api, _carol_comms) = setup_transaction_service(
-        runtime.executor(),
-        carol_seed,
-        carol_node_identity.clone(),
-        vec![alice_node_identity.clone()],
-        carol_peer_database,
-    );
+    let (mut bob_ts, mut bob_oms, bob_comms) =
+        setup_transaction_service(&runtime, bob_seed, bob_node_identity.clone(), vec![
+            alice_node_identity.clone()
+        ]);
+    let (mut carol_ts, mut carol_oms, carol_comms) =
+        setup_transaction_service(&runtime, carol_seed, carol_node_identity.clone(), vec![
+            alice_node_identity.clone(),
+        ]);
 
     let (_utxo, uo2) = make_input(&mut rng, MicroTari(3500));
-    bob_oms_api.add_output(uo2).unwrap();
+    runtime.block_on(bob_oms.add_output(uo2)).unwrap();
     let (_utxo, uo3) = make_input(&mut rng, MicroTari(4500));
-    carol_oms_api.add_output(uo3).unwrap();
+    runtime.block_on(carol_oms.add_output(uo3)).unwrap();
 
-    bob_tx_api
-        .send_transaction(
+    runtime
+        .block_on(bob_ts.send_transaction(
             alice_node_identity.identity.public_key.clone(),
             value_b_to_a_1,
             MicroTari::from(20),
-        )
+        ))
         .unwrap();
-    alice_tx_api
-        .send_transaction(
+    runtime
+        .block_on(alice_ts.send_transaction(
             bob_node_identity.identity.public_key.clone(),
             value_a_to_b_2,
             MicroTari::from(20),
-        )
+        ))
         .unwrap();
 
-    assert_change(|| alice_tx_api.get_completed_transaction().unwrap().len(), 3, 50);
+    let mut result =
+        runtime.block_on(async { event_stream_count(alice_event_stream, 4, Duration::from_secs(10)).await });
+    assert_eq!(result.remove(&TransactionEvent::ReceivedTransactionReply), Some(3));
 
-    let alice_pending_outbound = alice_tx_api.get_pending_outbound_transaction().unwrap();
-    let alice_completed_tx = alice_tx_api.get_completed_transaction().unwrap();
+    let alice_pending_outbound = runtime.block_on(alice_ts.get_pending_outbound_transactions()).unwrap();
+    let alice_completed_tx = runtime.block_on(alice_ts.get_completed_transactions()).unwrap();
     assert_eq!(alice_pending_outbound.len(), 0);
     assert_eq!(alice_completed_tx.len(), 3);
-    let bob_pending_outbound = bob_tx_api.get_pending_outbound_transaction().unwrap();
-    let bob_completed_tx = bob_tx_api.get_completed_transaction().unwrap();
+    let bob_pending_outbound = runtime.block_on(bob_ts.get_pending_outbound_transactions()).unwrap();
+    let bob_completed_tx = runtime.block_on(bob_ts.get_completed_transactions()).unwrap();
     assert_eq!(bob_pending_outbound.len(), 0);
     assert_eq!(bob_completed_tx.len(), 1);
-    let carol_pending_inbound = carol_tx_api.get_pending_inbound_transaction().unwrap();
+    let carol_pending_inbound = runtime.block_on(carol_ts.get_pending_inbound_transactions()).unwrap();
     assert_eq!(carol_pending_inbound.len(), 1);
 
-    alice_services.shutdown().unwrap();
-    bob_services.shutdown().unwrap();
-    carol_services.shutdown().unwrap();
-    clean_up_datastore(alice_database_name);
-    clean_up_datastore(bob_database_name);
-    clean_up_datastore(carol_database_name);
+    alice_comms.shutdown().unwrap();
+    bob_comms.shutdown().unwrap();
+    carol_comms.shutdown().unwrap();
 }
 
-// TODO Test the following once the Tokio future based service architecture is in place. The current architecture
-// makes it impossible to test this service without a running Service and Comms stack but then you cannot access the
-// internals of the service as it is running the ServiceExecutor Thread
-//
-// What happens when repeated tx_id are sent to be accepted
-// What happens with malformed sender message
-// What happens with malformed recipient message
-// What happens when accepting recipient reply for unknown tx_id
+#[test]
+fn test_sending_repeated_tx_ids() {
+    let runtime = Runtime::new().unwrap();
+    let mut rng = OsRng::new().unwrap();
+
+    let alice_seed = PrivateKey::random(&mut rng);
+    let bob_seed = PrivateKey::random(&mut rng);
+
+    let (alice_ts, _alice_output_manager, _alice_outbound_message_receiver, mut alice_tx_sender, _alice_tx_ack_sender) =
+        setup_transaction_service_no_comms(&runtime, alice_seed);
+    let (_bob_ts, mut bob_output_manager, _bob_outbound_message_receiver, _bob_tx_sender, _bob_tx_ack_sender) =
+        setup_transaction_service_no_comms(&runtime, bob_seed);
+    let alice_event_stream = alice_ts.get_event_stream_fused();
+
+    let (_utxo, uo) = make_input(&mut rng, MicroTari(250000));
+
+    runtime.block_on(bob_output_manager.add_output(uo)).unwrap();
+
+    let mut stp = runtime
+        .block_on(bob_output_manager.prepare_transaction_to_send(MicroTari::from(500), MicroTari::from(1000), None))
+        .unwrap();
+    let msg = stp.build_single_round_message().unwrap();
+    let tx_message = create_dummy_message(TransactionSenderMessage::Single(Box::new(msg.clone())));
+
+    runtime.block_on(alice_tx_sender.send(tx_message.clone())).unwrap();
+    runtime.block_on(alice_tx_sender.send(tx_message.clone())).unwrap();
+
+    let mut result =
+        runtime.block_on(async { event_stream_count(alice_event_stream, 2, Duration::from_secs(10)).await });
+
+    assert_eq!(result.remove(&TransactionEvent::ReceivedTransaction), Some(1));
+    assert_eq!(
+        result.remove(&TransactionEvent::Error(
+            "Error handling Transaction Sender message".to_string()
+        )),
+        Some(1)
+    );
+}
+
+#[test]
+fn test_accepting_unknown_tx_id_and_malformed_reply() {
+    let runtime = Runtime::new().unwrap();
+    let mut rng = OsRng::new().unwrap();
+
+    let alice_seed = PrivateKey::random(&mut rng);
+    let bob_node_identity = NodeIdentity::random(
+        &mut rng,
+        "127.0.0.1:31585".parse().unwrap(),
+        PeerFeatures::communication_node_default(),
+    )
+    .unwrap();
+    let (
+        mut alice_ts,
+        mut alice_output_manager,
+        mut alice_outbound_message_receiver,
+        _alice_tx_sender,
+        mut alice_tx_ack_sender,
+    ) = setup_transaction_service_no_comms(&runtime, alice_seed);
+
+    let alice_event_stream = alice_ts.get_event_stream_fused();
+
+    let (_utxo, uo) = make_input(&mut rng, MicroTari(250000));
+
+    runtime.block_on(alice_output_manager.add_output(uo)).unwrap();
+
+    runtime
+        .block_on(alice_ts.send_transaction(
+            bob_node_identity.identity.public_key.clone(),
+            MicroTari::from(500),
+            MicroTari::from(1000),
+        ))
+        .unwrap();
+
+    let mut serialized_msg = None;
+    if let DhtOutboundRequest::SendMsg(req) = runtime.block_on(alice_outbound_message_receiver.next()).unwrap() {
+        serialized_msg = Some(req.body);
+    }
+
+    let msg: Message = Message::from_binary(serialized_msg.unwrap().as_slice()).unwrap();
+    let sender_message = msg.deserialize_message().unwrap();
+
+    let params = TestParams::new(&mut rng);
+
+    let rtp = ReceiverTransactionProtocol::new(
+        sender_message,
+        params.nonce,
+        params.spend_key,
+        OutputFeatures::default(),
+        &PROVER,
+        &COMMITMENT_FACTORY,
+    );
+
+    let mut tx_reply = rtp.get_signed_data().unwrap().clone();
+    let mut wrong_tx_id = tx_reply.clone();
+    wrong_tx_id.tx_id = 2;
+    let (_p, pub_key) = PublicKey::random_keypair(&mut rng);
+    tx_reply.public_spend_key = pub_key;
+    runtime
+        .block_on(alice_tx_ack_sender.send(create_dummy_message(wrong_tx_id)))
+        .unwrap();
+
+    runtime
+        .block_on(alice_tx_ack_sender.send(create_dummy_message(tx_reply)))
+        .unwrap();
+
+    let mut result =
+        runtime.block_on(async { event_stream_count(alice_event_stream, 2, Duration::from_secs(10)).await });
+    assert_eq!(
+        result.remove(&TransactionEvent::Error(
+            "Error handling Transaction Recipient Reply message".to_string()
+        )),
+        Some(2)
+    );
+}

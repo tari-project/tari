@@ -20,21 +20,35 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-macro_rules! acquire_lock {
-    ($e:expr, $m:ident) => {
-        match $e.$m() {
-            Ok(lock) => lock,
-            Err(poisoned) => poisoned.into_inner(),
-        }
-    };
-    ($e:expr) => {
-        acquire_lock!($e, lock)
-    };
-}
+use crate::output_manager_service::error::OutputManagerError;
+use derive_error::Error;
+use tari_comms_dht::outbound::DhtOutboundError;
+use tari_core::transaction_protocol::TransactionProtocolError;
+use tari_service_framework::reply_channel::TransportChannelError;
 
-#[cfg(test)]
-macro_rules! acquire_read_lock {
-    ($e:expr) => {
-        acquire_lock!($e, read)
-    };
+#[derive(Debug, Error)]
+pub enum TransactionServiceError {
+    // Transaction protocol is not in the correct state for this operation
+    InvalidStateError,
+    // Transaction Protocol Error
+    TransactionProtocolError(TransactionProtocolError),
+    // The message being process is not recognized by the Transaction Manager
+    InvalidMessageTypeError,
+    // A message for a specific tx_id has been repeated
+    RepeatedMessageError,
+    // A recipient reply was received for a non-existent tx_id
+    TransactionDoesNotExistError,
+    /// The Outbound Message Service is not initialized
+    OutboundMessageServiceNotInitialized,
+    /// Received an unexpected API response
+    UnexpectedApiResponse,
+    /// Failed to send from API
+    ApiSendFailed,
+    /// Failed to receive in API from service
+    ApiReceiveFailed,
+    /// An error has occurred reading or writing the event subscriber stream
+    EventStreamError,
+    OutboundError(DhtOutboundError),
+    OutputManagerError(OutputManagerError),
+    TransportChannelError(TransportChannelError),
 }

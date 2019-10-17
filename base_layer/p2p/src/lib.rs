@@ -26,9 +26,6 @@
 // Tracking issue: https://github.com/rust-lang/rust/issues/63063
 #![feature(type_alias_impl_trait)]
 
-#[macro_use]
-mod macros;
-
 // TODO Put these back in after Futures Comms stack refactor
 // pub mod saf_service;
 pub mod comms_connector;
@@ -40,8 +37,3 @@ pub mod tari_message;
 
 #[cfg(test)]
 pub mod test_utils;
-
-// TODO: These can be removed once everything has been converted to async
-pub mod domain_subscriber;
-pub mod ping_pong;
-pub mod sync_services;
