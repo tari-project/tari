@@ -42,7 +42,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::chain_storage::BlockchainBackend;
 use std::fmt::{Display, Error, Formatter};
 
 /// The base node state represents the FSM of the base node synchronisation process.
@@ -110,10 +109,9 @@ use std::fmt::{Display, Error, Formatter};
 ///
 /// Reject all new requests with a `Shutdown` message, complete current validations / tasks, flush all state if
 /// required, and then shutdown.
-pub enum BaseNodeState<B: BlockchainBackend> {
-    None,
-    Starting(Starting<B>),
-    InitialSync(InitialSync<B>),
+pub enum BaseNodeState {
+    Starting(Starting),
+    InitialSync(InitialSync),
     FetchingHorizonState(FetchHorizonState),
     BlockSync(BlockSync),
     Listening(Listening),
@@ -141,7 +139,7 @@ pub enum SyncStatus {
     UpToDate,
 }
 
-impl<B: BlockchainBackend> Display for BaseNodeState<B> {
+impl Display for BaseNodeState {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         let s = match self {
             Self::Starting(_) => "Initializing",
@@ -150,13 +148,13 @@ impl<B: BlockchainBackend> Display for BaseNodeState<B> {
             Self::BlockSync(_) => "Synchronizing blocks",
             Self::Listening(_) => "Listening",
             Self::Shutdown(_) => "Shutting down",
-            Self::None => "None",
         };
         f.write_str(s)
     }
 }
 
 mod block_sync;
+mod error;
 mod fetching_horizon_state;
 mod initial_sync;
 mod listening;

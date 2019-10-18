@@ -20,10 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    base_node::states::{listening::Listening, InitialSync, StateEvent, StateEvent::FatalError},
-    chain_storage::BlockchainBackend,
-};
+use crate::base_node::states::{listening::Listening, InitialSync, StateEvent, StateEvent::FatalError};
 use log::*;
 
 const LOG_TARGET: &str = "base_node::fetching_horizon_state";
@@ -31,7 +28,7 @@ const LOG_TARGET: &str = "base_node::fetching_horizon_state";
 pub struct FetchHorizonState;
 
 impl FetchHorizonState {
-    pub fn next_event(&mut self) -> StateEvent {
+    pub async fn next_event(&mut self) -> StateEvent {
         info!(target: LOG_TARGET, "Starting synchronization of pruning horizon state");
         FatalError("Unimplemented".into())
     }
@@ -39,8 +36,8 @@ impl FetchHorizonState {
 
 /// State management for InitialSync -> FetchingHorizonState. This is the typical transition for a new node joining
 /// the network
-impl<B: BlockchainBackend> From<InitialSync<B>> for FetchHorizonState {
-    fn from(_old: InitialSync<B>) -> Self {
+impl From<InitialSync> for FetchHorizonState {
+    fn from(_old: InitialSync) -> Self {
         unimplemented!()
     }
 }

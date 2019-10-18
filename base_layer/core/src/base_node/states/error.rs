@@ -20,32 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::base_node::states::{block_sync::BlockSync, InitialSync, StateEvent, StateEvent::FatalError};
-use log::*;
+use crate::base_node::states::StateEvent;
+use derive_error::Error;
 
-const LOG_TARGET: &str = "base_node::listening";
-
-pub struct Listening;
-
-impl Listening {
-    pub async fn next_event(&mut self) -> StateEvent {
-        info!(target: LOG_TARGET, "Listening for new blocks");
-        FatalError("Unimplemented".into())
-    }
+#[derive(Clone, Debug, Error)]
+pub enum BaseNodeError {
+    #[error(msg_embedded, non_std, no_from)]
+    ConfigurationError(String),
 }
 
-/// State management for BlockSync -> Listening. This change is part of the typical flow for new nodes joining the
-/// network, or established nodes that have caught up to the chain tip again.
-impl From<BlockSync> for Listening {
-    fn from(_old: BlockSync) -> Self {
-        unimplemented!()
-    }
-}
-
-/// State management for BlockSync -> Listening. This state change happens when a node restarts and still happens to
-/// be in sync with the network.
-impl From<InitialSync> for Listening {
-    fn from(_old: InitialSync) -> Self {
-        unimplemented!()
+impl BaseNodeError {
+    pub fn as_fatal(&self, preface: &str) -> StateEvent {
+        StateEvent::FatalError(format!("{} {}", preface, self.to_string()))
     }
 }

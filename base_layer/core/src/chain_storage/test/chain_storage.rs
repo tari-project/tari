@@ -330,7 +330,7 @@ fn store_and_retrieve_block() {
     let metadata = store.get_metadata().unwrap();
     assert_eq!(metadata.height_of_longest_chain, Some(0));
     assert_eq!(metadata.best_block, Some(hash));
-    assert_eq!(metadata.horizon_block(), Some(0));
+    assert_eq!(metadata.horizon_block(metadata.height_of_longest_chain.unwrap()), 0);
     // Fetch the block back
     let block2 = store.fetch_block(0).unwrap();
     assert_eq!(block2.confirmations(), 1);
