@@ -21,7 +21,11 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use dirs;
-use std::{env, path::PathBuf};
+use std::{
+    env,
+    io::ErrorKind,
+    path::{Path, PathBuf},
+};
 
 /// Determine the path to a log configuration file using the following precedence rules:
 /// 1. Use the provided path (usually pulled from a CLI argument)
@@ -35,7 +39,7 @@ pub fn get_log_configuration_path(cli_path: Option<PathBuf>) -> PathBuf {
                 .filter(|s| !s.is_empty())
                 .map(PathBuf::from)
         })
-        .or_else(|| dirs::home_dir().map(|path| path.join(".tari/log4rs.toml")))
+        .or_else(|| dirs::home_dir().map(|path| path.join(".tari/log4rs.yml")))
         .or_else(|| {
             Some(env::current_dir().expect(
                 "Could find a suitable path to the log configuration file. Consider setting the \
@@ -44,6 +48,33 @@ pub fn get_log_configuration_path(cli_path: Option<PathBuf>) -> PathBuf {
             ))
         })
         .unwrap()
+}
+
+/// Create the default data directory (`~/.tari` on OSx and Linux, for example) if it doesn't already exist
+pub fn create_data_directory() -> Result<(), std::io::Error> {
+    let mut home = dirs::home_dir().ok_or(std::io::Error::from(ErrorKind::NotFound))?;
+    home.push(".tari");
+    if !home.exists() {
+        std::fs::create_dir(home)
+    } else {
+        Ok(())
+    }
+}
+
+/// Installs a new configuration file template, copied from `tari_config_sample.toml` to the given path.
+/// When bundled as a binary, the config sample file must be bundled in `common/config`.
+pub fn install_default_config_file(path: &Path) -> Result<u64, std::io::Error> {
+    let mut source = env::current_dir()?;
+    source.push(Path::new("common/config/tari_config_sample.toml"));
+    std::fs::copy(source, path)
+}
+
+/// Installs a new default logfile configuration, copied from `log4rs-sample.yml` to the given path.
+/// When bundled as a binary, the config sample file must be bundled in `common/config`.
+pub fn install_default_logfile_config(path: &Path) -> Result<u64, std::io::Error> {
+    let mut source = env::current_dir()?;
+    source.push(Path::new("common/logging/log4rs-sample.yml"));
+    std::fs::copy(source, path)
 }
 
 #[cfg(test)]
