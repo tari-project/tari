@@ -20,15 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    base_node::states::{
-        fetching_horizon_state::FetchHorizonState,
-        listening::Listening,
-        InitialSync,
-        StateEvent,
-        StateEvent::FatalError,
-    },
-    chain_storage::BlockchainBackend,
+use crate::base_node::states::{
+    fetching_horizon_state::FetchHorizonState,
+    listening::Listening,
+    InitialSync,
+    StateEvent,
+    StateEvent::FatalError,
 };
 use log::*;
 
@@ -37,7 +34,7 @@ const LOG_TARGET: &str = "base_node::block_sync";
 pub struct BlockSync;
 
 impl BlockSync {
-    pub fn next_event(&mut self) -> StateEvent {
+    pub async fn next_event(&mut self) -> StateEvent {
         info!(target: LOG_TARGET, "Synchronizing missing blocks");
         FatalError("Unimplemented".into())
     }
@@ -61,8 +58,8 @@ impl From<Listening> for BlockSync {
 
 /// State management for InitialSync -> BlockSync. This change happens when a (previously synced) node is restarted
 /// after being offline for some time.
-impl<B: BlockchainBackend> From<InitialSync<B>> for BlockSync {
-    fn from(_old: InitialSync<B>) -> Self {
+impl From<InitialSync> for BlockSync {
+    fn from(_old: InitialSync) -> Self {
         unimplemented!()
     }
 }

@@ -28,6 +28,7 @@ use tari_service_framework::reply_channel::SenderService;
 use tower_service::Service;
 
 /// The OutboundNodeCommsInterface provides an interface to request information from remove nodes.
+#[derive(Clone)]
 pub struct OutboundNodeCommsInterface {
     sender: SenderService<NodeCommsRequest, Result<NodeCommsResponse, CommsInterfaceError>>,
 }

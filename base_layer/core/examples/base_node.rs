@@ -22,16 +22,19 @@
 //
 
 use tari_core::{
-    base_node::{BaseNodeConfig, BaseNodeStateMachine},
+    base_node::{BaseNodeConfig, BaseNodeStateMachine, OutboundNodeCommsInterface},
     chain_storage::{BlockchainDatabase, MemoryDatabase},
     types::HashDigest,
 };
+use tari_service_framework::reply_channel;
 
 // This is a temporary example used while developing the node software
 fn main() {
     let _ = env_logger::init();
     let db = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
     let config = BaseNodeConfig;
-    let mut node = BaseNodeStateMachine::<MemoryDatabase<HashDigest>>::new(db, config);
+    let (sender, _) = reply_channel::unbounded();
+    let comms = OutboundNodeCommsInterface::new(sender);
+    let node = BaseNodeStateMachine::<MemoryDatabase<HashDigest>>::new(&db, config, &comms);
     node.run();
 }

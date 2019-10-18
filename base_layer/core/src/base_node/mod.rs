@@ -42,4 +42,5 @@ pub mod states;
 
 // Public re-exports
 pub use base_node::BaseNodeStateMachine;
+pub use comms_interface::OutboundNodeCommsInterface;
 pub use config::BaseNodeConfig;

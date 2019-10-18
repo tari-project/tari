@@ -21,34 +21,31 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 use crate::{
-    base_node::{states::StateEvent, BaseNodeConfig},
-    chain_storage::{BlockchainBackend, BlockchainDatabase},
+    base_node::{
+        states::{error::BaseNodeError, StateEvent},
+        BaseNodeStateMachine,
+    },
+    chain_storage::BlockchainBackend,
 };
 use log::*;
 
 const LOG_TARGET: &str = "base_node::starting_state";
 
 // The data structure handling Base Node Startup
-pub struct Starting<B>
-where B: BlockchainBackend
-{
-    pub(crate) config: BaseNodeConfig,
-    pub(crate) db: BlockchainDatabase<B>,
-}
+pub struct Starting;
 
-impl<B: BlockchainBackend> Starting<B> {
-    pub fn new(config: BaseNodeConfig, db: BlockchainDatabase<B>) -> Self {
-        Starting { config, db }
-    }
-
+impl Starting {
     /// Apply the configuration settings for this node.
-    fn apply_config(&mut self) {
+    fn apply_config(&mut self) -> Result<(), BaseNodeError> {
         // TODO apply configuration
+        Ok(())
     }
 
-    pub fn next_event(&mut self) -> StateEvent {
+    pub async fn next_event<B: BlockchainBackend>(&mut self, _shared: &BaseNodeStateMachine<B>) -> StateEvent {
         info!(target: LOG_TARGET, "Configuring node.");
-        self.apply_config();
+        if let Err(err) = self.apply_config() {
+            return err.as_fatal("There was an error with the base node configuration.");
+        }
         info!(target: LOG_TARGET, "Node configuration complete.");
         StateEvent::Initialized
     }

@@ -501,12 +501,11 @@ where T: BlockchainBackend
 
     fn check_for_valid_height(&self, height: u64) -> Result<ChainMetadata, ChainStorageError> {
         let metadata = self.get_metadata()?;
-        if metadata.height_of_longest_chain.is_none() {
-            return Err(ChainStorageError::InvalidQuery(
-                "Cannot retrieve block. Blockchain DB is empty".into(),
-            ));
-        }
-        if height > metadata.height_of_longest_chain.unwrap() {
+        let db_height = metadata.height_of_longest_chain.ok_or(ChainStorageError::InvalidQuery(
+            "Cannot retrieve block. Blockchain DB is empty".into(),
+        ))?;
+
+        if height > db_height {
             return Err(ChainStorageError::InvalidQuery(format!(
                 "Cannot get block at height {}. Chain tip is at {}",
                 height,
@@ -514,7 +513,7 @@ where T: BlockchainBackend
             )));
         }
         // We can't actually provide full block beyond the pruning horizon
-        if height < metadata.horizon_block().unwrap() {
+        if height < metadata.horizon_block(db_height) {
             return Err(ChainStorageError::BeyondPruningHorizon);
         }
         Ok(metadata)
@@ -564,9 +563,10 @@ where T: BlockchainBackend
 
     fn fetch_mmr_checkpoint(&self, tree: MmrTree, height: u64) -> Result<MerkleCheckPoint, ChainStorageError> {
         let metadata = self.get_metadata()?;
-        let horizon_block = metadata
-            .horizon_block()
-            .ok_or(ChainStorageError::InvalidQuery("Blockchain database is empty".into()))?;
+        let db_height = metadata.height_of_longest_chain.ok_or(ChainStorageError::InvalidQuery(
+            "Cannot retrieve block. Blockchain DB is empty".into(),
+        ))?;
+        let horizon_block = metadata.horizon_block(db_height);
         let index = height
             .checked_sub(horizon_block)
             .ok_or(ChainStorageError::BeyondPruningHorizon)? as u64;
@@ -647,9 +647,10 @@ where T: BlockchainBackend
     /// is reorganised if necessary.
     fn handle_possible_reorg(&self, block: Block) -> Result<BlockAddResult, ChainStorageError> {
         let metadata = self.get_metadata()?;
-        let horizon_block_height = metadata
-            .horizon_block()
-            .ok_or(ChainStorageError::InvalidQuery("Blockchain database is empty".into()))?;
+        let db_height = metadata.height_of_longest_chain.ok_or(ChainStorageError::InvalidQuery(
+            "Cannot retrieve block. Blockchain DB is empty".into(),
+        ))?;
+        let horizon_block_height = metadata.horizon_block(db_height);
         if block.header.height <= horizon_block_height {
             return Err(ChainStorageError::BeyondPruningHorizon);
         }
