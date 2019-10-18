@@ -1,0 +1,18 @@
+[package]
+name = "tari_base_node"
+version = "0.0.1"
+authors = ["The Tari Development Community"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+log = { version = "0.4.8", features = ["std"] }
+tokio = "=0.2.0-alpha.6"
+futures-preview = { version = "=0.3.0-alpha.19", default-features = false, features = ["alloc"]}
+clap = "2.33.0"
+config = { version = "0.9.3" }
+dirs = "2.0.2"
+log4rs = { version = "0.8.3", features = ["toml_format"] }
+tari_core = {path = "../../base_layer/core", version= "^0.0"}
+tari_common = {path = "../../common", version= "^0.0"}
