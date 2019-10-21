@@ -21,12 +21,13 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 // use crate::text_message_service::{handle::TextMessageHandle, TextMessageServiceInitializer};
+use crate::{
+    output_manager_service::{handle::OutputManagerHandle, OutputManagerConfig, OutputManagerServiceInitializer},
+    transaction_service::{handle::TransactionServiceHandle, TransactionServiceInitializer},
+};
 use derive_error::Error;
 use std::sync::Arc;
-use tari_comms::{
-    builder::{CommsError, CommsNode},
-    types::CommsPublicKey,
-};
+use tari_comms::builder::{CommsError, CommsNode};
 use tari_comms_dht::Dht;
 use tari_p2p::{
     comms_connector::pubsub_connector,
@@ -48,9 +49,7 @@ pub enum WalletError {
 #[derive(Clone)]
 pub struct WalletConfig {
     pub comms_config: CommsConfig,
-    pub inbound_message_buffer_size: usize,
-    pub public_key: CommsPublicKey,
-    pub database_path: String,
+    pub output_manager_config: OutputManagerConfig,
 }
 
 /// A structure containing the config and services that a Wallet application will require. This struct will start up all
@@ -58,42 +57,47 @@ pub struct WalletConfig {
 pub struct Wallet {
     pub comms: CommsNode,
     pub dht_service: Dht,
-    //    pub text_message_service: TextMessageHandle,
     pub liveness_service: LivenessHandle,
-    pub public_key: CommsPublicKey,
+    pub output_manager_service: OutputManagerHandle,
+    pub transaction_service: TransactionServiceHandle,
     pub runtime: Runtime,
 }
 
 impl Wallet {
     pub fn new(config: WalletConfig, runtime: Runtime) -> Result<Wallet, WalletError> {
         let (publisher, subscription_factory) =
-            pubsub_connector(runtime.executor(), config.inbound_message_buffer_size);
+            pubsub_connector(runtime.executor(), config.comms_config.inbound_buffer_size);
         let subscription_factory = Arc::new(subscription_factory);
 
-        let (comms, dht) = initialize_comms(runtime.executor(), config.comms_config, publisher)?;
+        let (comms, dht) = initialize_comms(runtime.executor(), config.comms_config.clone(), publisher)?;
 
         let fut = StackBuilder::new(runtime.executor(), comms.shutdown_signal())
             .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))
             .add_initializer(LivenessInitializer::new(Arc::clone(&subscription_factory)))
-//            .add_initializer(TextMessageServiceInitializer::new(
-//                subscription_factory,
-//                config.public_key.clone(),
-//                config.database_path,
-//            ))
+            .add_initializer(OutputManagerServiceInitializer::new(
+                config.output_manager_config.clone(),
+            ))
+            .add_initializer(TransactionServiceInitializer::new(subscription_factory.clone()))
             .finish();
 
         let handles = runtime.block_on(fut).expect("Service initialization failed");
 
+        let output_manager_handle = handles
+            .get_handle::<OutputManagerHandle>()
+            .expect("Could not get Output Manager Service Handle");
+        let transaction_service_handle = handles
+            .get_handle::<TransactionServiceHandle>()
+            .expect("Could not get Transaction Service Handle");
+        let liveness_handle = handles
+            .get_handle::<LivenessHandle>()
+            .expect("Could not get Liveness Service Handle");
+
         Ok(Wallet {
             comms,
             dht_service: dht,
-            //            text_message_service: handles
-            //                .get_handle::<TextMessageHandle>()
-            //                .expect("Could not get Text Message Service Handle"),
-            liveness_service: handles
-                .get_handle::<LivenessHandle>()
-                .expect("Could not get Liveness Service Handle"),
-            public_key: config.public_key.clone(),
+            liveness_service: liveness_handle,
+            output_manager_service: output_manager_handle,
+            transaction_service: transaction_service_handle,
             runtime,
         })
     }

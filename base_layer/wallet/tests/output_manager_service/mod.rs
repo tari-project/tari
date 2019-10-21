@@ -41,6 +41,7 @@ use tari_utilities::ByteArray;
 use tari_wallet::output_manager_service::{
     error::OutputManagerError,
     handle::OutputManagerHandle,
+    OutputManagerConfig,
     OutputManagerServiceInitializer,
 };
 use tokio::runtime::Runtime;
@@ -54,11 +55,11 @@ pub fn setup_output_manager_service(
 {
     let shutdown = Shutdown::new();
     let fut = StackBuilder::new(runtime.executor(), shutdown.to_signal())
-        .add_initializer(OutputManagerServiceInitializer::new(
+        .add_initializer(OutputManagerServiceInitializer::new(OutputManagerConfig {
             master_key,
             branch_seed,
             primary_key_index,
-        ))
+        }))
         .finish();
 
     let handles = runtime.block_on(fut).expect("Service initialization failed");
@@ -346,7 +347,7 @@ fn timeout_transaction() {
     thread::sleep(Duration::from_millis(2));
 
     runtime
-        .block_on(oms.timeout_transactions(Duration::from_millis(10)))
+        .block_on(oms.timeout_transactions(Duration::from_millis(1000)))
         .unwrap();
 
     assert_eq!(
