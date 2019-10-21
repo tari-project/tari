@@ -42,7 +42,7 @@ use tari_utilities::thread_join::ThreadJoinWithTimeout;
 const LOG_TARGET: &str = "comms::connection_manager::connections";
 
 /// Set the maximum waiting time for LivePeerConnections threads to join
-const THREAD_JOIN_TIMEOUT_IN_MS: Duration = Duration::from_millis(100);
+const THREAD_JOIN_TIMEOUT_IN_MS: Duration = Duration::from_millis(3000);
 
 /// Stores, and establishes the live peer connections
 pub(super) struct LivePeerConnections {
@@ -183,7 +183,7 @@ impl LivePeerConnections {
                     .timeout_join(THREAD_JOIN_TIMEOUT_IN_MS)
                     .map_err(ConnectionError::ThreadJoinError)
                     .or_else(|err| {
-                        error!(target: LOG_TARGET, "Failed to join: {:?}", err);
+                        error!(target: LOG_TARGET, "Failed join on peer connection thread: {:?}", err);
                         Err(err)
                     }),
             );
