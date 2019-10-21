@@ -27,8 +27,10 @@ package testnet_miner_rpc;
 // TestNet Miner gRPC service
 service TestNetMiner {
     // Send a Tari Text Message
-    rpc GetBlock(VoidParams) returns (Block) {}
+    rpc GetBlock(VoidParams) returns (BlockMessage) {}
     rpc GetPrivateKey(VoidParams) returns (PrivKey){}
+    rpc GetBlockHeaderAtHeight(BlockHeight) returns (BlockHeaderMessage){}
+    rpc SendBlock(BlockMessage) returns (VoidParams){}
 }
 
 //A requested private key
@@ -37,7 +39,16 @@ message PrivKey{
 }
 
 // A Tari Text Message to be sent
-message Block {
+message BlockMessage {
+    string test = 1;
+}
+
+// A message requesting the block header at height
+message BlockHeight {
+    uint64 height = 1;
+}
+// A Tari BlockHeader
+message BlockHeaderMessage {
     string dest_pub_key = 1;
     string message = 2;
 }

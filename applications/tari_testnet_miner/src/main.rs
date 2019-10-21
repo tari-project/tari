@@ -22,6 +22,11 @@
 use clap::{value_t, App, Arg};
 use log::*;
 use serde::{Deserialize, Serialize};
+use tari_core::{
+    blocks::{Block, BlockBuilder, BlockHeader},
+    consensus::ConsensusRules,
+};
+use tari_testnet_miner::miner::Miner;
 
 const LOG_TARGET: &str = "applications::testnet_miner";
 
@@ -29,7 +34,7 @@ pub mod testnet_miner {
     tonic::include_proto!("testnet_miner_rpc");
 }
 
-use testnet_miner::{client::TestNetMinerClient, Block, VoidParams};
+use testnet_miner::{client::TestNetMinerClient, BlockHeaderMessage, BlockHeight, BlockMessage, VoidParams};
 
 #[derive(Debug, Default, Deserialize)]
 struct Settings {
@@ -53,18 +58,44 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!(target: LOG_TARGET, "Settings loaded");
 
-    // ToDo run logic
+    info!(target: LOG_TARGET, "Requesting new block");
 
     let mut base_node = TestNetMinerClient::connect(settings.base_node_address.unwrap())?;
     let request = tonic::Request::new(VoidParams {});
 
     let response = base_node.get_block(request).await?;
 
-    // ToDo miner logic
+    let mut miner = Miner::new(ConsensusRules::current());
+    let mut block = proc_block(response.into_inner());
 
-    // ToDo get private key logic
+    loop {
+        let mut line = String::new();
+        println!("Mining, press c to close and stop");
+        let b1 = std::io::stdin().read_line(&mut line).unwrap();
+        if line == "c".to_string() {
+            break;
+        }
+        let height: u64 = if block.header.height <= 2016 {
+            1
+        } else {
+            block.header.height - 2016
+        };
 
-    // ToDo send mined block to base node
+        miner.add_block(block);
+        let request = tonic::Request::new(BlockHeight { height });
+        let response = base_node.get_block_header_at_height(request).await?;
+        let header = proc_blockheader(response.into_inner());
+        miner.mine(header);
+
+        let request = tonic::Request::new(BlockMessage {
+            test: "test temp string".to_string(),
+        });
+        base_node.send_block(request).await?;
+        let request = tonic::Request::new(VoidParams {});
+
+        let response = base_node.get_block(request).await?;
+        block = proc_block(response.into_inner());
+    }
     Ok(())
 }
 
@@ -117,4 +148,16 @@ fn read_settings() -> Settings {
         }
     }
     settings
+}
+
+// todo deserialize block here
+fn proc_block(block: BlockMessage) -> Block {
+    BlockBuilder::new()
+        .with_header(BlockHeader::new(ConsensusRules::current().blockchain_version()))
+        .build()
+}
+
+// todo deserialize blockheader here
+fn proc_blockheader(blockheaeder: BlockHeaderMessage) -> BlockHeader {
+    BlockHeader::new(ConsensusRules::current().blockchain_version())
 }
