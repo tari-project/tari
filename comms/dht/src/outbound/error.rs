@@ -34,4 +34,5 @@ pub enum DhtOutboundError {
     PeerManagerError(PeerManagerError),
     ConnectionError(ConnectionError),
     SignatureError(SchnorrSignatureError),
+    RequesterReplyChannelClosed,
 }

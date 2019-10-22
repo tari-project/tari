@@ -68,10 +68,6 @@ where
     }
 
     pub async fn run(mut self, executor: TaskExecutor) -> Result<(), TSvc::Error> {
-        // Check if the service is ready before reading the stream
-        // to create back pressure on the stream if there is some
-        // hold up with the service
-        self.service.ready().await?;
         let mut stream = self.stream.fuse();
         let mut shutdown_signal = self
             .shutdown_signal
@@ -89,17 +85,9 @@ where
                     let mut service = self.service.clone();
                     // Call the service on it's own spawned task
                     executor.spawn(async move {
-                        match service.ready().await {
-                            Ok(_) => {
-                                if let Err(err) = service.call(item).await {
-                                    // TODO: might want to dispatch this to tracing or provide an on_error callback
-                                    error!(target: LOG_TARGET, "ServicePipeline error: {:?}", err);
-                                }
-                            },
-                            Err(err) => {
-                                // TODO: we shouldn't call the service again if poll_ready errors
-                                error!(target: LOG_TARGET, "ServicePipeline error: {:?}", err);
-                            },
+                        if let Err(err) = service.oneshot(item).await {
+                            // TODO: might want to dispatch this to tracing or provide an on_error callback
+                            error!(target: LOG_TARGET, "ServicePipeline error: {:?}", err);
                         }
                     })
                 },

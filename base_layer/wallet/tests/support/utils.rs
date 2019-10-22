@@ -67,28 +67,32 @@ where
 }
 
 /// This method will read the specified number of items from a stream and assemble a HashMap with the received item as a
-/// key and the number of occurences as a value. If the stream does not yield the desired number of items the function
+/// key and the number of occurrences as a value. If the stream does not yield the desired number of items the function
 /// will return what it is has received
-pub async fn event_stream_count<TStream, I>(mut stream: TStream, num_items: usize, timeout: Duration) -> HashMap<I, u32>
+pub async fn event_stream_count<TStream>(
+    mut stream: TStream,
+    num_items: usize,
+    timeout: Duration,
+) -> HashMap<TStream::Item, u32>
 where
-    TStream: Stream<Item = I> + FusedStream + Unpin,
-    I: Hash + Eq + Clone,
+    TStream: Stream + FusedStream + Unpin,
+    TStream::Item: Hash + Eq + Clone,
 {
     let mut result = HashMap::new();
     let mut count = 0;
     loop {
         select! {
-            item = stream.select_next_some() => {
-                let e = result.entry(item.clone()).or_insert(0);
-                *e += 1;
-                count += 1;
-                if count >= num_items {
-                    break;
+                    item = stream.select_next_some() => {
+                        let e = result.entry(item.clone()).or_insert(0);
+                        *e += 1;
+                        count += 1;
+                        if count >= num_items {
+                            break;
+                        }
+                     },
+                    _ = tokio::timer::delay(Instant::now() + timeout).fuse() => { break; },
+        //            complete => { break; },
                 }
-             },
-            _ = tokio::timer::delay(Instant::now() + timeout).fuse() => { break; },
-            complete => { break; },
-        }
     }
 
     result

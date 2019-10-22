@@ -162,7 +162,7 @@ where
                 // Warn: This node id can be anything
                 &origin_peer.node_id,
                 &self.node_identity.identity.node_id,
-                self.config.num_regional_nodes,
+                self.config.num_neighbouring_nodes,
             )?
         {
             trace!(
@@ -176,16 +176,16 @@ where
         trace!(
             target: LOG_TARGET,
             "Propagating join message to at most {} peer(s)",
-            self.config.num_regional_nodes
+            self.config.num_neighbouring_nodes
         );
         // Propagate message to closer peers
         self.outbound_service
             .forward_message(
-                BroadcastStrategy::Closest(BroadcastClosestRequest {
-                    n: self.config.num_regional_nodes,
+                BroadcastStrategy::Closest(Box::new(BroadcastClosestRequest {
+                    n: self.config.num_neighbouring_nodes,
                     node_id: origin_peer.node_id,
                     excluded_peers: vec![dht_header.origin_public_key.clone(), comms_header.message_public_key],
-                }),
+                })),
                 dht_header,
                 msg.to_binary()?,
             )

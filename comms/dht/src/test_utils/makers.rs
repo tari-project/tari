@@ -87,7 +87,7 @@ pub fn make_comms_inbound_message(
 pub fn make_dht_header(node_identity: &NodeIdentity, message: &Vec<u8>, flags: DhtMessageFlags) -> DhtHeader {
     DhtHeader {
         version: 0,
-        destination: NodeDestination::Undisclosed,
+        destination: NodeDestination::Unspecified,
         origin_public_key: node_identity.public_key().clone(),
         origin_signature: signature::sign(&mut OsRng::new().unwrap(), node_identity.secret_key.clone(), message)
             .unwrap()

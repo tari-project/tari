@@ -127,13 +127,13 @@ impl DhtEnvelope {
     }
 
     pub fn is_signature_valid(&self) -> bool {
-        // error here means that the signature could not deserialize, so is invalid
         match signature::verify(
             &self.header.origin_public_key,
             &self.header.origin_signature,
             &self.body,
         ) {
             Ok(is_valid) => is_valid,
+            // error means that the signature could not deserialize, so is invalid
             Err(_) => false,
         }
     }
@@ -142,8 +142,9 @@ impl DhtEnvelope {
 /// Represents the ways a destination node can be represented.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub enum NodeDestination {
-    /// The sender has chosen not to disclose the message destination
-    Undisclosed,
+    /// The sender has chosen not to disclose the message destination, or the destination is
+    /// the peer being sent to.
+    Unspecified,
     /// Destined for a particular public key
     PublicKey(CommsPublicKey),
     /// Destined for a particular node id, or network region
@@ -152,6 +153,6 @@ pub enum NodeDestination {
 
 impl Default for NodeDestination {
     fn default() -> Self {
-        NodeDestination::Undisclosed
+        NodeDestination::Unspecified
     }
 }

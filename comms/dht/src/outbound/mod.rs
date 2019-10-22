@@ -28,6 +28,8 @@ mod message;
 mod requester;
 mod serialize;
 
+pub mod mock;
+
 pub use self::{
     broadcast::BroadcastLayer,
     broadcast_strategy::{BroadcastClosestRequest, BroadcastStrategy},

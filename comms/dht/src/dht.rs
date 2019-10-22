@@ -138,8 +138,6 @@ impl Dht {
             .layer(inbound::DecryptionLayer::new(Arc::clone(&self.node_identity)))
             .layer(store_forward::ForwardLayer::new(
                 Arc::clone(&self.peer_manager),
-                self.config.clone(),
-                Arc::clone(&self.node_identity),
                 self.outbound_requester(),
             ))
             .layer(store_forward::StoreLayer::new(
@@ -184,6 +182,7 @@ impl Dht {
     {
         ServiceBuilder::new()
             .layer(outbound::BroadcastLayer::new(
+                self.config.clone(),
                 Arc::clone(&self.node_identity),
                 Arc::clone(&self.peer_manager),
             ))

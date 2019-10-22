@@ -38,10 +38,12 @@ pub enum BroadcastStrategy {
     DirectPublicKey(CommsPublicKey),
     /// Send to all known Communication Node peers
     Flood,
-    /// Send to all n nearest neighbour Communication Nodes
-    Closest(BroadcastClosestRequest),
     /// Send to a random set of peers of size n that are Communication Nodes
     Random(usize),
+    /// Send to all n nearest Communication Nodes according to the given BroadcastClosestRequest
+    Closest(Box<BroadcastClosestRequest>),
+    /// Send to the configured number of neighbouring nodes, excluding the given peer public keys
+    Neighbours(Box<Vec<CommsPublicKey>>),
 }
 
 impl fmt::Display for BroadcastStrategy {
@@ -51,13 +53,13 @@ impl fmt::Display for BroadcastStrategy {
             DirectPublicKey(pk) => write!(f, "DirectPublicKey({})", pk),
             DirectNodeId(node_id) => write!(f, "DirectNodeId({})", node_id),
             Flood => write!(f, "Flood"),
-            Closest(BroadcastClosestRequest { n, .. }) => write!(f, "Closest({})", n),
+            Closest(request) => write!(f, "Closest({})", request.n),
             Random(n) => write!(f, "Random({})", n),
+            Neighbours(excluded) => write!(f, "Neighbours({} excluded)", excluded.len()),
         }
     }
 }
 
-// TODO: move this logic, peer manager shouldn't be passed in to broadcast strategy
 impl BroadcastStrategy {
     pub fn direct_node_id(&self) -> Option<&NodeId> {
         use BroadcastStrategy::*;

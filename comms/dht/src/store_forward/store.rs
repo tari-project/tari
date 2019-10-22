@@ -195,7 +195,7 @@ where
         let node_identity = &self.node_identity;
 
         match &dht_header.destination {
-            NodeDestination::Undisclosed => {
+            NodeDestination::Unspecified => {
                 self.storage.insert(
                     dht_header.origin_signature.clone(),
                     StoredMessage::new(version, comms_header, dht_header, encrypted_body),
@@ -216,7 +216,7 @@ where
                     (peer_manager.in_network_region(
                         &dest_node_id,
                         &node_identity.identity.node_id,
-                        self.config.num_regional_nodes,
+                        self.config.num_neighbouring_nodes,
                     )?)
                 {
                     self.storage.insert(

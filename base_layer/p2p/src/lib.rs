@@ -26,12 +26,13 @@
 // Tracking issue: https://github.com/rust-lang/rust/issues/63063
 #![feature(type_alias_impl_trait)]
 
+#[cfg(test)]
+#[macro_use]
+mod test_utils;
+
 pub mod comms_connector;
 pub mod domain_message;
 pub mod initialization;
 pub mod peer;
 pub mod services;
 pub mod tari_message;
-
-#[cfg(test)]
-pub mod test_utils;

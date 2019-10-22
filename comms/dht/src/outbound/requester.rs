@@ -28,8 +28,14 @@ use crate::{
         DhtOutboundError,
     },
 };
-use futures::{channel::mpsc, SinkExt};
-use tari_comms::message::{Frame, Message, MessageFlags, MessageHeader};
+use futures::{
+    channel::{mpsc, oneshot},
+    SinkExt,
+};
+use tari_comms::{
+    message::{Frame, Message, MessageFlags, MessageHeader},
+    types::CommsPublicKey,
+};
 use tari_utilities::message_format::MessageFormat;
 
 #[derive(Clone)]
@@ -42,7 +48,125 @@ impl OutboundMessageRequester {
         Self { sender }
     }
 
-    /// Send a unencrypted message
+    /// Send directly to a peer.
+    pub async fn send_direct<T, MType>(
+        &mut self,
+        dest_public_key: CommsPublicKey,
+        encryption: OutboundEncryption,
+        message_type: MType,
+        message: T,
+    ) -> Result<bool, DhtOutboundError>
+    where
+        MessageHeader<MType>: MessageFormat,
+        T: MessageFormat,
+    {
+        self.send_message(
+            BroadcastStrategy::DirectPublicKey(dest_public_key.clone()),
+            NodeDestination::PublicKey(dest_public_key),
+            encryption,
+            message_type,
+            message,
+        )
+        .await
+        .map(|count| {
+            debug_assert!(count <= 1);
+            count >= 1
+        })
+    }
+
+    /// Send to a pre-configured number of closest peers.
+    ///
+    /// Each message is destined for each peer.
+    pub async fn send_direct_neighbours<T, MType>(
+        &mut self,
+        encryption: OutboundEncryption,
+        exclude_peers: Vec<CommsPublicKey>,
+        message_type: MType,
+        message: T,
+    ) -> Result<usize, DhtOutboundError>
+    where
+        MessageHeader<MType>: MessageFormat,
+        T: MessageFormat,
+    {
+        self.propagate(
+            NodeDestination::Unspecified,
+            encryption,
+            exclude_peers,
+            message_type,
+            message,
+        )
+        .await
+    }
+
+    /// Send to a pre-configured number of closest peers, for further message propagation.
+    ///
+    /// Optionally, the NodeDestination can be set to propagate to a particular peer, or network region
+    /// in addition to each peer directly (Same as send_direct_neighbours).
+    pub async fn propagate<T, MType>(
+        &mut self,
+        destination: NodeDestination,
+        encryption: OutboundEncryption,
+        exclude_peers: Vec<CommsPublicKey>,
+        message_type: MType,
+        message: T,
+    ) -> Result<usize, DhtOutboundError>
+    where
+        MessageHeader<MType>: MessageFormat,
+        T: MessageFormat,
+    {
+        self.send_message(
+            BroadcastStrategy::Neighbours(Box::new(exclude_peers)),
+            destination,
+            encryption,
+            message_type,
+            message,
+        )
+        .await
+    }
+
+    /// Send to _ALL_ known peers.
+    ///
+    /// This should be used with caution as, depending on the number of known peers, a lot of network
+    /// traffic could be generated from this node.
+    pub async fn send_flood<T, MType>(
+        &mut self,
+        destination: NodeDestination,
+        encryption: OutboundEncryption,
+        message_type: MType,
+        message: T,
+    ) -> Result<usize, DhtOutboundError>
+    where
+        MessageHeader<MType>: MessageFormat,
+        T: MessageFormat,
+    {
+        self.send_message(BroadcastStrategy::Flood, destination, encryption, message_type, message)
+            .await
+    }
+
+    /// Send to a random subset of peers of size _n_.
+    pub async fn send_random<T, MType>(
+        &mut self,
+        n: usize,
+        destination: NodeDestination,
+        encryption: OutboundEncryption,
+        message_type: MType,
+        message: T,
+    ) -> Result<usize, DhtOutboundError>
+    where
+        MessageHeader<MType>: MessageFormat,
+        T: MessageFormat,
+    {
+        self.send_message(
+            BroadcastStrategy::Random(n),
+            destination,
+            encryption,
+            message_type,
+            message,
+        )
+        .await
+    }
+
+    /// Send a message with custom parameters
     pub async fn send_message<T, MType>(
         &mut self,
         broadcast_strategy: BroadcastStrategy,
@@ -50,7 +174,7 @@ impl OutboundMessageRequester {
         encryption: OutboundEncryption,
         message_type: MType,
         message: T,
-    ) -> Result<(), DhtOutboundError>
+    ) -> Result<usize, DhtOutboundError>
     where
         MessageHeader<MType>: MessageFormat,
         T: MessageFormat,
@@ -76,7 +200,7 @@ impl OutboundMessageRequester {
         encryption: OutboundEncryption,
         message_type: DhtMessageType,
         message: T,
-    ) -> Result<(), DhtOutboundError>
+    ) -> Result<usize, DhtOutboundError>
     where
         T: MessageFormat,
     {
@@ -96,26 +220,33 @@ impl OutboundMessageRequester {
         dht_flags: DhtMessageFlags,
         dht_message_type: DhtMessageType,
         body: Frame,
-    ) -> Result<(), DhtOutboundError>
+    ) -> Result<usize, DhtOutboundError>
     {
+        let (reply_tx, reply_rx) = oneshot::channel();
         self.sender
-            .send(DhtOutboundRequest::SendMsg(Box::new(SendMessageRequest {
-                broadcast_strategy,
-                destination,
-                encryption,
-                // Since NONE is the only option here, hard code to empty() rather than make this part of the public
-                // interface. If comms-level message flags become useful, it should be easy to add that to the public
-                // API from here up to domain-level
-                comms_flags: MessageFlags::empty(),
-                dht_flags,
-                dht_message_type,
-                body,
-            })))
+            .send(DhtOutboundRequest::SendMsg(
+                Box::new(SendMessageRequest {
+                    broadcast_strategy,
+                    destination,
+                    encryption,
+                    // Since NONE is the only option here, hard code to empty() rather than make this part of the public
+                    // interface. If comms-level message flags become useful, it should be easy to add that to the
+                    // public API from here up to domain-level
+                    comms_flags: MessageFlags::empty(),
+                    dht_flags,
+                    dht_message_type,
+                    body,
+                }),
+                reply_tx,
+            ))
+            .await?;
+
+        reply_rx
             .await
-            .map_err(Into::into)
+            .map_err(|_| DhtOutboundError::RequesterReplyChannelClosed)
     }
 
-    /// Forward a message
+    /// Send a forwarded message
     pub async fn forward_message(
         &mut self,
         broadcast_strategy: BroadcastStrategy,

@@ -28,6 +28,8 @@ pub const SAF_MSG_CACHE_STORAGE_CAPACITY: usize = 10_000;
 pub const SAF_LOW_PRIORITY_MSG_STORAGE_TTL: Duration = Duration::from_secs(6 * 60 * 60);
 /// The default time-to-live duration used for storage of high priority messages by the Store-and-forward middleware
 pub const SAF_HIGH_PRIORITY_MSG_STORAGE_TTL: Duration = Duration::from_secs(24 * 60 * 60);
+/// The default number of peer nodes that a message has to be closer to, to be considered a neighbour
+pub const DEFAULT_NUM_NEIGHBOURING_NODES: usize = 8;
 
 #[derive(Debug, Clone)]
 pub struct DhtConfig {
@@ -36,7 +38,7 @@ pub struct DhtConfig {
     pub outbound_buffer_size: usize,
     /// The maximum number of peer nodes that a message has to be closer to, to be considered a neighbour
     /// Default: 8
-    pub num_regional_nodes: usize,
+    pub num_neighbouring_nodes: usize,
     /// A request to retrieve stored messages will be ignored if the requesting node is
     /// not within one of this nodes _n_ closest nodes.
     /// Default 8
@@ -61,7 +63,7 @@ pub struct DhtConfig {
 impl Default for DhtConfig {
     fn default() -> Self {
         Self {
-            num_regional_nodes: 8,
+            num_neighbouring_nodes: DEFAULT_NUM_NEIGHBOURING_NODES,
             saf_num_closest_nodes: 8,
             saf_max_returned_messages: 100,
             outbound_buffer_size: 20,

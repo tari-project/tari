@@ -265,7 +265,7 @@ fn dht_discover_propagation() {
                 .send_discover(
                     node_D_identity.identity.public_key.clone(),
                     None,
-                    NodeDestination::Undisclosed,
+                    NodeDestination::Unspecified,
                 )
                 .await
                 .unwrap();

@@ -22,20 +22,21 @@
 
 use super::broadcast_strategy::BroadcastStrategy;
 use crate::envelope::{DhtHeader, DhtMessageFlags, DhtMessageType, NodeDestination};
+use futures::channel::oneshot;
 use std::fmt;
 use tari_comms::{message::MessageFlags, peer_manager::PeerNodeIdentity, types::CommsPublicKey};
 
 /// Determines if an outbound message should be Encrypted and, if so, for which public key
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OutboundEncryption {
+    /// Message should not be encrypted
+    None,
     /// Message should be encrypted using a shared secret derived from the given public key
     EncryptFor(CommsPublicKey),
     /// Message should be encrypted using a shared secret derived from the destination peer's
     /// public key. Each message sent according to the broadcast strategy will be encrypted for
     /// the destination peer.
     EncryptForDestination,
-    /// Message should not be encrypted
-    None,
 }
 
 impl OutboundEncryption {
@@ -45,6 +46,12 @@ impl OutboundEncryption {
             OutboundEncryption::EncryptFor(_) | OutboundEncryption::EncryptForDestination => DhtMessageFlags::ENCRYPTED,
             _ => DhtMessageFlags::NONE,
         }
+    }
+}
+
+impl Default for OutboundEncryption {
+    fn default() -> Self {
+        OutboundEncryption::None
     }
 }
 
@@ -82,7 +89,7 @@ pub struct ForwardRequest {
 #[derive(Debug)]
 pub enum DhtOutboundRequest {
     /// Send a message using the given broadcast strategy
-    SendMsg(Box<SendMessageRequest>),
+    SendMsg(Box<SendMessageRequest>, oneshot::Sender<usize>),
     /// Forward a message envelope
     Forward(Box<ForwardRequest>),
 }
@@ -90,7 +97,7 @@ pub enum DhtOutboundRequest {
 impl fmt::Display for DhtOutboundRequest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         match self {
-            DhtOutboundRequest::SendMsg(request) => write!(f, "SendMsg({})", request.broadcast_strategy),
+            DhtOutboundRequest::SendMsg(request, _) => write!(f, "SendMsg({})", request.broadcast_strategy),
             DhtOutboundRequest::Forward(request) => write!(f, "Forward({})", request.broadcast_strategy),
         }
     }
