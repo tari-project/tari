@@ -15,6 +15,7 @@ tari_utilities = { path = "../../infrastructure/tari_util", version = "^0.0", fe
 tari_infra_derive = { path = "../../infrastructure/derive", version = "^0.0" }
 tari_crypto = { path = "../../infrastructure/crypto", version = "^0.0" }
 tari_storage = { path = "../../infrastructure/storage", version = "^0.0" }
+tari_common = {path = "../../common", version= "^0.0"}
 tari_mmr = { path = "../../base_layer/mmr", version = "^0.0" }
 tari_service_framework = { version = "^0.0", path = "../service_framework"}
 tari_p2p = {path = "../../base_layer/p2p", version = "^0.0"}
@@ -45,6 +46,7 @@ tokio-executor = { version ="^0.2.0-alpha.6", features = ["threadpool"] }
 futures-preview = {version = "0.3.0-alpha.19", features = ["async-await"] }
 lmdb-zero = "0.4.4"
 tower-service = { version="0.3.0-alpha.2" }
+config = { version = "0.9.3" }
 crossbeam-channel = "0.3.8"
 
 [dev-dependencies]

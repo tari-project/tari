@@ -25,7 +25,11 @@ mod cli;
 mod consts;
 
 use crate::cli::ConfigBootstrap;
+use config::Config;
 use log::*;
+use tari_common::default_config;
+
+const LOG_TARGET: &str = "base_node::root";
 
 fn main() {
     // Create the tari data directory
@@ -46,10 +50,14 @@ fn main() {
     }
 
     // Load and apply configuration file
-    debug!(
-        "Loading configuration file from  {}",
-        bootstrap.config.to_str().unwrap_or("[??]")
-    );
+    let cfg = match load_configuration(&bootstrap) {
+        Ok(cfg) => cfg,
+        Err(s) => {
+            error!(target: LOG_TARGET, "{}", s);
+            return;
+        },
+    };
+
     // Set up the Tokio runtime
     // Configure the shutdown daemon to listen for CTRL-C
     // Build, node, build!
@@ -66,4 +74,29 @@ fn initialize_logging(bootstrap: &ConfigBootstrap) -> bool {
         return false;
     }
     true
+}
+
+fn load_configuration(bootstrap: &ConfigBootstrap) -> Result<Config, String> {
+    debug!(
+        target: LOG_TARGET,
+        "Loading configuration file from  {}",
+        bootstrap.config.to_str().unwrap_or("[??]")
+    );
+    let mut cfg = default_config();
+    // Load the configuration file
+    let filename = bootstrap
+        .config
+        .to_str()
+        .ok_or("Invalid config file path".to_string())?;
+    let config_file = config::File::with_name(filename);
+    match cfg.merge(config_file) {
+        Ok(_) => {
+            info!(target: LOG_TARGET, "Configuration file loaded.");
+            Ok(cfg)
+        },
+        Err(e) => Err(format!(
+            "There was an error loading the configuration file. {}",
+            e.to_string()
+        )),
+    }
 }

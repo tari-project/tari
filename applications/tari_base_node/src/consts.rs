@@ -24,4 +24,3 @@
 pub const VERSION: &str = "0.0.5";
 pub const AUTHOR: &str = "The Tari Community";
 pub const DEFAULT_CONFIG: &str = "config.toml";
-pub const DEFAULT_LOGCONFIG: &str = "log4rs.yml";

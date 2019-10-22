@@ -27,6 +27,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
+mod configuration;
+
+pub use configuration::{default_config, ConfigurationError};
+
 /// Determine the path to a log configuration file using the following precedence rules:
 /// 1. Use the provided path (usually pulled from a CLI argument)
 /// 2. Use the value in the `TARI_LOG_CONFIGURATION` envar
@@ -59,6 +63,18 @@ pub fn create_data_directory() -> Result<(), std::io::Error> {
     } else {
         Ok(())
     }
+}
+
+/// A convenience function for creating subfolders inside the `~/.tari` default data directory
+///
+/// # Panics
+/// This function panics if the home folder location cannot be found or if the path value is not valid UTF-8.
+/// This is a trade-off made in favour of convenience of use.
+pub fn default_subdir(path: &str) -> String {
+    let mut home = dirs::home_dir().expect("Home folder location failed");
+    home.push(".tari");
+    home.push(path);
+    String::from(home.to_str().expect("Invalid path value"))
 }
 
 /// Installs a new configuration file template, copied from `tari_config_sample.toml` to the given path.
