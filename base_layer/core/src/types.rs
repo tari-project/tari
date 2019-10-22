@@ -84,3 +84,6 @@ lazy_static! {
     pub static ref PROVER: RangeProofService =
         RangeProofService::new(MAX_RANGE_PROOF_RANGE, &COMMITMENT_FACTORY).unwrap();
 }
+
+/// Specify the RNG that should be used for random selection
+pub type BaseNodeRng = rand::OsRng;

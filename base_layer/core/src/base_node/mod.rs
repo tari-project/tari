@@ -35,6 +35,7 @@
 mod base_node;
 mod comms_interface;
 mod config;
+mod service;
 #[cfg(test)]
 mod test;
 

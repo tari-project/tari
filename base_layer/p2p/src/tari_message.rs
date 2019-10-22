@@ -65,6 +65,8 @@ pub mod BlockchainMessage {
     pub const NewBlock: u8 = 65;
     pub const Transaction: u8 = 66;
     pub const TransactionReply: u8 = 67;
+    pub const BaseNodeRequest: u8 = 68;
+    pub const BaseNodeResponse: u8 = 69;
 }
 
 #[allow(non_snake_case, non_upper_case_globals)]

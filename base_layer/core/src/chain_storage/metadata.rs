@@ -21,10 +21,11 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{blocks::blockheader::BlockHash, proof_of_work::Difficulty};
+use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error, Formatter};
 use tari_utilities::hex::Hex;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ChainMetadata {
     /// The current chain height, or the block number of the longest valid chain, or `None` if there is no chain
     pub height_of_longest_chain: Option<u64>,

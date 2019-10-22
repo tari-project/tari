@@ -30,20 +30,27 @@ use tower_service::Service;
 /// The OutboundNodeCommsInterface provides an interface to request information from remove nodes.
 #[derive(Clone)]
 pub struct OutboundNodeCommsInterface {
-    sender: SenderService<NodeCommsRequest, Result<NodeCommsResponse, CommsInterfaceError>>,
+    sender: SenderService<NodeCommsRequest, Result<Vec<NodeCommsResponse>, CommsInterfaceError>>,
 }
 
 impl OutboundNodeCommsInterface {
     /// Construct a new OutboundNodeCommsInterface with the specified SenderService.
-    pub fn new(sender: SenderService<NodeCommsRequest, Result<NodeCommsResponse, CommsInterfaceError>>) -> Self {
+    pub fn new(sender: SenderService<NodeCommsRequest, Result<Vec<NodeCommsResponse>, CommsInterfaceError>>) -> Self {
         Self { sender }
     }
 
     /// Request metadata from remote base nodes.
     pub async fn get_metadata(&mut self) -> Result<Vec<ChainMetadata>, CommsInterfaceError> {
-        match self.sender.call(NodeCommsRequest::GetChainMetadata).await?? {
-            NodeCommsResponse::ChainMetadata(v) => Ok(v),
-            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
-        }
+        let mut responses = Vec::<ChainMetadata>::new();
+        self.sender
+            .call(NodeCommsRequest::GetChainMetadata)
+            .await??
+            .into_iter()
+            .for_each(|response| {
+                if let NodeCommsResponse::ChainMetadata(metadata) = response {
+                    responses.push(metadata);
+                }
+            });
+        Ok(responses)
     }
 }

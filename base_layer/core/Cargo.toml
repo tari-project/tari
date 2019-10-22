@@ -10,12 +10,18 @@ version = "0.0.5"
 edition = "2018"
 
 [dependencies]
+tari_comms = { version = "^0.0", path = "../../comms"}
 tari_utilities = { path = "../../infrastructure/tari_util", version = "^0.0", features = ["chrono_dt"]}
 tari_infra_derive = { path = "../../infrastructure/derive", version = "^0.0" }
 tari_crypto = { path = "../../infrastructure/crypto", version = "^0.0" }
 tari_storage = { path = "../../infrastructure/storage", version = "^0.0" }
 tari_mmr = { path = "../../base_layer/mmr", version = "^0.0" }
 tari_service_framework = { version = "^0.0", path = "../service_framework"}
+tari_p2p = {path = "../../base_layer/p2p", version = "^0.0"}
+tari_comms_dht = { version = "^0.0", path = "../../comms/dht"}
+tari_broadcast_channel = { version="^0.0",  path = "../../infrastructure/broadcast_channel" }
+tari_pubsub = { version = "^0.0", path = "../../infrastructure/pubsub"}
+tari_shutdown = { path = "../../infrastructure/shutdown", version = "^0.0"}
 bitflags = "1.0.4"
 chrono = { version = "0.4.6", features = ["serde"]}
 digest = "0.8.0"
@@ -39,7 +45,9 @@ tokio-executor = { version ="^0.2.0-alpha.6", features = ["threadpool"] }
 futures-preview = {version = "0.3.0-alpha.19", features = ["async-await"] }
 lmdb-zero = "0.4.4"
 tower-service = { version="0.3.0-alpha.2" }
+crossbeam-channel = "0.3.8"
 
 [dev-dependencies]
 env_logger = "0.7.0"
 tari_test_utils = { path = "../../infrastructure/test_utils", version = "^0.0" }
+tempdir = "0.3.7"
