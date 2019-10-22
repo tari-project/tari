@@ -69,12 +69,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut block = proc_block(response.into_inner());
 
     loop {
-        let mut line = String::new();
-        println!("Mining, press c to close and stop");
-        let b1 = std::io::stdin().read_line(&mut line).unwrap();
-        if line == "c".to_string() {
-            break;
-        }
+        // ToDo move to seperate thread
+        // let mut line = String::new();
+        // println!("Mining, press c to close and stop");
+        // let b1 = std::io::stdin().read_line(&mut line).unwrap();
+        // if line == "c".to_string() {
+        //     break;
+        // }
         let height: u64 = if block.header.height <= 2016 {
             1
         } else {
