@@ -21,17 +21,25 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
+mod builder;
 mod cli;
 mod consts;
 
 use crate::cli::ConfigBootstrap;
 use config::Config;
+use futures::{future, StreamExt};
 use log::*;
-use tari_common::default_config;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
+use tari_common::{default_config, NodeBuilderConfig};
+use tokio::{net::signal, runtime::Runtime};
 
-const LOG_TARGET: &str = "base_node::root";
+const LOG_TARGET: &str = "base_node::app";
 
 fn main() {
+    cli::print_banner();
     // Create the tari data directory
     if let Err(e) = tari_common::create_data_directory() {
         println!(
@@ -58,10 +66,46 @@ fn main() {
         },
     };
 
+    let node_config = match NodeBuilderConfig::convert_from(cfg) {
+        Ok(c) => c,
+        Err(e) => {
+            error!(target: LOG_TARGET, "The configuration file has an error. {}", e);
+            return;
+        },
+    };
+
     // Set up the Tokio runtime
-    // Configure the shutdown daemon to listen for CTRL-C
+    let rt = match setup_runtime(&node_config) {
+        Ok(rt) => rt,
+        Err(s) => {
+            error!(target: LOG_TARGET, "{}", s);
+            return;
+        },
+    };
+
     // Build, node, build!
+    let node = match builder::compose_node(&node_config) {
+        Ok(n) => n,
+        Err(e) => {
+            error!(target: LOG_TARGET, "Could not instantiate node instance. {}", e);
+            return;
+        },
+    };
+
+    // Configure the shutdown daemon to listen for CTRL-C
+    let flag = node.get_flag();
+    if let Err(e) = handle_ctrl_c(&rt, flag) {
+        error!(target: LOG_TARGET, "Could not configure Ctrl-C handling. {}", e);
+        return;
+    };
+
     // Run, node, run!
+    let main = async move {
+        node.run().await;
+    };
+    rt.spawn(main);
+    rt.shutdown_on_idle();
+    println!("Goodbye!");
 }
 
 fn initialize_logging(bootstrap: &ConfigBootstrap) -> bool {
@@ -99,4 +143,36 @@ fn load_configuration(bootstrap: &ConfigBootstrap) -> Result<Config, String> {
             e.to_string()
         )),
     }
+}
+
+fn setup_runtime(config: &NodeBuilderConfig) -> Result<Runtime, String> {
+    let num_core_threads = config.core_threads;
+    let num_blocking_threads = config.blocking_threads;
+
+    debug!(
+        target: LOG_TARGET,
+        "Configuring the node to run on {} core threads and {} blocking worker threads.",
+        num_core_threads,
+        num_blocking_threads
+    );
+    tokio::runtime::Builder::new()
+        .blocking_threads(num_blocking_threads)
+        .core_threads(num_core_threads)
+        .build()
+        .map_err(|e| format!("There was an error while building the node runtime. {}", e.to_string()))
+}
+
+/// Set the interrupt flag on the node when Ctrl-C is entered
+fn handle_ctrl_c(rt: &Runtime, flag: Arc<AtomicBool>) -> Result<(), String> {
+    let ctrl_c = signal::ctrl_c().map_err(|e| e.to_string())?;
+    let s = ctrl_c.take(1).for_each(move |_| {
+        info!(
+            target: LOG_TARGET,
+            "Termination signal received from user. Shutting node down."
+        );
+        flag.store(true, Ordering::SeqCst);
+        future::ready(())
+    });
+    rt.spawn(s);
+    Ok(())
 }

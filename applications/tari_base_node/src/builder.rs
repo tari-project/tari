@@ -19,22 +19,54 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
 
+use std::sync::{atomic::AtomicBool, Arc};
+use tari_common::{DatabaseType, NodeBuilderConfig};
 use tari_core::{
-    base_node::{BaseNodeConfig, BaseNodeStateMachine, OutboundNodeCommsInterface},
-    chain_storage::{BlockchainDatabase, MemoryDatabase},
+    base_node::{BaseNodeStateMachine, OutboundNodeCommsInterface},
+    chain_storage::{create_lmdb_database, BlockchainDatabase, LMDBDatabase, MemoryDatabase},
     types::HashDigest,
 };
 use tari_service_framework::reply_channel;
 
-// This is a temporary example used while developing the node software
-fn main() {
-    let _ = env_logger::init();
-    let db = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
-    let config = BaseNodeConfig;
-    let (sender, _) = reply_channel::unbounded();
+pub enum NodeType {
+    LMDB(BaseNodeStateMachine<LMDBDatabase<HashDigest>>),
+    Memory(BaseNodeStateMachine<MemoryDatabase<HashDigest>>),
+}
+
+impl NodeType {
+    pub fn get_flag(&self) -> Arc<AtomicBool> {
+        match self {
+            NodeType::LMDB(n) => n.get_interrupt_flag(),
+            NodeType::Memory(n) => n.get_interrupt_flag(),
+        }
+    }
+
+    pub async fn run(self) {
+        async move {
+            match self {
+                NodeType::LMDB(n) => n.run().await,
+                NodeType::Memory(n) => n.run().await,
+            }
+        }
+            .await;
+    }
+}
+
+pub fn compose_node(builder: &NodeBuilderConfig) -> Result<NodeType, String> {
+    let (sender, _receiver) = reply_channel::unbounded();
     let comms = OutboundNodeCommsInterface::new(sender);
-    let node = BaseNodeStateMachine::<MemoryDatabase<HashDigest>>::new(&db, config, &comms);
-    node.run();
+    let node = match &builder.db_type {
+        DatabaseType::Memory => {
+            let backend = MemoryDatabase::<HashDigest>::default();
+            let db = BlockchainDatabase::new(backend).map_err(|e| e.to_string())?;
+            NodeType::Memory(BaseNodeStateMachine::new(&db, &comms))
+        },
+        DatabaseType::LMDB(p) => {
+            let backend = create_lmdb_database(&p).map_err(|e| e.to_string())?;
+            let db = BlockchainDatabase::new(backend).map_err(|e| e.to_string())?;
+            NodeType::LMDB(BaseNodeStateMachine::new(&db, &comms))
+        },
+    };
+    Ok(node)
 }

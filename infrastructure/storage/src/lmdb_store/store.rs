@@ -144,7 +144,7 @@ impl LMDBBuilder {
                 db: Arc::new(db),
             };
             databases.insert(name.to_string(), db);
-            info!(target: LOG_TARGET, "({}) LMDB database '{}' is ready", path, name);
+            trace!(target: LOG_TARGET, "({}) LMDB database '{}' is ready", path, name);
         }
         Ok(LMDBStore { path, env, databases })
     }

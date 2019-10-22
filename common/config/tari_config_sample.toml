@@ -76,18 +76,57 @@ peer_whitelist = [ "8.8.8.8", "6.6.6.6", "7.7.7.7"] # TODO actually populate thi
 
 [base_node]
 
-# Select the netowrk to connect to. Valid options are:
+# Select the network to connect to. Valid options are:
 #   mainnet - the "real" Tari network (default)
 #   testnet - the Tari test net
-#   localnet - a local blockchain environmment
 #network = "mainnet"
 
-# The folder to use to store the blockchain database
-#blochchain-data = "~/.tari/chain_data/"
+# Configuration options for testnet
+[base_node.testnet]
+# The type of database backend to use. Currently supported options are "memory" and "lmdb". LMDB is recommnded for
+# almost all use cases.
+#db_type = "lmdb"
+
+# For LMDB backends, the folder to use to store the blockchain database.
+#db = "~/.tari/testnet/db/"
+
+# Configure the number of threads to spawn for long-running tasks, like block and transaction validation. A good choice
+# for this value is somewhere between n/2 and n - 1, where n is the number of cores on your machine.
+#blocking_threads = 4
+
+# Configure the number of threads for the overall node work-stealing scheduler. A good value here is between 3 and
+# n - blocking_threads, where n is the number of cores on your machine, and blocking_thread is set above.
+ #core_threads = 4
+
+# The address and port to listen for peer connections. This is the address that is advertised on the network so that
+# peers can find you.
+#address = "tcp://0.0.0.0:81898"
+
+# Enable the gRPC server for the base node. Set this to true if you want to enable third-party wallet software
+#grpc_enabled = false
+
+# The socket to expose for the gRPC base node server. This value is ignored if grpc_enabled is false.
+# Valid values here are IPv4 and IPv6 TCP sockets, local unix sockets (e.g. "ipc://base-node-gprc.sock.100")
+#grpc_address = "tcp://127.0.0.1:81410"
+
+[base_node.mainnet]
+# The type of database backend to use. Currently supported options are "memory" and "lmdb". LMDB is recommnded for
+# almost all use cases.
+#db_type = "lmdb"
+
+# For LMDB backends, the folder to use to store the blockchain database.
+#db = "~/.tari/mainnet/db/"
+
+# Configure the number of threads to spawn for long-running tasks, like block and transaction validation. A good choice
+# for this value is somewhere between n/2 and n - 1, where n is the number of cores on your machine.
+#blocking_threads = 4
+
+# Configure the number of threads for the overall node work-stealing scheduler. A good value here is between 3 and
+# n - blocking_threads, where n is the number of cores on your machine, and blocking_thread is set above.
+ #core_threads = 6
 
 # The address and port to listen for peer connections. This is the address that is advertised on the network so that
 # peers can find you. You may specify more than one address here
-#[[base_node.control-address]]
 #address = "tcp://0.0.0.0:80898"
 
 # Enable the gRPC server for the base node. Set this to true if you want to enable third-party wallet software
@@ -96,7 +135,6 @@ peer_whitelist = [ "8.8.8.8", "6.6.6.6", "7.7.7.7"] # TODO actually populate thi
 # The socket to expose for the gRPC base node server. This value is ignored if grpc_enabled is false.
 # Valid values here are IPv4 and IPv6 TCP sockets, local unix sockets (e.g. "ipc://base-node-gprc.sock.100")
 #grpc_address = "tcp://127.0.0.1:80410"
-
 ########################################################################################################################
 #                                                                                                                      #
 #                                         Validator Node Configuration Options                                         #

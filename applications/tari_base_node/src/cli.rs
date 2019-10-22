@@ -36,6 +36,15 @@ pub struct ConfigBootstrap {
     pub log_config: PathBuf,
 }
 
+/// Prints a pretty banner on the console
+pub fn print_banner() {
+    println!(
+        "\n$ Tari Base Node\n$ Copyright 2019-2020. {}\n$ Version {}\n\nPress Ctrl-C to quit..",
+        consts::AUTHOR,
+        consts::VERSION
+    );
+}
+
 /// Parse the command-line args and populate the minimal bootstrap config object
 pub fn parse_cli_args() -> ConfigBootstrap {
     let matches = clap_app!(myapp =>

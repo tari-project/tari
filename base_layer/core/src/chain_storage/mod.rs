@@ -45,6 +45,7 @@ pub use db_transaction::{DbTransaction, MmrTree};
 pub use error::ChainStorageError;
 pub use historical_block::HistoricalBlock;
 pub use lmdb_db::{
+    create_lmdb_database,
     LMDBDatabase,
     LMDB_DB_BLOCK_HASHES,
     LMDB_DB_HEADERS,
