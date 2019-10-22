@@ -42,11 +42,11 @@ where T: BlockchainBackend
     }
 
     /// Handle inbound node comms requests from remote nodes.
-    pub async fn handle_request(&self, request: NodeCommsRequest) -> Result<NodeCommsResponse, CommsInterfaceError> {
+    pub async fn handle_request(&self, request: &NodeCommsRequest) -> Result<NodeCommsResponse, CommsInterfaceError> {
         match request {
-            NodeCommsRequest::GetChainMetadata => Ok(NodeCommsResponse::ChainMetadata(vec![self
-                .blockchain_db
-                .get_metadata()?])), // TODO: replace with async call
+            NodeCommsRequest::GetChainMetadata => {
+                Ok(NodeCommsResponse::ChainMetadata(self.blockchain_db.get_metadata()?))
+            }, // TODO: replace with async call
         }
     }
 }

@@ -37,8 +37,8 @@ use std::sync::Arc;
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 
 async fn test_request_responder(
-    receiver: &mut Receiver<NodeCommsRequest, Result<NodeCommsResponse, CommsInterfaceError>>,
-    response: NodeCommsResponse,
+    receiver: &mut Receiver<NodeCommsRequest, Result<Vec<NodeCommsResponse>, CommsInterfaceError>>,
+    response: Vec<NodeCommsResponse>,
 )
 {
     let req_context = receiver.next().await.unwrap();
@@ -51,23 +51,20 @@ fn outbound_get_metadata() {
     let mut outbound_nci = OutboundNodeCommsInterface::new(sender);
 
     block_on(async {
-        let responder_metadata = vec![ChainMetadata::default()];
-        let metadata_response: NodeCommsResponse = NodeCommsResponse::ChainMetadata(responder_metadata.clone());
-        let (received_metadata, _) = futures::join!(
-            outbound_nci.get_metadata(),
-            test_request_responder(&mut receiver, metadata_response)
-        );
-        assert_eq!(received_metadata.unwrap(), responder_metadata);
-
         let metadata1 = ChainMetadata::new(5, vec![0u8], 2.into(), 3);
         let metadata2 = ChainMetadata::new(6, vec![1u8], 3.into(), 4);
-        let responder_metadata = vec![metadata1, metadata2];
-        let metadata_response: NodeCommsResponse = NodeCommsResponse::ChainMetadata(responder_metadata.clone());
+        let metadata_response: Vec<NodeCommsResponse> = vec![
+            NodeCommsResponse::ChainMetadata(metadata1.clone()),
+            NodeCommsResponse::ChainMetadata(metadata2.clone()),
+        ];
         let (received_metadata, _) = futures::join!(
             outbound_nci.get_metadata(),
             test_request_responder(&mut receiver, metadata_response)
         );
-        assert_eq!(received_metadata.unwrap(), responder_metadata);
+        let received_metadata = received_metadata.unwrap();
+        assert_eq!(received_metadata.len(), 2);
+        assert!(received_metadata.contains(&metadata1));
+        assert!(received_metadata.contains(&metadata2));
     });
 }
 
@@ -78,13 +75,12 @@ fn inbound_get_metadata() {
 
     block_on(async {
         if let Ok(NodeCommsResponse::ChainMetadata(received_metadata)) =
-            inbound_nci.handle_request(NodeCommsRequest::GetChainMetadata).await
+            inbound_nci.handle_request(&NodeCommsRequest::GetChainMetadata).await
         {
-            assert_eq!(received_metadata.len(), 1);
-            assert_eq!(received_metadata[0].height_of_longest_chain, None);
-            assert_eq!(received_metadata[0].best_block, None);
-            assert_eq!(received_metadata[0].total_accumulated_difficulty, Difficulty::from(0));
-            assert_eq!(received_metadata[0].pruning_horizon, 0);
+            assert_eq!(received_metadata.height_of_longest_chain, None);
+            assert_eq!(received_metadata.best_block, None);
+            assert_eq!(received_metadata.total_accumulated_difficulty, Difficulty::from(0));
+            assert_eq!(received_metadata.pruning_horizon, 0);
         } else {
             assert!(false);
         }

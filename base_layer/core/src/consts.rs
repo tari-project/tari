@@ -20,7 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::time::Duration;
+use crate::types::BaseNodeRng;
+use std::{cell::RefCell, time::Duration};
 
 /// The maximum number of transactions that can be stored in the Unconfirmed Transaction pool
 pub const MEMPOOL_UNCONFIRMED_POOL_STORAGE_CAPACITY: usize = 1000;
@@ -40,3 +41,14 @@ pub const MEMPOOL_PENDING_POOL_STORAGE_CAPACITY: usize = 1000;
 pub const MEMPOOL_REORG_POOL_STORAGE_CAPACITY: usize = 1000;
 /// The time-to-live duration used for transactions stored in the ReorgPool
 pub const MEMPOOL_REORG_POOL_CACHE_TTL: Duration = Duration::from_secs(300);
+
+thread_local! {
+    /// Thread local RNG for the Base Node
+    pub(crate) static BASE_NODE_RNG: RefCell<BaseNodeRng> = RefCell::new(BaseNodeRng::new().expect("Failed to initialize BaseNodeRng"));
+}
+/// The allocated waiting time for a request waiting for service responses from remote base nodes.
+pub const BASE_NODE_SERVICE_REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
+/// The number of remote peers that Base Node Service requests are sent to.
+pub const BASE_NODE_SERVICE_BROADCAST_PEER_COUNT: usize = 8;
+/// The number of responses that need to be received for a corresponding service request to be finalize.
+pub const BASE_NODE_SERVICE_DESIRED_RESPONSE_COUNT: usize = 5;

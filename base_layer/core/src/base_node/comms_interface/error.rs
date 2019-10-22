@@ -28,6 +28,7 @@ use tari_service_framework::reply_channel::TransportChannelError;
 pub enum CommsInterfaceError {
     /// Access to the underlying storage mechanism failed
     UnexpectedApiResponse,
+    RequestTimedOut,
     TransportChannelError(TransportChannelError),
     ChainStorageError(ChainStorageError),
 }

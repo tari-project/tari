@@ -20,11 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::chain_storage::ChainMetadata;
-use serde::{Deserialize, Serialize};
+mod error;
+mod initializer;
+mod service;
+mod service_request;
+mod service_response;
 
-/// API Response enum
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub enum NodeCommsResponse {
-    ChainMetadata(ChainMetadata),
-}
+// Public re-exports
+pub use initializer::BaseNodeServiceInitializer;
+pub use service::{BaseNodeService, BaseNodeServiceConfig};
+pub use service_request::{BaseNodeServiceRequest, RequestKey};
+pub use service_response::BaseNodeServiceResponse;
