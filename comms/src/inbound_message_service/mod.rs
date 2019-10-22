@@ -38,6 +38,3 @@
 //! [InboundMessageBroker]: ./inbound_message_broker/struct.InboundMessageBroker.html
 pub mod error;
 pub mod inbound_message_service;
-pub mod message_cache;
-
-pub use self::message_cache::{MessageCache, MessageCacheConfig};

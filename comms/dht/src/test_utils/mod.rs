@@ -35,8 +35,10 @@ macro_rules! unwrap_oms_send_msg {
     };
 }
 
+mod dht_actor_mock;
 mod makers;
 mod service;
 
+pub use dht_actor_mock::{create_dht_actor_mock, DhtMockState};
 pub use makers::*;
 pub use service::{service_fn, service_spy};

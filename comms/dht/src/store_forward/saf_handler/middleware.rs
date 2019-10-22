@@ -22,6 +22,7 @@
 
 use super::task::MessageHandlerTask;
 use crate::{
+    actor::DhtRequester,
     config::DhtConfig,
     inbound::DecryptedDhtMessage,
     outbound::OutboundMessageRequester,
@@ -38,6 +39,7 @@ pub struct MessageHandlerMiddleware<S> {
     config: DhtConfig,
     next_service: S,
     store: Arc<SAFStorage>,
+    dht_requester: DhtRequester,
     peer_manager: Arc<PeerManager>,
     node_identity: Arc<NodeIdentity>,
     outbound_service: OutboundMessageRequester,
@@ -48,6 +50,7 @@ impl<S> MessageHandlerMiddleware<S> {
         config: DhtConfig,
         next_service: S,
         store: Arc<SAFStorage>,
+        dht_requester: DhtRequester,
         node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,
         outbound_service: OutboundMessageRequester,
@@ -56,6 +59,7 @@ impl<S> MessageHandlerMiddleware<S> {
         Self {
             config,
             store,
+            dht_requester,
             next_service,
             node_identity,
             peer_manager,
@@ -81,6 +85,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = MiddlewareError> + 
             self.config.clone(),
             self.next_service.clone(),
             Arc::clone(&self.store),
+            self.dht_requester.clone(),
             Arc::clone(&self.peer_manager),
             self.outbound_service.clone(),
             Arc::clone(&self.node_identity),

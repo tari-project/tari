@@ -58,6 +58,10 @@ pub struct DhtConfig {
     pub enable_auto_join: bool,
     /// Set to true to enable a request for stored messages on node startup (default: true)
     pub enable_auto_stored_message_request: bool,
+    /// The max capacity of the signature cache (default: 1000)
+    pub signature_cache_capacity: usize,
+    /// The time-to-live for items in the signature cache (default: 300s)
+    pub signature_cache_ttl: Duration,
 }
 
 impl Default for DhtConfig {
@@ -72,6 +76,8 @@ impl Default for DhtConfig {
             saf_high_priority_msg_storage_ttl: SAF_HIGH_PRIORITY_MSG_STORAGE_TTL,
             enable_auto_join: true,
             enable_auto_stored_message_request: true,
+            signature_cache_capacity: 1000,
+            signature_cache_ttl: Duration::from_secs(300),
         }
     }
 }
