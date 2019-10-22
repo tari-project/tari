@@ -24,5 +24,4 @@ pub mod output_manager_service;
 pub mod support;
 // pub mod text_message_service;
 pub mod transaction_service;
-// TODO Remove the TMS code and include the TX and OMS services
-// pub mod wallet;
+pub mod wallet;

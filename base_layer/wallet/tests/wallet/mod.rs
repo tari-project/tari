@@ -20,11 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::support::{
-    data::{clean_up_sql_database, get_path, init_sql_database},
-    utils::{event_stream_count, random_string},
-};
-use log::*;
+use crate::support::utils::{event_stream_count, make_input, random_string};
 use std::{sync::Arc, time::Duration};
 use tari_comms::{
     connection::{net_address::NetAddressWithStats, NetAddress, NetAddressesWithStats},
@@ -32,9 +28,11 @@ use tari_comms::{
     peer_manager::{peer::PeerFlags, NodeId, NodeIdentity, Peer, PeerFeatures},
     types::CommsPublicKey,
 };
+use tari_core::tari_amount::MicroTari;
 use tari_p2p::{initialization::CommsConfig, services::liveness::handle::LivenessEvent};
 use tari_wallet::{
-    text_message_service::{handle::TextMessageEvent, model::Contact},
+    output_manager_service::OutputManagerConfig,
+    transaction_service::handle::TransactionEvent,
     wallet::WalletConfig,
     Wallet,
 };
@@ -57,32 +55,24 @@ fn test_wallet() {
 
     let mut rng = rand::OsRng::new().unwrap();
 
-    let db_name1 = "test_wallet1.sqlite3";
-    let db_path1 = get_path(Some(db_name1));
-    init_sql_database(db_name1);
-
-    let db_name2 = "test_wallet2.sqlite3";
-    let db_path2 = get_path(Some(db_name2));
-    init_sql_database(db_name2);
-
-    let node_1_identity = NodeIdentity::random(
+    let alice_identity = NodeIdentity::random(
         &mut rng,
         "127.0.0.1:22523".parse().unwrap(),
         PeerFeatures::communication_node_default(),
     )
     .unwrap();
-    let node_2_identity = NodeIdentity::random(
+    let bob_identity = NodeIdentity::random(
         &mut rng,
         "127.0.0.1:22145".parse().unwrap(),
         PeerFeatures::communication_node_default(),
     )
     .unwrap();
     let comms_config1 = CommsConfig {
-        node_identity: Arc::new(node_1_identity.clone()),
+        node_identity: Arc::new(alice_identity.clone()),
         host: "127.0.0.1".parse().unwrap(),
         socks_proxy_address: None,
         control_service: ControlServiceConfig {
-            listener_address: node_1_identity.control_service_address(),
+            listener_address: alice_identity.control_service_address(),
             socks_proxy_address: None,
             requested_connection_timeout: Duration::from_millis(2000),
         },
@@ -98,11 +88,11 @@ fn test_wallet() {
         dht: Default::default(),
     };
     let comms_config2 = CommsConfig {
-        node_identity: Arc::new(node_2_identity.clone()),
+        node_identity: Arc::new(bob_identity.clone()),
         host: "127.0.0.1".parse().unwrap(),
         socks_proxy_address: None,
         control_service: ControlServiceConfig {
-            listener_address: node_2_identity.control_service_address(),
+            listener_address: bob_identity.control_service_address(),
             socks_proxy_address: None,
             requested_connection_timeout: Duration::from_millis(2000),
         },
@@ -119,108 +109,62 @@ fn test_wallet() {
     };
     let config1 = WalletConfig {
         comms_config: comms_config1,
-        inbound_message_buffer_size: 100,
-        public_key: node_1_identity.identity.public_key.clone(),
-        database_path: db_path1,
+        output_manager_config: OutputManagerConfig {
+            master_key: alice_identity.secret_key.clone(),
+            branch_seed: "".to_string(),
+            primary_key_index: 0,
+        },
     };
     let config2 = WalletConfig {
         comms_config: comms_config2,
-        inbound_message_buffer_size: 100,
-        public_key: node_1_identity.identity.public_key.clone(),
-        database_path: db_path2,
+        output_manager_config: OutputManagerConfig {
+            master_key: bob_identity.secret_key.clone(),
+            branch_seed: "".to_string(),
+            primary_key_index: 0,
+        },
     };
     let runtime_node1 = Runtime::new().unwrap();
     let runtime_node2 = Runtime::new().unwrap();
-    let mut wallet1 = Wallet::new(config1, runtime_node1).unwrap();
-    let mut wallet2 = Wallet::new(config2, runtime_node2).unwrap();
+    let mut alice_wallet = Wallet::new(config1, runtime_node1).unwrap();
+    let mut bob_wallet = Wallet::new(config2, runtime_node2).unwrap();
 
-    wallet1
-        .comms_service
+    alice_wallet
+        .comms
         .peer_manager()
         .add_peer(create_peer(
-            node_2_identity.identity.public_key.clone(),
-            node_2_identity.control_service_address(),
+            bob_identity.identity.public_key.clone(),
+            bob_identity.control_service_address(),
         ))
         .unwrap();
 
-    wallet2
-        .comms_service
+    bob_wallet
+        .comms
         .peer_manager()
         .add_peer(create_peer(
-            node_1_identity.identity.public_key.clone(),
-            node_1_identity.control_service_address(),
-        ))
-        .unwrap();
-    error!("Starting tests");
-    runtime
-        .block_on(wallet2.text_message_service.add_contact(Contact::new(
-            "Alice".to_string(),
-            node_1_identity.identity.public_key.clone(),
-            node_1_identity.control_service_address(),
-        )))
-        .unwrap();
-
-    runtime
-        .block_on(wallet1.text_message_service.add_contact(Contact::new(
-            "Bob".to_string(),
-            node_2_identity.identity.public_key.clone(),
-            node_2_identity.control_service_address(),
-        )))
-        .unwrap();
-
-    runtime
-        .block_on(
-            wallet1
-                .text_message_service
-                .send_text_message(node_2_identity.identity.public_key.clone(), "Say Hello,".to_string()),
-        )
-        .unwrap();
-
-    runtime
-        .block_on(
-            wallet2
-                .text_message_service
-                .send_text_message(node_1_identity.identity.public_key.clone(), "hello?".to_string()),
-        )
-        .unwrap();
-
-    runtime
-        .block_on(wallet1.text_message_service.send_text_message(
-            node_2_identity.identity.public_key.clone(),
-            "to my little friend!".to_string(),
+            alice_identity.identity.public_key.clone(),
+            alice_identity.control_service_address(),
         ))
         .unwrap();
 
-    let mut result = runtime.block_on(async {
-        event_stream_count(
-            wallet1.text_message_service.get_event_stream_fused(),
-            3,
-            Duration::from_secs(10),
-        )
-        .await
-    });
-    assert_eq!(result.remove(&TextMessageEvent::ReceivedTextMessage), Some(1));
-    assert_eq!(result.remove(&TextMessageEvent::ReceivedTextMessageAck), Some(2));
-
     runtime
         .block_on(
-            wallet1
+            alice_wallet
                 .liveness_service
-                .send_ping(node_2_identity.identity.public_key.clone()),
+                .send_ping(bob_identity.identity.public_key.clone()),
         )
         .unwrap();
 
     runtime
         .block_on(
-            wallet2
+            bob_wallet
                 .liveness_service
-                .send_ping(node_1_identity.identity.public_key.clone()),
+                .send_ping(alice_identity.identity.public_key.clone()),
         )
         .unwrap();
 
     let mut result = runtime.block_on(async {
         event_stream_count(
-            wallet1.liveness_service.get_event_stream_fused(),
+            alice_wallet.liveness_service.get_event_stream_fused(),
             2,
             Duration::from_secs(3),
         )
@@ -230,7 +174,7 @@ fn test_wallet() {
 
     let mut result = runtime.block_on(async {
         event_stream_count(
-            wallet2.liveness_service.get_event_stream_fused(),
+            bob_wallet.liveness_service.get_event_stream_fused(),
             2,
             Duration::from_secs(3),
         )
@@ -239,6 +183,24 @@ fn test_wallet() {
 
     assert_eq!(result.remove(&LivenessEvent::ReceivedPing), Some(1));
 
-    clean_up_sql_database(db_name1);
-    clean_up_sql_database(db_name2);
+    let alice_event_stream = alice_wallet.transaction_service.get_event_stream_fused();
+
+    let value = MicroTari::from(1000);
+    let (_utxo, uo1) = make_input(&mut rng, MicroTari(2500));
+
+    runtime
+        .block_on(alice_wallet.output_manager_service.add_output(uo1))
+        .unwrap();
+
+    runtime
+        .block_on(alice_wallet.transaction_service.send_transaction(
+            bob_identity.identity.public_key.clone(),
+            value,
+            MicroTari::from(20),
+        ))
+        .unwrap();
+
+    let mut result =
+        runtime.block_on(async { event_stream_count(alice_event_stream, 1, Duration::from_secs(10)).await });
+    assert_eq!(result.remove(&TransactionEvent::ReceivedTransactionReply), Some(1));
 }

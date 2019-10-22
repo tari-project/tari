@@ -40,19 +40,20 @@ pub mod service;
 
 const LOG_TARGET: &'static str = "wallet::output_manager_service::initializer";
 
+#[derive(Clone)]
+pub struct OutputManagerConfig {
+    pub master_key: PrivateKey,
+    pub branch_seed: String,
+    pub primary_key_index: usize,
+}
+
 pub struct OutputManagerServiceInitializer {
-    master_key: Option<PrivateKey>,
-    branch_seed: Option<String>,
-    primary_key_index: Option<usize>,
+    config: Option<OutputManagerConfig>,
 }
 
 impl OutputManagerServiceInitializer {
-    pub fn new(master_key: PrivateKey, branch_seed: String, primary_key_index: usize) -> Self {
-        Self {
-            master_key: Some(master_key),
-            branch_seed: Some(branch_seed),
-            primary_key_index: Some(primary_key_index),
-        }
+    pub fn new(config: OutputManagerConfig) -> Self {
+        Self { config: Some(config) }
     }
 }
 
@@ -66,16 +67,8 @@ impl ServiceInitializer for OutputManagerServiceInitializer {
         shutdown: ShutdownSignal,
     ) -> Self::Future
     {
-        let master_key = self
-            .master_key
-            .take()
-            .expect("Output Manager Service initializer already called");
-        let branch_seed = self
-            .branch_seed
-            .take()
-            .expect("Output Manager Service initializer already called");
-        let primary_key_index = self
-            .primary_key_index
+        let config = self
+            .config
             .take()
             .expect("Output Manager Service initializer already called");
 
@@ -86,7 +79,13 @@ impl ServiceInitializer for OutputManagerServiceInitializer {
         // Register handle before waiting for handles to be ready
         handles_fut.register(oms_handle);
         executor.spawn(async move {
-            let service = OutputManagerService::new(receiver, master_key, branch_seed, primary_key_index).start();
+            let service = OutputManagerService::new(
+                receiver,
+                config.master_key,
+                config.branch_seed,
+                config.primary_key_index,
+            )
+            .start();
 
             futures::pin_mut!(service);
             future::select(service, shutdown).await;

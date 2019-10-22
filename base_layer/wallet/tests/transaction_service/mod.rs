@@ -29,8 +29,11 @@ use futures::{
     StreamExt,
 };
 
-use crate::support::comms_and_services::create_dummy_message;
-use rand::{CryptoRng, OsRng, Rng};
+use crate::support::{
+    comms_and_services::create_dummy_message,
+    utils::{make_input, TestParams},
+};
+use rand::OsRng;
 use std::{sync::Arc, time::Duration};
 use tari_broadcast_channel::bounded;
 use tari_comms::{
@@ -41,7 +44,7 @@ use tari_comms::{
 use tari_comms_dht::outbound::{DhtOutboundRequest, OutboundMessageRequester};
 use tari_core::{
     tari_amount::*,
-    transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
+    transaction::OutputFeatures,
     transaction_protocol::{
         recipient::{RecipientSignedMessage, RecipientState},
         sender::TransactionSenderMessage,
@@ -49,10 +52,7 @@ use tari_core::{
     types::{PrivateKey, PublicKey, COMMITMENT_FACTORY, PROVER},
     ReceiverTransactionProtocol,
 };
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    keys::{PublicKey as PK, SecretKey as SK},
-};
+use tari_crypto::keys::{PublicKey as PK, SecretKey as SK};
 use tari_p2p::{
     comms_connector::pubsub_connector,
     domain_message::DomainMessage,
@@ -64,6 +64,7 @@ use tari_wallet::{
     output_manager_service::{
         handle::OutputManagerHandle,
         service::OutputManagerService,
+        OutputManagerConfig,
         OutputManagerServiceInitializer,
     },
     transaction_service::{
@@ -87,7 +88,11 @@ pub fn setup_transaction_service(
 
     let fut = StackBuilder::new(runtime.executor(), comms.shutdown_signal())
         .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))
-        .add_initializer(OutputManagerServiceInitializer::new(master_key, "".to_string(), 0))
+        .add_initializer(OutputManagerServiceInitializer::new(OutputManagerConfig {
+            master_key,
+            branch_seed: "".to_string(),
+            primary_key_index: 0,
+        }))
         .add_initializer(TransactionServiceInitializer::new(subscription_factory))
         .finish();
 
@@ -146,33 +151,6 @@ pub fn setup_transaction_service_no_comms(
         tx_sender,
         tx_ack_sender,
     )
-}
-
-pub fn make_input<R: Rng + CryptoRng>(rng: &mut R, val: MicroTari) -> (TransactionInput, UnblindedOutput) {
-    let key = PrivateKey::random(rng);
-    let commitment = COMMITMENT_FACTORY.commit_value(&key, val.into());
-    let input = TransactionInput::new(OutputFeatures::default(), commitment);
-    (input, UnblindedOutput::new(val, key, None))
-}
-
-pub struct TestParams {
-    pub spend_key: PrivateKey,
-    pub change_key: PrivateKey,
-    pub offset: PrivateKey,
-    pub nonce: PrivateKey,
-    pub public_nonce: PublicKey,
-}
-impl TestParams {
-    pub fn new<R: Rng + CryptoRng>(rng: &mut R) -> TestParams {
-        let r = PrivateKey::random(rng);
-        TestParams {
-            spend_key: PrivateKey::random(rng),
-            change_key: PrivateKey::random(rng),
-            offset: PrivateKey::random(rng),
-            public_nonce: PublicKey::from_secret_key(&r),
-            nonce: r,
-        }
-    }
 }
 
 #[test]
