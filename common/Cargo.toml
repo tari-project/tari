@@ -13,3 +13,4 @@ edition = "2018"
 [dependencies]
 dirs = "2.0"
 log4rs = "0.8.3"
+config = { version = "0.9.3" }

@@ -21,4 +21,13 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
+use ::config::Config;
+use tari_common::ConfigurationError;
+
 pub struct BaseNodeConfig;
+
+impl BaseNodeConfig {
+    pub fn convert_from(cfg: Config) -> Result<Self, ConfigurationError> {
+        Ok(BaseNodeConfig)
+    }
+}

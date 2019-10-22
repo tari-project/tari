@@ -42,6 +42,6 @@ mod test;
 pub mod states;
 
 // Public re-exports
+pub use self::config::BaseNodeConfig;
 pub use base_node::BaseNodeStateMachine;
 pub use comms_interface::OutboundNodeCommsInterface;
-pub use config::BaseNodeConfig;
