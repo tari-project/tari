@@ -23,17 +23,13 @@
 use crate::{
     envelope::NodeDestination,
     inbound::DecryptedDhtMessage,
-    outbound::{BroadcastClosestRequest, BroadcastStrategy, OutboundMessageRequester},
+    outbound::{BroadcastStrategy, OutboundMessageRequester},
     store_forward::error::StoreAndForwardError,
-    DhtConfig,
 };
 use futures::{task::Context, Future, Poll};
 use log::*;
 use std::sync::Arc;
-use tari_comms::{
-    peer_manager::{NodeIdentity, PeerManager},
-    types::CommsPublicKey,
-};
+use tari_comms::{peer_manager::PeerManager, types::CommsPublicKey};
 use tari_comms_middleware::MiddlewareError;
 use tower::{layer::Layer, Service, ServiceExt};
 
@@ -42,23 +38,13 @@ const LOG_TARGET: &'static str = "comms::store_forward::forward";
 /// This layer is responsible for forwarding messages which have failed to decrypt
 pub struct ForwardLayer {
     peer_manager: Arc<PeerManager>,
-    config: DhtConfig,
-    node_identity: Arc<NodeIdentity>,
     outbound_service: OutboundMessageRequester,
 }
 
 impl ForwardLayer {
-    pub fn new(
-        peer_manager: Arc<PeerManager>,
-        config: DhtConfig,
-        node_identity: Arc<NodeIdentity>,
-        outbound_service: OutboundMessageRequester,
-    ) -> Self
-    {
+    pub fn new(peer_manager: Arc<PeerManager>, outbound_service: OutboundMessageRequester) -> Self {
         Self {
             peer_manager,
-            config,
-            node_identity,
             outbound_service,
         }
     }
@@ -71,9 +57,7 @@ impl<S> Layer<S> for ForwardLayer {
         ForwardMiddleware::new(
             service,
             // Pass in just the config item needed by the middleware for almost free copies
-            self.config.num_regional_nodes,
             Arc::clone(&self.peer_manager),
-            Arc::clone(&self.node_identity),
             self.outbound_service.clone(),
         )
     }
@@ -85,26 +69,15 @@ impl<S> Layer<S> for ForwardLayer {
 #[derive(Clone)]
 pub struct ForwardMiddleware<S> {
     next_service: S,
-    config_num_regional_nodes: usize,
     peer_manager: Arc<PeerManager>,
-    node_identity: Arc<NodeIdentity>,
     outbound_service: OutboundMessageRequester,
 }
 
 impl<S> ForwardMiddleware<S> {
-    pub fn new(
-        service: S,
-        config_num_regional_nodes: usize,
-        peer_manager: Arc<PeerManager>,
-        node_identity: Arc<NodeIdentity>,
-        outbound_service: OutboundMessageRequester,
-    ) -> Self
-    {
+    pub fn new(service: S, peer_manager: Arc<PeerManager>, outbound_service: OutboundMessageRequester) -> Self {
         Self {
             next_service: service,
-            config_num_regional_nodes,
             peer_manager,
-            node_identity,
             outbound_service,
         }
     }
@@ -127,9 +100,7 @@ where
     fn call(&mut self, msg: DecryptedDhtMessage) -> Self::Future {
         Forwarder::new(
             self.next_service.clone(),
-            self.config_num_regional_nodes,
             Arc::clone(&self.peer_manager),
-            Arc::clone(&self.node_identity),
             self.outbound_service.clone(),
         )
         .handle(msg)
@@ -140,25 +111,14 @@ where
 /// to the next service.
 struct Forwarder<S> {
     peer_manager: Arc<PeerManager>,
-    config_num_regional_nodes: usize,
-    node_identity: Arc<NodeIdentity>,
     next_service: S,
     outbound_service: OutboundMessageRequester,
 }
 
 impl<S> Forwarder<S> {
-    pub fn new(
-        service: S,
-        config_num_regional_nodes: usize,
-        peer_manager: Arc<PeerManager>,
-        node_identity: Arc<NodeIdentity>,
-        outbound_service: OutboundMessageRequester,
-    ) -> Self
-    {
+    pub fn new(service: S, peer_manager: Arc<PeerManager>, outbound_service: OutboundMessageRequester) -> Self {
         Self {
             peer_manager,
-            config_num_regional_nodes,
-            node_identity,
             next_service: service,
             outbound_service,
         }
@@ -213,15 +173,10 @@ where
         excluded_peers: Vec<CommsPublicKey>,
     ) -> Result<BroadcastStrategy, StoreAndForwardError>
     {
-        let this_node_id = self.node_identity.node_id();
         Ok(match header_dest {
-            NodeDestination::Undisclosed => {
+            NodeDestination::Unspecified => {
                 // Send to the current nodes nearest neighbours
-                BroadcastStrategy::Closest(BroadcastClosestRequest {
-                    n: self.config_num_regional_nodes,
-                    node_id: this_node_id.clone(),
-                    excluded_peers,
-                })
+                BroadcastStrategy::Neighbours(Box::new(excluded_peers))
             },
             NodeDestination::PublicKey(dest_public_key) => {
                 if self.peer_manager.exists(&dest_public_key)? {
@@ -229,11 +184,7 @@ where
                     BroadcastStrategy::DirectPublicKey(dest_public_key)
                 } else {
                     // Send to the current nodes nearest neighbours
-                    BroadcastStrategy::Closest(BroadcastClosestRequest {
-                        n: self.config_num_regional_nodes,
-                        node_id: this_node_id.clone(),
-                        excluded_peers,
-                    })
+                    BroadcastStrategy::Neighbours(Box::new(excluded_peers))
                 }
             },
             NodeDestination::NodeId(dest_node_id) => {
@@ -244,11 +195,7 @@ where
                     },
                     Err(_) => {
                         // Send to peers that are closest to the destination network region
-                        BroadcastStrategy::Closest(BroadcastClosestRequest {
-                            n: self.config_num_regional_nodes,
-                            node_id: dest_node_id,
-                            excluded_peers,
-                        })
+                        BroadcastStrategy::Neighbours(Box::new(excluded_peers))
                     },
                 }
             },
@@ -271,11 +218,9 @@ mod test {
     fn decryption_succeeded() {
         let spy = service_spy();
         let peer_manager = make_peer_manager();
-        let node_identity = make_node_identity();
         let (oms_tx, mut oms_rx) = mpsc::channel(1);
         let oms = OutboundMessageRequester::new(oms_tx);
-        let mut service = ForwardLayer::new(peer_manager, DhtConfig::default(), node_identity, oms)
-            .layer(spy.service::<MiddlewareError>());
+        let mut service = ForwardLayer::new(peer_manager, oms).layer(spy.service::<MiddlewareError>());
 
         let inbound_msg = make_dht_inbound_message(&make_node_identity(), b"".to_vec(), DhtMessageFlags::empty());
         let msg = DecryptedDhtMessage::succeeded(Message::from_message_format((), ()).unwrap(), inbound_msg);
@@ -288,11 +233,9 @@ mod test {
     fn decryption_failed() {
         let spy = service_spy();
         let peer_manager = make_peer_manager();
-        let node_identity = make_node_identity();
         let (oms_tx, mut oms_rx) = mpsc::channel(1);
         let oms = OutboundMessageRequester::new(oms_tx);
-        let mut service = ForwardLayer::new(peer_manager, DhtConfig::default(), node_identity, oms)
-            .layer(spy.service::<MiddlewareError>());
+        let mut service = ForwardLayer::new(peer_manager, oms).layer(spy.service::<MiddlewareError>());
 
         let inbound_msg = make_dht_inbound_message(&make_node_identity(), b"".to_vec(), DhtMessageFlags::empty());
         let msg = DecryptedDhtMessage::failed(inbound_msg);

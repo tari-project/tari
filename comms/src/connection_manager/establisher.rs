@@ -73,7 +73,7 @@ impl Default for PeerConnectionConfig {
             max_message_size: 1024 * 1024,
             max_connect_retries: 5,
             socks_proxy_address: None,
-            peer_connection_establish_timeout: Duration::from_secs(10),
+            peer_connection_establish_timeout: Duration::from_secs(20),
             host: "0.0.0.0".parse().unwrap(),
         }
     }

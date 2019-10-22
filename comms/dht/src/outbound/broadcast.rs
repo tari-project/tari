@@ -24,6 +24,7 @@ use super::{broadcast_strategy::BroadcastStrategy, error::DhtOutboundError, mess
 use crate::{
     envelope::DhtHeader,
     outbound::message::{DhtOutboundMessage, ForwardRequest, OutboundEncryption, SendMessageRequest},
+    DhtConfig,
 };
 use futures::{
     future,
@@ -39,13 +40,15 @@ use tari_comms_middleware::MiddlewareError;
 use tower::{layer::Layer, Service, ServiceExt};
 
 pub struct BroadcastLayer {
+    config: DhtConfig,
     peer_manager: Arc<PeerManager>,
     node_identity: Arc<NodeIdentity>,
 }
 
 impl BroadcastLayer {
-    pub fn new(node_identity: Arc<NodeIdentity>, peer_manager: Arc<PeerManager>) -> Self {
+    pub fn new(config: DhtConfig, node_identity: Arc<NodeIdentity>, peer_manager: Arc<PeerManager>) -> Self {
         BroadcastLayer {
+            config,
             node_identity,
             peer_manager,
         }
@@ -56,7 +59,12 @@ impl<S> Layer<S> for BroadcastLayer {
     type Service = BroadcastMiddleware<S>;
 
     fn layer(&self, service: S) -> Self::Service {
-        BroadcastMiddleware::new(service, Arc::clone(&self.peer_manager), Arc::clone(&self.node_identity))
+        BroadcastMiddleware::new(
+            service,
+            self.config.clone(),
+            Arc::clone(&self.peer_manager),
+            Arc::clone(&self.node_identity),
+        )
     }
 }
 const LOG_TARGET: &'static str = "comms::dht::outbound::broadcast_middleware";
@@ -66,14 +74,22 @@ const LOG_TARGET: &'static str = "comms::dht::outbound::broadcast_middleware";
 #[derive(Clone)]
 pub struct BroadcastMiddleware<S> {
     next: S,
+    config: DhtConfig,
     peer_manager: Arc<PeerManager>,
     node_identity: Arc<NodeIdentity>,
 }
 
 impl<S> BroadcastMiddleware<S> {
-    pub fn new(service: S, peer_manager: Arc<PeerManager>, node_identity: Arc<NodeIdentity>) -> Self {
+    pub fn new(
+        service: S,
+        config: DhtConfig,
+        peer_manager: Arc<PeerManager>,
+        node_identity: Arc<NodeIdentity>,
+    ) -> Self
+    {
         Self {
             next: service,
+            config,
             peer_manager,
             node_identity,
         }
@@ -95,6 +111,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError> + C
     fn call(&mut self, msg: DhtOutboundRequest) -> Self::Future {
         BroadcastTask::new(
             self.next.clone(),
+            self.config.clone(),
             Arc::clone(&self.peer_manager),
             Arc::clone(&self.node_identity),
             msg,
@@ -107,6 +124,7 @@ struct BroadcastTask<S> {
     service: S,
     peer_manager: Arc<PeerManager>,
     node_identity: Arc<NodeIdentity>,
+    config: DhtConfig,
     request: Option<DhtOutboundRequest>,
 }
 
@@ -115,12 +133,14 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
 {
     pub fn new(
         service: S,
+        config: DhtConfig,
         peer_manager: Arc<PeerManager>,
         node_identity: Arc<NodeIdentity>,
         request: DhtOutboundRequest,
     ) -> Self
     {
         Self {
+            config,
             service,
             peer_manager,
             node_identity,
@@ -158,7 +178,13 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
     ) -> Result<Vec<DhtOutboundMessage>, DhtOutboundError>
     {
         match msg {
-            DhtOutboundRequest::SendMsg(request) => self.generate_send_messages(*request),
+            DhtOutboundRequest::SendMsg(request, reply_tx) => {
+                self.generate_send_messages(*request).and_then(|msgs| {
+                    // Reply with the number of messages to be sent
+                    let _ = reply_tx.send(msgs.len());
+                    Ok(msgs)
+                })
+            },
             DhtOutboundRequest::Forward(request) => {
                 if self.node_identity.has_peer_feature(&PeerFeature::MessagePropagation) {
                     self.generate_forward_messages(*request)
@@ -211,6 +237,16 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
                 // Send to a random set of peers of size n that are Communication Nodes
                 self.peer_manager.random_identities(*n).map_err(Into::into)
             },
+            BroadcastStrategy::Neighbours(exclude) => {
+                // Send to a random set of peers of size n that are Communication Nodes
+                self.peer_manager
+                    .closest_identities(
+                        self.node_identity.node_id(),
+                        self.config.num_neighbouring_nodes,
+                        &*exclude,
+                    )
+                    .map_err(Into::into)
+            },
         }
     }
 
@@ -238,8 +274,8 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
             // Final destination for this message
             destination,
             // Origin public key used to identify the origin and verify the signature
-            self.node_identity.identity.public_key.clone(),
-            // Signing will happen later in the pipeline (SerializeMiddleware) to prevent double work
+            self.node_identity.public_key().clone(),
+            // Signing will happen later in the pipeline (SerializeMiddleware), left empty to prevent double work
             Vec::new(),
             dht_message_type,
             dht_flags,
@@ -303,7 +339,7 @@ mod test {
         outbound::message::OutboundEncryption,
         test_utils::{make_peer_manager, service_fn},
     };
-    use futures::future;
+    use futures::{channel::oneshot, future};
     use rand::rngs::OsRng;
     use std::sync::Mutex;
     use tari_comms::{
@@ -350,17 +386,26 @@ mod test {
             future::ready(Result::<_, MiddlewareError>::Ok(()))
         });
 
-        let mut service = BroadcastMiddleware::new(next_service, peer_manager, Arc::new(node_identity));
+        let mut service = BroadcastMiddleware::new(
+            next_service,
+            DhtConfig::default(),
+            peer_manager,
+            Arc::new(node_identity),
+        );
+        let (reply_tx, _reply_rx) = oneshot::channel();
 
-        rt.block_on(service.call(DhtOutboundRequest::SendMsg(Box::new(SendMessageRequest {
-            broadcast_strategy: BroadcastStrategy::Flood,
-            comms_flags: MessageFlags::NONE,
-            destination: NodeDestination::Undisclosed,
-            encryption: OutboundEncryption::None,
-            dht_message_type: DhtMessageType::None,
-            dht_flags: DhtMessageFlags::NONE,
-            body: "custom_msg".as_bytes().to_vec(),
-        }))))
+        rt.block_on(service.call(DhtOutboundRequest::SendMsg(
+            Box::new(SendMessageRequest {
+                broadcast_strategy: BroadcastStrategy::Flood,
+                comms_flags: MessageFlags::NONE,
+                destination: NodeDestination::Unspecified,
+                encryption: OutboundEncryption::None,
+                dht_message_type: DhtMessageType::None,
+                dht_flags: DhtMessageFlags::NONE,
+                body: "custom_msg".as_bytes().to_vec(),
+            }),
+            reply_tx,
+        )))
         .unwrap();
 
         {

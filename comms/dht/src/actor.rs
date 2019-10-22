@@ -209,17 +209,17 @@ impl DhtActor {
 
         debug!(
             target: LOG_TARGET,
-            "Sending Join message to (at most) {} closest peers", self.config.num_regional_nodes
+            "Sending Join message to (at most) {} closest peers", self.config.num_neighbouring_nodes
         );
 
         self.outbound_requester
             .send_dht_message(
-                BroadcastStrategy::Closest(BroadcastClosestRequest {
-                    n: self.config.num_regional_nodes,
+                BroadcastStrategy::Closest(Box::new(BroadcastClosestRequest {
+                    n: self.config.num_neighbouring_nodes,
                     node_id: self.node_identity.identity.node_id.clone(),
                     excluded_peers: Vec::new(),
-                }),
-                NodeDestination::Undisclosed,
+                })),
+                NodeDestination::Unspecified,
                 OutboundEncryption::None,
                 DhtMessageType::Join,
                 message,
@@ -243,22 +243,22 @@ impl DhtActor {
         };
         debug!(
             target: LOG_TARGET,
-            "Sending Discover message to (at most) {} closest peers", self.config.num_regional_nodes
+            "Sending Discover message to (at most) {} closest peers", self.config.num_neighbouring_nodes
         );
 
         // If the destination node is is known, send to the closest peers we know. Otherwise...
         let network_location_node_id = dest_node_id.unwrap_or(match &destination {
             // ... if the destination is undisclosed or a public key, send discover to our closest peers
-            NodeDestination::Undisclosed | NodeDestination::PublicKey(_) => self.node_identity.node_id().clone(),
+            NodeDestination::Unspecified | NodeDestination::PublicKey(_) => self.node_identity.node_id().clone(),
             // otherwise, send it to the closest peers to the given NodeId destination we know
             NodeDestination::NodeId(node_id) => node_id.clone(),
         });
 
-        let broadcast_strategy = BroadcastStrategy::Closest(BroadcastClosestRequest {
-            n: self.config.num_regional_nodes,
+        let broadcast_strategy = BroadcastStrategy::Closest(Box::new(BroadcastClosestRequest {
+            n: self.config.num_neighbouring_nodes,
             node_id: network_location_node_id,
             excluded_peers: Vec::new(),
-        });
+        }));
 
         self.outbound_requester
             .send_dht_message(
@@ -274,16 +274,16 @@ impl DhtActor {
     }
 
     async fn request_stored_messages(&mut self) -> Result<(), DhtOutboundError> {
-        let broadcast_strategy = BroadcastStrategy::Closest(BroadcastClosestRequest {
-            n: self.config.num_regional_nodes,
+        let broadcast_strategy = BroadcastStrategy::Closest(Box::new(BroadcastClosestRequest {
+            n: self.config.num_neighbouring_nodes,
             node_id: self.node_identity.node_id().clone(),
             excluded_peers: Vec::new(),
-        });
+        }));
 
         self.outbound_requester
             .send_dht_message(
                 broadcast_strategy,
-                NodeDestination::Undisclosed,
+                NodeDestination::Unspecified,
                 OutboundEncryption::EncryptForDestination,
                 DhtMessageType::SAFRequestMessages,
                 // TODO: We should track when this node last requested stored messages and ask
@@ -386,7 +386,7 @@ mod test {
 
             rt.block_on(async move {
                 requester
-                    .send_discover(CommsPublicKey::default(), None, NodeDestination::Undisclosed)
+                    .send_discover(CommsPublicKey::default(), None, NodeDestination::Unspecified)
                     .await
                     .unwrap();
                 let request = unwrap_oms_send_msg!(out_rx.next().await.unwrap());

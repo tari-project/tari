@@ -85,7 +85,6 @@ where
             Ok(dht_envelope) => {
                 trace!(target: LOG_TARGET, "Deserialization succeeded. Checking signatures");
                 if !dht_envelope.is_signature_valid() {
-                    eprintln!("GET DHT HEADER = {:?}", dht_envelope.header);
                     // The origin signature is not valid, this message should never have been sent
                     warn!(
                         target: LOG_TARGET,

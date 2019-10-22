@@ -287,11 +287,11 @@ where
         };
         self.outbound_message_service
             .send_message(
-                BroadcastStrategy::Closest(BroadcastClosestRequest {
+                BroadcastStrategy::Closest(Box::new(BroadcastClosestRequest {
                     n: self.config.broadcast_peer_count,
                     node_id: self.node_identity.identity.node_id.clone(),
                     excluded_peers: Vec::new(),
-                }),
+                })),
                 NodeDestination::NodeId(self.node_identity.identity.node_id.clone()),
                 OutboundEncryption::None,
                 TariMessageType::new(BlockchainMessage::BaseNodeRequest),

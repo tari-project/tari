@@ -19,21 +19,15 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use crate::support::{comms_and_services::setup_comms_services, utils::event_stream_count};
-use futures::{
-    channel::{
-        mpsc,
-        mpsc::{Receiver, Sender},
-    },
-    SinkExt,
-    StreamExt,
-};
-
 use crate::support::{
-    comms_and_services::create_dummy_message,
-    utils::{make_input, TestParams},
+    comms_and_services::{create_dummy_message, setup_comms_services},
+    utils::event_stream_count,
 };
-use rand::OsRng;
+use futures::{
+    channel::{mpsc, mpsc::Sender},
+    SinkExt,
+};
+use rand::{CryptoRng, OsRng, Rng};
 use std::{sync::Arc, time::Duration};
 use tari_broadcast_channel::bounded;
 use tari_comms::{
@@ -41,10 +35,10 @@ use tari_comms::{
     message::Message,
     peer_manager::{NodeIdentity, PeerFeatures},
 };
-use tari_comms_dht::outbound::{DhtOutboundRequest, OutboundMessageRequester};
+use tari_comms_dht::outbound::mock::{create_mock_outbound_service, MockOutboundService};
 use tari_core::{
     tari_amount::*,
-    transaction::OutputFeatures,
+    transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
     transaction_protocol::{
         recipient::{RecipientSignedMessage, RecipientState},
         sender::TransactionSenderMessage,
@@ -52,7 +46,10 @@ use tari_core::{
     types::{PrivateKey, PublicKey, COMMITMENT_FACTORY, PROVER},
     ReceiverTransactionProtocol,
 };
-use tari_crypto::keys::{PublicKey as PK, SecretKey as SK};
+use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
+    keys::{PublicKey as PK, SecretKey as SK},
+};
 use tari_p2p::{
     comms_connector::pubsub_connector,
     domain_message::DomainMessage,
@@ -112,7 +109,7 @@ pub fn setup_transaction_service_no_comms(
 ) -> (
     TransactionServiceHandle,
     OutputManagerHandle,
-    Receiver<DhtOutboundRequest>,
+    MockOutboundService,
     Sender<DomainMessage<TransactionSenderMessage>>,
     Sender<DomainMessage<RecipientSignedMessage>>,
 )
@@ -127,8 +124,7 @@ pub fn setup_transaction_service_no_comms(
     let (tx_sender, tx_receiver) = mpsc::channel(20);
     let (tx_ack_sender, tx_ack_receiver) = mpsc::channel(20);
 
-    let (outbound_message_sender, outbound_message_receiver) = mpsc::channel(20);
-    let outbound_message_requester = OutboundMessageRequester::new(outbound_message_sender);
+    let (outbound_message_requester, mock_outbound_service) = create_mock_outbound_service(20);
 
     let ts_service = TransactionService::new(
         ts_request_receiver,
@@ -138,19 +134,42 @@ pub fn setup_transaction_service_no_comms(
         outbound_message_requester.clone(),
         event_publisher,
     );
-    runtime.executor().spawn(async move {
-        let _ = output_manager_service.start().await.unwrap();
-    });
-    runtime.executor().spawn(async move {
-        let _ = ts_service.start().await.unwrap();
-    });
+    runtime.spawn(async move { output_manager_service.start().await.unwrap() });
+    runtime.spawn(async move { ts_service.start().await.unwrap() });
     (
         ts_handle,
         output_manager_service_handle,
-        outbound_message_receiver,
+        mock_outbound_service,
         tx_sender,
         tx_ack_sender,
     )
+}
+
+pub fn make_input<R: Rng + CryptoRng>(rng: &mut R, val: MicroTari) -> (TransactionInput, UnblindedOutput) {
+    let key = PrivateKey::random(rng);
+    let commitment = COMMITMENT_FACTORY.commit_value(&key, val.into());
+    let input = TransactionInput::new(OutputFeatures::default(), commitment);
+    (input, UnblindedOutput::new(val, key, None))
+}
+
+pub struct TestParams {
+    pub spend_key: PrivateKey,
+    pub change_key: PrivateKey,
+    pub offset: PrivateKey,
+    pub nonce: PrivateKey,
+    pub public_nonce: PublicKey,
+}
+impl TestParams {
+    pub fn new<R: Rng + CryptoRng>(rng: &mut R) -> TestParams {
+        let r = PrivateKey::random(rng);
+        TestParams {
+            spend_key: PrivateKey::random(rng),
+            change_key: PrivateKey::random(rng),
+            offset: PrivateKey::random(rng),
+            public_nonce: PublicKey::from_secret_key(&r),
+            nonce: r,
+        }
+    }
 }
 
 #[test]
@@ -370,9 +389,9 @@ fn test_sending_repeated_tx_ids() {
     let alice_seed = PrivateKey::random(&mut rng);
     let bob_seed = PrivateKey::random(&mut rng);
 
-    let (alice_ts, _alice_output_manager, _alice_outbound_message_receiver, mut alice_tx_sender, _alice_tx_ack_sender) =
+    let (alice_ts, _alice_output_manager, alice_outbound_service, mut alice_tx_sender, _alice_tx_ack_sender) =
         setup_transaction_service_no_comms(&runtime, alice_seed);
-    let (_bob_ts, mut bob_output_manager, _bob_outbound_message_receiver, _bob_tx_sender, _bob_tx_ack_sender) =
+    let (_bob_ts, mut bob_output_manager, _bob_outbound_service, _bob_tx_sender, _bob_tx_ack_sender) =
         setup_transaction_service_no_comms(&runtime, bob_seed);
     let alice_event_stream = alice_ts.get_event_stream_fused();
 
@@ -389,9 +408,13 @@ fn test_sending_repeated_tx_ids() {
     runtime.block_on(alice_tx_sender.send(tx_message.clone())).unwrap();
     runtime.block_on(alice_tx_sender.send(tx_message.clone())).unwrap();
 
-    let mut result =
-        runtime.block_on(async { event_stream_count(alice_event_stream, 2, Duration::from_secs(10)).await });
+    runtime.spawn(async move {
+        alice_outbound_service.handle_many(2, Duration::from_secs(10), 0).await;
+    });
 
+    let mut result = runtime.block_on(event_stream_count(alice_event_stream, 2, Duration::from_secs(10)));
+
+    assert_eq!(result.len(), 2);
     assert_eq!(result.remove(&TransactionEvent::ReceivedTransaction), Some(1));
     assert_eq!(
         result.remove(&TransactionEvent::Error(
@@ -413,13 +436,8 @@ fn test_accepting_unknown_tx_id_and_malformed_reply() {
         PeerFeatures::communication_node_default(),
     )
     .unwrap();
-    let (
-        mut alice_ts,
-        mut alice_output_manager,
-        mut alice_outbound_message_receiver,
-        _alice_tx_sender,
-        mut alice_tx_ack_sender,
-    ) = setup_transaction_service_no_comms(&runtime, alice_seed);
+    let (mut alice_ts, mut alice_output_manager, mut alice_outbound_service, _alice_tx_sender, mut alice_tx_ack_sender) =
+        setup_transaction_service_no_comms(&runtime, alice_seed);
 
     let alice_event_stream = alice_ts.get_event_stream_fused();
 
@@ -427,20 +445,18 @@ fn test_accepting_unknown_tx_id_and_malformed_reply() {
 
     runtime.block_on(alice_output_manager.add_output(uo)).unwrap();
 
-    runtime
-        .block_on(alice_ts.send_transaction(
-            bob_node_identity.identity.public_key.clone(),
-            MicroTari::from(500),
-            MicroTari::from(1000),
-        ))
-        .unwrap();
+    let (req, _) = runtime.block_on(async {
+        futures::join!(
+            alice_outbound_service.handle_next(Duration::from_millis(1000), 0),
+            alice_ts.send_transaction(
+                bob_node_identity.identity.public_key.clone(),
+                MicroTari::from(500),
+                MicroTari::from(1000),
+            ),
+        )
+    });
 
-    let mut serialized_msg = None;
-    if let DhtOutboundRequest::SendMsg(req) = runtime.block_on(alice_outbound_message_receiver.next()).unwrap() {
-        serialized_msg = Some(req.body);
-    }
-
-    let msg: Message = Message::from_binary(serialized_msg.unwrap().as_slice()).unwrap();
+    let msg: Message = Message::from_binary(req.body.as_slice()).unwrap();
     let sender_message = msg.deserialize_message().unwrap();
 
     let params = TestParams::new(&mut rng);

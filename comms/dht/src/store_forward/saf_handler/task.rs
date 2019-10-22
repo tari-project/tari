@@ -151,7 +151,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = MiddlewareError>
                     match &msg.dht_header.destination {
                         // The stored message was sent with an undisclosed recipient. Perhaps this node
                         // is interested in it
-                        NodeDestination::Undisclosed => true,
+                        NodeDestination::Unspecified => true,
                         // Was the stored message sent for the requesting node public key?
                         NodeDestination::PublicKey(dest_public_key) => dest_public_key == &message.source_peer.public_key,
                         // Was the stored message sent for the requesting node node id?
@@ -174,7 +174,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = MiddlewareError>
         self.outbound_service
             .send_message(
                 BroadcastStrategy::DirectPublicKey(message.source_peer.public_key),
-                NodeDestination::Undisclosed,
+                NodeDestination::Unspecified,
                 OutboundEncryption::EncryptForDestination,
                 DhtMessageType::SAFStoredMessages,
                 stored_messages,
@@ -303,7 +303,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = MiddlewareError>
     {
         Some(&msg.dht_header.destination)
             .filter(|destination| match destination {
-                NodeDestination::Undisclosed => true,
+                NodeDestination::Unspecified => true,
                 NodeDestination::PublicKey(pk) => node_identity.public_key() == pk,
                 NodeDestination::NodeId(node_id) => {
                     // Pass this check if the node id equals ours or is in this node's region
@@ -312,7 +312,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = MiddlewareError>
                     }
 
                     peer_manager
-                        .in_network_region(node_identity.node_id(), node_id, config.num_regional_nodes)
+                        .in_network_region(node_identity.node_id(), node_id, config.num_neighbouring_nodes)
                         .or(Result::<_, ()>::Ok(false))
                         .expect("cannot fail")
                 },
@@ -409,6 +409,8 @@ mod test {
             );
             rt.spawn(async move {
                 task.run().await.unwrap();
+            });
+            rt.spawn(async move {
                 let msg = unwrap_oms_send_msg!(oms_rx.next().await.unwrap());
                 let msg = Message::from_binary(&msg.body).unwrap();
                 let msg = StoredMessagesResponse::from_binary(&msg.body).unwrap();
