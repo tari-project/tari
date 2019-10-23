@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
+    actor::DhtRequester,
     config::DhtConfig,
     envelope::{DhtMessageFlags, DhtMessageType, NodeDestination},
     inbound::{DecryptedDhtMessage, DhtInboundMessage},
@@ -41,6 +42,7 @@ use tari_comms::{
 };
 use tari_comms_middleware::MiddlewareError;
 use tari_utilities::message_format::MessageFormat;
+use tokio::runtime::current_thread;
 use tokio_executor::blocking;
 use tower::{Service, ServiceExt};
 
@@ -49,6 +51,7 @@ const LOG_TARGET: &'static str = "comms::dht::store_forward";
 pub struct MessageHandlerTask<S> {
     config: DhtConfig,
     next_service: S,
+    dht_requester: DhtRequester,
     peer_manager: Arc<PeerManager>,
     outbound_service: OutboundMessageRequester,
     node_identity: Arc<NodeIdentity>,
@@ -63,6 +66,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = MiddlewareError>
         config: DhtConfig,
         next_service: S,
         store: Arc<SAFStorage>,
+        dht_requester: DhtRequester,
         peer_manager: Arc<PeerManager>,
         outbound_service: OutboundMessageRequester,
         node_identity: Arc<NodeIdentity>,
@@ -72,6 +76,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = MiddlewareError>
         Self {
             config,
             store,
+            dht_requester,
             next_service,
             peer_manager,
             outbound_service,
@@ -212,20 +217,39 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = MiddlewareError>
             .into_iter()
             .map(|result| {
                 match &result {
-                    // Decryption can fail, the message wasn't for this node
+                    // Failed decryption is acceptable, the message wasn't for this node so we
+                    // simply discard the message.
+                    // TODO: Should we add this message to our SAF store?
                     Err(err @ StoreAndForwardError::DecryptionFailed) => {
                         debug!(
                             target: LOG_TARGET,
                             "Unable to decrypt stored message sent by {}: {}", message.source_peer.node_id, err
                         );
                     },
+                    // The peer that originally sent this message is not known to us.
+                    // TODO: Should we try to discover this peer?
                     Err(StoreAndForwardError::PeerManagerError(PeerManagerError::PeerNotFoundError)) => {
                         debug!(target: LOG_TARGET, "Origin peer not found. Discarding stored message.");
                     },
 
+                    // Failed to send request to Dht Actor, something has gone very wrong
+                    Err(StoreAndForwardError::DhtActorError(err)) => {
+                        error!(
+                            target: LOG_TARGET,
+                            "DhtActor returned an error. {}. This could indicate a system malfunction.", err
+                        );
+                    },
+                    // Duplicate message detected, no problem it happens.
+                    Err(StoreAndForwardError::DuplicateMessage) => {
+                        debug!(
+                            target: LOG_TARGET,
+                            "Store and forward received a duplicate message. Message discarded."
+                        );
+                    },
+
                     // Every other error shouldn't happen if the sending node is behaving
                     Err(err) => {
-                        // TODO: Ban node?
+                        // TODO: Ban peer?
                         warn!(
                             target: LOG_TARGET,
                             "SECURITY: invalid store and forward message was discarded from NodeId={}. Reason: {}. \
@@ -264,6 +288,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = MiddlewareError>
         let node_identity = Arc::clone(&self.node_identity);
         let peer_manager = Arc::clone(&self.peer_manager);
         let config = self.config.clone();
+        let mut dht_requester = self.dht_requester.clone();
         blocking::run(move || {
             // Check that the destination is either undisclosed
             Self::check_destination(&config, &peer_manager, &node_identity, &message)?;
@@ -271,7 +296,10 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = MiddlewareError>
             Self::check_signature(&message)?;
             // Check the DhtMessageFlags - should indicate that the message is encrypted
             Self::check_flags(&message)?;
-            // TODO: Check a shared message signature cache to remove possible duplicates
+            // Check that the message has not already been received.
+            // The current thread runtime is used because calls to the DHT actor are async
+            let mut rt = current_thread::Runtime::new()?;
+            rt.block_on(Self::check_duplicate(&mut dht_requester, &message))?;
 
             // Attempt to decrypt the message
             let decrypted_message = Self::try_decrypt(&node_identity, &message)?;
@@ -285,6 +313,20 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = MiddlewareError>
 
             Ok(DecryptedDhtMessage::succeeded(decrypted_message, inbound_msg))
         })
+    }
+
+    async fn check_duplicate(
+        dht_requester: &mut DhtRequester,
+        msg: &StoredMessage,
+    ) -> Result<(), StoreAndForwardError>
+    {
+        match dht_requester
+            .insert_message_signature(msg.dht_header.origin_signature.clone())
+            .await?
+        {
+            true => Err(StoreAndForwardError::DuplicateMessage),
+            false => Ok(()),
+        }
     }
 
     fn check_flags(msg: &StoredMessage) -> Result<(), StoreAndForwardError> {
@@ -346,7 +388,14 @@ mod test {
     use super::*;
     use crate::{
         envelope::DhtMessageFlags,
-        test_utils::{make_dht_inbound_message, make_node_identity, make_peer_manager, service_spy},
+        test_utils::{
+            create_dht_actor_mock,
+            make_dht_inbound_message,
+            make_node_identity,
+            make_peer_manager,
+            service_spy,
+            DhtMockState,
+        },
     };
     use chrono::Utc;
     use futures::channel::mpsc;
@@ -398,10 +447,14 @@ mod test {
             );
             message.dht_header.message_type = DhtMessageType::SAFRequestMessages;
 
+            let (tx, _) = mpsc::channel(1);
+            let dht_requester = DhtRequester::new(tx);
+
             let task = MessageHandlerTask::new(
                 Default::default(),
                 spy.service::<MiddlewareError>(),
                 storage,
+                dht_requester,
                 peer_manager,
                 OutboundMessageRequester::new(oms_tx),
                 node_identity,
@@ -458,27 +511,32 @@ mod test {
             // Need to know the peer to process a stored message
             peer_manager.add_peer(inbound_msg_b.source_peer.clone()).unwrap();
 
+            let msg1 = StoredMessage::new(
+                0,
+                inbound_msg_a.comms_header.clone(),
+                inbound_msg_a.dht_header.clone(),
+                msg_a,
+            );
+            let msg2 = StoredMessage::new(0, inbound_msg_b.comms_header, inbound_msg_b.dht_header, msg_b);
             let mut message = DecryptedDhtMessage::succeeded(
                 Message::from_message_format(MessageHeader::new(()).unwrap(), StoredMessagesResponse {
-                    messages: vec![
-                        StoredMessage::new(
-                            0,
-                            inbound_msg_a.comms_header.clone(),
-                            inbound_msg_a.dht_header.clone(),
-                            msg_a,
-                        ),
-                        StoredMessage::new(0, inbound_msg_b.comms_header, inbound_msg_b.dht_header, msg_b),
-                    ],
+                    messages: vec![msg1.clone(), msg2],
                 })
                 .unwrap(),
                 make_dht_inbound_message(&node_identity, vec![], DhtMessageFlags::ENCRYPTED),
             );
             message.dht_header.message_type = DhtMessageType::SAFStoredMessages;
 
+            let (dht_requester, mut mock) = create_dht_actor_mock(1);
+            let mock_state = DhtMockState::new();
+            mock.set_shared_state(mock_state.clone());
+            rt.spawn(mock.run());
+
             let task = MessageHandlerTask::new(
                 Default::default(),
                 spy.service::<MiddlewareError>(),
                 storage,
+                dht_requester,
                 peer_manager,
                 OutboundMessageRequester::new(oms_tx),
                 node_identity,
@@ -496,6 +554,7 @@ mod test {
                     .collect::<Vec<Vec<u8>>>();
                 assert!(msgs.contains(&b"A".to_vec()));
                 assert!(msgs.contains(&b"B".to_vec()));
+                assert_eq!(mock_state.call_count(), msgs.len());
             });
         });
     }

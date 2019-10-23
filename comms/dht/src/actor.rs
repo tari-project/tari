@@ -40,8 +40,9 @@ use crate::{
     store_forward::StoredMessagesRequest,
     DhtConfig,
 };
+use derive_error::Error;
 use futures::{
-    channel::{mpsc, mpsc::SendError},
+    channel::{mpsc, mpsc::SendError, oneshot},
     stream::Fuse,
     FutureExt,
     SinkExt,
@@ -54,9 +55,33 @@ use tari_comms::{
     types::CommsPublicKey,
 };
 use tari_shutdown::ShutdownSignal;
+use ttl_cache::TtlCache;
 
 const LOG_TARGET: &'static str = "comms::dht::actor";
 
+#[derive(Debug, Error)]
+pub enum DhtActorError {
+    /// MPSC channel is disconnected
+    ChannelDisconnected,
+    /// MPSC sender was unable to send because the channel buffer is full
+    SendBufferFull,
+    /// Reply sender canceled the request
+    ReplyCanceled,
+}
+
+impl From<SendError> for DhtActorError {
+    fn from(err: SendError) -> Self {
+        if err.is_disconnected() {
+            DhtActorError::ChannelDisconnected
+        } else if err.is_full() {
+            DhtActorError::SendBufferFull
+        } else {
+            unreachable!();
+        }
+    }
+}
+
+#[derive(Debug)]
 pub enum DhtRequest {
     /// Send a Join request to the network
     SendJoin,
@@ -66,8 +91,12 @@ pub enum DhtRequest {
         dest_node_id: Option<NodeId>,
         destination: NodeDestination,
     },
+    /// Inserts a message signature to the signature cache. This operation replies with a boolean
+    /// which is true if the signature already exists in the cache, otherwise false
+    SignatureCacheInsert(Box<Vec<u8>>, oneshot::Sender<bool>),
 }
 
+#[derive(Clone)]
 pub struct DhtRequester {
     sender: mpsc::Sender<DhtRequest>,
 }
@@ -77,8 +106,8 @@ impl DhtRequester {
         Self { sender }
     }
 
-    pub async fn send_join(&mut self) -> Result<(), SendError> {
-        self.sender.send(DhtRequest::SendJoin).await
+    pub async fn send_join(&mut self) -> Result<(), DhtActorError> {
+        self.sender.send(DhtRequest::SendJoin).await.map_err(Into::into)
     }
 
     pub async fn send_discover(
@@ -86,7 +115,7 @@ impl DhtRequester {
         dest_public_key: CommsPublicKey,
         dest_node_id: Option<NodeId>,
         destination: NodeDestination,
-    ) -> Result<(), SendError>
+    ) -> Result<(), DhtActorError>
     {
         self.sender
             .send(DhtRequest::SendDiscover {
@@ -95,6 +124,16 @@ impl DhtRequester {
                 destination,
             })
             .await
+            .map_err(Into::into)
+    }
+
+    pub async fn insert_message_signature(&mut self, signature: Vec<u8>) -> Result<bool, DhtActorError> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.sender
+            .send(DhtRequest::SignatureCacheInsert(Box::new(signature), reply_tx))
+            .await?;
+
+        reply_rx.await.map_err(|_| DhtActorError::ReplyCanceled)
     }
 }
 
@@ -104,6 +143,7 @@ pub struct DhtActor {
     config: DhtConfig,
     shutdown_signal: Option<ShutdownSignal>,
     request_rx: Fuse<mpsc::Receiver<DhtRequest>>,
+    signature_cache: TtlCache<Vec<u8>, ()>,
 }
 
 impl DhtActor {
@@ -116,6 +156,7 @@ impl DhtActor {
     ) -> Self
     {
         Self {
+            signature_cache: TtlCache::new(config.signature_cache_capacity),
             config,
             outbound_requester,
             node_identity,
@@ -165,6 +206,7 @@ impl DhtActor {
         loop {
             futures::select! {
                 request = self.request_rx.select_next_some() => {
+                    debug!(target: LOG_TARGET, "DHtActor received message: {:?}", request);
                     self.handle_request(request).await;
                 },
 
@@ -181,13 +223,23 @@ impl DhtActor {
     }
 
     async fn handle_request(&mut self, request: DhtRequest) {
+        use DhtRequest::*;
         let result = match request {
-            DhtRequest::SendJoin => self.send_join().await,
-            DhtRequest::SendDiscover {
+            SendJoin => self.send_join().await,
+            SendDiscover {
                 destination,
                 dest_node_id,
                 dest_public_key,
             } => self.send_discover(dest_public_key, dest_node_id, destination).await,
+
+            SignatureCacheInsert(signature, reply_tx) => {
+                let already_exists = self
+                    .signature_cache
+                    .insert(*signature, (), self.config.signature_cache_ttl)
+                    .is_some();
+                let _ = reply_tx.send(already_exists);
+                Ok(())
+            },
         };
 
         match result {
@@ -391,6 +443,41 @@ mod test {
                     .unwrap();
                 let request = unwrap_oms_send_msg!(out_rx.next().await.unwrap());
                 assert_eq!(request.dht_message_type, DhtMessageType::Discover);
+            });
+        });
+    }
+
+    #[test]
+    fn insert_message_signature() {
+        runtime::test_async(|rt| {
+            let node_identity = make_node_identity();
+            let (out_tx, _) = mpsc::channel(1);
+            let (actor_tx, actor_rx) = mpsc::channel(1);
+            let mut requester = DhtRequester::new(actor_tx);
+            let outbound_requester = OutboundMessageRequester::new(out_tx);
+            let shutdown = Shutdown::new();
+            let actor = DhtActor::new(
+                DhtConfig {
+                    enable_auto_join: false,
+                    enable_auto_stored_message_request: false,
+                    ..Default::default()
+                },
+                node_identity,
+                outbound_requester,
+                actor_rx,
+                shutdown.to_signal(),
+            );
+
+            rt.spawn(actor.start());
+
+            rt.block_on(async move {
+                let signature = vec![1u8, 2, 3];
+                let is_dup = requester.insert_message_signature(signature.clone()).await.unwrap();
+                assert_eq!(is_dup, false);
+                let is_dup = requester.insert_message_signature(signature).await.unwrap();
+                assert_eq!(is_dup, true);
+                let is_dup = requester.insert_message_signature(Vec::new()).await.unwrap();
+                assert_eq!(is_dup, false);
             });
         });
     }

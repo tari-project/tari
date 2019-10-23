@@ -20,8 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::outbound::DhtOutboundError;
+use crate::{actor::DhtActorError, outbound::DhtOutboundError};
 use derive_error::Error;
+use std::io;
 use tari_comms::{message::MessageError, peer_manager::PeerManagerError};
 use tari_utilities::{ciphers::cipher::CipherError, message_format::MessageFormatError};
 
@@ -40,4 +41,8 @@ pub enum StoreAndForwardError {
     /// Unable to decrypt received stored message
     DecryptionFailed,
     CipherError(CipherError),
+    DhtActorError(DhtActorError),
+    /// Received duplicate stored message
+    DuplicateMessage,
+    CurrentThreadRuntimeInitializeFailed(io::Error),
 }

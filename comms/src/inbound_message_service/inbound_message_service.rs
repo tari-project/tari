@@ -20,8 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use crate::{
-    inbound_message_service::{error::InboundMessagePipelineError, MessageCache, MessageCacheConfig},
-    message::{Frame, FrameSet, InboundMessage, MessageData},
+    inbound_message_service::error::InboundMessagePipelineError,
+    message::{FrameSet, InboundMessage, MessageData},
     peer_manager::{NodeId, Peer, PeerManager},
 };
 use futures::{channel::mpsc, FutureExt, Sink, SinkExt, Stream, StreamExt};
@@ -39,7 +39,6 @@ pub type InboundMessageService<TSink> = InnerInboundMessageService<mpsc::Receive
 /// the given message_sink.
 pub struct InnerInboundMessageService<TStream, TSink> {
     raw_message_stream: Option<TStream>,
-    message_cache: MessageCache<Frame>,
     message_sink: TSink,
     peer_manager: Arc<PeerManager>,
     shutdown_signal: Option<ShutdownSignal>,
@@ -58,11 +57,9 @@ where
         shutdown_signal: ShutdownSignal,
     ) -> Self
     {
-        let message_cache = MessageCache::new(MessageCacheConfig::default());
         Self {
             raw_message_stream: Some(raw_message_stream),
             message_sink,
-            message_cache,
             peer_manager,
             shutdown_signal: Some(shutdown_signal),
         }
@@ -115,8 +112,6 @@ where
             return Err(InboundMessagePipelineError::InvalidMessageSignature);
         }
 
-        self.message_cache_check(&message_envelope_header.message_signature)?;
-
         let peer = self.find_known_peer(&message_data.source_node_id)?;
 
         // Message is deduped and authenticated
@@ -131,24 +126,6 @@ where
         self.message_sink.send(inbound_message).await.map_err(Into::into)?;
 
         Ok(())
-    }
-
-    /// Utility Functions that require the Pipeline context resources
-    /// Check whether this message body has been received before (within the cache TTL period). If it has then reject
-    /// the message, else add it to the cache.
-    fn message_cache_check(&mut self, signature: &Vec<u8>) -> Result<(), InboundMessagePipelineError> {
-        if !self.message_cache.contains(signature) {
-            if let Err(_e) = self.message_cache.insert(signature.clone()) {
-                error!(
-                    target: LOG_TARGET,
-                    "Duplicate message found in Message Cache AFTER checking the cache for the message"
-                );
-                return Err(InboundMessagePipelineError::DuplicateMessageDiscarded);
-            }
-            return Ok(());
-        } else {
-            return Err(InboundMessagePipelineError::DuplicateMessageDiscarded);
-        }
     }
 
     /// Check whether the the source of the message is known to our Peer Manager, if it is return the peer but otherwise

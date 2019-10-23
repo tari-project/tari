@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{Dht, DhtConfig};
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 use tari_comms::{
     builder::CommsNode,
     peer_manager::{NodeIdentity, PeerManager},
@@ -32,7 +32,7 @@ use tokio::runtime::TaskExecutor;
 pub struct DhtBuilder {
     node_identity: Arc<NodeIdentity>,
     peer_manager: Arc<PeerManager>,
-    config: Option<DhtConfig>,
+    config: DhtConfig,
     executor: TaskExecutor,
     shutdown_signal: ShutdownSignal,
 }
@@ -55,22 +55,53 @@ impl DhtBuilder {
     ) -> Self
     {
         Self {
+            config: Default::default(),
             node_identity,
             peer_manager,
-            config: None,
             executor,
             shutdown_signal,
         }
     }
 
     pub fn with_config(mut self, config: DhtConfig) -> Self {
-        self.config = Some(config);
+        self.config = config;
+        self
+    }
+
+    pub fn enable_auto_join(mut self, enable: bool) -> Self {
+        self.config.enable_auto_join = enable;
+        self
+    }
+
+    pub fn enable_auto_stored_message_request(mut self, enable: bool) -> Self {
+        self.config.enable_auto_stored_message_request = enable;
+        self
+    }
+
+    pub fn enable_auto_messages(mut self, enable: bool) -> Self {
+        self.config.enable_auto_join = enable;
+        self.config.enable_auto_stored_message_request = enable;
+        self
+    }
+
+    pub fn with_signature_cache_ttl(mut self, ttl: Duration) -> Self {
+        self.config.signature_cache_ttl = ttl;
+        self
+    }
+
+    pub fn with_signature_cache_capacity(mut self, capacity: usize) -> Self {
+        self.config.signature_cache_capacity = capacity;
+        self
+    }
+
+    pub fn with_num_neighbouring_nodes(mut self, num_neighbours: usize) -> Self {
+        self.config.num_neighbouring_nodes = num_neighbours;
         self
     }
 
     pub fn finish(self) -> Dht {
         Dht::new(
-            self.config.unwrap_or_default(),
+            self.config,
             self.executor,
             self.node_identity,
             self.peer_manager,

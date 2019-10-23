@@ -104,6 +104,11 @@ impl Dht {
         OutboundMessageRequester::new(self.outbound_sender.clone())
     }
 
+    /// Returns a requester for the DhtActor associated with this instance
+    pub fn dht_requester(&self) -> DhtRequester {
+        DhtRequester::new(self.dht_sender.clone())
+    }
+
     /// Takes ownership of the receiver for DhtOutboundRequest. Will return None if ownership
     /// has already been taken.
     pub fn take_outbound_receiver(&mut self) -> Option<mpsc::Receiver<DhtOutboundRequest>> {
@@ -134,6 +139,7 @@ impl Dht {
 
         ServiceBuilder::new()
             .layer(inbound::DeserializeLayer::new())
+            .layer(inbound::DedupLayer::new(self.dht_requester()))
             .layer(tower_filter::FilterLayer::new(self.unsupported_saf_messages_filter()))
             .layer(inbound::DecryptionLayer::new(Arc::clone(&self.node_identity)))
             .layer(store_forward::ForwardLayer::new(
@@ -149,6 +155,7 @@ impl Dht {
             .layer(store_forward::MessageHandlerLayer::new(
                 self.config.clone(),
                 saf_storage,
+                self.dht_requester(),
                 Arc::clone(&self.node_identity),
                 Arc::clone(&self.peer_manager),
                 self.outbound_requester(),
@@ -217,10 +224,6 @@ impl Dht {
             }
         }
     }
-
-    pub fn dht_requester(&self) -> DhtRequester {
-        DhtRequester::new(self.dht_sender.clone())
-    }
 }
 
 #[cfg(test)]
@@ -236,7 +239,6 @@ mod test {
             make_peer_manager,
         },
         DhtBuilder,
-        DhtConfig,
     };
     use futures::{channel::mpsc, StreamExt};
     use std::sync::Arc;
@@ -263,6 +265,8 @@ mod test {
             rt.executor(),
             shutdown.to_signal(),
         )
+        // No outbound middleware running, so the DhtActor locks up when sending outbound messages
+        .enable_auto_messages(false)
         .finish();
 
         let (out_tx, mut out_rx) = mpsc::channel(10);
@@ -297,6 +301,8 @@ mod test {
             rt.executor(),
             shutdown.to_signal(),
         )
+        // No outbound middleware running, so the DhtActor locks up when sending outbound messages
+        .enable_auto_messages(false)
         .finish();
 
         let (out_tx, mut out_rx) = mpsc::channel(10);
@@ -334,12 +340,8 @@ mod test {
             rt.executor(),
             shutdown.to_signal(),
         )
-        .with_config(DhtConfig {
-            // Do not want to have the auto join interfering by sending on the outbound requester
-            enable_auto_join: false,
-            enable_auto_stored_message_request: false,
-            ..Default::default()
-        })
+        // Do not want to have the auto join interfering by sending on the outbound requester
+        .enable_auto_messages(false)
         .finish();
 
         let rt = Runtime::new().unwrap();
@@ -390,6 +392,7 @@ mod test {
             rt.executor(),
             shutdown.to_signal(),
         )
+        .enable_auto_messages(false)
         .finish();
 
         let (next_service_tx, mut next_service_rx) = mpsc::channel(10);
