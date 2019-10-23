@@ -28,6 +28,10 @@ use bigint::uint::U256;
 use blake2::Blake2b;
 use digest::Digest;
 use serde::{Deserialize, Serialize};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 use tari_crypto::common::Blake256;
 use tari_utilities::{ByteArray, ByteArrayError, Hashable};
 
@@ -45,11 +49,11 @@ impl BlakePow {
     /// A simple miner. It starts at nonce = 0 and iterates until it finds a header hash that meets the desired target
     // ToDo convert to future, with ability to break function. We need to be able to stop this if we receive a mined
     // block
-    pub fn mine(target_difficulty: Difficulty, header: &BlockHeader) -> u64 {
+    pub fn mine(target_difficulty: Difficulty, header: &BlockHeader, stop_flag: Arc<AtomicBool>) -> u64 {
         let mut nonce = 0u64;
         // We're mining over here!
         while let Ok(d) = header.pow.achieved_difficulty(nonce, &header) {
-            if d >= target_difficulty {
+            if d >= target_difficulty || stop_flag.load(Ordering::Relaxed) {
                 break;
             }
             nonce += 1;

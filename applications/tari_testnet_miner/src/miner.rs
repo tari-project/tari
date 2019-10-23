@@ -20,9 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use core::sync::atomic::AtomicBool;
 use derive_error::Error;
 use digest::Digest;
-use rand::OsRng;
+use std::sync::Arc;
 use tari_core::{
     blocks::{Block, BlockHeader},
     consensus::ConsensusRules,
@@ -46,6 +47,7 @@ pub struct Miner {
     difficulty: Difficulty,
     // current consensus rules
     rules: ConsensusRules,
+    stop_mine: Arc<AtomicBool>,
 }
 
 #[derive(Clone, Debug, PartialEq, Error)]
@@ -63,6 +65,7 @@ impl Miner {
             block: None,
             difficulty: Difficulty::min(),
             rules,
+            stop_mine: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -111,10 +114,23 @@ impl Miner {
         }
         let interval = self.block.as_ref().unwrap().header.timestamp.timestamp() - old_header.timestamp.timestamp();
         let difficulty = Difficulty::calculate_req_difficulty(interval, self.difficulty);
-        let nonce = BlakePow::mine(difficulty, &self.block.as_ref().unwrap().header);
+        let nonce = BlakePow::mine(difficulty, &self.block.as_ref().unwrap().header, self.stop_mine.clone());
         self.block.as_mut().unwrap().header.nonce = nonce;
         self.difficulty = difficulty;
         Ok(())
+    }
+
+    /// This gets the arc pointer to the mining control flag
+    pub fn get_mine_flag(&self) -> Arc<AtomicBool> {
+        self.stop_mine.clone()
+    }
+
+    /// This function swaps out the current block with a newly created empty block
+    pub fn get_block(&mut self) -> Option<Block> {
+        if self.block.is_none() {
+            return None;
+        };
+        std::mem::replace(&mut self.block, None)
     }
 
     /// This constructs a challenge for the coinbase tx
