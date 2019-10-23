@@ -29,7 +29,7 @@ use std::{
 
 mod configuration;
 
-pub use configuration::{default_config, ConfigurationError};
+pub use configuration::{default_config, ConfigurationError, DatabaseType, Network, NodeBuilderConfig};
 
 /// Determine the path to a log configuration file using the following precedence rules:
 /// 1. Use the provided path (usually pulled from a CLI argument)

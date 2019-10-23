@@ -25,11 +25,12 @@ use crate::{
         comms_interface::OutboundNodeCommsInterface,
         states,
         states::{BaseNodeState, StateEvent},
-        BaseNodeConfig,
     },
     chain_storage::{BlockchainBackend, BlockchainDatabase},
 };
+use bitflags::_core::sync::atomic::AtomicBool;
 use log::*;
+use std::sync::{atomic::Ordering, Arc};
 
 const TARGET: &str = "core::base_node";
 
@@ -42,17 +43,17 @@ const TARGET: &str = "core::base_node";
 /// database and hooks to the p2p network
 pub struct BaseNodeStateMachine<B: BlockchainBackend> {
     pub(super) db: BlockchainDatabase<B>,
-    pub(super) config: BaseNodeConfig,
     pub(super) comms: OutboundNodeCommsInterface,
+    pub(super) user_stopped: Arc<AtomicBool>,
 }
 
 impl<B: BlockchainBackend> BaseNodeStateMachine<B> {
     /// Instantiate a new Base Node.
-    pub fn new(db: &BlockchainDatabase<B>, config: BaseNodeConfig, comms: &OutboundNodeCommsInterface) -> Self {
+    pub fn new(db: &BlockchainDatabase<B>, comms: &OutboundNodeCommsInterface) -> Self {
         Self {
             db: db.clone(),
-            config,
             comms: comms.clone(),
+            user_stopped: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -80,6 +81,12 @@ impl<B: BlockchainBackend> BaseNodeStateMachine<B> {
         }
     }
 
+    /// Return a copy of the `user_stopped` flag. Setting this to `true` at any time will signal the node runtime to
+    /// shutdown.
+    pub fn get_interrupt_flag(&self) -> Arc<AtomicBool> {
+        Arc::clone(&self.user_stopped)
+    }
+
     /// Start the base node runtime.
     pub async fn run(self) {
         use crate::base_node::states::BaseNodeState::*;
@@ -96,6 +103,15 @@ impl<B: BlockchainBackend> BaseNodeStateMachine<B> {
             };
             state = BaseNodeStateMachine::<B>::transition(state, next_event);
         }
-        info!(target: TARGET, "Goodbye!");
+    }
+
+    /// Checks the value of the interrupt flag and returns a `FatalError` event if the flag is true. Otherwise it
+    /// returns the `default` event.
+    pub fn check_interrupt(flag: &AtomicBool, default: StateEvent) -> StateEvent {
+        if flag.load(Ordering::SeqCst) {
+            StateEvent::FatalError("User interrupted".into())
+        } else {
+            default
+        }
     }
 }

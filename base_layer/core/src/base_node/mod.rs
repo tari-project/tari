@@ -34,7 +34,6 @@
 
 mod base_node;
 mod comms_interface;
-mod config;
 mod service;
 #[cfg(test)]
 mod test;
@@ -42,6 +41,5 @@ mod test;
 pub mod states;
 
 // Public re-exports
-pub use self::config::BaseNodeConfig;
 pub use base_node::BaseNodeStateMachine;
 pub use comms_interface::OutboundNodeCommsInterface;

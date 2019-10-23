@@ -8,7 +8,8 @@ edition = "2018"
 
 [dependencies]
 log = { version = "0.4.8", features = ["std"] }
-tokio = "=0.2.0-alpha.6"
+tokio = { version="=0.2.0-alpha.6", features = ["signal"] }
+tokio-executor = { version ="=0.2.0-alpha.6", features = ["threadpool"] }
 futures-preview = { version = "=0.3.0-alpha.19", default-features = false, features = ["alloc"]}
 clap = "2.33.0"
 config = { version = "0.9.3" }
@@ -16,3 +17,5 @@ dirs = "2.0.2"
 log4rs = { version = "0.8.3", features = ["toml_format"] }
 tari_core = {path = "../../base_layer/core", version= "^0.0"}
 tari_common = {path = "../../common", version= "^0.0"}
+tari_shutdown = { path = "../../infrastructure/shutdown", version = "^0.0" }
+tari_service_framework = { version = "^0.0", path = "../../base_layer/service_framework"}

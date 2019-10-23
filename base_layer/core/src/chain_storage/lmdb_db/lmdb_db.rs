@@ -458,7 +458,7 @@ where D: Digest + Send + Sync
 
 #[allow(dead_code)]
 pub fn create_lmdb_database(path: &Path) -> Result<LMDBDatabase<HashDigest>, ChainStorageError> {
-    let _ = std::fs::create_dir(&path).unwrap_or_default();
+    let _ = std::fs::create_dir_all(&path).unwrap_or_default();
     let lmdb_store = LMDBBuilder::new()
         .set_path(path.to_str().unwrap())
         .set_environment_size(15)
