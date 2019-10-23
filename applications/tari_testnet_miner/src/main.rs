@@ -20,13 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use clap::{value_t, App, Arg};
+use futures::{future::FutureExt, pin_mut, select};
 use log::*;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use std::sync::atomic::Ordering;
 use tari_core::{
     blocks::{Block, BlockBuilder, BlockHeader},
     consensus::ConsensusRules,
 };
 use tari_testnet_miner::miner::Miner;
+use tokio::io::AsyncBufReadExt;
 
 const LOG_TARGET: &str = "applications::testnet_miner";
 
@@ -67,15 +70,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut miner = Miner::new(ConsensusRules::current());
     let mut block = proc_block(response.into_inner());
+    let mining_flag = miner.get_mine_flag();
 
     loop {
-        // ToDo move to seperate thread
-        // let mut line = String::new();
-        // println!("Mining, press c to close and stop");
-        // let b1 = std::io::stdin().read_line(&mut line).unwrap();
-        // if line == "c".to_string() {
-        //     break;
-        // }
         let height: u64 = if block.header.height <= 2016 {
             1
         } else {
@@ -86,7 +83,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let request = tonic::Request::new(BlockHeight { height });
         let response = base_node.get_block_header_at_height(request).await?;
         let header = proc_blockheader(response.into_inner());
-        miner.mine(header);
+
+        // create threads
+        let t_miner = mine(&mut miner, header).fuse();
+        let t_cli = stop_mining().fuse();
+        pin_mut!(t_miner);
+        pin_mut!(t_cli);
+        select! {
+            () = t_miner => info!(target: LOG_TARGET, "Mined a block"),
+        () = t_cli => {info!(target: LOG_TARGET, "Canceled mining");
+        mining_flag.store(true, Ordering::Relaxed);
+        },}
+        if mining_flag.load(Ordering::Relaxed) {
+            break;
+        }
 
         let request = tonic::Request::new(BlockMessage {
             test: "test temp string".to_string(),
@@ -99,6 +109,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     Ok(())
 }
+
+async fn mine(miner: &mut Miner, header: BlockHeader) {
+    miner.mine(header);
+}
+
+async fn stop_mining() {
+    loop {
+        println!("Mining, press c to close and stop");
+        let mut stdin_reader = tokio::io::BufReader::new(tokio::io::stdin());
+        let mut buf = Vec::new();
+        stdin_reader.read_until(b'\n', &mut buf).await;
+        if buf == b"c" {
+            break;
+        }
+    }
+}
+
+// todo listen for a new block.
+async fn new_block(_old_header: BlockHeader) {}
 
 /// Function to read in the settings, either from the config file or the cli
 fn read_settings() -> Settings {
@@ -152,13 +181,13 @@ fn read_settings() -> Settings {
 }
 
 // todo deserialize block here
-fn proc_block(block: BlockMessage) -> Block {
+fn proc_block(_block: BlockMessage) -> Block {
     BlockBuilder::new()
         .with_header(BlockHeader::new(ConsensusRules::current().blockchain_version()))
         .build()
 }
 
 // todo deserialize blockheader here
-fn proc_blockheader(blockheaeder: BlockHeaderMessage) -> BlockHeader {
+fn proc_blockheader(_blockheaeder: BlockHeaderMessage) -> BlockHeader {
     BlockHeader::new(ConsensusRules::current().blockchain_version())
 }
