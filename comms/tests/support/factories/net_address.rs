@@ -22,7 +22,7 @@
 
 use super::{TestFactory, TestFactoryError};
 
-use crate::support::helpers::ports::get_next_local_port;
+use tari_test_utils::address::get_next_local_port;
 
 use tari_comms::connection::NetAddress;
 

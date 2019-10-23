@@ -20,11 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::chain_storage::ChainMetadata;
+use crate::{blocks::blockheader::BlockHeader, chain_storage::ChainMetadata, transaction::TransactionKernel};
 use serde::{Deserialize, Serialize};
 
 /// API Response enum
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum NodeCommsResponse {
     ChainMetadata(ChainMetadata),
+    BlockHeaders(Vec<BlockHeader>),
+    TransactionKernels(Vec<TransactionKernel>),
 }

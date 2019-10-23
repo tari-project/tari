@@ -12,3 +12,4 @@ futures= {version= "0.3.0-alpha.18", package="futures-preview"}
 rand = "0.7.0"
 tokio = "0.2.0-alpha.4"
 tokio-executor = "0.2.0-alpha.4"
+lazy_static = "1.3.0"
