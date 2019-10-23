@@ -32,6 +32,8 @@ tokio-executor = { version ="^0.2.0-alpha.6", features = ["threadpool"] }
 ttl_cache = "0.5.1"
 zmq = "0.9.1"
 serde_repr = "0.1.5"
+prost = "0.5.0"
+bytes = "0.4.12"
 
 [dev-dependencies]
 tari_test_utils = {path="../infrastructure/test_utils"}
@@ -47,3 +49,6 @@ tokio-mock-task = "0.1.1"
 [[bench]]
 name = "benches_main"
 harness = false
+
+[build-dependencies]
+prost-build = "0.5.0"

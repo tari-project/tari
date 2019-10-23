@@ -20,14 +20,26 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{message::MessageError, outbound_message_service::OutboundServiceError, peer_manager::PeerManagerError};
+use crate::{
+    message::MessageError,
+    outbound_message_service::OutboundServiceError,
+    peer_manager::{node_id::NodeIdError, PeerManagerError},
+};
 use derive_error::Error;
 use futures::channel::mpsc;
 
 #[derive(Debug, Error)]
-pub enum InboundMessagePipelineError {
+pub enum InboundMessageServiceError {
     /// The incoming message already existed in the message cache and was thus discarded
     DuplicateMessageDiscarded,
+    /// The connected peer sent a public key which did not match the public key of the connected peer
+    PeerPublicKeyMismatch,
+    /// Failed to decode message
+    MessageDecodeError(prost::DecodeError),
+    NodeIdError(NodeIdError),
+    /// The received envelope is invalid
+    InvalidEnvelope,
+
     /// Could not deserialize incoming message data
     DeserializationError,
     /// Inbound message signatures are invalid

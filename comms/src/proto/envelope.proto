@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package envelope;
+
+// Envelope containing a Tari message
+message Envelope {
+    uint32 version = 1;
+    EnvelopeHeader header = 3;
+    bytes body = 4;
+}
+
+message EnvelopeHeader {
+    bytes public_key = 1;
+    bytes signature = 2;
+    uint32 flags = 3;
+}
+
+// Parts contained within an Envelope. This is used to tell if an encrypted
+// message was successfully decrypted, by decrypting the envelope body and checking
+// if deserialization succeeds.
+message EnvelopeBody {
+    repeated bytes parts = 1;
+}

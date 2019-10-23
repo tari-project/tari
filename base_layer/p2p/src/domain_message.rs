@@ -25,8 +25,12 @@ use tari_comms::{peer_manager::Peer, types::CommsPublicKey};
 /// Wrapper around a received message. Provides source peer and origin information
 #[derive(Debug, Clone)]
 pub struct DomainMessage<T> {
+    /// The peer which sent this message
     pub source_peer: Peer,
+    /// The origin of this message. This will be different from `source_peer.public_key` if
+    /// this message was forwarded from another node on the network.
     pub origin_pubkey: CommsPublicKey,
+    /// The domain-level message
     pub inner: T,
 }
 

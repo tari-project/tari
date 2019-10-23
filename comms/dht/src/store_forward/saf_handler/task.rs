@@ -122,7 +122,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = MiddlewareError>
         trace!(
             target: LOG_TARGET,
             "Received request for stored message from {}",
-            message.comms_header.message_public_key
+            message.comms_header.public_key
         );
         let msg = message
             .success()
@@ -193,7 +193,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = MiddlewareError>
         trace!(
             target: LOG_TARGET,
             "Received stored messages from {}",
-            message.comms_header.message_public_key
+            message.comms_header.public_key
         );
         let msg = message
             .success()

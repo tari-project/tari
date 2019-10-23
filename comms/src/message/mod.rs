@@ -62,19 +62,32 @@
 use bitflags::*;
 use serde::{Deserialize, Serialize};
 
+#[macro_use]
+mod macros;
+
 mod envelope;
 mod error;
 mod inbound_message;
 mod message;
-mod message_data;
+mod message_envelope;
 
 pub use self::{
-    envelope::{MessageEnvelope, MessageEnvelopeHeader},
+    envelope::{Envelope, EnvelopeHeader},
     error::MessageError,
     inbound_message::*,
     message::{Message, MessageHeader},
-    message_data::*,
+    message_envelope::{MessageEnvelope, MessageEnvelopeHeader},
 };
+
+pub trait MessageExt: prost::Message {
+    fn to_encoded_bytes(&self) -> Result<Vec<u8>, MessageError>
+    where Self: Sized {
+        let mut buf = Vec::new();
+        self.encode(&mut buf)?;
+        Ok(buf)
+    }
+}
+impl<T: prost::Message> MessageExt for T {}
 
 /// Represents a single message frame.
 pub type Frame = Vec<u8>;
@@ -85,7 +98,7 @@ bitflags! {
     /// Used to indicate characteristics of the incoming or outgoing message, such
     /// as whether the message is encrypted.
     #[derive(Deserialize, Serialize)]
-    pub struct MessageFlags: u8 {
+    pub struct MessageFlags: u32 {
         const NONE = 0b0000_0000;
         const ENCRYPTED = 0b0000_0001;
         const FORWARDED = 0b0000_0010;

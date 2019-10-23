@@ -194,7 +194,7 @@ mod test {
             .unwrap();
 
         let header = envelope.deserialize_header().unwrap();
-        assert_eq!(header.message_public_key, node_identity.identity.public_key);
+        assert_eq!(header.public_key, node_identity.identity.public_key);
         assert_eq!(header.flags, MessageFlags::ENCRYPTED);
     }
 }

@@ -29,9 +29,6 @@ use tari_storage::HMapDatabase;
 use tari_storage::LMDBWrapper;
 use tari_utilities::ciphers::chacha20::ChaCha20;
 
-/// The message protocol version for the MessageEnvelopeHeader
-pub const MESSAGE_PROTOCOL_VERSION: u8 = 0;
-
 /// The wire protocol version for the MessageEnvelope wire format
 pub const WIRE_PROTOCOL_VERSION: u8 = 0;
 

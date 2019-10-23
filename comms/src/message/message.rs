@@ -33,7 +33,6 @@ pub struct MessageHeader<MType> {
     pub message_type: MType,
     pub nonce: u64,
 }
-
 impl<MType> MessageHeader<MType> {
     /// Create a new MessageHeader with a random nonce
     pub fn new(message_type: MType) -> Result<Self, MessageError> {
@@ -52,7 +51,6 @@ pub struct Message {
     pub header: Frame,
     pub body: Frame,
 }
-
 impl Message {
     /// Create a new Message from two MessageFormat types
     pub fn from_message_format<H: MessageFormat, B: MessageFormat>(header: H, msg: B) -> Result<Self, MessageError> {

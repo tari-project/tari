@@ -20,34 +20,25 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    message::{Frame, MessageEnvelopeHeader},
-    peer_manager::Peer,
-};
-use serde::{Deserialize, Serialize};
+use crate::{message::MessageEnvelopeHeader, peer_manager::Peer};
 
-/// The InboundMessage is the container that will be dispatched to the domain handlers. It contains the received
-/// message and source identity after the comms level envelope has been removed.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+/// Authenticated inbound message
+#[derive(Clone, Debug)]
 pub struct InboundMessage {
-    /// The message envelope header
+    /// The deserialized message envelope header
     pub envelope_header: MessageEnvelopeHeader,
     /// The connected peer which sent this message
     pub source_peer: Peer,
-    /// The version of the incoming message envelope
-    pub version: u8,
     /// The raw message envelope
-    pub body: Frame,
+    pub body: Vec<u8>,
 }
 
 impl InboundMessage {
-    /// Construct a new InboundMessage that consist of the peer connection information and the received message
-    /// header and body
-    pub fn new(source_peer: Peer, envelope_header: MessageEnvelopeHeader, version: u8, body: Frame) -> Self {
+    /// Construct a new InboundMessage
+    pub fn new(source_peer: Peer, envelope_header: MessageEnvelopeHeader, body: Vec<u8>) -> Self {
         Self {
             source_peer,
             envelope_header,
-            version,
             body,
         }
     }

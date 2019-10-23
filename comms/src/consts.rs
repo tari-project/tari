@@ -30,3 +30,7 @@ thread_local! {
 
 /// The maximum number of peers to return from the flood_identities method in peer manager
 pub const PEER_MANAGER_MAX_FLOOD_PEERS: usize = 1000;
+
+/// The envelope version. This should be increased any time a change is made to the
+/// envelope proto files.
+pub const ENVELOPE_VERSION: u32 = 0;
