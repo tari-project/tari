@@ -34,10 +34,10 @@
 
 mod base_node;
 mod comms_interface;
-mod service;
 #[cfg(test)]
 mod test;
 
+pub mod service;
 pub mod states;
 
 // Public re-exports

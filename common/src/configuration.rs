@@ -21,14 +21,53 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-use super::default_subdir;
-use config::Config;
+use crate::{dir_utils::default_subdir, ConfigBootstrap};
+use config::{Config, Environment};
+use log::*;
 use std::{
     convert::TryFrom,
+    env,
     error::Error,
     fmt::{Display, Formatter, Result as FormatResult},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
+
+const LOG_TARGET: &str = "common::config";
+
+//-------------------------------------           Main API functions         --------------------------------------//
+
+pub fn load_configuration(bootstrap: &ConfigBootstrap) -> Result<Config, String> {
+    debug!(
+        target: LOG_TARGET,
+        "Loading configuration file from  {}",
+        bootstrap.config.to_str().unwrap_or("[??]")
+    );
+    let mut cfg = default_config();
+    // Load the configuration file
+    let filename = bootstrap
+        .config
+        .to_str()
+        .ok_or("Invalid config file path".to_string())?;
+    let config_file = config::File::with_name(filename);
+    match cfg.merge(config_file) {
+        Ok(_) => {
+            info!(target: LOG_TARGET, "Configuration file loaded.");
+            Ok(cfg)
+        },
+        Err(e) => Err(format!(
+            "There was an error loading the configuration file. {}",
+            e.to_string()
+        )),
+    }
+}
+
+/// Installs a new configuration file template, copied from `tari_config_sample.toml` to the given path.
+/// When bundled as a binary, the config sample file must be bundled in `./config`.
+pub fn install_default_config_file(path: &Path) -> Result<u64, std::io::Error> {
+    let mut source = env::current_dir()?;
+    source.push(Path::new("config/tari_config_sample.toml"));
+    std::fs::copy(source, path)
+}
 
 //---------------------------------------------       Network type        ------------------------------------------//
 #[derive(Clone, Debug, PartialEq)]
@@ -74,37 +113,58 @@ pub enum DatabaseType {
 
 //-------------------------------------        Main Configuration Struct      --------------------------------------//
 
-pub struct NodeBuilderConfig {
+pub struct GlobalConfig {
     pub network: Network,
+    pub data_dir: PathBuf,
     pub db_type: DatabaseType,
     pub core_threads: usize,
     pub blocking_threads: usize,
+    pub identity_file: PathBuf,
+    pub address: String,
+    pub peer_seeds: Vec<String>,
+    pub peer_db_path: String,
 }
 
-impl NodeBuilderConfig {
-    pub fn convert_from(cfg: Config) -> Result<Self, ConfigurationError> {
+impl GlobalConfig {
+    pub fn convert_from(mut cfg: Config) -> Result<Self, ConfigurationError> {
         let network = cfg
             .get_str("base_node.network")
             .map_err(|e| ConfigurationError::new("base_node.network", &e.to_string()))?;
         let network = Network::try_from(network)?;
+
+        // Add in settings from the environment (with a prefix of TARI_NODE)
+        // Eg.. `TARI_NODE_DEBUG=1 ./target/app` would set the `debug` key
+        cfg.merge(Environment::with_prefix("tari"))
+            .map_err(|e| ConfigurationError::new("environment variable", &e.to_string()))?;
         convert_node_config(network, cfg)
     }
 }
 
-fn convert_node_config(network: Network, cfg: Config) -> Result<NodeBuilderConfig, ConfigurationError> {
+/// Returns an OS-dependent string of the data subdirectory
+pub fn sub_dir(data_dir: &Path, sub_dir: &str) -> Result<String, ConfigurationError> {
+    let mut dir = data_dir.to_path_buf();
+    dir.push(sub_dir);
+    dir.to_str()
+        .map(String::from)
+        .ok_or(ConfigurationError::new("data_dir", "Not a valid UTF-8 string"))
+}
+
+fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, ConfigurationError> {
     let net_str = network.to_string().to_lowercase();
     let key = config_string(&net_str, "db_type");
     let db_type = cfg
         .get_str(&key)
         .map(|s| s.to_lowercase())
         .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
+    let key = config_string(&net_str, "data_dir");
+    let data_dir = cfg
+        .get_str(&key)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
+    let data_dir = PathBuf::from(data_dir);
     let db_type = if &db_type == "memory" {
         DatabaseType::Memory
     } else if &db_type == "lmdb" {
-        let key = config_string(&net_str, "db");
-        let path = cfg
-            .get_str(&key)
-            .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
+        let path = sub_dir(&data_dir, "db")?;
         DatabaseType::LMDB(PathBuf::from(path))
     } else {
         return Err(ConfigurationError::new("base_node.db_type", "Invalid option"));
@@ -118,12 +178,38 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<NodeBuilderConfi
     let blocking_threads = cfg
         .get_int(&key)
         .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as usize;
+    // Node id path
+    let key = config_string(&net_str, "identity_file");
+    let identity_file = cfg
+        .get_str(&key)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
+    let identity_file = PathBuf::from(identity_file);
 
-    Ok(NodeBuilderConfig {
+    // Address
+    let key = config_string(&net_str, "address");
+    let address = cfg
+        .get_str(&key)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
+
+    // Peer seeds
+    let key = config_string(&net_str, "peer_seeds");
+    let peer_seeds = cfg
+        .get_array(&key)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
+    let peer_seeds = peer_seeds.into_iter().map(|v| v.into_str().unwrap()).collect();
+
+    // Peer DB path
+    let peer_db_path = sub_dir(&data_dir, "peer_db")?;
+    Ok(GlobalConfig {
         network,
+        data_dir,
         db_type,
         core_threads,
         blocking_threads,
+        identity_file,
+        address,
+        peer_seeds,
+        peer_db_path,
     })
 }
 
@@ -149,32 +235,49 @@ pub fn default_config() -> Config {
 
     // Wallet settings
     cfg.set_default("wallet.grpc_enabled", false).unwrap();
-    cfg.set_default("wallet.grpc_address", "tcp://127.0.0.1:80400").unwrap();
+    cfg.set_default("wallet.grpc_address", "tcp://127.0.0.1:18040").unwrap();
     cfg.set_default("wallet.wallet_file", default_subdir("wallet/wallet.dat"))
         .unwrap();
 
     // Base Node settings
     cfg.set_default("base_node.network", "mainnet").unwrap();
+
+    // Mainnet base node defaults
     cfg.set_default("base_node.mainnet.db_type", "lmdb").unwrap();
+    cfg.set_default("base_node.mainnet.peer_seeds", Vec::<String>::new())
+        .unwrap();
     cfg.set_default("base_node.mainnet.blocking_threads", 4).unwrap();
     cfg.set_default("base_node.mainnet.core_threads", 6).unwrap();
-    cfg.set_default("base_node.mainnet.db", default_subdir("mainnet/db/"))
+    cfg.set_default("base_node.mainnet.data_dir", default_subdir("mainnet/"))
         .unwrap();
-    cfg.set_default("base_node.mainnet.control-address", "http://localhost:80898")
+    cfg.set_default(
+        "base_node.mainnet.identity_file",
+        default_subdir("mainnet/node_id.json"),
+    )
+    .unwrap();
+    cfg.set_default("base_node.mainnet.address", "http://localhost:18089")
         .unwrap();
     cfg.set_default("base_node.mainnet.grpc_enabled", false).unwrap();
-    cfg.set_default("base_node.mainnet.grpc_address", "tcp://127.0.0.1:80410")
+    cfg.set_default("base_node.mainnet.grpc_address", "tcp://127.0.0.1:18041")
         .unwrap();
 
-    cfg.set_default("base_node.testnet.blocking_threads", 4).unwrap();
-    cfg.set_default("base_node.mainnet.db_type", "lmdb").unwrap();
-    cfg.set_default("base_node.testnet.core_threads", 4).unwrap();
-    cfg.set_default("base_node.testnet.db", default_subdir("testnet/db/"))
+    // Testnet base node defaults
+    cfg.set_default("base_node.testnet.db_type", "lmdb").unwrap();
+    cfg.set_default("base_node.testnet.peer_seeds", Vec::<String>::new())
         .unwrap();
-    cfg.set_default("base_node.testnet.control-address", "http://localhost:81898")
+    cfg.set_default("base_node.testnet.blocking_threads", 4).unwrap();
+    cfg.set_default("base_node.testnet.core_threads", 4).unwrap();
+    cfg.set_default("base_node.testnet.data_dir", default_subdir("testnet/"))
+        .unwrap();
+    cfg.set_default(
+        "base_node.testnet.identity_file",
+        default_subdir("testnet/node_id.json"),
+    )
+    .unwrap();
+    cfg.set_default("base_node.testnet.address", "http://localhost:18189")
         .unwrap();
     cfg.set_default("base_node.testnet.grpc_enabled", false).unwrap();
-    cfg.set_default("base_node.testnet.grpc_address", "tcp://127.0.0.1:81410")
+    cfg.set_default("base_node.testnet.grpc_address", "tcp://127.0.0.1:18141")
         .unwrap();
 
     cfg
