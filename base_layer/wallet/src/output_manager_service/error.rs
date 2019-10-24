@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::output_manager_service::storage::database::DbKey;
 use derive_error::Error;
 use tari_core::transaction_protocol::TransactionProtocolError;
 use tari_service_framework::reply_channel::TransportChannelError;
@@ -34,8 +35,8 @@ pub enum OutputManagerError {
     TransactionProtocolError(TransactionProtocolError),
     TransportChannelError(TransportChannelError),
     OutOfRangeError(OutOfRangeError),
-    /// If an pending transaction does not exist to be confirmed
-    PendingTransactionNotFound,
+    OutputManagerStorageError(OutputManagerStorageError),
+
     /// Not all the transaction inputs and outputs are present to be confirmed
     IncompleteTransaction,
     /// Not enough funds to fulfill transaction
@@ -44,8 +45,25 @@ pub enum OutputManagerError {
     DuplicateOutput,
     /// Error sending a message to the public API
     ApiSendFailed,
-    /// Error receiving a message from the publcic API
+    /// Error receiving a message from the public API
     ApiReceiveFailed,
     /// API returned something unexpected.
     UnexpectedApiResponse,
+}
+
+#[derive(Debug, Error, PartialEq)]
+pub enum OutputManagerStorageError {
+    /// Tried to insert an output that already exists in the database
+    DuplicateOutput,
+    #[error(non_std, no_from)]
+    ValueNotFound(DbKey),
+    #[error(msg_embedded, non_std, no_from)]
+    UnexpectedResult(String),
+    /// If an pending transaction does not exist to be confirmed
+    PendingTransactionNotFound,
+    /// This write operation is not supported for provided DbKey
+    OperationNotSupported,
+    /// Could not find all values specified for batch operation
+    ValuesNotFound,
+    OutOfRangeError(OutOfRangeError),
 }

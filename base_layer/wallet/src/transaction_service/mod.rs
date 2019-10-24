@@ -22,10 +22,15 @@
 pub mod error;
 pub mod handle;
 pub mod service;
+pub mod storage;
 
 use crate::{
     output_manager_service::handle::OutputManagerHandle,
-    transaction_service::{handle::TransactionServiceHandle, service::TransactionService},
+    transaction_service::{
+        handle::TransactionServiceHandle,
+        service::TransactionService,
+        storage::{database::TransactionDatabase, memory_db::TransactionMemoryDatabase},
+    },
 };
 use futures::{future, Future, Stream, StreamExt};
 use log::*;
@@ -110,6 +115,7 @@ impl ServiceInitializer for TransactionServiceInitializer {
                 .expect("Output Manager Service handle required for TransactionService");
 
             let service = TransactionService::new(
+                TransactionDatabase::new(TransactionMemoryDatabase::new()),
                 receiver,
                 transaction_stream,
                 transaction_reply_stream,

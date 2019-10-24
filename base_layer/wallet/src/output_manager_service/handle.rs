@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::output_manager_service::{error::OutputManagerError, service::PendingTransactionOutputs};
+use crate::output_manager_service::{error::OutputManagerError, storage::database::PendingTransactionOutputs};
 use std::{collections::HashMap, time::Duration};
 use tari_core::{
     tari_amount::MicroTari,

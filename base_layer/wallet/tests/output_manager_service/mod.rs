@@ -39,7 +39,7 @@ use tari_service_framework::StackBuilder;
 use tari_shutdown::Shutdown;
 use tari_utilities::ByteArray;
 use tari_wallet::output_manager_service::{
-    error::OutputManagerError,
+    error::{OutputManagerError, OutputManagerStorageError},
     handle::OutputManagerHandle,
     OutputManagerConfig,
     OutputManagerServiceInitializer,
@@ -82,7 +82,9 @@ fn sending_transaction_and_confirmation() {
     runtime.block_on(oms.add_output(uo.clone())).unwrap();
     assert_eq!(
         runtime.block_on(oms.add_output(uo)),
-        Err(OutputManagerError::DuplicateOutput)
+        Err(OutputManagerError::OutputManagerStorageError(
+            OutputManagerStorageError::DuplicateOutput
+        ))
     );
     let num_outputs = 20;
     for _i in 0..num_outputs {
@@ -312,10 +314,12 @@ fn cancel_transaction() {
         .block_on(oms.prepare_transaction_to_send(MicroTari::from(1000), MicroTari::from(20), None))
         .unwrap();
 
-    assert_eq!(
-        runtime.block_on(oms.cancel_transaction(1)),
-        Err(OutputManagerError::PendingTransactionNotFound)
-    );
+    match runtime.block_on(oms.cancel_transaction(1)) {
+        Err(OutputManagerError::OutputManagerStorageError(OutputManagerStorageError::ValueNotFound(_))) => {
+            assert!(true)
+        },
+        _ => assert!(false, "Value should not exist"),
+    }
 
     runtime
         .block_on(oms.cancel_transaction(stp.get_tx_id().unwrap()))
@@ -330,7 +334,6 @@ fn timeout_transaction() {
     let (secret_key, _public_key) = PublicKey::random_keypair(&mut rng);
 
     let runtime = Runtime::new().unwrap();
-
     let (mut oms, _shutdown) = setup_output_manager_service(&runtime, secret_key, "".to_string(), 0);
 
     let num_outputs = 20;
