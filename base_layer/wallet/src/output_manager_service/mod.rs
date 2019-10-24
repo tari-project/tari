@@ -22,6 +22,7 @@
 
 use crate::output_manager_service::{handle::OutputManagerHandle, service::OutputManagerService};
 
+use crate::output_manager_service::storage::{database::OutputManagerDatabase, memory_db::OutputManagerMemoryDatabase};
 use futures::{future, Future};
 use log::*;
 use tari_core::types::PrivateKey;
@@ -37,8 +38,11 @@ use tokio::runtime::TaskExecutor;
 pub mod error;
 pub mod handle;
 pub mod service;
+pub mod storage;
 
 const LOG_TARGET: &'static str = "wallet::output_manager_service::initializer";
+
+pub type TxId = u64;
 
 #[derive(Clone)]
 pub struct OutputManagerConfig {
@@ -84,6 +88,7 @@ impl ServiceInitializer for OutputManagerServiceInitializer {
                 config.master_key,
                 config.branch_seed,
                 config.primary_key_index,
+                OutputManagerDatabase::new(OutputManagerMemoryDatabase::new()),
             )
             .start();
 

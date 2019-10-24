@@ -25,6 +25,7 @@ use crate::{
     transaction_service::{
         error::TransactionServiceError,
         handle::{TransactionEvent, TransactionServiceRequest, TransactionServiceResponse},
+        storage::database::{TransactionBackend, TransactionDatabase},
     },
     types::TransactionRng,
 };
@@ -70,10 +71,10 @@ const LOG_TARGET: &'static str = "base_layer::wallet::transaction_service::servi
 /// `pending_inbound_transactions` - List of transaction protocols that have been received and responded to.
 /// `completed_transaction` - List of sent transactions that have been responded to and are completed.
 
-pub struct TransactionService<TTxStream, TTxReplyStream> {
-    pending_outbound_transactions: HashMap<u64, SenderTransactionProtocol>,
-    pending_inbound_transactions: HashMap<u64, ReceiverTransactionProtocol>,
-    completed_transactions: HashMap<u64, Transaction>,
+pub struct TransactionService<TTxStream, TTxReplyStream, TBackend>
+where TBackend: TransactionBackend
+{
+    db: TransactionDatabase<TBackend>,
     outbound_message_service: OutboundMessageRequester,
     output_manager_service: OutputManagerHandle,
     transaction_stream: Option<TTxStream>,
@@ -84,12 +85,14 @@ pub struct TransactionService<TTxStream, TTxReplyStream> {
     event_publisher: Publisher<TransactionEvent>,
 }
 
-impl<TTxStream, TTxReplyStream> TransactionService<TTxStream, TTxReplyStream>
+impl<TTxStream, TTxReplyStream, TBackend> TransactionService<TTxStream, TTxReplyStream, TBackend>
 where
     TTxStream: Stream<Item = DomainMessage<TransactionSenderMessage>>,
     TTxReplyStream: Stream<Item = DomainMessage<RecipientSignedMessage>>,
+    TBackend: TransactionBackend,
 {
     pub fn new(
+        db: TransactionDatabase<TBackend>,
         request_stream: Receiver<
             TransactionServiceRequest,
             Result<TransactionServiceResponse, TransactionServiceError>,
@@ -102,9 +105,7 @@ where
     ) -> Self
     {
         TransactionService {
-            pending_outbound_transactions: HashMap::new(),
-            pending_inbound_transactions: HashMap::new(),
-            completed_transactions: HashMap::new(),
+            db,
             outbound_message_service,
             output_manager_service,
             transaction_stream: Some(transaction_stream),
@@ -194,13 +195,13 @@ where
                 .await
                 .map(|_| TransactionServiceResponse::TransactionSent),
             TransactionServiceRequest::GetPendingInboundTransactions => Ok(
-                TransactionServiceResponse::PendingInboundTransactions(self.get_pending_inbound_transactions()),
+                TransactionServiceResponse::PendingInboundTransactions(self.get_pending_inbound_transactions()?),
             ),
             TransactionServiceRequest::GetPendingOutboundTransactions => Ok(
-                TransactionServiceResponse::PendingOutboundTransactions(self.get_pending_outbound_transactions()),
+                TransactionServiceResponse::PendingOutboundTransactions(self.get_pending_outbound_transactions()?),
             ),
             TransactionServiceRequest::GetCompletedTransactions => Ok(
-                TransactionServiceResponse::CompletedTransactions(self.get_completed_transactions()),
+                TransactionServiceResponse::CompletedTransactions(self.get_completed_transactions()?),
             ),
         }
     }
@@ -237,8 +238,7 @@ where
             )
             .await?;
 
-        self.pending_outbound_transactions.insert(msg.tx_id.clone(), stp);
-
+        self.db.add_pending_outbound_transaction(msg.tx_id.clone(), stp)?;
         info!(
             target: LOG_TARGET,
             "Transaction with TX_ID = {} sent to {}",
@@ -257,41 +257,33 @@ where
         recipient_reply: RecipientSignedMessage,
     ) -> Result<(), TransactionServiceError>
     {
-        let mut marked_for_removal = None;
+        let mut stp = self
+            .db
+            .get_pending_outbound_transaction(recipient_reply.tx_id.clone())?;
 
-        for (tx_id, stp) in self.pending_outbound_transactions.iter_mut() {
-            let recp_tx_id = recipient_reply.tx_id.clone();
-            if stp.check_tx_id(recp_tx_id) && stp.is_collecting_single_signature() {
-                stp.add_single_recipient_info(recipient_reply, &PROVER)?;
-                stp.finalize(KernelFeatures::empty(), &PROVER, &COMMITMENT_FACTORY)?;
-                let tx = stp.get_transaction()?;
-                self.completed_transactions.insert(recp_tx_id, tx.clone());
-                // TODO Broadcast this to the chain
-                // TODO Only confirm this transaction once it is detected on chain. For now just confirming it directly.
-                self.output_manager_service
-                    .confirm_sent_transaction(recp_tx_id, tx.body.inputs().clone(), tx.body.outputs().clone())
-                    .await?;
-
-                marked_for_removal = Some(tx_id.clone());
-                break;
-            }
+        let tx_id = recipient_reply.tx_id.clone();
+        if !stp.check_tx_id(tx_id.clone()) || !stp.is_collecting_single_signature() {
+            return Err(TransactionServiceError::InvalidStateError);
         }
 
-        if marked_for_removal.is_none() {
-            return Err(TransactionServiceError::TransactionDoesNotExistError);
-        }
+        stp.add_single_recipient_info(recipient_reply, &PROVER)?;
+        stp.finalize(KernelFeatures::empty(), &PROVER, &COMMITMENT_FACTORY)?;
+        let tx = stp.get_transaction()?;
 
-        if let Some(tx_id) = marked_for_removal {
-            self.pending_outbound_transactions.remove(&tx_id);
-            info!(
-                target: LOG_TARGET,
-                "Transaction Recipient Reply for TX_ID = {} received", tx_id,
-            );
-            self.event_publisher
-                .send(TransactionEvent::ReceivedTransactionReply)
-                .await
-                .map_err(|_| TransactionServiceError::EventStreamError)?;
-        }
+        // TODO Broadcast this to the chain
+        // TODO Only confirm this transaction once it is detected on chain. For now just confirming it directly.
+        self.output_manager_service
+            .confirm_sent_transaction(tx_id.clone(), tx.body.inputs().clone(), tx.body.outputs().clone())
+            .await?;
+        self.db.complete_outbound_transaction(tx_id.clone(), tx.clone())?;
+        info!(
+            target: LOG_TARGET,
+            "Transaction Recipient Reply for TX_ID = {} received", tx_id,
+        );
+        self.event_publisher
+            .send(TransactionEvent::ReceivedTransactionReply)
+            .await
+            .map_err(|_| TransactionServiceError::EventStreamError)?;
 
         Ok(())
     }
@@ -327,10 +319,7 @@ where
 
             // Check this is not a repeat message i.e. tx_id doesn't already exist in our pending or completed
             // transactions
-            if self.pending_outbound_transactions.contains_key(&recipient_reply.tx_id) ||
-                self.pending_inbound_transactions.contains_key(&recipient_reply.tx_id) ||
-                self.completed_transactions.contains_key(&recipient_reply.tx_id)
-            {
+            if self.db.transaction_exists(&recipient_reply.tx_id)? {
                 return Err(TransactionServiceError::RepeatedMessageError);
             }
 
@@ -345,8 +334,8 @@ where
                 .await?;
 
             // Otherwise add it to our pending transaction list and return reply
-            self.pending_inbound_transactions
-                .insert(recipient_reply.tx_id.clone(), rtp);
+            self.db
+                .add_pending_inbound_transaction(recipient_reply.tx_id.clone(), rtp)?;
 
             info!(
                 target: LOG_TARGET,
@@ -363,15 +352,19 @@ where
         Ok(())
     }
 
-    pub fn get_pending_inbound_transactions(&self) -> HashMap<u64, ReceiverTransactionProtocol> {
-        self.pending_inbound_transactions.clone()
+    pub fn get_pending_inbound_transactions(
+        &self,
+    ) -> Result<HashMap<u64, ReceiverTransactionProtocol>, TransactionServiceError> {
+        Ok(self.db.get_pending_inbound_transactions()?)
     }
 
-    pub fn get_pending_outbound_transactions(&self) -> HashMap<u64, SenderTransactionProtocol> {
-        self.pending_outbound_transactions.clone()
+    pub fn get_pending_outbound_transactions(
+        &self,
+    ) -> Result<HashMap<u64, SenderTransactionProtocol>, TransactionServiceError> {
+        Ok(self.db.get_pending_outbound_transactions()?)
     }
 
-    pub fn get_completed_transactions(&self) -> HashMap<u64, Transaction> {
-        self.completed_transactions.clone()
+    pub fn get_completed_transactions(&self) -> Result<HashMap<u64, Transaction>, TransactionServiceError> {
+        Ok(self.db.get_completed_transactions()?)
     }
 }

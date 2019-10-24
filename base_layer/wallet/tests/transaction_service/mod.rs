@@ -61,12 +61,14 @@ use tari_wallet::{
     output_manager_service::{
         handle::OutputManagerHandle,
         service::OutputManagerService,
+        storage::{database::OutputManagerDatabase, memory_db::OutputManagerMemoryDatabase},
         OutputManagerConfig,
         OutputManagerServiceInitializer,
     },
     transaction_service::{
         handle::{TransactionEvent, TransactionServiceHandle},
         service::TransactionService,
+        storage::{database::TransactionDatabase, memory_db::TransactionMemoryDatabase},
         TransactionServiceInitializer,
     },
 };
@@ -115,7 +117,13 @@ pub fn setup_transaction_service_no_comms(
 )
 {
     let (oms_request_sender, oms_request_receiver) = reply_channel::unbounded();
-    let output_manager_service = OutputManagerService::new(oms_request_receiver, master_key, "".to_string(), 0);
+    let output_manager_service = OutputManagerService::new(
+        oms_request_receiver,
+        master_key,
+        "".to_string(),
+        0,
+        OutputManagerDatabase::new(OutputManagerMemoryDatabase::new()),
+    );
     let output_manager_service_handle = OutputManagerHandle::new(oms_request_sender);
 
     let (ts_request_sender, ts_request_receiver) = reply_channel::unbounded();
@@ -127,6 +135,7 @@ pub fn setup_transaction_service_no_comms(
     let (outbound_message_requester, mock_outbound_service) = create_mock_outbound_service(20);
 
     let ts_service = TransactionService::new(
+        TransactionDatabase::new(TransactionMemoryDatabase::new()),
         ts_request_receiver,
         tx_receiver,
         tx_ack_receiver,

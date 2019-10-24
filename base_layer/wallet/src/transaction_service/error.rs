@@ -20,11 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::output_manager_service::error::OutputManagerError;
+use crate::{output_manager_service::error::OutputManagerError, transaction_service::storage::database::DbKey};
 use derive_error::Error;
 use tari_comms_dht::outbound::DhtOutboundError;
 use tari_core::transaction_protocol::TransactionProtocolError;
 use tari_service_framework::reply_channel::TransportChannelError;
+use time::OutOfRangeError;
 
 #[derive(Debug, Error)]
 pub enum TransactionServiceError {
@@ -51,4 +52,20 @@ pub enum TransactionServiceError {
     OutboundError(DhtOutboundError),
     OutputManagerError(OutputManagerError),
     TransportChannelError(TransportChannelError),
+    TransactionStorageError(TransactionStorageError),
+}
+
+#[derive(Debug, Error, PartialEq)]
+pub enum TransactionStorageError {
+    /// Tried to insert an output that already exists in the database
+    DuplicateOutput,
+    #[error(non_std, no_from)]
+    ValueNotFound(DbKey),
+    #[error(msg_embedded, non_std, no_from)]
+    UnexpectedResult(String),
+    /// This write operation is not supported for provided DbKey
+    OperationNotSupported,
+    /// Could not find all values specified for batch operation
+    ValuesNotFound,
+    OutOfRangeError(OutOfRangeError),
 }
