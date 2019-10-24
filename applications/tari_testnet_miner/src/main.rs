@@ -23,7 +23,11 @@ use clap::{value_t, App, Arg};
 use futures::{future::FutureExt, pin_mut, select};
 use log::*;
 use serde::Deserialize;
-use std::sync::atomic::Ordering;
+use std::{
+    sync::atomic::Ordering,
+    thread,
+    time::{Duration, Instant},
+};
 use tari_core::{
     blocks::{Block, BlockBuilder, BlockHeader},
     consensus::ConsensusRules,
@@ -33,11 +37,16 @@ use tokio::io::AsyncBufReadExt;
 
 const LOG_TARGET: &str = "applications::testnet_miner";
 
-pub mod testnet_miner {
-    tonic::include_proto!("testnet_miner_rpc");
-}
+// Removing GRPC for now as the basenode coms are not going to be through GRPC for this miner,
+// wallet might still be so leaving the code as an example
+// pub mod testnet_miner {
+//     tonic::include_proto!("testnet_miner_rpc");
+// }
+// use testnet_miner::{client::TestNetMinerClient, BlockHeaderMessage, BlockHeight, BlockMessage, VoidParams};
+// let mut base_node = TestNetMinerClient::connect(settings.base_node_address.unwrap())?;
+//     let request = tonic::Request::new(VoidParams {});
 
-use testnet_miner::{client::TestNetMinerClient, BlockHeaderMessage, BlockHeight, BlockMessage, VoidParams};
+//     let response = base_node.get_block(request).await?;
 
 #[derive(Debug, Default, Deserialize)]
 struct Settings {
@@ -49,27 +58,12 @@ struct Settings {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _ = env_logger::init();
 
-    let settings = read_settings();
-
-    if settings.wallet_address.is_none() || settings.base_node_address.is_none() {
-        error!(
-            target: LOG_TARGET,
-            "Not all data has not been provided via command line or config file"
-        );
-        std::process::exit(1);
-    };
-
     info!(target: LOG_TARGET, "Settings loaded");
 
     info!(target: LOG_TARGET, "Requesting new block");
 
-    let mut base_node = TestNetMinerClient::connect(settings.base_node_address.unwrap())?;
-    let request = tonic::Request::new(VoidParams {});
-
-    let response = base_node.get_block(request).await?;
-
     let mut miner = Miner::new(ConsensusRules::current());
-    let mut block = proc_block(response.into_inner());
+    let mut block = get_block();
     let mining_flag = miner.get_mine_flag();
 
     loop {
@@ -80,37 +74,36 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
 
         miner.add_block(block);
-        let request = tonic::Request::new(BlockHeight { height });
-        let response = base_node.get_block_header_at_height(request).await?;
-        let header = proc_blockheader(response.into_inner());
+        let header = get_blockheader();
 
         // create threads
         let t_miner = mine(&mut miner, header).fuse();
         let t_cli = stop_mining().fuse();
+        let t_tip = check_tip(0).fuse();
         pin_mut!(t_miner);
         pin_mut!(t_cli);
+        pin_mut!(t_tip);
+
+        dbg!("awaiting threads");
         select! {
-            () = t_miner => info!(target: LOG_TARGET, "Mined a block"),
+        () = t_miner => {info!(target: LOG_TARGET, "Mined a block");
+                        send_block();
+                        },
         () = t_cli => {info!(target: LOG_TARGET, "Canceled mining");
-        mining_flag.store(true, Ordering::Relaxed);
-        },}
+                        mining_flag.store(true, Ordering::Relaxed);
+                        },
+        () = t_tip => info!(target: LOG_TARGET, "Canceled mining on current block, tip changed"),}
         if mining_flag.load(Ordering::Relaxed) {
             break;
         }
-
-        let request = tonic::Request::new(BlockMessage {
-            test: "test temp string".to_string(),
-        });
-        base_node.send_block(request).await?;
-        let request = tonic::Request::new(VoidParams {});
-
-        let response = base_node.get_block(request).await?;
-        block = proc_block(response.into_inner());
+        dbg!("done with block");
+        block = get_block();
     }
     Ok(())
 }
 
 async fn mine(miner: &mut Miner, header: BlockHeader) {
+    dbg!("starting mining");
     miner.mine(header);
 }
 
@@ -120,14 +113,22 @@ async fn stop_mining() {
         let mut stdin_reader = tokio::io::BufReader::new(tokio::io::stdin());
         let mut buf = Vec::new();
         stdin_reader.read_until(b'\n', &mut buf).await;
-        if buf == b"c" {
+        if buf == b"c\n" {
             break;
         }
     }
 }
 
-// todo listen for a new block.
-async fn new_block(_old_header: BlockHeader) {}
+// This checks for a tip increase meaning we need to change to a new block for mining as we are not mining on the
+// largest chain anymore. Todo this should check diff and not height.
+async fn check_tip(current_tip: u64) {
+    loop {
+        tokio::timer::delay(Instant::now() + Duration::from_millis(1000)).await;
+        if current_tip < get_chain_tip_height() {
+            break;
+        }
+    }
+}
 
 /// Function to read in the settings, either from the config file or the cli
 fn read_settings() -> Settings {
@@ -180,14 +181,24 @@ fn read_settings() -> Settings {
     settings
 }
 
-// todo deserialize block here
-fn proc_block(_block: BlockMessage) -> Block {
+// todo get block here
+fn get_block() -> Block {
     BlockBuilder::new()
         .with_header(BlockHeader::new(ConsensusRules::current().blockchain_version()))
         .build()
 }
 
-// todo deserialize blockheader here
-fn proc_blockheader(_blockheaeder: BlockHeaderMessage) -> BlockHeader {
+// todo get blockheader here
+fn get_blockheader() -> BlockHeader {
     BlockHeader::new(ConsensusRules::current().blockchain_version())
+}
+
+// todo get tip height here
+fn get_chain_tip_height() -> u64 {
+    0
+}
+
+// todo propagate block
+fn send_block() {
+    println!("sending mined block out");
 }

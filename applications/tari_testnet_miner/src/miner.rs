@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::t_blake_pow::TestBlakePow;
 use core::sync::atomic::AtomicBool;
 use derive_error::Error;
 use digest::Digest;
@@ -27,7 +28,7 @@ use std::sync::Arc;
 use tari_core::{
     blocks::{Block, BlockHeader},
     consensus::ConsensusRules,
-    proof_of_work::*,
+    proof_of_work::Difficulty,
     tari_amount::MicroTari,
     transaction::*,
     types::*,
@@ -114,7 +115,11 @@ impl Miner {
         }
         let interval = self.block.as_ref().unwrap().header.timestamp.timestamp() - old_header.timestamp.timestamp();
         let difficulty = Difficulty::calculate_req_difficulty(interval, self.difficulty);
-        let nonce = BlakePow::mine(difficulty, &self.block.as_ref().unwrap().header, self.stop_mine.clone());
+        let nonce = TestBlakePow::mine(
+            difficulty,
+            &mut self.block.as_mut().unwrap().header,
+            self.stop_mine.clone(),
+        );
         self.block.as_mut().unwrap().header.nonce = nonce;
         self.difficulty = difficulty;
         Ok(())
