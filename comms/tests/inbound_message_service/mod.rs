@@ -25,43 +25,35 @@ use crate::support::{
     helpers::database::{clean_up_datastore, init_datastore},
 };
 use futures::{channel::mpsc, SinkExt, StreamExt};
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 use tari_comms::{
     connection::NetAddress,
     inbound_message_service::inbound_message_service::InboundMessageService,
-    message::{FrameSet, MessageData, MessageEnvelope, MessageFlags},
-    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
+    message::{Envelope, FrameSet, MessageExt, MessageFlags},
+    peer_manager::{NodeIdentity, Peer, PeerFeatures, PeerFlags},
 };
 use tari_shutdown::Shutdown;
 use tari_storage::LMDBWrapper;
-use tokio::runtime::Runtime;
+use tari_utilities::ByteArray;
+use tokio::{future::FutureExt, runtime::Runtime};
 
 /// A utility function that will construct a Comms layer message that would typically arrive from a PeerConnection as a
 /// FrameSet that deserializes into a MessageEnvelope
 /// ## Returns:
-/// - `FrameSet`: Frames contained in a MessageEnvelope
-fn construct_message(
-    message_body: Vec<u8>,
-    source_node_id: Arc<NodeIdentity>,
-    dest_node_id: Arc<NodeIdentity>,
-) -> FrameSet
-{
+/// - `FrameSet`: Two frames, the node id of the source peer and the encoded envelope
+fn construct_message(message_body: Vec<u8>, node_identity: Arc<NodeIdentity>) -> FrameSet {
     // Construct test message
-    let dest_public_key = dest_node_id.identity.public_key.clone();
-    let message_envelope = MessageEnvelope::construct(
-        &source_node_id,
-        dest_public_key.clone(),
+    let envelope = Envelope::construct_signed(
+        node_identity.secret_key(),
+        node_identity.public_key(),
         message_body,
         MessageFlags::NONE,
     )
     .unwrap();
-    let message_data = MessageData::new(
-        NodeId::from_key(&source_node_id.identity.public_key).unwrap(),
-        message_envelope,
-    );
-    let mut message_frame_set = Vec::new();
-    message_frame_set.extend(message_data.clone().into_frame_set());
-    message_frame_set
+    let mut frames = Vec::new();
+    frames.push(node_identity.node_id().to_vec());
+    frames.push(envelope.to_encoded_bytes().unwrap());
+    frames
 }
 
 #[test]
@@ -95,7 +87,7 @@ fn smoke_test() {
     // Send some messages NodeDestination::Unknown and unencrypted
     let mut sent_messages = Vec::new();
     let body = "First message".as_bytes().to_vec();
-    let msg_body = construct_message(body.clone(), Arc::clone(&node_identity), Arc::clone(&node_identity));
+    let msg_body = construct_message(body.clone(), Arc::clone(&node_identity));
     sent_messages.push(body);
     rt.block_on(async {
         inbound_message_sink_tx.send(msg_body.clone()).await.unwrap();
@@ -112,13 +104,20 @@ fn smoke_test() {
     rt.spawn(inbound_message_service.run());
 
     let num_messages = sent_messages.len();
-    let messages = rt.block_on(inbound_rx.take(num_messages as u64).collect::<Vec<_>>());
+    let messages = rt
+        .block_on(
+            inbound_rx
+                .take(num_messages as u64)
+                .collect::<Vec<_>>()
+                .timeout(Duration::from_secs(3)),
+        )
+        .unwrap();
 
     assert_eq!(messages.len(), sent_messages.len());
     for i in 0..sent_messages.len() {
         assert_eq!(messages[i].body, sent_messages[i]);
         assert_eq!(messages[i].source_peer, peer);
-        assert_eq!(messages[i].envelope_header.message_public_key, peer.public_key);
+        assert_eq!(messages[i].envelope_header.public_key, peer.public_key);
     }
 
     clean_up_datastore(database_name);

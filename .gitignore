@@ -11,6 +11,7 @@ target
 *.userprefs
 .vscode/
 *.code-workspace
+tags
 
 # Ignore OS files
 .DS_Store

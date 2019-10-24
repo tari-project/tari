@@ -23,12 +23,9 @@
 use crate::{
     connection::PeerConnection,
     connection_manager::ConnectionManagerRequester,
-    consts::COMMS_RNG,
-    message::{MessageEnvelope, MessageEnvelopeHeader},
+    message::{Envelope, MessageExt},
     outbound_message_service::{error::OutboundServiceError, messages::OutboundMessage, OutboundServiceConfig},
     peer_manager::{NodeId, NodeIdentity},
-    types::MESSAGE_PROTOCOL_VERSION,
-    utils::signature,
 };
 use futures::{
     channel::oneshot,
@@ -46,7 +43,6 @@ use std::{
     time::{Duration, Instant},
 };
 use tari_shutdown::ShutdownSignal;
-use tari_utilities::message_format::MessageFormat;
 use tokio::timer;
 
 const LOG_TARGET: &'static str = "comms::outbound_message_service::worker";
@@ -381,26 +377,16 @@ where TMsgStream: Stream<Item = OutboundMessage> + Unpin
     }
 
     async fn send_message(&self, conn: &PeerConnection, message: OutboundMessage) -> Result<(), OutboundServiceError> {
-        let envelope = self.construct_message_envelope(message)?;
-        conn.send(envelope.into_frame_set())
-            .map_err(OutboundServiceError::ConnectionError)
-    }
-
-    fn construct_message_envelope(&self, message: OutboundMessage) -> Result<MessageEnvelope, OutboundServiceError> {
         let OutboundMessage { flags, body, .. } = message;
-
-        // Sign the comms envelope
-        let signature = COMMS_RNG
-            .with(|rng| signature::sign(&mut *rng.borrow_mut(), self.node_identity.secret_key.clone(), &body))?;
-
-        let header = MessageEnvelopeHeader {
-            version: MESSAGE_PROTOCOL_VERSION,
+        let envelope = Envelope::construct_signed(
+            &self.node_identity.secret_key,
+            self.node_identity.public_key(),
+            body,
             flags,
-            message_public_key: self.node_identity.identity.public_key.clone(),
-            message_signature: signature.to_binary()?,
-        };
+        )?;
+        let frame = envelope.to_encoded_bytes()?;
 
-        Ok(MessageEnvelope::new(header.to_binary()?, body))
+        conn.send(vec![frame]).map_err(OutboundServiceError::ConnectionError)
     }
 }
 
@@ -415,7 +401,7 @@ mod test {
         test_utils::node_id,
     };
     use futures::{channel::mpsc, stream, SinkExt};
-    use std::convert::TryFrom;
+    use prost::Message;
     use tari_shutdown::Shutdown;
     use tokio::runtime::Runtime;
 
@@ -520,9 +506,9 @@ mod test {
 
     fn assert_send_msg(control_msg: peer_connection::ControlMessage, msg: &[u8]) {
         match control_msg {
-            peer_connection::ControlMessage::SendMsg(frames) => {
-                let envelope = MessageEnvelope::try_from(frames).unwrap();
-                assert_eq!(envelope.body_frame().as_slice(), msg);
+            peer_connection::ControlMessage::SendMsg(mut frames) => {
+                let envelope = Envelope::decode(frames.remove(0)).unwrap();
+                assert_eq!(envelope.body.as_slice(), msg);
             },
             _ => panic!(),
         }

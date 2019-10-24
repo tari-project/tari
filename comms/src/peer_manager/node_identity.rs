@@ -133,6 +133,10 @@ impl NodeIdentity {
         &self.identity.public_key
     }
 
+    pub fn secret_key(&self) -> &CommsSecretKey {
+        &self.secret_key
+    }
+
     pub fn features(&self) -> &PeerFeatures {
         &self.identity.features
     }

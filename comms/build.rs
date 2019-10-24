@@ -1,4 +1,4 @@
-// Copyright 2019 The Tari Project
+// Copyright 2019, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,47 +20,23 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{comms_connector::PeerMessage, domain_message::DomainMessage, tari_message::TariMessageType};
-use std::{fmt::Debug, sync::Arc};
-use tari_utilities::message_format::{MessageFormat, MessageFormatError};
+use std::path::PathBuf;
 
-const LOG_TARGET: &'static str = "base_layer::p2p::services";
+const PROTOS_PATH: &'static str = "src/proto";
 
-/// For use with `StreamExt::filter_map`. Log and filter any errors.
-pub async fn ok_or_skip_result<T, E>(res: Result<T, E>) -> Option<T>
-where E: Debug {
-    match res {
-        Ok(t) => Some(t),
-        Err(err) => {
-            tracing::error!(target: LOG_TARGET, "{:?}", err);
-            None
-        },
-    }
-}
+fn main() {
+    let proto_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(PROTOS_PATH);
+    let protos = proto_path
+        .read_dir()
+        .unwrap()
+        .filter_map(Result::ok)
+        .map(|dir| dir.path())
+        .filter(|path| path.is_file())
+        .filter(|path| path.extension().map(|ext| ext == "proto").unwrap_or(false))
+        .collect::<Vec<_>>();
 
-pub fn map_deserialized<T>(
-    serialized: Arc<PeerMessage<TariMessageType>>,
-) -> Result<DomainMessage<T>, MessageFormatError>
-where T: MessageFormat {
-    Ok(DomainMessage {
-        source_peer: serialized.source_peer.clone(),
-        origin_pubkey: serialized.dht_header.origin_public_key.clone(),
-        inner: serialized.deserialize_message()?,
-    })
-}
-
-#[cfg(test)]
-mod test {
-    use futures::executor::block_on;
-
-    #[test]
-    fn ok_or_skip_result() {
-        block_on(async {
-            let res = Result::<_, ()>::Ok(());
-            assert_eq!(super::ok_or_skip_result(res).await.unwrap(), ());
-
-            let res = Result::<(), _>::Err(());
-            assert!(super::ok_or_skip_result(res).await.is_none());
-        });
-    }
+    println!("Compiling {} protobuf file(s)", protos.len());
+    prost_build::Config::new()
+        .compile_protos(&protos, &[proto_path])
+        .unwrap();
 }

@@ -157,7 +157,7 @@ where
         //
         // If it was not forwarded then we assume the source peer already has this node's details in
         // it's peer list.
-        if comms_header.message_public_key != origin_peer.public_key &&
+        if comms_header.public_key != origin_peer.public_key &&
             self.peer_manager.in_network_region(
                 // Warn: This node id can be anything
                 &origin_peer.node_id,
@@ -184,7 +184,7 @@ where
                 BroadcastStrategy::Closest(Box::new(BroadcastClosestRequest {
                     n: self.config.num_neighbouring_nodes,
                     node_id: origin_peer.node_id,
-                    excluded_peers: vec![dht_header.origin_public_key.clone(), comms_header.message_public_key],
+                    excluded_peers: vec![dht_header.origin_public_key.clone(), comms_header.public_key],
                 })),
                 dht_header,
                 msg.to_binary()?,

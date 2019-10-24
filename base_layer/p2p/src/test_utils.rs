@@ -90,9 +90,8 @@ pub fn make_dht_inbound_message(
             PeerFeatures::communication_node_default(),
         ),
         MessageEnvelopeHeader {
-            version: 0,
-            message_public_key: node_identity.identity.public_key.clone(),
-            message_signature: Vec::new(),
+            public_key: node_identity.identity.public_key.clone(),
+            signature: Vec::new(),
             flags: MessageFlags::empty(),
         },
         message,

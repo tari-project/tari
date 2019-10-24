@@ -456,7 +456,7 @@ fn test_accepting_unknown_tx_id_and_malformed_reply() {
 
     let (req, _) = runtime.block_on(async {
         futures::join!(
-            alice_outbound_service.handle_next(Duration::from_millis(1000), 0),
+            alice_outbound_service.handle_next(Duration::from_millis(3000), 0),
             alice_ts.send_transaction(
                 bob_node_identity.identity.public_key.clone(),
                 MicroTari::from(500),

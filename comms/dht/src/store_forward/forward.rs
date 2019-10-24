@@ -155,9 +155,8 @@ where
             .err()
             .expect("previous check that decryption failed");
 
-        let broadcast_strategy = self.get_broadcast_strategy(dht_header.destination.clone(), vec![comms_header
-            .message_public_key
-            .clone()])?;
+        let broadcast_strategy =
+            self.get_broadcast_strategy(dht_header.destination.clone(), vec![comms_header.public_key.clone()])?;
 
         self.outbound_service
             .forward_message(broadcast_strategy, dht_header.clone(), body)

@@ -78,7 +78,6 @@ where
             source_peer,
             envelope_header,
             body,
-            ..
         } = message;
 
         match DhtEnvelope::from_binary(&body) {
