@@ -25,9 +25,10 @@ use crate::{
         comms_interface::{CommsInterfaceError, OutboundNodeCommsInterface},
         service::{BaseNodeServiceConfig, BaseNodeServiceInitializer},
     },
-    chain_storage::{BlockchainDatabase, MemoryDatabase},
+    blocks::BlockHeader,
+    chain_storage::{BlockchainDatabase, DbTransaction, MemoryDatabase},
     consts::BASE_NODE_SERVICE_REQUEST_TIMEOUT,
-    test_utils::builders::{add_block_and_update_header, create_genesis_block},
+    test_utils::builders::{add_block_and_update_header, create_genesis_block, create_test_kernel},
     types::HashDigest,
 };
 use futures::Sink;
@@ -46,6 +47,8 @@ use tari_p2p::{
     tari_message::TariMessageType,
 };
 use tari_service_framework::StackBuilder;
+use tari_test_utils::address::get_next_local_address;
+use tari_utilities::hash::Hashable;
 use tempdir::TempDir;
 use tokio::runtime::{Runtime, TaskExecutor};
 
@@ -135,19 +138,25 @@ pub fn setup_base_node_service(
     (outbound_nci, comms)
 }
 
-#[test]
-fn service_request_response_get_metadata() {
-    let runtime = Runtime::new().unwrap();
+fn create_network_with_3_base_nodes(
+    runtime: &Runtime,
+    config: BaseNodeServiceConfig,
+) -> (
+    OutboundNodeCommsInterface,
+    OutboundNodeCommsInterface,
+    OutboundNodeCommsInterface,
+    Arc<BlockchainDatabase<MemoryDatabase<HashDigest>>>,
+    Arc<BlockchainDatabase<MemoryDatabase<HashDigest>>>,
+    Arc<BlockchainDatabase<MemoryDatabase<HashDigest>>>,
+    CommsNode,
+    CommsNode,
+    CommsNode,
+)
+{
     let mut rng = OsRng::new().unwrap();
-    let base_node_service_config = BaseNodeServiceConfig {
-        request_timeout: BASE_NODE_SERVICE_REQUEST_TIMEOUT,
-        broadcast_peer_count: 2,
-        desired_response_count: 2,
-    };
-
     let alice_node_identity = NodeIdentity::random(
         &mut rng,
-        "127.0.0.1:30500".parse().unwrap(),
+        get_next_local_address().parse().unwrap(),
         PeerFeatures::communication_node_default(),
     )
     .unwrap();
@@ -155,7 +164,7 @@ fn service_request_response_get_metadata() {
 
     let bob_node_identity = NodeIdentity::random(
         &mut rng,
-        "127.0.0.1:30501".parse().unwrap(),
+        get_next_local_address().parse().unwrap(),
         PeerFeatures::communication_node_default(),
     )
     .unwrap();
@@ -163,33 +172,56 @@ fn service_request_response_get_metadata() {
 
     let carol_node_identity = NodeIdentity::random(
         &mut rng,
-        "127.0.0.1:30502".parse().unwrap(),
+        get_next_local_address().parse().unwrap(),
         PeerFeatures::communication_node_default(),
     )
     .unwrap();
     let carol_blockchain_db = Arc::new(BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap());
 
-    let (mut alice_outbound_nci, alice_comms) = setup_base_node_service(
+    let (alice_outbound_nci, alice_comms) = setup_base_node_service(
         &runtime,
         alice_node_identity.clone(),
         vec![bob_node_identity.clone(), carol_node_identity.clone()],
-        alice_blockchain_db,
-        base_node_service_config.clone(),
+        alice_blockchain_db.clone(),
+        config.clone(),
     );
-    let (_bob_outbound_nci, bob_comms) = setup_base_node_service(
+    let (bob_outbound_nci, bob_comms) = setup_base_node_service(
         &runtime,
         bob_node_identity.clone(),
         vec![alice_node_identity.clone(), carol_node_identity.clone()],
         bob_blockchain_db.clone(),
-        base_node_service_config.clone(),
+        config.clone(),
     );
-    let (_carol_outbound_nci, carol_comms) = setup_base_node_service(
+    let (carol_outbound_nci, carol_comms) = setup_base_node_service(
         &runtime,
-        carol_node_identity.clone(),
-        vec![alice_node_identity.clone(), bob_node_identity.clone()],
-        carol_blockchain_db,
-        base_node_service_config.clone(),
+        carol_node_identity,
+        vec![alice_node_identity, bob_node_identity],
+        carol_blockchain_db.clone(),
+        config,
     );
+    (
+        alice_outbound_nci,
+        bob_outbound_nci,
+        carol_outbound_nci,
+        alice_blockchain_db,
+        bob_blockchain_db,
+        carol_blockchain_db,
+        alice_comms,
+        bob_comms,
+        carol_comms,
+    )
+}
+
+#[test]
+fn request_response_get_metadata() {
+    let runtime = Runtime::new().unwrap();
+    let base_node_service_config = BaseNodeServiceConfig {
+        request_timeout: BASE_NODE_SERVICE_REQUEST_TIMEOUT,
+        broadcast_peer_count: 2,
+        desired_response_count: 2,
+    };
+    let (mut alice_outbound_nci, _, _, _, bob_blockchain_db, _, alice_comms, bob_comms, carol_comms) =
+        create_network_with_3_base_nodes(&runtime, base_node_service_config);
 
     add_block_and_update_header(&bob_blockchain_db, create_genesis_block().0);
 
@@ -212,6 +244,95 @@ fn service_request_response_get_metadata() {
 }
 
 #[test]
+fn request_and_response_fetch_headers() {
+    let runtime = Runtime::new().unwrap();
+    let base_node_service_config = BaseNodeServiceConfig {
+        request_timeout: BASE_NODE_SERVICE_REQUEST_TIMEOUT,
+        broadcast_peer_count: 2,
+        desired_response_count: 2,
+    };
+    let (mut alice_outbound_nci, _, _, _, bob_blockchain_db, carol_blockchain_db, alice_comms, bob_comms, carol_comms) =
+        create_network_with_3_base_nodes(&runtime, base_node_service_config);
+
+    let mut headerb1 = BlockHeader::new(0);
+    headerb1.height = 1;
+    let mut headerb2 = BlockHeader::new(0);
+    headerb2.height = 2;
+    let mut txn = DbTransaction::new();
+    txn.insert_header(headerb1.clone());
+    txn.insert_header(headerb2.clone());
+    assert!(bob_blockchain_db.commit(txn).is_ok());
+
+    let mut headerc1 = BlockHeader::new(0);
+    headerc1.height = 1;
+    let mut headerc2 = BlockHeader::new(0);
+    headerc2.height = 2;
+    let mut txn = DbTransaction::new();
+    txn.insert_header(headerc1.clone());
+    txn.insert_header(headerc2.clone());
+    assert!(carol_blockchain_db.commit(txn).is_ok());
+
+    // The request is sent to a random remote base node so the returned headers can be from bob or carol
+    runtime.block_on(async {
+        let received_headers = alice_outbound_nci.fetch_headers(vec![1]).await.unwrap();
+        assert_eq!(received_headers.len(), 1);
+        assert!(received_headers.contains(&headerb1) || received_headers.contains(&headerc1));
+
+        let received_headers = alice_outbound_nci.fetch_headers(vec![1, 2]).await.unwrap();
+        assert_eq!(received_headers.len(), 2);
+        assert!(
+            (received_headers.contains(&headerb1) && (received_headers.contains(&headerb2))) ||
+                (received_headers.contains(&headerc1) && (received_headers.contains(&headerc2)))
+        );
+    });
+
+    alice_comms.shutdown().unwrap();
+    bob_comms.shutdown().unwrap();
+    carol_comms.shutdown().unwrap();
+}
+
+#[test]
+fn request_and_response_fetch_kernels() {
+    let runtime = Runtime::new().unwrap();
+    let base_node_service_config = BaseNodeServiceConfig {
+        request_timeout: BASE_NODE_SERVICE_REQUEST_TIMEOUT,
+        broadcast_peer_count: 2,
+        desired_response_count: 2,
+    };
+    let (mut alice_outbound_nci, _, _, _, bob_blockchain_db, carol_blockchain_db, alice_comms, bob_comms, carol_comms) =
+        create_network_with_3_base_nodes(&runtime, base_node_service_config);
+
+    let kernel1 = create_test_kernel(5.into(), 0);
+    let kernel2 = create_test_kernel(10.into(), 1);
+    let hash1 = kernel1.hash();
+    let hash2 = kernel2.hash();
+
+    let mut txn = DbTransaction::new();
+    txn.insert_kernel(kernel1.clone());
+    txn.insert_kernel(kernel2.clone());
+    assert!(bob_blockchain_db.commit(txn).is_ok());
+    let mut txn = DbTransaction::new();
+    txn.insert_kernel(kernel1.clone());
+    txn.insert_kernel(kernel2.clone());
+    assert!(carol_blockchain_db.commit(txn).is_ok());
+
+    runtime.block_on(async {
+        let received_kernels = alice_outbound_nci.fetch_kernels(vec![hash1.clone()]).await.unwrap();
+        assert_eq!(received_kernels.len(), 1);
+        assert_eq!(received_kernels[0], kernel1);
+
+        let received_kernels = alice_outbound_nci.fetch_kernels(vec![hash1, hash2]).await.unwrap();
+        assert_eq!(received_kernels.len(), 2);
+        assert!(received_kernels.contains(&kernel1));
+        assert!(received_kernels.contains(&kernel2));
+    });
+
+    alice_comms.shutdown().unwrap();
+    bob_comms.shutdown().unwrap();
+    carol_comms.shutdown().unwrap();
+}
+
+#[test]
 fn service_request_timeout() {
     let runtime = Runtime::new().unwrap();
     let mut rng = OsRng::new().unwrap();
@@ -223,7 +344,7 @@ fn service_request_timeout() {
 
     let alice_node_identity = NodeIdentity::random(
         &mut rng,
-        "127.0.0.1:30503".parse().unwrap(),
+        get_next_local_address().parse().unwrap(),
         PeerFeatures::communication_node_default(),
     )
     .unwrap();
@@ -231,7 +352,7 @@ fn service_request_timeout() {
 
     let bob_node_identity = NodeIdentity::random(
         &mut rng,
-        "127.0.0.1:30504".parse().unwrap(),
+        get_next_local_address().parse().unwrap(),
         PeerFeatures::communication_node_default(),
     )
     .unwrap();

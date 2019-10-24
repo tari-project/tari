@@ -27,7 +27,7 @@ mod inbound_interface;
 mod outbound_interface;
 
 // Public re-exports
-pub use comms_request::NodeCommsRequest;
+pub use comms_request::{NodeCommsRequest, NodeCommsRequestType};
 pub use comms_response::NodeCommsResponse;
 pub use error::CommsInterfaceError;
 pub use inbound_interface::InboundNodeCommsInterface;

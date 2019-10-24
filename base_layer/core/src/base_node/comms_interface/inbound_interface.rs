@@ -22,7 +22,9 @@
 
 use crate::{
     base_node::comms_interface::{error::CommsInterfaceError, NodeCommsRequest, NodeCommsResponse},
+    blocks::blockheader::BlockHeader,
     chain_storage::{BlockchainBackend, BlockchainDatabase},
+    transaction::TransactionKernel,
 };
 use std::sync::Arc;
 
@@ -44,9 +46,28 @@ where T: BlockchainBackend
     /// Handle inbound node comms requests from remote nodes.
     pub async fn handle_request(&self, request: &NodeCommsRequest) -> Result<NodeCommsResponse, CommsInterfaceError> {
         match request {
+            // TODO: replace with async calls
             NodeCommsRequest::GetChainMetadata => {
                 Ok(NodeCommsResponse::ChainMetadata(self.blockchain_db.get_metadata()?))
-            }, // TODO: replace with async call
+            },
+            NodeCommsRequest::FetchHeaders(block_nums) => {
+                let mut block_headers = Vec::<BlockHeader>::new();
+                block_nums.iter().for_each(|block_num| {
+                    if let Ok(block_header) = self.blockchain_db.fetch_header(*block_num) {
+                        block_headers.push(block_header);
+                    }
+                });
+                Ok(NodeCommsResponse::BlockHeaders(block_headers))
+            },
+            NodeCommsRequest::FetchKernels(kernel_hashes) => {
+                let mut kernels = Vec::<TransactionKernel>::new();
+                kernel_hashes.iter().for_each(|hash| {
+                    if let Ok(kernel) = self.blockchain_db.fetch_kernel(hash.clone()) {
+                        kernels.push(kernel);
+                    }
+                });
+                Ok(NodeCommsResponse::TransactionKernels(kernels))
+            },
         }
     }
 }

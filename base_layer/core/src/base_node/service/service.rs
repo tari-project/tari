@@ -22,7 +22,13 @@
 
 use crate::{
     base_node::{
-        comms_interface::{CommsInterfaceError, InboundNodeCommsInterface, NodeCommsRequest, NodeCommsResponse},
+        comms_interface::{
+            CommsInterfaceError,
+            InboundNodeCommsInterface,
+            NodeCommsRequest,
+            NodeCommsRequestType,
+            NodeCommsResponse,
+        },
         service::{
             error::BaseNodeServiceError,
             service_request::{generate_request_key, BaseNodeServiceRequest, RequestKey, WaitingRequest},
@@ -111,8 +117,12 @@ where TChainBackend: BlockchainBackend
 impl<TOutbReqStream, TInbReqStream, TInbRespStream, TChainBackend>
     BaseNodeService<TOutbReqStream, TInbReqStream, TInbRespStream, TChainBackend>
 where
-    TOutbReqStream:
-        Stream<Item = RequestContext<NodeCommsRequest, Result<Vec<NodeCommsResponse>, CommsInterfaceError>>>,
+    TOutbReqStream: Stream<
+        Item = RequestContext<
+            (NodeCommsRequest, NodeCommsRequestType),
+            Result<Vec<NodeCommsResponse>, CommsInterfaceError>,
+        >,
+    >,
     TInbReqStream: Stream<Item = DomainMessage<BaseNodeServiceRequest>>,
     TInbRespStream: Stream<Item = DomainMessage<BaseNodeServiceResponse>>,
     TChainBackend: BlockchainBackend,
@@ -174,8 +184,8 @@ where
             futures::select! {
                 // Outbound request messages from the OutboundNodeCommsInterface
                 outbound_request_context = outbound_request_stream.select_next_some() => {
-                    let (request, reply_tx) = outbound_request_context.split();
-                    let _ = self.handle_outbound_request(reply_tx,request).await.or_else(|err| {
+                    let ((request,request_type), reply_tx) = outbound_request_context.split();
+                    let _ = self.handle_outbound_request(reply_tx,request,request_type).await.or_else(|err| {
                         error!(target: LOG_TARGET, "Failed to handle outbound request message: {:?}", err);
                         Err(err)
                     });
@@ -278,6 +288,7 @@ where
         &mut self,
         reply_tx: OneshotSender<Result<Vec<NodeCommsResponse>, CommsInterfaceError>>,
         request: NodeCommsRequest,
+        request_type: NodeCommsRequestType,
     ) -> Result<(), CommsInterfaceError>
     {
         let request_key = BASE_NODE_RNG.with(|rng| generate_request_key(&mut *rng.borrow_mut()));
@@ -285,15 +296,28 @@ where
             request_key: request_key.clone(),
             request,
         };
-        self.outbound_message_service
-            .send_message(
-                BroadcastStrategy::Closest(Box::new(BroadcastClosestRequest {
+
+        let broadcast_strategy: BroadcastStrategy;
+        let desired_resp_count: usize;
+        match request_type {
+            NodeCommsRequestType::Single => {
+                broadcast_strategy = BroadcastStrategy::Random(1);
+                desired_resp_count = 1;
+            },
+            NodeCommsRequestType::Many => {
+                broadcast_strategy = BroadcastStrategy::Closest(Box::new(BroadcastClosestRequest {
                     n: self.config.broadcast_peer_count,
                     node_id: self.node_identity.identity.node_id.clone(),
                     excluded_peers: Vec::new(),
-                })),
-                NodeDestination::NodeId(self.node_identity.identity.node_id.clone()),
-                OutboundEncryption::None,
+                }));
+                desired_resp_count = self.config.desired_response_count.clone();
+            },
+        }
+        self.outbound_message_service
+            .send_message(
+                broadcast_strategy,
+                NodeDestination::Unspecified,
+                OutboundEncryption::EncryptForDestination,
                 TariMessageType::new(BlockchainMessage::BaseNodeRequest),
                 service_request,
             )
@@ -304,7 +328,7 @@ where
         self.waiting_requests.insert(request_key, WaitingRequest {
             reply_tx: Some(reply_tx),
             received_responses: Vec::new(),
-            desired_resp_count: self.config.desired_response_count.clone(),
+            desired_resp_count,
         });
         // Spawn timeout for waiting_request
         self.spawn_request_timeout(request_key, self.config.request_timeout)

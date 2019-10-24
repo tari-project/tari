@@ -25,19 +25,26 @@ use crate::{
         CommsInterfaceError,
         InboundNodeCommsInterface,
         NodeCommsRequest,
+        NodeCommsRequestType,
         NodeCommsResponse,
         OutboundNodeCommsInterface,
     },
-    chain_storage::{BlockchainDatabase, ChainMetadata, MemoryDatabase},
+    blocks::BlockHeader,
+    chain_storage::{BlockchainDatabase, ChainMetadata, DbTransaction, MemoryDatabase},
     proof_of_work::Difficulty,
+    test_utils::builders::create_test_kernel,
     types::HashDigest,
 };
 use futures::{executor::block_on, StreamExt};
 use std::sync::Arc;
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
+use tari_utilities::hash::Hashable;
 
 async fn test_request_responder(
-    receiver: &mut Receiver<NodeCommsRequest, Result<Vec<NodeCommsResponse>, CommsInterfaceError>>,
+    receiver: &mut Receiver<
+        (NodeCommsRequest, NodeCommsRequestType),
+        Result<Vec<NodeCommsResponse>, CommsInterfaceError>,
+    >,
     response: Vec<NodeCommsResponse>,
 )
 {
@@ -81,6 +88,92 @@ fn inbound_get_metadata() {
             assert_eq!(received_metadata.best_block, None);
             assert_eq!(received_metadata.total_accumulated_difficulty, Difficulty::from(0));
             assert_eq!(received_metadata.pruning_horizon, 0);
+        } else {
+            assert!(false);
+        }
+    });
+}
+
+#[test]
+fn outbound_fetch_header() {
+    let (sender, mut receiver) = reply_channel::unbounded();
+    let mut outbound_nci = OutboundNodeCommsInterface::new(sender);
+
+    block_on(async {
+        let mut header = BlockHeader::new(0);
+        header.height = 0;
+        let header_response: Vec<NodeCommsResponse> = vec![NodeCommsResponse::BlockHeaders(vec![header.clone()])];
+        let (received_headers, _) = futures::join!(
+            outbound_nci.fetch_headers(vec![0]),
+            test_request_responder(&mut receiver, header_response)
+        );
+        let received_headers = received_headers.unwrap();
+        assert_eq!(received_headers.len(), 1);
+        assert_eq!(received_headers[0], header);
+    });
+}
+
+#[test]
+fn inbound_fetch_header() {
+    let store = Arc::new(BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap());
+    let inbound_nci = InboundNodeCommsInterface::new(store.clone());
+
+    let mut header = BlockHeader::new(0);
+    header.height = 0;
+    let mut txn = DbTransaction::new();
+    txn.insert_header(header.clone());
+    assert!(store.commit(txn).is_ok());
+
+    block_on(async {
+        if let Ok(NodeCommsResponse::BlockHeaders(received_headers)) = inbound_nci
+            .handle_request(&NodeCommsRequest::FetchHeaders(vec![0]))
+            .await
+        {
+            assert_eq!(received_headers.len(), 1);
+            assert_eq!(received_headers[0], header);
+        } else {
+            assert!(false);
+        }
+    });
+}
+
+#[test]
+fn outbound_fetch_kernel() {
+    let (sender, mut receiver) = reply_channel::unbounded();
+    let mut outbound_nci = OutboundNodeCommsInterface::new(sender);
+
+    block_on(async {
+        let kernel = create_test_kernel(5.into(), 0);
+        let hash = kernel.hash();
+        let kernel_response: Vec<NodeCommsResponse> = vec![NodeCommsResponse::TransactionKernels(vec![kernel.clone()])];
+        let (received_kernels, _) = futures::join!(
+            outbound_nci.fetch_kernels(vec![hash]),
+            test_request_responder(&mut receiver, kernel_response)
+        );
+        let received_kernels = received_kernels.unwrap();
+        assert_eq!(received_kernels.len(), 1);
+        assert_eq!(received_kernels[0], kernel);
+    });
+}
+
+#[test]
+fn inbound_fetch_kernel() {
+    let store = Arc::new(BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap());
+    let inbound_nci = InboundNodeCommsInterface::new(store.clone());
+
+    let kernel = create_test_kernel(5.into(), 0);
+    let hash = kernel.hash();
+    let mut txn = DbTransaction::new();
+    txn.insert_kernel(kernel.clone());
+    assert!(store.commit(txn).is_ok());
+
+    block_on(async {
+        if let Ok(NodeCommsResponse::TransactionKernels(received_kernels)) = inbound_nci
+            .handle_request(&NodeCommsRequest::FetchKernels(vec![hash]))
+            .await
+        {
+            assert_eq!(received_kernels.len(), 1);
+            assert_eq!(received_kernels[0], kernel);
         } else {
             assert!(false);
         }

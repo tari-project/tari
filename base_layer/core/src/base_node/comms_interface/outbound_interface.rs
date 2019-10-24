@@ -21,8 +21,16 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    base_node::comms_interface::{error::CommsInterfaceError, NodeCommsRequest, NodeCommsResponse},
+    base_node::comms_interface::{
+        error::CommsInterfaceError,
+        NodeCommsRequest,
+        NodeCommsRequestType,
+        NodeCommsResponse,
+    },
+    blocks::blockheader::BlockHeader,
     chain_storage::ChainMetadata,
+    transaction::TransactionKernel,
+    types::HashOutput,
 };
 use tari_service_framework::reply_channel::SenderService;
 use tower_service::Service;
@@ -30,12 +38,19 @@ use tower_service::Service;
 /// The OutboundNodeCommsInterface provides an interface to request information from remove nodes.
 #[derive(Clone)]
 pub struct OutboundNodeCommsInterface {
-    sender: SenderService<NodeCommsRequest, Result<Vec<NodeCommsResponse>, CommsInterfaceError>>,
+    sender:
+        SenderService<(NodeCommsRequest, NodeCommsRequestType), Result<Vec<NodeCommsResponse>, CommsInterfaceError>>,
 }
 
 impl OutboundNodeCommsInterface {
     /// Construct a new OutboundNodeCommsInterface with the specified SenderService.
-    pub fn new(sender: SenderService<NodeCommsRequest, Result<Vec<NodeCommsResponse>, CommsInterfaceError>>) -> Self {
+    pub fn new(
+        sender: SenderService<
+            (NodeCommsRequest, NodeCommsRequestType),
+            Result<Vec<NodeCommsResponse>, CommsInterfaceError>,
+        >,
+    ) -> Self
+    {
         Self { sender }
     }
 
@@ -43,7 +58,7 @@ impl OutboundNodeCommsInterface {
     pub async fn get_metadata(&mut self) -> Result<Vec<ChainMetadata>, CommsInterfaceError> {
         let mut responses = Vec::<ChainMetadata>::new();
         self.sender
-            .call(NodeCommsRequest::GetChainMetadata)
+            .call((NodeCommsRequest::GetChainMetadata, NodeCommsRequestType::Many))
             .await??
             .into_iter()
             .for_each(|response| {
@@ -52,5 +67,37 @@ impl OutboundNodeCommsInterface {
                 }
             });
         Ok(responses)
+    }
+
+    /// Fetch block headers from remote base nodes.
+    pub async fn fetch_headers(&mut self, block_nums: Vec<u64>) -> Result<Vec<BlockHeader>, CommsInterfaceError> {
+        if let Some(NodeCommsResponse::BlockHeaders(headers)) = self
+            .sender
+            .call((NodeCommsRequest::FetchHeaders(block_nums), NodeCommsRequestType::Single))
+            .await??
+            .first()
+        {
+            Ok(headers.clone())
+        } else {
+            Err(CommsInterfaceError::UnexpectedApiResponse)
+        }
+    }
+
+    /// Fetch the transaction kernel with the provided hash from remote base nodes.
+    pub async fn fetch_kernels(
+        &mut self,
+        hashes: Vec<HashOutput>,
+    ) -> Result<Vec<TransactionKernel>, CommsInterfaceError>
+    {
+        if let Some(NodeCommsResponse::TransactionKernels(kernels)) = self
+            .sender
+            .call((NodeCommsRequest::FetchKernels(hashes), NodeCommsRequestType::Single))
+            .await??
+            .first()
+        {
+            Ok(kernels.clone())
+        } else {
+            Err(CommsInterfaceError::UnexpectedApiResponse)
+        }
     }
 }

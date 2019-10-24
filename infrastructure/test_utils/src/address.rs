@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,23 +20,43 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::types::HashOutput;
-use serde::{Deserialize, Serialize};
+use std::{cmp, ops::Range, sync::Mutex};
 
-/// NodeCommsRequestType is used to specify the amount of peers that need to be queried before a request can be
-/// finalized.
-#[derive(Debug, Serialize, Deserialize)]
-pub enum NodeCommsRequestType {
-    /// Send the request to a single remote base node
-    Single,
-    /// Send the request to a number of remote base nodes and accumulate all the responses.
-    Many,
+const PORT_RANGE: Range<u16> = 40000..48000;
+const LOCAL_ADDRESS: &'static str = "127.0.0.1";
+
+lazy_static! {
+    /// Shared counter of ports which have been used
+    static ref PORT_COUNTER: Mutex<u16> = Mutex::new(PORT_RANGE.start);
 }
 
-/// API Request enum
-#[derive(Debug, Serialize, Deserialize)]
-pub enum NodeCommsRequest {
-    GetChainMetadata,
-    FetchHeaders(Vec<u64>),
-    FetchKernels(Vec<HashOutput>),
+/// Maintains a counter of ports within a range (40000..48000), returning them in
+/// sequence. Port numbers will wrap back to 40000 once the upper bound is exceeded.
+pub fn get_next_local_port() -> u16 {
+    let mut lock = match PORT_COUNTER.lock() {
+        Ok(guard) => guard,
+        Err(_) => panic!("Poisoned PORT_COUNTER"),
+    };
+    let port = {
+        *lock = cmp::max((*lock + 1) % PORT_RANGE.end, PORT_RANGE.start);
+        *lock
+    };
+    port
+}
+
+/// Returns a local address with the next port in specified range.
+pub fn get_next_local_address() -> String {
+    format!("{}:{}", LOCAL_ADDRESS, get_next_local_port())
+}
+
+#[cfg(test)]
+mod test {
+    use crate::address::get_next_local_address;
+
+    #[test]
+    fn test_get_next_local_address() {
+        let address1 = get_next_local_address();
+        let address2 = get_next_local_address();
+        assert_ne!(address1, address2);
+    }
 }
