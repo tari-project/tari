@@ -24,6 +24,7 @@ use crate::{
     blocks::{Block, BlockHeader},
     chain_storage::{
         blockchain_database::BlockAddResult,
+        metadata::ChainMetadata,
         BlockchainBackend,
         BlockchainDatabase,
         ChainStorageError,
@@ -38,6 +39,28 @@ use std::task::Poll;
 use tokio_executor::threadpool::blocking;
 
 macro_rules! make_async {
+    ($fn:ident() -> $rtype:ty) => {
+        pub async fn $fn<T>(db: BlockchainDatabase<T>) -> Result<$rtype, ChainStorageError>
+        where T: BlockchainBackend {
+            poll_fn(move |_| {
+                let db = db.clone();
+                match blocking(move || db.$fn()) {
+                    Poll::Pending => Poll::Pending,
+                    // Map BlockingError -> ChainStorageError
+                    Poll::Ready(Err(e)) => Poll::Ready(Err(ChainStorageError::AccessError(format!(
+                        "Could not find a blocking thread to execute DB query. {}",
+                        e.to_string()
+                    )))),
+                    // Unwrap and lift ChainStorageError
+                    Poll::Ready(Ok(Err(e))) => Poll::Ready(Err(e)),
+                    // Unwrap and return result
+                    Poll::Ready(Ok(Ok(v))) => Poll::Ready(Ok(v)),
+                }
+            })
+            .await
+        }
+    };
+
     ($fn:ident($param:ident:$ptype:ty) -> $rtype:ty) => {
         pub async fn $fn<T>(db: BlockchainDatabase<T>, $param: $ptype) -> Result<$rtype, ChainStorageError>
         where T: BlockchainBackend {
@@ -61,6 +84,8 @@ macro_rules! make_async {
         }
     };
 }
+
+make_async!(get_metadata() -> ChainMetadata);
 make_async!(fetch_kernel(hash: HashOutput) -> TransactionKernel);
 make_async!(fetch_header_with_block_hash(hash: HashOutput) -> BlockHeader);
 make_async!(fetch_header(block_num: u64) -> BlockHeader);

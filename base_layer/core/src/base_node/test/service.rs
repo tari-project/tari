@@ -28,7 +28,8 @@ use crate::{
     blocks::BlockHeader,
     chain_storage::{BlockchainDatabase, DbTransaction, MemoryDatabase},
     consts::BASE_NODE_SERVICE_REQUEST_TIMEOUT,
-    test_utils::builders::{add_block_and_update_header, create_genesis_block, create_test_kernel},
+    tari_amount::MicroTari,
+    test_utils::builders::{add_block_and_update_header, create_genesis_block, create_test_kernel, create_utxo},
     types::HashDigest,
 };
 use futures::Sink;
@@ -112,7 +113,7 @@ pub fn setup_base_node_service(
     runtime: &Runtime,
     node_identity: NodeIdentity,
     peers: Vec<NodeIdentity>,
-    blockchain_db: Arc<BlockchainDatabase<MemoryDatabase<HashDigest>>>,
+    blockchain_db: BlockchainDatabase<MemoryDatabase<HashDigest>>,
     config: BaseNodeServiceConfig,
 ) -> (OutboundNodeCommsInterface, CommsNode)
 {
@@ -145,9 +146,9 @@ fn create_network_with_3_base_nodes(
     OutboundNodeCommsInterface,
     OutboundNodeCommsInterface,
     OutboundNodeCommsInterface,
-    Arc<BlockchainDatabase<MemoryDatabase<HashDigest>>>,
-    Arc<BlockchainDatabase<MemoryDatabase<HashDigest>>>,
-    Arc<BlockchainDatabase<MemoryDatabase<HashDigest>>>,
+    BlockchainDatabase<MemoryDatabase<HashDigest>>,
+    BlockchainDatabase<MemoryDatabase<HashDigest>>,
+    BlockchainDatabase<MemoryDatabase<HashDigest>>,
     CommsNode,
     CommsNode,
     CommsNode,
@@ -160,7 +161,7 @@ fn create_network_with_3_base_nodes(
         PeerFeatures::communication_node_default(),
     )
     .unwrap();
-    let alice_blockchain_db = Arc::new(BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap());
+    let alice_blockchain_db = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
 
     let bob_node_identity = NodeIdentity::random(
         &mut rng,
@@ -168,7 +169,7 @@ fn create_network_with_3_base_nodes(
         PeerFeatures::communication_node_default(),
     )
     .unwrap();
-    let bob_blockchain_db = Arc::new(BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap());
+    let bob_blockchain_db = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
 
     let carol_node_identity = NodeIdentity::random(
         &mut rng,
@@ -176,7 +177,7 @@ fn create_network_with_3_base_nodes(
         PeerFeatures::communication_node_default(),
     )
     .unwrap();
-    let carol_blockchain_db = Arc::new(BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap());
+    let carol_blockchain_db = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
 
     let (alice_outbound_nci, alice_comms) = setup_base_node_service(
         &runtime,
@@ -333,6 +334,47 @@ fn request_and_response_fetch_kernels() {
 }
 
 #[test]
+fn request_and_response_fetch_utxos() {
+    let runtime = Runtime::new().unwrap();
+    let base_node_service_config = BaseNodeServiceConfig {
+        request_timeout: BASE_NODE_SERVICE_REQUEST_TIMEOUT,
+        broadcast_peer_count: 2,
+        desired_response_count: 2,
+    };
+    let (mut alice_outbound_nci, _, _, _, bob_blockchain_db, carol_blockchain_db, alice_comms, bob_comms, carol_comms) =
+        create_network_with_3_base_nodes(&runtime, base_node_service_config);
+
+    let (utxo1, _) = create_utxo(MicroTari(10_000));
+    let (utxo2, _) = create_utxo(MicroTari(15_000));
+    let hash1 = utxo1.hash();
+    let hash2 = utxo2.hash();
+
+    let mut txn = DbTransaction::new();
+    txn.insert_utxo(utxo1.clone());
+    txn.insert_utxo(utxo2.clone());
+    assert!(bob_blockchain_db.commit(txn).is_ok());
+    let mut txn = DbTransaction::new();
+    txn.insert_utxo(utxo1.clone());
+    txn.insert_utxo(utxo2.clone());
+    assert!(carol_blockchain_db.commit(txn).is_ok());
+
+    runtime.block_on(async {
+        let received_utxos = alice_outbound_nci.fetch_utxos(vec![hash1.clone()]).await.unwrap();
+        assert_eq!(received_utxos.len(), 1);
+        assert_eq!(received_utxos[0], utxo1);
+
+        let received_utxos = alice_outbound_nci.fetch_utxos(vec![hash1, hash2]).await.unwrap();
+        assert_eq!(received_utxos.len(), 2);
+        assert!(received_utxos.contains(&utxo1));
+        assert!(received_utxos.contains(&utxo2));
+    });
+
+    alice_comms.shutdown().unwrap();
+    bob_comms.shutdown().unwrap();
+    carol_comms.shutdown().unwrap();
+}
+
+#[test]
 fn service_request_timeout() {
     let runtime = Runtime::new().unwrap();
     let mut rng = OsRng::new().unwrap();
@@ -348,7 +390,7 @@ fn service_request_timeout() {
         PeerFeatures::communication_node_default(),
     )
     .unwrap();
-    let alice_blockchain_db = Arc::new(BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap());
+    let alice_blockchain_db = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
 
     let bob_node_identity = NodeIdentity::random(
         &mut rng,
@@ -356,7 +398,7 @@ fn service_request_timeout() {
         PeerFeatures::communication_node_default(),
     )
     .unwrap();
-    let bob_blockchain_db = Arc::new(BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap());
+    let bob_blockchain_db = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
 
     let (mut alice_outbound_nci, alice_comms) = setup_base_node_service(
         &runtime,

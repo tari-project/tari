@@ -37,6 +37,7 @@ pub enum NodeCommsRequestType {
 #[derive(Debug, Serialize, Deserialize)]
 pub enum NodeCommsRequest {
     GetChainMetadata,
-    FetchHeaders(Vec<u64>),
     FetchKernels(Vec<HashOutput>),
+    FetchHeaders(Vec<u64>),
+    FetchUtxos(Vec<HashOutput>),
 }

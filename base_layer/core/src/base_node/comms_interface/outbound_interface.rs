@@ -29,7 +29,7 @@ use crate::{
     },
     blocks::blockheader::BlockHeader,
     chain_storage::ChainMetadata,
-    transaction::TransactionKernel,
+    transaction::{TransactionKernel, TransactionOutput},
     types::HashOutput,
 };
 use tari_service_framework::reply_channel::SenderService;
@@ -69,7 +69,25 @@ impl OutboundNodeCommsInterface {
         Ok(responses)
     }
 
-    /// Fetch block headers from remote base nodes.
+    /// Fetch the transaction kernels with the provided hashes from remote base nodes.
+    pub async fn fetch_kernels(
+        &mut self,
+        hashes: Vec<HashOutput>,
+    ) -> Result<Vec<TransactionKernel>, CommsInterfaceError>
+    {
+        if let Some(NodeCommsResponse::TransactionKernels(kernels)) = self
+            .sender
+            .call((NodeCommsRequest::FetchKernels(hashes), NodeCommsRequestType::Single))
+            .await??
+            .first()
+        {
+            Ok(kernels.clone())
+        } else {
+            Err(CommsInterfaceError::UnexpectedApiResponse)
+        }
+    }
+
+    /// Fetch the block headers corresponding to the provided block numbers from remote base nodes.
     pub async fn fetch_headers(&mut self, block_nums: Vec<u64>) -> Result<Vec<BlockHeader>, CommsInterfaceError> {
         if let Some(NodeCommsResponse::BlockHeaders(headers)) = self
             .sender
@@ -83,19 +101,19 @@ impl OutboundNodeCommsInterface {
         }
     }
 
-    /// Fetch the transaction kernel with the provided hash from remote base nodes.
-    pub async fn fetch_kernels(
+    /// Fetch the UTXOs with the provided hashes from remote base nodes.
+    pub async fn fetch_utxos(
         &mut self,
         hashes: Vec<HashOutput>,
-    ) -> Result<Vec<TransactionKernel>, CommsInterfaceError>
+    ) -> Result<Vec<TransactionOutput>, CommsInterfaceError>
     {
-        if let Some(NodeCommsResponse::TransactionKernels(kernels)) = self
+        if let Some(NodeCommsResponse::TransactionOutputs(utxos)) = self
             .sender
-            .call((NodeCommsRequest::FetchKernels(hashes), NodeCommsRequestType::Single))
+            .call((NodeCommsRequest::FetchUtxos(hashes), NodeCommsRequestType::Single))
             .await??
             .first()
         {
-            Ok(kernels.clone())
+            Ok(utxos.clone())
         } else {
             Err(CommsInterfaceError::UnexpectedApiResponse)
         }
