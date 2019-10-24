@@ -23,50 +23,57 @@
 use crate::{
     base_node::comms_interface::{error::CommsInterfaceError, NodeCommsRequest, NodeCommsResponse},
     blocks::blockheader::BlockHeader,
-    chain_storage::{BlockchainBackend, BlockchainDatabase},
-    transaction::TransactionKernel,
+    chain_storage::{async_db, BlockchainBackend, BlockchainDatabase},
+    transaction::{TransactionKernel, TransactionOutput},
 };
-use std::sync::Arc;
 
 /// The InboundNodeCommsInterface is used to handle all received inbound requests from remote nodes.
 pub struct InboundNodeCommsInterface<T>
 where T: BlockchainBackend
 {
-    blockchain_db: Arc<BlockchainDatabase<T>>,
+    blockchain_db: BlockchainDatabase<T>,
 }
 
 impl<T> InboundNodeCommsInterface<T>
 where T: BlockchainBackend
 {
     /// Construct a new InboundNodeCommsInterface.
-    pub fn new(blockchain_db: Arc<BlockchainDatabase<T>>) -> Self {
+    pub fn new(blockchain_db: BlockchainDatabase<T>) -> Self {
         Self { blockchain_db }
     }
 
     /// Handle inbound node comms requests from remote nodes.
     pub async fn handle_request(&self, request: &NodeCommsRequest) -> Result<NodeCommsResponse, CommsInterfaceError> {
         match request {
-            // TODO: replace with async calls
-            NodeCommsRequest::GetChainMetadata => {
-                Ok(NodeCommsResponse::ChainMetadata(self.blockchain_db.get_metadata()?))
+            NodeCommsRequest::GetChainMetadata => Ok(NodeCommsResponse::ChainMetadata(
+                async_db::get_metadata(self.blockchain_db.clone()).await?,
+            )),
+            NodeCommsRequest::FetchKernels(kernel_hashes) => {
+                let mut kernels = Vec::<TransactionKernel>::new();
+                for hash in kernel_hashes {
+                    if let Ok(kernel) = async_db::fetch_kernel(self.blockchain_db.clone(), hash.clone()).await {
+                        kernels.push(kernel);
+                    }
+                }
+                Ok(NodeCommsResponse::TransactionKernels(kernels))
             },
             NodeCommsRequest::FetchHeaders(block_nums) => {
                 let mut block_headers = Vec::<BlockHeader>::new();
-                block_nums.iter().for_each(|block_num| {
-                    if let Ok(block_header) = self.blockchain_db.fetch_header(*block_num) {
+                for block_num in block_nums {
+                    if let Ok(block_header) = async_db::fetch_header(self.blockchain_db.clone(), *block_num).await {
                         block_headers.push(block_header);
                     }
-                });
+                }
                 Ok(NodeCommsResponse::BlockHeaders(block_headers))
             },
-            NodeCommsRequest::FetchKernels(kernel_hashes) => {
-                let mut kernels = Vec::<TransactionKernel>::new();
-                kernel_hashes.iter().for_each(|hash| {
-                    if let Ok(kernel) = self.blockchain_db.fetch_kernel(hash.clone()) {
-                        kernels.push(kernel);
+            NodeCommsRequest::FetchUtxos(utxo_hashes) => {
+                let mut utxos = Vec::<TransactionOutput>::new();
+                for hash in utxo_hashes {
+                    if let Ok(utxo) = async_db::fetch_utxo(self.blockchain_db.clone(), hash.clone()).await {
+                        utxos.push(utxo);
                     }
-                });
-                Ok(NodeCommsResponse::TransactionKernels(kernels))
+                }
+                Ok(NodeCommsResponse::TransactionOutputs(utxos))
             },
         }
     }

@@ -61,7 +61,7 @@ where T: BlockchainBackend
     inbound_message_subscription_factory:
         Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage<TariMessageType>>>>,
     node_identity: Arc<NodeIdentity>,
-    blockchain_db: Arc<BlockchainDatabase<T>>,
+    blockchain_db: BlockchainDatabase<T>,
     config: BaseNodeServiceConfig,
 }
 
@@ -74,7 +74,7 @@ where T: BlockchainBackend
             TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage<TariMessageType>>>,
         >,
         node_identity: Arc<NodeIdentity>,
-        blockchain_db: Arc<BlockchainDatabase<T>>,
+        blockchain_db: BlockchainDatabase<T>,
         config: BaseNodeServiceConfig,
     ) -> Self
     {

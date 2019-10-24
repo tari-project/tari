@@ -32,31 +32,10 @@ use crate::{
     txn_schema,
     types::{HashDigest, COMMITMENT_FACTORY},
 };
-use bitflags::_core::sync::atomic::{AtomicBool, Ordering};
-use std::{fs::File, io::Write, ops::Deref, sync::Arc};
+use std::{fs::File, io::Write, ops::Deref};
 use tari_crypto::commitment::HomomorphicCommitmentFactory;
+use tari_test_utils::runtime::test_async;
 use tari_utilities::{hex::Hex, Hashable};
-use tokio::{self, runtime::Runtime};
-
-fn create_runtime(passed: Arc<AtomicBool>) -> Runtime {
-    let rt = tokio::runtime::Builder::new()
-        .blocking_threads(4)
-        // Run the work scheduler on one thread so we can really see the effects of using `blocking` above
-        .core_threads(1)
-        .panic_handler(move |_| { passed.store(false, Ordering::SeqCst) })
-        .build()
-        .expect("Could not create runtime");
-    rt
-}
-
-fn test_async<F>(f: F)
-where F: FnOnce(&Runtime) {
-    let passed = Arc::new(AtomicBool::new(true));
-    let rt = create_runtime(passed.clone());
-    f(&rt);
-    rt.shutdown_on_idle();
-    assert!(passed.load(Ordering::SeqCst));
-}
 
 fn write_logs(db: &BlockchainDatabase<MemoryDatabase<HashDigest>>, blocks: &[Block]) -> Result<(), std::io::Error> {
     {
