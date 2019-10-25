@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use log::*;
-use serde_json::json;
+
 use std::{
     path::Path,
     sync::{atomic::AtomicBool, Arc},
@@ -230,12 +230,13 @@ fn setup_comms_services<T: BlockchainBackend + 'static>(
     db: BlockchainDatabase<T>,
 ) -> OutboundNodeCommsInterface
 {
+    let host = id.control_service_address().host();
     let node_config = BaseNodeServiceConfig::default(); // TODO - make this configurable
     let (publisher, subscription_factory) = pubsub_connector(rt.executor(), 100);
     let subscription_factory = Arc::new(subscription_factory);
     let comms_config = CommsConfig {
         node_identity: id.clone(),
-        host: "127.0.0.1".parse().unwrap(),
+        host: host.parse().unwrap(),
         socks_proxy_address: None,
         control_service: ControlServiceConfig {
             listener_address: id.control_service_address(),
@@ -261,7 +262,7 @@ fn setup_comms_services<T: BlockchainBackend + 'static>(
         .add_initializer(BaseNodeServiceInitializer::new(
             subscription_factory,
             id.clone(),
-            Arc::new(db),
+            db,
             node_config,
         ))
         .finish();
