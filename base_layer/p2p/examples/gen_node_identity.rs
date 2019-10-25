@@ -67,7 +67,7 @@ fn main() {
 
     let mut rng = OsRng::new().unwrap();
     let address = random_address();
-    let node_identity = NodeIdentity::random(&mut rng, address, PeerFeatures::communication_node_default()).unwrap();
+    let node_identity = NodeIdentity::random(&mut rng, address, PeerFeatures::COMMUNICATION_NODE).unwrap();
     let json = node_identity.to_json().unwrap();
     let out_path = to_abs_path(matches.value_of("output").unwrap());
     fs::write(out_path, json).unwrap();

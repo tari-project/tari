@@ -23,7 +23,7 @@
 use super::node_id::deserialize_node_id_from_hex;
 use crate::{
     connection::{net_address::net_addresses::NetAddressesWithStats, NetAddress},
-    peer_manager::{node_id::NodeId, PeerFeature, PeerFeatures},
+    peer_manager::{node_id::NodeId, PeerFeatures},
     types::CommsPublicKey,
 };
 use bitflags::*;
@@ -100,8 +100,8 @@ impl Peer {
     }
 
     /// Returns true if this peer has the given feature, otherwise false
-    pub fn has_feature(&self, feature: &PeerFeature) -> bool {
-        self.features.contains(feature)
+    pub fn has_features(&self, features: PeerFeatures) -> bool {
+        self.features.contains(features)
     }
 
     /// Returns the ban status of the peer
@@ -120,7 +120,7 @@ mod test {
     use super::*;
     use crate::{
         connection::{net_address::net_addresses::NetAddressesWithStats, NetAddress},
-        peer_manager::{node_id::NodeId, peer_features::PeerFeature},
+        peer_manager::node_id::NodeId,
         types::CommsPublicKey,
     };
     use serde_json::Value;
@@ -133,7 +133,7 @@ mod test {
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk).unwrap();
         let addresses = NetAddressesWithStats::from("123.0.0.123:8000".parse::<NetAddress>().unwrap());
-        let mut peer: Peer = Peer::new(pk, node_id, addresses, PeerFlags::default(), PeerFeatures::default());
+        let mut peer: Peer = Peer::new(pk, node_id, addresses, PeerFlags::default(), PeerFeatures::empty());
         assert_eq!(peer.is_banned(), false);
         peer.set_banned(true);
         assert_eq!(peer.is_banned(), true);
@@ -164,7 +164,7 @@ mod test {
             Some(node_id2.clone()),
             Some(vec![net_address2.clone(), net_address3.clone()]),
             Some(PeerFlags::BANNED),
-            Some([PeerFeature::MessagePropagation].into()),
+            Some(PeerFeatures::MESSAGE_PROPAGATION),
         );
 
         assert_eq!(peer.public_key, public_key1);
@@ -185,7 +185,7 @@ mod test {
             .iter()
             .any(|net_address_with_stats| net_address_with_stats.net_address == net_address3));
         assert_eq!(peer.flags, PeerFlags::BANNED);
-        assert_eq!(peer.has_feature(&PeerFeature::MessagePropagation), true);
+        assert_eq!(peer.has_features(PeerFeatures::MESSAGE_PROPAGATION), true);
     }
 
     #[test]
@@ -199,7 +199,7 @@ mod test {
             node_id,
             "127.0.0.1:9000".parse::<NetAddress>().unwrap().into(),
             PeerFlags::empty(),
-            PeerFeatures::default(),
+            PeerFeatures::empty(),
         );
 
         let json = peer.to_json().unwrap();

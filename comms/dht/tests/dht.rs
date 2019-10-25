@@ -46,7 +46,7 @@ fn new_node_identity(control_service_address: NetAddress) -> NodeIdentity {
     NodeIdentity::random(
         &mut OsRng::new().unwrap(),
         control_service_address,
-        PeerFeatures::communication_node_default(),
+        PeerFeatures::COMMUNICATION_NODE,
     )
     .unwrap()
 }

@@ -26,7 +26,6 @@ use crate::{
     peer_manager::{
         node_id::{NodeId, NodeIdError},
         Peer,
-        PeerFeature,
         PeerFeatures,
         PeerFlags,
     },
@@ -141,8 +140,8 @@ impl NodeIdentity {
         &self.identity.features
     }
 
-    pub fn has_peer_feature(&self, peer_feature: &PeerFeature) -> bool {
-        self.features().contains(peer_feature)
+    pub fn has_peer_features(&self, peer_features: PeerFeatures) -> bool {
+        self.features().contains(peer_features)
     }
 }
 

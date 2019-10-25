@@ -42,7 +42,7 @@ pub fn make_node_identity() -> Arc<NodeIdentity> {
         NodeIdentity::random(
             &mut OsRng::new().unwrap(),
             "127.0.0.1:9000".parse().unwrap(),
-            PeerFeatures::communication_node_default(),
+            PeerFeatures::COMMUNICATION_NODE,
         )
         .unwrap(),
     )
@@ -53,7 +53,7 @@ pub fn make_client_identity() -> Arc<NodeIdentity> {
         NodeIdentity::random(
             &mut OsRng::new().unwrap(),
             "127.0.0.1:9000".parse().unwrap(),
-            PeerFeatures::communication_client_default(),
+            PeerFeatures::COMMUNICATION_CLIENT,
         )
         .unwrap(),
     )
@@ -71,7 +71,7 @@ pub fn make_comms_inbound_message(
             node_identity.identity.node_id.clone(),
             Vec::<NetAddress>::new().into(),
             PeerFlags::empty(),
-            PeerFeatures::communication_node_default(),
+            PeerFeatures::COMMUNICATION_NODE,
         ),
         MessageEnvelopeHeader {
             public_key: node_identity.identity.public_key.clone(),
@@ -109,7 +109,7 @@ pub fn make_dht_inbound_message(
             node_identity.identity.node_id.clone(),
             Vec::<NetAddress>::new().into(),
             PeerFlags::empty(),
-            PeerFeatures::communication_node_default(),
+            PeerFeatures::COMMUNICATION_NODE,
         ),
         MessageEnvelopeHeader {
             public_key: node_identity.identity.public_key.clone(),

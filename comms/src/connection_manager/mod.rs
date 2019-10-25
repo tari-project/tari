@@ -58,7 +58,7 @@
 //! # use tari_storage::LMDBWrapper;
 //! # use futures::channel::mpsc::channel;
 //!
-//! let node_identity = Arc::new(NodeIdentity::random(&mut OsRng::new().unwrap(), "127.0.0.1:9000".parse().unwrap(), PeerFeatures::communication_node_default()).unwrap());
+//! let node_identity = Arc::new(NodeIdentity::random(&mut OsRng::new().unwrap(), "127.0.0.1:9000".parse().unwrap(), PeerFeatures::COMMUNICATION_NODE).unwrap());
 //!
 //! let context = ZmqContext::new();
 //!

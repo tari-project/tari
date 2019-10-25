@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use log::*;
-
 use std::{
     path::Path,
     sync::{atomic::AtomicBool, Arc},
@@ -119,7 +118,7 @@ fn new_node_id(pk: PrivateKey, control_addr: &str) -> Result<NodeIdentity, Strin
         )
     })?;
     let pubkey = PublicKey::from_secret_key(&pk);
-    let features = PeerFeatures::communication_node_default();
+    let features = PeerFeatures::COMMUNICATION_NODE;
     NodeIdentity::new(pk, pubkey, address, features)
         .map_err(|e| format!("We were unable to construct a node identity. {}", e.to_string()))
 }

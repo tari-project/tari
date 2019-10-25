@@ -35,7 +35,7 @@ use futures::{
 };
 use log::*;
 use std::sync::Arc;
-use tari_comms::peer_manager::{NodeIdentity, PeerFeature, PeerManager, PeerNodeIdentity};
+use tari_comms::peer_manager::{NodeIdentity, PeerFeatures, PeerManager, PeerNodeIdentity};
 use tari_comms_middleware::MiddlewareError;
 use tower::{layer::Layer, Service, ServiceExt};
 
@@ -186,7 +186,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
                 })
             },
             DhtOutboundRequest::Forward(request) => {
-                if self.node_identity.has_peer_feature(&PeerFeature::MessagePropagation) {
+                if self.node_identity.has_peer_features(PeerFeatures::MESSAGE_PROPAGATION) {
                     self.generate_forward_messages(*request)
                 } else {
                     debug!(
@@ -362,7 +362,7 @@ mod test {
             NodeId::from_key(&pk).unwrap(),
             vec!["127.0.0.1:9999".parse::<NetAddress>().unwrap()].into(),
             PeerFlags::empty(),
-            PeerFeatures::communication_node_default(),
+            PeerFeatures::COMMUNICATION_NODE,
         );
         peer_manager.add_peer(example_peer.clone()).unwrap();
         let other_peer = {
@@ -376,7 +376,7 @@ mod test {
         let node_identity = NodeIdentity::random(
             &mut OsRng::new().unwrap(),
             "127.0.0.1:9000".parse().unwrap(),
-            PeerFeatures::communication_node_default(),
+            PeerFeatures::COMMUNICATION_NODE,
         )
         .unwrap();
 

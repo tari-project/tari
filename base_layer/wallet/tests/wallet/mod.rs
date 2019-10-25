@@ -45,7 +45,7 @@ fn create_peer(public_key: CommsPublicKey, net_address: NetAddress) -> Peer {
         NodeId::from_key(&public_key).unwrap(),
         NetAddressesWithStats::new(vec![NetAddressWithStats::new(net_address.clone())]),
         PeerFlags::empty(),
-        PeerFeatures::communication_node_default(),
+        PeerFeatures::COMMUNICATION_NODE,
     )
 }
 
@@ -58,13 +58,13 @@ fn test_wallet() {
     let alice_identity = NodeIdentity::random(
         &mut rng,
         "127.0.0.1:22523".parse().unwrap(),
-        PeerFeatures::communication_node_default(),
+        PeerFeatures::COMMUNICATION_NODE,
     )
     .unwrap();
     let bob_identity = NodeIdentity::random(
         &mut rng,
         "127.0.0.1:22145".parse().unwrap(),
-        PeerFeatures::communication_node_default(),
+        PeerFeatures::COMMUNICATION_NODE,
     )
     .unwrap();
     let comms_config1 = CommsConfig {

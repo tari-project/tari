@@ -277,7 +277,7 @@ mod test {
         peer_manager::{
             node_id::NodeId,
             peer::{Peer, PeerFlags},
-            PeerFeature,
+            PeerFeatures,
         },
     };
     use rand::OsRng;
@@ -293,7 +293,7 @@ mod test {
             node_id,
             net_addresses,
             PeerFlags::default(),
-            [PeerFeature::MessagePropagation].into(),
+            PeerFeatures::MESSAGE_PROPAGATION,
         );
         peer.set_banned(ban_flag);
         peer

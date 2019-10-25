@@ -184,7 +184,7 @@ mod test {
         let conn = Connection::new(&context, Direction::Outbound).establish(&addr).unwrap();
         let node_identity = Arc::new(NodeIdentity::random_for_test(
             Some("127.0.0.1:9000".parse().unwrap()),
-            PeerFeatures::default(),
+            PeerFeatures::empty(),
         ));
         let (_, public_key) = CommsPublicKey::random_keypair(&mut OsRng::new().unwrap());
 

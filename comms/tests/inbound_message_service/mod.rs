@@ -67,7 +67,7 @@ fn smoke_test() {
         node_identity.identity.node_id.clone(),
         "127.0.0.1:9000".parse::<NetAddress>().unwrap().into(),
         PeerFlags::empty(),
-        PeerFeatures::default(),
+        PeerFeatures::empty(),
     );
 
     let database_name = "pipeline_test1"; // Note: every test should have unique database

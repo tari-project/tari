@@ -190,7 +190,7 @@ fn manage_single_transaction() {
     let alice_node_identity = NodeIdentity::random(
         &mut rng,
         "127.0.0.1:31583".parse().unwrap(),
-        PeerFeatures::communication_node_default(),
+        PeerFeatures::COMMUNICATION_NODE,
     )
     .unwrap();
 
@@ -199,7 +199,7 @@ fn manage_single_transaction() {
     let bob_node_identity = NodeIdentity::random(
         &mut rng,
         "127.0.0.1:31582".parse().unwrap(),
-        PeerFeatures::communication_node_default(),
+        PeerFeatures::COMMUNICATION_NODE,
     )
     .unwrap();
 
@@ -279,7 +279,7 @@ fn manage_multiple_transactions() {
     let alice_node_identity = NodeIdentity::random(
         &mut rng,
         "127.0.0.1:31584".parse().unwrap(),
-        PeerFeatures::communication_node_default(),
+        PeerFeatures::COMMUNICATION_NODE,
     )
     .unwrap();
 
@@ -288,7 +288,7 @@ fn manage_multiple_transactions() {
     let bob_node_identity = NodeIdentity::random(
         &mut rng,
         "127.0.0.1:31585".parse().unwrap(),
-        PeerFeatures::communication_node_default(),
+        PeerFeatures::COMMUNICATION_NODE,
     )
     .unwrap();
 
@@ -297,7 +297,7 @@ fn manage_multiple_transactions() {
     let carol_node_identity = NodeIdentity::random(
         &mut rng,
         "127.0.0.1:31586".parse().unwrap(),
-        PeerFeatures::communication_node_default(),
+        PeerFeatures::COMMUNICATION_NODE,
     )
     .unwrap();
 
@@ -442,7 +442,7 @@ fn test_accepting_unknown_tx_id_and_malformed_reply() {
     let bob_node_identity = NodeIdentity::random(
         &mut rng,
         "127.0.0.1:31585".parse().unwrap(),
-        PeerFeatures::communication_node_default(),
+        PeerFeatures::COMMUNICATION_NODE,
     )
     .unwrap();
     let (mut alice_ts, mut alice_output_manager, mut alice_outbound_service, _alice_tx_sender, mut alice_tx_ack_sender) =

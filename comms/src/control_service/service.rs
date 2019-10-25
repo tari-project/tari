@@ -136,7 +136,7 @@ mod test {
     #[test]
     fn control_service_has_default() {
         let context = ZmqContext::new();
-        let node_identity = Arc::new(NodeIdentity::random_for_test(None, PeerFeatures::default()));
+        let node_identity = Arc::new(NodeIdentity::random_for_test(None, PeerFeatures::empty()));
         let control_service = ControlService::with_default_config(context, node_identity);
         assert_eq!(
             control_service.config.listener_address,
