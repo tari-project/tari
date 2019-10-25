@@ -26,13 +26,6 @@
 # minutes = or 24 hrs.
 #message_cache_ttl = 1440
 
-# When first logging onto the Tari network, you need to find a few peers to bootstrap the process. In the absence of
-# any servers, this is a little more challenging than usual. Our best strategy is just to try and connect to the peers
-# you knew about last time you ran the software. But what about when you run the software for the first time? That's
-# where this whitelist comes in. It's a list of known Tari nodes that are likely to be around for a long time and that
-# new nodes can use to introduce themselves to the network.
-peer_whitelist = [ "8.8.8.8", "6.6.6.6", "7.7.7.7"] # TODO actually populate this with a list of bootstrap nodes
-
 # The peer database list is stored in a database file at this location
 #peer_database = "~/.tari/peers"
 
@@ -87,8 +80,16 @@ peer_whitelist = [ "8.8.8.8", "6.6.6.6", "7.7.7.7"] # TODO actually populate thi
 # almost all use cases.
 #db_type = "lmdb"
 
-# For LMDB backends, the folder to use to store the blockchain database.
-#db = "~/.tari/testnet/db/"
+# The path to store persistent data
+#data_dir = "~/.tari/testnet/"
+
+# When first logging onto the Tari network, you need to find a few peers to bootstrap the process. In the absence of
+# any servers, this is a little more challenging than usual. Our best strategy is just to try and connect to the peers
+# you knew about last time you ran the software. But what about when you run the software for the first time? That's
+# where this whitelist comes in. It's a list of known Tari nodes that are likely to be around for a long time and that
+# new nodes can use to introduce themselves to the network.
+# peer_seeds = ["public_key1::address1", "public_key2::address2",... ]
+peer_seeds = []
 
 # Configure the number of threads to spawn for long-running tasks, like block and transaction validation. A good choice
 # for this value is somewhere between n/2 and n - 1, where n is the number of cores on your machine.
@@ -100,22 +101,32 @@ peer_whitelist = [ "8.8.8.8", "6.6.6.6", "7.7.7.7"] # TODO actually populate thi
 
 # The address and port to listen for peer connections. This is the address that is advertised on the network so that
 # peers can find you.
-#address = "tcp://0.0.0.0:81898"
+#address = "tcp://0.0.0.0:18189"
 
 # Enable the gRPC server for the base node. Set this to true if you want to enable third-party wallet software
 #grpc_enabled = false
 
 # The socket to expose for the gRPC base node server. This value is ignored if grpc_enabled is false.
 # Valid values here are IPv4 and IPv6 TCP sockets, local unix sockets (e.g. "ipc://base-node-gprc.sock.100")
-#grpc_address = "tcp://127.0.0.1:81410"
+#grpc_address = "tcp://127.0.0.1:18141"
+
+# A path to the file that stores your node identity and secret key
+#identity_file = "~/.tari/testnet/node_id.json"
 
 [base_node.mainnet]
 # The type of database backend to use. Currently supported options are "memory" and "lmdb". LMDB is recommnded for
 # almost all use cases.
 #db_type = "lmdb"
 
-# For LMDB backends, the folder to use to store the blockchain database.
-#db = "~/.tari/mainnet/db/"
+# The path to store persistent data
+#data_dir = "~/.tari/mainnet/"
+
+# When first logging onto the Tari network, you need to find a few peers to bootstrap the process. In the absence of
+# any servers, this is a little more challenging than usual. Our best strategy is just to try and connect to the peers
+# you knew about last time you ran the software. But what about when you run the software for the first time? That's
+# where this whitelist comes in. It's a list of known Tari nodes that are likely to be around for a long time and that
+# new nodes can use to introduce themselves to the network.
+peer_seeds = []
 
 # Configure the number of threads to spawn for long-running tasks, like block and transaction validation. A good choice
 # for this value is somewhere between n/2 and n - 1, where n is the number of cores on your machine.
@@ -127,14 +138,18 @@ peer_whitelist = [ "8.8.8.8", "6.6.6.6", "7.7.7.7"] # TODO actually populate thi
 
 # The address and port to listen for peer connections. This is the address that is advertised on the network so that
 # peers can find you. You may specify more than one address here
-#address = "tcp://0.0.0.0:80898"
+#address = "tcp://0.0.0.0:18089"
 
 # Enable the gRPC server for the base node. Set this to true if you want to enable third-party wallet software
 #grpc_enabled = false
 
 # The socket to expose for the gRPC base node server. This value is ignored if grpc_enabled is false.
 # Valid values here are IPv4 and IPv6 TCP sockets, local unix sockets (e.g. "ipc://base-node-gprc.sock.100")
-#grpc_address = "tcp://127.0.0.1:80410"
+#grpc_address = "tcp://127.0.0.1:18041"
+
+# A path to the file that stores your node identity and secret key
+#identity_file = "~/.tari/mainnet/node_id.json"
+
 ########################################################################################################################
 #                                                                                                                      #
 #                                         Validator Node Configuration Options                                         #
@@ -152,4 +167,4 @@ peer_whitelist = [ "8.8.8.8", "6.6.6.6", "7.7.7.7"] # TODO actually populate thi
 
 # The socket to expose for the gRPC base node server. This value is ignored if grpc_enabled is false.
 # Valid values here are IPv4 and IPv6 TCP sockets, local unix sockets (e.g. "ipc://base-node-gprc.sock.100")
-#grpc_address = "tcp://127.0.0.1:80420"
+#grpc_address = "tcp://127.0.0.1:18042"

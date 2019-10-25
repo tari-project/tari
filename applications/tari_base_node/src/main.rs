@@ -21,19 +21,22 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
+/// Utilities and helpers for building the base node instance
 mod builder;
+/// The command line interface definition and configuration
 mod cli;
+/// Application-specific constants
 mod consts;
 
-use crate::cli::ConfigBootstrap;
-use config::Config;
+use crate::builder::{create_and_save_id, load_identity};
 use futures::{future, StreamExt};
 use log::*;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
-use tari_common::{default_config, NodeBuilderConfig};
+use tari_common::{load_configuration, GlobalConfig};
+use tari_utilities::hex::Hex;
 use tokio::{net::signal, runtime::Runtime};
 
 const LOG_TARGET: &str = "base_node::app";
@@ -41,7 +44,7 @@ const LOG_TARGET: &str = "base_node::app";
 fn main() {
     cli::print_banner();
     // Create the tari data directory
-    if let Err(e) = tari_common::create_data_directory() {
+    if let Err(e) = tari_common::dir_utils::create_data_directory() {
         println!(
             "We couldn't create a default Tari data directory and have to quit now. This makes us sad :(\n {}",
             e.to_string()
@@ -50,15 +53,15 @@ fn main() {
     }
 
     // Parse and validate command-line arguments
-    let bootstrap = cli::parse_cli_args();
+    let arguments = cli::parse_cli_args();
 
     // Initialise the logger
-    if !initialize_logging(&bootstrap) {
+    if !tari_common::initialize_logging(&arguments.bootstrap.log_config) {
         return;
     }
 
     // Load and apply configuration file
-    let cfg = match load_configuration(&bootstrap) {
+    let cfg = match load_configuration(&arguments.bootstrap) {
         Ok(cfg) => cfg,
         Err(s) => {
             error!(target: LOG_TARGET, "{}", s);
@@ -66,11 +69,44 @@ fn main() {
         },
     };
 
-    let node_config = match NodeBuilderConfig::convert_from(cfg) {
+    // Populate the configuration struct
+    let node_config = match GlobalConfig::convert_from(cfg) {
         Ok(c) => c,
         Err(e) => {
             error!(target: LOG_TARGET, "The configuration file has an error. {}", e);
             return;
+        },
+    };
+
+    // Load or create the Node identity
+    let node_id = match load_identity(&node_config.identity_file, &node_config.address) {
+        Ok(id) => id,
+        Err(e) => {
+            if !arguments.create_id {
+                error!(
+                    target: LOG_TARGET,
+                    "Node identity information not found. {}. You can update the configuration file to point to a \
+                     valid node identity file, or re-run the node with the --create_id flag to create anew identity.",
+                    e
+                );
+                return;
+            }
+            debug!(target: LOG_TARGET, "Node id not found. {}. Creating new ID", e);
+            match create_and_save_id(&node_config.identity_file, &node_config.address) {
+                Ok(id) => {
+                    info!(
+                        target: LOG_TARGET,
+                        "New node identity [{}] with public key {} has been created.",
+                        id.identity.node_id.to_hex(),
+                        id.public_key().to_hex()
+                    );
+                    id
+                },
+                Err(e) => {
+                    error!(target: LOG_TARGET, "Could not create new node id. {}.", e);
+                    return;
+                },
+            }
         },
     };
 
@@ -84,7 +120,7 @@ fn main() {
     };
 
     // Build, node, build!
-    let node = match builder::compose_node(&node_config) {
+    let node = match builder::configure_and_initialize_node(&node_config, node_id, &rt) {
         Ok(n) => n,
         Err(e) => {
             error!(target: LOG_TARGET, "Could not instantiate node instance. {}", e);
@@ -108,44 +144,7 @@ fn main() {
     println!("Goodbye!");
 }
 
-fn initialize_logging(bootstrap: &ConfigBootstrap) -> bool {
-    println!(
-        "Initializing logging according to {:?}",
-        bootstrap.log_config.to_str().unwrap_or("[??]")
-    );
-    if let Err(e) = log4rs::init_file(bootstrap.log_config.clone(), Default::default()) {
-        println!("We couldn't load a logging configuration file. {}", e.to_string());
-        return false;
-    }
-    true
-}
-
-fn load_configuration(bootstrap: &ConfigBootstrap) -> Result<Config, String> {
-    debug!(
-        target: LOG_TARGET,
-        "Loading configuration file from  {}",
-        bootstrap.config.to_str().unwrap_or("[??]")
-    );
-    let mut cfg = default_config();
-    // Load the configuration file
-    let filename = bootstrap
-        .config
-        .to_str()
-        .ok_or("Invalid config file path".to_string())?;
-    let config_file = config::File::with_name(filename);
-    match cfg.merge(config_file) {
-        Ok(_) => {
-            info!(target: LOG_TARGET, "Configuration file loaded.");
-            Ok(cfg)
-        },
-        Err(e) => Err(format!(
-            "There was an error loading the configuration file. {}",
-            e.to_string()
-        )),
-    }
-}
-
-fn setup_runtime(config: &NodeBuilderConfig) -> Result<Runtime, String> {
+fn setup_runtime(config: &GlobalConfig) -> Result<Runtime, String> {
     let num_core_threads = config.core_threads;
     let num_blocking_threads = config.blocking_threads;
 

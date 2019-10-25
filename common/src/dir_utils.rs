@@ -19,7 +19,35 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
 
-pub const VERSION: &str = "0.0.5";
-pub const AUTHOR: &str = "The Tari Community";
+use std::{io::ErrorKind, path::PathBuf};
+
+/// Create the default data directory (`~/.tari` on OSx and Linux, for example) if it doesn't already exist
+pub fn create_data_directory() -> Result<(), std::io::Error> {
+    let mut home = dirs::home_dir().ok_or(std::io::Error::from(ErrorKind::NotFound))?;
+    home.push(".tari");
+    if !home.exists() {
+        std::fs::create_dir(home)
+    } else {
+        Ok(())
+    }
+}
+
+/// A convenience function for creating subfolders inside the `~/.tari` default data directory
+///
+/// # Panics
+/// This function panics if the home folder location cannot be found or if the path value is not valid UTF-8.
+/// This is a trade-off made in favour of convenience of use.
+pub fn default_subdir(path: &str) -> String {
+    let mut home = dirs::home_dir().expect("Home folder location failed");
+    home.push(".tari");
+    home.push(path);
+    String::from(home.to_str().expect("Invalid path value"))
+}
+
+pub fn default_path(filename: &str) -> PathBuf {
+    let mut home = dirs::home_dir().unwrap_or(PathBuf::from("."));
+    home.push(".tari");
+    home.push(filename);
+    home
+}

@@ -55,3 +55,6 @@ pub mod chain_storage;
 
 // Re-export commonly used structs
 pub use transaction_protocol::{recipient::ReceiverTransactionProtocol, sender::SenderTransactionProtocol};
+
+// Re-export the crypto crate to make exposing traits etc easier for clients of this crate
+pub use tari_crypto as crypto;
