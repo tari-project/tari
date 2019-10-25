@@ -25,7 +25,6 @@ use log::*;
 use serde::Deserialize;
 use std::{
     sync::atomic::Ordering,
-    thread,
     time::{Duration, Instant},
 };
 use tari_core::{
@@ -34,6 +33,7 @@ use tari_core::{
 };
 use tari_testnet_miner::miner::Miner;
 use tokio::io::AsyncBufReadExt;
+use tokio_executor::threadpool::ThreadPool;
 
 const LOG_TARGET: &str = "applications::testnet_miner";
 
@@ -66,6 +66,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut block = get_block();
     let mining_flag = miner.get_mine_flag();
 
+    let mut pool = ThreadPool::new();
     loop {
         let height: u64 = if block.header.height <= 2016 {
             1
@@ -77,34 +78,36 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let header = get_blockheader();
 
         // create threads
-        let t_miner = mine(&mut miner, header).fuse();
+
+        let t_miner = mine(&mut miner, header, &mut pool).fuse();
         let t_cli = stop_mining().fuse();
         let t_tip = check_tip(0).fuse();
         pin_mut!(t_miner);
         pin_mut!(t_cli);
         pin_mut!(t_tip);
 
-        dbg!("awaiting threads");
+        let mut stop_flag = false;
+
         select! {
         () = t_miner => {info!(target: LOG_TARGET, "Mined a block");
                         send_block();
                         },
         () = t_cli => {info!(target: LOG_TARGET, "Canceled mining");
                         mining_flag.store(true, Ordering::Relaxed);
+                        stop_flag = true;
                         },
         () = t_tip => info!(target: LOG_TARGET, "Canceled mining on current block, tip changed"),}
-        if mining_flag.load(Ordering::Relaxed) {
+        if stop_flag {
             break;
         }
-        dbg!("done with block");
         block = get_block();
     }
+    pool.shutdown().await;
     Ok(())
 }
 
-async fn mine(miner: &mut Miner, header: BlockHeader) {
-    dbg!("starting mining");
-    miner.mine(header);
+async fn mine(miner: &mut Miner, header: BlockHeader, pool: &mut ThreadPool) {
+    miner.mine(header, pool).await;
 }
 
 async fn stop_mining() {

@@ -24,7 +24,17 @@ use crate::t_blake_pow::TestBlakePow;
 use core::sync::atomic::AtomicBool;
 use derive_error::Error;
 use digest::Digest;
-use std::sync::Arc;
+use futures::{
+    channel::{
+        mpsc,
+        mpsc::{Receiver, Sender},
+    },
+    future::poll_fn,
+    stream::StreamExt,
+};
+use std::{
+    sync::{atomic::Ordering, Arc},
+};
 use tari_core::{
     blocks::{Block, BlockHeader},
     consensus::ConsensusRules,
@@ -39,6 +49,7 @@ use tari_crypto::{
     range_proof::RangeProofService,
 };
 use tari_utilities::byte_array::ByteArray;
+use tokio_executor::threadpool::{blocking, ThreadPool};
 
 /// TestNet Miner
 pub struct Miner {
@@ -48,7 +59,10 @@ pub struct Miner {
     difficulty: Difficulty,
     // current consensus rules
     rules: ConsensusRules,
+    // Stop mining flag
     stop_mine: Arc<AtomicBool>,
+    // Amount of threads the Miner can use
+    thread_count: u8,
 }
 
 #[derive(Clone, Debug, PartialEq, Error)]
@@ -67,6 +81,7 @@ impl Miner {
             difficulty: Difficulty::min(),
             rules,
             stop_mine: Arc::new(AtomicBool::new(false)),
+            thread_count: 2,
         }
     }
 
@@ -107,20 +122,49 @@ impl Miner {
         (coinbase, kernel)
     }
 
+    async fn mining(
+        difficulty: Difficulty,
+        header: BlockHeader,
+        stop_flag: Arc<AtomicBool>,
+        mut tx: Sender<BlockHeader>,
+    )
+    {
+        poll_fn(move |_| {
+            blocking(|| {
+                let result = TestBlakePow::mine(difficulty.clone(), header.clone(), stop_flag.clone());
+                tx.try_send(result);
+            })
+        })
+        .await
+        .expect("Couldn't block");
+    }
+
     /// This function will mine the nonce and fill out the header.
     // Todo convert into futures with multi threading for this function
-    pub fn mine(&mut self, old_header: BlockHeader) -> Result<(), MinerError> {
+    pub async fn mine(&mut self, old_header: BlockHeader, pool: &mut ThreadPool) -> Result<(), MinerError> {
         if self.block.is_none() {
             return Err(MinerError::MissingBlock);
         }
         let interval = self.block.as_ref().unwrap().header.timestamp.timestamp() - old_header.timestamp.timestamp();
         let difficulty = Difficulty::calculate_req_difficulty(interval, self.difficulty);
-        let nonce = TestBlakePow::mine(
-            difficulty,
-            &mut self.block.as_mut().unwrap().header,
-            self.stop_mine.clone(),
-        );
-        self.block.as_mut().unwrap().header.nonce = nonce;
+
+        let (tx, mut rx): (Sender<BlockHeader>, Receiver<BlockHeader>) = mpsc::channel(1);
+        for _ in 0..self.thread_count {
+            pool.spawn(Miner::mining(
+                difficulty,
+                self.block.clone().unwrap().header.clone(),
+                self.stop_mine.clone(),
+                tx.clone(),
+            ));
+        }
+        let flag = self.stop_mine.clone();
+        let recv_fut = async move {
+            let rcvd = rx.next().await;
+            flag.store(true, Ordering::Relaxed);
+            rcvd.unwrap()
+        };
+
+        let _rcvd = recv_fut.await;
         self.difficulty = difficulty;
         Ok(())
     }

@@ -9,6 +9,7 @@ edition = "2018"
 [dependencies]
 log = { version = "0.4.8", features = ["std"] }
 tonic = "0.1.0-alpha.3"
+tokio-executor= "=0.2.0-alpha.6"
 bytes = "0.4"
 prost = "0.5"
 tokio = "=0.2.0-alpha.6"

@@ -51,13 +51,14 @@ impl TestBlakePow {
     /// A simple miner. It starts at nonce = 0 and iterates until it finds a header hash that meets the desired target
     // ToDo convert to future, with ability to break function. We need to be able to stop this if we receive a mined
     // block
-    pub fn mine(target_difficulty: Difficulty, header: &mut BlockHeader, stop_flag: Arc<AtomicBool>) -> u64 {
+    pub fn mine(target_difficulty: Difficulty, mut header: BlockHeader, stop_flag: Arc<AtomicBool>) -> BlockHeader {
         let mut rng = rand::OsRng::new().unwrap();
         let mut nonce: u64 = rng.next_u64();
         let start_nonce = nonce;
         // We're mining over here!
         while let Ok(d) = header.pow.achieved_difficulty(nonce, &header) {
             if d >= target_difficulty || stop_flag.load(Ordering::Relaxed) {
+                header.nonce = nonce;
                 break;
             }
             if nonce == std::u64::MAX {
@@ -69,7 +70,7 @@ impl TestBlakePow {
                 header.timestamp = header.timestamp.checked_add_signed(Duration::milliseconds(1)).unwrap();
             }
         }
-        nonce
+        header
     }
 }
 
