@@ -29,6 +29,9 @@ pub enum CommsInterfaceError {
     /// Access to the underlying storage mechanism failed
     UnexpectedApiResponse,
     RequestTimedOut,
+    NoBootstrapNodesConfigured,
     TransportChannelError(TransportChannelError),
     ChainStorageError(ChainStorageError),
+    #[error(non_std, no_from)]
+    OutboundMessageService(String),
 }

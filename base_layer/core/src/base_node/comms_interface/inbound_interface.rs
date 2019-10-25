@@ -23,7 +23,7 @@
 use crate::{
     base_node::comms_interface::{error::CommsInterfaceError, NodeCommsRequest, NodeCommsResponse},
     blocks::blockheader::BlockHeader,
-    chain_storage::{async_db, BlockchainBackend, BlockchainDatabase},
+    chain_storage::{async_db, BlockchainBackend, BlockchainDatabase, HistoricalBlock},
     transaction::{TransactionKernel, TransactionOutput},
 };
 
@@ -74,6 +74,15 @@ where T: BlockchainBackend
                     }
                 }
                 Ok(NodeCommsResponse::TransactionOutputs(utxos))
+            },
+            NodeCommsRequest::FetchBlocks(block_nums) => {
+                let mut blocks = Vec::<HistoricalBlock>::new();
+                for block_num in block_nums {
+                    if let Ok(block) = async_db::fetch_block(self.blockchain_db.clone(), *block_num).await {
+                        blocks.push(block);
+                    }
+                }
+                Ok(NodeCommsResponse::HistoricalBlocks(blocks))
             },
         }
     }

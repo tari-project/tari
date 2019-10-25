@@ -36,12 +36,7 @@ use crate::{
         },
     },
     chain_storage::BlockchainBackend,
-    consts::{
-        BASE_NODE_RNG,
-        BASE_NODE_SERVICE_BROADCAST_PEER_COUNT,
-        BASE_NODE_SERVICE_DESIRED_RESPONSE_COUNT,
-        BASE_NODE_SERVICE_REQUEST_TIMEOUT,
-    },
+    consts::{BASE_NODE_RNG, BASE_NODE_SERVICE_DESIRED_RESPONSE_FRACTION, BASE_NODE_SERVICE_REQUEST_TIMEOUT},
 };
 use futures::{
     channel::{
@@ -59,10 +54,9 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use tari_comms::peer_manager::NodeIdentity;
 use tari_comms_dht::{
     envelope::NodeDestination,
-    outbound::{BroadcastClosestRequest, BroadcastStrategy, OutboundEncryption, OutboundMessageRequester},
+    outbound::{BroadcastStrategy, OutboundEncryption, OutboundMessageRequester},
 };
 use tari_p2p::{
     domain_message::DomainMessage,
@@ -80,18 +74,15 @@ const LOG_TARGET: &'static str = "tari_core::base_node::base_node_service::servi
 pub struct BaseNodeServiceConfig {
     /// The allocated waiting time for a request waiting for service responses from remote base nodes.
     pub request_timeout: Duration,
-    /// The number of remote peers that Base Node Service requests are sent to.
-    pub broadcast_peer_count: usize,
-    /// The number of responses that need to be received for a corresponding service request to be finalize.
-    pub desired_response_count: usize,
+    /// The fraction of responses that need to be received for a corresponding service request to be finalize.
+    pub desired_response_fraction: f32,
 }
 
 impl Default for BaseNodeServiceConfig {
     fn default() -> Self {
         Self {
             request_timeout: BASE_NODE_SERVICE_REQUEST_TIMEOUT,
-            broadcast_peer_count: BASE_NODE_SERVICE_BROADCAST_PEER_COUNT,
-            desired_response_count: BASE_NODE_SERVICE_DESIRED_RESPONSE_COUNT,
+            desired_response_fraction: BASE_NODE_SERVICE_DESIRED_RESPONSE_FRACTION,
         }
     }
 }
@@ -106,7 +97,6 @@ where TChainBackend: BlockchainBackend
     inbound_request_stream: Option<TInbReqStream>,
     inbound_response_stream: Option<TInbRespStream>,
     outbound_message_service: OutboundMessageRequester,
-    node_identity: Arc<NodeIdentity>,
     inbound_nci: Arc<InboundNodeCommsInterface<TChainBackend>>,
     waiting_requests: HashMap<RequestKey, WaitingRequest>,
     timeout_sender: Sender<RequestKey>,
@@ -133,7 +123,6 @@ where
         inbound_request_stream: TInbReqStream,
         inbound_response_stream: TInbRespStream,
         outbound_message_service: OutboundMessageRequester,
-        node_identity: Arc<NodeIdentity>,
         inbound_nci: Arc<InboundNodeCommsInterface<TChainBackend>>,
         config: BaseNodeServiceConfig,
     ) -> Self
@@ -145,7 +134,6 @@ where
             inbound_request_stream: Some(inbound_request_stream),
             inbound_response_stream: Some(inbound_response_stream),
             outbound_message_service,
-            node_identity,
             inbound_nci,
             waiting_requests: HashMap::new(),
             timeout_sender,
@@ -297,23 +285,12 @@ where
             request,
         };
 
-        let broadcast_strategy: BroadcastStrategy;
-        let desired_resp_count: usize;
-        match request_type {
-            NodeCommsRequestType::Single => {
-                broadcast_strategy = BroadcastStrategy::Random(1);
-                desired_resp_count = 1;
-            },
-            NodeCommsRequestType::Many => {
-                broadcast_strategy = BroadcastStrategy::Closest(Box::new(BroadcastClosestRequest {
-                    n: self.config.broadcast_peer_count,
-                    node_id: self.node_identity.identity.node_id.clone(),
-                    excluded_peers: Vec::new(),
-                }));
-                desired_resp_count = self.config.desired_response_count.clone();
-            },
-        }
-        self.outbound_message_service
+        let broadcast_strategy: BroadcastStrategy = match request_type {
+            NodeCommsRequestType::Single => BroadcastStrategy::Random(1),
+            NodeCommsRequestType::Many => BroadcastStrategy::Neighbours(Box::new(Vec::new())),
+        };
+        let dest_count = self
+            .outbound_message_service
             .send_message(
                 broadcast_strategy,
                 NodeDestination::Unspecified,
@@ -322,17 +299,27 @@ where
                 service_request,
             )
             .await
-            .map_err(|_| CommsInterfaceError::UnexpectedApiResponse)?;
+            .map_err(|e| CommsInterfaceError::OutboundMessageService(e.to_string()))?;
 
-        // Wait for matching responses to arrive
-        self.waiting_requests.insert(request_key, WaitingRequest {
-            reply_tx: Some(reply_tx),
-            received_responses: Vec::new(),
-            desired_resp_count,
-        });
-        // Spawn timeout for waiting_request
-        self.spawn_request_timeout(request_key, self.config.request_timeout)
-            .await;
+        if dest_count > 0 {
+            // Wait for matching responses to arrive
+            self.waiting_requests.insert(request_key, WaitingRequest {
+                reply_tx: Some(reply_tx),
+                received_responses: Vec::new(),
+                desired_resp_count: (BASE_NODE_SERVICE_DESIRED_RESPONSE_FRACTION * dest_count as f32).ceil() as usize,
+            });
+            // Spawn timeout for waiting_request
+            self.spawn_request_timeout(request_key, self.config.request_timeout)
+                .await;
+        } else {
+            let _ = reply_tx.send(Err(CommsInterfaceError::NoBootstrapNodesConfigured).or_else(|resp| {
+                error!(
+                    target: LOG_TARGET,
+                    "Failed to send outbound request from Base Node as no bootstrap nodes were configured"
+                );
+                Err(resp)
+            }));
+        }
         Ok(())
     }
 

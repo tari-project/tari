@@ -28,7 +28,7 @@ use crate::{
         NodeCommsResponse,
     },
     blocks::blockheader::BlockHeader,
-    chain_storage::ChainMetadata,
+    chain_storage::{ChainMetadata, HistoricalBlock},
     transaction::{TransactionKernel, TransactionOutput},
     types::HashOutput,
 };
@@ -114,6 +114,20 @@ impl OutboundNodeCommsInterface {
             .first()
         {
             Ok(utxos.clone())
+        } else {
+            Err(CommsInterfaceError::UnexpectedApiResponse)
+        }
+    }
+
+    /// Fetch the Historical Blocks corresponding to the provided block numbers from remote base nodes.
+    pub async fn fetch_blocks(&mut self, block_nums: Vec<u64>) -> Result<Vec<HistoricalBlock>, CommsInterfaceError> {
+        if let Some(NodeCommsResponse::HistoricalBlocks(blocks)) = self
+            .sender
+            .call((NodeCommsRequest::FetchBlocks(block_nums), NodeCommsRequestType::Single))
+            .await??
+            .first()
+        {
+            Ok(blocks.clone())
         } else {
             Err(CommsInterfaceError::UnexpectedApiResponse)
         }

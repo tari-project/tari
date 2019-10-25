@@ -34,7 +34,6 @@ use crate::{
 use futures::{future, Future, Stream, StreamExt};
 use log::*;
 use std::sync::Arc;
-use tari_comms::peer_manager::NodeIdentity;
 use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_p2p::{
     comms_connector::PeerMessage,
@@ -60,7 +59,6 @@ where T: BlockchainBackend
 {
     inbound_message_subscription_factory:
         Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage<TariMessageType>>>>,
-    node_identity: Arc<NodeIdentity>,
     blockchain_db: BlockchainDatabase<T>,
     config: BaseNodeServiceConfig,
 }
@@ -73,14 +71,12 @@ where T: BlockchainBackend
         inbound_message_subscription_factory: Arc<
             TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage<TariMessageType>>>,
         >,
-        node_identity: Arc<NodeIdentity>,
         blockchain_db: BlockchainDatabase<T>,
         config: BaseNodeServiceConfig,
     ) -> Self
     {
         Self {
             inbound_message_subscription_factory,
-            node_identity,
             blockchain_db,
             config,
         }
@@ -120,7 +116,6 @@ where T: BlockchainBackend + 'static
         // Create streams for receiving Base Node requests and response messages from comms
         let inbound_request_stream = self.inbound_request_stream();
         let inbound_response_stream = self.inbound_response_stream();
-        let node_identity = self.node_identity.clone();
         // Connect InboundNodeCommsInterface and OutboundNodeCommsInterface to BaseNodeService
         let (outbound_request_sender_service, outbound_request_stream) = reply_channel::unbounded();
         let outbound_nci = OutboundNodeCommsInterface::new(outbound_request_sender_service);
@@ -144,7 +139,6 @@ where T: BlockchainBackend + 'static
                 inbound_request_stream,
                 inbound_response_stream,
                 outbound_message_service,
-                node_identity,
                 inbound_nci,
                 config,
             )

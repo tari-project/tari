@@ -29,11 +29,11 @@ use crate::{
         NodeCommsResponse,
         OutboundNodeCommsInterface,
     },
-    blocks::BlockHeader,
-    chain_storage::{BlockchainDatabase, ChainMetadata, DbTransaction, MemoryDatabase},
+    blocks::{genesis_block::get_genesis_block, BlockHeader},
+    chain_storage::{BlockchainDatabase, ChainMetadata, DbTransaction, HistoricalBlock, MemoryDatabase},
     proof_of_work::Difficulty,
     tari_amount::MicroTari,
-    test_utils::builders::{create_test_kernel, create_utxo},
+    test_utils::builders::{add_block_and_update_header, create_test_kernel, create_utxo},
     types::HashDigest,
 };
 use futures::{executor::block_on, StreamExt};
@@ -225,6 +225,46 @@ fn inbound_fetch_utxos() {
             {
                 assert_eq!(received_utxos.len(), 1);
                 assert_eq!(received_utxos[0], utxo);
+            } else {
+                assert!(false);
+            }
+        });
+    });
+}
+
+#[test]
+fn outbound_fetch_blocks() {
+    let (sender, mut receiver) = reply_channel::unbounded();
+    let mut outbound_nci = OutboundNodeCommsInterface::new(sender);
+
+    block_on(async {
+        let block = HistoricalBlock::new(get_genesis_block(), 0, Vec::new());
+        let block_response: Vec<NodeCommsResponse> = vec![NodeCommsResponse::HistoricalBlocks(vec![block.clone()])];
+        let (received_blocks, _) = futures::join!(
+            outbound_nci.fetch_blocks(vec![0]),
+            test_request_responder(&mut receiver, block_response)
+        );
+        let received_blocks = received_blocks.unwrap();
+        assert_eq!(received_blocks.len(), 1);
+        assert_eq!(received_blocks[0], block);
+    });
+}
+
+#[test]
+fn inbound_fetch_blocks() {
+    let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
+    let inbound_nci = InboundNodeCommsInterface::new(store.clone());
+
+    let block = add_block_and_update_header(&store, get_genesis_block());
+
+    test_async(move |rt| {
+        rt.spawn(async move {
+            if let Ok(NodeCommsResponse::HistoricalBlocks(received_blocks)) = inbound_nci
+                .handle_request(&NodeCommsRequest::FetchBlocks(vec![0]))
+                .await
+            {
+                assert_eq!(received_blocks.len(), 1);
+                assert_eq!(*received_blocks[0].block(), block);
             } else {
                 assert!(false);
             }

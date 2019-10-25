@@ -259,12 +259,7 @@ fn setup_comms_services<T: BlockchainBackend + 'static>(
 
     let fut = StackBuilder::new(rt.executor(), comms.shutdown_signal())
         .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))
-        .add_initializer(BaseNodeServiceInitializer::new(
-            subscription_factory,
-            id.clone(),
-            db,
-            node_config,
-        ))
+        .add_initializer(BaseNodeServiceInitializer::new(subscription_factory, db, node_config))
         .finish();
 
     info!(target: LOG_TARGET, "Initializing communications stack...");
