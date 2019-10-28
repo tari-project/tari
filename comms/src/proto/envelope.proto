@@ -2,7 +2,8 @@ syntax = "proto3";
 
 package envelope;
 
-// Envelope containing a Tari message
+/// Represents a message which is about to go on or has just come off the wire.
+/// As described in [RFC-0172](https://rfc.tari.com/RFC-0172_PeerToPeerMessagingProtocol.html#messaging-structure)
 message Envelope {
     uint32 version = 1;
     EnvelopeHeader header = 3;

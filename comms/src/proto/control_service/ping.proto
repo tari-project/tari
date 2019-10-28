@@ -1,0 +1,6 @@
+syntax = "proto3";
+
+package control_service;
+
+message PingMessage {  }
+message PongMessage {  }

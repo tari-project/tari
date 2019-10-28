@@ -23,18 +23,16 @@
 use crate::{
     connection::{ConnectionError, NetAddressError},
     message::MessageError,
-    peer_manager::{node_identity::NodeIdentityError, PeerManagerError},
+    peer_manager::PeerManagerError,
 };
 use derive_error::Error;
-use tari_utilities::{ciphers::cipher::CipherError, message_format::MessageFormatError, thread_join::ThreadError};
+use tari_utilities::{ciphers::cipher::CipherError, thread_join::ThreadError};
 
 #[derive(Debug, Error)]
 pub enum ControlServiceError {
     #[error(no_from)]
     BindFailed(ConnectionError),
     MessageError(MessageError),
-    /// Received an invalid message which cannot be handled
-    MessageFormatError(MessageFormatError),
     /// Failed to send control message to worker
     ControlMessageSendFailed,
     // Failed to join on worker thread
@@ -50,7 +48,6 @@ pub enum ControlServiceError {
     PeerBanned,
     /// Received message with an invalid signature
     InvalidMessageSignature,
-    // Client Errors
     /// Received an unexpected reply
     ClientUnexpectedReply,
     NetAddressError(NetAddressError),
@@ -58,5 +55,18 @@ pub enum ControlServiceError {
     ConnectionAddressNotEstablished,
     #[error(non_std, no_from, msg_embedded)]
     ConnectionProtocolFailed(String),
-    NodeIdentityError(NodeIdentityError),
+    /// Failed to decode message
+    DecodeError(prost::DecodeError),
+    /// Received an invalid or unrecognised message type
+    InvalidMessageType,
+    /// Received an invalid envelope body,
+    InvalidEnvelopeBody,
+    /// Received an invalid envelope
+    InvalidEnvelope,
+    /// Node ID is invalid
+    InvalidNodeId,
+    /// Peer sent invalid or unrecognised peer features
+    InvalidPeerFeatures,
+    /// Received an unrecognised message type
+    UnrecognisedMessageType,
 }

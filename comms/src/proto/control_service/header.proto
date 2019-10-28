@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package control_service;
+
+enum MessageType {
+    MessageTypeNone = 0;
+    MessageTypeRequestConnection = 1;
+    MessageTypePing = 2;
+    MessageTypeAcceptPeerConnection = 3;
+    MessageTypeRejectPeerConnection = 4;
+    MessageTypePong = 5;
+    MessageTypeConnectRequestOutcome = 6;
+}
+
+message MessageHeader {
+    MessageType message_type = 1;
+}

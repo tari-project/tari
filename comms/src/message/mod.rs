@@ -63,20 +63,16 @@ use bitflags::*;
 use serde::{Deserialize, Serialize};
 
 #[macro_use]
-mod macros;
-
 mod envelope;
 mod error;
 mod inbound_message;
 mod message;
-mod message_envelope;
 
 pub use self::{
-    envelope::{Envelope, EnvelopeHeader},
+    envelope::{Envelope, EnvelopeBody, EnvelopeHeader, MessageEnvelopeHeader},
     error::MessageError,
     inbound_message::*,
     message::{Message, MessageHeader},
-    message_envelope::{MessageEnvelope, MessageEnvelopeHeader},
 };
 
 pub trait MessageExt: prost::Message {

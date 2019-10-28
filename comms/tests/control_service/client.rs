@@ -24,7 +24,7 @@ use crate::support::factories::{self, TestFactory};
 use std::{sync::Arc, time::Duration};
 use tari_comms::{
     connection::{Connection, Direction, InprocAddress, ZmqContext},
-    control_service::{messages::Ping, ControlServiceClient},
+    control_service::{messages::PingMessage, ControlServiceClient},
 };
 
 #[test]
@@ -55,5 +55,5 @@ fn send_ping_recv_pong() {
         inbound_conn,
     );
 
-    let _msg: Ping = in_client.receive_message(Duration::from_millis(2000)).unwrap().unwrap();
+    let _msg: PingMessage = in_client.receive_message(Duration::from_millis(2000)).unwrap().unwrap();
 }

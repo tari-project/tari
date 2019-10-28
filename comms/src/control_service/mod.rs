@@ -101,6 +101,5 @@ mod worker;
 pub use self::{
     client::ControlServiceClient,
     error::ControlServiceError,
-    messages::ControlServiceRequestType,
     service::{ControlService, ControlServiceConfig, ControlServiceHandle},
 };

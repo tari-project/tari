@@ -106,6 +106,7 @@ impl<'c> ConnectionMessageCounter<'c> {
                             if let Some(ref r) = response {
                                 let mut payload = vec![frames[0].clone()];
                                 payload.extend(r.clone());
+                                trace!(target: LOG_TARGET, "Sending {} frame(s)", payload.len());
                                 connection.send(payload).unwrap();
                             }
                         },

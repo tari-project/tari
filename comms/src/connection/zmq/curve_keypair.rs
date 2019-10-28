@@ -20,9 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::connection::{types::Result, ConnectionError};
+use crate::connection::ConnectionError;
 use clear_on_drop::clear::Clear;
 use serde::{Deserialize, Serialize};
+use tari_utilities::{ByteArray, ByteArrayError};
 use zmq;
 
 //---------------------------------- Curve Encryption --------------------------------------------//
@@ -46,7 +47,7 @@ pub enum CurveEncryption {
 
 impl CurveEncryption {
     /// Generates a Curve25519 public/private keypair
-    pub fn generate_keypair() -> Result<(CurveSecretKey, CurvePublicKey)> {
+    pub fn generate_keypair() -> Result<(CurveSecretKey, CurvePublicKey), ConnectionError> {
         let keypair = zmq::CurveKeyPair::new().map_err(|e| {
             ConnectionError::CurveKeypairError(format!("Unable to generate new Curve25519 keypair: {}", e))
         })?;
@@ -101,6 +102,21 @@ impl CurvePublicKey {
 
     pub fn into_inner(self) -> [u8; 32] {
         self.0
+    }
+}
+
+impl ByteArray for CurvePublicKey {
+    fn from_bytes(bytes: &[u8]) -> Result<Self, ByteArrayError> {
+        if bytes.len() != 32 {
+            return Err(ByteArrayError::IncorrectLength);
+        }
+        let mut a = [0u8; 32];
+        a.copy_from_slice(bytes);
+        Ok(Self(a))
+    }
+
+    fn as_bytes(&self) -> &[u8] {
+        &self.0
     }
 }
 
