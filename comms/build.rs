@@ -24,19 +24,32 @@ use std::path::PathBuf;
 
 const PROTOS_PATH: &'static str = "src/proto";
 
-fn main() {
-    let proto_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(PROTOS_PATH);
-    let protos = proto_path
+fn walk_protos(search_path: &PathBuf) -> Vec<PathBuf> {
+    let mut protos = Vec::new();
+    let paths_iter = search_path
         .read_dir()
         .unwrap()
         .filter_map(Result::ok)
-        .map(|dir| dir.path())
-        .filter(|path| path.is_file())
-        .filter(|path| path.extension().map(|ext| ext == "proto").unwrap_or(false))
-        .collect::<Vec<_>>();
+        .map(|dir| dir.path());
+
+    for path in paths_iter {
+        if path.is_file() && path.extension().filter(|ext| ext == &"proto").is_some() {
+            protos.push(path)
+        } else if path.is_dir() {
+            protos.extend(walk_protos(&path));
+        }
+    }
+
+    protos
+}
+
+fn main() {
+    let proto_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(PROTOS_PATH);
+    let protos = walk_protos(&proto_path);
 
     println!("Compiling {} protobuf file(s)", protos.len());
     prost_build::Config::new()
+        .type_attribute(".control_service.RejectReason", "#[derive(Error)]")
         .compile_protos(&protos, &[proto_path])
         .unwrap();
 }

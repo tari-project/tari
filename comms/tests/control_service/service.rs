@@ -24,9 +24,9 @@ use crate::support::factories::{self, TestFactory};
 use futures::channel::mpsc::{channel, Sender};
 use std::{path::PathBuf, sync::Arc, time::Duration};
 use tari_comms::{
-    connection::{types::Direction, Connection, ZmqContext},
+    connection::{types::Direction, Connection, CurvePublicKey, ZmqContext},
     connection_manager::ConnectionManager,
-    control_service::{messages::ConnectRequestOutcome, ControlService, ControlServiceClient, ControlServiceConfig},
+    control_service::{messages::RequestConnectionOutcome, ControlService, ControlServiceClient, ControlServiceConfig},
     message::FrameSet,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManager},
 };
@@ -34,7 +34,7 @@ use tari_storage::{
     lmdb_store::{LMDBBuilder, LMDBDatabase, LMDBError, LMDBStore},
     LMDBWrapper,
 };
-use tari_utilities::thread_join::ThreadJoinWithTimeout;
+use tari_utilities::{thread_join::ThreadJoinWithTimeout, ByteArray};
 
 fn make_peer_manager(peers: Vec<Peer>, database: LMDBDatabase) -> Arc<PeerManager> {
     Arc::new(
@@ -132,7 +132,7 @@ fn request_connection() {
         )
         .unwrap();
     let outcome = client
-        .receive_message::<ConnectRequestOutcome>(Duration::from_millis(3000))
+        .receive_message::<RequestConnectionOutcome>(Duration::from_millis(3000))
         .unwrap()
         .unwrap();
 
@@ -145,34 +145,28 @@ fn request_connection() {
     assert_eq!(peer.flags, PeerFlags::empty());
     assert_eq!(peer.features, PeerFeatures::COMMUNICATION_NODE);
 
-    match outcome {
-        ConnectRequestOutcome::Accepted {
-            address,
-            curve_public_key,
-        } => {
-            // --- Setup outbound peer connection to the requested address
-            let (message_sink_tx2, _message_sink_rx2) = channel(10);
-            let (peer_conn, peer_conn_handle) = factories::peer_connection::create()
-                .with_peer_connection_context_factory(
-                    factories::peer_connection_context::create()
-                        .with_context(&context)
-                        .with_direction(Direction::Outbound)
-                        .with_address(address.clone())
-                        .with_message_sink_channel(message_sink_tx2)
-                        .with_server_public_key(curve_public_key),
-                )
-                .build()
-                .unwrap();
+    assert_eq!(outcome.accepted, true);
+    // --- Setup outbound peer connection to the requested address
+    let (message_sink_tx2, _message_sink_rx2) = channel(10);
+    let (peer_conn, peer_conn_handle) = factories::peer_connection::create()
+        .with_peer_connection_context_factory(
+            factories::peer_connection_context::create()
+                .with_context(&context)
+                .with_direction(Direction::Outbound)
+                .with_address(outcome.address.parse().unwrap())
+                .with_message_sink_channel(message_sink_tx2)
+                .with_server_public_key(CurvePublicKey::from_bytes(&outcome.curve_public_key).unwrap()),
+        )
+        .build()
+        .unwrap();
 
-            peer_conn
-                .wait_connected_or_failure(&Duration::from_millis(3000))
-                .unwrap();
+    peer_conn
+        .wait_connected_or_failure(&Duration::from_millis(3000))
+        .unwrap();
 
-            peer_conn.shutdown().unwrap();
-            peer_conn_handle.timeout_join(Duration::from_millis(3000)).unwrap();
-        },
-        ConnectRequestOutcome::Rejected(reason) => panic!("Connection was rejected unexpectedly: {}", reason),
-    }
+    peer_conn.shutdown().unwrap();
+    peer_conn_handle.timeout_join(Duration::from_millis(3000)).unwrap();
+
     service_handle.shutdown().unwrap();
     service_handle.timeout_join(Duration::from_millis(3000)).unwrap();
 

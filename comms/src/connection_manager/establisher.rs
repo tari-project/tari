@@ -126,7 +126,7 @@ impl ConnectionEstablisher {
     /// Attempt to establish a control service connection to one of the peer's addresses
     ///
     /// ### Arguments
-    /// - `peer`: `&Peer<CommsPublicKey>` - The peer to connect to
+    /// - `peer`: `&Peer` - The peer to connect to
     pub fn connect_control_service_client(&self, peer: &Peer) -> Result<ControlServiceClient> {
         let config = &self.config;
 
@@ -149,7 +149,7 @@ impl ConnectionEstablisher {
             debug!(target: LOG_TARGET, "Attempting to connect to {}", address);
 
             let conn = Connection::new(&self.context, Direction::Outbound)
-                .set_name(format!("out-control-port-conn-{}", peer.node_id).as_str())
+                .set_name(format!("outbound-control-port-conn-{}", peer.node_id).as_str())
                 .set_linger(Linger::Never)
                 .set_backlog(1)
                 .set_socks_proxy_addr(config.socks_proxy_address.clone())
@@ -171,7 +171,7 @@ impl ConnectionEstablisher {
 
         match maybe_client {
             Some(client) => Ok(client),
-            None => Err(ConnectionManagerError::MaxConnnectionAttemptsExceeded),
+            None => Err(ConnectionManagerError::ControlServiceFailedConnectionAllAddresses),
         }
     }
 
@@ -187,12 +187,35 @@ impl ConnectionEstablisher {
             let (conn, address) = connection_factory()?;
             let client = ControlServiceClient::new(Arc::clone(&self.node_identity), peer.public_key.clone(), conn);
 
-            if let Some(_) = client.ping_pong(self.config.peer_connection_establish_timeout).ok() {
-                self.peer_manager
-                    .mark_successful_connection_attempt(&address)
-                    .map_err(ConnectionManagerError::PeerManagerError)?;
+            debug!(
+                target: LOG_TARGET,
+                "Sending ping to remote control port (NodeId={})", peer.node_id
+            );
+            match client.ping_pong(self.config.peer_connection_establish_timeout) {
+                Ok(Some(_)) => {
+                    self.peer_manager
+                        .mark_successful_connection_attempt(&address)
+                        .map_err(ConnectionManagerError::PeerManagerError)?;
 
-                break Ok(Some(client));
+                    debug!(
+                        target: LOG_TARGET,
+                        "Received PONG reply. Connection succeeded (NodeId={})", peer.node_id
+                    );
+
+                    break Ok(Some(client));
+                },
+                Ok(None) => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Did not receive PONG within timeout from peer {}", peer.node_id
+                    );
+                },
+                Err(err) => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Control service ping pong check failed because '{}'", err
+                    );
+                },
             }
 
             self.peer_manager

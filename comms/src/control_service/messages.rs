@@ -20,77 +20,63 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    connection::{net_address::NetAddress, zmq::CurvePublicKey},
-    peer_manager::{NodeId, PeerFeatures},
-};
 use derive_error::Error;
-use serde::{Deserialize, Serialize};
 
-/// Control service request message types
-#[derive(Eq, PartialEq, Hash, Serialize, Deserialize)]
-pub enum ControlServiceRequestType {
-    RequestPeerConnection,
-    Ping,
+///// Control service request message types
+//#[derive(Eq, PartialEq, Hash, Serialize, Deserialize)]
+// pub enum ControlServiceRequestType {
+//    RequestPeerConnection,
+//    Ping,
+//}
+//
+///// Control service response message types
+//#[derive(Eq, PartialEq, Hash, Serialize, Deserialize)]
+// pub enum ControlServiceResponseType {
+//    AcceptPeerConnection,
+//    RejectPeerConnection,
+//    Pong,
+//    ConnectRequestOutcome,
+//}
+
+///// Details required to connect to the new [PeerConnection]
+/////
+///// [PeerConnection]: ../../connection/peer_connection/index.html
+//#[derive(Serialize, Deserialize, Debug)]
+// pub struct PeerConnectionDetails {
+//    pub server_key: CurvePublicKey,
+//    pub address: NetAddress,
+//}
+//
+///// Represents an outcome for the request to establish a new [PeerConnection].
+/////
+///// [PeerConnection]: ../../connection/peer_connection/index.html
+//#[derive(Serialize, Deserialize, Debug)]
+// pub enum ConnectRequestOutcome {
+//    /// Accept response to a request to open a peer connection from a remote peer.
+//    Accepted {
+//        /// The zeroMQ Curve public key to use for the peer connection
+//        curve_public_key: CurvePublicKey,
+//        /// The address to which to connect
+//        address: NetAddress,
+//    },
+//    /// Reject response to a request to open a peer connection from a remote peer.
+//    Rejected(RejectReason),
+//}
+///// Represents the reason for a peer connection request being rejected
+//#[derive(Error, Serialize, Deserialize, Debug, PartialEq, Eq)]
+// pub enum RejectReason {
+//    /// Peer already has an existing active peer connection
+//    ExistingConnection,
+//    /// A connection collision has been detected, foreign node should abandon the connection attempt
+//    CollisionDetected,
+//}
+
+include_proto!("control_service");
+
+impl MessageHeader {
+    pub fn new(message_type: MessageType) -> Self {
+        Self {
+            message_type: message_type as i32,
+        }
+    }
 }
-
-/// Control service response message types
-#[derive(Eq, PartialEq, Hash, Serialize, Deserialize)]
-pub enum ControlServiceResponseType {
-    AcceptPeerConnection,
-    RejectPeerConnection,
-    Pong,
-    ConnectRequestOutcome,
-}
-
-/// Details required to connect to the new [PeerConnection]
-///
-/// [PeerConnection]: ../../connection/peer_connection/index.html
-#[derive(Serialize, Deserialize, Debug)]
-pub struct PeerConnectionDetails {
-    pub server_key: CurvePublicKey,
-    pub address: NetAddress,
-}
-
-/// Represents an outcome for the request to establish a new [PeerConnection].
-///
-/// [PeerConnection]: ../../connection/peer_connection/index.html
-#[derive(Serialize, Deserialize, Debug)]
-pub enum ConnectRequestOutcome {
-    /// Accept response to a request to open a peer connection from a remote peer.
-    Accepted {
-        /// The zeroMQ Curve public key to use for the peer connection
-        curve_public_key: CurvePublicKey,
-        /// The address to which to connect
-        address: NetAddress,
-    },
-    /// Reject response to a request to open a peer connection from a remote peer.
-    Rejected(RejectReason),
-}
-
-/// Represents the reason for a peer connection request being rejected
-#[derive(Error, Serialize, Deserialize, Debug, PartialEq, Eq)]
-pub enum RejectReason {
-    /// Peer already has an existing active peer connection
-    ExistingConnection,
-    /// A connection collision has been detected, foreign node should abandon the connection attempt
-    CollisionDetected,
-}
-
-/// This represents a request to open a peer connection
-/// to a remote peer.
-#[derive(Serialize, Deserialize, Debug)]
-pub struct RequestPeerConnection {
-    pub control_service_address: NetAddress,
-    /// The node id of this node
-    pub node_id: NodeId,
-    pub features: PeerFeatures,
-}
-
-/// Sent to the control service to test liveness
-#[derive(Serialize, Deserialize, Debug)]
-pub struct Ping;
-
-/// Sent from the control service in response to a Ping to indicate liveness
-#[derive(Serialize, Deserialize, Debug)]
-pub struct Pong;

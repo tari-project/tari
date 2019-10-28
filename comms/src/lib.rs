@@ -15,6 +15,8 @@ extern crate lazy_static;
 
 #[macro_use]
 mod macros;
+#[macro_use]
+pub mod message;
 
 pub mod builder;
 #[macro_use]
@@ -23,7 +25,6 @@ pub mod connection_manager;
 mod consts;
 pub mod control_service;
 pub mod inbound_message_service;
-pub mod message;
 pub mod outbound_message_service;
 pub mod peer_manager;
 pub mod types;

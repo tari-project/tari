@@ -29,14 +29,16 @@ use std::{path::PathBuf, sync::Arc, time::Duration};
 use tari_comms::{
     connection::{CurveEncryption, Direction, NetAddress, ZmqContext},
     connection_manager::{establisher::ConnectionEstablisher, ConnectionManagerError, PeerConnectionConfig},
-    control_service::messages::{ControlServiceResponseType, Pong},
-    message::{Message, MessageEnvelope, MessageFlags, MessageHeader},
+    control_service::messages::{MessageHeader, MessageType, PongMessage},
+    message::{Envelope, MessageExt, MessageFlags},
+    utils::crypt,
+    wrap_in_envelope_body,
 };
 use tari_storage::{
     lmdb_store::{LMDBBuilder, LMDBError, LMDBStore},
     LMDBWrapper,
 };
-use tari_utilities::{message_format::MessageFormat, thread_join::ThreadJoinWithTimeout};
+use tari_utilities::thread_join::ThreadJoinWithTimeout;
 
 fn make_peer_connection_config() -> PeerConnectionConfig {
     PeerConnectionConfig {
@@ -114,7 +116,7 @@ fn establish_control_service_connection_fail() {
     let establisher = ConnectionEstablisher::new(context.clone(), node_identity, config, peer_manager, tx);
     match establisher.connect_control_service_client(example_peer) {
         Ok(_) => panic!("Unexpected success result"),
-        Err(ConnectionManagerError::MaxConnnectionAttemptsExceeded) => {},
+        Err(ConnectionManagerError::ControlServiceFailedConnectionAllAddresses) => {},
         Err(err) => panic!("Unexpected error type: {:?}", err),
     }
 
@@ -141,26 +143,28 @@ fn establish_control_service_connection_succeed() {
 
     // Setup a connection counter to act as a control service sending back a pong
     let pong_response = {
-        let envelope = MessageEnvelope::construct(
-            &node_identity2,
-            node_identity1.identity.public_key.clone(),
-            Message::from_message_format(
-                MessageHeader::new(ControlServiceResponseType::Pong).unwrap(),
-                Pong {}.to_binary().unwrap(),
-            )
+        let body = wrap_in_envelope_body!(MessageHeader::new(MessageType::Pong), PongMessage {})
             .unwrap()
-            .to_binary()
-            .unwrap(),
+            .to_encoded_bytes()
+            .unwrap();
+
+        let shared_secret = crypt::generate_ecdh_secret(node_identity2.secret_key(), node_identity1.public_key());
+        let encrypted_body = crypt::encrypt(&shared_secret, &body).unwrap();
+
+        let envelope = Envelope::construct_signed(
+            node_identity1.secret_key(),
+            node_identity1.public_key(),
+            encrypted_body,
             MessageFlags::ENCRYPTED,
         )
         .unwrap();
-        envelope.into_frame_set()
+        envelope.to_encoded_bytes().unwrap()
     };
 
-    let address: NetAddress = example_peer.addresses[0].net_address.clone();
-
     let mut msg_counter1 = ConnectionMessageCounter::new(&context);
-    msg_counter1.set_response(pong_response);
+    msg_counter1.set_response(vec![pong_response]);
+
+    let address = example_peer.addresses[0].net_address.clone();
     msg_counter1.start(address);
 
     // Setup peer manager

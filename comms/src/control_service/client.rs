@@ -21,18 +21,22 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::{
-    messages::{ControlServiceRequestType, Ping, Pong, RequestPeerConnection},
+    messages::{MessageHeader, MessageType, PingMessage, PongMessage, RequestConnectionMessage},
     ControlServiceError,
 };
 use crate::{
     connection::{Direction, EstablishedConnection, NetAddress},
-    control_service::messages::ControlServiceResponseType,
-    message::{Message, MessageEnvelope, MessageFlags, MessageHeader},
+    message::{Envelope, EnvelopeBody, MessageExt, MessageFlags},
     peer_manager::{NodeId, NodeIdentity, PeerFeatures},
     types::CommsPublicKey,
+    utils::crypt,
 };
-use std::{convert::TryInto, sync::Arc, time::Duration};
-use tari_utilities::message_format::MessageFormat;
+use log::*;
+use prost::Message;
+use std::{sync::Arc, time::Duration};
+use tari_utilities::ByteArray;
+
+const LOG_TARGET: &str = "comms::control_service::client";
 
 /// # ControlServiceClient
 ///
@@ -67,18 +71,33 @@ impl ControlServiceClient {
 
     /// Send a Ping message
     pub fn send_ping(&self) -> Result<(), ControlServiceError> {
-        self.send_msg(ControlServiceRequestType::Ping, Ping {})
+        trace!(target: LOG_TARGET, "Sending PING message");
+        self.send_msg(MessageType::Ping, PingMessage {})
     }
 
     /// Send a Ping message and wait until the given timeout for a Pong message.
-    pub fn ping_pong(&self, timeout: Duration) -> Result<Option<Pong>, ControlServiceError> {
-        self.send_msg(ControlServiceRequestType::Ping, Ping {})?;
+    pub fn ping_pong(&self, timeout: Duration) -> Result<Option<PongMessage>, ControlServiceError> {
+        self.send_ping()?;
 
-        match self.receive_raw_message(timeout)? {
-            Some(msg) => {
-                let header = msg.deserialize_header()?;
-                match header.message_type {
-                    ControlServiceResponseType::Pong => Ok(Some(msg.deserialize_message()?)),
+        trace!(
+            target: LOG_TARGET,
+            "Awaiting PONG message for {}ms",
+            timeout.as_millis()
+        );
+        match self.receive_envelope(timeout)? {
+            Some(envelope) => {
+                let decrypted_body = crypt::decrypt(&self.shared_secret(), &envelope.body)?;
+                let body = EnvelopeBody::decode(decrypted_body)?;
+                let header = body
+                    .decode_part::<MessageHeader>(0)?
+                    .ok_or(ControlServiceError::InvalidEnvelopeBody)?;
+                match MessageType::from_i32(header.message_type) {
+                    Some(MessageType::Pong) => {
+                        let msg = body.decode_part(1)?.ok_or(ControlServiceError::InvalidEnvelopeBody)?;
+
+                        trace!(target: LOG_TARGET, "Received PONG",);
+                        Ok(Some(msg))
+                    },
                     _ => Err(ControlServiceError::ClientUnexpectedReply),
                 }
             },
@@ -86,34 +105,40 @@ impl ControlServiceClient {
         }
     }
 
-    /// Wait until the given timeout for any MessageFormat message _T_.
+    /// Wait until the given timeout for any message _T_.
     pub fn receive_message<T>(&self, timeout: Duration) -> Result<Option<T>, ControlServiceError>
-    where T: MessageFormat {
-        match self.receive_raw_message(timeout)? {
+    where T: prost::Message + Default {
+        match self.receive_envelope(timeout)? {
             Some(msg) => {
-                let message = msg.deserialize_message()?;
-                Ok(Some(message))
+                trace!(target: LOG_TARGET, "Received envelope. Decrypting...");
+                let decrypted_bytes = crypt::decrypt(&self.shared_secret(), &msg.body)?;
+                let body = EnvelopeBody::decode(decrypted_bytes)?;
+                trace!(
+                    target: LOG_TARGET,
+                    "Decoding envelope body of length {}",
+                    body.num_parts()
+                );
+                let maybe_message = body.decode_part(1)?;
+                Ok(maybe_message)
             },
             None => Ok(None),
         }
     }
 
-    /// Wait until the given timeout for a raw [Message]. The [Message] signature is validated, otherwise
+    /// Wait until the given timeout for an [Envelope]. The [Envelope] signature is validated, otherwise
     /// an error is returned.
     ///
-    /// [Message]: ../../message/message/struct.Message.html
-    pub fn receive_raw_message(&self, timeout: Duration) -> Result<Option<Message>, ControlServiceError> {
+    /// [Envelope]: crate::message::Envelope
+    pub fn receive_envelope(&self, timeout: Duration) -> Result<Option<Envelope>, ControlServiceError> {
         match connection_try!(self.connection.receive(timeout.as_millis() as u32)) {
             Some(mut frames) => {
                 if self.connection.direction() == &Direction::Inbound {
-                    frames.drain(0..1);
+                    frames.remove(0);
                 }
-                let envelope: MessageEnvelope = frames.try_into()?;
-                let header = envelope.deserialize_header()?;
-                if header.verify_signature(envelope.body_frame())? {
-                    let msg =
-                        envelope.deserialize_encrypted_body(&self.node_identity.secret_key, &self.dest_public_key)?;
-                    Ok(Some(msg))
+                let envelope_frame = frames.get(0).ok_or(ControlServiceError::InvalidEnvelope)?;
+                let envelope = Envelope::decode(envelope_frame)?;
+                if envelope.verify_signature()? {
+                    Ok(Some(envelope))
                 } else {
                     Err(ControlServiceError::InvalidMessageSignature)
                 }
@@ -122,9 +147,9 @@ impl ControlServiceClient {
         }
     }
 
-    /// Send a [RequestPeerConnection] message.
+    /// Send a [RequestConnectionMessage] message.
     ///
-    /// [RequestPeerConnection]: ../messages/struct.RequestPeerConnection.html
+    /// [RequestConnectionMessage]: ../messages/struct.RequestConnectionMessage.html
     pub fn send_request_connection(
         &self,
         control_service_address: NetAddress,
@@ -132,41 +157,40 @@ impl ControlServiceClient {
         features: PeerFeatures,
     ) -> Result<(), ControlServiceError>
     {
-        let msg = RequestPeerConnection {
-            control_service_address,
-            node_id,
-            features,
-        };
-        self.send_msg(ControlServiceRequestType::RequestPeerConnection, msg)
+        self.send_msg(MessageType::RequestConnection, RequestConnectionMessage {
+            control_service_address: control_service_address.to_string(),
+            node_id: node_id.to_vec(),
+            features: features.bits(),
+        })
     }
 
-    fn send_msg<T>(&self, message_type: ControlServiceRequestType, msg: T) -> Result<(), ControlServiceError>
-    where T: MessageFormat {
+    fn send_msg<T>(&self, message_type: MessageType, msg: T) -> Result<(), ControlServiceError>
+    where T: prost::Message {
         let envelope = self.construct_envelope(message_type, msg)?;
+        let frame = envelope.to_encoded_bytes()?;
 
         self.connection
-            .send(envelope.into_frame_set())
+            .send(&[frame])
             .map_err(ControlServiceError::ConnectionError)
     }
 
-    fn construct_envelope<T>(
-        &self,
-        message_type: ControlServiceRequestType,
-        msg: T,
-    ) -> Result<MessageEnvelope, ControlServiceError>
-    where
-        T: MessageFormat,
-    {
-        let header = MessageHeader::new(message_type)?;
-        let msg = Message::from_message_format(header, msg)?;
+    fn construct_envelope<T>(&self, message_type: MessageType, msg: T) -> Result<Envelope, ControlServiceError>
+    where T: prost::Message {
+        let header = MessageHeader::new(message_type);
+        let body_bytes = wrap_in_envelope_body!(header, msg)?.to_encoded_bytes()?;
+        let encrypted_bytes = crypt::encrypt(&self.shared_secret(), &body_bytes)?;
 
-        MessageEnvelope::construct(
-            &self.node_identity,
-            self.dest_public_key.clone(),
-            msg.to_binary()?,
+        Envelope::construct_signed(
+            self.node_identity.secret_key(),
+            self.node_identity.public_key(),
+            encrypted_bytes,
             MessageFlags::ENCRYPTED,
         )
         .map_err(ControlServiceError::MessageError)
+    }
+
+    fn shared_secret(&self) -> CommsPublicKey {
+        crypt::generate_ecdh_secret(self.node_identity.secret_key(), &self.dest_public_key)
     }
 }
 
@@ -189,12 +213,13 @@ mod test {
         let (_, public_key) = CommsPublicKey::random_keypair(&mut OsRng::new().unwrap());
 
         let client = ControlServiceClient::new(node_identity.clone(), public_key.clone(), conn);
-        let envelope = client
-            .construct_envelope(ControlServiceRequestType::Ping, Ping {})
-            .unwrap();
+        let envelope = client.construct_envelope(MessageType::Ping, PingMessage {}).unwrap();
 
-        let header = envelope.deserialize_header().unwrap();
-        assert_eq!(header.public_key, node_identity.identity.public_key);
-        assert_eq!(header.flags, MessageFlags::ENCRYPTED);
+        let header = envelope.header.unwrap();
+        assert_eq!(
+            header.get_comms_public_key().unwrap(),
+            node_identity.identity.public_key
+        );
+        assert_eq!(header.flags, MessageFlags::ENCRYPTED.bits());
     }
 }

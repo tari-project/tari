@@ -22,7 +22,14 @@
 
 use super::{
     error::ControlServiceError,
-    messages::{ControlServiceRequestType, RequestPeerConnection},
+    messages::{
+        MessageHeader,
+        MessageType,
+        PongMessage,
+        RejectReason,
+        RequestConnectionMessage,
+        RequestConnectionOutcome,
+    },
     service::ControlServiceConfig,
     types::{ControlMessage, Result},
 };
@@ -37,14 +44,13 @@ use crate::{
         ZmqContext,
     },
     connection_manager::{ConnectionManager, EstablishLockResult},
-    control_service::messages::{ConnectRequestOutcome, ControlServiceResponseType, Pong, RejectReason},
-    message::{Frame, FrameSet, Message, MessageEnvelope, MessageEnvelopeHeader, MessageFlags, MessageHeader},
-    peer_manager::{NodeId, NodeIdentity, Peer, PeerFlags, PeerManagerError},
+    message::{Envelope, EnvelopeBody, Frame, FrameSet, MessageEnvelopeHeader, MessageExt, MessageFlags},
+    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManagerError},
     types::CommsPublicKey,
     utils::crypt,
 };
 use log::*;
-use serde::{de::DeserializeOwned, Serialize};
+use prost::Message;
 use std::{
     convert::TryInto,
     sync::{
@@ -54,7 +60,7 @@ use std::{
     thread,
     time::Duration,
 };
-use tari_utilities::{byte_array::ByteArray, message_format::MessageFormat};
+use tari_utilities::byte_array::ByteArray;
 
 const LOG_TARGET: &str = "comms::control_service::worker";
 /// The maximum message size allowed for the control service.
@@ -180,23 +186,25 @@ impl ControlServiceWorker {
     }
 
     fn process_message(&self, mut frames: FrameSet) -> Result<()> {
-        if frames.is_empty() {
-            // This case should never happen as ZMQ_ROUTER adds the identity frame
-            warn!(target: LOG_TARGET, "Received empty frames from socket.");
+        if frames.len() < 2 {
+            debug!(
+                target: LOG_TARGET,
+                "Insufficient frames received (Received: {}, Want: 2)",
+                frames.len()
+            );
             return Ok(());
         }
 
-        let envelope: MessageEnvelope = frames
-            .drain(1..)
-            .collect::<FrameSet>()
-            .try_into()
-            .map_err(ControlServiceError::MessageError)?;
+        let identity_frame = frames.remove(0);
+        let envelope_frame = frames.remove(0);
 
-        let identity_frame = frames
-            .pop()
-            .expect("Should not happen: drained all frames but the first, but then could not pop the first frame.");
+        let envelope = Envelope::decode(envelope_frame)?;
 
-        let envelope_header = envelope.deserialize_header()?;
+        let envelope_header: MessageEnvelopeHeader = envelope
+            .header
+            .ok_or(ControlServiceError::InvalidEnvelope)?
+            .try_into()?;
+
         if !envelope_header.flags.contains(MessageFlags::ENCRYPTED) {
             return Err(ControlServiceError::ReceivedUnencryptedMessage);
         }
@@ -206,28 +214,40 @@ impl ControlServiceWorker {
             return Err(ControlServiceError::PeerBanned);
         }
 
-        let decrypted_body = self.decrypt_body(envelope.body_frame(), &envelope_header.public_key)?;
-        let message =
-            Message::from_binary(decrypted_body.as_bytes()).map_err(ControlServiceError::MessageFormatError)?;
+        let decrypted_body = self.decrypt_body(&envelope.body, &envelope_header.public_key)?;
+        let body = EnvelopeBody::decode(decrypted_body)?;
 
         debug!(target: LOG_TARGET, "Handling message");
-        self.handle_message(envelope_header, identity_frame, message)
+        self.handle_message(envelope_header, identity_frame, body)
     }
 
     fn handle_message(
         &self,
         envelope_header: MessageEnvelopeHeader,
         identity_frame: Frame,
-        msg: Message,
+        envelope_body: EnvelopeBody,
     ) -> Result<()>
     {
-        let header = msg.deserialize_header().map_err(ControlServiceError::MessageError)?;
+        let header = envelope_body
+            .decode_part::<MessageHeader>(0)?
+            .ok_or(ControlServiceError::InvalidEnvelopeBody)?;
 
-        match header.message_type {
-            ControlServiceRequestType::Ping => self.handle_ping(envelope_header, identity_frame),
-            ControlServiceRequestType::RequestPeerConnection => {
-                self.handle_request_connection(envelope_header, identity_frame, msg.deserialize_message()?)
+        match MessageType::from_i32(header.message_type).ok_or(ControlServiceError::InvalidMessageType)? {
+            MessageType::None => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Received None message type from public key '{}'", envelope_header.public_key
+                );
+                Err(ControlServiceError::UnrecognisedMessageType)
             },
+            MessageType::Ping => self.handle_ping(envelope_header, identity_frame),
+            MessageType::RequestConnection => {
+                let msg = envelope_body
+                    .decode_part(1)?
+                    .ok_or(ControlServiceError::InvalidEnvelopeBody)?;
+                self.handle_request_connection(envelope_header, identity_frame, msg)
+            },
+            _ => Err(ControlServiceError::UnrecognisedMessageType),
         }
     }
 
@@ -236,8 +256,8 @@ impl ControlServiceWorker {
         self.send_reply(
             &envelope_header.public_key,
             identity_frame,
-            ControlServiceResponseType::Pong,
-            Pong {},
+            MessageType::Pong,
+            PongMessage {},
         )
     }
 
@@ -245,18 +265,22 @@ impl ControlServiceWorker {
         &self,
         envelope_header: MessageEnvelopeHeader,
         identity_frame: Frame,
-        message: RequestPeerConnection,
+        message: RequestConnectionMessage,
     ) -> Result<()>
     {
-        let RequestPeerConnection {
+        let RequestConnectionMessage {
             node_id,
             control_service_address,
             features,
         } = message;
 
+        let control_service_address = control_service_address.parse::<NetAddress>()?;
+        let node_id = NodeId::from_bytes(&node_id).map_err(|_| ControlServiceError::InvalidNodeId)?;
+        let peer_features = PeerFeatures::from_bits_truncate(features);
+
         debug!(
             target: LOG_TARGET,
-            "RequestConnection message received with NodeId {}", node_id
+            "RequestConnection message received with NodeId {} (features: {:?})", node_id, peer_features,
         );
 
         let pm = &self.connection_manager.peer_manager();
@@ -272,7 +296,7 @@ impl ControlServiceWorker {
                     None,
                     Some(vec![control_service_address.clone()]),
                     None,
-                    Some(features),
+                    Some(peer_features),
                 )?;
 
                 peer
@@ -283,7 +307,7 @@ impl ControlServiceWorker {
                     node_id,
                     control_service_address.into(),
                     PeerFlags::empty(),
-                    features,
+                    peer_features,
                 );
 
                 pm.add_peer(peer.clone())
@@ -400,14 +424,19 @@ impl ControlServiceWorker {
         &self,
         envelope_header: &MessageEnvelopeHeader,
         identity: Frame,
-        reason: RejectReason,
+        reject_reason: RejectReason,
     ) -> Result<()>
     {
         self.send_reply(
             &envelope_header.public_key,
             identity,
-            ControlServiceResponseType::ConnectRequestOutcome,
-            ConnectRequestOutcome::Rejected(reason),
+            MessageType::ConnectRequestOutcome,
+            RequestConnectionOutcome {
+                accepted: false,
+                curve_public_key: Default::default(),
+                address: Default::default(),
+                reject_reason: reject_reason as i32,
+            },
         )
     }
 
@@ -422,10 +451,12 @@ impl ControlServiceWorker {
         self.send_reply(
             &envelope_header.public_key,
             identity,
-            ControlServiceResponseType::ConnectRequestOutcome,
-            ConnectRequestOutcome::Accepted {
-                curve_public_key,
-                address,
+            MessageType::ConnectRequestOutcome,
+            RequestConnectionOutcome {
+                accepted: true,
+                curve_public_key: curve_public_key.to_vec(),
+                address: address.to_string(),
+                reject_reason: RejectReason::None as i32,
             },
         )
     }
@@ -439,49 +470,51 @@ impl ControlServiceWorker {
         }
     }
 
-    fn construct_envelope<T, MT>(
+    fn construct_envelope<T>(
         &self,
         dest_public_key: &CommsPublicKey,
-        message_type: MT,
+        message_type: MessageType,
         msg: T,
-        flags: MessageFlags,
-    ) -> Result<MessageEnvelope>
+    ) -> Result<Envelope>
     where
-        T: MessageFormat,
-        MT: Serialize + DeserializeOwned,
-        MT: MessageFormat,
+        T: prost::Message,
     {
-        let header = MessageHeader::new(message_type)?;
-        let msg = Message::from_message_format(header, msg).map_err(ControlServiceError::MessageError)?;
+        let header = MessageHeader::new(message_type);
+        let body_bytes = wrap_in_envelope_body!(header, msg)?.to_encoded_bytes()?;
+        let encrypted_bytes = crypt::encrypt(&self.shared_secret(dest_public_key), &body_bytes)?;
 
-        MessageEnvelope::construct(
-            &self.node_identity,
-            dest_public_key.clone(),
-            msg.to_binary().map_err(ControlServiceError::MessageFormatError)?,
-            flags,
+        Envelope::construct_signed(
+            self.node_identity.secret_key(),
+            self.node_identity.public_key(),
+            encrypted_bytes,
+            MessageFlags::ENCRYPTED,
         )
         .map_err(ControlServiceError::MessageError)
+    }
+
+    fn shared_secret(&self, public_key: &CommsPublicKey) -> CommsPublicKey {
+        crypt::generate_ecdh_secret(self.node_identity.secret_key(), public_key)
     }
 
     fn send_reply<T>(
         &self,
         dest_public_key: &CommsPublicKey,
         identity_frame: Frame,
-        message_type: ControlServiceResponseType,
+        message_type: MessageType,
         msg: T,
     ) -> Result<()>
     where
-        T: MessageFormat,
+        T: prost::Message,
     {
-        let envelope = self.construct_envelope(dest_public_key, message_type, msg, MessageFlags::ENCRYPTED)?;
+        let envelope = self.construct_envelope(dest_public_key, message_type, msg)?;
         let mut frames = vec![identity_frame];
 
-        frames.extend(envelope.into_frame_set());
+        frames.push(envelope.to_encoded_bytes()?);
 
         self.listener.send(frames).map_err(ControlServiceError::ConnectionError)
     }
 
-    fn decrypt_body(&self, body: &Frame, public_key: &CommsPublicKey) -> Result<Frame> {
+    fn decrypt_body(&self, body: &Vec<u8>, public_key: &CommsPublicKey) -> Result<Vec<u8>> {
         let ecdh_shared_secret = crypt::generate_ecdh_secret(&self.node_identity.secret_key, public_key);
         crypt::decrypt(&ecdh_shared_secret, &body).map_err(ControlServiceError::CipherError)
     }

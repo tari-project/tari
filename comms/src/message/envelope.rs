@@ -23,12 +23,21 @@
 use super::{Frame, MessageError, MessageFlags};
 use crate::{
     consts::{COMMS_RNG, ENVELOPE_VERSION},
-    message::MessageEnvelopeHeader,
     types::{CommsPublicKey, CommsSecretKey},
     utils::signature,
 };
+use serde::{Deserialize, Serialize};
 use std::convert::TryInto;
 use tari_utilities::{message_format::MessageFormat, ByteArray};
+
+/// Represents data that every message contains.
+/// As described in [RFC-0172](https://rfc.tari.com/RFC-0172_PeerToPeerMessagingProtocol.html#messaging-structure)
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct MessageEnvelopeHeader {
+    pub public_key: CommsPublicKey,
+    pub signature: Vec<u8>,
+    pub flags: MessageFlags,
+}
 
 include_proto!("envelope");
 
@@ -99,8 +108,61 @@ impl TryInto<MessageEnvelopeHeader> for EnvelopeHeader {
                 .get_comms_public_key()
                 .ok_or(MessageError::InvalidHeaderPublicKey)?,
             signature: self.signature,
-            flags: MessageFlags::from_bits(self.flags).ok_or(MessageError::InvalidMessageFlags)?,
+            flags: MessageFlags::from_bits_truncate(self.flags),
         })
+    }
+}
+
+/// Wraps a number of `prost::Message`s in a EnvelopeBody
+#[macro_export]
+macro_rules! wrap_in_envelope_body {
+    ($($e:expr),+) => {{
+        use $crate::message::MessageExt;
+        let mut envelope_body = $crate::message::EnvelopeBody::new();
+        let mut error = None;
+        $(
+            match $e.to_encoded_bytes() {
+                Ok(bytes) => envelope_body.push_part(bytes),
+                Err(err) => {
+                    if error.is_none() {
+                        error = Some(err);
+                    }
+                }
+            }
+        )*
+
+        match error {
+            Some(err) => Err(err),
+            None => Ok(envelope_body),
+        }
+    }}
+}
+
+impl EnvelopeBody {
+    pub fn new() -> Self {
+        Self {
+            parts: Default::default(),
+        }
+    }
+
+    pub fn push_part(&mut self, part: Vec<u8>) {
+        self.parts.push(part)
+    }
+
+    pub fn num_parts(&self) -> usize {
+        self.parts.len()
+    }
+
+    pub fn into_inner(self) -> Vec<Vec<u8>> {
+        self.parts
+    }
+
+    pub fn decode_part<T>(&self, index: usize) -> Result<Option<T>, MessageError>
+    where T: prost::Message + Default {
+        match self.parts.get(index) {
+            Some(part) => T::decode(part).map(|v| Some(v)).map_err(Into::into),
+            None => Ok(None),
+        }
     }
 }
 
