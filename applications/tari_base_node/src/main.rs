@@ -120,7 +120,7 @@ fn main() {
     };
 
     // Build, node, build!
-    let node = match builder::configure_and_initialize_node(&node_config, node_id, &rt) {
+    let (comms, node) = match builder::configure_and_initialize_node(&node_config, node_id, &rt) {
         Ok(n) => n,
         Err(e) => {
             error!(target: LOG_TARGET, "Could not instantiate node instance. {}", e);
@@ -138,6 +138,18 @@ fn main() {
     // Run, node, run!
     let main = async move {
         node.run().await;
+        debug!(
+            target: LOG_TARGET,
+            "The node has finished all it's work. initiating Comms stack shutdown"
+        );
+        match comms.shutdown() {
+            Ok(()) => info!(target: LOG_TARGET, "The comms stack reported a clean shutdown"),
+            Err(e) => warn!(
+                target: LOG_TARGET,
+                "The comms stack did not shut down cleanly: {}",
+                e.to_string()
+            ),
+        }
     };
     rt.spawn(main);
     rt.shutdown_on_idle();

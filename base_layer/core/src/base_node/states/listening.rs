@@ -29,7 +29,7 @@ pub struct Listening;
 
 impl Listening {
     pub async fn next_event(&mut self) -> StateEvent {
-        info!(target: LOG_TARGET, "Listening for new blocks");
+        info!(target: LOG_TARGET, "Listening for new blocks and transactions");
         FatalError("Unimplemented".into())
     }
 }

@@ -32,7 +32,7 @@ use bitflags::_core::sync::atomic::AtomicBool;
 use log::*;
 use std::sync::{atomic::Ordering, Arc};
 
-const TARGET: &str = "core::base_node";
+const LOG_TARGET: &str = "core::base_node";
 
 /// A Tari full node, aka Base Node.
 ///
@@ -73,7 +73,7 @@ impl<B: BlockchainBackend> BaseNodeStateMachine<B> {
             (_, FatalError(s)) => Shutdown(states::Shutdown::with_reason(s)),
             (s, e) => {
                 debug!(
-                    target: TARGET,
+                    target: LOG_TARGET,
                     "No state transition occurs for event {:?} in state {}", e, s
                 );
                 s
@@ -101,6 +101,10 @@ impl<B: BlockchainBackend> BaseNodeStateMachine<B> {
                 Listening(s) => s.next_event().await,
                 Shutdown(_) => break,
             };
+            debug!(
+                target: LOG_TARGET,
+                "=== Base Node event in State [{}]:  {:?}", state, next_event
+            );
             state = BaseNodeStateMachine::<B>::transition(state, next_event);
         }
     }
