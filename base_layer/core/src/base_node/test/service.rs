@@ -162,7 +162,7 @@ fn create_network_with_3_base_nodes(
     let alice_node_identity = NodeIdentity::random(
         &mut rng,
         get_next_local_address().parse().unwrap(),
-        PeerFeatures::communication_node_default(),
+        PeerFeatures::COMMUNICATION_NODE,
     )
     .unwrap();
     let alice_blockchain_db = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
@@ -170,7 +170,7 @@ fn create_network_with_3_base_nodes(
     let bob_node_identity = NodeIdentity::random(
         &mut rng,
         get_next_local_address().parse().unwrap(),
-        PeerFeatures::communication_node_default(),
+        PeerFeatures::COMMUNICATION_NODE,
     )
     .unwrap();
     let bob_blockchain_db = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
@@ -178,7 +178,7 @@ fn create_network_with_3_base_nodes(
     let carol_node_identity = NodeIdentity::random(
         &mut rng,
         get_next_local_address().parse().unwrap(),
-        PeerFeatures::communication_node_default(),
+        PeerFeatures::COMMUNICATION_NODE,
     )
     .unwrap();
     let carol_blockchain_db = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
@@ -408,7 +408,7 @@ fn service_request_timeout() {
     let alice_node_identity = NodeIdentity::random(
         &mut rng,
         get_next_local_address().parse().unwrap(),
-        PeerFeatures::communication_node_default(),
+        PeerFeatures::COMMUNICATION_NODE,
     )
     .unwrap();
     let alice_blockchain_db = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
@@ -416,7 +416,7 @@ fn service_request_timeout() {
     let bob_node_identity = NodeIdentity::random(
         &mut rng,
         get_next_local_address().parse().unwrap(),
-        PeerFeatures::communication_node_default(),
+        PeerFeatures::COMMUNICATION_NODE,
     )
     .unwrap();
     let bob_blockchain_db = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();

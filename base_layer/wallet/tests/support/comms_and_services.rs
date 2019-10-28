@@ -101,7 +101,7 @@ pub fn create_dummy_message<T>(inner: T) -> DomainMessage<T> {
         NodeId::from_key(&pk).unwrap(),
         Vec::<NetAddress>::new().into(),
         PeerFlags::empty(),
-        PeerFeatures::communication_node_default(),
+        PeerFeatures::COMMUNICATION_NODE,
     );
     DomainMessage {
         origin_pubkey: peer_source.public_key.clone(),

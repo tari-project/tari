@@ -109,7 +109,7 @@ fn request_connection() {
 
     // Setup the requesting peer
     let node_identity_b = factories::node_identity::create()
-        .with_peer_features(PeerFeatures::communication_node_default())
+        .with_peer_features(PeerFeatures::COMMUNICATION_NODE)
         .build()
         .map(Arc::new)
         .unwrap();
@@ -143,7 +143,7 @@ fn request_connection() {
     assert_eq!(peer.node_id, node_identity_b.identity.node_id);
     assert_eq!(peer.addresses[0], node_identity_b.control_service_address().into());
     assert_eq!(peer.flags, PeerFlags::empty());
-    assert_eq!(peer.features, PeerFeatures::communication_node_default());
+    assert_eq!(peer.features, PeerFeatures::COMMUNICATION_NODE);
 
     match outcome {
         ConnectRequestOutcome::Accepted {

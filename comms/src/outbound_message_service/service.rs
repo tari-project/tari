@@ -416,7 +416,7 @@ mod test {
         let (conn_man_tx, mut conn_man_rx) = mpsc::channel(2);
         let conn_manager = ConnectionManagerRequester::new(conn_man_tx);
 
-        let node_identity = Arc::new(NodeIdentity::random_for_test(None, PeerFeatures::default()));
+        let node_identity = Arc::new(NodeIdentity::random_for_test(None, PeerFeatures::empty()));
         let mut shutdown = Shutdown::new();
 
         let service = OutboundMessageService::new(

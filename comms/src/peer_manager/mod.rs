@@ -44,7 +44,7 @@
 //! let (dest_sk, pk) = CommsPublicKey::random_keypair(&mut rng);
 //! let node_id = NodeId::from_key(&pk).unwrap();
 //! let net_addresses = NetAddressesWithStats::from("1.2.3.4:8000".parse::<NetAddress>().unwrap());
-//! let peer = Peer::new(pk, node_id.clone(), net_addresses, PeerFlags::default(), PeerFeatures::communication_node_default());
+//! let peer = Peer::new(pk, node_id.clone(), net_addresses, PeerFlags::default(), PeerFeatures::COMMUNICATION_NODE);
 //! let database_name = "pm_peer_database";
 //! let datastore = LMDBBuilder::new()
 //!            .set_path("/tmp/")
@@ -76,6 +76,6 @@ pub use self::{
     node_id::NodeId,
     node_identity::{NodeIdentity, PeerNodeIdentity},
     peer::{Peer, PeerFlags},
-    peer_features::{PeerFeature, PeerFeatures},
+    peer_features::PeerFeatures,
     peer_manager::PeerManager,
 };

@@ -28,7 +28,7 @@ use serde_repr::{Deserialize_repr, Serialize_repr};
 #[repr(u8)]
 pub enum NodeFeature {
     /// This node is able to propagate messages
-    MessagePropagation = 0,
+    MESSAGE_PROPAGATION = 0,
 }
 
 /// A collection of `NodeFeature`s.
@@ -99,20 +99,20 @@ mod test {
 
     #[test]
     fn serialize_u8() {
-        assert_eq!(NodeFeature::MessagePropagation.to_binary().unwrap(), &[0]);
+        assert_eq!(NodeFeature::MESSAGE_PROPAGATION.to_binary().unwrap(), &[0]);
     }
 
     #[test]
     fn dedup() {
-        let features: NodeFeatures = [NodeFeature::MessagePropagation, NodeFeature::MessagePropagation].into();
+        let features: NodeFeatures = [NodeFeature::MESSAGE_PROPAGATION, NodeFeature::MESSAGE_PROPAGATION].into();
         assert_eq!(features.count(), 1);
     }
 
     #[test]
     fn add() {
         let mut features = NodeFeatures::default();
-        assert_eq!(features.contains(&NodeFeature::MessagePropagation), false);
-        features.add(NodeFeature::MessagePropagation);
-        assert_eq!(features.contains(&NodeFeature::MessagePropagation), true);
+        assert_eq!(features.contains(&NodeFeature::MESSAGE_PROPAGATION), false);
+        features.add(NodeFeature::MESSAGE_PROPAGATION);
+        assert_eq!(features.contains(&NodeFeature::MESSAGE_PROPAGATION), true);
     }
 }

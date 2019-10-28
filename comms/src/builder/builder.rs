@@ -500,7 +500,7 @@ mod test {
     fn new_no_control_service() {
         let rt = Runtime::new().unwrap();
         let container = CommsBuilder::new(rt.executor())
-            .with_node_identity(Arc::new(NodeIdentity::random_for_test(None, PeerFeatures::default())))
+            .with_node_identity(Arc::new(NodeIdentity::random_for_test(None, PeerFeatures::empty())))
             .with_peer_storage(HMapDatabase::new())
             .build()
             .unwrap();
@@ -512,7 +512,7 @@ mod test {
     fn new_with_control_service() {
         let rt = Runtime::new().unwrap();
         let container = CommsBuilder::new(rt.executor())
-            .with_node_identity(Arc::new(NodeIdentity::random_for_test(None, PeerFeatures::default())))
+            .with_node_identity(Arc::new(NodeIdentity::random_for_test(None, PeerFeatures::empty())))
             .with_peer_storage(HMapDatabase::new())
             .configure_control_service(ControlServiceConfig::default())
             .build()

@@ -160,7 +160,7 @@ mod test {
             PeerNodeIdentity::new(
                 NodeId::default(),
                 CommsPublicKey::default(),
-                PeerFeatures::communication_node_default(),
+                PeerFeatures::COMMUNICATION_NODE,
             ),
             make_dht_header(&node_identity, &body, DhtMessageFlags::empty()),
             OutboundEncryption::None,

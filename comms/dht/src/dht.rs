@@ -37,7 +37,7 @@ use std::sync::Arc;
 use tari_comms::{
     message::InboundMessage,
     outbound_message_service::OutboundMessage,
-    peer_manager::{NodeIdentity, PeerFeature, PeerManager},
+    peer_manager::{NodeIdentity, PeerFeatures, PeerManager},
 };
 use tari_comms_middleware::MiddlewareError;
 use tari_shutdown::ShutdownSignal;
@@ -206,7 +206,7 @@ impl Dht {
     {
         let node_identity = Arc::clone(&self.node_identity);
         move |msg: &DhtInboundMessage| {
-            if node_identity.has_peer_feature(&PeerFeature::DhtStoreForward) {
+            if node_identity.has_peer_features(PeerFeatures::DHT_STORE_FORWARD) {
                 return future::ready(Ok(()));
             }
 

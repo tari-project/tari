@@ -424,7 +424,7 @@ mod test {
 
     fn setup() -> (ZmqContext, Arc<NodeIdentity>, Arc<PeerManager>, Sender<FrameSet>) {
         let context = ZmqContext::new();
-        let node_identity = Arc::new(NodeIdentity::random_for_test(None, PeerFeatures::default()));
+        let node_identity = Arc::new(NodeIdentity::random_for_test(None, PeerFeatures::empty()));
         let peer_manager = Arc::new(PeerManager::new(HMapDatabase::new()).unwrap());
         let (tx, _rx) = channel(10);
         (context, node_identity, peer_manager, tx)

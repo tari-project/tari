@@ -49,11 +49,16 @@ pub enum CommsInitializationError {
     CommsServicesError(CommsError),
 }
 
+/// Configuration for a comms node
 #[derive(Clone)]
 pub struct CommsConfig {
+    /// Control service config
     pub control_service: ControlServiceConfig,
+    /// An optional SOCKS address
     pub socks_proxy_address: Option<SocketAddress>,
+    /// The host IP that all peer connections will use.
     pub host: IpAddr,
+    /// Identity of this node on the network
     pub node_identity: Arc<NodeIdentity>,
     /// Path to the LMDB file
     pub datastore_path: String,
