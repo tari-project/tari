@@ -29,10 +29,12 @@ use std::{
 };
 use tari_common::{DatabaseType, GlobalConfig};
 use tari_comms::{
+    builder::CommsNode,
     connection::{NetAddress, NetAddressesWithStats},
     control_service::ControlServiceConfig,
     peer_manager::{node_identity::NodeIdentity, NodeId, Peer, PeerFeatures, PeerFlags},
 };
+
 use tari_core::{
     base_node::{
         service::{BaseNodeServiceConfig, BaseNodeServiceInitializer},
@@ -49,7 +51,7 @@ use tari_p2p::{
     services::comms_outbound::CommsOutboundServiceInitializer,
     tari_message::TariMessageType,
 };
-use tari_service_framework::StackBuilder;
+use tari_service_framework::{handles::ServiceHandles, StackBuilder};
 use tari_utilities::{hex::Hex, message_format::MessageFormat};
 use tokio::runtime::Runtime;
 
@@ -100,6 +102,11 @@ pub fn load_identity(path: &Path, _control_addr: &str) -> Result<NodeIdentity, S
             e.to_string()
         )
     })?;
+    info!(
+        "Node ID loaded with public key {} and Node id {}",
+        id.public_key().to_hex(),
+        id.node_id().to_hex()
+    );
     Ok(id)
 }
 
@@ -144,26 +151,33 @@ pub fn configure_and_initialize_node(
     config: &GlobalConfig,
     id: NodeIdentity,
     rt: &Runtime,
-) -> Result<NodeType, String>
+) -> Result<(CommsNode, NodeType), String>
 {
     let id = Arc::new(id);
     let peers = assign_peers(&config.peer_seeds);
-    let node = match &config.db_type {
+    let result = match &config.db_type {
         DatabaseType::Memory => {
             let backend = MemoryDatabase::<HashDigest>::default();
             let db = BlockchainDatabase::new(backend).map_err(|e| e.to_string())?;
-            let comms = setup_comms_services(&rt, id.clone(), peers, &config.peer_db_path, db.clone());
-            NodeType::Memory(BaseNodeStateMachine::new(&db, &comms))
+            let (comms, handles) = setup_comms_services(&rt, id.clone(), peers, &config.peer_db_path, db.clone());
+            let outbound_interface = handles.get_handle::<OutboundNodeCommsInterface>().unwrap();
+            (
+                comms,
+                NodeType::Memory(BaseNodeStateMachine::new(&db, &outbound_interface)),
+            )
         },
         DatabaseType::LMDB(p) => {
             let backend = create_lmdb_database(&p).map_err(|e| e.to_string())?;
             let db = BlockchainDatabase::new(backend).map_err(|e| e.to_string())?;
-            let comms = setup_comms_services(&rt, id.clone(), peers, &config.peer_db_path, db.clone());
-            NodeType::LMDB(BaseNodeStateMachine::new(&db, &comms))
+            let (comms, handles) = setup_comms_services(&rt, id.clone(), peers, &config.peer_db_path, db.clone());
+            let outbound_interface = handles.get_handle::<OutboundNodeCommsInterface>().unwrap();
+            (
+                comms,
+                NodeType::LMDB(BaseNodeStateMachine::new(&db, &outbound_interface)),
+            )
         },
     };
-
-    Ok(node)
+    Ok(result)
 }
 
 fn assign_peers(seeds: &[String]) -> Vec<Peer> {
@@ -222,13 +236,15 @@ fn assign_peers(seeds: &[String]) -> Vec<Peer> {
     result
 }
 
-fn setup_comms_services<T: BlockchainBackend + 'static>(
+fn setup_comms_services<T>(
     rt: &Runtime,
     id: Arc<NodeIdentity>,
     peers: Vec<Peer>,
     peer_db_path: &str,
     db: BlockchainDatabase<T>,
-) -> OutboundNodeCommsInterface
+) -> (CommsNode, Arc<ServiceHandles>)
+where
+    T: BlockchainBackend + 'static,
 {
     let host = id.control_service_address().host();
     let node_config = BaseNodeServiceConfig::default(); // TODO - make this configurable
@@ -247,7 +263,7 @@ fn setup_comms_services<T: BlockchainBackend + 'static>(
         peer_database_name: "peers".to_string(),
         inbound_buffer_size: 100,
         outbound_buffer_size: 100,
-        dht: Default::default(),
+        dht: Default::default(), // TODO - make this configurable
     };
 
     let (comms, dht) = initialize_comms(rt.executor(), comms_config, publisher).unwrap();
@@ -269,6 +285,5 @@ fn setup_comms_services<T: BlockchainBackend + 'static>(
         "Node initialization complete. Listening for connections at {}.",
         id.control_service_address(),
     );
-
-    handles.get_handle::<OutboundNodeCommsInterface>().unwrap()
+    (comms, handles)
 }

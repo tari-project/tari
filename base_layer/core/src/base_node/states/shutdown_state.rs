@@ -29,10 +29,7 @@ pub struct Shutdown {
 
 impl Shutdown {
     pub fn with_reason(reason: String) -> Self {
+        info!(target: LOG_TARGET, "A fatal error has occurred. {}", reason);
         Self { reason }
-    }
-
-    pub async fn shutdown(&self) {
-        info!(target: LOG_TARGET, "Node is shutting down. {}", self.reason);
     }
 }
