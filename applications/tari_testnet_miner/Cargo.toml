@@ -9,6 +9,7 @@ edition = "2018"
 [dependencies]
 log = { version = "0.4.8", features = ["std"] }
 tonic = "0.1.0-alpha.3"
+tokio-executor= "=0.2.0-alpha.6"
 bytes = "0.4"
 prost = "0.5"
 tokio = "=0.2.0-alpha.6"
@@ -23,6 +24,8 @@ env_logger = "0.7"
 rand = "0.5.5"
 digest = "0.8.1"
 derive-error = "0.0.4"
+bigint = "^4.4.1"
+blake2 = "^0.8.0"
 chrono = { version = "0.4.6", features = ["serde"]}
 
 tari_utilities = { path = "../../infrastructure/tari_util", version = "^0.0"}
