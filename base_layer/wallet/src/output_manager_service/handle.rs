@@ -45,6 +45,7 @@ pub enum OutputManagerRequest {
     GetPendingTransactions,
     GetSpentOutputs,
     GetUnspentOutputs,
+    GetSeedWords,
 }
 
 /// API Reply enum
@@ -60,6 +61,7 @@ pub enum OutputManagerResponse {
     PendingTransactions(HashMap<u64, PendingTransactionOutputs>),
     SpentOutputs(Vec<UnblindedOutput>),
     UnspentOutputs(Vec<UnblindedOutput>),
+    SeedWords(Vec<String>),
 }
 
 #[derive(Clone)]
@@ -201,6 +203,13 @@ impl OutputManagerHandle {
     pub async fn get_unspent_outputs(&mut self) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
         match self.handle.call(OutputManagerRequest::GetUnspentOutputs).await?? {
             OutputManagerResponse::UnspentOutputs(s) => Ok(s),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn get_seed_words(&mut self) -> Result<Vec<String>, OutputManagerError> {
+        match self.handle.call(OutputManagerRequest::GetSeedWords).await?? {
+            OutputManagerResponse::SeedWords(s) => Ok(s),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

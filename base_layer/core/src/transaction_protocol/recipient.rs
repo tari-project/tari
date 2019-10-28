@@ -46,6 +46,12 @@ pub(super) enum RecipientInfo {
     Multiple(HashMap<u64, MultiRecipientInfo>),
 }
 
+impl Default for RecipientInfo {
+    fn default() -> Self {
+        RecipientInfo::Single(None)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(super) struct MultiRecipientInfo {
     pub commitment: MessageHash,

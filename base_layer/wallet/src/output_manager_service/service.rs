@@ -25,6 +25,7 @@ use crate::{
         error::OutputManagerError,
         handle::{OutputManagerRequest, OutputManagerResponse},
         storage::database::{OutputManagerBackend, OutputManagerDatabase, PendingTransactionOutputs},
+        OutputManagerConfig,
         TxId,
     },
     types::{HashDigest, KeyDigest, TransactionRng},
@@ -41,7 +42,10 @@ use tari_core::{
     SenderTransactionProtocol,
 };
 use tari_crypto::keys::SecretKey;
-use tari_key_manager::keymanager::KeyManager;
+use tari_key_manager::{
+    key_manager::KeyManager,
+    mnemonic::{from_secret_key, MnemonicLanguage},
+};
 use tari_service_framework::reply_channel;
 
 const LOG_TARGET: &'static str = "base_layer::wallet::output_manager_service";
@@ -67,20 +71,34 @@ where T: OutputManagerBackend
             OutputManagerRequest,
             Result<OutputManagerResponse, OutputManagerError>,
         >,
-        master_key: PrivateKey,
-        branch_seed: String,
-        primary_key_index: usize,
+        config: OutputManagerConfig,
         db: OutputManagerDatabase<T>,
-    ) -> OutputManagerService<T>
+    ) -> Result<OutputManagerService<T>, OutputManagerError>
     {
-        OutputManagerService {
-            key_manager: Mutex::new(KeyManager::<PrivateKey, KeyDigest>::from(
-                master_key,
-                branch_seed,
-                primary_key_index,
-            )),
-            db,
-            request_stream: Some(request_stream),
+        if config.master_key.is_none() && config.seed_words.is_none() {
+            return Err(OutputManagerError::InvalidConfig);
+        }
+
+        if config.master_key.is_some() {
+            Ok(OutputManagerService {
+                key_manager: Mutex::new(KeyManager::<PrivateKey, KeyDigest>::from(
+                    config.master_key.ok_or(OutputManagerError::InvalidConfig)?,
+                    config.branch_seed,
+                    config.primary_key_index,
+                )),
+                db,
+                request_stream: Some(request_stream),
+            })
+        } else {
+            Ok(OutputManagerService {
+                key_manager: Mutex::new(KeyManager::<PrivateKey, KeyDigest>::from_mnemonic(
+                    &config.seed_words.ok_or(OutputManagerError::InvalidConfig)?,
+                    config.branch_seed,
+                    config.primary_key_index,
+                )?),
+                db,
+                request_stream: Some(request_stream),
+            })
         }
     }
 
@@ -148,6 +166,7 @@ where T: OutputManagerBackend
             OutputManagerRequest::GetUnspentOutputs => self
                 .fetch_unspent_outputs()
                 .map(|o| OutputManagerResponse::UnspentOutputs(o)),
+            OutputManagerRequest::GetSeedWords => self.get_seed_words().map(|sw| OutputManagerResponse::SeedWords(sw)),
         }
     }
 
@@ -374,6 +393,14 @@ where T: OutputManagerBackend
 
     pub fn fetch_unspent_outputs(&self) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
         Ok(self.db.fetch_sorted_unspent_outputs()?)
+    }
+
+    /// Return the Seed words for the current Master Key set in the Key Manager
+    pub fn get_seed_words(&self) -> Result<Vec<String>, OutputManagerError> {
+        Ok(from_secret_key(
+            &acquire_lock!(self.key_manager).master_key,
+            &MnemonicLanguage::English,
+        )?)
     }
 }
 

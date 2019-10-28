@@ -35,31 +35,26 @@ use tari_crypto::{
     keys::{PublicKey as PublicKeyTrait, SecretKey},
     range_proof::RangeProofService,
 };
+use tari_key_manager::mnemonic::{from_secret_key, MnemonicLanguage};
 use tari_service_framework::StackBuilder;
 use tari_shutdown::Shutdown;
 use tari_utilities::ByteArray;
 use tari_wallet::output_manager_service::{
     error::{OutputManagerError, OutputManagerStorageError},
     handle::OutputManagerHandle,
+    storage::memory_db::OutputManagerMemoryDatabase,
     OutputManagerConfig,
     OutputManagerServiceInitializer,
 };
 use tokio::runtime::Runtime;
 
-pub fn setup_output_manager_service(
-    runtime: &Runtime,
-    master_key: PrivateKey,
-    branch_seed: String,
-    primary_key_index: usize,
-) -> (OutputManagerHandle, Shutdown)
-{
+pub fn setup_output_manager_service(runtime: &Runtime, config: OutputManagerConfig) -> (OutputManagerHandle, Shutdown) {
     let shutdown = Shutdown::new();
     let fut = StackBuilder::new(runtime.executor(), shutdown.to_signal())
-        .add_initializer(OutputManagerServiceInitializer::new(OutputManagerConfig {
-            master_key,
-            branch_seed,
-            primary_key_index,
-        }))
+        .add_initializer(OutputManagerServiceInitializer::new(
+            config,
+            OutputManagerMemoryDatabase::new(),
+        ))
         .finish();
 
     let handles = runtime.block_on(fut).expect("Service initialization failed");
@@ -76,7 +71,12 @@ fn sending_transaction_and_confirmation() {
 
     let runtime = Runtime::new().unwrap();
 
-    let (mut oms, _shutdown) = setup_output_manager_service(&runtime, secret_key, "".to_string(), 0);
+    let (mut oms, _shutdown) = setup_output_manager_service(&runtime, OutputManagerConfig {
+        master_key: Some(secret_key),
+        seed_words: None,
+        branch_seed: "".to_string(),
+        primary_key_index: 0,
+    });
 
     let (_ti, uo) = make_input(&mut rng.clone(), MicroTari::from(100 + rng.next_u64() % 1000));
     runtime.block_on(oms.add_output(uo.clone())).unwrap();
@@ -152,7 +152,12 @@ fn send_not_enough_funds() {
 
     let runtime = Runtime::new().unwrap();
 
-    let (mut oms, _shutdown) = setup_output_manager_service(&runtime, secret_key, "".to_string(), 0);
+    let (mut oms, _shutdown) = setup_output_manager_service(&runtime, OutputManagerConfig {
+        master_key: Some(secret_key),
+        seed_words: None,
+        branch_seed: "".to_string(),
+        primary_key_index: 0,
+    });
     let num_outputs = 20;
     for _i in 0..num_outputs {
         let (_ti, uo) = make_input(&mut rng.clone(), MicroTari::from(100 + rng.next_u64() % 1000));
@@ -176,7 +181,12 @@ fn send_no_change() {
 
     let runtime = Runtime::new().unwrap();
 
-    let (mut oms, _shutdown) = setup_output_manager_service(&runtime, secret_key, "".to_string(), 0);
+    let (mut oms, _shutdown) = setup_output_manager_service(&runtime, OutputManagerConfig {
+        master_key: Some(secret_key),
+        seed_words: None,
+        branch_seed: "".to_string(),
+        primary_key_index: 0,
+    });
 
     let fee_per_gram = MicroTari::from(20);
     let fee_without_change = Fee::calculate(fee_per_gram, 2, 1);
@@ -243,7 +253,12 @@ fn send_not_enough_for_change() {
 
     let runtime = Runtime::new().unwrap();
 
-    let (mut oms, _shutdown) = setup_output_manager_service(&runtime, secret_key, "".to_string(), 0);
+    let (mut oms, _shutdown) = setup_output_manager_service(&runtime, OutputManagerConfig {
+        master_key: Some(secret_key),
+        seed_words: None,
+        branch_seed: "".to_string(),
+        primary_key_index: 0,
+    });
 
     let fee_per_gram = MicroTari::from(20);
     let fee_without_change = Fee::calculate(fee_per_gram, 2, 1);
@@ -275,7 +290,12 @@ fn receiving_and_confirmation() {
 
     let runtime = Runtime::new().unwrap();
 
-    let (mut oms, _shutdown) = setup_output_manager_service(&runtime, secret_key, "".to_string(), 0);
+    let (mut oms, _shutdown) = setup_output_manager_service(&runtime, OutputManagerConfig {
+        master_key: Some(secret_key),
+        seed_words: None,
+        branch_seed: "".to_string(),
+        primary_key_index: 0,
+    });
 
     let value = MicroTari::from(5000);
     let recv_key = runtime.block_on(oms.get_recipient_spending_key(1, value)).unwrap();
@@ -303,7 +323,12 @@ fn cancel_transaction() {
 
     let runtime = Runtime::new().unwrap();
 
-    let (mut oms, _shutdown) = setup_output_manager_service(&runtime, secret_key, "".to_string(), 0);
+    let (mut oms, _shutdown) = setup_output_manager_service(&runtime, OutputManagerConfig {
+        master_key: Some(secret_key),
+        seed_words: None,
+        branch_seed: "".to_string(),
+        primary_key_index: 0,
+    });
 
     let num_outputs = 20;
     for _i in 0..num_outputs {
@@ -334,7 +359,12 @@ fn timeout_transaction() {
     let (secret_key, _public_key) = PublicKey::random_keypair(&mut rng);
 
     let runtime = Runtime::new().unwrap();
-    let (mut oms, _shutdown) = setup_output_manager_service(&runtime, secret_key, "".to_string(), 0);
+    let (mut oms, _shutdown) = setup_output_manager_service(&runtime, OutputManagerConfig {
+        master_key: Some(secret_key),
+        seed_words: None,
+        branch_seed: "".to_string(),
+        primary_key_index: 0,
+    });
 
     let num_outputs = 20;
     for _i in 0..num_outputs {
@@ -372,7 +402,12 @@ fn test_get_balance() {
 
     let runtime = Runtime::new().unwrap();
 
-    let (mut oms, _shutdown) = setup_output_manager_service(&runtime, secret_key, "".to_string(), 0);
+    let (mut oms, _shutdown) = setup_output_manager_service(&runtime, OutputManagerConfig {
+        master_key: Some(secret_key),
+        seed_words: None,
+        branch_seed: "".to_string(),
+        primary_key_index: 0,
+    });
 
     let balance = runtime.block_on(oms.get_balance()).unwrap();
 
@@ -398,7 +433,12 @@ fn test_confirming_received_output() {
 
     let runtime = Runtime::new().unwrap();
 
-    let (mut oms, _shutdown) = setup_output_manager_service(&runtime, secret_key, "".to_string(), 0);
+    let (mut oms, _shutdown) = setup_output_manager_service(&runtime, OutputManagerConfig {
+        master_key: Some(secret_key),
+        seed_words: None,
+        branch_seed: "".to_string(),
+        primary_key_index: 0,
+    });
 
     let value = MicroTari::from(5000);
     let recv_key = runtime.block_on(oms.get_recipient_spending_key(1, value)).unwrap();
@@ -411,4 +451,26 @@ fn test_confirming_received_output() {
     );
     runtime.block_on(oms.confirm_received_output(1, output)).unwrap();
     assert_eq!(runtime.block_on(oms.get_balance()).unwrap(), value);
+}
+
+#[test]
+
+fn test_seed_words() {
+    let mut rng = rand::OsRng::new().unwrap();
+    let (secret_key, _public_key) = PublicKey::random_keypair(&mut rng);
+
+    let seed_words = from_secret_key(&secret_key, &MnemonicLanguage::English).unwrap();
+
+    let runtime = Runtime::new().unwrap();
+
+    let (mut oms, _shutdown) = setup_output_manager_service(&runtime, OutputManagerConfig {
+        master_key: None,
+        seed_words: Some(seed_words.clone()),
+        branch_seed: "".to_string(),
+        primary_key_index: 0,
+    });
+
+    let returned_seed_words = runtime.block_on(oms.get_seed_words()).unwrap();
+
+    assert_eq!(returned_seed_words, seed_words);
 }

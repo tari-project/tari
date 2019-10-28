@@ -29,7 +29,7 @@ use crate::{
     transaction_service::{
         handle::TransactionServiceHandle,
         service::TransactionService,
-        storage::{database::TransactionDatabase, memory_db::TransactionMemoryDatabase},
+        storage::database::{TransactionBackend, TransactionDatabase},
     },
 };
 use futures::{future, Future, Stream, StreamExt};
@@ -56,15 +56,25 @@ use tokio::runtime::TaskExecutor;
 
 const LOG_TARGET: &'static str = "base_layer::wallet::transaction_service";
 
-pub struct TransactionServiceInitializer {
+pub struct TransactionServiceInitializer<T>
+where T: TransactionBackend
+{
     subscription_factory: Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage<TariMessageType>>>>,
+    backend: Option<T>,
 }
 
-impl TransactionServiceInitializer {
+impl<T> TransactionServiceInitializer<T>
+where T: TransactionBackend
+{
     pub fn new(
         subscription_factory: Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage<TariMessageType>>>>,
-    ) -> Self {
-        Self { subscription_factory }
+        backend: T,
+    ) -> Self
+    {
+        Self {
+            subscription_factory,
+            backend: Some(backend),
+        }
     }
 
     /// Get a stream of inbound Text messages
@@ -83,7 +93,9 @@ impl TransactionServiceInitializer {
     }
 }
 
-impl ServiceInitializer for TransactionServiceInitializer {
+impl<T> ServiceInitializer for TransactionServiceInitializer<T>
+where T: TransactionBackend + 'static
+{
     type Future = impl Future<Output = Result<(), ServiceInitializationError>>;
 
     fn initialize(
@@ -104,6 +116,11 @@ impl ServiceInitializer for TransactionServiceInitializer {
         // Register handle before waiting for handles to be ready
         handles_fut.register(transaction_handle);
 
+        let backend = self
+            .backend
+            .take()
+            .expect("Cannot start Transaction Service without providing a backend");
+
         executor.spawn(async move {
             let handles = handles_fut.await;
 
@@ -115,7 +132,7 @@ impl ServiceInitializer for TransactionServiceInitializer {
                 .expect("Output Manager Service handle required for TransactionService");
 
             let service = TransactionService::new(
-                TransactionDatabase::new(TransactionMemoryDatabase::new()),
+                TransactionDatabase::new(backend),
                 receiver,
                 transaction_stream,
                 transaction_reply_stream,

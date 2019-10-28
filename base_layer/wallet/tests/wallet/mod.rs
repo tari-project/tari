@@ -110,7 +110,8 @@ fn test_wallet() {
     let config1 = WalletConfig {
         comms_config: comms_config1,
         output_manager_config: OutputManagerConfig {
-            master_key: alice_identity.secret_key.clone(),
+            master_key: Some(alice_identity.secret_key.clone()),
+            seed_words: None,
             branch_seed: "".to_string(),
             primary_key_index: 0,
         },
@@ -118,7 +119,8 @@ fn test_wallet() {
     let config2 = WalletConfig {
         comms_config: comms_config2,
         output_manager_config: OutputManagerConfig {
-            master_key: bob_identity.secret_key.clone(),
+            master_key: Some(bob_identity.secret_key.clone()),
+            seed_words: None,
             branch_seed: "".to_string(),
             primary_key_index: 0,
         },

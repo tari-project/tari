@@ -33,17 +33,22 @@ use crate::output_manager_service::{
     TxId,
 };
 use chrono::{Duration as ChronoDuration, Utc};
-use std::{collections::HashMap, time::Duration};
+use std::{
+    collections::HashMap,
+    sync::{Arc, RwLock},
+    time::Duration,
+};
 use tari_core::transaction::UnblindedOutput;
+
 /// This structure is an In-Memory database backend that implements the `OutputManagerBackend` trait and provides all
 /// the functionality required by the trait.
-pub struct OutputManagerMemoryDatabase {
+pub struct InnerDatabase {
     unspent_outputs: Vec<UnblindedOutput>,
     spent_outputs: Vec<UnblindedOutput>,
     pending_transactions: HashMap<TxId, PendingTransactionOutputs>,
 }
 
-impl OutputManagerMemoryDatabase {
+impl InnerDatabase {
     pub fn new() -> Self {
         Self {
             unspent_outputs: Vec::new(),
@@ -53,27 +58,40 @@ impl OutputManagerMemoryDatabase {
     }
 }
 
+pub struct OutputManagerMemoryDatabase {
+    db: Arc<RwLock<InnerDatabase>>,
+}
+
+impl OutputManagerMemoryDatabase {
+    pub fn new() -> Self {
+        Self {
+            db: Arc::new(RwLock::new(InnerDatabase::new())),
+        }
+    }
+}
+
 impl OutputManagerBackend for OutputManagerMemoryDatabase {
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, OutputManagerStorageError> {
+        let db = acquire_read_lock!(self.db);
         let result = match key {
-            DbKey::SpentOutput(k) => self
+            DbKey::SpentOutput(k) => db
                 .spent_outputs
                 .iter()
                 .find(|v| &v.spending_key == k)
                 .map(|v| DbValue::SpentOutput(Box::new(v.clone()))),
-            DbKey::UnspentOutput(k) => self
+            DbKey::UnspentOutput(k) => db
                 .unspent_outputs
                 .iter()
                 .find(|v| &v.spending_key == k)
                 .map(|v| DbValue::UnspentOutput(Box::new(v.clone()))),
-            DbKey::PendingTransactionOutputs(tx_id) => self
+            DbKey::PendingTransactionOutputs(tx_id) => db
                 .pending_transactions
                 .get(tx_id)
                 .map(|v| DbValue::PendingTransactionOutputs(Box::new(v.clone()))),
-            DbKey::UnspentOutputs => Some(DbValue::UnspentOutputs(Box::new(self.unspent_outputs.clone()))),
-            DbKey::SpentOutputs => Some(DbValue::SpentOutputs(Box::new(self.spent_outputs.clone()))),
+            DbKey::UnspentOutputs => Some(DbValue::UnspentOutputs(Box::new(db.unspent_outputs.clone()))),
+            DbKey::SpentOutputs => Some(DbValue::SpentOutputs(Box::new(db.spent_outputs.clone()))),
             DbKey::AllPendingTransactionOutputs => Some(DbValue::AllPendingTransactionOutputs(Box::new(
-                self.pending_transactions.clone(),
+                db.pending_transactions.clone(),
             ))),
         };
 
@@ -81,10 +99,11 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
     }
 
     fn contains(&self, key: &DbKey) -> Result<bool, OutputManagerStorageError> {
+        let db = acquire_read_lock!(self.db);
         Ok(match key {
-            DbKey::SpentOutput(k) => self.spent_outputs.iter().any(|v| &v.spending_key == k),
-            DbKey::UnspentOutput(k) => self.unspent_outputs.iter().any(|v| &v.spending_key == k),
-            DbKey::PendingTransactionOutputs(tx_id) => self.pending_transactions.get(tx_id).is_some(),
+            DbKey::SpentOutput(k) => db.spent_outputs.iter().any(|v| &v.spending_key == k),
+            DbKey::UnspentOutput(k) => db.unspent_outputs.iter().any(|v| &v.spending_key == k),
+            DbKey::PendingTransactionOutputs(tx_id) => db.pending_transactions.get(tx_id).is_some(),
             DbKey::UnspentOutputs => false,
             DbKey::SpentOutputs => false,
             DbKey::AllPendingTransactionOutputs => false,
@@ -92,39 +111,44 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
     }
 
     fn write(&mut self, op: WriteOperation) -> Result<Option<DbValue>, OutputManagerStorageError> {
+        let mut db = acquire_write_lock!(self.db);
         match op {
             WriteOperation::Insert(kvp) => match kvp {
                 DbKeyValuePair::SpentOutput(k, o) => {
-                    if self.contains(&DbKey::SpentOutput(k))? {
+                    if db.spent_outputs.iter().any(|v| v.spending_key == k) ||
+                        db.unspent_outputs.iter().any(|v| v.spending_key == k)
+                    {
                         return Err(OutputManagerStorageError::DuplicateOutput);
                     }
-                    self.spent_outputs.push(*o);
+                    db.spent_outputs.push(*o);
                 },
                 DbKeyValuePair::UnspentOutput(k, o) => {
-                    if self.contains(&DbKey::UnspentOutput(k))? {
+                    if db.unspent_outputs.iter().any(|v| v.spending_key == k) ||
+                        db.spent_outputs.iter().any(|v| v.spending_key == k)
+                    {
                         return Err(OutputManagerStorageError::DuplicateOutput);
                     }
-                    self.unspent_outputs.push(*o);
+                    db.unspent_outputs.push(*o);
                 },
                 DbKeyValuePair::PendingTransactionOutputs(t, p) => {
-                    self.pending_transactions.insert(t, *p);
+                    db.pending_transactions.insert(t, *p);
                 },
             },
             WriteOperation::Remove(k) => match k {
-                DbKey::SpentOutput(k) => match self.spent_outputs.iter().position(|v| v.spending_key == k) {
+                DbKey::SpentOutput(k) => match db.spent_outputs.iter().position(|v| v.spending_key == k) {
                     None => return Err(OutputManagerStorageError::ValueNotFound(DbKey::SpentOutput(k))),
                     Some(pos) => {
-                        return Ok(Some(DbValue::SpentOutput(Box::new(self.spent_outputs.remove(pos)))));
+                        return Ok(Some(DbValue::SpentOutput(Box::new(db.spent_outputs.remove(pos)))));
                     },
                 },
-                DbKey::UnspentOutput(k) => match self.unspent_outputs.iter().position(|v| v.spending_key == k) {
+                DbKey::UnspentOutput(k) => match db.unspent_outputs.iter().position(|v| v.spending_key == k) {
                     None => return Err(OutputManagerStorageError::ValueNotFound(DbKey::UnspentOutput(k))),
                     Some(pos) => {
-                        return Ok(Some(DbValue::UnspentOutput(Box::new(self.unspent_outputs.remove(pos)))));
+                        return Ok(Some(DbValue::UnspentOutput(Box::new(db.unspent_outputs.remove(pos)))));
                     },
                 },
                 DbKey::PendingTransactionOutputs(tx_id) => {
-                    if let Some(p) = self.pending_transactions.remove(&tx_id) {
+                    if let Some(p) = db.pending_transactions.remove(&tx_id) {
                         return Ok(Some(DbValue::PendingTransactionOutputs(Box::new(p))));
                     } else {
                         return Err(OutputManagerStorageError::ValueNotFound(
@@ -141,21 +165,22 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
     }
 
     fn confirm_transaction(&mut self, tx_id: TxId) -> Result<(), OutputManagerStorageError> {
-        let mut pending_tx =
-            self.pending_transactions
-                .remove(&tx_id)
-                .ok_or(OutputManagerStorageError::ValueNotFound(
-                    DbKey::PendingTransactionOutputs(tx_id.clone()),
-                ))?;
+        let mut db = acquire_write_lock!(self.db);
+        let mut pending_tx = db
+            .pending_transactions
+            .remove(&tx_id)
+            .ok_or(OutputManagerStorageError::ValueNotFound(
+                DbKey::PendingTransactionOutputs(tx_id.clone()),
+            ))?;
 
         // Add Spent outputs
         for o in pending_tx.outputs_to_be_spent.drain(..) {
-            self.spent_outputs.push(o)
+            db.spent_outputs.push(o)
         }
 
         // Add Unspent outputs
         for o in pending_tx.outputs_to_be_received.drain(..) {
-            self.unspent_outputs.push(o);
+            db.unspent_outputs.push(o);
         }
 
         Ok(())
@@ -168,14 +193,11 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
         change_output: Option<UnblindedOutput>,
     ) -> Result<(), OutputManagerStorageError>
     {
+        let mut db = acquire_write_lock!(self.db);
         let mut outputs_to_be_spent = Vec::new();
         for i in outputs_to_send {
-            if let Some(pos) = self
-                .unspent_outputs
-                .iter()
-                .position(|v| v.spending_key == i.spending_key)
-            {
-                outputs_to_be_spent.push(self.unspent_outputs.remove(pos));
+            if let Some(pos) = db.unspent_outputs.iter().position(|v| v.spending_key == i.spending_key) {
+                outputs_to_be_spent.push(db.unspent_outputs.remove(pos));
             } else {
                 return Err(OutputManagerStorageError::ValuesNotFound);
             }
@@ -192,33 +214,35 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
             pending_transaction.outputs_to_be_received.push(co);
         }
 
-        self.pending_transactions.insert(tx_id, pending_transaction);
+        db.pending_transactions.insert(tx_id, pending_transaction);
 
         Ok(())
     }
 
     fn cancel_pending_transaction(&mut self, tx_id: TxId) -> Result<(), OutputManagerStorageError> {
-        let mut pending_tx =
-            self.pending_transactions
-                .remove(&tx_id)
-                .ok_or(OutputManagerStorageError::ValueNotFound(
-                    DbKey::PendingTransactionOutputs(tx_id.clone()),
-                ))?;
+        let mut db = acquire_write_lock!(self.db);
+        let mut pending_tx = db
+            .pending_transactions
+            .remove(&tx_id)
+            .ok_or(OutputManagerStorageError::ValueNotFound(
+                DbKey::PendingTransactionOutputs(tx_id.clone()),
+            ))?;
         for o in pending_tx.outputs_to_be_spent.drain(..) {
-            self.unspent_outputs.push(o);
+            db.unspent_outputs.push(o);
         }
 
         Ok(())
     }
 
     fn timeout_pending_transactions(&mut self, period: Duration) -> Result<(), OutputManagerStorageError> {
+        let db = acquire_write_lock!(self.db);
         let mut transactions_to_be_cancelled = Vec::new();
-        for (tx_id, pt) in self.pending_transactions.iter() {
+        for (tx_id, pt) in db.pending_transactions.iter() {
             if pt.timestamp + ChronoDuration::from_std(period)? < Utc::now().naive_utc() {
                 transactions_to_be_cancelled.push(tx_id.clone());
             }
         }
-
+        drop(db);
         for t in transactions_to_be_cancelled {
             self.cancel_pending_transaction(t.clone())?;
         }

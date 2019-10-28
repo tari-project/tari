@@ -87,12 +87,19 @@ pub fn setup_transaction_service(
 
     let fut = StackBuilder::new(runtime.executor(), comms.shutdown_signal())
         .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))
-        .add_initializer(OutputManagerServiceInitializer::new(OutputManagerConfig {
-            master_key,
-            branch_seed: "".to_string(),
-            primary_key_index: 0,
-        }))
-        .add_initializer(TransactionServiceInitializer::new(subscription_factory))
+        .add_initializer(OutputManagerServiceInitializer::new(
+            OutputManagerConfig {
+                master_key: Some(master_key),
+                seed_words: None,
+                branch_seed: "".to_string(),
+                primary_key_index: 0,
+            },
+            OutputManagerMemoryDatabase::new(),
+        ))
+        .add_initializer(TransactionServiceInitializer::new(
+            subscription_factory,
+            TransactionMemoryDatabase::new(),
+        ))
         .finish();
 
     let handles = runtime.block_on(fut).expect("Service initialization failed");
@@ -119,11 +126,15 @@ pub fn setup_transaction_service_no_comms(
     let (oms_request_sender, oms_request_receiver) = reply_channel::unbounded();
     let output_manager_service = OutputManagerService::new(
         oms_request_receiver,
-        master_key,
-        "".to_string(),
-        0,
+        OutputManagerConfig {
+            master_key: Some(master_key),
+            seed_words: None,
+            branch_seed: "".to_string(),
+            primary_key_index: 0,
+        },
         OutputManagerDatabase::new(OutputManagerMemoryDatabase::new()),
-    );
+    )
+    .unwrap();
     let output_manager_service_handle = OutputManagerHandle::new(oms_request_sender);
 
     let (ts_request_sender, ts_request_receiver) = reply_channel::unbounded();

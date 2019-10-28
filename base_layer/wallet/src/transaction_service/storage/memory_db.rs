@@ -27,16 +27,19 @@ use crate::{
         storage::database::{DbKey, DbKeyValuePair, DbValue, TransactionBackend, WriteOperation},
     },
 };
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    sync::{Arc, RwLock},
+};
 use tari_core::{transaction::Transaction, ReceiverTransactionProtocol, SenderTransactionProtocol};
 
-pub struct TransactionMemoryDatabase {
+struct InnerDatabase {
     pending_outbound_transactions: HashMap<TxId, SenderTransactionProtocol>,
     pending_inbound_transactions: HashMap<TxId, ReceiverTransactionProtocol>,
     completed_transactions: HashMap<TxId, Transaction>,
 }
 
-impl TransactionMemoryDatabase {
+impl InnerDatabase {
     pub fn new() -> Self {
         Self {
             pending_outbound_transactions: HashMap::new(),
@@ -46,29 +49,42 @@ impl TransactionMemoryDatabase {
     }
 }
 
+pub struct TransactionMemoryDatabase {
+    db: Arc<RwLock<InnerDatabase>>,
+}
+
+impl TransactionMemoryDatabase {
+    pub fn new() -> Self {
+        Self {
+            db: Arc::new(RwLock::new(InnerDatabase::new())),
+        }
+    }
+}
+
 impl TransactionBackend for TransactionMemoryDatabase {
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, TransactionStorageError> {
+        let db = acquire_read_lock!(self.db);
         let result = match key {
-            DbKey::PendingOutboundTransaction(t) => self
+            DbKey::PendingOutboundTransaction(t) => db
                 .pending_outbound_transactions
                 .get(t)
                 .map(|v| DbValue::PendingOutboundTransaction(Box::new(v.clone()))),
-            DbKey::PendingInboundTransaction(t) => self
+            DbKey::PendingInboundTransaction(t) => db
                 .pending_inbound_transactions
                 .get(t)
                 .map(|v| DbValue::PendingInboundTransaction(Box::new(v.clone()))),
-            DbKey::CompletedTransaction(t) => self
+            DbKey::CompletedTransaction(t) => db
                 .completed_transactions
                 .get(t)
                 .map(|v| DbValue::CompletedTransaction(Box::new(v.clone()))),
             DbKey::PendingOutboundTransactions => Some(DbValue::PendingOutboundTransactions(Box::new(
-                self.pending_outbound_transactions.clone(),
+                db.pending_outbound_transactions.clone(),
             ))),
             DbKey::PendingInboundTransactions => Some(DbValue::PendingInboundTransactions(Box::new(
-                self.pending_inbound_transactions.clone(),
+                db.pending_inbound_transactions.clone(),
             ))),
             DbKey::CompletedTransactions => Some(DbValue::CompletedTransactions(Box::new(
-                self.completed_transactions.clone(),
+                db.completed_transactions.clone(),
             ))),
         };
 
@@ -76,10 +92,11 @@ impl TransactionBackend for TransactionMemoryDatabase {
     }
 
     fn contains(&self, key: &DbKey) -> Result<bool, TransactionStorageError> {
+        let db = acquire_read_lock!(self.db);
         let result = match key {
-            DbKey::PendingOutboundTransaction(k) => self.pending_outbound_transactions.contains_key(k),
-            DbKey::PendingInboundTransaction(k) => self.pending_inbound_transactions.contains_key(k),
-            DbKey::CompletedTransaction(k) => self.completed_transactions.contains_key(k),
+            DbKey::PendingOutboundTransaction(k) => db.pending_outbound_transactions.contains_key(k),
+            DbKey::PendingInboundTransaction(k) => db.pending_inbound_transactions.contains_key(k),
+            DbKey::CompletedTransaction(k) => db.completed_transactions.contains_key(k),
             DbKey::PendingOutboundTransactions => false,
             DbKey::PendingInboundTransactions => false,
             DbKey::CompletedTransactions => false,
@@ -89,30 +106,31 @@ impl TransactionBackend for TransactionMemoryDatabase {
     }
 
     fn write(&mut self, op: WriteOperation) -> Result<Option<DbValue>, TransactionStorageError> {
+        let mut db = acquire_write_lock!(self.db);
         match op {
             WriteOperation::Insert(kvp) => match kvp {
                 DbKeyValuePair::PendingOutboundTransaction(k, v) => {
-                    if self.pending_outbound_transactions.contains_key(&k) {
+                    if db.pending_outbound_transactions.contains_key(&k) {
                         return Err(TransactionStorageError::DuplicateOutput);
                     }
-                    self.pending_outbound_transactions.insert(k, *v);
+                    db.pending_outbound_transactions.insert(k, *v);
                 },
                 DbKeyValuePair::PendingInboundTransaction(k, v) => {
-                    if self.pending_inbound_transactions.contains_key(&k) {
+                    if db.pending_inbound_transactions.contains_key(&k) {
                         return Err(TransactionStorageError::DuplicateOutput);
                     }
-                    self.pending_inbound_transactions.insert(k, *v);
+                    db.pending_inbound_transactions.insert(k, *v);
                 },
                 DbKeyValuePair::CompletedTransaction(k, v) => {
-                    if self.completed_transactions.contains_key(&k) {
+                    if db.completed_transactions.contains_key(&k) {
                         return Err(TransactionStorageError::DuplicateOutput);
                     }
-                    self.completed_transactions.insert(k, *v);
+                    db.completed_transactions.insert(k, *v);
                 },
             },
             WriteOperation::Remove(k) => match k {
                 DbKey::PendingOutboundTransaction(k) => {
-                    if let Some(p) = self.pending_outbound_transactions.remove(&k) {
+                    if let Some(p) = db.pending_outbound_transactions.remove(&k) {
                         return Ok(Some(DbValue::PendingOutboundTransaction(Box::new(p))));
                     } else {
                         return Err(TransactionStorageError::ValueNotFound(
@@ -121,7 +139,7 @@ impl TransactionBackend for TransactionMemoryDatabase {
                     }
                 },
                 DbKey::PendingInboundTransaction(k) => {
-                    if let Some(p) = self.pending_inbound_transactions.remove(&k) {
+                    if let Some(p) = db.pending_inbound_transactions.remove(&k) {
                         return Ok(Some(DbValue::PendingInboundTransaction(Box::new(p))));
                     } else {
                         return Err(TransactionStorageError::ValueNotFound(
@@ -130,7 +148,7 @@ impl TransactionBackend for TransactionMemoryDatabase {
                     }
                 },
                 DbKey::CompletedTransaction(k) => {
-                    if let Some(p) = self.completed_transactions.remove(&k) {
+                    if let Some(p) = db.completed_transactions.remove(&k) {
                         return Ok(Some(DbValue::CompletedTransaction(Box::new(p))));
                     } else {
                         return Err(TransactionStorageError::ValueNotFound(DbKey::CompletedTransaction(k)));
@@ -146,14 +164,15 @@ impl TransactionBackend for TransactionMemoryDatabase {
     }
 
     fn complete_transaction(&mut self, tx_id: TxId, transaction: Transaction) -> Result<(), TransactionStorageError> {
-        let _ = self
+        let mut db = acquire_write_lock!(self.db);
+        let _ = db
             .pending_outbound_transactions
             .remove(&tx_id)
             .ok_or(TransactionStorageError::ValueNotFound(
                 DbKey::PendingOutboundTransaction(tx_id.clone()),
             ))?;
 
-        self.completed_transactions.insert(tx_id, transaction);
+        db.completed_transactions.insert(tx_id, transaction);
 
         Ok(())
     }

@@ -10,7 +10,7 @@ tari_comms_dht = { path = "../../comms/dht", version = "^0.0"}
 tari_comms_middleware = { path = "../../comms/middleware", version = "^0.0"}
 tari_core = { path = "../core", version="^0.0"}
 tari_crypto = { path = "../../infrastructure/crypto", version = "^0.0" }
-tari_key_manager = {path = "../keymanager", version = "^0.0"}
+tari_key_manager = {path = "../key_manager", version = "^0.0"}
 tari_p2p = {path = "../p2p", version = "^0.0"}
 tari_pubsub = {path = "../../infrastructure/pubsub", version = "^0.0"}
 tari_service_framework = { version = "^0.0", path = "../service_framework"}

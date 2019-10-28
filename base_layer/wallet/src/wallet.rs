@@ -22,8 +22,19 @@
 
 // use crate::text_message_service::{handle::TextMessageHandle, TextMessageServiceInitializer};
 use crate::{
-    output_manager_service::{handle::OutputManagerHandle, OutputManagerConfig, OutputManagerServiceInitializer},
-    transaction_service::{handle::TransactionServiceHandle, TransactionServiceInitializer},
+    output_manager_service::{
+        error::OutputManagerError,
+        handle::OutputManagerHandle,
+        storage::memory_db::OutputManagerMemoryDatabase,
+        OutputManagerConfig,
+        OutputManagerServiceInitializer,
+    },
+    transaction_service::{
+        error::TransactionServiceError,
+        handle::TransactionServiceHandle,
+        storage::memory_db::TransactionMemoryDatabase,
+        TransactionServiceInitializer,
+    },
 };
 use derive_error::Error;
 use std::sync::Arc;
@@ -44,6 +55,8 @@ use tokio::runtime::Runtime;
 pub enum WalletError {
     CommsInitializationError(CommsInitializationError),
     CommsError(CommsError),
+    OutputManagerError(OutputManagerError),
+    TransactionServiceError(TransactionServiceError),
 }
 
 #[derive(Clone)]
@@ -76,8 +89,12 @@ impl Wallet {
             .add_initializer(LivenessInitializer::new(Arc::clone(&subscription_factory)))
             .add_initializer(OutputManagerServiceInitializer::new(
                 config.output_manager_config.clone(),
+                OutputManagerMemoryDatabase::new(),
             ))
-            .add_initializer(TransactionServiceInitializer::new(subscription_factory.clone()))
+            .add_initializer(TransactionServiceInitializer::new(
+                subscription_factory.clone(),
+                TransactionMemoryDatabase::new(),
+            ))
             .finish();
 
         let handles = runtime.block_on(fut).expect("Service initialization failed");
@@ -102,8 +119,8 @@ impl Wallet {
         })
     }
 
-    // This method consumes the wallet so that the handles are dropped which will result in the services async loops
-    // exiting.
+    /// This method consumes the wallet so that the handles are dropped which will result in the services async loops
+    /// exiting.
     pub fn shutdown(self) -> Result<(), WalletError> {
         self.comms.shutdown()?;
         Ok(())
