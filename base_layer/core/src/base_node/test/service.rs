@@ -25,11 +25,17 @@ use crate::{
         comms_interface::{CommsInterfaceError, OutboundNodeCommsInterface},
         service::{BaseNodeServiceConfig, BaseNodeServiceInitializer},
     },
-    blocks::BlockHeader,
+    blocks::{genesis_block::get_genesis_block, BlockHeader},
     chain_storage::{BlockchainDatabase, DbTransaction, MemoryDatabase},
-    consts::BASE_NODE_SERVICE_REQUEST_TIMEOUT,
+    consts::BASE_NODE_SERVICE_DESIRED_RESPONSE_FRACTION,
     tari_amount::MicroTari,
-    test_utils::builders::{add_block_and_update_header, create_genesis_block, create_test_kernel, create_utxo},
+    test_utils::builders::{
+        add_block_and_update_header,
+        chain_block,
+        create_genesis_block,
+        create_test_kernel,
+        create_utxo,
+    },
     types::HashDigest,
 };
 use futures::Sink;
@@ -117,16 +123,14 @@ pub fn setup_base_node_service(
     config: BaseNodeServiceConfig,
 ) -> (OutboundNodeCommsInterface, CommsNode)
 {
-    let node_identity = Arc::new(node_identity.clone());
     let (publisher, subscription_factory) = pubsub_connector(runtime.executor(), 100);
     let subscription_factory = Arc::new(subscription_factory);
-    let (comms, dht) = setup_comms_services(runtime.executor(), node_identity.clone(), peers, publisher);
+    let (comms, dht) = setup_comms_services(runtime.executor(), Arc::new(node_identity), peers, publisher);
 
     let fut = StackBuilder::new(runtime.executor(), comms.shutdown_signal())
         .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))
         .add_initializer(BaseNodeServiceInitializer::new(
             subscription_factory,
-            node_identity,
             blockchain_db,
             config,
         ))
@@ -216,13 +220,9 @@ fn create_network_with_3_base_nodes(
 #[test]
 fn request_response_get_metadata() {
     let runtime = Runtime::new().unwrap();
-    let base_node_service_config = BaseNodeServiceConfig {
-        request_timeout: BASE_NODE_SERVICE_REQUEST_TIMEOUT,
-        broadcast_peer_count: 2,
-        desired_response_count: 2,
-    };
+
     let (mut alice_outbound_nci, _, _, _, bob_blockchain_db, _, alice_comms, bob_comms, carol_comms) =
-        create_network_with_3_base_nodes(&runtime, base_node_service_config);
+        create_network_with_3_base_nodes(&runtime, BaseNodeServiceConfig::default());
 
     add_block_and_update_header(&bob_blockchain_db, create_genesis_block().0);
 
@@ -247,13 +247,9 @@ fn request_response_get_metadata() {
 #[test]
 fn request_and_response_fetch_headers() {
     let runtime = Runtime::new().unwrap();
-    let base_node_service_config = BaseNodeServiceConfig {
-        request_timeout: BASE_NODE_SERVICE_REQUEST_TIMEOUT,
-        broadcast_peer_count: 2,
-        desired_response_count: 2,
-    };
+
     let (mut alice_outbound_nci, _, _, _, bob_blockchain_db, carol_blockchain_db, alice_comms, bob_comms, carol_comms) =
-        create_network_with_3_base_nodes(&runtime, base_node_service_config);
+        create_network_with_3_base_nodes(&runtime, BaseNodeServiceConfig::default());
 
     let mut headerb1 = BlockHeader::new(0);
     headerb1.height = 1;
@@ -295,13 +291,9 @@ fn request_and_response_fetch_headers() {
 #[test]
 fn request_and_response_fetch_kernels() {
     let runtime = Runtime::new().unwrap();
-    let base_node_service_config = BaseNodeServiceConfig {
-        request_timeout: BASE_NODE_SERVICE_REQUEST_TIMEOUT,
-        broadcast_peer_count: 2,
-        desired_response_count: 2,
-    };
+
     let (mut alice_outbound_nci, _, _, _, bob_blockchain_db, carol_blockchain_db, alice_comms, bob_comms, carol_comms) =
-        create_network_with_3_base_nodes(&runtime, base_node_service_config);
+        create_network_with_3_base_nodes(&runtime, BaseNodeServiceConfig::default());
 
     let kernel1 = create_test_kernel(5.into(), 0);
     let kernel2 = create_test_kernel(10.into(), 1);
@@ -336,13 +328,9 @@ fn request_and_response_fetch_kernels() {
 #[test]
 fn request_and_response_fetch_utxos() {
     let runtime = Runtime::new().unwrap();
-    let base_node_service_config = BaseNodeServiceConfig {
-        request_timeout: BASE_NODE_SERVICE_REQUEST_TIMEOUT,
-        broadcast_peer_count: 2,
-        desired_response_count: 2,
-    };
+
     let (mut alice_outbound_nci, _, _, _, bob_blockchain_db, carol_blockchain_db, alice_comms, bob_comms, carol_comms) =
-        create_network_with_3_base_nodes(&runtime, base_node_service_config);
+        create_network_with_3_base_nodes(&runtime, BaseNodeServiceConfig::default());
 
     let (utxo1, _) = create_utxo(MicroTari(10_000));
     let (utxo2, _) = create_utxo(MicroTari(15_000));
@@ -375,13 +363,46 @@ fn request_and_response_fetch_utxos() {
 }
 
 #[test]
+fn request_and_response_fetch_blocks() {
+    let runtime = Runtime::new().unwrap();
+
+    let (mut alice_outbound_nci, _, _, _, bob_blockchain_db, carol_blockchain_db, alice_comms, bob_comms, carol_comms) =
+        create_network_with_3_base_nodes(&runtime, BaseNodeServiceConfig::default());
+
+    let block0 = add_block_and_update_header(&bob_blockchain_db, get_genesis_block());
+    let mut block1 = chain_block(&block0, vec![]);
+    block1 = add_block_and_update_header(&bob_blockchain_db, block1);
+    let mut block2 = chain_block(&block1, vec![]);
+    block2 = add_block_and_update_header(&bob_blockchain_db, block2);
+
+    carol_blockchain_db.add_new_block(block0.clone()).unwrap();
+    carol_blockchain_db.add_new_block(block1.clone()).unwrap();
+    carol_blockchain_db.add_new_block(block2.clone()).unwrap();
+
+    runtime.block_on(async {
+        let received_blocks = alice_outbound_nci.fetch_blocks(vec![0]).await.unwrap();
+        assert_eq!(received_blocks.len(), 1);
+        assert_eq!(*received_blocks[0].block(), block0);
+
+        let received_blocks = alice_outbound_nci.fetch_blocks(vec![0, 1]).await.unwrap();
+        assert_eq!(received_blocks.len(), 2);
+        assert_ne!(*received_blocks[0].block(), *received_blocks[1].block());
+        assert!((*received_blocks[0].block() == block0) || (*received_blocks[1].block() == block0));
+        assert!((*received_blocks[0].block() == block1) || (*received_blocks[1].block() == block1));
+    });
+
+    alice_comms.shutdown().unwrap();
+    bob_comms.shutdown().unwrap();
+    carol_comms.shutdown().unwrap();
+}
+
+#[test]
 fn service_request_timeout() {
     let runtime = Runtime::new().unwrap();
     let mut rng = OsRng::new().unwrap();
     let base_node_service_config = BaseNodeServiceConfig {
         request_timeout: Duration::from_millis(10),
-        broadcast_peer_count: 2,
-        desired_response_count: 2,
+        desired_response_fraction: BASE_NODE_SERVICE_DESIRED_RESPONSE_FRACTION,
     };
 
     let alice_node_identity = NodeIdentity::random(

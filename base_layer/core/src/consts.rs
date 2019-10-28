@@ -48,7 +48,5 @@ thread_local! {
 }
 /// The allocated waiting time for a request waiting for service responses from remote base nodes.
 pub const BASE_NODE_SERVICE_REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
-/// The number of remote peers that Base Node Service requests are sent to.
-pub const BASE_NODE_SERVICE_BROADCAST_PEER_COUNT: usize = 8;
-/// The number of responses that need to be received for a corresponding service request to be finalize.
-pub const BASE_NODE_SERVICE_DESIRED_RESPONSE_COUNT: usize = 5;
+/// The fraction of responses that need to be received for a corresponding service request to be finalize.
+pub const BASE_NODE_SERVICE_DESIRED_RESPONSE_FRACTION: f32 = 0.6;

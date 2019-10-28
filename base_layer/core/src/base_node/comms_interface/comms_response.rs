@@ -22,7 +22,7 @@
 
 use crate::{
     blocks::blockheader::BlockHeader,
-    chain_storage::ChainMetadata,
+    chain_storage::{ChainMetadata, HistoricalBlock},
     transaction::{TransactionKernel, TransactionOutput},
 };
 use serde::{Deserialize, Serialize};
@@ -34,4 +34,5 @@ pub enum NodeCommsResponse {
     TransactionKernels(Vec<TransactionKernel>),
     BlockHeaders(Vec<BlockHeader>),
     TransactionOutputs(Vec<TransactionOutput>),
+    HistoricalBlocks(Vec<HistoricalBlock>),
 }
