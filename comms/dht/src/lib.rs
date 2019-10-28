@@ -119,6 +119,7 @@ mod builder;
 mod config;
 mod consts;
 mod dht;
+mod proto;
 
 pub mod envelope;
 pub mod inbound;

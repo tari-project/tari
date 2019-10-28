@@ -2,10 +2,7 @@
   "identity": {
     "node_id": "995507dd9bb03df702dacd1d221d6aa660f3aa94f216124f1d7de1d82c6877cf",
     "public_key": "30e1dfa197794858bfdbf96cdce5dc8637d4bd1202dc694991040ddecbf42d40",
-    "features": [
-      0,
-      1
-    ]
+    "features": {"bits": 3}
   },
   "secret_key": "6259c39f75e27140a652a5ee8aefb3cf6c1686ef21d27793338d899380e8c801",
   "control_service_address": {

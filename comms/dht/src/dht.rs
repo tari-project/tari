@@ -23,11 +23,11 @@
 use self::outbound::OutboundMessageRequester;
 use crate::{
     actor::{DhtActor, DhtRequest, DhtRequester},
-    envelope::DhtMessageType,
     inbound,
     inbound::{DecryptedDhtMessage, DhtInboundMessage},
     outbound,
     outbound::DhtOutboundRequest,
+    proto::envelope::DhtMessageType,
     store_forward,
     DhtConfig,
 };
@@ -133,7 +133,7 @@ impl Dht {
         S: Service<DecryptedDhtMessage, Response = (), Error = MiddlewareError> + Clone + Send + Sync + 'static,
         S::Future: Send,
     {
-        let saf_storage = Arc::new(store_forward::SAFStorage::new(
+        let saf_storage = Arc::new(store_forward::SafStorage::new(
             self.config.saf_msg_cache_storage_capacity,
         ));
 
@@ -211,7 +211,7 @@ impl Dht {
             }
 
             match msg.dht_header.message_type {
-                DhtMessageType::SAFRequestMessages | DhtMessageType::SAFStoredMessages => {
+                DhtMessageType::SafRequestMessages | DhtMessageType::SafStoredMessages => {
                     // TODO: This is an indication of node misbehaviour
                     warn!(
                         "Received store and forward message from PublicKey={}. Store and forward feature is not \
@@ -229,8 +229,9 @@ impl Dht {
 #[cfg(test)]
 mod test {
     use crate::{
-        envelope::{DhtMessageFlags, DhtMessageType},
+        envelope::DhtMessageFlags,
         outbound::DhtOutboundRequest,
+        proto::envelope::DhtMessageType,
         test_utils::{
             make_client_identity,
             make_comms_inbound_message,
@@ -241,15 +242,15 @@ mod test {
         DhtBuilder,
     };
     use futures::{channel::mpsc, StreamExt};
-    use std::sync::Arc;
+    use std::{sync::Arc, time::Duration};
     use tari_comms::{
-        message::{Message, MessageFlags, MessageHeader},
+        message::{MessageExt, MessageFlags},
         utils::crypt::{encrypt, generate_ecdh_secret},
+        wrap_in_envelope_body,
     };
     use tari_comms_middleware::sink::SinkMiddleware;
     use tari_shutdown::Shutdown;
-    use tari_utilities::message_format::MessageFormat;
-    use tokio::runtime::Runtime;
+    use tokio::{future::FutureExt, runtime::Runtime};
     use tower::{layer::Layer, Service};
 
     #[test]
@@ -273,19 +274,25 @@ mod test {
 
         let mut service = dht.inbound_middleware_layer().layer(SinkMiddleware::new(out_tx));
 
-        let header = MessageHeader::new("fake_type".to_string()).unwrap();
-        let msg = Message::from_message_format(header, "secret".to_string()).unwrap();
-        let dht_envelope = make_dht_envelope(&node_identity, msg.to_binary().unwrap(), DhtMessageFlags::empty());
-        let inbound_message =
-            make_comms_inbound_message(&node_identity, dht_envelope.to_binary().unwrap(), MessageFlags::empty());
+        let msg = wrap_in_envelope_body!(b"secret".to_vec()).unwrap();
+        let dht_envelope = make_dht_envelope(
+            &node_identity,
+            msg.to_encoded_bytes().unwrap(),
+            DhtMessageFlags::empty(),
+        );
+        let inbound_message = make_comms_inbound_message(
+            &node_identity,
+            dht_envelope.to_encoded_bytes().unwrap(),
+            MessageFlags::empty(),
+        );
 
         let msg = rt.block_on(async move {
             service.call(inbound_message).await.unwrap();
-            let msg = out_rx.next().await.unwrap();
-            msg.success().unwrap().deserialize_message::<String>().unwrap()
+            let msg = out_rx.next().timeout(Duration::from_secs(10)).await.unwrap().unwrap();
+            msg.success().unwrap().decode_part::<Vec<u8>>(0).unwrap().unwrap()
         });
 
-        assert_eq!(msg, "secret");
+        assert_eq!(msg, b"secret");
     }
 
     #[test]
@@ -309,22 +316,24 @@ mod test {
 
         let mut service = dht.inbound_middleware_layer().layer(SinkMiddleware::new(out_tx));
 
-        let header = MessageHeader::new("fake_type".to_string()).unwrap();
-        let msg = Message::from_message_format(header, "secret".to_string()).unwrap();
+        let msg = wrap_in_envelope_body!(b"secret".to_vec()).unwrap();
         // Encrypt for self
         let ecdh_key = generate_ecdh_secret(&node_identity.secret_key, &node_identity.identity.public_key);
-        let encrypted_bytes = encrypt(&ecdh_key, &msg.to_binary().unwrap()).unwrap();
+        let encrypted_bytes = encrypt(&ecdh_key, &msg.to_encoded_bytes().unwrap()).unwrap();
         let dht_envelope = make_dht_envelope(&node_identity, encrypted_bytes, DhtMessageFlags::ENCRYPTED);
-        let inbound_message =
-            make_comms_inbound_message(&node_identity, dht_envelope.to_binary().unwrap(), MessageFlags::empty());
+        let inbound_message = make_comms_inbound_message(
+            &node_identity,
+            dht_envelope.to_encoded_bytes().unwrap(),
+            MessageFlags::empty(),
+        );
 
         let msg = rt.block_on(async move {
             service.call(inbound_message).await.unwrap();
-            let msg = out_rx.next().await.unwrap();
-            msg.success().unwrap().deserialize_message::<String>().unwrap()
+            let msg = out_rx.next().timeout(Duration::from_secs(10)).await.unwrap().unwrap();
+            msg.success().unwrap().decode_part::<Vec<u8>>(0).unwrap().unwrap()
         });
 
-        assert_eq!(msg, "secret");
+        assert_eq!(msg, b"secret");
     }
 
     #[test]
@@ -352,22 +361,29 @@ mod test {
             .inbound_middleware_layer()
             .layer(SinkMiddleware::new(next_service_tx));
 
-        let header = MessageHeader::new("fake_type".to_string()).unwrap();
-        let msg = Message::from_message_format(header, "unencrypteable".to_string()).unwrap();
+        let msg = wrap_in_envelope_body!(b"unencrypteable".to_vec()).unwrap();
 
         // Encrypt for someone else
         let node_identity2 = make_node_identity();
         let ecdh_key = generate_ecdh_secret(&node_identity2.secret_key, &node_identity2.identity.public_key);
-        let encrypted_bytes = encrypt(&ecdh_key, &msg.to_binary().unwrap()).unwrap();
+        let encrypted_bytes = encrypt(&ecdh_key, &msg.to_encoded_bytes().unwrap()).unwrap();
         let dht_envelope = make_dht_envelope(&node_identity, encrypted_bytes, DhtMessageFlags::ENCRYPTED);
-        let inbound_message =
-            make_comms_inbound_message(&node_identity, dht_envelope.to_binary().unwrap(), MessageFlags::empty());
+        let inbound_message = make_comms_inbound_message(
+            &node_identity,
+            dht_envelope.to_encoded_bytes().unwrap(),
+            MessageFlags::empty(),
+        );
 
         let mut oms_receiver = dht.take_outbound_receiver().unwrap();
 
         let msg = rt.block_on(async move {
             service.call(inbound_message).await.unwrap();
-            oms_receiver.next().await.unwrap()
+            oms_receiver
+                .next()
+                .timeout(Duration::from_secs(10))
+                .await
+                .unwrap()
+                .unwrap()
         });
 
         // Check that OMS got a request to forward
@@ -401,11 +417,21 @@ mod test {
             .inbound_middleware_layer()
             .layer(SinkMiddleware::new(next_service_tx));
 
-        let msg = Message::from_message_format((), "secret".to_string()).unwrap();
-        let mut dht_envelope = make_dht_envelope(&node_identity, msg.to_binary().unwrap(), DhtMessageFlags::empty());
-        dht_envelope.header.message_type = DhtMessageType::SAFStoredMessages;
-        let inbound_message =
-            make_comms_inbound_message(&node_identity, dht_envelope.to_binary().unwrap(), MessageFlags::empty());
+        let msg = wrap_in_envelope_body!(b"secret".to_vec()).unwrap();
+        let mut dht_envelope = make_dht_envelope(
+            &node_identity,
+            msg.to_encoded_bytes().unwrap(),
+            DhtMessageFlags::empty(),
+        );
+        dht_envelope.header.as_mut().and_then(|header| {
+            header.message_type = DhtMessageType::SafStoredMessages as i32;
+            Some(header)
+        });
+        let inbound_message = make_comms_inbound_message(
+            &node_identity,
+            dht_envelope.to_encoded_bytes().unwrap(),
+            MessageFlags::empty(),
+        );
 
         let err = rt.block_on(service.call(inbound_message));
         assert!(err.is_err());

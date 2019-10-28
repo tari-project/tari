@@ -20,12 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{envelope::DhtEnvelope, inbound::DhtInboundMessage};
+use crate::{inbound::DhtInboundMessage, proto::envelope::DhtEnvelope};
 use futures::{task::Context, Future, Poll};
 use log::*;
+use prost::Message;
+use std::convert::TryInto;
 use tari_comms::message::InboundMessage;
 use tari_comms_middleware::MiddlewareError;
-use tari_utilities::message_format::MessageFormat;
 use tower::{layer::Layer, Service, ServiceExt};
 
 const LOG_TARGET: &'static str = "comms::dht::deserialize";
@@ -74,13 +75,9 @@ where
         trace!(target: LOG_TARGET, "Deserializing InboundMessage");
         next_service.ready().await.map_err(Into::into)?;
 
-        let InboundMessage {
-            source_peer,
-            envelope_header,
-            body,
-        } = message;
+        let InboundMessage { source_peer, body, .. } = message;
 
-        match DhtEnvelope::from_binary(&body) {
+        match DhtEnvelope::decode(&body) {
             Ok(dht_envelope) => {
                 trace!(target: LOG_TARGET, "Deserialization succeeded. Checking signatures");
                 if !dht_envelope.is_signature_valid() {
@@ -96,7 +93,7 @@ where
                 trace!(target: LOG_TARGET, "Origin signature validation passed.");
 
                 let inbound_msg =
-                    DhtInboundMessage::new(dht_envelope.header, source_peer, envelope_header, dht_envelope.body);
+                    DhtInboundMessage::new(dht_envelope.header.try_into()?, source_peer, dht_envelope.body);
                 next_service.call(inbound_msg).await.map_err(Into::into)
             },
             Err(err) => {
@@ -131,7 +128,7 @@ mod test {
         test_utils::{make_comms_inbound_message, make_dht_envelope, make_node_identity, service_spy},
     };
     use futures::executor::block_on;
-    use tari_comms::message::MessageFlags;
+    use tari_comms::message::{MessageExt, MessageFlags};
     use tari_test_utils::panic_context;
 
     #[test]
@@ -146,13 +143,13 @@ mod test {
         let dht_envelope = make_dht_envelope(&node_identity, b"A".to_vec(), DhtMessageFlags::empty());
         block_on(deserialize.call(make_comms_inbound_message(
             &node_identity,
-            dht_envelope.to_binary().unwrap(),
+            dht_envelope.to_encoded_bytes().unwrap(),
             MessageFlags::empty(),
         )))
         .unwrap();
 
         let msg = spy.pop_request().unwrap();
         assert_eq!(msg.body, b"A".to_vec());
-        assert_eq!(msg.dht_header, dht_envelope.header);
+        assert_eq!(msg.dht_header, dht_envelope.header.unwrap().try_into().unwrap());
     }
 }

@@ -31,6 +31,6 @@ pub use self::{
     decryption::DecryptionLayer,
     dedup::DedupLayer,
     deserialize::DeserializeLayer,
-    dht_handler::{DhtHandlerLayer, DiscoverMessage, JoinMessage},
+    dht_handler::DhtHandlerLayer,
     message::{DecryptedDhtMessage, DhtInboundMessage},
 };

@@ -144,7 +144,7 @@ where
 
     async fn forward(&mut self, message: &DecryptedDhtMessage) -> Result<(), StoreAndForwardError> {
         let DecryptedDhtMessage {
-            comms_header,
+            source_peer,
             decryption_result,
             dht_header,
             ..
@@ -156,7 +156,7 @@ where
             .expect("previous check that decryption failed");
 
         let broadcast_strategy =
-            self.get_broadcast_strategy(dht_header.destination.clone(), vec![comms_header.public_key.clone()])?;
+            self.get_broadcast_strategy(dht_header.destination.clone(), vec![source_peer.public_key.clone()])?;
 
         self.outbound_service
             .forward_message(broadcast_strategy, dht_header.clone(), body)
@@ -173,7 +173,7 @@ where
     ) -> Result<BroadcastStrategy, StoreAndForwardError>
     {
         Ok(match header_dest {
-            NodeDestination::Unspecified => {
+            NodeDestination::Unknown => {
                 // Send to the current nodes nearest neighbours
                 BroadcastStrategy::Neighbours(Box::new(excluded_peers))
             },
@@ -211,7 +211,7 @@ mod test {
         test_utils::{make_dht_inbound_message, make_node_identity, make_peer_manager, service_spy},
     };
     use futures::{channel::mpsc, executor::block_on, StreamExt};
-    use tari_comms::message::Message;
+    use tari_comms::wrap_in_envelope_body;
 
     #[test]
     fn decryption_succeeded() {
@@ -222,7 +222,7 @@ mod test {
         let mut service = ForwardLayer::new(peer_manager, oms).layer(spy.service::<MiddlewareError>());
 
         let inbound_msg = make_dht_inbound_message(&make_node_identity(), b"".to_vec(), DhtMessageFlags::empty());
-        let msg = DecryptedDhtMessage::succeeded(Message::from_message_format((), ()).unwrap(), inbound_msg);
+        let msg = DecryptedDhtMessage::succeeded(wrap_in_envelope_body!(Vec::new()).unwrap(), inbound_msg);
         block_on(service.call(msg)).unwrap();
         assert!(spy.is_called());
         assert!(oms_rx.try_next().is_err());

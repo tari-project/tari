@@ -25,8 +25,10 @@ use futures::{task::Context, Future, Poll, Sink, SinkExt};
 use log::*;
 use serde::{de::DeserializeOwned, Serialize};
 use std::{error::Error, marker::PhantomData, pin::Pin, sync::Arc};
+use tari_comms::message::MessageHeader;
 use tari_comms_dht::inbound::DecryptedDhtMessage;
 use tari_comms_middleware::MiddlewareError;
+use tari_utilities::message_format::MessageFormat;
 use tower::Service;
 
 const LOG_TARGET: &'static str = "comms::middleware::inbound_domain_connector";
@@ -73,26 +75,27 @@ where
 {
     async fn handle_message(mut sink: TSink, inbound_message: DecryptedDhtMessage) -> Result<(), MiddlewareError> {
         match inbound_message.success() {
-            Some(message) => {
-                match message.deserialize_header::<MType>() {
+            Some(envelope_body) => {
+                // TODO: encoding Vec<u8> as protobuf message is a temporary hack until rest of messages are converted
+                let header_bytes = envelope_body
+                    .decode_part::<Vec<u8>>(0)?
+                    .ok_or("failed to decode header")?;
+                let msg_bytes = envelope_body
+                    .decode_part::<Vec<u8>>(1)?
+                    .ok_or("failed to decode body")?;
+                match MessageHeader::<MType>::from_binary(&header_bytes) {
                     Ok(header) => {
                         let DecryptedDhtMessage {
                             source_peer,
-                            comms_header,
                             dht_header,
-                            decryption_result,
                             ..
                         } = inbound_message;
 
                         let peer_message = PeerMessage {
                             message_header: header,
                             source_peer,
-                            comms_header,
                             dht_header,
-                            body: decryption_result
-                                .map(|m| m.body)
-                                .ok()
-                                .expect("Already checked that decrypted message succeeded"),
+                            body: msg_bytes,
                         };
 
                         // If this fails there is something wrong with the sink and the pubsub middleware should not
@@ -125,7 +128,10 @@ mod test {
     use super::*;
     use crate::test_utils::{make_dht_inbound_message, make_node_identity};
     use futures::{channel::mpsc, executor::block_on, StreamExt};
-    use tari_comms::message::{Message, MessageHeader};
+    use tari_comms::{
+        message::{MessageExt, MessageHeader},
+        wrap_in_envelope_body,
+    };
     use tari_comms_dht::envelope::DhtMessageFlags;
     use tari_utilities::message_format::MessageFormat;
 
@@ -133,10 +139,15 @@ mod test {
     fn handle_message() {
         let (tx, mut rx) = mpsc::channel(1);
         let header = MessageHeader::new(123).unwrap();
-        let msg = Message::from_message_format(header, "my message".to_string()).unwrap();
+        let msg = wrap_in_envelope_body!(
+            header.to_binary().unwrap(),
+            "my message".to_string().to_binary().unwrap()
+        )
+        .unwrap();
+
         let inbound_message = make_dht_inbound_message(
             &make_node_identity(),
-            msg.to_binary().unwrap(),
+            msg.to_encoded_bytes().unwrap(),
             DhtMessageFlags::empty(),
         );
         let decrypted = DecryptedDhtMessage::succeeded(msg, inbound_message);
@@ -150,10 +161,13 @@ mod test {
     #[test]
     fn handle_message_fail_deserialize() {
         let (tx, mut rx) = mpsc::channel(1);
-        let msg = Message::from_message_format((), "my message".to_string()).unwrap();
+        let header = MessageHeader::new(()).unwrap();
+        let msg =
+            wrap_in_envelope_body!(header.to_binary().unwrap(), "message".to_string().to_binary().unwrap()).unwrap();
+
         let inbound_message = make_dht_inbound_message(
             &make_node_identity(),
-            msg.to_binary().unwrap(),
+            msg.to_encoded_bytes().unwrap(),
             DhtMessageFlags::empty(),
         );
         let decrypted = DecryptedDhtMessage::succeeded(msg, inbound_message);
@@ -168,10 +182,14 @@ mod test {
         // from it's call function
         let (tx, _) = mpsc::channel(1);
         let header = MessageHeader::new(123).unwrap();
-        let msg = Message::from_message_format(header, "my message".to_string()).unwrap();
+        let msg = wrap_in_envelope_body!(
+            header.to_binary().unwrap(),
+            "my message".to_string().to_binary().unwrap()
+        )
+        .unwrap();
         let inbound_message = make_dht_inbound_message(
             &make_node_identity(),
-            msg.to_binary().unwrap(),
+            msg.to_encoded_bytes().unwrap(),
             DhtMessageFlags::empty(),
         );
         let decrypted = DecryptedDhtMessage::succeeded(msg, inbound_message);

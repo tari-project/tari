@@ -20,36 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::path::PathBuf;
-
-const PROTOS_PATH: &'static str = "src/proto";
-
-fn walk_protos(search_path: &PathBuf) -> Vec<PathBuf> {
-    let mut protos = Vec::new();
-    let paths_iter = search_path
-        .read_dir()
-        .unwrap()
-        .filter_map(Result::ok)
-        .map(|dir| dir.path());
-
-    for path in paths_iter {
-        if path.is_file() && path.extension().filter(|ext| ext == &"proto").is_some() {
-            protos.push(path)
-        } else if path.is_dir() {
-            protos.extend(walk_protos(&path));
-        }
-    }
-
-    protos
+pub mod envelope {
+    include_proto_package!("tari.dht.envelope");
 }
 
-fn main() {
-    let proto_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(PROTOS_PATH);
-    let protos = walk_protos(&proto_path);
+pub mod dht {
+    include_proto_package!("tari.dht");
+}
 
-    println!("Compiling {} protobuf file(s)", protos.len());
-    prost_build::Config::new()
-        .type_attribute(".tari.comms.control_service.RejectReason", "#[derive(Error)]")
-        .compile_protos(&protos, &[proto_path])
-        .unwrap();
+pub mod store_forward {
+    include_proto_package!("tari.dht.store_forward");
 }

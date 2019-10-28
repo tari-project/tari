@@ -20,18 +20,20 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::store_forward::message::StoredMessage;
-use bitflags::_core::time::Duration;
-use std::sync::{RwLock, RwLockWriteGuard};
+use crate::proto::store_forward::StoredMessage;
+use std::{
+    sync::{RwLock, RwLockWriteGuard},
+    time::Duration,
+};
 use ttl_cache::TtlCache;
 
 pub type SignatureBytes = Vec<u8>;
 
-pub struct SAFStorage {
+pub struct SafStorage {
     message_cache: RwLock<TtlCache<SignatureBytes, StoredMessage>>,
 }
 
-impl SAFStorage {
+impl SafStorage {
     pub fn new(cache_capacity: usize) -> Self {
         Self {
             message_cache: RwLock::new(TtlCache::new(cache_capacity)),

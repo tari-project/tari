@@ -21,8 +21,9 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    envelope::{DhtEnvelope, DhtHeader, DhtMessageFlags, DhtMessageType, NodeDestination},
+    envelope::{DhtMessageFlags, DhtMessageHeader, NodeDestination},
     inbound::DhtInboundMessage,
+    proto::envelope::{DhtEnvelope, DhtMessageType},
 };
 use rand::rngs::OsRng;
 use std::sync::Arc;
@@ -82,10 +83,10 @@ pub fn make_comms_inbound_message(
     )
 }
 
-pub fn make_dht_header(node_identity: &NodeIdentity, message: &Vec<u8>, flags: DhtMessageFlags) -> DhtHeader {
-    DhtHeader {
+pub fn make_dht_header(node_identity: &NodeIdentity, message: &Vec<u8>, flags: DhtMessageFlags) -> DhtMessageHeader {
+    DhtMessageHeader {
         version: 0,
-        destination: NodeDestination::Unspecified,
+        destination: NodeDestination::Unknown,
         origin_public_key: node_identity.public_key().clone(),
         origin_signature: signature::sign(&mut OsRng::new().unwrap(), node_identity.secret_key.clone(), message)
             .unwrap()
@@ -111,17 +112,12 @@ pub fn make_dht_inbound_message(
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_NODE,
         ),
-        MessageEnvelopeHeader {
-            public_key: node_identity.identity.public_key.clone(),
-            signature: Vec::new(),
-            flags: MessageFlags::empty(),
-        },
         body,
     )
 }
 
 pub fn make_dht_envelope(node_identity: &NodeIdentity, message: Vec<u8>, flags: DhtMessageFlags) -> DhtEnvelope {
-    DhtEnvelope::new(make_dht_header(node_identity, &message, flags), message)
+    DhtEnvelope::new(make_dht_header(node_identity, &message, flags).into(), message)
 }
 
 pub fn make_peer_manager() -> Arc<PeerManager> {

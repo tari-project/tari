@@ -20,17 +20,19 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::envelope::DhtHeader;
+use crate::{
+    envelope::DhtMessageHeader,
+    proto::store_forward::{StoredMessage, StoredMessagesRequest, StoredMessagesResponse},
+};
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
-use tari_comms::message::MessageEnvelopeHeader;
+use prost_types::Timestamp;
 
-/// The RetrieveMessageRequest is used for requesting the set of stored messages from neighbouring peer nodes. If a
-/// start_time is provided then only messages after the specified time will be sent, otherwise all applicable messages
-/// will be sent.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub struct StoredMessagesRequest {
-    pub since: Option<DateTime<Utc>>,
+/// Utility function that converts a `chrono::DateTime` to a `prost::Timestamp`
+pub(crate) fn datetime_to_timestamp(datetime: DateTime<Utc>) -> Timestamp {
+    Timestamp {
+        seconds: datetime.timestamp(),
+        nanos: datetime.timestamp_subsec_nanos() as i32,
+    }
 }
 
 impl StoredMessagesRequest {
@@ -39,47 +41,30 @@ impl StoredMessagesRequest {
     }
 
     pub fn since(since: DateTime<Utc>) -> Self {
-        Self { since: Some(since) }
-    }
-}
-
-/// Storage for a single message envelope, including the date and time when the element was stored
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct StoredMessage {
-    pub stored_at: DateTime<Utc>,
-    pub version: u8,
-    pub comms_header: MessageEnvelopeHeader,
-    pub dht_header: DhtHeader,
-    pub encrypted_body: Vec<u8>,
-}
-
-impl StoredMessage {
-    pub fn new(
-        version: u8,
-        comms_header: MessageEnvelopeHeader,
-        dht_header: DhtHeader,
-        encrypted_body: Vec<u8>,
-    ) -> Self
-    {
         Self {
-            version,
-            comms_header,
-            dht_header,
-            encrypted_body,
-            stored_at: Utc::now(),
+            since: Some(datetime_to_timestamp(since)),
         }
     }
 }
 
-/// The StoredMessages contains the set of applicable messages retrieved from a neighbouring peer node.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct StoredMessagesResponse {
-    pub messages: Vec<StoredMessage>,
+impl StoredMessage {
+    pub fn new(version: u32, dht_header: DhtMessageHeader, encrypted_body: Vec<u8>) -> Self {
+        Self {
+            version,
+            dht_header: Some(dht_header.into()),
+            encrypted_body,
+            stored_at: Some(datetime_to_timestamp(Utc::now())),
+        }
+    }
+
+    pub fn has_required_fields(&self) -> bool {
+        self.dht_header.is_some()
+    }
 }
 
 impl StoredMessagesResponse {
-    pub fn len(&self) -> usize {
-        self.messages.len()
+    pub fn messages(&self) -> &Vec<StoredMessage> {
+        &self.messages
     }
 }
 

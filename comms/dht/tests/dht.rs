@@ -137,7 +137,6 @@ fn setup_comms_dht(
 #[test]
 #[allow(non_snake_case)]
 fn dht_join_propagation() {
-    env_logger::init();
     runtime::test_async(|rt| {
         // Create 3 nodes where only Node B knows A and C, but A and C want to talk to each other
         let node_A_identity = new_node_identity("127.0.0.1:11113".parse().unwrap());
@@ -266,7 +265,7 @@ fn dht_discover_propagation() {
                 .send_discover(
                     node_D_identity.identity.public_key.clone(),
                     None,
-                    NodeDestination::Unspecified,
+                    NodeDestination::Unknown,
                 )
                 .await
                 .unwrap();

@@ -26,13 +26,12 @@ use log::*;
 use tari_comms_middleware::MiddlewareError;
 use tower::{layer::Layer, Service, ServiceExt};
 
-const LOG_TARGET: &'static str = "comms::dht::deserialize";
+const LOG_TARGET: &'static str = "comms::dht::dedup";
 
-/// # DHT Deserialization middleware
+/// # DHT Deduplication middleware
 ///
-/// Takes in an `InboundMessage` and deserializes the body into a [DhtEnvelope].
-/// The `next_service` is called with a constructed [DhtInboundMessage] which contains
-/// the relevant comms-level and dht-level information.
+/// Takes in a `DhtInboundMessage` and checks the message signature cache for duplicates.
+/// If a duplicate message is detected, it is discarded.
 #[derive(Clone)]
 pub struct DedupMiddleware<S> {
     next_service: S,

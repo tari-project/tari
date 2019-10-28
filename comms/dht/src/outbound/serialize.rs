@@ -20,12 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{consts::DHT_RNG, envelope::DhtEnvelope, outbound::message::DhtOutboundMessage};
+use crate::{consts::DHT_RNG, outbound::message::DhtOutboundMessage, proto::envelope::DhtEnvelope};
 use futures::{task::Context, Future, Poll};
 use log::*;
 use std::sync::Arc;
 use tari_comms::{
-    message::MessageFlags,
+    message::{MessageExt, MessageFlags},
     outbound_message_service::OutboundMessage,
     peer_manager::NodeIdentity,
     utils::signature,
@@ -34,7 +34,7 @@ use tari_comms_middleware::MiddlewareError;
 use tari_utilities::message_format::MessageFormat;
 use tower::{layer::Layer, Service, ServiceExt};
 
-const LOG_TARGET: &'static str = "comms::dht::deserialize";
+const LOG_TARGET: &'static str = "comms::dht::serialize";
 
 #[derive(Clone)]
 pub struct SerializeMiddleware<S> {
@@ -101,9 +101,9 @@ where
             trace!(target: LOG_TARGET, "Signed message: {:?}", dht_header);
         }
 
-        let envelope = DhtEnvelope::new(dht_header, body);
+        let envelope = DhtEnvelope::new(dht_header.into(), body);
 
-        let body = envelope.to_binary()?;
+        let body = envelope.to_encoded_bytes()?;
 
         next_service
             .oneshot(OutboundMessage::new(peer_node_identity.node_id, comms_flags, body))
@@ -139,6 +139,7 @@ mod test {
         test_utils::{make_dht_header, make_node_identity, service_spy},
     };
     use futures::executor::block_on;
+    use prost::Message;
     use tari_comms::{
         message::MessageFlags,
         peer_manager::{NodeId, PeerFeatures, PeerNodeIdentity},
@@ -170,7 +171,7 @@ mod test {
         block_on(serialize.call(msg)).unwrap();
 
         let msg = spy.pop_request().unwrap();
-        let dht_envelope = DhtEnvelope::from_binary(&msg.body).unwrap();
+        let dht_envelope = DhtEnvelope::decode(&msg.body).unwrap();
         assert_eq!(dht_envelope.body, b"A".to_vec());
         assert_eq!(msg.peer_node_id, NodeId::default());
     }

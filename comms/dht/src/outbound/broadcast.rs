@@ -22,7 +22,7 @@
 
 use super::{broadcast_strategy::BroadcastStrategy, error::DhtOutboundError, message::DhtOutboundRequest};
 use crate::{
-    envelope::DhtHeader,
+    envelope::DhtMessageHeader,
     outbound::message::{DhtOutboundMessage, ForwardRequest, OutboundEncryption, SendMessageRequest},
     DhtConfig,
 };
@@ -270,7 +270,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
         let selected_node_identities = self.get_broadcast_identities(&broadcast_strategy)?;
 
         // Create a DHT header
-        let dht_header = DhtHeader::new(
+        let dht_header = DhtMessageHeader::new(
             // Final destination for this message
             destination,
             // Origin public key used to identify the origin and verify the signature
@@ -335,8 +335,9 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
 mod test {
     use super::*;
     use crate::{
-        envelope::{DhtMessageFlags, DhtMessageType, NodeDestination},
+        envelope::{DhtMessageFlags, NodeDestination},
         outbound::message::OutboundEncryption,
+        proto::envelope::DhtMessageType,
         test_utils::{make_peer_manager, service_fn},
     };
     use futures::{channel::oneshot, future};
@@ -398,7 +399,7 @@ mod test {
             Box::new(SendMessageRequest {
                 broadcast_strategy: BroadcastStrategy::Flood,
                 comms_flags: MessageFlags::NONE,
-                destination: NodeDestination::Unspecified,
+                destination: NodeDestination::Unknown,
                 encryption: OutboundEncryption::None,
                 dht_message_type: DhtMessageType::None,
                 dht_flags: DhtMessageFlags::NONE,

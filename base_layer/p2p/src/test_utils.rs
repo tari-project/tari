@@ -24,12 +24,11 @@ use rand::rngs::OsRng;
 use std::sync::Arc;
 use tari_comms::{
     connection::NetAddress,
-    message::{MessageEnvelopeHeader, MessageFlags},
     peer_manager::{NodeIdentity, Peer, PeerFeatures, PeerFlags},
     utils::signature,
 };
 use tari_comms_dht::{
-    envelope::{DhtHeader, DhtMessageFlags, DhtMessageType, NodeDestination},
+    envelope::{DhtMessageFlags, DhtMessageHeader, DhtMessageType, NodeDestination},
     inbound::DhtInboundMessage,
 };
 use tari_utilities::message_format::MessageFormat;
@@ -60,10 +59,10 @@ pub fn make_node_identity() -> Arc<NodeIdentity> {
     )
 }
 
-pub fn make_dht_header(node_identity: &NodeIdentity, message: &Vec<u8>, flags: DhtMessageFlags) -> DhtHeader {
-    DhtHeader {
+pub fn make_dht_header(node_identity: &NodeIdentity, message: &Vec<u8>, flags: DhtMessageFlags) -> DhtMessageHeader {
+    DhtMessageHeader {
         version: 0,
-        destination: NodeDestination::Unspecified,
+        destination: NodeDestination::Unknown,
         origin_public_key: node_identity.identity.public_key.clone(),
         origin_signature: signature::sign(&mut OsRng::new().unwrap(), node_identity.secret_key.clone(), message)
             .unwrap()
@@ -89,11 +88,6 @@ pub fn make_dht_inbound_message(
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_NODE,
         ),
-        MessageEnvelopeHeader {
-            public_key: node_identity.identity.public_key.clone(),
-            signature: Vec::new(),
-            flags: MessageFlags::empty(),
-        },
         message,
     )
 }

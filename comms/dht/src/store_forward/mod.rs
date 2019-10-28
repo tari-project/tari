@@ -30,8 +30,7 @@ mod store;
 pub use self::{
     error::StoreAndForwardError,
     forward::ForwardLayer,
-    message::StoredMessagesRequest,
     saf_handler::MessageHandlerLayer,
-    state::SAFStorage,
+    state::SafStorage,
     store::StoreLayer,
 };

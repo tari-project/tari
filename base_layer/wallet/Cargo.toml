@@ -38,3 +38,4 @@ tokio-executor = { version ="^0.2.0-alpha.6", features = ["threadpool"] }
 [dev-dependencies]
 env_logger = "0.6.2"
 tempdir = "0.3.7"
+prost = "0.5.0"

@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package tari.dht;
+
+// The JoinMessage stores the information required for a network join request. It has all the information required to
+// locate and contact the source node, but network behaviour is different compared to DiscoverMessage.
+message JoinMessage {
+    bytes node_id = 1;
+    repeated string addresses = 2;
+    uint64 peer_features = 3;
+}
+
+// The DiscoverMessage stores the information required for a network discover request. It has all the information
+// required to locate and contact the source node, but network behaviour is different compared to JoinMessage.
+message DiscoverMessage {
+    bytes node_id = 1;
+    repeated string addresses = 2;
+    uint64 peer_features = 3;
+}

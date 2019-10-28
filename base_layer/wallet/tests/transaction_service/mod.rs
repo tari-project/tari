@@ -27,12 +27,13 @@ use futures::{
     channel::{mpsc, mpsc::Sender},
     SinkExt,
 };
+use prost::Message;
 use rand::{CryptoRng, OsRng, Rng};
 use std::{sync::Arc, time::Duration};
 use tari_broadcast_channel::bounded;
 use tari_comms::{
     builder::CommsNode,
-    message::Message,
+    message::EnvelopeBody,
     peer_manager::{NodeIdentity, PeerFeatures},
 };
 use tari_comms_dht::outbound::mock::{create_mock_outbound_service, MockOutboundService};
@@ -435,6 +436,7 @@ fn test_sending_repeated_tx_ids() {
 
 #[test]
 fn test_accepting_unknown_tx_id_and_malformed_reply() {
+    env_logger::init();
     let runtime = Runtime::new().unwrap();
     let mut rng = OsRng::new().unwrap();
 
@@ -465,8 +467,9 @@ fn test_accepting_unknown_tx_id_and_malformed_reply() {
         )
     });
 
-    let msg: Message = Message::from_binary(req.body.as_slice()).unwrap();
-    let sender_message = msg.deserialize_message().unwrap();
+    let envelope_body = EnvelopeBody::decode(req.body.as_slice()).unwrap();
+    let sender_message =
+        TransactionSenderMessage::from_binary(&envelope_body.decode_part::<Vec<u8>>(1).unwrap().unwrap()).unwrap();
 
     let params = TestParams::new(&mut rng);
 

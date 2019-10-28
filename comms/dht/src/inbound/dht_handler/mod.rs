@@ -21,9 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod layer;
-mod message;
 mod middleware;
 mod task;
 
 pub use layer::DhtHandlerLayer;
-pub use message::{DiscoverMessage, JoinMessage};

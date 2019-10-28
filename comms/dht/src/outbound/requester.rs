@@ -22,19 +22,21 @@
 
 use super::{broadcast_strategy::BroadcastStrategy, message::DhtOutboundRequest};
 use crate::{
-    envelope::{DhtHeader, DhtMessageFlags, DhtMessageType, NodeDestination},
+    envelope::{DhtMessageFlags, DhtMessageHeader, NodeDestination},
     outbound::{
         message::{ForwardRequest, OutboundEncryption, SendMessageRequest},
         DhtOutboundError,
     },
+    proto::envelope::DhtMessageType,
 };
 use futures::{
     channel::{mpsc, oneshot},
     SinkExt,
 };
 use tari_comms::{
-    message::{Frame, Message, MessageFlags, MessageHeader},
+    message::{Frame, MessageExt, MessageFlags, MessageHeader},
     types::CommsPublicKey,
+    wrap_in_envelope_body,
 };
 use tari_utilities::message_format::MessageFormat;
 
@@ -89,7 +91,7 @@ impl OutboundMessageRequester {
         T: MessageFormat,
     {
         self.propagate(
-            NodeDestination::Unspecified,
+            NodeDestination::Unknown,
             encryption,
             exclude_peers,
             message_type,
@@ -180,7 +182,9 @@ impl OutboundMessageRequester {
         T: MessageFormat,
     {
         let flags = encryption.flags();
-        let body = serialize_message(message_type, message)?;
+        // TODO: Temporary hack
+        let header = MessageHeader::new(message_type)?;
+        let body = wrap_in_envelope_body!(header.to_binary()?, message.to_binary()?)?.to_encoded_bytes()?;
         self.send(
             broadcast_strategy,
             destination,
@@ -202,11 +206,10 @@ impl OutboundMessageRequester {
         message: T,
     ) -> Result<usize, DhtOutboundError>
     where
-        T: MessageFormat,
+        T: prost::Message,
     {
         let flags = encryption.flags();
-        // DHT has the message type in the DhtHeader, so no need to duplicate it in the Message wrapper.
-        let body = serialize_message((), message)?;
+        let body = wrap_in_envelope_body!(message)?.to_encoded_bytes()?;
         self.send(broadcast_strategy, destination, encryption, flags, message_type, body)
             .await
     }
@@ -250,7 +253,7 @@ impl OutboundMessageRequester {
     pub async fn forward_message(
         &mut self,
         broadcast_strategy: BroadcastStrategy,
-        dht_header: DhtHeader,
+        dht_header: DhtMessageHeader,
         body: Vec<u8>,
     ) -> Result<(), DhtOutboundError>
     {
@@ -264,15 +267,4 @@ impl OutboundMessageRequester {
             .await
             .map_err(Into::into)
     }
-}
-
-fn serialize_message<T, MType>(message_type: MType, message: T) -> Result<Vec<u8>, DhtOutboundError>
-where
-    T: MessageFormat,
-    MessageHeader<MType>: MessageFormat,
-{
-    let header = MessageHeader::new(message_type)?;
-    let msg = Message::from_message_format(header, message)?;
-
-    msg.to_binary().map_err(Into::into)
 }
