@@ -32,9 +32,7 @@ use futures::{
     future::poll_fn,
     stream::StreamExt,
 };
-use std::{
-    sync::{atomic::Ordering, Arc},
-};
+use std::sync::{atomic::Ordering, Arc};
 use tari_core::{
     blocks::{Block, BlockHeader},
     consensus::ConsensusRules,
