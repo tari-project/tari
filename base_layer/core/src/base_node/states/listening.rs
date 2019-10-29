@@ -20,32 +20,31 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::base_node::states::{block_sync::BlockSync, InitialSync, StateEvent, StateEvent::FatalError};
+use crate::{
+    base_node::{
+        states::{InitialSync, StateEvent, StateEvent::FatalError},
+        BackOff,
+        BaseNodeStateMachine,
+    },
+    chain_storage::BlockchainBackend,
+};
 use log::*;
+use std::{sync::atomic::Ordering, time::Duration};
 
 const LOG_TARGET: &str = "base_node::listening";
 
-pub struct Listening;
+pub struct ListeningInfo;
 
-impl Listening {
-    pub async fn next_event(&mut self) -> StateEvent {
+impl ListeningInfo {
+    pub async fn next_event<B: BlockchainBackend>(&mut self, shared: &mut BaseNodeStateMachine<B>) -> StateEvent {
         info!(target: LOG_TARGET, "Listening for new blocks and transactions");
-        FatalError("Unimplemented".into())
-    }
-}
-
-/// State management for BlockSync -> Listening. This change is part of the typical flow for new nodes joining the
-/// network, or established nodes that have caught up to the chain tip again.
-impl From<BlockSync> for Listening {
-    fn from(_old: BlockSync) -> Self {
-        unimplemented!()
-    }
-}
-
-/// State management for BlockSync -> Listening. This state change happens when a node restarts and still happens to
-/// be in sync with the network.
-impl From<InitialSync> for Listening {
-    fn from(_old: InitialSync) -> Self {
-        unimplemented!()
+        // TODO -- just wait for CTRL-C for now. Will actually listen for new blocks
+        let mut backoff = BackOff::new(100, Duration::from_secs(5), 1.0);
+        loop {
+            backoff.wait().await;
+            if backoff.is_finished() || shared.user_stopped.load(Ordering::Relaxed) {
+                return FatalError("User shutdown or timeout".to_string());
+            }
+        }
     }
 }

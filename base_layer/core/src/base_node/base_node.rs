@@ -24,7 +24,7 @@ use crate::{
     base_node::{
         comms_interface::OutboundNodeCommsInterface,
         states,
-        states::{BaseNodeState, StateEvent},
+        states::{BaseNodeState, HorizonInfo, ListeningInfo, StateEvent},
     },
     chain_storage::{BlockchainBackend, BlockchainDatabase},
 };
@@ -63,13 +63,13 @@ impl<B: BlockchainBackend> BaseNodeStateMachine<B> {
         use crate::base_node::states::{BaseNodeState::*, StateEvent::*, SyncStatus::*};
         match (state, event) {
             (Starting(s), Initialized) => InitialSync(s.into()),
-            (InitialSync(s), MetadataSynced(BehindHorizon)) => FetchingHorizonState(s.into()),
-            (InitialSync(s), MetadataSynced(Lagging)) => BlockSync(s.into()),
-            (InitialSync(s), MetadataSynced(UpToDate)) => Listening(s.into()),
+            (InitialSync(_), MetadataSynced(BehindHorizon(h))) => FetchingHorizonState(HorizonInfo::new(h)),
+            (InitialSync(s), MetadataSynced(Lagging(_))) => BlockSync(s.into()),
+            (InitialSync(s), MetadataSynced(UpToDate)) => Listening(ListeningInfo),
             (FetchingHorizonState(s), HorizonStateFetched) => BlockSync(s.into()),
-            (BlockSync(s), BlocksSynchronized) => Listening(s.into()),
-            (Listening(s), FallenBehind(BehindHorizon)) => FetchingHorizonState(s.into()),
-            (Listening(s), FallenBehind(Lagging)) => BlockSync(s.into()),
+            (BlockSync(s), BlocksSynchronized) => Listening(ListeningInfo),
+            (Listening(_), FallenBehind(BehindHorizon(h))) => FetchingHorizonState(HorizonInfo::new(h)),
+            (Listening(s), FallenBehind(Lagging(_))) => BlockSync(s.into()),
             (_, FatalError(s)) => Shutdown(states::Shutdown::with_reason(s)),
             (s, e) => {
                 debug!(
@@ -96,9 +96,9 @@ impl<B: BlockchainBackend> BaseNodeStateMachine<B> {
             let next_event = match &mut state {
                 Starting(s) => s.next_event(&mut shared_state).await,
                 InitialSync(s) => s.next_event(&mut shared_state).await,
-                FetchingHorizonState(s) => s.next_event().await,
+                FetchingHorizonState(s) => s.next_event(&mut shared_state).await,
                 BlockSync(s) => s.next_event().await,
-                Listening(s) => s.next_event().await,
+                Listening(s) => s.next_event(&mut shared_state).await,
                 Shutdown(_) => break,
             };
             debug!(
