@@ -1,0 +1,23 @@
+[package]
+name = "wallet_ffi"
+version = "0.0.5"
+edition = "2018"
+
+[dependencies]
+tari_comms = { path = "../../comms", version = "^0.0"}
+tari_comms_dht = { path = "../../comms/dht", version = "^0.0"}
+tari_core = { path = "../core", version="^0.0"}
+tari_crypto = { path = "../../infrastructure/crypto", version = "^0.0" }
+tari_p2p = {path = "../p2p", version = "^0.0"}
+tari_utilities = { path = "../../infrastructure/tari_util", version = "^0.0"}
+tari_wallet = { path = "../wallet", version = "^0.0"}
+futures =  { version = "=0.3.0-alpha.19", package = "futures-preview", features =["compat", "std"]}
+tokio = "0.2.0-alpha.4"
+libc = "0.2.65"
+rand = "0.5.5"
+chrono = { version = "0.4.6", features = ["serde"]}
+
+[lib]
+crate-type = ["staticlib","cdylib"]
+
+[dev-dependencies]
