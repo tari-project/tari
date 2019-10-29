@@ -71,7 +71,7 @@ where
     /// Run the Inbound Message Service on the set `message_sink_receiver` processing each message in that stream. If
     /// an error occurs while processing a message it is logged and the service will move onto the next message. Most
     /// errors represent a reason why a message didn't make it through the pipeline.
-    pub async fn run(mut self) -> () {
+    pub async fn run(mut self) {
         let mut shutdown_signal = self
             .shutdown_signal
             .take()

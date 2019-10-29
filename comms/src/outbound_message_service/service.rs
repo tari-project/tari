@@ -45,7 +45,7 @@ use std::{
 use tari_shutdown::ShutdownSignal;
 use tokio::timer;
 
-const LOG_TARGET: &'static str = "comms::outbound_message_service::worker";
+const LOG_TARGET: &str = "comms::outbound_message_service::worker";
 
 /// The state of the dial request
 pub struct DialState {

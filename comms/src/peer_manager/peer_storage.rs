@@ -119,14 +119,14 @@ where DS: KeyValueStore<PeerKey, Peer>
                 let mut stored_peer: Peer = self
                     .peers
                     .get(&peer_key)
-                    .map_err(|e| PeerManagerError::DatabaseError(e))?
+                    .map_err(PeerManagerError::DatabaseError)?
                     .ok_or(PeerManagerError::PeerNotFoundError)?;
                 stored_peer.update(node_id, net_addresses, flags, peer_features);
 
                 self.add_hashmap_links(peer_key, &stored_peer);
                 self.peers
                     .insert(peer_key, stored_peer)
-                    .map_err(|e| PeerManagerError::DatabaseError(e))?;
+                    .map_err(PeerManagerError::DatabaseError)?;
                 Ok(())
             },
             None => Err(PeerManagerError::PeerNotFoundError),

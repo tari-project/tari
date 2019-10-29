@@ -40,7 +40,7 @@ struct User {
 
 impl User {
     fn new(csv: &str) -> Result<User, String> {
-        let vals: Vec<&str> = csv.split(",").collect();
+        let vals: Vec<&str> = csv.split(',').collect();
         if vals.len() != 6 {
             return Err("Incomplete Record".into());
         }
@@ -81,7 +81,7 @@ fn get_path(name: &str) -> String {
 
 fn init(name: &str) -> Result<LMDBStore, LMDBError> {
     let path = get_path(name);
-    let _ = std::fs::create_dir(&path).unwrap_or_default();
+    std::fs::create_dir(&path).unwrap_or_default();
     LMDBBuilder::new()
         .set_path(&path)
         .set_environment_size(10)
@@ -98,7 +98,7 @@ fn load_users() -> Vec<User> {
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     path.push("tests/users.csv");
     let f = std::fs::read_to_string(path).unwrap();
-    f.split("\n").map(|s| User::new(s).unwrap()).collect()
+    f.split('\n').map(|s| User::new(s).unwrap()).collect()
 }
 
 fn insert_all_users(name: &str) -> (Vec<User>, LMDBDatabase) {

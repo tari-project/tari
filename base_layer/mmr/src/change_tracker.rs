@@ -382,7 +382,7 @@ impl<'de> Deserialize<'de> for MerkleCheckPoint {
             }
         }
 
-        const FIELDS: &'static [&'static str] = &["nodes_added", "nodes_deleted"];
+        const FIELDS: &[&str] = &["nodes_added", "nodes_deleted"];
         deserializer.deserialize_struct("MerkleCheckPoint", FIELDS, MerkleCheckPointVisitor)
     }
 }

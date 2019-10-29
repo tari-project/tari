@@ -82,11 +82,7 @@ impl LivePeerConnections {
 
     /// Get an active connection by node id
     pub fn get_active_connection(&self, node_id: &NodeId) -> Option<Arc<PeerConnection>> {
-        self.atomic_read(|lock| {
-            lock.get(node_id)
-                .filter(|conn| conn.is_active())
-                .map(|conn| conn.clone())
-        })
+        self.atomic_read(|lock| lock.get(node_id).filter(|conn| conn.is_active()))
     }
 
     /// Get number of active connections
@@ -116,7 +112,7 @@ impl LivePeerConnections {
                     );
 
                     conn.shutdown()
-                        .map_err(|err| ConnectionManagerError::ConnectionShutdownFailed(err))?;
+                        .map_err(ConnectionManagerError::ConnectionShutdownFailed)?;
                 }
             }
 

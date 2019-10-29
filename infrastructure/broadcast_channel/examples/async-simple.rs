@@ -6,7 +6,7 @@ fn main() {
     let subscriber2 = subscriber1.clone();
 
     block_on(async move {
-        stream::iter(1..15).map(|i| Ok(i)).forward(publisher).await.unwrap();
+        stream::iter(1..15).map(Ok).forward(publisher).await.unwrap();
     });
 
     let received1: Vec<u32> = block_on(async { subscriber1.map(|x| *x).collect().await });

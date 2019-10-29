@@ -122,7 +122,7 @@ mod test {
 
     fn init_datastore(name: &str) -> Result<LMDBStore, LMDBError> {
         let path = get_path(name);
-        let _ = std::fs::create_dir(&path).unwrap_or_default();
+        std::fs::create_dir(&path).unwrap_or_default();
         LMDBBuilder::new()
             .set_path(&path)
             .set_environment_size(10)

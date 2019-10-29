@@ -136,7 +136,6 @@ impl MerkleProof {
             .iter()
             .map(|(_, sibling)| {
                 mmr.get_node_hash(*sibling)?
-                    .map(|v| v.clone())
                     .ok_or(MerkleProofError::HashNotFound(*sibling))
             })
             .collect::<Result<_, _>>()?;
@@ -258,7 +257,7 @@ impl MerkleProof {
                 "Found edge case. pos: {}, peaks: {:?}, mmr_size: {}, siblings: {:?}, peak_path: {:?}",
                 pos, peaks, self.mmr_size, &self.path, &self.peaks
             );
-            return Err(MerkleProofError::Unexpected);
+            Err(MerkleProofError::Unexpected)
         } else {
             let parent = if is_left_sibling(sibling_pos) {
                 hash_together::<D>(&sibling, hash)

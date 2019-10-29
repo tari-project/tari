@@ -157,7 +157,7 @@ mod test {
         });
         let signal = shutdown.to_signal();
         rt.spawn(async move {
-            let _ = signal.await.unwrap();
+            signal.await.unwrap();
         });
         shutdown.trigger().unwrap();
         assert_eq!(spy.load(Ordering::SeqCst), true);

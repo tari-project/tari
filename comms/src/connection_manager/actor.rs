@@ -36,7 +36,7 @@ use log::*;
 use std::{collections::HashMap, sync::Arc};
 use tari_shutdown::ShutdownSignal;
 
-const LOG_TARGET: &'static str = "comms::dialer::actor";
+const LOG_TARGET: &str = "comms::dialer::actor";
 
 /// Create a connected ConnectionManagerRequester and ConnectionManagerService pair. The ConnectionManagerService
 /// should be started using an executor `e.g. pool.spawn(service.start());`. The requester is used to

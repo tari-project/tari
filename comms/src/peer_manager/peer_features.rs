@@ -26,9 +26,9 @@ use serde::{Deserialize, Serialize};
 bitflags! {
     #[derive(Serialize, Deserialize)]
     pub struct PeerFeatures: u64 {
-        const NONE = 0b00000000;
-        const MESSAGE_PROPAGATION = 0b00000001;
-        const DHT_STORE_FORWARD = 0b00000010;
+        const NONE = 0b0000_0000;
+        const MESSAGE_PROPAGATION = 0b0000_0001;
+        const DHT_STORE_FORWARD = 0b0000_0010;
 
         const COMMUNICATION_NODE = Self::MESSAGE_PROPAGATION.bits | Self::DHT_STORE_FORWARD.bits;
         const COMMUNICATION_CLIENT = Self::NONE.bits;
