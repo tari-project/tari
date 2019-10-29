@@ -23,7 +23,7 @@
 use std::{cmp, ops::Range, sync::Mutex};
 
 const PORT_RANGE: Range<u16> = 40000..48000;
-const LOCAL_ADDRESS: &'static str = "127.0.0.1";
+const LOCAL_ADDRESS: &str = "127.0.0.1";
 
 lazy_static! {
     /// Shared counter of ports which have been used

@@ -126,7 +126,7 @@ impl<T> Receiver<T> {
         }
         let val = self.buffer[self.ri.get() % self.size].load_full().unwrap();
         self.ri.inc();
-        return Ok(val);
+        Ok(val)
     }
 }
 

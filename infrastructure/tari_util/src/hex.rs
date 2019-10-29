@@ -83,9 +83,9 @@ mod test {
 
     #[test]
     fn test_to_hex() {
-        assert_eq!(to_hex(&vec![0, 0, 0, 0]), "00000000");
-        assert_eq!(to_hex(&vec![10, 11, 12, 13]), "0a0b0c0d");
-        assert_eq!(to_hex(&vec![0, 0, 0, 255]), "000000ff");
+        assert_eq!(to_hex(&[0, 0, 0, 0]), "00000000");
+        assert_eq!(to_hex(&[10, 11, 12, 13]), "0a0b0c0d");
+        assert_eq!(to_hex(&[0, 0, 0, 255]), "000000ff");
     }
 
     #[test]

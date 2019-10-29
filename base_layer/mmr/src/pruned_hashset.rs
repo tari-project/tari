@@ -93,7 +93,7 @@ impl ArrayLike for PrunedHashSet {
                 Err(_) => None,
             });
         }
-        Ok(self.hashes.get(index - self.base_offset)?.map(|v| v.clone()))
+        Ok(self.hashes.get(index - self.base_offset)?)
     }
 
     fn get_or_panic(&self, index: usize) -> Self::Value {

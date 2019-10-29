@@ -179,7 +179,7 @@ mod test {
         ];
 
         block_on(async move {
-            stream::iter(messages2).map(|i| Ok(i)).forward(publisher).await.unwrap();
+            stream::iter(messages2).map(Ok).forward(publisher).await.unwrap();
         });
 
         let topic1b = block_on(async { sub1.collect::<Vec<Dummy>>().await });

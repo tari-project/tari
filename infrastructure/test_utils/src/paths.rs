@@ -23,7 +23,7 @@
 use crate::random;
 use std::{fs, path::PathBuf};
 
-pub const RELATIVE_DATA_PATH: &'static str = "tests/data";
+pub const RELATIVE_DATA_PATH: &str = "tests/data";
 
 pub fn create_random_database_path() -> PathBuf {
     let path = database_path().join(random::string(8));

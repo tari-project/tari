@@ -473,7 +473,7 @@ impl PeerConnectionWorker {
                 Some((Some(identity), message_type, frames))
             },
             Direction::Outbound => {
-                if frames.len() < 1 {
+                if frames.is_empty() {
                     return None;
                 }
                 let message_type_u8 = frames.drain(0..1).collect::<FrameSet>().remove(0).remove(0);
