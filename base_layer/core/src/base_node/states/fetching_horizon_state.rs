@@ -20,32 +20,92 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::base_node::states::{listening::Listening, InitialSync, StateEvent, StateEvent::FatalError};
+use crate::{
+    base_node::{
+        states::{StateEvent, StateEvent::FatalError},
+        BaseNodeStateMachine,
+    },
+    chain_storage::BlockchainBackend,
+};
 use log::*;
 
 const LOG_TARGET: &str = "base_node::fetching_horizon_state";
 
-pub struct FetchHorizonState;
-
-impl FetchHorizonState {
-    pub async fn next_event(&mut self) -> StateEvent {
-        info!(target: LOG_TARGET, "Starting synchronization of pruning horizon state");
-        FatalError("Unimplemented".into())
-    }
+/// Local state used when synchronizing the node to the pruning horizon.
+pub struct HorizonInfo {
+    /// The block that we've synchronised to when exiting this state
+    horizon_block: u64,
 }
 
-/// State management for InitialSync -> FetchingHorizonState. This is the typical transition for a new node joining
-/// the network
-impl From<InitialSync> for FetchHorizonState {
-    fn from(_old: InitialSync) -> Self {
-        unimplemented!()
+impl HorizonInfo {
+    pub fn new(horizon_block: u64) -> Self {
+        HorizonInfo { horizon_block }
     }
-}
 
-/// State management for Listening -> FetchingHorizonState. This can occur if a node has been disconnected from the
-/// network for a long time.
-impl From<Listening> for FetchHorizonState {
-    fn from(_old: Listening) -> Self {
-        unimplemented!()
+    pub async fn next_event<B: BlockchainBackend>(&mut self, _shared: &mut BaseNodeStateMachine<B>) -> StateEvent {
+        debug!(
+            target: LOG_TARGET,
+            "Starting horizon synchronisation at block {}", self.horizon_block
+        );
+
+        info!(
+            target: LOG_TARGET,
+            "Synchronising kernel merkle mountain range to pruning horizon."
+        );
+        if let Err(e) = self.synchronize_kernel_mmr().await {
+            return StateEvent::FatalError(format!("Synchronizing kernel MMR failed. {}", e));
+        }
+
+        info!(target: LOG_TARGET, "Synchronising range proof MMR to pruning horizon.");
+        if let Err(e) = self.synchronize_range_proof_mmr().await {
+            return StateEvent::FatalError(format!("Synchronizing range proof MMR failed. {}", e));
+        }
+
+        info!(target: LOG_TARGET, "Synchronising TXO MMR to pruning horizon.");
+        if let Err(e) = self.synchronize_output_mmr().await {
+            return StateEvent::FatalError(format!("Synchronizing output MMR failed. {}", e));
+        }
+
+        info!(target: LOG_TARGET, "Synchronising headers to pruning horizon.");
+        if let Err(e) = self.synchronize_headers().await {
+            return StateEvent::FatalError(format!("Synchronizing block headers failed. {}", e));
+        }
+
+        info!(target: LOG_TARGET, "Synchronising kernels to pruning horizon.");
+        if let Err(e) = self.synchronize_kernels().await {
+            return StateEvent::FatalError(format!("Synchronizing kernels failed. {}", e));
+        }
+
+        info!(target: LOG_TARGET, "Synchronising UTXO set at pruning horizon.");
+        if let Err(e) = self.synchronize_utxo_set().await {
+            return StateEvent::FatalError(format!("Synchronizing UTXO set failed. {}", e));
+        }
+
+        debug!(target: LOG_TARGET, "Pruning horizon state has synchronised");
+        StateEvent::HorizonStateFetched
+    }
+
+    async fn synchronize_headers(&mut self) -> Result<(), String> {
+        Err("unimplemented".into())
+    }
+
+    async fn synchronize_kernels(&mut self) -> Result<(), String> {
+        Err("unimplemented".into())
+    }
+
+    async fn synchronize_utxo_set(&mut self) -> Result<(), String> {
+        Err("unimplemented".into())
+    }
+
+    async fn synchronize_kernel_mmr(&mut self) -> Result<(), String> {
+        Err("unimplemented".into())
+    }
+
+    async fn synchronize_range_proof_mmr(&mut self) -> Result<(), String> {
+        Err("unimplemented".into())
+    }
+
+    async fn synchronize_output_mmr(&mut self) -> Result<(), String> {
+        Err("unimplemented".into())
     }
 }

@@ -21,9 +21,9 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::base_node::states::{
-    fetching_horizon_state::FetchHorizonState,
-    listening::Listening,
+    fetching_horizon_state::HorizonInfo,
     InitialSync,
+    ListeningInfo,
     StateEvent,
     StateEvent::FatalError,
 };
@@ -31,9 +31,9 @@ use log::*;
 
 const LOG_TARGET: &str = "base_node::block_sync";
 
-pub struct BlockSync;
+pub struct BlockSyncInfo;
 
-impl BlockSync {
+impl BlockSyncInfo {
     pub async fn next_event(&mut self) -> StateEvent {
         info!(target: LOG_TARGET, "Synchronizing missing blocks");
         FatalError("Unimplemented".into())
@@ -42,23 +42,23 @@ impl BlockSync {
 
 /// State management for FetchingHorizonState -> BlockSync. This is a typical transition for new nodes joining the
 /// network.
-impl From<FetchHorizonState> for BlockSync {
-    fn from(_old: FetchHorizonState) -> Self {
+impl From<HorizonInfo> for BlockSyncInfo {
+    fn from(_old: HorizonInfo) -> Self {
         unimplemented!()
     }
 }
 
 /// State management for Listening -> BlockSync. This change happens when a node has been temporarily disconnected
 /// from the network, or a reorg has occurred.
-impl From<Listening> for BlockSync {
-    fn from(_old: Listening) -> Self {
+impl From<ListeningInfo> for BlockSyncInfo {
+    fn from(_old: ListeningInfo) -> Self {
         unimplemented!()
     }
 }
 
 /// State management for InitialSync -> BlockSync. This change happens when a (previously synced) node is restarted
 /// after being offline for some time.
-impl From<InitialSync> for BlockSync {
+impl From<InitialSync> for BlockSyncInfo {
     fn from(_old: InitialSync) -> Self {
         unimplemented!()
     }

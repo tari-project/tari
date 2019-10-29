@@ -112,9 +112,9 @@ use std::fmt::{Display, Error, Formatter};
 pub enum BaseNodeState {
     Starting(Starting),
     InitialSync(InitialSync),
-    FetchingHorizonState(FetchHorizonState),
-    BlockSync(BlockSync),
-    Listening(Listening),
+    FetchingHorizonState(HorizonInfo),
+    BlockSync(BlockSyncInfo),
+    Listening(ListeningInfo),
     Shutdown(Shutdown),
 }
 
@@ -134,8 +134,10 @@ pub enum StateEvent {
 /// blocks to catch up, or we are `UpToDate`.
 #[derive(Debug)]
 pub enum SyncStatus {
-    BehindHorizon,
-    Lagging,
+    // We are behind the pruning horizon. The u64 parameter indicates the block height at the horizon.
+    BehindHorizon(u64),
+    // We are behind the chain tip. The usize parameter gives the network's chain height.
+    Lagging(u64),
     UpToDate,
 }
 
@@ -161,11 +163,9 @@ mod listening;
 mod shutdown_state;
 mod starting_state;
 
-use crate::base_node::states::{
-    block_sync::BlockSync,
-    fetching_horizon_state::FetchHorizonState,
-    listening::Listening,
-};
+pub use block_sync::BlockSyncInfo;
+pub use fetching_horizon_state::HorizonInfo;
 pub use initial_sync::InitialSync;
+pub use listening::ListeningInfo;
 pub use shutdown_state::Shutdown;
 pub use starting_state::Starting;
