@@ -20,22 +20,25 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{actor::DhtActorError, outbound::DhtOutboundError};
+use crate::{actor::DhtActorError, envelope::DhtMessageError, outbound::DhtOutboundError};
 use derive_error::Error;
+use prost::DecodeError;
 use std::io;
 use tari_comms::{message::MessageError, peer_manager::PeerManagerError};
-use tari_utilities::{ciphers::cipher::CipherError, message_format::MessageFormatError};
+use tari_utilities::ciphers::cipher::CipherError;
 
 #[derive(Debug, Error)]
 pub enum StoreAndForwardError {
+    DhtMessageError(DhtMessageError),
     MessageError(MessageError),
     PeerManagerError(PeerManagerError),
-    MessageFormatError(MessageFormatError),
     DhtOutboundError(DhtOutboundError),
     /// Received stored message has an invalid destination
     InvalidDestination,
     /// Received stored message has an invalid origin signature
     InvalidSignature,
+    /// Invalid envelope body
+    InvalidEnvelopeBody,
     /// Received stored message which is not encrypted
     StoredMessageNotEncrypted,
     /// Unable to decrypt received stored message
@@ -45,4 +48,8 @@ pub enum StoreAndForwardError {
     /// Received duplicate stored message
     DuplicateMessage,
     CurrentThreadRuntimeInitializeFailed(io::Error),
+    /// Unable to decode message
+    DecodeError(DecodeError),
+    /// Dht header was not provided
+    DhtHeaderNotProvided,
 }

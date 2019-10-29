@@ -1,1 +1,9 @@
-{"identity":{"node_id":"0576e03322318da01da557f9f6c7e2b1fb03258c78445c39560cf2ed35a5161a","public_key":"fa128780ce287262af8d81d7db2b76314457ea2d07d506e40a2c35c9c5dc5f54","features":{"bits":3}},"secret_key":"faed11687e53de44e0cc89ea095712363cc9a036524e3079143db1c6ca339b01","control_service_address":{"IP":"127.0.0.1:38345"}}
+{
+  "identity": {
+    "node_id": "0576e03322318da01da557f9f6c7e2b1fb03258c78445c39560cf2ed35a5161a",
+    "public_key": "fa128780ce287262af8d81d7db2b76314457ea2d07d506e40a2c35c9c5dc5f54",
+    "features": {"bits": 3}
+  },
+  "secret_key": "faed11687e53de44e0cc89ea095712363cc9a036524e3079143db1c6ca339b01",
+  "control_service_address": {"IP": "127.0.0.1:38345"}
+}

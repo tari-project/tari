@@ -21,14 +21,14 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::middleware::MessageHandlerMiddleware;
-use crate::{actor::DhtRequester, config::DhtConfig, outbound::OutboundMessageRequester, store_forward::SAFStorage};
+use crate::{actor::DhtRequester, config::DhtConfig, outbound::OutboundMessageRequester, store_forward::SafStorage};
 use std::sync::Arc;
 use tari_comms::peer_manager::{NodeIdentity, PeerManager};
 use tower::layer::Layer;
 
 pub struct MessageHandlerLayer {
     config: DhtConfig,
-    store: Arc<SAFStorage>,
+    store: Arc<SafStorage>,
     dht_requester: DhtRequester,
     peer_manager: Arc<PeerManager>,
     node_identity: Arc<NodeIdentity>,
@@ -38,7 +38,7 @@ pub struct MessageHandlerLayer {
 impl MessageHandlerLayer {
     pub fn new(
         config: DhtConfig,
-        store: Arc<SAFStorage>,
+        store: Arc<SafStorage>,
         dht_requester: DhtRequester,
         node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,

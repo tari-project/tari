@@ -21,7 +21,10 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::broadcast_strategy::BroadcastStrategy;
-use crate::envelope::{DhtHeader, DhtMessageFlags, DhtMessageType, NodeDestination};
+use crate::{
+    envelope::{DhtMessageFlags, DhtMessageHeader, NodeDestination},
+    proto::envelope::DhtMessageType,
+};
 use futures::channel::oneshot;
 use std::fmt;
 use tari_comms::{message::MessageFlags, peer_manager::PeerNodeIdentity, types::CommsPublicKey};
@@ -78,7 +81,7 @@ pub struct ForwardRequest {
     /// Broadcast strategy to use when forwarding the message
     pub broadcast_strategy: BroadcastStrategy,
     /// Original header from the origin
-    pub dht_header: DhtHeader,
+    pub dht_header: DhtMessageHeader,
     /// Comms-level message flags
     pub comms_flags: MessageFlags,
     /// Message body
@@ -108,7 +111,7 @@ impl fmt::Display for DhtOutboundRequest {
 #[derive(Clone, Debug)]
 pub struct DhtOutboundMessage {
     pub peer_node_identity: PeerNodeIdentity,
-    pub dht_header: DhtHeader,
+    pub dht_header: DhtMessageHeader,
     pub comms_flags: MessageFlags,
     pub encryption: OutboundEncryption,
     pub body: Vec<u8>,
@@ -118,7 +121,7 @@ impl DhtOutboundMessage {
     /// Create a new DhtOutboundMessage
     pub fn new(
         peer_node_identity: PeerNodeIdentity,
-        dht_header: DhtHeader,
+        dht_header: DhtMessageHeader,
         encryption: OutboundEncryption,
         comms_flags: MessageFlags,
         body: Vec<u8>,

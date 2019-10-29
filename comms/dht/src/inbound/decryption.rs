@@ -26,10 +26,10 @@ use crate::{
 };
 use futures::{task::Context, Future, Poll};
 use log::*;
+use prost::Message;
 use std::sync::Arc;
-use tari_comms::{message::Message, peer_manager::NodeIdentity, utils::crypt};
+use tari_comms::{message::EnvelopeBody, peer_manager::NodeIdentity, utils::crypt};
 use tari_comms_middleware::MiddlewareError;
-use tari_utilities::message_format::MessageFormat;
 use tower::{layer::Layer, Service, ServiceExt};
 
 const LOG_TARGET: &'static str = "comms::middleware::encryption";
@@ -121,9 +121,30 @@ where
         decrypted: Vec<u8>,
     ) -> Result<(), MiddlewareError>
     {
-        // This `Message` was created in the OutboundMessageRequester. Deserialization is done here
-        // to determine if the decryption produced valid bytes or not.
-        match Message::from_binary(&decrypted) {
+        // Deserialization into an EnvelopeBody is done here to determine if the
+        // decryption produced valid bytes or not.
+        let result = EnvelopeBody::decode(&decrypted).and_then(|body| {
+            // Check if we received a body length of zero
+            //
+            // In addition to a peer sending a zero-length EnvelopeBody, decoding can erroneously succeed
+            // if the decrypted bytes happen to be valid protobuf encoding. This is very possible and
+            // the decrypt_inbound_fail test below _will_ sporadically fail without the following check.
+            // This is because proto3 will set fields to their default value if they don't exist in a valid encoding.
+            //
+            // For the parts of EnvelopeBody to be erroneously populated with bytes, all of these
+            // conditions would have to be true:
+            // 1. field type == 2 (length-delimited)
+            // 2. field number == 1
+            // 3. the subsequent byte(s) would have to be varint-encoded length which does not overflow
+            // 4. the rest of the bytes would have to be valid protobuf encoding
+            //
+            // The chance of this happening is extremely negligible.
+            if body.len() == 0 {
+                return Err(prost::DecodeError::new("EnvelopeBody has no parts"));
+            }
+            Ok(body)
+        });
+        match result {
             Ok(deserialized) => {
                 debug!(target: LOG_TARGET, "Message successfully decrypted");
                 let msg = DecryptedDhtMessage::succeeded(deserialized, message);
@@ -137,7 +158,7 @@ where
     }
 
     async fn success_not_encrypted(next_service: S, message: DhtInboundMessage) -> Result<(), MiddlewareError> {
-        match Message::from_binary(&message.body) {
+        match EnvelopeBody::decode(&message.body) {
             Ok(deserialized) => {
                 debug!(
                     target: LOG_TARGET,
@@ -173,6 +194,7 @@ mod test {
     };
     use futures::{executor::block_on, future};
     use std::sync::Mutex;
+    use tari_comms::{message::MessageExt, wrap_in_envelope_body};
     use tari_test_utils::counter_context;
 
     #[test]
@@ -198,9 +220,9 @@ mod test {
         let node_identity = make_node_identity();
         let mut service = DecryptionService::new(inner, Arc::clone(&node_identity));
 
-        let plain_text_msg = Message::from_message_format((), ()).unwrap();
+        let plain_text_msg = wrap_in_envelope_body!(Vec::new()).unwrap();
         let secret_key = crypt::generate_ecdh_secret(&node_identity.secret_key, &node_identity.identity.public_key);
-        let encrypted = crypt::encrypt(&secret_key, &plain_text_msg.to_binary().unwrap()).unwrap();
+        let encrypted = crypt::encrypt(&secret_key, &plain_text_msg.to_encoded_bytes().unwrap()).unwrap();
         let inbound_msg = make_dht_inbound_message(&node_identity, encrypted, DhtMessageFlags::ENCRYPTED);
 
         block_on(service.call(inbound_msg)).unwrap();
@@ -224,6 +246,7 @@ mod test {
 
         block_on(service.call(inbound_msg)).unwrap();
         let decrypted = result.lock().unwrap().take().unwrap();
+
         assert_eq!(decrypted.decryption_succeeded(), false);
         assert_eq!(decrypted.decryption_result.unwrap_err(), nonsense);
     }

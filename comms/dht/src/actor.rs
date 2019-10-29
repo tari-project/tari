@@ -28,8 +28,7 @@
 //! [DhtRequest]: ./enum.DhtRequest.html
 
 use crate::{
-    envelope::{DhtMessageType, NodeDestination},
-    inbound::{DiscoverMessage, JoinMessage},
+    envelope::NodeDestination,
     outbound::{
         BroadcastClosestRequest,
         BroadcastStrategy,
@@ -37,7 +36,11 @@ use crate::{
         OutboundEncryption,
         OutboundMessageRequester,
     },
-    store_forward::StoredMessagesRequest,
+    proto::{
+        dht::{DiscoverMessage, JoinMessage},
+        envelope::DhtMessageType,
+        store_forward::StoredMessagesRequest,
+    },
     DhtConfig,
 };
 use derive_error::Error;
@@ -55,6 +58,7 @@ use tari_comms::{
     types::CommsPublicKey,
 };
 use tari_shutdown::ShutdownSignal;
+use tari_utilities::ByteArray;
 use ttl_cache::TtlCache;
 
 const LOG_TARGET: &'static str = "comms::dht::actor";
@@ -254,9 +258,9 @@ impl DhtActor {
 
     async fn send_join(&mut self) -> Result<(), DhtOutboundError> {
         let message = JoinMessage {
-            node_id: self.node_identity.identity.node_id.clone(),
-            net_addresses: vec![self.node_identity.control_service_address()],
-            peer_features: self.node_identity.features().clone(),
+            node_id: self.node_identity.identity.node_id.to_vec(),
+            addresses: vec![self.node_identity.control_service_address().to_string()],
+            peer_features: self.node_identity.features().bits(),
         };
 
         debug!(
@@ -271,7 +275,7 @@ impl DhtActor {
                     node_id: self.node_identity.identity.node_id.clone(),
                     excluded_peers: Vec::new(),
                 })),
-                NodeDestination::Unspecified,
+                NodeDestination::Unknown,
                 OutboundEncryption::None,
                 DhtMessageType::Join,
                 message,
@@ -289,9 +293,9 @@ impl DhtActor {
     ) -> Result<(), DhtOutboundError>
     {
         let discover_msg = DiscoverMessage {
-            node_id: self.node_identity.identity.node_id.clone(),
-            net_addresses: vec![self.node_identity.control_service_address()],
-            peer_features: self.node_identity.features().clone(),
+            node_id: self.node_identity.identity.node_id.to_vec(),
+            addresses: vec![self.node_identity.control_service_address().to_string()],
+            peer_features: self.node_identity.features().bits(),
         };
         debug!(
             target: LOG_TARGET,
@@ -301,7 +305,7 @@ impl DhtActor {
         // If the destination node is is known, send to the closest peers we know. Otherwise...
         let network_location_node_id = dest_node_id.unwrap_or(match &destination {
             // ... if the destination is undisclosed or a public key, send discover to our closest peers
-            NodeDestination::Unspecified | NodeDestination::PublicKey(_) => self.node_identity.node_id().clone(),
+            NodeDestination::Unknown | NodeDestination::PublicKey(_) => self.node_identity.node_id().clone(),
             // otherwise, send it to the closest peers to the given NodeId destination we know
             NodeDestination::NodeId(node_id) => node_id.clone(),
         });
@@ -335,9 +339,9 @@ impl DhtActor {
         self.outbound_requester
             .send_dht_message(
                 broadcast_strategy,
-                NodeDestination::Unspecified,
+                NodeDestination::Unknown,
                 OutboundEncryption::EncryptForDestination,
-                DhtMessageType::SAFRequestMessages,
+                DhtMessageType::SafRequestMessages,
                 // TODO: We should track when this node last requested stored messages and ask
                 //       for messages after that date
                 StoredMessagesRequest::new(),
@@ -377,7 +381,7 @@ mod test {
                 let request = unwrap_oms_send_msg!(out_rx.next().await.unwrap());
                 assert_eq!(request.dht_message_type, DhtMessageType::Join);
                 let request = unwrap_oms_send_msg!(out_rx.next().await.unwrap());
-                assert_eq!(request.dht_message_type, DhtMessageType::SAFRequestMessages);
+                assert_eq!(request.dht_message_type, DhtMessageType::SafRequestMessages);
             });
         });
     }
@@ -438,7 +442,7 @@ mod test {
 
             rt.block_on(async move {
                 requester
-                    .send_discover(CommsPublicKey::default(), None, NodeDestination::Unspecified)
+                    .send_discover(CommsPublicKey::default(), None, NodeDestination::Unknown)
                     .await
                     .unwrap();
                 let request = unwrap_oms_send_msg!(out_rx.next().await.unwrap());

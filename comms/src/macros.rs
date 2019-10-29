@@ -61,7 +61,7 @@ macro_rules! acquire_read_lock {
 }
 
 /// A small wrapper macro which includes rust files generated from protos
-macro_rules! include_proto {
+macro_rules! include_proto_package {
     ($path:expr) => {
         include!(concat!(env!("OUT_DIR"), "/", $path, ".rs"));
     };

@@ -231,7 +231,7 @@ where
         self.outbound_message_service
             .send_message(
                 BroadcastStrategy::DirectPublicKey(dest_pubkey.clone()),
-                NodeDestination::Unspecified,
+                NodeDestination::Unknown,
                 OutboundEncryption::EncryptForDestination,
                 TariMessageType::new(BlockchainMessage::Transaction),
                 TransactionSenderMessage::Single(Box::new(msg.clone())),
@@ -326,7 +326,7 @@ where
             self.outbound_message_service
                 .send_message(
                     BroadcastStrategy::DirectPublicKey(source_pubkey.clone()),
-                    NodeDestination::Unspecified,
+                    NodeDestination::Unknown,
                     OutboundEncryption::EncryptForDestination,
                     TariMessageType::new(BlockchainMessage::TransactionReply),
                     recipient_reply.clone(),

@@ -293,7 +293,7 @@ where
             .outbound_message_service
             .send_message(
                 broadcast_strategy,
-                NodeDestination::Unspecified,
+                NodeDestination::Unknown,
                 OutboundEncryption::EncryptForDestination,
                 TariMessageType::new(BlockchainMessage::BaseNodeRequest),
                 service_request,

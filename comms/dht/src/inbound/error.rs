@@ -22,13 +22,21 @@
 
 use crate::outbound::DhtOutboundError;
 use derive_error::Error;
+use prost::DecodeError;
 use tari_comms::{message::MessageError, peer_manager::PeerManagerError};
-use tari_utilities::message_format::MessageFormatError;
 
 #[derive(Debug, Error)]
 pub enum DhtInboundError {
     MessageError(MessageError),
-    MessageFormatError(MessageFormatError),
+    //    MessageFormatError(MessageFormatError),
     PeerManagerError(PeerManagerError),
     DhtOutboundError(DhtOutboundError),
+    /// Failed to decode message
+    DecodeError(DecodeError),
+    /// Message body invalid
+    InvalidMessageBody,
+    /// Node ID is invalid
+    InvalidNodeId,
+    /// All given addresses were invalid
+    InvalidAddresses,
 }

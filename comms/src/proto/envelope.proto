@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package envelope;
+package tari.comms.envelope;
 
 /// Represents a message which is about to go on or has just come off the wire.
 /// As described in [RFC-0172](https://rfc.tari.com/RFC-0172_PeerToPeerMessagingProtocol.html#messaging-structure)

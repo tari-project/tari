@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+import "envelope.proto";
+
+package tari.dht.store_forward;
+
+// The RetrieveMessageRequest is used for requesting the set of stored messages from neighbouring peer nodes. If a
+// start_time is provided then only messages after the specified time will be sent, otherwise all applicable messages
+// will be sent.
+message StoredMessagesRequest {
+    google.protobuf.Timestamp since = 1;
+}
+
+// Storage for a single message envelope, including the date and time when the element was stored
+message StoredMessage {
+    google.protobuf.Timestamp stored_at = 1;
+    uint32 version = 2;
+    tari.dht.envelope.DhtHeader dht_header = 3;
+    bytes encrypted_body = 4;
+}
+
+// The StoredMessages contains the set of applicable messages retrieved from a neighbouring peer node.
+message StoredMessagesResponse {
+    repeated StoredMessage messages = 1;
+}

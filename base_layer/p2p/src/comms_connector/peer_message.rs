@@ -20,11 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_comms::{
-    message::{MessageEnvelopeHeader, MessageHeader},
-    peer_manager::Peer,
-};
-use tari_comms_dht::envelope::DhtHeader;
+use tari_comms::{message::MessageHeader, peer_manager::Peer};
+use tari_comms_dht::envelope::DhtMessageHeader;
 use tari_utilities::message_format::{MessageFormat, MessageFormatError};
 
 /// A domain-level message
@@ -34,9 +31,7 @@ pub struct PeerMessage<MType> {
     /// Domain message header
     pub message_header: MessageHeader<MType>,
     /// The message envelope header
-    pub comms_header: MessageEnvelopeHeader,
-    /// The message envelope header
-    pub dht_header: DhtHeader,
+    pub dht_header: DhtMessageHeader,
     /// The connected peer which sent this message
     pub source_peer: Peer,
 }
@@ -45,15 +40,13 @@ impl<MType> PeerMessage<MType> {
     pub fn new(
         message: Vec<u8>,
         message_header: MessageHeader<MType>,
-        comms_header: MessageEnvelopeHeader,
-        dht_header: DhtHeader,
+        dht_header: DhtMessageHeader,
         source_peer: Peer,
     ) -> Self
     {
         Self {
             body: message,
             message_header,
-            comms_header,
             dht_header,
             source_peer,
         }

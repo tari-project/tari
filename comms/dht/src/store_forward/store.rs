@@ -23,7 +23,8 @@
 use crate::{
     envelope::NodeDestination,
     inbound::DecryptedDhtMessage,
-    store_forward::{error::StoreAndForwardError, message::StoredMessage, state::SAFStorage},
+    proto::store_forward::StoredMessage,
+    store_forward::{error::StoreAndForwardError, state::SafStorage},
     DhtConfig,
 };
 use futures::{task::Context, Future, Poll};
@@ -40,7 +41,7 @@ pub struct StoreLayer {
     peer_manager: Arc<PeerManager>,
     config: DhtConfig,
     node_identity: Arc<NodeIdentity>,
-    storage: Arc<SAFStorage>,
+    storage: Arc<SafStorage>,
 }
 
 impl StoreLayer {
@@ -48,7 +49,7 @@ impl StoreLayer {
         config: DhtConfig,
         peer_manager: Arc<PeerManager>,
         node_identity: Arc<NodeIdentity>,
-        storage: Arc<SAFStorage>,
+        storage: Arc<SafStorage>,
     ) -> Self
     {
         Self {
@@ -81,7 +82,7 @@ pub struct StoreMiddleware<S> {
     peer_manager: Arc<PeerManager>,
     node_identity: Arc<NodeIdentity>,
 
-    storage: Arc<SAFStorage>,
+    storage: Arc<SafStorage>,
 }
 
 impl<S> StoreMiddleware<S> {
@@ -90,7 +91,7 @@ impl<S> StoreMiddleware<S> {
         config: DhtConfig,
         peer_manager: Arc<PeerManager>,
         node_identity: Arc<NodeIdentity>,
-        storage: Arc<SAFStorage>,
+        storage: Arc<SafStorage>,
     ) -> Self
     {
         Self {
@@ -136,7 +137,7 @@ struct StoreTask<S> {
     config: DhtConfig,
     node_identity: Arc<NodeIdentity>,
     next_service: S,
-    storage: Arc<SAFStorage>,
+    storage: Arc<SafStorage>,
 }
 
 impl<S> StoreTask<S> {
@@ -145,7 +146,7 @@ impl<S> StoreTask<S> {
         config: DhtConfig,
         peer_manager: Arc<PeerManager>,
         node_identity: Arc<NodeIdentity>,
-        storage: Arc<SAFStorage>,
+        storage: Arc<SafStorage>,
     ) -> Self
     {
         Self {
@@ -181,7 +182,6 @@ where
     fn store(&mut self, message: DecryptedDhtMessage) -> Result<(), StoreAndForwardError> {
         let DecryptedDhtMessage {
             version,
-            comms_header,
             decryption_result,
             dht_header,
             ..
@@ -195,10 +195,10 @@ where
         let node_identity = &self.node_identity;
 
         match &dht_header.destination {
-            NodeDestination::Unspecified => {
+            NodeDestination::Unknown => {
                 self.storage.insert(
                     dht_header.origin_signature.clone(),
-                    StoredMessage::new(version, comms_header, dht_header, encrypted_body),
+                    StoredMessage::new(version, dht_header, encrypted_body),
                     self.config.saf_low_priority_msg_storage_ttl,
                 );
             },
@@ -206,7 +206,7 @@ where
                 if peer_manager.exists(&dest_public_key)? {
                     self.storage.insert(
                         dht_header.origin_signature.clone(),
-                        StoredMessage::new(version, comms_header, dht_header, encrypted_body),
+                        StoredMessage::new(version, dht_header, encrypted_body),
                         self.config.saf_high_priority_msg_storage_ttl,
                     );
                 }
@@ -221,7 +221,7 @@ where
                 {
                     self.storage.insert(
                         dht_header.origin_signature.clone(),
-                        StoredMessage::new(version, comms_header, dht_header, encrypted_body),
+                        StoredMessage::new(version, dht_header, encrypted_body),
                         self.config.saf_high_priority_msg_storage_ttl,
                     );
                 }
@@ -239,13 +239,14 @@ mod test {
         envelope::DhtMessageFlags,
         test_utils::{make_dht_inbound_message, make_node_identity, make_peer_manager, service_spy},
     };
-    use chrono::Utc;
+    use chrono::{DateTime, Utc};
     use futures::executor::block_on;
-    use tari_comms::message::Message;
+    use std::time::{Duration, UNIX_EPOCH};
+    use tari_comms::wrap_in_envelope_body;
 
     #[test]
     fn decryption_succeeded() {
-        let storage = Arc::new(SAFStorage::new(1));
+        let storage = Arc::new(SafStorage::new(1));
 
         let spy = service_spy();
         let peer_manager = make_peer_manager();
@@ -254,14 +255,14 @@ mod test {
             .layer(spy.service::<MiddlewareError>());
 
         let inbound_msg = make_dht_inbound_message(&make_node_identity(), b"".to_vec(), DhtMessageFlags::empty());
-        let msg = DecryptedDhtMessage::succeeded(Message::from_message_format((), ()).unwrap(), inbound_msg);
+        let msg = DecryptedDhtMessage::succeeded(wrap_in_envelope_body!(Vec::new()).unwrap(), inbound_msg);
         block_on(service.call(msg)).unwrap();
         assert!(spy.is_called());
     }
 
     #[test]
     fn decryption_failed() {
-        let storage = Arc::new(SAFStorage::new(1));
+        let storage = Arc::new(SafStorage::new(1));
         let spy = service_spy();
         let peer_manager = make_peer_manager();
         let node_identity = make_node_identity();
@@ -273,6 +274,7 @@ mod test {
         block_on(service.call(msg)).unwrap();
         assert_eq!(spy.is_called(), false);
         let msg = storage.remove(&inbound_msg.dht_header.origin_signature).unwrap();
-        assert!((Utc::now() - msg.stored_at).num_seconds() <= 5);
+        let timestamp: DateTime<Utc> = (UNIX_EPOCH + Duration::from_secs(msg.stored_at.unwrap().seconds as u64)).into();
+        assert!((Utc::now() - timestamp).num_seconds() <= 5);
     }
 }

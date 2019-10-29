@@ -19,20 +19,23 @@ tari_shutdown = { version = "^0.0", path = "../../infrastructure/shutdown"}
 tari_comms_middleware = { version = "^0.0", path = "../middleware"}
 
 bitflags = "1.2.0"
+bytes = "0.4.12"
 chrono = "0.4.9"
 derive-error = "0.0.4"
 digest = "0.8.1"
 futures= {version= "0.3.0-alpha.19", package="futures-preview"}
 log = "0.4.8"
+prost = "0.5.0"
 rand = "0.5.5"
 serde = "1.0.90"
 serde_derive = "1.0.90"
 serde_repr = "0.1.5"
 tokio = "0.2.0-alpha.6"
 tokio-executor = "0.2.0-alpha.6"
-tower= "0.3.0-alpha.2"
 tower-filter= {path="../middleware/tower-filter"}#version="=0.3.0-alpha.2", path="../"
+tower= "0.3.0-alpha.2"
 ttl_cache = "0.5.1"
+prost-types = "0.5.0"
 
 [dev-dependencies]
 tari_test_utils = { version = "^0.0", path = "../../infrastructure/test_utils"}
@@ -42,3 +45,6 @@ futures-test = { version = "0.3.0-alpha.19", package = "futures-test-preview" }
 lmdb-zero = "0.4.4"
 tempdir = "0.3.7"
 env_logger = "0.7.0"
+
+[build-dependencies]
+prost-build = "0.5.0"

@@ -27,4 +27,4 @@ thread_local! {
 }
 
 /// Version for DHT envelope
-pub const DHT_ENVELOPE_HEADER_VERSION: u8 = 0;
+pub const DHT_ENVELOPE_HEADER_VERSION: u32 = 0;

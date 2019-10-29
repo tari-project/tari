@@ -20,27 +20,22 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{consts::DHT_ENVELOPE_HEADER_VERSION, envelope::DhtHeader};
-use tari_comms::{
-    message::{Message, MessageEnvelopeHeader},
-    peer_manager::Peer,
-};
+use crate::{consts::DHT_ENVELOPE_HEADER_VERSION, envelope::DhtMessageHeader};
+use tari_comms::{message::EnvelopeBody, peer_manager::Peer};
 
 #[derive(Debug, Clone)]
 pub struct DhtInboundMessage {
-    pub version: u8,
+    pub version: u32,
     pub source_peer: Peer,
-    pub comms_header: MessageEnvelopeHeader,
-    pub dht_header: DhtHeader,
+    pub dht_header: DhtMessageHeader,
     pub body: Vec<u8>,
 }
 impl DhtInboundMessage {
-    pub fn new(dht_header: DhtHeader, source_peer: Peer, comms_header: MessageEnvelopeHeader, body: Vec<u8>) -> Self {
+    pub fn new(dht_header: DhtMessageHeader, source_peer: Peer, body: Vec<u8>) -> Self {
         Self {
             version: DHT_ENVELOPE_HEADER_VERSION,
             dht_header,
             source_peer,
-            comms_header,
             body,
         }
     }
@@ -49,21 +44,19 @@ impl DhtInboundMessage {
 /// Represents a decrypted InboundMessage.
 #[derive(Debug, Clone)]
 pub struct DecryptedDhtMessage {
-    pub version: u8,
+    pub version: u32,
     /// The _connected_ peer which sent or forwarded this message. This may not be the peer
     /// which created this message.
     pub source_peer: Peer,
-    pub comms_header: MessageEnvelopeHeader,
-    pub dht_header: DhtHeader,
-    pub decryption_result: Result<Message, Vec<u8>>,
+    pub dht_header: DhtMessageHeader,
+    pub decryption_result: Result<EnvelopeBody, Vec<u8>>,
 }
 
 impl DecryptedDhtMessage {
-    pub fn succeeded(decrypted_message: Message, message: DhtInboundMessage) -> Self {
+    pub fn succeeded(decrypted_message: EnvelopeBody, message: DhtInboundMessage) -> Self {
         Self {
             version: message.version,
             source_peer: message.source_peer,
-            comms_header: message.comms_header,
             dht_header: message.dht_header,
             decryption_result: Ok(decrypted_message),
         }
@@ -73,7 +66,6 @@ impl DecryptedDhtMessage {
         Self {
             version: message.version,
             source_peer: message.source_peer,
-            comms_header: message.comms_header,
             dht_header: message.dht_header,
             decryption_result: Err(message.body),
         }
@@ -83,7 +75,7 @@ impl DecryptedDhtMessage {
         self.decryption_result.as_ref().err()
     }
 
-    pub fn success(&self) -> Option<&Message> {
+    pub fn success(&self) -> Option<&EnvelopeBody> {
         self.decryption_result.as_ref().ok()
     }
 

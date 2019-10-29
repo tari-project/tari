@@ -26,7 +26,7 @@ use crate::{
     config::DhtConfig,
     inbound::DecryptedDhtMessage,
     outbound::OutboundMessageRequester,
-    store_forward::SAFStorage,
+    store_forward::SafStorage,
 };
 use futures::{task::Context, Future, Poll};
 use std::sync::Arc;
@@ -38,7 +38,7 @@ use tower::Service;
 pub struct MessageHandlerMiddleware<S> {
     config: DhtConfig,
     next_service: S,
-    store: Arc<SAFStorage>,
+    store: Arc<SafStorage>,
     dht_requester: DhtRequester,
     peer_manager: Arc<PeerManager>,
     node_identity: Arc<NodeIdentity>,
@@ -49,7 +49,7 @@ impl<S> MessageHandlerMiddleware<S> {
     pub fn new(
         config: DhtConfig,
         next_service: S,
-        store: Arc<SAFStorage>,
+        store: Arc<SafStorage>,
         dht_requester: DhtRequester,
         node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,

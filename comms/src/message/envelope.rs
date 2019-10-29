@@ -39,7 +39,7 @@ pub struct MessageEnvelopeHeader {
     pub flags: MessageFlags,
 }
 
-include_proto!("envelope");
+include_proto_package!("tari.comms.envelope");
 
 impl Envelope {
     /// Sign a message, construct an Envelope with a Header
@@ -143,6 +143,10 @@ impl EnvelopeBody {
         Self {
             parts: Default::default(),
         }
+    }
+
+    pub fn len(&self) -> usize {
+        self.parts.len()
     }
 
     pub fn push_part(&mut self, part: Vec<u8>) {

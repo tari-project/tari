@@ -20,26 +20,35 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use serde::{Deserialize, Serialize};
-use tari_comms::{
-    connection::NetAddress,
-    peer_manager::{NodeId, PeerFeatures},
-};
+use std::path::PathBuf;
 
-/// The JoinMessage stores the information required for a network join request. It has all the information required to
-/// locate and contact the source node, but network behaviour is different compared to DiscoverMessage.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub struct JoinMessage {
-    pub node_id: NodeId,
-    pub net_addresses: Vec<NetAddress>,
-    pub peer_features: PeerFeatures,
+const PROTOS_PATH: &'static str = "src/proto";
+
+fn walk_protos(search_path: &PathBuf) -> Vec<PathBuf> {
+    let mut protos = Vec::new();
+    let paths_iter = search_path
+        .read_dir()
+        .unwrap()
+        .filter_map(Result::ok)
+        .map(|dir| dir.path());
+
+    for path in paths_iter {
+        if path.is_file() && path.extension().filter(|ext| ext == &"proto").is_some() {
+            protos.push(path)
+        } else if path.is_dir() {
+            protos.extend(walk_protos(&path));
+        }
+    }
+
+    protos
 }
 
-/// The DiscoverMessage stores the information required for a network discover request. It has all the information
-/// required to locate and contact the source node, but network behaviour is different compared to JoinMessage.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub struct DiscoverMessage {
-    pub node_id: NodeId,
-    pub net_addresses: Vec<NetAddress>,
-    pub peer_features: PeerFeatures,
+fn main() {
+    let proto_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(PROTOS_PATH);
+    let protos = walk_protos(&proto_path);
+
+    println!("Compiling {} protobuf file(s)", protos.len());
+    prost_build::Config::new()
+        .compile_protos(&protos, &[proto_path])
+        .unwrap();
 }

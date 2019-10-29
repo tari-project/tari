@@ -20,22 +20,26 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::message::{DiscoverMessage, JoinMessage};
 use crate::{
     config::DhtConfig,
-    envelope::{DhtMessageType, NodeDestination},
+    envelope::NodeDestination,
     inbound::{error::DhtInboundError, message::DecryptedDhtMessage},
     outbound::{BroadcastClosestRequest, BroadcastStrategy, OutboundEncryption, OutboundMessageRequester},
+    proto::{
+        dht::{DiscoverMessage, JoinMessage},
+        envelope::DhtMessageType,
+    },
 };
 use log::*;
 use std::sync::Arc;
 use tari_comms::{
     connection::NetAddress,
+    message::MessageExt,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManager},
     types::CommsPublicKey,
 };
 use tari_comms_middleware::MiddlewareError;
-use tari_utilities::message_format::MessageFormat;
+use tari_utilities::ByteArray;
 use tower::{Service, ServiceExt};
 
 const LOG_TARGET: &'static str = "comms::dht::dht_handler";
@@ -125,6 +129,20 @@ where
         Ok(peer)
     }
 
+    fn validate_raw_node_id(&self, public_key: &CommsPublicKey, raw_node_id: &[u8]) -> Result<NodeId, DhtInboundError> {
+        // The reason that we check the given node id against what we expect instead of just using the given node id
+        // is in future the NodeId may not necessarily be derived from the public key (i.e. DAN node is registered on
+        // the base layer)
+        let expected_node_id = NodeId::from_key(public_key).map_err(|_| DhtInboundError::InvalidNodeId)?;
+        let node_id = NodeId::from_bytes(raw_node_id).map_err(|_| DhtInboundError::InvalidNodeId)?;
+        if expected_node_id == node_id {
+            Ok(expected_node_id)
+        } else {
+            // TODO: Misbehaviour?
+            Err(DhtInboundError::InvalidNodeId)
+        }
+    }
+
     async fn handle_join(&mut self, message: DecryptedDhtMessage) -> Result<(), DhtInboundError> {
         trace!(
             target: LOG_TARGET,
@@ -134,21 +152,35 @@ where
         let DecryptedDhtMessage {
             decryption_result,
             dht_header,
-            comms_header,
+            source_peer,
             ..
         } = message;
-        let msg = decryption_result.expect("already checked that this message decrypted successfully");
-        let join_msg = JoinMessage::from_binary(&msg.body)?;
+        let body = decryption_result.expect("already checked that this message decrypted successfully");
+        let join_msg = body
+            .decode_part::<JoinMessage>(0)?
+            .ok_or(DhtInboundError::InvalidMessageBody)?;
+
+        let addresses = join_msg
+            .addresses
+            .into_iter()
+            .filter_map(|addr| addr.parse().ok())
+            .collect::<Vec<_>>();
+
+        if addresses.len() == 0 {
+            return Err(DhtInboundError::InvalidAddresses);
+        }
+
+        let node_id = self.validate_raw_node_id(&dht_header.origin_public_key, &join_msg.node_id)?;
 
         // TODO: Check/Verify the received peers information. We know that the join request was signed by
-        //       the origin_public_key, so all that is possibly needed is to ping the address to confirm
-        //       that the address is working. If it isn't, do we disregard the join request, or try other
-        //       known addresses or ?
+        //       the origin_public_key and that the node id is valid. All that may be needed is to ping
+        //       the address to confirm that it is working. If it isn't, do we disregard the join request,
+        //       or try other known addresses or ?
         let origin_peer = self.add_or_update_peer(
             &dht_header.origin_public_key,
-            join_msg.node_id.clone(),
-            join_msg.net_addresses,
-            join_msg.peer_features,
+            node_id,
+            addresses,
+            PeerFeatures::from_bits_truncate(join_msg.peer_features),
         )?;
 
         // Send a join request back to the origin peer of the join request if:
@@ -157,9 +189,8 @@ where
         //
         // If it was not forwarded then we assume the source peer already has this node's details in
         // it's peer list.
-        if comms_header.public_key != origin_peer.public_key &&
+        if source_peer.public_key != origin_peer.public_key &&
             self.peer_manager.in_network_region(
-                // Warn: This node id can be anything
                 &origin_peer.node_id,
                 &self.node_identity.identity.node_id,
                 self.config.num_neighbouring_nodes,
@@ -184,10 +215,10 @@ where
                 BroadcastStrategy::Closest(Box::new(BroadcastClosestRequest {
                     n: self.config.num_neighbouring_nodes,
                     node_id: origin_peer.node_id,
-                    excluded_peers: vec![dht_header.origin_public_key.clone(), comms_header.public_key],
+                    excluded_peers: vec![dht_header.origin_public_key.clone(), source_peer.public_key],
                 })),
                 dht_header,
-                msg.to_binary()?,
+                body.to_encoded_bytes()?,
             )
             .await?;
 
@@ -204,13 +235,27 @@ where
         let msg = message
             .success()
             .expect("already checked that this message decrypted successfully");
-        let discover_msg = DiscoverMessage::from_binary(&msg.body)?;
-        // TODO: Check/Verify the received peers information
+
+        let discover_msg = msg
+            .decode_part::<DiscoverMessage>(1)?
+            .ok_or(DhtInboundError::InvalidMessageBody)?;
+
+        let addresses = discover_msg
+            .addresses
+            .into_iter()
+            .filter_map(|addr| addr.parse().ok())
+            .collect::<Vec<_>>();
+
+        if addresses.len() == 0 {
+            return Err(DhtInboundError::InvalidAddresses);
+        }
+
+        let node_id = self.validate_raw_node_id(&message.dht_header.origin_public_key, &discover_msg.node_id)?;
         self.add_or_update_peer(
             &message.dht_header.origin_public_key,
-            discover_msg.node_id,
-            discover_msg.net_addresses,
-            discover_msg.peer_features,
+            node_id,
+            addresses,
+            PeerFeatures::from_bits_truncate(discover_msg.peer_features),
         )?;
 
         // Send the origin the current nodes latest contact info
@@ -222,14 +267,14 @@ where
     /// Send a network join update request directly to a specific known peer
     async fn send_join_direct(&mut self, dest_public_key: CommsPublicKey) -> Result<(), DhtInboundError> {
         let join_msg = JoinMessage {
-            node_id: self.node_identity.identity.node_id.clone(),
-            net_addresses: vec![self.node_identity.control_service_address()],
-            peer_features: self.node_identity.features().clone(),
+            node_id: self.node_identity.identity.node_id.to_vec(),
+            addresses: vec![self.node_identity.control_service_address().to_string()],
+            peer_features: self.node_identity.features().bits(),
         };
 
         trace!("Sending direct join request to {}", dest_public_key);
         self.outbound_service
-            .send_message(
+            .send_dht_message(
                 BroadcastStrategy::DirectPublicKey(dest_public_key.clone()),
                 NodeDestination::PublicKey(dest_public_key),
                 OutboundEncryption::EncryptForDestination,
