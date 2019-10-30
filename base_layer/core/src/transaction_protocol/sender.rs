@@ -45,7 +45,7 @@ use tari_utilities::ByteArray;
 
 /// This struct contains all the information that a transaction initiator (the sender) will manage throughout the
 /// Transaction construction process.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub(super) struct RawTransactionInfo {
     pub num_recipients: usize,
     // The sum of self-created outputs plus change
@@ -66,6 +66,7 @@ pub(super) struct RawTransactionInfo {
     pub public_nonce: PublicKey,
     // The sum of all public nonces
     pub public_nonce_sum: PublicKey,
+    #[serde(skip)]
     pub recipient_info: RecipientInfo,
     pub signatures: Vec<Signature>,
 }
@@ -398,6 +399,31 @@ impl SenderTransactionProtocol {
             _ => Err(TPE::InvalidStateError),
         }
     }
+
+    /// This method is used to store a pending transaction to be sent which should be in the CollectionSingleSignature
+    /// state, This state will be serialized and returned as a string.
+    pub fn save_pending_transaction_to_be_sent(&self) -> Result<String, TPE> {
+        match &self.state {
+            SenderState::Initializing(_) => Err(TPE::InvalidStateError),
+            SenderState::SingleRoundMessageReady(_) => Err(TPE::InvalidStateError),
+            SenderState::CollectingSingleSignature(s) => {
+                let data = serde_json::to_string(s).map_err(|_| TPE::SerializationError)?;
+                Ok(data)
+            },
+            SenderState::Finalizing(_) => Err(TPE::InvalidStateError),
+            SenderState::FinalizedTransaction(_) => Err(TPE::InvalidStateError),
+            SenderState::Failed(_) => Err(TPE::InvalidStateError),
+        }
+    }
+
+    /// This method takes the serialized data from the previous method, deserializes it and recreates the pending Sender
+    /// Transaction from it.
+    pub fn load_pending_transaction_to_be_sent(data: String) -> Result<Self, TPE> {
+        let raw_data: RawTransactionInfo = serde_json::from_str(data.as_str()).map_err(|_| TPE::SerializationError)?;
+        Ok(Self {
+            state: SenderState::CollectingSingleSignature(Box::new(raw_data)),
+        })
+    }
 }
 
 pub fn calculate_tx_id<D: Digest>(pub_nonce: &PublicKey, index: usize) -> u64 {
@@ -453,7 +479,8 @@ mod test {
         tari_amount::*,
         transaction::{KernelFeatures, OutputFeatures, UnblindedOutput},
         transaction_protocol::{
-            sender::SenderTransactionProtocol,
+            recipient::RecipientInfo,
+            sender::{RawTransactionInfo, SenderTransactionProtocol},
             single_receiver::SingleReceiverTransactionProtocol,
             test_common::{make_input, TestParams},
             TransactionProtocolError,
@@ -514,6 +541,11 @@ mod test {
         let msg = alice.build_single_round_message().unwrap();
         // Send message down the wire....and wait for response
         assert!(alice.is_collecting_single_signature());
+
+        // Test serializing the current state to be sent and resuming from that serialized data
+        let ser = alice.save_pending_transaction_to_be_sent().unwrap();
+        let mut alice = SenderTransactionProtocol::load_pending_transaction_to_be_sent(ser).unwrap();
+
         // Receiver gets message, deserializes it etc, and creates his response
         let bob_info = SingleReceiverTransactionProtocol::create(
             &msg,
@@ -571,8 +603,14 @@ mod test {
             msg.public_excess.to_hex(),
             msg.public_nonce.to_hex()
         );
+
         // Send message down the wire....and wait for response
         assert!(alice.is_collecting_single_signature());
+
+        // Test serializing the current state to be sent and resuming from that serialized data
+        let ser = alice.save_pending_transaction_to_be_sent().unwrap();
+        let mut alice = SenderTransactionProtocol::load_pending_transaction_to_be_sent(ser).unwrap();
+
         // Receiver gets message, deserializes it etc, and creates his response
         let bob_info = SingleReceiverTransactionProtocol::create(
             &msg,

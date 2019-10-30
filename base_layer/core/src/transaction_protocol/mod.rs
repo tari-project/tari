@@ -75,23 +75,25 @@ pub enum TransactionProtocolError {
     IncompleteStateError(String),
     #[error(msg_embedded, no_from, non_std)]
     ValidationError(String),
-    // Invalid state transition
+    /// Invalid state transition
     InvalidTransitionError,
-    // Invalid state
+    /// Invalid state
     InvalidStateError,
-    // An error occurred while performing a signature
+    /// An error occurred while performing a signature
     SigningError(SchnorrSignatureError),
-    // A signature verification failed
+    /// A signature verification failed
     InvalidSignatureError,
-    // An error occurred while building the final transaction
+    /// An error occurred while building the final transaction
     TransactionBuildError(TransactionError),
-    // The transaction construction broke down due to communication failure
+    /// The transaction construction broke down due to communication failure
     TimeoutError,
-    // An error was produced while constructing a rangeproof
+    /// An error was produced while constructing a rangeproof
     RangeProofError(RangeProofError),
-    // This set of parameters is currently not supported
+    /// This set of parameters is currently not supported
     #[error(msg_embedded, no_from, non_std)]
     UnsupportedError(String),
+    /// There has been an error serializing or deserializing this structure
+    SerializationError,
 }
 
 /// Transaction metadata, including the fee and lock height

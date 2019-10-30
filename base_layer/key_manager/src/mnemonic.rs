@@ -30,7 +30,7 @@ use tari_utilities::{bit::*, byte_array::ByteArrayError};
 /// It can autodetect the language of the Mnemonic word sequence
 // TODO: Develop a language autodetection mechanism to distinguish between ChineseTraditional and ChineseSimplified
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, PartialEq)]
 pub enum MnemonicError {
     // Only ChineseSimplified, ChineseTraditional, English, French, Italian, Japanese, Korean and Spanish are defined
     // natural languages
@@ -158,7 +158,7 @@ pub fn from_bytes(bytes: Vec<u8>, language: &MnemonicLanguage) -> Result<Vec<Str
 }
 
 /// Generates a mnemonic sequence of words from the provided secret key
-pub fn from_secretkey<K: SecretKey>(k: &K, language: &MnemonicLanguage) -> Result<Vec<String>, MnemonicError> {
+pub fn from_secret_key<K: SecretKey>(k: &K, language: &MnemonicLanguage) -> Result<Vec<String>, MnemonicError> {
     (from_bytes(k.to_vec(), language))
 }
 
@@ -246,7 +246,7 @@ impl<T: SecretKey> Mnemonic<T> for T {
 
     /// Generates a mnemonic sequence of words from the provided secret key
     fn to_mnemonic(&self, language: &MnemonicLanguage) -> Result<Vec<String>, MnemonicError> {
-        (from_secretkey(self, language))
+        (from_secret_key(self, language))
     }
 }
 

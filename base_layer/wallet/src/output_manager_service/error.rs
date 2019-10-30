@@ -23,6 +23,7 @@
 use crate::output_manager_service::storage::database::DbKey;
 use derive_error::Error;
 use tari_core::transaction_protocol::TransactionProtocolError;
+use tari_key_manager::{key_manager::KeyManagerError, mnemonic::MnemonicError};
 use tari_service_framework::reply_channel::TransportChannelError;
 use tari_utilities::ByteArrayError;
 use time::OutOfRangeError;
@@ -36,7 +37,8 @@ pub enum OutputManagerError {
     TransportChannelError(TransportChannelError),
     OutOfRangeError(OutOfRangeError),
     OutputManagerStorageError(OutputManagerStorageError),
-
+    MnemonicError(MnemonicError),
+    KeyManagerError(KeyManagerError),
     /// Not all the transaction inputs and outputs are present to be confirmed
     IncompleteTransaction,
     /// Not enough funds to fulfill transaction
@@ -49,6 +51,8 @@ pub enum OutputManagerError {
     ApiReceiveFailed,
     /// API returned something unexpected.
     UnexpectedApiResponse,
+    /// Invalid config provided to Output Manager
+    InvalidConfig,
 }
 
 #[derive(Debug, Error, PartialEq)]

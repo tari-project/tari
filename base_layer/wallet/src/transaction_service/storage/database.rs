@@ -34,7 +34,7 @@ const LOG_TARGET: &'static str = "wallet::transaction_service::database";
 /// Data is passed to and from the backend via the [DbKey], [DbValue], and [DbValueKey] enums. If new data types are
 /// required to be supported by the backends then these enums can be updated to reflect this requirement and the trait
 /// will remain the same
-pub trait TransactionBackend {
+pub trait TransactionBackend: Send + Sync {
     /// Retrieve the record associated with the provided DbKey
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, TransactionStorageError>;
     /// Check if a record with the provided key exists in the backend.

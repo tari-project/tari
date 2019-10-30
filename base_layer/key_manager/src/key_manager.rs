@@ -30,7 +30,7 @@ use std::marker::PhantomData;
 use tari_crypto::keys::SecretKey;
 use tari_utilities::{byte_array::ByteArrayError, hex::Hex};
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, PartialEq)]
 pub enum KeyManagerError {
     // Could not convert into byte array
     ByteArrayError(ByteArrayError),
@@ -134,7 +134,7 @@ where
 
 #[cfg(test)]
 mod test {
-    use crate::{file_backup::*, keymanager::*};
+    use crate::{file_backup::*, key_manager::*};
     use sha2::Sha256;
     use std::fs::remove_file;
     use tari_crypto::ristretto::RistrettoSecretKey;
@@ -230,7 +230,7 @@ mod test {
                     KeyManager::from_file(&backup_filename);
                 match backup_km_result {
                     Ok(backup_km) => {
-                        // Remove temp keymanager backup file
+                        // Remove temp key_manager backup file
                         remove_file(backup_filename).unwrap();
 
                         assert_eq!(desired_km.branch_seed, backup_km.branch_seed);
