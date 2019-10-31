@@ -22,7 +22,8 @@
 
 use crate::{
     connection::PeerConnection,
-    connection_manager::{ConnectionManagerError, Dialer},
+    connection_manager::{ConnectionManagerError, Connectivity, Dialer},
+    peer_manager::NodeId,
 };
 use futures::{future, Future};
 use std::{
@@ -71,5 +72,19 @@ impl<T> Dialer<T> for CountDialer<T> {
         let (conn, _) = PeerConnection::new_with_connecting_state_for_test();
         self.count.fetch_add(1, Ordering::AcqRel);
         future::ready(Ok(Arc::new(conn)))
+    }
+}
+
+impl<T> Connectivity for CountDialer<T> {
+    fn get_connection(&self, _: &NodeId) -> Option<Arc<PeerConnection>> {
+        None
+    }
+
+    fn get_active_connection_count(&self) -> usize {
+        self.count()
+    }
+
+    fn disconnect_peer(&self, _: &NodeId) -> Result<Option<Arc<PeerConnection>>, ConnectionManagerError> {
+        Ok(None)
     }
 }

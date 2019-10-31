@@ -483,6 +483,7 @@ mod test {
                         _ => panic!("unexpected node id in connection manager request"),
                     }
                 },
+                _ => panic!("unexpected connection manager request"),
             }
         });
 

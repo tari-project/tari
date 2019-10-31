@@ -31,7 +31,7 @@ use super::{
 };
 use crate::{
     connection::{ConnectionError, CurveEncryption, CurvePublicKey, PeerConnection, PeerConnectionState, ZmqContext},
-    connection_manager::dialer::Dialer,
+    connection_manager::{dialer::Dialer, Connectivity},
     control_service::messages::RejectReason,
     message::FrameSet,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerManager},
@@ -257,8 +257,8 @@ impl ConnectionManager {
     /// otherwise None is returned.
     ///
     /// [PeerConnection]: ../../connection/peer_connection/index.html
-    pub fn disconnect_peer(&self, peer: &Peer) -> Result<Option<Arc<PeerConnection>>> {
-        match self.connections.shutdown_connection(&peer.node_id) {
+    pub fn disconnect_peer(&self, node_id: &NodeId) -> Result<Option<Arc<PeerConnection>>> {
+        match self.connections.shutdown_connection(&node_id) {
             Ok((conn, handle)) => {
                 handle
                     .timeout_join(Duration::from_millis(3000))
@@ -277,7 +277,12 @@ impl ConnectionManager {
 
     /// Return a connection for a peer if one exists, otherwise None is returned
     pub(crate) fn get_connection(&self, peer: &Peer) -> Option<Arc<PeerConnection>> {
-        self.connections.get_connection(&peer.node_id)
+        self.get_connection_by_node_id(&peer.node_id)
+    }
+
+    /// Return a connection for a node id if one exists, otherwise None is returned
+    pub(crate) fn get_connection_by_node_id(&self, node_id: &NodeId) -> Option<Arc<PeerConnection>> {
+        self.connections.get_connection(&node_id)
     }
 
     /// Return the number of _active_ peer connections currently managed by this instance
@@ -408,6 +413,20 @@ impl Dialer<NodeId> for ConnectionManagerDialer {
     }
 }
 
+impl Connectivity for ConnectionManagerDialer {
+    fn get_connection(&self, node_id: &NodeId) -> Option<Arc<PeerConnection>> {
+        self.inner.get_connection_by_node_id(node_id)
+    }
+
+    fn get_active_connection_count(&self) -> usize {
+        self.inner.get_active_connection_count()
+    }
+
+    fn disconnect_peer(&self, node_id: &NodeId) -> Result<Option<Arc<PeerConnection>>> {
+        self.inner.disconnect_peer(node_id)
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -481,7 +500,7 @@ mod test {
         let address = "127.0.0.1:43456".parse::<NetAddress>().unwrap();
         let peer = create_peer(address.clone());
 
-        assert!(manager.disconnect_peer(&peer).unwrap().is_none());
+        assert!(manager.disconnect_peer(&peer.node_id).unwrap().is_none());
 
         let (peer_conn, rx) = PeerConnection::new_with_connecting_state_for_test();
         let peer_conn = Arc::new(peer_conn);
@@ -491,7 +510,7 @@ mod test {
             .add_connection(peer.node_id.clone(), peer_conn, join_handle)
             .unwrap();
 
-        match manager.disconnect_peer(&peer).unwrap() {
+        match manager.disconnect_peer(&peer.node_id).unwrap() {
             Some(_) => {},
             None => panic!("disconnect_peer did not return active peer connection"),
         }
