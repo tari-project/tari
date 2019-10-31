@@ -113,11 +113,7 @@ impl ControlServiceClient {
                 trace!(target: LOG_TARGET, "Received envelope. Decrypting...");
                 let decrypted_bytes = crypt::decrypt(&self.shared_secret(), &msg.body)?;
                 let body = EnvelopeBody::decode(decrypted_bytes)?;
-                trace!(
-                    target: LOG_TARGET,
-                    "Decoding envelope body of length {}",
-                    body.num_parts()
-                );
+                trace!(target: LOG_TARGET, "Decoding envelope body of length {}", body.len());
                 let maybe_message = body.decode_part(1)?;
                 Ok(maybe_message)
             },

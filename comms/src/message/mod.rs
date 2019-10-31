@@ -66,13 +66,11 @@ use serde::{Deserialize, Serialize};
 mod envelope;
 mod error;
 mod inbound_message;
-mod message;
 
 pub use self::{
     envelope::{Envelope, EnvelopeBody, EnvelopeHeader, MessageEnvelopeHeader},
     error::MessageError,
     inbound_message::*,
-    message::{Message, MessageHeader},
 };
 
 pub trait MessageExt: prost::Message {

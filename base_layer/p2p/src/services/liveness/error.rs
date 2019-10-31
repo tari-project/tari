@@ -39,4 +39,6 @@ pub enum LivenessError {
     /// An error has occurred reading from the event subscriber stream
     EventStreamError,
     TransportChannelError(TransportChannelError),
+    /// Ping pong type was invalid or unrecognised
+    InvalidPingPongType,
 }

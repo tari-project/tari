@@ -51,7 +51,6 @@ use tari_p2p::{
     comms_connector::{pubsub_connector, InboundDomainConnector, PeerMessage},
     initialization::{initialize_comms, CommsConfig},
     services::comms_outbound::CommsOutboundServiceInitializer,
-    tari_message::TariMessageType,
 };
 use tari_service_framework::StackBuilder;
 use tari_test_utils::address::get_next_local_address;
@@ -68,10 +67,10 @@ fn setup_comms_services<TSink>(
     executor: TaskExecutor,
     node_identity: Arc<NodeIdentity>,
     peers: Vec<NodeIdentity>,
-    publisher: InboundDomainConnector<TariMessageType, TSink>,
+    publisher: InboundDomainConnector<TSink>,
 ) -> (CommsNode, Dht)
 where
-    TSink: Sink<Arc<PeerMessage<TariMessageType>>> + Clone + Unpin + Send + Sync + 'static,
+    TSink: Sink<Arc<PeerMessage>> + Clone + Unpin + Send + Sync + 'static,
     TSink::Error: Error + Send + Sync,
 {
     let comms_config = CommsConfig {

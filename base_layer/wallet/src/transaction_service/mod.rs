@@ -37,12 +37,12 @@ use log::*;
 use std::sync::Arc;
 use tari_broadcast_channel::bounded;
 use tari_comms_dht::outbound::OutboundMessageRequester;
-use tari_core::transaction_protocol::{recipient::RecipientSignedMessage, sender::TransactionSenderMessage};
+use tari_core::transaction_protocol::proto;
 use tari_p2p::{
     comms_connector::PeerMessage,
     domain_message::DomainMessage,
-    services::utils::{map_deserialized, ok_or_skip_result},
-    tari_message::{BlockchainMessage, TariMessageType},
+    services::utils::{map_decode, ok_or_skip_result},
+    tari_message::TariMessageType,
 };
 use tari_pubsub::TopicSubscriptionFactory;
 use tari_service_framework::{
@@ -59,7 +59,7 @@ const LOG_TARGET: &'static str = "base_layer::wallet::transaction_service";
 pub struct TransactionServiceInitializer<T>
 where T: TransactionBackend
 {
-    subscription_factory: Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage<TariMessageType>>>>,
+    subscription_factory: Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage>>>,
     backend: Option<T>,
 }
 
@@ -67,7 +67,7 @@ impl<T> TransactionServiceInitializer<T>
 where T: TransactionBackend
 {
     pub fn new(
-        subscription_factory: Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage<TariMessageType>>>>,
+        subscription_factory: Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage>>>,
         backend: T,
     ) -> Self
     {
@@ -78,17 +78,17 @@ where T: TransactionBackend
     }
 
     /// Get a stream of inbound Text messages
-    fn transaction_stream(&self) -> impl Stream<Item = DomainMessage<TransactionSenderMessage>> {
+    fn transaction_stream(&self) -> impl Stream<Item = DomainMessage<proto::TransactionSenderMessage>> {
         self.subscription_factory
-            .get_subscription(TariMessageType::new(BlockchainMessage::Transaction))
-            .map(map_deserialized::<TransactionSenderMessage>)
+            .get_subscription(TariMessageType::Transaction)
+            .map(map_decode::<proto::TransactionSenderMessage>)
             .filter_map(ok_or_skip_result)
     }
 
-    fn transaction_reply_stream(&self) -> impl Stream<Item = DomainMessage<RecipientSignedMessage>> {
+    fn transaction_reply_stream(&self) -> impl Stream<Item = DomainMessage<proto::RecipientSignedMessage>> {
         self.subscription_factory
-            .get_subscription(TariMessageType::new(BlockchainMessage::TransactionReply))
-            .map(map_deserialized::<RecipientSignedMessage>)
+            .get_subscription(TariMessageType::TransactionReply)
+            .map(map_decode::<proto::RecipientSignedMessage>)
             .filter_map(ok_or_skip_result)
     }
 }

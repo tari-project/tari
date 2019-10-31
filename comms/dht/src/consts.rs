@@ -21,9 +21,10 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use rand::rngs::OsRng;
+use std::cell::RefCell;
 
 thread_local! {
-    pub static DHT_RNG: OsRng = OsRng::new().expect("OsRng failed");
+    pub(crate) static DHT_RNG: RefCell<OsRng> = RefCell::new(OsRng::new().expect("OsRng failed"));
 }
 
 /// Version for DHT envelope

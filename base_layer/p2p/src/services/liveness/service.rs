@@ -23,15 +23,21 @@
 use super::{error::LivenessError, state::LivenessState, LivenessRequest, LivenessResponse, LOG_TARGET};
 use crate::{
     domain_message::DomainMessage,
-    services::liveness::handle::{LivenessEvent, PingPong},
-    tari_message::{NetMessage, TariMessageType},
+    proto::{
+        liveness::{PingPong, PingPongMessage},
+        TariMessageType,
+    },
+    services::liveness::handle::LivenessEvent,
 };
 use futures::{pin_mut, stream::StreamExt, SinkExt, Stream};
 use log::*;
 use std::sync::Arc;
 use tari_broadcast_channel::Publisher;
 use tari_comms::types::CommsPublicKey;
-use tari_comms_dht::outbound::{DhtOutboundError, OutboundEncryption, OutboundMessageRequester};
+use tari_comms_dht::{
+    domain_message::OutboundDomainMessage,
+    outbound::{DhtOutboundError, OutboundEncryption, OutboundMessageRequester},
+};
 use tari_service_framework::RequestContext;
 
 /// Service responsible for testing Liveness for Peers.
@@ -67,7 +73,7 @@ impl<THandleStream, TPingStream> LivenessService<THandleStream, TPingStream> {
 
 impl<THandleStream, TPingStream> LivenessService<THandleStream, TPingStream>
 where
-    TPingStream: Stream<Item = DomainMessage<PingPong>>,
+    TPingStream: Stream<Item = DomainMessage<PingPongMessage>>,
     THandleStream: Stream<Item = RequestContext<LivenessRequest, Result<LivenessResponse, LivenessError>>>,
 {
     pub async fn run(mut self) {
@@ -101,8 +107,8 @@ where
         }
     }
 
-    async fn handle_incoming_message(&mut self, msg: DomainMessage<PingPong>) -> Result<(), LivenessError> {
-        match msg.inner() {
+    async fn handle_incoming_message(&mut self, msg: DomainMessage<PingPongMessage>) -> Result<(), LivenessError> {
+        match msg.inner().kind().ok_or(LivenessError::InvalidPingPongType)? {
             PingPong::Ping => {
                 self.state.inc_pings_received();
                 self.send_pong(msg.origin_pubkey).await.unwrap();
@@ -128,8 +134,7 @@ where
             .send_direct(
                 dest,
                 OutboundEncryption::EncryptForDestination,
-                TariMessageType::new(NetMessage::PingPong),
-                PingPong::Pong,
+                OutboundDomainMessage::new(TariMessageType::PingPong, PingPongMessage::pong()),
             )
             .await
             .map(|_| ())
@@ -159,8 +164,7 @@ where
             .send_direct(
                 pub_key.clone(),
                 OutboundEncryption::EncryptForDestination,
-                TariMessageType::new(NetMessage::PingPong),
-                PingPong::Ping,
+                OutboundDomainMessage::new(TariMessageType::PingPong, PingPongMessage::ping()),
             )
             .await
             .map_err(Into::<DhtOutboundError>::into)?;
@@ -183,6 +187,7 @@ mod test {
     use crate::services::liveness::handle::LivenessHandle;
     use futures::{channel::mpsc, executor::LocalPool, stream, task::SpawnExt};
     use rand::rngs::OsRng;
+    use std::sync::atomic::AtomicBool;
     use tari_broadcast_channel::bounded;
     use tari_comms::{
         connection::NetAddress,
@@ -284,7 +289,7 @@ mod test {
             let (outbound_tx, mut outbound_rx) = mpsc::channel(10);
             let oms_handle = OutboundMessageRequester::new(outbound_tx);
 
-            let msg = create_dummy_message(PingPong::Ping);
+            let msg = create_dummy_message(PingPongMessage::ping());
             // A stream which emits one message and then closes
             let pingpong_stream = stream::iter(std::iter::once(msg));
 
@@ -308,18 +313,19 @@ mod test {
 
     #[test]
     fn handle_message_pong() {
+        use std::sync::atomic::Ordering;
         let state = Arc::new(LivenessState::new());
         let mut pool = LocalPool::new();
 
         let (outbound_tx, _) = mpsc::channel(10);
         let oms_handle = OutboundMessageRequester::new(outbound_tx);
 
-        let msg = create_dummy_message(PingPong::Pong);
+        let msg = create_dummy_message(PingPongMessage::pong());
         // A stream which emits one message and then closes
         let pingpong_stream = stream::iter(std::iter::once(msg));
 
         // Setup liveness service
-        let (publisher, _subscriber) = bounded(100);
+        let (publisher, subscriber) = bounded(100);
         let service = LivenessService::new(
             stream::empty(),
             pingpong_stream,
@@ -328,10 +334,25 @@ mod test {
             publisher,
         );
 
-        pool.spawner().spawn(service.run()).unwrap();
+        // Create a flag that gets flipped when the subscribed event is received
+        let received_event = Arc::new(AtomicBool::new(false));
+        let rec_event_clone = received_event.clone();
 
+        // Listen for the pong event
+        pool.spawner()
+            .spawn(async move {
+                let event = subscriber.fuse().select_next_some().await;
+                match *event {
+                    LivenessEvent::ReceivedPong => rec_event_clone.store(true, Ordering::SeqCst),
+                    _ => panic!("Unexpected event"),
+                }
+            })
+            .expect("Couldn't spawn future");
+
+        pool.spawner().spawn(service.run()).unwrap();
         pool.run_until_stalled();
 
         assert_eq!(state.pongs_received(), 1);
+        assert_eq!(received_event.load(Ordering::SeqCst), true);
     }
 }

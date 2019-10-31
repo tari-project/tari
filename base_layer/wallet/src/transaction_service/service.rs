@@ -31,26 +31,24 @@ use crate::{
 };
 use futures::{pin_mut, SinkExt, Stream, StreamExt};
 use log::*;
-use std::collections::HashMap;
+use std::{collections::HashMap, convert::TryInto};
 use tari_broadcast_channel::Publisher;
 use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::{
+    domain_message::OutboundDomainMessage,
     envelope::NodeDestination,
     outbound::{BroadcastStrategy, OutboundEncryption, OutboundMessageRequester},
 };
 use tari_core::{
     tari_amount::MicroTari,
     transaction::{KernelFeatures, OutputFeatures, Transaction},
-    transaction_protocol::{recipient::RecipientSignedMessage, sender::TransactionSenderMessage},
+    transaction_protocol::{proto, recipient::RecipientSignedMessage, sender::TransactionSenderMessage},
     types::{PrivateKey, COMMITMENT_FACTORY, PROVER},
     ReceiverTransactionProtocol,
     SenderTransactionProtocol,
 };
 use tari_crypto::keys::SecretKey;
-use tari_p2p::{
-    domain_message::DomainMessage,
-    tari_message::{BlockchainMessage, TariMessageType},
-};
+use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 
 const LOG_TARGET: &'static str = "base_layer::wallet::transaction_service::service";
@@ -87,8 +85,8 @@ where TBackend: TransactionBackend
 
 impl<TTxStream, TTxReplyStream, TBackend> TransactionService<TTxStream, TTxReplyStream, TBackend>
 where
-    TTxStream: Stream<Item = DomainMessage<TransactionSenderMessage>>,
-    TTxReplyStream: Stream<Item = DomainMessage<RecipientSignedMessage>>,
+    TTxStream: Stream<Item = DomainMessage<proto::TransactionSenderMessage>>,
+    TTxReplyStream: Stream<Item = DomainMessage<proto::RecipientSignedMessage>>,
     TBackend: TransactionBackend,
 {
     pub fn new(
@@ -228,22 +226,20 @@ where
         }
 
         let msg = stp.build_single_round_message()?;
+        let tx_id = msg.tx_id;
+        let proto_message = proto::TransactionSenderMessage::single(msg.into());
         self.outbound_message_service
-            .send_message(
-                BroadcastStrategy::DirectPublicKey(dest_pubkey.clone()),
-                NodeDestination::Unknown,
+            .send_direct(
+                dest_pubkey.clone(),
                 OutboundEncryption::EncryptForDestination,
-                TariMessageType::new(BlockchainMessage::Transaction),
-                TransactionSenderMessage::Single(Box::new(msg.clone())),
+                OutboundDomainMessage::new(TariMessageType::Transaction, proto_message),
             )
             .await?;
 
-        self.db.add_pending_outbound_transaction(msg.tx_id.clone(), stp)?;
+        self.db.add_pending_outbound_transaction(tx_id, stp)?;
         info!(
             target: LOG_TARGET,
-            "Transaction with TX_ID = {} sent to {}",
-            msg.tx_id.clone(),
-            dest_pubkey
+            "Transaction with TX_ID = {} sent to {}", tx_id, dest_pubkey
         );
 
         Ok(())
@@ -254,9 +250,13 @@ where
     /// 'recipient_reply' - The public response from a recipient with data required to complete the transaction
     pub async fn accept_recipient_reply(
         &mut self,
-        recipient_reply: RecipientSignedMessage,
+        recipient_reply: proto::RecipientSignedMessage,
     ) -> Result<(), TransactionServiceError>
     {
+        let recipient_reply: RecipientSignedMessage = recipient_reply
+            .try_into()
+            .map_err(TransactionServiceError::InvalidMessageError)?;
+
         let mut stp = self
             .db
             .get_pending_outbound_transaction(recipient_reply.tx_id.clone())?;
@@ -295,9 +295,13 @@ where
     pub async fn accept_transaction(
         &mut self,
         source_pubkey: CommsPublicKey,
-        sender_message: TransactionSenderMessage,
+        sender_message: proto::TransactionSenderMessage,
     ) -> Result<(), TransactionServiceError>
     {
+        let sender_message: TransactionSenderMessage = sender_message
+            .try_into()
+            .map_err(TransactionServiceError::InvalidMessageError)?;
+
         // Currently we will only reply to a Single sender transaction protocol
         if let TransactionSenderMessage::Single(data) = sender_message.clone() {
             let spending_key = self
@@ -323,24 +327,24 @@ where
                 return Err(TransactionServiceError::RepeatedMessageError);
             }
 
+            let tx_id = recipient_reply.tx_id;
+            let proto_message: proto::RecipientSignedMessage = recipient_reply.into();
             self.outbound_message_service
                 .send_message(
                     BroadcastStrategy::DirectPublicKey(source_pubkey.clone()),
                     NodeDestination::Unknown,
                     OutboundEncryption::EncryptForDestination,
-                    TariMessageType::new(BlockchainMessage::TransactionReply),
-                    recipient_reply.clone(),
+                    OutboundDomainMessage::new(TariMessageType::TransactionReply, proto_message),
                 )
                 .await?;
 
             // Otherwise add it to our pending transaction list and return reply
-            self.db
-                .add_pending_inbound_transaction(recipient_reply.tx_id.clone(), rtp)?;
+            self.db.add_pending_inbound_transaction(tx_id, rtp)?;
 
             info!(
                 target: LOG_TARGET,
                 "Transaction with TX_ID = {} received from {}. Reply Sent",
-                recipient_reply.tx_id.clone(),
+                tx_id,
                 source_pubkey.clone()
             );
 

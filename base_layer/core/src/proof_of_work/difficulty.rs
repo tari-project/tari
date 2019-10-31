@@ -59,6 +59,11 @@ impl Difficulty {
         // return a new difficulty that is proportionally larger or smaller depending on the time diff.
         Difficulty((difficulty.0 as f32 * (difficulty_multiplier)) as u64)
     }
+
+    /// Return the difficulty as a u64
+    pub fn as_u64(&self) -> u64 {
+        self.0
+    }
 }
 
 impl Default for Difficulty {

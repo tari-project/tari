@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package tari.p2p.liveness;
+
+enum PingPong {
+    PingPongPing = 0;
+    PingPongPong = 1;
+}
+
+message PingPongMessage {
+    PingPong ping_pong = 1;
+}
