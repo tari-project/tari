@@ -193,7 +193,10 @@ fn establish_connection_simple() {
         let conn = rt
             .block_on(requester.dial_node(bob.node_identity.identity.node_id.clone()))
             .unwrap();
+
         assert!(conn.is_active());
+        let n = rt.block_on(requester.get_active_connection_count()).unwrap();
+        assert_eq!(n, 1);
     })
 }
 
@@ -246,8 +249,8 @@ fn establish_connection_simultaneous_connect() {
                 },
                 (Err(err_a), Err(err_b)) => panic!("Alice error: {:?}, Bob error: {:?}", err_a, err_b),
                 (Ok(_), Ok(_)) if attempt_count < 10 => {
-                    alice.connection_manager.disconnect_peer(&bob.peer).unwrap();
-                    bob.connection_manager.disconnect_peer(&alice.peer).unwrap();
+                    alice.connection_manager.disconnect_peer(&bob.peer.node_id).unwrap();
+                    bob.connection_manager.disconnect_peer(&alice.peer.node_id).unwrap();
                     attempt_count += 1;
                 },
                 // We we're unable to get a connection conflict this time, so this test didn't exactly fail

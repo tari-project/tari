@@ -22,7 +22,7 @@
 
 use crate::{
     connection::PeerConnection,
-    connection_manager::{dialer::Dialer, ConnectionManagerError},
+    connection_manager::{dialer::Dialer, ConnectionManagerError, Connectivity},
     peer_manager::NodeId,
 };
 use futures::{
@@ -41,13 +41,13 @@ const LOG_TARGET: &str = "comms::dialer::actor";
 /// Create a connected ConnectionManagerRequester and ConnectionManagerService pair. The ConnectionManagerService
 /// should be started using an executor `e.g. pool.spawn(service.start());`. The requester is used to
 /// make requests to the started ConnectionManagerService.
-pub fn create<TDialer>(
+pub fn create<TConnectionManager>(
     buffer_size: usize,
-    dialer: TDialer,
+    dialer: TConnectionManager,
     shutdown_signal: ShutdownSignal,
 ) -> (
     ConnectionManagerRequester,
-    ConnectionManagerActor<TDialer, mpsc::Receiver<ConnectionManagerRequest>>,
+    ConnectionManagerActor<TConnectionManager, mpsc::Receiver<ConnectionManagerRequest>>,
 )
 {
     let (sender, receiver) = mpsc::channel(buffer_size);
@@ -64,6 +64,7 @@ pub enum ConnectionManagerRequest {
             oneshot::Sender<Result<Arc<PeerConnection>, ConnectionManagerError>>,
         )>,
     ),
+    GetActiveConnectionCount(oneshot::Sender<usize>),
 }
 
 /// Responsible for constructing requests to the ConnectionManagerService
@@ -91,24 +92,34 @@ impl ConnectionManagerRequester {
             .await
             .map_err(|_| ConnectionManagerError::ActorRequestCanceled)?
     }
+
+    /// Get number of active connections
+    pub async fn get_active_connection_count(&mut self) -> Result<usize, ConnectionManagerError> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.sender
+            .send(ConnectionManagerRequest::GetActiveConnectionCount(reply_tx))
+            .await
+            .map_err(|_| ConnectionManagerError::SendToActorFailed)?;
+        reply_rx.await.map_err(|_| ConnectionManagerError::ActorRequestCanceled)
+    }
 }
 
 /// # Connection Manager Actor
 ///
 /// Responsible for executing connection requests.
-pub struct ConnectionManagerActor<TDialer, TStream> {
-    dialer: TDialer,
+pub struct ConnectionManagerActor<TConnectionManager, TStream> {
+    connection_manager: TConnectionManager,
     pending_dial_tasks: FuturesUnordered<BoxFuture<'static, ()>>,
     request_rx: TStream,
     shutdown_signal: Option<ShutdownSignal>,
     dial_cancel_signals: HashMap<NodeId, oneshot::Sender<()>>,
 }
 
-impl<TDialer, TStream> ConnectionManagerActor<TDialer, TStream> {
+impl<TConnectionManager, TStream> ConnectionManagerActor<TConnectionManager, TStream> {
     /// Create a new ConnectionManagerActor
-    pub fn new(dialer: TDialer, request_rx: TStream, shutdown_signal: ShutdownSignal) -> Self {
+    pub fn new(dialer: TConnectionManager, request_rx: TStream, shutdown_signal: ShutdownSignal) -> Self {
         Self {
-            dialer,
+            connection_manager: dialer,
             request_rx,
             pending_dial_tasks: FuturesUnordered::new(),
             shutdown_signal: Some(shutdown_signal),
@@ -117,12 +128,16 @@ impl<TDialer, TStream> ConnectionManagerActor<TDialer, TStream> {
     }
 }
 
-impl<TDialer, TStream> ConnectionManagerActor<TDialer, TStream>
+impl<TConnectionManager, TStream> ConnectionManagerActor<TConnectionManager, TStream>
 where
     TStream: Stream<Item = ConnectionManagerRequest> + FusedStream + Unpin,
-    TDialer:
-        Dialer<NodeId, Output = Arc<PeerConnection>, Error = ConnectionManagerError> + Clone + Send + Sync + 'static,
-    TDialer::Future: Send + Unpin,
+    TConnectionManager: Dialer<NodeId, Output = Arc<PeerConnection>, Error = ConnectionManagerError>
+        + Connectivity
+        + Clone
+        + Send
+        + Sync
+        + 'static,
+    TConnectionManager::Future: Send + Unpin,
 {
     /// Start the connection manager actor
     pub async fn start(mut self) {
@@ -171,7 +186,7 @@ where
         match request {
             ConnectionManagerRequest::DialPeer(boxed) => {
                 let (node_id, reply_tx) = *boxed;
-                let dialer = self.dialer.clone();
+                let dialer = self.connection_manager.clone();
                 let (cancel_tx, cancel_rx) = oneshot::channel();
                 self.dial_cancel_signals.insert(node_id.clone(), cancel_tx);
 
@@ -195,6 +210,14 @@ where
                 };
 
                 self.pending_dial_tasks.push(connect_future.boxed());
+            },
+            ConnectionManagerRequest::GetActiveConnectionCount(reply_tx) => {
+                if let Err(err) = reply_tx.send(self.connection_manager.get_active_connection_count()) {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Failed to reply to ConnectedPeersCount request: {}", err
+                    );
+                }
             },
         }
     }
@@ -223,6 +246,7 @@ mod test {
                     assert_eq!(req_node_id, node_id_clone);
                     drop(reply_tx);
                 },
+                _ => panic!("unexpected connection manager request"),
             }
         };
         rt.spawn(assert_request);
@@ -247,5 +271,26 @@ mod test {
         let _ = rt.block_on(requester.dial_node(node_id.clone())).unwrap();
 
         assert_eq!(dialer.count(), 1);
+    }
+
+    #[test]
+    fn connection_manager_service_get_active_connection_count() {
+        let mut rt = current_thread::Runtime::new().unwrap();
+
+        let dialer = CountDialer::<NodeId>::new();
+        let shutdown = Shutdown::new();
+        let (mut requester, service) = create(1, dialer.clone(), shutdown.to_signal());
+
+        rt.spawn(service.start());
+
+        let n = rt.block_on(requester.get_active_connection_count()).unwrap();
+        assert_eq!(n, 0);
+
+        let node_id = NodeId::new();
+        let _ = rt.block_on(requester.dial_node(node_id.clone())).unwrap();
+
+        let n = rt.block_on(requester.get_active_connection_count()).unwrap();
+
+        assert_eq!(n, 1);
     }
 }

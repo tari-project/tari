@@ -97,6 +97,7 @@
 //! [ConnectionEstablisher]: ./establisher/struct.ConnectionEstablisher.html
 pub mod actor;
 mod connections;
+mod connectivity;
 mod dialer;
 mod error;
 pub mod establisher;
@@ -108,6 +109,7 @@ mod types;
 pub(crate) use self::types::EstablishLockResult;
 pub use self::{
     actor::{create as create_connection_manager_actor, ConnectionManagerRequester},
+    connectivity::Connectivity,
     dialer::Dialer,
     error::ConnectionManagerError,
     establisher::PeerConnectionConfig,
