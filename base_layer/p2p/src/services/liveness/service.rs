@@ -187,6 +187,7 @@ mod test {
     use crate::services::liveness::handle::LivenessHandle;
     use futures::{channel::mpsc, executor::LocalPool, stream, task::SpawnExt};
     use rand::rngs::OsRng;
+    use std::sync::atomic::AtomicBool;
     use tari_broadcast_channel::bounded;
     use tari_comms::{
         connection::NetAddress,
@@ -312,6 +313,7 @@ mod test {
 
     #[test]
     fn handle_message_pong() {
+        use std::sync::atomic::Ordering;
         let state = Arc::new(LivenessState::new());
         let mut pool = LocalPool::new();
 
@@ -323,7 +325,7 @@ mod test {
         let pingpong_stream = stream::iter(std::iter::once(msg));
 
         // Setup liveness service
-        let (publisher, _subscriber) = bounded(100);
+        let (publisher, subscriber) = bounded(100);
         let service = LivenessService::new(
             stream::empty(),
             pingpong_stream,
@@ -332,10 +334,25 @@ mod test {
             publisher,
         );
 
-        pool.spawner().spawn(service.run()).unwrap();
+        // Create a flag that gets flipped when the subscribed event is received
+        let received_event = Arc::new(AtomicBool::new(false));
+        let rec_event_clone = received_event.clone();
 
+        // Listen for the pong event
+        pool.spawner()
+            .spawn(async move {
+                let event = subscriber.fuse().select_next_some().await;
+                match *event {
+                    LivenessEvent::ReceivedPong => rec_event_clone.store(true, Ordering::SeqCst),
+                    _ => panic!("Unexpected event"),
+                }
+            })
+            .expect("Couldn't spawn subscription future");
+
+        pool.spawner().spawn(service.run()).unwrap();
         pool.run_until_stalled();
 
         assert_eq!(state.pongs_received(), 1);
+        assert_eq!(received_event.load(Ordering::SeqCst), true);
     }
 }
