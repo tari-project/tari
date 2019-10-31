@@ -347,7 +347,7 @@ mod test {
                     _ => panic!("Unexpected event"),
                 }
             })
-            .expect("Couldn't spawn future");
+            .expect("Couldn't spawn subscription future");
 
         pool.spawner().spawn(service.run()).unwrap();
         pool.run_until_stalled();
