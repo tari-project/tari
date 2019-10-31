@@ -31,3 +31,7 @@ pub mod dht {
 pub mod store_forward {
     include_proto_package!("tari.dht.store_forward");
 }
+
+pub mod message_header {
+    include_proto_package!("tari.dht.message_header");
+}

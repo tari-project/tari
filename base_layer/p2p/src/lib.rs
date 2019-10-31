@@ -34,5 +34,6 @@ pub mod comms_connector;
 pub mod domain_message;
 pub mod initialization;
 pub mod peer;
+pub mod proto;
 pub mod services;
 pub mod tari_message;

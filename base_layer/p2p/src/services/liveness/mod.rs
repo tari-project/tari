@@ -40,16 +40,16 @@ pub mod handle;
 mod service;
 mod state;
 
-pub use self::handle::{LivenessRequest, LivenessResponse, PingPong};
+pub use self::handle::{LivenessRequest, LivenessResponse};
 use self::{service::LivenessService, state::LivenessState};
 use crate::{
     comms_connector::PeerMessage,
     domain_message::DomainMessage,
+    proto::{liveness::PingPongMessage, TariMessageType},
     services::{
         liveness::handle::LivenessHandle,
-        utils::{map_deserialized, ok_or_skip_result},
+        utils::{map_decode, ok_or_skip_result},
     },
-    tari_message::{NetMessage, TariMessageType},
 };
 use futures::{future, Future, Stream, StreamExt};
 use log::*;
@@ -70,28 +70,24 @@ const LOG_TARGET: &'static str = "p2p::services::liveness";
 
 /// Initializer for the Liveness service handle and service future.
 pub struct LivenessInitializer {
-    inbound_message_subscription_factory:
-        Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage<TariMessageType>>>>,
+    inbound_message_subscription_factory: Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage>>>,
 }
 
 impl LivenessInitializer {
     /// Create a new LivenessInitializer from the inbound message subscriber
     pub fn new(
-        inbound_message_subscription_factory: Arc<
-            TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage<TariMessageType>>>,
-        >,
-    ) -> Self
-    {
+        inbound_message_subscription_factory: Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage>>>,
+    ) -> Self {
         Self {
             inbound_message_subscription_factory,
         }
     }
 
     /// Get a stream of inbound PingPong messages
-    fn ping_stream(&self) -> impl Stream<Item = DomainMessage<PingPong>> {
+    fn ping_stream(&self) -> impl Stream<Item = DomainMessage<PingPongMessage>> {
         self.inbound_message_subscription_factory
-            .get_subscription(TariMessageType::new(NetMessage::PingPong))
-            .map(map_deserialized::<PingPong>)
+            .get_subscription(TariMessageType::PingPong)
+            .map(map_decode::<PingPongMessage>)
             .filter_map(ok_or_skip_result)
     }
 }

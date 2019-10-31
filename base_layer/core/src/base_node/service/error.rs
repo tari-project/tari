@@ -28,4 +28,8 @@ use tari_comms_dht::outbound::DhtOutboundError;
 pub enum BaseNodeServiceError {
     CommsInterfaceError(CommsInterfaceError),
     DhtOutboundError(DhtOutboundError),
+    #[error(msg_embedded, no_from, non_std)]
+    InvalidRequest(String),
+    #[error(msg_embedded, no_from, non_std)]
+    InvalidResponse(String),
 }

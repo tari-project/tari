@@ -52,6 +52,7 @@
 #[cfg(test)]
 pub mod test_common;
 
+pub mod proto;
 pub mod recipient;
 pub mod sender;
 pub mod single_receiver;

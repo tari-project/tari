@@ -96,6 +96,7 @@ impl MockOutboundService {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::domain_message::OutboundDomainMessage;
     use futures::{future::join, FutureExt};
     use tari_test_utils::runtime;
 
@@ -106,7 +107,11 @@ mod test {
 
             let (_, result) = rt.block_on(join(
                 service.handle_next(Duration::from_millis(100), 123),
-                requester.send_direct_neighbours(Default::default(), Default::default(), (), ()),
+                requester.send_direct_neighbours(
+                    Default::default(),
+                    Default::default(),
+                    OutboundDomainMessage::new(0, b"".to_vec()),
+                ),
             ));
 
             assert_eq!(service.request_count(), 1);
@@ -120,9 +125,17 @@ mod test {
             let (mut requester, service) = create_mock_outbound_service(1);
             rt.spawn(service.handle_many(2, Duration::from_millis(100), 123).map(|_| ()));
 
-            let result = rt.block_on(requester.send_direct_neighbours(Default::default(), Default::default(), (), ()));
+            let result = rt.block_on(requester.send_direct_neighbours(
+                Default::default(),
+                Default::default(),
+                OutboundDomainMessage::new(0, b"".to_vec()),
+            ));
             assert_eq!(result.unwrap(), 123);
-            let result = rt.block_on(requester.send_direct_neighbours(Default::default(), Default::default(), (), ()));
+            let result = rt.block_on(requester.send_direct_neighbours(
+                Default::default(),
+                Default::default(),
+                OutboundDomainMessage::new(0, b"".to_vec()),
+            ));
             assert_eq!(result.unwrap(), 123);
         })
     }

@@ -22,6 +22,7 @@
 
 use super::{broadcast_strategy::BroadcastStrategy, message::DhtOutboundRequest};
 use crate::{
+    domain_message::OutboundDomainMessage,
     envelope::{DhtMessageFlags, DhtMessageHeader, NodeDestination},
     outbound::{
         message::{ForwardRequest, OutboundEncryption, SendMessageRequest},
@@ -34,11 +35,10 @@ use futures::{
     SinkExt,
 };
 use tari_comms::{
-    message::{Frame, MessageExt, MessageFlags, MessageHeader},
+    message::{Frame, MessageExt, MessageFlags},
     types::CommsPublicKey,
     wrap_in_envelope_body,
 };
-use tari_utilities::message_format::MessageFormat;
 
 #[derive(Clone)]
 pub struct OutboundMessageRequester {
@@ -51,22 +51,19 @@ impl OutboundMessageRequester {
     }
 
     /// Send directly to a peer.
-    pub async fn send_direct<T, MType>(
+    pub async fn send_direct<T>(
         &mut self,
         dest_public_key: CommsPublicKey,
         encryption: OutboundEncryption,
-        message_type: MType,
-        message: T,
+        message: OutboundDomainMessage<T>,
     ) -> Result<bool, DhtOutboundError>
     where
-        MessageHeader<MType>: MessageFormat,
-        T: MessageFormat,
+        T: prost::Message,
     {
         self.send_message(
             BroadcastStrategy::DirectPublicKey(dest_public_key.clone()),
             NodeDestination::PublicKey(dest_public_key),
             encryption,
-            message_type,
             message,
         )
         .await
@@ -79,48 +76,37 @@ impl OutboundMessageRequester {
     /// Send to a pre-configured number of closest peers.
     ///
     /// Each message is destined for each peer.
-    pub async fn send_direct_neighbours<T, MType>(
+    pub async fn send_direct_neighbours<T>(
         &mut self,
         encryption: OutboundEncryption,
         exclude_peers: Vec<CommsPublicKey>,
-        message_type: MType,
-        message: T,
+        message: OutboundDomainMessage<T>,
     ) -> Result<usize, DhtOutboundError>
     where
-        MessageHeader<MType>: MessageFormat,
-        T: MessageFormat,
+        T: prost::Message,
     {
-        self.propagate(
-            NodeDestination::Unknown,
-            encryption,
-            exclude_peers,
-            message_type,
-            message,
-        )
-        .await
+        self.propagate(NodeDestination::Unknown, encryption, exclude_peers, message)
+            .await
     }
 
     /// Send to a pre-configured number of closest peers, for further message propagation.
     ///
     /// Optionally, the NodeDestination can be set to propagate to a particular peer, or network region
     /// in addition to each peer directly (Same as send_direct_neighbours).
-    pub async fn propagate<T, MType>(
+    pub async fn propagate<T>(
         &mut self,
         destination: NodeDestination,
         encryption: OutboundEncryption,
         exclude_peers: Vec<CommsPublicKey>,
-        message_type: MType,
-        message: T,
+        message: OutboundDomainMessage<T>,
     ) -> Result<usize, DhtOutboundError>
     where
-        MessageHeader<MType>: MessageFormat,
-        T: MessageFormat,
+        T: prost::Message,
     {
         self.send_message(
             BroadcastStrategy::Neighbours(Box::new(exclude_peers)),
             destination,
             encryption,
-            message_type,
             message,
         )
         .await
@@ -130,61 +116,47 @@ impl OutboundMessageRequester {
     ///
     /// This should be used with caution as, depending on the number of known peers, a lot of network
     /// traffic could be generated from this node.
-    pub async fn send_flood<T, MType>(
+    pub async fn send_flood<T>(
         &mut self,
         destination: NodeDestination,
         encryption: OutboundEncryption,
-        message_type: MType,
-        message: T,
+        message: OutboundDomainMessage<T>,
     ) -> Result<usize, DhtOutboundError>
     where
-        MessageHeader<MType>: MessageFormat,
-        T: MessageFormat,
+        T: prost::Message,
     {
-        self.send_message(BroadcastStrategy::Flood, destination, encryption, message_type, message)
+        self.send_message(BroadcastStrategy::Flood, destination, encryption, message)
             .await
     }
 
     /// Send to a random subset of peers of size _n_.
-    pub async fn send_random<T, MType>(
+    pub async fn send_random<T>(
         &mut self,
         n: usize,
         destination: NodeDestination,
         encryption: OutboundEncryption,
-        message_type: MType,
-        message: T,
+        message: OutboundDomainMessage<T>,
     ) -> Result<usize, DhtOutboundError>
     where
-        MessageHeader<MType>: MessageFormat,
-        T: MessageFormat,
+        T: prost::Message,
     {
-        self.send_message(
-            BroadcastStrategy::Random(n),
-            destination,
-            encryption,
-            message_type,
-            message,
-        )
-        .await
+        self.send_message(BroadcastStrategy::Random(n), destination, encryption, message)
+            .await
     }
 
     /// Send a message with custom parameters
-    pub async fn send_message<T, MType>(
+    pub async fn send_message<T>(
         &mut self,
         broadcast_strategy: BroadcastStrategy,
         destination: NodeDestination,
         encryption: OutboundEncryption,
-        message_type: MType,
-        message: T,
+        message: OutboundDomainMessage<T>,
     ) -> Result<usize, DhtOutboundError>
     where
-        MessageHeader<MType>: MessageFormat,
-        T: MessageFormat,
+        T: prost::Message,
     {
         let flags = encryption.flags();
-        // TODO: Temporary hack
-        let header = MessageHeader::new(message_type)?;
-        let body = wrap_in_envelope_body!(header.to_binary()?, message.to_binary()?)?.to_encoded_bytes()?;
+        let body = wrap_in_envelope_body!(message.to_header(), message.into_inner())?.to_encoded_bytes()?;
         self.send(
             broadcast_strategy,
             destination,

@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+import "transaction.proto";
+import "block.proto";
+import "chain_metadata.proto";
+
+package tari.base_node;
+
+// Response type for a received BaseNodeService requests
+message BaseNodeServiceResponse {
+    uint64 request_key = 1;
+    oneof response {
+        ChainMetadata chain_metadata = 2;
+        TransactionKernels transaction_kernels = 3;
+        BlockHeaders block_headers = 4;
+        TransactionOutputs transaction_outputs = 5;
+        HistoricalBlocks historical_blocks = 6;
+    }
+}
+
+message BlockHeaders {
+    repeated tari.types.BlockHeader headers = 1;
+}
+
+message TransactionKernels {
+    repeated tari.types.TransactionKernel kernels = 1;
+}
+
+message TransactionOutputs {
+    repeated tari.types.TransactionOutput outputs = 1;
+}
+
+message HistoricalBlocks {
+    repeated tari.types.HistoricalBlock blocks = 1;
+}

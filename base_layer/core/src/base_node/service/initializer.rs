@@ -23,11 +23,8 @@
 use crate::{
     base_node::{
         comms_interface::{InboundNodeCommsInterface, OutboundNodeCommsInterface},
-        service::{
-            service::{BaseNodeService, BaseNodeServiceConfig},
-            service_request::BaseNodeServiceRequest,
-            service_response::BaseNodeServiceResponse,
-        },
+        proto,
+        service::service::{BaseNodeService, BaseNodeServiceConfig},
     },
     chain_storage::{BlockchainBackend, BlockchainDatabase},
 };
@@ -38,8 +35,8 @@ use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_p2p::{
     comms_connector::PeerMessage,
     domain_message::DomainMessage,
-    services::utils::{map_deserialized, ok_or_skip_result},
-    tari_message::{BlockchainMessage, TariMessageType},
+    services::utils::{map_decode, ok_or_skip_result},
+    tari_message::TariMessageType,
 };
 use tari_pubsub::TopicSubscriptionFactory;
 use tari_service_framework::{
@@ -57,8 +54,7 @@ const LOG_TARGET: &'static str = "tari_core::base_node::base_node_service";
 pub struct BaseNodeServiceInitializer<T>
 where T: BlockchainBackend
 {
-    inbound_message_subscription_factory:
-        Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage<TariMessageType>>>>,
+    inbound_message_subscription_factory: Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage>>>,
     blockchain_db: BlockchainDatabase<T>,
     config: BaseNodeServiceConfig,
 }
@@ -68,9 +64,7 @@ where T: BlockchainBackend
 {
     /// Create a new BaseNodeServiceInitializer from the inbound message subscriber.
     pub fn new(
-        inbound_message_subscription_factory: Arc<
-            TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage<TariMessageType>>>,
-        >,
+        inbound_message_subscription_factory: Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage>>>,
         blockchain_db: BlockchainDatabase<T>,
         config: BaseNodeServiceConfig,
     ) -> Self
@@ -83,18 +77,18 @@ where T: BlockchainBackend
     }
 
     /// Get a stream for inbound Base Node request messages
-    fn inbound_request_stream(&self) -> impl Stream<Item = DomainMessage<BaseNodeServiceRequest>> {
+    fn inbound_request_stream(&self) -> impl Stream<Item = DomainMessage<proto::BaseNodeServiceRequest>> {
         self.inbound_message_subscription_factory
-            .get_subscription(TariMessageType::new(BlockchainMessage::BaseNodeRequest))
-            .map(map_deserialized::<BaseNodeServiceRequest>)
+            .get_subscription(TariMessageType::BaseNodeRequest)
+            .map(map_decode::<proto::BaseNodeServiceRequest>)
             .filter_map(ok_or_skip_result)
     }
 
     /// Get a stream for inbound Base Node response messages
-    fn inbound_response_stream(&self) -> impl Stream<Item = DomainMessage<BaseNodeServiceResponse>> {
+    fn inbound_response_stream(&self) -> impl Stream<Item = DomainMessage<proto::BaseNodeServiceResponse>> {
         self.inbound_message_subscription_factory
-            .get_subscription(TariMessageType::new(BlockchainMessage::BaseNodeResponse))
-            .map(map_deserialized::<BaseNodeServiceResponse>)
+            .get_subscription(TariMessageType::BaseNodeResponse)
+            .map(map_decode::<proto::BaseNodeServiceResponse>)
             .filter_map(ok_or_skip_result)
     }
 

@@ -34,6 +34,8 @@ extern crate lazy_static;
 #[cfg(test)]
 pub mod test_utils;
 
+mod proto;
+
 pub mod blocks;
 pub mod bullet_rangeproofs;
 pub mod consts;

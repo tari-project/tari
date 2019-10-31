@@ -29,10 +29,10 @@ use crate::{
             NodeCommsRequestType,
             NodeCommsResponse,
         },
+        proto,
         service::{
             error::BaseNodeServiceError,
-            service_request::{generate_request_key, BaseNodeServiceRequest, RequestKey, WaitingRequest},
-            service_response::BaseNodeServiceResponse,
+            service_request::{generate_request_key, RequestKey, WaitingRequest},
         },
     },
     chain_storage::BlockchainBackend,
@@ -51,17 +51,16 @@ use futures::{
 use log::*;
 use std::{
     collections::HashMap,
+    convert::TryInto,
     sync::Arc,
     time::{Duration, Instant},
 };
 use tari_comms_dht::{
+    domain_message::OutboundDomainMessage,
     envelope::NodeDestination,
     outbound::{BroadcastStrategy, OutboundEncryption, OutboundMessageRequester},
 };
-use tari_p2p::{
-    domain_message::DomainMessage,
-    tari_message::{BlockchainMessage, TariMessageType},
-};
+use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
 use tari_service_framework::RequestContext;
 use tokio::runtime::TaskExecutor;
 
@@ -113,8 +112,8 @@ where
             Result<Vec<NodeCommsResponse>, CommsInterfaceError>,
         >,
     >,
-    TInbReqStream: Stream<Item = DomainMessage<BaseNodeServiceRequest>>,
-    TInbRespStream: Stream<Item = DomainMessage<BaseNodeServiceResponse>>,
+    TInbReqStream: Stream<Item = DomainMessage<proto::BaseNodeServiceRequest>>,
+    TInbRespStream: Stream<Item = DomainMessage<proto::BaseNodeServiceResponse>>,
     TChainBackend: BlockchainBackend,
 {
     pub fn new(
@@ -189,7 +188,7 @@ where
 
                 // Incoming response messages from the Comms layer
                 domain_msg = inbound_response_stream.select_next_some() => {
-                    let _ = self.handle_incoming_response(&domain_msg.inner()).await.or_else(|err| {
+                    let _ = self.handle_incoming_response(domain_msg.into_inner()).await.or_else(|err| {
                         error!(target: LOG_TARGET, "Failed to handle incoming response message: {:?}", err);
                         Err(err)
                     });
@@ -214,38 +213,54 @@ where
 
     async fn handle_incoming_request(
         &mut self,
-        domain_request_msg: DomainMessage<BaseNodeServiceRequest>,
+        domain_request_msg: DomainMessage<proto::BaseNodeServiceRequest>,
     ) -> Result<(), BaseNodeServiceError>
     {
+        let DomainMessage::<_> {
+            origin_pubkey, inner, ..
+        } = domain_request_msg;
+
+        // Convert proto::BaseNodeServiceRequest to a BaseNodeServiceRequest
+        let request = inner.request.ok_or(BaseNodeServiceError::InvalidRequest(
+            "Received invalid base node request".to_string(),
+        ))?;
+
+        let response = self.inbound_nci.handle_request(&request.into()).await?;
+
+        let message = proto::BaseNodeServiceResponse {
+            request_key: inner.request_key,
+            response: Some(response.into()),
+        };
+
         self.outbound_message_service
             .send_message(
-                BroadcastStrategy::DirectPublicKey(domain_request_msg.origin_pubkey.clone()),
-                NodeDestination::PublicKey(domain_request_msg.origin_pubkey.clone()),
+                BroadcastStrategy::DirectPublicKey(origin_pubkey.clone()),
+                NodeDestination::PublicKey(origin_pubkey),
                 OutboundEncryption::EncryptForDestination,
-                TariMessageType::new(BlockchainMessage::BaseNodeResponse),
-                BaseNodeServiceResponse {
-                    request_key: domain_request_msg.inner().request_key,
-                    response: self
-                        .inbound_nci
-                        .handle_request(&domain_request_msg.inner().request)
-                        .await?,
-                },
+                OutboundDomainMessage::new(TariMessageType::BaseNodeResponse, message),
             )
             .await?;
+
         Ok(())
     }
 
     async fn handle_incoming_response(
         &mut self,
-        incoming_response: &BaseNodeServiceResponse,
+        incoming_response: proto::BaseNodeServiceResponse,
     ) -> Result<(), BaseNodeServiceError>
     {
+        let proto::BaseNodeServiceResponse { request_key, response } = incoming_response;
+
         let mut finalize_request = false;
-        match self.waiting_requests.get_mut(&incoming_response.request_key) {
+        match self.waiting_requests.get_mut(&request_key) {
             Some(waiting_request) => {
-                waiting_request
-                    .received_responses
-                    .push(incoming_response.response.clone());
+                let response =
+                    response
+                        .and_then(|r| r.try_into().ok())
+                        .ok_or(BaseNodeServiceError::InvalidResponse(
+                            "Received an invalid base node response".to_string(),
+                        ))?;
+                waiting_request.received_responses.push(response);
                 finalize_request = waiting_request.received_responses.len() >= waiting_request.desired_resp_count;
             },
             None => {
@@ -254,7 +269,7 @@ where
         }
 
         if finalize_request {
-            if let Some(waiting_request) = self.waiting_requests.remove(&incoming_response.request_key) {
+            if let Some(waiting_request) = self.waiting_requests.remove(&request_key) {
                 let WaitingRequest {
                     mut reply_tx,
                     received_responses,
@@ -280,23 +295,23 @@ where
     ) -> Result<(), CommsInterfaceError>
     {
         let request_key = BASE_NODE_RNG.with(|rng| generate_request_key(&mut *rng.borrow_mut()));
-        let service_request = BaseNodeServiceRequest {
-            request_key: request_key.clone(),
-            request,
+        let service_request = proto::BaseNodeServiceRequest {
+            request_key,
+            request: Some(request.into()),
         };
 
-        let broadcast_strategy: BroadcastStrategy = match request_type {
+        let broadcast_strategy = match request_type {
             NodeCommsRequestType::Single => BroadcastStrategy::Random(1),
             NodeCommsRequestType::Many => BroadcastStrategy::Neighbours(Box::new(Vec::new())),
         };
+
         let dest_count = self
             .outbound_message_service
             .send_message(
                 broadcast_strategy,
                 NodeDestination::Unknown,
                 OutboundEncryption::EncryptForDestination,
-                TariMessageType::new(BlockchainMessage::BaseNodeRequest),
-                service_request,
+                OutboundDomainMessage::new(TariMessageType::BaseNodeRequest, service_request),
             )
             .await
             .map_err(|e| CommsInterfaceError::OutboundMessageService(e.to_string()))?;

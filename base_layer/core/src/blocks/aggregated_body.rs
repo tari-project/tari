@@ -34,13 +34,13 @@ use tari_crypto::{commitment::HomomorphicCommitmentFactory, ristretto::pedersen:
 /// cut-through means that blocks and transactions have the same structure.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct AggregateBody {
-    sorted: bool,
+    pub sorted: bool,
     /// List of inputs spent by the transaction.
-    inputs: Vec<TransactionInput>,
+    pub inputs: Vec<TransactionInput>,
     /// List of outputs the transaction produces.
-    outputs: Vec<TransactionOutput>,
+    pub outputs: Vec<TransactionOutput>,
     /// Kernels contain the excesses and their signatures for transaction
-    kernels: Vec<TransactionKernel>,
+    pub kernels: Vec<TransactionKernel>,
 }
 
 impl AggregateBody {

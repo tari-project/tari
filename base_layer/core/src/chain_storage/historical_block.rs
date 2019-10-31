@@ -29,11 +29,11 @@ use serde::{Deserialize, Serialize};
 pub struct HistoricalBlock {
     /// The number of blocks that have been mined since this block, including this one. The current tip will have one
     /// confirmation.
-    confirmations: u64,
+    pub confirmations: u64,
     /// An array of commitments of the outputs from this block that have subsequently been spent.
-    spent_commitments: Vec<Commitment>,
+    pub spent_commitments: Vec<Commitment>,
     /// The underlying block
-    block: Block,
+    pub block: Block,
 }
 
 impl HistoricalBlock {

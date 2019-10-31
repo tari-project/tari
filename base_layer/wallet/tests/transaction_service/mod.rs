@@ -29,7 +29,7 @@ use futures::{
 };
 use prost::Message;
 use rand::{CryptoRng, OsRng, Rng};
-use std::{sync::Arc, time::Duration};
+use std::{convert::TryInto, sync::Arc, time::Duration};
 use tari_broadcast_channel::bounded;
 use tari_comms::{
     builder::CommsNode,
@@ -40,10 +40,7 @@ use tari_comms_dht::outbound::mock::{create_mock_outbound_service, MockOutboundS
 use tari_core::{
     tari_amount::*,
     transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
-    transaction_protocol::{
-        recipient::{RecipientSignedMessage, RecipientState},
-        sender::TransactionSenderMessage,
-    },
+    transaction_protocol::{proto, recipient::RecipientState, sender::TransactionSenderMessage},
     types::{PrivateKey, PublicKey, COMMITMENT_FACTORY, PROVER},
     ReceiverTransactionProtocol,
 };
@@ -57,7 +54,6 @@ use tari_p2p::{
     services::comms_outbound::CommsOutboundServiceInitializer,
 };
 use tari_service_framework::{reply_channel, StackBuilder};
-use tari_utilities::message_format::MessageFormat;
 use tari_wallet::{
     output_manager_service::{
         handle::OutputManagerHandle,
@@ -120,8 +116,8 @@ pub fn setup_transaction_service_no_comms(
     TransactionServiceHandle,
     OutputManagerHandle,
     MockOutboundService,
-    Sender<DomainMessage<TransactionSenderMessage>>,
-    Sender<DomainMessage<RecipientSignedMessage>>,
+    Sender<DomainMessage<proto::TransactionSenderMessage>>,
+    Sender<DomainMessage<proto::RecipientSignedMessage>>,
 )
 {
     let (oms_request_sender, oms_request_receiver) = reply_channel::unbounded();
@@ -424,7 +420,7 @@ fn test_sending_repeated_tx_ids() {
         .block_on(bob_output_manager.prepare_transaction_to_send(MicroTari::from(500), MicroTari::from(1000), None))
         .unwrap();
     let msg = stp.build_single_round_message().unwrap();
-    let tx_message = create_dummy_message(TransactionSenderMessage::Single(Box::new(msg.clone())));
+    let tx_message = create_dummy_message(TransactionSenderMessage::Single(Box::new(msg.clone())).into());
 
     runtime.block_on(alice_tx_sender.send(tx_message.clone())).unwrap();
     runtime.block_on(alice_tx_sender.send(tx_message.clone())).unwrap();
@@ -479,13 +475,15 @@ fn test_accepting_unknown_tx_id_and_malformed_reply() {
     });
 
     let envelope_body = EnvelopeBody::decode(req.body.as_slice()).unwrap();
-    let sender_message =
-        TransactionSenderMessage::from_binary(&envelope_body.decode_part::<Vec<u8>>(1).unwrap().unwrap()).unwrap();
+    let sender_message = envelope_body
+        .decode_part::<proto::TransactionSenderMessage>(1)
+        .unwrap()
+        .unwrap();
 
     let params = TestParams::new(&mut rng);
 
     let rtp = ReceiverTransactionProtocol::new(
-        sender_message,
+        sender_message.try_into().unwrap(),
         params.nonce,
         params.spend_key,
         OutputFeatures::default(),
@@ -499,11 +497,11 @@ fn test_accepting_unknown_tx_id_and_malformed_reply() {
     let (_p, pub_key) = PublicKey::random_keypair(&mut rng);
     tx_reply.public_spend_key = pub_key;
     runtime
-        .block_on(alice_tx_ack_sender.send(create_dummy_message(wrong_tx_id)))
+        .block_on(alice_tx_ack_sender.send(create_dummy_message(wrong_tx_id.into())))
         .unwrap();
 
     runtime
-        .block_on(alice_tx_ack_sender.send(create_dummy_message(tx_reply)))
+        .block_on(alice_tx_ack_sender.send(create_dummy_message(tx_reply.into())))
         .unwrap();
 
     let mut result =

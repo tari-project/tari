@@ -35,6 +35,7 @@
 mod backoff;
 mod base_node;
 mod comms_interface;
+mod proto;
 #[cfg(test)]
 mod test;
 

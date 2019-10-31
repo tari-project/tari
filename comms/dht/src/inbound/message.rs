@@ -75,8 +75,16 @@ impl DecryptedDhtMessage {
         self.decryption_result.as_ref().err()
     }
 
+    pub fn fail_mut(&mut self) -> Option<&mut Vec<u8>> {
+        self.decryption_result.as_mut().err()
+    }
+
     pub fn success(&self) -> Option<&EnvelopeBody> {
         self.decryption_result.as_ref().ok()
+    }
+
+    pub fn success_mut(&mut self) -> Option<&mut EnvelopeBody> {
+        self.decryption_result.as_mut().ok()
     }
 
     pub fn decryption_succeeded(&self) -> bool {
