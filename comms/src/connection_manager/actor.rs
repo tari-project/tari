@@ -131,12 +131,8 @@ impl<TConnectionManager, TStream> ConnectionManagerActor<TConnectionManager, TSt
 impl<TConnectionManager, TStream> ConnectionManagerActor<TConnectionManager, TStream>
 where
     TStream: Stream<Item = ConnectionManagerRequest> + FusedStream + Unpin,
-    TConnectionManager: Dialer<NodeId, Output = Arc<PeerConnection>, Error = ConnectionManagerError>
-        + Connectivity
-        + Clone
-        + Send
-        + Sync
-        + 'static,
+    TConnectionManager: Dialer<NodeId, Output = Arc<PeerConnection>, Error = ConnectionManagerError> + Connectivity,
+    TConnectionManager: Clone + Send + Sync + 'static,
     TConnectionManager::Future: Send + Unpin,
 {
     /// Start the connection manager actor
@@ -144,8 +140,7 @@ where
         let mut shutdown_signal = self
             .shutdown_signal
             .take()
-            .expect("ConnectionManagerActor initialized without shutdown signal")
-            .fuse();
+            .expect("ConnectionManagerActor initialized without shutdown signal");
 
         loop {
             ::futures::select! {

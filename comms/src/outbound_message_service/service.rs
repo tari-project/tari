@@ -94,7 +94,7 @@ impl DialState {
         if self.attempts <= 1 {
             return 0;
         }
-        let secs = 0.5 * (f32::powf(2.0, self.attempts as f32) - 1.0);
+        let secs = 0.8 * (f32::powf(2.0, self.attempts as f32) - 1.0);
         cmp::max(2, secs.ceil() as u64)
     }
 }
@@ -182,6 +182,7 @@ where TMsgStream: Stream<Item = OutboundMessage> + Unpin
                             );
                             if state.attempts >= self.config.max_attempts {
                                 self.dial_cancel_signals.remove(&state.node_id);
+                                self.pending_connect_requests.remove(&state.node_id);
                                 debug!(target: LOG_TARGET, "NodeId={} Maximum attempts reached. Discarding messages.", state.node_id);
                             } else {
                                 // Should retry this connection attempt
@@ -264,6 +265,11 @@ where TMsgStream: Stream<Item = OutboundMessage> + Unpin
 
     /// Returns a DialState for the NodeId if a connection is not currently being attempted
     fn enqueue_new_message(&mut self, msg: OutboundMessage) -> Option<DialState> {
+        trace!(
+            target: LOG_TARGET,
+            "{} attempt(s) in progress",
+            self.pending_connect_requests.len()
+        );
         match self.pending_connect_requests.get_mut(&msg.peer_node_id) {
             // Connection being attempted for peer. Add the message to the queue to be sent once connected.
             Some(msgs) => {
@@ -523,22 +529,22 @@ mod test {
         state.attempts = 1;
         assert_eq!(state.exponential_backoff_offset(), 0);
         state.attempts = 2;
-        assert_eq!(state.exponential_backoff_offset(), 2);
+        assert_eq!(state.exponential_backoff_offset(), 3);
         state.attempts = 3;
-        assert_eq!(state.exponential_backoff_offset(), 4);
+        assert_eq!(state.exponential_backoff_offset(), 6);
         state.attempts = 4;
-        assert_eq!(state.exponential_backoff_offset(), 8);
+        assert_eq!(state.exponential_backoff_offset(), 12);
         state.attempts = 5;
-        assert_eq!(state.exponential_backoff_offset(), 16);
+        assert_eq!(state.exponential_backoff_offset(), 25);
         state.attempts = 6;
-        assert_eq!(state.exponential_backoff_offset(), 32);
+        assert_eq!(state.exponential_backoff_offset(), 51);
         state.attempts = 7;
-        assert_eq!(state.exponential_backoff_offset(), 64);
+        assert_eq!(state.exponential_backoff_offset(), 102);
         state.attempts = 8;
-        assert_eq!(state.exponential_backoff_offset(), 128);
+        assert_eq!(state.exponential_backoff_offset(), 204);
         state.attempts = 9;
-        assert_eq!(state.exponential_backoff_offset(), 256);
+        assert_eq!(state.exponential_backoff_offset(), 409);
         state.attempts = 10;
-        assert_eq!(state.exponential_backoff_offset(), 512);
+        assert_eq!(state.exponential_backoff_offset(), 819);
     }
 }

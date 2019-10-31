@@ -86,7 +86,10 @@ impl Wallet {
 
         let fut = StackBuilder::new(runtime.executor(), comms.shutdown_signal())
             .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))
-            .add_initializer(LivenessInitializer::new(Arc::clone(&subscription_factory)))
+            .add_initializer(LivenessInitializer::new(
+                Default::default(),
+                Arc::clone(&subscription_factory),
+            ))
             .add_initializer(OutputManagerServiceInitializer::new(
                 config.output_manager_config.clone(),
                 OutputManagerMemoryDatabase::new(),

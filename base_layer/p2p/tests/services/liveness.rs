@@ -52,7 +52,10 @@ pub fn setup_liveness_service(
 
     let fut = StackBuilder::new(runtime.executor(), comms.shutdown_signal())
         .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))
-        .add_initializer(LivenessInitializer::new(Arc::clone(&subscription_factory)))
+        .add_initializer(LivenessInitializer::new(
+            Default::default(),
+            Arc::clone(&subscription_factory),
+        ))
         .finish();
 
     let handles = runtime.block_on(fut).expect("Service initialization failed");

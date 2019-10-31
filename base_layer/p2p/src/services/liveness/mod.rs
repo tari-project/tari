@@ -35,12 +35,12 @@
 //! [LivenessRequest]: ./messages/enum.LivenessRequets.html
 //! [PingPong]: ./messages/enum.PingPong.html
 
+mod config;
 pub mod error;
 pub mod handle;
 mod service;
 mod state;
 
-pub use self::handle::{LivenessRequest, LivenessResponse};
 use self::{service::LivenessService, state::LivenessState};
 use crate::{
     comms_connector::PeerMessage,
@@ -66,19 +66,29 @@ use tari_service_framework::{
 use tari_shutdown::ShutdownSignal;
 use tokio::runtime::TaskExecutor;
 
+// Public exports
+pub use self::{
+    config::LivenessConfig,
+    handle::{LivenessRequest, LivenessResponse},
+};
+
 const LOG_TARGET: &'static str = "p2p::services::liveness";
 
 /// Initializer for the Liveness service handle and service future.
 pub struct LivenessInitializer {
+    config: Option<LivenessConfig>,
     inbound_message_subscription_factory: Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage>>>,
 }
 
 impl LivenessInitializer {
     /// Create a new LivenessInitializer from the inbound message subscriber
     pub fn new(
+        config: LivenessConfig,
         inbound_message_subscription_factory: Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage>>>,
-    ) -> Self {
+    ) -> Self
+    {
         Self {
+            config: Some(config),
             inbound_message_subscription_factory,
         }
     }
@@ -108,12 +118,19 @@ impl ServiceInitializer for LivenessInitializer {
 
         let liveness_handle = LivenessHandle::new(sender, subscriber);
 
+        // Saving a clone
+        let config = self
+            .config
+            .take()
+            .expect("Liveness service initialized more than once.");
+
         // Register handle before waiting for handles to be ready
         handles_fut.register(liveness_handle);
 
         // Create a stream which receives PingPong messages from comms
         let ping_stream = self.ping_stream();
 
+        // Spawn the Liveness service on the executor
         executor.spawn(async move {
             // Wait for all handles to become available
             let handles = handles_fut.await;
@@ -124,10 +141,16 @@ impl ServiceInitializer for LivenessInitializer {
 
             let state = Arc::new(LivenessState::new());
 
-            // Spawn the Liveness service on the executor
-            let service = LivenessService::new(receiver, ping_stream, state, outbound_handle, publisher).run();
-            futures::pin_mut!(service);
-            future::select(service, shutdown).await;
+            let service = LivenessService::new(
+                config,
+                receiver,
+                ping_stream,
+                state,
+                outbound_handle,
+                publisher,
+                shutdown,
+            );
+            service.run().await;
             debug!(target: LOG_TARGET, "Liveness service has shut down");
         });
 

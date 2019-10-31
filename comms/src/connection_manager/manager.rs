@@ -286,6 +286,11 @@ impl ConnectionManager {
     }
 
     fn initiate_peer_connection(&self, peer: &mut Peer) -> Result<Arc<PeerConnection>> {
+        debug!(
+            target: LOG_TARGET,
+            "Initiating connection to peer. NodeId={}, connection_stats={:?}", peer.node_id, peer.connection_stats
+        );
+
         let protocol = PeerConnectionProtocol::new(&self.node_identity, &self.establisher);
         self.peer_manager
             .reset_connection_attempts(&peer.node_id)
@@ -324,10 +329,16 @@ impl ConnectionManager {
                 self.connections
                     .add_connection(peer.node_id.clone(), Arc::clone(&new_conn), join_handle)?;
 
-                peer.set_connection_stats(PeerConnectionStats {
-                    connected_at: Some(Utc::now().naive_utc()),
-                    last_connect_failed_at: None,
-                });
+                let _ = self
+                    .peer_manager
+                    .update_peer_connection_stats(&peer.public_key, PeerConnectionStats {
+                        connected_at: Some(Utc::now().naive_utc()),
+                        last_connect_failed_at: None,
+                    })
+                    .or_else(|err| {
+                        warn!(target: LOG_TARGET, "Failed to update peer because '{}'", err);
+                        Err(err)
+                    });
 
                 Ok(new_conn)
             })
@@ -342,11 +353,21 @@ impl ConnectionManager {
                         target: LOG_TARGET,
                         "Connection error for NodeId={}: {:?}", peer.node_id, err
                     );
+                    debug!(
+                        target: LOG_TARGET,
+                        "Setting failed connection stat on peer with NodeId={}", peer.node_id,
+                    );
 
-                    peer.set_connection_stats(PeerConnectionStats {
-                        connected_at: peer.connection_stats.connected_at,
-                        last_connect_failed_at: Some(Utc::now().naive_utc()),
-                    });
+                    let _ = self
+                        .peer_manager
+                        .update_peer_connection_stats(&peer.public_key, PeerConnectionStats {
+                            connected_at: peer.connection_stats.connected_at,
+                            last_connect_failed_at: Some(Utc::now().naive_utc()),
+                        })
+                        .or_else(|err| {
+                            warn!(target: LOG_TARGET, "Failed to update peer because '{}'", err);
+                            Err(err)
+                        });
                     Err(err)
                 },
             })

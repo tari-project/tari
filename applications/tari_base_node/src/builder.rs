@@ -258,6 +258,7 @@ where
             socks_proxy_address: None,
             requested_connection_timeout: Duration::from_millis(2000),
         },
+        establish_connection_timeout: Duration::from_secs(10), // TODO - make this configurable
         datastore_path: peer_db_path.to_string(),
         peer_database_name: "peers".to_string(),
         inbound_buffer_size: 100,

@@ -26,7 +26,7 @@ use crate::{
     peer_manager::{
         node_id::{NodeDistance, NodeId},
         node_identity::PeerNodeIdentity,
-        peer::{Peer, PeerFlags},
+        peer::{Peer, PeerConnectionStats, PeerFlags},
         peer_key::{generate_peer_key, PeerKey},
         PeerFeatures,
         PeerManagerError,
@@ -110,6 +110,7 @@ where DS: KeyValueStore<PeerKey, Peer>
         net_addresses: Option<Vec<NetAddress>>,
         flags: Option<PeerFlags>,
         peer_features: Option<PeerFeatures>,
+        connection_stats: Option<PeerConnectionStats>,
     ) -> Result<(), PeerManagerError>
     {
         match self.public_key_hm.get(public_key) {
@@ -122,7 +123,7 @@ where DS: KeyValueStore<PeerKey, Peer>
                     .get(&peer_key)
                     .map_err(PeerManagerError::DatabaseError)?
                     .ok_or(PeerManagerError::PeerNotFoundError)?;
-                stored_peer.update(node_id, net_addresses, flags, peer_features);
+                stored_peer.update(node_id, net_addresses, flags, peer_features, connection_stats);
 
                 self.add_hashmap_links(peer_key, &stored_peer);
                 self.peers
