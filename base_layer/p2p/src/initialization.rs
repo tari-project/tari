@@ -20,10 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    comms_connector::{InboundDomainConnector, PeerMessage},
-    tari_message::TariMessageType,
-};
+use crate::comms_connector::{InboundDomainConnector, PeerMessage};
 use derive_error::Error;
 use futures::{channel::mpsc, Sink};
 use std::{error::Error, net::IpAddr, sync::Arc};
@@ -80,10 +77,10 @@ pub struct CommsConfig {
 pub fn initialize_comms<TSink>(
     executor: TaskExecutor,
     config: CommsConfig,
-    connector: InboundDomainConnector<TariMessageType, TSink>,
+    connector: InboundDomainConnector<TSink>,
 ) -> Result<(CommsNode, Dht), CommsInitializationError>
 where
-    TSink: Sink<Arc<PeerMessage<TariMessageType>>> + Unpin + Clone + Send + Sync + 'static,
+    TSink: Sink<Arc<PeerMessage>> + Unpin + Clone + Send + Sync + 'static,
     TSink::Error: Error + Send + Sync,
 {
     let _ = std::fs::create_dir(&config.datastore_path).unwrap_or_default();

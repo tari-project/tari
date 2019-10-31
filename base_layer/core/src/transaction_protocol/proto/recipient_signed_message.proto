@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+import "types.proto";
+import "transaction.proto";
+
+package tari.transaction_protocol;
+
+// This is the message containing the public data that the Receiver will send back to the Sender
+message RecipientSignedMessage {
+    uint64 tx_id = 1;
+    tari.types.TransactionOutput output = 2;
+    bytes public_spend_key = 3;
+    tari.types.Signature partial_signature = 4;
+}

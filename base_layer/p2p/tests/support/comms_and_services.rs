@@ -32,7 +32,6 @@ use tari_comms_dht::Dht;
 use tari_p2p::{
     comms_connector::{InboundDomainConnector, PeerMessage},
     initialization::{initialize_comms, CommsConfig},
-    tari_message::TariMessageType,
 };
 use tempdir::TempDir;
 use tokio::runtime::TaskExecutor;
@@ -41,10 +40,10 @@ pub fn setup_comms_services<TSink>(
     executor: TaskExecutor,
     node_identity: Arc<NodeIdentity>,
     peers: Vec<NodeIdentity>,
-    publisher: InboundDomainConnector<TariMessageType, TSink>,
+    publisher: InboundDomainConnector<TSink>,
 ) -> (Arc<CommsNode>, Dht)
 where
-    TSink: Sink<Arc<PeerMessage<TariMessageType>>> + Clone + Unpin + Send + Sync + 'static,
+    TSink: Sink<Arc<PeerMessage>> + Clone + Unpin + Send + Sync + 'static,
     TSink::Error: Error + Send + Sync,
 {
     let comms_config = CommsConfig {

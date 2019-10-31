@@ -226,24 +226,24 @@ async fn update_ui(update_sink: CursiveSignal, mut liveness_handle: LivenessHand
 
     loop {
         ::futures::select! {
-        event = event_stream.select_next_some() => {
-            match *event {
-                LivenessEvent::ReceivedPing => {
-                    {
-                        let mut lock = COUNTER_STATE.write().unwrap();
-                        *lock = (lock.0, lock.1 + 1, lock.2);
-                    }
-                },
-                LivenessEvent::ReceivedPong => {
-                    {
-                        let mut lock = COUNTER_STATE.write().unwrap();
-                        *lock = (lock.0, lock.1, lock.2 + 1);
-                    }
-                },
-            }
+            event = event_stream.select_next_some() => {
+                match *event {
+                    LivenessEvent::ReceivedPing => {
+                        {
+                            let mut lock = COUNTER_STATE.write().unwrap();
+                            *lock = (lock.0, lock.1 + 1, lock.2);
+                        }
+                    },
+                    LivenessEvent::ReceivedPong => {
+                        {
+                            let mut lock = COUNTER_STATE.write().unwrap();
+                            *lock = (lock.0, lock.1, lock.2 + 1);
+                        }
+                    },
+                }
 
-            let _ = update_sink.send(Box::new(update_count));
-        },
+                let _ = update_sink.send(Box::new(update_count));
+            },
             _ = shutdown =>  {
                 log::debug!("Ping pong example UI exiting");
                 break;

@@ -53,6 +53,8 @@ pub enum TransactionServiceError {
     OutputManagerError(OutputManagerError),
     TransportChannelError(TransportChannelError),
     TransactionStorageError(TransactionStorageError),
+    #[error(msg_embedded, no_from, non_std)]
+    InvalidMessageError(String),
 }
 
 #[derive(Debug, Error, PartialEq)]

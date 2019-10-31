@@ -149,12 +149,17 @@ impl EnvelopeBody {
         self.parts.len()
     }
 
-    pub fn push_part(&mut self, part: Vec<u8>) {
-        self.parts.push(part)
+    /// Removes and returns the part at the given index. None
+    /// is returned if the index is out of bounds
+    pub fn take_part(&mut self, index: usize) -> Option<Vec<u8>> {
+        Some(index)
+            .filter(|i| self.parts.len() > *i)
+            // remove panics if out of bounds
+            .and_then(|i| Some(self.parts.remove(i)))
     }
 
-    pub fn num_parts(&self) -> usize {
-        self.parts.len()
+    pub fn push_part(&mut self, part: Vec<u8>) {
+        self.parts.push(part)
     }
 
     pub fn into_inner(self) -> Vec<Vec<u8>> {

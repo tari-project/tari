@@ -1,3 +1,0 @@
-# Ignore generated proto files
-src/proto/*.rs
-!src/proto/mod.rs

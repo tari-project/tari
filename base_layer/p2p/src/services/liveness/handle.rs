@@ -22,7 +22,6 @@
 
 use crate::services::liveness::error::LivenessError;
 use futures::{stream::Fuse, StreamExt};
-use serde::{Deserialize, Serialize};
 use tari_broadcast_channel::Subscriber;
 use tari_comms::types::CommsPublicKey;
 use tari_service_framework::reply_channel::SenderService;
@@ -44,13 +43,6 @@ pub enum LivenessRequest {
 pub enum LivenessResponse {
     PingSent,
     Count(usize),
-}
-
-/// The PingPong comms-level message
-#[derive(Debug, Serialize, Deserialize)]
-pub enum PingPong {
-    Ping,
-    Pong,
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]

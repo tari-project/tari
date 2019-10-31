@@ -121,6 +121,7 @@ mod consts;
 mod dht;
 mod proto;
 
+pub mod domain_message;
 pub mod envelope;
 pub mod inbound;
 pub mod outbound;

@@ -83,8 +83,6 @@ where
     {
         debug!(target: LOG_TARGET, "Serializing outbound message");
 
-        let mut rng = DHT_RNG.with(|rng| rng.clone());
-
         let DhtOutboundMessage {
             mut dht_header,
             body,
@@ -96,7 +94,8 @@ where
         // If forwarding the message, the DhtHeader already has a signature that should not change
         if !comms_flags.contains(MessageFlags::FORWARDED) {
             // Sign the body
-            let signature = signature::sign(&mut rng, node_identity.secret_key.clone(), &body)?;
+            let signature =
+                DHT_RNG.with(|rng| signature::sign(&mut *rng.borrow_mut(), node_identity.secret_key.clone(), &body))?;
             dht_header.origin_signature = signature.to_binary()?;
             trace!(target: LOG_TARGET, "Signed message: {:?}", dht_header);
         }

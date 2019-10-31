@@ -20,40 +20,33 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_comms::{message::MessageHeader, peer_manager::Peer};
-use tari_comms_dht::envelope::DhtMessageHeader;
-use tari_utilities::message_format::{MessageFormat, MessageFormatError};
+use tari_comms::peer_manager::Peer;
+use tari_comms_dht::{domain_message::MessageHeader, envelope::DhtMessageHeader};
 
 /// A domain-level message
-pub struct PeerMessage<MType> {
-    /// Serialized message data
-    pub body: Vec<u8>,
-    /// Domain message header
-    pub message_header: MessageHeader<MType>,
+pub struct PeerMessage {
     /// The message envelope header
     pub dht_header: DhtMessageHeader,
     /// The connected peer which sent this message
     pub source_peer: Peer,
+    /// Domain message header
+    pub message_header: MessageHeader,
+    /// Serialized message data
+    pub body: Vec<u8>,
 }
 
-impl<MType> PeerMessage<MType> {
-    pub fn new(
-        message: Vec<u8>,
-        message_header: MessageHeader<MType>,
-        dht_header: DhtMessageHeader,
-        source_peer: Peer,
-    ) -> Self
-    {
+impl PeerMessage {
+    pub fn new(dht_header: DhtMessageHeader, source_peer: Peer, message_header: MessageHeader, body: Vec<u8>) -> Self {
         Self {
-            body: message,
+            body,
             message_header,
             dht_header,
             source_peer,
         }
     }
 
-    pub fn deserialize_message<T>(&self) -> Result<T, MessageFormatError>
-    where T: MessageFormat {
-        T::from_binary(&self.body)
+    pub fn decode_message<T>(&self) -> Result<T, prost::DecodeError>
+    where T: prost::Message + Default {
+        T::decode(&self.body)
     }
 }

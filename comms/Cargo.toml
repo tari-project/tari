@@ -51,4 +51,4 @@ name = "benches_main"
 harness = false
 
 [build-dependencies]
-prost-build = "0.5.0"
+tari_protobuf_build = { version = "^0.0", path="../infrastructure/protobuf_build"}

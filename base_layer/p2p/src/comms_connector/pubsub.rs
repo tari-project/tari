@@ -21,8 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::peer_message::PeerMessage;
-use crate::comms_connector::InboundDomainConnector;
-use futures::{channel::mpsc, FutureExt, StreamExt};
+use crate::{comms_connector::InboundDomainConnector, proto::TariMessageType};
+use futures::{channel::mpsc, FutureExt, SinkExt, StreamExt};
 use log::*;
 use std::sync::Arc;
 use tari_pubsub::{pubsub_channel, TopicPayload, TopicSubscriptionFactory};
@@ -31,18 +31,16 @@ use tokio::runtime::TaskExecutor;
 const LOG_TARGET: &'static str = "comms::middleware::pubsub";
 
 /// Alias for a pubsub-type domain connector
-pub type PubsubDomainConnector<MType> = InboundDomainConnector<MType, mpsc::Sender<Arc<PeerMessage<MType>>>>;
+pub type PubsubDomainConnector = InboundDomainConnector<mpsc::Sender<Arc<PeerMessage>>>;
 
 /// Connects `InboundDomainConnector` to a `tari_pubsub::TopicPublisher` through a buffered channel
-pub fn pubsub_connector<MType>(
+pub fn pubsub_connector(
     executor: TaskExecutor,
     buf_size: usize,
 ) -> (
-    PubsubDomainConnector<MType>,
-    TopicSubscriptionFactory<MType, Arc<PeerMessage<MType>>>,
+    PubsubDomainConnector,
+    TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage>>,
 )
-where
-    MType: Eq + Sync + Send + Clone + 'static,
 {
     let (publisher, subscription_factory) = pubsub_channel(buf_size);
     let (sender, receiver) = mpsc::channel(buf_size);
@@ -50,9 +48,13 @@ where
     // Spawn a task which forwards messages from the pubsub service to the TopicPublisher
     let forwarder = receiver
         // Map DomainMessage into a TopicPayload
-        .map(|msg: Arc<PeerMessage<MType>>| Ok(TopicPayload::new(msg.message_header.message_type.clone(), msg)))
+        .map(|msg: Arc<PeerMessage>| {
+            TariMessageType::from_i32(msg.message_header.message_type)
+                .map(|msg_type| TopicPayload::new(msg_type, msg))
+                .ok_or("Invalid or unrecognised Tari message type".to_string())
+        })
         // Forward TopicPayloads to the publisher
-        .forward(publisher)
+        .forward(publisher.sink_map_err(|err| err.to_string()))
         // Log error and return unit
         .map(|result| {
             if let Err(err) = result {
