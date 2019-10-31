@@ -188,7 +188,8 @@ pub unsafe extern "C" fn output_manager_config_create(
     }
 
     let omc = WalletOutputManagerConfig {
-        master_key: k,
+        master_key: Some(k),
+        seed_words: None,
         branch_seed: str.to_string(),
         primary_key_index: primary_key_index as usize,
     };
