@@ -31,4 +31,6 @@ pub trait Connectivity {
     fn get_active_connection_count(&self) -> usize;
 
     fn disconnect_peer(&self, node_id: &NodeId) -> Result<Option<Arc<PeerConnection>>>;
+
+    //    fn set_peer_connection_eligibility(&self, node_id: &NodeId, eligibility: ConnectEligibility);
 }

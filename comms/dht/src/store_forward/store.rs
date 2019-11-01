@@ -203,7 +203,7 @@ where
                 );
             },
             NodeDestination::PublicKey(dest_public_key) => {
-                if peer_manager.exists(&dest_public_key)? {
+                if peer_manager.exists(&dest_public_key) {
                     self.storage.insert(
                         dht_header.origin_signature.clone(),
                         StoredMessage::new(version, dht_header, encrypted_body),
@@ -212,7 +212,7 @@ where
                 }
             },
             NodeDestination::NodeId(dest_node_id) => {
-                if (peer_manager.exists_node_id(&dest_node_id)?) |
+                if (peer_manager.exists_node_id(&dest_node_id)) |
                     (peer_manager.in_network_region(
                         &dest_node_id,
                         &node_identity.identity.node_id,

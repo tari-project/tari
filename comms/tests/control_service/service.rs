@@ -137,7 +137,7 @@ fn request_connection() {
         .unwrap();
 
     let peer = peer_manager
-        .find_with_public_key(&node_identity_b.identity.public_key)
+        .find_by_public_key(&node_identity_b.identity.public_key)
         .unwrap();
     assert_eq!(peer.public_key, node_identity_b.identity.public_key);
     assert_eq!(peer.node_id, node_identity_b.identity.node_id);

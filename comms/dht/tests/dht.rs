@@ -181,20 +181,20 @@ fn dht_join_propagation() {
 
             // Check that Node A knows about Node C and vice versa
             async_assert_eventually!(
-                node_A_peer_manager.exists(node_C_node_identity.public_key()).unwrap(),
+                node_A_peer_manager.exists(node_C_node_identity.public_key()),
                 expect = true,
                 max_attempts = 10,
                 interval = Duration::from_millis(500)
             );
             async_assert_eventually!(
-                node_C_peer_manager.exists(node_A_node_identity.public_key()).unwrap(),
+                node_C_peer_manager.exists(node_A_node_identity.public_key()),
                 expect = true,
                 max_attempts = 10,
                 interval = Duration::from_millis(500)
             );
 
             let node_C_peer = node_A_peer_manager
-                .find_with_public_key(node_C_node_identity.public_key())
+                .find_by_public_key(node_C_node_identity.public_key())
                 .unwrap();
             assert_eq!(&node_C_peer.features, node_C_node_identity.features());
 
@@ -216,6 +216,7 @@ fn dht_join_propagation() {
 #[test]
 #[allow(non_snake_case)]
 fn dht_discover_propagation() {
+    env_logger::init();
     // Create 4 nodes where A knows B, B knows A and C, C knows B and D, and D knows C
     let node_A_identity = new_node_identity("127.0.0.1:11116".parse().unwrap());
     let node_B_identity = new_node_identity("127.0.0.1:11117".parse().unwrap());
@@ -277,14 +278,14 @@ fn dht_discover_propagation() {
 
             // Check that Node A knows about Node D and vice versa
             async_assert_eventually!(
-                node_A_peer_manager.exists(node_D_node_identity.public_key()).unwrap(),
+                node_A_peer_manager.exists(node_D_node_identity.public_key()),
                 expect = true,
                 max_attempts = 10,
                 interval = Duration::from_millis(500)
             );
 
             async_assert_eventually!(
-                node_D_peer_manager.exists(node_A_node_identity.public_key()).unwrap(),
+                node_D_peer_manager.exists(node_A_node_identity.public_key()),
                 expect = true,
                 max_attempts = 10,
                 interval = Duration::from_millis(500)

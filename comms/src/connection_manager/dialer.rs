@@ -32,5 +32,5 @@ pub trait Dialer<T> {
     type Future: Future<Output = Result<Self::Output, Self::Error>>;
 
     /// Asynchronously establish a connection (dial) to a remote peer
-    fn dial(&self, dial_key: &T) -> Self::Future;
+    fn dial(&self, peer: &T) -> Self::Future;
 }

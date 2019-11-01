@@ -149,7 +149,7 @@ where
     /// Check whether the the source of the message is known to our Peer Manager, if it is return the peer but otherwise
     /// we discard the message as it should be in our Peer Manager
     fn find_known_peer(&self, source_node_id: &NodeId) -> Result<Peer, InboundMessageServiceError> {
-        match self.peer_manager.find_with_node_id(source_node_id).ok() {
+        match self.peer_manager.find_by_node_id(source_node_id).ok() {
             Some(peer) => Ok(peer),
             None => {
                 warn!(

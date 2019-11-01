@@ -29,6 +29,7 @@ use crate::{
         peer_storage::PeerStorage,
         PeerFeatures,
         PeerManagerError,
+        PeerQuery,
     },
     types::{CommsDatabase, CommsPublicKey},
 };
@@ -52,10 +53,7 @@ impl PeerManager {
     /// Adds a peer to the routing table of the PeerManager if the peer does not already exist. When a peer already
     /// exist, the stored version will be replaced with the newly provided peer.
     pub fn add_peer(&self, peer: Peer) -> Result<(), PeerManagerError> {
-        self.peer_storage
-            .write()
-            .map_err(|_| PeerManagerError::PoisonedAccess)?
-            .add_peer(peer)
+        acquire_write_lock!(self.peer_storage).add_peer(peer)
     }
 
     pub fn update_peer(
@@ -67,68 +65,44 @@ impl PeerManager {
         peer_features: Option<PeerFeatures>,
     ) -> Result<(), PeerManagerError>
     {
-        self.peer_storage
-            .write()
-            .map_err(|_| PeerManagerError::PoisonedAccess)?
-            .update_peer(public_key, node_id, net_addresses, flags, peer_features)
+        acquire_write_lock!(self.peer_storage).update_peer(public_key, node_id, net_addresses, flags, peer_features)
     }
 
     /// The peer with the specified public_key will be removed from the PeerManager
     pub fn delete_peer(&self, node_id: &NodeId) -> Result<(), PeerManagerError> {
-        self.peer_storage
-            .write()
-            .map_err(|_| PeerManagerError::PoisonedAccess)?
-            .delete_peer(node_id)
+        acquire_write_lock!(self.peer_storage).delete_peer(node_id)
+    }
+
+    /// Performs the given [PeerQuery].
+    ///
+    /// [PeerQuery]: crate::peer_manager::peer_query::PeerQuery
+    pub fn perform_query(&self, peer_query: PeerQuery) -> Result<Vec<Peer>, PeerManagerError> {
+        acquire_read_lock!(self.peer_storage).perform_query(peer_query)
     }
 
     /// Find the peer with the provided NodeID
-    pub fn find_with_node_id(&self, node_id: &NodeId) -> Result<Peer, PeerManagerError> {
-        self.peer_storage
-            .read()
-            .map_err(|_| PeerManagerError::PoisonedAccess)?
-            .find_with_node_id(node_id)
+    pub fn find_by_node_id(&self, node_id: &NodeId) -> Result<Peer, PeerManagerError> {
+        acquire_read_lock!(self.peer_storage).find_by_node_id(node_id)
     }
 
     /// Find the peer with the provided PublicKey
-    pub fn find_with_public_key(&self, public_key: &CommsPublicKey) -> Result<Peer, PeerManagerError> {
-        self.peer_storage
-            .read()
-            .map_err(|_| PeerManagerError::PoisonedAccess)?
-            .find_with_public_key(public_key)
-    }
-
-    /// Find the peer with the provided NetAddress
-    pub fn find_with_net_address(&self, net_address: &NetAddress) -> Result<Peer, PeerManagerError> {
-        self.peer_storage
-            .read()
-            .map_err(|_| PeerManagerError::PoisonedAccess)?
-            .find_with_net_address(net_address)
+    pub fn find_by_public_key(&self, public_key: &CommsPublicKey) -> Result<Peer, PeerManagerError> {
+        acquire_read_lock!(self.peer_storage).find_by_public_key(public_key)
     }
 
     /// Check if a peer exist using the specified public_key
-    pub fn exists(&self, public_key: &CommsPublicKey) -> Result<bool, PeerManagerError> {
-        Ok(self
-            .peer_storage
-            .read()
-            .map_err(|_| PeerManagerError::PoisonedAccess)?
-            .exists(public_key))
+    pub fn exists(&self, public_key: &CommsPublicKey) -> bool {
+        acquire_read_lock!(self.peer_storage).exists(public_key)
     }
 
     /// Check if a peer exist using the specified node_id
-    pub fn exists_node_id(&self, node_id: &NodeId) -> Result<bool, PeerManagerError> {
-        Ok(self
-            .peer_storage
-            .read()
-            .map_err(|_| PeerManagerError::PoisonedAccess)?
-            .exists_node_id(node_id))
+    pub fn exists_node_id(&self, node_id: &NodeId) -> bool {
+        acquire_read_lock!(self.peer_storage).exists_node_id(node_id)
     }
 
     /// Get a peer matching the given node ID
     pub fn direct_identity_node_id(&self, node_id: &NodeId) -> Result<PeerNodeIdentity, PeerManagerError> {
-        self.peer_storage
-            .read()
-            .map_err(|_| PeerManagerError::PoisonedAccess)?
-            .direct_identity_node_id(&node_id)
+        acquire_read_lock!(self.peer_storage).direct_identity_node_id(&node_id)
     }
 
     /// Get a peer matching the given public key
@@ -137,18 +111,12 @@ impl PeerManager {
         public_key: &CommsPublicKey,
     ) -> Result<PeerNodeIdentity, PeerManagerError>
     {
-        self.peer_storage
-            .read()
-            .map_err(|_| PeerManagerError::PoisonedAccess)?
-            .direct_identity_public_key(public_key)
+        acquire_read_lock!(self.peer_storage).direct_identity_public_key(public_key)
     }
 
     /// Fetch all peers (except banned ones)
     pub fn flood_identities(&self) -> Result<Vec<PeerNodeIdentity>, PeerManagerError> {
-        self.peer_storage
-            .read()
-            .map_err(|_| PeerManagerError::PoisonedAccess)?
-            .flood_identities()
+        acquire_read_lock!(self.peer_storage).flood_identities()
     }
 
     /// Fetch n nearest neighbour Communication Nodes
@@ -159,19 +127,13 @@ impl PeerManager {
         excluded_peers: &Vec<CommsPublicKey>,
     ) -> Result<Vec<PeerNodeIdentity>, PeerManagerError>
     {
-        self.peer_storage
-            .read()
-            .map_err(|_| PeerManagerError::PoisonedAccess)?
-            .closest_identities(node_id, n, excluded_peers)
+        acquire_read_lock!(self.peer_storage).closest_identities(node_id, n, excluded_peers)
     }
 
     /// Fetch n random identioties
     pub fn random_identities(&self, n: usize) -> Result<Vec<PeerNodeIdentity>, PeerManagerError> {
         // Send to a random set of peers of size n that are Communication Nodes
-        self.peer_storage
-            .write()
-            .map_err(|_| PeerManagerError::PoisonedAccess)?
-            .random_identities(n)
+        acquire_read_lock!(self.peer_storage).random_identities(n)
     }
 
     /// Check if a specific node_id is in the network region of the N nearest neighbours of the region specified by
@@ -183,35 +145,23 @@ impl PeerManager {
         n: usize,
     ) -> Result<bool, PeerManagerError>
     {
-        self.peer_storage
-            .read()
-            .map_err(|_| PeerManagerError::PoisonedAccess)?
-            .in_network_region(node_id, region_node_id, n)
+        acquire_read_lock!(self.peer_storage).in_network_region(node_id, region_node_id, n)
     }
 
     /// Thread safe access to peer - Changes the ban flag bit of the peer
     pub fn set_banned(&self, node_id: &NodeId, ban_flag: bool) -> Result<(), PeerManagerError> {
-        self.peer_storage
-            .write()
-            .map_err(|_| PeerManagerError::PoisonedAccess)?
-            .set_banned(node_id, ban_flag)
+        acquire_write_lock!(self.peer_storage).set_banned(node_id, ban_flag)
     }
 
     /// Thread safe access to peer - Adds a new net address to the peer if it doesn't yet exist
     pub fn add_net_address(&self, node_id: &NodeId, net_address: &NetAddress) -> Result<(), PeerManagerError> {
-        self.peer_storage
-            .write()
-            .map_err(|_| PeerManagerError::PoisonedAccess)?
-            .add_net_address(node_id, net_address)
+        acquire_write_lock!(self.peer_storage).add_net_address(node_id, net_address)
     }
 
     /// Thread safe access to peer - Finds and returns the highest priority net address until all connection attempts
     /// for each net address have been reached
     pub fn get_best_net_address(&self, node_id: &NodeId) -> Result<NetAddress, PeerManagerError> {
-        self.peer_storage
-            .write()
-            .map_err(|_| PeerManagerError::PoisonedAccess)?
-            .get_best_net_address(node_id)
+        acquire_write_lock!(self.peer_storage).get_best_net_address(node_id)
     }
 
     /// Thread safe access to peer - The average connection latency of the provided net address will be updated to
@@ -222,50 +172,32 @@ impl PeerManager {
         latency_measurement: Duration,
     ) -> Result<(), PeerManagerError>
     {
-        self.peer_storage
-            .write()
-            .map_err(|_| PeerManagerError::PoisonedAccess)?
-            .update_latency(net_address, latency_measurement)
+        acquire_write_lock!(self.peer_storage).update_latency(net_address, latency_measurement)
     }
 
     /// Thread safe access to peer - Mark that a message was received from the specified net address
     pub fn mark_message_received(&self, net_address: &NetAddress) -> Result<(), PeerManagerError> {
-        self.peer_storage
-            .write()
-            .map_err(|_| PeerManagerError::PoisonedAccess)?
-            .mark_message_received(net_address)
+        acquire_write_lock!(self.peer_storage).mark_message_received(net_address)
     }
 
     /// Thread safe access to peer - Mark that a rejected message was received from the specified net address
     pub fn mark_message_rejected(&self, net_address: &NetAddress) -> Result<(), PeerManagerError> {
-        self.peer_storage
-            .write()
-            .map_err(|_| PeerManagerError::PoisonedAccess)?
-            .mark_message_rejected(net_address)
+        acquire_write_lock!(self.peer_storage).mark_message_rejected(net_address)
     }
 
     /// Thread safe access to peer - Mark that a successful connection was established with the specified net address
     pub fn mark_successful_connection_attempt(&self, net_address: &NetAddress) -> Result<(), PeerManagerError> {
-        self.peer_storage
-            .write()
-            .map_err(|_| PeerManagerError::PoisonedAccess)?
-            .mark_successful_connection_attempt(net_address)
+        acquire_write_lock!(self.peer_storage).mark_successful_connection_attempt(net_address)
     }
 
     /// Thread safe access to peer - Mark that a connection could not be established with the specified net address
     pub fn mark_failed_connection_attempt(&self, net_address: &NetAddress) -> Result<(), PeerManagerError> {
-        self.peer_storage
-            .write()
-            .map_err(|_| PeerManagerError::PoisonedAccess)?
-            .mark_failed_connection_attempt(net_address)
+        acquire_write_lock!(self.peer_storage).mark_failed_connection_attempt(net_address)
     }
 
     /// Thread safe access to peer - Reset all connection attempts on all net addresses for peer
     pub fn reset_connection_attempts(&self, node_id: &NodeId) -> Result<(), PeerManagerError> {
-        self.peer_storage
-            .write()
-            .map_err(|_| PeerManagerError::PoisonedAccess)?
-            .reset_connection_attempts(node_id)
+        acquire_write_lock!(self.peer_storage).reset_connection_attempts(node_id)
     }
 }
 
@@ -329,7 +261,7 @@ mod test {
         for peer_identity in &identities {
             assert_eq!(
                 peer_manager
-                    .find_with_node_id(&peer_identity.node_id)
+                    .find_by_node_id(&peer_identity.node_id)
                     .unwrap()
                     .is_banned(),
                 false
@@ -446,7 +378,7 @@ mod test {
             .unwrap();
         assert_eq!(
             peer_manager
-                .find_with_node_id(&peer.node_id.clone())
+                .find_by_node_id(&peer.node_id.clone())
                 .unwrap()
                 .addresses
                 .addresses[0]
@@ -456,25 +388,12 @@ mod test {
         peer_manager.reset_connection_attempts(&peer.node_id.clone()).unwrap();
         assert_eq!(
             peer_manager
-                .find_with_node_id(&peer.node_id.clone())
+                .find_by_node_id(&peer.node_id.clone())
                 .unwrap()
                 .addresses
                 .addresses[0]
                 .connection_attempts,
             0
         );
-    }
-
-    #[test]
-    fn test_adding_and_searching_by_net_address() {
-        // Create peer manager with random peers
-        let peer_manager = PeerManager::new(HMapDatabase::new()).unwrap();
-        let mut rng = rand::OsRng::new().unwrap();
-        let peer = create_test_peer(&mut rng, false);
-        peer_manager.add_peer(peer.clone()).unwrap();
-        // Test NetAddress adding and searching
-        let net_address = NetAddress::from("1.2.3.4:7000".parse::<NetAddress>().unwrap());
-        assert!(peer_manager.add_net_address(&peer.node_id, &net_address).is_ok());
-        assert!(peer_manager.find_with_net_address(&net_address).is_ok());
     }
 }

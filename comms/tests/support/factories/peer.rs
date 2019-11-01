@@ -93,6 +93,7 @@ impl TestFactory for PeerFactory {
             public_key,
             addresses: addresses.into(),
             features: self.peer_features,
+            connection_stats: Default::default(),
         })
     }
 }

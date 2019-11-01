@@ -26,6 +26,7 @@ use crate::{
     outbound::message::{DhtOutboundMessage, ForwardRequest, OutboundEncryption, SendMessageRequest},
     DhtConfig,
 };
+use chrono::Utc;
 use futures::{
     future,
     stream::{self, StreamExt},
@@ -35,7 +36,7 @@ use futures::{
 };
 use log::*;
 use std::sync::Arc;
-use tari_comms::peer_manager::{NodeIdentity, PeerFeatures, PeerManager, PeerNodeIdentity};
+use tari_comms::peer_manager::{NodeIdentity, PeerFeatures, PeerManager, PeerNodeIdentity, PeerQuery, PeerQuerySortBy};
 use tari_comms_middleware::MiddlewareError;
 use tower::{layer::Layer, Service, ServiceExt};
 
@@ -201,21 +202,23 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
 
     fn get_broadcast_identities(
         &self,
-        broadcast_strategy: &BroadcastStrategy,
+        broadcast_strategy: BroadcastStrategy,
     ) -> Result<Vec<PeerNodeIdentity>, DhtOutboundError>
     {
+        // TODO(sdbondi): We should return peers in this function. Look into if there is a reason for PeerNodeIdentity,
+        // if not, remove it
         match broadcast_strategy {
             BroadcastStrategy::DirectNodeId(node_id) => {
                 // Send to a particular peer matching the given node ID
                 self.peer_manager
-                    .direct_identity_node_id(node_id)
+                    .direct_identity_node_id(&node_id)
                     .map(|peer| vec![peer])
                     .map_err(Into::into)
             },
             BroadcastStrategy::DirectPublicKey(public_key) => {
                 // Send to a particular peer matching the given node ID
                 self.peer_manager
-                    .direct_identity_public_key(public_key)
+                    .direct_identity_public_key(&public_key)
                     .map(|peer| vec![peer])
                     .map_err(Into::into)
             },
@@ -224,18 +227,34 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
                 self.peer_manager.flood_identities().map_err(Into::into)
             },
             BroadcastStrategy::Closest(closest_request) => {
-                // Send to all n nearest neighbour Communication Nodes
-                self.peer_manager
-                    .closest_identities(
-                        &closest_request.node_id,
-                        closest_request.n,
-                        &closest_request.excluded_peers,
-                    )
-                    .map_err(Into::into)
+                // Fetch to all n nearest neighbour Communication Nodes
+                // which are eligible for connection.
+                // Currently that means:
+                // - The peer isn't banned,
+                // - it didn't recently fail to connect, and
+                // - it is not in the exclusion list in closest_request
+                let reconnect_cooldown_period = chrono::Duration::minutes(30);
+                let query = PeerQuery::new()
+                    .select_where(|peer| {
+                        !peer.is_banned() &&
+                            {
+                                peer.connection_stats.last_connect_failed_at
+                                    // Did we fail to connect in the last 30 minutes?
+                                    .map(|failed_at| Utc::now().naive_utc() - failed_at < reconnect_cooldown_period)
+                                    .unwrap_or(true)
+                            } &&
+                            !closest_request.excluded_peers.contains(&peer.public_key)
+                    })
+                    .sort_by(PeerQuerySortBy::DistanceFrom(&closest_request.node_id))
+                    .limit(closest_request.n);
+
+                let peers = self.peer_manager.perform_query(query)?;
+                // TODO: Fix up if PeerNodeIdentity is not needed
+                Ok(peers.into_iter().map(Into::into).collect())
             },
             BroadcastStrategy::Random(n) => {
                 // Send to a random set of peers of size n that are Communication Nodes
-                self.peer_manager.random_identities(*n).map_err(Into::into)
+                self.peer_manager.random_identities(n).map_err(Into::into)
             },
             BroadcastStrategy::Neighbours(exclude) => {
                 // Send to a random set of peers of size n that are Communication Nodes
@@ -267,7 +286,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
 
         // Use the BroadcastStrategy to select appropriate peer(s) from PeerManager and then construct and send a
         // individually wrapped MessageEnvelope to each selected peer
-        let selected_node_identities = self.get_broadcast_identities(&broadcast_strategy)?;
+        let selected_node_identities = self.get_broadcast_identities(broadcast_strategy)?;
 
         // Create a DHT header
         let dht_header = DhtMessageHeader::new(
@@ -311,7 +330,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
         } = forward_request;
         // Use the BroadcastStrategy to select appropriate peer(s) from PeerManager and then forward the
         // received message to each selected peer
-        let selected_node_identities = self.get_broadcast_identities(&broadcast_strategy)?;
+        let selected_node_identities = self.get_broadcast_identities(broadcast_strategy)?;
 
         let messages = selected_node_identities
             .into_iter()

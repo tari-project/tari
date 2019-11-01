@@ -112,7 +112,7 @@ where
     {
         let peer_manager = &self.peer_manager;
         // Add peer or modify existing peer using received join request
-        if peer_manager.exists(pubkey)? {
+        if peer_manager.exists(pubkey) {
             peer_manager.update_peer(pubkey, Some(node_id), Some(net_addresses), None, Some(peer_features))?;
         } else {
             peer_manager.add_peer(Peer::new(
@@ -124,7 +124,7 @@ where
             ))?;
         }
 
-        let peer = peer_manager.find_with_public_key(&pubkey)?;
+        let peer = peer_manager.find_by_public_key(&pubkey)?;
 
         Ok(peer)
     }

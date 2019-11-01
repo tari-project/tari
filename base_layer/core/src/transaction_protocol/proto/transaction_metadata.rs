@@ -23,7 +23,6 @@
 use super::protocol as proto;
 
 use crate::transaction_protocol::TransactionMetadata;
-use std::convert::TryFrom;
 
 impl From<proto::TransactionMetadata> for TransactionMetadata {
     fn from(metadata: proto::TransactionMetadata) -> Self {
