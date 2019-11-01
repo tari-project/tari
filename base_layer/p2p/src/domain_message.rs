@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::convert::{From, TryFrom};
 use tari_comms::{peer_manager::Peer, types::CommsPublicKey};
 
 /// Wrapper around a received message. Provides source peer and origin information
@@ -41,5 +42,35 @@ impl<T> DomainMessage<T> {
 
     pub fn into_inner(self) -> T {
         self.inner
+    }
+
+    /// Converts the wrapped value of a DomainMessage to another compatible type.
+    ///
+    /// Note:
+    /// The Rust compiler doesn't seem to be able to recognise that DomainMessage<T> != DomainMessage<U>, so a blanket
+    /// `From` implementation isn't possible at this time
+    pub fn convert<U>(self) -> DomainMessage<U>
+    where U: From<T> {
+        let inner = U::from(self.inner);
+        DomainMessage {
+            origin_pubkey: self.origin_pubkey,
+            source_peer: self.source_peer,
+            inner,
+        }
+    }
+
+    /// Converts the wrapped value of a DomainMessage to another compatible type.
+    ///
+    /// Note:
+    /// The Rust compiler doesn't seem to be able to recognise that DomainMessage<T> != DomainMessage<U>, so a blanket
+    /// `From` implementation isn't possible at this time
+    pub fn try_convert<U>(self) -> Result<DomainMessage<U>, U::Error>
+    where U: TryFrom<T> {
+        let inner = U::try_from(self.inner)?;
+        Ok(DomainMessage {
+            origin_pubkey: self.origin_pubkey,
+            source_peer: self.source_peer,
+            inner,
+        })
     }
 }

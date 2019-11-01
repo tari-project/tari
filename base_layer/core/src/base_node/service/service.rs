@@ -35,6 +35,7 @@ use crate::{
             service_request::{generate_request_key, RequestKey, WaitingRequest},
         },
     },
+    blocks::Block,
     chain_storage::BlockchainBackend,
     consts::{BASE_NODE_RNG, BASE_NODE_SERVICE_DESIRED_RESPONSE_FRACTION, BASE_NODE_SERVICE_REQUEST_TIMEOUT},
 };
@@ -43,6 +44,7 @@ use futures::{
         mpsc::{channel, Receiver, Sender},
         oneshot::Sender as OneshotSender,
     },
+    future::Fuse,
     pin_mut,
     stream::StreamExt,
     SinkExt,
@@ -86,52 +88,67 @@ impl Default for BaseNodeServiceConfig {
     }
 }
 
+/// A convenience struct to hold all the BaseNode streams
+pub struct BaseNodeStreams<SOutReq, SInReq, SInRes, SBlockIn> {
+    outbound_request_stream: SOutReq,
+    inbound_request_stream: SInReq,
+    inbound_response_stream: SInRes,
+    inbound_block_stream: SBlockIn,
+}
+
+impl<SOutReq, SInReq, SInRes, SBlockIn> BaseNodeStreams<SOutReq, SInReq, SInRes, SBlockIn>
+where
+    SOutReq: Stream<
+        Item = RequestContext<
+            (NodeCommsRequest, NodeCommsRequestType),
+            Result<Vec<NodeCommsResponse>, CommsInterfaceError>,
+        >,
+    >,
+    SInReq: Stream<Item = DomainMessage<proto::BaseNodeServiceRequest>>,
+    SInRes: Stream<Item = DomainMessage<proto::BaseNodeServiceResponse>>,
+    SBlockIn: Stream<Item = DomainMessage<Block>>,
+{
+    pub fn new(
+        outbound_request_stream: SOutReq,
+        inbound_request_stream: SInReq,
+        inbound_response_stream: SInRes,
+        inbound_block_stream: SBlockIn,
+    ) -> Self
+    {
+        BaseNodeStreams {
+            outbound_request_stream,
+            inbound_request_stream,
+            inbound_response_stream,
+            inbound_block_stream,
+        }
+    }
+}
+
 /// The Base Node Service is responsible for handling inbound requests and responses and for sending new requests to
 /// remote Base Node Services.
-pub struct BaseNodeService<TOutbReqStream, TInbReqStream, TInbRespStream, TChainBackend>
-where TChainBackend: BlockchainBackend
-{
+pub struct BaseNodeService<B: BlockchainBackend> {
     executor: TaskExecutor,
-    outbound_request_stream: Option<TOutbReqStream>,
-    inbound_request_stream: Option<TInbReqStream>,
-    inbound_response_stream: Option<TInbRespStream>,
     outbound_message_service: OutboundMessageRequester,
-    inbound_nci: Arc<InboundNodeCommsInterface<TChainBackend>>,
+    inbound_nci: Arc<InboundNodeCommsInterface<B>>,
     waiting_requests: HashMap<RequestKey, WaitingRequest>,
     timeout_sender: Sender<RequestKey>,
     timeout_receiver_stream: Option<Receiver<RequestKey>>,
     config: BaseNodeServiceConfig,
 }
 
-impl<TOutbReqStream, TInbReqStream, TInbRespStream, TChainBackend>
-    BaseNodeService<TOutbReqStream, TInbReqStream, TInbRespStream, TChainBackend>
-where
-    TOutbReqStream: Stream<
-        Item = RequestContext<
-            (NodeCommsRequest, NodeCommsRequestType),
-            Result<Vec<NodeCommsResponse>, CommsInterfaceError>,
-        >,
-    >,
-    TInbReqStream: Stream<Item = DomainMessage<proto::BaseNodeServiceRequest>>,
-    TInbRespStream: Stream<Item = DomainMessage<proto::BaseNodeServiceResponse>>,
-    TChainBackend: BlockchainBackend,
+impl<B> BaseNodeService<B>
+where B: BlockchainBackend
 {
     pub fn new(
         executor: TaskExecutor,
-        outbound_request_stream: TOutbReqStream,
-        inbound_request_stream: TInbReqStream,
-        inbound_response_stream: TInbRespStream,
         outbound_message_service: OutboundMessageRequester,
-        inbound_nci: Arc<InboundNodeCommsInterface<TChainBackend>>,
+        inbound_nci: Arc<InboundNodeCommsInterface<B>>,
         config: BaseNodeServiceConfig,
     ) -> Self
     {
         let (timeout_sender, timeout_receiver) = channel(100);
         Self {
             executor,
-            outbound_request_stream: Some(outbound_request_stream),
-            inbound_request_stream: Some(inbound_request_stream),
-            inbound_response_stream: Some(inbound_response_stream),
             outbound_message_service,
             inbound_nci,
             waiting_requests: HashMap::new(),
@@ -141,32 +158,35 @@ where
         }
     }
 
-    pub async fn start(mut self) -> Result<(), BaseNodeServiceError> {
-        let outbound_request_stream = self
-            .outbound_request_stream
-            .take()
-            .expect("Base Node Service initialized without outbound_request_stream")
-            .fuse();
+    pub async fn start<SOutReq, SInReq, SInRes, SBlockIn>(
+        mut self,
+        streams: BaseNodeStreams<SOutReq, SInReq, SInRes, SBlockIn>,
+    ) -> Result<(), BaseNodeServiceError>
+    where
+        SOutReq: Stream<
+            Item = RequestContext<
+                (NodeCommsRequest, NodeCommsRequestType),
+                Result<Vec<NodeCommsResponse>, CommsInterfaceError>,
+            >,
+        >,
+        SInReq: Stream<Item = DomainMessage<proto::BaseNodeServiceRequest>>,
+        SInRes: Stream<Item = DomainMessage<proto::BaseNodeServiceResponse>>,
+        SBlockIn: Stream<Item = DomainMessage<Block>>,
+    {
+        let outbound_request_stream = streams.outbound_request_stream.fuse();
         pin_mut!(outbound_request_stream);
-        let inbound_request_stream = self
-            .inbound_request_stream
-            .take()
-            .expect("Base Node Service initialized without inbound_request_stream")
-            .fuse();
+        let inbound_request_stream = streams.inbound_request_stream.fuse();
         pin_mut!(inbound_request_stream);
-        let inbound_response_stream = self
-            .inbound_response_stream
-            .take()
-            .expect("Base Node Service initialized without inbound_response_stream")
-            .fuse();
+        let inbound_response_stream = streams.inbound_response_stream.fuse();
         pin_mut!(inbound_response_stream);
+        let inbound_block_stream = streams.inbound_block_stream.fuse();
+        pin_mut!(inbound_block_stream);
         let timeout_receiver_stream = self
             .timeout_receiver_stream
             .take()
             .expect("Base Node Service initialized without timeout_receiver_stream")
             .fuse();
         pin_mut!(timeout_receiver_stream);
-
         loop {
             futures::select! {
                 // Outbound request messages from the OutboundNodeCommsInterface
@@ -201,6 +221,13 @@ where
                         Err(err)
                     });
                 },
+
+                block_msg = inbound_block_stream.select_next_some() => {
+                    // TODO - retain peer info for stats and potential banning for sending invalid blocks
+                    let block = block_msg.into_inner();
+                    info!("New candidate block received for height {}", block.header.height)
+                    // TODO - process the block
+                }
 
                 complete => {
                     info!(target: LOG_TARGET, "Base Node service shutting down");
