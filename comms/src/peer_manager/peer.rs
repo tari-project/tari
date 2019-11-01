@@ -38,6 +38,16 @@ bitflags! {
     }
 }
 
+/// Peer connection statistics
+#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialOrd, PartialEq)]
+pub struct PeerConnectionStats {
+    /// The last time that a successful connection was made, None if this has never happened
+    pub connected_at: Option<NaiveDateTime>,
+    /// The time that the last connection attempt failed. If the last connection attempt succeeded
+    /// this is None
+    pub last_connect_failed_at: Option<NaiveDateTime>,
+}
+
 /// A Peer represents a communication peer that is identified by a Public Key and NodeId. The Peer struct maintains a
 /// collection of the NetAddressesWithStats that this Peer can be reached by. The struct also maintains a set of flags
 /// describing the status of the Peer.
@@ -50,7 +60,7 @@ pub struct Peer {
     pub addresses: NetAddressesWithStats,
     pub flags: PeerFlags,
     pub features: PeerFeatures,
-    // TODO reputation metric?
+    pub connection_stats: PeerConnectionStats,
 }
 
 impl Peer {
@@ -69,6 +79,7 @@ impl Peer {
             addresses,
             flags,
             features,
+            connection_stats: Default::default(),
         }
     }
 
@@ -112,6 +123,10 @@ impl Peer {
     /// Changes the ban flag bit of the peer
     pub fn set_banned(&mut self, ban_flag: bool) {
         self.flags.set(PeerFlags::BANNED, ban_flag);
+    }
+
+    pub fn set_connection_stats(&mut self, connection_stats: PeerConnectionStats) {
+        self.connection_stats = connection_stats;
     }
 }
 

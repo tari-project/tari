@@ -285,7 +285,7 @@ impl ControlServiceWorker {
 
         let pm = &self.connection_manager.peer_manager();
         let public_key = &envelope_header.public_key;
-        let peer = match pm.find_with_public_key(&public_key) {
+        let peer = match pm.find_by_public_key(&public_key) {
             Ok(peer) => {
                 if peer.is_banned() {
                     return Err(ControlServiceError::PeerBanned);
@@ -463,7 +463,7 @@ impl ControlServiceWorker {
 
     fn get_peer(&self, public_key: &CommsPublicKey) -> Result<Option<Peer>> {
         let peer_manager = &self.connection_manager.peer_manager();
-        match peer_manager.find_with_public_key(public_key) {
+        match peer_manager.find_by_public_key(public_key) {
             Ok(peer) => Ok(Some(peer)),
             Err(PeerManagerError::PeerNotFoundError) => Ok(None),
             Err(err) => Err(ControlServiceError::PeerManagerError(err)),

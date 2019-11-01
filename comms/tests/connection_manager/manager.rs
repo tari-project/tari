@@ -127,7 +127,7 @@ fn establish_peer_connection() {
     let node_A_connection_manager_cloned = node_A_connection_manager.clone();
     let handle1 = thread::spawn(move || -> Result<(), String> {
         let to_node_B_conn = node_A_connection_manager_cloned
-            .establish_connection_to_peer(&node_B_peer)
+            .establish_connection_to_node_id(&node_B_peer.node_id)
             .map_err(|err| format!("{:?}", err))?;
         to_node_B_conn.set_linger(Linger::Indefinitely).unwrap();
         to_node_B_conn
@@ -139,7 +139,7 @@ fn establish_peer_connection() {
     let node_A_connection_manager_cloned = node_A_connection_manager.clone();
     let handle2 = thread::spawn(move || -> Result<(), String> {
         let to_node_B_conn = node_A_connection_manager_cloned
-            .establish_connection_to_peer(&node_B_peer_copy)
+            .establish_connection_to_node_id(&node_B_peer_copy.node_id)
             .map_err(|err| format!("{:?}", err))?;
         to_node_B_conn.set_linger(Linger::Indefinitely).unwrap();
         to_node_B_conn

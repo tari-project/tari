@@ -58,7 +58,7 @@
 //!
 //! peer_manager.add_peer(peer.clone());
 //!
-//! let returned_peer = peer_manager.find_with_node_id(&node_id).unwrap();
+//! let returned_peer = peer_manager.find_by_node_id(&node_id).unwrap();
 //! ```
 
 mod peer_features;
@@ -69,6 +69,7 @@ pub mod node_identity;
 pub mod peer;
 pub mod peer_key;
 mod peer_manager;
+mod peer_query;
 pub mod peer_storage;
 
 pub use self::{
@@ -78,4 +79,5 @@ pub use self::{
     peer::{Peer, PeerFlags},
     peer_features::PeerFeatures,
     peer_manager::PeerManager,
+    peer_query::{PeerQuery, PeerQuerySortBy},
 };

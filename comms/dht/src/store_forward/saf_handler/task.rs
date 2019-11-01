@@ -327,7 +327,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = MiddlewareError>
 
             // TODO: We may not know the peer. The following line rejects these messages,
             //       however we may want to accept (some?) messages from unknown peers
-            let peer = peer_manager.find_with_public_key(&dht_header.origin_public_key)?;
+            let peer = peer_manager.find_by_public_key(&dht_header.origin_public_key)?;
 
             let inbound_msg = DhtInboundMessage::new(dht_header, peer, message.encrypted_body);
 

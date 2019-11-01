@@ -178,7 +178,7 @@ where
                 BroadcastStrategy::Neighbours(Box::new(excluded_peers))
             },
             NodeDestination::PublicKey(dest_public_key) => {
-                if self.peer_manager.exists(&dest_public_key)? {
+                if self.peer_manager.exists(&dest_public_key) {
                     // Send to destination peer directly if the current node knows that peer
                     BroadcastStrategy::DirectPublicKey(dest_public_key)
                 } else {
@@ -187,7 +187,7 @@ where
                 }
             },
             NodeDestination::NodeId(dest_node_id) => {
-                match self.peer_manager.find_with_node_id(&dest_node_id) {
+                match self.peer_manager.find_by_node_id(&dest_node_id) {
                     Ok(dest_peer) => {
                         // Send to destination peer directly if the current node knows that peer
                         BroadcastStrategy::DirectPublicKey(dest_peer.public_key)

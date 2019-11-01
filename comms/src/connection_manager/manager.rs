@@ -34,8 +34,9 @@ use crate::{
     connection_manager::{dialer::Dialer, Connectivity},
     control_service::messages::RejectReason,
     message::FrameSet,
-    peer_manager::{NodeId, NodeIdentity, Peer, PeerManager},
+    peer_manager::{peer::PeerConnectionStats, NodeId, NodeIdentity, Peer, PeerManager},
 };
+use chrono::Utc;
 use futures::{channel::mpsc::Sender, Future};
 use log::*;
 use std::{
@@ -85,19 +86,13 @@ impl ConnectionManager {
     /// Attempt to establish a connection to a given NodeId. If the connection exists
     /// the existing connection is returned.
     pub fn establish_connection_to_node_id(&self, node_id: &NodeId) -> Result<Arc<PeerConnection>> {
-        match self.peer_manager.find_with_node_id(node_id) {
-            Ok(peer) => self.establish_connection_to_peer(&peer),
+        match self.peer_manager.find_by_node_id(node_id) {
+            Ok(mut peer) => self.with_establish_lock(node_id, || self.attempt_connection_to_peer(&mut peer)),
             Err(err) => Err(ConnectionManagerError::PeerManagerError(err)),
         }
     }
 
-    /// Attempt to establish a connection to a given peer. If the connection exists
-    /// the existing connection is returned.
-    pub fn establish_connection_to_peer(&self, peer: &Peer) -> Result<Arc<PeerConnection>> {
-        self.with_establish_lock(&peer.node_id, || self.attempt_connection_to_peer(peer))
-    }
-
-    fn attempt_connection_to_peer(&self, peer: &Peer) -> Result<Arc<PeerConnection>> {
+    fn attempt_connection_to_peer(&self, peer: &mut Peer) -> Result<Arc<PeerConnection>> {
         let maybe_conn = self.connections.get_connection(&peer.node_id);
         let peer_conn = match maybe_conn {
             Some(conn) => {
@@ -290,7 +285,7 @@ impl ConnectionManager {
         self.connections.get_active_connection_count()
     }
 
-    fn initiate_peer_connection(&self, peer: &Peer) -> Result<Arc<PeerConnection>> {
+    fn initiate_peer_connection(&self, peer: &mut Peer) -> Result<Arc<PeerConnection>> {
         let protocol = PeerConnectionProtocol::new(&self.node_identity, &self.establisher);
         self.peer_manager
             .reset_connection_attempts(&peer.node_id)
@@ -329,6 +324,11 @@ impl ConnectionManager {
                 self.connections
                     .add_connection(peer.node_id.clone(), Arc::clone(&new_conn), join_handle)?;
 
+                peer.set_connection_stats(PeerConnectionStats {
+                    connected_at: Some(Utc::now().naive_utc()),
+                    last_connect_failed_at: None,
+                });
+
                 Ok(new_conn)
             })
             .or_else(|err| match err {
@@ -342,6 +342,11 @@ impl ConnectionManager {
                         target: LOG_TARGET,
                         "Connection error for NodeId={}: {:?}", peer.node_id, err
                     );
+
+                    peer.set_connection_stats(PeerConnectionStats {
+                        connected_at: peer.connection_stats.connected_at,
+                        last_connect_failed_at: Some(Utc::now().naive_utc()),
+                    });
                     Err(err)
                 },
             })
@@ -378,22 +383,6 @@ impl From<Arc<ConnectionManager>> for ConnectionManagerDialer {
         Self {
             inner: connection_manager,
         }
-    }
-}
-
-impl Dialer<Peer> for ConnectionManagerDialer {
-    type Error = ConnectionManagerError;
-    type Output = Arc<PeerConnection>;
-
-    type Future = impl Future<Output = Result<Self::Output>>;
-
-    fn dial(&self, peer: &Peer) -> Self::Future {
-        let inner = Arc::clone(&self.inner);
-        let peer = peer.clone();
-        blocking::run(move || {
-            // TODO: This is synchronous until we can make connection manager fully async
-            inner.establish_connection_to_peer(&peer)
-        })
     }
 }
 
