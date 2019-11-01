@@ -79,8 +79,8 @@ impl EmissionSchedule {
     /// This is an infinite iterator, and each value returned is a tuple of (block number, reward, and total supply)
     ///
     /// ```edition2018
-    /// use tari_core::emission::EmissionSchedule;
-    /// use tari_core::tari_amount::MicroTari;
+    /// use tari_transactions::emission::EmissionSchedule;
+    /// use tari_transactions::tari_amount::MicroTari;
     /// // Print the reward and supply for first 100 blocks
     /// let schedule = EmissionSchedule::new(10.into(), 0.9, 1.into());
     /// for (n, reward, supply) in schedule.iter().take(100) {

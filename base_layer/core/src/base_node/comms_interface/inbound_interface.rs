@@ -24,8 +24,8 @@ use crate::{
     base_node::comms_interface::{error::CommsInterfaceError, NodeCommsRequest, NodeCommsResponse},
     blocks::blockheader::BlockHeader,
     chain_storage::{async_db, BlockchainBackend, BlockchainDatabase, HistoricalBlock},
-    transaction::{TransactionKernel, TransactionOutput},
 };
+use tari_transactions::transaction::{TransactionKernel, TransactionOutput};
 
 /// The InboundNodeCommsInterface is used to handle all received inbound requests from remote nodes.
 pub struct InboundNodeCommsInterface<T>

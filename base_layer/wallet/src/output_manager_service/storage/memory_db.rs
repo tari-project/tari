@@ -38,7 +38,7 @@ use std::{
     sync::{Arc, RwLock},
     time::Duration,
 };
-use tari_core::transaction::UnblindedOutput;
+use tari_transactions::transaction::UnblindedOutput;
 
 /// This structure is an In-Memory database backend that implements the `OutputManagerBackend` trait and provides all
 /// the functionality required by the trait.

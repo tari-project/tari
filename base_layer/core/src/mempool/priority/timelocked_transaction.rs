@@ -20,11 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    mempool::priority::{FeePriority, PriorityError},
-    transaction::Transaction,
-};
+use crate::mempool::priority::{FeePriority, PriorityError};
 use std::{convert::TryFrom, sync::Arc};
+use tari_transactions::transaction::Transaction;
 use tari_utilities::message_format::MessageFormat;
 
 /// Create a unique transaction priority based on the maximum time-lock (lock_height or input UTXO maturity) and the

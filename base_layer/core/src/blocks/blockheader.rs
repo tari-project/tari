@@ -37,10 +37,7 @@
 //! state = Hash(Hash(mmr_root)|| Hash(roaring_bitmap))
 //! This hash is called the UTXO merkle root, and is used as the output_mr
 
-use crate::{
-    proof_of_work::Difficulty,
-    types::{BlindingFactor, HashDigest, TariProofOfWork},
-};
+use crate::{proof_of_work::Difficulty, types::TariProofOfWork};
 use chrono::{DateTime, Utc};
 use digest::Digest;
 use serde::{
@@ -54,6 +51,7 @@ use std::{
     fmt,
     fmt::{Display, Error, Formatter},
 };
+use tari_transactions::types::{BlindingFactor, HashDigest};
 use tari_utilities::{hex::Hex, ByteArray, Hashable};
 
 pub type BlockHash = Vec<u8>;

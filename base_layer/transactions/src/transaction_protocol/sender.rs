@@ -479,8 +479,7 @@ mod test {
         tari_amount::*,
         transaction::{KernelFeatures, OutputFeatures, UnblindedOutput},
         transaction_protocol::{
-            recipient::RecipientInfo,
-            sender::{RawTransactionInfo, SenderTransactionProtocol},
+            sender::SenderTransactionProtocol,
             single_receiver::SingleReceiverTransactionProtocol,
             test_common::{make_input, TestParams},
             TransactionProtocolError,

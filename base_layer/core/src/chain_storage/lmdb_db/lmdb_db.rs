@@ -47,8 +47,6 @@ use crate::{
             LMDB_DB_UTXO_MMR_CP_BACKEND,
         },
     },
-    transaction::{TransactionKernel, TransactionOutput},
-    types::{HashDigest, HashOutput},
 };
 use digest::Digest;
 use lmdb_zero::{Database, Environment, WriteTransaction};
@@ -58,6 +56,10 @@ use std::{
 };
 use tari_mmr::{Hash as MmrHash, MerkleChangeTracker, MerkleCheckPoint, MerkleProof, MutableMmr};
 use tari_storage::lmdb_store::{db, LMDBBuilder, LMDBStore};
+use tari_transactions::{
+    transaction::{TransactionKernel, TransactionOutput},
+    types::{HashDigest, HashOutput},
+};
 use tari_utilities::hash::Hashable;
 
 type DatabaseRef = Arc<Database<'static>>;

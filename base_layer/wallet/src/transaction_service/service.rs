@@ -39,7 +39,10 @@ use tari_comms_dht::{
     envelope::NodeDestination,
     outbound::{BroadcastStrategy, OutboundEncryption, OutboundMessageRequester},
 };
-use tari_core::{
+use tari_crypto::keys::SecretKey;
+use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
+use tari_service_framework::{reply_channel, reply_channel::Receiver};
+use tari_transactions::{
     tari_amount::MicroTari,
     transaction::{KernelFeatures, OutputFeatures, Transaction},
     transaction_protocol::{proto, recipient::RecipientSignedMessage, sender::TransactionSenderMessage},
@@ -47,9 +50,6 @@ use tari_core::{
     ReceiverTransactionProtocol,
     SenderTransactionProtocol,
 };
-use tari_crypto::keys::SecretKey;
-use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
-use tari_service_framework::{reply_channel, reply_channel::Receiver};
 
 const LOG_TARGET: &'static str = "base_layer::wallet::transaction_service::service";
 

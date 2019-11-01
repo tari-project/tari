@@ -61,3 +61,15 @@ message OutputFeatures {
     // require a min maturity of the Coinbase_lock_height, this should be checked on receiving new blocks.
     uint64 maturity = 2;
 }
+
+// The components of the block or transaction. The same struct can be used for either, since in Mimblewimble,
+// cut-through means that blocks and transactions have the same structure.
+message AggregateBody {
+    bool sorted=  1;
+    // List of inputs spent by the transaction.
+    repeated TransactionInput inputs = 2;
+    // List of outputs the transaction produces.
+    repeated TransactionOutput outputs = 3;
+    // Kernels contain the excesses and their signatures for transaction
+    repeated TransactionKernel kernels = 4;
+}

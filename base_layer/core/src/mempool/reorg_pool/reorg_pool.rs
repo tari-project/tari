@@ -24,13 +24,12 @@ use crate::{
     blocks::Block,
     consts::{MEMPOOL_REORG_POOL_CACHE_TTL, MEMPOOL_REORG_POOL_STORAGE_CAPACITY},
     mempool::reorg_pool::{ReorgPoolError, ReorgPoolStorage},
-    transaction::Transaction,
-    types::Signature,
 };
 use std::{
     sync::{Arc, RwLock},
     time::Duration,
 };
+use tari_transactions::{transaction::Transaction, types::Signature};
 
 /// Configuration for the ReorgPool
 #[derive(Clone, Copy)]
@@ -122,8 +121,9 @@ impl ReorgPool {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{tari_amount::MicroTari, test_utils::builders::create_test_block, tx};
+    use crate::{test_utils::builders::create_test_block, tx};
     use std::{thread, time::Duration};
+    use tari_transactions::tari_amount::MicroTari;
 
     #[test]
     fn test_insert_rlu_and_ttl() {

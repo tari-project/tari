@@ -23,18 +23,20 @@
 use crate::{
     blocks::Block,
     chain_storage::{async_db, BlockAddResult, BlockchainDatabase, MemoryDatabase, MmrTree},
-    tari_amount::T,
     test_utils::{
         builders::{chain_block, create_test_block, schema_to_transaction},
         sample_blockchains::{create_blockchain_db_no_cut_through, create_new_blockchain},
     },
-    transaction::{TransactionOutput, UnblindedOutput},
     txn_schema,
-    types::{HashDigest, COMMITMENT_FACTORY},
 };
 use std::{fs::File, io::Write, ops::Deref};
 use tari_crypto::commitment::HomomorphicCommitmentFactory;
 use tari_test_utils::runtime::test_async;
+use tari_transactions::{
+    tari_amount::T,
+    transaction::{TransactionOutput, UnblindedOutput},
+    types::{HashDigest, COMMITMENT_FACTORY},
+};
 use tari_utilities::{hex::Hex, Hashable};
 
 fn write_logs(db: &BlockchainDatabase<MemoryDatabase<HashDigest>>, blocks: &[Block]) -> Result<(), std::io::Error> {

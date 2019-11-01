@@ -31,13 +31,12 @@ use crate::{
         MemoryDatabase,
         MmrTree,
     },
-    tari_amount::MicroTari,
     test_utils::builders::{create_test_block, create_test_kernel, create_utxo},
     tx,
-    types::HashDigest,
 };
 use tari_mmr::MutableMmr;
 use tari_test_utils::paths::create_random_database_path;
+use tari_transactions::{tari_amount::MicroTari, types::HashDigest};
 use tari_utilities::{hex::Hex, Hashable};
 
 fn insert_contains_delete_and_fetch_header<T: BlockchainBackend>(db: T) {

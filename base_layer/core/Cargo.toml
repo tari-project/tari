@@ -10,6 +10,7 @@ version = "0.0.5"
 edition = "2018"
 
 [dependencies]
+tari_transactions = { path = "../../base_layer/transactions", version = "^0.0" }
 tari_comms = { version = "^0.0", path = "../../comms"}
 tari_utilities = { path = "../../infrastructure/tari_util", version = "^0.0", features = ["chrono_dt"]}
 tari_infra_derive = { path = "../../infrastructure/derive", version = "^0.0" }
@@ -23,6 +24,7 @@ tari_comms_dht = { version = "^0.0", path = "../../comms/dht"}
 tari_broadcast_channel = { version="^0.0",  path = "../../infrastructure/broadcast_channel" }
 tari_pubsub = { version = "^0.0", path = "../../infrastructure/pubsub"}
 tari_shutdown = { path = "../../infrastructure/shutdown", version = "^0.0"}
+
 bitflags = "1.0.4"
 chrono = { version = "0.4.6", features = ["serde"]}
 digest = "0.8.0"

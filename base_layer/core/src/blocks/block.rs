@@ -22,17 +22,17 @@
 //
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
-use crate::{
-    blocks::{aggregated_body::AggregateBody, BlockHeader},
-    consensus::ConsensusRules,
-    proof_of_work::PowError,
-    tari_amount::*,
-    transaction::*,
-    types::{Commitment, TariProofOfWork, COMMITMENT_FACTORY, PROVER},
-};
+use crate::{blocks::BlockHeader, proof_of_work::PowError, types::TariProofOfWork};
 use derive_error::Error;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
+use tari_transactions::{
+    aggregated_body::AggregateBody,
+    consensus::ConsensusRules,
+    tari_amount::MicroTari,
+    transaction::{OutputFlags, Transaction, TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
+    types::{COMMITMENT_FACTORY, PROVER},
+};
 use tari_utilities::Hashable;
 
 #[derive(Clone, Debug, PartialEq, Error)]
@@ -237,13 +237,6 @@ impl BlockBuilder {
         // TODO
         self
     }
-}
-
-/// This struct holds the result of calculating the sum of the kernels in a Transaction
-/// and returns the summed commitments and the total fees
-pub struct KernelSum {
-    pub sum: Commitment,
-    pub fees: MicroTari,
 }
 
 impl Hashable for Block {

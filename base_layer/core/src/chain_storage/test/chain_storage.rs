@@ -32,7 +32,6 @@ use crate::{
         MemoryDatabase,
         MmrTree,
     },
-    tari_amount::{uT, MicroTari, T},
     test_utils::{
         builders::{
             add_block_and_update_header,
@@ -47,11 +46,14 @@ use crate::{
     },
     tx,
     txn_schema,
-    types::{HashDigest, COMMITMENT_FACTORY, PROVER},
 };
 use env_logger;
 use std::thread;
 use tari_mmr::MutableMmr;
+use tari_transactions::{
+    tari_amount::{uT, MicroTari, T},
+    types::{HashDigest, COMMITMENT_FACTORY, PROVER},
+};
 use tari_utilities::{hex::Hex, Hashable};
 
 fn init_log() {

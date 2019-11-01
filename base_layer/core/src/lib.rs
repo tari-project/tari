@@ -26,37 +26,20 @@
 // Tracking issue: https://github.com/rust-lang/rust/issues/63063
 #![feature(type_alias_impl_trait)]
 
-#[macro_use]
-extern crate bitflags;
-#[macro_use]
-extern crate lazy_static;
-
 #[cfg(test)]
 pub mod test_utils;
 
-mod proto;
-
-pub mod blocks;
-pub mod bullet_rangeproofs;
 pub mod consts;
-pub mod fee;
 pub mod mempool;
 pub mod proof_of_work;
-#[allow(clippy::op_ref)]
-pub mod transaction;
-pub mod transaction_protocol;
+
+pub mod proto;
 pub mod types;
 
-pub mod consensus;
-pub mod emission;
-pub mod tari_amount;
-
 pub mod base_node;
+pub mod blocks;
 
 pub mod chain_storage;
-
-// Re-export commonly used structs
-pub use transaction_protocol::{recipient::ReceiverTransactionProtocol, sender::SenderTransactionProtocol};
 
 // Re-export the crypto crate to make exposing traits etc easier for clients of this crate
 pub use tari_crypto as crypto;

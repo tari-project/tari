@@ -18,8 +18,3 @@ message Signature {
     bytes public_nonce = 1;
     bytes signature = 2;
 }
-
-// Mimblewimble blinding factor
-message BlindingFactor {
-    bytes scalar = 1;
-}

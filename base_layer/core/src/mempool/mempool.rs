@@ -30,10 +30,12 @@ use crate::{
         reorg_pool::{ReorgPool, ReorgPoolConfig},
         unconfirmed_pool::{UnconfirmedPool, UnconfirmedPoolConfig},
     },
+};
+use std::sync::Arc;
+use tari_transactions::{
     transaction::Transaction,
     types::{Signature, COMMITMENT_FACTORY, PROVER},
 };
-use std::sync::Arc;
 use tari_utilities::hash::Hashable;
 
 #[derive(Debug, PartialEq)]
@@ -250,16 +252,18 @@ where T: BlockchainBackend
 mod test {
     use super::*;
     use crate::{
-        tari_amount::{uT, T},
         test_utils::{
             builders::{schema_to_transaction, spend_utxos},
             sample_blockchains::{create_new_blockchain, generate_block, generate_new_block},
         },
-        transaction::OutputFeatures,
         tx,
         txn_schema,
     };
     use std::ops::Deref;
+    use tari_transactions::{
+        tari_amount::{uT, T},
+        transaction::OutputFeatures,
+    };
 
     #[test]
     fn test_insert_and_process_published_block() {

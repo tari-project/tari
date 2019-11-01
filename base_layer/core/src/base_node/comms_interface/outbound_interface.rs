@@ -29,10 +29,12 @@ use crate::{
     },
     blocks::blockheader::BlockHeader,
     chain_storage::{ChainMetadata, HistoricalBlock},
+};
+use tari_service_framework::reply_channel::SenderService;
+use tari_transactions::{
     transaction::{TransactionKernel, TransactionOutput},
     types::HashOutput,
 };
-use tari_service_framework::reply_channel::SenderService;
 use tower_service::Service;
 
 /// The OutboundNodeCommsInterface provides an interface to request information from remove nodes.

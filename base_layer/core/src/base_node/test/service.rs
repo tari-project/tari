@@ -28,7 +28,6 @@ use crate::{
     blocks::{genesis_block::get_genesis_block, BlockHeader},
     chain_storage::{BlockchainDatabase, DbTransaction, MemoryDatabase},
     consts::BASE_NODE_SERVICE_DESIRED_RESPONSE_FRACTION,
-    tari_amount::MicroTari,
     test_utils::builders::{
         add_block_and_update_header,
         chain_block,
@@ -36,7 +35,6 @@ use crate::{
         create_test_kernel,
         create_utxo,
     },
-    types::HashDigest,
 };
 use futures::Sink;
 use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
@@ -54,6 +52,7 @@ use tari_p2p::{
 };
 use tari_service_framework::StackBuilder;
 use tari_test_utils::address::get_next_local_address;
+use tari_transactions::{tari_amount::MicroTari, types::HashDigest};
 use tari_utilities::hash::Hashable;
 use tempdir::TempDir;
 use tokio::runtime::{Runtime, TaskExecutor};

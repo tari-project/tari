@@ -25,13 +25,13 @@ use futures::{stream::Fuse, StreamExt};
 use std::collections::HashMap;
 use tari_broadcast_channel::Subscriber;
 use tari_comms::types::CommsPublicKey;
-use tari_core::{
+use tari_service_framework::reply_channel::SenderService;
+use tari_transactions::{
     tari_amount::MicroTari,
     transaction::Transaction,
     ReceiverTransactionProtocol,
     SenderTransactionProtocol,
 };
-use tari_service_framework::reply_channel::SenderService;
 use tower::Service;
 
 /// API Request enum

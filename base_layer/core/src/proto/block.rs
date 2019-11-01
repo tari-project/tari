@@ -20,16 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::types as proto;
+use super::core as proto;
 use crate::{
-    blocks::{aggregated_body::AggregateBody, Block, BlockHeader},
+    blocks::{Block, BlockHeader},
     chain_storage::HistoricalBlock,
     proto::utils::try_convert_all,
-    types::BlindingFactor,
 };
 use chrono::{DateTime, NaiveDateTime, Utc};
 use prost_types::Timestamp;
 use std::convert::{TryFrom, TryInto};
+use tari_transactions::types::BlindingFactor;
 use tari_utilities::{ByteArray, ByteArrayError};
 
 /// Utility function that converts a `prost::Timestamp` to a `chrono::DateTime`
@@ -81,13 +81,8 @@ impl TryFrom<proto::BlockHeader> for BlockHeader {
     type Error = String;
 
     fn try_from(header: proto::BlockHeader) -> Result<Self, Self::Error> {
-        let total_kernel_offset = BlindingFactor::from_bytes(
-            &header
-                .total_kernel_offset
-                .ok_or("total_kernel_offset not provided".to_string())?
-                .scalar,
-        )
-        .map_err(|err| err.to_string())?;
+        let total_kernel_offset =
+            BlindingFactor::from_bytes(&header.total_kernel_offset).map_err(|err| err.to_string())?;
 
         let timestamp = header
             .timestamp
@@ -120,35 +115,9 @@ impl From<BlockHeader> for proto::BlockHeader {
             output_mr: header.output_mr,
             range_proof_mr: header.range_proof_mr,
             kernel_mr: header.kernel_mr,
-            total_kernel_offset: Some(header.total_kernel_offset.into()),
+            total_kernel_offset: header.total_kernel_offset.to_vec(),
             total_difficulty: header.total_difficulty.as_u64(),
             nonce: header.nonce,
-        }
-    }
-}
-
-//---------------------------------- AggregateBody --------------------------------------------//
-
-impl TryFrom<proto::AggregateBody> for AggregateBody {
-    type Error = String;
-
-    fn try_from(body: proto::AggregateBody) -> Result<Self, Self::Error> {
-        Ok(Self {
-            sorted: body.sorted,
-            inputs: try_convert_all(body.inputs)?,
-            outputs: try_convert_all(body.outputs)?,
-            kernels: try_convert_all(body.kernels)?,
-        })
-    }
-}
-
-impl From<AggregateBody> for proto::AggregateBody {
-    fn from(body: AggregateBody) -> Self {
-        Self {
-            sorted: body.sorted,
-            inputs: body.inputs.into_iter().map(Into::into).collect(),
-            outputs: body.outputs.into_iter().map(Into::into).collect(),
-            kernels: body.kernels.into_iter().map(Into::into).collect(),
         }
     }
 }

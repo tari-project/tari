@@ -27,5 +27,3 @@ message TransactionSenderMessage {
         bool Multiple = 3;
     }
 }
-
-

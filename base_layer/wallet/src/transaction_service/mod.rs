@@ -37,7 +37,6 @@ use log::*;
 use std::sync::Arc;
 use tari_broadcast_channel::bounded;
 use tari_comms_dht::outbound::OutboundMessageRequester;
-use tari_core::transaction_protocol::proto;
 use tari_p2p::{
     comms_connector::PeerMessage,
     domain_message::DomainMessage,
@@ -52,6 +51,7 @@ use tari_service_framework::{
     ServiceInitializer,
 };
 use tari_shutdown::ShutdownSignal;
+use tari_transactions::transaction_protocol::proto;
 use tokio::runtime::TaskExecutor;
 
 const LOG_TARGET: &'static str = "base_layer::wallet::transaction_service";

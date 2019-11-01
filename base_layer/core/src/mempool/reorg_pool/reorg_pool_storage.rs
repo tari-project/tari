@@ -20,13 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    blocks::Block,
-    mempool::reorg_pool::reorg_pool::ReorgPoolConfig,
-    transaction::Transaction,
-    types::Signature,
-};
+use crate::{blocks::Block, mempool::reorg_pool::reorg_pool::ReorgPoolConfig};
 use std::sync::Arc;
+use tari_transactions::{transaction::Transaction, types::Signature};
 use ttl_cache::TtlCache;
 
 /// Reorg makes use of ReorgPoolStorage to provide thread save access to its TtlCache.

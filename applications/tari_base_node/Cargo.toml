@@ -7,21 +7,23 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-log = { version = "0.4.8", features = ["std"] }
-tokio = { version="=0.2.0-alpha.6", features = ["signal"] }
-tokio-executor = { version ="=0.2.0-alpha.6", features = ["threadpool"] }
-futures-preview = { version = "=0.3.0-alpha.19", default-features = false, features = ["alloc"]}
+tari_common = {path = "../../common", version= "^0.0"}
+tari_comms = { version = "^0.0", path = "../../comms"}
+tari_comms_dht = { version = "^0.0", path = "../../comms/dht"}
+tari_core = {path = "../../base_layer/core", version= "^0.0"}
+tari_transactions = {path = "../../base_layer/transactions", version= "^0.0"}
+tari_p2p = {path = "../../base_layer/p2p", version= "^0.0"}
+tari_service_framework = { version = "^0.0", path = "../../base_layer/service_framework"}
+tari_shutdown = { path = "../../infrastructure/shutdown", version = "^0.0" }
+tari_utilities = { version = "^0.0", path = "../../infrastructure/tari_util"}
+
 clap = "2.33.0"
 config = { version = "0.9.3" }
 dirs = "2.0.2"
+futures-preview = { version = "=0.3.0-alpha.19", default-features = false, features = ["alloc"]}
+log = { version = "0.4.8", features = ["std"] }
 log4rs = { version = "0.8.3", features = ["toml_format"] }
 rand = "0.5.5"
-tari_core = {path = "../../base_layer/core", version= "^0.0"}
-tari_comms_dht = { version = "^0.0", path = "../../comms/dht"}
-tari_p2p = {path = "../../base_layer/p2p", version= "^0.0"}
-tari_common = {path = "../../common", version= "^0.0"}
-tari_shutdown = { path = "../../infrastructure/shutdown", version = "^0.0" }
-tari_service_framework = { version = "^0.0", path = "../../base_layer/service_framework"}
-tari_utilities = { version = "^0.0", path = "../../infrastructure/tari_util"}
-tari_comms = { version = "^0.0", path = "../../comms"}
 serde_json = "1.0"
+tokio = { version="=0.2.0-alpha.6", features = ["signal"] }
+tokio-executor = { version ="=0.2.0-alpha.6", features = ["threadpool"] }

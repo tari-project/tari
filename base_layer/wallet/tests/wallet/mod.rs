@@ -28,8 +28,8 @@ use tari_comms::{
     peer_manager::{peer::PeerFlags, NodeId, NodeIdentity, Peer, PeerFeatures},
     types::CommsPublicKey,
 };
-use tari_core::tari_amount::MicroTari;
 use tari_p2p::{initialization::CommsConfig, services::liveness::handle::LivenessEvent};
+use tari_transactions::tari_amount::MicroTari;
 use tari_wallet::{
     output_manager_service::OutputManagerConfig,
     transaction_service::handle::TransactionEvent,

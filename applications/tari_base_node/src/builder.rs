@@ -33,7 +33,6 @@ use tari_comms::{
     control_service::ControlServiceConfig,
     peer_manager::{node_identity::NodeIdentity, NodeId, Peer, PeerFeatures, PeerFlags},
 };
-
 use tari_core::{
     base_node::{
         service::{BaseNodeServiceConfig, BaseNodeServiceInitializer},
@@ -41,16 +40,17 @@ use tari_core::{
         OutboundNodeCommsInterface,
     },
     chain_storage::{create_lmdb_database, BlockchainBackend, BlockchainDatabase, LMDBDatabase, MemoryDatabase},
+};
+use tari_p2p::{
+    comms_connector::pubsub_connector,
+    initialization::{initialize_comms, CommsConfig},
+    services::comms_outbound::CommsOutboundServiceInitializer,
+};
+use tari_service_framework::{handles::ServiceHandles, StackBuilder};
+use tari_transactions::{
     crypto::keys::{PublicKey as PK, SecretKey as SK},
     types::{HashDigest, PrivateKey, PublicKey},
 };
-use tari_p2p::{
-    comms_connector::{pubsub_connector, PeerMessage},
-    initialization::{initialize_comms, CommsConfig},
-    services::comms_outbound::CommsOutboundServiceInitializer,
-    tari_message::TariMessageType,
-};
-use tari_service_framework::{handles::ServiceHandles, StackBuilder};
 use tari_utilities::{hex::Hex, message_format::MessageFormat};
 use tokio::runtime::Runtime;
 

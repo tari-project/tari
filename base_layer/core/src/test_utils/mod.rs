@@ -27,3 +27,4 @@ pub mod primitives;
 pub mod builders;
 /// Hardcoded sample blockchain databases
 pub mod sample_blockchains;
+pub mod test_common;

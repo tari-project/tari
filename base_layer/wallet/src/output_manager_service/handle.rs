@@ -22,13 +22,13 @@
 
 use crate::output_manager_service::{error::OutputManagerError, storage::database::PendingTransactionOutputs};
 use std::{collections::HashMap, time::Duration};
-use tari_core::{
+use tari_service_framework::reply_channel::SenderService;
+use tari_transactions::{
     tari_amount::MicroTari,
     transaction::{TransactionInput, TransactionOutput, UnblindedOutput},
     types::PrivateKey,
     SenderTransactionProtocol,
 };
-use tari_service_framework::reply_channel::SenderService;
 use tower::Service;
 
 /// API Request enum
