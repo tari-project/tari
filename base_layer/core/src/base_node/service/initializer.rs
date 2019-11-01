@@ -24,13 +24,14 @@ use crate::{
     base_node::{
         comms_interface::{InboundNodeCommsInterface, OutboundNodeCommsInterface},
         proto,
-        service::service::{BaseNodeService, BaseNodeServiceConfig},
+        service::service::{BaseNodeService, BaseNodeServiceConfig, BaseNodeStreams},
     },
+    blocks::Block,
     chain_storage::{BlockchainBackend, BlockchainDatabase},
 };
-use futures::{future, Future, Stream, StreamExt};
+use futures::{future, Future, Stream, StreamExt, TryStreamExt};
 use log::*;
-use std::sync::Arc;
+use std::{convert::TryFrom, sync::Arc};
 use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_p2p::{
     comms_connector::PeerMessage,
@@ -48,7 +49,7 @@ use tari_service_framework::{
 use tari_shutdown::ShutdownSignal;
 use tokio::runtime::TaskExecutor;
 
-const LOG_TARGET: &'static str = "tari_core::base_node::base_node_service";
+const LOG_TARGET: &'static str = "base_node::service::initializer";
 
 /// Initializer for the Base Node service handle and service future.
 pub struct BaseNodeServiceInitializer<T>
@@ -92,7 +93,43 @@ where T: BlockchainBackend
             .filter_map(ok_or_skip_result)
     }
 
-    // TODO: add streams for broadcasted blocks and transactions
+    /// Create a stream of 'New Block` messages
+    fn inbound_block_stream(&self) -> impl Stream<Item = DomainMessage<Block>> {
+        self.inbound_message_subscription_factory
+            .get_subscription(TariMessageType::NewBlock)
+            .filter_map(extract_block)
+    }
+}
+
+async fn extract_block(msg: Arc<PeerMessage>) -> Option<DomainMessage<Block>> {
+    match msg.decode_message::<proto::types::Block>() {
+        Err(e) => {
+            warn!(
+                target: LOG_TARGET,
+                "Could not decode inbound block message. {}",
+                e.to_string()
+            );
+            None
+        },
+        Ok(block) => {
+            let origin = msg.dht_header.origin_public_key.clone();
+            let block = match Block::try_from(block) {
+                Err(e) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Inbound block message from {} was ill-formed. {}", origin, e
+                    );
+                    return None;
+                },
+                Ok(b) => b,
+            };
+            Some(DomainMessage {
+                source_peer: msg.source_peer.clone(),
+                origin_pubkey: origin,
+                inner: block,
+            })
+        },
+    }
 }
 
 impl<T> ServiceInitializer for BaseNodeServiceInitializer<T>
@@ -110,6 +147,7 @@ where T: BlockchainBackend + 'static
         // Create streams for receiving Base Node requests and response messages from comms
         let inbound_request_stream = self.inbound_request_stream();
         let inbound_response_stream = self.inbound_response_stream();
+        let inbound_block_stream = self.inbound_block_stream();
         // Connect InboundNodeCommsInterface and OutboundNodeCommsInterface to BaseNodeService
         let (outbound_request_sender_service, outbound_request_stream) = reply_channel::unbounded();
         let outbound_nci = OutboundNodeCommsInterface::new(outbound_request_sender_service);
@@ -127,16 +165,14 @@ where T: BlockchainBackend + 'static
                 .get_handle::<OutboundMessageRequester>()
                 .expect("OutboundMessageRequester handle required for BaseNodeService");
 
-            let service = BaseNodeService::new(
-                executer_clone,
+            let streams = BaseNodeStreams::new(
                 outbound_request_stream,
                 inbound_request_stream,
                 inbound_response_stream,
-                outbound_message_service,
-                inbound_nci,
-                config,
-            )
-            .start();
+                inbound_block_stream,
+            );
+            let service =
+                BaseNodeService::new(executer_clone, outbound_message_service, inbound_nci, config).start(streams);
             futures::pin_mut!(service);
             future::select(service, shutdown).await;
             info!(target: LOG_TARGET, "Base Node Service shutdown");

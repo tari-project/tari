@@ -22,29 +22,43 @@
 
 use crate::{
     base_node::{
-        states::{InitialSync, StateEvent, StateEvent::FatalError},
-        BackOff,
+        states::{StateEvent, StateEvent::UserQuit},
         BaseNodeStateMachine,
     },
-    chain_storage::BlockchainBackend,
+    blocks::Block,
+    chain_storage::{BlockchainBackend, ChainMetadata},
+    transaction::Transaction,
 };
 use log::*;
-use std::{sync::atomic::Ordering, time::Duration};
+use std::sync::atomic::Ordering;
 
 const LOG_TARGET: &str = "base_node::listening";
 
 pub struct ListeningInfo;
 
+enum ChainMessage {
+    Transaction(Box<Transaction>),
+    Block(Box<Block>),
+    Metadata(Box<ChainMetadata>),
+}
+
 impl ListeningInfo {
     pub async fn next_event<B: BlockchainBackend>(&mut self, shared: &mut BaseNodeStateMachine<B>) -> StateEvent {
         info!(target: LOG_TARGET, "Listening for new blocks and transactions");
-        // TODO -- just wait for CTRL-C for now. Will actually listen for new blocks
-        let mut backoff = BackOff::new(100, Duration::from_secs(5), 1.0);
         loop {
-            backoff.wait().await;
-            if backoff.is_finished() || shared.user_stopped.load(Ordering::Relaxed) {
-                return FatalError("User shutdown or timeout".to_string());
+            let message = self.wait_for_next_message().await;
+            match message {
+                ChainMessage::Transaction(_) => {},
+                ChainMessage::Block(_) => {},
+                ChainMessage::Metadata(_) => {},
+            }
+            if shared.user_stopped.load(Ordering::Relaxed) {
+                return UserQuit;
             }
         }
+    }
+
+    async fn wait_for_next_message(&self) -> ChainMessage {
+        unimplemented!()
     }
 }

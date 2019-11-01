@@ -71,8 +71,9 @@ impl<B: BlockchainBackend> BaseNodeStateMachine<B> {
             (Listening(_), FallenBehind(BehindHorizon(h))) => FetchingHorizonState(HorizonInfo::new(h)),
             (Listening(s), FallenBehind(Lagging(_))) => BlockSync(s.into()),
             (_, FatalError(s)) => Shutdown(states::Shutdown::with_reason(s)),
+            (_, UserQuit) => Shutdown(states::Shutdown::with_reason("Shutdown initiated by user".to_string())),
             (s, e) => {
-                debug!(
+                warn!(
                     target: LOG_TARGET,
                     "No state transition occurs for event {:?} in state {}", e, s
                 );

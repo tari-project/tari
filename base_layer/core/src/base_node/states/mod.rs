@@ -126,6 +126,7 @@ pub enum StateEvent {
     BlocksSynchronized,
     FallenBehind(SyncStatus),
     FatalError(String),
+    UserQuit,
 }
 
 /// Some state transition functions must return `SyncStatus`. The sync status indicates how far behind the network's
