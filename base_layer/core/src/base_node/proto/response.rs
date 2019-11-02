@@ -26,16 +26,15 @@ use super::base_node::{
     TransactionKernels as ProtoTransactionKernels,
     TransactionOutputs as ProtoTransactionOutputs,
 };
-use crate::{
-    base_node::comms_interface as ci,
-    proto::{types, utils::try_convert_all},
-};
+use crate::{base_node::comms_interface as ci, proto::core as core_proto_types};
 use std::{
     convert::TryInto,
     iter::{FromIterator, Iterator},
 };
+use tari_transactions::proto::types as transactions_proto;
 
 pub use super::base_node::base_node_service_response::Response as ProtoNodeCommsResponse;
+use tari_transactions::proto::utils::try_convert_all;
 
 impl TryInto<ci::NodeCommsResponse> for ProtoNodeCommsResponse {
     type Error = String;
@@ -91,34 +90,36 @@ impl From<ci::NodeCommsResponse> for ProtoNodeCommsResponse {
     }
 }
 
+//---------------------------------- Collection impls --------------------------------------------//
+
 // The following allow `Iterator::collect` to collect into these repeated types
 
-impl FromIterator<types::TransactionKernel> for ProtoTransactionKernels {
-    fn from_iter<T: IntoIterator<Item = types::TransactionKernel>>(iter: T) -> Self {
+impl FromIterator<transactions_proto::TransactionKernel> for ProtoTransactionKernels {
+    fn from_iter<T: IntoIterator<Item = transactions_proto::TransactionKernel>>(iter: T) -> Self {
         Self {
             kernels: iter.into_iter().collect(),
         }
     }
 }
 
-impl FromIterator<types::BlockHeader> for ProtoBlockHeaders {
-    fn from_iter<T: IntoIterator<Item = types::BlockHeader>>(iter: T) -> Self {
+impl FromIterator<core_proto_types::BlockHeader> for ProtoBlockHeaders {
+    fn from_iter<T: IntoIterator<Item = core_proto_types::BlockHeader>>(iter: T) -> Self {
         Self {
             headers: iter.into_iter().collect(),
         }
     }
 }
 
-impl FromIterator<types::TransactionOutput> for ProtoTransactionOutputs {
-    fn from_iter<T: IntoIterator<Item = types::TransactionOutput>>(iter: T) -> Self {
+impl FromIterator<transactions_proto::TransactionOutput> for ProtoTransactionOutputs {
+    fn from_iter<T: IntoIterator<Item = transactions_proto::TransactionOutput>>(iter: T) -> Self {
         Self {
             outputs: iter.into_iter().collect(),
         }
     }
 }
 
-impl FromIterator<types::HistoricalBlock> for ProtoHistoricalBlocks {
-    fn from_iter<T: IntoIterator<Item = types::HistoricalBlock>>(iter: T) -> Self {
+impl FromIterator<core_proto_types::HistoricalBlock> for ProtoHistoricalBlocks {
+    fn from_iter<T: IntoIterator<Item = core_proto_types::HistoricalBlock>>(iter: T) -> Self {
         Self {
             blocks: iter.into_iter().collect(),
         }

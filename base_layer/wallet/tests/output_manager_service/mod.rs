@@ -22,14 +22,6 @@
 use crate::support::utils::{make_input, TestParams};
 use rand::RngCore;
 use std::{thread, time::Duration};
-use tari_core::{
-    consensus::ConsensusRules,
-    fee::Fee,
-    tari_amount::MicroTari,
-    transaction::{KernelFeatures, OutputFeatures, TransactionOutput, UnblindedOutput},
-    transaction_protocol::single_receiver::SingleReceiverTransactionProtocol,
-    types::{PrivateKey, PublicKey, RangeProof, COMMITMENT_FACTORY, PROVER},
-};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
@@ -38,6 +30,14 @@ use tari_crypto::{
 use tari_key_manager::mnemonic::{from_secret_key, MnemonicLanguage};
 use tari_service_framework::StackBuilder;
 use tari_shutdown::Shutdown;
+use tari_transactions::{
+    consensus::ConsensusRules,
+    fee::Fee,
+    tari_amount::MicroTari,
+    transaction::{KernelFeatures, OutputFeatures, TransactionOutput, UnblindedOutput},
+    transaction_protocol::single_receiver::SingleReceiverTransactionProtocol,
+    types::{PrivateKey, PublicKey, RangeProof, COMMITMENT_FACTORY, PROVER},
+};
 use tari_utilities::ByteArray;
 use tari_wallet::output_manager_service::{
     error::{OutputManagerError, OutputManagerStorageError},

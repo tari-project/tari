@@ -31,11 +31,13 @@ use crate::{
         HistoricalBlock,
         MmrTree,
     },
-    transaction::{TransactionKernel, TransactionOutput},
-    types::HashOutput,
 };
 use futures::future::poll_fn;
 use std::task::Poll;
+use tari_transactions::{
+    transaction::{TransactionKernel, TransactionOutput},
+    types::HashOutput,
+};
 use tokio_executor::threadpool::blocking;
 
 macro_rules! make_async {

@@ -37,13 +37,6 @@ use tari_comms::{
     peer_manager::{NodeIdentity, PeerFeatures},
 };
 use tari_comms_dht::outbound::mock::{create_mock_outbound_service, MockOutboundService};
-use tari_core::{
-    tari_amount::*,
-    transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
-    transaction_protocol::{proto, recipient::RecipientState, sender::TransactionSenderMessage},
-    types::{PrivateKey, PublicKey, COMMITMENT_FACTORY, PROVER},
-    ReceiverTransactionProtocol,
-};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::{PublicKey as PK, SecretKey as SK},
@@ -54,6 +47,13 @@ use tari_p2p::{
     services::comms_outbound::CommsOutboundServiceInitializer,
 };
 use tari_service_framework::{reply_channel, StackBuilder};
+use tari_transactions::{
+    tari_amount::*,
+    transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
+    transaction_protocol::{proto, recipient::RecipientState, sender::TransactionSenderMessage},
+    types::{PrivateKey, PublicKey, COMMITMENT_FACTORY, PROVER},
+    ReceiverTransactionProtocol,
+};
 use tari_wallet::{
     output_manager_service::{
         handle::OutputManagerHandle,

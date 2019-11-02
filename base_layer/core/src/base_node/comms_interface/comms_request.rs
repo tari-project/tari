@@ -20,8 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::types::HashOutput;
 use serde::{Deserialize, Serialize};
+use tari_transactions::types::HashOutput;
 
 /// NodeCommsRequestType is used to specify the amount of peers that need to be queried before a request can be
 /// finalized.

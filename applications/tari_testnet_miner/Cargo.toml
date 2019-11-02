@@ -32,6 +32,7 @@ tari_utilities = { path = "../../infrastructure/tari_util", version = "^0.0"}
 tari_common = {path = "../../common", version= "^0.0"}
 tari_core = {path = "../../base_layer/core", version= "^0.0"}
 tari_crypto = { path = "../../infrastructure/crypto", version = "^0.0" }
+tari_transactions = { path = "../../base_layer/transactions", version = "^0.0" }
 
 [build-dependencies]
 tonic-build = "0.1.0-alpha.3"

@@ -30,13 +30,15 @@ use crate::{
         HistoricalBlock,
     },
     proof_of_work::Difficulty,
-    transaction::{TransactionInput, TransactionKernel, TransactionOutput},
-    types::{Commitment, HashOutput},
 };
 use croaring::Bitmap;
 use log::*;
 use std::sync::{Arc, RwLock, RwLockReadGuard};
 use tari_mmr::{Hash, MerkleCheckPoint, MerkleProof};
+use tari_transactions::{
+    transaction::{TransactionInput, TransactionKernel, TransactionOutput},
+    types::{Commitment, HashOutput},
+};
 use tari_utilities::{hex::Hex, Hashable};
 
 const LOG_TARGET: &str = "core::chain_storage::database";
@@ -128,10 +130,8 @@ macro_rules! fetch {
 /// provide it with the backend it is going to use; for example, for a memory-backed DB:
 ///
 /// ```
-/// use tari_core::{
-///     chain_storage::{BlockchainDatabase, MemoryDatabase},
-///     types::HashDigest,
-/// };
+/// use tari_core::chain_storage::{BlockchainDatabase, MemoryDatabase};
+/// use tari_transactions::types::HashDigest;
 /// let db_backend = MemoryDatabase::<HashDigest>::default();
 /// let mut db = BlockchainDatabase::new(db_backend).unwrap();
 /// // Do stuff with db

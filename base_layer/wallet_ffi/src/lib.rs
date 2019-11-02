@@ -40,7 +40,9 @@ use std::{
     slice,
 };
 use tari_comms::peer_manager::Peer;
-use tari_core::{
+use tari_crypto::keys::SecretKey;
+use tari_p2p::initialization::CommsConfig;
+use tari_transactions::{
     tari_amount::MicroTari,
     transaction::{
         OutputFeatures,
@@ -53,8 +55,6 @@ use tari_core::{
     },
     types::{PrivateKey, PublicKey},
 };
-use tari_crypto::keys::SecretKey;
-use tari_p2p::initialization::CommsConfig;
 use tari_utilities::ByteArray;
 use tari_wallet::{
     output_manager_service::{storage::database::PendingTransactionOutputs, OutputManagerConfig},

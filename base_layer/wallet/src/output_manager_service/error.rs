@@ -22,9 +22,9 @@
 
 use crate::output_manager_service::storage::database::DbKey;
 use derive_error::Error;
-use tari_core::transaction_protocol::TransactionProtocolError;
 use tari_key_manager::{key_manager::KeyManagerError, mnemonic::MnemonicError};
 use tari_service_framework::reply_channel::TransportChannelError;
+use tari_transactions::transaction_protocol::TransactionProtocolError;
 use tari_utilities::ByteArrayError;
 use time::OutOfRangeError;
 

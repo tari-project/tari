@@ -20,8 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{mempool::priority::PriorityError, transaction::Transaction};
+use crate::mempool::priority::PriorityError;
 use std::{convert::TryFrom, sync::Arc};
+use tari_transactions::transaction::Transaction;
 use tari_utilities::message_format::MessageFormat;
 
 /// Create a unique unspent transaction priority based on the transaction fee, maturity of the oldest input UTXO and the

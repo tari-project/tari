@@ -26,7 +26,7 @@ use std::{
     collections::HashMap,
     fmt::{Display, Error, Formatter},
 };
-use tari_core::{transaction::Transaction, ReceiverTransactionProtocol, SenderTransactionProtocol};
+use tari_transactions::{transaction::Transaction, ReceiverTransactionProtocol, SenderTransactionProtocol};
 
 const LOG_TARGET: &'static str = "wallet::transaction_service::database";
 

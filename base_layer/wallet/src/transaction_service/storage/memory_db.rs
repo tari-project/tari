@@ -31,7 +31,7 @@ use std::{
     collections::HashMap,
     sync::{Arc, RwLock},
 };
-use tari_core::{transaction::Transaction, ReceiverTransactionProtocol, SenderTransactionProtocol};
+use tari_transactions::{transaction::Transaction, ReceiverTransactionProtocol, SenderTransactionProtocol};
 
 struct InnerDatabase {
     pending_outbound_transactions: HashMap<TxId, SenderTransactionProtocol>,

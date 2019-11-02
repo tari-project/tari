@@ -19,7 +19,7 @@ message BaseNodeServiceResponse {
 }
 
 message BlockHeaders {
-    repeated tari.types.BlockHeader headers = 1;
+    repeated tari.core.BlockHeader headers = 1;
 }
 
 message TransactionKernels {
@@ -31,5 +31,5 @@ message TransactionOutputs {
 }
 
 message HistoricalBlocks {
-    repeated tari.types.HistoricalBlock blocks = 1;
+    repeated tari.core.HistoricalBlock blocks = 1;
 }

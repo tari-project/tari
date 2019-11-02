@@ -21,27 +21,10 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::types as proto;
-use crate::types::{BlindingFactor, Commitment, HashOutput, Signature};
+use crate::types::{Commitment, HashOutput, Signature};
 use std::convert::TryFrom;
 use tari_crypto::ristretto::{RistrettoPublicKey, RistrettoSecretKey};
 use tari_utilities::{ByteArray, ByteArrayError};
-
-//---------------------------------- BlindingFactor --------------------------------------------//
-
-impl Drop for proto::BlindingFactor {
-    /// Ensure blinding factor is zeroed in memory when it goes out of scope
-    fn drop(&mut self) {
-        self.scalar.clear();
-    }
-}
-
-impl From<BlindingFactor> for proto::BlindingFactor {
-    fn from(blinding_factor: BlindingFactor) -> Self {
-        Self {
-            scalar: blinding_factor.to_vec(),
-        }
-    }
-}
 
 //---------------------------------- Commitment --------------------------------------------//
 

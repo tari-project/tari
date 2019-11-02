@@ -32,13 +32,12 @@ use crate::{
     blocks::{genesis_block::get_genesis_block, BlockHeader},
     chain_storage::{BlockchainDatabase, ChainMetadata, DbTransaction, HistoricalBlock, MemoryDatabase},
     proof_of_work::Difficulty,
-    tari_amount::MicroTari,
     test_utils::builders::{add_block_and_update_header, create_test_kernel, create_utxo},
-    types::HashDigest,
 };
 use futures::{executor::block_on, StreamExt};
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_test_utils::runtime::test_async;
+use tari_transactions::{tari_amount::MicroTari, types::HashDigest};
 use tari_utilities::hash::Hashable;
 
 async fn test_request_responder(

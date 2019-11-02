@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    blocks::block::KernelSum,
     tari_amount::*,
     transaction::*,
     types::{BlindingFactor, Commitment, CommitmentFactory, PrivateKey, RangeProofService, COMMITMENT_FACTORY},
@@ -84,8 +83,7 @@ impl AggregateBody {
         &self.kernels
     }
 
-    /// Available for tests only. Get a mutable reference to the inputs
-    #[cfg(test)]
+    /// Should be used for tests only. Get a mutable reference to the inputs
     pub fn inputs_mut(&mut self) -> &mut Vec<TransactionInput> {
         &mut self.inputs
     }

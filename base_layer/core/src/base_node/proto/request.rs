@@ -21,7 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::base_node::{base_node_service_request::Request as ProtoNodeCommsRequest, BlockHeights, HashOutputs};
-use crate::{base_node::comms_interface as ci, types::HashOutput};
+use crate::base_node::comms_interface as ci;
+use tari_transactions::types::HashOutput;
 
 //---------------------------------- BaseNodeRequest --------------------------------------------//
 impl Into<ci::NodeCommsRequest> for ProtoNodeCommsRequest {

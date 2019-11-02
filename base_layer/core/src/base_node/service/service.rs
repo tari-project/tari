@@ -44,7 +44,6 @@ use futures::{
         mpsc::{channel, Receiver, Sender},
         oneshot::Sender as OneshotSender,
     },
-    future::Fuse,
     pin_mut,
     stream::StreamExt,
     SinkExt,

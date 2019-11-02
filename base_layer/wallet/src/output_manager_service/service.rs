@@ -34,19 +34,19 @@ use chrono::Utc;
 use futures::{pin_mut, StreamExt};
 use log::*;
 use std::{collections::HashMap, sync::Mutex, time::Duration};
-use tari_core::{
-    fee::Fee,
-    tari_amount::MicroTari,
-    transaction::{OutputFeatures, TransactionInput, TransactionOutput, UnblindedOutput},
-    types::{PrivateKey, COMMITMENT_FACTORY, PROVER},
-    SenderTransactionProtocol,
-};
 use tari_crypto::keys::SecretKey;
 use tari_key_manager::{
     key_manager::KeyManager,
     mnemonic::{from_secret_key, MnemonicLanguage},
 };
 use tari_service_framework::reply_channel;
+use tari_transactions::{
+    fee::Fee,
+    tari_amount::MicroTari,
+    transaction::{OutputFeatures, TransactionInput, TransactionOutput, UnblindedOutput},
+    types::{PrivateKey, COMMITMENT_FACTORY, PROVER},
+    SenderTransactionProtocol,
+};
 
 const LOG_TARGET: &'static str = "base_layer::wallet::output_manager_service";
 

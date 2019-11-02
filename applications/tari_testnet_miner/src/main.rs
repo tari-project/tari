@@ -27,11 +27,9 @@ use std::{
     sync::atomic::Ordering,
     time::{Duration, Instant},
 };
-use tari_core::{
-    blocks::{Block, BlockBuilder, BlockHeader},
-    consensus::ConsensusRules,
-};
+use tari_core::blocks::{Block, BlockBuilder, BlockHeader};
 use tari_testnet_miner::miner::Miner;
+use tari_transactions::consensus::ConsensusRules;
 use tokio::io::AsyncBufReadExt;
 use tokio_executor::threadpool::ThreadPool;
 

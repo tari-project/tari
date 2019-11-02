@@ -28,7 +28,7 @@ use std::{
     fmt::{Display, Error, Formatter},
     time::Duration,
 };
-use tari_core::{tari_amount::MicroTari, transaction::UnblindedOutput, types::BlindingFactor};
+use tari_transactions::{tari_amount::MicroTari, transaction::UnblindedOutput, types::BlindingFactor};
 
 const LOG_TARGET: &'static str = "wallet::output_manager_service::database";
 

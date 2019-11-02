@@ -21,12 +21,12 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-use crate::{
+use tari_crypto::keys::{PublicKey as PK, SecretKey as SK};
+use tari_transactions::{
     tari_amount::MicroTari,
     transaction_protocol::{build_challenge, TransactionMetadata},
     types::{PrivateKey, PublicKey, Signature},
 };
-use tari_crypto::keys::{PublicKey as PK, SecretKey as SK};
 
 /// A convenience struct for a set of public-private keys and a public-private nonce
 pub struct TestKeySet {

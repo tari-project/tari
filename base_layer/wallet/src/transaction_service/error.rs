@@ -23,8 +23,8 @@
 use crate::{output_manager_service::error::OutputManagerError, transaction_service::storage::database::DbKey};
 use derive_error::Error;
 use tari_comms_dht::outbound::DhtOutboundError;
-use tari_core::transaction_protocol::TransactionProtocolError;
 use tari_service_framework::reply_channel::TransportChannelError;
+use tari_transactions::transaction_protocol::TransactionProtocolError;
 use time::OutOfRangeError;
 
 #[derive(Debug, Error)]

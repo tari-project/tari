@@ -24,7 +24,9 @@
 
 use super::types as proto;
 use crate::{
+    aggregated_body::AggregateBody,
     bullet_rangeproofs::BulletRangeProof,
+    proto::utils::try_convert_all,
     tari_amount::MicroTari,
     transaction::{
         KernelFeatures,
@@ -165,6 +167,32 @@ impl From<OutputFeatures> for proto::OutputFeatures {
         Self {
             flags: features.flags.bits() as u32,
             maturity: features.maturity,
+        }
+    }
+}
+
+//---------------------------------- AggregateBody --------------------------------------------//
+
+impl TryFrom<proto::AggregateBody> for AggregateBody {
+    type Error = String;
+
+    fn try_from(body: proto::AggregateBody) -> Result<Self, Self::Error> {
+        Ok(Self {
+            sorted: body.sorted,
+            inputs: try_convert_all(body.inputs)?,
+            outputs: try_convert_all(body.outputs)?,
+            kernels: try_convert_all(body.kernels)?,
+        })
+    }
+}
+
+impl From<AggregateBody> for proto::AggregateBody {
+    fn from(body: AggregateBody) -> Self {
+        Self {
+            sorted: body.sorted,
+            inputs: body.inputs.into_iter().map(Into::into).collect(),
+            outputs: body.outputs.into_iter().map(Into::into).collect(),
+            kernels: body.kernels.into_iter().map(Into::into).collect(),
         }
     }
 }

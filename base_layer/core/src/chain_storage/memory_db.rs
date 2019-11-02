@@ -38,8 +38,6 @@ use crate::{
         },
         error::ChainStorageError,
     },
-    transaction::{TransactionKernel, TransactionOutput},
-    types::HashOutput,
 };
 use digest::Digest;
 use std::{
@@ -47,6 +45,10 @@ use std::{
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 use tari_mmr::{Hash as MmrHash, MerkleChangeTracker, MerkleCheckPoint, MerkleProof, MutableMmr};
+use tari_transactions::{
+    transaction::{TransactionKernel, TransactionOutput},
+    types::HashOutput,
+};
 use tari_utilities::hash::Hashable;
 
 /// A generic struct for storing node objects in the BlockchainDB that also form part of an MMR. The index field makes

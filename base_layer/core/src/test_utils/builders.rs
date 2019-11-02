@@ -19,15 +19,26 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
 
 use crate::{
     blocks::{blockheader::BlockHeader, Block, BlockBuilder},
     chain_storage::{BlockAddResult, BlockchainDatabase, MemoryDatabase},
-    fee::Fee,
     proof_of_work::Difficulty,
+    test_utils::{
+        primitives::{create_random_signature, generate_keys},
+        test_common::TestParams,
+    },
+};
+use std::sync::Arc;
+use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
+    common::Blake256,
+    keys::SecretKey,
+    range_proof::RangeProofService,
+};
+use tari_transactions::{
+    fee::Fee,
     tari_amount::MicroTari,
-    test_utils::primitives::{create_random_signature, generate_keys},
     transaction::{
         KernelBuilder,
         KernelFeatures,
@@ -38,15 +49,8 @@ use crate::{
         TransactionOutput,
         UnblindedOutput,
     },
-    transaction_protocol::{sender::SenderTransactionProtocol, test_common::TestParams},
+    transaction_protocol::sender::SenderTransactionProtocol,
     types::{Commitment, HashDigest, PrivateKey, PublicKey, COMMITMENT_FACTORY, PROVER},
-};
-use std::sync::Arc;
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    common::Blake256,
-    keys::SecretKey,
-    range_proof::RangeProofService,
 };
 use tari_utilities::hash::Hashable;
 
@@ -79,6 +83,8 @@ macro_rules! tx {
 /// use tari_core::txn_schema;
 /// use tari_core::transaction::{UnblindedOutput, OutputFeatures};
 /// use tari_core::tari_amount::{MicroTari, T, uT};
+/// use tari_transactions::transaction::UnblindedOutput;
+/// use tari_transactions::tari_amount::{MicroTari, T, uT};
 ///
 ///   let inputs: Vec<UnblindedOutput> = Vec::new();
 ///   let outputs: Vec<MicroTari> = vec![2*T, 1*T, 500_000*uT];
@@ -103,11 +109,11 @@ macro_rules! txn_schema {
     }};
 
     (from: $input:expr, to: $outputs:expr, fee: $fee:expr) => {
-        txn_schema!(from: $input, to:$outputs, fee:$fee, lock:0, crate::transaction::OutputFeatures::default())
+        txn_schema!(from: $input, to:$outputs, fee:$fee, lock:0, tari_transactions::transaction::OutputFeatures::default())
     };
 
     (from: $input:expr, to: $outputs:expr) => {
-        txn_schema!(from: $input, to:$outputs, fee: 25.into(), lock:0, crate::transaction::OutputFeatures::default())
+        txn_schema!(from: $input, to:$outputs, fee: 25.into(), lock:0, tari_transactions::transaction::OutputFeatures::default())
     };
 
     // Spend inputs to ± half the first input value, with default fee and lock height

@@ -23,10 +23,9 @@
 use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase},
     mempool::orphan_pool::{error::OrphanPoolError, orphan_pool::OrphanPoolConfig},
-    transaction::Transaction,
-    types::Signature,
 };
 use std::sync::Arc;
+use tari_transactions::{transaction::Transaction, types::Signature};
 use tari_utilities::hash::Hashable;
 use ttl_cache::TtlCache;
 

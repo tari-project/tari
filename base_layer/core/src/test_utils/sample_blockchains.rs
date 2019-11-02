@@ -24,7 +24,6 @@
 use crate::{
     blocks::Block,
     chain_storage::{BlockAddResult, BlockchainDatabase, ChainStorageError, MemoryDatabase},
-    tari_amount::{uT, T},
     test_utils::builders::{
         add_block_and_update_header,
         chain_block,
@@ -32,6 +31,9 @@ use crate::{
         spend_utxos,
         TransactionSchema,
     },
+};
+use tari_transactions::{
+    tari_amount::{uT, T},
     transaction::{Transaction, UnblindedOutput},
     types::HashDigest,
 };

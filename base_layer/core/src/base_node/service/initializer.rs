@@ -28,8 +28,9 @@ use crate::{
     },
     blocks::Block,
     chain_storage::{BlockchainBackend, BlockchainDatabase},
+    proto as shared_protos,
 };
-use futures::{future, Future, Stream, StreamExt, TryStreamExt};
+use futures::{future, Future, Stream, StreamExt};
 use log::*;
 use std::{convert::TryFrom, sync::Arc};
 use tari_comms_dht::outbound::OutboundMessageRequester;
@@ -102,7 +103,7 @@ where T: BlockchainBackend
 }
 
 async fn extract_block(msg: Arc<PeerMessage>) -> Option<DomainMessage<Block>> {
-    match msg.decode_message::<proto::types::Block>() {
+    match msg.decode_message::<shared_protos::core::Block>() {
         Err(e) => {
             warn!(
                 target: LOG_TARGET,

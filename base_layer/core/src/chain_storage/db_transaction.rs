@@ -21,13 +21,13 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-use crate::{
-    blocks::{blockheader::BlockHash, Block, BlockHeader},
+use crate::blocks::{blockheader::BlockHash, Block, BlockHeader};
+use serde::{Deserialize, Serialize};
+use std::fmt::{Display, Error, Formatter};
+use tari_transactions::{
     transaction::{TransactionInput, TransactionKernel, TransactionOutput},
     types::HashOutput,
 };
-use serde::{Deserialize, Serialize};
-use std::fmt::{Display, Error, Formatter};
 use tari_utilities::{hex::to_hex, Hashable};
 
 #[derive(Debug)]

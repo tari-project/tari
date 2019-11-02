@@ -24,12 +24,12 @@
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
 use crate::{
-    blocks::aggregated_body::AggregateBody,
     tari_amount::MicroTari,
     types::{BlindingFactor, Commitment, CommitmentFactory, MessageHash, Signature},
 };
 
 use crate::{
+    aggregated_body::AggregateBody,
     consensus::ConsensusRules,
     fee::Fee,
     transaction_protocol::{build_challenge, TransactionMetadata},
@@ -531,6 +531,14 @@ impl Display for TransactionKernel {
         fmt.write_str(&msg)
     }
 }
+
+/// This struct holds the result of calculating the sum of the kernels in a Transaction
+/// and returns the summed commitments and the total fees
+pub struct KernelSum {
+    pub sum: Commitment,
+    pub fees: MicroTari,
+}
+
 //----------------------------------------      Transaction       ----------------------------------------------------//
 
 /// A transaction which consists of a kernel offset and an aggregate body made up of inputs, outputs and kernels.

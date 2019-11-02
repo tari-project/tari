@@ -5,7 +5,7 @@ import "google/protobuf/timestamp.proto";
 import "transaction.proto";
 import "types.proto";
 
-package tari.types;
+package tari.core;
 
 // The BlockHeader contains all the metadata for the block, including proof of work, a link to the previous block
 // and the transaction kernels.
@@ -27,7 +27,7 @@ message BlockHeader {
     bytes kernel_mr = 8;
     // Total accumulated sum of kernel offsets since genesis block. We can derive the kernel offset sum for *this*
     // block from the total kernel offset of the previous block header.
-    BlindingFactor total_kernel_offset = 9;
+    bytes total_kernel_offset = 9;
     // Total accumulated difficulty since genesis block
     uint64 total_difficulty = 10;
     // Nonce increment used to mine this block.
@@ -37,7 +37,7 @@ message BlockHeader {
 // A Tari block. Blocks are linked together into a blockchain.
 message Block {
     BlockHeader header = 1;
-    AggregateBody body = 2;
+    tari.types.AggregateBody body = 2;
 }
 
 // The representation of a historical block in the blockchain. It is essentially identical to a protocol-defined
@@ -47,19 +47,7 @@ message HistoricalBlock {
     // confirmation.
     uint64 confirmations = 1;
     // An array of commitments of the outputs from this block that have subsequently been spent.
-    repeated Commitment spent_commitments = 2;
+    repeated tari.types.Commitment spent_commitments = 2;
     // The underlying block
     Block block = 3;
-}
-
-// The components of the block or transaction. The same struct can be used for either, since in Mimblewimble,
-// cut-through means that blocks and transactions have the same structure.
-message AggregateBody {
-    bool sorted=  1;
-    // List of inputs spent by the transaction.
-    repeated TransactionInput inputs = 2;
-    // List of outputs the transaction produces.
-    repeated TransactionOutput outputs = 3;
-    // Kernels contain the excesses and their signatures for transaction
-    repeated TransactionKernel kernels = 4;
 }
