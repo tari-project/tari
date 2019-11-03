@@ -315,14 +315,10 @@ pub fn receive_test_transaction<T: WalletBackend>(wallet: &mut Wallet<T>) -> Res
     Ok(())
 }
 
-pub fn detect_broadcast_of_inbound_transaction<T: WalletBackend>(
-    wallet: &mut Wallet<T>,
-    tx_id: TxId,
-) -> Result<(), WalletError>
-{
+pub fn broadcast_transaction<T: WalletBackend>(wallet: &mut Wallet<T>, tx_id: TxId) -> Result<(), WalletError> {
     wallet
         .runtime
-        .block_on(wallet.transaction_service.test_broadcast_inbound_transaction(tx_id))?;
+        .block_on(wallet.transaction_service.test_broadcast_transaction(tx_id))?;
 
     Ok(())
 }
@@ -331,10 +327,10 @@ pub fn detect_broadcast_of_inbound_transaction<T: WalletBackend>(
 /// the event when a CompletedTransaction that is in the Broadcast status, is in a mempool but not mined, beocmes
 /// mined/confirmed. After this function is called the status of the CompletedTransaction becomes `Mined` and the funds
 /// that were pending become spent and available respectively.
-pub fn mine_completed_transaction<T: WalletBackend>(wallet: &mut Wallet<T>, tx_id: TxId) -> Result<(), WalletError> {
+pub fn mine_transaction<T: WalletBackend>(wallet: &mut Wallet<T>, tx_id: TxId) -> Result<(), WalletError> {
     wallet
         .runtime
-        .block_on(wallet.transaction_service.test_mine_completed_transaction(tx_id))?;
+        .block_on(wallet.transaction_service.test_mine_transaction(tx_id))?;
 
     Ok(())
 }

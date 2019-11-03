@@ -42,3 +42,4 @@ prost = "0.5.0"
 
 [features]
 test_harness = []
+c_integration = []

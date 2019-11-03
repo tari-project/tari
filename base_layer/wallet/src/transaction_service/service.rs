@@ -19,7 +19,6 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 #[cfg(feature = "test_harness")]
 use crate::output_manager_service::TxId;
 use crate::{
@@ -93,6 +92,14 @@ where TBackend: TransactionBackend
     >,
     event_publisher: Publisher<TransactionEvent>,
     node_identity: Arc<NodeIdentity>,
+    #[cfg(feature = "c_integration")]
+    callback_received_transaction: Option<unsafe extern "C" fn(*mut InboundTransaction)>,
+    #[cfg(feature = "c_integration")]
+    callback_received_transaction_reply: Option<unsafe extern "C" fn(*mut CompletedTransaction)>,
+    #[cfg(feature = "c_integration")]
+    callback_mined: Option<unsafe extern "C" fn(*mut CompletedTransaction)>,
+    #[cfg(feature = "c_integration")]
+    callback_transaction_broadcast: Option<unsafe extern "C" fn(*mut CompletedTransaction)>,
 }
 
 impl<TTxStream, TTxReplyStream, TBackend> TransactionService<TTxStream, TTxReplyStream, TBackend>
@@ -124,6 +131,14 @@ where
             request_stream: Some(request_stream),
             event_publisher,
             node_identity,
+            #[cfg(feature = "c_integration")]
+            callback_received_transaction: None,
+            #[cfg(feature = "c_integration")]
+            callback_received_transaction_reply: None,
+            #[cfg(feature = "c_integration")]
+            callback_mined: None,
+            #[cfg(feature = "c_integration")]
+            callback_transaction_broadcast: None,
         }
     }
 
@@ -215,6 +230,20 @@ where
             TransactionServiceRequest::GetCompletedTransactions => Ok(
                 TransactionServiceResponse::CompletedTransactions(self.get_completed_transactions()?),
             ),
+            #[cfg(feature = "c_integration")]
+            TransactionServiceRequest::RegisterCallbackReceivedTransaction(call) => {
+                Ok(self.register_callback_received_transaction(call)?)
+            },
+            #[cfg(feature = "c_integration")]
+            TransactionServiceRequest::RegisterCallbackReceivedTransactionReply(call) => {
+                Ok(self.register_callback_received_transaction_reply(call)?)
+            },
+            #[cfg(feature = "c_integration")]
+            TransactionServiceRequest::RegisterCallbackMined(call) => Ok(self.register_callback_mined(call)?),
+            #[cfg(feature = "c_integration")]
+            TransactionServiceRequest::RegisterCallbackTransactionBroadcast(call) => {
+                Ok(self.register_callback_transaction_broadcast(call)?)
+            },
             #[cfg(feature = "test_harness")]
             TransactionServiceRequest::CompletePendingOutboundTransaction(completed_transaction) => {
                 self.complete_pending_outbound_transaction(completed_transaction)
@@ -227,16 +256,56 @@ where
                 Ok(TransactionServiceResponse::AcceptedTestTransaction)
             },
             #[cfg(feature = "test_harness")]
-            TransactionServiceRequest::MineCompletedTransaction(tx_id) => {
-                self.mine_broadcast_transaction(tx_id).await?;
-                Ok(TransactionServiceResponse::CompletedTransactionMined)
+            TransactionServiceRequest::MineTransaction(tx_id) => {
+                self.mined_transaction(tx_id).await?;
+                Ok(TransactionServiceResponse::TransactionMined)
             },
             #[cfg(feature = "test_harness")]
-            TransactionServiceRequest::BroadcastInboundTransaction(tx_id) => {
-                self.detect_broadcast_of_inbound_transaction(tx_id).await?;
-                Ok(TransactionServiceResponse::InboundTransactionBroadcast)
+            TransactionServiceRequest::BroadcastTransaction(tx_id) => {
+                self.broadcast_transaction(tx_id).await?;
+                Ok(TransactionServiceResponse::TransactionBroadcast)
             },
         }
+    }
+
+    #[cfg(feature = "c_integration")]
+    pub fn register_callback_received_transaction(
+        &mut self,
+        call: unsafe extern "C" fn(*mut InboundTransaction),
+    ) -> Result<TransactionServiceResponse, TransactionServiceError>
+    {
+        self.callback_received_transaction = Some(call);
+        Ok(TransactionServiceResponse::CallbackRegistered)
+    }
+
+    #[cfg(feature = "c_integration")]
+    pub fn register_callback_received_transaction_reply(
+        &mut self,
+        call: unsafe extern "C" fn(*mut CompletedTransaction),
+    ) -> Result<TransactionServiceResponse, TransactionServiceError>
+    {
+        self.callback_received_transaction_reply = Some(call);
+        Ok(TransactionServiceResponse::CallbackRegistered)
+    }
+
+    #[cfg(feature = "c_integration")]
+    pub fn register_callback_mined(
+        &mut self,
+        call: unsafe extern "C" fn(*mut CompletedTransaction),
+    ) -> Result<TransactionServiceResponse, TransactionServiceError>
+    {
+        self.callback_mined = Some(call);
+        Ok(TransactionServiceResponse::CallbackRegistered)
+    }
+
+    #[cfg(feature = "c_integration")]
+    pub fn register_callback_transaction_broadcast(
+        &mut self,
+        call: unsafe extern "C" fn(*mut CompletedTransaction),
+    ) -> Result<TransactionServiceResponse, TransactionServiceError>
+    {
+        self.callback_transaction_broadcast = Some(call);
+        Ok(TransactionServiceResponse::CallbackRegistered)
     }
 
     /// Sends a new transaction to a recipient
@@ -323,21 +392,23 @@ where
         let tx = outbound_tx.sender_protocol.get_transaction()?;
 
         // TODO Broadcast this to the chain
-        // TODO Only confirm this transaction once it is detected on chain and then complete in Output Manager Service
-        // to make funds available
+        // TODO Only confirm this transaction once it is detected on chain. For now just confirming it directly.
+        self.output_manager_service
+            .confirm_sent_transaction(tx_id.clone(), tx.body.inputs().clone(), tx.body.outputs().clone())
+            .await?;
+        let completed_transaction = CompletedTransaction {
+            tx_id,
+            source_public_key: self.node_identity.public_key().clone(),
+            destination_public_key: outbound_tx.destination_public_key,
+            amount: outbound_tx.amount,
+            fee: outbound_tx.fee,
+            transaction: tx.clone(),
+            status: TransactionStatus::Broadcast,
+            message: "".to_string(),
+            timestamp: Utc::now().naive_utc(),
+        };
         self.db
-            .complete_outbound_transaction(tx_id.clone(), CompletedTransaction {
-                tx_id,
-                source_public_key: self.node_identity.public_key().clone(),
-                destination_public_key: outbound_tx.destination_public_key,
-                amount: outbound_tx.amount,
-                fee: outbound_tx.fee,
-                transaction: tx.clone(),
-                status: TransactionStatus::Broadcast,
-                message: "".to_string(),
-                timestamp: Utc::now().naive_utc(),
-            })?;
-
+            .complete_outbound_transaction(tx_id.clone(), completed_transaction.clone())?;
         info!(
             target: LOG_TARGET,
             "Transaction Recipient Reply for TX_ID = {} received", tx_id,
@@ -346,7 +417,13 @@ where
             .send(TransactionEvent::ReceivedTransactionReply)
             .await
             .map_err(|_| TransactionServiceError::EventStreamError)?;
-
+        #[cfg(feature = "c_integration")]
+        let boxing = Box::into_raw(Box::new(completed_transaction));
+        #[cfg(feature = "c_integration")]
+        match self.callback_received_transaction_reply {
+            Some(call) => unsafe { call(boxing) },
+            None => {},
+        }
         Ok(())
     }
 
@@ -403,14 +480,16 @@ where
                 .await?;
 
             // Otherwise add it to our pending transaction list and return reply
-            self.db.add_pending_inbound_transaction(tx_id, InboundTransaction {
+            let inbound_transaction = InboundTransaction {
                 tx_id,
                 source_public_key: source_pubkey.clone(),
                 amount,
                 receiver_protocol: rtp.clone(),
                 message: data.message,
                 timestamp: Utc::now().naive_utc(),
-            })?;
+            };
+            self.db
+                .add_pending_inbound_transaction(tx_id, inbound_transaction.clone())?;
 
             info!(
                 target: LOG_TARGET,
@@ -423,6 +502,13 @@ where
                 .send(TransactionEvent::ReceivedTransaction)
                 .await
                 .map_err(|_| TransactionServiceError::EventStreamError)?;
+            #[cfg(feature = "c_integration")]
+            let boxing = Box::into_raw(Box::new(inbound_transaction));
+            #[cfg(feature = "c_integration")]
+            match self.callback_received_transaction {
+                Some(call) => unsafe { call(boxing) },
+                None => {},
+            }
         }
         Ok(())
     }
@@ -458,11 +544,11 @@ where
     }
 
     /// This function is only available for testing by the client of LibWallet. This function will simulate the process
-    /// when a compelted transaction is detected as mined on the base layer. The function will update the status of the
+    /// when a completed transaction is detected as mined on the base layer. The function will update the status of the
     /// completed transaction AND complete the transaction on the Output Manager Service which will update the status of
     /// the outputs
     #[cfg(feature = "test_harness")]
-    pub async fn mine_broadcast_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionServiceError> {
+    pub async fn mined_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionServiceError> {
         use tari_transactions::transaction::TransactionOutput;
 
         let completed_txs = self.db.get_completed_transactions()?;
@@ -498,7 +584,20 @@ where
             .await?;
 
         self.db.mine_completed_transaction(tx_id)?;
-
+        #[cfg(feature = "c_integration")]
+        match self.get_completed_transactions() {
+            Ok(txs) => match txs.get(&tx_id.clone()) {
+                Some(tx) => {
+                    let boxing = Box::into_raw(Box::new(tx.clone()));
+                    match self.callback_mined {
+                        Some(call) => unsafe { call(boxing) },
+                        None => {},
+                    }
+                },
+                None => {},
+            },
+            Err(_) => {},
+        }
         Ok(())
     }
 
@@ -578,11 +677,7 @@ where
     /// `PendingInboundTransaction` as being broadcast to base layer which means the Pending transaction must become a
     /// `CompletedTransaction` with the `Broadcast` status.
     #[cfg(feature = "test_harness")]
-    pub async fn detect_broadcast_of_inbound_transaction(
-        &mut self,
-        tx_id: TxId,
-    ) -> Result<(), TransactionServiceError>
-    {
+    pub async fn broadcast_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionServiceError> {
         let pending_inbound_txs = self.db.get_pending_inbound_transactions()?;
 
         let found_tx = pending_inbound_txs
@@ -606,6 +701,20 @@ where
                 message: "".to_string(),
                 timestamp: Utc::now().naive_utc(),
             })?;
+        #[cfg(feature = "c_integration")]
+        match self.get_completed_transactions() {
+            Ok(txs) => match txs.get(&found_tx.tx_id.clone()) {
+                Some(tx) => {
+                    let boxing = Box::into_raw(Box::new(tx.clone()));
+                    match self.callback_transaction_broadcast {
+                        Some(call) => unsafe { call(boxing) },
+                        None => {},
+                    }
+                },
+                None => {},
+            },
+            Err(_) => {},
+        }
 
         Ok(())
     }
