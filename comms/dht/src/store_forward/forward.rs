@@ -21,9 +21,10 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
+    broadcast_strategy::BroadcastStrategy,
     envelope::NodeDestination,
     inbound::DecryptedDhtMessage,
-    outbound::{BroadcastStrategy, OutboundMessageRequester},
+    outbound::OutboundMessageRequester,
     store_forward::error::StoreAndForwardError,
 };
 use futures::{task::Context, Future, Poll};
@@ -219,7 +220,7 @@ mod test {
         let peer_manager = make_peer_manager();
         let (oms_tx, mut oms_rx) = mpsc::channel(1);
         let oms = OutboundMessageRequester::new(oms_tx);
-        let mut service = ForwardLayer::new(peer_manager, oms).layer(spy.service::<MiddlewareError>());
+        let mut service = ForwardLayer::new(peer_manager, oms).layer(spy.to_service::<MiddlewareError>());
 
         let inbound_msg = make_dht_inbound_message(&make_node_identity(), b"".to_vec(), DhtMessageFlags::empty());
         let msg = DecryptedDhtMessage::succeeded(wrap_in_envelope_body!(Vec::new()).unwrap(), inbound_msg);
@@ -234,7 +235,7 @@ mod test {
         let peer_manager = make_peer_manager();
         let (oms_tx, mut oms_rx) = mpsc::channel(1);
         let oms = OutboundMessageRequester::new(oms_tx);
-        let mut service = ForwardLayer::new(peer_manager, oms).layer(spy.service::<MiddlewareError>());
+        let mut service = ForwardLayer::new(peer_manager, oms).layer(spy.to_service::<MiddlewareError>());
 
         let inbound_msg = make_dht_inbound_message(&make_node_identity(), b"".to_vec(), DhtMessageFlags::empty());
         let msg = DecryptedDhtMessage::failed(inbound_msg);

@@ -141,7 +141,8 @@ mod test {
     fn no_encryption() {
         let spy = service_spy();
         let node_identity = make_node_identity();
-        let mut encryption = EncryptionLayer::new(Arc::clone(&node_identity)).layer(spy.service::<MiddlewareError>());
+        let mut encryption =
+            EncryptionLayer::new(Arc::clone(&node_identity)).layer(spy.to_service::<MiddlewareError>());
 
         panic_context!(cx);
         assert!(encryption.poll_ready(&mut cx).is_ready());
@@ -171,7 +172,8 @@ mod test {
     fn encryption() {
         let spy = service_spy();
         let node_identity = make_node_identity();
-        let mut encryption = EncryptionLayer::new(Arc::clone(&node_identity)).layer(spy.service::<MiddlewareError>());
+        let mut encryption =
+            EncryptionLayer::new(Arc::clone(&node_identity)).layer(spy.to_service::<MiddlewareError>());
 
         panic_context!(cx);
         assert!(encryption.poll_ready(&mut cx).is_ready());

@@ -20,13 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::{broadcast_strategy::BroadcastStrategy, error::DhtOutboundError, message::DhtOutboundRequest};
+use super::{error::DhtOutboundError, message::DhtOutboundRequest};
 use crate::{
+    actor::DhtRequester,
     envelope::DhtMessageHeader,
     outbound::message::{DhtOutboundMessage, ForwardRequest, OutboundEncryption, SendMessageRequest},
-    DhtConfig,
 };
-use chrono::Utc;
 use futures::{
     future,
     stream::{self, StreamExt},
@@ -36,27 +35,22 @@ use futures::{
 };
 use log::*;
 use std::sync::Arc;
-use tari_comms::{
-    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerManager, PeerQuery, PeerQuerySortBy},
-    types::CommsPublicKey,
-};
+use tari_comms::peer_manager::{NodeIdentity, PeerFeatures};
 use tari_comms_middleware::MiddlewareError;
 use tower::{layer::Layer, Service, ServiceExt};
 
 const LOG_TARGET: &'static str = "comms::dht::outbound::broadcast_middleware";
 
 pub struct BroadcastLayer {
-    config: DhtConfig,
-    peer_manager: Arc<PeerManager>,
+    dht_requester: DhtRequester,
     node_identity: Arc<NodeIdentity>,
 }
 
 impl BroadcastLayer {
-    pub fn new(config: DhtConfig, node_identity: Arc<NodeIdentity>, peer_manager: Arc<PeerManager>) -> Self {
+    pub fn new(node_identity: Arc<NodeIdentity>, dht_requester: DhtRequester) -> Self {
         BroadcastLayer {
-            config,
             node_identity,
-            peer_manager,
+            dht_requester,
         }
     }
 }
@@ -65,12 +59,7 @@ impl<S> Layer<S> for BroadcastLayer {
     type Service = BroadcastMiddleware<S>;
 
     fn layer(&self, service: S) -> Self::Service {
-        BroadcastMiddleware::new(
-            service,
-            self.config.clone(),
-            Arc::clone(&self.peer_manager),
-            Arc::clone(&self.node_identity),
-        )
+        BroadcastMiddleware::new(service, self.dht_requester.clone(), Arc::clone(&self.node_identity))
     }
 }
 
@@ -79,23 +68,15 @@ impl<S> Layer<S> for BroadcastLayer {
 #[derive(Clone)]
 pub struct BroadcastMiddleware<S> {
     next: S,
-    config: DhtConfig,
-    peer_manager: Arc<PeerManager>,
+    dht_requester: DhtRequester,
     node_identity: Arc<NodeIdentity>,
 }
 
 impl<S> BroadcastMiddleware<S> {
-    pub fn new(
-        service: S,
-        config: DhtConfig,
-        peer_manager: Arc<PeerManager>,
-        node_identity: Arc<NodeIdentity>,
-    ) -> Self
-    {
+    pub fn new(service: S, dht_requester: DhtRequester, node_identity: Arc<NodeIdentity>) -> Self {
         Self {
             next: service,
-            config,
-            peer_manager,
+            dht_requester,
             node_identity,
         }
     }
@@ -116,8 +97,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError> + C
     fn call(&mut self, msg: DhtOutboundRequest) -> Self::Future {
         BroadcastTask::new(
             self.next.clone(),
-            self.config.clone(),
-            Arc::clone(&self.peer_manager),
+            self.dht_requester.clone(),
             Arc::clone(&self.node_identity),
             msg,
         )
@@ -127,9 +107,8 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError> + C
 
 struct BroadcastTask<S> {
     service: S,
-    peer_manager: Arc<PeerManager>,
+    dht_requester: DhtRequester,
     node_identity: Arc<NodeIdentity>,
-    config: DhtConfig,
     request: Option<DhtOutboundRequest>,
 }
 
@@ -138,16 +117,14 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
 {
     pub fn new(
         service: S,
-        config: DhtConfig,
-        peer_manager: Arc<PeerManager>,
+        dht_requester: DhtRequester,
         node_identity: Arc<NodeIdentity>,
         request: DhtOutboundRequest,
     ) -> Self
     {
         Self {
-            config,
             service,
-            peer_manager,
+            dht_requester,
             node_identity,
             request: Some(request),
         }
@@ -155,9 +132,8 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
 
     pub async fn handle(mut self) -> Result<(), MiddlewareError> {
         let request = self.request.take().expect("request cannot be None");
-        // TODO: use blocking threadpool to generate messages
         debug!(target: LOG_TARGET, "Processing outbound request {}", request);
-        let messages = self.generate_outbound_messages(request)?;
+        let messages = self.generate_outbound_messages(request).await?;
         debug!(
             target: LOG_TARGET,
             "Passing {} message(s) to next_service",
@@ -177,14 +153,14 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
         Ok(())
     }
 
-    pub fn generate_outbound_messages(
-        &self,
+    pub async fn generate_outbound_messages(
+        &mut self,
         msg: DhtOutboundRequest,
     ) -> Result<Vec<DhtOutboundMessage>, DhtOutboundError>
     {
         match msg {
             DhtOutboundRequest::SendMsg(request, reply_tx) => {
-                self.generate_send_messages(*request).and_then(|msgs| {
+                self.generate_send_messages(*request).await.and_then(|msgs| {
                     // Reply with the number of messages to be sent
                     let _ = reply_tx.send(msgs.len());
                     Ok(msgs)
@@ -192,7 +168,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
             },
             DhtOutboundRequest::Forward(request) => {
                 if self.node_identity.has_peer_features(PeerFeatures::MESSAGE_PROPAGATION) {
-                    self.generate_forward_messages(*request)
+                    self.generate_forward_messages(*request).await
                 } else {
                     debug!(
                         target: LOG_TARGET,
@@ -204,119 +180,8 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
         }
     }
 
-    fn get_broadcast_identities(&self, broadcast_strategy: BroadcastStrategy) -> Result<Vec<Peer>, DhtOutboundError> {
-        // TODO(sdbondi): We should return peers in this function. Look into if there is a reason for PeerNodeIdentity,
-        // if not, remove it
-        match broadcast_strategy {
-            BroadcastStrategy::DirectNodeId(node_id) => {
-                // Send to a particular peer matching the given node ID
-                self.peer_manager
-                    .direct_identity_node_id(&node_id)
-                    .map(|peer| peer.map(|p| vec![p]).unwrap_or_default())
-                    .map_err(Into::into)
-            },
-            BroadcastStrategy::DirectPublicKey(public_key) => {
-                // Send to a particular peer matching the given node ID
-                self.peer_manager
-                    .direct_identity_public_key(&public_key)
-                    .map(|peer| peer.map(|p| vec![p]).unwrap_or_default())
-                    .map_err(Into::into)
-            },
-            BroadcastStrategy::Flood => {
-                // Send to all known Communication Node peers
-                self.peer_manager.flood_peers().map_err(Into::into)
-            },
-            BroadcastStrategy::Closest(closest_request) => self.select_closest_peers(
-                &closest_request.node_id,
-                closest_request.n,
-                &closest_request.excluded_peers,
-            ),
-            BroadcastStrategy::Random(n) => {
-                // Send to a random set of peers of size n that are Communication Nodes
-                self.peer_manager.random_peers(n).map_err(Into::into)
-            },
-            BroadcastStrategy::Neighbours(exclude) => {
-                // Send to a random set of peers of size n that are Communication Nodes
-                self.select_closest_peers(
-                    self.node_identity.node_id(),
-                    self.config.num_neighbouring_nodes,
-                    &*exclude,
-                )
-            },
-        }
-    }
-
-    fn select_closest_peers(
-        &self,
-        node_id: &NodeId,
-        n: usize,
-        excluded_peers: &[CommsPublicKey],
-    ) -> Result<Vec<Peer>, DhtOutboundError>
-    {
-        // Fetch to all n nearest neighbour Communication Nodes
-        // which are eligible for connection.
-        // Currently that means:
-        // - The peer isn't banned,
-        // - it didn't recently fail to connect, and
-        // - it is not in the exclusion list in closest_request
-        let reconnect_cooldown_period = chrono::Duration::minutes(30);
-        let mut connect_ineligable_count = 0;
-        let mut banned_count = 0;
-        let mut excluded_count = 0;
-        let query = PeerQuery::new()
-            .select_where(|peer| {
-                // This is a quite ugly but is done this way to get the logging
-                let is_banned = peer.is_banned();
-
-                if is_banned {
-                    banned_count += 1;
-                    return false;
-                }
-
-                let is_connect_eligible = {
-                    peer.connection_stats.last_connect_failed_at
-                            // Did we fail to connect in the last 30 minutes?
-                            .map(|failed_at| Utc::now().naive_utc() - failed_at >= reconnect_cooldown_period)
-                            .unwrap_or(true)
-                };
-
-                if !is_connect_eligible {
-                    connect_ineligable_count += 1;
-                    return false;
-                }
-
-                let is_excluded = excluded_peers.contains(&peer.public_key);
-                if is_excluded {
-                    excluded_count += 1;
-                    return false;
-                }
-
-                true
-            })
-            .sort_by(PeerQuerySortBy::DistanceFrom(&node_id))
-            .limit(n);
-
-        let peers = self.peer_manager.perform_query(query)?;
-
-        let total = banned_count + connect_ineligable_count + excluded_count;
-        if total > 0 {
-            debug!(
-                target: LOG_TARGET,
-                "\n====================================\n {total} peer(s) were excluded from closest query\n {banned} \
-                 banned\n {not_connectable} are not connectable\n {excluded} \
-                 excluded\n====================================\n",
-                total = total,
-                banned = banned_count,
-                not_connectable = connect_ineligable_count,
-                excluded = excluded_count
-            );
-        }
-
-        Ok(peers)
-    }
-
-    fn generate_send_messages(
-        &self,
+    async fn generate_send_messages(
+        &mut self,
         send_message_request: SendMessageRequest,
     ) -> Result<Vec<DhtOutboundMessage>, DhtOutboundError>
     {
@@ -332,7 +197,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
 
         // Use the BroadcastStrategy to select appropriate peer(s) from PeerManager and then construct and send a
         // individually wrapped MessageEnvelope to each selected peer
-        let selected_node_identities = self.get_broadcast_identities(broadcast_strategy)?;
+        let selected_node_identities = self.dht_requester.select_peers(broadcast_strategy).await?;
 
         // Create a DHT header
         let dht_header = DhtMessageHeader::new(
@@ -357,8 +222,8 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
         Ok(messages)
     }
 
-    fn generate_forward_messages(
-        &self,
+    async fn generate_forward_messages(
+        &mut self,
         forward_request: ForwardRequest,
     ) -> Result<Vec<DhtOutboundMessage>, DhtOutboundError>
     {
@@ -370,7 +235,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
         } = forward_request;
         // Use the BroadcastStrategy to select appropriate peer(s) from PeerManager and then forward the
         // received message to each selected peer
-        let selected_node_identities = self.get_broadcast_identities(broadcast_strategy)?;
+        let selected_node_identities = self.dht_requester.select_peers(broadcast_strategy).await?;
 
         let messages = selected_node_identities
             .into_iter()
@@ -394,14 +259,14 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
 mod test {
     use super::*;
     use crate::{
+        broadcast_strategy::BroadcastStrategy,
         envelope::{DhtMessageFlags, NodeDestination},
         outbound::message::OutboundEncryption,
         proto::envelope::DhtMessageType,
-        test_utils::{make_peer_manager, service_fn, service_spy},
+        test_utils::{create_dht_actor_mock, service_spy, DhtMockState},
     };
-    use futures::{channel::oneshot, future};
+    use futures::channel::oneshot;
     use rand::rngs::OsRng;
-    use std::sync::Mutex;
     use tari_comms::{
         connection::NetAddress,
         message::MessageFlags,
@@ -415,7 +280,6 @@ mod test {
     fn send_message_flood() {
         let rt = Runtime::new().unwrap();
 
-        let peer_manager = make_peer_manager();
         let pk = CommsPublicKey::default();
         let example_peer = Peer::new(
             pk.clone(),
@@ -424,7 +288,7 @@ mod test {
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_NODE,
         );
-        peer_manager.add_peer(example_peer.clone()).unwrap();
+
         let other_peer = {
             let mut p = example_peer.clone();
             let (_, pk) = CommsPublicKey::random_keypair(&mut OsRng::new().unwrap());
@@ -432,26 +296,27 @@ mod test {
             p.public_key = pk;
             p
         };
-        peer_manager.add_peer(other_peer.clone()).unwrap();
-        let node_identity = NodeIdentity::random(
-            &mut OsRng::new().unwrap(),
-            "127.0.0.1:9000".parse().unwrap(),
-            PeerFeatures::COMMUNICATION_NODE,
-        )
-        .unwrap();
 
-        let response = Arc::new(Mutex::new(Vec::new()));
-        let next_service = service_fn(|out_msg: DhtOutboundMessage| {
-            response.clone().lock().unwrap().push(out_msg);
-            future::ready(Result::<_, MiddlewareError>::Ok(()))
-        });
-
-        let mut service = BroadcastMiddleware::new(
-            next_service,
-            DhtConfig::default(),
-            peer_manager,
-            Arc::new(node_identity),
+        let node_identity = Arc::new(
+            NodeIdentity::random(
+                &mut OsRng::new().unwrap(),
+                "127.0.0.1:9000".parse().unwrap(),
+                PeerFeatures::COMMUNICATION_NODE,
+            )
+            .unwrap(),
         );
+
+        let (dht_requester, mut dht_mock) = create_dht_actor_mock(10);
+
+        let mock_state = DhtMockState::new();
+        mock_state.set_select_peers_response(vec![example_peer.clone(), other_peer.clone()]);
+        dht_mock.set_shared_state(mock_state);
+
+        rt.spawn(dht_mock.run());
+
+        let spy = service_spy();
+
+        let mut service = BroadcastMiddleware::new(spy.to_service(), dht_requester, node_identity);
         let (reply_tx, _reply_rx) = oneshot::channel();
 
         rt.block_on(service.call(DhtOutboundRequest::SendMsg(
@@ -469,12 +334,12 @@ mod test {
         .unwrap();
 
         {
-            let lock = response.lock().unwrap();
-            assert_eq!(lock.len(), 2);
-            assert!(lock
+            assert_eq!(spy.call_count(), 2);
+            let requests = spy.take_requests();
+            assert!(requests
                 .iter()
                 .any(|msg| msg.destination_peer.node_id == example_peer.node_id));
-            assert!(lock
+            assert!(requests
                 .iter()
                 .any(|msg| msg.destination_peer.node_id == other_peer.node_id));
         }
@@ -485,7 +350,6 @@ mod test {
         // Test for issue https://github.com/tari-project/tari/issues/959
         let rt = Runtime::new().unwrap();
 
-        let peer_manager = make_peer_manager();
         let pk = CommsPublicKey::default();
         let node_identity = NodeIdentity::random(
             &mut OsRng::new().unwrap(),
@@ -494,14 +358,12 @@ mod test {
         )
         .unwrap();
 
+        let (dht_requester, dht_mock) = create_dht_actor_mock(10);
+        rt.spawn(dht_mock.run());
+
         let spy = service_spy();
 
-        let mut service = BroadcastMiddleware::new(
-            spy.service(),
-            DhtConfig::default(),
-            peer_manager,
-            Arc::new(node_identity),
-        );
+        let mut service = BroadcastMiddleware::new(spy.to_service(), dht_requester, Arc::new(node_identity));
         let (reply_tx, reply_rx) = oneshot::channel();
 
         rt.block_on(service.call(DhtOutboundRequest::SendMsg(

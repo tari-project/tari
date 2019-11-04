@@ -43,7 +43,7 @@ pub enum BroadcastStrategy {
     /// Send to all n nearest Communication Nodes according to the given BroadcastClosestRequest
     Closest(Box<BroadcastClosestRequest>),
     /// A convenient strategy which behaves the same as the `Closest` strategy with the `NodeId` set
-    /// to this node. This strategy excludes the given public keys.
+    /// to this node and a pre-configured number of neighbours. This strategy excludes the given public keys.
     Neighbours(Box<Vec<CommsPublicKey>>),
 }
 

@@ -93,6 +93,7 @@ impl Dht {
         DhtActor::new(
             self.config.clone(),
             Arc::clone(&self.node_identity),
+            Arc::clone(&self.peer_manager),
             self.outbound_requester(),
             request_receiver,
             shutdown_signal,
@@ -189,9 +190,8 @@ impl Dht {
     {
         ServiceBuilder::new()
             .layer(outbound::BroadcastLayer::new(
-                self.config.clone(),
                 Arc::clone(&self.node_identity),
-                Arc::clone(&self.peer_manager),
+                self.dht_requester(),
             ))
             .layer(outbound::EncryptionLayer::new(Arc::clone(&self.node_identity)))
             .layer(outbound::SerializeLayer::new(Arc::clone(&self.node_identity)))
@@ -266,8 +266,6 @@ mod test {
             rt.executor(),
             shutdown.to_signal(),
         )
-        // No outbound middleware running, so the DhtActor locks up when sending outbound messages
-        .enable_auto_messages(false)
         .finish();
 
         let (out_tx, mut out_rx) = mpsc::channel(10);
@@ -308,8 +306,6 @@ mod test {
             rt.executor(),
             shutdown.to_signal(),
         )
-        // No outbound middleware running, so the DhtActor locks up when sending outbound messages
-        .enable_auto_messages(false)
         .finish();
 
         let (out_tx, mut out_rx) = mpsc::channel(10);
@@ -349,8 +345,6 @@ mod test {
             rt.executor(),
             shutdown.to_signal(),
         )
-        // Do not want to have the auto join interfering by sending on the outbound requester
-        .enable_auto_messages(false)
         .finish();
 
         let rt = Runtime::new().unwrap();
@@ -408,7 +402,6 @@ mod test {
             rt.executor(),
             shutdown.to_signal(),
         )
-        .enable_auto_messages(false)
         .finish();
 
         let (next_service_tx, mut next_service_rx) = mpsc::channel(10);

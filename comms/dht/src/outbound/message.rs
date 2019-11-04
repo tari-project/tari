@@ -20,8 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::broadcast_strategy::BroadcastStrategy;
 use crate::{
+    broadcast_strategy::BroadcastStrategy,
     envelope::{DhtMessageFlags, DhtMessageHeader, NodeDestination},
     proto::envelope::DhtMessageType,
 };

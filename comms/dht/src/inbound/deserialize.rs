@@ -134,7 +134,7 @@ mod test {
     #[test]
     fn deserialize() {
         let spy = service_spy();
-        let mut deserialize = DeserializeLayer::new().layer(spy.service::<MiddlewareError>());
+        let mut deserialize = DeserializeLayer::new().layer(spy.to_service::<MiddlewareError>());
 
         panic_context!(cx);
 

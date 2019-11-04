@@ -127,11 +127,12 @@ mod test {
         let spy = service_spy();
 
         let (dht_requester, mut mock) = create_dht_actor_mock(1);
-        let mock_state = DhtMockState::new().set_signature_cache_insert(false);
+        let mock_state = DhtMockState::new();
+        mock_state.set_signature_cache_insert(false);
         mock.set_shared_state(mock_state.clone());
         rt.spawn(mock.run());
 
-        let mut dedup = DedupLayer::new(dht_requester).layer(spy.service::<MiddlewareError>());
+        let mut dedup = DedupLayer::new(dht_requester).layer(spy.to_service::<MiddlewareError>());
 
         panic_context!(cx);
 

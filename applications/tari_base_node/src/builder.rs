@@ -109,7 +109,7 @@ pub fn load_identity(path: &Path, _control_addr: &str) -> Result<NodeIdentity, S
     Ok(id)
 }
 
-fn new_node_id(pk: PrivateKey, control_addr: &str) -> Result<NodeIdentity, String> {
+fn new_node_id(private_key: PrivateKey, control_addr: &str) -> Result<NodeIdentity, String> {
     let address = control_addr.parse::<NetAddress>().map_err(|e| {
         format!(
             "Error. '{}' is not a valid control port address. {}",
@@ -117,9 +117,8 @@ fn new_node_id(pk: PrivateKey, control_addr: &str) -> Result<NodeIdentity, Strin
             e.to_string()
         )
     })?;
-    let pubkey = PublicKey::from_secret_key(&pk);
     let features = PeerFeatures::COMMUNICATION_NODE;
-    NodeIdentity::new(pk, address, features)
+    NodeIdentity::new(private_key, address, features)
         .map_err(|e| format!("We were unable to construct a node identity. {}", e.to_string()))
 }
 

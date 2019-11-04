@@ -121,12 +121,14 @@ mod consts;
 mod dht;
 mod proto;
 
+pub mod broadcast_strategy;
 pub mod domain_message;
 pub mod envelope;
 pub mod inbound;
 pub mod outbound;
 pub mod store_forward;
 
+pub use actor::{DhtActorError, DhtRequest, DhtRequester};
 pub use builder::DhtBuilder;
 pub use config::DhtConfig;
 pub use dht::Dht;

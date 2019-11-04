@@ -22,10 +22,11 @@
 
 use crate::{
     actor::DhtRequester,
+    broadcast_strategy::BroadcastStrategy,
     config::DhtConfig,
     envelope::{DhtMessageFlags, DhtMessageHeader, NodeDestination},
     inbound::{DecryptedDhtMessage, DhtInboundMessage},
-    outbound::{BroadcastStrategy, OutboundEncryption, OutboundMessageRequester},
+    outbound::{OutboundEncryption, OutboundMessageRequester},
     proto::{
         envelope::{DhtMessageType, NodeDestinationType},
         store_forward::{StoredMessage, StoredMessagesRequest, StoredMessagesResponse},
@@ -476,7 +477,7 @@ mod test {
 
             let task = MessageHandlerTask::new(
                 Default::default(),
-                spy.service::<MiddlewareError>(),
+                spy.to_service::<MiddlewareError>(),
                 storage,
                 dht_requester,
                 peer_manager,
@@ -553,7 +554,7 @@ mod test {
 
             let task = MessageHandlerTask::new(
                 Default::default(),
-                spy.service::<MiddlewareError>(),
+                spy.to_service::<MiddlewareError>(),
                 storage,
                 dht_requester,
                 peer_manager,

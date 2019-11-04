@@ -57,9 +57,10 @@ use std::{
     time::{Duration, Instant},
 };
 use tari_comms_dht::{
+    broadcast_strategy::BroadcastStrategy,
     domain_message::OutboundDomainMessage,
     envelope::NodeDestination,
-    outbound::{BroadcastStrategy, OutboundEncryption, OutboundMessageRequester},
+    outbound::{OutboundEncryption, OutboundMessageRequester},
 };
 use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
 use tari_service_framework::RequestContext;
@@ -259,9 +260,8 @@ where B: BlockchainBackend
         };
 
         self.outbound_message_service
-            .send_message(
-                BroadcastStrategy::DirectPublicKey(origin_pubkey.clone()),
-                NodeDestination::PublicKey(origin_pubkey),
+            .send_direct(
+                origin_pubkey,
                 OutboundEncryption::EncryptForDestination,
                 OutboundDomainMessage::new(TariMessageType::BaseNodeResponse, message),
             )

@@ -50,8 +50,7 @@ use std::{
 };
 use tari_comms::{
     control_service::ControlServiceConfig,
-    peer_manager::{NodeIdentity, Peer, PeerFlags},
-    types::CommsPublicKey,
+    peer_manager::{NodeId, NodeIdentity, Peer, PeerFlags},
 };
 use tari_p2p::{
     comms_connector::pubsub_connector,
@@ -158,9 +157,11 @@ fn main() {
         .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))
         .add_initializer(LivenessInitializer::new(
             LivenessConfig {
-                auto_ping_interval: Some(Duration::from_secs(10)),
+                auto_ping_interval: None,
+                ..Default::default()
             },
             Arc::clone(&subscription_factory),
+            dht.dht_requester(),
         ))
         .finish();
 
@@ -185,12 +186,12 @@ fn main() {
     });
 
     let ui_update_signal = app.cb_sink().clone();
-    let pk_to_ping = peer_identity.public_key().clone();
+    let node_to_ping = peer_identity.node_id().clone();
     rt.spawn(send_ping_on_trigger(
         send_ping_rx.fuse(),
         ui_update_signal,
         liveness_handle,
-        pk_to_ping,
+        node_to_ping,
         shutdown.to_signal(),
     ));
 
@@ -213,10 +214,19 @@ fn setup_ui() -> Cursive {
 
     app
 }
+
+#[derive(Default)]
+struct UiState {
+    num_pings_sent: usize,
+    num_pings_recv: usize,
+    num_pongs_recv: usize,
+    avg_latency: u32,
+}
+
 lazy_static! {
     /// Used to keep track of the counts displayed in the UI
     /// (sent ping count, recv ping count, recv pong count)
-    static ref COUNTER_STATE: Arc<RwLock<(usize, usize, usize)>> = Arc::new(RwLock::new((0, 0, 0)));
+    static ref UI_STATE: Arc<RwLock<UiState>> = Arc::new(Default::default());
 }
 type CursiveSignal = crossbeam_channel::Sender<Box<dyn CbFunc>>;
 
@@ -226,8 +236,13 @@ async fn update_ui(update_sink: CursiveSignal, mut liveness_handle: LivenessHand
     let pong_count = liveness_handle.get_pong_count().await.unwrap_or(0);
 
     {
-        let mut lock = COUNTER_STATE.write().unwrap();
-        *lock = (lock.0, ping_count, pong_count);
+        let mut lock = UI_STATE.write().unwrap();
+        *lock = UiState {
+            num_pings_sent: lock.num_pings_sent,
+            num_pings_recv: ping_count,
+            num_pongs_recv: pong_count,
+            avg_latency: 0,
+        };
     }
     let _ = update_sink.send(Box::new(update_count));
 
@@ -237,14 +252,24 @@ async fn update_ui(update_sink: CursiveSignal, mut liveness_handle: LivenessHand
                 match *event {
                     LivenessEvent::ReceivedPing => {
                         {
-                            let mut lock = COUNTER_STATE.write().unwrap();
-                            *lock = (lock.0, lock.1 + 1, lock.2);
+                            let mut lock = UI_STATE.write().unwrap();
+                             *lock = UiState {
+                                num_pings_sent: lock.num_pings_sent,
+                                num_pings_recv: lock.num_pings_recv + 1,
+                                num_pongs_recv: lock.num_pongs_recv,
+                                avg_latency: lock.avg_latency,
+                            };
                         }
                     },
-                    LivenessEvent::ReceivedPong => {
+                    LivenessEvent::ReceivedPong(avg_latency) => {
                         {
-                            let mut lock = COUNTER_STATE.write().unwrap();
-                            *lock = (lock.0, lock.1, lock.2 + 1);
+                            let mut lock = UI_STATE.write().unwrap();
+                            *lock = UiState {
+                                num_pings_sent: lock.num_pings_sent,
+                                num_pings_recv: lock.num_pings_recv,
+                                num_pongs_recv: lock.num_pongs_recv + 1,
+                                avg_latency: avg_latency.unwrap_or(0),
+                            };
                         }
                     },
                 }
@@ -262,18 +287,23 @@ async fn send_ping_on_trigger(
     mut send_ping_trigger: impl Stream<Item = ()> + FusedStream + Unpin,
     update_signal: CursiveSignal,
     mut liveness_handle: LivenessHandle,
-    pk_to_ping: CommsPublicKey,
+    node_to_ping: NodeId,
     mut shutdown: ShutdownSignal,
 )
 {
     loop {
         futures::select! {
             _ = send_ping_trigger.next() => {
-                liveness_handle.send_ping(pk_to_ping.clone()).await.unwrap();
+                liveness_handle.send_ping(node_to_ping.clone()).await.unwrap();
 
                 {
-                    let mut lock = COUNTER_STATE.write().unwrap();
-                    *lock = (lock.0 + 1, lock.1, lock.2);
+                    let mut lock = UI_STATE.write().unwrap();
+                    *lock = UiState {
+                        num_pings_sent: lock.num_pings_sent + 1,
+                        num_pings_recv: lock.num_pings_recv,
+                        num_pongs_recv: lock.num_pongs_recv,
+                        avg_latency: lock.avg_latency,
+                    };
                 }
                 update_signal.send(Box::new(update_count)).unwrap();
             },
@@ -285,10 +315,10 @@ async fn send_ping_on_trigger(
 }
 fn update_count(s: &mut Cursive) {
     s.call_on_id("counter", move |view: &mut TextView| {
-        let lock = COUNTER_STATE.read().unwrap();
+        let lock = UI_STATE.read().unwrap();
         view.set_content(format!(
-            "Pings sent: {}\nPings Received: {}\nPongs Received: {}\n\n(p) Send ping (q) Quit",
-            lock.0, lock.1, lock.2
+            "Pings sent: {}\nPings Received: {}\nPongs Received: {}\nAvg. Latency: {}ms\n\n(p) Send ping (q) Quit",
+            lock.num_pings_sent, lock.num_pings_recv, lock.num_pongs_recv, lock.avg_latency
         ));
     });
     s.set_autorefresh(true);

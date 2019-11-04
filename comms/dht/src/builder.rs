@@ -68,22 +68,6 @@ impl DhtBuilder {
         self
     }
 
-    pub fn enable_auto_join(mut self, enable: bool) -> Self {
-        self.config.enable_auto_join = enable;
-        self
-    }
-
-    pub fn enable_auto_stored_message_request(mut self, enable: bool) -> Self {
-        self.config.enable_auto_stored_message_request = enable;
-        self
-    }
-
-    pub fn enable_auto_messages(mut self, enable: bool) -> Self {
-        self.config.enable_auto_join = enable;
-        self.config.enable_auto_stored_message_request = enable;
-        self
-    }
-
     pub fn with_signature_cache_ttl(mut self, ttl: Duration) -> Self {
         self.config.signature_cache_ttl = ttl;
         self

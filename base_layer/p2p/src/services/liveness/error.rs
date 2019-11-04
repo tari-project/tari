@@ -22,12 +22,13 @@
 
 use derive_error::Error;
 use tari_comms::message::MessageError;
-use tari_comms_dht::outbound::DhtOutboundError;
+use tari_comms_dht::{outbound::DhtOutboundError, DhtActorError};
 use tari_service_framework::reply_channel::TransportChannelError;
 
 #[derive(Debug, Error)]
 pub enum LivenessError {
     DhtOutboundError(DhtOutboundError),
+    DhtActorError(DhtActorError),
     /// Failed to send a pong message
     SendPongFailed,
     /// Failed to send a ping message

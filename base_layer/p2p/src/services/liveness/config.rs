@@ -27,12 +27,18 @@ use std::time::Duration;
 pub struct LivenessConfig {
     /// The interval to send Ping messages, or None to disable periodic pinging (default: None (disabled))
     pub auto_ping_interval: Option<Duration>,
+    /// Set to true to enable automatically joining the network on node startup (default: true)
+    pub enable_auto_join: bool,
+    /// Set to true to enable a request for stored messages on node startup (default: true)
+    pub enable_auto_stored_message_request: bool,
 }
 
 impl Default for LivenessConfig {
     fn default() -> Self {
         Self {
             auto_ping_interval: None,
+            enable_auto_join: true,
+            enable_auto_stored_message_request: true,
         }
     }
 }

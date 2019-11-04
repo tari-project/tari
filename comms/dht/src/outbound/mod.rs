@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod broadcast;
-mod broadcast_strategy;
 mod encryption;
 mod error;
 mod message;
@@ -32,7 +31,6 @@ pub mod mock;
 
 pub use self::{
     broadcast::BroadcastLayer,
-    broadcast_strategy::{BroadcastClosestRequest, BroadcastStrategy},
     encryption::EncryptionLayer,
     error::DhtOutboundError,
     message::{DhtOutboundRequest, OutboundEncryption},

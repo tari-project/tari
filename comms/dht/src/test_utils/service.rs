@@ -60,7 +60,7 @@ where TReq: 'static
         self.requests.lock().unwrap().clear();
     }
 
-    pub fn service<TErr>(
+    pub fn to_service<TErr>(
         &self,
     ) -> impl Service<TReq, Response = (), Error = TErr, Future = impl Future<Output = Result<(), TErr>>> + Clone {
         let req_inner = Arc::clone(&self.requests);

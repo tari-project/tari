@@ -40,7 +40,6 @@ impl StoredMessagesRequest {
         Self { since: None }
     }
 
-    #[cfg(test)]
     pub fn since(since: DateTime<Utc>) -> Self {
         Self {
             since: Some(datetime_to_timestamp(since)),

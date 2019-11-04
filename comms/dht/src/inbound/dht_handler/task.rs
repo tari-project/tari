@@ -21,10 +21,11 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
+    broadcast_strategy::{BroadcastClosestRequest, BroadcastStrategy},
     config::DhtConfig,
     envelope::NodeDestination,
     inbound::{error::DhtInboundError, message::DecryptedDhtMessage},
-    outbound::{BroadcastClosestRequest, BroadcastStrategy, OutboundEncryption, OutboundMessageRequester},
+    outbound::{OutboundEncryption, OutboundMessageRequester},
     proto::{
         dht::{DiscoverMessage, JoinMessage},
         envelope::DhtMessageType,
@@ -237,7 +238,7 @@ where
             .expect("already checked that this message decrypted successfully");
 
         let discover_msg = msg
-            .decode_part::<DiscoverMessage>(1)?
+            .decode_part::<DiscoverMessage>(0)?
             .ok_or(DhtInboundError::InvalidMessageBody)?;
 
         let addresses = discover_msg
