@@ -432,7 +432,7 @@ impl ControlServiceWorker {
     }
 
     fn should_reject_collision(&self, node_id: &NodeId) -> bool {
-        &self.node_identity.identity.node_id < node_id
+        self.node_identity.node_id() < node_id
     }
 
     fn reject_connection(
@@ -530,7 +530,7 @@ impl ControlServiceWorker {
     }
 
     fn decrypt_body(&self, body: &Vec<u8>, public_key: &CommsPublicKey) -> Result<Vec<u8>> {
-        let ecdh_shared_secret = crypt::generate_ecdh_secret(&self.node_identity.secret_key, public_key);
+        let ecdh_shared_secret = crypt::generate_ecdh_secret(self.node_identity.secret_key(), public_key);
         crypt::decrypt(&ecdh_shared_secret, &body).map_err(ControlServiceError::CipherError)
     }
 

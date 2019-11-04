@@ -68,8 +68,8 @@ fn with_alice_and_bob(cb: impl FnOnce(CommsTestNode, CommsTestNode)) {
 
     let bob_peer = factories::peer::create()
         .with_net_addresses(vec![bob_control_port_address.clone()])
-        .with_public_key(bob_identity.identity.public_key.clone())
-        .with_node_id(bob_identity.identity.node_id.clone())
+        .with_public_key(bob_identity.public_key().clone())
+        .with_node_id(bob_identity.node_id().clone())
         .build()
         .unwrap();
 
@@ -138,8 +138,8 @@ fn with_alice_and_bob(cb: impl FnOnce(CommsTestNode, CommsTestNode)) {
 
     let alice_peer = factories::peer::create()
         .with_net_addresses(vec![alice_control_port_address])
-        .with_public_key(alice_identity.identity.public_key.clone())
-        .with_node_id(alice_identity.identity.node_id.clone())
+        .with_public_key(alice_identity.public_key().clone())
+        .with_node_id(alice_identity.node_id().clone())
         .build()
         .unwrap();
 
@@ -191,7 +191,7 @@ fn establish_connection_simple() {
         rt.spawn(service.start());
 
         let conn = rt
-            .block_on(requester.dial_node(bob.node_identity.identity.node_id.clone()))
+            .block_on(requester.dial_node(bob.node_identity.node_id().clone()))
             .unwrap();
 
         assert!(conn.is_active());
@@ -220,8 +220,8 @@ fn establish_connection_simultaneous_connect() {
         bob.peer_manager.add_peer(alice.peer.clone()).unwrap();
         rt.spawn(service.start());
 
-        let alice_node_id = alice.node_identity.identity.node_id.clone();
-        let bob_node_id = bob.node_identity.identity.node_id.clone();
+        let alice_node_id = alice.node_identity.node_id().clone();
+        let bob_node_id = bob.node_identity.node_id().clone();
 
         let mut attempt_count = 0;
         loop {

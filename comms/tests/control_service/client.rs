@@ -44,14 +44,14 @@ fn send_ping_recv_pong() {
 
     let out_client = ControlServiceClient::new(
         node_identity_1.clone(),
-        node_identity_2.identity.public_key.clone(),
+        node_identity_2.public_key().clone(),
         outbound_conn,
     );
     out_client.send_ping().unwrap();
 
     let in_client = ControlServiceClient::new(
         node_identity_2.clone(),
-        node_identity_1.identity.public_key.clone(),
+        node_identity_1.public_key().clone(),
         inbound_conn,
     );
 

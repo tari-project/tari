@@ -107,7 +107,7 @@ fn outbound_message_pool_no_retry() {
     let node_B_peer = factories::peer::create()
         .with_net_addresses(vec![node_B_control_port_address.clone()])
         // Set node B's secret key to be the same as node A's so that we can generate the same shared secret
-        .with_public_key(node_identity.identity.public_key.clone())
+        .with_public_key(node_identity.public_key().clone())
         .build()
         .unwrap();
 
@@ -234,7 +234,7 @@ fn test_outbound_message_pool_fail_and_retry() {
     let node_B_peer = factories::peer::create()
         .with_net_addresses(vec![node_B_control_port_address.clone()])
         // Set node B's secret key to be the same as node A's so that we can generate the same shared secret
-        .with_public_key(node_B_identity.identity.public_key.clone())
+        .with_public_key(node_B_identity.public_key().clone())
         .build()
         .unwrap();
 

@@ -37,7 +37,7 @@ use futures::{
 use log::*;
 use std::sync::Arc;
 use tari_comms::{
-    peer_manager::{NodeId, NodeIdentity, PeerFeatures, PeerManager, PeerNodeIdentity, PeerQuery, PeerQuerySortBy},
+    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerManager, PeerQuery, PeerQuerySortBy},
     types::CommsPublicKey,
 };
 use tari_comms_middleware::MiddlewareError;
@@ -204,11 +204,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
         }
     }
 
-    fn get_broadcast_identities(
-        &self,
-        broadcast_strategy: BroadcastStrategy,
-    ) -> Result<Vec<PeerNodeIdentity>, DhtOutboundError>
-    {
+    fn get_broadcast_identities(&self, broadcast_strategy: BroadcastStrategy) -> Result<Vec<Peer>, DhtOutboundError> {
         // TODO(sdbondi): We should return peers in this function. Look into if there is a reason for PeerNodeIdentity,
         // if not, remove it
         match broadcast_strategy {
@@ -216,19 +212,19 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
                 // Send to a particular peer matching the given node ID
                 self.peer_manager
                     .direct_identity_node_id(&node_id)
-                    .map(|peer| vec![peer])
+                    .map(|peer| peer.map(|p| vec![p]).unwrap_or_default())
                     .map_err(Into::into)
             },
             BroadcastStrategy::DirectPublicKey(public_key) => {
                 // Send to a particular peer matching the given node ID
                 self.peer_manager
                     .direct_identity_public_key(&public_key)
-                    .map(|peer| vec![peer])
+                    .map(|peer| peer.map(|p| vec![p]).unwrap_or_default())
                     .map_err(Into::into)
             },
             BroadcastStrategy::Flood => {
                 // Send to all known Communication Node peers
-                self.peer_manager.flood_identities().map_err(Into::into)
+                self.peer_manager.flood_peers().map_err(Into::into)
             },
             BroadcastStrategy::Closest(closest_request) => self.select_closest_peers(
                 &closest_request.node_id,
@@ -237,7 +233,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
             ),
             BroadcastStrategy::Random(n) => {
                 // Send to a random set of peers of size n that are Communication Nodes
-                self.peer_manager.random_identities(n).map_err(Into::into)
+                self.peer_manager.random_peers(n).map_err(Into::into)
             },
             BroadcastStrategy::Neighbours(exclude) => {
                 // Send to a random set of peers of size n that are Communication Nodes
@@ -255,7 +251,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
         node_id: &NodeId,
         n: usize,
         excluded_peers: &[CommsPublicKey],
-    ) -> Result<Vec<PeerNodeIdentity>, DhtOutboundError>
+    ) -> Result<Vec<Peer>, DhtOutboundError>
     {
         // Fetch to all n nearest neighbour Communication Nodes
         // which are eligible for connection.
@@ -316,8 +312,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
             );
         }
 
-        // TODO: Fix up if PeerNodeIdentity is not needed
-        Ok(peers.into_iter().map(Into::into).collect())
+        Ok(peers)
     }
 
     fn generate_send_messages(
@@ -354,14 +349,8 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
         // Construct a MessageEnvelope for each recipient
         let messages = selected_node_identities
             .into_iter()
-            .map(|peer_node_identity| {
-                DhtOutboundMessage::new(
-                    peer_node_identity,
-                    dht_header.clone(),
-                    encryption.clone(),
-                    comms_flags,
-                    body.clone(),
-                )
+            .map(|peer| {
+                DhtOutboundMessage::new(peer, dht_header.clone(), encryption.clone(), comms_flags, body.clone())
             })
             .collect::<Vec<_>>();
 
@@ -385,9 +374,9 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
 
         let messages = selected_node_identities
             .into_iter()
-            .map(|peer_node_identity| {
+            .map(|peer| {
                 DhtOutboundMessage::new(
-                    peer_node_identity,
+                    peer,
                     dht_header.clone(),
                     // Forwarding the message as is, no encryption
                     OutboundEncryption::None,
@@ -408,7 +397,7 @@ mod test {
         envelope::{DhtMessageFlags, NodeDestination},
         outbound::message::OutboundEncryption,
         proto::envelope::DhtMessageType,
-        test_utils::{make_peer_manager, service_fn},
+        test_utils::{make_peer_manager, service_fn, service_spy},
     };
     use futures::{channel::oneshot, future};
     use rand::rngs::OsRng;
@@ -484,10 +473,54 @@ mod test {
             assert_eq!(lock.len(), 2);
             assert!(lock
                 .iter()
-                .any(|msg| msg.peer_node_identity.node_id == example_peer.node_id));
+                .any(|msg| msg.destination_peer.node_id == example_peer.node_id));
             assert!(lock
                 .iter()
-                .any(|msg| msg.peer_node_identity.node_id == other_peer.node_id));
+                .any(|msg| msg.destination_peer.node_id == other_peer.node_id));
         }
+    }
+
+    #[test]
+    fn send_message_direct_not_found() {
+        // Test for issue https://github.com/tari-project/tari/issues/959
+        let rt = Runtime::new().unwrap();
+
+        let peer_manager = make_peer_manager();
+        let pk = CommsPublicKey::default();
+        let node_identity = NodeIdentity::random(
+            &mut OsRng::new().unwrap(),
+            "127.0.0.1:9000".parse().unwrap(),
+            PeerFeatures::COMMUNICATION_NODE,
+        )
+        .unwrap();
+
+        let spy = service_spy();
+
+        let mut service = BroadcastMiddleware::new(
+            spy.service(),
+            DhtConfig::default(),
+            peer_manager,
+            Arc::new(node_identity),
+        );
+        let (reply_tx, reply_rx) = oneshot::channel();
+
+        rt.block_on(service.call(DhtOutboundRequest::SendMsg(
+            Box::new(SendMessageRequest {
+                broadcast_strategy: BroadcastStrategy::DirectPublicKey(pk),
+                comms_flags: MessageFlags::NONE,
+                destination: NodeDestination::Unknown,
+                encryption: OutboundEncryption::None,
+                dht_message_type: DhtMessageType::None,
+                dht_flags: DhtMessageFlags::NONE,
+                body: "custom_msg".as_bytes().to_vec(),
+            }),
+            reply_tx,
+        )))
+        .unwrap();
+
+        let num_peers_selected = rt.block_on(reply_rx).unwrap();
+        assert_eq!(num_peers_selected, 0);
+
+        assert_eq!(spy.call_count(), 0);
     }
 }

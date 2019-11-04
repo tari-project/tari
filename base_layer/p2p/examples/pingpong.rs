@@ -146,8 +146,8 @@ fn main() {
     let (comms, dht) = initialize_comms(rt.executor(), comms_config, publisher).unwrap();
 
     let peer = Peer::new(
-        peer_identity.identity.public_key.clone(),
-        peer_identity.identity.node_id.clone(),
+        peer_identity.public_key().clone(),
+        peer_identity.node_id().clone(),
         peer_identity.control_service_address().into(),
         PeerFlags::empty(),
         peer_identity.features().clone(),
@@ -185,7 +185,7 @@ fn main() {
     });
 
     let ui_update_signal = app.cb_sink().clone();
-    let pk_to_ping = peer_identity.identity.public_key.clone();
+    let pk_to_ping = peer_identity.public_key().clone();
     rt.spawn(send_ping_on_trigger(
         send_ping_rx.fuse(),
         ui_update_signal,

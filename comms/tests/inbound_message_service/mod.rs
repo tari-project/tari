@@ -63,8 +63,8 @@ fn smoke_test() {
     let node_identity = factories::node_identity::create().build().map(Arc::new).unwrap();
 
     let peer = Peer::new(
-        node_identity.identity.public_key.clone(),
-        node_identity.identity.node_id.clone(),
+        node_identity.public_key().clone(),
+        node_identity.node_id().clone(),
         "127.0.0.1:9000".parse::<NetAddress>().unwrap().into(),
         PeerFlags::empty(),
         PeerFeatures::empty(),

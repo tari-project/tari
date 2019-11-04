@@ -86,7 +86,7 @@ where
         let DhtOutboundMessage {
             mut dht_header,
             body,
-            peer_node_identity,
+            destination_peer,
             comms_flags,
             ..
         } = message;
@@ -94,8 +94,8 @@ where
         // If forwarding the message, the DhtHeader already has a signature that should not change
         if !comms_flags.contains(MessageFlags::FORWARDED) {
             // Sign the body
-            let signature =
-                DHT_RNG.with(|rng| signature::sign(&mut *rng.borrow_mut(), node_identity.secret_key.clone(), &body))?;
+            let signature = DHT_RNG
+                .with(|rng| signature::sign(&mut *rng.borrow_mut(), node_identity.secret_key().clone(), &body))?;
             dht_header.origin_signature = signature.to_binary()?;
             trace!(target: LOG_TARGET, "Signed message: {:?}", dht_header);
         }
@@ -105,7 +105,7 @@ where
         let body = envelope.to_encoded_bytes()?;
 
         next_service
-            .oneshot(OutboundMessage::new(peer_node_identity.node_id, comms_flags, body))
+            .oneshot(OutboundMessage::new(destination_peer.node_id, comms_flags, body))
             .await
             .map_err(Into::into)
     }
@@ -140,8 +140,9 @@ mod test {
     use futures::executor::block_on;
     use prost::Message;
     use tari_comms::{
+        connection::NetAddressesWithStats,
         message::MessageFlags,
-        peer_manager::{NodeId, PeerFeatures, PeerNodeIdentity},
+        peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
         types::CommsPublicKey,
     };
     use tari_test_utils::panic_context;
@@ -157,9 +158,11 @@ mod test {
         assert!(serialize.poll_ready(&mut cx).is_ready());
         let body = b"A".to_vec();
         let msg = DhtOutboundMessage::new(
-            PeerNodeIdentity::new(
-                NodeId::default(),
+            Peer::new(
                 CommsPublicKey::default(),
+                NodeId::default(),
+                NetAddressesWithStats::new(vec![]),
+                PeerFlags::empty(),
                 PeerFeatures::COMMUNICATION_NODE,
             ),
             make_dht_header(&node_identity, &body, DhtMessageFlags::empty()),

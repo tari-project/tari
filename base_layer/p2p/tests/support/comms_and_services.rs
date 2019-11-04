@@ -77,11 +77,11 @@ where
         comms
             .peer_manager()
             .add_peer(Peer::new(
-                p.identity.public_key,
-                p.identity.node_id,
+                p.public_key().clone(),
+                p.node_id().clone(),
                 addr.into(),
                 PeerFlags::default(),
-                p.identity.features,
+                p.features().clone(),
             ))
             .unwrap();
     }

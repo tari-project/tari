@@ -258,7 +258,7 @@ impl DhtActor {
 
     async fn send_join(&mut self) -> Result<(), DhtOutboundError> {
         let message = JoinMessage {
-            node_id: self.node_identity.identity.node_id.to_vec(),
+            node_id: self.node_identity.node_id().to_vec(),
             addresses: vec![self.node_identity.control_service_address().to_string()],
             peer_features: self.node_identity.features().bits(),
         };
@@ -272,7 +272,7 @@ impl DhtActor {
             .send_dht_message(
                 BroadcastStrategy::Closest(Box::new(BroadcastClosestRequest {
                     n: self.config.num_neighbouring_nodes,
-                    node_id: self.node_identity.identity.node_id.clone(),
+                    node_id: self.node_identity.node_id().clone(),
                     excluded_peers: Vec::new(),
                 })),
                 NodeDestination::Unknown,
@@ -293,7 +293,7 @@ impl DhtActor {
     ) -> Result<(), DhtOutboundError>
     {
         let discover_msg = DiscoverMessage {
-            node_id: self.node_identity.identity.node_id.to_vec(),
+            node_id: self.node_identity.node_id().to_vec(),
             addresses: vec![self.node_identity.control_service_address().to_string()],
             peer_features: self.node_identity.features().bits(),
         };

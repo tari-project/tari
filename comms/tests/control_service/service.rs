@@ -119,7 +119,7 @@ fn request_connection() {
         .unwrap();
     let client = ControlServiceClient::new(
         Arc::clone(&node_identity_b),
-        node_identity_a.identity.public_key.clone(),
+        node_identity_a.public_key().clone(),
         client_conn,
     );
 
@@ -127,7 +127,7 @@ fn request_connection() {
     client
         .send_request_connection(
             node_identity_b.control_service_address(),
-            NodeId::from_key(&node_identity_b.identity.public_key).unwrap(),
+            NodeId::from_key(node_identity_b.public_key()).unwrap(),
             node_identity_b.features().clone(),
         )
         .unwrap();
@@ -136,11 +136,9 @@ fn request_connection() {
         .unwrap()
         .unwrap();
 
-    let peer = peer_manager
-        .find_by_public_key(&node_identity_b.identity.public_key)
-        .unwrap();
-    assert_eq!(peer.public_key, node_identity_b.identity.public_key);
-    assert_eq!(peer.node_id, node_identity_b.identity.node_id);
+    let peer = peer_manager.find_by_public_key(node_identity_b.public_key()).unwrap();
+    assert_eq!(&peer.public_key, node_identity_b.public_key());
+    assert_eq!(&peer.node_id, node_identity_b.node_id());
     assert_eq!(peer.addresses[0], node_identity_b.control_service_address().into());
     assert_eq!(peer.flags, PeerFlags::empty());
     assert_eq!(peer.features, PeerFeatures::COMMUNICATION_NODE);
@@ -193,7 +191,7 @@ fn ping_pong() {
         .unwrap();
     let client = ControlServiceClient::new(
         Arc::clone(&node_identity),
-        node_identity.identity.public_key.clone(),
+        node_identity.public_key().clone(),
         client_conn,
     );
 

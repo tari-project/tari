@@ -25,7 +25,6 @@ use crate::{
     consts::{COMMS_RNG, PEER_MANAGER_MAX_FLOOD_PEERS},
     peer_manager::{
         node_id::{NodeDistance, NodeId},
-        node_identity::PeerNodeIdentity,
         peer::{Peer, PeerConnectionStats, PeerFlags},
         peer_key::{generate_peer_key, PeerKey},
         PeerFeatures,
@@ -218,16 +217,18 @@ where DS: KeyValueStore<PeerKey, Peer>
     }
 
     /// Constructs a single NodeIdentity for the peer corresponding to the provided NodeId
-    pub fn direct_identity_node_id(&self, node_id: &NodeId) -> Result<PeerNodeIdentity, PeerManagerError> {
-        let peer_key = *self
+    pub fn direct_identity_node_id(&self, node_id: &NodeId) -> Result<Peer, PeerManagerError> {
+        let peer_key = self
             .node_id_hm
             .get(&node_id)
             .ok_or(PeerManagerError::PeerNotFoundError)?;
+
         let peer: Peer = self
             .peers
             .get(&peer_key)
             .map_err(PeerManagerError::DatabaseError)?
             .ok_or(PeerManagerError::PeerNotFoundError)?;
+
         if peer.is_banned() {
             Err(PeerManagerError::BannedPeer)
         } else {
@@ -236,11 +237,7 @@ where DS: KeyValueStore<PeerKey, Peer>
     }
 
     /// Constructs a single NodeIdentity for the peer corresponding to the provided NodeId
-    pub fn direct_identity_public_key(
-        &self,
-        public_key: &CommsPublicKey,
-    ) -> Result<PeerNodeIdentity, PeerManagerError>
-    {
+    pub fn direct_identity_public_key(&self, public_key: &CommsPublicKey) -> Result<Peer, PeerManagerError> {
         let peer_key = *self
             .public_key_hm
             .get(&public_key)
@@ -253,7 +250,7 @@ where DS: KeyValueStore<PeerKey, Peer>
         if peer.is_banned() {
             Err(PeerManagerError::BannedPeer)
         } else {
-            Ok(peer.into())
+            Ok(peer)
         }
     }
 
@@ -262,8 +259,8 @@ where DS: KeyValueStore<PeerKey, Peer>
         query.executor(&self.peers).get_results()
     }
 
-    /// Compile a list of all known node identities that can be used for the flood BroadcastStrategy
-    pub fn flood_identities(&self) -> Result<Vec<PeerNodeIdentity>, PeerManagerError> {
+    /// Compile a list of all known peers
+    pub fn flood_peers(&self) -> Result<Vec<Peer>, PeerManagerError> {
         self.peers
             .filter_take(PEER_MANAGER_MAX_FLOOD_PEERS, |(_, peer)| {
                 !peer.is_banned() && peer.has_features(PeerFeatures::MESSAGE_PROPAGATION)
@@ -272,13 +269,13 @@ where DS: KeyValueStore<PeerKey, Peer>
             .map_err(PeerManagerError::DatabaseError)
     }
 
-    /// Compile a list of node identities that can be used for the closest BroadcastStrategy
-    pub fn closest_identities(
+    /// Compile a list of peers
+    pub fn closest_peers(
         &self,
         node_id: &NodeId,
         n: usize,
         excluded_peers: &Vec<CommsPublicKey>,
-    ) -> Result<Vec<PeerNodeIdentity>, PeerManagerError>
+    ) -> Result<Vec<Peer>, PeerManagerError>
     {
         let mut peer_keys: Vec<PeerKey> = Vec::new();
         let mut dists: Vec<NodeDistance> = Vec::new();
@@ -317,8 +314,8 @@ where DS: KeyValueStore<PeerKey, Peer>
         Ok(nearest_identities)
     }
 
-    /// Compile a list of node identities that can be used for the random BroadcastStrategy
-    pub fn random_identities(&self, n: usize) -> Result<Vec<PeerNodeIdentity>, PeerManagerError> {
+    /// Compile a random list of peers of size _n_
+    pub fn random_peers(&self, n: usize) -> Result<Vec<Peer>, PeerManagerError> {
         // TODO: Send to a random set of Communication Nodes
         let mut peer_keys = self
             .peers

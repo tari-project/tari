@@ -94,7 +94,7 @@ fn end_to_end() {
 
     for _ in 0..5 {
         let _ = runtime
-            .block_on(liveness2.send_ping(node_1_identity.identity.public_key.clone()))
+            .block_on(liveness2.send_ping(node_1_identity.public_key().clone()))
             .unwrap();
         pingpong1_total = (pingpong1_total.0 + 1, pingpong1_total.1);
         pingpong2_total = (pingpong2_total.0, pingpong2_total.1 + 1);
@@ -102,7 +102,7 @@ fn end_to_end() {
 
     for _ in 0..4 {
         let _ = runtime
-            .block_on(liveness1.send_ping(node_2_identity.identity.public_key.clone()))
+            .block_on(liveness1.send_ping(node_2_identity.public_key().clone()))
             .unwrap();
         pingpong2_total = (pingpong2_total.0 + 1, pingpong2_total.1);
         pingpong1_total = (pingpong1_total.0, pingpong1_total.1 + 1);
@@ -110,7 +110,7 @@ fn end_to_end() {
 
     for _ in 0..5 {
         let _ = runtime
-            .block_on(liveness2.send_ping(node_1_identity.identity.public_key.clone()))
+            .block_on(liveness2.send_ping(node_1_identity.public_key().clone()))
             .unwrap();
         pingpong1_total = (pingpong1_total.0 + 1, pingpong1_total.1);
         pingpong2_total = (pingpong2_total.0, pingpong2_total.1 + 1);
@@ -118,7 +118,7 @@ fn end_to_end() {
 
     for _ in 0..4 {
         let _ = runtime
-            .block_on(liveness1.send_ping(node_2_identity.identity.public_key.clone()))
+            .block_on(liveness1.send_ping(node_2_identity.public_key().clone()))
             .unwrap();
         pingpong2_total = (pingpong2_total.0 + 1, pingpong2_total.1);
         pingpong1_total = (pingpong1_total.0, pingpong1_total.1 + 1);

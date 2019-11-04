@@ -63,8 +63,8 @@ pub fn make_dht_header(node_identity: &NodeIdentity, message: &Vec<u8>, flags: D
     DhtMessageHeader {
         version: 0,
         destination: NodeDestination::Unknown,
-        origin_public_key: node_identity.identity.public_key.clone(),
-        origin_signature: signature::sign(&mut OsRng::new().unwrap(), node_identity.secret_key.clone(), message)
+        origin_public_key: node_identity.public_key().clone(),
+        origin_signature: signature::sign(&mut OsRng::new().unwrap(), node_identity.secret_key().clone(), message)
             .unwrap()
             .to_binary()
             .unwrap(),
@@ -82,8 +82,8 @@ pub fn make_dht_inbound_message(
     DhtInboundMessage::new(
         make_dht_header(node_identity, &message, flags),
         Peer::new(
-            node_identity.identity.public_key.clone(),
-            node_identity.identity.node_id.clone(),
+            node_identity.public_key().clone(),
+            node_identity.node_id().clone(),
             Vec::<NetAddress>::new().into(),
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_NODE,

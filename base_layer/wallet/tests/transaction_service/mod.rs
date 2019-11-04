@@ -221,21 +221,13 @@ fn manage_single_transaction() {
     let (_utxo, uo1) = make_input(&mut rng, MicroTari(2500));
 
     assert!(runtime
-        .block_on(alice_ts.send_transaction(
-            bob_node_identity.identity.public_key.clone(),
-            value,
-            MicroTari::from(20),
-        ))
+        .block_on(alice_ts.send_transaction(bob_node_identity.public_key().clone(), value, MicroTari::from(20),))
         .is_err());
 
     runtime.block_on(alice_oms.add_output(uo1)).unwrap();
 
     runtime
-        .block_on(alice_ts.send_transaction(
-            bob_node_identity.identity.public_key.clone(),
-            value,
-            MicroTari::from(20),
-        ))
+        .block_on(alice_ts.send_transaction(bob_node_identity.public_key().clone(), value, MicroTari::from(20)))
         .unwrap();
     let alice_pending_outbound = runtime.block_on(alice_ts.get_pending_outbound_transactions()).unwrap();
     let alice_completed_tx = runtime.block_on(alice_ts.get_completed_transactions()).unwrap();
@@ -331,14 +323,14 @@ fn manage_multiple_transactions() {
     let value_a_to_c_1 = MicroTari::from(1400);
     runtime
         .block_on(alice_ts.send_transaction(
-            bob_node_identity.identity.public_key.clone(),
+            bob_node_identity.public_key().clone(),
             value_a_to_b_1,
             MicroTari::from(20),
         ))
         .unwrap();
     runtime
         .block_on(alice_ts.send_transaction(
-            carol_node_identity.identity.public_key.clone(),
+            carol_node_identity.public_key().clone(),
             value_a_to_c_1,
             MicroTari::from(20),
         ))
@@ -365,14 +357,14 @@ fn manage_multiple_transactions() {
 
     runtime
         .block_on(bob_ts.send_transaction(
-            alice_node_identity.identity.public_key.clone(),
+            alice_node_identity.public_key().clone(),
             value_b_to_a_1,
             MicroTari::from(20),
         ))
         .unwrap();
     runtime
         .block_on(alice_ts.send_transaction(
-            bob_node_identity.identity.public_key.clone(),
+            bob_node_identity.public_key().clone(),
             value_a_to_b_2,
             MicroTari::from(20),
         ))
@@ -467,7 +459,7 @@ fn test_accepting_unknown_tx_id_and_malformed_reply() {
         futures::join!(
             alice_outbound_service.handle_next(Duration::from_millis(3000), 0),
             alice_ts.send_transaction(
-                bob_node_identity.identity.public_key.clone(),
+                bob_node_identity.public_key().clone(),
                 MicroTari::from(500),
                 MicroTari::from(1000),
             ),

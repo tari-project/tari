@@ -112,7 +112,7 @@ fn test_wallet() {
     let config1 = WalletConfig {
         comms_config: comms_config1,
         output_manager_config: OutputManagerConfig {
-            master_key: Some(alice_identity.secret_key.clone()),
+            master_key: Some(alice_identity.secret_key().clone()),
             seed_words: None,
             branch_seed: "".to_string(),
             primary_key_index: 0,
@@ -121,7 +121,7 @@ fn test_wallet() {
     let config2 = WalletConfig {
         comms_config: comms_config2,
         output_manager_config: OutputManagerConfig {
-            master_key: Some(bob_identity.secret_key.clone()),
+            master_key: Some(bob_identity.secret_key().clone()),
             seed_words: None,
             branch_seed: "".to_string(),
             primary_key_index: 0,
@@ -136,7 +136,7 @@ fn test_wallet() {
         .comms
         .peer_manager()
         .add_peer(create_peer(
-            bob_identity.identity.public_key.clone(),
+            bob_identity.public_key().clone(),
             bob_identity.control_service_address(),
         ))
         .unwrap();
@@ -145,7 +145,7 @@ fn test_wallet() {
         .comms
         .peer_manager()
         .add_peer(create_peer(
-            alice_identity.identity.public_key.clone(),
+            alice_identity.public_key().clone(),
             alice_identity.control_service_address(),
         ))
         .unwrap();
@@ -154,7 +154,7 @@ fn test_wallet() {
         .block_on(
             alice_wallet
                 .liveness_service
-                .send_ping(bob_identity.identity.public_key.clone()),
+                .send_ping(bob_identity.public_key().clone()),
         )
         .unwrap();
 
@@ -162,7 +162,7 @@ fn test_wallet() {
         .block_on(
             bob_wallet
                 .liveness_service
-                .send_ping(alice_identity.identity.public_key.clone()),
+                .send_ping(alice_identity.public_key().clone()),
         )
         .unwrap();
 
@@ -198,7 +198,7 @@ fn test_wallet() {
 
     runtime
         .block_on(alice_wallet.transaction_service.send_transaction(
-            bob_identity.identity.public_key.clone(),
+            bob_identity.public_key().clone(),
             value,
             MicroTari::from(20),
         ))

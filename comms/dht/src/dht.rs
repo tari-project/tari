@@ -318,7 +318,7 @@ mod test {
 
         let msg = wrap_in_envelope_body!(b"secret".to_vec()).unwrap();
         // Encrypt for self
-        let ecdh_key = generate_ecdh_secret(&node_identity.secret_key, &node_identity.identity.public_key);
+        let ecdh_key = generate_ecdh_secret(node_identity.secret_key(), node_identity.public_key());
         let encrypted_bytes = encrypt(&ecdh_key, &msg.to_encoded_bytes().unwrap()).unwrap();
         let dht_envelope = make_dht_envelope(&node_identity, encrypted_bytes, DhtMessageFlags::ENCRYPTED);
         let inbound_message = make_comms_inbound_message(
@@ -365,7 +365,7 @@ mod test {
 
         // Encrypt for someone else
         let node_identity2 = make_node_identity();
-        let ecdh_key = generate_ecdh_secret(&node_identity2.secret_key, &node_identity2.identity.public_key);
+        let ecdh_key = generate_ecdh_secret(node_identity2.secret_key(), node_identity2.public_key());
         let encrypted_bytes = encrypt(&ecdh_key, &msg.to_encoded_bytes().unwrap()).unwrap();
         let dht_envelope = make_dht_envelope(&node_identity, encrypted_bytes, DhtMessageFlags::ENCRYPTED);
         let inbound_message = make_comms_inbound_message(

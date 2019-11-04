@@ -212,10 +212,7 @@ mod test {
         let envelope = client.construct_envelope(MessageType::Ping, PingMessage {}).unwrap();
 
         let header = envelope.header.unwrap();
-        assert_eq!(
-            header.get_comms_public_key().unwrap(),
-            node_identity.identity.public_key
-        );
+        assert_eq!(&header.get_comms_public_key().unwrap(), node_identity.public_key());
         assert_eq!(header.flags, MessageFlags::ENCRYPTED.bits());
     }
 }
