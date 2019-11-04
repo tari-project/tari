@@ -23,7 +23,7 @@
 use crate::comms_connector::{InboundDomainConnector, PeerMessage};
 use derive_error::Error;
 use futures::{channel::mpsc, Sink};
-use std::{error::Error, net::IpAddr, sync::Arc};
+use std::{error::Error, net::IpAddr, sync::Arc, time::Duration};
 use tari_comms::{
     builder::{CommsBuilderError, CommsError, CommsNode},
     connection::net_address::ip::SocketAddress,
@@ -67,6 +67,8 @@ pub struct CommsConfig {
     pub outbound_buffer_size: usize,
     /// Configuration for DHT
     pub dht: DhtConfig,
+    /// Length of time to wait for a new outbound connection to be established before timing out
+    pub establish_connection_timeout: Duration,
 }
 
 /// Initialize Tari Comms
@@ -109,6 +111,7 @@ where
         .configure_peer_connections(PeerConnectionConfig {
             socks_proxy_address: config.socks_proxy_address,
             host: config.host,
+            peer_connection_establish_timeout: config.establish_connection_timeout,
             ..Default::default()
         })
         .build()

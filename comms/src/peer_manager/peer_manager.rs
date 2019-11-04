@@ -25,7 +25,7 @@ use crate::{
     peer_manager::{
         node_id::NodeId,
         node_identity::PeerNodeIdentity,
-        peer::{Peer, PeerFlags},
+        peer::{Peer, PeerConnectionStats, PeerFlags},
         peer_storage::PeerStorage,
         PeerFeatures,
         PeerManagerError,
@@ -65,7 +65,23 @@ impl PeerManager {
         peer_features: Option<PeerFeatures>,
     ) -> Result<(), PeerManagerError>
     {
-        acquire_write_lock!(self.peer_storage).update_peer(public_key, node_id, net_addresses, flags, peer_features)
+        acquire_write_lock!(self.peer_storage).update_peer(
+            public_key,
+            node_id,
+            net_addresses,
+            flags,
+            peer_features,
+            None,
+        )
+    }
+
+    pub fn update_peer_connection_stats(
+        &self,
+        public_key: &CommsPublicKey,
+        connection_stats: PeerConnectionStats,
+    ) -> Result<(), PeerManagerError>
+    {
+        acquire_write_lock!(self.peer_storage).update_peer(public_key, None, None, None, None, Some(connection_stats))
     }
 
     /// The peer with the specified public_key will be removed from the PeerManager

@@ -66,6 +66,7 @@ where
             .to_str()
             .unwrap()
             .to_string(),
+        establish_connection_timeout: Duration::from_secs(3),
         peer_database_name: random_string(8),
         inbound_buffer_size: 100,
         outbound_buffer_size: 100,

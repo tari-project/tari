@@ -60,6 +60,7 @@ use tari_p2p::{
         comms_outbound::CommsOutboundServiceInitializer,
         liveness::{
             handle::{LivenessEvent, LivenessHandle},
+            LivenessConfig,
             LivenessInitializer,
         },
     },
@@ -125,6 +126,7 @@ fn main() {
             socks_proxy_address: None,
             requested_connection_timeout: Duration::from_millis(2000),
         },
+        establish_connection_timeout: Duration::from_secs(2),
         datastore_path: TempDir::new(random_string(8).as_str())
             .unwrap()
             .path()
@@ -154,7 +156,12 @@ fn main() {
 
     let fut = StackBuilder::new(rt.executor(), comms.shutdown_signal())
         .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))
-        .add_initializer(LivenessInitializer::new(Arc::clone(&subscription_factory)))
+        .add_initializer(LivenessInitializer::new(
+            LivenessConfig {
+                auto_ping_interval: Some(Duration::from_secs(10)),
+            },
+            Arc::clone(&subscription_factory),
+        ))
         .finish();
 
     let handles = rt.block_on(fut).expect("Service initialization failed");

@@ -26,8 +26,8 @@ use crate::{
     peer_manager::{node_id::NodeId, PeerFeatures},
     types::CommsPublicKey,
 };
-use bitflags::*;
-use chrono::prelude::*;
+use bitflags::bitflags;
+use chrono::{DateTime, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tari_utilities::hex::serialize_to_hex;
 
@@ -89,6 +89,7 @@ impl Peer {
         net_addresses: Option<Vec<NetAddress>>,
         flags: Option<PeerFlags>,
         features: Option<PeerFeatures>,
+        connection_stats: Option<PeerConnectionStats>,
     )
     {
         if let Some(new_node_id) = node_id {
@@ -102,6 +103,9 @@ impl Peer {
         };
         if let Some(new_features) = features {
             self.features = new_features;
+        }
+        if let Some(connection_stats) = connection_stats {
+            self.connection_stats = connection_stats;
         }
     }
 
@@ -180,6 +184,10 @@ mod test {
             Some(vec![net_address2.clone(), net_address3.clone()]),
             Some(PeerFlags::BANNED),
             Some(PeerFeatures::MESSAGE_PROPAGATION),
+            Some(PeerConnectionStats {
+                last_connect_failed_at: None,
+                connected_at: Some(Utc::now().naive_utc()),
+            }),
         );
 
         assert_eq!(peer.public_key, public_key1);

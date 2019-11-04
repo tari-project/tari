@@ -82,6 +82,7 @@ fn test_wallet() {
             .to_str()
             .unwrap()
             .to_string(),
+        establish_connection_timeout: Duration::from_secs(10),
         peer_database_name: random_string(8),
         inbound_buffer_size: 100,
         outbound_buffer_size: 100,
@@ -102,6 +103,7 @@ fn test_wallet() {
             .to_str()
             .unwrap()
             .to_string(),
+        establish_connection_timeout: Duration::from_secs(10),
         peer_database_name: random_string(8),
         inbound_buffer_size: 100,
         outbound_buffer_size: 100,
@@ -168,7 +170,7 @@ fn test_wallet() {
         event_stream_count(
             alice_wallet.liveness_service.get_event_stream_fused(),
             2,
-            Duration::from_secs(3),
+            Duration::from_secs(5),
         )
         .await
     });
@@ -178,7 +180,7 @@ fn test_wallet() {
         event_stream_count(
             bob_wallet.liveness_service.get_event_stream_fused(),
             2,
-            Duration::from_secs(3),
+            Duration::from_secs(5),
         )
         .await
     });

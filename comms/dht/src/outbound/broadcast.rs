@@ -36,9 +36,14 @@ use futures::{
 };
 use log::*;
 use std::sync::Arc;
-use tari_comms::peer_manager::{NodeIdentity, PeerFeatures, PeerManager, PeerNodeIdentity, PeerQuery, PeerQuerySortBy};
+use tari_comms::{
+    peer_manager::{NodeId, NodeIdentity, PeerFeatures, PeerManager, PeerNodeIdentity, PeerQuery, PeerQuerySortBy},
+    types::CommsPublicKey,
+};
 use tari_comms_middleware::MiddlewareError;
 use tower::{layer::Layer, Service, ServiceExt};
+
+const LOG_TARGET: &'static str = "comms::dht::outbound::broadcast_middleware";
 
 pub struct BroadcastLayer {
     config: DhtConfig,
@@ -68,7 +73,6 @@ impl<S> Layer<S> for BroadcastLayer {
         )
     }
 }
-const LOG_TARGET: &'static str = "comms::dht::outbound::broadcast_middleware";
 
 /// Responsible for constructing messages using a broadcast strategy and passing them on to
 /// the worker task.
@@ -226,47 +230,94 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
                 // Send to all known Communication Node peers
                 self.peer_manager.flood_identities().map_err(Into::into)
             },
-            BroadcastStrategy::Closest(closest_request) => {
-                // Fetch to all n nearest neighbour Communication Nodes
-                // which are eligible for connection.
-                // Currently that means:
-                // - The peer isn't banned,
-                // - it didn't recently fail to connect, and
-                // - it is not in the exclusion list in closest_request
-                let reconnect_cooldown_period = chrono::Duration::minutes(30);
-                let query = PeerQuery::new()
-                    .select_where(|peer| {
-                        !peer.is_banned() &&
-                            {
-                                peer.connection_stats.last_connect_failed_at
-                                    // Did we fail to connect in the last 30 minutes?
-                                    .map(|failed_at| Utc::now().naive_utc() - failed_at < reconnect_cooldown_period)
-                                    .unwrap_or(true)
-                            } &&
-                            !closest_request.excluded_peers.contains(&peer.public_key)
-                    })
-                    .sort_by(PeerQuerySortBy::DistanceFrom(&closest_request.node_id))
-                    .limit(closest_request.n);
-
-                let peers = self.peer_manager.perform_query(query)?;
-                // TODO: Fix up if PeerNodeIdentity is not needed
-                Ok(peers.into_iter().map(Into::into).collect())
-            },
+            BroadcastStrategy::Closest(closest_request) => self.select_closest_peers(
+                &closest_request.node_id,
+                closest_request.n,
+                &closest_request.excluded_peers,
+            ),
             BroadcastStrategy::Random(n) => {
                 // Send to a random set of peers of size n that are Communication Nodes
                 self.peer_manager.random_identities(n).map_err(Into::into)
             },
             BroadcastStrategy::Neighbours(exclude) => {
                 // Send to a random set of peers of size n that are Communication Nodes
-                self.peer_manager
-                    .closest_identities(
-                        self.node_identity.node_id(),
-                        self.config.num_neighbouring_nodes,
-                        &*exclude,
-                    )
-                    .map_err(Into::into)
+                self.select_closest_peers(
+                    self.node_identity.node_id(),
+                    self.config.num_neighbouring_nodes,
+                    &*exclude,
+                )
             },
         }
+    }
+
+    fn select_closest_peers(
+        &self,
+        node_id: &NodeId,
+        n: usize,
+        excluded_peers: &[CommsPublicKey],
+    ) -> Result<Vec<PeerNodeIdentity>, DhtOutboundError>
+    {
+        // Fetch to all n nearest neighbour Communication Nodes
+        // which are eligible for connection.
+        // Currently that means:
+        // - The peer isn't banned,
+        // - it didn't recently fail to connect, and
+        // - it is not in the exclusion list in closest_request
+        let reconnect_cooldown_period = chrono::Duration::minutes(30);
+        let mut connect_ineligable_count = 0;
+        let mut banned_count = 0;
+        let mut excluded_count = 0;
+        let query = PeerQuery::new()
+            .select_where(|peer| {
+                // This is a quite ugly but is done this way to get the logging
+                let is_banned = peer.is_banned();
+
+                if is_banned {
+                    banned_count += 1;
+                    return false;
+                }
+
+                let is_connect_eligible = {
+                    peer.connection_stats.last_connect_failed_at
+                            // Did we fail to connect in the last 30 minutes?
+                            .map(|failed_at| Utc::now().naive_utc() - failed_at >= reconnect_cooldown_period)
+                            .unwrap_or(true)
+                };
+
+                if !is_connect_eligible {
+                    connect_ineligable_count += 1;
+                    return false;
+                }
+
+                let is_excluded = excluded_peers.contains(&peer.public_key);
+                if is_excluded {
+                    excluded_count += 1;
+                    return false;
+                }
+
+                true
+            })
+            .sort_by(PeerQuerySortBy::DistanceFrom(&node_id))
+            .limit(n);
+
+        let peers = self.peer_manager.perform_query(query)?;
+
+        let total = banned_count + connect_ineligable_count + excluded_count;
+        if total > 0 {
+            debug!(
+                target: LOG_TARGET,
+                "\n====================================\n {total} peer(s) were excluded from closest query\n {banned} \
+                 banned\n {not_connectable} are not connectable\n {excluded} \
+                 excluded\n====================================\n",
+                total = total,
+                banned = banned_count,
+                not_connectable = connect_ineligable_count,
+                excluded = excluded_count
+            );
+        }
+
+        // TODO: Fix up if PeerNodeIdentity is not needed
+        Ok(peers.into_iter().map(Into::into).collect())
     }
 
     fn generate_send_messages(
