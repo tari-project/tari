@@ -222,6 +222,18 @@ impl SenderTransactionProtocol {
         }
     }
 
+    /// This function will return the value of the fee of this transaction
+    pub fn get_fee_amount(&self) -> Result<MicroTari, TPE> {
+        match &self.state {
+            SenderState::Initializing(info) |
+            SenderState::Finalizing(info) |
+            SenderState::SingleRoundMessageReady(info) |
+            SenderState::CollectingSingleSignature(info) => Ok(info.metadata.fee),
+            SenderState::FinalizedTransaction(_) => Err(TPE::InvalidStateError),
+            SenderState::Failed(_) => Err(TPE::InvalidStateError),
+        }
+    }
+
     /// Build the sender's message for the single-round protocol (one recipient) and move to next State
     pub fn build_single_round_message(&mut self) -> Result<SingleRoundSenderData, TPE> {
         match &self.state {

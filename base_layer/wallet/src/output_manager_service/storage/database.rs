@@ -200,17 +200,7 @@ where T: OutputManagerBackend
     /// When a pending transaction is cancelled the encumbered outputs are moved back to the `unspent_outputs`
     /// collection.
     pub fn cancel_pending_transaction_outputs(&mut self, tx_id: TxId) -> Result<(), OutputManagerStorageError> {
-        let pending_tx = fetch!(self, tx_id, PendingTransactionOutputs)?;
-
-        for o in pending_tx.outputs_to_be_spent.iter() {
-            self.db.write(WriteOperation::Insert(DbKeyValuePair::UnspentOutput(
-                o.spending_key.clone(),
-                Box::new(o.clone()),
-            )))?;
-        }
-
-        // REMOVE PENDING TX
-        Ok(())
+        self.db.cancel_pending_transaction(tx_id)
     }
 
     /// This method is check all pending transactions to see if any are older that the provided duration. If they are

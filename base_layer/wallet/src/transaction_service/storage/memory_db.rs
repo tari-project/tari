@@ -24,19 +24,27 @@ use crate::{
     output_manager_service::TxId,
     transaction_service::{
         error::TransactionStorageError,
-        storage::database::{DbKey, DbKeyValuePair, DbValue, TransactionBackend, WriteOperation},
+        storage::database::{
+            CompletedTransaction,
+            DbKey,
+            DbKeyValuePair,
+            DbValue,
+            InboundTransaction,
+            OutboundTransaction,
+            TransactionBackend,
+            WriteOperation,
+        },
     },
 };
 use std::{
     collections::HashMap,
     sync::{Arc, RwLock},
 };
-use tari_transactions::{transaction::Transaction, ReceiverTransactionProtocol, SenderTransactionProtocol};
 
 struct InnerDatabase {
-    pending_outbound_transactions: HashMap<TxId, SenderTransactionProtocol>,
-    pending_inbound_transactions: HashMap<TxId, ReceiverTransactionProtocol>,
-    completed_transactions: HashMap<TxId, Transaction>,
+    pending_outbound_transactions: HashMap<TxId, OutboundTransaction>,
+    pending_inbound_transactions: HashMap<TxId, InboundTransaction>,
+    completed_transactions: HashMap<TxId, CompletedTransaction>,
 }
 
 impl InnerDatabase {
@@ -163,7 +171,12 @@ impl TransactionBackend for TransactionMemoryDatabase {
         Ok(None)
     }
 
-    fn complete_transaction(&mut self, tx_id: TxId, transaction: Transaction) -> Result<(), TransactionStorageError> {
+    fn complete_transaction(
+        &mut self,
+        tx_id: TxId,
+        transaction: CompletedTransaction,
+    ) -> Result<(), TransactionStorageError>
+    {
         let mut db = acquire_write_lock!(self.db);
         let _ = db
             .pending_outbound_transactions

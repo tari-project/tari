@@ -46,8 +46,7 @@ pub type TxId = u64;
 
 #[derive(Clone)]
 pub struct OutputManagerConfig {
-    pub master_key: Option<PrivateKey>,
-    pub seed_words: Option<Vec<String>>,
+    pub master_seed: PrivateKey,
     pub branch_seed: String,
     pub primary_key_index: usize,
 }

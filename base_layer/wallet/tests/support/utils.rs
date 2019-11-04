@@ -105,7 +105,6 @@ pub struct TestParams {
     pub nonce: PrivateKey,
     pub public_nonce: PublicKey,
 }
-
 impl TestParams {
     pub fn new<R: Rng + CryptoRng>(rng: &mut R) -> TestParams {
         let r = PrivateKey::random(rng);
@@ -118,7 +117,6 @@ impl TestParams {
         }
     }
 }
-
 pub fn make_input<R: Rng + CryptoRng>(rng: &mut R, val: MicroTari) -> (TransactionInput, UnblindedOutput) {
     let key = PrivateKey::random(rng);
     let commitment = COMMITMENT_FACTORY.commit_value(&key, val.into());

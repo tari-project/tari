@@ -20,29 +20,38 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// use crate::text_message_service::{handle::TextMessageHandle, TextMessageServiceInitializer};
 use crate::{
+    contacts_service::{
+        handle::ContactsServiceHandle,
+        storage::memory_db::ContactsServiceMemoryDatabase,
+        ContactsServiceInitializer,
+    },
+    error::WalletError,
     output_manager_service::{
-        error::OutputManagerError,
         handle::OutputManagerHandle,
         storage::memory_db::OutputManagerMemoryDatabase,
         OutputManagerConfig,
         OutputManagerServiceInitializer,
     },
+    storage::database::{WalletBackend, WalletDatabase},
     transaction_service::{
-        error::TransactionServiceError,
         handle::TransactionServiceHandle,
         storage::memory_db::TransactionMemoryDatabase,
         TransactionServiceInitializer,
     },
 };
-use derive_error::Error;
 use std::sync::Arc;
-use tari_comms::builder::{CommsError, CommsNode};
+use tari_comms::{
+    builder::CommsNode,
+    connection::{net_address::NetAddressWithStats, NetAddressesWithStats},
+    peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
+    types::{CommsPublicKey, CommsSecretKey},
+};
 use tari_comms_dht::Dht;
+use tari_crypto::keys::PublicKey;
 use tari_p2p::{
     comms_connector::pubsub_connector,
-    initialization::{initialize_comms, CommsConfig, CommsInitializationError},
+    initialization::{initialize_comms, CommsConfig},
     services::{
         comms_outbound::CommsOutboundServiceInitializer,
         liveness::{handle::LivenessHandle, LivenessInitializer},
@@ -51,33 +60,42 @@ use tari_p2p::{
 use tari_service_framework::StackBuilder;
 use tokio::runtime::Runtime;
 
-#[derive(Debug, Error)]
-pub enum WalletError {
-    CommsInitializationError(CommsInitializationError),
-    CommsError(CommsError),
-    OutputManagerError(OutputManagerError),
-    TransactionServiceError(TransactionServiceError),
-}
-
 #[derive(Clone)]
 pub struct WalletConfig {
     pub comms_config: CommsConfig,
-    pub output_manager_config: OutputManagerConfig,
 }
 
 /// A structure containing the config and services that a Wallet application will require. This struct will start up all
 /// the services and provide the APIs that applications will use to interact with the services
-pub struct Wallet {
+pub struct Wallet<T>
+where T: WalletBackend
+{
     pub comms: CommsNode,
     pub dht_service: Dht,
     pub liveness_service: LivenessHandle,
     pub output_manager_service: OutputManagerHandle,
     pub transaction_service: TransactionServiceHandle,
+    pub contacts_service: ContactsServiceHandle,
+    pub db: WalletDatabase<T>,
     pub runtime: Runtime,
 }
 
-impl Wallet {
-    pub fn new(config: WalletConfig, runtime: Runtime) -> Result<Wallet, WalletError> {
+impl<T> Wallet<T>
+where T: WalletBackend
+{
+    pub fn new(config: WalletConfig, backend: T, runtime: Runtime) -> Result<Wallet<T>, WalletError> {
+        // TODO: Determine if there is KeyManager data stored in persistence and if so then construct the
+        // OutputManagerConfig from that data At this stage a new random master key will be generated every
+        // time the wallet starts up.
+        let mut rng = rand::OsRng::new().unwrap();
+        let (secret_key, _public_key): (CommsSecretKey, CommsPublicKey) = PublicKey::random_keypair(&mut rng);
+
+        let oms_config = OutputManagerConfig {
+            master_seed: secret_key,
+            branch_seed: "".to_string(),
+            primary_key_index: 0,
+        };
+
         let (publisher, subscription_factory) =
             pubsub_connector(runtime.executor(), config.comms_config.inbound_buffer_size);
         let subscription_factory = Arc::new(subscription_factory);
@@ -91,13 +109,14 @@ impl Wallet {
                 Arc::clone(&subscription_factory),
             ))
             .add_initializer(OutputManagerServiceInitializer::new(
-                config.output_manager_config.clone(),
+                oms_config,
                 OutputManagerMemoryDatabase::new(),
             ))
             .add_initializer(TransactionServiceInitializer::new(
                 subscription_factory.clone(),
                 TransactionMemoryDatabase::new(),
             ))
+            .add_initializer(ContactsServiceInitializer::new(ContactsServiceMemoryDatabase::new()))
             .finish();
 
         let handles = runtime.block_on(fut).expect("Service initialization failed");
@@ -111,6 +130,9 @@ impl Wallet {
         let liveness_handle = handles
             .get_handle::<LivenessHandle>()
             .expect("Could not get Liveness Service Handle");
+        let contacts_handle = handles
+            .get_handle::<ContactsServiceHandle>()
+            .expect("Could not get Contacts Service Handle");
 
         Ok(Wallet {
             comms,
@@ -118,6 +140,8 @@ impl Wallet {
             liveness_service: liveness_handle,
             output_manager_service: output_manager_handle,
             transaction_service: transaction_service_handle,
+            contacts_service: contacts_handle,
+            db: WalletDatabase::new(backend),
             runtime,
         })
     }
@@ -126,6 +150,23 @@ impl Wallet {
     /// exiting.
     pub fn shutdown(self) -> Result<(), WalletError> {
         self.comms.shutdown()?;
+        Ok(())
+    }
+
+    /// This function will add a base_node
+    pub fn add_base_node_peer(&mut self, public_key: CommsPublicKey, net_address: String) -> Result<(), WalletError> {
+        let peer = Peer::new(
+            public_key.clone(),
+            NodeId::from_key(&public_key).unwrap(),
+            NetAddressesWithStats::new(vec![NetAddressWithStats::new(net_address.as_str().parse()?)]),
+            PeerFlags::empty(),
+            PeerFeatures::COMMUNICATION_NODE,
+        );
+
+        self.comms.peer_manager().add_peer(peer.clone())?;
+
+        self.db.save_peer(peer)?;
+
         Ok(())
     }
 }

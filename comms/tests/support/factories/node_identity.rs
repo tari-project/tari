@@ -75,7 +75,7 @@ impl TestFactory for NodeIdentityFactory {
             .or(Some(super::net_address::create().build()?))
             .unwrap();
 
-        NodeIdentity::new(secret_key, public_key, control_service_address, self.peer_features)
+        NodeIdentity::new(secret_key, control_service_address, self.peer_features)
             .map_err(TestFactoryError::build_failed())
     }
 }
