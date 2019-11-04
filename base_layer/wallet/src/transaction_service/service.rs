@@ -25,10 +25,17 @@ use crate::{
     transaction_service::{
         error::TransactionServiceError,
         handle::{TransactionEvent, TransactionServiceRequest, TransactionServiceResponse},
-        storage::database::{TransactionBackend, TransactionDatabase},
+        storage::database::{
+            CompletedTransaction,
+            InboundTransaction,
+            OutboundTransaction,
+            TransactionBackend,
+            TransactionDatabase,
+        },
     },
     types::TransactionRng,
 };
+use chrono::Utc;
 use futures::{pin_mut, SinkExt, Stream, StreamExt};
 use log::*;
 use std::{collections::HashMap, convert::TryInto};
@@ -44,11 +51,10 @@ use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_transactions::{
     tari_amount::MicroTari,
-    transaction::{KernelFeatures, OutputFeatures, Transaction},
+    transaction::{KernelFeatures, OutputFeatures},
     transaction_protocol::{proto, recipient::RecipientSignedMessage, sender::TransactionSenderMessage},
     types::{PrivateKey, COMMITMENT_FACTORY, PROVER},
     ReceiverTransactionProtocol,
-    SenderTransactionProtocol,
 };
 
 const LOG_TARGET: &'static str = "base_layer::wallet::transaction_service::service";
@@ -216,16 +222,16 @@ where
         fee_per_gram: MicroTari,
     ) -> Result<(), TransactionServiceError>
     {
-        let mut stp = self
+        let mut sender_protocol = self
             .output_manager_service
             .prepare_transaction_to_send(amount, fee_per_gram, None)
             .await?;
 
-        if !stp.is_single_round_message_ready() {
+        if !sender_protocol.is_single_round_message_ready() {
             return Err(TransactionServiceError::InvalidStateError);
         }
 
-        let msg = stp.build_single_round_message()?;
+        let msg = sender_protocol.build_single_round_message()?;
         let tx_id = msg.tx_id;
         let proto_message = proto::TransactionSenderMessage::single(msg.into());
         self.outbound_message_service
@@ -236,7 +242,14 @@ where
             )
             .await?;
 
-        self.db.add_pending_outbound_transaction(tx_id, stp)?;
+        self.db.add_pending_outbound_transaction(tx_id, OutboundTransaction {
+            tx_id,
+            destination_public_key: dest_pubkey.clone(),
+            amount,
+            fee: sender_protocol.get_fee_amount()?,
+            sender_protocol,
+            timestamp: Utc::now().naive_utc(),
+        })?;
         info!(
             target: LOG_TARGET,
             "Transaction with TX_ID = {} sent to {}", tx_id, dest_pubkey
@@ -257,25 +270,39 @@ where
             .try_into()
             .map_err(TransactionServiceError::InvalidMessageError)?;
 
-        let mut stp = self
+        let mut outbound_tx = self
             .db
             .get_pending_outbound_transaction(recipient_reply.tx_id.clone())?;
 
         let tx_id = recipient_reply.tx_id.clone();
-        if !stp.check_tx_id(tx_id.clone()) || !stp.is_collecting_single_signature() {
+        if !outbound_tx.sender_protocol.check_tx_id(tx_id.clone()) ||
+            !outbound_tx.sender_protocol.is_collecting_single_signature()
+        {
             return Err(TransactionServiceError::InvalidStateError);
         }
 
-        stp.add_single_recipient_info(recipient_reply, &PROVER)?;
-        stp.finalize(KernelFeatures::empty(), &PROVER, &COMMITMENT_FACTORY)?;
-        let tx = stp.get_transaction()?;
+        outbound_tx
+            .sender_protocol
+            .add_single_recipient_info(recipient_reply, &PROVER)?;
+        outbound_tx
+            .sender_protocol
+            .finalize(KernelFeatures::empty(), &PROVER, &COMMITMENT_FACTORY)?;
+        let tx = outbound_tx.sender_protocol.get_transaction()?;
 
         // TODO Broadcast this to the chain
         // TODO Only confirm this transaction once it is detected on chain. For now just confirming it directly.
         self.output_manager_service
             .confirm_sent_transaction(tx_id.clone(), tx.body.inputs().clone(), tx.body.outputs().clone())
             .await?;
-        self.db.complete_outbound_transaction(tx_id.clone(), tx.clone())?;
+        self.db
+            .complete_outbound_transaction(tx_id.clone(), CompletedTransaction {
+                tx_id,
+                destination_public_key: outbound_tx.destination_public_key,
+                amount: outbound_tx.amount,
+                fee: outbound_tx.fee,
+                transaction: tx.clone(),
+                timestamp: Utc::now().naive_utc(),
+            })?;
         info!(
             target: LOG_TARGET,
             "Transaction Recipient Reply for TX_ID = {} received", tx_id,
@@ -304,6 +331,8 @@ where
 
         // Currently we will only reply to a Single sender transaction protocol
         if let TransactionSenderMessage::Single(data) = sender_message.clone() {
+            let amount = data.amount.clone();
+
             let spending_key = self
                 .output_manager_service
                 .get_recipient_spending_key(data.tx_id, data.amount)
@@ -339,7 +368,13 @@ where
                 .await?;
 
             // Otherwise add it to our pending transaction list and return reply
-            self.db.add_pending_inbound_transaction(tx_id, rtp)?;
+            self.db.add_pending_inbound_transaction(tx_id, InboundTransaction {
+                tx_id,
+                source_public_key: source_pubkey.clone(),
+                amount,
+                receiver_protocol: rtp.clone(),
+                timestamp: Utc::now().naive_utc(),
+            })?;
 
             info!(
                 target: LOG_TARGET,
@@ -358,17 +393,17 @@ where
 
     pub fn get_pending_inbound_transactions(
         &self,
-    ) -> Result<HashMap<u64, ReceiverTransactionProtocol>, TransactionServiceError> {
+    ) -> Result<HashMap<u64, InboundTransaction>, TransactionServiceError> {
         Ok(self.db.get_pending_inbound_transactions()?)
     }
 
     pub fn get_pending_outbound_transactions(
         &self,
-    ) -> Result<HashMap<u64, SenderTransactionProtocol>, TransactionServiceError> {
+    ) -> Result<HashMap<u64, OutboundTransaction>, TransactionServiceError> {
         Ok(self.db.get_pending_outbound_transactions()?)
     }
 
-    pub fn get_completed_transactions(&self) -> Result<HashMap<u64, Transaction>, TransactionServiceError> {
+    pub fn get_completed_transactions(&self) -> Result<HashMap<u64, CompletedTransaction>, TransactionServiceError> {
         Ok(self.db.get_completed_transactions()?)
     }
 }

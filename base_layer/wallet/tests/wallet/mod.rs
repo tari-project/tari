@@ -28,10 +28,14 @@ use tari_comms::{
     peer_manager::{peer::PeerFlags, NodeId, NodeIdentity, Peer, PeerFeatures},
     types::CommsPublicKey,
 };
+
+use tari_crypto::keys::PublicKey;
 use tari_p2p::{initialization::CommsConfig, services::liveness::handle::LivenessEvent};
 use tari_transactions::tari_amount::MicroTari;
 use tari_wallet::{
-    output_manager_service::OutputManagerConfig,
+    contacts_service::storage::database::Contact,
+    storage::memory_db::WalletMemoryDatabase,
+    test_utils::generate_wallet_test_data,
     transaction_service::handle::TransactionEvent,
     wallet::WalletConfig,
     Wallet,
@@ -111,26 +115,14 @@ fn test_wallet() {
     };
     let config1 = WalletConfig {
         comms_config: comms_config1,
-        output_manager_config: OutputManagerConfig {
-            master_key: Some(alice_identity.secret_key().clone()),
-            seed_words: None,
-            branch_seed: "".to_string(),
-            primary_key_index: 0,
-        },
     };
     let config2 = WalletConfig {
         comms_config: comms_config2,
-        output_manager_config: OutputManagerConfig {
-            master_key: Some(bob_identity.secret_key().clone()),
-            seed_words: None,
-            branch_seed: "".to_string(),
-            primary_key_index: 0,
-        },
     };
     let runtime_node1 = Runtime::new().unwrap();
     let runtime_node2 = Runtime::new().unwrap();
-    let mut alice_wallet = Wallet::new(config1, runtime_node1).unwrap();
-    let mut bob_wallet = Wallet::new(config2, runtime_node2).unwrap();
+    let mut alice_wallet = Wallet::new(config1, WalletMemoryDatabase::new(), runtime_node1).unwrap();
+    let mut bob_wallet = Wallet::new(config2, WalletMemoryDatabase::new(), runtime_node2).unwrap();
 
     alice_wallet
         .comms
@@ -207,4 +199,90 @@ fn test_wallet() {
     let mut result =
         runtime.block_on(async { event_stream_count(alice_event_stream, 1, Duration::from_secs(10)).await });
     assert_eq!(result.remove(&TransactionEvent::ReceivedTransactionReply), Some(1));
+
+    let mut contacts = Vec::new();
+    for i in 0..2 {
+        let (_secret_key, public_key) = PublicKey::random_keypair(&mut rng);
+
+        contacts.push(Contact {
+            alias: random_string(8),
+            public_key,
+        });
+
+        runtime
+            .block_on(alice_wallet.contacts_service.save_contact(contacts[i].clone()))
+            .unwrap();
+    }
+
+    let got_contacts = runtime.block_on(alice_wallet.contacts_service.get_contacts()).unwrap();
+    assert_eq!(contacts, got_contacts);
+}
+
+#[test]
+fn test_data_generation() {
+    let runtime = Runtime::new().unwrap();
+
+    let mut rng = rand::OsRng::new().unwrap();
+
+    let node_id = NodeIdentity::random(
+        &mut rng,
+        "127.0.0.1:22723".parse().unwrap(),
+        PeerFeatures::COMMUNICATION_NODE,
+    )
+    .unwrap();
+
+    let comms_config = CommsConfig {
+        node_identity: Arc::new(node_id.clone()),
+        host: "127.0.0.1".parse().unwrap(),
+        socks_proxy_address: None,
+        control_service: ControlServiceConfig {
+            listener_address: node_id.control_service_address(),
+            socks_proxy_address: None,
+            requested_connection_timeout: Duration::from_millis(2000),
+        },
+        establish_connection_timeout: Duration::from_secs(10),
+        datastore_path: TempDir::new(random_string(8).as_str())
+            .unwrap()
+            .path()
+            .to_str()
+            .unwrap()
+            .to_string(),
+        peer_database_name: random_string(8),
+        inbound_buffer_size: 100,
+        outbound_buffer_size: 100,
+        dht: Default::default(),
+    };
+
+    let config = WalletConfig { comms_config };
+
+    let mut wallet = Wallet::new(config, WalletMemoryDatabase::new(), runtime).unwrap();
+
+    generate_wallet_test_data(&mut wallet).unwrap();
+
+    let contacts = wallet.runtime.block_on(wallet.contacts_service.get_contacts()).unwrap();
+    assert!(contacts.len() > 0);
+
+    let balance = wallet
+        .runtime
+        .block_on(wallet.output_manager_service.get_balance())
+        .unwrap();
+    assert!(balance > MicroTari::from(0));
+
+    let outbound_tx = wallet
+        .runtime
+        .block_on(wallet.transaction_service.get_pending_outbound_transactions())
+        .unwrap();
+    assert!(outbound_tx.len() > 0);
+
+    let inbound_tx = wallet
+        .runtime
+        .block_on(wallet.transaction_service.get_pending_inbound_transactions())
+        .unwrap();
+    assert!(inbound_tx.len() > 0);
+
+    let completed_tx = wallet
+        .runtime
+        .block_on(wallet.transaction_service.get_completed_transactions())
+        .unwrap();
+    assert!(completed_tx.len() > 0);
 }

@@ -249,7 +249,6 @@ pub fn main() {
     info!(target: LOG_TARGET, "Local Net Address: {:?}", local_net_address);
     let node_identity = NodeIdentity::new(
         secret_key,
-        public_key.clone(),
         local_net_address,
         PeerFeatures::communication_client_default(),
     )

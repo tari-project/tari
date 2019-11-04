@@ -25,7 +25,6 @@ serde = "1.0.90"
 serde_derive = "1.0.90"
 chrono = { version = "0.4.6", features = ["serde"]}
 config = { version = "0.9.3" }
-simple_logger = "1.2.0"
 log = { version = "0.4.0", features = ["std"] }
 crossbeam-channel = "0.3.8"
 log4rs = {version ="0.8.3",features = ["console_appender", "file_appender", "file", "yaml_format"]}

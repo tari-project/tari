@@ -20,9 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::output_manager_service::{handle::OutputManagerHandle, service::OutputManagerService};
-
-use crate::output_manager_service::storage::database::{OutputManagerBackend, OutputManagerDatabase};
+use crate::contacts_service::{
+    handle::ContactsServiceHandle,
+    service::ContactsService,
+    storage::database::{ContactsBackend, ContactsDatabase},
+};
 use futures::{future, Future};
 use log::*;
 use tari_service_framework::{
@@ -32,7 +34,6 @@ use tari_service_framework::{
     ServiceInitializer,
 };
 use tari_shutdown::ShutdownSignal;
-use tari_transactions::types::PrivateKey;
 use tokio::runtime::TaskExecutor;
 
 pub mod error;
@@ -40,37 +41,24 @@ pub mod handle;
 pub mod service;
 pub mod storage;
 
-const LOG_TARGET: &'static str = "wallet::output_manager_service::initializer";
+const LOG_TARGET: &'static str = "base_layer::wallet::contacts_service::initializer";
 
-pub type TxId = u64;
-
-#[derive(Clone)]
-pub struct OutputManagerConfig {
-    pub master_seed: PrivateKey,
-    pub branch_seed: String,
-    pub primary_key_index: usize,
-}
-
-pub struct OutputManagerServiceInitializer<T>
-where T: OutputManagerBackend
+pub struct ContactsServiceInitializer<T>
+where T: ContactsBackend
 {
-    config: Option<OutputManagerConfig>,
     backend: Option<T>,
 }
 
-impl<T> OutputManagerServiceInitializer<T>
-where T: OutputManagerBackend
+impl<T> ContactsServiceInitializer<T>
+where T: ContactsBackend
 {
-    pub fn new(config: OutputManagerConfig, backend: T) -> Self {
-        Self {
-            config: Some(config),
-            backend: Some(backend),
-        }
+    pub fn new(backend: T) -> Self {
+        Self { backend: Some(backend) }
     }
 }
 
-impl<T> ServiceInitializer for OutputManagerServiceInitializer<T>
-where T: OutputManagerBackend + 'static
+impl<T> ServiceInitializer for ContactsServiceInitializer<T>
+where T: ContactsBackend + 'static
 {
     type Future = impl Future<Output = Result<(), ServiceInitializationError>>;
 
@@ -81,31 +69,24 @@ where T: OutputManagerBackend + 'static
         shutdown: ShutdownSignal,
     ) -> Self::Future
     {
-        let config = self
-            .config
-            .take()
-            .expect("Output Manager Service initializer already called");
-
         let (sender, receiver) = reply_channel::unbounded();
 
-        let oms_handle = OutputManagerHandle::new(sender);
+        let contacts_handle = ContactsServiceHandle::new(sender);
 
         // Register handle before waiting for handles to be ready
-        handles_fut.register(oms_handle);
+        handles_fut.register(contacts_handle);
 
         let backend = self
             .backend
             .take()
-            .expect("Cannot start Output Manager Service without setting a storage backend");
+            .expect("Cannot start Contacts Service without setting a storage backend");
 
         executor.spawn(async move {
-            let service = OutputManagerService::new(receiver, config, OutputManagerDatabase::new(backend))
-                .expect("Could not initialize Output Manager Service")
-                .start();
+            let service = ContactsService::new(receiver, ContactsDatabase::new(backend)).start();
 
             futures::pin_mut!(service);
             future::select(service, shutdown).await;
-            info!(target: LOG_TARGET, "Output manager service shutdown");
+            info!(target: LOG_TARGET, "Contacts service shutdown");
         });
         future::ready(Ok(()))
     }

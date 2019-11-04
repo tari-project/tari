@@ -67,11 +67,11 @@ impl NodeIdentity {
     /// Create a new NodeIdentity from the provided key pair and control service address
     pub fn new(
         secret_key: CommsSecretKey,
-        public_key: CommsPublicKey,
         control_service_address: NetAddress,
         features: PeerFeatures,
     ) -> Result<Self, NodeIdentityError>
     {
+        let public_key = CommsPublicKey::from_secret_key(&secret_key);
         let node_id = NodeId::from_key(&public_key).map_err(NodeIdentityError::NodeIdError)?;
 
         Ok(NodeIdentity {

@@ -19,10 +19,35 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#![feature(type_alias_impl_trait)]
-pub mod output_manager_service;
-pub mod support;
-// pub mod text_message_service;
-pub mod contacts_service;
-pub mod transaction_service;
-pub mod wallet;
+
+use crate::{
+    output_manager_service::error::OutputManagerError,
+    storage::database::DbKey,
+    transaction_service::error::TransactionServiceError,
+};
+use derive_error::Error;
+use tari_comms::{builder::CommsError, connection::NetAddressError, peer_manager::PeerManagerError};
+use tari_p2p::initialization::CommsInitializationError;
+
+#[derive(Debug, Error)]
+pub enum WalletError {
+    CommsInitializationError(CommsInitializationError),
+    CommsError(CommsError),
+    OutputManagerError(OutputManagerError),
+    TransactionServiceError(TransactionServiceError),
+    PeerManagerError(PeerManagerError),
+    NetAddressError(NetAddressError),
+    WalletStorageError(WalletStorageError),
+}
+
+#[derive(Debug, Error, PartialEq)]
+pub enum WalletStorageError {
+    /// Tried to insert an output that already exists in the database
+    DuplicateContact,
+    /// This write operation is not supported for provided DbKey
+    OperationNotSupported,
+    #[error(non_std, no_from)]
+    ValueNotFound(DbKey),
+    #[error(msg_embedded, non_std, no_from)]
+    UnexpectedResult(String),
+}

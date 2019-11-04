@@ -237,9 +237,7 @@ pub fn main() {
     info!(target: LOG_TARGET, "Local Net Address: {:?}", local_net_address);
 
     let peer_database_name = public_key.to_hex();
-    let node_identity = NodeIdentity::new(secret_key, public_key.clone(), local_net_address)
-        .map(Arc::new)
-        .unwrap();
+    let node_identity = NodeIdentity::new(secret_key, local_net_address).map(Arc::new).unwrap();
 
     let config = WalletConfig {
         comms_config: CommsConfig {
