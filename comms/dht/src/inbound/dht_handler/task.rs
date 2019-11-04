@@ -192,7 +192,7 @@ where
         if source_peer.public_key != origin_peer.public_key &&
             self.peer_manager.in_network_region(
                 &origin_peer.node_id,
-                &self.node_identity.identity.node_id,
+                self.node_identity.node_id(),
                 self.config.num_neighbouring_nodes,
             )?
         {
@@ -267,7 +267,7 @@ where
     /// Send a network join update request directly to a specific known peer
     async fn send_join_direct(&mut self, dest_public_key: CommsPublicKey) -> Result<(), DhtInboundError> {
         let join_msg = JoinMessage {
-            node_id: self.node_identity.identity.node_id.to_vec(),
+            node_id: self.node_identity.node_id().to_vec(),
             addresses: vec![self.node_identity.control_service_address().to_string()],
             peer_features: self.node_identity.features().bits(),
         };

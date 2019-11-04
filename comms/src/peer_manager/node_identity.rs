@@ -54,8 +54,12 @@ pub enum NodeIdentityError {
 /// `control_service_address`: The NetAddress of the local node's Control port
 #[derive(Serialize, Deserialize)]
 pub struct NodeIdentity {
-    pub identity: PeerNodeIdentity,
-    pub secret_key: CommsSecretKey,
+    #[serde(serialize_with = "serialize_to_hex")]
+    #[serde(deserialize_with = "deserialize_node_id_from_hex")]
+    node_id: NodeId,
+    public_key: CommsPublicKey,
+    features: PeerFeatures,
+    secret_key: CommsSecretKey,
     control_service_address: RwLock<NetAddress>,
 }
 
@@ -71,7 +75,9 @@ impl NodeIdentity {
         let node_id = NodeId::from_key(&public_key).map_err(NodeIdentityError::NodeIdError)?;
 
         Ok(NodeIdentity {
-            identity: PeerNodeIdentity::new(node_id, public_key, features),
+            node_id,
+            public_key,
+            features,
             secret_key,
             control_service_address: RwLock::new(control_service_address),
         })
@@ -91,7 +97,9 @@ impl NodeIdentity {
         let node_id = NodeId::from_key(&public_key).map_err(NodeIdentityError::NodeIdError)?;
 
         Ok(NodeIdentity {
-            identity: PeerNodeIdentity::new(node_id, public_key, features),
+            node_id,
+            public_key,
+            features,
             secret_key,
             control_service_address: RwLock::new(control_service_address),
         })
@@ -124,22 +132,27 @@ impl NodeIdentity {
         .unwrap()
     }
 
+    #[inline]
     pub fn node_id(&self) -> &NodeId {
-        &self.identity.node_id
+        &self.node_id
     }
 
+    #[inline]
     pub fn public_key(&self) -> &CommsPublicKey {
-        &self.identity.public_key
+        &self.public_key
     }
 
+    #[inline]
     pub fn secret_key(&self) -> &CommsSecretKey {
         &self.secret_key
     }
 
+    #[inline]
     pub fn features(&self) -> &PeerFeatures {
-        &self.identity.features
+        &self.features
     }
 
+    #[inline]
     pub fn has_peer_features(&self, peer_features: PeerFeatures) -> bool {
         self.features().contains(peer_features)
     }
@@ -148,11 +161,11 @@ impl NodeIdentity {
 impl From<NodeIdentity> for Peer {
     fn from(node_identity: NodeIdentity) -> Peer {
         Peer::new(
-            node_identity.identity.public_key,
-            node_identity.identity.node_id,
+            node_identity.public_key,
+            node_identity.node_id,
             node_identity.control_service_address.read().unwrap().clone().into(),
             PeerFlags::empty(),
-            node_identity.identity.features,
+            node_identity.features,
         )
     }
 }
@@ -160,42 +173,11 @@ impl From<NodeIdentity> for Peer {
 impl Clone for NodeIdentity {
     fn clone(&self) -> Self {
         Self {
-            identity: self.identity.clone(),
+            node_id: self.node_id.clone(),
+            public_key: self.public_key.clone(),
+            features: self.features.clone(),
             secret_key: self.secret_key.clone(),
             control_service_address: RwLock::new(self.control_service_address()),
-        }
-    }
-}
-
-/// The PeerNodeIdentity is a container that stores the public identity (NodeId, Identification Public Key pair) of a
-/// single node
-#[derive(Eq, PartialEq, Debug, Serialize, Deserialize, Clone)]
-pub struct PeerNodeIdentity {
-    #[serde(serialize_with = "serialize_to_hex")]
-    #[serde(deserialize_with = "deserialize_node_id_from_hex")]
-    pub node_id: NodeId,
-    pub public_key: CommsPublicKey,
-    pub features: PeerFeatures,
-}
-
-impl PeerNodeIdentity {
-    /// Construct a new identity for a node that contains its NodeId and identification key pair
-    pub fn new(node_id: NodeId, public_key: CommsPublicKey, features: PeerFeatures) -> PeerNodeIdentity {
-        PeerNodeIdentity {
-            node_id,
-            public_key,
-            features,
-        }
-    }
-}
-
-/// Construct a PeerNodeIdentity from a Peer
-impl From<Peer> for PeerNodeIdentity {
-    fn from(peer: Peer) -> Self {
-        Self {
-            public_key: peer.public_key,
-            node_id: peer.node_id,
-            features: peer.features,
         }
     }
 }

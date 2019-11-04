@@ -98,12 +98,11 @@ where
 
     for p in peers {
         let addr = p.control_service_address();
-        let NodeIdentity { identity, .. } = p;
         comms
             .peer_manager()
             .add_peer(Peer::new(
-                identity.public_key,
-                identity.node_id,
+                p.public_key().clone(),
+                p.node_id().clone(),
                 addr.into(),
                 PeerFlags::empty(),
                 PeerFeatures::empty(),

@@ -385,7 +385,7 @@ where TMsgStream: Stream<Item = OutboundMessage> + Unpin
     async fn send_message(&self, conn: &PeerConnection, message: OutboundMessage) -> Result<(), OutboundServiceError> {
         let OutboundMessage { flags, body, .. } = message;
         let envelope = Envelope::construct_signed(
-            &self.node_identity.secret_key,
+            self.node_identity.secret_key(),
             self.node_identity.public_key(),
             body,
             flags,

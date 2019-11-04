@@ -263,11 +263,7 @@ fn dht_discover_propagation() {
             // request back to A.
             node_A_dht
                 .dht_requester()
-                .send_discover(
-                    node_D_identity.identity.public_key.clone(),
-                    None,
-                    NodeDestination::Unknown,
-                )
+                .send_discover(node_D_identity.public_key().clone(), None, NodeDestination::Unknown)
                 .await
                 .unwrap();
 

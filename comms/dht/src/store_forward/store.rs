@@ -215,7 +215,7 @@ where
                 if (peer_manager.exists_node_id(&dest_node_id)) |
                     (peer_manager.in_network_region(
                         &dest_node_id,
-                        &node_identity.identity.node_id,
+                        node_identity.node_id(),
                         self.config.num_neighbouring_nodes,
                     )?)
                 {

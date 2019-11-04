@@ -97,7 +97,7 @@ fn main() {
                     info!(
                         target: LOG_TARGET,
                         "New node identity [{}] with public key {} has been created.",
-                        id.identity.node_id.to_hex(),
+                        id.node_id().to_hex(),
                         id.public_key().to_hex()
                     );
                     id

@@ -60,7 +60,7 @@ fn establish_peer_connection() {
 
     let node_B_peer = factories::peer::create()
         .with_net_addresses(vec![node_B_control_port_address.clone()])
-        .with_public_key(node_B_identity.identity.public_key.clone())
+        .with_public_key(node_B_identity.public_key().clone())
         .build()
         .unwrap();
 

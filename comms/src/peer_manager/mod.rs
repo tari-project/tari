@@ -75,7 +75,7 @@ pub mod peer_storage;
 pub use self::{
     error::PeerManagerError,
     node_id::NodeId,
-    node_identity::{NodeIdentity, PeerNodeIdentity},
+    node_identity::NodeIdentity,
     peer::{Peer, PeerFlags},
     peer_features::PeerFeatures,
     peer_manager::PeerManager,

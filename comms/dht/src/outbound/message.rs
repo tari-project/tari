@@ -27,7 +27,7 @@ use crate::{
 };
 use futures::channel::oneshot;
 use std::fmt;
-use tari_comms::{message::MessageFlags, peer_manager::PeerNodeIdentity, types::CommsPublicKey};
+use tari_comms::{message::MessageFlags, peer_manager::Peer, types::CommsPublicKey};
 
 /// Determines if an outbound message should be Encrypted and, if so, for which public key
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -110,7 +110,7 @@ impl fmt::Display for DhtOutboundRequest {
 /// send a message
 #[derive(Clone, Debug)]
 pub struct DhtOutboundMessage {
-    pub peer_node_identity: PeerNodeIdentity,
+    pub destination_peer: Peer,
     pub dht_header: DhtMessageHeader,
     pub comms_flags: MessageFlags,
     pub encryption: OutboundEncryption,
@@ -120,7 +120,7 @@ pub struct DhtOutboundMessage {
 impl DhtOutboundMessage {
     /// Create a new DhtOutboundMessage
     pub fn new(
-        peer_node_identity: PeerNodeIdentity,
+        destination_peer: Peer,
         dht_header: DhtMessageHeader,
         encryption: OutboundEncryption,
         comms_flags: MessageFlags,
@@ -128,7 +128,7 @@ impl DhtOutboundMessage {
     ) -> Self
     {
         Self {
-            peer_node_identity,
+            destination_peer,
             dht_header,
             encryption,
             comms_flags,

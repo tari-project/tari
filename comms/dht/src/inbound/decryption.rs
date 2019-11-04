@@ -105,7 +105,7 @@ where
         }
 
         debug!(target: LOG_TARGET, "Attempting to decrypt message");
-        let shared_secret = crypt::generate_ecdh_secret(&node_identity.secret_key, &dht_header.origin_public_key);
+        let shared_secret = crypt::generate_ecdh_secret(node_identity.secret_key(), &dht_header.origin_public_key);
         match crypt::decrypt(&shared_secret, &message.body) {
             Ok(decrypted) => Self::decryption_succeeded(next_service, message, decrypted).await,
             Err(err) => {
@@ -221,7 +221,7 @@ mod test {
         let mut service = DecryptionService::new(inner, Arc::clone(&node_identity));
 
         let plain_text_msg = wrap_in_envelope_body!(Vec::new()).unwrap();
-        let secret_key = crypt::generate_ecdh_secret(&node_identity.secret_key, &node_identity.identity.public_key);
+        let secret_key = crypt::generate_ecdh_secret(node_identity.secret_key(), node_identity.public_key());
         let encrypted = crypt::encrypt(&secret_key, &plain_text_msg.to_encoded_bytes().unwrap()).unwrap();
         let inbound_msg = make_dht_inbound_message(&node_identity, encrypted, DhtMessageFlags::ENCRYPTED);
 

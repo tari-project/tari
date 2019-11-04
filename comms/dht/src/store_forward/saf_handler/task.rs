@@ -135,7 +135,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = MiddlewareError>
 
         if !self.peer_manager.in_network_region(
             &message.source_peer.node_id,
-            &self.node_identity.identity.node_id,
+            self.node_identity.node_id(),
             self.config.saf_num_closest_nodes,
         )? {
             debug!(
@@ -398,7 +398,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = MiddlewareError>
         encrypted_body: &[u8],
     ) -> Result<EnvelopeBody, StoreAndForwardError>
     {
-        let shared_secret = crypt::generate_ecdh_secret(&node_identity.secret_key, &dht_header.origin_public_key);
+        let shared_secret = crypt::generate_ecdh_secret(node_identity.secret_key(), &dht_header.origin_public_key);
         let decrypted_bytes = crypt::decrypt(&shared_secret, encrypted_body)?;
         EnvelopeBody::decode(&decrypted_bytes).map_err(|_| StoreAndForwardError::DecryptionFailed)
     }
@@ -509,7 +509,7 @@ mod test {
 
             let node_identity = make_node_identity();
 
-            let shared_key = crypt::generate_ecdh_secret(&node_identity.secret_key, node_identity.public_key());
+            let shared_key = crypt::generate_ecdh_secret(node_identity.secret_key(), node_identity.public_key());
             let msg_a = crypt::encrypt(
                 &shared_key,
                 &wrap_in_envelope_body!(&b"A".to_vec())

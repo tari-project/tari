@@ -24,7 +24,6 @@ use crate::{
     connection::net_address::NetAddress,
     peer_manager::{
         node_id::NodeId,
-        node_identity::PeerNodeIdentity,
         peer::{Peer, PeerConnectionStats, PeerFlags},
         peer_storage::PeerStorage,
         PeerFeatures,
@@ -117,39 +116,43 @@ impl PeerManager {
     }
 
     /// Get a peer matching the given node ID
-    pub fn direct_identity_node_id(&self, node_id: &NodeId) -> Result<PeerNodeIdentity, PeerManagerError> {
-        acquire_read_lock!(self.peer_storage).direct_identity_node_id(&node_id)
+    pub fn direct_identity_node_id(&self, node_id: &NodeId) -> Result<Option<Peer>, PeerManagerError> {
+        match acquire_read_lock!(self.peer_storage).direct_identity_node_id(&node_id) {
+            Ok(peer) => Ok(Some(peer)),
+            Err(PeerManagerError::PeerNotFoundError) | Err(PeerManagerError::BannedPeer) => Ok(None),
+            Err(err) => Err(err),
+        }
     }
 
     /// Get a peer matching the given public key
-    pub fn direct_identity_public_key(
-        &self,
-        public_key: &CommsPublicKey,
-    ) -> Result<PeerNodeIdentity, PeerManagerError>
-    {
-        acquire_read_lock!(self.peer_storage).direct_identity_public_key(public_key)
+    pub fn direct_identity_public_key(&self, public_key: &CommsPublicKey) -> Result<Option<Peer>, PeerManagerError> {
+        match acquire_read_lock!(self.peer_storage).direct_identity_public_key(&public_key) {
+            Ok(peer) => Ok(Some(peer)),
+            Err(PeerManagerError::PeerNotFoundError) | Err(PeerManagerError::BannedPeer) => Ok(None),
+            Err(err) => Err(err),
+        }
     }
 
     /// Fetch all peers (except banned ones)
-    pub fn flood_identities(&self) -> Result<Vec<PeerNodeIdentity>, PeerManagerError> {
-        acquire_read_lock!(self.peer_storage).flood_identities()
+    pub fn flood_peers(&self) -> Result<Vec<Peer>, PeerManagerError> {
+        acquire_read_lock!(self.peer_storage).flood_peers()
     }
 
     /// Fetch n nearest neighbour Communication Nodes
-    pub fn closest_identities(
+    pub fn closest_peers(
         &self,
         node_id: &NodeId,
         n: usize,
         excluded_peers: &Vec<CommsPublicKey>,
-    ) -> Result<Vec<PeerNodeIdentity>, PeerManagerError>
+    ) -> Result<Vec<Peer>, PeerManagerError>
     {
-        acquire_read_lock!(self.peer_storage).closest_identities(node_id, n, excluded_peers)
+        acquire_read_lock!(self.peer_storage).closest_peers(node_id, n, excluded_peers)
     }
 
-    /// Fetch n random identioties
-    pub fn random_identities(&self, n: usize) -> Result<Vec<PeerNodeIdentity>, PeerManagerError> {
+    /// Fetch n random peers
+    pub fn random_peers(&self, n: usize) -> Result<Vec<Peer>, PeerManagerError> {
         // Send to a random set of peers of size n that are Communication Nodes
-        acquire_read_lock!(self.peer_storage).random_identities(n)
+        acquire_read_lock!(self.peer_storage).random_peers(n)
     }
 
     /// Check if a specific node_id is in the network region of the N nearest neighbours of the region specified by
@@ -264,17 +267,23 @@ mod test {
         assert!(peer_manager.add_peer(test_peers[test_peers.len() - 1].clone()).is_ok());
 
         // Test Valid Direct
-        let identities = peer_manager.direct_identity_node_id(&test_peers[2].node_id).unwrap();
-        assert_eq!(identities.node_id, test_peers[2].node_id);
-        assert_eq!(identities.public_key, test_peers[2].public_key);
+        let selected_peers = peer_manager
+            .direct_identity_node_id(&test_peers[2].node_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(selected_peers.node_id, test_peers[2].node_id);
+        assert_eq!(selected_peers.public_key, test_peers[2].public_key);
         // Test Invalid Direct
         let unmanaged_peer = create_test_peer(&mut rng, false);
-        assert!(peer_manager.direct_identity_node_id(&unmanaged_peer.node_id).is_err());
+        assert!(peer_manager
+            .direct_identity_node_id(&unmanaged_peer.node_id)
+            .unwrap()
+            .is_none());
 
         // Test Flood
-        let identities = peer_manager.flood_identities().unwrap();
-        assert_eq!(identities.len(), 18);
-        for peer_identity in &identities {
+        let selected_peers = peer_manager.flood_peers().unwrap();
+        assert_eq!(selected_peers.len(), 18);
+        for peer_identity in &selected_peers {
             assert_eq!(
                 peer_manager
                     .find_by_node_id(&peer_identity.node_id)
@@ -285,14 +294,14 @@ mod test {
         }
 
         // Test Closest - No exclusions
-        let identities = peer_manager
-            .closest_identities(&unmanaged_peer.node_id, 3, &Vec::new())
+        let selected_peers = peer_manager
+            .closest_peers(&unmanaged_peer.node_id, 3, &Vec::new())
             .unwrap();
-        assert_eq!(identities.len(), 3);
+        assert_eq!(selected_peers.len(), 3);
         // Remove current identity nodes from test peers
         let mut unused_peers: Vec<Peer> = Vec::new();
         for peer in &test_peers {
-            if !identities
+            if !selected_peers
                 .iter()
                 .any(|peer_identity| peer.node_id == peer_identity.node_id || peer.is_banned())
             {
@@ -300,7 +309,7 @@ mod test {
             }
         }
         // Check that none of the remaining unused peers have smaller distances compared to the selected peers
-        for peer_identity in &identities {
+        for peer_identity in &selected_peers {
             let selected_dist = unmanaged_peer.node_id.distance(&peer_identity.node_id);
             for unused_peer in &unused_peers {
                 let unused_dist = unmanaged_peer.node_id.distance(&unused_peer.node_id);
@@ -310,23 +319,23 @@ mod test {
 
         // Test Closest - With an exclusion
         let excluded_peers = vec![
-            identities[0].public_key.clone(), // ,identities[1].public_key.clone()
+            selected_peers[0].public_key.clone(), // ,selected_peers[1].public_key.clone()
         ];
-        let identities = peer_manager
-            .closest_identities(&unmanaged_peer.node_id, 3, &excluded_peers)
+        let selected_peers = peer_manager
+            .closest_peers(&unmanaged_peer.node_id, 3, &excluded_peers)
             .unwrap();
-        assert_eq!(identities.len(), 3);
+        assert_eq!(selected_peers.len(), 3);
         // Remove current identity nodes from test peers
         let mut unused_peers: Vec<Peer> = Vec::new();
         for peer in &test_peers {
-            if !identities.iter().any(|peer_identity| {
+            if !selected_peers.iter().any(|peer_identity| {
                 peer.node_id == peer_identity.node_id || peer.is_banned() || excluded_peers.contains(&peer.public_key)
             }) {
                 unused_peers.push(peer.clone());
             }
         }
         // Check that none of the remaining unused peers have smaller distances compared to the selected peers
-        for peer_identity in &identities {
+        for peer_identity in &selected_peers {
             let selected_dist = unmanaged_peer.node_id.distance(&peer_identity.node_id);
             for unused_peer in &unused_peers {
                 let unused_dist = unmanaged_peer.node_id.distance(&unused_peer.node_id);
@@ -336,8 +345,8 @@ mod test {
         }
 
         // Test Random
-        let identities1 = peer_manager.random_identities(10).unwrap();
-        let identities2 = peer_manager.random_identities(10).unwrap();
+        let identities1 = peer_manager.random_peers(10).unwrap();
+        let identities2 = peer_manager.random_peers(10).unwrap();
         assert_ne!(identities1, identities2);
     }
 
@@ -359,7 +368,7 @@ mod test {
         // Get nearest neighbours
         let n = 5;
         let nearest_identities = peer_manager
-            .closest_identities(&network_region_node_id, n, &Vec::new())
+            .closest_peers(&network_region_node_id, n, &Vec::new())
             .unwrap();
 
         for peer in &test_peers {

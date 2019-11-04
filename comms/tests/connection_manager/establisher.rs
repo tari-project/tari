@@ -136,7 +136,7 @@ fn establish_control_service_connection_succeed() {
     let node_identity2 = factories::node_identity::create().build().map(Arc::new).unwrap();
 
     let example_peer = factories::peer::create()
-        .with_public_key(node_identity2.identity.public_key.clone())
+        .with_public_key(node_identity2.public_key().clone())
         .with_net_addresses(vec![address])
         .build()
         .unwrap();
