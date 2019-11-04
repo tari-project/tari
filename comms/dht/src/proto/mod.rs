@@ -20,18 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod envelope {
-    include_proto_package!("tari.dht.envelope");
-}
+#[path = "tari.dht.envelope.rs"]
+pub mod envelope;
 
-pub mod dht {
-    include_proto_package!("tari.dht");
-}
+#[path = "tari.dht.rs"]
+pub mod dht;
 
-pub mod store_forward {
-    include_proto_package!("tari.dht.store_forward");
-}
+#[path = "tari.dht.store_forward.rs"]
+pub mod store_forward;
 
-pub mod message_header {
-    include_proto_package!("tari.dht.message_header");
-}
+#[path = "tari.dht.message_header.rs"]
+pub mod message_header;

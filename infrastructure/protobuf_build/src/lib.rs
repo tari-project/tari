@@ -41,8 +41,9 @@ impl ProtoCompiler {
         }
     }
 
-    pub fn out_dir(&mut self, out_dir: PathBuf) -> &mut Self {
-        self.out_dir = Some(out_dir);
+    pub fn out_dir<P>(&mut self, out_dir: P) -> &mut Self
+    where P: AsRef<Path> {
+        self.out_dir = Some(out_dir.as_ref().to_path_buf());
         self
     }
 
