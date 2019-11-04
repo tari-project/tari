@@ -145,3 +145,36 @@ fn equality_check() {
     // Now they're equal!
     assert!(ma == mb);
 }
+
+#[test]
+fn restore_from_leaf_nodes() {
+    let mut mmr = MutableMmr::<Hasher, _>::new(Vec::default());
+    for i in 0..12 {
+        assert!(mmr.push(&int_to_hash(i)).is_ok());
+    }
+    assert!(mmr.delete_and_compress(2, true));
+    assert!(mmr.delete_and_compress(4, true));
+    assert!(mmr.delete_and_compress(5, true));
+
+    // Request state of MMR with single call
+    let leaf_count = mmr.get_leaf_count();
+    let mmr_state1 = mmr.to_leaf_nodes(0, leaf_count).unwrap();
+
+    // Request state of MMR with multiple calls
+    let mut mmr_state2 = mmr.to_leaf_nodes(0, 3).unwrap();
+    mmr_state2.combine(mmr.to_leaf_nodes(3, 3).unwrap());
+    mmr_state2.combine(mmr.to_leaf_nodes(6, leaf_count - 6).unwrap());
+    assert_eq!(mmr_state1, mmr_state2);
+
+    // Change the state more before the restore
+    let mmr_root = mmr.get_merkle_root();
+    assert!(mmr.push(&int_to_hash(7)).is_ok());
+    assert!(mmr.push(&int_to_hash(8)).is_ok());
+    assert!(mmr.delete_and_compress(3, true));
+
+    // Restore from compact state
+    assert!(mmr.restore(mmr_state1.clone()).is_ok());
+    assert_eq!(mmr.get_merkle_root(), mmr_root);
+    let restored_mmr_state = mmr.to_leaf_nodes(0, mmr.get_leaf_count()).unwrap();
+    assert_eq!(restored_mmr_state, mmr_state2);
+}
