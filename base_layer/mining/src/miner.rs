@@ -19,21 +19,21 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use clap::{value_t, App, Arg};
+use crate::miner_code::Miner;
 use futures::{future::FutureExt, pin_mut, select};
 use log::*;
-use serde::Deserialize;
 use std::{
-    sync::atomic::Ordering,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
     time::{Duration, Instant},
 };
 use tari_core::blocks::{Block, BlockBuilder, BlockHeader};
-use tari_testnet_miner::miner::Miner;
 use tari_transactions::consensus::ConsensusRules;
-use tokio::io::AsyncBufReadExt;
 use tokio_executor::threadpool::ThreadPool;
 
-const LOG_TARGET: &str = "applications::testnet_miner";
+const LOG_TARGET: &str = "base_node::miner";
 
 // Removing GRPC for now as the basenode coms are not going to be through GRPC for this miner,
 // wallet might still be so leaving the code as an example
@@ -46,18 +46,8 @@ const LOG_TARGET: &str = "applications::testnet_miner";
 
 //     let response = base_node.get_block(request).await?;
 
-#[derive(Debug, Default, Deserialize)]
-struct Settings {
-    wallet_address: Option<String>,
-    base_node_address: Option<String>,
-}
-
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let _ = env_logger::init();
-
-    info!(target: LOG_TARGET, "Settings loaded");
-
+/// This is a blocking thread, this needs to run on its own thread.
+async fn run(stop_flag: Arc<AtomicBool>) -> Result<(), Box<dyn std::error::Error>> {
     info!(target: LOG_TARGET, "Requesting new block");
 
     let mut miner = Miner::new(ConsensusRules::current());
@@ -78,13 +68,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // create threads
 
         let t_miner = mine(&mut miner, header, &mut pool).fuse();
-        let t_cli = stop_mining().fuse();
+        let t_cli = stop_mining(stop_flag.clone()).fuse();
         let t_tip = check_tip(0).fuse();
         pin_mut!(t_miner);
         pin_mut!(t_cli);
         pin_mut!(t_tip);
-
-        let mut stop_flag = false;
 
         select! {
         () = t_miner => {info!(target: LOG_TARGET, "Mined a block");
@@ -92,10 +80,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         },
         () = t_cli => {info!(target: LOG_TARGET, "Canceled mining");
                         mining_flag.store(true, Ordering::Relaxed);
-                        stop_flag = true;
                         },
         () = t_tip => info!(target: LOG_TARGET, "Canceled mining on current block, tip changed"),}
-        if stop_flag {
+        if stop_flag.load(Ordering::Relaxed) {
             break;
         }
         block = get_block();
@@ -108,13 +95,10 @@ async fn mine(miner: &mut Miner, header: BlockHeader, pool: &mut ThreadPool) {
     miner.mine(header, pool).await;
 }
 
-async fn stop_mining() {
+async fn stop_mining(stop_flag: Arc<AtomicBool>) {
     loop {
-        println!("Mining, press c to close and stop");
-        let mut stdin_reader = tokio::io::BufReader::new(tokio::io::stdin());
-        let mut buf = Vec::new();
-        stdin_reader.read_until(b'\n', &mut buf).await;
-        if buf == b"c\n" {
+        tokio::timer::delay(Instant::now() + Duration::from_millis(1000)).await;
+        if stop_flag.load(Ordering::Relaxed) {
             break;
         }
     }
@@ -129,57 +113,6 @@ async fn check_tip(current_tip: u64) {
             break;
         }
     }
-}
-
-/// Function to read in the settings, either from the config file or the cli
-fn read_settings() -> Settings {
-    let mut settings = Settings::default();
-    let matches = App::new("Tari test-net miner")
-        .version("0.1")
-        .arg(
-            Arg::with_name("config")
-                .value_name("FILE")
-                .long("config")
-                .short("c")
-                .help("The relative path of the miner config.toml file")
-                .takes_value(true)
-                .required(false),
-        )
-        .arg(
-            Arg::with_name("wallet_address")
-                .long("wallet_address")
-                .short("w")
-                .help("The address the wallet should use to connect to")
-                .takes_value(true)
-                .required(false),
-        )
-        .arg(
-            Arg::with_name("base_node_address")
-                .long("base_node_address")
-                .short("b")
-                .help("This is the address the server should use to connect to the base_node for blocks")
-                .takes_value(true)
-                .required(false),
-        )
-        .get_matches();
-    if matches.is_present("config") {
-        let mut settings_file = config::Config::default();
-        settings_file
-            .merge(config::File::with_name(matches.value_of("config").unwrap()))
-            .expect("Could not open specified config file");
-        settings = settings_file.try_into().unwrap();
-    }
-    if let Some(_c) = matches.values_of("wallet_address") {
-        if let Ok(v) = value_t!(matches, "wallet_address", String) {
-            settings.wallet_address = Some(v)
-        }
-    }
-    if let Some(_c) = matches.values_of("base_node_address") {
-        if let Ok(v) = value_t!(matches, "base_node_address", String) {
-            settings.base_node_address = Some(v);
-        }
-    }
-    settings
 }
 
 // todo get block here

@@ -23,7 +23,6 @@ members = [
     "infrastructure/shutdown",
     "infrastructure/storage",
     "infrastructure/test_utils",
-    "applications/tari_testnet_miner",
     "applications/tari_base_node",
     #Needs to be updated to make its calls using an Tokio runtime block_on function.
     #"ffi"

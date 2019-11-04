@@ -66,6 +66,8 @@ pub enum MinerError {
     CoinbaseError,
     // No block provided to mine
     MissingBlock,
+    // Config issue
+    ConfigError,
 }
 
 impl Miner {
