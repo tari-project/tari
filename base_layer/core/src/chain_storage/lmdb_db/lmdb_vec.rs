@@ -22,11 +22,11 @@
 
 use crate::chain_storage::{
     error::ChainStorageError,
-    lmdb_db::lmdb::{lmdb_delete, lmdb_get, lmdb_insert, lmdb_len},
+    lmdb_db::lmdb::{lmdb_clear_db, lmdb_delete, lmdb_get, lmdb_insert, lmdb_len},
 };
 use derive_error::Error;
 use lmdb_zero::{Database, Environment, WriteTransaction};
-use std::{marker::PhantomData, sync::Arc};
+use std::{cmp::min, marker::PhantomData, sync::Arc};
 use tari_mmr::{error::MerkleMountainRangeError, ArrayLike, ArrayLikeExt};
 use tari_storage::lmdb_store::LMDBError;
 use tari_utilities::message_format::MessageFormatError;
@@ -84,10 +84,22 @@ where
     fn get_or_panic(&self, index: usize) -> Self::Value {
         self.get(index).unwrap().unwrap()
     }
+
+    fn clear(&mut self) -> Result<(), Self::Error> {
+        let txn = WriteTransaction::new(self.env.clone()).map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+        {
+            lmdb_clear_db(&txn, &self.db)?;
+        }
+        txn.commit()
+            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+        Ok(())
+    }
 }
 
 impl<T> ArrayLikeExt for LMDBVec<T>
-where for<'t> T: serde::de::DeserializeOwned
+where
+    T: serde::Serialize,
+    for<'t> T: serde::de::DeserializeOwned,
 {
     type Value = T;
 
@@ -106,6 +118,45 @@ where for<'t> T: serde::de::DeserializeOwned
             txn.commit()
                 .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))?;
         }
+        Ok(())
+    }
+
+    fn shift(&mut self, n: usize) -> Result<(), MerkleMountainRangeError> {
+        let n_elements =
+            lmdb_len(&self.env, &self.db).map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))?;
+        // Remove the first n elements
+        let drain_n = min(n, n_elements);
+        let txn = WriteTransaction::new(self.env.clone())
+            .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))?;
+        {
+            for index in 0..drain_n {
+                lmdb_delete(&txn, &self.db, &index)
+                    .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))?;
+            }
+        }
+        txn.commit()
+            .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))?;
+        // Update the indices of the remaining elements
+        // TODO: this function is very inefficient and can be improved by keeping track of a starting index offset,
+        // allowing the keys of the remaining items to remain the same but work as if they were updated. There might
+        // also be a more efficient way to update the keys using lmdb zero.
+        let mut shift_index = 0usize;
+        let txn = WriteTransaction::new(self.env.clone())
+            .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))?;
+        {
+            for index in drain_n..n_elements {
+                let item = lmdb_get::<usize, T>(&self.env, &self.db, &index)
+                    .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))?
+                    .ok_or(MerkleMountainRangeError::BackendError("Unexpected error".into()))?;
+                lmdb_delete(&txn, &self.db, &index)
+                    .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))?;
+                lmdb_insert(&txn, &self.db, &shift_index, &item)
+                    .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))?;
+                shift_index += 1;
+            }
+        }
+        txn.commit()
+            .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))?;
         Ok(())
     }
 
@@ -130,7 +181,7 @@ mod test {
     use tari_test_utils::paths::create_random_database_path;
 
     #[test]
-    fn len_push_get_truncate_for_each() {
+    fn len_push_get_truncate_for_each_shift_clear() {
         let path = create_random_database_path().to_str().unwrap().to_string();
         let _ = std::fs::create_dir(&path).unwrap_or_default();
         let lmdb_store = LMDBBuilder::new()
@@ -141,7 +192,7 @@ mod test {
             .build()
             .unwrap();
         let mut lmdb_vec = LMDBVec::<i32>::new(lmdb_store.env(), lmdb_store.get_handle("db").unwrap().db().clone());
-        let mut mem_vec = vec![100, 200, 300, 400];
+        let mut mem_vec = vec![100, 200, 300, 400, 500, 600];
         assert_eq!(lmdb_vec.len().unwrap(), 0);
 
         mem_vec
@@ -155,11 +206,20 @@ mod test {
             .for_each(|(i, val)| assert_eq!(lmdb_vec.get(i).unwrap(), Some(val.clone())));
         assert_eq!(lmdb_vec.get(mem_vec.len()).unwrap(), None);
 
-        mem_vec.truncate(2);
-        assert!(lmdb_vec.truncate(2).is_ok());
+        mem_vec.truncate(4);
+        assert!(lmdb_vec.truncate(4).is_ok());
         assert_eq!(lmdb_vec.len().unwrap(), mem_vec.len());
         lmdb_vec
             .for_each(|val| assert!(mem_vec.contains(&val.unwrap())))
             .unwrap();
+
+        assert!(mem_vec.shift(2).is_ok());
+        assert!(lmdb_vec.shift(2).is_ok());
+        assert_eq!(lmdb_vec.len().unwrap(), 2);
+        assert_eq!(lmdb_vec.get(0).unwrap(), Some(300));
+        assert_eq!(lmdb_vec.get(1).unwrap(), Some(400));
+
+        assert!(lmdb_vec.clear().is_ok());
+        assert_eq!(lmdb_vec.len().unwrap(), 0);
     }
 }

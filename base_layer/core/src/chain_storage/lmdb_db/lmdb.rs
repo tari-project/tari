@@ -146,3 +146,9 @@ where
     }
     Ok(())
 }
+
+pub fn lmdb_clear_db(txn: &WriteTransaction, db: &Database) -> Result<(), ChainStorageError> {
+    txn.access()
+        .clear_db(&db)
+        .map_err(|e| ChainStorageError::AccessError(e.to_string()))
+}

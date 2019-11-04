@@ -23,6 +23,7 @@
 use crate::{
     backend::{ArrayLike, ArrayLikeExt},
     error::MerkleMountainRangeError,
+    mutable_mmr_leaf_nodes::MutableMmrLeafNodes,
     pruned_mmr::{prune_mutable_mmr, PrunedMutableMmr},
     Hash,
     MutableMmr,
@@ -34,6 +35,16 @@ use serde::{
     ser::{Serialize, SerializeStruct, Serializer},
 };
 use std::{fmt, mem, ops::Deref};
+
+/// Configuration for the MerkleChangeTracker.
+#[derive(Debug, Clone, Copy)]
+pub struct MerkleChangeTrackerConfig {
+    /// When the max_history_len is reached then the number of checkpoints upto the min_history_len is committed to the
+    /// base MMR.
+    pub min_history_len: usize,
+    /// The max_history_len specifies the point in history upto where the MMR can be rewinded.
+    pub max_history_len: usize,
+}
 
 /// A struct that wraps an MMR to keep track of changes to the MMR over time. This enables one to roll
 /// back changes to a point in history. Think of `MerkleChangeTracker` as 'git' for MMRs.
@@ -65,6 +76,8 @@ where
     current_additions: Vec<Hash>,
     // The deletions since the last commit
     current_deletions: Bitmap,
+    config: MerkleChangeTrackerConfig,
+    hist_commit_count: usize,
 }
 
 impl<D, BaseBackend, CpBackend> MerkleChangeTracker<D, BaseBackend, CpBackend>
@@ -86,8 +99,13 @@ where
     pub fn new(
         base: MutableMmr<D, BaseBackend>,
         diffs: CpBackend,
+        config: MerkleChangeTrackerConfig,
     ) -> Result<MerkleChangeTracker<D, BaseBackend, CpBackend>, MerkleMountainRangeError>
     {
+        if config.max_history_len < config.min_history_len {
+            return Err(MerkleMountainRangeError::InvalidConfig);
+        }
+        let hist_commit_count = config.max_history_len - config.min_history_len + 1;
         let mmr = prune_mutable_mmr::<D, _>(&base)?;
         Ok(MerkleChangeTracker {
             base,
@@ -95,7 +113,18 @@ where
             checkpoints: diffs,
             current_additions: Vec::new(),
             current_deletions: Bitmap::create(),
+            config,
+            hist_commit_count,
         })
+    }
+
+    /// Reset the MerkleChangeTracker and restore the base MMR state.
+    pub fn restore(&mut self, base_state: MutableMmrLeafNodes) -> Result<(), MerkleMountainRangeError> {
+        self.checkpoints
+            .clear()
+            .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))?;
+        self.rewind_to_start()?;
+        self.base.restore(base_state)
     }
 
     /// Return the number of Checkpoints this change tracker has recorded
@@ -138,15 +167,36 @@ where
         self.mmr.compress()
     }
 
+    // Check if the the number of checkpoints have exceeded the maximum configured history length. If it does then the
+    // oldest checkpoints are applied to the base mmr.
+    fn update_base_mmr(&mut self) -> Result<(), MerkleMountainRangeError> {
+        if self.checkpoint_count()? > self.config.max_history_len {
+            for cp_index in 0..self.hist_commit_count {
+                if let Some(cp) = self
+                    .checkpoints
+                    .get(cp_index)
+                    .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))?
+                {
+                    cp.apply(&mut self.base)?;
+                }
+            }
+            self.checkpoints.shift(self.hist_commit_count)?;
+        }
+        Ok(())
+    }
+
     /// Commit the change history since the last commit to a new [MerkleCheckPoint] and clear the current change set.
-    pub fn commit(&mut self) -> Result<(), CpBackend::Error> {
+    pub fn commit(&mut self) -> Result<(), MerkleMountainRangeError> {
         let mut hash_set = Vec::new();
         mem::swap(&mut hash_set, &mut self.current_additions);
         let mut deleted_set = Bitmap::create();
         mem::swap(&mut deleted_set, &mut self.current_deletions);
         let diff = MerkleCheckPoint::new(hash_set, deleted_set);
-        self.checkpoints.push(diff)?;
-        Ok(())
+        self.checkpoints
+            .push(diff)
+            .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))?;
+
+        self.update_base_mmr()
     }
 
     /// Rewind the MMR state by the given number of Checkpoints.
@@ -234,6 +284,16 @@ where
             .iter()
             .position(|h| h == hash)
             .map(|i| self.mmr.len() as usize - self.current_additions.len() + i)
+    }
+
+    /// Returns the MMR state of the base MMR.
+    pub fn to_base_leaf_nodes(
+        &self,
+        index: usize,
+        count: usize,
+    ) -> Result<MutableMmrLeafNodes, MerkleMountainRangeError>
+    {
+        self.base.to_leaf_nodes(index, count)
     }
 }
 

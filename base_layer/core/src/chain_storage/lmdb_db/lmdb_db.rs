@@ -54,7 +54,14 @@ use std::{
     path::Path,
     sync::{Arc, RwLock},
 };
-use tari_mmr::{Hash as MmrHash, MerkleChangeTracker, MerkleCheckPoint, MerkleProof, MutableMmr};
+use tari_mmr::{
+    Hash as MmrHash,
+    MerkleChangeTracker,
+    MerkleChangeTrackerConfig,
+    MerkleCheckPoint,
+    MerkleProof,
+    MutableMmr,
+};
 use tari_storage::lmdb_store::{db, LMDBBuilder, LMDBStore};
 use tari_transactions::{
     transaction::{TransactionKernel, TransactionOutput},
@@ -151,6 +158,11 @@ where D: Digest + Send + Sync
                 .db()
                 .clone(),
         );
+        let mct_config = MerkleChangeTrackerConfig {
+            // TODO: this needs a proper config for lmdb_db
+            min_history_len: 900,
+            max_history_len: 1000,
+        };
         Ok(Self {
             metadata_db: store
                 .get_handle(LMDB_DB_METADATA)
@@ -195,18 +207,22 @@ where D: Digest + Send + Sync
             utxo_mmr: RwLock::new(MerkleChangeTracker::new(
                 MutableMmr::new(utxo_mmr_base_backend),
                 utxo_mmr_cp_backend,
+                mct_config,
             )?),
             header_mmr: RwLock::new(MerkleChangeTracker::new(
                 MutableMmr::new(header_mmr_base_backend),
                 header_mmr_cp_backend,
+                mct_config,
             )?),
             kernel_mmr: RwLock::new(MerkleChangeTracker::new(
                 MutableMmr::new(kernel_mmr_base_backend),
                 kernel_mmr_cp_backend,
+                mct_config,
             )?),
             range_proof_mmr: RwLock::new(MerkleChangeTracker::new(
                 MutableMmr::new(range_proof_mmr_base_backend),
                 range_proof_mmr_cp_backend,
+                mct_config,
             )?),
             env: store.env(),
         })

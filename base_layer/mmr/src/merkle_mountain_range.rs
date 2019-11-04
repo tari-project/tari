@@ -25,13 +25,13 @@
 
 use crate::{
     backend::ArrayLike,
-    common::{bintree_height, find_peaks, hash_together, leaf_index, peak_map_height},
+    common::{bintree_height, find_peaks, hash_together, leaf_index, n_leaves, peak_map_height},
     error::MerkleMountainRangeError,
     Hash,
 };
 use digest::Digest;
 use log::*;
-use std::marker::PhantomData;
+use std::{cmp::max, marker::PhantomData};
 
 const LOG_TARGET: &str = "mmr::merkle_mountain_range";
 
@@ -59,6 +59,17 @@ where
         }
     }
 
+    /// Clears the MMR and restores its state from a set of leaf hashes.
+    pub fn restore(&mut self, leaf_hashes: Vec<Hash>) -> Result<(), MerkleMountainRangeError> {
+        self.hashes
+            .clear()
+            .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))?;
+        for hash in leaf_hashes {
+            self.push(&hash)?;
+        }
+        Ok(())
+    }
+
     /// Return the number of nodes in the full Merkle Mountain range, excluding bagged hashes
     #[inline(always)]
     pub fn len(&self) -> Result<usize, MerkleMountainRangeError> {
@@ -79,9 +90,27 @@ where
             .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))
     }
 
+    /// Returns the number of leaf nodes in the MMR.
+    pub fn get_leaf_count(&self) -> Result<usize, MerkleMountainRangeError> {
+        Ok(n_leaves(self.len()?))
+    }
+
     /// This function returns the hash of the leaf index provided, indexed from 0
     pub fn get_leaf_hash(&self, leaf_node_index: usize) -> Result<Option<Hash>, MerkleMountainRangeError> {
         self.get_node_hash(leaf_index(leaf_node_index))
+    }
+
+    /// Returns a set of leaf hashes from the MMR.
+    pub fn get_leaf_hashes(&self, index: usize, count: usize) -> Result<Vec<Hash>, MerkleMountainRangeError> {
+        let count = max(1, count);
+        let last_index = index + count - 1;
+        let mut leaf_hashes = Vec::with_capacity(count as usize);
+        for index in index..=last_index {
+            if let Some(hash) = self.get_leaf_hash(index)? {
+                leaf_hashes.push(hash);
+            }
+        }
+        Ok(leaf_hashes)
     }
 
     /// This function will return the single merkle root of the MMR by simply hashing the peaks together.

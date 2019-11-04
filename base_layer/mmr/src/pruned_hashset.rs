@@ -102,4 +102,12 @@ impl ArrayLike for PrunedHashSet {
             .expect("PrunedHashSet only tracks peaks before the offset")
             .clone()
     }
+
+    fn clear(&mut self) -> Result<(), Self::Error> {
+        self.base_offset = 0;
+        self.peak_indices.clear();
+        self.peak_hashes.clear();
+        self.hashes.clear();
+        Ok(())
+    }
 }
