@@ -19,10 +19,29 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#![feature(type_alias_impl_trait)]
-pub mod output_manager_service;
-pub mod support;
-// pub mod text_message_service;
-pub mod contacts_service;
-pub mod transaction_service;
-pub mod wallet;
+
+use crate::contacts_service::storage::database::DbKey;
+use derive_error::Error;
+use tari_service_framework::reply_channel::TransportChannelError;
+
+#[derive(Debug, Error, PartialEq)]
+pub enum ContactsServiceError {
+    /// Contact is not found
+    ContactNotFound,
+    /// Received incorrect response from service request
+    UnexpectedApiResponse,
+    ContactsServiceStorageError(ContactsServiceStorageError),
+    TransportChannelError(TransportChannelError),
+}
+
+#[derive(Debug, Error, PartialEq)]
+pub enum ContactsServiceStorageError {
+    /// Tried to insert an output that already exists in the database
+    DuplicateContact,
+    /// This write operation is not supported for provided DbKey
+    OperationNotSupported,
+    #[error(non_std, no_from)]
+    ValueNotFound(DbKey),
+    #[error(msg_embedded, non_std, no_from)]
+    UnexpectedResult(String),
+}

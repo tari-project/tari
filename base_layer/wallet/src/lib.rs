@@ -5,6 +5,7 @@
 #[macro_use]
 mod macros;
 // pub mod ffi;
+pub mod contacts_service;
 pub mod output_manager_service;
 pub mod transaction_service;
 pub mod types;
