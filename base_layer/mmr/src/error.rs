@@ -38,4 +38,6 @@ pub enum MerkleMountainRangeError {
     HashNotFound(usize),
     // A request was out of range
     OutOfRange,
+    // Conflicting or invalid configuration parameters provided.
+    InvalidConfig,
 }

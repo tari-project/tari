@@ -140,6 +140,7 @@ mod change_tracker;
 mod merkle_mountain_range;
 mod merkle_proof;
 mod mutable_mmr;
+mod mutable_mmr_leaf_nodes;
 mod serde_support;
 
 // Less commonly used exports
@@ -153,10 +154,12 @@ pub mod pruned_mmr;
 /// A vector-based backend for [MerkleMountainRange]
 pub use backend::{ArrayLike, ArrayLikeExt};
 /// A data structure that maintains a list of diffs on an MMR, enabling you to rewind to a previous state
-pub use change_tracker::{MerkleChangeTracker, MerkleCheckPoint};
+pub use change_tracker::{MerkleChangeTracker, MerkleChangeTrackerConfig, MerkleCheckPoint};
 /// An immutable, append-only Merkle Mountain range (MMR) data structure
 pub use merkle_mountain_range::MerkleMountainRange;
 /// A data structure for proving a hash inclusion in an MMR
 pub use merkle_proof::{MerkleProof, MerkleProofError};
 /// An append-only Merkle Mountain range (MMR) data structure that allows deletion of existing leaf nodes.
 pub use mutable_mmr::MutableMmr;
+/// A data structure for storing all the data required to restore the state of an MMR.
+pub use mutable_mmr_leaf_nodes::MutableMmrLeafNodes;

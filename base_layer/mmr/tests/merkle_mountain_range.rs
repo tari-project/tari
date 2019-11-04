@@ -114,3 +114,42 @@ fn validate() {
     let mmr = create_mmr(65);
     assert!(mmr.validate().is_ok());
 }
+
+#[test]
+fn restore_from_leaf_hashes() {
+    let mut mmr = MerkleMountainRange::<Hasher, _>::new(Vec::default());
+    let leaf_hashes = mmr.get_leaf_hashes(0, 1).unwrap();
+    assert_eq!(leaf_hashes.len(), 0);
+
+    let h0 = int_to_hash(0);
+    let h1 = int_to_hash(1);
+    let h2 = int_to_hash(2);
+    let h3 = int_to_hash(3);
+    assert!(mmr.push(&h0).is_ok());
+    assert!(mmr.push(&h1).is_ok());
+    assert!(mmr.push(&h2).is_ok());
+    assert!(mmr.push(&h3).is_ok());
+    assert_eq!(mmr.len(), Ok(7));
+
+    // Construct MMR state from multiple leaf hash queries.
+    let leaf_count = mmr.get_leaf_count().unwrap();
+    let mut leaf_hashes = mmr.get_leaf_hashes(0, 2).unwrap();
+    leaf_hashes.append(&mut mmr.get_leaf_hashes(2, leaf_count - 2).unwrap());
+    assert_eq!(leaf_hashes.len(), 4);
+    assert_eq!(leaf_hashes[0], h0);
+    assert_eq!(leaf_hashes[1], h1);
+    assert_eq!(leaf_hashes[2], h2);
+    assert_eq!(leaf_hashes[3], h3);
+
+    assert!(mmr.push(&int_to_hash(4)).is_ok());
+    assert!(mmr.push(&int_to_hash(5)).is_ok());
+    assert_eq!(mmr.len(), Ok(10));
+
+    assert!(mmr.restore(leaf_hashes).is_ok());
+    assert_eq!(mmr.len(), Ok(7));
+    assert_eq!(mmr.get_leaf_hash(0), Ok(Some(h0)));
+    assert_eq!(mmr.get_leaf_hash(1), Ok(Some(h1)));
+    assert_eq!(mmr.get_leaf_hash(2), Ok(Some(h2)));
+    assert_eq!(mmr.get_leaf_hash(3), Ok(Some(h3)));
+    assert_eq!(mmr.get_leaf_hash(4), Ok(None));
+}

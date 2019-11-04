@@ -24,13 +24,17 @@ mod support;
 
 use croaring::Bitmap;
 use support::{create_mmr, int_to_hash, Hasher};
-use tari_mmr::{MerkleChangeTracker, MerkleCheckPoint, MutableMmr};
+use tari_mmr::{MerkleChangeTracker, MerkleChangeTrackerConfig, MerkleCheckPoint, MutableMmr};
 use tari_utilities::hex::Hex;
 
 #[test]
 fn change_tracker() {
     let mmr = MutableMmr::<Hasher, _>::new(Vec::default());
-    let mmr = MerkleChangeTracker::new(mmr, Vec::new()).unwrap();
+    let config = MerkleChangeTrackerConfig {
+        min_history_len: 15,
+        max_history_len: 20,
+    };
+    let mmr = MerkleChangeTracker::new(mmr, Vec::new(), config).unwrap();
     assert_eq!(mmr.checkpoint_count(), Ok(0));
     assert_eq!(mmr.is_empty(), Ok(true));
 }
@@ -40,7 +44,11 @@ fn change_tracker() {
 fn checkpoints() {
     //----------- Construct and populate the initial MMR --------------------------
     let base = MutableMmr::<Hasher, _>::new(Vec::default());
-    let mut mmr = MerkleChangeTracker::new(base, Vec::new()).unwrap();
+    let config = MerkleChangeTrackerConfig {
+        min_history_len: 15,
+        max_history_len: 20,
+    };
+    let mut mmr = MerkleChangeTracker::new(base, Vec::new(), config).unwrap();
     for i in 0..5 {
         assert!(mmr.push(&int_to_hash(i)).is_ok());
     }
@@ -100,7 +108,11 @@ fn checkpoints() {
 fn reset_and_replay() {
     // You don't have to use a Pruned MMR... any MMR implementation is fine
     let base = MutableMmr::from(create_mmr(5));
-    let mut mmr = MerkleChangeTracker::new(base, Vec::new()).unwrap();
+    let config = MerkleChangeTrackerConfig {
+        min_history_len: 15,
+        max_history_len: 20,
+    };
+    let mut mmr = MerkleChangeTracker::new(base, Vec::new(), config).unwrap();
     let root = mmr.get_merkle_root();
     // Add some new nodes etc
     assert!(mmr.push(&int_to_hash(10)).is_ok());
@@ -161,4 +173,37 @@ fn serialize_and_deserialize_merklecheckpoint() {
     let ser_buf = bincode::serialize(&mcp).unwrap();
     let des_mcp: MerkleCheckPoint = bincode::deserialize(&ser_buf).unwrap();
     assert_eq!(mcp.into_parts(), des_mcp.into_parts());
+}
+
+#[test]
+fn update_of_base_mmr_with_history_bounds() {
+    let base = MutableMmr::<Hasher, _>::new(Vec::default());
+    let config = MerkleChangeTrackerConfig {
+        min_history_len: 3,
+        max_history_len: 5,
+    };
+    let mut mmr = MerkleChangeTracker::new(base, Vec::new(), config).unwrap();
+    for i in 1..=5 {
+        assert!(mmr.push(&int_to_hash(i)).is_ok());
+        assert!(mmr.commit().is_ok());
+    }
+    let mmr_state = mmr.to_base_leaf_nodes(0, mmr.get_leaf_count()).unwrap();
+    assert_eq!(mmr_state.leaf_hashes.len(), 0);
+
+    assert!(mmr.push(&int_to_hash(6)).is_ok());
+    assert!(mmr.commit().is_ok());
+    let mmr_state = mmr.to_base_leaf_nodes(0, mmr.get_leaf_count()).unwrap();
+    assert_eq!(mmr_state.leaf_hashes.len(), 3);
+
+    for i in 7..=8 {
+        assert!(mmr.push(&int_to_hash(i)).is_ok());
+        assert!(mmr.commit().is_ok());
+    }
+    let mmr_state = mmr.to_base_leaf_nodes(0, mmr.get_leaf_count()).unwrap();
+    assert_eq!(mmr_state.leaf_hashes.len(), 3);
+
+    assert!(mmr.push(&int_to_hash(9)).is_ok());
+    assert!(mmr.commit().is_ok());
+    let mmr_state = mmr.to_base_leaf_nodes(0, mmr.get_leaf_count()).unwrap();
+    assert_eq!(mmr_state.leaf_hashes.len(), 6);
 }

@@ -44,7 +44,14 @@ use std::{
     collections::HashMap,
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
-use tari_mmr::{Hash as MmrHash, MerkleChangeTracker, MerkleCheckPoint, MerkleProof, MutableMmr};
+use tari_mmr::{
+    Hash as MmrHash,
+    MerkleChangeTracker,
+    MerkleChangeTrackerConfig,
+    MerkleCheckPoint,
+    MerkleProof,
+    MutableMmr,
+};
 use tari_transactions::{
     transaction::{TransactionKernel, TransactionOutput},
     types::HashOutput,
@@ -341,10 +348,19 @@ impl<D> Default for InnerDatabase<D>
 where D: Digest
 {
     fn default() -> Self {
-        let utxo_mmr = MerkleChangeTracker::<D, _, _>::new(MutableMmr::new(Vec::new()), Vec::new()).unwrap();
-        let header_mmr = MerkleChangeTracker::<D, _, _>::new(MutableMmr::new(Vec::new()), Vec::new()).unwrap();
-        let kernel_mmr = MerkleChangeTracker::<D, _, _>::new(MutableMmr::new(Vec::new()), Vec::new()).unwrap();
-        let range_proof_mmr = MerkleChangeTracker::<D, _, _>::new(MutableMmr::new(Vec::new()), Vec::new()).unwrap();
+        let mct_config = MerkleChangeTrackerConfig {
+            // TODO: this needs a proper config for memory_db
+            min_history_len: 900,
+            max_history_len: 1000,
+        };
+        let utxo_mmr =
+            MerkleChangeTracker::<D, _, _>::new(MutableMmr::new(Vec::new()), Vec::new(), mct_config).unwrap();
+        let header_mmr =
+            MerkleChangeTracker::<D, _, _>::new(MutableMmr::new(Vec::new()), Vec::new(), mct_config).unwrap();
+        let kernel_mmr =
+            MerkleChangeTracker::<D, _, _>::new(MutableMmr::new(Vec::new()), Vec::new(), mct_config).unwrap();
+        let range_proof_mmr =
+            MerkleChangeTracker::<D, _, _>::new(MutableMmr::new(Vec::new()), Vec::new(), mct_config).unwrap();
         InnerDatabase {
             headers: HashMap::default(),
             block_hashes: HashMap::default(),
