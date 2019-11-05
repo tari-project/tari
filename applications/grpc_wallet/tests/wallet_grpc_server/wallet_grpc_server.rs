@@ -515,7 +515,7 @@ fn test_rpc_text_message_service() {
     let db_path2 = get_path(Some(db_name2));
     init_sql_database(db_name2);
 
-    let node_identity1 = NodeIdentity::new(secret_key1, public_key1.clone(), listener_address1.clone())
+    let node_identity1 = NodeIdentity::new(secret_key1, listener_address1.clone())
         .map(Arc::new)
         .unwrap();
     let config1 = WalletConfig {
@@ -545,7 +545,7 @@ fn test_rpc_text_message_service() {
         database_path: db_path1,
     };
 
-    let node_identity2 = NodeIdentity::new(secret_key2, public_key2.clone(), listener_address2.clone())
+    let node_identity2 = NodeIdentity::new(secret_key2, listener_address2.clone())
         .map(Arc::new)
         .unwrap();
     let config2 = WalletConfig {

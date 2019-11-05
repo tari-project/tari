@@ -21,12 +21,19 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{output_manager_service::TxId, transaction_service::error::TransactionStorageError};
+use chrono::NaiveDateTime;
 use log::*;
 use std::{
     collections::HashMap,
     fmt::{Display, Error, Formatter},
 };
-use tari_transactions::{transaction::Transaction, ReceiverTransactionProtocol, SenderTransactionProtocol};
+use tari_comms::types::CommsPublicKey;
+use tari_transactions::{
+    tari_amount::MicroTari,
+    transaction::Transaction,
+    ReceiverTransactionProtocol,
+    SenderTransactionProtocol,
+};
 
 const LOG_TARGET: &'static str = "wallet::transaction_service::database";
 
@@ -46,8 +53,37 @@ pub trait TransactionBackend: Send + Sync {
     fn complete_transaction(
         &mut self,
         tx_id: TxId,
-        completed_transaction: Transaction,
+        completed_transaction: CompletedTransaction,
     ) -> Result<(), TransactionStorageError>;
+}
+
+#[derive(Debug, Clone)]
+pub struct InboundTransaction {
+    pub tx_id: TxId,
+    pub source_public_key: CommsPublicKey,
+    pub amount: MicroTari,
+    pub receiver_protocol: ReceiverTransactionProtocol,
+    pub timestamp: NaiveDateTime,
+}
+
+#[derive(Debug, Clone)]
+pub struct OutboundTransaction {
+    pub tx_id: TxId,
+    pub destination_public_key: CommsPublicKey,
+    pub amount: MicroTari,
+    pub fee: MicroTari,
+    pub sender_protocol: SenderTransactionProtocol,
+    pub timestamp: NaiveDateTime,
+}
+
+#[derive(Debug, Clone)]
+pub struct CompletedTransaction {
+    pub tx_id: TxId,
+    pub destination_public_key: CommsPublicKey,
+    pub amount: MicroTari,
+    pub fee: MicroTari,
+    pub transaction: Transaction,
+    pub timestamp: NaiveDateTime,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -62,18 +98,18 @@ pub enum DbKey {
 
 #[derive(Debug)]
 pub enum DbValue {
-    PendingOutboundTransaction(Box<SenderTransactionProtocol>),
-    PendingInboundTransaction(Box<ReceiverTransactionProtocol>),
-    CompletedTransaction(Box<Transaction>),
-    PendingOutboundTransactions(Box<HashMap<TxId, SenderTransactionProtocol>>),
-    PendingInboundTransactions(Box<HashMap<TxId, ReceiverTransactionProtocol>>),
-    CompletedTransactions(Box<HashMap<TxId, Transaction>>),
+    PendingOutboundTransaction(Box<OutboundTransaction>),
+    PendingInboundTransaction(Box<InboundTransaction>),
+    CompletedTransaction(Box<CompletedTransaction>),
+    PendingOutboundTransactions(Box<HashMap<TxId, OutboundTransaction>>),
+    PendingInboundTransactions(Box<HashMap<TxId, InboundTransaction>>),
+    CompletedTransactions(Box<HashMap<TxId, CompletedTransaction>>),
 }
 
 pub enum DbKeyValuePair {
-    PendingOutboundTransaction(TxId, Box<SenderTransactionProtocol>),
-    PendingInboundTransaction(TxId, Box<ReceiverTransactionProtocol>),
-    CompletedTransaction(TxId, Box<Transaction>),
+    PendingOutboundTransaction(TxId, Box<OutboundTransaction>),
+    PendingInboundTransaction(TxId, Box<InboundTransaction>),
+    CompletedTransaction(TxId, Box<CompletedTransaction>),
 }
 
 pub enum WriteOperation {
@@ -112,13 +148,13 @@ where T: TransactionBackend
     pub fn add_pending_inbound_transaction(
         &mut self,
         tx_id: TxId,
-        rtp: ReceiverTransactionProtocol,
+        inbound_tx: InboundTransaction,
     ) -> Result<(), TransactionStorageError>
     {
         self.db
             .write(WriteOperation::Insert(DbKeyValuePair::PendingInboundTransaction(
                 tx_id,
-                Box::new(rtp),
+                Box::new(inbound_tx),
             )))?;
         Ok(())
     }
@@ -126,7 +162,7 @@ where T: TransactionBackend
     pub fn add_pending_outbound_transaction(
         &mut self,
         tx_id: TxId,
-        stp: SenderTransactionProtocol,
+        stp: OutboundTransaction,
     ) -> Result<(), TransactionStorageError>
     {
         self.db
@@ -147,7 +183,7 @@ where T: TransactionBackend
     pub fn get_pending_outbound_transaction(
         &self,
         tx_id: TxId,
-    ) -> Result<SenderTransactionProtocol, TransactionStorageError>
+    ) -> Result<OutboundTransaction, TransactionStorageError>
     {
         let result = fetch!(self, tx_id, PendingOutboundTransaction)?;
         Ok(result)
@@ -155,7 +191,7 @@ where T: TransactionBackend
 
     pub fn get_pending_inbound_transactions(
         &self,
-    ) -> Result<HashMap<TxId, ReceiverTransactionProtocol>, TransactionStorageError> {
+    ) -> Result<HashMap<TxId, InboundTransaction>, TransactionStorageError> {
         let t = match self.db.fetch(&DbKey::PendingInboundTransactions) {
             Ok(None) => log_error(
                 DbKey::PendingInboundTransactions,
@@ -172,7 +208,7 @@ where T: TransactionBackend
 
     pub fn get_pending_outbound_transactions(
         &self,
-    ) -> Result<HashMap<TxId, SenderTransactionProtocol>, TransactionStorageError> {
+    ) -> Result<HashMap<TxId, OutboundTransaction>, TransactionStorageError> {
         let t = match self.db.fetch(&DbKey::PendingOutboundTransactions) {
             Ok(None) => log_error(
                 DbKey::PendingOutboundTransactions,
@@ -187,7 +223,7 @@ where T: TransactionBackend
         Ok(t)
     }
 
-    pub fn get_completed_transactions(&self) -> Result<HashMap<TxId, Transaction>, TransactionStorageError> {
+    pub fn get_completed_transactions(&self) -> Result<HashMap<TxId, CompletedTransaction>, TransactionStorageError> {
         let t = match self.db.fetch(&DbKey::CompletedTransactions) {
             Ok(None) => log_error(
                 DbKey::CompletedTransactions,
@@ -204,7 +240,7 @@ where T: TransactionBackend
     pub fn complete_outbound_transaction(
         &mut self,
         tx_id: TxId,
-        transaction: Transaction,
+        transaction: CompletedTransaction,
     ) -> Result<(), TransactionStorageError>
     {
         self.db.complete_transaction(tx_id, transaction)

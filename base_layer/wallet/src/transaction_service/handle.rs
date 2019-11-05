@@ -20,18 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::transaction_service::error::TransactionServiceError;
+use crate::transaction_service::{
+    error::TransactionServiceError,
+    storage::database::{CompletedTransaction, InboundTransaction, OutboundTransaction},
+};
 use futures::{stream::Fuse, StreamExt};
 use std::collections::HashMap;
 use tari_broadcast_channel::Subscriber;
 use tari_comms::types::CommsPublicKey;
 use tari_service_framework::reply_channel::SenderService;
-use tari_transactions::{
-    tari_amount::MicroTari,
-    transaction::Transaction,
-    ReceiverTransactionProtocol,
-    SenderTransactionProtocol,
-};
+use tari_transactions::tari_amount::MicroTari;
 use tower::Service;
 
 /// API Request enum
@@ -47,9 +45,9 @@ pub enum TransactionServiceRequest {
 #[derive(Debug)]
 pub enum TransactionServiceResponse {
     TransactionSent,
-    PendingInboundTransactions(HashMap<u64, ReceiverTransactionProtocol>),
-    PendingOutboundTransactions(HashMap<u64, SenderTransactionProtocol>),
-    CompletedTransactions(HashMap<u64, Transaction>),
+    PendingInboundTransactions(HashMap<u64, InboundTransaction>),
+    PendingOutboundTransactions(HashMap<u64, OutboundTransaction>),
+    CompletedTransactions(HashMap<u64, CompletedTransaction>),
 }
 
 /// Events that can be published on the Text Message Service Event Stream
@@ -102,7 +100,7 @@ impl TransactionServiceHandle {
 
     pub async fn get_pending_inbound_transactions(
         &mut self,
-    ) -> Result<HashMap<u64, ReceiverTransactionProtocol>, TransactionServiceError> {
+    ) -> Result<HashMap<u64, InboundTransaction>, TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::GetPendingInboundTransactions)
@@ -115,7 +113,7 @@ impl TransactionServiceHandle {
 
     pub async fn get_pending_outbound_transactions(
         &mut self,
-    ) -> Result<HashMap<u64, SenderTransactionProtocol>, TransactionServiceError> {
+    ) -> Result<HashMap<u64, OutboundTransaction>, TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::GetPendingOutboundTransactions)
@@ -126,7 +124,9 @@ impl TransactionServiceHandle {
         }
     }
 
-    pub async fn get_completed_transactions(&mut self) -> Result<HashMap<u64, Transaction>, TransactionServiceError> {
+    pub async fn get_completed_transactions(
+        &mut self,
+    ) -> Result<HashMap<u64, CompletedTransaction>, TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::GetCompletedTransactions)

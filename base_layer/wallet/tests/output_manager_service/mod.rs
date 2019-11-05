@@ -27,7 +27,6 @@ use tari_crypto::{
     keys::{PublicKey as PublicKeyTrait, SecretKey},
     range_proof::RangeProofService,
 };
-use tari_key_manager::mnemonic::{from_secret_key, MnemonicLanguage};
 use tari_service_framework::StackBuilder;
 use tari_shutdown::Shutdown;
 use tari_transactions::{
@@ -72,8 +71,7 @@ fn sending_transaction_and_confirmation() {
     let runtime = Runtime::new().unwrap();
 
     let (mut oms, _shutdown) = setup_output_manager_service(&runtime, OutputManagerConfig {
-        master_key: Some(secret_key),
-        seed_words: None,
+        master_seed: secret_key,
         branch_seed: "".to_string(),
         primary_key_index: 0,
     });
@@ -153,8 +151,7 @@ fn send_not_enough_funds() {
     let runtime = Runtime::new().unwrap();
 
     let (mut oms, _shutdown) = setup_output_manager_service(&runtime, OutputManagerConfig {
-        master_key: Some(secret_key),
-        seed_words: None,
+        master_seed: secret_key,
         branch_seed: "".to_string(),
         primary_key_index: 0,
     });
@@ -182,8 +179,7 @@ fn send_no_change() {
     let runtime = Runtime::new().unwrap();
 
     let (mut oms, _shutdown) = setup_output_manager_service(&runtime, OutputManagerConfig {
-        master_key: Some(secret_key),
-        seed_words: None,
+        master_seed: secret_key,
         branch_seed: "".to_string(),
         primary_key_index: 0,
     });
@@ -254,8 +250,7 @@ fn send_not_enough_for_change() {
     let runtime = Runtime::new().unwrap();
 
     let (mut oms, _shutdown) = setup_output_manager_service(&runtime, OutputManagerConfig {
-        master_key: Some(secret_key),
-        seed_words: None,
+        master_seed: secret_key,
         branch_seed: "".to_string(),
         primary_key_index: 0,
     });
@@ -291,8 +286,7 @@ fn receiving_and_confirmation() {
     let runtime = Runtime::new().unwrap();
 
     let (mut oms, _shutdown) = setup_output_manager_service(&runtime, OutputManagerConfig {
-        master_key: Some(secret_key),
-        seed_words: None,
+        master_seed: secret_key,
         branch_seed: "".to_string(),
         primary_key_index: 0,
     });
@@ -324,8 +318,7 @@ fn cancel_transaction() {
     let runtime = Runtime::new().unwrap();
 
     let (mut oms, _shutdown) = setup_output_manager_service(&runtime, OutputManagerConfig {
-        master_key: Some(secret_key),
-        seed_words: None,
+        master_seed: secret_key,
         branch_seed: "".to_string(),
         primary_key_index: 0,
     });
@@ -360,8 +353,7 @@ fn timeout_transaction() {
 
     let runtime = Runtime::new().unwrap();
     let (mut oms, _shutdown) = setup_output_manager_service(&runtime, OutputManagerConfig {
-        master_key: Some(secret_key),
-        seed_words: None,
+        master_seed: secret_key,
         branch_seed: "".to_string(),
         primary_key_index: 0,
     });
@@ -403,8 +395,7 @@ fn test_get_balance() {
     let runtime = Runtime::new().unwrap();
 
     let (mut oms, _shutdown) = setup_output_manager_service(&runtime, OutputManagerConfig {
-        master_key: Some(secret_key),
-        seed_words: None,
+        master_seed: secret_key,
         branch_seed: "".to_string(),
         primary_key_index: 0,
     });
@@ -434,8 +425,7 @@ fn test_confirming_received_output() {
     let runtime = Runtime::new().unwrap();
 
     let (mut oms, _shutdown) = setup_output_manager_service(&runtime, OutputManagerConfig {
-        master_key: Some(secret_key),
-        seed_words: None,
+        master_seed: secret_key,
         branch_seed: "".to_string(),
         primary_key_index: 0,
     });
@@ -451,26 +441,4 @@ fn test_confirming_received_output() {
     );
     runtime.block_on(oms.confirm_received_output(1, output)).unwrap();
     assert_eq!(runtime.block_on(oms.get_balance()).unwrap(), value);
-}
-
-#[test]
-
-fn test_seed_words() {
-    let mut rng = rand::OsRng::new().unwrap();
-    let (secret_key, _public_key) = PublicKey::random_keypair(&mut rng);
-
-    let seed_words = from_secret_key(&secret_key, &MnemonicLanguage::English).unwrap();
-
-    let runtime = Runtime::new().unwrap();
-
-    let (mut oms, _shutdown) = setup_output_manager_service(&runtime, OutputManagerConfig {
-        master_key: None,
-        seed_words: Some(seed_words.clone()),
-        branch_seed: "".to_string(),
-        primary_key_index: 0,
-    });
-
-    let returned_seed_words = runtime.block_on(oms.get_seed_words()).unwrap();
-
-    assert_eq!(returned_seed_words, seed_words);
 }

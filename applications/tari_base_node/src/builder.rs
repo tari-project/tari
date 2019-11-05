@@ -119,7 +119,7 @@ fn new_node_id(pk: PrivateKey, control_addr: &str) -> Result<NodeIdentity, Strin
     })?;
     let pubkey = PublicKey::from_secret_key(&pk);
     let features = PeerFeatures::COMMUNICATION_NODE;
-    NodeIdentity::new(pk, pubkey, address, features)
+    NodeIdentity::new(pk, address, features)
         .map_err(|e| format!("We were unable to construct a node identity. {}", e.to_string()))
 }
 

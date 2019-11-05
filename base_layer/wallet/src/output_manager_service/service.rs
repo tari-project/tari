@@ -75,31 +75,15 @@ where T: OutputManagerBackend
         db: OutputManagerDatabase<T>,
     ) -> Result<OutputManagerService<T>, OutputManagerError>
     {
-        if config.master_key.is_none() && config.seed_words.is_none() {
-            return Err(OutputManagerError::InvalidConfig);
-        }
-
-        if config.master_key.is_some() {
-            Ok(OutputManagerService {
-                key_manager: Mutex::new(KeyManager::<PrivateKey, KeyDigest>::from(
-                    config.master_key.ok_or(OutputManagerError::InvalidConfig)?,
-                    config.branch_seed,
-                    config.primary_key_index,
-                )),
-                db,
-                request_stream: Some(request_stream),
-            })
-        } else {
-            Ok(OutputManagerService {
-                key_manager: Mutex::new(KeyManager::<PrivateKey, KeyDigest>::from_mnemonic(
-                    &config.seed_words.ok_or(OutputManagerError::InvalidConfig)?,
-                    config.branch_seed,
-                    config.primary_key_index,
-                )?),
-                db,
-                request_stream: Some(request_stream),
-            })
-        }
+        Ok(OutputManagerService {
+            key_manager: Mutex::new(KeyManager::<PrivateKey, KeyDigest>::from(
+                config.master_seed,
+                config.branch_seed,
+                config.primary_key_index,
+            )),
+            db,
+            request_stream: Some(request_stream),
+        })
     }
 
     pub async fn start(mut self) -> Result<(), OutputManagerError> {

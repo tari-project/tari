@@ -352,9 +352,7 @@ pub unsafe extern "C" fn create_wallet(
     let secret_key = CommsSecretKey::from_hex((*settings_p).secret_key.clone().unwrap().as_str()).unwrap();
     let public_key = CommsPublicKey::from_secret_key(&secret_key);
     let peer_database_name = public_key.to_hex();
-    let node_identity = NodeIdentity::new(secret_key, public_key.clone(), local_net_address)
-        .map(Arc::new)
-        .unwrap();
+    let node_identity = NodeIdentity::new(secret_key, local_net_address).map(Arc::new).unwrap();
 
     let config = WalletConfig {
         comms_config: CommsConfig {
