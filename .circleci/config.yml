@@ -72,7 +72,7 @@ jobs:
           command: |
             TOOLCHAIN_VERSION=nightly-2019-10-04
             rustup component add --toolchain $TOOLCHAIN_VERSION rustfmt
-            cargo check
+            cargo build
             cargo fmt --all -- --check
             cargo test --all
             cargo test --release
