@@ -42,9 +42,10 @@ use std::{collections::HashMap, convert::TryInto};
 use tari_broadcast_channel::Publisher;
 use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::{
+    broadcast_strategy::BroadcastStrategy,
     domain_message::OutboundDomainMessage,
     envelope::NodeDestination,
-    outbound::{BroadcastStrategy, OutboundEncryption, OutboundMessageRequester},
+    outbound::{OutboundEncryption, OutboundMessageRequester},
 };
 use tari_crypto::keys::SecretKey;
 use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};

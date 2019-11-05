@@ -252,7 +252,7 @@ mod test {
         let peer_manager = make_peer_manager();
         let node_identity = make_node_identity();
         let mut service = StoreLayer::new(Default::default(), peer_manager, node_identity, storage)
-            .layer(spy.service::<MiddlewareError>());
+            .layer(spy.to_service::<MiddlewareError>());
 
         let inbound_msg = make_dht_inbound_message(&make_node_identity(), b"".to_vec(), DhtMessageFlags::empty());
         let msg = DecryptedDhtMessage::succeeded(wrap_in_envelope_body!(Vec::new()).unwrap(), inbound_msg);
@@ -267,7 +267,7 @@ mod test {
         let peer_manager = make_peer_manager();
         let node_identity = make_node_identity();
         let mut service = StoreLayer::new(Default::default(), peer_manager, node_identity, Arc::clone(&storage))
-            .layer(spy.service::<MiddlewareError>());
+            .layer(spy.to_service::<MiddlewareError>());
 
         let inbound_msg = make_dht_inbound_message(&make_node_identity(), b"".to_vec(), DhtMessageFlags::empty());
         let msg = DecryptedDhtMessage::failed(inbound_msg.clone());

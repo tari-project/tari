@@ -20,8 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::{broadcast_strategy::BroadcastStrategy, message::DhtOutboundRequest};
+use super::message::DhtOutboundRequest;
 use crate::{
+    broadcast_strategy::BroadcastStrategy,
     domain_message::OutboundDomainMessage,
     envelope::{DhtMessageFlags, DhtMessageHeader, NodeDestination},
     outbound::{
@@ -36,6 +37,7 @@ use futures::{
 };
 use tari_comms::{
     message::{Frame, MessageExt, MessageFlags},
+    peer_manager::NodeId,
     types::CommsPublicKey,
     wrap_in_envelope_body,
 };
@@ -63,6 +65,29 @@ impl OutboundMessageRequester {
         self.send_message(
             BroadcastStrategy::DirectPublicKey(dest_public_key.clone()),
             NodeDestination::PublicKey(dest_public_key),
+            encryption,
+            message,
+        )
+        .await
+        .map(|count| {
+            debug_assert!(count <= 1);
+            count >= 1
+        })
+    }
+
+    /// Send directly to a peer.
+    pub async fn send_direct_node_id<T>(
+        &mut self,
+        dest_node_id: NodeId,
+        encryption: OutboundEncryption,
+        message: OutboundDomainMessage<T>,
+    ) -> Result<bool, DhtOutboundError>
+    where
+        T: prost::Message,
+    {
+        self.send_message(
+            BroadcastStrategy::DirectNodeId(dest_node_id.clone()),
+            NodeDestination::NodeId(dest_node_id),
             encryption,
             message,
         )

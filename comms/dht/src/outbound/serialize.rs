@@ -151,7 +151,7 @@ mod test {
     fn serialize() {
         let spy = service_spy();
         let node_identity = make_node_identity();
-        let mut serialize = SerializeLayer::new(Arc::clone(&node_identity)).layer(spy.service::<MiddlewareError>());
+        let mut serialize = SerializeLayer::new(Arc::clone(&node_identity)).layer(spy.to_service::<MiddlewareError>());
 
         panic_context!(cx);
 

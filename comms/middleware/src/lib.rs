@@ -27,28 +27,10 @@
 //!
 //! For example, should you want your messages to be encrypted, you'll add the EncryptionLayer to
 //! the outbound middleware stack and the DecryptionLayer to the inbound stack.
-//! TODO: This needs to be implemented
 //!
 //! Middlewares use `tower_layer` and `tower_service`. A Middleware is simply any service which
 //! is `Service<InboundMessage, Response = (), Error = MiddlewareError>`. This service will usually
 //! be composed of other services by using the `tower_util::ServiceBuilder`.
-//!
-//! TODO: This code doesnt work
-//! ```nocompile
-//! let inbound_middleware = ServiceBuilder::new()
-//!   .layer(DecryptionLayer::new(..))
-//!   .layer(DhtLayer::new(..))
-//!   .service(DomainPubsubService::new(..));
-//!
-//! // IdentityService does nothing
-//! let outbound_middleware = IdentityService::new();
-//!
-//! CommsBuilder::new()
-//!   .inbound_middleware(inbound_middleware)
-//!   .outbound_middleware(outbound_middleware)
-//!   // (...)
-//!   .build();
-//! ```
 // Needed to make futures::select! work
 #![recursion_limit = "256"]
 #![feature(type_alias_impl_trait)]

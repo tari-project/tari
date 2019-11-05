@@ -35,7 +35,7 @@ use tari_comms::{
     types::CommsDatabase,
     CommsBuilder,
 };
-use tari_comms_dht::{envelope::NodeDestination, inbound::DecryptedDhtMessage, Dht, DhtBuilder, DhtConfig};
+use tari_comms_dht::{envelope::NodeDestination, inbound::DecryptedDhtMessage, Dht, DhtBuilder};
 use tari_comms_middleware::{pipeline::ServicePipeline, sink::SinkMiddleware};
 use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
 use tari_test_utils::{async_assert_eventually, paths::create_random_database_path, random, runtime};
@@ -101,9 +101,7 @@ fn setup_comms_dht(
         .unwrap();
 
     // Create a channel for outbound requests
-    let mut dht = DhtBuilder::from_comms(&mut comms)
-        .with_config(DhtConfig::default())
-        .finish();
+    let mut dht = DhtBuilder::from_comms(&mut comms).finish();
 
     //---------------------------------- Inbound Pipeline --------------------------------------------//
 
@@ -184,7 +182,7 @@ fn dht_join_propagation() {
                 node_A_peer_manager.exists(node_C_node_identity.public_key()),
                 expect = true,
                 max_attempts = 10,
-                interval = Duration::from_millis(500)
+                interval = Duration::from_millis(1000)
             );
             async_assert_eventually!(
                 node_C_peer_manager.exists(node_A_node_identity.public_key()),
@@ -216,7 +214,6 @@ fn dht_join_propagation() {
 #[test]
 #[allow(non_snake_case)]
 fn dht_discover_propagation() {
-    env_logger::init();
     // Create 4 nodes where A knows B, B knows A and C, C knows B and D, and D knows C
     let node_A_identity = new_node_identity("127.0.0.1:11116".parse().unwrap());
     let node_B_identity = new_node_identity("127.0.0.1:11117".parse().unwrap());

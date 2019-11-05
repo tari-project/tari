@@ -107,6 +107,7 @@ where T: WalletBackend
             .add_initializer(LivenessInitializer::new(
                 Default::default(),
                 Arc::clone(&subscription_factory),
+                dht.dht_requester(),
             ))
             .add_initializer(OutputManagerServiceInitializer::new(
                 oms_config,

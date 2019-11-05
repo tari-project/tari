@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::support::{comms_and_services::setup_comms_services, utils::event_stream_count};
-use std::{sync::Arc, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 use tari_comms::{
     builder::CommsNode,
     peer_manager::{NodeIdentity, PeerFeatures},
@@ -33,6 +33,7 @@ use tari_p2p::{
         comms_outbound::CommsOutboundServiceInitializer,
         liveness::{
             handle::{LivenessEvent, LivenessHandle},
+            LivenessConfig,
             LivenessInitializer,
         },
     },
@@ -53,8 +54,13 @@ pub fn setup_liveness_service(
     let fut = StackBuilder::new(runtime.executor(), comms.shutdown_signal())
         .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))
         .add_initializer(LivenessInitializer::new(
-            Default::default(),
+            LivenessConfig {
+                enable_auto_join: false,
+                enable_auto_stored_message_request: false,
+                auto_ping_interval: None,
+            },
             Arc::clone(&subscription_factory),
+            dht.dht_requester(),
         ))
         .finish();
 
@@ -94,7 +100,7 @@ fn end_to_end() {
 
     for _ in 0..5 {
         let _ = runtime
-            .block_on(liveness2.send_ping(node_1_identity.public_key().clone()))
+            .block_on(liveness2.send_ping(node_1_identity.node_id().clone()))
             .unwrap();
         pingpong1_total = (pingpong1_total.0 + 1, pingpong1_total.1);
         pingpong2_total = (pingpong2_total.0, pingpong2_total.1 + 1);
@@ -102,7 +108,7 @@ fn end_to_end() {
 
     for _ in 0..4 {
         let _ = runtime
-            .block_on(liveness1.send_ping(node_2_identity.public_key().clone()))
+            .block_on(liveness1.send_ping(node_2_identity.node_id().clone()))
             .unwrap();
         pingpong2_total = (pingpong2_total.0 + 1, pingpong2_total.1);
         pingpong1_total = (pingpong1_total.0, pingpong1_total.1 + 1);
@@ -110,7 +116,7 @@ fn end_to_end() {
 
     for _ in 0..5 {
         let _ = runtime
-            .block_on(liveness2.send_ping(node_1_identity.public_key().clone()))
+            .block_on(liveness2.send_ping(node_1_identity.node_id().clone()))
             .unwrap();
         pingpong1_total = (pingpong1_total.0 + 1, pingpong1_total.1);
         pingpong2_total = (pingpong2_total.0, pingpong2_total.1 + 1);
@@ -118,21 +124,39 @@ fn end_to_end() {
 
     for _ in 0..4 {
         let _ = runtime
-            .block_on(liveness1.send_ping(node_2_identity.public_key().clone()))
+            .block_on(liveness1.send_ping(node_2_identity.node_id().clone()))
             .unwrap();
         pingpong2_total = (pingpong2_total.0 + 1, pingpong2_total.1);
         pingpong1_total = (pingpong1_total.0, pingpong1_total.1 + 1);
     }
 
-    let mut result = runtime
+    let result = runtime
         .block_on(async { event_stream_count(liveness1.get_event_stream_fused(), 18, Duration::from_secs(10)).await });
-    assert_eq!(result.remove(&LivenessEvent::ReceivedPong), Some(8));
-    assert_eq!(result.remove(&LivenessEvent::ReceivedPing), Some(10));
 
-    let mut result = runtime
+    let counts = result.iter().fold(HashMap::new(), |mut counts, event| {
+        let entry = match **event {
+            LivenessEvent::ReceivedPing => counts.entry("ReceivedPing").or_insert(0),
+            LivenessEvent::ReceivedPong(_) => counts.entry("ReceivedPong").or_insert(0),
+        };
+        *entry += 1;
+        counts
+    });
+    assert_eq!(counts["ReceivedPong"], 8);
+    assert_eq!(counts["ReceivedPing"], 10);
+
+    let result = runtime
         .block_on(async { event_stream_count(liveness2.get_event_stream_fused(), 18, Duration::from_secs(10)).await });
-    assert_eq!(result.remove(&LivenessEvent::ReceivedPong), Some(10));
-    assert_eq!(result.remove(&LivenessEvent::ReceivedPing), Some(8));
+
+    let counts = result.iter().fold(HashMap::new(), |mut counts, event| {
+        let entry = match **event {
+            LivenessEvent::ReceivedPing => counts.entry("ReceivedPing").or_insert(0),
+            LivenessEvent::ReceivedPong(_) => counts.entry("ReceivedPong").or_insert(0),
+        };
+        *entry += 1;
+        counts
+    });
+    assert_eq!(counts["ReceivedPong"], 10);
+    assert_eq!(counts["ReceivedPing"], 8);
 
     let pingcount1 = runtime.block_on(liveness1.get_ping_count()).unwrap();
     let pongcount1 = runtime.block_on(liveness1.get_pong_count()).unwrap();

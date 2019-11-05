@@ -23,19 +23,21 @@
 use crate::services::liveness::error::LivenessError;
 use futures::{stream::Fuse, StreamExt};
 use tari_broadcast_channel::Subscriber;
-use tari_comms::types::CommsPublicKey;
+use tari_comms::peer_manager::NodeId;
 use tari_service_framework::reply_channel::SenderService;
 use tower::Service;
 
 /// Request types made through the `LivenessHandle` and are handled by the `LivenessService`
 #[derive(Debug)]
 pub enum LivenessRequest {
-    /// Send a ping to the given public key
-    SendPing(CommsPublicKey),
+    /// Send a ping to the given node ID
+    SendPing(NodeId),
     /// Retrieve the total number of pings received
     GetPingCount,
     /// Retrieve the total number of pongs received
     GetPongCount,
+    /// Get average latency for node ID
+    GetAvgLatency(NodeId),
 }
 
 /// Response type for `LivenessService`
@@ -43,12 +45,13 @@ pub enum LivenessRequest {
 pub enum LivenessResponse {
     PingSent,
     Count(usize),
+    AvgLatency(Option<u32>),
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum LivenessEvent {
     ReceivedPing,
-    ReceivedPong,
+    ReceivedPong(Option<u32>),
 }
 
 #[derive(Clone)]
@@ -70,8 +73,8 @@ impl LivenessHandle {
         self.event_stream.clone().fuse()
     }
 
-    pub async fn send_ping(&mut self, pub_key: CommsPublicKey) -> Result<(), LivenessError> {
-        match self.handle.call(LivenessRequest::SendPing(pub_key)).await?? {
+    pub async fn send_ping(&mut self, node_id: NodeId) -> Result<(), LivenessError> {
+        match self.handle.call(LivenessRequest::SendPing(node_id)).await?? {
             LivenessResponse::PingSent => Ok(()),
             _ => Err(LivenessError::UnexpectedApiResponse),
         }

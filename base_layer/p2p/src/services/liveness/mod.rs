@@ -71,6 +71,7 @@ pub use self::{
     config::LivenessConfig,
     handle::{LivenessRequest, LivenessResponse},
 };
+use tari_comms_dht::DhtRequester;
 
 const LOG_TARGET: &'static str = "p2p::services::liveness";
 
@@ -78,6 +79,7 @@ const LOG_TARGET: &'static str = "p2p::services::liveness";
 pub struct LivenessInitializer {
     config: Option<LivenessConfig>,
     inbound_message_subscription_factory: Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage>>>,
+    dht_requester: Option<DhtRequester>,
 }
 
 impl LivenessInitializer {
@@ -85,11 +87,13 @@ impl LivenessInitializer {
     pub fn new(
         config: LivenessConfig,
         inbound_message_subscription_factory: Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage>>>,
+        dht_requester: DhtRequester,
     ) -> Self
     {
         Self {
             config: Some(config),
             inbound_message_subscription_factory,
+            dht_requester: Some(dht_requester),
         }
     }
 
@@ -124,6 +128,11 @@ impl ServiceInitializer for LivenessInitializer {
             .take()
             .expect("Liveness service initialized more than once.");
 
+        let mut dht_requester = self
+            .dht_requester
+            .take()
+            .expect("Liveness service initialized more than once.");
+
         // Register handle before waiting for handles to be ready
         handles_fut.register(liveness_handle);
 
@@ -139,13 +148,47 @@ impl ServiceInitializer for LivenessInitializer {
                 .get_handle::<OutboundMessageRequester>()
                 .expect("Liveness service requires CommsOutbound service handle");
 
-            let state = Arc::new(LivenessState::new());
+            if config.enable_auto_join {
+                match dht_requester.send_join().await {
+                    Ok(_) => {
+                        trace!(target: LOG_TARGET, "Join message has been sent to closest peers",);
+                    },
+                    Err(err) => {
+                        error!(
+                            target: LOG_TARGET,
+                            "Failed to send join message on startup because '{}'", err
+                        );
+                    },
+                }
+            }
+
+            if config.enable_auto_stored_message_request {
+                // TODO: Record when store message request was last requested
+                //       and request messages from after that time
+                match dht_requester.send_request_stored_messages().await {
+                    Ok(_) => {
+                        trace!(
+                            target: LOG_TARGET,
+                            "Stored message request has been sent to closest peers",
+                        );
+                    },
+                    Err(err) => {
+                        error!(
+                            target: LOG_TARGET,
+                            "Failed to send stored message on startup because '{}'", err
+                        );
+                    },
+                }
+            }
+
+            let state = LivenessState::new();
 
             let service = LivenessService::new(
                 config,
                 receiver,
                 ping_stream,
                 state,
+                dht_requester,
                 outbound_handle,
                 publisher,
                 shutdown,

@@ -25,17 +25,26 @@ use futures::{channel::mpsc, stream::Fuse, StreamExt};
 use std::sync::{
     atomic::{AtomicBool, AtomicUsize, Ordering},
     Arc,
+    RwLock,
 };
+use tari_comms::peer_manager::Peer;
 
 pub fn create_dht_actor_mock(buf_size: usize) -> (DhtRequester, DhtActorMock) {
     let (tx, rx) = mpsc::channel(buf_size);
     (DhtRequester::new(tx), DhtActorMock::new(rx.fuse()))
 }
 
+macro_rules! acquire_read_lock {
+    ($e:expr) => {
+        acquire_lock!($e, read)
+    };
+}
+
 #[derive(Default, Debug, Clone)]
 pub struct DhtMockState {
     signature_cache_insert: Arc<AtomicBool>,
     call_count: Arc<AtomicUsize>,
+    select_peers: Arc<RwLock<Vec<Peer>>>,
 }
 
 impl DhtMockState {
@@ -43,11 +52,17 @@ impl DhtMockState {
         Self {
             signature_cache_insert: Arc::new(AtomicBool::new(false)),
             call_count: Arc::new(AtomicUsize::new(0)),
+            select_peers: Arc::new(RwLock::new(Vec::new())),
         }
     }
 
-    pub fn set_signature_cache_insert(self, v: bool) -> Self {
+    pub fn set_signature_cache_insert(&self, v: bool) -> &Self {
         self.signature_cache_insert.store(v, Ordering::SeqCst);
+        self
+    }
+
+    pub fn set_select_peers_response(&self, peers: Vec<Peer>) -> &Self {
+        *acquire_write_lock!(self.select_peers) = peers;
         self
     }
 
@@ -98,6 +113,11 @@ impl DhtActorMock {
                 let v = self.state.signature_cache_insert.load(Ordering::SeqCst);
                 reply_tx.send(v).unwrap();
             },
+            SelectPeers(_, reply_tx) => {
+                let lock = acquire_read_lock!(self.state.select_peers);
+                reply_tx.send(lock.clone()).unwrap();
+            },
+            SendRequestStoredMessages(_) => {},
         }
     }
 }

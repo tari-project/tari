@@ -1,11 +1,11 @@
 {
-  "identity": {
-    "node_id": "995507dd9bb03df702dacd1d221d6aa660f3aa94f216124f1d7de1d82c6877cf",
-    "public_key": "30e1dfa197794858bfdbf96cdce5dc8637d4bd1202dc694991040ddecbf42d40",
-    "features": {"bits": 3}
+  "node_id": "5436412624c4dad30ff8f19ad1c7dc32713c2b5e2337f9c0259a23c3217ddc9a",
+  "public_key": "58bd7cf3ca2b6bcc45f2cc951d513518e5af63876d6c7acca9b4865bc752f32d",
+  "features": {
+    "bits": 3
   },
-  "secret_key": "6259c39f75e27140a652a5ee8aefb3cf6c1686ef21d27793338d899380e8c801",
+  "secret_key": "15c593a986a3de8cb31faef237f80f95831f87a73ef53244f8b49001fa5eba09",
   "control_service_address": {
-    "IP": "127.0.0.1:49296"
+    "IP": "127.0.0.1:27058"
   }
 }

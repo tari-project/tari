@@ -142,19 +142,11 @@ fn test_wallet() {
         .unwrap();
 
     runtime
-        .block_on(
-            alice_wallet
-                .liveness_service
-                .send_ping(bob_identity.public_key().clone()),
-        )
+        .block_on(alice_wallet.liveness_service.send_ping(bob_identity.node_id().clone()))
         .unwrap();
 
     runtime
-        .block_on(
-            bob_wallet
-                .liveness_service
-                .send_ping(alice_identity.public_key().clone()),
-        )
+        .block_on(bob_wallet.liveness_service.send_ping(alice_identity.node_id().clone()))
         .unwrap();
 
     let mut result = runtime.block_on(async {

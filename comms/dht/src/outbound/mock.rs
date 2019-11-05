@@ -79,7 +79,7 @@ impl MockOutboundService {
                 reply_tx.send(response).unwrap();
                 *msg
             },
-            DhtOutboundRequest::Forward(_) => panic!("Unexpected DhtOutboundRequest::Forward message"),
+            msg => panic!("Unexpected {} message", msg),
         }
     }
 

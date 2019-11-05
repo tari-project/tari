@@ -54,10 +54,6 @@ pub struct DhtConfig {
     /// The time-to-live duration used for storage of high priority messages by the Store-and-forward middleware.
     /// Default: 24 hours
     pub saf_high_priority_msg_storage_ttl: Duration,
-    /// Set to true to enable automatically joining the network on node startup (default: true)
-    pub enable_auto_join: bool,
-    /// Set to true to enable a request for stored messages on node startup (default: true)
-    pub enable_auto_stored_message_request: bool,
     /// The max capacity of the signature cache (default: 1000)
     pub signature_cache_capacity: usize,
     /// The time-to-live for items in the signature cache (default: 300s)
@@ -74,8 +70,6 @@ impl Default for DhtConfig {
             saf_msg_cache_storage_capacity: SAF_MSG_CACHE_STORAGE_CAPACITY,
             saf_low_priority_msg_storage_ttl: SAF_LOW_PRIORITY_MSG_STORAGE_TTL,
             saf_high_priority_msg_storage_ttl: SAF_HIGH_PRIORITY_MSG_STORAGE_TTL,
-            enable_auto_join: true,
-            enable_auto_stored_message_request: true,
             signature_cache_capacity: 1000,
             signature_cache_ttl: Duration::from_secs(300),
         }
