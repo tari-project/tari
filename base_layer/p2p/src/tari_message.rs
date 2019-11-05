@@ -20,4 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub use crate::proto::TariMessageType;
+use tari_comms_dht::domain_message::ToProtoEnum;
+
+pub use crate::proto::message_type::TariMessageType;
+
+impl ToProtoEnum for TariMessageType {
+    fn as_i32(&self) -> i32 {
+        *self as i32
+    }
+}

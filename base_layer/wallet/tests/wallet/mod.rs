@@ -141,35 +141,6 @@ fn test_wallet() {
         ))
         .unwrap();
 
-    runtime
-        .block_on(alice_wallet.liveness_service.send_ping(bob_identity.node_id().clone()))
-        .unwrap();
-
-    runtime
-        .block_on(bob_wallet.liveness_service.send_ping(alice_identity.node_id().clone()))
-        .unwrap();
-
-    let mut result = runtime.block_on(async {
-        event_stream_count(
-            alice_wallet.liveness_service.get_event_stream_fused(),
-            2,
-            Duration::from_secs(5),
-        )
-        .await
-    });
-    assert_eq!(result.remove(&LivenessEvent::ReceivedPing), Some(1));
-
-    let mut result = runtime.block_on(async {
-        event_stream_count(
-            bob_wallet.liveness_service.get_event_stream_fused(),
-            2,
-            Duration::from_secs(5),
-        )
-        .await
-    });
-
-    assert_eq!(result.remove(&LivenessEvent::ReceivedPing), Some(1));
-
     let alice_event_stream = alice_wallet.transaction_service.get_event_stream_fused();
 
     let value = MicroTari::from(1000);

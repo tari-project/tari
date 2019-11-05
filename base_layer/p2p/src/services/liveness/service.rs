@@ -23,6 +23,7 @@
 use super::{
     config::LivenessConfig,
     error::LivenessError,
+    message::{PingPong, PingPongMessage},
     state::LivenessState,
     LivenessRequest,
     LivenessResponse,
@@ -30,11 +31,8 @@ use super::{
 };
 use crate::{
     domain_message::DomainMessage,
-    proto::{
-        liveness::{PingPong, PingPongMessage},
-        TariMessageType,
-    },
-    services::liveness::handle::LivenessEvent,
+    services::liveness::handle::{LivenessEvent, PongEvent},
+    tari_message::TariMessageType,
 };
 use futures::{pin_mut, stream::StreamExt, task::Context, Poll, SinkExt, Stream};
 use log::*;
@@ -160,8 +158,9 @@ where
             PingPong::Pong => {
                 let maybe_latency = self.state.record_pong(&msg.source_peer.node_id);
                 trace!(target: LOG_TARGET, "Recorded latency: {:?}", maybe_latency);
+                let pong_event = PongEvent::new(msg.source_peer.node_id, maybe_latency, msg.inner.metadata);
                 self.event_publisher
-                    .send(LivenessEvent::ReceivedPong(maybe_latency))
+                    .send(LivenessEvent::ReceivedPong(Box::new(pong_event)))
                     .await
                     .map_err(|_| LivenessError::EventStreamError)?;
             },
@@ -170,11 +169,12 @@ where
     }
 
     async fn send_pong(&mut self, dest: CommsPublicKey) -> Result<(), LivenessError> {
+        let msg = PingPongMessage::pong_with_metadata(self.state.pong_metadata().clone());
         self.oms_handle
             .send_direct(
                 dest,
                 OutboundEncryption::None,
-                OutboundDomainMessage::new(TariMessageType::PingPong, PingPongMessage::pong()),
+                OutboundDomainMessage::new(TariMessageType::PingPong, msg),
             )
             .await
             .map(|_| ())
@@ -187,7 +187,7 @@ where
             SendPing(node_id) => {
                 self.send_ping(node_id).await?;
                 self.state.inc_pings_sent();
-                Ok(LivenessResponse::PingSent)
+                Ok(LivenessResponse::Ok)
             },
             GetPingCount => {
                 let ping_count = self.get_ping_count();
@@ -200,6 +200,10 @@ where
             GetAvgLatency(node_id) => {
                 let latency = self.state.get_avg_latency_ms(&node_id);
                 Ok(LivenessResponse::AvgLatency(latency))
+            },
+            SetPongMetadata(key, value) => {
+                self.state.set_pong_metadata_entry(key, value);
+                Ok(LivenessResponse::Ok)
             },
         }
     }
@@ -283,7 +287,10 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::services::liveness::handle::LivenessHandle;
+    use crate::{
+        proto::liveness::MetadataKey,
+        services::liveness::{handle::LivenessHandle, state::Metadata},
+    };
     use futures::{channel::mpsc, stream};
     use rand::rngs::OsRng;
     use std::{
@@ -464,7 +471,9 @@ mod test {
         let (outbound_tx, _) = mpsc::channel(10);
         let oms_handle = OutboundMessageRequester::new(outbound_tx);
 
-        let msg = create_dummy_message(PingPongMessage::pong());
+        let mut metadata = Metadata::new();
+        metadata.insert(MetadataKey::ChainMetadata as i32, b"dummy-data".to_vec());
+        let msg = create_dummy_message(PingPongMessage::pong_with_metadata(metadata));
 
         state.add_inflight_ping(msg.source_peer.node_id.clone());
         // A stream which emits one message and then closes
@@ -499,8 +508,14 @@ mod test {
                     .timeout(Duration::from_secs(10))
                     .await
                     .unwrap();
-                match *event {
-                    LivenessEvent::ReceivedPong(_) => rec_event_clone.store(true, Ordering::SeqCst),
+                match &*event {
+                    LivenessEvent::ReceivedPong(event) => {
+                        rec_event_clone.store(true, Ordering::SeqCst);
+                        assert_eq!(
+                            event.metadata.get(&(MetadataKey::ChainMetadata as i32)).unwrap(),
+                            b"dummy-data"
+                        );
+                    },
                     _ => panic!("Unexpected event"),
                 }
 

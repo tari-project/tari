@@ -20,7 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::support::random_string;
 use futures::Sink;
 use std::{error::Error, sync::Arc, time::Duration};
 use tari_comms::{
@@ -33,6 +32,7 @@ use tari_p2p::{
     comms_connector::{InboundDomainConnector, PeerMessage},
     initialization::{initialize_comms, CommsConfig},
 };
+use tari_test_utils::random;
 use tempdir::TempDir;
 use tokio::runtime::TaskExecutor;
 
@@ -55,14 +55,14 @@ where
             socks_proxy_address: None,
             requested_connection_timeout: Duration::from_millis(2000),
         },
-        datastore_path: TempDir::new(random_string(8).as_str())
+        datastore_path: TempDir::new(random::string(8).as_str())
             .unwrap()
             .path()
             .to_str()
             .unwrap()
             .to_string(),
         establish_connection_timeout: Duration::from_secs(5),
-        peer_database_name: random_string(8),
+        peer_database_name: random::string(8),
         inbound_buffer_size: 10,
         outbound_buffer_size: 10,
         dht: Default::default(),

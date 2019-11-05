@@ -249,7 +249,7 @@ async fn update_ui(update_sink: CursiveSignal, mut liveness_handle: LivenessHand
     loop {
         ::futures::select! {
             event = event_stream.select_next_some() => {
-                match *event {
+                match &*event {
                     LivenessEvent::ReceivedPing => {
                         {
                             let mut lock = UI_STATE.write().unwrap();
@@ -261,14 +261,14 @@ async fn update_ui(update_sink: CursiveSignal, mut liveness_handle: LivenessHand
                             };
                         }
                     },
-                    LivenessEvent::ReceivedPong(avg_latency) => {
+                    LivenessEvent::ReceivedPong(event) => {
                         {
                             let mut lock = UI_STATE.write().unwrap();
                             *lock = UiState {
                                 num_pings_sent: lock.num_pings_sent,
                                 num_pings_recv: lock.num_pings_recv,
                                 num_pongs_recv: lock.num_pongs_recv + 1,
-                                avg_latency: avg_latency.unwrap_or(0),
+                                avg_latency: event.latency.unwrap_or(0),
                             };
                         }
                     },

@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::peer_message::PeerMessage;
-use crate::{comms_connector::InboundDomainConnector, proto::TariMessageType};
+use crate::{comms_connector::InboundDomainConnector, tari_message::TariMessageType};
 use futures::{channel::mpsc, FutureExt, SinkExt, StreamExt};
 use log::*;
 use std::sync::Arc;

@@ -20,25 +20,29 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_utilities::include_proto_package;
+use crate::services::liveness::state::Metadata;
 
-include_proto_package!("tari.p2p.liveness");
+pub use crate::proto::liveness::{PingPong, PingPongMessage};
 
 impl PingPongMessage {
-    pub fn new(ping_pong: PingPong) -> Self {
+    pub fn new(ping_pong: PingPong, metadata: Metadata) -> Self {
         PingPongMessage {
             ping_pong: ping_pong as i32,
+            metadata: metadata.into(),
         }
     }
 
+    /// Construct a ping message
     pub fn ping() -> Self {
-        Self::new(PingPong::Ping)
+        Self::new(PingPong::Ping, Default::default())
     }
 
-    pub fn pong() -> Self {
-        Self::new(PingPong::Pong)
+    /// Construct a pong message with metadata
+    pub fn pong_with_metadata(metadata: Metadata) -> Self {
+        Self::new(PingPong::Pong, metadata)
     }
 
+    /// Return the kind of PingPong message. Either a ping or pong.
     pub fn kind(&self) -> Option<PingPong> {
         PingPong::from_i32(self.ping_pong)
     }

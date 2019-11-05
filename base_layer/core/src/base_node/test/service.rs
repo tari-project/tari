@@ -110,7 +110,7 @@ where
                 p.node_id().clone(),
                 addr.into(),
                 PeerFlags::empty(),
-                PeerFeatures::empty(),
+                p.features().clone(),
             ))
             .unwrap();
     }
