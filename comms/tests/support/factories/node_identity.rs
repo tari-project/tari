@@ -25,9 +25,9 @@ use rand::OsRng;
 use tari_comms::{
     connection::NetAddress,
     peer_manager::{NodeIdentity, PeerFeatures},
-    types::{CommsPublicKey, CommsSecretKey},
+    types::CommsSecretKey,
 };
-use tari_crypto::keys::{PublicKey, SecretKey};
+use tari_crypto::keys::SecretKey;
 
 pub fn create() -> NodeIdentityFactory {
     NodeIdentityFactory::default()

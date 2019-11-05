@@ -27,6 +27,7 @@ pub mod control_service;
 pub mod inbound_message_service;
 pub mod outbound_message_service;
 pub mod peer_manager;
+mod proto;
 pub mod types;
 pub mod utils;
 

@@ -1,9 +1,32 @@
 use std::{
     collections::HashMap,
+    fmt::Display,
     path::{Path, PathBuf},
+    process::Command,
 };
 
-fn walk_protos(search_path: &PathBuf) -> Vec<PathBuf> {
+/// Runs rustfmt on the generated files - this is lifted from tonic-build
+fn fmt<P>(out_dir: P)
+where P: AsRef<Path> + Display {
+    let dir = walk_files(&out_dir.as_ref().to_path_buf(), "rs");
+
+    for entry in dir {
+        let out = Command::new("rustfmt")
+            .arg("--emit")
+            .arg("files")
+            .arg("--edition")
+            .arg("2018")
+            .arg(entry.to_str().unwrap())
+            .output()
+            .unwrap();
+
+        if !out.status.success() {
+            panic!("status: {} - {}", out.status, String::from_utf8_lossy(&out.stderr));
+        }
+    }
+}
+
+fn walk_files(search_path: &PathBuf, search_ext: &str) -> Vec<PathBuf> {
     let mut protos = Vec::new();
     let paths_iter = search_path
         .read_dir()
@@ -12,10 +35,10 @@ fn walk_protos(search_path: &PathBuf) -> Vec<PathBuf> {
         .map(|dir| dir.path());
 
     for path in paths_iter {
-        if path.is_file() && path.extension().filter(|ext| ext == &"proto").is_some() {
+        if path.is_file() && path.extension().filter(|ext| ext == &search_ext).is_some() {
             protos.push(path)
         } else if path.is_dir() {
-            protos.extend(walk_protos(&path));
+            protos.extend(walk_files(&path, search_ext));
         }
     }
 
@@ -77,7 +100,7 @@ impl ProtoCompiler {
         self.include_paths.extend(self.proto_paths.clone());
 
         let protos = self.proto_paths.iter().fold(Vec::new(), |mut protos, path| {
-            protos.extend(walk_protos(&path));
+            protos.extend(walk_files(&path, "proto"));
             protos
         });
 
@@ -91,15 +114,20 @@ impl ProtoCompiler {
             config.field_attribute(k, v);
         }
 
-        if let Some(out_dir) = self.out_dir.as_ref() {
-            config.out_dir(out_dir.clone());
-        }
+        let out_dir = self
+            .out_dir
+            .take()
+            .unwrap_or_else(|| PathBuf::from(std::env::var("OUT_DIR").unwrap()));
+
+        config.out_dir(out_dir.clone());
 
         config.compile_protos(&protos, &self.include_paths).map_err(|err| {
             // Side effect - print the error to stderr
             eprintln!("\n{}", err);
             format!("{}", err)
         })?;
+
+        fmt(out_dir.to_str().expect("out_dir must be utf8"));
 
         Ok(())
     }

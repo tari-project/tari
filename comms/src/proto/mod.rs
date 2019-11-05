@@ -20,10 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-fn main() {
-    tari_protobuf_build::ProtoCompiler::new()
-        .proto_paths(&["src/proto"])
-        .out_dir("src/proto")
-        .compile()
-        .unwrap();
-}
+#[path = "tari.comms.envelope.rs"]
+pub(crate) mod envelope;
+
+#[path = "tari.comms.control_service.rs"]
+pub(crate) mod control_service;

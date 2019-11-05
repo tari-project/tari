@@ -72,6 +72,7 @@ pub enum ConnectionManagerError {
     /// Failed to receive a connection request outcome message
     ConnectionRequestOutcomeRecvFail,
     /// The request to establish a peer connection was rejected by the destination peer's control port
+    #[error(no_from, non_std)]
     ConnectionRejected(RejectReason),
     /// Failed to receive a connection request outcome before the timeout
     ConnectionRequestOutcomeTimeout,
