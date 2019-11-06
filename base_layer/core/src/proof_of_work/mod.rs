@@ -25,6 +25,8 @@ mod difficulty;
 mod error;
 mod pow;
 
+pub mod lwma_diff;
+
 pub use blake_pow::BlakePow;
 pub use difficulty::Difficulty;
 pub use error::PowError;

@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::proof_of_work::error::DifficultyAdjustmentError;
 use bitflags::_core::ops::Div;
 use newtype_ops::newtype_ops;
 use serde::{Deserialize, Serialize};
@@ -28,10 +29,6 @@ use std::fmt;
 /// Minimum difficulty, enforced in diff retargetting
 /// avoids getting stuck when trying to increase difficulty subject to dampening
 pub const MIN_DIFFICULTY: u64 = 1;
-/// This is the time in seconds that should be the ideal time between making new blocks
-pub const BLOCK_INTERVAL: u64 = 60;
-/// This is the amount of blocks between difficulty adjustments.
-pub const BLOCKS_PER_ADJUSTMENT: u64 = 2016;
 
 /// The difficulty is defined as the maximum target divided by the block hash.
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Eq, Ord, Deserialize, Serialize)]
@@ -39,30 +36,20 @@ pub struct Difficulty(u64);
 
 impl Difficulty {
     /// Difficulty of MIN_DIFFICULTY
-    pub fn min() -> Difficulty {
+    pub const fn min() -> Difficulty {
         Difficulty(MIN_DIFFICULTY)
-    }
-
-    /// This function will calculate the required difficulty given the time taken to calculate 2016 blocks
-    /// The interval is the difference in seconds between the two headers
-    pub fn calculate_req_difficulty(interval: i64, difficulty: Difficulty) -> Difficulty {
-        let target_time = (BLOCK_INTERVAL * BLOCKS_PER_ADJUSTMENT) as f32; // 60 seconds per block, 2016 blocks
-        let deviation = (interval as f32) - target_time;
-        let mut difficulty_multiplier = 1.0 - (deviation / target_time);
-        // cap the max adjustment to 50%
-        if difficulty_multiplier >= 1.5 {
-            difficulty_multiplier = 1.5;
-        };
-        if difficulty_multiplier <= 0.5 {
-            difficulty_multiplier = 0.5;
-        };
-        // return a new difficulty that is proportionally larger or smaller depending on the time diff.
-        Difficulty((difficulty.0 as f32 * (difficulty_multiplier)) as u64)
     }
 
     /// Return the difficulty as a u64
     pub fn as_u64(&self) -> u64 {
         self.0
+    }
+
+    pub fn checked_sub(&self, other: Difficulty) -> Option<Difficulty> {
+        match self.0.checked_sub(other.0) {
+            None => None,
+            Some(v) => Some(Difficulty(v)),
+        }
     }
 }
 
@@ -101,6 +88,17 @@ impl From<u64> for Difficulty {
     }
 }
 
+/// General difficulty adjustment algorithm trait. The key method is `get_difficulty`, which returns the target
+/// difficulty given a set of historical achieved difficulties; supplied through the `add` method.
+pub trait DifficultyAdjustment {
+    /// Adds the latest block timestamp (in seconds) and total accumulated difficulty. If the new data point violates
+    /// some difficulty criteria, then `add` returns an error with the type of failure indicated
+    fn add(&mut self, timestamp: u64, accumulated_difficulty: Difficulty) -> Result<(), DifficultyAdjustmentError>;
+
+    /// Return the calculated target difficulty for the next block.
+    fn get_difficulty(&self) -> Difficulty;
+}
+
 #[cfg(test)]
 mod test {
     use crate::proof_of_work::difficulty::Difficulty;
@@ -113,33 +111,5 @@ mod test {
         );
         assert_eq!(Difficulty::default() + Difficulty::from(42), Difficulty::from(42));
         assert_eq!(&Difficulty::from(15) + &Difficulty::from(5), Difficulty::from(20));
-    }
-
-    #[test]
-    fn calc_difficulty() {
-        assert_eq!(
-            Difficulty::min(),
-            Difficulty::calculate_req_difficulty(0, Difficulty::min()),
-        );
-        let diff = Difficulty::from(9_000);
-        let new_diff = Difficulty::calculate_req_difficulty(60 * 2016, diff);
-        assert_eq!(diff, new_diff);
-        let new_diff = Difficulty::calculate_req_difficulty(60 * 2016 + 3000, diff);
-        assert_eq!(diff > new_diff, true);
-        let new_diff = Difficulty::calculate_req_difficulty(60 * 2016 - 3000, diff);
-        assert_eq!(diff < new_diff, true);
-    }
-
-    #[test]
-    fn calc_difficulty_max_min() {
-        assert_eq!(
-            Difficulty::min(),
-            Difficulty::calculate_req_difficulty(0, Difficulty::min()),
-        );
-        let diff = Difficulty::from(1000);
-        let new_diff = Difficulty::calculate_req_difficulty(60 * 2016 * 1000, diff);
-        assert_eq!(new_diff, Difficulty::from(500));
-        let new_diff = Difficulty::calculate_req_difficulty(60, diff);
-        assert_eq!(new_diff, Difficulty::from(1500));
     }
 }

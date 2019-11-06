@@ -141,7 +141,7 @@ impl Miner {
             return Err(MinerError::MissingBlock);
         }
         let interval = self.block.as_ref().unwrap().header.timestamp.timestamp() - old_header.timestamp.timestamp();
-        let difficulty = Difficulty::calculate_req_difficulty(interval, self.difficulty);
+        let difficulty = Difficulty::min(); // replace with new function: Difficulty::calculate_req_difficulty(interval, self.difficulty);
 
         let (tx, mut rx): (Sender<BlockHeader>, Receiver<BlockHeader>) = mpsc::channel(1);
         for _ in 0..self.thread_count {
