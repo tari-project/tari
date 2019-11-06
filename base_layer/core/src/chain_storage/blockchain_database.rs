@@ -33,8 +33,9 @@ use crate::{
 };
 use croaring::Bitmap;
 use log::*;
+use serde::{Deserialize, Serialize};
 use std::sync::{Arc, RwLock, RwLockReadGuard};
-use tari_mmr::{Hash, MerkleCheckPoint, MerkleProof};
+use tari_mmr::{Hash, MerkleCheckPoint, MerkleProof, MutableMmrLeafNodes};
 use tari_transactions::{
     transaction::{TransactionInput, TransactionKernel, TransactionOutput},
     types::{Commitment, HashOutput},
@@ -49,6 +50,13 @@ pub enum BlockAddResult {
     BlockExists,
     OrphanBlock,
     ChainReorg,
+}
+
+/// MutableMmrState provides the total number of leaf nodes in the base MMR and the requested leaf nodes.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct MutableMmrState {
+    pub total_leaf_count: usize,
+    pub leaf_nodes: MutableMmrLeafNodes,
 }
 
 /// Identify behaviour for Blockchain database back ends. Implementations must support `Send` and `Sync` so that
@@ -84,6 +92,15 @@ pub trait BlockchainBackend: Send + Sync {
     fn fetch_mmr_checkpoint(&self, tree: MmrTree, index: u64) -> Result<MerkleCheckPoint, ChainStorageError>;
     /// Fetches the leaf node hash and its deletion status for the nth leaf node in the given MMR tree.
     fn fetch_mmr_node(&self, tree: MmrTree, pos: u32) -> Result<(Hash, bool), ChainStorageError>;
+    /// Fetches the MMR base state of the specified tree.
+    fn fetch_mmr_base_leaf_nodes(
+        &self,
+        tree: MmrTree,
+        index: usize,
+        count: usize,
+    ) -> Result<MutableMmrState, ChainStorageError>;
+    /// Resets and restores the state of the specified MMR tree using a set of leaf nodes.
+    fn restore_mmr(&self, tree: MmrTree, base_state: MutableMmrLeafNodes) -> Result<(), ChainStorageError>;
     /// Performs the function F for each orphan block in the orphan pool.
     fn for_each_orphan<F>(&self, f: F) -> Result<(), ChainStorageError>
     where
@@ -309,6 +326,22 @@ where T: BlockchainBackend
     /// Fetch a Merklish proof for the given hash, tree and position in the MMR
     pub fn fetch_mmr_proof(&self, tree: MmrTree, pos: usize) -> Result<MerkleProof, ChainStorageError> {
         self.db.fetch_mmr_proof(tree, pos)
+    }
+
+    /// Fetches the MMR base state of the specified tree
+    pub fn fetch_mmr_base_leaf_nodes(
+        &self,
+        tree: MmrTree,
+        index: usize,
+        count: usize,
+    ) -> Result<MutableMmrState, ChainStorageError>
+    {
+        self.db.fetch_mmr_base_leaf_nodes(tree, index, count)
+    }
+
+    /// Resets the specified MMR and restores it with the provided state.
+    pub fn restore_mmr(&self, tree: MmrTree, base_state: MutableMmrLeafNodes) -> Result<(), ChainStorageError> {
+        self.db.restore_mmr(tree, base_state)
     }
 
     /// Add a block to the longest chain. This function does some basic checks to maintain the chain integrity, but

@@ -22,7 +22,7 @@
 
 use crate::{
     blocks::blockheader::BlockHeader,
-    chain_storage::{ChainMetadata, HistoricalBlock},
+    chain_storage::{ChainMetadata, HistoricalBlock, MutableMmrState},
 };
 use serde::{Deserialize, Serialize};
 use tari_transactions::transaction::{TransactionKernel, TransactionOutput};
@@ -35,4 +35,5 @@ pub enum NodeCommsResponse {
     BlockHeaders(Vec<BlockHeader>),
     TransactionOutputs(Vec<TransactionOutput>),
     HistoricalBlocks(Vec<HistoricalBlock>),
+    MmrState(MutableMmrState),
 }

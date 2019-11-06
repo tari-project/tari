@@ -3,6 +3,7 @@ syntax = "proto3";
 import "transaction.proto";
 import "block.proto";
 import "chain_metadata.proto";
+import "mutable_mmr_state.proto";
 
 package tari.base_node;
 
@@ -15,6 +16,7 @@ message BaseNodeServiceResponse {
         BlockHeaders block_headers = 4;
         TransactionOutputs transaction_outputs = 5;
         HistoricalBlocks historical_blocks = 6;
+        MutableMmrState mmr_state = 7;
     }
 }
 

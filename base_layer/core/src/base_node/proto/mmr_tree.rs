@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,15 +20,33 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod comms_request;
-mod comms_response;
-mod error;
-mod inbound_interface;
-mod outbound_interface;
+use super::base_node as proto;
+use crate::chain_storage::MmrTree;
+use std::convert::TryFrom;
 
-// Public re-exports
-pub use comms_request::{MmrStateRequest, NodeCommsRequest, NodeCommsRequestType};
-pub use comms_response::NodeCommsResponse;
-pub use error::CommsInterfaceError;
-pub use inbound_interface::InboundNodeCommsInterface;
-pub use outbound_interface::OutboundNodeCommsInterface;
+impl TryFrom<proto::MmrTree> for MmrTree {
+    type Error = String;
+
+    fn try_from(tree: proto::MmrTree) -> Result<Self, Self::Error> {
+        use proto::MmrTree::*;
+        Ok(match tree {
+            None => return Err("MmrTree not provided".to_string()),
+            Utxo => MmrTree::Utxo,
+            Kernel => MmrTree::Kernel,
+            RangeProof => MmrTree::RangeProof,
+            Header => MmrTree::Header,
+        })
+    }
+}
+
+impl From<MmrTree> for proto::MmrTree {
+    fn from(tree: MmrTree) -> Self {
+        use MmrTree::*;
+        match tree {
+            Utxo => proto::MmrTree::Utxo,
+            Kernel => proto::MmrTree::Kernel,
+            RangeProof => proto::MmrTree::RangeProof,
+            Header => proto::MmrTree::Header,
+        }
+    }
+}

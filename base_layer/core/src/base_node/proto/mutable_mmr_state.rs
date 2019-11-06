@@ -20,15 +20,30 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod comms_request;
-mod comms_response;
-mod error;
-mod inbound_interface;
-mod outbound_interface;
+use crate::{base_node::proto::base_node::MutableMmrState as ProtoMutableMmrState, chain_storage::MutableMmrState};
+use std::convert::{TryFrom, TryInto};
 
-// Public re-exports
-pub use comms_request::{MmrStateRequest, NodeCommsRequest, NodeCommsRequestType};
-pub use comms_response::NodeCommsResponse;
-pub use error::CommsInterfaceError;
-pub use inbound_interface::InboundNodeCommsInterface;
-pub use outbound_interface::OutboundNodeCommsInterface;
+impl TryFrom<ProtoMutableMmrState> for MutableMmrState {
+    type Error = String;
+
+    fn try_from(state: ProtoMutableMmrState) -> Result<Self, Self::Error> {
+        let leaf_nodes = state
+            .leaf_nodes
+            .map(TryInto::try_into)
+            .ok_or("Leaf nodes not provided".to_string())??;
+
+        Ok(Self {
+            total_leaf_count: state.total_leaf_count as usize,
+            leaf_nodes,
+        })
+    }
+}
+
+impl From<MutableMmrState> for ProtoMutableMmrState {
+    fn from(state: MutableMmrState) -> Self {
+        Self {
+            total_leaf_count: state.total_leaf_count as u64,
+            leaf_nodes: Some(state.leaf_nodes.into()),
+        }
+    }
+}

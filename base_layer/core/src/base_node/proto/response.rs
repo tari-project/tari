@@ -59,6 +59,7 @@ impl TryInto<ci::NodeCommsResponse> for ProtoNodeCommsResponse {
                 let blocks = try_convert_all(blocks.blocks)?;
                 ci::NodeCommsResponse::HistoricalBlocks(blocks)
             },
+            MmrState(state) => ci::NodeCommsResponse::MmrState(state.try_into()?),
         };
 
         Ok(response)
@@ -86,6 +87,7 @@ impl From<ci::NodeCommsResponse> for ProtoNodeCommsResponse {
                 let historical_blocks = historical_blocks.into_iter().map(Into::into).collect();
                 ProtoNodeCommsResponse::HistoricalBlocks(historical_blocks)
             },
+            MmrState(state) => ProtoNodeCommsResponse::MmrState(state.into()),
         }
     }
 }

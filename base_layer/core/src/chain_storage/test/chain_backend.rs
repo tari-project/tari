@@ -34,7 +34,7 @@ use crate::{
     test_utils::builders::{create_test_block, create_test_kernel, create_utxo},
     tx,
 };
-use tari_mmr::MutableMmr;
+use tari_mmr::{Hash, MerkleChangeTrackerConfig, MutableMmr};
 use tari_test_utils::paths::create_random_database_path;
 use tari_transactions::{tari_amount::MicroTari, types::HashDigest};
 use tari_utilities::{hex::Hex, Hashable};
@@ -77,7 +77,11 @@ fn memory_insert_contains_delete_and_fetch_header() {
 
 #[test]
 fn lmdb_insert_contains_delete_and_fetch_header() {
-    let db = create_lmdb_database(&create_random_database_path()).unwrap();
+    let mct_config = MerkleChangeTrackerConfig {
+        min_history_len: 10,
+        max_history_len: 20,
+    };
+    let db = create_lmdb_database(&create_random_database_path(), mct_config).unwrap();
     insert_contains_delete_and_fetch_header(db);
 }
 
@@ -110,7 +114,11 @@ fn memory_insert_contains_delete_and_fetch_utxo() {
 
 #[test]
 fn lmdb_insert_contains_delete_and_fetch_utxo() {
-    let db = create_lmdb_database(&create_random_database_path()).unwrap();
+    let mct_config = MerkleChangeTrackerConfig {
+        min_history_len: 10,
+        max_history_len: 20,
+    };
+    let db = create_lmdb_database(&create_random_database_path(), mct_config).unwrap();
     insert_contains_delete_and_fetch_utxo(db);
 }
 
@@ -145,7 +153,11 @@ fn memory_insert_contains_delete_and_fetch_kernel() {
 
 #[test]
 fn lmdb_insert_contains_delete_and_fetch_kernel() {
-    let db = create_lmdb_database(&create_random_database_path()).unwrap();
+    let mct_config = MerkleChangeTrackerConfig {
+        min_history_len: 10,
+        max_history_len: 20,
+    };
+    let db = create_lmdb_database(&create_random_database_path(), mct_config).unwrap();
     insert_contains_delete_and_fetch_kernel(db);
 }
 
@@ -183,7 +195,11 @@ fn memory_insert_contains_delete_and_fetch_orphan() {
 
 #[test]
 fn lmdb_insert_contains_delete_and_fetch_orphan() {
-    let db = create_lmdb_database(&create_random_database_path()).unwrap();
+    let mct_config = MerkleChangeTrackerConfig {
+        min_history_len: 10,
+        max_history_len: 20,
+    };
+    let db = create_lmdb_database(&create_random_database_path(), mct_config).unwrap();
     insert_contains_delete_and_fetch_orphan(db);
 }
 
@@ -243,13 +259,21 @@ fn memory_spend_utxo_and_unspend_stxo() {
 
 #[test]
 fn lmdb_spend_utxo_and_unspend_stxo() {
-    let db = create_lmdb_database(&create_random_database_path()).unwrap();
+    let mct_config = MerkleChangeTrackerConfig {
+        min_history_len: 10,
+        max_history_len: 20,
+    };
+    let db = create_lmdb_database(&create_random_database_path(), mct_config).unwrap();
     spend_utxo_and_unspend_stxo(db);
 }
 
 #[test]
 fn lmdb_insert_fetch_metadata() {
-    let db = create_lmdb_database(&create_random_database_path()).unwrap();
+    let mct_config = MerkleChangeTrackerConfig {
+        min_history_len: 10,
+        max_history_len: 20,
+    };
+    let db = create_lmdb_database(&create_random_database_path(), mct_config).unwrap();
 
     assert!(db.fetch(&DbKey::Metadata(MetadataKey::ChainHeight)).unwrap().is_none());
     assert!(db
@@ -387,7 +411,11 @@ fn memory_fetch_mmr_root_and_proof_for_utxo_and_rp() {
 
 #[test]
 fn lmdb_fetch_mmr_root_and_proof_for_utxo_and_rp() {
-    let db = create_lmdb_database(&create_random_database_path()).unwrap();
+    let mct_config = MerkleChangeTrackerConfig {
+        min_history_len: 10,
+        max_history_len: 20,
+    };
+    let db = create_lmdb_database(&create_random_database_path(), mct_config).unwrap();
     fetch_mmr_root_and_proof_for_utxo_and_rp(db);
 }
 
@@ -437,7 +465,11 @@ fn memory_fetch_mmr_root_and_proof_for_kernel() {
 
 #[test]
 fn lmdb_fetch_mmr_root_and_proof_for_kernel() {
-    let db = create_lmdb_database(&create_random_database_path()).unwrap();
+    let mct_config = MerkleChangeTrackerConfig {
+        min_history_len: 10,
+        max_history_len: 20,
+    };
+    let db = create_lmdb_database(&create_random_database_path(), mct_config).unwrap();
     fetch_mmr_root_and_proof_for_kernel(db);
 }
 
@@ -490,7 +522,11 @@ fn memory_fetch_mmr_root_and_proof_for_header() {
 
 #[test]
 fn lmdb_fetch_mmr_root_and_proof_for_header() {
-    let db = create_lmdb_database(&create_random_database_path()).unwrap();
+    let mct_config = MerkleChangeTrackerConfig {
+        min_history_len: 10,
+        max_history_len: 20,
+    };
+    let db = create_lmdb_database(&create_random_database_path(), mct_config).unwrap();
     fetch_mmr_root_and_proof_for_header(db);
 }
 
@@ -597,7 +633,11 @@ fn memory_commit_block_and_create_fetch_checkpoint_and_rewind_mmr() {
 
 #[test]
 fn lmdb_commit_block_and_create_fetch_checkpoint_and_rewind_mmr() {
-    let db = create_lmdb_database(&create_random_database_path()).unwrap();
+    let mct_config = MerkleChangeTrackerConfig {
+        min_history_len: 10,
+        max_history_len: 20,
+    };
+    let db = create_lmdb_database(&create_random_database_path(), mct_config).unwrap();
     commit_block_and_create_fetch_checkpoint_and_rewind_mmr(db);
 }
 
@@ -652,12 +692,21 @@ fn memory_for_each_orphan() {
 
 #[test]
 fn lmdb_for_each_orphan() {
-    let db = create_lmdb_database(&create_random_database_path()).unwrap();
+    let mct_config = MerkleChangeTrackerConfig {
+        min_history_len: 10,
+        max_history_len: 20,
+    };
+    let db = create_lmdb_database(&create_random_database_path(), mct_config).unwrap();
     for_each_orphan(db);
 }
 
 #[test]
 fn lmdb_backend_restore() {
+    let mct_config = MerkleChangeTrackerConfig {
+        min_history_len: 10,
+        max_history_len: 20,
+    };
+
     let txs = vec![(tx!(1000.into(), fee: 20.into(), inputs: 2, outputs: 1)).0];
     let orphan = create_test_block(10, None, txs);
     let (utxo1, _) = create_utxo(MicroTari(10_000));
@@ -674,7 +723,7 @@ fn lmdb_backend_restore() {
     // Create backend storage
     let path = create_random_database_path();
     {
-        let db = create_lmdb_database(&path).unwrap();
+        let db = create_lmdb_database(&path, mct_config).unwrap();
         let mut txn = DbTransaction::new();
         txn.insert_orphan(orphan.clone());
         txn.insert_utxo(utxo1);
@@ -695,7 +744,7 @@ fn lmdb_backend_restore() {
         assert_eq!(db.contains(&DbKey::OrphanBlock(orphan_hash.clone())), Ok(true));
     }
     // Restore backend storage
-    let db = create_lmdb_database(&path).unwrap();
+    let db = create_lmdb_database(&path, mct_config).unwrap();
     assert_eq!(db.contains(&DbKey::BlockHeader(header.height)), Ok(true));
     assert_eq!(db.contains(&DbKey::BlockHash(header_hash)), Ok(true));
     assert_eq!(db.contains(&DbKey::UnspentOutput(utxo_hash)), Ok(true));
@@ -706,7 +755,11 @@ fn lmdb_backend_restore() {
 
 #[test]
 fn lmdb_mmr_reset_and_commit() {
-    let db = create_lmdb_database(&create_random_database_path()).unwrap();
+    let mct_config = MerkleChangeTrackerConfig {
+        min_history_len: 10,
+        max_history_len: 20,
+    };
+    let db = create_lmdb_database(&create_random_database_path(), mct_config).unwrap();
 
     let (utxo1, _) = create_utxo(MicroTari(10_000));
     let (utxo2, _) = create_utxo(MicroTari(15_000));
@@ -797,4 +850,132 @@ fn lmdb_mmr_reset_and_commit() {
     assert!(db.fetch_mmr_checkpoint(MmrTree::Kernel, 1).is_err());
     assert!(db.fetch_mmr_checkpoint(MmrTree::RangeProof, 1).is_err());
     assert!(db.fetch_mmr_checkpoint(MmrTree::Header, 1).is_err());
+}
+
+fn fetch_mmr_base_leaf_nodes_and_restore<T: BlockchainBackend>(db: T) {
+    struct R {
+        utxo: Hash,
+        kernel: Hash,
+        rp: Hash,
+        header: Hash,
+    }
+    let mut test_hashes = Vec::<R>::new();
+    for height in 0..10 {
+        let (utxo, _) = create_utxo(MicroTari(10_000));
+        let kernel = create_test_kernel(100.into(), 0);
+        let mut header = BlockHeader::new(0);
+        header.height = height;
+        let mut txn = DbTransaction::new();
+        txn.insert_utxo(utxo.clone());
+        txn.insert_kernel(kernel.clone());
+        txn.insert_header(header.clone());
+        txn.commit_block();
+        assert!(db.write(txn).is_ok());
+
+        test_hashes.push(R {
+            utxo: utxo.hash(),
+            kernel: kernel.hash(),
+            rp: utxo.proof.hash(),
+            header: header.hash(),
+        });
+    }
+
+    let utxo_mmr_state = db.fetch_mmr_base_leaf_nodes(MmrTree::Utxo, 0, 100).unwrap();
+    let kernel_mmr_state = db.fetch_mmr_base_leaf_nodes(MmrTree::Kernel, 0, 100).unwrap();
+    let rp_mmr_state = db.fetch_mmr_base_leaf_nodes(MmrTree::RangeProof, 0, 100).unwrap();
+    let header_mmr_state = db.fetch_mmr_base_leaf_nodes(MmrTree::Header, 0, 100).unwrap();
+    assert_eq!(utxo_mmr_state.total_leaf_count, 4);
+    assert_eq!(kernel_mmr_state.total_leaf_count, 4);
+    assert_eq!(rp_mmr_state.total_leaf_count, 4);
+    assert_eq!(header_mmr_state.total_leaf_count, 4);
+
+    assert_eq!(utxo_mmr_state.leaf_nodes.leaf_hashes.len(), 4);
+    assert_eq!(kernel_mmr_state.leaf_nodes.leaf_hashes.len(), 4);
+    assert_eq!(rp_mmr_state.leaf_nodes.leaf_hashes.len(), 4);
+    assert_eq!(header_mmr_state.leaf_nodes.leaf_hashes.len(), 4);
+    for i in 0..4 {
+        assert_eq!(utxo_mmr_state.leaf_nodes.leaf_hashes[i], test_hashes[i].utxo);
+        assert_eq!(kernel_mmr_state.leaf_nodes.leaf_hashes[i], test_hashes[i].kernel);
+        assert_eq!(rp_mmr_state.leaf_nodes.leaf_hashes[i], test_hashes[i].rp);
+        assert_eq!(header_mmr_state.leaf_nodes.leaf_hashes[i], test_hashes[i].header);
+    }
+
+    // Adding one more set of data will make the base MMR grow from 4 to 8
+    let (utxo, _) = create_utxo(MicroTari(10_000));
+    let kernel = create_test_kernel(100.into(), 0);
+    let mut header = BlockHeader::new(0);
+    header.height = 10;
+    let mut txn = DbTransaction::new();
+    txn.insert_utxo(utxo.clone());
+    txn.insert_kernel(kernel.clone());
+    txn.insert_header(header.clone());
+    txn.commit_block();
+    assert!(db.write(txn).is_ok());
+
+    let utxo_mmr_leaf_count = db
+        .fetch_mmr_base_leaf_nodes(MmrTree::Utxo, 0, 100)
+        .unwrap()
+        .total_leaf_count;
+    let kernel_mmr_leaf_count = db
+        .fetch_mmr_base_leaf_nodes(MmrTree::Kernel, 0, 100)
+        .unwrap()
+        .total_leaf_count;
+    let rp_mmr_leaf_count = db
+        .fetch_mmr_base_leaf_nodes(MmrTree::RangeProof, 0, 100)
+        .unwrap()
+        .total_leaf_count;
+    let header_mmr_leaf_count = db
+        .fetch_mmr_base_leaf_nodes(MmrTree::Header, 0, 100)
+        .unwrap()
+        .total_leaf_count;
+    assert_eq!(utxo_mmr_leaf_count, 8);
+    assert_eq!(kernel_mmr_leaf_count, 8);
+    assert_eq!(rp_mmr_leaf_count, 8);
+    assert_eq!(header_mmr_leaf_count, 8);
+
+    // Restore previously retrieved MMR state
+    assert!(db.restore_mmr(MmrTree::Utxo, utxo_mmr_state.leaf_nodes).is_ok());
+    assert!(db.restore_mmr(MmrTree::Kernel, kernel_mmr_state.leaf_nodes).is_ok());
+    assert!(db.restore_mmr(MmrTree::RangeProof, rp_mmr_state.leaf_nodes).is_ok());
+    assert!(db.restore_mmr(MmrTree::Header, header_mmr_state.leaf_nodes).is_ok());
+
+    let utxo_mmr_state = db.fetch_mmr_base_leaf_nodes(MmrTree::Utxo, 0, 100).unwrap();
+    let kernel_mmr_state = db.fetch_mmr_base_leaf_nodes(MmrTree::Kernel, 0, 100).unwrap();
+    let rp_mmr_state = db.fetch_mmr_base_leaf_nodes(MmrTree::RangeProof, 0, 100).unwrap();
+    let header_mmr_state = db.fetch_mmr_base_leaf_nodes(MmrTree::Header, 0, 100).unwrap();
+    assert_eq!(utxo_mmr_state.total_leaf_count, 4);
+    assert_eq!(kernel_mmr_state.total_leaf_count, 4);
+    assert_eq!(rp_mmr_state.total_leaf_count, 4);
+    assert_eq!(header_mmr_state.total_leaf_count, 4);
+
+    assert_eq!(utxo_mmr_state.leaf_nodes.leaf_hashes.len(), 4);
+    assert_eq!(kernel_mmr_state.leaf_nodes.leaf_hashes.len(), 4);
+    assert_eq!(rp_mmr_state.leaf_nodes.leaf_hashes.len(), 4);
+    assert_eq!(header_mmr_state.leaf_nodes.leaf_hashes.len(), 4);
+    for i in 0..4 {
+        assert_eq!(utxo_mmr_state.leaf_nodes.leaf_hashes[i], test_hashes[i].utxo);
+        assert_eq!(kernel_mmr_state.leaf_nodes.leaf_hashes[i], test_hashes[i].kernel);
+        assert_eq!(rp_mmr_state.leaf_nodes.leaf_hashes[i], test_hashes[i].rp);
+        assert_eq!(header_mmr_state.leaf_nodes.leaf_hashes[i], test_hashes[i].header);
+    }
+}
+
+#[test]
+fn memory_fetch_mmr_base_leaf_nodes_and_restore() {
+    let mct_config = MerkleChangeTrackerConfig {
+        min_history_len: 3,
+        max_history_len: 6,
+    };
+    let db = MemoryDatabase::<HashDigest>::new(mct_config);
+    fetch_mmr_base_leaf_nodes_and_restore(db);
+}
+
+#[test]
+fn lmdb_fetch_mmr_base_leaf_nodes_and_restore() {
+    let mct_config = MerkleChangeTrackerConfig {
+        min_history_len: 3,
+        max_history_len: 6,
+    };
+    let db = create_lmdb_database(&create_random_database_path(), mct_config).unwrap();
+    fetch_mmr_base_leaf_nodes_and_restore(db);
 }
