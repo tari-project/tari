@@ -187,23 +187,23 @@ fn update_of_base_mmr_with_history_bounds() {
         assert!(mmr.push(&int_to_hash(i)).is_ok());
         assert!(mmr.commit().is_ok());
     }
-    let mmr_state = mmr.to_base_leaf_nodes(0, mmr.get_leaf_count()).unwrap();
+    let mmr_state = mmr.to_base_leaf_nodes(0, mmr.get_base_leaf_count()).unwrap();
     assert_eq!(mmr_state.leaf_hashes.len(), 0);
 
     assert!(mmr.push(&int_to_hash(6)).is_ok());
     assert!(mmr.commit().is_ok());
-    let mmr_state = mmr.to_base_leaf_nodes(0, mmr.get_leaf_count()).unwrap();
+    let mmr_state = mmr.to_base_leaf_nodes(0, mmr.get_base_leaf_count()).unwrap();
     assert_eq!(mmr_state.leaf_hashes.len(), 3);
 
     for i in 7..=8 {
         assert!(mmr.push(&int_to_hash(i)).is_ok());
         assert!(mmr.commit().is_ok());
     }
-    let mmr_state = mmr.to_base_leaf_nodes(0, mmr.get_leaf_count()).unwrap();
+    let mmr_state = mmr.to_base_leaf_nodes(0, mmr.get_base_leaf_count()).unwrap();
     assert_eq!(mmr_state.leaf_hashes.len(), 3);
 
     assert!(mmr.push(&int_to_hash(9)).is_ok());
     assert!(mmr.commit().is_ok());
-    let mmr_state = mmr.to_base_leaf_nodes(0, mmr.get_leaf_count()).unwrap();
+    let mmr_state = mmr.to_base_leaf_nodes(0, mmr.get_base_leaf_count()).unwrap();
     assert_eq!(mmr_state.leaf_hashes.len(), 6);
 }

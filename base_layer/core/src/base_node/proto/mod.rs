@@ -29,6 +29,10 @@ use crate::proto::core;
 use tari_transactions::proto::types;
 
 pub mod chain_metadata;
+pub mod mmr_state_request;
+pub mod mmr_tree;
+pub mod mutable_mmr_leaf_nodes;
+pub mod mutable_mmr_state;
 pub mod request;
 pub mod response;
 

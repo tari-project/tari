@@ -22,20 +22,25 @@
 
 use super::base_node::{base_node_service_request::Request as ProtoNodeCommsRequest, BlockHeights, HashOutputs};
 use crate::base_node::comms_interface as ci;
+use std::convert::TryInto;
 use tari_transactions::types::HashOutput;
 
 //---------------------------------- BaseNodeRequest --------------------------------------------//
-impl Into<ci::NodeCommsRequest> for ProtoNodeCommsRequest {
-    fn into(self) -> ci::NodeCommsRequest {
+impl TryInto<ci::NodeCommsRequest> for ProtoNodeCommsRequest {
+    type Error = String;
+
+    fn try_into(self) -> Result<ci::NodeCommsRequest, Self::Error> {
         use ProtoNodeCommsRequest::*;
-        match self {
+        let request = match self {
             // Field was not specified
             GetChainMetadata(_) => ci::NodeCommsRequest::GetChainMetadata,
             FetchKernels(hash_outputs) => ci::NodeCommsRequest::FetchKernels(hash_outputs.outputs),
             FetchHeaders(block_heights) => ci::NodeCommsRequest::FetchHeaders(block_heights.heights),
             FetchUtxos(hash_outputs) => ci::NodeCommsRequest::FetchUtxos(hash_outputs.outputs),
             FetchBlocks(block_heights) => ci::NodeCommsRequest::FetchBlocks(block_heights.heights),
-        }
+            FetchMmrState(mmr_state_request) => ci::NodeCommsRequest::FetchMmrState(mmr_state_request.try_into()?),
+        };
+        Ok(request)
     }
 }
 
@@ -48,6 +53,7 @@ impl From<ci::NodeCommsRequest> for ProtoNodeCommsRequest {
             FetchHeaders(block_heights) => ProtoNodeCommsRequest::FetchHeaders(block_heights.into()),
             FetchUtxos(hash_outputs) => ProtoNodeCommsRequest::FetchUtxos(hash_outputs.into()),
             FetchBlocks(block_heights) => ProtoNodeCommsRequest::FetchBlocks(block_heights.into()),
+            FetchMmrState(mmr_state_request) => ProtoNodeCommsRequest::FetchMmrState(mmr_state_request.into()),
         }
     }
 }

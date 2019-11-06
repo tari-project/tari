@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+import "google/protobuf/wrappers.proto";
+
+package tari.base_node;
+
+enum MmrTree {
+    MmrTreeNone = 0;
+    MmrTreeUtxo = 1;
+    MmrTreeKernel = 2;
+    MmrTreeRangeProof = 3;
+    MmrTreeHeader = 4;
+}

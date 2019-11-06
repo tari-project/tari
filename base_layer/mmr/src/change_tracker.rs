@@ -286,6 +286,11 @@ where
             .map(|i| self.mmr.len() as usize - self.current_additions.len() + i)
     }
 
+    /// Returns the number of leave nodes in the base MMR.
+    pub fn get_base_leaf_count(&self) -> usize {
+        self.base.get_leaf_count()
+    }
+
     /// Returns the MMR state of the base MMR.
     pub fn to_base_leaf_nodes(
         &self,

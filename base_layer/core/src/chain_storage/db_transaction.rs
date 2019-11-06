@@ -178,7 +178,7 @@ pub enum DbKeyValuePair {
     OrphanBlock(HashOutput, Box<Block>),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum MmrTree {
     Utxo,
     Kernel,

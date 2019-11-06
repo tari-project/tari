@@ -26,7 +26,7 @@ use crate::{
         service::{BaseNodeServiceConfig, BaseNodeServiceInitializer},
     },
     blocks::{genesis_block::get_genesis_block, BlockHeader},
-    chain_storage::{BlockchainDatabase, DbTransaction, MemoryDatabase},
+    chain_storage::{BlockchainDatabase, DbTransaction, MemoryDatabase, MmrTree},
     consts::BASE_NODE_SERVICE_DESIRED_RESPONSE_FRACTION,
     test_utils::builders::{
         add_block_and_update_header,
@@ -35,6 +35,7 @@ use crate::{
         create_test_kernel,
         create_utxo,
     },
+    tx,
 };
 use futures::Sink;
 use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
@@ -45,6 +46,7 @@ use tari_comms::{
     peer_manager::{NodeIdentity, Peer, PeerFeatures, PeerFlags},
 };
 use tari_comms_dht::Dht;
+use tari_mmr::MerkleChangeTrackerConfig;
 use tari_p2p::{
     comms_connector::{pubsub_connector, InboundDomainConnector, PeerMessage},
     initialization::{initialize_comms, CommsConfig},
@@ -52,7 +54,10 @@ use tari_p2p::{
 };
 use tari_service_framework::StackBuilder;
 use tari_test_utils::address::get_next_local_address;
-use tari_transactions::{tari_amount::MicroTari, types::HashDigest};
+use tari_transactions::{
+    tari_amount::{uT, MicroTari},
+    types::{HashDigest, COMMITMENT_FACTORY, PROVER},
+};
 use tari_utilities::hash::Hashable;
 use tempdir::TempDir;
 use tokio::runtime::{Runtime, TaskExecutor};
@@ -144,6 +149,7 @@ pub fn setup_base_node_service(
 fn create_network_with_3_base_nodes(
     runtime: &Runtime,
     config: BaseNodeServiceConfig,
+    mct_config: MerkleChangeTrackerConfig,
 ) -> (
     OutboundNodeCommsInterface,
     OutboundNodeCommsInterface,
@@ -163,7 +169,7 @@ fn create_network_with_3_base_nodes(
         PeerFeatures::COMMUNICATION_NODE,
     )
     .unwrap();
-    let alice_blockchain_db = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
+    let alice_blockchain_db = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::new(mct_config)).unwrap();
 
     let bob_node_identity = NodeIdentity::random(
         &mut rng,
@@ -171,7 +177,7 @@ fn create_network_with_3_base_nodes(
         PeerFeatures::COMMUNICATION_NODE,
     )
     .unwrap();
-    let bob_blockchain_db = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
+    let bob_blockchain_db = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::new(mct_config)).unwrap();
 
     let carol_node_identity = NodeIdentity::random(
         &mut rng,
@@ -179,7 +185,7 @@ fn create_network_with_3_base_nodes(
         PeerFeatures::COMMUNICATION_NODE,
     )
     .unwrap();
-    let carol_blockchain_db = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
+    let carol_blockchain_db = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::new(mct_config)).unwrap();
 
     let (alice_outbound_nci, alice_comms) = setup_base_node_service(
         &runtime,
@@ -220,7 +226,10 @@ fn request_response_get_metadata() {
     let runtime = Runtime::new().unwrap();
 
     let (mut alice_outbound_nci, _, _, _, bob_blockchain_db, _, alice_comms, bob_comms, carol_comms) =
-        create_network_with_3_base_nodes(&runtime, BaseNodeServiceConfig::default());
+        create_network_with_3_base_nodes(&runtime, BaseNodeServiceConfig::default(), MerkleChangeTrackerConfig {
+            min_history_len: 10,
+            max_history_len: 20,
+        });
 
     add_block_and_update_header(&bob_blockchain_db, create_genesis_block().0);
 
@@ -247,7 +256,10 @@ fn request_and_response_fetch_headers() {
     let runtime = Runtime::new().unwrap();
 
     let (mut alice_outbound_nci, _, _, _, bob_blockchain_db, carol_blockchain_db, alice_comms, bob_comms, carol_comms) =
-        create_network_with_3_base_nodes(&runtime, BaseNodeServiceConfig::default());
+        create_network_with_3_base_nodes(&runtime, BaseNodeServiceConfig::default(), MerkleChangeTrackerConfig {
+            min_history_len: 10,
+            max_history_len: 20,
+        });
 
     let mut headerb1 = BlockHeader::new(0);
     headerb1.height = 1;
@@ -291,7 +303,10 @@ fn request_and_response_fetch_kernels() {
     let runtime = Runtime::new().unwrap();
 
     let (mut alice_outbound_nci, _, _, _, bob_blockchain_db, carol_blockchain_db, alice_comms, bob_comms, carol_comms) =
-        create_network_with_3_base_nodes(&runtime, BaseNodeServiceConfig::default());
+        create_network_with_3_base_nodes(&runtime, BaseNodeServiceConfig::default(), MerkleChangeTrackerConfig {
+            min_history_len: 10,
+            max_history_len: 20,
+        });
 
     let kernel1 = create_test_kernel(5.into(), 0);
     let kernel2 = create_test_kernel(10.into(), 1);
@@ -328,7 +343,10 @@ fn request_and_response_fetch_utxos() {
     let runtime = Runtime::new().unwrap();
 
     let (mut alice_outbound_nci, _, _, _, bob_blockchain_db, carol_blockchain_db, alice_comms, bob_comms, carol_comms) =
-        create_network_with_3_base_nodes(&runtime, BaseNodeServiceConfig::default());
+        create_network_with_3_base_nodes(&runtime, BaseNodeServiceConfig::default(), MerkleChangeTrackerConfig {
+            min_history_len: 10,
+            max_history_len: 20,
+        });
 
     let (utxo1, _) = create_utxo(MicroTari(10_000));
     let (utxo2, _) = create_utxo(MicroTari(15_000));
@@ -365,7 +383,10 @@ fn request_and_response_fetch_blocks() {
     let runtime = Runtime::new().unwrap();
 
     let (mut alice_outbound_nci, _, _, _, bob_blockchain_db, carol_blockchain_db, alice_comms, bob_comms, carol_comms) =
-        create_network_with_3_base_nodes(&runtime, BaseNodeServiceConfig::default());
+        create_network_with_3_base_nodes(&runtime, BaseNodeServiceConfig::default(), MerkleChangeTrackerConfig {
+            min_history_len: 10,
+            max_history_len: 20,
+        });
 
     let block0 = add_block_and_update_header(&bob_blockchain_db, get_genesis_block());
     let mut block1 = chain_block(&block0, vec![]);
@@ -387,6 +408,100 @@ fn request_and_response_fetch_blocks() {
         assert_ne!(*received_blocks[0].block(), *received_blocks[1].block());
         assert!((*received_blocks[0].block() == block0) || (*received_blocks[1].block() == block0));
         assert!((*received_blocks[0].block() == block1) || (*received_blocks[1].block() == block1));
+    });
+
+    alice_comms.shutdown().unwrap();
+    bob_comms.shutdown().unwrap();
+    carol_comms.shutdown().unwrap();
+}
+
+#[test]
+fn request_and_response_fetch_mmr_state() {
+    let runtime = Runtime::new().unwrap();
+
+    let mct_config = MerkleChangeTrackerConfig {
+        min_history_len: 1,
+        max_history_len: 3,
+    };
+    let (mut alice_outbound_nci, _, _, _, bob_blockchain_db, carol_blockchain_db, alice_comms, bob_comms, carol_comms) =
+        create_network_with_3_base_nodes(&runtime, BaseNodeServiceConfig::default(), mct_config);
+
+    let (tx1, inputs1, _) = tx!(10_000*uT, fee: 50*uT, inputs: 1, outputs: 1);
+    let (tx2, inputs2, _) = tx!(10_000*uT, fee: 20*uT, inputs: 1, outputs: 1);
+    let (_, inputs3, _) = tx!(10_000*uT, fee: 25*uT, inputs: 1, outputs: 1);
+
+    let block0 = add_block_and_update_header(&bob_blockchain_db, get_genesis_block());
+    let mut txn = DbTransaction::new();
+    txn.insert_utxo(inputs1[0].as_transaction_output(&PROVER, &COMMITMENT_FACTORY).unwrap());
+    txn.insert_utxo(inputs2[0].as_transaction_output(&PROVER, &COMMITMENT_FACTORY).unwrap());
+    txn.insert_utxo(inputs3[0].as_transaction_output(&PROVER, &COMMITMENT_FACTORY).unwrap());
+    assert!(bob_blockchain_db.commit(txn).is_ok());
+    let mut block1 = chain_block(&block0, vec![tx1.clone()]);
+    block1 = add_block_and_update_header(&bob_blockchain_db, block1);
+    let mut block2 = chain_block(&block1, vec![]);
+    block2 = add_block_and_update_header(&bob_blockchain_db, block2);
+    let block3 = chain_block(&block2, vec![tx2.clone()]);
+    bob_blockchain_db.add_new_block(block3.clone()).unwrap();
+
+    let block0 = add_block_and_update_header(&carol_blockchain_db, get_genesis_block());
+    let mut txn = DbTransaction::new();
+    txn.insert_utxo(inputs1[0].as_transaction_output(&PROVER, &COMMITMENT_FACTORY).unwrap());
+    txn.insert_utxo(inputs2[0].as_transaction_output(&PROVER, &COMMITMENT_FACTORY).unwrap());
+    txn.insert_utxo(inputs3[0].as_transaction_output(&PROVER, &COMMITMENT_FACTORY).unwrap());
+    assert!(carol_blockchain_db.commit(txn).is_ok());
+    let mut block1 = chain_block(&block0, vec![tx1.clone()]);
+    block1 = add_block_and_update_header(&carol_blockchain_db, block1);
+    let mut block2 = chain_block(&block1, vec![]);
+    block2 = add_block_and_update_header(&carol_blockchain_db, block2);
+    let block3 = chain_block(&block2, vec![tx2.clone()]);
+    carol_blockchain_db.add_new_block(block3.clone()).unwrap();
+
+    runtime.block_on(async {
+        // Partial queries
+        let received_mmr_state = alice_outbound_nci.fetch_mmr_state(MmrTree::Utxo, 1, 2).await.unwrap();
+        assert_eq!(received_mmr_state.total_leaf_count, 4);
+        assert_eq!(received_mmr_state.leaf_nodes.leaf_hashes.len(), 2);
+
+        let received_mmr_state = alice_outbound_nci.fetch_mmr_state(MmrTree::Kernel, 1, 2).await.unwrap();
+        assert_eq!(received_mmr_state.total_leaf_count, 1);
+        assert_eq!(received_mmr_state.leaf_nodes.leaf_hashes.len(), 0); // request out of range
+
+        let received_mmr_state = alice_outbound_nci
+            .fetch_mmr_state(MmrTree::RangeProof, 1, 2)
+            .await
+            .unwrap();
+        assert_eq!(received_mmr_state.total_leaf_count, 4);
+        assert_eq!(received_mmr_state.leaf_nodes.leaf_hashes.len(), 2);
+
+        let received_mmr_state = alice_outbound_nci.fetch_mmr_state(MmrTree::Header, 1, 2).await.unwrap();
+        assert_eq!(received_mmr_state.total_leaf_count, 3);
+        assert_eq!(received_mmr_state.leaf_nodes.leaf_hashes.len(), 2);
+
+        // Comprehensive queries
+        let received_mmr_state = alice_outbound_nci.fetch_mmr_state(MmrTree::Utxo, 0, 100).await.unwrap();
+        assert_eq!(received_mmr_state.total_leaf_count, 4);
+        assert_eq!(received_mmr_state.leaf_nodes.leaf_hashes.len(), 4);
+
+        let received_mmr_state = alice_outbound_nci
+            .fetch_mmr_state(MmrTree::Kernel, 0, 100)
+            .await
+            .unwrap();
+        assert_eq!(received_mmr_state.total_leaf_count, 1);
+        assert_eq!(received_mmr_state.leaf_nodes.leaf_hashes.len(), 1);
+
+        let received_mmr_state = alice_outbound_nci
+            .fetch_mmr_state(MmrTree::RangeProof, 0, 100)
+            .await
+            .unwrap();
+        assert_eq!(received_mmr_state.total_leaf_count, 4);
+        assert_eq!(received_mmr_state.leaf_nodes.leaf_hashes.len(), 4);
+
+        let received_mmr_state = alice_outbound_nci
+            .fetch_mmr_state(MmrTree::Header, 0, 100)
+            .await
+            .unwrap();
+        assert_eq!(received_mmr_state.total_leaf_count, 3);
+        assert_eq!(received_mmr_state.leaf_nodes.leaf_hashes.len(), 3);
     });
 
     alice_comms.shutdown().unwrap();

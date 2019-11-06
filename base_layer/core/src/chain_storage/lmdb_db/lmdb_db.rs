@@ -23,7 +23,7 @@
 use crate::{
     blocks::{blockheader::BlockHeader, Block},
     chain_storage::{
-        blockchain_database::BlockchainBackend,
+        blockchain_database::{BlockchainBackend, MutableMmrState},
         db_transaction::{DbKey, DbKeyValuePair, DbTransaction, DbValue, MetadataValue, MmrTree, WriteOperation},
         error::ChainStorageError,
         lmdb_db::{
@@ -61,6 +61,7 @@ use tari_mmr::{
     MerkleCheckPoint,
     MerkleProof,
     MutableMmr,
+    MutableMmrLeafNodes,
 };
 use tari_storage::lmdb_store::{db, LMDBBuilder, LMDBStore};
 use tari_transactions::{
@@ -93,7 +94,7 @@ where D: Digest
 impl<D> LMDBDatabase<D>
 where D: Digest + Send + Sync
 {
-    pub fn new(store: LMDBStore) -> Result<Self, ChainStorageError> {
+    pub fn new(store: LMDBStore, mct_config: MerkleChangeTrackerConfig) -> Result<Self, ChainStorageError> {
         let utxo_mmr_base_backend = LMDBVec::new(
             store.env(),
             store
@@ -158,11 +159,6 @@ where D: Digest + Send + Sync
                 .db()
                 .clone(),
         );
-        let mct_config = MerkleChangeTrackerConfig {
-            // TODO: this needs a proper config for lmdb_db
-            min_history_len: 900,
-            max_history_len: 1000,
-        };
         Ok(Self {
             metadata_db: store
                 .get_handle(LMDB_DB_METADATA)
@@ -475,7 +471,11 @@ where D: Digest + Send + Sync
 }
 
 #[allow(dead_code)]
-pub fn create_lmdb_database(path: &Path) -> Result<LMDBDatabase<HashDigest>, ChainStorageError> {
+pub fn create_lmdb_database(
+    path: &Path,
+    mct_config: MerkleChangeTrackerConfig,
+) -> Result<LMDBDatabase<HashDigest>, ChainStorageError>
+{
     let _ = std::fs::create_dir_all(&path).unwrap_or_default();
     let lmdb_store = LMDBBuilder::new()
         .set_path(path.to_str().unwrap())
@@ -499,7 +499,7 @@ pub fn create_lmdb_database(path: &Path) -> Result<LMDBDatabase<HashDigest>, Cha
         .add_database(LMDB_DB_RANGE_PROOF_MMR_CP_BACKEND, db::CREATE)
         .build()
         .map_err(|_| ChainStorageError::CriticalError)?;
-    LMDBDatabase::<HashDigest>::new(lmdb_store)
+    LMDBDatabase::<HashDigest>::new(lmdb_store, mct_config)
 }
 
 impl<D> BlockchainBackend for LMDBDatabase<D>
@@ -723,6 +723,108 @@ where D: Digest + Send + Sync
             )))?
             .clone();
         Ok((hash, deleted))
+    }
+
+    fn fetch_mmr_base_leaf_nodes(
+        &self,
+        tree: MmrTree,
+        index: usize,
+        count: usize,
+    ) -> Result<MutableMmrState, ChainStorageError>
+    {
+        let mmr_state = match tree {
+            MmrTree::Kernel => {
+                let total_leaf_count = self
+                    .kernel_mmr
+                    .read()
+                    .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
+                    .get_base_leaf_count();
+                let leaf_nodes = self
+                    .kernel_mmr
+                    .read()
+                    .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
+                    .to_base_leaf_nodes(index, count)?;
+                MutableMmrState {
+                    total_leaf_count,
+                    leaf_nodes,
+                }
+            },
+            MmrTree::Header => {
+                let total_leaf_count = self
+                    .header_mmr
+                    .read()
+                    .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
+                    .get_base_leaf_count();
+                let leaf_nodes = self
+                    .header_mmr
+                    .read()
+                    .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
+                    .to_base_leaf_nodes(index, count)?;
+                MutableMmrState {
+                    total_leaf_count,
+                    leaf_nodes,
+                }
+            },
+            MmrTree::Utxo => {
+                let total_leaf_count = self
+                    .utxo_mmr
+                    .read()
+                    .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
+                    .get_base_leaf_count();
+                let leaf_nodes = self
+                    .utxo_mmr
+                    .read()
+                    .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
+                    .to_base_leaf_nodes(index, count)?;
+                MutableMmrState {
+                    total_leaf_count,
+                    leaf_nodes,
+                }
+            },
+            MmrTree::RangeProof => {
+                let total_leaf_count = self
+                    .range_proof_mmr
+                    .read()
+                    .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
+                    .get_base_leaf_count();
+                let leaf_nodes = self
+                    .range_proof_mmr
+                    .read()
+                    .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
+                    .to_base_leaf_nodes(index, count)?;
+                MutableMmrState {
+                    total_leaf_count,
+                    leaf_nodes,
+                }
+            },
+        };
+        Ok(mmr_state)
+    }
+
+    fn restore_mmr(&self, tree: MmrTree, base_state: MutableMmrLeafNodes) -> Result<(), ChainStorageError> {
+        match tree {
+            MmrTree::Kernel => self
+                .kernel_mmr
+                .write()
+                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
+                .restore(base_state)?,
+            MmrTree::Header => self
+                .header_mmr
+                .write()
+                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
+                .restore(base_state)?,
+            MmrTree::Utxo => self
+                .utxo_mmr
+                .write()
+                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
+                .restore(base_state)?,
+            MmrTree::RangeProof => self
+                .range_proof_mmr
+                .write()
+                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
+                .restore(base_state)?,
+        };
+        Ok(())
     }
 
     /// Iterate over all the stored orphan blocks and execute the function `f` for each block.

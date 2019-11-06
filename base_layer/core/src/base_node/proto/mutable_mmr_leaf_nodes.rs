@@ -20,15 +20,29 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod comms_request;
-mod comms_response;
-mod error;
-mod inbound_interface;
-mod outbound_interface;
+use crate::base_node::proto::base_node::MutableMmrLeafNodes as ProtoMutableMmrLeafNodes;
+use croaring::Bitmap;
+use std::convert::TryFrom;
+use tari_mmr::MutableMmrLeafNodes;
 
-// Public re-exports
-pub use comms_request::{MmrStateRequest, NodeCommsRequest, NodeCommsRequestType};
-pub use comms_response::NodeCommsResponse;
-pub use error::CommsInterfaceError;
-pub use inbound_interface::InboundNodeCommsInterface;
-pub use outbound_interface::OutboundNodeCommsInterface;
+impl TryFrom<ProtoMutableMmrLeafNodes> for MutableMmrLeafNodes {
+    type Error = String;
+
+    fn try_from(state: ProtoMutableMmrLeafNodes) -> Result<Self, Self::Error> {
+        let mut deleted = Bitmap::create();
+        deleted.add_many(&state.deleted);
+        Ok(Self {
+            leaf_hashes: state.leaf_hashes.into_iter().map(Into::into).collect(),
+            deleted,
+        })
+    }
+}
+
+impl From<MutableMmrLeafNodes> for ProtoMutableMmrLeafNodes {
+    fn from(state: MutableMmrLeafNodes) -> Self {
+        Self {
+            leaf_hashes: state.leaf_hashes.into_iter().map(Into::into).collect(),
+            deleted: state.deleted.to_vec(),
+        }
+    }
+}

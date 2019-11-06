@@ -41,6 +41,7 @@ use tari_core::{
     },
     chain_storage::{create_lmdb_database, BlockchainBackend, BlockchainDatabase, LMDBDatabase, MemoryDatabase},
 };
+use tari_mmr::MerkleChangeTrackerConfig;
 use tari_p2p::{
     comms_connector::pubsub_connector,
     initialization::{initialize_comms, CommsConfig},
@@ -165,7 +166,11 @@ pub fn configure_and_initialize_node(
             )
         },
         DatabaseType::LMDB(p) => {
-            let backend = create_lmdb_database(&p).map_err(|e| e.to_string())?;
+            let mct_config = MerkleChangeTrackerConfig {
+                min_history_len: 900,
+                max_history_len: 1000,
+            };
+            let backend = create_lmdb_database(&p, mct_config).map_err(|e| e.to_string())?;
             let db = BlockchainDatabase::new(backend).map_err(|e| e.to_string())?;
             let (comms, handles) = setup_comms_services(&rt, id.clone(), peers, &config.peer_db_path, db.clone());
             let outbound_interface = handles.get_handle::<OutboundNodeCommsInterface>().unwrap();

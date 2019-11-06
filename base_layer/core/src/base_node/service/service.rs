@@ -252,7 +252,14 @@ where B: BlockchainBackend
             "Received invalid base node request".to_string(),
         ))?;
 
-        let response = self.inbound_nci.handle_request(&request.into()).await?;
+        let response = self
+            .inbound_nci
+            .handle_request(
+                &request
+                    .try_into()
+                    .map_err(|e| BaseNodeServiceError::InvalidRequest(e))?,
+            )
+            .await?;
 
         let message = proto::BaseNodeServiceResponse {
             request_key: inner.request_key,

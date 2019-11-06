@@ -24,21 +24,32 @@ use crate::{
     base_node::comms_interface::{
         CommsInterfaceError,
         InboundNodeCommsInterface,
+        MmrStateRequest,
         NodeCommsRequest,
         NodeCommsRequestType,
         NodeCommsResponse,
         OutboundNodeCommsInterface,
     },
     blocks::{genesis_block::get_genesis_block, BlockHeader},
-    chain_storage::{BlockchainDatabase, ChainMetadata, DbTransaction, HistoricalBlock, MemoryDatabase},
+    chain_storage::{
+        BlockchainDatabase,
+        ChainMetadata,
+        DbTransaction,
+        HistoricalBlock,
+        MemoryDatabase,
+        MmrTree,
+        MutableMmrState,
+    },
     proof_of_work::Difficulty,
     test_utils::builders::{add_block_and_update_header, create_test_kernel, create_utxo},
 };
+use croaring::Bitmap;
 use futures::{executor::block_on, StreamExt};
+use tari_mmr::MutableMmrLeafNodes;
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_test_utils::runtime::test_async;
 use tari_transactions::{tari_amount::MicroTari, types::HashDigest};
-use tari_utilities::hash::Hashable;
+use tari_utilities::{hash::Hashable, hex::Hex};
 
 async fn test_request_responder(
     receiver: &mut Receiver<
@@ -264,6 +275,50 @@ fn inbound_fetch_blocks() {
             {
                 assert_eq!(received_blocks.len(), 1);
                 assert_eq!(*received_blocks[0].block(), block);
+            } else {
+                assert!(false);
+            }
+        });
+    });
+}
+
+#[test]
+fn outbound_fetch_mmr_state() {
+    let (sender, mut receiver) = reply_channel::unbounded();
+    let mut outbound_nci = OutboundNodeCommsInterface::new(sender);
+
+    block_on(async {
+        let mmr_state = MutableMmrState {
+            total_leaf_count: 2,
+            leaf_nodes: MutableMmrLeafNodes::new(Vec::new(), Bitmap::create()),
+        };
+        let mmr_state_response: Vec<NodeCommsResponse> = vec![NodeCommsResponse::MmrState(mmr_state.clone())];
+        let (received_state, _) = futures::join!(
+            outbound_nci.fetch_mmr_state(MmrTree::Kernel, 1, 100),
+            test_request_responder(&mut receiver, mmr_state_response)
+        );
+        let received_state = received_state.unwrap();
+        assert_eq!(received_state, mmr_state);
+    });
+}
+
+#[test]
+fn inbound_fetch_mmr_state() {
+    let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
+    let inbound_nci = InboundNodeCommsInterface::new(store);
+
+    test_async(move |rt| {
+        rt.spawn(async move {
+            if let Ok(NodeCommsResponse::MmrState(received_mmr_state)) = inbound_nci
+                .handle_request(&NodeCommsRequest::FetchMmrState(MmrStateRequest {
+                    tree: MmrTree::Kernel,
+                    index: 0,
+                    count: 1,
+                }))
+                .await
+            {
+                assert_eq!(received_mmr_state.total_leaf_count, 0);
+                assert_eq!(received_mmr_state.leaf_nodes.leaf_hashes.len(), 0);
             } else {
                 assert!(false);
             }

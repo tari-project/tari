@@ -20,15 +20,32 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod comms_request;
-mod comms_response;
-mod error;
-mod inbound_interface;
-mod outbound_interface;
+use crate::base_node::{
+    comms_interface::MmrStateRequest,
+    proto::base_node::{MmrStateRequest as ProtoMmrStateRequest, MmrTree as ProtoMmrTree},
+};
+use std::convert::{TryFrom, TryInto};
 
-// Public re-exports
-pub use comms_request::{MmrStateRequest, NodeCommsRequest, NodeCommsRequestType};
-pub use comms_response::NodeCommsResponse;
-pub use error::CommsInterfaceError;
-pub use inbound_interface::InboundNodeCommsInterface;
-pub use outbound_interface::OutboundNodeCommsInterface;
+impl TryFrom<ProtoMmrStateRequest> for MmrStateRequest {
+    type Error = String;
+
+    fn try_from(request: ProtoMmrStateRequest) -> Result<Self, Self::Error> {
+        let tree = ProtoMmrTree::from_i32(request.tree).ok_or("Invalid or unrecognised `MmrTree` enum".to_string())?;
+        Ok(Self {
+            tree: tree.try_into()?,
+            index: request.index,
+            count: request.count,
+        })
+    }
+}
+
+impl From<MmrStateRequest> for ProtoMmrStateRequest {
+    fn from(request: MmrStateRequest) -> Self {
+        let tree: ProtoMmrTree = request.tree.into();
+        Self {
+            tree: tree as i32,
+            index: request.index,
+            count: request.count,
+        }
+    }
+}

@@ -1,6 +1,7 @@
 syntax = "proto3";
 
 package tari.base_node;
+import "mmr_state_request.proto";
 
 // Request type for a received BaseNodeService request.
 message BaseNodeServiceRequest {
@@ -16,6 +17,8 @@ message BaseNodeServiceRequest {
         HashOutputs fetch_utxos = 5;
         // Indicates a FetchBlocks request.
         BlockHeights fetch_blocks = 6;
+        // Indicates a FetchMmrState request.
+        MmrStateRequest fetch_mmr_state = 7;
     }
 }
 

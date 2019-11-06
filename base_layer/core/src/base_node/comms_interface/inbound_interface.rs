@@ -84,6 +84,15 @@ where T: BlockchainBackend
                 }
                 Ok(NodeCommsResponse::HistoricalBlocks(blocks))
             },
+            NodeCommsRequest::FetchMmrState(mmr_state_request) => Ok(NodeCommsResponse::MmrState(
+                async_db::fetch_mmr_base_leaf_nodes(
+                    self.blockchain_db.clone(),
+                    mmr_state_request.tree.clone(),
+                    mmr_state_request.index as usize,
+                    mmr_state_request.count as usize,
+                )
+                .await?,
+            )),
         }
     }
 }

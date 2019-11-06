@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::chain_storage::MmrTree;
 use serde::{Deserialize, Serialize};
 use tari_transactions::types::HashOutput;
 
@@ -33,6 +34,14 @@ pub enum NodeCommsRequestType {
     Many,
 }
 
+/// A container for the parameters required for a FetchMmrState request.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct MmrStateRequest {
+    pub tree: MmrTree,
+    pub index: u64,
+    pub count: u64,
+}
+
 /// API Request enum
 #[derive(Debug, Serialize, Deserialize)]
 pub enum NodeCommsRequest {
@@ -41,4 +50,5 @@ pub enum NodeCommsRequest {
     FetchHeaders(Vec<u64>),
     FetchUtxos(Vec<HashOutput>),
     FetchBlocks(Vec<u64>),
+    FetchMmrState(MmrStateRequest),
 }

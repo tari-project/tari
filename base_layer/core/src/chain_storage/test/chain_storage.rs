@@ -49,7 +49,7 @@ use crate::{
 };
 use env_logger;
 use std::thread;
-use tari_mmr::MutableMmr;
+use tari_mmr::{MerkleChangeTrackerConfig, MutableMmr};
 use tari_transactions::{
     tari_amount::{uT, MicroTari, T},
     types::{HashDigest, COMMITMENT_FACTORY, PROVER},
@@ -580,4 +580,97 @@ fn handle_reorg() {
         store.add_block(orphan_blocks[2].clone()),
         Ok(BlockAddResult::ChainReorg)
     );
+}
+
+#[test]
+fn restore_mmr() {
+    let mct_config = MerkleChangeTrackerConfig {
+        min_history_len: 2,
+        max_history_len: 3,
+    };
+    let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::new(mct_config)).unwrap();
+
+    let block0 = add_block_and_update_header(&store, create_genesis_block().0);
+
+    let (tx1, inputs1, _) = tx!(10_000*uT, fee: 50*uT, inputs: 1, outputs: 1);
+    let (tx2, inputs2, _) = tx!(10_000*uT, fee: 20*uT, inputs: 1, outputs: 1);
+    let (tx3, inputs3, _) = tx!(10_000*uT, fee: 100*uT, inputs: 1, outputs: 1);
+    let (tx4, inputs4, _) = tx!(10_000*uT, fee: 30*uT, inputs: 1, outputs: 1);
+    let (tx5, inputs5, _) = tx!(10_000*uT, fee: 50*uT, inputs: 1, outputs: 1);
+    let (tx6, inputs6, _) = tx!(10_000*uT, fee: 75*uT, inputs: 1, outputs: 1);
+    let mut txn = DbTransaction::new();
+    txn.insert_utxo(inputs1[0].as_transaction_output(&PROVER, &COMMITMENT_FACTORY).unwrap());
+    txn.insert_utxo(inputs2[0].as_transaction_output(&PROVER, &COMMITMENT_FACTORY).unwrap());
+    txn.insert_utxo(inputs3[0].as_transaction_output(&PROVER, &COMMITMENT_FACTORY).unwrap());
+    txn.insert_utxo(inputs4[0].as_transaction_output(&PROVER, &COMMITMENT_FACTORY).unwrap());
+    txn.insert_utxo(inputs5[0].as_transaction_output(&PROVER, &COMMITMENT_FACTORY).unwrap());
+    txn.insert_utxo(inputs6[0].as_transaction_output(&PROVER, &COMMITMENT_FACTORY).unwrap());
+    assert!(store.commit(txn).is_ok());
+
+    let mut block1 = chain_block(&block0, vec![tx1.clone(), tx2.clone()]);
+    block1 = add_block_and_update_header(&store, block1);
+    let mut block2 = chain_block(&block1, vec![tx3.clone()]);
+    block2 = add_block_and_update_header(&store, block2);
+    let mut block3 = chain_block(&block2, vec![tx4.clone()]);
+    block3 = add_block_and_update_header(&store, block3);
+
+    // Genesis block and block 1 has been added to base MMR
+    let utxo_mmr_state = store.fetch_mmr_base_leaf_nodes(MmrTree::Utxo, 0, 100).unwrap();
+    let kernel_mmr_state = store.fetch_mmr_base_leaf_nodes(MmrTree::Kernel, 0, 100).unwrap();
+    let rp_mmr_state = store.fetch_mmr_base_leaf_nodes(MmrTree::RangeProof, 0, 100).unwrap();
+    let header_mmr_state = store.fetch_mmr_base_leaf_nodes(MmrTree::Header, 0, 100).unwrap();
+
+    assert_eq!(utxo_mmr_state.total_leaf_count, 9);
+    assert_eq!(kernel_mmr_state.total_leaf_count, 3);
+    assert_eq!(rp_mmr_state.total_leaf_count, 9);
+    assert_eq!(header_mmr_state.total_leaf_count, 2);
+
+    let mut block4 = chain_block(&block3, vec![tx5.clone()]);
+    block4 = add_block_and_update_header(&store, block4);
+    let block5 = chain_block(&block4, vec![tx6.clone()]);
+    store.add_new_block(block5.clone()).unwrap();
+
+    let utxo_mmr_leaf_count = store
+        .fetch_mmr_base_leaf_nodes(MmrTree::Utxo, 0, 100)
+        .unwrap()
+        .total_leaf_count;
+    let kernel_mmr_leaf_count = store
+        .fetch_mmr_base_leaf_nodes(MmrTree::Kernel, 0, 100)
+        .unwrap()
+        .total_leaf_count;
+    let rp_mmr_leaf_count = store
+        .fetch_mmr_base_leaf_nodes(MmrTree::RangeProof, 0, 100)
+        .unwrap()
+        .total_leaf_count;
+    let header_mmr_leaf_count = store
+        .fetch_mmr_base_leaf_nodes(MmrTree::Header, 0, 100)
+        .unwrap()
+        .total_leaf_count;
+    assert_eq!(utxo_mmr_leaf_count, 11);
+    assert_eq!(kernel_mmr_leaf_count, 5);
+    assert_eq!(rp_mmr_leaf_count, 11);
+    assert_eq!(header_mmr_leaf_count, 4);
+
+    // Restore previously retrieved MMR state
+    assert!(store
+        .restore_mmr(MmrTree::Utxo, utxo_mmr_state.leaf_nodes.clone())
+        .is_ok());
+    assert!(store
+        .restore_mmr(MmrTree::Kernel, kernel_mmr_state.leaf_nodes.clone())
+        .is_ok());
+    assert!(store
+        .restore_mmr(MmrTree::RangeProof, rp_mmr_state.leaf_nodes.clone())
+        .is_ok());
+    assert!(store
+        .restore_mmr(MmrTree::Header, header_mmr_state.leaf_nodes.clone())
+        .is_ok());
+
+    let restore_utxo_mmr_state = store.fetch_mmr_base_leaf_nodes(MmrTree::Utxo, 0, 100).unwrap();
+    let restore_kernel_mmr_state = store.fetch_mmr_base_leaf_nodes(MmrTree::Kernel, 0, 100).unwrap();
+    let restore_rp_mmr_state = store.fetch_mmr_base_leaf_nodes(MmrTree::RangeProof, 0, 100).unwrap();
+    let restore_header_mmr_state = store.fetch_mmr_base_leaf_nodes(MmrTree::Header, 0, 100).unwrap();
+    assert_eq!(restore_utxo_mmr_state, utxo_mmr_state);
+    assert_eq!(restore_kernel_mmr_state, kernel_mmr_state);
+    assert_eq!(restore_rp_mmr_state, rp_mmr_state);
+    assert_eq!(restore_header_mmr_state, header_mmr_state);
 }
