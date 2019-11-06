@@ -276,7 +276,7 @@ fn manage_multiple_transactions() {
     let alice_seed = PrivateKey::random(&mut rng);
     let alice_node_identity = NodeIdentity::random(
         &mut rng,
-        "127.0.0.1:31584".parse().unwrap(),
+        "127.0.0.1:31484".parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
     )
     .unwrap();
@@ -285,7 +285,7 @@ fn manage_multiple_transactions() {
     let bob_seed = PrivateKey::random(&mut rng);
     let bob_node_identity = NodeIdentity::random(
         &mut rng,
-        "127.0.0.1:31585".parse().unwrap(),
+        "127.0.0.1:31485".parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
     )
     .unwrap();
@@ -294,7 +294,7 @@ fn manage_multiple_transactions() {
     let carol_seed = PrivateKey::random(&mut rng);
     let carol_node_identity = NodeIdentity::random(
         &mut rng,
-        "127.0.0.1:31586".parse().unwrap(),
+        "127.0.0.1:31486".parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
     )
     .unwrap();
@@ -348,6 +348,8 @@ fn manage_multiple_transactions() {
             alice_node_identity.clone(),
         ]);
 
+    let bob_event_stream = bob_ts.get_event_stream_fused();
+
     let (_utxo, uo2) = make_input(&mut rng, MicroTari(3500));
     runtime.block_on(bob_oms.add_output(uo2)).unwrap();
     let (_utxo, uo3) = make_input(&mut rng, MicroTari(4500));
@@ -371,6 +373,8 @@ fn manage_multiple_transactions() {
     let mut result =
         runtime.block_on(async { event_stream_count(alice_event_stream, 4, Duration::from_secs(10)).await });
     assert_eq!(result.remove(&TransactionEvent::ReceivedTransactionReply), Some(3));
+
+    let _ = runtime.block_on(async { event_stream_count(bob_event_stream, 3, Duration::from_secs(10)).await });
 
     let alice_pending_outbound = runtime.block_on(alice_ts.get_pending_outbound_transactions()).unwrap();
     let alice_completed_tx = runtime.block_on(alice_ts.get_completed_transactions()).unwrap();
