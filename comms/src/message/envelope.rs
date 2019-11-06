@@ -39,7 +39,8 @@ pub struct MessageEnvelopeHeader {
     pub flags: MessageFlags,
 }
 
-include_proto_package!("tari.comms.envelope");
+// Re-export protos
+pub use crate::proto::envelope::*;
 
 impl Envelope {
     /// Sign a message, construct an Envelope with a Header

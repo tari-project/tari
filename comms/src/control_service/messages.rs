@@ -20,14 +20,27 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use derive_error::Error;
+use std::fmt::{self, Display, Formatter};
 
-include_proto_package!("tari.comms.control_service");
+// Re-export protos
+pub use crate::proto::control_service::*;
 
 impl MessageHeader {
     pub fn new(message_type: MessageType) -> Self {
         Self {
             message_type: message_type as i32,
+        }
+    }
+}
+
+//---------------------------------- RejectReason --------------------------------------------//
+
+impl Display for RejectReason {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+        match self {
+            RejectReason::None => write!(f, "None"),
+            RejectReason::CollisionDetected => write!(f, "CollisionDetected"),
+            RejectReason::ExistingConnection => write!(f, "ExistingConnection"),
         }
     }
 }
