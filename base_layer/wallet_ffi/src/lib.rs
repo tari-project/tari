@@ -39,43 +39,51 @@ use std::{
     ffi::{CStr, CString},
     slice,
 };
-use tari_comms::peer_manager::Peer;
+use tari_comms::peer_manager::NodeIdentity;
 use tari_crypto::keys::SecretKey;
-use tari_p2p::initialization::CommsConfig;
-use tari_transactions::{
-    tari_amount::MicroTari,
-    transaction::{
-        OutputFeatures,
-        OutputFlags,
-        Transaction,
-        TransactionInput,
-        TransactionKernel,
-        TransactionOutput,
-        UnblindedOutput,
-    },
-    types::{PrivateKey, PublicKey},
-};
+use tari_transactions::tari_amount::MicroTari;
 use tari_utilities::ByteArray;
+use tari_wallet::wallet::{Wallet, WalletConfig};
+
+use std::{sync::Arc, time::Duration};
+use tari_comms::{connection::NetAddress, control_service::ControlServiceConfig, peer_manager::PeerFeatures};
+use tari_crypto::keys::PublicKey;
+use tari_utilities::hex::Hex;
 use tari_wallet::{
-    output_manager_service::{storage::database::PendingTransactionOutputs, OutputManagerConfig},
-    wallet::WalletConfig,
-    Wallet,
+    contacts_service::storage::database::Contact,
+    storage::memory_db::WalletMemoryDatabase,
+    testnet_utils::generate_wallet_test_data,
 };
 use tokio::runtime::Runtime;
 
-pub type TariWallet = Wallet;
-pub type WalletDateTime = NaiveDateTime;
+pub type TariWallet = tari_wallet::wallet::Wallet<WalletMemoryDatabase>;
+pub type TariWalletConfig = tari_wallet::wallet::WalletConfig;
+pub type TariDateTime = chrono::NaiveDateTime;
+pub type TariPublicKey = tari_comms::types::CommsPublicKey;
+pub type TariPrivateKey = tari_comms::types::CommsSecretKey;
+pub type TariCommsConfig = tari_p2p::initialization::CommsConfig;
+pub type TariContact = tari_wallet::contacts_service::storage::database::Contact;
 
-/// -------------------------------- ByteVector ------------------------------------------------ ///
+pub struct TariContacts(Vec<TariContact>);
 pub struct ByteVector(Vec<c_uchar>); // declared like this so that it can be exposed to external header
 
+/// -------------------------------- Strings ------------------------------------------------ ///
+// Frees memory for string pointer
+#[no_mangle]
+pub unsafe extern "C" fn free_string(o: *mut c_char) {
+    if !o.is_null() {
+        let _ = CString::from_raw(o);
+    }
+}
+/// -------------------------------------------------------------------------------------------- ///
+
+/// -------------------------------- ByteVector ------------------------------------------------ ///
 #[no_mangle]
 pub unsafe extern "C" fn byte_vector_create(byte_array: *const c_uchar, element_count: c_int) -> *mut ByteVector {
-    let bytes = ByteVector(Vec::new());
-    let mut v = Vec::new();
+    let mut bytes = ByteVector(Vec::new());
     if !byte_array.is_null() {
         let array: &[c_uchar] = slice::from_raw_parts(byte_array, element_count as usize);
-        v = array.to_vec();
+        bytes.0 = array.to_vec();
     }
     Box::into_raw(Box::new(bytes))
 }
@@ -83,13 +91,14 @@ pub unsafe extern "C" fn byte_vector_create(byte_array: *const c_uchar, element_
 #[no_mangle]
 pub unsafe extern "C" fn byte_vector_destroy(bytes: *mut ByteVector) {
     if bytes.is_null() {
-        let b = Box::from_raw(bytes);
+        Box::from_raw(bytes);
     }
 }
 
 /// returns c_uchar at position in internal vector
 #[no_mangle]
 pub unsafe extern "C" fn byte_vector_get_at(ptr: *mut ByteVector, i: c_int) -> c_uchar {
+    // TODO Bound checking the length of these vectors
     (*ptr).0.clone()[i as usize]
 }
 
@@ -101,61 +110,67 @@ pub unsafe extern "C" fn byte_vector_get_length(vec: *const ByteVector) -> c_int
     }
     (&*vec).0.len() as c_int
 }
+
 /// -------------------------------------------------------------------------------------------- ///
 
 /// -------------------------------- Public Key ------------------------------------------------ ///
-pub type WalletPublicKey = PublicKey;
 
 #[no_mangle]
-pub unsafe extern "C" fn public_key_create(bytes: *mut ByteVector) -> *mut WalletPublicKey {
+pub unsafe extern "C" fn public_key_create(bytes: *mut ByteVector) -> *mut TariPublicKey {
     let mut v = Vec::new();
     if !bytes.is_null() {
         v = (*bytes).0.clone();
     }
-    let pk = WalletPublicKey::from_bytes(&v).unwrap();
+    let pk = TariPublicKey::from_bytes(&v).unwrap();
     Box::into_raw(Box::new(pk))
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn public_key_destroy(pk: *mut WalletPublicKey) {
+pub unsafe extern "C" fn public_key_destroy(pk: *mut TariPublicKey) {
     if !pk.is_null() {
         Box::from_raw(pk);
     }
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn public_key_get_key(pk: *mut WalletPublicKey) -> *mut ByteVector {
+pub unsafe extern "C" fn public_key_get_key(pk: *mut TariPublicKey) -> *mut ByteVector {
     let mut bytes = ByteVector(Vec::new());
     if !pk.is_null() {
         bytes.0 = (*pk).to_vec();
     }
     Box::into_raw(Box::new(bytes))
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn public_key_from_private_key(secret_key: *mut TariPrivateKey) -> *mut TariPublicKey {
+    let m = TariPublicKey::from_secret_key(&(*secret_key));
+    //    println!("PK: {:?}", m);
+    Box::into_raw(Box::new(m))
 }
 
 /// -------------------------------------------------------------------------------------------- ///
 
 /// -------------------------------- Private Key ----------------------------------------------- ///
-pub type WalletPrivateKey = PrivateKey;
 
 #[no_mangle]
-pub unsafe extern "C" fn private_key_create(bytes: *mut ByteVector) -> *mut WalletPrivateKey {
+pub unsafe extern "C" fn private_key_create(bytes: *mut ByteVector) -> *mut TariPrivateKey {
     let mut v = Vec::new();
     if !bytes.is_null() {
         v = (*bytes).0.clone();
     }
-    let pk = WalletPrivateKey::from_bytes(&v).unwrap();
+    let pk = TariPrivateKey::from_bytes(&v).unwrap();
     Box::into_raw(Box::new(pk))
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn private_key_destroy(pk: *mut WalletPrivateKey) {
+pub unsafe extern "C" fn private_key_destroy(pk: *mut TariPrivateKey) {
     if !pk.is_null() {
         Box::from_raw(pk);
     }
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn private_key_get_key(pk: *mut WalletPrivateKey) -> *mut ByteVector {
+pub unsafe extern "C" fn private_key_get_byte_vector(pk: *mut TariPrivateKey) -> *mut ByteVector {
     let mut bytes = ByteVector(Vec::new());
     if !pk.is_null() {
         bytes.0 = (*pk).to_vec();
@@ -163,699 +178,305 @@ pub unsafe extern "C" fn private_key_get_key(pk: *mut WalletPrivateKey) -> *mut 
     Box::into_raw(Box::new(bytes))
 }
 
-/// -------------------------------------------------------------------------------------------- ///
-
-/// -------------------------------------- OutputManagerConfig --------------------------------- ///
-pub type WalletOutputManagerConfig = OutputManagerConfig;
-
 #[no_mangle]
-pub unsafe extern "C" fn output_manager_config_create(
-    master_key: *mut PrivateKey,
-    branch_seed: *mut c_char,
-    primary_key_index: c_ulonglong,
-) -> *mut WalletOutputManagerConfig
-{
+pub unsafe extern "C" fn private_key_generate() -> *mut TariPrivateKey {
     let mut rng = rand::OsRng::new().unwrap();
-    let mut k = PrivateKey::random(&mut rng);
-
-    if !master_key.is_null() {
-        k = (*master_key).clone();
-    }
-
-    let mut str = CString::new("").unwrap().to_str().unwrap().to_owned();
-    if !branch_seed.is_null() {
-        str = CStr::from_ptr(branch_seed).to_str().unwrap().to_owned();
-    }
-
-    let omc = WalletOutputManagerConfig {
-        master_key: Some(k),
-        seed_words: None,
-        branch_seed: str.to_string(),
-        primary_key_index: primary_key_index as usize,
-    };
-    Box::into_raw(Box::new(omc))
+    let secret_key = TariPrivateKey::random(&mut rng);
+    Box::into_raw(Box::new(secret_key))
 }
 
-/// TODO Add Seed Words Version
+#[no_mangle]
+pub unsafe extern "C" fn private_key_from_hex(key: *const c_char) -> *mut TariPrivateKey {
+    let mut key_str = CString::new("").unwrap().to_str().unwrap().to_owned();
+    if !key.is_null() {
+        key_str = CStr::from_ptr(key).to_str().unwrap().to_owned();
+    }
+
+    let secret_key = TariPrivateKey::from_hex(key_str.as_str()).unwrap();
+    Box::into_raw(Box::new(secret_key))
+}
+
+/// -------------------------------------------------------------------------------------------- ///
+
+/// ----------------------------------- Contact -------------------------------------------------///
 
 #[no_mangle]
-pub unsafe extern "C" fn output_manager_config_destroy(wc: *mut WalletOutputManagerConfig) {
-    if !wc.is_null() {
-        Box::from_raw(wc);
+pub unsafe extern "C" fn contact_create(alias: *const c_char, public_key: *mut TariPublicKey) -> *mut TariContact {
+    let mut alias_string = CString::new("").unwrap().to_str().unwrap().to_owned();
+    if !alias.is_null() {
+        alias_string = CStr::from_ptr(alias).to_str().unwrap().to_owned();
     }
+
+    // TODO check if the public key is null and then deal with it.
+
+    let contact = Contact {
+        alias: alias_string.to_string(),
+        public_key: (*public_key).clone(),
+    };
+    Box::into_raw(Box::new(contact))
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn contact_destroy(contact: *mut TariContact) {
+    if !contact.is_null() {
+        Box::from_raw(contact);
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn contact_get_alias(contact: *mut TariContact) -> *mut c_char {
+    let mut a = CString::new("").unwrap();
+    if !contact.is_null() {
+        a = CString::new((*contact).alias.clone()).unwrap();
+    }
+    CString::into_raw(a)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn contact_get_public_key(contact: *mut TariContact) -> *mut TariPublicKey {
+    // TODO What do we do if its null?
+    // if c.is_null() {}
+    Box::into_raw(Box::new((*contact).public_key.clone()))
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn contact_len(contact: *mut TariContacts) -> c_int {
+    let mut len = 0;
+    if !contact.is_null() {
+        len = (*contact).0.len();
+    }
+    len as c_int
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn contact_get_at(contacts: *mut TariContacts, position: c_int) -> *mut TariContact {
+    // TODO What do we do if its null?
+    // if c.is_null() {}
+    // TODO Bounds checking, still not sure what to do if there is a problem so leaving as TODO
+    Box::into_raw(Box::new((*contacts).0[position as usize].clone()))
 }
 
 /// -------------------------------------------------------------------------------------------- ///
 
 /// ----------------------------------- CommsConfig ---------------------------------------------///
-pub type WalletCommsConfig = CommsConfig;
 
 #[no_mangle]
 pub unsafe extern "C" fn comms_config_create(
-    address: *mut c_char,
-    datastore: *mut c_char,
-    database: *mut c_char,
-    secret_key: *mut PrivateKey,
-    public_key: *mut PublicKey,
-) -> () //*mut WalletCommsConfig
+    address: *const c_char,
+    database_name: *const c_char,
+    datastore_path: *const c_char,
+    secret_key: *mut TariPrivateKey,
+) -> *mut TariCommsConfig
 {
-    let mut str1 = CString::new("").unwrap().to_str().unwrap().to_owned();
+    let mut address_string = CString::new("").unwrap().to_str().unwrap().to_owned();
     if !address.is_null() {
-        str1 = CStr::from_ptr(address).to_str().unwrap().to_owned();
+        address_string = CStr::from_ptr(address).to_str().unwrap().to_owned();
     }
-    let mut str2 = CString::new("").unwrap().to_str().unwrap().to_owned();
-    if !datastore.is_null() {
-        str2 = CStr::from_ptr(datastore).to_str().unwrap().to_owned();
+    let mut database_name_string = CString::new("").unwrap().to_str().unwrap().to_owned();
+    if !database_name.is_null() {
+        database_name_string = CStr::from_ptr(database_name).to_str().unwrap().to_owned();
     }
-    let mut str3 = CString::new("").unwrap().to_str().unwrap().to_owned();
-    if !database.is_null() {
-        str3 = CStr::from_ptr(database).to_str().unwrap().to_owned();
+    let mut datastore_path_string = CString::new("").unwrap().to_str().unwrap().to_owned();
+    if !datastore_path.is_null() {
+        datastore_path_string = CStr::from_ptr(datastore_path).to_str().unwrap().to_owned();
     }
-    //    let ni = NodeIdentity::new(
-    //        (*secret_key).clone(),
-    //        (*public_key).clone(),
-    //        str1.parse::<NetAddress>().unwrap(),
-    //        (*peer_features).clone(),
-    //    )
-    //    .unwrap();
 
-    //    let config = CommsConfig {
-    //        node_identity: Arc::new(ni.clone()),
-    //        host: "127.0.0.1".parse().unwrap(),
-    //        socks_proxy_address: None,
-    //        control_service: ControlServiceConfig {
-    //            listener_address: ni.control_service_address(),
-    //            socks_proxy_address: None,
-    //            requested_connection_timeout: Duration::from_millis(2000),
-    //        },
-    //        datastore_path: str2,
-    //        peer_database_name: str3,
-    //        inbound_buffer_size: 100,
-    //        outbound_buffer_size: 100,
-    //        dht: Default::default(),
-    //    };
+    // TODO Handle this unwrap gracefully
+    let net_address = address_string.parse::<NetAddress>().unwrap();
 
-    //    Box::into_raw(Box::new(config))
+    let ni = NodeIdentity::new(
+        (*secret_key).clone(),
+        net_address.clone(),
+        PeerFeatures::COMMUNICATION_CLIENT,
+    )
+    .unwrap();
+
+    let config = TariCommsConfig {
+        node_identity: Arc::new(ni.clone()),
+        host: net_address.host().parse().unwrap(),
+        socks_proxy_address: None,
+        control_service: ControlServiceConfig {
+            listener_address: ni.control_service_address(),
+            socks_proxy_address: None,
+            requested_connection_timeout: Duration::from_millis(2000),
+        },
+        establish_connection_timeout: Duration::from_secs(10),
+        datastore_path: datastore_path_string,
+        peer_database_name: database_name_string,
+        inbound_buffer_size: 100,
+        outbound_buffer_size: 100,
+        dht: Default::default(),
+    };
+
+    Box::into_raw(Box::new(config))
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn wallet_comms_config_destroy(wc: *mut WalletCommsConfig) {
+pub unsafe extern "C" fn comms_config_destroy(wc: *mut TariCommsConfig) {
     if !wc.is_null() {
         Box::from_raw(wc);
     }
 }
 
-/// ---------------------------------------------------------------------------------------------///
+/// ---------------------------------------------------------------------------------------------- ///
 
-/// -------------------------------- KeyManagerWords ------------------------------------------- ///
-pub struct KeyManagerSeedWords {
-    words: Vec<String>,
+/// ------------------------------------- Wallet -------------------------------------------------///
+
+#[no_mangle]
+pub unsafe extern "C" fn wallet_create(config: *mut TariCommsConfig) -> *mut TariWallet {
+    // TODO Check that the config is not null, how do you deal with the case that it is null?
+
+    // TODO Gracefully handle the case where these expects would fail
+    let runtime = Runtime::new().expect("Could not create a Tokio runtime.");
+    let w = TariWallet::new(
+        WalletConfig {
+            comms_config: (*config).clone(),
+        },
+        WalletMemoryDatabase::new(),
+        runtime,
+    )
+    .expect("Could not create wallet"); // expect needs to change due to it panicking.
+    Box::into_raw(Box::new(w))
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn key_manager_seed_words_create() -> *mut KeyManagerSeedWords {
-    let m = KeyManagerSeedWords { words: Vec::new() };
-
-    let boxed = Box::new(m);
-    Box::into_raw(boxed)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn key_manager_seed_words_get_at(mgr: *mut KeyManagerSeedWords, i: c_int) -> *const c_char {
-    if mgr.is_null() {
-        return std::ptr::null_mut();
-    }
-    let words = &mut (*mgr).words;
-    let word = words.get(i as usize).unwrap();
-    let m = CString::new(word.as_str()).unwrap();
-    CString::into_raw(m)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn key_manager_seed_words_add(s: *const c_char, mgr: *mut KeyManagerSeedWords) -> bool {
-    if mgr.is_null() {
-        return false;
-    }
-    let mut add = CString::new("").unwrap();
-    if s.is_null() {
-        return false;
-    }
-    let str = CStr::from_ptr(s).to_str().unwrap().to_owned();
-    (*mgr).words.push(str);
-    return true;
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn key_manager_seed_length(vec: *const KeyManagerSeedWords) -> c_int {
-    if vec.is_null() {
-        return 0;
-    }
-
-    (&*vec).words.len() as c_int
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn key_manager_seed_words_destroy(obj: *mut KeyManagerSeedWords) {
-    // as a rule of thumb, freeing a null pointer is just a noop.
-    if obj.is_null() {
+pub unsafe extern "C" fn wallet_destroy(wallet: *mut TariWallet) {
+    if wallet.is_null() {
         return;
     }
 
-    Box::from_raw(obj);
-}
-
-/// -------------------------------------------------------------------------------------------- ///
-
-/// -----------------------------------------UnblindedOutput------------------------------------ ///
-pub type WalletUnblindedOutput = UnblindedOutput;
-
-pub unsafe extern "C" fn wallet_unblinded_output_create(
-    value: c_ulonglong,
-    spending_key: *mut ByteVector,
-    maturity: c_ulonglong,
-    flags: c_uchar,
-) -> *mut WalletUnblindedOutput
-{
-    let amount = MicroTari::from(value);
-    let pk = PrivateKey::from_bytes(&((*spending_key).0));
-    let mut of = OutputFeatures::default();
-    of.maturity = maturity;
-    // of.flags = flags;
-    let uo = WalletUnblindedOutput {
-        value: amount,
-        spending_key: pk.unwrap(),
-        features: of,
-    };
-    Box::into_raw(Box::new(uo))
-}
-
-pub unsafe extern "C" fn wallet_unblinded_output_destroy(output: *mut WalletUnblindedOutput) {
-    if !output.is_null() {
-        Box::from_raw(output);
-    }
-}
-/// -------------------------------------------------------------------------------------------- ///
-
-/// --------------------------------- PendingTransactionOutputs--------------------------------- ///
-#[no_mangle]
-pub unsafe extern "C" fn create_pending_transaction_outputs(
-    tx_id: c_ulonglong,       // u64
-    timestamp: *const c_char, // NaiveDateTime
-) -> *mut PendingTransactionOutputs
-{
-    Box::into_raw(Box::new(PendingTransactionOutputs {
-        tx_id,
-        outputs_to_be_spent: Vec::new(),
-        outputs_to_be_received: Vec::new(),
-        timestamp: NaiveDateTime::parse_from_str("timestamp", "THE FORMAT WE CHOOSE").unwrap(), /* Use the rfc-3339 Format for this. */
-    }))
+    let m = Box::from_raw(wallet);
+    m.shutdown().unwrap()
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn destroy_pending_transaction_outputs(pto: *mut PendingTransactionOutputs) {
-    if !pto.is_null() {
-        Box::from_raw(pto);
-    }
-}
-/// -------------------------------------------------------------------------------------------- ///
-
-/// -------------------------------- Compound Inputs, Outputs, Kernels ------------------------- ///
-/// Initialize a Transaction struct to be populated
-
-pub struct TransactionInputs(Vec<TransactionInput>);
-pub struct TransactionOutputs(Vec<TransactionOutput>);
-pub struct TransactionKernels(Vec<TransactionKernel>);
-
-#[no_mangle]
-pub unsafe extern "C" fn transaction_inputs_add_transaction_input(
-    inputs: *mut TransactionInputs,
-    transaction: *mut TransactionInput,
-) -> bool
-{
-    if inputs.is_null() {
-        return false;
-    }
-
-    if transaction.is_null() {
-        return false;
-    }
-
-    (*inputs).0.push((*transaction).clone());
-    return true;
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn transaction_inputs_create() -> *mut TransactionInputs {
-    let i = TransactionInputs(Vec::new());
-    Box::into_raw(Box::new(i))
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn transaction_inputs_destroy(inputs: *mut TransactionInputs) {
-    if inputs.is_null() {
-        let i = Box::from_raw(inputs);
-    }
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn transaction_outputs_create() -> *mut TransactionOutputs {
-    let i = TransactionOutputs(Vec::new());
-    Box::into_raw(Box::new(i))
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn transaction_outputs_destroy(inputs: *mut TransactionOutputs) {
-    if inputs.is_null() {
-        let i = Box::from_raw(inputs);
-    }
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn transaction_kernels_create() -> *mut TransactionKernels {
-    let i = TransactionKernels(Vec::new());
-    Box::into_raw(Box::new(i))
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn transaction_kernels_destroy(kernels: *mut TransactionKernels) {
-    if kernels.is_null() {
-        let i = Box::from_raw(kernels);
-    }
-}
-
-/// Add a transaction input to a transaction struct
-#[no_mangle]
-pub unsafe extern "C" fn transaction_input_add_transaction_input(
-    inputs: *mut TransactionInputs,
-    transaction: *mut TransactionInput,
-) -> bool
-{
-    if inputs.is_null() {
-        return false;
-    }
-
-    if transaction.is_null() {
-        return false;
-    }
-
-    (*inputs).0.push((*transaction).clone());
-    return true;
-}
-
-/// Add a transaction output to a transaction struct
-#[no_mangle]
-pub unsafe extern "C" fn transaction_outputs_add_transaction_output(
-    outputs: *mut TransactionOutputs,
-    transaction: *mut TransactionOutput,
-) -> bool
-{
-    if outputs.is_null() {
-        return false;
-    }
-
-    if transaction.is_null() {
-        return false;
-    }
-
-    (*outputs).0.push((*transaction).clone());
-    return true;
-}
-
-/// Add a transaction kernel to a transaction struct
-#[no_mangle]
-pub unsafe extern "C" fn transaction_kernels_add_transaction_kernel(
-    kernels: *mut TransactionKernels,
-    kernel: *mut TransactionKernel,
-) -> bool
-{
-    if kernels.is_null() {
-        return false;
-    }
-
-    if kernel.is_null() {
-        return false;
-    }
-
-    (*kernels).0.push((*kernel).clone());
-    return true;
-}
-
-/// -------------------------------------------------------------------------------------------- ///
-
-/// -------------------------------- Wallet ---------------------------------------------------- ///
-// TODO: Fully implement wallet to finish this off
-
-pub type WalletMasterConfig = WalletConfig;
-
-pub unsafe extern "C" fn create_wallet(
-    // Local Node Identity data
-    config: *const WalletMasterConfig,
-) -> *mut Wallet
-{
-    // TODO do null check for config, runtime
-    let runtime = Runtime::new();
-    let mut w = Wallet::new((*config).clone(), runtime.unwrap());
-    Box::into_raw(Box::new(w.unwrap()))
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn start_wallet(wallet: *mut Wallet) -> bool {
-    // (*wallet).start() ? true : false; implement start() on wallet
-    // i.e return (*wallet).start()
-    true
-}
-
-pub unsafe extern "C" fn wallet_generate_master_seed(wallet: *mut Wallet) -> *mut KeyManagerSeedWords {
-    let mut seed = KeyManagerSeedWords { words: vec![] };
-    if wallet.is_null() {
-        // seed.words = (*wallet).generate_seed();
-    }
-    Box::into_raw(Box::new(seed))
-}
-
-/// Add an output to the wallet.
-#[no_mangle]
-pub unsafe extern "C" fn wallet_add_outputs(wallet: *mut Wallet, output: *mut WalletUnblindedOutput) -> bool {
+pub unsafe extern "C" fn wallet_generate_test_data(wallet: *mut TariWallet) -> bool {
     if wallet.is_null() {
         return false;
     }
 
-    if output.is_null() {
-        return false;
+    match generate_wallet_test_data(&mut *wallet) {
+        Ok(_) => true,
+        _ => false,
     }
-
-    (*wallet).output_manager_service.add_output((*output).clone()); // ? true : false; implement AddOutput(O: UnblindedOutput) -> bool on Wallet
-                                                                    // i.e return (*wallet).addOutput((*output));
-    return true;
 }
-
-/// Append an UnblindedOutput to be spent to the pending transaction outputs object
-#[no_mangle]
-pub unsafe extern "C" fn wallet_add_output_to_spend(
-    wallet: *mut TariWallet,
-    output: *mut WalletUnblindedOutput,
-) -> bool
-{
-    if wallet.is_null() {
-        return false;
-    }
-
-    if output.is_null() {
-        return false;
-    }
-
-    // (*wallet).pendingtransactionoutputs.addSpendoutput((*output)) ? true : false;
-    return true;
-}
-
-/// Append an UnblindedOutput to be received to the pending transaction outputs object
-#[no_mangle]
-pub unsafe extern "C" fn wallet_add_output_to_received(
-    wallet: *mut TariWallet,
-    output: *mut WalletUnblindedOutput,
-) -> bool
-{
-    if wallet.is_null() {
-        return false;
-    }
-
-    if output.is_null() {
-        return false;
-    }
-
-    // (*wallet).pendingtransactionoutputs.addReceivedoutput((*output)) ? true : false;
-    return true;
-}
-
-/// Add an output to the wallet. `spent` is a boolean that indicates if this output is a spent or unspent output.
-#[no_mangle]
-pub unsafe extern "C" fn wallet_add_pending_transaction_outputs(
-    wallet: *mut Wallet,
-    output: *mut PendingTransactionOutputs,
-    spent: bool,
-) -> bool
-{
-    if wallet.is_null() {
-        return false;
-    }
-
-    if output.is_null() {
-        return false;
-    }
-
-    match spent {
-        true => {},  //(*wallet).pendingtransactionoutputs.addSpentOutput((*output)) ? true : false;
-        false => {}, //(*wallet).pendingtransactionoutputs.addReceivedOutput((*output)) ? true : false;
-    }
-    return true;
-}
-
-/// TODO Methods to construct, free above 3 types
-
-#[no_mangle]
-pub unsafe extern "C" fn wallet_create_transaction(
-    inputs: *mut TransactionInputs,
-    outputs: *mut TransactionOutputs,
-    kernels: *mut TransactionKernels,
-    offset: *const PrivateKey,
-) -> *mut Transaction
-{
-    // TODO null check
-    let t = Transaction::new(
-        (*inputs).0.clone(),
-        (*outputs).0.clone(),
-        (*kernels).0.clone(),
-        (*offset).clone(),
-    );
-    Box::into_raw(Box::new(t))
-}
-
-/// Add an completed transaction to the wallet.
-#[no_mangle]
-pub unsafe extern "C" fn wallet_add_transaction(
-    wallet: *mut Wallet,
-    pending_tx: *mut Transaction,
-    inbound: bool,
-) -> bool
-{
-    return true;
-}
-
-/// Add a ReceivedTransactionProtocol instance to the wallet
-#[no_mangle]
-pub unsafe extern "C" fn wallet_add_pending_inbound_transaction(
-    wallet: *mut Wallet,
-    transaction: *mut Transaction,
-) -> bool
-{
-    if wallet.is_null() {
-        return false;
-    }
-
-    if transaction.is_null() {
-        return false;
-    }
-
-    //(*wallet).pendingtransactionoutputs.addinboundtransaction((*transaction)) ? true : false;
-
-    return true;
-    // append this data to the wallet.
-    // Assume it is RecipientState::Finalized
-    // TODO figure out best way to get this into the Rust struct, the protocol structs are strictly locked down
-}
-
-/// Add a ReceivedTransactionProtocol instance to the wallet
-#[no_mangle]
-pub unsafe extern "C" fn wallet_add_pending_outbound_transaction(
-    wallet: *mut Wallet,
-    transaction: *mut Transaction,
-) -> bool
-{
-    if wallet.is_null() {
-        return false;
-    }
-
-    if transaction.is_null() {
-        return false;
-    }
-
-    //(*wallet).pendingtransactionoutputs.addoutboundtransaction((*transaction)) ? true : false;
-
-    return true;
-    // append this data to the wallet.
-    // Assume it is RecipientState::Finalized
-    // TODO figure out best way to get this into the Rust struct, the protocol structs are strictly locked down
-}
-
-/// Create an initial RawTransactionInfo struct that will be used to build the SenderTransactionProtocol
-//#[no_mangle]
-// pub unsafe extern "C" fn create_pending_outbound_transaction(
-//    num_recipients: c_uint,                // usize,
-//    amount_to_self: c_ulonglong,           // MicroTari,
-//    change: c_ulonglong,                   // MicroTari,
-//    offset: *const c_char,                 // Byte[32] - BlindingFactor,
-//    offset_blinding_factor: *const c_char, // Byte[32] - BlindingFactor,
-//    public_excess: *const c_char,          // Byte[32] - PublicKey,
-//    private_nonce: *const c_char,          // Byte[32] - PrivateKey,
-//    public_nonce: *const c_char,           // Byte[32] - PublicKey,
-//    public_nonce_sum: *const c_char,       // Byte[32] - PublicKey,
-// Metadata members
-//    fee: c_ulonglong,             // MicroTari,
-//    lock_height: c_ulonglong,     // u64,
-//    meta_info: *const c_char,     // Option<Byte[32]> - Option<HashOutput>,
-//    linked_kernel: *const c_char, // Option<Byte[32]> - Option<HashOutput>,
-// RecipientInfo members
-//    tx_id: c_ulonglong,               // u64,
-//    output: *const c_char,            // Byte[32] - TransactionOutput,
-//    public_spend_key: *const c_char,  // Byte[32] - PublicKey,
-// partial_signature: *const c_char, // Byte[32] - Signature,
-//) -> () //*mut RawTransactionInfo, //TODO Figure out the best way to expose this struct for this interface
-//{
-
-//}
-
-/// Append an id to a pending outbound transaction RawTransactionInfo struct
-#[no_mangle]
-pub unsafe extern "C" fn wallet_add_pending_outbound_id(
-    // raw_info: *mut RawTransactionInfo, //TODO RawTransactionInfo is private
-    id: c_ulonglong,
-) -> bool
-{
-    return true;
-    // append id
-}
-
-/// Append an id to a pending outbound transaction RawTransactionInfo struct
-#[no_mangle]
-pub unsafe extern "C" fn wallet_add_pending_outbound_amount(
-    // raw_info: *mut RawTransactionInfo, //TODO RawTransactionInfo is private
-    amount: c_ulonglong,
-) -> bool
-{
-    return true;
-    // append amount
-}
-
-/// Append an id to a pending outbound transaction RawTransactionInfo struct
-#[no_mangle]
-pub unsafe extern "C" fn wallet_add_pending_outbound_input(
-    // raw_info: *mut RawTransactionInfo, //TODO RawTransactionInfo is private
-    commitment: *const c_char, // Byte[32] - Commitment
-    feature_flags: c_char,     // OutputFlags,
-    maturity: c_ulonglong,     // u64
-) -> bool
-{
-    return true;
-    // append input
-}
-
-/// Append an id to a pending outbound transaction RawTransactionInfo struct
-#[no_mangle]
-pub unsafe extern "C" fn wallet_add_pending_outbound_output(
-    // raw_info: *mut RawTransactionInfo, //TODO RawTransactionInfo is private
-    commitment: ByteVector,     // Byte[32] - Commitment, TODO
-    proof: ByteVector,          // Byte[32] - Rangeproof, TODO
-    feature_flags: OutputFlags, // OutputFlags,
-    maturity: c_ulonglong,      // u64
-) -> bool
-{
-    return true;
-    // append output
-}
-
-/// Append an id to a pending outbound transaction RawTransactionInfo struct
-#[no_mangle]
-pub unsafe extern "C" fn wallet_add_pending_outbound_signature(
-    // raw_info: *mut RawTransactionInfo, //TODO RawTransactionInfo is private
-    signature: *const ByteVector, // Byte[32] - Signature
-) -> bool
-{
-    return true;
-    // append signature
-}
-
-// Add an completed transaction to the wallet.
-// #[no_mangle]
-// pub unsafe extern "C" fn wallet_add_pending_outbound_transaction(
-// wallet: *mut Wallet,
-// raw_info: *mut RawTransactionInfo, //TODO RawTransactionInfo is private
-// ) -> bool
-// {
-// return true;
-// Build the SenderTransactionProtocol and append it.
-// }
 
 // ------------------------------------------------------------------------------------------------
 // API Functions
 // ------------------------------------------------------------------------------------------------
 
-//#[no_mangle]
-// pub unsafe extern "C" fn generate_key_manager_from_seed_words(
-// wallet: *mut Wallet,
-//    seed_words: *mut KeyManagerSeedWords,
-//    branch_seed: *const c_char, // String
-//) -> bool
-//{
-//}
-
-//#[no_mangle]
-// pub unsafe extern "C" fn generate_identity(wallet: *mut Wallet) -> *mut IdentityFfi {}
-// TODO C Destructuring methods for the IdentityFfi struct
-
 #[no_mangle]
-pub unsafe extern "C" fn wallet_add_base_node_peer(wallet: *mut Wallet, peer: *mut Peer) -> bool {
+pub unsafe extern "C" fn wallet_add_base_node_peer(
+    wallet: *mut TariWallet,
+    public_key: *mut TariPublicKey,
+    address: *const c_char,
+) -> bool
+{
     if wallet.is_null() {
         return false;
     }
 
-    if peer.is_null() {
+    if public_key.is_null() {
         return false;
     }
 
-    // (*wallet).addPeer((*peer));
-    return true;
+    let mut address_string = CString::new("").unwrap().to_str().unwrap().to_owned();
+    if !address.is_null() {
+        address_string = CStr::from_ptr(address).to_str().unwrap().to_owned();
+    }
+
+    match (*wallet).add_base_node_peer((*public_key).clone(), address_string) {
+        Ok(_) => true,
+        Err(_) => false,
+    }
 }
 
-//#[no_mangle]
-// pub unsafe extern "C" fn get_network_status(wallet: *mut Wallet) -> *mut NetworkStatusFfi {}
-// TODO C Destructuring methods for the NetworkStatusFfi struct
+#[no_mangle]
+pub unsafe extern "C" fn wallet_get_balance(wallet: *mut Wallet<WalletMemoryDatabase>) -> c_ulonglong {
+    if wallet.is_null() {
+        return 0;
+    }
+
+    match (*wallet)
+        .runtime
+        .block_on((*wallet).output_manager_service.get_balance())
+    {
+        Ok(b) => u64::from(b),
+        Err(_) => 0,
+    }
+}
 
 #[no_mangle]
-pub unsafe extern "C" fn wallet_get_balance(wallet: *mut Wallet) -> c_ulonglong {
-    //(*wallet).getBalance();
-    return 0;
+pub unsafe extern "C" fn wallet_get_num_completed_tx(wallet: *mut Wallet<WalletMemoryDatabase>) -> c_ulonglong {
+    if wallet.is_null() {
+        return 0;
+    }
+
+    match (*wallet)
+        .runtime
+        .block_on((*wallet).transaction_service.get_completed_transactions())
+    {
+        Ok(c) => c.len() as u64,
+        Err(_) => 0,
+    }
 }
 
 // Create and send the first stage of a transaction to the specified wallet for the specified amount and with the
 // specified fee.
 #[no_mangle]
 pub unsafe extern "C" fn wallet_send_transaction(
-    wallet: *mut Wallet,
-    dest_pubkey: ByteVector,
-    amount: MicroTari,
-    fee_per_gram: MicroTari,
+    wallet: *mut Wallet<WalletMemoryDatabase>,
+    dest_public_key: *mut TariPublicKey,
+    amount: c_ulonglong,
+    fee_per_gram: c_ulonglong,
 ) -> bool
 {
-    //(*wallet).sendTransaction((*peer),(*transaction)) ? true : false
-    return true;
-}
-
-/// Cancel a pending outbound transaction so that the wallet will not complete and broadcast it if a reply is received
-#[no_mangle]
-pub unsafe extern "C" fn wallet_cancel_transaction(wallet: *mut Wallet, tx_id: c_ulonglong) -> bool {
     if wallet.is_null() {
         return false;
     }
 
-    //(*wallet).cancelTransaction ((*tx_id)) ? true : false
-    return true;
+    if dest_public_key.is_null() {
+        return false;
+    }
+
+    match (*wallet)
+        .runtime
+        .block_on((*wallet).transaction_service.send_transaction(
+            (*dest_public_key).clone(),
+            MicroTari::from(amount),
+            MicroTari::from(fee_per_gram),
+        )) {
+        Ok(_) => true,
+        _ => false,
+    }
 }
+
+#[no_mangle]
+pub unsafe extern "C" fn wallet_get_contacts(wallet: *mut Wallet<WalletMemoryDatabase>) -> *mut TariContacts {
+    let mut contacts = Vec::new();
+    if !wallet.is_null() {
+        // TODO gracefully check this unwrap
+        let retrieved_contacts = (*wallet)
+            .runtime
+            .block_on((*wallet).contacts_service.get_contacts())
+            .unwrap();
+        contacts.append(&mut retrieved_contacts.clone());
+    }
+    Box::into_raw(Box::new(TariContacts(contacts)))
+}
+
+// TODO Get and destructuring a list of contacts
+// TODO Add Contact to Contacts Service
+// TODO Delete Contact to Contacts Service
+// TODO Get and destructure list of completed transactions from Transaction Service
+// TODO Get and destructure list of pending_inbound_transactions from Transaction Service
+// TODO Get and destructure list pending_outbound_transactions from Transaction Service
 
 // Callback Definition - Example
 
 // Will probably have to implement as a struct of callbacks in wallet, with wallet only calling the
 // functions if they are callable from the relevant wallet function, where the register callback functions
-// will bind the relevant c equivalent funciton pointer to the associated function
+// will bind the relevant c equivalent function pointer to the associated function
 // The Rust
 //
 // use std::os::raw::{c_int, c_uchar};
@@ -901,112 +522,116 @@ pub unsafe extern "C" fn wallet_cancel_transaction(wallet: *mut Wallet, tx_id: c
 // These functions must be implemented by the FFI client and registered with LibWallet so that
 // LibWallet can directly respond to the client when events occur
 
-// Initialize a new PendingTransactionOutputs record
-// int create_pending_transaction_outputs(longlong tx_id, char* timestamp) {}
+// TODO Callbacks to be written and registered to receive the following events
+// Received a transaction
+// Received a transaction reply
+// Transaction hit the mempool (send and receive)
+// Transaction is mined
+// Transaction is confirmed
 
-// Append an output to be spent onto an existing PendingTransactionOutputs record
-// int add_output_to_be_spent(
-//      ulonglong tx_id,
-//      ulonglong value,
-//      *char spending_key,
-//      uchar feature_flags,
-//      ulonglong maturity
-// ) {}
+#[cfg(test)]
+mod test {
+    extern crate libc;
+    use crate::*;
+    use libc::{c_char, c_int, c_uchar};
+    use std::ffi::CString;
 
-// Append an output to be received onto an existing PendingTransactionOutputs record
-// int add_output_to_be_received(
-//      ulonglong tx_id,
-//      ulonglong value,
-//      *char spending_key,
-//      uchar feature_flags,
-//      ulonglong maturity,
-// ) {}
+    #[test]
+    fn test_free_string() {
+        unsafe {
+            let m = CString::new("Test").unwrap();
+            let m_ptr: *mut c_char = CString::into_raw(m) as *mut c_char;
+            assert_ne!(m_ptr.is_null(), true);
+            assert!(*m_ptr > 0); // dereference will return first character as integer, T as i8 = 84 > 0 = true
+            free_string(m_ptr);
+            assert_eq!(*m_ptr, 0); // dereference will return zero, avoids malloc error if attempting to evaluate by
+                                   // other means.
+        }
+    }
 
-// This function should result in the outputs that are tied up in a PendingTransactionOutputs collection to be moved to
-// spent and unspent respectively
-//      int confirm_pending_tx_outputs(longlong tx_id){}
+    #[test]
+    fn test_bytevector() {
+        unsafe {
+            let bytes: [c_uchar; 4] = [2, 114, 34, 255];
+            let bytes_ptr = byte_vector_create(bytes.as_ptr(), bytes.len() as c_int);
+            let length = byte_vector_get_length(bytes_ptr);
+            // println!("{:?}",c);
+            assert_eq!(length, bytes.len() as i32);
+            let byte = byte_vector_get_at(bytes_ptr, 2);
+            assert_eq!(byte, bytes[2]);
+            byte_vector_destroy(bytes_ptr);
+        }
+    }
 
-// This function should result in the `outputs to be spent` that are tied up in a PendingTransactionOutputs collection
-// to be moved to unspent and the `outputs to be received` should be dropped
-//      int cancel_pending_tx_outputs(longlong tx_id){}
+    #[test]
+    fn test_keys() {
+        unsafe {
+            let private_key = private_key_generate();
+            let public_key = public_key_from_private_key(private_key);
+            let private_key_length = byte_vector_get_length(private_key_get_byte_vector(private_key));
+            let public_key_length = byte_vector_get_length(public_key_get_key(public_key));
+            assert_eq!(private_key_length, 32);
+            assert_eq!(public_key_length, 32);
+            assert_ne!(private_key_get_byte_vector(private_key), public_key_get_key(public_key));
+        }
+    }
 
-// Create a Pending Inbound Transaction
-// int add_pending_inbound_transaction(
-//    ulonglong tx_id ,
-//    *char output,
-//    *char public_spend_key,
-//    *char partial_signature,
-//) {}
+    #[test]
+    fn test_wallet_ffi() {
+        unsafe {
+            let secret_key_alice = private_key_generate();
+            let public_key_alice = public_key_from_private_key(secret_key_alice.clone());
+            let db_name_alice = CString::new("ffi_test1_alice").unwrap();
+            let db_name_alice_str: *const c_char = CString::into_raw(db_name_alice.clone()) as *const c_char;
+            let db_path_alice = CString::new("./data_alice").unwrap();
+            let db_path_alice_str: *const c_char = CString::into_raw(db_path_alice.clone()) as *const c_char;
+            let address_alice = CString::new("127.0.0.1:21443").unwrap();
+            let address_alice_str: *const c_char = CString::into_raw(address_alice.clone()) as *const c_char;
+            let alice_config = comms_config_create(
+                address_alice_str,
+                db_name_alice_str,
+                db_path_alice_str,
+                secret_key_alice,
+            );
+            let alice_wallet = wallet_create(alice_config);
 
-// Initialize a new PendingOutboundTransaction record
-// int create_pending_outbound_transaction(
-//    uint num_recipients,
-//    ulonglong amount_to_self,
-//    ulonglong change,
-//    *char offset,
-//    *char offset_blinding_factor,
-//    *char public_excess,
-//    *char private_nonce,
-//    *char public_nonce,
-//    *char public_nonce_sum,
-//    // Metadata members
-//    ulonglong fee,
-//    ulonglong lock_height,
-//    *char meta_info,
-//    *char linked_kernel,
-//    // RecipientInfo members
-//    ulonglong tx_id,
-//    *char output,
-//    *char public_spend_key,
-//    *char partial_signature
-//) {}
+            let secret_key_bob = private_key_generate();
+            let public_key_bob = public_key_from_private_key(secret_key_bob.clone());
+            let db_name_bob = CString::new("ffi_test1_bob").unwrap();
+            let db_name_bob_str: *const c_char = CString::into_raw(db_name_bob.clone()) as *const c_char;
+            let db_path_bob = CString::new("./data_bob").unwrap();
+            let db_path_bob_str: *const c_char = CString::into_raw(db_path_bob.clone()) as *const c_char;
+            let address_bob = CString::new("127.0.0.1:21441").unwrap();
+            let address_bob_str: *const c_char = CString::into_raw(address_bob.clone()) as *const c_char;
+            let bob_config = comms_config_create(address_bob_str, db_name_bob_str, db_path_bob_str, secret_key_bob);
+            let bob_wallet = wallet_create(bob_config);
 
-// Append an ID to an existing Pending Outbound Transaction record
-// int add_pending_outbound_id(longlong tx_id, longlong id) {}
+            wallet_add_base_node_peer(alice_wallet, public_key_bob.clone(), address_bob_str);
+            wallet_add_base_node_peer(bob_wallet, public_key_alice.clone(), address_alice_str);
 
-// Append an amount to an existing Pending Outbound Transaction record
-// int add_pending_outbound_amount(longlong tx_id, longlong amount) {}
+            wallet_generate_test_data(alice_wallet);
 
-// Append an input to an existing Pending Outbound Transaction record
-// int add_pending_outbound_input(longlong tx_id, *char commitment, char features) {}
+            let contacts = wallet_get_contacts(alice_wallet);
+            assert_eq!(contact_len(contacts), 4);
 
-// Append an output to an existing Pending Outbound Transaction record
-// int add_pending_outbound_output(
-//      longlong tx_id,
-//      *char commitment,
-//      *char proof,
-//      uchar feature_flags,
-//      ulonglong maturity
-// ) {}
-
-// Initialize a new Completed Transaction record
-// int create_completed_transaction(longlong tx_id, *char offset){}
-
-// Append an input to an existing Completed Transaction record
-// int add_pending_transaction_input(longlong tx_id, *char commitment, char features) {}
-
-// Append an output to an existing Completed Transaction record
-// int add_pending_transaction_output(
-//      longlong tx_id,
-//      *char commitment,
-//      *char proof,
-//      uchar feature_flags,
-//      ulonglong maturity
-// ) {}
-
-// Append a transaction kernel to an existing Completed Transaction record
-// int add_pending_transaction_kernel(
-//    longlong tx_id,
-//    char features,
-//    longlong fee,
-//    longlong lock_height,
-//    *char meta_info,
-//    *char linked_kernel,
-//    *char excess,
-//    *char excess_sig,
-//) {}
-
-// Mark this Pending Inbound Transaction as Confirmed and clean up the DB accordingly
-// int confirm_pending_inbound_transaction(longlong tx_id){}
-// Mark this Pending Outbound Transaction as Confirmed and clean up the DB accordingly
-// int confirm_pending_outbound_transaction(longlong tx_id){}
+            // free string memory
+            free_string(db_name_alice_str as *mut c_char);
+            free_string(db_path_alice_str as *mut c_char);
+            free_string(address_alice_str as *mut c_char);
+            free_string(db_name_bob_str as *mut c_char);
+            free_string(db_path_bob_str as *mut c_char);
+            free_string(address_bob_str as *mut c_char);
+            // free wallet memory
+            wallet_destroy(alice_wallet);
+            wallet_destroy(bob_wallet);
+            // free keys
+            private_key_destroy(secret_key_alice);
+            private_key_destroy(secret_key_bob);
+            public_key_destroy(public_key_alice);
+            public_key_destroy(public_key_bob);
+            // free config memory
+            comms_config_destroy(bob_config);
+            comms_config_destroy(alice_config);
+        }
+    }
+}
