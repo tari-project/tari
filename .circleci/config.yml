@@ -65,17 +65,19 @@ jobs:
   test-tari:
     docker:
       - image: *rust_image
+    resource_class: medium
     steps:
       - checkout
       - run:
           name: Tari source code
           command: |
-            TOOLCHAIN_VERSION=nightly-2019-10-04
-            rustup component add --toolchain $TOOLCHAIN_VERSION rustfmt
-            cargo build --all-features --jobs 2
+            TOOLCHAIN=$(cat rust-toolchain)
+            NUM_JOBS=2
+            rustup component add --toolchain $TOOLCHAIN rustfmt
+            cargo build --jobs=$NUM_JOBS --all-features
             cargo fmt --all -- --check
-            cargo test --all --all-features --jobs 2
-            cargo test --release
+            cargo test --workspace --all-features --jobs=$NUM_JOBS
+            cargo test --workspace --all-features --release --jobs=$NUM_JOBS
 
 workflows:
   version: 2
