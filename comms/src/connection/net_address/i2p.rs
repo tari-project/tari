@@ -63,12 +63,12 @@ mod test {
         let addr1 = "ukeu3k5oycgaauneqgtnvselmt4yemvoilkln7jpvamvfx7dnkdq.b32.i2p".parse::<I2PAddress>();
         assert!(addr1.is_ok(), "failed to parse valid I2P address");
         let addr1 = addr1.unwrap();
-        assert_eq!("UKEU3K5OYCGAAUNEQGTNVSELMT4YEMVOILKLN7JPVAMVFX7DNKDQ", addr1.name);
+        assert_eq!("ukeu3k5oycgaauneqgtnvselmt4yemvoilkln7jpvamvfx7dnkdq", addr1.name);
 
-        let addr2 = "UKEU3K5OYCGAAUNEQGTNVSELMT4YEMVOILKLN7JPVAMVFX7DNKDQ.b32.i2p".parse::<I2PAddress>();
+        let addr2 = "ukeu3k5oycgaauNEQGTNVSELMT4YEMVOILKLN7JPVAMVFX7DNKDQ.b32.i2p".parse::<I2PAddress>();
         assert!(addr2.is_ok(), "failed to parse valid mixed case I2P address");
         let addr2 = addr2.unwrap();
-        assert_eq!("UKEU3K5OYCGAAUNEQGTNVSELMT4YEMVOILKLN7JPVAMVFX7DNKDQ", addr2.name);
+        assert_eq!("ukeu3k5oycgaauneqgtnvselmt4yemvoilkln7jpvamvfx7dnkdq", addr2.name);
 
         assert_eq!(addr1, addr2);
 

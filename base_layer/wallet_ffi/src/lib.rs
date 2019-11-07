@@ -293,7 +293,7 @@ pub unsafe extern "C" fn comms_config_create(
 
     let config = TariCommsConfig {
         node_identity: Arc::new(ni.clone()),
-        host: net_address.host().parse().unwrap(),
+        peer_connection_listening_address: net_address.host().parse().unwrap(),
         socks_proxy_address: None,
         control_service: ControlServiceConfig {
             listener_address: ni.control_service_address(),

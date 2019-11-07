@@ -22,13 +22,14 @@
 
 pub mod i2p;
 pub mod ip;
+pub mod ip_dns;
 pub mod net_address_with_stats;
 pub mod net_addresses;
 pub mod onion;
 pub mod parser;
 
 use self::{i2p::I2PAddress, ip::SocketAddress, onion::OnionAddress};
-use crate::connection::zmq::ZmqEndpoint;
+use crate::connection::{net_address::ip_dns::IpDnsAddress, zmq::ZmqEndpoint};
 use derive_error::Error;
 use serde::{Deserialize, Serialize};
 use std::{fmt, str::FromStr};
@@ -59,11 +60,12 @@ pub enum NetAddressError {
 /// let address = "propub3r6espa33w.onion:1234".parse::<NetAddress>();
 ///
 /// assert!(address.is_ok());
-/// assert!(address.unwrap().is_tor());
+/// assert!(address.unwrap().is_onion());
 /// ```
 #[derive(Clone, PartialEq, Eq, Debug, Hash, Deserialize, Serialize)]
 /// Represents an address which can be used to reach a node on the network
 pub enum NetAddress {
+    IpDns(IpDnsAddress),
     /// IPv4 and IPv6
     IP(SocketAddress),
     Onion(OnionAddress),
@@ -79,8 +81,16 @@ impl NetAddress {
         }
     }
 
+    /// Returns true if the [`NetAddress`] is an IpDns address, otherwise false
+    pub fn is_ip_dns(&self) -> bool {
+        match *self {
+            NetAddress::IpDns(_) => true,
+            _ => false,
+        }
+    }
+
     /// Returns true if the [`NetAddress`] is a Tor Onion address, otherwise false
-    pub fn is_tor(&self) -> bool {
+    pub fn is_onion(&self) -> bool {
         match *self {
             NetAddress::Onion(_) => true,
             _ => false,
@@ -99,6 +109,7 @@ impl NetAddress {
         match self {
             NetAddress::Onion(addr) => addr.host(),
             NetAddress::IP(addr) => addr.host(),
+            NetAddress::IpDns(addr) => addr.host(),
             NetAddress::I2P(addr) => addr.host(),
         }
     }
@@ -108,6 +119,7 @@ impl NetAddress {
         match self {
             NetAddress::Onion(addr) => Some(addr.port()),
             NetAddress::IP(addr) => Some(addr.port()),
+            NetAddress::IpDns(addr) => Some(addr.port()),
             NetAddress::I2P(_) => None,
         }
     }
@@ -124,6 +136,8 @@ impl FromStr for NetAddress {
             Ok(addr.into())
         } else if let Ok(addr) = address.parse::<I2PAddress>() {
             Ok(addr.into())
+        } else if let Ok(addr) = address.parse::<IpDnsAddress>() {
+            Ok(addr.into())
         } else {
             Err(NetAddressError::ParseFailed)
         }
@@ -136,9 +150,17 @@ impl fmt::Display for NetAddress {
 
         match *self {
             IP(ref addr) => write!(f, "{}", addr),
+            IpDns(ref addr) => write!(f, "{}", addr),
             Onion(ref addr) => write!(f, "{}", addr),
             I2P(ref addr) => write!(f, "{}", addr),
         }
+    }
+}
+
+impl From<IpDnsAddress> for NetAddress {
+    /// Converts a [`SocketAddress`] into a [`NetAddress::IP`].
+    fn from(addr: IpDnsAddress) -> Self {
+        NetAddress::IpDns(addr)
     }
 }
 
@@ -166,6 +188,7 @@ impl From<I2PAddress> for NetAddress {
 impl ZmqEndpoint for NetAddress {
     fn to_zmq_endpoint(&self) -> String {
         match *self {
+            NetAddress::IpDns(ref addr) => format!("tcp://{}:{}", addr.host, addr.port),
             NetAddress::IP(ref addr) => format!("tcp://{}:{}", addr.ip(), addr.port()),
             NetAddress::Onion(ref addr) => format!("tcp://{}:{}", addr.public_key, addr.port),
             // TODO: need to confirm this works
@@ -183,17 +206,25 @@ mod test {
         // Valid string addresses
         let addr = "123.0.0.123:8000".parse::<NetAddress>();
         assert!(addr.is_ok(), "Valid IPv4 loopback address parsing failed");
+        assert!(addr.unwrap().is_ip());
 
         let addr = "[::1]:8080".parse::<NetAddress>();
         assert!(addr.is_ok(), "Valid IPv6 loopback address parsing failed");
+        assert!(addr.unwrap().is_ip());
 
         let addr = "propub3r6espa33w.onion:1234".parse::<NetAddress>();
         assert!(addr.is_ok(), "Valid Tor Onion address parsing failed");
+        assert!(addr.unwrap().is_onion());
 
         let addr = "ukeu3k5oycgaauneqgtnvselmt4yemvoilkln7jpvamvfx7dnkdq.b32.i2p".parse::<NetAddress>();
         assert!(addr.is_ok(), "Valid I2P address parsing failed");
+        assert!(addr.unwrap().is_i2p());
 
         let addr = "google.com:1234".parse::<NetAddress>();
+        assert!(addr.is_ok(), "Valid I2P address parsing failed");
+        assert!(addr.unwrap().is_ip_dns());
+
+        let addr = "googlecom:1234".parse::<NetAddress>();
         assert!(
             addr.is_err(),
             "Invalid net address string should not have successfully parsed"

@@ -255,7 +255,7 @@ where
     let subscription_factory = Arc::new(subscription_factory);
     let comms_config = CommsConfig {
         node_identity: id.clone(),
-        host: host.parse().unwrap(),
+        peer_connection_listening_address: host.parse().unwrap(),
         socks_proxy_address: None,
         control_service: ControlServiceConfig {
             listener_address: id.control_service_address(),

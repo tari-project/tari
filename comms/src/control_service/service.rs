@@ -44,7 +44,7 @@ const LOG_TARGET: &str = "comms::control_service::service";
 /// Configuration for [ControlService]
 #[derive(Clone)]
 pub struct ControlServiceConfig {
-    /// Which address to open a port
+    /// Which address to listen on.
     pub listener_address: NetAddress,
     /// Optional SOCKS proxy
     pub socks_proxy_address: Option<SocketAddress>,

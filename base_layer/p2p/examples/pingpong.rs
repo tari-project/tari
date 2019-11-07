@@ -45,6 +45,7 @@ use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
 use std::{
     fs,
     iter,
+    net::IpAddr,
     sync::{Arc, RwLock},
     time::Duration,
 };
@@ -78,6 +79,16 @@ pub fn random_string(len: usize) -> String {
     let mut rng = OsRng::new().unwrap();
     iter::repeat(()).map(|_| rng.sample(Alphanumeric)).take(len).collect()
 }
+
+fn get_lan_address() -> IpAddr {
+    let interfaces = get_if_addrs::get_if_addrs().unwrap();
+    interfaces
+        .into_iter()
+        .find(|if_addr| !if_addr.is_loopback())
+        .and_then(|if_addr| Some(if_addr.ip()))
+        .unwrap()
+}
+
 fn main() {
     let matches = App::new("Tari comms peer to peer ping pong example")
         .version("1.0")
@@ -116,16 +127,51 @@ fn main() {
     let node_identity = Arc::new(load_identity(matches.value_of("node-identity").unwrap()));
     let peer_identity = load_identity(matches.value_of("peer-identity").unwrap());
 
+    let addr = get_lan_address();
+
+    peer_identity
+        .set_control_service_address(
+            format!(
+                "{}:{}",
+                addr,
+                peer_identity.control_service_address().maybe_port().unwrap()
+            )
+            .parse()
+            .unwrap(),
+        )
+        .unwrap();
+
+    node_identity
+        .set_control_service_address(
+            format!(
+                "{}:{}",
+                addr,
+                node_identity.control_service_address().maybe_port().unwrap()
+            )
+            .parse()
+            .unwrap(),
+        )
+        .unwrap();
+
+    log::debug!(target:"comms::DEBUGGING", "addr={} control  port={}", addr, node_identity.control_service_address());
+
     let comms_config = CommsConfig {
         node_identity: Arc::clone(&node_identity),
-        host: "0.0.0.0".parse().unwrap(),
+        peer_connection_listening_address: "0.0.0.0".parse().unwrap(),
         socks_proxy_address: None,
+        //        socks_proxy_address: Some("127.0.0.1:9050".parse().unwrap()),
         control_service: ControlServiceConfig {
-            listener_address: node_identity.control_service_address(),
+            listener_address: format!(
+                "0.0.0.0:{}",
+                node_identity.control_service_address().maybe_port().unwrap()
+            )
+            .parse()
+            .unwrap(),
             socks_proxy_address: None,
+            //            socks_proxy_address: Some("127.0.0.1:9050".parse().unwrap()),
             requested_connection_timeout: Duration::from_millis(2000),
         },
-        establish_connection_timeout: Duration::from_secs(2),
+        establish_connection_timeout: Duration::from_secs(10),
         datastore_path: TempDir::new(random_string(8).as_str())
             .unwrap()
             .path()

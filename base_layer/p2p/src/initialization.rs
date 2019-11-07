@@ -49,15 +49,15 @@ pub enum CommsInitializationError {
 /// Configuration for a comms node
 #[derive(Clone)]
 pub struct CommsConfig {
-    /// Control service config
+    /// Control service config.
     pub control_service: ControlServiceConfig,
-    /// An optional SOCKS address
+    /// An optional SOCKS address.
     pub socks_proxy_address: Option<SocketAddress>,
-    /// The host IP that all peer connections will use.
-    pub host: IpAddr,
-    /// Identity of this node on the network
+    /// The host IP that all inbound peer connections will listen (bind) on. This is usually 0.0.0.0
+    pub peer_connection_listening_address: IpAddr,
+    /// Identity of this node on the network.
     pub node_identity: Arc<NodeIdentity>,
-    /// Path to the LMDB file
+    /// Path to the LMDB file.
     pub datastore_path: String,
     /// Name to use for the peer database
     pub peer_database_name: String,
@@ -110,7 +110,7 @@ where
         .configure_control_service(config.control_service)
         .configure_peer_connections(PeerConnectionConfig {
             socks_proxy_address: config.socks_proxy_address,
-            host: config.host,
+            host: config.peer_connection_listening_address,
             peer_connection_establish_timeout: config.establish_connection_timeout,
             ..Default::default()
         })

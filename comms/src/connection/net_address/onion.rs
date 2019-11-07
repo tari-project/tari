@@ -71,7 +71,7 @@ mod test {
         assert!(addr1.is_ok(), "failed to parse valid onion address");
         let addr1 = addr1.unwrap();
         assert_eq!(
-            "NQBLQA3X7DDNKP664COWKA6JX4MLC26VPGDKSJ6UYA2KBYVI77AQPQQD",
+            "nqblqa3x7ddnkp664cowka6jx4mlc26vpgdksj6uya2kbyvi77aqpqqd",
             addr1.public_key
         );
         assert_eq!(1234, addr1.port);
@@ -80,7 +80,7 @@ mod test {
         assert!(addr2.is_ok(), "failed to parse valid mixed case onion address");
         let addr2 = addr2.unwrap();
         assert_eq!(
-            "NQBLQA3X7DDNKP664COWKA6JX4MLC26VPGDKSJ6UYA2KBYVI77AQPQQD",
+            "nqblqa3x7ddnkp664cowka6jx4mlc26vpgdksj6uya2kbyvi77aqpqqd",
             addr2.public_key
         );
         assert_eq!(1234, addr2.port);
@@ -90,7 +90,7 @@ mod test {
         let addr = "propub3r6espa33w.onion:32123".parse::<OnionAddress>();
         assert!(addr.is_ok(), "failed to parse valid onion address");
         let addr = addr.unwrap();
-        assert_eq!("PROPUB3R6ESPA33W", addr.public_key);
+        assert_eq!("propub3r6espa33w", addr.public_key);
         assert_eq!(32123, addr.port);
 
         let addr = "".parse::<OnionAddress>();
