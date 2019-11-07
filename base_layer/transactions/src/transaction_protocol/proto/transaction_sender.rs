@@ -95,6 +95,7 @@ impl TryFrom<proto::SingleRoundSenderData> for SingleRoundSenderData {
             .metadata
             .map(Into::into)
             .ok_or("Transaction metadata not provided".to_string())?;
+        let message = data.message;
 
         Ok(Self {
             tx_id: data.tx_id,
@@ -102,6 +103,7 @@ impl TryFrom<proto::SingleRoundSenderData> for SingleRoundSenderData {
             public_excess,
             public_nonce,
             metadata,
+            message,
         })
     }
 }
@@ -116,6 +118,7 @@ impl From<SingleRoundSenderData> for proto::SingleRoundSenderData {
             public_excess: sender_data.public_excess.to_vec(),
             public_nonce: sender_data.public_nonce.to_vec(),
             metadata: Some(sender_data.metadata.into()),
+            message: sender_data.message,
         }
     }
 }

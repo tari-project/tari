@@ -401,7 +401,7 @@ pub unsafe extern "C" fn wallet_get_balance(wallet: *mut Wallet<WalletMemoryData
         .runtime
         .block_on((*wallet).output_manager_service.get_balance())
     {
-        Ok(b) => u64::from(b),
+        Ok(b) => u64::from(b.available_balance),
         Err(_) => 0,
     }
 }
@@ -429,6 +429,7 @@ pub unsafe extern "C" fn wallet_send_transaction(
     dest_public_key: *mut TariPublicKey,
     amount: c_ulonglong,
     fee_per_gram: c_ulonglong,
+    message: *const c_char,
 ) -> bool
 {
     if wallet.is_null() {
@@ -439,12 +440,18 @@ pub unsafe extern "C" fn wallet_send_transaction(
         return false;
     }
 
+    let mut message_string = CString::new("").unwrap().to_str().unwrap().to_owned();
+    if !message.is_null() {
+        message_string = CStr::from_ptr(message).to_str().unwrap().to_owned();
+    }
+
     match (*wallet)
         .runtime
         .block_on((*wallet).transaction_service.send_transaction(
             (*dest_public_key).clone(),
             MicroTari::from(amount),
             MicroTari::from(fee_per_gram),
+            message_string,
         )) {
         Ok(_) => true,
         _ => false,

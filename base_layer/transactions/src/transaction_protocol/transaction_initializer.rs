@@ -67,6 +67,7 @@ pub struct SenderTransactionInitializer {
     offset: Option<BlindingFactor>,
     excess_blinding_factor: BlindingFactor,
     private_nonce: Option<PrivateKey>,
+    message: Option<String>,
 }
 
 pub struct BuildError {
@@ -94,6 +95,7 @@ impl SenderTransactionInitializer {
             offset: None,
             private_nonce: None,
             excess_blinding_factor: BlindingFactor::default(),
+            message: None,
         }
     }
 
@@ -148,6 +150,12 @@ impl SenderTransactionInitializer {
     /// Provide the private nonce that will be used for the sender's partial signature for the transaction.
     pub fn with_private_nonce(&mut self, nonce: PrivateKey) -> &mut Self {
         self.private_nonce = Some(nonce);
+        self
+    }
+
+    /// Provide a text message for receiver
+    pub fn with_message(&mut self, message: String) -> &mut Self {
+        self.message = Some(message);
         self
     }
 
@@ -297,6 +305,7 @@ impl SenderTransactionInitializer {
             public_nonce_sum: public_nonce,
             recipient_info,
             signatures: Vec::new(),
+            message: self.message.unwrap_or("".to_string()),
         };
         let state = SenderState::Initializing(Box::new(sender_info));
         let state = state

@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::output_manager_service::{error::OutputManagerStorageError, TxId};
+use crate::output_manager_service::{error::OutputManagerStorageError, service::Balance, TxId};
 use chrono::NaiveDateTime;
 use log::*;
 use std::{
@@ -87,9 +87,9 @@ pub enum DbValue {
     SpentOutput(Box<UnblindedOutput>),
     UnspentOutput(Box<UnblindedOutput>),
     PendingTransactionOutputs(Box<PendingTransactionOutputs>),
-    UnspentOutputs(Box<Vec<UnblindedOutput>>),
-    SpentOutputs(Box<Vec<UnblindedOutput>>),
-    AllPendingTransactionOutputs(Box<HashMap<TxId, PendingTransactionOutputs>>),
+    UnspentOutputs(Vec<UnblindedOutput>),
+    SpentOutputs(Vec<UnblindedOutput>),
+    AllPendingTransactionOutputs(HashMap<TxId, PendingTransactionOutputs>),
 }
 
 pub enum DbKeyValuePair {
@@ -140,20 +140,49 @@ where T: OutputManagerBackend
         Ok(())
     }
 
-    pub fn get_balance(&self) -> Result<MicroTari, OutputManagerStorageError> {
-        if let DbValue::UnspentOutputs(uo) =
+    pub fn get_balance(&self) -> Result<Balance, OutputManagerStorageError> {
+        let pending_txs =
+            self.db
+                .fetch(&DbKey::AllPendingTransactionOutputs)?
+                .ok_or(OutputManagerStorageError::UnexpectedResult(
+                    "Pending Transaction Outputs cannot be retrieved".to_string(),
+                ))?;
+
+        let unspent_outputs =
             self.db
                 .fetch(&DbKey::UnspentOutputs)?
                 .ok_or(OutputManagerStorageError::UnexpectedResult(
                     "Unspent Outputs cannot be retrieved".to_string(),
-                ))?
-        {
-            Ok(uo.iter().fold(MicroTari::from(0), |acc, x| acc + x.value))
-        } else {
-            Err(OutputManagerStorageError::UnexpectedResult(
-                "Unexpected result from database backend".to_string(),
-            ))
+                ))?;
+
+        if let DbValue::UnspentOutputs(uo) = unspent_outputs {
+            if let DbValue::AllPendingTransactionOutputs(pto) = pending_txs {
+                let available_balance = uo.iter().fold(MicroTari::from(0), |acc, x| acc + x.value);
+                let mut pending_incoming = MicroTari::from(0);
+                let mut pending_outgoing = MicroTari::from(0);
+
+                for v in pto.values() {
+                    pending_incoming += v
+                        .outputs_to_be_received
+                        .iter()
+                        .fold(MicroTari::from(0), |acc, x| acc + x.value);
+                    pending_outgoing += v
+                        .outputs_to_be_spent
+                        .iter()
+                        .fold(MicroTari::from(0), |acc, x| acc + x.value);
+                }
+
+                return Ok(Balance {
+                    available_balance,
+                    pending_incoming_balance: pending_incoming,
+                    pending_outgoing_balance: pending_outgoing,
+                });
+            }
         }
+
+        Err(OutputManagerStorageError::UnexpectedResult(
+            "Unexpected result from database backend".to_string(),
+        ))
     }
 
     pub fn add_pending_transaction_outputs(
@@ -215,7 +244,7 @@ where T: OutputManagerBackend
                 DbKey::UnspentOutputs,
                 OutputManagerStorageError::UnexpectedResult("Could not retrieve unspent outputs".to_string()),
             ),
-            Ok(Some(DbValue::UnspentOutputs(uo))) => Ok(*uo),
+            Ok(Some(DbValue::UnspentOutputs(uo))) => Ok(uo),
             Ok(Some(other)) => unexpected_result(DbKey::UnspentOutputs, other),
             Err(e) => log_error(DbKey::UnspentOutputs, e),
         }?;
@@ -231,7 +260,7 @@ where T: OutputManagerBackend
                 DbKey::UnspentOutputs,
                 OutputManagerStorageError::UnexpectedResult("Could not retrieve spent outputs".to_string()),
             ),
-            Ok(Some(DbValue::SpentOutputs(uo))) => Ok(*uo),
+            Ok(Some(DbValue::SpentOutputs(uo))) => Ok(uo),
             Ok(Some(other)) => unexpected_result(DbKey::SpentOutputs, other),
             Err(e) => log_error(DbKey::SpentOutputs, e),
         }?;
@@ -248,7 +277,7 @@ where T: OutputManagerBackend
                     "Could not retrieve pending transaction outputs".to_string(),
                 ),
             ),
-            Ok(Some(DbValue::AllPendingTransactionOutputs(pt))) => Ok(*pt),
+            Ok(Some(DbValue::AllPendingTransactionOutputs(pt))) => Ok(pt),
             Ok(Some(other)) => unexpected_result(DbKey::AllPendingTransactionOutputs, other),
             Err(e) => log_error(DbKey::AllPendingTransactionOutputs, e),
         }?;

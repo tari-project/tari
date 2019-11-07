@@ -48,13 +48,34 @@ pub trait TransactionBackend: Send + Sync {
     fn contains(&self, key: &DbKey) -> Result<bool, TransactionStorageError>;
     /// Modify the state the of the backend with a write operation
     fn write(&mut self, op: WriteOperation) -> Result<Option<DbValue>, TransactionStorageError>;
-    /// Complete outbound transaction, this operation must delete the `SenderTransactionProtocol` with the provided
-    /// `TxId` and insert the provided `Transaction` into `CompletedTransactions`
-    fn complete_transaction(
+    /// Complete outbound transaction, this operation must delete the `OutboundTransaction` with the provided
+    /// `TxId` and insert the provided `CompletedTransaction` into `CompletedTransactions`.
+    fn complete_outbound_transaction(
         &mut self,
         tx_id: TxId,
         completed_transaction: CompletedTransaction,
     ) -> Result<(), TransactionStorageError>;
+    /// Complete inbound transaction, this operation must delete the `InboundTransaction` with the provided
+    /// `TxId` and insert the provided `CompletedTransaction` into `CompletedTransactions`.
+    fn complete_inbound_transaction(
+        &mut self,
+        tx_id: TxId,
+        completed_transaction: CompletedTransaction,
+    ) -> Result<(), TransactionStorageError>;
+    /// Indicated that a completed transaction has been detected as mined on the base layer
+    #[cfg(feature = "test_harness")]
+    fn mine_completed_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionStorageError>;
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum TransactionStatus {
+    /// This transaction has been completed between the parties but has not been broadcast to the base layer network.
+    Completed,
+    /// This transaction has been broadcast to the base layer network and is currently in one or more base node
+    /// mempools.
+    Broadcast,
+    /// This transaction has been mined and included in a block.
+    Mined,
 }
 
 #[derive(Debug, Clone)]
@@ -63,6 +84,7 @@ pub struct InboundTransaction {
     pub source_public_key: CommsPublicKey,
     pub amount: MicroTari,
     pub receiver_protocol: ReceiverTransactionProtocol,
+    pub message: String,
     pub timestamp: NaiveDateTime,
 }
 
@@ -73,16 +95,20 @@ pub struct OutboundTransaction {
     pub amount: MicroTari,
     pub fee: MicroTari,
     pub sender_protocol: SenderTransactionProtocol,
+    pub message: String,
     pub timestamp: NaiveDateTime,
 }
 
 #[derive(Debug, Clone)]
 pub struct CompletedTransaction {
     pub tx_id: TxId,
+    pub source_public_key: CommsPublicKey,
     pub destination_public_key: CommsPublicKey,
     pub amount: MicroTari,
     pub fee: MicroTari,
     pub transaction: Transaction,
+    pub status: TransactionStatus,
+    pub message: String,
     pub timestamp: NaiveDateTime,
 }
 
@@ -243,7 +269,23 @@ where T: TransactionBackend
         transaction: CompletedTransaction,
     ) -> Result<(), TransactionStorageError>
     {
-        self.db.complete_transaction(tx_id, transaction)
+        self.db.complete_outbound_transaction(tx_id, transaction)
+    }
+
+    /// This method moves a `PendingInboundTransaction` to the `CompleteTransaction` collection.
+    pub fn complete_inbound_transaction(
+        &mut self,
+        tx_id: TxId,
+        transaction: CompletedTransaction,
+    ) -> Result<(), TransactionStorageError>
+    {
+        self.db.complete_inbound_transaction(tx_id, transaction)
+    }
+
+    /// Indicated that the specified completed transaction has been detected as mined on the base layer
+    #[cfg(feature = "test_harness")]
+    pub fn mine_completed_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionStorageError> {
+        self.db.mine_completed_transaction(tx_id)
     }
 }
 

@@ -40,3 +40,5 @@ tempdir = "0.3.7"
 env_logger = "0.6.2"
 prost = "0.5.0"
 
+[features]
+test_harness = []

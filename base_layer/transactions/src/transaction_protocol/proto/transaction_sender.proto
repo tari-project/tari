@@ -15,6 +15,8 @@ message SingleRoundSenderData {
     bytes public_nonce = 4;
     // The transaction metadata
     TransactionMetadata metadata = 5;
+    // Plain text message to receiver
+    string message = 6;
 }
 
 message TransactionSenderMessage {

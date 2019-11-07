@@ -20,6 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#[cfg(feature = "test_harness")]
+use crate::output_manager_service::TxId;
 use crate::{
     output_manager_service::handle::OutputManagerHandle,
     transaction_service::{
@@ -31,6 +33,7 @@ use crate::{
             OutboundTransaction,
             TransactionBackend,
             TransactionDatabase,
+            TransactionStatus,
         },
     },
     types::TransactionRng,
@@ -38,9 +41,9 @@ use crate::{
 use chrono::Utc;
 use futures::{pin_mut, SinkExt, Stream, StreamExt};
 use log::*;
-use std::{collections::HashMap, convert::TryInto};
+use std::{collections::HashMap, convert::TryInto, sync::Arc};
 use tari_broadcast_channel::Publisher;
-use tari_comms::types::CommsPublicKey;
+use tari_comms::{peer_manager::NodeIdentity, types::CommsPublicKey};
 use tari_comms_dht::{
     broadcast_strategy::BroadcastStrategy,
     domain_message::OutboundDomainMessage,
@@ -51,8 +54,9 @@ use tari_crypto::keys::SecretKey;
 use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_transactions::{
+    aggregated_body::AggregateBody,
     tari_amount::MicroTari,
-    transaction::{KernelFeatures, OutputFeatures},
+    transaction::{KernelFeatures, OutputFeatures, Transaction},
     transaction_protocol::{proto, recipient::RecipientSignedMessage, sender::TransactionSenderMessage},
     types::{PrivateKey, COMMITMENT_FACTORY, PROVER},
     ReceiverTransactionProtocol,
@@ -88,6 +92,7 @@ where TBackend: TransactionBackend
         reply_channel::Receiver<TransactionServiceRequest, Result<TransactionServiceResponse, TransactionServiceError>>,
     >,
     event_publisher: Publisher<TransactionEvent>,
+    node_identity: Arc<NodeIdentity>,
 }
 
 impl<TTxStream, TTxReplyStream, TBackend> TransactionService<TTxStream, TTxReplyStream, TBackend>
@@ -107,6 +112,7 @@ where
         output_manager_service: OutputManagerHandle,
         outbound_message_service: OutboundMessageRequester,
         event_publisher: Publisher<TransactionEvent>,
+        node_identity: Arc<NodeIdentity>,
     ) -> Self
     {
         TransactionService {
@@ -117,6 +123,7 @@ where
             transaction_reply_stream: Some(transaction_reply_stream),
             request_stream: Some(request_stream),
             event_publisher,
+            node_identity,
         }
     }
 
@@ -195,8 +202,8 @@ where
     ) -> Result<TransactionServiceResponse, TransactionServiceError>
     {
         match request {
-            TransactionServiceRequest::SendTransaction((dest_pubkey, amount, fee_per_gram)) => self
-                .send_transaction(dest_pubkey, amount, fee_per_gram)
+            TransactionServiceRequest::SendTransaction((dest_pubkey, amount, fee_per_gram, message)) => self
+                .send_transaction(dest_pubkey, amount, fee_per_gram, message)
                 .await
                 .map(|_| TransactionServiceResponse::TransactionSent),
             TransactionServiceRequest::GetPendingInboundTransactions => Ok(
@@ -208,6 +215,27 @@ where
             TransactionServiceRequest::GetCompletedTransactions => Ok(
                 TransactionServiceResponse::CompletedTransactions(self.get_completed_transactions()?),
             ),
+            #[cfg(feature = "test_harness")]
+            TransactionServiceRequest::CompletePendingOutboundTransaction(completed_transaction) => {
+                self.complete_pending_outbound_transaction(completed_transaction)
+                    .await?;
+                Ok(TransactionServiceResponse::CompletedPendingTransaction)
+            },
+            #[cfg(feature = "test_harness")]
+            TransactionServiceRequest::AcceptTestTransaction((tx_id, amount, source_pubkey)) => {
+                self.receive_test_transaction(tx_id, amount, source_pubkey).await?;
+                Ok(TransactionServiceResponse::AcceptedTestTransaction)
+            },
+            #[cfg(feature = "test_harness")]
+            TransactionServiceRequest::MineCompletedTransaction(tx_id) => {
+                self.mine_broadcast_transaction(tx_id).await?;
+                Ok(TransactionServiceResponse::CompletedTransactionMined)
+            },
+            #[cfg(feature = "test_harness")]
+            TransactionServiceRequest::BroadcastInboundTransaction(tx_id) => {
+                self.detect_broadcast_of_inbound_transaction(tx_id).await?;
+                Ok(TransactionServiceResponse::InboundTransactionBroadcast)
+            },
         }
     }
 
@@ -221,11 +249,12 @@ where
         dest_pubkey: CommsPublicKey,
         amount: MicroTari,
         fee_per_gram: MicroTari,
+        message: String,
     ) -> Result<(), TransactionServiceError>
     {
         let mut sender_protocol = self
             .output_manager_service
-            .prepare_transaction_to_send(amount, fee_per_gram, None)
+            .prepare_transaction_to_send(amount, fee_per_gram, None, message)
             .await?;
 
         if !sender_protocol.is_single_round_message_ready() {
@@ -235,6 +264,7 @@ where
         let msg = sender_protocol.build_single_round_message()?;
         let tx_id = msg.tx_id;
         let proto_message = proto::TransactionSenderMessage::single(msg.into());
+
         self.outbound_message_service
             .send_direct(
                 dest_pubkey.clone(),
@@ -249,8 +279,10 @@ where
             amount,
             fee: sender_protocol.get_fee_amount()?,
             sender_protocol,
+            message: "".to_string(),
             timestamp: Utc::now().naive_utc(),
         })?;
+
         info!(
             target: LOG_TARGET,
             "Transaction with TX_ID = {} sent to {}", tx_id, dest_pubkey
@@ -291,19 +323,21 @@ where
         let tx = outbound_tx.sender_protocol.get_transaction()?;
 
         // TODO Broadcast this to the chain
-        // TODO Only confirm this transaction once it is detected on chain. For now just confirming it directly.
-        self.output_manager_service
-            .confirm_sent_transaction(tx_id.clone(), tx.body.inputs().clone(), tx.body.outputs().clone())
-            .await?;
+        // TODO Only confirm this transaction once it is detected on chain and then complete in Output Manager Service
+        // to make funds available
         self.db
             .complete_outbound_transaction(tx_id.clone(), CompletedTransaction {
                 tx_id,
+                source_public_key: self.node_identity.public_key().clone(),
                 destination_public_key: outbound_tx.destination_public_key,
                 amount: outbound_tx.amount,
                 fee: outbound_tx.fee,
                 transaction: tx.clone(),
+                status: TransactionStatus::Broadcast,
+                message: "".to_string(),
                 timestamp: Utc::now().naive_utc(),
             })?;
+
         info!(
             target: LOG_TARGET,
             "Transaction Recipient Reply for TX_ID = {} received", tx_id,
@@ -374,6 +408,7 @@ where
                 source_public_key: source_pubkey.clone(),
                 amount,
                 receiver_protocol: rtp.clone(),
+                message: data.message,
                 timestamp: Utc::now().naive_utc(),
             })?;
 
@@ -406,5 +441,172 @@ where
 
     pub fn get_completed_transactions(&self) -> Result<HashMap<u64, CompletedTransaction>, TransactionServiceError> {
         Ok(self.db.get_completed_transactions()?)
+    }
+
+    /// This function is only available for testing by the client of LibWallet. It simulates a receiver accepting and
+    /// replying to a Pending Outbound Transaction. This results in that transaction being "completed" and it's status
+    /// set to `Broadcast` which indicated it is in a base_layer mempool.
+    #[cfg(feature = "test_harness")]
+    pub async fn complete_pending_outbound_transaction(
+        &mut self,
+        completed_tx: CompletedTransaction,
+    ) -> Result<(), TransactionServiceError>
+    {
+        self.db
+            .complete_outbound_transaction(completed_tx.tx_id.clone(), completed_tx.clone())?;
+        Ok(())
+    }
+
+    /// This function is only available for testing by the client of LibWallet. This function will simulate the process
+    /// when a compelted transaction is detected as mined on the base layer. The function will update the status of the
+    /// completed transaction AND complete the transaction on the Output Manager Service which will update the status of
+    /// the outputs
+    #[cfg(feature = "test_harness")]
+    pub async fn mine_broadcast_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionServiceError> {
+        use tari_transactions::transaction::TransactionOutput;
+
+        let completed_txs = self.db.get_completed_transactions()?;
+        let _found_tx = completed_txs
+            .get(&tx_id.clone())
+            .ok_or(TransactionServiceError::TestHarnessError(
+                "Could not find Completed TX to mine.".to_string(),
+            ))?;
+
+        let pending_tx_outputs = self.output_manager_service.get_pending_transactions().await?;
+        let pending_tx = pending_tx_outputs
+            .get(&tx_id.clone())
+            .ok_or(TransactionServiceError::TestHarnessError(
+                "Could not find Pending TX to complete.".to_string(),
+            ))?;
+
+        let outputs_to_be_spent = pending_tx
+            .outputs_to_be_spent
+            .clone()
+            .iter()
+            .map(|o| o.as_transaction_input(&COMMITMENT_FACTORY, OutputFeatures::default()))
+            .collect();
+
+        let mut outputs_to_be_received = Vec::new();
+
+        for o in pending_tx.outputs_to_be_received.clone() {
+            outputs_to_be_received.push(o.as_transaction_output(&PROVER, &COMMITMENT_FACTORY)?)
+        }
+        outputs_to_be_received.push(TransactionOutput::default());
+
+        self.output_manager_service
+            .confirm_sent_transaction(tx_id.clone(), outputs_to_be_spent, outputs_to_be_received)
+            .await?;
+
+        self.db.mine_completed_transaction(tx_id)?;
+
+        Ok(())
+    }
+
+    /// This function is only available for testing by the client of LibWallet. This function simulates an external
+    /// wallet sending a transaction to this wallet which will become a PendingInboundTransaction
+    #[cfg(feature = "test_harness")]
+    pub async fn receive_test_transaction(
+        &mut self,
+        tx_id: TxId,
+        amount: MicroTari,
+        source_public_key: CommsPublicKey,
+    ) -> Result<(), TransactionServiceError>
+    {
+        use crate::output_manager_service::{
+            service::OutputManagerService,
+            storage::{database::OutputManagerDatabase, memory_db::OutputManagerMemoryDatabase},
+            OutputManagerConfig,
+        };
+        use tari_comms::types::CommsSecretKey;
+        use tari_crypto::keys::PublicKey;
+
+        let (_sender, receiver) = reply_channel::unbounded();
+        let mut rng = rand::OsRng::new().unwrap();
+        let (secret_key, _public_key): (CommsSecretKey, CommsPublicKey) = PublicKey::random_keypair(&mut rng);
+
+        let mut fake_oms = OutputManagerService::new(
+            receiver,
+            OutputManagerConfig {
+                master_seed: secret_key,
+                branch_seed: "".to_string(),
+                primary_key_index: 0,
+            },
+            OutputManagerDatabase::new(OutputManagerMemoryDatabase::new()),
+        )?;
+
+        use crate::testnet_utils::make_input;
+        let (_ti, uo) = make_input(&mut rng.clone(), MicroTari::from(amount + MicroTari::from(1_000_000)));
+
+        fake_oms.add_output(uo)?;
+
+        let mut stp = fake_oms.prepare_transaction_to_send(amount, MicroTari::from(100), None, "".to_string())?;
+
+        let msg = stp.build_single_round_message()?;
+        let proto_msg = proto::TransactionSenderMessage::single(msg.into());
+        let sender_message: TransactionSenderMessage = proto_msg
+            .try_into()
+            .map_err(TransactionServiceError::InvalidMessageError)?;
+
+        let spending_key = self
+            .output_manager_service
+            .get_recipient_spending_key(tx_id.clone(), amount.clone())
+            .await?;
+        let nonce = PrivateKey::random(&mut rng);
+        let rtp = ReceiverTransactionProtocol::new(
+            sender_message,
+            nonce,
+            spending_key.clone(),
+            OutputFeatures::default(),
+            &PROVER,
+            &COMMITMENT_FACTORY,
+        );
+
+        self.db
+            .add_pending_inbound_transaction(tx_id.clone(), InboundTransaction {
+                tx_id,
+                source_public_key,
+                amount,
+                receiver_protocol: rtp,
+                message: "".to_string(),
+                timestamp: Utc::now().naive_utc(),
+            })?;
+
+        Ok(())
+    }
+
+    /// This function is only available for testing by the client of LibWallet. It simulates the detection of a
+    /// `PendingInboundTransaction` as being broadcast to base layer which means the Pending transaction must become a
+    /// `CompletedTransaction` with the `Broadcast` status.
+    #[cfg(feature = "test_harness")]
+    pub async fn detect_broadcast_of_inbound_transaction(
+        &mut self,
+        tx_id: TxId,
+    ) -> Result<(), TransactionServiceError>
+    {
+        let pending_inbound_txs = self.db.get_pending_inbound_transactions()?;
+
+        let found_tx = pending_inbound_txs
+            .get(&tx_id.clone())
+            .ok_or(TransactionServiceError::TestHarnessError(
+                "Could not find Pending Inbound TX to detect as broadcast.".to_string(),
+            ))?;
+
+        self.db
+            .complete_inbound_transaction(found_tx.tx_id.clone(), CompletedTransaction {
+                tx_id: found_tx.tx_id,
+                source_public_key: found_tx.source_public_key.clone(),
+                destination_public_key: self.node_identity.public_key().clone(),
+                amount: found_tx.amount,
+                fee: MicroTari::from(0),
+                transaction: Transaction {
+                    offset: Default::default(),
+                    body: AggregateBody::empty(),
+                },
+                status: TransactionStatus::Broadcast,
+                message: "".to_string(),
+                timestamp: Utc::now().naive_utc(),
+            })?;
+
+        Ok(())
     }
 }

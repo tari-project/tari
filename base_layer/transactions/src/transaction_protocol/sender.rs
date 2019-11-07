@@ -69,6 +69,7 @@ pub(super) struct RawTransactionInfo {
     #[serde(skip)]
     pub recipient_info: RecipientInfo,
     pub signatures: Vec<Signature>,
+    pub message: String,
 }
 
 impl RawTransactionInfo {
@@ -90,6 +91,8 @@ pub struct SingleRoundSenderData {
     pub public_nonce: PublicKey,
     /// The transaction metadata
     pub metadata: TransactionMetadata,
+    /// Plain text message to receiver
+    pub message: String,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -244,6 +247,7 @@ impl SenderTransactionProtocol {
                     public_nonce: info.public_nonce.clone(),
                     public_excess: info.public_excess.clone(),
                     metadata: info.metadata.clone(),
+                    message: info.message.clone(),
                 };
                 self.state = SenderState::CollectingSingleSignature(info.clone());
                 Ok(result)

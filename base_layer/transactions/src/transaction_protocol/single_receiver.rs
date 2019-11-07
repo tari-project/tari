@@ -157,6 +157,7 @@ mod test {
             public_excess: pub_xs.clone(),
             public_nonce: pub_rs.clone(),
             metadata: m.clone(),
+            message: "".to_string(),
         };
         let prot =
             SingleReceiverTransactionProtocol::create(&info, r, k.clone(), of, &PROVER, &COMMITMENT_FACTORY).unwrap();

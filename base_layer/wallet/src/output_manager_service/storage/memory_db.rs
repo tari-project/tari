@@ -88,11 +88,11 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
                 .pending_transactions
                 .get(tx_id)
                 .map(|v| DbValue::PendingTransactionOutputs(Box::new(v.clone()))),
-            DbKey::UnspentOutputs => Some(DbValue::UnspentOutputs(Box::new(db.unspent_outputs.clone()))),
-            DbKey::SpentOutputs => Some(DbValue::SpentOutputs(Box::new(db.spent_outputs.clone()))),
-            DbKey::AllPendingTransactionOutputs => Some(DbValue::AllPendingTransactionOutputs(Box::new(
-                db.pending_transactions.clone(),
-            ))),
+            DbKey::UnspentOutputs => Some(DbValue::UnspentOutputs(db.unspent_outputs.clone())),
+            DbKey::SpentOutputs => Some(DbValue::SpentOutputs(db.spent_outputs.clone())),
+            DbKey::AllPendingTransactionOutputs => {
+                Some(DbValue::AllPendingTransactionOutputs(db.pending_transactions.clone()))
+            },
         };
 
         Ok(result)

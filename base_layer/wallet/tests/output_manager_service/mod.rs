@@ -91,7 +91,7 @@ fn sending_transaction_and_confirmation() {
     }
 
     let mut stp = runtime
-        .block_on(oms.prepare_transaction_to_send(MicroTari::from(1000), MicroTari::from(20), None))
+        .block_on(oms.prepare_transaction_to_send(MicroTari::from(1000), MicroTari::from(20), None, "".to_string()))
         .unwrap();
 
     let sender_tx_id = stp.get_tx_id().unwrap();
@@ -165,6 +165,7 @@ fn send_not_enough_funds() {
         MicroTari::from(num_outputs * 2000),
         MicroTari::from(20),
         None,
+        "".to_string(),
     )) {
         Err(OutputManagerError::NotEnoughFunds) => assert!(true),
         _ => assert!(false),
@@ -202,6 +203,7 @@ fn send_no_change() {
             MicroTari::from(value1 + value2) - fee_without_change,
             MicroTari::from(20),
             None,
+            "".to_string(),
         ))
         .unwrap();
 
@@ -272,6 +274,7 @@ fn send_not_enough_for_change() {
         MicroTari::from(value1 + value2 + 1) - fee_without_change,
         MicroTari::from(20),
         None,
+        "".to_string(),
     )) {
         Err(OutputManagerError::NotEnoughFunds) => assert!(true),
         _ => assert!(false),
@@ -329,7 +332,7 @@ fn cancel_transaction() {
         runtime.block_on(oms.add_output(uo)).unwrap();
     }
     let stp = runtime
-        .block_on(oms.prepare_transaction_to_send(MicroTari::from(1000), MicroTari::from(20), None))
+        .block_on(oms.prepare_transaction_to_send(MicroTari::from(1000), MicroTari::from(20), None, "".to_string()))
         .unwrap();
 
     match runtime.block_on(oms.cancel_transaction(1)) {
@@ -364,7 +367,7 @@ fn timeout_transaction() {
         runtime.block_on(oms.add_output(uo)).unwrap();
     }
     let _stp = runtime
-        .block_on(oms.prepare_transaction_to_send(MicroTari::from(1000), MicroTari::from(20), None))
+        .block_on(oms.prepare_transaction_to_send(MicroTari::from(1000), MicroTari::from(20), None, "".to_string()))
         .unwrap();
 
     let remaining_outputs = runtime.block_on(oms.get_unspent_outputs()).unwrap().len();
@@ -402,19 +405,33 @@ fn test_get_balance() {
 
     let balance = runtime.block_on(oms.get_balance()).unwrap();
 
-    assert_eq!(MicroTari::from(0), balance);
+    assert_eq!(MicroTari::from(0), balance.available_balance);
 
-    let num_outputs = 20;
     let mut total = MicroTari::from(0);
-    for _i in 0..num_outputs {
-        let (_ti, uo) = make_input(&mut rng.clone(), MicroTari::from(100 + rng.next_u64() % 1000));
-        total += uo.value.clone();
-        runtime.block_on(oms.add_output(uo)).unwrap();
-    }
+    let output_val = MicroTari::from(2000);
+    let (_ti, uo) = make_input(&mut rng.clone(), output_val.clone());
+    total += uo.value.clone();
+    runtime.block_on(oms.add_output(uo)).unwrap();
+
+    let (_ti, uo) = make_input(&mut rng.clone(), output_val.clone());
+    total += uo.value.clone();
+    runtime.block_on(oms.add_output(uo)).unwrap();
+
+    let send_value = MicroTari::from(1000);
+    let stp = runtime
+        .block_on(oms.prepare_transaction_to_send(send_value.clone(), MicroTari::from(20), None, "".to_string()))
+        .unwrap();
+
+    let change_val = stp.get_change_amount().unwrap();
+
+    let recv_value = MicroTari::from(1500);
+    let _recv_key = runtime.block_on(oms.get_recipient_spending_key(1, recv_value)).unwrap();
 
     let balance = runtime.block_on(oms.get_balance()).unwrap();
 
-    assert_eq!(total, balance);
+    assert_eq!(output_val, balance.available_balance);
+    assert_eq!(recv_value + change_val, balance.pending_incoming_balance);
+    assert_eq!(output_val, balance.pending_outgoing_balance);
 }
 
 #[test]
@@ -440,5 +457,5 @@ fn test_confirming_received_output() {
         RangeProof::from_bytes(&rr).unwrap(),
     );
     runtime.block_on(oms.confirm_received_output(1, output)).unwrap();
-    assert_eq!(runtime.block_on(oms.get_balance()).unwrap(), value);
+    assert_eq!(runtime.block_on(oms.get_balance()).unwrap().available_balance, value);
 }

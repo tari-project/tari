@@ -36,6 +36,7 @@ use futures::{future, Future, Stream, StreamExt};
 use log::*;
 use std::sync::Arc;
 use tari_broadcast_channel::bounded;
+use tari_comms::peer_manager::NodeIdentity;
 use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_p2p::{
     comms_connector::PeerMessage,
@@ -61,6 +62,7 @@ where T: TransactionBackend
 {
     subscription_factory: Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage>>>,
     backend: Option<T>,
+    node_identity: Arc<NodeIdentity>,
 }
 
 impl<T> TransactionServiceInitializer<T>
@@ -69,11 +71,13 @@ where T: TransactionBackend
     pub fn new(
         subscription_factory: Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage>>>,
         backend: T,
+        node_identity: Arc<NodeIdentity>,
     ) -> Self
     {
         Self {
             subscription_factory,
             backend: Some(backend),
+            node_identity,
         }
     }
 
@@ -121,6 +125,8 @@ where T: TransactionBackend + 'static
             .take()
             .expect("Cannot start Transaction Service without providing a backend");
 
+        let node_identity = self.node_identity.clone();
+
         executor.spawn(async move {
             let handles = handles_fut.await;
 
@@ -139,6 +145,7 @@ where T: TransactionBackend + 'static
                 output_manager_service,
                 outbound_message_service,
                 publisher,
+                node_identity,
             )
             .start();
             futures::pin_mut!(service);

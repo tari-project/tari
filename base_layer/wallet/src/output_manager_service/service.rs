@@ -126,8 +126,8 @@ where T: OutputManagerBackend
             OutputManagerRequest::GetRecipientKey((tx_id, amount)) => self
                 .get_recipient_spending_key(tx_id, amount)
                 .map(|k| OutputManagerResponse::RecipientKeyGenerated(k)),
-            OutputManagerRequest::PrepareToSendTransaction((amount, fee_per_gram, lock_height)) => self
-                .prepare_transaction_to_send(amount, fee_per_gram, lock_height)
+            OutputManagerRequest::PrepareToSendTransaction((amount, fee_per_gram, lock_height, message)) => self
+                .prepare_transaction_to_send(amount, fee_per_gram, lock_height, message)
                 .map(|stp| OutputManagerResponse::TransactionToSend(stp)),
             OutputManagerRequest::ConfirmReceivedOutput((tx_id, output)) => self
                 .confirm_received_transaction_output(tx_id, &output)
@@ -159,7 +159,7 @@ where T: OutputManagerBackend
         Ok(self.db.add_unspent_output(output)?)
     }
 
-    pub fn get_balance(&self) -> Result<MicroTari, OutputManagerError> {
+    pub fn get_balance(&self) -> Result<Balance, OutputManagerError> {
         Ok(self.db.get_balance()?)
     }
 
@@ -221,6 +221,7 @@ where T: OutputManagerBackend
         amount: MicroTari,
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
+        message: String,
     ) -> Result<SenderTransactionProtocol, OutputManagerError>
     {
         let mut rng = TransactionRng::new().unwrap();
@@ -236,7 +237,8 @@ where T: OutputManagerBackend
             .with_fee_per_gram(fee_per_gram)
             .with_offset(offset.clone())
             .with_private_nonce(nonce.clone())
-            .with_amount(0, amount);
+            .with_amount(0, amount)
+            .with_message(message);
 
         for uo in outputs.iter() {
             builder.with_input(
@@ -394,4 +396,15 @@ pub enum UTXOSelectionStrategy {
     // Start from the smallest UTXOs and work your way up until the amount is covered. Main benefit is removing small
     // UTXOs from the blockchain, con is that it costs more in fees
     Smallest,
+}
+
+/// This struct holds the detailed balance of the Output Manager Service.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Balance {
+    /// The current balance that is available to spend
+    pub available_balance: MicroTari,
+    /// The current balance of funds that are due to be received but have not yet been confirmed
+    pub pending_incoming_balance: MicroTari,
+    /// The current balance of funds encumbered in pending outbound transactions that have not been confirmed
+    pub pending_outgoing_balance: MicroTari,
 }

@@ -20,7 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::output_manager_service::{error::OutputManagerError, storage::database::PendingTransactionOutputs};
+use crate::output_manager_service::{
+    error::OutputManagerError,
+    service::Balance,
+    storage::database::PendingTransactionOutputs,
+};
 use std::{collections::HashMap, time::Duration};
 use tari_service_framework::reply_channel::SenderService;
 use tari_transactions::{
@@ -39,7 +43,7 @@ pub enum OutputManagerRequest {
     GetRecipientKey((u64, MicroTari)),
     ConfirmReceivedOutput((u64, TransactionOutput)),
     ConfirmSentTransaction((u64, Vec<TransactionInput>, Vec<TransactionOutput>)),
-    PrepareToSendTransaction((MicroTari, MicroTari, Option<u64>)),
+    PrepareToSendTransaction((MicroTari, MicroTari, Option<u64>, String)),
     CancelTransaction(u64),
     TimeoutTransactions(Duration),
     GetPendingTransactions,
@@ -50,7 +54,7 @@ pub enum OutputManagerRequest {
 
 /// API Reply enum
 pub enum OutputManagerResponse {
-    Balance(MicroTari),
+    Balance(Balance),
     OutputAdded,
     RecipientKeyGenerated(PrivateKey),
     OutputConfirmed,
@@ -81,7 +85,7 @@ impl OutputManagerHandle {
         }
     }
 
-    pub async fn get_balance(&mut self) -> Result<MicroTari, OutputManagerError> {
+    pub async fn get_balance(&mut self) -> Result<Balance, OutputManagerError> {
         match self.handle.call(OutputManagerRequest::GetBalance).await?? {
             OutputManagerResponse::Balance(b) => Ok(b),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
@@ -109,6 +113,7 @@ impl OutputManagerHandle {
         amount: MicroTari,
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
+        message: String,
     ) -> Result<SenderTransactionProtocol, OutputManagerError>
     {
         match self
@@ -117,6 +122,7 @@ impl OutputManagerHandle {
                 amount,
                 fee_per_gram,
                 lock_height,
+                message,
             )))
             .await??
         {
