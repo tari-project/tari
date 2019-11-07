@@ -21,11 +21,14 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use crate::{
     contacts_service::storage::database::Contact,
-    error::WalletError,
+    error::{WalletError, WalletStorageError},
+    output_manager_service::TxId,
     storage::{database::WalletBackend, memory_db::WalletMemoryDatabase},
+    transaction_service::storage::database::{CompletedTransaction, TransactionStatus},
     wallet::WalletConfig,
     Wallet,
 };
+use chrono::Utc;
 use rand::{distributions::Alphanumeric, CryptoRng, OsRng, Rng, RngCore};
 use std::{iter, sync::Arc, thread, time::Duration};
 use tari_comms::{
@@ -40,14 +43,13 @@ use tari_crypto::{
 use tari_p2p::initialization::CommsConfig;
 use tari_transactions::{
     tari_amount::MicroTari,
-    transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
-    types::{PrivateKey, PublicKey, COMMITMENT_FACTORY},
+    transaction::{OutputFeatures, Transaction, TransactionInput, UnblindedOutput},
+    types::{BlindingFactor, PrivateKey, PublicKey, COMMITMENT_FACTORY},
 };
 use tempdir::TempDir;
 use tokio::runtime::Runtime;
 
-// The functions in this module are strictly meant for testing and development of wallet applications without needing to
-// spin up other wallets or base nodes before TestNet is live.
+// Used to generate test wallet data
 
 pub struct TestParams {
     pub spend_key: PrivateKey,
@@ -190,6 +192,7 @@ pub fn generate_wallet_test_data<T: WalletBackend>(wallet: &mut Wallet<T>) -> Re
             contacts[0].public_key.clone(),
             MicroTari::from(10_000),
             MicroTari::from(100),
+            "".to_string(),
         ))
         .expect("Could not send test transaction");
 
@@ -199,6 +202,7 @@ pub fn generate_wallet_test_data<T: WalletBackend>(wallet: &mut Wallet<T>) -> Re
             contacts[0].public_key.clone(),
             MicroTari::from(20_000),
             MicroTari::from(110),
+            "".to_string(),
         ))
         .expect("Could not send test transaction");
 
@@ -208,6 +212,7 @@ pub fn generate_wallet_test_data<T: WalletBackend>(wallet: &mut Wallet<T>) -> Re
             contacts[1].public_key.clone(),
             MicroTari::from(30_000),
             MicroTari::from(105),
+            "".to_string(),
         ))
         .expect("Could not send test transaction");
 
@@ -218,6 +223,7 @@ pub fn generate_wallet_test_data<T: WalletBackend>(wallet: &mut Wallet<T>) -> Re
             contacts[2].public_key.clone(),
             MicroTari::from(25_000),
             MicroTari::from(107),
+            "".to_string(),
         ))
         .expect("Could not send test transaction");
 
@@ -227,6 +233,7 @@ pub fn generate_wallet_test_data<T: WalletBackend>(wallet: &mut Wallet<T>) -> Re
             contacts[3].public_key.clone(),
             MicroTari::from(35_000),
             MicroTari::from(117),
+            "".to_string(),
         ))
         .expect("Could not send test transaction");
 
@@ -237,6 +244,7 @@ pub fn generate_wallet_test_data<T: WalletBackend>(wallet: &mut Wallet<T>) -> Re
             wallet.comms.node_identity().public_key().clone(),
             MicroTari::from(35_000),
             MicroTari::from(117),
+            "".to_string(),
         ))
         .expect("Could not send test transaction");
     wallet_bob
@@ -245,10 +253,88 @@ pub fn generate_wallet_test_data<T: WalletBackend>(wallet: &mut Wallet<T>) -> Re
             wallet.comms.node_identity().public_key().clone(),
             MicroTari::from(35_000),
             MicroTari::from(117),
+            "".to_string(),
         ))
         .expect("Could not send test transaction");
 
     thread::sleep(Duration::from_millis(1000));
+
+    Ok(())
+}
+
+/// This function is only available for testing and development by the client of LibWallet. It simulates a this node,
+/// who sent a transaction out, accepting a reply to the Pending Outbound Transaction. That transaction then becomes a
+/// CompletedTransaction with the Broadcast status indicating it is in a base node Mempool but not yet mined
+pub fn complete_sent_transaction<T: WalletBackend>(wallet: &mut Wallet<T>, tx_id: TxId) -> Result<(), WalletError> {
+    let pending_outbound_tx = wallet
+        .runtime
+        .block_on(wallet.transaction_service.get_pending_outbound_transactions())?;
+    match pending_outbound_tx.get(&tx_id) {
+        Some(p) => {
+            let completed_tx: CompletedTransaction = CompletedTransaction {
+                tx_id: p.tx_id.clone(),
+                source_public_key: wallet.comms.node_identity().public_key().clone(),
+                destination_public_key: p.destination_public_key.clone(),
+                amount: p.amount.clone(),
+                fee: p.fee.clone(),
+                transaction: Transaction::new(Vec::new(), Vec::new(), Vec::new(), BlindingFactor::default()),
+                message: p.message.clone(),
+                status: TransactionStatus::Broadcast,
+                timestamp: Utc::now().naive_utc(),
+            };
+            wallet.runtime.block_on(
+                wallet
+                    .transaction_service
+                    .test_complete_pending_transaction(completed_tx),
+            )?;
+        },
+        None => {
+            return Err(WalletError::WalletStorageError(WalletStorageError::UnexpectedResult(
+                "Pending outbound transaction does not exist".to_string(),
+            )))
+        },
+    }
+
+    Ok(())
+}
+
+/// This function is only available for testing by the client of LibWallet. This function simulates an external
+/// wallet sending a transaction to this wallet which will become a PendingInboundTransaction
+pub fn receive_test_transaction<T: WalletBackend>(wallet: &mut Wallet<T>) -> Result<(), WalletError> {
+    let mut rng = OsRng::new().unwrap();
+    let (_secret_key, public_key): (CommsSecretKey, CommsPublicKey) = PublicKey::random_keypair(&mut rng);
+
+    wallet
+        .runtime
+        .block_on(wallet.transaction_service.test_accept_transaction(
+            rng.next_u64(),
+            MicroTari::from(10_000 + rng.next_u64() % 10_1000),
+            public_key,
+        ))?;
+
+    Ok(())
+}
+
+pub fn detect_broadcast_of_inbound_transaction<T: WalletBackend>(
+    wallet: &mut Wallet<T>,
+    tx_id: TxId,
+) -> Result<(), WalletError>
+{
+    wallet
+        .runtime
+        .block_on(wallet.transaction_service.test_broadcast_inbound_transaction(tx_id))?;
+
+    Ok(())
+}
+
+/// This function is only available for testing and development by the client of LibWallet. This function will simulate
+/// the event when a CompletedTransaction that is in the Broadcast status, is in a mempool but not mined, beocmes
+/// mined/confirmed. After this function is called the status of the CompletedTransaction becomes `Mined` and the funds
+/// that were pending become spent and available respectively.
+pub fn mine_completed_transaction<T: WalletBackend>(wallet: &mut Wallet<T>, tx_id: TxId) -> Result<(), WalletError> {
+    wallet
+        .runtime
+        .block_on(wallet.transaction_service.test_mine_completed_transaction(tx_id))?;
 
     Ok(())
 }

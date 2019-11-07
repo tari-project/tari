@@ -116,6 +116,7 @@ where T: WalletBackend
             .add_initializer(TransactionServiceInitializer::new(
                 subscription_factory.clone(),
                 TransactionMemoryDatabase::new(),
+                comms.node_identity().clone(),
             ))
             .add_initializer(ContactsServiceInitializer::new(ContactsServiceMemoryDatabase::new()))
             .finish();

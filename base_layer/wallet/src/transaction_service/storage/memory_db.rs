@@ -20,6 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#[cfg(feature = "test_harness")]
+use crate::transaction_service::storage::database::TransactionStatus;
 use crate::{
     output_manager_service::TxId,
     transaction_service::{
@@ -171,7 +173,7 @@ impl TransactionBackend for TransactionMemoryDatabase {
         Ok(None)
     }
 
-    fn complete_transaction(
+    fn complete_outbound_transaction(
         &mut self,
         tx_id: TxId,
         transaction: CompletedTransaction,
@@ -186,6 +188,40 @@ impl TransactionBackend for TransactionMemoryDatabase {
             ))?;
 
         db.completed_transactions.insert(tx_id, transaction);
+
+        Ok(())
+    }
+
+    fn complete_inbound_transaction(
+        &mut self,
+        tx_id: TxId,
+        transaction: CompletedTransaction,
+    ) -> Result<(), TransactionStorageError>
+    {
+        let mut db = acquire_write_lock!(self.db);
+        let _ = db
+            .pending_inbound_transactions
+            .remove(&tx_id)
+            .ok_or(TransactionStorageError::ValueNotFound(
+                DbKey::PendingOutboundTransaction(tx_id.clone()),
+            ))?;
+
+        db.completed_transactions.insert(tx_id, transaction);
+
+        Ok(())
+    }
+
+    #[cfg(feature = "test_harness")]
+    fn mine_completed_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionStorageError> {
+        let mut db = acquire_write_lock!(self.db);
+
+        let mut completed_tx =
+            db.completed_transactions
+                .get_mut(&tx_id)
+                .ok_or(TransactionStorageError::ValueNotFound(DbKey::CompletedTransaction(
+                    tx_id.clone(),
+                )))?;
+        completed_tx.status = TransactionStatus::Mined;
 
         Ok(())
     }

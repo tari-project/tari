@@ -191,6 +191,7 @@ mod test {
             public_excess: PublicKey::from_secret_key(&p.spend_key), // any random key will do
             public_nonce: PublicKey::from_secret_key(&p.change_key), // any random key will do
             metadata: m.clone(),
+            message: "".to_string(),
         };
         let sender_info = TransactionSenderMessage::Single(Box::new(msg.clone()));
         let pubkey = PublicKey::from_secret_key(&p.spend_key);

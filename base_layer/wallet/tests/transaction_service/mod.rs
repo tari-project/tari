@@ -21,14 +21,14 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use crate::support::{
     comms_and_services::{create_dummy_message, setup_comms_services},
-    utils::event_stream_count,
+    utils::{event_stream_count, make_input, TestParams},
 };
 use futures::{
     channel::{mpsc, mpsc::Sender},
     SinkExt,
 };
 use prost::Message;
-use rand::{CryptoRng, OsRng, Rng};
+use rand::OsRng;
 use std::{convert::TryInto, sync::Arc, time::Duration};
 use tari_broadcast_channel::bounded;
 use tari_comms::{
@@ -37,10 +37,7 @@ use tari_comms::{
     peer_manager::{NodeIdentity, PeerFeatures},
 };
 use tari_comms_dht::outbound::mock::{create_mock_outbound_service, MockOutboundService};
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    keys::{PublicKey as PK, SecretKey as SK},
-};
+use tari_crypto::keys::{PublicKey as PK, SecretKey as SK};
 use tari_p2p::{
     comms_connector::pubsub_connector,
     domain_message::DomainMessage,
@@ -49,7 +46,7 @@ use tari_p2p::{
 use tari_service_framework::{reply_channel, StackBuilder};
 use tari_transactions::{
     tari_amount::*,
-    transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
+    transaction::OutputFeatures,
     transaction_protocol::{proto, recipient::RecipientState, sender::TransactionSenderMessage},
     types::{PrivateKey, PublicKey, COMMITMENT_FACTORY, PROVER},
     ReceiverTransactionProtocol,
@@ -95,6 +92,7 @@ pub fn setup_transaction_service(
         .add_initializer(TransactionServiceInitializer::new(
             subscription_factory,
             TransactionMemoryDatabase::new(),
+            comms.node_identity().clone(),
         ))
         .finish();
 
@@ -148,6 +146,14 @@ pub fn setup_transaction_service_no_comms(
         output_manager_service_handle.clone(),
         outbound_message_requester.clone(),
         event_publisher,
+        Arc::new(
+            NodeIdentity::random(
+                &mut OsRng::new().unwrap(),
+                "0.0.0.0:41239".parse().unwrap(),
+                PeerFeatures::COMMUNICATION_NODE,
+            )
+            .unwrap(),
+        ),
     );
     runtime.spawn(async move { output_manager_service.start().await.unwrap() });
     runtime.spawn(async move { ts_service.start().await.unwrap() });
@@ -158,33 +164,6 @@ pub fn setup_transaction_service_no_comms(
         tx_sender,
         tx_ack_sender,
     )
-}
-
-pub fn make_input<R: Rng + CryptoRng>(rng: &mut R, val: MicroTari) -> (TransactionInput, UnblindedOutput) {
-    let key = PrivateKey::random(rng);
-    let commitment = COMMITMENT_FACTORY.commit_value(&key, val.into());
-    let input = TransactionInput::new(OutputFeatures::default(), commitment);
-    (input, UnblindedOutput::new(val, key, None))
-}
-
-pub struct TestParams {
-    pub spend_key: PrivateKey,
-    pub change_key: PrivateKey,
-    pub offset: PrivateKey,
-    pub nonce: PrivateKey,
-    pub public_nonce: PublicKey,
-}
-impl TestParams {
-    pub fn new<R: Rng + CryptoRng>(rng: &mut R) -> TestParams {
-        let r = PrivateKey::random(rng);
-        TestParams {
-            spend_key: PrivateKey::random(rng),
-            change_key: PrivateKey::random(rng),
-            offset: PrivateKey::random(rng),
-            public_nonce: PublicKey::from_secret_key(&r),
-            nonce: r,
-        }
-    }
 }
 
 #[test]
@@ -219,13 +198,23 @@ fn manage_single_transaction() {
     let (_utxo, uo1) = make_input(&mut rng, MicroTari(2500));
 
     assert!(runtime
-        .block_on(alice_ts.send_transaction(bob_node_identity.public_key().clone(), value, MicroTari::from(20),))
+        .block_on(alice_ts.send_transaction(
+            bob_node_identity.public_key().clone(),
+            value,
+            MicroTari::from(20),
+            "".to_string()
+        ))
         .is_err());
 
     runtime.block_on(alice_oms.add_output(uo1)).unwrap();
-
+    let message = "TAKE MAH MONEYS!".to_string();
     runtime
-        .block_on(alice_ts.send_transaction(bob_node_identity.public_key().clone(), value, MicroTari::from(20)))
+        .block_on(alice_ts.send_transaction(
+            bob_node_identity.public_key().clone(),
+            value,
+            MicroTari::from(20),
+            message.clone(),
+        ))
         .unwrap();
     let alice_pending_outbound = runtime.block_on(alice_ts.get_pending_outbound_transactions()).unwrap();
     let alice_completed_tx = runtime.block_on(alice_ts.get_completed_transactions()).unwrap();
@@ -248,6 +237,9 @@ fn manage_single_transaction() {
 
     let bob_pending_inbound_tx = runtime.block_on(bob_ts.get_pending_inbound_transactions()).unwrap();
     assert_eq!(bob_pending_inbound_tx.len(), 1);
+    for (_k, v) in bob_pending_inbound_tx.clone().drain().take(1) {
+        assert_eq!(v.message, message);
+    }
 
     let mut alice_tx_id = 0;
     for (k, _v) in alice_completed_tx.iter() {
@@ -259,7 +251,10 @@ fn manage_single_transaction() {
             runtime
                 .block_on(bob_oms.confirm_received_output(alice_tx_id, rsm.output.clone()))
                 .unwrap();
-            assert_eq!(runtime.block_on(bob_oms.get_balance()).unwrap(), value);
+            assert_eq!(
+                runtime.block_on(bob_oms.get_balance()).unwrap().available_balance,
+                value
+            );
         } else {
             assert!(false);
         }
@@ -324,6 +319,7 @@ fn manage_multiple_transactions() {
             bob_node_identity.public_key().clone(),
             value_a_to_b_1,
             MicroTari::from(20),
+            "".to_string(),
         ))
         .unwrap();
     runtime
@@ -331,6 +327,7 @@ fn manage_multiple_transactions() {
             carol_node_identity.public_key().clone(),
             value_a_to_c_1,
             MicroTari::from(20),
+            "".to_string(),
         ))
         .unwrap();
     let alice_pending_outbound = runtime.block_on(alice_ts.get_pending_outbound_transactions()).unwrap();
@@ -360,6 +357,7 @@ fn manage_multiple_transactions() {
             alice_node_identity.public_key().clone(),
             value_b_to_a_1,
             MicroTari::from(20),
+            "".to_string(),
         ))
         .unwrap();
     runtime
@@ -367,6 +365,7 @@ fn manage_multiple_transactions() {
             bob_node_identity.public_key().clone(),
             value_a_to_b_2,
             MicroTari::from(20),
+            "".to_string(),
         ))
         .unwrap();
 
@@ -411,7 +410,12 @@ fn test_sending_repeated_tx_ids() {
     runtime.block_on(bob_output_manager.add_output(uo)).unwrap();
 
     let mut stp = runtime
-        .block_on(bob_output_manager.prepare_transaction_to_send(MicroTari::from(500), MicroTari::from(1000), None))
+        .block_on(bob_output_manager.prepare_transaction_to_send(
+            MicroTari::from(500),
+            MicroTari::from(1000),
+            None,
+            "".to_string(),
+        ))
         .unwrap();
     let msg = stp.build_single_round_message().unwrap();
     let tx_message = create_dummy_message(TransactionSenderMessage::Single(Box::new(msg.clone())).into());
@@ -464,6 +468,7 @@ fn test_accepting_unknown_tx_id_and_malformed_reply() {
                 bob_node_identity.public_key().clone(),
                 MicroTari::from(500),
                 MicroTari::from(1000),
+                "".to_string(),
             ),
         )
     });

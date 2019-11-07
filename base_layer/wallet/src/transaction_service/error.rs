@@ -24,7 +24,7 @@ use crate::{output_manager_service::error::OutputManagerError, transaction_servi
 use derive_error::Error;
 use tari_comms_dht::outbound::DhtOutboundError;
 use tari_service_framework::reply_channel::TransportChannelError;
-use tari_transactions::transaction_protocol::TransactionProtocolError;
+use tari_transactions::{transaction::TransactionError, transaction_protocol::TransactionProtocolError};
 use time::OutOfRangeError;
 
 #[derive(Debug, Error)]
@@ -55,6 +55,10 @@ pub enum TransactionServiceError {
     TransactionStorageError(TransactionStorageError),
     #[error(msg_embedded, no_from, non_std)]
     InvalidMessageError(String),
+    #[cfg(feature = "test_harness")]
+    #[error(msg_embedded, no_from, non_std)]
+    TestHarnessError(String),
+    TransactionError(TransactionError),
 }
 
 #[derive(Debug, Error, PartialEq)]
