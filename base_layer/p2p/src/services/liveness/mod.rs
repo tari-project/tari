@@ -38,18 +38,19 @@
 mod config;
 pub mod error;
 pub mod handle;
+mod message;
 mod service;
 mod state;
 
-use self::{service::LivenessService, state::LivenessState};
+use self::{message::PingPongMessage, service::LivenessService, state::LivenessState};
 use crate::{
     comms_connector::PeerMessage,
     domain_message::DomainMessage,
-    proto::{liveness::PingPongMessage, TariMessageType},
     services::{
         liveness::handle::LivenessHandle,
         utils::{map_decode, ok_or_skip_result},
     },
+    tari_message::TariMessageType,
 };
 use futures::{future, Future, Stream, StreamExt};
 use log::*;

@@ -20,8 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod liveness;
+#[path = "tari.p2p.liveness.rs"]
+pub(crate) mod liveness;
 
-pub mod message_type;
-
-pub use message_type::TariMessageType;
+#[path = "tari.p2p.message_type.rs"]
+pub(crate) mod message_type;

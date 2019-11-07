@@ -23,6 +23,7 @@
 fn main() {
     tari_protobuf_build::ProtoCompiler::new()
         .proto_paths(&["src/proto"])
+        .out_dir("src/proto")
         .compile()
         .unwrap();
 }

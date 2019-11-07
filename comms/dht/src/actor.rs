@@ -52,7 +52,16 @@ use futures::{
 use log::*;
 use std::sync::Arc;
 use tari_comms::{
-    peer_manager::{NodeId, NodeIdentity, Peer, PeerManager, PeerManagerError, PeerQuery, PeerQuerySortBy},
+    peer_manager::{
+        NodeId,
+        NodeIdentity,
+        Peer,
+        PeerFeatures,
+        PeerManager,
+        PeerManagerError,
+        PeerQuery,
+        PeerQuerySortBy,
+    },
     types::CommsPublicKey,
 };
 use tari_shutdown::ShutdownSignal;
@@ -163,7 +172,7 @@ impl DhtRequester {
     }
 }
 
-pub struct DhtActor {
+pub struct DhtActor<'a> {
     node_identity: Arc<NodeIdentity>,
     peer_manager: Arc<PeerManager>,
     outbound_requester: OutboundMessageRequester,
@@ -171,9 +180,10 @@ pub struct DhtActor {
     shutdown_signal: Option<ShutdownSignal>,
     request_rx: Fuse<mpsc::Receiver<DhtRequest>>,
     signature_cache: TtlCache<Vec<u8>, ()>,
+    pending_jobs: FuturesUnordered<BoxFuture<'a, Result<(), DhtActorError>>>,
 }
 
-impl DhtActor {
+impl<'a> DhtActor<'a> {
     pub fn new(
         config: DhtConfig,
         node_identity: Arc<NodeIdentity>,
@@ -191,12 +201,11 @@ impl DhtActor {
             node_identity,
             shutdown_signal: Some(shutdown_signal),
             request_rx: request_rx.fuse(),
+            pending_jobs: FuturesUnordered::new(),
         }
     }
 
     pub async fn start(mut self) {
-        let mut pending_jobs = FuturesUnordered::new();
-
         let mut shutdown_signal = self
             .shutdown_signal
             .take()
@@ -207,10 +216,11 @@ impl DhtActor {
             futures::select! {
                 request = self.request_rx.select_next_some() => {
                     debug!(target: LOG_TARGET, "DhtActor received message: {:?}", request);
-                    pending_jobs.push(self.request_handler(request));
+                    let handler = self.request_handler(request);
+                    self.pending_jobs.push(handler);
                 },
 
-                result = pending_jobs.select_next_some() => {
+                result = self.pending_jobs.select_next_some() => {
                     match result {
                         Ok(_) => {
                             trace!(target: LOG_TARGET, "Successfully handled DHT request message");
@@ -233,7 +243,7 @@ impl DhtActor {
         }
     }
 
-    fn request_handler(&mut self, request: DhtRequest) -> BoxFuture<'static, Result<(), DhtActorError>> {
+    fn request_handler(&mut self, request: DhtRequest) -> BoxFuture<'a, Result<(), DhtActorError>> {
         use DhtRequest::*;
         match request {
             SendJoin => {
@@ -476,6 +486,7 @@ impl DhtActor {
         let mut connect_ineligable_count = 0;
         let mut banned_count = 0;
         let mut excluded_count = 0;
+        let mut not_propagation_node_count = 0;
         let query = PeerQuery::new()
             .select_where(|peer| {
                 // This is a quite ugly but is done this way to get the logging
@@ -483,6 +494,11 @@ impl DhtActor {
 
                 if is_banned {
                     banned_count += 1;
+                    return false;
+                }
+
+                if !peer.has_features(PeerFeatures::MESSAGE_PROPAGATION) {
+                    not_propagation_node_count += 1;
                     return false;
                 }
 
@@ -516,10 +532,11 @@ impl DhtActor {
             debug!(
                 target: LOG_TARGET,
                 "\n====================================\n {total} peer(s) were excluded from closest query\n {banned} \
-                 banned\n {not_connectable} are not connectable\n {excluded} \
-                 excluded\n====================================\n",
+                 banned\n{not_propagation_node} not communication node\n {not_connectable} are not connectable\n \
+                 {excluded} excluded\n====================================\n",
                 total = total,
                 banned = banned_count,
+                not_propagation_node = not_propagation_node_count,
                 not_connectable = connect_ineligable_count,
                 excluded = excluded_count
             );

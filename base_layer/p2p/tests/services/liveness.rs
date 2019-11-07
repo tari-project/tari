@@ -20,8 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::support::{comms_and_services::setup_comms_services, utils::event_stream_count};
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use crate::support::comms_and_services::setup_comms_services;
+use std::{sync::Arc, time::Duration};
 use tari_comms::{
     builder::CommsNode,
     peer_manager::{NodeIdentity, PeerFeatures},
@@ -39,6 +39,7 @@ use tari_p2p::{
     },
 };
 use tari_service_framework::StackBuilder;
+use tari_test_utils::stream_collect;
 use tokio::runtime::Runtime;
 
 pub fn setup_liveness_service(
@@ -130,33 +131,59 @@ fn end_to_end() {
         pingpong1_total = (pingpong1_total.0, pingpong1_total.1 + 1);
     }
 
-    let result = runtime
-        .block_on(async { event_stream_count(liveness1.get_event_stream_fused(), 18, Duration::from_secs(10)).await });
+    let events = stream_collect!(
+        runtime,
+        liveness1.get_event_stream_fused(),
+        take = 18,
+        timeout = Duration::from_secs(10),
+    );
 
-    let counts = result.iter().fold(HashMap::new(), |mut counts, event| {
-        let entry = match **event {
-            LivenessEvent::ReceivedPing => counts.entry("ReceivedPing").or_insert(0),
-            LivenessEvent::ReceivedPong(_) => counts.entry("ReceivedPong").or_insert(0),
-        };
-        *entry += 1;
-        counts
-    });
-    assert_eq!(counts["ReceivedPong"], 8);
-    assert_eq!(counts["ReceivedPing"], 10);
+    let ping_count = events
+        .iter()
+        .filter(|event| match ***event {
+            LivenessEvent::ReceivedPing => true,
+            _ => false,
+        })
+        .count();
 
-    let result = runtime
-        .block_on(async { event_stream_count(liveness2.get_event_stream_fused(), 18, Duration::from_secs(10)).await });
+    assert_eq!(ping_count, 10);
 
-    let counts = result.iter().fold(HashMap::new(), |mut counts, event| {
-        let entry = match **event {
-            LivenessEvent::ReceivedPing => counts.entry("ReceivedPing").or_insert(0),
-            LivenessEvent::ReceivedPong(_) => counts.entry("ReceivedPong").or_insert(0),
-        };
-        *entry += 1;
-        counts
-    });
-    assert_eq!(counts["ReceivedPong"], 10);
-    assert_eq!(counts["ReceivedPing"], 8);
+    let pong_count = events
+        .iter()
+        .filter(|event| match ***event {
+            LivenessEvent::ReceivedPong(_) => true,
+            _ => false,
+        })
+        .count();
+
+    assert_eq!(pong_count, 8);
+
+    let events = stream_collect!(
+        runtime,
+        liveness2.get_event_stream_fused(),
+        take = 18,
+        timeout = Duration::from_secs(10),
+    );
+
+    let ping_count = events
+        .iter()
+        .filter(|event| match ***event {
+            LivenessEvent::ReceivedPing => true,
+            _ => false,
+        })
+        .count();
+
+    assert_eq!(ping_count, 8);
+
+    let pong_count = events
+        .iter()
+        .filter(|event| match ***event {
+            LivenessEvent::ReceivedPong(_) => true,
+            _ => false,
+        })
+        .count();
+
+    assert_eq!(pong_count, 10);
 
     let pingcount1 = runtime.block_on(liveness1.get_ping_count()).unwrap();
     let pongcount1 = runtime.block_on(liveness1.get_pong_count()).unwrap();

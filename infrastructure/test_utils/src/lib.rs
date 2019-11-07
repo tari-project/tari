@@ -15,4 +15,6 @@ pub mod address;
 pub mod futures;
 pub mod paths;
 pub mod random;
+#[macro_use]
+pub mod streams;
 pub mod runtime;

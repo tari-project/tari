@@ -7,6 +7,22 @@ enum PingPong {
     PingPongPong = 1;
 }
 
+
+// A ping or pong message
 message PingPongMessage {
+    // Indicates if this message is a ping or pong
     PingPong ping_pong = 1;
+    // Metadata attached to the message. The int32 key SHOULD always be one of the keys in `MetadataKey`.
+    map<int32, bytes> metadata = 2;
+}
+
+// This enum represents all the possible metadata keys that can be used with a ping/pong message.
+// MetadataKey may be extended as the need arises.
+//
+// _NOTE: Key values should NEVER be re-used_
+enum MetadataKey {
+    // The default key. This should never be used as it represents the absence of a key.
+    MetadataKeyNone = 0;
+    // The value for this key contains chain metadata
+    MetadataKeyChainMetadata = 1;
 }

@@ -89,7 +89,12 @@ impl Dht {
     }
 
     /// Create an actor
-    fn actor(&self, request_receiver: mpsc::Receiver<DhtRequest>, shutdown_signal: ShutdownSignal) -> DhtActor {
+    fn actor(
+        &self,
+        request_receiver: mpsc::Receiver<DhtRequest>,
+        shutdown_signal: ShutdownSignal,
+    ) -> DhtActor<'static>
+    {
         DhtActor::new(
             self.config.clone(),
             Arc::clone(&self.node_identity),
