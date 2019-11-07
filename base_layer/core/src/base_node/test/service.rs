@@ -79,7 +79,7 @@ where
 {
     let comms_config = CommsConfig {
         node_identity: Arc::clone(&node_identity),
-        host: "127.0.0.1".parse().unwrap(),
+        peer_connection_listening_address: "127.0.0.1".parse().unwrap(),
         socks_proxy_address: None,
         control_service: ControlServiceConfig {
             listener_address: node_identity.control_service_address(),

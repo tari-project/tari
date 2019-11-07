@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::{I2PAddress, OnionAddress};
+use crate::connection::net_address::ip_dns::IpDnsAddress;
 
 /// Provides simple parsing functionality for address strings.
 /// Currently, it contains parsing implementations for Onion and I2P.
@@ -38,27 +39,32 @@ impl<'a> AddressParser<'a> {
         }
     }
 
+    /// Parse IP Dns address. This parser only does basic validation and does not conform to IETF RFC 1123
+    pub fn parse_ip_dns(&mut self) -> Option<IpDnsAddress> {
+        self.read_atomic(|p| {
+            let host = p.read_dns_string().filter(|s| s.contains('.') || s == "localhost")?;
+
+            p.consume_char(':')?;
+
+            let port = p.read_number()?;
+
+            if port > u64::from(std::u16::MAX) {
+                return None;
+            }
+
+            Some(IpDnsAddress {
+                host,
+                port: port as u16,
+            })
+        })
+    }
+
     /// Parse I2P address
     pub fn parse_i2p(&mut self) -> Option<I2PAddress> {
         self.read_atomic(|p| {
-            let name = match p.read_base32_string() {
-                Some(n) => {
-                    if n.len() != 52 {
-                        return None;
-                    }
-                    n
-                },
-                None => return None,
-            };
+            let name = p.read_base32_string().filter(|base32| base32.len() == 52)?;
 
-            match p.read_until_end() {
-                Some(s) => {
-                    if s.to_ascii_lowercase() != b".b32.i2p" {
-                        return None;
-                    }
-                },
-                None => return None,
-            }
+            p.read_until_end().filter(|s| s.to_ascii_lowercase() == b".b32.i2p")?;
 
             Some(I2PAddress { name })
         })
@@ -67,33 +73,16 @@ impl<'a> AddressParser<'a> {
     /// Parse Onion address
     pub fn parse_onion(&mut self) -> Option<OnionAddress> {
         self.read_atomic(|p| {
-            let public_key = match p.read_base32_string() {
-                Some(pk) => {
-                    // Valid onion address lengths
-                    if pk.len() != 16 && pk.len() != 56 {
-                        return None;
-                    }
+            let public_key = p.read_base32_string()
+                // Valid onion address lengths
+                .filter(|pk| pk.len() == 16 || pk.len() == 56)?;
 
-                    pk
-                },
-                _ => return None,
-            };
-
-            match p.read_until_char(':') {
-                Some(buf) => {
-                    if buf.to_ascii_lowercase() != b".onion" {
-                        return None;
-                    }
-                },
-                None => return None,
-            }
+            p.read_until_char(':')
+                .filter(|buf| buf.to_ascii_lowercase() == b".onion")?;
 
             p.consume_char(':')?;
 
-            let port = match p.read_number() {
-                Some(p) => p,
-                None => return None,
-            };
+            let port = p.read_number()?;
 
             if port > u64::from(std::u16::MAX) {
                 return None;
@@ -107,7 +96,7 @@ impl<'a> AddressParser<'a> {
     }
 
     fn is_base32_char(&self, ch: char) -> bool {
-        if ch >= 'A' && ch <= 'Z' {
+        if ch >= 'a' && ch <= 'z' {
             return true;
         }
 
@@ -121,7 +110,7 @@ impl<'a> AddressParser<'a> {
     fn read_base32_string(&mut self) -> Option<String> {
         let mut buf = vec![];
         while self.pos < self.data.len() {
-            let ch = self.data[self.pos].to_ascii_uppercase();
+            let ch = self.data[self.pos].to_ascii_lowercase();
             if !self.is_base32_char(ch as char) {
                 break;
             }
@@ -134,6 +123,40 @@ impl<'a> AddressParser<'a> {
                 Ok(s) => Some(s),
                 Err(_) => None,
             }
+        } else {
+            None
+        }
+    }
+
+    fn is_dns_char(&self, ch: char) -> bool {
+        if ch >= 'a' && ch <= 'z' {
+            return true;
+        }
+
+        if ch >= '0' && ch <= '9' {
+            return true;
+        }
+
+        if ch == '-' || ch == '.' {
+            return true;
+        }
+
+        false
+    }
+
+    fn read_dns_string(&mut self) -> Option<String> {
+        let mut buf = vec![];
+        while self.pos < self.data.len() {
+            let ch = self.data[self.pos].to_ascii_lowercase();
+            if !self.is_dns_char(ch as char) {
+                break;
+            }
+            buf.push(ch);
+            self.pos += 1;
+        }
+
+        if !buf.is_empty() {
+            String::from_utf8(buf).ok()
         } else {
             None
         }
