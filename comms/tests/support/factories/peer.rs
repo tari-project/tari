@@ -30,6 +30,7 @@ use tari_comms::{
 
 use crate::support::makers::{comms_keys as ristretto_maker, node_id as node_id_maker};
 
+use chrono::Utc;
 use std::iter::repeat_with;
 use tari_comms::peer_manager::PeerFeatures;
 
@@ -94,6 +95,7 @@ impl TestFactory for PeerFactory {
             addresses: addresses.into(),
             features: self.peer_features,
             connection_stats: Default::default(),
+            added_at: Utc::now().naive_utc(),
         })
     }
 }

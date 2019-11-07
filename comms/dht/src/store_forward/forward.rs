@@ -176,7 +176,7 @@ where
         Ok(match header_dest {
             NodeDestination::Unknown => {
                 // Send to the current nodes nearest neighbours
-                BroadcastStrategy::Neighbours(Box::new(excluded_peers))
+                BroadcastStrategy::Neighbours(excluded_peers)
             },
             NodeDestination::PublicKey(dest_public_key) => {
                 if self.peer_manager.exists(&dest_public_key) {
@@ -184,7 +184,7 @@ where
                     BroadcastStrategy::DirectPublicKey(dest_public_key)
                 } else {
                     // Send to the current nodes nearest neighbours
-                    BroadcastStrategy::Neighbours(Box::new(excluded_peers))
+                    BroadcastStrategy::Neighbours(excluded_peers)
                 }
             },
             NodeDestination::NodeId(dest_node_id) => {
@@ -195,7 +195,7 @@ where
                     },
                     Err(_) => {
                         // Send to peers that are closest to the destination network region
-                        BroadcastStrategy::Neighbours(Box::new(excluded_peers))
+                        BroadcastStrategy::Neighbours(excluded_peers)
                     },
                 }
             },

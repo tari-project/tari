@@ -87,4 +87,12 @@ impl<T> Connectivity for CountDialer<T> {
     fn disconnect_peer(&self, _: &NodeId) -> Result<Option<Arc<PeerConnection>>, ConnectionManagerError> {
         Ok(None)
     }
+
+    fn set_last_connection_failed(&self, _: &NodeId) -> Result<(), ConnectionManagerError> {
+        unimplemented!()
+    }
+
+    fn set_last_connection_succeeded(&self, _: &NodeId) -> Result<(), ConnectionManagerError> {
+        unimplemented!()
+    }
 }

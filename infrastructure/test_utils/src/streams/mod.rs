@@ -41,14 +41,14 @@ where
 /// # use tokio::runtime::Runtime;
 /// # use futures::stream;
 /// # use std::time::Duration;
-/// # use tari_test_utils::stream_collect;
+/// # use tari_test_utils::collect_stream;
 ///
 /// let rt = Runtime::new().unwrap();
 /// let stream = stream::iter(1..10);
-/// assert_eq!(stream_collect!(rt, stream, take=3, timeout=Duration::from_secs(1)), vec![1,2,3]);
+/// assert_eq!(collect_stream!(rt, stream, take=3, timeout=Duration::from_secs(1)), vec![1,2,3]);
 /// ```
 #[macro_export]
-macro_rules! stream_collect {
+macro_rules! collect_stream {
     ($runtime:expr, $stream:expr, take=$take:expr, timeout=$timeout:expr $(,)?) => {{
         use futures::StreamExt as __FuturesStreamExt;
         use tokio::future::FutureExt as __TokioFuturesExt;
@@ -73,23 +73,23 @@ macro_rules! stream_collect {
 /// # use tokio::runtime::Runtime;
 /// # use futures::stream;
 /// # use std::time::Duration;
-/// # use tari_test_utils::stream_collect_count;
+/// # use tari_test_utils::collect_stream_count;
 ///
 /// let rt = Runtime::new().unwrap();
 /// let stream = stream::iter(vec![1,2,2,3,2]);
-/// assert_eq!(stream_collect_count!(rt, stream, timeout=Duration::from_secs(1)).get(&2), Some(&3));
+/// assert_eq!(collect_stream_count!(rt, stream, timeout=Duration::from_secs(1)).get(&2), Some(&3));
 /// ```
 #[macro_export]
-macro_rules! stream_collect_count {
+macro_rules! collect_stream_count {
     ($runtime:expr, $stream:expr, take=$take:expr, timeout=$timeout:expr$(,)?) => {{
         use std::collections::HashMap;
-        let items = $crate::stream_collect!($runtime, $stream, take = $take, timeout = $timeout);
+        let items = $crate::collect_stream!($runtime, $stream, take = $take, timeout = $timeout);
         $crate::streams::get_item_counts(items)
     }};
 
     ($runtime:expr, $stream:expr, timeout=$timeout:expr $(,)?) => {{
         use std::collections::HashMap;
-        let items = $crate::stream_collect!($runtime, $stream, timeout = $timeout);
+        let items = $crate::collect_stream!($runtime, $stream, timeout = $timeout);
         $crate::streams::get_item_counts(items)
     }};
 }

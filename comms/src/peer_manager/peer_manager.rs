@@ -23,8 +23,9 @@
 use crate::{
     connection::net_address::NetAddress,
     peer_manager::{
+        connection_stats::PeerConnectionStats,
         node_id::NodeId,
-        peer::{Peer, PeerConnectionStats, PeerFlags},
+        peer::{Peer, PeerFlags},
         peer_storage::PeerStorage,
         PeerFeatures,
         PeerManagerError,
@@ -62,6 +63,7 @@ impl PeerManager {
         net_addresses: Option<Vec<NetAddress>>,
         flags: Option<PeerFlags>,
         peer_features: Option<PeerFeatures>,
+        connection_stats: Option<PeerConnectionStats>,
     ) -> Result<(), PeerManagerError>
     {
         acquire_write_lock!(self.peer_storage).update_peer(
@@ -70,17 +72,22 @@ impl PeerManager {
             net_addresses,
             flags,
             peer_features,
-            None,
+            connection_stats,
         )
     }
 
-    pub fn update_peer_connection_stats(
-        &self,
-        public_key: &CommsPublicKey,
-        connection_stats: PeerConnectionStats,
-    ) -> Result<(), PeerManagerError>
-    {
-        acquire_write_lock!(self.peer_storage).update_peer(public_key, None, None, None, None, Some(connection_stats))
+    pub fn set_success_connection_state(&self, node_id: &NodeId) -> Result<(), PeerManagerError> {
+        let mut storage = acquire_write_lock!(self.peer_storage);
+        let mut peer = storage.find_by_node_id(node_id)?;
+        peer.connection_stats.set_connection_success();
+        storage.add_peer(peer)
+    }
+
+    pub fn set_failed_connection_state(&self, node_id: &NodeId) -> Result<(), PeerManagerError> {
+        let mut storage = acquire_write_lock!(self.peer_storage);
+        let mut peer = storage.find_by_node_id(node_id)?;
+        peer.connection_stats.set_connection_failed();
+        storage.add_peer(peer)
     }
 
     /// The peer with the specified public_key will be removed from the PeerManager

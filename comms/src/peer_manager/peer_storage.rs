@@ -24,8 +24,9 @@ use crate::{
     connection::net_address::NetAddress,
     consts::{COMMS_RNG, PEER_MANAGER_MAX_FLOOD_PEERS},
     peer_manager::{
+        connection_stats::PeerConnectionStats,
         node_id::{NodeDistance, NodeId},
-        peer::{Peer, PeerConnectionStats, PeerFlags},
+        peer::{Peer, PeerFlags},
         peer_key::{generate_peer_key, PeerKey},
         PeerFeatures,
         PeerManagerError,
@@ -505,7 +506,7 @@ where DS: KeyValueStore<PeerKey, Peer>
             .map_err(PeerManagerError::DatabaseError)
     }
 
-    /// Enables Thread safe access - Mark that a successful connection was established with the specified net address
+    /// Mark that a successful connection was established with the specified net address
     pub fn mark_successful_connection_attempt(&mut self, net_address: &NetAddress) -> Result<(), PeerManagerError> {
         let peer_key = *self
             .net_address_hm
@@ -516,6 +517,7 @@ where DS: KeyValueStore<PeerKey, Peer>
             .get(&peer_key)
             .map_err(PeerManagerError::DatabaseError)?
             .ok_or(PeerManagerError::PeerNotFoundError)?;
+
         peer.addresses
             .mark_successful_connection_attempt(net_address)
             .map_err(PeerManagerError::NetAddressError)?;
@@ -524,7 +526,7 @@ where DS: KeyValueStore<PeerKey, Peer>
             .map_err(PeerManagerError::DatabaseError)
     }
 
-    /// Enables Thread safe access - Mark that a connection could not be established with the specified net address
+    /// Mark that a connection could not be established with the specified net address
     pub fn mark_failed_connection_attempt(&mut self, net_address: &NetAddress) -> Result<(), PeerManagerError> {
         let peer_key = *self
             .net_address_hm
@@ -535,6 +537,7 @@ where DS: KeyValueStore<PeerKey, Peer>
             .get(&peer_key)
             .map_err(PeerManagerError::DatabaseError)?
             .ok_or(PeerManagerError::PeerNotFoundError)?;
+
         peer.addresses
             .mark_failed_connection_attempt(net_address)
             .map_err(PeerManagerError::NetAddressError)?;
@@ -556,6 +559,7 @@ where DS: KeyValueStore<PeerKey, Peer>
             .map_err(PeerManagerError::DatabaseError)?
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         peer.addresses.reset_connection_attempts();
+
         self.peers
             .insert(peer_key, peer)
             .map_err(PeerManagerError::DatabaseError)

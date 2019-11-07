@@ -39,7 +39,7 @@ use tari_p2p::{
     },
 };
 use tari_service_framework::StackBuilder;
-use tari_test_utils::stream_collect;
+use tari_test_utils::collect_stream;
 use tokio::runtime::Runtime;
 
 pub fn setup_liveness_service(
@@ -131,7 +131,7 @@ fn end_to_end() {
         pingpong1_total = (pingpong1_total.0, pingpong1_total.1 + 1);
     }
 
-    let events = stream_collect!(
+    let events = collect_stream!(
         runtime,
         liveness1.get_event_stream_fused(),
         take = 18,
@@ -158,7 +158,7 @@ fn end_to_end() {
 
     assert_eq!(pong_count, 8);
 
-    let events = stream_collect!(
+    let events = collect_stream!(
         runtime,
         liveness2.get_event_stream_fused(),
         take = 18,

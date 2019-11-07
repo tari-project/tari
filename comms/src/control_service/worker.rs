@@ -45,11 +45,10 @@ use crate::{
     },
     connection_manager::{ConnectionManager, EstablishLockResult},
     message::{Envelope, EnvelopeBody, Frame, FrameSet, MessageEnvelopeHeader, MessageExt, MessageFlags},
-    peer_manager::{peer::PeerConnectionStats, NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManagerError},
+    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManagerError},
     types::CommsPublicKey,
     utils::crypt,
 };
-use chrono::Utc;
 use log::*;
 use prost::Message;
 use std::{
@@ -298,6 +297,7 @@ impl ControlServiceWorker {
                     Some(vec![control_service_address.clone()]),
                     None,
                     Some(peer_features),
+                    None,
                 )?;
 
                 peer
@@ -329,21 +329,7 @@ impl ControlServiceWorker {
         });
 
         match establish_lock_result {
-            EstablishLockResult::Ok(result) => {
-                let _ = self
-                    .connection_manager
-                    .peer_manager()
-                    .update_peer_connection_stats(&peer.public_key, PeerConnectionStats {
-                        connected_at: Some(Utc::now().naive_utc()),
-                        last_connect_failed_at: None,
-                    })
-                    .or_else(|err| {
-                        warn!(target: LOG_TARGET, "Failed to update peer because '{}'", err);
-                        Err(err)
-                    });
-
-                result
-            },
+            EstablishLockResult::Ok(result) => result,
             EstablishLockResult::Collision => {
                 warn!(
                     target: LOG_TARGET,

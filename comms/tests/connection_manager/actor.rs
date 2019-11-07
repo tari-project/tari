@@ -57,7 +57,6 @@ fn with_alice_and_bob(cb: impl FnOnce(CommsTestNode, CommsTestNode)) {
     let alice_identity = Arc::new(factories::node_identity::create().build().unwrap());
 
     //---------------------------------- Node B Setup --------------------------------------------//
-
     let bob_control_port_address = factories::net_address::create().build().unwrap();
     let bob_identity = Arc::new(
         factories::node_identity::create()

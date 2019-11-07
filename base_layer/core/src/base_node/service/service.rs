@@ -335,7 +335,7 @@ where B: BlockchainBackend
 
         let broadcast_strategy = match request_type {
             NodeCommsRequestType::Single => BroadcastStrategy::Random(1),
-            NodeCommsRequestType::Many => BroadcastStrategy::Neighbours(Box::new(Vec::new())),
+            NodeCommsRequestType::Many => BroadcastStrategy::Neighbours(Vec::new()),
         };
 
         let dest_count = self

@@ -99,6 +99,14 @@ impl DialState {
     }
 }
 
+macro_rules! log_if_error {
+    (target: $target:expr, $msg:expr, $expr:expr) => {{
+        if let Err(err) = $expr {
+            log::error!(target: $target, $msg, err);
+        }
+    }};
+}
+
 /// Responsible for dialing peers and sending queued messages
 pub struct OutboundMessageService<TMsgStream> {
     config: OutboundServiceConfig,
@@ -181,6 +189,11 @@ where TMsgStream: Stream<Item = OutboundMessage> + Unpin
                                 state.node_id
                             );
                             if state.attempts >= self.config.max_attempts {
+                                log_if_error!(
+                                    target: LOG_TARGET,
+                                    "Unable to set last connection failed because '{}'",
+                                    self.connection_manager.set_last_connection_failed(state.node_id.clone()).await
+                                );
                                 self.dial_cancel_signals.remove(&state.node_id);
                                 self.pending_connect_requests.remove(&state.node_id);
                                 debug!(target: LOG_TARGET, "NodeId={} Maximum attempts reached. Discarding messages.", state.node_id);
@@ -306,6 +319,13 @@ where TMsgStream: Stream<Item = OutboundMessage> + Unpin
     {
         match connect_result {
             Ok(conn) => {
+                log_if_error!(
+                    target: LOG_TARGET,
+                    "Unable to set last connection success because '{}'",
+                    self.connection_manager
+                        .set_last_connection_succeeded(state.node_id.clone())
+                        .await
+                );
                 if let Err(err) = self.handle_new_connection(&state.node_id, conn).await {
                     error!(
                         target: LOG_TARGET,
@@ -409,6 +429,7 @@ mod test {
     use futures::{channel::mpsc, stream, SinkExt};
     use prost::Message;
     use tari_shutdown::Shutdown;
+    use tari_test_utils::collect_stream;
     use tokio::runtime::Runtime;
 
     #[test]
@@ -504,7 +525,19 @@ mod test {
         assert_send_msg(msg, b"E");
 
         // Connection should be reused, so connection manager should not receive another request to connect.
-        assert!(conn_man_rx.try_next().is_err());
+        let requests = collect_stream!(rt, conn_man_rx, take = 2, timeout = Duration::from_secs(3));
+        assert!(requests.iter().all(|req| {
+            match req {
+                ConnectionManagerRequest::DialPeer(_) => false,
+                _ => true,
+            }
+        }));
+        assert!(requests.iter().any(|req| {
+            match req {
+                ConnectionManagerRequest::SetLastConnectionSucceeded(_) => true,
+                _ => false,
+            }
+        }));
 
         // Abort pending connections and shutdown the service
         shutdown.trigger().unwrap();

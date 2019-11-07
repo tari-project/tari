@@ -226,7 +226,7 @@ where
     async fn ping_neighbours(&mut self) -> Result<(), LivenessError> {
         let peers = self
             .dht_requester
-            .select_peers(BroadcastStrategy::Neighbours(Box::new(Vec::new())))
+            .select_peers(BroadcastStrategy::Neighbours(Vec::new()))
             .await?;
         trace!(
             target: LOG_TARGET,
