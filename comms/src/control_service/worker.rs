@@ -274,8 +274,8 @@ impl ControlServiceWorker {
             features,
         } = message;
 
+        let node_id = self.validate_node_id(&envelope_header.public_key, &node_id)?;
         let control_service_address = control_service_address.parse::<NetAddress>()?;
-        let node_id = NodeId::from_bytes(&node_id).map_err(|_| ControlServiceError::InvalidNodeId)?;
         let peer_features = PeerFeatures::from_bits_truncate(features);
 
         debug!(
@@ -349,6 +349,20 @@ impl ControlServiceWorker {
                     })
                 }
             },
+        }
+    }
+
+    fn validate_node_id(&self, public_key: &CommsPublicKey, raw_node_id: &[u8]) -> Result<NodeId> {
+        // The reason that we check the given node id against what we expect instead of just using the given node id
+        // is in future the NodeId may not necessarily be derived from the public key (i.e. DAN node is registered on
+        // the base layer)
+        let expected_node_id = NodeId::from_key(public_key).map_err(|_| ControlServiceError::InvalidNodeId)?;
+        let node_id = NodeId::from_bytes(&raw_node_id).map_err(|_| ControlServiceError::InvalidNodeId)?;
+        if expected_node_id == node_id {
+            Ok(expected_node_id)
+        } else {
+            // TODO: Misbehaviour?
+            Err(ControlServiceError::InvalidNodeId)
         }
     }
 

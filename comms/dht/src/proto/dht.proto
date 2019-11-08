@@ -5,15 +5,20 @@ package tari.dht;
 // JoinMessage contains the information required for a network join request.
 //
 // Message containing contact information for a node wishing to join the network.
-// When this message is received, the
+// When this message is received the node validates the provided information and,
+// if everything checks out, the peer is added to the peer list and the join request
+// is propagated to the network.
 message JoinMessage {
     bytes node_id = 1;
     repeated string addresses = 2;
     uint64 peer_features = 3;
 }
 
-// The DiscoverMessage stores the information required for a network discover request. It has all the information
-// required to locate and contact the source node.
+// The DiscoverMessage stores the information required for a network discover request.
+//
+// When this message is received and can be decrypted, this node verifies the information
+// provided and, if everything checks out, a Join request is sent to the origin of this
+// Discovery request so that the source node knows about this node.
 message DiscoverMessage {
     bytes node_id = 1;
     repeated string addresses = 2;

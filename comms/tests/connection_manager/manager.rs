@@ -148,19 +148,19 @@ fn establish_peer_connection() {
         Ok(())
     });
 
-    handle1.timeout_join(Duration::from_millis(2000)).unwrap();
-    handle2.timeout_join(Duration::from_millis(2000)).unwrap();
+    handle1.timeout_join(Duration::from_millis(5000)).unwrap();
+    handle2.timeout_join(Duration::from_millis(5000)).unwrap();
 
     // Give the peer connections a moment to receive and the message sink connections to send
     pause();
 
     node_B_control_service.shutdown().unwrap();
     node_B_control_service
-        .timeout_join(Duration::from_millis(1000))
+        .timeout_join(Duration::from_millis(5000))
         .unwrap();
 
     assert_eq!(node_A_connection_manager.get_active_connection_count(), 1);
-    let (_, _items) = stream_assert_count(consumer_rx_b, 2, 2000).unwrap();
+    let (_, _items) = stream_assert_count(consumer_rx_b, 2, 5000).unwrap();
 
     match Arc::try_unwrap(node_A_connection_manager) {
         Ok(manager) => manager.shutdown().into_iter().map(|r| r.unwrap()).collect::<Vec<()>>(),
