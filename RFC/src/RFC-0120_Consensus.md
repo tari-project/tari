@@ -64,7 +64,7 @@ Every [block] MUST conform to the following:
 
 * Have a _single_ valid coinbase [UTXO] and kernel
 * have a _single_ valid blockheader;
-* [cut-through] has been applied where possible;
+* [cut-through] MUST have been applied where possible;
 * every [UTXO] has a valid [range proof].
 
 If a [block] does not confirm to the above, the block should be rejected as invalid and the peer from which it was received marked as a malicious peer.
@@ -118,7 +118,7 @@ This is the hash of the previous block's header.
 
 The prev_hash MUST confirm to the following:
 
-* represented as an array of unsigned 8-bit integers (bytes).
+* represented as an array of unsigned 8-bit integers (bytes) in little-endian format.
 * MUST be a hash of the entire contents of the previous block's header.
 
 #### Timestamp
@@ -137,7 +137,7 @@ This is the merkle root of the outputs. This is calculated in the following way:
 
 The output_mr MUST confirm to the following:
 
-* Represented as an array of unsigned 8-bit integers (bytes).
+* Represented as an array of unsigned 8-bit integers (bytes) in little-endian format.
 * The hashing function used MUST be blake2b with a 256 bit digest.
 
 #### Range_proof_mr
@@ -146,7 +146,7 @@ This is the merkle root of the range proofs.
 
 The range_proof_mr MUST confirm to the following:
 
-* Represented as an array of unsigned 8-bit integers (bytes).
+* Represented as an array of unsigned 8-bit integers (bytes) in little-endian format.
 * The hashing function used must be blake2b with a 256 bit digest.
 
 #### Kernel_mr
@@ -155,7 +155,7 @@ This is the merkle root of the outputs.
 
 The kernel_mr MUST confirm to the following:.
 
-* Must be transmitted as an array of unsigned 8-bit integers (bytes).
+* Must be transmitted as an array of unsigned 8-bit integers (bytes) in little-endian format.
 * The hashing function used must be blake2b with a 256 bit digest.
 
 #### Total_kernel_offset
@@ -164,7 +164,7 @@ This is total summed offset of all the transactions contained in this block.
 
 The total_kernel_offset MUST confirm to the following:
 
-* Must be transmitted as an array of unsigned 8-bit integers (bytes)
+* Must be transmitted as an array of unsigned 8-bit integers (bytes) in little-endian format
 
 #### Total_difficulty
 
@@ -172,8 +172,9 @@ This is the total accumulated difficulty of the mined chained.
 
 The total_difficulty MUST confirm to the following:
 
-* Must be transmitted as unsigned 64-bit integer;
-* MUST be larger than the previous block's `total_difficulty`;
+* Must be transmitted as unsigned 64-bit integer.
+* MUST be larger than the previous block's `total_difficulty`.
+* meet the difficulty target for the block as determined by the consensus difficulty algorithm.
 
 #### Nonce
 
@@ -202,7 +203,7 @@ N: Block window - This is the amount of blocks used when calculating difficulty 
 ### MTP
 
 The Median Time Past. This is the lower limit of a time. Any time that is less than the MTP is rejected.
-THe MTP is calculated as the average timestamp of the previous 11 blocks.
+THe MTP is calculated as the median timestamp of the previous 11 blocks.
 
 [block]: Glossary.md#block
 [block header]: Glossary.md#block-header
