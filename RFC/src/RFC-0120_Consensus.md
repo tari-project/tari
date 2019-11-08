@@ -62,8 +62,8 @@ The aim of this Request for Comment (RFC) is to describe the fields that a block
 
 Every [block] MUST conform to the following:
 
-* Have one and only valid coinbase [UTXO] and kernel
-* have one and only valid blockheader;
+* Have a _single_ valid coinbase [UTXO] and kernel
+* have a _single_ valid blockheader;
 * [cut-through] has been applied where possible;
 * every [UTXO] has a valid [range proof].
 
@@ -87,7 +87,7 @@ Every [block header] MUST contain the following fields:
 
 The [block header] MUST confirm to the following:
 
-* The nonce and pow must be a valid for the [block header].
+* The nonce and [PoW](#pow) must be a valid for the [block header].
 * All the merkle roots must be valid for the states after the [block] was applied to the local state.
 
 If the [block header] does not confirm to any of the above, the [block] needs to be rejected and the peer the it was received from, marked as a malicious peer.
@@ -98,18 +98,18 @@ This is the version currently running on the chain.
 
 The version MUST confirm to the following:
 
-* Must be transmitted as a u16.
-* Current version is 1.
+* It is represented as an unsigned 16-bit integer.
+* Version numbers should be incremented whenever there is a change in the blockchain schema starting from 1.
 
 #### Height
 
-This is the counter how much blocks has passed since the genesis block.
+A counter indicating how much blocks have passed since the genesis block (inclusive).
 
 The height MUST confirm to the following:
 
-* Must be transmitted as a u64.
-* The height must increase be exactly 1 above the previous block.
-* Must start at 1 which is the genesis block.
+* Represented as an unsigned 64-bit integer.
+* The height MUST be exactly 1 more than the block referenced in the `prev_hash` block header field.
+* The genesis block MUST have a height of 1.
 
 #### Prev_hash
 
@@ -118,7 +118,7 @@ This is the hash of the previous block's header.
 The prev_hash MUST confirm to the following:
 
 * Must be transmitted as an array of u8.
-* Must be the hash of the previous block's header.
+* MUST be a hash of the entire contents of the previous block's header.
 * Must include the entire previous block's header.
 
 #### Timestamp
@@ -128,8 +128,8 @@ This is the timestamp at which the block was mined.
 The timestamp MUST confirm to the following:
 
 * Must be transmitted as <TO BE CONFIRMED>.
-* Must be less than [FTL].
-* Must be higher than the [MTP]
+* MUST be less than [FTL].
+* MUST be higher than the [MTP]
 
 #### Output_mr
 
@@ -137,8 +137,8 @@ This is the merkle root of the outputs. This is calculated in the following way:
 
 The output_mr MUST confirm to the following:
 
-* Must be transmitted as an array of [u8].
-* The hashing function used must be blake2b with a 256 bit digest.
+* Represented as an array of unsigned 8-bit integers (bytes).
+* The hashing function used MUST be blake2b with a 256 bit digest.
 
 #### Range_proof_mr
 
@@ -146,7 +146,7 @@ This is the merkle root of the range proofs.
 
 The range_proof_mr MUST confirm to the following:
 
-* Must be transmitted as an array of [u8].
+* Represented as an array of unsigned 8-bit integers (bytes).
 * The hashing function used must be blake2b with a 256 bit digest.
 
 #### Kernel_mr
@@ -160,7 +160,7 @@ The kernel_mr MUST confirm to the following:.
 
 #### Total_kernel_offset
 
-This is total summed offset of all the transactions contain in this block.
+This is total summed offset of all the transactions contained in this block.
 
 The total_kernel_offset MUST confirm to the following:
 
@@ -173,7 +173,7 @@ This is the total accumulated difficulty of the mined chained.
 The total_difficulty MUST confirm to the following:
 
 * Must be transmitted as <TO BE CONFIRMED>;
-* Must increase by at least 1 above the previous block;
+* MUST be larger than the previous block's `total_difficulty`;
 
 #### Nonce
 
@@ -183,11 +183,11 @@ The nonce MUST confirm to the following:
 
 * Must be transmitted as <TO BE CONFIRMED>;
 
-#### Pow
+#### PoW
 
 This is Proof of Work algorithm that was used to solve the Proof of Work. This is used in conjunction with the Nonce
 
-The pow MUST confirm to the following:
+The [PoW] MUST confirm to the following:
 
 * Must be transmitted as <TO BE CONFIRMED>;
 

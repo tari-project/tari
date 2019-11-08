@@ -53,7 +53,7 @@ A collection transactions and associated metadata recorded as a single entity in
 ## Block Header
 [block header]: #block-header "A collection of information validating the information within a [block]"
 
-A collection of information validating the information within a [block].
+A data structure that validates the information contained in a [block].
 
 ## Block reward
 [block reward]: #block-reward "The amount of Tari created in every block"
