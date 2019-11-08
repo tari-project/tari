@@ -119,7 +119,6 @@ The prev_hash MUST confirm to the following:
 
 * represented as an array of unsigned 8-bit integers (bytes).
 * MUST be a hash of the entire contents of the previous block's header.
-* Must include the entire previous block's header.
 
 #### Timestamp
 
@@ -127,9 +126,9 @@ This is the timestamp at which the block was mined.
 
 The timestamp MUST confirm to the following:
 
-* Must be transmitted as <TO BE CONFIRMED>.
+* Must be transmitted as UNIX timestamp.
 * MUST be less than [FTL].
-* MUST be higher than the [MTP]
+* MUST be higher than the [MTP].
 
 #### Output_mr
 
@@ -155,7 +154,7 @@ This is the merkle root of the outputs.
 
 The kernel_mr MUST confirm to the following:.
 
-* Must be transmitted as an array of [u8].
+* Must be transmitted as an array of unsigned 8-bit integers (bytes).
 * The hashing function used must be blake2b with a 256 bit digest.
 
 #### Total_kernel_offset
@@ -164,7 +163,7 @@ This is total summed offset of all the transactions contained in this block.
 
 The total_kernel_offset MUST confirm to the following:
 
-* Must be transmitted as <TO BE CONFIRMED>
+* Must be transmitted as an array of unsigned 8-bit integers (bytes)
 
 #### Total_difficulty
 
@@ -172,7 +171,7 @@ This is the total accumulated difficulty of the mined chained.
 
 The total_difficulty MUST confirm to the following:
 
-* Must be transmitted as <TO BE CONFIRMED>;
+* Must be transmitted as unsigned 64-bit integer;
 * MUST be larger than the previous block's `total_difficulty`;
 
 #### Nonce
@@ -181,7 +180,7 @@ This is the nonce used in solving the Proof of Work.
 
 The nonce MUST confirm to the following:
 
-* Must be transmitted as <TO BE CONFIRMED>;
+* Must be transmitted as unsigned 64-bit integer;
 
 #### PoW
 
@@ -195,7 +194,9 @@ The [PoW] MUST confirm to the following:
 ### FTL
 
 The Future Time Limit. This is how far into the future a time is accepted as a valid time. Any time that is more than the FTL is rejected until such a time that it is not less than the FTL.
-The FTL is calculated as the (Target time)*(Block window)/20
+The FTL is calculated as (T*N)/20 with T and N defined as:
+T: Target time - This is the ideal time that should pass between blocks which have been mined.
+N: Block window - This is the amount of blocks used when calculating difficulty adjustments.
 
 ### MTP
 

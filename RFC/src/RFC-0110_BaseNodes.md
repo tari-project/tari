@@ -1,4 +1,4 @@
-# RFC-0120/BaseNodes
+# RFC-0110/BaseNodes
 
 ## Base Layer Full Nodes (Base Nodes)
 
