@@ -30,7 +30,7 @@
 //! If the Peer Manager is instantiated with a provided DataStore it will provide persistence via the provided DataStore
 //! implementation.
 //!
-//! ```edition2018
+//! ```norun
 //! # use tari_comms::peer_manager::{NodeId, Peer, PeerManager, PeerFlags, PeerFeatures};
 //! # use tari_comms::types::CommsPublicKey;
 //! # use tari_comms::connection::{NetAddress, NetAddressesWithStats};
