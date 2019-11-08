@@ -21,6 +21,13 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::emission::EmissionSchedule;
+use chrono::{DateTime, Duration, Utc};
+use std::ops::Add;
+
+// This is the our target time in seconds between blocks
+pub const TARGET_BLOCK_INTERVAL: u64 = 60;
+// When doing difficulty adjustments and FTL calculations this is the amount of blocks we look at
+pub const DIFFICULTY_BLOCK_WINDOW: u64 = 150;
 
 /// This is used to control all consensus values.
 pub struct ConsensusRules {
@@ -30,6 +37,9 @@ pub struct ConsensusRules {
     emission_schedule: EmissionSchedule,
     /// Current version of the blockchain
     blockchain_version: u16,
+    /// The Future Time Limit (FTL) of the blockchain in seconds. This is the max allowable timestamp that is excepted.
+    /// We use TxN/20 where T = target time = 60 seconds, and N = block_window = 150
+    future_time_limit: u64,
 }
 
 impl ConsensusRules {
@@ -39,6 +49,7 @@ impl ConsensusRules {
             coinbase_lock_height: 1,
             emission_schedule: EmissionSchedule::new(10_000_000.into(), 0.999, 100.into()),
             blockchain_version: 1,
+            future_time_limit: TARGET_BLOCK_INTERVAL * DIFFICULTY_BLOCK_WINDOW / 20,
         }
     }
 
@@ -55,5 +66,11 @@ impl ConsensusRules {
     /// The emission schedule to use for coinbase rewards
     pub fn emission_schedule(&self) -> &EmissionSchedule {
         &self.emission_schedule
+    }
+
+    /// This returns the FTL(Future Time Limit) for blocks
+    /// Any block with a timestamp greater than this is rejected.
+    pub fn ftl(&self) -> DateTime<Utc> {
+        Utc::now().add(Duration::seconds(self.future_time_limit as i64))
     }
 }

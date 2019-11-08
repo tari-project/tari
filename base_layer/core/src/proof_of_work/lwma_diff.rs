@@ -11,11 +11,8 @@ use crate::proof_of_work::{
     error::DifficultyAdjustmentError,
 };
 use std::{cmp, collections::VecDeque};
+use tari_transactions::consensus::{DIFFICULTY_BLOCK_WINDOW, TARGET_BLOCK_INTERVAL};
 
-// target time of 1 minute
-const TARGET: u64 = 60;
-// we should cap the amount of entries in the VecDeques to this number.
-const BLOCK_WINDOW: usize = 150;
 const INITIAL_DIFFICULTY: Difficulty = Difficulty::min();
 
 pub struct LinearWeightedMovingAverage {
@@ -26,7 +23,7 @@ pub struct LinearWeightedMovingAverage {
 
 impl Default for LinearWeightedMovingAverage {
     fn default() -> Self {
-        LinearWeightedMovingAverage::new(BLOCK_WINDOW)
+        LinearWeightedMovingAverage::new(DIFFICULTY_BLOCK_WINDOW as usize)
     }
 }
 
@@ -61,7 +58,7 @@ impl LinearWeightedMovingAverage {
             // 6*T limit prevents large drops in diff from long solve times which would cause oscillations.
             let solve_time = match timestamps[i].checked_sub(timestamps[i - 1]) {
                 None | Some(0) => 1,
-                Some(v) => cmp::min(v, 6 * TARGET),
+                Some(v) => cmp::min(v, 6 * TARGET_BLOCK_INTERVAL),
             };
 
             // Give linearly higher weight to more recent solve times.
@@ -69,7 +66,7 @@ impl LinearWeightedMovingAverage {
             weighted_times += solve_time * i as u64;
         }
         // k is the sum of weights (1+2+..+n) * target_time
-        let k = n * (n + 1) * TARGET / 2;
+        let k = n * (n + 1) * TARGET_BLOCK_INTERVAL / 2;
         let target = ave_difficulty * k as f64 / weighted_times as f64;
         if target > std::u64::MAX as f64 {
             panic!("Difficulty target has overflowed");
