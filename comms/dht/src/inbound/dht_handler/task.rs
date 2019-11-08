@@ -180,18 +180,21 @@ where
 
         let node_id = self.validate_raw_node_id(&dht_header.origin_public_key, &join_msg.node_id)?;
 
-        // TODO: Check/Verify the received peers information. We know that the join request was signed by
-        //       the origin_public_key and that the node id is valid. All that may be needed is to ping
-        //       the address to confirm that it is working. If it isn't, do we disregard the join request,
-        //       or try other known addresses or ?.
-        //       Perhaps we can eagerly
-
         let origin_peer = self.add_or_update_peer(
             &dht_header.origin_public_key,
             node_id,
             addresses,
             PeerFeatures::from_bits_truncate(join_msg.peer_features),
         )?;
+
+        // DO NOT propagate this peer if this node has banned them
+        if origin_peer.is_banned() {
+            warn!(
+                target: LOG_TARGET,
+                "Received Join request for banned peer. This join request will not be propagated."
+            );
+            return Ok(());
+        }
 
         // Send a join request back to the origin peer of the join request if:
         // - this join request was not sent directly from the origin peer but was forwarded (from the source peer), and
@@ -261,12 +264,21 @@ where
         }
 
         let node_id = self.validate_raw_node_id(&message.dht_header.origin_public_key, &discover_msg.node_id)?;
-        self.add_or_update_peer(
+        let origin_peer = self.add_or_update_peer(
             &message.dht_header.origin_public_key,
             node_id,
             addresses,
             PeerFeatures::from_bits_truncate(discover_msg.peer_features),
         )?;
+
+        // Don't send a join request to the origin peer if they are banned
+        if origin_peer.is_banned() {
+            warn!(
+                target: LOG_TARGET,
+                "Received Discovery request for banned peer. This request will be ignored."
+            );
+            return Ok(());
+        }
 
         // Send the origin the current nodes latest contact info
         self.send_join_direct(message.dht_header.origin_public_key).await?;
