@@ -51,4 +51,5 @@ pub enum NodeCommsRequest {
     FetchUtxos(Vec<HashOutput>),
     FetchBlocks(Vec<u64>),
     FetchMmrState(MmrStateRequest),
+    GetNewBlock,
 }

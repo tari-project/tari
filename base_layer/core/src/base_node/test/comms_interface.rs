@@ -23,7 +23,7 @@
 use crate::{
     base_node::comms_interface::{
         CommsInterfaceError,
-        InboundNodeCommsInterface,
+        InboundNodeCommsHandlers,
         MmrStateRequest,
         NodeCommsRequest,
         NodeCommsRequestType,
@@ -65,8 +65,9 @@ async fn test_request_responder(
 
 #[test]
 fn outbound_get_metadata() {
-    let (sender, mut receiver) = reply_channel::unbounded();
-    let mut outbound_nci = OutboundNodeCommsInterface::new(sender);
+    let (request_sender, mut request_receiver) = reply_channel::unbounded();
+    let (block_sender, _) = reply_channel::unbounded();
+    let mut outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
 
     block_on(async {
         let metadata1 = ChainMetadata::new(5, vec![0u8], 2.into(), 3);
@@ -77,7 +78,7 @@ fn outbound_get_metadata() {
         ];
         let (received_metadata, _) = futures::join!(
             outbound_nci.get_metadata(),
-            test_request_responder(&mut receiver, metadata_response)
+            test_request_responder(&mut request_receiver, metadata_response)
         );
         let received_metadata = received_metadata.unwrap();
         assert_eq!(received_metadata.len(), 2);
@@ -89,12 +90,12 @@ fn outbound_get_metadata() {
 #[test]
 fn inbound_get_metadata() {
     let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
-    let inbound_nci = InboundNodeCommsInterface::new(store);
+    let inbound_nch = InboundNodeCommsHandlers::new(store);
 
     test_async(move |rt| {
         rt.spawn(async move {
             if let Ok(NodeCommsResponse::ChainMetadata(received_metadata)) =
-                inbound_nci.handle_request(&NodeCommsRequest::GetChainMetadata).await
+                inbound_nch.handle_request(&NodeCommsRequest::GetChainMetadata).await
             {
                 assert_eq!(received_metadata.height_of_longest_chain, None);
                 assert_eq!(received_metadata.best_block, None);
@@ -109,8 +110,9 @@ fn inbound_get_metadata() {
 
 #[test]
 fn outbound_fetch_kernels() {
-    let (sender, mut receiver) = reply_channel::unbounded();
-    let mut outbound_nci = OutboundNodeCommsInterface::new(sender);
+    let (request_sender, mut request_receiver) = reply_channel::unbounded();
+    let (block_sender, _) = reply_channel::unbounded();
+    let mut outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
 
     block_on(async {
         let kernel = create_test_kernel(5.into(), 0);
@@ -118,7 +120,7 @@ fn outbound_fetch_kernels() {
         let kernel_response: Vec<NodeCommsResponse> = vec![NodeCommsResponse::TransactionKernels(vec![kernel.clone()])];
         let (received_kernels, _) = futures::join!(
             outbound_nci.fetch_kernels(vec![hash]),
-            test_request_responder(&mut receiver, kernel_response)
+            test_request_responder(&mut request_receiver, kernel_response)
         );
         let received_kernels = received_kernels.unwrap();
         assert_eq!(received_kernels.len(), 1);
@@ -129,7 +131,7 @@ fn outbound_fetch_kernels() {
 #[test]
 fn inbound_fetch_kernels() {
     let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
-    let inbound_nci = InboundNodeCommsInterface::new(store.clone());
+    let inbound_nch = InboundNodeCommsHandlers::new(store.clone());
 
     let kernel = create_test_kernel(5.into(), 0);
     let hash = kernel.hash();
@@ -139,7 +141,7 @@ fn inbound_fetch_kernels() {
 
     test_async(move |rt| {
         rt.spawn(async move {
-            if let Ok(NodeCommsResponse::TransactionKernels(received_kernels)) = inbound_nci
+            if let Ok(NodeCommsResponse::TransactionKernels(received_kernels)) = inbound_nch
                 .handle_request(&NodeCommsRequest::FetchKernels(vec![hash]))
                 .await
             {
@@ -154,8 +156,9 @@ fn inbound_fetch_kernels() {
 
 #[test]
 fn outbound_fetch_headers() {
-    let (sender, mut receiver) = reply_channel::unbounded();
-    let mut outbound_nci = OutboundNodeCommsInterface::new(sender);
+    let (request_sender, mut request_receiver) = reply_channel::unbounded();
+    let (block_sender, _) = reply_channel::unbounded();
+    let mut outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
 
     block_on(async {
         let mut header = BlockHeader::new(0);
@@ -163,7 +166,7 @@ fn outbound_fetch_headers() {
         let header_response: Vec<NodeCommsResponse> = vec![NodeCommsResponse::BlockHeaders(vec![header.clone()])];
         let (received_headers, _) = futures::join!(
             outbound_nci.fetch_headers(vec![0]),
-            test_request_responder(&mut receiver, header_response)
+            test_request_responder(&mut request_receiver, header_response)
         );
         let received_headers = received_headers.unwrap();
         assert_eq!(received_headers.len(), 1);
@@ -174,7 +177,7 @@ fn outbound_fetch_headers() {
 #[test]
 fn inbound_fetch_headers() {
     let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
-    let inbound_nci = InboundNodeCommsInterface::new(store.clone());
+    let inbound_nch = InboundNodeCommsHandlers::new(store.clone());
 
     let mut header = BlockHeader::new(0);
     header.height = 0;
@@ -184,7 +187,7 @@ fn inbound_fetch_headers() {
 
     test_async(move |rt| {
         rt.spawn(async move {
-            if let Ok(NodeCommsResponse::BlockHeaders(received_headers)) = inbound_nci
+            if let Ok(NodeCommsResponse::BlockHeaders(received_headers)) = inbound_nch
                 .handle_request(&NodeCommsRequest::FetchHeaders(vec![0]))
                 .await
             {
@@ -199,8 +202,9 @@ fn inbound_fetch_headers() {
 
 #[test]
 fn outbound_fetch_utxos() {
-    let (sender, mut receiver) = reply_channel::unbounded();
-    let mut outbound_nci = OutboundNodeCommsInterface::new(sender);
+    let (request_sender, mut request_receiver) = reply_channel::unbounded();
+    let (block_sender, _) = reply_channel::unbounded();
+    let mut outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
 
     block_on(async {
         let (utxo, _) = create_utxo(MicroTari(10_000));
@@ -208,7 +212,7 @@ fn outbound_fetch_utxos() {
         let utxo_response: Vec<NodeCommsResponse> = vec![NodeCommsResponse::TransactionOutputs(vec![utxo.clone()])];
         let (received_utxos, _) = futures::join!(
             outbound_nci.fetch_utxos(vec![hash]),
-            test_request_responder(&mut receiver, utxo_response)
+            test_request_responder(&mut request_receiver, utxo_response)
         );
         let received_utxos = received_utxos.unwrap();
         assert_eq!(received_utxos.len(), 1);
@@ -219,7 +223,7 @@ fn outbound_fetch_utxos() {
 #[test]
 fn inbound_fetch_utxos() {
     let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
-    let inbound_nci = InboundNodeCommsInterface::new(store.clone());
+    let inbound_nch = InboundNodeCommsHandlers::new(store.clone());
 
     let (utxo, _) = create_utxo(MicroTari(10_000));
     let hash = utxo.hash();
@@ -229,7 +233,7 @@ fn inbound_fetch_utxos() {
 
     test_async(move |rt| {
         rt.spawn(async move {
-            if let Ok(NodeCommsResponse::TransactionOutputs(received_utxos)) = inbound_nci
+            if let Ok(NodeCommsResponse::TransactionOutputs(received_utxos)) = inbound_nch
                 .handle_request(&NodeCommsRequest::FetchUtxos(vec![hash]))
                 .await
             {
@@ -244,15 +248,16 @@ fn inbound_fetch_utxos() {
 
 #[test]
 fn outbound_fetch_blocks() {
-    let (sender, mut receiver) = reply_channel::unbounded();
-    let mut outbound_nci = OutboundNodeCommsInterface::new(sender);
+    let (request_sender, mut request_receiver) = reply_channel::unbounded();
+    let (block_sender, _) = reply_channel::unbounded();
+    let mut outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
 
     block_on(async {
         let block = HistoricalBlock::new(get_genesis_block(), 0, Vec::new());
         let block_response: Vec<NodeCommsResponse> = vec![NodeCommsResponse::HistoricalBlocks(vec![block.clone()])];
         let (received_blocks, _) = futures::join!(
             outbound_nci.fetch_blocks(vec![0]),
-            test_request_responder(&mut receiver, block_response)
+            test_request_responder(&mut request_receiver, block_response)
         );
         let received_blocks = received_blocks.unwrap();
         assert_eq!(received_blocks.len(), 1);
@@ -263,13 +268,13 @@ fn outbound_fetch_blocks() {
 #[test]
 fn inbound_fetch_blocks() {
     let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
-    let inbound_nci = InboundNodeCommsInterface::new(store.clone());
+    let inbound_nch = InboundNodeCommsHandlers::new(store.clone());
 
     let block = add_block_and_update_header(&store, get_genesis_block());
 
     test_async(move |rt| {
         rt.spawn(async move {
-            if let Ok(NodeCommsResponse::HistoricalBlocks(received_blocks)) = inbound_nci
+            if let Ok(NodeCommsResponse::HistoricalBlocks(received_blocks)) = inbound_nch
                 .handle_request(&NodeCommsRequest::FetchBlocks(vec![0]))
                 .await
             {
@@ -284,8 +289,9 @@ fn inbound_fetch_blocks() {
 
 #[test]
 fn outbound_fetch_mmr_state() {
-    let (sender, mut receiver) = reply_channel::unbounded();
-    let mut outbound_nci = OutboundNodeCommsInterface::new(sender);
+    let (request_sender, mut request_receiver) = reply_channel::unbounded();
+    let (block_sender, _) = reply_channel::unbounded();
+    let mut outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
 
     block_on(async {
         let mmr_state = MutableMmrState {
@@ -295,7 +301,7 @@ fn outbound_fetch_mmr_state() {
         let mmr_state_response: Vec<NodeCommsResponse> = vec![NodeCommsResponse::MmrState(mmr_state.clone())];
         let (received_state, _) = futures::join!(
             outbound_nci.fetch_mmr_state(MmrTree::Kernel, 1, 100),
-            test_request_responder(&mut receiver, mmr_state_response)
+            test_request_responder(&mut request_receiver, mmr_state_response)
         );
         let received_state = received_state.unwrap();
         assert_eq!(received_state, mmr_state);
@@ -305,11 +311,11 @@ fn outbound_fetch_mmr_state() {
 #[test]
 fn inbound_fetch_mmr_state() {
     let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
-    let inbound_nci = InboundNodeCommsInterface::new(store);
+    let inbound_nch = InboundNodeCommsHandlers::new(store);
 
     test_async(move |rt| {
         rt.spawn(async move {
-            if let Ok(NodeCommsResponse::MmrState(received_mmr_state)) = inbound_nci
+            if let Ok(NodeCommsResponse::MmrState(received_mmr_state)) = inbound_nch
                 .handle_request(&NodeCommsRequest::FetchMmrState(MmrStateRequest {
                     tree: MmrTree::Kernel,
                     index: 0,

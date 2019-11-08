@@ -28,7 +28,7 @@ use crate::{
         NodeCommsRequestType,
         NodeCommsResponse,
     },
-    blocks::blockheader::BlockHeader,
+    blocks::{blockheader::BlockHeader, Block},
     chain_storage::{ChainMetadata, HistoricalBlock, MmrTree, MutableMmrState},
 };
 use tari_service_framework::reply_channel::SenderService;
@@ -41,26 +41,31 @@ use tower_service::Service;
 /// The OutboundNodeCommsInterface provides an interface to request information from remove nodes.
 #[derive(Clone)]
 pub struct OutboundNodeCommsInterface {
-    sender:
+    request_sender:
         SenderService<(NodeCommsRequest, NodeCommsRequestType), Result<Vec<NodeCommsResponse>, CommsInterfaceError>>,
+    block_sender: SenderService<Block, Result<(), CommsInterfaceError>>,
 }
 
 impl OutboundNodeCommsInterface {
     /// Construct a new OutboundNodeCommsInterface with the specified SenderService.
     pub fn new(
-        sender: SenderService<
+        request_sender: SenderService<
             (NodeCommsRequest, NodeCommsRequestType),
             Result<Vec<NodeCommsResponse>, CommsInterfaceError>,
         >,
+        block_sender: SenderService<Block, Result<(), CommsInterfaceError>>,
     ) -> Self
     {
-        Self { sender }
+        Self {
+            request_sender,
+            block_sender,
+        }
     }
 
     /// Request metadata from remote base nodes.
     pub async fn get_metadata(&mut self) -> Result<Vec<ChainMetadata>, CommsInterfaceError> {
         let mut responses = Vec::<ChainMetadata>::new();
-        self.sender
+        self.request_sender
             .call((NodeCommsRequest::GetChainMetadata, NodeCommsRequestType::Many))
             .await??
             .into_iter()
@@ -79,7 +84,7 @@ impl OutboundNodeCommsInterface {
     ) -> Result<Vec<TransactionKernel>, CommsInterfaceError>
     {
         if let Some(NodeCommsResponse::TransactionKernels(kernels)) = self
-            .sender
+            .request_sender
             .call((NodeCommsRequest::FetchKernels(hashes), NodeCommsRequestType::Single))
             .await??
             .first()
@@ -93,7 +98,7 @@ impl OutboundNodeCommsInterface {
     /// Fetch the block headers corresponding to the provided block numbers from remote base nodes.
     pub async fn fetch_headers(&mut self, block_nums: Vec<u64>) -> Result<Vec<BlockHeader>, CommsInterfaceError> {
         if let Some(NodeCommsResponse::BlockHeaders(headers)) = self
-            .sender
+            .request_sender
             .call((NodeCommsRequest::FetchHeaders(block_nums), NodeCommsRequestType::Single))
             .await??
             .first()
@@ -111,7 +116,7 @@ impl OutboundNodeCommsInterface {
     ) -> Result<Vec<TransactionOutput>, CommsInterfaceError>
     {
         if let Some(NodeCommsResponse::TransactionOutputs(utxos)) = self
-            .sender
+            .request_sender
             .call((NodeCommsRequest::FetchUtxos(hashes), NodeCommsRequestType::Single))
             .await??
             .first()
@@ -125,7 +130,7 @@ impl OutboundNodeCommsInterface {
     /// Fetch the Historical Blocks corresponding to the provided block numbers from remote base nodes.
     pub async fn fetch_blocks(&mut self, block_nums: Vec<u64>) -> Result<Vec<HistoricalBlock>, CommsInterfaceError> {
         if let Some(NodeCommsResponse::HistoricalBlocks(blocks)) = self
-            .sender
+            .request_sender
             .call((NodeCommsRequest::FetchBlocks(block_nums), NodeCommsRequestType::Single))
             .await??
             .first()
@@ -145,7 +150,7 @@ impl OutboundNodeCommsInterface {
     ) -> Result<MutableMmrState, CommsInterfaceError>
     {
         if let Some(NodeCommsResponse::MmrState(mmr_state)) = self
-            .sender
+            .request_sender
             .call((
                 NodeCommsRequest::FetchMmrState(MmrStateRequest { tree, index, count }),
                 NodeCommsRequestType::Single,
@@ -157,5 +162,10 @@ impl OutboundNodeCommsInterface {
         } else {
             Err(CommsInterfaceError::UnexpectedApiResponse)
         }
+    }
+
+    /// Transmit the a block to remote base nodes.
+    pub async fn propagate_block(&mut self, block: Block) -> Result<(), CommsInterfaceError> {
+        self.block_sender.call(block).await?
     }
 }
