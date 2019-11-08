@@ -19,6 +19,8 @@ message BaseNodeServiceRequest {
         BlockHeights fetch_blocks = 6;
         // Indicates a FetchMmrState request.
         MmrStateRequest fetch_mmr_state = 7;
+        // Indicates a GetNewBlock request.
+        bool get_new_block = 8;
     }
 }
 

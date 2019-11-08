@@ -22,7 +22,7 @@
 
 use crate::{
     base_node::{
-        comms_interface::{InboundNodeCommsInterface, OutboundNodeCommsInterface},
+        comms_interface::{InboundNodeCommsHandlers, LocalNodeCommsInterface, OutboundNodeCommsInterface},
         proto,
         service::service::{BaseNodeService, BaseNodeServiceConfig, BaseNodeStreams},
     },
@@ -151,13 +151,19 @@ where T: BlockchainBackend + 'static
         let inbound_block_stream = self.inbound_block_stream();
         // Connect InboundNodeCommsInterface and OutboundNodeCommsInterface to BaseNodeService
         let (outbound_request_sender_service, outbound_request_stream) = reply_channel::unbounded();
-        let outbound_nci = OutboundNodeCommsInterface::new(outbound_request_sender_service);
-        let inbound_nci = Arc::new(InboundNodeCommsInterface::new(self.blockchain_db.clone()));
+        let (outbound_block_sender_service, outbound_block_stream) = reply_channel::unbounded();
+        let (local_request_sender_service, local_request_stream) = reply_channel::unbounded();
+        let (local_block_sender_service, local_block_stream) = reply_channel::unbounded();
+        let outbound_nci =
+            OutboundNodeCommsInterface::new(outbound_request_sender_service, outbound_block_sender_service);
+        let local_nci = LocalNodeCommsInterface::new(local_request_sender_service, local_block_sender_service);
+        let inbound_nch = Arc::new(InboundNodeCommsHandlers::new(self.blockchain_db.clone()));
         let executer_clone = executor.clone(); // Give BaseNodeService access to the executor
         let config = self.config.clone();
 
         // Register handle to OutboundNodeCommsInterface before waiting for handles to be ready
         handles_fut.register(outbound_nci);
+        handles_fut.register(local_nci);
 
         executor.spawn(async move {
             let handles = handles_fut.await;
@@ -168,12 +174,15 @@ where T: BlockchainBackend + 'static
 
             let streams = BaseNodeStreams::new(
                 outbound_request_stream,
+                outbound_block_stream,
                 inbound_request_stream,
                 inbound_response_stream,
                 inbound_block_stream,
+                local_request_stream,
+                local_block_stream,
             );
             let service =
-                BaseNodeService::new(executer_clone, outbound_message_service, inbound_nci, config).start(streams);
+                BaseNodeService::new(executer_clone, outbound_message_service, inbound_nch, config).start(streams);
             futures::pin_mut!(service);
             future::select(service, shutdown).await;
             info!(target: LOG_TARGET, "Base Node Service shutdown");

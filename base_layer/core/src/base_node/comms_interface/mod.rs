@@ -23,12 +23,14 @@
 mod comms_request;
 mod comms_response;
 mod error;
-mod inbound_interface;
+mod inbound_handlers;
+mod local_interface;
 mod outbound_interface;
 
 // Public re-exports
 pub use comms_request::{MmrStateRequest, NodeCommsRequest, NodeCommsRequestType};
 pub use comms_response::NodeCommsResponse;
 pub use error::CommsInterfaceError;
-pub use inbound_interface::InboundNodeCommsInterface;
+pub use inbound_handlers::InboundNodeCommsHandlers;
+pub use local_interface::LocalNodeCommsInterface;
 pub use outbound_interface::OutboundNodeCommsInterface;

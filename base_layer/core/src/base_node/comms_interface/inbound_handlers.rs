@@ -22,19 +22,19 @@
 
 use crate::{
     base_node::comms_interface::{error::CommsInterfaceError, NodeCommsRequest, NodeCommsResponse},
-    blocks::blockheader::BlockHeader,
+    blocks::{blockheader::BlockHeader, Block},
     chain_storage::{async_db, BlockchainBackend, BlockchainDatabase, HistoricalBlock},
 };
 use tari_transactions::transaction::{TransactionKernel, TransactionOutput};
 
 /// The InboundNodeCommsInterface is used to handle all received inbound requests from remote nodes.
-pub struct InboundNodeCommsInterface<T>
+pub struct InboundNodeCommsHandlers<T>
 where T: BlockchainBackend
 {
     blockchain_db: BlockchainDatabase<T>,
 }
 
-impl<T> InboundNodeCommsInterface<T>
+impl<T> InboundNodeCommsHandlers<T>
 where T: BlockchainBackend
 {
     /// Construct a new InboundNodeCommsInterface.
@@ -42,7 +42,7 @@ where T: BlockchainBackend
         Self { blockchain_db }
     }
 
-    /// Handle inbound node comms requests from remote nodes.
+    /// Handle inbound node comms requests from remote nodes and local services.
     pub async fn handle_request(&self, request: &NodeCommsRequest) -> Result<NodeCommsResponse, CommsInterfaceError> {
         match request {
             NodeCommsRequest::GetChainMetadata => Ok(NodeCommsResponse::ChainMetadata(
@@ -93,6 +93,18 @@ where T: BlockchainBackend
                 )
                 .await?,
             )),
+            NodeCommsRequest::GetNewBlock =>
+            // TODO: query blockchain_db and mempool to construct a new mineable block
+            {
+                unimplemented!()
+            },
         }
+    }
+
+    /// Handle inbound blocks from remote nodes and local services.
+    pub async fn handle_block(&self, block: &Block) -> Result<(), CommsInterfaceError> {
+        // TODO: Validate block and create event on block stream
+
+        Ok(())
     }
 }

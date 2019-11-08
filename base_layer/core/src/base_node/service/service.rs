@@ -24,7 +24,7 @@ use crate::{
     base_node::{
         comms_interface::{
             CommsInterfaceError,
-            InboundNodeCommsInterface,
+            InboundNodeCommsHandlers,
             NodeCommsRequest,
             NodeCommsRequestType,
             NodeCommsResponse,
@@ -38,6 +38,7 @@ use crate::{
     blocks::Block,
     chain_storage::BlockchainBackend,
     consts::{BASE_NODE_RNG, BASE_NODE_SERVICE_DESIRED_RESPONSE_FRACTION, BASE_NODE_SERVICE_REQUEST_TIMEOUT},
+    proto::core::Block as ProtoBlock,
 };
 use futures::{
     channel::{
@@ -89,14 +90,18 @@ impl Default for BaseNodeServiceConfig {
 }
 
 /// A convenience struct to hold all the BaseNode streams
-pub struct BaseNodeStreams<SOutReq, SInReq, SInRes, SBlockIn> {
+pub struct BaseNodeStreams<SOutReq, SBlockOut, SInReq, SInRes, SBlockIn, SLocalReq, SLocalBlock> {
     outbound_request_stream: SOutReq,
+    outbound_block_stream: SBlockOut,
     inbound_request_stream: SInReq,
     inbound_response_stream: SInRes,
     inbound_block_stream: SBlockIn,
+    local_request_stream: SLocalReq,
+    local_block_stream: SLocalBlock,
 }
 
-impl<SOutReq, SInReq, SInRes, SBlockIn> BaseNodeStreams<SOutReq, SInReq, SInRes, SBlockIn>
+impl<SOutReq, SBlockOut, SInReq, SInRes, SBlockIn, SLocalReq, SLocalBlock>
+    BaseNodeStreams<SOutReq, SBlockOut, SInReq, SInRes, SBlockIn, SLocalReq, SLocalBlock>
 where
     SOutReq: Stream<
         Item = RequestContext<
@@ -104,22 +109,31 @@ where
             Result<Vec<NodeCommsResponse>, CommsInterfaceError>,
         >,
     >,
+    SBlockOut: Stream<Item = RequestContext<Block, Result<(), CommsInterfaceError>>>,
     SInReq: Stream<Item = DomainMessage<proto::BaseNodeServiceRequest>>,
     SInRes: Stream<Item = DomainMessage<proto::BaseNodeServiceResponse>>,
     SBlockIn: Stream<Item = DomainMessage<Block>>,
+    SLocalReq: Stream<Item = RequestContext<NodeCommsRequest, Result<NodeCommsResponse, CommsInterfaceError>>>,
+    SLocalBlock: Stream<Item = RequestContext<Block, Result<(), CommsInterfaceError>>>,
 {
     pub fn new(
         outbound_request_stream: SOutReq,
+        outbound_block_stream: SBlockOut,
         inbound_request_stream: SInReq,
         inbound_response_stream: SInRes,
         inbound_block_stream: SBlockIn,
+        local_request_stream: SLocalReq,
+        local_block_stream: SLocalBlock,
     ) -> Self
     {
         BaseNodeStreams {
             outbound_request_stream,
+            outbound_block_stream,
             inbound_request_stream,
             inbound_response_stream,
             inbound_block_stream,
+            local_request_stream,
+            local_block_stream,
         }
     }
 }
@@ -129,7 +143,7 @@ where
 pub struct BaseNodeService<B: BlockchainBackend> {
     executor: TaskExecutor,
     outbound_message_service: OutboundMessageRequester,
-    inbound_nci: Arc<InboundNodeCommsInterface<B>>,
+    inbound_nch: Arc<InboundNodeCommsHandlers<B>>,
     waiting_requests: HashMap<RequestKey, WaitingRequest>,
     timeout_sender: Sender<RequestKey>,
     timeout_receiver_stream: Option<Receiver<RequestKey>>,
@@ -142,7 +156,7 @@ where B: BlockchainBackend
     pub fn new(
         executor: TaskExecutor,
         outbound_message_service: OutboundMessageRequester,
-        inbound_nci: Arc<InboundNodeCommsInterface<B>>,
+        inbound_nch: Arc<InboundNodeCommsHandlers<B>>,
         config: BaseNodeServiceConfig,
     ) -> Self
     {
@@ -150,7 +164,7 @@ where B: BlockchainBackend
         Self {
             executor,
             outbound_message_service,
-            inbound_nci,
+            inbound_nch,
             waiting_requests: HashMap::new(),
             timeout_sender,
             timeout_receiver_stream: Some(timeout_receiver),
@@ -158,9 +172,9 @@ where B: BlockchainBackend
         }
     }
 
-    pub async fn start<SOutReq, SInReq, SInRes, SBlockIn>(
+    pub async fn start<SOutReq, SBlockOut, SInReq, SInRes, SBlockIn, SLocalReq, SLocalBlock>(
         mut self,
-        streams: BaseNodeStreams<SOutReq, SInReq, SInRes, SBlockIn>,
+        streams: BaseNodeStreams<SOutReq, SBlockOut, SInReq, SInRes, SBlockIn, SLocalReq, SLocalBlock>,
     ) -> Result<(), BaseNodeServiceError>
     where
         SOutReq: Stream<
@@ -169,18 +183,27 @@ where B: BlockchainBackend
                 Result<Vec<NodeCommsResponse>, CommsInterfaceError>,
             >,
         >,
+        SBlockOut: Stream<Item = RequestContext<Block, Result<(), CommsInterfaceError>>>,
         SInReq: Stream<Item = DomainMessage<proto::BaseNodeServiceRequest>>,
         SInRes: Stream<Item = DomainMessage<proto::BaseNodeServiceResponse>>,
         SBlockIn: Stream<Item = DomainMessage<Block>>,
+        SLocalReq: Stream<Item = RequestContext<NodeCommsRequest, Result<NodeCommsResponse, CommsInterfaceError>>>,
+        SLocalBlock: Stream<Item = RequestContext<Block, Result<(), CommsInterfaceError>>>,
     {
         let outbound_request_stream = streams.outbound_request_stream.fuse();
         pin_mut!(outbound_request_stream);
+        let outbound_block_stream = streams.outbound_block_stream.fuse();
+        pin_mut!(outbound_block_stream);
         let inbound_request_stream = streams.inbound_request_stream.fuse();
         pin_mut!(inbound_request_stream);
         let inbound_response_stream = streams.inbound_response_stream.fuse();
         pin_mut!(inbound_response_stream);
         let inbound_block_stream = streams.inbound_block_stream.fuse();
         pin_mut!(inbound_block_stream);
+        let local_request_stream = streams.local_request_stream.fuse();
+        pin_mut!(local_request_stream);
+        let local_block_stream = streams.local_block_stream.fuse();
+        pin_mut!(local_block_stream);
         let timeout_receiver_stream = self
             .timeout_receiver_stream
             .take()
@@ -194,6 +217,16 @@ where B: BlockchainBackend
                     let ((request,request_type), reply_tx) = outbound_request_context.split();
                     let _ = self.handle_outbound_request(reply_tx,request,request_type).await.or_else(|err| {
                         error!(target: LOG_TARGET, "Failed to handle outbound request message: {:?}", err);
+                        Err(err)
+                    });
+                },
+
+
+                // Outbound block messages from the OutboundNodeCommsInterface
+                outbound_block_context = outbound_block_stream.select_next_some() => {
+                    let (block, reply_tx) = outbound_block_context.split();
+                    let _ = reply_tx.send(self.handle_outbound_block(block).await).or_else(|err| {
+                        error!(target: LOG_TARGET, "Failed to handle outbound block message {:?}",err);
                         Err(err)
                     });
                 },
@@ -222,12 +255,31 @@ where B: BlockchainBackend
                     });
                 },
 
+                // Incoming block messages from the Comms layer
                 block_msg = inbound_block_stream.select_next_some() => {
-                    // TODO - retain peer info for stats and potential banning for sending invalid blocks
-                    let block = block_msg.into_inner();
-                    info!("New candidate block received for height {}", block.header.height)
-                    // TODO - process the block
+                    let _ = self.handle_incoming_block(block_msg).await.or_else(|err| {
+                        error!(target: LOG_TARGET, "Failed to handle incoming block message: {:?}", err);
+                        Err(err)
+                    });
                 }
+
+                // Incoming local request messages from the LocalNodeCommsInterface and other local services
+                local_request_context = local_request_stream.select_next_some() => {
+                    let (request, reply_tx) = local_request_context.split();
+                    let _ = reply_tx.send(self.inbound_nch.handle_request(&request.into()).await).or_else(|err| {
+                        error!(target: LOG_TARGET, "BaseNodeService failed to send reply to local request {:?}",err);
+                        Err(err)
+                    });
+                },
+
+                 // Incoming local block messages from the LocalNodeCommsInterface and other local services
+                local_block_context = local_block_stream.select_next_some() => {
+                    let (block, reply_tx) = local_block_context.split();
+                    let _ = reply_tx.send(self.inbound_nch.handle_block(&block.into()).await).or_else(|err| {
+                        error!(target: LOG_TARGET, "BaseNodeService failed to send reply to local block submitter {:?}",err);
+                        Err(err)
+                    });
+                },
 
                 complete => {
                     info!(target: LOG_TARGET, "Base Node service shutting down");
@@ -253,7 +305,7 @@ where B: BlockchainBackend
         ))?;
 
         let response = self
-            .inbound_nci
+            .inbound_nch
             .handle_request(
                 &request
                     .try_into()
@@ -371,6 +423,19 @@ where B: BlockchainBackend
         Ok(())
     }
 
+    async fn handle_outbound_block(&mut self, block: Block) -> Result<(), CommsInterfaceError> {
+        self.outbound_message_service
+            .propagate(
+                NodeDestination::Unknown,
+                OutboundEncryption::EncryptForDestination,
+                Vec::new(),
+                OutboundDomainMessage::new(TariMessageType::NewBlock, ProtoBlock::from(block)),
+            )
+            .await
+            .map_err(|e| CommsInterfaceError::OutboundMessageService(e.to_string()))?;
+        Ok(())
+    }
+
     async fn handle_request_timeout(&mut self, request_key: RequestKey) -> Result<(), CommsInterfaceError> {
         if let Some(mut waiting_request) = self.waiting_requests.remove(&request_key) {
             if let Some(reply_tx) = waiting_request.reply_tx.take() {
@@ -394,5 +459,22 @@ where B: BlockchainBackend
             tokio::timer::delay(Instant::now() + timeout).await;
             let _ = timeout_sender.send(request_key).await;
         });
+    }
+
+    async fn handle_incoming_block(
+        &mut self,
+        domain_block_msg: DomainMessage<Block>,
+    ) -> Result<(), BaseNodeServiceError>
+    {
+        let DomainMessage::<_> {
+            origin_pubkey, inner, ..
+        } = domain_block_msg;
+
+        info!("New candidate block received for height {}", inner.header.height);
+
+        self.inbound_nch.handle_block(&inner.clone().into()).await?;
+        // TODO - retain peer info for stats and potential banning for sending invalid blocks
+
+        Ok(())
     }
 }

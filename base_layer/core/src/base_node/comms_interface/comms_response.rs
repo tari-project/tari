@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    blocks::blockheader::BlockHeader,
+    blocks::{blockheader::BlockHeader, Block},
     chain_storage::{ChainMetadata, HistoricalBlock, MutableMmrState},
 };
 use serde::{Deserialize, Serialize};
@@ -36,4 +36,5 @@ pub enum NodeCommsResponse {
     TransactionOutputs(Vec<TransactionOutput>),
     HistoricalBlocks(Vec<HistoricalBlock>),
     MmrState(MutableMmrState),
+    NewBlock(Block),
 }
