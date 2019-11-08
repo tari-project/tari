@@ -63,6 +63,7 @@
 
 mod peer_features;
 
+mod connection_stats;
 mod error;
 pub mod node_id;
 pub mod node_identity;

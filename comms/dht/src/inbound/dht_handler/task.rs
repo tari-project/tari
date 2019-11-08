@@ -114,7 +114,14 @@ where
         let peer_manager = &self.peer_manager;
         // Add peer or modify existing peer using received join request
         if peer_manager.exists(pubkey) {
-            peer_manager.update_peer(pubkey, Some(node_id), Some(net_addresses), None, Some(peer_features))?;
+            peer_manager.update_peer(
+                pubkey,
+                Some(node_id),
+                Some(net_addresses),
+                None,
+                Some(peer_features),
+                None,
+            )?;
         } else {
             peer_manager.add_peer(Peer::new(
                 pubkey.clone(),
@@ -159,7 +166,7 @@ where
         let body = decryption_result.expect("already checked that this message decrypted successfully");
         let join_msg = body
             .decode_part::<JoinMessage>(0)?
-            .ok_or(DhtInboundError::InvalidMessageBody)?;
+            .ok_or(DhtInboundError::InvalidJoinNetAddresses)?;
 
         let addresses = join_msg
             .addresses
@@ -176,7 +183,9 @@ where
         // TODO: Check/Verify the received peers information. We know that the join request was signed by
         //       the origin_public_key and that the node id is valid. All that may be needed is to ping
         //       the address to confirm that it is working. If it isn't, do we disregard the join request,
-        //       or try other known addresses or ?
+        //       or try other known addresses or ?.
+        //       Perhaps we can eagerly
+
         let origin_peer = self.add_or_update_peer(
             &dht_header.origin_public_key,
             node_id,

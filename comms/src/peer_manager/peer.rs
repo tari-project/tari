@@ -23,7 +23,7 @@
 use super::node_id::deserialize_node_id_from_hex;
 use crate::{
     connection::{net_address::net_addresses::NetAddressesWithStats, NetAddress},
-    peer_manager::{node_id::NodeId, PeerFeatures},
+    peer_manager::{connection_stats::PeerConnectionStats, node_id::NodeId, PeerFeatures},
     types::CommsPublicKey,
 };
 use bitflags::bitflags;
@@ -36,16 +36,6 @@ bitflags! {
     pub struct PeerFlags: u8 {
         const BANNED = 0b0000_0001;
     }
-}
-
-/// Peer connection statistics
-#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialOrd, PartialEq)]
-pub struct PeerConnectionStats {
-    /// The last time that a successful connection was made, None if this has never happened
-    pub connected_at: Option<NaiveDateTime>,
-    /// The time that the last connection attempt failed. If the last connection attempt succeeded
-    /// this is None
-    pub last_connect_failed_at: Option<NaiveDateTime>,
 }
 
 /// A Peer represents a communication peer that is identified by a Public Key and NodeId. The Peer struct maintains a
@@ -61,6 +51,7 @@ pub struct Peer {
     pub flags: PeerFlags,
     pub features: PeerFeatures,
     pub connection_stats: PeerConnectionStats,
+    pub added_at: NaiveDateTime,
 }
 
 impl Peer {
@@ -80,6 +71,7 @@ impl Peer {
             flags,
             features,
             connection_stats: Default::default(),
+            added_at: Utc::now().naive_utc(),
         }
     }
 
@@ -127,10 +119,6 @@ impl Peer {
     /// Changes the ban flag bit of the peer
     pub fn set_banned(&mut self, ban_flag: bool) {
         self.flags.set(PeerFlags::BANNED, ban_flag);
-    }
-
-    pub fn set_connection_stats(&mut self, connection_stats: PeerConnectionStats) {
-        self.connection_stats = connection_stats;
     }
 }
 
@@ -184,10 +172,7 @@ mod test {
             Some(vec![net_address2.clone(), net_address3.clone()]),
             Some(PeerFlags::BANNED),
             Some(PeerFeatures::MESSAGE_PROPAGATION),
-            Some(PeerConnectionStats {
-                last_connect_failed_at: None,
-                connected_at: Some(Utc::now().naive_utc()),
-            }),
+            Some(PeerConnectionStats::new()),
         );
 
         assert_eq!(peer.public_key, public_key1);

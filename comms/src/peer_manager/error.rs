@@ -29,8 +29,6 @@ use tari_utilities::message_format::MessageFormatError;
 pub enum PeerManagerError {
     /// The requested peer does not exist or could not be located
     PeerNotFoundError,
-    /// The Thread Safety has been breached and the data access has become poisoned
-    PoisonedAccess,
     // A problem occurred during the serialization of the keys or data
     SerializationError(MessageFormatError),
     /// A problem occurred converting the serialized data into peers

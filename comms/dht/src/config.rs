@@ -54,10 +54,21 @@ pub struct DhtConfig {
     /// The time-to-live duration used for storage of high priority messages by the Store-and-forward middleware.
     /// Default: 24 hours
     pub saf_high_priority_msg_storage_ttl: Duration,
-    /// The max capacity of the signature cache (default: 1000)
+    /// The max capacity of the signature cache
+    /// Default: 1000
     pub signature_cache_capacity: usize,
-    /// The time-to-live for items in the signature cache (default: 300s)
+    /// The time-to-live for items in the signature cache
+    /// Default: 300s
     pub signature_cache_ttl: Duration,
+    /// Sets the number of failed attempts in-a-row to tolerate before temporarily excluding this peer from broadcast
+    /// messages.
+    /// Default: 3
+    pub broadcast_cooldown_max_attempts: usize,
+    /// Sets the period to wait before including this peer in broadcast messages after
+    /// `broadcast_cooldown_max_attempts` failed attempts. This helps prevent thrashing the comms layer
+    /// with connection attempts to a peer which is offline.
+    /// Default: 30 minutes
+    pub broadcast_cooldown_period: Duration,
 }
 
 impl Default for DhtConfig {
@@ -72,6 +83,8 @@ impl Default for DhtConfig {
             saf_high_priority_msg_storage_ttl: SAF_HIGH_PRIORITY_MSG_STORAGE_TTL,
             signature_cache_capacity: 1000,
             signature_cache_ttl: Duration::from_secs(300),
+            broadcast_cooldown_max_attempts: 3,
+            broadcast_cooldown_period: Duration::from_secs(60 * 30),
         }
     }
 }

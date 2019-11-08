@@ -32,5 +32,6 @@ pub trait Connectivity {
 
     fn disconnect_peer(&self, node_id: &NodeId) -> Result<Option<Arc<PeerConnection>>>;
 
-    //    fn set_peer_connection_eligibility(&self, node_id: &NodeId, eligibility: ConnectEligibility);
+    fn set_last_connection_failed(&self, node_id: &NodeId) -> Result<()>;
+    fn set_last_connection_succeeded(&self, node_id: &NodeId) -> Result<()>;
 }

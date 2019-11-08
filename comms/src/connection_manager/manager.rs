@@ -34,9 +34,8 @@ use crate::{
     connection_manager::{dialer::Dialer, Connectivity},
     control_service::messages::RejectReason,
     message::FrameSet,
-    peer_manager::{peer::PeerConnectionStats, NodeId, NodeIdentity, Peer, PeerManager},
+    peer_manager::{NodeId, NodeIdentity, Peer, PeerManager},
 };
-use chrono::Utc;
 use futures::{channel::mpsc::Sender, Future};
 use log::*;
 use std::{
@@ -87,12 +86,12 @@ impl ConnectionManager {
     /// the existing connection is returned.
     pub fn establish_connection_to_node_id(&self, node_id: &NodeId) -> Result<Arc<PeerConnection>> {
         match self.peer_manager.find_by_node_id(node_id) {
-            Ok(mut peer) => self.with_establish_lock(node_id, || self.attempt_connection_to_peer(&mut peer)),
+            Ok(peer) => self.with_establish_lock(node_id, || self.attempt_connection_to_peer(&peer)),
             Err(err) => Err(ConnectionManagerError::PeerManagerError(err)),
         }
     }
 
-    fn attempt_connection_to_peer(&self, peer: &mut Peer) -> Result<Arc<PeerConnection>> {
+    fn attempt_connection_to_peer(&self, peer: &Peer) -> Result<Arc<PeerConnection>> {
         let maybe_conn = self.connections.get_connection(&peer.node_id);
         let peer_conn = match maybe_conn {
             Some(conn) => {
@@ -285,7 +284,7 @@ impl ConnectionManager {
         self.connections.get_active_connection_count()
     }
 
-    fn initiate_peer_connection(&self, peer: &mut Peer) -> Result<Arc<PeerConnection>> {
+    fn initiate_peer_connection(&self, peer: &Peer) -> Result<Arc<PeerConnection>> {
         debug!(
             target: LOG_TARGET,
             "Initiating connection to peer. NodeId={}, connection_stats={:?}", peer.node_id, peer.connection_stats
@@ -329,17 +328,6 @@ impl ConnectionManager {
                 self.connections
                     .add_connection(peer.node_id.clone(), Arc::clone(&new_conn), join_handle)?;
 
-                let _ = self
-                    .peer_manager
-                    .update_peer_connection_stats(&peer.public_key, PeerConnectionStats {
-                        connected_at: Some(Utc::now().naive_utc()),
-                        last_connect_failed_at: None,
-                    })
-                    .or_else(|err| {
-                        warn!(target: LOG_TARGET, "Failed to update peer because '{}'", err);
-                        Err(err)
-                    });
-
                 Ok(new_conn)
             })
             .or_else(|err| match err {
@@ -353,21 +341,6 @@ impl ConnectionManager {
                         target: LOG_TARGET,
                         "Connection error for NodeId={}: {:?}", peer.node_id, err
                     );
-                    debug!(
-                        target: LOG_TARGET,
-                        "Setting failed connection stat on peer with NodeId={}", peer.node_id,
-                    );
-
-                    let _ = self
-                        .peer_manager
-                        .update_peer_connection_stats(&peer.public_key, PeerConnectionStats {
-                            connected_at: peer.connection_stats.connected_at,
-                            last_connect_failed_at: Some(Utc::now().naive_utc()),
-                        })
-                        .or_else(|err| {
-                            warn!(target: LOG_TARGET, "Failed to update peer because '{}'", err);
-                            Err(err)
-                        });
                     Err(err)
                 },
             })
@@ -434,6 +407,18 @@ impl Connectivity for ConnectionManagerDialer {
 
     fn disconnect_peer(&self, node_id: &NodeId) -> Result<Option<Arc<PeerConnection>>> {
         self.inner.disconnect_peer(node_id)
+    }
+
+    fn set_last_connection_failed(&self, node_id: &NodeId) -> Result<()> {
+        self.inner.peer_manager().set_failed_connection_state(&node_id)?;
+        debug!(target: LOG_TARGET, "Set failed connection state for node {}", node_id);
+        Ok(())
+    }
+
+    fn set_last_connection_succeeded(&self, node_id: &NodeId) -> Result<()> {
+        self.inner.peer_manager().set_success_connection_state(&node_id)?;
+        debug!(target: LOG_TARGET, "Set success connection state for node {}", node_id);
+        Ok(())
     }
 }
 

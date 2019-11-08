@@ -39,4 +39,6 @@ pub enum DhtInboundError {
     InvalidNodeId,
     /// All given addresses were invalid
     InvalidAddresses,
+    /// One or more NetAddress in the join message were invalid
+    InvalidJoinNetAddresses,
 }

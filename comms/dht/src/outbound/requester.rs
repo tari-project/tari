@@ -129,7 +129,7 @@ impl OutboundMessageRequester {
         T: prost::Message,
     {
         self.send_message(
-            BroadcastStrategy::Neighbours(Box::new(exclude_peers)),
+            BroadcastStrategy::Neighbours(exclude_peers),
             destination,
             encryption,
             message,

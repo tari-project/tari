@@ -44,7 +44,7 @@ pub enum BroadcastStrategy {
     Closest(Box<BroadcastClosestRequest>),
     /// A convenient strategy which behaves the same as the `Closest` strategy with the `NodeId` set
     /// to this node and a pre-configured number of neighbours. This strategy excludes the given public keys.
-    Neighbours(Box<Vec<CommsPublicKey>>),
+    Neighbours(Vec<CommsPublicKey>),
 }
 
 impl fmt::Display for BroadcastStrategy {

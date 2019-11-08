@@ -65,6 +65,8 @@ pub enum ConnectionManagerRequest {
         )>,
     ),
     GetActiveConnectionCount(oneshot::Sender<usize>),
+    SetLastConnectionSucceeded(NodeId),
+    SetLastConnectionFailed(NodeId),
 }
 
 /// Responsible for constructing requests to the ConnectionManagerService
@@ -101,6 +103,22 @@ impl ConnectionManagerRequester {
             .await
             .map_err(|_| ConnectionManagerError::SendToActorFailed)?;
         reply_rx.await.map_err(|_| ConnectionManagerError::ActorRequestCanceled)
+    }
+
+    /// Set the last connection state to `Succeeded` for a given `NodeId`
+    pub async fn set_last_connection_succeeded(&mut self, node_id: NodeId) -> Result<(), ConnectionManagerError> {
+        self.sender
+            .send(ConnectionManagerRequest::SetLastConnectionSucceeded(node_id))
+            .await
+            .map_err(|_| ConnectionManagerError::SendToActorFailed)
+    }
+
+    /// Set the last connection state to `Failed` for a given `NodeId`
+    pub async fn set_last_connection_failed(&mut self, node_id: NodeId) -> Result<(), ConnectionManagerError> {
+        self.sender
+            .send(ConnectionManagerRequest::SetLastConnectionFailed(node_id))
+            .await
+            .map_err(|_| ConnectionManagerError::SendToActorFailed)
     }
 }
 
@@ -211,6 +229,22 @@ where
                     debug!(
                         target: LOG_TARGET,
                         "Failed to reply to ConnectedPeersCount request: {}", err
+                    );
+                }
+            },
+            ConnectionManagerRequest::SetLastConnectionFailed(node_id) => {
+                if let Err(err) = self.connection_manager.set_last_connection_failed(&node_id) {
+                    error!(
+                        target: LOG_TARGET,
+                        "Error when setting last connection state to failed: {}", err
+                    );
+                }
+            },
+            ConnectionManagerRequest::SetLastConnectionSucceeded(node_id) => {
+                if let Err(err) = self.connection_manager.set_last_connection_succeeded(&node_id) {
+                    error!(
+                        target: LOG_TARGET,
+                        "Error when setting last connection state to succeeded: {}", err
                     );
                 }
             },
