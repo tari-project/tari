@@ -54,6 +54,7 @@ The aim of this Request for Comment (RFC) is to describe the major software comp
 
 * [RFC-0001: Overview](RFC-0001_overview.md)
 * [RFC-0110: Base Nodes](./RFC-0110_BaseNodes.md)
+* [RFC-0120: Consensus rules](./RFC-0120_Consensus.md)
 * [RFC-0130: Mining](./RFC-0130_Mining.md)
 * [RFC-0150: Wallets](./RFC-0150_Wallets.md)
 
@@ -81,4 +82,3 @@ project source code:
 * Peer-to-peer networking and messaging services
 
 [RFC-0010](RFC-0010_CodeStructure.md) provides more detail on how the source code is structured within the Tari codebase.
-
