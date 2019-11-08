@@ -117,7 +117,7 @@ This is the hash of the previous block's header.
 
 The prev_hash MUST confirm to the following:
 
-* Must be transmitted as an array of u8.
+* represented as an array of unsigned 8-bit integers (bytes).
 * MUST be a hash of the entire contents of the previous block's header.
 * Must include the entire previous block's header.
 
