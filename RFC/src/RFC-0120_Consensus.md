@@ -87,10 +87,11 @@ Every [block header] MUST contain the following fields:
 
 The [block header] MUST confirm to the following:
 
-* The nonce and [PoW](#pow) must be a valid for the [block header].
-* All the merkle roots must be valid for the states after the [block] was applied to the local state.
+* The nonce and [PoW](#pow) must be valid for the [block header].
+* All the merkle roots must be valid for the states _after_ the [block] was applied to the local state.
 
-If the [block header] does not confirm to any of the above, the [block] needs to be rejected and the peer the it was received from, marked as a malicious peer.
+If the [block header] does not confirm to any of the above, the [block] MUST be rejected.
+If a peer rejects multiple blocks from a given peer, it MAY blacklist the peer and ignore further communication from it.
 
 #### Version
 
@@ -99,17 +100,17 @@ This is the version currently running on the chain.
 The version MUST confirm to the following:
 
 * It is represented as an unsigned 16-bit integer.
-* Version numbers should be incremented whenever there is a change in the blockchain schema starting from 1.
+* Version numbers MUST be incremented whenever there is a change in the blockchain schema starting from 1.
 
 #### Height
 
-A counter indicating how much blocks have passed since the genesis block (inclusive).
+A counter indicating how many blocks have passed since the genesis block (inclusive).
 
 The height MUST confirm to the following:
 
 * Represented as an unsigned 64-bit integer.
 * The height MUST be exactly 1 more than the block referenced in the `prev_hash` block header field.
-* The genesis block MUST have a height of 1.
+* The genesis block MUST have a height of 0.
 
 #### Prev_hash
 
