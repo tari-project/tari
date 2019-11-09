@@ -6,6 +6,7 @@
 - [RFC-0100: The Tari Base Layer](RFC-0100_BaseLayer.md)
     - [RFC-0110: Base nodes](RFC-0110_BaseNodes.md)
   -   [RFC-0111: Base node architecture](RFC-0111_BaseNodeArchitecture.md)
+    - [RFC-0120: Consensus rules](RFC-0120_Consensus.md)
     - [RFC-0130: Mining](RFC-0130_Mining.md)
     - [RFC-0140: Sync and Seeding](RFC-0140_Syncing_and_seeding.md)
     - [RFC-0150: Wallets](RFC-0150_Wallets.md)
