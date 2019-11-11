@@ -40,7 +40,7 @@ use tari_utilities::{
 const NODE_ID_ARRAY_SIZE: usize = 32;
 type NodeIdArray = [u8; NODE_ID_ARRAY_SIZE];
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Clone)]
 pub enum NodeIdError {
     IncorrectByteCount,
     OutOfBounds,

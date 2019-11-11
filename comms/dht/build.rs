@@ -22,7 +22,6 @@
 
 fn main() {
     tari_protobuf_build::ProtoCompiler::new()
-        .add_type_attribute(".tari.comms.control_service.RejectReason", "#[derive(Error)]")
         .proto_paths(&["src/proto"])
         .out_dir("src/proto")
         .compile()

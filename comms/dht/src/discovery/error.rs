@@ -20,26 +20,49 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{discovery::DhtDiscoveryError, outbound::DhtOutboundError};
+use crate::outbound::DhtOutboundError;
 use derive_error::Error;
-use prost::DecodeError;
-use tari_comms::{message::MessageError, peer_manager::PeerManagerError};
+use futures::channel::mpsc::SendError;
+use tari_comms::peer_manager::PeerManagerError;
 
 #[derive(Debug, Error)]
-pub enum DhtInboundError {
-    MessageError(MessageError),
-    //    MessageFormatError(MessageFormatError),
-    PeerManagerError(PeerManagerError),
+pub enum DhtDiscoveryError {
+    /// The reply channel was canceled
+    ReplyCanceled,
     DhtOutboundError(DhtOutboundError),
-    /// Failed to decode message
-    DecodeError(DecodeError),
-    /// Message body invalid
-    InvalidMessageBody,
-    /// Node ID is invalid
+    /// Received a discovery response which did not match an inflight discovery request
+    InflightDiscoveryRequestNotFound,
+    /// Received public key in peer discovery response which does not match the requested public key
+    DiscoveredPeerMismatch,
+    /// Received an invalid `NodeId`
     InvalidNodeId,
-    /// All given addresses were invalid
-    InvalidAddresses,
-    /// One or more NetAddress in the join message were invalid
-    InvalidJoinNetAddresses,
-    DhtDiscoveryError(DhtDiscoveryError),
+    /// MPSC channel is disconnected
+    ChannelDisconnected,
+    /// MPSC sender was unable to send because the channel buffer is full
+    SendBufferFull,
+    /// The discovery request timed out
+    DiscoveryTimeout,
+    PeerManagerError(PeerManagerError),
+}
+
+impl DhtDiscoveryError {
+    /// Returns true if this error is a `DiscoveryTimeout`, otherwise false
+    pub fn is_timeout(&self) -> bool {
+        match self {
+            DhtDiscoveryError::DiscoveryTimeout => true,
+            _ => false,
+        }
+    }
+}
+
+impl From<SendError> for DhtDiscoveryError {
+    fn from(err: SendError) -> Self {
+        if err.is_disconnected() {
+            DhtDiscoveryError::ChannelDisconnected
+        } else if err.is_full() {
+            DhtDiscoveryError::SendBufferFull
+        } else {
+            unreachable!();
+        }
+    }
 }

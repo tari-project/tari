@@ -20,7 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::actor::DhtActorError;
 use derive_error::Error;
 use futures::channel::mpsc::SendError;
 use tari_comms::{connection::ConnectionError, message::MessageError};
@@ -32,8 +31,10 @@ pub enum DhtOutboundError {
     SendError(SendError),
     MessageSerializationError(MessageError),
     MessageFormatError(MessageFormatError),
-    DhtActorError(DhtActorError),
     ConnectionError(ConnectionError),
     SignatureError(SchnorrSignatureError),
+    /// Requester reply channel closed before response was received
     RequesterReplyChannelClosed,
+    /// Peer selection failed
+    PeerSelectionFailed,
 }

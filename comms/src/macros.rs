@@ -59,3 +59,40 @@ macro_rules! acquire_read_lock {
         acquire_lock!($e, read)
     };
 }
+
+/// Log an error if an `Err` is returned from the `$expr`. If the given expression is `Ok(v)`,
+/// `Some(v)` is returned, otherwise `None` is returned (same as `Result::ok`).
+/// Useful in cases where the error should be logged and ignored.
+/// instead of writing `if let Err(err) = my_error_call() { error!(...) }`, you can write
+/// `log_if_error(my_error_call())` ```edition2018
+/// # use futures::channel::oneshot;
+/// # use tari_comms::log_if_error;
+/// let (tx, _) = oneshot::channel();
+/// // Sending on oneshot will fail because the receiver is dropped. This error will be logged.
+/// let opt = log_if_error!(target: "debugging", "Error sending reply: {}", tx.send("my reply"));
+/// assert_eq!(opt, None);
+/// ```
+#[macro_export]
+macro_rules! log_if_error {
+    (target: $target:expr, $msg:expr, $expr:expr, no_fmt_msg=true$(,)*) => {{
+        match $expr {
+            Ok(v) => Some(v),
+            Err(err) => {
+                log::error!(target: $target, $msg);
+                None
+            }
+        }
+    }};
+    (target: $target:expr, $msg:expr, $expr:expr) => {{
+        match $expr {
+            Ok(v) => Some(v),
+            Err(err) => {
+                log::error!(target: $target, $msg, err);
+                None
+            }
+        }
+    }};
+    ($msg:expr, $expr:expr) => {{
+        log_if_error!(target: "$crate", $msg, $expr)
+    }};
+}

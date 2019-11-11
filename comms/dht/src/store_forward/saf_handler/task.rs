@@ -24,11 +24,11 @@ use crate::{
     actor::DhtRequester,
     broadcast_strategy::BroadcastStrategy,
     config::DhtConfig,
-    envelope::{DhtMessageFlags, DhtMessageHeader, NodeDestination},
+    envelope::{Destination, DhtMessageFlags, DhtMessageHeader, NodeDestination},
     inbound::{DecryptedDhtMessage, DhtInboundMessage},
     outbound::{OutboundEncryption, OutboundMessageRequester},
     proto::{
-        envelope::{DhtMessageType, NodeDestinationType},
+        envelope::DhtMessageType,
         store_forward::{StoredMessage, StoredMessagesRequest, StoredMessagesResponse},
     },
     store_forward::{error::StoreAndForwardError, SafStorage},
@@ -160,17 +160,16 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = MiddlewareError>
                         return false;
                     }
                     let dht_header = msg.dht_header.as_ref().expect("previously checked");
-                    let destination_type = NodeDestinationType::from_i32(dht_header.destination_type);
 
-                    match destination_type{
+                    match &dht_header.destination {
                         None=> false,
                         // The stored message was sent with an undisclosed recipient. Perhaps this node
                         // is interested in it
-                        Some(NodeDestinationType::Unknown) => true,
+                        Some(Destination::Unknown(_)) => true,
                         // Was the stored message sent for the requesting node public key?
-                        Some(NodeDestinationType::PublicKey) => dht_header.destination_data == message.source_peer.public_key.as_bytes(),
+                        Some(Destination::PublicKey(pk)) => pk.as_slice() == message.source_peer.public_key.as_bytes(),
                         // Was the stored message sent for the requesting node node id?
-                        Some( NodeDestinationType::NodeId) => dht_header.destination_data == message.source_peer.node_id.as_bytes(),
+                        Some( Destination::NodeId(node_id)) => node_id.as_slice() == message.source_peer.node_id.as_bytes(),
                     }
                 })
                 .take(self.config.saf_max_returned_messages)

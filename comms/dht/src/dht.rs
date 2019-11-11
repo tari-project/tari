@@ -23,6 +23,7 @@
 use self::outbound::OutboundMessageRequester;
 use crate::{
     actor::{DhtActor, DhtRequest, DhtRequester},
+    discovery::{DhtDiscoveryRequest, DhtDiscoveryRequester, DhtDiscoveryService},
     inbound,
     inbound::{DecryptedDhtMessage, DhtInboundMessage},
     outbound,
@@ -60,6 +61,8 @@ pub struct Dht {
     outbound_receiver: Option<mpsc::Receiver<DhtOutboundRequest>>,
     /// Sender for DHT requests
     dht_sender: mpsc::Sender<DhtRequest>,
+    /// Sender for DHT requests
+    discovery_sender: mpsc::Sender<DhtDiscoveryRequest>,
 }
 
 impl Dht {
@@ -73,6 +76,7 @@ impl Dht {
     {
         let (outbound_sender, outbound_receiver) = mpsc::channel(config.outbound_buffer_size);
         let (dht_sender, dht_receiver) = mpsc::channel(10);
+        let (discovery_sender, discovery_receiver) = mpsc::channel(10);
 
         let dht = Self {
             node_identity,
@@ -81,14 +85,16 @@ impl Dht {
             outbound_sender,
             outbound_receiver: Some(outbound_receiver),
             dht_sender,
+            discovery_sender,
         };
 
-        executor.spawn(dht.actor(dht_receiver, shutdown_signal).start());
+        executor.spawn(dht.actor(dht_receiver, shutdown_signal.clone()).run());
+        executor.spawn(dht.discovery_service(discovery_receiver, shutdown_signal).run());
 
         dht
     }
 
-    /// Create an actor
+    /// Create a DHT actor
     fn actor(
         &self,
         request_receiver: mpsc::Receiver<DhtRequest>,
@@ -96,6 +102,23 @@ impl Dht {
     ) -> DhtActor<'static>
     {
         DhtActor::new(
+            self.config.clone(),
+            Arc::clone(&self.node_identity),
+            Arc::clone(&self.peer_manager),
+            self.outbound_requester(),
+            request_receiver,
+            shutdown_signal,
+        )
+    }
+
+    /// Create the discovery service
+    fn discovery_service(
+        &self,
+        request_receiver: mpsc::Receiver<DhtDiscoveryRequest>,
+        shutdown_signal: ShutdownSignal,
+    ) -> DhtDiscoveryService
+    {
+        DhtDiscoveryService::new(
             self.config.clone(),
             Arc::clone(&self.node_identity),
             Arc::clone(&self.peer_manager),
@@ -113,6 +136,11 @@ impl Dht {
     /// Returns a requester for the DhtActor associated with this instance
     pub fn dht_requester(&self) -> DhtRequester {
         DhtRequester::new(self.dht_sender.clone())
+    }
+
+    /// Returns a requester for the DhtDiscoveryService associated with this instance
+    pub fn discovery_service_requester(&self) -> DhtDiscoveryRequester {
+        DhtDiscoveryRequester::new(self.discovery_sender.clone(), self.config.discovery_request_timeout)
     }
 
     /// Takes ownership of the receiver for DhtOutboundRequest. Will return None if ownership
@@ -170,6 +198,7 @@ impl Dht {
                 self.config.clone(),
                 Arc::clone(&self.node_identity),
                 Arc::clone(&self.peer_manager),
+                self.discovery_service_requester(),
                 self.outbound_requester(),
             ))
             .into_inner()
@@ -197,6 +226,7 @@ impl Dht {
             .layer(outbound::BroadcastLayer::new(
                 Arc::clone(&self.node_identity),
                 self.dht_requester(),
+                self.discovery_service_requester(),
             ))
             .layer(outbound::EncryptionLayer::new(Arc::clone(&self.node_identity)))
             .layer(outbound::SerializeLayer::new(Arc::clone(&self.node_identity)))

@@ -31,7 +31,7 @@ use tari_comms::{
     utils::signature,
 };
 use tari_comms_middleware::MiddlewareError;
-use tari_utilities::message_format::MessageFormat;
+use tari_utilities::{hex::Hex, message_format::MessageFormat};
 use tower::{layer::Layer, Service, ServiceExt};
 
 const LOG_TARGET: &'static str = "comms::dht::serialize";
@@ -92,12 +92,18 @@ where
         } = message;
 
         // If forwarding the message, the DhtHeader already has a signature that should not change
-        if !comms_flags.contains(MessageFlags::FORWARDED) {
+        if comms_flags.contains(MessageFlags::FORWARDED) {
+            trace!(target: LOG_TARGET, "Forwarded message. Message will not be signed");
+        } else {
             // Sign the body
             let signature = DHT_RNG
                 .with(|rng| signature::sign(&mut *rng.borrow_mut(), node_identity.secret_key().clone(), &body))?;
             dht_header.origin_signature = signature.to_binary()?;
-            trace!(target: LOG_TARGET, "Signed message: {:?}", dht_header);
+            trace!(
+                target: LOG_TARGET,
+                "Signed message: {}",
+                dht_header.origin_signature.to_hex()
+            );
         }
 
         let envelope = DhtEnvelope::new(dht_header.into(), body);

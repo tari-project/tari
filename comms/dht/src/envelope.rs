@@ -27,12 +27,13 @@ use serde::{Deserialize, Serialize};
 use std::{
     convert::{TryFrom, TryInto},
     fmt,
+    fmt::Display,
 };
 use tari_comms::{peer_manager::NodeId, types::CommsPublicKey, utils::signature};
-use tari_utilities::{hex::Hex, ByteArray};
+use tari_utilities::{hex::Hex, ByteArray, ByteArrayError};
 
 // Re-export applicable protos
-pub use crate::proto::envelope::{DhtEnvelope, DhtHeader, DhtMessageType, NodeDestinationType};
+pub use crate::proto::envelope::{dht_header::Destination, DhtEnvelope, DhtHeader, DhtMessageType};
 
 #[derive(Debug, Error)]
 pub enum DhtMessageError {
@@ -120,7 +121,10 @@ impl TryFrom<DhtHeader> for DhtMessageHeader {
     fn try_from(header: DhtHeader) -> Result<Self, Self::Error> {
         Ok(Self::new(
             header
-                .get_node_destination()
+                .destination
+                .map(|destination| destination.try_into().ok())
+                .filter(Option::is_some)
+                .map(Option::unwrap)
                 .ok_or(DhtMessageError::InvalidDestination)?,
             CommsPublicKey::from_bytes(&header.origin_public_key)
                 .map_err(|_| DhtMessageError::InvalidOriginPublicKey)?,
@@ -142,29 +146,13 @@ impl TryFrom<Option<DhtHeader>> for DhtMessageHeader {
     }
 }
 
-// Protobuf message impl
-impl DhtHeader {
-    pub fn get_node_destination(&self) -> Option<NodeDestination> {
-        match NodeDestinationType::from_i32(self.destination_type)? {
-            NodeDestinationType::Unknown => Some(NodeDestination::Unknown),
-            NodeDestinationType::PublicKey => CommsPublicKey::from_bytes(&self.destination_data)
-                .and_then(|pk| Ok(NodeDestination::PublicKey(pk)))
-                .ok(),
-            NodeDestinationType::NodeId => NodeId::from_bytes(&self.destination_data)
-                .and_then(|node_id| Ok(NodeDestination::NodeId(node_id)))
-                .ok(),
-        }
-    }
-}
-
 impl From<DhtMessageHeader> for DhtHeader {
     fn from(header: DhtMessageHeader) -> Self {
         Self {
             version: header.version,
             origin_public_key: header.origin_public_key.to_vec(),
             origin_signature: header.origin_signature,
-            destination_data: header.destination.to_inner_bytes(),
-            destination_type: NodeDestinationType::from(header.destination) as i32,
+            destination: Some(header.destination.into()),
             message_type: header.message_type as i32,
             flags: header.flags.bits(),
         }
@@ -220,18 +208,45 @@ impl NodeDestination {
     }
 }
 
+impl Display for NodeDestination {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        match self {
+            NodeDestination::Unknown => write!(f, "Unknown"),
+            NodeDestination::NodeId(node_id) => write!(f, "NodeId({})", node_id),
+            NodeDestination::PublicKey(public_key) => write!(f, "PublicKey({})", public_key),
+        }
+    }
+}
+
 impl Default for NodeDestination {
     fn default() -> Self {
         NodeDestination::Unknown
     }
 }
 
-impl From<NodeDestination> for NodeDestinationType {
-    fn from(destination: NodeDestination) -> Self {
+impl TryFrom<Destination> for NodeDestination {
+    type Error = ByteArrayError;
+
+    fn try_from(destination: Destination) -> Result<Self, Self::Error> {
         match destination {
-            NodeDestination::Unknown => NodeDestinationType::Unknown,
-            NodeDestination::NodeId(_) => NodeDestinationType::NodeId,
-            NodeDestination::PublicKey(_) => NodeDestinationType::PublicKey,
+            Destination::Unknown(_) => Ok(NodeDestination::Unknown),
+            Destination::PublicKey(pk) => {
+                CommsPublicKey::from_bytes(&pk).and_then(|pk| Ok(NodeDestination::PublicKey(pk)))
+            },
+            Destination::NodeId(node_id) => {
+                NodeId::from_bytes(&node_id).and_then(|node_id| Ok(NodeDestination::NodeId(node_id)))
+            },
+        }
+    }
+}
+
+impl From<NodeDestination> for Destination {
+    fn from(destination: NodeDestination) -> Self {
+        use NodeDestination::*;
+        match destination {
+            Unknown => Destination::Unknown(true),
+            PublicKey(pk) => Destination::PublicKey(pk.to_vec()),
+            NodeId(node_id) => Destination::NodeId(node_id.to_vec()),
         }
     }
 }

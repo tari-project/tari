@@ -2,45 +2,39 @@ syntax = "proto3";
 
 package tari.dht.envelope;
 
-// Represents the ways a destination node can be represented.
-enum NodeDestinationType {
-    // The sender has chosen not to disclose the message destination, or the destination is
-    // the peer being sent to.
-    NodeDestinationTypeUnknown = 0;
-    /// Destined for a particular public key
-    NodeDestinationTypePublicKey = 1;
-    /// Destined for a particular node id, or network region
-    NodeDestinationTypeNodeId = 2;
-}
-
 enum DhtMessageType {
     // Indicated this message is not a DHT message
     DhtMessageTypeNone = 0;
     // Join Request
     DhtMessageTypeJoin = 1;
-    // Discover Request
-    DhtMessageTypeDiscover = 2;
+    // Discovery request
+    DhtMessageTypeDiscovery = 2;
+    // Response to a discovery request
+    DhtMessageTypeDiscoveryResponse = 3;
     // Request stored messages from a node
-    DhtMessageTypeSafRequestMessages = 3;
+    DhtMessageTypeSafRequestMessages = 20;
     // Stored messages response
-    DhtMessageTypeSafStoredMessages = 4;
+    DhtMessageTypeSafStoredMessages = 21;
 }
 
 message DhtHeader {
     uint32 version = 1;
-    NodeDestinationType destination_type = 2;
-    // Data related to the specified destination.
-    // Unknown - empty bytes (default)
-    // PublicKey - public key bytes
-    // NodeId - NodeId bytes
-    bytes destination_data = 3;
+    oneof destination {
+        // The sender has chosen not to disclose the message destination, or the destination is
+        // the peer being sent to.
+        bool unknown = 2;
+        /// Destined for a particular public key
+        bytes public_key = 3;
+        /// Destined for a particular node id, or network region
+        bytes node_id = 4;
+    }
 
     // Origin public key of the message. This can be the same peer that sent the message
     // or another peer if the message should be forwarded.
-    bytes origin_public_key = 4;
-    bytes origin_signature = 5;
-    DhtMessageType message_type = 6;
-    uint32 flags = 7;
+    bytes origin_public_key = 5;
+    bytes origin_signature = 6;
+    DhtMessageType message_type = 7;
+    uint32 flags = 8;
 }
 
 message DhtEnvelope {

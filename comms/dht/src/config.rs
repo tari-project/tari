@@ -69,6 +69,9 @@ pub struct DhtConfig {
     /// with connection attempts to a peer which is offline.
     /// Default: 30 minutes
     pub broadcast_cooldown_period: Duration,
+    /// The duration to wait for a peer discovery to complete before giving up.
+    /// Default: 2 minutes
+    pub discovery_request_timeout: Duration,
 }
 
 impl Default for DhtConfig {
@@ -85,6 +88,7 @@ impl Default for DhtConfig {
             signature_cache_ttl: Duration::from_secs(300),
             broadcast_cooldown_max_attempts: 3,
             broadcast_cooldown_period: Duration::from_secs(60 * 30),
+            discovery_request_timeout: Duration::from_secs(2 * 60),
         }
     }
 }
