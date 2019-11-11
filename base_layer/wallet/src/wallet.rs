@@ -19,7 +19,6 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 use crate::{
     contacts_service::{
         handle::ContactsServiceHandle,
@@ -35,8 +34,12 @@ use crate::{
     },
     storage::database::{WalletBackend, WalletDatabase},
     transaction_service::{
+        error::TransactionServiceError,
         handle::TransactionServiceHandle,
-        storage::memory_db::TransactionMemoryDatabase,
+        storage::{
+            database::{CompletedTransaction, InboundTransaction},
+            memory_db::TransactionMemoryDatabase,
+        },
         TransactionServiceInitializer,
     },
 };
@@ -146,6 +149,52 @@ where T: WalletBackend
             db: WalletDatabase::new(backend),
             runtime,
         })
+    }
+
+    #[cfg(feature = "c_integration")]
+    pub async fn register_callback_received_transaction(
+        &mut self,
+        call: unsafe extern "C" fn(*mut InboundTransaction),
+    ) -> Result<(), TransactionServiceError>
+    {
+        self.transaction_service
+            .register_callback_received_transaction(call)
+            .await?;
+        Ok(())
+    }
+
+    #[cfg(feature = "c_integration")]
+    pub async fn register_callback_received_transaction_reply(
+        &mut self,
+        call: unsafe extern "C" fn(*mut CompletedTransaction),
+    ) -> Result<(), TransactionServiceError>
+    {
+        self.transaction_service
+            .register_callback_received_transaction_reply(call)
+            .await?;
+        Ok(())
+    }
+
+    #[cfg(feature = "c_integration")]
+    pub async fn register_callback_mined(
+        &mut self,
+        call: unsafe extern "C" fn(*mut CompletedTransaction),
+    ) -> Result<(), TransactionServiceError>
+    {
+        self.transaction_service.register_callback_mined(call).await?;
+        Ok(())
+    }
+
+    #[cfg(feature = "c_integration")]
+    pub async fn register_callback_transaction_broadcast(
+        &mut self,
+        call: unsafe extern "C" fn(*mut CompletedTransaction),
+    ) -> Result<(), TransactionServiceError>
+    {
+        self.transaction_service
+            .register_callback_transaction_broadcast(call)
+            .await?;
+        Ok(())
     }
 
     /// This method consumes the wallet so that the handles are dropped which will result in the services async loops

@@ -21,7 +21,6 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::support::utils::{event_stream_count, make_input, random_string};
-
 use std::{sync::Arc, time::Duration};
 use tari_comms::{
     connection::{net_address::NetAddressWithStats, NetAddress, NetAddressesWithStats},
@@ -30,12 +29,12 @@ use tari_comms::{
     types::CommsPublicKey,
 };
 use tari_crypto::keys::PublicKey;
-use tari_p2p::{initialization::CommsConfig, services::liveness::handle::LivenessEvent};
+use tari_p2p::initialization::CommsConfig;
 use tari_transactions::tari_amount::MicroTari;
 use tari_wallet::{
     contacts_service::storage::database::Contact,
     storage::memory_db::WalletMemoryDatabase,
-    testnet_utils::detect_broadcast_of_inbound_transaction,
+    testnet_utils::broadcast_transaction,
     transaction_service::handle::TransactionEvent,
     wallet::WalletConfig,
     Wallet,
@@ -122,7 +121,7 @@ fn test_wallet() {
     let runtime_node1 = Runtime::new().unwrap();
     let runtime_node2 = Runtime::new().unwrap();
     let mut alice_wallet = Wallet::new(config1, WalletMemoryDatabase::new(), runtime_node1).unwrap();
-    let mut bob_wallet = Wallet::new(config2, WalletMemoryDatabase::new(), runtime_node2).unwrap();
+    let bob_wallet = Wallet::new(config2, WalletMemoryDatabase::new(), runtime_node2).unwrap();
 
     alice_wallet
         .comms
@@ -259,7 +258,7 @@ fn test_test_harness() {
     use rand::OsRng;
     use std::thread;
     use tari_wallet::{
-        testnet_utils::{complete_sent_transaction, mine_completed_transaction, receive_test_transaction},
+        testnet_utils::{complete_sent_transaction, mine_transaction, receive_test_transaction},
         transaction_service::storage::database::TransactionStatus,
     };
 
@@ -363,7 +362,7 @@ fn test_test_harness() {
         .block_on(alice_wallet.output_manager_service.get_balance())
         .unwrap();
 
-    mine_completed_transaction(&mut alice_wallet, tx_id.clone()).unwrap();
+    mine_transaction(&mut alice_wallet, tx_id.clone()).unwrap();
 
     let alice_completed_tx = alice_wallet
         .runtime
@@ -399,7 +398,7 @@ fn test_test_harness() {
     }
     assert!(inbound_tx_id.is_some());
 
-    detect_broadcast_of_inbound_transaction(&mut alice_wallet, inbound_tx_id.clone().take().unwrap()).unwrap();
+    broadcast_transaction(&mut alice_wallet, inbound_tx_id.clone().take().unwrap()).unwrap();
 
     let alice_pending_inbound = alice_wallet
         .runtime
@@ -421,7 +420,7 @@ fn test_test_harness() {
         .block_on(alice_wallet.output_manager_service.get_balance())
         .unwrap();
 
-    mine_completed_transaction(&mut alice_wallet, inbound_tx_id.clone().take().unwrap()).unwrap();
+    mine_transaction(&mut alice_wallet, inbound_tx_id.clone().take().unwrap()).unwrap();
 
     let alice_completed_tx = alice_wallet
         .runtime
