@@ -482,8 +482,9 @@ where T: BlockchainBackend
     pub fn is_new_best_block(&self, block: &Block) -> Result<bool, ChainStorageError> {
         let (height, parent_hash) = {
             let db = self.access_metadata()?;
+            // If the database is empty, the best block must be the genesis block
             if db.height_of_longest_chain.is_none() {
-                return Ok(true);
+                return Ok(block.header.height == 0);
             }
             (
                 db.height_of_longest_chain.clone().unwrap(),
