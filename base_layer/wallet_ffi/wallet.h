@@ -174,7 +174,7 @@ const char *completed_transaction_get_message(struct TariCompletedTransaction *t
 // |   0 | Completed |
 // |   1 | Broadcast |
 // |   2 | Mined |
-char completed_transaction_get_status(struct TariCompletedTransaction *transaction);
+int completed_transaction_get_status(struct TariCompletedTransaction *transaction);
 
 // Gets the TransactionID of a TariCompletedTransaction
 unsigned long long completed_transaction_get_transaction_id(struct TariCompletedTransaction *transaction);
