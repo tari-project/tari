@@ -53,13 +53,20 @@ impl LinearWeightedMovingAverage {
             .as_u64();
         let ave_difficulty = difficulty as f64 / n as f64;
 
+        let mut previous_timestamp = timestamps[0];
+        let mut this_timestamp = 0;
         // Loop through N most recent blocks.
         for i in 1..(n + 1) as usize {
             // 6*T limit prevents large drops in diff from long solve times which would cause oscillations.
-            let solve_time = match timestamps[i].checked_sub(timestamps[i - 1]) {
-                None | Some(0) => 1,
-                Some(v) => cmp::min(v, 6 * TARGET_BLOCK_INTERVAL),
-            };
+            // We cannot have if solvetime < 1 then solvetime = 1, this will greatly increase the next timestaamp
+            // difficulty which will lower the difficulty
+            if (timestamps[i] > previous_timestamp) {
+                this_timestamp = timestamps[i];
+            } else {
+                this_timestamp = previous_timestamp + 1;
+            }
+            let solve_time = cmp::min(this_timestamp - previous_timestamp, 6 * TARGET_BLOCK_INTERVAL);
+            previous_timestamp = this_timestamp;
 
             // Give linearly higher weight to more recent solve times.
             // Note: This will not overflow for practical values of block_window and solve time.
