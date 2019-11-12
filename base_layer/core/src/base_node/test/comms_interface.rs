@@ -45,6 +45,7 @@ use crate::{
 };
 use croaring::Bitmap;
 use futures::{executor::block_on, StreamExt};
+use tari_broadcast_channel::bounded;
 use tari_mmr::MutableMmrLeafNodes;
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_test_utils::runtime::test_async;
@@ -90,7 +91,8 @@ fn outbound_get_metadata() {
 #[test]
 fn inbound_get_metadata() {
     let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
-    let inbound_nch = InboundNodeCommsHandlers::new(store);
+    let (block_event_publisher, _block_event_subscriber) = bounded(100);
+    let inbound_nch = InboundNodeCommsHandlers::new(block_event_publisher, store);
 
     test_async(move |rt| {
         rt.spawn(async move {
@@ -131,7 +133,8 @@ fn outbound_fetch_kernels() {
 #[test]
 fn inbound_fetch_kernels() {
     let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
-    let inbound_nch = InboundNodeCommsHandlers::new(store.clone());
+    let (block_event_publisher, _block_event_subscriber) = bounded(100);
+    let inbound_nch = InboundNodeCommsHandlers::new(block_event_publisher, store.clone());
 
     let kernel = create_test_kernel(5.into(), 0);
     let hash = kernel.hash();
@@ -177,7 +180,8 @@ fn outbound_fetch_headers() {
 #[test]
 fn inbound_fetch_headers() {
     let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
-    let inbound_nch = InboundNodeCommsHandlers::new(store.clone());
+    let (block_event_publisher, _block_event_subscriber) = bounded(100);
+    let inbound_nch = InboundNodeCommsHandlers::new(block_event_publisher, store.clone());
 
     let mut header = BlockHeader::new(0);
     header.height = 0;
@@ -223,7 +227,8 @@ fn outbound_fetch_utxos() {
 #[test]
 fn inbound_fetch_utxos() {
     let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
-    let inbound_nch = InboundNodeCommsHandlers::new(store.clone());
+    let (block_event_publisher, _block_event_subscriber) = bounded(100);
+    let inbound_nch = InboundNodeCommsHandlers::new(block_event_publisher, store.clone());
 
     let (utxo, _) = create_utxo(MicroTari(10_000));
     let hash = utxo.hash();
@@ -268,7 +273,8 @@ fn outbound_fetch_blocks() {
 #[test]
 fn inbound_fetch_blocks() {
     let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
-    let inbound_nch = InboundNodeCommsHandlers::new(store.clone());
+    let (block_event_publisher, _block_event_subscriber) = bounded(100);
+    let inbound_nch = InboundNodeCommsHandlers::new(block_event_publisher, store.clone());
 
     let block = add_block_and_update_header(&store, get_genesis_block());
 
@@ -311,7 +317,8 @@ fn outbound_fetch_mmr_state() {
 #[test]
 fn inbound_fetch_mmr_state() {
     let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
-    let inbound_nch = InboundNodeCommsHandlers::new(store);
+    let (block_event_publisher, _block_event_subscriber) = bounded(100);
+    let inbound_nch = InboundNodeCommsHandlers::new(block_event_publisher, store);
 
     test_async(move |rt| {
         rt.spawn(async move {

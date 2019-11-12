@@ -33,6 +33,7 @@ use crate::{
 use futures::{future, Future, Stream, StreamExt};
 use log::*;
 use std::{convert::TryFrom, sync::Arc};
+use tari_broadcast_channel::bounded;
 use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_p2p::{
     comms_connector::PeerMessage,
@@ -156,8 +157,13 @@ where T: BlockchainBackend + 'static
         let (local_block_sender_service, local_block_stream) = reply_channel::unbounded();
         let outbound_nci =
             OutboundNodeCommsInterface::new(outbound_request_sender_service, outbound_block_sender_service);
-        let local_nci = LocalNodeCommsInterface::new(local_request_sender_service, local_block_sender_service);
-        let inbound_nch = Arc::new(InboundNodeCommsHandlers::new(self.blockchain_db.clone()));
+        let (block_event_publisher, block_event_subscriber) = bounded(100);
+        let local_nci = LocalNodeCommsInterface::new(
+            local_request_sender_service,
+            local_block_sender_service,
+            block_event_subscriber,
+        );
+        let inbound_nch = InboundNodeCommsHandlers::new(block_event_publisher, self.blockchain_db.clone());
         let executer_clone = executor.clone(); // Give BaseNodeService access to the executor
         let config = self.config.clone();
 

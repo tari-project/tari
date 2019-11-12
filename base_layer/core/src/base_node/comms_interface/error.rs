@@ -34,4 +34,5 @@ pub enum CommsInterfaceError {
     ChainStorageError(ChainStorageError),
     #[error(non_std, no_from)]
     OutboundMessageService(String),
+    EventStreamError,
 }

@@ -22,11 +22,11 @@
 
 use crate::{
     base_node::{
-        comms_interface::{CommsInterfaceError, LocalNodeCommsInterface, OutboundNodeCommsInterface},
+        comms_interface::{BlockEvent, CommsInterfaceError, LocalNodeCommsInterface, OutboundNodeCommsInterface},
         service::{BaseNodeServiceConfig, BaseNodeServiceInitializer},
     },
     blocks::{genesis_block::get_genesis_block, BlockHeader},
-    chain_storage::{BlockchainDatabase, DbTransaction, MemoryDatabase, MmrTree},
+    chain_storage::{BlockchainDatabase, ChainStorageError, DbTransaction, MemoryDatabase, MmrTree},
     consts::BASE_NODE_SERVICE_DESIRED_RESPONSE_FRACTION,
     test_utils::builders::{
         add_block_and_update_header,
@@ -37,9 +37,14 @@ use crate::{
     },
     tx,
 };
-use futures::Sink;
+use futures::{join, select, stream::FusedStream, FutureExt, Sink, Stream, StreamExt};
 use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
-use std::{error::Error, iter, sync::Arc, time::Duration};
+use std::{
+    error::Error,
+    iter,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 use tari_comms::{
     builder::CommsNode,
     control_service::ControlServiceConfig,
@@ -583,7 +588,118 @@ fn request_and_response_fetch_mmr_state() {
     carol_interfaces.comms.shutdown().unwrap();
 }
 
-// TODO: propagate_block test
+pub async fn event_stream_next<TStream>(mut stream: TStream, timeout: Duration) -> Option<TStream::Item>
+where
+    TStream: Stream + FusedStream + Unpin,
+    TStream::Item: Clone,
+{
+    loop {
+        select! {
+            item = stream.select_next_some() => {
+                return Some(item);
+             },
+            _ = tokio::timer::delay(Instant::now() + timeout).fuse() => { break; },
+        }
+    }
+    None
+}
+
+#[test]
+fn propagate_valid_block() {
+    let runtime = Runtime::new().unwrap();
+
+    let (mut alice_interfaces, bob_interfaces, carol_interfaces) =
+        create_network_with_3_base_nodes(&runtime, BaseNodeServiceConfig::default(), MerkleChangeTrackerConfig {
+            min_history_len: 10,
+            max_history_len: 20,
+        });
+
+    let block0 = add_block_and_update_header(&alice_interfaces.blockchain_db, get_genesis_block());
+    let mut block1 = chain_block(&block0, vec![]);
+    block1 = add_block_and_update_header(&alice_interfaces.blockchain_db, block1);
+    let block1_hash = block1.hash();
+
+    bob_interfaces.blockchain_db.add_new_block(block0.clone()).unwrap();
+    carol_interfaces.blockchain_db.add_new_block(block0.clone()).unwrap();
+
+    runtime.block_on(async {
+        assert!(alice_interfaces
+            .outbound_nci
+            .propagate_block(block1.clone())
+            .await
+            .is_ok());
+
+        let bob_block_event_stream = bob_interfaces.local_nci.get_block_event_stream_fused();
+        let bob_block_event_fut = event_stream_next(bob_block_event_stream, Duration::from_millis(20000));
+        let carol_block_event_stream = carol_interfaces.local_nci.get_block_event_stream_fused();
+        let carol_block_event_fut = event_stream_next(carol_block_event_stream, Duration::from_millis(20000));
+        let (bob_block_event, carol_block_event) = join!(bob_block_event_fut, carol_block_event_fut);
+
+        if let BlockEvent::Verified((received_block, _block_add_result)) = &*bob_block_event.unwrap() {
+            assert_eq!(received_block.hash(), block1_hash);
+        } else {
+            assert!(false);
+        }
+        if let BlockEvent::Verified((received_block, _block_add_result)) = &*carol_block_event.unwrap() {
+            assert_eq!(received_block.hash(), block1_hash);
+        } else {
+            assert!(false);
+        }
+    });
+
+    alice_interfaces.comms.shutdown().unwrap();
+    bob_interfaces.comms.shutdown().unwrap();
+    carol_interfaces.comms.shutdown().unwrap();
+}
+
+#[test]
+fn propagate_invalid_block() {
+    let runtime = Runtime::new().unwrap();
+
+    let (mut alice_interfaces, bob_interfaces, carol_interfaces) =
+        create_network_with_3_base_nodes(&runtime, BaseNodeServiceConfig::default(), MerkleChangeTrackerConfig {
+            min_history_len: 10,
+            max_history_len: 20,
+        });
+
+    let block0 = add_block_and_update_header(&alice_interfaces.blockchain_db, get_genesis_block());
+    let block1 = chain_block(&block0, vec![]);
+    let block1_hash = block1.hash();
+
+    bob_interfaces.blockchain_db.add_new_block(block0.clone()).unwrap();
+    carol_interfaces.blockchain_db.add_new_block(block0.clone()).unwrap();
+
+    runtime.block_on(async {
+        assert!(alice_interfaces
+            .outbound_nci
+            .propagate_block(block1.clone())
+            .await
+            .is_ok());
+
+        let bob_block_event_stream = bob_interfaces.local_nci.get_block_event_stream_fused();
+        let bob_block_event_fut = event_stream_next(bob_block_event_stream, Duration::from_millis(20000));
+        let carol_block_event_stream = carol_interfaces.local_nci.get_block_event_stream_fused();
+        let carol_block_event_fut = event_stream_next(carol_block_event_stream, Duration::from_millis(20000));
+        let (bob_block_event, carol_block_event) = join!(bob_block_event_fut, carol_block_event_fut);
+
+        if let BlockEvent::Invalid((received_block, err)) = &*bob_block_event.unwrap() {
+            assert_eq!(received_block.hash(), block1_hash);
+            assert_eq!(*err, ChainStorageError::MismatchedMmrRoot(MmrTree::Kernel));
+        } else {
+            assert!(false);
+        }
+        if let BlockEvent::Invalid((received_block, err)) = &*carol_block_event.unwrap() {
+            assert_eq!(received_block.hash(), block1_hash);
+            assert_eq!(*err, ChainStorageError::MismatchedMmrRoot(MmrTree::Kernel));
+        } else {
+            assert!(false);
+        }
+    });
+
+    alice_interfaces.comms.shutdown().unwrap();
+    bob_interfaces.comms.shutdown().unwrap();
+    carol_interfaces.comms.shutdown().unwrap();
+}
 
 #[test]
 fn service_request_timeout() {
@@ -639,7 +755,7 @@ fn service_request_timeout() {
 #[test]
 fn local_get_metadata() {
     let runtime = Runtime::new().unwrap();
-    let (outbound_nci, mut local_nci, blockchain_db, comms) =
+    let (_outbound_nci, mut local_nci, blockchain_db, comms) =
         create_base_node(&runtime, BaseNodeServiceConfig::default());
 
     let block0 = add_block_and_update_header(&blockchain_db, get_genesis_block());
@@ -659,4 +775,29 @@ fn local_get_metadata() {
 
 // TODO: local get_new_block test
 
-// TODO: local submit_block test
+#[test]
+fn local_submit_block() {
+    let runtime = Runtime::new().unwrap();
+    let (_outbound_nci, mut local_nci, blockchain_db, comms) =
+        create_base_node(&runtime, BaseNodeServiceConfig::default());
+
+    let block0 = add_block_and_update_header(&blockchain_db, get_genesis_block());
+    let mut block1 = chain_block(&block0, vec![]);
+    block1.header.height = 1;
+
+    runtime.block_on(async {
+        assert!(local_nci.submit_block(block1.clone()).await.is_ok());
+
+        let block_event_stream = local_nci.get_block_event_stream_fused();
+        let bob_block_event = event_stream_next(block_event_stream, Duration::from_millis(20000)).await;
+
+        if let BlockEvent::Invalid((received_block, err)) = &*bob_block_event.unwrap() {
+            assert_eq!(received_block.hash(), block1.hash());
+            assert_eq!(*err, ChainStorageError::MismatchedMmrRoot(MmrTree::Kernel));
+        } else {
+            assert!(false);
+        }
+    });
+
+    comms.shutdown().unwrap();
+}
