@@ -25,7 +25,7 @@ use crate::{
     chain_storage::{BlockAddResult, BlockchainDatabase, MemoryDatabase},
     proof_of_work::Difficulty,
     test_utils::{
-        primitives::{create_random_signature, generate_keys},
+        primitives::{create_random_signature, create_signature, generate_keys},
         test_common::TestParams,
     },
 };
@@ -37,6 +37,7 @@ use tari_crypto::{
     range_proof::RangeProofService,
 };
 use tari_transactions::{
+    consensus::ConsensusRules,
     fee::Fee,
     tari_amount::MicroTari,
     transaction::{
@@ -220,7 +221,6 @@ pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutp
         .with_offset(test_params.offset.clone())
         .with_private_nonce(test_params.nonce.clone())
         .with_change_secret(test_params.change_key.clone());
-
     for input in &schema.from {
         let utxo = input.as_transaction_input(&COMMITMENT_FACTORY, input.features.clone());
         stx_builder.with_input(utxo, input.clone());
@@ -268,23 +268,24 @@ pub fn create_test_kernel(fee: MicroTari, lock_height: u64) -> TransactionKernel
 /// value, and the maturity is zero.
 pub fn create_genesis_block() -> (Block, UnblindedOutput) {
     let mut header = BlockHeader::new(0);
+    let consensus_rules = ConsensusRules::current();
     header.total_difficulty = Difficulty::from(1);
-    let value = MicroTari::from(100_000_000);
-    let excess = Commitment::from_public_key(&PublicKey::default());
-    let (utxo, key) = create_utxo(value);
-    let (_pk, sig) = create_random_signature(0.into(), 0);
+    let value = consensus_rules.emission_schedule().block_reward(0);
+    let (mut utxo, key) = create_utxo(value);
+    let excess = COMMITMENT_FACTORY.commit(&key, &0.into());
+    let sig = create_signature(0.into(), 0, &key);
     let kernel = KernelBuilder::new()
         .with_signature(&sig)
         .with_excess(&excess)
         .with_features(KernelFeatures::COINBASE_KERNEL)
         .build()
         .unwrap();
+    utxo.features = OutputFeatures::create_coinbase(0, &consensus_rules);
     let block = BlockBuilder::new()
         .with_header(header)
         .with_coinbase_utxo(utxo, kernel)
         .build();
-    // TODO right now it matters not that it's not flagged as a Coinbase output
-    let output = UnblindedOutput::new(value, key, None);
+    let output = UnblindedOutput::new(value, key, Some(OutputFeatures::create_coinbase(0, &consensus_rules)));
     (block, output)
 }
 
@@ -307,9 +308,24 @@ pub fn create_test_block(block_height: u64, prev_block: Option<Block>, transacti
         header.prev_hash = block.hash();
         header.total_difficulty = block.header.total_difficulty + Difficulty::from(1);
     }
+    // create coinbase utxo
+    let consensus_rules = ConsensusRules::current();
+    let value = consensus_rules.emission_schedule().block_reward(header.height) + count_fees(&transactions);
+    let (mut utxo, key) = create_utxo(value);
+    let excess = COMMITMENT_FACTORY.commit(&key, &0.into());
+    let sig = create_signature(0.into(), 0, &key);
+    let kernel = KernelBuilder::new()
+        .with_signature(&sig)
+        .with_excess(&excess)
+        .with_features(KernelFeatures::COINBASE_KERNEL)
+        .build()
+        .unwrap();
+    utxo.features = OutputFeatures::create_coinbase(header.height, &consensus_rules);
+
     BlockBuilder::new()
         .with_header(header)
         .with_transactions(transactions)
+        .with_coinbase_utxo(utxo, kernel)
         .build()
 }
 
@@ -318,9 +334,23 @@ pub fn chain_block(prev_block: &Block, transactions: Vec<Transaction>) -> Block 
     let mut header = BlockHeader::from_previous(&prev_block.header);
     header.total_difficulty = prev_block.header.total_difficulty + Difficulty::from(1);
 
+    // create coinbase utxo
+    let consensus_rules = ConsensusRules::current();
+    let value = consensus_rules.emission_schedule().block_reward(header.height) + count_fees(&transactions);
+    let (mut utxo, key) = create_utxo(value);
+    let excess = COMMITMENT_FACTORY.commit(&key, &0.into());
+    let sig = create_signature(0.into(), 0, &key);
+    let kernel = KernelBuilder::new()
+        .with_signature(&sig)
+        .with_excess(&excess)
+        .with_features(KernelFeatures::COINBASE_KERNEL)
+        .build()
+        .unwrap();
+    utxo.features = OutputFeatures::create_coinbase(header.height, &consensus_rules);
     BlockBuilder::new()
         .with_header(header)
         .with_transactions(transactions)
+        .with_coinbase_utxo(utxo, kernel)
         .build()
 }
 
@@ -342,4 +372,12 @@ pub fn schema_to_transaction(txns: &[TransactionSchema]) -> (Vec<Arc<Transaction
         utxos.append(&mut output);
     });
     (tx, utxos)
+}
+
+pub fn count_fees(transactions: &Vec<Transaction>) -> MicroTari {
+    let mut fees = 0.into();
+    for tx in transactions {
+        fees += tx.get_body().get_total_fee();
+    }
+    fees
 }

@@ -25,7 +25,7 @@ use crate::{
         comms_interface::{BlockEvent, CommsInterfaceError, LocalNodeCommsInterface, OutboundNodeCommsInterface},
         service::{BaseNodeServiceConfig, BaseNodeServiceInitializer},
     },
-    blocks::{genesis_block::get_genesis_block, BlockHeader},
+    blocks::BlockHeader,
     chain_storage::{BlockchainDatabase, ChainStorageError, DbTransaction, MemoryDatabase, MmrTree},
     consts::BASE_NODE_SERVICE_DESIRED_RESPONSE_FRACTION,
     test_utils::builders::{
@@ -447,7 +447,7 @@ fn request_and_response_fetch_blocks() {
             max_history_len: 20,
         });
 
-    let block0 = add_block_and_update_header(&bob_interfaces.blockchain_db, get_genesis_block());
+    let block0 = add_block_and_update_header(&bob_interfaces.blockchain_db, create_genesis_block().0);
     let mut block1 = chain_block(&block0, vec![]);
     block1 = add_block_and_update_header(&bob_interfaces.blockchain_db, block1);
     let mut block2 = chain_block(&block1, vec![]);
@@ -489,7 +489,7 @@ fn request_and_response_fetch_mmr_state() {
     let (tx2, inputs2, _) = tx!(10_000*uT, fee: 20*uT, inputs: 1, outputs: 1);
     let (_, inputs3, _) = tx!(10_000*uT, fee: 25*uT, inputs: 1, outputs: 1);
 
-    let block0 = add_block_and_update_header(&bob_interfaces.blockchain_db, get_genesis_block());
+    let block0 = add_block_and_update_header(&bob_interfaces.blockchain_db, create_genesis_block().0);
     let mut txn = DbTransaction::new();
     txn.insert_utxo(inputs1[0].as_transaction_output(&PROVER, &COMMITMENT_FACTORY).unwrap());
     txn.insert_utxo(inputs2[0].as_transaction_output(&PROVER, &COMMITMENT_FACTORY).unwrap());
@@ -502,7 +502,7 @@ fn request_and_response_fetch_mmr_state() {
     let block3 = chain_block(&block2, vec![tx2.clone()]);
     bob_interfaces.blockchain_db.add_new_block(block3.clone()).unwrap();
 
-    let block0 = add_block_and_update_header(&carol_interfaces.blockchain_db, get_genesis_block());
+    let block0 = add_block_and_update_header(&carol_interfaces.blockchain_db, create_genesis_block().0);
     let mut txn = DbTransaction::new();
     txn.insert_utxo(inputs1[0].as_transaction_output(&PROVER, &COMMITMENT_FACTORY).unwrap());
     txn.insert_utxo(inputs2[0].as_transaction_output(&PROVER, &COMMITMENT_FACTORY).unwrap());
@@ -522,7 +522,7 @@ fn request_and_response_fetch_mmr_state() {
             .fetch_mmr_state(MmrTree::Utxo, 1, 2)
             .await
             .unwrap();
-        assert_eq!(received_mmr_state.total_leaf_count, 4);
+        assert_eq!(received_mmr_state.total_leaf_count, 7);
         assert_eq!(received_mmr_state.leaf_nodes.leaf_hashes.len(), 2);
 
         let received_mmr_state = alice_interfaces
@@ -530,15 +530,15 @@ fn request_and_response_fetch_mmr_state() {
             .fetch_mmr_state(MmrTree::Kernel, 1, 2)
             .await
             .unwrap();
-        assert_eq!(received_mmr_state.total_leaf_count, 1);
-        assert_eq!(received_mmr_state.leaf_nodes.leaf_hashes.len(), 0); // request out of range
+        assert_eq!(received_mmr_state.total_leaf_count, 4);
+        assert_eq!(received_mmr_state.leaf_nodes.leaf_hashes.len(), 2); // request out of range
 
         let received_mmr_state = alice_interfaces
             .outbound_nci
             .fetch_mmr_state(MmrTree::RangeProof, 1, 2)
             .await
             .unwrap();
-        assert_eq!(received_mmr_state.total_leaf_count, 4);
+        assert_eq!(received_mmr_state.total_leaf_count, 7);
         assert_eq!(received_mmr_state.leaf_nodes.leaf_hashes.len(), 2);
 
         let received_mmr_state = alice_interfaces
@@ -555,24 +555,24 @@ fn request_and_response_fetch_mmr_state() {
             .fetch_mmr_state(MmrTree::Utxo, 0, 100)
             .await
             .unwrap();
-        assert_eq!(received_mmr_state.total_leaf_count, 4);
-        assert_eq!(received_mmr_state.leaf_nodes.leaf_hashes.len(), 4);
+        assert_eq!(received_mmr_state.total_leaf_count, 7);
+        assert_eq!(received_mmr_state.leaf_nodes.leaf_hashes.len(), 7);
 
         let received_mmr_state = alice_interfaces
             .outbound_nci
             .fetch_mmr_state(MmrTree::Kernel, 0, 100)
             .await
             .unwrap();
-        assert_eq!(received_mmr_state.total_leaf_count, 1);
-        assert_eq!(received_mmr_state.leaf_nodes.leaf_hashes.len(), 1);
+        assert_eq!(received_mmr_state.total_leaf_count, 4);
+        assert_eq!(received_mmr_state.leaf_nodes.leaf_hashes.len(), 4);
 
         let received_mmr_state = alice_interfaces
             .outbound_nci
             .fetch_mmr_state(MmrTree::RangeProof, 0, 100)
             .await
             .unwrap();
-        assert_eq!(received_mmr_state.total_leaf_count, 4);
-        assert_eq!(received_mmr_state.leaf_nodes.leaf_hashes.len(), 4);
+        assert_eq!(received_mmr_state.total_leaf_count, 7);
+        assert_eq!(received_mmr_state.leaf_nodes.leaf_hashes.len(), 7);
 
         let received_mmr_state = alice_interfaces
             .outbound_nci
@@ -614,7 +614,7 @@ fn propagate_valid_block() {
             max_history_len: 20,
         });
 
-    let block0 = add_block_and_update_header(&alice_interfaces.blockchain_db, get_genesis_block());
+    let block0 = add_block_and_update_header(&alice_interfaces.blockchain_db, create_genesis_block().0);
     let mut block1 = chain_block(&block0, vec![]);
     block1 = add_block_and_update_header(&alice_interfaces.blockchain_db, block1);
     let block1_hash = block1.hash();
@@ -662,7 +662,7 @@ fn propagate_invalid_block() {
             max_history_len: 20,
         });
 
-    let block0 = add_block_and_update_header(&alice_interfaces.blockchain_db, get_genesis_block());
+    let block0 = add_block_and_update_header(&alice_interfaces.blockchain_db, create_genesis_block().0);
     let block1 = chain_block(&block0, vec![]);
     let block1_hash = block1.hash();
 
@@ -758,7 +758,7 @@ fn local_get_metadata() {
     let (_outbound_nci, mut local_nci, blockchain_db, comms) =
         create_base_node(&runtime, BaseNodeServiceConfig::default());
 
-    let block0 = add_block_and_update_header(&blockchain_db, get_genesis_block());
+    let block0 = add_block_and_update_header(&blockchain_db, create_genesis_block().0);
     let mut block1 = chain_block(&block0, vec![]);
     block1 = add_block_and_update_header(&blockchain_db, block1);
     let mut block2 = chain_block(&block1, vec![]);
@@ -781,7 +781,7 @@ fn local_submit_block() {
     let (_outbound_nci, mut local_nci, blockchain_db, comms) =
         create_base_node(&runtime, BaseNodeServiceConfig::default());
 
-    let block0 = add_block_and_update_header(&blockchain_db, get_genesis_block());
+    let block0 = add_block_and_update_header(&blockchain_db, create_genesis_block().0);
     let mut block1 = chain_block(&block0, vec![]);
     block1.header.height = 1;
 

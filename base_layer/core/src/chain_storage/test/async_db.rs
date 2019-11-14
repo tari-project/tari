@@ -192,13 +192,19 @@ fn fetch_async_block() {
 #[test]
 fn async_add_new_block() {
     let (db, blocks, outputs) = create_new_blockchain();
-    let schema = vec![txn_schema!(from: vec![outputs[0][0].clone()], to: vec![20 * T, 20 * T])];
+    let schema = vec![txn_schema!(
+        from: vec![outputs[0][0].clone()],
+        to: vec![2000050.into(), 2000050.into()]
+    )];
+
     let txns = schema_to_transaction(&schema)
         .0
         .iter()
         .map(|t| t.deref().clone())
         .collect();
+
     let new_block = chain_block(&blocks.last().unwrap(), txns);
+
     test_async(|rt| {
         let dbc = db.clone();
         rt.spawn(async move {

@@ -60,3 +60,17 @@ pub fn create_random_signature(fee: MicroTari, lock_height: u64) -> (PublicKey, 
     let e = build_challenge(&PublicKey::from_secret_key(&r), &tx_meta);
     (p, Signature::sign(k, r, &e).unwrap())
 }
+
+/// Generate a random transaction signature, returning the public key (excess) and the signature.
+pub fn create_signature(fee: MicroTari, lock_height: u64, key: &PrivateKey) -> Signature {
+    let mut rng = rand::OsRng::new().unwrap();
+    let r = PrivateKey::random(&mut rng);
+    let tx_meta = TransactionMetadata {
+        fee,
+        lock_height,
+        meta_info: None,
+        linked_kernel: None,
+    };
+    let e = build_challenge(&PublicKey::from_secret_key(&r), &tx_meta);
+    Signature::sign(key.clone(), r, &e).unwrap()
+}

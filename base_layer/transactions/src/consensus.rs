@@ -30,6 +30,7 @@ pub const TARGET_BLOCK_INTERVAL: u64 = 60;
 pub const DIFFICULTY_BLOCK_WINDOW: u64 = 150;
 
 /// This is used to control all consensus values.
+#[derive(Debug)]
 pub struct ConsensusRules {
     /// The min height maturity a coinbase utxo must have
     coinbase_lock_height: u64,

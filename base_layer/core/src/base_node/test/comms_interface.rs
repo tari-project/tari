@@ -30,7 +30,7 @@ use crate::{
         NodeCommsResponse,
         OutboundNodeCommsInterface,
     },
-    blocks::{genesis_block::get_genesis_block, BlockHeader},
+    blocks::BlockHeader,
     chain_storage::{
         BlockchainDatabase,
         ChainMetadata,
@@ -41,7 +41,7 @@ use crate::{
         MutableMmrState,
     },
     proof_of_work::Difficulty,
-    test_utils::builders::{add_block_and_update_header, create_test_kernel, create_utxo},
+    test_utils::builders::{add_block_and_update_header, create_genesis_block, create_test_kernel, create_utxo},
 };
 use croaring::Bitmap;
 use futures::{executor::block_on, StreamExt};
@@ -258,7 +258,7 @@ fn outbound_fetch_blocks() {
     let mut outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
 
     block_on(async {
-        let block = HistoricalBlock::new(get_genesis_block(), 0, Vec::new());
+        let block = HistoricalBlock::new(create_genesis_block().0, 0, Vec::new());
         let block_response: Vec<NodeCommsResponse> = vec![NodeCommsResponse::HistoricalBlocks(vec![block.clone()])];
         let (received_blocks, _) = futures::join!(
             outbound_nci.fetch_blocks(vec![0]),
@@ -276,7 +276,7 @@ fn inbound_fetch_blocks() {
     let (block_event_publisher, _block_event_subscriber) = bounded(100);
     let inbound_nch = InboundNodeCommsHandlers::new(block_event_publisher, store.clone());
 
-    let block = add_block_and_update_header(&store, get_genesis_block());
+    let block = add_block_and_update_header(&store, create_genesis_block().0);
 
     test_async(move |rt| {
         rt.spawn(async move {

@@ -150,7 +150,7 @@ mod test {
     };
     use std::{thread, time::Duration};
     use tari_transactions::{
-        tari_amount::{uT, MicroTari, T},
+        tari_amount::{mT, uT, MicroTari},
         transaction::OutputFeatures,
         types::HashDigest,
     };
@@ -255,22 +255,22 @@ mod test {
         let orphan_pool = OrphanPool::new(Arc::new(store.clone()), OrphanPoolConfig::default());
         let schemas = vec![txn_schema!(
             from: vec![outputs[0][0].clone()],
-            to: vec![2 * T, 2 * T, 2 * T, 2 * T, 2 * T]
+            to: vec![2 * mT, 2 * mT, 2 * mT, 2 * mT, 2 * mT]
         )];
         generate_new_block(&mut miner, &mut blocks, &mut outputs, schemas.clone()).unwrap();
         store.add_block(blocks[1].clone()).unwrap();
         let schemas = vec![
-            txn_schema!(from: vec![outputs[1][0].clone(), outputs[1][1].clone()], to: vec![], fee: 500*uT, lock: 1100, OutputFeatures::default()),
-            txn_schema!(from: vec![outputs[1][2].clone()], to: vec![], fee: 300*uT, lock: 1700, OutputFeatures::default()),
-            txn_schema!(from: vec![outputs[1][3].clone()], to: vec![], fee: 100*uT),
+            txn_schema!(from: vec![outputs[1][0].clone(), outputs[1][1].clone()], to: vec![], fee: 50*uT, lock: 1100, OutputFeatures::default()),
+            txn_schema!(from: vec![outputs[1][2].clone()], to: vec![], fee: 30*uT, lock: 1700, OutputFeatures::default()),
+            txn_schema!(from: vec![outputs[1][3].clone()], to: vec![], fee: 20*uT),
         ];
         let (txns, _) = schema_to_transaction(&schemas.clone());
         generate_new_block(&mut miner, &mut blocks, &mut outputs, schemas).unwrap();
         // tx3 and tx4 depend on tx0 and tx1
         let schemas = vec![
-            txn_schema!(from: vec![outputs[2][0].clone()], to: vec![], fee: 200*uT),
-            txn_schema!(from: vec![outputs[2][2].clone()], to: vec![], fee: 500*uT, lock: 1000, OutputFeatures::default()),
-            txn_schema!(from: vec![outputs[1][4].clone()], to: vec![], fee: 600*uT, lock: 5200, OutputFeatures::default()),
+            txn_schema!(from: vec![outputs[2][0].clone()], to: vec![], fee: 25*uT),
+            txn_schema!(from: vec![outputs[2][2].clone()], to: vec![], fee: 50*uT, lock: 1000, OutputFeatures::default()),
+            txn_schema!(from: vec![outputs[1][4].clone()], to: vec![], fee: 60*uT, lock: 5200, OutputFeatures::default()),
         ];
         let (txns2, _) = schema_to_transaction(&schemas.clone());
         generate_new_block(&mut miner, &mut blocks, &mut outputs, schemas).unwrap();

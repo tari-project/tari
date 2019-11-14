@@ -220,7 +220,8 @@ mod test {
 
         let reorg_pool = ReorgPool::new(ReorgPoolConfig {
             storage_capacity: 5,
-            tx_ttl: Duration::from_millis(50),
+            tx_ttl: Duration::from_millis(5000), /* This is very dangerous, if something takes to long the test will
+                                                  * fail */
         });
         reorg_pool
             .insert_txs(vec![

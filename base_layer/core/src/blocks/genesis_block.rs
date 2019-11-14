@@ -28,6 +28,8 @@ use crate::blocks::{block::Block, BlockBuilder};
 
 use crate::{blocks::BlockHeader, proof_of_work::Difficulty};
 
+// Todo This needs the proper Coinbase UTXO's Calling this and then calling a validate block will fail as the it
+// currently has no coinbase
 pub fn get_genesis_block() -> Block {
     let header = get_gen_header();
     BlockBuilder::new().with_header(header).build()

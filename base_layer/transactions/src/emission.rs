@@ -27,7 +27,7 @@ use crate::tari_amount::MicroTari;
 ///
 /// NB: We don't know what the final emission schedule will be on Tari yet, so do not give any weight to values or
 /// formulae provided in this file, they will almost certainly change ahead of main-net release.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct EmissionSchedule {
     initial: MicroTari,
     decay: f64,

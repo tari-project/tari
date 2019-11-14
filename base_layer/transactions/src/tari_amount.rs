@@ -52,6 +52,8 @@ pub struct MicroTari(pub u64);
 /// ```
 #[allow(non_upper_case_globals)]
 pub const uT: MicroTari = MicroTari(1);
+#[allow(non_upper_case_globals)]
+pub const mT: MicroTari = MicroTari(1_000);
 pub const T: MicroTari = MicroTari(1_000_000);
 
 // You can only add or subtract µT from µT

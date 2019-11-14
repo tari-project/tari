@@ -37,6 +37,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::{Arc, RwLock, RwLockReadGuard};
 use tari_mmr::{Hash, MerkleCheckPoint, MerkleProof, MutableMmrLeafNodes};
 use tari_transactions::{
+    consensus::ConsensusRules,
     transaction::{TransactionInput, TransactionKernel, TransactionOutput},
     types::{Commitment, HashOutput},
 };
@@ -159,6 +160,7 @@ where T: BlockchainBackend
 {
     metadata: Arc<RwLock<ChainMetadata>>,
     db: Arc<T>,
+    consensus_rules: ConsensusRules,
 }
 
 impl<T> BlockchainDatabase<T>
@@ -170,6 +172,7 @@ where T: BlockchainBackend
         Ok(BlockchainDatabase {
             metadata: Arc::new(RwLock::new(metadata)),
             db: Arc::new(db),
+            consensus_rules: ConsensusRules::current(),
         })
     }
 
@@ -394,6 +397,10 @@ where T: BlockchainBackend
         if self.db.contains(&DbKey::BlockHash(block_hash.clone()))? {
             return Ok(BlockAddResult::BlockExists);
         }
+        if let Err(e) = self.is_block_valid(&block) {
+            info!(target: LOG_TARGET, "An invalid block was recieved from peer");
+            return Err(e);
+        };
         if !self.is_new_best_block(&block)? {
             if modify_header {
                 info!(
@@ -496,6 +503,15 @@ where T: BlockchainBackend
             block.header.height == best_block.height + 1 &&
             block.header.total_difficulty > best_block.total_difficulty;
         Ok(result)
+    }
+
+    /// Returns true if the block passes all consistancy checks.
+    /// This function will check the block to ensure that all UTXO's are validly constructed and that all signatures are
+    /// valid. It does _not_ check that the inputs exist in the current UTXO set;
+    /// nor does it check that the PoW is the largest accumulated PoW value.
+    pub fn is_block_valid(&self, block: &Block) -> Result<bool, ChainStorageError> {
+        block.check_internal_consistency(&self.consensus_rules)?;
+        Ok(true)
     }
 
     /// Fetch a block from the blockchain database.
@@ -821,6 +837,7 @@ where T: BlockchainBackend
         BlockchainDatabase {
             metadata: self.metadata.clone(),
             db: self.db.clone(),
+            consensus_rules: ConsensusRules::current(),
         }
     }
 }
