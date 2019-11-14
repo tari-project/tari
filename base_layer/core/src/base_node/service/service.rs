@@ -54,7 +54,6 @@ use log::*;
 use std::{
     collections::HashMap,
     convert::TryInto,
-    sync::Arc,
     time::{Duration, Instant},
 };
 use tari_comms_dht::{
@@ -143,7 +142,7 @@ where
 pub struct BaseNodeService<B: BlockchainBackend> {
     executor: TaskExecutor,
     outbound_message_service: OutboundMessageRequester,
-    inbound_nch: Arc<InboundNodeCommsHandlers<B>>,
+    inbound_nch: InboundNodeCommsHandlers<B>,
     waiting_requests: HashMap<RequestKey, WaitingRequest>,
     timeout_sender: Sender<RequestKey>,
     timeout_receiver_stream: Option<Receiver<RequestKey>>,
@@ -156,7 +155,7 @@ where B: BlockchainBackend
     pub fn new(
         executor: TaskExecutor,
         outbound_message_service: OutboundMessageRequester,
-        inbound_nch: Arc<InboundNodeCommsHandlers<B>>,
+        inbound_nch: InboundNodeCommsHandlers<B>,
         config: BaseNodeServiceConfig,
     ) -> Self
     {

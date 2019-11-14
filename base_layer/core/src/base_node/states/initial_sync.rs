@@ -230,6 +230,10 @@ impl InitialSync {
                     msg
                 );
             },
+            CommsInterfaceError::EventStreamError => {
+                self.shutdown_votes += 1;
+                warn!(target: LOG_TARGET, "Problem sending event on EventStream. {}", msg);
+            },
         }
     }
 

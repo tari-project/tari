@@ -21,10 +21,12 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    base_node::comms_interface::{error::CommsInterfaceError, NodeCommsRequest, NodeCommsResponse},
+    base_node::comms_interface::{error::CommsInterfaceError, BlockEvent, NodeCommsRequest, NodeCommsResponse},
     blocks::Block,
     chain_storage::ChainMetadata,
 };
+use futures::{stream::Fuse, StreamExt};
+use tari_broadcast_channel::Subscriber;
 use tari_service_framework::reply_channel::SenderService;
 use tower_service::Service;
 
@@ -34,6 +36,7 @@ use tower_service::Service;
 pub struct LocalNodeCommsInterface {
     request_sender: SenderService<NodeCommsRequest, Result<NodeCommsResponse, CommsInterfaceError>>,
     block_sender: SenderService<Block, Result<(), CommsInterfaceError>>,
+    block_event_stream: Subscriber<BlockEvent>,
 }
 
 impl LocalNodeCommsInterface {
@@ -41,12 +44,18 @@ impl LocalNodeCommsInterface {
     pub fn new(
         request_sender: SenderService<NodeCommsRequest, Result<NodeCommsResponse, CommsInterfaceError>>,
         block_sender: SenderService<Block, Result<(), CommsInterfaceError>>,
+        block_event_stream: Subscriber<BlockEvent>,
     ) -> Self
     {
         Self {
             request_sender,
             block_sender,
+            block_event_stream,
         }
+    }
+
+    pub fn get_block_event_stream_fused(&self) -> Fuse<Subscriber<BlockEvent>> {
+        self.block_event_stream.clone().fuse()
     }
 
     /// Request metadata from the current local node.

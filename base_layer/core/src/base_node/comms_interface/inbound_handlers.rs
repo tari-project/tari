@@ -23,14 +23,31 @@
 use crate::{
     base_node::comms_interface::{error::CommsInterfaceError, NodeCommsRequest, NodeCommsResponse},
     blocks::{blockheader::BlockHeader, Block},
-    chain_storage::{async_db, BlockchainBackend, BlockchainDatabase, HistoricalBlock},
+    chain_storage::{
+        async_db,
+        BlockAddResult,
+        BlockchainBackend,
+        BlockchainDatabase,
+        ChainStorageError,
+        HistoricalBlock,
+    },
 };
+use futures::SinkExt;
+use tari_broadcast_channel::Publisher;
 use tari_transactions::transaction::{TransactionKernel, TransactionOutput};
+
+/// Events that can be published on the Validated Block Event Stream
+#[derive(Debug)]
+pub enum BlockEvent {
+    Verified((Block, BlockAddResult)),
+    Invalid((Block, ChainStorageError)),
+}
 
 /// The InboundNodeCommsInterface is used to handle all received inbound requests from remote nodes.
 pub struct InboundNodeCommsHandlers<T>
 where T: BlockchainBackend
 {
+    event_publisher: Publisher<BlockEvent>,
     blockchain_db: BlockchainDatabase<T>,
 }
 
@@ -38,8 +55,11 @@ impl<T> InboundNodeCommsHandlers<T>
 where T: BlockchainBackend
 {
     /// Construct a new InboundNodeCommsInterface.
-    pub fn new(blockchain_db: BlockchainDatabase<T>) -> Self {
-        Self { blockchain_db }
+    pub fn new(event_publisher: Publisher<BlockEvent>, blockchain_db: BlockchainDatabase<T>) -> Self {
+        Self {
+            event_publisher,
+            blockchain_db,
+        }
     }
 
     /// Handle inbound node comms requests from remote nodes and local services.
@@ -102,9 +122,14 @@ where T: BlockchainBackend
     }
 
     /// Handle inbound blocks from remote nodes and local services.
-    pub async fn handle_block(&self, block: &Block) -> Result<(), CommsInterfaceError> {
-        // TODO: Validate block and create event on block stream
-
-        Ok(())
+    pub async fn handle_block(&mut self, block: &Block) -> Result<(), CommsInterfaceError> {
+        let block_event = match self.blockchain_db.add_block(block.clone()) {
+            Ok(block_add_result) => BlockEvent::Verified((block.clone(), block_add_result)),
+            Err(e) => BlockEvent::Invalid((block.clone(), e)),
+        };
+        self.event_publisher
+            .send(block_event)
+            .await
+            .map_err(|_| CommsInterfaceError::EventStreamError)
     }
 }
