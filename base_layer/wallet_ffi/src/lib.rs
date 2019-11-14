@@ -836,7 +836,7 @@ pub unsafe extern "C" fn completed_transaction_get_source_public_key(
 /// `transaction` - The pointer to a TariCompletedTransaction
 ///
 /// ## Returns
-/// `c_char` - Returns the status which corresponds to:
+/// `c_int` - Returns the status which corresponds to:
 /// | Value | Interpretation |
 /// |---|---|
 /// |  -1 | TxNullError |
@@ -844,12 +844,12 @@ pub unsafe extern "C" fn completed_transaction_get_source_public_key(
 /// |   1 | Broadcast |
 /// |   2 | Mined |
 #[no_mangle]
-pub unsafe extern "C" fn completed_transaction_get_status(transaction: *mut TariCompletedTransaction) -> c_char {
+pub unsafe extern "C" fn completed_transaction_get_status(transaction: *mut TariCompletedTransaction) -> c_int {
     if transaction.is_null() {
-        return -1 as c_char;
+        return -1;
     }
     let status = (*transaction).status.clone();
-    status as c_char
+    status as c_int
 }
 
 /// Gets the amount of a TariCompletedTransaction
