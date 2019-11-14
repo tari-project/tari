@@ -22,7 +22,7 @@
 
 use derive_error::Error;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Clone)]
 pub enum KeyValStoreError {
     /// The Thread Safety has been breached and the data access has become poisoned
     PoisonedAccess,

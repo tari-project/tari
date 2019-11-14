@@ -36,7 +36,7 @@ use std::{fmt, str::FromStr};
 
 pub use self::{net_address_with_stats::NetAddressWithStats, net_addresses::NetAddressesWithStats};
 
-#[derive(Debug, Error, PartialEq)]
+#[derive(Debug, Error, Clone, PartialEq)]
 pub enum NetAddressError {
     /// Failed to parse address
     ParseFailed,

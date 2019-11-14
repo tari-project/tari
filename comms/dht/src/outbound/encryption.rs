@@ -112,7 +112,7 @@ where
                 message.body = crypt::encrypt(&shared_secret, &message.body)?
             },
             OutboundEncryption::None => {
-                debug!(target: LOG_TARGET, "Encryption not set for message",);
+                debug!(target: LOG_TARGET, "Encryption not requested for message");
             },
         };
 

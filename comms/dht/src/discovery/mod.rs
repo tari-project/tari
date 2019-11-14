@@ -20,26 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{discovery::DhtDiscoveryError, outbound::DhtOutboundError};
-use derive_error::Error;
-use prost::DecodeError;
-use tari_comms::{message::MessageError, peer_manager::PeerManagerError};
+mod error;
+mod requester;
+mod service;
 
-#[derive(Debug, Error)]
-pub enum DhtInboundError {
-    MessageError(MessageError),
-    //    MessageFormatError(MessageFormatError),
-    PeerManagerError(PeerManagerError),
-    DhtOutboundError(DhtOutboundError),
-    /// Failed to decode message
-    DecodeError(DecodeError),
-    /// Message body invalid
-    InvalidMessageBody,
-    /// Node ID is invalid
-    InvalidNodeId,
-    /// All given addresses were invalid
-    InvalidAddresses,
-    /// One or more NetAddress in the join message were invalid
-    InvalidJoinNetAddresses,
-    DhtDiscoveryError(DhtDiscoveryError),
-}
+pub(crate) use self::requester::DhtDiscoveryRequest;
+
+pub use self::{error::DhtDiscoveryError, requester::DhtDiscoveryRequester, service::DhtDiscoveryService};

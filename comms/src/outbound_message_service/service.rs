@@ -99,14 +99,6 @@ impl DialState {
     }
 }
 
-macro_rules! log_if_error {
-    (target: $target:expr, $msg:expr, $expr:expr) => {{
-        if let Err(err) = $expr {
-            log::error!(target: $target, $msg, err);
-        }
-    }};
-}
-
 /// Responsible for dialing peers and sending queued messages
 pub struct OutboundMessageService<TMsgStream> {
     config: OutboundServiceConfig,

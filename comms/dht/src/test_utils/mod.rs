@@ -35,10 +35,18 @@ macro_rules! unwrap_oms_send_msg {
     };
 }
 
+macro_rules! acquire_read_lock {
+    ($e:expr) => {
+        acquire_lock!($e, read)
+    };
+}
+
 mod dht_actor_mock;
+mod dht_discovery_mock;
 mod makers;
 mod service;
 
 pub use dht_actor_mock::{create_dht_actor_mock, DhtMockState};
+pub use dht_discovery_mock::{create_dht_discovery_mock, DhtDiscoveryMockState};
 pub use makers::*;
 pub use service::{service_fn, service_spy};

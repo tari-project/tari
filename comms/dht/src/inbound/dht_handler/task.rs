@@ -23,11 +23,12 @@
 use crate::{
     broadcast_strategy::{BroadcastClosestRequest, BroadcastStrategy},
     config::DhtConfig,
+    discovery::DhtDiscoveryRequester,
     envelope::NodeDestination,
     inbound::{error::DhtInboundError, message::DecryptedDhtMessage},
     outbound::{OutboundEncryption, OutboundMessageRequester},
     proto::{
-        dht::{DiscoverMessage, JoinMessage},
+        dht::{DiscoveryMessage, DiscoveryResponseMessage, JoinMessage},
         envelope::DhtMessageType,
     },
 };
@@ -52,6 +53,7 @@ pub struct ProcessDhtMessage<S> {
     outbound_service: OutboundMessageRequester,
     node_identity: Arc<NodeIdentity>,
     message: Option<DecryptedDhtMessage>,
+    discovery_requester: DhtDiscoveryRequester,
 }
 
 impl<S> ProcessDhtMessage<S>
@@ -65,6 +67,7 @@ where
         peer_manager: Arc<PeerManager>,
         outbound_service: OutboundMessageRequester,
         node_identity: Arc<NodeIdentity>,
+        discovery_requester: DhtDiscoveryRequester,
         message: DecryptedDhtMessage,
     ) -> Self
     {
@@ -74,6 +77,7 @@ where
             peer_manager,
             outbound_service,
             node_identity,
+            discovery_requester,
             message: Some(message),
         }
     }
@@ -92,7 +96,8 @@ where
 
         match message.dht_header.message_type {
             DhtMessageType::Join => self.handle_join(message).await?,
-            DhtMessageType::Discover => self.handle_discover(message).await?,
+            DhtMessageType::Discovery => self.handle_discover(message).await?,
+            DhtMessageType::DiscoveryResponse => self.handle_discover_response(message).await?,
             // Not a DHT message, call downstream middleware
             _ => {
                 trace!(target: LOG_TARGET, "Passing message onto next service");
@@ -238,6 +243,28 @@ where
         Ok(())
     }
 
+    async fn handle_discover_response(&mut self, message: DecryptedDhtMessage) -> Result<(), DhtInboundError> {
+        trace!(
+            target: LOG_TARGET,
+            "Received Discover Response Message from {}",
+            message.dht_header.origin_public_key
+        );
+
+        let msg = message
+            .success()
+            .expect("already checked that this message decrypted successfully");
+
+        let discover_msg = msg
+            .decode_part::<DiscoveryResponseMessage>(0)?
+            .ok_or(DhtInboundError::InvalidMessageBody)?;
+
+        self.discovery_requester
+            .notify_discovery_response_received(discover_msg)
+            .await?;
+
+        Ok(())
+    }
+
     async fn handle_discover(&mut self, message: DecryptedDhtMessage) -> Result<(), DhtInboundError> {
         trace!(
             target: LOG_TARGET,
@@ -250,7 +277,7 @@ where
             .expect("already checked that this message decrypted successfully");
 
         let discover_msg = msg
-            .decode_part::<DiscoverMessage>(0)?
+            .decode_part::<DiscoveryMessage>(0)?
             .ok_or(DhtInboundError::InvalidMessageBody)?;
 
         let addresses = discover_msg
@@ -281,7 +308,8 @@ where
         }
 
         // Send the origin the current nodes latest contact info
-        self.send_join_direct(message.dht_header.origin_public_key).await?;
+        self.send_discovery_response(message.dht_header.origin_public_key, discover_msg.nonce)
+            .await?;
 
         Ok(())
     }
@@ -302,6 +330,35 @@ where
                 OutboundEncryption::EncryptForDestination,
                 DhtMessageType::Join,
                 join_msg,
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    /// Send a `DiscoveryResponseMessage` in response to a `DiscoveryMessage` to the given public key
+    /// using the given nonce which should come from the `DiscoveryMessage`
+    async fn send_discovery_response(
+        &mut self,
+        dest_public_key: CommsPublicKey,
+        nonce: u64,
+    ) -> Result<(), DhtInboundError>
+    {
+        let response = DiscoveryResponseMessage {
+            node_id: self.node_identity.node_id().to_vec(),
+            addresses: vec![self.node_identity.control_service_address().to_string()],
+            peer_features: self.node_identity.features().bits(),
+            nonce,
+        };
+
+        trace!("Sending discovery response to {}", dest_public_key);
+        self.outbound_service
+            .send_dht_message(
+                BroadcastStrategy::DirectPublicKey(dest_public_key.clone()),
+                NodeDestination::PublicKey(dest_public_key),
+                OutboundEncryption::EncryptForDestination,
+                DhtMessageType::DiscoveryResponse,
+                response,
             )
             .await?;
 

@@ -20,43 +20,48 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::actor::{DhtRequest, DhtRequester};
+use crate::{
+    discovery::{DhtDiscoveryRequest, DhtDiscoveryRequester},
+    test_utils::make_peer,
+};
 use futures::{channel::mpsc, stream::Fuse, StreamExt};
-use std::sync::{
-    atomic::{AtomicBool, AtomicUsize, Ordering},
-    Arc,
-    RwLock,
+use log::*;
+use std::{
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+        RwLock,
+    },
+    time::Duration,
 };
 use tari_comms::peer_manager::Peer;
 
-pub fn create_dht_actor_mock(buf_size: usize) -> (DhtRequester, DhtActorMock) {
+const LOG_TARGET: &str = "comms::dht::discovery_mock";
+
+pub fn create_dht_discovery_mock(buf_size: usize, timeout: Duration) -> (DhtDiscoveryRequester, DhtDiscoveryMock) {
     let (tx, rx) = mpsc::channel(buf_size);
-    (DhtRequester::new(tx), DhtActorMock::new(rx.fuse()))
+    (
+        DhtDiscoveryRequester::new(tx, timeout),
+        DhtDiscoveryMock::new(rx.fuse()),
+    )
 }
 
-#[derive(Default, Debug, Clone)]
-pub struct DhtMockState {
-    signature_cache_insert: Arc<AtomicBool>,
+#[derive(Debug, Clone)]
+pub struct DhtDiscoveryMockState {
     call_count: Arc<AtomicUsize>,
-    select_peers: Arc<RwLock<Vec<Peer>>>,
+    discover_peer: Arc<RwLock<Peer>>,
 }
 
-impl DhtMockState {
+impl DhtDiscoveryMockState {
     pub fn new() -> Self {
         Self {
-            signature_cache_insert: Arc::new(AtomicBool::new(false)),
             call_count: Arc::new(AtomicUsize::new(0)),
-            select_peers: Arc::new(RwLock::new(Vec::new())),
+            discover_peer: Arc::new(RwLock::new(make_peer())),
         }
     }
 
-    pub fn set_signature_cache_insert(&self, v: bool) -> &Self {
-        self.signature_cache_insert.store(v, Ordering::SeqCst);
-        self
-    }
-
-    pub fn set_select_peers_response(&self, peers: Vec<Peer>) -> &Self {
-        *acquire_write_lock!(self.select_peers) = peers;
+    pub fn set_discover_peer_response(&self, peer: Peer) -> &Self {
+        *acquire_write_lock!(self.discover_peer) = peer;
         self
     }
 
@@ -69,20 +74,20 @@ impl DhtMockState {
     }
 }
 
-pub struct DhtActorMock {
-    receiver: Fuse<mpsc::Receiver<DhtRequest>>,
-    state: DhtMockState,
+pub struct DhtDiscoveryMock {
+    receiver: Fuse<mpsc::Receiver<DhtDiscoveryRequest>>,
+    state: DhtDiscoveryMockState,
 }
 
-impl DhtActorMock {
-    pub fn new(receiver: Fuse<mpsc::Receiver<DhtRequest>>) -> Self {
+impl DhtDiscoveryMock {
+    pub fn new(receiver: Fuse<mpsc::Receiver<DhtDiscoveryRequest>>) -> Self {
         Self {
             receiver,
-            state: DhtMockState::default(),
+            state: DhtDiscoveryMockState::new(),
         }
     }
 
-    pub fn set_shared_state(&mut self, state: DhtMockState) {
+    pub fn set_shared_state(&mut self, state: DhtDiscoveryMockState) {
         self.state = state;
     }
 
@@ -92,20 +97,17 @@ impl DhtActorMock {
         }
     }
 
-    async fn handle_request(&self, req: DhtRequest) {
-        use DhtRequest::*;
+    async fn handle_request(&self, req: DhtDiscoveryRequest) {
+        use DhtDiscoveryRequest::*;
+        trace!(target: LOG_TARGET, "DhtDiscoveryMock received request {:?}", req);
         self.state.inc_call_count();
         match req {
-            SendJoin => {},
-            SignatureCacheInsert(_, reply_tx) => {
-                let v = self.state.signature_cache_insert.load(Ordering::SeqCst);
-                reply_tx.send(v).unwrap();
+            DiscoverPeer(boxed) => {
+                let (_, reply_tx) = *boxed;
+                let lock = acquire_read_lock!(self.state.discover_peer);
+                reply_tx.send(Ok(lock.clone())).unwrap();
             },
-            SelectPeers(_, reply_tx) => {
-                let lock = acquire_read_lock!(self.state.select_peers);
-                reply_tx.send(lock.clone()).unwrap();
-            },
-            SendRequestStoredMessages(_) => {},
+            NotifyDiscoveryResponseReceived(_) => {},
         }
     }
 }

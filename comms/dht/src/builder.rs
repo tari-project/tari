@@ -83,6 +83,11 @@ impl DhtBuilder {
         self
     }
 
+    pub fn with_discovery_timeout(mut self, timeout: Duration) -> Self {
+        self.config.discovery_request_timeout = timeout;
+        self
+    }
+
     pub fn finish(self) -> Dht {
         Dht::new(
             self.config,

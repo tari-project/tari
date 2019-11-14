@@ -62,6 +62,14 @@ impl fmt::Display for BroadcastStrategy {
 }
 
 impl BroadcastStrategy {
+    pub fn is_direct(&self) -> bool {
+        use BroadcastStrategy::*;
+        match self {
+            DirectNodeId(_) | DirectPublicKey(_) => true,
+            _ => false,
+        }
+    }
+
     pub fn direct_node_id(&self) -> Option<&NodeId> {
         use BroadcastStrategy::*;
         match self {
@@ -76,5 +84,80 @@ impl BroadcastStrategy {
             DirectPublicKey(pk) => Some(pk),
             _ => None,
         }
+    }
+
+    pub fn take_direct_public_key(self) -> Option<CommsPublicKey> {
+        use BroadcastStrategy::*;
+        match self {
+            DirectPublicKey(pk) => Some(pk),
+            _ => None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn is_direct() {
+        assert!(BroadcastStrategy::DirectPublicKey(CommsPublicKey::default()).is_direct());
+        assert!(BroadcastStrategy::DirectNodeId(NodeId::default()).is_direct());
+        assert_eq!(BroadcastStrategy::Neighbours(Default::default()).is_direct(), false);
+        assert_eq!(BroadcastStrategy::Flood.is_direct(), false);
+        assert_eq!(
+            BroadcastStrategy::Closest(Box::new(BroadcastClosestRequest {
+                node_id: NodeId::default(),
+                n: 0,
+                excluded_peers: Default::default()
+            }))
+            .is_direct(),
+            false
+        );
+        assert_eq!(BroadcastStrategy::Random(0).is_direct(), false);
+    }
+
+    #[test]
+    fn direct_public_key() {
+        assert!(BroadcastStrategy::DirectPublicKey(CommsPublicKey::default())
+            .direct_public_key()
+            .is_some());
+        assert!(BroadcastStrategy::DirectNodeId(NodeId::default())
+            .direct_public_key()
+            .is_none());
+        assert!(BroadcastStrategy::Neighbours(Default::default())
+            .direct_public_key()
+            .is_none());
+        assert!(BroadcastStrategy::Flood.direct_public_key().is_none());
+        assert!(BroadcastStrategy::Closest(Box::new(BroadcastClosestRequest {
+            node_id: NodeId::default(),
+            n: 0,
+            excluded_peers: Default::default()
+        }))
+        .direct_public_key()
+        .is_none(),);
+        assert!(BroadcastStrategy::Random(0).direct_public_key().is_none(), false);
+    }
+
+    #[test]
+    fn direct_node_id() {
+        assert!(BroadcastStrategy::DirectPublicKey(CommsPublicKey::default())
+            .direct_node_id()
+            .is_none());
+        assert!(BroadcastStrategy::DirectNodeId(NodeId::default())
+            .direct_node_id()
+            .is_some());
+        assert!(BroadcastStrategy::Neighbours(Default::default())
+            .direct_node_id()
+            .is_none());
+        assert!(BroadcastStrategy::Flood.direct_node_id().is_none());
+        assert!(BroadcastStrategy::Closest(Box::new(BroadcastClosestRequest {
+            node_id: NodeId::default(),
+            n: 0,
+            excluded_peers: Default::default()
+        }))
+        .direct_node_id()
+        .is_none(),);
+        assert!(BroadcastStrategy::Random(0).direct_node_id().is_none(), false);
     }
 }

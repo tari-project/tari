@@ -21,7 +21,12 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::task::ProcessDhtMessage;
-use crate::{config::DhtConfig, inbound::DecryptedDhtMessage, outbound::OutboundMessageRequester};
+use crate::{
+    config::DhtConfig,
+    discovery::DhtDiscoveryRequester,
+    inbound::DecryptedDhtMessage,
+    outbound::OutboundMessageRequester,
+};
 use futures::{task::Context, Future, Poll};
 use std::sync::Arc;
 use tari_comms::peer_manager::{NodeIdentity, PeerManager};
@@ -35,6 +40,7 @@ pub struct DhtHandlerMiddleware<S> {
     peer_manager: Arc<PeerManager>,
     node_identity: Arc<NodeIdentity>,
     outbound_service: OutboundMessageRequester,
+    discovery_requester: DhtDiscoveryRequester,
 }
 
 impl<S> DhtHandlerMiddleware<S> {
@@ -44,6 +50,8 @@ impl<S> DhtHandlerMiddleware<S> {
         node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,
         outbound_service: OutboundMessageRequester,
+
+        discovery_requester: DhtDiscoveryRequester,
     ) -> Self
     {
         Self {
@@ -52,6 +60,7 @@ impl<S> DhtHandlerMiddleware<S> {
             node_identity,
             peer_manager,
             outbound_service,
+            discovery_requester,
         }
     }
 }
@@ -77,6 +86,7 @@ where
             Arc::clone(&self.peer_manager),
             self.outbound_service.clone(),
             Arc::clone(&self.node_identity),
+            self.discovery_requester.clone(),
             message,
         )
         .run()

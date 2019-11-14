@@ -17,10 +17,18 @@ message JoinMessage {
 // The DiscoverMessage stores the information required for a network discover request.
 //
 // When this message is received and can be decrypted, this node verifies the information
-// provided and, if everything checks out, a Join request is sent to the origin of this
+// provided and, if everything checks out, a DiscoveryResponse is sent to the origin of this
 // Discovery request so that the source node knows about this node.
-message DiscoverMessage {
+message DiscoveryMessage {
     bytes node_id = 1;
     repeated string addresses = 2;
     uint64 peer_features = 3;
+    uint64 nonce = 4;
+}
+
+message DiscoveryResponseMessage {
+    bytes node_id = 1;
+    repeated string addresses = 2;
+    uint64 peer_features = 3;
+    uint64 nonce = 4;
 }

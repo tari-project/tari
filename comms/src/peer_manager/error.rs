@@ -23,14 +23,11 @@
 use crate::{connection::NetAddressError, peer_manager::node_id::NodeIdError};
 use derive_error::Error;
 use tari_storage::KeyValStoreError;
-use tari_utilities::message_format::MessageFormatError;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Clone)]
 pub enum PeerManagerError {
     /// The requested peer does not exist or could not be located
     PeerNotFoundError,
-    // A problem occurred during the serialization of the keys or data
-    SerializationError(MessageFormatError),
     /// A problem occurred converting the serialized data into peers
     DeserializationError,
     /// The index doesn't relate to an existing peer

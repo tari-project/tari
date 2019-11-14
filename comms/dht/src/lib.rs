@@ -119,6 +119,7 @@ mod builder;
 mod config;
 mod consts;
 mod dht;
+mod discovery;
 mod proto;
 
 pub mod broadcast_strategy;
