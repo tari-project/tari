@@ -621,9 +621,9 @@ fn restore_mmr() {
     let header_mmr_state = store.fetch_mmr_base_leaf_nodes(MmrTree::Header, 0, 100).unwrap();
 
     assert_eq!(utxo_mmr_state.total_leaf_count, 10);
-    assert_eq!(kernel_mmr_state.total_leaf_count, 4); // Todo This might be wrong, verify  1 + 3 + 2 +2  = 8
+    assert_eq!(kernel_mmr_state.total_leaf_count, 4); 
     assert_eq!(rp_mmr_state.total_leaf_count, 10);
-    assert_eq!(header_mmr_state.total_leaf_count, 2); // Todo This might be wrong, verify 4
+    assert_eq!(header_mmr_state.total_leaf_count, 2); 
 
     let mut block4 = chain_block(&block3, vec![tx5.clone()]);
     block4 = add_block_and_update_header(&store, block4);
@@ -647,9 +647,9 @@ fn restore_mmr() {
         .unwrap()
         .total_leaf_count;
     assert_eq!(utxo_mmr_leaf_count, 14);
-    assert_eq!(kernel_mmr_leaf_count, 8); // Todo This might be wrong, verify 8 + 2 +2 =12
+    assert_eq!(kernel_mmr_leaf_count, 8); 
     assert_eq!(rp_mmr_leaf_count, 14);
-    assert_eq!(header_mmr_leaf_count, 4); // Todo This might be wrong, verify 6
+    assert_eq!(header_mmr_leaf_count, 4); 
 
     // Restore previously retrieved MMR state
     assert!(store
