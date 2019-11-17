@@ -58,9 +58,9 @@ impl LinearWeightedMovingAverage {
         // Loop through N most recent blocks.
         for i in 1..(n + 1) as usize {
             // 6*T limit prevents large drops in diff from long solve times which would cause oscillations.
-            // We cannot have if solvetime < 1 then solvetime = 1, this will greatly increase the next timestaamp
+            // We cannot have if solve_time < 1 then solve_time = 1, this will greatly increase the next timestamp
             // difficulty which will lower the difficulty
-            if (timestamps[i] > previous_timestamp) {
+            if timestamps[i] > previous_timestamp {
                 this_timestamp = timestamps[i];
             } else {
                 this_timestamp = previous_timestamp + 1;
@@ -140,7 +140,7 @@ mod test {
             timestamp += 60;
             let _ = dif.add(timestamp, cum_diff);
         }
-        // lets create chaos by having 60 blocks as negative solve times. This should never be allowed in practive by
+        // lets create chaos by having 60 blocks as negative solve times. This should never be allowed in practice by
         // having checks on the block times.
         for _i in 0..60 {
             cum_diff += Difficulty::from(100);

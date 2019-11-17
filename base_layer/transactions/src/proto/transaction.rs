@@ -177,22 +177,22 @@ impl TryFrom<proto::AggregateBody> for AggregateBody {
     type Error = String;
 
     fn try_from(body: proto::AggregateBody) -> Result<Self, Self::Error> {
-        Ok(Self {
-            sorted: body.sorted,
-            inputs: try_convert_all(body.inputs)?,
-            outputs: try_convert_all(body.outputs)?,
-            kernels: try_convert_all(body.kernels)?,
-        })
+        let inputs = try_convert_all(body.inputs)?;
+        let outputs = try_convert_all(body.outputs)?;
+        let kernels = try_convert_all(body.kernels)?;
+        let mut body = AggregateBody::new(inputs, outputs, kernels);
+        body.sort();
+        Ok(body)
     }
 }
 
 impl From<AggregateBody> for proto::AggregateBody {
     fn from(body: AggregateBody) -> Self {
+        let (i, o, k) = body.dissolve();
         Self {
-            sorted: body.sorted,
-            inputs: body.inputs.into_iter().map(Into::into).collect(),
-            outputs: body.outputs.into_iter().map(Into::into).collect(),
-            kernels: body.kernels.into_iter().map(Into::into).collect(),
+            inputs: i.into_iter().map(Into::into).collect(),
+            outputs: o.into_iter().map(Into::into).collect(),
+            kernels: k.into_iter().map(Into::into).collect(),
         }
     }
 }

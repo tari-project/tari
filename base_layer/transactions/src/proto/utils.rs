@@ -23,15 +23,14 @@
 use std::convert::TryInto;
 
 /// Tries to convert a series of `T`s to `U`s, returning an error at the first failure
+#[inline]
 pub fn try_convert_all<T, U, I>(into_iter: I) -> Result<Vec<U>, T::Error>
 where
     I: IntoIterator<Item = T>,
     T: TryInto<U>,
 {
-    let iter = into_iter.into_iter();
-    let mut result = Vec::with_capacity(iter.size_hint().0);
-    for item in iter {
-        result.push(item.try_into()?);
-    }
-    Ok(result)
+    into_iter
+        .into_iter()
+        .map(TryInto::try_into)
+        .collect::<Result<Vec<U>, _>>()
 }
