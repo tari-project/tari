@@ -63,13 +63,13 @@ message OutputFeatures {
 }
 
 // The components of the block or transaction. The same struct can be used for either, since in Mimblewimble,
-// cut-through means that blocks and transactions have the same structure.
+// cut-through means that blocks and transactions have the same structure. The inputs, outputs and kernels should
+// be sorted by their Blake2b-256bit digest hash
 message AggregateBody {
-    bool sorted=  1;
     // List of inputs spent by the transaction.
-    repeated TransactionInput inputs = 2;
+    repeated TransactionInput inputs = 1;
     // List of outputs the transaction produces.
-    repeated TransactionOutput outputs = 3;
+    repeated TransactionOutput outputs = 2;
     // Kernels contain the excesses and their signatures for transaction
-    repeated TransactionKernel kernels = 4;
+    repeated TransactionKernel kernels = 3;
 }
