@@ -531,7 +531,7 @@ fn request_and_response_fetch_mmr_state() {
             .await
             .unwrap();
         assert_eq!(received_mmr_state.total_leaf_count, 4);
-        assert_eq!(received_mmr_state.leaf_nodes.leaf_hashes.len(), 2); // request out of range
+        assert_eq!(received_mmr_state.leaf_nodes.leaf_hashes.len(), 2); 
 
         let received_mmr_state = alice_interfaces
             .outbound_nci

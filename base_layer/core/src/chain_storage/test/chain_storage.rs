@@ -607,7 +607,6 @@ fn restore_mmr() {
     assert!(store.commit(txn).is_ok());
 
     let mut block1 = chain_block(&block0, vec![tx1.clone(), tx2.clone()]);
-
     block1 = add_block_and_update_header(&store, block1);
     let mut block2 = chain_block(&block1, vec![tx3.clone()]);
     block2 = add_block_and_update_header(&store, block2);
