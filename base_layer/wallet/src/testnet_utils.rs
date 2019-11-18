@@ -36,6 +36,7 @@ use tari_comms::{
     peer_manager::{NodeIdentity, PeerFeatures},
     types::{CommsPublicKey, CommsSecretKey},
 };
+use tari_comms_dht::DhtConfig;
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
@@ -46,6 +47,7 @@ use tari_transactions::{
     transaction::{OutputFeatures, Transaction, TransactionInput, UnblindedOutput},
     types::{BlindingFactor, PrivateKey, PublicKey, COMMITMENT_FACTORY},
 };
+use tari_utilities::hex::Hex;
 use tempdir::TempDir;
 use tokio::runtime::Runtime;
 
@@ -92,7 +94,8 @@ pub fn create_wallet(secret_key: CommsSecretKey, net_address: String) -> Wallet<
         PeerFeatures::COMMUNICATION_NODE,
     )
     .expect("Could not construct Node Id");
-
+    let mut dht_config: DhtConfig = Default::default();
+    dht_config.discovery_request_timeout = Duration::from_millis(500);
     let comms_config = CommsConfig {
         node_identity: Arc::new(node_id.clone()),
         peer_connection_listening_address: "127.0.0.1".parse().unwrap(),
@@ -100,7 +103,7 @@ pub fn create_wallet(secret_key: CommsSecretKey, net_address: String) -> Wallet<
         control_service: ControlServiceConfig {
             listener_address: node_id.control_service_address(),
             socks_proxy_address: None,
-            requested_connection_timeout: Duration::from_millis(2000),
+            requested_connection_timeout: Duration::from_millis(500),
         },
         establish_connection_timeout: Duration::from_secs(2),
         datastore_path: TempDir::new(random_string(8).as_str())
@@ -112,7 +115,7 @@ pub fn create_wallet(secret_key: CommsSecretKey, net_address: String) -> Wallet<
         peer_database_name: random_string(8),
         inbound_buffer_size: 100,
         outbound_buffer_size: 100,
-        dht: Default::default(),
+        dht: dht_config,
     };
 
     let config = WalletConfig { comms_config };
@@ -122,12 +125,19 @@ pub fn create_wallet(secret_key: CommsSecretKey, net_address: String) -> Wallet<
 
 /// This function will generate a set of test data for the supplied wallet. Takes a few seconds to complete
 pub fn generate_wallet_test_data<T: WalletBackend>(wallet: &mut Wallet<T>) -> Result<(), WalletError> {
-    let mut rng = rand::OsRng::new().unwrap();
+    let rng = rand::OsRng::new().unwrap();
     let names = ["Alice", "Bob", "Carol", "Dave"];
+    let private_keys = [
+        "3264e7a05ff669c1b71f691ab181ba3dd915306114a26c4a84c8da1dc1c40209",
+        "fdad65858c7e7985168972f3117e31f7cee5a1d961fce690bd05a2a15ca6f00e",
+        "07beb0d0d1eef08c246b70da8b060f7f8e885f5c0f2fd04b10607dc744b5f502",
+        "bb2dcd0b477c8d709afe2547122a7199d6d4516bc6f35c2adb1a8afedbf97e0e",
+    ];
     // Generate contacts
     let mut generated_contacts = Vec::new();
     for i in 0..names.len() {
-        let (secret_key, public_key): (CommsSecretKey, CommsPublicKey) = PublicKey::random_keypair(&mut rng);
+        let secret_key = CommsSecretKey::from_hex(private_keys[i]).unwrap();
+        let public_key = CommsPublicKey::from_secret_key(&secret_key);
         wallet
             .runtime
             .block_on(wallet.contacts_service.save_contact(Contact {
@@ -140,7 +150,6 @@ pub fn generate_wallet_test_data<T: WalletBackend>(wallet: &mut Wallet<T>) -> Re
             .expect("Could not add base node peer");
         generated_contacts.push((secret_key, format!("127.0.0.1:{}", 15200 + i).to_string()));
     }
-
     let contacts = wallet
         .runtime
         .block_on(wallet.contacts_service.get_contacts())
@@ -149,11 +158,8 @@ pub fn generate_wallet_test_data<T: WalletBackend>(wallet: &mut Wallet<T>) -> Re
 
     // Generate outputs
     let num_outputs = 40;
-    for _i in 0..num_outputs {
-        let (_ti, uo) = make_input(
-            &mut rng.clone(),
-            MicroTari::from(2_000_000 + rng.next_u64() % 1_000_000),
-        );
+    for i in 0..num_outputs {
+        let (_ti, uo) = make_input(&mut rng.clone(), MicroTari::from(1_000_000 + i * 35_000));
         wallet
             .runtime
             .block_on(wallet.output_manager_service.add_output(uo))
@@ -162,11 +168,8 @@ pub fn generate_wallet_test_data<T: WalletBackend>(wallet: &mut Wallet<T>) -> Re
 
     // Generate some Tx history
     let mut wallet_alice = create_wallet(generated_contacts[0].0.clone(), generated_contacts[0].1.clone());
-    for _i in 0..20 {
-        let (_ti, uo) = make_input(
-            &mut rng.clone(),
-            MicroTari::from(2_000_000 + rng.next_u64() % 1_000_000),
-        );
+    for i in 0..20 {
+        let (_ti, uo) = make_input(&mut rng.clone(), MicroTari::from(1_500_000 + i * 530_500));
         wallet_alice
             .runtime
             .block_on(wallet_alice.output_manager_service.add_output(uo))
@@ -174,11 +177,8 @@ pub fn generate_wallet_test_data<T: WalletBackend>(wallet: &mut Wallet<T>) -> Re
     }
 
     let mut wallet_bob = create_wallet(generated_contacts[1].0.clone(), generated_contacts[1].1.clone());
-    for _i in 0..20 {
-        let (_ti, uo) = make_input(
-            &mut rng.clone(),
-            MicroTari::from(2_000_000 + rng.next_u64() % 1_000_000),
-        );
+    for i in 0..20 {
+        let (_ti, uo) = make_input(&mut rng.clone(), MicroTari::from(2_000_000 + i * i * 61_050));
         wallet_bob
             .runtime
             .block_on(wallet_bob.output_manager_service.add_output(uo))

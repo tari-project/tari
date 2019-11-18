@@ -28,6 +28,7 @@ use tari_comms::{
     peer_manager::{peer::PeerFlags, NodeId, NodeIdentity, Peer, PeerFeatures},
     types::CommsPublicKey,
 };
+use tari_comms_dht::DhtConfig;
 use tari_crypto::keys::PublicKey;
 use tari_p2p::initialization::CommsConfig;
 use tari_transactions::tari_amount::MicroTari;
@@ -195,7 +196,8 @@ fn test_data_generation() {
         PeerFeatures::COMMUNICATION_NODE,
     )
     .unwrap();
-
+    let mut dht_config: DhtConfig = Default::default();
+    dht_config.discovery_request_timeout = Duration::from_millis(500);
     let comms_config = CommsConfig {
         node_identity: Arc::new(node_id.clone()),
         peer_connection_listening_address: "127.0.0.1".parse().unwrap(),
@@ -215,7 +217,7 @@ fn test_data_generation() {
         peer_database_name: random_string(8),
         inbound_buffer_size: 100,
         outbound_buffer_size: 100,
-        dht: Default::default(),
+        dht: dht_config,
     };
 
     let config = WalletConfig { comms_config };
@@ -277,6 +279,8 @@ fn test_test_harness() {
     )
     .unwrap();
 
+    let mut dht_config: DhtConfig = Default::default();
+    dht_config.discovery_request_timeout = Duration::from_millis(500);
     let comms_config1 = CommsConfig {
         node_identity: Arc::new(alice_identity.clone()),
         peer_connection_listening_address: "127.0.0.1".parse().unwrap(),
@@ -296,7 +300,7 @@ fn test_test_harness() {
         peer_database_name: random_string(8),
         inbound_buffer_size: 100,
         outbound_buffer_size: 100,
-        dht: Default::default(),
+        dht: dht_config,
     };
     let config1 = WalletConfig {
         comms_config: comms_config1,

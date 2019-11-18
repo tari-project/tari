@@ -121,7 +121,7 @@ where
 
     // Create a channel for outbound requests
     let mut dht = comms_dht::DhtBuilder::from_comms(&mut comms)
-        .with_config(comms_dht::DhtConfig::default())
+        .with_config(config.dht.clone())
         .finish();
 
     //---------------------------------- Inbound Pipeline --------------------------------------------//
