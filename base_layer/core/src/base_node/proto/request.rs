@@ -39,7 +39,7 @@ impl TryInto<ci::NodeCommsRequest> for ProtoNodeCommsRequest {
             FetchUtxos(hash_outputs) => ci::NodeCommsRequest::FetchUtxos(hash_outputs.outputs),
             FetchBlocks(block_heights) => ci::NodeCommsRequest::FetchBlocks(block_heights.heights),
             FetchMmrState(mmr_state_request) => ci::NodeCommsRequest::FetchMmrState(mmr_state_request.try_into()?),
-            GetNewBlock(_) => ci::NodeCommsRequest::GetNewBlock,
+            GetNewBlockTemplate(_) => ci::NodeCommsRequest::GetNewBlockTemplate,
         };
         Ok(request)
     }
@@ -55,7 +55,7 @@ impl From<ci::NodeCommsRequest> for ProtoNodeCommsRequest {
             FetchUtxos(hash_outputs) => ProtoNodeCommsRequest::FetchUtxos(hash_outputs.into()),
             FetchBlocks(block_heights) => ProtoNodeCommsRequest::FetchBlocks(block_heights.into()),
             FetchMmrState(mmr_state_request) => ProtoNodeCommsRequest::FetchMmrState(mmr_state_request.into()),
-            GetNewBlock => ProtoNodeCommsRequest::GetNewBlock(true),
+            GetNewBlockTemplate => ProtoNodeCommsRequest::GetNewBlockTemplate(true),
         }
     }
 }

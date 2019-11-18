@@ -60,7 +60,7 @@ impl TryInto<ci::NodeCommsResponse> for ProtoNodeCommsResponse {
                 ci::NodeCommsResponse::HistoricalBlocks(blocks)
             },
             MmrState(state) => ci::NodeCommsResponse::MmrState(state.try_into()?),
-            NewBlock(block) => ci::NodeCommsResponse::NewBlock(block.try_into()?),
+            NewBlockTemplate(block) => ci::NodeCommsResponse::NewBlockTemplate(block.try_into()?),
         };
 
         Ok(response)
@@ -89,7 +89,7 @@ impl From<ci::NodeCommsResponse> for ProtoNodeCommsResponse {
                 ProtoNodeCommsResponse::HistoricalBlocks(historical_blocks)
             },
             MmrState(state) => ProtoNodeCommsResponse::MmrState(state.into()),
-            NewBlock(block) => ProtoNodeCommsResponse::NewBlock(block.into()),
+            NewBlockTemplate(block) => ProtoNodeCommsResponse::NewBlockTemplate(block.into()),
         }
     }
 }

@@ -66,10 +66,14 @@ impl LocalNodeCommsInterface {
         }
     }
 
-    /// Request the construction of a new block from the base node service.
-    pub async fn get_new_block(&mut self) -> Result<Block, CommsInterfaceError> {
-        match self.request_sender.call(NodeCommsRequest::GetNewBlock).await?? {
-            NodeCommsResponse::NewBlock(block) => Ok(block),
+    /// Request the construction of a new mineable block template from the base node service.
+    pub async fn get_new_block_template(&mut self) -> Result<Block, CommsInterfaceError> {
+        match self
+            .request_sender
+            .call(NodeCommsRequest::GetNewBlockTemplate)
+            .await??
+        {
+            NodeCommsResponse::NewBlockTemplate(block) => Ok(block),
             _ => Err(CommsInterfaceError::UnexpectedApiResponse),
         }
     }

@@ -46,14 +46,14 @@ impl Default for PendingPoolConfig {
 /// The Pending Pool contains all transactions that are restricted by time-locks. Once the time-locks have expired then
 /// the transactions can be moved to the Unconfirmed Transaction Pool for inclusion in future blocks.
 pub struct PendingPool {
-    pool_storage: RwLock<PendingPoolStorage>,
+    pool_storage: Arc<RwLock<PendingPoolStorage>>,
 }
 
 impl PendingPool {
     /// Create a new PendingPool with the specified configuration.
     pub fn new(config: PendingPoolConfig) -> Self {
         Self {
-            pool_storage: RwLock::new(PendingPoolStorage::new(config)),
+            pool_storage: Arc::new(RwLock::new(PendingPoolStorage::new(config))),
         }
     }
 
@@ -132,6 +132,14 @@ impl PendingPool {
             .read()
             .map_err(|_| PendingPoolError::PoisonedAccess)?
             .check_status())
+    }
+}
+
+impl Clone for PendingPool {
+    fn clone(&self) -> Self {
+        PendingPool {
+            pool_storage: self.pool_storage.clone(),
+        }
     }
 }
 

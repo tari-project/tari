@@ -55,16 +55,16 @@ impl Default for OrphanPoolConfig {
 pub struct OrphanPool<T>
 where T: BlockchainBackend
 {
-    pool_storage: RwLock<OrphanPoolStorage<T>>,
+    pool_storage: Arc<RwLock<OrphanPoolStorage<T>>>,
 }
 
 impl<T> OrphanPool<T>
 where T: BlockchainBackend
 {
     /// Create a new OrphanPool with the specified configuration
-    pub fn new(blockchain_db: Arc<BlockchainDatabase<T>>, config: OrphanPoolConfig) -> Self {
+    pub fn new(blockchain_db: BlockchainDatabase<T>, config: OrphanPoolConfig) -> Self {
         Self {
-            pool_storage: RwLock::new(OrphanPoolStorage::new(blockchain_db, config)),
+            pool_storage: Arc::new(RwLock::new(OrphanPoolStorage::new(blockchain_db, config))),
         }
     }
 
@@ -136,6 +136,16 @@ where T: BlockchainBackend
     }
 }
 
+impl<T> Clone for OrphanPool<T>
+where T: BlockchainBackend
+{
+    fn clone(&self) -> Self {
+        OrphanPool {
+            pool_storage: self.pool_storage.clone(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -164,7 +174,7 @@ mod test {
         let tx5 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(500), lock: 2000, inputs: 2, outputs: 1).0);
         let tx6 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(600), lock: 5500, inputs: 2, outputs: 1).0);
 
-        let store = Arc::new(BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap());
+        let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
         let orphan_pool = OrphanPool::new(store, OrphanPoolConfig {
             storage_capacity: 3,
             tx_ttl: Duration::from_millis(50),
@@ -252,7 +262,7 @@ mod test {
         // A parallel store that will "mine" the orphan chain
         let mut miner = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
         miner.add_block(blocks[0].clone()).unwrap();
-        let orphan_pool = OrphanPool::new(Arc::new(store.clone()), OrphanPoolConfig::default());
+        let orphan_pool = OrphanPool::new(store.clone(), OrphanPoolConfig::default());
         let schemas = vec![txn_schema!(
             from: vec![outputs[0][0].clone()],
             to: vec![2 * T, 2 * T, 2 * T, 2 * T, 2 * T]

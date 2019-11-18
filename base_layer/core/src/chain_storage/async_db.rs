@@ -162,6 +162,7 @@ make_async!(fetch_mmr_root(tree: MmrTree) -> HashOutput);
 make_async!(fetch_mmr_only_root(tree: MmrTree) -> HashOutput);
 make_async!(fetch_mmr_base_leaf_nodes(tree: MmrTree,index: usize, count:usize) -> MutableMmrState);
 make_async!(add_block(block: Block) -> BlockAddResult);
+#[cfg(test)]
 make_async!(add_new_block(block: Block) -> BlockAddResult);
 // make_async!(is_new_best_block(block: &Block) -> bool);
 make_async!(fetch_block(height: u64) -> HistoricalBlock);

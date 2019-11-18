@@ -234,6 +234,13 @@ impl InitialSync {
                 self.shutdown_votes += 1;
                 warn!(target: LOG_TARGET, "Problem sending event on EventStream. {}", msg);
             },
+            CommsInterfaceError::MempoolError(e) => {
+                self.shutdown_votes += 1;
+                error!(
+                    target: LOG_TARGET,
+                    "There was a problem accessing the mempool. {}. {}.", e, msg
+                );
+            },
         }
     }
 

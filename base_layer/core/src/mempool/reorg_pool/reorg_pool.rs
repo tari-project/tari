@@ -55,14 +55,14 @@ impl Default for ReorgPoolConfig {
 /// from the pool when the Time-to-live thresholds is reached. Also, when the capacity of the pool has been reached, the
 /// oldest transactions will be removed to make space for incoming transactions.
 pub struct ReorgPool {
-    pool_storage: RwLock<ReorgPoolStorage>,
+    pool_storage: Arc<RwLock<ReorgPoolStorage>>,
 }
 
 impl ReorgPool {
     /// Create a new ReorgPool with the specified configuration
     pub fn new(config: ReorgPoolConfig) -> Self {
         Self {
-            pool_storage: RwLock::new(ReorgPoolStorage::new(config)),
+            pool_storage: Arc::new(RwLock::new(ReorgPoolStorage::new(config))),
         }
     }
 
@@ -115,6 +115,14 @@ impl ReorgPool {
             .write()
             .map_err(|_| ReorgPoolError::PoisonedAccess)?
             .calculate_weight())
+    }
+}
+
+impl Clone for ReorgPool {
+    fn clone(&self) -> Self {
+        ReorgPool {
+            pool_storage: self.pool_storage.clone(),
+        }
     }
 }
 

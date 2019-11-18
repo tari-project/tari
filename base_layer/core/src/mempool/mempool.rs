@@ -83,7 +83,7 @@ impl Default for MempoolConfig {
 pub struct Mempool<T>
 where T: BlockchainBackend
 {
-    blockchain_db: Arc<BlockchainDatabase<T>>,
+    blockchain_db: BlockchainDatabase<T>,
     unconfirmed_pool: UnconfirmedPool,
     orphan_pool: OrphanPool<T>,
     pending_pool: PendingPool,
@@ -94,17 +94,17 @@ impl<T> Mempool<T>
 where T: BlockchainBackend
 {
     /// Create a new Mempool with an UnconfirmedPool, OrphanPool, PendingPool and ReOrgPool.
-    pub fn new(blockchain_db: Arc<BlockchainDatabase<T>>, config: MempoolConfig) -> Self {
+    pub fn new(blockchain_db: BlockchainDatabase<T>, config: MempoolConfig) -> Self {
         Self {
-            blockchain_db: blockchain_db.clone(),
             unconfirmed_pool: UnconfirmedPool::new(config.unconfirmed_pool_config),
-            orphan_pool: OrphanPool::new(blockchain_db, config.orphan_pool_config),
+            orphan_pool: OrphanPool::new(blockchain_db.clone(), config.orphan_pool_config),
             pending_pool: PendingPool::new(config.pending_pool_config),
             reorg_pool: ReorgPool::new(config.reorg_pool_config),
+            blockchain_db,
         }
     }
 
-    fn check_input_utxos(&mut self, tx: &Transaction) -> Result<bool, MempoolError> {
+    fn check_input_utxos(&self, tx: &Transaction) -> Result<bool, MempoolError> {
         for input in tx.body.inputs() {
             if !self.blockchain_db.is_utxo(input.hash())? {
                 return Ok(false);
@@ -113,7 +113,7 @@ where T: BlockchainBackend
         Ok(true)
     }
 
-    fn check_timelocks(&mut self, tx: &Transaction) -> Result<bool, MempoolError> {
+    fn check_timelocks(&self, tx: &Transaction) -> Result<bool, MempoolError> {
         match tx.max_timelock_height() {
             0 => Ok(false),
             v => Ok(v - 1 >
@@ -124,7 +124,7 @@ where T: BlockchainBackend
     }
 
     /// Insert an unconfirmed transaction into the Mempool.
-    pub fn insert(&mut self, tx: Arc<Transaction>) -> Result<(), MempoolError> {
+    pub fn insert(&self, tx: Arc<Transaction>) -> Result<(), MempoolError> {
         tx.validate_internal_consistency(&PROVER, &COMMITMENT_FACTORY)?;
 
         if self.check_input_utxos(&tx)? {
@@ -141,7 +141,7 @@ where T: BlockchainBackend
     }
 
     /// Insert a set of new transactions into the UTxPool.
-    fn insert_txs(&mut self, txs: Vec<Arc<Transaction>>) -> Result<(), MempoolError> {
+    fn insert_txs(&self, txs: Vec<Arc<Transaction>>) -> Result<(), MempoolError> {
         for tx in txs {
             self.insert(tx)?;
         }
@@ -149,7 +149,7 @@ where T: BlockchainBackend
     }
 
     /// Update the Mempool based on the received published block.
-    pub fn process_published_block(&mut self, published_block: &Block) -> Result<(), MempoolError> {
+    pub fn process_published_block(&self, published_block: &Block) -> Result<(), MempoolError> {
         // Move published txs to ReOrgPool and discard double spends
         self.reorg_pool.insert_txs(
             self.unconfirmed_pool
@@ -173,7 +173,7 @@ where T: BlockchainBackend
     }
 
     /// Update the Mempool based on the received set of published blocks.
-    pub fn process_published_blocks(&mut self, published_blocks: &Vec<Block>) -> Result<(), MempoolError> {
+    pub fn process_published_blocks(&self, published_blocks: &Vec<Block>) -> Result<(), MempoolError> {
         for published_block in published_blocks {
             self.process_published_block(published_block)?;
         }
@@ -182,7 +182,7 @@ where T: BlockchainBackend
 
     /// In the event of a ReOrg, resubmit all ReOrged transactions into the Mempool and process each newly introduced
     /// block from the latest longest chain.
-    pub fn process_reorg(&mut self, removed_blocks: Vec<Block>, new_blocks: Vec<Block>) -> Result<(), MempoolError> {
+    pub fn process_reorg(&self, removed_blocks: Vec<Block>, new_blocks: Vec<Block>) -> Result<(), MempoolError> {
         self.insert_txs(self.reorg_pool.scan_for_and_remove_reorged_txs(removed_blocks)?)?;
         self.process_published_blocks(&new_blocks)?;
         Ok(())
@@ -248,6 +248,20 @@ where T: BlockchainBackend
     }
 }
 
+impl<T> Clone for Mempool<T>
+where T: BlockchainBackend
+{
+    fn clone(&self) -> Self {
+        Mempool {
+            blockchain_db: self.blockchain_db.clone(),
+            unconfirmed_pool: self.unconfirmed_pool.clone(),
+            orphan_pool: self.orphan_pool.clone(),
+            pending_pool: self.pending_pool.clone(),
+            reorg_pool: self.reorg_pool.clone(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -268,8 +282,7 @@ mod test {
     #[test]
     fn test_insert_and_process_published_block() {
         let (mut store, mut blocks, mut outputs) = create_new_blockchain();
-        // TODO - BlockchainDB is cheap to clone, so there's no need to wrap it in an Arc
-        let mut mempool = Mempool::new(Arc::new(store.clone()), MempoolConfig::default());
+        let mempool = Mempool::new(store.clone(), MempoolConfig::default());
         // Create a block with 4 outputs
         let txs = vec![txn_schema!(
             from: vec![outputs[0][0].clone()],
@@ -409,7 +422,7 @@ mod test {
     #[test]
     fn test_retrieve() {
         let (mut store, mut blocks, mut outputs) = create_new_blockchain();
-        let mut mempool = Mempool::new(Arc::new(store.clone()), MempoolConfig::default());
+        let mempool = Mempool::new(store.clone(), MempoolConfig::default());
         let txs = vec![txn_schema!(
             from: vec![outputs[0][0].clone()],
             to: vec![1 * T, 1 * T, 1 * T, 1 * T, 1 * T, 1 * T, 1 * T]
@@ -494,7 +507,7 @@ mod test {
     #[test]
     fn test_reorg() {
         let (mut db, mut blocks, mut outputs) = create_new_blockchain();
-        let mut mempool = Mempool::new(Arc::new(db.clone()), MempoolConfig::default());
+        let mempool = Mempool::new(db.clone(), MempoolConfig::default());
 
         // "Mine" Block 1
         let txs = vec![txn_schema!(from: vec![outputs[0][0].clone()], to: vec![1 * T, 1 * T])];

@@ -50,14 +50,14 @@ impl Default for UnconfirmedPoolConfig {
 /// The Unconfirmed Transaction Pool consists of all unconfirmed transactions that are ready to be included in a block
 /// and they are prioritised according to the priority metric.
 pub struct UnconfirmedPool {
-    pool_storage: RwLock<UnconfirmedPoolStorage>,
+    pool_storage: Arc<RwLock<UnconfirmedPoolStorage>>,
 }
 
 impl UnconfirmedPool {
     /// Create a new UnconfirmedPool with the specified configuration
     pub fn new(config: UnconfirmedPoolConfig) -> Self {
         Self {
-            pool_storage: RwLock::new(UnconfirmedPoolStorage::new(config)),
+            pool_storage: Arc::new(RwLock::new(UnconfirmedPoolStorage::new(config))),
         }
     }
 
@@ -145,6 +145,14 @@ impl UnconfirmedPool {
             .read()
             .map_err(|_| UnconfirmedPoolError::PoisonedAccess)?
             .check_status())
+    }
+}
+
+impl Clone for UnconfirmedPool {
+    fn clone(&self) -> Self {
+        UnconfirmedPool {
+            pool_storage: self.pool_storage.clone(),
+        }
     }
 }
 

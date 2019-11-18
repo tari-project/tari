@@ -40,6 +40,7 @@ use tari_core::{
         OutboundNodeCommsInterface,
     },
     chain_storage::{create_lmdb_database, BlockchainBackend, BlockchainDatabase, LMDBDatabase, MemoryDatabase},
+    mempool::{Mempool, MempoolConfig},
 };
 use tari_mmr::MerkleChangeTrackerConfig;
 use tari_p2p::{
@@ -158,7 +159,9 @@ pub fn configure_and_initialize_node(
         DatabaseType::Memory => {
             let backend = MemoryDatabase::<HashDigest>::default();
             let db = BlockchainDatabase::new(backend).map_err(|e| e.to_string())?;
-            let (comms, handles) = setup_comms_services(&rt, id.clone(), peers, &config.peer_db_path, db.clone());
+            let mempool = Mempool::new(db.clone(), MempoolConfig::default());
+            let (comms, handles) =
+                setup_comms_services(&rt, id.clone(), peers, &config.peer_db_path, db.clone(), mempool);
             let outbound_interface = handles.get_handle::<OutboundNodeCommsInterface>().unwrap();
             (
                 comms,
@@ -172,7 +175,9 @@ pub fn configure_and_initialize_node(
             };
             let backend = create_lmdb_database(&p, mct_config).map_err(|e| e.to_string())?;
             let db = BlockchainDatabase::new(backend).map_err(|e| e.to_string())?;
-            let (comms, handles) = setup_comms_services(&rt, id.clone(), peers, &config.peer_db_path, db.clone());
+            let mempool = Mempool::new(db.clone(), MempoolConfig::default());
+            let (comms, handles) =
+                setup_comms_services(&rt, id.clone(), peers, &config.peer_db_path, db.clone(), mempool);
             let outbound_interface = handles.get_handle::<OutboundNodeCommsInterface>().unwrap();
             (
                 comms,
@@ -245,6 +250,7 @@ fn setup_comms_services<T>(
     peers: Vec<Peer>,
     peer_db_path: &str,
     db: BlockchainDatabase<T>,
+    mempool: Mempool<T>,
 ) -> (CommsNode, Arc<ServiceHandles>)
 where
     T: BlockchainBackend + 'static,
@@ -279,7 +285,12 @@ where
 
     let fut = StackBuilder::new(rt.executor(), comms.shutdown_signal())
         .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))
-        .add_initializer(BaseNodeServiceInitializer::new(subscription_factory, db, node_config))
+        .add_initializer(BaseNodeServiceInitializer::new(
+            subscription_factory,
+            db,
+            mempool,
+            node_config,
+        ))
         .finish();
 
     info!(target: LOG_TARGET, "Initializing communications stack...");
