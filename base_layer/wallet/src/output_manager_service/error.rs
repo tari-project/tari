@@ -22,6 +22,7 @@
 
 use crate::output_manager_service::storage::database::DbKey;
 use derive_error::Error;
+use diesel::result::Error as DieselError;
 use tari_key_manager::{key_manager::KeyManagerError, mnemonic::MnemonicError};
 use tari_service_framework::reply_channel::TransportChannelError;
 use tari_transactions::transaction_protocol::TransactionProtocolError;
@@ -39,6 +40,7 @@ pub enum OutputManagerError {
     OutputManagerStorageError(OutputManagerStorageError),
     MnemonicError(MnemonicError),
     KeyManagerError(KeyManagerError),
+
     /// Not all the transaction inputs and outputs are present to be confirmed
     IncompleteTransaction,
     /// Not enough funds to fulfill transaction
@@ -69,5 +71,14 @@ pub enum OutputManagerStorageError {
     OperationNotSupported,
     /// Could not find all values specified for batch operation
     ValuesNotFound,
+    /// Error converting a type
+    ConversionError,
+    /// Output has already been spent
+    OutputAlreadySpent,
     OutOfRangeError(OutOfRangeError),
+    R2d2Error,
+    DieselError(DieselError),
+    DieselConnectionError(diesel::ConnectionError),
+    #[error(msg_embedded, no_from, non_std)]
+    DatabaseMigrationError(String),
 }

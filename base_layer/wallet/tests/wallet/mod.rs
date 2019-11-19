@@ -31,10 +31,11 @@ use tari_comms::{
 use tari_crypto::keys::PublicKey;
 use tari_p2p::initialization::CommsConfig;
 use tari_transactions::tari_amount::MicroTari;
+#[cfg(feature = "test_harness")]
+use tari_wallet::testnet_utils::broadcast_transaction;
 use tari_wallet::{
     contacts_service::storage::database::Contact,
     storage::memory_db::WalletMemoryDatabase,
-    testnet_utils::broadcast_transaction,
     transaction_service::handle::TransactionEvent,
     wallet::WalletConfig,
     Wallet,

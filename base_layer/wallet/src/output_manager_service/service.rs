@@ -30,7 +30,6 @@ use crate::{
     },
     types::{HashDigest, KeyDigest, TransactionRng},
 };
-use chrono::Utc;
 use futures::{pin_mut, StreamExt};
 use log::*;
 use std::{collections::HashMap, sync::Mutex, time::Duration};
@@ -174,16 +173,7 @@ where T: OutputManagerBackend
 
         let key = km.next_key()?.k;
 
-        self.db.add_pending_transaction_outputs(PendingTransactionOutputs {
-            tx_id,
-            outputs_to_be_spent: Vec::new(),
-            outputs_to_be_received: vec![UnblindedOutput {
-                value: amount,
-                spending_key: key.clone(),
-                features: OutputFeatures::default(),
-            }],
-            timestamp: Utc::now().naive_utc(),
-        })?;
+        self.db.accept_incoming_pending_transaction(&tx_id, &amount, &key)?;
 
         Ok(key)
     }
@@ -274,7 +264,7 @@ where T: OutputManagerBackend
 
         // The Transaction Protocol built successfully so we will pull the unspent outputs out of the unspent list and
         // store them until the transaction times out OR is confirmed
-        self.db.encumber_outputs(stp.get_tx_id()?, outputs, change_output)?;
+        self.db.encumber_outputs(stp.get_tx_id()?, &outputs, change_output)?;
 
         Ok(stp)
     }

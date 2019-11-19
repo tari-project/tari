@@ -21,14 +21,18 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::output_manager_service::{error::OutputManagerStorageError, service::Balance, TxId};
-use chrono::NaiveDateTime;
+use chrono::{NaiveDateTime, Utc};
 use log::*;
 use std::{
     collections::HashMap,
     fmt::{Display, Error, Formatter},
     time::Duration,
 };
-use tari_transactions::{tari_amount::MicroTari, transaction::UnblindedOutput, types::BlindingFactor};
+use tari_transactions::{
+    tari_amount::MicroTari,
+    transaction::{OutputFeatures, UnblindedOutput},
+    types::{BlindingFactor, PrivateKey},
+};
 
 const LOG_TARGET: &'static str = "wallet::output_manager_service::database";
 
@@ -39,8 +43,6 @@ const LOG_TARGET: &'static str = "wallet::output_manager_service::database";
 pub trait OutputManagerBackend: Send + Sync {
     /// Retrieve the record associated with the provided DbKey
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, OutputManagerStorageError>;
-    /// Check if a record with the provided key exists in the backend.
-    fn contains(&self, key: &DbKey) -> Result<bool, OutputManagerStorageError>;
     /// Modify the state the of the backend with a write operation
     fn write(&mut self, op: WriteOperation) -> Result<Option<DbValue>, OutputManagerStorageError>;
     /// This method is called when a pending transaction is to be confirmed. It must move the `outputs_to_be_spent` and
@@ -52,7 +54,7 @@ pub trait OutputManagerBackend: Send + Sync {
     fn encumber_outputs(
         &mut self,
         tx_id: TxId,
-        outputs_to_send: Vec<UnblindedOutput>,
+        outputs_to_send: &Vec<UnblindedOutput>,
         change_output: Option<UnblindedOutput>,
     ) -> Result<(), OutputManagerStorageError>;
     /// This method must take all the `outputs_to_be_spent` from the specified transaction and move them back into the
@@ -64,7 +66,7 @@ pub trait OutputManagerBackend: Send + Sync {
 }
 
 /// Holds the outputs that have been selected for a given pending transaction waiting for confirmation
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PendingTransactionOutputs {
     pub tx_id: u64,
     pub outputs_to_be_spent: Vec<UnblindedOutput>,
@@ -187,13 +189,13 @@ where T: OutputManagerBackend
 
     pub fn add_pending_transaction_outputs(
         &mut self,
-        pending_transaction_ouputs: PendingTransactionOutputs,
+        pending_transaction_outputs: PendingTransactionOutputs,
     ) -> Result<(), OutputManagerStorageError>
     {
         self.db
             .write(WriteOperation::Insert(DbKeyValuePair::PendingTransactionOutputs(
-                pending_transaction_ouputs.tx_id.clone(),
-                Box::new(pending_transaction_ouputs),
+                pending_transaction_outputs.tx_id.clone(),
+                Box::new(pending_transaction_outputs),
             )))?;
 
         Ok(())
@@ -214,12 +216,38 @@ where T: OutputManagerBackend
         self.db.confirm_transaction(tx_id)
     }
 
+    /// This method accepts and stores a pending inbound transaction and creates the `output_to_be_received` from the
+    /// amount and provided spending key.
+    pub fn accept_incoming_pending_transaction(
+        &mut self,
+        tx_id: &TxId,
+        amount: &MicroTari,
+        spending_key: &PrivateKey,
+    ) -> Result<(), OutputManagerStorageError>
+    {
+        self.db
+            .write(WriteOperation::Insert(DbKeyValuePair::PendingTransactionOutputs(
+                tx_id.clone(),
+                Box::new(PendingTransactionOutputs {
+                    tx_id: tx_id.clone(),
+                    outputs_to_be_spent: Vec::new(),
+                    outputs_to_be_received: vec![UnblindedOutput {
+                        value: amount.clone(),
+                        spending_key: spending_key.clone(),
+                        features: OutputFeatures::default(),
+                    }],
+                    timestamp: Utc::now().naive_utc(),
+                }),
+            )))?;
+        Ok(())
+    }
+
     /// This method is called when a transaction is built to be sent. It will encumber unspent outputs against a pending
     /// transaction
     pub fn encumber_outputs(
         &mut self,
         tx_id: TxId,
-        outputs_to_send: Vec<UnblindedOutput>,
+        outputs_to_send: &Vec<UnblindedOutput>,
         change_output: Option<UnblindedOutput>,
     ) -> Result<(), OutputManagerStorageError>
     {

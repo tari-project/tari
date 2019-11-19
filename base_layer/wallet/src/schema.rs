@@ -7,6 +7,26 @@ table! {
 }
 
 table! {
+    outputs (spending_key) {
+        spending_key -> Binary,
+        value -> BigInt,
+        flags -> Integer,
+        maturity -> BigInt,
+        spent -> Integer,
+        to_be_received -> Integer,
+        encumbered -> Integer,
+        tx_id -> Nullable<BigInt>,
+    }
+}
+
+table! {
+    pending_transaction_outputs (tx_id) {
+        tx_id -> BigInt,
+        timestamp -> Timestamp,
+    }
+}
+
+table! {
     received_messages (id) {
         id -> Binary,
         source_pub_key -> Text,
@@ -35,6 +55,14 @@ table! {
     }
 }
 
+joinable!(outputs -> pending_transaction_outputs (tx_id));
 joinable!(sent_messages -> contacts (dest_pub_key));
 
-allow_tables_to_appear_in_same_query!(contacts, received_messages, sent_messages, settings,);
+allow_tables_to_appear_in_same_query!(
+    contacts,
+    outputs,
+    pending_transaction_outputs,
+    received_messages,
+    sent_messages,
+    settings,
+);

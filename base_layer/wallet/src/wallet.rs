@@ -19,6 +19,11 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#[cfg(feature = "c_integration")]
+use crate::transaction_service::{
+    error::TransactionServiceError,
+    storage::database::{CompletedTransaction, InboundTransaction},
+};
 use crate::{
     contacts_service::{
         handle::ContactsServiceHandle,
@@ -34,12 +39,8 @@ use crate::{
     },
     storage::database::{WalletBackend, WalletDatabase},
     transaction_service::{
-        error::TransactionServiceError,
         handle::TransactionServiceHandle,
-        storage::{
-            database::{CompletedTransaction, InboundTransaction},
-            memory_db::TransactionMemoryDatabase,
-        },
+        storage::memory_db::TransactionMemoryDatabase,
         TransactionServiceInitializer,
     },
 };

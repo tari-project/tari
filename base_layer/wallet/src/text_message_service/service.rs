@@ -169,7 +169,6 @@ where
         let connection = SqliteConnection::establish(&database_path)?;
 
         connection.execute("PRAGMA foreign_keys = ON")?;
-        println!("establish DB? {:?} PAth: {:?}", db_exists, database_path);
         if !db_exists {
             embed_migrations!("./migrations");
             embedded_migrations::run_with_output(&connection, &mut io::stdout()).map_err(|err| {
