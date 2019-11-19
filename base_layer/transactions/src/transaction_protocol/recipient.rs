@@ -27,7 +27,7 @@ use crate::{
         single_receiver::SingleReceiverTransactionProtocol,
         TransactionProtocolError,
     },
-    types::{CommitmentFactory, MessageHash, PrivateKey, PublicKey, RangeProofService, Signature},
+    types::{CryptoFactories, MessageHash, PrivateKey, PublicKey, RangeProofService, Signature},
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -88,14 +88,13 @@ impl ReceiverTransactionProtocol {
         nonce: PrivateKey,
         spending_key: PrivateKey,
         features: OutputFeatures,
-        prover: &RangeProofService,
-        factory: &CommitmentFactory,
+        factories: &CryptoFactories,
     ) -> ReceiverTransactionProtocol
     {
         let state = match info {
             TransactionSenderMessage::None => RecipientState::Failed(TransactionProtocolError::InvalidStateError),
             TransactionSenderMessage::Single(v) => {
-                ReceiverTransactionProtocol::single_round(nonce, spending_key, features, &v, prover, factory)
+                ReceiverTransactionProtocol::single_round(nonce, spending_key, features, &v, factories)
             },
             TransactionSenderMessage::Multiple => Self::multi_round(),
         };
@@ -140,11 +139,10 @@ impl ReceiverTransactionProtocol {
         key: PrivateKey,
         features: OutputFeatures,
         data: &SD,
-        prover: &RangeProofService,
-        factory: &CommitmentFactory,
+        factories: &CryptoFactories,
     ) -> RecipientState
     {
-        let signer = SingleReceiverTransactionProtocol::create(data, nonce, key, features, prover, factory);
+        let signer = SingleReceiverTransactionProtocol::create(data, nonce, key, features, factories);
         match signer {
             Ok(signed_data) => RecipientState::Finalized(Box::new(signed_data)),
             Err(e) => RecipientState::Failed(e),
@@ -169,7 +167,7 @@ mod test {
             test_common::TestParams,
             TransactionMetadata,
         },
-        types::{PublicKey, Signature, COMMITMENT_FACTORY, PROVER},
+        types::{CryptoFactories, PublicKey, Signature},
         ReceiverTransactionProtocol,
     };
     use rand::OsRng;
@@ -178,6 +176,7 @@ mod test {
     #[test]
     fn single_round_recipient() {
         let mut rng = OsRng::new().unwrap();
+        let factories = CryptoFactories::default();
         let p = TestParams::new(&mut rng);
         let m = TransactionMetadata {
             fee: MicroTari(125),
@@ -200,15 +199,16 @@ mod test {
             p.nonce.clone(),
             p.spend_key.clone(),
             OutputFeatures::default(),
-            &PROVER,
-            &COMMITMENT_FACTORY,
+            &factories,
         );
         assert!(receiver.is_finalized());
         let data = receiver.get_signed_data().unwrap();
         assert_eq!(data.tx_id, 15);
         assert_eq!(data.public_spend_key, pubkey);
-        assert!(COMMITMENT_FACTORY.open_value(&p.spend_key, 500, &data.output.commitment));
-        assert!(data.output.verify_range_proof(&PROVER).unwrap());
+        assert!(factories
+            .commitment
+            .open_value(&p.spend_key, 500, &data.output.commitment));
+        assert!(data.output.verify_range_proof(&factories.range_proof).unwrap());
         let r_sum = &msg.public_nonce + &p.public_nonce;
         let e = build_challenge(&r_sum, &m);
         let s = Signature::sign(p.spend_key.clone(), p.nonce.clone(), &e).unwrap();

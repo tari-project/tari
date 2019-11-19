@@ -50,7 +50,7 @@ use tari_transactions::{
         UnblindedOutput,
     },
     transaction_protocol::sender::SenderTransactionProtocol,
-    types::{Commitment, HashDigest, PrivateKey, PublicKey, COMMITMENT_FACTORY, PROVER},
+    types::{Commitment, CommitmentFactory, CryptoFactories, HashDigest, PrivateKey, PublicKey},
 };
 use tari_utilities::hash::Hashable;
 
@@ -135,10 +135,15 @@ pub struct TransactionSchema {
 
 /// Create a random transaction input for the given amount and maturity period. The input and its unblinded
 /// parameters are returned.
-pub fn create_test_input(amount: MicroTari, maturity: u64) -> (TransactionInput, UnblindedOutput) {
+pub fn create_test_input(
+    amount: MicroTari,
+    maturity: u64,
+    factory: &CommitmentFactory,
+) -> (TransactionInput, UnblindedOutput)
+{
     let mut rng = rand::OsRng::new().unwrap();
     let spending_key = PrivateKey::random(&mut rng);
-    let commitment = COMMITMENT_FACTORY.commit(&spending_key, &PrivateKey::from(amount.clone()));
+    let commitment = factory.commit(&spending_key, &PrivateKey::from(amount.clone()));
     let features = OutputFeatures::with_maturity(maturity);
     let input = TransactionInput::new(features.clone(), commitment);
     let unblinded_output = UnblindedOutput::new(amount, spending_key, Some(features));
@@ -156,6 +161,7 @@ pub fn create_tx(
     output_count: u64,
 ) -> (Transaction, Vec<UnblindedOutput>, Vec<UnblindedOutput>)
 {
+    let factories = CryptoFactories::default();
     let mut rng = rand::OsRng::new().unwrap();
     let test_params = TestParams::new(&mut rng);
     let mut stx_builder = SenderTransactionProtocol::builder(0);
@@ -170,12 +176,12 @@ pub fn create_tx(
     let mut unblinded_outputs = Vec::with_capacity(output_count as usize);
     let amount_per_input = amount / input_count;
     for _ in 0..input_count - 1 {
-        let (utxo, input) = create_test_input(amount_per_input, input_maturity);
+        let (utxo, input) = create_test_input(amount_per_input, input_maturity, &factories.commitment);
         unblinded_inputs.push(input.clone());
         stx_builder.with_input(utxo, input);
     }
     let amount_for_last_input = amount - amount_per_input * (input_count - 1);
-    let (utxo, input) = create_test_input(amount_for_last_input, input_maturity);
+    let (utxo, input) = create_test_input(amount_for_last_input, input_maturity, &factories.commitment);
     unblinded_inputs.push(input.clone());
     stx_builder.with_input(utxo, input);
 
@@ -193,8 +199,8 @@ pub fn create_tx(
         stx_builder.with_output(utxo);
     }
 
-    let mut stx_protocol = stx_builder.build::<Blake256>(&PROVER, &COMMITMENT_FACTORY).unwrap();
-    match stx_protocol.finalize(KernelFeatures::empty(), &PROVER, &COMMITMENT_FACTORY) {
+    let mut stx_protocol = stx_builder.build::<Blake256>(&factories).unwrap();
+    match stx_protocol.finalize(KernelFeatures::empty(), &factories) {
         Ok(true) => (),
         Ok(false) => panic!("{:?}", stx_protocol.failure_reason()),
         Err(e) => panic!("{:?}", e),
@@ -212,6 +218,7 @@ pub fn create_tx(
 /// The output features will be applied to every output
 pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutput>, TestParams) {
     let mut rng = rand::OsRng::new().unwrap();
+    let factories = CryptoFactories::default();
     let test_params = TestParams::new(&mut rng);
     let mut stx_builder = SenderTransactionProtocol::builder(0);
     stx_builder
@@ -222,7 +229,7 @@ pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutp
         .with_change_secret(test_params.change_key.clone());
 
     for input in &schema.from {
-        let utxo = input.as_transaction_input(&COMMITMENT_FACTORY, input.features.clone());
+        let utxo = input.as_transaction_input(&factories.commitment, input.features.clone());
         stx_builder.with_input(utxo, input.clone());
     }
     let mut outputs = Vec::with_capacity(schema.to.len());
@@ -233,7 +240,7 @@ pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutp
         stx_builder.with_output(utxo);
     }
 
-    let mut stx_protocol = stx_builder.build::<Blake256>(&PROVER, &COMMITMENT_FACTORY).unwrap();
+    let mut stx_protocol = stx_builder.build::<Blake256>(&factories).unwrap();
     let change = stx_protocol.get_change_amount().unwrap();
     let change_output = UnblindedOutput {
         value: change,
@@ -241,7 +248,7 @@ pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutp
         features: schema.features.clone(),
     };
     outputs.push(change_output);
-    match stx_protocol.finalize(KernelFeatures::empty(), &PROVER, &COMMITMENT_FACTORY) {
+    match stx_protocol.finalize(KernelFeatures::empty(), &factories) {
         Ok(true) => (),
         Ok(false) => panic!("{:?}", stx_protocol.failure_reason()),
         Err(e) => panic!("{:?}", e),
@@ -266,12 +273,12 @@ pub fn create_test_kernel(fee: MicroTari, lock_height: u64) -> TransactionKernel
 ///
 /// Right now this function does not use consensus rules to generate the block. The coinbase output has an arbitrary
 /// value, and the maturity is zero.
-pub fn create_genesis_block() -> (Block, UnblindedOutput) {
+pub fn create_genesis_block(factories: &CryptoFactories) -> (Block, UnblindedOutput) {
     let mut header = BlockHeader::new(0);
     header.total_difficulty = Difficulty::from(1);
     let value = MicroTari::from(100_000_000);
     let excess = Commitment::from_public_key(&PublicKey::default());
-    let (utxo, key) = create_utxo(value);
+    let (utxo, key) = create_utxo(value, &factories);
     let (_pk, sig) = create_random_signature(0.into(), 0);
     let kernel = KernelBuilder::new()
         .with_signature(&sig)
@@ -325,10 +332,10 @@ pub fn chain_block(prev_block: &Block, transactions: Vec<Transaction>) -> Block 
 }
 
 /// Create a new UTXO for the specified value and return the output and spending key
-pub fn create_utxo(value: MicroTari) -> (TransactionOutput, PrivateKey) {
+pub fn create_utxo(value: MicroTari, factories: &CryptoFactories) -> (TransactionOutput, PrivateKey) {
     let keys = generate_keys();
-    let commitment = COMMITMENT_FACTORY.commit_value(&keys.k, value.into());
-    let proof = PROVER.construct_proof(&keys.k, value.into()).unwrap();
+    let commitment = factories.commitment.commit_value(&keys.k, value.into());
+    let proof = factories.range_proof.construct_proof(&keys.k, value.into()).unwrap();
     let utxo = TransactionOutput::new(OutputFeatures::default(), commitment, proof.into());
     (utxo, keys.k)
 }

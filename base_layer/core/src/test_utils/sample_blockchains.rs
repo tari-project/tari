@@ -35,7 +35,7 @@ use crate::{
 use tari_transactions::{
     tari_amount::{uT, T},
     transaction::{Transaction, UnblindedOutput},
-    types::HashDigest,
+    types::{CryptoFactories, HashDigest},
 };
 
 /// Create a simple 6 block memory-backed database.
@@ -124,11 +124,12 @@ pub fn create_new_blockchain() -> (
     Vec<Block>,
     Vec<Vec<UnblindedOutput>>,
 ) {
+    let factories = CryptoFactories::default();
     let db = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
     let mut outputs = Vec::new();
     let mut blocks = Vec::new();
     // Genesis Block
-    let (mut block0, utxo) = create_genesis_block();
+    let (mut block0, utxo) = create_genesis_block(&factories);
     block0 = add_block_and_update_header(&db, block0);
     blocks.push(block0);
     outputs.push(vec![utxo]);

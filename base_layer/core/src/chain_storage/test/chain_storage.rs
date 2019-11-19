@@ -52,7 +52,7 @@ use std::thread;
 use tari_mmr::{MerkleChangeTrackerConfig, MutableMmr};
 use tari_transactions::{
     tari_amount::{uT, MicroTari, T},
-    types::{HashDigest, COMMITMENT_FACTORY, PROVER},
+    types::{CryptoFactories, HashDigest},
 };
 use tari_utilities::{hex::Hex, Hashable};
 
@@ -109,8 +109,9 @@ fn insert_and_fetch_header() {
 
 #[test]
 fn insert_and_fetch_utxo() {
+    let factories = CryptoFactories::default();
     let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
-    let (utxo, _) = create_utxo(MicroTari(10_000));
+    let (utxo, _) = create_utxo(MicroTari(10_000), &factories);
     let hash = utxo.hash();
     assert_eq!(store.is_utxo(hash.clone()).unwrap(), false);
     let mut txn = DbTransaction::new();
@@ -170,14 +171,15 @@ fn multiple_threads() {
 #[test]
 fn utxo_and_rp_merkle_root() {
     let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
+    let factories = CryptoFactories::default();
     let root = store.fetch_mmr_root(MmrTree::Utxo).unwrap();
     // This is the zero-length MMR of a mutable MMR with Blake256 as hasher
     assert_eq!(
         &root.to_hex(),
         "26146a5435ef15e8cf7dc3354cb7268137e8be211794e93d04551576c6561565"
     );
-    let (utxo1, _) = create_utxo(MicroTari(10_000));
-    let (utxo2, _) = create_utxo(MicroTari(10_000));
+    let (utxo1, _) = create_utxo(MicroTari(10_000), &factories);
+    let (utxo2, _) = create_utxo(MicroTari(10_000), &factories);
     let hash1 = utxo1.hash();
     let hash2 = utxo2.hash();
     // Calculate the Range proof MMR root as a check
@@ -254,10 +256,11 @@ fn kernel_merkle_root() {
 #[test]
 fn utxo_and_rp_mmr_proof() {
     let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
+    let factories = CryptoFactories::default();
 
-    let (utxo1, _) = create_utxo(MicroTari(5_000));
-    let (utxo2, _) = create_utxo(MicroTari(10_000));
-    let (utxo3, _) = create_utxo(MicroTari(15_000));
+    let (utxo1, _) = create_utxo(MicroTari(5_000), &factories);
+    let (utxo2, _) = create_utxo(MicroTari(10_000), &factories);
+    let (utxo3, _) = create_utxo(MicroTari(15_000), &factories);
     let mut txn = DbTransaction::new();
     txn.insert_utxo(utxo1.clone());
     txn.insert_utxo(utxo2.clone());
@@ -369,9 +372,10 @@ fn add_multiple_blocks() {
 
 #[test]
 fn test_checkpoints() {
+    let factories = CryptoFactories::default();
     let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
     // Add the Genesis block
-    let (mut block0, output) = create_genesis_block();
+    let (mut block0, output) = create_genesis_block(&factories);
     block0 = add_block_and_update_header(&store, block0);
     let txn = txn_schema!(from: vec![output], to: vec![MicroTari(5_000), MicroTari(6_000)]);
     let (txn, _, _) = spend_utxos(txn);
@@ -390,8 +394,9 @@ fn test_checkpoints() {
 
 #[test]
 fn rewind_to_height() {
+    let factories = CryptoFactories::default();
     let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
-    let block0 = add_block_and_update_header(&store, create_genesis_block().0);
+    let block0 = add_block_and_update_header(&store, create_genesis_block(&factories).0);
 
     let (tx1, inputs1, _) = tx!(10_000*uT, fee: 50*uT, inputs: 1, outputs: 1);
     let (tx2, inputs2, _) = tx!(10_000*uT, fee: 20*uT, inputs: 1, outputs: 1);
@@ -400,12 +405,12 @@ fn rewind_to_height() {
     let (tx5, inputs5, _) = tx!(10_000*uT, fee: 50*uT, inputs: 1, outputs: 1);
     let (tx6, inputs6, _) = tx!(10_000*uT, fee: 75*uT, inputs: 1, outputs: 1);
     let mut txn = DbTransaction::new();
-    txn.insert_utxo(inputs1[0].as_transaction_output(&PROVER, &COMMITMENT_FACTORY).unwrap());
-    txn.insert_utxo(inputs2[0].as_transaction_output(&PROVER, &COMMITMENT_FACTORY).unwrap());
-    txn.insert_utxo(inputs3[0].as_transaction_output(&PROVER, &COMMITMENT_FACTORY).unwrap());
-    txn.insert_utxo(inputs4[0].as_transaction_output(&PROVER, &COMMITMENT_FACTORY).unwrap());
-    txn.insert_utxo(inputs5[0].as_transaction_output(&PROVER, &COMMITMENT_FACTORY).unwrap());
-    txn.insert_utxo(inputs6[0].as_transaction_output(&PROVER, &COMMITMENT_FACTORY).unwrap());
+    txn.insert_utxo(inputs1[0].as_transaction_output(&factories).unwrap());
+    txn.insert_utxo(inputs2[0].as_transaction_output(&factories).unwrap());
+    txn.insert_utxo(inputs3[0].as_transaction_output(&factories).unwrap());
+    txn.insert_utxo(inputs4[0].as_transaction_output(&factories).unwrap());
+    txn.insert_utxo(inputs5[0].as_transaction_output(&factories).unwrap());
+    txn.insert_utxo(inputs6[0].as_transaction_output(&factories).unwrap());
     assert!(store.commit(txn).is_ok());
 
     let mut block1 = chain_block(&block0, vec![tx1.clone(), tx2.clone()]);
@@ -584,13 +589,14 @@ fn handle_reorg() {
 
 #[test]
 fn restore_mmr() {
+    let factories = CryptoFactories::default();
     let mct_config = MerkleChangeTrackerConfig {
         min_history_len: 2,
         max_history_len: 3,
     };
     let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::new(mct_config)).unwrap();
 
-    let block0 = add_block_and_update_header(&store, create_genesis_block().0);
+    let block0 = add_block_and_update_header(&store, create_genesis_block(&factories).0);
 
     let (tx1, inputs1, _) = tx!(10_000*uT, fee: 50*uT, inputs: 1, outputs: 1);
     let (tx2, inputs2, _) = tx!(10_000*uT, fee: 20*uT, inputs: 1, outputs: 1);
@@ -599,12 +605,12 @@ fn restore_mmr() {
     let (tx5, inputs5, _) = tx!(10_000*uT, fee: 50*uT, inputs: 1, outputs: 1);
     let (tx6, inputs6, _) = tx!(10_000*uT, fee: 75*uT, inputs: 1, outputs: 1);
     let mut txn = DbTransaction::new();
-    txn.insert_utxo(inputs1[0].as_transaction_output(&PROVER, &COMMITMENT_FACTORY).unwrap());
-    txn.insert_utxo(inputs2[0].as_transaction_output(&PROVER, &COMMITMENT_FACTORY).unwrap());
-    txn.insert_utxo(inputs3[0].as_transaction_output(&PROVER, &COMMITMENT_FACTORY).unwrap());
-    txn.insert_utxo(inputs4[0].as_transaction_output(&PROVER, &COMMITMENT_FACTORY).unwrap());
-    txn.insert_utxo(inputs5[0].as_transaction_output(&PROVER, &COMMITMENT_FACTORY).unwrap());
-    txn.insert_utxo(inputs6[0].as_transaction_output(&PROVER, &COMMITMENT_FACTORY).unwrap());
+    txn.insert_utxo(inputs1[0].as_transaction_output(&factories).unwrap());
+    txn.insert_utxo(inputs2[0].as_transaction_output(&factories).unwrap());
+    txn.insert_utxo(inputs3[0].as_transaction_output(&factories).unwrap());
+    txn.insert_utxo(inputs4[0].as_transaction_output(&factories).unwrap());
+    txn.insert_utxo(inputs5[0].as_transaction_output(&factories).unwrap());
+    txn.insert_utxo(inputs6[0].as_transaction_output(&factories).unwrap());
     assert!(store.commit(txn).is_ok());
 
     let mut block1 = chain_block(&block0, vec![tx1.clone(), tx2.clone()]);

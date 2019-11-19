@@ -723,7 +723,7 @@ mod test {
     use tari_transactions::{
         tari_amount::MicroTari,
         transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
-        types::{PrivateKey, COMMITMENT_FACTORY},
+        types::{CommitmentFactory, PrivateKey},
     };
     use tempdir::TempDir;
 
@@ -734,7 +734,8 @@ mod test {
 
     pub fn make_input<R: Rng + CryptoRng>(rng: &mut R, val: MicroTari) -> (TransactionInput, UnblindedOutput) {
         let key = PrivateKey::random(rng);
-        let commitment = COMMITMENT_FACTORY.commit_value(&key, val.into());
+        let factory = CommitmentFactory::default();
+        let commitment = factory.commit_value(&key, val.into());
         let input = TransactionInput::new(OutputFeatures::default(), commitment);
         (input, UnblindedOutput::new(val, key, None))
     }

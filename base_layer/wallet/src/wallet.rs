@@ -62,11 +62,13 @@ use tari_p2p::{
     },
 };
 use tari_service_framework::StackBuilder;
+use tari_transactions::types::CryptoFactories;
 use tokio::runtime::Runtime;
 
 #[derive(Clone)]
 pub struct WalletConfig {
     pub comms_config: CommsConfig,
+    pub factories: CryptoFactories,
 }
 
 /// A structure containing the config and services that a Wallet application will require. This struct will start up all
@@ -99,7 +101,7 @@ where T: WalletBackend
             branch_seed: "".to_string(),
             primary_key_index: 0,
         };
-
+        let factories = config.factories;
         let (publisher, subscription_factory) =
             pubsub_connector(runtime.executor(), config.comms_config.inbound_buffer_size);
         let subscription_factory = Arc::new(subscription_factory);
@@ -116,11 +118,13 @@ where T: WalletBackend
             .add_initializer(OutputManagerServiceInitializer::new(
                 oms_config,
                 OutputManagerMemoryDatabase::new(),
+                factories.clone(),
             ))
             .add_initializer(TransactionServiceInitializer::new(
                 subscription_factory.clone(),
                 TransactionMemoryDatabase::new(),
                 comms.node_identity().clone(),
+                factories.clone(),
             ))
             .add_initializer(ContactsServiceInitializer::new(ContactsServiceMemoryDatabase::new()))
             .finish();

@@ -63,7 +63,7 @@ use tari_service_framework::StackBuilder;
 use tari_test_utils::address::get_next_local_address;
 use tari_transactions::{
     tari_amount::{uT, MicroTari},
-    types::{HashDigest, COMMITMENT_FACTORY, PROVER},
+    types::{CryptoFactories, HashDigest},
 };
 use tari_utilities::hash::Hashable;
 use tempdir::TempDir;
@@ -301,6 +301,7 @@ fn create_network_with_3_base_nodes(
 #[test]
 fn request_response_get_metadata() {
     let runtime = Runtime::new().unwrap();
+    let factories = CryptoFactories::default();
 
     let (mut alice_interfaces, bob_interfaces, carol_interfaces) =
         create_network_with_3_base_nodes(&runtime, BaseNodeServiceConfig::default(), MerkleChangeTrackerConfig {
@@ -308,7 +309,7 @@ fn request_response_get_metadata() {
             max_history_len: 20,
         });
 
-    add_block_and_update_header(&bob_interfaces.blockchain_db, create_genesis_block().0);
+    add_block_and_update_header(&bob_interfaces.blockchain_db, create_genesis_block(&factories).0);
 
     runtime.block_on(async {
         let received_metadata = alice_interfaces.outbound_nci.get_metadata().await.unwrap();
@@ -426,6 +427,7 @@ fn request_and_response_fetch_kernels() {
 #[test]
 fn request_and_response_fetch_utxos() {
     let runtime = Runtime::new().unwrap();
+    let factories = CryptoFactories::default();
 
     let (mut alice_interfaces, bob_interfaces, carol_interfaces) =
         create_network_with_3_base_nodes(&runtime, BaseNodeServiceConfig::default(), MerkleChangeTrackerConfig {
@@ -433,8 +435,8 @@ fn request_and_response_fetch_utxos() {
             max_history_len: 20,
         });
 
-    let (utxo1, _) = create_utxo(MicroTari(10_000));
-    let (utxo2, _) = create_utxo(MicroTari(15_000));
+    let (utxo1, _) = create_utxo(MicroTari(10_000), &factories);
+    let (utxo2, _) = create_utxo(MicroTari(15_000), &factories);
     let hash1 = utxo1.hash();
     let hash2 = utxo2.hash();
 
@@ -511,7 +513,7 @@ fn request_and_response_fetch_blocks() {
 #[test]
 fn request_and_response_fetch_mmr_state() {
     let runtime = Runtime::new().unwrap();
-
+    let factories = CryptoFactories::default();
     let mct_config = MerkleChangeTrackerConfig {
         min_history_len: 1,
         max_history_len: 3,
@@ -525,9 +527,9 @@ fn request_and_response_fetch_mmr_state() {
 
     let block0 = add_block_and_update_header(&bob_interfaces.blockchain_db, get_genesis_block());
     let mut txn = DbTransaction::new();
-    txn.insert_utxo(inputs1[0].as_transaction_output(&PROVER, &COMMITMENT_FACTORY).unwrap());
-    txn.insert_utxo(inputs2[0].as_transaction_output(&PROVER, &COMMITMENT_FACTORY).unwrap());
-    txn.insert_utxo(inputs3[0].as_transaction_output(&PROVER, &COMMITMENT_FACTORY).unwrap());
+    txn.insert_utxo(inputs1[0].as_transaction_output(&factories).unwrap());
+    txn.insert_utxo(inputs2[0].as_transaction_output(&factories).unwrap());
+    txn.insert_utxo(inputs3[0].as_transaction_output(&factories).unwrap());
     assert!(bob_interfaces.blockchain_db.commit(txn).is_ok());
     let mut block1 = chain_block(&block0, vec![tx1.clone()]);
     block1 = add_block_and_update_header(&bob_interfaces.blockchain_db, block1);
@@ -538,9 +540,9 @@ fn request_and_response_fetch_mmr_state() {
 
     let block0 = add_block_and_update_header(&carol_interfaces.blockchain_db, get_genesis_block());
     let mut txn = DbTransaction::new();
-    txn.insert_utxo(inputs1[0].as_transaction_output(&PROVER, &COMMITMENT_FACTORY).unwrap());
-    txn.insert_utxo(inputs2[0].as_transaction_output(&PROVER, &COMMITMENT_FACTORY).unwrap());
-    txn.insert_utxo(inputs3[0].as_transaction_output(&PROVER, &COMMITMENT_FACTORY).unwrap());
+    txn.insert_utxo(inputs1[0].as_transaction_output(&factories).unwrap());
+    txn.insert_utxo(inputs2[0].as_transaction_output(&factories).unwrap());
+    txn.insert_utxo(inputs3[0].as_transaction_output(&factories).unwrap());
     assert!(carol_interfaces.blockchain_db.commit(txn).is_ok());
     let mut block1 = chain_block(&block0, vec![tx1.clone()]);
     block1 = add_block_and_update_header(&carol_interfaces.blockchain_db, block1);
@@ -812,6 +814,7 @@ fn local_get_metadata() {
 
 #[test]
 fn local_get_new_block() {
+    let factories = CryptoFactories::default();
     let runtime = Runtime::new().unwrap();
     let (_, mut local_nci, blockchain_db, mempool, comms) =
         create_base_node(&runtime, BaseNodeServiceConfig::default());
@@ -821,9 +824,9 @@ fn local_get_new_block() {
     let (tx2, inputs2, _) = tx!(10_000*uT, fee: 20*uT, inputs: 1, outputs: 1);
     let (tx3, inputs3, _) = tx!(10_000*uT, fee: 30*uT, inputs: 1, outputs: 1);
     let mut txn = DbTransaction::new();
-    txn.insert_utxo(inputs1[0].as_transaction_output(&PROVER, &COMMITMENT_FACTORY).unwrap());
-    txn.insert_utxo(inputs2[0].as_transaction_output(&PROVER, &COMMITMENT_FACTORY).unwrap());
-    txn.insert_utxo(inputs3[0].as_transaction_output(&PROVER, &COMMITMENT_FACTORY).unwrap());
+    txn.insert_utxo(inputs1[0].as_transaction_output(&factories).unwrap());
+    txn.insert_utxo(inputs2[0].as_transaction_output(&factories).unwrap());
+    txn.insert_utxo(inputs3[0].as_transaction_output(&factories).unwrap());
     assert!(blockchain_db.commit(txn).is_ok());
     assert!(mempool.insert(Arc::new(tx1)).is_ok());
     assert!(mempool.insert(Arc::new(tx2)).is_ok());

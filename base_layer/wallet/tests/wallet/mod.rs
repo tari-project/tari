@@ -31,7 +31,7 @@ use tari_comms::{
 use tari_comms_dht::DhtConfig;
 use tari_crypto::keys::PublicKey;
 use tari_p2p::initialization::CommsConfig;
-use tari_transactions::tari_amount::MicroTari;
+use tari_transactions::{tari_amount::MicroTari, types::CryptoFactories};
 #[cfg(feature = "test_harness")]
 use tari_wallet::testnet_utils::broadcast_transaction;
 use tari_wallet::{
@@ -59,6 +59,7 @@ fn test_wallet() {
     let runtime = Runtime::new().unwrap();
 
     let mut rng = rand::OsRng::new().unwrap();
+    let factories = CryptoFactories::default();
 
     let alice_identity = NodeIdentity::random(
         &mut rng,
@@ -116,9 +117,11 @@ fn test_wallet() {
     };
     let config1 = WalletConfig {
         comms_config: comms_config1,
+        factories: factories.clone(),
     };
     let config2 = WalletConfig {
         comms_config: comms_config2,
+        factories: factories.clone(),
     };
     let runtime_node1 = Runtime::new().unwrap();
     let runtime_node2 = Runtime::new().unwrap();
@@ -146,7 +149,7 @@ fn test_wallet() {
     let alice_event_stream = alice_wallet.transaction_service.get_event_stream_fused();
 
     let value = MicroTari::from(1000);
-    let (_utxo, uo1) = make_input(&mut rng, MicroTari(2500));
+    let (_utxo, uo1) = make_input(&mut rng, MicroTari(2500), &factories.commitment);
 
     runtime
         .block_on(alice_wallet.output_manager_service.add_output(uo1))
@@ -188,6 +191,7 @@ fn test_wallet() {
 fn test_data_generation() {
     use tari_wallet::testnet_utils::generate_wallet_test_data;
     let runtime = Runtime::new().unwrap();
+    let factories = CryptoFactories::default();
 
     let mut rng = rand::OsRng::new().unwrap();
 
@@ -221,7 +225,10 @@ fn test_data_generation() {
         dht: dht_config,
     };
 
-    let config = WalletConfig { comms_config };
+    let config = WalletConfig {
+        comms_config,
+        factories,
+    };
 
     let mut wallet = Wallet::new(config, WalletMemoryDatabase::new(), runtime).unwrap();
 
@@ -266,6 +273,7 @@ fn test_test_harness() {
     };
 
     let mut rng = OsRng::new().unwrap();
+    let factories = CryptoFactories::default();
     // Alice's parameters
     let alice_identity = NodeIdentity::random(
         &mut rng,
@@ -305,13 +313,14 @@ fn test_test_harness() {
     };
     let config1 = WalletConfig {
         comms_config: comms_config1,
+        factories: factories.clone(),
     };
 
     let runtime = Runtime::new().unwrap();
     let mut alice_wallet = Wallet::new(config1, WalletMemoryDatabase::new(), runtime).unwrap();
 
     let value = MicroTari::from(1000);
-    let (_utxo, uo1) = make_input(&mut rng, MicroTari(2500));
+    let (_utxo, uo1) = make_input(&mut rng, MicroTari(2500), &factories.commitment);
 
     alice_wallet
         .runtime

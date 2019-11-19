@@ -33,7 +33,7 @@ use crate::{
     consensus::ConsensusRules,
     fee::Fee,
     transaction_protocol::{build_challenge, TransactionMetadata},
-    types::{HashDigest, HashOutput, RangeProof, RangeProofService},
+    types::{CryptoFactories, HashDigest, HashOutput, RangeProof, RangeProofService},
 };
 use derive_error::Error;
 use digest::Input;
@@ -170,21 +170,20 @@ impl UnblindedOutput {
         TransactionInput { commitment, features }
     }
 
-    pub fn as_transaction_output(
-        &self,
-        prover: &RangeProofService,
-        factory: &CommitmentFactory,
-    ) -> Result<TransactionOutput, TransactionError>
-    {
-        let commitment = factory.commit(&self.spending_key, &self.value.into());
+    pub fn as_transaction_output(&self, factories: &CryptoFactories) -> Result<TransactionOutput, TransactionError> {
+        let commitment = factories.commitment.commit(&self.spending_key, &self.value.into());
         let output = TransactionOutput {
             features: self.features.clone(),
             commitment,
-            proof: RangeProof::from_bytes(&prover.construct_proof(&self.spending_key, self.value.into())?)
-                .map_err(|_| TransactionError::RangeProofError(RangeProofError::ProofConstructionError))?,
+            proof: RangeProof::from_bytes(
+                &factories
+                    .range_proof
+                    .construct_proof(&self.spending_key, self.value.into())?,
+            )
+            .map_err(|_| TransactionError::RangeProofError(RangeProofError::ProofConstructionError))?,
         };
         // A range proof can be constructed for an invalid value so we should confirm that the proof can be verified.
-        if !output.verify_range_proof(&prover)? {
+        if !output.verify_range_proof(&factories.range_proof)? {
             return Err(TransactionError::ValidationError(
                 "Range proof could not be verified".into(),
             ));
@@ -576,14 +575,9 @@ impl Transaction {
     /// 1. Range proofs of the outputs are valid
     ///
     /// This function does NOT check that inputs come from the UTXO set
-    pub fn validate_internal_consistency(
-        &self,
-        prover: &RangeProofService,
-        factory: &CommitmentFactory,
-    ) -> Result<(), TransactionError>
-    {
+    pub fn validate_internal_consistency(&self, factories: &CryptoFactories) -> Result<(), TransactionError> {
         self.body
-            .validate_internal_consistency(&self.offset, MicroTari::from(0), prover, factory)
+            .validate_internal_consistency(&self.offset, MicroTari::from(0), factories)
     }
 
     pub fn get_body(&self) -> &AggregateBody {
@@ -670,16 +664,11 @@ impl TransactionBuilder {
         self
     }
 
-    pub fn build(
-        self,
-        prover: &RangeProofService,
-        factory: &CommitmentFactory,
-    ) -> Result<Transaction, TransactionError>
-    {
+    pub fn build(self, factories: &CryptoFactories) -> Result<Transaction, TransactionError> {
         if let Some(offset) = self.offset {
             let (i, o, k) = self.body.dissolve();
             let tx = Transaction::new(i, o, k, offset);
-            tx.validate_internal_consistency(prover, factory)?;
+            tx.validate_internal_consistency(factories)?;
             Ok(tx)
         } else {
             return Err(TransactionError::ValidationError(
@@ -734,19 +723,18 @@ mod test {
     #[test]
     fn range_proof_verification() {
         let mut rng = rand::OsRng::new().unwrap();
-        let factory = PedersenCommitmentFactory::default();
-        let prover = DalekRangeProofService::new(32, &factory).unwrap();
+        let factories = CryptoFactories::new(32);
         // Directly test the tx_output verification
         let k1 = BlindingFactor::random(&mut rng);
         let k2 = BlindingFactor::random(&mut rng);
 
         // For testing the max range has been limited to 2^32 so this value is too large.
         let unblinded_output1 = UnblindedOutput::new((2u64.pow(32) - 1u64).into(), k1, None);
-        let tx_output1 = unblinded_output1.as_transaction_output(&prover, &factory).unwrap();
-        assert!(tx_output1.verify_range_proof(&prover).unwrap());
+        let tx_output1 = unblinded_output1.as_transaction_output(&factories).unwrap();
+        assert!(tx_output1.verify_range_proof(&factories.range_proof).unwrap());
 
         let unblinded_output2 = UnblindedOutput::new((2u64.pow(32) + 1u64).into(), k2.clone(), None);
-        let tx_output2 = unblinded_output2.as_transaction_output(&prover, &factory);
+        let tx_output2 = unblinded_output2.as_transaction_output(&factories);
 
         match tx_output2 {
             Ok(_) => panic!("Range proof should have failed to verify"),
@@ -756,10 +744,10 @@ mod test {
             ),
         }
         let v = PrivateKey::from(2u64.pow(32) + 1);
-        let c = factory.commit(&k2, &v);
-        let proof = prover.construct_proof(&k2, 2u64.pow(32) + 1).unwrap();
+        let c = factories.commitment.commit(&k2, &v);
+        let proof = factories.range_proof.construct_proof(&k2, 2u64.pow(32) + 1).unwrap();
         let tx_output3 = TransactionOutput::new(OutputFeatures::default(), c, RangeProof::from_bytes(&proof).unwrap());
-        assert_eq!(tx_output3.verify_range_proof(&prover).unwrap(), false);
+        assert_eq!(tx_output3.verify_range_proof(&factories.range_proof).unwrap(), false);
     }
 
     #[test]

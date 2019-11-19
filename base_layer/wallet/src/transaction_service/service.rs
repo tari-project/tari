@@ -56,10 +56,10 @@ use tari_crypto::keys::SecretKey;
 use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_transactions::{
-    tari_amount::MicroTari,
+    tari_amount::{MicroTari, T},
     transaction::{KernelFeatures, OutputFeatures},
     transaction_protocol::{proto, recipient::RecipientSignedMessage, sender::TransactionSenderMessage},
-    types::{PrivateKey, COMMITMENT_FACTORY, PROVER},
+    types::{CryptoFactories, PrivateKey},
     ReceiverTransactionProtocol,
 };
 
@@ -94,6 +94,7 @@ where TBackend: TransactionBackend
     >,
     event_publisher: Publisher<TransactionEvent>,
     node_identity: Arc<NodeIdentity>,
+    factories: CryptoFactories,
     #[cfg(feature = "c_integration")]
     callback_received_transaction: Option<unsafe extern "C" fn(*mut InboundTransaction)>,
     #[cfg(feature = "c_integration")]
@@ -122,6 +123,7 @@ where
         outbound_message_service: OutboundMessageRequester,
         event_publisher: Publisher<TransactionEvent>,
         node_identity: Arc<NodeIdentity>,
+        factories: CryptoFactories,
     ) -> Self
     {
         TransactionService {
@@ -133,6 +135,7 @@ where
             request_stream: Some(request_stream),
             event_publisher,
             node_identity,
+            factories,
             #[cfg(feature = "c_integration")]
             callback_received_transaction: None,
             #[cfg(feature = "c_integration")]
@@ -387,10 +390,10 @@ where
 
         outbound_tx
             .sender_protocol
-            .add_single_recipient_info(recipient_reply, &PROVER)?;
+            .add_single_recipient_info(recipient_reply, &self.factories.range_proof)?;
         outbound_tx
             .sender_protocol
-            .finalize(KernelFeatures::empty(), &PROVER, &COMMITMENT_FACTORY)?;
+            .finalize(KernelFeatures::empty(), &self.factories)?;
         let tx = outbound_tx.sender_protocol.get_transaction()?;
 
         // TODO Broadcast this to the chain
@@ -459,8 +462,7 @@ where
                 nonce,
                 spending_key,
                 OutputFeatures::default(),
-                &PROVER,
-                &COMMITMENT_FACTORY,
+                &self.factories,
             );
             let recipient_reply = rtp.get_signed_data()?.clone();
 
@@ -571,13 +573,13 @@ where
             .outputs_to_be_spent
             .clone()
             .iter()
-            .map(|o| o.as_transaction_input(&COMMITMENT_FACTORY, OutputFeatures::default()))
+            .map(|o| o.as_transaction_input(&self.factories.commitment, OutputFeatures::default()))
             .collect();
 
         let mut outputs_to_be_received = Vec::new();
 
         for o in pending_tx.outputs_to_be_received.clone() {
-            outputs_to_be_received.push(o.as_transaction_output(&PROVER, &COMMITMENT_FACTORY)?)
+            outputs_to_be_received.push(o.as_transaction_output(&self.factories)?)
         }
         outputs_to_be_received.push(TransactionOutput::default());
 
@@ -633,10 +635,11 @@ where
                 primary_key_index: 0,
             },
             OutputManagerDatabase::new(OutputManagerMemoryDatabase::new()),
+            self.factories.clone(),
         )?;
 
         use crate::testnet_utils::make_input;
-        let (_ti, uo) = make_input(&mut rng.clone(), MicroTari::from(amount + MicroTari::from(1_000_000)));
+        let (_ti, uo) = make_input(&mut rng.clone(), amount + 1 * T, &self.factories);
 
         fake_oms.add_output(uo)?;
 
@@ -658,8 +661,7 @@ where
             nonce,
             spending_key.clone(),
             OutputFeatures::default(),
-            &PROVER,
-            &COMMITMENT_FACTORY,
+            &self.factories,
         );
 
         self.db

@@ -31,7 +31,7 @@ use tari_transactions::{
     consensus::ConsensusRules,
     tari_amount::MicroTari,
     transaction::{OutputFlags, Transaction, TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
-    types::{COMMITMENT_FACTORY, PROVER},
+    types::CryptoFactories,
 };
 use tari_utilities::Hashable;
 
@@ -62,11 +62,16 @@ impl Block {
     /// This function will check the block to ensure that all UTXO's are validly constructed and that all signatures are
     /// valid. It does _not_ check that the inputs exist in the current UTXO set;
     /// nor does it check that the PoW is the largest accumulated PoW value.
-    pub fn check_internal_consistency(&self, rules: &ConsensusRules) -> Result<(), BlockValidationError> {
+    pub fn check_internal_consistency(
+        &self,
+        rules: &ConsensusRules,
+        factories: &CryptoFactories,
+    ) -> Result<(), BlockValidationError>
+    {
         let offset = &self.header.total_kernel_offset;
         let total_coinbase = self.calculate_coinbase_and_fees(rules);
         self.body
-            .validate_internal_consistency(&offset, total_coinbase, &PROVER, &COMMITMENT_FACTORY)?;
+            .validate_internal_consistency(&offset, total_coinbase, factories)?;
         self.check_stxo_rules()?;
         self.check_utxo_rules(rules)?;
         self.check_pow()

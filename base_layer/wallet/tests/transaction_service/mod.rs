@@ -48,7 +48,7 @@ use tari_transactions::{
     tari_amount::*,
     transaction::OutputFeatures,
     transaction_protocol::{proto, recipient::RecipientState, sender::TransactionSenderMessage},
-    types::{PrivateKey, PublicKey, COMMITMENT_FACTORY, PROVER},
+    types::{CryptoFactories, PrivateKey, PublicKey},
     ReceiverTransactionProtocol,
 };
 use tari_wallet::{
@@ -73,6 +73,7 @@ pub fn setup_transaction_service(
     master_key: PrivateKey,
     node_identity: NodeIdentity,
     peers: Vec<NodeIdentity>,
+    factories: CryptoFactories,
 ) -> (TransactionServiceHandle, OutputManagerHandle, CommsNode)
 {
     let (publisher, subscription_factory) = pubsub_connector(runtime.executor(), 100);
@@ -88,11 +89,13 @@ pub fn setup_transaction_service(
                 primary_key_index: 0,
             },
             OutputManagerMemoryDatabase::new(),
+            factories.clone(),
         ))
         .add_initializer(TransactionServiceInitializer::new(
             subscription_factory,
             TransactionMemoryDatabase::new(),
             comms.node_identity().clone(),
+            factories.clone(),
         ))
         .finish();
 
@@ -109,6 +112,7 @@ pub fn setup_transaction_service(
 pub fn setup_transaction_service_no_comms(
     runtime: &Runtime,
     master_key: PrivateKey,
+    factories: CryptoFactories,
 ) -> (
     TransactionServiceHandle,
     OutputManagerHandle,
@@ -126,6 +130,7 @@ pub fn setup_transaction_service_no_comms(
             primary_key_index: 0,
         },
         OutputManagerDatabase::new(OutputManagerMemoryDatabase::new()),
+        factories.clone(),
     )
     .unwrap();
     let output_manager_service_handle = OutputManagerHandle::new(oms_request_sender);
@@ -154,6 +159,7 @@ pub fn setup_transaction_service_no_comms(
             )
             .unwrap(),
         ),
+        factories.clone(),
     );
     runtime.spawn(async move { output_manager_service.start().await.unwrap() });
     runtime.spawn(async move { ts_service.start().await.unwrap() });
@@ -170,6 +176,7 @@ pub fn setup_transaction_service_no_comms(
 fn manage_single_transaction() {
     let runtime = Runtime::new().unwrap();
     let mut rng = OsRng::new().unwrap();
+    let factories = CryptoFactories::default();
     // Alice's parameters
     let alice_seed = PrivateKey::random(&mut rng);
     let alice_node_identity = NodeIdentity::random(
@@ -188,14 +195,17 @@ fn manage_single_transaction() {
     )
     .unwrap();
 
-    let (mut alice_ts, mut alice_oms, alice_comms) =
-        setup_transaction_service(&runtime, alice_seed, alice_node_identity.clone(), vec![
-            bob_node_identity.clone(),
-        ]);
+    let (mut alice_ts, mut alice_oms, alice_comms) = setup_transaction_service(
+        &runtime,
+        alice_seed,
+        alice_node_identity.clone(),
+        vec![bob_node_identity.clone()],
+        factories.clone(),
+    );
     let alice_event_stream = alice_ts.get_event_stream_fused();
 
     let value = MicroTari::from(1000);
-    let (_utxo, uo1) = make_input(&mut rng, MicroTari(2500));
+    let (_utxo, uo1) = make_input(&mut rng, MicroTari(2500), &factories.commitment);
 
     assert!(runtime
         .block_on(alice_ts.send_transaction(
@@ -221,10 +231,13 @@ fn manage_single_transaction() {
     assert_eq!(alice_pending_outbound.len(), 1);
     assert_eq!(alice_completed_tx.len(), 0);
 
-    let (mut bob_ts, mut bob_oms, bob_comms) =
-        setup_transaction_service(&runtime, bob_seed, bob_node_identity.clone(), vec![
-            alice_node_identity.clone()
-        ]);
+    let (mut bob_ts, mut bob_oms, bob_comms) = setup_transaction_service(
+        &runtime,
+        bob_seed,
+        bob_node_identity.clone(),
+        vec![alice_node_identity.clone()],
+        factories.clone(),
+    );
 
     let mut result =
         runtime.block_on(async { event_stream_count(alice_event_stream, 1, Duration::from_secs(10)).await });
@@ -267,6 +280,7 @@ fn manage_single_transaction() {
 fn manage_multiple_transactions() {
     let runtime = Runtime::new().unwrap();
     let mut rng = OsRng::new().unwrap();
+    let factories = CryptoFactories::default();
     // Alice's parameters
     let alice_seed = PrivateKey::random(&mut rng);
     let alice_node_identity = NodeIdentity::random(
@@ -294,19 +308,21 @@ fn manage_multiple_transactions() {
     )
     .unwrap();
 
-    let (mut alice_ts, mut alice_oms, alice_comms) =
-        setup_transaction_service(&runtime, alice_seed, alice_node_identity.clone(), vec![
-            bob_node_identity.clone(),
-            carol_node_identity.clone(),
-        ]);
+    let (mut alice_ts, mut alice_oms, alice_comms) = setup_transaction_service(
+        &runtime,
+        alice_seed,
+        alice_node_identity.clone(),
+        vec![bob_node_identity.clone(), carol_node_identity.clone()],
+        factories.clone(),
+    );
     let alice_event_stream = alice_ts.get_event_stream_fused();
 
     // Add some funds to Alices wallet
-    let (_utxo, uo1a) = make_input(&mut rng, MicroTari(5500));
+    let (_utxo, uo1a) = make_input(&mut rng, MicroTari(5500), &factories.commitment);
     runtime.block_on(alice_oms.add_output(uo1a)).unwrap();
-    let (_utxo, uo1b) = make_input(&mut rng, MicroTari(3000));
+    let (_utxo, uo1b) = make_input(&mut rng, MicroTari(3000), &factories.commitment);
     runtime.block_on(alice_oms.add_output(uo1b)).unwrap();
-    let (_utxo, uo1c) = make_input(&mut rng, MicroTari(3000));
+    let (_utxo, uo1c) = make_input(&mut rng, MicroTari(3000), &factories.commitment);
     runtime.block_on(alice_oms.add_output(uo1c)).unwrap();
 
     // A series of interleaved transactions. First with Bob and Carol offline and then two with them online
@@ -336,20 +352,26 @@ fn manage_multiple_transactions() {
     assert_eq!(alice_completed_tx.len(), 0);
 
     // Spin up Bob and Carol
-    let (mut bob_ts, mut bob_oms, bob_comms) =
-        setup_transaction_service(&runtime, bob_seed, bob_node_identity.clone(), vec![
-            alice_node_identity.clone()
-        ]);
-    let (mut carol_ts, mut carol_oms, carol_comms) =
-        setup_transaction_service(&runtime, carol_seed, carol_node_identity.clone(), vec![
-            alice_node_identity.clone(),
-        ]);
+    let (mut bob_ts, mut bob_oms, bob_comms) = setup_transaction_service(
+        &runtime,
+        bob_seed,
+        bob_node_identity.clone(),
+        vec![alice_node_identity.clone()],
+        factories.clone(),
+    );
+    let (mut carol_ts, mut carol_oms, carol_comms) = setup_transaction_service(
+        &runtime,
+        carol_seed,
+        carol_node_identity.clone(),
+        vec![alice_node_identity.clone()],
+        factories.clone(),
+    );
 
     let bob_event_stream = bob_ts.get_event_stream_fused();
 
-    let (_utxo, uo2) = make_input(&mut rng, MicroTari(3500));
+    let (_utxo, uo2) = make_input(&mut rng, MicroTari(3500), &factories.commitment);
     runtime.block_on(bob_oms.add_output(uo2)).unwrap();
-    let (_utxo, uo3) = make_input(&mut rng, MicroTari(4500));
+    let (_utxo, uo3) = make_input(&mut rng, MicroTari(4500), &factories.commitment);
     runtime.block_on(carol_oms.add_output(uo3)).unwrap();
 
     runtime
@@ -395,17 +417,18 @@ fn manage_multiple_transactions() {
 fn test_sending_repeated_tx_ids() {
     let runtime = Runtime::new().unwrap();
     let mut rng = OsRng::new().unwrap();
+    let factories = CryptoFactories::default();
 
     let alice_seed = PrivateKey::random(&mut rng);
     let bob_seed = PrivateKey::random(&mut rng);
 
     let (alice_ts, _alice_output_manager, alice_outbound_service, mut alice_tx_sender, _alice_tx_ack_sender) =
-        setup_transaction_service_no_comms(&runtime, alice_seed);
+        setup_transaction_service_no_comms(&runtime, alice_seed, factories.clone());
     let (_bob_ts, mut bob_output_manager, _bob_outbound_service, _bob_tx_sender, _bob_tx_ack_sender) =
-        setup_transaction_service_no_comms(&runtime, bob_seed);
+        setup_transaction_service_no_comms(&runtime, bob_seed, factories.clone());
     let alice_event_stream = alice_ts.get_event_stream_fused();
 
-    let (_utxo, uo) = make_input(&mut rng, MicroTari(250000));
+    let (_utxo, uo) = make_input(&mut rng, MicroTari(250000), &factories.commitment);
 
     runtime.block_on(bob_output_manager.add_output(uo)).unwrap();
 
@@ -444,6 +467,7 @@ fn test_accepting_unknown_tx_id_and_malformed_reply() {
     env_logger::init();
     let runtime = Runtime::new().unwrap();
     let mut rng = OsRng::new().unwrap();
+    let factories = CryptoFactories::default();
 
     let alice_seed = PrivateKey::random(&mut rng);
     let bob_node_identity = NodeIdentity::random(
@@ -453,11 +477,11 @@ fn test_accepting_unknown_tx_id_and_malformed_reply() {
     )
     .unwrap();
     let (mut alice_ts, mut alice_output_manager, mut alice_outbound_service, _alice_tx_sender, mut alice_tx_ack_sender) =
-        setup_transaction_service_no_comms(&runtime, alice_seed);
+        setup_transaction_service_no_comms(&runtime, alice_seed, factories.clone());
 
     let alice_event_stream = alice_ts.get_event_stream_fused();
 
-    let (_utxo, uo) = make_input(&mut rng, MicroTari(250000));
+    let (_utxo, uo) = make_input(&mut rng, MicroTari(250000), &factories.commitment);
 
     runtime.block_on(alice_output_manager.add_output(uo)).unwrap();
 
@@ -486,8 +510,7 @@ fn test_accepting_unknown_tx_id_and_malformed_reply() {
         params.nonce,
         params.spend_key,
         OutputFeatures::default(),
-        &PROVER,
-        &COMMITMENT_FACTORY,
+        &factories,
     );
 
     let mut tx_reply = rtp.get_signed_data().unwrap().clone();

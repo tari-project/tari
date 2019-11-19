@@ -23,7 +23,7 @@
 use crate::{
     tari_amount::*,
     transaction::*,
-    types::{BlindingFactor, Commitment, CommitmentFactory, PrivateKey, RangeProofService, COMMITMENT_FACTORY},
+    types::{BlindingFactor, Commitment, CommitmentFactory, CryptoFactories, PrivateKey, RangeProofService},
 };
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error, Formatter};
@@ -161,14 +161,13 @@ impl AggregateBody {
         &self,
         offset: &BlindingFactor,
         reward: MicroTari,
-        prover: &RangeProofService,
-        factory: &CommitmentFactory,
+        factories: &CryptoFactories,
     ) -> Result<(), TransactionError>
     {
-        let total_offset = COMMITMENT_FACTORY.commit_value(&offset, reward.0);
+        let total_offset = factories.commitment.commit_value(&offset, reward.0);
         self.verify_kernel_signatures()?;
-        self.validate_kernel_sum(total_offset, factory)?;
-        self.validate_range_proofs(prover)
+        self.validate_kernel_sum(total_offset, &factories.commitment)?;
+        self.validate_range_proofs(&factories.range_proof)
     }
 
     pub fn dissolve(self) -> (Vec<TransactionInput>, Vec<TransactionOutput>, Vec<TransactionKernel>) {

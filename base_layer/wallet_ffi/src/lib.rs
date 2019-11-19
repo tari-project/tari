@@ -118,6 +118,7 @@ use core::ptr;
 use std::{sync::Arc, time::Duration};
 use tari_comms::{connection::NetAddress, control_service::ControlServiceConfig, peer_manager::PeerFeatures};
 use tari_crypto::keys::PublicKey;
+use tari_transactions::types::CryptoFactories;
 use tari_utilities::hex::Hex;
 use tari_wallet::{
     contacts_service::storage::database::Contact,
@@ -1261,12 +1262,14 @@ pub unsafe extern "C" fn wallet_create(config: *mut TariCommsConfig) -> *mut Tar
     }
     // TODO Gracefully handle the case where these expects would fail
     let runtime = Runtime::new();
+    let factories = CryptoFactories::default();
     let w;
     match runtime {
         Ok(runtime) => {
             w = TariWallet::new(
                 WalletConfig {
                     comms_config: (*config).clone(),
+                    factories,
                 },
                 WalletMemoryDatabase::new(),
                 runtime,

@@ -28,7 +28,15 @@ use crate::{
         sender::SingleRoundSenderData as SD,
         TransactionProtocolError as TPE,
     },
-    types::{CommitmentFactory, PrivateKey as SK, PublicKey, RangeProof, RangeProofService, Signature},
+    types::{
+        CommitmentFactory,
+        CryptoFactories,
+        PrivateKey as SK,
+        PublicKey,
+        RangeProof,
+        RangeProofService,
+        Signature,
+    },
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
@@ -51,13 +59,11 @@ impl SingleReceiverTransactionProtocol {
         nonce: SK,
         spending_key: SK,
         features: OutputFeatures,
-        prover: &RangeProofService,
-        factory: &CommitmentFactory,
+        factories: &CryptoFactories,
     ) -> Result<RD, TPE>
     {
         SingleReceiverTransactionProtocol::validate_sender_data(sender_info)?;
-        let output =
-            SingleReceiverTransactionProtocol::build_output(sender_info, &spending_key, features, prover, factory)?;
+        let output = SingleReceiverTransactionProtocol::build_output(sender_info, &spending_key, features, factories)?;
         let public_nonce = PublicKey::from_secret_key(&nonce);
         let public_spending_key = PublicKey::from_secret_key(&spending_key);
         let e = build_challenge(&(&sender_info.public_nonce + &public_nonce), &sender_info.metadata);
@@ -83,12 +89,15 @@ impl SingleReceiverTransactionProtocol {
         sender_info: &SD,
         spending_key: &SK,
         features: OutputFeatures,
-        prover: &RangeProofService,
-        factory: &CommitmentFactory,
+        factories: &CryptoFactories,
     ) -> Result<TransactionOutput, TPE>
     {
-        let commitment = factory.commit_value(&spending_key, sender_info.amount.into());
-        let proof = prover.construct_proof(&spending_key, sender_info.amount.into())?;
+        let commitment = factories
+            .commitment
+            .commit_value(&spending_key, sender_info.amount.into());
+        let proof = factories
+            .range_proof
+            .construct_proof(&spending_key, sender_info.amount.into())?;
         Ok(TransactionOutput::new(
             features,
             commitment,
@@ -110,7 +119,7 @@ mod test {
             TransactionMetadata,
             TransactionProtocolError,
         },
-        types::{PrivateKey, PublicKey, COMMITMENT_FACTORY, PROVER},
+        types::{CryptoFactories, PrivateKey, PublicKey},
     };
     use rand::OsRng;
     use tari_crypto::{
@@ -128,9 +137,10 @@ mod test {
 
     #[test]
     fn zero_amount_fails() {
+        let factories = CryptoFactories::default();
         let info = SingleRoundSenderData::default();
         let (r, k, of) = generate_output_parms();
-        match SingleReceiverTransactionProtocol::create(&info, r, k, of, &PROVER, &COMMITMENT_FACTORY) {
+        match SingleReceiverTransactionProtocol::create(&info, r, k, of, &factories) {
             Ok(_) => panic!("Zero amounts should fail"),
             Err(TransactionProtocolError::ValidationError(s)) => assert_eq!(s, "Cannot send zero microTari"),
             Err(_) => panic!("Protocol fails for the wrong reason"),
@@ -140,6 +150,7 @@ mod test {
     #[test]
     fn valid_request() {
         let mut rng = OsRng::new().unwrap();
+        let factories = CryptoFactories::default();
         let (_xs, pub_xs) = PublicKey::random_keypair(&mut rng);
         let (_rs, pub_rs) = PublicKey::random_keypair(&mut rng);
         let (r, k, of) = generate_output_parms();
@@ -159,8 +170,7 @@ mod test {
             metadata: m.clone(),
             message: "".to_string(),
         };
-        let prot =
-            SingleReceiverTransactionProtocol::create(&info, r, k.clone(), of, &PROVER, &COMMITMENT_FACTORY).unwrap();
+        let prot = SingleReceiverTransactionProtocol::create(&info, r, k.clone(), of, &factories).unwrap();
         assert_eq!(prot.tx_id, 500, "tx_id is incorrect");
         // Check the signature
         assert_eq!(prot.public_spend_key, pubkey, "Public key is incorrect");
@@ -172,10 +182,13 @@ mod test {
         let out = &prot.output;
         // Check the output that was constructed
         assert!(
-            COMMITMENT_FACTORY.open_value(&k, info.amount.into(), &out.commitment),
+            factories.commitment.open_value(&k, info.amount.into(), &out.commitment),
             "Output commitment is invalid"
         );
-        assert!(out.verify_range_proof(&PROVER).unwrap(), "Range proof is invalid");
+        assert!(
+            out.verify_range_proof(&factories.range_proof).unwrap(),
+            "Range proof is invalid"
+        );
         assert!(out.features.flags.is_empty(), "Output features flags have changed");
     }
 }

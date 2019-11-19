@@ -37,7 +37,7 @@ use tari_crypto::{
 use tari_transactions::{
     tari_amount::MicroTari,
     transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
-    types::{PrivateKey, PublicKey, COMMITMENT_FACTORY},
+    types::{CommitmentFactory, PrivateKey, PublicKey},
 };
 
 pub fn assert_change<F, T>(mut func: F, to: T, poll_count: usize)
@@ -117,9 +117,14 @@ impl TestParams {
         }
     }
 }
-pub fn make_input<R: Rng + CryptoRng>(rng: &mut R, val: MicroTari) -> (TransactionInput, UnblindedOutput) {
+pub fn make_input<R: Rng + CryptoRng>(
+    rng: &mut R,
+    val: MicroTari,
+    factory: &CommitmentFactory,
+) -> (TransactionInput, UnblindedOutput)
+{
     let key = PrivateKey::random(rng);
-    let commitment = COMMITMENT_FACTORY.commit_value(&key, val.into());
+    let commitment = factory.commit_value(&key, val.into());
     let input = TransactionInput::new(OutputFeatures::default(), commitment);
     (input, UnblindedOutput::new(val, key, None))
 }

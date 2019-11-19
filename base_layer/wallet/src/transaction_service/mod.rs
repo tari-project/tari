@@ -52,7 +52,7 @@ use tari_service_framework::{
     ServiceInitializer,
 };
 use tari_shutdown::ShutdownSignal;
-use tari_transactions::transaction_protocol::proto;
+use tari_transactions::{transaction_protocol::proto, types::CryptoFactories};
 use tokio::runtime::TaskExecutor;
 
 const LOG_TARGET: &'static str = "base_layer::wallet::transaction_service";
@@ -63,6 +63,7 @@ where T: TransactionBackend
     subscription_factory: Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage>>>,
     backend: Option<T>,
     node_identity: Arc<NodeIdentity>,
+    factories: CryptoFactories,
 }
 
 impl<T> TransactionServiceInitializer<T>
@@ -72,12 +73,14 @@ where T: TransactionBackend
         subscription_factory: Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage>>>,
         backend: T,
         node_identity: Arc<NodeIdentity>,
+        factories: CryptoFactories,
     ) -> Self
     {
         Self {
             subscription_factory,
             backend: Some(backend),
             node_identity,
+            factories,
         }
     }
 
@@ -126,7 +129,7 @@ where T: TransactionBackend + 'static
             .expect("Cannot start Transaction Service without providing a backend");
 
         let node_identity = self.node_identity.clone();
-
+        let factories = self.factories.clone();
         executor.spawn(async move {
             let handles = handles_fut.await;
 
@@ -146,6 +149,7 @@ where T: TransactionBackend + 'static
                 outbound_message_service,
                 publisher,
                 node_identity,
+                factories,
             )
             .start();
             futures::pin_mut!(service);

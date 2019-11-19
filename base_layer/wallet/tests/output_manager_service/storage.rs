@@ -24,7 +24,7 @@ use crate::support::utils::{make_input, random_string};
 use chrono::{Duration as ChronoDuration, Utc};
 use rand::RngCore;
 use std::time::Duration;
-use tari_transactions::tari_amount::MicroTari;
+use tari_transactions::{tari_amount::MicroTari, types::CryptoFactories};
 use tari_wallet::output_manager_service::{
     service::Balance,
     storage::{
@@ -37,13 +37,17 @@ use tempdir::TempDir;
 
 pub fn test_db_backend<T: OutputManagerBackend>(backend: T) {
     let mut db = OutputManagerDatabase::new(backend);
-
+    let factories = CryptoFactories::default();
     let mut rng = rand::OsRng::new().unwrap();
 
     // Add some unspent outputs
     let mut unspent_outputs = Vec::new();
     for _ in 0..5 {
-        let (_ti, uo) = make_input(&mut rng.clone(), MicroTari::from(100 + rng.next_u64() % 1000));
+        let (_ti, uo) = make_input(
+            &mut rng.clone(),
+            MicroTari::from(100 + rng.next_u64() % 1000),
+            &factories.commitment,
+        );
         db.add_unspent_output(uo.clone()).unwrap();
         unspent_outputs.push(uo);
     }
@@ -59,11 +63,19 @@ pub fn test_db_backend<T: OutputManagerBackend>(backend: T) {
                 ChronoDuration::from_std(Duration::from_millis(120_000_000 * i)).unwrap(),
         };
         for _ in 0..(rng.next_u64() % 5 + 1) {
-            let (_ti, uo) = make_input(&mut rng.clone(), MicroTari::from(100 + rng.next_u64() % 1000));
+            let (_ti, uo) = make_input(
+                &mut rng.clone(),
+                MicroTari::from(100 + rng.next_u64() % 1000),
+                &factories.commitment,
+            );
             pending_tx.outputs_to_be_spent.push(uo);
         }
         for _ in 0..(rng.next_u64() % 5 + 1) {
-            let (_ti, uo) = make_input(&mut rng.clone(), MicroTari::from(100 + rng.next_u64() % 1000));
+            let (_ti, uo) = make_input(
+                &mut rng.clone(),
+                MicroTari::from(100 + rng.next_u64() % 1000),
+                &factories.commitment,
+            );
             pending_tx.outputs_to_be_received.push(uo);
         }
         db.add_pending_transaction_outputs(pending_tx.clone()).unwrap();
@@ -141,7 +153,11 @@ pub fn test_db_backend<T: OutputManagerBackend>(backend: T) {
             .fold(MicroTari::from(0), |acc, x| acc + x.value)
     );
 
-    let (_ti, uo_change) = make_input(&mut rng.clone(), MicroTari::from(100 + rng.next_u64() % 1000));
+    let (_ti, uo_change) = make_input(
+        &mut rng.clone(),
+        MicroTari::from(100 + rng.next_u64() % 1000),
+        &factories.commitment,
+    );
     let outputs_to_encumber = vec![outputs[0].clone(), outputs[1].clone()];
     let total_encumbered = outputs[0].clone().value + outputs[1].clone().value;
     db.encumber_outputs(2, &outputs_to_encumber, Some(uo_change.clone()))
@@ -158,7 +174,11 @@ pub fn test_db_backend<T: OutputManagerBackend>(backend: T) {
         pending_outgoing_balance
     });
 
-    let (_ti, uo_incoming) = make_input(&mut rng.clone(), MicroTari::from(100 + rng.next_u64() % 1000));
+    let (_ti, uo_incoming) = make_input(
+        &mut rng.clone(),
+        MicroTari::from(100 + rng.next_u64() % 1000),
+        &factories.commitment,
+    );
     db.accept_incoming_pending_transaction(&5, &uo_incoming.value, &uo_incoming.spending_key)
         .unwrap();
 

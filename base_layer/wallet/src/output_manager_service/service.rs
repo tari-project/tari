@@ -43,7 +43,7 @@ use tari_transactions::{
     fee::Fee,
     tari_amount::MicroTari,
     transaction::{OutputFeatures, TransactionInput, TransactionOutput, UnblindedOutput},
-    types::{PrivateKey, COMMITMENT_FACTORY, PROVER},
+    types::{CryptoFactories, PrivateKey},
     SenderTransactionProtocol,
 };
 
@@ -60,6 +60,7 @@ where T: OutputManagerBackend
     db: OutputManagerDatabase<T>,
     request_stream:
         Option<reply_channel::Receiver<OutputManagerRequest, Result<OutputManagerResponse, OutputManagerError>>>,
+    factories: CryptoFactories,
 }
 
 impl<T> OutputManagerService<T>
@@ -72,6 +73,7 @@ where T: OutputManagerBackend
         >,
         config: OutputManagerConfig,
         db: OutputManagerDatabase<T>,
+        factories: CryptoFactories,
     ) -> Result<OutputManagerService<T>, OutputManagerError>
     {
         Ok(OutputManagerService {
@@ -82,6 +84,7 @@ where T: OutputManagerBackend
             )),
             db,
             request_stream: Some(request_stream),
+            factories,
         })
     }
 
@@ -191,7 +194,7 @@ where T: OutputManagerBackend
         // Assumption: We are only allowing a single output per receiver in the current transaction protocols.
         if pending_transaction.outputs_to_be_received.len() != 1 ||
             pending_transaction.outputs_to_be_received[0]
-                .as_transaction_input(&COMMITMENT_FACTORY, OutputFeatures::default())
+                .as_transaction_input(&self.factories.commitment, OutputFeatures::default())
                 .commitment !=
                 received_output.commitment
         {
@@ -232,7 +235,7 @@ where T: OutputManagerBackend
 
         for uo in outputs.iter() {
             builder.with_input(
-                uo.as_transaction_input(&COMMITMENT_FACTORY, OutputFeatures::default()),
+                uo.as_transaction_input(&self.factories.commitment, OutputFeatures::default()),
                 uo.clone(),
             );
         }
@@ -249,7 +252,7 @@ where T: OutputManagerBackend
         }
 
         let stp = builder
-            .build::<HashDigest>(&PROVER, &COMMITMENT_FACTORY)
+            .build::<HashDigest>(&self.factories)
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
 
         // If a change output was created add it to the pending_outputs list.
@@ -287,7 +290,7 @@ where T: OutputManagerBackend
             !pending_transaction.outputs_to_be_spent.iter().fold(true, |acc, i| {
                 acc && spent_outputs.iter().any(|o| {
                     o.commitment ==
-                        i.as_transaction_input(&COMMITMENT_FACTORY, OutputFeatures::default())
+                        i.as_transaction_input(&self.factories.commitment, OutputFeatures::default())
                             .commitment
                 })
             }) ||
@@ -295,7 +298,7 @@ where T: OutputManagerBackend
             !pending_transaction.outputs_to_be_received.iter().fold(true, |acc, i| {
                 acc && received_outputs.iter().any(|o| {
                     o.commitment ==
-                        i.as_transaction_input(&COMMITMENT_FACTORY, OutputFeatures::default())
+                        i.as_transaction_input(&self.factories.commitment, OutputFeatures::default())
                             .commitment
                 })
             })
