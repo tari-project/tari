@@ -20,12 +20,6 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::thread::JoinHandle;
-
-use crate::connection;
-
-pub type PeerConnectionJoinHandle = JoinHandle<connection::types::Result<()>>;
-
 #[must_use]
 pub enum EstablishLockResult<T> {
     Ok(T),

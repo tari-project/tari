@@ -22,125 +22,52 @@
 
 use super::{
     control::{ControlMessage, ThreadControlMessenger},
-    worker::PeerConnectionWorker,
+    dialer::PeerConnectionDialer,
+    listener::PeerConnectionListener,
+    oneshot,
+    types::ConnectionInfo,
     PeerConnectionContext,
     PeerConnectionError,
+    PeerConnectionJoinHandle,
 };
 use crate::{
     connection::{
         net_address::ip::SocketAddress,
-        types::{Linger, Result},
+        types::Linger,
+        zmq::ZmqIdentity,
         ConnectionError,
         Direction,
         NetAddress,
     },
-    message::FrameSet,
+    message::{Frame, FrameSet},
 };
 use chrono::{NaiveDateTime, Utc};
 use std::{
     fmt,
-    sync::{Arc, RwLock},
-    thread::{self, JoinHandle},
+    sync::{Arc, Condvar, Mutex, MutexGuard, RwLock},
     time::Duration,
 };
-use tari_utilities::hex::to_hex;
 
-/// Represents messages that must be sent to a PeerConnection.
-pub enum PeerConnectionProtoMessage {
-    /// Sent to establish the identity frame for a PeerConnection. This must be sent by an
-    /// Outbound connection to an Inbound connection before any other communication occurs.
-    Identify = 0,
-    /// A peer message to be forwarded to the message sink (the IMS)
-    Message = 1,
-    /// Any other message is invalid and is discarded
-    Invalid,
-}
+const CONTROL_MESSAGE_REPLY_TIMEOUT: Duration = Duration::from_secs(1);
 
-impl From<u8> for PeerConnectionProtoMessage {
-    fn from(val: u8) -> Self {
-        match val {
-            0 => PeerConnectionProtoMessage::Identify,
-            1 => PeerConnectionProtoMessage::Message,
-            _ => PeerConnectionProtoMessage::Invalid,
+macro_rules! is_state {
+    ($name: ident, $($e: pat)|*) => {
+	pub fn $name(&self) -> bool {
+        use PeerConnectionState::*;
+        match self {
+            $($e)|* => true,
+            _ => false,
         }
-    }
+	}
+    };
 }
 
-/// Represents the ID of a PeerConnection. This is sent as the first frame
-/// to the message sink on the peer connection.
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub struct ConnectionId(Vec<u8>);
-
-impl ConnectionId {
-    pub fn new(id: Vec<u8>) -> Self {
-        Self(id)
-    }
-
-    pub fn into_inner(self) -> Vec<u8> {
-        self.0
-    }
-
-    pub fn as_bytes(&self) -> &[u8] {
-        self.0.as_slice()
-    }
-
-    /// Returns a shortened (length of 8 or less) connection ID
-    /// This would typically be used for display purposes when the connection ID is a
-    /// sufficiently large random value and you don't want to have large strings displayed.
-    pub fn to_short_id(&self) -> Self {
-        let start = match self.0.len().checked_sub(8) {
-            Some(s) => s,
-            None => self.0.len(),
-        };
-        Self(self.0[start..].to_vec())
-    }
-}
-
-impl Default for ConnectionId {
-    fn default() -> Self {
-        Self(Default::default())
-    }
-}
-
-impl PartialEq<ConnectionId> for Vec<u8> {
-    fn eq(&self, other: &ConnectionId) -> bool {
-        self == &other.0
-    }
-}
-
-impl From<Vec<u8>> for ConnectionId {
-    fn from(bytes: Vec<u8>) -> Self {
-        Self(bytes)
-    }
-}
-
-impl From<&[u8]> for ConnectionId {
-    fn from(bytes: &[u8]) -> Self {
-        Self(bytes.to_vec())
-    }
-}
-
-impl From<&str> for ConnectionId {
-    fn from(bytes: &str) -> Self {
-        Self(bytes.as_bytes().to_vec())
-    }
-}
-
-impl AsRef<[u8]> for ConnectionId {
-    fn as_ref(&self) -> &[u8] {
-        self.0.as_ref()
-    }
-}
-
-impl fmt::Display for ConnectionId {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", to_hex(self.as_bytes()))
-    }
-}
-
-pub struct ConnectionInfo {
-    pub(super) control_messenger: Arc<ThreadControlMessenger>,
-    pub(super) connected_address: Option<SocketAddress>,
+macro_rules! is_state_unlock {
+    ($name: ident) => {
+	pub fn $name(&self) -> bool {
+	    acquire_lock!(self.state).$name()
+	}
+    };
 }
 
 /// The state of the PeerConnection
@@ -168,17 +95,35 @@ impl Default for PeerConnectionState {
     }
 }
 
-macro_rules! is_state {
-    ($name: ident, $($e: pat)|*) => {
-	pub fn $name(&self) -> bool {
-        use PeerConnectionState::*;
-	    let lock = acquire_read_lock!(self.state);
-        match *lock {
-            $($e)|* => true,
-            _ => false,
+impl PeerConnectionState {
+    /// Returns true if the PeerConnection is in an `Initial` state, otherwise false
+    is_state!(is_initial, Initial);
+
+    /// Returns true if the PeerConnection is in a `Connected` state for outbound connections, otherwise false
+    is_state!(is_connected, Connected(_));
+
+    /// Returns true if the PeerConnection is in a `Shutdown` state, otherwise false
+    is_state!(is_shutdown, Shutdown);
+
+    /// Returns true if the PeerConnection is in a `Listening` state, otherwise false
+    is_state!(is_listening, Listening(_));
+
+    /// Returns true if the PeerConnection is in a `Disconnected`/`Shutdown`/`Failed` state, otherwise false
+    is_state!(is_disconnected, Disconnected | Shutdown | Failed(_));
+
+    /// Returns true if the PeerConnection is in a `Failed` state, otherwise false
+    is_state!(is_failed, Failed(_));
+
+    /// Returns true if the PeerConnection is in a `Connecting`, `Listening` or `Connected` state, otherwise false
+    is_state!(is_active, Connecting(_) | Connected(_) | Listening(_));
+
+    /// If the connection is in a `Failed` state, the failure error is returned, otherwise `None`
+    pub fn failure(&self) -> Option<PeerConnectionError> {
+        match self {
+            PeerConnectionState::Failed(err) => Some(err.clone()),
+            _ => None,
         }
-	}
-    };
+    }
 }
 
 /// Basic stats for peer connections. PeerConnectionStats are updated by the [PeerConnectionWorker]
@@ -250,23 +195,22 @@ impl Default for PeerConnectionStats {
 /// let addr: NetAddress = "127.0.0.1:8080".parse().unwrap();
 /// let (message_sink_tx, _message_sink_rx) = channel(10);
 /// let peer_context = PeerConnectionContextBuilder::new()
-///    .set_id("123")
+///    .set_peer_identity(b"peer-identifier-bytes".to_vec())
+///    .set_connection_identity(b"zmq-identity-to-use-for-conn".to_vec())
 ///    .set_context(&ctx)
 ///    .set_direction(Direction::Outbound)
 ///    .set_message_sink_channel(message_sink_tx)
 ///    .set_address(addr.clone())
-///    .build()
+///    .finish()
 ///    .unwrap();
 ///
-/// let mut conn = PeerConnection::new();
-///
-/// assert!(!conn.is_connected());
 /// // Start the peer connection worker thread
-/// conn.start(peer_context).unwrap();
+/// let (conn, _thread_handle) = PeerConnection::connect(peer_context).unwrap();
+///
 /// // Wait for connection
 /// // This will never connect because there is nothing
 /// // listening on the other end
-/// match conn.wait_connected_or_failure(&Duration::from_millis(100)) {
+/// match conn.wait_connected_or_failure(Duration::from_millis(100)) {
 ///   Ok(()) => {
 ///     assert!(conn.is_connected());
 ///     println!("Able to establish connection on {}", addr);
@@ -277,39 +221,61 @@ impl Default for PeerConnectionStats {
 ///   }
 /// }
 /// ```
-#[derive(Default, Clone)]
+#[derive(Clone)]
 pub struct PeerConnection {
-    state: Arc<RwLock<PeerConnectionState>>,
+    state: Arc<Mutex<PeerConnectionState>>,
     connection_stats: Arc<RwLock<PeerConnectionStats>>,
-    direction: Option<Direction>,
-    peer_address: Option<NetAddress>,
+    direction: Direction,
+    peer_address: NetAddress,
+    state_var: Arc<Condvar>,
 }
 
 impl PeerConnection {
     /// Returns true if the PeerConnection is in an `Initial` state, otherwise false
-    is_state!(is_initial, Initial);
+    is_state_unlock!(is_initial);
 
-    /// Returns true if the PeerConnection is in a `Connected` state, otherwise false
-    is_state!(is_connected, Connected(_));
+    /// Returns true if the PeerConnection is in a `Connected` state for outbound connections, otherwise false
+    is_state_unlock!(is_connected);
 
     /// Returns true if the PeerConnection is in a `Shutdown` state, otherwise false
-    is_state!(is_shutdown, Shutdown);
+    is_state_unlock!(is_shutdown);
 
     /// Returns true if the PeerConnection is in a `Listening` state, otherwise false
-    is_state!(is_listening, Listening(_));
+    is_state_unlock!(is_listening);
 
     /// Returns true if the PeerConnection is in a `Disconnected`/`Shutdown`/`Failed` state, otherwise false
-    is_state!(is_disconnected, Disconnected | Shutdown | Failed(_));
+    is_state_unlock!(is_disconnected);
 
     /// Returns true if the PeerConnection is in a `Failed` state, otherwise false
-    is_state!(is_failed, Failed(_));
+    is_state_unlock!(is_failed);
 
     /// Returns true if the PeerConnection is in a `Connecting`, `Listening` or `Connected` state, otherwise false
-    is_state!(is_active, Connecting(_) | Connected(_) | Listening(_));
+    is_state_unlock!(is_active);
 
-    /// Create a new PeerConnection
-    pub fn new() -> Self {
-        Default::default()
+    /// Start a connecting (dialer) worker thread for the PeerConnection and begin connecting to
+    /// the address in the `context`
+    ///
+    /// # Arguments
+    ///
+    /// `context` - The PeerConnectionContext which is owned by the underlying thread
+    pub fn connect(context: PeerConnectionContext) -> Result<(Self, PeerConnectionJoinHandle), PeerConnectionError> {
+        let conn = Self {
+            direction: Direction::Outbound,
+            peer_address: context.peer_address.clone(),
+            state_var: Arc::new(Condvar::new()),
+            state: Arc::new(Mutex::new(PeerConnectionState::Initial)),
+            connection_stats: Arc::new(RwLock::new(PeerConnectionStats::new())),
+        };
+
+        let worker = PeerConnectionDialer::new(
+            context,
+            Arc::clone(&conn.state),
+            Arc::clone(&conn.connection_stats),
+            Arc::clone(&conn.state_var),
+        );
+
+        let handle = worker.spawn()?;
+        Ok((conn, handle))
     }
 
     /// Start the worker thread for the PeerConnection and transition the
@@ -320,23 +286,34 @@ impl PeerConnection {
     /// # Arguments
     ///
     /// `context` - The PeerConnectionContext which is owned by the underlying thread
-    pub fn start(&mut self, context: PeerConnectionContext) -> Result<JoinHandle<Result<()>>> {
-        self.direction = Some(context.direction.clone());
-        self.peer_address = Some(context.peer_address.clone());
+    pub fn listen(context: PeerConnectionContext) -> Result<(Self, PeerConnectionJoinHandle), PeerConnectionError> {
+        let conn = Self {
+            direction: Direction::Inbound,
+            peer_address: context.peer_address.clone(),
+            state_var: Arc::new(Condvar::new()),
+            state: Arc::new(Mutex::new(PeerConnectionState::Initial)),
+            connection_stats: Arc::new(RwLock::new(PeerConnectionStats::new())),
+        };
 
-        let worker = PeerConnectionWorker::new(context, self.state.clone(), self.connection_stats.clone());
+        let worker = PeerConnectionListener::new(
+            context,
+            Arc::clone(&conn.state),
+            Arc::clone(&conn.connection_stats),
+            Arc::clone(&conn.state_var),
+        );
+
         let handle = worker.spawn()?;
-        Ok(handle)
+        Ok((conn, handle))
     }
 
     /// Tell the underlying thread to shut down. The connection will not immediately
     /// be in a `Shutdown` state. [wait_shutdown] can be used to wait for the
     /// connection to shut down. If the connection is not active, this method does nothing.
-    pub fn shutdown(&self) -> Result<()> {
+    pub fn shutdown(&self) -> Result<(), PeerConnectionError> {
         match self.send_control_message(ControlMessage::Shutdown) {
             // StateError only returns from send_control_message
             // if the connection worker is not active
-            Ok(_) | Err(ConnectionError::PeerError(PeerConnectionError::StateError(_))) => Ok(()),
+            Ok(_) | Err(PeerConnectionError::StateError(_)) => Ok(()),
             e => e,
         }
     }
@@ -346,9 +323,44 @@ impl PeerConnection {
     ///
     /// # Arguments
     ///
+    /// `identity` - The identity to send to.
     /// `frames` - The frames to send
-    pub fn send(&self, frames: FrameSet) -> Result<()> {
-        self.send_control_message(ControlMessage::SendMsg(frames))
+    pub fn send_to_identity(&self, peer_identity: ZmqIdentity, frames: FrameSet) -> Result<(), PeerConnectionError> {
+        self.send_control_message_sendmsg(Some(peer_identity), frames)
+    }
+
+    /// Send frames to the connected Peer. An Err will be returned if the
+    /// connection is not in a Connected state.
+    ///
+    /// # Arguments
+    ///
+    /// `frames` - The frames to send
+    pub fn send(&self, frames: FrameSet) -> Result<(), PeerConnectionError> {
+        self.send_control_message_sendmsg(None, frames)
+    }
+
+    /// Send frames to the connected Peer. An Err will be returned if the
+    /// connection is not in a Connected state.
+    fn send_control_message_sendmsg(
+        &self,
+        peer_identity: Option<ZmqIdentity>,
+        frames: FrameSet,
+    ) -> Result<(), PeerConnectionError>
+    {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.send_control_message(ControlMessage::SendMsg(peer_identity, frames, reply_tx))?;
+        reply_rx
+            .recv_timeout(CONTROL_MESSAGE_REPLY_TIMEOUT)
+            .map_err(|_| PeerConnectionError::ControlMessageReplyFailed)?
+            .ok_or(PeerConnectionError::OperationTimeout(
+                "Peer connection failed to send reply to send message request".to_string(),
+            ))?
+    }
+
+    /// Return a PeerSender that is used to send multiple messages to a particular peer
+    pub fn get_peer_sender(&self, identity: ZmqIdentity) -> Result<PeerSender, PeerConnectionError> {
+        let messenger = self.get_control_messenger()?;
+        Ok(PeerSender::new(messenger, identity))
     }
 
     /// Set the linger for the connection
@@ -356,14 +368,44 @@ impl PeerConnection {
     /// # Arguments
     ///
     /// `linger` - The Linger to set
-    pub fn set_linger(&self, linger: Linger) -> Result<()> {
+    pub fn set_linger(&self, linger: Linger) -> Result<(), PeerConnectionError> {
         self.send_control_message(ControlMessage::SetLinger(linger))
+    }
+
+    /// Allow an identity to send to this connection. Applies to inbound connections only
+    pub fn allow_identity(
+        &self,
+        connection_identity: ZmqIdentity,
+        peer_identity: Frame,
+    ) -> Result<(), PeerConnectionError>
+    {
+        self.send_control_message(ControlMessage::AllowIdentity(connection_identity, peer_identity))
+    }
+
+    /// Deny an identity from sending to this connection. Applies to inbound connections only
+    pub fn deny_identity(&self, peer_identity: ZmqIdentity) -> Result<(), PeerConnectionError> {
+        self.send_control_message(ControlMessage::DenyIdentity(peer_identity))
+    }
+
+    pub fn test_connection(&self, peer_identity: ZmqIdentity) -> Result<(), PeerConnectionError> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.send_control_message(ControlMessage::TestConnection(peer_identity, reply_tx))?;
+        reply_rx
+            .recv_timeout(CONTROL_MESSAGE_REPLY_TIMEOUT)
+            .map_err(|_| {
+                PeerConnectionError::InvalidOperation(
+                    "Peer connection dropped the reply sender before responding.".to_string(),
+                )
+            })?
+            .ok_or(PeerConnectionError::OperationTimeout(
+                "Peer connection worker failed to response within 10s.".to_string(),
+            ))?
     }
 
     /// Return the actual address this connection is bound to. If the connection is not over a TCP socket, or the
     /// connection state is not Connected, this function returns None
     pub fn get_connected_address(&self) -> Option<SocketAddress> {
-        let lock = acquire_read_lock!(self.state);
+        let lock = acquire_lock!(self.state);
         match &*lock {
             PeerConnectionState::Listening(info) | PeerConnectionState::Connected(info) => {
                 info.connected_address.clone()
@@ -375,18 +417,18 @@ impl PeerConnection {
     /// Return the actual address this connection is bound to. If the connection state is not Connected,
     /// this function returns None
     pub fn get_address(&self) -> Option<NetAddress> {
-        let lock = acquire_read_lock!(self.state);
+        let lock = acquire_lock!(self.state);
         match &*lock {
             PeerConnectionState::Listening(info) | PeerConnectionState::Connected(info) => info
                 .connected_address
-                .clone()
-                .map_or(self.peer_address.clone(), |addr| Some(addr.into())),
+                .as_ref()
+                .map_or(Some(self.peer_address.clone()), |addr| Some(addr.clone().into())),
             _ => None,
         }
     }
 
     /// Returns a snapshot of latest connection stats from this peer connection
-    pub fn connection_stats(&self) -> PeerConnectionStats {
+    pub fn get_connection_stats(&self) -> PeerConnectionStats {
         acquire_read_lock!(self.connection_stats).clone()
     }
 
@@ -401,9 +443,9 @@ impl PeerConnection {
     /// # Arguments
     ///
     /// `msg` - The ControlMessage to send
-    fn send_control_message(&self, msg: ControlMessage) -> Result<()> {
+    fn send_control_message(&self, msg: ControlMessage) -> Result<(), PeerConnectionError> {
         use PeerConnectionState::*;
-        let lock = acquire_read_lock!(self.state);
+        let lock = acquire_lock!(self.state);
         match &*lock {
             Connecting(ref thread_ctl) => thread_ctl.send(msg),
             Listening(ref info) => info.control_messenger.send(msg),
@@ -416,31 +458,41 @@ impl PeerConnection {
         }
     }
 
+    fn get_control_messenger(&self) -> Result<Arc<ThreadControlMessenger>, PeerConnectionError> {
+        use PeerConnectionState::*;
+        let lock = acquire_lock!(self.state);
+        match &*lock {
+            Connecting(ref thread_ctl) => Ok(Arc::clone(thread_ctl)),
+            Listening(ref info) => Ok(Arc::clone(&info.control_messenger)),
+            Connected(ref info) => Ok(Arc::clone(&info.control_messenger)),
+            state => Err(PeerConnectionError::StateError(format!(
+                "Attempt to retrieve thread messenger on peer connection with state '{}'",
+                PeerConnectionSimpleState::from(state)
+            ))
+            .into()),
+        }
+    }
+
     /// Blocks the current thread until the connection is in a `Connected` state (returning `Ok`),
     /// the timeout has been reached (returning `Err(ConnectionError::Timeout)`), or the connection
     /// is in a `Failed` state (returning the error which caused the failure)
-    pub fn wait_listening_or_failure(&self, until: &Duration) -> Result<()> {
-        match self.get_direction() {
-            Some(direction) => {
-                if *direction == Direction::Outbound {
-                    return Err(ConnectionError::InvalidOperation(
-                        "Call to wait_listening_or_failure on Outbound connection".to_string(),
-                    ));
-                }
-            },
-            None => {
-                return Err(ConnectionError::InvalidOperation(
-                    "Call to wait_listening_or_failure before peer connection has started".to_string(),
-                ));
-            },
+    pub fn wait_listening_or_failure(&self, until: Duration) -> Result<(), PeerConnectionError> {
+        if self.direction().is_outbound() {
+            return Err(PeerConnectionError::InvalidOperation(
+                "Call to wait_listening_or_failure on Outbound connection".to_string(),
+            ));
         }
-        self.wait_until(until, || !self.is_active() || self.is_listening())?;
-        if self.is_listening() {
+
+        let guard = self.wait_until(until, |state| !state.is_active() || state.is_listening())?;
+        if guard.is_listening() {
             Ok(())
         } else {
-            match self.failure() {
+            match guard.failure() {
                 Some(err) => Err(err),
-                None => Err(ConnectionError::Timeout),
+                None => Err(PeerConnectionError::OperationTimeout(format!(
+                    "Connection failed to enter 'Listening' state within {}ms",
+                    until.as_millis()
+                ))),
             }
         }
     }
@@ -448,73 +500,102 @@ impl PeerConnection {
     /// Blocks the current thread until the connection is in a `Connected` state (returning `Ok`),
     /// the timeout has been reached (returning `Err(ConnectionError::Timeout)`), or the connection
     /// is in a `Failed` state (returning the error which caused the failure)
-    pub fn wait_connected_or_failure(&self, until: &Duration) -> Result<()> {
-        self.wait_until(until, || !self.is_active() || self.is_connected())?;
-        if self.is_connected() {
+    pub fn wait_connected_or_failure(&self, until: Duration) -> Result<(), PeerConnectionError> {
+        let guard = self.wait_until(until, |guard| !guard.is_active() || guard.is_connected())?;
+        if guard.is_connected() {
             Ok(())
         } else {
-            match self.failure() {
+            match guard.failure() {
                 Some(err) => Err(err),
-                None => Err(ConnectionError::Timeout),
+                None => Err(PeerConnectionError::OperationTimeout(format!(
+                    "Connection failed to enter 'Connected' state within {}ms",
+                    until.as_millis()
+                ))),
             }
         }
     }
 
     /// Blocks the current thread until the connection is in a `Shutdown` or `Disconnected` state (Ok) or
     /// the timeout is reached (Err).
-    pub fn wait_disconnected(&self, until: &Duration) -> Result<()> {
-        self.wait_until(until, || self.is_disconnected())
-    }
-
-    /// If the connection is in a `Failed` state, the failure error is returned, otherwise `None`
-    pub fn failure(&self) -> Option<ConnectionError> {
-        let lock = acquire_read_lock!(self.state);
-        match &*lock {
-            PeerConnectionState::Failed(err) => Some(err.clone().into()),
-            _ => None,
-        }
+    pub fn wait_disconnected(&self, until: Duration) -> Result<(), PeerConnectionError> {
+        let _ = self.wait_until(until, |lock| lock.is_disconnected())?;
+        Ok(())
     }
 
     /// Returns the connection state without the ThreadControlMessenger
     /// which should never be leaked.
     pub fn get_state(&self) -> PeerConnectionSimpleState {
-        let lock = acquire_read_lock!(self.state);
+        let lock = acquire_lock!(self.state);
         PeerConnectionSimpleState::from(&*lock)
     }
 
     /// Gets the direction for this peer connection
-    pub fn get_direction(&self) -> &Option<Direction> {
-        &self.direction
+    pub fn direction(&self) -> Direction {
+        self.direction
     }
 
     /// Waits until the condition returns true or the timeout (`until`) is reached.
     /// If the timeout was reached, an `Err(ConnectionError::Timeout)` is returned, otherwise `Ok(())`
-    fn wait_until(&self, until: &Duration, condition: impl Fn() -> bool) -> Result<()> {
-        let mut count = 0;
-        let timeout_ms = until.as_millis();
-        while !condition() && count < timeout_ms {
-            thread::sleep(Duration::from_millis(1));
-            count += 1;
-        }
-
-        if count < timeout_ms {
-            Ok(())
+    fn wait_until(
+        &self,
+        until: Duration,
+        predicate: impl Fn(&mut PeerConnectionState) -> bool,
+    ) -> Result<MutexGuard<PeerConnectionState>, PeerConnectionError>
+    {
+        let guard = acquire_lock!(self.state);
+        let (guard, timeout) = recover_lock!(self.state_var.wait_timeout_until(guard, until, predicate));
+        if timeout.timed_out() {
+            Err(ConnectionError::Timeout.into())
         } else {
-            Err(ConnectionError::Timeout)
+            Ok(guard)
         }
     }
 
     #[cfg(test)]
-    pub fn new_with_connecting_state_for_test() -> (Self, std::sync::mpsc::Receiver<ControlMessage>) {
+    pub fn new_with_connecting_state_for_test(
+        peer_address: NetAddress,
+    ) -> (Self, std::sync::mpsc::Receiver<ControlMessage>) {
         use std::sync::mpsc::sync_channel;
         let (tx, rx) = sync_channel(1);
         (
             Self {
-                state: Arc::new(RwLock::new(PeerConnectionState::Connecting(Arc::new(tx.into())))),
-                ..Default::default()
+                state: Arc::new(Mutex::new(PeerConnectionState::Connecting(Arc::new(tx.into())))),
+                direction: Direction::Outbound,
+                state_var: Arc::new(Condvar::new()),
+                connection_stats: Arc::new(RwLock::new(PeerConnectionStats::new())),
+                peer_address,
             },
             rx,
         )
+    }
+}
+
+pub struct PeerSender {
+    messenger: Arc<ThreadControlMessenger>,
+    identity: ZmqIdentity,
+}
+
+impl PeerSender {
+    fn new(messenger: Arc<ThreadControlMessenger>, identity: ZmqIdentity) -> Self {
+        Self { messenger, identity }
+    }
+
+    /// Send frames to the connected Peer. An Err will be returned if the
+    /// connection is not in a Connected state.
+    ///
+    /// # Arguments
+    ///
+    /// `frames` - The frames to send
+    pub fn send(&self, frames: FrameSet) -> Result<(), PeerConnectionError> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.messenger
+            .send(ControlMessage::SendMsg(Some(self.identity.clone()), frames, reply_tx))?;
+        reply_rx
+            .recv_timeout(CONTROL_MESSAGE_REPLY_TIMEOUT)
+            .map_err(|_| PeerConnectionError::ControlMessageReplyFailed)?
+            .ok_or(PeerConnectionError::OperationTimeout(
+                "Peer connection failed to send reply to send message request".to_string(),
+            ))?
     }
 }
 
@@ -576,9 +657,12 @@ impl fmt::Display for PeerConnectionSimpleState {
 #[cfg(test)]
 mod test {
     use super::*;
-    use std::sync::{
-        mpsc::{sync_channel, Receiver},
-        Arc,
+    use std::{
+        sync::{
+            mpsc::{sync_channel, Receiver},
+            Arc,
+        },
+        thread,
     };
 
     fn create_thread_ctl() -> (Arc<ThreadControlMessenger>, Receiver<ControlMessage>) {
@@ -610,17 +694,6 @@ mod test {
     }
 
     #[test]
-    fn new() {
-        let conn = PeerConnection::new();
-        assert!(!conn.is_connected());
-        assert!(!conn.is_listening());
-        assert!(!conn.is_disconnected());
-        assert!(!conn.is_active());
-        assert!(!conn.is_shutdown());
-        assert!(!conn.is_failed());
-    }
-
-    #[test]
     fn state_connected() {
         let (thread_ctl, _) = create_thread_ctl();
 
@@ -629,10 +702,11 @@ mod test {
             connected_address: Some("127.0.0.1:1000".parse().unwrap()),
         };
         let conn = PeerConnection {
-            state: Arc::new(RwLock::new(PeerConnectionState::Connected(Arc::new(info)))),
+            state: Arc::new(Mutex::new(PeerConnectionState::Connected(Arc::new(info)))),
             connection_stats: Arc::new(RwLock::new(PeerConnectionStats::new())),
-            direction: None,
-            peer_address: None,
+            direction: Direction::Outbound,
+            peer_address: "127.0.0.1:0".parse().unwrap(),
+            state_var: Default::default(),
         };
 
         assert!(conn.is_connected());
@@ -652,10 +726,11 @@ mod test {
             connected_address: Some("127.0.0.1:1000".parse().unwrap()),
         };
         let conn = PeerConnection {
-            state: Arc::new(RwLock::new(PeerConnectionState::Listening(Arc::new(info)))),
+            state: Arc::new(Mutex::new(PeerConnectionState::Listening(Arc::new(info)))),
             connection_stats: Arc::new(RwLock::new(PeerConnectionStats::new())),
-            direction: None,
-            peer_address: None,
+            direction: Direction::Outbound,
+            peer_address: "127.0.0.1:0".parse().unwrap(),
+            state_var: Default::default(),
         };
 
         assert!(!conn.is_connected());
@@ -671,10 +746,11 @@ mod test {
         let (thread_ctl, _) = create_thread_ctl();
 
         let conn = PeerConnection {
-            state: Arc::new(RwLock::new(PeerConnectionState::Connecting(thread_ctl))),
+            state: Arc::new(Mutex::new(PeerConnectionState::Connecting(thread_ctl))),
             connection_stats: Arc::new(RwLock::new(PeerConnectionStats::new())),
-            direction: None,
-            peer_address: None,
+            direction: Direction::Outbound,
+            peer_address: "127.0.0.1:0".parse().unwrap(),
+            state_var: Default::default(),
         };
 
         assert!(!conn.is_connected());
@@ -690,10 +766,11 @@ mod test {
         let (thread_ctl, _) = create_thread_ctl();
 
         let conn = PeerConnection {
-            state: Arc::new(RwLock::new(PeerConnectionState::Connecting(thread_ctl))),
+            state: Arc::new(Mutex::new(PeerConnectionState::Connecting(thread_ctl))),
             connection_stats: Arc::new(RwLock::new(PeerConnectionStats::new())),
-            direction: None,
-            peer_address: None,
+            direction: Direction::Outbound,
+            peer_address: "127.0.0.1:0".parse().unwrap(),
+            state_var: Default::default(),
         };
 
         assert!(!conn.is_connected());
@@ -707,12 +784,13 @@ mod test {
     #[test]
     fn state_failed() {
         let conn = PeerConnection {
-            state: Arc::new(RwLock::new(PeerConnectionState::Failed(
+            state: Arc::new(Mutex::new(PeerConnectionState::Failed(
                 PeerConnectionError::ConnectFailed,
             ))),
             connection_stats: Arc::new(RwLock::new(PeerConnectionStats::new())),
-            direction: None,
-            peer_address: None,
+            direction: Direction::Outbound,
+            peer_address: "127.0.0.1:0".parse().unwrap(),
+            state_var: Default::default(),
         };
 
         assert!(!conn.is_connected());
@@ -726,10 +804,11 @@ mod test {
     #[test]
     fn state_disconnected() {
         let conn = PeerConnection {
-            state: Arc::new(RwLock::new(PeerConnectionState::Disconnected)),
+            state: Arc::new(Mutex::new(PeerConnectionState::Disconnected)),
             connection_stats: Arc::new(RwLock::new(PeerConnectionStats::new())),
-            direction: None,
-            peer_address: None,
+            direction: Direction::Outbound,
+            peer_address: "127.0.0.1:0".parse().unwrap(),
+            state_var: Default::default(),
         };
 
         assert!(!conn.is_connected());
@@ -743,10 +822,11 @@ mod test {
     #[test]
     fn state_shutdown() {
         let conn = PeerConnection {
-            state: Arc::new(RwLock::new(PeerConnectionState::Shutdown)),
+            state: Arc::new(Mutex::new(PeerConnectionState::Shutdown)),
             connection_stats: Arc::new(RwLock::new(PeerConnectionStats::new())),
-            direction: None,
-            peer_address: None,
+            direction: Direction::Outbound,
+            peer_address: "127.0.0.1:0".parse().unwrap(),
+            state_var: Default::default(),
         };
 
         assert!(!conn.is_connected());
@@ -764,10 +844,11 @@ mod test {
             connected_address: Some("127.0.0.1:1000".parse().unwrap()),
         };
         let conn = PeerConnection {
-            state: Arc::new(RwLock::new(PeerConnectionState::Connected(Arc::new(info)))),
+            state: Arc::new(Mutex::new(PeerConnectionState::Connected(Arc::new(info)))),
             connection_stats: Arc::new(RwLock::new(PeerConnectionStats::new())),
-            direction: None,
-            peer_address: None,
+            direction: Direction::Outbound,
+            peer_address: "127.0.0.1:0".parse().unwrap(),
+            state_var: Default::default(),
         };
         (conn, rx)
     }
@@ -777,11 +858,36 @@ mod test {
         let (conn, rx) = create_connected_peer_connection();
 
         let sample_frames = vec![vec![123u8]];
-        conn.send(sample_frames.clone()).unwrap();
+        let sample_frames_inner = sample_frames.clone();
+        thread::spawn(move || {
+            conn.send(sample_frames_inner).unwrap();
+        });
         let msg = rx.recv_timeout(Duration::from_millis(10)).unwrap();
         match msg {
-            ControlMessage::SendMsg(frames) => {
+            ControlMessage::SendMsg(identity, frames, reply_tx) => {
                 assert_eq!(sample_frames, frames);
+                assert!(identity.is_none());
+                reply_tx.send(Ok(())).unwrap();
+            },
+            m => panic!("Unexpected control message '{}'", m),
+        }
+    }
+
+    #[test]
+    fn send_with_identity() {
+        let (conn, rx) = create_connected_peer_connection();
+
+        let sample_frames = vec![vec![123u8]];
+        let sample_frames_inner = sample_frames.clone();
+        thread::spawn(move || {
+            conn.send_to_identity(b"123".to_vec(), sample_frames_inner).unwrap();
+        });
+        let msg = rx.recv_timeout(Duration::from_millis(10)).unwrap();
+        match msg {
+            ControlMessage::SendMsg(identity, frames, reply_tx) => {
+                assert_eq!(sample_frames, frames);
+                assert_eq!(identity, Some(b"123".to_vec()));
+                reply_tx.send(Ok(())).unwrap();
             },
             m => panic!("Unexpected control message '{}'", m),
         }
@@ -793,14 +899,17 @@ mod test {
 
         conn.shutdown().unwrap();
         let msg = rx.recv_timeout(Duration::from_millis(10)).unwrap();
-        assert_eq!(ControlMessage::Shutdown, msg);
+        match msg {
+            ControlMessage::Shutdown => {},
+            _ => panic!("received unexpected message"),
+        }
     }
 
     #[test]
     fn connection_stats() {
         let (conn, _) = create_connected_peer_connection();
 
-        let stats = conn.connection_stats();
+        let stats = conn.get_connection_stats();
         assert_eq!(stats.messages_recv, 0);
         assert_eq!(stats.messages_sent, 0);
     }

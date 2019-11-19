@@ -20,11 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{fmt, str::FromStr};
-
-use serde::{Deserialize, Serialize};
-
 use super::{parser::AddressParser, NetAddressError};
+use serde::{Deserialize, Serialize};
+use std::{fmt, str::FromStr};
 
 /// Represents a Tor Onion address
 #[derive(Clone, PartialEq, Eq, Debug, Hash, Serialize, Deserialize)]

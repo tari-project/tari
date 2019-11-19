@@ -72,7 +72,7 @@ fn test_wallet() {
     .unwrap();
     let comms_config1 = CommsConfig {
         node_identity: Arc::new(alice_identity.clone()),
-        peer_connection_listening_address: "127.0.0.1".parse().unwrap(),
+        peer_connection_listening_address: "127.0.0.1:0".parse().unwrap(),
         socks_proxy_address: None,
         control_service: ControlServiceConfig {
             listener_address: alice_identity.control_service_address(),
@@ -93,7 +93,7 @@ fn test_wallet() {
     };
     let comms_config2 = CommsConfig {
         node_identity: Arc::new(bob_identity.clone()),
-        peer_connection_listening_address: "127.0.0.1".parse().unwrap(),
+        peer_connection_listening_address: "127.0.0.1:0".parse().unwrap(),
         socks_proxy_address: None,
         control_service: ControlServiceConfig {
             listener_address: bob_identity.control_service_address(),
@@ -198,7 +198,7 @@ fn test_data_generation() {
 
     let comms_config = CommsConfig {
         node_identity: Arc::new(node_id.clone()),
-        peer_connection_listening_address: "127.0.0.1".parse().unwrap(),
+        peer_connection_listening_address: "127.0.0.1:0".parse().unwrap(),
         socks_proxy_address: None,
         control_service: ControlServiceConfig {
             listener_address: node_id.control_service_address(),
@@ -279,7 +279,7 @@ fn test_test_harness() {
 
     let comms_config1 = CommsConfig {
         node_identity: Arc::new(alice_identity.clone()),
-        peer_connection_listening_address: "127.0.0.1".parse().unwrap(),
+        peer_connection_listening_address: "127.0.0.1:0".parse().unwrap(),
         socks_proxy_address: None,
         control_service: ControlServiceConfig {
             listener_address: alice_identity.control_service_address(),

@@ -1,4 +1,4 @@
-// Copyright 2019 The Tari Project
+// Copyright 2019, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,24 +20,42 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    connection::PeerConnectionError,
-    connection_manager::ConnectionManagerError,
-    message::MessageError,
-    peer_manager::PeerManagerError,
+use crate::connection::{
+    net_address::ip::SocketAddress,
+    peer_connection::control::ThreadControlMessenger,
+    PeerConnectionError,
 };
-use derive_error::Error;
-use futures::channel::mpsc::SendError;
-use tari_crypto::signatures::SchnorrSignatureError;
-use tari_utilities::message_format::MessageFormatError;
+use std::{sync::Arc, thread::JoinHandle};
 
-#[derive(Debug, Error)]
-pub enum OutboundServiceError {
-    SendError(SendError),
-    MessageSerializationError(MessageError),
-    MessageFormatError(MessageFormatError),
-    PeerManagerError(PeerManagerError),
-    ConnectionManagerError(ConnectionManagerError),
-    PeerConnectionError(PeerConnectionError),
-    SignatureError(SchnorrSignatureError),
+pub type PeerConnectionJoinHandle = JoinHandle<Result<(), PeerConnectionError>>;
+
+/// Represents messages that must be sent to a PeerConnection.
+pub enum PeerConnectionProtocolMessage {
+    /// Sent to establish the identity frame for a PeerConnection. This must be sent by an
+    /// Outbound connection to an Inbound connection before any other communication occurs.
+    Identify = 0,
+    /// A peer message to be forwarded to the message sink (the IMS)
+    Message = 1,
+    /// Ping test
+    Ping = 2,
+    /// Requests to this connection are denied
+    Deny = 3,
+    /// Any other message is invalid and is discarded
+    Invalid,
+}
+
+impl From<u8> for PeerConnectionProtocolMessage {
+    fn from(val: u8) -> Self {
+        match val {
+            0 => PeerConnectionProtocolMessage::Identify,
+            1 => PeerConnectionProtocolMessage::Message,
+            2 => PeerConnectionProtocolMessage::Ping,
+            _ => PeerConnectionProtocolMessage::Invalid,
+        }
+    }
+}
+
+pub struct ConnectionInfo {
+    pub(super) control_messenger: Arc<ThreadControlMessenger>,
+    pub(super) connected_address: Option<SocketAddress>,
 }

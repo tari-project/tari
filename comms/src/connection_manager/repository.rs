@@ -134,7 +134,8 @@ mod test {
         let mut node_ids = vec![];
         for _i in 0..n {
             let node_id = make_node_id();
-            let conn = Arc::new(PeerConnection::new());
+            let (conn, _) = PeerConnection::new_with_connecting_state_for_test("127.0.0.1:0".parse().unwrap());
+            let conn = Arc::new(conn);
             repo.insert(node_id.clone(), conn.clone());
             node_ids.push(node_id);
         }

@@ -20,15 +20,21 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::{establisher::ConnectionEstablisher, types::PeerConnectionJoinHandle, ConnectionManagerError, Result};
+use super::{establisher::ConnectionEstablisher, ConnectionManagerError, Result};
 use crate::{
-    connection::{CurvePublicKey, NetAddress, PeerConnection},
+    connection::{
+        peer_connection::PeerConnectionJoinHandle,
+        zmq::ZmqIdentity,
+        CurvePublicKey,
+        NetAddress,
+        PeerConnection,
+    },
     control_service::messages::{RejectReason, RequestConnectionOutcome},
     peer_manager::{NodeIdentity, Peer},
 };
 use log::*;
 use std::sync::Arc;
-use tari_utilities::byte_array::ByteArray;
+use tari_utilities::{byte_array::ByteArray, hex::Hex};
 
 const LOG_TARGET: &str = "comms::connection_manager::protocol";
 
@@ -81,23 +87,30 @@ impl<'e, 'ni> PeerConnectionProtocol<'e, 'ni> {
             .ok_or(ConnectionManagerError::ConnectionRequestOutcomeTimeout)
             .and_then(|msg: RequestConnectionOutcome| match msg.accepted {
                 true => {
+                    trace!(
+                        target: LOG_TARGET,
+                        "[NodeId={}] Peer set our identity to '{}'", self.node_identity.node_id(),  msg.identity.to_hex(),
+                    );
+
                     let RequestConnectionOutcome {
                         curve_public_key,
                         address,
+                        identity,
                         ..
                     } = msg;
 
                     let address = address.parse()?;
 
-                    info!(
+                    debug!(
                         target: LOG_TARGET,
-                        "[NodeId={}] RequestConnection accepted by destination peer's control port", peer.node_id
+                        "[NodeId={}] RequestConnection accepted by destination peer's control port from NodeId '{}'", self.node_identity.node_id(), peer.node_id
                     );
+
 
                     // Connect to the requested peer connection and send a identify frame
                     let curve_public_key = CurvePublicKey::from_bytes(&curve_public_key).map_err(|_| ConnectionManagerError::InvalidCurvePublicKey)?;
                     let (new_peer_conn, join_handle) =
-                        self.establish_requested_peer_connection(peer, curve_public_key, address)?;
+                        self.establish_requested_peer_connection(peer, curve_public_key, address, identity)?;
 
                     Ok((new_peer_conn, join_handle))
                 },
@@ -127,17 +140,19 @@ impl<'e, 'ni> PeerConnectionProtocol<'e, 'ni> {
         peer: &Peer,
         curve_public_key: CurvePublicKey,
         address: NetAddress,
+        remote_identity: ZmqIdentity,
     ) -> Result<(Arc<PeerConnection>, PeerConnectionJoinHandle)>
     {
         debug!(
             target: LOG_TARGET,
-            "[NodeId={}] Connecting to given peer connection at address {}", peer.node_id, address
+            "[NodeId={}] Connecting to given peer connection at address '{}'", peer.node_id, address
         );
 
         let (conn, join_handle) = self.establisher.establish_outbound_peer_connection(
-            peer.node_id.clone().into(),
             address,
             curve_public_key,
+            remote_identity,
+            peer.node_id.to_vec(),
         )?;
 
         Ok((conn, join_handle))

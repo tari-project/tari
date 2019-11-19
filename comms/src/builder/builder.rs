@@ -22,11 +22,12 @@
 
 use crate::{
     builder::null_sink::NullSink,
-    connection::{ConnectionError, DealerProxyError, ZmqContext},
+    connection::{ConnectionError, DealerProxyError, PeerConnectionError, ZmqContext},
     connection_manager::{
         actor::{ConnectionManagerActor, ConnectionManagerRequest},
         ConnectionManager,
         ConnectionManagerDialer,
+        ConnectionManagerError,
         ConnectionManagerRequester,
         PeerConnectionConfig,
     },
@@ -351,7 +352,8 @@ where
 #[derive(Debug, Error)]
 pub enum CommsError {
     ControlServiceError(ControlServiceError),
-    ConnectionManagerError(ConnectionError),
+    PeerConnectionError(PeerConnectionError),
+    ConnectionManagerError(ConnectionManagerError),
     /// Comms services shut down uncleanly
     UncleanShutdown,
     /// The message type was not registered
@@ -395,8 +397,9 @@ where
                     .map_err(CommsError::ControlServiceError)?,
             );
         }
+        self.connection_manager.run_listener()?;
 
-        self.executor.spawn(self.connection_manager_actor.start());
+        self.executor.spawn(self.connection_manager_actor.run());
         self.executor.spawn(self.outbound_message_service.start());
         self.executor.spawn(self.inbound_message_service.run());
 
@@ -466,7 +469,7 @@ impl CommsNode {
 
         // Lastly, Shutdown connection manager
         for result in self.connection_manager.shutdown() {
-            shutdown_results.push(result.map_err(CommsError::ConnectionManagerError));
+            shutdown_results.push(result.map_err(Into::into));
         }
 
         Self::check_clean_shutdown(shutdown_results)

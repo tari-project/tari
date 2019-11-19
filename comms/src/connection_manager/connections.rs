@@ -20,24 +20,22 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use log::*;
-
 use super::{
     error::ConnectionManagerError,
     repository::{ConnectionRepository, Repository},
-    types::PeerConnectionJoinHandle,
     Result,
 };
-
-use crate::{connection::PeerConnection, peer_manager::node_id::NodeId};
-
-use crate::connection::ConnectionError;
+use crate::{
+    connection::{peer_connection::PeerConnectionJoinHandle, Direction, PeerConnection, PeerConnectionError},
+    peer_manager::node_id::NodeId,
+};
+use log::*;
 use std::{
     collections::HashMap,
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
     time::Duration,
 };
-use tari_utilities::thread_join::ThreadJoinWithTimeout;
+use tari_utilities::{thread_join::ThreadJoinWithTimeout, ByteArray};
 
 const LOG_TARGET: &str = "comms::connection_manager::connections";
 
@@ -95,7 +93,7 @@ impl LivePeerConnections {
         &self,
         node_id: NodeId,
         conn: Arc<PeerConnection>,
-        handle: PeerConnectionJoinHandle,
+        join_handle: Option<PeerConnectionJoinHandle>,
     ) -> Result<()>
     {
         self.cleanup_inactive_connections();
@@ -116,7 +114,9 @@ impl LivePeerConnections {
                 }
             }
 
-            acquire_write_lock!(self.connection_thread_handles).insert(node_id.clone(), handle);
+            if let Some(handle) = join_handle {
+                acquire_write_lock!(self.connection_thread_handles).insert(node_id.clone(), handle);
+            }
             repo.insert(node_id, conn);
             Ok(())
         })
@@ -133,25 +133,39 @@ impl LivePeerConnections {
 
     /// If the connection exists, it is removed, shut down and returned. Otherwise
     /// `ConnectionManagerError::PeerConnectionNotFound` is returned
-    pub fn shutdown_connection(&self, node_id: &NodeId) -> Result<(Arc<PeerConnection>, PeerConnectionJoinHandle)> {
+    pub fn disconnect_peer(&self, node_id: &NodeId) -> Result<(Arc<PeerConnection>, Option<PeerConnectionJoinHandle>)> {
         self.atomic_write(|mut repo| {
             let conn = repo
                 .remove(node_id)
                 .ok_or(ConnectionManagerError::PeerConnectionNotFound)
                 .map(|conn| conn.clone())?;
 
-            let handle = acquire_write_lock!(self.connection_thread_handles)
-                .remove(node_id)
-                .expect(
-                    "Invariant check: the peer connection join handle was not found. This is a bug as each peer \
-                     connection should have an associated join handle.",
-                );
+            if !conn.is_active() {
+                let join_handle = acquire_write_lock!(self.connection_thread_handles).remove(node_id);
+                return Ok((conn, join_handle));
+            }
 
-            debug!(target: LOG_TARGET, "Dropping connection for NodeID={}", node_id);
+            match conn.direction() {
+                Direction::Inbound => {
+                    // Deny this node id permission to connect inbound
+                    conn.deny_identity(node_id.to_vec())?;
+                    Ok((conn, None))
+                },
+                Direction::Outbound => {
+                    let handle = acquire_write_lock!(self.connection_thread_handles)
+                        .remove(node_id)
+                        .expect(
+                            "Invariant check: the peer connection join handle was not found. This is a bug as each \
+                             outbound peer connection should have an associated join handle.",
+                        );
 
-            conn.shutdown().map_err(ConnectionManagerError::ConnectionError)?;
+                    debug!(target: LOG_TARGET, "Dropping connection for NodeID={}", node_id);
 
-            Ok((conn, handle))
+                    conn.shutdown()?;
+
+                    Ok((conn, Some(handle)))
+                },
+            }
         })
     }
 
@@ -167,7 +181,7 @@ impl LivePeerConnections {
 
     /// Send a shutdown signal to all peer connections, and wait for all of them to
     /// shut down, returning the result of the shutdown.
-    pub fn shutdown_joined(&self) -> Vec<std::result::Result<(), ConnectionError>> {
+    pub fn shutdown_joined(&self) -> Vec<std::result::Result<(), PeerConnectionError>> {
         self.shutdown_all();
 
         let mut handles = acquire_write_lock!(self.connection_thread_handles);
@@ -177,7 +191,7 @@ impl LivePeerConnections {
             results.push(
                 handle
                     .timeout_join(THREAD_JOIN_TIMEOUT_IN_MS)
-                    .map_err(ConnectionError::ThreadJoinError)
+                    .map_err(PeerConnectionError::ThreadJoinError)
                     .or_else(|err| {
                         error!(target: LOG_TARGET, "Failed join on peer connection thread: {:?}", err);
                         Err(err)
@@ -254,10 +268,12 @@ mod test {
         let connections = LivePeerConnections::new();
 
         let node_id = make_node_id();
-        let conn = Arc::new(PeerConnection::new());
+        let (conn, _receiver) = PeerConnection::new_with_connecting_state_for_test("127.0.0.1:0".parse().unwrap());
         let join_handle = make_join_handle();
 
-        connections.add_connection(node_id.clone(), conn, join_handle).unwrap();
+        connections
+            .add_connection(node_id.clone(), Arc::new(conn), Some(join_handle))
+            .unwrap();
         assert_eq!(
             1,
             acquire_read_lock!(connections.connection_thread_handles)
@@ -265,12 +281,12 @@ mod test {
                 .count()
         );
         connections.get_connection(&node_id).unwrap();
-        connections.shutdown_connection(&node_id).unwrap();
+        connections.disconnect_peer(&node_id).unwrap();
         assert_eq!(
-            0,
             acquire_read_lock!(connections.connection_thread_handles)
                 .values()
-                .count()
+                .count(),
+            0
         );
 
         assert_eq!(0, connections.get_active_connection_count());
@@ -280,7 +296,7 @@ mod test {
     fn drop_connection_fail() {
         let connections = LivePeerConnections::new();
         let node_id = make_node_id();
-        match connections.shutdown_connection(&node_id) {
+        match connections.disconnect_peer(&node_id) {
             Err(ConnectionManagerError::PeerConnectionNotFound) => {},
             Err(err) => panic!("Unexpected error: {:?}", err),
             Ok(_) => panic!("Unexpected Ok result"),
@@ -293,10 +309,12 @@ mod test {
 
         for _i in 0..3 {
             let node_id = make_node_id();
-            let conn = Arc::new(PeerConnection::new());
+            let (conn, _) = PeerConnection::new_with_connecting_state_for_test("127.0.0.1:0".parse().unwrap());
             let join_handle = make_join_handle();
 
-            connections.add_connection(node_id, conn, join_handle).unwrap();
+            connections
+                .add_connection(node_id, Arc::new(conn), Some(join_handle))
+                .unwrap();
         }
 
         let results = connections.shutdown_joined();
@@ -309,10 +327,13 @@ mod test {
         let connections = LivePeerConnections::with_max_connections(2);
 
         let add_active_conn = |node_id| {
-            let (conn, rx) = PeerConnection::new_with_connecting_state_for_test();
+            let (conn, rx) = PeerConnection::new_with_connecting_state_for_test("127.0.0.1:0".parse().unwrap());
             let join_handle = make_join_handle();
 
-            (connections.add_connection(node_id, Arc::new(conn), join_handle), rx)
+            (
+                connections.add_connection(node_id, Arc::new(conn), Some(join_handle)),
+                rx,
+            )
         };
 
         let mut receivers = Vec::new();

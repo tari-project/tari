@@ -91,7 +91,7 @@ fn setup_comms_dht(
             ..Default::default()
         })
         .configure_peer_connections(PeerConnectionConfig {
-            host: "127.0.0.1".parse().unwrap(),
+            listening_address: "127.0.0.1:0".parse().unwrap(),
             ..Default::default()
         })
         .with_node_identity(Arc::new(node_identity))

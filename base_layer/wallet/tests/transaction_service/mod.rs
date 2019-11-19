@@ -77,7 +77,13 @@ pub fn setup_transaction_service(
 {
     let (publisher, subscription_factory) = pubsub_connector(runtime.executor(), 100);
     let subscription_factory = Arc::new(subscription_factory);
-    let (comms, dht) = setup_comms_services(runtime.executor(), Arc::new(node_identity.clone()), peers, publisher);
+    let (comms, dht) = setup_comms_services(
+        runtime.executor(),
+        Arc::new(node_identity.clone()),
+        "127.0.0.1:0".parse().unwrap(),
+        peers,
+        publisher,
+    );
 
     let fut = StackBuilder::new(runtime.executor(), comms.shutdown_signal())
         .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))
@@ -174,7 +180,7 @@ fn manage_single_transaction() {
     let alice_seed = PrivateKey::random(&mut rng);
     let alice_node_identity = NodeIdentity::random(
         &mut rng,
-        "127.0.0.1:31583".parse().unwrap(),
+        "127.0.0.1:31501".parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
     )
     .unwrap();
@@ -183,7 +189,7 @@ fn manage_single_transaction() {
     let bob_seed = PrivateKey::random(&mut rng);
     let bob_node_identity = NodeIdentity::random(
         &mut rng,
-        "127.0.0.1:31582".parse().unwrap(),
+        "127.0.0.1:31703".parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
     )
     .unwrap();

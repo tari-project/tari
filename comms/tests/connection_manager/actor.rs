@@ -92,6 +92,7 @@ fn with_alice_and_bob(cb: impl FnOnce(CommsTestNode, CommsTestNode)) {
             .build()
             .unwrap(),
     );
+    bob_connection_manager.run_listener().unwrap();
 
     // Start node B's control service
     let bob_control_service = ControlService::new(context.clone(), bob_identity.clone(), ControlServiceConfig {
@@ -124,6 +125,7 @@ fn with_alice_and_bob(cb: impl FnOnce(CommsTestNode, CommsTestNode)) {
             .build()
             .unwrap(),
     );
+    alice_connection_manager.run_listener().unwrap();
 
     // Start node A's control service
     let alice_control_port_address = factories::net_address::create().build().unwrap();
@@ -158,19 +160,20 @@ fn with_alice_and_bob(cb: impl FnOnce(CommsTestNode, CommsTestNode)) {
     cb(alice.clone(), bob.clone());
 
     let _ = alice_control_service.shutdown();
-    alice_control_service.timeout_join(Duration::from_millis(1000)).unwrap();
+    alice_control_service.timeout_join(Duration::from_millis(5000)).unwrap();
 
     let _ = bob_control_service.shutdown();
-    bob_control_service.timeout_join(Duration::from_millis(1000)).unwrap();
+    bob_control_service.timeout_join(Duration::from_millis(5000)).unwrap();
 
-    match Arc::try_unwrap(alice.connection_manager) {
-        Ok(manager) => manager.shutdown().into_iter().map(|r| r.unwrap()).collect::<Vec<()>>(),
-        Err(_) => panic!("Unable to unwrap connection manager from Arc"),
-    };
-    match Arc::try_unwrap(bob.connection_manager) {
-        Ok(manager) => manager.shutdown().into_iter().map(|r| r.unwrap()).collect::<Vec<()>>(),
-        Err(_) => panic!("Unable to unwrap connection manager from Arc"),
-    };
+    alice
+        .connection_manager
+        .shutdown()
+        .into_iter()
+        .for_each(|result| result.unwrap());
+    bob.connection_manager
+        .shutdown()
+        .into_iter()
+        .for_each(|result| result.unwrap());
 
     clean_up_datastore(alice_database_name.as_str());
     clean_up_datastore(bob_database_name.as_str());
@@ -187,7 +190,7 @@ fn establish_connection_simple() {
             shutdown.to_signal(),
         );
 
-        rt.spawn(service.start());
+        rt.spawn(service.run());
 
         let conn = rt
             .block_on(requester.dial_node(bob.node_identity.node_id().clone()))
@@ -209,7 +212,7 @@ fn establish_connection_simultaneous_connect() {
             ConnectionManagerDialer::new(Arc::clone(&alice.connection_manager)),
             shutdown.to_signal(),
         );
-        rt.spawn(service.start());
+        rt.spawn(service.run());
 
         let (requester_bob, service) = create_connection_manager_actor(
             1,
@@ -217,7 +220,7 @@ fn establish_connection_simultaneous_connect() {
             shutdown.to_signal(),
         );
         bob.peer_manager.add_peer(alice.peer.clone()).unwrap();
-        rt.spawn(service.start());
+        rt.spawn(service.run());
 
         let alice_node_id = alice.node_identity.node_id().clone();
         let bob_node_id = bob.node_identity.node_id().clone();

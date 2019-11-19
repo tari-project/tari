@@ -50,6 +50,7 @@ use std::{
     time::Duration,
 };
 use tari_comms::{
+    connection::net_address::ip::SocketAddress,
     control_service::ControlServiceConfig,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFlags},
 };
@@ -75,6 +76,7 @@ fn load_identity(path: &str) -> NodeIdentity {
     let contents = fs::read_to_string(path).unwrap();
     NodeIdentity::from_json(contents.as_str()).unwrap()
 }
+
 pub fn random_string(len: usize) -> String {
     let mut rng = OsRng::new().unwrap();
     iter::repeat(()).map(|_| rng.sample(Alphanumeric)).take(len).collect()
@@ -87,6 +89,18 @@ fn get_lan_address() -> IpAddr {
         .find(|if_addr| !if_addr.is_loopback())
         .and_then(|if_addr| Some(if_addr.ip()))
         .unwrap()
+}
+
+fn set_lan_address(identity: &NodeIdentity) {
+    let addr = get_lan_address();
+    let address = format!(
+        "{}:{}",
+        addr,
+        identity.control_service_address().maybe_port().unwrap_or(0)
+    )
+    .parse()
+    .unwrap();
+    identity.set_control_service_address(address).unwrap();
 }
 
 fn main() {
@@ -105,8 +119,8 @@ fn main() {
         .arg(
             Arg::with_name("peer-identity")
                 .value_name("FILE")
-                .long("peer-identity")
-                .short("p")
+                .long("remote-identity")
+                .short("r")
                 .help("The relative path of the node identity file of the other node")
                 .takes_value(true)
                 .required(true),
@@ -120,46 +134,52 @@ fn main() {
                 .takes_value(true)
                 .default_value("base_layer/p2p/examples/example-log-config.yml"),
         )
+        .arg(
+            Arg::with_name("port")
+                .value_name("PORT")
+                .long("port")
+                .short("p")
+                .help("The port to use for the listener service (default:0 (os-assigned))")
+                .takes_value(true)
+                .default_value("0"),
+        )
+        .arg(
+            Arg::with_name("socks proxy")
+                .value_name("PROXYADDR")
+                .long("proxy")
+                .help("Use this proxy when connecting")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("local")
+                .long("local")
+                .help("Advertise local LAN address")
+                .takes_value(false),
+        )
         .get_matches();
 
     log4rs::init_file(matches.value_of("log-config").unwrap(), Default::default()).unwrap();
 
     let node_identity = Arc::new(load_identity(matches.value_of("node-identity").unwrap()));
     let peer_identity = load_identity(matches.value_of("peer-identity").unwrap());
+    let port = matches.value_of("port").unwrap();
+    let proxy = matches.value_of("socks proxy").and_then(|proxy| {
+        if proxy.is_empty() {
+            None
+        } else {
+            Some(proxy.parse::<SocketAddress>().unwrap())
+        }
+    });
 
-    let addr = get_lan_address();
-
-    peer_identity
-        .set_control_service_address(
-            format!(
-                "{}:{}",
-                addr,
-                peer_identity.control_service_address().maybe_port().unwrap()
-            )
-            .parse()
-            .unwrap(),
-        )
-        .unwrap();
-
-    node_identity
-        .set_control_service_address(
-            format!(
-                "{}:{}",
-                addr,
-                node_identity.control_service_address().maybe_port().unwrap()
-            )
-            .parse()
-            .unwrap(),
-        )
-        .unwrap();
-
-    log::debug!(target:"comms::DEBUGGING", "addr={} control  port={}", addr, node_identity.control_service_address());
+    if matches.value_of("local").is_some() {
+        set_lan_address(&node_identity);
+        set_lan_address(&peer_identity);
+    }
 
     let comms_config = CommsConfig {
         node_identity: Arc::clone(&node_identity),
-        peer_connection_listening_address: "0.0.0.0".parse().unwrap(),
-        socks_proxy_address: None,
-        //        socks_proxy_address: Some("127.0.0.1:9050".parse().unwrap()),
+        peer_connection_listening_address: format!("0.0.0.0:{}", port).parse().unwrap(),
+        socks_proxy_address: proxy.clone(),
         control_service: ControlServiceConfig {
             listener_address: format!(
                 "0.0.0.0:{}",
@@ -167,8 +187,7 @@ fn main() {
             )
             .parse()
             .unwrap(),
-            socks_proxy_address: None,
-            //            socks_proxy_address: Some("127.0.0.1:9050".parse().unwrap()),
+            socks_proxy_address: proxy,
             requested_connection_timeout: Duration::from_millis(2000),
         },
         establish_connection_timeout: Duration::from_secs(10),
@@ -203,7 +222,9 @@ fn main() {
         .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))
         .add_initializer(LivenessInitializer::new(
             LivenessConfig {
-                auto_ping_interval: None,
+                auto_ping_interval: Some(Duration::from_secs(5)), // None,
+                enable_auto_stored_message_request: false,
+                enable_auto_join: true,
                 ..Default::default()
             },
             Arc::clone(&subscription_factory),

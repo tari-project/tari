@@ -30,7 +30,16 @@ use super::{
     Result,
 };
 use crate::{
-    connection::{ConnectionError, CurveEncryption, CurvePublicKey, PeerConnection, PeerConnectionState, ZmqContext},
+    connection::{
+        peer_connection::PeerConnectionJoinHandle,
+        CurveEncryption,
+        CurvePublicKey,
+        Direction,
+        PeerConnection,
+        PeerConnectionError,
+        PeerConnectionState,
+        ZmqContext,
+    },
     connection_manager::{dialer::Dialer, Connectivity},
     control_service::messages::RejectReason,
     message::FrameSet,
@@ -41,19 +50,51 @@ use log::*;
 use std::{
     collections::HashMap,
     result,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, RwLock},
     time::Duration,
 };
-use tari_utilities::thread_join::thread_join::ThreadJoinWithTimeout;
+use tari_utilities::{thread_join::thread_join::ThreadJoinWithTimeout, ByteArray};
 use tokio_executor::blocking;
 
 const LOG_TARGET: &str = "comms::connection_manager::manager";
 
+struct ListenerConnection {
+    connection: Arc<PeerConnection>,
+    curve_public_key: CurvePublicKey,
+    join_handle: Option<PeerConnectionJoinHandle>,
+}
+
+impl ListenerConnection {
+    pub fn new(
+        connection: Arc<PeerConnection>,
+        curve_public_key: CurvePublicKey,
+        join_handle: PeerConnectionJoinHandle,
+    ) -> Self
+    {
+        Self {
+            connection,
+            curve_public_key,
+            join_handle: Some(join_handle),
+        }
+    }
+
+    fn get_connection(&self) -> Arc<PeerConnection> {
+        Arc::clone(&self.connection)
+    }
+
+    fn curve_public_key(&self) -> &CurvePublicKey {
+        &self.curve_public_key
+    }
+}
+
 pub struct ConnectionManager {
     node_identity: Arc<NodeIdentity>,
     connections: LivePeerConnections,
-    establisher: Arc<ConnectionEstablisher>,
+    establisher: ConnectionEstablisher,
     peer_manager: Arc<PeerManager>,
+
+    listener_connection: RwLock<Option<ListenerConnection>>,
+
     establish_locks: Mutex<HashMap<NodeId, Arc<Mutex<()>>>>,
 }
 
@@ -69,16 +110,68 @@ impl ConnectionManager {
     {
         Self {
             connections: LivePeerConnections::with_max_connections(config.max_connections),
-            establisher: Arc::new(ConnectionEstablisher::new(
+            establisher: ConnectionEstablisher::new(
                 zmq_context,
                 Arc::clone(&node_identity),
                 config,
                 Arc::clone(&peer_manager),
                 message_sink_channel,
-            )),
+            ),
             node_identity,
             peer_manager,
+            listener_connection: RwLock::new(None),
             establish_locks: Mutex::new(HashMap::new()),
+        }
+    }
+
+    pub fn run_listener(&self) -> Result<()> {
+        debug!(target: LOG_TARGET, "Starting inbound listener");
+        if self.is_listener_started() {
+            debug!(target: LOG_TARGET, "Listener connection already started!");
+            return Ok(());
+        }
+
+        let (secret_key, public_key) = CurveEncryption::generate_keypair()?;
+        let (conn, join_handle) = self.establisher.establish_peer_listening_connection(secret_key)?;
+
+        debug!(
+            target: LOG_TARGET,
+            "Listener started on {}",
+            conn.get_connected_address()
+                .map(|addr| addr.to_string())
+                .or_else(|| conn.get_address().map(|addr| addr.to_string()))
+                .unwrap_or("<unknown>".to_string())
+        );
+        let mut listener_connection = acquire_write_lock!(self.listener_connection);
+        *listener_connection = Some(ListenerConnection::new(conn, public_key, join_handle));
+
+        Ok(())
+    }
+
+    pub fn is_listener_started(&self) -> bool {
+        acquire_read_lock!(self.listener_connection).is_some()
+    }
+
+    fn get_listener_connection_and_public_key(&self) -> Option<(Arc<PeerConnection>, CurvePublicKey)> {
+        let lock = acquire_read_lock!(self.listener_connection);
+        lock.as_ref()
+            .map(|listener| (listener.get_connection(), listener.curve_public_key().clone()))
+    }
+
+    fn shutdown_listener(&self) -> std::result::Result<(), PeerConnectionError> {
+        let mut lock = acquire_write_lock!(self.listener_connection);
+        match lock.as_mut() {
+            Some(listener) => {
+                listener.get_connection().shutdown()?;
+                let join_handle = listener
+                    .join_handle
+                    .take()
+                    .expect("listener connection did not have a join handle");
+                join_handle
+                    .timeout_join(Duration::from_millis(5000))
+                    .map_err(Into::into)
+            },
+            None => Ok(()),
         }
     }
 
@@ -92,60 +185,87 @@ impl ConnectionManager {
     }
 
     fn attempt_connection_to_peer(&self, peer: &Peer) -> Result<Arc<PeerConnection>> {
-        let maybe_conn = self.connections.get_connection(&peer.node_id);
-        let peer_conn = match maybe_conn {
+        match self.connections.get_connection(&peer.node_id) {
             Some(conn) => {
-                let state = conn.get_state();
+                match conn.direction() {
+                    Direction::Inbound => {
+                        // If the peer is connected to the single listener connection, check their connected status
+                        match conn.test_connection(peer.node_id.to_vec()) {
+                            Ok(_) => {
+                                debug!(
+                                    target: LOG_TARGET,
+                                    "Inbound connection is connected to NodeId '{}'. Reusing connection", peer.node_id
+                                );
 
-                match state {
-                    PeerConnectionState::Initial |
-                    PeerConnectionState::Disconnected |
-                    PeerConnectionState::Shutdown => {
-                        warn!(
-                            target: LOG_TARGET,
-                            "Peer connection state is '{}'. Attempting to reestablish connection to peer.", state
-                        );
-                        // Ignore not found error when dropping
-                        let _ = self.connections.shutdown_connection(&peer.node_id);
-                        self.initiate_peer_connection(peer)?
+                                Ok(conn)
+                            },
+                            Err(err) => {
+                                debug!(
+                                    target: LOG_TARGET,
+                                    "Inbound connection not connected to NodeId '{}' because '{}'", peer.node_id, err
+                                );
+
+                                let _ = self.connections.disconnect_peer(&peer.node_id);
+                                self.initiate_peer_connection(peer)
+                            },
+                        }
                     },
-                    PeerConnectionState::Failed(err) => {
-                        warn!(
-                            target: LOG_TARGET,
-                            "Peer connection for NodeId={} in failed state. Error({:?}) Attempting to reestablish.",
-                            peer.node_id,
-                            err
-                        );
-                        // Ignore not found error when dropping
-                        self.connections.shutdown_connection(&peer.node_id)?;
-                        self.initiate_peer_connection(peer)?
-                    },
-                    // Already have an active connection, just return it
-                    PeerConnectionState::Listening(Some(address)) => {
-                        debug!(
-                            target: LOG_TARGET,
-                            "Waiting for NodeId={} to connect at {}...", peer.node_id, address
-                        );
-                        return Ok(conn);
-                    },
-                    PeerConnectionState::Listening(None) => {
-                        debug!(
-                            target: LOG_TARGET,
-                            "Listening on non-tcp socket for NodeId={}...", peer.node_id
-                        );
-                        return Ok(conn);
-                    },
-                    PeerConnectionState::Connecting => {
-                        debug!(target: LOG_TARGET, "Still connecting to {}...", peer.node_id);
-                        return Ok(conn);
-                    },
-                    PeerConnectionState::Connected(Some(address)) => {
-                        debug!("Connection already established to {}.", address);
-                        return Ok(conn);
-                    },
-                    PeerConnectionState::Connected(None) => {
-                        debug!("Connection already established to non-TCP socket");
-                        return Ok(conn);
+                    Direction::Outbound => {
+                        let state = conn.get_state();
+
+                        match state {
+                            PeerConnectionState::Initial |
+                            PeerConnectionState::Disconnected |
+                            PeerConnectionState::Shutdown => {
+                                debug!(
+                                    target: LOG_TARGET,
+                                    "Peer connection state is '{}'. Attempting to reestablish connection to peer.",
+                                    state
+                                );
+                                // Ignore not found error when dropping
+                                let _ = self.disconnect_peer(&peer.node_id);
+                                self.initiate_peer_connection(peer)
+                            },
+                            PeerConnectionState::Failed(err) => {
+                                debug!(
+                                    target: LOG_TARGET,
+                                    "Peer connection for NodeId={} in failed state. Error({:?}) Attempting to \
+                                     reestablish.",
+                                    peer.node_id,
+                                    err
+                                );
+                                // Ignore not found error when dropping
+                                self.disconnect_peer(&peer.node_id)?;
+                                self.initiate_peer_connection(peer)
+                            },
+                            // Already have an active connection, just return it
+                            PeerConnectionState::Listening(Some(address)) => {
+                                debug!(
+                                    target: LOG_TARGET,
+                                    "Waiting for NodeId={} to connect at {}...", peer.node_id, address
+                                );
+                                Ok(conn)
+                            },
+                            PeerConnectionState::Listening(None) => {
+                                debug!(
+                                    target: LOG_TARGET,
+                                    "Listening on non-tcp socket for NodeId={}...", peer.node_id
+                                );
+                                Ok(conn)
+                            },
+                            PeerConnectionState::Connecting => {
+                                debug!(target: LOG_TARGET, "Still connecting to {}...", peer.node_id);
+                                Ok(conn)
+                            },
+                            PeerConnectionState::Connected(Some(address)) => {
+                                debug!(target: LOG_TARGET, "Connection already established to {}.", address);
+                                Ok(conn)
+                            },
+                            PeerConnectionState::Connected(None) => {
+                                debug!(target: LOG_TARGET, "Connection already established to non-TCP socket");
+                                Ok(conn)
+                            },
+                        }
                     },
                 }
             },
@@ -155,11 +275,9 @@ impl ConnectionManager {
                     "Peer connection does not exist for NodeId={}", peer.node_id
                 );
 
-                self.initiate_peer_connection(peer)?
+                self.initiate_peer_connection(peer)
             },
-        };
-
-        Ok(peer_conn.clone())
+        }
     }
 
     /// Establish an inbound connection for the given peer and pass it (and it's `CurvePublicKey`) to a callback.
@@ -172,7 +290,7 @@ impl ConnectionManager {
     /// - `peer`: &Peer - Create an inbound connection for this peer
     /// - `with_connection`: This callback is called with the new connection. If `Ok(Some(connection))` is returned, the
     ///   connection is added to the live connection list, otherwise it is discarded
-    pub(crate) fn with_new_inbound_connection<E>(
+    pub(crate) fn with_listener_connection<E>(
         &self,
         peer: &Peer,
         with_connection: impl FnOnce(Arc<PeerConnection>, CurvePublicKey) -> result::Result<Option<Arc<PeerConnection>>, E>,
@@ -185,16 +303,16 @@ impl ConnectionManager {
             return Err(ConnectionManagerError::MaxConnectionsReached);
         }
 
-        let (secret_key, public_key) = CurveEncryption::generate_keypair()?;
+        if !self.is_listener_started() {
+            return Err(ConnectionManagerError::ListenerNotStarted);
+        }
 
-        let (conn, join_handle) = self
-            .establisher
-            .establish_inbound_peer_connection(peer.node_id.clone().into(), secret_key)?;
+        let (listener_connection, curve_public_key) =
+            self.get_listener_connection_and_public_key().expect("already checked");
 
-        match with_connection(conn, public_key).map_err(Into::into)? {
+        match with_connection(listener_connection, curve_public_key).map_err(Into::into)? {
             Some(conn) => {
-                self.connections
-                    .add_connection(peer.node_id.clone(), conn, join_handle)?;
+                self.connections.add_connection(peer.node_id.clone(), conn, None)?;
             },
             None => {},
         }
@@ -203,8 +321,11 @@ impl ConnectionManager {
     }
 
     /// Sends shutdown signals to all PeerConnections
-    pub fn shutdown(&self) -> Vec<std::result::Result<(), ConnectionError>> {
-        self.connections.shutdown_joined()
+    pub fn shutdown(&self) -> Vec<std::result::Result<(), PeerConnectionError>> {
+        let result = self.shutdown_listener();
+        let mut results = self.connections.shutdown_joined();
+        results.push(result);
+        results
     }
 
     /// Try to acquire an establish lock for the node ID. If a lock exists for the Node ID,
@@ -252,13 +373,14 @@ impl ConnectionManager {
     ///
     /// [PeerConnection]: ../../connection/peer_connection/index.html
     pub fn disconnect_peer(&self, node_id: &NodeId) -> Result<Option<Arc<PeerConnection>>> {
-        match self.connections.shutdown_connection(&node_id) {
-            Ok((conn, handle)) => {
+        match self.connections.disconnect_peer(&node_id) {
+            Ok((conn, Some(handle))) => {
                 handle
                     .timeout_join(Duration::from_millis(3000))
                     .map_err(ConnectionManagerError::PeerConnectionThreadError)?;
                 Ok(Some(conn))
             },
+            Ok((conn, None)) => Ok(Some(conn)),
             Err(ConnectionManagerError::PeerConnectionNotFound) => Ok(None),
             Err(err) => Err(err),
         }
@@ -308,7 +430,7 @@ impl ConnectionManager {
 
                 // Wait for peer connection to transition to connected state before continuing
                 new_conn
-                    .wait_connected_or_failure(&config.peer_connection_establish_timeout)
+                    .wait_connected_or_failure(config.peer_connection_establish_timeout)
                     .or_else(|err| {
                         info!(
                             target: LOG_TARGET,
@@ -317,7 +439,7 @@ impl ConnectionManager {
                             peer.node_id,
                             err,
                         );
-                        Err(ConnectionManagerError::ConnectionError(err))
+                        Err(err)
                     })?;
                 debug!(
                     target: LOG_TARGET,
@@ -326,7 +448,7 @@ impl ConnectionManager {
                 );
 
                 self.connections
-                    .add_connection(peer.node_id.clone(), Arc::clone(&new_conn), join_handle)?;
+                    .add_connection(peer.node_id.clone(), Arc::clone(&new_conn), Some(join_handle))?;
 
                 Ok(new_conn)
             })
@@ -460,7 +582,7 @@ mod test {
             PeerConnectionConfig {
                 peer_connection_establish_timeout: Duration::from_secs(5),
                 max_message_size: 1024,
-                host: "127.0.0.1".parse().unwrap(),
+                listening_address: "127.0.0.1:0".parse().unwrap(),
                 max_connect_retries: 3,
                 max_connections: 10,
 
@@ -482,7 +604,7 @@ mod test {
             PeerConnectionConfig {
                 peer_connection_establish_timeout: Duration::from_secs(5),
                 max_message_size: 1024,
-                host: "127.0.0.1".parse().unwrap(),
+                listening_address: "127.0.0.1:0".parse().unwrap(),
                 max_connect_retries: 3,
                 max_connections: 10,
                 socks_proxy_address: None,
@@ -497,12 +619,12 @@ mod test {
 
         assert!(manager.disconnect_peer(&peer.node_id).unwrap().is_none());
 
-        let (peer_conn, rx) = PeerConnection::new_with_connecting_state_for_test();
+        let (peer_conn, rx) = PeerConnection::new_with_connecting_state_for_test("127.0.0.1:0".parse().unwrap());
         let peer_conn = Arc::new(peer_conn);
         let join_handle = thread::spawn(|| Ok(()));
         manager
             .connections
-            .add_connection(peer.node_id.clone(), peer_conn, join_handle)
+            .add_connection(peer.node_id.clone(), peer_conn, Some(join_handle))
             .unwrap();
 
         match manager.disconnect_peer(&peer.node_id).unwrap() {

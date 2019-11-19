@@ -1169,15 +1169,22 @@ pub unsafe extern "C" fn pending_inbound_transaction_destroy(transaction: *mut T
 /// null or a problem is encountered when constructing the NetAddress a ptr::null_mut() is returned
 #[no_mangle]
 pub unsafe extern "C" fn comms_config_create(
-    address: *const c_char,
+    control_service_address: *const c_char,
+    listener_address: *const c_char,
     database_name: *const c_char,
     datastore_path: *const c_char,
     secret_key: *mut TariPrivateKey,
 ) -> *mut TariCommsConfig
 {
-    let address_string;
-    if !address.is_null() {
-        address_string = CStr::from_ptr(address).to_str().unwrap().to_owned();
+    let control_service_address_string;
+    if !control_service_address.is_null() {
+        control_service_address_string = CStr::from_ptr(control_service_address).to_str().unwrap().to_owned();
+    } else {
+        return ptr::null_mut();
+    }
+    let listener_address_string;
+    if !listener_address.is_null() {
+        listener_address_string = CStr::from_ptr(listener_address).to_str().unwrap().to_owned();
     } else {
         return ptr::null_mut();
     }
@@ -1194,20 +1201,21 @@ pub unsafe extern "C" fn comms_config_create(
         return ptr::null_mut();
     }
 
-    let net_address = address_string.parse::<NetAddress>();
+    let listener_address = listener_address_string.parse::<NetAddress>();
+    let control_service_address = control_service_address_string.parse::<NetAddress>();
 
-    match net_address {
-        Ok(net_address) => {
+    match (listener_address, control_service_address) {
+        (Ok(listener_address), Ok(control_service_address)) => {
             let ni = NodeIdentity::new(
                 (*secret_key).clone(),
-                net_address.clone(),
+                control_service_address,
                 PeerFeatures::COMMUNICATION_CLIENT,
             )
             .unwrap();
 
             let config = TariCommsConfig {
                 node_identity: Arc::new(ni.clone()),
-                peer_connection_listening_address: net_address.host().parse().unwrap(),
+                peer_connection_listening_address: listener_address,
                 socks_proxy_address: None,
                 control_service: ControlServiceConfig {
                     listener_address: ni.control_service_address(),
@@ -1224,7 +1232,7 @@ pub unsafe extern "C" fn comms_config_create(
 
             Box::into_raw(Box::new(config))
         },
-        Err(_) => ptr::null_mut(),
+        _ => ptr::null_mut(),
     }
 }
 
@@ -2073,6 +2081,7 @@ mod test {
             let address_alice_str: *const c_char = CString::into_raw(address_alice.clone()) as *const c_char;
             let alice_config = comms_config_create(
                 address_alice_str,
+                CString::into_raw(CString::new("127.0.0.1:0").unwrap()),
                 db_name_alice_str,
                 db_path_alice_str,
                 secret_key_alice,
@@ -2087,7 +2096,13 @@ mod test {
             let db_path_bob_str: *const c_char = CString::into_raw(db_path_bob.clone()) as *const c_char;
             let address_bob = CString::new("127.0.0.1:21441").unwrap();
             let address_bob_str: *const c_char = CString::into_raw(address_bob.clone()) as *const c_char;
-            let bob_config = comms_config_create(address_bob_str, db_name_bob_str, db_path_bob_str, secret_key_bob);
+            let bob_config = comms_config_create(
+                address_bob_str,
+                CString::into_raw(CString::new("127.0.0.1:0").unwrap()),
+                db_name_bob_str,
+                db_path_bob_str,
+                secret_key_bob,
+            );
             let bob_wallet = wallet_create(bob_config);
 
             let mut peer_added = wallet_add_base_node_peer(alice_wallet, public_key_bob.clone(), address_bob_str);

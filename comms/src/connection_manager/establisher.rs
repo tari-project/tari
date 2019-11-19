@@ -20,13 +20,14 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::{error::ConnectionManagerError, types::PeerConnectionJoinHandle, Result};
+use super::{error::ConnectionManagerError, Result};
 use crate::{
     connection::{
         curve_keypair::{CurvePublicKey, CurveSecretKey},
         net_address::ip::SocketAddress,
-        peer_connection::ConnectionId,
+        peer_connection::PeerConnectionJoinHandle,
         types::{Direction, Linger},
+        zmq::ZmqIdentity,
         Connection,
         CurveEncryption,
         EstablishedConnection,
@@ -38,10 +39,11 @@ use crate::{
     control_service::ControlServiceClient,
     message::FrameSet,
     peer_manager::{NodeIdentity, Peer, PeerManager},
+    types::DEFAULT_LISTENER_ADDRESS,
 };
 use futures::channel::mpsc::Sender;
 use log::*;
-use std::{net::IpAddr, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 
 const LOG_TARGET: &str = "comms::connection_manager::establisher";
 
@@ -58,8 +60,8 @@ pub struct PeerConnectionConfig {
     pub max_connect_retries: u16,
     /// The address of the SOCKS proxy to use for this connection
     pub socks_proxy_address: Option<SocketAddress>,
-    /// The host to bind to when creating inbound connections
-    pub host: IpAddr,
+    /// The address to bind to for the listening connection (Default: DEFAULT_LISTENER_ADDRESS)
+    pub listening_address: NetAddress,
     /// The length of time to wait for the requested peer connection to be established before timing out.
     /// Depending on the network, this should be long enough to allow a single back-and-forth
     /// communication between peers.
@@ -74,7 +76,7 @@ impl Default for PeerConnectionConfig {
             max_connect_retries: 5,
             socks_proxy_address: None,
             peer_connection_establish_timeout: Duration::from_secs(20),
-            host: "0.0.0.0".parse().unwrap(),
+            listening_address: DEFAULT_LISTENER_ADDRESS.parse().unwrap(),
         }
     }
 }
@@ -152,6 +154,7 @@ impl ConnectionEstablisher {
                 .set_name(format!("outbound-control-port-conn-{}", peer.node_id).as_str())
                 .set_linger(Linger::Never)
                 .set_backlog(1)
+                .set_send_hwm(5)
                 .set_socks_proxy_addr(config.socks_proxy_address.clone())
                 .set_max_message_size(Some(config.max_message_size))
                 .establish(&address)
@@ -213,7 +216,7 @@ impl ConnectionEstablisher {
                 Err(err) => {
                     debug!(
                         target: LOG_TARGET,
-                        "Control service ping pong check failed because '{}'", err
+                        "Control service ping pong check failed because '{:?}'", err
                     );
                 },
             }
@@ -241,9 +244,10 @@ impl ConnectionEstablisher {
     /// [PeerConnection] worker thread or an error.
     pub fn establish_outbound_peer_connection(
         &self,
-        conn_id: ConnectionId,
         address: NetAddress,
         curve_public_key: CurvePublicKey,
+        connection_identity: ZmqIdentity,
+        peer_identity: ZmqIdentity,
     ) -> Result<(Arc<PeerConnection>, PeerConnectionJoinHandle)>
     {
         debug!(target: LOG_TARGET, "Establishing outbound connection to {}", address);
@@ -251,24 +255,25 @@ impl ConnectionEstablisher {
 
         let context = self
             .new_context_builder()
-            .set_id(conn_id)
             .set_direction(Direction::Outbound)
+            .set_connection_identity(connection_identity)
+            .set_peer_identity(peer_identity)
             .set_address(address)
+            .set_shutdown_on_send_failure(true)
             .set_curve_encryption(CurveEncryption::Client {
                 secret_key,
                 public_key,
                 server_public_key: curve_public_key,
             })
             .set_message_sink_channel(self.message_sink_channel.clone())
-            .build()?;
+            .finish()?;
 
-        let mut connection = PeerConnection::new();
-        let worker_handle = connection.start(context)?;
+        let (connection, worker_handle) = PeerConnection::connect(context)?;
         connection
-            .wait_connected_or_failure(&self.config.peer_connection_establish_timeout)
+            .wait_connected_or_failure(self.config.peer_connection_establish_timeout)
             .or_else(|err| {
-                error!(target: LOG_TARGET, "Outbound connection failed: {:?}", err);
-                Err(ConnectionManagerError::ConnectionError(err))
+                debug!(target: LOG_TARGET, "Outbound connection failed: {:?}", err);
+                Err(err)
             })?;
 
         let connection = Arc::new(connection);
@@ -276,42 +281,38 @@ impl ConnectionEstablisher {
         Ok((connection, worker_handle))
     }
 
-    /// Establish a new inbound peer connection.
+    /// Establish a new inbound peer connection listening on `PeerConnectionConfig::listening_address`.
     ///
     /// ### Arguments
-    /// `conn_id`: [ConnectionId] - The id to use for the connection
     /// `curve_secret_key`: [&CurveSecretKey] - The zmq Curve25519 secret key for the connection
     ///
     /// Returns an Arc<[PeerConnection]> in `Listening` state and the [std::thread::JoinHandle] of the
     /// [PeerConnection] worker thread or an error.
-    pub fn establish_inbound_peer_connection(
+    pub fn establish_peer_listening_connection(
         &self,
-        conn_id: ConnectionId,
         curve_secret_key: CurveSecretKey,
     ) -> Result<(Arc<PeerConnection>, PeerConnectionJoinHandle)>
     {
-        // Providing port 0 tells the OS to allocate a port for us
-        let address = NetAddress::IP((self.config.host, 0).into());
+        let address = self.config.listening_address.clone();
         debug!(target: LOG_TARGET, "Establishing inbound connection to {}", address);
 
         let context = self
             .new_context_builder()
-            .set_id(conn_id)
             .set_direction(Direction::Inbound)
             .set_address(address)
+            .set_shutdown_on_send_failure(false)
             .set_curve_encryption(CurveEncryption::Server {
                 secret_key: curve_secret_key,
             })
             .set_message_sink_channel(self.message_sink_channel.clone())
-            .build()?;
+            .finish()?;
 
-        let mut connection = PeerConnection::new();
-        let worker_handle = connection.start(context)?;
+        let (connection, worker_handle) = PeerConnection::listen(context)?;
         connection
-            .wait_listening_or_failure(&self.config.peer_connection_establish_timeout)
+            .wait_listening_or_failure(self.config.peer_connection_establish_timeout)
             .or_else(|err| {
-                error!(target: LOG_TARGET, "Unable to establish inbound connection: {:?}", err);
-                Err(ConnectionManagerError::ConnectionError(err))
+                debug!(target: LOG_TARGET, "Unable to establish inbound connection: {:?}", err);
+                Err(err)
             })?;
 
         debug!(

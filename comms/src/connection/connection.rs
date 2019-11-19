@@ -24,7 +24,7 @@ use crate::{
     connection::{
         net_address::ip::SocketAddress,
         types::{Direction, Linger, Result, SocketEstablishment, SocketType},
-        zmq::{CurveEncryption, InprocAddress, ZmqContext, ZmqEndpoint},
+        zmq::{CurveEncryption, InprocAddress, ZmqContext, ZmqEndpoint, ZmqIdentity},
         ConnectionError,
     },
     message::FrameSet,
@@ -69,9 +69,10 @@ pub struct Connection<'a> {
     pub(super) name: String,
     pub(super) curve_encryption: CurveEncryption,
     pub(super) direction: Direction,
-    pub(super) identity: Option<String>,
+    pub(super) identity: Option<ZmqIdentity>,
     pub(super) linger: Linger,
     pub(super) max_message_size: Option<u64>,
+    pub(super) immediate: Option<bool>,
     pub(super) monitor_addr: Option<InprocAddress>,
     pub(super) recv_hwm: Option<i32>,
     pub(super) send_hwm: Option<i32>,
@@ -93,6 +94,7 @@ impl<'a> Connection<'a> {
             direction,
             identity: None,
             linger: Linger::Never,
+            immediate: None,
             max_message_size: None,
             monitor_addr: None,
             recv_hwm: None,
@@ -119,7 +121,7 @@ impl<'a> Connection<'a> {
     }
 
     /// Set the connection identity
-    pub fn set_identity(mut self, identity: &str) -> Self {
+    pub fn set_identity(mut self, identity: &[u8]) -> Self {
         self.identity = Some(identity.to_owned());
         self
     }
@@ -128,6 +130,15 @@ impl<'a> Connection<'a> {
     /// for the specified outbound connection.
     pub fn set_backlog(mut self, backlog: i32) -> Self {
         self.backlog = Some(backlog);
+        self
+    }
+
+    /// From zMQ docs: By default queues will fill on outgoing connections even if the connection has not completed.
+    /// This can lead to "lost" messages on sockets with round-robin routing (REQ, PUSH, DEALER). If this option is set
+    /// to 1, messages shall be queued only to completed connections. This will cause the socket to block if there are
+    /// no other connections, but will prevent queues from filling on pipes awaiting connection.
+    pub fn set_immediate(mut self, immediate: bool) -> Self {
+        self.immediate = Some(immediate);
         self
     }
 
@@ -222,7 +233,7 @@ impl<'a> Connection<'a> {
         }
 
         if let Some(ident) = self.identity {
-            socket.set_identity(ident.as_bytes()).map_err(config_error_mapper)?;
+            socket.set_identity(ident.as_slice()).map_err(config_error_mapper)?;
         }
 
         if let Some(v) = self.max_message_size {
@@ -232,6 +243,10 @@ impl<'a> Connection<'a> {
         }
 
         set_linger(&socket, self.linger)?;
+
+        if let Some(immediate) = self.immediate {
+            socket.set_immediate(immediate).map_err(config_error_mapper)?;
+        }
 
         if let Some(backlog) = self.backlog {
             socket.set_backlog(backlog).map_err(config_error_mapper)?;
@@ -466,6 +481,7 @@ impl Drop for EstablishedConnection {
             self.get_connected_address(),
             self.name,
         );
+        let _ = self.set_linger(Linger::Never);
     }
 }
 
@@ -503,8 +519,9 @@ mod test {
             .set_heartbeat_remote_ttl(Duration::from_millis(1000))
             .set_heartbeat_timeout(Duration::from_millis(1001))
             .set_heartbeat_interval(Duration::from_millis(1002))
-            .set_identity("identity")
+            .set_identity(b"identity")
             .set_linger(Linger::Timeout(200))
+            .set_immediate(true)
             .set_max_message_size(Some(123))
             .set_receive_hwm(1)
             .set_send_hwm(2)

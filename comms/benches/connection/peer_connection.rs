@@ -73,7 +73,7 @@ fn build_context(
 ) -> PeerConnectionContext
 {
     PeerConnectionContextBuilder::new()
-        .set_id("benchmark")
+        .set_peer_identity("benchmark")
         .set_direction(dir)
         .set_max_msg_size(512 * 1024)
         .set_address(addr.clone())
@@ -150,10 +150,10 @@ fn bench_peer_connection(c: &mut Criterion) {
     let p2_ctx = build_context(&ctx, Direction::Outbound, &addr, &consumer2);
 
     // Start peer connections on either end
-    let mut p1 = PeerConnection::new();
+    let mut p1 = PeerConnection::connect();
     p1.start(p1_ctx).unwrap();
 
-    let mut p2 = PeerConnection::new();
+    let mut p2 = PeerConnection::connect();
     p2.start(p2_ctx).unwrap();
 
     let (done1_tx, done1_rx) = channel();

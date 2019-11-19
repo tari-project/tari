@@ -62,8 +62,8 @@ pub enum NetAddressError {
 /// assert!(address.is_ok());
 /// assert!(address.unwrap().is_onion());
 /// ```
-#[derive(Clone, PartialEq, Eq, Debug, Hash, Deserialize, Serialize)]
 /// Represents an address which can be used to reach a node on the network
+#[derive(Clone, PartialEq, Eq, Debug, Hash, Deserialize, Serialize)]
 pub enum NetAddress {
     IpDns(IpDnsAddress),
     /// IPv4 and IPv6
@@ -190,7 +190,7 @@ impl ZmqEndpoint for NetAddress {
         match *self {
             NetAddress::IpDns(ref addr) => format!("tcp://{}:{}", addr.host, addr.port),
             NetAddress::IP(ref addr) => format!("tcp://{}:{}", addr.ip(), addr.port()),
-            NetAddress::Onion(ref addr) => format!("tcp://{}:{}", addr.public_key, addr.port),
+            NetAddress::Onion(ref addr) => format!("tcp://{}.onion:{}", addr.public_key, addr.port),
             // TODO: need to confirm this works
             NetAddress::I2P(ref addr) => format!("tcp://{}.b32.i2p", addr.name),
         }

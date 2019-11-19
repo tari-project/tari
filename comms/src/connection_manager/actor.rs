@@ -64,6 +64,7 @@ pub enum ConnectionManagerRequest {
             oneshot::Sender<Result<Arc<PeerConnection>, ConnectionManagerError>>,
         )>,
     ),
+    GetConnection(Box<(NodeId, oneshot::Sender<Option<Arc<PeerConnection>>>)>),
     GetActiveConnectionCount(oneshot::Sender<usize>),
     SetLastConnectionSucceeded(NodeId),
     SetLastConnectionFailed(NodeId),
@@ -120,6 +121,20 @@ impl ConnectionManagerRequester {
             .await
             .map_err(|_| ConnectionManagerError::SendToActorFailed)
     }
+
+    /// Attempt to connect to a remote peer
+    pub async fn get_connection(
+        &mut self,
+        node_id: NodeId,
+    ) -> Result<Option<Arc<PeerConnection>>, ConnectionManagerError>
+    {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.sender
+            .send(ConnectionManagerRequest::GetConnection(Box::new((node_id, reply_tx))))
+            .await
+            .map_err(|_| ConnectionManagerError::SendToActorFailed)?;
+        reply_rx.await.map_err(|_| ConnectionManagerError::ActorRequestCanceled)
+    }
 }
 
 /// # Connection Manager Actor
@@ -154,7 +169,7 @@ where
     TConnectionManager::Future: Send + Unpin,
 {
     /// Start the connection manager actor
-    pub async fn start(mut self) {
+    pub async fn run(mut self) {
         let mut shutdown_signal = self
             .shutdown_signal
             .take()
@@ -223,6 +238,15 @@ where
                 };
 
                 self.pending_dial_tasks.push(connect_future.boxed());
+            },
+            ConnectionManagerRequest::GetConnection(boxed) => {
+                let (node_id, reply_tx) = *boxed;
+                log_if_error!(
+                    target: LOG_TARGET,
+                    "Error sending on reply oneshot",
+                    reply_tx.send(self.connection_manager.get_connection(&node_id)),
+                    no_fmt
+                );
             },
             ConnectionManagerRequest::GetActiveConnectionCount(reply_tx) => {
                 if let Err(err) = reply_tx.send(self.connection_manager.get_active_connection_count()) {
@@ -294,7 +318,7 @@ mod test {
         let shutdown = Shutdown::new();
         let (mut requester, service) = create(1, dialer.clone(), shutdown.to_signal());
 
-        rt.spawn(service.start());
+        rt.spawn(service.run());
 
         let node_id = NodeId::new();
         let _ = rt.block_on(requester.dial_node(node_id.clone())).unwrap();
@@ -310,7 +334,7 @@ mod test {
         let shutdown = Shutdown::new();
         let (mut requester, service) = create(1, dialer.clone(), shutdown.to_signal());
 
-        rt.spawn(service.start());
+        rt.spawn(service.run());
 
         let n = rt.block_on(requester.get_active_connection_count()).unwrap();
         assert_eq!(n, 0);

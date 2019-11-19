@@ -39,7 +39,7 @@ use std::{
 
 const LOG_TARGET: &str = "comms::connection::monitor";
 
-#[derive(Debug, Error, PartialEq)]
+#[derive(Debug, Error, PartialEq, Clone)]
 pub enum ConnectionMonitorError {
     #[error(msg_embedded, non_std, no_from)]
     CreateSocketFailed(String),

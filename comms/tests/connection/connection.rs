@@ -139,7 +139,7 @@ fn outbound_send_recv_inproc() {
 
     let conn = Connection::new(&ctx, Direction::Outbound)
         .set_linger(Linger::Indefinitely)
-        .set_identity("identity")
+        .set_identity(b"identity")
         .establish(&addr)
         .unwrap();
 
@@ -178,7 +178,7 @@ fn outbound_send_recv_encrypted_tcp() {
             public_key: cpk,
             server_public_key: spk,
         })
-        .set_identity("identity")
+        .set_identity(b"identity")
         .establish(&addr)
         .unwrap();
 

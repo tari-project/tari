@@ -43,7 +43,9 @@ use std::{
     time::{Duration, Instant},
 };
 use tari_shutdown::ShutdownSignal;
+use tari_utilities::ByteArray;
 use tokio::timer;
+use tokio_executor::blocking;
 
 const LOG_TARGET: &str = "comms::outbound_message_service::worker";
 
@@ -62,7 +64,7 @@ impl DialState {
     pub fn new(node_id: NodeId) -> Self {
         Self {
             node_id,
-            attempts: 1,
+            attempts: 0,
             cancel_rx: None,
         }
     }
@@ -91,10 +93,10 @@ impl DialState {
 
     /// Calculates the offset in seconds based on `self.attempts`.
     fn exponential_backoff_offset(&self) -> u64 {
-        if self.attempts <= 1 {
+        if self.attempts == 0 {
             return 0;
         }
-        let secs = 0.8 * (f32::powf(2.0, self.attempts as f32) - 1.0);
+        let secs = 1.5 * (f32::powf(2.0, self.attempts as f32) - 1.0);
         cmp::max(2, secs.ceil() as u64)
     }
 }
@@ -144,12 +146,22 @@ where TMsgStream: Stream<Item = OutboundMessage> + Unpin
         loop {
             futures::select! {
                 new_message = self.message_stream.select_next_some() => {
-                    if let Some(conn) = self.get_active_connection(&new_message.peer_node_id) {
+                    if let Some(conn) = self.get_active_connection(&new_message.peer_node_id).await {
                         debug!(
                             target: LOG_TARGET,
                             "Cached connection found for NodeId={}",
                             new_message.peer_node_id
                         );
+                        // Connection already established (perhaps the node connected in while OMS was sleeping)
+                        // Let's cancel the dial request if there is one
+                        if let Some(cancel_dial) = self.dial_cancel_signals.remove(&new_message.peer_node_id) {
+                            debug!(
+                                target: LOG_TARGET,
+                                "Cancelling dial request for NodeId '{}' because an active connection was found.",
+                                new_message.peer_node_id
+                            );
+                            let _ = cancel_dial.send(());
+                        }
                         if let Err(err) = self.send_message(&conn, new_message).await {
                             warn!(
                                 target: LOG_TARGET,
@@ -215,10 +227,10 @@ where TMsgStream: Stream<Item = OutboundMessage> + Unpin
         }
     }
 
-    fn get_active_connection(&mut self, node_id: &NodeId) -> Option<Arc<PeerConnection>> {
+    async fn get_active_connection(&mut self, node_id: &NodeId) -> Option<Arc<PeerConnection>> {
         match self.active_connections.get(node_id) {
             Some(conn) => {
-                if conn.is_active() {
+                if conn.is_active() && self.test_connection(Arc::clone(conn), node_id).await {
                     Some(Arc::clone(&conn))
                 } else {
                     // Side effect: remove the inactive connection
@@ -228,6 +240,11 @@ where TMsgStream: Stream<Item = OutboundMessage> + Unpin
             },
             None => None,
         }
+    }
+
+    async fn test_connection(&self, conn: Arc<PeerConnection>, node_id: &NodeId) -> bool {
+        let identity = node_id.to_vec();
+        blocking::run(move || conn.test_connection(identity).is_ok()).await
     }
 
     fn cancel_pending_connection_attempts(&mut self) {
@@ -255,7 +272,7 @@ where TMsgStream: Stream<Item = OutboundMessage> + Unpin
         let mut delay = timer::delay(Instant::now() + offset).fuse();
         futures::select! {
             _ = delay => {
-                debug!(target: LOG_TARGET, "Retry delay expired. Attempting to connect...");
+                debug!(target: LOG_TARGET, "[Attempt {}] Connecting to NodeId '{}'...", state.attempts, state.node_id);
                 let result = connection_manager
                     .dial_node(state.node_id.clone())
                     .await
@@ -272,7 +289,7 @@ where TMsgStream: Stream<Item = OutboundMessage> + Unpin
     fn enqueue_new_message(&mut self, msg: OutboundMessage) -> Option<DialState> {
         trace!(
             target: LOG_TARGET,
-            "{} attempt(s) in progress",
+            "A total of {} connection attempt(s) are in progress",
             self.pending_connect_requests.len()
         );
         match self.pending_connect_requests.get_mut(&msg.peer_node_id) {
@@ -293,7 +310,7 @@ where TMsgStream: Stream<Item = OutboundMessage> + Unpin
                 let node_id = msg.peer_node_id.clone();
                 debug!(
                     target: LOG_TARGET,
-                    "New connection attempt required for NodeId={}.", node_id
+                    "Connection attempt required for NodeId={}.", node_id
                 );
                 self.pending_connect_requests.insert(node_id.clone(), vec![msg]);
                 Some(DialState::new(node_id))
@@ -395,7 +412,11 @@ where TMsgStream: Stream<Item = OutboundMessage> + Unpin
     }
 
     async fn send_message(&self, conn: &PeerConnection, message: OutboundMessage) -> Result<(), OutboundServiceError> {
-        let OutboundMessage { flags, body, .. } = message;
+        let OutboundMessage {
+            flags,
+            body,
+            peer_node_id,
+        } = message;
         let envelope = Envelope::construct_signed(
             self.node_identity.secret_key(),
             self.node_identity.public_key(),
@@ -404,7 +425,15 @@ where TMsgStream: Stream<Item = OutboundMessage> + Unpin
         )?;
         let frame = envelope.to_encoded_bytes()?;
 
-        conn.send(vec![frame]).map_err(OutboundServiceError::ConnectionError)
+        trace!(
+            target: LOG_TARGET,
+            "[NodeId={}] Sending message on {} connection to NodeID '{}'",
+            self.node_identity.node_id(),
+            conn.direction(),
+            peer_node_id
+        );
+        conn.send_to_identity(peer_node_id.to_vec(), vec![frame])
+            .map_err(OutboundServiceError::PeerConnectionError)
     }
 }
 
@@ -423,6 +452,26 @@ mod test {
     use tari_shutdown::Shutdown;
     use tari_test_utils::collect_stream;
     use tokio::runtime::Runtime;
+
+    fn assert_send_msg(control_msg: peer_connection::ControlMessage, msg: &[u8]) {
+        match control_msg {
+            peer_connection::ControlMessage::SendMsg(_, mut frames, reply_tx) => {
+                let envelope = Envelope::decode(frames.remove(0)).unwrap();
+                assert_eq!(envelope.body.as_slice(), msg);
+                reply_tx.send(Ok(())).unwrap();
+            },
+            msg => panic!("Unexpected control message '{:?}'", msg),
+        }
+    }
+
+    fn assert_test_connection(control_msg: peer_connection::ControlMessage) {
+        match control_msg {
+            peer_connection::ControlMessage::TestConnection(_, reply_tx) => {
+                reply_tx.send(Ok(())).unwrap();
+            },
+            msg => panic!("Unexpected control message '{:?}'", msg),
+        }
+    }
 
     #[test]
     fn multiple_send_in_batch() {
@@ -470,7 +519,7 @@ mod test {
         // Then, the stream should be empty (try_next errors on Poll::Pending)
         assert!(conn_man_rx.try_next().is_err());
 
-        let (conn, conn_rx) = PeerConnection::new_with_connecting_state_for_test();
+        let (conn, conn_rx) = PeerConnection::new_with_connecting_state_for_test("127.0.0.1:0".parse().unwrap());
         let conn = Arc::new(conn);
 
         // Check that the dial request for node_id1 is made and, when a peer connection is passed back,
@@ -494,7 +543,8 @@ mod test {
                             assert_send_msg(msg, b"D");
                         },
                         _ if node_id == node_id2 => {
-                            let (conn2, rx) = PeerConnection::new_with_connecting_state_for_test();
+                            let (conn2, rx) =
+                                PeerConnection::new_with_connecting_state_for_test("127.0.0.1:0".parse().unwrap());
                             assert!(reply_tx.send(Ok(Arc::new(conn2))).is_ok());
                             let msg = rx.recv_timeout(Duration::from_millis(100)).unwrap();
                             assert_send_msg(msg, b"B");
@@ -513,6 +563,8 @@ mod test {
         )))
         .unwrap();
 
+        let msg = conn_rx.recv_timeout(Duration::from_millis(100)).unwrap();
+        assert_test_connection(msg);
         let msg = conn_rx.recv_timeout(Duration::from_millis(100)).unwrap();
         assert_send_msg(msg, b"E");
 
@@ -536,40 +588,30 @@ mod test {
         rt.shutdown_on_idle();
     }
 
-    fn assert_send_msg(control_msg: peer_connection::ControlMessage, msg: &[u8]) {
-        match control_msg {
-            peer_connection::ControlMessage::SendMsg(mut frames) => {
-                let envelope = Envelope::decode(frames.remove(0)).unwrap();
-                assert_eq!(envelope.body.as_slice(), msg);
-            },
-            _ => panic!(),
-        }
-    }
-
     #[test]
     fn exponential_backoff_calc() {
         let mut state = DialState::new(NodeId::new());
         state.attempts = 0;
         assert_eq!(state.exponential_backoff_offset(), 0);
         state.attempts = 1;
-        assert_eq!(state.exponential_backoff_offset(), 0);
+        assert_eq!(state.exponential_backoff_offset(), 2);
         state.attempts = 2;
-        assert_eq!(state.exponential_backoff_offset(), 3);
+        assert_eq!(state.exponential_backoff_offset(), 5);
         state.attempts = 3;
-        assert_eq!(state.exponential_backoff_offset(), 6);
+        assert_eq!(state.exponential_backoff_offset(), 11);
         state.attempts = 4;
-        assert_eq!(state.exponential_backoff_offset(), 12);
+        assert_eq!(state.exponential_backoff_offset(), 23);
         state.attempts = 5;
-        assert_eq!(state.exponential_backoff_offset(), 25);
+        assert_eq!(state.exponential_backoff_offset(), 47);
         state.attempts = 6;
-        assert_eq!(state.exponential_backoff_offset(), 51);
+        assert_eq!(state.exponential_backoff_offset(), 95);
         state.attempts = 7;
-        assert_eq!(state.exponential_backoff_offset(), 102);
+        assert_eq!(state.exponential_backoff_offset(), 191);
         state.attempts = 8;
-        assert_eq!(state.exponential_backoff_offset(), 204);
+        assert_eq!(state.exponential_backoff_offset(), 383);
         state.attempts = 9;
-        assert_eq!(state.exponential_backoff_offset(), 409);
+        assert_eq!(state.exponential_backoff_offset(), 767);
         state.attempts = 10;
-        assert_eq!(state.exponential_backoff_offset(), 819);
+        assert_eq!(state.exponential_backoff_offset(), 1535);
     }
 }

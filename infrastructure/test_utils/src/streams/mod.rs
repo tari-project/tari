@@ -55,7 +55,7 @@ macro_rules! collect_stream {
 
         $runtime
             .block_on($stream.take($take).collect::<Vec<_>>().timeout($timeout))
-            .expect("Timeout before stream could collect $take item(s)")
+            .expect(format!("Timeout before stream could collect {} item(s)", $take).as_str())
     }};
     ($runtime:expr, $stream:expr, timeout=$timeout:expr $(,)?) => {{
         use futures::StreamExt as __FuturesStreamExt;

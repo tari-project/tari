@@ -30,4 +30,6 @@ message RequestConnectionOutcome {
     string address = 3;
     /// If this connection was not accepted, the rejection reason is given
     RejectReason reject_reason = 4;
+    /// The identity to use when connecting
+    bytes identity = 5;
 }

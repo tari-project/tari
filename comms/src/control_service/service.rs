@@ -29,7 +29,7 @@ use crate::{
     connection::{net_address::ip::SocketAddress, NetAddress, ZmqContext},
     connection_manager::ConnectionManager,
     peer_manager::NodeIdentity,
-    types::DEFAULT_LISTENER_ADDRESS,
+    types::DEFAULT_CONTROL_PORT_ADDRESS,
 };
 use log::*;
 use std::{
@@ -55,7 +55,7 @@ pub struct ControlServiceConfig {
 
 impl Default for ControlServiceConfig {
     fn default() -> Self {
-        let listener_address = DEFAULT_LISTENER_ADDRESS.parse::<NetAddress>().unwrap();
+        let listener_address = DEFAULT_CONTROL_PORT_ADDRESS.parse::<NetAddress>().unwrap();
         ControlServiceConfig {
             listener_address,
             socks_proxy_address: None,
@@ -94,7 +94,7 @@ impl ControlService {
 
     pub fn serve(self, connection_manager: Arc<ConnectionManager>) -> Result<ControlServiceHandle> {
         let config = self.config;
-        Ok(ControlServiceWorker::start(self.context.clone(), self.node_identity, config, connection_manager)?.into())
+        Ok(ControlServiceWorker::run(self.context, self.node_identity, config, connection_manager)?.into())
     }
 }
 
@@ -109,7 +109,7 @@ pub struct ControlServiceHandle {
 impl ControlServiceHandle {
     /// Send a [ControlMessage::Shutdown] message to the worker thread.
     pub fn shutdown(&self) -> Result<()> {
-        warn!(target: LOG_TARGET, "Sending control service shutdown message");
+        info!(target: LOG_TARGET, "Sending control service shutdown message");
         self.sender
             .send(ControlMessage::Shutdown)
             .map_err(|_| ControlServiceError::ControlMessageSendFailed)
@@ -140,7 +140,7 @@ mod test {
         let control_service = ControlService::with_default_config(context, node_identity);
         assert_eq!(
             control_service.config.listener_address,
-            DEFAULT_LISTENER_ADDRESS.parse::<NetAddress>().unwrap()
+            DEFAULT_CONTROL_PORT_ADDRESS.parse::<NetAddress>().unwrap()
         );
         assert!(control_service.config.socks_proxy_address.is_none());
     }

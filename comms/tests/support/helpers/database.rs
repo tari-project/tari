@@ -22,6 +22,7 @@
 
 use std::path::PathBuf;
 use tari_storage::lmdb_store::{LMDBBuilder, LMDBError, LMDBStore};
+use tari_test_utils::paths::create_random_database_path;
 
 pub fn get_path(name: &str) -> String {
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -30,12 +31,13 @@ pub fn get_path(name: &str) -> String {
     path.to_str().unwrap().to_string()
 }
 
-// Initialize the datastore. Note: every test should have unique database name
+// Initialize the datastore.
 pub fn init_datastore(name: &str) -> Result<LMDBStore, LMDBError> {
-    let path = get_path(name);
-    let _ = std::fs::create_dir(&path).unwrap_or_default();
+    // TODO: work on database file cleanups
+    let path = create_random_database_path().join(get_path(name));
+    std::fs::create_dir_all(&path).unwrap();
     LMDBBuilder::new()
-        .set_path(&path)
+        .set_path(path.to_str().unwrap())
         .set_environment_size(10)
         .set_max_number_of_databases(2)
         .add_database(name, lmdb_zero::db::CREATE)

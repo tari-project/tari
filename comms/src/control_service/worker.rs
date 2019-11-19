@@ -36,14 +36,16 @@ use super::{
 use crate::{
     connection::{
         connection::EstablishedConnection,
-        types::Direction,
+        types::{Direction, Linger},
+        zmq::ZmqIdentity,
         Connection,
-        ConnectionError,
         CurvePublicKey,
         NetAddress,
+        PeerConnectionError,
         ZmqContext,
     },
     connection_manager::{ConnectionManager, EstablishLockResult},
+    consts::COMMS_RNG,
     message::{Envelope, EnvelopeBody, Frame, FrameSet, MessageEnvelopeHeader, MessageExt, MessageFlags},
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManagerError},
     types::CommsPublicKey,
@@ -51,6 +53,7 @@ use crate::{
 };
 use log::*;
 use prost::Message;
+use rand::RngCore;
 use std::{
     convert::TryInto,
     sync::{
@@ -88,7 +91,7 @@ impl ControlServiceWorker {
     /// - `context` - Connection context
     /// - `config` - ControlServiceConfig
     /// - `connection_manager` - the `ConnectionManager`
-    pub fn start(
+    pub fn run(
         context: ZmqContext,
         node_identity: Arc<NodeIdentity>,
         config: ControlServiceConfig,
@@ -110,16 +113,40 @@ impl ControlServiceWorker {
                 let mut worker = Self::new(node_identity, config, connection_manager, receiver, listener);
 
                 loop {
-                    match worker.run() {
+                    match worker.start() {
                         Ok(_) => {
                             info!(target: LOG_TARGET, "Control service exiting loop.");
+                            log_if_error!(
+                                target: LOG_TARGET,
+                                "Unable to set linger on listener connection because '{}'",
+                                worker.listener.set_linger(Linger::Never),
+                            );
                             break;
                         },
 
                         Err(err) => {
                             error!(target: LOG_TARGET, "Worker exited with an error: {:?}", err);
                             info!(target: LOG_TARGET, "Restarting control service after 1 second.");
+
+                            let Self {
+                                config,
+                                receiver,
+                                connection_manager,
+                                node_identity,
+                                listener,
+                                ..
+                            } = worker;
+
+                            log_if_error!(
+                                target: LOG_TARGET,
+                                "Failed to set linger on listener connection because '{}'",
+                                listener.set_linger(Linger::Never)
+                            );
+                            drop(listener);
                             thread::sleep(Duration::from_millis(1000));
+                            // Rebind
+                            let listener = Self::establish_listener(&context, &config)?;
+                            worker = Self::new(node_identity, config, connection_manager, receiver, listener);
                         },
                     }
                 }
@@ -149,15 +176,19 @@ impl ControlServiceWorker {
         }
     }
 
-    fn run(&mut self) -> Result<()> {
-        debug!(target: LOG_TARGET, "Control service started");
+    fn start(&mut self) -> Result<()> {
+        info!(
+            target: LOG_TARGET,
+            "Control service listening on {:?}",
+            self.listener.get_connected_address()
+        );
         loop {
             // Read incoming messages
-            if let Some(frames) = connection_try!(self.listener.receive(100)) {
-                debug!(target: LOG_TARGET, "Received {} frames", frames.len());
+            if let Some(frames) = connection_try!(self.listener.receive(1000)) {
+                trace!(target: LOG_TARGET, "Received {} frames", frames.len());
                 match self.process_message(frames) {
                     Ok(_) => info!(target: LOG_TARGET, "Message processed"),
-                    Err(err) => error!(target: LOG_TARGET, "Error when processing message: {:?}", err),
+                    Err(err) => error!(target: LOG_TARGET, "Error when processing message {:?}", err),
                 }
             }
 
@@ -195,6 +226,13 @@ impl ControlServiceWorker {
             return Ok(());
         }
 
+        use tari_utilities::hex::Hex;
+        trace!(
+            target: LOG_TARGET,
+            "{:?}",
+            frames.iter().map(|f| f.to_hex()).collect::<Vec<_>>()
+        );
+
         let identity_frame = frames.remove(0);
         let envelope_frame = frames.remove(0);
 
@@ -215,6 +253,8 @@ impl ControlServiceWorker {
         }
 
         let decrypted_body = self.decrypt_body(&envelope.body, &envelope_header.public_key)?;
+        trace!(target: LOG_TARGET, "decrypted_body = {:?}", decrypted_body.to_hex());
+
         let body = EnvelopeBody::decode(decrypted_body)?;
 
         debug!(target: LOG_TARGET, "Handling message");
@@ -300,9 +340,19 @@ impl ControlServiceWorker {
                     None,
                 )?;
 
+                debug!(
+                    target: LOG_TARGET,
+                    "Successfully updated peer with node id '{}' and features '{:?}'", node_id, peer_features,
+                );
+
                 peer
             },
             Err(PeerManagerError::PeerNotFoundError) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Adding peer with node id '{}' and features '{:?}'", node_id, peer_features,
+                );
+
                 let peer = Peer::new(
                     public_key.clone(),
                     node_id,
@@ -313,15 +363,11 @@ impl ControlServiceWorker {
 
                 pm.add_peer(peer.clone())
                     .map_err(ControlServiceError::PeerManagerError)?;
+
                 peer
             },
             Err(err) => return Err(ControlServiceError::PeerManagerError(err)),
         };
-
-        // TODO: SECURITY The node ID is not a verified value at this point (PeerNotFoundError branch above).
-        //       An attacker can insert any node id they want to get information about other peers connections
-        //       to this node. For instance, if they already have an active connection.
-        //       The public key should be used as that is validated by the message signature.
 
         let conn_manager = &self.connection_manager;
         let establish_lock_result = conn_manager.try_acquire_establish_lock(&peer.node_id, || {
@@ -374,61 +420,67 @@ impl ControlServiceWorker {
     ) -> Result<()>
     {
         let conn_manager = &self.connection_manager;
-        if let Some(conn) = conn_manager.get_connection(peer) {
-            if conn.is_active() {
-                debug!(
-                    target: LOG_TARGET,
-                    "Already have active connection to peer. Rejecting the request for connection."
-                );
-                self.reject_connection(&envelope_header, identity_frame, RejectReason::ExistingConnection)?;
-                return Ok(());
-            }
+        if conn_manager.get_connection(peer).is_some() {
+            log_if_error!(
+                target: LOG_TARGET,
+                "Failed to disconnect stale connection because '{}'",
+                conn_manager.disconnect_peer(&peer.node_id)
+            );
         }
 
         conn_manager
-            .with_new_inbound_connection(&peer, |new_inbound_conn, curve_public_key| {
-                let address = new_inbound_conn
+            .with_listener_connection(&peer, |inbound_conn, curve_public_key| {
+                let listener_address = inbound_conn
                     .get_address()
-                    .ok_or(ControlServiceError::ConnectionAddressNotEstablished)?;
+                    .ok_or(ControlServiceError::ListenerAddressNotEstablished)?;
 
-                debug!(
-                    target: LOG_TARGET,
-                    "[NodeId={}] Inbound peer connection established on address {}", peer.node_id, address
-                );
-
-                // Create an address which can be connected to externally
                 let our_host = self.node_identity.control_service_address().host();
-                let external_address = address
-                    .maybe_port()
-                    .map(|port| format!("{}:{}", our_host, port))
-                    .or(Some(our_host))
-                    .unwrap()
+                // Create an address which can be connected to externally
+                let external_address = format!("{}:{}", our_host, listener_address.maybe_port().unwrap_or(0))
                     .parse()
                     .map_err(ControlServiceError::NetAddressError)?;
 
                 debug!(
                     target: LOG_TARGET,
-                    "Accepting peer connection request for NodeId={:?} on address {}", peer.node_id, external_address
+                    "Allowing peer access to listener connection on address '{}'", external_address
                 );
 
-                self.accept_connection_request(&envelope_header, identity_frame, curve_public_key, external_address)?;
+                let permitted_identity = self.generate_random_identity();
+                debug!(
+                    target: LOG_TARGET,
+                    "Accepting peer connection request for NodeId={} on address {}", peer.node_id, external_address,
+                );
 
-                match new_inbound_conn.wait_connected_or_failure(&self.config.requested_connection_timeout) {
+                inbound_conn.allow_identity(permitted_identity.clone(), peer.node_id.to_vec())?;
+
+                self.accept_connection_request(
+                    &envelope_header,
+                    identity_frame,
+                    curve_public_key,
+                    external_address,
+                    permitted_identity,
+                )?;
+
+                match inbound_conn.wait_listening_or_failure(self.config.requested_connection_timeout) {
                     Ok(_) => {
                         debug!(
                             target: LOG_TARGET,
                             "Connection to peer connection for NodeId {} succeeded", peer.node_id,
                         );
 
-                        Ok(Some(new_inbound_conn))
+                        Ok(Some(inbound_conn))
                     },
-                    Err(ConnectionError::Timeout) => Ok(None),
-                    Err(err) => Err(ControlServiceError::ConnectionError(err)),
+                    Err(PeerConnectionError::OperationTimeout(_)) => Ok(None),
+                    Err(err) => Err(ControlServiceError::PeerConnectionError(err)),
                 }
             })
-            .map_err(|err| ControlServiceError::ConnectionProtocolFailed(format!("{}", err)))?;
+            .map_err(|err| ControlServiceError::ConnectionProtocolFailed(format!("{:?}", err)))?;
 
         Ok(())
+    }
+
+    fn generate_random_identity(&self) -> ZmqIdentity {
+        COMMS_RNG.with(|rng| rng.borrow_mut().next_u64().to_le_bytes().to_vec())
     }
 
     fn should_reject_collision(&self, node_id: &NodeId) -> bool {
@@ -451,6 +503,7 @@ impl ControlServiceWorker {
                 curve_public_key: Default::default(),
                 address: Default::default(),
                 reject_reason: reject_reason as i32,
+                identity: Vec::new(),
             },
         )
     }
@@ -461,6 +514,7 @@ impl ControlServiceWorker {
         identity: Frame,
         curve_public_key: CurvePublicKey,
         address: NetAddress,
+        permitted_identity: ZmqIdentity,
     ) -> Result<()>
     {
         self.send_reply(
@@ -472,6 +526,7 @@ impl ControlServiceWorker {
                 curve_public_key: curve_public_key.to_vec(),
                 address: address.to_string(),
                 reject_reason: RejectReason::None as i32,
+                identity: permitted_identity,
             },
         )
     }

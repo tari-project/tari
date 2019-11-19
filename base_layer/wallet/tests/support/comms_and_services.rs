@@ -44,6 +44,7 @@ use tokio::runtime::TaskExecutor;
 pub fn setup_comms_services<TSink>(
     executor: TaskExecutor,
     node_identity: Arc<NodeIdentity>,
+    listening_address: NetAddress,
     peers: Vec<NodeIdentity>,
     publisher: InboundDomainConnector<TSink>,
 ) -> (CommsNode, Dht)
@@ -53,7 +54,7 @@ where
 {
     let comms_config = CommsConfig {
         node_identity: Arc::clone(&node_identity),
-        peer_connection_listening_address: "127.0.0.1".parse().unwrap(),
+        peer_connection_listening_address: listening_address,
         socks_proxy_address: None,
         control_service: ControlServiceConfig {
             listener_address: node_identity.control_service_address(),

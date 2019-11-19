@@ -86,6 +86,8 @@ fn setup(
         .map(Arc::new)
         .unwrap();
 
+    connection_manager.run_listener().unwrap();
+
     (context, node_identity, peer_manager, connection_manager)
 }
 
@@ -149,6 +151,8 @@ fn request_connection() {
     let (peer_conn, peer_conn_handle) = factories::peer_connection::create()
         .with_peer_connection_context_factory(
             factories::peer_connection_context::create()
+                .with_peer_identity(peer.node_id.to_vec())
+                .with_connection_identity(outcome.identity)
                 .with_context(&context)
                 .with_direction(Direction::Outbound)
                 .with_address(outcome.address.parse().unwrap())
@@ -159,7 +163,7 @@ fn request_connection() {
         .unwrap();
 
     peer_conn
-        .wait_connected_or_failure(&Duration::from_millis(3000))
+        .wait_connected_or_failure(Duration::from_millis(3000))
         .unwrap();
 
     peer_conn.shutdown().unwrap();
@@ -189,6 +193,7 @@ fn ping_pong() {
     let client_conn = Connection::new(&context, Direction::Outbound)
         .establish(&listener_address)
         .unwrap();
+
     let client = ControlServiceClient::new(
         Arc::clone(&node_identity),
         node_identity.public_key().clone(),

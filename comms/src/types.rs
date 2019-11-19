@@ -30,7 +30,8 @@ use tari_storage::LMDBWrapper;
 use tari_utilities::ciphers::chacha20::ChaCha20;
 
 /// The default port that control services listen on
-pub const DEFAULT_LISTENER_ADDRESS: &str = "0.0.0.0:7899";
+pub const DEFAULT_CONTROL_PORT_ADDRESS: &str = "0.0.0.0:7899";
+pub const DEFAULT_LISTENER_ADDRESS: &str = "0.0.0.0:7898";
 
 /// Specify the digest type for the signature challenges
 pub type Challenge = Blake256;

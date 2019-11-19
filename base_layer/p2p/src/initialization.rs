@@ -23,10 +23,10 @@
 use crate::comms_connector::{InboundDomainConnector, PeerMessage};
 use derive_error::Error;
 use futures::{channel::mpsc, Sink};
-use std::{error::Error, net::IpAddr, sync::Arc, time::Duration};
+use std::{error::Error, sync::Arc, time::Duration};
 use tari_comms::{
     builder::{CommsBuilderError, CommsError, CommsNode},
-    connection::net_address::ip::SocketAddress,
+    connection::{net_address::ip::SocketAddress, NetAddress},
     connection_manager::PeerConnectionConfig,
     control_service::ControlServiceConfig,
     peer_manager::{node_identity::NodeIdentityError, NodeIdentity},
@@ -53,11 +53,11 @@ pub struct CommsConfig {
     pub control_service: ControlServiceConfig,
     /// An optional SOCKS address.
     pub socks_proxy_address: Option<SocketAddress>,
-    /// The host IP that all inbound peer connections will listen (bind) on. This is usually 0.0.0.0
-    pub peer_connection_listening_address: IpAddr,
+    /// The address that the inbound peer connection will listen (bind) on. The default is 0.0.0.0:7898
+    pub peer_connection_listening_address: NetAddress,
     /// Identity of this node on the network.
     pub node_identity: Arc<NodeIdentity>,
-    /// Path to the LMDB file.
+    /// Path to the LMDB data files.
     pub datastore_path: String,
     /// Name to use for the peer database
     pub peer_database_name: String,
@@ -110,7 +110,7 @@ where
         .configure_control_service(config.control_service)
         .configure_peer_connections(PeerConnectionConfig {
             socks_proxy_address: config.socks_proxy_address,
-            host: config.peer_connection_listening_address,
+            listening_address: config.peer_connection_listening_address,
             peer_connection_establish_timeout: config.establish_connection_timeout,
             ..Default::default()
         })

@@ -23,11 +23,11 @@
 use super::{TestFactory, TestFactoryError};
 
 use futures::channel::mpsc::Sender;
-use rand::{OsRng, Rng};
 use tari_comms::{
     connection::{
-        peer_connection::{ConnectionId, PeerConnectionContext},
+        peer_connection::PeerConnectionContext,
         types::Linger,
+        zmq::ZmqIdentity,
         CurveEncryption,
         CurvePublicKey,
         CurveSecretKey,
@@ -47,7 +47,8 @@ pub fn create<'c>() -> PeerConnectionContextFactory<'c> {
 pub struct PeerConnectionContextFactory<'c> {
     direction: Option<Direction>,
     context: Option<&'c ZmqContext>,
-    connection_id: Option<ConnectionId>,
+    connection_identity: Option<ZmqIdentity>,
+    peer_identity: Option<ZmqIdentity>,
     message_sink_channel: Option<Sender<FrameSet>>,
     server_public_key: Option<CurvePublicKey>,
     curve_keypair: Option<(CurveSecretKey, CurvePublicKey)>,
@@ -55,15 +56,12 @@ pub struct PeerConnectionContextFactory<'c> {
     linger: Option<Linger>,
 }
 
-fn random_connection_id() -> ConnectionId {
-    let rng = &mut OsRng::new().unwrap();
-    (0..8).map(|_| rng.gen::<u8>()).collect::<Vec<u8>>().into()
-}
-
 impl<'c> PeerConnectionContextFactory<'c> {
     factory_setter!(with_direction, direction, Option<Direction>);
 
-    factory_setter!(with_connection_id, connection_id, Option<ConnectionId>);
+    factory_setter!(with_connection_identity, connection_identity, Option<ZmqIdentity>);
+
+    factory_setter!(with_peer_identity, peer_identity, Option<ZmqIdentity>);
 
     factory_setter!(
         with_message_sink_channel,
@@ -104,16 +102,23 @@ impl<'c> TestFactory for PeerConnectionContextFactory<'c> {
         let address = self.address.or(Some("127.0.0.1:0".parse().unwrap())).unwrap();
 
         let mut builder = PeerConnectionContextBuilder::new()
-            .set_id(self.connection_id.clone().or(Some(random_connection_id())).unwrap())
             .set_linger(self.linger.or(Some(Linger::Indefinitely)).unwrap())
             .set_direction(direction.clone())
             .set_context(context)
             .set_address(address)
             .set_message_sink_channel(self.message_sink_channel.unwrap());
 
+        if let Some(connection_identity) = self.connection_identity {
+            builder = builder.set_connection_identity(connection_identity)
+        }
+        if let Some(peer_identity) = self.peer_identity {
+            builder = builder.set_peer_identity(peer_identity);
+        }
+
         let (secret_key, public_key) = self
             .curve_keypair
             .unwrap_or(CurveEncryption::generate_keypair().map_err(TestFactoryError::build_failed())?);
+
         match direction {
             Direction::Inbound => {
                 builder = builder.set_curve_encryption(CurveEncryption::Server {
@@ -130,7 +135,7 @@ impl<'c> TestFactory for PeerConnectionContextFactory<'c> {
             },
         }
 
-        let peer_context = builder.build().map_err(TestFactoryError::build_failed())?;
+        let peer_context = builder.finish().map_err(TestFactoryError::build_failed())?;
 
         Ok(peer_context)
     }
