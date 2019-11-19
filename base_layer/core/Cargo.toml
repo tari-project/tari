@@ -12,7 +12,7 @@ edition = "2018"
 [dependencies]
 tari_transactions = { path = "../../base_layer/transactions", version = "^0.0" }
 tari_comms = { version = "^0.0", path = "../../comms"}
-tari_utilities = { path = "../../infrastructure/tari_util", version = "^0.0", features = ["chrono_dt"]}
+tari_utilities = { path = "../../infrastructure/tari_util", version = "^0.0"}
 tari_infra_derive = { path = "../../infrastructure/derive", version = "^0.0" }
 tari_crypto = { path = "../../infrastructure/crypto", version = "^0.0" }
 tari_storage = { path = "../../infrastructure/storage", version = "^0.0" }

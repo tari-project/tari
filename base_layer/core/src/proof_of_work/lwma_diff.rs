@@ -12,11 +12,12 @@ use crate::proof_of_work::{
 };
 use std::{cmp, collections::VecDeque};
 use tari_transactions::consensus::{DIFFICULTY_BLOCK_WINDOW, TARGET_BLOCK_INTERVAL};
+use tari_utilities::epoch_time::EpochTime;
 
 const INITIAL_DIFFICULTY: Difficulty = Difficulty::min();
 
 pub struct LinearWeightedMovingAverage {
-    timestamps: VecDeque<u64>,
+    timestamps: VecDeque<EpochTime>,
     accumulated_difficulties: VecDeque<Difficulty>,
     block_window: usize,
 }
@@ -54,7 +55,7 @@ impl LinearWeightedMovingAverage {
         let ave_difficulty = difficulty as f64 / n as f64;
 
         let mut previous_timestamp = timestamps[0];
-        let mut this_timestamp = 0;
+        let mut this_timestamp = 0.into();
         // Loop through N most recent blocks.
         for i in 1..(n + 1) as usize {
             // 6*T limit prevents large drops in diff from long solve times which would cause oscillations.
@@ -63,9 +64,12 @@ impl LinearWeightedMovingAverage {
             if timestamps[i] > previous_timestamp {
                 this_timestamp = timestamps[i];
             } else {
-                this_timestamp = previous_timestamp + 1;
+                this_timestamp = previous_timestamp.increase(1);
             }
-            let solve_time = cmp::min(this_timestamp - previous_timestamp, 6 * TARGET_BLOCK_INTERVAL);
+            let solve_time = cmp::min(
+                (this_timestamp - previous_timestamp).as_u64(),
+                6 * TARGET_BLOCK_INTERVAL,
+            );
             previous_timestamp = this_timestamp;
 
             // Give linearly higher weight to more recent solve times.
@@ -84,7 +88,12 @@ impl LinearWeightedMovingAverage {
 }
 
 impl DifficultyAdjustment for LinearWeightedMovingAverage {
-    fn add(&mut self, timestamp: u64, accumulated_difficulty: Difficulty) -> Result<(), DifficultyAdjustmentError> {
+    fn add(
+        &mut self,
+        timestamp: EpochTime,
+        accumulated_difficulty: Difficulty,
+    ) -> Result<(), DifficultyAdjustmentError>
+    {
         match self.accumulated_difficulties.back() {
             None => {},
             Some(v) => {
@@ -120,31 +129,31 @@ mod test {
     #[test]
     fn lwma_add_non_increasing_diff() {
         let mut dif = LinearWeightedMovingAverage::default();
-        assert!(dif.add(100, 100.into()).is_ok());
-        assert!(dif.add(100, 100.into()).is_err());
-        assert!(dif.add(100, 50.into()).is_err());
+        assert!(dif.add(100.into(), 100.into()).is_ok());
+        assert!(dif.add(100.into(), 100.into()).is_err());
+        assert!(dif.add(100.into(), 50.into()).is_err());
     }
 
     #[test]
     fn lwma_negative_solve_times() {
         let mut dif = LinearWeightedMovingAverage::default();
-        let mut timestamp = 60;
+        let mut timestamp = 60.into();
         let mut cum_diff = Difficulty::from(100);
         let _ = dif.add(timestamp, cum_diff);
-        timestamp += 60;
+        timestamp = timestamp.increase(60);
         cum_diff += Difficulty::from(100);
         let _ = dif.add(timestamp, cum_diff);
         // Lets create a history and populate the vecs
         for _i in 0..150 {
             cum_diff += Difficulty::from(100);
-            timestamp += 60;
+            timestamp = timestamp.increase(60);
             let _ = dif.add(timestamp, cum_diff);
         }
         // lets create chaos by having 60 blocks as negative solve times. This should never be allowed in practice by
         // having checks on the block times.
         for _i in 0..60 {
             cum_diff += Difficulty::from(100);
-            timestamp -= 1; // Only choosing -1 here since we are testing negative solve times and we cannot have 0 time
+            timestamp = (timestamp.as_u64() - 1).into(); // Only choosing -1 here since we are testing negative solve times and we cannot have 0 time
             let diff_before = dif.get_difficulty();
             let _ = dif.add(timestamp, cum_diff);
             let diff_after = dif.get_difficulty();
@@ -156,10 +165,10 @@ mod test {
     #[test]
     fn lwma_limit_difficulty_change() {
         let mut dif = LinearWeightedMovingAverage::new(5);
-        let _ = dif.add(60, 100.into());
-        let _ = dif.add(10_000_000, 200.into());
+        let _ = dif.add(60.into(), 100.into());
+        let _ = dif.add(10_000_000.into(), 200.into());
         assert_eq!(dif.get_difficulty(), 16.into());
-        let _ = dif.add(20_000_000, 216.into());
+        let _ = dif.add(20_000_000.into(), 216.into());
         assert_eq!(dif.get_difficulty(), 9.into());
     }
 
@@ -172,35 +181,35 @@ mod test {
     // Target:     1, 100, 100, 100, 100, 106, 135, 129, 119,  93,  35,  38,  46,  66, 174
     fn lwma_calculate() {
         let mut dif = LinearWeightedMovingAverage::new(5);
-        let _ = dif.add(60, 100.into());
+        let _ = dif.add(60.into(), 100.into());
         assert_eq!(dif.get_difficulty(), 1.into());
-        let _ = dif.add(120, 200.into());
+        let _ = dif.add(120.into(), 200.into());
         assert_eq!(dif.get_difficulty(), 100.into());
-        let _ = dif.add(180, 300.into());
+        let _ = dif.add(180.into(), 300.into());
         assert_eq!(dif.get_difficulty(), 100.into());
-        let _ = dif.add(240, 400.into());
+        let _ = dif.add(240.into(), 400.into());
         assert_eq!(dif.get_difficulty(), 100.into());
-        let _ = dif.add(300, 500.into());
+        let _ = dif.add(300.into(), 500.into());
         assert_eq!(dif.get_difficulty(), 100.into());
-        let _ = dif.add(350, 605.into());
+        let _ = dif.add(350.into(), 605.into());
         assert_eq!(dif.get_difficulty(), 106.into());
-        let _ = dif.add(380, 733.into());
+        let _ = dif.add(380.into(), 733.into());
         assert_eq!(dif.get_difficulty(), 135.into());
-        let _ = dif.add(445, 856.into());
+        let _ = dif.add(445.into(), 856.into());
         assert_eq!(dif.get_difficulty(), 129.into());
-        let _ = dif.add(515, 972.into());
+        let _ = dif.add(515.into(), 972.into());
         assert_eq!(dif.get_difficulty(), 119.into());
-        let _ = dif.add(615, 1066.into());
+        let _ = dif.add(615.into(), 1066.into());
         assert_eq!(dif.get_difficulty(), 93.into());
-        let _ = dif.add(975, 1105.into());
+        let _ = dif.add(975.into(), 1105.into());
         assert_eq!(dif.get_difficulty(), 35.into());
-        let _ = dif.add(976, 1151.into());
+        let _ = dif.add(976.into(), 1151.into());
         assert_eq!(dif.get_difficulty(), 38.into());
-        let _ = dif.add(977, 1206.into());
+        let _ = dif.add(977.into(), 1206.into());
         assert_eq!(dif.get_difficulty(), 46.into());
-        let _ = dif.add(978, 1281.into());
+        let _ = dif.add(978.into(), 1281.into());
         assert_eq!(dif.get_difficulty(), 66.into());
-        let _ = dif.add(979, 1429.into());
+        let _ = dif.add(979.into(), 1429.into());
         assert_eq!(dif.get_difficulty(), 174.into());
     }
 }

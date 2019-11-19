@@ -67,7 +67,7 @@ impl TestBlakePow {
                 nonce += 1;
             }
             if nonce == start_nonce {
-                header.timestamp = header.timestamp.checked_add_signed(Duration::milliseconds(1)).unwrap();
+                header.timestamp = header.timestamp.increase(1);
             }
         }
         header

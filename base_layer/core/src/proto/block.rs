@@ -26,23 +26,21 @@ use crate::{
     chain_storage::HistoricalBlock,
     proto::utils::try_convert_all,
 };
-use chrono::{DateTime, NaiveDateTime, Utc};
 use prost_types::Timestamp;
 use std::convert::{TryFrom, TryInto};
 use tari_transactions::types::BlindingFactor;
-use tari_utilities::{ByteArray, ByteArrayError};
+use tari_utilities::{epoch_time::EpochTime, ByteArray, ByteArrayError};
 
 /// Utility function that converts a `prost::Timestamp` to a `chrono::DateTime`
-pub(crate) fn timestamp_to_datetime(timestamp: Timestamp) -> DateTime<Utc> {
-    let dt = NaiveDateTime::from_timestamp(timestamp.seconds, timestamp.nanos as u32);
-    DateTime::<_>::from_utc(dt, Utc)
+pub(crate) fn timestamp_to_datetime(timestamp: Timestamp) -> EpochTime {
+    (timestamp.seconds as u64).into()
 }
 
 /// Utility function that converts a `chrono::DateTime` to a `prost::Timestamp`
-pub(crate) fn datetime_to_timestamp(datetime: DateTime<Utc>) -> Timestamp {
+pub(crate) fn datetime_to_timestamp(datetime: EpochTime) -> Timestamp {
     Timestamp {
-        seconds: datetime.timestamp(),
-        nanos: datetime.timestamp_subsec_nanos() as i32,
+        seconds: datetime.as_u64() as i64,
+        nanos: 0,
     }
 }
 

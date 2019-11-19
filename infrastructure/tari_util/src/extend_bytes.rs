@@ -20,7 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#[cfg(feature = "chrono_dt")]
 use chrono::{DateTime, Utc};
 
 /// this trait allows us to call append_raw_bytes and get the raw bytes of the type
@@ -131,7 +130,6 @@ impl ExtendBytes for bool {
     }
 }
 
-#[cfg(feature = "chrono_dt")]
 impl ExtendBytes for DateTime<Utc> {
     fn append_raw_bytes(&self, buf: &mut Vec<u8>) {
         let bytes = self.timestamp().to_le_bytes();
