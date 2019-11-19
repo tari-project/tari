@@ -17,10 +17,9 @@ pub mod testnet_utils;
 
 pub use wallet::Wallet;
 
-// TODO: Put back after MVP
-//#[macro_use]
-// extern crate diesel;
-//#[macro_use]
-// extern crate diesel_migrations;
-// pub mod schema;
+#[macro_use]
+extern crate diesel;
+#[macro_use]
+extern crate diesel_migrations;
+pub mod schema;
 // pub mod text_message_service;

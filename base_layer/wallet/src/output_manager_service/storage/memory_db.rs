@@ -98,18 +98,6 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
         Ok(result)
     }
 
-    fn contains(&self, key: &DbKey) -> Result<bool, OutputManagerStorageError> {
-        let db = acquire_read_lock!(self.db);
-        Ok(match key {
-            DbKey::SpentOutput(k) => db.spent_outputs.iter().any(|v| &v.spending_key == k),
-            DbKey::UnspentOutput(k) => db.unspent_outputs.iter().any(|v| &v.spending_key == k),
-            DbKey::PendingTransactionOutputs(tx_id) => db.pending_transactions.get(tx_id).is_some(),
-            DbKey::UnspentOutputs => false,
-            DbKey::SpentOutputs => false,
-            DbKey::AllPendingTransactionOutputs => false,
-        })
-    }
-
     fn write(&mut self, op: WriteOperation) -> Result<Option<DbValue>, OutputManagerStorageError> {
         let mut db = acquire_write_lock!(self.db);
         match op {
@@ -189,7 +177,7 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
     fn encumber_outputs(
         &mut self,
         tx_id: TxId,
-        outputs_to_send: Vec<UnblindedOutput>,
+        outputs_to_send: &Vec<UnblindedOutput>,
         change_output: Option<UnblindedOutput>,
     ) -> Result<(), OutputManagerStorageError>
     {

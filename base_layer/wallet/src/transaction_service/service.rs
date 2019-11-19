@@ -21,6 +21,9 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #[cfg(feature = "test_harness")]
 use crate::output_manager_service::TxId;
+#[cfg(feature = "test_harness")]
+use tari_transactions::{aggregated_body::AggregateBody, transaction::Transaction};
+
 use crate::{
     output_manager_service::handle::OutputManagerHandle,
     transaction_service::{
@@ -53,9 +56,8 @@ use tari_crypto::keys::SecretKey;
 use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_transactions::{
-    aggregated_body::AggregateBody,
     tari_amount::MicroTari,
-    transaction::{KernelFeatures, OutputFeatures, Transaction},
+    transaction::{KernelFeatures, OutputFeatures},
     transaction_protocol::{proto, recipient::RecipientSignedMessage, sender::TransactionSenderMessage},
     types::{PrivateKey, COMMITMENT_FACTORY, PROVER},
     ReceiverTransactionProtocol,
