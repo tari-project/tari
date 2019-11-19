@@ -36,7 +36,7 @@ use ttl_cache::TtlCache;
 pub struct OrphanPoolStorage<T>
 where T: BlockchainBackend
 {
-    blockchain_db: Arc<BlockchainDatabase<T>>,
+    blockchain_db: BlockchainDatabase<T>,
     config: OrphanPoolConfig,
     txs_by_signature: TtlCache<Signature, Arc<Transaction>>,
 }
@@ -45,7 +45,7 @@ impl<T> OrphanPoolStorage<T>
 where T: BlockchainBackend
 {
     /// Create a new OrphanPoolStorage with the specified configuration
-    pub fn new(blockchain_db: Arc<BlockchainDatabase<T>>, config: OrphanPoolConfig) -> Self {
+    pub fn new(blockchain_db: BlockchainDatabase<T>, config: OrphanPoolConfig) -> Self {
         Self {
             blockchain_db,
             config,

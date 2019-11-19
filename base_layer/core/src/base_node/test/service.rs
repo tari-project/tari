@@ -28,6 +28,8 @@ use crate::{
     blocks::{genesis_block::get_genesis_block, BlockHeader},
     chain_storage::{BlockchainDatabase, ChainStorageError, DbTransaction, MemoryDatabase, MmrTree},
     consts::BASE_NODE_SERVICE_DESIRED_RESPONSE_FRACTION,
+    mempool::{Mempool, MempoolConfig},
+    proof_of_work::Difficulty,
     test_utils::builders::{
         add_block_and_update_header,
         chain_block,
@@ -127,6 +129,7 @@ struct NodeInterfaces {
     pub outbound_nci: OutboundNodeCommsInterface,
     pub local_nci: LocalNodeCommsInterface,
     pub blockchain_db: BlockchainDatabase<MemoryDatabase<HashDigest>>,
+    pub mempool: Mempool<MemoryDatabase<HashDigest>>,
     pub comms: CommsNode,
 }
 
@@ -135,6 +138,7 @@ impl NodeInterfaces {
         outbound_nci: OutboundNodeCommsInterface,
         local_nci: LocalNodeCommsInterface,
         blockchain_db: BlockchainDatabase<MemoryDatabase<HashDigest>>,
+        mempool: Mempool<MemoryDatabase<HashDigest>>,
         comms: CommsNode,
     ) -> Self
     {
@@ -142,6 +146,7 @@ impl NodeInterfaces {
             outbound_nci,
             local_nci,
             blockchain_db,
+            mempool,
             comms,
         }
     }
@@ -152,6 +157,7 @@ pub fn setup_base_node_service(
     node_identity: NodeIdentity,
     peers: Vec<NodeIdentity>,
     blockchain_db: BlockchainDatabase<MemoryDatabase<HashDigest>>,
+    mempool: Mempool<MemoryDatabase<HashDigest>>,
     config: BaseNodeServiceConfig,
 ) -> (OutboundNodeCommsInterface, LocalNodeCommsInterface, CommsNode)
 {
@@ -164,6 +170,7 @@ pub fn setup_base_node_service(
         .add_initializer(BaseNodeServiceInitializer::new(
             subscription_factory,
             blockchain_db,
+            mempool,
             config,
         ))
         .finish();
@@ -183,6 +190,7 @@ fn create_base_node(
     OutboundNodeCommsInterface,
     LocalNodeCommsInterface,
     BlockchainDatabase<MemoryDatabase<HashDigest>>,
+    Mempool<MemoryDatabase<HashDigest>>,
     CommsNode,
 )
 {
@@ -194,16 +202,18 @@ fn create_base_node(
     )
     .unwrap();
     let blockchain_db = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
+    let mempool = Mempool::new(blockchain_db.clone(), MempoolConfig::default());
 
     let (outbound_nci, local_nci, comms) = setup_base_node_service(
         &runtime,
-        node_identity.clone(),
+        node_identity,
         Vec::new(),
         blockchain_db.clone(),
-        config.clone(),
+        mempool.clone(),
+        config,
     );
 
-    (outbound_nci, local_nci, blockchain_db, comms)
+    (outbound_nci, local_nci, blockchain_db, mempool, comms)
 }
 
 fn create_network_with_3_base_nodes(
@@ -220,6 +230,7 @@ fn create_network_with_3_base_nodes(
     )
     .unwrap();
     let alice_blockchain_db = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::new(mct_config)).unwrap();
+    let alice_mempool = Mempool::new(alice_blockchain_db.clone(), MempoolConfig::default());
 
     let bob_node_identity = NodeIdentity::random(
         &mut rng,
@@ -228,6 +239,7 @@ fn create_network_with_3_base_nodes(
     )
     .unwrap();
     let bob_blockchain_db = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::new(mct_config)).unwrap();
+    let bob_mempool = Mempool::new(bob_blockchain_db.clone(), MempoolConfig::default());
 
     let carol_node_identity = NodeIdentity::random(
         &mut rng,
@@ -236,12 +248,14 @@ fn create_network_with_3_base_nodes(
     )
     .unwrap();
     let carol_blockchain_db = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::new(mct_config)).unwrap();
+    let carol_mempool = Mempool::new(carol_blockchain_db.clone(), MempoolConfig::default());
 
     let (alice_outbound_nci, alice_local_nci, alice_comms) = setup_base_node_service(
         &runtime,
         alice_node_identity.clone(),
         vec![bob_node_identity.clone(), carol_node_identity.clone()],
         alice_blockchain_db.clone(),
+        alice_mempool.clone(),
         config.clone(),
     );
     let (bob_outbound_nci, bob_local_nci, bob_comms) = setup_base_node_service(
@@ -249,6 +263,7 @@ fn create_network_with_3_base_nodes(
         bob_node_identity.clone(),
         vec![alice_node_identity.clone(), carol_node_identity.clone()],
         bob_blockchain_db.clone(),
+        bob_mempool.clone(),
         config.clone(),
     );
     let (carol_outbound_nci, carol_local_nci, carol_comms) = setup_base_node_service(
@@ -256,11 +271,30 @@ fn create_network_with_3_base_nodes(
         carol_node_identity,
         vec![alice_node_identity, bob_node_identity],
         carol_blockchain_db.clone(),
+        carol_mempool.clone(),
         config,
     );
-    let alice_interfaces = NodeInterfaces::new(alice_outbound_nci, alice_local_nci, alice_blockchain_db, alice_comms);
-    let bob_interfaces = NodeInterfaces::new(bob_outbound_nci, bob_local_nci, bob_blockchain_db, bob_comms);
-    let carol_interfaces = NodeInterfaces::new(carol_outbound_nci, carol_local_nci, carol_blockchain_db, carol_comms);
+    let alice_interfaces = NodeInterfaces::new(
+        alice_outbound_nci,
+        alice_local_nci,
+        alice_blockchain_db,
+        alice_mempool,
+        alice_comms,
+    );
+    let bob_interfaces = NodeInterfaces::new(
+        bob_outbound_nci,
+        bob_local_nci,
+        bob_blockchain_db,
+        bob_mempool,
+        bob_comms,
+    );
+    let carol_interfaces = NodeInterfaces::new(
+        carol_outbound_nci,
+        carol_local_nci,
+        carol_blockchain_db,
+        carol_mempool,
+        carol_comms,
+    );
     (alice_interfaces, bob_interfaces, carol_interfaces)
 }
 
@@ -717,6 +751,7 @@ fn service_request_timeout() {
     )
     .unwrap();
     let alice_blockchain_db = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
+    let alice_mempool = Mempool::new(alice_blockchain_db.clone(), MempoolConfig::default());
 
     let bob_node_identity = NodeIdentity::random(
         &mut rng,
@@ -725,19 +760,22 @@ fn service_request_timeout() {
     )
     .unwrap();
     let bob_blockchain_db = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
+    let bob_mempool = Mempool::new(bob_blockchain_db.clone(), MempoolConfig::default());
 
     let (mut alice_outbound_nci, _, alice_comms) = setup_base_node_service(
         &runtime,
         alice_node_identity.clone(),
         vec![bob_node_identity.clone()],
         alice_blockchain_db,
+        alice_mempool,
         base_node_service_config.clone(),
     );
     let (_, _, bob_comms) = setup_base_node_service(
         &runtime,
-        bob_node_identity.clone(),
-        vec![alice_node_identity.clone()],
-        bob_blockchain_db.clone(),
+        bob_node_identity,
+        vec![alice_node_identity],
+        bob_blockchain_db,
+        bob_mempool,
         base_node_service_config,
     );
 
@@ -755,8 +793,7 @@ fn service_request_timeout() {
 #[test]
 fn local_get_metadata() {
     let runtime = Runtime::new().unwrap();
-    let (_outbound_nci, mut local_nci, blockchain_db, comms) =
-        create_base_node(&runtime, BaseNodeServiceConfig::default());
+    let (_, mut local_nci, blockchain_db, _, comms) = create_base_node(&runtime, BaseNodeServiceConfig::default());
 
     let block0 = add_block_and_update_header(&blockchain_db, get_genesis_block());
     let mut block1 = chain_block(&block0, vec![]);
@@ -773,12 +810,40 @@ fn local_get_metadata() {
     comms.shutdown().unwrap();
 }
 
-// TODO: local get_new_block test
+#[test]
+fn local_get_new_block() {
+    let runtime = Runtime::new().unwrap();
+    let (_, mut local_nci, blockchain_db, mempool, comms) =
+        create_base_node(&runtime, BaseNodeServiceConfig::default());
+
+    add_block_and_update_header(&blockchain_db, get_genesis_block());
+    let (tx1, inputs1, _) = tx!(10_000*uT, fee: 50*uT, inputs: 1, outputs: 1);
+    let (tx2, inputs2, _) = tx!(10_000*uT, fee: 20*uT, inputs: 1, outputs: 1);
+    let (tx3, inputs3, _) = tx!(10_000*uT, fee: 30*uT, inputs: 1, outputs: 1);
+    let mut txn = DbTransaction::new();
+    txn.insert_utxo(inputs1[0].as_transaction_output(&PROVER, &COMMITMENT_FACTORY).unwrap());
+    txn.insert_utxo(inputs2[0].as_transaction_output(&PROVER, &COMMITMENT_FACTORY).unwrap());
+    txn.insert_utxo(inputs3[0].as_transaction_output(&PROVER, &COMMITMENT_FACTORY).unwrap());
+    assert!(blockchain_db.commit(txn).is_ok());
+    assert!(mempool.insert(Arc::new(tx1)).is_ok());
+    assert!(mempool.insert(Arc::new(tx2)).is_ok());
+    assert!(mempool.insert(Arc::new(tx3)).is_ok());
+
+    runtime.block_on(async {
+        let mut block = local_nci.get_new_block_template().await.unwrap();
+        assert_eq!(block.header.height, 1);
+        assert_eq!(block.body.kernels().len(), 3);
+        block.header.total_difficulty = Difficulty::from(100);
+        add_block_and_update_header(&blockchain_db, block);
+    });
+
+    comms.shutdown().unwrap();
+}
 
 #[test]
 fn local_submit_block() {
     let runtime = Runtime::new().unwrap();
-    let (_outbound_nci, mut local_nci, blockchain_db, comms) =
+    let (_outbound_nci, mut local_nci, blockchain_db, _, comms) =
         create_base_node(&runtime, BaseNodeServiceConfig::default());
 
     let block0 = add_block_and_update_header(&blockchain_db, get_genesis_block());

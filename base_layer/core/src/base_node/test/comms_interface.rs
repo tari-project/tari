@@ -40,6 +40,7 @@ use crate::{
         MmrTree,
         MutableMmrState,
     },
+    mempool::{Mempool, MempoolConfig},
     proof_of_work::Difficulty,
     test_utils::builders::{add_block_and_update_header, create_test_kernel, create_utxo},
 };
@@ -50,7 +51,7 @@ use tari_mmr::MutableMmrLeafNodes;
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_test_utils::runtime::test_async;
 use tari_transactions::{tari_amount::MicroTari, types::HashDigest};
-use tari_utilities::{hash::Hashable, hex::Hex};
+use tari_utilities::hash::Hashable;
 
 async fn test_request_responder(
     receiver: &mut Receiver<
@@ -91,8 +92,9 @@ fn outbound_get_metadata() {
 #[test]
 fn inbound_get_metadata() {
     let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
+    let mempool = Mempool::new(store.clone(), MempoolConfig::default());
     let (block_event_publisher, _block_event_subscriber) = bounded(100);
-    let inbound_nch = InboundNodeCommsHandlers::new(block_event_publisher, store);
+    let inbound_nch = InboundNodeCommsHandlers::new(block_event_publisher, store, mempool);
 
     test_async(move |rt| {
         rt.spawn(async move {
@@ -133,8 +135,9 @@ fn outbound_fetch_kernels() {
 #[test]
 fn inbound_fetch_kernels() {
     let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
+    let mempool = Mempool::new(store.clone(), MempoolConfig::default());
     let (block_event_publisher, _block_event_subscriber) = bounded(100);
-    let inbound_nch = InboundNodeCommsHandlers::new(block_event_publisher, store.clone());
+    let inbound_nch = InboundNodeCommsHandlers::new(block_event_publisher, store.clone(), mempool);
 
     let kernel = create_test_kernel(5.into(), 0);
     let hash = kernel.hash();
@@ -180,8 +183,9 @@ fn outbound_fetch_headers() {
 #[test]
 fn inbound_fetch_headers() {
     let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
+    let mempool = Mempool::new(store.clone(), MempoolConfig::default());
     let (block_event_publisher, _block_event_subscriber) = bounded(100);
-    let inbound_nch = InboundNodeCommsHandlers::new(block_event_publisher, store.clone());
+    let inbound_nch = InboundNodeCommsHandlers::new(block_event_publisher, store.clone(), mempool);
 
     let mut header = BlockHeader::new(0);
     header.height = 0;
@@ -227,8 +231,9 @@ fn outbound_fetch_utxos() {
 #[test]
 fn inbound_fetch_utxos() {
     let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
+    let mempool = Mempool::new(store.clone(), MempoolConfig::default());
     let (block_event_publisher, _block_event_subscriber) = bounded(100);
-    let inbound_nch = InboundNodeCommsHandlers::new(block_event_publisher, store.clone());
+    let inbound_nch = InboundNodeCommsHandlers::new(block_event_publisher, store.clone(), mempool);
 
     let (utxo, _) = create_utxo(MicroTari(10_000));
     let hash = utxo.hash();
@@ -273,8 +278,9 @@ fn outbound_fetch_blocks() {
 #[test]
 fn inbound_fetch_blocks() {
     let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
+    let mempool = Mempool::new(store.clone(), MempoolConfig::default());
     let (block_event_publisher, _block_event_subscriber) = bounded(100);
-    let inbound_nch = InboundNodeCommsHandlers::new(block_event_publisher, store.clone());
+    let inbound_nch = InboundNodeCommsHandlers::new(block_event_publisher, store.clone(), mempool);
 
     let block = add_block_and_update_header(&store, get_genesis_block());
 
@@ -317,8 +323,9 @@ fn outbound_fetch_mmr_state() {
 #[test]
 fn inbound_fetch_mmr_state() {
     let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
+    let mempool = Mempool::new(store.clone(), MempoolConfig::default());
     let (block_event_publisher, _block_event_subscriber) = bounded(100);
-    let inbound_nch = InboundNodeCommsHandlers::new(block_event_publisher, store);
+    let inbound_nch = InboundNodeCommsHandlers::new(block_event_publisher, store, mempool);
 
     test_async(move |rt| {
         rt.spawn(async move {

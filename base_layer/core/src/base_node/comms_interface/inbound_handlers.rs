@@ -22,7 +22,7 @@
 
 use crate::{
     base_node::comms_interface::{error::CommsInterfaceError, NodeCommsRequest, NodeCommsResponse},
-    blocks::{blockheader::BlockHeader, Block},
+    blocks::{blockheader::BlockHeader, Block, BlockBuilder},
     chain_storage::{
         async_db,
         BlockAddResult,
@@ -31,10 +31,14 @@ use crate::{
         ChainStorageError,
         HistoricalBlock,
     },
+    mempool::Mempool,
 };
 use futures::SinkExt;
 use tari_broadcast_channel::Publisher;
-use tari_transactions::transaction::{TransactionKernel, TransactionOutput};
+use tari_transactions::{
+    consensus::MAX_BLOCK_TRANSACTION_WEIGHT,
+    transaction::{TransactionKernel, TransactionOutput},
+};
 
 /// Events that can be published on the Validated Block Event Stream
 #[derive(Debug)]
@@ -49,16 +53,23 @@ where T: BlockchainBackend
 {
     event_publisher: Publisher<BlockEvent>,
     blockchain_db: BlockchainDatabase<T>,
+    mempool: Mempool<T>,
 }
 
 impl<T> InboundNodeCommsHandlers<T>
 where T: BlockchainBackend
 {
     /// Construct a new InboundNodeCommsInterface.
-    pub fn new(event_publisher: Publisher<BlockEvent>, blockchain_db: BlockchainDatabase<T>) -> Self {
+    pub fn new(
+        event_publisher: Publisher<BlockEvent>,
+        blockchain_db: BlockchainDatabase<T>,
+        mempool: Mempool<T>,
+    ) -> Self
+    {
         Self {
             event_publisher,
             blockchain_db,
+            mempool,
         }
     }
 
@@ -113,10 +124,26 @@ where T: BlockchainBackend
                 )
                 .await?,
             )),
-            NodeCommsRequest::GetNewBlock =>
-            // TODO: query blockchain_db and mempool to construct a new mineable block
-            {
-                unimplemented!()
+            NodeCommsRequest::GetNewBlockTemplate => {
+                let metadata = async_db::get_metadata(self.blockchain_db.clone()).await?;
+                let best_block_hash = metadata.best_block.ok_or(CommsInterfaceError::UnexpectedApiResponse)?;
+                let best_block_header =
+                    async_db::fetch_header_with_block_hash(self.blockchain_db.clone(), best_block_hash).await?;
+                let header = BlockHeader::from_previous(&best_block_header);
+
+                let transactions = self
+                    .mempool
+                    .retrieve(MAX_BLOCK_TRANSACTION_WEIGHT)
+                    .map_err(|e| CommsInterfaceError::MempoolError(e.to_string()))?
+                    .iter()
+                    .map(|tx| (**tx).clone())
+                    .collect();
+
+                let block = BlockBuilder::new()
+                    .with_header(header)
+                    .with_transactions(transactions)
+                    .build();
+                Ok(NodeCommsResponse::NewBlockTemplate(block))
             },
         }
     }

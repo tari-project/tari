@@ -30,4 +30,4 @@ mod unconfirmed_pool;
 
 // Public re-exports
 pub use error::MempoolError;
-pub use mempool::Mempool;
+pub use mempool::{Mempool, MempoolConfig};

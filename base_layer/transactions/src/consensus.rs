@@ -28,6 +28,8 @@ use std::ops::Add;
 pub const TARGET_BLOCK_INTERVAL: u64 = 60;
 // When doing difficulty adjustments and FTL calculations this is the amount of blocks we look at
 pub const DIFFICULTY_BLOCK_WINDOW: u64 = 150;
+// Maximum transaction weight used for the construction of new blocks.
+pub const MAX_BLOCK_TRANSACTION_WEIGHT: u64 = 10000; // TODO: a better weight estimate should be selected
 
 /// This is used to control all consensus values.
 pub struct ConsensusRules {

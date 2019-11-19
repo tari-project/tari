@@ -382,6 +382,7 @@ where T: BlockchainBackend
     /// accept orphan blocks without valid MMR roots because there is no way that these can be correctly calculated
     /// by this node. On the other hand, if the miner that _produced_ the block was honest, it would have been
     /// building on _its_ longest chain, so this restriction wouldn't apply.
+    #[cfg(test)]
     pub fn add_new_block(&self, block: Block) -> Result<BlockAddResult, ChainStorageError> {
         self.add_block_impl(block, true)
     }

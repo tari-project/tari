@@ -17,7 +17,7 @@ message BaseNodeServiceResponse {
         TransactionOutputs transaction_outputs = 5;
         HistoricalBlocks historical_blocks = 6;
         MutableMmrState mmr_state = 7;
-        tari.core.Block new_block = 8;
+        tari.core.Block new_block_template = 8;
     }
 }
 

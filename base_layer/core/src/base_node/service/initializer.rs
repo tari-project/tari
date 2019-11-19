@@ -28,6 +28,7 @@ use crate::{
     },
     blocks::Block,
     chain_storage::{BlockchainBackend, BlockchainDatabase},
+    mempool::Mempool,
     proto as shared_protos,
 };
 use futures::{future, Future, Stream, StreamExt};
@@ -59,6 +60,7 @@ where T: BlockchainBackend
 {
     inbound_message_subscription_factory: Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage>>>,
     blockchain_db: BlockchainDatabase<T>,
+    mempool: Mempool<T>,
     config: BaseNodeServiceConfig,
 }
 
@@ -69,12 +71,14 @@ where T: BlockchainBackend
     pub fn new(
         inbound_message_subscription_factory: Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage>>>,
         blockchain_db: BlockchainDatabase<T>,
+        mempool: Mempool<T>,
         config: BaseNodeServiceConfig,
     ) -> Self
     {
         Self {
             inbound_message_subscription_factory,
             blockchain_db,
+            mempool,
             config,
         }
     }
@@ -163,7 +167,8 @@ where T: BlockchainBackend + 'static
             local_block_sender_service,
             block_event_subscriber,
         );
-        let inbound_nch = InboundNodeCommsHandlers::new(block_event_publisher, self.blockchain_db.clone());
+        let inbound_nch =
+            InboundNodeCommsHandlers::new(block_event_publisher, self.blockchain_db.clone(), self.mempool.clone());
         let executer_clone = executor.clone(); // Give BaseNodeService access to the executor
         let config = self.config.clone();
 

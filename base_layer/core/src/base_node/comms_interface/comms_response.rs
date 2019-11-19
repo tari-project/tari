@@ -36,5 +36,5 @@ pub enum NodeCommsResponse {
     TransactionOutputs(Vec<TransactionOutput>),
     HistoricalBlocks(Vec<HistoricalBlock>),
     MmrState(MutableMmrState),
-    NewBlock(Block),
+    NewBlockTemplate(Block),
 }
