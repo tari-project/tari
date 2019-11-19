@@ -38,7 +38,7 @@
 //! This hash is called the UTXO merkle root, and is used as the output_mr
 
 use crate::{proof_of_work::Difficulty, types::TariProofOfWork};
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDateTime, Utc};
 use digest::Digest;
 use serde::{
     de::{self, Visitor},
@@ -52,7 +52,7 @@ use std::{
     fmt::{Display, Error, Formatter},
 };
 use tari_transactions::types::{BlindingFactor, HashDigest};
-use tari_utilities::{hex::Hex, ByteArray, Hashable};
+use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray, Hashable};
 
 pub type BlockHash = Vec<u8>;
 
@@ -68,7 +68,7 @@ pub struct BlockHeader {
     #[serde(with = "hash_serializer")]
     pub prev_hash: BlockHash,
     /// Timestamp at which the block was built.
-    pub timestamp: DateTime<Utc>,
+    pub timestamp: EpochTime,
     /// This is the UTXO merkle root of the outputs
     /// This is calculated as Hash (txo MMR root  || roaring bitmap hash of UTXO indices)
     #[serde(with = "hash_serializer")]
@@ -96,7 +96,7 @@ impl BlockHeader {
             version: blockchain_version,
             height: 0,
             prev_hash: vec![0; 32],
-            timestamp: Utc::now(),
+            timestamp: EpochTime::now(),
             output_mr: vec![0; 32],
             range_proof_mr: vec![0; 32],
             kernel_mr: vec![0; 32],
@@ -113,7 +113,7 @@ impl BlockHeader {
             version: prev.version,
             height: prev.height + 1,
             prev_hash,
-            timestamp: Utc::now(),
+            timestamp: EpochTime::now(),
             output_mr: vec![0; 32],
             range_proof_mr: vec![0; 32],
             kernel_mr: vec![0; 32],
@@ -131,7 +131,7 @@ impl Hashable for BlockHeader {
             .chain(self.version.to_le_bytes())
             .chain(self.height.to_le_bytes())
             .chain(self.prev_hash.as_bytes())
-            .chain(self.timestamp.timestamp().to_le_bytes())
+            .chain(self.timestamp.as_u64().to_le_bytes())
             .chain(self.output_mr.as_bytes())
             .chain(self.range_proof_mr.as_bytes())
             .chain(self.kernel_mr.as_bytes())
@@ -152,12 +152,13 @@ impl Eq for BlockHeader {}
 
 impl Display for BlockHeader {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
+        let datetime: DateTime<Utc> = self.timestamp.into();
         let msg = format!(
             "Version: {}\nBlock height: {}\nPrevious block hash: {}\nTimestamp: {}\n",
             self.version,
             self.height,
             self.prev_hash.to_hex(),
-            self.timestamp.to_rfc2822()
+            datetime.to_rfc2822()
         );
         fmt.write_str(&msg)?;
         let msg = format!(

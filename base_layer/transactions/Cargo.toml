@@ -13,7 +13,7 @@ edition = "2018"
 
 [dependencies]
 tari_crypto = { path = "../../infrastructure/crypto", version = "^0.0" }
-tari_utilities = { path = "../../infrastructure/tari_util", version = "^0.0", features = ["chrono_dt"]}
+tari_utilities = { path = "../../infrastructure/tari_util", version = "^0.0"}
 
 lazy_static = "1.3.0"
 serde = { version = "1.0.97", features = ["derive"] }

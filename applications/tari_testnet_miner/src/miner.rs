@@ -140,7 +140,7 @@ impl Miner {
         if self.block.is_none() {
             return Err(MinerError::MissingBlock);
         }
-        let interval = self.block.as_ref().unwrap().header.timestamp.timestamp() - old_header.timestamp.timestamp();
+        let interval = self.block.as_ref().unwrap().header.timestamp - old_header.timestamp;
         let difficulty = Difficulty::min(); // replace with new function: Difficulty::calculate_req_difficulty(interval, self.difficulty);
 
         let (tx, mut rx): (Sender<BlockHeader>, Receiver<BlockHeader>) = mpsc::channel(1);

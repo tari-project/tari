@@ -25,6 +25,7 @@ use bitflags::_core::ops::Div;
 use newtype_ops::newtype_ops;
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use tari_utilities::epoch_time::EpochTime;
 
 /// Minimum difficulty, enforced in diff retargetting
 /// avoids getting stuck when trying to increase difficulty subject to dampening
@@ -93,7 +94,11 @@ impl From<u64> for Difficulty {
 pub trait DifficultyAdjustment {
     /// Adds the latest block timestamp (in seconds) and total accumulated difficulty. If the new data point violates
     /// some difficulty criteria, then `add` returns an error with the type of failure indicated
-    fn add(&mut self, timestamp: u64, accumulated_difficulty: Difficulty) -> Result<(), DifficultyAdjustmentError>;
+    fn add(
+        &mut self,
+        timestamp: EpochTime,
+        accumulated_difficulty: Difficulty,
+    ) -> Result<(), DifficultyAdjustmentError>;
 
     /// Return the calculated target difficulty for the next block.
     fn get_difficulty(&self) -> Difficulty;

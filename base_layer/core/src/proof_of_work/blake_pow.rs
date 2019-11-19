@@ -107,7 +107,7 @@ mod test {
 
     fn get_header() -> BlockHeader {
         let mut header = BlockHeader::new(0);
-        header.timestamp = DateTime::<Utc>::from_utc(NaiveDate::from_ymd(2000, 1, 1).and_hms(1, 1, 1), Utc);
+        header.timestamp = DateTime::<Utc>::from_utc(NaiveDate::from_ymd(2000, 1, 1).and_hms(1, 1, 1), Utc).into();
         header
     }
     #[test]
