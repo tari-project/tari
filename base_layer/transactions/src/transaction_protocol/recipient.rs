@@ -27,7 +27,7 @@ use crate::{
         single_receiver::SingleReceiverTransactionProtocol,
         TransactionProtocolError,
     },
-    types::{CryptoFactories, MessageHash, PrivateKey, PublicKey, RangeProofService, Signature},
+    types::{CryptoFactories, MessageHash, PrivateKey, PublicKey, Signature},
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

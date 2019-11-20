@@ -17,10 +17,10 @@ tokio = "0.2.0-alpha.4"
 libc = "0.2.65"
 rand = "0.5.5"
 chrono = { version = "0.4.6", features = ["serde"]}
-tempdir = "0.3.7"
 tari_broadcast_channel = { version="^0.0",  path = "../../infrastructure/broadcast_channel" }
 
 [lib]
 crate-type = ["staticlib","cdylib"]
 
 [dev-dependencies]
+tempdir = "0.3.7"

@@ -23,7 +23,7 @@
 use crate::{
     tari_amount::*,
     transaction::{KernelFeatures, Transaction, TransactionBuilder, TransactionInput, TransactionOutput},
-    types::{BlindingFactor, CommitmentFactory, PrivateKey, PublicKey, RangeProofService, Signature},
+    types::{BlindingFactor, PrivateKey, PublicKey, RangeProofService, Signature},
 };
 
 use crate::{

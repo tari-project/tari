@@ -28,15 +28,7 @@ use crate::{
         sender::SingleRoundSenderData as SD,
         TransactionProtocolError as TPE,
     },
-    types::{
-        CommitmentFactory,
-        CryptoFactories,
-        PrivateKey as SK,
-        PublicKey,
-        RangeProof,
-        RangeProofService,
-        Signature,
-    },
+    types::{CryptoFactories, PrivateKey as SK, PublicKey, RangeProof, Signature},
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,

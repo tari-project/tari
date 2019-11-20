@@ -35,7 +35,7 @@ use crate::{
         sender::{calculate_tx_id, RawTransactionInfo, SenderState, SenderTransactionProtocol},
         TransactionMetadata,
     },
-    types::{BlindingFactor, CommitmentFactory, CryptoFactories, PrivateKey, PublicKey, RangeProofService},
+    types::{BlindingFactor, CryptoFactories, PrivateKey, PublicKey},
 };
 use digest::Digest;
 use std::{
