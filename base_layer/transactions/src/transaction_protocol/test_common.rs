@@ -25,7 +25,7 @@
 use crate::{
     tari_amount::*,
     transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
-    types::{PrivateKey, PublicKey, COMMITMENT_FACTORY},
+    types::{CommitmentFactory, PrivateKey, PublicKey},
 };
 use rand::{CryptoRng, Rng};
 use tari_crypto::{
@@ -54,10 +54,15 @@ impl TestParams {
     }
 }
 
-pub fn make_input<R: Rng + CryptoRng>(rng: &mut R, val: MicroTari) -> (TransactionInput, UnblindedOutput) {
+pub fn make_input<R: Rng + CryptoRng>(
+    rng: &mut R,
+    val: MicroTari,
+    factory: &CommitmentFactory,
+) -> (TransactionInput, UnblindedOutput)
+{
     let key = PrivateKey::random(rng);
     let v = PrivateKey::from(val);
-    let commitment = COMMITMENT_FACTORY.commit(&key, &v);
+    let commitment = factory.commit(&key, &v);
     let input = TransactionInput::new(OutputFeatures::default(), commitment);
     (input, UnblindedOutput::new(val, key, None))
 }

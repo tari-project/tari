@@ -32,10 +32,7 @@ use crate::{
     },
 };
 use std::sync::Arc;
-use tari_transactions::{
-    transaction::Transaction,
-    types::{Signature, COMMITMENT_FACTORY, PROVER},
-};
+use tari_transactions::{transaction::Transaction, types::Signature};
 use tari_utilities::hash::Hashable;
 
 #[derive(Debug, PartialEq)]
@@ -123,10 +120,10 @@ where T: BlockchainBackend
         }
     }
 
-    /// Insert an unconfirmed transaction into the Mempool.
+    /// Insert an unconfirmed transaction into the Mempool. The transaction *MUST* have passed through the validation
+    /// pipeline already and will thus always be internally consistent by this stage
     pub fn insert(&self, tx: Arc<Transaction>) -> Result<(), MempoolError> {
-        tx.validate_internal_consistency(&PROVER, &COMMITMENT_FACTORY)?;
-
+        // The transaction is already internally consistent
         if self.check_input_utxos(&tx)? {
             if self.check_timelocks(&tx)? {
                 self.pending_pool.insert(tx)?;

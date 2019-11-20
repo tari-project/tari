@@ -36,7 +36,7 @@ use tari_transactions::{
     tari_amount::MicroTari,
     transaction::{KernelFeatures, OutputFeatures, TransactionOutput, UnblindedOutput},
     transaction_protocol::single_receiver::SingleReceiverTransactionProtocol,
-    types::{PrivateKey, PublicKey, RangeProof, COMMITMENT_FACTORY, PROVER},
+    types::{CryptoFactories, PrivateKey, PublicKey, RangeProof},
 };
 use tari_utilities::ByteArray;
 use tari_wallet::output_manager_service::{
@@ -50,10 +50,12 @@ use tokio::runtime::Runtime;
 
 pub fn setup_output_manager_service(runtime: &Runtime, config: OutputManagerConfig) -> (OutputManagerHandle, Shutdown) {
     let shutdown = Shutdown::new();
+    let factories = CryptoFactories::default();
     let fut = StackBuilder::new(runtime.executor(), shutdown.to_signal())
         .add_initializer(OutputManagerServiceInitializer::new(
             config,
             OutputManagerMemoryDatabase::new(),
+            factories,
         ))
         .finish();
 
@@ -67,6 +69,7 @@ pub fn setup_output_manager_service(runtime: &Runtime, config: OutputManagerConf
 #[test]
 fn sending_transaction_and_confirmation() {
     let mut rng = rand::OsRng::new().unwrap();
+    let factories = CryptoFactories::default();
     let (secret_key, _public_key) = PublicKey::random_keypair(&mut rng);
 
     let runtime = Runtime::new().unwrap();
@@ -77,7 +80,11 @@ fn sending_transaction_and_confirmation() {
         primary_key_index: 0,
     });
 
-    let (_ti, uo) = make_input(&mut rng.clone(), MicroTari::from(100 + rng.next_u64() % 1000));
+    let (_ti, uo) = make_input(
+        &mut rng.clone(),
+        MicroTari::from(100 + rng.next_u64() % 1000),
+        &factories.commitment,
+    );
     runtime.block_on(oms.add_output(uo.clone())).unwrap();
     assert_eq!(
         runtime.block_on(oms.add_output(uo)),
@@ -87,7 +94,11 @@ fn sending_transaction_and_confirmation() {
     );
     let num_outputs = 20;
     for _i in 0..num_outputs {
-        let (_ti, uo) = make_input(&mut rng.clone(), MicroTari::from(100 + rng.next_u64() % 1000));
+        let (_ti, uo) = make_input(
+            &mut rng.clone(),
+            MicroTari::from(100 + rng.next_u64() % 1000),
+            &factories.commitment,
+        );
         runtime.block_on(oms.add_output(uo)).unwrap();
     }
 
@@ -112,20 +123,14 @@ fn sending_transaction_and_confirmation() {
 
     let b = TestParams::new(&mut rng);
 
-    let recv_info = SingleReceiverTransactionProtocol::create(
-        &msg,
-        b.nonce,
-        b.spend_key,
-        OutputFeatures::default(),
-        &PROVER,
-        &COMMITMENT_FACTORY,
-    )
-    .unwrap();
+    let recv_info =
+        SingleReceiverTransactionProtocol::create(&msg, b.nonce, b.spend_key, OutputFeatures::default(), &factories)
+            .unwrap();
 
-    stp.add_single_recipient_info(recv_info.clone(), &PROVER).unwrap();
-
-    stp.finalize(KernelFeatures::empty(), &PROVER, &COMMITMENT_FACTORY)
+    stp.add_single_recipient_info(recv_info.clone(), &factories.range_proof)
         .unwrap();
+
+    stp.finalize(KernelFeatures::empty(), &factories).unwrap();
 
     let tx = stp.get_transaction().unwrap();
 
@@ -147,6 +152,7 @@ fn sending_transaction_and_confirmation() {
 #[test]
 fn send_not_enough_funds() {
     let mut rng = rand::OsRng::new().unwrap();
+    let factories = CryptoFactories::default();
     let (secret_key, _public_key) = PublicKey::random_keypair(&mut rng);
 
     let runtime = Runtime::new().unwrap();
@@ -158,7 +164,11 @@ fn send_not_enough_funds() {
     });
     let num_outputs = 20;
     for _i in 0..num_outputs {
-        let (_ti, uo) = make_input(&mut rng.clone(), MicroTari::from(100 + rng.next_u64() % 1000));
+        let (_ti, uo) = make_input(
+            &mut rng.clone(),
+            MicroTari::from(100 + rng.next_u64() % 1000),
+            &factories.commitment,
+        );
         runtime.block_on(oms.add_output(uo)).unwrap();
     }
 
@@ -176,6 +186,7 @@ fn send_not_enough_funds() {
 #[test]
 fn send_no_change() {
     let mut rng = rand::OsRng::new().unwrap();
+    let factories = CryptoFactories::default();
     let (secret_key, _public_key) = PublicKey::random_keypair(&mut rng);
 
     let runtime = Runtime::new().unwrap();
@@ -216,20 +227,14 @@ fn send_no_change() {
 
     let b = TestParams::new(&mut rng);
 
-    let recv_info = SingleReceiverTransactionProtocol::create(
-        &msg,
-        b.nonce,
-        b.spend_key,
-        OutputFeatures::default(),
-        &PROVER,
-        &COMMITMENT_FACTORY,
-    )
-    .unwrap();
+    let recv_info =
+        SingleReceiverTransactionProtocol::create(&msg, b.nonce, b.spend_key, OutputFeatures::default(), &factories)
+            .unwrap();
 
-    stp.add_single_recipient_info(recv_info.clone(), &PROVER).unwrap();
-
-    stp.finalize(KernelFeatures::empty(), &PROVER, &COMMITMENT_FACTORY)
+    stp.add_single_recipient_info(recv_info.clone(), &factories.range_proof)
         .unwrap();
+
+    stp.finalize(KernelFeatures::empty(), &factories).unwrap();
 
     let tx = stp.get_transaction().unwrap();
 
@@ -285,6 +290,7 @@ fn send_not_enough_for_change() {
 #[test]
 fn receiving_and_confirmation() {
     let mut rng = rand::OsRng::new().unwrap();
+    let factories = CryptoFactories::default();
     let (secret_key, _public_key) = PublicKey::random_keypair(&mut rng);
 
     let runtime = Runtime::new().unwrap();
@@ -300,8 +306,8 @@ fn receiving_and_confirmation() {
     assert_eq!(runtime.block_on(oms.get_unspent_outputs()).unwrap().len(), 0);
     assert_eq!(runtime.block_on(oms.get_pending_transactions()).unwrap().len(), 1);
 
-    let commitment = COMMITMENT_FACTORY.commit(&recv_key, &value.into());
-    let rr = PROVER.construct_proof(&recv_key, value.into()).unwrap();
+    let commitment = factories.commitment.commit(&recv_key, &value.into());
+    let rr = factories.range_proof.construct_proof(&recv_key, value.into()).unwrap();
     let output = TransactionOutput::new(
         OutputFeatures::create_coinbase(0, &ConsensusRules::current()),
         commitment,
@@ -317,6 +323,7 @@ fn receiving_and_confirmation() {
 #[test]
 fn cancel_transaction() {
     let mut rng = rand::OsRng::new().unwrap();
+    let factories = CryptoFactories::default();
     let (secret_key, _public_key) = PublicKey::random_keypair(&mut rng);
 
     let runtime = Runtime::new().unwrap();
@@ -329,7 +336,11 @@ fn cancel_transaction() {
 
     let num_outputs = 20;
     for _i in 0..num_outputs {
-        let (_ti, uo) = make_input(&mut rng.clone(), MicroTari::from(100 + rng.next_u64() % 1000));
+        let (_ti, uo) = make_input(
+            &mut rng.clone(),
+            MicroTari::from(100 + rng.next_u64() % 1000),
+            &factories.commitment,
+        );
         runtime.block_on(oms.add_output(uo)).unwrap();
     }
     let stp = runtime
@@ -353,6 +364,7 @@ fn cancel_transaction() {
 #[test]
 fn timeout_transaction() {
     let mut rng = rand::OsRng::new().unwrap();
+    let factories = CryptoFactories::default();
     let (secret_key, _public_key) = PublicKey::random_keypair(&mut rng);
 
     let runtime = Runtime::new().unwrap();
@@ -364,7 +376,11 @@ fn timeout_transaction() {
 
     let num_outputs = 20;
     for _i in 0..num_outputs {
-        let (_ti, uo) = make_input(&mut rng.clone(), MicroTari::from(100 + rng.next_u64() % 1000));
+        let (_ti, uo) = make_input(
+            &mut rng.clone(),
+            MicroTari::from(100 + rng.next_u64() % 1000),
+            &factories.commitment,
+        );
         runtime.block_on(oms.add_output(uo)).unwrap();
     }
     let _stp = runtime
@@ -394,6 +410,7 @@ fn timeout_transaction() {
 #[test]
 fn test_get_balance() {
     let mut rng = rand::OsRng::new().unwrap();
+    let factories = CryptoFactories::default();
     let (secret_key, _public_key) = PublicKey::random_keypair(&mut rng);
 
     let runtime = Runtime::new().unwrap();
@@ -410,11 +427,11 @@ fn test_get_balance() {
 
     let mut total = MicroTari::from(0);
     let output_val = MicroTari::from(2000);
-    let (_ti, uo) = make_input(&mut rng.clone(), output_val.clone());
+    let (_ti, uo) = make_input(&mut rng.clone(), output_val.clone(), &factories.commitment);
     total += uo.value.clone();
     runtime.block_on(oms.add_output(uo)).unwrap();
 
-    let (_ti, uo) = make_input(&mut rng.clone(), output_val.clone());
+    let (_ti, uo) = make_input(&mut rng.clone(), output_val.clone(), &factories.commitment);
     total += uo.value.clone();
     runtime.block_on(oms.add_output(uo)).unwrap();
 
@@ -438,6 +455,7 @@ fn test_get_balance() {
 #[test]
 fn test_confirming_received_output() {
     let mut rng = rand::OsRng::new().unwrap();
+    let factories = CryptoFactories::default();
     let (secret_key, _public_key) = PublicKey::random_keypair(&mut rng);
 
     let runtime = Runtime::new().unwrap();
@@ -450,8 +468,9 @@ fn test_confirming_received_output() {
 
     let value = MicroTari::from(5000);
     let recv_key = runtime.block_on(oms.get_recipient_spending_key(1, value)).unwrap();
-    let commitment = COMMITMENT_FACTORY.commit(&recv_key, &value.into());
-    let rr = PROVER.construct_proof(&recv_key, value.into()).unwrap();
+    let commitment = factories.commitment.commit(&recv_key, &value.into());
+
+    let rr = factories.range_proof.construct_proof(&recv_key, value.into()).unwrap();
     let output = TransactionOutput::new(
         OutputFeatures::create_coinbase(0, &ConsensusRules::current()),
         commitment,

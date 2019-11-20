@@ -58,6 +58,7 @@ pub struct Miner {
     stop_mine: Arc<AtomicBool>,
     // Amount of threads the Miner can use
     thread_count: u8,
+    factories: CryptoFactories,
 }
 
 #[derive(Clone, Debug, PartialEq, Error)]
@@ -77,6 +78,7 @@ impl Miner {
             rules,
             stop_mine: Arc::new(AtomicBool::new(false)),
             thread_count: 2,
+            factories: CryptoFactories::default(),
         }
     }
 
@@ -94,14 +96,18 @@ impl Miner {
     fn create_coinbase_tx(&self, coinbase_value: MicroTari, block: &Block) -> (TransactionOutput, TransactionKernel) {
         let mut rng = rand::OsRng::new().unwrap();
         let coinbase_key = PrivateKey::random(&mut rng);
-        let new_commitment = COMMITMENT_FACTORY.commit(&coinbase_key, &coinbase_value.into());
-        let rr = PROVER.construct_proof(&coinbase_key, coinbase_value.into()).unwrap();
+        let new_commitment = self.factories.commitment.commit(&coinbase_key, &coinbase_value.into());
+        let rr = self
+            .factories
+            .range_proof
+            .construct_proof(&coinbase_key, coinbase_value.into())
+            .unwrap();
         let coinbase = TransactionOutput {
             commitment: new_commitment,
             features: OutputFeatures::create_coinbase(block.header.height, &self.rules),
             proof: RangeProof::from_bytes(&rr).unwrap(),
         };
-        let excess = COMMITMENT_FACTORY.commit(&coinbase_key, &(MicroTari(0)).into());
+        let excess = self.factories.commitment.commit(&coinbase_key, &(MicroTari(0)).into());
         let nonce = PrivateKey::random(&mut rng);
         let challenge = Miner::get_challenge(&PublicKey::from_secret_key(&nonce));
         let sig = Signature::sign(coinbase_key, nonce, &challenge).unwrap();

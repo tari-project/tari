@@ -45,7 +45,7 @@ use tari_p2p::initialization::CommsConfig;
 use tari_transactions::{
     tari_amount::MicroTari,
     transaction::{OutputFeatures, Transaction, TransactionInput, UnblindedOutput},
-    types::{BlindingFactor, PrivateKey, PublicKey, COMMITMENT_FACTORY},
+    types::{BlindingFactor, CryptoFactories, PrivateKey, PublicKey},
 };
 use tari_utilities::hex::Hex;
 use tempdir::TempDir;
@@ -72,9 +72,14 @@ impl TestParams {
         }
     }
 }
-pub fn make_input<R: Rng + CryptoRng>(rng: &mut R, val: MicroTari) -> (TransactionInput, UnblindedOutput) {
+pub fn make_input<R: Rng + CryptoRng>(
+    rng: &mut R,
+    val: MicroTari,
+    factories: &CryptoFactories,
+) -> (TransactionInput, UnblindedOutput)
+{
     let key = PrivateKey::random(rng);
-    let commitment = COMMITMENT_FACTORY.commit_value(&key, val.into());
+    let commitment = factories.commitment.commit_value(&key, val.into());
     let input = TransactionInput::new(OutputFeatures::default(), commitment);
     (input, UnblindedOutput::new(val, key, None))
 }
@@ -87,6 +92,7 @@ pub fn random_string(len: usize) -> String {
 /// Create a wallet for testing purposes
 pub fn create_wallet(secret_key: CommsSecretKey, net_address: String) -> Wallet<WalletMemoryDatabase> {
     let runtime = Runtime::new().unwrap();
+    let factories = CryptoFactories::default();
 
     let node_id = NodeIdentity::new(
         secret_key,
@@ -118,14 +124,18 @@ pub fn create_wallet(secret_key: CommsSecretKey, net_address: String) -> Wallet<
         dht: dht_config,
     };
 
-    let config = WalletConfig { comms_config };
+    let config = WalletConfig {
+        comms_config,
+        factories,
+    };
 
     Wallet::new(config, WalletMemoryDatabase::new(), runtime).expect("Could not create Wallet")
 }
 
 /// This function will generate a set of test data for the supplied wallet. Takes a few seconds to complete
 pub fn generate_wallet_test_data<T: WalletBackend>(wallet: &mut Wallet<T>) -> Result<(), WalletError> {
-    let rng = rand::OsRng::new().unwrap();
+    let mut rng = rand::OsRng::new().unwrap();
+    let factories = CryptoFactories::default();
     let names = ["Alice", "Bob", "Carol", "Dave"];
     let private_keys = [
         "3264e7a05ff669c1b71f691ab181ba3dd915306114a26c4a84c8da1dc1c40209",
@@ -159,7 +169,7 @@ pub fn generate_wallet_test_data<T: WalletBackend>(wallet: &mut Wallet<T>) -> Re
     // Generate outputs
     let num_outputs = 40;
     for i in 0..num_outputs {
-        let (_ti, uo) = make_input(&mut rng.clone(), MicroTari::from(1_000_000 + i * 35_000));
+        let (_ti, uo) = make_input(&mut rng.clone(), MicroTari::from(1_000_000 + i * 35_000), &factories);
         wallet
             .runtime
             .block_on(wallet.output_manager_service.add_output(uo))
@@ -169,7 +179,7 @@ pub fn generate_wallet_test_data<T: WalletBackend>(wallet: &mut Wallet<T>) -> Re
     // Generate some Tx history
     let mut wallet_alice = create_wallet(generated_contacts[0].0.clone(), generated_contacts[0].1.clone());
     for i in 0..20 {
-        let (_ti, uo) = make_input(&mut rng.clone(), MicroTari::from(1_500_000 + i * 530_500));
+        let (_ti, uo) = make_input(&mut rng.clone(), MicroTari::from(1_500_000 + i * 530_500), &factories);
         wallet_alice
             .runtime
             .block_on(wallet_alice.output_manager_service.add_output(uo))
@@ -178,7 +188,11 @@ pub fn generate_wallet_test_data<T: WalletBackend>(wallet: &mut Wallet<T>) -> Re
 
     let mut wallet_bob = create_wallet(generated_contacts[1].0.clone(), generated_contacts[1].1.clone());
     for i in 0..20 {
-        let (_ti, uo) = make_input(&mut rng.clone(), MicroTari::from(2_000_000 + i * i * 61_050));
+        let (_ti, uo) = make_input(
+            &mut rng.clone(),
+            MicroTari::from(2_000_000 + i * i * 61_050),
+            &factories,
+        );
         wallet_bob
             .runtime
             .block_on(wallet_bob.output_manager_service.add_output(uo))

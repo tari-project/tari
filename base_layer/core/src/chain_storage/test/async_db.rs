@@ -35,7 +35,7 @@ use tari_test_utils::runtime::test_async;
 use tari_transactions::{
     tari_amount::T,
     transaction::{TransactionOutput, UnblindedOutput},
-    types::{HashDigest, COMMITMENT_FACTORY},
+    types::{CommitmentFactory, HashDigest},
 };
 use tari_utilities::{hex::Hex, Hashable};
 
@@ -67,9 +67,9 @@ fn dump_logs(db: &BlockchainDatabase<MemoryDatabase<HashDigest>>, blocks: &[Bloc
 
 /// Finds the UTXO in a block corresponding to the unblinded output. We have to search for outputs because UTXOs get
 /// sorted in blocks, and so the order they were inserted in can change.
-fn find_utxo(output: &UnblindedOutput, block: &Block) -> Option<TransactionOutput> {
+fn find_utxo(output: &UnblindedOutput, block: &Block, factory: &CommitmentFactory) -> Option<TransactionOutput> {
     for utxo in block.body.outputs().iter() {
-        if COMMITMENT_FACTORY.open_value(&output.spending_key, output.value.into(), &utxo.commitment) {
+        if factory.open_value(&output.spending_key, output.value.into(), &utxo.commitment) {
             return Some(utxo.clone());
         }
     }
@@ -131,9 +131,10 @@ fn async_rewind_to_height() {
 #[test]
 fn fetch_async_utxo() {
     let (db, blocks, outputs) = create_blockchain_db_no_cut_through();
+    let factory = CommitmentFactory::default();
     // Retrieve a UTXO and an STXO
-    let utxo = find_utxo(&outputs[4][0], &blocks[4]).unwrap();
-    let stxo = find_utxo(&outputs[1][0], &blocks[1]).unwrap();
+    let utxo = find_utxo(&outputs[4][0], &blocks[4], &factory).unwrap();
+    let stxo = find_utxo(&outputs[1][0], &blocks[1], &factory).unwrap();
     test_async(move |rt| {
         let db = db.clone();
         let db2 = db.clone();
@@ -152,10 +153,11 @@ fn fetch_async_utxo() {
 #[test]
 fn async_is_utxo() {
     let (db, blocks, outputs) = create_blockchain_db_no_cut_through();
+    let factory = CommitmentFactory::default();
     blocks.iter().for_each(|b| println!("{}", b));
     // Retrieve a UTXO and an STXO
-    let utxo = find_utxo(&outputs[4][0], &blocks[4]).unwrap();
-    let stxo = find_utxo(&outputs[1][0], &blocks[1]).unwrap();
+    let utxo = find_utxo(&outputs[4][0], &blocks[4], &factory).unwrap();
+    let stxo = find_utxo(&outputs[1][0], &blocks[1], &factory).unwrap();
     // Check using sync functions
     assert_eq!(db.is_utxo(utxo.hash()), Ok(true), "{}", dump_logs(&db, &blocks));
     assert_eq!(db.is_utxo(stxo.hash()), Ok(false), "{}", dump_logs(&db, &blocks));

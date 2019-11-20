@@ -32,7 +32,7 @@ use tari_service_framework::{
     ServiceInitializer,
 };
 use tari_shutdown::ShutdownSignal;
-use tari_transactions::types::PrivateKey;
+use tari_transactions::types::{CryptoFactories, PrivateKey};
 use tokio::runtime::TaskExecutor;
 
 pub mod error;
@@ -56,15 +56,17 @@ where T: OutputManagerBackend
 {
     config: Option<OutputManagerConfig>,
     backend: Option<T>,
+    factories: CryptoFactories,
 }
 
 impl<T> OutputManagerServiceInitializer<T>
 where T: OutputManagerBackend
 {
-    pub fn new(config: OutputManagerConfig, backend: T) -> Self {
+    pub fn new(config: OutputManagerConfig, backend: T, factories: CryptoFactories) -> Self {
         Self {
             config: Some(config),
             backend: Some(backend),
+            factories,
         }
     }
 }
@@ -97,9 +99,9 @@ where T: OutputManagerBackend + 'static
             .backend
             .take()
             .expect("Cannot start Output Manager Service without setting a storage backend");
-
+        let factories = self.factories.clone();
         executor.spawn(async move {
-            let service = OutputManagerService::new(receiver, config, OutputManagerDatabase::new(backend))
+            let service = OutputManagerService::new(receiver, config, OutputManagerDatabase::new(backend), factories)
                 .expect("Could not initialize Output Manager Service")
                 .start();
 

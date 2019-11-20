@@ -50,8 +50,11 @@ use tari_broadcast_channel::bounded;
 use tari_mmr::MutableMmrLeafNodes;
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_test_utils::runtime::test_async;
-use tari_transactions::{tari_amount::MicroTari, types::HashDigest};
-use tari_utilities::hash::Hashable;
+use tari_transactions::{
+    tari_amount::MicroTari,
+    types::{CryptoFactories, HashDigest},
+};
+use tari_utilities::{hash::Hashable, hex::Hex};
 
 async fn test_request_responder(
     receiver: &mut Receiver<
@@ -210,12 +213,13 @@ fn inbound_fetch_headers() {
 
 #[test]
 fn outbound_fetch_utxos() {
+    let factories = CryptoFactories::default();
     let (request_sender, mut request_receiver) = reply_channel::unbounded();
     let (block_sender, _) = reply_channel::unbounded();
     let mut outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
 
     block_on(async {
-        let (utxo, _) = create_utxo(MicroTari(10_000));
+        let (utxo, _) = create_utxo(MicroTari(10_000), &factories);
         let hash = utxo.hash();
         let utxo_response: Vec<NodeCommsResponse> = vec![NodeCommsResponse::TransactionOutputs(vec![utxo.clone()])];
         let (received_utxos, _) = futures::join!(
@@ -230,12 +234,13 @@ fn outbound_fetch_utxos() {
 
 #[test]
 fn inbound_fetch_utxos() {
+    let factories = CryptoFactories::default();
     let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
     let mempool = Mempool::new(store.clone(), MempoolConfig::default());
     let (block_event_publisher, _block_event_subscriber) = bounded(100);
     let inbound_nch = InboundNodeCommsHandlers::new(block_event_publisher, store.clone(), mempool);
 
-    let (utxo, _) = create_utxo(MicroTari(10_000));
+    let (utxo, _) = create_utxo(MicroTari(10_000), &factories);
     let hash = utxo.hash();
     let mut txn = DbTransaction::new();
     txn.insert_utxo(utxo.clone());
