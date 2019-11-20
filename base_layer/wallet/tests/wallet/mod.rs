@@ -117,10 +117,12 @@ fn test_wallet() {
     };
     let config1 = WalletConfig {
         comms_config: comms_config1,
+        logging_path: None,
         factories: factories.clone(),
     };
     let config2 = WalletConfig {
         comms_config: comms_config2,
+        logging_path: None,
         factories: factories.clone(),
     };
     let runtime_node1 = Runtime::new().unwrap();
@@ -228,6 +230,7 @@ fn test_data_generation() {
     let config = WalletConfig {
         comms_config,
         factories,
+        logging_path: None,
     };
 
     let mut wallet = Wallet::new(config, WalletMemoryDatabase::new(), runtime).unwrap();
@@ -314,6 +317,7 @@ fn test_test_harness() {
     let config1 = WalletConfig {
         comms_config: comms_config1,
         factories: factories.clone(),
+        logging_path: None,
     };
 
     let runtime = Runtime::new().unwrap();

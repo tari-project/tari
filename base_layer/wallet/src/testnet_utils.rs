@@ -126,6 +126,7 @@ pub fn create_wallet(secret_key: CommsSecretKey, net_address: String) -> Wallet<
 
     let config = WalletConfig {
         comms_config,
+        logging_path: None,
         factories,
     };
 

@@ -26,6 +26,7 @@ use crate::{
     transaction_service::error::TransactionServiceError,
 };
 use derive_error::Error;
+use log::SetLoggerError;
 use tari_comms::{builder::CommsError, connection::NetAddressError, peer_manager::PeerManagerError};
 use tari_p2p::initialization::CommsInitializationError;
 
@@ -38,6 +39,7 @@ pub enum WalletError {
     PeerManagerError(PeerManagerError),
     NetAddressError(NetAddressError),
     WalletStorageError(WalletStorageError),
+    SetLoggerError(SetLoggerError),
 }
 
 #[derive(Debug, Error, PartialEq)]

@@ -1259,24 +1259,32 @@ pub unsafe extern "C" fn comms_config_destroy(wc: *mut TariCommsConfig) {
 ///
 /// ## Arguments
 /// `config` - The TariCommsConfig pointer
-///
+/// `log_path` - An optional file path to the file where the logs will be written. If no log is required pass *null*
+/// pointer.
 /// ## Returns
 /// `*mut TariWallet` - Returns a pointer to a TariWallet, note that it returns ptr::null_mut()
 /// if config is null, a wallet error was encountered or if the runtime could not be created
 #[no_mangle]
-pub unsafe extern "C" fn wallet_create(config: *mut TariCommsConfig) -> *mut TariWallet {
+pub unsafe extern "C" fn wallet_create(config: *mut TariCommsConfig, log_path: *const c_char) -> *mut TariWallet {
     if config.is_null() {
         return ptr::null_mut();
     }
+    let mut logging_path_string = None;
+    if !log_path.is_null() {
+        logging_path_string = Some(CStr::from_ptr(log_path).to_str().unwrap().to_owned());
+    }
+
     // TODO Gracefully handle the case where these expects would fail
     let runtime = Runtime::new();
     let factories = CryptoFactories::default();
     let w;
+
     match runtime {
         Ok(runtime) => {
             w = TariWallet::new(
                 WalletConfig {
                     comms_config: (*config).clone(),
+                    logging_path: logging_path_string,
                     factories,
                 },
                 WalletMemoryDatabase::new(),
@@ -2089,7 +2097,7 @@ mod test {
                 db_path_alice_str,
                 secret_key_alice,
             );
-            let alice_wallet = wallet_create(alice_config);
+            let alice_wallet = wallet_create(alice_config, ptr::null());
 
             let secret_key_bob = private_key_generate();
             let public_key_bob = public_key_from_private_key(secret_key_bob.clone());
@@ -2106,7 +2114,7 @@ mod test {
                 db_path_bob_str,
                 secret_key_bob,
             );
-            let bob_wallet = wallet_create(bob_config);
+            let bob_wallet = wallet_create(bob_config, ptr::null());
 
             let mut peer_added = wallet_add_base_node_peer(alice_wallet, public_key_bob.clone(), address_bob_str);
             assert_eq!(peer_added, true);
