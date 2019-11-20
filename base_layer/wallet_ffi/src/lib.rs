@@ -1160,7 +1160,8 @@ pub unsafe extern "C" fn pending_inbound_transaction_destroy(transaction: *mut T
 /// Creates a TariCommsConfig. The result from this function is required when initializing a TariWallet.
 ///
 /// ## Arguments
-/// `address` - The address char array pointer
+/// `control_service_address` - The control service address char array pointer
+/// `listener_address` - The listener address char array pointer
 /// `database_name` - The database name char array pointer
 /// `database_path` - The database path char array pointer which the application has write access to
 /// `secret_key` - The TariSecretKey pointer
@@ -1183,18 +1184,21 @@ pub unsafe extern "C" fn comms_config_create(
     } else {
         return ptr::null_mut();
     }
+
     let listener_address_string;
     if !listener_address.is_null() {
         listener_address_string = CStr::from_ptr(listener_address).to_str().unwrap().to_owned();
     } else {
         return ptr::null_mut();
     }
+
     let database_name_string;
     if !database_name.is_null() {
         database_name_string = CStr::from_ptr(database_name).to_str().unwrap().to_owned();
     } else {
         return ptr::null_mut();
     }
+
     let datastore_path_string;
     if !datastore_path.is_null() {
         datastore_path_string = CStr::from_ptr(datastore_path).to_str().unwrap().to_owned();
@@ -1205,35 +1209,41 @@ pub unsafe extern "C" fn comms_config_create(
     let listener_address = listener_address_string.parse::<NetAddress>();
     let control_service_address = control_service_address_string.parse::<NetAddress>();
 
-    match (listener_address, control_service_address) {
-        (Ok(listener_address), Ok(control_service_address)) => {
-            let ni = NodeIdentity::new(
-                (*secret_key).clone(),
-                control_service_address,
-                PeerFeatures::COMMUNICATION_CLIENT,
-            )
-            .unwrap();
+    match listener_address {
+        Ok(listener_address) => match control_service_address {
+            Ok(control_service_address) => {
+                let ni = NodeIdentity::new(
+                    (*secret_key).clone(),
+                    control_service_address,
+                    PeerFeatures::COMMUNICATION_CLIENT,
+                );
+                match ni {
+                    Ok(ni) => {
+                        let config = TariCommsConfig {
+                            node_identity: Arc::new(ni.clone()),
+                            peer_connection_listening_address: listener_address,
+                            socks_proxy_address: None,
+                            control_service: ControlServiceConfig {
+                                listener_address: ni.control_service_address(),
+                                socks_proxy_address: None,
+                                requested_connection_timeout: Duration::from_millis(2000),
+                            },
+                            establish_connection_timeout: Duration::from_secs(10),
+                            datastore_path: datastore_path_string,
+                            peer_database_name: database_name_string,
+                            inbound_buffer_size: 100,
+                            outbound_buffer_size: 100,
+                            dht: Default::default(),
+                        };
 
-            let config = TariCommsConfig {
-                node_identity: Arc::new(ni.clone()),
-                peer_connection_listening_address: listener_address,
-                socks_proxy_address: None,
-                control_service: ControlServiceConfig {
-                    listener_address: ni.control_service_address(),
-                    socks_proxy_address: None,
-                    requested_connection_timeout: Duration::from_millis(2000),
-                },
-                establish_connection_timeout: Duration::from_secs(10),
-                datastore_path: datastore_path_string,
-                peer_database_name: database_name_string,
-                inbound_buffer_size: 100,
-                outbound_buffer_size: 100,
-                dht: Default::default(),
-            };
-
-            Box::into_raw(Box::new(config))
+                        Box::into_raw(Box::new(config))
+                    },
+                    Err(_) => ptr::null_mut(),
+                }
+            },
+            Err(_) => return ptr::null_mut(),
         },
-        _ => ptr::null_mut(),
+        Err(_) => return ptr::null_mut(),
     }
 }
 
@@ -1852,21 +1862,21 @@ pub unsafe extern "C" fn wallet_get_pending_outbound_transaction_by_id(
     }
 }
 
-/// Get the TariPublicKey from a TariCommsConfig
+/// Get the TariPublicKey from a TariWallet
 ///
 /// ## Arguments
-/// `wc` - The TariWalletConfig pointer
+/// `wallet` - The TariWallet pointer
 ///
 /// ## Returns
 /// `*mut TariPublicKey` - returns the public key, note that ptr::null_mut() is returned
 /// if wc is null
 #[no_mangle]
-pub unsafe extern "C" fn wallet_get_public_key(wc: *mut TariCommsConfig) -> *mut TariPublicKey {
-    if wc.is_null() {
+pub unsafe extern "C" fn wallet_get_public_key(wallet: *mut TariWallet) -> *mut TariPublicKey {
+    if wallet.is_null() {
         return ptr::null_mut();
     }
-    let pk = (*wc).node_identity.public_key();
-    Box::into_raw(Box::new(pk.clone()))
+    let pk = (*wallet).comms.node_identity().public_key().clone();
+    Box::into_raw(Box::new(pk))
 }
 
 /// Frees memory for a TariWallet
@@ -2099,15 +2109,18 @@ mod test {
             let db_path_alice_str: *const c_char = CString::into_raw(db_path_alice.clone()) as *const c_char;
             let address_alice = CString::new("127.0.0.1:21443").unwrap();
             let address_alice_str: *const c_char = CString::into_raw(address_alice.clone()) as *const c_char;
+
+            let address_listener_alice = CString::new("127.0.0.1:0").unwrap();
+            let address_listener_alice_str: *const c_char =
+                CString::into_raw(address_listener_alice.clone()) as *const c_char;
             let alice_config = comms_config_create(
                 address_alice_str,
-                CString::into_raw(CString::new("127.0.0.1:0").unwrap()),
+                address_listener_alice_str,
                 db_name_alice_str,
                 db_path_alice_str,
                 secret_key_alice,
             );
             let alice_wallet = wallet_create(alice_config, ptr::null());
-
             let secret_key_bob = private_key_generate();
             let public_key_bob = public_key_from_private_key(secret_key_bob.clone());
             let db_name_bob = CString::new(random_string(8).as_str()).unwrap();
@@ -2123,9 +2136,12 @@ mod test {
             let db_path_bob_str: *const c_char = CString::into_raw(db_path_bob.clone()) as *const c_char;
             let address_bob = CString::new("127.0.0.1:21441").unwrap();
             let address_bob_str: *const c_char = CString::into_raw(address_bob.clone()) as *const c_char;
+            let address_listener_bob = CString::new("127.0.0.1:0").unwrap();
+            let address_listener_bob_str: *const c_char =
+                CString::into_raw(address_listener_bob.clone()) as *const c_char;
             let bob_config = comms_config_create(
                 address_bob_str,
-                CString::into_raw(CString::new("127.0.0.1:0").unwrap()),
+                address_listener_bob_str,
                 db_name_bob_str,
                 db_path_bob_str,
                 secret_key_bob,
@@ -2202,6 +2218,8 @@ mod test {
             assert_eq!(contacts_get_length(contacts), 4);
 
             // free string memory
+            string_destroy(address_listener_alice_str as *mut c_char);
+            string_destroy(address_listener_bob_str as *mut c_char);
             string_destroy(db_name_alice_str as *mut c_char);
             string_destroy(db_path_alice_str as *mut c_char);
             string_destroy(address_alice_str as *mut c_char);

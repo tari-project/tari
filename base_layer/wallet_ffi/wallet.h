@@ -264,7 +264,8 @@ void pending_inbound_transactions_destroy(struct TariPendingInboundTransactions 
 /// -------------------------------- TariCommsConfig ----------------------------------------------- ///
 
 // Creates a TariCommsConfig
-struct TariCommsConfig *comms_config_create(char *address,
+struct TariCommsConfig *comms_config_create(char *control_service_address,
+                                     char *listener_address,
                                      char *database_name,
                                      char *datastore_path,
                                      struct TariPrivateKey *secret_key);
@@ -311,7 +312,7 @@ struct TariCompletedTransactions *wallet_get_completed_transactions(struct TariW
 struct TariPendingOutboundTransactions *wallet_get_pending_outbound_transactions(struct TariWallet *wallet);
 
 // Get the TariPublicKey from a TariCommsConfig
-struct TariPublicKey *wallet_get_public_key(struct TariCommsConfig *wc);
+struct TariPublicKey *wallet_get_public_key(struct TariWallet *wallet);
 
 // Get the TariPendingInboundTransactions from a TariWallet
 struct TariPendingInboundTransactions *wallet_get_pending_inbound_transactions(struct TariWallet *wallet);
