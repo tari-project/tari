@@ -1980,6 +1980,8 @@ mod test {
     use crate::*;
     use libc::{c_char, c_uchar, c_uint};
     use std::ffi::CString;
+    use tari_wallet::testnet_utils::random_string;
+    use tempdir::TempDir;
 
     unsafe extern "C" fn completed_callback(tx: *mut TariCompletedTransaction) {
         assert_eq!(tx.is_null(), false);
@@ -2076,9 +2078,16 @@ mod test {
         unsafe {
             let secret_key_alice = private_key_generate();
             let public_key_alice = public_key_from_private_key(secret_key_alice.clone());
-            let db_name_alice = CString::new("ffi_test1_alice").unwrap();
+            let db_name_alice = CString::new(random_string(8).as_str()).unwrap();
             let db_name_alice_str: *const c_char = CString::into_raw(db_name_alice.clone()) as *const c_char;
-            let db_path_alice = CString::new("./data_alice").unwrap();
+            let db_path_alice = CString::new(
+                TempDir::new(random_string(8).as_str())
+                    .unwrap()
+                    .path()
+                    .to_str()
+                    .unwrap(),
+            )
+            .unwrap();
             let db_path_alice_str: *const c_char = CString::into_raw(db_path_alice.clone()) as *const c_char;
             let address_alice = CString::new("127.0.0.1:21443").unwrap();
             let address_alice_str: *const c_char = CString::into_raw(address_alice.clone()) as *const c_char;
@@ -2093,9 +2102,16 @@ mod test {
 
             let secret_key_bob = private_key_generate();
             let public_key_bob = public_key_from_private_key(secret_key_bob.clone());
-            let db_name_bob = CString::new("ffi_test1_bob").unwrap();
+            let db_name_bob = CString::new(random_string(8).as_str()).unwrap();
             let db_name_bob_str: *const c_char = CString::into_raw(db_name_bob.clone()) as *const c_char;
-            let db_path_bob = CString::new("./data_bob").unwrap();
+            let db_path_bob = CString::new(
+                TempDir::new(random_string(8).as_str())
+                    .unwrap()
+                    .path()
+                    .to_str()
+                    .unwrap(),
+            )
+            .unwrap();
             let db_path_bob_str: *const c_char = CString::into_raw(db_path_bob.clone()) as *const c_char;
             let address_bob = CString::new("127.0.0.1:21441").unwrap();
             let address_bob_str: *const c_char = CString::into_raw(address_bob.clone()) as *const c_char;

@@ -134,7 +134,7 @@ pub fn create_wallet(secret_key: CommsSecretKey, net_address: String) -> Wallet<
 
 /// This function will generate a set of test data for the supplied wallet. Takes a few seconds to complete
 pub fn generate_wallet_test_data<T: WalletBackend>(wallet: &mut Wallet<T>) -> Result<(), WalletError> {
-    let mut rng = rand::OsRng::new().unwrap();
+    let rng = rand::OsRng::new().unwrap();
     let factories = CryptoFactories::default();
     let names = ["Alice", "Bob", "Carol", "Dave"];
     let private_keys = [
