@@ -20,11 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::{monitor, NetAddressError, PeerConnectionError};
+use super::{monitor, NetAddressError};
 use derive_error::Error;
-use tari_utilities::thread_join::ThreadError;
 
-#[derive(Debug, Error, PartialEq)]
+#[derive(Debug, Error, PartialEq, Clone)]
 pub enum ConnectionError {
     NetAddressError(NetAddressError),
     #[error(msg_embedded, no_from, non_std)]
@@ -33,14 +32,9 @@ pub enum ConnectionError {
     Timeout,
     #[error(msg_embedded, no_from, non_std)]
     CurveKeypairError(String),
-    PeerError(PeerConnectionError),
     MonitorError(monitor::ConnectionMonitorError),
-    #[error(msg_embedded, no_from, non_std)]
-    InvalidOperation(String),
-    ThreadJoinError(ThreadError),
-    /// Futures::MPSC Channel error,
-    #[error(msg_embedded, no_from, non_std)]
-    ChannelError(String),
+    /// Identity for the connection was not provided
+    IdentityNotProvided,
 }
 
 impl ConnectionError {

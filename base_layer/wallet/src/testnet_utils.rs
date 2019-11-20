@@ -104,7 +104,7 @@ pub fn create_wallet(secret_key: CommsSecretKey, net_address: String) -> Wallet<
     dht_config.discovery_request_timeout = Duration::from_millis(500);
     let comms_config = CommsConfig {
         node_identity: Arc::new(node_id.clone()),
-        peer_connection_listening_address: "127.0.0.1".parse().unwrap(),
+        peer_connection_listening_address: "127.0.0.1:0".parse().unwrap(),
         socks_proxy_address: None,
         control_service: ControlServiceConfig {
             listener_address: node_id.control_service_address(),

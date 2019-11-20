@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    connection::{ConnectionError, NetAddressError},
+    connection::{ConnectionError, NetAddressError, PeerConnectionError},
     message::MessageError,
     peer_manager::PeerManagerError,
 };
@@ -39,6 +39,7 @@ pub enum ControlServiceError {
     WorkerThreadJoinFailed(ThreadError),
     PeerManagerError(PeerManagerError),
     ConnectionError(ConnectionError),
+    PeerConnectionError(PeerConnectionError),
     /// The worker thread failed to start
     WorkerThreadFailedToStart,
     /// Received an unencrypted message. Discarding it.
@@ -51,8 +52,8 @@ pub enum ControlServiceError {
     /// Received an unexpected reply
     ClientUnexpectedReply,
     NetAddressError(NetAddressError),
-    /// The connection address could not be established
-    ConnectionAddressNotEstablished,
+    /// Unable to establish inbound listener address. Inbound listener not in listening state?
+    ListenerAddressNotEstablished,
     #[error(non_std, no_from, msg_embedded)]
     ConnectionProtocolFailed(String),
     /// Failed to decode message

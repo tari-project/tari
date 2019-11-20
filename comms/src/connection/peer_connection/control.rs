@@ -20,28 +20,39 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use log::*;
-
-use std::{convert::From, fmt, sync::mpsc::SyncSender};
-
-use crate::{
-    connection::types::{Linger, Result},
-    message::FrameSet,
-};
-
 use super::PeerConnectionError;
+use crate::{
+    connection::{peer_connection::oneshot, types::Linger, zmq::ZmqIdentity},
+    message::{Frame, FrameSet},
+};
+use log::*;
+use std::{convert::From, fmt, sync::mpsc::SyncSender};
 
 const LOG_TARGET: &str = "comms::connections::peer_connection::control";
 
 /// Control messages which are sent by PeerConnection to the underlying thread.
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug)]
 pub enum ControlMessage {
     /// Shut the thread down
     Shutdown,
-    /// Send the given frames to the peer
-    SendMsg(FrameSet),
+    /// Send the given frames to the given identity. The identity is ignored on outbound connections
+    SendMsg(
+        Option<ZmqIdentity>,
+        FrameSet,
+        oneshot::Sender<Result<(), PeerConnectionError>>,
+    ),
     /// Sets the linger on the peer connection
     SetLinger(Linger),
+    /// Whitelist an identity. Allowing it send messages to this connection.
+    /// The first parameter is the identity used over the wire (connection_identity), while the second is an internal
+    /// identifier for the peer (peer_identity). The random identity prevents peers 'stealing' another peer's
+    /// identity before they have connected.
+    AllowIdentity(ZmqIdentity, Frame),
+    /// Remove this identity from the whitelist. Denying it permission to send to this connection.
+    DenyIdentity(ZmqIdentity),
+    /// Send a ping message to the peer and check if the send succeeds. This operation
+    /// does not require a response from the peer before returning a result.
+    TestConnection(ZmqIdentity, oneshot::Sender<Result<(), PeerConnectionError>>),
 }
 
 impl fmt::Display for ControlMessage {
@@ -62,10 +73,10 @@ impl ThreadControlMessenger {
     /// `msg` - The [ControlMessage] to send
     ///
     /// [ControlMessage]: ./enum.ControlMessage.html
-    pub fn send(&self, msg: ControlMessage) -> Result<()> {
-        self.0.send(msg).map_err(|e| {
-            PeerConnectionError::ControlSendError(format!("Failed to send control message: {:?}", e)).into()
-        })
+    pub fn send(&self, msg: ControlMessage) -> Result<(), PeerConnectionError> {
+        self.0
+            .send(msg)
+            .map_err(|e| PeerConnectionError::ControlSendError(format!("Failed to send control message: {:?}", e)))
     }
 
     #[cfg(test)]

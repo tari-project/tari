@@ -27,6 +27,8 @@ mod endpoint;
 mod error;
 mod inproc_address;
 
+pub type ZmqIdentity = Vec<u8>;
+
 pub use self::{
     context::ZmqContext,
     curve_keypair::{CurveEncryption, CurvePublicKey, CurveSecretKey},

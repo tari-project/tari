@@ -198,7 +198,7 @@ impl<'a> DhtActor<'a> {
                 result = self.pending_jobs.select_next_some() => {
                     match result {
                         Ok(_) => {
-                            trace!(target: LOG_TARGET, "Successfully handled DHT request message");
+                            trace!(target: LOG_TARGET, "DHT Actor request succeeded");
                         },
                         Err(err) => {
                             error!(target: LOG_TARGET, "Error when handling DHT request message. {}", err);

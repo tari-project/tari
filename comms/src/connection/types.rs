@@ -58,12 +58,28 @@ impl Default for Linger {
 }
 
 /// Direction of the connection
-#[derive(Clone, Eq, PartialEq, Debug)]
+#[derive(Clone, Copy, Eq, PartialEq, Debug)]
 pub enum Direction {
     /// Connection listens for incoming connections
     Inbound,
     /// Connection establishes an outbound connection
     Outbound,
+}
+
+impl Direction {
+    pub fn is_inbound(&self) -> bool {
+        match self {
+            Direction::Inbound => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_outbound(&self) -> bool {
+        match self {
+            Direction::Outbound => true,
+            _ => false,
+        }
+    }
 }
 
 impl fmt::Display for Direction {

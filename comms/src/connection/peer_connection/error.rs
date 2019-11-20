@@ -20,7 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::connection::ConnectionError;
 use derive_error::Error;
+use tari_utilities::thread_join::ThreadError;
 
 /// Represents errors which can occur in a PeerConnection.
 #[derive(Debug, Error, Clone, PartialEq)]
@@ -29,12 +31,8 @@ pub enum PeerConnectionError {
     InitializationError(String),
     #[error(msg_embedded, non_std, no_from)]
     ControlSendError(String),
-    /// Peer connection control port has disconnected
-    ControlPortDisconnected,
-    /// Unexpected identity received from peer
-    UnexpectedIdentity,
-    /// Connection identity of peer has not been established
-    IdentityNotEstablished,
+    /// Peer connection control channel has disconnected
+    ControlChannelDisconnected,
     #[error(msg_embedded, non_std, no_from)]
     StateError(String),
     /// Error occurred while shutting down the connection
@@ -47,4 +45,28 @@ pub enum PeerConnectionError {
     ExceededMaxConnectRetryCount,
     /// Peer connection worker thread failed to start
     ThreadInitializationError,
+    /// Local identity was not set on outbound connection
+    ConnectionIdentityNotSet,
+    /// Remote identity was not set on outbound connection
+    PeerIdentityNotSet,
+    ConnectionError(ConnectionError),
+    #[error(no_from)]
+    SendFailure(ConnectionError),
+    #[error(msg_embedded, no_from, non_std)]
+    InvalidOperation(String),
+    /// Peer connection sink channel disconnected
+    ChannelDisconnectedError,
+    ThreadJoinError(ThreadError),
+    #[error(msg_embedded, no_from, non_std)]
+    OperationTimeout(String),
+    /// Oneshot sender reply cancelled
+    OneshotReplyCancelled,
+    #[error(msg_embedded, no_from, non_std)]
+    ConnectionTestFailed(String),
+    /// Reply channel failed for peer connection control request
+    ControlMessageReplyFailed,
+    /// Connection to peer was denied
+    ConnectionDenied,
+    /// Access to this peer connection is denied
+    AccessDenied,
 }

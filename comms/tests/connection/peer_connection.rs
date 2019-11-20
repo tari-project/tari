@@ -24,16 +24,14 @@ use crate::support::{
     factories::{self, TestFactory},
     helpers::{asserts::assert_change, streams::stream_assert_count},
 };
-use futures::{channel::mpsc::channel, executor::block_on, StreamExt};
+use futures::{channel::mpsc, executor::block_on, StreamExt};
 use std::time::Duration;
 use tari_comms::{
     connection::{
-        peer_connection::PeerConnectionProtoMessage,
+        peer_connection::PeerConnectionProtocolMessage,
         types::{Direction, Linger},
         Connection,
-        ConnectionError,
         CurveEncryption,
-        NetAddress,
         PeerConnection,
         PeerConnectionContextBuilder,
         PeerConnectionError,
@@ -50,25 +48,28 @@ fn connection_in() {
     let (server_sk, server_pk) = CurveEncryption::generate_keypair().unwrap();
     let (client_sk, client_pk) = CurveEncryption::generate_keypair().unwrap();
 
-    let (consumer_tx, consumer_rx) = channel(10);
+    let (consumer_tx, consumer_rx) = mpsc::channel(1);
 
     // Initialize and start peer connection
     let context = PeerConnectionContextBuilder::new()
-        .set_id("123")
         .set_direction(Direction::Inbound)
         .set_context(&ctx)
         .set_message_sink_channel(consumer_tx)
         .set_curve_encryption(CurveEncryption::Server { secret_key: server_sk })
         .set_address(addr.clone())
-        .build()
+        .finish()
         .unwrap();
 
-    let mut conn = PeerConnection::new();
-    conn.start(context).unwrap();
-    conn.wait_listening_or_failure(&Duration::from_millis(1000)).unwrap();
+    let (conn, _) = PeerConnection::listen(context).unwrap();
+    conn.wait_listening_or_failure(Duration::from_millis(1000)).unwrap();
 
     // Connect to the inbound connection and send a message
+    let connection_identity = b"conn-ident".to_vec();
+    let peer_identity = b"peer-ident".to_vec();
+    conn.allow_identity(connection_identity.clone(), peer_identity.clone())
+        .unwrap();
     let sender = Connection::new(&ctx, Direction::Outbound)
+        .set_identity(&connection_identity)
         .set_curve_encryption(CurveEncryption::Client {
             server_public_key: server_pk,
             secret_key: client_sk,
@@ -76,22 +77,23 @@ fn connection_in() {
         })
         .establish(&addr)
         .unwrap();
-    sender.send(&[&[PeerConnectionProtoMessage::Identify as u8]]).unwrap();
     sender
-        .send(&[&[PeerConnectionProtoMessage::Message as u8], &[1u8]])
+        .send(&[&[PeerConnectionProtocolMessage::Identify as u8]])
+        .unwrap();
+    sender
+        .send(&[&[PeerConnectionProtocolMessage::Message as u8], &[1u8]])
         .unwrap();
 
     // Receive the message from the consumer channel
     let frames: Vec<FrameSet> = block_on(consumer_rx.take(1).collect());
 
-    assert_eq!("123".as_bytes().to_vec(), frames[0][0]);
-    assert_eq!(vec![1u8], frames[0][1]);
-    conn.send(vec![vec![111u8]]).unwrap();
+    assert_eq!(frames[0][0], peer_identity);
+    assert_eq!(frames[0][1], vec![1u8]);
+    conn.send_to_identity(peer_identity, vec![vec![111u8]]).unwrap();
     let reply = sender.receive(100).unwrap();
-    assert_eq!(
-        vec![vec![PeerConnectionProtoMessage::Message as u8], vec![111u8]],
-        reply
-    );
+    assert_eq!(reply, vec![vec![PeerConnectionProtocolMessage::Message as u8], vec![
+        111u8
+    ]],);
 }
 
 #[test]
@@ -109,11 +111,13 @@ fn connection_out() {
         .establish(&addr)
         .unwrap();
 
-    let conn_id = "123".as_bytes();
-    let (consumer_tx, consumer_rx) = channel(10);
+    let connection_identity = b"conn-identity".to_vec();
+    let peer_identity = b"peer-identity".to_vec();
+    let (consumer_tx, consumer_rx) = mpsc::channel(10);
     // Initialize and start peer connection
     let context = PeerConnectionContextBuilder::new()
-        .set_id(conn_id.clone())
+        .set_peer_identity(peer_identity.clone())
+        .set_connection_identity(connection_identity.clone())
         .set_direction(Direction::Outbound)
         .set_context(&ctx)
         .set_message_sink_channel(consumer_tx)
@@ -123,31 +127,31 @@ fn connection_out() {
             public_key: client_pk,
         })
         .set_address(addr.clone())
-        .build()
+        .finish()
         .unwrap();
 
-    let mut conn = PeerConnection::new();
+    let (conn, _) = PeerConnection::connect(context).unwrap();
 
-    assert!(!conn.is_connected());
-    conn.start(context).unwrap();
-    conn.wait_connected_or_failure(&Duration::from_millis(2000)).unwrap();
+    conn.wait_connected_or_failure(Duration::from_millis(2000)).unwrap();
 
     conn.send(vec![vec![123u8]]).unwrap();
 
-    let ident = sender.receive(2000).unwrap();
-    assert_eq!(vec![PeerConnectionProtoMessage::Identify as u8], ident[1]);
     let data = sender.receive(2000).unwrap();
     assert_eq!(vec![123u8], data[2]);
 
     sender
-        .send(&[data[0].as_slice(), &[PeerConnectionProtoMessage::Message as u8], &[
-            123u8,
-        ]])
+        .send(&[
+            connection_identity.as_slice(),
+            &[PeerConnectionProtocolMessage::Message as u8],
+            &[1],
+            &[2],
+        ])
         .unwrap();
 
     let frames: Vec<FrameSet> = block_on(consumer_rx.take(1).collect());
-    assert_eq!(conn_id.to_vec(), frames[0][0]);
-    assert_eq!(vec![123u8], frames[0][1]);
+    assert_eq!(frames[0][0], peer_identity);
+    assert_eq!(frames[0][1], vec![1]);
+    assert_eq!(frames[0][2], vec![2]);
 }
 
 #[test]
@@ -157,28 +161,26 @@ fn connection_wait_connect_shutdown() {
 
     let receiver = Connection::new(&ctx, Direction::Inbound).establish(&addr).unwrap();
 
-    let (consumer_tx, _consumer_rx) = channel(10);
+    let (consumer_tx, _consumer_rx) = mpsc::channel(10);
 
     let context = PeerConnectionContextBuilder::new()
-        .set_id("123")
+        .set_peer_identity(b"dummy-remote-identity".to_vec())
+        .set_connection_identity(b"123".to_vec())
         .set_direction(Direction::Outbound)
         .set_context(&ctx)
         .set_message_sink_channel(consumer_tx)
         .set_address(addr)
-        .build()
+        .finish()
         .unwrap();
 
-    let mut conn = PeerConnection::new();
+    let (conn, _) = PeerConnection::connect(context).unwrap();
 
-    assert!(!conn.is_connected());
-    conn.start(context).unwrap();
-
-    conn.wait_connected_or_failure(&Duration::from_millis(2000)).unwrap();
+    conn.wait_connected_or_failure(Duration::from_millis(2000)).unwrap();
 
     conn.shutdown().unwrap();
 
     assert!(
-        conn.wait_disconnected(&Duration::from_millis(2000)).is_ok(),
+        conn.wait_disconnected(Duration::from_millis(2000)).is_ok(),
         "Failed to shut down in 100ms"
     );
 
@@ -190,34 +192,27 @@ fn connection_wait_connect_failed() {
     let addr = factories::net_address::create().use_os_port().build().unwrap();
     let ctx = ZmqContext::new();
 
-    let (consumer_tx, _consumer_rx) = channel(10);
+    let (consumer_tx, _consumer_rx) = mpsc::channel(10);
 
     // This has nothing to connect to
     let context = PeerConnectionContextBuilder::new()
-        .set_id("123")
+        .set_peer_identity(b"dummy-remote-identity".to_vec())
+        .set_connection_identity(b"123".to_vec())
         .set_direction(Direction::Outbound)
         .set_max_retry_attempts(1)
         .set_context(&ctx)
         .set_message_sink_channel(consumer_tx)
         .set_address(addr.clone())
-        .build()
+        .finish()
         .unwrap();
 
-    let mut conn = PeerConnection::new();
+    let (conn, _) = PeerConnection::connect(context).unwrap();
 
-    assert!(!conn.is_connected());
-    conn.start(context).unwrap();
-
-    let err = conn
-        .wait_connected_or_failure(&Duration::from_millis(2000))
-        .unwrap_err();
+    let err = conn.wait_connected_or_failure(Duration::from_millis(2000)).unwrap_err();
 
     assert!(conn.is_failed());
     match err {
-        ConnectionError::PeerError(err) => match err {
-            PeerConnectionError::ExceededMaxConnectRetryCount => {},
-            _ => panic!("Unexpected connection error '{}'", err),
-        },
+        PeerConnectionError::ExceededMaxConnectRetryCount => {},
         _ => panic!("Unexpected connection error '{}'", err),
     }
 }
@@ -227,36 +222,45 @@ fn connection_disconnect() {
     let addr = factories::net_address::create().use_os_port().build().unwrap();
     let ctx = ZmqContext::new();
 
-    let (consumer_tx, _consumer_rx) = channel(10);
+    let (consumer_tx, _consumer_rx) = mpsc::channel(10);
+
+    // Connect to the inbound connection and send a message
+    let sender = Connection::new(&ctx, Direction::Inbound)
+        .set_linger(Linger::Indefinitely)
+        .establish(&addr)
+        .unwrap();
+
+    let addr = sender.get_connected_address().clone().unwrap().into();
 
     // Initialize and start peer connection
+    let identity = b"123".to_vec();
     let context = PeerConnectionContextBuilder::new()
-        .set_id("123")
-        .set_direction(Direction::Inbound)
+        .set_peer_identity(b"dummy-remote-identity".to_vec())
+        .set_connection_identity(identity.clone())
+        .set_direction(Direction::Outbound)
         .set_context(&ctx)
         .set_message_sink_channel(consumer_tx)
         .set_address(addr)
-        .build()
+        .finish()
         .unwrap();
 
-    let mut conn = PeerConnection::new();
-    conn.start(context).unwrap();
-    conn.wait_listening_or_failure(&Duration::from_millis(1000)).unwrap();
-    let addr = NetAddress::from(conn.get_connected_address().unwrap());
+    let (conn, _) = PeerConnection::connect(context).unwrap();
 
-    {
-        // Connect to the inbound connection and send a message
-        let sender = Connection::new(&ctx, Direction::Outbound)
-            .set_linger(Linger::Indefinitely)
-            .establish(&addr)
-            .unwrap();
-        sender.send(&[&[PeerConnectionProtoMessage::Identify as u8]]).unwrap();
-        sender
-            .send(&[&[PeerConnectionProtoMessage::Message as u8], &[123u8]])
-            .unwrap();
-    }
+    conn.wait_connected_or_failure(Duration::from_millis(1000)).unwrap();
 
-    conn.wait_disconnected(&Duration::from_millis(2000)).unwrap();
+    sender
+        .send(&[identity.as_slice(), &[PeerConnectionProtocolMessage::Identify as u8]])
+        .unwrap();
+    sender
+        .send(
+            &[identity.as_slice(), &[PeerConnectionProtocolMessage::Message as u8], &[
+                123u8,
+            ]],
+        )
+        .unwrap();
+    drop(sender);
+
+    conn.wait_disconnected(Duration::from_millis(2000)).unwrap();
 }
 
 #[test]
@@ -264,64 +268,79 @@ fn connection_stats() {
     let addr = factories::net_address::create().build().unwrap();
     let ctx = ZmqContext::new();
 
-    let (consumer_tx, _consumer_rx) = channel(10);
+    let (inbound_tx, _inbound_rx) = mpsc::channel(10);
+    let (sender_tx, _sender_rx) = mpsc::channel(10);
 
     // Connect to the sender (peer)
-    let sender = Connection::new(&ctx, Direction::Outbound)
-        .set_linger(Linger::Indefinitely)
-        .establish(&addr)
-        .unwrap();
+    let conn_identity = b"conn-ident".to_vec();
+    let peer_identity = b"peer-ident".to_vec();
 
     // Initialize and start peer connection
     let context = PeerConnectionContextBuilder::new()
-        .set_id("123".as_bytes())
         .set_direction(Direction::Inbound)
         .set_context(&ctx)
-        .set_message_sink_channel(consumer_tx)
-        .set_address(addr)
-        .build()
+        .set_message_sink_channel(inbound_tx)
+        .set_address(addr.clone())
+        .finish()
         .unwrap();
 
-    let mut conn = PeerConnection::new();
+    let (inbound_conn, _) = PeerConnection::listen(context).unwrap();
+    inbound_conn
+        .wait_listening_or_failure(Duration::from_millis(3000))
+        .unwrap();
+    assert!(inbound_conn.is_listening());
 
-    assert!(!conn.is_connected());
-    conn.start(context).unwrap();
+    inbound_conn
+        .allow_identity(conn_identity.clone(), peer_identity.clone())
+        .unwrap();
 
-    let initial_stats = conn.connection_stats();
-    let msg_type_frame = &[PeerConnectionProtoMessage::Message as u8];
+    let initial_stats = inbound_conn.get_connection_stats();
 
-    sender.send(&[&[PeerConnectionProtoMessage::Identify as u8]]).unwrap();
-    sender.send(&[msg_type_frame, &[1u8]]).unwrap();
-    sender.send(&[msg_type_frame, &[2u8]]).unwrap();
-    sender.send(&[msg_type_frame, &[3u8]]).unwrap();
-    sender.send(&[msg_type_frame, &[4u8]]).unwrap();
+    let outbound_context = PeerConnectionContextBuilder::new()
+        .set_context(&ctx)
+        .set_connection_identity(conn_identity.clone())
+        .set_peer_identity(peer_identity.clone())
+        .set_direction(Direction::Outbound)
+        .set_message_sink_channel(sender_tx)
+        .set_address(addr)
+        .finish()
+        .unwrap();
+    let (outbound_conn, _) = PeerConnection::connect(outbound_context).unwrap();
 
-    conn.wait_connected_or_failure(&Duration::from_millis(2000)).unwrap();
+    outbound_conn
+        .wait_connected_or_failure(Duration::from_millis(5000))
+        .unwrap();
 
-    conn.send(vec![vec![10u8]]).unwrap();
-    conn.send(vec![vec![11u8]]).unwrap();
-    conn.send(vec![vec![12u8]]).unwrap();
+    outbound_conn.send(vec![vec![1u8]]).unwrap();
+    outbound_conn.send(vec![vec![2u8]]).unwrap();
+    outbound_conn.send(vec![vec![3u8]]).unwrap();
+    outbound_conn.send(vec![vec![4u8]]).unwrap();
+
+    let sender = inbound_conn.get_peer_sender(peer_identity.clone()).unwrap();
+    sender.send(vec![vec![10u8]]).unwrap();
+    sender.send(vec![vec![11u8]]).unwrap();
+    sender.send(vec![vec![12u8]]).unwrap();
 
     // Assert that receive stats update
     assert_change(
         || {
-            let stats = conn.connection_stats();
+            let stats = inbound_conn.get_connection_stats();
             stats.messages_recv()
         },
         4,
-        40,
+        50,
     );
 
     assert_change(
         || {
-            let stats = conn.connection_stats();
+            let stats = inbound_conn.get_connection_stats();
             stats.messages_sent()
         },
         3,
-        20,
+        25,
     );
 
-    let stats = conn.connection_stats();
+    let stats = inbound_conn.get_connection_stats();
     assert!(stats.last_activity() > initial_stats.last_activity());
 }
 
@@ -333,22 +352,21 @@ fn ignore_invalid_message_types() {
     let (server_sk, server_pk) = CurveEncryption::generate_keypair().unwrap();
     let (client_sk, client_pk) = CurveEncryption::generate_keypair().unwrap();
 
-    let (consumer_tx, consumer_rx) = channel(10);
+    let (consumer_tx, consumer_rx) = mpsc::channel(10);
 
     // Initialize and start peer connection
     let context = PeerConnectionContextBuilder::new()
-        .set_id("123")
+        .set_connection_identity(b"123".to_vec())
         .set_direction(Direction::Inbound)
         .set_context(&ctx)
         .set_message_sink_channel(consumer_tx)
         .set_curve_encryption(CurveEncryption::Server { secret_key: server_sk })
         .set_address(addr.clone())
-        .build()
+        .finish()
         .unwrap();
 
-    let mut conn = PeerConnection::new();
-    conn.start(context).unwrap();
-    conn.wait_listening_or_failure(&Duration::from_millis(1000)).unwrap();
+    let (conn, _) = PeerConnection::listen(context).unwrap();
+    conn.wait_listening_or_failure(Duration::from_millis(1000)).unwrap();
 
     // Connect to the inbound connection and send a message
     let sender = Connection::new(&ctx, Direction::Outbound)
@@ -361,12 +379,13 @@ fn ignore_invalid_message_types() {
         .unwrap();
 
     assert!(!conn.is_connected());
-    sender.send(&[&[PeerConnectionProtoMessage::Identify as u8]]).unwrap();
-    assert_change(|| conn.is_connected(), true, 10);
+    sender
+        .send(&[&[PeerConnectionProtocolMessage::Identify as u8]])
+        .unwrap();
     // Send invalid peer connection message type
     sender.send(&[&[255], &[1u8]]).unwrap();
     sender
-        .send(&[&[PeerConnectionProtoMessage::Message as u8], &[1u8]])
+        .send(&[&[PeerConnectionProtocolMessage::Message as u8], &[1u8]])
         .unwrap();
 
     let result = stream_assert_count(consumer_rx, 2, 500);

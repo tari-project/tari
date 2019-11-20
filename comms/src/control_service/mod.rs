@@ -75,7 +75,7 @@
 //!      max_connect_retries: 1,
 //!      max_connections: 100,
 //!      socks_proxy_address: None,
-//!      host: "127.0.0.1".parse().unwrap(),
+//!      listening_address: "127.0.0.1:0".parse().unwrap(),
 //!      peer_connection_establish_timeout: Duration::from_secs(4),
 //! },
 //!     message_sink_tx,));

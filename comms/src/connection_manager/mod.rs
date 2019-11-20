@@ -77,7 +77,7 @@
 //!     peer_connection_establish_timeout: Duration::from_secs(5),
 //!     max_message_size: 1024,
 //!     max_connections: 10,
-//!     host: "127.0.0.1".parse().unwrap(),
+//!     listening_address: "127.0.0.1:0".parse().unwrap(),
 //!     max_connect_retries: 3,
 //!     socks_proxy_address: None,
 //!     },

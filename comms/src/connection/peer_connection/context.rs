@@ -20,22 +20,18 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::{TryFrom, TryInto};
-
-use super::{ConnectionId, PeerConnectionError};
-
+use super::PeerConnectionError;
 use crate::{
     connection::{
         net_address::ip::SocketAddress,
-        types::{Direction, Linger, Result},
-        zmq::{CurveEncryption, ZmqContext},
-        ConnectionError,
+        types::{Direction, Linger},
+        zmq::{CurveEncryption, ZmqContext, ZmqIdentity},
         NetAddress,
     },
     message::FrameSet,
 };
-
 use futures::channel::mpsc::Sender;
+use std::convert::{TryFrom, TryInto};
 
 /// The default maximum message size which will be used if no maximum message size is set.
 const DEFAULT_MAX_MSG_SIZE: u64 = 500 * 1024; // 500 kb
@@ -57,29 +53,48 @@ const DEFAULT_MAX_RETRY_ATTEMPTS: u16 = 10;
 /// [CurveEncryption]: ./../zmq/CurveEncryption/struct.CurveEncryption.html
 pub struct PeerConnectionContext {
     pub(crate) context: ZmqContext,
+    pub(crate) connection_identity: Option<ZmqIdentity>,
+    pub(crate) peer_identity: Option<ZmqIdentity>,
     pub(crate) peer_address: NetAddress,
     pub(crate) message_sink_channel: Sender<FrameSet>,
     pub(crate) direction: Direction,
-    pub(crate) id: ConnectionId,
     pub(crate) curve_encryption: CurveEncryption,
     pub(crate) max_msg_size: u64,
     pub(crate) max_retry_attempts: u16,
     pub(crate) socks_address: Option<SocketAddress>,
     pub(crate) linger: Linger,
+    pub(crate) shutdown_on_send_failure: bool,
+}
+
+impl PeerConnectionContext {
+    pub fn direction(&self) -> Direction {
+        self.direction
+    }
 }
 
 impl<'a> TryFrom<PeerConnectionContextBuilder<'a>> for PeerConnectionContext {
-    type Error = ConnectionError;
+    type Error = PeerConnectionError;
 
     /// Convert a PeerConnectionContextBuilder to a PeerConnectionContext
-    fn try_from(builder: PeerConnectionContextBuilder<'a>) -> Result<Self> {
+    fn try_from(builder: PeerConnectionContextBuilder<'a>) -> Result<Self, PeerConnectionError> {
         builder.check_curve_encryption()?;
 
         let message_sink_channel = unwrap_prop(builder.message_sink_channel, "message_sink_channel")?;
         let context = unwrap_prop(builder.context, "context")?.clone();
         let curve_encryption = builder.curve_encryption;
         let direction = unwrap_prop(builder.direction, "direction")?;
-        let id = unwrap_prop(builder.id, "id")?;
+        let (connection_identity, peer_identity) = match direction {
+            Direction::Inbound => (None, None),
+            Direction::Outbound => (
+                Some(
+                    builder
+                        .connection_identity
+                        .ok_or(PeerConnectionError::ConnectionIdentityNotSet)?,
+                ),
+                Some(builder.peer_identity.ok_or(PeerConnectionError::PeerIdentityNotSet)?),
+            ),
+        };
+        let shutdown_on_send_failure = builder.shutdown_on_send_failure;
         let max_msg_size = builder.max_msg_size.unwrap_or(DEFAULT_MAX_MSG_SIZE);
         let max_retry_attempts = builder.max_retry_attempts.unwrap_or(DEFAULT_MAX_RETRY_ATTEMPTS);
         let peer_address = unwrap_prop(builder.address, "peer_address")?;
@@ -87,27 +102,30 @@ impl<'a> TryFrom<PeerConnectionContextBuilder<'a>> for PeerConnectionContext {
         let linger = builder.linger.or(Some(Linger::Timeout(100))).unwrap();
 
         Ok(PeerConnectionContext {
+            peer_identity,
+            connection_identity,
             message_sink_channel,
             context,
             curve_encryption,
             direction,
-            id,
             max_msg_size,
             max_retry_attempts,
             peer_address,
             socks_address,
             linger,
+            shutdown_on_send_failure,
         })
     }
 }
 
 /// Local utility function to unwrap a builder property, or return a PeerConnectionError::InitializationError
 #[inline(always)]
-fn unwrap_prop<T>(prop: Option<T>, prop_name: &str) -> Result<T> {
+fn unwrap_prop<T>(prop: Option<T>, prop_name: &str) -> Result<T, PeerConnectionError> {
     match prop {
         Some(t) => Ok(t),
-        None => Err(ConnectionError::PeerError(PeerConnectionError::InitializationError(
-            format!("Missing required connection property '{}'", prop_name),
+        None => Err(PeerConnectionError::InitializationError(format!(
+            "Missing required connection property '{}'",
+            prop_name
         ))),
     }
 }
@@ -131,12 +149,15 @@ fn unwrap_prop<T>(prop: Option<T>, prop_name: &str) -> Result<T> {
 /// let (tx, _rx) =  channel(100);
 ///
 /// let peer_context = PeerConnectionContextBuilder::new()
-///    .set_id("123")
+///     // This is sent as the first frame in the consumer channel on outbound connections
+///    .set_peer_identity(b"some-peer-identiifier".to_vec())
+///     // This is how we identify to the remote ZMQ_ROUTER socket
+///    .set_connection_identity(b"123".to_vec())
 ///    .set_context(&ctx)
 ///    .set_direction(Direction::Outbound)
 ///    .set_message_sink_channel(tx)
 ///    .set_address("127.0.0.1:8080".parse().unwrap())
-///    .build()
+///    .finish()
 ///    .unwrap();
 /// ```
 ///
@@ -148,11 +169,13 @@ pub struct PeerConnectionContextBuilder<'c> {
     pub(super) context: Option<&'c ZmqContext>,
     pub(super) curve_encryption: CurveEncryption,
     pub(super) direction: Option<Direction>,
-    pub(super) id: Option<ConnectionId>,
+    pub(super) peer_identity: Option<ZmqIdentity>,
+    pub(super) connection_identity: Option<ZmqIdentity>,
     pub(super) max_msg_size: Option<u64>,
     pub(super) max_retry_attempts: Option<u16>,
     pub(super) socks_address: Option<SocketAddress>,
     pub(super) linger: Option<Linger>,
+    pub(crate) shutdown_on_send_failure: bool,
 }
 
 impl<'c> PeerConnectionContextBuilder<'c> {
@@ -180,6 +203,21 @@ impl<'c> PeerConnectionContextBuilder<'c> {
     /// Set the [Linger] for this connection
     setter!(set_linger, linger, Option<Linger>);
 
+    /// Set the remote identity to use for this connection (the zmq identity frame)
+    ///
+    /// On an outbound connection, this sets the first frame to be sent on the connection to the peer.
+    /// This is given by the peer's control service when requesting to connect.
+    setter!(set_connection_identity, connection_identity, Option<ZmqIdentity>);
+
+    /// Set the identity of the peer which is used to identify the peer (i.e. NodeId).
+    ///
+    /// On an outbound connection, this sets the first frame to be sent on the mpsc channel
+    /// to identify the peer.
+    setter!(set_peer_identity, peer_identity, Option<Vec<u8>>);
+
+    /// Shutdown peer connection if failure occurs when sending a message
+    setter!(set_shutdown_on_send_failure, shutdown_on_send_failure, bool);
+
     /// Return a new PeerConnectionContextBuilder
     pub fn new() -> Self {
         Default::default()
@@ -191,14 +229,6 @@ impl<'c> PeerConnectionContextBuilder<'c> {
         self
     }
 
-    /// Set the ID for the connection. This will be sent as the first
-    /// frame to the message sink address
-    pub fn set_id<T>(mut self, id: T) -> Self
-    where T: Into<ConnectionId> {
-        self.id = Some(id.into());
-        self
-    }
-
     /// Build the PeerConnectionContext.
     ///
     /// Will return an Err if any of the required fields are not set or if
@@ -206,11 +236,11 @@ impl<'c> PeerConnectionContextBuilder<'c> {
     /// i.e CurveEncryption::Server must be set with Direction::Inbound and
     ///  CurveEncryption::Client must be set with Direction::Outbound.
     ///  CurveEncryption::None will succeed in either direction.
-    pub fn build(self) -> Result<PeerConnectionContext> {
+    pub fn finish(self) -> Result<PeerConnectionContext, PeerConnectionError> {
         self.try_into()
     }
 
-    fn check_curve_encryption(&self) -> Result<()> {
+    fn check_curve_encryption(&self) -> Result<(), PeerConnectionError> {
         match self.direction {
             Some(ref direction) => match direction {
                 Direction::Outbound => match self.curve_encryption {
@@ -243,23 +273,19 @@ mod test {
     use super::*;
     use crate::connection::{
         peer_connection::PeerConnectionError,
-        types::{Direction, Result},
+        types::Direction,
         zmq::{CurveEncryption, ZmqContext},
-        ConnectionError,
         NetAddress,
     };
     use futures::channel::mpsc::channel;
 
-    fn assert_initialization_error<T>(result: Result<T>, expected: &str) {
-        if let Err(error) = result {
-            match error {
-                ConnectionError::PeerError(err) => match err {
-                    PeerConnectionError::InitializationError(s) => {
-                        assert_eq!(expected, s);
-                    },
-                    _ => panic!("Unexpected PeerConnectionError {:?}", err),
+    fn assert_initialization_error<T>(result: Result<T, PeerConnectionError>, expected: &str) {
+        if let Err(err) = result {
+            match err {
+                PeerConnectionError::InitializationError(s) => {
+                    assert_eq!(expected, s);
                 },
-                _ => panic!("Unexpected ConnectionError {:?}", error),
+                _ => panic!("Unexpected PeerConnectionError {:?}", err),
             }
         } else {
             panic!("Unexpected success when building invalid PeerConnectionContext");
@@ -271,22 +297,19 @@ mod test {
         let ctx = ZmqContext::new();
 
         let peer_addr = "127.0.0.1:80".parse::<NetAddress>().unwrap();
-        let conn_id = "123".as_bytes();
         let socks_addr = "127.0.0.1:8080".parse::<SocketAddress>().unwrap();
 
         let (tx, _rx) = channel(10);
 
         let peer_ctx = PeerConnectionContextBuilder::new()
-            .set_id(conn_id.clone())
             .set_direction(Direction::Inbound)
             .set_context(&ctx)
             .set_socks_proxy(socks_addr.clone())
             .set_message_sink_channel(tx)
             .set_address(peer_addr.clone())
-            .build()
+            .finish()
             .unwrap();
 
-        assert_eq!(conn_id.to_vec(), peer_ctx.id);
         assert_eq!(Direction::Inbound, peer_ctx.direction);
         assert_eq!(peer_addr, peer_ctx.peer_address);
         assert_eq!(Some(socks_addr), peer_ctx.socks_address);
@@ -298,18 +321,18 @@ mod test {
         let ctx = ZmqContext::new();
         let (tx, _rx) = channel(10);
         let result = PeerConnectionContextBuilder::new()
-            .set_id("123")
+            .set_peer_identity(b"123".to_vec())
+            .set_connection_identity(b"123".to_vec())
             .set_direction(Direction::Outbound)
             .set_message_sink_channel(tx)
             .set_address("127.0.0.1:80".parse().unwrap())
-            .build();
+            .finish();
 
         assert_initialization_error(result, "Missing required connection property 'context'");
 
         let (tx, _rx) = channel(10);
 
         let result = PeerConnectionContextBuilder::new()
-            .set_id("123")
             .set_direction(Direction::Inbound)
             .set_context(&ctx)
             .set_message_sink_channel(tx)
@@ -319,18 +342,19 @@ mod test {
                 server_public_key: pk.clone(),
             })
             .set_address("127.0.0.1:80".parse().unwrap())
-            .build();
+            .finish();
 
         assert_initialization_error(result, "'Server' curve encryption required for inbound connection");
         let (tx, _rx) = channel(10);
         let result = PeerConnectionContextBuilder::new()
-            .set_id("123")
+            .set_peer_identity(b"123".to_vec())
+            .set_connection_identity(b"123".to_vec())
             .set_direction(Direction::Outbound)
             .set_context(&ctx)
             .set_message_sink_channel(tx)
             .set_curve_encryption(CurveEncryption::Server { secret_key: sk.clone() })
             .set_address("127.0.0.1:80".parse().unwrap())
-            .build();
+            .finish();
 
         assert_initialization_error(result, "'Client' curve encryption required for outbound connection");
     }

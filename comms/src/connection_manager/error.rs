@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    connection::{ConnectionError, NetAddressError},
+    connection::{ConnectionError, NetAddressError, PeerConnectionError},
     control_service::{messages::RejectReason, ControlServiceError},
     message::MessageError,
     peer_manager::PeerManagerError,
@@ -42,8 +42,8 @@ pub enum ConnectionManagerError {
     PeerConnectionNotFound,
     /// The peer could not be found
     PeerNotFound,
-    // Error establishing connection
     ConnectionError(ConnectionError),
+    PeerConnectionError(PeerConnectionError),
     #[error(no_from)]
     CurveEncryptionGenerateError(ConnectionError),
     MessageFormatError(MessageFormatError),
@@ -63,7 +63,7 @@ pub enum ConnectionManagerError {
     MaxConnectionsReached,
     /// Failed to shutdown a peer connection
     #[error(no_from)]
-    ConnectionShutdownFailed(ConnectionError),
+    ConnectionShutdownFailed(PeerConnectionError),
     PeerConnectionThreadError(ThreadError),
     #[error(msg_embedded, non_std, no_from)]
     ControlServicePingPongFailed(String),
@@ -77,7 +77,6 @@ pub enum ConnectionManagerError {
     /// Failed to receive a connection request outcome before the timeout
     ConnectionRequestOutcomeTimeout,
     ControlServiceError(ControlServiceError),
-    //---------------------------------- Async --------------------------------------------//
     /// Failed to send request to ConnectionManagerActor. Channel closed.
     SendToActorFailed,
     /// Request was canceled before the response could be sent
@@ -85,4 +84,6 @@ pub enum ConnectionManagerError {
     /// Curve public key was invalid
     InvalidCurvePublicKey,
     NetAddressError(NetAddressError),
+    /// The listener has not been started
+    ListenerNotStarted,
 }

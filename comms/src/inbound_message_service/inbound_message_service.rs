@@ -22,7 +22,7 @@
 use crate::{
     inbound_message_service::error::InboundMessageServiceError,
     message::{Envelope, FrameSet, InboundMessage, MessageError},
-    peer_manager::{NodeId, Peer, PeerManager},
+    peer_manager::{NodeId, Peer, PeerManager, PeerManagerError},
 };
 use futures::{channel::mpsc, FutureExt, Sink, SinkExt, Stream, StreamExt};
 use log::*;
@@ -89,7 +89,7 @@ where
             futures::select! {
                 frames = raw_message_stream.select_next_some() => {
                     if let Err(e) = self.process_message(frames).await {
-                        info!(target: LOG_TARGET, "Inbound Message Pipeline Error: {:?}", e);
+                        info!(target: LOG_TARGET, "Inbound Message Service Error: {:?}", e);
                     }
                 },
 
@@ -149,15 +149,29 @@ where
     /// Check whether the the source of the message is known to our Peer Manager, if it is return the peer but otherwise
     /// we discard the message as it should be in our Peer Manager
     fn find_known_peer(&self, source_node_id: &NodeId) -> Result<Peer, InboundMessageServiceError> {
-        match self.peer_manager.find_by_node_id(source_node_id).ok() {
-            Some(peer) => Ok(peer),
-            None => {
+        match self.peer_manager.find_by_node_id(source_node_id) {
+            Ok(peer) => Ok(peer),
+            Err(PeerManagerError::PeerNotFoundError) => {
                 warn!(
                     target: LOG_TARGET,
-                    "Received unknown node id from peer connection. Discarding message from NodeId={:?}",
+                    "Received unknown node id from peer connection. Discarding message from NodeId '{}'",
                     source_node_id
                 );
                 Err(InboundMessageServiceError::CannotFindSourcePeer)
+            },
+            Err(PeerManagerError::BannedPeer) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Received banned node id from peer connection. Discarding message from NodeId '{}'", source_node_id
+                );
+                Err(InboundMessageServiceError::CannotFindSourcePeer)
+            },
+            Err(err) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Peer manager failed to look up source node id because '{}'", err
+                );
+                Err(InboundMessageServiceError::PeerManagerError(err))
             },
         }
     }

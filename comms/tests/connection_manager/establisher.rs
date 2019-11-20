@@ -22,10 +22,14 @@
 
 use crate::support::{
     factories::{self, TestFactory},
-    helpers::{streams::stream_assert_count, ConnectionMessageCounter},
+    helpers::{
+        database::{clean_up_datastore, init_datastore},
+        streams::stream_assert_count,
+        ConnectionMessageCounter,
+    },
 };
 use futures::channel::mpsc::channel;
-use std::{path::PathBuf, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 use tari_comms::{
     connection::{CurveEncryption, Direction, NetAddress, ZmqContext},
     connection_manager::{establisher::ConnectionEstablisher, ConnectionManagerError, PeerConnectionConfig},
@@ -34,43 +38,18 @@ use tari_comms::{
     utils::crypt,
     wrap_in_envelope_body,
 };
-use tari_storage::{
-    lmdb_store::{LMDBBuilder, LMDBError, LMDBStore},
-    LMDBWrapper,
-};
-use tari_utilities::thread_join::ThreadJoinWithTimeout;
+use tari_storage::LMDBWrapper;
+use tari_utilities::{thread_join::ThreadJoinWithTimeout, ByteArray};
 
 fn make_peer_connection_config() -> PeerConnectionConfig {
     PeerConnectionConfig {
         peer_connection_establish_timeout: Duration::from_secs(5),
         max_message_size: 1024,
         max_connections: 10,
-        host: "127.0.0.1".parse().unwrap(),
+        listening_address: "127.0.0.1:0".parse().unwrap(),
         max_connect_retries: 3,
         socks_proxy_address: None,
     }
-}
-
-fn get_path(name: &str) -> String {
-    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.push("tests/data");
-    path.push(name);
-    path.to_str().unwrap().to_string()
-}
-
-fn init_datastore(name: &str) -> Result<LMDBStore, LMDBError> {
-    let path = get_path(name);
-    let _ = std::fs::create_dir(&path).unwrap_or_default();
-    LMDBBuilder::new()
-        .set_path(&path)
-        .set_environment_size(10)
-        .set_max_number_of_databases(2)
-        .add_database(name, lmdb_zero::db::CREATE)
-        .build()
-}
-
-fn clean_up_datastore(name: &str) {
-    std::fs::remove_dir_all(get_path(name)).unwrap();
 }
 
 // This tries to break the establisher by sending malformed messages. The establisher should
@@ -168,7 +147,7 @@ fn establish_control_service_connection_succeed() {
     msg_counter1.start(address);
 
     // Setup peer manager
-    let database_name = "establisher_establish_control_service_connection_succeed"; // Note: every test should have unique database
+    let database_name = "establisher_establish_control_service_connection_succeed";
     let datastore = init_datastore(database_name).unwrap();
     let database = datastore.get_handle(database_name).unwrap();
     let database = LMDBWrapper::new(Arc::new(database));
@@ -193,59 +172,79 @@ fn establish_control_service_connection_succeed() {
 #[test]
 fn establish_peer_connection_outbound() {
     let context = ZmqContext::new();
-    let node_identity = factories::node_identity::create().build().map(Arc::new).unwrap();
+    let node_identity_in = factories::node_identity::create().build().map(Arc::new).unwrap();
+    let node_identity_out = factories::node_identity::create().build().map(Arc::new).unwrap();
     let (tx_inbound, rx_inbound) = channel(10);
     // Setup a peer connection
     let (peer_curve_sk, peer_curve_pk) = CurveEncryption::generate_keypair().unwrap();
     let (other_peer_conn, other_peer_conn_handle) = factories::peer_connection::create()
         .with_peer_connection_context_factory(
             factories::peer_connection_context::create()
-                .with_message_sink_channel(tx_inbound)
-                .with_curve_keypair((peer_curve_sk, peer_curve_pk.clone()))
                 .with_context(&context)
-                .with_direction(Direction::Inbound),
+                .with_direction(Direction::Inbound)
+                .with_message_sink_channel(tx_inbound)
+                .with_curve_keypair((peer_curve_sk, peer_curve_pk.clone())),
         )
         .build()
         .unwrap();
 
     other_peer_conn
-        .wait_listening_or_failure(&Duration::from_millis(2000))
+        .wait_listening_or_failure(Duration::from_millis(2000))
         .unwrap();
 
     let address = other_peer_conn.get_connected_address().unwrap().to_string();
     assert_ne!(address, "127.0.0.1:0");
     let address: NetAddress = other_peer_conn.get_connected_address().unwrap().into();
 
-    let example_peer = factories::peer::create()
+    let remote_peer = factories::peer::create()
         .with_net_addresses(vec![address.clone()])
+        .with_public_key(node_identity_in.public_key().clone())
+        .with_node_id(node_identity_in.node_id().clone())
         .build()
         .unwrap();
 
-    let database_name = "establisher_establish_peer_connection_outbound"; // Note: every test should have unique database
+    other_peer_conn
+        .allow_identity(
+            node_identity_out.node_id().to_vec(),
+            node_identity_out.node_id().to_vec(),
+        )
+        .unwrap();
+
+    let database_name = "establisher_establish_peer_connection_outbound";
     let datastore = init_datastore(database_name).unwrap();
     let database = datastore.get_handle(database_name).unwrap();
     let database = LMDBWrapper::new(Arc::new(database));
     let peer_manager = Arc::new(
         factories::peer_manager::create()
             .with_database(database)
-            .with_peers(vec![example_peer.clone()])
+            .with_peers(vec![remote_peer.clone()])
             .build()
             .unwrap(),
     );
     let (tx_outbound2, _rx_outbound) = channel(10);
     let config = make_peer_connection_config();
-    let establisher = ConnectionEstablisher::new(context.clone(), node_identity, config, peer_manager, tx_outbound2);
+    let establisher = ConnectionEstablisher::new(
+        context.clone(),
+        node_identity_out.clone(),
+        config,
+        peer_manager,
+        tx_outbound2,
+    );
     let (connection, peer_conn_handle) = establisher
-        .establish_outbound_peer_connection(example_peer.node_id.clone().into(), address, peer_curve_pk)
+        .establish_outbound_peer_connection(
+            address,
+            peer_curve_pk,
+            node_identity_out.node_id().to_vec(),
+            remote_peer.node_id.to_vec(),
+        )
         .unwrap();
     connection.send(vec!["HELLO".as_bytes().to_vec()]).unwrap();
     connection.send(vec!["TARI".as_bytes().to_vec()]).unwrap();
 
     connection.shutdown().unwrap();
-    connection.wait_disconnected(&Duration::from_millis(3000)).unwrap();
+    connection.wait_disconnected(Duration::from_millis(3000)).unwrap();
 
     other_peer_conn.shutdown().unwrap();
-    other_peer_conn.wait_disconnected(&Duration::from_millis(3000)).unwrap();
     other_peer_conn_handle
         .timeout_join(Duration::from_millis(3000))
         .unwrap();
@@ -281,13 +280,16 @@ fn establish_peer_connection_inbound() {
     let (tx, rx) = channel(10);
     // Create a connection establisher
     let config = make_peer_connection_config();
-    let establisher = ConnectionEstablisher::new(context.clone(), node_identity, config, peer_manager, tx);
-    let (connection, peer_conn_handle) = establisher
-        .establish_inbound_peer_connection(example_peer.node_id.clone().into(), secret_key)
+    let establisher = ConnectionEstablisher::new(context.clone(), node_identity.clone(), config, peer_manager, tx);
+    let (connection, peer_conn_handle) = establisher.establish_peer_listening_connection(secret_key).unwrap();
+    let peer_identity = b"peer-identity".to_vec();
+    let connection_identity = b"conn-identity".to_vec();
+    connection
+        .allow_identity(connection_identity.clone(), peer_identity.clone())
         .unwrap();
 
     connection
-        .wait_listening_or_failure(&Duration::from_millis(3000))
+        .wait_listening_or_failure(Duration::from_millis(3000))
         .unwrap();
     let address: NetAddress = connection.get_connected_address().unwrap().into();
 
@@ -296,9 +298,11 @@ fn establish_peer_connection_inbound() {
     let (other_peer_conn, other_peer_conn_handle) = factories::peer_connection::create()
         .with_peer_connection_context_factory(
             factories::peer_connection_context::create()
+                .with_direction(Direction::Outbound)
+                .with_peer_identity(peer_identity.clone())
+                .with_connection_identity(connection_identity.clone())
                 .with_context(&context)
                 .with_server_public_key(public_key.clone())
-                .with_direction(Direction::Outbound)
                 .with_message_sink_channel(other_tx)
                 .with_address(address),
         )
@@ -306,17 +310,18 @@ fn establish_peer_connection_inbound() {
         .unwrap();
 
     other_peer_conn
-        .wait_connected_or_failure(&Duration::from_millis(3000))
+        .wait_connected_or_failure(Duration::from_millis(3000))
         .unwrap();
     // Start sending messages
 
     other_peer_conn.send(vec!["HELLO".as_bytes().to_vec()]).unwrap();
     other_peer_conn.send(vec!["TARI".as_bytes().to_vec()]).unwrap();
-    let _ = other_peer_conn.shutdown();
-    other_peer_conn.wait_disconnected(&Duration::from_millis(3000)).unwrap();
+    other_peer_conn.shutdown().unwrap();
+    other_peer_conn.wait_disconnected(Duration::from_millis(3000)).unwrap();
 
     let (_arc_rx, _items) = stream_assert_count(rx, 2, 500).unwrap();
 
+    connection.shutdown().unwrap();
     peer_conn_handle.timeout_join(Duration::from_millis(3000)).unwrap();
     other_peer_conn_handle
         .timeout_join(Duration::from_millis(3000))

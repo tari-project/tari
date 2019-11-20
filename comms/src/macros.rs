@@ -36,12 +36,18 @@ macro_rules! setter {
     };
 }
 
-macro_rules! acquire_lock {
-    ($e:expr, $m:ident) => {
-        match $e.$m() {
+macro_rules! recover_lock {
+    ($e:expr) => {
+        match $e {
             Ok(lock) => lock,
             Err(poisoned) => poisoned.into_inner(),
         }
+    };
+}
+
+macro_rules! acquire_lock {
+    ($e:expr, $m:ident) => {
+        recover_lock!($e.$m())
     };
     ($e:expr) => {
         acquire_lock!($e, lock)
@@ -74,16 +80,16 @@ macro_rules! acquire_read_lock {
 /// ```
 #[macro_export]
 macro_rules! log_if_error {
-    (target: $target:expr, $msg:expr, $expr:expr, no_fmt_msg=true$(,)*) => {{
+    (target: $target:expr, $msg:expr, $expr:expr, no_fmt$(,)*) => {{
         match $expr {
             Ok(v) => Some(v),
-            Err(err) => {
+            Err(_) => {
                 log::error!(target: $target, $msg);
                 None
             }
         }
     }};
-    (target: $target:expr, $msg:expr, $expr:expr) => {{
+    (target: $target:expr, $msg:expr, $expr:expr $(,)*) => {{
         match $expr {
             Ok(v) => Some(v),
             Err(err) => {
@@ -92,7 +98,7 @@ macro_rules! log_if_error {
             }
         }
     }};
-    ($msg:expr, $expr:expr) => {{
+    ($msg:expr, $expr:expr $(,)*) => {{
         log_if_error!(target: "$crate", $msg, $expr)
     }};
 }

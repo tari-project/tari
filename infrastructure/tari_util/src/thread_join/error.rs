@@ -22,7 +22,7 @@
 
 use derive_error::Error;
 
-#[derive(Debug, Error, PartialEq)]
+#[derive(Debug, Error, PartialEq, Clone)]
 pub enum ThreadError {
     /// An error occurred attempting to join the thread
     JoinError,

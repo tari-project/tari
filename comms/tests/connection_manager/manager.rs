@@ -84,6 +84,7 @@ fn establish_peer_connection() {
             .build()
             .unwrap(),
     );
+    node_B_connection_manager.run_listener().unwrap();
 
     // Start node B's control service
     let node_B_control_service = ControlService::new(context.clone(), node_B_identity.clone(), ControlServiceConfig {
@@ -120,6 +121,7 @@ fn establish_peer_connection() {
             .build()
             .unwrap(),
     );
+    node_A_connection_manager.run_listener().unwrap();
 
     //------------------------------ Negotiate connection to node B -----------------------------------//
 

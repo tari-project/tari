@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{connection::peer_connection::ConnectionId, message::Frame};
+use crate::message::Frame;
 use derive_error::Error;
 use serde::{de, Deserialize, Deserializer, Serialize};
 use std::{
@@ -223,12 +223,6 @@ impl AsRef<[u8]> for NodeId {
 impl fmt::Display for NodeId {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", to_hex(&self.0))
-    }
-}
-
-impl From<NodeId> for ConnectionId {
-    fn from(node_id: NodeId) -> Self {
-        ConnectionId::new(node_id.into_inner().to_vec())
     }
 }
 

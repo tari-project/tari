@@ -84,12 +84,16 @@
 mod connection;
 mod context;
 mod control;
+mod dialer;
 mod error;
-mod worker;
+mod listener;
+mod oneshot;
+mod types;
 
 pub use self::{
-    connection::{ConnectionId, PeerConnection, PeerConnectionProtoMessage, PeerConnectionSimpleState},
+    connection::{PeerConnection, PeerConnectionSimpleState},
     context::{PeerConnectionContext, PeerConnectionContextBuilder},
     control::ControlMessage,
     error::PeerConnectionError,
+    types::{PeerConnectionJoinHandle, PeerConnectionProtocolMessage},
 };

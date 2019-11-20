@@ -40,6 +40,9 @@ pub struct RequestConnectionOutcome {
     //// If this connection was not accepted, the rejection reason is given
     #[prost(enumeration = "RejectReason", tag = "4")]
     pub reject_reason: i32,
+    //// The identity to use when connecting
+    #[prost(bytes, tag = "5")]
+    pub identity: std::vec::Vec<u8>,
 }
 /// Represents the reason for a peer connection request being rejected
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]

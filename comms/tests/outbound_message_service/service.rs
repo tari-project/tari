@@ -53,7 +53,7 @@ fn make_peer_connection_config() -> PeerConnectionConfig {
         peer_connection_establish_timeout: Duration::from_secs(5),
         max_message_size: 1024,
         max_connections: 10,
-        host: "127.0.0.1".parse().unwrap(),
+        listening_address: "127.0.0.1:0".parse().unwrap(),
         max_connect_retries: 3,
         socks_proxy_address: None,
     }
@@ -125,6 +125,7 @@ fn outbound_message_pool_no_retry() {
         make_peer_connection_config(),
         message_sink_tx_b.clone(),
     ));
+    node_B_connection_manager.run_listener().unwrap();
 
     // Start node B's control service
     let node_B_control_service = ControlService::new(context.clone(), node_identity.clone(), ControlServiceConfig {
@@ -140,7 +141,7 @@ fn outbound_message_pool_no_retry() {
         ConnectionManagerDialer::new(node_B_connection_manager),
         shutdown.to_signal(),
     );
-    rt.spawn(node_B_connection_manager_actor.start());
+    rt.spawn(node_B_connection_manager_actor.run());
 
     //---------------------------------- Node A setup --------------------------------------------//
 
@@ -159,13 +160,14 @@ fn outbound_message_pool_no_retry() {
             .build()
             .unwrap(),
     );
+    node_A_connection_manager.run_listener().unwrap();
 
     let (node_A_connection_manager_requester, node_A_connection_manager_actor) = create_connection_manager_actor(
         10,
         ConnectionManagerDialer::new(node_A_connection_manager),
         shutdown.to_signal(),
     );
-    rt.spawn(node_A_connection_manager_actor.start());
+    rt.spawn(node_A_connection_manager_actor.run());
 
     // Setup Node A OMS
     let (outbound_tx, outbound_rx) = mpsc::unbounded();
@@ -261,6 +263,7 @@ fn test_outbound_message_pool_fail_and_retry() {
         .build()
         .map(Arc::new)
         .unwrap();
+    node_A_connection_manager.run_listener().unwrap();
 
     let mut shutdown = Shutdown::new();
     let (node_A_connection_manager_requester, node_A_connection_manager_actor) = create_connection_manager_actor(
@@ -268,7 +271,8 @@ fn test_outbound_message_pool_fail_and_retry() {
         ConnectionManagerDialer::new(node_A_connection_manager),
         shutdown.to_signal(),
     );
-    rt.spawn(node_A_connection_manager_actor.start());
+
+    rt.spawn(node_A_connection_manager_actor.run());
 
     // Setup Node A OMS
     let (outbound_tx, outbound_rx) = mpsc::unbounded();
@@ -311,6 +315,8 @@ fn test_outbound_message_pool_fail_and_retry() {
         .build()
         .map(Arc::new)
         .unwrap();
+
+    node_B_connection_manager.run_listener().unwrap();
 
     // Start node B's control service
     let node_B_control_service = ControlService::new(context.clone(), node_B_identity.clone(), ControlServiceConfig {
