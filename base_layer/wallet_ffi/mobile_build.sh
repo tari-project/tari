@@ -1,7 +1,6 @@
 #!/bin/bash
 source build.config
 CURRENT_DIR=$TARI_REPO_PATH/base_layer/wallet_ffi
-ZMQ_REPO=https://github.com/zeromq/libzmq.git
 ZMQ_FOLDER=libzmq
 cd ..
 cd ..

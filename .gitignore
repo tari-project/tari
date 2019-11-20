@@ -35,3 +35,4 @@ Cargo.lock
 *.mdb
 /data/
 *.sqlite3
+base_layer/wallet_ffi/build.config
