@@ -25,6 +25,7 @@ digest = "0.8.0"
 serde = {version = "1.0.89", features = ["derive"] }
 crossbeam-channel = "0.3.8"
 log = "0.4.6"
+log4rs = {version = "0.8.3", features = ["console_appender", "file_appender", "file", "yaml_format"]}
 lmdb-zero = "0.4.4"
 diesel_migrations =  "1.4"
 diesel = {version="1.4", features = ["sqlite", "serde_json", "chrono", "r2d2"]}

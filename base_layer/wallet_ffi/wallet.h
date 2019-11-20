@@ -275,7 +275,7 @@ void comms_config_destroy(struct TariCommsConfig *wc);
 /// -------------------------------- TariWallet ----------------------------------------------- //
 
 // Creates a TariWallet
-struct TariWallet *wallet_create(struct TariWalletConfig *config);
+struct TariWallet *wallet_create(struct TariWalletConfig *config, char *log_path);
 
 /// Generates test data
 bool wallet_test_generate_data(struct TariWallet *wallet);

@@ -44,6 +44,13 @@ use crate::{
         TransactionServiceInitializer,
     },
 };
+use log::LevelFilter;
+use log4rs::{
+    append::file::FileAppender,
+    config::{Appender, Config, Root},
+    encode::pattern::PatternEncoder,
+    Handle as LogHandle,
+};
 use std::sync::Arc;
 use tari_comms::{
     builder::CommsNode,
@@ -68,6 +75,7 @@ use tokio::runtime::Runtime;
 #[derive(Clone)]
 pub struct WalletConfig {
     pub comms_config: CommsConfig,
+    pub logging_path: Option<String>,
     pub factories: CryptoFactories,
 }
 
@@ -84,12 +92,31 @@ where T: WalletBackend
     pub contacts_service: ContactsServiceHandle,
     pub db: WalletDatabase<T>,
     pub runtime: Runtime,
+    pub log_handle: Option<LogHandle>,
 }
 
 impl<T> Wallet<T>
 where T: WalletBackend
 {
     pub fn new(config: WalletConfig, backend: T, runtime: Runtime) -> Result<Wallet<T>, WalletError> {
+        let mut log_handle = None;
+        if let Some(path) = config.logging_path {
+            let logfile = FileAppender::builder()
+                .encoder(Box::new(PatternEncoder::new(
+                    "{d(%Y-%m-%d %H:%M:%S.%f)} [{M}#{L}] [{t}] {l:5} {m} (({T}:{I})){n}",
+                )))
+                .append(false)
+                .build(path.as_str())
+                .unwrap();
+
+            let config = Config::builder()
+                .appender(Appender::builder().build("logfile", Box::new(logfile)))
+                .build(Root::builder().appender("logfile").build(LevelFilter::Info))
+                .unwrap();
+
+            log_handle = Some(log4rs::init_config(config)?);
+        }
+
         // TODO: Determine if there is KeyManager data stored in persistence and if so then construct the
         // OutputManagerConfig from that data At this stage a new random master key will be generated every
         // time the wallet starts up.
@@ -153,6 +180,7 @@ where T: WalletBackend
             contacts_service: contacts_handle,
             db: WalletDatabase::new(backend),
             runtime,
+            log_handle,
         })
     }
 
