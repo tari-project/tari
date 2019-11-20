@@ -171,7 +171,10 @@ where
                 //Incoming request
                 request_context = request_stream.select_next_some() => {
                     let (request, reply_tx) = request_context.split();
-                    let _ = reply_tx.send(self.handle_request(request).await).or_else(|resp| {
+                    let _ = reply_tx.send(self.handle_request(request).await.or_else(|resp| {
+                        error!(target: LOG_TARGET, "Error handling request: {:?}", resp);
+                        Err(resp)
+                    })).or_else(|resp| {
                         error!(target: LOG_TARGET, "Failed to send reply");
                         Err(resp)
                     });
