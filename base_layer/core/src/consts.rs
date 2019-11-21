@@ -47,7 +47,7 @@ thread_local! {
     pub(crate) static BASE_NODE_RNG: RefCell<BaseNodeRng> = RefCell::new(BaseNodeRng::new().expect("Failed to initialize BaseNodeRng"));
 }
 /// The allocated waiting time for a request waiting for service responses from remote base nodes.
-pub const BASE_NODE_SERVICE_REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
+pub const BASE_NODE_SERVICE_REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 /// The fraction of responses that need to be received for a corresponding service request to be finalize.
 pub const BASE_NODE_SERVICE_DESIRED_RESPONSE_FRACTION: f32 = 0.6;
 

@@ -203,8 +203,6 @@ fn test_data_generation() {
         PeerFeatures::COMMUNICATION_NODE,
     )
     .unwrap();
-    let mut dht_config: DhtConfig = Default::default();
-    dht_config.discovery_request_timeout = Duration::from_millis(500);
     let comms_config = CommsConfig {
         node_identity: Arc::new(node_id.clone()),
         peer_connection_listening_address: "127.0.0.1:0".parse().unwrap(),
@@ -224,7 +222,10 @@ fn test_data_generation() {
         peer_database_name: random_string(8),
         inbound_buffer_size: 100,
         outbound_buffer_size: 100,
-        dht: dht_config,
+        dht: DhtConfig {
+            discovery_request_timeout: Duration::from_millis(500),
+            ..Default::default()
+        },
     };
 
     let config = WalletConfig {
@@ -291,8 +292,6 @@ fn test_test_harness() {
     )
     .unwrap();
 
-    let mut dht_config: DhtConfig = Default::default();
-    dht_config.discovery_request_timeout = Duration::from_millis(500);
     let comms_config1 = CommsConfig {
         node_identity: Arc::new(alice_identity.clone()),
         peer_connection_listening_address: "127.0.0.1:0".parse().unwrap(),
@@ -312,7 +311,10 @@ fn test_test_harness() {
         peer_database_name: random_string(8),
         inbound_buffer_size: 100,
         outbound_buffer_size: 100,
-        dht: dht_config,
+        dht: DhtConfig {
+            discovery_request_timeout: Duration::from_millis(500),
+            ..Default::default()
+        },
     };
     let config1 = WalletConfig {
         comms_config: comms_config1,
