@@ -21,17 +21,17 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod error;
-mod mempool;
-mod orphan_pool;
-mod pending_pool;
-mod priority;
-mod proto;
-mod reorg_pool;
+mod inbound_handlers;
+mod initializer;
+mod outbound_interface;
+mod request;
+mod response;
 mod service;
-#[cfg(test)]
-mod test;
-mod unconfirmed_pool;
 
 // Public re-exports
-pub use error::MempoolError;
-pub use mempool::{Mempool, MempoolConfig, TxStorageResponse};
+pub use error::MempoolServiceError;
+pub use initializer::MempoolServiceInitializer;
+pub use outbound_interface::OutboundMempoolServiceInterface;
+pub use request::{MempoolRequest, MempoolServiceRequest, RequestKey};
+pub use response::{MempoolResponse, MempoolServiceResponse};
+pub use service::{MempoolService, MempoolServiceConfig};

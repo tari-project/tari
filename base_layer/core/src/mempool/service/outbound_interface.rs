@@ -20,18 +20,32 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod error;
-mod mempool;
-mod orphan_pool;
-mod pending_pool;
-mod priority;
-mod proto;
-mod reorg_pool;
-mod service;
-#[cfg(test)]
-mod test;
-mod unconfirmed_pool;
+use crate::mempool::{
+    mempool::StatsResponse,
+    service::{MempoolRequest, MempoolResponse, MempoolServiceError},
+};
+use tari_service_framework::reply_channel::SenderService;
+use tower_service::Service;
 
-// Public re-exports
-pub use error::MempoolError;
-pub use mempool::{Mempool, MempoolConfig, TxStorageResponse};
+/// The OutboundMempoolServiceInterface provides an interface to request information from the Mempools of remote Base
+/// nodes.
+#[derive(Clone)]
+pub struct OutboundMempoolServiceInterface {
+    request_sender: SenderService<MempoolRequest, Result<MempoolResponse, MempoolServiceError>>,
+}
+
+impl OutboundMempoolServiceInterface {
+    /// Construct a new OutboundMempoolServiceInterface with the specified SenderService.
+    pub fn new(request_sender: SenderService<MempoolRequest, Result<MempoolResponse, MempoolServiceError>>) -> Self {
+        Self { request_sender }
+    }
+
+    /// Request the stats from the mempool of a remote base node.
+    pub async fn get_stats(&mut self) -> Result<StatsResponse, MempoolServiceError> {
+        if let MempoolResponse::Stats(stats) = self.request_sender.call(MempoolRequest::GetStats).await?? {
+            Ok(stats)
+        } else {
+            Err(MempoolServiceError::UnexpectedApiResponse)
+        }
+    }
+}

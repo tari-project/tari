@@ -20,18 +20,44 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod error;
-mod mempool;
-mod orphan_pool;
-mod pending_pool;
-mod priority;
-mod proto;
-mod reorg_pool;
-mod service;
-#[cfg(test)]
-mod test;
-mod unconfirmed_pool;
+use crate::{
+    chain_storage::BlockchainBackend,
+    mempool::{
+        service::{MempoolRequest, MempoolResponse, MempoolServiceError},
+        Mempool,
+    },
+};
+use std::sync::Arc;
+use tari_transactions::transaction::Transaction;
 
-// Public re-exports
-pub use error::MempoolError;
-pub use mempool::{Mempool, MempoolConfig, TxStorageResponse};
+/// The MempoolInboundHandlers is used to handle all received inbound mempool requests and transactions from remote
+/// nodes.
+pub struct MempoolInboundHandlers<T>
+where T: BlockchainBackend
+{
+    mempool: Mempool<T>,
+}
+
+impl<T> MempoolInboundHandlers<T>
+where T: BlockchainBackend
+{
+    /// Construct the MempoolInboundHandlers.
+    pub fn new(mempool: Mempool<T>) -> Self {
+        Self { mempool }
+    }
+
+    /// Handle inbound Mempool service requests from remote nodes and local services.
+    pub async fn handle_request(&self, request: &MempoolRequest) -> Result<MempoolResponse, MempoolServiceError> {
+        match request {
+            MempoolRequest::GetStats => Ok(MempoolResponse::Stats(self.mempool.stats()?)), /* TODO: make mempool
+                                                                                            * calls async */
+        }
+    }
+
+    /// Handle inbound transactions from remote wallets and local services.
+    pub async fn handle_transaction(&self, tx: &Transaction) -> Result<(), MempoolServiceError> {
+        // TODO tx must pass through the validation pipeline, with checking of its internal consistency, before adding
+        // and propagating it.
+        Ok(self.mempool.insert(Arc::new(tx.clone()))?)
+    }
+}

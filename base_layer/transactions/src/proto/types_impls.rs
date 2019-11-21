@@ -21,9 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::types as proto;
-use crate::types::{Commitment, HashOutput, Signature};
+use crate::types::{BlindingFactor, Commitment, HashOutput, PrivateKey, PublicKey, Signature};
 use std::convert::TryFrom;
-use tari_crypto::ristretto::{RistrettoPublicKey, RistrettoSecretKey};
 use tari_utilities::{ByteArray, ByteArrayError};
 
 //---------------------------------- Commitment --------------------------------------------//
@@ -50,8 +49,8 @@ impl TryFrom<proto::Signature> for Signature {
     type Error = ByteArrayError;
 
     fn try_from(sig: proto::Signature) -> Result<Self, Self::Error> {
-        let public_nonce = RistrettoPublicKey::from_bytes(&sig.public_nonce)?;
-        let signature = RistrettoSecretKey::from_bytes(&sig.signature)?;
+        let public_nonce = PublicKey::from_bytes(&sig.public_nonce)?;
+        let signature = PrivateKey::from_bytes(&sig.signature)?;
 
         Ok(Self::new(public_nonce, signature))
     }
@@ -77,5 +76,21 @@ impl From<proto::HashOutput> for HashOutput {
 impl From<HashOutput> for proto::HashOutput {
     fn from(output: HashOutput) -> Self {
         Self { data: output }
+    }
+}
+
+//--------------------------------- BlindingFactor -----------------------------------------//
+
+impl TryFrom<proto::BlindingFactor> for BlindingFactor {
+    type Error = ByteArrayError;
+
+    fn try_from(offset: proto::BlindingFactor) -> Result<Self, Self::Error> {
+        Ok(BlindingFactor::from_bytes(&offset.data)?)
+    }
+}
+
+impl From<BlindingFactor> for proto::BlindingFactor {
+    fn from(offset: BlindingFactor) -> Self {
+        Self { data: offset.to_vec() }
     }
 }

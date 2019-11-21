@@ -32,11 +32,12 @@ use crate::{
         KernelFeatures,
         OutputFeatures,
         OutputFlags,
+        Transaction,
         TransactionInput,
         TransactionKernel,
         TransactionOutput,
     },
-    types::Commitment,
+    types::{BlindingFactor, Commitment},
 };
 use std::convert::{TryFrom, TryInto};
 use tari_utilities::{ByteArray, ByteArrayError};
@@ -193,6 +194,35 @@ impl From<AggregateBody> for proto::AggregateBody {
             inputs: i.into_iter().map(Into::into).collect(),
             outputs: o.into_iter().map(Into::into).collect(),
             kernels: k.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+//----------------------------------- Transaction ---------------------------------------------//
+
+impl TryFrom<proto::Transaction> for Transaction {
+    type Error = String;
+
+    fn try_from(tx: proto::Transaction) -> Result<Self, Self::Error> {
+        let offset = tx
+            .offset
+            .map(|offset| BlindingFactor::from_bytes(&offset.data))
+            .ok_or("Blinding factor offset not provided".to_string())?
+            .map_err(|err| err.to_string())?;
+        let body = tx
+            .body
+            .map(TryInto::try_into)
+            .ok_or("Body not provided".to_string())??;
+
+        Ok(Self { offset, body })
+    }
+}
+
+impl From<Transaction> for proto::Transaction {
+    fn from(tx: Transaction) -> Self {
+        Self {
+            offset: Some(tx.offset.into()),
+            body: Some(tx.body.into()),
         }
     }
 }

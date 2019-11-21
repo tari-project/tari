@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package tari.mempool;
+
+message StatsResponse {
+    uint64 total_txs = 1;
+    uint64 unconfirmed_txs = 2;
+    uint64 orphan_txs = 3;
+    uint64 timelocked_txs = 4;
+    uint64 published_txs = 5;
+    uint64 total_weight = 6;
+}

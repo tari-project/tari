@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,18 +20,27 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod error;
-mod mempool;
-mod orphan_pool;
-mod pending_pool;
-mod priority;
-mod proto;
-mod reorg_pool;
-mod service;
-#[cfg(test)]
-mod test;
-mod unconfirmed_pool;
+use super::mempool::mempool_service_response::Response as ProtoMempoolResponse;
+use crate::mempool::service::MempoolResponse;
+use std::convert::TryInto;
 
-// Public re-exports
-pub use error::MempoolError;
-pub use mempool::{Mempool, MempoolConfig, TxStorageResponse};
+impl TryInto<MempoolResponse> for ProtoMempoolResponse {
+    type Error = String;
+
+    fn try_into(self) -> Result<MempoolResponse, Self::Error> {
+        use ProtoMempoolResponse::*;
+        let response = match self {
+            Stats(stats_response) => MempoolResponse::Stats(stats_response.try_into()?),
+        };
+        Ok(response)
+    }
+}
+
+impl From<MempoolResponse> for ProtoMempoolResponse {
+    fn from(response: MempoolResponse) -> Self {
+        use MempoolResponse::*;
+        match response {
+            Stats(stats_response) => ProtoMempoolResponse::Stats(stats_response.into()),
+        }
+    }
+}
