@@ -23,7 +23,7 @@
 fn main() {
     tari_protobuf_build::ProtoCompiler::new()
         .include_paths(&["../transactions/src/proto", "src/proto"])
-        .proto_paths(&["src/base_node/proto"])
+        .proto_paths(&["src/mempool/proto", "src/base_node/proto"])
         .compile()
         .unwrap();
 }

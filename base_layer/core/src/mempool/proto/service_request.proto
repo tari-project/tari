@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package tari.mempool;
+
+// Request type for a received MempoolService request.
+message MempoolServiceRequest {
+    uint64 request_key = 1;
+    oneof request {
+        // Indicates a Stats request. The value of the bool should be ignored.
+        bool get_stats = 2;
+    }
+}

@@ -31,6 +31,7 @@ use crate::{
         unconfirmed_pool::{UnconfirmedPool, UnconfirmedPoolConfig},
     },
 };
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tari_transactions::{transaction::Transaction, types::Signature};
 use tari_utilities::hash::Hashable;
@@ -44,7 +45,7 @@ pub enum TxStorageResponse {
     NotStored,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct StatsResponse {
     pub total_txs: usize,
     pub unconfirmed_txs: usize,

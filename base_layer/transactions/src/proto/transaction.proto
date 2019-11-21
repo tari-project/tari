@@ -73,3 +73,10 @@ message AggregateBody {
     // Kernels contain the excesses and their signatures for transaction
     repeated TransactionKernel kernels = 3;
 }
+
+// A transaction which consists of a kernel offset and an aggregate body made up of inputs, outputs and kernels.
+// This struct is used to describe single transactions only.
+message Transaction {
+    BlindingFactor offset = 1;
+    AggregateBody body = 2;
+}

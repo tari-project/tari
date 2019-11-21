@@ -13,11 +13,14 @@ enum TariMessageType {
 
     // -- Blockchain messages --
 
-    TariMessageTypeNewBlock = 65;
-    TariMessageTypeTransaction = 66;
-    TariMessageTypeTransactionReply = 67;
-    TariMessageTypeBaseNodeRequest = 68;
-    TariMessageTypeBaseNodeResponse = 69;
+    TariMessageTypeNewTransaction = 65;
+    TariMessageTypeNewBlock = 66;
+    TariMessageTypeSenderPartialTransaction = 67;
+    TariMessageTypeReceiverPartialTransactionReply = 68;
+    TariMessageTypeBaseNodeRequest = 69;
+    TariMessageTypeBaseNodeResponse = 70;
+    TariMessageTypeMempoolRequest= 71;
+    TariMessageTypeMempoolResponse = 72;
 
     // -- DAN Messages --
 

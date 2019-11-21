@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,18 +20,33 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod error;
-mod mempool;
-mod orphan_pool;
-mod pending_pool;
-mod priority;
-mod proto;
-mod reorg_pool;
-mod service;
-#[cfg(test)]
-mod test;
-mod unconfirmed_pool;
+use crate::mempool::{mempool::StatsResponse, proto::mempool::StatsResponse as ProtoStatsResponse};
+use std::convert::TryFrom;
 
-// Public re-exports
-pub use error::MempoolError;
-pub use mempool::{Mempool, MempoolConfig, TxStorageResponse};
+impl TryFrom<ProtoStatsResponse> for StatsResponse {
+    type Error = String;
+
+    fn try_from(stats: ProtoStatsResponse) -> Result<Self, Self::Error> {
+        Ok(Self {
+            total_txs: stats.total_txs as usize,
+            unconfirmed_txs: stats.unconfirmed_txs as usize,
+            orphan_txs: stats.orphan_txs as usize,
+            timelocked_txs: stats.timelocked_txs as usize,
+            published_txs: stats.published_txs as usize,
+            total_weight: stats.total_weight,
+        })
+    }
+}
+
+impl From<StatsResponse> for ProtoStatsResponse {
+    fn from(stats: StatsResponse) -> Self {
+        Self {
+            total_txs: stats.total_txs as u64,
+            unconfirmed_txs: stats.unconfirmed_txs as u64,
+            orphan_txs: stats.orphan_txs as u64,
+            timelocked_txs: stats.timelocked_txs as u64,
+            published_txs: stats.published_txs as u64,
+            total_weight: stats.total_weight,
+        }
+    }
+}

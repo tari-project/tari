@@ -87,14 +87,14 @@ where T: TransactionBackend
     /// Get a stream of inbound Text messages
     fn transaction_stream(&self) -> impl Stream<Item = DomainMessage<proto::TransactionSenderMessage>> {
         self.subscription_factory
-            .get_subscription(TariMessageType::Transaction)
+            .get_subscription(TariMessageType::SenderPartialTransaction)
             .map(map_decode::<proto::TransactionSenderMessage>)
             .filter_map(ok_or_skip_result)
     }
 
     fn transaction_reply_stream(&self) -> impl Stream<Item = DomainMessage<proto::RecipientSignedMessage>> {
         self.subscription_factory
-            .get_subscription(TariMessageType::TransactionReply)
+            .get_subscription(TariMessageType::ReceiverPartialTransactionReply)
             .map(map_decode::<proto::RecipientSignedMessage>)
             .filter_map(ok_or_skip_result)
     }

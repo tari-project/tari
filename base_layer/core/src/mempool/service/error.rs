@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019 The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,18 +20,23 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod error;
-mod mempool;
-mod orphan_pool;
-mod pending_pool;
-mod priority;
-mod proto;
-mod reorg_pool;
-mod service;
-#[cfg(test)]
-mod test;
-mod unconfirmed_pool;
+use crate::mempool::MempoolError;
+use derive_error::Error;
+use tari_comms_dht::outbound::DhtOutboundError;
+use tari_service_framework::reply_channel::TransportChannelError;
 
-// Public re-exports
-pub use error::MempoolError;
-pub use mempool::{Mempool, MempoolConfig, TxStorageResponse};
+#[derive(Debug, Error)]
+pub enum MempoolServiceError {
+    DhtOutboundError(DhtOutboundError),
+    #[error(msg_embedded, no_from, non_std)]
+    InvalidRequest(String),
+    #[error(msg_embedded, no_from, non_std)]
+    InvalidResponse(String),
+    RequestTimedOut,
+    NoBootstrapNodesConfigured,
+    #[error(non_std, no_from)]
+    OutboundMessageService(String),
+    MempoolError(MempoolError),
+    UnexpectedApiResponse,
+    TransportChannelError(TransportChannelError),
+}

@@ -68,8 +68,6 @@ use tokio::runtime::TaskExecutor;
 
 const LOG_TARGET: &'static str = "tari_core::base_node::base_node_service::service";
 
-// TODO: Add streams for BlockchainMessage::NewBlock and BlockchainMessage::Transaction
-
 /// Configuration for the BaseNodeService.
 #[derive(Clone, Copy)]
 pub struct BaseNodeServiceConfig {
@@ -125,7 +123,7 @@ where
         local_block_stream: SLocalBlock,
     ) -> Self
     {
-        BaseNodeStreams {
+        Self {
             outbound_request_stream,
             outbound_block_stream,
             inbound_request_stream,
@@ -466,7 +464,9 @@ where B: BlockchainBackend
     ) -> Result<(), BaseNodeServiceError>
     {
         let DomainMessage::<_> {
-            origin_pubkey, inner, ..
+            // origin_pubkey,
+            inner,
+            ..
         } = domain_block_msg;
 
         info!("New candidate block received for height {}", inner.header.height);

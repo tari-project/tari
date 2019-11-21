@@ -346,7 +346,7 @@ where
             .send_direct(
                 dest_pubkey.clone(),
                 OutboundEncryption::EncryptForDestination,
-                OutboundDomainMessage::new(TariMessageType::Transaction, proto_message),
+                OutboundDomainMessage::new(TariMessageType::SenderPartialTransaction, proto_message),
             )
             .await?;
 
@@ -482,7 +482,7 @@ where
                     BroadcastStrategy::DirectPublicKey(source_pubkey.clone()),
                     NodeDestination::Unknown,
                     OutboundEncryption::EncryptForDestination,
-                    OutboundDomainMessage::new(TariMessageType::TransactionReply, proto_message),
+                    OutboundDomainMessage::new(TariMessageType::ReceiverPartialTransactionReply, proto_message),
                 )
                 .await?;
 

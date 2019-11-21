@@ -54,7 +54,7 @@ use tari_transactions::{
     tari_amount::MicroTari,
     types::{CryptoFactories, HashDigest},
 };
-use tari_utilities::{hash::Hashable, hex::Hex};
+use tari_utilities::hash::Hashable;
 
 async fn test_request_responder(
     receiver: &mut Receiver<

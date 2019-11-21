@@ -50,3 +50,6 @@ thread_local! {
 pub const BASE_NODE_SERVICE_REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 /// The fraction of responses that need to be received for a corresponding service request to be finalize.
 pub const BASE_NODE_SERVICE_DESIRED_RESPONSE_FRACTION: f32 = 0.6;
+
+/// The allocated waiting time for a request waiting for service responses from the mempools of remote base nodes.
+pub const MEMPOOL_SERVICE_REQUEST_TIMEOUT: Duration = Duration::from_secs(5);

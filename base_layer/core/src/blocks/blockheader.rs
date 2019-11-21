@@ -38,7 +38,7 @@
 //! This hash is called the UTXO merkle root, and is used as the output_mr
 
 use crate::{proof_of_work::Difficulty, types::TariProofOfWork};
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::{DateTime, Utc};
 use digest::Digest;
 use serde::{
     de::{self, Visitor},
