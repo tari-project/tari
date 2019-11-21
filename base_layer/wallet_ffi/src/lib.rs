@@ -117,6 +117,7 @@ use tari_wallet::wallet::WalletConfig;
 use core::ptr;
 use std::{sync::Arc, time::Duration};
 use tari_comms::{connection::NetAddress, control_service::ControlServiceConfig, peer_manager::PeerFeatures};
+use tari_comms_dht::DhtConfig;
 use tari_crypto::keys::PublicKey;
 use tari_transactions::types::CryptoFactories;
 use tari_utilities::hex::Hex;
@@ -1233,7 +1234,10 @@ pub unsafe extern "C" fn comms_config_create(
                             peer_database_name: database_name_string,
                             inbound_buffer_size: 100,
                             outbound_buffer_size: 100,
-                            dht: Default::default(),
+                            dht: DhtConfig {
+                                discovery_request_timeout: Duration::from_millis(1000),
+                                ..Default::default()
+                            },
                         };
 
                         Box::into_raw(Box::new(config))
