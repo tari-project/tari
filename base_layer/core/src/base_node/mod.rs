@@ -34,6 +34,7 @@
 
 mod backoff;
 mod base_node;
+mod chain_metadata_service;
 mod comms_interface;
 mod proto;
 #[cfg(test)]

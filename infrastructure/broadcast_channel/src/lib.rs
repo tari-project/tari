@@ -94,4 +94,4 @@ pub(crate) mod atomic_counter;
 mod channel;
 
 pub use async_channel::{bounded, Publisher, Subscriber};
-pub use channel::bounded as raw_bounded;
+pub use channel::{bounded as raw_bounded, SendError};

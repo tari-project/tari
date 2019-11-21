@@ -54,8 +54,10 @@ bytes = "0.4.12"
 prost-types = "0.5.0"
 
 [dev-dependencies]
-env_logger = "0.7.0"
+tari_p2p = {path = "../../base_layer/p2p", version = "^0.0", features=["test-mocks"]}
 tari_test_utils = { path = "../../infrastructure/test_utils", version = "^0.0" }
+
+env_logger = "0.7.0"
 tempdir = "0.3.7"
 
 [build-dependencies]

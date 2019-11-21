@@ -59,11 +59,7 @@ use tari_p2p::{
     initialization::{initialize_comms, CommsConfig},
     services::{
         comms_outbound::CommsOutboundServiceInitializer,
-        liveness::{
-            handle::{LivenessEvent, LivenessHandle},
-            LivenessConfig,
-            LivenessInitializer,
-        },
+        liveness::{LivenessConfig, LivenessEvent, LivenessHandle, LivenessInitializer},
     },
 };
 use tari_service_framework::StackBuilder;
@@ -327,6 +323,8 @@ async fn update_ui(update_sink: CursiveSignal, mut liveness_handle: LivenessHand
                                 avg_latency: lock.avg_latency,
                             };
                         }
+
+                        let _ = update_sink.send(Box::new(update_count));
                     },
                     LivenessEvent::ReceivedPong(event) => {
                         {
@@ -338,10 +336,12 @@ async fn update_ui(update_sink: CursiveSignal, mut liveness_handle: LivenessHand
                                 avg_latency: event.latency.unwrap_or(0),
                             };
                         }
+
+                        let _ = update_sink.send(Box::new(update_count));
                     },
+                    _ => {},
                 }
 
-                let _ = update_sink.send(Box::new(update_count));
             },
             _ = shutdown =>  {
                 log::debug!("Ping pong example UI exiting");

@@ -25,6 +25,8 @@
 // Used to eliminate the need for boxing futures in many cases.
 // Tracking issue: https://github.com/rust-lang/rust/issues/63063
 #![feature(type_alias_impl_trait)]
+// Enable usage of Vec::shrink_to
+#![feature(shrink_to)]
 
 #[cfg(test)]
 pub mod test_utils;

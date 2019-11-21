@@ -20,28 +20,24 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::time::Duration;
+use crate::chain_storage::ChainMetadata;
+use futures::{stream::Fuse, StreamExt};
+use tari_broadcast_channel::Subscriber;
 
-/// Configuration for liveness service
-#[derive(Debug, Clone)]
-pub struct LivenessConfig {
-    /// The interval to send Ping messages, or None to disable periodic pinging (default: None (disabled))
-    pub auto_ping_interval: Option<Duration>,
-    /// Set to true to enable automatically joining the network on node startup (default: true)
-    pub enable_auto_join: bool,
-    /// Set to true to enable a request for stored messages on node startup (default: true)
-    pub enable_auto_stored_message_request: bool,
-    /// The length of time between querying peer manager for closest neighbours. (default: 5mins)
-    pub refresh_neighbours_interval: Duration,
+pub enum ChainMetadataEvent {
+    PeerChainMetadataReceived(Vec<ChainMetadata>),
 }
 
-impl Default for LivenessConfig {
-    fn default() -> Self {
-        Self {
-            auto_ping_interval: None,
-            enable_auto_join: true,
-            enable_auto_stored_message_request: true,
-            refresh_neighbours_interval: Duration::from_secs(5 * 60),
-        }
+pub struct ChainMetadataHandle {
+    event_stream: Subscriber<ChainMetadataEvent>,
+}
+
+impl ChainMetadataHandle {
+    pub fn new(event_stream: Subscriber<ChainMetadataEvent>) -> Self {
+        Self { event_stream }
+    }
+
+    pub fn get_event_stream(&self) -> Fuse<Subscriber<ChainMetadataEvent>> {
+        self.event_stream.clone().fuse()
     }
 }

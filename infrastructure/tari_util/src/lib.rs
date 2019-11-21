@@ -32,6 +32,8 @@ pub mod extend_bytes;
 pub mod fixed_set;
 pub mod hash;
 pub mod hex;
+#[macro_use]
+pub mod locks;
 pub mod message_format;
 pub mod thread_join;
 
