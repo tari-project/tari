@@ -2,11 +2,60 @@
 source build.config
 CURRENT_DIR=$TARI_REPO_PATH/base_layer/wallet_ffi
 ZMQ_FOLDER=libzmq
+SQLITE_FOLDER=sqlite
 cd ..
 cd ..
 cd ..
-DEPENDENCIES=$ANDROID_WALLET_PATH
+
+unameOut="$(uname -s)"
+case "${unameOut}" in
+    Linux*)     MACHINE=Linux;;
+    Darwin*)    MACHINE=Mac;;
+    CYGWIN*)    MACHINE=Cygwin;;
+    MINGW*)     MACHINE=MinGw;;
+    *)          MACHINE="UNKNOWN:${unameOut}"
+esac
 export PKG_CONFIG_ALLOW_CROSS=1
+DEPENDENCIES=$IOS_WALLET_PATH
+if [ ! -z "$DEPENDENCIES" ] && [ ! -z "$PKG_PATH" ] && [ "$BUILD_IOS" -eq 1 ] && [ "$MACHINE" == "Mac" ]; then
+  #below line is temporary
+  ZMQ_REPO="https://github.com/azawawi/libzmq-ios"
+  cd $DEPENDENCIES
+  mkdir -p build
+  cd build
+  BUILD_ROOT=$PWD
+  cd ..
+  if [ ! -d "${ZMQ_FOLDER}-ios" ]; then
+    git clone $ZMQ_REPO
+    cd ${ZMQ_FOLDER}-ios
+  else
+    cd ${ZMQ_FOLDER}-ios
+    git pull
+  fi
+  ruby libzmq.rb
+  cp "${PWD}/dist/ios/lib/libzmq.a" "${DEPENDENCIES}/MobileWallet/TariLib/"
+  cd ${CURRENT_DIR}
+  cargo clean
+  cp wallet.h "${DEPENDENCIES}/MobileWallet/TariLib/"
+  export PKG_CONFIG_PATH=${PKG_PATH}
+  cargo-lipo lipo --release
+  cd ..
+  cd ..
+  cd target
+  cd universal
+  cd release
+  cp libwallet_ffi.a "${DEPENDENCIES}/MobileWallet/TariLib/"
+  cd ..
+  cd ..
+  cd ..
+  rm -rf target
+  cd ${DEPENDENCIES}
+  rm -rf ${ZMQ_FOLDER}-ios
+else
+  echo "Cannot configure iOS Wallet Library build"
+fi
+
+DEPENDENCIES=$ANDROID_WALLET_PATH
 if [ ! -z "$DEPENDENCIES" ] && [ ! -z "$NDK_PATH" ] && [ ! -z "$PKG_PATH" ] && [ "$BUILD_ANDROID" -eq 1 ]; then
   DEPENDENCIES=$DEPENDENCIES/jniLibs
   cd $DEPENDENCIES
@@ -26,8 +75,7 @@ if [ ! -z "$DEPENDENCIES" ] && [ ! -z "$NDK_PATH" ] && [ ! -z "$PKG_PATH" ] && [
   export PKG_CONFIG_PATH=$PKG_PATH
   export NDK_TOOLCHAIN_VERSION=clang
 
-  for PLATFORMABI in "armv7-linux-androideabi"
-  #"i686-linux-android" "aarch64-linux-android" "x86_64-linux-android" not included at present
+  for PLATFORMABI in "aarch64-linux-android" "i686-linux-android" "armv7-linux-androideabi" "x86_64-linux-android"
   do
     for LEVEL in 24
     #21 22 23 26 26 27 28 29 not included at present
@@ -42,7 +90,7 @@ if [ ! -z "$DEPENDENCIES" ] && [ ! -z "$NDK_PATH" ] && [ ! -z "$PKG_PATH" ] && [
         elif [ "$PLATFORM" == "armv7" ]; then
           PLATFORM_OUTDIR="armeabi-v7a"
         elif [ "$PLATFORM" == "aarch64" ]; then
-          PLATFORM_OUTDIR="arm64-v8"
+          PLATFORM_OUTDIR="arm64-v8a"
         else
           PLATFORM_OUTDIR=$PLATFORM
       fi
@@ -51,7 +99,6 @@ if [ ! -z "$DEPENDENCIES" ] && [ ! -z "$NDK_PATH" ] && [ ! -z "$PKG_PATH" ] && [
       OUTPUT_DIR=$BUILD_ROOT/$PLATFORM_OUTDIR
       echo $OUTPUT_DIR
       cd $DEPENDENCIES
-      cd $ZMQ_FOLDER
 
       PLATFORMABI_TOOLCHAIN=$PLATFORMABI
       PLATFORMABI_COMPILER=$PLATFORMABI
@@ -95,12 +142,27 @@ if [ ! -z "$DEPENDENCIES" ] && [ ! -z "$NDK_PATH" ] && [ ! -z "$PKG_PATH" ] && [
       # set cpp flags
       export CPPFLAGS="-fPIC -I$OUTPUT_DIR/include"
 
+      mkdir -p $SQLITE_FOLDER
+      cd $SQLITE_FOLDER
+      curl -s $SQLITE_SOURCE | tar -xvf - -C $PWD
+      cd *
+      make clean
+      ./configure --host=$PLATFORMABI --prefix=$OUTPUT_DIR
+      make install
+      cd ..
+      cd ..
+      cd $ZMQ_FOLDER
+
       make clean
       ./autogen.sh
       ./configure --enable-static --disable-shared --host=$PLATFORMABI --prefix=$OUTPUT_DIR
       make install
-
+      export LDFLAGS="-L$NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/lib/${PLATFORMABI_TOOLCHAIN}/${LEVEL} -L${OUTPUT_DIR}/lib -lc++ -lzmq -lsqilte3"
+      cd $OUTPUT_DIR/lib
+      rm *.so
+      rm *.la
       cd $CURRENT_DIR
+      cargo clean
       mkdir -p .cargo
       cd .cargo
       cat > config <<EOF
@@ -109,7 +171,7 @@ ar = "${AR}"
 linker = "${CC}"
 
 [target.${PLATFORMABI}.zmq]
-rustc-flags = "-L${OUTPUT_DIR}"
+rustc-flags = "-L${OUTPUT_DIR}/lib"
 EOF
       cd ..
       cargo ndk --target $PLATFORMABI --android-platform $LEVEL -- build --release
@@ -130,6 +192,7 @@ EOF
       cd $DEPENDENCIES
       mkdir -p $PLATFORM_OUTDIR
       cd $PLATFORM_OUTDIR
+      cp ${OUTPUT_DIR}/lib/libsqlite3.a $PWD
       cp ${OUTPUT_DIR}/libwallet_ffi.a $PWD
       cp ${OUTPUT_DIR}/lib/libzmq.a $PWD
     done
@@ -137,53 +200,7 @@ EOF
   cd $DEPENDENCIES
   rm -rf build
   rm -rf $ZMQ_FOLDER
+  rm -rf $SQLITE_FOLDER
 else
   echo "Cannot configure Android Wallet Library build"
-fi
-
-unameOut="$(uname -s)"
-case "${unameOut}" in
-    Linux*)     MACHINE=Linux;;
-    Darwin*)    MACHINE=Mac;;
-    CYGWIN*)    MACHINE=Cygwin;;
-    MINGW*)     MACHINE=MinGw;;
-    *)          MACHINE="UNKNOWN:${unameOut}"
-esac
-
-DEPENDENCIES=$IOS_WALLET_PATH
-if [ ! -z "$DEPENDENCIES" ] && [ ! -z "$PKG_PATH" ] && [ "$BUILD_IOS" -eq 1 ] && [ "$MACHINE" == "Mac" ]; then
-  #below line is temporary
-  ZMQ_REPO="https://github.com/azawawi/libzmq-ios"
-  cd $DEPENDENCIES
-  mkdir -p build
-  cd build
-  BUILD_ROOT=$PWD
-  cd ..
-  if [ ! -d "${ZMQ_FOLDER}-ios" ]; then
-    git clone $ZMQ_REPO
-    cd ${ZMQ_FOLDER}-ios
-  else
-    cd ${ZMQ_FOLDER}-ios
-    git pull
-  fi
-  ruby libzmq.rb
-  cp "${PWD}/dist/ios/lib/libzmq.a" "${DEPENDENCIES}/MobileWallet/TariLib/"
-  cd ${CURRENT_DIR}
-  cp wallet.h "${DEPENDENCIES}/MobileWallet/TariLib/"
-  export PKG_CONFIG_PATH=${PKG_PATH}
-  cargo-lipo lipo --release
-  cd ..
-  cd ..
-  cd target
-  cd universal
-  cd release
-  cp libwallet_ffi.a "${DEPENDENCIES}/MobileWallet/TariLib/"
-  cd ..
-  cd ..
-  cd ..
-  rm -rf target
-  cd ${DEPENDENCIES}
-  rm -rf ${ZMQ_FOLDER}-ios
-else
-  echo "Cannot configure iOS Wallet Library build"
 fi
