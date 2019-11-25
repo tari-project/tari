@@ -130,7 +130,7 @@ bitflags! {
 
 //----------------------------------------     TransactionError   ----------------------------------------------------//
 
-#[derive(Clone, Debug, PartialEq, Error)]
+#[derive(Clone, Debug, PartialEq, Error, Deserialize, Serialize)]
 pub enum TransactionError {
     // Error validating the transaction
     #[error(msg_embedded, no_from, non_std)]

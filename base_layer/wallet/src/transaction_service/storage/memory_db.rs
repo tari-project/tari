@@ -87,15 +87,13 @@ impl TransactionBackend for TransactionMemoryDatabase {
                 .completed_transactions
                 .get(t)
                 .map(|v| DbValue::CompletedTransaction(Box::new(v.clone()))),
-            DbKey::PendingOutboundTransactions => Some(DbValue::PendingOutboundTransactions(Box::new(
+            DbKey::PendingOutboundTransactions => Some(DbValue::PendingOutboundTransactions(
                 db.pending_outbound_transactions.clone(),
-            ))),
-            DbKey::PendingInboundTransactions => Some(DbValue::PendingInboundTransactions(Box::new(
+            )),
+            DbKey::PendingInboundTransactions => Some(DbValue::PendingInboundTransactions(
                 db.pending_inbound_transactions.clone(),
-            ))),
-            DbKey::CompletedTransactions => Some(DbValue::CompletedTransactions(Box::new(
-                db.completed_transactions.clone(),
-            ))),
+            )),
+            DbKey::CompletedTransactions => Some(DbValue::CompletedTransactions(db.completed_transactions.clone())),
         };
 
         Ok(result)
@@ -180,6 +178,11 @@ impl TransactionBackend for TransactionMemoryDatabase {
     ) -> Result<(), TransactionStorageError>
     {
         let mut db = acquire_write_lock!(self.db);
+
+        if db.completed_transactions.contains_key(&tx_id) {
+            return Err(TransactionStorageError::TransactionAlreadyExists);
+        }
+
         let _ = db
             .pending_outbound_transactions
             .remove(&tx_id)
@@ -199,6 +202,11 @@ impl TransactionBackend for TransactionMemoryDatabase {
     ) -> Result<(), TransactionStorageError>
     {
         let mut db = acquire_write_lock!(self.db);
+
+        if db.completed_transactions.contains_key(&tx_id) {
+            return Err(TransactionStorageError::TransactionAlreadyExists);
+        }
+
         let _ = db
             .pending_inbound_transactions
             .remove(&tx_id)

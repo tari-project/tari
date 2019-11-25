@@ -69,7 +69,7 @@ use serde::{Deserialize, Serialize};
 use tari_crypto::{range_proof::RangeProofError, signatures::SchnorrSignatureError};
 use tari_utilities::byte_array::ByteArray;
 
-#[derive(Clone, Debug, PartialEq, Error)]
+#[derive(Clone, Debug, PartialEq, Error, Deserialize, Serialize)]
 pub enum TransactionProtocolError {
     // The current state is not yet completed, cannot transition to next state
     #[error(msg_embedded, no_from, non_std)]

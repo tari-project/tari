@@ -46,7 +46,7 @@ use tari_utilities::ByteArray;
 
 /// This struct contains all the information that a transaction initiator (the sender) will manage throughout the
 /// Transaction construction process.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub(super) struct RawTransactionInfo {
     pub num_recipients: usize,
     // The sum of self-created outputs plus change
@@ -105,7 +105,7 @@ pub enum TransactionSenderMessage {
 }
 
 //----------------------------------------  Sender State Protocol ----------------------------------------------------//
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct SenderTransactionProtocol {
     pub(super) state: SenderState,
 }
@@ -446,7 +446,7 @@ pub fn calculate_tx_id<D: Digest>(pub_nonce: &PublicKey, index: usize) -> u64 {
 //----------------------------------------      Sender State      ----------------------------------------------------//
 
 /// This enum contains all the states of the Sender state machine
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub(super) enum SenderState {
     /// Transitional state that kicks of the relevant transaction protocol
     Initializing(Box<RawTransactionInfo>),

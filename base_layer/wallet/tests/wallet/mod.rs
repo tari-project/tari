@@ -28,6 +28,7 @@ use tari_comms::{
     peer_manager::{peer::PeerFlags, NodeId, NodeIdentity, Peer, PeerFeatures},
     types::CommsPublicKey,
 };
+#[cfg(feature = "test_harness")]
 use tari_comms_dht::DhtConfig;
 use tari_crypto::keys::PublicKey;
 use tari_p2p::initialization::CommsConfig;
