@@ -134,7 +134,7 @@ fn request_connection() {
         )
         .unwrap();
     let outcome = client
-        .receive_message::<RequestConnectionOutcome>(Duration::from_millis(3000))
+        .receive_message::<RequestConnectionOutcome>(Duration::from_millis(5000))
         .unwrap()
         .unwrap();
 
@@ -185,7 +185,7 @@ fn ping_pong() {
     let service = ControlService::new(context.clone(), Arc::clone(&node_identity), ControlServiceConfig {
         listener_address: listener_address.clone(),
         socks_proxy_address: None,
-        requested_connection_timeout: Duration::from_millis(2000),
+        requested_connection_timeout: Duration::from_millis(5000),
     })
     .serve(connection_manager)
     .unwrap();
@@ -200,7 +200,7 @@ fn ping_pong() {
         client_conn,
     );
 
-    client.ping_pong(Duration::from_millis(2000)).unwrap().unwrap();
+    client.ping_pong(Duration::from_millis(5000)).unwrap().unwrap();
 
     service.shutdown().unwrap();
     service.timeout_join(Duration::from_millis(3000)).unwrap();

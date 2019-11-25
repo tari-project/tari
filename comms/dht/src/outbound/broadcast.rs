@@ -26,9 +26,15 @@ use crate::{
     broadcast_strategy::BroadcastStrategy,
     discovery::DhtDiscoveryRequester,
     envelope::{DhtMessageHeader, NodeDestination},
-    outbound::message::{DhtOutboundMessage, ForwardRequest, OutboundEncryption, SendMessageRequest},
+    outbound::{
+        message::{DhtOutboundMessage, ForwardRequest, OutboundEncryption},
+        message_params::FinalSendMessageParams,
+        SendMessageResponse,
+    },
+    proto::envelope::DhtMessageType,
 };
 use futures::{
+    channel::oneshot,
     future,
     stream::{self, StreamExt},
     task::Context,
@@ -38,6 +44,7 @@ use futures::{
 use log::*;
 use std::sync::Arc;
 use tari_comms::{
+    message::MessageFlags,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures},
     types::CommsPublicKey,
 };
@@ -188,19 +195,8 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
     ) -> Result<Vec<DhtOutboundMessage>, DhtOutboundError>
     {
         match msg {
-            DhtOutboundRequest::SendMsg(request, reply_tx) => {
-                match self.generate_send_messages(*request).await {
-                    Ok(msgs) => {
-                        // Reply with the number of messages to be sent
-                        let _ = reply_tx.send(msgs.len());
-                        Ok(msgs)
-                    },
-                    Err(err) => {
-                        // Reply 0 messages sent
-                        let _ = reply_tx.send(0);
-                        Err(err)
-                    },
-                }
+            DhtOutboundRequest::SendMsg(params, body, reply_tx) => {
+                self.handle_send_message(*params, body, reply_tx).await
             },
             DhtOutboundRequest::Forward(request) => {
                 if self.node_identity.has_peer_features(PeerFeatures::MESSAGE_PROPAGATION) {
@@ -216,24 +212,108 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
         }
     }
 
-    async fn select_or_discover_peer(
+    async fn handle_send_message(
         &mut self,
-        dest_public_key: CommsPublicKey,
-    ) -> Result<Option<Peer>, DhtOutboundError>
+        params: FinalSendMessageParams,
+        body: Vec<u8>,
+        reply_tx: oneshot::Sender<SendMessageResponse>,
+    ) -> Result<Vec<DhtOutboundMessage>, DhtOutboundError>
     {
-        let mut peers = self
-            .dht_requester
-            .select_peers(BroadcastStrategy::DirectPublicKey(dest_public_key.clone()))
+        let FinalSendMessageParams {
+            broadcast_strategy,
+            destination,
+            dht_message_type,
+            encryption,
+            is_discovery_enabled,
+        } = params;
+
+        match self.select_peers(broadcast_strategy.clone()).await {
+            Ok(mut peers) => {
+                if reply_tx.is_canceled() {
+                    return Err(DhtOutboundError::ReplyChannelCanceled);
+                }
+
+                let mut reply_tx = Some(reply_tx);
+
+                trace!(
+                    target: LOG_TARGET,
+                    "Number of peers selected = {}, is_discovery_enabled = {}",
+                    peers.len(),
+                    is_discovery_enabled,
+                );
+
+                // Discovery is required if:
+                //  - Discovery is enabled for this request
+                //  - There where no peers returned
+                //  - A direct public key broadcast strategy is used
+                if is_discovery_enabled && peers.len() == 0 && broadcast_strategy.direct_public_key().is_some() {
+                    let (discovery_reply_tx, discovery_reply_rx) = oneshot::channel();
+                    let target_public_key = broadcast_strategy.into_direct_public_key().expect("already checked");
+
+                    let _ = reply_tx
+                        .take()
+                        .expect("cannot fail")
+                        .send(SendMessageResponse::PendingDiscovery(discovery_reply_rx));
+
+                    match self.initiate_peer_discovery(target_public_key).await {
+                        Ok(Some(peer)) => {
+                            // Set the reply_tx so that it can be used later
+                            reply_tx = Some(discovery_reply_tx);
+                            peers = vec![peer];
+                        },
+                        Ok(None) => {
+                            // Message sent to 0 peers
+                            let _ = discovery_reply_tx.send(SendMessageResponse::Ok(0));
+                            return Ok(Vec::new());
+                        },
+                        Err(err) => {
+                            let _ = discovery_reply_tx.send(SendMessageResponse::Failed);
+                            return Err(err);
+                        },
+                    }
+                }
+
+                match self
+                    .generate_send_messages(peers, destination, dht_message_type, encryption, body)
+                    .await
+                {
+                    Ok(msgs) => {
+                        // Reply with the number of messages to be sent
+                        let _ = reply_tx
+                            .take()
+                            .expect("cannot fail")
+                            .send(SendMessageResponse::Ok(msgs.len()));
+                        Ok(msgs)
+                    },
+                    Err(err) => {
+                        // Reply 0 messages sent
+                        let _ = reply_tx.take().expect("cannot fail").send(SendMessageResponse::Failed);
+                        Err(err)
+                    },
+                }
+            },
+            Err(err) => {
+                let _ = reply_tx.send(SendMessageResponse::Failed);
+                Err(err)
+            },
+        }
+    }
+
+    async fn select_peers(&mut self, broadcast_strategy: BroadcastStrategy) -> Result<Vec<Peer>, DhtOutboundError> {
+        self.dht_requester
+            .select_peers(broadcast_strategy)
             .await
             .map_err(|err| {
                 error!(target: LOG_TARGET, "{}", err);
                 DhtOutboundError::PeerSelectionFailed
-            })?;
+            })
+    }
 
-        if peers.len() > 0 {
-            return Ok(Some(peers.remove(0)));
-        }
-
+    async fn initiate_peer_discovery(
+        &mut self,
+        dest_public_key: CommsPublicKey,
+    ) -> Result<Option<Peer>, DhtOutboundError>
+    {
         trace!(
             target: LOG_TARGET,
             "Initiating peer discovery for public key '{}'",
@@ -241,7 +321,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
         );
 
         // TODO: This works because we know that all non-DAN node IDs are/should be derived from the public key.
-        //       Once the DAN launches, this may not be the case.
+        //       Once the DAN launches, this may not be the case and we'll need to query the blockchain for the node id
         let derived_node_id = NodeId::from_key(&dest_public_key).ok();
 
         // Peer not found, let's try and discover it
@@ -277,38 +357,14 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
 
     async fn generate_send_messages(
         &mut self,
-        send_message_request: SendMessageRequest,
+        selected_peers: Vec<Peer>,
+        destination: NodeDestination,
+        dht_message_type: DhtMessageType,
+        encryption: OutboundEncryption,
+        body: Vec<u8>,
     ) -> Result<Vec<DhtOutboundMessage>, DhtOutboundError>
     {
-        let SendMessageRequest {
-            broadcast_strategy,
-            destination,
-            encryption,
-            comms_flags,
-            dht_flags,
-            dht_message_type,
-            body,
-        } = send_message_request;
-
-        // Use the BroadcastStrategy to select appropriate peer(s) from PeerManager and then construct and send a
-        // individually wrapped MessageEnvelope to each selected peer
-        // If the broadcast strategy is DirectPublicKey and the peer is not known, peer discovery will be initiated.
-        let selected_peers = match broadcast_strategy.direct_public_key() {
-            Some(_) => {
-                let dest_public_key = broadcast_strategy.take_direct_public_key().expect("already checked");
-                self.select_or_discover_peer(dest_public_key)
-                    .await
-                    .map(|peer| peer.map(|p| vec![p]).unwrap_or_default())?
-            },
-            None => self
-                .dht_requester
-                .select_peers(broadcast_strategy)
-                .await
-                .map_err(|err| {
-                    error!(target: LOG_TARGET, "{}", err);
-                    DhtOutboundError::PeerSelectionFailed
-                })?,
-        };
+        let dht_flags = encryption.flags();
 
         // Create a DHT header
         let dht_header = DhtMessageHeader::new(
@@ -326,7 +382,13 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
         let messages = selected_peers
             .into_iter()
             .map(|peer| {
-                DhtOutboundMessage::new(peer, dht_header.clone(), encryption.clone(), comms_flags, body.clone())
+                DhtOutboundMessage::new(
+                    peer,
+                    dht_header.clone(),
+                    encryption.clone(),
+                    MessageFlags::NONE,
+                    body.clone(),
+                )
             })
             .collect::<Vec<_>>();
 
@@ -377,10 +439,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
 mod test {
     use super::*;
     use crate::{
-        broadcast_strategy::BroadcastStrategy,
-        envelope::{DhtMessageFlags, NodeDestination},
-        outbound::message::OutboundEncryption,
-        proto::envelope::DhtMessageType,
+        outbound::SendMessageParams,
         test_utils::{
             create_dht_actor_mock,
             create_dht_discovery_mock,
@@ -395,7 +454,6 @@ mod test {
     use std::time::Duration;
     use tari_comms::{
         connection::NetAddress,
-        message::MessageFlags,
         peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
         types::CommsPublicKey,
     };
@@ -448,15 +506,8 @@ mod test {
         let (reply_tx, _reply_rx) = oneshot::channel();
 
         rt.block_on(service.call(DhtOutboundRequest::SendMsg(
-            Box::new(SendMessageRequest {
-                broadcast_strategy: BroadcastStrategy::Flood,
-                comms_flags: MessageFlags::NONE,
-                destination: NodeDestination::Unknown,
-                encryption: OutboundEncryption::None,
-                dht_message_type: DhtMessageType::None,
-                dht_flags: DhtMessageFlags::NONE,
-                body: "custom_msg".as_bytes().to_vec(),
-            }),
+            Box::new(SendMessageParams::new().flood().finish()),
+            "custom_msg".as_bytes().to_vec(),
             reply_tx,
         )))
         .unwrap();
@@ -497,28 +548,33 @@ mod test {
         );
         let (reply_tx, reply_rx) = oneshot::channel();
 
-        rt.block_on(service.call(DhtOutboundRequest::SendMsg(
-            Box::new(SendMessageRequest {
-                broadcast_strategy: BroadcastStrategy::DirectPublicKey(pk),
-                comms_flags: MessageFlags::NONE,
-                destination: NodeDestination::Unknown,
-                encryption: OutboundEncryption::None,
-                dht_message_type: DhtMessageType::None,
-                dht_flags: DhtMessageFlags::NONE,
-                body: "custom_msg".as_bytes().to_vec(),
-            }),
-            reply_tx,
-        )))
+        rt.block_on(
+            service.call(DhtOutboundRequest::SendMsg(
+                Box::new(
+                    SendMessageParams::new()
+                        .direct_public_key(pk)
+                        .with_discovery(false)
+                        .finish(),
+                ),
+                "custom_msg".as_bytes().to_vec(),
+                reply_tx,
+            )),
+        )
         .unwrap();
 
-        let num_peers_selected = rt.block_on(reply_rx).unwrap();
-        assert_eq!(num_peers_selected, 0);
+        let send_message_response = rt.block_on(reply_rx).unwrap();
+        // TODO: use unpack_enum!
+        match send_message_response {
+            SendMessageResponse::Ok(0) => {},
+            _ => panic!("Unexpected SendMessageResponse variant"),
+        }
 
         assert_eq!(spy.call_count(), 0);
     }
 
     #[test]
     fn send_message_direct_dht_discovery() {
+        env_logger::init();
         let rt = Runtime::new().unwrap();
 
         let node_identity = NodeIdentity::random(
@@ -548,24 +604,32 @@ mod test {
         );
         let (reply_tx, reply_rx) = oneshot::channel();
 
-        rt.block_on(service.call(DhtOutboundRequest::SendMsg(
-            Box::new(SendMessageRequest {
-                broadcast_strategy: BroadcastStrategy::DirectPublicKey(peer_to_discover.public_key.clone()),
-                comms_flags: MessageFlags::NONE,
-                destination: NodeDestination::Unknown,
-                encryption: OutboundEncryption::None,
-                dht_message_type: DhtMessageType::None,
-                dht_flags: DhtMessageFlags::NONE,
-                body: "custom_msg".as_bytes().to_vec(),
-            }),
-            reply_tx,
-        )))
+        rt.block_on(
+            service.call(DhtOutboundRequest::SendMsg(
+                Box::new(
+                    SendMessageParams::new()
+                        .direct_public_key(peer_to_discover.public_key.clone())
+                        .finish(),
+                ),
+                "custom_msg".as_bytes().to_vec(),
+                reply_tx,
+            )),
+        )
         .unwrap();
 
-        let num_peers_selected = rt.block_on(reply_rx).unwrap();
-        assert_eq!(num_peers_selected, 1);
-        assert_eq!(dht_discovery_state.call_count(), 1);
+        let send_message_response = rt.block_on(reply_rx).unwrap();
+        match send_message_response {
+            SendMessageResponse::PendingDiscovery(await_discovery) => {
+                let discovery_reply = rt.block_on(await_discovery).unwrap();
+                assert_eq!(dht_discovery_state.call_count(), 1);
+                match discovery_reply {
+                    SendMessageResponse::Ok(1) => {},
+                    e => panic!("Unexpected SendMessageResponse variant: {:?}", e),
+                }
 
-        assert_eq!(spy.call_count(), 1);
+                assert_eq!(spy.call_count(), 1);
+            },
+            e => panic!("Unexpected SendMessageResponse variant: {:?}", e),
+        }
     }
 }

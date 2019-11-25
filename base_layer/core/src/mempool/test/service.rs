@@ -51,9 +51,7 @@ use tari_comms::{
     peer_manager::{NodeIdentity, Peer, PeerFeatures, PeerFlags},
 };
 use tari_comms_dht::{
-    broadcast_strategy::BroadcastStrategy,
     domain_message::OutboundDomainMessage,
-    envelope::NodeDestination,
     outbound::{OutboundEncryption, OutboundMessageRequester},
     Dht,
 };
@@ -385,20 +383,18 @@ fn receive_and_propagate_transaction() {
     runtime.block_on(async {
         alice_interfaces
             .outbound_message_service
-            .send_message(
-                BroadcastStrategy::DirectPublicKey(bob_interfaces.node_identity.public_key().clone()),
-                NodeDestination::Unknown,
-                OutboundEncryption::EncryptForDestination,
+            .send_direct(
+                bob_interfaces.node_identity.public_key().clone(),
+                OutboundEncryption::EncryptForPeer,
                 OutboundDomainMessage::new(TariMessageType::NewTransaction, proto::Transaction::from(tx)),
             )
             .await
             .unwrap();
         alice_interfaces
             .outbound_message_service
-            .send_message(
-                BroadcastStrategy::DirectPublicKey(carol_interfaces.node_identity.public_key().clone()),
-                NodeDestination::Unknown,
-                OutboundEncryption::EncryptForDestination,
+            .send_direct(
+                carol_interfaces.node_identity.public_key().clone(),
+                OutboundEncryption::EncryptForPeer,
                 OutboundDomainMessage::new(TariMessageType::NewTransaction, proto::Transaction::from(orphan)),
             )
             .await

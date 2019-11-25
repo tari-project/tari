@@ -22,11 +22,10 @@
 
 use crate::{
     actor::DhtRequester,
-    broadcast_strategy::BroadcastStrategy,
     config::DhtConfig,
     envelope::{Destination, DhtMessageFlags, DhtMessageHeader, NodeDestination},
     inbound::{DecryptedDhtMessage, DhtInboundMessage},
-    outbound::{OutboundEncryption, OutboundMessageRequester},
+    outbound::{OutboundMessageRequester, SendMessageParams},
     proto::{
         envelope::DhtMessageType,
         store_forward::{StoredMessage, StoredMessagesRequest, StoredMessagesResponse},
@@ -186,11 +185,11 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = MiddlewareError>
             stored_messages.messages().len()
         );
         self.outbound_service
-            .send_dht_message(
-                BroadcastStrategy::DirectPublicKey(message.source_peer.public_key),
-                NodeDestination::Unknown,
-                OutboundEncryption::EncryptForDestination,
-                DhtMessageType::SafStoredMessages,
+            .send_message_no_header(
+                SendMessageParams::new()
+                    .direct_public_key(message.source_peer.public_key)
+                    .with_dht_message_type(DhtMessageType::SafStoredMessages)
+                    .finish(),
                 stored_messages,
             )
             .await?;
@@ -488,8 +487,8 @@ mod test {
                 task.run().await.unwrap();
             });
             rt.spawn(async move {
-                let msg = unwrap_oms_send_msg!(oms_rx.next().await.unwrap());
-                let body = EnvelopeBody::decode(&msg.body).unwrap();
+                let (_, body) = unwrap_oms_send_msg!(oms_rx.next().await.unwrap());
+                let body = EnvelopeBody::decode(&body).unwrap();
                 let msg = body.decode_part::<StoredMessagesResponse>(0).unwrap().unwrap();
                 assert_eq!(msg.messages().len(), 1);
                 assert_eq!(msg.messages()[0].encrypted_body, b"A");

@@ -23,15 +23,15 @@
 macro_rules! unwrap_oms_send_msg {
     ($var:expr, reply_value=$reply_value:expr) => {
         match $var {
-            crate::outbound::DhtOutboundRequest::SendMsg(boxed, reply_tx) => {
+            crate::outbound::DhtOutboundRequest::SendMsg(boxed, body, reply_tx) => {
                 let _ = reply_tx.send($reply_value);
-                *boxed
+                (*boxed, body)
             },
             _ => panic!("Unexpected DhtOutboundRequest"),
         }
     };
     ($var:expr) => {
-        unwrap_oms_send_msg!($var, reply_value = 0);
+        unwrap_oms_send_msg!($var, reply_value = $crate::outbound::SendMessageResponse::Ok(0));
     };
 }
 

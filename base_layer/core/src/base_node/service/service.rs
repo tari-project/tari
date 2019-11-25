@@ -57,10 +57,9 @@ use std::{
     time::{Duration, Instant},
 };
 use tari_comms_dht::{
-    broadcast_strategy::BroadcastStrategy,
     domain_message::OutboundDomainMessage,
     envelope::NodeDestination,
-    outbound::{OutboundEncryption, OutboundMessageRequester},
+    outbound::{OutboundEncryption, OutboundMessageRequester, SendMessageParams},
 };
 use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
 use tari_service_framework::RequestContext;
@@ -318,7 +317,7 @@ where B: BlockchainBackend
         self.outbound_message_service
             .send_direct(
                 origin_pubkey,
-                OutboundEncryption::EncryptForDestination,
+                OutboundEncryption::EncryptForPeer,
                 OutboundDomainMessage::new(TariMessageType::BaseNodeResponse, message),
             )
             .await?;
@@ -382,40 +381,57 @@ where B: BlockchainBackend
             request: Some(request.into()),
         };
 
+        let mut send_msg_params = SendMessageParams::new();
+
         let broadcast_strategy = match request_type {
-            NodeCommsRequestType::Single => BroadcastStrategy::Random(1),
-            NodeCommsRequestType::Many => BroadcastStrategy::Neighbours(Vec::new()),
+            NodeCommsRequestType::Single => send_msg_params.random(1),
+            NodeCommsRequestType::Many => send_msg_params.neighbours(Vec::new()),
         };
 
-        let dest_count = self
+        let send_result = self
             .outbound_message_service
             .send_message(
-                broadcast_strategy,
-                NodeDestination::Unknown,
-                OutboundEncryption::EncryptForDestination,
+                send_msg_params.finish(),
                 OutboundDomainMessage::new(TariMessageType::BaseNodeRequest, service_request),
             )
             .await
             .map_err(|e| CommsInterfaceError::OutboundMessageService(e.to_string()))?;
 
-        if dest_count > 0 {
-            // Wait for matching responses to arrive
-            self.waiting_requests.insert(request_key, WaitingRequest {
-                reply_tx: Some(reply_tx),
-                received_responses: Vec::new(),
-                desired_resp_count: (BASE_NODE_SERVICE_DESIRED_RESPONSE_FRACTION * dest_count as f32).ceil() as usize,
-            });
-            // Spawn timeout for waiting_request
-            self.spawn_request_timeout(request_key, self.config.request_timeout)
-                .await;
-        } else {
-            let _ = reply_tx.send(Err(CommsInterfaceError::NoBootstrapNodesConfigured).or_else(|resp| {
-                error!(
-                    target: LOG_TARGET,
-                    "Failed to send outbound request from Base Node as no bootstrap nodes were configured"
-                );
-                Err(resp)
-            }));
+        match send_result.resolve_ok().await {
+            Some(0) => {
+                let _ = reply_tx
+                    .send(Err(CommsInterfaceError::NoBootstrapNodesConfigured))
+                    .or_else(|resp| {
+                        error!(
+                            target: LOG_TARGET,
+                            "Failed to send outbound request from Base Node as no bootstrap nodes were configured"
+                        );
+                        Err(resp)
+                    });
+            },
+            Some(dest_count) => {
+                // Wait for matching responses to arrive
+                self.waiting_requests.insert(request_key, WaitingRequest {
+                    reply_tx: Some(reply_tx),
+                    received_responses: Vec::new(),
+                    desired_resp_count: (BASE_NODE_SERVICE_DESIRED_RESPONSE_FRACTION * dest_count as f32).ceil()
+                        as usize,
+                });
+                // Spawn timeout for waiting_request
+                self.spawn_request_timeout(request_key, self.config.request_timeout)
+                    .await;
+            },
+            None => {
+                let _ = reply_tx
+                    .send(Err(CommsInterfaceError::BroadcastFailed))
+                    .or_else(|resp| {
+                        error!(
+                            target: LOG_TARGET,
+                            "Failed to send outbound request from Base Node because DHT outbound broadcast failed"
+                        );
+                        Err(resp)
+                    });
+            },
         }
         Ok(())
     }
@@ -424,7 +440,7 @@ where B: BlockchainBackend
         self.outbound_message_service
             .propagate(
                 NodeDestination::Unknown,
-                OutboundEncryption::EncryptForDestination,
+                OutboundEncryption::EncryptForPeer,
                 Vec::new(),
                 OutboundDomainMessage::new(TariMessageType::NewBlock, ProtoBlock::from(block)),
             )

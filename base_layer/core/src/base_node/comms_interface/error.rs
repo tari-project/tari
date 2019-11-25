@@ -37,4 +37,6 @@ pub enum CommsInterfaceError {
     EventStreamError,
     #[error(non_std, no_from)]
     MempoolError(String),
+    /// Failure in broadcast DHT middleware
+    BroadcastFailed,
 }

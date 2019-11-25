@@ -241,6 +241,14 @@ impl InitialSync {
                     "There was a problem accessing the mempool. {}. {}.", e, msg
                 );
             },
+            CommsInterfaceError::BroadcastFailed => {
+                self.shutdown_votes += 1;
+                error!(
+                    target: LOG_TARGET,
+                    "There was a problem sending with the DHT broadcast middleware. {}.",
+                    e.to_string(),
+                );
+            },
         }
     }
 

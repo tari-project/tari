@@ -24,6 +24,7 @@ mod broadcast;
 mod encryption;
 mod error;
 mod message;
+mod message_params;
 mod requester;
 mod serialize;
 
@@ -33,7 +34,8 @@ pub use self::{
     broadcast::BroadcastLayer,
     encryption::EncryptionLayer,
     error::DhtOutboundError,
-    message::{DhtOutboundRequest, OutboundEncryption},
+    message::{DhtOutboundRequest, OutboundEncryption, SendMessageResponse},
+    message_params::SendMessageParams,
     requester::OutboundMessageRequester,
     serialize::SerializeLayer,
 };

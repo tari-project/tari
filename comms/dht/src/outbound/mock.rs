@@ -20,8 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::outbound::{message::SendMessageRequest, DhtOutboundRequest, OutboundMessageRequester};
-use futures::{channel::mpsc, stream::Fuse, Future, StreamExt};
+use crate::outbound::{
+    message::SendMessageResponse,
+    message_params::FinalSendMessageParams,
+    DhtOutboundRequest,
+    OutboundMessageRequester,
+};
+use futures::{channel::mpsc, stream::Fuse, StreamExt};
 use std::{
     sync::atomic::{AtomicUsize, Ordering},
     time::Duration,
@@ -54,40 +59,39 @@ impl MockOutboundService {
         self.request_count.load(Ordering::SeqCst)
     }
 
-    /// Handles the next OMS message at the same time as making progress on other_fut.
-    /// Useful for testing an async task which uses the oms.
-    pub async fn handle_next_joined<F>(
-        &mut self,
-        timeout: Duration,
-        response: usize,
-        other_fut: F,
-    ) -> (SendMessageRequest, F::Output)
-    where
-        F: Future,
-    {
-        let (req, result) = futures::join!(self.handle_next(timeout, response), other_fut);
-        (req, result)
-    }
-
     /// Receive and handle the next request. A panic will occur if the request times out, the receiver has closed, or a
     /// reply cannot be sent back.
-    pub async fn handle_next(&mut self, timeout: Duration, response: usize) -> SendMessageRequest {
+    pub async fn handle_next(
+        &mut self,
+        timeout: Duration,
+        response: SendMessageResponse,
+    ) -> (FinalSendMessageParams, Vec<u8>)
+    {
         let req = self.receiver.next().timeout(timeout).await.unwrap().unwrap();
         self.request_count.fetch_add(1, Ordering::AcqRel);
         match req {
-            DhtOutboundRequest::SendMsg(msg, reply_tx) => {
-                reply_tx.send(response).unwrap();
-                *msg
+            DhtOutboundRequest::SendMsg(params, body, reply_tx) => {
+                reply_tx.send(response).expect("Reply channel cancelled");
+                (*params, body)
             },
             msg => panic!("Unexpected {} message", msg),
         }
     }
 
     /// Handle `count` messages and return a vector of the results.
-    pub async fn handle_many(mut self, count: usize, timeout: Duration, response: usize) -> Vec<SendMessageRequest> {
+    pub async fn handle_many(
+        mut self,
+        count: usize,
+        timeout: Duration,
+        num_sent: usize,
+    ) -> Vec<(FinalSendMessageParams, Vec<u8>)>
+    {
         let mut results = Vec::with_capacity(count);
         for _ in 0..count {
-            results.push(self.handle_next(timeout.clone(), response).await);
+            results.push(
+                self.handle_next(timeout.clone(), SendMessageResponse::Ok(num_sent))
+                    .await,
+            );
         }
         results
     }
@@ -106,7 +110,7 @@ mod test {
             let (mut requester, mut service) = create_mock_outbound_service(1);
 
             let (_, result) = rt.block_on(join(
-                service.handle_next(Duration::from_millis(100), 123),
+                service.handle_next(Duration::from_millis(100), SendMessageResponse::Ok(123)),
                 requester.send_direct_neighbours(
                     Default::default(),
                     Default::default(),
@@ -115,7 +119,10 @@ mod test {
             ));
 
             assert_eq!(service.request_count(), 1);
-            assert_eq!(result.unwrap(), 123);
+            match result.unwrap() {
+                SendMessageResponse::Ok(123) => {},
+                _ => panic!("Unexpected SendMessageResponse"),
+            }
         })
     }
 
@@ -130,13 +137,21 @@ mod test {
                 Default::default(),
                 OutboundDomainMessage::new(0, b"".to_vec()),
             ));
-            assert_eq!(result.unwrap(), 123);
+            match result.unwrap() {
+                SendMessageResponse::Ok(123) => {},
+                _ => panic!("Unexpected SendMessageResponse"),
+            }
+
             let result = rt.block_on(requester.send_direct_neighbours(
                 Default::default(),
                 Default::default(),
                 OutboundDomainMessage::new(0, b"".to_vec()),
             ));
-            assert_eq!(result.unwrap(), 123);
+
+            match result.unwrap() {
+                SendMessageResponse::Ok(123) => {},
+                _ => panic!("Unexpected SendMessageResponse"),
+            }
         })
     }
 }

@@ -24,12 +24,12 @@ use super::message::DhtOutboundRequest;
 use crate::{
     broadcast_strategy::BroadcastStrategy,
     domain_message::OutboundDomainMessage,
-    envelope::{DhtMessageFlags, DhtMessageHeader, NodeDestination},
+    envelope::{DhtMessageHeader, NodeDestination},
     outbound::{
-        message::{ForwardRequest, OutboundEncryption, SendMessageRequest},
+        message::{ForwardRequest, OutboundEncryption, SendMessageResponse},
+        message_params::{FinalSendMessageParams, SendMessageParams},
         DhtOutboundError,
     },
-    proto::envelope::DhtMessageType,
 };
 use futures::{
     channel::{mpsc, oneshot},
@@ -58,21 +58,19 @@ impl OutboundMessageRequester {
         dest_public_key: CommsPublicKey,
         encryption: OutboundEncryption,
         message: OutboundDomainMessage<T>,
-    ) -> Result<bool, DhtOutboundError>
+    ) -> Result<SendMessageResponse, DhtOutboundError>
     where
         T: prost::Message,
     {
         self.send_message(
-            BroadcastStrategy::DirectPublicKey(dest_public_key.clone()),
-            NodeDestination::PublicKey(dest_public_key),
-            encryption,
+            SendMessageParams::new()
+                .direct_public_key(dest_public_key)
+                .with_encryption(encryption)
+                .with_discovery(true)
+                .finish(),
             message,
         )
         .await
-        .map(|count| {
-            debug_assert!(count <= 1);
-            count >= 1
-        })
     }
 
     /// Send directly to a peer.
@@ -81,21 +79,19 @@ impl OutboundMessageRequester {
         dest_node_id: NodeId,
         encryption: OutboundEncryption,
         message: OutboundDomainMessage<T>,
-    ) -> Result<bool, DhtOutboundError>
+    ) -> Result<SendMessageResponse, DhtOutboundError>
     where
         T: prost::Message,
     {
         self.send_message(
-            BroadcastStrategy::DirectNodeId(dest_node_id.clone()),
-            NodeDestination::NodeId(dest_node_id),
-            encryption,
+            SendMessageParams::new()
+                .direct_node_id(dest_node_id.clone())
+                .with_destination(NodeDestination::NodeId(dest_node_id))
+                .with_encryption(encryption)
+                .finish(),
             message,
         )
         .await
-        .map(|count| {
-            debug_assert!(count <= 1);
-            count >= 1
-        })
     }
 
     /// Send to a pre-configured number of closest peers.
@@ -106,7 +102,7 @@ impl OutboundMessageRequester {
         encryption: OutboundEncryption,
         exclude_peers: Vec<CommsPublicKey>,
         message: OutboundDomainMessage<T>,
-    ) -> Result<usize, DhtOutboundError>
+    ) -> Result<SendMessageResponse, DhtOutboundError>
     where
         T: prost::Message,
     {
@@ -124,14 +120,16 @@ impl OutboundMessageRequester {
         encryption: OutboundEncryption,
         exclude_peers: Vec<CommsPublicKey>,
         message: OutboundDomainMessage<T>,
-    ) -> Result<usize, DhtOutboundError>
+    ) -> Result<SendMessageResponse, DhtOutboundError>
     where
         T: prost::Message,
     {
         self.send_message(
-            BroadcastStrategy::Neighbours(exclude_peers),
-            destination,
-            encryption,
+            SendMessageParams::new()
+                .neighbours(exclude_peers)
+                .with_encryption(encryption)
+                .with_destination(destination)
+                .finish(),
             message,
         )
         .await
@@ -146,12 +144,19 @@ impl OutboundMessageRequester {
         destination: NodeDestination,
         encryption: OutboundEncryption,
         message: OutboundDomainMessage<T>,
-    ) -> Result<usize, DhtOutboundError>
+    ) -> Result<SendMessageResponse, DhtOutboundError>
     where
         T: prost::Message,
     {
-        self.send_message(BroadcastStrategy::Flood, destination, encryption, message)
-            .await
+        self.send_message(
+            SendMessageParams::new()
+                .flood()
+                .with_destination(destination)
+                .with_encryption(encryption)
+                .finish(),
+            message,
+        )
+        .await
     }
 
     /// Send to a random subset of peers of size _n_.
@@ -161,84 +166,57 @@ impl OutboundMessageRequester {
         destination: NodeDestination,
         encryption: OutboundEncryption,
         message: OutboundDomainMessage<T>,
-    ) -> Result<usize, DhtOutboundError>
+    ) -> Result<SendMessageResponse, DhtOutboundError>
     where
         T: prost::Message,
     {
-        self.send_message(BroadcastStrategy::Random(n), destination, encryption, message)
-            .await
+        self.send_message(
+            SendMessageParams::new()
+                .random(n)
+                .with_destination(destination)
+                .with_encryption(encryption)
+                .finish(),
+            message,
+        )
+        .await
     }
 
     /// Send a message with custom parameters
     pub async fn send_message<T>(
         &mut self,
-        broadcast_strategy: BroadcastStrategy,
-        destination: NodeDestination,
-        encryption: OutboundEncryption,
+        params: FinalSendMessageParams,
         message: OutboundDomainMessage<T>,
-    ) -> Result<usize, DhtOutboundError>
+    ) -> Result<SendMessageResponse, DhtOutboundError>
     where
         T: prost::Message,
     {
-        let flags = encryption.flags();
         let body = wrap_in_envelope_body!(message.to_header(), message.into_inner())?.to_encoded_bytes()?;
-        self.send(
-            broadcast_strategy,
-            destination,
-            encryption,
-            flags,
-            DhtMessageType::None,
-            body,
-        )
-        .await
+        self.send(params, body).await
     }
 
     /// Send a DHT-level message
-    pub async fn send_dht_message<T>(
+    pub async fn send_message_no_header<T>(
         &mut self,
-        broadcast_strategy: BroadcastStrategy,
-        destination: NodeDestination,
-        encryption: OutboundEncryption,
-        message_type: DhtMessageType,
+        params: FinalSendMessageParams,
         message: T,
-    ) -> Result<usize, DhtOutboundError>
+    ) -> Result<SendMessageResponse, DhtOutboundError>
     where
         T: prost::Message,
     {
-        let flags = encryption.flags();
         let body = wrap_in_envelope_body!(message)?.to_encoded_bytes()?;
-        self.send(broadcast_strategy, destination, encryption, flags, message_type, body)
-            .await
+        self.send(params, body).await
     }
 
     /// Send a raw message
     pub async fn send(
         &mut self,
-        broadcast_strategy: BroadcastStrategy,
-        destination: NodeDestination,
-        encryption: OutboundEncryption,
-        dht_flags: DhtMessageFlags,
-        dht_message_type: DhtMessageType,
+        params: FinalSendMessageParams,
         body: Frame,
-    ) -> Result<usize, DhtOutboundError>
+    ) -> Result<SendMessageResponse, DhtOutboundError>
     {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.sender
-            .send(DhtOutboundRequest::SendMsg(
-                Box::new(SendMessageRequest {
-                    broadcast_strategy,
-                    destination,
-                    encryption,
-                    // Since NONE is the only option here, hard code to empty() rather than make this part of the public
-                    // interface. If comms-level message flags become useful, it should be easy to add that to the
-                    // public API from here up to domain-level
-                    comms_flags: MessageFlags::empty(),
-                    dht_flags,
-                    dht_message_type,
-                    body,
-                }),
-                reply_tx,
-            ))
+            .send(DhtOutboundRequest::SendMsg(Box::new(params), body, reply_tx))
             .await?;
 
         reply_rx

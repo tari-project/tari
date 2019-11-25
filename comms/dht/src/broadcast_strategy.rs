@@ -86,7 +86,7 @@ impl BroadcastStrategy {
         }
     }
 
-    pub fn take_direct_public_key(self) -> Option<CommsPublicKey> {
+    pub fn into_direct_public_key(self) -> Option<CommsPublicKey> {
         use BroadcastStrategy::*;
         match self {
             DirectPublicKey(pk) => Some(pk),
