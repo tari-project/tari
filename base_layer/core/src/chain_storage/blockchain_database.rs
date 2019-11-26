@@ -22,7 +22,7 @@
 //
 
 use crate::{
-    blocks::{blockheader::BlockHash, Block, BlockBuilder, BlockHeader},
+    blocks::{Block, BlockBuilder, BlockHeader},
     chain_storage::{
         db_transaction::{DbKey, DbTransaction, DbValue, MetadataKey, MetadataValue, MmrTree},
         error::ChainStorageError,
@@ -34,7 +34,10 @@ use crate::{
 use croaring::Bitmap;
 use log::*;
 use serde::{Deserialize, Serialize};
-use std::sync::{Arc, RwLock, RwLockReadGuard};
+use std::{
+    collections::VecDeque,
+    sync::{Arc, RwLock, RwLockReadGuard},
+};
 use tari_mmr::{Hash, MerkleCheckPoint, MerkleProof, MutableMmrLeafNodes};
 use tari_transactions::{
     transaction::{TransactionInput, TransactionKernel, TransactionOutput},
@@ -185,7 +188,6 @@ where T: BlockchainBackend
         Ok(ChainMetadata {
             height_of_longest_chain: height,
             best_block: hash,
-            total_accumulated_difficulty: Difficulty::from(work),
             pruning_horizon: horizon,
         })
     }
@@ -233,13 +235,7 @@ where T: BlockchainBackend
         })
     }
 
-    fn update_metadata(
-        &self,
-        new_height: u64,
-        new_hash: Vec<u8>,
-        new_total_difficulty: Difficulty,
-    ) -> Result<(), ChainStorageError>
-    {
+    fn update_metadata(&self, new_height: u64, new_hash: Vec<u8>) -> Result<(), ChainStorageError> {
         let mut db = self.metadata.write().map_err(|_| {
             ChainStorageError::AccessError(
                 "Could not obtain write access to blockchain metadata after storing block".into(),
@@ -247,7 +243,6 @@ where T: BlockchainBackend
         })?;
         db.height_of_longest_chain = Some(new_height);
         db.best_block = Some(new_hash);
-        db.total_accumulated_difficulty = new_total_difficulty;
         Ok(())
     }
 
@@ -273,8 +268,7 @@ where T: BlockchainBackend
     /// calling [BlockchainDatabase::try_recover_metadata] in that case to re-sync the metadata; or else
     /// just exit the program.
     pub fn get_total_work(&self) -> Result<Difficulty, ChainStorageError> {
-        let metadata = self.access_metadata()?;
-        Ok(metadata.total_accumulated_difficulty.into())
+        unimplemented!()
     }
 
     /// Returns the transaction kernel with the given hash.
@@ -391,7 +385,6 @@ where T: BlockchainBackend
     fn add_block_impl(&self, block: Block, modify_header: bool) -> Result<BlockAddResult, ChainStorageError> {
         let block_hash = block.hash();
         let block_height = block.header.height;
-        let block_total_difficulty = block.header.total_difficulty;
         if self.db.contains(&DbKey::BlockHash(block_hash.clone()))? {
             return Ok(BlockAddResult::BlockExists);
         }
@@ -407,7 +400,7 @@ where T: BlockchainBackend
             }
             info!(
                 target: LOG_TARGET,
-                "Candidate block {} does not build on chain tip. Checking for a possible re-org .",
+                "Candidate block {} does not build on chain tip. Checking for a possible re-org.",
                 block_hash.to_hex(),
             );
             return self.handle_possible_reorg(block);
@@ -429,7 +422,7 @@ where T: BlockchainBackend
         // This is a bit of a hack. The block hash *is* the header hash; so I just call header.hash here to avoid
         // having to reconstruct the block. BUT, things will break if block.hash() changes.
         let block_hash = header.hash();
-        self.update_metadata(block_height, block_hash, block_total_difficulty)?;
+        self.update_metadata(block_height, block_hash)?;
         Ok(BlockAddResult::Ok(header))
     }
 
@@ -479,7 +472,6 @@ where T: BlockchainBackend
     ///   * or ALL of:
     ///     * the block's parent hash is the hash of the block at the current chain tip,
     ///     * the block height is one greater than the parent block
-    ///     * the total accumulated work has increased
     pub fn is_new_best_block(&self, block: &Block) -> Result<bool, ChainStorageError> {
         let (height, parent_hash) = {
             let db = self.access_metadata()?;
@@ -493,9 +485,7 @@ where T: BlockchainBackend
             )
         };
         let best_block = self.fetch_header(height)?;
-        let result = block.header.prev_hash == parent_hash &&
-            block.header.height == best_block.height + 1 &&
-            block.header.total_difficulty > best_block.total_difficulty;
+        let result = block.header.prev_hash == parent_hash && block.header.height == best_block.height + 1;
         Ok(result)
     }
 
@@ -675,7 +665,7 @@ where T: BlockchainBackend
         self.commit(txn)?;
 
         let last_block = self.fetch_block(height)?.block().clone();
-        self.update_metadata(height, last_block.hash(), last_block.header.total_difficulty)
+        self.update_metadata(height, last_block.hash())
     }
 
     /// Checks whether we should add the block as an orphan. If it is the case, the orphan block is added and the chain
@@ -689,78 +679,113 @@ where T: BlockchainBackend
         if block.header.height <= horizon_block_height {
             return Err(ChainStorageError::BeyondPruningHorizon);
         }
-
-        // TODO - check if PoW of block is above some spam threshold
-        block.check_pow()?;
-
         let mut txn = DbTransaction::new();
+        let orphan = block.clone();
         txn.insert_orphan(block);
         self.commit(txn)?;
-
+        info!(
+            target: LOG_TARGET,
+            "Added new orphan block to the database. Current best height is {}. Orphan block height is {}",
+            db_height,
+            orphan.header.height
+        );
+        trace!(target: LOG_TARGET, "{}", orphan);
         // Trigger a reorg check for all blocks in the orphan block pool
-        self.handle_reorg()
+        debug!(target: LOG_TARGET, "Checking for chain re-org.");
+        self.handle_reorg(orphan)
     }
 
     /// The handle_reorg function is triggered by the adding of orphaned blocks. Reorg chains are constructed by
     /// building a chain of orphaned blocks from the leaf blocks with the highest accumulated difficulties back to the
     /// main chain. When a valid reorg chain is constructed with a higher accumulated difficulty, then the main chain is
     /// rewound and updated with the newly un-orphaned blocks from the reorg chain.
-    fn handle_reorg(&self) -> Result<BlockAddResult, ChainStorageError> {
-        // Find all orphan blocks with higher accumulated difficulty compared to the main chain. These orphan blocks
-        // are potential leaf nodes on reorg chains.
-        struct LeafBlock {
-            hash: BlockHash,
-            prev_hash: BlockHash,
-            total_difficulty: Difficulty,
-        }
-        let chain_total_difficulty = self.get_metadata()?.total_accumulated_difficulty;
-        let mut leaf_blocks: Vec<LeafBlock> = Vec::new();
-        self.db.for_each_orphan(|pair| {
-            let (hash, block) = pair.unwrap();
-            if block.header.total_difficulty > chain_total_difficulty {
-                leaf_blocks.push(LeafBlock {
-                    hash,
-                    prev_hash: block.header.prev_hash,
-                    total_difficulty: block.header.total_difficulty,
-                })
-            }
-        })?;
-        // Sort leaf blocks into descending order according to total_difficulty, this will result in the prioritization
-        // of the reorg chains.
-        leaf_blocks.sort_by(|a, b| b.total_difficulty.cmp(&a.total_difficulty));
+    fn handle_reorg(&self, new_block: Block) -> Result<BlockAddResult, ChainStorageError> {
+        // We can assume that the new block is part of the re-org chain if it exists, otherwise the re-org would have
+        // happened on the previous call to this function.
+        // Try and construct a path from `new_block` to the main chain:
+        let reorg_chain = self.try_construct_fork(new_block)?;
+        let main_chain_hash = reorg_chain
+            .get(0)
+            .expect("The new orphan block should be in thq queue")
+            .header
+            .prev_hash
+            .clone();
+        // We've built the longest orphan chain we can going backwards. Now the `prev_hash` of the first element
+        // must exist on the main chain, otherwise the new block is just another orphan block and we can leave it
+        // there.
+        let main_header = match self.fetch_header_with_block_hash(main_chain_hash) {
+            Ok(h) => h,
+            Err(_) => return Ok(BlockAddResult::OrphanBlock),
+        };
 
-        // Construct chains from leaf block to main chain, starting with the leaf block with the highest accumulated
-        // difficulty.
-        'leaf_block_loop: for leaf in leaf_blocks {
-            let mut reorg_chain: Vec<BlockHash> = Vec::new();
-            reorg_chain.push(leaf.hash);
-            let mut search_prev_hash = leaf.prev_hash;
-            // Construct a reorg_chain from leaf block to main chain
-            'chain_construction_loop: loop {
-                match self.fetch_orphan(search_prev_hash.clone()) {
-                    Ok(orphan_block) => {
-                        reorg_chain.push(search_prev_hash);
-                        search_prev_hash = orphan_block.header.prev_hash.clone();
-                    },
-                    Err(ChainStorageError::ValueNotFound(_)) => {
-                        if let Ok(header) = self.fetch_header_with_block_hash(search_prev_hash) {
-                            // Rewind main chain and add each orphan block from reorg chain into main chain
-                            self.rewind_to_height(header.height)?;
-                            let mut txn = DbTransaction::new();
-                            for orphan_hash in reorg_chain.iter().rev() {
-                                self.add_block(self.fetch_orphan(orphan_hash.clone())?)?;
-                                txn.delete(DbKey::OrphanBlock(orphan_hash.clone()));
-                            }
-                            self.commit(txn)?;
-                            return Ok(BlockAddResult::ChainReorg);
-                        }
-                        break 'chain_construction_loop;
-                    },
-                    Err(e) => return Err(e),
-                }
-            }
+        let tree = self.build_orphan_tree(reorg_chain)?;
+
+        match self.find_longer_chain(tree) {
+            None => Ok(BlockAddResult::OrphanBlock),
+            Some(chain) => {
+                self.reorganise_chain(main_header, chain)?;
+                Ok(BlockAddResult::ChainReorg)
+            },
         }
-        Ok(BlockAddResult::OrphanBlock)
+    }
+
+    /// We try and build a chain from this block to the main chain. If we can't do that we can stop.
+    /// We start with the current, newly received block, and look for a blockchain sequence (via `prev_hash`).
+    /// Each successful link is pushed to the front of the queue.
+    fn try_construct_fork(&self, new_block: Block) -> Result<VecDeque<Block>, ChainStorageError> {
+        let mut reorg_chain = VecDeque::new();
+        let new_block_hash = new_block.hash();
+        let mut hash = new_block.header.prev_hash.clone();
+        let mut height = new_block.header.height;
+        reorg_chain.push_front(new_block);
+
+        while let Ok(b) = self.fetch_orphan(hash.clone()) {
+            if b.header.height + 1 != height {
+                // Well now. The block heights don't form a sequence, which means that we should not only stop now,
+                // but remove one or both of these orphans from the pool because the blockchain is broken at this point.
+                info!(
+                    target: LOG_TARGET,
+                    "A broken blockchain sequence was detected in the database. Cleaning up and removing block with \
+                     hash {}",
+                    hash.to_hex()
+                );
+                self.remove_orphan(hash)?;
+                return Err(ChainStorageError::InvalidBlock);
+            }
+            hash = b.header.prev_hash.clone();
+            height -= 1;
+            reorg_chain.push_front(b);
+        }
+
+        Ok(reorg_chain)
+    }
+
+    fn build_orphan_tree(&self, reorg_chain: VecDeque<Block>) -> Result<(), ChainStorageError> {
+        // TODO - Build an return a tree for later blocks leading to new_block
+        Ok(())
+    }
+
+    fn find_longer_chain(&self, tree: ()) -> Option<Vec<Block>> {
+        // TODO - Check tree vs main chain for great accum difficulty
+        None
+    }
+
+    fn reorganise_chain(&self, header: BlockHeader, chain: Vec<Block>) -> Result<(), ChainStorageError> {
+        self.rewind_to_height(header.height)?;
+        let mut txn = DbTransaction::new();
+        for block in chain.into_iter() {
+            let orphan_hash = block.hash();
+            txn.delete(DbKey::OrphanBlock(orphan_hash));
+            self.add_block(block)?;
+        }
+        self.commit(txn)?;
+        Ok(())
+    }
+
+    fn remove_orphan(&self, hash: HashOutput) -> Result<(), ChainStorageError> {
+        let mut tx = DbTransaction::new();
+        tx.delete(DbKey::OrphanBlock(hash.clone()));
+        self.commit(tx)
     }
 
     /// Reverses the recent insertion of spent outputs, utxos and kernels because MMR roots don't match.

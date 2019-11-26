@@ -23,7 +23,6 @@
 use crate::{
     blocks::{blockheader::BlockHeader, Block, BlockBuilder},
     chain_storage::{BlockAddResult, BlockchainDatabase, MemoryDatabase},
-    proof_of_work::Difficulty,
     test_utils::{
         primitives::{create_random_signature, generate_keys},
         test_common::TestParams,
@@ -52,7 +51,6 @@ use tari_transactions::{
     transaction_protocol::sender::SenderTransactionProtocol,
     types::{Commitment, CommitmentFactory, CryptoFactories, HashDigest, PrivateKey, PublicKey},
 };
-use tari_utilities::hash::Hashable;
 
 /// The tx macro is a convenience wrapper around the [create_tx] function, making the arguments optional and explicit
 /// via keywords.
@@ -275,7 +273,6 @@ pub fn create_test_kernel(fee: MicroTari, lock_height: u64) -> TransactionKernel
 /// value, and the maturity is zero.
 pub fn create_genesis_block(factories: &CryptoFactories) -> (Block, UnblindedOutput) {
     let mut header = BlockHeader::new(0);
-    header.total_difficulty = Difficulty::from(1);
     let value = MicroTari::from(100_000_000);
     let excess = Commitment::from_public_key(&PublicKey::default());
     let (utxo, key) = create_utxo(value, &factories);
@@ -308,12 +305,11 @@ pub fn add_block_and_update_header(store: &BlockchainDatabase<MemoryDatabase<Has
 /// TODO - as we move to creating ever more correct blocks in tests, maybe we should deprecate this method since there
 /// is chain_block, or rename it to `create_orphan_block` and drop the prev_block argument
 pub fn create_test_block(block_height: u64, prev_block: Option<Block>, transactions: Vec<Transaction>) -> Block {
-    let mut header = BlockHeader::new(0);
+    let mut header = match prev_block {
+        None => BlockHeader::new(0),
+        Some(prev) => BlockHeader::from_previous(&prev.header),
+    };
     header.height = block_height;
-    if let Some(block) = prev_block {
-        header.prev_hash = block.hash();
-        header.total_difficulty = block.header.total_difficulty + Difficulty::from(1);
-    }
     BlockBuilder::new()
         .with_header(header)
         .with_transactions(transactions)
@@ -323,8 +319,6 @@ pub fn create_test_block(block_height: u64, prev_block: Option<Block>, transacti
 /// Create a new block using the provided transactions that adds to the blockchain given in `prev_block`
 pub fn chain_block(prev_block: &Block, transactions: Vec<Transaction>) -> Block {
     let mut header = BlockHeader::from_previous(&prev_block.header);
-    header.total_difficulty = prev_block.header.total_difficulty + Difficulty::from(1);
-
     BlockBuilder::new()
         .with_header(header)
         .with_transactions(transactions)

@@ -24,6 +24,7 @@ use super::core as proto;
 use crate::{
     blocks::{Block, BlockHeader},
     chain_storage::HistoricalBlock,
+    proof_of_work::{Difficulty, PowAlgorithm, ProofOfWork},
     proto::utils::try_convert_all,
 };
 use prost_types::Timestamp;
@@ -87,6 +88,10 @@ impl TryFrom<proto::BlockHeader> for BlockHeader {
             .map(timestamp_to_datetime)
             .ok_or("timestamp not provided".to_string())?;
 
+        let pow = match header.pow {
+            Some(p) => ProofOfWork::try_from(p)?,
+            None => return Err("No proof of work provided".into()),
+        };
         Ok(Self {
             version: header.version as u16,
             height: header.height,
@@ -96,9 +101,8 @@ impl TryFrom<proto::BlockHeader> for BlockHeader {
             range_proof_mr: header.range_proof_mr,
             kernel_mr: header.kernel_mr,
             total_kernel_offset,
-            total_difficulty: header.total_difficulty.into(),
             nonce: header.nonce,
-            pow: Default::default(),
+            pow,
         })
     }
 }
@@ -114,8 +118,34 @@ impl From<BlockHeader> for proto::BlockHeader {
             range_proof_mr: header.range_proof_mr,
             kernel_mr: header.kernel_mr,
             total_kernel_offset: header.total_kernel_offset.to_vec(),
-            total_difficulty: header.total_difficulty.as_u64(),
             nonce: header.nonce,
+            pow: Some(proto::ProofOfWork::from(header.pow)),
+        }
+    }
+}
+
+//---------------------------------- ProofOfWork --------------------------------------------//
+
+impl TryFrom<proto::ProofOfWork> for ProofOfWork {
+    type Error = String;
+
+    fn try_from(pow: proto::ProofOfWork) -> Result<Self, Self::Error> {
+        Ok(Self {
+            pow_algo: PowAlgorithm::try_from(pow.pow_algo)?,
+            accumulated_monero_difficulty: Difficulty::from(pow.accumulated_monero_difficulty),
+            accumulated_blake_difficulty: Difficulty::from(pow.accumulated_blake_difficulty),
+            pow_data: pow.pow_data,
+        })
+    }
+}
+
+impl From<ProofOfWork> for proto::ProofOfWork {
+    fn from(pow: ProofOfWork) -> Self {
+        Self {
+            pow_algo: *&pow.pow_algo as u64,
+            accumulated_monero_difficulty: pow.accumulated_monero_difficulty.as_u64(),
+            accumulated_blake_difficulty: pow.accumulated_blake_difficulty.as_u64(),
+            pow_data: pow.pow_data,
         }
     }
 }

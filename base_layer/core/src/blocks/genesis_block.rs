@@ -26,7 +26,7 @@
 // This file is used to store the genesis block
 use crate::blocks::{block::Block, BlockBuilder};
 
-use crate::{blocks::BlockHeader, proof_of_work::Difficulty};
+use crate::blocks::BlockHeader;
 
 pub fn get_genesis_block() -> Block {
     let header = get_gen_header();
@@ -34,7 +34,5 @@ pub fn get_genesis_block() -> Block {
 }
 
 pub fn get_gen_header() -> BlockHeader {
-    let mut header = BlockHeader::new(0);
-    header.total_difficulty = Difficulty::from(1);
-    header
+    BlockHeader::new(0)
 }

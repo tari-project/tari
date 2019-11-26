@@ -23,10 +23,5 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
-use crate::proof_of_work::BlakePow;
-
-/// Select the Proof of work algorithm used
-pub type TariProofOfWork = BlakePow;
-
 /// Specify the RNG that should be used for random selection
 pub type BaseNodeRng = rand::OsRng;

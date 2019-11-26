@@ -7,6 +7,16 @@ import "types.proto";
 
 package tari.core;
 
+// Metadata required for validating the PRoof of Work calculation
+message ProofOfWork {
+    // 0 = Monero
+    // 1 = Blake
+    uint64 pow_algo = 1;
+    uint64 accumulated_monero_difficulty = 2;
+    uint64 accumulated_blake_difficulty = 3;
+    bytes pow_data = 4;
+}
+
 // The BlockHeader contains all the metadata for the block, including proof of work, a link to the previous block
 // and the transaction kernels.
 message BlockHeader {
@@ -28,10 +38,10 @@ message BlockHeader {
     // Total accumulated sum of kernel offsets since genesis block. We can derive the kernel offset sum for *this*
     // block from the total kernel offset of the previous block header.
     bytes total_kernel_offset = 9;
-    // Total accumulated difficulty since genesis block
-    uint64 total_difficulty = 10;
     // Nonce increment used to mine this block.
-    uint64 nonce = 11;
+    uint64 nonce = 10;
+    // Proof of work metadata
+    ProofOfWork pow = 11;
 }
 
 // A Tari block. Blocks are linked together into a blockchain.

@@ -23,11 +23,16 @@
 mod blake_pow;
 mod difficulty;
 mod error;
-mod pow;
+mod monero;
+mod proof_of_work;
+
+#[cfg(test)]
+pub use blake_pow::test as blake_test;
 
 pub mod lwma_diff;
 
-pub use blake_pow::BlakePow;
+pub use blake_pow::{blake_difficulty, blake_difficulty_with_hash};
 pub use difficulty::Difficulty;
 pub use error::PowError;
-pub use pow::ProofOfWork;
+pub use monero::monero_difficulty;
+pub use proof_of_work::{PowAlgorithm, ProofOfWork};
