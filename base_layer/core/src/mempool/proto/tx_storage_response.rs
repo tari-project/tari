@@ -1,4 +1,4 @@
-// Copyright 2019 The Tari Project
+// Copyright 2019, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,22 +20,34 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::mempool::{
-    mempool::{StatsResponse, TxStorageResponse},
-    service::RequestKey,
-};
-use serde::{Deserialize, Serialize};
+use crate::mempool::{mempool::TxStorageResponse, proto::mempool::TxStorageResponse as ProtoTxStorageResponse};
+use std::convert::TryFrom;
 
-/// API Response enum for Mempool responses.
-#[derive(Debug, Serialize, Deserialize)]
-pub enum MempoolResponse {
-    Stats(StatsResponse),
-    TxStorage(TxStorageResponse),
+impl TryFrom<ProtoTxStorageResponse> for TxStorageResponse {
+    type Error = String;
+
+    fn try_from(tx_storage: ProtoTxStorageResponse) -> Result<Self, Self::Error> {
+        use ProtoTxStorageResponse::*;
+        Ok(match tx_storage {
+            None => return Err("TxStorageResponse not provided".to_string()),
+            UnconfirmedPool => TxStorageResponse::UnconfirmedPool,
+            OrphanPool => TxStorageResponse::OrphanPool,
+            PendingPool => TxStorageResponse::PendingPool,
+            ReorgPool => TxStorageResponse::ReorgPool,
+            NotStored => TxStorageResponse::NotStored,
+        })
+    }
 }
 
-/// Response type for a received MempoolService requests
-#[derive(Debug, Serialize, Deserialize)]
-pub struct MempoolServiceResponse {
-    pub request_key: RequestKey,
-    pub response: MempoolResponse,
+impl From<TxStorageResponse> for ProtoTxStorageResponse {
+    fn from(tree: TxStorageResponse) -> Self {
+        use TxStorageResponse::*;
+        match tree {
+            UnconfirmedPool => ProtoTxStorageResponse::UnconfirmedPool,
+            OrphanPool => ProtoTxStorageResponse::OrphanPool,
+            PendingPool => ProtoTxStorageResponse::PendingPool,
+            ReorgPool => ProtoTxStorageResponse::ReorgPool,
+            NotStored => ProtoTxStorageResponse::NotStored,
+        }
+    }
 }

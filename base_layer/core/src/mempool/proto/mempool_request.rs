@@ -23,6 +23,7 @@
 use super::mempool::mempool_service_request::Request as ProtoMempoolRequest;
 use crate::mempool::service::MempoolRequest;
 use std::convert::TryInto;
+use tari_utilities::ByteArrayError;
 
 impl TryInto<MempoolRequest> for ProtoMempoolRequest {
     type Error = String;
@@ -32,6 +33,9 @@ impl TryInto<MempoolRequest> for ProtoMempoolRequest {
         let request = match self {
             // Field was not specified
             GetStats(_) => MempoolRequest::GetStats,
+            GetTxStateWithExcessSig(excess_sig) => MempoolRequest::GetTxStateWithExcessSig(
+                excess_sig.try_into().map_err(|err: ByteArrayError| err.to_string())?,
+            ),
         };
         Ok(request)
     }
@@ -42,6 +46,7 @@ impl From<MempoolRequest> for ProtoMempoolRequest {
         use MempoolRequest::*;
         match request {
             GetStats => ProtoMempoolRequest::GetStats(true),
+            GetTxStateWithExcessSig(excess_sig) => ProtoMempoolRequest::GetTxStateWithExcessSig(excess_sig.into()),
         }
     }
 }

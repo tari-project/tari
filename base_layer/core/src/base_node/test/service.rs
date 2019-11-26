@@ -742,7 +742,7 @@ fn service_request_timeout() {
     let runtime = Runtime::new().unwrap();
     let mut rng = OsRng::new().unwrap();
     let base_node_service_config = BaseNodeServiceConfig {
-        request_timeout: Duration::from_millis(10),
+        request_timeout: Duration::from_millis(1),
         desired_response_fraction: BASE_NODE_SERVICE_DESIRED_RESPONSE_FRACTION,
     };
 

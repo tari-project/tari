@@ -22,6 +22,7 @@
 
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
+use tari_transactions::types::Signature;
 
 pub type RequestKey = u64; // TODO: BaseNodeService and MempoolService uses RequestKey
 
@@ -35,6 +36,7 @@ where R: RngCore {
 #[derive(Debug, Serialize, Deserialize)]
 pub enum MempoolRequest {
     GetStats,
+    GetTxStateWithExcessSig(Signature),
 }
 
 /// Request type for a received MempoolService request.

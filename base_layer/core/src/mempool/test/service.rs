@@ -23,7 +23,12 @@
 use crate::{
     chain_storage::{BlockchainDatabase, MemoryDatabase},
     mempool::{
-        service::{MempoolServiceConfig, MempoolServiceInitializer, OutboundMempoolServiceInterface},
+        service::{
+            MempoolServiceConfig,
+            MempoolServiceError,
+            MempoolServiceInitializer,
+            OutboundMempoolServiceInterface,
+        },
         Mempool,
         MempoolConfig,
         TxStorageResponse,
@@ -303,11 +308,67 @@ fn request_response_get_stats() {
 }
 
 #[test]
+fn request_response_get_tx_state_with_excess_sig() {
+    let factories = CryptoFactories::default();
+    let runtime = Runtime::new().unwrap();
+
+    let (mut alice_interfaces, bob_interfaces, carol_interfaces) =
+        create_network_with_3_mempools(&runtime, MempoolServiceConfig::default());
+
+    let (block0, utxo) = create_genesis_block(&factories);
+    add_block_and_update_header(&bob_interfaces.blockchain_db, block0.clone());
+    add_block_and_update_header(&carol_interfaces.blockchain_db, block0);
+    let (tx, _, _) = spend_utxos(txn_schema!(from: vec![utxo.clone()], to: vec![2 * T, 2 * T, 2 * T]));
+    let (unpublished_tx, _, _) = spend_utxos(txn_schema!(from: vec![utxo], to: vec![3 * T]));
+    let (orphan_tx, _, _) = tx!(1*T, fee: 100*uT);
+    let tx = Arc::new(tx);
+    let orphan_tx = Arc::new(orphan_tx);
+    bob_interfaces.mempool.insert(tx.clone()).unwrap();
+    carol_interfaces.mempool.insert(tx.clone()).unwrap();
+    bob_interfaces.mempool.insert(orphan_tx.clone()).unwrap();
+    carol_interfaces.mempool.insert(orphan_tx.clone()).unwrap();
+
+    runtime.block_on(async {
+        let tx_excess_sig = tx.body.kernels()[0].excess_sig.clone();
+        let unpublished_tx_excess_sig = unpublished_tx.body.kernels()[0].excess_sig.clone();
+        let orphan_tx_excess_sig = orphan_tx.body.kernels()[0].excess_sig.clone();
+        assert_eq!(
+            alice_interfaces
+                .outbound_mp_interface
+                .get_tx_state_with_excess_sig(tx_excess_sig)
+                .await
+                .unwrap(),
+            TxStorageResponse::UnconfirmedPool
+        );
+        assert_eq!(
+            alice_interfaces
+                .outbound_mp_interface
+                .get_tx_state_with_excess_sig(unpublished_tx_excess_sig)
+                .await
+                .unwrap(),
+            TxStorageResponse::NotStored
+        );
+        assert_eq!(
+            alice_interfaces
+                .outbound_mp_interface
+                .get_tx_state_with_excess_sig(orphan_tx_excess_sig)
+                .await
+                .unwrap(),
+            TxStorageResponse::OrphanPool
+        );
+    });
+
+    alice_interfaces.comms.shutdown().unwrap();
+    bob_interfaces.comms.shutdown().unwrap();
+    carol_interfaces.comms.shutdown().unwrap();
+}
+
+#[test]
 fn receive_and_propagate_transaction() {
     let factories = CryptoFactories::default();
     let runtime = Runtime::new().unwrap();
 
-    let (mut alice_interfaces, mut bob_interfaces, mut carol_interfaces) =
+    let (mut alice_interfaces, bob_interfaces, carol_interfaces) =
         create_network_with_3_mempools(&runtime, MempoolServiceConfig::default());
 
     let (block0, utxo) = create_genesis_block(&factories);
@@ -380,4 +441,53 @@ fn receive_and_propagate_transaction() {
     carol_interfaces.comms.shutdown().unwrap();
 }
 
-// TODO: add test for service_request_timeout
+#[test]
+fn service_request_timeout() {
+    let mut rng = OsRng::new().unwrap();
+    let runtime = Runtime::new().unwrap();
+    let mempool_service_config = MempoolServiceConfig {
+        request_timeout: Duration::from_millis(1),
+    };
+    let alice_node_identity = NodeIdentity::random(
+        &mut rng,
+        get_next_local_address().parse().unwrap(),
+        PeerFeatures::COMMUNICATION_NODE,
+    )
+    .unwrap();
+    let alice_blockchain_db = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
+    let alice_mempool = Mempool::new(alice_blockchain_db.clone(), MempoolConfig::default());
+
+    let bob_node_identity = NodeIdentity::random(
+        &mut rng,
+        get_next_local_address().parse().unwrap(),
+        PeerFeatures::COMMUNICATION_NODE,
+    )
+    .unwrap();
+    let bob_blockchain_db = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
+    let bob_mempool = Mempool::new(bob_blockchain_db.clone(), MempoolConfig::default());
+
+    let (mut alice_outbound_mp_interface, _, alice_comms) = setup_mempool_service(
+        &runtime,
+        alice_node_identity.clone(),
+        vec![bob_node_identity.clone()],
+        alice_mempool.clone(),
+        mempool_service_config.clone(),
+    );
+    let (_, _, bob_comms) = setup_mempool_service(
+        &runtime,
+        bob_node_identity,
+        vec![alice_node_identity],
+        bob_mempool,
+        mempool_service_config,
+    );
+
+    runtime.block_on(async {
+        match alice_outbound_mp_interface.get_stats().await {
+            Err(MempoolServiceError::RequestTimedOut) => assert!(true),
+            _ => assert!(false),
+        }
+    });
+
+    alice_comms.shutdown().unwrap();
+    bob_comms.shutdown().unwrap();
+}

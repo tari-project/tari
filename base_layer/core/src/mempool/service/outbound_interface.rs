@@ -21,10 +21,11 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::mempool::{
-    mempool::StatsResponse,
+    mempool::{StatsResponse, TxStorageResponse},
     service::{MempoolRequest, MempoolResponse, MempoolServiceError},
 };
 use tari_service_framework::reply_channel::SenderService;
+use tari_transactions::types::Signature;
 use tower_service::Service;
 
 /// The OutboundMempoolServiceInterface provides an interface to request information from the Mempools of remote Base
@@ -44,6 +45,23 @@ impl OutboundMempoolServiceInterface {
     pub async fn get_stats(&mut self) -> Result<StatsResponse, MempoolServiceError> {
         if let MempoolResponse::Stats(stats) = self.request_sender.call(MempoolRequest::GetStats).await?? {
             Ok(stats)
+        } else {
+            Err(MempoolServiceError::UnexpectedApiResponse)
+        }
+    }
+
+    /// Check if the specified transaction is stored in the mempool of a remote base node.
+    pub async fn get_tx_state_with_excess_sig(
+        &mut self,
+        excess_sig: Signature,
+    ) -> Result<TxStorageResponse, MempoolServiceError>
+    {
+        if let MempoolResponse::TxStorage(tx_storage_response) = self
+            .request_sender
+            .call(MempoolRequest::GetTxStateWithExcessSig(excess_sig))
+            .await??
+        {
+            Ok(tx_storage_response)
         } else {
             Err(MempoolServiceError::UnexpectedApiResponse)
         }
