@@ -153,7 +153,9 @@ where
         match msg.inner().kind().ok_or(LivenessError::InvalidPingPongType)? {
             PingPong::Ping => {
                 self.state.inc_pings_received();
-                self.send_pong(msg.inner.nonce, msg.origin_pubkey).await.unwrap();
+                self.send_pong(msg.inner.nonce, msg.dht_header.origin_public_key)
+                    .await
+                    .unwrap();
                 self.state.inc_pongs_sent();
 
                 self.publish_event(LivenessEvent::ReceivedPing).await?;
@@ -346,7 +348,10 @@ mod test {
         connection::NetAddress,
         peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
     };
-    use tari_comms_dht::outbound::{DhtOutboundRequest, SendMessageResponse};
+    use tari_comms_dht::{
+        envelope::DhtMessageHeader,
+        outbound::{DhtOutboundRequest, SendMessageResponse},
+    };
     use tari_crypto::keys::PublicKey;
     use tari_service_framework::reply_channel;
     use tari_shutdown::Shutdown;
@@ -436,10 +441,9 @@ mod test {
             // Receive outbound request
             rt.spawn(async move {
                 match outbound_rx.select_next_some().await {
-                    DhtOutboundRequest::SendMsg(_, _, reply_tx) => {
+                    DhtOutboundRequest::SendMessage(_, _, reply_tx) => {
                         reply_tx.send(SendMessageResponse::Ok(0)).unwrap();
                     },
-                    _ => panic!("unexpected request"),
                 }
             });
 
@@ -460,9 +464,20 @@ mod test {
             PeerFeatures::COMMUNICATION_NODE,
         );
         DomainMessage {
-            origin_pubkey: peer_source.public_key.clone(),
+            dht_header: create_dummy_header(peer_source.public_key.clone()),
             source_peer: peer_source,
             inner,
+        }
+    }
+
+    fn create_dummy_header(origin_public_key: CommsPublicKey) -> DhtMessageHeader {
+        DhtMessageHeader {
+            destination: Default::default(),
+            flags: Default::default(),
+            message_type: Default::default(),
+            origin_signature: Default::default(),
+            version: 0,
+            origin_public_key,
         }
     }
 

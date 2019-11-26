@@ -41,6 +41,13 @@ macro_rules! acquire_write_lock {
     };
 }
 
+#[cfg(any(test, feature = "test-mocks"))]
+macro_rules! acquire_read_lock {
+    ($e:expr) => {
+        acquire_lock!($e, read)
+    };
+}
+
 /// A small wrapper macro which includes rust files generated from protos
 #[macro_export]
 macro_rules! include_proto_package {

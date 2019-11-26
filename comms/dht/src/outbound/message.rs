@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    broadcast_strategy::BroadcastStrategy,
     envelope::{DhtMessageFlags, DhtMessageHeader},
     outbound::message_params::FinalSendMessageParams,
 };
@@ -56,18 +55,6 @@ impl Default for OutboundEncryption {
     fn default() -> Self {
         OutboundEncryption::None
     }
-}
-
-#[derive(Debug, Clone)]
-pub struct ForwardRequest {
-    /// Broadcast strategy to use when forwarding the message
-    pub broadcast_strategy: BroadcastStrategy,
-    /// Original header from the origin
-    pub dht_header: DhtMessageHeader,
-    /// Comms-level message flags
-    pub comms_flags: MessageFlags,
-    /// Message body
-    pub body: Vec<u8>,
 }
 
 #[derive(Debug)]
@@ -111,22 +98,19 @@ impl SendMessageResponse {
 #[derive(Debug)]
 pub enum DhtOutboundRequest {
     /// Send a message using the given broadcast strategy
-    SendMsg(
+    SendMessage(
         Box<FinalSendMessageParams>,
         Vec<u8>,
         oneshot::Sender<SendMessageResponse>,
     ),
-    /// Forward a message envelope
-    Forward(Box<ForwardRequest>),
 }
 
 impl fmt::Display for DhtOutboundRequest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         match self {
-            DhtOutboundRequest::SendMsg(request, body, _) => {
-                write!(f, "SendMsg({} - <{} bytes>)", request.broadcast_strategy, body.len())
+            DhtOutboundRequest::SendMessage(params, body, _) => {
+                write!(f, "SendMsg({} - <{} bytes>)", params.broadcast_strategy, body.len())
             },
-            DhtOutboundRequest::Forward(request) => write!(f, "Forward({})", request.broadcast_strategy),
         }
     }
 }

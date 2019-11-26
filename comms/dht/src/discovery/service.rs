@@ -355,7 +355,7 @@ mod test {
     use super::*;
     use crate::{
         discovery::DhtDiscoveryRequester,
-        outbound::{mock::create_mock_outbound_service, SendMessageResponse},
+        outbound::mock::create_outbound_service_mock,
         test_utils::{make_node_identity, make_peer_manager},
     };
     use std::time::Duration;
@@ -367,7 +367,10 @@ mod test {
         runtime::test_async(|rt| {
             let node_identity = make_node_identity();
             let peer_manager = make_peer_manager();
-            let (outbound_requester, mut outbound_mock) = create_mock_outbound_service(10);
+            let (outbound_requester, outbound_mock) = create_outbound_service_mock(10);
+            let oms_mock_state = outbound_mock.get_state();
+            rt.spawn(outbound_mock.run());
+
             let (sender, receiver) = mpsc::channel(10);
             // Requester which timeout instantly
             let mut requester = DhtDiscoveryRequester::new(sender, Duration::from_millis(1));
@@ -389,8 +392,8 @@ mod test {
 
             assert!(result.unwrap_err().is_timeout());
 
-            let (params, _) =
-                rt.block_on(outbound_mock.handle_next(Duration::from_millis(5000), SendMessageResponse::Ok(1)));
+            oms_mock_state.wait_call_count(1, Duration::from_secs(5)).unwrap();
+            let (params, _) = oms_mock_state.pop_call().unwrap();
             assert_eq!(params.dht_message_type, DhtMessageType::Discovery);
             assert_eq!(params.encryption, OutboundEncryption::EncryptFor(dest_public_key));
 

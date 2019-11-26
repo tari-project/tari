@@ -95,6 +95,5 @@ bitflags! {
     pub struct MessageFlags: u32 {
         const NONE = 0b0000_0000;
         const ENCRYPTED = 0b0000_0001;
-        const FORWARDED = 0b0000_0010;
     }
 }

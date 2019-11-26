@@ -118,9 +118,9 @@ async fn extract_block(msg: Arc<PeerMessage>) -> Option<DomainMessage<Block>> {
             None
         },
         Ok(block) => {
-            let origin = msg.dht_header.origin_public_key.clone();
             let block = match Block::try_from(block) {
                 Err(e) => {
+                    let origin = &msg.dht_header.origin_public_key;
                     warn!(
                         target: LOG_TARGET,
                         "Inbound block message from {} was ill-formed. {}", origin, e
@@ -131,7 +131,7 @@ async fn extract_block(msg: Arc<PeerMessage>) -> Option<DomainMessage<Block>> {
             };
             Some(DomainMessage {
                 source_peer: msg.source_peer.clone(),
-                origin_pubkey: origin,
+                dht_header: msg.dht_header.clone(),
                 inner: block,
             })
         },

@@ -82,7 +82,7 @@ fn setup_comms_dht(
     let (inbound_tx, inbound_rx) = mpsc::channel(10);
     let (outbound_tx, outbound_rx) = mpsc::channel(10);
 
-    let mut comms = CommsBuilder::new(executor.clone())
+    let comms = CommsBuilder::new(executor.clone())
         .with_peer_storage(storage)
         .with_inbound_sink(inbound_tx)
         .with_outbound_stream(outbound_rx)
@@ -101,7 +101,7 @@ fn setup_comms_dht(
         .unwrap();
 
     // Create a channel for outbound requests
-    let mut dht = DhtBuilder::from_comms(&mut comms)
+    let mut dht = DhtBuilder::from_comms(&comms)
         .with_discovery_timeout(Duration::from_secs(60))
         .finish();
 
@@ -137,6 +137,7 @@ fn setup_comms_dht(
 #[test]
 #[allow(non_snake_case)]
 fn dht_join_propagation() {
+    env_logger::init();
     runtime::test_async(|rt| {
         // Create 3 nodes where only Node B knows A and C, but A and C want to talk to each other
         let node_A_identity = new_node_identity("127.0.0.1:11113".parse().unwrap());
@@ -216,7 +217,6 @@ fn dht_join_propagation() {
 #[test]
 #[allow(non_snake_case)]
 fn dht_discover_propagation() {
-    env_logger::init();
     // Create 4 nodes where A knows B, B knows A and C, C knows B and D, and D knows C
     let node_A_identity = new_node_identity("127.0.0.1:11116".parse().unwrap());
     let node_B_identity = new_node_identity("127.0.0.1:11117".parse().unwrap());

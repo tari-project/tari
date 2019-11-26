@@ -38,6 +38,8 @@ tokio-executor = { version ="^0.2.0-alpha.6", features = ["threadpool"] }
 tempdir = "0.3.7"
 
 [dev-dependencies]
+tari_comms_dht = { path = "../../comms/dht", version = "^0.0", features=["test-mocks"]}
+
 env_logger = "0.6.2"
 prost = "0.5.0"
 tari_test_utils = {path="../../infrastructure/test_utils"}

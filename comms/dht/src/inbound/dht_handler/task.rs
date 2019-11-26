@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    broadcast_strategy::{BroadcastClosestRequest, BroadcastStrategy},
     config::DhtConfig,
     discovery::DhtDiscoveryRequester,
     envelope::NodeDestination,
@@ -229,13 +228,14 @@ where
         );
         // Propagate message to closer peers
         self.outbound_service
-            .forward_message(
-                BroadcastStrategy::Closest(Box::new(BroadcastClosestRequest {
-                    n: self.config.num_neighbouring_nodes,
-                    node_id: origin_peer.node_id,
-                    excluded_peers: vec![dht_header.origin_public_key.clone(), source_peer.public_key],
-                })),
-                dht_header,
+            .send_raw(
+                SendMessageParams::new()
+                    .closest(origin_peer.node_id, self.config.num_neighbouring_nodes, vec![
+                        dht_header.origin_public_key.clone(),
+                        source_peer.public_key,
+                    ])
+                    .with_dht_header(dht_header)
+                    .finish(),
                 body.to_encoded_bytes()?,
             )
             .await?;

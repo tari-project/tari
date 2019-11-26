@@ -27,7 +27,7 @@ use crate::{
     discovery::DhtDiscoveryRequester,
     envelope::{DhtMessageHeader, NodeDestination},
     outbound::{
-        message::{DhtOutboundMessage, ForwardRequest, OutboundEncryption},
+        message::{DhtOutboundMessage, OutboundEncryption},
         message_params::FinalSendMessageParams,
         SendMessageResponse,
     },
@@ -45,7 +45,7 @@ use log::*;
 use std::sync::Arc;
 use tari_comms::{
     message::MessageFlags,
-    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures},
+    peer_manager::{NodeId, NodeIdentity, Peer},
     types::CommsPublicKey,
 };
 use tari_comms_middleware::MiddlewareError;
@@ -195,20 +195,20 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
     ) -> Result<Vec<DhtOutboundMessage>, DhtOutboundError>
     {
         match msg {
-            DhtOutboundRequest::SendMsg(params, body, reply_tx) => {
+            DhtOutboundRequest::SendMessage(params, body, reply_tx) => {
                 self.handle_send_message(*params, body, reply_tx).await
             },
-            DhtOutboundRequest::Forward(request) => {
-                if self.node_identity.has_peer_features(PeerFeatures::MESSAGE_PROPAGATION) {
-                    self.generate_forward_messages(*request).await
-                } else {
-                    debug!(
-                        target: LOG_TARGET,
-                        "Message propagation is not enabled on this node. Discarding request to propagate message"
-                    );
-                    Ok(Vec::new())
-                }
-            },
+//            DhtOutboundRequest::Forward(request) => {
+//                if self.node_identity.has_peer_features(PeerFeatures::MESSAGE_PROPAGATION) {
+//                    self.generate_forward_messages(*request).await
+//                } else {
+//                    debug!(
+//                        target: LOG_TARGET,
+//                        "Message propagation is not enabled on this node. Discarding request to propagate message"
+//                    );
+//                    Ok(Vec::new())
+//                }
+//            },
         }
     }
 
@@ -225,6 +225,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
             dht_message_type,
             encryption,
             is_discovery_enabled,
+            dht_header,
         } = params;
 
         match self.select_peers(broadcast_strategy.clone()).await {
@@ -274,7 +275,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
                 }
 
                 match self
-                    .generate_send_messages(peers, destination, dht_message_type, encryption, body)
+                    .generate_send_messages(peers, destination, dht_message_type, encryption, dht_header, body)
                     .await
                 {
                     Ok(msgs) => {
@@ -361,22 +362,28 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
         destination: NodeDestination,
         dht_message_type: DhtMessageType,
         encryption: OutboundEncryption,
+        custom_header: Option<DhtMessageHeader>,
         body: Vec<u8>,
     ) -> Result<Vec<DhtOutboundMessage>, DhtOutboundError>
     {
         let dht_flags = encryption.flags();
 
         // Create a DHT header
-        let dht_header = DhtMessageHeader::new(
-            // Final destination for this message
-            destination,
-            // Origin public key used to identify the origin and verify the signature
-            self.node_identity.public_key().clone(),
-            // Signing will happen later in the pipeline (SerializeMiddleware), left empty to prevent double work
-            Vec::new(),
-            dht_message_type,
-            dht_flags,
-        );
+        let dht_header = custom_header
+            .or_else(|| {
+                Some(DhtMessageHeader::new(
+                    // Final destination for this message
+                    destination,
+                    // Origin public key used to identify the origin and verify the signature
+                    self.node_identity.public_key().clone(),
+                    // Signing will happen later in the pipeline (SerializeMiddleware), left empty to prevent double
+                    // work
+                    Vec::new(),
+                    dht_message_type,
+                    dht_flags,
+                ))
+            })
+            .expect("always Some");
 
         // Construct a MessageEnvelope for each recipient
         let messages = selected_peers
@@ -391,45 +398,6 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
                 )
             })
             .collect::<Vec<_>>();
-
-        Ok(messages)
-    }
-
-    async fn generate_forward_messages(
-        &mut self,
-        forward_request: ForwardRequest,
-    ) -> Result<Vec<DhtOutboundMessage>, DhtOutboundError>
-    {
-        let ForwardRequest {
-            broadcast_strategy,
-            dht_header,
-            comms_flags,
-            body,
-        } = forward_request;
-        // Use the BroadcastStrategy to select appropriate peer(s) from PeerManager and then forward the
-        // received message to each selected peer
-        let selected_node_identities = self
-            .dht_requester
-            .select_peers(broadcast_strategy)
-            .await
-            .map_err(|err| {
-                error!(target: LOG_TARGET, "{}", err);
-                DhtOutboundError::PeerSelectionFailed
-            })?;
-
-        let messages = selected_node_identities
-            .into_iter()
-            .map(|peer| {
-                DhtOutboundMessage::new(
-                    peer,
-                    dht_header.clone(),
-                    // Forwarding the message as is, no encryption
-                    OutboundEncryption::None,
-                    comms_flags,
-                    body.clone(),
-                )
-            })
-            .collect();
 
         Ok(messages)
     }
@@ -505,7 +473,7 @@ mod test {
             BroadcastMiddleware::new(spy.to_service(), node_identity, dht_requester, dht_discover_requester);
         let (reply_tx, _reply_rx) = oneshot::channel();
 
-        rt.block_on(service.call(DhtOutboundRequest::SendMsg(
+        rt.block_on(service.call(DhtOutboundRequest::SendMessage(
             Box::new(SendMessageParams::new().flood().finish()),
             "custom_msg".as_bytes().to_vec(),
             reply_tx,
@@ -549,7 +517,7 @@ mod test {
         let (reply_tx, reply_rx) = oneshot::channel();
 
         rt.block_on(
-            service.call(DhtOutboundRequest::SendMsg(
+            service.call(DhtOutboundRequest::SendMessage(
                 Box::new(
                     SendMessageParams::new()
                         .direct_public_key(pk)
@@ -574,7 +542,6 @@ mod test {
 
     #[test]
     fn send_message_direct_dht_discovery() {
-        env_logger::init();
         let rt = Runtime::new().unwrap();
 
         let node_identity = NodeIdentity::random(
@@ -605,7 +572,7 @@ mod test {
         let (reply_tx, reply_rx) = oneshot::channel();
 
         rt.block_on(
-            service.call(DhtOutboundRequest::SendMsg(
+            service.call(DhtOutboundRequest::SendMessage(
                 Box::new(
                     SendMessageParams::new()
                         .direct_public_key(peer_to_discover.public_key.clone())

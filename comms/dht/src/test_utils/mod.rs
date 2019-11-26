@@ -23,21 +23,14 @@
 macro_rules! unwrap_oms_send_msg {
     ($var:expr, reply_value=$reply_value:expr) => {
         match $var {
-            crate::outbound::DhtOutboundRequest::SendMsg(boxed, body, reply_tx) => {
+            crate::outbound::DhtOutboundRequest::SendMessage(boxed, body, reply_tx) => {
                 let _ = reply_tx.send($reply_value);
                 (*boxed, body)
             },
-            _ => panic!("Unexpected DhtOutboundRequest"),
         }
     };
     ($var:expr) => {
         unwrap_oms_send_msg!($var, reply_value = $crate::outbound::SendMessageResponse::Ok(0));
-    };
-}
-
-macro_rules! acquire_read_lock {
-    ($e:expr) => {
-        acquire_lock!($e, read)
     };
 }
 

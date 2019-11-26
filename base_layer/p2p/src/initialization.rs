@@ -102,7 +102,7 @@ where
     let (inbound_tx, inbound_rx) = mpsc::channel(config.inbound_buffer_size);
     let (outbound_tx, outbound_rx) = mpsc::channel(config.outbound_buffer_size);
 
-    let mut comms = CommsBuilder::new(executor.clone())
+    let comms = CommsBuilder::new(executor.clone())
         .with_node_identity(config.node_identity)
         .with_peer_storage(peer_database)
         .with_inbound_sink(inbound_tx)
@@ -120,7 +120,7 @@ where
         .map_err(CommsInitializationError::CommsServicesError)?;
 
     // Create a channel for outbound requests
-    let mut dht = comms_dht::DhtBuilder::from_comms(&mut comms)
+    let mut dht = comms_dht::DhtBuilder::from_comms(&comms)
         .with_config(config.dht.clone())
         .finish();
 

@@ -37,10 +37,7 @@ use tari_comms::{
     message::EnvelopeBody,
     peer_manager::{NodeIdentity, PeerFeatures},
 };
-use tari_comms_dht::outbound::{
-    mock::{create_mock_outbound_service, MockOutboundService},
-    SendMessageResponse,
-};
+use tari_comms_dht::outbound::mock::{create_outbound_service_mock, OutboundServiceMockState};
 use tari_crypto::keys::{PublicKey as PK, SecretKey as SK};
 use tari_p2p::{
     comms_connector::pubsub_connector,
@@ -133,7 +130,7 @@ pub fn setup_transaction_service_no_comms<T: TransactionBackend + 'static>(
 ) -> (
     TransactionServiceHandle,
     OutputManagerHandle,
-    MockOutboundService,
+    OutboundServiceMockState,
     Sender<DomainMessage<proto::TransactionSenderMessage>>,
     Sender<DomainMessage<proto::RecipientSignedMessage>>,
 )
@@ -158,7 +155,9 @@ pub fn setup_transaction_service_no_comms<T: TransactionBackend + 'static>(
     let (tx_sender, tx_receiver) = mpsc::channel(20);
     let (tx_ack_sender, tx_ack_receiver) = mpsc::channel(20);
 
-    let (outbound_message_requester, mock_outbound_service) = create_mock_outbound_service(20);
+    let (outbound_message_requester, mock_outbound_service) = create_outbound_service_mock(20);
+    let outbound_mock_state = mock_outbound_service.get_state();
+    runtime.spawn(mock_outbound_service.run());
 
     let ts_service = TransactionService::new(
         TransactionDatabase::new(backend),
@@ -183,7 +182,7 @@ pub fn setup_transaction_service_no_comms<T: TransactionBackend + 'static>(
     (
         ts_handle,
         output_manager_service_handle,
-        mock_outbound_service,
+        outbound_mock_state,
         tx_sender,
         tx_ack_sender,
     )
@@ -545,11 +544,11 @@ fn test_sending_repeated_tx_ids<T: TransactionBackend + 'static>(alice_backend: 
     runtime.block_on(alice_tx_sender.send(tx_message.clone())).unwrap();
     runtime.block_on(alice_tx_sender.send(tx_message.clone())).unwrap();
 
-    runtime.spawn(async move {
-        alice_outbound_service.handle_many(2, Duration::from_secs(10), 0).await;
-    });
-
     let mut result = runtime.block_on(event_stream_count(alice_event_stream, 2, Duration::from_secs(10)));
+
+    alice_outbound_service
+        .wait_call_count(1, Duration::from_secs(10))
+        .unwrap();
 
     assert_eq!(result.len(), 2);
     assert_eq!(result.remove(&TransactionEvent::ReceivedTransaction), Some(1));
@@ -602,7 +601,7 @@ fn test_accepting_unknown_tx_id_and_malformed_reply<T: TransactionBackend + 'sta
         PeerFeatures::COMMUNICATION_NODE,
     )
     .unwrap();
-    let (mut alice_ts, mut alice_output_manager, mut alice_outbound_service, _alice_tx_sender, mut alice_tx_ack_sender) =
+    let (mut alice_ts, mut alice_output_manager, alice_outbound_service, _alice_tx_sender, mut alice_tx_ack_sender) =
         setup_transaction_service_no_comms(&runtime, alice_seed, factories.clone(), alice_backend);
 
     let alice_event_stream = alice_ts.get_event_stream_fused();
@@ -611,18 +610,18 @@ fn test_accepting_unknown_tx_id_and_malformed_reply<T: TransactionBackend + 'sta
 
     runtime.block_on(alice_output_manager.add_output(uo)).unwrap();
 
-    let ((req, body), _) = runtime.block_on(async {
-        futures::join!(
-            alice_outbound_service.handle_next(Duration::from_millis(3000), SendMessageResponse::Ok(0)),
-            alice_ts.send_transaction(
-                bob_node_identity.public_key().clone(),
-                MicroTari::from(500),
-                MicroTari::from(1000),
-                "".to_string(),
-            ),
-        )
-    });
-
+    runtime
+        .block_on(alice_ts.send_transaction(
+            bob_node_identity.public_key().clone(),
+            MicroTari::from(500),
+            MicroTari::from(1000),
+            "".to_string(),
+        ))
+        .unwrap();
+    alice_outbound_service
+        .wait_call_count(1, Duration::from_secs(10))
+        .unwrap();
+    let (_, body) = alice_outbound_service.pop_call().unwrap();
     let envelope_body = EnvelopeBody::decode(&body).unwrap();
     let sender_message = envelope_body
         .decode_part::<proto::TransactionSenderMessage>(1)

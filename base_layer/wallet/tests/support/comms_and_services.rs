@@ -31,7 +31,7 @@ use tari_comms::{
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
     types::CommsPublicKey,
 };
-use tari_comms_dht::Dht;
+use tari_comms_dht::{envelope::DhtMessageHeader, Dht};
 use tari_crypto::keys::PublicKey;
 use tari_p2p::{
     comms_connector::{InboundDomainConnector, PeerMessage},
@@ -104,7 +104,14 @@ pub fn create_dummy_message<T>(inner: T) -> DomainMessage<T> {
         PeerFeatures::COMMUNICATION_NODE,
     );
     DomainMessage {
-        origin_pubkey: peer_source.public_key.clone(),
+        dht_header: DhtMessageHeader {
+            origin_public_key: peer_source.public_key.clone(),
+            origin_signature: Default::default(),
+            version: Default::default(),
+            message_type: Default::default(),
+            flags: Default::default(),
+            destination: Default::default(),
+        },
         source_peer: peer_source,
         inner,
     }

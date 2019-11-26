@@ -22,7 +22,7 @@
 
 use crate::{
     broadcast_strategy::{BroadcastClosestRequest, BroadcastStrategy},
-    envelope::NodeDestination,
+    envelope::{DhtMessageHeader, NodeDestination},
     outbound::OutboundEncryption,
     proto::envelope::DhtMessageType,
 };
@@ -59,6 +59,7 @@ pub struct FinalSendMessageParams {
     pub encryption: OutboundEncryption,
     pub is_discovery_enabled: bool,
     pub dht_message_type: DhtMessageType,
+    pub dht_header: Option<DhtMessageHeader>,
 }
 
 impl Default for FinalSendMessageParams {
@@ -69,6 +70,7 @@ impl Default for FinalSendMessageParams {
             encryption: Default::default(),
             dht_message_type: Default::default(),
             is_discovery_enabled: true,
+            dht_header: None,
         }
     }
 }
@@ -129,6 +131,11 @@ impl SendMessageParams {
 
     pub fn with_dht_message_type(&mut self, message_type: DhtMessageType) -> &mut Self {
         self.params_mut().dht_message_type = message_type;
+        self
+    }
+
+    pub fn with_dht_header(&mut self, dht_header: DhtMessageHeader) -> &mut Self {
+        self.params_mut().dht_header = Some(dht_header);
         self
     }
 
