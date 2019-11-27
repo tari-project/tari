@@ -22,7 +22,7 @@
 
 use crate::support::factories::{self, TestFactory};
 use futures::channel::mpsc::{channel, Sender};
-use std::{path::PathBuf, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 use tari_comms::{
     connection::{types::Direction, Connection, CurvePublicKey, ZmqContext},
     connection_manager::ConnectionManager,
@@ -34,6 +34,7 @@ use tari_storage::{
     lmdb_store::{LMDBBuilder, LMDBDatabase, LMDBError, LMDBStore},
     LMDBWrapper,
 };
+use tari_test_utils::paths::create_temporary_data_path;
 use tari_utilities::{thread_join::ThreadJoinWithTimeout, ByteArray};
 
 fn make_peer_manager(peers: Vec<Peer>, database: LMDBDatabase) -> Arc<PeerManager> {
@@ -45,27 +46,16 @@ fn make_peer_manager(peers: Vec<Peer>, database: LMDBDatabase) -> Arc<PeerManage
             .unwrap(),
     )
 }
-fn get_path(name: &str) -> String {
-    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.push("tests/data");
-    path.push(name);
-    path.to_str().unwrap().to_string()
-}
 
 // Initialize the datastore. Note: every test should have unique database name
 fn init_datastore(name: &str) -> Result<LMDBStore, LMDBError> {
-    let path = get_path(name);
-    let _ = std::fs::create_dir(&path).unwrap_or_default();
+    let path = create_temporary_data_path();
     LMDBBuilder::new()
-        .set_path(&path)
+        .set_path(&path.to_str().unwrap())
         .set_environment_size(10)
         .set_max_number_of_databases(2)
         .add_database(name, lmdb_zero::db::CREATE)
         .build()
-}
-
-fn clean_up_datastore(name: &str) {
-    std::fs::remove_dir_all(get_path(name)).unwrap();
 }
 
 fn setup(
@@ -171,8 +161,6 @@ fn request_connection() {
 
     service_handle.shutdown().unwrap();
     service_handle.timeout_join(Duration::from_millis(3000)).unwrap();
-
-    clean_up_datastore(database_name);
 }
 
 #[test]
@@ -204,6 +192,4 @@ fn ping_pong() {
 
     service.shutdown().unwrap();
     service.timeout_join(Duration::from_millis(3000)).unwrap();
-
-    clean_up_datastore(database_name);
 }

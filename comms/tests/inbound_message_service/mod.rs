@@ -22,7 +22,7 @@
 
 use crate::support::{
     factories::{self, TestFactory},
-    helpers::database::{clean_up_datastore, init_datastore},
+    helpers::database::init_datastore,
 };
 use futures::{channel::mpsc, SinkExt, StreamExt};
 use std::{sync::Arc, time::Duration};
@@ -119,6 +119,4 @@ fn smoke_test() {
         assert_eq!(messages[i].source_peer, peer);
         assert_eq!(messages[i].envelope_header.public_key, peer.public_key);
     }
-
-    clean_up_datastore(database_name);
 }

@@ -22,10 +22,10 @@
 
 use crate::support::{
     factories::{self, TestFactory},
-    helpers::streams::stream_assert_count,
+    helpers::{database::init_datastore, streams::stream_assert_count},
 };
 use futures::{channel::mpsc, SinkExt, StreamExt};
-use std::{fs, path::PathBuf, sync::Arc, thread, time::Duration};
+use std::{sync::Arc, thread, time::Duration};
 use tari_comms::{
     connection::ZmqContext,
     connection_manager::{
@@ -41,10 +41,7 @@ use tari_comms::{
     types::CommsDatabase,
 };
 use tari_shutdown::Shutdown;
-use tari_storage::{
-    lmdb_store::{LMDBBuilder, LMDBError, LMDBStore},
-    LMDBWrapper,
-};
+use tari_storage::LMDBWrapper;
 use tari_test_utils::random;
 use tokio::runtime::Runtime;
 
@@ -67,28 +64,6 @@ fn make_peer_manager(peers: Vec<Peer>, database: CommsDatabase) -> Arc<PeerManag
             .build()
             .unwrap(),
     )
-}
-
-fn get_path(name: &str) -> String {
-    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.push("tests/data");
-    path.push(name);
-    path.to_str().unwrap().to_string()
-}
-
-fn init_datastore(name: &str) -> Result<LMDBStore, LMDBError> {
-    let path = get_path(name);
-    let _ = fs::create_dir(&path).unwrap_or_default();
-    LMDBBuilder::new()
-        .set_path(&path)
-        .set_environment_size(10)
-        .set_max_number_of_databases(2)
-        .add_database(name, lmdb_zero::db::CREATE)
-        .build()
-}
-
-fn clean_up_datastore(name: &str) {
-    fs::remove_dir_all(get_path(name)).unwrap();
 }
 
 /// This tests a message being sent through to the OMP where a peer (Node B) is awaiting alive and accepting
@@ -200,9 +175,6 @@ fn outbound_message_pool_no_retry() {
         .unwrap();
 
     shutdown.trigger().unwrap();
-
-    clean_up_datastore(&node_A_database_name);
-    clean_up_datastore(&node_B_database_name);
 }
 
 /// This tests the reliability of the OMP.
@@ -335,6 +307,4 @@ fn test_outbound_message_pool_fail_and_retry() {
         .unwrap();
 
     shutdown.trigger().unwrap();
-
-    clean_up_datastore(&database_name);
 }

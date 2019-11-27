@@ -20,21 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::path::PathBuf;
 use tari_storage::lmdb_store::{LMDBBuilder, LMDBError, LMDBStore};
-use tari_test_utils::paths::create_random_database_path;
-
-pub fn get_path(name: &str) -> String {
-    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.push("tests/data");
-    path.push(name);
-    path.to_str().unwrap().to_string()
-}
+use tari_test_utils::paths::create_temporary_data_path;
 
 // Initialize the datastore.
 pub fn init_datastore(name: &str) -> Result<LMDBStore, LMDBError> {
-    // TODO: work on database file cleanups
-    let path = create_random_database_path().join(get_path(name));
+    let path = create_temporary_data_path().join(name);
     std::fs::create_dir_all(&path).unwrap();
     LMDBBuilder::new()
         .set_path(path.to_str().unwrap())
@@ -42,8 +33,4 @@ pub fn init_datastore(name: &str) -> Result<LMDBStore, LMDBError> {
         .set_max_number_of_databases(2)
         .add_database(name, lmdb_zero::db::CREATE)
         .build()
-}
-
-pub fn clean_up_datastore(name: &str) {
-    std::fs::remove_dir_all(get_path(name)).unwrap();
 }

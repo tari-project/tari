@@ -38,7 +38,7 @@ use tari_comms::{
 use tari_comms_dht::{envelope::NodeDestination, inbound::DecryptedDhtMessage, Dht, DhtBuilder};
 use tari_comms_middleware::{pipeline::ServicePipeline, sink::SinkMiddleware};
 use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
-use tari_test_utils::{async_assert_eventually, paths::create_random_database_path, random, runtime};
+use tari_test_utils::{async_assert_eventually, paths::create_temporary_data_path, random, runtime};
 use tokio::runtime::TaskExecutor;
 use tower::ServiceBuilder;
 
@@ -54,7 +54,7 @@ fn new_node_identity(control_service_address: NetAddress) -> NodeIdentity {
 fn create_peer_storage(peers: Vec<Peer>) -> CommsDatabase {
     let database_name = random::string(8);
     let datastore = LMDBBuilder::new()
-        .set_path(create_random_database_path().to_str().unwrap())
+        .set_path(create_temporary_data_path().to_str().unwrap())
         .set_environment_size(10)
         .set_max_number_of_databases(1)
         .add_database(&database_name, lmdb_zero::db::CREATE)

@@ -35,7 +35,7 @@ use tari_comms::{
     utils::signature,
 };
 use tari_storage::lmdb_store::LMDBBuilder;
-use tari_test_utils::{paths::create_random_database_path, random};
+use tari_test_utils::{paths::create_temporary_data_path, random};
 use tari_utilities::message_format::MessageFormat;
 
 pub fn make_node_identity() -> Arc<NodeIdentity> {
@@ -133,7 +133,7 @@ pub fn make_dht_envelope(node_identity: &NodeIdentity, message: Vec<u8>, flags: 
 
 pub fn make_peer_manager() -> Arc<PeerManager> {
     let database_name = random::string(8);
-    let path = create_random_database_path();
+    let path = create_temporary_data_path();
     let datastore = LMDBBuilder::new()
         .set_path(path.to_str().unwrap())
         .set_environment_size(10)

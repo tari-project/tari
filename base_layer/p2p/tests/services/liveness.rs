@@ -74,7 +74,6 @@ pub fn setup_liveness_service(
 
 #[test]
 fn end_to_end() {
-    env_logger::init();
     let runtime = Runtime::new().unwrap();
 
     let mut rng = rand::rngs::OsRng::new().unwrap();
