@@ -20,7 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::support::utils::{make_input, random_string};
+use crate::support::{
+    data::create_temporary_sqlite_path,
+    utils::{make_input, random_string},
+};
 use chrono::{Duration as ChronoDuration, Utc};
 use rand::RngCore;
 use std::time::Duration;
@@ -247,13 +250,5 @@ pub fn test_output_manager_memory_db() {
 
 #[test]
 pub fn test_output_manager_sqlite_db() {
-    let db_name = format!("{}.sqlite3", random_string(8).as_str());
-    let db_folder = TempDir::new(random_string(8).as_str())
-        .unwrap()
-        .path()
-        .to_str()
-        .unwrap()
-        .to_string();
-    let db_path = format!("{}{}", db_folder, db_name);
-    test_db_backend(OutputManagerSqliteDatabase::new(db_path).unwrap());
+    test_db_backend(OutputManagerSqliteDatabase::new(create_temporary_sqlite_path()).unwrap());
 }

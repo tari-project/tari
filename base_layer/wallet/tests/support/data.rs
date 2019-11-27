@@ -20,7 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::support::utils::random_string;
 use std::path::PathBuf;
+use tempdir::TempDir;
 
 pub fn get_path(name: Option<&str>) -> String {
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -39,4 +41,15 @@ pub fn init_sql_database(name: &str) {
     clean_up_sql_database(name);
     let path = get_path(None);
     let _ = std::fs::create_dir(&path).unwrap_or_default();
+}
+
+pub fn create_temporary_sqlite_path() -> String {
+    let db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let db_folder = TempDir::new(random_string(8).as_str())
+        .unwrap()
+        .path()
+        .to_str()
+        .unwrap()
+        .to_string();
+    format!("{}{}", db_folder, db_name).to_string()
 }

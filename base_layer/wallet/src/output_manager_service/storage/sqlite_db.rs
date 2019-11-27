@@ -370,7 +370,11 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             },
             Err(e) => {
                 match e {
-                    OutputManagerStorageError::DieselError(DieselError::NotFound) => (),
+                    OutputManagerStorageError::DieselError(DieselError::NotFound) => {
+                        return Err(OutputManagerStorageError::ValueNotFound(
+                            DbKey::PendingTransactionOutputs(tx_id.clone()),
+                        ))
+                    },
                     e => return Err(e),
                 };
             },
