@@ -51,6 +51,7 @@ use clap::ArgMatches;
 use std::path::{Path, PathBuf};
 
 mod configuration;
+#[macro_use]
 mod logging;
 
 pub mod dir_utils;

@@ -70,6 +70,49 @@ pub fn install_default_logfile_config(path: &Path) -> Result<u64, std::io::Error
     std::fs::copy(source, path)
 }
 
+/// Log an error if an `Err` is returned from the `$expr`. If the given expression is `Ok(v)`,
+/// `Some(v)` is returned, otherwise `None` is returned (same as `Result::ok`).
+/// Useful in cases where the error should be logged and ignored.
+/// instead of writing `if let Err(err) = my_error_call() { error!(...) }`, you can write
+/// `log_if_error!(my_error_call())`
+///
+/// ```edition2018
+/// # use tari_common::log_if_error;
+/// let opt = log_if_error!(level: debug, target: "docs", "Error sending reply: {}", Result::<(), _>::Err("this will be logged"));
+/// assert_eq!(opt, None);
+/// ```
+#[macro_export]
+macro_rules! log_if_error {
+     // No formatter '{}' in $msg
+    (level: $level:tt, target: $target:expr, $msg:expr, $expr:expr, no_fmt$(,)*) => {{
+        match $expr {
+            Ok(v) => Some(v),
+            Err(_) => {
+                log::$level!(target: $target, $msg);
+                None
+            }
+        }
+    }};
+    (level:$level:tt, target: $target:expr, $msg:expr, $expr:expr $(,)*) => {{
+        match $expr {
+            Ok(v) => Some(v),
+            Err(err) => {
+                log::error!(target: $target, $msg, err);
+                None
+            }
+        }
+    }};
+    (level:$level:tt, $msg:expr, $expr:expr $(,)*) => {{
+        log_if_error!(level:$level, target: "$crate", $msg, $expr)
+    }};
+     (target: $target:expr, $msg:expr, $expr:expr $(,)*) => {{
+        log_if_error!(level:error, target: $target, $msg, $expr)
+    }};
+    ($msg:expr, $expr:expr $(,)*) => {{
+        log_if_error!(level:error, target: "$crate", $msg, $expr)
+    }};
+}
+
 #[cfg(test)]
 mod test {
     use crate::logging::get_log_configuration_path;
@@ -87,5 +130,18 @@ mod test {
         let path = get_log_configuration_path(None);
         assert_eq!(path.to_str().unwrap(), "~/fake-example");
         env::set_var("TARI_LOG_CONFIGURATION", "");
+    }
+
+    #[test]
+    fn log_if_error() {
+        let err = Result::<(), _>::Err("What a shame");
+        let opt = log_if_error!("Error: {}", err);
+        assert!(opt.is_none());
+
+        let opt = log_if_error!(level: trace, "Error: {}", err);
+        assert!(opt.is_none());
+
+        let opt = log_if_error!(level: trace, "Error: {}", Result::<_, &str>::Ok("answer"));
+        assert_eq!(opt, Some("answer"));
     }
 }
