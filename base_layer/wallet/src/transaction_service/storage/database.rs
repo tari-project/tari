@@ -23,6 +23,7 @@
 use crate::{output_manager_service::TxId, transaction_service::error::TransactionStorageError};
 use chrono::NaiveDateTime;
 use log::*;
+use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     fmt::{Display, Error, Formatter},
@@ -67,7 +68,7 @@ pub trait TransactionBackend: Send + Sync {
     fn mine_completed_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionStorageError>;
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum TransactionStatus {
     /// This transaction has been completed between the parties but has not been broadcast to the base layer network.
     Completed,
@@ -78,7 +79,7 @@ pub enum TransactionStatus {
     Mined,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct InboundTransaction {
     pub tx_id: TxId,
     pub source_public_key: CommsPublicKey,
@@ -88,7 +89,7 @@ pub struct InboundTransaction {
     pub timestamp: NaiveDateTime,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct OutboundTransaction {
     pub tx_id: TxId,
     pub destination_public_key: CommsPublicKey,
@@ -99,7 +100,7 @@ pub struct OutboundTransaction {
     pub timestamp: NaiveDateTime,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CompletedTransaction {
     pub tx_id: TxId,
     pub source_public_key: CommsPublicKey,
@@ -127,9 +128,9 @@ pub enum DbValue {
     PendingOutboundTransaction(Box<OutboundTransaction>),
     PendingInboundTransaction(Box<InboundTransaction>),
     CompletedTransaction(Box<CompletedTransaction>),
-    PendingOutboundTransactions(Box<HashMap<TxId, OutboundTransaction>>),
-    PendingInboundTransactions(Box<HashMap<TxId, InboundTransaction>>),
-    CompletedTransactions(Box<HashMap<TxId, CompletedTransaction>>),
+    PendingOutboundTransactions(HashMap<TxId, OutboundTransaction>),
+    PendingInboundTransactions(HashMap<TxId, InboundTransaction>),
+    CompletedTransactions(HashMap<TxId, CompletedTransaction>),
 }
 
 pub enum DbKeyValuePair {
@@ -188,13 +189,13 @@ where T: TransactionBackend
     pub fn add_pending_outbound_transaction(
         &mut self,
         tx_id: TxId,
-        stp: OutboundTransaction,
+        outbound_tx: OutboundTransaction,
     ) -> Result<(), TransactionStorageError>
     {
         self.db
             .write(WriteOperation::Insert(DbKeyValuePair::PendingOutboundTransaction(
                 tx_id,
-                Box::new(stp),
+                Box::new(outbound_tx),
             )))?;
         Ok(())
     }
@@ -225,7 +226,7 @@ where T: TransactionBackend
                     "Could not retrieve pending inbound transactions".to_string(),
                 ),
             ),
-            Ok(Some(DbValue::PendingInboundTransactions(pt))) => Ok(*pt),
+            Ok(Some(DbValue::PendingInboundTransactions(pt))) => Ok(pt),
             Ok(Some(other)) => unexpected_result(DbKey::PendingInboundTransactions, other),
             Err(e) => log_error(DbKey::PendingInboundTransactions, e),
         }?;
@@ -242,7 +243,7 @@ where T: TransactionBackend
                     "Could not retrieve pending outbound transactions".to_string(),
                 ),
             ),
-            Ok(Some(DbValue::PendingOutboundTransactions(pt))) => Ok(*pt),
+            Ok(Some(DbValue::PendingOutboundTransactions(pt))) => Ok(pt),
             Ok(Some(other)) => unexpected_result(DbKey::PendingOutboundTransactions, other),
             Err(e) => log_error(DbKey::PendingOutboundTransactions, e),
         }?;
@@ -255,7 +256,7 @@ where T: TransactionBackend
                 DbKey::CompletedTransactions,
                 TransactionStorageError::UnexpectedResult("Could not retrieve completed transactions".to_string()),
             ),
-            Ok(Some(DbValue::CompletedTransactions(pt))) => Ok(*pt),
+            Ok(Some(DbValue::CompletedTransactions(pt))) => Ok(pt),
             Ok(Some(other)) => unexpected_result(DbKey::CompletedTransactions, other),
             Err(e) => log_error(DbKey::CompletedTransactions, e),
         }?;

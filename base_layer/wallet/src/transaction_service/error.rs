@@ -22,6 +22,8 @@
 
 use crate::{output_manager_service::error::OutputManagerError, transaction_service::storage::database::DbKey};
 use derive_error::Error;
+use diesel::result::Error as DieselError;
+use serde_json::Error as SerdeJsonError;
 use tari_comms_dht::outbound::DhtOutboundError;
 use tari_service_framework::reply_channel::TransportChannelError;
 use tari_transactions::{transaction::TransactionError, transaction_protocol::TransactionProtocolError};
@@ -61,7 +63,7 @@ pub enum TransactionServiceError {
     TransactionError(TransactionError),
 }
 
-#[derive(Debug, Error, PartialEq)]
+#[derive(Debug, Error)]
 pub enum TransactionStorageError {
     /// Tried to insert an output that already exists in the database
     DuplicateOutput,
@@ -73,5 +75,15 @@ pub enum TransactionStorageError {
     OperationNotSupported,
     /// Could not find all values specified for batch operation
     ValuesNotFound,
+    /// Transaction is already present in the database
+    TransactionAlreadyExists,
     OutOfRangeError(OutOfRangeError),
+    /// Error converting a type
+    ConversionError,
+    SerdeJsonError(SerdeJsonError),
+    R2d2Error,
+    DieselError(DieselError),
+    DieselConnectionError(diesel::ConnectionError),
+    #[error(msg_embedded, no_from, non_std)]
+    DatabaseMigrationError(String),
 }

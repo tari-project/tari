@@ -21,9 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #[cfg(feature = "test_harness")]
 use crate::output_manager_service::TxId;
-#[cfg(feature = "test_harness")]
-use tari_transactions::{aggregated_body::AggregateBody, transaction::Transaction};
-
 use crate::{
     output_manager_service::handle::OutputManagerHandle,
     transaction_service::{
@@ -55,8 +52,14 @@ use tari_comms_dht::{
 use tari_crypto::keys::SecretKey;
 use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
+#[cfg(feature = "test_harness")]
+use tari_transactions::aggregated_body::AggregateBody;
+#[cfg(feature = "test_harness")]
+use tari_transactions::tari_amount::T;
+#[cfg(feature = "test_harness")]
+use tari_transactions::transaction::Transaction;
 use tari_transactions::{
-    tari_amount::{MicroTari, T},
+    tari_amount::MicroTari,
     transaction::{KernelFeatures, OutputFeatures},
     transaction_protocol::{proto, recipient::RecipientSignedMessage, sender::TransactionSenderMessage},
     types::{CryptoFactories, PrivateKey},
@@ -274,46 +277,6 @@ where
                 Ok(TransactionServiceResponse::TransactionBroadcast)
             },
         }
-    }
-
-    #[cfg(feature = "c_integration")]
-    pub fn register_callback_received_transaction(
-        &mut self,
-        call: unsafe extern "C" fn(*mut InboundTransaction),
-    ) -> Result<TransactionServiceResponse, TransactionServiceError>
-    {
-        self.callback_received_transaction = Some(call);
-        Ok(TransactionServiceResponse::CallbackRegistered)
-    }
-
-    #[cfg(feature = "c_integration")]
-    pub fn register_callback_received_transaction_reply(
-        &mut self,
-        call: unsafe extern "C" fn(*mut CompletedTransaction),
-    ) -> Result<TransactionServiceResponse, TransactionServiceError>
-    {
-        self.callback_received_transaction_reply = Some(call);
-        Ok(TransactionServiceResponse::CallbackRegistered)
-    }
-
-    #[cfg(feature = "c_integration")]
-    pub fn register_callback_mined(
-        &mut self,
-        call: unsafe extern "C" fn(*mut CompletedTransaction),
-    ) -> Result<TransactionServiceResponse, TransactionServiceError>
-    {
-        self.callback_mined = Some(call);
-        Ok(TransactionServiceResponse::CallbackRegistered)
-    }
-
-    #[cfg(feature = "c_integration")]
-    pub fn register_callback_transaction_broadcast(
-        &mut self,
-        call: unsafe extern "C" fn(*mut CompletedTransaction),
-    ) -> Result<TransactionServiceResponse, TransactionServiceError>
-    {
-        self.callback_transaction_broadcast = Some(call);
-        Ok(TransactionServiceResponse::CallbackRegistered)
     }
 
     /// Sends a new transaction to a recipient
@@ -534,6 +497,46 @@ where
 
     pub fn get_completed_transactions(&self) -> Result<HashMap<u64, CompletedTransaction>, TransactionServiceError> {
         Ok(self.db.get_completed_transactions()?)
+    }
+
+    #[cfg(feature = "c_integration")]
+    pub fn register_callback_received_transaction(
+        &mut self,
+        call: unsafe extern "C" fn(*mut InboundTransaction),
+    ) -> Result<TransactionServiceResponse, TransactionServiceError>
+    {
+        self.callback_received_transaction = Some(call);
+        Ok(TransactionServiceResponse::CallbackRegistered)
+    }
+
+    #[cfg(feature = "c_integration")]
+    pub fn register_callback_received_transaction_reply(
+        &mut self,
+        call: unsafe extern "C" fn(*mut CompletedTransaction),
+    ) -> Result<TransactionServiceResponse, TransactionServiceError>
+    {
+        self.callback_received_transaction_reply = Some(call);
+        Ok(TransactionServiceResponse::CallbackRegistered)
+    }
+
+    #[cfg(feature = "c_integration")]
+    pub fn register_callback_mined(
+        &mut self,
+        call: unsafe extern "C" fn(*mut CompletedTransaction),
+    ) -> Result<TransactionServiceResponse, TransactionServiceError>
+    {
+        self.callback_mined = Some(call);
+        Ok(TransactionServiceResponse::CallbackRegistered)
+    }
+
+    #[cfg(feature = "c_integration")]
+    pub fn register_callback_transaction_broadcast(
+        &mut self,
+        call: unsafe extern "C" fn(*mut CompletedTransaction),
+    ) -> Result<TransactionServiceResponse, TransactionServiceError>
+    {
+        self.callback_transaction_broadcast = Some(call);
+        Ok(TransactionServiceResponse::CallbackRegistered)
     }
 
     /// This function is only available for testing by the client of LibWallet. It simulates a receiver accepting and

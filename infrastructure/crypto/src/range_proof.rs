@@ -28,8 +28,9 @@ use crate::{
     keys::{PublicKey, SecretKey},
 };
 use derive_error::Error;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Error, PartialEq)]
+#[derive(Debug, Clone, Error, PartialEq, Deserialize, Serialize)]
 pub enum RangeProofError {
     /// Could not construct range proof
     ProofConstructionError,

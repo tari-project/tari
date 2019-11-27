@@ -32,14 +32,14 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum RecipientState {
     Finalized(Box<RecipientSignedMessage>),
     Failed(TransactionProtocolError),
 }
 
 /// An enum describing the types of information that a recipient can send back to the receiver
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub(super) enum RecipientInfo {
     None,
     Single(Option<Box<RecipientSignedMessage>>),
@@ -52,7 +52,7 @@ impl Default for RecipientInfo {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub(super) struct MultiRecipientInfo {
     pub commitment: MessageHash,
     pub data: RecipientSignedMessage,
@@ -69,7 +69,7 @@ pub struct RecipientSignedMessage {
 
 /// The generalised transaction recipient protocol. A different state transition network is followed depending on
 /// whether this is a single recipient or one of many.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct ReceiverTransactionProtocol {
     pub state: RecipientState,
 }
