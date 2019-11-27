@@ -221,7 +221,7 @@ mod hash_serializer {
 
 #[cfg(test)]
 mod test {
-    use crate::{blocks::BlockHeader, proof_of_work::PowAlgorithm};
+    use crate::blocks::BlockHeader;
     use tari_utilities::Hashable;
 
     #[test]
