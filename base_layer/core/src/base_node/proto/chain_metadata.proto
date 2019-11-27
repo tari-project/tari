@@ -9,8 +9,6 @@ message ChainMetadata {
     google.protobuf.UInt64Value height_of_longest_chain = 1;
     // The block hash of the current tip of the longest valid chain, or `None` for an empty chain
     google.protobuf.BytesValue best_block = 2;
-    // The total accumulated difficulty, or work, on the longest valid chain since the genesis block.
-    uint64 total_accumulated_difficulty = 3;
     // The number of blocks back from the tip that this database tracks. A value of 0 indicates that all blocks are
     // tracked (i.e. the database is in full archival mode).
     uint64 pruning_horizon = 4;

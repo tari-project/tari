@@ -22,7 +22,10 @@
 //
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
-use crate::{blocks::BlockHeader, proof_of_work::PowError, types::TariProofOfWork};
+use crate::{
+    blocks::BlockHeader,
+    proof_of_work::{PowError, ProofOfWork},
+};
 use derive_error::Error;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
@@ -73,8 +76,7 @@ impl Block {
         self.body
             .validate_internal_consistency(&offset, total_coinbase, factories)?;
         self.check_stxo_rules()?;
-        self.check_utxo_rules(rules)?;
-        self.check_pow()
+        self.check_utxo_rules(rules)
     }
 
     // create a total_coinbase offset containing all fees for the validation
@@ -84,10 +86,6 @@ impl Block {
             coinbase += kernel.fee;
         }
         coinbase
-    }
-
-    pub fn check_pow(&self) -> Result<(), BlockValidationError> {
-        Ok(())
     }
 
     /// This function will check spent kernel rules like tx lock height etc
@@ -152,11 +150,11 @@ impl Display for Block {
 }
 
 pub struct BlockBuilder {
-    pub header: BlockHeader,
-    pub inputs: Vec<TransactionInput>,
-    pub outputs: Vec<TransactionOutput>,
-    pub kernels: Vec<TransactionKernel>,
-    pub total_fee: MicroTari,
+    header: BlockHeader,
+    inputs: Vec<TransactionInput>,
+    outputs: Vec<TransactionOutput>,
+    kernels: Vec<TransactionKernel>,
+    total_fee: MicroTari,
 }
 
 impl BlockBuilder {
@@ -227,6 +225,12 @@ impl BlockBuilder {
         self
     }
 
+    /// Add the provided ProofOfWork metadata to the block
+    pub fn with_pow(mut self, pow: ProofOfWork) -> Self {
+        self.header.pow = pow;
+        self
+    }
+
     /// This will finish construction of the block and create the block
     pub fn build(self) -> Block {
         let mut block = Block {
@@ -235,12 +239,6 @@ impl BlockBuilder {
         };
         block.body.sort();
         block
-    }
-
-    /// Add the provided ProofOfWork to the block
-    pub fn with_pow(self, _pow: TariProofOfWork) -> Self {
-        // TODO
-        self
     }
 }
 

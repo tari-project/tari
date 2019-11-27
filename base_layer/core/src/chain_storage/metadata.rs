@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{blocks::blockheader::BlockHash, proof_of_work::Difficulty};
+use crate::blocks::blockheader::BlockHash;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error, Formatter};
 use tari_utilities::hex::Hex;
@@ -31,19 +31,16 @@ pub struct ChainMetadata {
     pub height_of_longest_chain: Option<u64>,
     /// The block hash of the current tip of the longest valid chain, or `None` for an empty chain
     pub best_block: Option<BlockHash>,
-    /// The total accumulated difficulty, or work, on the longest valid chain since the genesis block.
-    pub total_accumulated_difficulty: Difficulty,
     /// The number of blocks back from the tip that this database tracks. A value of 0 indicates that all blocks are
     /// tracked (i.e. the database is in full archival mode).
     pub pruning_horizon: u64,
 }
 
 impl ChainMetadata {
-    pub fn new(height: u64, hash: BlockHash, work: Difficulty, horizon: u64) -> ChainMetadata {
+    pub fn new(height: u64, hash: BlockHash, horizon: u64) -> ChainMetadata {
         ChainMetadata {
             height_of_longest_chain: Some(height),
             best_block: Some(hash),
-            total_accumulated_difficulty: work,
             pruning_horizon: horizon,
         }
     }
@@ -73,7 +70,6 @@ impl Default for ChainMetadata {
         ChainMetadata {
             height_of_longest_chain: None,
             best_block: None,
-            total_accumulated_difficulty: Difficulty::default(),
             pruning_horizon: 2880,
         }
     }
@@ -89,10 +85,6 @@ impl Display for ChainMetadata {
             .unwrap_or("Empty Database".into());
         fmt.write_str(&format!("Height of longest chain : {}\n", height))?;
         fmt.write_str(&format!("Best_block : {}\n", best_block))?;
-        fmt.write_str(&format!(
-            "Total accumulated difficulty : {}\n",
-            self.total_accumulated_difficulty
-        ))?;
         fmt.write_str(&format!("Pruning horizon : {}\n", self.pruning_horizon))
     }
 }

@@ -21,9 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use bigint::uint::U256;
-use blake2::Blake2b;
-use chrono::Duration;
-use digest::Digest;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use std::sync::{
@@ -32,12 +29,8 @@ use std::sync::{
 };
 use tari_core::{
     blocks::BlockHeader,
-    proof_of_work::{Difficulty, PowError, ProofOfWork},
+    proof_of_work::{blake_difficulty, Difficulty},
 };
-use tari_crypto::common::Blake256;
-use tari_utilities::{ByteArray, ByteArrayError, Hashable};
-
-const MAX_TARGET: U256 = U256::MAX;
 
 /// A simple Blake2b-based proof of work. This is currently intended to be used for testing and perhaps Testnet until
 /// Monero merge-mining is active.
@@ -55,59 +48,19 @@ impl TestBlakePow {
         let mut rng = rand::OsRng::new().unwrap();
         let mut nonce: u64 = rng.next_u64();
         let start_nonce = nonce;
+        header.nonce = nonce;
         // We're mining over here!
-        while let Ok(d) = header.pow.achieved_difficulty(nonce, &header) {
-            if d >= target_difficulty || stop_flag.load(Ordering::Relaxed) {
-                header.nonce = nonce;
-                break;
-            }
+        while blake_difficulty(&header) < target_difficulty && !stop_flag.load(Ordering::Relaxed) {
             if nonce == std::u64::MAX {
                 nonce = 0;
             } else {
                 nonce += 1;
             }
+            header.nonce = nonce;
             if nonce == start_nonce {
                 header.timestamp = header.timestamp.increase(1);
             }
         }
         header
-    }
-}
-
-impl ProofOfWork for TestBlakePow {
-    fn achieved_difficulty(&self, nonce: u64, header: &BlockHeader) -> Result<Difficulty, PowError> {
-        let bytes = header.hash();
-        let hash = Blake2b::new()
-            .chain(&bytes)
-            .chain(nonce.to_le_bytes())
-            .result()
-            .to_vec();
-        let hash = Blake256::digest(&hash).to_vec();
-        let scalar = U256::from_little_endian(&hash);
-        let result = MAX_TARGET / scalar;
-        let difficulty = u64::from(result).into();
-        Ok(difficulty)
-    }
-}
-
-impl Default for TestBlakePow {
-    fn default() -> Self {
-        TestBlakePow
-    }
-}
-
-impl ByteArray for TestBlakePow {
-    fn from_bytes(_bytes: &[u8]) -> Result<Self, ByteArrayError> {
-        Ok(TestBlakePow)
-    }
-
-    fn as_bytes(&self) -> &[u8] {
-        &[]
-    }
-}
-
-impl Hashable for TestBlakePow {
-    fn hash(&self) -> Vec<u8> {
-        vec![]
     }
 }

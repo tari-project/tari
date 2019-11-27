@@ -107,7 +107,7 @@ where T: BlockchainBackend
                 Ok(NodeCommsResponse::TransactionOutputs(utxos))
             },
             NodeCommsRequest::FetchBlocks(block_nums) => {
-                let mut blocks = Vec::<HistoricalBlock>::new();
+                let mut blocks = Vec::<HistoricalBlock>::with_capacity(block_nums.len());
                 for block_num in block_nums {
                     if let Ok(block) = async_db::fetch_block(self.blockchain_db.clone(), *block_num).await {
                         blocks.push(block);

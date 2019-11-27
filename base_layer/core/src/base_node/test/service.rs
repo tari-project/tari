@@ -836,7 +836,7 @@ fn local_get_new_block() {
         let mut block = local_nci.get_new_block_template().await.unwrap();
         assert_eq!(block.header.height, 1);
         assert_eq!(block.body.kernels().len(), 3);
-        block.header.total_difficulty = Difficulty::from(100);
+        block.header.pow.accumulated_blake_difficulty = Difficulty::from(100);
         add_block_and_update_header(&blockchain_db, block);
     });
 

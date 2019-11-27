@@ -41,7 +41,6 @@ use crate::{
         MutableMmrState,
     },
     mempool::{Mempool, MempoolConfig},
-    proof_of_work::Difficulty,
     test_utils::builders::{add_block_and_update_header, create_test_kernel, create_utxo},
 };
 use croaring::Bitmap;
@@ -75,8 +74,8 @@ fn outbound_get_metadata() {
     let mut outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
 
     block_on(async {
-        let metadata1 = ChainMetadata::new(5, vec![0u8], 2.into(), 3);
-        let metadata2 = ChainMetadata::new(6, vec![1u8], 3.into(), 4);
+        let metadata1 = ChainMetadata::new(5, vec![0u8], 3);
+        let metadata2 = ChainMetadata::new(6, vec![1u8], 4);
         let metadata_response: Vec<NodeCommsResponse> = vec![
             NodeCommsResponse::ChainMetadata(metadata1.clone()),
             NodeCommsResponse::ChainMetadata(metadata2.clone()),
@@ -106,7 +105,6 @@ fn inbound_get_metadata() {
             {
                 assert_eq!(received_metadata.height_of_longest_chain, None);
                 assert_eq!(received_metadata.best_block, None);
-                assert_eq!(received_metadata.total_accumulated_difficulty, Difficulty::from(0));
                 assert_eq!(received_metadata.pruning_horizon, 0);
             } else {
                 assert!(false);

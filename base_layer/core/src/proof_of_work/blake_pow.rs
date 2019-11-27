@@ -20,20 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    blocks::BlockHeader,
-    proof_of_work::{Difficulty, PowError, ProofOfWork},
-};
+use crate::{blocks::BlockHeader, proof_of_work::Difficulty};
 use bigint::uint::U256;
 use blake2::Blake2b;
 use digest::Digest;
-use serde::{Deserialize, Serialize};
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc,
-};
 use tari_crypto::common::Blake256;
-use tari_utilities::{ByteArray, ByteArrayError, Hashable};
+use tari_utilities::Hashable;
 
 const MAX_TARGET: U256 = U256::MAX;
 
@@ -42,89 +34,78 @@ const MAX_TARGET: U256 = U256::MAX;
 ///
 /// The proof of work difficulty is given by `H256(H512(header || nonce))` where Hnnn is the Blake2b digest of length
 /// `nnn` bits.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-pub struct BlakePow;
-
-impl BlakePow {
-    /// A simple miner. It starts at nonce = 0 and iterates until it finds a header hash that meets the desired target
-    // ToDo convert to future, with ability to break function. We need to be able to stop this if we receive a mined
-    // block
-    pub fn mine(target_difficulty: Difficulty, header: &BlockHeader, stop_flag: Arc<AtomicBool>) -> u64 {
-        let mut nonce = 0u64;
-        // We're mining over here!
-        while let Ok(d) = header.pow.achieved_difficulty(nonce, &header) {
-            if d >= target_difficulty || stop_flag.load(Ordering::Relaxed) {
-                break;
-            }
-            nonce += 1;
-        }
-        nonce
-    }
+pub fn blake_difficulty(header: &BlockHeader) -> Difficulty {
+    blake_difficulty_with_hash(header).0
 }
 
-impl ProofOfWork for BlakePow {
-    fn achieved_difficulty(&self, nonce: u64, header: &BlockHeader) -> Result<Difficulty, PowError> {
-        let bytes = header.hash();
-        let hash = Blake2b::new()
-            .chain(&bytes)
-            .chain(nonce.to_le_bytes())
-            .result()
-            .to_vec();
-        let hash = Blake256::digest(&hash).to_vec();
-        let scalar = U256::from_little_endian(&hash);
-        let result = MAX_TARGET / scalar;
-        let difficulty = u64::from(result).into();
-        Ok(difficulty)
-    }
-}
-
-impl Default for BlakePow {
-    fn default() -> Self {
-        BlakePow
-    }
-}
-
-impl ByteArray for BlakePow {
-    fn from_bytes(_bytes: &[u8]) -> Result<Self, ByteArrayError> {
-        Ok(BlakePow)
-    }
-
-    fn as_bytes(&self) -> &[u8] {
-        &[]
-    }
-}
-
-impl Hashable for BlakePow {
-    fn hash(&self) -> Vec<u8> {
-        vec![]
-    }
+pub fn blake_difficulty_with_hash(header: &BlockHeader) -> (Difficulty, Vec<u8>) {
+    let bytes = header.hash();
+    let hash = Blake2b::digest(&bytes).to_vec();
+    let hash = Blake256::digest(&hash).to_vec();
+    let scalar = U256::from_big_endian(&hash); // Big endian so the hash has leading zeroes
+    let result = MAX_TARGET / scalar;
+    let difficulty = u64::from(result).into();
+    (difficulty, hash)
 }
 
 #[cfg(test)]
-mod test {
-    use crate::{blocks::BlockHeader, proof_of_work::ProofOfWork};
+pub mod test {
+    use crate::{
+        blocks::BlockHeader,
+        proof_of_work::{
+            blake_pow::{blake_difficulty, blake_difficulty_with_hash},
+            Difficulty,
+        },
+    };
     use chrono::{DateTime, NaiveDate, Utc};
+    use tari_utilities::hex::Hex;
 
-    fn get_header() -> BlockHeader {
+    /// A simple example miner. It starts at nonce = 0 and iterates until it finds a header hash that meets the desired
+    /// target block
+    #[allow(dead_code)]
+    fn mine_blake(target_difficulty: Difficulty, header: &mut BlockHeader) -> u64 {
+        header.nonce = 0;
+        // We're mining over here!
+        while blake_difficulty(&header) < target_difficulty {
+            header.nonce += 1;
+        }
+        header.nonce
+    }
+
+    pub fn get_header() -> BlockHeader {
         let mut header = BlockHeader::new(0);
         header.timestamp = DateTime::<Utc>::from_utc(NaiveDate::from_ymd(2000, 1, 1).and_hms(1, 1, 1), Utc).into();
         header
     }
+
     #[test]
     fn validate_max_target() {
-        let header = get_header();
-        assert_eq!(header.pow.achieved_difficulty(2, &header), Ok(1.into()));
+        let mut header = get_header();
+        header.nonce = 1;
+        assert_eq!(blake_difficulty(&header), Difficulty::from(1));
     }
 
     #[test]
     fn difficulty_1000() {
-        let header = get_header();
-        assert_eq!(header.pow.achieved_difficulty(108, &header), Ok(1273.into()));
+        let mut header = get_header();
+        header.nonce = 327;
+        let (diff, hash) = blake_difficulty_with_hash(&header);
+        assert_eq!(diff, Difficulty::from(1_034));
+        assert_eq!(
+            hash.to_hex(),
+            "003f54ee9fe7aac9972c2f774db06da5feba7a199b94b745572ec4ac8b331e8f"
+        );
     }
 
     #[test]
     fn difficulty_1mil() {
-        let header = get_header();
-        assert_eq!(header.pow.achieved_difficulty(134_390, &header), Ok(3_250_351.into()));
+        let mut header = get_header();
+        header.nonce = 1_753_044;
+        let (diff, hash) = blake_difficulty_with_hash(&header);
+        assert_eq!(diff, Difficulty::from(3_039_691));
+        assert_eq!(
+            hash.to_hex(),
+            "00000584f6336e855c6c881cb24a875e4ce353ddd0c38f47564bdb992f761e6a"
+        );
     }
 }

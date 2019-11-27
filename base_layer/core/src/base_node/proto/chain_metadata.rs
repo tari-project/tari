@@ -28,7 +28,6 @@ impl From<proto::ChainMetadata> for ChainMetadata {
         Self {
             height_of_longest_chain: metadata.height_of_longest_chain,
             best_block: metadata.best_block,
-            total_accumulated_difficulty: metadata.total_accumulated_difficulty.into(),
             pruning_horizon: metadata.pruning_horizon,
         }
     }
@@ -39,7 +38,6 @@ impl From<ChainMetadata> for proto::ChainMetadata {
         Self {
             height_of_longest_chain: metadata.height_of_longest_chain,
             best_block: metadata.best_block,
-            total_accumulated_difficulty: metadata.total_accumulated_difficulty.as_u64(),
             pruning_horizon: metadata.pruning_horizon,
         }
     }
