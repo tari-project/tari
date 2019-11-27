@@ -20,6 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+// Required for `super::types` used in generated files
+use tari_transactions::proto::types;
+
 pub mod mempool {
     tari_utilities::include_proto_package!("tari.mempool");
 }
@@ -27,5 +30,6 @@ pub mod mempool {
 pub mod mempool_request;
 pub mod mempool_response;
 pub mod stats_response;
+pub mod tx_storage_response;
 
 pub use mempool::{MempoolServiceRequest, MempoolServiceResponse};

@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::mempool::mempool_service_response::Response as ProtoMempoolResponse;
-use crate::mempool::service::MempoolResponse;
+use crate::mempool::{proto::mempool::TxStorageResponse as ProtoTxStorageResponse, service::MempoolResponse};
 use std::convert::TryInto;
 
 impl TryInto<MempoolResponse> for ProtoMempoolResponse {
@@ -31,6 +31,11 @@ impl TryInto<MempoolResponse> for ProtoMempoolResponse {
         use ProtoMempoolResponse::*;
         let response = match self {
             Stats(stats_response) => MempoolResponse::Stats(stats_response.try_into()?),
+            TxStorage(tx_storage_response) => {
+                let tx_storage_response = ProtoTxStorageResponse::from_i32(tx_storage_response)
+                    .ok_or("Invalid or unrecognised `TxStorageResponse` enum".to_string())?;
+                MempoolResponse::TxStorage(tx_storage_response.try_into()?)
+            },
         };
         Ok(response)
     }
@@ -41,6 +46,10 @@ impl From<MempoolResponse> for ProtoMempoolResponse {
         use MempoolResponse::*;
         match response {
             Stats(stats_response) => ProtoMempoolResponse::Stats(stats_response.into()),
+            TxStorage(tx_storage_response) => {
+                let tx_storage_response: ProtoTxStorageResponse = tx_storage_response.into();
+                ProtoMempoolResponse::TxStorage(tx_storage_response.into())
+            },
         }
     }
 }

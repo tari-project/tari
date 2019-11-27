@@ -48,9 +48,12 @@ where T: BlockchainBackend
 
     /// Handle inbound Mempool service requests from remote nodes and local services.
     pub async fn handle_request(&self, request: &MempoolRequest) -> Result<MempoolResponse, MempoolServiceError> {
+        // TODO: make mempool calls async
         match request {
-            MempoolRequest::GetStats => Ok(MempoolResponse::Stats(self.mempool.stats()?)), /* TODO: make mempool
-                                                                                            * calls async */
+            MempoolRequest::GetStats => Ok(MempoolResponse::Stats(self.mempool.stats()?)),
+            MempoolRequest::GetTxStateWithExcessSig(excess_sig) => Ok(MempoolResponse::TxStorage(
+                self.mempool.has_tx_with_excess_sig(excess_sig)?,
+            )),
         }
     }
 

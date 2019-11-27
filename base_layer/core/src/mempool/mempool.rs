@@ -36,7 +36,7 @@ use std::sync::Arc;
 use tari_transactions::{transaction::Transaction, types::Signature};
 use tari_utilities::hash::Hashable;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub enum TxStorageResponse {
     UnconfirmedPool,
     OrphanPool,
