@@ -31,11 +31,7 @@ use tari_p2p::{
     comms_connector::pubsub_connector,
     services::{
         comms_outbound::CommsOutboundServiceInitializer,
-        liveness::{
-            handle::{LivenessEvent, LivenessHandle},
-            LivenessConfig,
-            LivenessInitializer,
-        },
+        liveness::{LivenessConfig, LivenessEvent, LivenessHandle, LivenessInitializer},
     },
 };
 use tari_service_framework::StackBuilder;
@@ -59,6 +55,7 @@ pub fn setup_liveness_service(
                 enable_auto_join: false,
                 enable_auto_stored_message_request: false,
                 auto_ping_interval: None,
+                refresh_neighbours_interval: Duration::from_secs(60),
             },
             Arc::clone(&subscription_factory),
             dht.dht_requester(),

@@ -1,14 +1,15 @@
 use crate::atomic_counter::AtomicCounter;
 use arc_swap::ArcSwapOption;
 use std::{
+    fmt::Debug,
     iter::Iterator,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
 };
+
 // Use std mpsc's error types as our own
-use std::fmt::Debug;
 pub use std::sync::mpsc::{RecvError, RecvTimeoutError, SendError, TryRecvError};
 
 /// Function used to create and initialise a (Sender, Receiver) tuple.

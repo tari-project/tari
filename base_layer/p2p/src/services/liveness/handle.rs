@@ -29,7 +29,7 @@ use tari_service_framework::reply_channel::SenderService;
 use tower::Service;
 
 /// Request types made through the `LivenessHandle` and are handled by the `LivenessService`
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum LivenessRequest {
     /// Send a ping to the given node ID
     SendPing(NodeId),
@@ -41,6 +41,8 @@ pub enum LivenessRequest {
     GetAvgLatency(NodeId),
     /// Set the metadata attached to each pong message
     SetPongMetadata(MetadataKey, Vec<u8>),
+    /// Request the number of active neighbours
+    GetNumActiveNeighbours,
 }
 
 /// Response type for `LivenessService`
@@ -52,6 +54,8 @@ pub enum LivenessResponse {
     Count(usize),
     /// Response for GetAvgLatency
     AvgLatency(Option<u32>),
+    /// The number of active neighbouring peers
+    NumActiveNeighbours(usize),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -61,6 +65,7 @@ pub enum LivenessEvent {
     /// A pong was received. The latency to the peer (if available) and the metadata contained
     /// within the received pong message are included as part of the event
     ReceivedPong(Box<PongEvent>),
+    BroadcastedPings(usize),
 }
 
 /// Repressents a pong event
@@ -72,14 +77,17 @@ pub struct PongEvent {
     pub latency: Option<u32>,
     /// Pong metadata
     pub metadata: Metadata,
+    /// True if the pong was from a neighbouring peer, otherwise false
+    pub is_neighbour: bool,
 }
 
 impl PongEvent {
-    pub(super) fn new(node_id: NodeId, latency: Option<u32>, metadata: Metadata) -> Self {
+    pub(super) fn new(node_id: NodeId, latency: Option<u32>, metadata: Metadata, is_neighbour: bool) -> Self {
         Self {
             node_id,
             latency,
             metadata,
+            is_neighbour,
         }
     }
 }

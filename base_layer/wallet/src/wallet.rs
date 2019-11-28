@@ -65,7 +65,7 @@ use tari_p2p::{
     initialization::{initialize_comms, CommsConfig},
     services::{
         comms_outbound::CommsOutboundServiceInitializer,
-        liveness::{handle::LivenessHandle, LivenessInitializer},
+        liveness::{LivenessHandle, LivenessInitializer},
     },
 };
 use tari_service_framework::StackBuilder;

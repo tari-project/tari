@@ -37,8 +37,9 @@
 
 mod config;
 pub mod error;
-pub mod handle;
+mod handle;
 mod message;
+mod neighbours;
 mod service;
 mod state;
 
@@ -46,17 +47,14 @@ use self::{message::PingPongMessage, service::LivenessService, state::LivenessSt
 use crate::{
     comms_connector::PeerMessage,
     domain_message::DomainMessage,
-    services::{
-        liveness::handle::LivenessHandle,
-        utils::{map_decode, ok_or_skip_result},
-    },
+    services::utils::{map_decode, ok_or_skip_result},
     tari_message::TariMessageType,
 };
 use futures::{future, Future, Stream, StreamExt};
 use log::*;
 use std::sync::Arc;
-use tari_broadcast_channel::bounded;
-use tari_comms_dht::outbound::OutboundMessageRequester;
+use tari_broadcast_channel as broadcast_channel;
+use tari_comms_dht::{outbound::OutboundMessageRequester, DhtRequester};
 use tari_pubsub::TopicSubscriptionFactory;
 use tari_service_framework::{
     handles::ServiceHandlesFuture,
@@ -67,12 +65,16 @@ use tari_service_framework::{
 use tari_shutdown::ShutdownSignal;
 use tokio::runtime::TaskExecutor;
 
+#[cfg(feature = "test-mocks")]
+pub mod mock;
+
 // Public exports
 pub use self::{
     config::LivenessConfig,
-    handle::{LivenessRequest, LivenessResponse},
+    handle::{LivenessEvent, LivenessHandle, LivenessRequest, LivenessResponse, PongEvent},
+    state::Metadata,
 };
-use tari_comms_dht::DhtRequester;
+pub use crate::proto::liveness::MetadataKey;
 
 const LOG_TARGET: &'static str = "p2p::services::liveness";
 
@@ -119,7 +121,7 @@ impl ServiceInitializer for LivenessInitializer {
     {
         let (sender, receiver) = reply_channel::unbounded();
 
-        let (publisher, subscriber) = bounded(100);
+        let (publisher, subscriber) = broadcast_channel::bounded(100);
 
         let liveness_handle = LivenessHandle::new(sender, subscriber);
 

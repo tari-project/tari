@@ -12,6 +12,8 @@
 extern crate lazy_static;
 
 pub mod address;
+#[macro_use]
+pub mod enums;
 pub mod futures;
 pub mod paths;
 pub mod random;

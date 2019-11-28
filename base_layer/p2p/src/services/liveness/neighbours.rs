@@ -20,28 +20,43 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use chrono::{NaiveDateTime, Utc};
 use std::time::Duration;
+use tari_comms::peer_manager::Peer;
 
-/// Configuration for liveness service
-#[derive(Debug, Clone)]
-pub struct LivenessConfig {
-    /// The interval to send Ping messages, or None to disable periodic pinging (default: None (disabled))
-    pub auto_ping_interval: Option<Duration>,
-    /// Set to true to enable automatically joining the network on node startup (default: true)
-    pub enable_auto_join: bool,
-    /// Set to true to enable a request for stored messages on node startup (default: true)
-    pub enable_auto_stored_message_request: bool,
-    /// The length of time between querying peer manager for closest neighbours. (default: 5mins)
-    pub refresh_neighbours_interval: Duration,
+pub struct Neighbours {
+    last_updated: Option<NaiveDateTime>,
+    peers: Vec<Peer>,
+    stale_interval: Duration,
 }
 
-impl Default for LivenessConfig {
-    fn default() -> Self {
+impl Neighbours {
+    pub fn new(stale_interval: Duration) -> Self {
         Self {
-            auto_ping_interval: None,
-            enable_auto_join: true,
-            enable_auto_stored_message_request: true,
-            refresh_neighbours_interval: Duration::from_secs(5 * 60),
+            last_updated: None,
+            peers: Vec::default(),
+            stale_interval,
         }
+    }
+
+    pub fn is_fresh(&self) -> bool {
+        self.last_updated
+            .map(|dt| {
+                let chrono_dt = chrono::Duration::from_std(self.stale_interval)
+                    .expect("Neighbours::stale_interval is too large (overflows chrono::Duration::from_std)");
+                dt.checked_add_signed(chrono_dt)
+                    .map(|dt| dt < Utc::now().naive_utc())
+                    .expect("Neighbours::stale_interval is too large (overflows i32 when added to NaiveDateTime)")
+            })
+            .unwrap_or(false)
+    }
+
+    pub fn set_peers(&mut self, peers: Vec<Peer>) {
+        self.peers = peers;
+        self.last_updated = Some(Utc::now().naive_utc());
+    }
+
+    pub fn peers(&self) -> &[Peer] {
+        &self.peers
     }
 }

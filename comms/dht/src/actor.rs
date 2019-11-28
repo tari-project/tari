@@ -417,6 +417,11 @@ impl<'a> DhtActor<'a> {
                     return false;
                 }
 
+                if !peer.has_features(PeerFeatures::MESSAGE_PROPAGATION) {
+                    not_propagation_node_count += 1;
+                    return false;
+                }
+
                 let is_connect_eligible = {
                     // Check this peer was recently connectable
                     peer.connection_stats.failed_attempts() <= config.broadcast_cooldown_max_attempts ||

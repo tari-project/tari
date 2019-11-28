@@ -8,6 +8,9 @@ readme = "README.md"
 license = "BSD-3-Clause"
 edition = "2018"
 
+[features]
+test-mocks = []
+
 [dependencies]
 tari_broadcast_channel = { version="^0.0",  path = "../../infrastructure/broadcast_channel" }
 tari_comms = { version = "^0.0", path = "../../comms"}

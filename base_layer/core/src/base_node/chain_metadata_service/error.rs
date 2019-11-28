@@ -20,28 +20,21 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::time::Duration;
+use crate::base_node::comms_interface::CommsInterfaceError;
+use derive_error::Error;
+use prost::DecodeError;
+use tari_comms::message::MessageError;
+use tari_p2p::services::liveness::error::LivenessError;
 
-/// Configuration for liveness service
-#[derive(Debug, Clone)]
-pub struct LivenessConfig {
-    /// The interval to send Ping messages, or None to disable periodic pinging (default: None (disabled))
-    pub auto_ping_interval: Option<Duration>,
-    /// Set to true to enable automatically joining the network on node startup (default: true)
-    pub enable_auto_join: bool,
-    /// Set to true to enable a request for stored messages on node startup (default: true)
-    pub enable_auto_stored_message_request: bool,
-    /// The length of time between querying peer manager for closest neighbours. (default: 5mins)
-    pub refresh_neighbours_interval: Duration,
-}
-
-impl Default for LivenessConfig {
-    fn default() -> Self {
-        Self {
-            auto_ping_interval: None,
-            enable_auto_join: true,
-            enable_auto_stored_message_request: true,
-            refresh_neighbours_interval: Duration::from_secs(5 * 60),
-        }
-    }
+#[derive(Debug, Error)]
+pub enum ChainMetadataSyncError {
+    /// Failed to decode chain metadata
+    DecodeError(DecodeError),
+    /// Peer did not send any chain metadata
+    NoChainMetadata,
+    LivenessError(LivenessError),
+    CommsInterfaceError(CommsInterfaceError),
+    MessageError(MessageError),
+    /// Failed to publish `ChainMetadataEvent`
+    EventPublishFailed,
 }

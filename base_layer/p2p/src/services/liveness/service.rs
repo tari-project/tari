@@ -31,14 +31,17 @@ use super::{
 };
 use crate::{
     domain_message::DomainMessage,
-    services::liveness::handle::{LivenessEvent, PongEvent},
+    services::liveness::{neighbours::Neighbours, LivenessEvent, PongEvent},
     tari_message::TariMessageType,
 };
 use futures::{pin_mut, stream::StreamExt, task::Context, Poll, SinkExt, Stream};
 use log::*;
 use std::{pin::Pin, time::Instant};
 use tari_broadcast_channel::Publisher;
-use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
+use tari_comms::{
+    peer_manager::{NodeId, Peer},
+    types::CommsPublicKey,
+};
 use tari_comms_dht::{
     broadcast_strategy::BroadcastStrategy,
     domain_message::OutboundDomainMessage,
@@ -62,6 +65,7 @@ pub struct LivenessService<THandleStream, TPingStream> {
     oms_handle: OutboundMessageRequester,
     event_publisher: Publisher<LivenessEvent>,
     shutdown_signal: Option<ShutdownSignal>,
+    neighbours: Neighbours,
 }
 
 impl<THandleStream, TPingStream> LivenessService<THandleStream, TPingStream> {
@@ -77,7 +81,6 @@ impl<THandleStream, TPingStream> LivenessService<THandleStream, TPingStream> {
     ) -> Self
     {
         Self {
-            config,
             request_rx: Some(request_rx),
             ping_stream: Some(ping_stream),
             state,
@@ -85,6 +88,8 @@ impl<THandleStream, TPingStream> LivenessService<THandleStream, TPingStream> {
             oms_handle,
             event_publisher,
             shutdown_signal: Some(shutdown_signal),
+            neighbours: Neighbours::new(config.refresh_neighbours_interval),
+            config,
         }
     }
 }
@@ -148,28 +153,31 @@ where
         match msg.inner().kind().ok_or(LivenessError::InvalidPingPongType)? {
             PingPong::Ping => {
                 self.state.inc_pings_received();
-                self.send_pong(msg.origin_pubkey).await.unwrap();
+                self.send_pong(msg.inner.nonce, msg.origin_pubkey).await.unwrap();
                 self.state.inc_pongs_sent();
-                self.event_publisher
-                    .send(LivenessEvent::ReceivedPing)
-                    .await
-                    .map_err(|_| LivenessError::EventStreamError)?;
+
+                self.publish_event(LivenessEvent::ReceivedPing).await?;
             },
             PingPong::Pong => {
                 let maybe_latency = self.state.record_pong(&msg.source_peer.node_id);
                 trace!(target: LOG_TARGET, "Recorded latency: {:?}", maybe_latency);
-                let pong_event = PongEvent::new(msg.source_peer.node_id, maybe_latency, msg.inner.metadata);
-                self.event_publisher
-                    .send(LivenessEvent::ReceivedPong(Box::new(pong_event)))
-                    .await
-                    .map_err(|_| LivenessError::EventStreamError)?;
+                let is_neighbour = self.neighbours.peers().contains(&msg.source_peer);
+                let pong_event = PongEvent::new(
+                    msg.source_peer.node_id,
+                    maybe_latency,
+                    msg.inner.metadata.into(),
+                    is_neighbour,
+                );
+
+                self.publish_event(LivenessEvent::ReceivedPong(Box::new(pong_event)))
+                    .await?;
             },
         }
         Ok(())
     }
 
-    async fn send_pong(&mut self, dest: CommsPublicKey) -> Result<(), LivenessError> {
-        let msg = PingPongMessage::pong_with_metadata(self.state.pong_metadata().clone());
+    async fn send_pong(&mut self, nonce: u64, dest: CommsPublicKey) -> Result<(), LivenessError> {
+        let msg = PingPongMessage::pong_with_metadata(nonce, self.state.pong_metadata().clone());
         self.oms_handle
             .send_direct(
                 dest,
@@ -205,6 +213,10 @@ where
                 self.state.set_pong_metadata_entry(key, value);
                 Ok(LivenessResponse::Ok)
             },
+            GetNumActiveNeighbours => {
+                let num_active_neighbours = self.state.num_active_neighbours();
+                Ok(LivenessResponse::NumActiveNeighbours(num_active_neighbours))
+            },
         }
     }
 
@@ -223,29 +235,58 @@ where
         Ok(())
     }
 
-    async fn ping_neighbours(&mut self) -> Result<(), LivenessError> {
+    async fn update_neighbours_if_stale(&mut self) -> Result<&[Peer], LivenessError> {
+        if self.neighbours.is_fresh() {
+            return Ok(self.neighbours.peers());
+        }
+
         let peers = self
             .dht_requester
             .select_peers(BroadcastStrategy::Neighbours(Vec::new()))
             .await?;
+
+        self.state.set_num_active_neighbours(peers.len());
+        self.neighbours.set_peers(peers);
+
+        Ok(self.neighbours.peers())
+    }
+
+    async fn ping_neighbours(&mut self) -> Result<(), LivenessError> {
+        self.update_neighbours_if_stale().await?;
+        let peers = self.neighbours.peers();
+        let len_peers = peers.len();
         trace!(
             target: LOG_TARGET,
             "Sending liveness ping to {} neighbour(s)",
-            peers.len(),
+            len_peers
         );
 
         for peer in peers {
+            let msg = PingPongMessage::ping();
+            // TODO: Match the nonce of a pong message to an inflight ping message to determine latency,
+            //       rather than using node id.
+            //       The time between _any_ ping/pong from a specific node yields incorrect
+            //       latency results
             self.state.add_inflight_ping(peer.node_id.clone());
             self.oms_handle
                 .send_direct(
                     peer.public_key.clone(),
                     OutboundEncryption::None,
-                    OutboundDomainMessage::new(TariMessageType::PingPong, PingPongMessage::ping()),
+                    OutboundDomainMessage::new(TariMessageType::PingPong, msg),
                 )
                 .await?;
         }
 
+        self.publish_event(LivenessEvent::BroadcastedPings(len_peers)).await?;
+
         Ok(())
+    }
+
+    async fn publish_event(&mut self, event: LivenessEvent) -> Result<(), LivenessError> {
+        self.event_publisher
+            .send(event)
+            .await
+            .map_err(|_| LivenessError::EventStreamError)
     }
 
     fn get_ping_count(&self) -> usize {
@@ -472,8 +513,8 @@ mod test {
         let oms_handle = OutboundMessageRequester::new(outbound_tx);
 
         let mut metadata = Metadata::new();
-        metadata.insert(MetadataKey::ChainMetadata as i32, b"dummy-data".to_vec());
-        let msg = create_dummy_message(PingPongMessage::pong_with_metadata(metadata));
+        metadata.insert(MetadataKey::ChainMetadata, b"dummy-data".to_vec());
+        let msg = create_dummy_message(PingPongMessage::pong_with_metadata(123, metadata));
 
         state.add_inflight_ping(msg.source_peer.node_id.clone());
         // A stream which emits one message and then closes
@@ -511,10 +552,7 @@ mod test {
                 match &*event {
                     LivenessEvent::ReceivedPong(event) => {
                         rec_event_clone.store(true, Ordering::SeqCst);
-                        assert_eq!(
-                            event.metadata.get(&(MetadataKey::ChainMetadata as i32)).unwrap(),
-                            b"dummy-data"
-                        );
+                        assert_eq!(event.metadata.get(&MetadataKey::ChainMetadata).unwrap(), b"dummy-data");
                     },
                     _ => panic!("Unexpected event"),
                 }

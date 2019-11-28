@@ -32,7 +32,37 @@ use tari_comms::peer_manager::NodeId;
 const LATENCY_SAMPLE_WINDOW_SIZE: usize = 25;
 const MAX_INFLIGHT_TTL: Duration = Duration::from_secs(20);
 
-pub(super) type Metadata = HashMap<i32, Vec<u8>>;
+/// Represents metadata in a ping/pong message.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Metadata {
+    inner: HashMap<i32, Vec<u8>>,
+}
+
+impl Metadata {
+    pub fn new() -> Self {
+        Default::default()
+    }
+
+    pub fn insert(&mut self, key: MetadataKey, value: Vec<u8>) {
+        self.inner.insert(key as i32, value);
+    }
+
+    pub fn get(&self, key: &MetadataKey) -> Option<&Vec<u8>> {
+        self.inner.get(&(*key as i32))
+    }
+}
+
+impl From<HashMap<i32, Vec<u8>>> for Metadata {
+    fn from(inner: HashMap<i32, Vec<u8>>) -> Self {
+        Self { inner }
+    }
+}
+
+impl From<Metadata> for HashMap<i32, Vec<u8>> {
+    fn from(metadata: Metadata) -> Self {
+        metadata.inner
+    }
+}
 
 /// State for the LivenessService.
 #[derive(Default)]
@@ -44,6 +74,7 @@ pub struct LivenessState {
     pongs_received: AtomicUsize,
     pings_sent: AtomicUsize,
     pongs_sent: AtomicUsize,
+    num_active_neighbours: AtomicUsize,
 
     pong_metadata: Metadata,
 }
@@ -77,6 +108,15 @@ impl LivenessState {
         self.pongs_received.load(Ordering::Relaxed)
     }
 
+    pub fn num_active_neighbours(&self) -> usize {
+        self.num_active_neighbours.load(Ordering::Relaxed)
+    }
+
+    pub fn set_num_active_neighbours(&self, num_active_neighbours: usize) {
+        self.num_active_neighbours
+            .store(num_active_neighbours, Ordering::Relaxed);
+    }
+
     #[cfg(test)]
     pub fn pings_sent(&self) -> usize {
         self.pings_sent.load(Ordering::Relaxed)
@@ -94,7 +134,7 @@ impl LivenessState {
 
     /// Set a pong metadata entry. Duplicate entries are replaced.
     pub fn set_pong_metadata_entry(&mut self, key: MetadataKey, value: Vec<u8>) {
-        self.pong_metadata.insert(key as i32, value);
+        self.pong_metadata.insert(key, value);
     }
 
     /// Adds a ping to the inflight ping list, while noting the current time that a ping was sent.
@@ -253,7 +293,7 @@ mod test {
         let mut state = LivenessState::new();
         state.set_pong_metadata_entry(MetadataKey::ChainMetadata, b"dummy-data".to_vec());
         assert_eq!(
-            state.pong_metadata().get(&(MetadataKey::ChainMetadata as i32)).unwrap(),
+            state.pong_metadata().get(&MetadataKey::ChainMetadata).unwrap(),
             b"dummy-data"
         );
     }

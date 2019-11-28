@@ -36,4 +36,4 @@ pub mod mutable_mmr_state;
 pub mod request;
 pub mod response;
 
-pub use base_node::{BaseNodeServiceRequest, BaseNodeServiceResponse};
+pub use base_node::{BaseNodeServiceRequest, BaseNodeServiceResponse, ChainMetadata};

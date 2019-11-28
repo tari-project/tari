@@ -20,28 +20,43 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::time::Duration;
-
-/// Configuration for liveness service
-#[derive(Debug, Clone)]
-pub struct LivenessConfig {
-    /// The interval to send Ping messages, or None to disable periodic pinging (default: None (disabled))
-    pub auto_ping_interval: Option<Duration>,
-    /// Set to true to enable automatically joining the network on node startup (default: true)
-    pub enable_auto_join: bool,
-    /// Set to true to enable a request for stored messages on node startup (default: true)
-    pub enable_auto_stored_message_request: bool,
-    /// The length of time between querying peer manager for closest neighbours. (default: 5mins)
-    pub refresh_neighbours_interval: Duration,
+/// Recovers a poisoned lock by returning the value before the lock was poisoned
+#[macro_export]
+macro_rules! recover_lock {
+    ($e:expr) => {
+        match $e {
+            Ok(lock) => lock,
+            Err(poisoned) => poisoned.into_inner(),
+        }
+    };
 }
 
-impl Default for LivenessConfig {
-    fn default() -> Self {
-        Self {
-            auto_ping_interval: None,
-            enable_auto_join: true,
-            enable_auto_stored_message_request: true,
-            refresh_neighbours_interval: Duration::from_secs(5 * 60),
-        }
-    }
+/// This macro unlocks a Mutex or RwLock. If the lock is poisoned (i.e. a panic before a MutexGuard / RwLockGuard is
+/// dropped) the last value before the panic occurred is used.
+///
+/// This macro should not be used if the implementation should fail a if the lock was poisoned.
+#[macro_export]
+macro_rules! acquire_lock {
+    ($e:expr, $m:ident) => {
+        $crate::recover_lock!($e.$m())
+    };
+    ($e:expr) => {
+        $crate::acquire_lock!($e, lock)
+    };
+}
+
+/// Acquire a write lock on a RwLock, silently recovering the lock if it is poisoned
+#[macro_export]
+macro_rules! acquire_write_lock {
+    ($e:expr) => {
+        $crate::acquire_lock!($e, write)
+    };
+}
+
+/// Acquire a read lock on a RwLock, silently recovering the lock if it is poisoned
+#[macro_export]
+macro_rules! acquire_read_lock {
+    ($e:expr) => {
+        $crate::acquire_lock!($e, read)
+    };
 }
