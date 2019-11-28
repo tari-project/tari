@@ -590,7 +590,7 @@ fn lmdb_fetch_future_mmr_root_for_utxo_and_rp() {
         min_history_len: 10,
         max_history_len: 20,
     };
-    let db = create_lmdb_database(&create_random_database_path(), mct_config).unwrap();
+    let db = create_lmdb_database(&create_temporary_data_path(), mct_config).unwrap();
     fetch_future_mmr_root_for_utxo_and_rp(db);
 }
 
@@ -635,7 +635,7 @@ fn lmdb_fetch_future_mmr_root_for_for_kernel() {
         min_history_len: 10,
         max_history_len: 20,
     };
-    let db = create_lmdb_database(&create_random_database_path(), mct_config).unwrap();
+    let db = create_lmdb_database(&create_temporary_data_path(), mct_config).unwrap();
     fetch_future_mmr_root_for_for_kernel(db);
 }
 
@@ -684,7 +684,7 @@ fn lmdb_fetch_future_mmr_root_for_header() {
         min_history_len: 10,
         max_history_len: 20,
     };
-    let db = create_lmdb_database(&create_random_database_path(), mct_config).unwrap();
+    let db = create_lmdb_database(&create_temporary_data_path(), mct_config).unwrap();
     fetch_future_mmr_root_for_header(db);
 }
 
