@@ -11,13 +11,22 @@ package tari.base_node;
 message BaseNodeServiceResponse {
     uint64 request_key = 1;
     oneof response {
+        // Indicates a ChainMetadata response.
         ChainMetadata chain_metadata = 2;
+        // Indicates a TransactionKernels response.
         TransactionKernels transaction_kernels = 3;
+        // Indicates a BlockHeaders response.
         BlockHeaders block_headers = 4;
+        // Indicates a TransactionOutputs response.
         TransactionOutputs transaction_outputs = 5;
+        // Indicates a HistoricalBlocks response.
         HistoricalBlocks historical_blocks = 6;
+        // Indicates a MmrState response.
         MutableMmrState mmr_state = 7;
-        tari.core.Block new_block_template = 8;
+        // Indicates a NewBlockTemplate response.
+        tari.core.NewBlockTemplate new_block_template = 8;
+        // Indicates a NewBlock response.
+        tari.core.Block new_block = 9;
     }
 }
 

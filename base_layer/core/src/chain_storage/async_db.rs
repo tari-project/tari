@@ -160,6 +160,7 @@ make_async!(fetch_orphan(hash: HashOutput) -> Block);
 make_async!(is_utxo(hash: HashOutput) -> bool);
 make_async!(fetch_mmr_root(tree: MmrTree) -> HashOutput);
 make_async!(fetch_mmr_only_root(tree: MmrTree) -> HashOutput);
+make_async!(calculate_mmr_root(tree: MmrTree,additions: Vec<HashOutput>,deletions: Vec<HashOutput>) -> HashOutput);
 make_async!(fetch_mmr_base_leaf_nodes(tree: MmrTree,index: usize, count:usize) -> MutableMmrState);
 make_async!(add_block(block: Block) -> BlockAddResult);
 #[cfg(test)]

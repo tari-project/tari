@@ -37,7 +37,10 @@
 //! state = Hash(Hash(mmr_root)|| Hash(roaring_bitmap))
 //! This hash is called the UTXO merkle root, and is used as the output_mr
 
-use crate::proof_of_work::{Difficulty, ProofOfWork};
+use crate::{
+    blocks::NewBlockHeaderTemplate,
+    proof_of_work::{Difficulty, ProofOfWork},
+};
 use chrono::{DateTime, Utc};
 use digest::Digest;
 use serde::{
@@ -53,6 +56,7 @@ use std::{
 };
 use tari_transactions::types::{BlindingFactor, HashDigest};
 use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray, Hashable};
+
 pub type BlockHash = Vec<u8>;
 
 /// The BlockHeader contains all the metadata for the block, including proof of work, a link to the previous block
@@ -132,6 +136,23 @@ impl BlockHeader {
     }
 }
 
+impl From<NewBlockHeaderTemplate> for BlockHeader {
+    fn from(header_template: NewBlockHeaderTemplate) -> Self {
+        Self {
+            version: header_template.version,
+            height: header_template.height,
+            prev_hash: header_template.prev_hash,
+            timestamp: EpochTime::now(),
+            output_mr: vec![0; 32],
+            range_proof_mr: vec![0; 32],
+            kernel_mr: vec![0; 32],
+            total_kernel_offset: header_template.total_kernel_offset,
+            nonce: 0,
+            pow: header_template.pow,
+        }
+    }
+}
+
 impl Hashable for BlockHeader {
     fn hash(&self) -> Vec<u8> {
         HashDigest::new()
@@ -180,7 +201,7 @@ impl Display for BlockHeader {
     }
 }
 
-mod hash_serializer {
+pub(crate) mod hash_serializer {
     use super::*;
     use tari_utilities::hex::Hex;
 
@@ -221,7 +242,7 @@ mod hash_serializer {
 
 #[cfg(test)]
 mod test {
-    use crate::{blocks::BlockHeader, proof_of_work::PowAlgorithm};
+    use crate::blocks::BlockHeader;
     use tari_utilities::Hashable;
 
     #[test]

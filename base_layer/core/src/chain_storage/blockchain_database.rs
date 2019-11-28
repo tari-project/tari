@@ -86,6 +86,14 @@ pub trait BlockchainBackend: Send + Sync {
     fn fetch_mmr_root(&self, tree: MmrTree) -> Result<HashOutput, ChainStorageError>;
     /// Returns only the MMR merkle root without the state of the roaring bitmap.
     fn fetch_mmr_only_root(&self, tree: MmrTree) -> Result<HashOutput, ChainStorageError>;
+    /// Fetches the merklish root for the MMR tree identified by the key after the current additions and deletions have
+    /// temporarily been applied. Deletions of hashes from the MMR can only be applied for UTXOs.
+    fn calculate_mmr_root(
+        &self,
+        tree: MmrTree,
+        additions: Vec<HashOutput>,
+        deletions: Vec<HashOutput>,
+    ) -> Result<HashOutput, ChainStorageError>;
     /// Constructs a merkle proof for the specified merkle mountain range and the given leaf position.
     fn fetch_mmr_proof(&self, tree: MmrTree, pos: usize) -> Result<MerkleProof, ChainStorageError>;
     /// The nth MMR checkpoint (the list of nodes added & deleted) for the given Merkle tree. The index is the n-th
@@ -315,6 +323,18 @@ where T: BlockchainBackend
     /// Returns only the MMR merkle root without the state of the roaring bitmap.
     pub fn fetch_mmr_only_root(&self, tree: MmrTree) -> Result<HashOutput, ChainStorageError> {
         self.db.fetch_mmr_only_root(tree)
+    }
+
+    /// Apply the current change set to a pruned copy of the merke mountain range and calculate the resulting Merklish
+    /// root of the specified merkle mountain range. Deletions of hashes from the MMR can only be applied for UTXOs.
+    pub fn calculate_mmr_root(
+        &self,
+        tree: MmrTree,
+        additions: Vec<HashOutput>,
+        deletions: Vec<HashOutput>,
+    ) -> Result<HashOutput, ChainStorageError>
+    {
+        self.db.calculate_mmr_root(tree, additions, deletions)
     }
 
     /// Fetch a Merklish proof for the given hash, tree and position in the MMR
@@ -798,6 +818,7 @@ where T: BlockchainBackend
         height: u64,
     ) -> Result<(), ChainStorageError>
     {
+        // TODO: Changes applied to the Kernel, UTXO and RP MMRs should also be reverted.
         warn!(
             target: LOG_TARGET,
             "There was an error while adding block {} to the database. Aborting. {}",

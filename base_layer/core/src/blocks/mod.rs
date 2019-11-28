@@ -22,8 +22,12 @@
 
 mod block;
 pub(crate) mod blockheader;
+mod new_block_template;
+mod new_blockheader_template;
 
 pub mod genesis_block;
 
 pub use block::{Block, BlockBuilder, BlockValidationError};
-pub use blockheader::BlockHeader;
+pub use blockheader::{BlockHash, BlockHeader};
+pub use new_block_template::NewBlockTemplate;
+pub use new_blockheader_template::NewBlockHeaderTemplate;

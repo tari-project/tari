@@ -61,3 +61,25 @@ message HistoricalBlock {
     // The underlying block
     Block block = 3;
 }
+
+
+// The NewBlockHeaderTemplate is used for the construction of a new mineable block. It contains all the metadata for the block that the Base Node is able to complete on behalf of a Miner.
+message NewBlockHeaderTemplate {
+    // Version of the block
+    uint32 version = 1;
+    // Height of this block since the genesis block (height 0)
+    uint64 height = 2;
+    // Hash of the block previous to this in the chain.
+    bytes prev_hash = 3;
+    // Total accumulated sum of kernel offsets since genesis block. We can derive the kernel offset sum for *this*
+    // block from the total kernel offset of the previous block header.
+    bytes total_kernel_offset = 4;
+    // Proof of work metadata
+    ProofOfWork pow = 5;
+}
+
+// The new block template is used constructing a new partial block, allowing a miner to added the coinbase utxo and as a final step the Base node to add the MMR roots to the header.
+message NewBlockTemplate {
+    NewBlockHeaderTemplate header = 1;
+    tari.types.AggregateBody body = 2;
+}

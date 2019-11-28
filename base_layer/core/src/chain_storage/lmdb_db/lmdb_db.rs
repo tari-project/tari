@@ -55,6 +55,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 use tari_mmr::{
+    pruned_mmr::prune_mutable_mmr,
     Hash as MmrHash,
     MerkleChangeTracker,
     MerkleChangeTrackerConfig,
@@ -284,32 +285,64 @@ where D: Digest + Send + Sync
             match op {
                 WriteOperation::RewindMmr(tree, steps_back) => match tree {
                     MmrTree::Header => {
-                        self.header_mmr
-                            .write()
-                            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
-                            .rewind(steps_back)
-                            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+                        if steps_back == 0 {
+                            self.header_mmr
+                                .write()
+                                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
+                                .reset()
+                                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+                        } else {
+                            self.header_mmr
+                                .write()
+                                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
+                                .rewind(steps_back)
+                                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+                        }
                     },
                     MmrTree::Kernel => {
-                        self.kernel_mmr
-                            .write()
-                            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
-                            .rewind(steps_back)
-                            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+                        if steps_back == 0 {
+                            self.kernel_mmr
+                                .write()
+                                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
+                                .reset()
+                                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+                        } else {
+                            self.kernel_mmr
+                                .write()
+                                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
+                                .rewind(steps_back)
+                                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+                        }
                     },
                     MmrTree::Utxo => {
-                        self.utxo_mmr
-                            .write()
-                            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
-                            .rewind(steps_back)
-                            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+                        if steps_back == 0 {
+                            self.utxo_mmr
+                                .write()
+                                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
+                                .reset()
+                                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+                        } else {
+                            self.utxo_mmr
+                                .write()
+                                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
+                                .rewind(steps_back)
+                                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+                        }
                     },
                     MmrTree::RangeProof => {
-                        self.range_proof_mmr
-                            .write()
-                            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
-                            .rewind(steps_back)
-                            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+                        if steps_back == 0 {
+                            self.range_proof_mmr
+                                .write()
+                                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
+                                .reset()
+                                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+                        } else {
+                            self.range_proof_mmr
+                                .write()
+                                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
+                                .rewind(steps_back)
+                                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+                        }
                     },
                 },
                 WriteOperation::CreateMmrCheckpoint(tree) => match tree {
@@ -624,6 +657,52 @@ where D: Digest + Send + Sync
                 .get_mmr_only_root()?,
         };
         Ok(root)
+    }
+
+    fn calculate_mmr_root(
+        &self,
+        tree: MmrTree,
+        additions: Vec<HashOutput>,
+        deletions: Vec<HashOutput>,
+    ) -> Result<Vec<u8>, ChainStorageError>
+    {
+        let mut pruned_mmr = match tree {
+            MmrTree::Utxo => prune_mutable_mmr(
+                &*self
+                    .utxo_mmr
+                    .read()
+                    .map_err(|e| ChainStorageError::AccessError(e.to_string()))?,
+            )?,
+            MmrTree::Kernel => prune_mutable_mmr(
+                &*self
+                    .kernel_mmr
+                    .read()
+                    .map_err(|e| ChainStorageError::AccessError(e.to_string()))?,
+            )?,
+            MmrTree::RangeProof => prune_mutable_mmr(
+                &*self
+                    .range_proof_mmr
+                    .read()
+                    .map_err(|e| ChainStorageError::AccessError(e.to_string()))?,
+            )?,
+            MmrTree::Header => prune_mutable_mmr(
+                &*self
+                    .header_mmr
+                    .read()
+                    .map_err(|e| ChainStorageError::AccessError(e.to_string()))?,
+            )?,
+        };
+        for hash in additions {
+            pruned_mmr.push(&hash)?;
+        }
+        if let MmrTree::Utxo = tree {
+            for hash in deletions {
+                if let Some(index) = lmdb_get(&self.env, &self.txos_hash_to_index_db, &hash)? {
+                    pruned_mmr.delete(index);
+                }
+            }
+        }
+        Ok(pruned_mmr.get_merkle_root()?)
     }
 
     /// Returns an MMR proof extracted from the full Merkle mountain range without trimming the MMR using the roaring

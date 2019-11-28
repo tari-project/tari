@@ -22,7 +22,7 @@
 
 use crate::{
     base_node::comms_interface::{error::CommsInterfaceError, NodeCommsRequest, NodeCommsResponse},
-    blocks::{blockheader::BlockHeader, Block, BlockBuilder},
+    blocks::{blockheader::BlockHeader, Block, BlockBuilder, NewBlockTemplate},
     chain_storage::{
         async_db,
         BlockAddResult,
@@ -30,6 +30,7 @@ use crate::{
         BlockchainDatabase,
         ChainStorageError,
         HistoricalBlock,
+        MmrTree,
     },
     mempool::Mempool,
 };
@@ -38,7 +39,9 @@ use tari_broadcast_channel::Publisher;
 use tari_transactions::{
     consensus::MAX_BLOCK_TRANSACTION_WEIGHT,
     transaction::{TransactionKernel, TransactionOutput},
+    types::HashOutput,
 };
+use tari_utilities::Hashable;
 
 /// Events that can be published on the Validated Block Event Stream
 #[derive(Debug)]
@@ -139,11 +142,43 @@ where T: BlockchainBackend
                     .map(|tx| (**tx).clone())
                     .collect();
 
-                let block = BlockBuilder::new()
-                    .with_header(header)
-                    .with_transactions(transactions)
-                    .build();
-                Ok(NodeCommsResponse::NewBlockTemplate(block))
+                let block_template = NewBlockTemplate::from(
+                    BlockBuilder::new()
+                        .with_header(header)
+                        .with_transactions(transactions)
+                        .build(),
+                );
+
+                Ok(NodeCommsResponse::NewBlockTemplate(block_template))
+            },
+            NodeCommsRequest::GetNewBlock(block_template) => {
+                let NewBlockTemplate { header, body } = block_template.clone();
+
+                let kernel_hashes: Vec<HashOutput> = body.kernels().iter().map(|k| k.hash()).collect();
+                let out_hashes: Vec<HashOutput> = body.outputs().iter().map(|out| out.hash()).collect();
+                let rp_hashes: Vec<HashOutput> = body.outputs().iter().map(|out| out.proof().hash()).collect();
+                let inp_hashes: Vec<HashOutput> = body.inputs().iter().map(|inp| inp.hash()).collect();
+
+                let mut header = BlockHeader::from(header);
+                header.kernel_mr = async_db::calculate_mmr_root(
+                    self.blockchain_db.clone(),
+                    MmrTree::Kernel,
+                    kernel_hashes,
+                    Vec::new(),
+                )
+                .await?;
+                header.output_mr =
+                    async_db::calculate_mmr_root(self.blockchain_db.clone(), MmrTree::Utxo, out_hashes, inp_hashes)
+                        .await?;
+                header.range_proof_mr = async_db::calculate_mmr_root(
+                    self.blockchain_db.clone(),
+                    MmrTree::RangeProof,
+                    rp_hashes,
+                    Vec::new(),
+                )
+                .await?;
+
+                Ok(NodeCommsResponse::NewBlock(Block { header, body }))
             },
         }
     }

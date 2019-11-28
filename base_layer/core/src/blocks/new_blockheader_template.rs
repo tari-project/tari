@@ -21,21 +21,41 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    blocks::{blockheader::BlockHeader, Block, NewBlockTemplate},
-    chain_storage::{ChainMetadata, HistoricalBlock, MutableMmrState},
+    blocks::{
+        blockheader::{hash_serializer, BlockHeader},
+        BlockHash,
+    },
+    proof_of_work::ProofOfWork,
 };
 use serde::{Deserialize, Serialize};
-use tari_transactions::transaction::{TransactionKernel, TransactionOutput};
+use tari_transactions::types::BlindingFactor;
 
-/// API Response enum
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub enum NodeCommsResponse {
-    ChainMetadata(ChainMetadata),
-    TransactionKernels(Vec<TransactionKernel>),
-    BlockHeaders(Vec<BlockHeader>),
-    TransactionOutputs(Vec<TransactionOutput>),
-    HistoricalBlocks(Vec<HistoricalBlock>),
-    MmrState(MutableMmrState),
-    NewBlockTemplate(NewBlockTemplate),
-    NewBlock(Block),
+/// The NewBlockHeaderTemplate is used for the construction of a new mineable block. It contains all the metadata for
+/// the block that the Base Node is able to complete on behalf of a Miner.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct NewBlockHeaderTemplate {
+    /// Version of the block
+    pub version: u16,
+    /// Height of this block since the genesis block (height 0)
+    pub height: u64,
+    /// Hash of the block previous to this in the chain.
+    #[serde(with = "hash_serializer")]
+    pub prev_hash: BlockHash,
+    /// Total accumulated sum of kernel offsets since genesis block. We can derive the kernel offset sum for *this*
+    /// block from the total kernel offset of the previous block header.
+    pub total_kernel_offset: BlindingFactor,
+    /// Proof of work summary
+    pub pow: ProofOfWork,
+}
+
+impl From<BlockHeader> for NewBlockHeaderTemplate {
+    fn from(header: BlockHeader) -> Self {
+        Self {
+            version: header.version,
+            height: header.height,
+            prev_hash: header.prev_hash,
+            total_kernel_offset: header.total_kernel_offset,
+            pow: header.pow,
+        }
+    }
 }
