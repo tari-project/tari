@@ -22,10 +22,7 @@
 
 use crate::support::{
     factories::{self, TestFactory},
-    helpers::{
-        database::{clean_up_datastore, init_datastore},
-        streams::stream_assert_count,
-    },
+    helpers::{database::init_datastore, streams::stream_assert_count},
 };
 use futures::channel::mpsc::{channel, Sender};
 use std::{sync::Arc, thread, time::Duration};
@@ -168,7 +165,4 @@ fn establish_peer_connection() {
         Ok(manager) => manager.shutdown().into_iter().map(|r| r.unwrap()).collect::<Vec<()>>(),
         Err(_) => panic!("Unable to unwrap connection manager from Arc"),
     };
-
-    clean_up_datastore(node_A_database_name);
-    clean_up_datastore(node_B_database_name);
 }

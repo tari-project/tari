@@ -178,11 +178,11 @@ where
 mod test {
     use super::*;
     use tari_storage::lmdb_store::{db, LMDBBuilder};
-    use tari_test_utils::paths::create_random_database_path;
+    use tari_test_utils::paths::create_temporary_data_path;
 
     #[test]
     fn len_push_get_truncate_for_each_shift_clear() {
-        let path = create_random_database_path().to_str().unwrap().to_string();
+        let path = create_temporary_data_path().to_str().unwrap().to_string();
         let _ = std::fs::create_dir(&path).unwrap_or_default();
         let lmdb_store = LMDBBuilder::new()
             .set_path(&path)

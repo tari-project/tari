@@ -35,7 +35,7 @@ use crate::{
     tx,
 };
 use tari_mmr::{Hash, MerkleChangeTrackerConfig, MutableMmr};
-use tari_test_utils::paths::create_random_database_path;
+use tari_test_utils::paths::create_temporary_data_path;
 use tari_transactions::{
     tari_amount::MicroTari,
     types::{CryptoFactories, HashDigest},
@@ -84,7 +84,7 @@ fn lmdb_insert_contains_delete_and_fetch_header() {
         min_history_len: 10,
         max_history_len: 20,
     };
-    let db = create_lmdb_database(&create_random_database_path(), mct_config).unwrap();
+    let db = create_lmdb_database(&create_temporary_data_path(), mct_config).unwrap();
     insert_contains_delete_and_fetch_header(db);
 }
 
@@ -122,7 +122,7 @@ fn lmdb_insert_contains_delete_and_fetch_utxo() {
         min_history_len: 10,
         max_history_len: 20,
     };
-    let db = create_lmdb_database(&create_random_database_path(), mct_config).unwrap();
+    let db = create_lmdb_database(&create_temporary_data_path(), mct_config).unwrap();
     insert_contains_delete_and_fetch_utxo(db);
 }
 
@@ -161,7 +161,7 @@ fn lmdb_insert_contains_delete_and_fetch_kernel() {
         min_history_len: 10,
         max_history_len: 20,
     };
-    let db = create_lmdb_database(&create_random_database_path(), mct_config).unwrap();
+    let db = create_lmdb_database(&create_temporary_data_path(), mct_config).unwrap();
     insert_contains_delete_and_fetch_kernel(db);
 }
 
@@ -203,7 +203,7 @@ fn lmdb_insert_contains_delete_and_fetch_orphan() {
         min_history_len: 10,
         max_history_len: 20,
     };
-    let db = create_lmdb_database(&create_random_database_path(), mct_config).unwrap();
+    let db = create_lmdb_database(&create_temporary_data_path(), mct_config).unwrap();
     insert_contains_delete_and_fetch_orphan(db);
 }
 
@@ -268,7 +268,7 @@ fn lmdb_spend_utxo_and_unspend_stxo() {
         min_history_len: 10,
         max_history_len: 20,
     };
-    let db = create_lmdb_database(&create_random_database_path(), mct_config).unwrap();
+    let db = create_lmdb_database(&create_temporary_data_path(), mct_config).unwrap();
     spend_utxo_and_unspend_stxo(db);
 }
 
@@ -278,7 +278,7 @@ fn lmdb_insert_fetch_metadata() {
         min_history_len: 10,
         max_history_len: 20,
     };
-    let db = create_lmdb_database(&create_random_database_path(), mct_config).unwrap();
+    let db = create_lmdb_database(&create_temporary_data_path(), mct_config).unwrap();
 
     assert!(db.fetch(&DbKey::Metadata(MetadataKey::ChainHeight)).unwrap().is_none());
     assert!(db
@@ -421,7 +421,7 @@ fn lmdb_fetch_mmr_root_and_proof_for_utxo_and_rp() {
         min_history_len: 10,
         max_history_len: 20,
     };
-    let db = create_lmdb_database(&create_random_database_path(), mct_config).unwrap();
+    let db = create_lmdb_database(&create_temporary_data_path(), mct_config).unwrap();
     fetch_mmr_root_and_proof_for_utxo_and_rp(db);
 }
 
@@ -475,7 +475,7 @@ fn lmdb_fetch_mmr_root_and_proof_for_kernel() {
         min_history_len: 10,
         max_history_len: 20,
     };
-    let db = create_lmdb_database(&create_random_database_path(), mct_config).unwrap();
+    let db = create_lmdb_database(&create_temporary_data_path(), mct_config).unwrap();
     fetch_mmr_root_and_proof_for_kernel(db);
 }
 
@@ -532,7 +532,7 @@ fn lmdb_fetch_mmr_root_and_proof_for_header() {
         min_history_len: 10,
         max_history_len: 20,
     };
-    let db = create_lmdb_database(&create_random_database_path(), mct_config).unwrap();
+    let db = create_lmdb_database(&create_temporary_data_path(), mct_config).unwrap();
     fetch_mmr_root_and_proof_for_header(db);
 }
 
@@ -796,7 +796,7 @@ fn lmdb_commit_block_and_create_fetch_checkpoint_and_rewind_mmr() {
         min_history_len: 10,
         max_history_len: 20,
     };
-    let db = create_lmdb_database(&create_random_database_path(), mct_config).unwrap();
+    let db = create_lmdb_database(&create_temporary_data_path(), mct_config).unwrap();
     commit_block_and_create_fetch_checkpoint_and_rewind_mmr(db);
 }
 
@@ -855,7 +855,7 @@ fn lmdb_for_each_orphan() {
         min_history_len: 10,
         max_history_len: 20,
     };
-    let db = create_lmdb_database(&create_random_database_path(), mct_config).unwrap();
+    let db = create_lmdb_database(&create_temporary_data_path(), mct_config).unwrap();
     for_each_orphan(db);
 }
 
@@ -881,7 +881,7 @@ fn lmdb_backend_restore() {
     let header_hash = header.hash();
 
     // Create backend storage
-    let path = create_random_database_path();
+    let path = create_temporary_data_path();
     {
         let db = create_lmdb_database(&path, mct_config).unwrap();
         let mut txn = DbTransaction::new();
@@ -920,7 +920,7 @@ fn lmdb_mmr_reset_and_commit() {
         min_history_len: 10,
         max_history_len: 20,
     };
-    let db = create_lmdb_database(&create_random_database_path(), mct_config).unwrap();
+    let db = create_lmdb_database(&create_temporary_data_path(), mct_config).unwrap();
 
     let (utxo1, _) = create_utxo(MicroTari(10_000), &factories);
     let (utxo2, _) = create_utxo(MicroTari(15_000), &factories);
@@ -1138,6 +1138,6 @@ fn lmdb_fetch_mmr_base_leaf_nodes_and_restore() {
         min_history_len: 3,
         max_history_len: 6,
     };
-    let db = create_lmdb_database(&create_random_database_path(), mct_config).unwrap();
+    let db = create_lmdb_database(&create_temporary_data_path(), mct_config).unwrap();
     fetch_mmr_base_leaf_nodes_and_restore(db);
 }

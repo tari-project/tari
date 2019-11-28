@@ -22,11 +22,7 @@
 
 use crate::support::{
     factories::{self, TestFactory},
-    helpers::{
-        database::{clean_up_datastore, init_datastore},
-        streams::stream_assert_count,
-        ConnectionMessageCounter,
-    },
+    helpers::{database::init_datastore, streams::stream_assert_count, ConnectionMessageCounter},
 };
 use futures::channel::mpsc::channel;
 use std::{sync::Arc, time::Duration};
@@ -101,8 +97,6 @@ fn establish_control_service_connection_fail() {
 
     msg_counter1.assert_count(1, 20);
     msg_counter2.assert_count(1, 20);
-
-    clean_up_datastore(database_name);
 }
 
 #[test]
@@ -165,8 +159,6 @@ fn establish_control_service_connection_succeed() {
     client.ping_pong(Duration::from_millis(3000)).unwrap();
 
     msg_counter1.assert_count(2, 20);
-
-    clean_up_datastore(database_name);
 }
 
 #[test]
@@ -252,8 +244,6 @@ fn establish_peer_connection_outbound() {
     let (_, _messages) = stream_assert_count(rx_inbound, 2, 500).unwrap();
 
     peer_conn_handle.timeout_join(Duration::from_millis(3000)).unwrap();
-
-    clean_up_datastore(database_name);
 }
 
 #[test]
@@ -326,6 +316,4 @@ fn establish_peer_connection_inbound() {
     other_peer_conn_handle
         .timeout_join(Duration::from_millis(3000))
         .unwrap();
-
-    clean_up_datastore(database_name);
 }

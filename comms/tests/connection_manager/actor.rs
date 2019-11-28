@@ -22,7 +22,7 @@
 
 use crate::support::{
     factories::{self, TestFactory},
-    helpers::database::{clean_up_datastore, init_datastore},
+    helpers::database::init_datastore,
 };
 use futures::channel::mpsc;
 use std::{sync::Arc, time::Duration};
@@ -174,9 +174,6 @@ fn with_alice_and_bob(cb: impl FnOnce(CommsTestNode, CommsTestNode)) {
         .shutdown()
         .into_iter()
         .for_each(|result| result.unwrap());
-
-    clean_up_datastore(alice_database_name.as_str());
-    clean_up_datastore(bob_database_name.as_str());
 }
 
 #[test]
