@@ -742,7 +742,7 @@ fn service_request_timeout() {
     let runtime = Runtime::new().unwrap();
     let mut rng = OsRng::new().unwrap();
     let base_node_service_config = BaseNodeServiceConfig {
-        request_timeout: Duration::from_millis(1),
+        request_timeout: Duration::from_millis(10),
         desired_response_fraction: BASE_NODE_SERVICE_DESIRED_RESPONSE_FRACTION,
     };
 
@@ -813,7 +813,7 @@ fn local_get_metadata() {
 }
 
 #[test]
-fn local_get_new_block() {
+fn local_get_new_block_template_and_get_new_block() {
     let factories = CryptoFactories::default();
     let runtime = Runtime::new().unwrap();
     let (_, mut local_nci, blockchain_db, mempool, comms) =
@@ -833,11 +833,16 @@ fn local_get_new_block() {
     assert!(mempool.insert(Arc::new(tx3)).is_ok());
 
     runtime.block_on(async {
-        let mut block = local_nci.get_new_block_template().await.unwrap();
-        assert_eq!(block.header.height, 1);
-        assert_eq!(block.body.kernels().len(), 3);
+        let block_template = local_nci.get_new_block_template().await.unwrap();
+        assert_eq!(block_template.header.height, 1);
+        assert_eq!(block_template.body.kernels().len(), 3);
+
+        let mut block = local_nci.get_new_block(block_template.clone()).await.unwrap();
         block.header.pow.accumulated_blake_difficulty = Difficulty::from(100);
-        add_block_and_update_header(&blockchain_db, block);
+        assert_eq!(block.header.height, 1);
+        assert_eq!(block.body, block_template.body);
+
+        assert!(blockchain_db.add_block(block.clone()).is_ok());
     });
 
     comms.shutdown().unwrap();

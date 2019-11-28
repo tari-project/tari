@@ -22,7 +22,7 @@
 
 use super::core as proto;
 use crate::{
-    blocks::{Block, BlockHeader},
+    blocks::{Block, BlockHeader, NewBlockHeaderTemplate, NewBlockTemplate},
     chain_storage::HistoricalBlock,
     proof_of_work::{Difficulty, PowAlgorithm, ProofOfWork},
     proto::utils::try_convert_all,
@@ -178,6 +178,69 @@ impl From<HistoricalBlock> for proto::HistoricalBlock {
             confirmations: block.confirmations,
             spent_commitments: block.spent_commitments.into_iter().map(Into::into).collect(),
             block: Some(block.block.into()),
+        }
+    }
+}
+
+//--------------------------------- NewBlockTemplate -------------------------------------------//
+
+impl TryFrom<proto::NewBlockTemplate> for NewBlockTemplate {
+    type Error = String;
+
+    fn try_from(block_template: proto::NewBlockTemplate) -> Result<Self, Self::Error> {
+        let header = block_template
+            .header
+            .map(TryInto::try_into)
+            .ok_or("Block header template not provided".to_string())??;
+
+        let body = block_template
+            .body
+            .map(TryInto::try_into)
+            .ok_or("Block body not provided".to_string())??;
+
+        Ok(Self { header, body })
+    }
+}
+
+impl From<NewBlockTemplate> for proto::NewBlockTemplate {
+    fn from(block_template: NewBlockTemplate) -> Self {
+        Self {
+            header: Some(block_template.header.into()),
+            body: Some(block_template.body.into()),
+        }
+    }
+}
+
+//------------------------------ NewBlockHeaderTemplate ----------------------------------------//
+
+impl TryFrom<proto::NewBlockHeaderTemplate> for NewBlockHeaderTemplate {
+    type Error = String;
+
+    fn try_from(header: proto::NewBlockHeaderTemplate) -> Result<Self, Self::Error> {
+        let total_kernel_offset =
+            BlindingFactor::from_bytes(&header.total_kernel_offset).map_err(|err| err.to_string())?;
+        let pow = match header.pow {
+            Some(p) => ProofOfWork::try_from(p)?,
+            None => return Err("No proof of work provided".into()),
+        };
+        Ok(Self {
+            version: header.version as u16,
+            height: header.height,
+            prev_hash: header.prev_hash,
+            total_kernel_offset,
+            pow,
+        })
+    }
+}
+
+impl From<NewBlockHeaderTemplate> for proto::NewBlockHeaderTemplate {
+    fn from(header: NewBlockHeaderTemplate) -> Self {
+        Self {
+            version: header.version as u32,
+            height: header.height,
+            prev_hash: header.prev_hash,
+            total_kernel_offset: header.total_kernel_offset.to_vec(),
+            pow: Some(proto::ProofOfWork::from(header.pow)),
         }
     }
 }

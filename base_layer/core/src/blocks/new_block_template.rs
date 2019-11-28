@@ -20,22 +20,24 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    blocks::{blockheader::BlockHeader, Block, NewBlockTemplate},
-    chain_storage::{ChainMetadata, HistoricalBlock, MutableMmrState},
-};
+use crate::blocks::{new_blockheader_template::NewBlockHeaderTemplate, Block};
 use serde::{Deserialize, Serialize};
-use tari_transactions::transaction::{TransactionKernel, TransactionOutput};
+use tari_transactions::aggregated_body::AggregateBody;
 
-/// API Response enum
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub enum NodeCommsResponse {
-    ChainMetadata(ChainMetadata),
-    TransactionKernels(Vec<TransactionKernel>),
-    BlockHeaders(Vec<BlockHeader>),
-    TransactionOutputs(Vec<TransactionOutput>),
-    HistoricalBlocks(Vec<HistoricalBlock>),
-    MmrState(MutableMmrState),
-    NewBlockTemplate(NewBlockTemplate),
-    NewBlock(Block),
+/// The new block template is used constructing a new partial block, allowing a miner to added the coinbase utxo and as
+/// a final step the Base node to add the MMR roots to the header.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct NewBlockTemplate {
+    pub header: NewBlockHeaderTemplate,
+    pub body: AggregateBody,
+}
+
+impl From<Block> for NewBlockTemplate {
+    fn from(block: Block) -> Self {
+        let Block { header, body } = block;
+        Self {
+            header: header.into(),
+            body,
+        }
+    }
 }

@@ -35,7 +35,7 @@ use tari_utilities::hex::Hex;
 pub trait AchievedDifficulty {}
 
 #[repr(u8)]
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub enum PowAlgorithm {
     Monero = 0,
     Blake = 1,
@@ -64,7 +64,7 @@ impl TryFrom<u64> for PowAlgorithm {
 
 /// The proof of work data structure that is included in the block header. There's some non-Rustlike redundancy here
 /// to make serialization more straightforward
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ProofOfWork {
     /// The total accumulated difficulty for each proof of work algorithms for all blocks since Genesis,
     /// but not including this block, tracked separately.

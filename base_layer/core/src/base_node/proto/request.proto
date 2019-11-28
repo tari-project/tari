@@ -1,7 +1,9 @@
 syntax = "proto3";
 
-package tari.base_node;
 import "mmr_state_request.proto";
+import "block.proto";
+
+package tari.base_node;
 
 // Request type for a received BaseNodeService request.
 message BaseNodeServiceRequest {
@@ -21,6 +23,8 @@ message BaseNodeServiceRequest {
         MmrStateRequest fetch_mmr_state = 7;
         // Indicates a GetNewBlockTemplate request.
         bool get_new_block_template = 8;
+        // Indicates a GetNewBlock request.
+        tari.core.NewBlockTemplate get_new_block = 9;
     }
 }
 

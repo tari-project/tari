@@ -22,7 +22,7 @@
 
 use crate::{
     base_node::comms_interface::{error::CommsInterfaceError, BlockEvent, NodeCommsRequest, NodeCommsResponse},
-    blocks::Block,
+    blocks::{Block, NewBlockTemplate},
     chain_storage::ChainMetadata,
 };
 use futures::{stream::Fuse, StreamExt};
@@ -67,13 +67,25 @@ impl LocalNodeCommsInterface {
     }
 
     /// Request the construction of a new mineable block template from the base node service.
-    pub async fn get_new_block_template(&mut self) -> Result<Block, CommsInterfaceError> {
+    pub async fn get_new_block_template(&mut self) -> Result<NewBlockTemplate, CommsInterfaceError> {
         match self
             .request_sender
             .call(NodeCommsRequest::GetNewBlockTemplate)
             .await??
         {
-            NodeCommsResponse::NewBlockTemplate(block) => Ok(block),
+            NodeCommsResponse::NewBlockTemplate(new_block_template) => Ok(new_block_template),
+            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+        }
+    }
+
+    /// Request from base node service the construction of a block from a block template.
+    pub async fn get_new_block(&mut self, block_template: NewBlockTemplate) -> Result<Block, CommsInterfaceError> {
+        match self
+            .request_sender
+            .call(NodeCommsRequest::GetNewBlock(block_template))
+            .await??
+        {
+            NodeCommsResponse::NewBlock(block) => Ok(block),
             _ => Err(CommsInterfaceError::UnexpectedApiResponse),
         }
     }

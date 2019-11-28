@@ -272,7 +272,7 @@ pub fn create_test_kernel(fee: MicroTari, lock_height: u64) -> TransactionKernel
 /// Right now this function does not use consensus rules to generate the block. The coinbase output has an arbitrary
 /// value, and the maturity is zero.
 pub fn create_genesis_block(factories: &CryptoFactories) -> (Block, UnblindedOutput) {
-    let mut header = BlockHeader::new(0);
+    let header = BlockHeader::new(0);
     let value = MicroTari::from(100_000_000);
     let excess = Commitment::from_public_key(&PublicKey::default());
     let (utxo, key) = create_utxo(value, &factories);
@@ -318,7 +318,7 @@ pub fn create_test_block(block_height: u64, prev_block: Option<Block>, transacti
 
 /// Create a new block using the provided transactions that adds to the blockchain given in `prev_block`
 pub fn chain_block(prev_block: &Block, transactions: Vec<Transaction>) -> Block {
-    let mut header = BlockHeader::from_previous(&prev_block.header);
+    let header = BlockHeader::from_previous(&prev_block.header);
     BlockBuilder::new()
         .with_header(header)
         .with_transactions(transactions)

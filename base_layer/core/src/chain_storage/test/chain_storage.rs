@@ -254,6 +254,100 @@ fn kernel_merkle_root() {
 }
 
 #[test]
+fn utxo_and_rp_future_merkle_root() {
+    let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
+    let factories = CryptoFactories::default();
+
+    let (utxo1, _) = create_utxo(MicroTari(10_000), &factories);
+    let (utxo2, _) = create_utxo(MicroTari(15_000), &factories);
+    let utxo_hash1 = utxo1.hash();
+    let utxo_hash2 = utxo2.hash();
+    let rp_hash1 = utxo1.proof.hash();
+    let rp_hash2 = utxo2.proof.hash();
+
+    let mut txn = DbTransaction::new();
+    txn.insert_utxo(utxo1);
+    assert!(store.commit(txn).is_ok());
+
+    let utxo_future_root = store
+        .calculate_mmr_root(MmrTree::Utxo, vec![utxo_hash2], Vec::new())
+        .unwrap()
+        .to_hex();
+    let rp_future_root = store
+        .calculate_mmr_root(MmrTree::RangeProof, vec![rp_hash2], Vec::new())
+        .unwrap()
+        .to_hex();
+    assert_ne!(utxo_future_root, store.fetch_mmr_root(MmrTree::Utxo).unwrap().to_hex());
+    assert_ne!(
+        rp_future_root,
+        store.fetch_mmr_root(MmrTree::RangeProof).unwrap().to_hex()
+    );
+
+    let mut txn = DbTransaction::new();
+    txn.insert_utxo(utxo2);
+    assert!(store.commit(txn).is_ok());
+
+    assert_eq!(utxo_future_root, store.fetch_mmr_root(MmrTree::Utxo).unwrap().to_hex());
+    assert_eq!(
+        rp_future_root,
+        store.fetch_mmr_root(MmrTree::RangeProof).unwrap().to_hex()
+    );
+}
+
+#[test]
+fn header_future_merkle_root() {
+    let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
+
+    let header1 = BlockHeader::new(0);
+    let mut header2 = BlockHeader::new(0);
+    header2.height = 1;
+    let hash1 = header1.hash();
+    let hash2 = header2.hash();
+
+    let mut txn = DbTransaction::new();
+    txn.insert_header(header1);
+    assert!(store.commit(txn).is_ok());
+
+    let future_root = store
+        .calculate_mmr_root(MmrTree::Header, vec![hash2], Vec::new())
+        .unwrap()
+        .to_hex();
+    assert_ne!(future_root, store.fetch_mmr_root(MmrTree::Header).unwrap().to_hex());
+
+    let mut txn = DbTransaction::new();
+    txn.insert_header(header2);
+    assert!(store.commit(txn).is_ok());
+
+    assert_eq!(future_root, store.fetch_mmr_root(MmrTree::Header).unwrap().to_hex());
+}
+
+#[test]
+fn kernel_future_merkle_root() {
+    let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
+
+    let kernel1 = create_test_kernel(100.into(), 0);
+    let kernel2 = create_test_kernel(200.into(), 0);
+    let hash1 = kernel1.hash();
+    let hash2 = kernel2.hash();
+
+    let mut txn = DbTransaction::new();
+    txn.insert_kernel(kernel1);
+    assert!(store.commit(txn).is_ok());
+
+    let future_root = store
+        .calculate_mmr_root(MmrTree::Kernel, vec![hash2], Vec::new())
+        .unwrap()
+        .to_hex();
+    assert_ne!(future_root, store.fetch_mmr_root(MmrTree::Kernel).unwrap().to_hex());
+
+    let mut txn = DbTransaction::new();
+    txn.insert_kernel(kernel2);
+    assert!(store.commit(txn).is_ok());
+
+    assert_eq!(future_root, store.fetch_mmr_root(MmrTree::Kernel).unwrap().to_hex());
+}
+
+#[test]
 fn utxo_and_rp_mmr_proof() {
     let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
     let factories = CryptoFactories::default();

@@ -536,6 +536,158 @@ fn lmdb_fetch_mmr_root_and_proof_for_header() {
     fetch_mmr_root_and_proof_for_header(db);
 }
 
+fn fetch_future_mmr_root_for_utxo_and_rp<T: BlockchainBackend>(db: T) {
+    let factories = CryptoFactories::default();
+
+    let (utxo1, _) = create_utxo(MicroTari(10_000), &factories);
+    let (utxo2, _) = create_utxo(MicroTari(15_000), &factories);
+    let (utxo3, _) = create_utxo(MicroTari(20_000), &factories);
+    let (utxo4, _) = create_utxo(MicroTari(24_000), &factories);
+    let utxo_hash1 = utxo1.hash();
+    let utxo_hash2 = utxo2.hash();
+    let utxo_hash3 = utxo3.hash();
+    let utxo_hash4 = utxo4.hash();
+    let rp_hash1 = utxo1.proof.hash();
+    let rp_hash2 = utxo2.proof.hash();
+    let rp_hash3 = utxo3.proof.hash();
+    let rp_hash4 = utxo4.proof.hash();
+
+    let mut txn = DbTransaction::new();
+    txn.insert_utxo(utxo1);
+    txn.insert_utxo(utxo2);
+    assert!(db.write(txn).is_ok());
+
+    let utxo_future_root = db
+        .calculate_mmr_root(MmrTree::Utxo, vec![utxo_hash3, utxo_hash4], vec![utxo_hash1.clone()])
+        .unwrap()
+        .to_hex();
+    let rp_future_root = db
+        .calculate_mmr_root(MmrTree::RangeProof, vec![rp_hash3, rp_hash4], Vec::new())
+        .unwrap()
+        .to_hex();
+    assert_ne!(utxo_future_root, db.fetch_mmr_root(MmrTree::Utxo).unwrap().to_hex());
+    assert_ne!(rp_future_root, db.fetch_mmr_root(MmrTree::RangeProof).unwrap().to_hex());
+
+    let mut txn = DbTransaction::new();
+    txn.insert_utxo(utxo3);
+    txn.insert_utxo(utxo4);
+    txn.spend_utxo(utxo_hash1);
+    assert!(db.write(txn).is_ok());
+
+    assert_eq!(utxo_future_root, db.fetch_mmr_root(MmrTree::Utxo).unwrap().to_hex());
+    assert_eq!(rp_future_root, db.fetch_mmr_root(MmrTree::RangeProof).unwrap().to_hex());
+}
+
+#[test]
+fn memory_fetch_future_mmr_root_for_utxo_and_rp() {
+    let db = MemoryDatabase::<HashDigest>::default();
+    fetch_future_mmr_root_for_utxo_and_rp(db);
+}
+
+#[test]
+fn lmdb_fetch_future_mmr_root_for_utxo_and_rp() {
+    let mct_config = MerkleChangeTrackerConfig {
+        min_history_len: 10,
+        max_history_len: 20,
+    };
+    let db = create_lmdb_database(&create_random_database_path(), mct_config).unwrap();
+    fetch_future_mmr_root_for_utxo_and_rp(db);
+}
+
+fn fetch_future_mmr_root_for_for_kernel<T: BlockchainBackend>(db: T) {
+    let kernel1 = create_test_kernel(100.into(), 0);
+    let kernel2 = create_test_kernel(200.into(), 1);
+    let kernel3 = create_test_kernel(300.into(), 2);
+    let kernel4 = create_test_kernel(400.into(), 3);
+    let hash1 = kernel1.hash();
+    let hash2 = kernel2.hash();
+    let hash3 = kernel3.hash();
+    let hash4 = kernel4.hash();
+
+    let mut txn = DbTransaction::new();
+    txn.insert_kernel(kernel1);
+    txn.insert_kernel(kernel2);
+    assert!(db.write(txn).is_ok());
+
+    let future_root = db
+        .calculate_mmr_root(MmrTree::Kernel, vec![hash3, hash4], Vec::new())
+        .unwrap()
+        .to_hex();
+    assert_ne!(future_root, db.fetch_mmr_root(MmrTree::Kernel).unwrap().to_hex());
+
+    let mut txn = DbTransaction::new();
+    txn.insert_kernel(kernel3);
+    txn.insert_kernel(kernel4);
+    assert!(db.write(txn).is_ok());
+
+    assert_eq!(future_root, db.fetch_mmr_root(MmrTree::Kernel).unwrap().to_hex());
+}
+
+#[test]
+fn memory_fetch_future_mmr_root_for_for_kernel() {
+    let db = MemoryDatabase::<HashDigest>::default();
+    fetch_future_mmr_root_for_for_kernel(db);
+}
+
+#[test]
+fn lmdb_fetch_future_mmr_root_for_for_kernel() {
+    let mct_config = MerkleChangeTrackerConfig {
+        min_history_len: 10,
+        max_history_len: 20,
+    };
+    let db = create_lmdb_database(&create_random_database_path(), mct_config).unwrap();
+    fetch_future_mmr_root_for_for_kernel(db);
+}
+
+fn fetch_future_mmr_root_for_header<T: BlockchainBackend>(db: T) {
+    let mut header1 = BlockHeader::new(0);
+    header1.height = 1;
+    let mut header2 = BlockHeader::new(0);
+    header2.height = 2;
+    let mut header3 = BlockHeader::new(0);
+    header3.height = 3;
+    let mut header4 = BlockHeader::new(0);
+    header4.height = 4;
+    let hash1 = header1.hash();
+    let hash2 = header2.hash();
+    let hash3 = header3.hash();
+    let hash4 = header4.hash();
+
+    let mut txn = DbTransaction::new();
+    txn.insert_header(header1);
+    txn.insert_header(header2);
+    assert!(db.write(txn).is_ok());
+
+    let future_root = db
+        .calculate_mmr_root(MmrTree::Header, vec![hash3, hash4], Vec::new())
+        .unwrap()
+        .to_hex();
+    assert_ne!(future_root, db.fetch_mmr_root(MmrTree::Header).unwrap().to_hex());
+
+    let mut txn = DbTransaction::new();
+    txn.insert_header(header3);
+    txn.insert_header(header4);
+    assert!(db.write(txn).is_ok());
+
+    assert_eq!(future_root, db.fetch_mmr_root(MmrTree::Header).unwrap().to_hex());
+}
+
+#[test]
+fn memory_fetch_future_mmr_root_for_header() {
+    let db = MemoryDatabase::<HashDigest>::default();
+    fetch_future_mmr_root_for_header(db);
+}
+
+#[test]
+fn lmdb_fetch_future_mmr_root_for_header() {
+    let mct_config = MerkleChangeTrackerConfig {
+        min_history_len: 10,
+        max_history_len: 20,
+    };
+    let db = create_lmdb_database(&create_random_database_path(), mct_config).unwrap();
+    fetch_future_mmr_root_for_header(db);
+}
+
 fn commit_block_and_create_fetch_checkpoint_and_rewind_mmr<T: BlockchainBackend>(db: T) {
     let factories = CryptoFactories::default();
     let (utxo1, _) = create_utxo(MicroTari(10_000), &factories);
