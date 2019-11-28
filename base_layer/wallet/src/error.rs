@@ -26,10 +26,11 @@ use crate::{
     transaction_service::error::TransactionServiceError,
 };
 use derive_error::Error;
+use diesel::result::Error as DieselError;
 use log::SetLoggerError;
+use serde_json::Error as SerdeJsonError;
 use tari_comms::{builder::CommsError, connection::NetAddressError, peer_manager::PeerManagerError};
 use tari_p2p::initialization::CommsInitializationError;
-
 #[derive(Debug, Error)]
 pub enum WalletError {
     CommsInitializationError(CommsInitializationError),
@@ -42,12 +43,22 @@ pub enum WalletError {
     SetLoggerError(SetLoggerError),
 }
 
-#[derive(Debug, Error, PartialEq)]
+#[derive(Debug, Error)]
 pub enum WalletStorageError {
     /// Tried to insert an output that already exists in the database
     DuplicateContact,
     /// This write operation is not supported for provided DbKey
     OperationNotSupported,
+    /// Error converting a type
+    ConversionError,
+    /// Could not find all values specified for batch operation
+    ValuesNotFound,
+    SerdeJsonError(SerdeJsonError),
+    R2d2Error,
+    DieselError(DieselError),
+    DieselConnectionError(diesel::ConnectionError),
+    #[error(msg_embedded, no_from, non_std)]
+    DatabaseMigrationError(String),
     #[error(non_std, no_from)]
     ValueNotFound(DbKey),
     #[error(msg_embedded, non_std, no_from)]

@@ -48,7 +48,7 @@ pub enum DbKey {
 
 pub enum DbValue {
     Contact(Box<Contact>),
-    Contacts(Box<Vec<Contact>>),
+    Contacts(Vec<Contact>),
 }
 
 pub enum DbKeyValuePair {
@@ -96,7 +96,7 @@ where T: ContactsBackend
                 DbKey::Contacts,
                 ContactsServiceStorageError::UnexpectedResult("Could not retrieve contacts".to_string()),
             ),
-            Ok(Some(DbValue::Contacts(c))) => Ok(*c),
+            Ok(Some(DbValue::Contacts(c))) => Ok(c),
             Ok(Some(other)) => unexpected_result(DbKey::Contacts, other),
             Err(e) => log_error(DbKey::Contacts, e),
         }?;

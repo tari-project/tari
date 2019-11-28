@@ -13,10 +13,9 @@ table! {
 }
 
 table! {
-    contacts (pub_key) {
-        pub_key -> Text,
-        screen_name -> Text,
-        address -> Text,
+    contacts (public_key) {
+        public_key -> Binary,
+        alias -> Text,
     }
 }
 
@@ -57,43 +56,20 @@ table! {
 }
 
 table! {
+    peers (public_key) {
+        public_key -> Binary,
+        peer -> Text,
+    }
+}
+
+table! {
     pending_transaction_outputs (tx_id) {
         tx_id -> BigInt,
         timestamp -> Timestamp,
     }
 }
 
-table! {
-    received_messages (id) {
-        id -> Binary,
-        source_pub_key -> Text,
-        dest_pub_key -> Text,
-        message -> Text,
-        timestamp -> Timestamp,
-    }
-}
-
-table! {
-    sent_messages (id) {
-        id -> Text,
-        source_pub_key -> Text,
-        dest_pub_key -> Text,
-        message -> Text,
-        timestamp -> Timestamp,
-        acknowledged -> Integer,
-        is_read -> Integer,
-    }
-}
-
-table! {
-    settings (pub_key) {
-        pub_key -> Text,
-        screen_name -> Text,
-    }
-}
-
 joinable!(outputs -> pending_transaction_outputs (tx_id));
-joinable!(sent_messages -> contacts (dest_pub_key));
 
 allow_tables_to_appear_in_same_query!(
     completed_transactions,
@@ -101,8 +77,6 @@ allow_tables_to_appear_in_same_query!(
     inbound_transactions,
     outbound_transactions,
     outputs,
+    peers,
     pending_transaction_outputs,
-    received_messages,
-    sent_messages,
-    settings,
 );

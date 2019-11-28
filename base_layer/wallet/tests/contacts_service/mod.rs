@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::support::utils::random_string;
+use crate::support::{data::create_temporary_sqlite_path, utils::random_string};
 use tari_crypto::keys::PublicKey as PublicKeyTrait;
 use tari_service_framework::StackBuilder;
 use tari_shutdown::Shutdown;
@@ -29,17 +29,22 @@ use tari_wallet::contacts_service::{
     error::{ContactsServiceError, ContactsServiceStorageError},
     handle::ContactsServiceHandle,
     storage::{
-        database::{Contact, ContactsDatabase, DbKey},
+        database::{Contact, ContactsBackend, ContactsDatabase, DbKey},
         memory_db::ContactsServiceMemoryDatabase,
+        sqlite_db::ContactsServiceSqliteDatabase,
     },
     ContactsServiceInitializer,
 };
 use tokio::runtime::Runtime;
 
-pub fn setup_contacts_service(runtime: &Runtime) -> (ContactsServiceHandle, Shutdown) {
+pub fn setup_contacts_service<T: ContactsBackend + 'static>(
+    runtime: &Runtime,
+    backend: T,
+) -> (ContactsServiceHandle, Shutdown)
+{
     let shutdown = Shutdown::new();
     let fut = StackBuilder::new(runtime.executor(), shutdown.to_signal())
-        .add_initializer(ContactsServiceInitializer::new(ContactsServiceMemoryDatabase::new()))
+        .add_initializer(ContactsServiceInitializer::new(backend))
         .finish();
 
     let handles = runtime.block_on(fut).expect("Service initialization failed");
@@ -50,7 +55,7 @@ pub fn setup_contacts_service(runtime: &Runtime) -> (ContactsServiceHandle, Shut
 }
 
 #[test]
-pub fn test_database_crud() {
+pub fn test_memory_database_crud() {
     let mut rng = rand::OsRng::new().unwrap();
 
     let mut db = ContactsDatabase::new(ContactsServiceMemoryDatabase::new());
@@ -99,12 +104,11 @@ pub fn test_database_crud() {
     assert_eq!(contacts, got_contacts);
 }
 
-#[test]
-pub fn test_contacts_service() {
+pub fn test_contacts_service<T: ContactsBackend + 'static>(backend: T) {
     let mut rng = rand::OsRng::new().unwrap();
 
     let runtime = Runtime::new().unwrap();
-    let (mut contacts_service, _shutdown) = setup_contacts_service(&runtime);
+    let (mut contacts_service, _shutdown) = setup_contacts_service(&runtime, backend);
 
     let mut contacts = Vec::new();
     for i in 0..5 {
@@ -151,4 +155,14 @@ pub fn test_contacts_service() {
     let got_contacts = runtime.block_on(contacts_service.get_contacts()).unwrap();
 
     assert_eq!(contacts, got_contacts);
+}
+
+#[test]
+fn contacts_service_memory_db() {
+    test_contacts_service(ContactsServiceMemoryDatabase::new());
+}
+
+#[test]
+fn contacts_service_sqlite_db() {
+    test_contacts_service(ContactsServiceSqliteDatabase::new(create_temporary_sqlite_path()).unwrap());
 }
