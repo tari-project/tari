@@ -30,6 +30,7 @@ pub mod inbound_message_service;
 pub mod outbound_message_service;
 pub mod peer_manager;
 mod proto;
+pub mod transports;
 pub mod types;
 pub mod utils;
 

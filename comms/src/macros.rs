@@ -20,7 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-/// Creates a setter function used with the builder pattern
+/// Creates a setter function used with the builder pattern.
+/// The value is moved into the function and returned out.
 macro_rules! setter {
  ($func:ident, $name: ident, Option<$type: ty>) => {
         pub fn $func(mut self, val: $type) -> Self {
@@ -30,6 +31,23 @@ macro_rules! setter {
     };
  ($func:ident, $name: ident, $type: ty) => {
         pub fn $func(mut self, val: $type) -> Self {
+            self.$name = val;
+            self
+        }
+    };
+}
+
+/// Creates a setter function used with the builder pattern
+/// A mutable reference is taken and returned
+macro_rules! setter_mut {
+ ($func:ident, $name: ident, Option<$type: ty>) => {
+        pub fn $func(&mut self, val: $type) -> &mut Self {
+            self.$name = Some(val);
+            self
+        }
+    };
+ ($func:ident, $name: ident, $type: ty) => {
+        pub fn $func(&mut self, val: $type) -> &mut Self {
             self.$name = val;
             self
         }
