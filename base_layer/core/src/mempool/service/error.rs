@@ -39,4 +39,6 @@ pub enum MempoolServiceError {
     MempoolError(MempoolError),
     UnexpectedApiResponse,
     TransportChannelError(TransportChannelError),
+    /// Failed to send broadcast message
+    BroadcastFailed,
 }

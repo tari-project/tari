@@ -26,7 +26,7 @@ use crate::{
     discovery::DhtDiscoveryRequester,
     envelope::NodeDestination,
     inbound::{error::DhtInboundError, message::DecryptedDhtMessage},
-    outbound::{OutboundEncryption, OutboundMessageRequester},
+    outbound::{OutboundEncryption, OutboundMessageRequester, SendMessageParams},
     proto::{
         dht::{DiscoveryMessage, DiscoveryResponseMessage, JoinMessage},
         envelope::DhtMessageType,
@@ -324,11 +324,13 @@ where
 
         trace!("Sending direct join request to {}", dest_public_key);
         self.outbound_service
-            .send_dht_message(
-                BroadcastStrategy::DirectPublicKey(dest_public_key.clone()),
-                NodeDestination::PublicKey(dest_public_key),
-                OutboundEncryption::EncryptForDestination,
-                DhtMessageType::Join,
+            .send_message_no_header(
+                SendMessageParams::new()
+                    .direct_public_key(dest_public_key.clone())
+                    .with_destination(NodeDestination::PublicKey(dest_public_key))
+                    .with_encryption(OutboundEncryption::EncryptForPeer)
+                    .with_dht_message_type(DhtMessageType::Join)
+                    .finish(),
                 join_msg,
             )
             .await?;
@@ -353,11 +355,13 @@ where
 
         trace!("Sending discovery response to {}", dest_public_key);
         self.outbound_service
-            .send_dht_message(
-                BroadcastStrategy::DirectPublicKey(dest_public_key.clone()),
-                NodeDestination::PublicKey(dest_public_key),
-                OutboundEncryption::EncryptForDestination,
-                DhtMessageType::DiscoveryResponse,
+            .send_message_no_header(
+                SendMessageParams::new()
+                    .direct_public_key(dest_public_key.clone())
+                    .with_destination(NodeDestination::PublicKey(dest_public_key))
+                    .with_encryption(OutboundEncryption::EncryptForPeer)
+                    .with_dht_message_type(DhtMessageType::DiscoveryResponse)
+                    .finish(),
                 response,
             )
             .await?;

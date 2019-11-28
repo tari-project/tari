@@ -301,7 +301,7 @@ impl PeerConnectionDialer {
                 self.set_state(&mut lock, PeerConnectionState::Disconnected);
             },
 
-            Connected => {
+            Connected | HandshakeSucceeded => {
                 self.retry_count = 0;
                 self.transition_connected()?;
             },
@@ -310,6 +310,10 @@ impl PeerConnectionDialer {
                     &mut acquire_lock!(self.connection_state),
                     PeerConnectionState::Failed(PeerConnectionError::ConnectFailed),
                 );
+            },
+
+            ConnectDelayed => {
+                trace!(target: LOG_TARGET, "Still connecting...");
             },
             ConnectRetried => {
                 let mut lock = acquire_lock!(self.connection_state);

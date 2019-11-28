@@ -51,7 +51,6 @@ use std::{
     time::{Duration, Instant},
 };
 use tari_comms_dht::{
-    broadcast_strategy::BroadcastStrategy,
     domain_message::OutboundDomainMessage,
     envelope::NodeDestination,
     outbound::{OutboundEncryption, OutboundMessageRequester},
@@ -246,7 +245,7 @@ where B: BlockchainBackend
         self.outbound_message_service
             .send_direct(
                 origin_pubkey,
-                OutboundEncryption::EncryptForDestination,
+                OutboundEncryption::EncryptForPeer,
                 OutboundDomainMessage::new(TariMessageType::MempoolResponse, message),
             )
             .await?;
@@ -299,31 +298,47 @@ where B: BlockchainBackend
             request: Some(request.into()),
         };
 
-        let dest_count = self
+        let send_result = self
             .outbound_message_service
-            .send_message(
-                BroadcastStrategy::Random(1),
+            .send_random(
+                1,
                 NodeDestination::Unknown,
-                OutboundEncryption::EncryptForDestination,
+                OutboundEncryption::EncryptForPeer,
                 OutboundDomainMessage::new(TariMessageType::MempoolRequest, service_request),
             )
             .await
             .map_err(|e| MempoolServiceError::OutboundMessageService(e.to_string()))?;
 
-        if dest_count > 0 {
-            // Spawn timeout and wait for matching response to arrive
-            self.waiting_requests.insert(request_key, Some(reply_tx));
-            self.spawn_request_timeout(request_key, self.config.request_timeout)
-                .await;
-        } else {
-            let _ = reply_tx.send(Err(MempoolServiceError::NoBootstrapNodesConfigured).or_else(|resp| {
-                error!(
-                    target: LOG_TARGET,
-                    "Failed to send outbound request from Mempool service as no bootstrap nodes were configured"
-                );
-                Err(resp)
-            }));
+        match send_result.resolve_ok().await {
+            Some(n) if n > 0 => {
+                // Spawn timeout and wait for matching response to arrive
+                self.waiting_requests.insert(request_key, Some(reply_tx));
+                self.spawn_request_timeout(request_key, self.config.request_timeout)
+                    .await;
+            },
+            Some(_) => {
+                let _ = reply_tx.send(Err(MempoolServiceError::NoBootstrapNodesConfigured).or_else(|resp| {
+                    error!(
+                        target: LOG_TARGET,
+                        "Failed to send outbound request from Mempool service as no bootstrap nodes were configured"
+                    );
+                    Err(resp)
+                }));
+            },
+            None => {
+                let _ = reply_tx
+                    .send(Err(MempoolServiceError::BroadcastFailed))
+                    .or_else(|resp| {
+                        error!(
+                            target: LOG_TARGET,
+                            "Failed to send outbound request from Mempool service because of a failure in DHT \
+                             broadcast"
+                        );
+                        Err(resp)
+                    });
+            },
         }
+
         Ok(())
     }
 

@@ -21,14 +21,13 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    broadcast_strategy::{BroadcastClosestRequest, BroadcastStrategy},
     consts::DHT_RNG,
     discovery::{
         requester::{DhtDiscoveryRequest, DiscoverPeerRequest},
         DhtDiscoveryError,
     },
     envelope::{DhtMessageType, NodeDestination},
-    outbound::{OutboundEncryption, OutboundMessageRequester},
+    outbound::{OutboundEncryption, OutboundMessageRequester, SendMessageParams},
     proto::dht::{DiscoveryMessage, DiscoveryResponseMessage},
     DhtConfig,
 };
@@ -324,12 +323,6 @@ impl DhtDiscoveryService {
             })
             .expect("cannot fail");
 
-        let broadcast_strategy = BroadcastStrategy::Closest(Box::new(BroadcastClosestRequest {
-            n: self.config.num_neighbouring_nodes,
-            node_id: network_location_node_id,
-            excluded_peers: Vec::new(),
-        }));
-
         let discover_msg = DiscoveryMessage {
             node_id: self.node_identity.node_id().to_vec(),
             addresses: vec![self.node_identity.control_service_address().to_string()],
@@ -342,11 +335,13 @@ impl DhtDiscoveryService {
         );
 
         self.outbound_requester
-            .send_dht_message(
-                broadcast_strategy,
-                destination,
-                OutboundEncryption::EncryptFor(dest_public_key),
-                DhtMessageType::Discovery,
+            .send_message_no_header(
+                SendMessageParams::new()
+                    .closest(network_location_node_id, self.config.num_neighbouring_nodes, Vec::new())
+                    .with_destination(destination)
+                    .with_encryption(OutboundEncryption::EncryptFor(dest_public_key))
+                    .with_dht_message_type(DhtMessageType::Discovery)
+                    .finish(),
                 discover_msg,
             )
             .await?;
@@ -360,7 +355,7 @@ mod test {
     use super::*;
     use crate::{
         discovery::DhtDiscoveryRequester,
-        outbound::mock::create_mock_outbound_service,
+        outbound::{mock::create_mock_outbound_service, SendMessageResponse},
         test_utils::{make_node_identity, make_peer_manager},
     };
     use std::time::Duration;
@@ -394,9 +389,10 @@ mod test {
 
             assert!(result.unwrap_err().is_timeout());
 
-            let msg = rt.block_on(outbound_mock.handle_next(Duration::from_millis(5000), 1));
-            assert_eq!(msg.dht_message_type, DhtMessageType::Discovery);
-            assert_eq!(msg.encryption, OutboundEncryption::EncryptFor(dest_public_key));
+            let (params, _) =
+                rt.block_on(outbound_mock.handle_next(Duration::from_millis(5000), SendMessageResponse::Ok(1)));
+            assert_eq!(params.dht_message_type, DhtMessageType::Discovery);
+            assert_eq!(params.encryption, OutboundEncryption::EncryptFor(dest_public_key));
 
             shutdown.trigger().unwrap();
         })

@@ -37,7 +37,10 @@ use tari_comms::{
     message::EnvelopeBody,
     peer_manager::{NodeIdentity, PeerFeatures},
 };
-use tari_comms_dht::outbound::mock::{create_mock_outbound_service, MockOutboundService};
+use tari_comms_dht::outbound::{
+    mock::{create_mock_outbound_service, MockOutboundService},
+    SendMessageResponse,
+};
 use tari_crypto::keys::{PublicKey as PK, SecretKey as SK};
 use tari_p2p::{
     comms_connector::pubsub_connector,
@@ -608,9 +611,9 @@ fn test_accepting_unknown_tx_id_and_malformed_reply<T: TransactionBackend + 'sta
 
     runtime.block_on(alice_output_manager.add_output(uo)).unwrap();
 
-    let (req, _) = runtime.block_on(async {
+    let ((req, body), _) = runtime.block_on(async {
         futures::join!(
-            alice_outbound_service.handle_next(Duration::from_millis(3000), 0),
+            alice_outbound_service.handle_next(Duration::from_millis(3000), SendMessageResponse::Ok(0)),
             alice_ts.send_transaction(
                 bob_node_identity.public_key().clone(),
                 MicroTari::from(500),
@@ -620,7 +623,7 @@ fn test_accepting_unknown_tx_id_and_malformed_reply<T: TransactionBackend + 'sta
         )
     });
 
-    let envelope_body = EnvelopeBody::decode(req.body.as_slice()).unwrap();
+    let envelope_body = EnvelopeBody::decode(&body).unwrap();
     let sender_message = envelope_body
         .decode_part::<proto::TransactionSenderMessage>(1)
         .unwrap()

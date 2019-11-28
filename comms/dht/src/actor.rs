@@ -28,10 +28,9 @@
 //! [DhtRequest]: ./enum.DhtRequest.html
 
 use crate::{
-    broadcast_strategy::{BroadcastClosestRequest, BroadcastStrategy},
+    broadcast_strategy::BroadcastStrategy,
     discovery::DhtDiscoveryError,
-    envelope::NodeDestination,
-    outbound::{OutboundEncryption, OutboundMessageRequester},
+    outbound::{OutboundMessageRequester, SendMessageParams},
     proto::{dht::JoinMessage, envelope::DhtMessageType, store_forward::StoredMessagesRequest},
     DhtConfig,
 };
@@ -285,15 +284,11 @@ impl<'a> DhtActor<'a> {
         );
 
         outbound_requester
-            .send_dht_message(
-                BroadcastStrategy::Closest(Box::new(BroadcastClosestRequest {
-                    n: num_neighbouring_nodes,
-                    node_id: node_identity.node_id().clone(),
-                    excluded_peers: Vec::new(),
-                })),
-                NodeDestination::Unknown,
-                OutboundEncryption::None,
-                DhtMessageType::Join,
+            .send_message_no_header(
+                SendMessageParams::new()
+                    .closest(node_identity.node_id().clone(), num_neighbouring_nodes, Vec::new())
+                    .with_dht_message_type(DhtMessageType::Join)
+                    .finish(),
                 message,
             )
             .await
@@ -309,18 +304,12 @@ impl<'a> DhtActor<'a> {
         maybe_since: Option<DateTime<Utc>>,
     ) -> Result<(), DhtActorError>
     {
-        let broadcast_strategy = BroadcastStrategy::Closest(Box::new(BroadcastClosestRequest {
-            n: num_neighbouring_nodes,
-            node_id: node_identity.node_id().clone(),
-            excluded_peers: Vec::new(),
-        }));
-
         outbound_requester
-            .send_dht_message(
-                broadcast_strategy,
-                NodeDestination::Unknown,
-                OutboundEncryption::EncryptForDestination,
-                DhtMessageType::SafRequestMessages,
+            .send_message_no_header(
+                SendMessageParams::new()
+                    .closest(node_identity.node_id().clone(), num_neighbouring_nodes, Vec::new())
+                    .with_dht_message_type(DhtMessageType::SafRequestMessages)
+                    .finish(),
                 maybe_since
                     .map(StoredMessagesRequest::since)
                     .unwrap_or(StoredMessagesRequest::new()),
@@ -503,43 +492,11 @@ mod test {
 
             rt.block_on(async move {
                 requester.send_join().await.unwrap();
-                let request = unwrap_oms_send_msg!(out_rx.next().await.unwrap());
-                assert_eq!(request.dht_message_type, DhtMessageType::Join);
+                let (params, _) = unwrap_oms_send_msg!(out_rx.next().await.unwrap());
+                assert_eq!(params.dht_message_type, DhtMessageType::Join);
             });
         });
     }
-
-    //    #[test]
-    //    fn send_discover_request() {
-    //        runtime::test_async(|rt| {
-    //            let node_identity = make_node_identity();
-    //            let peer_manager = make_peer_manager();
-    //            let (out_tx, mut out_rx) = mpsc::channel(1);
-    //            let (actor_tx, actor_rx) = mpsc::channel(1);
-    //            let mut requester = DhtRequester::new(actor_tx);
-    //            let outbound_requester = OutboundMessageRequester::new(out_tx);
-    //            let shutdown = Shutdown::new();
-    //            let actor = DhtActor::new(
-    //                Default::default(),
-    //                node_identity,
-    //                peer_manager,
-    //                outbound_requester,
-    //                actor_rx,
-    //                shutdown.to_signal(),
-    //            );
-    //
-    //            rt.spawn(actor.run());
-    //
-    //            rt.block_on(async move {
-    //                requester
-    //                    .send_discover(CommsPublicKey::default(), None, NodeDestination::Unknown)
-    //                    .await
-    //                    .unwrap();
-    //                let request = unwrap_oms_send_msg!(out_rx.next().await.unwrap());
-    //                assert_eq!(request.dht_message_type, DhtMessageType::Discovery);
-    //            });
-    //        });
-    //    }
 
     #[test]
     fn insert_message_signature() {

@@ -44,9 +44,7 @@ use std::{collections::HashMap, convert::TryInto, sync::Arc};
 use tari_broadcast_channel::Publisher;
 use tari_comms::{peer_manager::NodeIdentity, types::CommsPublicKey};
 use tari_comms_dht::{
-    broadcast_strategy::BroadcastStrategy,
     domain_message::OutboundDomainMessage,
-    envelope::NodeDestination,
     outbound::{OutboundEncryption, OutboundMessageRequester},
 };
 use tari_crypto::keys::SecretKey;
@@ -308,7 +306,7 @@ where
         self.outbound_message_service
             .send_direct(
                 dest_pubkey.clone(),
-                OutboundEncryption::EncryptForDestination,
+                OutboundEncryption::EncryptForPeer,
                 OutboundDomainMessage::new(TariMessageType::SenderPartialTransaction, proto_message),
             )
             .await?;
@@ -441,10 +439,9 @@ where
             let tx_id = recipient_reply.tx_id;
             let proto_message: proto::RecipientSignedMessage = recipient_reply.into();
             self.outbound_message_service
-                .send_message(
-                    BroadcastStrategy::DirectPublicKey(source_pubkey.clone()),
-                    NodeDestination::Unknown,
-                    OutboundEncryption::EncryptForDestination,
+                .send_direct(
+                    source_pubkey.clone(),
+                    OutboundEncryption::EncryptForPeer,
                     OutboundDomainMessage::new(TariMessageType::ReceiverPartialTransactionReply, proto_message),
                 )
                 .await?;

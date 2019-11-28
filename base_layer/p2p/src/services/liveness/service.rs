@@ -346,7 +346,7 @@ mod test {
         connection::NetAddress,
         peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
     };
-    use tari_comms_dht::outbound::DhtOutboundRequest;
+    use tari_comms_dht::outbound::{DhtOutboundRequest, SendMessageResponse};
     use tari_crypto::keys::PublicKey;
     use tari_service_framework::reply_channel;
     use tari_shutdown::Shutdown;
@@ -436,8 +436,8 @@ mod test {
             // Receive outbound request
             rt.spawn(async move {
                 match outbound_rx.select_next_some().await {
-                    DhtOutboundRequest::SendMsg(_, reply_tx) => {
-                        reply_tx.send(0).unwrap();
+                    DhtOutboundRequest::SendMsg(_, _, reply_tx) => {
+                        reply_tx.send(SendMessageResponse::Ok(0)).unwrap();
                     },
                     _ => panic!("unexpected request"),
                 }

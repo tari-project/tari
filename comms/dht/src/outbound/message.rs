@@ -22,8 +22,8 @@
 
 use crate::{
     broadcast_strategy::BroadcastStrategy,
-    envelope::{DhtMessageFlags, DhtMessageHeader, NodeDestination},
-    proto::envelope::DhtMessageType,
+    envelope::{DhtMessageFlags, DhtMessageHeader},
+    outbound::message_params::FinalSendMessageParams,
 };
 use futures::channel::oneshot;
 use std::fmt;
@@ -39,14 +39,14 @@ pub enum OutboundEncryption {
     /// Message should be encrypted using a shared secret derived from the destination peer's
     /// public key. Each message sent according to the broadcast strategy will be encrypted for
     /// the destination peer.
-    EncryptForDestination,
+    EncryptForPeer,
 }
 
 impl OutboundEncryption {
     /// Return the correct DHT flags for the encryption setting
     pub fn flags(&self) -> DhtMessageFlags {
         match self {
-            OutboundEncryption::EncryptFor(_) | OutboundEncryption::EncryptForDestination => DhtMessageFlags::ENCRYPTED,
+            OutboundEncryption::EncryptFor(_) | OutboundEncryption::EncryptForPeer => DhtMessageFlags::ENCRYPTED,
             _ => DhtMessageFlags::NONE,
         }
     }
@@ -56,24 +56,6 @@ impl Default for OutboundEncryption {
     fn default() -> Self {
         OutboundEncryption::None
     }
-}
-
-#[derive(Debug, Clone)]
-pub struct SendMessageRequest {
-    /// Broadcast strategy to use when sending the message
-    pub broadcast_strategy: BroadcastStrategy,
-    /// The intended destination for this message
-    pub destination: NodeDestination,
-    /// Encryption setting for message
-    pub encryption: OutboundEncryption,
-    /// Comms-level message flags
-    pub comms_flags: MessageFlags,
-    /// Dht-level message flags
-    pub dht_flags: DhtMessageFlags,
-    /// Dht-level message type (`DhtMessageType::None` for a non-DHT message)
-    pub dht_message_type: DhtMessageType,
-    /// Message body
-    pub body: Vec<u8>,
 }
 
 #[derive(Debug, Clone)]
@@ -88,11 +70,52 @@ pub struct ForwardRequest {
     pub body: Vec<u8>,
 }
 
+#[derive(Debug)]
+pub enum SendMessageResponse {
+    /// The number of messages that have been queued for sending
+    Ok(usize),
+    /// A failure occurred when sending
+    Failed,
+    /// DHT Discovery has been initiated. The caller may wait on the receiver
+    /// to find out of the message was sent.
+    /// _NOTE: DHT discovery could take minutes (determined by `DhtConfig::discovery_request_timeout)_
+    PendingDiscovery(oneshot::Receiver<SendMessageResponse>),
+}
+
+impl SendMessageResponse {
+    /// Returns the result of a send message request.
+    /// A `SendMessageResponse::Ok(n)` will resolve immediately returning `Some(n)`.
+    /// A `SendMessageResponse::Failed` will resolve immediately returning a `None`.
+    /// If DHT discovery is initiated, this will resolve once discovery has completed, either
+    /// succeeding (`Some(n)`) or failing (`None`).
+    pub async fn resolve_ok(self) -> Option<usize> {
+        use SendMessageResponse::*;
+        match self {
+            Ok(n) => Some(n),
+            Failed => None,
+            PendingDiscovery(rx) => rx.await.ok()?.ok_or_failed(),
+        }
+    }
+
+    fn ok_or_failed(self) -> Option<usize> {
+        use SendMessageResponse::*;
+        match self {
+            Ok(n) => Some(n),
+            Failed => None,
+            PendingDiscovery(_) => panic!("ok_or_failed() called on PendingDiscovery"),
+        }
+    }
+}
+
 /// Represents a request to the DHT broadcast middleware
 #[derive(Debug)]
 pub enum DhtOutboundRequest {
     /// Send a message using the given broadcast strategy
-    SendMsg(Box<SendMessageRequest>, oneshot::Sender<usize>),
+    SendMsg(
+        Box<FinalSendMessageParams>,
+        Vec<u8>,
+        oneshot::Sender<SendMessageResponse>,
+    ),
     /// Forward a message envelope
     Forward(Box<ForwardRequest>),
 }
@@ -100,7 +123,9 @@ pub enum DhtOutboundRequest {
 impl fmt::Display for DhtOutboundRequest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         match self {
-            DhtOutboundRequest::SendMsg(request, _) => write!(f, "SendMsg({})", request.broadcast_strategy),
+            DhtOutboundRequest::SendMsg(request, body, _) => {
+                write!(f, "SendMsg({} - <{} bytes>)", request.broadcast_strategy, body.len())
+            },
             DhtOutboundRequest::Forward(request) => write!(f, "Forward({})", request.broadcast_strategy),
         }
     }

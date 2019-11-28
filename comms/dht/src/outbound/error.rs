@@ -37,4 +37,8 @@ pub enum DhtOutboundError {
     RequesterReplyChannelClosed,
     /// Peer selection failed
     PeerSelectionFailed,
+    /// Failed to send broadcast message
+    BroadcastFailed,
+    /// Reply channel cancelled
+    ReplyChannelCanceled,
 }

@@ -102,7 +102,7 @@ where
                 let shared_secret = crypt::generate_ecdh_secret(node_identity.secret_key(), public_key);
                 message.body = crypt::encrypt(&shared_secret, &message.body)?;
             },
-            OutboundEncryption::EncryptForDestination => {
+            OutboundEncryption::EncryptForPeer => {
                 debug!(
                     target: LOG_TARGET,
                     "Encrypting message for peer with public key {}", message.destination_peer.public_key
@@ -188,7 +188,7 @@ mod test {
                 PeerFeatures::COMMUNICATION_NODE,
             ),
             make_dht_header(&node_identity, &body, DhtMessageFlags::ENCRYPTED),
-            OutboundEncryption::EncryptForDestination,
+            OutboundEncryption::EncryptForPeer,
             MessageFlags::empty(),
             body.clone(),
         );
