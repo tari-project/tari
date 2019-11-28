@@ -21,10 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    base_node::{
-        states::{StateEvent, StateEvent::FatalError},
-        BaseNodeStateMachine,
-    },
+    base_node::{states::StateEvent, BaseNodeStateMachine},
     chain_storage::BlockchainBackend,
 };
 use log::*;

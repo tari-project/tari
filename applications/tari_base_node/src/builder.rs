@@ -50,7 +50,7 @@ use tari_p2p::{
 };
 use tari_service_framework::{handles::ServiceHandles, StackBuilder};
 use tari_transactions::{
-    crypto::keys::{PublicKey as PK, SecretKey as SK},
+    crypto::keys::SecretKey as SK,
     types::{HashDigest, PrivateKey, PublicKey},
 };
 use tari_utilities::{hex::Hex, message_format::MessageFormat};

@@ -46,9 +46,5 @@ serde_json = "1.0.39"
 tari_common = { path = "../common", version = "^0.0" }
 tokio-mock-task = "0.1.1"
 
-[[bench]]
-name = "benches_main"
-harness = false
-
 [build-dependencies]
 tari_protobuf_build = { version = "^0.0", path="../infrastructure/protobuf_build"}

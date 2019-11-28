@@ -190,7 +190,7 @@ where T: BlockchainBackend
     fn read_metadata(db: &T) -> Result<ChainMetadata, ChainStorageError> {
         let height = fetch!(meta db, ChainHeight, None);
         let hash = fetch!(meta db, BestBlock, None);
-        let work = fetch!(meta db, AccumulatedWork, 0);
+        let _work = fetch!(meta db, AccumulatedWork, 0);
         // Set a default of 2880 blocks (2 days with 1min blocks)
         let horizon = fetch!(meta db, PruningHorizon, 2880);
         Ok(ChainMetadata {
@@ -754,7 +754,7 @@ where T: BlockchainBackend
     /// Each successful link is pushed to the front of the queue.
     fn try_construct_fork(&self, new_block: Block) -> Result<VecDeque<Block>, ChainStorageError> {
         let mut reorg_chain = VecDeque::new();
-        let new_block_hash = new_block.hash();
+        let _new_block_hash = new_block.hash();
         let mut hash = new_block.header.prev_hash.clone();
         let mut height = new_block.header.height;
         reorg_chain.push_front(new_block);
@@ -780,12 +780,12 @@ where T: BlockchainBackend
         Ok(reorg_chain)
     }
 
-    fn build_orphan_tree(&self, reorg_chain: VecDeque<Block>) -> Result<(), ChainStorageError> {
+    fn build_orphan_tree(&self, _reorg_chain: VecDeque<Block>) -> Result<(), ChainStorageError> {
         // TODO - Build an return a tree for later blocks leading to new_block
         Ok(())
     }
 
-    fn find_longer_chain(&self, tree: ()) -> Option<Vec<Block>> {
+    fn find_longer_chain(&self, _tree: ()) -> Option<Vec<Block>> {
         // TODO - Check tree vs main chain for great accum difficulty
         None
     }

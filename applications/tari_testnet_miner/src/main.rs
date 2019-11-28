@@ -66,7 +66,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut pool = ThreadPool::new();
     loop {
-        let height: u64 = if block.header.height <= 2016 {
+        let _height: u64 = if block.header.height <= 2016 {
             1
         } else {
             block.header.height - 2016

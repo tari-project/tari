@@ -697,10 +697,7 @@ mod test {
         types::{BlindingFactor, PrivateKey, PublicKey, RangeProof},
     };
     use rand;
-    use tari_crypto::{
-        keys::SecretKey as SecretKeyTrait,
-        ristretto::{dalek_range_proof::DalekRangeProofService, pedersen::PedersenCommitmentFactory},
-    };
+    use tari_crypto::{keys::SecretKey as SecretKeyTrait, ristretto::pedersen::PedersenCommitmentFactory};
 
     #[test]
     fn unblinded_input() {
