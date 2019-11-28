@@ -390,8 +390,13 @@ where
         let boxing = Box::into_raw(Box::new(completed_transaction));
         #[cfg(feature = "c_integration")]
         match self.callback_received_transaction_reply {
-            Some(call) => unsafe { call(boxing) },
-            None => {},
+            Some(call) => {
+                info!(target: LOG_TARGET, "ReceivedTransactionReplyCallback -> Succeeded");
+                unsafe { call(boxing) }
+            },
+            None => {
+                info!(target: LOG_TARGET, "ReceivedTransactionReplyCallback -> Invalid");
+            },
         }
         Ok(())
     }
@@ -473,8 +478,13 @@ where
             let boxing = Box::into_raw(Box::new(inbound_transaction));
             #[cfg(feature = "c_integration")]
             match self.callback_received_transaction {
-                Some(call) => unsafe { call(boxing) },
-                None => {},
+                Some(call) => {
+                    info!(target: LOG_TARGET, "ReceivedTransactionCallback -> Succeeded");
+                    unsafe { call(boxing) }
+                },
+                None => {
+                    info!(target: LOG_TARGET, "ReceivedTransactionCallback -> Invalid");
+                },
             }
         }
         Ok(())
@@ -502,6 +512,10 @@ where
         call: unsafe extern "C" fn(*mut InboundTransaction),
     ) -> Result<TransactionServiceResponse, TransactionServiceError>
     {
+        info!(
+            target: LOG_TARGET,
+            "ReceivedTransactionCallback -> Assigning: {:?}", call
+        );
         self.callback_received_transaction = Some(call);
         Ok(TransactionServiceResponse::CallbackRegistered)
     }
@@ -512,6 +526,10 @@ where
         call: unsafe extern "C" fn(*mut CompletedTransaction),
     ) -> Result<TransactionServiceResponse, TransactionServiceError>
     {
+        info!(
+            target: LOG_TARGET,
+            "ReceivedTransactionReplyCallback -> Assigning: {:?}", call
+        );
         self.callback_received_transaction_reply = Some(call);
         Ok(TransactionServiceResponse::CallbackRegistered)
     }
@@ -522,6 +540,7 @@ where
         call: unsafe extern "C" fn(*mut CompletedTransaction),
     ) -> Result<TransactionServiceResponse, TransactionServiceError>
     {
+        info!(target: LOG_TARGET, "TransactionMinedCallback -> Assigning: {:?}", call);
         self.callback_mined = Some(call);
         Ok(TransactionServiceResponse::CallbackRegistered)
     }
@@ -532,6 +551,10 @@ where
         call: unsafe extern "C" fn(*mut CompletedTransaction),
     ) -> Result<TransactionServiceResponse, TransactionServiceError>
     {
+        info!(
+            target: LOG_TARGET,
+            "TransactionBroadcastCallback -> Assigning: {:?}", call
+        );
         self.callback_transaction_broadcast = Some(call);
         Ok(TransactionServiceResponse::CallbackRegistered)
     }
@@ -597,8 +620,13 @@ where
                 Some(tx) => {
                     let boxing = Box::into_raw(Box::new(tx.clone()));
                     match self.callback_mined {
-                        Some(call) => unsafe { call(boxing) },
-                        None => {},
+                        Some(call) => {
+                            info!(target: LOG_TARGET, "TransactionMinedCallback -> Succeeded");
+                            unsafe { call(boxing) }
+                        },
+                        None => {
+                            info!(target: LOG_TARGET, "TransactionMinedCallback -> Invalid");
+                        },
                     }
                 },
                 None => {},
@@ -666,7 +694,6 @@ where
             OutputFeatures::default(),
             &self.factories,
         );
-
         self.db
             .add_pending_inbound_transaction(tx_id.clone(), InboundTransaction {
                 tx_id,
@@ -714,8 +741,13 @@ where
                 Some(tx) => {
                     let boxing = Box::into_raw(Box::new(tx.clone()));
                     match self.callback_transaction_broadcast {
-                        Some(call) => unsafe { call(boxing) },
-                        None => {},
+                        Some(call) => {
+                            unsafe { call(boxing) }
+                            info!(target: LOG_TARGET, "TransactionBroadcastCallback -> Succeeded");
+                        },
+                        None => {
+                            info!(target: LOG_TARGET, "TransactionBroadcastCallback ->  Invalid");
+                        },
                     }
                 },
                 None => {},

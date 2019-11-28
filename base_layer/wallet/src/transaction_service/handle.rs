@@ -209,9 +209,7 @@ impl TransactionServiceHandle {
     {
         match self
             .handle
-            .call(TransactionServiceRequest::RegisterCallbackReceivedTransactionReply(
-                call,
-            ))
+            .call(TransactionServiceRequest::RegisterCallbackMined(call))
             .await??
         {
             TransactionServiceResponse::CallbackRegistered => Ok(()),
@@ -227,9 +225,7 @@ impl TransactionServiceHandle {
     {
         match self
             .handle
-            .call(TransactionServiceRequest::RegisterCallbackReceivedTransactionReply(
-                call,
-            ))
+            .call(TransactionServiceRequest::RegisterCallbackTransactionBroadcast(call))
             .await??
         {
             TransactionServiceResponse::CallbackRegistered => Ok(()),
