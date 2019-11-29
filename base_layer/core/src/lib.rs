@@ -42,6 +42,7 @@ pub mod base_node;
 pub mod blocks;
 
 pub mod chain_storage;
+pub mod validation;
 
 // Re-export the crypto crate to make exposing traits etc easier for clients of this crate
 pub use tari_crypto as crypto;

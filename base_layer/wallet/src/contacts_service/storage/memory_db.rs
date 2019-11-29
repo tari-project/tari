@@ -57,7 +57,7 @@ impl ContactsBackend for ContactsServiceMemoryDatabase {
                 .iter()
                 .find(|v| &v.public_key == pk)
                 .map(|c| DbValue::Contact(Box::new(c.clone()))),
-            DbKey::Contacts => Some(DbValue::Contacts(Box::new(db.contacts.clone()))),
+            DbKey::Contacts => Some(DbValue::Contacts(db.contacts.clone())),
         };
 
         Ok(result)
