@@ -22,6 +22,7 @@
 
 use crate::support::utils::random_string;
 use std::path::PathBuf;
+use tari_test_utils::random::string;
 use tempdir::TempDir;
 
 pub fn get_path(name: Option<&str>) -> String {

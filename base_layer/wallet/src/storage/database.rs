@@ -159,8 +159,9 @@ mod test {
     use crate::{
         error::WalletStorageError,
         storage::{
-            database::{DbKey, WalletDatabase},
+            database::{DbKey, WalletBackend, WalletDatabase},
             memory_db::WalletMemoryDatabase,
+            sqlite_db::WalletSqliteDatabase,
         },
     };
     use tari_comms::{
@@ -169,15 +170,16 @@ mod test {
         types::{CommsPublicKey, CommsSecretKey},
     };
     use tari_crypto::keys::PublicKey;
+    use tari_test_utils::random::string;
+    use tempdir::TempDir;
 
-    #[test]
-    pub fn test_database_crud() {
+    pub fn test_database_crud<T: WalletBackend + 'static>(backend: T) {
         let mut rng = match rand::OsRng::new() {
             Ok(x) => x,
             Err(_) => unimplemented!(),
         };
 
-        let mut db = WalletDatabase::new(WalletMemoryDatabase::new());
+        let mut db = WalletDatabase::new(backend);
         let mut peers = Vec::new();
         for i in 0..5 {
             let (_secret_key, public_key): (CommsSecretKey, CommsPublicKey) = PublicKey::random_keypair(&mut rng);
@@ -193,10 +195,11 @@ mod test {
             peers.push(peer);
 
             db.save_peer(peers[i].clone()).unwrap();
-            assert_eq!(
-                db.save_peer(peers[i].clone()),
-                Err(WalletStorageError::DuplicateContact)
-            );
+
+            match db.save_peer(peers[i].clone()) {
+                Err(WalletStorageError::DuplicateContact) => (),
+                _ => assert!(false),
+            }
         }
 
         let got_peers = db.get_peers().unwrap();
@@ -207,20 +210,38 @@ mod test {
 
         let (_secret_key, public_key) = PublicKey::random_keypair(&mut rng);
 
-        let peer = db.get_peer(&public_key);
-        assert_eq!(
-            peer,
-            Err(WalletStorageError::ValueNotFound(DbKey::Peer(public_key.clone())))
-        );
-        assert_eq!(
-            db.remove_peer(&public_key),
-            Err(WalletStorageError::ValueNotFound(DbKey::Peer(public_key.clone())))
-        );
+        match db.get_peer(&public_key) {
+            Err(WalletStorageError::ValueNotFound(DbKey::Peer(_p))) => (),
+            _ => assert!(false),
+        }
+
+        match db.remove_peer(&public_key) {
+            Err(WalletStorageError::ValueNotFound(DbKey::Peer(_p))) => (),
+            _ => assert!(false),
+        }
 
         let _ = db.remove_peer(&peers[0].public_key).unwrap();
         peers.remove(0);
         let got_peers = db.get_peers().unwrap();
 
         assert_eq!(peers, got_peers);
+    }
+
+    #[test]
+    fn test_database_crud_memory_db() {
+        test_database_crud(WalletMemoryDatabase::new());
+    }
+
+    #[test]
+    fn test_database_crud_sqlite_db() {
+        let db_name = format!("{}.sqlite3", string(8).as_str());
+        let db_folder = TempDir::new(string(8).as_str())
+            .unwrap()
+            .path()
+            .to_str()
+            .unwrap()
+            .to_string();
+
+        test_database_crud(WalletSqliteDatabase::new(format!("{}{}", db_folder, db_name).to_string()).unwrap());
     }
 }
