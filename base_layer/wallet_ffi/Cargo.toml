@@ -18,6 +18,8 @@ libc = "0.2.65"
 rand = "0.5.5"
 chrono = { version = "0.4.6", features = ["serde"]}
 tari_broadcast_channel = { version="^0.0",  path = "../../infrastructure/broadcast_channel" }
+derive-error = "0.0.4"
+log = "0.4.6"
 
 [lib]
 crate-type = ["staticlib","cdylib"]

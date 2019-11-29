@@ -78,13 +78,13 @@ void string_destroy(char *s);
 /// -------------------------------- ByteVector ----------------------------------------------- ///
 
 // Creates a ByteVector
-struct ByteVector *byte_vector_create(const unsigned char *byte_array, unsigned int element_count);
+struct ByteVector *byte_vector_create(const unsigned char *byte_array, unsigned int element_count, int* error_out);
 
 // Gets a char from a ByteVector
-unsigned char byte_vector_get_at(struct ByteVector *ptr, unsigned int i);
+unsigned char byte_vector_get_at(struct ByteVector *ptr, unsigned int i, int* error_out);
 
 // Returns the number of elements in a ByteVector
-unsigned int byte_vector_get_length(const struct ByteVector *vec);
+unsigned int byte_vector_get_length(const struct ByteVector *vec, int* error_out);
 
 // Frees memory for a ByteVector pointer
 void byte_vector_destroy(struct ByteVector *bytes);
@@ -92,16 +92,16 @@ void byte_vector_destroy(struct ByteVector *bytes);
 /// -------------------------------- TariPublicKey ----------------------------------------------- ///
 
 // Creates a TariPublicKey from a ByteVector
-struct TariPublicKey *public_key_create(struct ByteVector *bytes);
+struct TariPublicKey *public_key_create(struct ByteVector *bytes,int* error_out);
 
 // Gets a ByteVector from a TariPublicKey
-struct ByteVector *public_key_get_bytes(struct TariPublicKey *public_key);
+struct ByteVector *public_key_get_bytes(struct TariPublicKey *public_key,int* error_out);
 
 // Creates a TariPublicKey from a TariPrivateKey
-struct TariPublicKey *public_key_from_private_key(struct TariPrivateKey *secret_key);
+struct TariPublicKey *public_key_from_private_key(struct TariPrivateKey *secret_key,int* error_out);
 
 // Creates a TariPublicKey from a const char* filled with hexadecimal characters
-struct TariPublicKey *public_key_from_hex(const char *hex);
+struct TariPublicKey *public_key_from_hex(const char *hex,int* error_out);
 
 // Frees memory for a TariPublicKey pointer
 void public_key_destroy(struct TariPublicKey *pk);
@@ -109,16 +109,16 @@ void public_key_destroy(struct TariPublicKey *pk);
 /// -------------------------------- TariPrivateKey ----------------------------------------------- ///
 
 // Creates a TariPrivateKey from a ByteVector
-struct TariPrivateKey *private_key_create(struct ByteVector *bytes);
+struct TariPrivateKey *private_key_create(struct ByteVector *bytes,int* error_out);
 
 // Generates a TariPrivateKey
 struct TariPrivateKey *private_key_generate(void);
 
 // Creates a ByteVector from a TariPrivateKey
-struct ByteVector *private_key_get_bytes(struct TariPrivateKey *private_key);
+struct ByteVector *private_key_get_bytes(struct TariPrivateKey *private_key,int* error_out);
 
 // Creates a TariPrivateKey from a const char* filled with hexadecimal charaters
-struct TariPrivateKey *private_key_from_hex(const char *hex);
+struct TariPrivateKey *private_key_from_hex(const char *hex,int* error_out);
 
 // Frees memory for a TariPrivateKey
 void private_key_destroy(struct TariPrivateKey *pk);
@@ -126,13 +126,13 @@ void private_key_destroy(struct TariPrivateKey *pk);
 /// -------------------------------- Contact ------------------------------------------------------ ///
 
 // Creates a TariContact
-struct TariContact *contact_create(const char *alias, struct TariPublicKey *public_key);
+struct TariContact *contact_create(const char *alias, struct TariPublicKey *public_key,int* error_out);
 
 // Gets the alias of the TariContact
-char *contact_get_alias(struct TariContact *contact);
+char *contact_get_alias(struct TariContact *contact,int* error_out);
 
 /// Gets the TariPublicKey of the TariContact
-struct TariPublicKey *contact_get_public_key(struct TariContact *contact);
+struct TariPublicKey *contact_get_public_key(struct TariContact *contact,int* error_out);
 
 // Frees memory for a TariContact
 void contact_destroy(struct TariContact *contact);
@@ -140,10 +140,10 @@ void contact_destroy(struct TariContact *contact);
 /// -------------------------------- Contacts ------------------------------------------------------ ///
 
 // Gets the number of elements of TariContacts
-unsigned int contacts_get_length(struct TariContacts *contacts);
+unsigned int contacts_get_length(struct TariContacts *contacts,int* error_out);
 
 // Gets a TariContact from TariContacts at position
-struct TariContact *contacts_get_at(struct TariContacts *contacts, unsigned int position);
+struct TariContact *contacts_get_at(struct TariContacts *contacts, unsigned int position,int* error_out);
 
 // Frees memory for TariContacts
 void contacts_destroy(struct TariContacts *contacts);
@@ -151,24 +151,24 @@ void contacts_destroy(struct TariContacts *contacts);
 /// -------------------------------- CompletedTransaction ------------------------------------------------------ ///
 
 // Gets a transaction id of a TariCompletedTransaction
-unsigned long long completed_transaction_get_transaction_id(struct TariCompletedTransaction *transaction);
+unsigned long long completed_transaction_get_transaction_id(struct TariCompletedTransaction *transaction,int* error_out);
 
 // Gets the destination TariPublicKey of a TariCompletedTransaction
-struct TariPublicKey *completed_transaction_get_destination_public_key(struct TariCompletedTransaction *transaction);
+struct TariPublicKey *completed_transaction_get_destination_public_key(struct TariCompletedTransaction *transaction,int* error_out);
 
 // Gets the source TariPublicKey of a TariCompletedTransaction
-struct TariPublicKey *completed_transaction_get_source_public_key(struct TariCompletedTransaction *transaction);
+struct TariPublicKey *completed_transaction_get_source_public_key(struct TariCompletedTransaction *transaction,int* error_out);
 
 // Gets the amount of a TariCompletedTransaction
-unsigned long long completed_transaction_get_amount(struct TariCompletedTransaction *transaction);
+unsigned long long completed_transaction_get_amount(struct TariCompletedTransaction *transaction,int* error_out);
 
 // Gets the fee of a TariCompletedTransaction
-unsigned long long completed_transaction_get_fee(struct TariCompletedTransaction *transaction);
+unsigned long long completed_transaction_get_fee(struct TariCompletedTransaction *transaction,int* error_out);
 
-unsigned long long completed_transaction_get_timestamp(struct TariCompletedTransaction *transaction);
+unsigned long long completed_transaction_get_timestamp(struct TariCompletedTransaction *transaction,int* error_out);
 
 // Gets the message of a TariCompletedTransaction
-const char *completed_transaction_get_message(struct TariCompletedTransaction *transaction);
+const char *completed_transaction_get_message(struct TariCompletedTransaction *transaction,int* error_out);
 
 // Gets the status of a TariCompletedTransaction
 // | Value | Interpretation |
@@ -177,13 +177,13 @@ const char *completed_transaction_get_message(struct TariCompletedTransaction *t
 // |   0 | Completed |
 // |   1 | Broadcast |
 // |   2 | Mined |
-int completed_transaction_get_status(struct TariCompletedTransaction *transaction);
+int completed_transaction_get_status(struct TariCompletedTransaction *transaction,int* error_out);
 
 // Gets the TransactionID of a TariCompletedTransaction
-unsigned long long completed_transaction_get_transaction_id(struct TariCompletedTransaction *transaction);
+unsigned long long completed_transaction_get_transaction_id(struct TariCompletedTransaction *transaction,int* error_out);
 
 // Gets the timestamp of a TariCompletedTransaction
-unsigned long long completed_transaction_get_timestamp(struct TariCompletedTransaction *transaction);
+unsigned long long completed_transaction_get_timestamp(struct TariCompletedTransaction *transaction,int* error_out);
 
 // Frees memory for a TariCompletedTransaction
 void completed_transaction_destroy(struct TariCompletedTransaction *transaction);
@@ -191,10 +191,10 @@ void completed_transaction_destroy(struct TariCompletedTransaction *transaction)
 /// -------------------------------- CompletedTransactions ------------------------------------------------------ ///
 
 // Gets number of elements in TariCompletedTransactions
-unsigned int completed_transactions_get_length(struct TariCompletedTransactions *transactions);
+unsigned int completed_transactions_get_length(struct TariCompletedTransactions *transactions,int* error_out);
 
 // Gets a TariCompletedTransaction from a TariCompletedTransactions at position
-struct TariCompletedTransaction *completed_transactions_get_at(struct TariCompletedTransactions *transactions, unsigned int position);
+struct TariCompletedTransaction *completed_transactions_get_at(struct TariCompletedTransactions *transactions, unsigned int position,int* error_out);
 
 // Frees memory for a TariCompletedTransactions
 void completed_transactions_destroy(struct TariCompletedTransactions *transactions);
@@ -202,19 +202,19 @@ void completed_transactions_destroy(struct TariCompletedTransactions *transactio
 /// -------------------------------- OutboundTransaction ------------------------------------------------------ ///
 
 // Gets the TransactionId of a TariPendingOutboundTransaction
-unsigned long long pending_outbound_transaction_get_transaction_id(struct TariPendingOutboundTransaction *transaction);
+unsigned long long pending_outbound_transaction_get_transaction_id(struct TariPendingOutboundTransaction *transaction,int* error_out);
 
 // Gets the destination TariPublicKey of a TariPendingOutboundTransaction
-struct TariPublicKey *pending_outbound_transaction_get_destination_public_key(struct TariPendingOutboundTransaction *transaction);
+struct TariPublicKey *pending_outbound_transaction_get_destination_public_key(struct TariPendingOutboundTransaction *transaction,int* error_out);
 
 // Gets the amount of a TariPendingOutboundTransaction
-unsigned long long pending_outbound_transaction_get_amount(struct TariPendingOutboundTransaction *transaction);
+unsigned long long pending_outbound_transaction_get_amount(struct TariPendingOutboundTransaction *transaction,int* error_out);
 
 // Gets the message of a TariPendingOutboundTransaction
-const char *pending_outbound_transaction_get_message(struct TariPendingOutboundTransaction *transaction);
+const char *pending_outbound_transaction_get_message(struct TariPendingOutboundTransaction *transaction,int* error_out);
 
 // Gets the timestamp of a TariPendingOutboundTransaction
-unsigned long long pending_outbound_transaction_get_timestamp(struct TariPendingOutboundTransaction *transaction);
+unsigned long long pending_outbound_transaction_get_timestamp(struct TariPendingOutboundTransaction *transaction,int* error_out);
 
 // Frees memory for a TariPendingOutboundTactions
 void pending_outbound_transaction_destroy(struct TariPendingOutboundTransaction *transaction);
@@ -222,10 +222,10 @@ void pending_outbound_transaction_destroy(struct TariPendingOutboundTransaction 
 /// -------------------------------- OutboundTransactions ------------------------------------------------------ ///
 
 // Gets the number of elements in a TariPendingOutboundTactions
-unsigned int pending_outbound_transactions_get_length(struct TariPendingOutboundTransactions *transactions);
+unsigned int pending_outbound_transactions_get_length(struct TariPendingOutboundTransactions *transactions,int* error_out);
 
 // Gets a TariPendingOutboundTransaction of a TariPendingOutboundTransactions at position
-struct TariPendingOutboundTransactions *pending_outbound_transactions_get_at(struct TariPendingOutboundTransactions *transactions, unsigned int position);
+struct TariPendingOutboundTransactions *pending_outbound_transactions_get_at(struct TariPendingOutboundTransactions *transactions, unsigned int position,int* error_out);
 
 // Frees memory of a TariPendingOutboundTransactions
 void pending_outbound_transactions_destroy(struct TariPendingOutboundTransactions *transactions);
@@ -233,19 +233,19 @@ void pending_outbound_transactions_destroy(struct TariPendingOutboundTransaction
 /// -------------------------------- InboundTransaction ------------------------------------------------------ ///
 
 // Gets the TransactionId of a TariPendingInboundTransaction
-unsigned long long pending_inbound_transaction_get_transaction_id(struct TariPendingInboundTransaction *transaction);
+unsigned long long pending_inbound_transaction_get_transaction_id(struct TariPendingInboundTransaction *transaction,int* error_out);
 
 // Gets the source TariPublicKey of a TariPendingInboundTransaction
-struct TariPublicKey *pending_inbound_transaction_get_source_public_key(struct TariPendingInboundTransaction *transaction);
+struct TariPublicKey *pending_inbound_transaction_get_source_public_key(struct TariPendingInboundTransaction *transaction,int* error_out);
 
 // Gets the message of a TariPendingInboundTransaction
-const char *pending_inbound_transaction_get_message(struct TariPendingInboundTransaction *transaction);
+const char *pending_inbound_transaction_get_message(struct TariPendingInboundTransaction *transaction,int* error_out);
 
 // Gets the amount of a TariPendingInboundTransaction
-unsigned long long pending_inbound_transaction_get_amount(struct TariPendingInboundTransaction *transaction);
+unsigned long long pending_inbound_transaction_get_amount(struct TariPendingInboundTransaction *transaction,int* error_out);
 
 // Gets the timestamp of a TariPendingInboundTransaction
-unsigned long long pending_inbound_transaction_get_timestamp(struct TariPendingInboundTransaction *transaction);
+unsigned long long pending_inbound_transaction_get_timestamp(struct TariPendingInboundTransaction *transaction,int* error_out);
 
 // Frees memory for a TariPendingInboundTransaction
 void pending_inbound_transaction_destroy(struct TariPendingInboundTransaction *transaction);
@@ -253,10 +253,10 @@ void pending_inbound_transaction_destroy(struct TariPendingInboundTransaction *t
 /// -------------------------------- InboundTransactions ------------------------------------------------------ ///
 
 // Gets the number of elements in a TariPendingInboundTransactions
-unsigned int pending_inbound_transactions_get_length(struct TariPendingInboundTransactions *transactions);
+unsigned int pending_inbound_transactions_get_length(struct TariPendingInboundTransactions *transactions,int* error_out);
 
 // Gets a TariPendingInboundTransaction of a TariPendingInboundTransactions at position
-struct TariPendingInboundTransactions *pending_inbound_transactions_get_at(struct TariPendingInboundTransactions *transactions, unsigned int position);
+struct TariPendingInboundTransactions *pending_inbound_transactions_get_at(struct TariPendingInboundTransactions *transactions, unsigned int position,int* error_out);
 
 // Frees memory of a TariPendingInboundTransaction
 void pending_inbound_transactions_destroy(struct TariPendingInboundTransactions *transactions);
@@ -268,7 +268,8 @@ struct TariCommsConfig *comms_config_create(char *control_service_address,
                                      char *listener_address,
                                      char *database_name,
                                      char *datastore_path,
-                                     struct TariPrivateKey *secret_key);
+                                     struct TariPrivateKey *secret_key,
+                                     int* error_out);
 
 // Frees memory for a TariCommsConfig
 void comms_config_destroy(struct TariCommsConfig *wc);
@@ -276,82 +277,82 @@ void comms_config_destroy(struct TariCommsConfig *wc);
 /// -------------------------------- TariWallet ----------------------------------------------- //
 
 // Creates a TariWallet
-struct TariWallet *wallet_create(struct TariWalletConfig *config, char *log_path);
+struct TariWallet *wallet_create(struct TariWalletConfig *config, char *log_path, int* error_out);
 
 /// Generates test data
-bool wallet_test_generate_data(struct TariWallet *wallet);
+bool wallet_test_generate_data(struct TariWallet *wallet,int* error_out);
 
 // Adds a base node peer to the TariWallet
-bool wallet_add_base_node_peer(struct TariWallet *wallet, struct TariPublicKey *public_key, char *address);
+bool wallet_add_base_node_peer(struct TariWallet *wallet, struct TariPublicKey *public_key, char *address,int* error_out);
 
 // Adds a TariContact to the TariWallet
-bool wallet_add_contact(struct TariWallet *wallet, struct TariContact *contact);
+bool wallet_add_contact(struct TariWallet *wallet, struct TariContact *contact,int* error_out);
 
 // Removes a TariContact form the TariWallet
-bool wallet_remove_contact(struct TariWallet *wallet, struct TariContact *contact);
+bool wallet_remove_contact(struct TariWallet *wallet, struct TariContact *contact,int* error_out);
 
 // Gets the available balance from a TariWallet
-unsigned long long wallet_get_available_balance(struct TariWallet *wallet);
+unsigned long long wallet_get_available_balance(struct TariWallet *wallet,int* error_out);
 
 // Gets the incoming balance from a TariWallet
-unsigned long long wallet_get_pending_incoming_balance(struct TariWallet *wallet);
+unsigned long long wallet_get_pending_incoming_balance(struct TariWallet *wallet,int* error_out);
 
 // Gets the outgoing balance from a TariWallet
-unsigned long long wallet_get_pending_outgoing_balance(struct TariWallet *wallet);
+unsigned long long wallet_get_pending_outgoing_balance(struct TariWallet *wallet,int* error_out);
 
 // Sends a TariPendingOutboundTransaction
-bool wallet_send_transaction(struct TariWallet *wallet, struct TariPublicKey *destination, unsigned long long amount, unsigned long long fee_per_gram,const char *message);
+bool wallet_send_transaction(struct TariWallet *wallet, struct TariPublicKey *destination, unsigned long long amount, unsigned long long fee_per_gram,const char *message,int* error_out);
 
 // Get the TariContacts from a TariWallet
-struct TariContacts *wallet_get_contacts(struct TariWallet *wallet);
+struct TariContacts *wallet_get_contacts(struct TariWallet *wallet,int* error_out);
 
 // Get the TariCompletedTransactions from a TariWallet
-struct TariCompletedTransactions *wallet_get_completed_transactions(struct TariWallet *wallet);
+struct TariCompletedTransactions *wallet_get_completed_transactions(struct TariWallet *wallet,int* error_out);
 
 // Get the TariPendingOutboundTransactions from a TariWallet
-struct TariPendingOutboundTransactions *wallet_get_pending_outbound_transactions(struct TariWallet *wallet);
+struct TariPendingOutboundTransactions *wallet_get_pending_outbound_transactions(struct TariWallet *wallet,int* error_out);
 
 // Get the TariPublicKey from a TariCommsConfig
 struct TariPublicKey *wallet_get_public_key(struct TariWallet *wallet);
 
 // Get the TariPendingInboundTransactions from a TariWallet
-struct TariPendingInboundTransactions *wallet_get_pending_inbound_transactions(struct TariWallet *wallet);
+struct TariPendingInboundTransactions *wallet_get_pending_inbound_transactions(struct TariWallet *wallet,int* error_out);
 
 // Get the TariCompletedTransaction from a TariWallet by its TransactionId
-struct TariCompletedTransaction *wallet_get_completed_transaction_by_id(struct TariWallet *wallet, unsigned long long transaction_id);
+struct TariCompletedTransaction *wallet_get_completed_transaction_by_id(struct TariWallet *wallet, unsigned long long transaction_id,int* error_out);
 
 // Get the TariPendingOutboundTransaction from a TariWallet by its TransactionId
-struct TariPendingOutboundTransaction *wallet_get_pending_outbound_transaction_by_id(struct TariWallet *wallet, unsigned long long transaction_id);
+struct TariPendingOutboundTransaction *wallet_get_pending_outbound_transaction_by_id(struct TariWallet *wallet, unsigned long long transaction_id,int* error_out);
 
 // Get the TariPendingInboundTransaction from a TariWallet by its TransactionId
-struct TariPendingInboundTransaction *wallet_get_pending_inbound_transaction_by_id(struct TariWallet *wallet, unsigned long long transaction_id);
+struct TariPendingInboundTransaction *wallet_get_pending_inbound_transaction_by_id(struct TariWallet *wallet, unsigned long long transaction_id,int* error_out);
 
 // Simulates completion of a TariPendingOutboundTransaction
-bool wallet_test_complete_sent_transaction(struct TariWallet *wallet, struct TariPendingOutboundTransaction *tx);
+bool wallet_test_complete_sent_transaction(struct TariWallet *wallet, struct TariPendingOutboundTransaction *tx,int* error_out);
 
 // Simulates the completion of a broadcasted TariPendingInboundTransaction
-bool wallet_test_transaction_broadcast(struct TariWallet *wallet, struct TariPendingInboundTransaction *tx);
+bool wallet_test_transaction_broadcast(struct TariWallet *wallet, struct TariPendingInboundTransaction *tx,int* error_out);
 
 // Simulates a TariCompletedTransaction that has been mined
-bool wallet_test_mined(struct TariWallet *wallet, struct TariCompletedTransaction *tx);
+bool wallet_test_mined(struct TariWallet *wallet, struct TariCompletedTransaction *tx,int* error_out);
 
 // Simulates a TariPendingInboundtransaction being received
-bool wallet_test_receive_transaction(struct TariWallet *wallet);
+bool wallet_test_receive_transaction(struct TariWallet *wallet,int* error_out);
 
 // Frees memory for a TariWallet
 void wallet_destroy(struct TariWallet *wallet);
 
 // Registers a callback function for when TariPendingInboundTransaction broadcast is detected
-bool wallet_callback_register_transaction_broadcast(struct TariWallet *wallet, void (*call)(struct TariCompletedTransaction*));
+bool wallet_callback_register_transaction_broadcast(struct TariWallet *wallet, void (*call)(struct TariCompletedTransaction*),int* error_out);
 
 // Registers a callback function for when a TariCompletedTransaction is mined
 bool wallet_callback_register_mined(struct TariWallet *wallet, void (*call)(struct TariCompletedTransaction*));
 
 // Registers a callback function for when a TariPendingInboundTransaction is received
-bool wallet_callback_register_received_transaction(struct TariWallet *wallet, void (*call)(struct TariPendingInboundTransaction*));
+bool wallet_callback_register_received_transaction(struct TariWallet *wallet, void (*call)(struct TariPendingInboundTransaction*),int* error_out);
 
 // Registers a callback function for when a reply is received for a TariPendingOutboundTransaction
-bool wallet_callback_register_received_transaction_reply(struct TariWallet *wallet, void (*call)(struct TariCompletedTransaction*));
+bool wallet_callback_register_received_transaction_reply(struct TariWallet *wallet, void (*call)(struct TariCompletedTransaction*),int* error_out);
 
 // Registers a callback function for when a Receiver receives a finalized transaction from a sender
 bool wallet_callback_register_received_finalized_transaction(struct TariWallet *wallet, void (*call)(struct TariCompletedTransaction*));
