@@ -30,4 +30,3 @@ pub trait Validation<T> {
     /// General validation code that can run independent of external state
     fn validate(&mut self, item: Arc<T>) -> Result<(), ValidationError>;
 }
-

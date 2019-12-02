@@ -20,40 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::blocks::BlockValidationError;
 use derive_error::Error;
 use tari_transactions::transaction::TransactionError;
 
 #[derive(Clone, Debug, PartialEq, Error)]
 pub enum ValidationError {
     BlockError(BlockValidationError),
-    BodyError(BodyValidationError),
+    TransactionError(TransactionError),
     /// Custom error with string message
     InvalidRangeProof,
     /// Custom error with string message
     #[error(no_from, non_std, msg_embedded)]
     CustomError(String),
-}
-
-#[derive(Clone, Debug, PartialEq, Error)]
-pub enum BlockValidationError {
-    /// A transaction in the block failed to validate
-    TransactionError(TransactionError),
-    /// Invalid Proof of work for the block
-    InvalidPow,
-    /// Invalid kernel in block
-    InvalidKernel,
-    /// Invalid input in block
-    InvalidInput,
-    /// Input maturity not reached
-    InputMaturity,
-    /// Invalid coinbase maturity in block or more than one coinbase
-    InvalidCoinbase,
-}
-
-#[derive(Clone, Debug, PartialEq, Error)]
-pub enum BodyValidationError {
-    /// The sum of the input and output commitments doesn't equal the sum of the kernel excesses
-    InconsistentCommitmentSum,
-    /// A kernel signature was invalid
-    InvalidKernelSignature,
 }
