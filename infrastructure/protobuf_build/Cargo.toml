@@ -13,3 +13,4 @@ edition = "2018"
 
 [dependencies]
 prost-build = "0.5.0"
+sha2 = "0.8.0"
