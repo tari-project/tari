@@ -20,4 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub struct TransactionValidationService;
+use crate::validation::error::ValidationError;
+use std::sync::Arc;
+
+/// The core validation trait. Multiple `Validation` implementors can be chained together in a [ValidatorPipeline] to
+/// provide consensus validation for blocks, transactions, or DAN instructions. Implementors only need to implement
+/// the methods that are relevant for the pipeline, since the default implementation always passes.
+pub trait Validation<T> {
+    /// General validation code that can run independent of external state
+    fn validate(&mut self, item: Arc<T>) -> Result<(), ValidationError>;
+}
+

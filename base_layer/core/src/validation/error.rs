@@ -1,4 +1,4 @@
-// Copyright 2018 The Tari Project
+// Copyright 2019. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,29 +20,40 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// Needed to make futures::select! work
-#![recursion_limit = "512"]
-// Used to eliminate the need for boxing futures in many cases.
-// Tracking issue: https://github.com/rust-lang/rust/issues/63063
-#![feature(type_alias_impl_trait)]
-// Enable usage of Vec::shrink_to
-#![feature(shrink_to)]
+use derive_error::Error;
+use tari_transactions::transaction::TransactionError;
 
-#[cfg(test)]
-pub mod test_utils;
+#[derive(Clone, Debug, PartialEq, Error)]
+pub enum ValidationError {
+    BlockError(BlockValidationError),
+    BodyError(BodyValidationError),
+    /// Custom error with string message
+    InvalidRangeProof,
+    /// Custom error with string message
+    #[error(no_from, non_std, msg_embedded)]
+    CustomError(String),
+}
 
-pub mod consts;
-pub mod mempool;
-pub mod proof_of_work;
+#[derive(Clone, Debug, PartialEq, Error)]
+pub enum BlockValidationError {
+    /// A transaction in the block failed to validate
+    TransactionError(TransactionError),
+    /// Invalid Proof of work for the block
+    InvalidPow,
+    /// Invalid kernel in block
+    InvalidKernel,
+    /// Invalid input in block
+    InvalidInput,
+    /// Input maturity not reached
+    InputMaturity,
+    /// Invalid coinbase maturity in block or more than one coinbase
+    InvalidCoinbase,
+}
 
-pub mod proto;
-pub mod types;
-
-pub mod base_node;
-pub mod blocks;
-
-pub mod chain_storage;
-pub mod validation;
-
-// Re-export the crypto crate to make exposing traits etc easier for clients of this crate
-pub use tari_crypto as crypto;
+#[derive(Clone, Debug, PartialEq, Error)]
+pub enum BodyValidationError {
+    /// The sum of the input and output commitments doesn't equal the sum of the kernel excesses
+    InconsistentCommitmentSum,
+    /// A kernel signature was invalid
+    InvalidKernelSignature,
+}

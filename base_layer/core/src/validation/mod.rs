@@ -20,4 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub struct BlockValidationService;
+//! The validation module defines the [Validation] trait which describes all code that can perform block,
+//! transaction, or other validation tasks. Validators implement the [Validation] trait and can be chained together
+//! in a [ValidationPipeline] object to carry out complex validation routines.
+//!
+//! This module also defines a mock [MockValidator] that is useful for testing components that require validation
+//! without having to bring in all sorts of blockchain and communications paraphernalia.
+
+mod error;
+mod traits;
+mod pipeline;
+
+pub mod mocks;
+pub use traits::Validation;
+pub use pipeline::ValidationPipeline;
