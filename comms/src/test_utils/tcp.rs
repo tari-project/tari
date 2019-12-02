@@ -1,4 +1,4 @@
-// Copyright 2019 The Tari Project
+// Copyright 2019, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,6 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod dialers;
-pub mod node_id;
-pub mod tcp;
+use futures::StreamExt;
+use tari_test_utils::address::get_next_local_address;
+use tokio::net::{TcpListener, TcpStream};
+
+pub async fn build_connected_tcp_socket_pair() -> (TcpStream, TcpStream) {
+    let addr = get_next_local_address();
+    let listener = TcpListener::bind(&addr).await.unwrap();
+    let (in_sock, out_sock) = futures::future::join(listener.incoming().next(), TcpStream::connect(&addr)).await;
+
+    (out_sock.unwrap(), in_sock.unwrap().unwrap())
+}

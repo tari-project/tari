@@ -1,4 +1,4 @@
-// Copyright 2019 The Tari Project
+// Copyright 2019, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,6 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod dialers;
-pub mod node_id;
-pub mod tcp;
+use derive_error::Error;
+use std::io;
+use tari_utilities::ByteArrayError;
+
+#[derive(Debug, Error)]
+pub enum NoiseError {
+    SnowError(snow::Error),
+    /// Unable to determine the peer's static key after protocol completed
+    PeerPublicStaticKeyUnknown,
+    #[error(no_from)]
+    InvalidCommsPublicKey(ByteArrayError),
+    #[error(no_from)]
+    HandshakeFailed(io::Error),
+}
