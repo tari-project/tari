@@ -20,21 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod blake_pow;
-mod diff_adj_manager;
-mod difficulty;
-mod error;
-mod monero;
-mod proof_of_work;
+use crate::{chain_storage::ChainStorageError, proof_of_work::error::DifficultyAdjustmentError};
+use derive_error::Error;
 
-#[cfg(test)]
-pub use blake_pow::test as blake_test;
-
-pub mod lwma_diff;
-
-pub use blake_pow::{blake_difficulty, blake_difficulty_with_hash};
-pub use diff_adj_manager::{DiffAdjManager, DiffAdjManagerError};
-pub use difficulty::Difficulty;
-pub use error::PowError;
-pub use monero::monero_difficulty;
-pub use proof_of_work::{PowAlgorithm, ProofOfWork};
+#[derive(Debug, Error, Clone, PartialEq)]
+pub enum DiffAdjManagerError {
+    DifficultyAdjustmentError(DifficultyAdjustmentError),
+    ChainStorageError(ChainStorageError),
+    EmptyBlockchain,
+    PoisonedAccess,
+}

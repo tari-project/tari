@@ -28,7 +28,7 @@ pub enum PowError {
     InvalidProofOfWork,
 }
 
-#[derive(Debug, Error, Clone)]
+#[derive(Debug, Error, Clone, PartialEq)]
 pub enum DifficultyAdjustmentError {
     // Accumulated difficulty values can only strictly increase
     DecreasingAccumulatedDifficulty,

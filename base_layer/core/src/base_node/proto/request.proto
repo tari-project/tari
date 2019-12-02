@@ -25,6 +25,8 @@ message BaseNodeServiceRequest {
         bool get_new_block_template = 8;
         // Indicates a GetNewBlock request.
         tari.core.NewBlockTemplate get_new_block = 9;
+        // Indicates a GetTargetDifficulty request.
+        uint64 get_target_difficulty = 10;
     }
 }
 

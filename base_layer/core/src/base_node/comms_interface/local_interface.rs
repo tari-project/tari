@@ -24,6 +24,7 @@ use crate::{
     base_node::comms_interface::{error::CommsInterfaceError, BlockEvent, NodeCommsRequest, NodeCommsResponse},
     blocks::{Block, NewBlockTemplate},
     chain_storage::ChainMetadata,
+    proof_of_work::{Difficulty, PowAlgorithm},
 };
 use futures::{stream::Fuse, StreamExt};
 use tari_broadcast_channel::Subscriber;
@@ -86,6 +87,22 @@ impl LocalNodeCommsInterface {
             .await??
         {
             NodeCommsResponse::NewBlock(block) => Ok(block),
+            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+        }
+    }
+
+    /// Request the PoW target difficulty for mining on the main chain from the base node service.
+    pub async fn get_target_difficulty(
+        &mut self,
+        pow_algorithm: PowAlgorithm,
+    ) -> Result<Difficulty, CommsInterfaceError>
+    {
+        match self
+            .request_sender
+            .call(NodeCommsRequest::GetTargetDifficulty(pow_algorithm))
+            .await??
+        {
+            NodeCommsResponse::TargetDifficulty(difficulty) => Ok(difficulty),
             _ => Err(CommsInterfaceError::UnexpectedApiResponse),
         }
     }

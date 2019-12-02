@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::chain_storage::ChainStorageError;
+use crate::{chain_storage::ChainStorageError, proof_of_work::DiffAdjManagerError};
 use derive_error::Error;
 use tari_service_framework::reply_channel::TransportChannelError;
 
@@ -39,4 +39,5 @@ pub enum CommsInterfaceError {
     MempoolError(String),
     /// Failure in broadcast DHT middleware
     BroadcastFailed,
+    DifficultyAdjustmentManagerError(DiffAdjManagerError),
 }

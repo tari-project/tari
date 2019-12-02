@@ -249,6 +249,13 @@ impl InitialSync {
                     e.to_string(),
                 );
             },
+            CommsInterfaceError::DifficultyAdjustmentManagerError(e) => {
+                self.shutdown_votes += 1;
+                error!(
+                    target: LOG_TARGET,
+                    "There was a problem accessing the difficulty adjustment manager. {}. {}.", e, msg
+                );
+            },
         }
     }
 

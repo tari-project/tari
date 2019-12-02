@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{blocks::NewBlockTemplate, chain_storage::MmrTree};
+use crate::{blocks::NewBlockTemplate, chain_storage::MmrTree, proof_of_work::PowAlgorithm};
 use serde::{Deserialize, Serialize};
 use tari_transactions::types::HashOutput;
 
@@ -53,4 +53,5 @@ pub enum NodeCommsRequest {
     FetchMmrState(MmrStateRequest),
     GetNewBlockTemplate,
     GetNewBlock(NewBlockTemplate),
+    GetTargetDifficulty(PowAlgorithm),
 }
