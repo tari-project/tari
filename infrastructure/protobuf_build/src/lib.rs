@@ -1,6 +1,10 @@
+use sha2::{Digest, Sha256};
 use std::{
     collections::HashMap,
     fmt::Display,
+    fs,
+    fs::File,
+    io,
     path::{Path, PathBuf},
     process::Command,
 };
@@ -26,9 +30,10 @@ where P: AsRef<Path> + Display {
     }
 }
 
-fn walk_files(search_path: &PathBuf, search_ext: &str) -> Vec<PathBuf> {
+fn walk_files<P: AsRef<Path>>(search_path: P, search_ext: &str) -> Vec<PathBuf> {
     let mut protos = Vec::new();
     let paths_iter = search_path
+        .as_ref()
         .read_dir()
         .unwrap()
         .filter_map(Result::ok)
@@ -92,6 +97,29 @@ impl ProtoCompiler {
         self
     }
 
+    fn hash_file_contents<P: AsRef<Path>>(&self, file_path: P) -> Result<Vec<u8>, String> {
+        let mut file = File::open(file_path).unwrap();
+        let mut file_hash = Sha256::default();
+        io::copy(&mut file, &mut file_hash).map_err(|err| format!("Failed to hash file: '{}'", err))?;
+        Ok(file_hash.result().to_vec())
+    }
+
+    fn compare_and_move<P: AsRef<Path>>(&self, tmp_out_dir: P, out_dir: P) {
+        let tmp_files = walk_files(tmp_out_dir, "rs");
+        for tmp_file in tmp_files {
+            let target_file = out_dir.as_ref().join(tmp_file.file_name().unwrap());
+            if target_file.exists() {
+                let tmp_hash = self.hash_file_contents(&tmp_file).unwrap();
+                let target_hash = self.hash_file_contents(&target_file).unwrap();
+                if tmp_hash != target_hash {
+                    fs::rename(tmp_file, target_file).unwrap();
+                }
+            } else {
+                fs::rename(tmp_file, target_file).unwrap();
+            }
+        }
+    }
+
     pub fn compile(&mut self) -> Result<(), String> {
         if self.proto_paths.is_empty() {
             return Err("proto_path not specified".to_string());
@@ -119,7 +147,11 @@ impl ProtoCompiler {
             .take()
             .unwrap_or_else(|| PathBuf::from(std::env::var("OUT_DIR").unwrap()));
 
-        config.out_dir(out_dir.clone());
+        let tmp_out_dir = PathBuf::from(std::env::var("OUT_DIR").unwrap()).join("tmp_protos");
+        fs::create_dir_all(&tmp_out_dir)
+            .map_err(|err| format!("Failed to create temporary out dir because '{}'", err))?;
+
+        config.out_dir(tmp_out_dir.clone());
 
         config.compile_protos(&protos, &self.include_paths).map_err(|err| {
             // Side effect - print the error to stderr
@@ -127,7 +159,11 @@ impl ProtoCompiler {
             format!("{}", err)
         })?;
 
-        fmt(out_dir.to_str().expect("out_dir must be utf8"));
+        fmt(tmp_out_dir.to_str().expect("out_dir must be utf8"));
+
+        self.compare_and_move(&tmp_out_dir, &out_dir);
+
+        fs::remove_dir_all(&tmp_out_dir).map_err(|err| format!("Failed to remove temporary dir: {}", err))?;
 
         Ok(())
     }
