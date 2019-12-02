@@ -42,7 +42,7 @@ pub fn map_decode<T>(serialized: Arc<PeerMessage>) -> Result<DomainMessage<T>, p
 where T: prost::Message + Default {
     Ok(DomainMessage {
         source_peer: serialized.source_peer.clone(),
-        origin_pubkey: serialized.dht_header.origin_public_key.clone(),
+        dht_header: serialized.dht_header.clone(),
         inner: serialized.decode_message()?,
     })
 }

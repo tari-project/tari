@@ -21,10 +21,9 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    broadcast_strategy::BroadcastStrategy,
     envelope::NodeDestination,
     inbound::DecryptedDhtMessage,
-    outbound::OutboundMessageRequester,
+    outbound::{OutboundMessageRequester, SendMessageParams},
     store_forward::error::StoreAndForwardError,
 };
 use futures::{task::Context, Future, Poll};
@@ -156,50 +155,53 @@ where
             .err()
             .expect("previous check that decryption failed");
 
-        let broadcast_strategy =
-            self.get_broadcast_strategy(dht_header.destination.clone(), vec![source_peer.public_key.clone()])?;
+        let mut message_params =
+            self.get_send_params(dht_header.destination.clone(), vec![source_peer.public_key.clone()])?;
 
-        self.outbound_service
-            .forward_message(broadcast_strategy, dht_header.clone(), body)
-            .await?;
+        message_params.with_dht_header(dht_header.clone());
+
+        self.outbound_service.send_raw(message_params.finish(), body).await?;
 
         Ok(())
     }
 
     /// Selects the most appropriate broadcast strategy based on the received messages destination
-    fn get_broadcast_strategy(
+    fn get_send_params(
         &self,
         header_dest: NodeDestination,
         excluded_peers: Vec<CommsPublicKey>,
-    ) -> Result<BroadcastStrategy, StoreAndForwardError>
+    ) -> Result<SendMessageParams, StoreAndForwardError>
     {
-        Ok(match header_dest {
+        let mut params = SendMessageParams::new();
+        match header_dest {
             NodeDestination::Unknown => {
                 // Send to the current nodes nearest neighbours
-                BroadcastStrategy::Neighbours(excluded_peers)
+                params.neighbours(excluded_peers);
             },
             NodeDestination::PublicKey(dest_public_key) => {
                 if self.peer_manager.exists(&dest_public_key) {
                     // Send to destination peer directly if the current node knows that peer
-                    BroadcastStrategy::DirectPublicKey(dest_public_key)
+                    params.direct_public_key(dest_public_key);
                 } else {
                     // Send to the current nodes nearest neighbours
-                    BroadcastStrategy::Neighbours(excluded_peers)
+                    params.neighbours(excluded_peers);
                 }
             },
             NodeDestination::NodeId(dest_node_id) => {
                 match self.peer_manager.find_by_node_id(&dest_node_id) {
                     Ok(dest_peer) => {
                         // Send to destination peer directly if the current node knows that peer
-                        BroadcastStrategy::DirectPublicKey(dest_peer.public_key)
+                        params.direct_public_key(dest_peer.public_key);
                     },
                     Err(_) => {
                         // Send to peers that are closest to the destination network region
-                        BroadcastStrategy::Neighbours(excluded_peers)
+                        params.neighbours(excluded_peers);
                     },
                 }
             },
-        })
+        }
+
+        Ok(params)
     }
 }
 
@@ -208,11 +210,12 @@ mod test {
     use super::*;
     use crate::{
         envelope::DhtMessageFlags,
-        outbound::DhtOutboundRequest,
+        outbound::mock::create_outbound_service_mock,
         test_utils::{make_dht_inbound_message, make_node_identity, make_peer_manager, service_spy},
     };
-    use futures::{channel::mpsc, executor::block_on, StreamExt};
+    use futures::{channel::mpsc, executor::block_on};
     use tari_comms::wrap_in_envelope_body;
+    use tokio::runtime::Runtime;
 
     #[test]
     fn decryption_succeeded() {
@@ -231,21 +234,23 @@ mod test {
 
     #[test]
     fn decryption_failed() {
+        let rt = Runtime::new().unwrap();
         let spy = service_spy();
         let peer_manager = make_peer_manager();
-        let (oms_tx, mut oms_rx) = mpsc::channel(1);
-        let oms = OutboundMessageRequester::new(oms_tx);
-        let mut service = ForwardLayer::new(peer_manager, oms).layer(spy.to_service::<MiddlewareError>());
+        let (oms_requester, oms_mock) = create_outbound_service_mock(1);
+        let oms_mock_state = oms_mock.get_state();
+        rt.spawn(oms_mock.run());
+
+        let mut service = ForwardLayer::new(peer_manager, oms_requester).layer(spy.to_service::<MiddlewareError>());
 
         let inbound_msg = make_dht_inbound_message(&make_node_identity(), b"".to_vec(), DhtMessageFlags::empty());
         let msg = DecryptedDhtMessage::failed(inbound_msg);
-        block_on(service.call(msg)).unwrap();
+        rt.block_on(service.call(msg)).unwrap();
         assert!(spy.is_called());
-        let oms_req = block_on(oms_rx.next()).unwrap();
 
-        match oms_req {
-            DhtOutboundRequest::Forward(_) => {},
-            _ => panic!("Unexpected OMS request"),
-        }
+        assert_eq!(oms_mock_state.call_count(), 1);
+        let (params, _) = oms_mock_state.pop_call().unwrap();
+
+        assert!(params.dht_header.is_some());
     }
 }

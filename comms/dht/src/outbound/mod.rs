@@ -28,6 +28,7 @@ mod message_params;
 mod requester;
 mod serialize;
 
+#[cfg(any(test, feature = "test-mocks"))]
 pub mod mock;
 
 pub use self::{

@@ -52,7 +52,7 @@ pub enum DhtMessageError {
 bitflags! {
     /// Used to indicate characteristics of the incoming or outgoing message, such
     /// as whether the message is encrypted.
-    #[derive(Deserialize, Serialize)]
+    #[derive(Deserialize, Serialize, Default)]
     pub struct DhtMessageFlags: u32 {
         const NONE = 0b0000_0000;
         const ENCRYPTED = 0b0000_0001;

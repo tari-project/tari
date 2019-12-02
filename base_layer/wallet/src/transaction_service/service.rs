@@ -182,7 +182,7 @@ where
                 },
                 // Incoming messages from the Comms layer
                 msg = transaction_stream.select_next_some() => {
-                    let result  = self.accept_transaction(msg.origin_pubkey, msg.inner).await.or_else(|err| {
+                    let result  = self.accept_transaction(msg.dht_header.origin_public_key, msg.inner).await.or_else(|err| {
                         error!(target: LOG_TARGET, "Failed to handle incoming message: {:?}", err);
                         Err(err)
                     });

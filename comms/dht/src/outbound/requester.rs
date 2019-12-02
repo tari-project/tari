@@ -22,11 +22,10 @@
 
 use super::message::DhtOutboundRequest;
 use crate::{
-    broadcast_strategy::BroadcastStrategy,
     domain_message::OutboundDomainMessage,
-    envelope::{DhtMessageHeader, NodeDestination},
+    envelope::NodeDestination,
     outbound::{
-        message::{ForwardRequest, OutboundEncryption, SendMessageResponse},
+        message::{OutboundEncryption, SendMessageResponse},
         message_params::{FinalSendMessageParams, SendMessageParams},
         DhtOutboundError,
     },
@@ -36,7 +35,7 @@ use futures::{
     SinkExt,
 };
 use tari_comms::{
-    message::{Frame, MessageExt, MessageFlags},
+    message::{Frame, MessageExt},
     peer_manager::NodeId,
     types::CommsPublicKey,
     wrap_in_envelope_body,
@@ -191,7 +190,7 @@ impl OutboundMessageRequester {
         T: prost::Message,
     {
         let body = wrap_in_envelope_body!(message.to_header(), message.into_inner())?.to_encoded_bytes()?;
-        self.send(params, body).await
+        self.send_raw(params, body).await
     }
 
     /// Send a DHT-level message
@@ -204,11 +203,11 @@ impl OutboundMessageRequester {
         T: prost::Message,
     {
         let body = wrap_in_envelope_body!(message)?.to_encoded_bytes()?;
-        self.send(params, body).await
+        self.send_raw(params, body).await
     }
 
     /// Send a raw message
-    pub async fn send(
+    pub async fn send_raw(
         &mut self,
         params: FinalSendMessageParams,
         body: Frame,
@@ -216,7 +215,7 @@ impl OutboundMessageRequester {
     {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.sender
-            .send(DhtOutboundRequest::SendMsg(Box::new(params), body, reply_tx))
+            .send(DhtOutboundRequest::SendMessage(Box::new(params), body, reply_tx))
             .await?;
 
         reply_rx
@@ -224,22 +223,8 @@ impl OutboundMessageRequester {
             .map_err(|_| DhtOutboundError::RequesterReplyChannelClosed)
     }
 
-    /// Send a forwarded message
-    pub async fn forward_message(
-        &mut self,
-        broadcast_strategy: BroadcastStrategy,
-        dht_header: DhtMessageHeader,
-        body: Vec<u8>,
-    ) -> Result<(), DhtOutboundError>
-    {
-        self.sender
-            .send(DhtOutboundRequest::Forward(Box::new(ForwardRequest {
-                broadcast_strategy,
-                comms_flags: MessageFlags::FORWARDED,
-                dht_header,
-                body,
-            })))
-            .await
-            .map_err(Into::into)
+    #[cfg(test)]
+    pub fn get_mpsc_sender(&self) -> mpsc::Sender<DhtOutboundRequest> {
+        self.sender.clone()
     }
 }

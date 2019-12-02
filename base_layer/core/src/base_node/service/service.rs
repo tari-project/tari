@@ -291,9 +291,7 @@ where B: BlockchainBackend
         domain_request_msg: DomainMessage<proto::BaseNodeServiceRequest>,
     ) -> Result<(), BaseNodeServiceError>
     {
-        let DomainMessage::<_> {
-            origin_pubkey, inner, ..
-        } = domain_request_msg;
+        let DomainMessage::<_> { dht_header, inner, .. } = domain_request_msg;
 
         // Convert proto::BaseNodeServiceRequest to a BaseNodeServiceRequest
         let request = inner.request.ok_or(BaseNodeServiceError::InvalidRequest(
@@ -316,7 +314,7 @@ where B: BlockchainBackend
 
         self.outbound_message_service
             .send_direct(
-                origin_pubkey,
+                dht_header.origin_public_key,
                 OutboundEncryption::EncryptForPeer,
                 OutboundDomainMessage::new(TariMessageType::BaseNodeResponse, message),
             )
@@ -383,7 +381,7 @@ where B: BlockchainBackend
 
         let mut send_msg_params = SendMessageParams::new();
 
-        let broadcast_strategy = match request_type {
+        match request_type {
             NodeCommsRequestType::Single => send_msg_params.random(1),
             NodeCommsRequestType::Many => send_msg_params.neighbours(Vec::new()),
         };

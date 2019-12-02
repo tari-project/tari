@@ -223,9 +223,7 @@ where B: BlockchainBackend
         domain_request_msg: DomainMessage<proto::MempoolServiceRequest>,
     ) -> Result<(), MempoolServiceError>
     {
-        let DomainMessage::<_> {
-            origin_pubkey, inner, ..
-        } = domain_request_msg;
+        let DomainMessage::<_> { dht_header, inner, .. } = domain_request_msg;
 
         // Convert proto::MempoolServiceRequest to a MempoolServiceRequest
         let request = inner.request.ok_or(MempoolServiceError::InvalidRequest(
@@ -244,7 +242,7 @@ where B: BlockchainBackend
 
         self.outbound_message_service
             .send_direct(
-                origin_pubkey,
+                dht_header.origin_public_key,
                 OutboundEncryption::EncryptForPeer,
                 OutboundDomainMessage::new(TariMessageType::MempoolResponse, message),
             )

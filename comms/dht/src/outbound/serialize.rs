@@ -25,7 +25,7 @@ use futures::{task::Context, Future, Poll};
 use log::*;
 use std::sync::Arc;
 use tari_comms::{
-    message::{MessageExt, MessageFlags},
+    message::MessageExt,
     outbound_message_service::OutboundMessage,
     peer_manager::NodeIdentity,
     utils::signature,
@@ -92,7 +92,7 @@ where
         } = message;
 
         // If forwarding the message, the DhtHeader already has a signature that should not change
-        if comms_flags.contains(MessageFlags::FORWARDED) {
+        if &dht_header.origin_public_key != node_identity.public_key() {
             trace!(target: LOG_TARGET, "Forwarded message. Message will not be signed");
         } else {
             // Sign the body

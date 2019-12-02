@@ -265,7 +265,7 @@ impl Dht {
 mod test {
     use crate::{
         envelope::DhtMessageFlags,
-        outbound::DhtOutboundRequest,
+        outbound::mock::create_outbound_service_mock,
         proto::envelope::DhtMessageType,
         test_utils::{
             make_client_identity,
@@ -385,6 +385,11 @@ mod test {
         let rt = Runtime::new().unwrap();
 
         let (next_service_tx, mut next_service_rx) = mpsc::channel(10);
+        let (oms_requester, oms_mock) = create_outbound_service_mock(1);
+        // Send all outbound requests to the mock
+        dht.outbound_sender = oms_requester.get_mpsc_sender();
+        let oms_mock_state = oms_mock.get_state();
+        rt.spawn(oms_mock.run());
 
         let mut service = dht
             .inbound_middleware_layer()
@@ -397,31 +402,24 @@ mod test {
         let ecdh_key = generate_ecdh_secret(node_identity2.secret_key(), node_identity2.public_key());
         let encrypted_bytes = encrypt(&ecdh_key, &msg.to_encoded_bytes().unwrap()).unwrap();
         let dht_envelope = make_dht_envelope(&node_identity, encrypted_bytes, DhtMessageFlags::ENCRYPTED);
+
+        let origin_sig = dht_envelope.header.as_ref().unwrap().origin_signature.clone();
         let inbound_message = make_comms_inbound_message(
             &node_identity,
             dht_envelope.to_encoded_bytes().unwrap(),
             MessageFlags::empty(),
         );
 
-        let mut oms_receiver = dht.take_outbound_receiver().unwrap();
+        rt.block_on(service.call(inbound_message)).unwrap();
 
-        let msg = rt.block_on(async move {
-            service.call(inbound_message).await.unwrap();
-            oms_receiver
-                .next()
-                .timeout(Duration::from_secs(10))
-                .await
-                .unwrap()
-                .unwrap()
-        });
+        assert_eq!(oms_mock_state.call_count(), 1);
+        let (params, _) = oms_mock_state.pop_call().unwrap();
 
-        // Check that OMS got a request to forward
-        match msg {
-            DhtOutboundRequest::Forward { .. } => {},
-            _ => panic!("unexpected message"),
-        }
+        // Check that OMS got a request to forward with the original Dht Header
+        assert_eq!(params.dht_header.unwrap().origin_signature, origin_sig);
+
         // Check the next service was not called
-        assert!(rt.block_on(next_service_rx.next()).is_none());
+        assert!(next_service_rx.try_next().is_err());
     }
 
     #[test]

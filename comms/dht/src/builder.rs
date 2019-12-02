@@ -38,7 +38,7 @@ pub struct DhtBuilder {
 }
 
 impl DhtBuilder {
-    pub fn from_comms(comms: &mut CommsNode) -> Self {
+    pub fn from_comms(comms: &CommsNode) -> Self {
         Self::new(
             comms.node_identity(),
             comms.peer_manager(),
