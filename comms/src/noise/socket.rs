@@ -35,7 +35,8 @@ use std::{
     pin::Pin,
     task::{Context, Poll},
 };
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+// use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use futures::{io::Error, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 const LOG_TARGET: &str = "comms::noise::socket";
 
@@ -485,16 +486,16 @@ where TSocket: AsyncWrite + Unpin
 impl<TSocket> AsyncWrite for NoiseSocket<TSocket>
 where TSocket: AsyncWrite + Unpin
 {
-    fn poll_write(self: Pin<&mut Self>, context: &mut Context, buf: &[u8]) -> Poll<io::Result<usize>> {
-        self.get_mut().poll_write(context, buf)
+    fn poll_write(self: Pin<&mut Self>, cx: &mut Context, buf: &[u8]) -> Poll<io::Result<usize>> {
+        self.get_mut().poll_write(cx, buf)
     }
 
-    fn poll_flush(self: Pin<&mut Self>, context: &mut Context) -> Poll<io::Result<()>> {
-        self.get_mut().poll_flush(context)
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context) -> Poll<io::Result<()>> {
+        self.get_mut().poll_flush(cx)
     }
 
-    fn poll_shutdown(mut self: Pin<&mut Self>, context: &mut Context) -> Poll<io::Result<()>> {
-        Pin::new(&mut self.socket).poll_shutdown(context)
+    fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
+        Pin::new(&mut self.socket).poll_close(cx)
     }
 }
 
@@ -619,17 +620,17 @@ impl From<TransportState> for NoiseState {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{noise::config::NOISE_IX_PARAMETER, test_utils::tcp::build_connected_tcp_socket_pair};
+    use crate::{
+        noise::config::NOISE_IX_PARAMETER,
+        test_utils::tcp::build_connected_tcp_socket_pair,
+        transports::TcpSocket,
+    };
     use futures::future::join;
     use snow::{params::NoiseParams, Builder, Error, Keypair};
     use std::io;
-    use tokio::{
-        io::{AsyncReadExt, AsyncWriteExt},
-        net::TcpStream,
-        runtime::Runtime,
-    };
+    use tokio::runtime::Runtime;
 
-    async fn build_test_connection() -> Result<((Keypair, Handshake<TcpStream>), (Keypair, Handshake<TcpStream>)), Error>
+    async fn build_test_connection() -> Result<((Keypair, Handshake<TcpSocket>), (Keypair, Handshake<TcpSocket>)), Error>
     {
         let parameters: NoiseParams = NOISE_IX_PARAMETER.parse().expect("Invalid protocol name");
 
@@ -656,9 +657,9 @@ mod test {
     }
 
     async fn perform_handshake(
-        dialer: Handshake<TcpStream>,
-        listener: Handshake<TcpStream>,
-    ) -> io::Result<(NoiseSocket<TcpStream>, NoiseSocket<TcpStream>)>
+        dialer: Handshake<TcpSocket>,
+        listener: Handshake<TcpSocket>,
+    ) -> io::Result<(NoiseSocket<TcpSocket>, NoiseSocket<TcpSocket>)>
     {
         let (dialer_result, listener_result) = join(dialer.handshake_1rt(), listener.handshake_1rt()).await;
 
@@ -691,7 +692,7 @@ mod test {
         dialer_socket.write_all(b" ").await?;
         dialer_socket.write_all(b"archive").await?;
         dialer_socket.flush().await?;
-        dialer_socket.shutdown().await?;
+        dialer_socket.close().await?;
 
         let mut buf = Vec::new();
         listener_socket.read_to_end(&mut buf).await?;

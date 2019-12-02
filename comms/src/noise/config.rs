@@ -31,9 +31,9 @@ use crate::{
     },
     types::{CommsPublicKey, CommsSecretKey},
 };
+use futures::{AsyncRead, AsyncWrite};
 use snow::{self, params::NoiseParams, Keypair};
 use tari_utilities::ByteArray;
-use tokio::io::{AsyncRead, AsyncWrite};
 
 pub(super) const NOISE_IX_PARAMETER: &str = "Noise_IX_25519_ChaChaPoly_BLAKE2b";
 
@@ -95,13 +95,10 @@ impl NoiseConfig {
 mod test {
     use super::*;
     use crate::{consts::COMMS_RNG, test_utils::tcp::build_connected_tcp_socket_pair};
-    use futures::future;
+    use futures::{future, AsyncReadExt, AsyncWriteExt};
     use snow::params::{BaseChoice, CipherChoice, DHChoice, HandshakePattern, HashChoice};
     use tari_crypto::keys::PublicKey;
-    use tokio::{
-        io::{AsyncReadExt, AsyncWriteExt},
-        runtime::Runtime,
-    };
+    use tokio::runtime::Runtime;
 
     fn check_noise_params(config: &NoiseConfig) {
         assert_eq!(config.parameters.hash, HashChoice::Blake2b);
@@ -156,7 +153,7 @@ mod test {
             let sample = b"Children of time";
             socket_in.write_all(sample).await.unwrap();
             socket_in.flush().await.unwrap();
-            socket_in.shutdown().await.unwrap();
+            socket_in.close().await.unwrap();
 
             let mut read_buf = Vec::with_capacity(16);
             socket_out.read_to_end(&mut read_buf).await.unwrap();

@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::transports::Transport;
-use futures::{ready, stream::BoxStream, Future, Poll, Stream, StreamExt};
+use futures::{io::Error, ready, stream::BoxStream, AsyncRead, AsyncWrite, Future, Poll, Stream, StreamExt};
 use multiaddr::{AddrComponent, Multiaddr};
 use std::{
     io,
@@ -30,7 +30,10 @@ use std::{
     task::Context,
     time::Duration,
 };
-use tokio::net::{TcpListener, TcpStream};
+use tokio::{
+    io::{AsyncRead as TokioAsyncRead, AsyncWrite as TokioAsyncWrite},
+    net::{TcpListener, TcpStream},
+};
 
 /// Transport implementation for TCP
 #[derive(Debug, Clone, Default)]
@@ -92,7 +95,7 @@ impl TcpTransport {
 impl Transport for TcpTransport {
     type Error = io::Error;
     type Inbound = TcpInbound<'static>;
-    type Output = (TcpStream, Multiaddr);
+    type Output = (TcpSocket, Multiaddr);
 
     type DialFuture = impl Future<Output = io::Result<Self::Output>>;
     type ListenFuture = impl Future<Output = io::Result<(Self::Inbound, Multiaddr)>>;
@@ -120,7 +123,7 @@ impl Transport for TcpTransport {
             let stream = TcpStream::connect(&socket_addr).await?;
             config.configure(&stream)?;
             let peer_addr = socketaddr_to_multiaddr(stream.peer_addr()?);
-            Ok((stream, peer_addr))
+            Ok((TcpSocket::new(stream), peer_addr))
         })
     }
 }
@@ -133,7 +136,7 @@ pub struct TcpInbound<'a> {
 }
 
 impl Stream for TcpInbound<'_> {
-    type Item = io::Result<(TcpStream, Multiaddr)>;
+    type Item = io::Result<(TcpSocket, Multiaddr)>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         match ready!(self.incoming.poll_next_unpin(cx)) {
@@ -141,11 +144,49 @@ impl Stream for TcpInbound<'_> {
                 // Configure each socket
                 self.config.configure(&stream)?;
                 let peer_addr = socketaddr_to_multiaddr(stream.peer_addr()?);
-                Poll::Ready(Some(Ok((stream, peer_addr))))
+                Poll::Ready(Some(Ok((TcpSocket::new(stream), peer_addr))))
             },
             Some(Err(err)) => Poll::Ready(Some(Err(err))),
             None => Poll::Ready(None),
         }
+    }
+}
+
+/// TcpSocket is a wrapper struct for tokio `TcpStream` and implements
+/// `futures-rs` AsyncRead/Write
+pub struct TcpSocket {
+    inner: TcpStream,
+}
+
+impl TcpSocket {
+    pub fn new(stream: TcpStream) -> Self {
+        Self { inner: stream }
+    }
+}
+
+impl AsyncWrite for TcpSocket {
+    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &[u8]) -> Poll<Result<usize, Error>> {
+        Pin::new(&mut self.inner).poll_write(cx, buf)
+    }
+
+    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
+        Pin::new(&mut self.inner).poll_flush(cx)
+    }
+
+    fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
+        Pin::new(&mut self.inner).poll_shutdown(cx)
+    }
+}
+
+impl AsyncRead for TcpSocket {
+    fn poll_read(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &mut [u8]) -> Poll<Result<usize, Error>> {
+        Pin::new(&mut self.inner).poll_read(cx, buf)
+    }
+}
+
+impl From<TcpStream> for TcpSocket {
+    fn from(stream: TcpStream) -> Self {
+        Self { inner: stream }
     }
 }
 

@@ -25,6 +25,8 @@ use multiaddr::Multiaddr;
 
 mod tcp;
 
+pub use tcp::TcpSocket;
+
 pub trait Transport {
     /// The output of the transport after a connection is established
     type Output;

@@ -35,6 +35,20 @@ to generate the documentation. The generated html sits in `target/doc/`. Alterna
 
 See [RFC-0110/CodeStructure](./RFC/src/RFC-0010_CodeStructure.md) for details on the code structure and layout.
 
+### Git submodules
+
+Git submodules are use temporarily until some dependent libraries are stabilized and released as crates.
+When checking out code take the following steps to ensure submodules are up to date.
+
+```shell script
+# Initialize submodules
+git submodule init
+# Sets `git pull` to automatically pull submodules
+git config submodule.recurse true
+# Checkout/update all submodules
+git submodule update --recursive --remote
+```
+
 ## Conversation channels
 
 [<img src="https://ionicons.com/ionicons/svg/md-paper-plane.svg" width="32">](https://t.me/tarilab) Non-technical discussions and gentle sparring.
