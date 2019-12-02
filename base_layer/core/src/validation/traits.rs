@@ -1,4 +1,4 @@
-// Copyright 2018 The Tari Project
+// Copyright 2019. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,29 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// Needed to make futures::select! work
-#![recursion_limit = "512"]
-// Used to eliminate the need for boxing futures in many cases.
-// Tracking issue: https://github.com/rust-lang/rust/issues/63063
-#![feature(type_alias_impl_trait)]
-// Enable usage of Vec::shrink_to
-#![feature(shrink_to)]
+use crate::validation::error::ValidationError;
+use std::sync::Arc;
 
-#[cfg(test)]
-pub mod test_utils;
-
-pub mod consts;
-pub mod mempool;
-pub mod proof_of_work;
-
-pub mod proto;
-pub mod types;
-
-pub mod base_node;
-pub mod blocks;
-
-pub mod chain_storage;
-pub mod validation;
-
-// Re-export the crypto crate to make exposing traits etc easier for clients of this crate
-pub use tari_crypto as crypto;
+/// The core validation trait. Multiple `Validation` implementors can be chained together in a [ValidatorPipeline] to
+/// provide consensus validation for blocks, transactions, or DAN instructions. Implementors only need to implement
+/// the methods that are relevant for the pipeline, since the default implementation always passes.
+pub trait Validation<T> {
+    /// General validation code that can run independent of external state
+    fn validate(&mut self, item: Arc<T>) -> Result<(), ValidationError>;
+}

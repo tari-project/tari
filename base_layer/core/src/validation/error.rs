@@ -20,4 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub struct BlockValidationService;
+use crate::blocks::BlockValidationError;
+use derive_error::Error;
+use tari_transactions::transaction::TransactionError;
+
+#[derive(Clone, Debug, PartialEq, Error)]
+pub enum ValidationError {
+    BlockError(BlockValidationError),
+    TransactionError(TransactionError),
+    /// Custom error with string message
+    InvalidRangeProof,
+    /// Custom error with string message
+    #[error(no_from, non_std, msg_embedded)]
+    CustomError(String),
+}
