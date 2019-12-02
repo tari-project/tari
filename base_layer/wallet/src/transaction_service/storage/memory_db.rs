@@ -206,16 +206,14 @@ impl TransactionBackend for TransactionMemoryDatabase {
         if db.completed_transactions.contains_key(&tx_id) {
             return Err(TransactionStorageError::TransactionAlreadyExists);
         }
-
         let _ = db
             .pending_inbound_transactions
             .remove(&tx_id)
             .ok_or(TransactionStorageError::ValueNotFound(
-                DbKey::PendingOutboundTransaction(tx_id.clone()),
+                DbKey::PendingInboundTransaction(tx_id.clone()),
             ))?;
 
         db.completed_transactions.insert(tx_id, transaction);
-
         Ok(())
     }
 

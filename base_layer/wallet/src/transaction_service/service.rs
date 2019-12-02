@@ -54,12 +54,14 @@ use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_transactions::aggregated_body::AggregateBody;
 #[cfg(feature = "test_harness")]
 use tari_transactions::tari_amount::T;
-#[cfg(feature = "test_harness")]
-use tari_transactions::transaction::Transaction;
 use tari_transactions::{
     tari_amount::MicroTari,
-    transaction::{KernelFeatures, OutputFeatures},
-    transaction_protocol::{proto, recipient::RecipientSignedMessage, sender::TransactionSenderMessage},
+    transaction::{KernelFeatures, OutputFeatures, Transaction},
+    transaction_protocol::{
+        proto,
+        recipient::{RecipientSignedMessage, RecipientState},
+        sender::TransactionSenderMessage,
+    },
     types::{CryptoFactories, PrivateKey},
     ReceiverTransactionProtocol,
 };
@@ -82,7 +84,7 @@ const LOG_TARGET: &'static str = "base_layer::wallet::transaction_service::servi
 /// `pending_inbound_transactions` - List of transaction protocols that have been received and responded to.
 /// `completed_transaction` - List of sent transactions that have been responded to and are completed.
 
-pub struct TransactionService<TTxStream, TTxReplyStream, TBackend>
+pub struct TransactionService<TTxStream, TTxReplyStream, TTxFinalizedStream, TBackend>
 where TBackend: TransactionBackend
 {
     db: TransactionDatabase<TBackend>,
@@ -90,6 +92,7 @@ where TBackend: TransactionBackend
     output_manager_service: OutputManagerHandle,
     transaction_stream: Option<TTxStream>,
     transaction_reply_stream: Option<TTxReplyStream>,
+    transaction_finalized_stream: Option<TTxFinalizedStream>,
     request_stream: Option<
         reply_channel::Receiver<TransactionServiceRequest, Result<TransactionServiceResponse, TransactionServiceError>>,
     >,
@@ -101,15 +104,19 @@ where TBackend: TransactionBackend
     #[cfg(feature = "c_integration")]
     callback_received_transaction_reply: Option<unsafe extern "C" fn(*mut CompletedTransaction)>,
     #[cfg(feature = "c_integration")]
+    callback_received_finalized_transaction: Option<unsafe extern "C" fn(*mut CompletedTransaction)>,
+    #[cfg(feature = "c_integration")]
     callback_mined: Option<unsafe extern "C" fn(*mut CompletedTransaction)>,
     #[cfg(feature = "c_integration")]
     callback_transaction_broadcast: Option<unsafe extern "C" fn(*mut CompletedTransaction)>,
 }
 
-impl<TTxStream, TTxReplyStream, TBackend> TransactionService<TTxStream, TTxReplyStream, TBackend>
+impl<TTxStream, TTxReplyStream, TTxFinalizedStream, TBackend>
+    TransactionService<TTxStream, TTxReplyStream, TTxFinalizedStream, TBackend>
 where
     TTxStream: Stream<Item = DomainMessage<proto::TransactionSenderMessage>>,
     TTxReplyStream: Stream<Item = DomainMessage<proto::RecipientSignedMessage>>,
+    TTxFinalizedStream: Stream<Item = DomainMessage<proto::TransactionFinalizedMessage>>,
     TBackend: TransactionBackend,
 {
     pub fn new(
@@ -120,6 +127,7 @@ where
         >,
         transaction_stream: TTxStream,
         transaction_reply_stream: TTxReplyStream,
+        transaction_finalized_stream: TTxFinalizedStream,
         output_manager_service: OutputManagerHandle,
         outbound_message_service: OutboundMessageRequester,
         event_publisher: Publisher<TransactionEvent>,
@@ -133,6 +141,7 @@ where
             output_manager_service,
             transaction_stream: Some(transaction_stream),
             transaction_reply_stream: Some(transaction_reply_stream),
+            transaction_finalized_stream: Some(transaction_finalized_stream),
             request_stream: Some(request_stream),
             event_publisher,
             node_identity,
@@ -141,6 +150,8 @@ where
             callback_received_transaction: None,
             #[cfg(feature = "c_integration")]
             callback_received_transaction_reply: None,
+            #[cfg(feature = "c_integration")]
+            callback_received_finalized_transaction: None,
             #[cfg(feature = "c_integration")]
             callback_mined: None,
             #[cfg(feature = "c_integration")]
@@ -167,6 +178,12 @@ where
             .expect("Transaction Service initialized without transaction_reply_stream")
             .fuse();
         pin_mut!(transaction_reply_stream);
+        let transaction_finalized_stream = self
+            .transaction_finalized_stream
+            .take()
+            .expect("Transaction Service initialized without transaction_finalized_stream")
+            .fuse();
+        pin_mut!(transaction_finalized_stream);
         loop {
             futures::select! {
                 //Incoming request
@@ -197,7 +214,7 @@ where
                 },
                  // Incoming messages from the Comms layer
                 msg = transaction_reply_stream.select_next_some() => {
-                    let result = self.accept_recipient_reply(msg.inner).await.or_else(|err| {
+                    let result = self.accept_recipient_reply(msg.dht_header.origin_public_key, msg.inner).await.or_else(|err| {
                         error!(target: LOG_TARGET, "Failed to handle incoming message: {:?}", err);
                         Err(err)
                     });
@@ -206,6 +223,21 @@ where
                         let _ = self.event_publisher
                                 .send(TransactionEvent::Error(
                                     "Error handling Transaction Recipient Reply message".to_string(),
+                                ))
+                                .await;
+                    }
+                },
+                // Incoming messages from the Comms layer
+                msg = transaction_finalized_stream.select_next_some() => {
+                    let result = self.accept_finalized_transaction(msg.dht_header.origin_public_key, msg.inner).await.or_else(|err| {
+                        error!(target: LOG_TARGET, "Failed to handle incoming message: {:?}", err);
+                        Err(err)
+                    });
+
+                    if result.is_err() {
+                        let _ = self.event_publisher
+                                .send(TransactionEvent::Error(
+                                    "Error handling Transaction Finalized message".to_string(),
                                 ))
                                 .await;
                     }
@@ -246,6 +278,10 @@ where
             #[cfg(feature = "c_integration")]
             TransactionServiceRequest::RegisterCallbackReceivedTransactionReply(call) => {
                 Ok(self.register_callback_received_transaction_reply(call)?)
+            },
+            #[cfg(feature = "c_integration")]
+            TransactionServiceRequest::RegisterCallbackReceivedFinalizedTransaction(call) => {
+                Ok(self.register_callback_received_finalized_transaction(call)?)
             },
             #[cfg(feature = "c_integration")]
             TransactionServiceRequest::RegisterCallbackMined(call) => Ok(self.register_callback_mined(call)?),
@@ -334,6 +370,7 @@ where
     /// 'recipient_reply' - The public response from a recipient with data required to complete the transaction
     pub async fn accept_recipient_reply(
         &mut self,
+        source_pubkey: CommsPublicKey,
         recipient_reply: proto::RecipientSignedMessage,
     ) -> Result<(), TransactionServiceError>
     {
@@ -366,7 +403,7 @@ where
             .confirm_sent_transaction(tx_id.clone(), tx.body.inputs().clone(), tx.body.outputs().clone())
             .await?;
         let completed_transaction = CompletedTransaction {
-            tx_id,
+            tx_id: tx_id.clone(),
             source_public_key: self.node_identity.public_key().clone(),
             destination_public_key: outbound_tx.destination_public_key,
             amount: outbound_tx.amount,
@@ -386,8 +423,22 @@ where
             .send(TransactionEvent::ReceivedTransactionReply)
             .await
             .map_err(|_| TransactionServiceError::EventStreamError)?;
+
+        let finalized_transaction_message = proto::TransactionFinalizedMessage {
+            tx_id,
+            transaction: Some(tx.clone().into()),
+        };
+
+        self.outbound_message_service
+            .send_direct(
+                source_pubkey.clone(),
+                OutboundEncryption::EncryptForPeer,
+                OutboundDomainMessage::new(TariMessageType::TransactionFinalized, finalized_transaction_message),
+            )
+            .await?;
+
         #[cfg(feature = "c_integration")]
-        let boxing = Box::into_raw(Box::new(completed_transaction));
+        let boxing = Box::into_raw(Box::new(completed_transaction.clone()));
         #[cfg(feature = "c_integration")]
         match self.callback_received_transaction_reply {
             Some(call) => {
@@ -395,7 +446,10 @@ where
                 unsafe { call(boxing) }
             },
             None => {
-                info!(target: LOG_TARGET, "ReceivedTransactionReplyCallback -> Invalid");
+                error!(
+                    target: LOG_TARGET,
+                    "ReceivedTransactionReplyCallback -> Callback not registered"
+                );
             },
         }
         Ok(())
@@ -483,10 +537,120 @@ where
                     unsafe { call(boxing) }
                 },
                 None => {
-                    info!(target: LOG_TARGET, "ReceivedTransactionCallback -> Invalid");
+                    error!(
+                        target: LOG_TARGET,
+                        "ReceivedTransactionCallback -> Callback not registered"
+                    );
                 },
             }
         }
+        Ok(())
+    }
+
+    /// Accept a new transaction from a sender by handling a public SenderMessage. The reply is generated and sent.
+    /// # Arguments
+    /// 'source_pubkey' - The pubkey from which the message was sent and to which the reply will be sent.
+    /// 'sender_message' - Message from a sender containing the setup of the transaction being sent to you
+    pub async fn accept_finalized_transaction(
+        &mut self,
+        source_pubkey: CommsPublicKey,
+        finalized_transaction: proto::TransactionFinalizedMessage,
+    ) -> Result<(), TransactionServiceError>
+    {
+        let tx_id = finalized_transaction.tx_id.clone();
+        let transaction: Transaction = finalized_transaction
+            .transaction
+            .ok_or(TransactionServiceError::InvalidMessageError(
+                "Finalized Transaction missing Transaction field".to_string(),
+            ))?
+            .try_into()
+            .map_err(|_| {
+                TransactionServiceError::InvalidMessageError(
+                    "Cannot convert Transaction field from TransactionFinalized message".to_string(),
+                )
+            })?;
+
+        info!(
+            target: LOG_TARGET,
+            "Finalized Transaction with TX_ID = {} received from {}",
+            tx_id,
+            source_pubkey.clone()
+        );
+
+        let inbound_tx = self.db.get_pending_inbound_transaction(tx_id.clone()).map_err(|e| {
+            error!(
+                target: LOG_TARGET,
+                "Finalized transaction TxId does not exist in Pending Inbound Transactions"
+            );
+            e
+        })?;
+
+        if inbound_tx.source_public_key != source_pubkey {
+            error!(
+                target: LOG_TARGET,
+                "Finalized transaction Source Public Key does not correspond to stored value"
+            );
+            return Err(TransactionServiceError::InvalidSourcePublicKey);
+        }
+
+        let rtp_output = match inbound_tx.receiver_protocol.state {
+            RecipientState::Finalized(s) => s.output.clone(),
+            RecipientState::Failed(_) => return Err(TransactionServiceError::InvalidStateError),
+        };
+
+        let finalized_outputs = transaction.body.outputs();
+
+        if finalized_outputs.iter().find(|o| o == &&rtp_output).is_none() {
+            error!(
+                target: LOG_TARGET,
+                "Finalized transaction not contain the Receiver's output"
+            );
+            return Err(TransactionServiceError::ReceiverOutputNotFound);
+        }
+
+        let completed_transaction = CompletedTransaction {
+            tx_id: tx_id.clone(),
+            source_public_key: source_pubkey.clone(),
+            destination_public_key: self.node_identity.public_key().clone(),
+            amount: inbound_tx.amount,
+            fee: transaction.body.get_total_fee(),
+            transaction: transaction.clone(),
+            status: TransactionStatus::Completed,
+            message: inbound_tx.message.clone(),
+            timestamp: inbound_tx.timestamp.clone(),
+        };
+
+        self.db
+            .complete_inbound_transaction(tx_id.clone(), completed_transaction.clone())?;
+
+        self.event_publisher
+            .send(TransactionEvent::ReceivedFinalizedTransaction)
+            .await
+            .map_err(|_| TransactionServiceError::EventStreamError)?;
+
+        info!(
+            target: LOG_TARGET,
+            "Inbound Transaction with TX_ID = {} from {} moved to Completed Transactions",
+            tx_id,
+            source_pubkey.clone()
+        );
+
+        #[cfg(feature = "c_integration")]
+        let boxing = Box::into_raw(Box::new(completed_transaction));
+        #[cfg(feature = "c_integration")]
+        match self.callback_received_finalized_transaction {
+            Some(call) => {
+                info!(target: LOG_TARGET, "ReceivedFinalizedTransactionCallback -> Succeeded");
+                unsafe { call(boxing) }
+            },
+            None => {
+                error!(
+                    target: LOG_TARGET,
+                    "ReceivedFinalizedTransactionCallback -> Callback not registered"
+                );
+            },
+        }
+
         Ok(())
     }
 
@@ -531,6 +695,20 @@ where
             "ReceivedTransactionReplyCallback -> Assigning: {:?}", call
         );
         self.callback_received_transaction_reply = Some(call);
+        Ok(TransactionServiceResponse::CallbackRegistered)
+    }
+
+    #[cfg(feature = "c_integration")]
+    pub fn register_callback_received_finalized_transaction(
+        &mut self,
+        call: unsafe extern "C" fn(*mut CompletedTransaction),
+    ) -> Result<TransactionServiceResponse, TransactionServiceError>
+    {
+        info!(
+            target: LOG_TARGET,
+            "ReceivedFinalizedTransactionCallback -> Assigning: {:?}", call
+        );
+        self.callback_received_finalized_transaction = Some(call);
         Ok(TransactionServiceResponse::CallbackRegistered)
     }
 
@@ -625,7 +803,10 @@ where
                             unsafe { call(boxing) }
                         },
                         None => {
-                            info!(target: LOG_TARGET, "TransactionMinedCallback -> Invalid");
+                            error!(
+                                target: LOG_TARGET,
+                                "TransactionMinedCallback -> Callback not registered"
+                            );
                         },
                     }
                 },
@@ -694,15 +875,34 @@ where
             OutputFeatures::default(),
             &self.factories,
         );
+
+        let inbound_transaction = InboundTransaction {
+            tx_id,
+            source_public_key,
+            amount,
+            receiver_protocol: rtp,
+            message: "".to_string(),
+            timestamp: Utc::now().naive_utc(),
+        };
+
         self.db
-            .add_pending_inbound_transaction(tx_id.clone(), InboundTransaction {
-                tx_id,
-                source_public_key,
-                amount,
-                receiver_protocol: rtp,
-                message: "".to_string(),
-                timestamp: Utc::now().naive_utc(),
-            })?;
+            .add_pending_inbound_transaction(tx_id.clone(), inbound_transaction.clone())?;
+
+        #[cfg(feature = "c_integration")]
+        let boxing = Box::into_raw(Box::new(inbound_transaction));
+        #[cfg(feature = "c_integration")]
+        match self.callback_received_transaction {
+            Some(call) => {
+                info!(target: LOG_TARGET, "ReceivedTransactionCallback -> Succeeded");
+                unsafe { call(boxing) }
+            },
+            None => {
+                error!(
+                    target: LOG_TARGET,
+                    "ReceivedTransactionCallback -> Callback not registered"
+                );
+            },
+        }
 
         Ok(())
     }
@@ -746,7 +946,7 @@ where
                             info!(target: LOG_TARGET, "TransactionBroadcastCallback -> Succeeded");
                         },
                         None => {
-                            info!(target: LOG_TARGET, "TransactionBroadcastCallback ->  Invalid");
+                            error!(target: LOG_TARGET, "TransactionBroadcastCallback ->  Not registered");
                         },
                     }
                 },

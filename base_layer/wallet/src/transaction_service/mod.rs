@@ -98,6 +98,13 @@ where T: TransactionBackend
             .map(map_decode::<proto::RecipientSignedMessage>)
             .filter_map(ok_or_skip_result)
     }
+
+    fn transaction_finalized_stream(&self) -> impl Stream<Item = DomainMessage<proto::TransactionFinalizedMessage>> {
+        self.subscription_factory
+            .get_subscription(TariMessageType::TransactionFinalized)
+            .map(map_decode::<proto::TransactionFinalizedMessage>)
+            .filter_map(ok_or_skip_result)
+    }
 }
 
 impl<T> ServiceInitializer for TransactionServiceInitializer<T>
@@ -115,6 +122,7 @@ where T: TransactionBackend + 'static
         let (sender, receiver) = reply_channel::unbounded();
         let transaction_stream = self.transaction_stream();
         let transaction_reply_stream = self.transaction_reply_stream();
+        let transaction_finalized_stream = self.transaction_finalized_stream();
 
         let (publisher, subscriber) = bounded(100);
 
@@ -145,6 +153,7 @@ where T: TransactionBackend + 'static
                 receiver,
                 transaction_stream,
                 transaction_reply_stream,
+                transaction_finalized_stream,
                 output_manager_service,
                 outbound_message_service,
                 publisher,

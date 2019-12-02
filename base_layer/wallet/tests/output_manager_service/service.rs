@@ -22,7 +22,7 @@
 
 use crate::support::{
     data::create_temporary_sqlite_path,
-    utils::{make_input, random_string, TestParams},
+    utils::{make_input, TestParams},
 };
 use rand::RngCore;
 use std::{thread, time::Duration};
@@ -53,7 +53,6 @@ use tari_wallet::output_manager_service::{
     OutputManagerConfig,
     OutputManagerServiceInitializer,
 };
-use tempdir::TempDir;
 use tokio::runtime::Runtime;
 
 pub fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
