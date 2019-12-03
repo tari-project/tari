@@ -25,6 +25,7 @@ pub mod primitives;
 /// Helper functions to simplify generated test blockchain data
 #[macro_use]
 pub mod builders;
+pub mod node;
 /// Hardcoded sample blockchain databases
 pub mod sample_blockchains;
 pub mod test_common;

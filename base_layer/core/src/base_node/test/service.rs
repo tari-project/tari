@@ -22,308 +22,49 @@
 
 use crate::{
     base_node::{
-        comms_interface::{BlockEvent, CommsInterfaceError, LocalNodeCommsInterface, OutboundNodeCommsInterface},
-        service::{BaseNodeServiceConfig, BaseNodeServiceInitializer},
+        comms_interface::{BlockEvent, CommsInterfaceError},
+        service::BaseNodeServiceConfig,
     },
     blocks::{genesis_block::get_genesis_block, BlockHeader},
-    chain_storage::{BlockchainDatabase, ChainStorageError, DbTransaction, MemoryDatabase, MmrTree},
+    chain_storage::{ChainStorageError, DbTransaction, MmrTree},
     consts::BASE_NODE_SERVICE_DESIRED_RESPONSE_FRACTION,
-    mempool::{Mempool, MempoolConfig},
-    proof_of_work::{DiffAdjManager, Difficulty, PowAlgorithm},
-    test_utils::builders::{
-        add_block_and_update_header,
-        chain_block,
-        create_genesis_block,
-        create_test_kernel,
-        create_utxo,
+    mempool::MempoolServiceConfig,
+    proof_of_work::{Difficulty, PowAlgorithm},
+    test_utils::{
+        builders::{add_block_and_update_header, chain_block, create_genesis_block, create_test_kernel, create_utxo},
+        node::{
+            create_network_with_2_base_nodes_with_config,
+            create_network_with_3_base_nodes,
+            create_network_with_3_base_nodes_with_config,
+            BaseNodeBuilder,
+        },
     },
     tx,
 };
-use futures::{join, select, stream::FusedStream, FutureExt, Sink, Stream, StreamExt};
-use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
+use futures::{join, select, stream::FusedStream, FutureExt, Stream, StreamExt};
 use std::{
-    error::Error,
-    iter,
     sync::Arc,
     time::{Duration, Instant},
 };
-use tari_comms::{
-    builder::CommsNode,
-    control_service::ControlServiceConfig,
-    peer_manager::{NodeIdentity, Peer, PeerFeatures, PeerFlags},
-};
-use tari_comms_dht::Dht;
 use tari_mmr::MerkleChangeTrackerConfig;
-use tari_p2p::{
-    comms_connector::{pubsub_connector, InboundDomainConnector, PeerMessage},
-    initialization::{initialize_comms, CommsConfig},
-    services::comms_outbound::CommsOutboundServiceInitializer,
-};
-use tari_service_framework::StackBuilder;
-use tari_test_utils::address::get_next_local_address;
 use tari_transactions::{
     consensus::TARGET_BLOCK_INTERVAL,
     tari_amount::{uT, MicroTari},
-    types::{CryptoFactories, HashDigest},
+    types::CryptoFactories,
 };
 use tari_utilities::hash::Hashable;
-use tempdir::TempDir;
-use tokio::runtime::{Runtime, TaskExecutor};
-
-fn random_string(len: usize) -> String {
-    let mut rng = OsRng::new().unwrap();
-    iter::repeat(()).map(|_| rng.sample(Alphanumeric)).take(len).collect()
-}
-
-fn setup_comms_services<TSink>(
-    executor: TaskExecutor,
-    node_identity: Arc<NodeIdentity>,
-    peers: Vec<NodeIdentity>,
-    publisher: InboundDomainConnector<TSink>,
-) -> (CommsNode, Dht)
-where
-    TSink: Sink<Arc<PeerMessage>> + Clone + Unpin + Send + Sync + 'static,
-    TSink::Error: Error + Send + Sync,
-{
-    let comms_config = CommsConfig {
-        node_identity: Arc::clone(&node_identity),
-        peer_connection_listening_address: "127.0.0.1:0".parse().unwrap(),
-        socks_proxy_address: None,
-        control_service: ControlServiceConfig {
-            listener_address: node_identity.control_service_address(),
-            socks_proxy_address: None,
-            requested_connection_timeout: Duration::from_millis(2000),
-        },
-        datastore_path: TempDir::new(random_string(8).as_str())
-            .unwrap()
-            .path()
-            .to_str()
-            .unwrap()
-            .to_string(),
-        establish_connection_timeout: Duration::from_secs(5),
-        peer_database_name: random_string(8),
-        inbound_buffer_size: 100,
-        outbound_buffer_size: 100,
-        dht: Default::default(),
-    };
-
-    let (comms, dht) = initialize_comms(executor, comms_config, publisher).unwrap();
-
-    for p in peers {
-        let addr = p.control_service_address();
-        comms
-            .peer_manager()
-            .add_peer(Peer::new(
-                p.public_key().clone(),
-                p.node_id().clone(),
-                addr.into(),
-                PeerFlags::empty(),
-                p.features().clone(),
-            ))
-            .unwrap();
-    }
-
-    (comms, dht)
-}
-
-struct NodeInterfaces {
-    pub outbound_nci: OutboundNodeCommsInterface,
-    pub local_nci: LocalNodeCommsInterface,
-    pub blockchain_db: BlockchainDatabase<MemoryDatabase<HashDigest>>,
-    pub mempool: Mempool<MemoryDatabase<HashDigest>>,
-    pub comms: CommsNode,
-}
-
-impl NodeInterfaces {
-    fn new(
-        outbound_nci: OutboundNodeCommsInterface,
-        local_nci: LocalNodeCommsInterface,
-        blockchain_db: BlockchainDatabase<MemoryDatabase<HashDigest>>,
-        mempool: Mempool<MemoryDatabase<HashDigest>>,
-        comms: CommsNode,
-    ) -> Self
-    {
-        Self {
-            outbound_nci,
-            local_nci,
-            blockchain_db,
-            mempool,
-            comms,
-        }
-    }
-}
-
-pub fn setup_base_node_service(
-    runtime: &Runtime,
-    node_identity: NodeIdentity,
-    peers: Vec<NodeIdentity>,
-    blockchain_db: BlockchainDatabase<MemoryDatabase<HashDigest>>,
-    mempool: Mempool<MemoryDatabase<HashDigest>>,
-    diff_adj_manager: DiffAdjManager<MemoryDatabase<HashDigest>>,
-    config: BaseNodeServiceConfig,
-) -> (OutboundNodeCommsInterface, LocalNodeCommsInterface, CommsNode)
-{
-    let (publisher, subscription_factory) = pubsub_connector(runtime.executor(), 100);
-    let subscription_factory = Arc::new(subscription_factory);
-    let (comms, dht) = setup_comms_services(runtime.executor(), Arc::new(node_identity), peers, publisher);
-
-    let fut = StackBuilder::new(runtime.executor(), comms.shutdown_signal())
-        .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))
-        .add_initializer(BaseNodeServiceInitializer::new(
-            subscription_factory,
-            blockchain_db,
-            mempool,
-            diff_adj_manager,
-            config,
-        ))
-        .finish();
-
-    let handles = runtime.block_on(fut).expect("Service initialization failed");
-
-    let outbound_nci = handles.get_handle::<OutboundNodeCommsInterface>().unwrap();
-    let local_nci = handles.get_handle::<LocalNodeCommsInterface>().unwrap();
-
-    (outbound_nci, local_nci, comms)
-}
-
-fn create_base_node(
-    runtime: &Runtime,
-    config: BaseNodeServiceConfig,
-) -> (
-    OutboundNodeCommsInterface,
-    LocalNodeCommsInterface,
-    BlockchainDatabase<MemoryDatabase<HashDigest>>,
-    Mempool<MemoryDatabase<HashDigest>>,
-    CommsNode,
-)
-{
-    let mut rng = OsRng::new().unwrap();
-    let node_identity = NodeIdentity::random(
-        &mut rng,
-        get_next_local_address().parse().unwrap(),
-        PeerFeatures::COMMUNICATION_NODE,
-    )
-    .unwrap();
-    let blockchain_db = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
-    let mempool = Mempool::new(blockchain_db.clone(), MempoolConfig::default());
-    let diff_adj_manager = DiffAdjManager::new(blockchain_db.clone()).unwrap();
-
-    let (outbound_nci, local_nci, comms) = setup_base_node_service(
-        &runtime,
-        node_identity,
-        Vec::new(),
-        blockchain_db.clone(),
-        mempool.clone(),
-        diff_adj_manager,
-        config,
-    );
-
-    (outbound_nci, local_nci, blockchain_db, mempool, comms)
-}
-
-fn create_network_with_3_base_nodes(
-    runtime: &Runtime,
-    config: BaseNodeServiceConfig,
-    mct_config: MerkleChangeTrackerConfig,
-) -> (NodeInterfaces, NodeInterfaces, NodeInterfaces)
-{
-    let mut rng = OsRng::new().unwrap();
-    let alice_node_identity = NodeIdentity::random(
-        &mut rng,
-        get_next_local_address().parse().unwrap(),
-        PeerFeatures::COMMUNICATION_NODE,
-    )
-    .unwrap();
-    let alice_blockchain_db = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::new(mct_config)).unwrap();
-    let alice_mempool = Mempool::new(alice_blockchain_db.clone(), MempoolConfig::default());
-    let alice_diff_adj_manager = DiffAdjManager::new(alice_blockchain_db.clone()).unwrap();
-
-    let bob_node_identity = NodeIdentity::random(
-        &mut rng,
-        get_next_local_address().parse().unwrap(),
-        PeerFeatures::COMMUNICATION_NODE,
-    )
-    .unwrap();
-    let bob_blockchain_db = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::new(mct_config)).unwrap();
-    let bob_mempool = Mempool::new(bob_blockchain_db.clone(), MempoolConfig::default());
-    let bob_diff_adj_manager = DiffAdjManager::new(bob_blockchain_db.clone()).unwrap();
-
-    let carol_node_identity = NodeIdentity::random(
-        &mut rng,
-        get_next_local_address().parse().unwrap(),
-        PeerFeatures::COMMUNICATION_NODE,
-    )
-    .unwrap();
-    let carol_blockchain_db = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::new(mct_config)).unwrap();
-    let carol_mempool = Mempool::new(carol_blockchain_db.clone(), MempoolConfig::default());
-    let carol_diff_adj_manager = DiffAdjManager::new(carol_blockchain_db.clone()).unwrap();
-
-    let (alice_outbound_nci, alice_local_nci, alice_comms) = setup_base_node_service(
-        &runtime,
-        alice_node_identity.clone(),
-        vec![bob_node_identity.clone(), carol_node_identity.clone()],
-        alice_blockchain_db.clone(),
-        alice_mempool.clone(),
-        alice_diff_adj_manager,
-        config.clone(),
-    );
-    let (bob_outbound_nci, bob_local_nci, bob_comms) = setup_base_node_service(
-        &runtime,
-        bob_node_identity.clone(),
-        vec![alice_node_identity.clone(), carol_node_identity.clone()],
-        bob_blockchain_db.clone(),
-        bob_mempool.clone(),
-        bob_diff_adj_manager,
-        config.clone(),
-    );
-    let (carol_outbound_nci, carol_local_nci, carol_comms) = setup_base_node_service(
-        &runtime,
-        carol_node_identity,
-        vec![alice_node_identity, bob_node_identity],
-        carol_blockchain_db.clone(),
-        carol_mempool.clone(),
-        carol_diff_adj_manager,
-        config,
-    );
-    let alice_interfaces = NodeInterfaces::new(
-        alice_outbound_nci,
-        alice_local_nci,
-        alice_blockchain_db,
-        alice_mempool,
-        alice_comms,
-    );
-    let bob_interfaces = NodeInterfaces::new(
-        bob_outbound_nci,
-        bob_local_nci,
-        bob_blockchain_db,
-        bob_mempool,
-        bob_comms,
-    );
-    let carol_interfaces = NodeInterfaces::new(
-        carol_outbound_nci,
-        carol_local_nci,
-        carol_blockchain_db,
-        carol_mempool,
-        carol_comms,
-    );
-    (alice_interfaces, bob_interfaces, carol_interfaces)
-}
+use tokio::runtime::Runtime;
 
 #[test]
 fn request_response_get_metadata() {
     let runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();
+    let (mut alice_node, bob_node, carol_node) = create_network_with_3_base_nodes(&runtime);
 
-    let (mut alice_interfaces, bob_interfaces, carol_interfaces) =
-        create_network_with_3_base_nodes(&runtime, BaseNodeServiceConfig::default(), MerkleChangeTrackerConfig {
-            min_history_len: 10,
-            max_history_len: 20,
-        });
-
-    add_block_and_update_header(&bob_interfaces.blockchain_db, create_genesis_block(&factories).0);
+    add_block_and_update_header(&bob_node.blockchain_db, create_genesis_block(&factories).0);
 
     runtime.block_on(async {
-        let received_metadata = alice_interfaces.outbound_nci.get_metadata().await.unwrap();
+        let received_metadata = alice_node.outbound_nci.get_metadata().await.unwrap();
         assert_eq!(received_metadata.len(), 2);
         assert!(
             (received_metadata[0].height_of_longest_chain == None) ||
@@ -335,20 +76,15 @@ fn request_response_get_metadata() {
         );
     });
 
-    alice_interfaces.comms.shutdown().unwrap();
-    bob_interfaces.comms.shutdown().unwrap();
-    carol_interfaces.comms.shutdown().unwrap();
+    alice_node.comms.shutdown().unwrap();
+    bob_node.comms.shutdown().unwrap();
+    carol_node.comms.shutdown().unwrap();
 }
 
 #[test]
 fn request_and_response_fetch_headers() {
     let runtime = Runtime::new().unwrap();
-
-    let (mut alice_interfaces, bob_interfaces, carol_interfaces) =
-        create_network_with_3_base_nodes(&runtime, BaseNodeServiceConfig::default(), MerkleChangeTrackerConfig {
-            min_history_len: 10,
-            max_history_len: 20,
-        });
+    let (mut alice_node, bob_node, carol_node) = create_network_with_3_base_nodes(&runtime);
 
     let mut headerb1 = BlockHeader::new(0);
     headerb1.height = 1;
@@ -357,7 +93,7 @@ fn request_and_response_fetch_headers() {
     let mut txn = DbTransaction::new();
     txn.insert_header(headerb1.clone());
     txn.insert_header(headerb2.clone());
-    assert!(bob_interfaces.blockchain_db.commit(txn).is_ok());
+    assert!(bob_node.blockchain_db.commit(txn).is_ok());
 
     let mut headerc1 = BlockHeader::new(0);
     headerc1.height = 1;
@@ -366,15 +102,15 @@ fn request_and_response_fetch_headers() {
     let mut txn = DbTransaction::new();
     txn.insert_header(headerc1.clone());
     txn.insert_header(headerc2.clone());
-    assert!(carol_interfaces.blockchain_db.commit(txn).is_ok());
+    assert!(carol_node.blockchain_db.commit(txn).is_ok());
 
     // The request is sent to a random remote base node so the returned headers can be from bob or carol
     runtime.block_on(async {
-        let received_headers = alice_interfaces.outbound_nci.fetch_headers(vec![1]).await.unwrap();
+        let received_headers = alice_node.outbound_nci.fetch_headers(vec![1]).await.unwrap();
         assert_eq!(received_headers.len(), 1);
         assert!(received_headers.contains(&headerb1) || received_headers.contains(&headerc1));
 
-        let received_headers = alice_interfaces.outbound_nci.fetch_headers(vec![1, 2]).await.unwrap();
+        let received_headers = alice_node.outbound_nci.fetch_headers(vec![1, 2]).await.unwrap();
         assert_eq!(received_headers.len(), 2);
         assert!(
             (received_headers.contains(&headerb1) && (received_headers.contains(&headerb2))) ||
@@ -382,20 +118,15 @@ fn request_and_response_fetch_headers() {
         );
     });
 
-    alice_interfaces.comms.shutdown().unwrap();
-    bob_interfaces.comms.shutdown().unwrap();
-    carol_interfaces.comms.shutdown().unwrap();
+    alice_node.comms.shutdown().unwrap();
+    bob_node.comms.shutdown().unwrap();
+    carol_node.comms.shutdown().unwrap();
 }
 
 #[test]
 fn request_and_response_fetch_kernels() {
     let runtime = Runtime::new().unwrap();
-
-    let (mut alice_interfaces, bob_interfaces, carol_interfaces) =
-        create_network_with_3_base_nodes(&runtime, BaseNodeServiceConfig::default(), MerkleChangeTrackerConfig {
-            min_history_len: 10,
-            max_history_len: 20,
-        });
+    let (mut alice_node, bob_node, carol_node) = create_network_with_3_base_nodes(&runtime);
 
     let kernel1 = create_test_kernel(5.into(), 0);
     let kernel2 = create_test_kernel(10.into(), 1);
@@ -405,14 +136,14 @@ fn request_and_response_fetch_kernels() {
     let mut txn = DbTransaction::new();
     txn.insert_kernel(kernel1.clone());
     txn.insert_kernel(kernel2.clone());
-    assert!(bob_interfaces.blockchain_db.commit(txn).is_ok());
+    assert!(bob_node.blockchain_db.commit(txn).is_ok());
     let mut txn = DbTransaction::new();
     txn.insert_kernel(kernel1.clone());
     txn.insert_kernel(kernel2.clone());
-    assert!(carol_interfaces.blockchain_db.commit(txn).is_ok());
+    assert!(carol_node.blockchain_db.commit(txn).is_ok());
 
     runtime.block_on(async {
-        let received_kernels = alice_interfaces
+        let received_kernels = alice_node
             .outbound_nci
             .fetch_kernels(vec![hash1.clone()])
             .await
@@ -420,31 +151,22 @@ fn request_and_response_fetch_kernels() {
         assert_eq!(received_kernels.len(), 1);
         assert_eq!(received_kernels[0], kernel1);
 
-        let received_kernels = alice_interfaces
-            .outbound_nci
-            .fetch_kernels(vec![hash1, hash2])
-            .await
-            .unwrap();
+        let received_kernels = alice_node.outbound_nci.fetch_kernels(vec![hash1, hash2]).await.unwrap();
         assert_eq!(received_kernels.len(), 2);
         assert!(received_kernels.contains(&kernel1));
         assert!(received_kernels.contains(&kernel2));
     });
 
-    alice_interfaces.comms.shutdown().unwrap();
-    bob_interfaces.comms.shutdown().unwrap();
-    carol_interfaces.comms.shutdown().unwrap();
+    alice_node.comms.shutdown().unwrap();
+    bob_node.comms.shutdown().unwrap();
+    carol_node.comms.shutdown().unwrap();
 }
 
 #[test]
 fn request_and_response_fetch_utxos() {
     let runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();
-
-    let (mut alice_interfaces, bob_interfaces, carol_interfaces) =
-        create_network_with_3_base_nodes(&runtime, BaseNodeServiceConfig::default(), MerkleChangeTrackerConfig {
-            min_history_len: 10,
-            max_history_len: 20,
-        });
+    let (mut alice_node, bob_node, carol_node) = create_network_with_3_base_nodes(&runtime);
 
     let (utxo1, _) = create_utxo(MicroTari(10_000), &factories);
     let (utxo2, _) = create_utxo(MicroTari(15_000), &factories);
@@ -454,71 +176,58 @@ fn request_and_response_fetch_utxos() {
     let mut txn = DbTransaction::new();
     txn.insert_utxo(utxo1.clone());
     txn.insert_utxo(utxo2.clone());
-    assert!(bob_interfaces.blockchain_db.commit(txn).is_ok());
+    assert!(bob_node.blockchain_db.commit(txn).is_ok());
     let mut txn = DbTransaction::new();
     txn.insert_utxo(utxo1.clone());
     txn.insert_utxo(utxo2.clone());
-    assert!(carol_interfaces.blockchain_db.commit(txn).is_ok());
+    assert!(carol_node.blockchain_db.commit(txn).is_ok());
 
     runtime.block_on(async {
-        let received_utxos = alice_interfaces
-            .outbound_nci
-            .fetch_utxos(vec![hash1.clone()])
-            .await
-            .unwrap();
+        let received_utxos = alice_node.outbound_nci.fetch_utxos(vec![hash1.clone()]).await.unwrap();
         assert_eq!(received_utxos.len(), 1);
         assert_eq!(received_utxos[0], utxo1);
 
-        let received_utxos = alice_interfaces
-            .outbound_nci
-            .fetch_utxos(vec![hash1, hash2])
-            .await
-            .unwrap();
+        let received_utxos = alice_node.outbound_nci.fetch_utxos(vec![hash1, hash2]).await.unwrap();
         assert_eq!(received_utxos.len(), 2);
         assert!(received_utxos.contains(&utxo1));
         assert!(received_utxos.contains(&utxo2));
     });
 
-    alice_interfaces.comms.shutdown().unwrap();
-    bob_interfaces.comms.shutdown().unwrap();
-    carol_interfaces.comms.shutdown().unwrap();
+    alice_node.comms.shutdown().unwrap();
+    bob_node.comms.shutdown().unwrap();
+    carol_node.comms.shutdown().unwrap();
 }
 
 #[test]
 fn request_and_response_fetch_blocks() {
     let runtime = Runtime::new().unwrap();
+    let (mut alice_node, bob_node, carol_node) = create_network_with_3_base_nodes(&runtime);
 
-    let (mut alice_interfaces, bob_interfaces, carol_interfaces) =
-        create_network_with_3_base_nodes(&runtime, BaseNodeServiceConfig::default(), MerkleChangeTrackerConfig {
-            min_history_len: 10,
-            max_history_len: 20,
-        });
-
-    let block0 = add_block_and_update_header(&bob_interfaces.blockchain_db, get_genesis_block());
+    let block0 = add_block_and_update_header(&bob_node.blockchain_db, get_genesis_block());
     let mut block1 = chain_block(&block0, vec![]);
-    block1 = add_block_and_update_header(&bob_interfaces.blockchain_db, block1);
+    block1 = add_block_and_update_header(&bob_node.blockchain_db, block1);
     let mut block2 = chain_block(&block1, vec![]);
-    block2 = add_block_and_update_header(&bob_interfaces.blockchain_db, block2);
+    block2 = add_block_and_update_header(&bob_node.blockchain_db, block2);
 
-    carol_interfaces.blockchain_db.add_new_block(block0.clone()).unwrap();
-    carol_interfaces.blockchain_db.add_new_block(block1.clone()).unwrap();
-    carol_interfaces.blockchain_db.add_new_block(block2.clone()).unwrap();
+    carol_node.blockchain_db.add_new_block(block0.clone()).unwrap();
+    carol_node.blockchain_db.add_new_block(block1.clone()).unwrap();
+    carol_node.blockchain_db.add_new_block(block2.clone()).unwrap();
 
     runtime.block_on(async {
-        let received_blocks = alice_interfaces.outbound_nci.fetch_blocks(vec![0]).await.unwrap();
+        let received_blocks = alice_node.outbound_nci.fetch_blocks(vec![0]).await.unwrap();
         assert_eq!(received_blocks.len(), 1);
         assert_eq!(*received_blocks[0].block(), block0);
 
-        let received_blocks = alice_interfaces.outbound_nci.fetch_blocks(vec![0, 1]).await.unwrap();
+        let received_blocks = alice_node.outbound_nci.fetch_blocks(vec![0, 1]).await.unwrap();
         assert_eq!(received_blocks.len(), 2);
         assert_ne!(*received_blocks[0].block(), *received_blocks[1].block());
         assert!((*received_blocks[0].block() == block0) || (*received_blocks[1].block() == block0));
         assert!((*received_blocks[0].block() == block1) || (*received_blocks[1].block() == block1));
     });
 
-    alice_interfaces.comms.shutdown().unwrap();
-    bob_interfaces.comms.shutdown().unwrap();
-    carol_interfaces.comms.shutdown().unwrap();
+    alice_node.comms.shutdown().unwrap();
+    bob_node.comms.shutdown().unwrap();
+    carol_node.comms.shutdown().unwrap();
 }
 
 #[test]
@@ -529,42 +238,46 @@ fn request_and_response_fetch_mmr_state() {
         min_history_len: 1,
         max_history_len: 3,
     };
-    let (mut alice_interfaces, bob_interfaces, carol_interfaces) =
-        create_network_with_3_base_nodes(&runtime, BaseNodeServiceConfig::default(), mct_config);
+    let (mut alice_node, bob_node, carol_node) = create_network_with_3_base_nodes_with_config(
+        &runtime,
+        BaseNodeServiceConfig::default(),
+        mct_config,
+        MempoolServiceConfig::default(),
+    );
 
     let (tx1, inputs1, _) = tx!(10_000*uT, fee: 50*uT, inputs: 1, outputs: 1);
     let (tx2, inputs2, _) = tx!(10_000*uT, fee: 20*uT, inputs: 1, outputs: 1);
     let (_, inputs3, _) = tx!(10_000*uT, fee: 25*uT, inputs: 1, outputs: 1);
 
-    let block0 = add_block_and_update_header(&bob_interfaces.blockchain_db, get_genesis_block());
+    let block0 = add_block_and_update_header(&bob_node.blockchain_db, get_genesis_block());
     let mut txn = DbTransaction::new();
     txn.insert_utxo(inputs1[0].as_transaction_output(&factories).unwrap());
     txn.insert_utxo(inputs2[0].as_transaction_output(&factories).unwrap());
     txn.insert_utxo(inputs3[0].as_transaction_output(&factories).unwrap());
-    assert!(bob_interfaces.blockchain_db.commit(txn).is_ok());
+    assert!(bob_node.blockchain_db.commit(txn).is_ok());
     let mut block1 = chain_block(&block0, vec![tx1.clone()]);
-    block1 = add_block_and_update_header(&bob_interfaces.blockchain_db, block1);
+    block1 = add_block_and_update_header(&bob_node.blockchain_db, block1);
     let mut block2 = chain_block(&block1, vec![]);
-    block2 = add_block_and_update_header(&bob_interfaces.blockchain_db, block2);
+    block2 = add_block_and_update_header(&bob_node.blockchain_db, block2);
     let block3 = chain_block(&block2, vec![tx2.clone()]);
-    bob_interfaces.blockchain_db.add_new_block(block3.clone()).unwrap();
+    bob_node.blockchain_db.add_new_block(block3.clone()).unwrap();
 
-    let block0 = add_block_and_update_header(&carol_interfaces.blockchain_db, get_genesis_block());
+    let block0 = add_block_and_update_header(&carol_node.blockchain_db, get_genesis_block());
     let mut txn = DbTransaction::new();
     txn.insert_utxo(inputs1[0].as_transaction_output(&factories).unwrap());
     txn.insert_utxo(inputs2[0].as_transaction_output(&factories).unwrap());
     txn.insert_utxo(inputs3[0].as_transaction_output(&factories).unwrap());
-    assert!(carol_interfaces.blockchain_db.commit(txn).is_ok());
+    assert!(carol_node.blockchain_db.commit(txn).is_ok());
     let mut block1 = chain_block(&block0, vec![tx1.clone()]);
-    block1 = add_block_and_update_header(&carol_interfaces.blockchain_db, block1);
+    block1 = add_block_and_update_header(&carol_node.blockchain_db, block1);
     let mut block2 = chain_block(&block1, vec![]);
-    block2 = add_block_and_update_header(&carol_interfaces.blockchain_db, block2);
+    block2 = add_block_and_update_header(&carol_node.blockchain_db, block2);
     let block3 = chain_block(&block2, vec![tx2.clone()]);
-    carol_interfaces.blockchain_db.add_new_block(block3.clone()).unwrap();
+    carol_node.blockchain_db.add_new_block(block3.clone()).unwrap();
 
     runtime.block_on(async {
         // Partial queries
-        let received_mmr_state = alice_interfaces
+        let received_mmr_state = alice_node
             .outbound_nci
             .fetch_mmr_state(MmrTree::Utxo, 1, 2)
             .await
@@ -572,7 +285,7 @@ fn request_and_response_fetch_mmr_state() {
         assert_eq!(received_mmr_state.total_leaf_count, 4);
         assert_eq!(received_mmr_state.leaf_nodes.leaf_hashes.len(), 2);
 
-        let received_mmr_state = alice_interfaces
+        let received_mmr_state = alice_node
             .outbound_nci
             .fetch_mmr_state(MmrTree::Kernel, 1, 2)
             .await
@@ -580,7 +293,7 @@ fn request_and_response_fetch_mmr_state() {
         assert_eq!(received_mmr_state.total_leaf_count, 1);
         assert_eq!(received_mmr_state.leaf_nodes.leaf_hashes.len(), 0); // request out of range
 
-        let received_mmr_state = alice_interfaces
+        let received_mmr_state = alice_node
             .outbound_nci
             .fetch_mmr_state(MmrTree::RangeProof, 1, 2)
             .await
@@ -588,7 +301,7 @@ fn request_and_response_fetch_mmr_state() {
         assert_eq!(received_mmr_state.total_leaf_count, 4);
         assert_eq!(received_mmr_state.leaf_nodes.leaf_hashes.len(), 2);
 
-        let received_mmr_state = alice_interfaces
+        let received_mmr_state = alice_node
             .outbound_nci
             .fetch_mmr_state(MmrTree::Header, 1, 2)
             .await
@@ -597,7 +310,7 @@ fn request_and_response_fetch_mmr_state() {
         assert_eq!(received_mmr_state.leaf_nodes.leaf_hashes.len(), 2);
 
         // Comprehensive queries
-        let received_mmr_state = alice_interfaces
+        let received_mmr_state = alice_node
             .outbound_nci
             .fetch_mmr_state(MmrTree::Utxo, 0, 100)
             .await
@@ -605,7 +318,7 @@ fn request_and_response_fetch_mmr_state() {
         assert_eq!(received_mmr_state.total_leaf_count, 4);
         assert_eq!(received_mmr_state.leaf_nodes.leaf_hashes.len(), 4);
 
-        let received_mmr_state = alice_interfaces
+        let received_mmr_state = alice_node
             .outbound_nci
             .fetch_mmr_state(MmrTree::Kernel, 0, 100)
             .await
@@ -613,7 +326,7 @@ fn request_and_response_fetch_mmr_state() {
         assert_eq!(received_mmr_state.total_leaf_count, 1);
         assert_eq!(received_mmr_state.leaf_nodes.leaf_hashes.len(), 1);
 
-        let received_mmr_state = alice_interfaces
+        let received_mmr_state = alice_node
             .outbound_nci
             .fetch_mmr_state(MmrTree::RangeProof, 0, 100)
             .await
@@ -621,7 +334,7 @@ fn request_and_response_fetch_mmr_state() {
         assert_eq!(received_mmr_state.total_leaf_count, 4);
         assert_eq!(received_mmr_state.leaf_nodes.leaf_hashes.len(), 4);
 
-        let received_mmr_state = alice_interfaces
+        let received_mmr_state = alice_node
             .outbound_nci
             .fetch_mmr_state(MmrTree::Header, 0, 100)
             .await
@@ -630,9 +343,9 @@ fn request_and_response_fetch_mmr_state() {
         assert_eq!(received_mmr_state.leaf_nodes.leaf_hashes.len(), 3);
     });
 
-    alice_interfaces.comms.shutdown().unwrap();
-    bob_interfaces.comms.shutdown().unwrap();
-    carol_interfaces.comms.shutdown().unwrap();
+    alice_node.comms.shutdown().unwrap();
+    bob_node.comms.shutdown().unwrap();
+    carol_node.comms.shutdown().unwrap();
 }
 
 pub async fn event_stream_next<TStream>(mut stream: TStream, timeout: Duration) -> Option<TStream::Item>
@@ -654,31 +367,22 @@ where
 #[test]
 fn propagate_valid_block() {
     let runtime = Runtime::new().unwrap();
+    let (mut alice_node, bob_node, carol_node) = create_network_with_3_base_nodes(&runtime);
 
-    let (mut alice_interfaces, bob_interfaces, carol_interfaces) =
-        create_network_with_3_base_nodes(&runtime, BaseNodeServiceConfig::default(), MerkleChangeTrackerConfig {
-            min_history_len: 10,
-            max_history_len: 20,
-        });
-
-    let block0 = add_block_and_update_header(&alice_interfaces.blockchain_db, get_genesis_block());
+    let block0 = add_block_and_update_header(&alice_node.blockchain_db, get_genesis_block());
     let mut block1 = chain_block(&block0, vec![]);
-    block1 = add_block_and_update_header(&alice_interfaces.blockchain_db, block1);
+    block1 = add_block_and_update_header(&alice_node.blockchain_db, block1);
     let block1_hash = block1.hash();
 
-    bob_interfaces.blockchain_db.add_new_block(block0.clone()).unwrap();
-    carol_interfaces.blockchain_db.add_new_block(block0.clone()).unwrap();
+    bob_node.blockchain_db.add_new_block(block0.clone()).unwrap();
+    carol_node.blockchain_db.add_new_block(block0.clone()).unwrap();
 
     runtime.block_on(async {
-        assert!(alice_interfaces
-            .outbound_nci
-            .propagate_block(block1.clone())
-            .await
-            .is_ok());
+        assert!(alice_node.outbound_nci.propagate_block(block1.clone()).await.is_ok());
 
-        let bob_block_event_stream = bob_interfaces.local_nci.get_block_event_stream_fused();
+        let bob_block_event_stream = bob_node.local_nci.get_block_event_stream_fused();
         let bob_block_event_fut = event_stream_next(bob_block_event_stream, Duration::from_millis(20000));
-        let carol_block_event_stream = carol_interfaces.local_nci.get_block_event_stream_fused();
+        let carol_block_event_stream = carol_node.local_nci.get_block_event_stream_fused();
         let carol_block_event_fut = event_stream_next(carol_block_event_stream, Duration::from_millis(20000));
         let (bob_block_event, carol_block_event) = join!(bob_block_event_fut, carol_block_event_fut);
 
@@ -694,38 +398,29 @@ fn propagate_valid_block() {
         }
     });
 
-    alice_interfaces.comms.shutdown().unwrap();
-    bob_interfaces.comms.shutdown().unwrap();
-    carol_interfaces.comms.shutdown().unwrap();
+    alice_node.comms.shutdown().unwrap();
+    bob_node.comms.shutdown().unwrap();
+    carol_node.comms.shutdown().unwrap();
 }
 
 #[test]
 fn propagate_invalid_block() {
     let runtime = Runtime::new().unwrap();
+    let (mut alice_node, bob_node, carol_node) = create_network_with_3_base_nodes(&runtime);
 
-    let (mut alice_interfaces, bob_interfaces, carol_interfaces) =
-        create_network_with_3_base_nodes(&runtime, BaseNodeServiceConfig::default(), MerkleChangeTrackerConfig {
-            min_history_len: 10,
-            max_history_len: 20,
-        });
-
-    let block0 = add_block_and_update_header(&alice_interfaces.blockchain_db, get_genesis_block());
+    let block0 = add_block_and_update_header(&alice_node.blockchain_db, get_genesis_block());
     let block1 = chain_block(&block0, vec![]);
     let block1_hash = block1.hash();
 
-    bob_interfaces.blockchain_db.add_new_block(block0.clone()).unwrap();
-    carol_interfaces.blockchain_db.add_new_block(block0.clone()).unwrap();
+    bob_node.blockchain_db.add_new_block(block0.clone()).unwrap();
+    carol_node.blockchain_db.add_new_block(block0.clone()).unwrap();
 
     runtime.block_on(async {
-        assert!(alice_interfaces
-            .outbound_nci
-            .propagate_block(block1.clone())
-            .await
-            .is_ok());
+        assert!(alice_node.outbound_nci.propagate_block(block1.clone()).await.is_ok());
 
-        let bob_block_event_stream = bob_interfaces.local_nci.get_block_event_stream_fused();
+        let bob_block_event_stream = bob_node.local_nci.get_block_event_stream_fused();
         let bob_block_event_fut = event_stream_next(bob_block_event_stream, Duration::from_millis(20000));
-        let carol_block_event_stream = carol_interfaces.local_nci.get_block_event_stream_fused();
+        let carol_block_event_stream = carol_node.local_nci.get_block_event_stream_fused();
         let carol_block_event_fut = event_stream_next(carol_block_event_stream, Duration::from_millis(20000));
         let (bob_block_event, carol_block_event) = join!(bob_block_event_fut, carol_block_event_fut);
 
@@ -743,98 +438,67 @@ fn propagate_invalid_block() {
         }
     });
 
-    alice_interfaces.comms.shutdown().unwrap();
-    bob_interfaces.comms.shutdown().unwrap();
-    carol_interfaces.comms.shutdown().unwrap();
+    alice_node.comms.shutdown().unwrap();
+    bob_node.comms.shutdown().unwrap();
+    carol_node.comms.shutdown().unwrap();
 }
 
 #[test]
 fn service_request_timeout() {
     let runtime = Runtime::new().unwrap();
-    let mut rng = OsRng::new().unwrap();
     let base_node_service_config = BaseNodeServiceConfig {
-        request_timeout: Duration::from_millis(10),
+        request_timeout: Duration::from_millis(1),
         desired_response_fraction: BASE_NODE_SERVICE_DESIRED_RESPONSE_FRACTION,
     };
-
-    let alice_node_identity = NodeIdentity::random(
-        &mut rng,
-        get_next_local_address().parse().unwrap(),
-        PeerFeatures::COMMUNICATION_NODE,
-    )
-    .unwrap();
-    let alice_blockchain_db = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
-    let alice_mempool = Mempool::new(alice_blockchain_db.clone(), MempoolConfig::default());
-    let alice_diff_adj_manager = DiffAdjManager::new(alice_blockchain_db.clone()).unwrap();
-
-    let bob_node_identity = NodeIdentity::random(
-        &mut rng,
-        get_next_local_address().parse().unwrap(),
-        PeerFeatures::COMMUNICATION_NODE,
-    )
-    .unwrap();
-    let bob_blockchain_db = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
-    let bob_mempool = Mempool::new(bob_blockchain_db.clone(), MempoolConfig::default());
-    let bob_diff_adj_manager = DiffAdjManager::new(bob_blockchain_db.clone()).unwrap();
-
-    let (mut alice_outbound_nci, _, alice_comms) = setup_base_node_service(
+    let mct_config = MerkleChangeTrackerConfig {
+        min_history_len: 10,
+        max_history_len: 30,
+    };
+    let (mut alice_node, bob_node) = create_network_with_2_base_nodes_with_config(
         &runtime,
-        alice_node_identity.clone(),
-        vec![bob_node_identity.clone()],
-        alice_blockchain_db,
-        alice_mempool,
-        alice_diff_adj_manager,
-        base_node_service_config.clone(),
-    );
-    let (_, _, bob_comms) = setup_base_node_service(
-        &runtime,
-        bob_node_identity,
-        vec![alice_node_identity],
-        bob_blockchain_db,
-        bob_mempool,
-        bob_diff_adj_manager,
         base_node_service_config,
+        mct_config,
+        MempoolServiceConfig::default(),
     );
 
     runtime.block_on(async {
         assert_eq!(
-            alice_outbound_nci.get_metadata().await,
+            alice_node.outbound_nci.get_metadata().await,
             Err(CommsInterfaceError::RequestTimedOut)
         );
     });
 
-    alice_comms.shutdown().unwrap();
-    bob_comms.shutdown().unwrap();
+    alice_node.comms.shutdown().unwrap();
+    bob_node.comms.shutdown().unwrap();
 }
 
 #[test]
 fn local_get_metadata() {
     let runtime = Runtime::new().unwrap();
-    let (_, mut local_nci, blockchain_db, _, comms) = create_base_node(&runtime, BaseNodeServiceConfig::default());
+    let mut node = BaseNodeBuilder::new().start(&runtime);
 
-    let block0 = add_block_and_update_header(&blockchain_db, get_genesis_block());
+    let block0 = add_block_and_update_header(&node.blockchain_db, get_genesis_block());
     let mut block1 = chain_block(&block0, vec![]);
-    block1 = add_block_and_update_header(&blockchain_db, block1);
+    block1 = add_block_and_update_header(&node.blockchain_db, block1);
     let mut block2 = chain_block(&block1, vec![]);
-    block2 = add_block_and_update_header(&blockchain_db, block2);
+    block2 = add_block_and_update_header(&node.blockchain_db, block2);
 
     runtime.block_on(async {
-        let metadata = local_nci.get_metadata().await.unwrap();
+        let metadata = node.local_nci.get_metadata().await.unwrap();
         assert_eq!(metadata.height_of_longest_chain, Some(2));
         assert_eq!(metadata.best_block, Some(block2.hash()));
     });
 
-    comms.shutdown().unwrap();
+    node.comms.shutdown().unwrap();
 }
 
 #[test]
 fn local_get_new_block_template_and_get_new_block() {
     let factories = CryptoFactories::default();
     let runtime = Runtime::new().unwrap();
-    let (_, mut local_nci, blockchain_db, mempool, comms) =
-        create_base_node(&runtime, BaseNodeServiceConfig::default());
+    let mut node = BaseNodeBuilder::new().start(&runtime);
 
-    add_block_and_update_header(&blockchain_db, get_genesis_block());
+    add_block_and_update_header(&node.blockchain_db, get_genesis_block());
     let (tx1, inputs1, _) = tx!(10_000*uT, fee: 50*uT, inputs: 1, outputs: 1);
     let (tx2, inputs2, _) = tx!(10_000*uT, fee: 20*uT, inputs: 1, outputs: 1);
     let (tx3, inputs3, _) = tx!(10_000*uT, fee: 30*uT, inputs: 1, outputs: 1);
@@ -842,71 +506,77 @@ fn local_get_new_block_template_and_get_new_block() {
     txn.insert_utxo(inputs1[0].as_transaction_output(&factories).unwrap());
     txn.insert_utxo(inputs2[0].as_transaction_output(&factories).unwrap());
     txn.insert_utxo(inputs3[0].as_transaction_output(&factories).unwrap());
-    assert!(blockchain_db.commit(txn).is_ok());
-    assert!(mempool.insert(Arc::new(tx1)).is_ok());
-    assert!(mempool.insert(Arc::new(tx2)).is_ok());
-    assert!(mempool.insert(Arc::new(tx3)).is_ok());
+    assert!(node.blockchain_db.commit(txn).is_ok());
+    assert!(node.mempool.insert(Arc::new(tx1)).is_ok());
+    assert!(node.mempool.insert(Arc::new(tx2)).is_ok());
+    assert!(node.mempool.insert(Arc::new(tx3)).is_ok());
 
     runtime.block_on(async {
-        let block_template = local_nci.get_new_block_template().await.unwrap();
+        let block_template = node.local_nci.get_new_block_template().await.unwrap();
         assert_eq!(block_template.header.height, 1);
         assert_eq!(block_template.body.kernels().len(), 3);
 
-        let mut block = local_nci.get_new_block(block_template.clone()).await.unwrap();
+        let mut block = node.local_nci.get_new_block(block_template.clone()).await.unwrap();
         block.header.pow.accumulated_blake_difficulty = Difficulty::from(100);
         assert_eq!(block.header.height, 1);
         assert_eq!(block.body, block_template.body);
 
-        assert!(blockchain_db.add_block(block.clone()).is_ok());
+        assert!(node.blockchain_db.add_block(block.clone()).is_ok());
     });
 
-    comms.shutdown().unwrap();
+    node.comms.shutdown().unwrap();
 }
 
 #[test]
 fn local_get_target_difficulty() {
-    let factories = CryptoFactories::default();
     let runtime = Runtime::new().unwrap();
-    let (_, mut local_nci, blockchain_db, _, comms) = create_base_node(&runtime, BaseNodeServiceConfig::default());
+    let mut node = BaseNodeBuilder::new().start(&runtime);
 
-    let block0 = add_block_and_update_header(&blockchain_db, get_genesis_block());
-    assert_eq!(blockchain_db.get_height(), Ok(Some(0)));
+    let block0 = add_block_and_update_header(&node.blockchain_db, get_genesis_block());
+    assert_eq!(node.blockchain_db.get_height(), Ok(Some(0)));
 
     runtime.block_on(async {
-        let monero_target_difficulty1 = local_nci.get_target_difficulty(PowAlgorithm::Monero).await.unwrap();
-        let blake_target_difficulty1 = local_nci.get_target_difficulty(PowAlgorithm::Blake).await.unwrap();
+        let monero_target_difficulty1 = node
+            .local_nci
+            .get_target_difficulty(PowAlgorithm::Monero)
+            .await
+            .unwrap();
+        let blake_target_difficulty1 = node.local_nci.get_target_difficulty(PowAlgorithm::Blake).await.unwrap();
         assert_ne!(monero_target_difficulty1, Difficulty::from(0));
         assert_ne!(blake_target_difficulty1, Difficulty::from(0));
 
         let mut block1 = chain_block(&block0, Vec::new());
         block1.header.timestamp = block0.header.timestamp.increase(TARGET_BLOCK_INTERVAL);
         block1.header.pow.pow_algo = PowAlgorithm::Blake;
-        add_block_and_update_header(&blockchain_db, block1);
-        assert_eq!(blockchain_db.get_height(), Ok(Some(1)));
+        add_block_and_update_header(&node.blockchain_db, block1);
+        assert_eq!(node.blockchain_db.get_height(), Ok(Some(1)));
 
-        let monero_target_difficulty2 = local_nci.get_target_difficulty(PowAlgorithm::Monero).await.unwrap();
-        let blake_target_difficulty2 = local_nci.get_target_difficulty(PowAlgorithm::Blake).await.unwrap();
+        let monero_target_difficulty2 = node
+            .local_nci
+            .get_target_difficulty(PowAlgorithm::Monero)
+            .await
+            .unwrap();
+        let blake_target_difficulty2 = node.local_nci.get_target_difficulty(PowAlgorithm::Blake).await.unwrap();
         assert!(monero_target_difficulty1 <= monero_target_difficulty2);
         assert!(blake_target_difficulty1 <= blake_target_difficulty2);
     });
 
-    comms.shutdown().unwrap();
+    node.comms.shutdown().unwrap();
 }
 
 #[test]
 fn local_submit_block() {
     let runtime = Runtime::new().unwrap();
-    let (_outbound_nci, mut local_nci, blockchain_db, _, comms) =
-        create_base_node(&runtime, BaseNodeServiceConfig::default());
+    let mut node = BaseNodeBuilder::new().start(&runtime);
 
-    let block0 = add_block_and_update_header(&blockchain_db, get_genesis_block());
+    let block0 = add_block_and_update_header(&node.blockchain_db, get_genesis_block());
     let mut block1 = chain_block(&block0, vec![]);
     block1.header.height = 1;
 
     runtime.block_on(async {
-        assert!(local_nci.submit_block(block1.clone()).await.is_ok());
+        assert!(node.local_nci.submit_block(block1.clone()).await.is_ok());
 
-        let block_event_stream = local_nci.get_block_event_stream_fused();
+        let block_event_stream = node.local_nci.get_block_event_stream_fused();
         let bob_block_event = event_stream_next(block_event_stream, Duration::from_millis(20000)).await;
 
         if let BlockEvent::Invalid((received_block, err)) = &*bob_block_event.unwrap() {
@@ -917,5 +587,5 @@ fn local_submit_block() {
         }
     });
 
-    comms.shutdown().unwrap();
+    node.comms.shutdown().unwrap();
 }
