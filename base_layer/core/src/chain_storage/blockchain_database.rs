@@ -754,7 +754,6 @@ where T: BlockchainBackend
     /// Each successful link is pushed to the front of the queue.
     fn try_construct_fork(&self, new_block: Block) -> Result<VecDeque<Block>, ChainStorageError> {
         let mut reorg_chain = VecDeque::new();
-        let _new_block_hash = new_block.hash();
         let mut hash = new_block.header.prev_hash.clone();
         let mut height = new_block.header.height;
         reorg_chain.push_front(new_block);
