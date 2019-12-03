@@ -228,7 +228,7 @@ pub unsafe extern "C" fn byte_vector_get_at(ptr: *mut ByteVector, position: c_ui
     if position > len as c_uint {
         return 0 as c_uchar;
     }
-    (*ptr).0.clone()[position as usize]
+    (*ptr).0[position as usize].clone()
 }
 
 /// Gets the number of elements in a ByteVector
