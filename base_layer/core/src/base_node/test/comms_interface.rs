@@ -39,10 +39,12 @@ use crate::{
         MemoryDatabase,
         MmrTree,
         MutableMmrState,
+        Validators,
     },
     mempool::{Mempool, MempoolConfig},
     proof_of_work::DiffAdjManager,
-    test_utils::builders::{add_block_and_update_header, create_test_kernel, create_utxo},
+    test_utils::builders::{add_block_and_update_header, create_default_db, create_test_kernel, create_utxo},
+    validation::mocks::MockValidator,
 };
 use croaring::Bitmap;
 use futures::{executor::block_on, StreamExt};
@@ -66,6 +68,15 @@ async fn test_request_responder(
 {
     let req_context = receiver.next().await.unwrap();
     req_context.reply(Ok(response)).unwrap()
+}
+
+fn new_mempool() -> (
+    Mempool<MemoryDatabase<HashDigest>>,
+    BlockchainDatabase<MemoryDatabase<HashDigest>>,
+) {
+    let store = create_default_db();
+    let mempool = Mempool::new(store.clone(), MempoolConfig::default());
+    (mempool, store)
 }
 
 #[test]
@@ -94,8 +105,7 @@ fn outbound_get_metadata() {
 
 #[test]
 fn inbound_get_metadata() {
-    let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
-    let mempool = Mempool::new(store.clone(), MempoolConfig::default());
+    let (mempool, store) = new_mempool();
     let diff_adj_manager = DiffAdjManager::new(store.clone()).unwrap();
     let (block_event_publisher, _block_event_subscriber) = bounded(100);
     let inbound_nch = InboundNodeCommsHandlers::new(block_event_publisher, store, mempool, diff_adj_manager);
@@ -137,8 +147,7 @@ fn outbound_fetch_kernels() {
 
 #[test]
 fn inbound_fetch_kernels() {
-    let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
-    let mempool = Mempool::new(store.clone(), MempoolConfig::default());
+    let (mempool, store) = new_mempool();
     let diff_adj_manager = DiffAdjManager::new(store.clone()).unwrap();
     let (block_event_publisher, _block_event_subscriber) = bounded(100);
     let inbound_nch = InboundNodeCommsHandlers::new(block_event_publisher, store.clone(), mempool, diff_adj_manager);
@@ -186,8 +195,7 @@ fn outbound_fetch_headers() {
 
 #[test]
 fn inbound_fetch_headers() {
-    let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
-    let mempool = Mempool::new(store.clone(), MempoolConfig::default());
+    let (mempool, store) = new_mempool();
     let diff_adj_manager = DiffAdjManager::new(store.clone()).unwrap();
     let (block_event_publisher, _block_event_subscriber) = bounded(100);
     let inbound_nch = InboundNodeCommsHandlers::new(block_event_publisher, store.clone(), mempool, diff_adj_manager);
@@ -237,8 +245,7 @@ fn outbound_fetch_utxos() {
 #[test]
 fn inbound_fetch_utxos() {
     let factories = CryptoFactories::default();
-    let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
-    let mempool = Mempool::new(store.clone(), MempoolConfig::default());
+    let (mempool, store) = new_mempool();
     let (block_event_publisher, _block_event_subscriber) = bounded(100);
     let diff_adj_manager = DiffAdjManager::new(store.clone()).unwrap();
     let inbound_nch = InboundNodeCommsHandlers::new(block_event_publisher, store.clone(), mempool, diff_adj_manager);
@@ -285,8 +292,7 @@ fn outbound_fetch_blocks() {
 
 #[test]
 fn inbound_fetch_blocks() {
-    let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
-    let mempool = Mempool::new(store.clone(), MempoolConfig::default());
+    let (mempool, store) = new_mempool();
     let diff_adj_manager = DiffAdjManager::new(store.clone()).unwrap();
     let (block_event_publisher, _block_event_subscriber) = bounded(100);
     let inbound_nch = InboundNodeCommsHandlers::new(block_event_publisher, store.clone(), mempool, diff_adj_manager);
@@ -331,8 +337,7 @@ fn outbound_fetch_mmr_state() {
 
 #[test]
 fn inbound_fetch_mmr_state() {
-    let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
-    let mempool = Mempool::new(store.clone(), MempoolConfig::default());
+    let (mempool, store) = new_mempool();
     let diff_adj_manager = DiffAdjManager::new(store.clone()).unwrap();
     let (block_event_publisher, _block_event_subscriber) = bounded(100);
     let inbound_nch = InboundNodeCommsHandlers::new(block_event_publisher, store, mempool, diff_adj_manager);

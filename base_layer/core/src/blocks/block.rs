@@ -34,7 +34,6 @@ use tari_transactions::{
     consensus::ConsensusRules,
     tari_amount::MicroTari,
     transaction::{OutputFlags, Transaction, TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
-    types::CryptoFactories,
 };
 use tari_utilities::Hashable;
 
@@ -62,23 +61,6 @@ pub struct Block {
 }
 
 impl Block {
-    /// This function will check the block to ensure that all UTXO's are validly constructed and that all signatures are
-    /// valid. It does _not_ check that the inputs exist in the current UTXO set;
-    /// nor does it check that the PoW is the largest accumulated PoW value.
-    pub fn check_internal_consistency(
-        &self,
-        rules: &ConsensusRules,
-        factories: &CryptoFactories,
-    ) -> Result<(), BlockValidationError>
-    {
-        let offset = &self.header.total_kernel_offset;
-        let total_coinbase = self.calculate_coinbase_and_fees(rules);
-        self.body
-            .validate_internal_consistency(&offset, total_coinbase, factories)?;
-        self.check_stxo_rules()?;
-        self.check_utxo_rules(rules)
-    }
-
     // create a total_coinbase offset containing all fees for the validation
     pub fn calculate_coinbase_and_fees(&self, rules: &ConsensusRules) -> MicroTari {
         let mut coinbase = rules.emission_schedule().block_reward(self.header.height);
@@ -98,8 +80,10 @@ impl Block {
         Ok(())
     }
 
-    /// This function will check all new utxo to ensure that feature flags where set
-    pub fn check_utxo_rules(&self, current_rules: &ConsensusRules) -> Result<(), BlockValidationError> {
+    /// Run through the outputs of the block and check that
+    /// i) There is exactly ONE coinbase output
+    /// ii) The output's maturity is correctly set
+    pub fn check_coinbase_output(&self, current_rules: &ConsensusRules) -> Result<(), BlockValidationError> {
         let mut coinbase_counter = 0; // there should be exactly 1 coinbase
         for utxo in self.body.outputs() {
             if utxo.features.flags.contains(OutputFlags::COINBASE_OUTPUT) {

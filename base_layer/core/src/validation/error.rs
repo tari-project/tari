@@ -33,4 +33,6 @@ pub enum ValidationError {
     /// Custom error with string message
     #[error(no_from, non_std, msg_embedded)]
     CustomError(String),
+    /// A database instance must be set for this validator
+    NoDatabaseConfigured,
 }

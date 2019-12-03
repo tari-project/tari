@@ -42,7 +42,7 @@ pub fn create_runtime(passed: Arc<AtomicBool>) -> Runtime {
 pub fn test_async<F>(f: F)
 where F: FnOnce(&Runtime) {
     let passed = Arc::new(AtomicBool::new(true));
-    let rt = create_runtime(passed.clone());
+    let rt: Runtime = create_runtime(passed.clone());
     f(&rt);
     rt.shutdown_on_idle();
     assert!(passed.load(Ordering::SeqCst), "Panic occurred in spawned future");

@@ -30,6 +30,7 @@ use crate::{
         HistoricalBlock,
     },
     proof_of_work::Difficulty,
+    validation::{Validation, Validator},
 };
 use croaring::Bitmap;
 use log::*;
@@ -60,6 +61,33 @@ pub enum BlockAddResult {
 pub struct MutableMmrState {
     pub total_leaf_count: usize,
     pub leaf_nodes: MutableMmrLeafNodes,
+}
+
+/// A placeholder struct that contains the two validators that the database uses to decide whether or not a block is
+/// eligible to be added to the database. The `block` validator should perform a full consensus check. The `orphan`
+/// validator needs to check that the block is internally consistent, but can't know whether the PoW is sufficient,
+/// for example.
+pub struct Validators<B: BlockchainBackend> {
+    block: Arc<Validator<Block, B>>,
+    orphan: Arc<Validator<Block, B>>,
+}
+
+impl<B: BlockchainBackend> Validators<B> {
+    pub fn new(block: impl Validation<Block, B> + 'static, orphan: impl Validation<Block, B> + 'static) -> Self {
+        Self {
+            block: Arc::new(Box::new(block)),
+            orphan: Arc::new(Box::new(orphan)),
+        }
+    }
+}
+
+impl<B: BlockchainBackend> Clone for Validators<B> {
+    fn clone(&self) -> Self {
+        Validators {
+            block: Arc::clone(&self.block),
+            orphan: Arc::clone(&self.orphan),
+        }
+    }
 }
 
 /// Identify behaviour for Blockchain database back ends. Implementations must support `Send` and `Sync` so that
@@ -158,29 +186,35 @@ macro_rules! fetch {
 /// provide it with the backend it is going to use; for example, for a memory-backed DB:
 ///
 /// ```
-/// use tari_core::chain_storage::{BlockchainDatabase, MemoryDatabase};
+/// use tari_core::{
+///     chain_storage::{BlockchainDatabase, MemoryDatabase, Validators},
+///     validation::{mocks::MockValidator, Validation},
+/// };
 /// use tari_transactions::types::HashDigest;
 /// let db_backend = MemoryDatabase::<HashDigest>::default();
-/// let mut db = BlockchainDatabase::new(db_backend).unwrap();
+/// let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
+/// let db = MemoryDatabase::<HashDigest>::default();
+/// let mut db = BlockchainDatabase::new(db_backend, validators).unwrap();
 /// // Do stuff with db
 /// ```
-#[derive(Debug)]
 pub struct BlockchainDatabase<T>
 where T: BlockchainBackend
 {
     metadata: Arc<RwLock<ChainMetadata>>,
     db: Arc<T>,
+    validators: Validators<T>,
 }
 
 impl<T> BlockchainDatabase<T>
 where T: BlockchainBackend
 {
     /// Creates a new `BlockchainDatabase` using the provided backend.
-    pub fn new(db: T) -> Result<Self, ChainStorageError> {
+    pub fn new(db: T, validators: Validators<T>) -> Result<Self, ChainStorageError> {
         let metadata = Self::read_metadata(&db)?;
         Ok(BlockchainDatabase {
             metadata: Arc::new(RwLock::new(metadata)),
             db: Arc::new(db),
+            validators,
         })
     }
 
@@ -325,7 +359,7 @@ where T: BlockchainBackend
         self.db.fetch_mmr_only_root(tree)
     }
 
-    /// Apply the current change set to a pruned copy of the merke mountain range and calculate the resulting Merklish
+    /// Apply the current change set to a pruned copy of the merkle mountain range and calculate the resulting Merklish
     /// root of the specified merkle mountain range. Deletions of hashes from the MMR can only be applied for UTXOs.
     pub fn calculate_mmr_root(
         &self,
@@ -408,7 +442,7 @@ where T: BlockchainBackend
         if self.db.contains(&DbKey::BlockHash(block_hash.clone()))? {
             return Ok(BlockAddResult::BlockExists);
         }
-        if !self.is_new_best_block(&block)? {
+        if !self.is_at_chain_tip(&block)? {
             if modify_header {
                 info!(
                     target: LOG_TARGET,
@@ -425,9 +459,27 @@ where T: BlockchainBackend
             );
             return self.handle_possible_reorg(block);
         }
+        // Check that the block is valid. Once it passes this point, the block is building on the longest chain and has
+        // satisfied all consensus rules
+        self.validators
+            .block
+            .validate(&block)
+            .map_err(|e| ChainStorageError::ValidationError(e))?;
+        let header = self.store_new_block(block, block_height, modify_header)?;
+        Ok(BlockAddResult::Ok(header))
+    }
+
+    fn store_new_block(
+        &self,
+        block: Block,
+        height: u64,
+        modify_header: bool,
+    ) -> Result<BlockHeader, ChainStorageError>
+    {
         let (mut header, inputs, outputs, kernels) = block.dissolve();
         // Insert the outputs and kernels first, calculate the new MMR roots; letting us roll back if necessary
         self.commit_body(&inputs, &outputs, &kernels)?;
+        // TODO -- MMR root checking should move into the validation step
         if let Err(e) = self.check_or_insert_mmr_roots(modify_header, &mut header) {
             self.rollback_body_commit(&inputs, &outputs, &kernels, e, header.height)?;
         }
@@ -442,8 +494,8 @@ where T: BlockchainBackend
         // This is a bit of a hack. The block hash *is* the header hash; so I just call header.hash here to avoid
         // having to reconstruct the block. BUT, things will break if block.hash() changes.
         let block_hash = header.hash();
-        self.update_metadata(block_height, block_hash)?;
-        Ok(BlockAddResult::Ok(header))
+        self.update_metadata(height, block_hash)?;
+        Ok(header)
     }
 
     /// Checks the MMR roots for consistency (if `modify` is `false`) or else inserts the mmr roots into the header.
@@ -492,7 +544,7 @@ where T: BlockchainBackend
     ///   * or ALL of:
     ///     * the block's parent hash is the hash of the block at the current chain tip,
     ///     * the block height is one greater than the parent block
-    pub fn is_new_best_block(&self, block: &Block) -> Result<bool, ChainStorageError> {
+    pub fn is_at_chain_tip(&self, block: &Block) -> Result<bool, ChainStorageError> {
         let (height, parent_hash) = {
             let db = self.access_metadata()?;
             // If the database is empty, the best block must be the genesis block
@@ -699,6 +751,12 @@ where T: BlockchainBackend
         if block.header.height <= horizon_block_height {
             return Err(ChainStorageError::BeyondPruningHorizon);
         }
+        // Validate the orphan
+        self.validators
+            .orphan
+            .validate(&block)
+            .map_err(|e| ChainStorageError::ValidationError(e))?;
+        // Insert the orphan
         let mut txn = DbTransaction::new();
         let orphan = block.clone();
         txn.insert_orphan(block);
@@ -726,7 +784,7 @@ where T: BlockchainBackend
         let reorg_chain = self.try_construct_fork(new_block)?;
         let main_chain_hash = reorg_chain
             .get(0)
-            .expect("The new orphan block should be in thq queue")
+            .expect("The new orphan block should be in the queue")
             .header
             .prev_hash
             .clone();
@@ -867,6 +925,7 @@ where T: BlockchainBackend
         BlockchainDatabase {
             metadata: self.metadata.clone(),
             db: self.db.clone(),
+            validators: self.validators.clone(),
         }
     }
 }

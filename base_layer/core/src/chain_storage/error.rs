@@ -21,8 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    blocks::BlockValidationError,
     chain_storage::{db_transaction::DbKey, MmrTree},
+    validation::ValidationError,
 };
 use derive_error::Error;
 use tari_mmr::{error::MerkleMountainRangeError, MerkleProofError};
@@ -60,7 +60,7 @@ pub enum ChainStorageError {
     ValueNotFound(DbKey),
     MerkleMountainRangeError(MerkleMountainRangeError),
     MerkleProofError(MerkleProofError),
-    BlockValidationError(BlockValidationError),
+    ValidationError(ValidationError),
     // An MMR root in the provided block header did not match the MMR root in the database
     #[error(non_std, no_from)]
     MismatchedMmrRoot(MmrTree),

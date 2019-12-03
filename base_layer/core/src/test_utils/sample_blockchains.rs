@@ -23,7 +23,7 @@
 
 use crate::{
     blocks::Block,
-    chain_storage::{BlockAddResult, BlockchainDatabase, ChainStorageError, MemoryDatabase},
+    chain_storage::{BlockAddResult, BlockchainDatabase, ChainStorageError, MemoryDatabase, Validators},
     test_utils::builders::{
         add_block_and_update_header,
         chain_block,
@@ -31,6 +31,7 @@ use crate::{
         spend_utxos,
         TransactionSchema,
     },
+    validation::mocks::MockValidator,
 };
 use tari_transactions::{
     tari_amount::{uT, T},
@@ -125,7 +126,10 @@ pub fn create_new_blockchain() -> (
     Vec<Vec<UnblindedOutput>>,
 ) {
     let factories = CryptoFactories::default();
-    let db = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
+    // We may need move this to the parameters to provide more fine-grained validator control
+    let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
+    let db = MemoryDatabase::<HashDigest>::default();
+    let db = BlockchainDatabase::new(db, validators).unwrap();
     let mut outputs = Vec::new();
     let mut blocks = Vec::new();
     // Genesis Block

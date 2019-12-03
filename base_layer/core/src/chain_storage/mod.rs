@@ -40,7 +40,7 @@ mod test;
 pub mod async_db;
 
 // Public API exports
-pub use blockchain_database::{BlockAddResult, BlockchainBackend, BlockchainDatabase, MutableMmrState};
+pub use blockchain_database::{BlockAddResult, BlockchainBackend, BlockchainDatabase, MutableMmrState, Validators};
 pub use db_transaction::{DbTransaction, MmrTree};
 pub use error::ChainStorageError;
 pub use historical_block::HistoricalBlock;
