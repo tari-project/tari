@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
+    contacts_service::error::ContactsServiceError,
     output_manager_service::error::OutputManagerError,
     storage::database::DbKey,
     transaction_service::error::TransactionServiceError,
@@ -31,6 +32,7 @@ use log::SetLoggerError;
 use serde_json::Error as SerdeJsonError;
 use tari_comms::{builder::CommsError, connection::NetAddressError, peer_manager::PeerManagerError};
 use tari_p2p::initialization::CommsInitializationError;
+
 #[derive(Debug, Error)]
 pub enum WalletError {
     CommsInitializationError(CommsInitializationError),
@@ -41,6 +43,7 @@ pub enum WalletError {
     NetAddressError(NetAddressError),
     WalletStorageError(WalletStorageError),
     SetLoggerError(SetLoggerError),
+    ContactsServiceError(ContactsServiceError),
 }
 
 #[derive(Debug, Error)]

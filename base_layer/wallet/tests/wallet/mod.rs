@@ -36,9 +36,10 @@ use tari_transactions::{tari_amount::MicroTari, types::CryptoFactories};
 #[cfg(feature = "test_harness")]
 use tari_wallet::testnet_utils::broadcast_transaction;
 use tari_wallet::{
-    contacts_service::storage::database::Contact,
+    contacts_service::storage::{database::Contact, memory_db::ContactsServiceMemoryDatabase},
+    output_manager_service::storage::memory_db::OutputManagerMemoryDatabase,
     storage::memory_db::WalletMemoryDatabase,
-    transaction_service::handle::TransactionEvent,
+    transaction_service::{handle::TransactionEvent, storage::memory_db::TransactionMemoryDatabase},
     wallet::WalletConfig,
     Wallet,
 };
@@ -128,8 +129,24 @@ fn test_wallet() {
     };
     let runtime_node1 = Runtime::new().unwrap();
     let runtime_node2 = Runtime::new().unwrap();
-    let mut alice_wallet = Wallet::new(config1, WalletMemoryDatabase::new(), runtime_node1).unwrap();
-    let bob_wallet = Wallet::new(config2, WalletMemoryDatabase::new(), runtime_node2).unwrap();
+    let mut alice_wallet = Wallet::new(
+        config1,
+        runtime_node1,
+        WalletMemoryDatabase::new(),
+        TransactionMemoryDatabase::new(),
+        OutputManagerMemoryDatabase::new(),
+        ContactsServiceMemoryDatabase::new(),
+    )
+    .unwrap();
+    let bob_wallet = Wallet::new(
+        config2,
+        runtime_node2,
+        WalletMemoryDatabase::new(),
+        TransactionMemoryDatabase::new(),
+        OutputManagerMemoryDatabase::new(),
+        ContactsServiceMemoryDatabase::new(),
+    )
+    .unwrap();
 
     alice_wallet
         .comms
@@ -235,7 +252,15 @@ fn test_data_generation() {
         logging_path: None,
     };
 
-    let mut wallet = Wallet::new(config, WalletMemoryDatabase::new(), runtime).unwrap();
+    let mut wallet = Wallet::new(
+        config,
+        runtime,
+        WalletMemoryDatabase::new(),
+        TransactionMemoryDatabase::new(),
+        OutputManagerMemoryDatabase::new(),
+        ContactsServiceMemoryDatabase::new(),
+    )
+    .unwrap();
 
     generate_wallet_test_data(&mut wallet).unwrap();
 
@@ -318,7 +343,15 @@ fn test_test_harness() {
     };
 
     let runtime = Runtime::new().unwrap();
-    let mut alice_wallet = Wallet::new(config1, WalletMemoryDatabase::new(), runtime).unwrap();
+    let mut alice_wallet = Wallet::new(
+        config1,
+        runtime,
+        WalletMemoryDatabase::new(),
+        TransactionMemoryDatabase::new(),
+        OutputManagerMemoryDatabase::new(),
+        ContactsServiceMemoryDatabase::new(),
+    )
+    .unwrap();
 
     let value = MicroTari::from(1000);
     let (_utxo, uo1) = make_input(&mut rng, MicroTari(2500), &factories.commitment);
