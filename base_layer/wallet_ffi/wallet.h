@@ -353,6 +353,10 @@ bool wallet_callback_register_received_transaction(struct TariWallet *wallet, vo
 // Registers a callback function for when a reply is received for a TariPendingOutboundTransaction
 bool wallet_callback_register_received_transaction_reply(struct TariWallet *wallet, void (*call)(struct TariCompletedTransaction*));
 
+// Registers a callback function for when a Receiver receives a finalized transaction from a sender
+bool wallet_callback_register_received_finalized_transaction(struct TariWallet *wallet, void (*call)(struct TariCompletedTransaction*));
+
+
 #ifdef __cplusplus
 }
 #endif

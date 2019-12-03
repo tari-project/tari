@@ -216,6 +216,11 @@ where T: TransactionBackend
         Ok(result)
     }
 
+    pub fn get_pending_inbound_transaction(&self, tx_id: TxId) -> Result<InboundTransaction, TransactionStorageError> {
+        let result = fetch!(self, tx_id, PendingInboundTransaction)?;
+        Ok(result)
+    }
+
     pub fn get_pending_inbound_transactions(
         &self,
     ) -> Result<HashMap<TxId, InboundTransaction>, TransactionStorageError> {

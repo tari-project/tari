@@ -20,10 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::support::{
-    data::create_temporary_sqlite_path,
-    utils::{make_input, random_string},
-};
+use crate::support::{data::create_temporary_sqlite_path, utils::make_input};
 use chrono::{Duration as ChronoDuration, Utc};
 use rand::RngCore;
 use std::time::Duration;
@@ -36,7 +33,6 @@ use tari_wallet::output_manager_service::{
         sqlite_db::OutputManagerSqliteDatabase,
     },
 };
-use tempdir::TempDir;
 
 pub fn test_db_backend<T: OutputManagerBackend>(backend: T) {
     let mut db = OutputManagerDatabase::new(backend);

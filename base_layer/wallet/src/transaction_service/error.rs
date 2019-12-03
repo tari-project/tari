@@ -31,15 +31,15 @@ use time::OutOfRangeError;
 
 #[derive(Debug, Error)]
 pub enum TransactionServiceError {
-    // Transaction protocol is not in the correct state for this operation
+    /// Transaction protocol is not in the correct state for this operation
     InvalidStateError,
-    // Transaction Protocol Error
+    /// Transaction Protocol Error
     TransactionProtocolError(TransactionProtocolError),
-    // The message being process is not recognized by the Transaction Manager
+    /// The message being process is not recognized by the Transaction Manager
     InvalidMessageTypeError,
-    // A message for a specific tx_id has been repeated
+    /// A message for a specific tx_id has been repeated
     RepeatedMessageError,
-    // A recipient reply was received for a non-existent tx_id
+    /// A recipient reply was received for a non-existent tx_id
     TransactionDoesNotExistError,
     /// The Outbound Message Service is not initialized
     OutboundMessageServiceNotInitialized,
@@ -51,6 +51,11 @@ pub enum TransactionServiceError {
     ApiReceiveFailed,
     /// An error has occurred reading or writing the event subscriber stream
     EventStreamError,
+    /// The Source Public Key on the received transaction does not match the transaction with the same TX_ID in the
+    /// database
+    InvalidSourcePublicKey,
+    /// The transaction does not contain the receivers output
+    ReceiverOutputNotFound,
     OutboundError(DhtOutboundError),
     OutputManagerError(OutputManagerError),
     TransportChannelError(TransportChannelError),

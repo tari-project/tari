@@ -22,7 +22,6 @@
 
 use crate::support::utils::random_string;
 use futures::Sink;
-use rand::rngs::OsRng;
 use std::{error::Error, sync::Arc, time::Duration};
 use tari_comms::{
     builder::CommsNode,
@@ -32,7 +31,6 @@ use tari_comms::{
     types::CommsPublicKey,
 };
 use tari_comms_dht::{envelope::DhtMessageHeader, Dht};
-use tari_crypto::keys::PublicKey;
 use tari_p2p::{
     comms_connector::{InboundDomainConnector, PeerMessage},
     domain_message::DomainMessage,
@@ -93,12 +91,10 @@ where
     (comms, dht)
 }
 
-pub fn create_dummy_message<T>(inner: T) -> DomainMessage<T> {
-    let mut rng = OsRng::new().unwrap();
-    let (_, pk) = CommsPublicKey::random_keypair(&mut rng);
+pub fn create_dummy_message<T>(inner: T, public_key: &CommsPublicKey) -> DomainMessage<T> {
     let peer_source = Peer::new(
-        pk.clone(),
-        NodeId::from_key(&pk).unwrap(),
+        public_key.clone(),
+        NodeId::from_key(public_key).unwrap(),
         Vec::<NetAddress>::new().into(),
         PeerFlags::empty(),
         PeerFeatures::COMMUNICATION_NODE,

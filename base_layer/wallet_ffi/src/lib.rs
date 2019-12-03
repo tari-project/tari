@@ -1918,9 +1918,11 @@ pub unsafe extern "C" fn wallet_callback_register_received_transaction(
     call: unsafe extern "C" fn(*mut TariPendingInboundTransaction),
 ) -> bool
 {
-    let result = (*wallet)
-        .runtime
-        .block_on((*wallet).register_callback_received_transaction(call));
+    let result = (*wallet).runtime.block_on(
+        (*wallet)
+            .transaction_service
+            .register_callback_received_transaction(call),
+    );
     match result {
         Ok(_) => true,
         Err(_) => false,
@@ -1941,9 +1943,36 @@ pub unsafe extern "C" fn wallet_callback_register_received_transaction_reply(
     call: unsafe extern "C" fn(*mut TariCompletedTransaction),
 ) -> bool
 {
-    let result = (*wallet)
-        .runtime
-        .block_on((*wallet).register_callback_received_transaction_reply(call));
+    let result = (*wallet).runtime.block_on(
+        (*wallet)
+            .transaction_service
+            .register_callback_received_transaction_reply(call),
+    );
+    match result {
+        Ok(_) => true,
+        Err(_) => false,
+    }
+}
+
+/// Registers a callback function for when a Receiver receives a finalized transaction from a sender
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer
+/// `call` - The callback function pointer matching the function signature
+///
+/// ## Returns
+/// `bool` - Returns if successful or not
+#[no_mangle]
+pub unsafe extern "C" fn wallet_callback_register_received_finalized_transaction(
+    wallet: *mut TariWallet,
+    call: unsafe extern "C" fn(*mut TariCompletedTransaction),
+) -> bool
+{
+    let result = (*wallet).runtime.block_on(
+        (*wallet)
+            .transaction_service
+            .register_callback_received_finalized_transaction(call),
+    );
     match result {
         Ok(_) => true,
         Err(_) => false,
@@ -1964,7 +1993,9 @@ pub unsafe extern "C" fn wallet_callback_register_mined(
     call: unsafe extern "C" fn(*mut TariCompletedTransaction),
 ) -> bool
 {
-    let result = (*wallet).runtime.block_on((*wallet).register_callback_mined(call));
+    let result = (*wallet)
+        .runtime
+        .block_on((*wallet).transaction_service.register_callback_mined(call));
     match result {
         Ok(_) => true,
         Err(_) => false,
@@ -1985,9 +2016,11 @@ pub unsafe extern "C" fn wallet_callback_register_transaction_broadcast(
     call: unsafe extern "C" fn(*mut TariCompletedTransaction),
 ) -> bool
 {
-    let result = (*wallet)
-        .runtime
-        .block_on((*wallet).register_callback_transaction_broadcast(call));
+    let result = (*wallet).runtime.block_on(
+        (*wallet)
+            .transaction_service
+            .register_callback_transaction_broadcast(call),
+    );
     match result {
         Ok(_) => true,
         Err(_) => false,

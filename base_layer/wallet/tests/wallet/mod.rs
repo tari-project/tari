@@ -254,12 +254,6 @@ fn test_data_generation() {
         .unwrap();
     assert!(outbound_tx.len() > 0);
 
-    let inbound_tx = wallet
-        .runtime
-        .block_on(wallet.transaction_service.get_pending_inbound_transactions())
-        .unwrap();
-    assert!(inbound_tx.len() > 0);
-
     let completed_tx = wallet
         .runtime
         .block_on(wallet.transaction_service.get_completed_transactions())

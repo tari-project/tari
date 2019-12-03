@@ -46,6 +46,8 @@ pub enum TransactionServiceRequest {
     #[cfg(feature = "c_integration")]
     RegisterCallbackReceivedTransactionReply((unsafe extern "C" fn(*mut CompletedTransaction))),
     #[cfg(feature = "c_integration")]
+    RegisterCallbackReceivedFinalizedTransaction((unsafe extern "C" fn(*mut CompletedTransaction))),
+    #[cfg(feature = "c_integration")]
     RegisterCallbackMined((unsafe extern "C" fn(*mut CompletedTransaction))),
     #[cfg(feature = "c_integration")]
     RegisterCallbackTransactionBroadcast((unsafe extern "C" fn(*mut CompletedTransaction))),
@@ -83,6 +85,7 @@ pub enum TransactionServiceResponse {
 pub enum TransactionEvent {
     ReceivedTransaction,
     ReceivedTransactionReply,
+    ReceivedFinalizedTransaction,
     Error(String),
 }
 
@@ -192,6 +195,24 @@ impl TransactionServiceHandle {
         match self
             .handle
             .call(TransactionServiceRequest::RegisterCallbackReceivedTransactionReply(
+                call,
+            ))
+            .await??
+        {
+            TransactionServiceResponse::CallbackRegistered => Ok(()),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    #[cfg(feature = "c_integration")]
+    pub async fn register_callback_received_finalized_transaction(
+        &mut self,
+        call: unsafe extern "C" fn(*mut CompletedTransaction),
+    ) -> Result<(), TransactionServiceError>
+    {
+        match self
+            .handle
+            .call(TransactionServiceRequest::RegisterCallbackReceivedFinalizedTransaction(
                 call,
             ))
             .await??

@@ -21,7 +21,7 @@ enum TariMessageType {
     TariMessageTypeBaseNodeResponse = 70;
     TariMessageTypeMempoolRequest= 71;
     TariMessageTypeMempoolResponse = 72;
-
+    TariMessageTypeTransactionFinalized = 73;
     // -- DAN Messages --
 
     // -- Extended --
