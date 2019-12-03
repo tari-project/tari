@@ -20,14 +20,22 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use crate::{
-    contacts_service::storage::database::Contact,
+    contacts_service::storage::database::{Contact, ContactsBackend},
     error::{WalletError, WalletStorageError},
-    output_manager_service::TxId,
+    output_manager_service::{
+        storage::{database::OutputManagerBackend, memory_db::OutputManagerMemoryDatabase},
+        TxId,
+    },
     storage::{database::WalletBackend, memory_db::WalletMemoryDatabase},
-    transaction_service::storage::database::{CompletedTransaction, TransactionStatus},
+    transaction_service::storage::{
+        database::{CompletedTransaction, TransactionBackend, TransactionStatus},
+        memory_db::TransactionMemoryDatabase,
+    },
     wallet::WalletConfig,
     Wallet,
 };
+
+use crate::contacts_service::storage::memory_db::ContactsServiceMemoryDatabase;
 use chrono::Utc;
 use rand::{distributions::Alphanumeric, CryptoRng, OsRng, Rng, RngCore};
 use std::{iter, sync::Arc, thread, time::Duration};
@@ -90,7 +98,11 @@ pub fn random_string(len: usize) -> String {
 }
 
 /// Create a wallet for testing purposes
-pub fn create_wallet(secret_key: CommsSecretKey, net_address: String) -> Wallet<WalletMemoryDatabase> {
+pub fn create_wallet(
+    secret_key: CommsSecretKey,
+    net_address: String,
+) -> Wallet<WalletMemoryDatabase, TransactionMemoryDatabase, OutputManagerMemoryDatabase, ContactsServiceMemoryDatabase>
+{
     let runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();
 
@@ -131,11 +143,26 @@ pub fn create_wallet(secret_key: CommsSecretKey, net_address: String) -> Wallet<
         factories,
     };
 
-    Wallet::new(config, WalletMemoryDatabase::new(), runtime).expect("Could not create Wallet")
+    Wallet::new(
+        config,
+        runtime,
+        WalletMemoryDatabase::new(),
+        TransactionMemoryDatabase::new(),
+        OutputManagerMemoryDatabase::new(),
+        ContactsServiceMemoryDatabase::new(),
+    )
+    .expect("Could not create Wallet")
 }
 
 /// This function will generate a set of test data for the supplied wallet. Takes a few seconds to complete
-pub fn generate_wallet_test_data<T: WalletBackend>(wallet: &mut Wallet<T>) -> Result<(), WalletError> {
+pub fn generate_wallet_test_data<
+    T: WalletBackend,
+    U: TransactionBackend,
+    V: OutputManagerBackend,
+    W: ContactsBackend,
+>(
+    wallet: &mut Wallet<T, U, V, W>,
+) -> Result<(), WalletError> {
     let rng = rand::OsRng::new().unwrap();
     let factories = CryptoFactories::default();
     let names = ["Alice", "Bob", "Carol", "Dave"];
@@ -281,7 +308,16 @@ pub fn generate_wallet_test_data<T: WalletBackend>(wallet: &mut Wallet<T>) -> Re
 /// This function is only available for testing and development by the client of LibWallet. It simulates a this node,
 /// who sent a transaction out, accepting a reply to the Pending Outbound Transaction. That transaction then becomes a
 /// CompletedTransaction with the Broadcast status indicating it is in a base node Mempool but not yet mined
-pub fn complete_sent_transaction<T: WalletBackend>(wallet: &mut Wallet<T>, tx_id: TxId) -> Result<(), WalletError> {
+pub fn complete_sent_transaction<
+    T: WalletBackend,
+    U: TransactionBackend,
+    V: OutputManagerBackend,
+    W: ContactsBackend,
+>(
+    wallet: &mut Wallet<T, U, V, W>,
+    tx_id: TxId,
+) -> Result<(), WalletError>
+{
     let pending_outbound_tx = wallet
         .runtime
         .block_on(wallet.transaction_service.get_pending_outbound_transactions())?;
@@ -316,7 +352,14 @@ pub fn complete_sent_transaction<T: WalletBackend>(wallet: &mut Wallet<T>, tx_id
 
 /// This function is only available for testing by the client of LibWallet. This function simulates an external
 /// wallet sending a transaction to this wallet which will become a PendingInboundTransaction
-pub fn receive_test_transaction<T: WalletBackend>(wallet: &mut Wallet<T>) -> Result<(), WalletError> {
+pub fn receive_test_transaction<
+    T: WalletBackend,
+    U: TransactionBackend,
+    V: OutputManagerBackend,
+    W: ContactsBackend,
+>(
+    wallet: &mut Wallet<T, U, V, W>,
+) -> Result<(), WalletError> {
     let mut rng = OsRng::new().unwrap();
     let (_secret_key, public_key): (CommsSecretKey, CommsPublicKey) = PublicKey::random_keypair(&mut rng);
 
@@ -331,7 +374,11 @@ pub fn receive_test_transaction<T: WalletBackend>(wallet: &mut Wallet<T>) -> Res
     Ok(())
 }
 
-pub fn broadcast_transaction<T: WalletBackend>(wallet: &mut Wallet<T>, tx_id: TxId) -> Result<(), WalletError> {
+pub fn broadcast_transaction<T: WalletBackend, U: TransactionBackend, V: OutputManagerBackend, W: ContactsBackend>(
+    wallet: &mut Wallet<T, U, V, W>,
+    tx_id: TxId,
+) -> Result<(), WalletError>
+{
     wallet
         .runtime
         .block_on(wallet.transaction_service.test_broadcast_transaction(tx_id))?;
@@ -343,7 +390,11 @@ pub fn broadcast_transaction<T: WalletBackend>(wallet: &mut Wallet<T>, tx_id: Tx
 /// the event when a CompletedTransaction that is in the Broadcast status, is in a mempool but not mined, beocmes
 /// mined/confirmed. After this function is called the status of the CompletedTransaction becomes `Mined` and the funds
 /// that were pending become spent and available respectively.
-pub fn mine_transaction<T: WalletBackend>(wallet: &mut Wallet<T>, tx_id: TxId) -> Result<(), WalletError> {
+pub fn mine_transaction<T: WalletBackend, U: TransactionBackend, V: OutputManagerBackend, W: ContactsBackend>(
+    wallet: &mut Wallet<T, U, V, W>,
+    tx_id: TxId,
+) -> Result<(), WalletError>
+{
     wallet
         .runtime
         .block_on(wallet.transaction_service.test_mine_transaction(tx_id))?;

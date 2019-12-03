@@ -122,8 +122,9 @@ use tari_crypto::keys::PublicKey;
 use tari_transactions::types::CryptoFactories;
 use tari_utilities::hex::Hex;
 use tari_wallet::{
-    contacts_service::storage::database::Contact,
-    storage::memory_db::WalletMemoryDatabase,
+    contacts_service::storage::{database::Contact, sqlite_db::ContactsServiceSqliteDatabase},
+    output_manager_service::storage::sqlite_db::OutputManagerSqliteDatabase,
+    storage::{memory_db::WalletMemoryDatabase, sqlite_db::WalletSqliteDatabase},
     testnet_utils::{
         broadcast_transaction,
         complete_sent_transaction,
@@ -131,10 +132,16 @@ use tari_wallet::{
         mine_transaction,
         receive_test_transaction,
     },
+    transaction_service::storage::sqlite_db::TransactionServiceSqliteDatabase,
 };
 use tokio::runtime::Runtime;
 
-pub type TariWallet = tari_wallet::wallet::Wallet<WalletMemoryDatabase>;
+pub type TariWallet = tari_wallet::wallet::Wallet<
+    WalletSqliteDatabase,
+    TransactionServiceSqliteDatabase,
+    OutputManagerSqliteDatabase,
+    ContactsServiceSqliteDatabase,
+>;
 pub type TariPublicKey = tari_comms::types::CommsPublicKey;
 pub type TariPrivateKey = tari_comms::types::CommsSecretKey;
 pub type TariCommsConfig = tari_p2p::initialization::CommsConfig;
@@ -228,7 +235,7 @@ pub unsafe extern "C" fn byte_vector_get_at(ptr: *mut ByteVector, position: c_ui
     if position > len as c_uint {
         return 0 as c_uchar;
     }
-    (*ptr).0.clone()[position as usize]
+    (*ptr).0[position as usize].clone()
 }
 
 /// Gets the number of elements in a ByteVector
@@ -1161,11 +1168,16 @@ pub unsafe extern "C" fn pending_inbound_transaction_destroy(transaction: *mut T
 /// Creates a TariCommsConfig. The result from this function is required when initializing a TariWallet.
 ///
 /// ## Arguments
-/// `control_service_address` - The control service address char array pointer
-/// `listener_address` - The listener address char array pointer
-/// `database_name` - The database name char array pointer
-/// `database_path` - The database path char array pointer which the application has write access to
-/// `secret_key` - The TariSecretKey pointer
+/// `control_service_address` - The control service address char array pointer. This is the address that the wallet
+/// listens for initial connections on
+/// `listener_address` - The listener address char array pointer. This is the address that inbound peer connections
+/// are moved to after initial connection. Default if null is 0.0.0.0:7898 which will accept connections from all IP
+/// address on port 7898
+/// `database_name` - The database name char array pointer. This is the unique name of this
+/// wallet's database `database_path` - The database path char array pointer which. This is the folder path where the
+/// database files will be created and the application has write access to
+/// `secret_key` - The TariSecretKey pointer. This is the secret key corresponding to the Public key that represents
+/// this node on the Tari comms network
 ///
 /// ## Returns
 /// `*mut TariCommsConfig` - Returns a pointer to a TariCommsConfig, if any of the parameters are
@@ -1190,7 +1202,7 @@ pub unsafe extern "C" fn comms_config_create(
     if !listener_address.is_null() {
         listener_address_string = CStr::from_ptr(listener_address).to_str().unwrap().to_owned();
     } else {
-        return ptr::null_mut();
+        listener_address_string = "0.0.0.0:7898".to_string();
     }
 
     let database_name_string;
@@ -1293,6 +1305,17 @@ pub unsafe extern "C" fn wallet_create(config: *mut TariCommsConfig, log_path: *
     let factories = CryptoFactories::default();
     let w;
 
+    let sql_database_path = format!(
+        "{}/{}.sqlite3",
+        (*config).datastore_path.clone(),
+        (*config).peer_database_name.clone()
+    )
+    .to_string();
+    let wallet_backend = WalletSqliteDatabase::new(sql_database_path.clone()).unwrap();
+    let transaction_backend = TransactionServiceSqliteDatabase::new(sql_database_path.clone()).unwrap();
+    let output_manager_backend = OutputManagerSqliteDatabase::new(sql_database_path.clone()).unwrap();
+    let contacts_backend = ContactsServiceSqliteDatabase::new(sql_database_path.clone()).unwrap();
+
     match runtime {
         Ok(runtime) => {
             w = TariWallet::new(
@@ -1301,8 +1324,11 @@ pub unsafe extern "C" fn wallet_create(config: *mut TariCommsConfig, log_path: *
                     logging_path: logging_path_string,
                     factories,
                 },
-                WalletMemoryDatabase::new(),
                 runtime,
+                wallet_backend,
+                transaction_backend,
+                output_manager_backend,
+                contacts_backend,
             );
             match w {
                 Ok(w) => Box::into_raw(Box::new(w)),
@@ -2135,14 +2161,8 @@ mod test {
             let public_key_alice = public_key_from_private_key(secret_key_alice.clone());
             let db_name_alice = CString::new(random_string(8).as_str()).unwrap();
             let db_name_alice_str: *const c_char = CString::into_raw(db_name_alice.clone()) as *const c_char;
-            let db_path_alice = CString::new(
-                TempDir::new(random_string(8).as_str())
-                    .unwrap()
-                    .path()
-                    .to_str()
-                    .unwrap(),
-            )
-            .unwrap();
+            let alice_temp_dir = TempDir::new(random_string(8).as_str()).unwrap();
+            let db_path_alice = CString::new(alice_temp_dir.path().to_str().unwrap()).unwrap();
             let db_path_alice_str: *const c_char = CString::into_raw(db_path_alice.clone()) as *const c_char;
             let address_alice = CString::new("127.0.0.1:21443").unwrap();
             let address_alice_str: *const c_char = CString::into_raw(address_alice.clone()) as *const c_char;
@@ -2162,14 +2182,8 @@ mod test {
             let public_key_bob = public_key_from_private_key(secret_key_bob.clone());
             let db_name_bob = CString::new(random_string(8).as_str()).unwrap();
             let db_name_bob_str: *const c_char = CString::into_raw(db_name_bob.clone()) as *const c_char;
-            let db_path_bob = CString::new(
-                TempDir::new(random_string(8).as_str())
-                    .unwrap()
-                    .path()
-                    .to_str()
-                    .unwrap(),
-            )
-            .unwrap();
+            let bob_temp_dir = TempDir::new(random_string(8).as_str()).unwrap();
+            let db_path_bob = CString::new(bob_temp_dir.path().to_str().unwrap()).unwrap();
             let db_path_bob_str: *const c_char = CString::into_raw(db_path_bob.clone()) as *const c_char;
             let address_bob = CString::new("127.0.0.1:21441").unwrap();
             let address_bob_str: *const c_char = CString::into_raw(address_bob.clone()) as *const c_char;

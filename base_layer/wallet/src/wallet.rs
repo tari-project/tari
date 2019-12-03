@@ -21,22 +21,18 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    contacts_service::{
-        handle::ContactsServiceHandle,
-        storage::memory_db::ContactsServiceMemoryDatabase,
-        ContactsServiceInitializer,
-    },
+    contacts_service::{handle::ContactsServiceHandle, storage::database::ContactsBackend, ContactsServiceInitializer},
     error::WalletError,
     output_manager_service::{
         handle::OutputManagerHandle,
-        storage::memory_db::OutputManagerMemoryDatabase,
+        storage::database::OutputManagerBackend,
         OutputManagerConfig,
         OutputManagerServiceInitializer,
     },
     storage::database::{WalletBackend, WalletDatabase},
     transaction_service::{
         handle::TransactionServiceHandle,
-        storage::memory_db::TransactionMemoryDatabase,
+        storage::database::TransactionBackend,
         TransactionServiceInitializer,
     },
 };
@@ -47,7 +43,7 @@ use log4rs::{
     encode::pattern::PatternEncoder,
     Handle as LogHandle,
 };
-use std::sync::Arc;
+use std::{marker::PhantomData, sync::Arc};
 use tari_comms::{
     builder::CommsNode,
     connection::{net_address::NetAddressWithStats, NetAddressesWithStats},
@@ -77,8 +73,12 @@ pub struct WalletConfig {
 
 /// A structure containing the config and services that a Wallet application will require. This struct will start up all
 /// the services and provide the APIs that applications will use to interact with the services
-pub struct Wallet<T>
-where T: WalletBackend
+pub struct Wallet<T, U, V, W>
+where
+    T: WalletBackend,
+    U: TransactionBackend + 'static,
+    V: OutputManagerBackend + 'static,
+    W: ContactsBackend + 'static,
 {
     pub comms: CommsNode,
     pub dht_service: Dht,
@@ -89,12 +89,27 @@ where T: WalletBackend
     pub db: WalletDatabase<T>,
     pub runtime: Runtime,
     pub log_handle: Option<LogHandle>,
+    _u: PhantomData<U>,
+    _v: PhantomData<V>,
+    _w: PhantomData<W>,
 }
 
-impl<T> Wallet<T>
-where T: WalletBackend
+impl<T, U, V, W> Wallet<T, U, V, W>
+where
+    T: WalletBackend,
+    U: TransactionBackend + 'static,
+    V: OutputManagerBackend + 'static,
+    W: ContactsBackend + 'static,
 {
-    pub fn new(config: WalletConfig, backend: T, runtime: Runtime) -> Result<Wallet<T>, WalletError> {
+    pub fn new(
+        config: WalletConfig,
+        runtime: Runtime,
+        wallet_backend: T,
+        transaction_backend: U,
+        output_manager_backend: V,
+        contacts_backend: W,
+    ) -> Result<Wallet<T, U, V, W>, WalletError>
+    {
         let mut log_handle = None;
         if let Some(path) = config.logging_path {
             let logfile = FileAppender::builder()
@@ -140,16 +155,16 @@ where T: WalletBackend
             ))
             .add_initializer(OutputManagerServiceInitializer::new(
                 oms_config,
-                OutputManagerMemoryDatabase::new(),
+                output_manager_backend,
                 factories.clone(),
             ))
             .add_initializer(TransactionServiceInitializer::new(
                 subscription_factory.clone(),
-                TransactionMemoryDatabase::new(),
+                transaction_backend,
                 comms.node_identity().clone(),
                 factories.clone(),
             ))
-            .add_initializer(ContactsServiceInitializer::new(ContactsServiceMemoryDatabase::new()))
+            .add_initializer(ContactsServiceInitializer::new(contacts_backend))
             .finish();
 
         let handles = runtime.block_on(fut).expect("Service initialization failed");
@@ -174,9 +189,12 @@ where T: WalletBackend
             output_manager_service: output_manager_handle,
             transaction_service: transaction_service_handle,
             contacts_service: contacts_handle,
-            db: WalletDatabase::new(backend),
+            db: WalletDatabase::new(wallet_backend),
             runtime,
             log_handle,
+            _u: PhantomData,
+            _v: PhantomData,
+            _w: PhantomData,
         })
     }
 
