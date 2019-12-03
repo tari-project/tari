@@ -23,6 +23,7 @@
 use crate::{
     blocks::{blockheader::BlockHeader, Block, NewBlockTemplate},
     chain_storage::{ChainMetadata, HistoricalBlock, MutableMmrState},
+    proof_of_work::Difficulty,
 };
 use serde::{Deserialize, Serialize};
 use tari_transactions::transaction::{TransactionKernel, TransactionOutput};
@@ -38,4 +39,5 @@ pub enum NodeCommsResponse {
     MmrState(MutableMmrState),
     NewBlockTemplate(NewBlockTemplate),
     NewBlock(Block),
+    TargetDifficulty(Difficulty),
 }

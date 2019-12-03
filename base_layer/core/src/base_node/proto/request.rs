@@ -21,8 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::base_node::{base_node_service_request::Request as ProtoNodeCommsRequest, BlockHeights, HashOutputs};
-use crate::base_node::comms_interface as ci;
-use std::convert::TryInto;
+use crate::{base_node::comms_interface as ci, proof_of_work::PowAlgorithm};
+use std::convert::{TryFrom, TryInto};
 use tari_transactions::types::HashOutput;
 
 //---------------------------------- BaseNodeRequest --------------------------------------------//
@@ -41,6 +41,9 @@ impl TryInto<ci::NodeCommsRequest> for ProtoNodeCommsRequest {
             FetchMmrState(mmr_state_request) => ci::NodeCommsRequest::FetchMmrState(mmr_state_request.try_into()?),
             GetNewBlockTemplate(_) => ci::NodeCommsRequest::GetNewBlockTemplate,
             GetNewBlock(block_template) => ci::NodeCommsRequest::GetNewBlock(block_template.try_into()?),
+            GetTargetDifficulty(pow_algo) => {
+                ci::NodeCommsRequest::GetTargetDifficulty(PowAlgorithm::try_from(pow_algo)?)
+            },
         };
         Ok(request)
     }
@@ -58,6 +61,7 @@ impl From<ci::NodeCommsRequest> for ProtoNodeCommsRequest {
             FetchMmrState(mmr_state_request) => ProtoNodeCommsRequest::FetchMmrState(mmr_state_request.into()),
             GetNewBlockTemplate => ProtoNodeCommsRequest::GetNewBlockTemplate(true),
             GetNewBlock(block_template) => ProtoNodeCommsRequest::GetNewBlock(block_template.into()),
+            GetTargetDifficulty(pow_algo) => ProtoNodeCommsRequest::GetTargetDifficulty(*&pow_algo as u64),
         }
     }
 }

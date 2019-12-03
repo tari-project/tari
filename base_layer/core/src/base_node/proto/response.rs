@@ -20,21 +20,19 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+pub use super::base_node::base_node_service_response::Response as ProtoNodeCommsResponse;
 use super::base_node::{
     BlockHeaders as ProtoBlockHeaders,
     HistoricalBlocks as ProtoHistoricalBlocks,
     TransactionKernels as ProtoTransactionKernels,
     TransactionOutputs as ProtoTransactionOutputs,
 };
-use crate::{base_node::comms_interface as ci, proto::core as core_proto_types};
+use crate::{base_node::comms_interface as ci, proof_of_work::Difficulty, proto::core as core_proto_types};
 use std::{
     convert::TryInto,
     iter::{FromIterator, Iterator},
 };
-use tari_transactions::proto::types as transactions_proto;
-
-pub use super::base_node::base_node_service_response::Response as ProtoNodeCommsResponse;
-use tari_transactions::proto::utils::try_convert_all;
+use tari_transactions::proto::{types as transactions_proto, utils::try_convert_all};
 
 impl TryInto<ci::NodeCommsResponse> for ProtoNodeCommsResponse {
     type Error = String;
@@ -62,6 +60,7 @@ impl TryInto<ci::NodeCommsResponse> for ProtoNodeCommsResponse {
             MmrState(state) => ci::NodeCommsResponse::MmrState(state.try_into()?),
             NewBlockTemplate(block_template) => ci::NodeCommsResponse::NewBlockTemplate(block_template.try_into()?),
             NewBlock(block) => ci::NodeCommsResponse::NewBlock(block.try_into()?),
+            TargetDifficulty(difficulty) => ci::NodeCommsResponse::TargetDifficulty(Difficulty::from(difficulty)),
         };
 
         Ok(response)
@@ -92,6 +91,7 @@ impl From<ci::NodeCommsResponse> for ProtoNodeCommsResponse {
             MmrState(state) => ProtoNodeCommsResponse::MmrState(state.into()),
             NewBlockTemplate(block_template) => ProtoNodeCommsResponse::NewBlockTemplate(block_template.into()),
             NewBlock(block) => ProtoNodeCommsResponse::NewBlock(block.into()),
+            TargetDifficulty(difficulty) => ProtoNodeCommsResponse::TargetDifficulty(difficulty.as_u64()),
         }
     }
 }

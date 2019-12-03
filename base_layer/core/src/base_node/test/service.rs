@@ -29,7 +29,7 @@ use crate::{
     chain_storage::{BlockchainDatabase, ChainStorageError, DbTransaction, MemoryDatabase, MmrTree},
     consts::BASE_NODE_SERVICE_DESIRED_RESPONSE_FRACTION,
     mempool::{Mempool, MempoolConfig},
-    proof_of_work::Difficulty,
+    proof_of_work::{DiffAdjManager, Difficulty, PowAlgorithm},
     test_utils::builders::{
         add_block_and_update_header,
         chain_block,
@@ -62,6 +62,7 @@ use tari_p2p::{
 use tari_service_framework::StackBuilder;
 use tari_test_utils::address::get_next_local_address;
 use tari_transactions::{
+    consensus::TARGET_BLOCK_INTERVAL,
     tari_amount::{uT, MicroTari},
     types::{CryptoFactories, HashDigest},
 };
@@ -158,6 +159,7 @@ pub fn setup_base_node_service(
     peers: Vec<NodeIdentity>,
     blockchain_db: BlockchainDatabase<MemoryDatabase<HashDigest>>,
     mempool: Mempool<MemoryDatabase<HashDigest>>,
+    diff_adj_manager: DiffAdjManager<MemoryDatabase<HashDigest>>,
     config: BaseNodeServiceConfig,
 ) -> (OutboundNodeCommsInterface, LocalNodeCommsInterface, CommsNode)
 {
@@ -171,6 +173,7 @@ pub fn setup_base_node_service(
             subscription_factory,
             blockchain_db,
             mempool,
+            diff_adj_manager,
             config,
         ))
         .finish();
@@ -203,6 +206,7 @@ fn create_base_node(
     .unwrap();
     let blockchain_db = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
     let mempool = Mempool::new(blockchain_db.clone(), MempoolConfig::default());
+    let diff_adj_manager = DiffAdjManager::new(blockchain_db.clone()).unwrap();
 
     let (outbound_nci, local_nci, comms) = setup_base_node_service(
         &runtime,
@@ -210,6 +214,7 @@ fn create_base_node(
         Vec::new(),
         blockchain_db.clone(),
         mempool.clone(),
+        diff_adj_manager,
         config,
     );
 
@@ -231,6 +236,7 @@ fn create_network_with_3_base_nodes(
     .unwrap();
     let alice_blockchain_db = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::new(mct_config)).unwrap();
     let alice_mempool = Mempool::new(alice_blockchain_db.clone(), MempoolConfig::default());
+    let alice_diff_adj_manager = DiffAdjManager::new(alice_blockchain_db.clone()).unwrap();
 
     let bob_node_identity = NodeIdentity::random(
         &mut rng,
@@ -240,6 +246,7 @@ fn create_network_with_3_base_nodes(
     .unwrap();
     let bob_blockchain_db = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::new(mct_config)).unwrap();
     let bob_mempool = Mempool::new(bob_blockchain_db.clone(), MempoolConfig::default());
+    let bob_diff_adj_manager = DiffAdjManager::new(bob_blockchain_db.clone()).unwrap();
 
     let carol_node_identity = NodeIdentity::random(
         &mut rng,
@@ -249,6 +256,7 @@ fn create_network_with_3_base_nodes(
     .unwrap();
     let carol_blockchain_db = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::new(mct_config)).unwrap();
     let carol_mempool = Mempool::new(carol_blockchain_db.clone(), MempoolConfig::default());
+    let carol_diff_adj_manager = DiffAdjManager::new(carol_blockchain_db.clone()).unwrap();
 
     let (alice_outbound_nci, alice_local_nci, alice_comms) = setup_base_node_service(
         &runtime,
@@ -256,6 +264,7 @@ fn create_network_with_3_base_nodes(
         vec![bob_node_identity.clone(), carol_node_identity.clone()],
         alice_blockchain_db.clone(),
         alice_mempool.clone(),
+        alice_diff_adj_manager,
         config.clone(),
     );
     let (bob_outbound_nci, bob_local_nci, bob_comms) = setup_base_node_service(
@@ -264,6 +273,7 @@ fn create_network_with_3_base_nodes(
         vec![alice_node_identity.clone(), carol_node_identity.clone()],
         bob_blockchain_db.clone(),
         bob_mempool.clone(),
+        bob_diff_adj_manager,
         config.clone(),
     );
     let (carol_outbound_nci, carol_local_nci, carol_comms) = setup_base_node_service(
@@ -272,6 +282,7 @@ fn create_network_with_3_base_nodes(
         vec![alice_node_identity, bob_node_identity],
         carol_blockchain_db.clone(),
         carol_mempool.clone(),
+        carol_diff_adj_manager,
         config,
     );
     let alice_interfaces = NodeInterfaces::new(
@@ -754,6 +765,7 @@ fn service_request_timeout() {
     .unwrap();
     let alice_blockchain_db = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
     let alice_mempool = Mempool::new(alice_blockchain_db.clone(), MempoolConfig::default());
+    let alice_diff_adj_manager = DiffAdjManager::new(alice_blockchain_db.clone()).unwrap();
 
     let bob_node_identity = NodeIdentity::random(
         &mut rng,
@@ -763,6 +775,7 @@ fn service_request_timeout() {
     .unwrap();
     let bob_blockchain_db = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
     let bob_mempool = Mempool::new(bob_blockchain_db.clone(), MempoolConfig::default());
+    let bob_diff_adj_manager = DiffAdjManager::new(bob_blockchain_db.clone()).unwrap();
 
     let (mut alice_outbound_nci, _, alice_comms) = setup_base_node_service(
         &runtime,
@@ -770,6 +783,7 @@ fn service_request_timeout() {
         vec![bob_node_identity.clone()],
         alice_blockchain_db,
         alice_mempool,
+        alice_diff_adj_manager,
         base_node_service_config.clone(),
     );
     let (_, _, bob_comms) = setup_base_node_service(
@@ -778,6 +792,7 @@ fn service_request_timeout() {
         vec![alice_node_identity],
         bob_blockchain_db,
         bob_mempool,
+        bob_diff_adj_manager,
         base_node_service_config,
     );
 
@@ -843,6 +858,36 @@ fn local_get_new_block_template_and_get_new_block() {
         assert_eq!(block.body, block_template.body);
 
         assert!(blockchain_db.add_block(block.clone()).is_ok());
+    });
+
+    comms.shutdown().unwrap();
+}
+
+#[test]
+fn local_get_target_difficulty() {
+    let factories = CryptoFactories::default();
+    let runtime = Runtime::new().unwrap();
+    let (_, mut local_nci, blockchain_db, _, comms) = create_base_node(&runtime, BaseNodeServiceConfig::default());
+
+    let block0 = add_block_and_update_header(&blockchain_db, get_genesis_block());
+    assert_eq!(blockchain_db.get_height(), Ok(Some(0)));
+
+    runtime.block_on(async {
+        let monero_target_difficulty1 = local_nci.get_target_difficulty(PowAlgorithm::Monero).await.unwrap();
+        let blake_target_difficulty1 = local_nci.get_target_difficulty(PowAlgorithm::Blake).await.unwrap();
+        assert_ne!(monero_target_difficulty1, Difficulty::from(0));
+        assert_ne!(blake_target_difficulty1, Difficulty::from(0));
+
+        let mut block1 = chain_block(&block0, Vec::new());
+        block1.header.timestamp = block0.header.timestamp.increase(TARGET_BLOCK_INTERVAL);
+        block1.header.pow.pow_algo = PowAlgorithm::Blake;
+        add_block_and_update_header(&blockchain_db, block1);
+        assert_eq!(blockchain_db.get_height(), Ok(Some(1)));
+
+        let monero_target_difficulty2 = local_nci.get_target_difficulty(PowAlgorithm::Monero).await.unwrap();
+        let blake_target_difficulty2 = local_nci.get_target_difficulty(PowAlgorithm::Blake).await.unwrap();
+        assert!(monero_target_difficulty1 <= monero_target_difficulty2);
+        assert!(blake_target_difficulty1 <= blake_target_difficulty2);
     });
 
     comms.shutdown().unwrap();

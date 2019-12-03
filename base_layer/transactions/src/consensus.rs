@@ -25,11 +25,16 @@ use chrono::{DateTime, Duration, Utc};
 use std::ops::Add;
 
 // This is the our target time in seconds between blocks
-pub const TARGET_BLOCK_INTERVAL: u64 = 60;
+pub const TARGET_BLOCK_INTERVAL: u64 = 120;
 // When doing difficulty adjustments and FTL calculations this is the amount of blocks we look at
-pub const DIFFICULTY_BLOCK_WINDOW: u64 = 150;
+pub const DIFFICULTY_BLOCK_WINDOW: u64 = 90;
 // Maximum transaction weight used for the construction of new blocks.
 pub const MAX_BLOCK_TRANSACTION_WEIGHT: u64 = 10000; // TODO: a better weight estimate should be selected
+                                                     // The amount of PoW algorithms used by the Tari chain.
+pub const POW_ALGO_COUNT: u64 = 2;
+// The target time used by the difficulty adjustment algorithms, their target time is the target block interval * PoW
+// algorithm count
+pub const DIFF_TARGET_BLOCK_INTERVAL: u64 = TARGET_BLOCK_INTERVAL * POW_ALGO_COUNT;
 
 /// This is used to control all consensus values.
 pub struct ConsensusRules {

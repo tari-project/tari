@@ -27,6 +27,8 @@ message BaseNodeServiceResponse {
         tari.core.NewBlockTemplate new_block_template = 8;
         // Indicates a NewBlock response.
         tari.core.Block new_block = 9;
+        // Indicates a TargetDifficulty response.
+        uint64 target_difficulty = 10;
     }
 }
 

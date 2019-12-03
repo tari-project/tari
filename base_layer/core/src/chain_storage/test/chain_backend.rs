@@ -544,11 +544,8 @@ fn fetch_future_mmr_root_for_utxo_and_rp<T: BlockchainBackend>(db: T) {
     let (utxo3, _) = create_utxo(MicroTari(20_000), &factories);
     let (utxo4, _) = create_utxo(MicroTari(24_000), &factories);
     let utxo_hash1 = utxo1.hash();
-    let utxo_hash2 = utxo2.hash();
     let utxo_hash3 = utxo3.hash();
     let utxo_hash4 = utxo4.hash();
-    let rp_hash1 = utxo1.proof.hash();
-    let rp_hash2 = utxo2.proof.hash();
     let rp_hash3 = utxo3.proof.hash();
     let rp_hash4 = utxo4.proof.hash();
 
@@ -599,8 +596,6 @@ fn fetch_future_mmr_root_for_for_kernel<T: BlockchainBackend>(db: T) {
     let kernel2 = create_test_kernel(200.into(), 1);
     let kernel3 = create_test_kernel(300.into(), 2);
     let kernel4 = create_test_kernel(400.into(), 3);
-    let hash1 = kernel1.hash();
-    let hash2 = kernel2.hash();
     let hash3 = kernel3.hash();
     let hash4 = kernel4.hash();
 
@@ -648,8 +643,6 @@ fn fetch_future_mmr_root_for_header<T: BlockchainBackend>(db: T) {
     header3.height = 3;
     let mut header4 = BlockHeader::new(0);
     header4.height = 4;
-    let hash1 = header1.hash();
-    let hash2 = header2.hash();
     let hash3 = header3.hash();
     let hash4 = header4.hash();
 
