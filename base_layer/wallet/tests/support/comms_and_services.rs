@@ -36,7 +36,6 @@ use tari_p2p::{
     domain_message::DomainMessage,
     initialization::{initialize_comms, CommsConfig},
 };
-use tempdir::TempDir;
 use tokio::runtime::TaskExecutor;
 
 pub fn setup_comms_services<TSink>(
@@ -45,6 +44,7 @@ pub fn setup_comms_services<TSink>(
     listening_address: NetAddress,
     peers: Vec<NodeIdentity>,
     publisher: InboundDomainConnector<TSink>,
+    database_path: String,
 ) -> (CommsNode, Dht)
 where
     TSink: Sink<Arc<PeerMessage>> + Clone + Unpin + Send + Sync + 'static,
@@ -59,12 +59,7 @@ where
             socks_proxy_address: None,
             requested_connection_timeout: Duration::from_millis(2000),
         },
-        datastore_path: TempDir::new(random_string(8).as_str())
-            .unwrap()
-            .path()
-            .to_str()
-            .unwrap()
-            .to_string(),
+        datastore_path: database_path,
         establish_connection_timeout: Duration::from_secs(3),
         peer_database_name: random_string(8),
         inbound_buffer_size: 100,

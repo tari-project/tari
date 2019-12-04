@@ -32,6 +32,7 @@ use tari_comms::{
 use tari_comms_dht::DhtConfig;
 use tari_crypto::keys::PublicKey;
 use tari_p2p::initialization::CommsConfig;
+use tari_test_utils::paths::with_temp_dir;
 use tari_transactions::{tari_amount::MicroTari, types::CryptoFactories};
 #[cfg(feature = "test_harness")]
 use tari_wallet::testnet_utils::broadcast_transaction;
@@ -58,152 +59,146 @@ fn create_peer(public_key: CommsPublicKey, net_address: NetAddress) -> Peer {
 
 #[test]
 fn test_wallet() {
-    let runtime = Runtime::new().unwrap();
+    with_temp_dir(|dir_path| {
+        let runtime = Runtime::new().unwrap();
 
-    let mut rng = rand::OsRng::new().unwrap();
-    let factories = CryptoFactories::default();
+        let mut rng = rand::OsRng::new().unwrap();
+        let factories = CryptoFactories::default();
 
-    let alice_identity = NodeIdentity::random(
-        &mut rng,
-        "127.0.0.1:22523".parse().unwrap(),
-        PeerFeatures::COMMUNICATION_NODE,
-    )
-    .unwrap();
-    let bob_identity = NodeIdentity::random(
-        &mut rng,
-        "127.0.0.1:22145".parse().unwrap(),
-        PeerFeatures::COMMUNICATION_NODE,
-    )
-    .unwrap();
-    let comms_config1 = CommsConfig {
-        node_identity: Arc::new(alice_identity.clone()),
-        peer_connection_listening_address: "127.0.0.1:0".parse().unwrap(),
-        socks_proxy_address: None,
-        control_service: ControlServiceConfig {
-            listener_address: alice_identity.control_service_address(),
+        let alice_identity = NodeIdentity::random(
+            &mut rng,
+            "127.0.0.1:22523".parse().unwrap(),
+            PeerFeatures::COMMUNICATION_NODE,
+        )
+        .unwrap();
+        let bob_identity = NodeIdentity::random(
+            &mut rng,
+            "127.0.0.1:22145".parse().unwrap(),
+            PeerFeatures::COMMUNICATION_NODE,
+        )
+        .unwrap();
+        let comms_config1 = CommsConfig {
+            node_identity: Arc::new(alice_identity.clone()),
+            peer_connection_listening_address: "127.0.0.1:0".parse().unwrap(),
             socks_proxy_address: None,
-            requested_connection_timeout: Duration::from_millis(2000),
-        },
-        datastore_path: TempDir::new(random_string(8).as_str())
-            .unwrap()
-            .path()
-            .to_str()
-            .unwrap()
-            .to_string(),
-        establish_connection_timeout: Duration::from_secs(10),
-        peer_database_name: random_string(8),
-        inbound_buffer_size: 100,
-        outbound_buffer_size: 100,
-        dht: Default::default(),
-    };
-    let comms_config2 = CommsConfig {
-        node_identity: Arc::new(bob_identity.clone()),
-        peer_connection_listening_address: "127.0.0.1:0".parse().unwrap(),
-        socks_proxy_address: None,
-        control_service: ControlServiceConfig {
-            listener_address: bob_identity.control_service_address(),
+            control_service: ControlServiceConfig {
+                listener_address: alice_identity.control_service_address(),
+                socks_proxy_address: None,
+                requested_connection_timeout: Duration::from_millis(2000),
+            },
+            datastore_path: dir_path.to_str().unwrap().to_string(),
+            establish_connection_timeout: Duration::from_secs(10),
+            peer_database_name: random_string(8),
+            inbound_buffer_size: 100,
+            outbound_buffer_size: 100,
+            dht: Default::default(),
+        };
+        let comms_config2 = CommsConfig {
+            node_identity: Arc::new(bob_identity.clone()),
+            peer_connection_listening_address: "127.0.0.1:0".parse().unwrap(),
             socks_proxy_address: None,
-            requested_connection_timeout: Duration::from_millis(2000),
-        },
-        datastore_path: TempDir::new(random_string(8).as_str())
-            .unwrap()
-            .path()
-            .to_str()
-            .unwrap()
-            .to_string(),
-        establish_connection_timeout: Duration::from_secs(10),
-        peer_database_name: random_string(8),
-        inbound_buffer_size: 100,
-        outbound_buffer_size: 100,
-        dht: Default::default(),
-    };
-    let config1 = WalletConfig {
-        comms_config: comms_config1,
-        logging_path: None,
-        factories: factories.clone(),
-    };
-    let config2 = WalletConfig {
-        comms_config: comms_config2,
-        logging_path: None,
-        factories: factories.clone(),
-    };
-    let runtime_node1 = Runtime::new().unwrap();
-    let runtime_node2 = Runtime::new().unwrap();
-    let mut alice_wallet = Wallet::new(
-        config1,
-        runtime_node1,
-        WalletMemoryDatabase::new(),
-        TransactionMemoryDatabase::new(),
-        OutputManagerMemoryDatabase::new(),
-        ContactsServiceMemoryDatabase::new(),
-    )
-    .unwrap();
-    let bob_wallet = Wallet::new(
-        config2,
-        runtime_node2,
-        WalletMemoryDatabase::new(),
-        TransactionMemoryDatabase::new(),
-        OutputManagerMemoryDatabase::new(),
-        ContactsServiceMemoryDatabase::new(),
-    )
-    .unwrap();
-
-    alice_wallet
-        .comms
-        .peer_manager()
-        .add_peer(create_peer(
-            bob_identity.public_key().clone(),
-            bob_identity.control_service_address(),
-        ))
+            control_service: ControlServiceConfig {
+                listener_address: bob_identity.control_service_address(),
+                socks_proxy_address: None,
+                requested_connection_timeout: Duration::from_millis(2000),
+            },
+            datastore_path: dir_path.to_str().unwrap().to_string(),
+            establish_connection_timeout: Duration::from_secs(10),
+            peer_database_name: random_string(8),
+            inbound_buffer_size: 100,
+            outbound_buffer_size: 100,
+            dht: Default::default(),
+        };
+        let config1 = WalletConfig {
+            comms_config: comms_config1,
+            logging_path: None,
+            factories: factories.clone(),
+        };
+        let config2 = WalletConfig {
+            comms_config: comms_config2,
+            logging_path: None,
+            factories: factories.clone(),
+        };
+        let runtime_node1 = Runtime::new().unwrap();
+        let runtime_node2 = Runtime::new().unwrap();
+        let mut alice_wallet = Wallet::new(
+            config1,
+            runtime_node1,
+            WalletMemoryDatabase::new(),
+            TransactionMemoryDatabase::new(),
+            OutputManagerMemoryDatabase::new(),
+            ContactsServiceMemoryDatabase::new(),
+        )
+        .unwrap();
+        let bob_wallet = Wallet::new(
+            config2,
+            runtime_node2,
+            WalletMemoryDatabase::new(),
+            TransactionMemoryDatabase::new(),
+            OutputManagerMemoryDatabase::new(),
+            ContactsServiceMemoryDatabase::new(),
+        )
         .unwrap();
 
-    bob_wallet
-        .comms
-        .peer_manager()
-        .add_peer(create_peer(
-            alice_identity.public_key().clone(),
-            alice_identity.control_service_address(),
-        ))
-        .unwrap();
+        alice_wallet
+            .comms
+            .peer_manager()
+            .add_peer(create_peer(
+                bob_identity.public_key().clone(),
+                bob_identity.control_service_address(),
+            ))
+            .unwrap();
 
-    let alice_event_stream = alice_wallet.transaction_service.get_event_stream_fused();
+        bob_wallet
+            .comms
+            .peer_manager()
+            .add_peer(create_peer(
+                alice_identity.public_key().clone(),
+                alice_identity.control_service_address(),
+            ))
+            .unwrap();
 
-    let value = MicroTari::from(1000);
-    let (_utxo, uo1) = make_input(&mut rng, MicroTari(2500), &factories.commitment);
+        let alice_event_stream = alice_wallet.transaction_service.get_event_stream_fused();
 
-    runtime
-        .block_on(alice_wallet.output_manager_service.add_output(uo1))
-        .unwrap();
-
-    runtime
-        .block_on(alice_wallet.transaction_service.send_transaction(
-            bob_identity.public_key().clone(),
-            value,
-            MicroTari::from(20),
-            "".to_string(),
-        ))
-        .unwrap();
-
-    let mut result =
-        runtime.block_on(async { event_stream_count(alice_event_stream, 1, Duration::from_secs(10)).await });
-    assert_eq!(result.remove(&TransactionEvent::ReceivedTransactionReply), Some(1));
-
-    let mut contacts = Vec::new();
-    for i in 0..2 {
-        let (_secret_key, public_key) = PublicKey::random_keypair(&mut rng);
-
-        contacts.push(Contact {
-            alias: random_string(8),
-            public_key,
-        });
+        let value = MicroTari::from(1000);
+        let (_utxo, uo1) = make_input(&mut rng, MicroTari(2500), &factories.commitment);
 
         runtime
-            .block_on(alice_wallet.contacts_service.save_contact(contacts[i].clone()))
+            .block_on(alice_wallet.output_manager_service.add_output(uo1))
             .unwrap();
-    }
 
-    let got_contacts = runtime.block_on(alice_wallet.contacts_service.get_contacts()).unwrap();
-    assert_eq!(contacts, got_contacts);
+        runtime
+            .block_on(alice_wallet.transaction_service.send_transaction(
+                bob_identity.public_key().clone(),
+                value,
+                MicroTari::from(20),
+                "".to_string(),
+            ))
+            .unwrap();
+
+        let mut result =
+            runtime.block_on(async { event_stream_count(alice_event_stream, 1, Duration::from_secs(10)).await });
+        assert_eq!(result.remove(&TransactionEvent::ReceivedTransactionReply), Some(1));
+
+        let mut contacts = Vec::new();
+        for i in 0..2 {
+            let (_secret_key, public_key) = PublicKey::random_keypair(&mut rng);
+
+            contacts.push(Contact {
+                alias: random_string(8),
+                public_key,
+            });
+
+            runtime
+                .block_on(alice_wallet.contacts_service.save_contact(contacts[i].clone()))
+                .unwrap();
+        }
+
+        let got_contacts = runtime.block_on(alice_wallet.contacts_service.get_contacts()).unwrap();
+        assert_eq!(contacts, got_contacts);
+
+        runtime.shutdown_on_idle();
+    });
 }
 
 #[cfg(feature = "test_harness")]
@@ -221,6 +216,7 @@ fn test_data_generation() {
         PeerFeatures::COMMUNICATION_NODE,
     )
     .unwrap();
+    let temp_dir = TempDir::new(random_string(8).as_str()).unwrap();
     let comms_config = CommsConfig {
         node_identity: Arc::new(node_id.clone()),
         peer_connection_listening_address: "127.0.0.1:0".parse().unwrap(),
@@ -231,12 +227,7 @@ fn test_data_generation() {
             requested_connection_timeout: Duration::from_millis(2000),
         },
         establish_connection_timeout: Duration::from_secs(10),
-        datastore_path: TempDir::new(random_string(8).as_str())
-            .unwrap()
-            .path()
-            .to_str()
-            .unwrap()
-            .to_string(),
+        datastore_path: temp_dir.path().to_str().unwrap().to_string(),
         peer_database_name: random_string(8),
         inbound_buffer_size: 100,
         outbound_buffer_size: 100,
@@ -311,7 +302,7 @@ fn test_test_harness() {
         PeerFeatures::COMMUNICATION_NODE,
     )
     .unwrap();
-
+    let alice_dir = TempDir::new(random_string(8).as_str()).unwrap();
     let comms_config1 = CommsConfig {
         node_identity: Arc::new(alice_identity.clone()),
         peer_connection_listening_address: "127.0.0.1:0".parse().unwrap(),
@@ -321,12 +312,7 @@ fn test_test_harness() {
             socks_proxy_address: None,
             requested_connection_timeout: Duration::from_millis(2000),
         },
-        datastore_path: TempDir::new(random_string(8).as_str())
-            .unwrap()
-            .path()
-            .to_str()
-            .unwrap()
-            .to_string(),
+        datastore_path: alice_dir.path().to_str().unwrap().to_string(),
         establish_connection_timeout: Duration::from_secs(10),
         peer_database_name: random_string(8),
         inbound_buffer_size: 100,

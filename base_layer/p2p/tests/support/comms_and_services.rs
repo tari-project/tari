@@ -33,7 +33,6 @@ use tari_p2p::{
     initialization::{initialize_comms, CommsConfig},
 };
 use tari_test_utils::random;
-use tempdir::TempDir;
 use tokio::runtime::TaskExecutor;
 
 pub fn setup_comms_services<TSink>(
@@ -41,6 +40,7 @@ pub fn setup_comms_services<TSink>(
     node_identity: Arc<NodeIdentity>,
     peers: Vec<NodeIdentity>,
     publisher: InboundDomainConnector<TSink>,
+    data_path: &str,
 ) -> (Arc<CommsNode>, Dht)
 where
     TSink: Sink<Arc<PeerMessage>> + Clone + Unpin + Send + Sync + 'static,
@@ -55,12 +55,7 @@ where
             socks_proxy_address: None,
             requested_connection_timeout: Duration::from_millis(2000),
         },
-        datastore_path: TempDir::new(random::string(8).as_str())
-            .unwrap()
-            .path()
-            .to_str()
-            .unwrap()
-            .to_string(),
+        datastore_path: data_path.to_string(),
         establish_connection_timeout: Duration::from_secs(5),
         peer_database_name: random::string(8),
         inbound_buffer_size: 10,

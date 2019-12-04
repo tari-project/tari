@@ -45,6 +45,7 @@ use tari_p2p::{
     services::comms_outbound::CommsOutboundServiceInitializer,
 };
 use tari_service_framework::{reply_channel, StackBuilder};
+use tari_test_utils::paths::with_temp_dir;
 use tari_transactions::{
     tari_amount::*,
     transaction::{KernelFeatures, OutputFeatures, Transaction},
@@ -75,7 +76,6 @@ use tari_wallet::{
         TransactionServiceInitializer,
     },
 };
-use tempdir::TempDir;
 use tokio::runtime::Runtime;
 
 pub fn setup_transaction_service<T: TransactionBackend + 'static>(
@@ -85,6 +85,7 @@ pub fn setup_transaction_service<T: TransactionBackend + 'static>(
     peers: Vec<NodeIdentity>,
     factories: CryptoFactories,
     backend: T,
+    database_path: String,
 ) -> (TransactionServiceHandle, OutputManagerHandle, CommsNode)
 {
     let (publisher, subscription_factory) = pubsub_connector(runtime.executor(), 100);
@@ -95,6 +96,7 @@ pub fn setup_transaction_service<T: TransactionBackend + 'static>(
         "127.0.0.1:0".parse().unwrap(),
         peers,
         publisher,
+        database_path,
     );
 
     let fut = StackBuilder::new(runtime.executor(), comms.shutdown_signal())
@@ -196,7 +198,13 @@ pub fn setup_transaction_service_no_comms<T: TransactionBackend + 'static>(
     )
 }
 
-fn manage_single_transaction<T: TransactionBackend + 'static>(alice_backend: T, bob_backend: T, port_offset: i32) {
+fn manage_single_transaction<T: TransactionBackend + 'static>(
+    alice_backend: T,
+    bob_backend: T,
+    port_offset: i32,
+    database_path: String,
+)
+{
     let runtime = Runtime::new().unwrap();
     let mut rng = OsRng::new().unwrap();
     let factories = CryptoFactories::default();
@@ -227,6 +235,7 @@ fn manage_single_transaction<T: TransactionBackend + 'static>(alice_backend: T, 
         vec![bob_node_identity.clone()],
         factories.clone(),
         alice_backend,
+        database_path.clone(),
     );
     let alice_event_stream = alice_ts.get_event_stream_fused();
 
@@ -264,6 +273,7 @@ fn manage_single_transaction<T: TransactionBackend + 'static>(alice_backend: T, 
         vec![alice_node_identity.clone()],
         factories.clone(),
         bob_backend,
+        database_path,
     );
 
     let mut result =
@@ -306,32 +316,30 @@ fn manage_single_transaction<T: TransactionBackend + 'static>(alice_backend: T, 
 
 #[test]
 fn manage_single_transaction_memory_db() {
-    manage_single_transaction(TransactionMemoryDatabase::new(), TransactionMemoryDatabase::new(), 2);
+    with_temp_dir(|dir_path| {
+        manage_single_transaction(
+            TransactionMemoryDatabase::new(),
+            TransactionMemoryDatabase::new(),
+            2,
+            dir_path.to_str().unwrap().to_string(),
+        );
+    });
 }
 
 #[test]
 fn manage_single_transaction_sqlite_db() {
-    let alice_db_name = format!("{}.sqlite3", random_string(8).as_str());
-    let alice_db_folder = TempDir::new(random_string(8).as_str())
-        .unwrap()
-        .path()
-        .to_str()
-        .unwrap()
-        .to_string();
-    let alice_db_path = format!("{}{}", alice_db_folder, alice_db_name);
-    let bob_db_name = format!("{}.sqlite3", random_string(8).as_str());
-    let bob_db_folder = TempDir::new(random_string(8).as_str())
-        .unwrap()
-        .path()
-        .to_str()
-        .unwrap()
-        .to_string();
-    let bob_db_path = format!("{}{}", bob_db_folder, bob_db_name);
-    manage_single_transaction(
-        TransactionServiceSqliteDatabase::new(alice_db_path).unwrap(),
-        TransactionServiceSqliteDatabase::new(bob_db_path).unwrap(),
-        1,
-    );
+    with_temp_dir(|dir_path| {
+        let alice_db_name = format!("{}.sqlite3", random_string(8).as_str());
+        let alice_db_path = format!("{}/{}", dir_path.to_str().unwrap(), alice_db_name);
+        let bob_db_name = format!("{}.sqlite3", random_string(8).as_str());
+        let bob_db_path = format!("{}/{}", dir_path.to_str().unwrap(), bob_db_name);
+        manage_single_transaction(
+            TransactionServiceSqliteDatabase::new(alice_db_path).unwrap(),
+            TransactionServiceSqliteDatabase::new(bob_db_path).unwrap(),
+            1,
+            dir_path.to_str().unwrap().to_string(),
+        );
+    });
 }
 
 fn manage_multiple_transactions<T: TransactionBackend + 'static>(
@@ -339,6 +347,7 @@ fn manage_multiple_transactions<T: TransactionBackend + 'static>(
     bob_backend: T,
     carol_backend: T,
     port_offset: i32,
+    database_path: String,
 )
 {
     let runtime = Runtime::new().unwrap();
@@ -381,6 +390,7 @@ fn manage_multiple_transactions<T: TransactionBackend + 'static>(
         vec![bob_node_identity.clone(), carol_node_identity.clone()],
         factories.clone(),
         alice_backend,
+        database_path.clone(),
     );
     let alice_event_stream = alice_ts.get_event_stream_fused();
 
@@ -426,6 +436,7 @@ fn manage_multiple_transactions<T: TransactionBackend + 'static>(
         vec![alice_node_identity.clone()],
         factories.clone(),
         bob_backend,
+        database_path.clone(),
     );
     let (mut carol_ts, mut carol_oms, carol_comms) = setup_transaction_service(
         &runtime,
@@ -434,6 +445,7 @@ fn manage_multiple_transactions<T: TransactionBackend + 'static>(
         vec![alice_node_identity.clone()],
         factories.clone(),
         carol_backend,
+        database_path,
     );
 
     let bob_event_stream = bob_ts.get_event_stream_fused();
@@ -486,46 +498,35 @@ fn manage_multiple_transactions<T: TransactionBackend + 'static>(
 
 #[test]
 fn manage_multiple_transactions_memory_db() {
-    manage_multiple_transactions(
-        TransactionMemoryDatabase::new(),
-        TransactionMemoryDatabase::new(),
-        TransactionMemoryDatabase::new(),
-        0,
-    );
+    with_temp_dir(|dir_path| {
+        manage_multiple_transactions(
+            TransactionMemoryDatabase::new(),
+            TransactionMemoryDatabase::new(),
+            TransactionMemoryDatabase::new(),
+            0,
+            dir_path.to_str().unwrap().to_string(),
+        );
+    });
 }
 
 #[test]
 fn manage_multiple_transactions_sqlite_db() {
-    let alice_db_name = format!("{}.sqlite3", random_string(8).as_str());
-    let alice_db_folder = TempDir::new(random_string(8).as_str())
-        .unwrap()
-        .path()
-        .to_str()
-        .unwrap()
-        .to_string();
-    let alice_db_path = format!("{}{}", alice_db_folder, alice_db_name);
-    let bob_db_name = format!("{}.sqlite3", random_string(8).as_str());
-    let bob_db_folder = TempDir::new(random_string(8).as_str())
-        .unwrap()
-        .path()
-        .to_str()
-        .unwrap()
-        .to_string();
-    let bob_db_path = format!("{}{}", bob_db_folder, bob_db_name);
-    let carol_db_name = format!("{}.sqlite3", random_string(8).as_str());
-    let carol_db_folder = TempDir::new(random_string(8).as_str())
-        .unwrap()
-        .path()
-        .to_str()
-        .unwrap()
-        .to_string();
-    let carol_db_path = format!("{}{}", carol_db_folder, carol_db_name);
-    manage_multiple_transactions(
-        TransactionServiceSqliteDatabase::new(alice_db_path).unwrap(),
-        TransactionServiceSqliteDatabase::new(bob_db_path).unwrap(),
-        TransactionServiceSqliteDatabase::new(carol_db_path).unwrap(),
-        1,
-    );
+    with_temp_dir(|dir_path| {
+        let path_string = dir_path.to_str().unwrap().to_string();
+        let alice_db_name = format!("{}.sqlite3", random_string(8).as_str());
+        let alice_db_path = format!("{}/{}", path_string, alice_db_name);
+        let bob_db_name = format!("{}.sqlite3", random_string(8).as_str());
+        let bob_db_path = format!("{}/{}", path_string, bob_db_name);
+        let carol_db_name = format!("{}.sqlite3", random_string(8).as_str());
+        let carol_db_path = format!("{}/{}", path_string, carol_db_name);
+        manage_multiple_transactions(
+            TransactionServiceSqliteDatabase::new(alice_db_path).unwrap(),
+            TransactionServiceSqliteDatabase::new(bob_db_path).unwrap(),
+            TransactionServiceSqliteDatabase::new(carol_db_path).unwrap(),
+            1,
+            path_string,
+        );
+    });
 }
 
 fn test_sending_repeated_tx_ids<T: TransactionBackend + 'static>(alice_backend: T, bob_backend: T) {
@@ -592,26 +593,17 @@ fn test_sending_repeated_tx_ids_memory_db() {
 
 #[test]
 fn test_sending_repeated_tx_ids_sqlite_db() {
-    let alice_db_name = format!("{}.sqlite3", random_string(8).as_str());
-    let alice_db_folder = TempDir::new(random_string(8).as_str())
-        .unwrap()
-        .path()
-        .to_str()
-        .unwrap()
-        .to_string();
-    let alice_db_path = format!("{}{}", alice_db_folder, alice_db_name);
-    let bob_db_name = format!("{}.sqlite3", random_string(8).as_str());
-    let bob_db_folder = TempDir::new(random_string(8).as_str())
-        .unwrap()
-        .path()
-        .to_str()
-        .unwrap()
-        .to_string();
-    let bob_db_path = format!("{}{}", bob_db_folder, bob_db_name);
-    test_sending_repeated_tx_ids(
-        TransactionServiceSqliteDatabase::new(alice_db_path).unwrap(),
-        TransactionServiceSqliteDatabase::new(bob_db_path).unwrap(),
-    );
+    with_temp_dir(|dir_path| {
+        let path_string = dir_path.to_str().unwrap().to_string();
+        let alice_db_name = format!("{}.sqlite3", random_string(8).as_str());
+        let alice_db_path = format!("{}/{}", path_string, alice_db_name);
+        let bob_db_name = format!("{}.sqlite3", random_string(8).as_str());
+        let bob_db_path = format!("{}/{}", path_string, bob_db_name);
+        test_sending_repeated_tx_ids(
+            TransactionServiceSqliteDatabase::new(alice_db_path).unwrap(),
+            TransactionServiceSqliteDatabase::new(bob_db_path).unwrap(),
+        );
+    });
 }
 
 fn test_accepting_unknown_tx_id_and_malformed_reply<T: TransactionBackend + 'static>(alice_backend: T) {
@@ -696,15 +688,12 @@ fn test_accepting_unknown_tx_id_and_malformed_reply_memory_db() {
 
 #[test]
 fn test_accepting_unknown_tx_id_and_malformed_reply_sqlite_db() {
-    let alice_db_name = format!("{}.sqlite3", random_string(8).as_str());
-    let alice_db_folder = TempDir::new(random_string(8).as_str())
-        .unwrap()
-        .path()
-        .to_str()
-        .unwrap()
-        .to_string();
-    let alice_db_path = format!("{}{}", alice_db_folder, alice_db_name);
-    test_accepting_unknown_tx_id_and_malformed_reply(TransactionServiceSqliteDatabase::new(alice_db_path).unwrap());
+    with_temp_dir(|dir_path| {
+        let path_string = dir_path.to_str().unwrap().to_string();
+        let alice_db_name = format!("{}.sqlite3", random_string(8).as_str());
+        let alice_db_path = format!("{}/{}", path_string, alice_db_name);
+        test_accepting_unknown_tx_id_and_malformed_reply(TransactionServiceSqliteDatabase::new(alice_db_path).unwrap());
+    });
 }
 
 fn finalize_tx_with_nonexistent_txid<T: TransactionBackend + 'static>(alice_backend: T) {
@@ -754,15 +743,12 @@ fn finalize_tx_with_nonexistent_txid_memory_db() {
 
 #[test]
 fn finalize_tx_with_nonexistent_txid_sqlite_db() {
-    let alice_db_name = format!("{}.sqlite3", random_string(8).as_str());
-    let alice_db_folder = TempDir::new(random_string(8).as_str())
-        .unwrap()
-        .path()
-        .to_str()
-        .unwrap()
-        .to_string();
-    let alice_db_path = format!("{}{}", alice_db_folder, alice_db_name);
-    finalize_tx_with_nonexistent_txid(TransactionServiceSqliteDatabase::new(alice_db_path).unwrap());
+    with_temp_dir(|dir_path| {
+        let path_string = dir_path.to_str().unwrap().to_string();
+        let alice_db_name = format!("{}.sqlite3", random_string(8).as_str());
+        let alice_db_path = format!("{}/{}", path_string, alice_db_name);
+        finalize_tx_with_nonexistent_txid(TransactionServiceSqliteDatabase::new(alice_db_path).unwrap());
+    });
 }
 
 fn finalize_tx_with_incorrect_pubkey<T: TransactionBackend + 'static>(alice_backend: T, bob_backend: T) {
@@ -858,26 +844,17 @@ fn finalize_tx_with_incorrect_pubkey_memory_db() {
 
 #[test]
 fn finalize_tx_with_incorrect_pubkey_sqlite_db() {
-    let alice_db_name = format!("{}.sqlite3", random_string(8).as_str());
-    let alice_db_folder = TempDir::new(random_string(8).as_str())
-        .unwrap()
-        .path()
-        .to_str()
-        .unwrap()
-        .to_string();
-    let alice_db_path = format!("{}{}", alice_db_folder, alice_db_name);
-    let bob_db_name = format!("{}.sqlite3", random_string(8).as_str());
-    let bob_db_folder = TempDir::new(random_string(8).as_str())
-        .unwrap()
-        .path()
-        .to_str()
-        .unwrap()
-        .to_string();
-    let bob_db_path = format!("{}{}", bob_db_folder, bob_db_name);
-    finalize_tx_with_incorrect_pubkey(
-        TransactionServiceSqliteDatabase::new(alice_db_path).unwrap(),
-        TransactionServiceSqliteDatabase::new(bob_db_path).unwrap(),
-    );
+    with_temp_dir(|dir_path| {
+        let path_string = dir_path.to_str().unwrap().to_string();
+        let alice_db_name = format!("{}.sqlite3", random_string(8).as_str());
+        let alice_db_path = format!("{}/{}", path_string, alice_db_name);
+        let bob_db_name = format!("{}.sqlite3", random_string(8).as_str());
+        let bob_db_path = format!("{}/{}", path_string, bob_db_name);
+        finalize_tx_with_incorrect_pubkey(
+            TransactionServiceSqliteDatabase::new(alice_db_path).unwrap(),
+            TransactionServiceSqliteDatabase::new(bob_db_path).unwrap(),
+        );
+    });
 }
 
 fn finalize_tx_with_missing_output<T: TransactionBackend + 'static>(alice_backend: T, bob_backend: T) {
@@ -972,24 +949,15 @@ fn finalize_tx_with_missing_output_memory_db() {
 
 #[test]
 fn finalize_tx_with_missing_output_sqlite_db() {
-    let alice_db_name = format!("{}.sqlite3", random_string(8).as_str());
-    let alice_db_folder = TempDir::new(random_string(8).as_str())
-        .unwrap()
-        .path()
-        .to_str()
-        .unwrap()
-        .to_string();
-    let alice_db_path = format!("{}{}", alice_db_folder, alice_db_name);
-    let bob_db_name = format!("{}.sqlite3", random_string(8).as_str());
-    let bob_db_folder = TempDir::new(random_string(8).as_str())
-        .unwrap()
-        .path()
-        .to_str()
-        .unwrap()
-        .to_string();
-    let bob_db_path = format!("{}{}", bob_db_folder, bob_db_name);
-    finalize_tx_with_missing_output(
-        TransactionServiceSqliteDatabase::new(alice_db_path).unwrap(),
-        TransactionServiceSqliteDatabase::new(bob_db_path).unwrap(),
-    );
+    with_temp_dir(|dir_path| {
+        let path_string = dir_path.to_str().unwrap().to_string();
+        let alice_db_name = format!("{}.sqlite3", random_string(8).as_str());
+        let alice_db_path = format!("{}/{}", path_string, alice_db_name);
+        let bob_db_name = format!("{}.sqlite3", random_string(8).as_str());
+        let bob_db_path = format!("{}/{}", path_string, bob_db_name);
+        finalize_tx_with_missing_output(
+            TransactionServiceSqliteDatabase::new(alice_db_path).unwrap(),
+            TransactionServiceSqliteDatabase::new(bob_db_path).unwrap(),
+        );
+    });
 }

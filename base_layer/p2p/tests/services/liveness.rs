@@ -35,18 +35,26 @@ use tari_p2p::{
     },
 };
 use tari_service_framework::StackBuilder;
-use tari_test_utils::collect_stream;
+use tari_test_utils::{collect_stream, random::string};
+use tempdir::TempDir;
 use tokio::runtime::Runtime;
 
 pub fn setup_liveness_service(
     runtime: &Runtime,
     node_identity: NodeIdentity,
     peers: Vec<NodeIdentity>,
+    data_path: &str,
 ) -> (LivenessHandle, Arc<CommsNode>, Dht)
 {
     let (publisher, subscription_factory) = pubsub_connector(runtime.executor(), 100);
     let subscription_factory = Arc::new(subscription_factory);
-    let (comms, dht) = setup_comms_services(runtime.executor(), Arc::new(node_identity.clone()), peers, publisher);
+    let (comms, dht) = setup_comms_services(
+        runtime.executor(),
+        Arc::new(node_identity.clone()),
+        peers,
+        publisher,
+        data_path,
+    );
 
     let fut = StackBuilder::new(runtime.executor(), comms.shutdown_signal())
         .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))
@@ -88,10 +96,20 @@ fn end_to_end() {
     )
     .unwrap();
 
-    let (mut liveness1, _comms_1, _dht_1) =
-        setup_liveness_service(&runtime, node_1_identity.clone(), vec![node_2_identity.clone()]);
-    let (mut liveness2, _comms_2, _dht_2) =
-        setup_liveness_service(&runtime, node_2_identity.clone(), vec![node_1_identity.clone()]);
+    let alice_temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let (mut liveness1, _comms_1, _dht_1) = setup_liveness_service(
+        &runtime,
+        node_1_identity.clone(),
+        vec![node_2_identity.clone()],
+        alice_temp_dir.path().to_str().unwrap(),
+    );
+    let bob_temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let (mut liveness2, _comms_2, _dht_2) = setup_liveness_service(
+        &runtime,
+        node_2_identity.clone(),
+        vec![node_1_identity.clone()],
+        bob_temp_dir.path().to_str().unwrap(),
+    );
 
     let mut pingpong1_total = (0, 0);
     let mut pingpong2_total = (0, 0);

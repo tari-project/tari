@@ -47,19 +47,23 @@ use std::{
     time::{Duration, Instant},
 };
 use tari_mmr::MerkleChangeTrackerConfig;
+use tari_test_utils::random::string;
 use tari_transactions::{
     consensus::TARGET_BLOCK_INTERVAL,
     tari_amount::{uT, MicroTari},
     types::CryptoFactories,
 };
 use tari_utilities::hash::Hashable;
+use tempdir::TempDir;
 use tokio::runtime::Runtime;
 
 #[test]
 fn request_response_get_metadata() {
     let runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();
-    let (mut alice_node, bob_node, carol_node) = create_network_with_3_base_nodes(&runtime);
+    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let (mut alice_node, bob_node, carol_node) =
+        create_network_with_3_base_nodes(&runtime, temp_dir.path().to_str().unwrap());
 
     add_block_and_update_header(&bob_node.blockchain_db, create_genesis_block(&factories).0);
 
@@ -84,7 +88,9 @@ fn request_response_get_metadata() {
 #[test]
 fn request_and_response_fetch_headers() {
     let runtime = Runtime::new().unwrap();
-    let (mut alice_node, bob_node, carol_node) = create_network_with_3_base_nodes(&runtime);
+    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let (mut alice_node, bob_node, carol_node) =
+        create_network_with_3_base_nodes(&runtime, temp_dir.path().to_str().unwrap());
 
     let mut headerb1 = BlockHeader::new(0);
     headerb1.height = 1;
@@ -126,7 +132,9 @@ fn request_and_response_fetch_headers() {
 #[test]
 fn request_and_response_fetch_kernels() {
     let runtime = Runtime::new().unwrap();
-    let (mut alice_node, bob_node, carol_node) = create_network_with_3_base_nodes(&runtime);
+    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let (mut alice_node, bob_node, carol_node) =
+        create_network_with_3_base_nodes(&runtime, temp_dir.path().to_str().unwrap());
 
     let kernel1 = create_test_kernel(5.into(), 0);
     let kernel2 = create_test_kernel(10.into(), 1);
@@ -166,7 +174,9 @@ fn request_and_response_fetch_kernels() {
 fn request_and_response_fetch_utxos() {
     let runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();
-    let (mut alice_node, bob_node, carol_node) = create_network_with_3_base_nodes(&runtime);
+    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let (mut alice_node, bob_node, carol_node) =
+        create_network_with_3_base_nodes(&runtime, temp_dir.path().to_str().unwrap());
 
     let (utxo1, _) = create_utxo(MicroTari(10_000), &factories);
     let (utxo2, _) = create_utxo(MicroTari(15_000), &factories);
@@ -201,7 +211,9 @@ fn request_and_response_fetch_utxos() {
 #[test]
 fn request_and_response_fetch_blocks() {
     let runtime = Runtime::new().unwrap();
-    let (mut alice_node, bob_node, carol_node) = create_network_with_3_base_nodes(&runtime);
+    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let (mut alice_node, bob_node, carol_node) =
+        create_network_with_3_base_nodes(&runtime, temp_dir.path().to_str().unwrap());
 
     let block0 = add_block_and_update_header(&bob_node.blockchain_db, get_genesis_block());
     let mut block1 = chain_block(&block0, vec![]);
@@ -238,11 +250,13 @@ fn request_and_response_fetch_mmr_state() {
         min_history_len: 1,
         max_history_len: 3,
     };
+    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
     let (mut alice_node, bob_node, carol_node) = create_network_with_3_base_nodes_with_config(
         &runtime,
         BaseNodeServiceConfig::default(),
         mct_config,
         MempoolServiceConfig::default(),
+        temp_dir.path().to_str().unwrap(),
     );
 
     let (tx1, inputs1, _) = tx!(10_000*uT, fee: 50*uT, inputs: 1, outputs: 1);
@@ -367,7 +381,9 @@ where
 #[test]
 fn propagate_valid_block() {
     let runtime = Runtime::new().unwrap();
-    let (mut alice_node, bob_node, carol_node) = create_network_with_3_base_nodes(&runtime);
+    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let (mut alice_node, bob_node, carol_node) =
+        create_network_with_3_base_nodes(&runtime, temp_dir.path().to_str().unwrap());
 
     let block0 = add_block_and_update_header(&alice_node.blockchain_db, get_genesis_block());
     let mut block1 = chain_block(&block0, vec![]);
@@ -406,7 +422,9 @@ fn propagate_valid_block() {
 #[test]
 fn propagate_invalid_block() {
     let runtime = Runtime::new().unwrap();
-    let (mut alice_node, bob_node, carol_node) = create_network_with_3_base_nodes(&runtime);
+    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let (mut alice_node, bob_node, carol_node) =
+        create_network_with_3_base_nodes(&runtime, temp_dir.path().to_str().unwrap());
 
     let block0 = add_block_and_update_header(&alice_node.blockchain_db, get_genesis_block());
     let block1 = chain_block(&block0, vec![]);
@@ -454,11 +472,13 @@ fn service_request_timeout() {
         min_history_len: 10,
         max_history_len: 30,
     };
+    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
     let (mut alice_node, bob_node) = create_network_with_2_base_nodes_with_config(
         &runtime,
         base_node_service_config,
         mct_config,
         MempoolServiceConfig::default(),
+        temp_dir.path().to_str().unwrap(),
     );
 
     runtime.block_on(async {
@@ -475,7 +495,8 @@ fn service_request_timeout() {
 #[test]
 fn local_get_metadata() {
     let runtime = Runtime::new().unwrap();
-    let mut node = BaseNodeBuilder::new().start(&runtime);
+    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let mut node = BaseNodeBuilder::new().start(&runtime, temp_dir.path().to_str().unwrap());
 
     let block0 = add_block_and_update_header(&node.blockchain_db, get_genesis_block());
     let mut block1 = chain_block(&block0, vec![]);
@@ -496,7 +517,8 @@ fn local_get_metadata() {
 fn local_get_new_block_template_and_get_new_block() {
     let factories = CryptoFactories::default();
     let runtime = Runtime::new().unwrap();
-    let mut node = BaseNodeBuilder::new().start(&runtime);
+    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let mut node = BaseNodeBuilder::new().start(&runtime, temp_dir.path().to_str().unwrap());
 
     add_block_and_update_header(&node.blockchain_db, get_genesis_block());
     let (tx1, inputs1, _) = tx!(10_000*uT, fee: 50*uT, inputs: 1, outputs: 1);
@@ -530,7 +552,8 @@ fn local_get_new_block_template_and_get_new_block() {
 #[test]
 fn local_get_target_difficulty() {
     let runtime = Runtime::new().unwrap();
-    let mut node = BaseNodeBuilder::new().start(&runtime);
+    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let mut node = BaseNodeBuilder::new().start(&runtime, temp_dir.path().to_str().unwrap());
 
     let block0 = add_block_and_update_header(&node.blockchain_db, get_genesis_block());
     assert_eq!(node.blockchain_db.get_height(), Ok(Some(0)));
@@ -567,7 +590,8 @@ fn local_get_target_difficulty() {
 #[test]
 fn local_submit_block() {
     let runtime = Runtime::new().unwrap();
-    let mut node = BaseNodeBuilder::new().start(&runtime);
+    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let mut node = BaseNodeBuilder::new().start(&runtime, temp_dir.path().to_str().unwrap());
 
     let block0 = add_block_and_update_header(&node.blockchain_db, get_genesis_block());
     let mut block1 = chain_block(&block0, vec![]);
