@@ -518,6 +518,7 @@ fn test_rpc_text_message_service() {
     let node_identity1 = NodeIdentity::new(secret_key1, listener_address1.clone())
         .map(Arc::new)
         .unwrap();
+    let temp_dir1 = TempDir::new(random_string(8).as_str()).unwrap();
     let config1 = WalletConfig {
         comms: CommsConfig {
             control_service: ControlServiceConfig {
@@ -528,12 +529,7 @@ fn test_rpc_text_message_service() {
             socks_proxy_address: None,
             host: "127.0.0.1".parse().unwrap(),
             node_identity: node_identity1,
-            datastore_path: TempDir::new(random_string(8).as_str())
-                .unwrap()
-                .path()
-                .to_str()
-                .unwrap()
-                .to_string(),
+            datastore_path: temp_dir1.path().to_str().unwrap().to_string(),
             peer_database_name: random_string(8),
             // TODO: configureable
             inbound_buffer_size: 30,
@@ -548,6 +544,7 @@ fn test_rpc_text_message_service() {
     let node_identity2 = NodeIdentity::new(secret_key2, listener_address2.clone())
         .map(Arc::new)
         .unwrap();
+    let temp_dir2 = TempDir::new(random_string(8).as_str()).unwrap();
     let config2 = WalletConfig {
         comms: CommsConfig {
             control_service: ControlServiceConfig {
@@ -558,12 +555,7 @@ fn test_rpc_text_message_service() {
             socks_proxy_address: None,
             host: "127.0.0.1".parse().unwrap(),
             node_identity: node_identity2,
-            datastore_path: TempDir::new(random_string(8).as_str())
-                .unwrap()
-                .path()
-                .to_str()
-                .unwrap()
-                .to_string(),
+            datastore_path: temp_dir2.path().to_str().unwrap().to_string(),
             peer_database_name: random_string(8),
             // TODO: configureable
             inbound_buffer_size: 30,

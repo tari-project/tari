@@ -101,6 +101,7 @@ pub fn random_string(len: usize) -> String {
 pub fn create_wallet(
     secret_key: CommsSecretKey,
     net_address: String,
+    data_path: String,
 ) -> Wallet<WalletMemoryDatabase, TransactionMemoryDatabase, OutputManagerMemoryDatabase, ContactsServiceMemoryDatabase>
 {
     let runtime = Runtime::new().unwrap();
@@ -122,12 +123,7 @@ pub fn create_wallet(
             requested_connection_timeout: Duration::from_millis(500),
         },
         establish_connection_timeout: Duration::from_secs(2),
-        datastore_path: TempDir::new(random_string(8).as_str())
-            .unwrap()
-            .path()
-            .to_str()
-            .unwrap()
-            .to_string(),
+        datastore_path: data_path,
         peer_database_name: random_string(8),
         inbound_buffer_size: 100,
         outbound_buffer_size: 100,
@@ -206,7 +202,12 @@ pub fn generate_wallet_test_data<
     }
 
     // Generate some Tx history
-    let mut wallet_alice = create_wallet(generated_contacts[0].0.clone(), generated_contacts[0].1.clone());
+    let alice_temp_dir = TempDir::new(random_string(8).as_str()).unwrap();
+    let mut wallet_alice = create_wallet(
+        generated_contacts[0].0.clone(),
+        generated_contacts[0].1.clone(),
+        alice_temp_dir.path().to_str().unwrap().to_string(),
+    );
     for i in 0..20 {
         let (_ti, uo) = make_input(&mut rng.clone(), MicroTari::from(1_500_000 + i * 530_500), &factories);
         wallet_alice
@@ -214,8 +215,12 @@ pub fn generate_wallet_test_data<
             .block_on(wallet_alice.output_manager_service.add_output(uo))
             .unwrap();
     }
-
-    let mut wallet_bob = create_wallet(generated_contacts[1].0.clone(), generated_contacts[1].1.clone());
+    let bob_temp_dir = TempDir::new(random_string(8).as_str()).unwrap();
+    let mut wallet_bob = create_wallet(
+        generated_contacts[1].0.clone(),
+        generated_contacts[1].1.clone(),
+        bob_temp_dir.path().to_str().unwrap().to_string(),
+    );
     for i in 0..20 {
         let (_ti, uo) = make_input(
             &mut rng.clone(),

@@ -145,7 +145,7 @@ impl BaseNodeBuilder {
     }
 
     /// Build the test base node and start its services.
-    pub fn start(self, runtime: &Runtime) -> NodeInterfaces {
+    pub fn start(self, runtime: &Runtime, data_path: &str) -> NodeInterfaces {
         let mct_config = self.mct_config.unwrap_or(MerkleChangeTrackerConfig {
             min_history_len: 10,
             max_history_len: 20,
@@ -173,6 +173,7 @@ impl BaseNodeBuilder {
                 self.base_node_service_config
                     .unwrap_or(BaseNodeServiceConfig::default()),
                 self.mempool_service_config.unwrap_or(MempoolServiceConfig::default()),
+                data_path,
             );
 
         NodeInterfaces {
@@ -189,18 +190,18 @@ impl BaseNodeBuilder {
 }
 
 // Creates a network with two Base Nodes where each node in the network knows the other nodes in the network.
-pub fn create_network_with_2_base_nodes(runtime: &Runtime) -> (NodeInterfaces, NodeInterfaces) {
+pub fn create_network_with_2_base_nodes(runtime: &Runtime, data_path: &str) -> (NodeInterfaces, NodeInterfaces) {
     let alice_node_identity = random_node_identity();
     let bob_node_identity = random_node_identity();
 
     let alice_node = BaseNodeBuilder::new()
         .with_node_identity(alice_node_identity.clone())
         .with_peers(vec![bob_node_identity.clone()])
-        .start(&runtime);
+        .start(&runtime, data_path);
     let bob_node = BaseNodeBuilder::new()
         .with_node_identity(bob_node_identity)
         .with_peers(vec![alice_node_identity])
-        .start(&runtime);
+        .start(&runtime, data_path);
 
     (alice_node, bob_node)
 }
@@ -211,6 +212,7 @@ pub fn create_network_with_2_base_nodes_with_config(
     base_node_service_config: BaseNodeServiceConfig,
     mct_config: MerkleChangeTrackerConfig,
     mempool_service_config: MempoolServiceConfig,
+    data_path: &str,
 ) -> (NodeInterfaces, NodeInterfaces)
 {
     let alice_node_identity = random_node_identity();
@@ -222,20 +224,24 @@ pub fn create_network_with_2_base_nodes_with_config(
         .with_base_node_service_config(base_node_service_config)
         .with_merkle_change_tracker_config(mct_config)
         .with_mempool_service_config(mempool_service_config)
-        .start(&runtime);
+        .start(&runtime, data_path);
     let bob_node = BaseNodeBuilder::new()
         .with_node_identity(bob_node_identity)
         .with_peers(vec![alice_node_identity])
         .with_base_node_service_config(base_node_service_config)
         .with_merkle_change_tracker_config(mct_config)
         .with_mempool_service_config(mempool_service_config)
-        .start(&runtime);
+        .start(&runtime, data_path);
 
     (alice_node, bob_node)
 }
 
 // Creates a network with three Base Nodes where each node in the network knows the other nodes in the network.
-pub fn create_network_with_3_base_nodes(runtime: &Runtime) -> (NodeInterfaces, NodeInterfaces, NodeInterfaces) {
+pub fn create_network_with_3_base_nodes(
+    runtime: &Runtime,
+    data_path: &str,
+) -> (NodeInterfaces, NodeInterfaces, NodeInterfaces)
+{
     let mct_config = MerkleChangeTrackerConfig {
         min_history_len: 10,
         max_history_len: 20,
@@ -245,6 +251,7 @@ pub fn create_network_with_3_base_nodes(runtime: &Runtime) -> (NodeInterfaces, N
         BaseNodeServiceConfig::default(),
         mct_config,
         MempoolServiceConfig::default(),
+        data_path,
     )
 }
 
@@ -254,6 +261,7 @@ pub fn create_network_with_3_base_nodes_with_config(
     base_node_service_config: BaseNodeServiceConfig,
     mct_config: MerkleChangeTrackerConfig,
     mempool_service_config: MempoolServiceConfig,
+    data_path: &str,
 ) -> (NodeInterfaces, NodeInterfaces, NodeInterfaces)
 {
     let alice_node_identity = random_node_identity();
@@ -266,21 +274,21 @@ pub fn create_network_with_3_base_nodes_with_config(
         .with_base_node_service_config(base_node_service_config)
         .with_merkle_change_tracker_config(mct_config)
         .with_mempool_service_config(mempool_service_config)
-        .start(&runtime);
+        .start(&runtime, data_path);
     let bob_node = BaseNodeBuilder::new()
         .with_node_identity(bob_node_identity.clone())
         .with_peers(vec![alice_node_identity.clone(), carol_node_identity.clone()])
         .with_base_node_service_config(base_node_service_config)
         .with_merkle_change_tracker_config(mct_config)
         .with_mempool_service_config(mempool_service_config)
-        .start(&runtime);
+        .start(&runtime, data_path);
     let carol_node = BaseNodeBuilder::new()
         .with_node_identity(carol_node_identity.clone())
         .with_peers(vec![alice_node_identity, bob_node_identity.clone()])
         .with_base_node_service_config(base_node_service_config)
         .with_merkle_change_tracker_config(mct_config)
         .with_mempool_service_config(mempool_service_config)
-        .start(&runtime);
+        .start(&runtime, data_path);
 
     (alice_node, bob_node, carol_node)
 }
@@ -309,6 +317,7 @@ fn setup_comms_services<TSink>(
     node_identity: Arc<NodeIdentity>,
     peers: Vec<Arc<NodeIdentity>>,
     publisher: InboundDomainConnector<TSink>,
+    data_path: &str,
 ) -> (CommsNode, Dht)
 where
     TSink: Sink<Arc<PeerMessage>> + Clone + Unpin + Send + Sync + 'static,
@@ -323,12 +332,7 @@ where
             socks_proxy_address: None,
             requested_connection_timeout: Duration::from_millis(2000),
         },
-        datastore_path: TempDir::new(random_string(8).as_str())
-            .unwrap()
-            .path()
-            .to_str()
-            .unwrap()
-            .to_string(),
+        datastore_path: data_path.to_string(),
         establish_connection_timeout: Duration::from_secs(5),
         peer_database_name: random_string(8),
         inbound_buffer_size: 100,
@@ -365,6 +369,7 @@ fn setup_base_node_services(
     diff_adj_manager: DiffAdjManager<MemoryDatabase<HashDigest>>,
     base_node_service_config: BaseNodeServiceConfig,
     mempool_service_config: MempoolServiceConfig,
+    data_path: &str,
 ) -> (
     OutboundNodeCommsInterface,
     LocalNodeCommsInterface,
@@ -375,7 +380,7 @@ fn setup_base_node_services(
 {
     let (publisher, subscription_factory) = pubsub_connector(runtime.executor(), 100);
     let subscription_factory = Arc::new(subscription_factory);
-    let (comms, dht) = setup_comms_services(runtime.executor(), node_identity, peers, publisher);
+    let (comms, dht) = setup_comms_services(runtime.executor(), node_identity, peers, publisher, data_path);
 
     let fut = StackBuilder::new(runtime.executor(), comms.shutdown_signal())
         .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))

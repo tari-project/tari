@@ -40,19 +40,22 @@ use std::{
 use tari_comms_dht::{domain_message::OutboundDomainMessage, outbound::OutboundEncryption};
 use tari_mmr::MerkleChangeTrackerConfig;
 use tari_p2p::tari_message::TariMessageType;
-use tari_test_utils::async_assert_eventually;
+use tari_test_utils::{async_assert_eventually, random::string};
 use tari_transactions::{
     proto::types as proto,
     tari_amount::{uT, T},
     types::CryptoFactories,
 };
+use tempdir::TempDir;
 use tokio::runtime::Runtime;
 
 #[test]
 fn request_response_get_stats() {
     let factories = CryptoFactories::default();
     let runtime = Runtime::new().unwrap();
-    let (mut alice_node, bob_node, carol_node) = create_network_with_3_base_nodes(&runtime);
+    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let (mut alice_node, bob_node, carol_node) =
+        create_network_with_3_base_nodes(&runtime, temp_dir.path().to_str().unwrap());
 
     let (block0, utxo) = create_genesis_block(&factories);
     add_block_and_update_header(&bob_node.blockchain_db, block0.clone());
@@ -89,7 +92,9 @@ fn request_response_get_stats() {
 fn request_response_get_tx_state_with_excess_sig() {
     let factories = CryptoFactories::default();
     let runtime = Runtime::new().unwrap();
-    let (mut alice_node, bob_node, carol_node) = create_network_with_3_base_nodes(&runtime);
+    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let (mut alice_node, bob_node, carol_node) =
+        create_network_with_3_base_nodes(&runtime, temp_dir.path().to_str().unwrap());
 
     let (block0, utxo) = create_genesis_block(&factories);
     add_block_and_update_header(&bob_node.blockchain_db, block0.clone());
@@ -143,7 +148,9 @@ fn request_response_get_tx_state_with_excess_sig() {
 fn receive_and_propagate_transaction() {
     let factories = CryptoFactories::default();
     let runtime = Runtime::new().unwrap();
-    let (mut alice_node, bob_node, carol_node) = create_network_with_3_base_nodes(&runtime);
+    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let (mut alice_node, bob_node, carol_node) =
+        create_network_with_3_base_nodes(&runtime, temp_dir.path().to_str().unwrap());
 
     let (block0, utxo) = create_genesis_block(&factories);
     add_block_and_update_header(&alice_node.blockchain_db, block0.clone());
@@ -218,11 +225,13 @@ fn service_request_timeout() {
         min_history_len: 10,
         max_history_len: 30,
     };
+    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
     let (mut alice_node, bob_node) = create_network_with_2_base_nodes_with_config(
         &runtime,
         BaseNodeServiceConfig::default(),
         mct_config,
         mempool_service_config,
+        temp_dir.path().to_str().unwrap(),
     );
 
     runtime.block_on(async {

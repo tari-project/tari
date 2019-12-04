@@ -85,7 +85,6 @@ where
     TSink: Sink<Arc<PeerMessage>> + Unpin + Clone + Send + Sync + 'static,
     TSink::Error: Error + Send + Sync,
 {
-    let _ = std::fs::create_dir(&config.datastore_path).unwrap_or_default();
     let datastore = LMDBBuilder::new()
         .set_path(&config.datastore_path)
         .set_environment_size(10)

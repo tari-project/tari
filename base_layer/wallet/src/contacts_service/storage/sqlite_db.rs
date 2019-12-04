@@ -213,69 +213,65 @@ mod test {
     use diesel::{r2d2::ConnectionManager, Connection, SqliteConnection};
     use std::convert::TryFrom;
     use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
-    use tari_test_utils::random::string;
+    use tari_test_utils::{paths::with_temp_dir, random::string};
     use tari_transactions::types::{PrivateKey, PublicKey};
     use tari_utilities::ByteArray;
-    use tempdir::TempDir;
 
     #[test]
     fn test_crud() {
-        let mut rng = rand::OsRng::new().unwrap();
+        with_temp_dir(|dir_path| {
+            let mut rng = rand::OsRng::new().unwrap();
 
-        let db_name = format!("{}.sqlite3", string(8).as_str());
-        let db_folder = TempDir::new(string(8).as_str())
-            .unwrap()
-            .path()
-            .to_str()
-            .unwrap()
-            .to_string();
-        let db_path = format!("{}{}", db_folder, db_name);
+            let db_name = format!("{}.sqlite3", string(8).as_str());
+            let db_path = format!("{}/{}", dir_path.to_str().unwrap(), db_name);
 
-        embed_migrations!("./migrations");
-        let conn = SqliteConnection::establish(&db_path).unwrap_or_else(|_| panic!("Error connecting to {}", db_path));
+            embed_migrations!("./migrations");
+            let conn =
+                SqliteConnection::establish(&db_path).unwrap_or_else(|_| panic!("Error connecting to {}", db_path));
 
-        embedded_migrations::run_with_output(&conn, &mut std::io::stdout()).expect("Migration failed");
+            embedded_migrations::run_with_output(&conn, &mut std::io::stdout()).expect("Migration failed");
 
-        let manager = ConnectionManager::<SqliteConnection>::new(db_path);
-        let pool = diesel::r2d2::Pool::builder().max_size(1).build(manager).unwrap();
+            let manager = ConnectionManager::<SqliteConnection>::new(db_path);
+            let pool = diesel::r2d2::Pool::builder().max_size(1).build(manager).unwrap();
 
-        let conn = pool.get().unwrap();
-        conn.execute("PRAGMA foreign_keys = ON").unwrap();
+            let conn = pool.get().unwrap();
+            conn.execute("PRAGMA foreign_keys = ON").unwrap();
 
-        let names = ["Alice".to_string(), "Bob".to_string(), "Carol".to_string()];
+            let names = ["Alice".to_string(), "Bob".to_string(), "Carol".to_string()];
 
-        let mut contacts = Vec::new();
-        for i in 0..names.len() {
-            let pub_key = PublicKey::from_secret_key(&PrivateKey::random(&mut rng));
-            contacts.push(Contact {
-                alias: names[i].clone(),
-                public_key: pub_key,
-            });
-            ContactSql::from(contacts[i].clone()).commit(&conn).unwrap();
-        }
+            let mut contacts = Vec::new();
+            for i in 0..names.len() {
+                let pub_key = PublicKey::from_secret_key(&PrivateKey::random(&mut rng));
+                contacts.push(Contact {
+                    alias: names[i].clone(),
+                    public_key: pub_key,
+                });
+                ContactSql::from(contacts[i].clone()).commit(&conn).unwrap();
+            }
 
-        let retrieved_contacts = ContactSql::index(&conn).unwrap();
+            let retrieved_contacts = ContactSql::index(&conn).unwrap();
 
-        for i in 0..contacts.len() {
+            for i in 0..contacts.len() {
+                assert!(retrieved_contacts
+                    .iter()
+                    .find(|v| v == &&ContactSql::from(contacts[i].clone()))
+                    .is_some());
+            }
+
+            assert_eq!(
+                contacts[1],
+                Contact::try_from(ContactSql::find(&contacts[1].public_key.to_vec(), &conn).unwrap()).unwrap()
+            );
+
+            ContactSql::from(contacts[0].clone()).delete(&conn).unwrap();
+
+            let retrieved_contacts = ContactSql::index(&conn).unwrap();
+            assert_eq!(retrieved_contacts.len(), 2);
+
             assert!(retrieved_contacts
                 .iter()
-                .find(|v| v == &&ContactSql::from(contacts[i].clone()))
-                .is_some());
-        }
-
-        assert_eq!(
-            contacts[1],
-            Contact::try_from(ContactSql::find(&contacts[1].public_key.to_vec(), &conn).unwrap()).unwrap()
-        );
-
-        ContactSql::from(contacts[0].clone()).delete(&conn).unwrap();
-
-        let retrieved_contacts = ContactSql::index(&conn).unwrap();
-        assert_eq!(retrieved_contacts.len(), 2);
-
-        assert!(retrieved_contacts
-            .iter()
-            .find(|v| v == &&ContactSql::from(contacts[0].clone()))
-            .is_none());
+                .find(|v| v == &&ContactSql::from(contacts[0].clone()))
+                .is_none());
+        });
     }
 }
