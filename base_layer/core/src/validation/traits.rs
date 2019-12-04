@@ -20,13 +20,23 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::validation::error::ValidationError;
-use std::sync::Arc;
+use crate::{
+    chain_storage::{BlockchainBackend, BlockchainDatabase},
+    validation::error::ValidationError,
+};
+
+pub type Validator<T, B> = Box<dyn Validation<T, B>>;
 
 /// The core validation trait. Multiple `Validation` implementors can be chained together in a [ValidatorPipeline] to
 /// provide consensus validation for blocks, transactions, or DAN instructions. Implementors only need to implement
 /// the methods that are relevant for the pipeline, since the default implementation always passes.
-pub trait Validation<T> {
+pub trait Validation<T, B>: Send + Sync
+where B: BlockchainBackend
+{
     /// General validation code that can run independent of external state
-    fn validate(&mut self, item: Arc<T>) -> Result<(), ValidationError>;
+    fn validate(&self, item: &T) -> Result<(), ValidationError>;
+    #[allow(unused_variables)]
+    fn set_db(&mut self, db: BlockchainDatabase<B>) {
+        // noop
+    }
 }

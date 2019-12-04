@@ -21,8 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::Validation;
-use crate::validation::{error::ValidationError, ValidationPipeline};
-use std::sync::Arc;
+use crate::{chain_storage::BlockchainBackend, validation::error::ValidationError};
 
 pub struct MockValidator {
     result: bool,
@@ -34,8 +33,8 @@ impl MockValidator {
     }
 }
 
-impl<T> Validation<T> for MockValidator {
-    fn validate(&mut self, _item: Arc<T>) -> Result<(), ValidationError> {
+impl<T, B: BlockchainBackend> Validation<T, B> for MockValidator {
+    fn validate(&self, _item: &T) -> Result<(), ValidationError> {
         match self.result {
             true => Ok(()),
             false => Err(ValidationError::CustomError(
@@ -45,47 +44,23 @@ impl<T> Validation<T> for MockValidator {
     }
 }
 
-/// Creates a [ValidationPipeline] that always validates
-pub fn new_valid_pipeline<T>() -> ValidationPipeline<T> {
-    ValidationPipeline::default()
-}
-
-/// Creates a [ValidationPipeline] that always returns an error
-pub fn new_invalid_pipeline<T>() -> ValidationPipeline<T> {
-    let mut pipeline = ValidationPipeline::default();
-    pipeline.push(MockValidator::new(false));
-    pipeline
-}
-
 #[cfg(test)]
 mod test {
-    use crate::validation::{
-        mocks::{new_invalid_pipeline, new_valid_pipeline, MockValidator},
-        Validation,
+    use crate::{
+        chain_storage::MemoryDatabase,
+        validation::{mocks::MockValidator, Validation},
     };
-    use std::sync::Arc;
+    use tari_transactions::types::HashDigest;
 
     #[test]
     fn mock_is_valid() {
-        let mut validator = MockValidator::new(true);
-        assert!(validator.validate(Arc::new(())).is_ok());
+        let validator = MockValidator::new(true);
+        assert!(<MockValidator as Validation<_, MemoryDatabase<HashDigest>>>::validate(&validator, &()).is_ok());
     }
 
     #[test]
     fn mock_is_invalid() {
-        let mut validator = MockValidator::new(false);
-        assert!(validator.validate(Arc::new(())).is_err());
-    }
-
-    #[test]
-    fn valid_pipeline() {
-        let mut pipeline = new_valid_pipeline();
-        assert!(pipeline.validate(Arc::new(())).is_ok());
-    }
-
-    #[test]
-    fn invalid_pipeline() {
-        let mut pipeline = new_invalid_pipeline();
-        assert!(pipeline.validate(Arc::new(())).is_err());
+        let validator = MockValidator::new(false);
+        assert!(<MockValidator as Validation<_, MemoryDatabase<HashDigest>>>::validate(&validator, &()).is_err());
     }
 }

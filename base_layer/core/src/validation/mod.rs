@@ -28,9 +28,9 @@
 //! without having to bring in all sorts of blockchain and communications paraphernalia.
 
 mod error;
-mod pipeline;
 mod traits;
 
+pub mod block_validators;
 pub mod mocks;
-pub use pipeline::ValidationPipeline;
-pub use traits::Validation;
+pub use error::ValidationError;
+pub use traits::{Validation, Validator};

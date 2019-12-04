@@ -73,7 +73,7 @@ pub mod test {
         blocks::genesis_block::get_genesis_block,
         chain_storage::{BlockchainDatabase, MemoryDatabase},
         proof_of_work::{DiffAdjManager, Difficulty, PowAlgorithm},
-        test_utils::builders::{add_block_and_update_header, chain_block},
+        test_utils::builders::{add_block_and_update_header, chain_block, create_default_db},
     };
     use tari_transactions::{consensus::TARGET_BLOCK_INTERVAL, types::HashDigest};
     use tari_utilities::epoch_time::EpochTime;
@@ -113,7 +113,7 @@ pub mod test {
 
     #[test]
     fn test_initial_sync() {
-        let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
+        let store = create_default_db();
         let diff_adj_manager = DiffAdjManager::new(store.clone()).unwrap();
         assert!(diff_adj_manager.get_target_difficulty(&PowAlgorithm::Monero).is_err());
         assert!(diff_adj_manager.get_target_difficulty(&PowAlgorithm::Blake).is_err());
@@ -141,7 +141,7 @@ pub mod test {
 
     #[test]
     fn test_sync_to_chain_tip() {
-        let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
+        let store = create_default_db();
         let diff_adj_manager = DiffAdjManager::new(store.clone()).unwrap();
 
         let pow_algos = vec![
@@ -184,7 +184,7 @@ pub mod test {
     #[test]
     #[ignore] // TODO Wait for reorg logic to be refactored
     fn test_full_sync_on_reorg() {
-        let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
+        let store = create_default_db();
         let diff_adj_manager = DiffAdjManager::new(store.clone()).unwrap();
 
         let pow_algos = vec![

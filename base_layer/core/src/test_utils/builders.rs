@@ -22,11 +22,12 @@
 
 use crate::{
     blocks::{blockheader::BlockHeader, Block, BlockBuilder},
-    chain_storage::{BlockAddResult, BlockchainDatabase, MemoryDatabase},
+    chain_storage::{BlockAddResult, BlockchainDatabase, MemoryDatabase, Validators},
     test_utils::{
         primitives::{create_random_signature, generate_keys},
         test_common::TestParams,
     },
+    validation::mocks::MockValidator,
 };
 use std::sync::Arc;
 use tari_crypto::{
@@ -343,4 +344,10 @@ pub fn schema_to_transaction(txns: &[TransactionSchema]) -> (Vec<Arc<Transaction
         utxos.append(&mut output);
     });
     (tx, utxos)
+}
+
+pub fn create_default_db() -> BlockchainDatabase<MemoryDatabase<HashDigest>> {
+    let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
+    let db = MemoryDatabase::<HashDigest>::default();
+    BlockchainDatabase::new(db, validators).unwrap()
 }

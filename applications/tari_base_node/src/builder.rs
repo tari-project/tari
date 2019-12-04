@@ -39,9 +39,17 @@ use tari_core::{
         BaseNodeStateMachine,
         OutboundNodeCommsInterface,
     },
-    chain_storage::{create_lmdb_database, BlockchainBackend, BlockchainDatabase, LMDBDatabase, MemoryDatabase},
+    chain_storage::{
+        create_lmdb_database,
+        BlockchainBackend,
+        BlockchainDatabase,
+        LMDBDatabase,
+        MemoryDatabase,
+        Validators,
+    },
     mempool::{Mempool, MempoolConfig},
     proof_of_work::DiffAdjManager,
+    validation::block_validators::{FullConsensusValidator, StatelessValidator},
 };
 use tari_mmr::MerkleChangeTrackerConfig;
 use tari_p2p::{
@@ -51,8 +59,9 @@ use tari_p2p::{
 };
 use tari_service_framework::{handles::ServiceHandles, StackBuilder};
 use tari_transactions::{
+    consensus::ConsensusRules,
     crypto::keys::SecretKey as SK,
-    types::{HashDigest, PrivateKey, PublicKey},
+    types::{CryptoFactories, HashDigest, PrivateKey, PublicKey},
 };
 use tari_utilities::{hex::Hex, message_format::MessageFormat};
 use tokio::runtime::Runtime;
@@ -155,11 +164,17 @@ pub fn configure_and_initialize_node(
 ) -> Result<(CommsNode, NodeType), String>
 {
     let id = Arc::new(id);
+    let rules = Arc::new(ConsensusRules::current());
+    let factories = Arc::new(CryptoFactories::default());
     let peers = assign_peers(&config.peer_seeds);
     let result = match &config.db_type {
         DatabaseType::Memory => {
             let backend = MemoryDatabase::<HashDigest>::default();
-            let db = BlockchainDatabase::new(backend).map_err(|e| e.to_string())?;
+            let validators = Validators::new(
+                FullConsensusValidator::new(rules.clone(), factories.clone()),
+                StatelessValidator::new(rules.clone(), factories.clone()),
+            );
+            let db = BlockchainDatabase::new(backend, validators).map_err(|e| e.to_string())?;
             let mempool = Mempool::new(db.clone(), MempoolConfig::default());
             let diff_adj_manager = DiffAdjManager::new(db.clone()).map_err(|e| e.to_string())?;
             let (comms, handles) = setup_comms_services(
@@ -183,7 +198,11 @@ pub fn configure_and_initialize_node(
                 max_history_len: 1000,
             };
             let backend = create_lmdb_database(&p, mct_config).map_err(|e| e.to_string())?;
-            let db = BlockchainDatabase::new(backend).map_err(|e| e.to_string())?;
+            let validators = Validators::new(
+                FullConsensusValidator::new(rules.clone(), factories.clone()),
+                StatelessValidator::new(rules.clone(), factories.clone()),
+            );
+            let db = BlockchainDatabase::new(backend, validators).map_err(|e| e.to_string())?;
             let mempool = Mempool::new(db.clone(), MempoolConfig::default());
             let diff_adj_manager = DiffAdjManager::new(db.clone()).map_err(|e| e.to_string())?;
             let (comms, handles) = setup_comms_services(

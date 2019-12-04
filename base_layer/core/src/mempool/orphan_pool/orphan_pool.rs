@@ -150,9 +150,8 @@ where T: BlockchainBackend
 mod test {
     use super::*;
     use crate::{
-        chain_storage::MemoryDatabase,
         test_utils::{
-            builders::schema_to_transaction,
+            builders::{create_default_db, schema_to_transaction},
             sample_blockchains::{create_new_blockchain, generate_new_block},
         },
         tx,
@@ -162,7 +161,6 @@ mod test {
     use tari_transactions::{
         tari_amount::{uT, MicroTari, T},
         transaction::OutputFeatures,
-        types::HashDigest,
     };
 
     #[test]
@@ -174,7 +172,7 @@ mod test {
         let tx5 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(500), lock: 2000, inputs: 2, outputs: 1).0);
         let tx6 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(600), lock: 5500, inputs: 2, outputs: 1).0);
 
-        let store = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
+        let store = create_default_db();
         let orphan_pool = OrphanPool::new(store, OrphanPoolConfig {
             storage_capacity: 3,
             tx_ttl: Duration::from_millis(50),
@@ -260,7 +258,7 @@ mod test {
     fn test_scan_for_and_remove_unorphaned() {
         let (store, mut blocks, mut outputs) = create_new_blockchain();
         // A parallel store that will "mine" the orphan chain
-        let mut miner = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::default()).unwrap();
+        let mut miner = create_default_db();
         miner.add_block(blocks[0].clone()).unwrap();
         let orphan_pool = OrphanPool::new(store.clone(), OrphanPoolConfig::default());
         let schemas = vec![txn_schema!(

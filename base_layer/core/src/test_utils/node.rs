@@ -26,7 +26,8 @@ use crate::{
         LocalNodeCommsInterface,
         OutboundNodeCommsInterface,
     },
-    chain_storage::{BlockchainDatabase, MemoryDatabase},
+    blocks::Block,
+    chain_storage::{BlockchainDatabase, MemoryDatabase, Validators},
     mempool::{
         Mempool,
         MempoolConfig,
@@ -35,6 +36,7 @@ use crate::{
         OutboundMempoolServiceInterface,
     },
     proof_of_work::DiffAdjManager,
+    validation::{mocks::MockValidator, Validation},
 };
 use futures::Sink;
 use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
@@ -78,6 +80,7 @@ pub struct BaseNodeBuilder {
     mct_config: Option<MerkleChangeTrackerConfig>,
     mempool_config: Option<MempoolConfig>,
     mempool_service_config: Option<MempoolServiceConfig>,
+    validators: Option<Validators<MemoryDatabase<HashDigest>>>,
 }
 
 impl BaseNodeBuilder {
@@ -90,6 +93,7 @@ impl BaseNodeBuilder {
             mct_config: None,
             mempool_config: None,
             mempool_service_config: None,
+            validators: None,
         }
     }
 
@@ -129,13 +133,28 @@ impl BaseNodeBuilder {
         self
     }
 
+    pub fn with_validators(
+        mut self,
+        block: impl Validation<Block, MemoryDatabase<HashDigest>> + 'static,
+        orphan: impl Validation<Block, MemoryDatabase<HashDigest>> + 'static,
+    ) -> Self
+    {
+        let validators = Validators::new(block, orphan);
+        self.validators = Some(validators);
+        self
+    }
+
     /// Build the test base node and start its services.
     pub fn start(self, runtime: &Runtime) -> NodeInterfaces {
         let mct_config = self.mct_config.unwrap_or(MerkleChangeTrackerConfig {
             min_history_len: 10,
             max_history_len: 20,
         });
-        let blockchain_db = BlockchainDatabase::new(MemoryDatabase::<HashDigest>::new(mct_config)).unwrap();
+        let validators = self
+            .validators
+            .unwrap_or(Validators::new(MockValidator::new(true), MockValidator::new(true)));
+        let db = MemoryDatabase::<HashDigest>::new(mct_config);
+        let blockchain_db = BlockchainDatabase::new(db, validators).unwrap();
         let mempool = Mempool::new(
             blockchain_db.clone(),
             self.mempool_config.unwrap_or(MempoolConfig::default()),
