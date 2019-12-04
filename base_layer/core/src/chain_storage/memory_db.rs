@@ -45,7 +45,7 @@ use std::{
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 use tari_mmr::{
-    pruned_mmr::prune_mutable_mmr,
+    functions::prune_mutable_mmr,
     Hash as MmrHash,
     MerkleChangeTracker,
     MerkleChangeTrackerConfig,

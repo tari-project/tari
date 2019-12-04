@@ -65,3 +65,50 @@ where
         size: mmr.size,
     })
 }
+
+/// `calculate_mmr_root`` takes an MMR instance and efficiently calculates the new MMR root by applying the given
+/// additions to calculate a new MMR root without changing the original MMR.
+///
+/// This is done by creating a memory-backed sparse (pruned) copy of the original MMR, applying the changes and then
+/// calculating a new root.
+///
+/// # Parameters
+/// * `src`: A reference to the original MMR
+/// * `additions`: A vector of leaf node hashes to append to the MMR
+/// * `deletions`: A vector of leaf node _indices_ that will be marked as deleted.
+///
+/// # Returns
+/// The new MMR root as a result of applying the given changes
+pub fn calculate_pruned_mmr_root<D, B>(
+    src: &MutableMmr<D, B>,
+    additions: Vec<Hash>,
+    deletions: Vec<u32>,
+) -> Result<Hash, MerkleMountainRangeError>
+where
+    D: Digest,
+    B: ArrayLike<Value = Hash>,
+{
+    let mut pruned_mmr = prune_mutable_mmr(src)?;
+    for hash in additions {
+        pruned_mmr.push(&hash)?;
+    }
+    for index in deletions {
+        pruned_mmr.delete(index);
+    }
+    Ok(pruned_mmr.get_merkle_root()?)
+}
+
+pub fn calculate_mmr_root<D, B>(
+    src: &MerkleMountainRange<D, B>,
+    additions: Vec<Hash>,
+) -> Result<Hash, MerkleMountainRangeError>
+where
+    D: Digest,
+    B: ArrayLike<Value = Hash>,
+{
+    let mut mmr = prune_mmr(src)?;
+    for hash in additions {
+        mmr.push(&hash)?;
+    }
+    Ok(mmr.get_merkle_root()?)
+}
