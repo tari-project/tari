@@ -23,8 +23,8 @@
 use crate::{
     backend::{ArrayLike, ArrayLikeExt},
     error::MerkleMountainRangeError,
+    functions::{prune_mutable_mmr, PrunedMutableMmr},
     mutable_mmr_leaf_nodes::MutableMmrLeafNodes,
-    pruned_mmr::{prune_mutable_mmr, PrunedMutableMmr},
     Hash,
     MutableMmr,
 };

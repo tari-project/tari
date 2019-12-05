@@ -146,9 +146,9 @@ mod serde_support;
 // Less commonly used exports
 pub mod common;
 pub mod error;
+pub mod functions;
 /// A function for snapshotting and pruning a Merkle Mountain Range
 pub mod pruned_hashset;
-pub mod pruned_mmr;
 
 // Commonly used exports
 /// A vector-based backend for [MerkleMountainRange]
