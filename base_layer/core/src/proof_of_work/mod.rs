@@ -24,7 +24,7 @@ mod blake_pow;
 mod diff_adj_manager;
 mod difficulty;
 mod error;
-mod monero;
+mod monero_rx;
 mod proof_of_work;
 
 #[cfg(test)]
@@ -36,5 +36,5 @@ pub use blake_pow::{blake_difficulty, blake_difficulty_with_hash};
 pub use diff_adj_manager::{DiffAdjManager, DiffAdjManagerError};
 pub use difficulty::Difficulty;
 pub use error::PowError;
-pub use monero::monero_difficulty;
+pub use monero_rx::monero_difficulty;
 pub use proof_of_work::{PowAlgorithm, ProofOfWork};
