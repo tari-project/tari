@@ -40,7 +40,7 @@ use tari_utilities::{thread_join::ThreadJoinWithTimeout, ByteArray};
 const LOG_TARGET: &str = "comms::connection_manager::connections";
 
 /// Set the maximum waiting time for LivePeerConnections threads to join
-const THREAD_JOIN_TIMEOUT_IN_MS: Duration = Duration::from_millis(3000);
+const THREAD_JOIN_TIMEOUT: Duration = Duration::from_millis(10000);
 
 /// Stores, and establishes the live peer connections
 pub(super) struct LivePeerConnections {
@@ -109,6 +109,10 @@ impl LivePeerConnections {
                          ConnectionRepository::sorted_recent_activity",
                     );
 
+                    debug!(
+                        target: LOG_TARGET,
+                        "Shutting down connection because maximum number of connections was reached"
+                    );
                     conn.shutdown()
                         .map_err(ConnectionManagerError::ConnectionShutdownFailed)?;
                 }
@@ -190,7 +194,7 @@ impl LivePeerConnections {
         for (_, handle) in handles.drain() {
             results.push(
                 handle
-                    .timeout_join(THREAD_JOIN_TIMEOUT_IN_MS)
+                    .timeout_join(THREAD_JOIN_TIMEOUT)
                     .map_err(PeerConnectionError::ThreadJoinError)
                     .or_else(|err| {
                         error!(target: LOG_TARGET, "Failed join on peer connection thread: {:?}", err);

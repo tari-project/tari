@@ -424,12 +424,17 @@ impl ControlServiceWorker {
     ) -> Result<()>
     {
         let conn_manager = &self.connection_manager;
-        if conn_manager.get_connection(peer).is_some() {
-            log_if_error!(
-                target: LOG_TARGET,
-                "Failed to disconnect stale connection because '{}'",
-                conn_manager.disconnect_peer(&peer.node_id)
-            );
+        if let Some(conn) = conn_manager.get_connection(peer) {
+            if conn.is_active() && conn.test_connection(peer.node_id.to_vec()).is_ok() {
+                self.reject_connection(envelope_header, identity_frame, RejectReason::ExistingConnection)?;
+                return Ok(());
+            } else {
+                log_if_error!(
+                    target: LOG_TARGET,
+                    "Failed to disconnect stale connection because '{}'",
+                    conn_manager.disconnect_peer(&peer.node_id)
+                );
+            }
         }
 
         conn_manager

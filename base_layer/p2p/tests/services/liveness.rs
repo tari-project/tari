@@ -97,14 +97,14 @@ fn end_to_end() {
     .unwrap();
 
     let alice_temp_dir = TempDir::new(string(8).as_str()).unwrap();
-    let (mut liveness1, comms_1, dht_1) = setup_liveness_service(
+    let (mut liveness1, comms_1, _dht_1) = setup_liveness_service(
         &runtime,
         node_1_identity.clone(),
         vec![node_2_identity.clone()],
         alice_temp_dir.path().to_str().unwrap(),
     );
     let bob_temp_dir = TempDir::new(string(8).as_str()).unwrap();
-    let (mut liveness2, comms_2, dht_2) = setup_liveness_service(
+    let (mut liveness2, comms_2, _dht_2) = setup_liveness_service(
         &runtime,
         node_2_identity.clone(),
         vec![node_1_identity.clone()],
@@ -199,8 +199,6 @@ fn end_to_end() {
     assert_eq!(pingcount2, 8);
     assert_eq!(pongcount2, 10);
 
-    drop(dht_1);
-    drop(dht_2);
     comms_1.shutdown().unwrap();
     comms_2.shutdown().unwrap();
 

@@ -20,16 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::transports::Transport;
+use crate::transports::{utils, Transport};
 use futures::{io::Error, ready, stream::BoxStream, AsyncRead, AsyncWrite, Future, Poll, Stream, StreamExt};
-use multiaddr::{AddrComponent, Multiaddr};
-use std::{
-    io,
-    net::{IpAddr, SocketAddr},
-    pin::Pin,
-    task::Context,
-    time::Duration,
-};
+use multiaddr::Multiaddr;
+use std::{io, pin::Pin, task::Context, time::Duration};
 use tokio::{
     io::{AsyncRead as TokioAsyncRead, AsyncWrite as TokioAsyncWrite},
     net::{TcpListener, TcpStream},
@@ -103,9 +97,9 @@ impl Transport for TcpTransport {
     fn listen(&self, addr: Multiaddr) -> Self::ListenFuture {
         let config = self.clone();
         Box::pin(async move {
-            let socket_addr = multiaddr_to_socketaddr(addr)?;
+            let socket_addr = utils::multiaddr_to_socketaddr(addr)?;
             let listener = TcpListener::bind(&socket_addr).await?;
-            let local_addr = socketaddr_to_multiaddr(listener.local_addr()?);
+            let local_addr = utils::socketaddr_to_multiaddr(listener.local_addr()?);
             Ok((
                 TcpInbound {
                     incoming: listener.incoming().boxed(),
@@ -119,10 +113,10 @@ impl Transport for TcpTransport {
     fn dial(&self, addr: Multiaddr) -> Self::DialFuture {
         let config = self.clone();
         Box::pin(async move {
-            let socket_addr = multiaddr_to_socketaddr(addr)?;
+            let socket_addr = utils::multiaddr_to_socketaddr(addr)?;
             let stream = TcpStream::connect(&socket_addr).await?;
             config.configure(&stream)?;
-            let peer_addr = socketaddr_to_multiaddr(stream.peer_addr()?);
+            let peer_addr = utils::socketaddr_to_multiaddr(stream.peer_addr()?);
             Ok((TcpSocket::new(stream), peer_addr))
         })
     }
@@ -143,7 +137,7 @@ impl Stream for TcpInbound<'_> {
             Some(Ok(stream)) => {
                 // Configure each socket
                 self.config.configure(&stream)?;
-                let peer_addr = socketaddr_to_multiaddr(stream.peer_addr()?);
+                let peer_addr = utils::socketaddr_to_multiaddr(stream.peer_addr()?);
                 Poll::Ready(Some(Ok((TcpSocket::new(stream), peer_addr))))
             },
             Some(Err(err)) => Poll::Ready(Some(Err(err))),
@@ -190,49 +184,9 @@ impl From<TcpStream> for TcpSocket {
     }
 }
 
-/// Convert a socket address to a multiaddress
-fn socketaddr_to_multiaddr(socket_addr: SocketAddr) -> Multiaddr {
-    let mut addr: Multiaddr = match socket_addr.ip() {
-        IpAddr::V4(addr) => AddrComponent::IP4(addr).into(),
-        IpAddr::V6(addr) => AddrComponent::IP6(addr).into(),
-    };
-    addr.append(AddrComponent::TCP(socket_addr.port()));
-    addr
-}
-
-/// Convert a multiaddr to a socket address required for `TcpStream`
-fn multiaddr_to_socketaddr(addr: Multiaddr) -> io::Result<SocketAddr> {
-    let mut addr_iter = addr.iter();
-    let network_proto = addr_iter.next().ok_or(io::Error::new(
-        io::ErrorKind::InvalidInput,
-        format!("Invalid address '{}'", addr),
-    ))?;
-    let transport_proto = addr_iter.next().ok_or(io::Error::new(
-        io::ErrorKind::InvalidInput,
-        format!("Invalid address '{}'", addr),
-    ))?;
-
-    if addr_iter.next().is_some() {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            format!("Invalid address '{}'", addr),
-        ));
-    }
-
-    match (network_proto, transport_proto) {
-        (AddrComponent::IP4(host), AddrComponent::TCP(port)) => Ok((host, port).into()),
-        (AddrComponent::IP6(host), AddrComponent::TCP(port)) => Ok((host, port).into()),
-        _ => Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            format!("Invalid address '{}'", addr),
-        )),
-    }
-}
-
 #[cfg(test)]
 mod test {
     use super::*;
-    use std::str::FromStr;
 
     #[test]
     fn configure() {
@@ -248,30 +202,5 @@ mod test {
         assert_eq!(tcp.nodelay, Some(true));
         assert_eq!(tcp.ttl, Some(789));
         assert_eq!(tcp.keepalive, Some(Some(Duration::from_millis(100))));
-    }
-
-    #[test]
-    fn multiaddr_to_socketaddr_ok() {
-        fn expect_success(addr: &str, expected_ip: &str) {
-            let addr = Multiaddr::from_str(addr).unwrap();
-            let sock_addr = super::multiaddr_to_socketaddr(addr).unwrap();
-            assert_eq!(sock_addr.ip().to_string(), expected_ip);
-        }
-
-        expect_success("/ip4/254.0.1.2/tcp/1234", "254.0.1.2");
-        expect_success("/ip6/::1/tcp/1234", "::1");
-    }
-
-    #[test]
-    fn multiaddr_to_socketaddr_err() {
-        fn expect_fail(addr: &str) {
-            let addr = Multiaddr::from_str(addr).unwrap();
-            let err = super::multiaddr_to_socketaddr(addr).unwrap_err();
-            assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
-        }
-
-        expect_fail("/ip4/254.0.1.2/tcp/1234/quic");
-        expect_fail("/ip4/254.0.1.2");
-        expect_fail("/p2p/QmcgpsyWgH8Y8ajJz1Cu72KnS5uo2Aa2LpzU7kinSupNKC");
     }
 }
