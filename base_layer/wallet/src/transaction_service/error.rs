@@ -35,7 +35,7 @@ pub enum TransactionServiceError {
     InvalidStateError,
     /// Transaction Protocol Error
     TransactionProtocolError(TransactionProtocolError),
-    /// The message being process is not recognized by the Transaction Manager
+    /// The message being processed is not recognized by the Transaction Manager
     InvalidMessageTypeError,
     /// A message for a specific tx_id has been repeated
     RepeatedMessageError,

@@ -101,6 +101,8 @@
 
 extern crate libc;
 extern crate tari_wallet;
+mod error;
+use error::LibWalletError;
 
 use libc::{c_char, c_int, c_longlong, c_uchar, c_uint, c_ulonglong};
 use std::{
@@ -114,6 +116,7 @@ use tari_transactions::tari_amount::MicroTari;
 use tari_utilities::ByteArray;
 use tari_wallet::wallet::WalletConfig;
 
+use crate::error::InterfaceError;
 use core::ptr;
 use std::{sync::Arc, time::Duration};
 use tari_comms::{connection::NetAddress, control_service::ControlServiceConfig, peer_manager::PeerFeatures};
@@ -123,8 +126,9 @@ use tari_transactions::types::CryptoFactories;
 use tari_utilities::hex::Hex;
 use tari_wallet::{
     contacts_service::storage::{database::Contact, sqlite_db::ContactsServiceSqliteDatabase},
+    error::WalletError,
     output_manager_service::storage::sqlite_db::OutputManagerSqliteDatabase,
-    storage::{memory_db::WalletMemoryDatabase, sqlite_db::WalletSqliteDatabase},
+    storage::sqlite_db::WalletSqliteDatabase,
     testnet_utils::{
         broadcast_transaction,
         complete_sent_transaction,
@@ -180,20 +184,33 @@ pub unsafe extern "C" fn string_destroy(ptr: *mut c_char) {
 /// ## Arguments
 /// `byte_array` - The pointer to the byte array
 /// `element_count` - The number of elements in byte_array
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `*mut ByteVector` - Pointer to the created ByteVector. Note that it will be ptr::null_mut()
 /// if the byte_array pointer was null or if the elements in the byte_vector don't match
 /// element_count when it is created
 #[no_mangle]
-pub unsafe extern "C" fn byte_vector_create(byte_array: *const c_uchar, element_count: c_uint) -> *mut ByteVector {
+pub unsafe extern "C" fn byte_vector_create(
+    byte_array: *const c_uchar,
+    element_count: c_uint,
+    error_out: *mut c_int,
+) -> *mut ByteVector
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     let mut bytes = ByteVector(Vec::new());
     if byte_array.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("byte_array".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     } else {
         let array: &[c_uchar] = slice::from_raw_parts(byte_array, element_count as usize);
         bytes.0 = array.to_vec();
         if bytes.0.len() != element_count as usize {
+            error = LibWalletError::from(InterfaceError::AllocationError).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
             return ptr::null_mut();
         }
     }
@@ -209,7 +226,7 @@ pub unsafe extern "C" fn byte_vector_create(byte_array: *const c_uchar, element_
 /// `()` - Does not return a value, equivalent to void in C
 #[no_mangle]
 pub unsafe extern "C" fn byte_vector_destroy(bytes: *mut ByteVector) {
-    if bytes.is_null() {
+    if !bytes.is_null() {
         Box::from_raw(bytes);
     }
 }
@@ -219,20 +236,25 @@ pub unsafe extern "C" fn byte_vector_destroy(bytes: *mut ByteVector) {
 /// ## Arguments
 /// `ptr` - The pointer to a ByteVector
 /// `position` - The integer position
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `c_uchar` - Returns a character. Note that the character will be a null terminator (0) if ptr
 /// is null or if the position is invalid
 #[no_mangle]
-pub unsafe extern "C" fn byte_vector_get_at(ptr: *mut ByteVector, position: c_uint) -> c_uchar {
+pub unsafe extern "C" fn byte_vector_get_at(ptr: *mut ByteVector, position: c_uint, error_out: *mut c_int) -> c_uchar {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     if ptr.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("ptr".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return 0 as c_uchar;
     }
-    let len = byte_vector_get_length(ptr) as c_int - 1; // clamp to length
-    if len < 0 {
-        return 0 as c_uchar;
-    }
-    if position > len as c_uint {
+    let len = byte_vector_get_length(ptr, error_out) as c_int - 1; // clamp to length
+    if len < 0 || position > len as c_uint {
+        error = LibWalletError::from(InterfaceError::PositionInvalidError).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return 0 as c_uchar;
     }
     (*ptr).0[position as usize].clone()
@@ -242,13 +264,19 @@ pub unsafe extern "C" fn byte_vector_get_at(ptr: *mut ByteVector, position: c_ui
 ///
 /// ## Arguments
 /// `ptr` - The pointer to a ByteVector
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `c_uint` - Returns the integer number of elements in the ByteVector. Note that it will be zero
 /// if ptr is null
 #[no_mangle]
-pub unsafe extern "C" fn byte_vector_get_length(vec: *const ByteVector) -> c_uint {
+pub unsafe extern "C" fn byte_vector_get_length(vec: *const ByteVector, error_out: *mut c_int) -> c_uint {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     if vec.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("vec".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return 0;
     }
     (&*vec).0.len() as c_uint
@@ -262,22 +290,32 @@ pub unsafe extern "C" fn byte_vector_get_length(vec: *const ByteVector) -> c_uin
 ///
 /// ## Arguments
 /// `bytes` - The pointer to a ByteVector
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `TariPublicKey` - Returns a public key. Note that it will be ptr::null_mut() if bytes is null or
 /// if there was an error with the contents of bytes
 #[no_mangle]
-pub unsafe extern "C" fn public_key_create(bytes: *mut ByteVector) -> *mut TariPublicKey {
+pub unsafe extern "C" fn public_key_create(bytes: *mut ByteVector, error_out: *mut c_int) -> *mut TariPublicKey {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     let v;
-    if !bytes.is_null() {
-        v = (*bytes).0.clone();
-    } else {
+    if bytes.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("bytes".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
+    } else {
+        v = (*bytes).0.clone();
     }
     let pk = TariPublicKey::from_bytes(&v);
     match pk {
         Ok(pk) => Box::into_raw(Box::new(pk)),
-        Err(_) => ptr::null_mut(),
+        Err(e) => {
+            error = LibWalletError::from(e).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            ptr::null_mut()
+        },
     }
 }
 
@@ -299,16 +337,22 @@ pub unsafe extern "C" fn public_key_destroy(pk: *mut TariPublicKey) {
 ///
 /// ## Arguments
 /// `pk` - The pointer to a TariPublicKey
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `*mut ByteVector` - Returns a pointer to a ByteVector. Note that it returns ptr::null_mut() if pk is null
 #[no_mangle]
-pub unsafe extern "C" fn public_key_get_bytes(pk: *mut TariPublicKey) -> *mut ByteVector {
+pub unsafe extern "C" fn public_key_get_bytes(pk: *mut TariPublicKey, error_out: *mut c_int) -> *mut ByteVector {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     let mut bytes = ByteVector(Vec::new());
-    if !pk.is_null() {
-        bytes.0 = (*pk).to_vec();
-    } else {
+    if pk.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("pk".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
+    } else {
+        bytes.0 = (*pk).to_vec();
     }
     Box::into_raw(Box::new(bytes))
 }
@@ -317,12 +361,22 @@ pub unsafe extern "C" fn public_key_get_bytes(pk: *mut TariPublicKey) -> *mut By
 ///
 /// ## Arguments
 /// `secret_key` - The pointer to a TariPrivateKey
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `*mut TariPublicKey` - Returns a pointer to a TariPublicKey
 #[no_mangle]
-pub unsafe extern "C" fn public_key_from_private_key(secret_key: *mut TariPrivateKey) -> *mut TariPublicKey {
+pub unsafe extern "C" fn public_key_from_private_key(
+    secret_key: *mut TariPrivateKey,
+    error_out: *mut c_int,
+) -> *mut TariPublicKey
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     if secret_key.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("secret_key".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     }
     let m = TariPublicKey::from_secret_key(&(*secret_key));
@@ -333,23 +387,33 @@ pub unsafe extern "C" fn public_key_from_private_key(secret_key: *mut TariPrivat
 ///
 /// ## Arguments
 /// `key` - The pointer to a char array which is hex encoded
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `*mut TariPublicKey` - Returns a pointer to a TariPublicKey. Note that it returns ptr::null_mut()
 /// if key is null or if there was an error creating the TariPublicKey from key
 #[no_mangle]
-pub unsafe extern "C" fn public_key_from_hex(key: *const c_char) -> *mut TariPublicKey {
+pub unsafe extern "C" fn public_key_from_hex(key: *const c_char, error_out: *mut c_int) -> *mut TariPublicKey {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     let key_str;
-    if !key.is_null() {
-        key_str = CStr::from_ptr(key).to_str().unwrap().to_owned();
-    } else {
+    if key.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("key".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
+    } else {
+        key_str = CStr::from_ptr(key).to_str().unwrap().to_owned();
     }
 
     let public_key = TariPublicKey::from_hex(key_str.as_str());
     match public_key {
         Ok(public_key) => Box::into_raw(Box::new(public_key)),
-        Err(_) => ptr::null_mut(),
+        Err(e) => {
+            error = LibWalletError::from(e).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            ptr::null_mut()
+        },
     }
 }
 /// -------------------------------------------------------------------------------------------- ///
@@ -360,22 +424,32 @@ pub unsafe extern "C" fn public_key_from_hex(key: *const c_char) -> *mut TariPub
 ///
 /// ## Arguments
 /// `bytes` - The pointer to a ByteVector
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `*mut TariPrivateKey` - Returns a pointer to a TariPublicKey. Note that it returns ptr::null_mut()
 /// if bytes is null or if there was an error creating the TariPrivateKey from bytes
 #[no_mangle]
-pub unsafe extern "C" fn private_key_create(bytes: *mut ByteVector) -> *mut TariPrivateKey {
+pub unsafe extern "C" fn private_key_create(bytes: *mut ByteVector, error_out: *mut c_int) -> *mut TariPrivateKey {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     let v;
-    if !bytes.is_null() {
-        v = (*bytes).0.clone();
-    } else {
+    if bytes.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("bytes".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
+    } else {
+        v = (*bytes).0.clone();
     }
     let pk = TariPrivateKey::from_bytes(&v);
     match pk {
         Ok(pk) => Box::into_raw(Box::new(pk)),
-        Err(_) => ptr::null_mut(),
+        Err(e) => {
+            error = LibWalletError::from(e).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            ptr::null_mut()
+        },
     }
 }
 
@@ -397,17 +471,23 @@ pub unsafe extern "C" fn private_key_destroy(pk: *mut TariPrivateKey) {
 ///
 /// ## Arguments
 /// `pk` - The pointer to a TariPrivateKey
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `*mut ByteVectror` - Returns a pointer to a ByteVector. Note that it returns ptr::null_mut()
 /// if pk is null
 #[no_mangle]
-pub unsafe extern "C" fn private_key_get_bytes(pk: *mut TariPrivateKey) -> *mut ByteVector {
+pub unsafe extern "C" fn private_key_get_bytes(pk: *mut TariPrivateKey, error_out: *mut c_int) -> *mut ByteVector {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     let mut bytes = ByteVector(Vec::new());
-    if !pk.is_null() {
-        bytes.0 = (*pk).to_vec();
-    } else {
+    if pk.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("pk".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
+    } else {
+        bytes.0 = (*pk).to_vec();
     }
     Box::into_raw(Box::new(bytes))
 }
@@ -430,24 +510,34 @@ pub unsafe extern "C" fn private_key_generate() -> *mut TariPrivateKey {
 ///
 /// ## Arguments
 /// `key` - The pointer to a char array which is hex encoded
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `*mut TariPrivateKey` - Returns a pointer to a TariPublicKey. Note that it returns ptr::null_mut()
 /// if key is null or if there was an error creating the TariPrivateKey from key
 #[no_mangle]
-pub unsafe extern "C" fn private_key_from_hex(key: *const c_char) -> *mut TariPrivateKey {
+pub unsafe extern "C" fn private_key_from_hex(key: *const c_char, error_out: *mut c_int) -> *mut TariPrivateKey {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     let key_str;
-    if !key.is_null() {
-        key_str = CStr::from_ptr(key).to_str().unwrap().to_owned();
-    } else {
+    if key.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("key".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
+    } else {
+        key_str = CStr::from_ptr(key).to_str().unwrap().to_owned();
     }
 
     let secret_key = TariPrivateKey::from_hex(key_str.as_str());
 
     match secret_key {
         Ok(secret_key) => Box::into_raw(Box::new(secret_key)),
-        Err(_) => ptr::null_mut(),
+        Err(e) => {
+            error = LibWalletError::from(e).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            ptr::null_mut()
+        },
     }
 }
 
@@ -460,20 +550,33 @@ pub unsafe extern "C" fn private_key_from_hex(key: *const c_char) -> *mut TariPr
 /// ## Arguments
 /// `alias` - The pointer to a char array
 /// `public_key` - The pointer to a TariPublicKey
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `*mut TariContact` - Returns a pointer to a TariContact. Note that it returns ptr::null_mut()
 /// if alias is null or if pk is null
 #[no_mangle]
-pub unsafe extern "C" fn contact_create(alias: *const c_char, public_key: *mut TariPublicKey) -> *mut TariContact {
+pub unsafe extern "C" fn contact_create(
+    alias: *const c_char,
+    public_key: *mut TariPublicKey,
+    error_out: *mut c_int,
+) -> *mut TariContact
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     let alias_string;
-    if !alias.is_null() {
-        alias_string = CStr::from_ptr(alias).to_str().unwrap().to_owned();
-    } else {
+    if alias.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("alias".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
+    } else {
+        alias_string = CStr::from_ptr(alias).to_str().unwrap().to_owned();
     }
 
     if public_key.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("public_key".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     }
 
@@ -488,14 +591,21 @@ pub unsafe extern "C" fn contact_create(alias: *const c_char, public_key: *mut T
 ///
 /// ## Arguments
 /// `contact` - The pointer to a TariContact
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `*mut c_char` - Returns a pointer to a char array. Note that it returns an empty char array if
 /// contact is null
 #[no_mangle]
-pub unsafe extern "C" fn contact_get_alias(contact: *mut TariContact) -> *mut c_char {
+pub unsafe extern "C" fn contact_get_alias(contact: *mut TariContact, error_out: *mut c_int) -> *mut c_char {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     let mut a = CString::new("").unwrap();
-    if !contact.is_null() {
+    if contact.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("contact".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    } else {
         a = CString::new((*contact).alias.clone()).unwrap();
     }
     CString::into_raw(a)
@@ -505,13 +615,23 @@ pub unsafe extern "C" fn contact_get_alias(contact: *mut TariContact) -> *mut c_
 ///
 /// ## Arguments
 /// `contact` - The pointer to a TariContact
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `*mut TariPublicKey` - Returns a pointer to a TariPublicKey. Note that it returns
 /// ptr::null_mut() if contact is null
 #[no_mangle]
-pub unsafe extern "C" fn contact_get_public_key(contact: *mut TariContact) -> *mut TariPublicKey {
+pub unsafe extern "C" fn contact_get_public_key(
+    contact: *mut TariContact,
+    error_out: *mut c_int,
+) -> *mut TariPublicKey
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     if contact.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("contact".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     }
     Box::into_raw(Box::new((*contact).public_key.clone()))
@@ -537,13 +657,20 @@ pub unsafe extern "C" fn contact_destroy(contact: *mut TariContact) {
 ///
 /// ## Arguments
 /// `contacts` - The pointer to a TariContacts
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `c_uint` - Returns number of elements in , zero if contacts is null
 #[no_mangle]
-pub unsafe extern "C" fn contacts_get_length(contacts: *mut TariContacts) -> c_uint {
+pub unsafe extern "C" fn contacts_get_length(contacts: *mut TariContacts, error_out: *mut c_int) -> c_uint {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     let mut len = 0;
-    if !contacts.is_null() {
+    if contacts.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("contacts".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    } else {
         len = (*contacts).0.len();
     }
     len as c_uint
@@ -554,20 +681,30 @@ pub unsafe extern "C" fn contacts_get_length(contacts: *mut TariContacts) -> c_u
 /// ## Arguments
 /// `contacts` - The pointer to a TariContacts
 /// `position` - The integer position
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `*mut TariContact` - Returns a TariContact, note that it returns ptr::null_mut() if contacts is
 /// null or position is invalid
 #[no_mangle]
-pub unsafe extern "C" fn contacts_get_at(contacts: *mut TariContacts, position: c_uint) -> *mut TariContact {
+pub unsafe extern "C" fn contacts_get_at(
+    contacts: *mut TariContacts,
+    position: c_uint,
+    error_out: *mut c_int,
+) -> *mut TariContact
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     if contacts.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("contacts".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     }
-    let len = contacts_get_length(contacts) as c_int - 1;
-    if len < 0 {
-        return ptr::null_mut();
-    }
-    if position > len as c_uint {
+    let len = contacts_get_length(contacts, error_out) as c_int - 1;
+    if len < 0 || position > len as c_uint {
+        error = LibWalletError::from(InterfaceError::PositionInvalidError).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     }
     Box::into_raw(Box::new((*contacts).0[position as usize].clone()))
@@ -595,14 +732,25 @@ pub unsafe extern "C" fn contacts_destroy(contacts: *mut TariContacts) {
 ///
 /// ## Arguments
 /// `transactions` - The pointer to a TariCompletedTransactions
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `c_uint` - Returns the number of elements in a TariCompletedTransactions, note that it will be
 /// zero if transactions is null
 #[no_mangle]
-pub unsafe extern "C" fn completed_transactions_get_length(transactions: *mut TariCompletedTransactions) -> c_uint {
+pub unsafe extern "C" fn completed_transactions_get_length(
+    transactions: *mut TariCompletedTransactions,
+    error_out: *mut c_int,
+) -> c_uint
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     let mut len = 0;
-    if !transactions.is_null() {
+    if transactions.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    } else {
         len = (*transactions).0.len();
     }
     len as c_uint
@@ -613,6 +761,8 @@ pub unsafe extern "C" fn completed_transactions_get_length(transactions: *mut Ta
 /// ## Arguments
 /// `transactions` - The pointer to a TariCompletedTransactions
 /// `position` - The integer position
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `*mut TariCompletedTransaction` - Returns a pointer to a TariCompletedTransaction,
@@ -621,16 +771,20 @@ pub unsafe extern "C" fn completed_transactions_get_length(transactions: *mut Ta
 pub unsafe extern "C" fn completed_transactions_get_at(
     transactions: *mut TariCompletedTransactions,
     position: c_uint,
+    error_out: *mut c_int,
 ) -> *mut TariCompletedTransaction
 {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     if transactions.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("transactions".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     }
-    let len = completed_transactions_get_length(transactions) as c_int - 1;
-    if len < 0 {
-        return ptr::null_mut();
-    }
-    if position > len as c_uint {
+    let len = completed_transactions_get_length(transactions, error_out) as c_int - 1;
+    if len < 0 || position > len as c_uint {
+        error = LibWalletError::from(InterfaceError::PositionInvalidError).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     }
     Box::into_raw(Box::new((*transactions).0[position as usize].clone()))
@@ -658,6 +812,8 @@ pub unsafe extern "C" fn completed_transactions_destroy(transactions: *mut TariC
 ///
 /// ## Arguments
 /// `transactions` - The pointer to a TariPendingOutboundTransactions
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `c_uint` - Returns the number of elements in a TariPendingOutboundTransactions, note that it will be
@@ -665,11 +821,19 @@ pub unsafe extern "C" fn completed_transactions_destroy(transactions: *mut TariC
 #[no_mangle]
 pub unsafe extern "C" fn pending_outbound_transactions_get_length(
     transactions: *mut TariPendingOutboundTransactions,
-) -> c_uint {
+    error_out: *mut c_int,
+) -> c_uint
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     let mut len = 0;
-    if !transactions.is_null() {
+    if transactions.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    } else {
         len = (*transactions).0.len();
     }
+
     len as c_uint
 }
 
@@ -678,6 +842,8 @@ pub unsafe extern "C" fn pending_outbound_transactions_get_length(
 /// ## Arguments
 /// `transactions` - The pointer to a TariPendingOutboundTransactions
 /// `position` - The integer position
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `*mut TariPendingOutboundTransaction` - Returns a pointer to a TariPendingOutboundTransaction,
@@ -686,16 +852,20 @@ pub unsafe extern "C" fn pending_outbound_transactions_get_length(
 pub unsafe extern "C" fn pending_outbound_transactions_get_at(
     transactions: *mut TariPendingOutboundTransactions,
     position: c_uint,
+    error_out: *mut c_int,
 ) -> *mut TariPendingOutboundTransaction
 {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     if transactions.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     }
-    let len = pending_outbound_transactions_get_length(transactions) as c_int - 1;
-    if len < 0 {
-        return ptr::null_mut();
-    }
-    if position > len as c_uint {
+    let len = pending_outbound_transactions_get_length(transactions, error_out) as c_int - 1;
+    if len < 0 || position > len as c_uint {
+        error = LibWalletError::from(InterfaceError::PositionInvalidError).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     }
     Box::into_raw(Box::new((*transactions).0[position as usize].clone()))
@@ -723,6 +893,8 @@ pub unsafe extern "C" fn pending_outbound_transactions_destroy(transactions: *mu
 ///
 /// ## Arguments
 /// `transactions` - The pointer to a TariPendingInboundTransactions
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `c_uint` - Returns the number of elements in a TariPendingInboundTransactions, note that
@@ -730,9 +902,16 @@ pub unsafe extern "C" fn pending_outbound_transactions_destroy(transactions: *mu
 #[no_mangle]
 pub unsafe extern "C" fn pending_inbound_transactions_get_length(
     transactions: *mut TariPendingInboundTransactions,
-) -> c_uint {
+    error_out: *mut c_int,
+) -> c_uint
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     let mut len = 0;
-    if !transactions.is_null() {
+    if transactions.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    } else {
         len = (*transactions).0.len();
     }
     len as c_uint
@@ -743,6 +922,8 @@ pub unsafe extern "C" fn pending_inbound_transactions_get_length(
 /// ## Arguments
 /// `transactions` - The pointer to a TariPendingInboundTransactions
 /// `position` - The integer position
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `*mut TariPendingOutboundTransaction` - Returns a pointer to a TariPendingInboundTransaction,
@@ -751,16 +932,20 @@ pub unsafe extern "C" fn pending_inbound_transactions_get_length(
 pub unsafe extern "C" fn pending_inbound_transactions_get_at(
     transactions: *mut TariPendingInboundTransactions,
     position: c_uint,
+    error_out: *mut c_int,
 ) -> *mut TariPendingInboundTransaction
 {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     if transactions.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     }
-    let len = pending_inbound_transactions_get_length(transactions) as c_int - 1;
-    if len < 0 {
-        return ptr::null_mut();
-    }
-    if position > len as c_uint {
+    let len = pending_inbound_transactions_get_length(transactions, error_out) as c_int - 1;
+    if len < 0 || position > len as c_uint {
+        error = LibWalletError::from(InterfaceError::PositionInvalidError).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     }
     Box::into_raw(Box::new((*transactions).0[position as usize].clone()))
@@ -788,14 +973,22 @@ pub unsafe extern "C" fn pending_inbound_transactions_destroy(transactions: *mut
 ///
 /// ## Arguments
 /// `transaction` - The pointer to a TariCompletedTransaction
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `c_ulonglong` - Returns the TransactionID, note that it will be zero if transaction is null
 #[no_mangle]
 pub unsafe extern "C" fn completed_transaction_get_transaction_id(
     transaction: *mut TariCompletedTransaction,
-) -> c_ulonglong {
+    error_out: *mut c_int,
+) -> c_ulonglong
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     if transaction.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return 0;
     }
     (*transaction).tx_id as c_ulonglong
@@ -805,6 +998,8 @@ pub unsafe extern "C" fn completed_transaction_get_transaction_id(
 ///
 /// ## Arguments
 /// `transaction` - The pointer to a TariCompletedTransaction
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `*mut TairPublicKey` - Returns the destination TariPublicKey, note that it will be
@@ -812,8 +1007,14 @@ pub unsafe extern "C" fn completed_transaction_get_transaction_id(
 #[no_mangle]
 pub unsafe extern "C" fn completed_transaction_get_destination_public_key(
     transaction: *mut TariCompletedTransaction,
-) -> *mut TariPublicKey {
+    error_out: *mut c_int,
+) -> *mut TariPublicKey
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     if transaction.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     }
     let m = (*transaction).destination_public_key.clone();
@@ -824,6 +1025,8 @@ pub unsafe extern "C" fn completed_transaction_get_destination_public_key(
 ///
 /// ## Arguments
 /// `transaction` - The pointer to a TariCompletedTransaction
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `*mut TairPublicKey` - Returns the source TariPublicKey, note that it will be
@@ -831,8 +1034,14 @@ pub unsafe extern "C" fn completed_transaction_get_destination_public_key(
 #[no_mangle]
 pub unsafe extern "C" fn completed_transaction_get_source_public_key(
     transaction: *mut TariCompletedTransaction,
-) -> *mut TariPublicKey {
+    error_out: *mut c_int,
+) -> *mut TariPublicKey
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     if transaction.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     }
     let m = (*transaction).source_public_key.clone();
@@ -843,6 +1052,8 @@ pub unsafe extern "C" fn completed_transaction_get_source_public_key(
 ///
 /// ## Arguments
 /// `transaction` - The pointer to a TariCompletedTransaction
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `c_int` - Returns the status which corresponds to:
@@ -853,8 +1064,16 @@ pub unsafe extern "C" fn completed_transaction_get_source_public_key(
 /// |   1 | Broadcast |
 /// |   2 | Mined |
 #[no_mangle]
-pub unsafe extern "C" fn completed_transaction_get_status(transaction: *mut TariCompletedTransaction) -> c_int {
+pub unsafe extern "C" fn completed_transaction_get_status(
+    transaction: *mut TariCompletedTransaction,
+    error_out: *mut c_int,
+) -> c_int
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     if transaction.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return -1;
     }
     let status = (*transaction).status.clone();
@@ -865,12 +1084,22 @@ pub unsafe extern "C" fn completed_transaction_get_status(transaction: *mut Tari
 ///
 /// ## Arguments
 /// `transaction` - The pointer to a TariCompletedTransaction
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `c_ulonglong` - Returns the amount, note that it will be zero if transaction is null
 #[no_mangle]
-pub unsafe extern "C" fn completed_transaction_get_amount(transaction: *mut TariCompletedTransaction) -> c_ulonglong {
+pub unsafe extern "C" fn completed_transaction_get_amount(
+    transaction: *mut TariCompletedTransaction,
+    error_out: *mut c_int,
+) -> c_ulonglong
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     if transaction.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return 0;
     }
     c_ulonglong::from((*transaction).amount)
@@ -880,12 +1109,22 @@ pub unsafe extern "C" fn completed_transaction_get_amount(transaction: *mut Tari
 ///
 /// ## Arguments
 /// `transaction` - The pointer to a TariCompletedTransaction
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `c_ulonglong` - Returns the fee, note that it will be zero if transaction is null
 #[no_mangle]
-pub unsafe extern "C" fn completed_transaction_get_fee(transaction: *mut TariCompletedTransaction) -> c_ulonglong {
+pub unsafe extern "C" fn completed_transaction_get_fee(
+    transaction: *mut TariCompletedTransaction,
+    error_out: *mut c_int,
+) -> c_ulonglong
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     if transaction.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return 0;
     }
     c_ulonglong::from((*transaction).fee)
@@ -895,12 +1134,22 @@ pub unsafe extern "C" fn completed_transaction_get_fee(transaction: *mut TariCom
 ///
 /// ## Arguments
 /// `transaction` - The pointer to a TariCompletedTransaction
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `c_ulonglong` - Returns the timestamp, note that it will be zero if transaction is null
 #[no_mangle]
-pub unsafe extern "C" fn completed_transaction_get_timestamp(transaction: *mut TariCompletedTransaction) -> c_longlong {
+pub unsafe extern "C" fn completed_transaction_get_timestamp(
+    transaction: *mut TariCompletedTransaction,
+    error_out: *mut c_int,
+) -> c_longlong
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     if transaction.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return 0;
     }
     (*transaction).timestamp.timestamp() as c_longlong
@@ -910,6 +1159,8 @@ pub unsafe extern "C" fn completed_transaction_get_timestamp(transaction: *mut T
 ///
 /// ## Arguments
 /// `transaction` - The pointer to a TariCompletedTransaction
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `*const c_char` - Returns the pointer to the char array, note that it will return a pointer
@@ -917,10 +1168,16 @@ pub unsafe extern "C" fn completed_transaction_get_timestamp(transaction: *mut T
 #[no_mangle]
 pub unsafe extern "C" fn completed_transaction_get_message(
     transaction: *mut TariCompletedTransaction,
-) -> *const c_char {
+    error_out: *mut c_int,
+) -> *const c_char
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     let message = (*transaction).message.clone();
     let mut result = CString::new("").unwrap();
     if transaction.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return result.into_raw();
     }
 
@@ -950,14 +1207,22 @@ pub unsafe extern "C" fn completed_transaction_destroy(transaction: *mut TariCom
 ///
 /// ## Arguments
 /// `transaction` - The pointer to a TariPendingOutboundTransaction
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `c_ulonglong` - Returns the TransactionID, note that it will be zero if transaction is null
 #[no_mangle]
 pub unsafe extern "C" fn pending_outbound_transaction_get_transaction_id(
     transaction: *mut TariPendingOutboundTransaction,
-) -> c_ulonglong {
+    error_out: *mut c_int,
+) -> c_ulonglong
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     if transaction.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return 0;
     }
     (*transaction).tx_id as c_ulonglong
@@ -967,6 +1232,8 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_transaction_id(
 ///
 /// ## Arguments
 /// `transaction` - The pointer to a TariPendingOutboundTransaction
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `*mut TariPublicKey` - Returns the destination TariPublicKey, note that it will be
@@ -974,8 +1241,14 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_transaction_id(
 #[no_mangle]
 pub unsafe extern "C" fn pending_outbound_transaction_get_destination_public_key(
     transaction: *mut TariPendingOutboundTransaction,
-) -> *mut TariPublicKey {
+    error_out: *mut c_int,
+) -> *mut TariPublicKey
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     if transaction.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     }
     let m = (*transaction).destination_public_key.clone();
@@ -986,14 +1259,22 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_destination_public_key
 ///
 /// ## Arguments
 /// `transaction` - The pointer to a TariPendingOutboundTransaction
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `c_ulonglong` - Returns the amount, note that it will be zero if transaction is null
 #[no_mangle]
 pub unsafe extern "C" fn pending_outbound_transaction_get_amount(
     transaction: *mut TariPendingOutboundTransaction,
-) -> c_ulonglong {
+    error_out: *mut c_int,
+) -> c_ulonglong
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     if transaction.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return 0;
     }
     c_ulonglong::from((*transaction).amount)
@@ -1003,14 +1284,22 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_amount(
 ///
 /// ## Arguments
 /// `transaction` - The pointer to a TariPendingOutboundTransaction
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `c_ulonglong` - Returns the timestamp, note that it will be zero if transaction is null
 #[no_mangle]
 pub unsafe extern "C" fn pending_outbound_transaction_get_timestamp(
     transaction: *mut TariPendingOutboundTransaction,
-) -> c_longlong {
+    error_out: *mut c_int,
+) -> c_longlong
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     if transaction.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return 0;
     }
     (*transaction).timestamp.timestamp() as c_longlong
@@ -1020,6 +1309,8 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_timestamp(
 ///
 /// ## Arguments
 /// `transaction` - The pointer to a TariPendingOutboundTransaction
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `*const c_char` - Returns the pointer to the char array, note that it will return a pointer
@@ -1027,10 +1318,16 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_timestamp(
 #[no_mangle]
 pub unsafe extern "C" fn pending_outbound_transaction_get_message(
     transaction: *mut TariPendingOutboundTransaction,
-) -> *const c_char {
+    error_out: *mut c_int,
+) -> *const c_char
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     let message = (*transaction).message.clone();
     let mut result = CString::new("").unwrap();
     if transaction.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return result.into_raw();
     }
 
@@ -1060,14 +1357,22 @@ pub unsafe extern "C" fn pending_outbound_transaction_destroy(transaction: *mut 
 ///
 /// ## Arguments
 /// `transaction` - The pointer to a TariPendingInboundTransaction
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `c_ulonglong` - Returns the TransactonId, note that it will be zero if transaction is null
 #[no_mangle]
 pub unsafe extern "C" fn pending_inbound_transaction_get_transaction_id(
     transaction: *mut TariPendingInboundTransaction,
-) -> c_ulonglong {
+    error_out: *mut c_int,
+) -> c_ulonglong
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     if transaction.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return 0;
     }
     (*transaction).tx_id as c_ulonglong
@@ -1077,6 +1382,8 @@ pub unsafe extern "C" fn pending_inbound_transaction_get_transaction_id(
 ///
 /// ## Arguments
 /// `transaction` - The pointer to a TariPendingInboundTransaction
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `*mut TariPublicKey` - Returns a pointer to the source TariPublicKey, note that it will be
@@ -1084,8 +1391,14 @@ pub unsafe extern "C" fn pending_inbound_transaction_get_transaction_id(
 #[no_mangle]
 pub unsafe extern "C" fn pending_inbound_transaction_get_source_public_key(
     transaction: *mut TariPendingInboundTransaction,
-) -> *mut TariPublicKey {
+    error_out: *mut c_int,
+) -> *mut TariPublicKey
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     if transaction.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     }
     let m = (*transaction).source_public_key.clone();
@@ -1096,14 +1409,22 @@ pub unsafe extern "C" fn pending_inbound_transaction_get_source_public_key(
 ///
 /// ## Arguments
 /// `transaction` - The pointer to a TariPendingInboundTransaction
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `c_ulonglong` - Returns the amount, note that it will be zero if transaction is null
 #[no_mangle]
 pub unsafe extern "C" fn pending_inbound_transaction_get_amount(
     transaction: *mut TariPendingInboundTransaction,
-) -> c_ulonglong {
+    error_out: *mut c_int,
+) -> c_ulonglong
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     if transaction.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return 0;
     }
     c_ulonglong::from((*transaction).amount)
@@ -1113,14 +1434,22 @@ pub unsafe extern "C" fn pending_inbound_transaction_get_amount(
 ///
 /// ## Arguments
 /// `transaction` - The pointer to a TariPendingInboundTransaction
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `c_ulonglong` - Returns the timestamp, note that it will be zero if transaction is null
 #[no_mangle]
 pub unsafe extern "C" fn pending_inbound_transaction_get_timestamp(
     transaction: *mut TariPendingInboundTransaction,
-) -> c_longlong {
+    error_out: *mut c_int,
+) -> c_longlong
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     if transaction.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return 0;
     }
     (*transaction).timestamp.timestamp() as c_longlong
@@ -1130,6 +1459,8 @@ pub unsafe extern "C" fn pending_inbound_transaction_get_timestamp(
 ///
 /// ## Arguments
 /// `transaction` - The pointer to a TariPendingInboundTransaction
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `*const c_char` - Returns the pointer to the char array, note that it will return a pointer
@@ -1137,10 +1468,16 @@ pub unsafe extern "C" fn pending_inbound_transaction_get_timestamp(
 #[no_mangle]
 pub unsafe extern "C" fn pending_inbound_transaction_get_message(
     transaction: *mut TariPendingInboundTransaction,
-) -> *const c_char {
+    error_out: *mut c_int,
+) -> *const c_char
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     let message = (*transaction).message.clone();
     let mut result = CString::new("").unwrap();
     if transaction.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return result.into_raw();
     }
 
@@ -1178,6 +1515,8 @@ pub unsafe extern "C" fn pending_inbound_transaction_destroy(transaction: *mut T
 /// database files will be created and the application has write access to
 /// `secret_key` - The TariSecretKey pointer. This is the secret key corresponding to the Public key that represents
 /// this node on the Tari comms network
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `*mut TariCommsConfig` - Returns a pointer to a TariCommsConfig, if any of the parameters are
@@ -1189,12 +1528,17 @@ pub unsafe extern "C" fn comms_config_create(
     database_name: *const c_char,
     datastore_path: *const c_char,
     secret_key: *mut TariPrivateKey,
+    error_out: *mut c_int,
 ) -> *mut TariCommsConfig
 {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     let control_service_address_string;
     if !control_service_address.is_null() {
         control_service_address_string = CStr::from_ptr(control_service_address).to_str().unwrap().to_owned();
     } else {
+        error = LibWalletError::from(InterfaceError::NullError("control_service_address".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     }
 
@@ -1209,6 +1553,8 @@ pub unsafe extern "C" fn comms_config_create(
     if !database_name.is_null() {
         database_name_string = CStr::from_ptr(database_name).to_str().unwrap().to_owned();
     } else {
+        error = LibWalletError::from(InterfaceError::NullError("database_name".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     }
 
@@ -1216,6 +1562,8 @@ pub unsafe extern "C" fn comms_config_create(
     if !datastore_path.is_null() {
         datastore_path_string = CStr::from_ptr(datastore_path).to_str().unwrap().to_owned();
     } else {
+        error = LibWalletError::from(InterfaceError::NullError("datastore_path".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     }
 
@@ -1254,12 +1602,24 @@ pub unsafe extern "C" fn comms_config_create(
 
                         Box::into_raw(Box::new(config))
                     },
-                    Err(_) => ptr::null_mut(),
+                    Err(e) => {
+                        error = LibWalletError::from(e).code;
+                        ptr::swap(error_out, &mut error as *mut c_int);
+                        ptr::null_mut()
+                    },
                 }
             },
-            Err(_) => return ptr::null_mut(),
+            Err(e) => {
+                error = LibWalletError::from(e).code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+                return ptr::null_mut();
+            },
         },
-        Err(_) => return ptr::null_mut(),
+        Err(e) => {
+            error = LibWalletError::from(e).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return ptr::null_mut();
+        },
     }
 }
 
@@ -1287,12 +1647,22 @@ pub unsafe extern "C" fn comms_config_destroy(wc: *mut TariCommsConfig) {
 /// `config` - The TariCommsConfig pointer
 /// `log_path` - An optional file path to the file where the logs will be written. If no log is required pass *null*
 /// pointer.
-/// ## Returns
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter. ## Returns
 /// `*mut TariWallet` - Returns a pointer to a TariWallet, note that it returns ptr::null_mut()
 /// if config is null, a wallet error was encountered or if the runtime could not be created
 #[no_mangle]
-pub unsafe extern "C" fn wallet_create(config: *mut TariCommsConfig, log_path: *const c_char) -> *mut TariWallet {
+pub unsafe extern "C" fn wallet_create(
+    config: *mut TariCommsConfig,
+    log_path: *const c_char,
+    error_out: *mut c_int,
+) -> *mut TariWallet
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     if config.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("config".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     }
     let mut logging_path_string = None;
@@ -1300,24 +1670,22 @@ pub unsafe extern "C" fn wallet_create(config: *mut TariCommsConfig, log_path: *
         logging_path_string = Some(CStr::from_ptr(log_path).to_str().unwrap().to_owned());
     }
 
-    // TODO Gracefully handle the case where these expects would fail
     let runtime = Runtime::new();
     let factories = CryptoFactories::default();
     let w;
-
-    let sql_database_path = format!(
-        "{}/{}.sqlite3",
-        (*config).datastore_path.clone(),
-        (*config).peer_database_name.clone()
-    )
-    .to_string();
-    let wallet_backend = WalletSqliteDatabase::new(sql_database_path.clone()).unwrap();
-    let transaction_backend = TransactionServiceSqliteDatabase::new(sql_database_path.clone()).unwrap();
-    let output_manager_backend = OutputManagerSqliteDatabase::new(sql_database_path.clone()).unwrap();
-    let contacts_backend = ContactsServiceSqliteDatabase::new(sql_database_path.clone()).unwrap();
-
     match runtime {
         Ok(runtime) => {
+            let sql_database_path = format!(
+                "{}/{}.sqlite3",
+                (*config).datastore_path.clone(),
+                (*config).peer_database_name.clone()
+            )
+            .to_string();
+            let wallet_backend = WalletSqliteDatabase::new(sql_database_path.clone()).unwrap();
+            let transaction_backend = TransactionServiceSqliteDatabase::new(sql_database_path.clone()).unwrap();
+            let output_manager_backend = OutputManagerSqliteDatabase::new(sql_database_path.clone()).unwrap();
+            let contacts_backend = ContactsServiceSqliteDatabase::new(sql_database_path.clone()).unwrap();
+
             w = TariWallet::new(
                 WalletConfig {
                     comms_config: (*config).clone(),
@@ -1332,10 +1700,18 @@ pub unsafe extern "C" fn wallet_create(config: *mut TariCommsConfig, log_path: *
             );
             match w {
                 Ok(w) => Box::into_raw(Box::new(w)),
-                Err(_) => ptr::null_mut(),
+                Err(e) => {
+                    error = LibWalletError::from(e).code;
+                    ptr::swap(error_out, &mut error as *mut c_int);
+                    ptr::null_mut()
+                },
             }
         },
-        Err(_) => ptr::null_mut(),
+        Err(e) => {
+            error = LibWalletError::from(InterfaceError::TokioError(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            ptr::null_mut()
+        },
     }
 }
 
@@ -1351,17 +1727,27 @@ pub unsafe extern "C" fn wallet_create(config: *mut TariCommsConfig, log_path: *
 ///
 /// ## Arguments
 /// `wallet` - The TariWallet pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `bool` - Returns if successful or not
 #[no_mangle]
-pub unsafe extern "C" fn wallet_test_generate_data(wallet: *mut TariWallet) -> bool {
+pub unsafe extern "C" fn wallet_test_generate_data(wallet: *mut TariWallet, error_out: *mut c_int) -> bool {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return false;
     }
     match generate_wallet_test_data(&mut *wallet) {
         Ok(_) => true,
-        _ => false,
+        Err(e) => {
+            error = LibWalletError::from(e).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            false
+        },
     }
 }
 
@@ -1370,18 +1756,27 @@ pub unsafe extern "C" fn wallet_test_generate_data(wallet: *mut TariWallet) -> b
 ///
 /// ## Arguments
 /// `wallet` - The TariWallet pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `bool` - Returns if successful or not
 #[no_mangle]
-pub unsafe extern "C" fn wallet_test_receive_transaction(wallet: *mut TariWallet) -> bool {
+pub unsafe extern "C" fn wallet_test_receive_transaction(wallet: *mut TariWallet, error_out: *mut c_int) -> bool {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return false;
     }
-
     match receive_test_transaction(&mut *wallet) {
         Ok(_) => true,
-        _ => false,
+        Err(e) => {
+            error = LibWalletError::from(e).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            false
+        },
     }
 }
 
@@ -1392,6 +1787,8 @@ pub unsafe extern "C" fn wallet_test_receive_transaction(wallet: *mut TariWallet
 /// ## Arguments
 /// `wallet` - The TariWallet pointer
 /// `tx` - The TariPendingOutboundTransaction
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `bool` - Returns if successful or not
@@ -1399,17 +1796,28 @@ pub unsafe extern "C" fn wallet_test_receive_transaction(wallet: *mut TariWallet
 pub unsafe extern "C" fn wallet_test_complete_sent_transaction(
     wallet: *mut TariWallet,
     tx: *mut TariPendingOutboundTransaction,
+    error_out: *mut c_int,
 ) -> bool
 {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return false;
     }
     if tx.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("tx".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return false;
     }
     match complete_sent_transaction(&mut *wallet, (*tx).tx_id.clone()) {
         Ok(_) => true,
-        _ => false,
+        Err(e) => {
+            error = LibWalletError::from(e).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            false
+        },
     }
 }
 
@@ -1420,20 +1828,37 @@ pub unsafe extern "C" fn wallet_test_complete_sent_transaction(
 /// ## Arguments
 /// `wallet` - The TariWallet pointer
 /// `tx` - The TariCompletedTransaction pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `bool` - Returns if successful or not
 #[no_mangle]
-pub unsafe extern "C" fn wallet_test_mined(wallet: *mut TariWallet, tx: *mut TariCompletedTransaction) -> bool {
+pub unsafe extern "C" fn wallet_test_mined(
+    wallet: *mut TariWallet,
+    tx: *mut TariCompletedTransaction,
+    error_out: *mut c_int,
+) -> bool
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return false;
     }
     if tx.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("tx".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return false;
     }
     match mine_transaction(&mut *wallet, (*tx).tx_id.clone()) {
         Ok(_) => true,
-        _ => false,
+        Err(e) => {
+            error = LibWalletError::from(e).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            false
+        },
     }
 }
 
@@ -1444,6 +1869,8 @@ pub unsafe extern "C" fn wallet_test_mined(wallet: *mut TariWallet, tx: *mut Tar
 /// ## Arguments
 /// `wallet` - The TariWallet pointer
 /// `tx` - The TariPendingInboundTransaction pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `bool` - Returns if successful or not
@@ -1451,14 +1878,23 @@ pub unsafe extern "C" fn wallet_test_mined(wallet: *mut TariWallet, tx: *mut Tar
 pub unsafe extern "C" fn wallet_test_transaction_broadcast(
     wallet: *mut TariWallet,
     tx: *mut TariPendingInboundTransaction,
+    error_out: *mut c_int,
 ) -> bool
 {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return false;
     }
     match broadcast_transaction(&mut *wallet, (*tx).tx_id.clone()) {
         Ok(_) => true,
-        _ => false,
+        Err(e) => {
+            error = LibWalletError::from(e).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            false
+        },
     }
 }
 
@@ -1468,6 +1904,8 @@ pub unsafe extern "C" fn wallet_test_transaction_broadcast(
 /// `wallet` - The TariWallet pointer
 /// `public_key` - The TariPublicKey pointer
 /// `address` - The pointer to a char array
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `bool` - Returns if successful or not
@@ -1476,13 +1914,20 @@ pub unsafe extern "C" fn wallet_add_base_node_peer(
     wallet: *mut TariWallet,
     public_key: *mut TariPublicKey,
     address: *const c_char,
+    error_out: *mut c_int,
 ) -> bool
 {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return false;
     }
 
     if public_key.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("public_key".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return false;
     }
 
@@ -1490,12 +1935,18 @@ pub unsafe extern "C" fn wallet_add_base_node_peer(
     if !address.is_null() {
         address_string = CStr::from_ptr(address).to_str().unwrap().to_owned();
     } else {
+        error = LibWalletError::from(InterfaceError::NullError("address".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return false;
     }
 
     match (*wallet).add_base_node_peer((*public_key).clone(), address_string) {
         Ok(_) => true,
-        Err(_) => false,
+        Err(e) => {
+            error = LibWalletError::from(e).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            false
+        },
     }
 }
 
@@ -1504,15 +1955,28 @@ pub unsafe extern "C" fn wallet_add_base_node_peer(
 /// ## Arguments
 /// `wallet` - The TariWallet pointer
 /// `contact` - The TariContact pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `bool` - Returns if successful or not
 #[no_mangle]
-pub unsafe extern "C" fn wallet_add_contact(wallet: *mut TariWallet, contact: *mut TariContact) -> bool {
+pub unsafe extern "C" fn wallet_add_contact(
+    wallet: *mut TariWallet,
+    contact: *mut TariContact,
+    error_out: *mut c_int,
+) -> bool
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return false;
     }
     if contact.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("contact".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return false;
     }
 
@@ -1521,7 +1985,11 @@ pub unsafe extern "C" fn wallet_add_contact(wallet: *mut TariWallet, contact: *m
         .block_on((*wallet).contacts_service.save_contact((*contact).clone()))
     {
         Ok(_) => true,
-        Err(_) => false,
+        Err(e) => {
+            error = LibWalletError::from(WalletError::ContactsServiceError(e)).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            false
+        },
     }
 }
 
@@ -1530,15 +1998,28 @@ pub unsafe extern "C" fn wallet_add_contact(wallet: *mut TariWallet, contact: *m
 /// ## Arguments
 /// `wallet` - The TariWallet pointer
 /// `tx` - The TariPendingInboundTransaction pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `bool` - Returns if successful or not
 #[no_mangle]
-pub unsafe extern "C" fn wallet_remove_contact(wallet: *mut TariWallet, contact: *mut TariContact) -> bool {
+pub unsafe extern "C" fn wallet_remove_contact(
+    wallet: *mut TariWallet,
+    contact: *mut TariContact,
+    error_out: *mut c_int,
+) -> bool
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return false;
     }
     if contact.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("contact".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return false;
     }
 
@@ -1547,7 +2028,11 @@ pub unsafe extern "C" fn wallet_remove_contact(wallet: *mut TariWallet, contact:
         .block_on((*wallet).contacts_service.remove_contact((*contact).public_key.clone()))
     {
         Ok(_) => true,
-        Err(_) => false,
+        Err(e) => {
+            error = LibWalletError::from(WalletError::ContactsServiceError(e)).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            false
+        },
     }
 }
 
@@ -1555,12 +2040,18 @@ pub unsafe extern "C" fn wallet_remove_contact(wallet: *mut TariWallet, contact:
 ///
 /// ## Arguments
 /// `wallet` - The TariWallet pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `c_ulonglong` - The available balance, 0 if wallet is null
 #[no_mangle]
-pub unsafe extern "C" fn wallet_get_available_balance(wallet: *mut TariWallet) -> c_ulonglong {
+pub unsafe extern "C" fn wallet_get_available_balance(wallet: *mut TariWallet, error_out: *mut c_int) -> c_ulonglong {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return 0;
     }
 
@@ -1569,7 +2060,11 @@ pub unsafe extern "C" fn wallet_get_available_balance(wallet: *mut TariWallet) -
         .block_on((*wallet).output_manager_service.get_balance())
     {
         Ok(b) => c_ulonglong::from(b.available_balance),
-        Err(_) => 0,
+        Err(e) => {
+            error = LibWalletError::from(WalletError::OutputManagerError(e)).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            0
+        },
     }
 }
 
@@ -1578,12 +2073,22 @@ pub unsafe extern "C" fn wallet_get_available_balance(wallet: *mut TariWallet) -
 ///
 /// ## Arguments
 /// `wallet` - The TariWallet pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `c_ulonglong` - The incoming balance, 0 if wallet is null
 #[no_mangle]
-pub unsafe extern "C" fn wallet_get_pending_incoming_balance(wallet: *mut TariWallet) -> c_ulonglong {
+pub unsafe extern "C" fn wallet_get_pending_incoming_balance(
+    wallet: *mut TariWallet,
+    error_out: *mut c_int,
+) -> c_ulonglong
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return 0;
     }
 
@@ -1592,7 +2097,11 @@ pub unsafe extern "C" fn wallet_get_pending_incoming_balance(wallet: *mut TariWa
         .block_on((*wallet).output_manager_service.get_balance())
     {
         Ok(b) => c_ulonglong::from(b.pending_incoming_balance),
-        Err(_) => 0,
+        Err(e) => {
+            error = LibWalletError::from(WalletError::OutputManagerError(e)).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            0
+        },
     }
 }
 
@@ -1601,12 +2110,22 @@ pub unsafe extern "C" fn wallet_get_pending_incoming_balance(wallet: *mut TariWa
 ///
 /// ## Arguments
 /// `wallet` - The TariWallet pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `c_ulonglong` - The outgoing balance, 0 if wallet is null
 #[no_mangle]
-pub unsafe extern "C" fn wallet_get_pending_outgoing_balance(wallet: *mut TariWallet) -> c_ulonglong {
+pub unsafe extern "C" fn wallet_get_pending_outgoing_balance(
+    wallet: *mut TariWallet,
+    error_out: *mut c_int,
+) -> c_ulonglong
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return 0;
     }
 
@@ -1615,7 +2134,11 @@ pub unsafe extern "C" fn wallet_get_pending_outgoing_balance(wallet: *mut TariWa
         .block_on((*wallet).output_manager_service.get_balance())
     {
         Ok(b) => c_ulonglong::from(b.pending_outgoing_balance),
-        Err(_) => 0,
+        Err(e) => {
+            error = LibWalletError::from(WalletError::OutputManagerError(e)).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            0
+        },
     }
 }
 
@@ -1627,6 +2150,8 @@ pub unsafe extern "C" fn wallet_get_pending_outgoing_balance(wallet: *mut TariWa
 /// `amount` - The amount
 /// `fee_per_gram` - The transaction fee
 /// `message` - The pointer to a char array
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `bool` - Returns if successful or not
@@ -1637,19 +2162,29 @@ pub unsafe extern "C" fn wallet_send_transaction(
     amount: c_ulonglong,
     fee_per_gram: c_ulonglong,
     message: *const c_char,
+    error_out: *mut c_int,
 ) -> bool
 {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return false;
     }
 
     if dest_public_key.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("dest_public_key".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return false;
     }
 
     let mut message_string = CString::new("").unwrap().to_str().unwrap().to_owned();
     if !message.is_null() {
         message_string = CStr::from_ptr(message).to_str().unwrap().to_owned();
+    } else {
+        error = LibWalletError::from(InterfaceError::NullError("message".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
     }
 
     match (*wallet)
@@ -1661,7 +2196,11 @@ pub unsafe extern "C" fn wallet_send_transaction(
             message_string,
         )) {
         Ok(_) => true,
-        Err(_) => false,
+        Err(e) => {
+            error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            false
+        },
     }
 }
 
@@ -1669,14 +2208,20 @@ pub unsafe extern "C" fn wallet_send_transaction(
 ///
 /// ## Arguments
 /// `wallet` - The TariWallet pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `*mut TariContacts` - returns the contacts, note that it returns ptr::null_mut() if
 /// wallet is null
 #[no_mangle]
-pub unsafe extern "C" fn wallet_get_contacts(wallet: *mut TariWallet) -> *mut TariContacts {
+pub unsafe extern "C" fn wallet_get_contacts(wallet: *mut TariWallet, error_out: *mut c_int) -> *mut TariContacts {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     let mut contacts = Vec::new();
     if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     }
 
@@ -1686,7 +2231,11 @@ pub unsafe extern "C" fn wallet_get_contacts(wallet: *mut TariWallet) -> *mut Ta
             contacts.append(&mut retrieved_contacts.clone());
             Box::into_raw(Box::new(TariContacts(contacts)))
         },
-        Err(_) => ptr::null_mut(),
+        Err(e) => {
+            error = LibWalletError::from(WalletError::ContactsServiceError(e)).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            ptr::null_mut()
+        },
     }
 }
 
@@ -1694,14 +2243,24 @@ pub unsafe extern "C" fn wallet_get_contacts(wallet: *mut TariWallet) -> *mut Ta
 ///
 /// ## Arguments
 /// `wallet` - The TariWallet pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `*mut TariCompletedTransactions` - returns the transactions, note that it returns ptr::null_mut() if
 /// wallet is null or an error is encountered
 #[no_mangle]
-pub unsafe extern "C" fn wallet_get_completed_transactions(wallet: *mut TariWallet) -> *mut TariCompletedTransactions {
+pub unsafe extern "C" fn wallet_get_completed_transactions(
+    wallet: *mut TariWallet,
+    error_out: *mut c_int,
+) -> *mut TariCompletedTransactions
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     let mut completed = Vec::new();
     if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     }
 
@@ -1715,7 +2274,11 @@ pub unsafe extern "C" fn wallet_get_completed_transactions(wallet: *mut TariWall
             }
             Box::into_raw(Box::new(TariCompletedTransactions(completed)))
         },
-        Err(_) => ptr::null_mut(),
+        Err(e) => {
+            error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            ptr::null_mut()
+        },
     }
 }
 
@@ -1723,6 +2286,8 @@ pub unsafe extern "C" fn wallet_get_completed_transactions(wallet: *mut TariWall
 ///
 /// ## Arguments
 /// `wallet` - The TariWallet pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `*mut TariPendingInboundTransactions` - returns the transactions, note that it returns ptr::null_mut() if
@@ -1730,9 +2295,15 @@ pub unsafe extern "C" fn wallet_get_completed_transactions(wallet: *mut TariWall
 #[no_mangle]
 pub unsafe extern "C" fn wallet_get_pending_inbound_transactions(
     wallet: *mut TariWallet,
-) -> *mut TariPendingInboundTransactions {
+    error_out: *mut c_int,
+) -> *mut TariPendingInboundTransactions
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     let mut pending = Vec::new();
     if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     }
 
@@ -1746,7 +2317,11 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transactions(
             }
             Box::into_raw(Box::new(TariPendingInboundTransactions(pending)))
         },
-        Err(_) => ptr::null_mut(),
+        Err(e) => {
+            error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            ptr::null_mut()
+        },
     }
 }
 
@@ -1754,6 +2329,8 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transactions(
 ///
 /// ## Arguments
 /// `wallet` - The TariWallet pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `*mut TariPendingOutboundTransactions` - returns the transactions, note that it returns ptr::null_mut() if
@@ -1761,9 +2338,15 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transactions(
 #[no_mangle]
 pub unsafe extern "C" fn wallet_get_pending_outbound_transactions(
     wallet: *mut TariWallet,
-) -> *mut TariPendingOutboundTransactions {
+    error_out: *mut c_int,
+) -> *mut TariPendingOutboundTransactions
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     let mut pending = Vec::new();
     if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     }
 
@@ -1777,7 +2360,11 @@ pub unsafe extern "C" fn wallet_get_pending_outbound_transactions(
             }
             Box::into_raw(Box::new(TariPendingOutboundTransactions(pending)))
         },
-        Err(_) => ptr::null_mut(),
+        Err(e) => {
+            error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            ptr::null_mut()
+        },
     }
 }
 
@@ -1786,6 +2373,8 @@ pub unsafe extern "C" fn wallet_get_pending_outbound_transactions(
 /// ## Arguments
 /// `wallet` - The TariWallet pointer
 /// `transaction_id` - The TransactionId
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `*mut TariCompletedTransaction` - returns the transaction, note that it returns ptr::null_mut() if
@@ -1794,9 +2383,14 @@ pub unsafe extern "C" fn wallet_get_pending_outbound_transactions(
 pub unsafe extern "C" fn wallet_get_completed_transaction_by_id(
     wallet: *mut TariWallet,
     transaction_id: c_ulonglong,
+    error_out: *mut c_int,
 ) -> *mut TariCompletedTransaction
 {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     }
 
@@ -1814,7 +2408,11 @@ pub unsafe extern "C" fn wallet_get_completed_transaction_by_id(
             }
             return ptr::null_mut();
         },
-        Err(_) => ptr::null_mut(),
+        Err(e) => {
+            error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            ptr::null_mut()
+        },
     }
 }
 
@@ -1823,6 +2421,8 @@ pub unsafe extern "C" fn wallet_get_completed_transaction_by_id(
 /// ## Arguments
 /// `wallet` - The TariWallet pointer
 /// `transaction_id` - The TransactionId
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `*mut TariPendingInboundTransaction` - returns the transaction, note that it returns ptr::null_mut() if
@@ -1831,9 +2431,14 @@ pub unsafe extern "C" fn wallet_get_completed_transaction_by_id(
 pub unsafe extern "C" fn wallet_get_pending_inbound_transaction_by_id(
     wallet: *mut TariWallet,
     transaction_id: c_ulonglong,
+    error_out: *mut c_int,
 ) -> *mut TariPendingInboundTransaction
 {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     }
 
@@ -1851,7 +2456,11 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transaction_by_id(
             }
             return ptr::null_mut();
         },
-        Err(_) => ptr::null_mut(),
+        Err(e) => {
+            error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            ptr::null_mut()
+        },
     }
 }
 
@@ -1860,6 +2469,8 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transaction_by_id(
 /// ## Arguments
 /// `wallet` - The TariWallet pointer
 /// `transaction_id` - The TransactionId
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `*mut TariPendingOutboundTransaction` - returns the transaction, note that it returns ptr::null_mut() if
@@ -1868,9 +2479,14 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transaction_by_id(
 pub unsafe extern "C" fn wallet_get_pending_outbound_transaction_by_id(
     wallet: *mut TariWallet,
     transaction_id: c_ulonglong,
+    error_out: *mut c_int,
 ) -> *mut TariPendingOutboundTransaction
 {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     }
 
@@ -1888,7 +2504,11 @@ pub unsafe extern "C" fn wallet_get_pending_outbound_transaction_by_id(
             }
             return ptr::null_mut();
         },
-        Err(_) => ptr::null_mut(),
+        Err(e) => {
+            error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            ptr::null_mut()
+        },
     }
 }
 
@@ -1896,13 +2516,19 @@ pub unsafe extern "C" fn wallet_get_pending_outbound_transaction_by_id(
 ///
 /// ## Arguments
 /// `wallet` - The TariWallet pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `*mut TariPublicKey` - returns the public key, note that ptr::null_mut() is returned
 /// if wc is null
 #[no_mangle]
-pub unsafe extern "C" fn wallet_get_public_key(wallet: *mut TariWallet) -> *mut TariPublicKey {
+pub unsafe extern "C" fn wallet_get_public_key(wallet: *mut TariWallet, error_out: *mut c_int) -> *mut TariPublicKey {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     }
     let pk = (*wallet).comms.node_identity().public_key().clone();
@@ -1935,6 +2561,8 @@ pub unsafe extern "C" fn wallet_destroy(wallet: *mut TariWallet) {
 /// ## Arguments
 /// `wallet` - The TariWallet pointer
 /// `call` - The callback function pointer matching the function signature
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `bool` - Returns if successful or not
@@ -1942,8 +2570,17 @@ pub unsafe extern "C" fn wallet_destroy(wallet: *mut TariWallet) {
 pub unsafe extern "C" fn wallet_callback_register_received_transaction(
     wallet: *mut TariWallet,
     call: unsafe extern "C" fn(*mut TariPendingInboundTransaction),
+    error_out: *mut c_int,
 ) -> bool
 {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return false;
+    }
+
     let result = (*wallet).runtime.block_on(
         (*wallet)
             .transaction_service
@@ -1951,7 +2588,11 @@ pub unsafe extern "C" fn wallet_callback_register_received_transaction(
     );
     match result {
         Ok(_) => true,
-        Err(_) => false,
+        Err(e) => {
+            error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            false
+        },
     }
 }
 
@@ -1960,6 +2601,8 @@ pub unsafe extern "C" fn wallet_callback_register_received_transaction(
 /// ## Arguments
 /// `wallet` - The TariWallet pointer
 /// `call` - The callback function pointer matching the function signature
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `bool` - Returns if successful or not
@@ -1967,8 +2610,17 @@ pub unsafe extern "C" fn wallet_callback_register_received_transaction(
 pub unsafe extern "C" fn wallet_callback_register_received_transaction_reply(
     wallet: *mut TariWallet,
     call: unsafe extern "C" fn(*mut TariCompletedTransaction),
+    error_out: *mut c_int,
 ) -> bool
 {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return false;
+    }
+
     let result = (*wallet).runtime.block_on(
         (*wallet)
             .transaction_service
@@ -1985,6 +2637,8 @@ pub unsafe extern "C" fn wallet_callback_register_received_transaction_reply(
 /// ## Arguments
 /// `wallet` - The TariWallet pointer
 /// `call` - The callback function pointer matching the function signature
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `bool` - Returns if successful or not
@@ -1992,8 +2646,11 @@ pub unsafe extern "C" fn wallet_callback_register_received_transaction_reply(
 pub unsafe extern "C" fn wallet_callback_register_received_finalized_transaction(
     wallet: *mut TariWallet,
     call: unsafe extern "C" fn(*mut TariCompletedTransaction),
+    error_out: *mut c_int,
 ) -> bool
 {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
     let result = (*wallet).runtime.block_on(
         (*wallet)
             .transaction_service
@@ -2001,7 +2658,11 @@ pub unsafe extern "C" fn wallet_callback_register_received_finalized_transaction
     );
     match result {
         Ok(_) => true,
-        Err(_) => false,
+        Err(e) => {
+            error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            false
+        },
     }
 }
 
@@ -2010,6 +2671,8 @@ pub unsafe extern "C" fn wallet_callback_register_received_finalized_transaction
 /// ## Arguments
 /// `wallet` - The TariWallet pointer
 /// `call` - The callback function pointer matching the function signature
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `bool` - Returns if successful or not
@@ -2017,14 +2680,27 @@ pub unsafe extern "C" fn wallet_callback_register_received_finalized_transaction
 pub unsafe extern "C" fn wallet_callback_register_mined(
     wallet: *mut TariWallet,
     call: unsafe extern "C" fn(*mut TariCompletedTransaction),
+    error_out: *mut c_int,
 ) -> bool
 {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return false;
+    }
+
     let result = (*wallet)
         .runtime
         .block_on((*wallet).transaction_service.register_callback_mined(call));
     match result {
         Ok(_) => true,
-        Err(_) => false,
+        Err(e) => {
+            error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            false
+        },
     }
 }
 
@@ -2033,6 +2709,8 @@ pub unsafe extern "C" fn wallet_callback_register_mined(
 /// ## Arguments
 /// `wallet` - The TariWallet pointer
 /// `call` - The callback function pointer matching the function signature
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
 ///
 /// ## Returns
 /// `bool` - Returns if successful or not
@@ -2040,8 +2718,17 @@ pub unsafe extern "C" fn wallet_callback_register_mined(
 pub unsafe extern "C" fn wallet_callback_register_transaction_broadcast(
     wallet: *mut TariWallet,
     call: unsafe extern "C" fn(*mut TariCompletedTransaction),
+    error_out: *mut c_int,
 ) -> bool
 {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return false;
+    }
+
     let result = (*wallet).runtime.block_on(
         (*wallet)
             .transaction_service
@@ -2049,11 +2736,13 @@ pub unsafe extern "C" fn wallet_callback_register_transaction_broadcast(
     );
     match result {
         Ok(_) => true,
-        Err(_) => false,
+        Err(e) => {
+            error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            false
+        },
     }
 }
-
-// TODO (Potentially) Add optional error parameter to methods which can return null
 
 #[cfg(test)]
 mod test {
@@ -2061,52 +2750,86 @@ mod test {
     use crate::*;
     use libc::{c_char, c_uchar, c_uint};
     use std::ffi::CString;
-    use tari_wallet::testnet_utils::random_string;
+    use tari_wallet::{testnet_utils::random_string, transaction_service::storage::database::TransactionStatus};
     use tempdir::TempDir;
+
+    fn type_of<T>(_: T) -> String {
+        std::any::type_name::<T>().to_string()
+    }
 
     unsafe extern "C" fn completed_callback(tx: *mut TariCompletedTransaction) {
         assert_eq!(tx.is_null(), false);
+        assert_eq!(
+            type_of((*tx).clone()),
+            std::any::type_name::<TariCompletedTransaction>()
+        );
+        println!("{:?}", (*tx).status);
+        assert_eq!((*tx).status, TransactionStatus::Broadcast);
         completed_transaction_destroy(tx);
     }
 
     unsafe extern "C" fn inbound_callback(tx: *mut TariPendingInboundTransaction) {
         assert_eq!(tx.is_null(), false);
+        assert_eq!(
+            type_of((*tx).clone()),
+            std::any::type_name::<TariPendingInboundTransaction>()
+        );
         pending_inbound_transaction_destroy(tx);
     }
 
     unsafe extern "C" fn mined_callback(tx: *mut TariCompletedTransaction) {
         assert_eq!(tx.is_null(), false);
+        assert_eq!(
+            type_of((*tx).clone()),
+            std::any::type_name::<TariCompletedTransaction>()
+        );
+        assert_eq!((*tx).status, TransactionStatus::Mined);
         completed_transaction_destroy(tx);
     }
 
     unsafe extern "C" fn broadcast_callback(tx: *mut TariCompletedTransaction) {
         assert_eq!(tx.is_null(), false);
+        assert_eq!(
+            type_of((*tx).clone()),
+            std::any::type_name::<TariCompletedTransaction>()
+        );
+        assert_eq!((*tx).status, TransactionStatus::Broadcast);
         completed_transaction_destroy(tx);
-    }
-
-    #[test]
-    fn test_string_destroy() {
-        unsafe {
-            let m = CString::new("Test").unwrap();
-            let m_ptr: *mut c_char = CString::into_raw(m) as *mut c_char;
-            assert_ne!(m_ptr.is_null(), true);
-            assert!(*m_ptr > 0); // dereference will return first character as integer, T as i8 = 84 > 0 = true
-            string_destroy(m_ptr);
-            assert_eq!(*m_ptr, 0); // dereference will return zero, avoids malloc error if attempting to evaluate by
-                                   // other means.
-        }
     }
 
     #[test]
     fn test_bytevector() {
         unsafe {
+            let mut error = 0;
+            let error_ptr = &mut error as *mut c_int;
             let bytes: [c_uchar; 4] = [2, 114, 34, 255];
-            let bytes_ptr = byte_vector_create(bytes.as_ptr(), bytes.len() as c_uint);
-            let length = byte_vector_get_length(bytes_ptr);
-            // println!("{:?}",c);
+            let bytes_ptr = byte_vector_create(bytes.as_ptr(), bytes.len() as c_uint, error_ptr);
+            assert_eq!(error, 0);
+            let length = byte_vector_get_length(bytes_ptr, error_ptr);
+            assert_eq!(error, 0);
             assert_eq!(length, bytes.len() as c_uint);
-            let byte = byte_vector_get_at(bytes_ptr, 2);
+            let byte = byte_vector_get_at(bytes_ptr, 2, error_ptr);
+            assert_eq!(error, 0);
             assert_eq!(byte, bytes[2]);
+            byte_vector_destroy(bytes_ptr);
+        }
+    }
+
+    #[test]
+    fn test_bytevector_dont_panic() {
+        unsafe {
+            let mut error = 0;
+            let error_ptr = &mut error as *mut c_int;
+            let bytes_ptr = byte_vector_create(ptr::null_mut(), 20 as c_uint, error_ptr);
+            assert_eq!(
+                error,
+                LibWalletError::from(InterfaceError::NullError("bytes_ptr".to_string())).code
+            );
+            assert_eq!(byte_vector_get_length(bytes_ptr, error_ptr), 0);
+            assert_eq!(
+                error,
+                LibWalletError::from(InterfaceError::NullError("bytes_ptr".to_string())).code
+            );
             byte_vector_destroy(bytes_ptr);
         }
     }
@@ -2114,12 +2837,19 @@ mod test {
     #[test]
     fn test_keys() {
         unsafe {
+            let mut error = 0;
+            let error_ptr = &mut error as *mut c_int;
             let private_key = private_key_generate();
-            let public_key = public_key_from_private_key(private_key);
-            let private_bytes = private_key_get_bytes(private_key);
-            let public_bytes = public_key_get_bytes(public_key);
-            let private_key_length = byte_vector_get_length(private_bytes);
-            let public_key_length = byte_vector_get_length(public_bytes);
+            let public_key = public_key_from_private_key(private_key, error_ptr);
+            assert_eq!(error, 0);
+            let private_bytes = private_key_get_bytes(private_key, error_ptr);
+            assert_eq!(error, 0);
+            let public_bytes = public_key_get_bytes(public_key, error_ptr);
+            assert_eq!(error, 0);
+            let private_key_length = byte_vector_get_length(private_bytes, error_ptr);
+            assert_eq!(error, 0);
+            let public_key_length = byte_vector_get_length(public_bytes, error_ptr);
+            assert_eq!(error, 0);
             assert_eq!(private_key_length, 32);
             assert_eq!(public_key_length, 32);
             assert_ne!(private_bytes, public_bytes);
@@ -2131,20 +2861,66 @@ mod test {
     }
 
     #[test]
+    fn test_keys_dont_panic() {
+        unsafe {
+            let mut error = 0;
+            let error_ptr = &mut error as *mut c_int;
+            let private_key = private_key_create(ptr::null_mut(), error_ptr);
+            assert_eq!(
+                error,
+                LibWalletError::from(InterfaceError::NullError("bytes_ptr".to_string())).code
+            );
+            let public_key = public_key_from_private_key(ptr::null_mut(), error_ptr);
+            assert_eq!(
+                error,
+                LibWalletError::from(InterfaceError::NullError("secret_key_ptr".to_string())).code
+            );
+            let private_bytes = private_key_get_bytes(ptr::null_mut(), error_ptr);
+            assert_eq!(
+                error,
+                LibWalletError::from(InterfaceError::NullError("pk_ptr".to_string())).code
+            );
+            let public_bytes = public_key_get_bytes(ptr::null_mut(), error_ptr);
+            assert_eq!(
+                error,
+                LibWalletError::from(InterfaceError::NullError("pk_ptr".to_string())).code
+            );
+            let private_key_length = byte_vector_get_length(ptr::null_mut(), error_ptr);
+            assert_eq!(
+                error,
+                LibWalletError::from(InterfaceError::NullError("vec_ptr".to_string())).code
+            );
+            let public_key_length = byte_vector_get_length(ptr::null_mut(), error_ptr);
+            assert_eq!(
+                error,
+                LibWalletError::from(InterfaceError::NullError("vec_ptr".to_string())).code
+            );
+            assert_eq!(private_key_length, 0);
+            assert_eq!(public_key_length, 0);
+            private_key_destroy(private_key);
+            public_key_destroy(public_key);
+            byte_vector_destroy(public_bytes);
+            byte_vector_destroy(private_bytes);
+        }
+    }
+
+    #[test]
     fn test_contact() {
         unsafe {
+            let mut error = 0;
+            let error_ptr = &mut error as *mut c_int;
             let test_contact_private_key = private_key_generate();
-            let test_contact_public_key = public_key_from_private_key(test_contact_private_key);
+            let test_contact_public_key = public_key_from_private_key(test_contact_private_key, error_ptr);
             let test_str = "Test Contact";
             let test_contact_str = CString::new(test_str).unwrap();
             let test_contact_alias: *const c_char = CString::into_raw(test_contact_str) as *const c_char;
-            let test_contact = contact_create(test_contact_alias, test_contact_public_key);
-            let alias = contact_get_alias(test_contact);
+            let test_contact = contact_create(test_contact_alias, test_contact_public_key, error_ptr);
+            let alias = contact_get_alias(test_contact, error_ptr);
             let alias_string = CString::from_raw(alias).to_str().unwrap().to_owned();
             assert_eq!(alias_string, test_str);
-            let contact_key = contact_get_public_key(test_contact);
-            let contact_key_bytes = public_key_get_bytes(contact_key);
-            let contact_bytes_len = byte_vector_get_length(contact_key_bytes);
+            let contact_key = contact_get_public_key(test_contact, error_ptr);
+            let contact_key_bytes = public_key_get_bytes(contact_key, error_ptr);
+            let contact_bytes_len = byte_vector_get_length(contact_key_bytes, error_ptr);
             assert_eq!(contact_bytes_len, 32);
             contact_destroy(test_contact);
             public_key_destroy(test_contact_public_key);
@@ -2155,10 +2931,61 @@ mod test {
     }
 
     #[test]
+    fn test_contact_dont_panic() {
+        unsafe {
+            let mut error = 0;
+            let error_ptr = &mut error as *mut c_int;
+            let test_contact_private_key = private_key_generate();
+            let test_contact_public_key = public_key_from_private_key(test_contact_private_key, error_ptr);
+            let test_str = "Test Contact";
+            let test_contact_str = CString::new(test_str).unwrap();
+            let test_contact_alias: *const c_char = CString::into_raw(test_contact_str) as *const c_char;
+            let mut _test_contact = contact_create(ptr::null_mut(), test_contact_public_key, error_ptr);
+            assert_eq!(
+                error,
+                LibWalletError::from(InterfaceError::NullError("alias_ptr".to_string())).code
+            );
+            _test_contact = contact_create(test_contact_alias, ptr::null_mut(), error_ptr);
+            assert_eq!(
+                error,
+                LibWalletError::from(InterfaceError::NullError("public_key_ptr".to_string())).code
+            );
+            let _alias = contact_get_alias(ptr::null_mut(), error_ptr);
+            assert_eq!(
+                error,
+                LibWalletError::from(InterfaceError::NullError("contact_ptr".to_string())).code
+            );
+            let _contact_key = contact_get_public_key(ptr::null_mut(), error_ptr);
+            assert_eq!(
+                error,
+                LibWalletError::from(InterfaceError::NullError("contact_ptr".to_string())).code
+            );
+            let contact_key_bytes = public_key_get_bytes(ptr::null_mut(), error_ptr);
+            assert_eq!(
+                error,
+                LibWalletError::from(InterfaceError::NullError("contact_ptr".to_string())).code
+            );
+            let contact_bytes_len = byte_vector_get_length(ptr::null_mut(), error_ptr);
+            assert_eq!(
+                error,
+                LibWalletError::from(InterfaceError::NullError("contact_ptr".to_string())).code
+            );
+            assert_eq!(contact_bytes_len, 0);
+            contact_destroy(_test_contact);
+            public_key_destroy(test_contact_public_key);
+            private_key_destroy(test_contact_private_key);
+            string_destroy(test_contact_alias as *mut c_char);
+            byte_vector_destroy(contact_key_bytes);
+        }
+    }
+
+    #[test]
     fn test_wallet_ffi() {
         unsafe {
+            let mut error = 0;
+            let error_ptr = &mut error as *mut c_int;
             let secret_key_alice = private_key_generate();
-            let public_key_alice = public_key_from_private_key(secret_key_alice.clone());
+            let public_key_alice = public_key_from_private_key(secret_key_alice.clone(), error_ptr);
             let db_name_alice = CString::new(random_string(8).as_str()).unwrap();
             let db_name_alice_str: *const c_char = CString::into_raw(db_name_alice.clone()) as *const c_char;
             let alice_temp_dir = TempDir::new(random_string(8).as_str()).unwrap();
@@ -2176,10 +3003,11 @@ mod test {
                 db_name_alice_str,
                 db_path_alice_str,
                 secret_key_alice,
+                error_ptr,
             );
-            let alice_wallet = wallet_create(alice_config, ptr::null());
+            let alice_wallet = wallet_create(alice_config, ptr::null(), error_ptr);
             let secret_key_bob = private_key_generate();
-            let public_key_bob = public_key_from_private_key(secret_key_bob.clone());
+            let public_key_bob = public_key_from_private_key(secret_key_bob.clone(), error_ptr);
             let db_name_bob = CString::new(random_string(8).as_str()).unwrap();
             let db_name_bob_str: *const c_char = CString::into_raw(db_name_bob.clone()) as *const c_char;
             let bob_temp_dir = TempDir::new(random_string(8).as_str()).unwrap();
@@ -2196,49 +3024,51 @@ mod test {
                 db_name_bob_str,
                 db_path_bob_str,
                 secret_key_bob,
+                error_ptr,
             );
-            let bob_wallet = wallet_create(bob_config, ptr::null());
+            let bob_wallet = wallet_create(bob_config, ptr::null(), error_ptr);
 
-            let mut peer_added = wallet_add_base_node_peer(alice_wallet, public_key_bob.clone(), address_bob_str);
+            let mut peer_added =
+                wallet_add_base_node_peer(alice_wallet, public_key_bob.clone(), address_bob_str, error_ptr);
             assert_eq!(peer_added, true);
-            peer_added = wallet_add_base_node_peer(bob_wallet, public_key_alice.clone(), address_alice_str);
+            peer_added = wallet_add_base_node_peer(bob_wallet, public_key_alice.clone(), address_alice_str, error_ptr);
             assert_eq!(peer_added, true);
 
             let test_contact_private_key = private_key_generate();
-            let test_contact_public_key = public_key_from_private_key(test_contact_private_key);
+            let test_contact_public_key = public_key_from_private_key(test_contact_private_key, error_ptr);
             let test_contact_str = CString::new("Test Contact").unwrap();
             let test_contact_alias: *const c_char = CString::into_raw(test_contact_str) as *const c_char;
-            let test_contact = contact_create(test_contact_alias, test_contact_public_key);
-            let contact_added = wallet_add_contact(alice_wallet, test_contact);
+            let test_contact = contact_create(test_contact_alias, test_contact_public_key, error_ptr);
+            let contact_added = wallet_add_contact(alice_wallet, test_contact, error_ptr);
             assert_eq!(contact_added, true);
-            let contact_removed = wallet_remove_contact(alice_wallet, test_contact);
+            let contact_removed = wallet_remove_contact(alice_wallet, test_contact, error_ptr);
             assert_eq!(contact_removed, true);
             contact_destroy(test_contact);
             public_key_destroy(test_contact_public_key);
             private_key_destroy(test_contact_private_key);
             string_destroy(test_contact_alias as *mut c_char);
 
-            let mut callback = wallet_callback_register_received_transaction(alice_wallet, inbound_callback);
+            let mut callback = wallet_callback_register_received_transaction(alice_wallet, inbound_callback, error_ptr);
             assert_eq!(callback, true);
-            callback = wallet_callback_register_received_transaction_reply(alice_wallet, completed_callback);
+            callback = wallet_callback_register_received_transaction_reply(alice_wallet, completed_callback, error_ptr);
             assert_eq!(callback, true);
-            callback = wallet_callback_register_mined(alice_wallet, mined_callback);
+            callback = wallet_callback_register_mined(alice_wallet, mined_callback, error_ptr);
             assert_eq!(callback, true);
-            callback = wallet_callback_register_transaction_broadcast(alice_wallet, broadcast_callback);
+            callback = wallet_callback_register_transaction_broadcast(alice_wallet, broadcast_callback, error_ptr);
             assert_eq!(callback, true);
-            let generated = wallet_test_generate_data(alice_wallet);
+            let generated = wallet_test_generate_data(alice_wallet, error_ptr);
             assert_eq!(generated, true);
 
             assert_eq!(
-                (wallet_get_completed_transactions(&mut (*alice_wallet))).is_null(),
+                (wallet_get_completed_transactions(&mut (*alice_wallet), error_ptr)).is_null(),
                 false
             );
             assert_eq!(
-                (wallet_get_pending_inbound_transactions(&mut (*alice_wallet))).is_null(),
+                (wallet_get_pending_inbound_transactions(&mut (*alice_wallet), error_ptr)).is_null(),
                 false
             );
             assert_eq!(
-                (wallet_get_pending_outbound_transactions(&mut (*alice_wallet))).is_null(),
+                (wallet_get_pending_outbound_transactions(&mut (*alice_wallet), error_ptr)).is_null(),
                 false
             );
             // TODO: Test transaction collection and transaction methods
@@ -2258,15 +3088,15 @@ mod test {
                 .block_on((*alice_wallet).transaction_service.get_pending_inbound_transactions())
                 .unwrap();
             for (_k, v) in inbound_transactions {
-                wallet_test_transaction_broadcast(alice_wallet, Box::into_raw(Box::new(v.clone())));
+                wallet_test_transaction_broadcast(alice_wallet, Box::into_raw(Box::new(v.clone())), error_ptr);
             }
 
             for (_k, v) in completed_transactions {
-                wallet_test_mined(alice_wallet, Box::into_raw(Box::new(v.clone())));
+                wallet_test_mined(alice_wallet, Box::into_raw(Box::new(v.clone())), error_ptr);
             }
 
-            let contacts = wallet_get_contacts(alice_wallet);
-            assert_eq!(contacts_get_length(contacts), 4);
+            let contacts = wallet_get_contacts(alice_wallet, error_ptr);
+            assert_eq!(contacts_get_length(contacts, error_ptr), 4);
 
             // free string memory
             string_destroy(address_listener_alice_str as *mut c_char);

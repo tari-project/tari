@@ -19,14 +19,14 @@ export PKG_CONFIG_ALLOW_CROSS=1
 DEPENDENCIES=$IOS_WALLET_PATH
 if [ ! -z "$DEPENDENCIES" ] && [ ! -z "$PKG_PATH" ] && [ "$BUILD_IOS" -eq 1 ] && [ "$MACHINE" == "Mac" ]; then
   #below line is temporary
-  ZMQ_REPO="https://github.com/azawawi/libzmq-ios"
+  ZMQ_REPO_IOS="https://github.com/azawawi/libzmq-ios"
   cd $DEPENDENCIES
   mkdir -p build
   cd build
   BUILD_ROOT=$PWD
   cd ..
   if [ ! -d "${ZMQ_FOLDER}-ios" ]; then
-    git clone $ZMQ_REPO
+    git clone $ZMQ_REPO_IOS
     cd ${ZMQ_FOLDER}-ios
   else
     cd ${ZMQ_FOLDER}-ios
@@ -175,10 +175,7 @@ rustc-flags = "-L${OUTPUT_DIR}/lib"
 EOF
       cd ..
       cargo ndk --target $PLATFORMABI --android-platform $LEVEL -- build --release
-      HEADERFILE=$DEPENDENCIES/wallet.h
-      if [ ! -f "$HEADERFILE" ]; then
-        cp wallet.h $DEPENDENCIES/
-      fi
+      cp wallet.h $DEPENDENCIES/
       rm -rf .cargo
       cd ..
       cd ..

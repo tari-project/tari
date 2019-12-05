@@ -40,10 +40,9 @@ pub enum OutputManagerError {
     OutputManagerStorageError(OutputManagerStorageError),
     MnemonicError(MnemonicError),
     KeyManagerError(KeyManagerError),
-
     /// Not all the transaction inputs and outputs are present to be confirmed
     IncompleteTransaction,
-    /// Not enough funds to fulfill transaction
+    /// Not enough funds to fulfil transaction
     NotEnoughFunds,
     /// Output already exists
     DuplicateOutput,
