@@ -54,7 +54,7 @@ struct Settings {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let _ = env_logger::init();
+    let _ = env_logger::try_init();
 
     info!(target: LOG_TARGET, "Settings loaded");
 

@@ -34,7 +34,15 @@ use crate::{
     control_service::{ControlService, ControlServiceConfig, ControlServiceError, ControlServiceHandle},
     inbound_message_service::inbound_message_service::InboundMessageService,
     message::{FrameSet, InboundMessage},
-    outbound_message_service::{OutboundMessage, OutboundMessageService, OutboundServiceConfig, OutboundServiceError},
+    outbound_message_service::{
+        Backoff,
+        BoxedBackoff,
+        ExponentialBackoff,
+        OutboundMessage,
+        OutboundMessageService,
+        OutboundServiceConfig,
+        OutboundServiceError,
+    },
     peer_manager::{NodeIdentity, PeerManager, PeerManagerError},
     types::CommsDatabase,
 };
@@ -82,9 +90,7 @@ type CommsConnectionManagerActor =
 /// The [build] method will return an error if any required builder methods are not called. These
 /// are detailed further down on the method docs.
 pub struct CommsBuilder<TInSink, TOutStream> {
-    /// Zmq Context to use
     zmq_context: ZmqContext,
-    ///
     peer_storage: Option<CommsDatabase>,
     control_service_config: Option<ControlServiceConfig>,
     outbound_service_config: Option<OutboundServiceConfig>,
@@ -94,6 +100,7 @@ pub struct CommsBuilder<TInSink, TOutStream> {
     peer_conn_config: Option<PeerConnectionConfig>,
     comms_builder_config: Option<CommsBuilderConfig>,
     executor: TaskExecutor,
+    oms_backoff: Option<BoxedBackoff>,
     on_shutdown: Option<Box<dyn FnOnce() + Send + Sync>>,
 }
 
@@ -113,6 +120,7 @@ impl CommsBuilder<NullSink<InboundMessage, mpsc::SendError>, stream::Empty<Outbo
             node_identity: None,
             comms_builder_config: None,
             on_shutdown: None,
+            oms_backoff: Some(Box::new(ExponentialBackoff::default())),
             executor,
         }
     }
@@ -159,6 +167,15 @@ where
         self
     }
 
+    /// Set the backoff for the [OutboundService]. This is optional. If omitted the default ExponentialBackoff is used.
+    ///
+    /// [OutboundService]: ../../outbound_service/index.html#outbound-service
+    pub fn with_outbound_backoff<T>(mut self, backoff: T) -> Self
+    where T: Backoff + Send + Sync + 'static {
+        self.oms_backoff = Some(Box::new(backoff));
+        self
+    }
+
     /// Common configuration for all [PeerConnection]s. This is optional.
     /// If omitted the default configuration is used.
     ///
@@ -184,6 +201,7 @@ where
             node_identity: self.node_identity,
             comms_builder_config: self.comms_builder_config,
             executor: self.executor,
+            oms_backoff: self.oms_backoff,
             on_shutdown: self.on_shutdown,
         }
     }
@@ -204,6 +222,7 @@ where
             node_identity: self.node_identity,
             comms_builder_config: self.comms_builder_config,
             executor: self.executor,
+            oms_backoff: self.oms_backoff,
             on_shutdown: self.on_shutdown,
         }
     }
@@ -274,15 +293,17 @@ where
         node_identity: Arc<NodeIdentity>,
         connection_manager_requester: ConnectionManagerRequester,
         shutdown_signal: ShutdownSignal,
-    ) -> OutboundMessageService<TOutStream>
+    ) -> OutboundMessageService<TOutStream, BoxedBackoff>
     {
         let outbound_stream = self.outbound_stream.take().expect("outbound_stream cannot be None");
-        OutboundMessageService::new(
+        let oms_backoff = self.oms_backoff.take().expect("oms_backoff was None");
+        OutboundMessageService::with_backoff(
             self.outbound_service_config.take().unwrap_or_default(),
             outbound_stream,
             node_identity,
             connection_manager_requester,
             shutdown_signal,
+            oms_backoff,
         )
     }
 
@@ -374,7 +395,7 @@ pub struct CommsContainer<TInSink, TOutStream> {
 
     node_identity: Arc<NodeIdentity>,
 
-    outbound_message_service: OutboundMessageService<TOutStream>,
+    outbound_message_service: OutboundMessageService<TOutStream, BoxedBackoff>,
     shutdown: Shutdown,
 
     peer_manager: Arc<PeerManager>,

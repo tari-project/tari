@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE
 
-use crate::{connection::NetAddressError, peer_manager::node_id::NodeIdError};
+use crate::connection::NetAddressError;
 use derive_error::Error;
 use tari_storage::KeyValStoreError;
 
@@ -28,23 +28,12 @@ use tari_storage::KeyValStoreError;
 pub enum PeerManagerError {
     /// The requested peer does not exist or could not be located
     PeerNotFoundError,
-    /// A problem occurred converting the serialized data into peers
-    DeserializationError,
-    /// The index doesn't relate to an existing peer
-    IndexOutOfBounds,
-    /// The requested operation can only be performed if the PeerManager is linked to a DataStore
-    DatastoreUndefined,
-    /// An empty response was received from the Datastore
-    EmptyDatastoreQuery,
     // A NetAddressError occurred
     NetAddressError(NetAddressError),
     /// The peer has been banned
     BannedPeer,
-    /// Problem initializing the RNG
-    RngError,
     // An problem has been encountered with the database
     DatabaseError(KeyValStoreError),
-    NodeIdError(NodeIdError),
 }
 
 impl PeerManagerError {

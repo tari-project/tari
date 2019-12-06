@@ -68,7 +68,7 @@ struct Peers {
 
 /// Entry point into the gRPC server binary
 pub fn main() {
-    let _ = env_logger::init();
+    let _ = env_logger::try_init();
     let matches = App::new("Tari Wallet gRPC server")
         .version("0.1")
         .arg(

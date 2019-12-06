@@ -93,7 +93,6 @@ pub fn setup_transaction_service<T: TransactionBackend + 'static>(
     let (comms, dht) = setup_comms_services(
         runtime.executor(),
         Arc::new(node_identity.clone()),
-        "127.0.0.1:0".parse().unwrap(),
         peers,
         publisher,
         database_path,
@@ -449,6 +448,7 @@ fn manage_multiple_transactions<T: TransactionBackend + 'static>(
     );
 
     let bob_event_stream = bob_ts.get_event_stream_fused();
+    let carol_event_stream = carol_ts.get_event_stream_fused();
 
     let (_utxo, uo2) = make_input(&mut rng, MicroTari(3500), &factories.commitment);
     runtime.block_on(bob_oms.add_output(uo2)).unwrap();
@@ -472,12 +472,11 @@ fn manage_multiple_transactions<T: TransactionBackend + 'static>(
         ))
         .unwrap();
 
-    let mut result =
-        runtime.block_on(async { event_stream_count(alice_event_stream, 5, Duration::from_secs(10)).await });
+    let mut result = runtime.block_on(event_stream_count(alice_event_stream, 5, Duration::from_secs(10)));
 
     assert_eq!(result.remove(&TransactionEvent::ReceivedTransactionReply), Some(3));
 
-    let _ = runtime.block_on(async { event_stream_count(bob_event_stream, 5, Duration::from_secs(10)).await });
+    runtime.block_on(event_stream_count(bob_event_stream, 5, Duration::from_secs(10)));
     let alice_pending_outbound = runtime.block_on(alice_ts.get_pending_outbound_transactions()).unwrap();
     let alice_completed_tx = runtime.block_on(alice_ts.get_completed_transactions()).unwrap();
     assert_eq!(alice_pending_outbound.len(), 0);
@@ -486,6 +485,7 @@ fn manage_multiple_transactions<T: TransactionBackend + 'static>(
     let bob_completed_tx = runtime.block_on(bob_ts.get_completed_transactions()).unwrap();
     assert_eq!(bob_pending_outbound.len(), 0);
     assert_eq!(bob_completed_tx.len(), 3);
+    runtime.block_on(event_stream_count(carol_event_stream, 2, Duration::from_secs(10)));
     let carol_pending_inbound = runtime.block_on(carol_ts.get_pending_inbound_transactions()).unwrap();
     let carol_completed_tx = runtime.block_on(carol_ts.get_completed_transactions()).unwrap();
     assert_eq!(carol_pending_inbound.len(), 0);

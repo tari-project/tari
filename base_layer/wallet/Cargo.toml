@@ -39,10 +39,10 @@ tempdir = "0.3.7"
 
 [dev-dependencies]
 tari_comms_dht = { path = "../../comms/dht", version = "^0.0", features=["test-mocks"]}
+tari_test_utils = { path = "../../infrastructure/test_utils", version = "^0.0"}
 
 env_logger = "0.6.2"
 prost = "0.5.0"
-tari_test_utils = { path = "../../infrastructure/test_utils", version = "^0.0"}
 
 [features]
 test_harness = []

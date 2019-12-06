@@ -81,6 +81,7 @@ fn smoke_test() {
             .build()
             .unwrap(),
     );
+    let peer = peer_manager.find_by_node_id(&peer.node_id).unwrap();
 
     let (mut inbound_message_sink_tx, inbound_message_sink_rx) = mpsc::channel(100);
 

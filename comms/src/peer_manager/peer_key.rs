@@ -20,11 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::consts::COMMS_RNG;
 use rand::RngCore;
 
 pub type PeerKey = u64;
 
-pub fn generate_peer_key<R>(rng: &mut R) -> PeerKey
-where R: RngCore {
-    rng.next_u64()
+pub fn generate_peer_key() -> PeerKey {
+    COMMS_RNG.with(|rng| rng.borrow_mut().next_u64())
 }

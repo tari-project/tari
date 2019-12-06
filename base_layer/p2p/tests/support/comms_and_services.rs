@@ -21,18 +21,16 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use futures::Sink;
-use std::{error::Error, sync::Arc, time::Duration};
+use std::{error::Error, sync::Arc};
 use tari_comms::{
     builder::CommsNode,
-    control_service::ControlServiceConfig,
     peer_manager::{NodeIdentity, Peer, PeerFlags},
 };
 use tari_comms_dht::Dht;
 use tari_p2p::{
     comms_connector::{InboundDomainConnector, PeerMessage},
-    initialization::{initialize_comms, CommsConfig},
+    initialization::initialize_local_test_comms,
 };
-use tari_test_utils::random;
 use tokio::runtime::TaskExecutor;
 
 pub fn setup_comms_services<TSink>(
@@ -46,24 +44,7 @@ where
     TSink: Sink<Arc<PeerMessage>> + Clone + Unpin + Send + Sync + 'static,
     TSink::Error: Error + Send + Sync,
 {
-    let comms_config = CommsConfig {
-        node_identity: Arc::clone(&node_identity),
-        peer_connection_listening_address: "127.0.0.1:0".parse().unwrap(),
-        socks_proxy_address: None,
-        control_service: ControlServiceConfig {
-            listener_address: node_identity.control_service_address(),
-            socks_proxy_address: None,
-            requested_connection_timeout: Duration::from_millis(2000),
-        },
-        datastore_path: data_path.to_string(),
-        establish_connection_timeout: Duration::from_secs(5),
-        peer_database_name: random::string(8),
-        inbound_buffer_size: 10,
-        outbound_buffer_size: 10,
-        dht: Default::default(),
-    };
-
-    let (comms, dht) = initialize_comms(executor, comms_config, publisher)
+    let (comms, dht) = initialize_local_test_comms(executor, node_identity, publisher, data_path)
         .map(|(comms, dht)| (Arc::new(comms), dht))
         .unwrap();
 

@@ -56,7 +56,6 @@ use tari_p2p::{
 use tari_service_framework::StackBuilder;
 use tari_test_utils::address::get_next_local_address;
 use tari_transactions::types::HashDigest;
-use tempdir::TempDir;
 use tokio::runtime::{Runtime, TaskExecutor};
 
 /// The NodeInterfaces is used as a container for providing access to all the services and interfaces of a single node.

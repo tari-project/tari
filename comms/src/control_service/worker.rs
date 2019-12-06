@@ -253,9 +253,13 @@ impl ControlServiceWorker {
         }
 
         let decrypted_body = self.decrypt_body(&envelope.body, &envelope_header.public_key)?;
-        trace!(target: LOG_TARGET, "decrypted_body = {:?}", decrypted_body.to_hex());
+        debug!(
+            target: LOG_TARGET,
+            "decryption succeeded ({} bytes)",
+            decrypted_body.len()
+        );
 
-        let body = EnvelopeBody::decode(decrypted_body)?;
+        let body = EnvelopeBody::decode(&decrypted_body)?;
 
         debug!(target: LOG_TARGET, "Handling message");
         self.handle_message(envelope_header, identity_frame, body)

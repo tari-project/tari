@@ -22,7 +22,7 @@
 
 use crate::support::{
     factories::{self, TestFactory},
-    helpers::{database::init_datastore, streams::stream_assert_count, ConnectionMessageCounter},
+    helpers::{streams::stream_assert_count, ConnectionMessageCounter},
 };
 use futures::channel::mpsc::channel;
 use std::{sync::Arc, time::Duration};
@@ -34,7 +34,6 @@ use tari_comms::{
     utils::crypt,
     wrap_in_envelope_body,
 };
-use tari_storage::LMDBWrapper;
 use tari_utilities::{thread_join::ThreadJoinWithTimeout, ByteArray};
 
 fn make_peer_connection_config() -> PeerConnectionConfig {
@@ -71,24 +70,12 @@ fn establish_control_service_connection_fail() {
     msg_counter2.set_response(vec!["JUNK".as_bytes().to_vec()]);
     msg_counter2.start(peers[0].addresses[1].net_address.clone());
 
-    // Note: every test should have unique database
-    let database_name = "establisher_establish_control_service_connection_fail";
-    let datastore = init_datastore(database_name).unwrap();
-    let database = datastore.get_handle(database_name).unwrap();
-    let database = LMDBWrapper::new(Arc::new(database));
-    let peer_manager = Arc::new(
-        factories::peer_manager::create()
-            .with_database(database)
-            .with_peers(peers.clone())
-            .build()
-            .unwrap(),
-    );
     let (tx, _rx) = channel(10);
     let config = make_peer_connection_config();
 
     let example_peer = &peers[0];
 
-    let establisher = ConnectionEstablisher::new(context.clone(), node_identity, config, peer_manager, tx);
+    let establisher = ConnectionEstablisher::new(context.clone(), node_identity, config, tx);
     match establisher.connect_control_service_client(example_peer) {
         Ok(_) => panic!("Unexpected success result"),
         Err(ConnectionManagerError::ControlServiceFailedConnectionAllAddresses) => {},
@@ -140,21 +127,9 @@ fn establish_control_service_connection_succeed() {
     let address = example_peer.addresses[0].net_address.clone();
     msg_counter1.start(address);
 
-    // Setup peer manager
-    let database_name = "establisher_establish_control_service_connection_succeed";
-    let datastore = init_datastore(database_name).unwrap();
-    let database = datastore.get_handle(database_name).unwrap();
-    let database = LMDBWrapper::new(Arc::new(database));
-    let peer_manager = Arc::new(
-        factories::peer_manager::create()
-            .with_database(database)
-            .with_peers(vec![example_peer.clone()])
-            .build()
-            .unwrap(),
-    );
     let (tx, _rx) = channel(10);
     let config = make_peer_connection_config();
-    let establisher = ConnectionEstablisher::new(context.clone(), node_identity1, config, peer_manager, tx);
+    let establisher = ConnectionEstablisher::new(context.clone(), node_identity1, config, tx);
     let client = establisher.connect_control_service_client(&example_peer).unwrap();
     client.ping_pong(Duration::from_millis(3000)).unwrap();
 
@@ -202,26 +177,9 @@ fn establish_peer_connection_outbound() {
         )
         .unwrap();
 
-    let database_name = "establisher_establish_peer_connection_outbound";
-    let datastore = init_datastore(database_name).unwrap();
-    let database = datastore.get_handle(database_name).unwrap();
-    let database = LMDBWrapper::new(Arc::new(database));
-    let peer_manager = Arc::new(
-        factories::peer_manager::create()
-            .with_database(database)
-            .with_peers(vec![remote_peer.clone()])
-            .build()
-            .unwrap(),
-    );
     let (tx_outbound2, _rx_outbound) = channel(10);
     let config = make_peer_connection_config();
-    let establisher = ConnectionEstablisher::new(
-        context.clone(),
-        node_identity_out.clone(),
-        config,
-        peer_manager,
-        tx_outbound2,
-    );
+    let establisher = ConnectionEstablisher::new(context.clone(), node_identity_out.clone(), config, tx_outbound2);
     let (connection, peer_conn_handle) = establisher
         .establish_outbound_peer_connection(
             address,
@@ -253,24 +211,10 @@ fn establish_peer_connection_inbound() {
 
     let (secret_key, public_key) = CurveEncryption::generate_keypair().unwrap();
 
-    let example_peer = factories::peer::create().build().unwrap();
-
-    let database_name = "establish_peer_connection_inbound"; // Note: every test should have unique database
-    let datastore = init_datastore(database_name).unwrap();
-    let database = datastore.get_handle(database_name).unwrap();
-    let database = LMDBWrapper::new(Arc::new(database));
-    let peer_manager = Arc::new(
-        factories::peer_manager::create()
-            .with_database(database)
-            .with_peers(vec![example_peer.clone()])
-            .build()
-            .unwrap(),
-    );
-
     let (tx, rx) = channel(10);
     // Create a connection establisher
     let config = make_peer_connection_config();
-    let establisher = ConnectionEstablisher::new(context.clone(), node_identity.clone(), config, peer_manager, tx);
+    let establisher = ConnectionEstablisher::new(context.clone(), node_identity.clone(), config, tx);
     let (connection, peer_conn_handle) = establisher.establish_peer_listening_connection(secret_key).unwrap();
     let peer_identity = b"peer-identity".to_vec();
     let connection_identity = b"conn-identity".to_vec();
@@ -281,7 +225,7 @@ fn establish_peer_connection_inbound() {
     connection
         .wait_listening_or_failure(Duration::from_millis(3000))
         .unwrap();
-    let address: NetAddress = connection.get_connected_address().unwrap().into();
+    let address = connection.get_connected_address().unwrap().into();
 
     // Setup a peer connection which will connect to our established inbound peer connection
     let (other_tx, _other_rx) = channel(10);
@@ -302,8 +246,8 @@ fn establish_peer_connection_inbound() {
     other_peer_conn
         .wait_connected_or_failure(Duration::from_millis(3000))
         .unwrap();
-    // Start sending messages
 
+    // Start sending messages
     other_peer_conn.send(vec!["HELLO".as_bytes().to_vec()]).unwrap();
     other_peer_conn.send(vec!["TARI".as_bytes().to_vec()]).unwrap();
     other_peer_conn.shutdown().unwrap();

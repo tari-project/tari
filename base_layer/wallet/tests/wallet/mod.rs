@@ -44,6 +44,7 @@ use tari_wallet::{
     wallet::WalletConfig,
     Wallet,
 };
+#[cfg(feature = "test_harness")]
 use tempdir::TempDir;
 use tokio::runtime::Runtime;
 

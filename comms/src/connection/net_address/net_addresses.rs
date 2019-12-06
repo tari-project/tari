@@ -63,6 +63,7 @@ impl NetAddressesWithStats {
     pub fn add_net_address(&mut self, net_address: &NetAddress) {
         if !self.addresses.iter().any(|x| x.net_address == *net_address) {
             self.addresses.push(net_address.clone().into());
+            self.addresses.sort();
         }
     }
 
@@ -72,9 +73,9 @@ impl NetAddressesWithStats {
         // Remove missing elements
         let mut remove_indices: Vec<usize> = Vec::new();
         for index in 0..self.addresses.len() {
-            if !net_addresses
+            if net_addresses
                 .iter()
-                .any(|new_net_address| *new_net_address == self.addresses[index].net_address)
+                .all(|new_net_address| *new_net_address != self.addresses[index].net_address)
             {
                 remove_indices.push(index);
             }
@@ -84,14 +85,15 @@ impl NetAddressesWithStats {
         }
         // Add new elements
         for new_net_address in &net_addresses {
-            if !self
+            if self
                 .addresses
                 .iter()
-                .any(|curr_net_address| curr_net_address.net_address == *new_net_address)
+                .all(|curr_net_address| curr_net_address.net_address != *new_net_address)
             {
                 self.add_net_address(new_net_address);
             }
         }
+        self.addresses.sort();
     }
 
     /// Finds and returns the highest priority net address until all connection attempts for each net address have been
@@ -115,6 +117,10 @@ impl NetAddressesWithStats {
         }
     }
 
+    pub fn address_iter(&self) -> impl Iterator<Item = &NetAddress> {
+        self.addresses.iter().map(|addr| &addr.net_address)
+    }
+
     /// The average connection latency of the provided net address will be updated to include the current measured
     /// latency sample
     pub fn update_latency(
@@ -125,6 +131,7 @@ impl NetAddressesWithStats {
     {
         let updatable_address = self.find_address_mut(address)?;
         updatable_address.update_latency(latency_measurement);
+        self.addresses.sort();
         Ok(())
     }
 
@@ -132,6 +139,7 @@ impl NetAddressesWithStats {
     pub fn mark_message_received(&mut self, address: &NetAddress) -> Result<(), NetAddressError> {
         let updatable_address = self.find_address_mut(address)?;
         updatable_address.mark_message_received();
+        self.addresses.sort();
         Ok(())
     }
 
@@ -139,6 +147,7 @@ impl NetAddressesWithStats {
     pub fn mark_message_rejected(&mut self, address: &NetAddress) -> Result<(), NetAddressError> {
         let updatable_address = self.find_address_mut(address)?;
         updatable_address.mark_message_rejected();
+        self.addresses.sort();
         Ok(())
     }
 
@@ -147,6 +156,7 @@ impl NetAddressesWithStats {
         let updatable_address = self.find_address_mut(address)?;
         updatable_address.mark_successful_connection_attempt();
         self.last_attempted = Some(Utc::now());
+        self.addresses.sort();
         Ok(())
     }
 
@@ -155,6 +165,7 @@ impl NetAddressesWithStats {
         let updatable_address = self.find_address_mut(address)?;
         updatable_address.mark_failed_connection_attempt();
         self.last_attempted = Some(Utc::now());
+        self.addresses.sort();
         Ok(())
     }
 
@@ -163,6 +174,7 @@ impl NetAddressesWithStats {
         for a in self.addresses.iter_mut() {
             a.reset_connection_attempts();
         }
+        self.addresses.sort();
     }
 
     /// Returns the number of addresses
@@ -252,10 +264,8 @@ mod test {
         assert!(net_addresses.mark_successful_connection_attempt(&net_address3).is_ok());
         assert!(net_addresses.mark_successful_connection_attempt(&net_address1).is_ok());
         assert!(net_addresses.mark_successful_connection_attempt(&net_address2).is_ok());
-        let desired_last_seen = net_addresses.addresses[1].last_seen;
+        let desired_last_seen = net_addresses.addresses[0].last_seen;
         let last_seen = net_addresses.last_seen();
-        assert!(desired_last_seen.is_some());
-        assert!(last_seen.is_some());
         assert_eq!(desired_last_seen.unwrap(), last_seen.unwrap());
     }
 
@@ -328,8 +338,8 @@ mod test {
         assert!(net_addresses
             .update_latency(&net_address2, Duration::from_millis(200))
             .is_ok());
-        assert_eq!(net_addresses.addresses[0].avg_latency, Duration::from_millis(0));
-        assert_eq!(net_addresses.addresses[1].avg_latency, Duration::from_millis(200));
+        assert_eq!(net_addresses.addresses[0].avg_latency, Duration::from_millis(200));
+        assert_eq!(net_addresses.addresses[1].avg_latency, Duration::from_millis(0));
         assert_eq!(net_addresses.addresses[2].avg_latency, Duration::from_millis(0));
 
         thread::sleep(Duration::from_millis(1));
@@ -342,18 +352,18 @@ mod test {
         assert!(net_addresses.mark_message_rejected(&net_address2).is_ok());
         assert!(net_addresses.mark_message_rejected(&net_address3).is_ok());
         assert!(net_addresses.mark_message_rejected(&net_address3).is_ok());
-        assert_eq!(net_addresses.addresses[0].rejected_message_count, 0);
+        assert_eq!(net_addresses.addresses[0].rejected_message_count, 2);
         assert_eq!(net_addresses.addresses[1].rejected_message_count, 1);
-        assert_eq!(net_addresses.addresses[2].rejected_message_count, 2);
+        assert_eq!(net_addresses.addresses[2].rejected_message_count, 0);
 
         assert!(net_addresses.mark_failed_connection_attempt(&net_address1).is_ok());
         assert!(net_addresses.mark_failed_connection_attempt(&net_address2).is_ok());
         assert!(net_addresses.mark_failed_connection_attempt(&net_address3).is_ok());
         assert!(net_addresses.mark_failed_connection_attempt(&net_address1).is_ok());
         assert!(net_addresses.mark_successful_connection_attempt(&net_address2).is_ok());
-        assert_eq!(net_addresses.addresses[0].connection_attempts, 2);
-        assert_eq!(net_addresses.addresses[1].connection_attempts, 0);
-        assert_eq!(net_addresses.addresses[2].connection_attempts, 1);
+        assert_eq!(net_addresses.addresses[0].connection_attempts, 0);
+        assert_eq!(net_addresses.addresses[1].connection_attempts, 1);
+        assert_eq!(net_addresses.addresses[2].connection_attempts, 2);
     }
 
     #[test]
@@ -371,9 +381,9 @@ mod test {
         assert!(net_addresses.mark_failed_connection_attempt(&net_address3).is_ok());
         assert!(net_addresses.mark_failed_connection_attempt(&net_address1).is_ok());
 
-        assert_eq!(net_addresses.addresses[0].connection_attempts, 2);
+        assert_eq!(net_addresses.addresses[0].connection_attempts, 1);
         assert_eq!(net_addresses.addresses[1].connection_attempts, 1);
-        assert_eq!(net_addresses.addresses[2].connection_attempts, 1);
+        assert_eq!(net_addresses.addresses[2].connection_attempts, 2);
         net_addresses.reset_connection_attempts();
         assert_eq!(net_addresses.addresses[0].connection_attempts, 0);
         assert_eq!(net_addresses.addresses[1].connection_attempts, 0);

@@ -186,7 +186,7 @@ fn receive_and_propagate_transaction() {
         async_assert_eventually!(
             bob_node.mempool.has_tx_with_excess_sig(&tx_excess_sig).unwrap(),
             expect = TxStorageResponse::UnconfirmedPool,
-            max_attempts = 10,
+            max_attempts = 20,
             interval = Duration::from_millis(1000)
         );
         async_assert_eventually!(

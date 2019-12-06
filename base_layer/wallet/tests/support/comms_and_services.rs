@@ -20,13 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::support::utils::random_string;
 use futures::Sink;
-use std::{error::Error, sync::Arc, time::Duration};
+use std::{error::Error, sync::Arc};
 use tari_comms::{
     builder::CommsNode,
     connection::NetAddress,
-    control_service::ControlServiceConfig,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
     types::CommsPublicKey,
 };
@@ -34,14 +32,13 @@ use tari_comms_dht::{envelope::DhtMessageHeader, Dht};
 use tari_p2p::{
     comms_connector::{InboundDomainConnector, PeerMessage},
     domain_message::DomainMessage,
-    initialization::{initialize_comms, CommsConfig},
+    initialization::initialize_local_test_comms,
 };
 use tokio::runtime::TaskExecutor;
 
 pub fn setup_comms_services<TSink>(
     executor: TaskExecutor,
     node_identity: Arc<NodeIdentity>,
-    listening_address: NetAddress,
     peers: Vec<NodeIdentity>,
     publisher: InboundDomainConnector<TSink>,
     database_path: String,
@@ -50,24 +47,7 @@ where
     TSink: Sink<Arc<PeerMessage>> + Clone + Unpin + Send + Sync + 'static,
     TSink::Error: Error + Send + Sync,
 {
-    let comms_config = CommsConfig {
-        node_identity: Arc::clone(&node_identity),
-        peer_connection_listening_address: listening_address,
-        socks_proxy_address: None,
-        control_service: ControlServiceConfig {
-            listener_address: node_identity.control_service_address(),
-            socks_proxy_address: None,
-            requested_connection_timeout: Duration::from_millis(2000),
-        },
-        datastore_path: database_path,
-        establish_connection_timeout: Duration::from_secs(3),
-        peer_database_name: random_string(8),
-        inbound_buffer_size: 100,
-        outbound_buffer_size: 100,
-        dht: Default::default(),
-    };
-
-    let (comms, dht) = initialize_comms(executor, comms_config, publisher).unwrap();
+    let (comms, dht) = initialize_local_test_comms(executor, node_identity, publisher, &database_path).unwrap();
 
     for p in peers {
         let addr = p.control_service_address();

@@ -172,6 +172,8 @@ fn main() {
         set_lan_address(&peer_identity);
     }
 
+    let datastore_path = TempDir::new(random_string(8).as_str()).unwrap();
+
     let comms_config = CommsConfig {
         node_identity: Arc::clone(&node_identity),
         peer_connection_listening_address: format!("0.0.0.0:{}", port).parse().unwrap(),
@@ -187,12 +189,7 @@ fn main() {
             requested_connection_timeout: Duration::from_millis(2000),
         },
         establish_connection_timeout: Duration::from_secs(10),
-        datastore_path: TempDir::new(random_string(8).as_str())
-            .unwrap()
-            .path()
-            .to_str()
-            .unwrap()
-            .to_string(),
+        datastore_path: datastore_path.path().to_str().unwrap().to_string(),
         peer_database_name: random_string(8),
         inbound_buffer_size: 10,
         outbound_buffer_size: 10,

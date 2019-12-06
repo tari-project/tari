@@ -39,12 +39,10 @@ use crate::{
         MemoryDatabase,
         MmrTree,
         MutableMmrState,
-        Validators,
     },
     mempool::{Mempool, MempoolConfig},
     proof_of_work::DiffAdjManager,
     test_utils::builders::{add_block_and_update_header, create_default_db, create_test_kernel, create_utxo},
-    validation::mocks::MockValidator,
 };
 use croaring::Bitmap;
 use futures::{executor::block_on, StreamExt};
