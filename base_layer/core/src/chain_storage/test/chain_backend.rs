@@ -272,14 +272,7 @@ fn lmdb_spend_utxo_and_unspend_stxo() {
     spend_utxo_and_unspend_stxo(db);
 }
 
-#[test]
-fn lmdb_insert_fetch_metadata() {
-    let mct_config = MerkleChangeTrackerConfig {
-        min_history_len: 10,
-        max_history_len: 20,
-    };
-    let db = create_lmdb_database(&create_temporary_data_path(), mct_config).unwrap();
-
+fn insert_fetch_metadata<T: BlockchainBackend>(db: T) {
     assert!(db.fetch(&DbKey::Metadata(MetadataKey::ChainHeight)).unwrap().is_none());
     assert!(db
         .fetch(&DbKey::Metadata(MetadataKey::AccumulatedWork))
@@ -344,6 +337,22 @@ fn lmdb_insert_fetch_metadata() {
     } else {
         assert!(false);
     }
+}
+
+#[test]
+fn memory_insert_fetch_metadata() {
+    let db = MemoryDatabase::<HashDigest>::default();
+    insert_fetch_metadata(db);
+}
+
+#[test]
+fn lmdb_insert_fetch_metadata() {
+    let mct_config = MerkleChangeTrackerConfig {
+        min_history_len: 10,
+        max_history_len: 20,
+    };
+    let db = create_lmdb_database(&create_temporary_data_path(), mct_config).unwrap();
+    insert_fetch_metadata(db);
 }
 
 fn fetch_mmr_root_and_proof_for_utxo_and_rp<T: BlockchainBackend>(db: T) {

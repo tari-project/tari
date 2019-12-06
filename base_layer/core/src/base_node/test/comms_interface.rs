@@ -39,12 +39,10 @@ use crate::{
         MemoryDatabase,
         MmrTree,
         MutableMmrState,
-        Validators,
     },
     mempool::{Mempool, MempoolConfig},
     proof_of_work::DiffAdjManager,
     test_utils::builders::{add_block_and_update_header, create_default_db, create_test_kernel, create_utxo},
-    validation::mocks::MockValidator,
 };
 use croaring::Bitmap;
 use futures::{executor::block_on, StreamExt};
@@ -117,7 +115,7 @@ fn inbound_get_metadata() {
             {
                 assert_eq!(received_metadata.height_of_longest_chain, None);
                 assert_eq!(received_metadata.best_block, None);
-                assert_eq!(received_metadata.pruning_horizon, 0);
+                assert_eq!(received_metadata.pruning_horizon, 2880);
             } else {
                 assert!(false);
             }
