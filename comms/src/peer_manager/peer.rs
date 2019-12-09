@@ -23,7 +23,7 @@
 use super::node_id::deserialize_node_id_from_hex;
 use crate::{
     connection::{net_address::net_addresses::NetAddressesWithStats, NetAddress},
-    peer_manager::{connection_stats::PeerConnectionStats, node_id::NodeId, PeerFeatures},
+    peer_manager::{connection_stats::PeerConnectionStats, node_id::NodeId, peer_key::PeerKey, PeerFeatures},
     types::CommsPublicKey,
 };
 use bitflags::bitflags;
@@ -43,6 +43,7 @@ bitflags! {
 /// describing the status of the Peer.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub struct Peer {
+    id: Option<PeerKey>,
     pub public_key: CommsPublicKey,
     #[serde(serialize_with = "serialize_to_hex")]
     #[serde(deserialize_with = "deserialize_node_id_from_hex")]
@@ -65,6 +66,7 @@ impl Peer {
     ) -> Peer
     {
         Peer {
+            id: None,
             public_key,
             node_id,
             addresses,
@@ -73,6 +75,16 @@ impl Peer {
             connection_stats: Default::default(),
             added_at: Utc::now().naive_utc(),
         }
+    }
+
+    /// Returns the peers local id if this peer is persisted, otherwise None
+    pub fn id(&self) -> Option<PeerKey> {
+        self.id
+    }
+
+    pub(super) fn set_id(&mut self, id: PeerKey) {
+        debug_assert!(self.id.is_none());
+        self.id = Some(id);
     }
 
     pub fn update(

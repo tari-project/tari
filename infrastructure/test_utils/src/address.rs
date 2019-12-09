@@ -22,7 +22,7 @@
 
 use std::{cmp, ops::Range, sync::Mutex};
 
-const PORT_RANGE: Range<u16> = 40000..48000;
+const PORT_RANGE: Range<u16> = 20000..30000;
 const LOCAL_ADDRESS: &str = "127.0.0.1";
 
 lazy_static! {

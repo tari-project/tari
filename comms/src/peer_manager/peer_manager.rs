@@ -26,6 +26,7 @@ use crate::{
         connection_stats::PeerConnectionStats,
         node_id::NodeId,
         peer::{Peer, PeerFlags},
+        peer_key::PeerKey,
         peer_storage::PeerStorage,
         PeerFeatures,
         PeerManagerError,
@@ -33,7 +34,7 @@ use crate::{
     },
     types::{CommsDatabase, CommsPublicKey},
 };
-use std::{sync::RwLock, time::Duration};
+use std::sync::RwLock;
 
 /// The PeerManager consist of a routing table of previously discovered peers.
 /// It also provides functionality to add, find and delete peers. A subset of peers can also be requested from the
@@ -52,10 +53,12 @@ impl PeerManager {
 
     /// Adds a peer to the routing table of the PeerManager if the peer does not already exist. When a peer already
     /// exist, the stored version will be replaced with the newly provided peer.
-    pub fn add_peer(&self, peer: Peer) -> Result<(), PeerManagerError> {
+    pub fn add_peer(&self, peer: Peer) -> Result<PeerKey, PeerManagerError> {
         acquire_write_lock!(self.peer_storage).add_peer(peer)
     }
 
+    /// Updates fields for a peer. Any fields set to Some(xx) will be updated. All None
+    /// fields will remain the same.
     pub fn update_peer(
         &self,
         public_key: &CommsPublicKey,
@@ -76,18 +79,20 @@ impl PeerManager {
         )
     }
 
+    /// Set the last connection to this peer as a success
     pub fn set_success_connection_state(&self, node_id: &NodeId) -> Result<(), PeerManagerError> {
         let mut storage = acquire_write_lock!(self.peer_storage);
         let mut peer = storage.find_by_node_id(node_id)?;
         peer.connection_stats.set_connection_success();
-        storage.add_peer(peer)
+        storage.update_peer(&peer.public_key, None, None, None, None, Some(peer.connection_stats))
     }
 
+    /// Set the last connection to this peer as a failure
     pub fn set_failed_connection_state(&self, node_id: &NodeId) -> Result<(), PeerManagerError> {
         let mut storage = acquire_write_lock!(self.peer_storage);
         let mut peer = storage.find_by_node_id(node_id)?;
         peer.connection_stats.set_connection_failed();
-        storage.add_peer(peer)
+        storage.update_peer(&peer.public_key, None, None, None, None, Some(peer.connection_stats))
     }
 
     /// The peer with the specified public_key will be removed from the PeerManager
@@ -188,42 +193,6 @@ impl PeerManager {
     /// for each net address have been reached
     pub fn get_best_net_address(&self, node_id: &NodeId) -> Result<NetAddress, PeerManagerError> {
         acquire_write_lock!(self.peer_storage).get_best_net_address(node_id)
-    }
-
-    /// Thread safe access to peer - The average connection latency of the provided net address will be updated to
-    /// include the current measured latency sample
-    pub fn update_latency(
-        &self,
-        net_address: &NetAddress,
-        latency_measurement: Duration,
-    ) -> Result<(), PeerManagerError>
-    {
-        acquire_write_lock!(self.peer_storage).update_latency(net_address, latency_measurement)
-    }
-
-    /// Thread safe access to peer - Mark that a message was received from the specified net address
-    pub fn mark_message_received(&self, net_address: &NetAddress) -> Result<(), PeerManagerError> {
-        acquire_write_lock!(self.peer_storage).mark_message_received(net_address)
-    }
-
-    /// Thread safe access to peer - Mark that a rejected message was received from the specified net address
-    pub fn mark_message_rejected(&self, net_address: &NetAddress) -> Result<(), PeerManagerError> {
-        acquire_write_lock!(self.peer_storage).mark_message_rejected(net_address)
-    }
-
-    /// Thread safe access to peer - Mark that a successful connection was established with the specified net address
-    pub fn mark_successful_connection_attempt(&self, net_address: &NetAddress) -> Result<(), PeerManagerError> {
-        acquire_write_lock!(self.peer_storage).mark_successful_connection_attempt(net_address)
-    }
-
-    /// Thread safe access to peer - Mark that a connection could not be established with the specified net address
-    pub fn mark_failed_connection_attempt(&self, net_address: &NetAddress) -> Result<(), PeerManagerError> {
-        acquire_write_lock!(self.peer_storage).mark_failed_connection_attempt(net_address)
-    }
-
-    /// Thread safe access to peer - Reset all connection attempts on all net addresses for peer
-    pub fn reset_connection_attempts(&self, node_id: &NodeId) -> Result<(), PeerManagerError> {
-        acquire_write_lock!(self.peer_storage).reset_connection_attempts(node_id)
     }
 }
 
@@ -392,40 +361,5 @@ mod test {
                     .unwrap());
             }
         }
-    }
-
-    #[test]
-    fn test_peer_reset_connection_attempts() {
-        // Create peer manager with random peers
-        let peer_manager = PeerManager::new(HMapDatabase::new()).unwrap();
-        let mut rng = rand::OsRng::new().unwrap();
-        let peer = create_test_peer(&mut rng, false);
-        peer_manager.add_peer(peer.clone()).unwrap();
-
-        peer_manager
-            .mark_failed_connection_attempt(&peer.addresses.addresses[0].clone().as_net_address())
-            .unwrap();
-        peer_manager
-            .mark_failed_connection_attempt(&peer.addresses.addresses[0].clone().as_net_address())
-            .unwrap();
-        assert_eq!(
-            peer_manager
-                .find_by_node_id(&peer.node_id.clone())
-                .unwrap()
-                .addresses
-                .addresses[0]
-                .connection_attempts,
-            2
-        );
-        peer_manager.reset_connection_attempts(&peer.node_id.clone()).unwrap();
-        assert_eq!(
-            peer_manager
-                .find_by_node_id(&peer.node_id.clone())
-                .unwrap()
-                .addresses
-                .addresses[0]
-                .connection_attempts,
-            0
-        );
     }
 }

@@ -497,7 +497,6 @@ pub fn random_string(len: usize) -> String {
 
 #[test]
 fn test_rpc_text_message_service() {
-    env_logger::init();
     let mut rng = rand::OsRng::new().unwrap();
     let listener_address1: NetAddress = "127.0.0.1:32775".parse().unwrap();
     let secret_key1 = CommsSecretKey::random(&mut rng);

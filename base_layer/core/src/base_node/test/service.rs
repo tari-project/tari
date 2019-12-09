@@ -41,7 +41,7 @@ use crate::{
     },
     tx,
 };
-use futures::{join, select, stream::FusedStream, FutureExt, Stream, StreamExt};
+use futures::{future, future::Either, join, stream::FusedStream, FutureExt, Stream, StreamExt};
 use std::{
     sync::Arc,
     time::{Duration, Instant},
@@ -363,19 +363,17 @@ fn request_and_response_fetch_mmr_state() {
 }
 
 pub async fn event_stream_next<TStream>(mut stream: TStream, timeout: Duration) -> Option<TStream::Item>
-where
-    TStream: Stream + FusedStream + Unpin,
-    TStream::Item: Clone,
-{
-    loop {
-        select! {
-            item = stream.select_next_some() => {
-                return Some(item);
-             },
-            _ = tokio::timer::delay(Instant::now() + timeout).fuse() => { break; },
-        }
+where TStream: Stream + FusedStream + Unpin {
+    let either = future::select(
+        stream.select_next_some(),
+        tokio::timer::delay(Instant::now() + timeout).fuse(),
+    )
+    .await;
+
+    match either {
+        Either::Left((v, _)) => Some(v),
+        Either::Right(_) => None,
     }
-    None
 }
 
 #[test]

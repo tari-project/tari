@@ -212,12 +212,12 @@ where
                 }
             },
             NodeDestination::NodeId(dest_node_id) => {
-                if (peer_manager.exists_node_id(&dest_node_id)) |
-                    (peer_manager.in_network_region(
+                if peer_manager.exists_node_id(&dest_node_id) ||
+                    peer_manager.in_network_region(
                         &dest_node_id,
                         node_identity.node_id(),
                         self.config.num_neighbouring_nodes,
-                    )?)
+                    )?
                 {
                     self.storage.insert(
                         dht_header.origin_signature.clone(),

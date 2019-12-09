@@ -115,7 +115,6 @@ impl ConnectionManager {
                 zmq_context,
                 Arc::clone(&node_identity),
                 config,
-                Arc::clone(&peer_manager),
                 message_sink_channel,
             ),
             node_identity,
@@ -414,10 +413,6 @@ impl ConnectionManager {
         );
 
         let protocol = PeerConnectionProtocol::new(&self.node_identity, &self.establisher);
-        self.peer_manager
-            .reset_connection_attempts(&peer.node_id)
-            .map_err(ConnectionManagerError::PeerManagerError)?;
-
         protocol
             .negotiate_peer_connection(peer)
             .and_then(|(new_conn, join_handle)| {

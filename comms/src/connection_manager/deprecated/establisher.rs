@@ -38,7 +38,7 @@ use crate::{
     },
     control_service::ControlServiceClient,
     message::FrameSet,
-    peer_manager::{NodeIdentity, Peer, PeerManager},
+    peer_manager::{NodeIdentity, Peer},
     types::DEFAULT_LISTENER_ADDRESS,
 };
 use futures::channel::mpsc::Sender;
@@ -97,7 +97,6 @@ pub struct ConnectionEstablisher {
     context: ZmqContext,
     config: PeerConnectionConfig,
     node_identity: Arc<NodeIdentity>,
-    peer_manager: Arc<PeerManager>,
     message_sink_channel: Sender<FrameSet>,
 }
 
@@ -107,7 +106,6 @@ impl ConnectionEstablisher {
         context: ZmqContext,
         node_identity: Arc<NodeIdentity>,
         config: PeerConnectionConfig,
-        peer_manager: Arc<PeerManager>,
         message_sink_channel: Sender<FrameSet>,
     ) -> Self
     {
@@ -115,7 +113,6 @@ impl ConnectionEstablisher {
             context,
             node_identity,
             config,
-            peer_manager,
             message_sink_channel,
         }
     }
@@ -132,10 +129,6 @@ impl ConnectionEstablisher {
     pub fn connect_control_service_client(&self, peer: &Peer) -> Result<ControlServiceClient> {
         let config = &self.config;
 
-        self.peer_manager
-            .reset_connection_attempts(&peer.node_id)
-            .map_err(ConnectionManagerError::PeerManagerError)?;
-
         info!(
             target: LOG_TARGET,
             "Starting {} attempt(s) to connect to control port for NodeId={}",
@@ -143,11 +136,12 @@ impl ConnectionEstablisher {
             peer.node_id
         );
 
+        let mut addr_iter = peer.addresses.address_iter();
+
         let maybe_client = self.attempt_control_port_connection_for_peer(&peer, || {
-            let address = self
-                .peer_manager
-                .get_best_net_address(&peer.node_id)
-                .map_err(ConnectionManagerError::PeerManagerError)?;
+            let address = addr_iter
+                .next()
+                .ok_or(ConnectionManagerError::ControlServiceFailedConnectionAllAddresses)?;
             debug!(target: LOG_TARGET, "Attempting to connect to {}", address);
 
             let conn = Connection::new(&self.context, Direction::Outbound)
@@ -160,17 +154,8 @@ impl ConnectionEstablisher {
                 .establish(&address)
                 .map_err(ConnectionManagerError::ConnectionError)?;
 
-            Ok((conn, address))
+            Ok((conn, address.clone().into()))
         })?;
-
-        // Reset the connection attempts for this peer
-        // TODO(sdbondi): This is a good reason why peer manager shouldn't be managing connection
-        //                attempts. Peer manager should be simplified a little to return an iterator
-        //                sorted from 'best' to 'worst' net address without having to modify shared
-        //                state.
-        self.peer_manager
-            .reset_connection_attempts(&peer.node_id)
-            .map_err(ConnectionManagerError::PeerManagerError)?;
 
         match maybe_client {
             Some(client) => Ok(client),
@@ -181,13 +166,13 @@ impl ConnectionEstablisher {
     fn attempt_control_port_connection_for_peer(
         &self,
         peer: &Peer,
-        connection_factory: impl Fn() -> Result<(EstablishedConnection, NetAddress)>,
+        mut connection_factory: impl FnMut() -> Result<(EstablishedConnection, NetAddress)>,
     ) -> Result<Option<ControlServiceClient>>
     {
         let num_attempts = peer.addresses.len();
         let mut current_attempts = 1;
         loop {
-            let (conn, address) = connection_factory()?;
+            let (conn, _address) = connection_factory()?;
             let client = ControlServiceClient::new(Arc::clone(&self.node_identity), peer.public_key.clone(), conn);
 
             debug!(
@@ -196,10 +181,6 @@ impl ConnectionEstablisher {
             );
             match client.ping_pong(self.config.peer_connection_establish_timeout) {
                 Ok(Some(_)) => {
-                    self.peer_manager
-                        .mark_successful_connection_attempt(&address)
-                        .map_err(ConnectionManagerError::PeerManagerError)?;
-
                     debug!(
                         target: LOG_TARGET,
                         "Received PONG reply. Connection succeeded (NodeId={})", peer.node_id
@@ -220,10 +201,6 @@ impl ConnectionEstablisher {
                     );
                 },
             }
-
-            self.peer_manager
-                .mark_failed_connection_attempt(&address)
-                .map_err(ConnectionManagerError::PeerManagerError)?;
 
             if current_attempts >= num_attempts {
                 break Ok(None);

@@ -24,7 +24,12 @@ use crate::{
     connection::PeerConnection,
     connection_manager::ConnectionManagerRequester,
     message::{Envelope, MessageExt},
-    outbound_message_service::{error::OutboundServiceError, messages::OutboundMessage, OutboundServiceConfig},
+    outbound_message_service::{
+        backoff::{Backoff, ExponentialBackoff},
+        error::OutboundServiceError,
+        messages::OutboundMessage,
+        OutboundServiceConfig,
+    },
     peer_manager::{NodeId, NodeIdentity},
 };
 use futures::{
@@ -36,12 +41,7 @@ use futures::{
     StreamExt,
 };
 use log::*;
-use std::{
-    cmp,
-    collections::HashMap,
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::{collections::HashMap, sync::Arc, time::Instant};
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::ByteArray;
 use tokio::timer;
@@ -85,24 +85,10 @@ impl DialState {
         self.attempts += 1;
         self
     }
-
-    /// Calculates the time from now that this dial attempt should be retried.
-    pub fn backoff_duration(&mut self) -> Duration {
-        Duration::from_secs(self.exponential_backoff_offset())
-    }
-
-    /// Calculates the offset in seconds based on `self.attempts`.
-    fn exponential_backoff_offset(&self) -> u64 {
-        if self.attempts == 0 {
-            return 0;
-        }
-        let secs = 1.5 * (f32::powf(2.0, self.attempts as f32) - 1.0);
-        cmp::max(2, secs.ceil() as u64)
-    }
 }
 
 /// Responsible for dialing peers and sending queued messages
-pub struct OutboundMessageService<TMsgStream> {
+pub struct OutboundMessageService<TMsgStream, TBackoff> {
     config: OutboundServiceConfig,
     connection_manager: ConnectionManagerRequester,
     dial_cancel_signals: HashMap<NodeId, oneshot::Sender<()>>,
@@ -111,9 +97,10 @@ pub struct OutboundMessageService<TMsgStream> {
     pending_connect_requests: HashMap<NodeId, Vec<OutboundMessage>>,
     active_connections: HashMap<NodeId, Arc<PeerConnection>>,
     shutdown_signal: Option<ShutdownSignal>,
+    backoff: Arc<TBackoff>,
 }
 
-impl<TMsgStream> OutboundMessageService<TMsgStream>
+impl<TMsgStream> OutboundMessageService<TMsgStream, ExponentialBackoff>
 where TMsgStream: Stream<Item = OutboundMessage> + Unpin
 {
     pub fn new(
@@ -122,6 +109,31 @@ where TMsgStream: Stream<Item = OutboundMessage> + Unpin
         node_identity: Arc<NodeIdentity>,
         connection_manager: ConnectionManagerRequester,
         shutdown_signal: ShutdownSignal,
+    ) -> Self
+    {
+        Self::with_backoff(
+            config,
+            message_stream,
+            node_identity,
+            connection_manager,
+            shutdown_signal,
+            ExponentialBackoff::default(),
+        )
+    }
+}
+
+impl<TMsgStream, TBackoff> OutboundMessageService<TMsgStream, TBackoff>
+where
+    TMsgStream: Stream<Item = OutboundMessage> + Unpin,
+    TBackoff: Backoff,
+{
+    pub fn with_backoff(
+        config: OutboundServiceConfig,
+        message_stream: TMsgStream,
+        node_identity: Arc<NodeIdentity>,
+        connection_manager: ConnectionManagerRequester,
+        shutdown_signal: ShutdownSignal,
+        backoff: TBackoff,
     ) -> Self
     {
         Self {
@@ -133,6 +145,7 @@ where TMsgStream: Stream<Item = OutboundMessage> + Unpin
             pending_connect_requests: HashMap::new(),
             dial_cancel_signals: HashMap::new(),
             shutdown_signal: Some(shutdown_signal),
+            backoff: Arc::new(backoff),
         }
     }
 
@@ -175,7 +188,7 @@ where TMsgStream: Stream<Item = OutboundMessage> + Unpin
                             self.dial_cancel_signals.insert(dial_state.node_id.clone(), cancel_tx);
                             dial_state.set_cancel_receiver(cancel_rx.fuse());
                             pending_connects.push(
-                                Self::connect_to(self.connection_manager.clone(), dial_state)
+                                Self::connect_to(self.connection_manager.clone(), dial_state, Arc::clone(&self.backoff))
                             );
                         }
                     }
@@ -205,7 +218,7 @@ where TMsgStream: Stream<Item = OutboundMessage> + Unpin
                                 // Should retry this connection attempt
                                 state.inc_attempts();
                                 pending_connects.push(
-                                    Self::connect_to(self.connection_manager.clone(), state)
+                                    Self::connect_to(self.connection_manager.clone(), state, Arc::clone(&self.backoff))
                                 );
                             }
                         }
@@ -256,20 +269,21 @@ where TMsgStream: Stream<Item = OutboundMessage> + Unpin
     async fn connect_to(
         mut connection_manager: ConnectionManagerRequester,
         mut state: DialState,
+        backoff: Arc<TBackoff>,
     ) -> Option<(DialState, Result<Arc<PeerConnection>, OutboundServiceError>)>
     {
         let mut cancel_rx = state
             .take_cancel_receiver()
             .expect("It is incorrect to attempt to connect without setting a cancel receiver");
 
-        let offset = state.backoff_duration();
+        let delay = backoff.calculate_backoff(state.attempts);
         debug!(
             target: LOG_TARGET,
             "[Attempt {}] Attempting to send message in {} second(s)",
             state.attempts,
-            offset.as_secs()
+            delay.as_secs()
         );
-        let mut delay = timer::delay(Instant::now() + offset).fuse();
+        let mut delay = timer::delay(Instant::now() + delay).fuse();
         futures::select! {
             _ = delay => {
                 debug!(target: LOG_TARGET, "[Attempt {}] Connecting to NodeId '{}'...", state.attempts, state.node_id);
@@ -444,11 +458,13 @@ mod test {
         connection::peer_connection,
         connection_manager::actor::ConnectionManagerRequest,
         message::MessageFlags,
+        outbound_message_service::ConstantBackoff,
         peer_manager::PeerFeatures,
         test_utils::node_id,
     };
     use futures::{channel::mpsc, stream, SinkExt};
     use prost::Message;
+    use std::time::Duration;
     use tari_shutdown::Shutdown;
     use tari_test_utils::collect_stream;
     use tokio::runtime::Runtime;
@@ -487,12 +503,13 @@ mod test {
         let node_identity = Arc::new(NodeIdentity::random_for_test(None, PeerFeatures::empty()));
         let mut shutdown = Shutdown::new();
 
-        let service = OutboundMessageService::new(
+        let service = OutboundMessageService::with_backoff(
             OutboundServiceConfig::default(),
             new_message_rx,
             node_identity,
             conn_manager,
             shutdown.to_signal(),
+            ConstantBackoff::new(Duration::from_millis(100)),
         );
         rt.spawn(service.start());
 
@@ -586,32 +603,5 @@ mod test {
         // Abort pending connections and shutdown the service
         shutdown.trigger().unwrap();
         rt.shutdown_on_idle();
-    }
-
-    #[test]
-    fn exponential_backoff_calc() {
-        let mut state = DialState::new(NodeId::new());
-        state.attempts = 0;
-        assert_eq!(state.exponential_backoff_offset(), 0);
-        state.attempts = 1;
-        assert_eq!(state.exponential_backoff_offset(), 2);
-        state.attempts = 2;
-        assert_eq!(state.exponential_backoff_offset(), 5);
-        state.attempts = 3;
-        assert_eq!(state.exponential_backoff_offset(), 11);
-        state.attempts = 4;
-        assert_eq!(state.exponential_backoff_offset(), 23);
-        state.attempts = 5;
-        assert_eq!(state.exponential_backoff_offset(), 47);
-        state.attempts = 6;
-        assert_eq!(state.exponential_backoff_offset(), 95);
-        state.attempts = 7;
-        assert_eq!(state.exponential_backoff_offset(), 191);
-        state.attempts = 8;
-        assert_eq!(state.exponential_backoff_offset(), 383);
-        state.attempts = 9;
-        assert_eq!(state.exponential_backoff_offset(), 767);
-        state.attempts = 10;
-        assert_eq!(state.exponential_backoff_offset(), 1535);
     }
 }

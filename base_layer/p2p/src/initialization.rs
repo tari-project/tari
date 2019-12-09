@@ -23,12 +23,14 @@
 use crate::comms_connector::{InboundDomainConnector, PeerMessage};
 use derive_error::Error;
 use futures::{channel::mpsc, Sink};
-use std::{error::Error, sync::Arc, time::Duration};
+use rand::{distributions::Alphanumeric, thread_rng, Rng};
+use std::{error::Error, iter, sync::Arc, time::Duration};
 use tari_comms::{
     builder::{CommsBuilderError, CommsError, CommsNode},
     connection::{net_address::ip::SocketAddress, NetAddress},
     connection_manager::PeerConnectionConfig,
     control_service::ControlServiceConfig,
+    outbound_message_service::ConstantBackoff,
     peer_manager::{node_identity::NodeIdentityError, NodeIdentity},
     CommsBuilder,
 };
@@ -69,6 +71,104 @@ pub struct CommsConfig {
     pub dht: DhtConfig,
     /// Length of time to wait for a new outbound connection to be established before timing out
     pub establish_connection_timeout: Duration,
+}
+
+// TODO: DRY up these initialization functions
+
+/// Initialize Tari Comms configured for tests
+pub fn initialize_local_test_comms<TSink>(
+    executor: TaskExecutor,
+    node_identity: Arc<NodeIdentity>,
+    connector: InboundDomainConnector<TSink>,
+    data_path: &str,
+) -> Result<(CommsNode, Dht), CommsInitializationError>
+where
+    TSink: Sink<Arc<PeerMessage>> + Unpin + Clone + Send + Sync + 'static,
+    TSink::Error: Error + Send + Sync,
+{
+    let listener_address = node_identity.control_service_address();
+    let peer_database_name = {
+        let mut rng = thread_rng();
+        iter::repeat(())
+            .map(|_| rng.sample(Alphanumeric))
+            .take(8)
+            .collect::<String>()
+    };
+    let datastore = LMDBBuilder::new()
+        .set_path(data_path)
+        .set_environment_size(10)
+        .set_max_number_of_databases(1)
+        .add_database(&peer_database_name, lmdb_zero::db::CREATE)
+        .build()
+        .unwrap();
+    let peer_database = datastore.get_handle(&peer_database_name).unwrap();
+    let peer_database = LMDBWrapper::new(Arc::new(peer_database));
+
+    //---------------------------------- Comms --------------------------------------------//
+
+    // Create inbound and outbound channels
+    let (inbound_tx, inbound_rx) = mpsc::channel(10);
+    let (outbound_tx, outbound_rx) = mpsc::channel(10);
+
+    let comms = CommsBuilder::new(executor.clone())
+        .with_node_identity(node_identity)
+        .with_peer_storage(peer_database)
+        .with_inbound_sink(inbound_tx)
+        .with_outbound_stream(outbound_rx)
+        .with_outbound_backoff(ConstantBackoff::new(Duration::from_millis(500)))
+        .configure_control_service(ControlServiceConfig {
+            listener_address,
+            socks_proxy_address: None,
+            requested_connection_timeout: Duration::from_millis(2000),
+        })
+        .configure_peer_connections(PeerConnectionConfig {
+            socks_proxy_address: None,
+            listening_address: "127.0.0.1:0".parse().expect("cannot fail"),
+            peer_connection_establish_timeout: Duration::from_secs(5),
+            ..Default::default()
+        })
+        .build()
+        .map_err(CommsInitializationError::CommsBuilderError)?
+        .start()
+        .map_err(CommsInitializationError::CommsServicesError)?;
+
+    // Create a channel for outbound requests
+    let mut dht = comms_dht::DhtBuilder::from_comms(&comms)
+        .with_config(DhtConfig {
+            discovery_request_timeout: Duration::from_secs(1),
+            ..Default::default()
+        })
+        .finish();
+
+    //---------------------------------- Inbound Pipeline --------------------------------------------//
+
+    // Connect inbound comms messages to the inbound pipeline and run it
+    ServicePipeline::new(
+        // Messages coming IN from comms to DHT
+        inbound_rx,
+        // Messages going OUT from DHT to connector (pubsub)
+        ServiceBuilder::new()
+            .layer(dht.inbound_middleware_layer())
+            .service(connector),
+    )
+    .with_shutdown_signal(comms.shutdown_signal())
+    .spawn_with(executor.clone());
+
+    //---------------------------------- Outbound Pipeline --------------------------------------------//
+
+    // Connect outbound message pipeline to comms, and run it
+    ServicePipeline::new(
+        // Requests coming IN from services to DHT
+        dht.take_outbound_receiver().expect("take outbound receiver only once"),
+        // Messages going OUT from DHT to comms
+        ServiceBuilder::new()
+            .layer(dht.outbound_middleware_layer())
+            .service(SinkMiddleware::new(outbound_tx)),
+    )
+    .with_shutdown_signal(comms.shutdown_signal())
+    .spawn_with(executor);
+
+    Ok((comms, dht))
 }
 
 /// Initialize Tari Comms

@@ -21,18 +21,13 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::{net_address::NetAddressesFactory, TestFactory, TestFactoryError};
-
+use crate::support::makers::{comms_keys as ristretto_maker, node_id as node_id_maker};
+use std::iter::repeat_with;
 use tari_comms::{
     connection::NetAddress,
-    peer_manager::{NodeId, Peer, PeerFlags},
+    peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
     types::CommsPublicKey,
 };
-
-use crate::support::makers::{comms_keys as ristretto_maker, node_id as node_id_maker};
-
-use chrono::Utc;
-use std::iter::repeat_with;
-use tari_comms::peer_manager::PeerFeatures;
 
 pub fn create_many(n: usize) -> PeersFactory {
     PeersFactory::default().with_count(n)
@@ -88,15 +83,13 @@ impl TestFactory for PeerFactory {
                     "Failed to build net addresses for peer"
                 )))?;
 
-        Ok(Peer {
-            node_id,
-            flags,
+        Ok(Peer::new(
             public_key,
-            addresses: addresses.into(),
-            features: self.peer_features,
-            connection_stats: Default::default(),
-            added_at: Utc::now().naive_utc(),
-        })
+            node_id,
+            addresses.into(),
+            flags,
+            self.peer_features,
+        ))
     }
 }
 
