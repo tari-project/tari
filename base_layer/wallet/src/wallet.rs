@@ -202,6 +202,7 @@ where
     /// exiting.
     pub fn shutdown(self) -> Result<(), WalletError> {
         self.comms.shutdown()?;
+        self.runtime.shutdown_on_idle();
         Ok(())
     }
 

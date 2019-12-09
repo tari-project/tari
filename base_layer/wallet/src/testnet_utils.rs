@@ -20,7 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use crate::{
-    contacts_service::storage::database::{Contact, ContactsBackend},
+    contacts_service::storage::{
+        database::{Contact, ContactsBackend},
+        memory_db::ContactsServiceMemoryDatabase,
+    },
     error::{WalletError, WalletStorageError},
     output_manager_service::{
         storage::{database::OutputManagerBackend, memory_db::OutputManagerMemoryDatabase},
@@ -34,9 +37,8 @@ use crate::{
     wallet::WalletConfig,
     Wallet,
 };
-
-use crate::contacts_service::storage::memory_db::ContactsServiceMemoryDatabase;
 use chrono::Utc;
+use log::*;
 use rand::{distributions::Alphanumeric, CryptoRng, OsRng, Rng, RngCore};
 use std::{iter, sync::Arc, thread, time::Duration};
 use tari_comms::{
@@ -56,10 +58,11 @@ use tari_transactions::{
     types::{BlindingFactor, CryptoFactories, PrivateKey, PublicKey},
 };
 use tari_utilities::hex::Hex;
-use tempdir::TempDir;
 use tokio::runtime::Runtime;
 
 // Used to generate test wallet data
+
+const LOG_TARGET: &str = "wallet::test_utils";
 
 pub struct TestParams {
     pub spend_key: PrivateKey,
@@ -158,7 +161,9 @@ pub fn generate_wallet_test_data<
     W: ContactsBackend,
 >(
     wallet: &mut Wallet<T, U, V, W>,
-) -> Result<(), WalletError> {
+    data_path: &str,
+) -> Result<(), WalletError>
+{
     let rng = rand::OsRng::new().unwrap();
     let factories = CryptoFactories::default();
     let names = ["Alice", "Bob", "Carol", "Dave"];
@@ -171,55 +176,57 @@ pub fn generate_wallet_test_data<
     // Generate contacts
     let mut generated_contacts = Vec::new();
     for i in 0..names.len() {
-        let secret_key = CommsSecretKey::from_hex(private_keys[i]).unwrap();
+        let secret_key = CommsSecretKey::from_hex(private_keys[i]).expect("Could not parse hex key");
         let public_key = CommsPublicKey::from_secret_key(&secret_key);
-        wallet
-            .runtime
-            .block_on(wallet.contacts_service.save_contact(Contact {
-                alias: names[i].to_string(),
-                public_key: public_key.clone(),
-            }))
-            .expect("Could not save contact");
-        wallet
-            .add_base_node_peer(public_key.clone(), format!("127.0.0.1:{}", 15200 + i).to_string())
-            .expect("Could not add base node peer");
+        wallet.runtime.block_on(wallet.contacts_service.save_contact(Contact {
+            alias: names[i].to_string(),
+            public_key: public_key.clone(),
+        }))?;
+        wallet.add_base_node_peer(public_key.clone(), format!("127.0.0.1:{}", 15200 + i).to_string())?;
         generated_contacts.push((secret_key, format!("127.0.0.1:{}", 15200 + i).to_string()));
     }
-    let contacts = wallet
-        .runtime
-        .block_on(wallet.contacts_service.get_contacts())
-        .expect("Could not retrieve contacts");
+    let contacts = wallet.runtime.block_on(wallet.contacts_service.get_contacts())?;
     assert_eq!(contacts.len(), names.len());
+    info!(target: LOG_TARGET, "Added test contacts to wallet");
 
     // Generate outputs
     let num_outputs = 40;
     for i in 0..num_outputs {
         let (_ti, uo) = make_input(&mut rng.clone(), MicroTari::from(1_000_000 + i * 35_000), &factories);
-        wallet
-            .runtime
-            .block_on(wallet.output_manager_service.add_output(uo))
-            .unwrap();
+        wallet.runtime.block_on(wallet.output_manager_service.add_output(uo))?;
     }
-
+    info!(target: LOG_TARGET, "Added test outputs to wallet");
     // Generate some Tx history
-    let alice_temp_dir = TempDir::new(random_string(8).as_str()).unwrap();
+    info!(
+        target: LOG_TARGET,
+        "Spinning up Alice wallet to generate test transactions"
+    );
+    let alice_temp_dir = format!("{}{}", data_path.clone(), random_string(8));
+    let _ = std::fs::create_dir(&alice_temp_dir);
+
     let mut wallet_alice = create_wallet(
         generated_contacts[0].0.clone(),
         generated_contacts[0].1.clone(),
-        alice_temp_dir.path().to_str().unwrap().to_string(),
+        alice_temp_dir.clone(),
     );
     for i in 0..20 {
         let (_ti, uo) = make_input(&mut rng.clone(), MicroTari::from(1_500_000 + i * 530_500), &factories);
         wallet_alice
             .runtime
-            .block_on(wallet_alice.output_manager_service.add_output(uo))
-            .unwrap();
+            .block_on(wallet_alice.output_manager_service.add_output(uo))?;
     }
-    let bob_temp_dir = TempDir::new(random_string(8).as_str()).unwrap();
+    info!(target: LOG_TARGET, "Alice Wallet created");
+    info!(
+        target: LOG_TARGET,
+        "Spinning up Bob wallet to generate test transactions"
+    );
+    let bob_temp_dir = format!("{}{}", data_path.clone(), random_string(8));
+    let _ = std::fs::create_dir(&bob_temp_dir);
+
     let mut wallet_bob = create_wallet(
         generated_contacts[1].0.clone(),
         generated_contacts[1].1.clone(),
-        bob_temp_dir.path().to_str().unwrap().to_string(),
+        bob_temp_dir.clone(),
     );
     for i in 0..20 {
         let (_ti, uo) = make_input(
@@ -229,61 +236,47 @@ pub fn generate_wallet_test_data<
         );
         wallet_bob
             .runtime
-            .block_on(wallet_bob.output_manager_service.add_output(uo))
-            .unwrap();
+            .block_on(wallet_bob.output_manager_service.add_output(uo))?;
     }
+    info!(target: LOG_TARGET, "Bob Wallet created");
 
+    info!(target: LOG_TARGET, "Starting to execute test transactions");
     // Completed TX
-    wallet
-        .runtime
-        .block_on(wallet.transaction_service.send_transaction(
-            contacts[0].public_key.clone(),
-            MicroTari::from(10_000),
-            MicroTari::from(100),
-            "".to_string(),
-        ))
-        .expect("Could not send test transaction");
+    wallet.runtime.block_on(wallet.transaction_service.send_transaction(
+        contacts[0].public_key.clone(),
+        MicroTari::from(10_000),
+        MicroTari::from(100),
+        "".to_string(),
+    ))?;
 
-    wallet
-        .runtime
-        .block_on(wallet.transaction_service.send_transaction(
-            contacts[0].public_key.clone(),
-            MicroTari::from(20_000),
-            MicroTari::from(110),
-            "".to_string(),
-        ))
-        .expect("Could not send test transaction");
+    wallet.runtime.block_on(wallet.transaction_service.send_transaction(
+        contacts[0].public_key.clone(),
+        MicroTari::from(20_000),
+        MicroTari::from(110),
+        "".to_string(),
+    ))?;
 
-    wallet
-        .runtime
-        .block_on(wallet.transaction_service.send_transaction(
-            contacts[1].public_key.clone(),
-            MicroTari::from(30_000),
-            MicroTari::from(105),
-            "".to_string(),
-        ))
-        .expect("Could not send test transaction");
+    wallet.runtime.block_on(wallet.transaction_service.send_transaction(
+        contacts[1].public_key.clone(),
+        MicroTari::from(30_000),
+        MicroTari::from(105),
+        "".to_string(),
+    ))?;
 
     // Pending Outbound
-    wallet
-        .runtime
-        .block_on(wallet.transaction_service.send_transaction(
-            contacts[2].public_key.clone(),
-            MicroTari::from(25_000),
-            MicroTari::from(107),
-            "".to_string(),
-        ))
-        .expect("Could not send test transaction");
+    wallet.runtime.block_on(wallet.transaction_service.send_transaction(
+        contacts[2].public_key.clone(),
+        MicroTari::from(25_000),
+        MicroTari::from(107),
+        "".to_string(),
+    ))?;
 
-    wallet
-        .runtime
-        .block_on(wallet.transaction_service.send_transaction(
-            contacts[3].public_key.clone(),
-            MicroTari::from(35_000),
-            MicroTari::from(117),
-            "".to_string(),
-        ))
-        .expect("Could not send test transaction");
+    wallet.runtime.block_on(wallet.transaction_service.send_transaction(
+        contacts[3].public_key.clone(),
+        MicroTari::from(35_000),
+        MicroTari::from(117),
+        "".to_string(),
+    ))?;
 
     // Pending Inbound
     wallet_alice
@@ -293,8 +286,8 @@ pub fn generate_wallet_test_data<
             MicroTari::from(35_000),
             MicroTari::from(117),
             "".to_string(),
-        ))
-        .expect("Could not send test transaction");
+        ))?;
+
     wallet_bob
         .runtime
         .block_on(wallet_bob.transaction_service.send_transaction(
@@ -302,10 +295,17 @@ pub fn generate_wallet_test_data<
             MicroTari::from(35_000),
             MicroTari::from(117),
             "".to_string(),
-        ))
-        .expect("Could not send test transaction");
+        ))?;
 
     thread::sleep(Duration::from_millis(1000));
+
+    let _ = wallet_alice.shutdown();
+    let _ = wallet_bob.shutdown();
+
+    let _ = std::fs::remove_dir_all(&alice_temp_dir);
+    let _ = std::fs::remove_dir_all(&bob_temp_dir);
+
+    info!(target: LOG_TARGET, "Finished generating test data");
 
     Ok(())
 }

@@ -254,7 +254,7 @@ fn test_data_generation() {
     )
     .unwrap();
 
-    generate_wallet_test_data(&mut wallet).unwrap();
+    generate_wallet_test_data(&mut wallet, temp_dir.path().to_str().unwrap()).unwrap();
 
     let contacts = wallet.runtime.block_on(wallet.contacts_service.get_contacts()).unwrap();
     assert!(contacts.len() > 0);

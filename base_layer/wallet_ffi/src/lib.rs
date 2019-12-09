@@ -1733,7 +1733,12 @@ pub unsafe extern "C" fn wallet_create(
 /// ## Returns
 /// `bool` - Returns if successful or not
 #[no_mangle]
-pub unsafe extern "C" fn wallet_test_generate_data(wallet: *mut TariWallet, error_out: *mut c_int) -> bool {
+pub unsafe extern "C" fn wallet_test_generate_data(
+    wallet: *mut TariWallet,
+    datastore_path: *const c_char,
+    error_out: *mut c_int,
+) -> bool
+{
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
@@ -1741,7 +1746,16 @@ pub unsafe extern "C" fn wallet_test_generate_data(wallet: *mut TariWallet, erro
         ptr::swap(error_out, &mut error as *mut c_int);
         return false;
     }
-    match generate_wallet_test_data(&mut *wallet) {
+    let datastore_path_string;
+    if !datastore_path.is_null() {
+        datastore_path_string = CStr::from_ptr(datastore_path).to_str().unwrap().to_owned();
+    } else {
+        error = LibWalletError::from(InterfaceError::NullError("datastore_path".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return false;
+    }
+
+    match generate_wallet_test_data(&mut *wallet, datastore_path_string.as_str()) {
         Ok(_) => true,
         Err(e) => {
             error = LibWalletError::from(e).code;
@@ -3056,7 +3070,7 @@ mod test {
             assert_eq!(callback, true);
             callback = wallet_callback_register_transaction_broadcast(alice_wallet, broadcast_callback, error_ptr);
             assert_eq!(callback, true);
-            let generated = wallet_test_generate_data(alice_wallet, error_ptr);
+            let generated = wallet_test_generate_data(alice_wallet, db_path_alice_str, error_ptr);
             assert_eq!(generated, true);
 
             assert_eq!(

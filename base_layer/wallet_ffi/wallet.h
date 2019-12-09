@@ -150,9 +150,6 @@ void contacts_destroy(struct TariContacts *contacts);
 
 /// -------------------------------- CompletedTransaction ------------------------------------------------------ ///
 
-// Gets a transaction id of a TariCompletedTransaction
-unsigned long long completed_transaction_get_transaction_id(struct TariCompletedTransaction *transaction,int* error_out);
-
 // Gets the destination TariPublicKey of a TariCompletedTransaction
 struct TariPublicKey *completed_transaction_get_destination_public_key(struct TariCompletedTransaction *transaction,int* error_out);
 
@@ -164,8 +161,6 @@ unsigned long long completed_transaction_get_amount(struct TariCompletedTransact
 
 // Gets the fee of a TariCompletedTransaction
 unsigned long long completed_transaction_get_fee(struct TariCompletedTransaction *transaction,int* error_out);
-
-unsigned long long completed_transaction_get_timestamp(struct TariCompletedTransaction *transaction,int* error_out);
 
 // Gets the message of a TariCompletedTransaction
 const char *completed_transaction_get_message(struct TariCompletedTransaction *transaction,int* error_out);
@@ -225,7 +220,7 @@ void pending_outbound_transaction_destroy(struct TariPendingOutboundTransaction 
 unsigned int pending_outbound_transactions_get_length(struct TariPendingOutboundTransactions *transactions,int* error_out);
 
 // Gets a TariPendingOutboundTransaction of a TariPendingOutboundTransactions at position
-struct TariPendingOutboundTransactions *pending_outbound_transactions_get_at(struct TariPendingOutboundTransactions *transactions, unsigned int position,int* error_out);
+struct TariPendingOutboundTransaction *pending_outbound_transactions_get_at(struct TariPendingOutboundTransactions *transactions, unsigned int position,int* error_out);
 
 // Frees memory of a TariPendingOutboundTransactions
 void pending_outbound_transactions_destroy(struct TariPendingOutboundTransactions *transactions);
@@ -256,7 +251,7 @@ void pending_inbound_transaction_destroy(struct TariPendingInboundTransaction *t
 unsigned int pending_inbound_transactions_get_length(struct TariPendingInboundTransactions *transactions,int* error_out);
 
 // Gets a TariPendingInboundTransaction of a TariPendingInboundTransactions at position
-struct TariPendingInboundTransactions *pending_inbound_transactions_get_at(struct TariPendingInboundTransactions *transactions, unsigned int position,int* error_out);
+struct TariPendingInboundTransaction *pending_inbound_transactions_get_at(struct TariPendingInboundTransactions *transactions, unsigned int position,int* error_out);
 
 // Frees memory of a TariPendingInboundTransaction
 void pending_inbound_transactions_destroy(struct TariPendingInboundTransactions *transactions);
@@ -280,7 +275,7 @@ void comms_config_destroy(struct TariCommsConfig *wc);
 struct TariWallet *wallet_create(struct TariWalletConfig *config, char *log_path, int* error_out);
 
 /// Generates test data
-bool wallet_test_generate_data(struct TariWallet *wallet,int* error_out);
+bool wallet_test_generate_data(struct TariWallet *wallet, char *datastore_path,int* error_out);
 
 // Adds a base node peer to the TariWallet
 bool wallet_add_base_node_peer(struct TariWallet *wallet, struct TariPublicKey *public_key, char *address,int* error_out);
