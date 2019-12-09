@@ -22,7 +22,7 @@
 
 use crate::{
     blocks::BlockHeader,
-    proof_of_work::{blake_pow::blake_difficulty, monero::monero_difficulty, Difficulty},
+    proof_of_work::{blake_pow::blake_difficulty, monero_rx::monero_difficulty, Difficulty},
 };
 use bytes::{self, BufMut};
 use serde::{Deserialize, Serialize};
