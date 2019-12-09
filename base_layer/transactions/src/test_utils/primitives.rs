@@ -20,18 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// Used in tests only
-
-use crate::{
-    tari_amount::*,
-    transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
-    types::{CommitmentFactory, PrivateKey, PublicKey},
-};
-use rand::{CryptoRng, Rng};
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    keys::{PublicKey as PK, SecretKey},
-};
+use crate::types::{PrivateKey, PublicKey};
+use tari_crypto::keys::{PublicKey as PK, SecretKey as SK};
 
 pub struct TestParams {
     pub spend_key: PrivateKey,
@@ -42,27 +32,15 @@ pub struct TestParams {
 }
 
 impl TestParams {
-    pub fn new<R: Rng + CryptoRng>(rng: &mut R) -> TestParams {
-        let r = PrivateKey::random(rng);
+    pub fn new() -> TestParams {
+        let mut rng = rand::OsRng::new().unwrap();
+        let r = PrivateKey::random(&mut rng);
         TestParams {
-            spend_key: PrivateKey::random(rng),
-            change_key: PrivateKey::random(rng),
-            offset: PrivateKey::random(rng),
+            spend_key: PrivateKey::random(&mut rng),
+            change_key: PrivateKey::random(&mut rng),
+            offset: PrivateKey::random(&mut rng),
             public_nonce: PublicKey::from_secret_key(&r),
             nonce: r,
         }
     }
-}
-
-pub fn make_input<R: Rng + CryptoRng>(
-    rng: &mut R,
-    val: MicroTari,
-    factory: &CommitmentFactory,
-) -> (TransactionInput, UnblindedOutput)
-{
-    let key = PrivateKey::random(rng);
-    let v = PrivateKey::from(val);
-    let commitment = factory.commit(&key, &v);
-    let input = TransactionInput::new(OutputFeatures::default(), commitment);
-    (input, UnblindedOutput::new(val, key, None))
 }

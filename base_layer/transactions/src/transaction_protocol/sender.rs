@@ -156,6 +156,16 @@ impl SenderTransactionProtocol {
         }
     }
 
+    /// Returns the finalized transaction if the protocol is in the Finalised state and consumes the protocol object.
+    /// Otherwise it returns an `InvalidStateError`. To keep the object and return a reference to the transaction, see
+    /// [get_transaction].
+    pub fn take_transaction(self) -> Result<Transaction, TPE> {
+        match self.state {
+            SenderState::FinalizedTransaction(tx) => Ok(tx),
+            _ => Err(TPE::InvalidStateError),
+        }
+    }
+
     /// Method to determine if the transaction protocol has failed
     pub fn is_failed(&self) -> bool {
         match &self.state {
@@ -397,7 +407,7 @@ impl SenderTransactionProtocol {
                 }
                 let transaction = result.unwrap();
                 let result = transaction
-                    .validate_internal_consistency(factories)
+                    .validate_internal_consistency(factories, None)
                     .map_err(TPE::TransactionBuildError);
                 if let Err(e) = result {
                     self.state = SenderState::Failed(e);
@@ -487,11 +497,11 @@ mod test {
     use crate::{
         fee::Fee,
         tari_amount::*,
+        test_utils::{builders::make_input, primitives::TestParams},
         transaction::{KernelFeatures, OutputFeatures, UnblindedOutput},
         transaction_protocol::{
             sender::SenderTransactionProtocol,
             single_receiver::SingleReceiverTransactionProtocol,
-            test_common::{make_input, TestParams},
             TransactionProtocolError,
         },
         types::CryptoFactories,
@@ -504,7 +514,7 @@ mod test {
     fn zero_recipients() {
         let mut rng = OsRng::new().unwrap();
         let factories = CryptoFactories::default();
-        let p = TestParams::new(&mut rng);
+        let p = TestParams::new();
         let (utxo, input) = make_input(&mut rng, MicroTari(1200), &factories.commitment);
         let mut builder = SenderTransactionProtocol::builder(0);
         builder
@@ -533,9 +543,9 @@ mod test {
         let factories = CryptoFactories::default();
         let mut rng = OsRng::new().unwrap();
         // Alice's parameters
-        let a = TestParams::new(&mut rng);
+        let a = TestParams::new();
         // Bob's parameters
-        let b = TestParams::new(&mut rng);
+        let b = TestParams::new();
         let (utxo, input) = make_input(&mut rng, MicroTari(1200), &factories.commitment);
         let mut builder = SenderTransactionProtocol::builder(1);
         let fee = Fee::calculate(MicroTari(20), 1, 1);
@@ -592,9 +602,9 @@ mod test {
         let factories = CryptoFactories::default();
         let mut rng = OsRng::new().unwrap();
         // Alice's parameters
-        let a = TestParams::new(&mut rng);
+        let a = TestParams::new();
         // Bob's parameters
-        let b = TestParams::new(&mut rng);
+        let b = TestParams::new();
         let (utxo, input) = make_input(&mut rng, MicroTari(2500), &factories.commitment);
         let mut builder = SenderTransactionProtocol::builder(1);
         let fee = Fee::calculate(MicroTari(20), 1, 2);
@@ -659,7 +669,7 @@ mod test {
         assert_eq!(tx.body.inputs().len(), 1);
         assert_eq!(tx.body.inputs()[0], utxo);
         assert_eq!(tx.body.outputs().len(), 2);
-        assert!(tx.clone().validate_internal_consistency(&factories).is_ok());
+        assert!(tx.clone().validate_internal_consistency(&factories, None).is_ok());
     }
 
     #[test]
@@ -667,9 +677,9 @@ mod test {
         let factories = CryptoFactories::new(32);
         let mut rng = OsRng::new().unwrap();
         // Alice's parameters
-        let a = TestParams::new(&mut rng);
+        let a = TestParams::new();
         // Bob's parameters
-        let b = TestParams::new(&mut rng);
+        let b = TestParams::new();
         let (utxo, input) = make_input(&mut rng, (2u64.pow(32) + 2001).into(), &factories.commitment);
         let mut builder = SenderTransactionProtocol::builder(1);
 

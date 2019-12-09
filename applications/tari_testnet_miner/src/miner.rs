@@ -94,33 +94,7 @@ impl Miner {
 
     /// Temp code, this needs to come from the wallet.
     fn create_coinbase_tx(&self, coinbase_value: MicroTari, block: &Block) -> (TransactionOutput, TransactionKernel) {
-        let mut rng = rand::OsRng::new().unwrap();
-        let coinbase_key = PrivateKey::random(&mut rng);
-        let new_commitment = self.factories.commitment.commit(&coinbase_key, &coinbase_value.into());
-        let rr = self
-            .factories
-            .range_proof
-            .construct_proof(&coinbase_key, coinbase_value.into())
-            .unwrap();
-        let coinbase = TransactionOutput {
-            commitment: new_commitment,
-            features: OutputFeatures::create_coinbase(block.header.height, &self.rules),
-            proof: RangeProof::from_bytes(&rr).unwrap(),
-        };
-        let excess = self.factories.commitment.commit(&coinbase_key, &(MicroTari(0)).into());
-        let nonce = PrivateKey::random(&mut rng);
-        let challenge = Miner::get_challenge(&PublicKey::from_secret_key(&nonce));
-        let sig = Signature::sign(coinbase_key, nonce, &challenge).unwrap();
-        let kernel = TransactionKernel {
-            features: KernelFeatures::empty(),
-            fee: 0.into(),
-            lock_height: 0,
-            excess,
-            excess_sig: sig,
-            meta_info: None,
-            linked_kernel: None,
-        };
-        (coinbase, kernel)
+        unimplemented!()
     }
 
     async fn mining(
@@ -181,15 +155,5 @@ impl Miner {
             return None;
         };
         std::mem::replace(&mut self.block, None)
-    }
-
-    /// This constructs a challenge for the coinbase tx
-    fn get_challenge(nonce: &PublicKey) -> MessageHash {
-        Challenge::new()
-            .chain(nonce.as_bytes())
-            .chain(&(0 as u64).to_le_bytes())
-            .chain(&(0 as u64).to_le_bytes())
-            .result()
-            .to_vec()
     }
 }
