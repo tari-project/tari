@@ -72,28 +72,37 @@ impl CoinbaseBuilder {
         }
     }
 
-    /// Assign the block height. This is used to determine the lock height of the transaction. Not required if
-    /// `using_block` is used.
+    /// Assign the block height. This is used to determine the lock height of the transaction.
     pub fn with_block_height(mut self, height: u64) -> Self {
         self.block_height = Some(height);
         self
     }
 
+    /// Indicates the sum total of all fees that the coinbase transaction earns, over and above the block reward
     pub fn with_fees(mut self, value: MicroTari) -> Self {
         self.fees = Some(value);
         self
     }
 
+    /// Provides the private spend key for this transaction. This will usually be provided by a miner's wallet instance.
     pub fn with_spend_key(mut self, key: PrivateKey) -> Self {
         self.spend_key = Some(key);
         self
     }
 
+    /// The nonce to be used for this transaction. This will usually be provided by a miner's wallet instance.
     pub fn with_nonce(mut self, nonce: PrivateKey) -> Self {
         self.private_nonce = Some(nonce);
         self
     }
 
+    /// Try and construct a Coinbase Transaction. The block reward is taken from the emission curve for the current
+    /// block height. The other parameters (keys, nonces etc.) are provided by the caller. Other data is
+    /// automatically set: Coinbase transactions have an offset of zero, no fees, the `COINBASE_OUTPUT` flags are set
+    /// on the output and kernel, and the maturity schedule is set from the consensus rules.
+    ///
+    /// After `build` is called, the struct is destroyed and the private keys stored are dropped and the memory zeroed
+    /// out (by virtue of the zero_on_drop crate).
     pub fn build(self) -> Result<Transaction, CoinbaseBuildError> {
         let height = self.block_height.ok_or(CoinbaseBuildError::MissingBlockHeight)?;
         let reward =
