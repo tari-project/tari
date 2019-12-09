@@ -194,7 +194,7 @@ pub enum MetadataKey {
     PruningHorizon,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum MetadataValue {
     ChainHeight(Option<u64>),
     BestBlock(Option<BlockHash>),

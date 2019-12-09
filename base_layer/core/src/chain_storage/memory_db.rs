@@ -26,16 +26,7 @@ use crate::{
     blocks::{Block, BlockHeader},
     chain_storage::{
         blockchain_database::{BlockchainBackend, MutableMmrState},
-        db_transaction::{
-            DbKey,
-            DbKeyValuePair,
-            DbTransaction,
-            DbValue,
-            MetadataKey,
-            MetadataValue,
-            MmrTree,
-            WriteOperation,
-        },
+        db_transaction::{DbKey, DbKeyValuePair, DbTransaction, DbValue, MetadataValue, MmrTree, WriteOperation},
         error::ChainStorageError,
     },
 };
@@ -72,6 +63,7 @@ struct MerkleNode<T> {
 struct InnerDatabase<D>
 where D: Digest
 {
+    metadata: HashMap<u32, MetadataValue>,
     headers: HashMap<u64, BlockHeader>,
     block_hashes: HashMap<HashOutput, u64>,
     utxos: HashMap<HashOutput, MerkleNode<TransactionOutput>>,
@@ -109,6 +101,7 @@ where D: Digest
             MerkleChangeTracker::<D, _, _>::new(MutableMmr::new(Vec::new()), Vec::new(), mct_config).unwrap();
         Self {
             db: Arc::new(RwLock::new(InnerDatabase {
+                metadata: HashMap::default(),
                 headers: HashMap::default(),
                 block_hashes: HashMap::default(),
                 utxos: HashMap::default(),
@@ -143,7 +136,9 @@ where D: Digest + Send + Sync
         for op in tx.operations.into_iter() {
             match op {
                 WriteOperation::Insert(insert) => match insert {
-                    DbKeyValuePair::Metadata(_, _) => {}, // no-op. Memory-based DB, so we don't store metadata
+                    DbKeyValuePair::Metadata(k, v) => {
+                        db.metadata.insert(k as u32, v);
+                    },
                     DbKeyValuePair::BlockHeader(k, v) => {
                         let hash = v.hash();
                         db.block_hashes.insert(hash.clone(), k);
@@ -278,10 +273,10 @@ where D: Digest + Send + Sync
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, ChainStorageError> {
         let db = self.db_access()?;
         let result = match key {
-            DbKey::Metadata(MetadataKey::ChainHeight) => Some(DbValue::Metadata(MetadataValue::ChainHeight(None))),
-            DbKey::Metadata(MetadataKey::AccumulatedWork) => Some(DbValue::Metadata(MetadataValue::AccumulatedWork(0))),
-            DbKey::Metadata(MetadataKey::PruningHorizon) => Some(DbValue::Metadata(MetadataValue::PruningHorizon(0))),
-            DbKey::Metadata(MetadataKey::BestBlock) => Some(DbValue::Metadata(MetadataValue::BestBlock(None))),
+            DbKey::Metadata(k) => db
+                .metadata
+                .get(&(k.clone() as u32))
+                .map(|v| DbValue::Metadata(v.clone())),
             DbKey::BlockHeader(k) => db.headers.get(k).map(|v| DbValue::BlockHeader(Box::new(v.clone()))),
             DbKey::BlockHash(hash) => db
                 .block_hashes
@@ -486,6 +481,7 @@ where D: Digest
         let range_proof_mmr =
             MerkleChangeTracker::<D, _, _>::new(MutableMmr::new(Vec::new()), Vec::new(), mct_config).unwrap();
         Self {
+            metadata: HashMap::default(),
             headers: HashMap::default(),
             block_hashes: HashMap::default(),
             utxos: HashMap::default(),
