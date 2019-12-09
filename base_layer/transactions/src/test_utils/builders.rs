@@ -22,8 +22,11 @@
 
 use crate::{
     tari_amount::MicroTari,
-    transaction::{OutputFeatures, UnblindedOutput},
+    transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
+    types::{CommitmentFactory, PrivateKey},
 };
+use rand::{CryptoRng, Rng};
+use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey};
 
 /// The tx macro is a convenience wrapper around the [create_tx] function, making the arguments optional and explicit
 /// via keywords.
@@ -100,4 +103,17 @@ pub struct TransactionSchema {
     pub fee: MicroTari,
     pub lock_height: u64,
     pub features: OutputFeatures,
+}
+
+pub fn make_input<R: Rng + CryptoRng>(
+    rng: &mut R,
+    val: MicroTari,
+    factory: &CommitmentFactory,
+) -> (TransactionInput, UnblindedOutput)
+{
+    let key = PrivateKey::random(rng);
+    let v = PrivateKey::from(val);
+    let commitment = factory.commit(&key, &v);
+    let input = TransactionInput::new(OutputFeatures::default(), commitment);
+    (input, UnblindedOutput::new(val, key, None))
 }

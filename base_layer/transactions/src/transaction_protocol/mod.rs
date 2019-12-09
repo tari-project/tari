@@ -49,9 +49,6 @@
 //!   end
 //! </div>
 
-#[cfg(test)]
-pub mod test_common;
-
 pub mod proto;
 pub mod recipient;
 pub mod sender;

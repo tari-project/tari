@@ -23,3 +23,4 @@
 /// Helper functions to simplify generated test blockchain data
 #[macro_use]
 pub mod builders;
+pub mod primitives;

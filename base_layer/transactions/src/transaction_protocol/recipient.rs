@@ -160,24 +160,22 @@ impl ReceiverTransactionProtocol {
 mod test {
     use crate::{
         tari_amount::*,
+        test_utils::primitives::TestParams,
         transaction::OutputFeatures,
         transaction_protocol::{
             build_challenge,
             sender::{SingleRoundSenderData, TransactionSenderMessage},
-            test_common::TestParams,
             TransactionMetadata,
         },
         types::{CryptoFactories, PublicKey, Signature},
         ReceiverTransactionProtocol,
     };
-    use rand::OsRng;
     use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::PublicKey as PK};
 
     #[test]
     fn single_round_recipient() {
-        let mut rng = OsRng::new().unwrap();
         let factories = CryptoFactories::default();
-        let p = TestParams::new(&mut rng);
+        let p = TestParams::new();
         let m = TransactionMetadata {
             fee: MicroTari(125),
             lock_height: 0,

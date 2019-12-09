@@ -32,6 +32,7 @@ use crate::{
     aggregated_body::AggregateBody,
     consensus::ConsensusRules,
     fee::Fee,
+    tari_amount::uT,
     transaction_protocol::{build_challenge, TransactionMetadata},
     types::{CryptoFactories, HashDigest, HashOutput, RangeProof, RangeProofService},
 };
@@ -63,6 +64,12 @@ bitflags! {
     pub struct KernelFeatures: u8 {
         /// Coinbase transaction
         const COINBASE_KERNEL = 1u8;
+    }
+}
+
+impl KernelFeatures {
+    pub fn create_coinbase() -> KernelFeatures {
+        KernelFeatures::COINBASE_KERNEL
     }
 }
 
@@ -563,10 +570,9 @@ impl Transaction {
         offset: BlindingFactor,
     ) -> Transaction
     {
-        Transaction {
-            offset,
-            body: AggregateBody::new(inputs, outputs, kernels),
-        }
+        let mut body = AggregateBody::new(inputs, outputs, kernels);
+        body.sort();
+        Transaction { offset, body }
     }
 
     /// Validate this transaction by checking the following:
@@ -575,9 +581,14 @@ impl Transaction {
     /// 1. Range proofs of the outputs are valid
     ///
     /// This function does NOT check that inputs come from the UTXO set
-    pub fn validate_internal_consistency(&self, factories: &CryptoFactories) -> Result<(), TransactionError> {
-        self.body
-            .validate_internal_consistency(&self.offset, MicroTari::from(0), factories)
+    pub fn validate_internal_consistency(
+        &self,
+        factories: &CryptoFactories,
+        reward: Option<MicroTari>,
+    ) -> Result<(), TransactionError>
+    {
+        let reward = reward.unwrap_or(0 * uT);
+        self.body.validate_internal_consistency(&self.offset, reward, factories)
     }
 
     pub fn get_body(&self) -> &AggregateBody {
@@ -620,6 +631,7 @@ impl Transaction {
 pub struct TransactionBuilder {
     body: AggregateBody,
     offset: Option<BlindingFactor>,
+    reward: Option<MicroTari>,
 }
 
 impl TransactionBuilder {
@@ -664,11 +676,17 @@ impl TransactionBuilder {
         self
     }
 
+    pub fn with_reward(&mut self, reward: MicroTari) -> &mut Self {
+        self.reward = Some(reward);
+        self
+    }
+
+    /// Build the transaction.
     pub fn build(self, factories: &CryptoFactories) -> Result<Transaction, TransactionError> {
         if let Some(offset) = self.offset {
             let (i, o, k) = self.body.dissolve();
             let tx = Transaction::new(i, o, k, offset);
-            tx.validate_internal_consistency(factories)?;
+            tx.validate_internal_consistency(factories, self.reward)?;
             Ok(tx)
         } else {
             return Err(TransactionError::ValidationError(
@@ -683,6 +701,7 @@ impl Default for TransactionBuilder {
         Self {
             offset: None,
             body: AggregateBody::empty(),
+            reward: None,
         }
     }
 }
