@@ -76,7 +76,7 @@ use tari_wallet::{
         TransactionServiceInitializer,
     },
 };
-use tokio::runtime::Runtime;
+use tokio::runtime::{Builder, Runtime};
 
 pub fn setup_transaction_service<T: TransactionBackend + 'static>(
     runtime: &Runtime,
@@ -204,7 +204,8 @@ fn manage_single_transaction<T: TransactionBackend + 'static>(
     database_path: String,
 )
 {
-    let runtime = Runtime::new().unwrap();
+    let runtime = Builder::new().core_threads(8).build().unwrap();
+
     let mut rng = OsRng::new().unwrap();
     let factories = CryptoFactories::default();
     // Alice's parameters
@@ -349,7 +350,7 @@ fn manage_multiple_transactions<T: TransactionBackend + 'static>(
     database_path: String,
 )
 {
-    let runtime = Runtime::new().unwrap();
+    let runtime = Builder::new().core_threads(8).build().unwrap();
     let mut rng = OsRng::new().unwrap();
     let factories = CryptoFactories::default();
     // Alice's parameters
@@ -530,7 +531,7 @@ fn manage_multiple_transactions_sqlite_db() {
 }
 
 fn test_sending_repeated_tx_ids<T: TransactionBackend + 'static>(alice_backend: T, bob_backend: T) {
-    let runtime = Runtime::new().unwrap();
+    let runtime = Builder::new().core_threads(8).build().unwrap();
     let mut rng = OsRng::new().unwrap();
     let factories = CryptoFactories::default();
 
@@ -607,7 +608,7 @@ fn test_sending_repeated_tx_ids_sqlite_db() {
 }
 
 fn test_accepting_unknown_tx_id_and_malformed_reply<T: TransactionBackend + 'static>(alice_backend: T) {
-    let runtime = Runtime::new().unwrap();
+    let runtime = Builder::new().core_threads(8).build().unwrap();
     let mut rng = OsRng::new().unwrap();
     let factories = CryptoFactories::default();
 
@@ -697,7 +698,7 @@ fn test_accepting_unknown_tx_id_and_malformed_reply_sqlite_db() {
 }
 
 fn finalize_tx_with_nonexistent_txid<T: TransactionBackend + 'static>(alice_backend: T) {
-    let runtime = Runtime::new().unwrap();
+    let runtime = Builder::new().core_threads(8).build().unwrap();
     let mut rng = OsRng::new().unwrap();
     let factories = CryptoFactories::default();
 
@@ -752,7 +753,7 @@ fn finalize_tx_with_nonexistent_txid_sqlite_db() {
 }
 
 fn finalize_tx_with_incorrect_pubkey<T: TransactionBackend + 'static>(alice_backend: T, bob_backend: T) {
-    let runtime = Runtime::new().unwrap();
+    let runtime = Builder::new().core_threads(8).build().unwrap();
     let mut rng = OsRng::new().unwrap();
     let factories = CryptoFactories::default();
 
@@ -858,7 +859,7 @@ fn finalize_tx_with_incorrect_pubkey_sqlite_db() {
 }
 
 fn finalize_tx_with_missing_output<T: TransactionBackend + 'static>(alice_backend: T, bob_backend: T) {
-    let runtime = Runtime::new().unwrap();
+    let runtime = Builder::new().core_threads(8).build().unwrap();
     let mut rng = OsRng::new().unwrap();
     let factories = CryptoFactories::default();
 
