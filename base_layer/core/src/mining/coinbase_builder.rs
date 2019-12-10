@@ -21,11 +21,11 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
+use crate::consensus::{ConsensusConstants, ConsensusManager};
 use derive_error::Error;
 use std::sync::Arc;
 use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::PublicKey as PK};
 use tari_transactions::{
-    consensus::ConsensusRules,
     tari_amount::{uT, MicroTari},
     transaction::{KernelBuilder, KernelFeatures, OutputFeatures, Transaction, TransactionBuilder, UnblindedOutput},
     transaction_protocol::{build_challenge, TransactionMetadata},
@@ -50,7 +50,7 @@ pub enum CoinbaseBuildError {
 }
 
 pub struct CoinbaseBuilder {
-    rules: Arc<ConsensusRules>,
+    rules: Arc<ConsensusManager>,
     factories: Arc<CryptoFactories>,
     block_height: Option<u64>,
     fees: Option<MicroTari>,
@@ -61,7 +61,7 @@ pub struct CoinbaseBuilder {
 impl CoinbaseBuilder {
     /// Start building a new Coinbase transaction. From here you can build the transaction piecemeal with the builder
     /// methods, or pass in a block to `using_block` to determine most of the coinbase parameters automatically.
-    pub fn new(rules: Arc<ConsensusRules>, factories: Arc<CryptoFactories>) -> Self {
+    pub fn new(rules: Arc<ConsensusManager>, factories: Arc<CryptoFactories>) -> Self {
         CoinbaseBuilder {
             rules,
             factories,
@@ -110,7 +110,8 @@ impl CoinbaseBuilder {
         let nonce = self.private_nonce.ok_or(CoinbaseBuildError::MissingNonce)?;
         let public_nonce = PublicKey::from_secret_key(&nonce);
         let key = self.spend_key.ok_or(CoinbaseBuildError::MissingSpendKey)?;
-        let output_features = OutputFeatures::create_coinbase(height, &self.rules);
+        let output_features =
+            OutputFeatures::create_coinbase(height + ConsensusConstants::current().coinbase_lock_height());
         let excess = self.factories.commitment.commit_value(&key, 0);
         let kernel_features = KernelFeatures::create_coinbase();
         let metadata = TransactionMetadata::default();
@@ -145,19 +146,15 @@ impl CoinbaseBuilder {
 #[cfg(test)]
 mod test {
     use crate::{
+        consensus::ConsensusManager,
         mining::{coinbase_builder::CoinbaseBuildError, CoinbaseBuilder},
         test_utils::primitives::TestParams,
     };
     use std::sync::Arc;
     use tari_crypto::commitment::HomomorphicCommitmentFactory;
-    use tari_transactions::{
-        consensus::ConsensusRules,
-        tari_amount::uT,
-        transaction::OutputFlags,
-        types::CryptoFactories,
-    };
-    fn get_builder() -> (CoinbaseBuilder, Arc<ConsensusRules>, Arc<CryptoFactories>) {
-        let rules = Arc::new(ConsensusRules::current());
+    use tari_transactions::{tari_amount::uT, transaction::OutputFlags, types::CryptoFactories};
+    fn get_builder() -> (CoinbaseBuilder, Arc<ConsensusManager>, Arc<CryptoFactories>) {
+        let rules = Arc::new(ConsensusManager::new());
         let factories = Arc::new(CryptoFactories::default());
         (CoinbaseBuilder::new(rules.clone(), factories.clone()), rules, factories)
     }

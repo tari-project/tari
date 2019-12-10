@@ -48,6 +48,7 @@ use tari_core::{
         MemoryDatabase,
         Validators,
     },
+    consensus::{ConsensusConstants, ConsensusManager},
     mempool::{Mempool, MempoolConfig},
     proof_of_work::DiffAdjManager,
     validation::block_validators::{FullConsensusValidator, StatelessValidator},
@@ -60,7 +61,6 @@ use tari_p2p::{
 };
 use tari_service_framework::{handles::ServiceHandles, StackBuilder};
 use tari_transactions::{
-    consensus::ConsensusRules,
     crypto::keys::SecretKey as SK,
     types::{CryptoFactories, HashDigest, PrivateKey, PublicKey},
 };
@@ -165,7 +165,7 @@ pub fn configure_and_initialize_node(
 ) -> Result<(CommsNode, NodeType), String>
 {
     let id = Arc::new(id);
-    let rules = Arc::new(ConsensusRules::current());
+    let rules = Arc::new(ConsensusManager::default());
     let factories = Arc::new(CryptoFactories::default());
     let peers = assign_peers(&config.peer_seeds);
     let result = match &config.db_type {

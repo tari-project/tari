@@ -27,6 +27,7 @@ use crate::{
     },
     blocks::{genesis_block::get_genesis_block, BlockHeader},
     chain_storage::{ChainStorageError, DbTransaction, MmrTree},
+    consensus::ConsensusConstants,
     consts::BASE_NODE_SERVICE_DESIRED_RESPONSE_FRACTION,
     mempool::MempoolServiceConfig,
     proof_of_work::{Difficulty, PowAlgorithm},
@@ -49,7 +50,6 @@ use std::{
 use tari_mmr::MerkleChangeTrackerConfig;
 use tari_test_utils::random::string;
 use tari_transactions::{
-    consensus::TARGET_BLOCK_INTERVAL,
     tari_amount::{uT, MicroTari},
     types::CryptoFactories,
 };
@@ -567,7 +567,10 @@ fn local_get_target_difficulty() {
         assert_ne!(blake_target_difficulty1, Difficulty::from(0));
 
         let mut block1 = chain_block(&block0, Vec::new());
-        block1.header.timestamp = block0.header.timestamp.increase(TARGET_BLOCK_INTERVAL);
+        block1.header.timestamp = block0
+            .header
+            .timestamp
+            .increase(ConsensusConstants::current().get_target_block_interval());
         block1.header.pow.pow_algo = PowAlgorithm::Blake;
         add_block_and_update_header(&node.blockchain_db, block1);
         assert_eq!(node.blockchain_db.get_height(), Ok(Some(1)));

@@ -24,6 +24,7 @@
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 use crate::{
     blocks::BlockHeader,
+    consensus::{ConsensusConstants, ConsensusManager},
     proof_of_work::{PowError, ProofOfWork},
 };
 use derive_error::Error;
@@ -31,7 +32,6 @@ use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 use tari_transactions::{
     aggregated_body::AggregateBody,
-    consensus::ConsensusRules,
     tari_amount::MicroTari,
     transaction::{OutputFlags, Transaction, TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
 };
@@ -62,7 +62,7 @@ pub struct Block {
 
 impl Block {
     // create a total_coinbase offset containing all fees for the validation
-    pub fn calculate_coinbase_and_fees(&self, rules: &ConsensusRules) -> MicroTari {
+    pub fn calculate_coinbase_and_fees(&self, rules: &ConsensusManager) -> MicroTari {
         let mut coinbase = rules.emission_schedule().block_reward(self.header.height);
         for kernel in self.body.kernels() {
             coinbase += kernel.fee;
@@ -83,12 +83,14 @@ impl Block {
     /// Run through the outputs of the block and check that
     /// i) There is exactly ONE coinbase output
     /// ii) The output's maturity is correctly set
-    pub fn check_coinbase_output(&self, current_rules: &ConsensusRules) -> Result<(), BlockValidationError> {
+    /// NOTE this does not check the coinbase amount
+    pub fn check_coinbase_output(&self) -> Result<(), BlockValidationError> {
         let mut coinbase_counter = 0; // there should be exactly 1 coinbase
         for utxo in self.body.outputs() {
             if utxo.features.flags.contains(OutputFlags::COINBASE_OUTPUT) {
                 coinbase_counter += 1;
-                if utxo.features.maturity < (self.header.height + current_rules.coinbase_lock_height()) {
+                if utxo.features.maturity < (self.header.height + ConsensusConstants::current().coinbase_lock_height())
+                {
                     return Err(BlockValidationError::InvalidCoinbase);
                 }
             }
@@ -144,7 +146,7 @@ pub struct BlockBuilder {
 impl BlockBuilder {
     pub fn new() -> BlockBuilder {
         BlockBuilder {
-            header: BlockHeader::new(ConsensusRules::current().blockchain_version()),
+            header: BlockHeader::new(ConsensusConstants::current().blockchain_version()),
             inputs: Vec::new(),
             outputs: Vec::new(),
             kernels: Vec::new(),

@@ -30,7 +30,6 @@ use crate::{
 
 use crate::{
     aggregated_body::AggregateBody,
-    consensus::ConsensusRules,
     fee::Fee,
     tari_amount::uT,
     transaction_protocol::{build_challenge, TransactionMetadata},
@@ -90,10 +89,10 @@ impl OutputFeatures {
         buf
     }
 
-    pub fn create_coinbase(current_block_height: u64, consensus_rules: &ConsensusRules) -> OutputFeatures {
+    pub fn create_coinbase(maturity_height: u64) -> OutputFeatures {
         OutputFeatures {
             flags: OutputFlags::COINBASE_OUTPUT,
-            maturity: consensus_rules.coinbase_lock_height() + current_block_height,
+            maturity: maturity_height,
         }
     }
 

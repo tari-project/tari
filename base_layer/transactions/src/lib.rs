@@ -8,8 +8,6 @@ mod test_utils;
 
 pub mod aggregated_body;
 pub mod bullet_rangeproofs;
-pub mod consensus;
-pub mod emission;
 pub mod fee;
 pub mod proto;
 pub mod tari_amount;

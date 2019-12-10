@@ -23,6 +23,7 @@
 use crate::{
     blocks::blockheader::BlockHash,
     chain_storage::{BlockchainBackend, BlockchainDatabase},
+    consensus::ConsensusConstants,
     proof_of_work::{
         diff_adj_manager::error::DiffAdjManagerError,
         difficulty::DifficultyAdjustment,
@@ -33,7 +34,6 @@ use crate::{
     },
 };
 use std::collections::VecDeque;
-use tari_transactions::consensus::{DIFFICULTY_BLOCK_WINDOW, MEDIAN_TIMESTAMP_COUNT};
 use tari_utilities::{epoch_time::EpochTime, hash::Hashable};
 
 /// The UpdateState enum is used to specify what update operation should be performed to keep the difficulty adjustment
@@ -124,7 +124,7 @@ where T: BlockchainBackend
         }
         let mut sorted_timestamps: Vec<EpochTime> = self.timestamps.clone().into();
         sorted_timestamps.sort();
-        length = (length / 2); // we want the median, should be index  (MEDIAN_TIMESTAMP_COUNT/2)
+        length = length / 2; // we want the median, should be index  (MEDIAN_TIMESTAMP_COUNT/2)
         Ok(sorted_timestamps[length])
     }
 
@@ -152,18 +152,18 @@ where T: BlockchainBackend
     ) -> Result<(), DiffAdjManagerError>
     {
         self.reset();
-
-        let mut monero_diff_list = Vec::<(EpochTime, Difficulty)>::with_capacity(DIFFICULTY_BLOCK_WINDOW as usize);
-        let mut blake_diff_list = Vec::<(EpochTime, Difficulty)>::with_capacity(DIFFICULTY_BLOCK_WINDOW as usize);
+        let difficulty_block_window = ConsensusConstants::current().get_difficulty_block_window();
+        let mut monero_diff_list = Vec::<(EpochTime, Difficulty)>::with_capacity(difficulty_block_window as usize);
+        let mut blake_diff_list = Vec::<(EpochTime, Difficulty)>::with_capacity(difficulty_block_window as usize);
         for height in (0..=height_of_longest_chain).rev() {
             let header = self.blockchain_db.fetch_header(height)?;
             // keep MEDIAN_TIMESTAMP_COUNT blocks for median timestamp
-            if self.timestamps.len() < MEDIAN_TIMESTAMP_COUNT {
+            if self.timestamps.len() < ConsensusConstants::current().get_median_timestamp_count() {
                 self.timestamps.push_front(header.timestamp);
             }
             match header.pow.pow_algo {
                 PowAlgorithm::Monero => {
-                    if (monero_diff_list.len() as u64) < DIFFICULTY_BLOCK_WINDOW {
+                    if (monero_diff_list.len() as u64) < difficulty_block_window {
                         monero_diff_list.push((
                             header.timestamp,
                             header.pow.accumulated_monero_difficulty + header.achieved_difficulty(),
@@ -171,7 +171,7 @@ where T: BlockchainBackend
                     }
                 },
                 PowAlgorithm::Blake => {
-                    if (blake_diff_list.len() as u64) < DIFFICULTY_BLOCK_WINDOW {
+                    if (blake_diff_list.len() as u64) < difficulty_block_window {
                         blake_diff_list.push((
                             header.timestamp,
                             header.pow.accumulated_blake_difficulty + header.achieved_difficulty(),
@@ -179,8 +179,8 @@ where T: BlockchainBackend
                     }
                 },
             }
-            if ((monero_diff_list.len() as u64) >= DIFFICULTY_BLOCK_WINDOW) &&
-                ((blake_diff_list.len() as u64) >= DIFFICULTY_BLOCK_WINDOW)
+            if ((monero_diff_list.len() as u64) >= difficulty_block_window) &&
+                ((blake_diff_list.len() as u64) >= difficulty_block_window)
             {
                 break;
             }
@@ -208,7 +208,7 @@ where T: BlockchainBackend
                 let header = self.blockchain_db.fetch_header(height)?;
                 // add new timestamps
                 self.timestamps.push_back(header.timestamp);
-                if self.timestamps.len() > MEDIAN_TIMESTAMP_COUNT {
+                if self.timestamps.len() > ConsensusConstants::current().get_median_timestamp_count() {
                     self.timestamps.remove(0); // remove oldest
                 }
                 match header.pow.pow_algo {

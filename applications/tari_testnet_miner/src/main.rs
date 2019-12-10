@@ -27,9 +27,11 @@ use std::{
     sync::atomic::Ordering,
     time::{Duration, Instant},
 };
-use tari_core::blocks::{Block, BlockBuilder, BlockHeader};
+use tari_core::{
+    blocks::{Block, BlockBuilder, BlockHeader},
+    consensus::{ConsensusConstants, ConsensusManager},
+};
 use tari_testnet_miner::miner::Miner;
-use tari_transactions::consensus::ConsensusRules;
 use tokio::io::AsyncBufReadExt;
 use tokio_executor::threadpool::ThreadPool;
 
@@ -60,7 +62,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!(target: LOG_TARGET, "Requesting new block");
 
-    let mut miner = Miner::new(ConsensusRules::current());
+    let mut miner = Miner::new(ConsensusManager::default());
     let mut block = get_block();
     let mining_flag = miner.get_mine_flag();
 
@@ -185,13 +187,13 @@ fn read_settings() -> Settings {
 // todo get block here
 fn get_block() -> Block {
     BlockBuilder::new()
-        .with_header(BlockHeader::new(ConsensusRules::current().blockchain_version()))
+        .with_header(BlockHeader::new(ConsensusConstants::current().blockchain_version()))
         .build()
 }
 
 // todo get blockheader here
 fn get_blockheader() -> BlockHeader {
-    BlockHeader::new(ConsensusRules::current().blockchain_version())
+    BlockHeader::new(ConsensusConstants::current().blockchain_version())
 }
 
 // todo get tip height here
