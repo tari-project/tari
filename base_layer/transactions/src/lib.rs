@@ -6,8 +6,6 @@ extern crate bitflags;
 #[cfg(test)]
 mod test_utils;
 
-mod coinbase_builder;
-
 pub mod aggregated_body;
 pub mod bullet_rangeproofs;
 pub mod consensus;
@@ -22,5 +20,4 @@ pub mod types;
 // Re-export commonly used structs
 pub use transaction_protocol::{recipient::ReceiverTransactionProtocol, sender::SenderTransactionProtocol};
 // Re-export the crypto crate to make exposing traits etc easier for clients of this crate
-pub use coinbase_builder::CoinbaseBuilder;
 pub use tari_crypto as crypto;
