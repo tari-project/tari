@@ -35,6 +35,7 @@ use futures::{
 use std::sync::{atomic::Ordering, Arc};
 use tari_core::{
     blocks::{Block, BlockHeader},
+    consensus::ConsensusManager,
     proof_of_work::Difficulty,
 };
 use tari_crypto::{
@@ -42,7 +43,7 @@ use tari_crypto::{
     keys::{PublicKey as PK, SecretKey},
     range_proof::RangeProofService,
 };
-use tari_transactions::{consensus::ConsensusRules, tari_amount::MicroTari, transaction::*, types::*};
+use tari_transactions::{tari_amount::MicroTari, transaction::*, types::*};
 use tari_utilities::byte_array::ByteArray;
 use tokio_executor::threadpool::{blocking, ThreadPool};
 
@@ -53,7 +54,7 @@ pub struct Miner {
     // prev block's solved difficulty, TODO check this
     difficulty: Difficulty,
     // current consensus rules
-    rules: ConsensusRules,
+    rules: ConsensusManager,
     // Stop mining flag
     stop_mine: Arc<AtomicBool>,
     // Amount of threads the Miner can use
@@ -71,7 +72,7 @@ pub enum MinerError {
 
 impl Miner {
     /// Create a new empty miner
-    pub fn new(rules: ConsensusRules) -> Miner {
+    pub fn new(rules: ConsensusManager) -> Miner {
         Miner {
             block: None,
             difficulty: Difficulty::min(),

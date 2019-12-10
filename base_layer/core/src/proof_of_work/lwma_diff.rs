@@ -6,12 +6,14 @@
 // https://github.com/zawy12/difficulty-algorithms/issues/3#issuecomment-442129791
 // https://github.com/zcash/zcash/issues/4021
 
-use crate::proof_of_work::{
-    difficulty::{Difficulty, DifficultyAdjustment},
-    error::DifficultyAdjustmentError,
+use crate::{
+    consensus::ConsensusConstants,
+    proof_of_work::{
+        difficulty::{Difficulty, DifficultyAdjustment},
+        error::DifficultyAdjustmentError,
+    },
 };
 use std::{cmp, collections::VecDeque};
-use tari_transactions::consensus::{DIFFICULTY_BLOCK_WINDOW, DIFF_TARGET_BLOCK_INTERVAL};
 use tari_utilities::epoch_time::EpochTime;
 
 const INITIAL_DIFFICULTY: Difficulty = Difficulty::min();
@@ -25,7 +27,11 @@ pub struct LinearWeightedMovingAverage {
 
 impl Default for LinearWeightedMovingAverage {
     fn default() -> Self {
-        LinearWeightedMovingAverage::new(DIFFICULTY_BLOCK_WINDOW as usize, DIFF_TARGET_BLOCK_INTERVAL)
+        let consensus = ConsensusConstants::current();
+        LinearWeightedMovingAverage::new(
+            consensus.get_difficulty_block_window() as usize,
+            consensus.get_diff_target_block_interval(),
+        )
     }
 }
 
@@ -57,7 +63,7 @@ impl LinearWeightedMovingAverage {
         let ave_difficulty = difficulty as f64 / n as f64;
 
         let mut previous_timestamp = timestamps[0];
-        let mut this_timestamp = 0.into();
+        let mut this_timestamp;
         // Loop through N most recent blocks.
         for i in 1..(n + 1) as usize {
             // 6*T limit prevents large drops in diff from long solve times which would cause oscillations.

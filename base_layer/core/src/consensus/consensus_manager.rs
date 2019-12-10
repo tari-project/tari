@@ -1,4 +1,4 @@
-// Copyright 2018 The Tari Project
+// Copyright 2019. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,32 +20,36 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// Needed to make futures::select! work
-#![recursion_limit = "512"]
-// Used to eliminate the need for boxing futures in many cases.
-// Tracking issue: https://github.com/rust-lang/rust/issues/63063
-#![feature(type_alias_impl_trait)]
-// Enable usage of Vec::shrink_to
-#![feature(shrink_to)]
+use crate::consensus::emission::EmissionSchedule;
 
-#[cfg(test)]
-pub mod test_utils;
+/// This is the used to control all consensus values.
+pub struct ConsensusManager {
+    /// The emission schedule to use for coinbase rewards
+    emission_schedule: EmissionSchedule,
+}
 
-pub mod consensus;
-pub mod consts;
-pub mod mempool;
-pub mod proof_of_work;
+impl ConsensusManager {
+    pub fn new() -> Self {
+        ConsensusManager::default()
+    }
 
-pub mod proto;
-pub mod types;
+    pub fn emission_schedule(&self) -> &EmissionSchedule {
+        &self.emission_schedule
+    }
+}
 
-pub mod base_node;
-pub mod blocks;
+impl Default for ConsensusManager {
+    fn default() -> Self {
+        ConsensusManager {
+            emission_schedule: EmissionSchedule::new(10_000_000.into(), 0.999, 100.into()),
+        }
+    }
+}
 
-pub mod chain_storage;
-pub mod validation;
-
-pub mod mining;
-
-// Re-export the crypto crate to make exposing traits etc easier for clients of this crate
-pub use tari_crypto as crypto;
+impl Clone for ConsensusManager {
+    fn clone(&self) -> Self {
+        Self {
+            emission_schedule: self.emission_schedule.clone(),
+        }
+    }
+}

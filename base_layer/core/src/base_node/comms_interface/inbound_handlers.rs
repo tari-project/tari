@@ -32,13 +32,13 @@ use crate::{
         HistoricalBlock,
         MmrTree,
     },
+    consensus::ConsensusConstants,
     mempool::Mempool,
     proof_of_work::DiffAdjManager,
 };
 use futures::SinkExt;
 use tari_broadcast_channel::Publisher;
 use tari_transactions::{
-    consensus::MAX_BLOCK_TRANSACTION_WEIGHT,
     transaction::{TransactionKernel, TransactionOutput},
     types::HashOutput,
 };
@@ -140,7 +140,7 @@ where T: BlockchainBackend
 
                 let transactions = self
                     .mempool
-                    .retrieve(MAX_BLOCK_TRANSACTION_WEIGHT)
+                    .retrieve(ConsensusConstants::current().get_max_block_transaction_weight())
                     .map_err(|e| CommsInterfaceError::MempoolError(e.to_string()))?
                     .iter()
                     .map(|tx| (**tx).clone())

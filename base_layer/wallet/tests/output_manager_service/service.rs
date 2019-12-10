@@ -34,7 +34,6 @@ use tari_crypto::{
 use tari_service_framework::StackBuilder;
 use tari_shutdown::Shutdown;
 use tari_transactions::{
-    consensus::ConsensusRules,
     fee::Fee,
     tari_amount::MicroTari,
     transaction::{KernelFeatures, OutputFeatures, TransactionOutput, UnblindedOutput},
@@ -372,7 +371,7 @@ fn receiving_and_confirmation<T: OutputManagerBackend + 'static>(backend: T) {
     let commitment = factories.commitment.commit(&recv_key, &value.into());
     let rr = factories.range_proof.construct_proof(&recv_key, value.into()).unwrap();
     let output = TransactionOutput::new(
-        OutputFeatures::create_coinbase(0, &ConsensusRules::current()),
+        OutputFeatures::create_coinbase(1),
         commitment,
         RangeProof::from_bytes(&rr).unwrap(),
     );
@@ -587,7 +586,7 @@ fn test_confirming_received_output<T: OutputManagerBackend + 'static>(backend: T
 
     let rr = factories.range_proof.construct_proof(&recv_key, value.into()).unwrap();
     let output = TransactionOutput::new(
-        OutputFeatures::create_coinbase(0, &ConsensusRules::current()),
+        OutputFeatures::create_coinbase(1),
         commitment,
         RangeProof::from_bytes(&rr).unwrap(),
     );

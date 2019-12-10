@@ -81,10 +81,11 @@ pub mod test {
     use crate::{
         blocks::genesis_block::get_genesis_block,
         chain_storage::{BlockchainDatabase, MemoryDatabase},
+        consensus::ConsensusConstants,
         proof_of_work::{DiffAdjManager, Difficulty, PowAlgorithm},
         test_utils::builders::{add_block_and_update_header, chain_block, create_default_db},
     };
-    use tari_transactions::{consensus::TARGET_BLOCK_INTERVAL, types::HashDigest};
+    use tari_transactions::types::HashDigest;
     use tari_utilities::epoch_time::EpochTime;
 
     fn create_test_pow_blockchain(
@@ -95,10 +96,14 @@ pub mod test {
         let mut prev_block = get_genesis_block();
         prev_block.header.timestamp = EpochTime::from(1575018842);
         prev_block = add_block_and_update_header(&store, prev_block);
+        let consensus = ConsensusConstants::current();
 
         for pow_algo in pow_algos {
             let mut new_block = chain_block(&prev_block, Vec::new());
-            new_block.header.timestamp = prev_block.header.timestamp.increase(TARGET_BLOCK_INTERVAL);
+            new_block.header.timestamp = prev_block
+                .header
+                .timestamp
+                .increase(consensus.get_target_block_interval());
             new_block.header.pow.pow_algo = pow_algo;
             prev_block = add_block_and_update_header(&store, new_block);
         }
@@ -111,10 +116,14 @@ pub mod test {
     )
     {
         let mut prev_block = store.fetch_block(append_height).unwrap().block().clone();
+        let consensus = ConsensusConstants::current();
 
         for pow_algo in pow_algos {
             let mut new_block = chain_block(&prev_block, Vec::new());
-            new_block.header.timestamp = prev_block.header.timestamp.increase(TARGET_BLOCK_INTERVAL);
+            new_block.header.timestamp = prev_block
+                .header
+                .timestamp
+                .increase(consensus.get_target_block_interval());
             new_block.header.pow.pow_algo = pow_algo;
             prev_block = add_block_and_update_header(&store, new_block);
         }
@@ -239,7 +248,7 @@ pub mod test {
     fn test_median_timestamp() {
         let store = create_default_db();
         let diff_adj_manager = DiffAdjManager::new(store.clone()).unwrap();
-
+        let consensus = ConsensusConstants::current();
         let pow_algos = vec![];
         create_test_pow_blockchain(&store, pow_algos);
         let mut timestamp = diff_adj_manager
@@ -252,7 +261,7 @@ pub mod test {
         let append_height = store.get_height().unwrap().unwrap();
         append_to_pow_blockchain(&store, append_height, pow_algos.clone());
         prev_timestamp = 1575018842.into();
-        prev_timestamp = prev_timestamp.increase(TARGET_BLOCK_INTERVAL);
+        prev_timestamp = prev_timestamp.increase(consensus.get_target_block_interval());
         timestamp = diff_adj_manager
             .get_median_timestamp()
             .expect("median returned an error");
@@ -261,7 +270,7 @@ pub mod test {
         let append_height = store.get_height().unwrap().unwrap();
         append_to_pow_blockchain(&store, append_height, pow_algos.clone());
         prev_timestamp = 1575018842.into();
-        prev_timestamp = prev_timestamp.increase(TARGET_BLOCK_INTERVAL);
+        prev_timestamp = prev_timestamp.increase(consensus.get_target_block_interval());
         timestamp = diff_adj_manager
             .get_median_timestamp()
             .expect("median returned an error");
@@ -272,7 +281,7 @@ pub mod test {
             let append_height = store.get_height().unwrap().unwrap();
             append_to_pow_blockchain(&store, append_height, pow_algos.clone());
             prev_timestamp = 1575018842.into();
-            prev_timestamp = prev_timestamp.increase(TARGET_BLOCK_INTERVAL * (i / 2));
+            prev_timestamp = prev_timestamp.increase(consensus.get_target_block_interval() * (i / 2));
             timestamp = diff_adj_manager
                 .get_median_timestamp()
                 .expect("median returned an error");
@@ -283,7 +292,7 @@ pub mod test {
         for i in 1..20 {
             let append_height = store.get_height().unwrap().unwrap();
             append_to_pow_blockchain(&store, append_height, pow_algos.clone());
-            prev_timestamp = prev_timestamp.increase(TARGET_BLOCK_INTERVAL);
+            prev_timestamp = prev_timestamp.increase(consensus.get_target_block_interval());
             timestamp = diff_adj_manager
                 .get_median_timestamp()
                 .expect("median returned an error");
@@ -294,6 +303,7 @@ pub mod test {
     fn test_median_timestamp_odd_order() {
         let store = create_default_db();
         let diff_adj_manager = DiffAdjManager::new(store.clone()).unwrap();
+        let consensus = ConsensusConstants::current();
 
         let pow_algos = vec![];
         create_test_pow_blockchain(&store, pow_algos);
@@ -307,7 +317,7 @@ pub mod test {
         let append_height = store.get_height().unwrap().unwrap();
         append_to_pow_blockchain(&store, append_height, pow_algos.clone());
         prev_timestamp = 1575018842.into();
-        prev_timestamp = prev_timestamp.increase(TARGET_BLOCK_INTERVAL);
+        prev_timestamp = prev_timestamp.increase(consensus.get_target_block_interval());
         timestamp = diff_adj_manager
             .get_median_timestamp()
             .expect("median returned an error");
@@ -317,12 +327,12 @@ pub mod test {
         let append_height = store.get_height().unwrap().unwrap();
         let mut prev_block = store.fetch_block(append_height).unwrap().block().clone();
         let mut new_block = chain_block(&prev_block, Vec::new());
-        new_block.header.timestamp = EpochTime::from(1575018842).increase(TARGET_BLOCK_INTERVAL / 2);
+        new_block.header.timestamp = EpochTime::from(1575018842).increase(consensus.get_target_block_interval() / 2);
         new_block.header.pow.pow_algo = PowAlgorithm::Blake;
         prev_block = add_block_and_update_header(&store, new_block);
 
         prev_timestamp = 1575018842.into();
-        prev_timestamp = prev_timestamp.increase(TARGET_BLOCK_INTERVAL / 2);
+        prev_timestamp = prev_timestamp.increase(consensus.get_target_block_interval() / 2);
         timestamp = diff_adj_manager
             .get_median_timestamp()
             .expect("median returned an error");

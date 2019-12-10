@@ -26,6 +26,8 @@ use derive_error::Error;
 pub enum PowError {
     // ProofOfWorkFailed
     InvalidProofOfWork,
+    // Target difficulty not achieved
+    AchievedDifficultyTooLow,
 }
 
 #[derive(Debug, Error, Clone, PartialEq)]
