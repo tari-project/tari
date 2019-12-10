@@ -24,7 +24,7 @@ use crate::{
     base_node::{
         comms_interface::OutboundNodeCommsInterface,
         states,
-        states::{BaseNodeState, HorizonInfo, ListeningInfo, StateEvent},
+        states::{BaseNodeState, HorizonInfo, HorizonSyncConfig, ListeningInfo, StateEvent},
     },
     chain_storage::{BlockchainBackend, BlockchainDatabase},
 };
@@ -33,6 +33,20 @@ use log::*;
 use std::sync::{atomic::Ordering, Arc};
 
 const LOG_TARGET: &str = "core::base_node";
+
+/// Configuration for the BaseNodeStateMachine.
+#[derive(Clone, Copy)]
+pub struct BaseNodeStateMachineConfig {
+    pub horizon_sync_config: HorizonSyncConfig,
+}
+
+impl Default for BaseNodeStateMachineConfig {
+    fn default() -> Self {
+        Self {
+            horizon_sync_config: HorizonSyncConfig::default(),
+        }
+    }
+}
 
 /// A Tari full node, aka Base Node.
 ///
@@ -45,15 +59,22 @@ pub struct BaseNodeStateMachine<B: BlockchainBackend> {
     pub(super) db: BlockchainDatabase<B>,
     pub(super) comms: OutboundNodeCommsInterface,
     pub(super) user_stopped: Arc<AtomicBool>,
+    pub(super) config: BaseNodeStateMachineConfig,
 }
 
 impl<B: BlockchainBackend> BaseNodeStateMachine<B> {
     /// Instantiate a new Base Node.
-    pub fn new(db: &BlockchainDatabase<B>, comms: &OutboundNodeCommsInterface) -> Self {
+    pub fn new(
+        db: &BlockchainDatabase<B>,
+        comms: &OutboundNodeCommsInterface,
+        config: BaseNodeStateMachineConfig,
+    ) -> Self
+    {
         Self {
             db: db.clone(),
             comms: comms.clone(),
             user_stopped: Arc::new(AtomicBool::new(false)),
+            config,
         }
     }
 

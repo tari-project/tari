@@ -37,6 +37,7 @@ use tari_core::{
     base_node::{
         service::{BaseNodeServiceConfig, BaseNodeServiceInitializer},
         BaseNodeStateMachine,
+        BaseNodeStateMachineConfig,
         OutboundNodeCommsInterface,
     },
     chain_storage::{
@@ -189,7 +190,11 @@ pub fn configure_and_initialize_node(
             let outbound_interface = handles.get_handle::<OutboundNodeCommsInterface>().unwrap();
             (
                 comms,
-                NodeType::Memory(BaseNodeStateMachine::new(&db, &outbound_interface)),
+                NodeType::Memory(BaseNodeStateMachine::new(
+                    &db,
+                    &outbound_interface,
+                    BaseNodeStateMachineConfig::default(),
+                )),
             )
         },
         DatabaseType::LMDB(p) => {
@@ -217,7 +222,11 @@ pub fn configure_and_initialize_node(
             let outbound_interface = handles.get_handle::<OutboundNodeCommsInterface>().unwrap();
             (
                 comms,
-                NodeType::LMDB(BaseNodeStateMachine::new(&db, &outbound_interface)),
+                NodeType::LMDB(BaseNodeStateMachine::new(
+                    &db,
+                    &outbound_interface,
+                    BaseNodeStateMachineConfig::default(),
+                )),
             )
         },
     };

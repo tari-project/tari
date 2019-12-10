@@ -23,19 +23,10 @@
 use crate::{blocks::BlockHeader, proof_of_work::Difficulty};
 use bigint::uint::U256;
 use derive_error::Error;
-use digest::Digest;
-use monero::{
-    blockdata::{
-        block::BlockHeader as MoneroBlockHeader,
-        Transaction as MoneroTransaction,
-        TransactionPrefix as MoneroTransactionPrefix,
-    },
-    consensus::encode::VarInt,
-    cryptonote::hash::Hash as MoneroHash,
-};
+use monero::blockdata::{block::BlockHeader as MoneroBlockHeader, Transaction as MoneroTransaction};
 use randomx_rs::{RandomXCache, RandomXError, RandomXFlag, RandomXVM};
 use serde::{Deserialize, Serialize};
-use tari_mmr::{Hash, HashSlice, MerkleMountainRange, MerkleProof};
+use tari_mmr::MerkleProof;
 
 const MAX_TARGET: U256 = U256::MAX;
 
@@ -71,8 +62,8 @@ pub struct MoneroData {
 }
 
 impl MoneroData {
-    fn new(TariHeader: &BlockHeader) -> Result<MoneroData, MergeMineError> {
-        bincode::deserialize(&TariHeader.pow.pow_data).map_err(|_| MergeMineError::DeserializeError)
+    fn new(tari_header: &BlockHeader) -> Result<MoneroData, MergeMineError> {
+        bincode::deserialize(&tari_header.pow.pow_data).map_err(|_| MergeMineError::DeserializeError)
     }
 }
 
@@ -109,7 +100,7 @@ fn create_input_blob(_data: &MoneroData) -> Result<String, MergeMineError> {
     Err(MergeMineError::HashingError)
 }
 
-fn verify_header(header: &BlockHeader, monero_data: &MoneroData) -> Result<(), MergeMineError> {
+fn verify_header(_header: &BlockHeader, _monero_data: &MoneroData) -> Result<(), MergeMineError> {
     // todo
     // verify that our header is in coinbase
     // todo

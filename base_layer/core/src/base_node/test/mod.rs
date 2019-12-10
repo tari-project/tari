@@ -22,3 +22,4 @@
 
 mod comms_interface;
 mod service;
+mod state_machine;

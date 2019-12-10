@@ -96,7 +96,7 @@ pub enum BaseNodeState {
     Shutdown(Shutdown),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum StateEvent {
     Initialized,
     MetadataSynced(SyncStatus),
@@ -111,7 +111,7 @@ pub enum StateEvent {
 /// blockchain the local node is. It can either be very far behind (`BehindHorizon`), in which case we will just
 /// synchronise against the pruning horizon; we're somewhat behind (`Lagging`) and need to download the missing
 /// blocks to catch up, or we are `UpToDate`.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum SyncStatus {
     // We are behind the pruning horizon. The u64 parameter indicates the block height at the horizon.
     BehindHorizon(u64),
@@ -143,7 +143,7 @@ mod shutdown_state;
 mod starting_state;
 
 pub use block_sync::BlockSyncInfo;
-pub use fetching_horizon_state::HorizonInfo;
+pub use fetching_horizon_state::{HorizonInfo, HorizonSyncConfig};
 pub use initial_sync::InitialSync;
 pub use listening::ListeningInfo;
 pub use shutdown_state::Shutdown;
