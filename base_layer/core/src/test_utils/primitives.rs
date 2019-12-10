@@ -60,3 +60,25 @@ pub fn create_random_signature(fee: MicroTari, lock_height: u64) -> (PublicKey, 
     let e = build_challenge(&PublicKey::from_secret_key(&r), &tx_meta);
     (p, Signature::sign(k, r, &e).unwrap())
 }
+
+pub struct TestParams {
+    pub spend_key: PrivateKey,
+    pub change_key: PrivateKey,
+    pub offset: PrivateKey,
+    pub nonce: PrivateKey,
+    pub public_nonce: PublicKey,
+}
+
+impl TestParams {
+    pub fn new() -> TestParams {
+        let mut rng = rand::OsRng::new().unwrap();
+        let r = PrivateKey::random(&mut rng);
+        TestParams {
+            spend_key: PrivateKey::random(&mut rng),
+            change_key: PrivateKey::random(&mut rng),
+            offset: PrivateKey::random(&mut rng),
+            public_nonce: PublicKey::from_secret_key(&r),
+            nonce: r,
+        }
+    }
+}

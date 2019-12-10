@@ -21,16 +21,16 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-use crate::{
+use derive_error::Error;
+use std::sync::Arc;
+use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::PublicKey as PK};
+use tari_transactions::{
     consensus::ConsensusRules,
     tari_amount::{uT, MicroTari},
     transaction::{KernelBuilder, KernelFeatures, OutputFeatures, Transaction, TransactionBuilder, UnblindedOutput},
     transaction_protocol::{build_challenge, TransactionMetadata},
     types::{BlindingFactor, CryptoFactories, PrivateKey, PublicKey, Signature},
 };
-use derive_error::Error;
-use std::sync::Arc;
-use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::PublicKey as PK};
 
 #[derive(Debug, Clone, Error, PartialEq)]
 pub enum CoinbaseBuildError {
@@ -145,17 +145,17 @@ impl CoinbaseBuilder {
 #[cfg(test)]
 mod test {
     use crate::{
-        coinbase_builder::CoinbaseBuildError,
-        consensus::ConsensusRules,
-        tari_amount::uT,
+        mining::{coinbase_builder::CoinbaseBuildError, CoinbaseBuilder},
         test_utils::primitives::TestParams,
-        transaction::OutputFlags,
-        types::CryptoFactories,
-        CoinbaseBuilder,
     };
     use std::sync::Arc;
     use tari_crypto::commitment::HomomorphicCommitmentFactory;
-
+    use tari_transactions::{
+        consensus::ConsensusRules,
+        tari_amount::uT,
+        transaction::OutputFlags,
+        types::CryptoFactories,
+    };
     fn get_builder() -> (CoinbaseBuilder, Arc<ConsensusRules>, Arc<CryptoFactories>) {
         let rules = Arc::new(ConsensusRules::current());
         let factories = Arc::new(CryptoFactories::default());
