@@ -39,14 +39,12 @@ pub fn setup_comms_services<TSink>(
     peers: Vec<NodeIdentity>,
     publisher: InboundDomainConnector<TSink>,
     data_path: &str,
-) -> (Arc<CommsNode>, Dht)
+) -> (CommsNode, Dht)
 where
     TSink: Sink<Arc<PeerMessage>> + Clone + Unpin + Send + Sync + 'static,
     TSink::Error: Error + Send + Sync,
 {
-    let (comms, dht) = initialize_local_test_comms(executor, node_identity, publisher, data_path)
-        .map(|(comms, dht)| (Arc::new(comms), dht))
-        .unwrap();
+    let (comms, dht) = initialize_local_test_comms(executor, node_identity, publisher, data_path).unwrap();
 
     for p in peers {
         let addr = p.control_service_address().clone();

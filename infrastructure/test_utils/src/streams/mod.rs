@@ -50,16 +50,16 @@ where
 #[macro_export]
 macro_rules! collect_stream {
     ($runtime:expr, $stream:expr, take=$take:expr, timeout=$timeout:expr $(,)?) => {{
-        use futures::StreamExt as __FuturesStreamExt;
-        use tokio::future::FutureExt as __TokioFuturesExt;
+        use futures::StreamExt;
+        use tokio::future::FutureExt;
 
         $runtime
             .block_on($stream.take($take).collect::<Vec<_>>().timeout($timeout))
             .expect(format!("Timeout before stream could collect {} item(s)", $take).as_str())
     }};
     ($runtime:expr, $stream:expr, timeout=$timeout:expr $(,)?) => {{
-        use futures::StreamExt as __FuturesStreamExt;
-        use tokio::future::FutureExt as __TokioFuturesExt;
+        use futures::StreamExt;
+        use tokio::future::FutureExt;
 
         $runtime
             .block_on($stream.collect::<Vec<_>>().timeout($timeout))

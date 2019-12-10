@@ -1,0 +1,4 @@
+[submodule "comms/yamux"]
+	path = comms/yamux
+	url = https://github.com/tari-project/yamux.git
+	branch = futures-alpha

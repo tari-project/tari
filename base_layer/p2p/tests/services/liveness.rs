@@ -44,7 +44,7 @@ pub fn setup_liveness_service(
     node_identity: NodeIdentity,
     peers: Vec<NodeIdentity>,
     data_path: &str,
-) -> (LivenessHandle, Arc<CommsNode>, Dht)
+) -> (LivenessHandle, CommsNode, Dht)
 {
     let (publisher, subscription_factory) = pubsub_connector(runtime.executor(), 100);
     let subscription_factory = Arc::new(subscription_factory);
@@ -97,60 +97,49 @@ fn end_to_end() {
     .unwrap();
 
     let alice_temp_dir = TempDir::new(string(8).as_str()).unwrap();
-    let (mut liveness1, _comms_1, _dht_1) = setup_liveness_service(
+    let (mut liveness1, comms_1, dht_1) = setup_liveness_service(
         &runtime,
         node_1_identity.clone(),
         vec![node_2_identity.clone()],
         alice_temp_dir.path().to_str().unwrap(),
     );
     let bob_temp_dir = TempDir::new(string(8).as_str()).unwrap();
-    let (mut liveness2, _comms_2, _dht_2) = setup_liveness_service(
+    let (mut liveness2, comms_2, dht_2) = setup_liveness_service(
         &runtime,
         node_2_identity.clone(),
         vec![node_1_identity.clone()],
         bob_temp_dir.path().to_str().unwrap(),
     );
 
-    let mut pingpong1_total = (0, 0);
-    let mut pingpong2_total = (0, 0);
-
     for _ in 0..5 {
         let _ = runtime
             .block_on(liveness2.send_ping(node_1_identity.node_id().clone()))
             .unwrap();
-        pingpong1_total = (pingpong1_total.0 + 1, pingpong1_total.1);
-        pingpong2_total = (pingpong2_total.0, pingpong2_total.1 + 1);
     }
 
     for _ in 0..4 {
         let _ = runtime
             .block_on(liveness1.send_ping(node_2_identity.node_id().clone()))
             .unwrap();
-        pingpong2_total = (pingpong2_total.0 + 1, pingpong2_total.1);
-        pingpong1_total = (pingpong1_total.0, pingpong1_total.1 + 1);
     }
 
     for _ in 0..5 {
         let _ = runtime
             .block_on(liveness2.send_ping(node_1_identity.node_id().clone()))
             .unwrap();
-        pingpong1_total = (pingpong1_total.0 + 1, pingpong1_total.1);
-        pingpong2_total = (pingpong2_total.0, pingpong2_total.1 + 1);
     }
 
     for _ in 0..4 {
         let _ = runtime
             .block_on(liveness1.send_ping(node_2_identity.node_id().clone()))
             .unwrap();
-        pingpong2_total = (pingpong2_total.0 + 1, pingpong2_total.1);
-        pingpong1_total = (pingpong1_total.0, pingpong1_total.1 + 1);
     }
 
     let events = collect_stream!(
         runtime,
         liveness1.get_event_stream_fused(),
         take = 18,
-        timeout = Duration::from_secs(10),
+        timeout = Duration::from_secs(20),
     );
 
     let ping_count = events
@@ -209,4 +198,11 @@ fn end_to_end() {
     assert_eq!(pongcount1, 8);
     assert_eq!(pingcount2, 8);
     assert_eq!(pongcount2, 10);
+
+    drop(dht_1);
+    drop(dht_2);
+    comms_1.shutdown().unwrap();
+    comms_2.shutdown().unwrap();
+
+    runtime.shutdown_on_idle();
 }
