@@ -32,7 +32,8 @@ use crate::{
         ProofOfWork,
     },
 };
-use tari_transactions::consensus::DIFFICULTY_BLOCK_WINDOW;
+use std::collections::VecDeque;
+use tari_transactions::consensus::{DIFFICULTY_BLOCK_WINDOW, MEDIAN_TIMESTAMP_COUNT};
 use tari_utilities::{epoch_time::EpochTime, hash::Hashable};
 
 /// The UpdateState enum is used to specify what update operation should be performed to keep the difficulty adjustment
@@ -52,6 +53,7 @@ where T: BlockchainBackend
     monero_lwma: LinearWeightedMovingAverage,
     blake_lwma: LinearWeightedMovingAverage,
     sync_data: Option<(u64, BlockHash)>,
+    timestamps: VecDeque<EpochTime>,
 }
 
 impl<T> DiffAdjStorage<T>
@@ -64,6 +66,7 @@ where T: BlockchainBackend
             monero_lwma: LinearWeightedMovingAverage::default(),
             blake_lwma: LinearWeightedMovingAverage::default(),
             sync_data: None,
+            timestamps: VecDeque::new(),
         }
     }
 
@@ -112,6 +115,19 @@ where T: BlockchainBackend
         })
     }
 
+    /// Returns the estimated target difficulty for the specified PoW algorithm.
+    pub fn get_median_timestamp(&mut self) -> Result<EpochTime, DiffAdjManagerError> {
+        self.update()?;
+        let mut length = self.timestamps.len();
+        if length == 0 {
+            return Err(DiffAdjManagerError::EmptyBlockchain);
+        }
+        let mut sorted_timestamps: Vec<EpochTime> = self.timestamps.clone().into();
+        sorted_timestamps.sort();
+        length = (length / 2); // we want the median, should be index  (MEDIAN_TIMESTAMP_COUNT/2)
+        Ok(sorted_timestamps[length])
+    }
+
     // Resets the DiffAdjStorage.
     fn reset(&mut self) {
         self.monero_lwma = LinearWeightedMovingAverage::default();
@@ -141,6 +157,10 @@ where T: BlockchainBackend
         let mut blake_diff_list = Vec::<(EpochTime, Difficulty)>::with_capacity(DIFFICULTY_BLOCK_WINDOW as usize);
         for height in (0..=height_of_longest_chain).rev() {
             let header = self.blockchain_db.fetch_header(height)?;
+            // keep MEDIAN_TIMESTAMP_COUNT blocks for median timestamp
+            if self.timestamps.len() < MEDIAN_TIMESTAMP_COUNT {
+                self.timestamps.push_front(header.timestamp);
+            }
             match header.pow.pow_algo {
                 PowAlgorithm::Monero => {
                     if (monero_diff_list.len() as u64) < DIFFICULTY_BLOCK_WINDOW {
@@ -186,6 +206,11 @@ where T: BlockchainBackend
         if let Some((sync_height, _)) = self.sync_data {
             for height in (sync_height + 1)..=height_of_longest_chain {
                 let header = self.blockchain_db.fetch_header(height)?;
+                // add new timestamps
+                self.timestamps.push_back(header.timestamp);
+                if self.timestamps.len() > MEDIAN_TIMESTAMP_COUNT {
+                    self.timestamps.remove(0); // remove oldest
+                }
                 match header.pow.pow_algo {
                     PowAlgorithm::Monero => {
                         self.monero_lwma.add(

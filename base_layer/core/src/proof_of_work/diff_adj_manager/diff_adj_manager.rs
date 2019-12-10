@@ -29,6 +29,7 @@ use crate::{
     },
 };
 use std::sync::{Arc, RwLock};
+use tari_utilities::epoch_time::EpochTime;
 
 /// The DiffAdjManager is used to calculate the current target difficulty based on PoW recorded in the latest blocks of
 /// the current best chain.
@@ -54,6 +55,14 @@ where T: BlockchainBackend
             .write()
             .map_err(|_| DiffAdjManagerError::PoisonedAccess)?
             .get_target_difficulty(pow_algo)
+    }
+
+    /// Returns the median timestamp of the past 11 blocks.
+    pub fn get_median_timestamp(&self) -> Result<EpochTime, DiffAdjManagerError> {
+        self.diff_adj_storage
+            .write()
+            .map_err(|_| DiffAdjManagerError::PoisonedAccess)?
+            .get_median_timestamp()
     }
 }
 
@@ -224,5 +233,100 @@ pub mod test {
             diff_adj_manager.get_target_difficulty(&PowAlgorithm::Blake),
             Ok(Difficulty::from(9))
         );
+    }
+
+    #[test]
+    fn test_median_timestamp() {
+        let store = create_default_db();
+        let diff_adj_manager = DiffAdjManager::new(store.clone()).unwrap();
+
+        let pow_algos = vec![];
+        create_test_pow_blockchain(&store, pow_algos);
+        let mut timestamp = diff_adj_manager
+            .get_median_timestamp()
+            .expect("median returned an error");
+        assert_eq!(timestamp, 1575018842.into());
+        let mut prev_timestamp: EpochTime = 1575018842.into();
+        let pow_algos = vec![PowAlgorithm::Blake];
+        // lets add 1
+        let append_height = store.get_height().unwrap().unwrap();
+        append_to_pow_blockchain(&store, append_height, pow_algos.clone());
+        prev_timestamp = 1575018842.into();
+        prev_timestamp = prev_timestamp.increase(TARGET_BLOCK_INTERVAL);
+        timestamp = diff_adj_manager
+            .get_median_timestamp()
+            .expect("median returned an error");
+        assert_eq!(timestamp, prev_timestamp);
+        // lets add 1
+        let append_height = store.get_height().unwrap().unwrap();
+        append_to_pow_blockchain(&store, append_height, pow_algos.clone());
+        prev_timestamp = 1575018842.into();
+        prev_timestamp = prev_timestamp.increase(TARGET_BLOCK_INTERVAL);
+        timestamp = diff_adj_manager
+            .get_median_timestamp()
+            .expect("median returned an error");
+        assert_eq!(timestamp, prev_timestamp);
+
+        // lets build up 11 blocks
+        for i in 4..12 {
+            let append_height = store.get_height().unwrap().unwrap();
+            append_to_pow_blockchain(&store, append_height, pow_algos.clone());
+            prev_timestamp = 1575018842.into();
+            prev_timestamp = prev_timestamp.increase(TARGET_BLOCK_INTERVAL * (i / 2));
+            timestamp = diff_adj_manager
+                .get_median_timestamp()
+                .expect("median returned an error");
+            assert_eq!(timestamp, prev_timestamp);
+        }
+
+        // lets add many1 blocks
+        for i in 1..20 {
+            let append_height = store.get_height().unwrap().unwrap();
+            append_to_pow_blockchain(&store, append_height, pow_algos.clone());
+            prev_timestamp = prev_timestamp.increase(TARGET_BLOCK_INTERVAL);
+            timestamp = diff_adj_manager
+                .get_median_timestamp()
+                .expect("median returned an error");
+            assert_eq!(timestamp, prev_timestamp);
+        }
+    }
+    #[test]
+    fn test_median_timestamp_odd_order() {
+        let store = create_default_db();
+        let diff_adj_manager = DiffAdjManager::new(store.clone()).unwrap();
+
+        let pow_algos = vec![];
+        create_test_pow_blockchain(&store, pow_algos);
+        let mut timestamp = diff_adj_manager
+            .get_median_timestamp()
+            .expect("median returned an error");
+        assert_eq!(timestamp, 1575018842.into());
+        let mut prev_timestamp: EpochTime = 1575018842.into();
+        let pow_algos = vec![PowAlgorithm::Blake];
+        // lets add 1
+        let append_height = store.get_height().unwrap().unwrap();
+        append_to_pow_blockchain(&store, append_height, pow_algos.clone());
+        prev_timestamp = 1575018842.into();
+        prev_timestamp = prev_timestamp.increase(TARGET_BLOCK_INTERVAL);
+        timestamp = diff_adj_manager
+            .get_median_timestamp()
+            .expect("median returned an error");
+        assert_eq!(timestamp, prev_timestamp);
+
+        // lets add 1 thats further back then
+        let append_height = store.get_height().unwrap().unwrap();
+        let mut prev_block = store.fetch_block(append_height).unwrap().block().clone();
+        let mut new_block = chain_block(&prev_block, Vec::new());
+        new_block.header.timestamp = EpochTime::from(1575018842).increase(TARGET_BLOCK_INTERVAL / 2);
+        new_block.header.pow.pow_algo = PowAlgorithm::Blake;
+        prev_block = add_block_and_update_header(&store, new_block);
+
+        prev_timestamp = 1575018842.into();
+        prev_timestamp = prev_timestamp.increase(TARGET_BLOCK_INTERVAL / 2);
+        timestamp = diff_adj_manager
+            .get_median_timestamp()
+            .expect("median returned an error");
+        // Median timestamp should be block 3 and not block 2
+        assert_eq!(timestamp, prev_timestamp);
     }
 }
