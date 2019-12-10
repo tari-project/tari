@@ -431,6 +431,17 @@ where D: Digest + Send + Sync
         Ok(mmr_state)
     }
 
+    fn fetch_mmr_base_leaf_node_count(&self, tree: MmrTree) -> Result<usize, ChainStorageError> {
+        let db = self.db_access()?;
+        let mmr_state = match tree {
+            MmrTree::Kernel => db.kernel_mmr.get_base_leaf_count(),
+            MmrTree::Header => db.header_mmr.get_base_leaf_count(),
+            MmrTree::Utxo => db.utxo_mmr.get_base_leaf_count(),
+            MmrTree::RangeProof => db.range_proof_mmr.get_base_leaf_count(),
+        };
+        Ok(mmr_state)
+    }
+
     fn restore_mmr(&self, tree: MmrTree, base_state: MutableMmrLeafNodes) -> Result<(), ChainStorageError> {
         let mut db = self
             .db

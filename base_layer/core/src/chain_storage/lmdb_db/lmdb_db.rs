@@ -880,6 +880,32 @@ where D: Digest + Send + Sync
         Ok(mmr_state)
     }
 
+    fn fetch_mmr_base_leaf_node_count(&self, tree: MmrTree) -> Result<usize, ChainStorageError> {
+        let mmr_state = match tree {
+            MmrTree::Kernel => self
+                .kernel_mmr
+                .read()
+                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
+                .get_base_leaf_count(),
+            MmrTree::Header => self
+                .header_mmr
+                .read()
+                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
+                .get_base_leaf_count(),
+            MmrTree::Utxo => self
+                .utxo_mmr
+                .read()
+                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
+                .get_base_leaf_count(),
+            MmrTree::RangeProof => self
+                .range_proof_mmr
+                .read()
+                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
+                .get_base_leaf_count(),
+        };
+        Ok(mmr_state)
+    }
+
     fn restore_mmr(&self, tree: MmrTree, base_state: MutableMmrLeafNodes) -> Result<(), ChainStorageError> {
         match tree {
             MmrTree::Kernel => self

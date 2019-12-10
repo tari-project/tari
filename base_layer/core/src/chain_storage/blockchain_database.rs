@@ -131,13 +131,17 @@ pub trait BlockchainBackend: Send + Sync {
     fn fetch_mmr_checkpoint(&self, tree: MmrTree, index: u64) -> Result<MerkleCheckPoint, ChainStorageError>;
     /// Fetches the leaf node hash and its deletion status for the nth leaf node in the given MMR tree.
     fn fetch_mmr_node(&self, tree: MmrTree, pos: u32) -> Result<(Hash, bool), ChainStorageError>;
-    /// Fetches the MMR base state of the specified tree.
+    /// Fetches the MMR base state of the specified tree. The MMR base state consists of the state from the genesis
+    /// block to the horizon block. The index is the n-th leaf node in the MMR. The count specifies the maximum number
+    /// of leaf nodes that can be returned, starting with the node at the provided index.
     fn fetch_mmr_base_leaf_nodes(
         &self,
         tree: MmrTree,
         index: usize,
         count: usize,
     ) -> Result<MutableMmrState, ChainStorageError>;
+    /// Returns the number of leaf nodes in the base MMR of the specified tree.
+    fn fetch_mmr_base_leaf_node_count(&self, tree: MmrTree) -> Result<usize, ChainStorageError>;
     /// Resets and restores the state of the specified MMR tree using a set of leaf nodes.
     fn restore_mmr(&self, tree: MmrTree, base_state: MutableMmrLeafNodes) -> Result<(), ChainStorageError>;
     /// Performs the function F for each orphan block in the orphan pool.
@@ -376,7 +380,9 @@ where T: BlockchainBackend
         self.db.fetch_mmr_proof(tree, pos)
     }
 
-    /// Fetches the MMR base state of the specified tree
+    /// Fetches the MMR base state of the specified tree. The MMR base state consists of the state from the genesis
+    /// block to the horizon block. The index is the n-th leaf node in the MMR. The count specifies the maximum number
+    /// of leaf nodes that can be returned, starting with the node at the provided index.
     pub fn fetch_mmr_base_leaf_nodes(
         &self,
         tree: MmrTree,
@@ -385,6 +391,11 @@ where T: BlockchainBackend
     ) -> Result<MutableMmrState, ChainStorageError>
     {
         self.db.fetch_mmr_base_leaf_nodes(tree, index, count)
+    }
+
+    /// Returns the number of leaf nodes in the base MMR of the specified tree.
+    pub fn fetch_mmr_base_leaf_node_count(&self, tree: MmrTree) -> Result<usize, ChainStorageError> {
+        self.db.fetch_mmr_base_leaf_node_count(tree)
     }
 
     /// Resets the specified MMR and restores it with the provided state.

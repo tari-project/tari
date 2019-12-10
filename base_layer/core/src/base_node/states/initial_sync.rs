@@ -165,7 +165,7 @@ impl InitialSync {
                 if local_tip < network_tip {
                     info!(
                         target: LOG_TARGET,
-                        "Our local blockchain history is a little behind that of the network.We're at block #{}, and \
+                        "Our local blockchain history is a little behind that of the network. We're at block #{}, and \
                          the chain tip is at #{}",
                         local_tip,
                         network_tip

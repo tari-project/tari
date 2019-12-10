@@ -45,5 +45,5 @@ pub mod states;
 
 // Public re-exports
 pub use backoff::BackOff;
-pub use base_node::BaseNodeStateMachine;
+pub use base_node::{BaseNodeStateMachine, BaseNodeStateMachineConfig};
 pub use comms_interface::{LocalNodeCommsInterface, OutboundNodeCommsInterface};
