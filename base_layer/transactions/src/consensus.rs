@@ -36,6 +36,9 @@ pub const POW_ALGO_COUNT: u64 = 2;
 // algorithm count
 pub const DIFF_TARGET_BLOCK_INTERVAL: u64 = TARGET_BLOCK_INTERVAL * POW_ALGO_COUNT;
 
+// This is how many blocks we use to count towards the median timestamp to ensure the block chain moves forward
+pub const MEDIAN_TIMESTAMP_COUNT: usize = 11;
+
 /// This is used to control all consensus values.
 pub struct ConsensusRules {
     /// The min height maturity a coinbase utxo must have
