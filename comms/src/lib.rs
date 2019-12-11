@@ -32,6 +32,7 @@ mod noise;
 pub mod outbound_message_service;
 pub mod peer_manager;
 mod proto;
+mod socks;
 pub mod transports;
 pub mod types;
 pub mod utils;

@@ -88,26 +88,29 @@ macro_rules! acquire_read_lock {
 /// `Some(v)` is returned, otherwise `None` is returned (same as `Result::ok`).
 /// Useful in cases where the error should be logged and ignored.
 /// instead of writing `if let Err(err) = my_error_call() { error!(...) }`, you can write
-/// `log_if_error(my_error_call())` ```edition2018
-/// # use futures::channel::oneshot;
-/// # use tari_comms::log_if_error;
-/// let (tx, _) = oneshot::channel();
-/// // Sending on oneshot will fail because the receiver is dropped. This error will be logged.
-/// let opt = log_if_error!(target: "debugging", "Error sending reply: {}", tx.send("my reply"));
+/// `log_if_error!(my_error_call())`
+///
+/// ```edition2018
+/// # use tari_common::log_if_error;
+/// let opt = log_if_error!(level: debug, target: "docs", "Error sending reply: {}", Result::<(), _>::Err("this will be logged"));
 /// assert_eq!(opt, None);
 /// ```
 #[macro_export]
 macro_rules! log_if_error {
-    (target: $target:expr, $msg:expr, $expr:expr, no_fmt$(,)*) => {{
+    // No formatter '{}' in $msg
+    (level: $level:tt, target: $target:expr, $msg:expr, $expr:expr, no_fmt$(,)*) => {{
         match $expr {
             Ok(v) => Some(v),
             Err(_) => {
-                log::error!(target: $target, $msg);
+                log::$level!(target: $target, $msg);
                 None
             }
         }
     }};
-    (target: $target:expr, $msg:expr, $expr:expr $(,)*) => {{
+    (target: $target:expr, $msg:expr, $expr:expr, no_fmt$(,)*) => {{
+        log_if_error!(level:error, target: "$crate", $msg, $expr, no_fmt)
+    }};
+    (level:$level:tt, target: $target:expr, $msg:expr, $expr:expr $(,)*) => {{
         match $expr {
             Ok(v) => Some(v),
             Err(err) => {
@@ -116,7 +119,13 @@ macro_rules! log_if_error {
             }
         }
     }};
+    (level:$level:tt, $msg:expr, $expr:expr $(,)*) => {{
+        log_if_error!(level:$level, target: "$crate", $msg, $expr)
+    }};
+     (target: $target:expr, $msg:expr, $expr:expr $(,)*) => {{
+        log_if_error!(level:error, target: $target, $msg, $expr)
+    }};
     ($msg:expr, $expr:expr $(,)*) => {{
-        log_if_error!(target: "$crate", $msg, $expr)
+        log_if_error!(level:error, target: "$crate", $msg, $expr)
     }};
 }

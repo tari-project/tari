@@ -20,9 +20,49 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// TODO: Remove #[allow(dead_code)] when used
-#[allow(dead_code)]
-mod config;
-mod crypto_resolver;
-mod error;
-mod socket;
+use derive_error::Error;
+
+#[derive(Debug, Error)]
+pub enum SocksError {
+    /// Failure caused by an IO error.
+    Io(std::io::Error),
+    /// Failure due to invalid target address.
+    #[error(no_from, non_std)]
+    InvalidTargetAddress(&'static str),
+    /// Proxy server unreachable.
+    ProxyServerUnreachable,
+    /// Proxy server returns an invalid version number.
+    InvalidResponseVersion,
+    /// No acceptable auth methods
+    NoAcceptableAuthMethods,
+    /// Unknown auth method
+    UnknownAuthMethod,
+    /// General SOCKS server failure
+    GeneralSocksServerFailure,
+    /// Connection not allowed by ruleset
+    ConnectionNotAllowedByRuleset,
+    /// Network unreachable
+    NetworkUnreachable,
+    /// Host unreachable
+    HostUnreachable,
+    /// Connection refused
+    ConnectionRefused,
+    /// TTL expired
+    TtlExpired,
+    /// Command not supported
+    CommandNotSupported,
+    /// Address type not supported
+    AddressTypeNotSupported,
+    /// Unknown error
+    UnknownError,
+    /// Invalid reserved byte
+    InvalidReservedByte,
+    /// Unknown address type
+    UnknownAddressType,
+    /// Invalid authentication values. It contains the detailed error message.
+    #[error(no_from, non_std)]
+    InvalidAuthValues(&'static str),
+    /// Password auth failure
+    #[error(no_from, non_std)]
+    PasswordAuthFailure(u8),
+}

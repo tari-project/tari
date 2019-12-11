@@ -20,9 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// TODO: Remove #[allow(dead_code)] when used
+// TODO: Remove #[allow(dead_code)] once tests are in place
 #[allow(dead_code)]
-mod config;
-mod crypto_resolver;
+mod client;
+#[allow(dead_code)]
 mod error;
-mod socket;
+
+pub use client::{Authentication, Socks5Client};

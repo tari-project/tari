@@ -246,7 +246,7 @@ fn connection_disconnect() {
 
     let (conn, _) = PeerConnection::connect(context).unwrap();
 
-    conn.wait_connected_or_failure(Duration::from_millis(1000)).unwrap();
+    conn.wait_connected_or_failure(Duration::from_millis(5000)).unwrap();
 
     sender
         .send(&[identity.as_slice(), &[PeerConnectionProtocolMessage::Identify as u8]])
@@ -260,7 +260,7 @@ fn connection_disconnect() {
         .unwrap();
     drop(sender);
 
-    conn.wait_disconnected(Duration::from_millis(2000)).unwrap();
+    conn.wait_disconnected(Duration::from_millis(5000)).unwrap();
 }
 
 #[test]

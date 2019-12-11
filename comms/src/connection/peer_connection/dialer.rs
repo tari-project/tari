@@ -151,7 +151,7 @@ impl PeerConnectionDialer {
                 match *lock {
                     // The connection is still in a connected state, transition to Shutdown
                     PeerConnectionState::Connected(_) | PeerConnectionState::Connecting(_) => {
-                        let _ = self.set_state(&mut lock, PeerConnectionState::Shutdown);
+                        self.set_state(&mut lock, PeerConnectionState::Shutdown);
                     },
                     // Connection is in some other state, the loop exited without error
                     // so we won't change the state to preserve failed or disconnected states.
@@ -164,7 +164,7 @@ impl PeerConnectionDialer {
                     "[{}] Peer connection exited with an error: {:?}", self.context.peer_address, err
                 );
                 // Loop failed, update the connection state to reflect that
-                let _ = self.set_state(&mut lock, PeerConnectionState::Failed(err));
+                self.set_state(&mut lock, PeerConnectionState::Failed(err));
             },
         }
 
@@ -357,7 +357,7 @@ impl PeerConnectionDialer {
                 self.set_state(&mut lock, PeerConnectionState::Connected(Arc::new(info)));
             },
             PeerConnectionState::Connected(_) => {
-                warn!(
+                debug!(
                     target: LOG_TARGET,
                     "[{}] Connected event when already connected", self.context.peer_address
                 );
@@ -406,21 +406,7 @@ impl PeerConnectionDialer {
                         acquire_write_lock!(self.connection_stats).incr_message_recv();
 
                         let payload = self.construct_sink_payload(frames);
-                        return match self.context.message_sink_channel.try_send(payload) {
-                            Ok(_) => Ok(()),
-                            Err(e) => {
-                                // TODO: Create back pressure on the peer or try later
-                                if e.is_full() {
-                                    error!(
-                                        target: LOG_TARGET,
-                                        "Message Sink MPSC channel is full. Message is being discarded"
-                                    );
-                                    Ok(())
-                                } else {
-                                    Err(PeerConnectionError::ChannelDisconnectedError)
-                                }
-                            },
-                        };
+                        self.send_to_sink(payload)?
                     },
                     PeerConnectionProtocolMessage::Ping => {
                         debug!(
@@ -468,6 +454,37 @@ impl PeerConnectionDialer {
         payload.push(self.peer_identity.clone());
         payload.extend_from_slice(&frames);
         payload
+    }
+
+    fn send_to_sink(&mut self, mut payload: FrameSet) -> Result<(), PeerConnectionError> {
+        let mut attempts = 0;
+        loop {
+            match self.context.message_sink_channel.try_send(payload) {
+                Ok(_) => break Ok(()),
+                Err(e) => {
+                    if e.is_full() {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Message Sink MPSC channel is full. Payload will be sent in 1 second"
+                        );
+                        if attempts > 10 {
+                            error!(
+                                target: LOG_TARGET,
+                                "Message Sink MPSC channel is full and has not cleared after 10 seconds! Discarding \
+                                 pending message."
+                            );
+                            break Err(PeerConnectionError::ChannelBacklogError);
+                        }
+                        attempts += 1;
+                        // Create back pressure on peer by not reading from the socket
+                        thread::sleep(Duration::from_secs(1));
+                        payload = e.into_inner();
+                    } else {
+                        break Err(PeerConnectionError::ChannelDisconnectedError);
+                    }
+                },
+            }
+        }
     }
 
     /// Creates the payload to be sent to the underlying connection

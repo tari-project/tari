@@ -23,6 +23,10 @@
 use futures::{Future, Stream};
 use multiaddr::Multiaddr;
 
+#[macro_use]
+mod utils;
+
+mod socks;
 mod tcp;
 
 pub use tcp::TcpSocket;

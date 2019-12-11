@@ -204,7 +204,10 @@ impl ConnectionManager {
                                     "Inbound connection not connected to NodeId '{}' because '{}'", peer.node_id, err
                                 );
 
-                                let _ = self.connections.disconnect_peer(&peer.node_id);
+                                debug!(
+                                    target: LOG_TARGET,
+                                    "Disconnecting peer '{}' because inbound connection test failed", peer.node_id
+                                );
                                 self.initiate_peer_connection(peer)
                             },
                         }
@@ -221,8 +224,6 @@ impl ConnectionManager {
                                     "Peer connection state is '{}'. Attempting to reestablish connection to peer.",
                                     state
                                 );
-                                // Ignore not found error when dropping
-                                let _ = self.disconnect_peer(&peer.node_id);
                                 self.initiate_peer_connection(peer)
                             },
                             PeerConnectionState::Failed(err) => {
@@ -233,8 +234,6 @@ impl ConnectionManager {
                                     peer.node_id,
                                     err
                                 );
-                                // Ignore not found error when dropping
-                                self.disconnect_peer(&peer.node_id)?;
                                 self.initiate_peer_connection(peer)
                             },
                             // Already have an active connection, just return it

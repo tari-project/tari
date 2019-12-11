@@ -358,7 +358,7 @@ where
                 None
             },
             Err(err) => {
-                error!(target: LOG_TARGET, "Failed to connect to node: {:?}", err);
+                debug!(target: LOG_TARGET, "Failed to connect to node: {:?}", err);
                 Some(state)
             },
         }

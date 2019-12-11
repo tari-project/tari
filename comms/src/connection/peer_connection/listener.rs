@@ -143,7 +143,7 @@ impl PeerConnectionListener {
                 match *lock {
                     // The connection is still in a connected state, transition to Shutdown
                     PeerConnectionState::Connected(_) | PeerConnectionState::Connecting(_) => {
-                        let _ = self.set_state(&mut lock, PeerConnectionState::Shutdown);
+                        self.set_state(&mut lock, PeerConnectionState::Shutdown);
                     },
                     // Connection is in some other state, the loop exited without error
                     // so we won't change the state to preserve failed or disconnected states.
@@ -156,7 +156,7 @@ impl PeerConnectionListener {
                     "[{}] Peer connection exited with an error: {:?}", self.context.peer_address, err
                 );
                 // Loop failed, update the connection state to reflect that
-                let _ = self.set_state(&mut lock, PeerConnectionState::Failed(err));
+                self.set_state(&mut lock, PeerConnectionState::Failed(err));
             },
         }
 
@@ -377,19 +377,7 @@ impl PeerConnectionListener {
                 );
             },
             ConnectRetried => {
-                let mut lock = acquire_lock!(self.connection_state);
-                match *lock {
-                    PeerConnectionState::Connecting(_) => {
-                        self.retry_count += 1;
-                        if self.retry_count >= self.context.max_retry_attempts {
-                            self.set_state(
-                                &mut lock,
-                                PeerConnectionState::Failed(PeerConnectionError::ExceededMaxConnectRetryCount),
-                            );
-                        }
-                    },
-                    _ => {},
-                }
+                debug!(target: LOG_TARGET, "Connection retrying...",);
             },
             _ => {},
         }
@@ -484,21 +472,11 @@ impl PeerConnectionListener {
                         acquire_write_lock!(self.connection_stats).incr_message_recv();
 
                         let payload = self.construct_sink_payload(peer_identity, frames);
-                        return match self.context.message_sink_channel.try_send(payload) {
-                            Ok(_) => Ok(()),
-                            Err(e) => {
-                                // TODO: Create back pressure on the peer or try later
-                                if e.is_full() {
-                                    error!(
-                                        target: LOG_TARGET,
-                                        "Message Sink MPSC channel is full. Message is being discarded"
-                                    );
-                                    Ok(())
-                                } else {
-                                    Err(PeerConnectionError::ChannelDisconnectedError)
-                                }
-                            },
-                        };
+                        log_if_error!(
+                            target: LOG_TARGET,
+                            "Failed to send to sink because '{}'",
+                            self.send_to_sink(payload)
+                        );
                     },
                     PeerConnectionProtocolMessage::Ping => {
                         debug!(
@@ -555,6 +533,37 @@ impl PeerConnectionListener {
         payload.push(peer_identity);
         payload.extend_from_slice(&frames);
         payload
+    }
+
+    fn send_to_sink(&mut self, mut payload: FrameSet) -> Result<(), PeerConnectionError> {
+        let mut attempts = 0;
+        loop {
+            match self.context.message_sink_channel.try_send(payload) {
+                Ok(_) => break Ok(()),
+                Err(e) => {
+                    if e.is_full() {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Message Sink MPSC channel is full. Payload will be sent in 1 second"
+                        );
+                        if attempts > 10 {
+                            error!(
+                                target: LOG_TARGET,
+                                "Message Sink MPSC channel is full and has not cleared after 10 seconds! Discarding \
+                                 pending message."
+                            );
+                            break Err(PeerConnectionError::ChannelBacklogError);
+                        }
+                        attempts += 1;
+                        // Create back pressure on peer by not reading from the socket
+                        thread::sleep(Duration::from_secs(1));
+                        payload = e.into_inner();
+                    } else {
+                        break Err(PeerConnectionError::ChannelDisconnectedError);
+                    }
+                },
+            }
+        }
     }
 
     /// Creates the payload to be sent to the underlying connection

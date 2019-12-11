@@ -7,9 +7,11 @@ git submodule update --recursive --remote
 
 SUBMODULES=(
   "comms/yamux"
+  "comms/rust-multiaddr"
 )
 GIT_URLS=(
   "git@github.com:tari-project/yamux.git"
+  "git@github.com:tari-project/rust-multiaddr.git"
 )
 
 # Change all submodule urls to use ssh
