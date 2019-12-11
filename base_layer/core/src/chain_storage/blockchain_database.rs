@@ -124,11 +124,12 @@ pub trait BlockchainBackend: Send + Sync {
     ) -> Result<HashOutput, ChainStorageError>;
     /// Constructs a merkle proof for the specified merkle mountain range and the given leaf position.
     fn fetch_mmr_proof(&self, tree: MmrTree, pos: usize) -> Result<MerkleProof, ChainStorageError>;
-    /// The nth MMR checkpoint (the list of nodes added & deleted) for the given Merkle tree. The index is the n-th
-    /// checkpoint (block) from the pruning horizon block.
+    /// Fetches the MMR checkpoint corresponding to the provided height, the checkpoint consist of the list of nodes
+    /// added & deleted for the given Merkle tree. When a height is provided that is less than the pruning horizon, then
+    /// a BeyondPruningHorizon error will be produced.
     // TODO: Fix conflicting definitions for fetch_mmr_checkpoint where some functions require checkpoint offset, and
     // the others take block height.
-    fn fetch_mmr_checkpoint(&self, tree: MmrTree, index: u64) -> Result<MerkleCheckPoint, ChainStorageError>;
+    fn fetch_mmr_checkpoint(&self, tree: MmrTree, height: u64) -> Result<MerkleCheckPoint, ChainStorageError>;
     /// Fetches the leaf node hash and its deletion status for the nth leaf node in the given MMR tree.
     fn fetch_mmr_node(&self, tree: MmrTree, pos: u32) -> Result<(Hash, bool), ChainStorageError>;
     /// Fetches the MMR base state of the specified tree. The MMR base state consists of the state from the genesis
@@ -149,6 +150,8 @@ pub trait BlockchainBackend: Send + Sync {
     where
         Self: Sized,
         F: FnMut(Result<(HashOutput, Block), ChainStorageError>);
+    /// Returns the height of the pruning horizon.
+    fn fetch_pruning_horizon(&self) -> Result<u64, ChainStorageError>;
 }
 
 // Private macro that pulls out all the boiler plate of extracting a DB query result from its variants

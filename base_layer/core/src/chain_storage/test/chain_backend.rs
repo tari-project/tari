@@ -1143,3 +1143,114 @@ fn lmdb_fetch_mmr_base_leaf_nodes_and_restore() {
     let db = create_lmdb_database(&create_temporary_data_path(), mct_config).unwrap();
     fetch_mmr_base_leaf_nodes_and_restore(db);
 }
+
+fn fetch_checkpoint_with_pruning_horizon<T: BlockchainBackend>(db: T) {
+    let factories = CryptoFactories::default();
+    let (utxo1, _) = create_utxo(MicroTari(10_000), &factories);
+    let kernel1 = create_test_kernel(100.into(), 0);
+    let mut header1 = BlockHeader::new(0);
+    header1.height = 0;
+    let utxo_hash1 = utxo1.hash();
+    let kernel_hash1 = kernel1.hash();
+    let rp_hash1 = utxo1.proof.hash();
+    let header_hash1 = header1.hash();
+
+    let mut txn = DbTransaction::new();
+    txn.insert_utxo(utxo1);
+    txn.insert_kernel(kernel1);
+    txn.insert_header(header1.clone());
+    txn.commit_block();
+    assert!(db.write(txn).is_ok());
+
+    let (utxo2, _) = create_utxo(MicroTari(15_000), &factories);
+    let kernel2 = create_test_kernel(200.into(), 0);
+    let header2 = BlockHeader::from_previous(&header1);
+    let utxo_hash2 = utxo2.hash();
+    let kernel_hash2 = kernel2.hash();
+    let rp_hash2 = utxo2.proof.hash();
+    let header_hash2 = header2.hash();
+
+    let mut txn = DbTransaction::new();
+    txn.insert_utxo(utxo2);
+    txn.insert_kernel(kernel2);
+    txn.insert_header(header2.clone());
+    txn.commit_block();
+    assert!(db.write(txn).is_ok());
+
+    let utxo_cp0 = db.fetch_mmr_checkpoint(MmrTree::Utxo, 0);
+    let utxo_cp1 = db.fetch_mmr_checkpoint(MmrTree::Utxo, 1);
+    let kernel_cp0 = db.fetch_mmr_checkpoint(MmrTree::Kernel, 0);
+    let kernel_cp1 = db.fetch_mmr_checkpoint(MmrTree::Kernel, 1);
+    let rp_cp0 = db.fetch_mmr_checkpoint(MmrTree::RangeProof, 0);
+    let rp_cp1 = db.fetch_mmr_checkpoint(MmrTree::RangeProof, 1);
+    let header_cp0 = db.fetch_mmr_checkpoint(MmrTree::Header, 0);
+    let header_cp1 = db.fetch_mmr_checkpoint(MmrTree::Header, 1);
+    assert!(utxo_cp0.unwrap().nodes_added().contains(&utxo_hash1));
+    assert!(utxo_cp1.unwrap().nodes_added().contains(&utxo_hash2));
+    assert!(kernel_cp0.unwrap().nodes_added().contains(&kernel_hash1));
+    assert!(kernel_cp1.unwrap().nodes_added().contains(&kernel_hash2));
+    assert!(rp_cp0.unwrap().nodes_added().contains(&rp_hash1));
+    assert!(rp_cp1.unwrap().nodes_added().contains(&rp_hash2));
+    assert!(header_cp0.unwrap().nodes_added().contains(&header_hash1));
+    assert!(header_cp1.unwrap().nodes_added().contains(&header_hash2));
+
+    let (utxo3, _) = create_utxo(MicroTari(20_000), &factories);
+    let kernel3 = create_test_kernel(300.into(), 0);
+    let header3 = BlockHeader::from_previous(&header2);
+    let utxo_hash3 = utxo3.hash();
+    let kernel_hash3 = kernel3.hash();
+    let rp_hash3 = utxo3.proof.hash();
+    let header_hash3 = header3.hash();
+
+    let mut txn = DbTransaction::new();
+    txn.insert_utxo(utxo3);
+    txn.insert_kernel(kernel3);
+    txn.insert_header(header3);
+    txn.commit_block();
+    assert!(db.write(txn).is_ok());
+
+    let utxo_cp0 = db.fetch_mmr_checkpoint(MmrTree::Utxo, 0);
+    let utxo_cp1 = db.fetch_mmr_checkpoint(MmrTree::Utxo, 1);
+    let utxo_cp2 = db.fetch_mmr_checkpoint(MmrTree::Utxo, 2);
+    let kernel_cp0 = db.fetch_mmr_checkpoint(MmrTree::Kernel, 0);
+    let kernel_cp1 = db.fetch_mmr_checkpoint(MmrTree::Kernel, 1);
+    let kernel_cp2 = db.fetch_mmr_checkpoint(MmrTree::Kernel, 2);
+    let rp_cp0 = db.fetch_mmr_checkpoint(MmrTree::RangeProof, 0);
+    let rp_cp1 = db.fetch_mmr_checkpoint(MmrTree::RangeProof, 1);
+    let rp_cp2 = db.fetch_mmr_checkpoint(MmrTree::RangeProof, 2);
+    let header_cp0 = db.fetch_mmr_checkpoint(MmrTree::Header, 0);
+    let header_cp1 = db.fetch_mmr_checkpoint(MmrTree::Header, 1);
+    let header_cp2 = db.fetch_mmr_checkpoint(MmrTree::Header, 2);
+    assert!(utxo_cp0.is_err());
+    assert!(utxo_cp1.is_err());
+    assert!(utxo_cp2.unwrap().nodes_added().contains(&utxo_hash3));
+    assert!(kernel_cp0.is_err());
+    assert!(kernel_cp1.is_err());
+    assert!(kernel_cp2.unwrap().nodes_added().contains(&kernel_hash3));
+    assert!(rp_cp0.is_err());
+    assert!(rp_cp1.is_err());
+    assert!(rp_cp2.unwrap().nodes_added().contains(&rp_hash3));
+    assert!(header_cp0.is_err());
+    assert!(header_cp1.is_err());
+    assert!(header_cp2.unwrap().nodes_added().contains(&header_hash3));
+}
+
+#[test]
+fn memory_fetch_checkpoint_with_pruning_horizon() {
+    let mct_config = MerkleChangeTrackerConfig {
+        min_history_len: 1,
+        max_history_len: 2,
+    };
+    let db = MemoryDatabase::<HashDigest>::new(mct_config);
+    fetch_checkpoint_with_pruning_horizon(db);
+}
+
+#[test]
+fn lmdb_fetch_checkpoint_with_pruning_horizon() {
+    let mct_config = MerkleChangeTrackerConfig {
+        min_history_len: 1,
+        max_history_len: 2,
+    };
+    let db = create_lmdb_database(&create_temporary_data_path(), mct_config).unwrap();
+    fetch_checkpoint_with_pruning_horizon(db);
+}

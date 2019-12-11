@@ -373,9 +373,13 @@ where D: Digest + Send + Sync
         Ok(proof)
     }
 
-    fn fetch_mmr_checkpoint(&self, tree: MmrTree, index: u64) -> Result<MerkleCheckPoint, ChainStorageError> {
+    fn fetch_mmr_checkpoint(&self, tree: MmrTree, height: u64) -> Result<MerkleCheckPoint, ChainStorageError> {
         let db = self.db_access()?;
-        let index = index as usize;
+        let pruning_horizon = self.fetch_pruning_horizon()?;
+        if height < pruning_horizon {
+            return Err(ChainStorageError::BeyondPruningHorizon);
+        }
+        let index = (height - pruning_horizon) as usize;
         let cp = match tree {
             MmrTree::Kernel => db.kernel_mmr.get_checkpoint(index),
             MmrTree::Utxo => db.utxo_mmr.get_checkpoint(index),
@@ -464,6 +468,11 @@ where D: Digest + Send + Sync
             f(Ok((key.clone(), val.clone())));
         }
         Ok(())
+    }
+
+    fn fetch_pruning_horizon(&self) -> Result<u64, ChainStorageError> {
+        let db = self.db_access()?;
+        Ok(db.header_mmr.get_base_leaf_count() as u64)
     }
 }
 

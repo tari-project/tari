@@ -289,7 +289,7 @@ pub mod test {
         }
 
         // lets add many1 blocks
-        for i in 1..20 {
+        for _ in 1..20 {
             let append_height = store.get_height().unwrap().unwrap();
             append_to_pow_blockchain(&store, append_height, pow_algos.clone());
             prev_timestamp = prev_timestamp.increase(consensus.get_target_block_interval());
@@ -329,7 +329,7 @@ pub mod test {
         let mut new_block = chain_block(&prev_block, Vec::new());
         new_block.header.timestamp = EpochTime::from(1575018842).increase(consensus.get_target_block_interval() / 2);
         new_block.header.pow.pow_algo = PowAlgorithm::Blake;
-        prev_block = add_block_and_update_header(&store, new_block);
+        add_block_and_update_header(&store, new_block);
 
         prev_timestamp = 1575018842.into();
         prev_timestamp = prev_timestamp.increase(consensus.get_target_block_interval() / 2);

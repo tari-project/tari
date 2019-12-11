@@ -779,3 +779,35 @@ fn restore_mmr() {
     assert_eq!(restore_rp_mmr_state, rp_mmr_state);
     assert_eq!(restore_header_mmr_state, header_mmr_state);
 }
+
+#[test]
+fn store_and_retrieve_block_with_mmr_pruning_horizon() {
+    let factories = CryptoFactories::default();
+    let mct_config = MerkleChangeTrackerConfig {
+        min_history_len: 2,
+        max_history_len: 3,
+    };
+    let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
+    let db = MemoryDatabase::<HashDigest>::new(mct_config);
+    let store = BlockchainDatabase::new(db, validators).unwrap();
+
+    let block0 = add_block_and_update_header(&store, create_genesis_block(&factories).0);
+    let mut block1 = chain_block(&block0, vec![]);
+    block1 = add_block_and_update_header(&store, block1);
+    let mut block2 = chain_block(&block1, vec![]);
+    block2 = add_block_and_update_header(&store, block2);
+
+    assert_eq!(*store.fetch_block(0).unwrap().block(), block0);
+    assert_eq!(*store.fetch_block(1).unwrap().block(), block1);
+    assert_eq!(*store.fetch_block(2).unwrap().block(), block2);
+
+    // When block3 is added then maximum history length would have been reached and block0 and block  will be committed
+    // to the base MMR.
+    let mut block3 = chain_block(&block2, vec![]);
+    block3 = add_block_and_update_header(&store, block3);
+
+    assert!(store.fetch_block(0).is_err());
+    assert!(store.fetch_block(1).is_err());
+    assert_eq!(*store.fetch_block(2).unwrap().block(), block2);
+    assert_eq!(*store.fetch_block(3).unwrap().block(), block3);
+}
