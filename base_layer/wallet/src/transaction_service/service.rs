@@ -19,10 +19,9 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#[cfg(feature = "test_harness")]
-use crate::output_manager_service::TxId;
+
 use crate::{
-    output_manager_service::handle::OutputManagerHandle,
+    output_manager_service::{handle::OutputManagerHandle, TxId},
     transaction_service::{
         error::TransactionServiceError,
         handle::{TransactionEvent, TransactionServiceRequest, TransactionServiceResponse},
@@ -38,14 +37,22 @@ use crate::{
     types::TransactionRng,
 };
 use chrono::Utc;
-use futures::{pin_mut, SinkExt, Stream, StreamExt};
+use futures::{
+    channel::oneshot,
+    future::{BoxFuture, FutureExt},
+    pin_mut,
+    stream::FuturesUnordered,
+    SinkExt,
+    Stream,
+    StreamExt,
+};
 use log::*;
 use std::{collections::HashMap, convert::TryInto, sync::Arc};
 use tari_broadcast_channel::Publisher;
 use tari_comms::{peer_manager::NodeIdentity, types::CommsPublicKey};
 use tari_comms_dht::{
     domain_message::OutboundDomainMessage,
-    outbound::{OutboundEncryption, OutboundMessageRequester},
+    outbound::{OutboundEncryption, OutboundMessageRequester, SendMessageResponse},
 };
 use tari_crypto::keys::SecretKey;
 use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
@@ -85,7 +92,7 @@ const LOG_TARGET: &'static str = "base_layer::wallet::transaction_service::servi
 /// `completed_transaction` - List of sent transactions that have been responded to and are completed.
 
 pub struct TransactionService<TTxStream, TTxReplyStream, TTxFinalizedStream, TBackend>
-where TBackend: TransactionBackend
+where TBackend: TransactionBackend + Clone + 'static
 {
     db: TransactionDatabase<TBackend>,
     outbound_message_service: OutboundMessageRequester,
@@ -99,6 +106,7 @@ where TBackend: TransactionBackend
     event_publisher: Publisher<TransactionEvent>,
     node_identity: Arc<NodeIdentity>,
     factories: CryptoFactories,
+    discovery_process_futures: FuturesUnordered<BoxFuture<'static, Result<TxId, TransactionServiceError>>>,
     #[cfg(feature = "c_integration")]
     callback_received_transaction: Option<unsafe extern "C" fn(*mut InboundTransaction)>,
     #[cfg(feature = "c_integration")]
@@ -109,6 +117,7 @@ where TBackend: TransactionBackend
     callback_mined: Option<unsafe extern "C" fn(*mut CompletedTransaction)>,
     #[cfg(feature = "c_integration")]
     callback_transaction_broadcast: Option<unsafe extern "C" fn(*mut CompletedTransaction)>,
+    callback_discovery_process_complete: Option<unsafe extern "C" fn(TxId, bool)>,
 }
 
 impl<TTxStream, TTxReplyStream, TTxFinalizedStream, TBackend>
@@ -117,7 +126,7 @@ where
     TTxStream: Stream<Item = DomainMessage<proto::TransactionSenderMessage>>,
     TTxReplyStream: Stream<Item = DomainMessage<proto::RecipientSignedMessage>>,
     TTxFinalizedStream: Stream<Item = DomainMessage<proto::TransactionFinalizedMessage>>,
-    TBackend: TransactionBackend,
+    TBackend: TransactionBackend + Clone + 'static,
 {
     pub fn new(
         db: TransactionDatabase<TBackend>,
@@ -146,6 +155,7 @@ where
             event_publisher,
             node_identity,
             factories,
+            discovery_process_futures: FuturesUnordered::new(),
             #[cfg(feature = "c_integration")]
             callback_received_transaction: None,
             #[cfg(feature = "c_integration")]
@@ -156,9 +166,11 @@ where
             callback_mined: None,
             #[cfg(feature = "c_integration")]
             callback_transaction_broadcast: None,
+            callback_discovery_process_complete: None,
         }
     }
 
+    #[warn(unreachable_code)]
     pub async fn start(mut self) -> Result<(), TransactionServiceError> {
         let request_stream = self
             .request_stream
@@ -240,6 +252,25 @@ where
                                     "Error handling Transaction Finalized message".to_string(),
                                 ))
                                 .await;
+                    }
+                },
+                response = self.discovery_process_futures.select_next_some() => {
+                    match response {
+                        Ok(tx_id) => {
+                            let _ = self.event_publisher
+                                .send(TransactionEvent::TransactionSendDiscoverySuccess(tx_id))
+                                .await;
+                        },
+                        Err(TransactionServiceError::DiscoveryProcessFailed(tx_id)) => {
+                            if let Err(e) = self.output_manager_service.cancel_transaction(tx_id).await {
+                                error!(target: LOG_TARGET, "Failed to Cancel TX_ID: {} after failed sending attempt", tx_id);
+                            }
+                            error!(target: LOG_TARGET, "Discovery and Send failed for TX_ID: {}", tx_id);
+                            let _ = self.event_publisher
+                                .send(TransactionEvent::TransactionSendDiscoveryFailure(tx_id))
+                                .await;
+                        }
+                        Err(e) => error!(target: LOG_TARGET, "Discovery and Send failed with Error: {:?}", e),
                     }
                 },
                 complete => {
@@ -328,7 +359,7 @@ where
     {
         let mut sender_protocol = self
             .output_manager_service
-            .prepare_transaction_to_send(amount, fee_per_gram, None, message)
+            .prepare_transaction_to_send(amount, fee_per_gram, None, message.clone())
             .await?;
 
         if !sender_protocol.is_single_round_message_ready() {
@@ -339,13 +370,47 @@ where
         let tx_id = msg.tx_id;
         let proto_message = proto::TransactionSenderMessage::single(msg.into());
 
-        self.outbound_message_service
+        match self
+            .outbound_message_service
             .send_direct(
                 dest_pubkey.clone(),
                 OutboundEncryption::EncryptForPeer,
                 OutboundDomainMessage::new(TariMessageType::SenderPartialTransaction, proto_message),
             )
-            .await?;
+            .await?
+        {
+            SendMessageResponse::Ok(_) => (),
+            SendMessageResponse::Failed => return Err(TransactionServiceError::OutboundSendFailure),
+            SendMessageResponse::PendingDiscovery(r) => {
+                // The sending of the message resulted in a long running Discovery process being performed by the Comms
+                // layer. This can take minutes so we will spawn a task to wait for the result and then act
+                // appropriately on it
+                let db_clone = self.db.clone();
+                let callback_clone = self.callback_discovery_process_complete.clone();
+                let tx_id_clone = tx_id.clone();
+                let outbound_tx_clone = OutboundTransaction {
+                    tx_id,
+                    destination_public_key: dest_pubkey.clone(),
+                    amount,
+                    fee: sender_protocol.get_fee_amount()?,
+                    sender_protocol: sender_protocol.clone(),
+                    message: message.clone(),
+                    timestamp: Utc::now().naive_utc(),
+                };
+                let discovery_future = async move {
+                    transaction_send_discovery_process_completion(
+                        r,
+                        db_clone,
+                        tx_id_clone,
+                        outbound_tx_clone,
+                        callback_clone,
+                    )
+                    .await
+                };
+                self.discovery_process_futures.push(discovery_future.boxed());
+                return Err(TransactionServiceError::OutboundSendDiscoveryInProgress(tx_id.clone()));
+            },
+        }
 
         self.db.add_pending_outbound_transaction(tx_id, OutboundTransaction {
             tx_id,
@@ -353,7 +418,7 @@ where
             amount,
             fee: sender_protocol.get_fee_amount()?,
             sender_protocol,
-            message: "".to_string(),
+            message,
             timestamp: Utc::now().naive_utc(),
         })?;
 
@@ -737,6 +802,20 @@ where
         Ok(TransactionServiceResponse::CallbackRegistered)
     }
 
+    #[cfg(feature = "c_integration")]
+    pub fn register_callback_discovery_process_complete(
+        &mut self,
+        call: unsafe extern "C" fn(TxId, bool),
+    ) -> Result<TransactionServiceResponse, TransactionServiceError>
+    {
+        info!(
+            target: LOG_TARGET,
+            "DiscoveryProcessCompleteCallback -> Assigning: {:?}", call
+        );
+        self.callback_discovery_process_complete = Some(call);
+        Ok(TransactionServiceResponse::CallbackRegistered)
+    }
+
     /// This function is only available for testing by the client of LibWallet. It simulates a receiver accepting and
     /// replying to a Pending Outbound Transaction. This results in that transaction being "completed" and it's status
     /// set to `Broadcast` which indicated it is in a base_layer mempool.
@@ -957,4 +1036,82 @@ where
 
         Ok(())
     }
+}
+
+async fn transaction_send_discovery_process_completion<TBackend: TransactionBackend + Clone + 'static>(
+    response_channel: oneshot::Receiver<SendMessageResponse>,
+    mut db: TransactionDatabase<TBackend>,
+    tx_id: TxId,
+    outbound_tx: OutboundTransaction,
+    call_back: Option<unsafe extern "C" fn(TxId, bool)>,
+) -> Result<TxId, TransactionServiceError>
+{
+    let mut success = false;
+    match response_channel.await {
+        Ok(response) => match response {
+            SendMessageResponse::Ok(n) => {
+                if n == 0 {
+                    error!(
+                        target: LOG_TARGET,
+                        "Send Discovery process for TX_ID: {} was unsuccessful and no message was sent", tx_id
+                    );
+                } else {
+                    info!(
+                        target: LOG_TARGET,
+                        "Transaction (TxId: {}) Send Discovery process successful? {}", tx_id, n
+                    );
+                    success = true;
+                }
+            },
+            _ => {
+                error!(
+                    target: LOG_TARGET,
+                    "Transaction (TxId: {}) Send Discovery process failed", tx_id
+                );
+            },
+        },
+        Err(_) => {
+            error!(
+                target: LOG_TARGET,
+                "Transaction (TxId: {}) Send Response One-shot channel dropped", tx_id
+            );
+        },
+    }
+
+    if success {
+        let updated_outbound_tx = OutboundTransaction {
+            timestamp: Utc::now().naive_utc(),
+            ..outbound_tx
+        };
+        if let Err(_) = db.add_pending_outbound_transaction(tx_id, updated_outbound_tx.clone()) {
+            success = false;
+        }
+        info!(
+            target: LOG_TARGET,
+            "Transaction with TX_ID = {} sent to {} after Discovery process completed",
+            tx_id,
+            updated_outbound_tx.destination_public_key.clone()
+        );
+    }
+
+    match call_back {
+        Some(call) => {
+            info!(
+                target: LOG_TARGET,
+                "DiscoveryProcessCompletedCallback for TxId: {} called with a {} result", tx_id, success
+            );
+            unsafe { call(tx_id, success) }
+        },
+        None => {
+            error!(
+                target: LOG_TARGET,
+                "DiscoveryProcessCompletedCallback -> Callback not registered"
+            );
+        },
+    }
+    if !success {
+        return Err(TransactionServiceError::DiscoveryProcessFailed(tx_id));
+    }
+
+    Ok(tx_id)
 }

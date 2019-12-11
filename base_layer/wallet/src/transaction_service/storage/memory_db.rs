@@ -59,6 +59,7 @@ impl InnerDatabase {
     }
 }
 
+#[derive(Clone)]
 pub struct TransactionMemoryDatabase {
     db: Arc<RwLock<InnerDatabase>>,
 }

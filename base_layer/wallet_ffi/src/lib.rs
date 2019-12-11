@@ -1594,10 +1594,7 @@ pub unsafe extern "C" fn comms_config_create(
                             peer_database_name: database_name_string,
                             inbound_buffer_size: 100,
                             outbound_buffer_size: 100,
-                            dht: DhtConfig {
-                                discovery_request_timeout: Duration::from_millis(1000),
-                                ..Default::default()
-                            },
+                            dht: DhtConfig::default(),
                         };
 
                         Box::into_raw(Box::new(config))

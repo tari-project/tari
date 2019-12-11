@@ -340,6 +340,15 @@ fn test_test_harness() {
     )
     .unwrap();
 
+    alice_wallet
+        .comms
+        .peer_manager()
+        .add_peer(create_peer(
+            bob_identity.public_key().clone(),
+            bob_identity.control_service_address(),
+        ))
+        .unwrap();
+
     let value = MicroTari::from(1000);
     let (_utxo, uo1) = make_input(&mut rng, MicroTari(2500), &factories.commitment);
 

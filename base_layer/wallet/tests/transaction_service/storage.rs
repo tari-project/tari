@@ -211,12 +211,8 @@ pub fn test_transaction_service_memory_db() {
 #[test]
 pub fn test_transaction_service_sqlite_db() {
     let db_name = format!("{}.sqlite3", random_string(8).as_str());
-    let db_folder = TempDir::new(random_string(8).as_str())
-        .unwrap()
-        .path()
-        .to_str()
-        .unwrap()
-        .to_string();
-    let db_path = format!("{}{}", db_folder, db_name);
+    let db_tempdir = TempDir::new(random_string(8).as_str()).unwrap();
+    let db_folder = db_tempdir.path().to_str().unwrap().to_string();
+    let db_path = format!("{}/{}", db_folder, db_name);
     test_db_backend(TransactionServiceSqliteDatabase::new(db_path).unwrap());
 }

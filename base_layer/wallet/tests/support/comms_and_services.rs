@@ -58,7 +58,7 @@ where
                 p.node_id().clone(),
                 addr.into(),
                 PeerFlags::empty(),
-                PeerFeatures::empty(),
+                PeerFeatures::COMMUNICATION_NODE,
             ))
             .unwrap();
     }

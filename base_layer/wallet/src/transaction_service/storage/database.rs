@@ -159,6 +159,7 @@ macro_rules! fetch {
 
 /// This structure holds an inner type that implements the `TransactionBackend` trait and contains the more complex
 /// data access logic required by the module built onto the functionality defined by the trait
+#[derive(Clone)]
 pub struct TransactionDatabase<T>
 where T: TransactionBackend
 {

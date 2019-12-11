@@ -76,7 +76,7 @@ pub struct WalletConfig {
 pub struct Wallet<T, U, V, W>
 where
     T: WalletBackend,
-    U: TransactionBackend + 'static,
+    U: TransactionBackend + Clone + 'static,
     V: OutputManagerBackend + 'static,
     W: ContactsBackend + 'static,
 {
@@ -97,7 +97,7 @@ where
 impl<T, U, V, W> Wallet<T, U, V, W>
 where
     T: WalletBackend,
-    U: TransactionBackend + 'static,
+    U: TransactionBackend + Clone + 'static,
     V: OutputManagerBackend + 'static,
     W: ContactsBackend + 'static,
 {
