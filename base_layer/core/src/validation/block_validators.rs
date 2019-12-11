@@ -93,8 +93,8 @@ impl<B: BlockchainBackend> Validation<Block, B> for FullConsensusValidator<B> {
         block.check_stxo_rules().map_err(BlockValidationError::from)?;
         check_accounting_balance(block, self.rules.clone(), &self.factories)?;
         check_inputs_are_utxos(block, self.db()?)?;
-        check_timestamp_range(block, self.db()?)?;
-        check_achieved_difficulty(&block.header, self.rules.clone())?;  // Update function signature once diff adjuster is complete
+        check_timestamp_range(&block.header, self.rules.clone())?;
+        check_achieved_difficulty(&block.header, self.rules.clone())?; // Update function signature once diff adjuster is complete
         Ok(())
     }
 }
@@ -148,10 +148,18 @@ fn check_achieved_difficulty<B: BlockchainBackend>(
 
 /// This function test that the block timestamp is less than the ftl and greater than the median timestamp
 fn check_timestamp_range<B: BlockchainBackend>(
-    _block: &Block,
-    _db: BlockchainDatabase<B>,
+    block_header: &BlockHeader,
+    rules: ConsensusManager<B>,
 ) -> Result<(), ValidationError>
 {
-    // TODO - implement Issue #1094
+    if block_header.timestamp > ConsensusConstants::current().ftl() {
+        return Err(ValidationError::BlockError(BlockValidationError::InvalidTimestamp));
+    }
+    let median_timestamp = rules
+        .get_median_timestamp()
+        .map_err(|_| ValidationError::BlockError(BlockValidationError::InvalidTimestamp))?;
+    if block_header.timestamp < median_timestamp {
+        return Err(ValidationError::BlockError(BlockValidationError::InvalidTimestamp));
+    }
     Ok(())
 }

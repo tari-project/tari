@@ -51,6 +51,8 @@ pub enum BlockValidationError {
     InputMaturity,
     // Invalid coinbase maturity in block or more than one coinbase
     InvalidCoinbase,
+    // Invalid timestamp received on the block
+    InvalidTimestamp,
 }
 
 /// A Tari block. Blocks are linked together into a blockchain.
