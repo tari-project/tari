@@ -345,7 +345,7 @@ mod test {
     };
     use tari_broadcast_channel as broadcast_channel;
     use tari_comms::{
-        connection::NetAddress,
+        multiaddr::Multiaddr,
         peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
     };
     use tari_comms_dht::{
@@ -459,7 +459,7 @@ mod test {
         let peer_source = Peer::new(
             pk.clone(),
             NodeId::from_key(&pk).unwrap(),
-            Vec::<NetAddress>::new().into(),
+            Vec::<Multiaddr>::new().into(),
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_NODE,
         );

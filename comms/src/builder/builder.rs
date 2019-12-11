@@ -22,7 +22,7 @@
 
 use crate::{
     builder::null_sink::NullSink,
-    connection::{ConnectionError, DealerProxyError, PeerConnectionError, ZmqContext},
+    connection::{ConnectionError, PeerConnectionError, ZmqContext},
     connection_manager::{
         actor::{ConnectionManagerActor, ConnectionManagerRequest},
         ConnectionManager,
@@ -62,8 +62,6 @@ pub enum CommsBuilderError {
     OutboundServiceError(OutboundServiceError),
     /// Node identity not set. Call `with_node_identity(node_identity)` on [CommsBuilder]
     NodeIdentityNotSet,
-    #[error(no_from)]
-    DealerProxyError(DealerProxyError),
     DatastoreUndefined,
 }
 

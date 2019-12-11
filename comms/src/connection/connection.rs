@@ -22,7 +22,6 @@
 
 use crate::{
     connection::{
-        net_address::ip::SocketAddress,
         types::{Direction, Linger, Result, SocketEstablishment, SocketType},
         zmq::{CurveEncryption, InprocAddress, ZmqContext, ZmqEndpoint, ZmqIdentity},
         ConnectionError,
@@ -30,7 +29,7 @@ use crate::{
     message::FrameSet,
 };
 use log::*;
-use std::{borrow::Borrow, cmp, iter::IntoIterator, str::FromStr, time::Duration};
+use std::{cmp, iter::IntoIterator, net::SocketAddr, time::Duration};
 
 const LOG_TARGET: &str = "comms::connection::Connection";
 
@@ -78,7 +77,7 @@ pub struct Connection<'a> {
     pub(super) send_hwm: Option<i32>,
     pub(super) backlog: Option<i32>,
     pub(super) socket_establishment: SocketEstablishment,
-    pub(super) socks_proxy_addr: Option<SocketAddress>,
+    pub(super) socks_proxy_addr: Option<SocketAddr>,
     pub(super) heartbeat_interval: Option<Duration>,
     pub(super) heartbeat_remote_ttl: Option<Duration>,
     pub(super) heartbeat_timeout: Option<Duration>,
@@ -174,7 +173,7 @@ impl<'a> Connection<'a> {
     }
 
     /// Set the ip:port of a SOCKS proxy to use for this connection
-    pub fn set_socks_proxy_addr(mut self, addr: Option<SocketAddress>) -> Self {
+    pub fn set_socks_proxy_addr(mut self, addr: Option<SocketAddr>) -> Self {
         self.socks_proxy_addr = addr;
         self
     }
@@ -212,7 +211,11 @@ impl<'a> Connection<'a> {
     }
 
     /// Create the socket, configure it and bind/connect it to the given address
-    pub fn establish<T: ZmqEndpoint>(self, addr: &T) -> Result<EstablishedConnection> {
+    pub fn establish<T>(self, addr: &T) -> Result<EstablishedConnection>
+    where
+        T: ZmqEndpoint,
+        ConnectionError: From<T::Error>,
+    {
         let socket = match self.direction {
             Direction::Inbound => self.context.socket(SocketType::Router).unwrap(),
             Direction::Outbound => self.context.socket(SocketType::Dealer).unwrap(),
@@ -302,13 +305,13 @@ impl<'a> Connection<'a> {
                 .map_err(config_error_mapper)?;
         }
 
-        if let Some(ref addr) = self.monitor_addr {
+        if let Some(ref monitor_addr) = self.monitor_addr {
             socket
-                .monitor(addr.to_zmq_endpoint().as_str(), zmq::SocketEvent::ALL as i32)
+                .monitor(monitor_addr.to_zmq_endpoint()?.as_str(), zmq::SocketEvent::ALL as i32)
                 .map_err(|e| ConnectionError::SocketError(format!("Unable to set monitor address: {}", e)))?;
         }
 
-        let endpoint = &addr.to_zmq_endpoint();
+        let endpoint = &addr.to_zmq_endpoint()?;
         match self.socket_establishment {
             SocketEstablishment::Bind => socket.bind(endpoint),
             SocketEstablishment::Connect => socket.connect(endpoint),
@@ -326,7 +329,6 @@ impl<'a> Connection<'a> {
             "Established {} connection on {:?} (name: {})",
             self.direction,
             connected_address
-                .borrow()
                 .as_ref()
                 .map(ToString::to_string)
                 .unwrap_or_else(|| endpoint.to_owned()),
@@ -357,7 +359,7 @@ fn set_linger(socket: &zmq::Socket, linger: Linger) -> Result<()> {
 pub struct EstablishedConnection {
     socket: zmq::Socket,
     // If the connection is a TCP connection, it will be stored here, otherwise it is None
-    connected_address: Option<SocketAddress>,
+    connected_address: Option<SocketAddr>,
     name: String,
     direction: Direction,
 }
@@ -387,7 +389,7 @@ impl EstablishedConnection {
     /// the OS, (e.g. "127.0.0.1:0") which means that the actual port we're connecting to isn't known until the binding
     /// has been made. This function queries the socket for the connection info, and extracts the address & port if it
     /// was a TCP connection, returning None otherwise
-    pub fn get_connected_address(&self) -> &Option<SocketAddress> {
+    pub fn get_connected_address(&self) -> &Option<SocketAddr> {
         &self.connected_address
     }
 
@@ -463,10 +465,6 @@ impl EstablishedConnection {
         &self.socket
     }
 
-    pub(crate) fn get_socket_mut(&mut self) -> &mut zmq::Socket {
-        &mut self.socket
-    }
-
     pub fn direction(&self) -> &Direction {
         &self.direction
     }
@@ -489,7 +487,7 @@ impl Drop for EstablishedConnection {
 /// the OS, (e.g. "127.0.0.1:0") which means that the actual port we're connecting to isn't known until the binding
 /// has been made. This function queries the socket for the connection info, and extracts the address & port if it
 /// was a TCP connection, returning None otherwise
-fn get_socket_address(socket: &zmq::Socket) -> Option<SocketAddress> {
+fn get_socket_address(socket: &zmq::Socket) -> Option<SocketAddr> {
     let addr = match socket.get_last_endpoint() {
         Ok(v) => v.unwrap(),
         Err(_) => return None,
@@ -498,8 +496,7 @@ fn get_socket_address(socket: &zmq::Socket) -> Option<SocketAddress> {
     if parts.len() < 2 || parts[0] != "tcp:" {
         return None;
     }
-    let addr = parts[1];
-    SocketAddress::from_str(&addr).ok()
+    parts[1].parse().ok()
 }
 
 #[cfg(test)]
@@ -525,7 +522,7 @@ mod test {
             .set_max_message_size(Some(123))
             .set_receive_hwm(1)
             .set_send_hwm(2)
-            .set_socks_proxy_addr(Some("127.0.0.1:9988".parse::<SocketAddress>().unwrap()))
+            .set_socks_proxy_addr(Some("127.0.0.1:9988".parse::<SocketAddr>().unwrap()))
             .set_monitor_addr(monitor_addr)
             .establish(&addr)
             .unwrap();

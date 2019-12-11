@@ -85,13 +85,13 @@ fn end_to_end() {
 
     let node_1_identity = NodeIdentity::random(
         &mut rng,
-        "127.0.0.1:31593".parse().unwrap(),
+        "/ip4/127.0.0.1/tcp/31593".parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
     )
     .unwrap();
     let node_2_identity = NodeIdentity::random(
         &mut rng,
-        "127.0.0.1:31195".parse().unwrap(),
+        "/ip4/127.0.0.1/tcp/31195".parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
     )
     .unwrap();

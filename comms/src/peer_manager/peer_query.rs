@@ -190,13 +190,14 @@ where DS: KeyValueStore<PeerKey, Peer>
 mod test {
     use super::*;
     use crate::{
-        connection::net_address::{net_addresses::NetAddressesWithStats, NetAddress},
+        connection::net_address::NetAddressesWithStats,
         peer_manager::{
             node_id::NodeId,
             peer::{Peer, PeerFlags},
             PeerFeatures,
         },
     };
+    use multiaddr::Multiaddr;
     use rand::OsRng;
     use std::iter::repeat_with;
     use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
@@ -205,7 +206,7 @@ mod test {
     fn create_test_peer(rng: &mut OsRng, ban_flag: bool) -> Peer {
         let (_sk, pk) = RistrettoPublicKey::random_keypair(rng);
         let node_id = NodeId::from_key(&pk).unwrap();
-        let net_addresses = NetAddressesWithStats::from("1.2.3.4:8000".parse::<NetAddress>().unwrap());
+        let net_addresses = NetAddressesWithStats::from("/ip4/1.2.3.4/tcp/8000".parse::<Multiaddr>().unwrap());
         let mut peer = Peer::new(
             pk,
             node_id,

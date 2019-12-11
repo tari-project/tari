@@ -22,7 +22,6 @@
 
 use super::node_id::deserialize_node_id_from_hex;
 use crate::{
-    connection::NetAddress,
     peer_manager::{
         node_id::{NodeId, NodeIdError},
         Peer,
@@ -32,6 +31,7 @@ use crate::{
     types::{CommsPublicKey, CommsSecretKey},
 };
 use derive_error::Error;
+use multiaddr::Multiaddr;
 use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize};
 use std::sync::RwLock;
@@ -51,7 +51,7 @@ pub enum NodeIdentityError {
 ///
 /// `secret_key`: The secret key corresponding to the public key of this node
 ///
-/// `control_service_address`: The NetAddress of the local node's Control port
+/// `control_service_address`: The Multiaddr of the local node's Control port
 #[derive(Serialize, Deserialize)]
 pub struct NodeIdentity {
     #[serde(serialize_with = "serialize_to_hex")]
@@ -60,14 +60,14 @@ pub struct NodeIdentity {
     public_key: CommsPublicKey,
     features: PeerFeatures,
     secret_key: CommsSecretKey,
-    control_service_address: RwLock<NetAddress>,
+    control_service_address: RwLock<Multiaddr>,
 }
 
 impl NodeIdentity {
     /// Create a new NodeIdentity from the provided key pair and control service address
     pub fn new(
         secret_key: CommsSecretKey,
-        control_service_address: NetAddress,
+        control_service_address: Multiaddr,
         features: PeerFeatures,
     ) -> Result<Self, NodeIdentityError>
     {
@@ -86,7 +86,7 @@ impl NodeIdentity {
     /// Generates a new random NodeIdentity for CommsPublicKey
     pub fn random<R>(
         rng: &mut R,
-        control_service_address: NetAddress,
+        control_service_address: Multiaddr,
         features: PeerFeatures,
     ) -> Result<Self, NodeIdentityError>
     where
@@ -106,12 +106,12 @@ impl NodeIdentity {
     }
 
     /// Retrieve the control_service_address
-    pub fn control_service_address(&self) -> NetAddress {
+    pub fn control_service_address(&self) -> Multiaddr {
         acquire_read_lock!(self.control_service_address).clone()
     }
 
     /// Modify the control_service_address
-    pub fn set_control_service_address(&self, control_service_address: NetAddress) -> Result<(), NodeIdentityError> {
+    pub fn set_control_service_address(&self, control_service_address: Multiaddr) -> Result<(), NodeIdentityError> {
         *self
             .control_service_address
             .write()
@@ -122,11 +122,13 @@ impl NodeIdentity {
     /// This returns a random NodeIdentity for testing purposes. This function can panic. If a control_service_address
     /// is None, 127.0.0.1:9000 will be used (i.e. the caller doesn't care what the control_service_address is).
     #[cfg(test)]
-    pub fn random_for_test(control_service_address: Option<NetAddress>, features: PeerFeatures) -> Self {
+    pub fn random_for_test(control_service_address: Option<Multiaddr>, features: PeerFeatures) -> Self {
         use rand::OsRng;
         Self::random(
             &mut OsRng::new().unwrap(),
-            control_service_address.or("127.0.0.1:9000".parse().ok()).unwrap(),
+            control_service_address
+                .or("/ip4/127.0.0.1/tcp/9000".parse().ok())
+                .unwrap(),
             features,
         )
         .unwrap()

@@ -21,15 +21,15 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use log::*;
-
-use tari_comms::connection::{zmq::ZmqEndpoint, Connection, Direction, ZmqContext};
-
 use std::{
     sync::{Arc, RwLock},
     thread,
     time::Duration,
 };
-use tari_comms::message::FrameSet;
+use tari_comms::{
+    connection::{zmq::ZmqEndpoint, Connection, Direction, ZmqContext},
+    message::FrameSet,
+};
 
 const LOG_TARGET: &str = "comms::test_support::connection_message_counter";
 
@@ -83,10 +83,11 @@ impl<'c> ConnectionMessageCounter<'c> {
         );
     }
 
-    pub fn start<A: ZmqEndpoint + Send + Sync + Clone + 'static>(&self, address: A) {
+    pub fn start<A>(&self, address: A)
+    where A: ZmqEndpoint<Error = multiaddr::Error> + Send + Sync + Clone + 'static {
         let counter = self.counter.clone();
         let context = self.context.clone();
-        let address = address.clone();
+        //        let address = address.clone();
         let response = self.response.clone();
         thread::Builder::new()
             .name("connection-message-counter-thread".to_string())

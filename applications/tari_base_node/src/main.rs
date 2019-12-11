@@ -79,7 +79,7 @@ fn main() {
     };
 
     // Load or create the Node identity
-    let node_id = match load_identity(&node_config.identity_file, &node_config.address) {
+    let node_id = match load_identity(&node_config.identity_file) {
         Ok(id) => id,
         Err(e) => {
             if !arguments.create_id {

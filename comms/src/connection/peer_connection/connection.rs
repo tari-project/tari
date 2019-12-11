@@ -31,19 +31,15 @@ use super::{
     PeerConnectionJoinHandle,
 };
 use crate::{
-    connection::{
-        net_address::ip::SocketAddress,
-        types::Linger,
-        zmq::ZmqIdentity,
-        ConnectionError,
-        Direction,
-        NetAddress,
-    },
+    connection::{types::Linger, zmq::ZmqIdentity, ConnectionError, Direction},
     message::{Frame, FrameSet},
+    utils::multiaddr::multiaddr_to_socketaddr,
 };
 use chrono::{NaiveDateTime, Utc};
+use multiaddr::Multiaddr;
 use std::{
     fmt,
+    net::SocketAddr,
     sync::{Arc, Condvar, Mutex, MutexGuard, RwLock},
     time::Duration,
 };
@@ -71,7 +67,6 @@ macro_rules! is_state_unlock {
 }
 
 /// The state of the PeerConnection
-#[derive(Clone)]
 pub(super) enum PeerConnectionState {
     /// The connection object has been created but is not connected
     Initial,
@@ -118,9 +113,9 @@ impl PeerConnectionState {
     is_state!(is_active, Connecting(_) | Connected(_) | Listening(_));
 
     /// If the connection is in a `Failed` state, the failure error is returned, otherwise `None`
-    pub fn failure(&self) -> Option<PeerConnectionError> {
+    pub fn failure(&self) -> Option<&PeerConnectionError> {
         match self {
-            PeerConnectionState::Failed(err) => Some(err.clone()),
+            PeerConnectionState::Failed(err) => Some(err),
             _ => None,
         }
     }
@@ -192,7 +187,7 @@ impl Default for PeerConnectionStats {
 /// # use std::time::Duration;
 /// # use futures::channel::mpsc::channel;
 /// let ctx = ZmqContext::new();
-/// let addr: NetAddress = "127.0.0.1:8080".parse().unwrap();
+/// let addr = "/ip4/127.0.0.1/tcp/8080".parse().unwrap();
 /// let (message_sink_tx, _message_sink_rx) = channel(10);
 /// let peer_context = PeerConnectionContextBuilder::new()
 ///    .set_peer_identity(b"peer-identifier-bytes".to_vec())
@@ -200,7 +195,7 @@ impl Default for PeerConnectionStats {
 ///    .set_context(&ctx)
 ///    .set_direction(Direction::Outbound)
 ///    .set_message_sink_channel(message_sink_tx)
-///    .set_address(addr.clone())
+///    .set_address(addr)
 ///    .finish()
 ///    .unwrap();
 ///
@@ -213,11 +208,11 @@ impl Default for PeerConnectionStats {
 /// match conn.wait_connected_or_failure(Duration::from_millis(100)) {
 ///   Ok(()) => {
 ///     assert!(conn.is_connected());
-///     println!("Able to establish connection on {}", addr);
+///     println!("Connection established");
 ///   }
 ///   Err(err) => {
 ///     assert!(!conn.is_connected());
-///     println!("Failed to connect to {} after 100ms (may still be trying if err is Timeout). Error: {:?}", addr, err);
+///     println!("Failed to connect after 100ms (may still be trying if err is Timeout). Error: {:?}", err);
 ///   }
 /// }
 /// ```
@@ -226,7 +221,7 @@ pub struct PeerConnection {
     state: Arc<Mutex<PeerConnectionState>>,
     connection_stats: Arc<RwLock<PeerConnectionStats>>,
     direction: Direction,
-    peer_address: NetAddress,
+    peer_address: Multiaddr,
     state_var: Arc<Condvar>,
 }
 
@@ -402,27 +397,17 @@ impl PeerConnection {
             ))?
     }
 
-    /// Return the actual address this connection is bound to. If the connection is not over a TCP socket, or the
-    /// connection state is not Connected, this function returns None
-    pub fn get_connected_address(&self) -> Option<SocketAddress> {
-        let lock = acquire_lock!(self.state);
-        match &*lock {
-            PeerConnectionState::Listening(info) | PeerConnectionState::Connected(info) => {
-                info.connected_address.clone()
-            },
-            _ => None,
-        }
-    }
-
     /// Return the actual address this connection is bound to. If the connection state is not Connected,
     /// this function returns None
-    pub fn get_address(&self) -> Option<NetAddress> {
+    pub fn get_address(&self) -> Option<SocketAddr> {
         let lock = acquire_lock!(self.state);
         match &*lock {
             PeerConnectionState::Listening(info) | PeerConnectionState::Connected(info) => info
                 .connected_address
                 .as_ref()
-                .map_or(Some(self.peer_address.clone()), |addr| Some(addr.clone().into())),
+                .map_or(Some(multiaddr_to_socketaddr(&self.peer_address).ok()?), |addr| {
+                    Some(addr.clone())
+                }),
             _ => None,
         }
     }
@@ -488,7 +473,11 @@ impl PeerConnection {
             Ok(())
         } else {
             match guard.failure() {
-                Some(err) => Err(err),
+                Some(err) => Err(PeerConnectionError::OperationFailed(format!(
+                    "Connection failed to enter 'Listening' state within {}ms because '{}'",
+                    until.as_millis(),
+                    err
+                ))),
                 None => Err(PeerConnectionError::OperationTimeout(format!(
                     "Connection failed to enter 'Listening' state within {}ms",
                     until.as_millis()
@@ -506,7 +495,11 @@ impl PeerConnection {
             Ok(())
         } else {
             match guard.failure() {
-                Some(err) => Err(err),
+                Some(err) => Err(PeerConnectionError::OperationFailed(format!(
+                    "Connection failed to enter 'Connected' state within {}ms because '{}'",
+                    until.as_millis(),
+                    err
+                ))),
                 None => Err(PeerConnectionError::OperationTimeout(format!(
                     "Connection failed to enter 'Connected' state within {}ms",
                     until.as_millis()
@@ -553,7 +546,7 @@ impl PeerConnection {
 
     #[cfg(test)]
     pub fn new_with_connecting_state_for_test(
-        peer_address: NetAddress,
+        peer_address: Multiaddr,
     ) -> (Self, std::sync::mpsc::Receiver<ControlMessage>) {
         use std::sync::mpsc::sync_channel;
         let (tx, rx) = sync_channel(1);
@@ -608,15 +601,15 @@ pub enum PeerConnectionSimpleState {
     /// The connection thread is running, but the connection has not been accepted
     Connecting,
     /// The connection is listening, and has been not been accepted.
-    Listening(Option<SocketAddress>),
+    Listening(Option<SocketAddr>),
     /// The connection is connected, and has been accepted.
-    Connected(Option<SocketAddress>),
+    Connected(Option<SocketAddr>),
     /// The connection has been shut down (node disconnected)
     Shutdown,
     /// The remote peer has disconnected
     Disconnected,
     /// Peer connection failed
-    Failed(PeerConnectionError),
+    Failed(String),
 }
 
 impl From<&PeerConnectionState> for PeerConnectionSimpleState {
@@ -632,7 +625,7 @@ impl From<&PeerConnectionState> for PeerConnectionSimpleState {
             },
             PeerConnectionState::Shutdown => PeerConnectionSimpleState::Shutdown,
             PeerConnectionState::Disconnected => PeerConnectionSimpleState::Disconnected,
-            PeerConnectionState::Failed(e) => PeerConnectionSimpleState::Failed(e.clone()),
+            PeerConnectionState::Failed(e) => PeerConnectionSimpleState::Failed(format!("{}", e)),
         }
     }
 }
@@ -649,7 +642,7 @@ impl fmt::Display for PeerConnectionSimpleState {
             Connected(None) => write!(f, "Connected to non TCP socket"),
             Shutdown => write!(f, "Shutdown"),
             Disconnected => write!(f, "Disconnected"),
-            Failed(ref event) => write!(f, "Failed({})", event),
+            Failed(ref err) => write!(f, "Failed({})", err),
         }
     }
 }
@@ -688,7 +681,7 @@ mod test {
             format!("Failed({})", PeerConnectionError::ConnectFailed),
             format!(
                 "{}",
-                PeerConnectionSimpleState::Failed(PeerConnectionError::ConnectFailed)
+                PeerConnectionSimpleState::Failed(PeerConnectionError::ConnectFailed.to_string())
             )
         );
     }
@@ -705,7 +698,7 @@ mod test {
             state: Arc::new(Mutex::new(PeerConnectionState::Connected(Arc::new(info)))),
             connection_stats: Arc::new(RwLock::new(PeerConnectionStats::new())),
             direction: Direction::Outbound,
-            peer_address: "127.0.0.1:0".parse().unwrap(),
+            peer_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
             state_var: Default::default(),
         };
 
@@ -729,7 +722,7 @@ mod test {
             state: Arc::new(Mutex::new(PeerConnectionState::Listening(Arc::new(info)))),
             connection_stats: Arc::new(RwLock::new(PeerConnectionStats::new())),
             direction: Direction::Outbound,
-            peer_address: "127.0.0.1:0".parse().unwrap(),
+            peer_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
             state_var: Default::default(),
         };
 
@@ -749,7 +742,7 @@ mod test {
             state: Arc::new(Mutex::new(PeerConnectionState::Connecting(thread_ctl))),
             connection_stats: Arc::new(RwLock::new(PeerConnectionStats::new())),
             direction: Direction::Outbound,
-            peer_address: "127.0.0.1:0".parse().unwrap(),
+            peer_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
             state_var: Default::default(),
         };
 
@@ -769,7 +762,7 @@ mod test {
             state: Arc::new(Mutex::new(PeerConnectionState::Connecting(thread_ctl))),
             connection_stats: Arc::new(RwLock::new(PeerConnectionStats::new())),
             direction: Direction::Outbound,
-            peer_address: "127.0.0.1:0".parse().unwrap(),
+            peer_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
             state_var: Default::default(),
         };
 
@@ -789,7 +782,7 @@ mod test {
             ))),
             connection_stats: Arc::new(RwLock::new(PeerConnectionStats::new())),
             direction: Direction::Outbound,
-            peer_address: "127.0.0.1:0".parse().unwrap(),
+            peer_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
             state_var: Default::default(),
         };
 
@@ -807,7 +800,7 @@ mod test {
             state: Arc::new(Mutex::new(PeerConnectionState::Disconnected)),
             connection_stats: Arc::new(RwLock::new(PeerConnectionStats::new())),
             direction: Direction::Outbound,
-            peer_address: "127.0.0.1:0".parse().unwrap(),
+            peer_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
             state_var: Default::default(),
         };
 
@@ -825,7 +818,7 @@ mod test {
             state: Arc::new(Mutex::new(PeerConnectionState::Shutdown)),
             connection_stats: Arc::new(RwLock::new(PeerConnectionStats::new())),
             direction: Direction::Outbound,
-            peer_address: "127.0.0.1:0".parse().unwrap(),
+            peer_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
             state_var: Default::default(),
         };
 
@@ -847,7 +840,7 @@ mod test {
             state: Arc::new(Mutex::new(PeerConnectionState::Connected(Arc::new(info)))),
             connection_stats: Arc::new(RwLock::new(PeerConnectionStats::new())),
             direction: Direction::Outbound,
-            peer_address: "127.0.0.1:0".parse().unwrap(),
+            peer_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
             state_var: Default::default(),
         };
         (conn, rx)

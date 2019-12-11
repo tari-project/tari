@@ -68,8 +68,10 @@ impl fmt::Display for InprocAddress {
 }
 
 impl ZmqEndpoint for InprocAddress {
-    fn to_zmq_endpoint(&self) -> String {
-        self.0.to_string()
+    type Error = multiaddr::Error;
+
+    fn to_zmq_endpoint(&self) -> Result<String, Self::Error> {
+        Ok(self.0.to_string())
     }
 }
 
@@ -80,7 +82,7 @@ mod test {
     #[test]
     fn from_str() {
         let addr = "inproc://扩".parse::<InprocAddress>().unwrap();
-        assert_eq!("inproc://扩", addr.to_zmq_endpoint());
+        assert_eq!("inproc://扩", addr.to_zmq_endpoint().unwrap());
 
         let result = "inporc://abc".parse::<InprocAddress>();
         assert!(result.is_err());

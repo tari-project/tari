@@ -25,17 +25,22 @@
 /// populate the peer manager in other examples.
 use clap::{App, Arg};
 use rand::{rngs::OsRng, Rng};
-use std::{env::current_dir, fs, net::Ipv4Addr, path::Path};
+use std::{
+    env::current_dir,
+    fs,
+    net::{Ipv4Addr, SocketAddr},
+    path::Path,
+};
 use tari_comms::{
-    connection::{net_address::ip::SocketAddress, NetAddress},
+    multiaddr::Multiaddr,
     peer_manager::{NodeIdentity, PeerFeatures},
 };
 use tari_utilities::message_format::MessageFormat;
 
-fn random_address() -> NetAddress {
+fn random_address() -> Multiaddr {
     let mut rng = OsRng::new().unwrap();
     let port = rng.gen_range(9000, std::u16::MAX);
-    let socket_addr: SocketAddress = (Ipv4Addr::LOCALHOST, port).into();
+    let socket_addr: SocketAddr = (Ipv4Addr::LOCALHOST, port).into();
     socket_addr.into()
 }
 

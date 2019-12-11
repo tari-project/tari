@@ -46,7 +46,7 @@ pub fn get_next_local_port() -> u16 {
 
 /// Returns a local address with the next port in specified range.
 pub fn get_next_local_address() -> String {
-    format!("{}:{}", LOCAL_ADDRESS, get_next_local_port())
+    format!("/ip4/{}/tcp/{}", LOCAL_ADDRESS, get_next_local_port())
 }
 
 #[cfg(test)]

@@ -5,7 +5,5 @@
     "bits": 3
   },
   "secret_key": "15c593a986a3de8cb31faef237f80f95831f87a73ef53244f8b49001fa5eba09",
-  "control_service_address": {
-    "IP": "127.0.0.1:22334"
-  }
+  "control_service_address": "/ip4/127.0.0.1/tcp/22334"
 }

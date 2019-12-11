@@ -50,7 +50,7 @@ fn make_peer_connection_config() -> PeerConnectionConfig {
         peer_connection_establish_timeout: Duration::from_secs(5),
         max_message_size: 1024,
         max_connections: 10,
-        listening_address: "127.0.0.1:0".parse().unwrap(),
+        listening_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
         max_connect_retries: 3,
         socks_proxy_address: None,
     }
@@ -105,7 +105,8 @@ fn outbound_message_pool_no_retry() {
     // Start node B's control service
     let node_B_control_service = ControlService::new(context.clone(), node_identity.clone(), ControlServiceConfig {
         socks_proxy_address: None,
-        listener_address: node_B_control_port_address,
+        listening_address: node_B_control_port_address,
+        public_peer_address: None,
         requested_connection_timeout: Duration::from_millis(2000),
     })
     .serve(Arc::clone(&node_B_connection_manager))
@@ -293,7 +294,8 @@ fn test_outbound_message_pool_fail_and_retry() {
     // Start node B's control service
     let node_B_control_service = ControlService::new(context.clone(), node_B_identity.clone(), ControlServiceConfig {
         socks_proxy_address: None,
-        listener_address: node_B_control_port_address,
+        listening_address: node_B_control_port_address,
+        public_peer_address: None,
         requested_connection_timeout: Duration::from_millis(2000),
     })
     .serve(node_B_connection_manager)

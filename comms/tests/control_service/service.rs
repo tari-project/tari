@@ -92,8 +92,9 @@ fn request_connection() {
     // Setup the destination peer's control service
     let listener_address = factories::net_address::create().build().unwrap();
     let service_handle = ControlService::new(context.clone(), Arc::clone(&node_identity_a), ControlServiceConfig {
-        listener_address: listener_address.clone(),
+        listening_address: listener_address.clone(),
         socks_proxy_address: None,
+        public_peer_address: None,
         requested_connection_timeout: Duration::from_millis(2000),
     })
     .serve(connection_manager)
@@ -171,8 +172,9 @@ fn ping_pong() {
 
     let listener_address = factories::net_address::create().build().unwrap();
     let service = ControlService::new(context.clone(), Arc::clone(&node_identity), ControlServiceConfig {
-        listener_address: listener_address.clone(),
+        listening_address: listener_address.clone(),
         socks_proxy_address: None,
+        public_peer_address: None,
         requested_connection_timeout: Duration::from_millis(5000),
     })
     .serve(connection_manager)

@@ -22,12 +22,13 @@
 
 use super::node_id::deserialize_node_id_from_hex;
 use crate::{
-    connection::{net_address::net_addresses::NetAddressesWithStats, NetAddress},
+    connection::net_address::NetAddressesWithStats,
     peer_manager::{connection_stats::PeerConnectionStats, node_id::NodeId, peer_key::PeerKey, PeerFeatures},
     types::CommsPublicKey,
 };
 use bitflags::bitflags;
 use chrono::{DateTime, NaiveDateTime, Utc};
+use multiaddr::Multiaddr;
 use serde::{Deserialize, Serialize};
 use tari_utilities::hex::serialize_to_hex;
 
@@ -90,7 +91,7 @@ impl Peer {
     pub fn update(
         &mut self,
         node_id: Option<NodeId>,
-        net_addresses: Option<Vec<NetAddress>>,
+        net_addresses: Option<Vec<Multiaddr>>,
         flags: Option<PeerFlags>,
         features: Option<PeerFeatures>,
         connection_stats: Option<PeerConnectionStats>,
@@ -137,11 +138,7 @@ impl Peer {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{
-        connection::{net_address::net_addresses::NetAddressesWithStats, NetAddress},
-        peer_manager::node_id::NodeId,
-        types::CommsPublicKey,
-    };
+    use crate::{connection::net_address::NetAddressesWithStats, peer_manager::node_id::NodeId, types::CommsPublicKey};
     use serde_json::Value;
     use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
     use tari_utilities::{hex::Hex, message_format::MessageFormat};
@@ -151,7 +148,7 @@ mod test {
         let mut rng = rand::OsRng::new().unwrap();
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk).unwrap();
-        let addresses = NetAddressesWithStats::from("123.0.0.123:8000".parse::<NetAddress>().unwrap());
+        let addresses = NetAddressesWithStats::from("/ip4/123.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap());
         let mut peer: Peer = Peer::new(pk, node_id, addresses, PeerFlags::default(), PeerFeatures::empty());
         assert_eq!(peer.is_banned(), false);
         peer.set_banned(true);
@@ -165,7 +162,7 @@ mod test {
         let mut rng = rand::OsRng::new().unwrap();
         let (_sk, public_key1) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&public_key1).unwrap();
-        let net_address1 = "124.0.0.124:7000".parse::<NetAddress>().unwrap();
+        let net_address1 = "/ip4/124.0.0.124/tcp/7000".parse::<Multiaddr>().unwrap();
         let mut peer: Peer = Peer::new(
             public_key1.clone(),
             node_id,
@@ -176,8 +173,8 @@ mod test {
 
         let (_sk, public_key2) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id2 = NodeId::from_key(&public_key2).unwrap();
-        let net_address2 = "125.0.0.125:8000".parse::<NetAddress>().unwrap();
-        let net_address3 = "126.0.0.126:9000".parse::<NetAddress>().unwrap();
+        let net_address2 = "/ip4/125.0.0.125/tcp/8000".parse::<Multiaddr>().unwrap();
+        let net_address3 = "/ip4/126.0.0.126/tcp/9000".parse::<Multiaddr>().unwrap();
 
         peer.update(
             Some(node_id2.clone()),
@@ -217,7 +214,7 @@ mod test {
         let peer = Peer::new(
             pk,
             node_id,
-            "127.0.0.1:9000".parse::<NetAddress>().unwrap().into(),
+            "/ip4/127.0.0.1/tcp/9000".parse::<Multiaddr>().unwrap().into(),
             PeerFlags::empty(),
             PeerFeatures::empty(),
         );

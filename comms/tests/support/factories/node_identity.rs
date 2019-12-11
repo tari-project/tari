@@ -21,9 +21,9 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::{TestFactory, TestFactoryError};
+use multiaddr::Multiaddr;
 use rand::OsRng;
 use tari_comms::{
-    connection::NetAddress,
     peer_manager::{NodeIdentity, PeerFeatures},
     types::CommsSecretKey,
 };
@@ -35,18 +35,14 @@ pub fn create() -> NodeIdentityFactory {
 
 #[derive(Default, Clone)]
 pub struct NodeIdentityFactory {
-    control_service_address: Option<NetAddress>,
+    control_service_address: Option<Multiaddr>,
     secret_key: Option<CommsSecretKey>,
     //    public_key: Option<CommsPublicKey>,
     peer_features: PeerFeatures,
 }
 
 impl NodeIdentityFactory {
-    factory_setter!(
-        with_control_service_address,
-        control_service_address,
-        Option<NetAddress>
-    );
+    factory_setter!(with_control_service_address, control_service_address, Option<Multiaddr>);
 
     factory_setter!(with_secret_key, secret_key, Option<CommsSecretKey>);
 

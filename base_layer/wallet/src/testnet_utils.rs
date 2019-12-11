@@ -118,11 +118,12 @@ pub fn create_wallet(
     .expect("Could not construct Node Id");
     let comms_config = CommsConfig {
         node_identity: Arc::new(node_id.clone()),
-        peer_connection_listening_address: "127.0.0.1:0".parse().unwrap(),
+        peer_connection_listening_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
         socks_proxy_address: None,
         control_service: ControlServiceConfig {
-            listener_address: node_id.control_service_address(),
+            listening_address: node_id.control_service_address(),
             socks_proxy_address: None,
+            public_peer_address: None,
             requested_connection_timeout: Duration::from_millis(500),
         },
         establish_connection_timeout: Duration::from_secs(2),
@@ -182,8 +183,11 @@ pub fn generate_wallet_test_data<
             alias: names[i].to_string(),
             public_key: public_key.clone(),
         }))?;
-        wallet.add_base_node_peer(public_key.clone(), format!("127.0.0.1:{}", 15200 + i).to_string())?;
-        generated_contacts.push((secret_key, format!("127.0.0.1:{}", 15200 + i).to_string()));
+        wallet.add_base_node_peer(
+            public_key.clone(),
+            format!("/ip4/127.0.0.1/tcp/{}", 15200 + i).to_string(),
+        )?;
+        generated_contacts.push((secret_key, format!("/ip4/127.0.0.1/tcp/{}", 15200 + i).to_string()));
     }
     let contacts = wallet.runtime.block_on(wallet.contacts_service.get_contacts())?;
     assert_eq!(contacts.len(), names.len());

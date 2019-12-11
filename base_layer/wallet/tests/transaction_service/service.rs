@@ -180,7 +180,7 @@ pub fn setup_transaction_service_no_comms<T: TransactionBackend + Clone + 'stati
         Arc::new(
             NodeIdentity::random(
                 &mut OsRng::new().unwrap(),
-                "0.0.0.0:41239".parse().unwrap(),
+                "/ip4/0.0.0.0/tcp/41239".parse().unwrap(),
                 PeerFeatures::COMMUNICATION_NODE,
             )
             .unwrap(),
@@ -215,7 +215,7 @@ fn manage_single_transaction<T: TransactionBackend + Clone + 'static>(
     let alice_port = 31501 + port_offset;
     let alice_node_identity = NodeIdentity::random(
         &mut rng,
-        format!("127.0.0.1:{}", alice_port).parse().unwrap(),
+        format!("/ip4/127.0.0.1/tcp/{}", alice_port).parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
     )
     .unwrap();
@@ -225,7 +225,7 @@ fn manage_single_transaction<T: TransactionBackend + Clone + 'static>(
     let bob_port = 32713 + port_offset;
     let bob_node_identity = NodeIdentity::random(
         &mut rng,
-        format!("127.0.0.1:{}", bob_port).parse().unwrap(),
+        format!("/ip4/127.0.0.1/tcp/{}", bob_port).parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
     )
     .unwrap();
@@ -360,7 +360,7 @@ fn manage_multiple_transactions<T: TransactionBackend + Clone + 'static>(
     let alice_port = 31484 + port_offset;
     let alice_node_identity = NodeIdentity::random(
         &mut rng,
-        format!("127.0.0.1:{}", alice_port).parse().unwrap(),
+        format!("/ip4/127.0.0.1/tcp/{}", alice_port).parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
     )
     .unwrap();
@@ -370,7 +370,7 @@ fn manage_multiple_transactions<T: TransactionBackend + Clone + 'static>(
     let bob_port = 31475 + port_offset;
     let bob_node_identity = NodeIdentity::random(
         &mut rng,
-        format!("127.0.0.1:{}", bob_port).parse().unwrap(),
+        format!("/ip4/127.0.0.1/tcp/{}", bob_port).parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
     )
     .unwrap();
@@ -380,7 +380,7 @@ fn manage_multiple_transactions<T: TransactionBackend + Clone + 'static>(
     let carol_port = 31488 + port_offset;
     let carol_node_identity = NodeIdentity::random(
         &mut rng,
-        format!("127.0.0.1:{}", carol_port).parse().unwrap(),
+        format!("/ip4/127.0.0.1/tcp/{}", carol_port).parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
     )
     .unwrap();
@@ -541,7 +541,7 @@ fn test_sending_repeated_tx_ids<T: TransactionBackend + Clone + 'static>(alice_b
     let bob_seed = PrivateKey::random(&mut rng);
     let bob_node_identity = NodeIdentity::random(
         &mut rng,
-        "127.0.0.1:55741".parse().unwrap(),
+        "/ip4/127.0.0.1/tcp/55741".parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
     )
     .unwrap();
@@ -617,7 +617,7 @@ fn test_accepting_unknown_tx_id_and_malformed_reply<T: TransactionBackend + Clon
     let alice_seed = PrivateKey::random(&mut rng);
     let bob_node_identity = NodeIdentity::random(
         &mut rng,
-        "127.0.0.1:31585".parse().unwrap(),
+        "/ip4/127.0.0.1/tcp/31585".parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
     )
     .unwrap();
@@ -774,7 +774,7 @@ fn finalize_tx_with_incorrect_pubkey<T: TransactionBackend + Clone + 'static>(al
     let bob_seed = PrivateKey::random(&mut rng);
     let bob_node_identity = NodeIdentity::random(
         &mut rng,
-        "127.0.0.1:55741".parse().unwrap(),
+        "/ip4/127.0.0.1/tcp/55741".parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
     )
     .unwrap();
@@ -880,7 +880,7 @@ fn finalize_tx_with_missing_output<T: TransactionBackend + Clone + 'static>(alic
     let bob_seed = PrivateKey::random(&mut rng);
     let bob_node_identity = NodeIdentity::random(
         &mut rng,
-        "127.0.0.1:55714".parse().unwrap(),
+        "/ip4/127.0.0.1/tcp/55714".parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
     )
     .unwrap();
@@ -984,7 +984,7 @@ fn discovery_async_return_test() {
     let alice_port = 30484 + port_offset;
     let alice_node_identity = NodeIdentity::random(
         &mut rng,
-        format!("127.0.0.1:{}", alice_port).parse().unwrap(),
+        format!("/ip4/127.0.0.1/tcp/{}", alice_port).parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
     )
     .unwrap();
@@ -994,7 +994,7 @@ fn discovery_async_return_test() {
     let bob_port = 30475 + port_offset;
     let bob_node_identity = NodeIdentity::random(
         &mut rng,
-        format!("127.0.0.1:{}", bob_port).parse().unwrap(),
+        format!("/ip4/127.0.0.1/tcp/{}", bob_port).parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
     )
     .unwrap();
@@ -1003,7 +1003,7 @@ fn discovery_async_return_test() {
     let carol_port = 30488 + port_offset;
     let carol_node_identity = NodeIdentity::random(
         &mut rng,
-        format!("127.0.0.1:{}", carol_port).parse().unwrap(),
+        format!("/ip4/127.0.0.1/tcp/{}", carol_port).parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
     )
     .unwrap();
@@ -1013,7 +1013,7 @@ fn discovery_async_return_test() {
     let dave_port = 30498 + port_offset;
     let dave_node_identity = NodeIdentity::random(
         &mut rng,
-        format!("127.0.0.1:{}", dave_port).parse().unwrap(),
+        format!("/ip4/127.0.0.1/tcp/{}", dave_port).parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
     )
     .unwrap();

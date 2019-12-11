@@ -23,15 +23,17 @@
 use super::PeerConnectionError;
 use crate::{
     connection::{
-        net_address::ip::SocketAddress,
         types::{Direction, Linger},
         zmq::{CurveEncryption, ZmqContext, ZmqIdentity},
-        NetAddress,
     },
     message::FrameSet,
 };
 use futures::channel::mpsc::Sender;
-use std::convert::{TryFrom, TryInto};
+use multiaddr::Multiaddr;
+use std::{
+    convert::{TryFrom, TryInto},
+    net::SocketAddr,
+};
 
 /// The default maximum message size which will be used if no maximum message size is set.
 const DEFAULT_MAX_MSG_SIZE: u64 = 500 * 1024; // 500 kb
@@ -55,13 +57,13 @@ pub struct PeerConnectionContext {
     pub(crate) context: ZmqContext,
     pub(crate) connection_identity: Option<ZmqIdentity>,
     pub(crate) peer_identity: Option<ZmqIdentity>,
-    pub(crate) peer_address: NetAddress,
+    pub(crate) peer_address: Multiaddr,
     pub(crate) message_sink_channel: Sender<FrameSet>,
     pub(crate) direction: Direction,
     pub(crate) curve_encryption: CurveEncryption,
     pub(crate) max_msg_size: u64,
     pub(crate) max_retry_attempts: u16,
-    pub(crate) socks_address: Option<SocketAddress>,
+    pub(crate) socks_address: Option<SocketAddr>,
     pub(crate) linger: Linger,
     pub(crate) shutdown_on_send_failure: bool,
 }
@@ -156,7 +158,7 @@ fn unwrap_prop<T>(prop: Option<T>, prop_name: &str) -> Result<T, PeerConnectionE
 ///    .set_context(&ctx)
 ///    .set_direction(Direction::Outbound)
 ///    .set_message_sink_channel(tx)
-///    .set_address("127.0.0.1:8080".parse().unwrap())
+///    .set_address("/ip4/127.0.0.1/tcp/8080".parse().unwrap())
 ///    .finish()
 ///    .unwrap();
 /// ```
@@ -164,7 +166,7 @@ fn unwrap_prop<T>(prop: Option<T>, prop_name: &str) -> Result<T, PeerConnectionE
 /// [PeerConnectionContext]: ./struct.PeerConnectionContext.html
 #[derive(Default)]
 pub struct PeerConnectionContextBuilder<'c> {
-    pub(super) address: Option<NetAddress>,
+    pub(super) address: Option<Multiaddr>,
     pub(super) message_sink_channel: Option<Sender<FrameSet>>,
     pub(super) context: Option<&'c ZmqContext>,
     pub(super) curve_encryption: CurveEncryption,
@@ -173,14 +175,14 @@ pub struct PeerConnectionContextBuilder<'c> {
     pub(super) connection_identity: Option<ZmqIdentity>,
     pub(super) max_msg_size: Option<u64>,
     pub(super) max_retry_attempts: Option<u16>,
-    pub(super) socks_address: Option<SocketAddress>,
+    pub(super) socks_address: Option<SocketAddr>,
     pub(super) linger: Option<Linger>,
     pub(crate) shutdown_on_send_failure: bool,
 }
 
 impl<'c> PeerConnectionContextBuilder<'c> {
     /// Set the peer address
-    setter!(set_address, address, Option<NetAddress>);
+    setter!(set_address, address, Option<Multiaddr>);
 
     /// Set the channel where incoming peer messages are forwarded
     setter!(set_message_sink_channel, message_sink_channel, Option<Sender<FrameSet>>);
@@ -198,7 +200,7 @@ impl<'c> PeerConnectionContextBuilder<'c> {
     setter!(set_max_msg_size, max_msg_size, Option<u64>);
 
     /// Set the socks proxy address
-    setter!(set_socks_proxy, socks_address, Option<SocketAddress>);
+    setter!(set_socks_proxy, socks_address, Option<SocketAddr>);
 
     /// Set the [Linger] for this connection
     setter!(set_linger, linger, Option<Linger>);
@@ -275,7 +277,6 @@ mod test {
         peer_connection::PeerConnectionError,
         types::Direction,
         zmq::{CurveEncryption, ZmqContext},
-        NetAddress,
     };
     use futures::channel::mpsc::channel;
 
@@ -296,8 +297,8 @@ mod test {
     fn valid_build() {
         let ctx = ZmqContext::new();
 
-        let peer_addr = "127.0.0.1:80".parse::<NetAddress>().unwrap();
-        let socks_addr = "127.0.0.1:8080".parse::<SocketAddress>().unwrap();
+        let peer_addr = "/ip4/127.0.0.1/tcp/80".parse::<Multiaddr>().unwrap();
+        let socks_addr = "127.0.0.1:8080".parse::<SocketAddr>().unwrap();
 
         let (tx, _rx) = channel(10);
 
@@ -325,7 +326,7 @@ mod test {
             .set_connection_identity(b"123".to_vec())
             .set_direction(Direction::Outbound)
             .set_message_sink_channel(tx)
-            .set_address("127.0.0.1:80".parse().unwrap())
+            .set_address("/ip4/127.0.0.1/tcp/80".parse().unwrap())
             .finish();
 
         assert_initialization_error(result, "Missing required connection property 'context'");
@@ -341,7 +342,7 @@ mod test {
                 public_key: pk.clone(),
                 server_public_key: pk.clone(),
             })
-            .set_address("127.0.0.1:80".parse().unwrap())
+            .set_address("/ip4/127.0.0.1/tcp/80".parse().unwrap())
             .finish();
 
         assert_initialization_error(result, "'Server' curve encryption required for inbound connection");
@@ -353,7 +354,7 @@ mod test {
             .set_context(&ctx)
             .set_message_sink_channel(tx)
             .set_curve_encryption(CurveEncryption::Server { secret_key: sk.clone() })
-            .set_address("127.0.0.1:80".parse().unwrap())
+            .set_address("/ip4/127.0.0.1/tcp/80".parse().unwrap())
             .finish();
 
         assert_initialization_error(result, "'Client' curve encryption required for outbound connection");

@@ -37,7 +37,7 @@
 //! # use tokio::runtime::Runtime;
 //! # use futures::channel::mpsc;
 //! // This should be loaded up from storage
-//! let my_node_identity = NodeIdentity::random(&mut OsRng::new().unwrap(), "127.0.0.1:9000".parse().unwrap(), PeerFeatures::COMMUNICATION_NODE).unwrap();
+//! let my_node_identity = NodeIdentity::random(&mut OsRng::new().unwrap(), "/ip4/127.0.0.1/tcp/9000".parse().unwrap(), PeerFeatures::COMMUNICATION_NODE).unwrap();
 //!
 //! let database_name = "b_peer_database";
 //! let datastore = LMDBBuilder::new()

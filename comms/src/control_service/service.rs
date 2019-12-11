@@ -26,13 +26,15 @@ use super::{
     worker::ControlServiceWorker,
 };
 use crate::{
-    connection::{net_address::ip::SocketAddress, NetAddress, ZmqContext},
+    connection::ZmqContext,
     connection_manager::ConnectionManager,
     peer_manager::NodeIdentity,
     types::DEFAULT_CONTROL_PORT_ADDRESS,
 };
 use log::*;
+use multiaddr::Multiaddr;
 use std::{
+    net::SocketAddr,
     sync::{mpsc::SyncSender, Arc},
     thread,
     time::Duration,
@@ -44,10 +46,14 @@ const LOG_TARGET: &str = "comms::control_service::service";
 /// Configuration for [ControlService]
 #[derive(Clone)]
 pub struct ControlServiceConfig {
-    /// Which address to listen on.
-    pub listener_address: NetAddress,
+    /// Which address to listen on. This must be a TCP/IP address.
+    pub listening_address: Multiaddr,
+    /// The publicly accessible address which is sent to peers. If set to None, the TCP/IP4 address of the inbound
+    /// listener is used. Using the latter is more useful in tests, in a production deployment an address should be
+    /// specified.
+    pub public_peer_address: Option<Multiaddr>,
     /// Optional SOCKS proxy
-    pub socks_proxy_address: Option<SocketAddress>,
+    pub socks_proxy_address: Option<SocketAddr>,
     /// The timeout for the peer to connect to the inbound connection.
     /// If this timeout expires the peer connection will be shut down and discarded.
     pub requested_connection_timeout: Duration,
@@ -55,9 +61,10 @@ pub struct ControlServiceConfig {
 
 impl Default for ControlServiceConfig {
     fn default() -> Self {
-        let listener_address = DEFAULT_CONTROL_PORT_ADDRESS.parse::<NetAddress>().unwrap();
+        let listening_address = DEFAULT_CONTROL_PORT_ADDRESS.parse::<Multiaddr>().unwrap();
         ControlServiceConfig {
-            listener_address,
+            listening_address,
+            public_peer_address: None,
             socks_proxy_address: None,
             requested_connection_timeout: Duration::from_secs(5),
         }
@@ -139,8 +146,8 @@ mod test {
         let node_identity = Arc::new(NodeIdentity::random_for_test(None, PeerFeatures::empty()));
         let control_service = ControlService::with_default_config(context, node_identity);
         assert_eq!(
-            control_service.config.listener_address,
-            DEFAULT_CONTROL_PORT_ADDRESS.parse::<NetAddress>().unwrap()
+            control_service.config.listening_address,
+            DEFAULT_CONTROL_PORT_ADDRESS.parse::<Multiaddr>().unwrap()
         );
         assert!(control_service.config.socks_proxy_address.is_none());
     }

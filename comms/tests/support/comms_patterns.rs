@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    fmt::Debug,
     sync::mpsc::{channel, Receiver},
     thread,
 };
@@ -41,7 +42,10 @@ const THREAD_STACK_SIZE: usize = 32 * 1024; // 32kb
 ///
 /// [AsyncRequestReplyPattern]: struct.AsyncRequestReplyPattern.html
 pub fn async_request_reply<T>(direction: Direction) -> AsyncRequestReplyPattern<T>
-where T: ZmqEndpoint + Clone + Send + Sync + 'static {
+where
+    T: ZmqEndpoint + Clone + Send + Sync + 'static,
+    T::Error: Debug,
+{
     AsyncRequestReplyPattern::new(direction)
 }
 
@@ -59,7 +63,9 @@ pub struct AsyncRequestReplyPattern<T: ZmqEndpoint + Clone + Send + Sync + 'stat
 }
 
 impl<T> AsyncRequestReplyPattern<T>
-where T: ZmqEndpoint + Clone + Send + Sync + 'static
+where
+    T: ZmqEndpoint + Clone + Send + Sync + 'static,
+    T::Error: Debug,
 {
     /// Create a new AsyncRequestReplyPattern
     pub fn new(direction: Direction) -> Self {
@@ -130,7 +136,7 @@ where T: ZmqEndpoint + Clone + Send + Sync + 'static
                             socket.set_curve_server(true).unwrap();
                             socket.set_curve_secretkey(&sk.into_inner()).unwrap();
                         }
-                        socket.bind(endpoint.to_zmq_endpoint().as_str()).unwrap();
+                        socket.bind(endpoint.to_zmq_endpoint().unwrap().as_str()).unwrap();
 
                         socket.recv_multipart(0).unwrap();
 
@@ -150,7 +156,7 @@ where T: ZmqEndpoint + Clone + Send + Sync + 'static
                             socket.set_curve_secretkey(&keypair.0.into_inner()).unwrap();
                         }
 
-                        socket.connect(endpoint.to_zmq_endpoint().as_str()).unwrap();
+                        socket.connect(endpoint.to_zmq_endpoint().unwrap().as_str()).unwrap();
                         socket
                             .send_multipart(msgs.iter().map(|s| s.as_slice()).collect::<Vec<&[u8]>>().as_slice(), 0)
                             .unwrap();

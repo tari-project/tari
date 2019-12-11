@@ -23,6 +23,7 @@
 use super::{TestFactory, TestFactoryError};
 
 use futures::channel::mpsc::Sender;
+use multiaddr::Multiaddr;
 use tari_comms::{
     connection::{
         peer_connection::PeerConnectionContext,
@@ -32,7 +33,6 @@ use tari_comms::{
         CurvePublicKey,
         CurveSecretKey,
         Direction,
-        NetAddress,
         PeerConnectionContextBuilder,
         ZmqContext,
     },
@@ -52,7 +52,7 @@ pub struct PeerConnectionContextFactory<'c> {
     message_sink_channel: Option<Sender<FrameSet>>,
     server_public_key: Option<CurvePublicKey>,
     curve_keypair: Option<(CurveSecretKey, CurvePublicKey)>,
-    address: Option<NetAddress>,
+    address: Option<Multiaddr>,
     linger: Option<Linger>,
 }
 
@@ -77,7 +77,7 @@ impl<'c> PeerConnectionContextFactory<'c> {
         Option<(CurveSecretKey, CurvePublicKey)>
     );
 
-    factory_setter!(with_address, address, Option<NetAddress>);
+    factory_setter!(with_address, address, Option<Multiaddr>);
 
     factory_setter!(with_linger, linger, Option<Linger>);
 
@@ -99,7 +99,7 @@ impl<'c> TestFactory for PeerConnectionContextFactory<'c> {
             "Must set direction on PeerConnectionContextFactory".into(),
         ))?;
 
-        let address = self.address.or(Some("127.0.0.1:0".parse().unwrap())).unwrap();
+        let address = self.address.or(Some("/ip4/127.0.0.1/tcp/0".parse().unwrap())).unwrap();
 
         let mut builder = PeerConnectionContextBuilder::new()
             .set_linger(self.linger.or(Some(Linger::Indefinitely)).unwrap())

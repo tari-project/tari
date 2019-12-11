@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    connection::{ConnectionError, NetAddressError, PeerConnectionError},
+    connection::{ConnectionError, PeerConnectionError},
     message::MessageError,
     peer_manager::PeerManagerError,
 };
@@ -51,7 +51,7 @@ pub enum ControlServiceError {
     InvalidMessageSignature,
     /// Received an unexpected reply
     ClientUnexpectedReply,
-    NetAddressError(NetAddressError),
+    MultiaddrError(multiaddr::Error),
     /// Unable to establish inbound listener address. Inbound listener not in listening state?
     ListenerAddressNotEstablished,
     #[error(non_std, no_from, msg_embedded)]

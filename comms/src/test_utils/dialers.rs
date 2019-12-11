@@ -69,7 +69,7 @@ impl<T> Dialer<T> for CountDialer<T> {
     type Future = impl Future<Output = Result<Self::Output, Self::Error>> + Send + Unpin;
 
     fn dial(&self, _: &T) -> Self::Future {
-        let (conn, _) = PeerConnection::new_with_connecting_state_for_test("127.0.0.1:0".parse().unwrap());
+        let (conn, _) = PeerConnection::new_with_connecting_state_for_test("/ip4/127.0.0.1/tcp/0".parse().unwrap());
         self.count.fetch_add(1, Ordering::AcqRel);
         future::ready(Ok(Arc::new(conn)))
     }

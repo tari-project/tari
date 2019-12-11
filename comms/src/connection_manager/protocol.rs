@@ -22,17 +22,12 @@
 
 use super::{establisher::ConnectionEstablisher, ConnectionManagerError, Result};
 use crate::{
-    connection::{
-        peer_connection::PeerConnectionJoinHandle,
-        zmq::ZmqIdentity,
-        CurvePublicKey,
-        NetAddress,
-        PeerConnection,
-    },
+    connection::{peer_connection::PeerConnectionJoinHandle, zmq::ZmqIdentity, CurvePublicKey, PeerConnection},
     control_service::messages::{RejectReason, RequestConnectionOutcome},
     peer_manager::{NodeIdentity, Peer},
 };
 use log::*;
+use multiaddr::Multiaddr;
 use std::sync::Arc;
 use tari_utilities::{byte_array::ByteArray, hex::Hex};
 
@@ -139,7 +134,7 @@ impl<'e, 'ni> PeerConnectionProtocol<'e, 'ni> {
         &self,
         peer: &Peer,
         curve_public_key: CurvePublicKey,
-        address: NetAddress,
+        address: Multiaddr,
         remote_identity: ZmqIdentity,
     ) -> Result<(Arc<PeerConnection>, PeerConnectionJoinHandle)>
     {

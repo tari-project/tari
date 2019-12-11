@@ -30,7 +30,7 @@ use derive_error::Error;
 use diesel::result::Error as DieselError;
 use log::SetLoggerError;
 use serde_json::Error as SerdeJsonError;
-use tari_comms::{builder::CommsError, connection::NetAddressError, peer_manager::PeerManagerError};
+use tari_comms::{builder::CommsError, multiaddr, peer_manager::PeerManagerError};
 use tari_p2p::initialization::CommsInitializationError;
 
 #[derive(Debug, Error)]
@@ -40,7 +40,7 @@ pub enum WalletError {
     OutputManagerError(OutputManagerError),
     TransactionServiceError(TransactionServiceError),
     PeerManagerError(PeerManagerError),
-    NetAddressError(NetAddressError),
+    MultiaddrError(multiaddr::Error),
     WalletStorageError(WalletStorageError),
     SetLoggerError(SetLoggerError),
     ContactsServiceError(ContactsServiceError),

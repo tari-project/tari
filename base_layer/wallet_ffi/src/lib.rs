@@ -119,7 +119,7 @@ use tari_wallet::wallet::WalletConfig;
 use crate::error::InterfaceError;
 use core::ptr;
 use std::{sync::Arc, time::Duration};
-use tari_comms::{connection::NetAddress, control_service::ControlServiceConfig, peer_manager::PeerFeatures};
+use tari_comms::{control_service::ControlServiceConfig, multiaddr::Multiaddr, peer_manager::PeerFeatures};
 use tari_comms_dht::DhtConfig;
 use tari_crypto::keys::PublicKey;
 use tari_transactions::types::CryptoFactories;
@@ -1546,7 +1546,7 @@ pub unsafe extern "C" fn comms_config_create(
     if !listener_address.is_null() {
         listener_address_string = CStr::from_ptr(listener_address).to_str().unwrap().to_owned();
     } else {
-        listener_address_string = "0.0.0.0:7898".to_string();
+        listener_address_string = "/ip4/0.0.0.0/tcp/7898".to_string();
     }
 
     let database_name_string;
@@ -1567,8 +1567,8 @@ pub unsafe extern "C" fn comms_config_create(
         return ptr::null_mut();
     }
 
-    let listener_address = listener_address_string.parse::<NetAddress>();
-    let control_service_address = control_service_address_string.parse::<NetAddress>();
+    let listener_address = listener_address_string.parse::<Multiaddr>();
+    let control_service_address = control_service_address_string.parse::<Multiaddr>();
 
     match listener_address {
         Ok(listener_address) => match control_service_address {
@@ -1585,8 +1585,9 @@ pub unsafe extern "C" fn comms_config_create(
                             peer_connection_listening_address: listener_address,
                             socks_proxy_address: None,
                             control_service: ControlServiceConfig {
-                                listener_address: ni.control_service_address(),
+                                listening_address: ni.control_service_address(),
                                 socks_proxy_address: None,
+                                public_peer_address: None,
                                 requested_connection_timeout: Duration::from_millis(2000),
                             },
                             establish_connection_timeout: Duration::from_secs(10),
@@ -3002,10 +3003,10 @@ mod test {
             let alice_temp_dir = TempDir::new(random_string(8).as_str()).unwrap();
             let db_path_alice = CString::new(alice_temp_dir.path().to_str().unwrap()).unwrap();
             let db_path_alice_str: *const c_char = CString::into_raw(db_path_alice.clone()) as *const c_char;
-            let address_alice = CString::new("127.0.0.1:21443").unwrap();
+            let address_alice = CString::new("/ip4/127.0.0.1/tcp/21443").unwrap();
             let address_alice_str: *const c_char = CString::into_raw(address_alice.clone()) as *const c_char;
 
-            let address_listener_alice = CString::new("127.0.0.1:0").unwrap();
+            let address_listener_alice = CString::new("/ip4/127.0.0.1/tcp/0").unwrap();
             let address_listener_alice_str: *const c_char =
                 CString::into_raw(address_listener_alice.clone()) as *const c_char;
             let alice_config = comms_config_create(
@@ -3024,9 +3025,9 @@ mod test {
             let bob_temp_dir = TempDir::new(random_string(8).as_str()).unwrap();
             let db_path_bob = CString::new(bob_temp_dir.path().to_str().unwrap()).unwrap();
             let db_path_bob_str: *const c_char = CString::into_raw(db_path_bob.clone()) as *const c_char;
-            let address_bob = CString::new("127.0.0.1:21441").unwrap();
+            let address_bob = CString::new("/ip4/127.0.0.1/tcp/21441").unwrap();
             let address_bob_str: *const c_char = CString::into_raw(address_bob.clone()) as *const c_char;
-            let address_listener_bob = CString::new("127.0.0.1:0").unwrap();
+            let address_listener_bob = CString::new("/ip4/127.0.0.1/tcp/0").unwrap();
             let address_listener_bob_str: *const c_char =
                 CString::into_raw(address_listener_bob.clone()) as *const c_char;
             let bob_config = comms_config_create(

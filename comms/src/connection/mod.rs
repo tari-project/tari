@@ -74,19 +74,18 @@
 mod macros;
 
 pub mod connection;
-pub mod dealer_proxy;
 pub mod error;
 pub mod monitor;
-pub mod net_address;
+mod multiaddr;
+pub(crate) mod net_address;
 pub mod peer_connection;
 pub mod types;
 pub mod zmq;
 
 pub use self::{
     connection::{Connection, EstablishedConnection},
-    dealer_proxy::{DealerProxy, DealerProxyError},
     error::ConnectionError,
-    net_address::{NetAddress, NetAddressError, NetAddressesWithStats},
+    net_address::NetAddressesWithStats,
     peer_connection::{
         PeerConnection,
         PeerConnectionContextBuilder,

@@ -21,7 +21,6 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    connection::net_address::NetAddress,
     consts::{COMMS_RNG, PEER_MANAGER_MAX_FLOOD_PEERS},
     peer_manager::{
         connection_stats::PeerConnectionStats,
@@ -35,6 +34,7 @@ use crate::{
     types::{CommsDatabase, CommsPublicKey},
 };
 use log::*;
+use multiaddr::Multiaddr;
 use rand::Rng;
 use std::{cmp::min, collections::HashMap};
 use tari_storage::{IterationResult, KeyValueStore};
@@ -116,7 +116,7 @@ where DS: KeyValueStore<PeerKey, Peer>
         &mut self,
         public_key: &CommsPublicKey,
         node_id: Option<NodeId>,
-        net_addresses: Option<Vec<NetAddress>>,
+        net_addresses: Option<Vec<Multiaddr>>,
         flags: Option<PeerFlags>,
         peer_features: Option<PeerFeatures>,
         connection_stats: Option<PeerConnectionStats>,
@@ -379,7 +379,7 @@ where DS: KeyValueStore<PeerKey, Peer>
     }
 
     /// Enables Thread safe access - Adds a new net address to the peer if it doesn't yet exist
-    pub fn add_net_address(&mut self, node_id: &NodeId, net_address: &NetAddress) -> Result<(), PeerManagerError> {
+    pub fn add_net_address(&mut self, node_id: &NodeId, net_address: &Multiaddr) -> Result<(), PeerManagerError> {
         let peer_key = *self
             .node_id_index
             .get(&node_id)
@@ -394,28 +394,6 @@ where DS: KeyValueStore<PeerKey, Peer>
             .insert(peer_key, peer)
             .map_err(PeerManagerError::DatabaseError)
     }
-
-    /// Enables Thread safe access - Finds and returns the highest priority net address until all connection attempts
-    /// for each net address have been reached
-    pub fn get_best_net_address(&mut self, node_id: &NodeId) -> Result<NetAddress, PeerManagerError> {
-        let peer_key = *self
-            .node_id_index
-            .get(&node_id)
-            .ok_or(PeerManagerError::PeerNotFoundError)?;
-        let mut peer: Peer = self
-            .peer_db
-            .get(&peer_key)
-            .map_err(PeerManagerError::DatabaseError)?
-            .ok_or(PeerManagerError::PeerNotFoundError)?;
-        let best_net_address = peer
-            .addresses
-            .get_best_net_address()
-            .map_err(PeerManagerError::NetAddressError)?;
-        self.peer_db
-            .insert(peer_key, peer)
-            .map_err(PeerManagerError::DatabaseError)?;
-        Ok(best_net_address)
-    }
 }
 
 impl Into<CommsDatabase> for PeerStorage<CommsDatabase> {
@@ -428,7 +406,7 @@ impl Into<CommsDatabase> for PeerStorage<CommsDatabase> {
 mod test {
     use super::*;
     use crate::{
-        connection::net_address::{net_addresses::NetAddressesWithStats, NetAddress},
+        connection::net_address::NetAddressesWithStats,
         peer_manager::{peer::PeerFlags, PeerFeatures},
     };
     use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
@@ -440,9 +418,9 @@ mod test {
         let mut rng = rand::OsRng::new().unwrap();
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk).unwrap();
-        let net_address1 = NetAddress::from("1.2.3.4:8000".parse::<NetAddress>().unwrap());
-        let net_address2 = NetAddress::from("5.6.7.8:8000".parse::<NetAddress>().unwrap());
-        let net_address3 = NetAddress::from("5.6.7.8:7000".parse::<NetAddress>().unwrap());
+        let net_address1 = "/ip4/1.2.3.4/tcp/8000".parse::<Multiaddr>().unwrap();
+        let net_address2 = "/ip4/5.6.7.8/tcp/8000".parse::<Multiaddr>().unwrap();
+        let net_address3 = "/ip4/5.6.7.8/tcp/7000".parse::<Multiaddr>().unwrap();
         let mut net_addresses = NetAddressesWithStats::from(net_address1.clone());
         net_addresses.add_net_address(&net_address2);
         net_addresses.add_net_address(&net_address3);
@@ -450,14 +428,14 @@ mod test {
 
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk).unwrap();
-        let net_address4 = NetAddress::from("9.10.11.12:7000".parse::<NetAddress>().unwrap());
+        let net_address4 = "/ip4/9.10.11.12/tcp/7000".parse::<Multiaddr>().unwrap();
         let net_addresses = NetAddressesWithStats::from(net_address4.clone());
         let peer2: Peer = Peer::new(pk, node_id, net_addresses, PeerFlags::default(), PeerFeatures::empty());
 
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk).unwrap();
-        let net_address5 = NetAddress::from("13.14.15.16:6000".parse::<NetAddress>().unwrap());
-        let net_address6 = NetAddress::from("17.18.19.20:8000".parse::<NetAddress>().unwrap());
+        let net_address5 = "/ip4/13.14.15.16/tcp/6000".parse::<Multiaddr>().unwrap();
+        let net_address6 = "/ip4/17.18.19.20/tcp/8000".parse::<Multiaddr>().unwrap();
         let mut net_addresses = NetAddressesWithStats::from(net_address5.clone());
         net_addresses.add_net_address(&net_address6);
         let peer3 = Peer::new(pk, node_id, net_addresses, PeerFlags::default(), PeerFeatures::empty());
@@ -495,9 +473,9 @@ mod test {
         let mut rng = rand::OsRng::new().unwrap();
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk).unwrap();
-        let net_address1 = NetAddress::from("1.2.3.4:8000".parse::<NetAddress>().unwrap());
-        let net_address2 = NetAddress::from("5.6.7.8:8000".parse::<NetAddress>().unwrap());
-        let net_address3 = NetAddress::from("5.6.7.8:7000".parse::<NetAddress>().unwrap());
+        let net_address1 = "/ip4/1.2.3.4/tcp/8000".parse::<Multiaddr>().unwrap();
+        let net_address2 = "/ip4/5.6.7.8/tcp/8000".parse::<Multiaddr>().unwrap();
+        let net_address3 = "/ip4/5.6.7.8/tcp/7000".parse::<Multiaddr>().unwrap();
         let mut net_addresses = NetAddressesWithStats::from(net_address1.clone());
         net_addresses.add_net_address(&net_address2);
         net_addresses.add_net_address(&net_address3);
@@ -505,14 +483,14 @@ mod test {
 
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk).unwrap();
-        let net_address4 = NetAddress::from("9.10.11.12:7000".parse::<NetAddress>().unwrap());
+        let net_address4 = "/ip4/9.10.11.12/tcp/7000".parse::<Multiaddr>().unwrap();
         let net_addresses = NetAddressesWithStats::from(net_address4.clone());
         let peer2: Peer = Peer::new(pk, node_id, net_addresses, PeerFlags::default(), PeerFeatures::empty());
 
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk).unwrap();
-        let net_address5 = NetAddress::from("13.14.15.16:6000".parse::<NetAddress>().unwrap());
-        let net_address6 = NetAddress::from("17.18.19.20:8000".parse::<NetAddress>().unwrap());
+        let net_address5 = "/ip4/13.14.15.16/tcp/6000".parse::<Multiaddr>().unwrap();
+        let net_address6 = "/ip4/17.18.19.20/tcp/8000".parse::<Multiaddr>().unwrap();
         let mut net_addresses = NetAddressesWithStats::from(net_address5.clone());
         net_addresses.add_net_address(&net_address6);
         let peer3 = Peer::new(pk, node_id, net_addresses, PeerFlags::default(), PeerFeatures::empty());

@@ -97,7 +97,8 @@ fn with_alice_and_bob(cb: impl FnOnce(CommsTestNode, CommsTestNode)) {
     // Start node B's control service
     let bob_control_service = ControlService::new(context.clone(), bob_identity.clone(), ControlServiceConfig {
         socks_proxy_address: None,
-        listener_address: bob_control_port_address,
+        listening_address: bob_control_port_address,
+        public_peer_address: None,
         requested_connection_timeout: Duration::from_millis(5000),
     })
     .serve(Arc::clone(&bob_connection_manager))
@@ -131,7 +132,8 @@ fn with_alice_and_bob(cb: impl FnOnce(CommsTestNode, CommsTestNode)) {
     let alice_control_port_address = factories::net_address::create().build().unwrap();
     let alice_control_service = ControlService::new(context.clone(), alice_identity.clone(), ControlServiceConfig {
         socks_proxy_address: None,
-        listener_address: alice_control_port_address.clone(),
+        listening_address: alice_control_port_address.clone(),
+        public_peer_address: None,
         requested_connection_timeout: Duration::from_millis(5000),
     })
     .serve(Arc::clone(&alice_connection_manager))

@@ -46,7 +46,7 @@ use log4rs::{
 use std::{marker::PhantomData, sync::Arc};
 use tari_comms::{
     builder::CommsNode,
-    connection::{net_address::NetAddressWithStats, NetAddressesWithStats},
+    multiaddr::Multiaddr,
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
     types::{CommsPublicKey, CommsSecretKey},
 };
@@ -208,10 +208,11 @@ where
 
     /// This function will add a base_node
     pub fn add_base_node_peer(&mut self, public_key: CommsPublicKey, net_address: String) -> Result<(), WalletError> {
+        let address = net_address.parse::<Multiaddr>()?;
         let peer = Peer::new(
             public_key.clone(),
             NodeId::from_key(&public_key).unwrap(),
-            NetAddressesWithStats::new(vec![NetAddressWithStats::new(net_address.as_str().parse()?)]),
+            vec![address].into(),
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_NODE,
         );

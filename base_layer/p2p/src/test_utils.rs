@@ -23,7 +23,7 @@
 use rand::rngs::OsRng;
 use std::sync::Arc;
 use tari_comms::{
-    connection::NetAddress,
+    multiaddr::Multiaddr,
     peer_manager::{NodeIdentity, Peer, PeerFeatures, PeerFlags},
     utils::signature,
 };
@@ -54,7 +54,7 @@ pub fn make_node_identity() -> Arc<NodeIdentity> {
     Arc::new(
         NodeIdentity::random(
             &mut OsRng::new().unwrap(),
-            "127.0.0.1:9000".parse().unwrap(),
+            "/ip4/127.0.0.1/tcp/9000".parse().unwrap(),
             PeerFeatures::COMMUNICATION_NODE,
         )
         .unwrap(),
@@ -86,7 +86,7 @@ pub fn make_dht_inbound_message(
         Peer::new(
             node_identity.public_key().clone(),
             node_identity.node_id().clone(),
-            Vec::<NetAddress>::new().into(),
+            Vec::<Multiaddr>::new().into(),
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_NODE,
         ),

@@ -21,7 +21,6 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    connection::net_address::NetAddress,
     peer_manager::{
         connection_stats::PeerConnectionStats,
         node_id::NodeId,
@@ -34,6 +33,7 @@ use crate::{
     },
     types::{CommsDatabase, CommsPublicKey},
 };
+use multiaddr::Multiaddr;
 use std::sync::RwLock;
 
 /// The PeerManager consist of a routing table of previously discovered peers.
@@ -63,7 +63,7 @@ impl PeerManager {
         &self,
         public_key: &CommsPublicKey,
         node_id: Option<NodeId>,
-        net_addresses: Option<Vec<NetAddress>>,
+        net_addresses: Option<Vec<Multiaddr>>,
         flags: Option<PeerFlags>,
         peer_features: Option<PeerFeatures>,
         connection_stats: Option<PeerConnectionStats>,
@@ -185,14 +185,8 @@ impl PeerManager {
     }
 
     /// Thread safe access to peer - Adds a new net address to the peer if it doesn't yet exist
-    pub fn add_net_address(&self, node_id: &NodeId, net_address: &NetAddress) -> Result<(), PeerManagerError> {
+    pub fn add_net_address(&self, node_id: &NodeId, net_address: &Multiaddr) -> Result<(), PeerManagerError> {
         acquire_write_lock!(self.peer_storage).add_net_address(node_id, net_address)
-    }
-
-    /// Thread safe access to peer - Finds and returns the highest priority net address until all connection attempts
-    /// for each net address have been reached
-    pub fn get_best_net_address(&self, node_id: &NodeId) -> Result<NetAddress, PeerManagerError> {
-        acquire_write_lock!(self.peer_storage).get_best_net_address(node_id)
     }
 }
 
@@ -200,7 +194,7 @@ impl PeerManager {
 mod test {
     use super::*;
     use crate::{
-        connection::net_address::{net_addresses::NetAddressesWithStats, NetAddress},
+        connection::net_address::NetAddressesWithStats,
         peer_manager::{
             node_id::NodeId,
             peer::{Peer, PeerFlags},
@@ -214,7 +208,7 @@ mod test {
     fn create_test_peer(rng: &mut OsRng, ban_flag: bool) -> Peer {
         let (_sk, pk) = RistrettoPublicKey::random_keypair(rng);
         let node_id = NodeId::from_key(&pk).unwrap();
-        let net_addresses = NetAddressesWithStats::from("1.2.3.4:8000".parse::<NetAddress>().unwrap());
+        let net_addresses = NetAddressesWithStats::from("/ip4/1.2.3.4/tcp/8000".parse::<Multiaddr>().unwrap());
         let mut peer = Peer::new(
             pk,
             node_id,

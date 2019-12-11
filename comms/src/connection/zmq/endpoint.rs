@@ -22,14 +22,18 @@
 
 /// Any type that can be represented as a ZeroMQ endpoint string
 pub trait ZmqEndpoint {
+    type Error;
+
     /// Convert to a ZeroMQ endpoint string
-    fn to_zmq_endpoint(&self) -> String;
+    fn to_zmq_endpoint(&self) -> Result<String, Self::Error>;
 }
 
 impl<T> ZmqEndpoint for &T
 where T: ZmqEndpoint
 {
-    fn to_zmq_endpoint(&self) -> String {
+    type Error = T::Error;
+
+    fn to_zmq_endpoint(&self) -> Result<String, Self::Error> {
         (*self).to_zmq_endpoint()
     }
 }

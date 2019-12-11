@@ -53,6 +53,8 @@ pub enum PeerConnectionError {
     #[error(no_from)]
     SendFailure(ConnectionError),
     #[error(msg_embedded, no_from, non_std)]
+    OperationFailed(String),
+    #[error(msg_embedded, no_from, non_std)]
     InvalidOperation(String),
     /// Peer connection channel backlog did not clear after many attempts
     ChannelBacklogError,

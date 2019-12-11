@@ -40,8 +40,8 @@ use log::*;
 use rand::RngCore;
 use std::{collections::HashMap, sync::Arc};
 use tari_comms::{
-    connection::NetAddress,
     log_if_error,
+    multiaddr::Multiaddr,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManager},
     types::CommsPublicKey,
 };
@@ -230,7 +230,7 @@ impl DhtDiscoveryService {
         &self,
         pubkey: &CommsPublicKey,
         node_id: NodeId,
-        net_addresses: Vec<NetAddress>,
+        net_addresses: Vec<Multiaddr>,
         peer_features: PeerFeatures,
     ) -> Result<Peer, DhtDiscoveryError>
     {

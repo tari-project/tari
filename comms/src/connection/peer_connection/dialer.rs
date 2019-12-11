@@ -35,9 +35,9 @@ use crate::{
         zmq::ZmqIdentity,
         Direction,
         InprocAddress,
-        NetAddress,
     },
     message::FrameSet,
+    utils::multiaddr::multiaddr_to_socketaddr,
 };
 use log::*;
 use std::{
@@ -348,10 +348,7 @@ impl PeerConnectionDialer {
             PeerConnectionState::Connecting(thread_ctl) => {
                 let info = ConnectionInfo {
                     control_messenger: thread_ctl.clone(),
-                    connected_address: match self.context.peer_address {
-                        NetAddress::IP(ref socket_addr) => Some(socket_addr.clone()),
-                        _ => None,
-                    },
+                    connected_address: multiaddr_to_socketaddr(&self.context.peer_address).ok().map(Into::into),
                 };
                 info!(target: LOG_TARGET, "[{}] Connected", self.context.peer_address);
                 self.set_state(&mut lock, PeerConnectionState::Connected(Arc::new(info)));

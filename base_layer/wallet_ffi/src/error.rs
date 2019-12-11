@@ -22,7 +22,7 @@
 use derive_error::Error;
 use log::*;
 use tari_comms::{
-    connection::net_address::NetAddressError,
+    multiaddr,
     peer_manager::{node_id::NodeIdError, node_identity::NodeIdentityError},
 };
 use tari_utilities::{hex::HexError, ByteArrayError};
@@ -174,7 +174,7 @@ impl From<WalletError> for LibWalletError {
                 message: format!("{:?}", w),
             },
             // Comms Stack errors
-            WalletError::NetAddressError(NetAddressError::ParseFailed) => Self {
+            WalletError::MultiaddrError(_) => Self {
                 code: 301,
                 message: format!("{:?}", w),
             },
@@ -275,27 +275,27 @@ impl From<NodeIdentityError> for LibWalletError {
     }
 }
 
-impl From<NetAddressError> for LibWalletError {
-    fn from(n: NetAddressError) -> Self {
+impl From<multiaddr::Error> for LibWalletError {
+    fn from(n: multiaddr::Error) -> Self {
         error!(target: LOG_TARGET, "{}", format!("{:?}", n));
         match n {
-            NetAddressError::ParseFailed => Self {
+            multiaddr::Error::ParsingError(_) => Self {
                 code: 801,
                 message: format!("{:?}", n).to_string(),
             },
-            NetAddressError::InvalidPortRange => Self {
+            multiaddr::Error::InvalidMultiaddr => Self {
                 code: 802,
                 message: format!("{:?}", n).to_string(),
             },
-            NetAddressError::AddressNotFound => Self {
+            multiaddr::Error::MissingAddress => Self {
                 code: 803,
                 message: format!("{:?}", n).to_string(),
             },
-            NetAddressError::NoValidAddresses => Self {
+            multiaddr::Error::UnknownProtocol => Self {
                 code: 804,
                 message: format!("{:?}", n).to_string(),
             },
-            NetAddressError::ConnectionAttemptsExceeded => Self {
+            multiaddr::Error::UnknownProtocolString => Self {
                 code: 805,
                 message: format!("{:?}", n).to_string(),
             },

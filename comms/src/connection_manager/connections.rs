@@ -272,7 +272,8 @@ mod test {
         let connections = LivePeerConnections::new();
 
         let node_id = make_node_id();
-        let (conn, _receiver) = PeerConnection::new_with_connecting_state_for_test("127.0.0.1:0".parse().unwrap());
+        let (conn, _receiver) =
+            PeerConnection::new_with_connecting_state_for_test("/ip4/127.0.0.1/tcp/0".parse().unwrap());
         let join_handle = make_join_handle();
 
         connections
@@ -313,7 +314,7 @@ mod test {
 
         for _i in 0..3 {
             let node_id = make_node_id();
-            let (conn, _) = PeerConnection::new_with_connecting_state_for_test("127.0.0.1:0".parse().unwrap());
+            let (conn, _) = PeerConnection::new_with_connecting_state_for_test("/ip4/127.0.0.1/tcp/0".parse().unwrap());
             let join_handle = make_join_handle();
 
             connections
@@ -331,7 +332,8 @@ mod test {
         let connections = LivePeerConnections::with_max_connections(2);
 
         let add_active_conn = |node_id| {
-            let (conn, rx) = PeerConnection::new_with_connecting_state_for_test("127.0.0.1:0".parse().unwrap());
+            let (conn, rx) =
+                PeerConnection::new_with_connecting_state_for_test("/ip4/127.0.0.1/tcp/0".parse().unwrap());
             let join_handle = make_join_handle();
 
             (

@@ -20,7 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::transports::{utils, Transport};
+use super::Transport;
+use crate::utils::multiaddr::{multiaddr_to_socketaddr, socketaddr_to_multiaddr};
 use futures::{io::Error, ready, stream::BoxStream, AsyncRead, AsyncWrite, Future, Poll, Stream, StreamExt};
 use multiaddr::Multiaddr;
 use std::{io, pin::Pin, task::Context, time::Duration};
@@ -97,9 +98,9 @@ impl Transport for TcpTransport {
     fn listen(&self, addr: Multiaddr) -> Self::ListenFuture {
         let config = self.clone();
         Box::pin(async move {
-            let socket_addr = utils::multiaddr_to_socketaddr(addr)?;
+            let socket_addr = multiaddr_to_socketaddr(&addr)?;
             let listener = TcpListener::bind(&socket_addr).await?;
-            let local_addr = utils::socketaddr_to_multiaddr(listener.local_addr()?);
+            let local_addr = socketaddr_to_multiaddr(&listener.local_addr()?);
             Ok((
                 TcpInbound {
                     incoming: listener.incoming().boxed(),
@@ -113,10 +114,10 @@ impl Transport for TcpTransport {
     fn dial(&self, addr: Multiaddr) -> Self::DialFuture {
         let config = self.clone();
         Box::pin(async move {
-            let socket_addr = utils::multiaddr_to_socketaddr(addr)?;
+            let socket_addr = multiaddr_to_socketaddr(&addr)?;
             let stream = TcpStream::connect(&socket_addr).await?;
             config.configure(&stream)?;
-            let peer_addr = utils::socketaddr_to_multiaddr(stream.peer_addr()?);
+            let peer_addr = socketaddr_to_multiaddr(&stream.peer_addr()?);
             Ok((TcpSocket::new(stream), peer_addr))
         })
     }
@@ -137,7 +138,7 @@ impl Stream for TcpInbound<'_> {
             Some(Ok(stream)) => {
                 // Configure each socket
                 self.config.configure(&stream)?;
-                let peer_addr = utils::socketaddr_to_multiaddr(stream.peer_addr()?);
+                let peer_addr = socketaddr_to_multiaddr(&stream.peer_addr()?);
                 Poll::Ready(Some(Ok((TcpSocket::new(stream), peer_addr))))
             },
             Some(Err(err)) => Poll::Ready(Some(Err(err))),

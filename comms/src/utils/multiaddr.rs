@@ -27,7 +27,7 @@ use std::{
 };
 
 /// Convert a socket address to a multiaddress
-pub fn socketaddr_to_multiaddr(socket_addr: SocketAddr) -> Multiaddr {
+pub fn socketaddr_to_multiaddr(socket_addr: &SocketAddr) -> Multiaddr {
     let mut addr: Multiaddr = match socket_addr.ip() {
         IpAddr::V4(addr) => AddrComponent::IP4(addr).into(),
         IpAddr::V6(addr) => AddrComponent::IP6(addr).into(),
@@ -37,7 +37,7 @@ pub fn socketaddr_to_multiaddr(socket_addr: SocketAddr) -> Multiaddr {
 }
 
 /// Convert a multiaddr to a socket address required for `TcpStream`
-pub fn multiaddr_to_socketaddr(addr: Multiaddr) -> io::Result<SocketAddr> {
+pub fn multiaddr_to_socketaddr(addr: &Multiaddr) -> io::Result<SocketAddr> {
     let mut addr_iter = addr.iter();
     let network_proto = addr_iter.next().ok_or(io::Error::new(
         io::ErrorKind::InvalidInput,
@@ -66,11 +66,12 @@ pub fn multiaddr_to_socketaddr(addr: Multiaddr) -> io::Result<SocketAddr> {
 }
 
 /// Creates a Multiaddr from AddrComponents. This macro currently only supports tuple AddrComponents
+#[macro_export]
 macro_rules! multiaddr_from_components {
     ($first:ident ( $($first_vars:expr),+ )$(,)? $($parts:ident ( $($var:expr),+ )),* ) => {{
-        let mut addr: multiaddr::Multiaddr = multiaddr::AddrComponent::$first($($first_vars),*).into();
+        let mut addr: $crate::multiaddr::Multiaddr = $crate::multiaddr::AddrComponent::$first($($first_vars),*).into();
         $(
-            addr.append(multiaddr::AddrComponent::$parts($($var),+));
+            addr.append($crate::multiaddr::AddrComponent::$parts($($var),+));
         )*
         addr
     }};
@@ -85,7 +86,7 @@ mod test {
     fn multiaddr_to_socketaddr_ok() {
         fn expect_success(addr: &str, expected_ip: &str) {
             let addr = Multiaddr::from_str(addr).unwrap();
-            let sock_addr = super::multiaddr_to_socketaddr(addr).unwrap();
+            let sock_addr = super::multiaddr_to_socketaddr(&addr).unwrap();
             assert_eq!(sock_addr.ip().to_string(), expected_ip);
         }
 
@@ -97,7 +98,7 @@ mod test {
     fn multiaddr_to_socketaddr_err() {
         fn expect_fail(addr: &str) {
             let addr = Multiaddr::from_str(addr).unwrap();
-            let err = super::multiaddr_to_socketaddr(addr).unwrap_err();
+            let err = super::multiaddr_to_socketaddr(&addr).unwrap_err();
             assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
         }
 
