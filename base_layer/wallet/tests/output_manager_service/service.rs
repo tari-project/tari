@@ -20,10 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::support::{
-    data::create_temporary_sqlite_path,
-    utils::{make_input, TestParams},
-};
+use crate::support::utils::{make_input, random_string, TestParams};
 use rand::RngCore;
 use std::{thread, time::Duration};
 use tari_crypto::{
@@ -52,6 +49,7 @@ use tari_wallet::output_manager_service::{
     OutputManagerConfig,
     OutputManagerServiceInitializer,
 };
+use tempdir::TempDir;
 use tokio::runtime::Runtime;
 
 pub fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
@@ -166,7 +164,11 @@ fn sending_transaction_and_confirmation_memory_db() {
 
 #[test]
 fn sending_transaction_and_confirmation_sqlite_db() {
-    sending_transaction_and_confirmation(OutputManagerSqliteDatabase::new(create_temporary_sqlite_path()).unwrap());
+    let db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let db_tempdir = TempDir::new(random_string(8).as_str()).unwrap();
+    let db_folder = db_tempdir.path().to_str().unwrap().to_string();
+    let db_path = format!("{}/{}", db_folder, db_name);
+    sending_transaction_and_confirmation(OutputManagerSqliteDatabase::new(db_path).unwrap());
 }
 
 fn send_not_enough_funds<T: OutputManagerBackend + 'static>(backend: T) {
@@ -213,7 +215,11 @@ fn send_not_enough_funds_memory_db() {
 
 #[test]
 fn send_not_enough_funds_sqlite_db() {
-    send_not_enough_funds(OutputManagerSqliteDatabase::new(create_temporary_sqlite_path()).unwrap());
+    let db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let db_tempdir = TempDir::new(random_string(8).as_str()).unwrap();
+    let db_folder = db_tempdir.path().to_str().unwrap().to_string();
+    let db_path = format!("{}/{}", db_folder, db_name);
+    send_not_enough_funds(OutputManagerSqliteDatabase::new(db_path).unwrap());
 }
 
 fn send_no_change<T: OutputManagerBackend + 'static>(backend: T) {
@@ -293,7 +299,11 @@ fn send_no_change_memory_db() {
 
 #[test]
 fn send_no_change_sqlite_db() {
-    send_no_change(OutputManagerSqliteDatabase::new(create_temporary_sqlite_path()).unwrap());
+    let db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let db_tempdir = TempDir::new(random_string(8).as_str()).unwrap();
+    let db_folder = db_tempdir.path().to_str().unwrap().to_string();
+    let db_path = format!("{}/{}", db_folder, db_name);
+    send_no_change(OutputManagerSqliteDatabase::new(db_path).unwrap());
 }
 
 fn send_not_enough_for_change<T: OutputManagerBackend + 'static>(backend: T) {
@@ -343,7 +353,11 @@ fn send_not_enough_for_change_memory_db() {
 
 #[test]
 fn send_not_enough_for_change_sqlite_db() {
-    send_not_enough_for_change(OutputManagerSqliteDatabase::new(create_temporary_sqlite_path()).unwrap());
+    let db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let db_tempdir = TempDir::new(random_string(8).as_str()).unwrap();
+    let db_folder = db_tempdir.path().to_str().unwrap().to_string();
+    let db_path = format!("{}/{}", db_folder, db_name);
+    send_not_enough_for_change(OutputManagerSqliteDatabase::new(db_path).unwrap());
 }
 
 fn receiving_and_confirmation<T: OutputManagerBackend + 'static>(backend: T) {
@@ -389,7 +403,11 @@ fn receiving_and_confirmation_memory_db() {
 
 #[test]
 fn receiving_and_confirmation_sqlite_db() {
-    receiving_and_confirmation(OutputManagerSqliteDatabase::new(create_temporary_sqlite_path()).unwrap());
+    let db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let db_tempdir = TempDir::new(random_string(8).as_str()).unwrap();
+    let db_folder = db_tempdir.path().to_str().unwrap().to_string();
+    let db_path = format!("{}/{}", db_folder, db_name);
+    receiving_and_confirmation(OutputManagerSqliteDatabase::new(db_path).unwrap());
 }
 
 fn cancel_transaction<T: OutputManagerBackend + 'static>(backend: T) {
@@ -443,7 +461,11 @@ fn cancel_transaction_memory_db() {
 
 #[test]
 fn cancel_transaction_sqlite_db() {
-    cancel_transaction(OutputManagerSqliteDatabase::new(create_temporary_sqlite_path()).unwrap());
+    let db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let db_tempdir = TempDir::new(random_string(8).as_str()).unwrap();
+    let db_folder = db_tempdir.path().to_str().unwrap().to_string();
+    let db_path = format!("{}/{}", db_folder, db_name);
+    cancel_transaction(OutputManagerSqliteDatabase::new(db_path).unwrap());
 }
 
 fn timeout_transaction<T: OutputManagerBackend + 'static>(backend: T) {
@@ -502,7 +524,11 @@ fn timeout_transaction_memory_db() {
 
 #[test]
 fn timeout_transaction_sqlite_db() {
-    timeout_transaction(OutputManagerSqliteDatabase::new(create_temporary_sqlite_path()).unwrap());
+    let db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let db_tempdir = TempDir::new(random_string(8).as_str()).unwrap();
+    let db_folder = db_tempdir.path().to_str().unwrap().to_string();
+    let db_path = format!("{}/{}", db_folder, db_name);
+    timeout_transaction(OutputManagerSqliteDatabase::new(db_path).unwrap());
 }
 
 fn test_get_balance<T: OutputManagerBackend + 'static>(backend: T) {
@@ -560,7 +586,11 @@ fn test_get_balance_memory_db() {
 
 #[test]
 fn test_get_balance_sqlite_db() {
-    test_get_balance(OutputManagerSqliteDatabase::new(create_temporary_sqlite_path()).unwrap());
+    let db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let db_tempdir = TempDir::new(random_string(8).as_str()).unwrap();
+    let db_folder = db_tempdir.path().to_str().unwrap().to_string();
+    let db_path = format!("{}/{}", db_folder, db_name);
+    test_get_balance(OutputManagerSqliteDatabase::new(db_path).unwrap());
 }
 
 fn test_confirming_received_output<T: OutputManagerBackend + 'static>(backend: T) {
@@ -601,5 +631,9 @@ fn test_confirming_received_output_memory_db() {
 
 #[test]
 fn test_confirming_received_output_sqlite_db() {
-    test_confirming_received_output(OutputManagerSqliteDatabase::new(create_temporary_sqlite_path()).unwrap());
+    let db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let db_tempdir = TempDir::new(random_string(8).as_str()).unwrap();
+    let db_folder = db_tempdir.path().to_str().unwrap().to_string();
+    let db_path = format!("{}/{}", db_folder, db_name);
+    test_confirming_received_output(OutputManagerSqliteDatabase::new(db_path).unwrap());
 }

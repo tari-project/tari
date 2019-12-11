@@ -66,6 +66,7 @@ use tari_wallet::{
         OutputManagerServiceInitializer,
     },
     transaction_service::{
+        error::TransactionServiceError,
         handle::{TransactionEvent, TransactionServiceHandle},
         service::TransactionService,
         storage::{
@@ -76,9 +77,10 @@ use tari_wallet::{
         TransactionServiceInitializer,
     },
 };
+use tempdir::TempDir;
 use tokio::runtime::{Builder, Runtime};
 
-pub fn setup_transaction_service<T: TransactionBackend + 'static>(
+pub fn setup_transaction_service<T: TransactionBackend + Clone + 'static>(
     runtime: &Runtime,
     master_key: PrivateKey,
     node_identity: NodeIdentity,
@@ -127,7 +129,7 @@ pub fn setup_transaction_service<T: TransactionBackend + 'static>(
 
 /// This utility function creates a Transaction service without using the Service Framework Stack and exposes all the
 /// streams for testing purposes.
-pub fn setup_transaction_service_no_comms<T: TransactionBackend + 'static>(
+pub fn setup_transaction_service_no_comms<T: TransactionBackend + Clone + 'static>(
     runtime: &Runtime,
     master_key: PrivateKey,
     factories: CryptoFactories,
@@ -197,7 +199,7 @@ pub fn setup_transaction_service_no_comms<T: TransactionBackend + 'static>(
     )
 }
 
-fn manage_single_transaction<T: TransactionBackend + 'static>(
+fn manage_single_transaction<T: TransactionBackend + Clone + 'static>(
     alice_backend: T,
     bob_backend: T,
     port_offset: i32,
@@ -342,7 +344,7 @@ fn manage_single_transaction_sqlite_db() {
     });
 }
 
-fn manage_multiple_transactions<T: TransactionBackend + 'static>(
+fn manage_multiple_transactions<T: TransactionBackend + Clone + 'static>(
     alice_backend: T,
     bob_backend: T,
     carol_backend: T,
@@ -530,7 +532,7 @@ fn manage_multiple_transactions_sqlite_db() {
     });
 }
 
-fn test_sending_repeated_tx_ids<T: TransactionBackend + 'static>(alice_backend: T, bob_backend: T) {
+fn test_sending_repeated_tx_ids<T: TransactionBackend + Clone + 'static>(alice_backend: T, bob_backend: T) {
     let runtime = Builder::new().core_threads(8).build().unwrap();
     let mut rng = OsRng::new().unwrap();
     let factories = CryptoFactories::default();
@@ -607,7 +609,7 @@ fn test_sending_repeated_tx_ids_sqlite_db() {
     });
 }
 
-fn test_accepting_unknown_tx_id_and_malformed_reply<T: TransactionBackend + 'static>(alice_backend: T) {
+fn test_accepting_unknown_tx_id_and_malformed_reply<T: TransactionBackend + Clone + 'static>(alice_backend: T) {
     let runtime = Builder::new().core_threads(8).build().unwrap();
     let mut rng = OsRng::new().unwrap();
     let factories = CryptoFactories::default();
@@ -697,7 +699,7 @@ fn test_accepting_unknown_tx_id_and_malformed_reply_sqlite_db() {
     });
 }
 
-fn finalize_tx_with_nonexistent_txid<T: TransactionBackend + 'static>(alice_backend: T) {
+fn finalize_tx_with_nonexistent_txid<T: TransactionBackend + Clone + 'static>(alice_backend: T) {
     let runtime = Builder::new().core_threads(8).build().unwrap();
     let mut rng = OsRng::new().unwrap();
     let factories = CryptoFactories::default();
@@ -752,7 +754,7 @@ fn finalize_tx_with_nonexistent_txid_sqlite_db() {
     });
 }
 
-fn finalize_tx_with_incorrect_pubkey<T: TransactionBackend + 'static>(alice_backend: T, bob_backend: T) {
+fn finalize_tx_with_incorrect_pubkey<T: TransactionBackend + Clone + 'static>(alice_backend: T, bob_backend: T) {
     let runtime = Builder::new().core_threads(8).build().unwrap();
     let mut rng = OsRng::new().unwrap();
     let factories = CryptoFactories::default();
@@ -858,7 +860,7 @@ fn finalize_tx_with_incorrect_pubkey_sqlite_db() {
     });
 }
 
-fn finalize_tx_with_missing_output<T: TransactionBackend + 'static>(alice_backend: T, bob_backend: T) {
+fn finalize_tx_with_missing_output<T: TransactionBackend + Clone + 'static>(alice_backend: T, bob_backend: T) {
     let runtime = Builder::new().core_threads(8).build().unwrap();
     let mut rng = OsRng::new().unwrap();
     let factories = CryptoFactories::default();
@@ -961,4 +963,145 @@ fn finalize_tx_with_missing_output_sqlite_db() {
             TransactionServiceSqliteDatabase::new(bob_db_path).unwrap(),
         );
     });
+}
+
+#[test]
+fn discovery_async_return_test() {
+    let db_tempdir = TempDir::new(random_string(8).as_str()).unwrap();
+    let db_folder = db_tempdir.path().to_str().unwrap().to_string();
+
+    let runtime = Runtime::new().unwrap();
+    let mut rng = OsRng::new().unwrap();
+    let factories = CryptoFactories::default();
+
+    let alice_backend = TransactionMemoryDatabase::new();
+    let bob_backend = TransactionMemoryDatabase::new();
+    let dave_backend = TransactionMemoryDatabase::new();
+    let port_offset = 1;
+
+    // Alice's parameters
+    let alice_seed = PrivateKey::random(&mut rng);
+    let alice_port = 30484 + port_offset;
+    let alice_node_identity = NodeIdentity::random(
+        &mut rng,
+        format!("127.0.0.1:{}", alice_port).parse().unwrap(),
+        PeerFeatures::COMMUNICATION_NODE,
+    )
+    .unwrap();
+
+    // Bob's parameters
+    let bob_seed = PrivateKey::random(&mut rng);
+    let bob_port = 30475 + port_offset;
+    let bob_node_identity = NodeIdentity::random(
+        &mut rng,
+        format!("127.0.0.1:{}", bob_port).parse().unwrap(),
+        PeerFeatures::COMMUNICATION_NODE,
+    )
+    .unwrap();
+
+    // Carols's parameters
+    let carol_port = 30488 + port_offset;
+    let carol_node_identity = NodeIdentity::random(
+        &mut rng,
+        format!("127.0.0.1:{}", carol_port).parse().unwrap(),
+        PeerFeatures::COMMUNICATION_NODE,
+    )
+    .unwrap();
+
+    // Carols's parameters
+    let dave_seed = PrivateKey::random(&mut rng);
+    let dave_port = 30498 + port_offset;
+    let dave_node_identity = NodeIdentity::random(
+        &mut rng,
+        format!("127.0.0.1:{}", dave_port).parse().unwrap(),
+        PeerFeatures::COMMUNICATION_NODE,
+    )
+    .unwrap();
+
+    let (mut alice_ts, mut alice_oms, _alice_comms) = setup_transaction_service(
+        &runtime,
+        alice_seed,
+        alice_node_identity.clone(),
+        vec![bob_node_identity.clone()],
+        factories.clone(),
+        alice_backend,
+        db_folder.clone(),
+    );
+    let alice_event_stream = alice_ts.get_event_stream_fused();
+
+    let (_bob_ts, _bob_oms, _bob_comms) = setup_transaction_service(
+        &runtime,
+        bob_seed,
+        bob_node_identity.clone(),
+        vec![
+            alice_node_identity.clone(),
+            carol_node_identity.clone(),
+            dave_node_identity.clone(),
+        ],
+        factories.clone(),
+        bob_backend,
+        db_folder.clone(),
+    );
+
+    let (_utxo, uo1a) = make_input(&mut rng, MicroTari(5500), &factories.commitment);
+    runtime.block_on(alice_oms.add_output(uo1a)).unwrap();
+    let (_utxo, uo1b) = make_input(&mut rng, MicroTari(3000), &factories.commitment);
+    runtime.block_on(alice_oms.add_output(uo1b)).unwrap();
+    let (_utxo, uo1c) = make_input(&mut rng, MicroTari(3000), &factories.commitment);
+    runtime.block_on(alice_oms.add_output(uo1c)).unwrap();
+
+    let initial_balance = runtime.block_on(alice_oms.get_balance()).unwrap();
+
+    let value_a_to_c_1 = MicroTari::from(1400);
+
+    let tx_id = match runtime.block_on(alice_ts.send_transaction(
+        carol_node_identity.public_key().clone(),
+        value_a_to_c_1,
+        MicroTari::from(20),
+        "Discovery Tx!".to_string(),
+    )) {
+        Err(TransactionServiceError::OutboundSendDiscoveryInProgress(tx_id)) => tx_id,
+        _ => {
+            assert!(false, "Send should not succeed as Peer is not known");
+            0u64
+        },
+    };
+    assert_ne!(initial_balance, runtime.block_on(alice_oms.get_balance()).unwrap());
+    let mut result = runtime.block_on(event_stream_count(alice_event_stream, 1, Duration::from_secs(10)));
+    assert_eq!(
+        result.remove(&TransactionEvent::TransactionSendDiscoveryFailure(tx_id)),
+        Some(1)
+    );
+
+    assert_eq!(initial_balance, runtime.block_on(alice_oms.get_balance()).unwrap());
+
+    let (_dave_ts, _dave_oms, _dave_comms) = setup_transaction_service(
+        &runtime,
+        dave_seed,
+        dave_node_identity.clone(),
+        vec![bob_node_identity.clone()],
+        factories.clone(),
+        dave_backend,
+        db_folder,
+    );
+
+    let tx_id2 = match runtime.block_on(alice_ts.send_transaction(
+        dave_node_identity.public_key().clone(),
+        value_a_to_c_1,
+        MicroTari::from(20),
+        "Discovery Tx2!".to_string(),
+    )) {
+        Err(TransactionServiceError::OutboundSendDiscoveryInProgress(tx_id)) => tx_id,
+        _ => {
+            assert!(false, "Send should not succeed as Peer is not known");
+            0u64
+        },
+    };
+    let alice_event_stream = alice_ts.get_event_stream_fused();
+    let mut result = runtime.block_on(event_stream_count(alice_event_stream, 3, Duration::from_secs(10)));
+
+    assert_eq!(
+        result.remove(&TransactionEvent::TransactionSendDiscoverySuccess(tx_id2)),
+        Some(1)
+    );
 }

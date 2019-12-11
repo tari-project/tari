@@ -52,6 +52,7 @@ use tari_utilities::ByteArray;
 const DATABASE_CONNECTION_TIMEOUT_MS: u64 = 2000;
 
 /// A Sqlite backend for the Transaction Service. The Backend is accessed via a connection pool to the Sqlite file.
+#[derive(Clone)]
 pub struct TransactionServiceSqliteDatabase {
     database_connection_pool: Pool<ConnectionManager<SqliteConnection>>,
 }

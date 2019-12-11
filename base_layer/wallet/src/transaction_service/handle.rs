@@ -20,11 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#[cfg(feature = "test_harness")]
-use crate::output_manager_service::TxId;
-use crate::transaction_service::{
-    error::TransactionServiceError,
-    storage::database::{CompletedTransaction, InboundTransaction, OutboundTransaction},
+use crate::{
+    output_manager_service::TxId,
+    transaction_service::{
+        error::TransactionServiceError,
+        storage::database::{CompletedTransaction, InboundTransaction, OutboundTransaction},
+    },
 };
 use futures::{stream::Fuse, StreamExt};
 use std::collections::HashMap;
@@ -86,6 +87,8 @@ pub enum TransactionEvent {
     ReceivedTransaction,
     ReceivedTransactionReply,
     ReceivedFinalizedTransaction,
+    TransactionSendDiscoverySuccess(TxId),
+    TransactionSendDiscoveryFailure(TxId),
     Error(String),
 }
 

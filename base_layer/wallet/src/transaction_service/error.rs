@@ -20,7 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{output_manager_service::error::OutputManagerError, transaction_service::storage::database::DbKey};
+use crate::{
+    output_manager_service::{error::OutputManagerError, TxId},
+    transaction_service::storage::database::DbKey,
+};
 use derive_error::Error;
 use diesel::result::Error as DieselError;
 use serde_json::Error as SerdeJsonError;
@@ -56,7 +59,16 @@ pub enum TransactionServiceError {
     InvalidSourcePublicKey,
     /// The transaction does not contain the receivers output
     ReceiverOutputNotFound,
-    OutboundError(DhtOutboundError),
+    /// Outbound Service send failed
+    OutboundSendFailure,
+    /// Outbound Service Discovery process needed to be conducted before message could be sent. The result of the
+    /// process will be communicated via the callback at some time in the future (could be minutes)
+    #[error(no_from, non_std)]
+    OutboundSendDiscoveryInProgress(TxId),
+    /// Discovery process failed to return a result
+    #[error(no_from, non_std)]
+    DiscoveryProcessFailed(TxId),
+    DhtOutboundError(DhtOutboundError),
     OutputManagerError(OutputManagerError),
     TransportChannelError(TransportChannelError),
     TransactionStorageError(TransactionStorageError),

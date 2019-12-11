@@ -156,7 +156,7 @@ pub fn create_wallet(
 /// This function will generate a set of test data for the supplied wallet. Takes a few seconds to complete
 pub fn generate_wallet_test_data<
     T: WalletBackend,
-    U: TransactionBackend,
+    U: TransactionBackend + Clone,
     V: OutputManagerBackend,
     W: ContactsBackend,
 >(
@@ -315,7 +315,7 @@ pub fn generate_wallet_test_data<
 /// CompletedTransaction with the Broadcast status indicating it is in a base node Mempool but not yet mined
 pub fn complete_sent_transaction<
     T: WalletBackend,
-    U: TransactionBackend,
+    U: TransactionBackend + Clone,
     V: OutputManagerBackend,
     W: ContactsBackend,
 >(
@@ -359,7 +359,7 @@ pub fn complete_sent_transaction<
 /// wallet sending a transaction to this wallet which will become a PendingInboundTransaction
 pub fn receive_test_transaction<
     T: WalletBackend,
-    U: TransactionBackend,
+    U: TransactionBackend + Clone,
     V: OutputManagerBackend,
     W: ContactsBackend,
 >(
@@ -379,7 +379,12 @@ pub fn receive_test_transaction<
     Ok(())
 }
 
-pub fn broadcast_transaction<T: WalletBackend, U: TransactionBackend, V: OutputManagerBackend, W: ContactsBackend>(
+pub fn broadcast_transaction<
+    T: WalletBackend,
+    U: TransactionBackend + Clone,
+    V: OutputManagerBackend,
+    W: ContactsBackend,
+>(
     wallet: &mut Wallet<T, U, V, W>,
     tx_id: TxId,
 ) -> Result<(), WalletError>
@@ -395,7 +400,12 @@ pub fn broadcast_transaction<T: WalletBackend, U: TransactionBackend, V: OutputM
 /// the event when a CompletedTransaction that is in the Broadcast status, is in a mempool but not mined, beocmes
 /// mined/confirmed. After this function is called the status of the CompletedTransaction becomes `Mined` and the funds
 /// that were pending become spent and available respectively.
-pub fn mine_transaction<T: WalletBackend, U: TransactionBackend, V: OutputManagerBackend, W: ContactsBackend>(
+pub fn mine_transaction<
+    T: WalletBackend,
+    U: TransactionBackend + Clone,
+    V: OutputManagerBackend,
+    W: ContactsBackend,
+>(
     wallet: &mut Wallet<T, U, V, W>,
     tx_id: TxId,
 ) -> Result<(), WalletError>
