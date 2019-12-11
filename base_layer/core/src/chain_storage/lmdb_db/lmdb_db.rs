@@ -745,8 +745,12 @@ where D: Digest + Send + Sync
         Ok(proof)
     }
 
-    fn fetch_mmr_checkpoint(&self, tree: MmrTree, index: u64) -> Result<MerkleCheckPoint, ChainStorageError> {
-        let index = index as usize;
+    fn fetch_mmr_checkpoint(&self, tree: MmrTree, height: u64) -> Result<MerkleCheckPoint, ChainStorageError> {
+        let pruning_horizon = self.fetch_pruning_horizon()?;
+        if height < pruning_horizon {
+            return Err(ChainStorageError::BeyondPruningHorizon);
+        }
+        let index = (height - pruning_horizon) as usize;
         let cp = match tree {
             MmrTree::Kernel => self
                 .kernel_mmr
@@ -936,5 +940,13 @@ where D: Digest + Send + Sync
     fn for_each_orphan<F>(&self, f: F) -> Result<(), ChainStorageError>
     where F: FnMut(Result<(HashOutput, Block), ChainStorageError>) {
         lmdb_for_each::<F, HashOutput, Block>(&self.env, &self.orphans_db, f)
+    }
+
+    fn fetch_pruning_horizon(&self) -> Result<u64, ChainStorageError> {
+        Ok(self
+            .header_mmr
+            .read()
+            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
+            .get_base_leaf_count() as u64)
     }
 }
