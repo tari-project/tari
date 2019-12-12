@@ -24,7 +24,7 @@
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 use crate::{
     blocks::BlockHeader,
-    consensus::{ConsensusConstants, ConsensusManager},
+    consensus::ConsensusConstants,
     proof_of_work::{PowError, ProofOfWork},
 };
 use derive_error::Error;
@@ -61,13 +61,9 @@ pub struct Block {
 }
 
 impl Block {
-    // create a total_coinbase offset containing all fees for the validation
-    pub fn calculate_coinbase_and_fees(&self, rules: &ConsensusManager) -> MicroTari {
-        let mut coinbase = rules.emission_schedule().block_reward(self.header.height);
-        for kernel in self.body.kernels() {
-            coinbase += kernel.fee;
-        }
-        coinbase
+    /// This function will calculate the total fees contained in a block
+    pub fn calculate_fees(&self) -> MicroTari {
+        self.body.kernels().iter().fold(0.into(), |sum, x| sum + x.fee)
     }
 
     /// This function will check spent kernel rules like tx lock height etc

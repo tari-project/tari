@@ -32,13 +32,12 @@ use tari_transactions::types::CryptoFactories;
 
 /// This validator tests whether a candidate block is internally consistent
 pub struct StatelessValidator {
-    rules: Arc<ConsensusManager>,
     factories: Arc<CryptoFactories>,
 }
 
 impl StatelessValidator {
-    pub fn new(rules: Arc<ConsensusManager>, factories: Arc<CryptoFactories>) -> Self {
-        Self { rules, factories }
+    pub fn new(factories: Arc<CryptoFactories>) -> Self {
+        Self { factories }
     }
 }
 
@@ -51,8 +50,6 @@ impl<B: BlockchainBackend> Validation<Block, B> for StatelessValidator {
         check_coinbase_output(block)?;
         // Check that the inputs are are allowed to be spent
         block.check_stxo_rules().map_err(BlockValidationError::from)?;
-        // Check accounting
-        check_accounting_balance(block, &self.rules, &self.factories)?;
         Ok(())
     }
 }
@@ -60,13 +57,15 @@ impl<B: BlockchainBackend> Validation<Block, B> for StatelessValidator {
 /// This block checks whether a block satisfies *all* consensus rules. If a block passes this validator, it is the
 /// next block on the blockchain.
 pub struct FullConsensusValidator<B: BlockchainBackend> {
-    rules: Arc<ConsensusManager>,
+    rules: ConsensusManager<B>,
     factories: Arc<CryptoFactories>,
     db: Option<BlockchainDatabase<B>>,
 }
 
-impl<B: BlockchainBackend> FullConsensusValidator<B> {
-    pub fn new(rules: Arc<ConsensusManager>, factories: Arc<CryptoFactories>) -> Self {
+impl<B: BlockchainBackend> FullConsensusValidator<B>
+where B: BlockchainBackend
+{
+    pub fn new(rules: ConsensusManager<B>, factories: Arc<CryptoFactories>) -> Self {
         Self {
             rules,
             factories,
@@ -92,7 +91,7 @@ impl<B: BlockchainBackend> Validation<Block, B> for FullConsensusValidator<B> {
     fn validate(&self, block: &Block) -> Result<(), ValidationError> {
         check_coinbase_output(block)?;
         block.check_stxo_rules().map_err(BlockValidationError::from)?;
-        check_accounting_balance(block, &self.rules, &self.factories)?;
+        check_accounting_balance(block, self.rules.clone(), &self.factories)?;
         check_inputs_are_utxos(block, self.db()?)?;
         check_timestamp_range(block, self.db()?)?;
         check_achieved_difficulty(&block.header, self.rules.clone())?;  // Update function signature once diff adjuster is complete
@@ -101,14 +100,14 @@ impl<B: BlockchainBackend> Validation<Block, B> for FullConsensusValidator<B> {
 }
 
 //-------------------------------------     Block validator helper functions     -------------------------------------//
-fn check_accounting_balance(
+fn check_accounting_balance<B: BlockchainBackend>(
     block: &Block,
-    rules: &ConsensusManager,
+    rules: ConsensusManager<B>,
     factories: &CryptoFactories,
 ) -> Result<(), ValidationError>
 {
     let offset = &block.header.total_kernel_offset;
-    let total_coinbase = block.calculate_coinbase_and_fees(rules);
+    let total_coinbase = rules.calculate_coinbase_and_fees(block);
     block
         .body
         .validate_internal_consistency(&offset, total_coinbase, factories)

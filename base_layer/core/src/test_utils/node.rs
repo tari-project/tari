@@ -28,6 +28,7 @@ use crate::{
     },
     blocks::Block,
     chain_storage::{BlockchainDatabase, MemoryDatabase, Validators},
+    consensus::ConsensusManager,
     mempool::{
         Mempool,
         MempoolConfig,
@@ -159,7 +160,8 @@ impl BaseNodeBuilder {
             self.mempool_config.unwrap_or(MempoolConfig::default()),
         );
         let diff_adj_manager = DiffAdjManager::new(blockchain_db.clone()).unwrap();
-
+        let consensus_manager = ConsensusManager::default();
+        consensus_manager.set_diff_manager(diff_adj_manager);
         let node_identity = self.node_identity.unwrap_or(random_node_identity());
         let (outbound_nci, local_nci, outbound_mp_interface, outbound_message_service, comms) =
             setup_base_node_services(
@@ -168,7 +170,7 @@ impl BaseNodeBuilder {
                 self.peers.unwrap_or(Vec::new()),
                 blockchain_db.clone(),
                 mempool.clone(),
-                diff_adj_manager,
+                consensus_manager,
                 self.base_node_service_config
                     .unwrap_or(BaseNodeServiceConfig::default()),
                 self.mempool_service_config.unwrap_or(MempoolServiceConfig::default()),
@@ -366,7 +368,7 @@ fn setup_base_node_services(
     peers: Vec<Arc<NodeIdentity>>,
     blockchain_db: BlockchainDatabase<MemoryDatabase<HashDigest>>,
     mempool: Mempool<MemoryDatabase<HashDigest>>,
-    diff_adj_manager: DiffAdjManager<MemoryDatabase<HashDigest>>,
+    consensus_manager: ConsensusManager<MemoryDatabase<HashDigest>>,
     base_node_service_config: BaseNodeServiceConfig,
     mempool_service_config: MempoolServiceConfig,
     data_path: &str,
@@ -388,7 +390,7 @@ fn setup_base_node_services(
             subscription_factory.clone(),
             blockchain_db,
             mempool.clone(),
-            diff_adj_manager,
+            consensus_manager,
             base_node_service_config,
         ))
         .add_initializer(MempoolServiceInitializer::new(

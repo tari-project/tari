@@ -21,7 +21,10 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-use crate::consensus::{ConsensusConstants, ConsensusManager};
+use crate::{
+    chain_storage::BlockchainBackend,
+    consensus::{ConsensusConstants, ConsensusManager},
+};
 use derive_error::Error;
 use std::sync::Arc;
 use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::PublicKey as PK};
@@ -50,7 +53,6 @@ pub enum CoinbaseBuildError {
 }
 
 pub struct CoinbaseBuilder {
-    rules: Arc<ConsensusManager>,
     factories: Arc<CryptoFactories>,
     block_height: Option<u64>,
     fees: Option<MicroTari>,
@@ -61,9 +63,8 @@ pub struct CoinbaseBuilder {
 impl CoinbaseBuilder {
     /// Start building a new Coinbase transaction. From here you can build the transaction piecemeal with the builder
     /// methods, or pass in a block to `using_block` to determine most of the coinbase parameters automatically.
-    pub fn new(rules: Arc<ConsensusManager>, factories: Arc<CryptoFactories>) -> Self {
+    pub fn new(factories: Arc<CryptoFactories>) -> Self {
         CoinbaseBuilder {
-            rules,
             factories,
             block_height: None,
             fees: None,
@@ -103,10 +104,10 @@ impl CoinbaseBuilder {
     ///
     /// After `build` is called, the struct is destroyed and the private keys stored are dropped and the memory zeroed
     /// out (by virtue of the zero_on_drop crate).
-    pub fn build(self) -> Result<Transaction, CoinbaseBuildError> {
+    pub fn build<B: BlockchainBackend>(self, rules: ConsensusManager<B>) -> Result<Transaction, CoinbaseBuildError> {
         let height = self.block_height.ok_or(CoinbaseBuildError::MissingBlockHeight)?;
         let reward =
-            self.rules.emission_schedule().block_reward(height) + self.fees.ok_or(CoinbaseBuildError::MissingFees)?;
+            rules.emission_schedule().block_reward(height) + self.fees.ok_or(CoinbaseBuildError::MissingFees)?;
         let nonce = self.private_nonce.ok_or(CoinbaseBuildError::MissingNonce)?;
         let public_nonce = PublicKey::from_secret_key(&nonce);
         let key = self.spend_key.ok_or(CoinbaseBuildError::MissingSpendKey)?;
@@ -148,36 +149,39 @@ mod test {
     use crate::{
         consensus::ConsensusManager,
         mining::{coinbase_builder::CoinbaseBuildError, CoinbaseBuilder},
-        test_utils::primitives::TestParams,
+        test_utils::{primitives::TestParams, test_common::MockBackend},
     };
     use std::sync::Arc;
     use tari_crypto::commitment::HomomorphicCommitmentFactory;
     use tari_transactions::{tari_amount::uT, transaction::OutputFlags, types::CryptoFactories};
-    fn get_builder() -> (CoinbaseBuilder, Arc<ConsensusManager>, Arc<CryptoFactories>) {
-        let rules = Arc::new(ConsensusManager::new());
+    fn get_builder() -> (CoinbaseBuilder, ConsensusManager<MockBackend>, Arc<CryptoFactories>) {
+        let rules = ConsensusManager::default();
         let factories = Arc::new(CryptoFactories::default());
-        (CoinbaseBuilder::new(rules.clone(), factories.clone()), rules, factories)
+        (CoinbaseBuilder::new(factories.clone()), rules, factories)
     }
 
     #[test]
     fn missing_height() {
-        let (builder, _, _) = get_builder();
-        assert_eq!(builder.build().unwrap_err(), CoinbaseBuildError::MissingBlockHeight);
+        let (builder, rules, _) = get_builder();
+        assert_eq!(
+            builder.build(rules).unwrap_err(),
+            CoinbaseBuildError::MissingBlockHeight
+        );
     }
 
     #[test]
     fn missing_fees() {
-        let (builder, _, _) = get_builder();
+        let (builder, rules, _) = get_builder();
         let builder = builder.with_block_height(42);
-        assert_eq!(builder.build().unwrap_err(), CoinbaseBuildError::MissingFees);
+        assert_eq!(builder.build(rules).unwrap_err(), CoinbaseBuildError::MissingFees);
     }
 
     #[test]
     fn missing_spend_key() {
         let p = TestParams::new();
-        let (builder, _, _) = get_builder();
+        let (builder, rules, _) = get_builder();
         let builder = builder.with_block_height(42).with_fees(0 * uT).with_nonce(p.nonce);
-        assert_eq!(builder.build().unwrap_err(), CoinbaseBuildError::MissingSpendKey);
+        assert_eq!(builder.build(rules).unwrap_err(), CoinbaseBuildError::MissingSpendKey);
     }
 
     #[test]
@@ -189,7 +193,7 @@ mod test {
             .with_fees(145 * uT)
             .with_nonce(p.nonce.clone())
             .with_spend_key(p.spend_key.clone());
-        let tx = builder.build().unwrap();
+        let tx = builder.build(rules.clone()).unwrap();
         let utxo = &tx.body.outputs()[0];
         let block_reward = rules.emission_schedule().block_reward(42) + 145 * uT;
         assert!(factories

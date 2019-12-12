@@ -26,4 +26,4 @@ mod consensus_manager;
 pub mod emission;
 
 pub use consensus_constants::ConsensusConstants;
-pub use consensus_manager::ConsensusManager;
+pub use consensus_manager::{ConsensusManager, ConsensusManagerError};
