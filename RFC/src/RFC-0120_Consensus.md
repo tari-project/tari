@@ -81,7 +81,6 @@ Every [block header] MUST contain the following fields:
 * range_proof_mr;
 * kernel_mr;
 * total_kernel_offset;
-* total_difficulty;
 * nonce;
 * pow.
 
@@ -178,7 +177,7 @@ The total_difficulty MUST confirm to the following:
 
 #### Nonce
 
-This is the nonce used in solving the Proof of Work. 
+This is the nonce used in solving the Proof of Work.
 
 The nonce MUST confirm to the following:
 
@@ -188,10 +187,12 @@ The nonce MUST confirm to the following:
 
 This is Proof of Work algorithm that was used to solve the Proof of Work. This is used in conjunction with the Nonce
 
-The [PoW] MUST confirm to the following:
+The [PoW] MUST contain the following:
 
-* Must be transmitted as <TO BE CONFIRMED>;
-
+* accumulated_monero_difficulty as unsigned 64-bit integer.
+* accumulated_blake_difficulty as unsigned 64-bit integer.
+* pow_algo as an enum (0 for monero, 1 for blake).
+* pow_data as array of unsigned 8-bit integers (bytes) in little-endian format.
 
 ### FTL
 
@@ -204,6 +205,11 @@ N: Block window - This is the amount of blocks used when calculating difficulty 
 
 The Median Time Past. This is the lower limit of a time. Any time that is less than the MTP is rejected.
 THe MTP is calculated as the median timestamp of the previous 11 blocks.
+
+### Total accumulated proof of work
+
+This is defined as the total accumulated proof of work done on a single block chain. Because we use two proof of work algorithms which are rated at different difficulties and we would like to weight them as equal we need to compare them. To compare them we use a [Geometric mean](https://en.wikipedia.org/wiki/Geometric_mean). Because we only have two algorithms this is calculated as the ceil of SQRT(accumulated_monero_difficulty*accumulated_blake_difficulty). This number is never transmitted and is simply calculated from the tip of the chain.
+
 
 [block]: Glossary.md#block
 [block header]: Glossary.md#block-header
