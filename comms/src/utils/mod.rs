@@ -22,3 +22,5 @@
 
 pub mod crypt;
 pub mod signature;
+#[macro_use]
+pub mod multiaddr;

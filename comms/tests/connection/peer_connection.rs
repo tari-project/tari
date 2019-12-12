@@ -212,7 +212,9 @@ fn connection_wait_connect_failed() {
 
     assert!(conn.is_failed());
     match err {
-        PeerConnectionError::ExceededMaxConnectRetryCount => {},
+        PeerConnectionError::OperationFailed(s) => {
+            assert!(s.contains(PeerConnectionError::ExceededMaxConnectRetryCount.to_string().as_str()))
+        },
         _ => panic!("Unexpected connection error '{}'", err),
     }
 }

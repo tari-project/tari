@@ -28,9 +28,9 @@ use std::{
 };
 use tari_comms::{
     builder::CommsNode,
-    connection::NetAddress,
     connection_manager::PeerConnectionConfig,
     control_service::ControlServiceConfig,
+    multiaddr::Multiaddr,
     peer_manager::{peer_storage::PeerStorage, NodeIdentity, Peer, PeerFeatures},
     types::CommsDatabase,
     CommsBuilder,
@@ -42,7 +42,7 @@ use tari_test_utils::{async_assert_eventually, paths::create_temporary_data_path
 use tokio::runtime::TaskExecutor;
 use tower::ServiceBuilder;
 
-fn new_node_identity(control_service_address: NetAddress) -> NodeIdentity {
+fn new_node_identity(control_service_address: Multiaddr) -> NodeIdentity {
     NodeIdentity::random(
         &mut OsRng::new().unwrap(),
         control_service_address,
@@ -87,11 +87,11 @@ fn setup_comms_dht(
         .with_inbound_sink(inbound_tx)
         .with_outbound_stream(outbound_rx)
         .configure_control_service(ControlServiceConfig {
-            listener_address: node_identity.control_service_address(),
+            listening_address: node_identity.control_service_address(),
             ..Default::default()
         })
         .configure_peer_connections(PeerConnectionConfig {
-            listening_address: "127.0.0.1:0".parse().unwrap(),
+            listening_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
             ..Default::default()
         })
         .with_node_identity(Arc::new(node_identity))
@@ -139,9 +139,9 @@ fn setup_comms_dht(
 fn dht_join_propagation() {
     runtime::test_async(|rt| {
         // Create 3 nodes where only Node B knows A and C, but A and C want to talk to each other
-        let node_A_identity = new_node_identity("127.0.0.1:11113".parse().unwrap());
-        let node_B_identity = new_node_identity("127.0.0.1:11114".parse().unwrap());
-        let node_C_identity = new_node_identity("127.0.0.1:11115".parse().unwrap());
+        let node_A_identity = new_node_identity("/ip4/127.0.0.1/tcp/11113".parse::<Multiaddr>().unwrap());
+        let node_B_identity = new_node_identity("/ip4/127.0.0.1/tcp/11114".parse::<Multiaddr>().unwrap());
+        let node_C_identity = new_node_identity("/ip4/127.0.0.1/tcp/11115".parse::<Multiaddr>().unwrap());
 
         // Node A knows about Node B
         let (tx, ims_rx_A) = mpsc::channel(1);
@@ -217,10 +217,10 @@ fn dht_join_propagation() {
 #[allow(non_snake_case)]
 fn dht_discover_propagation() {
     // Create 4 nodes where A knows B, B knows A and C, C knows B and D, and D knows C
-    let node_A_identity = new_node_identity("127.0.0.1:11116".parse().unwrap());
-    let node_B_identity = new_node_identity("127.0.0.1:11117".parse().unwrap());
-    let node_C_identity = new_node_identity("127.0.0.1:11118".parse().unwrap());
-    let node_D_identity = new_node_identity("127.0.0.1:11119".parse().unwrap());
+    let node_A_identity = new_node_identity("/ip4/127.0.0.1/tcp/11116".parse().unwrap());
+    let node_B_identity = new_node_identity("/ip4/127.0.0.1/tcp/11117".parse().unwrap());
+    let node_C_identity = new_node_identity("/ip4/127.0.0.1/tcp/11118".parse().unwrap());
+    let node_D_identity = new_node_identity("/ip4/127.0.0.1/tcp/11119".parse().unwrap());
 
     runtime::test_async(|rt| {
         // Node A knows about Node B

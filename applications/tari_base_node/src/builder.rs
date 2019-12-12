@@ -29,8 +29,8 @@ use std::{
 use tari_common::{DatabaseType, GlobalConfig};
 use tari_comms::{
     builder::CommsNode,
-    connection::{NetAddress, NetAddressesWithStats},
     control_service::ControlServiceConfig,
+    multiaddr::Multiaddr,
     peer_manager::{node_identity::NodeIdentity, NodeId, Peer, PeerFeatures, PeerFlags},
 };
 use tari_core::{
@@ -95,7 +95,7 @@ impl NodeType {
 
 /// Tries to construct a node identity by loading the secret key and other metadata from disk and calculating the
 /// missing fields from that information.
-pub fn load_identity(path: &Path, _control_addr: &str) -> Result<NodeIdentity, String> {
+pub fn load_identity(path: &Path) -> Result<NodeIdentity, String> {
     if !path.exists() {
         return Err(format!("Identity file, {}, does not exist.", path.to_str().unwrap()));
     }
@@ -123,7 +123,7 @@ pub fn load_identity(path: &Path, _control_addr: &str) -> Result<NodeIdentity, S
 }
 
 fn new_node_id(private_key: PrivateKey, control_addr: &str) -> Result<NodeIdentity, String> {
-    let address = control_addr.parse::<NetAddress>().map_err(|e| {
+    let address = control_addr.parse::<Multiaddr>().map_err(|e| {
         format!(
             "Error. '{}' is not a valid control port address. {}",
             control_addr,
@@ -253,7 +253,7 @@ fn assign_peers(seeds: &[String]) -> Vec<Peer> {
             },
             Ok(p) => p,
         };
-        let addr = match parts[1].parse::<NetAddress>() {
+        let addr = match parts[1].parse::<Multiaddr>() {
             Err(e) => {
                 warn!(
                     target: LOG_TARGET,
@@ -280,7 +280,7 @@ fn assign_peers(seeds: &[String]) -> Vec<Peer> {
         let peer = Peer::new(
             pub_key,
             node_id,
-            NetAddressesWithStats::from(addr),
+            addr.into(),
             PeerFlags::default(),
             PeerFeatures::empty(),
         );
@@ -301,17 +301,18 @@ fn setup_comms_services<T>(
 where
     T: BlockchainBackend + 'static,
 {
-    let host = id.control_service_address().host();
     let node_config = BaseNodeServiceConfig::default(); // TODO - make this configurable
     let (publisher, subscription_factory) = pubsub_connector(rt.executor(), 100);
     let subscription_factory = Arc::new(subscription_factory);
     let comms_config = CommsConfig {
         node_identity: id.clone(),
-        peer_connection_listening_address: host.parse().unwrap(),
+        peer_connection_listening_address: "/ip4/0.0.0.0/tcp/0".parse().expect("cannot fail"), /* TODO - make this
+                                                                                                * configurable */
         socks_proxy_address: None,
         control_service: ControlServiceConfig {
-            listener_address: id.control_service_address(),
+            listening_address: id.control_service_address(),
             socks_proxy_address: None,
+            public_peer_address: None, // TODO - make this configurable
             requested_connection_timeout: Duration::from_millis(2000),
         },
         establish_connection_timeout: Duration::from_secs(10), // TODO - make this configurable

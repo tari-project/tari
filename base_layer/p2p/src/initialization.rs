@@ -24,12 +24,12 @@ use crate::comms_connector::{InboundDomainConnector, PeerMessage};
 use derive_error::Error;
 use futures::{channel::mpsc, Sink};
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
-use std::{error::Error, iter, sync::Arc, time::Duration};
+use std::{error::Error, iter, net::SocketAddr, sync::Arc, time::Duration};
 use tari_comms::{
     builder::{CommsBuilderError, CommsError, CommsNode},
-    connection::{net_address::ip::SocketAddress, NetAddress},
     connection_manager::PeerConnectionConfig,
     control_service::ControlServiceConfig,
+    multiaddr::Multiaddr,
     outbound_message_service::ConstantBackoff,
     peer_manager::{node_identity::NodeIdentityError, NodeIdentity},
     CommsBuilder,
@@ -54,9 +54,9 @@ pub struct CommsConfig {
     /// Control service config.
     pub control_service: ControlServiceConfig,
     /// An optional SOCKS address.
-    pub socks_proxy_address: Option<SocketAddress>,
-    /// The address that the inbound peer connection will listen (bind) on. The default is 0.0.0.0:7898
-    pub peer_connection_listening_address: NetAddress,
+    pub socks_proxy_address: Option<SocketAddr>,
+    /// The address that the inbound peer connection will listen (bind) on. The default is /ip4/0.0.0.0/tcp/7898
+    pub peer_connection_listening_address: Multiaddr,
     /// Identity of this node on the network.
     pub node_identity: Arc<NodeIdentity>,
     /// Path to the LMDB data files.
@@ -117,13 +117,14 @@ where
         .with_outbound_stream(outbound_rx)
         .with_outbound_backoff(ConstantBackoff::new(Duration::from_millis(500)))
         .configure_control_service(ControlServiceConfig {
-            listener_address,
+            listening_address: listener_address,
             socks_proxy_address: None,
+            public_peer_address: None,
             requested_connection_timeout: Duration::from_millis(2000),
         })
         .configure_peer_connections(PeerConnectionConfig {
             socks_proxy_address: None,
-            listening_address: "127.0.0.1:0".parse().expect("cannot fail"),
+            listening_address: "/ip4/127.0.0.1/tcp/0".parse().expect("cannot fail"),
             peer_connection_establish_timeout: Duration::from_secs(5),
             ..Default::default()
         })

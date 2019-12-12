@@ -89,7 +89,7 @@ impl TestFactory for ConnectionManagerFactory {
         let config = self
             .peer_connection_config
             .or(Some(PeerConnectionConfig {
-                listening_address: "127.0.0.1:0".parse().expect("correctly formatted address"),
+                listening_address: "/ip4/127.0.0.1/tcp/0".parse().expect("correctly formatted address"),
                 ..Default::default()
             }))
             .unwrap();

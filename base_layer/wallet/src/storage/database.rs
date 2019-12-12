@@ -165,7 +165,7 @@ mod test {
         },
     };
     use tari_comms::{
-        connection::{net_address::NetAddressWithStats, NetAddressesWithStats},
+        multiaddr::Multiaddr,
         peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
         types::{CommsPublicKey, CommsSecretKey},
     };
@@ -187,7 +187,7 @@ mod test {
             let peer = Peer::new(
                 public_key.clone(),
                 NodeId::from_key(&public_key).unwrap(),
-                NetAddressesWithStats::new(vec![NetAddressWithStats::new("1.2.3.4:9000".parse().unwrap())]),
+                "/ip4/1.2.3.4/tcp/9000".parse::<Multiaddr>().unwrap().into(),
                 PeerFlags::empty(),
                 PeerFeatures::COMMUNICATION_NODE,
             );

@@ -45,13 +45,13 @@ use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
 use std::{
     fs,
     iter,
-    net::IpAddr,
+    net::SocketAddr,
     sync::{Arc, RwLock},
     time::Duration,
 };
 use tari_comms::{
-    connection::net_address::ip::SocketAddress,
     control_service::ControlServiceConfig,
+    multiaddr::{AddrComponent, Multiaddr, Protocol},
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFlags},
 };
 use tari_p2p::{
@@ -78,25 +78,24 @@ pub fn random_string(len: usize) -> String {
     iter::repeat(()).map(|_| rng.sample(Alphanumeric)).take(len).collect()
 }
 
-fn get_lan_address() -> IpAddr {
+fn get_lan_address() -> Multiaddr {
     let interfaces = get_if_addrs::get_if_addrs().unwrap();
     interfaces
         .into_iter()
         .find(|if_addr| !if_addr.is_loopback())
-        .and_then(|if_addr| Some(if_addr.ip()))
+        .and_then(|if_addr| Some(if_addr.ip().into()))
         .unwrap()
 }
 
 fn set_lan_address(identity: &NodeIdentity) {
-    let addr = get_lan_address();
-    let address = format!(
-        "{}:{}",
-        addr,
-        identity.control_service_address().maybe_port().unwrap_or(0)
-    )
-    .parse()
-    .unwrap();
-    identity.set_control_service_address(address).unwrap();
+    let mut addr = get_lan_address();
+    let control_addr = identity.control_service_address();
+    let tcp = control_addr
+        .iter()
+        .find(|c| c.protocol_id() == Protocol::TCP)
+        .expect("no tcp protocol in address");
+    addr.append(tcp);
+    identity.set_control_service_address(addr).unwrap();
 }
 
 fn main() {
@@ -163,7 +162,7 @@ fn main() {
         if proxy.is_empty() {
             None
         } else {
-            Some(proxy.parse::<SocketAddress>().unwrap())
+            Some(proxy.parse::<SocketAddr>().unwrap())
         }
     });
 
@@ -179,12 +178,17 @@ fn main() {
         peer_connection_listening_address: format!("0.0.0.0:{}", port).parse().unwrap(),
         socks_proxy_address: proxy.clone(),
         control_service: ControlServiceConfig {
-            listener_address: format!(
-                "0.0.0.0:{}",
-                node_identity.control_service_address().maybe_port().unwrap()
-            )
-            .parse()
-            .unwrap(),
+            listening_address: {
+                let tcp = node_identity
+                    .control_service_address()
+                    .iter()
+                    .find(|c| c.protocol_id() == Protocol::TCP)
+                    .expect("no tcp protocol in node_identity address");
+                let mut addr: Multiaddr = AddrComponent::IP4("0.0.0.0".parse().unwrap()).into();
+                addr.append(tcp);
+                addr
+            },
+            public_peer_address: Some(node_identity.control_service_address()),
             socks_proxy_address: proxy,
             requested_connection_timeout: Duration::from_millis(2000),
         },

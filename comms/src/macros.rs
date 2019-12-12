@@ -40,13 +40,15 @@ macro_rules! setter {
 /// Creates a setter function used with the builder pattern
 /// A mutable reference is taken and returned
 macro_rules! setter_mut {
- ($func:ident, $name: ident, Option<$type: ty>) => {
+    ($func:ident, $name: ident, Option<$type: ty>) => {
+        #[allow(dead_code)]
         pub fn $func(&mut self, val: $type) -> &mut Self {
             self.$name = Some(val);
             self
         }
     };
- ($func:ident, $name: ident, $type: ty) => {
+    ($func:ident, $name: ident, $type: ty) => {
+        #[allow(dead_code)]
         pub fn $func(&mut self, val: $type) -> &mut Self {
             self.$name = val;
             self

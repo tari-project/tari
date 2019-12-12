@@ -135,10 +135,9 @@ impl ConnectionManager {
 
         debug!(
             target: LOG_TARGET,
-            "Listener started on {}",
-            conn.get_connected_address()
+            "Listener started on '{}'",
+            conn.get_address()
                 .map(|addr| addr.to_string())
-                .or_else(|| conn.get_address().map(|addr| addr.to_string()))
                 .unwrap_or("<unknown>".to_string())
         );
         let mut listener_connection = acquire_write_lock!(self.listener_connection);
@@ -542,11 +541,12 @@ impl Connectivity for ConnectionManagerDialer {
 mod test {
     use super::*;
     use crate::{
-        connection::{NetAddress, ZmqContext},
+        connection::ZmqContext,
         peer_manager::{PeerFeatures, PeerFlags},
         types::CommsPublicKey,
     };
     use futures::channel::mpsc::channel;
+    use multiaddr::Multiaddr;
     use rand::rngs::OsRng;
     use std::{thread, time::Duration};
     use tari_crypto::keys::PublicKey;
@@ -560,7 +560,7 @@ mod test {
         (context, node_identity, peer_manager, tx)
     }
 
-    fn create_peer(address: NetAddress) -> Peer {
+    fn create_peer(address: Multiaddr) -> Peer {
         let (_, pk) = CommsPublicKey::random_keypair(&mut OsRng::new().unwrap());
         let node_id = NodeId::from_key(&pk).unwrap();
         Peer::new(pk, node_id, address.into(), PeerFlags::empty(), PeerFeatures::empty())
@@ -576,7 +576,7 @@ mod test {
             PeerConnectionConfig {
                 peer_connection_establish_timeout: Duration::from_secs(5),
                 max_message_size: 1024,
-                listening_address: "127.0.0.1:0".parse().unwrap(),
+                listening_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
                 max_connect_retries: 3,
                 max_connections: 10,
 
@@ -598,7 +598,7 @@ mod test {
             PeerConnectionConfig {
                 peer_connection_establish_timeout: Duration::from_secs(5),
                 max_message_size: 1024,
-                listening_address: "127.0.0.1:0".parse().unwrap(),
+                listening_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
                 max_connect_retries: 3,
                 max_connections: 10,
                 socks_proxy_address: None,
@@ -608,12 +608,13 @@ mod test {
 
         assert_eq!(manager.get_active_connection_count(), 0);
 
-        let address = "127.0.0.1:43456".parse::<NetAddress>().unwrap();
+        let address = "/ip4/127.0.0.1/tcp/43456".parse::<Multiaddr>().unwrap();
         let peer = create_peer(address.clone());
 
         assert!(manager.disconnect_peer(&peer.node_id).unwrap().is_none());
 
-        let (peer_conn, rx) = PeerConnection::new_with_connecting_state_for_test("127.0.0.1:0".parse().unwrap());
+        let (peer_conn, rx) =
+            PeerConnection::new_with_connecting_state_for_test("/ip4/127.0.0.1/tcp/0".parse().unwrap());
         let peer_conn = Arc::new(peer_conn);
         let join_handle = thread::spawn(|| Ok(()));
         manager

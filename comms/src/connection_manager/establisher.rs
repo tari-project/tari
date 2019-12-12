@@ -24,14 +24,12 @@ use super::{error::ConnectionManagerError, Result};
 use crate::{
     connection::{
         curve_keypair::{CurvePublicKey, CurveSecretKey},
-        net_address::ip::SocketAddress,
         peer_connection::PeerConnectionJoinHandle,
         types::{Direction, Linger},
         zmq::ZmqIdentity,
         Connection,
         CurveEncryption,
         EstablishedConnection,
-        NetAddress,
         PeerConnection,
         PeerConnectionContextBuilder,
         ZmqContext,
@@ -43,7 +41,8 @@ use crate::{
 };
 use futures::channel::mpsc::Sender;
 use log::*;
-use std::{sync::Arc, time::Duration};
+use multiaddr::Multiaddr;
+use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 const LOG_TARGET: &str = "comms::connection_manager::establisher";
 
@@ -59,9 +58,9 @@ pub struct PeerConnectionConfig {
     /// The number of connection attempts to make to one address before giving up
     pub max_connect_retries: u16,
     /// The address of the SOCKS proxy to use for this connection
-    pub socks_proxy_address: Option<SocketAddress>,
+    pub socks_proxy_address: Option<SocketAddr>,
     /// The address to bind to for the listening connection (Default: DEFAULT_LISTENER_ADDRESS)
-    pub listening_address: NetAddress,
+    pub listening_address: Multiaddr,
     /// The length of time to wait for the requested peer connection to be established before timing out.
     /// Depending on the network, this should be long enough to allow a single back-and-forth
     /// communication between peers.
@@ -76,7 +75,9 @@ impl Default for PeerConnectionConfig {
             max_connect_retries: 5,
             socks_proxy_address: None,
             peer_connection_establish_timeout: Duration::from_secs(20),
-            listening_address: DEFAULT_LISTENER_ADDRESS.parse().unwrap(),
+            listening_address: DEFAULT_LISTENER_ADDRESS
+                .parse()
+                .expect("DEFAULT_LISTENER_ADDRESS constant is malformed"),
         }
     }
 }
@@ -154,7 +155,7 @@ impl ConnectionEstablisher {
                 .establish(&address)
                 .map_err(ConnectionManagerError::ConnectionError)?;
 
-            Ok((conn, address.clone().into()))
+            Ok((conn, address.clone()))
         })?;
 
         match maybe_client {
@@ -166,7 +167,7 @@ impl ConnectionEstablisher {
     fn attempt_control_port_connection_for_peer(
         &self,
         peer: &Peer,
-        mut connection_factory: impl FnMut() -> Result<(EstablishedConnection, NetAddress)>,
+        mut connection_factory: impl FnMut() -> Result<(EstablishedConnection, Multiaddr)>,
     ) -> Result<Option<ControlServiceClient>>
     {
         let num_attempts = peer.addresses.len();
@@ -221,7 +222,7 @@ impl ConnectionEstablisher {
     /// [PeerConnection] worker thread or an error.
     pub fn establish_outbound_peer_connection(
         &self,
-        address: NetAddress,
+        address: Multiaddr,
         curve_public_key: CurvePublicKey,
         connection_identity: ZmqIdentity,
         peer_identity: ZmqIdentity,
@@ -294,14 +295,14 @@ impl ConnectionEstablisher {
 
         debug!(
             target: LOG_TARGET,
-            "Inbound connection established on (NetAddress={:?}, SocketAddress={:?})",
-            connection.get_address(),
-            connection.get_connected_address()
+            "Inbound connection established on '{}'",
+            connection
+                .get_address()
+                .map(|a| a.to_string())
+                .unwrap_or("<unknown>".to_string())
         );
 
-        let connection = Arc::new(connection);
-
-        Ok((connection, worker_handle))
+        Ok((Arc::new(connection), worker_handle))
     }
 
     fn new_context_builder(&self) -> PeerConnectionContextBuilder {

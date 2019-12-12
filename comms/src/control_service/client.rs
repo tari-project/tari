@@ -25,13 +25,14 @@ use super::{
     ControlServiceError,
 };
 use crate::{
-    connection::{Direction, EstablishedConnection, NetAddress},
+    connection::{Direction, EstablishedConnection},
     message::{Envelope, EnvelopeBody, MessageExt, MessageFlags},
     peer_manager::{NodeId, NodeIdentity, PeerFeatures},
     types::CommsPublicKey,
     utils::crypt,
 };
 use log::*;
+use multiaddr::Multiaddr;
 use prost::Message;
 use std::{sync::Arc, time::Duration};
 use tari_utilities::ByteArray;
@@ -148,13 +149,13 @@ impl ControlServiceClient {
     /// [RequestConnectionMessage]: ../messages/struct.RequestConnectionMessage.html
     pub fn send_request_connection(
         &self,
-        control_service_address: NetAddress,
+        control_service_address: Multiaddr,
         node_id: NodeId,
         features: PeerFeatures,
     ) -> Result<(), ControlServiceError>
     {
         self.send_msg(MessageType::RequestConnection, RequestConnectionMessage {
-            control_service_address: control_service_address.to_string(),
+            control_service_address: format!("{}", control_service_address),
             node_id: node_id.to_vec(),
             features: features.bits(),
         })
@@ -203,7 +204,7 @@ mod test {
         let context = ZmqContext::new();
         let conn = Connection::new(&context, Direction::Outbound).establish(&addr).unwrap();
         let node_identity = Arc::new(NodeIdentity::random_for_test(
-            Some("127.0.0.1:9000".parse().unwrap()),
+            Some("/ip4/127.0.0.1/tcp/9000".parse().unwrap()),
             PeerFeatures::empty(),
         ));
         let (_, public_key) = CommsPublicKey::random_keypair(&mut OsRng::new().unwrap());

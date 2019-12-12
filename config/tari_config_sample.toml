@@ -101,7 +101,7 @@ peer_seeds = []
 
 # The address and port to listen for peer connections. This is the address that is advertised on the network so that
 # peers can find you.
-#address = "tcp://0.0.0.0:18189"
+#address = "/ip4/172.2.3.4/tcp/18189"
 
 # Enable the gRPC server for the base node. Set this to true if you want to enable third-party wallet software
 #grpc_enabled = false

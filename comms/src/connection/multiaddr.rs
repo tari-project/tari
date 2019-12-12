@@ -20,30 +20,24 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use futures::{Future, Stream};
-use multiaddr::Multiaddr;
+use crate::connection::zmq::ZmqEndpoint;
+use multiaddr::{AddrComponent, Multiaddr};
 
-mod socks;
-mod tcp;
+impl ZmqEndpoint for Multiaddr {
+    type Error = multiaddr::Error;
 
-pub use tcp::TcpSocket;
-
-pub trait Transport {
-    /// The output of the transport after a connection is established
-    type Output;
-    /// Transport error type
-    type Error: std::error::Error;
-    /// A stream which emits `Self::Output` whenever a successful inbound connection is made
-    type Inbound: Stream<Item = Result<Self::Output, Self::Error>> + Send;
-
-    /// The future returned from the `listen` method.
-    type ListenFuture: Future<Output = Result<(Self::Inbound, Multiaddr), Self::Error>>;
-    /// The future returned from the `dial` method.
-    type DialFuture: Future<Output = Result<Self::Output, Self::Error>>;
-
-    /// Listen for connections on the given multiaddr
-    fn listen(&self, addr: Multiaddr) -> Self::ListenFuture;
-
-    /// Connect (dial) to the given multiaddr
-    fn dial(&self, addr: Multiaddr) -> Self::DialFuture;
+    fn to_zmq_endpoint(&self) -> Result<String, Self::Error> {
+        let mut iter = self.iter();
+        let protocol = iter.next().ok_or(multiaddr::Error::InvalidMultiaddr)?;
+        let tcp_port = |tcp: Option<AddrComponent>| match tcp.unwrap_or(AddrComponent::TCP(0)) {
+            AddrComponent::TCP(port) => Ok(port),
+            _ => Err(multiaddr::Error::InvalidMultiaddr),
+        };
+        match protocol {
+            AddrComponent::ONION(addr, port) => Ok(format!("tcp://{}.onion:{}", addr, port)),
+            AddrComponent::IP4(ip) => Ok(format!("tcp://{}:{}", ip, tcp_port(iter.next())?)),
+            AddrComponent::IP6(ip) => Ok(format!("tcp://{}:{}", ip, tcp_port(iter.next())?)),
+            _ => Err(multiaddr::Error::InvalidMultiaddr),
+        }
+    }
 }

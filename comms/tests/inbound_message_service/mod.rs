@@ -25,9 +25,9 @@ use crate::support::{
     helpers::database::init_datastore,
 };
 use futures::{channel::mpsc, SinkExt, StreamExt};
+use multiaddr::Multiaddr;
 use std::{sync::Arc, time::Duration};
 use tari_comms::{
-    connection::NetAddress,
     inbound_message_service::inbound_message_service::InboundMessageService,
     message::{Envelope, FrameSet, MessageExt, MessageFlags},
     peer_manager::{NodeIdentity, Peer, PeerFeatures, PeerFlags},
@@ -65,7 +65,7 @@ fn smoke_test() {
     let peer = Peer::new(
         node_identity.public_key().clone(),
         node_identity.node_id().clone(),
-        "127.0.0.1:9000".parse::<NetAddress>().unwrap().into(),
+        "/ip4/127.0.0.1/tcp/9000".parse::<Multiaddr>().unwrap().into(),
         PeerFlags::empty(),
         PeerFeatures::empty(),
     );

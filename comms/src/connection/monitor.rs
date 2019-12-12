@@ -57,11 +57,12 @@ pub enum ConnectionMonitorError {
 /// More details here: http://api.zeromq.org/4-1:zmq-socket-monitor
 ///
 /// ```edition2018
-/// # use tari_comms::connection::{ZmqContext, monitor::ConnectionMonitor, Connection, Direction, InprocAddress, NetAddress};
+/// # use tari_comms::connection::{ZmqContext, monitor::ConnectionMonitor, Connection, Direction, InprocAddress};
+/// # use tari_comms::multiaddr::Multiaddr;
 ///
 /// let ctx = ZmqContext::new();
 /// let monitor_addr = InprocAddress::random();
-/// let address = "127.0.0.1:9999".parse::<NetAddress>().unwrap();
+/// let address = "/ip4/127.0.0.1/tcp/9999".parse::<Multiaddr>().unwrap();
 ///
 /// // Monitor MUST start before the connection is established
 /// let monitor = ConnectionMonitor::connect(&ctx, &monitor_addr).unwrap();
@@ -96,7 +97,7 @@ impl ConnectionMonitor {
             )))
         })?;
 
-        socket.connect(&address.to_zmq_endpoint()).map_err(|e| {
+        socket.connect(&address.to_zmq_endpoint()?).map_err(|e| {
             ConnectionError::MonitorError(ConnectionMonitorError::ConnectionFailed(format!(
                 "Failed to connect: {}",
                 e

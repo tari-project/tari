@@ -1,5 +1,5 @@
-use crate::connection::NetAddress;
-use chrono::prelude::*;
+use chrono::{DateTime, Utc};
+use multiaddr::Multiaddr;
 use serde::{Deserialize, Serialize};
 use std::{
     cmp::{Ord, Ordering},
@@ -11,7 +11,7 @@ const MAX_LATENCY_SAMPLE_COUNT: u32 = 100;
 
 #[derive(Debug, Eq, Clone, Deserialize, Serialize)]
 pub struct NetAddressWithStats {
-    pub net_address: NetAddress,
+    pub net_address: Multiaddr,
     pub last_seen: Option<DateTime<Utc>>,
     pub connection_attempts: u32,
     pub rejected_message_count: u32,
@@ -21,8 +21,8 @@ pub struct NetAddressWithStats {
 
 impl NetAddressWithStats {
     /// Constructs a new net address with zero stats
-    pub fn new(net_address: NetAddress) -> NetAddressWithStats {
-        NetAddressWithStats {
+    pub fn new(net_address: Multiaddr) -> Self {
+        Self {
             net_address,
             last_seen: None,
             connection_attempts: 0,
@@ -34,15 +34,15 @@ impl NetAddressWithStats {
 
     /// Constructs a new net address with usage stats
     pub fn new_with_stats(
-        net_address: NetAddress,
+        net_address: Multiaddr,
         last_seen: Option<DateTime<Utc>>,
         connection_attempts: u32,
         rejected_message_count: u32,
         avg_latency: Duration,
         latency_sample_count: u32,
-    ) -> NetAddressWithStats
+    ) -> Self
     {
-        NetAddressWithStats {
+        Self {
             net_address,
             last_seen,
             connection_attempts,
@@ -97,16 +97,16 @@ impl NetAddressWithStats {
         self.connection_attempts += 1;
     }
 
-    /// Get as a NetAddress
-    pub fn as_net_address(&self) -> NetAddress {
+    /// Get as a Multiaddr
+    pub fn as_net_address(&self) -> Multiaddr {
         self.clone().net_address
     }
 }
 
-impl From<NetAddress> for NetAddressWithStats {
+impl From<Multiaddr> for NetAddressWithStats {
     /// Constructs a new net address with usage stats from a net address
-    fn from(net_address: NetAddress) -> Self {
-        NetAddressWithStats {
+    fn from(net_address: Multiaddr) -> Self {
+        Self {
             net_address,
             last_seen: None,
             connection_attempts: 0,
@@ -172,12 +172,12 @@ impl fmt::Display for NetAddressWithStats {
 
 #[cfg(test)]
 mod test {
-    use crate::connection::{net_address::net_address_with_stats::NetAddressWithStats, NetAddress};
+    use super::*;
     use std::{thread, time::Duration};
 
     #[test]
     fn test_update_latency() {
-        let net_address = "123.0.0.123:8000".parse::<NetAddress>().unwrap();
+        let net_address = "/ip4/123.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap();
         let mut net_address_with_stats = NetAddressWithStats::from(net_address);
         let latency_measurement1 = Duration::from_millis(100);
         let latency_measurement2 = Duration::from_millis(200);
@@ -195,7 +195,7 @@ mod test {
 
     #[test]
     fn test_message_received_and_rejected() {
-        let net_address = "123.0.0.123:8000".parse::<NetAddress>().unwrap();
+        let net_address = "/ip4/123.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap();
         let mut net_address_with_stats = NetAddressWithStats::from(net_address);
         assert!(net_address_with_stats.last_seen.is_none());
         net_address_with_stats.mark_message_received();
@@ -209,7 +209,7 @@ mod test {
 
     #[test]
     fn test_successful_and_failed_connection_attempts() {
-        let net_address = "123.0.0.123:8000".parse::<NetAddress>().unwrap();
+        let net_address = "/ip4/123.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap();
         let mut net_address_with_stats = NetAddressWithStats::from(net_address);
         net_address_with_stats.mark_failed_connection_attempt();
         net_address_with_stats.mark_failed_connection_attempt();
@@ -222,7 +222,7 @@ mod test {
 
     #[test]
     fn test_reseting_connection_attempts() {
-        let net_address = "123.0.0.123:8000".parse::<NetAddress>().unwrap();
+        let net_address = "/ip4/123.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap();
         let mut net_address_with_stats = NetAddressWithStats::from(net_address);
         net_address_with_stats.mark_failed_connection_attempt();
         net_address_with_stats.mark_failed_connection_attempt();
@@ -233,7 +233,7 @@ mod test {
 
     #[test]
     fn test_net_address_reliability_ordering() {
-        let net_address = "123.0.0.123:8000".parse::<NetAddress>().unwrap();
+        let net_address = "/ip4/123.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap();
         let mut na1 = NetAddressWithStats::from(net_address.clone());
         let mut na2 = NetAddressWithStats::from(net_address);
         thread::sleep(Duration::from_millis(1));

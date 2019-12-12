@@ -19,6 +19,8 @@ extern crate lazy_static;
 mod macros;
 #[macro_use]
 pub mod message;
+#[macro_use]
+pub mod utils;
 
 pub mod builder;
 #[macro_use]
@@ -35,9 +37,13 @@ mod proto;
 mod socks;
 pub mod transports;
 pub mod types;
-pub mod utils;
 
 #[cfg(test)]
 pub(crate) mod test_utils;
 
 pub use self::builder::CommsBuilder;
+
+pub mod multiaddr {
+    // Re-export so that client code does not have to have multiaddr as a dependency
+    pub use ::multiaddr::{AddrComponent, Error, Multiaddr, Protocol};
+}

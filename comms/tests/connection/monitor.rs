@@ -20,6 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::support::factories::{self, TestFactory};
+use multiaddr::Multiaddr;
 use std::{thread, time::Duration};
 use tari_comms::connection::{
     connection::Connection,
@@ -27,10 +29,7 @@ use tari_comms::connection::{
     types::Direction,
     zmq::{ZmqContext, ZmqEndpoint},
     InprocAddress,
-    NetAddress,
 };
-
-use crate::support::factories::{self, TestFactory};
 
 #[test]
 fn recv_socket_events() {
@@ -44,7 +43,7 @@ fn recv_socket_events() {
         .set_monitor_addr(monitor_addr.clone())
         .establish(&address)
         .unwrap();
-    let connected_address = NetAddress::from(conn_in.get_connected_address().clone().unwrap());
+    let connected_address = Multiaddr::from(conn_in.get_connected_address().clone().unwrap());
 
     {
         // Connect and disconnect
@@ -66,15 +65,15 @@ fn recv_socket_events() {
     let event = events.iter().find(|e| e.event_type == SocketEventType::Listening);
     assert!(event.is_some(), "Expected to find event Listening");
     let event = event.unwrap();
-    assert_eq!(event.address, connected_address.to_zmq_endpoint());
+    assert_eq!(event.address, connected_address.to_zmq_endpoint().unwrap());
 
     let event = events.iter().find(|e| e.event_type == SocketEventType::Accepted);
     assert!(event.is_some(), "Expected to find event Accepted");
     let event = event.unwrap();
-    assert_eq!(event.address, connected_address.to_zmq_endpoint());
+    assert_eq!(event.address, connected_address.to_zmq_endpoint().unwrap());
 
     let event = events.iter().find(|e| e.event_type == SocketEventType::Disconnected);
     assert!(event.is_some(), "Expected to find event Disconnected");
     let event = event.unwrap();
-    assert_eq!(event.address, connected_address.to_zmq_endpoint());
+    assert_eq!(event.address, connected_address.to_zmq_endpoint().unwrap());
 }

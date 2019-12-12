@@ -20,7 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE
 
-use crate::connection::NetAddressError;
 use derive_error::Error;
 use tari_storage::KeyValStoreError;
 
@@ -28,8 +27,8 @@ use tari_storage::KeyValStoreError;
 pub enum PeerManagerError {
     /// The requested peer does not exist or could not be located
     PeerNotFoundError,
-    // A NetAddressError occurred
-    NetAddressError(NetAddressError),
+    // // A NetAddressError occurred
+    //    MultiaddrError(multiaddr::Error),
     /// The peer has been banned
     BannedPeer,
     // An problem has been encountered with the database

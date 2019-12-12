@@ -20,7 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::support;
+use crate::{
+    support,
+    support::factories::{self, TestFactory},
+};
+use multiaddr::Multiaddr;
 use std::time::Duration;
 use tari_comms::connection::{
     connection::Connection,
@@ -28,11 +32,8 @@ use tari_comms::connection::{
     types::{Direction, Linger},
     CurveEncryption,
     InprocAddress,
-    NetAddress,
     ZmqContext,
 };
-
-use crate::support::factories::{self, TestFactory};
 
 #[test]
 fn inbound_receive_timeout() {
@@ -106,10 +107,10 @@ fn inbound_recv_send_encrypted_tcp() {
         .establish(&addr)
         .unwrap();
 
-    let addr = NetAddress::from(conn.get_connected_address().clone().unwrap());
+    let addr = Multiaddr::from(conn.get_connected_address().clone().unwrap());
 
     let signal = req_rep_pattern
-        .set_endpoint(addr.clone())
+        .set_endpoint(addr)
         .set_identity("the dude")
         .set_server_public_key(pk)
         .set_send_data(vec![(0..255).map(|i| i as u8).collect::<Vec<_>>()])

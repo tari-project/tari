@@ -20,12 +20,13 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::{monitor, NetAddressError};
+use super::monitor;
 use derive_error::Error;
 
-#[derive(Debug, Error, PartialEq, Clone)]
+#[derive(Debug, Error, Clone, PartialEq)]
 pub enum ConnectionError {
-    NetAddressError(NetAddressError),
+    #[error(msg_embedded, no_from, non_std)]
+    MultiaddrError(String),
     #[error(msg_embedded, no_from, non_std)]
     SocketError(String),
     /// Connection timed out
@@ -35,6 +36,12 @@ pub enum ConnectionError {
     MonitorError(monitor::ConnectionMonitorError),
     /// Identity for the connection was not provided
     IdentityNotProvided,
+}
+
+impl From<multiaddr::Error> for ConnectionError {
+    fn from(err: multiaddr::Error) -> Self {
+        ConnectionError::MultiaddrError(err.to_string())
+    }
 }
 
 impl ConnectionError {

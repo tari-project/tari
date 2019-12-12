@@ -22,9 +22,9 @@
 
 use super::{net_address::NetAddressesFactory, TestFactory, TestFactoryError};
 use crate::support::makers::{comms_keys as ristretto_maker, node_id as node_id_maker};
+use multiaddr::Multiaddr;
 use std::iter::repeat_with;
 use tari_comms::{
-    connection::NetAddress,
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
     types::CommsPublicKey,
 };
@@ -43,7 +43,7 @@ pub struct PeerFactory {
     flags: Option<PeerFlags>,
     public_key: Option<CommsPublicKey>,
     net_addresses_factory: NetAddressesFactory,
-    net_addresses: Option<Vec<NetAddress>>,
+    net_addresses: Option<Vec<Multiaddr>>,
     peer_features: PeerFeatures,
 }
 
@@ -58,7 +58,7 @@ impl PeerFactory {
 
     factory_setter!(with_net_addresses_factory, net_addresses_factory, NetAddressesFactory);
 
-    factory_setter!(with_net_addresses, net_addresses, Option<Vec<NetAddress>>);
+    factory_setter!(with_net_addresses, net_addresses, Option<Vec<Multiaddr>>);
 }
 
 impl TestFactory for PeerFactory {

@@ -24,7 +24,7 @@ use futures::Sink;
 use std::{error::Error, sync::Arc};
 use tari_comms::{
     builder::CommsNode,
-    connection::NetAddress,
+    multiaddr::Multiaddr,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
     types::CommsPublicKey,
 };
@@ -70,7 +70,7 @@ pub fn create_dummy_message<T>(inner: T, public_key: &CommsPublicKey) -> DomainM
     let peer_source = Peer::new(
         public_key.clone(),
         NodeId::from_key(public_key).unwrap(),
-        Vec::<NetAddress>::new().into(),
+        Vec::<Multiaddr>::new().into(),
         PeerFlags::empty(),
         PeerFeatures::COMMUNICATION_NODE,
     );

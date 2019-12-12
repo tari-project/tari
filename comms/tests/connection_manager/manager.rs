@@ -86,7 +86,8 @@ fn establish_peer_connection() {
     // Start node B's control service
     let node_B_control_service = ControlService::new(context.clone(), node_B_identity.clone(), ControlServiceConfig {
         socks_proxy_address: None,
-        listener_address: node_B_control_port_address,
+        listening_address: node_B_control_port_address,
+        public_peer_address: None,
         requested_connection_timeout: Duration::from_millis(5000),
     })
     .serve(node_B_connection_manager)

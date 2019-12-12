@@ -58,7 +58,7 @@
 //! # use tari_storage::LMDBWrapper;
 //! # use futures::channel::mpsc::channel;
 //!
-//! let node_identity = Arc::new(NodeIdentity::random(&mut OsRng::new().unwrap(), "127.0.0.1:9000".parse().unwrap(), PeerFeatures::COMMUNICATION_NODE).unwrap());
+//! let node_identity = Arc::new(NodeIdentity::random(&mut OsRng::new().unwrap(), "/ip4/127.0.0.1/tcp/9000".parse().unwrap(), PeerFeatures::COMMUNICATION_NODE).unwrap());
 //!
 //! let context = ZmqContext::new();
 //!
@@ -77,7 +77,7 @@
 //!     peer_connection_establish_timeout: Duration::from_secs(5),
 //!     max_message_size: 1024,
 //!     max_connections: 10,
-//!     listening_address: "127.0.0.1:0".parse().unwrap(),
+//!     listening_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
 //!     max_connect_retries: 3,
 //!     socks_proxy_address: None,
 //!     },

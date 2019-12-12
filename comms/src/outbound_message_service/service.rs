@@ -536,7 +536,8 @@ mod test {
         // Then, the stream should be empty (try_next errors on Poll::Pending)
         assert!(conn_man_rx.try_next().is_err());
 
-        let (conn, conn_rx) = PeerConnection::new_with_connecting_state_for_test("127.0.0.1:0".parse().unwrap());
+        let (conn, conn_rx) =
+            PeerConnection::new_with_connecting_state_for_test("/ip4/127.0.0.1/tcp/0".parse().unwrap());
         let conn = Arc::new(conn);
 
         // Check that the dial request for node_id1 is made and, when a peer connection is passed back,
@@ -560,8 +561,9 @@ mod test {
                             assert_send_msg(msg, b"D");
                         },
                         _ if node_id == node_id2 => {
-                            let (conn2, rx) =
-                                PeerConnection::new_with_connecting_state_for_test("127.0.0.1:0".parse().unwrap());
+                            let (conn2, rx) = PeerConnection::new_with_connecting_state_for_test(
+                                "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
+                            );
                             assert!(reply_tx.send(Ok(Arc::new(conn2))).is_ok());
                             let msg = rx.recv_timeout(Duration::from_millis(100)).unwrap();
                             assert_send_msg(msg, b"B");

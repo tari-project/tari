@@ -54,10 +54,9 @@
 //! # use lmdb_zero::db;
 //! # use tari_storage::LMDBWrapper;
 //! # use futures::channel::mpsc::channel;
-//! let node_identity = Arc::new(NodeIdentity::random(&mut OsRng::new().unwrap(), "127.0.0.1:9000".parse().unwrap(), PeerFeatures::COMMUNICATION_NODE).unwrap());
+//! let node_identity = Arc::new(NodeIdentity::random(&mut OsRng::new().unwrap(), "/ip4/127.0.0.1/tcp/9000".parse().unwrap(), PeerFeatures::COMMUNICATION_NODE).unwrap());
 //!
 //! let context = ZmqContext::new();
-//! let listener_address = "127.0.0.1:9000".parse::<NetAddress>().unwrap();
 //!
 //! let database_name = "cs_peer_database";
 //! let datastore = LMDBBuilder::new()
@@ -75,7 +74,7 @@
 //!      max_connect_retries: 1,
 //!      max_connections: 100,
 //!      socks_proxy_address: None,
-//!      listening_address: "127.0.0.1:0".parse().unwrap(),
+//!      listening_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
 //!      peer_connection_establish_timeout: Duration::from_secs(4),
 //! },
 //!     message_sink_tx,));

@@ -21,13 +21,9 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::{TestFactory, TestFactoryError};
-
-use tari_test_utils::address::get_next_local_port;
-
-use tari_comms::connection::NetAddress;
-
-use rand::OsRng;
+use multiaddr::{AddrComponent, Multiaddr};
 use std::iter::repeat_with;
+use tari_test_utils::address::get_next_local_port;
 
 pub fn create_many(n: usize) -> NetAddressesFactory {
     NetAddressesFactory::default().with_count(n)
@@ -48,18 +44,18 @@ impl NetAddressesFactory {
 
     factory_setter!(with_net_address_factory, net_address_factory, NetAddressFactory);
 
-    fn make_one(&self) -> NetAddress {
+    fn make_one(&self) -> Multiaddr {
         self.net_address_factory.clone().build().unwrap()
     }
 }
 
 impl TestFactory for NetAddressesFactory {
-    type Object = Vec<NetAddress>;
+    type Object = Vec<Multiaddr>;
 
     fn build(self) -> Result<Self::Object, TestFactoryError> {
         Ok(repeat_with(|| self.make_one())
             .take(self.count.or(Some(1)).unwrap())
-            .collect::<Vec<NetAddress>>())
+            .collect())
     }
 }
 
@@ -67,7 +63,6 @@ impl TestFactory for NetAddressesFactory {
 
 #[derive(Clone)]
 pub struct NetAddressFactory {
-    rng: OsRng,
     port: Option<u16>,
     host: Option<String>,
     is_use_os_port: bool,
@@ -76,7 +71,6 @@ pub struct NetAddressFactory {
 impl Default for NetAddressFactory {
     fn default() -> Self {
         Self {
-            rng: OsRng::new().unwrap(),
             port: None,
             host: None,
             is_use_os_port: false,
@@ -96,24 +90,22 @@ impl NetAddressFactory {
 }
 
 impl TestFactory for NetAddressFactory {
-    type Object = NetAddress;
+    type Object = Multiaddr;
 
     fn build(self) -> Result<Self::Object, TestFactoryError> {
-        let host = self.host.clone().or(Some("127.0.0.1".to_string())).unwrap();
-        let port = self
-            .port
-            .clone()
-            .or_else(|| {
-                if self.is_use_os_port {
-                    Some(0)
-                } else {
-                    Some(get_next_local_port())
-                }
-            })
-            .unwrap();
+        let mut addr = format!("/ip4/{}", self.host.unwrap_or("127.0.0.1".to_string()))
+            .parse::<Multiaddr>()
+            .map_err(TestFactoryError::build_failed())?;
 
-        format!("{}:{}", host, port)
-            .parse()
-            .map_err(|err| TestFactoryError::BuildFailed(format!("Failed to build NetAddress: {:?}", err)))
+        let is_use_os_port = self.is_use_os_port;
+        addr.append(AddrComponent::TCP(self.port.unwrap_or_else(|| {
+            if is_use_os_port {
+                0
+            } else {
+                get_next_local_port()
+            }
+        })));
+
+        Ok(addr)
     }
 }

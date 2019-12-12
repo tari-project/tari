@@ -40,7 +40,6 @@ use crate::{
         zmq::ZmqIdentity,
         Connection,
         CurvePublicKey,
-        NetAddress,
         PeerConnectionError,
         ZmqContext,
     },
@@ -52,6 +51,7 @@ use crate::{
     utils::crypt,
 };
 use log::*;
+use multiaddr::Multiaddr;
 use prost::Message;
 use rand::RngCore;
 use std::{
@@ -106,7 +106,7 @@ impl ControlServiceWorker {
             .spawn(move || {
                 info!(
                     target: LOG_TARGET,
-                    "Control service starting on {}...", config.listener_address
+                    "Control service starting on {}...", config.listening_address
                 );
 
                 let listener = Self::establish_listener(&context, &config)?;
@@ -319,7 +319,7 @@ impl ControlServiceWorker {
         } = message;
 
         let node_id = self.validate_node_id(&envelope_header.public_key, &node_id)?;
-        let control_service_address = control_service_address.parse::<NetAddress>()?;
+        let control_service_address = control_service_address.parse::<Multiaddr>()?;
         let peer_features = PeerFeatures::from_bits_truncate(features);
 
         debug!(
@@ -439,25 +439,19 @@ impl ControlServiceWorker {
 
         conn_manager
             .with_listener_connection(&peer, |inbound_conn, curve_public_key| {
-                let listener_address = inbound_conn
-                    .get_address()
+                // Get the address which can be connected to externally
+                let public_address = self
+                    .config
+                    .public_peer_address
+                    .as_ref()
+                    .map(Clone::clone)
+                    .or_else(|| inbound_conn.get_address().map(Into::into))
                     .ok_or(ControlServiceError::ListenerAddressNotEstablished)?;
-
-                let our_host = self.node_identity.control_service_address().host();
-                // Create an address which can be connected to externally
-                let external_address = format!("{}:{}", our_host, listener_address.maybe_port().unwrap_or(0))
-                    .parse()
-                    .map_err(ControlServiceError::NetAddressError)?;
-
-                debug!(
-                    target: LOG_TARGET,
-                    "Allowing peer access to listener connection on address '{}'", external_address
-                );
 
                 let permitted_identity = self.generate_random_identity();
                 debug!(
                     target: LOG_TARGET,
-                    "Accepting peer connection request for NodeId={} on address {}", peer.node_id, external_address,
+                    "Accepting peer connection request for NodeId={} on address {}", peer.node_id, public_address,
                 );
 
                 inbound_conn.allow_identity(permitted_identity.clone(), peer.node_id.to_vec())?;
@@ -466,7 +460,7 @@ impl ControlServiceWorker {
                     &envelope_header,
                     identity_frame,
                     curve_public_key,
-                    external_address,
+                    public_address,
                     permitted_identity,
                 )?;
 
@@ -522,7 +516,7 @@ impl ControlServiceWorker {
         envelope_header: &MessageEnvelopeHeader,
         identity: Frame,
         curve_public_key: CurvePublicKey,
-        address: NetAddress,
+        address: Multiaddr,
         permitted_identity: ZmqIdentity,
     ) -> Result<()>
     {
@@ -599,13 +593,13 @@ impl ControlServiceWorker {
     }
 
     fn establish_listener(context: &ZmqContext, config: &ControlServiceConfig) -> Result<EstablishedConnection> {
-        debug!(target: LOG_TARGET, "Binding on address: {}", config.listener_address);
+        debug!(target: LOG_TARGET, "Binding on address: {}", config.listening_address);
         Connection::new(&context, Direction::Inbound)
             .set_name("Control Service Listener")
             .set_receive_hwm(10)
             .set_max_message_size(Some(CONTROL_SERVICE_MAX_MSG_SIZE))
             .set_socks_proxy_addr(config.socks_proxy_address.clone())
-            .establish(&config.listener_address)
+            .establish(&config.listening_address)
             .map_err(ControlServiceError::BindFailed)
     }
 }

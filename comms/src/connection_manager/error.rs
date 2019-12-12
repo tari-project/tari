@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    connection::{ConnectionError, NetAddressError, PeerConnectionError},
+    connection::{ConnectionError, PeerConnectionError},
     control_service::{messages::RejectReason, ControlServiceError},
     message::MessageError,
     peer_manager::PeerManagerError,
@@ -83,7 +83,7 @@ pub enum ConnectionManagerError {
     ActorRequestCanceled,
     /// Curve public key was invalid
     InvalidCurvePublicKey,
-    NetAddressError(NetAddressError),
     /// The listener has not been started
     ListenerNotStarted,
+    MultiaddrError(multiaddr::Error),
 }

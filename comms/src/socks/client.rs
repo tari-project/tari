@@ -70,7 +70,7 @@ pub struct Socks5Client<TSocket> {
 impl<TSocket> Socks5Client<TSocket>
 where TSocket: AsyncRead + AsyncWrite + Unpin
 {
-    /// Create a new sock5 client with a socket already connected to the target proxy
+    /// Create a new socks5 client with a socket already connected to the target proxy
     pub fn new(socket: TSocket) -> Self {
         Self {
             protocol: SocksProtocol::new(socket),
@@ -85,7 +85,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
     }
 
     /// Connects to a address through a SOCKS5 proxy and returns the 'upgraded' socket. This consumes the
-    /// `Sock5Client` as once connected, the socks protocol does not recognise any further commands.
+    /// `Socks5Client` as once connected, the socks protocol does not recognise any further commands.
     pub async fn connect(mut self, address: &Multiaddr) -> Result<(TSocket, Multiaddr)> {
         let address = self.execute_command(Command::Connect, address).await?;
         Ok((self.protocol.socket, address))

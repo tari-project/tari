@@ -35,13 +35,14 @@ use crate::{
         types::Direction,
         zmq::ZmqIdentity,
         InprocAddress,
-        NetAddress,
     },
     message::{Frame, FrameSet},
+    utils::multiaddr::multiaddr_to_socketaddr,
 };
 use log::*;
 use std::{
     collections::HashMap,
+    net::SocketAddr,
     sync::{
         mpsc::{sync_channel, Receiver, RecvTimeoutError, SyncSender},
         Arc,
@@ -332,10 +333,7 @@ impl PeerConnectionListener {
                     PeerConnectionState::Connecting(ref thread_ctl) => {
                         let info = ConnectionInfo {
                             control_messenger: thread_ctl.clone(),
-                            connected_address: match self.context.peer_address {
-                                NetAddress::IP(ref socket_addr) => Some(socket_addr.clone()),
-                                _ => None,
-                            },
+                            connected_address: self.bound_addr(),
                         };
                         info!(
                             target: LOG_TARGET,
@@ -392,10 +390,7 @@ impl PeerConnectionListener {
             PeerConnectionState::Connecting(thread_ctl) => {
                 let info = ConnectionInfo {
                     control_messenger: thread_ctl.clone(),
-                    connected_address: match self.context.peer_address {
-                        NetAddress::IP(ref socket_addr) => Some(socket_addr.clone()),
-                        _ => None,
-                    },
+                    connected_address: self.bound_addr(),
                 };
                 info!(target: LOG_TARGET, "[{}] Connected", self.context.peer_address);
                 self.set_state(&mut lock, PeerConnectionState::Listening(Arc::new(info)));
@@ -429,6 +424,10 @@ impl PeerConnectionListener {
         );
 
         Ok(())
+    }
+
+    fn bound_addr(&self) -> Option<SocketAddr> {
+        multiaddr_to_socketaddr(&self.context.peer_address).ok()
     }
 
     /// Connects the connection monitor to this worker's peer Connection.

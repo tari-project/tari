@@ -20,12 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::connection::{
-    net_address::ip::SocketAddress,
-    peer_connection::control::ThreadControlMessenger,
-    PeerConnectionError,
-};
-use std::{sync::Arc, thread::JoinHandle};
+use crate::connection::{peer_connection::control::ThreadControlMessenger, PeerConnectionError};
+use std::{net::SocketAddr, sync::Arc, thread::JoinHandle};
 
 pub type PeerConnectionJoinHandle = JoinHandle<Result<(), PeerConnectionError>>;
 
@@ -57,5 +53,5 @@ impl From<u8> for PeerConnectionProtocolMessage {
 
 pub struct ConnectionInfo {
     pub(super) control_messenger: Arc<ThreadControlMessenger>,
-    pub(super) connected_address: Option<SocketAddress>,
+    pub(super) connected_address: Option<SocketAddr>,
 }

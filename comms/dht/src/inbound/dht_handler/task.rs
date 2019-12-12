@@ -34,8 +34,8 @@ use crate::{
 use log::*;
 use std::sync::Arc;
 use tari_comms::{
-    connection::NetAddress,
     message::MessageExt,
+    multiaddr::Multiaddr,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManager},
     types::CommsPublicKey,
 };
@@ -111,7 +111,7 @@ where
         &self,
         pubkey: &CommsPublicKey,
         node_id: NodeId,
-        net_addresses: Vec<NetAddress>,
+        net_addresses: Vec<Multiaddr>,
         peer_features: PeerFeatures,
     ) -> Result<Peer, DhtInboundError>
     {

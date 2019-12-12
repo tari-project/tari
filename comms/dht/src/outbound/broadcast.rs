@@ -421,7 +421,7 @@ mod test {
     use rand::rngs::OsRng;
     use std::time::Duration;
     use tari_comms::{
-        connection::NetAddress,
+        multiaddr::Multiaddr,
         peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
         types::CommsPublicKey,
     };
@@ -436,7 +436,7 @@ mod test {
         let example_peer = Peer::new(
             pk.clone(),
             NodeId::from_key(&pk).unwrap(),
-            vec!["127.0.0.1:9999".parse::<NetAddress>().unwrap()].into(),
+            vec!["/ip4/127.0.0.1/tcp/9999".parse::<Multiaddr>().unwrap()].into(),
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_NODE,
         );
@@ -452,7 +452,7 @@ mod test {
         let node_identity = Arc::new(
             NodeIdentity::random(
                 &mut OsRng::new().unwrap(),
-                "127.0.0.1:9000".parse().unwrap(),
+                "/ip4/127.0.0.1/tcp/9000".parse().unwrap(),
                 PeerFeatures::COMMUNICATION_NODE,
             )
             .unwrap(),
@@ -498,7 +498,7 @@ mod test {
         let pk = CommsPublicKey::default();
         let node_identity = NodeIdentity::random(
             &mut OsRng::new().unwrap(),
-            "127.0.0.1:9000".parse().unwrap(),
+            "/ip4/127.0.0.1/tcp/9000".parse().unwrap(),
             PeerFeatures::COMMUNICATION_NODE,
         )
         .unwrap();
@@ -546,7 +546,7 @@ mod test {
 
         let node_identity = NodeIdentity::random(
             &mut OsRng::new().unwrap(),
-            "127.0.0.1:9000".parse().unwrap(),
+            "/ip4/127.0.0.1/tcp/9000".parse().unwrap(),
             PeerFeatures::COMMUNICATION_NODE,
         )
         .unwrap();

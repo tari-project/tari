@@ -27,7 +27,7 @@ use crate::support::{
 use futures::channel::mpsc::channel;
 use std::{sync::Arc, time::Duration};
 use tari_comms::{
-    connection::{CurveEncryption, Direction, NetAddress, ZmqContext},
+    connection::{CurveEncryption, Direction, ZmqContext},
     connection_manager::{establisher::ConnectionEstablisher, ConnectionManagerError, PeerConnectionConfig},
     control_service::messages::{MessageHeader, MessageType, PongMessage},
     message::{Envelope, MessageExt, MessageFlags},
@@ -41,7 +41,7 @@ fn make_peer_connection_config() -> PeerConnectionConfig {
         peer_connection_establish_timeout: Duration::from_secs(5),
         max_message_size: 1024,
         max_connections: 10,
-        listening_address: "127.0.0.1:0".parse().unwrap(),
+        listening_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
         max_connect_retries: 3,
         socks_proxy_address: None,
     }
@@ -159,12 +159,11 @@ fn establish_peer_connection_outbound() {
         .wait_listening_or_failure(Duration::from_millis(2000))
         .unwrap();
 
-    let address = other_peer_conn.get_connected_address().unwrap().to_string();
-    assert_ne!(address, "127.0.0.1:0");
-    let address: NetAddress = other_peer_conn.get_connected_address().unwrap().into();
+    let address = other_peer_conn.get_address().unwrap();
+    assert_ne!(address.to_string(), "127.0.0.1:0");
 
     let remote_peer = factories::peer::create()
-        .with_net_addresses(vec![address.clone()])
+        .with_net_addresses(vec![address.clone().into()])
         .with_public_key(node_identity_in.public_key().clone())
         .with_node_id(node_identity_in.node_id().clone())
         .build()
@@ -182,7 +181,7 @@ fn establish_peer_connection_outbound() {
     let establisher = ConnectionEstablisher::new(context.clone(), node_identity_out.clone(), config, tx_outbound2);
     let (connection, peer_conn_handle) = establisher
         .establish_outbound_peer_connection(
-            address,
+            address.into(),
             peer_curve_pk,
             node_identity_out.node_id().to_vec(),
             remote_peer.node_id.to_vec(),
@@ -225,7 +224,8 @@ fn establish_peer_connection_inbound() {
     connection
         .wait_listening_or_failure(Duration::from_millis(3000))
         .unwrap();
-    let address = connection.get_connected_address().unwrap().into();
+
+    let address = connection.get_address().unwrap();
 
     // Setup a peer connection which will connect to our established inbound peer connection
     let (other_tx, _other_rx) = channel(10);
@@ -238,7 +238,7 @@ fn establish_peer_connection_inbound() {
                 .with_context(&context)
                 .with_server_public_key(public_key.clone())
                 .with_message_sink_channel(other_tx)
-                .with_address(address),
+                .with_address(address.into()),
         )
         .build()
         .unwrap();

@@ -23,8 +23,8 @@
 use crate::support::utils::{event_stream_count, make_input, random_string};
 use std::{sync::Arc, time::Duration};
 use tari_comms::{
-    connection::{net_address::NetAddressWithStats, NetAddress, NetAddressesWithStats},
     control_service::ControlServiceConfig,
+    multiaddr::Multiaddr,
     peer_manager::{peer::PeerFlags, NodeId, NodeIdentity, Peer, PeerFeatures},
     types::CommsPublicKey,
 };
@@ -48,11 +48,11 @@ use tari_wallet::{
 use tempdir::TempDir;
 use tokio::runtime::Runtime;
 
-fn create_peer(public_key: CommsPublicKey, net_address: NetAddress) -> Peer {
+fn create_peer(public_key: CommsPublicKey, net_address: Multiaddr) -> Peer {
     Peer::new(
         public_key.clone(),
         NodeId::from_key(&public_key).unwrap(),
-        NetAddressesWithStats::new(vec![NetAddressWithStats::new(net_address.clone())]),
+        net_address.into(),
         PeerFlags::empty(),
         PeerFeatures::COMMUNICATION_NODE,
     )
@@ -68,23 +68,24 @@ fn test_wallet() {
 
         let alice_identity = NodeIdentity::random(
             &mut rng,
-            "127.0.0.1:22523".parse().unwrap(),
+            "/ip4/127.0.0.1/tcp/22523".parse().unwrap(),
             PeerFeatures::COMMUNICATION_NODE,
         )
         .unwrap();
         let bob_identity = NodeIdentity::random(
             &mut rng,
-            "127.0.0.1:22145".parse().unwrap(),
+            "/ip4/127.0.0.1/tcp/22145".parse().unwrap(),
             PeerFeatures::COMMUNICATION_NODE,
         )
         .unwrap();
         let comms_config1 = CommsConfig {
             node_identity: Arc::new(alice_identity.clone()),
-            peer_connection_listening_address: "127.0.0.1:0".parse().unwrap(),
+            peer_connection_listening_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
             socks_proxy_address: None,
             control_service: ControlServiceConfig {
-                listener_address: alice_identity.control_service_address(),
+                listening_address: alice_identity.control_service_address(),
                 socks_proxy_address: None,
+                public_peer_address: None,
                 requested_connection_timeout: Duration::from_millis(2000),
             },
             datastore_path: dir_path.to_str().unwrap().to_string(),
@@ -96,11 +97,12 @@ fn test_wallet() {
         };
         let comms_config2 = CommsConfig {
             node_identity: Arc::new(bob_identity.clone()),
-            peer_connection_listening_address: "127.0.0.1:0".parse().unwrap(),
+            peer_connection_listening_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
             socks_proxy_address: None,
             control_service: ControlServiceConfig {
-                listener_address: bob_identity.control_service_address(),
+                listening_address: bob_identity.control_service_address(),
                 socks_proxy_address: None,
+                public_peer_address: None,
                 requested_connection_timeout: Duration::from_millis(2000),
             },
             datastore_path: dir_path.to_str().unwrap().to_string(),
@@ -213,18 +215,19 @@ fn test_data_generation() {
 
     let node_id = NodeIdentity::random(
         &mut rng,
-        "127.0.0.1:22712".parse().unwrap(),
+        "/ip4/127.0.0.1/tcp/22712".parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
     )
     .unwrap();
     let temp_dir = TempDir::new(random_string(8).as_str()).unwrap();
     let comms_config = CommsConfig {
         node_identity: Arc::new(node_id.clone()),
-        peer_connection_listening_address: "127.0.0.1:0".parse().unwrap(),
+        peer_connection_listening_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
         socks_proxy_address: None,
         control_service: ControlServiceConfig {
-            listener_address: node_id.control_service_address(),
+            listening_address: node_id.control_service_address(),
             socks_proxy_address: None,
+            public_peer_address: None,
             requested_connection_timeout: Duration::from_millis(2000),
         },
         establish_connection_timeout: Duration::from_secs(10),
@@ -293,24 +296,25 @@ fn test_test_harness() {
     // Alice's parameters
     let alice_identity = NodeIdentity::random(
         &mut rng,
-        "127.0.0.1:21525".parse().unwrap(),
+        "/ip4/127.0.0.1/tcp/21525".parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
     )
     .unwrap();
     let bob_identity = NodeIdentity::random(
         &mut rng,
-        "127.0.0.1:21144".parse().unwrap(),
+        "/ip4/127.0.0.1/tcp/21144".parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
     )
     .unwrap();
     let alice_dir = TempDir::new(random_string(8).as_str()).unwrap();
     let comms_config1 = CommsConfig {
         node_identity: Arc::new(alice_identity.clone()),
-        peer_connection_listening_address: "127.0.0.1:0".parse().unwrap(),
+        peer_connection_listening_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
         socks_proxy_address: None,
         control_service: ControlServiceConfig {
-            listener_address: alice_identity.control_service_address(),
+            listening_address: alice_identity.control_service_address(),
             socks_proxy_address: None,
+            public_peer_address: None,
             requested_connection_timeout: Duration::from_millis(2000),
         },
         datastore_path: alice_dir.path().to_str().unwrap().to_string(),
