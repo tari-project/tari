@@ -32,9 +32,8 @@ use crate::{
         HistoricalBlock,
         MmrTree,
     },
-    consensus::ConsensusConstants,
+    consensus::{ConsensusConstants, ConsensusManager},
     mempool::Mempool,
-    proof_of_work::DiffAdjManager,
 };
 use futures::SinkExt;
 use tari_broadcast_channel::Publisher;
@@ -58,7 +57,7 @@ where T: BlockchainBackend
     event_publisher: Publisher<BlockEvent>,
     blockchain_db: BlockchainDatabase<T>,
     mempool: Mempool<T>,
-    diff_adj_manager: DiffAdjManager<T>,
+    consensus_manager: ConsensusManager<T>,
 }
 
 impl<T> InboundNodeCommsHandlers<T>
@@ -69,14 +68,14 @@ where T: BlockchainBackend
         event_publisher: Publisher<BlockEvent>,
         blockchain_db: BlockchainDatabase<T>,
         mempool: Mempool<T>,
-        diff_adj_manager: DiffAdjManager<T>,
+        consensus_manager: ConsensusManager<T>,
     ) -> Self
     {
         Self {
             event_publisher,
             blockchain_db,
             mempool,
-            diff_adj_manager,
+            consensus_manager,
         }
     }
 
@@ -185,7 +184,7 @@ where T: BlockchainBackend
                 Ok(NodeCommsResponse::NewBlock(Block { header, body }))
             },
             NodeCommsRequest::GetTargetDifficulty(pow_algo) => Ok(NodeCommsResponse::TargetDifficulty(
-                self.diff_adj_manager.get_target_difficulty(pow_algo)?,
+                self.consensus_manager.get_target_difficulty(pow_algo)?,
             )),
         }
     }

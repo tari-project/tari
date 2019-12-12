@@ -289,7 +289,7 @@ pub mod test {
         }
 
         // lets add many1 blocks
-        for _ in 1..20 {
+        for _i in 1..20 {
             let append_height = store.get_height().unwrap().unwrap();
             append_to_pow_blockchain(&store, append_height, pow_algos.clone());
             prev_timestamp = prev_timestamp.increase(consensus.get_target_block_interval());

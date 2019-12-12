@@ -165,28 +165,22 @@ pub fn configure_and_initialize_node(
 ) -> Result<(CommsNode, NodeType), String>
 {
     let id = Arc::new(id);
-    let rules = Arc::new(ConsensusManager::default());
     let factories = Arc::new(CryptoFactories::default());
     let peers = assign_peers(&config.peer_seeds);
     let result = match &config.db_type {
         DatabaseType::Memory => {
+            let rules = ConsensusManager::default();
             let backend = MemoryDatabase::<HashDigest>::default();
             let validators = Validators::new(
                 FullConsensusValidator::new(rules.clone(), factories.clone()),
-                StatelessValidator::new(rules.clone(), factories.clone()),
+                StatelessValidator::new(factories.clone()),
             );
             let db = BlockchainDatabase::new(backend, validators).map_err(|e| e.to_string())?;
             let mempool = Mempool::new(db.clone(), MempoolConfig::default());
             let diff_adj_manager = DiffAdjManager::new(db.clone()).map_err(|e| e.to_string())?;
-            let (comms, handles) = setup_comms_services(
-                &rt,
-                id.clone(),
-                peers,
-                &config.peer_db_path,
-                db.clone(),
-                mempool,
-                diff_adj_manager,
-            );
+            rules.set_diff_manager(diff_adj_manager).map_err(|e| e.to_string())?;
+            let (comms, handles) =
+                setup_comms_services(&rt, id.clone(), peers, &config.peer_db_path, db.clone(), mempool, rules);
             let outbound_interface = handles.get_handle::<OutboundNodeCommsInterface>().unwrap();
             (
                 comms,
@@ -198,6 +192,7 @@ pub fn configure_and_initialize_node(
             )
         },
         DatabaseType::LMDB(p) => {
+            let rules = ConsensusManager::default();
             let mct_config = MerkleChangeTrackerConfig {
                 min_history_len: 900,
                 max_history_len: 1000,
@@ -205,20 +200,14 @@ pub fn configure_and_initialize_node(
             let backend = create_lmdb_database(&p, mct_config).map_err(|e| e.to_string())?;
             let validators = Validators::new(
                 FullConsensusValidator::new(rules.clone(), factories.clone()),
-                StatelessValidator::new(rules.clone(), factories.clone()),
+                StatelessValidator::new(factories.clone()),
             );
             let db = BlockchainDatabase::new(backend, validators).map_err(|e| e.to_string())?;
             let mempool = Mempool::new(db.clone(), MempoolConfig::default());
             let diff_adj_manager = DiffAdjManager::new(db.clone()).map_err(|e| e.to_string())?;
-            let (comms, handles) = setup_comms_services(
-                &rt,
-                id.clone(),
-                peers,
-                &config.peer_db_path,
-                db.clone(),
-                mempool,
-                diff_adj_manager,
-            );
+            rules.set_diff_manager(diff_adj_manager).map_err(|e| e.to_string())?;
+            let (comms, handles) =
+                setup_comms_services(&rt, id.clone(), peers, &config.peer_db_path, db.clone(), mempool, rules);
             let outbound_interface = handles.get_handle::<OutboundNodeCommsInterface>().unwrap();
             (
                 comms,
@@ -296,7 +285,7 @@ fn setup_comms_services<T>(
     peer_db_path: &str,
     db: BlockchainDatabase<T>,
     mempool: Mempool<T>,
-    diff_adj_manager: DiffAdjManager<T>,
+    consensus_manager: ConsensusManager<T>,
 ) -> (CommsNode, Arc<ServiceHandles>)
 where
     T: BlockchainBackend + 'static,
@@ -336,7 +325,7 @@ where
             subscription_factory,
             db,
             mempool,
-            diff_adj_manager,
+            consensus_manager,
             node_config,
         ))
         .finish();
