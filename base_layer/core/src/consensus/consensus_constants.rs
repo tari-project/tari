@@ -22,6 +22,7 @@
 
 use chrono::{DateTime, Duration, Utc};
 use std::ops::Add;
+use tari_utilities::epoch_time::EpochTime;
 
 /// This is the inner struct used to control all consensus values.
 pub struct ConsensusConstants {
@@ -63,7 +64,17 @@ impl ConsensusConstants {
 
     /// This returns the FTL(Future Time Limit) for blocks
     /// Any block with a timestamp greater than this is rejected.
-    pub fn ftl(&self) -> DateTime<Utc> {
+    pub fn ftl(&self) -> EpochTime {
+        (Utc::now()
+            .add(Duration::seconds(self.future_time_limit as i64))
+            .timestamp() as u64)
+            .into()
+    }
+
+    /// This returns the FTL(Future Time Limit) for blocks
+    /// Any block with a timestamp greater than this is rejected.
+    /// This function returns the FTL as a UTC datetime
+    pub fn ftl_as_time(&self) -> DateTime<Utc> {
         Utc::now().add(Duration::seconds(self.future_time_limit as i64))
     }
 
