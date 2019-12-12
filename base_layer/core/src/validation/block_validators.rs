@@ -23,7 +23,8 @@
 use crate::{
     blocks::{blockheader::BlockHeader, Block, BlockValidationError},
     chain_storage::{BlockchainBackend, BlockchainDatabase},
-    consensus::ConsensusManager,
+    consensus::{ConsensusConstants, ConsensusManager},
+    proof_of_work::PowError,
     validation::{Validation, ValidationError},
 };
 use std::sync::Arc;
@@ -94,7 +95,7 @@ impl<B: BlockchainBackend> Validation<Block, B> for FullConsensusValidator<B> {
         check_accounting_balance(block, &self.rules, &self.factories)?;
         check_inputs_are_utxos(block, self.db()?)?;
         check_timestamp_range(block, self.db()?)?;
-        check_achieved_difficulty(&block.header)?; // Update function signature once diff adjuster is complete
+        check_achieved_difficulty(&block.header, self.rules.clone())?;  // Update function signature once diff adjuster is complete
         Ok(())
     }
 }
@@ -129,22 +130,24 @@ fn check_inputs_are_utxos<B: BlockchainBackend>(
 
 /// Calculates the achieved and target difficulties and compares them
 
-fn check_achieved_difficulty(_block_header: &BlockHeader) -> Result<(), ValidationError> {
-    // TODO add code below
-    // let target = difficulty_manger
-    //     .get_target_difficulty(&block_header.pow.pow_algo)
-    //     .map_err(|_| {
-    //         ValidationError::BlockError(BlockValidationError::ProofOfWorkError(PowError::InvalidProofOfWork))
-    //     })?;
-    // let achieved = block_header.achieved_difficulty();
-    // if achieved < target {
-    //     return Err(ValidationError::BlockError(BlockValidationError::ProofOfWorkError(
-    //         PowError::AchievedDifficultyTooLow,
-    //     )));
-    // }
+fn check_achieved_difficulty<B: BlockchainBackend>(
+    block_header: &BlockHeader,
+    rules: ConsensusManager<B>,
+) -> Result<(), ValidationError>
+{
+    let target = rules.get_target_difficulty(&block_header.pow.pow_algo).map_err(|_| {
+        ValidationError::BlockError(BlockValidationError::ProofOfWorkError(PowError::InvalidProofOfWork))
+    })?;
+    let achieved = block_header.achieved_difficulty();
+    if achieved < target {
+        return Err(ValidationError::BlockError(BlockValidationError::ProofOfWorkError(
+            PowError::AchievedDifficultyTooLow,
+        )));
+    }
     Ok(())
 }
 
+/// This function test that the block timestamp is less than the ftl and greater than the median timestamp
 fn check_timestamp_range<B: BlockchainBackend>(
     _block: &Block,
     _db: BlockchainDatabase<B>,
