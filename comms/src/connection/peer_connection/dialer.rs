@@ -33,7 +33,7 @@ use crate::{
         monitor::{ConnectionMonitor, SocketEvent, SocketEventType},
         peer_connection::types::PeerConnectionJoinHandle,
         zmq::ZmqIdentity,
-        Direction,
+        ConnectionDirection,
         InprocAddress,
     },
     message::FrameSet,
@@ -45,7 +45,7 @@ use std::{
     thread,
     time::Duration,
 };
-use tari_utilities::hex::Hex;
+use tari_utilities::hex::{to_hex, Hex};
 
 const LOG_TARGET: &str = "comms::connection::peer_connection::worker";
 
@@ -245,20 +245,20 @@ impl PeerConnectionDialer {
                     DenyIdentity(_) => {
                         warn!(target: LOG_TARGET, "DenyIdentity called on outbound connection");
                     },
-                    TestConnection(_, reply_tx) => {
+                    TestConnection(identity, reply_tx) => {
                         debug!(
                             target: LOG_TARGET,
                             "Executing TestConnection for identity '{}'",
                             self.peer_identity.to_hex()
                         );
-                        log_if_error!(
+                        log_if_error_fmt!(
                             target: LOG_TARGET,
-                            "Error result back for TestConnection query",
                             reply_tx.send(
                                 self.send_payload(&peer_conn, PeerConnectionProtocolMessage::Ping, vec![])
                                     .map_err(|err| PeerConnectionError::ConnectionTestFailed(err.to_string())),
                             ),
-                            no_fmt
+                            "Error result back for TestConnection query for identity '{}'",
+                            to_hex(&identity)
                         );
                         debug!(target: LOG_TARGET, "TestConnection complete");
                     },
@@ -508,7 +508,7 @@ impl PeerConnectionDialer {
     /// Establish the connection to the peer address
     fn establish_peer_connection(&self) -> Result<EstablishedConnection, PeerConnectionError> {
         let context = &self.context;
-        Connection::new(&context.context, Direction::Outbound)
+        Connection::new(&context.context, ConnectionDirection::Outbound)
             .set_name(
                 format!(
                     "peer-conn-{}",

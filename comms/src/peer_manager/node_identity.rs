@@ -52,7 +52,7 @@ pub enum NodeIdentityError {
 /// `secret_key`: The secret key corresponding to the public key of this node
 ///
 /// `control_service_address`: The Multiaddr of the local node's Control port
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct NodeIdentity {
     #[serde(serialize_with = "serialize_to_hex")]
     #[serde(deserialize_with = "deserialize_node_id_from_hex")]

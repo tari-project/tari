@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
+    backoff::{Backoff, BoxedBackoff, ExponentialBackoff},
     builder::null_sink::NullSink,
     connection::{ConnectionError, PeerConnectionError, ZmqContext},
     connection_manager::{
@@ -34,15 +35,7 @@ use crate::{
     control_service::{ControlService, ControlServiceConfig, ControlServiceError, ControlServiceHandle},
     inbound_message_service::inbound_message_service::InboundMessageService,
     message::{FrameSet, InboundMessage},
-    outbound_message_service::{
-        Backoff,
-        BoxedBackoff,
-        ExponentialBackoff,
-        OutboundMessage,
-        OutboundMessageService,
-        OutboundServiceConfig,
-        OutboundServiceError,
-    },
+    outbound_message_service::{OutboundMessage, OutboundMessageService, OutboundServiceConfig, OutboundServiceError},
     peer_manager::{NodeIdentity, PeerManager, PeerManagerError},
     types::CommsDatabase,
 };
@@ -515,7 +508,7 @@ impl CommsNode {
 mod test {
     use super::*;
     use crate::peer_manager::PeerFeatures;
-    use tari_storage::HMapDatabase;
+    use tari_storage::HashmapDatabase;
     use tokio::runtime::Runtime;
 
     #[test]
@@ -523,7 +516,7 @@ mod test {
         let rt = Runtime::new().unwrap();
         let container = CommsBuilder::new(rt.executor())
             .with_node_identity(Arc::new(NodeIdentity::random_for_test(None, PeerFeatures::empty())))
-            .with_peer_storage(HMapDatabase::new())
+            .with_peer_storage(HashmapDatabase::new())
             .build()
             .unwrap();
 
@@ -535,7 +528,7 @@ mod test {
         let rt = Runtime::new().unwrap();
         let container = CommsBuilder::new(rt.executor())
             .with_node_identity(Arc::new(NodeIdentity::random_for_test(None, PeerFeatures::empty())))
-            .with_peer_storage(HMapDatabase::new())
+            .with_peer_storage(HashmapDatabase::new())
             .configure_control_service(ControlServiceConfig::default())
             .build()
             .unwrap();

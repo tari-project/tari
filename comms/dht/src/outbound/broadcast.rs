@@ -198,17 +198,6 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
             DhtOutboundRequest::SendMessage(params, body, reply_tx) => {
                 self.handle_send_message(*params, body, reply_tx).await
             },
-//            DhtOutboundRequest::Forward(request) => {
-//                if self.node_identity.has_peer_features(PeerFeatures::MESSAGE_PROPAGATION) {
-//                    self.generate_forward_messages(*request).await
-//                } else {
-//                    debug!(
-//                        target: LOG_TARGET,
-//                        "Message propagation is not enabled on this node. Discarding request to propagate message"
-//                    );
-//                    Ok(Vec::new())
-//                }
-//            },
         }
     }
 

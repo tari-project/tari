@@ -20,17 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod backoff;
 mod error;
 mod messages;
 mod service;
 
-pub use self::{
-    backoff::{Backoff, BoxedBackoff, ConstantBackoff, ExponentialBackoff},
-    error::OutboundServiceError,
-    messages::OutboundMessage,
-    service::OutboundMessageService,
-};
+pub use self::{error::OutboundServiceError, messages::OutboundMessage, service::OutboundMessageService};
 
 /// Configuration for the OutboundService
 pub struct OutboundServiceConfig {

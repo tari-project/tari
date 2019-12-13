@@ -21,15 +21,11 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
+    backoff::{Backoff, ExponentialBackoff},
     connection::PeerConnection,
     connection_manager::ConnectionManagerRequester,
     message::{Envelope, MessageExt},
-    outbound_message_service::{
-        backoff::{Backoff, ExponentialBackoff},
-        error::OutboundServiceError,
-        messages::OutboundMessage,
-        OutboundServiceConfig,
-    },
+    outbound_message_service::{error::OutboundServiceError, messages::OutboundMessage, OutboundServiceConfig},
     peer_manager::{NodeId, NodeIdentity},
 };
 use futures::{
@@ -208,8 +204,8 @@ where
                             if state.attempts >= self.config.max_attempts {
                                 log_if_error!(
                                     target: LOG_TARGET,
+                                    self.connection_manager.set_last_connection_failed(state.node_id.clone()).await,
                                     "Unable to set last connection failed because '{}'",
-                                    self.connection_manager.set_last_connection_failed(state.node_id.clone()).await
                                 );
                                 self.dial_cancel_signals.remove(&state.node_id);
                                 self.pending_connect_requests.remove(&state.node_id);
@@ -344,10 +340,10 @@ where
             Ok(conn) => {
                 log_if_error!(
                     target: LOG_TARGET,
-                    "Unable to set last connection success because '{}'",
                     self.connection_manager
                         .set_last_connection_succeeded(state.node_id.clone())
-                        .await
+                        .await,
+                    "Unable to set last connection success because '{}'",
                 );
                 if let Err(err) = self.handle_new_connection(&state.node_id, conn).await {
                     error!(
@@ -455,10 +451,10 @@ where
 mod test {
     use super::*;
     use crate::{
+        backoff::ConstantBackoff,
         connection::peer_connection,
         connection_manager::actor::ConnectionManagerRequest,
         message::MessageFlags,
-        outbound_message_service::ConstantBackoff,
         peer_manager::PeerFeatures,
         test_utils::node_id,
     };

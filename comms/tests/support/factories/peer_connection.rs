@@ -22,7 +22,7 @@
 
 use super::{peer_connection_context::PeerConnectionContextFactory, TestFactory, TestFactoryError};
 use std::thread::JoinHandle;
-use tari_comms::connection::{Direction, PeerConnection, PeerConnectionError};
+use tari_comms::connection::{ConnectionDirection, PeerConnection, PeerConnectionError};
 
 pub fn create<'c>() -> PeerConnectionFactory<'c> {
     PeerConnectionFactory::default()
@@ -50,9 +50,11 @@ impl<'c> TestFactory for PeerConnectionFactory<'c> {
             .map_err(TestFactoryError::build_failed())?;
 
         let (conn, handle) = match peer_conn_context.direction() {
-            Direction::Inbound => PeerConnection::listen(peer_conn_context).map_err(TestFactoryError::build_failed())?,
+            ConnectionDirection::Inbound => {
+                PeerConnection::listen(peer_conn_context).map_err(TestFactoryError::build_failed())?
+            },
 
-            Direction::Outbound => {
+            ConnectionDirection::Outbound => {
                 PeerConnection::connect(peer_conn_context).map_err(TestFactoryError::build_failed())?
             },
         };

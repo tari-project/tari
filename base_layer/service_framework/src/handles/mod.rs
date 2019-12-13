@@ -39,7 +39,10 @@ macro_rules! acquire_lock {
     ($e:expr, $m:ident) => {
         match $e.$m() {
             Ok(lock) => lock,
-            Err(poisoned) => poisoned.into_inner(),
+            Err(poisoned) => {
+                log::warn!(target: "service_framework", "Lock has been POISONED and will be silently recovered");
+                poisoned.into_inner()
+            },
         }
     };
     ($e:expr) => {

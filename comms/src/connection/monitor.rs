@@ -57,7 +57,7 @@ pub enum ConnectionMonitorError {
 /// More details here: http://api.zeromq.org/4-1:zmq-socket-monitor
 ///
 /// ```edition2018
-/// # use tari_comms::connection::{ZmqContext, monitor::ConnectionMonitor, Connection, Direction, InprocAddress};
+/// # use tari_comms::connection::{ZmqContext, monitor::ConnectionMonitor, Connection, ConnectionDirection, InprocAddress};
 /// # use tari_comms::multiaddr::Multiaddr;
 ///
 /// let ctx = ZmqContext::new();
@@ -68,7 +68,7 @@ pub enum ConnectionMonitorError {
 /// let monitor = ConnectionMonitor::connect(&ctx, &monitor_addr).unwrap();
 ///
 /// {
-///     Connection::new(&ctx, Direction::Inbound)
+///     Connection::new(&ctx, ConnectionDirection::Inbound)
 ///             .set_monitor_addr(monitor_addr)
 ///             .establish(&address)
 ///             .unwrap();

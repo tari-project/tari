@@ -23,61 +23,56 @@
 // This file is heavily influenced by the Libra Noise protocol implementation.
 
 use crate::{
-    connection::Direction,
+    connection::ConnectionDirection,
     noise::{
         crypto_resolver::TariCryptoResolver,
         error::NoiseError,
         socket::{Handshake, NoiseSocket},
     },
-    types::{CommsPublicKey, CommsSecretKey},
+    peer_manager::NodeIdentity,
+    types::CommsPublicKey,
 };
 use futures::{AsyncRead, AsyncWrite};
-use snow::{self, params::NoiseParams, Keypair};
+use snow::{self, params::NoiseParams};
+use std::sync::Arc;
 use tari_utilities::ByteArray;
 
 pub(super) const NOISE_IX_PARAMETER: &str = "Noise_IX_25519_ChaChaPoly_BLAKE2b";
 
 /// The Noise protocol configuration to be used to perform a protocol upgrade on an underlying
 /// socket.
+#[derive(Clone, Debug)]
 pub struct NoiseConfig {
-    keypair: Keypair,
+    node_identity: Arc<NodeIdentity>,
     parameters: NoiseParams,
 }
 
 impl NoiseConfig {
     /// Create a new NoiseConfig with the provided keypair
-    pub fn new(secret_key: CommsSecretKey, public_key: CommsPublicKey) -> Self {
+    pub fn new(node_identity: Arc<NodeIdentity>) -> Self {
         let parameters: NoiseParams = NOISE_IX_PARAMETER.parse().expect("Invalid noise parameters");
-        let keypair = Keypair {
-            private: secret_key.to_vec(),
-            public: public_key.to_vec(),
-        };
-        Self { keypair, parameters }
-    }
-
-    /// Create a new NoiseConfig with an ephemeral static key.
-    pub fn new_random() -> Self {
-        let parameters: NoiseParams = NOISE_IX_PARAMETER.parse().expect("Invalid noise parameters");
-        let keypair = snow::Builder::with_resolver(parameters.clone(), Box::new(TariCryptoResolver::new()))
-            .generate_keypair()
-            .expect("Noise failed to generate a random static keypair");
-        Self { keypair, parameters }
+        Self {
+            node_identity,
+            parameters,
+        }
     }
 
     /// Upgrades the given socket to using the noise protocol. The upgraded socket and the peer's static key
     /// is returned.
-    pub async fn upgrade_socket<TSocket: AsyncWrite + AsyncRead + Unpin>(
+    pub async fn upgrade_socket<TSocket>(
         &self,
         socket: TSocket,
-        direction: Direction,
+        direction: ConnectionDirection,
     ) -> Result<(CommsPublicKey, NoiseSocket<TSocket>), NoiseError>
+    where
+        TSocket: AsyncWrite + AsyncRead + Unpin,
     {
         let builder = snow::Builder::with_resolver(self.parameters.clone(), Box::new(TariCryptoResolver::default()))
-            .local_private_key(&self.keypair.private);
+            .local_private_key(self.node_identity.secret_key().as_bytes());
 
         let handshake_state = match direction {
-            Direction::Outbound => builder.build_initiator()?,
-            Direction::Inbound => builder.build_responder()?,
+            ConnectionDirection::Outbound => builder.build_initiator()?,
+            ConnectionDirection::Inbound => builder.build_responder()?,
         };
 
         let handshake = Handshake::new(socket, handshake_state);
@@ -94,10 +89,12 @@ impl NoiseConfig {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{consts::COMMS_RNG, test_utils::tcp::build_connected_tcp_socket_pair};
+    use crate::{
+        peer_manager::PeerFeatures,
+        test_utils::{node_identity::build_node_identity, tcp::build_connected_tcp_socket_pair},
+    };
     use futures::{future, AsyncReadExt, AsyncWriteExt};
     use snow::params::{BaseChoice, CipherChoice, DHChoice, HandshakePattern, HashChoice};
-    use tari_crypto::keys::PublicKey;
     use tokio::runtime::Runtime;
 
     fn check_noise_params(config: &NoiseConfig) {
@@ -111,44 +108,35 @@ mod test {
 
     #[test]
     fn new() {
-        let (sk, pk) = COMMS_RNG.with(|rng| CommsPublicKey::random_keypair(&mut *rng.borrow_mut()));
-        let config = NoiseConfig::new(sk.clone(), pk.clone());
+        let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+        let config = NoiseConfig::new(node_identity.clone());
         check_noise_params(&config);
-        assert_eq!(config.keypair.private, sk.to_vec());
-        assert_eq!(config.keypair.public, pk.to_vec());
-    }
-
-    #[test]
-    fn new_random() {
-        let config = NoiseConfig::new_random();
-        check_noise_params(&config);
-        assert_ne!(config.keypair.private, CommsSecretKey::default().to_vec());
-        assert_ne!(config.keypair.public, CommsPublicKey::default().to_vec());
+        assert_eq!(config.node_identity.public_key(), node_identity.public_key());
     }
 
     #[test]
     fn upgrade_socket() {
         let rt = Runtime::new().unwrap();
 
-        let (secret_key1, public_key1) = COMMS_RNG.with(|rng| CommsPublicKey::random_keypair(&mut *rng.borrow_mut()));
-        let config1 = NoiseConfig::new(secret_key1.clone(), public_key1.clone());
+        let node_identity1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+        let config1 = NoiseConfig::new(node_identity1.clone());
 
-        let (secret_key2, public_key2) = COMMS_RNG.with(|rng| CommsPublicKey::random_keypair(&mut *rng.borrow_mut()));
-        let config2 = NoiseConfig::new(secret_key2.clone(), public_key2.clone());
+        let node_identity2 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+        let config2 = NoiseConfig::new(node_identity2.clone());
 
         rt.block_on(async move {
             let (in_socket, out_socket) = build_connected_tcp_socket_pair().await;
             let (upgraded_in, upgraded_out) = future::join(
-                config1.upgrade_socket(in_socket, Direction::Inbound),
-                config2.upgrade_socket(out_socket, Direction::Outbound),
+                config1.upgrade_socket(in_socket, ConnectionDirection::Inbound),
+                config2.upgrade_socket(out_socket, ConnectionDirection::Outbound),
             )
             .await;
 
             let (in_pubkey, mut socket_in) = upgraded_in.unwrap();
             let (out_pubkey, mut socket_out) = upgraded_out.unwrap();
 
-            assert_eq!(in_pubkey, public_key2);
-            assert_eq!(out_pubkey, public_key1);
+            assert_eq!(&in_pubkey, node_identity2.public_key());
+            assert_eq!(&out_pubkey, node_identity1.public_key());
 
             let sample = b"Children of time";
             socket_in.write_all(sample).await.unwrap();

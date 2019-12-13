@@ -83,21 +83,11 @@ pub fn install_default_logfile_config(path: &Path) -> Result<u64, std::io::Error
 /// ```
 #[macro_export]
 macro_rules! log_if_error {
-     // No formatter '{}' in $msg
-    (level: $level:tt, target: $target:expr, $msg:expr, $expr:expr, no_fmt$(,)*) => {{
-        match $expr {
-            Ok(v) => Some(v),
-            Err(_) => {
-                log::$level!(target: $target, $msg);
-                None
-            }
-        }
-    }};
     (level:$level:tt, target: $target:expr, $msg:expr, $expr:expr $(,)*) => {{
         match $expr {
             Ok(v) => Some(v),
             Err(err) => {
-                log::error!(target: $target, $msg, err);
+                log::$level!(target: $target, $msg, err);
                 None
             }
         }
@@ -110,6 +100,26 @@ macro_rules! log_if_error {
     }};
     ($msg:expr, $expr:expr $(,)*) => {{
         log_if_error!(level:error, target: "$crate", $msg, $expr)
+    }};
+}
+
+/// See [log_if_error!](./log_if_error.macro.html).
+///
+/// ```edition2018
+/// # use tari_common::log_if_error_fmt;
+/// let opt = log_if_error_fmt!(level: debug, target: "docs", "Error sending reply - custom: {}", Result::<(), _>::Err(()), "this is logged");
+/// assert_eq!(opt, None);
+/// ```
+#[macro_export]
+macro_rules! log_if_error_fmt {
+    (level: $level:tt, target: $target:expr, $msg:expr, $expr:expr, $($args:tt)+) => {{
+        match $expr {
+            Ok(v) => Some(v),
+            Err(_) => {
+                log::$level!(target: $target, $msg, $($args)+);
+                None
+            }
+        }
     }};
 }
 

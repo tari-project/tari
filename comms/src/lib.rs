@@ -25,18 +25,23 @@ pub mod utils;
 pub mod builder;
 #[macro_use]
 pub mod connection;
+pub mod backoff;
 pub mod connection_manager;
 mod consts;
 pub mod control_service;
 pub mod inbound_message_service;
-mod multiplexing;
-mod noise;
 pub mod outbound_message_service;
 pub mod peer_manager;
 mod proto;
-mod socks;
-pub mod transports;
 pub mod types;
+
+cfg_next! {
+    mod multiplexing;
+    mod noise;
+    mod socks;
+
+    pub mod transports;
+}
 
 #[cfg(test)]
 pub(crate) mod test_utils;

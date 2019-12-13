@@ -39,6 +39,7 @@ macro_rules! setter {
 
 /// Creates a setter function used with the builder pattern
 /// A mutable reference is taken and returned
+#[cfg(feature = "next")]
 macro_rules! setter_mut {
     ($func:ident, $name: ident, Option<$type: ty>) => {
         #[allow(dead_code)]
@@ -60,7 +61,10 @@ macro_rules! recover_lock {
     ($e:expr) => {
         match $e {
             Ok(lock) => lock,
-            Err(poisoned) => poisoned.into_inner(),
+            Err(poisoned) => {
+                log::warn!(target: "comms", "Lock has been POISONED and will be silently recovered");
+                poisoned.into_inner()
+            },
         }
     };
 }
@@ -99,35 +103,54 @@ macro_rules! acquire_read_lock {
 /// ```
 #[macro_export]
 macro_rules! log_if_error {
-    // No formatter '{}' in $msg
-    (level: $level:tt, target: $target:expr, $msg:expr, $expr:expr, no_fmt$(,)*) => {{
-        match $expr {
-            Ok(v) => Some(v),
-            Err(_) => {
-                log::$level!(target: $target, $msg);
-                None
-            }
-        }
-    }};
-    (target: $target:expr, $msg:expr, $expr:expr, no_fmt$(,)*) => {{
-        log_if_error!(level:error, target: "$crate", $msg, $expr, no_fmt)
-    }};
-    (level:$level:tt, target: $target:expr, $msg:expr, $expr:expr $(,)*) => {{
+    (level:$level:ident, target:$target:expr, $expr:expr, $msg:expr, $($args:tt),* $(,)*) => {{
         match $expr {
             Ok(v) => Some(v),
             Err(err) => {
-                log::error!(target: $target, $msg, err);
+                log::$level!(target: $target, $msg, $($args,)* error = err);
                 None
             }
         }
     }};
-    (level:$level:tt, $msg:expr, $expr:expr $(,)*) => {{
-        log_if_error!(level:$level, target: "$crate", $msg, $expr)
+    (target:$target:expr, $expr:expr, $msg:expr, $($args:tt),* $(,)*) => {{
+        log_if_error!(level:error, target:$target, $expr, $msg, $($args),*)
     }};
-     (target: $target:expr, $msg:expr, $expr:expr $(,)*) => {{
-        log_if_error!(level:error, target: $target, $msg, $expr)
+    (level:$level:ident, $expr:expr, $msg:expr, $($args:tt),* $(,)*) => {{
+        log_if_error!(level:$level, target:"$crate", $expr, $msg, $($args),*)
     }};
-    ($msg:expr, $expr:expr $(,)*) => {{
-        log_if_error!(level:error, target: "$crate", $msg, $expr)
+    ($expr:expr, $msg:expr, $($args:tt)* $(,)*) => {{
+        log_if_error!(level:error, target:"$crate", $expr, $msg, $($args),*)
     }};
+}
+
+#[macro_export]
+macro_rules! log_if_error_fmt {
+    (level: $level:ident, target: $target:expr, $expr:expr, $($args:tt)+) => {{
+        match $expr {
+            Ok(v) => Some(v),
+            Err(_) => {
+                log::$level!(target: $target, $($args)+);
+                None
+            }
+        }
+    }};
+    (level:$level:ident, $expr:expr, $($args:tt)+) => {{
+        log_if_error_fmt!(level:$level, target: "$crate", $expr, $($args)+)
+    }};
+    (target: $target:expr, $expr:expr , $($args:tt)+) => {{
+        log_if_error_fmt!(level:error, target: $target, $expr, $($args)+)
+    }};
+    ($msg:expr, $expr:expr, $($args:tt)+) => {{
+        log_if_error_fmt!(level:error, target: "$crate", $expr, $($args)+)
+    }};
+}
+
+/// Adds #[cfg(feature = "next")] to mod and use
+macro_rules! cfg_next {
+    ($($item:item)+) => {
+        $(
+            #[cfg(feature = "next")]
+            $item
+        )+
+    }
 }

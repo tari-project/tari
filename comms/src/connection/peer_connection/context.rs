@@ -23,7 +23,7 @@
 use super::PeerConnectionError;
 use crate::{
     connection::{
-        types::{Direction, Linger},
+        types::{ConnectionDirection, Linger},
         zmq::{CurveEncryption, ZmqContext, ZmqIdentity},
     },
     message::FrameSet,
@@ -59,7 +59,7 @@ pub struct PeerConnectionContext {
     pub(crate) peer_identity: Option<ZmqIdentity>,
     pub(crate) peer_address: Multiaddr,
     pub(crate) message_sink_channel: Sender<FrameSet>,
-    pub(crate) direction: Direction,
+    pub(crate) direction: ConnectionDirection,
     pub(crate) curve_encryption: CurveEncryption,
     pub(crate) max_msg_size: u64,
     pub(crate) max_retry_attempts: u16,
@@ -69,7 +69,7 @@ pub struct PeerConnectionContext {
 }
 
 impl PeerConnectionContext {
-    pub fn direction(&self) -> Direction {
+    pub fn direction(&self) -> ConnectionDirection {
         self.direction
     }
 }
@@ -86,8 +86,8 @@ impl<'a> TryFrom<PeerConnectionContextBuilder<'a>> for PeerConnectionContext {
         let curve_encryption = builder.curve_encryption;
         let direction = unwrap_prop(builder.direction, "direction")?;
         let (connection_identity, peer_identity) = match direction {
-            Direction::Inbound => (None, None),
-            Direction::Outbound => (
+            ConnectionDirection::Inbound => (None, None),
+            ConnectionDirection::Outbound => (
                 Some(
                     builder
                         .connection_identity
@@ -141,7 +141,7 @@ fn unwrap_prop<T>(prop: Option<T>, prop_name: &str) -> Result<T, PeerConnectionE
 /// # use tari_comms::connection::{
 /// #     ZmqContext,
 /// #     InprocAddress,
-/// #     Direction,
+/// #     ConnectionDirection,
 /// #     PeerConnectionContextBuilder,
 /// #     PeerConnection,
 /// # };
@@ -156,7 +156,7 @@ fn unwrap_prop<T>(prop: Option<T>, prop_name: &str) -> Result<T, PeerConnectionE
 ///     // This is how we identify to the remote ZMQ_ROUTER socket
 ///    .set_connection_identity(b"123".to_vec())
 ///    .set_context(&ctx)
-///    .set_direction(Direction::Outbound)
+///    .set_direction(ConnectionDirection::Outbound)
 ///    .set_message_sink_channel(tx)
 ///    .set_address("/ip4/127.0.0.1/tcp/8080".parse().unwrap())
 ///    .finish()
@@ -170,7 +170,7 @@ pub struct PeerConnectionContextBuilder<'c> {
     pub(super) message_sink_channel: Option<Sender<FrameSet>>,
     pub(super) context: Option<&'c ZmqContext>,
     pub(super) curve_encryption: CurveEncryption,
-    pub(super) direction: Option<Direction>,
+    pub(super) direction: Option<ConnectionDirection>,
     pub(super) peer_identity: Option<ZmqIdentity>,
     pub(super) connection_identity: Option<ZmqIdentity>,
     pub(super) max_msg_size: Option<u64>,
@@ -191,7 +191,7 @@ impl<'c> PeerConnectionContextBuilder<'c> {
     setter!(set_context, context, Option<&'c ZmqContext>);
 
     /// Set the connection direction
-    setter!(set_direction, direction, Option<Direction>);
+    setter!(set_direction, direction, Option<ConnectionDirection>);
 
     /// Set the maximum connection retry attempts
     setter!(set_max_retry_attempts, max_retry_attempts, Option<u16>);
@@ -245,7 +245,7 @@ impl<'c> PeerConnectionContextBuilder<'c> {
     fn check_curve_encryption(&self) -> Result<(), PeerConnectionError> {
         match self.direction {
             Some(ref direction) => match direction {
-                Direction::Outbound => match self.curve_encryption {
+                ConnectionDirection::Outbound => match self.curve_encryption {
                     CurveEncryption::None { .. } => Ok(()),
                     CurveEncryption::Client { .. } => Ok(()),
                     CurveEncryption::Server { .. } => Err(PeerConnectionError::InitializationError(
@@ -253,7 +253,7 @@ impl<'c> PeerConnectionContextBuilder<'c> {
                     )
                     .into()),
                 },
-                Direction::Inbound => match self.curve_encryption {
+                ConnectionDirection::Inbound => match self.curve_encryption {
                     CurveEncryption::None { .. } => Ok(()),
                     CurveEncryption::Client { .. } => Err(PeerConnectionError::InitializationError(
                         "'Server' curve encryption required for inbound connection".to_string(),
@@ -275,7 +275,7 @@ mod test {
     use super::*;
     use crate::connection::{
         peer_connection::PeerConnectionError,
-        types::Direction,
+        types::ConnectionDirection,
         zmq::{CurveEncryption, ZmqContext},
     };
     use futures::channel::mpsc::channel;
@@ -303,7 +303,7 @@ mod test {
         let (tx, _rx) = channel(10);
 
         let peer_ctx = PeerConnectionContextBuilder::new()
-            .set_direction(Direction::Inbound)
+            .set_direction(ConnectionDirection::Inbound)
             .set_context(&ctx)
             .set_socks_proxy(socks_addr.clone())
             .set_message_sink_channel(tx)
@@ -311,7 +311,7 @@ mod test {
             .finish()
             .unwrap();
 
-        assert_eq!(Direction::Inbound, peer_ctx.direction);
+        assert_eq!(ConnectionDirection::Inbound, peer_ctx.direction);
         assert_eq!(peer_addr, peer_ctx.peer_address);
         assert_eq!(Some(socks_addr), peer_ctx.socks_address);
     }
@@ -324,7 +324,7 @@ mod test {
         let result = PeerConnectionContextBuilder::new()
             .set_peer_identity(b"123".to_vec())
             .set_connection_identity(b"123".to_vec())
-            .set_direction(Direction::Outbound)
+            .set_direction(ConnectionDirection::Outbound)
             .set_message_sink_channel(tx)
             .set_address("/ip4/127.0.0.1/tcp/80".parse().unwrap())
             .finish();
@@ -334,7 +334,7 @@ mod test {
         let (tx, _rx) = channel(10);
 
         let result = PeerConnectionContextBuilder::new()
-            .set_direction(Direction::Inbound)
+            .set_direction(ConnectionDirection::Inbound)
             .set_context(&ctx)
             .set_message_sink_channel(tx)
             .set_curve_encryption(CurveEncryption::Client {
@@ -350,7 +350,7 @@ mod test {
         let result = PeerConnectionContextBuilder::new()
             .set_peer_identity(b"123".to_vec())
             .set_connection_identity(b"123".to_vec())
-            .set_direction(Direction::Outbound)
+            .set_direction(ConnectionDirection::Outbound)
             .set_context(&ctx)
             .set_message_sink_channel(tx)
             .set_curve_encryption(CurveEncryption::Server { secret_key: sk.clone() })

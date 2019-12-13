@@ -29,11 +29,11 @@ use std::{collections::HashMap, hash::Hash, sync::RwLock};
 ///  The HMapDatabase mimics the behaviour of LMDBDatabase without keeping a persistent copy of the key-value records.
 /// It allows key-value pairs to be inserted, retrieved and removed in a thread-safe manner.
 #[derive(Default)]
-pub struct HMapDatabase<K: Eq + Hash, V> {
+pub struct HashmapDatabase<K: Eq + Hash, V> {
     db: RwLock<HashMap<K, V>>,
 }
 
-impl<K: Clone + Eq + Hash, V: Clone> HMapDatabase<K, V> {
+impl<K: Clone + Eq + Hash, V: Clone> HashmapDatabase<K, V> {
     /// Creates a new empty HMapDatabase with the specified name
     pub fn new() -> Self {
         Self {
@@ -104,7 +104,7 @@ impl<K: Clone + Eq + Hash, V: Clone> HMapDatabase<K, V> {
     }
 }
 
-impl<K: Clone + Eq + Hash, V: Clone> KeyValueStore<K, V> for HMapDatabase<K, V> {
+impl<K: Clone + Eq + Hash, V: Clone> KeyValueStore<K, V> for HashmapDatabase<K, V> {
     /// Inserts a key-value pair into the key-value database.
     fn insert(&self, key: K, value: V) -> Result<(), KeyValStoreError> {
         self.insert(key, value)
@@ -144,7 +144,7 @@ mod test {
 
     #[test]
     fn test_hmap_kvstore() {
-        let db = HMapDatabase::new();
+        let db = HashmapDatabase::new();
 
         #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
         struct Foo {

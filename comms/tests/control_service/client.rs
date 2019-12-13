@@ -23,7 +23,7 @@
 use crate::support::factories::{self, TestFactory};
 use std::{sync::Arc, time::Duration};
 use tari_comms::{
-    connection::{Connection, Direction, InprocAddress, ZmqContext},
+    connection::{Connection, ConnectionDirection, InprocAddress, ZmqContext},
     control_service::{messages::PingMessage, ControlServiceClient},
 };
 
@@ -32,10 +32,10 @@ fn send_ping_recv_pong() {
     let context = ZmqContext::new();
     let address = InprocAddress::random();
 
-    let outbound_conn = Connection::new(&context, Direction::Outbound)
+    let outbound_conn = Connection::new(&context, ConnectionDirection::Outbound)
         .establish(&address)
         .unwrap();
-    let inbound_conn = Connection::new(&context, Direction::Inbound)
+    let inbound_conn = Connection::new(&context, ConnectionDirection::Inbound)
         .establish(&address)
         .unwrap();
 

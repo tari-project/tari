@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019 The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,11 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod error;
-pub mod hmap_database;
-pub mod key_val_store;
-pub mod lmdb_database;
+use std::future::Future;
 
-pub use error::KeyValStoreError;
-pub use hmap_database::HashmapDatabase;
-pub use key_val_store::KeyValueStore;
+/// Encapsulates the ability to asynchronously establish connections.
+pub trait Dialer<T> {
+    /// What this dialer produces when it's work is done. Typically a PeerConnection / TcpStream
+    type Output;
+    /// The error type that this dialer can produce
+    type Error;
+    /// The future returned from the dial function
+    type Future: Future<Output = Result<Self::Output, Self::Error>>;
+
+    /// Asynchronously establish a connection (dial) to a remote peer
+    fn dial(&self, peer: &T) -> Self::Future;
+}

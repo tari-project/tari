@@ -22,4 +22,9 @@
 
 pub mod dialers;
 pub mod node_id;
-pub mod tcp;
+
+cfg_next! {
+    pub mod node_identity;
+    pub mod tcp;
+    pub mod test_node;
+}

@@ -27,8 +27,6 @@ use tari_storage::KeyValStoreError;
 pub enum PeerManagerError {
     /// The requested peer does not exist or could not be located
     PeerNotFoundError,
-    // // A NetAddressError occurred
-    //    MultiaddrError(multiaddr::Error),
     /// The peer has been banned
     BannedPeer,
     // An problem has been encountered with the database

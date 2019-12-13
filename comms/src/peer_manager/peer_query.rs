@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::peer_manager::{peer_key::PeerKey, NodeId, Peer, PeerManagerError};
+use crate::peer_manager::{peer_id::PeerId, NodeId, Peer, PeerManagerError};
 use std::cmp::min;
 use tari_storage::{IterationResult, KeyValueStore};
 
@@ -77,7 +77,7 @@ impl<'a> PeerQuery<'a> {
 
     /// Returns a `PeerQueryExecutor` with this `PeerQuery`
     pub(super) fn executor<DS>(self, store: &DS) -> PeerQueryExecutor<'a, '_, DS>
-    where DS: KeyValueStore<PeerKey, Peer> {
+    where DS: KeyValueStore<PeerId, Peer> {
         PeerQueryExecutor::new(self, store)
     }
 
@@ -104,7 +104,7 @@ pub(super) struct PeerQueryExecutor<'a, 'b, DS> {
 }
 
 impl<'a, 'b, DS> PeerQueryExecutor<'a, 'b, DS>
-where DS: KeyValueStore<PeerKey, Peer>
+where DS: KeyValueStore<PeerId, Peer>
 {
     pub fn new(query: PeerQuery<'a>, store: &'b DS) -> Self {
         Self { query, store }
@@ -201,7 +201,7 @@ mod test {
     use rand::OsRng;
     use std::iter::repeat_with;
     use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
-    use tari_storage::HMapDatabase;
+    use tari_storage::HashmapDatabase;
 
     fn create_test_peer(rng: &mut OsRng, ban_flag: bool) -> Peer {
         let (_sk, pk) = RistrettoPublicKey::random_keypair(rng);
@@ -225,7 +225,7 @@ mod test {
         // Create 20 peers were the 1st and last one is bad
         let mut rng = rand::OsRng::new().unwrap();
         sample_peers.push(create_test_peer(&mut rng, true));
-        let db = HMapDatabase::new();
+        let db = HashmapDatabase::new();
         let mut id_counter = 0;
 
         repeat_with(|| create_test_peer(&mut rng, false))
@@ -247,7 +247,7 @@ mod test {
         // Create 20 peers were the 1st and last one is bad
         let mut rng = rand::OsRng::new().unwrap();
         sample_peers.push(create_test_peer(&mut rng, true));
-        let db = HMapDatabase::new();
+        let db = HashmapDatabase::new();
         let mut id_counter = 0;
 
         repeat_with(|| create_test_peer(&mut rng, true))
@@ -281,7 +281,7 @@ mod test {
         // Create 20 peers were the 1st and last one is bad
         let mut rng = rand::OsRng::new().unwrap();
         sample_peers.push(create_test_peer(&mut rng, true));
-        let db = HMapDatabase::new();
+        let db = HashmapDatabase::new();
         let mut id_counter = 0;
 
         repeat_with(|| create_test_peer(&mut rng, true))
@@ -316,7 +316,7 @@ mod test {
         // Create 20 peers were the 1st and last one is bad
         let mut rng = rand::OsRng::new().unwrap();
         sample_peers.push(create_test_peer(&mut rng, true));
-        let db = HMapDatabase::new();
+        let db = HashmapDatabase::new();
         let mut id_counter = 0;
 
         repeat_with(|| create_test_peer(&mut rng, true))

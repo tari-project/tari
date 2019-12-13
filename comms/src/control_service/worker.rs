@@ -36,7 +36,7 @@ use super::{
 use crate::{
     connection::{
         connection::EstablishedConnection,
-        types::{Direction, Linger},
+        types::{ConnectionDirection, Linger},
         zmq::ZmqIdentity,
         Connection,
         CurvePublicKey,
@@ -118,8 +118,8 @@ impl ControlServiceWorker {
                             info!(target: LOG_TARGET, "Control service exiting loop.");
                             log_if_error!(
                                 target: LOG_TARGET,
-                                "Unable to set linger on listener connection because '{}'",
                                 worker.listener.set_linger(Linger::Never),
+                                "Unable to set linger on listener connection because '{}'",
                             );
                             break;
                         },
@@ -139,8 +139,8 @@ impl ControlServiceWorker {
 
                             log_if_error!(
                                 target: LOG_TARGET,
+                                listener.set_linger(Linger::Never),
                                 "Failed to set linger on listener connection because '{}'",
-                                listener.set_linger(Linger::Never)
                             );
                             drop(listener);
                             thread::sleep(Duration::from_millis(1000));
@@ -431,8 +431,8 @@ impl ControlServiceWorker {
             } else {
                 log_if_error!(
                     target: LOG_TARGET,
+                    conn_manager.disconnect_peer(&peer.node_id),
                     "Failed to disconnect stale connection because '{}'",
-                    conn_manager.disconnect_peer(&peer.node_id)
                 );
             }
         }
@@ -594,7 +594,7 @@ impl ControlServiceWorker {
 
     fn establish_listener(context: &ZmqContext, config: &ControlServiceConfig) -> Result<EstablishedConnection> {
         debug!(target: LOG_TARGET, "Binding on address: {}", config.listening_address);
-        Connection::new(&context, Direction::Inbound)
+        Connection::new(&context, ConnectionDirection::Inbound)
             .set_name("Control Service Listener")
             .set_receive_hwm(10)
             .set_max_message_size(Some(CONTROL_SERVICE_MAX_MSG_SIZE))

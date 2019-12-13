@@ -29,7 +29,7 @@ use std::time::Duration;
 use tari_comms::{
     connection::{
         peer_connection::PeerConnectionProtocolMessage,
-        types::{Direction, Linger},
+        types::{ConnectionDirection, Linger},
         Connection,
         CurveEncryption,
         PeerConnection,
@@ -52,7 +52,7 @@ fn connection_in() {
 
     // Initialize and start peer connection
     let context = PeerConnectionContextBuilder::new()
-        .set_direction(Direction::Inbound)
+        .set_direction(ConnectionDirection::Inbound)
         .set_context(&ctx)
         .set_message_sink_channel(consumer_tx)
         .set_curve_encryption(CurveEncryption::Server { secret_key: server_sk })
@@ -68,7 +68,7 @@ fn connection_in() {
     let peer_identity = b"peer-ident".to_vec();
     conn.allow_identity(connection_identity.clone(), peer_identity.clone())
         .unwrap();
-    let sender = Connection::new(&ctx, Direction::Outbound)
+    let sender = Connection::new(&ctx, ConnectionDirection::Outbound)
         .set_identity(&connection_identity)
         .set_curve_encryption(CurveEncryption::Client {
             server_public_key: server_pk,
@@ -105,7 +105,7 @@ fn connection_out() {
     let (client_sk, client_pk) = CurveEncryption::generate_keypair().unwrap();
 
     // Connect to the sender (peer)
-    let sender = Connection::new(&ctx, Direction::Inbound)
+    let sender = Connection::new(&ctx, ConnectionDirection::Inbound)
         .set_name("Test sender")
         .set_curve_encryption(CurveEncryption::Server { secret_key: server_sk })
         .establish(&addr)
@@ -118,7 +118,7 @@ fn connection_out() {
     let context = PeerConnectionContextBuilder::new()
         .set_peer_identity(peer_identity.clone())
         .set_connection_identity(connection_identity.clone())
-        .set_direction(Direction::Outbound)
+        .set_direction(ConnectionDirection::Outbound)
         .set_context(&ctx)
         .set_message_sink_channel(consumer_tx)
         .set_curve_encryption(CurveEncryption::Client {
@@ -159,14 +159,16 @@ fn connection_wait_connect_shutdown() {
     let addr = factories::net_address::create().build().unwrap();
     let ctx = ZmqContext::new();
 
-    let receiver = Connection::new(&ctx, Direction::Inbound).establish(&addr).unwrap();
+    let receiver = Connection::new(&ctx, ConnectionDirection::Inbound)
+        .establish(&addr)
+        .unwrap();
 
     let (consumer_tx, _consumer_rx) = mpsc::channel(10);
 
     let context = PeerConnectionContextBuilder::new()
         .set_peer_identity(b"dummy-remote-identity".to_vec())
         .set_connection_identity(b"123".to_vec())
-        .set_direction(Direction::Outbound)
+        .set_direction(ConnectionDirection::Outbound)
         .set_context(&ctx)
         .set_message_sink_channel(consumer_tx)
         .set_address(addr)
@@ -198,7 +200,7 @@ fn connection_wait_connect_failed() {
     let context = PeerConnectionContextBuilder::new()
         .set_peer_identity(b"dummy-remote-identity".to_vec())
         .set_connection_identity(b"123".to_vec())
-        .set_direction(Direction::Outbound)
+        .set_direction(ConnectionDirection::Outbound)
         .set_max_retry_attempts(1)
         .set_context(&ctx)
         .set_message_sink_channel(consumer_tx)
@@ -227,7 +229,7 @@ fn connection_disconnect() {
     let (consumer_tx, _consumer_rx) = mpsc::channel(10);
 
     // Connect to the inbound connection and send a message
-    let sender = Connection::new(&ctx, Direction::Inbound)
+    let sender = Connection::new(&ctx, ConnectionDirection::Inbound)
         .set_linger(Linger::Indefinitely)
         .establish(&addr)
         .unwrap();
@@ -239,7 +241,7 @@ fn connection_disconnect() {
     let context = PeerConnectionContextBuilder::new()
         .set_peer_identity(b"dummy-remote-identity".to_vec())
         .set_connection_identity(identity.clone())
-        .set_direction(Direction::Outbound)
+        .set_direction(ConnectionDirection::Outbound)
         .set_context(&ctx)
         .set_message_sink_channel(consumer_tx)
         .set_address(addr)
@@ -279,7 +281,7 @@ fn connection_stats() {
 
     // Initialize and start peer connection
     let context = PeerConnectionContextBuilder::new()
-        .set_direction(Direction::Inbound)
+        .set_direction(ConnectionDirection::Inbound)
         .set_context(&ctx)
         .set_message_sink_channel(inbound_tx)
         .set_address(addr.clone())
@@ -302,7 +304,7 @@ fn connection_stats() {
         .set_context(&ctx)
         .set_connection_identity(conn_identity.clone())
         .set_peer_identity(peer_identity.clone())
-        .set_direction(Direction::Outbound)
+        .set_direction(ConnectionDirection::Outbound)
         .set_message_sink_channel(sender_tx)
         .set_address(addr)
         .finish()
@@ -359,7 +361,7 @@ fn ignore_invalid_message_types() {
     // Initialize and start peer connection
     let context = PeerConnectionContextBuilder::new()
         .set_connection_identity(b"123".to_vec())
-        .set_direction(Direction::Inbound)
+        .set_direction(ConnectionDirection::Inbound)
         .set_context(&ctx)
         .set_message_sink_channel(consumer_tx)
         .set_curve_encryption(CurveEncryption::Server { secret_key: server_sk })
@@ -371,7 +373,7 @@ fn ignore_invalid_message_types() {
     conn.wait_listening_or_failure(Duration::from_millis(1000)).unwrap();
 
     // Connect to the inbound connection and send a message
-    let sender = Connection::new(&ctx, Direction::Outbound)
+    let sender = Connection::new(&ctx, ConnectionDirection::Outbound)
         .set_curve_encryption(CurveEncryption::Client {
             server_public_key: server_pk,
             secret_key: client_sk,

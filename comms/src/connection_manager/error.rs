@@ -20,70 +20,31 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    connection::{ConnectionError, PeerConnectionError},
-    control_service::{messages::RejectReason, ControlServiceError},
-    message::MessageError,
-    peer_manager::PeerManagerError,
-};
+use crate::peer_manager::PeerManagerError;
 use derive_error::Error;
-use tari_utilities::{
-    ciphers::cipher::CipherError,
-    message_format::MessageFormatError,
-    thread_join::ThreadError,
-    ByteArrayError,
-};
 
-#[derive(Error, Debug)]
+#[derive(Debug, Error, Clone)]
 pub enum ConnectionManagerError {
-    /// There are no available peer connection ports
-    NoAvailablePeerConnectionPort,
-    /// The peer connection could not be found
-    PeerConnectionNotFound,
-    /// The peer could not be found
-    PeerNotFound,
-    ConnectionError(ConnectionError),
-    PeerConnectionError(PeerConnectionError),
-    #[error(no_from)]
-    CurveEncryptionGenerateError(ConnectionError),
-    MessageFormatError(MessageFormatError),
-    MessageError(MessageError),
-    /// The global node identity has not been set
-    GlobalNodeIdentityNotSet,
-    SharedSecretSerializationError(ByteArrayError),
-    CipherError(CipherError),
     PeerManagerError(PeerManagerError),
-    /// Failed to connect to control service on all addresses
-    ControlServiceFailedConnectionAllAddresses,
-    /// Problem creating or loading datastore
-    DatastoreError,
-    /// Connection timed out before it was able to connect
-    TimeoutBeforeConnected,
-    /// The maximum number of peer connections has been reached
-    MaxConnectionsReached,
-    /// Failed to shutdown a peer connection
-    #[error(no_from)]
-    ConnectionShutdownFailed(PeerConnectionError),
-    PeerConnectionThreadError(ThreadError),
-    #[error(msg_embedded, non_std, no_from)]
-    ControlServicePingPongFailed(String),
-    #[error(msg_embedded, non_std, no_from)]
-    SendRequestConnectionFailed(String),
-    /// Failed to receive a connection request outcome message
-    ConnectionRequestOutcomeRecvFail,
-    /// The request to establish a peer connection was rejected by the destination peer's control port
-    #[error(no_from, non_std)]
-    ConnectionRejected(RejectReason),
-    /// Failed to receive a connection request outcome before the timeout
-    ConnectionRequestOutcomeTimeout,
-    ControlServiceError(ControlServiceError),
+    /// Cannot connect to peers which are not persisted in the peer manager database.
+    PeerNotPersisted,
     /// Failed to send request to ConnectionManagerActor. Channel closed.
     SendToActorFailed,
     /// Request was canceled before the response could be sent
     ActorRequestCanceled,
-    /// Curve public key was invalid
-    InvalidCurvePublicKey,
-    /// The listener has not been started
-    ListenerNotStarted,
-    MultiaddrError(multiaddr::Error),
+    /// The dial reply channel was closed when sending a reply
+    DialReplyChannelClosed,
+    /// Failed to connect on all addresses for peer
+    DialConnectFailedAllAddresses,
+    /// Failed to connect to peer within the maximum number of attempts
+    ConnectFailedMaximumAttemptsReached,
+    /// Failed to perform yamux upgrade on socket
+    #[error(msg_embedded, no_from, non_std)]
+    YamuxUpgradeFailure(String),
+    /// Establisher channel is closed or full
+    EstablisherChannelError,
+    #[error(msg_embedded, no_from, non_std)]
+    TransportError(String),
+    /// The peer authenticated to a public key which did not match the dialed peer's public key
+    DialedPublicKeyMismatch,
 }

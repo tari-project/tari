@@ -154,6 +154,10 @@ impl NodeId {
     pub fn into_inner(self) -> NodeIdArray {
         self.0
     }
+
+    pub fn short_str(&self) -> String {
+        to_hex(&self.0[..8])
+    }
 }
 
 impl ByteArray for NodeId {

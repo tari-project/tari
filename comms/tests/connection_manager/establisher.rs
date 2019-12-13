@@ -27,8 +27,12 @@ use crate::support::{
 use futures::channel::mpsc::channel;
 use std::{sync::Arc, time::Duration};
 use tari_comms::{
-    connection::{CurveEncryption, Direction, ZmqContext},
-    connection_manager::{establisher::ConnectionEstablisher, ConnectionManagerError, PeerConnectionConfig},
+    connection::{ConnectionDirection, CurveEncryption, ZmqContext},
+    connection_manager::{
+        deprecated::establisher::ConnectionEstablisher,
+        ConnectionManagerError,
+        PeerConnectionConfig,
+    },
     control_service::messages::{MessageHeader, MessageType, PongMessage},
     message::{Envelope, MessageExt, MessageFlags},
     utils::crypt,
@@ -148,7 +152,7 @@ fn establish_peer_connection_outbound() {
         .with_peer_connection_context_factory(
             factories::peer_connection_context::create()
                 .with_context(&context)
-                .with_direction(Direction::Inbound)
+                .with_direction(ConnectionDirection::Inbound)
                 .with_message_sink_channel(tx_inbound)
                 .with_curve_keypair((peer_curve_sk, peer_curve_pk.clone())),
         )
@@ -232,7 +236,7 @@ fn establish_peer_connection_inbound() {
     let (other_peer_conn, other_peer_conn_handle) = factories::peer_connection::create()
         .with_peer_connection_context_factory(
             factories::peer_connection_context::create()
-                .with_direction(Direction::Outbound)
+                .with_direction(ConnectionDirection::Outbound)
                 .with_peer_identity(peer_identity.clone())
                 .with_connection_identity(connection_identity.clone())
                 .with_context(&context)

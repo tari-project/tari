@@ -23,13 +23,9 @@
 use crate::{
     socks,
     socks::Socks5Client,
-    transports::{
-        tcp::{TcpInbound, TcpTransport},
-        TcpSocket,
-        Transport,
-    },
+    transports::{tcp::TcpTransport, TcpSocket, Transport},
 };
-use futures::Future;
+use futures::{Future, FutureExt};
 use multiaddr::{AddrComponent, Multiaddr};
 use std::io;
 
@@ -39,6 +35,7 @@ pub struct SocksConfig {
     pub authentication: socks::Authentication,
 }
 
+#[derive(Clone, Debug)]
 pub struct SocksTransport {
     socks_config: SocksConfig,
     tcp_transport: TcpTransport,
@@ -106,18 +103,23 @@ impl SocksTransport {
 }
 
 impl Transport for SocksTransport {
-    type Error = io::Error;
-    type Inbound = TcpInbound<'static>;
-    type Output = (TcpSocket, Multiaddr);
+    type Error = <TcpTransport as Transport>::Error;
+    type Inbound = <TcpTransport as Transport>::Inbound;
+    type Listener = <TcpTransport as Transport>::Listener;
+    type Output = <TcpTransport as Transport>::Output;
 
-    type DialFuture = impl Future<Output = io::Result<Self::Output>>;
-    type ListenFuture = impl Future<Output = io::Result<(Self::Inbound, Multiaddr)>>;
+    type DialFuture = impl Future<Output = Result<Self::Output, Self::Error>> + Unpin;
+    type ListenFuture = impl Future<Output = Result<(Self::Listener, Multiaddr), Self::Error>>;
+
+    // impl Future<Output = Result<(Self::Listener, Multiaddr), Self::Error>> + Unpin;
 
     fn listen(&self, addr: Multiaddr) -> Self::ListenFuture {
         let tcp_transport = self.tcp_transport.clone();
         Box::pin(async move {
-            let proxied_addr = Self::extract_proxied_address(&addr)?;
-            tcp_transport.listen(proxied_addr).await
+            match Self::extract_proxied_address(&addr) {
+                Ok(proxied_addr) => tcp_transport.listen(proxied_addr).await,
+                Err(err) => Err(err),
+            }
         })
 
         // TODO: The BIND command is not supported by the tor SOCKS proxy (as that wouldn't really make sense).
@@ -127,7 +129,7 @@ impl Transport for SocksTransport {
         //       - An valid hidden service would need to be created. Either by the tor control port or pre-configured by
         //         the user.
         //       - Check if the multiaddr contains information about the proxied address (e.g.
-        //         /onion/xxxxxxxxxxx:9090/ip/127.0.0.1/tcp/1234)
+        //         /onion/xxxxxxxxxxx:9090/ip4/127.0.0.1/tcp/1234)
         //       - Use the tor control port to query the given onion address for either a configured (i.e. GET_CONF)
         //         onion address, or an (possibly ephemeral) onion address previously created using `ADD_ONION` (i.e.
         //         `GET_INFO`)
@@ -136,7 +138,7 @@ impl Transport for SocksTransport {
     }
 
     fn dial(&self, addr: Multiaddr) -> Self::DialFuture {
-        Self::socks_connect(self.tcp_transport.clone(), self.socks_config.clone(), addr)
+        Self::socks_connect(self.tcp_transport.clone(), self.socks_config.clone(), addr).boxed()
     }
 }
 
