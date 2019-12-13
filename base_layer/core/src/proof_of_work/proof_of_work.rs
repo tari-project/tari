@@ -119,21 +119,18 @@ impl ProofOfWork {
         }
     }
 
-    /// Calculates the total _weighted_ accumulated difficulty for the blockchain from the genesis block up until,
+    /// Calculates the total _ accumulated difficulty for the blockchain from the genesis block up until,
     /// but _not including_ this block.
     ///
-    /// The scaling factors provided will have at least one value set to one (this is not checked). The values are
-    /// generally calculated based on recent relative hash rate performance and is provided by the consensus code.
+    /// This uses a geometric mean to compare the two difficulties. See Issue #1075 (https://github.com/tari-project/tari/issues/1075) as to why this was done
     ///
     /// The total accumulated difficulty is most often used to decide on which of two forks is the longest chain.
-    ///
-    /// # Panics
-    ///
-    /// The function will panic if fewer than 2 scaling factors are provided
-    pub fn total_accumulated_difficulty(&self, scale_factors: &[u64]) -> Difficulty {
-        let d = self.accumulated_monero_difficulty.as_u64() * scale_factors[0] +
-            self.accumulated_blake_difficulty.as_u64() * scale_factors[1];
-        Difficulty::from(d as u64)
+    pub fn total_accumulated_difficulty(&self) -> Difficulty {
+        let d = (self.accumulated_monero_difficulty.as_u64() as f64 *
+            self.accumulated_blake_difficulty.as_u64() as f64)
+            .sqrt();
+
+        Difficulty::from(d.ceil() as u64)
     }
 
     /// Replaces the `next` proof of work's difficulty with the sum of this proof of work's total cumulative
@@ -237,45 +234,17 @@ mod test {
         // Simple cases
         pow.accumulated_monero_difficulty = 500.into();
         pow.accumulated_blake_difficulty = 100.into();
-        assert_eq!(pow.total_accumulated_difficulty(&[1, 5]), 1_000.into(), "Case 1");
+        assert_eq!(pow.total_accumulated_difficulty(), 224.into(), "Case 1");
         pow.accumulated_monero_difficulty = 50.into();
         pow.accumulated_blake_difficulty = 1000.into();
-        assert_eq!(pow.total_accumulated_difficulty(&[9, 1]), 1_450.into(), "Case 2");
+        assert_eq!(pow.total_accumulated_difficulty(), 224.into(), "Case 2");
         // Edge cases - Very large OOM difficulty differences
         pow.accumulated_monero_difficulty = 444.into();
         pow.accumulated_blake_difficulty = 1_555_222_888_555_555.into();
-        assert_eq!(
-            pow.total_accumulated_difficulty(&[1, 1]),
-            1_555_222_888_555_999.into(),
-            "Case 3"
-        );
-        assert_eq!(
-            pow.total_accumulated_difficulty(&[10_000, 1]),
-            1_555_222_892_995_555.into(),
-            "Case 4"
-        );
+        assert_eq!(pow.total_accumulated_difficulty(), 830_974_707.into(), "Case 3");
         pow.accumulated_monero_difficulty = 1.into();
         pow.accumulated_blake_difficulty = 15_222_333_444_555_666_777.into();
-        assert_eq!(
-            pow.total_accumulated_difficulty(&[1, 1]),
-            15_222_333_444_555_666_778.into(),
-            "Case 5"
-        );
-        assert_eq!(
-            pow.total_accumulated_difficulty(&[1_000_000, 1]),
-            15_222_333_444_556_666_777.into(),
-            "Case 6"
-        );
-        assert_eq!(
-            pow.total_accumulated_difficulty(&[1_000_000_000, 1]),
-            15_222_333_445_555_666_777.into(),
-            "Case 7"
-        );
-        assert_eq!(
-            pow.total_accumulated_difficulty(&[1_222_333_444_555, 1]),
-            15_222_334_666_889_111_332.into(),
-            "Case 8"
-        );
+        assert_eq!(pow.total_accumulated_difficulty(), 3_901_580_891.into(), "Case 4");
     }
 
     #[test]
