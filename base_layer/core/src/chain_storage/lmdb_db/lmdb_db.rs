@@ -424,7 +424,7 @@ where D: Digest + Send + Sync
                                 .range_proof_mmr
                                 .read()
                                 .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
-                                .index(&proof_hash)
+                                .find_leaf_index(&proof_hash)?
                             {
                                 lmdb_insert(&txn, &self.utxos_db, &k, &v)?;
                                 lmdb_insert(&txn, &self.txos_hash_to_index_db, &k, &index)?;

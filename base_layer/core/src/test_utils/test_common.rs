@@ -77,23 +77,23 @@ pub fn make_input<R: Rng + CryptoRng>(
 pub struct MockBackend;
 
 impl BlockchainBackend for MockBackend {
-    fn write(&self, tx: DbTransaction) -> Result<(), ChainStorageError> {
+    fn write(&self, _tx: DbTransaction) -> Result<(), ChainStorageError> {
         unimplemented!()
     }
 
-    fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, ChainStorageError> {
+    fn fetch(&self, _key: &DbKey) -> Result<Option<DbValue>, ChainStorageError> {
         unimplemented!()
     }
 
-    fn contains(&self, key: &DbKey) -> Result<bool, ChainStorageError> {
+    fn contains(&self, _key: &DbKey) -> Result<bool, ChainStorageError> {
         unimplemented!()
     }
 
-    fn fetch_mmr_root(&self, tree: MmrTree) -> Result<HashOutput, ChainStorageError> {
+    fn fetch_mmr_root(&self, _tree: MmrTree) -> Result<HashOutput, ChainStorageError> {
         unimplemented!()
     }
 
-    fn fetch_mmr_only_root(&self, tree: MmrTree) -> Result<HashOutput, ChainStorageError> {
+    fn fetch_mmr_only_root(&self, _tree: MmrTree) -> Result<HashOutput, ChainStorageError> {
         unimplemented!()
     }
 
@@ -103,45 +103,45 @@ impl BlockchainBackend for MockBackend {
 
     fn calculate_mmr_root(
         &self,
-        tree: MmrTree,
-        additions: Vec<HashOutput>,
-        deletions: Vec<HashOutput>,
+        _tree: MmrTree,
+        _additions: Vec<HashOutput>,
+        _deletions: Vec<HashOutput>,
     ) -> Result<HashOutput, ChainStorageError>
     {
         unimplemented!()
     }
 
-    fn fetch_mmr_proof(&self, tree: MmrTree, pos: usize) -> Result<MerkleProof, ChainStorageError> {
+    fn fetch_mmr_proof(&self, _tree: MmrTree, _pos: usize) -> Result<MerkleProof, ChainStorageError> {
         unimplemented!()
     }
 
-    fn fetch_mmr_checkpoint(&self, tree: MmrTree, index: u64) -> Result<MerkleCheckPoint, ChainStorageError> {
+    fn fetch_mmr_checkpoint(&self, _tree: MmrTree, _index: u64) -> Result<MerkleCheckPoint, ChainStorageError> {
         unimplemented!()
     }
 
-    fn fetch_mmr_node(&self, tree: MmrTree, pos: u32) -> Result<(Hash, bool), ChainStorageError> {
+    fn fetch_mmr_node(&self, _tree: MmrTree, _pos: u32) -> Result<(Hash, bool), ChainStorageError> {
         unimplemented!()
     }
 
     fn fetch_mmr_base_leaf_nodes(
         &self,
-        tree: MmrTree,
-        index: usize,
-        count: usize,
+        _tree: MmrTree,
+        _index: usize,
+        _count: usize,
     ) -> Result<MutableMmrState, ChainStorageError>
     {
         unimplemented!()
     }
 
-    fn fetch_mmr_base_leaf_node_count(&self, tree: MmrTree) -> Result<usize, ChainStorageError> {
+    fn fetch_mmr_base_leaf_node_count(&self, _tree: MmrTree) -> Result<usize, ChainStorageError> {
         unimplemented!()
     }
 
-    fn restore_mmr(&self, tree: MmrTree, base_state: MutableMmrLeafNodes) -> Result<(), ChainStorageError> {
+    fn restore_mmr(&self, _tree: MmrTree, _base_state: MutableMmrLeafNodes) -> Result<(), ChainStorageError> {
         unimplemented!()
     }
 
-    fn for_each_orphan<F>(&self, f: F) -> Result<(), ChainStorageError>
+    fn for_each_orphan<F>(&self, _f: F) -> Result<(), ChainStorageError>
     where
         Self: Sized,
         F: FnMut(Result<(HashOutput, Block), ChainStorageError>),

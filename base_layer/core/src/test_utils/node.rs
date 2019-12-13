@@ -161,7 +161,7 @@ impl BaseNodeBuilder {
         );
         let diff_adj_manager = DiffAdjManager::new(blockchain_db.clone()).unwrap();
         let consensus_manager = ConsensusManager::default();
-        consensus_manager.set_diff_manager(diff_adj_manager);
+        consensus_manager.set_diff_manager(diff_adj_manager).unwrap();
         let node_identity = self.node_identity.unwrap_or(random_node_identity());
         let (outbound_nci, local_nci, outbound_mp_interface, outbound_message_service, comms) =
             setup_base_node_services(

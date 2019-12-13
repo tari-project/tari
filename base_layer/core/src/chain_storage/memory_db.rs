@@ -149,7 +149,7 @@ where D: Digest + Send + Sync
                         db.utxo_mmr.push(&k)?;
                         let proof_hash = v.proof().hash();
                         db.range_proof_mmr.push(&proof_hash)?;
-                        if let Some(index) = db.range_proof_mmr.index(&proof_hash) {
+                        if let Some(index) = db.range_proof_mmr.find_leaf_index(&proof_hash)? {
                             let v = MerkleNode { index, value: *v };
                             db.utxos.insert(k, v);
                         }

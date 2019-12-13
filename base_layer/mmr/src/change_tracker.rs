@@ -123,8 +123,9 @@ where
         self.checkpoints
             .clear()
             .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))?;
-        self.rewind_to_start()?;
-        self.base.restore(base_state)
+        self.base.restore(base_state)?;
+        self.mmr = self.revert_mmr_to_base()?;
+        Ok(())
     }
 
     /// Return the number of Checkpoints this change tracker has recorded
@@ -148,17 +149,17 @@ where
 
     /// Mark a node for deletion and optionally compress the deletion bitmap. See [MutableMmr::delete_and_compress]
     /// for more details
-    pub fn delete_and_compress(&mut self, leaf_node_index: u32, compress: bool) -> bool {
-        let result = self.mmr.delete_and_compress(leaf_node_index, compress);
+    pub fn delete_and_compress(&mut self, leaf_index: u32, compress: bool) -> bool {
+        let result = self.mmr.delete_and_compress(leaf_index, compress);
         if result {
-            self.current_deletions.add(leaf_node_index)
+            self.current_deletions.add(leaf_index)
         }
         result
     }
 
     /// Mark a node for completion, and compress the roaring bitmap. See [delete_and_compress] for details.
-    pub fn delete(&mut self, leaf_node_index: u32) -> bool {
-        self.delete_and_compress(leaf_node_index, true)
+    pub fn delete(&mut self, leaf_index: u32) -> bool {
+        self.delete_and_compress(leaf_index, true)
     }
 
     /// Compress the roaring bitmap mapping deleted nodes. You never have to call this method unless you have been
@@ -278,12 +279,22 @@ where
         }
     }
 
-    /// Returns the MMR index of a newly added hash, this index is only valid if the change history is Committed.
-    pub fn index(&self, hash: &Hash) -> Option<usize> {
-        self.current_additions
+    /// Returns the leaf index of the hash. If the hash is in the newly added hashes it returns the future MMR index for
+    /// that hash, this index is only valid if the change history is Committed. If it could not be found in the
+    /// current additions then it will search the pruned MMR and then the base MMR and return its leaf index.
+    pub fn find_leaf_index(&self, hash: &Hash) -> Result<Option<usize>, MerkleMountainRangeError> {
+        if let Some(leaf_index) = self
+            .current_additions
             .iter()
             .position(|h| h == hash)
             .map(|i| self.mmr.len() as usize - self.current_additions.len() + i)
+        {
+            return Ok(Some(leaf_index));
+        }
+        if let Some(leaf_index) = self.mmr.find_leaf_index(hash)? {
+            return Ok(Some(leaf_index));
+        }
+        self.base.find_leaf_index(hash)
     }
 
     /// Returns the number of leave nodes in the base MMR.
@@ -294,11 +305,11 @@ where
     /// Returns the MMR state of the base MMR.
     pub fn to_base_leaf_nodes(
         &self,
-        index: usize,
+        leaf_index: usize,
         count: usize,
     ) -> Result<MutableMmrLeafNodes, MerkleMountainRangeError>
     {
-        self.base.to_leaf_nodes(index, count)
+        self.base.to_leaf_nodes(leaf_index, count)
     }
 }
 

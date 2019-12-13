@@ -25,7 +25,7 @@
 
 use crate::{
     backend::ArrayLike,
-    common::{family, family_branch, find_peaks, hash_together, is_leaf, is_left_sibling, leaf_index},
+    common::{family, family_branch, find_peaks, hash_together, is_leaf, is_left_sibling, node_index},
     error::MerkleMountainRangeError,
     serde_support,
     Hash,
@@ -88,13 +88,13 @@ impl MerkleProof {
     /// See [MerkleProof::for_node] for more details on how the proof is constructed.
     pub fn for_leaf_node<D, B>(
         mmr: &MerkleMountainRange<D, B>,
-        leaf_pos: usize,
+        leaf_index: usize,
     ) -> Result<MerkleProof, MerkleProofError>
     where
         D: Digest,
         B: ArrayLike<Value = Hash>,
     {
-        let pos = leaf_index(leaf_pos);
+        let pos = node_index(leaf_index);
         MerkleProof::generate_proof(mmr, pos)
     }
 
@@ -169,10 +169,10 @@ impl MerkleProof {
         &self,
         root: &HashSlice,
         hash: &HashSlice,
-        leaf_pos: usize,
+        leaf_index: usize,
     ) -> Result<(), MerkleProofError>
     {
-        let pos = leaf_index(leaf_pos);
+        let pos = node_index(leaf_index);
         self.verify::<D>(root, hash, pos)
     }
 

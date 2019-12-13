@@ -22,7 +22,7 @@
 
 use crate::{
     backend::ArrayLike,
-    common::{leaf_index, n_leaves},
+    common::{n_leaves, node_index},
     error::MerkleMountainRangeError,
     mutable_mmr_leaf_nodes::MutableMmrLeafNodes,
     Hash,
@@ -92,18 +92,18 @@ where
 
     /// This function returns the hash of the leaf index provided, indexed from 0. If the hash does not exist, or if it
     /// has been marked for deletion, `None` is returned.
-    pub fn get_leaf_hash(&self, leaf_node_index: u32) -> Result<Option<Hash>, MerkleMountainRangeError> {
-        if self.deleted.contains(leaf_node_index) {
+    pub fn get_leaf_hash(&self, leaf_index: u32) -> Result<Option<Hash>, MerkleMountainRangeError> {
+        if self.deleted.contains(leaf_index) {
             return Ok(None);
         }
-        self.mmr.get_node_hash(leaf_index(leaf_node_index as usize))
+        self.mmr.get_node_hash(node_index(leaf_index as usize))
     }
 
     /// Returns the hash of the leaf index provided, as well as its deletion status. The node has been marked for
     /// deletion if the boolean value is true.
-    pub fn get_leaf_status(&self, leaf_node_index: u32) -> Result<(Option<Hash>, bool), MerkleMountainRangeError> {
-        let hash = self.mmr.get_node_hash(leaf_index(leaf_node_index as usize))?;
-        let deleted = self.deleted.contains(leaf_node_index);
+    pub fn get_leaf_status(&self, leaf_index: u32) -> Result<(Option<Hash>, bool), MerkleMountainRangeError> {
+        let hash = self.mmr.get_node_hash(node_index(leaf_index as usize))?;
+        let deleted = self.deleted.contains(leaf_index);
         Ok((hash, deleted))
     }
 
@@ -131,9 +131,14 @@ where
         self.mmr.get_merkle_root()
     }
 
-    /// See [MerkleMountainRange::find_merkle_root]
-    pub fn find_leaf_node(&self, hash: &Hash) -> Result<Option<usize>, MerkleMountainRangeError> {
-        self.mmr.find_leaf_node(hash)
+    /// See [MerkleMountainRange::find_node_index]
+    pub fn find_node_index(&self, hash: &Hash) -> Result<Option<usize>, MerkleMountainRangeError> {
+        self.mmr.find_node_index(hash)
+    }
+
+    /// See [MerkleMountainRange::find_leaf_index]
+    pub fn find_leaf_index(&self, hash: &Hash) -> Result<Option<usize>, MerkleMountainRangeError> {
+        self.mmr.find_leaf_index(hash)
     }
 
     /// Push a new element into the MMR. Computes new related peaks at the same time if applicable.
@@ -168,11 +173,11 @@ where
     /// # Return
     /// The function returns true if a node was actually marked for deletion. If the index is out of bounds, or was
     /// already deleted, the function returns false.
-    pub fn delete_and_compress(&mut self, leaf_node_index: u32, compress: bool) -> bool {
-        if (leaf_node_index >= self.size) || self.deleted.contains(leaf_node_index) {
+    pub fn delete_and_compress(&mut self, leaf_index: u32, compress: bool) -> bool {
+        if (leaf_index >= self.size) || self.deleted.contains(leaf_index) {
             return false;
         }
-        self.deleted.add(leaf_node_index);
+        self.deleted.add(leaf_index);
         // The serialization is different in compressed vs. uncompressed form, but the merkle root must be 100%
         // deterministic based on input, so just be consistent an use the compressed form all the time.
         if compress {
@@ -182,8 +187,8 @@ where
     }
 
     /// Mark a node for completion, and compress the roaring bitmap. See [delete_and_compress] for details.
-    pub fn delete(&mut self, leaf_node_index: u32) -> bool {
-        self.delete_and_compress(leaf_node_index, true)
+    pub fn delete(&mut self, leaf_index: u32) -> bool {
+        self.delete_and_compress(leaf_index, true)
     }
 
     /// Compress the roaring bitmap mapping deleted nodes. You never have to call this method unless you have been
@@ -209,14 +214,14 @@ where
     }
 
     // Returns a bitmap with only the deleted nodes for the specified region in the MMR.
-    fn get_sub_bitmap(&self, index: usize, count: usize) -> Result<Bitmap, MerkleMountainRangeError> {
+    fn get_sub_bitmap(&self, leaf_index: usize, count: usize) -> Result<Bitmap, MerkleMountainRangeError> {
         let mut deleted = self.deleted.clone();
-        if index > 0 {
-            deleted.remove_range_closed(0..(index - 1) as u32)
+        if leaf_index > 0 {
+            deleted.remove_range_closed(0..(leaf_index - 1) as u32)
         }
         let leaf_count = self.mmr.get_leaf_count()?;
         if leaf_count > 1 {
-            let last_index = index + count - 1;
+            let last_index = leaf_index + count - 1;
             if last_index < leaf_count - 1 {
                 deleted.remove_range_closed((last_index + 1) as u32..leaf_count as u32);
             }
@@ -225,10 +230,15 @@ where
     }
 
     /// Returns the state of the MMR that consists of the leaf hashes and the deleted nodes.
-    pub fn to_leaf_nodes(&self, index: usize, count: usize) -> Result<MutableMmrLeafNodes, MerkleMountainRangeError> {
+    pub fn to_leaf_nodes(
+        &self,
+        leaf_index: usize,
+        count: usize,
+    ) -> Result<MutableMmrLeafNodes, MerkleMountainRangeError>
+    {
         Ok(MutableMmrLeafNodes {
-            leaf_hashes: self.mmr.get_leaf_hashes(index, count)?,
-            deleted: self.get_sub_bitmap(index, count)?,
+            leaf_hashes: self.mmr.get_leaf_hashes(leaf_index, count)?,
+            deleted: self.get_sub_bitmap(leaf_index, count)?,
         })
     }
 

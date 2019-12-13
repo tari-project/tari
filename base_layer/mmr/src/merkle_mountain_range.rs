@@ -25,7 +25,7 @@
 
 use crate::{
     backend::ArrayLike,
-    common::{bintree_height, find_peaks, hash_together, leaf_index, n_leaves, peak_map_height},
+    common::{bintree_height, find_peaks, hash_together, n_leaves, node_index, peak_map_height},
     error::MerkleMountainRangeError,
     Hash,
 };
@@ -99,21 +99,21 @@ where
     }
 
     /// This function returns the hash of the leaf index provided, indexed from 0
-    pub fn get_leaf_hash(&self, leaf_node_index: usize) -> Result<Option<Hash>, MerkleMountainRangeError> {
-        self.get_node_hash(leaf_index(leaf_node_index))
+    pub fn get_leaf_hash(&self, leaf_index: usize) -> Result<Option<Hash>, MerkleMountainRangeError> {
+        self.get_node_hash(node_index(leaf_index))
     }
 
     /// Returns a set of leaf hashes from the MMR.
-    pub fn get_leaf_hashes(&self, index: usize, count: usize) -> Result<Vec<Hash>, MerkleMountainRangeError> {
+    pub fn get_leaf_hashes(&self, leaf_index: usize, count: usize) -> Result<Vec<Hash>, MerkleMountainRangeError> {
         let leaf_count = self.get_leaf_count()?;
-        if index >= leaf_count {
+        if leaf_index >= leaf_count {
             return Ok(Vec::new());
         }
         let count = max(1, count);
-        let last_index = min(index + count - 1, leaf_count);
-        let mut leaf_hashes = Vec::with_capacity((last_index - index + 1) as usize);
-        for index in index..=last_index {
-            if let Some(hash) = self.get_leaf_hash(index)? {
+        let last_leaf_index = min(leaf_index + count - 1, leaf_count);
+        let mut leaf_hashes = Vec::with_capacity((last_leaf_index - leaf_index + 1) as usize);
+        for leaf_index in leaf_index..=last_leaf_index {
+            if let Some(hash) = self.get_leaf_hash(leaf_index)? {
                 leaf_hashes.push(hash);
             }
         }
@@ -203,10 +203,10 @@ where
         Ok(())
     }
 
-    /// Search for a given hash in the leaf node array. This is a very slow function, being O(n). In general, it's
-    /// better to cache the index of the hash when storing it rather than using this function, but it's here for
-    /// completeness. The index that is returned is the index of the _leaf node_, and not the MMR node index.
-    pub fn find_leaf_node(&self, hash: &Hash) -> Result<Option<usize>, MerkleMountainRangeError> {
+    /// Search for the node index of the given hash in the MMR. This is a very slow function, being O(n). In general,
+    /// it's better to cache the index of the hash when storing it rather than using this function, but it's here
+    /// for completeness.
+    pub fn find_node_index(&self, hash: &Hash) -> Result<Option<usize>, MerkleMountainRangeError> {
         for i in 0..self
             .hashes
             .len()
@@ -214,6 +214,18 @@ where
         {
             if *hash == self.hashes.get_or_panic(i) {
                 return Ok(Some(i));
+            }
+        }
+        Ok(None)
+    }
+
+    /// Search for the leaf index of the given hash in the leaf nodes of the MMR.
+    pub fn find_leaf_index(&self, hash: &Hash) -> Result<Option<usize>, MerkleMountainRangeError> {
+        for index in 0..self.get_leaf_count()? {
+            if let Some(retrieved_hash) = self.get_leaf_hash(index)? {
+                if *hash == retrieved_hash {
+                    return Ok(Some(index));
+                }
             }
         }
         Ok(None)
