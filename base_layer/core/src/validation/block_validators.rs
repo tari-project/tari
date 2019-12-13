@@ -28,7 +28,8 @@ use crate::{
     validation::{Validation, ValidationError},
 };
 use std::sync::Arc;
-use tari_transactions::types::CryptoFactories;
+use tari_transactions::{transaction::OutputFlags, types::CryptoFactories};
+use tari_utilities::hash::Hashable;
 
 /// This validator tests whether a candidate block is internally consistent
 pub struct StatelessValidator {
@@ -118,17 +119,23 @@ fn check_coinbase_output(block: &Block) -> Result<(), ValidationError> {
     block.check_coinbase_output().map_err(ValidationError::from)
 }
 
+// This function checks that all inputs in the blocks are valid UTXO's to be spend
 fn check_inputs_are_utxos<B: BlockchainBackend>(
-    _block: &Block,
-    _db: BlockchainDatabase<B>,
+    block: &Block,
+    db: BlockchainDatabase<B>,
 ) -> Result<(), ValidationError>
 {
-    // TODO --implement Issue #1092
+    for utxo in block.body.inputs() {
+        if !(utxo.features.flags.contains(OutputFlags::COINBASE_OUTPUT)) &&
+            !(db.is_utxo(utxo.hash())).map_err(|e| ValidationError::CustomError(e.to_string()))?
+        {
+            return Err(ValidationError::BlockError(BlockValidationError::InvalidInput));
+        }
+    }
     Ok(())
 }
 
 /// Calculates the achieved and target difficulties and compares them
-
 fn check_achieved_difficulty<B: BlockchainBackend>(
     block_header: &BlockHeader,
     rules: ConsensusManager<B>,
