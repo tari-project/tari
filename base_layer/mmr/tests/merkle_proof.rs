@@ -25,7 +25,7 @@ mod support;
 
 use support::{create_mmr, int_to_hash, Hasher};
 use tari_mmr::{
-    common::{is_leaf, leaf_index},
+    common::{is_leaf, node_index},
     MerkleProof,
     MerkleProofError,
 };
@@ -66,7 +66,7 @@ fn med_mmr() {
     let mmr = create_mmr(size);
     let root = mmr.get_merkle_root().unwrap();
     let i = 499;
-    let pos = leaf_index(i);
+    let pos = node_index(i);
     let hash = int_to_hash(i);
     let proof = MerkleProof::for_node(&mmr, pos).unwrap();
     assert!(proof.verify::<Hasher>(&root, &hash, pos).is_ok());
@@ -76,7 +76,7 @@ fn med_mmr() {
 fn a_big_proof() {
     let mmr = create_mmr(100_000);
     let leaf_pos = 28_543;
-    let mmr_index = leaf_index(leaf_pos);
+    let mmr_index = node_index(leaf_pos);
     let root = mmr.get_merkle_root().unwrap();
     let hash = int_to_hash(leaf_pos);
     let proof = MerkleProof::for_node(&mmr, mmr_index).unwrap();

@@ -108,7 +108,7 @@ fn inbound_get_metadata() {
     let diff_adj_manager = DiffAdjManager::new(store.clone()).unwrap();
     let (block_event_publisher, _block_event_subscriber) = bounded(100);
     let consensus_manager = ConsensusManager::default();
-    consensus_manager.set_diff_manager(diff_adj_manager);
+    assert!(consensus_manager.set_diff_manager(diff_adj_manager).is_ok());
     let inbound_nch = InboundNodeCommsHandlers::new(block_event_publisher, store, mempool, consensus_manager);
 
     test_async(move |rt| {
@@ -152,7 +152,7 @@ fn inbound_fetch_kernels() {
     let diff_adj_manager = DiffAdjManager::new(store.clone()).unwrap();
     let (block_event_publisher, _block_event_subscriber) = bounded(100);
     let consensus_manager = ConsensusManager::default();
-    consensus_manager.set_diff_manager(diff_adj_manager);
+    assert!(consensus_manager.set_diff_manager(diff_adj_manager).is_ok());
     let inbound_nch = InboundNodeCommsHandlers::new(block_event_publisher, store.clone(), mempool, consensus_manager);
 
     let kernel = create_test_kernel(5.into(), 0);
@@ -202,7 +202,7 @@ fn inbound_fetch_headers() {
     let diff_adj_manager = DiffAdjManager::new(store.clone()).unwrap();
     let (block_event_publisher, _block_event_subscriber) = bounded(100);
     let consensus_manager = ConsensusManager::default();
-    consensus_manager.set_diff_manager(diff_adj_manager);
+    assert!(consensus_manager.set_diff_manager(diff_adj_manager).is_ok());
     let inbound_nch = InboundNodeCommsHandlers::new(block_event_publisher, store.clone(), mempool, consensus_manager);
 
     let mut header = BlockHeader::new(0);
@@ -254,7 +254,7 @@ fn inbound_fetch_utxos() {
     let (block_event_publisher, _block_event_subscriber) = bounded(100);
     let diff_adj_manager = DiffAdjManager::new(store.clone()).unwrap();
     let consensus_manager = ConsensusManager::default();
-    consensus_manager.set_diff_manager(diff_adj_manager);
+    assert!(consensus_manager.set_diff_manager(diff_adj_manager).is_ok());
     let inbound_nch = InboundNodeCommsHandlers::new(block_event_publisher, store.clone(), mempool, consensus_manager);
 
     let (utxo, _) = create_utxo(MicroTari(10_000), &factories);
@@ -303,7 +303,7 @@ fn inbound_fetch_blocks() {
     let diff_adj_manager = DiffAdjManager::new(store.clone()).unwrap();
     let (block_event_publisher, _block_event_subscriber) = bounded(100);
     let consensus_manager = ConsensusManager::default();
-    consensus_manager.set_diff_manager(diff_adj_manager);
+    assert!(consensus_manager.set_diff_manager(diff_adj_manager).is_ok());
     let inbound_nch = InboundNodeCommsHandlers::new(block_event_publisher, store.clone(), mempool, consensus_manager);
 
     let block = add_block_and_update_header(&store, get_genesis_block());
@@ -350,7 +350,7 @@ fn inbound_fetch_mmr_state() {
     let diff_adj_manager = DiffAdjManager::new(store.clone()).unwrap();
     let (block_event_publisher, _block_event_subscriber) = bounded(100);
     let consensus_manager = ConsensusManager::default();
-    consensus_manager.set_diff_manager(diff_adj_manager);
+    let _ = consensus_manager.set_diff_manager(diff_adj_manager);
     let inbound_nch = InboundNodeCommsHandlers::new(block_event_publisher, store, mempool, consensus_manager);
 
     test_async(move |rt| {

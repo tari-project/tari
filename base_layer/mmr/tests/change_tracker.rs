@@ -24,7 +24,15 @@ mod support;
 
 use croaring::Bitmap;
 use support::{create_mmr, int_to_hash, Hasher};
-use tari_mmr::{MerkleChangeTracker, MerkleChangeTrackerConfig, MerkleCheckPoint, MutableMmr};
+use tari_mmr::{
+    common::node_index,
+    Hash,
+    MerkleChangeTracker,
+    MerkleChangeTrackerConfig,
+    MerkleCheckPoint,
+    MutableMmr,
+    MutableMmrLeafNodes,
+};
 use tari_utilities::hex::Hex;
 
 #[test]
@@ -206,4 +214,77 @@ fn update_of_base_mmr_with_history_bounds() {
     assert!(mmr.commit().is_ok());
     let mmr_state = mmr.to_base_leaf_nodes(0, mmr.get_base_leaf_count()).unwrap();
     assert_eq!(mmr_state.leaf_hashes.len(), 6);
+}
+
+#[test]
+fn find_leaf_index() {
+    let base = MutableMmr::<Hasher, _>::new(Vec::default());
+    let config = MerkleChangeTrackerConfig {
+        min_history_len: 2,
+        max_history_len: 3,
+    };
+    let mut mmr = MerkleChangeTracker::new(base, Vec::new(), config).unwrap();
+    let hashes: Vec<Hash> = (0..=12).map(|i| int_to_hash(i)).collect();
+
+    // Committed hashes in base MMR
+    let mmr_state = MutableMmrLeafNodes::from(vec![
+        hashes[0].clone(),
+        hashes[1].clone(),
+        hashes[2].clone(),
+        hashes[3].clone(),
+        hashes[4].clone(),
+    ]);
+    assert!(mmr.restore(mmr_state).is_ok());
+    // Committed hashes in pruned MMR
+    assert!(mmr.push(&hashes[5]).is_ok());
+    assert!(mmr.push(&hashes[6]).is_ok());
+    assert!(mmr.push(&hashes[7]).is_ok());
+    assert!(mmr.commit().is_ok());
+    assert!(mmr.push(&hashes[8]).is_ok());
+    assert!(mmr.push(&hashes[9]).is_ok());
+    assert!(mmr.commit().is_ok());
+    // Uncommitted hash in additions
+    assert!(mmr.push(&hashes[10]).is_ok());
+    assert!(mmr.push(&hashes[11]).is_ok());
+    assert!(mmr.push(&hashes[12]).is_ok());
+
+    (0..=12).for_each(|i| assert_eq!(mmr.find_leaf_index(&hashes[i]), Ok(Some(i))));
+}
+
+#[test]
+#[ignore] // TODO: this test demonstrate bug #1132, where the pruned MMR doesn't remove the leaf hashes that have been committed
+          // to the base MMR.
+fn check_pruning_of_pruned_mmr() {
+    let base = MutableMmr::<Hasher, _>::new(Vec::default());
+    let config = MerkleChangeTrackerConfig {
+        min_history_len: 2,
+        max_history_len: 3,
+    };
+    let mut mmr = MerkleChangeTracker::new(base, Vec::new(), config).unwrap();
+
+    let hashes: Vec<Hash> = (0..=12).map(|i| int_to_hash(i)).collect();
+    // Committed hashes in base MMR
+    assert!(mmr.push(&hashes[0]).is_ok());
+    assert!(mmr.push(&hashes[1]).is_ok());
+    assert!(mmr.push(&hashes[2]).is_ok());
+    assert!(mmr.commit().is_ok());
+    assert!(mmr.push(&hashes[3]).is_ok());
+    assert!(mmr.push(&hashes[4]).is_ok());
+    assert!(mmr.commit().is_ok());
+    // Committed hashes in pruned MMR
+    assert!(mmr.push(&hashes[5]).is_ok());
+    assert!(mmr.push(&hashes[6]).is_ok());
+    assert!(mmr.push(&hashes[7]).is_ok());
+    assert!(mmr.commit().is_ok());
+    assert!(mmr.push(&hashes[8]).is_ok());
+    assert!(mmr.push(&hashes[9]).is_ok());
+    assert!(mmr.commit().is_ok());
+    // Uncommitted hash in additions
+    assert!(mmr.push(&hashes[10]).is_ok());
+    assert!(mmr.push(&hashes[11]).is_ok());
+    assert!(mmr.push(&hashes[12]).is_ok());
+
+    // Not all the hashes should still be in the pruned mmr, hash 0 to 4 has been committed to the base MMR.
+    (0..=4).for_each(|i| assert_eq!(mmr.mmr().find_node_index(&hashes[i]), Ok(None)));
+    (5..=12).for_each(|i| assert_eq!(mmr.mmr().find_node_index(&hashes[i]), Ok(Some(node_index(i)))));
 }

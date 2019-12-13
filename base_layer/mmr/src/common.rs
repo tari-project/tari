@@ -28,12 +28,12 @@ use digest::Digest;
 
 const ALL_ONES: usize = std::usize::MAX;
 
-/// Returns the MMR index of the nth leaf node
-pub fn leaf_index(n: usize) -> usize {
-    if n == 0 {
+/// Returns the MMR node index derived from the leaf index.
+pub fn node_index(leaf_index: usize) -> usize {
+    if leaf_index == 0 {
         return 0;
     }
-    2 * n - n.count_ones() as usize
+    2 * leaf_index - leaf_index.count_ones() as usize
 }
 
 /// Is this position a leaf in the MMR?
@@ -191,15 +191,15 @@ mod test {
     use super::*;
 
     #[test]
-    fn leaf_indices() {
-        assert_eq!(leaf_index(0), 0);
-        assert_eq!(leaf_index(1), 1);
-        assert_eq!(leaf_index(2), 3);
-        assert_eq!(leaf_index(3), 4);
-        assert_eq!(leaf_index(5), 8);
-        assert_eq!(leaf_index(6), 10);
-        assert_eq!(leaf_index(7), 11);
-        assert_eq!(leaf_index(8), 15);
+    fn leaf_to_node_indices() {
+        assert_eq!(node_index(0), 0);
+        assert_eq!(node_index(1), 1);
+        assert_eq!(node_index(2), 3);
+        assert_eq!(node_index(3), 4);
+        assert_eq!(node_index(5), 8);
+        assert_eq!(node_index(6), 10);
+        assert_eq!(node_index(7), 11);
+        assert_eq!(node_index(8), 15);
     }
 
     #[test]

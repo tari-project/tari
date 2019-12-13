@@ -52,6 +52,15 @@ impl MutableMmrLeafNodes {
     }
 }
 
+impl From<Vec<Hash>> for MutableMmrLeafNodes {
+    fn from(leaf_hashes: Vec<Hash>) -> Self {
+        Self {
+            leaf_hashes,
+            deleted: Bitmap::create(),
+        }
+    }
+}
+
 impl Serialize for MutableMmrLeafNodes {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where S: Serializer {

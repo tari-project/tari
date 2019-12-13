@@ -325,7 +325,7 @@ pub mod test {
 
         // lets add 1 thats further back then
         let append_height = store.get_height().unwrap().unwrap();
-        let mut prev_block = store.fetch_block(append_height).unwrap().block().clone();
+        let prev_block = store.fetch_block(append_height).unwrap().block().clone();
         let mut new_block = chain_block(&prev_block, Vec::new());
         new_block.header.timestamp = EpochTime::from(1575018842).increase(consensus.get_target_block_interval() / 2);
         new_block.header.pow.pow_algo = PowAlgorithm::Blake;
