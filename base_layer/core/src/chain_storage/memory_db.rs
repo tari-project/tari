@@ -137,9 +137,16 @@ where D: Digest + Send + Sync
             match op {
                 WriteOperation::Insert(insert) => match insert {
                     DbKeyValuePair::Metadata(k, v) => {
-                        db.metadata.insert(k as u32, v);
+                        let key = k as u32;
+                        if db.metadata.contains_key(&key) {
+                            return Err(ChainStorageError::InvalidOperation("Duplicate key".to_string()));
+                        }
+                        db.metadata.insert(key, v);
                     },
                     DbKeyValuePair::BlockHeader(k, v, update_mmr) => {
+                        if db.headers.contains_key(&k) {
+                            return Err(ChainStorageError::InvalidOperation("Duplicate key".to_string()));
+                        }
                         let hash = v.hash();
                         if update_mmr {
                             db.header_mmr.push(&hash)?;
@@ -148,6 +155,9 @@ where D: Digest + Send + Sync
                         db.headers.insert(k, *v);
                     },
                     DbKeyValuePair::UnspentOutput(k, v, update_mmr) => {
+                        if db.utxos.contains_key(&k) {
+                            return Err(ChainStorageError::InvalidOperation("Duplicate key".to_string()));
+                        }
                         let proof_hash = v.proof().hash();
                         if update_mmr {
                             db.utxo_mmr.push(&k)?;
@@ -159,12 +169,18 @@ where D: Digest + Send + Sync
                         }
                     },
                     DbKeyValuePair::TransactionKernel(k, v, update_mmr) => {
+                        if db.kernels.contains_key(&k) {
+                            return Err(ChainStorageError::InvalidOperation("Duplicate key".to_string()));
+                        }
                         if update_mmr {
                             db.kernel_mmr.push(&k)?;
                         }
                         db.kernels.insert(k, *v);
                     },
                     DbKeyValuePair::OrphanBlock(k, v) => {
+                        if db.orphans.contains_key(&k) {
+                            return Err(ChainStorageError::InvalidOperation("Duplicate key".to_string()));
+                        }
                         db.orphans.insert(k, *v);
                     },
                 },

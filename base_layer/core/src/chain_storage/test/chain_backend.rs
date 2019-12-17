@@ -1256,6 +1256,47 @@ fn lmdb_fetch_checkpoint_with_pruning_horizon() {
     fetch_checkpoint_with_pruning_horizon(db);
 }
 
+fn duplicate_utxo<T: BlockchainBackend>(db: T) {
+    let factories = CryptoFactories::default();
+    let (utxo1, _) = create_utxo(MicroTari(10_000), &factories);
+    let (utxo2, _) = create_utxo(MicroTari(15_000), &factories);
+    let hash1 = utxo1.hash();
+
+    let mut txn = DbTransaction::new();
+    txn.insert_utxo_with_hash(hash1.clone(), utxo1.clone(), true);
+    assert!(db.write(txn).is_ok());
+    assert_eq!(db.contains(&DbKey::UnspentOutput(hash1.clone())), Ok(true));
+    if let Some(DbValue::UnspentOutput(retrieved_utxo)) = db.fetch(&DbKey::UnspentOutput(hash1.clone())).unwrap() {
+        assert_eq!(*retrieved_utxo, utxo1);
+    } else {
+        assert!(false);
+    }
+    let mut txn = DbTransaction::new();
+    txn.insert_utxo_with_hash(hash1.clone(), utxo2.clone(), true);
+    assert!(db.write(txn).is_err()); // This should fail
+    if let Some(DbValue::UnspentOutput(retrieved_utxo)) = db.fetch(&DbKey::UnspentOutput(hash1.clone())).unwrap() {
+        assert_eq!(*retrieved_utxo, utxo1); // original data should still be there
+    } else {
+        assert!(false);
+    }
+}
+
+#[test]
+fn memory_duplicate_utxo() {
+    let db = MemoryDatabase::<HashDigest>::default();
+    duplicate_utxo(db);
+}
+
+#[test]
+fn lmdb_duplicate_utxo() {
+    let mct_config = MerkleChangeTrackerConfig {
+        min_history_len: 10,
+        max_history_len: 20,
+    };
+    let db = create_lmdb_database(&create_temporary_data_path(), mct_config).unwrap();
+    duplicate_utxo(db);
+}
+
 fn fetch_last_header<T: BlockchainBackend>(db: T) {
     let mut header0 = BlockHeader::new(0);
     header0.height = 0;
