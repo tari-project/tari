@@ -27,7 +27,7 @@ use crate::{
         db_transaction::{DbKey, DbKeyValuePair, DbTransaction, DbValue, MetadataValue, MmrTree, WriteOperation},
         error::ChainStorageError,
         lmdb_db::{
-            lmdb::{lmdb_delete, lmdb_exists, lmdb_for_each, lmdb_get, lmdb_insert},
+            lmdb::{lmdb_delete, lmdb_exists, lmdb_for_each, lmdb_get, lmdb_insert, lmdb_len},
             LMDBVec,
             LMDB_DB_BLOCK_HASHES,
             LMDB_DB_HEADERS,
@@ -232,29 +232,35 @@ where D: Digest + Send + Sync
         for op in tx.operations.iter() {
             match op {
                 WriteOperation::Insert(insert) => match insert {
-                    DbKeyValuePair::BlockHeader(_k, v) => {
-                        let hash = v.hash();
-                        self.header_mmr
-                            .write()
-                            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
-                            .push(&hash)?;
+                    DbKeyValuePair::BlockHeader(_k, v, update_mmr) => {
+                        if *update_mmr {
+                            let hash = v.hash();
+                            self.header_mmr
+                                .write()
+                                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
+                                .push(&hash)?;
+                        }
                     },
-                    DbKeyValuePair::UnspentOutput(k, v) => {
-                        self.utxo_mmr
-                            .write()
-                            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
-                            .push(&k)?;
-                        let proof_hash = v.proof().hash();
-                        self.range_proof_mmr
-                            .write()
-                            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
-                            .push(&proof_hash)?;
+                    DbKeyValuePair::UnspentOutput(k, v, update_mmr) => {
+                        if *update_mmr {
+                            self.utxo_mmr
+                                .write()
+                                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
+                                .push(&k)?;
+                            let proof_hash = v.proof().hash();
+                            self.range_proof_mmr
+                                .write()
+                                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
+                                .push(&proof_hash)?;
+                        }
                     },
-                    DbKeyValuePair::TransactionKernel(k, _v) => {
-                        self.kernel_mmr
-                            .write()
-                            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
-                            .push(&k)?;
+                    DbKeyValuePair::TransactionKernel(k, _, update_mmr) => {
+                        if *update_mmr {
+                            self.kernel_mmr
+                                .write()
+                                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
+                                .push(&k)?;
+                        }
                     },
                     _ => {},
                 },
@@ -413,12 +419,12 @@ where D: Digest + Send + Sync
                         DbKeyValuePair::Metadata(k, v) => {
                             lmdb_insert(&txn, &self.metadata_db, &(k.clone() as u32), &v)?;
                         },
-                        DbKeyValuePair::BlockHeader(k, v) => {
+                        DbKeyValuePair::BlockHeader(k, v, _) => {
                             let hash = v.hash();
                             lmdb_insert(&txn, &self.block_hashes_db, &hash, &k)?;
                             lmdb_insert(&txn, &self.headers_db, &k, &v)?;
                         },
-                        DbKeyValuePair::UnspentOutput(k, v) => {
+                        DbKeyValuePair::UnspentOutput(k, v, _) => {
                             let proof_hash = v.proof().hash();
                             if let Some(index) = self
                                 .range_proof_mmr
@@ -430,7 +436,7 @@ where D: Digest + Send + Sync
                                 lmdb_insert(&txn, &self.txos_hash_to_index_db, &k, &index)?;
                             }
                         },
-                        DbKeyValuePair::TransactionKernel(k, v) => {
+                        DbKeyValuePair::TransactionKernel(k, v, _) => {
                             lmdb_insert(&txn, &self.kernels_db, &k, &v)?;
                         },
                         DbKeyValuePair::OrphanBlock(k, v) => {
@@ -943,10 +949,22 @@ where D: Digest + Send + Sync
     }
 
     fn fetch_pruning_horizon(&self) -> Result<u64, ChainStorageError> {
-        Ok(self
-            .header_mmr
+        let tip_height = lmdb_len(&self.env, &self.headers_db)?;
+        let checkpoint_count = self
+            .kernel_mmr
             .read()
             .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
-            .get_base_leaf_count() as u64)
+            .checkpoint_count()?;
+        Ok((tip_height - checkpoint_count) as u64)
+    }
+
+    fn fetch_last_header(&self) -> Result<Option<BlockHeader>, ChainStorageError> {
+        let header_count = lmdb_len(&self.env, &self.headers_db)?;
+        if header_count >= 1 {
+            let k = header_count - 1;
+            lmdb_get(&self.env, &self.headers_db, &k)
+        } else {
+            Ok(None)
+        }
     }
 }

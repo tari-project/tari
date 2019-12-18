@@ -73,7 +73,7 @@ impl HorizonInfo {
     }
 
     pub async fn next_event<B: BlockchainBackend>(&mut self, shared: &mut BaseNodeStateMachine<B>) -> StateEvent {
-        debug!(
+        info!(
             target: LOG_TARGET,
             "Starting horizon synchronisation at block {}", self.horizon_block
         );
@@ -111,7 +111,13 @@ impl HorizonInfo {
             return StateEvent::FatalError(format!("Synchronizing UTXO set failed. {}", e));
         }
 
-        debug!(target: LOG_TARGET, "Pruning horizon state has synchronised");
+        info!(target: LOG_TARGET, "Validating downloaded horizon state.");
+        // TODO #1147: Attempt to recover from failed horizon state validation.
+        if let Err(e) = self.validate_horizon_state(shared).await {
+            return StateEvent::FatalError(format!("Validation of downloaded horizon state failed. {}", e));
+        }
+
+        info!(target: LOG_TARGET, "Pruning horizon state has synchronised");
         StateEvent::HorizonStateFetched
     }
 
@@ -157,9 +163,10 @@ impl HorizonInfo {
                 .map_err(|e| e.to_string())?;
 
             let mut txn = DbTransaction::new();
-            headers.into_iter().for_each(|header| txn.insert_header(header));
+            headers.into_iter().for_each(|header| txn.insert_header(header, false));
             shared.db.commit(txn).map_err(|e| e.to_string())?;
         }
+
         Ok(())
     }
 
@@ -187,7 +194,7 @@ impl HorizonInfo {
                 .map_err(|e| e.to_string())?;
 
             let mut txn = DbTransaction::new();
-            kernels.into_iter().for_each(|kernel| txn.insert_kernel(kernel));
+            kernels.into_iter().for_each(|kernel| txn.insert_kernel(kernel, false));
             shared.db.commit(txn).map_err(|e| e.to_string())?;
         }
         Ok(())
@@ -223,7 +230,7 @@ impl HorizonInfo {
             let utxos = shared.comms.fetch_utxos(leaf_hashes).await.map_err(|e| e.to_string())?;
 
             let mut txn = DbTransaction::new();
-            utxos.into_iter().for_each(|utxo| txn.insert_utxo(utxo));
+            utxos.into_iter().for_each(|utxo| txn.insert_utxo(utxo, false));
             shared.db.commit(txn).map_err(|e| e.to_string())?;
         }
         Ok(())
@@ -263,5 +270,13 @@ impl HorizonInfo {
             .db
             .restore_mmr(MmrTree::Utxo, base_state)
             .map_err(|e| e.to_string())
+    }
+
+    async fn validate_horizon_state<B: BlockchainBackend>(
+        &mut self,
+        shared: &mut BaseNodeStateMachine<B>,
+    ) -> Result<(), String>
+    {
+        shared.db.validate_horizon_state().map_err(|e| e.to_string())
     }
 }

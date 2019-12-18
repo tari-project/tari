@@ -139,23 +139,29 @@ where D: Digest + Send + Sync
                     DbKeyValuePair::Metadata(k, v) => {
                         db.metadata.insert(k as u32, v);
                     },
-                    DbKeyValuePair::BlockHeader(k, v) => {
+                    DbKeyValuePair::BlockHeader(k, v, update_mmr) => {
                         let hash = v.hash();
+                        if update_mmr {
+                            db.header_mmr.push(&hash)?;
+                        }
                         db.block_hashes.insert(hash.clone(), k);
-                        db.header_mmr.push(&hash)?;
                         db.headers.insert(k, *v);
                     },
-                    DbKeyValuePair::UnspentOutput(k, v) => {
-                        db.utxo_mmr.push(&k)?;
+                    DbKeyValuePair::UnspentOutput(k, v, update_mmr) => {
                         let proof_hash = v.proof().hash();
-                        db.range_proof_mmr.push(&proof_hash)?;
+                        if update_mmr {
+                            db.utxo_mmr.push(&k)?;
+                            db.range_proof_mmr.push(&proof_hash)?;
+                        }
                         if let Some(index) = db.range_proof_mmr.find_leaf_index(&proof_hash)? {
                             let v = MerkleNode { index, value: *v };
                             db.utxos.insert(k, v);
                         }
                     },
-                    DbKeyValuePair::TransactionKernel(k, v) => {
-                        db.kernel_mmr.push(&k)?;
+                    DbKeyValuePair::TransactionKernel(k, v, update_mmr) => {
+                        if update_mmr {
+                            db.kernel_mmr.push(&k)?;
+                        }
                         db.kernels.insert(k, *v);
                     },
                     DbKeyValuePair::OrphanBlock(k, v) => {
@@ -472,7 +478,20 @@ where D: Digest + Send + Sync
 
     fn fetch_pruning_horizon(&self) -> Result<u64, ChainStorageError> {
         let db = self.db_access()?;
-        Ok(db.header_mmr.get_base_leaf_count() as u64)
+        let tip_height = db.headers.len();
+        let checkpoint_count = db.kernel_mmr.checkpoint_count()?;
+        Ok((tip_height - checkpoint_count) as u64)
+    }
+
+    fn fetch_last_header(&self) -> Result<Option<BlockHeader>, ChainStorageError> {
+        let db = self.db_access()?;
+        let header_count = db.headers.len() as u64;
+        if header_count >= 1 {
+            let k = header_count - 1;
+            Ok(db.headers.get(&k).map(|h| h.clone()))
+        } else {
+            Ok(None)
+        }
     }
 }
 

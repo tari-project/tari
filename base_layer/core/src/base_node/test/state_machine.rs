@@ -76,7 +76,7 @@ fn test_horizon_state_sync() {
     for _ in 0..12 {
         let (tx, inputs, _) = tx!(10_000*uT, fee: 50*uT, inputs: 1, outputs: 1);
         let mut txn = DbTransaction::new();
-        txn.insert_utxo(inputs[0].as_transaction_output(&factories).unwrap());
+        txn.insert_utxo(inputs[0].as_transaction_output(&factories).unwrap(), true);
         assert!(bob_node.blockchain_db.commit(txn).is_ok());
 
         let next_block = chain_block(&prev_block, vec![tx.clone()]);
@@ -145,6 +145,8 @@ fn test_horizon_state_sync() {
                 assert_eq!(alice_node.blockchain_db.fetch_utxo(hash).unwrap(), utxo);
             }
         }
+
+        assert_eq!(alice_node.blockchain_db.get_height(), Ok(Some(8)));
     });
 
     alice_node.comms.shutdown().unwrap();

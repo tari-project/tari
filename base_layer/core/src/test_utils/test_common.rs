@@ -23,7 +23,7 @@
 // Used in tests only
 
 use crate::{
-    blocks::Block,
+    blocks::{blockheader::BlockHeader, Block},
     chain_storage::{BlockchainBackend, ChainStorageError, DbKey, DbTransaction, DbValue, MmrTree, MutableMmrState},
 };
 use rand::{CryptoRng, Rng};
@@ -146,6 +146,10 @@ impl BlockchainBackend for MockBackend {
         Self: Sized,
         F: FnMut(Result<(HashOutput, Block), ChainStorageError>),
     {
+        unimplemented!()
+    }
+
+    fn fetch_last_header(&self) -> Result<Option<BlockHeader>, ChainStorageError> {
         unimplemented!()
     }
 }
