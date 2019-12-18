@@ -219,6 +219,21 @@ impl TransactionBackend for TransactionMemoryDatabase {
     }
 
     #[cfg(feature = "test_harness")]
+    fn broadcast_completed_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionStorageError> {
+        let mut db = acquire_write_lock!(self.db);
+
+        let mut completed_tx =
+            db.completed_transactions
+                .get_mut(&tx_id)
+                .ok_or(TransactionStorageError::ValueNotFound(DbKey::CompletedTransaction(
+                    tx_id.clone(),
+                )))?;
+        completed_tx.status = TransactionStatus::Broadcast;
+
+        Ok(())
+    }
+
+    #[cfg(feature = "test_harness")]
     fn mine_completed_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionStorageError> {
         let mut db = acquire_write_lock!(self.db);
 

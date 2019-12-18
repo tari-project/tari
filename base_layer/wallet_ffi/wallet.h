@@ -272,7 +272,15 @@ void comms_config_destroy(struct TariCommsConfig *wc);
 /// -------------------------------- TariWallet ----------------------------------------------- //
 
 // Creates a TariWallet
-struct TariWallet *wallet_create(struct TariWalletConfig *config, char *log_path, int* error_out);
+struct TariWallet *wallet_create(struct TariWalletConfig *config,
+                                    char *log_path,
+                                    void (*call)(struct TariPendingInboundTransaction*),
+                                    void (*call)(struct TariCompletedTransaction*),
+                                    void (*call)(struct TariCompletedTransaction*),
+                                    void (*call)(struct TariCompletedTransaction*),
+                                    void (*call)(struct TariCompletedTransaction*),
+                                    void (*call)(unsigned long long, bool),
+                                    int* error_out);
 
 /// Generates test data
 bool wallet_test_generate_data(struct TariWallet *wallet, char *datastore_path,int* error_out);
@@ -326,32 +334,19 @@ struct TariPendingInboundTransaction *wallet_get_pending_inbound_transaction_by_
 bool wallet_test_complete_sent_transaction(struct TariWallet *wallet, struct TariPendingOutboundTransaction *tx,int* error_out);
 
 // Simulates the completion of a broadcasted TariPendingInboundTransaction
-bool wallet_test_transaction_broadcast(struct TariWallet *wallet, struct TariPendingInboundTransaction *tx,int* error_out);
+bool wallet_test_broadcast_transaction(struct TariWallet *wallet, struct TariCompletedTransaction *tx, int* error_out);
+
+// Simulates receiving the finalized version of a TariPendingInboundTransaction
+bool wallet_test_finalize_received_transaction(struct TariWallet *wallet, struct TariPendingInboundTransaction *tx, int* error_out);
 
 // Simulates a TariCompletedTransaction that has been mined
-bool wallet_test_mined(struct TariWallet *wallet, struct TariCompletedTransaction *tx,int* error_out);
+bool wallet_test_mine_transaction(struct TariWallet *wallet, struct TariCompletedTransaction *tx, int* error_out);
 
 // Simulates a TariPendingInboundtransaction being received
 bool wallet_test_receive_transaction(struct TariWallet *wallet,int* error_out);
 
 // Frees memory for a TariWallet
 void wallet_destroy(struct TariWallet *wallet);
-
-// Registers a callback function for when TariPendingInboundTransaction broadcast is detected
-bool wallet_callback_register_transaction_broadcast(struct TariWallet *wallet, void (*call)(struct TariCompletedTransaction*),int* error_out);
-
-// Registers a callback function for when a TariCompletedTransaction is mined
-bool wallet_callback_register_mined(struct TariWallet *wallet, void (*call)(struct TariCompletedTransaction*));
-
-// Registers a callback function for when a TariPendingInboundTransaction is received
-bool wallet_callback_register_received_transaction(struct TariWallet *wallet, void (*call)(struct TariPendingInboundTransaction*),int* error_out);
-
-// Registers a callback function for when a reply is received for a TariPendingOutboundTransaction
-bool wallet_callback_register_received_transaction_reply(struct TariWallet *wallet, void (*call)(struct TariCompletedTransaction*),int* error_out);
-
-// Registers a callback function for when a Receiver receives a finalized transaction from a sender
-bool wallet_callback_register_received_finalized_transaction(struct TariWallet *wallet, void (*call)(struct TariCompletedTransaction*));
-
 
 #ifdef __cplusplus
 }

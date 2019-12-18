@@ -20,16 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use futures::{select, stream::FusedStream, FutureExt, Stream, StreamExt};
 use rand::{distributions::Alphanumeric, CryptoRng, OsRng, Rng};
-use std::{
-    collections::HashMap,
-    fmt::Debug,
-    hash::Hash,
-    iter,
-    thread,
-    time::{Duration, Instant},
-};
+use std::{fmt::Debug, iter, thread, time::Duration};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
@@ -64,38 +56,6 @@ where
 
         thread::sleep(Duration::from_millis(100));
     }
-}
-
-/// This method will read the specified number of items from a stream and assemble a HashMap with the received item as a
-/// key and the number of occurrences as a value. If the stream does not yield the desired number of items the function
-/// will return what it is has received
-pub async fn event_stream_count<TStream>(
-    mut stream: TStream,
-    num_items: usize,
-    timeout: Duration,
-) -> HashMap<TStream::Item, u32>
-where
-    TStream: Stream + FusedStream + Unpin,
-    TStream::Item: Hash + Eq + Clone,
-{
-    let mut result = HashMap::new();
-    let mut count = 0;
-    loop {
-        select! {
-                    item = stream.select_next_some() => {
-                        let e = result.entry(item.clone()).or_insert(0);
-                        *e += 1;
-                        count += 1;
-                        if count >= num_items {
-                            break;
-                        }
-                     },
-                    _ = tokio::timer::delay(Instant::now() + timeout).fuse() => { break; },
-        //            complete => { break; },
-                }
-    }
-
-    result
 }
 
 pub struct TestParams {

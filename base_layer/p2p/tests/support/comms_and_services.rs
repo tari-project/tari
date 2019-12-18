@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use futures::Sink;
-use std::{error::Error, sync::Arc};
+use std::{error::Error, sync::Arc, time::Duration};
 use tari_comms::{
     builder::CommsNode,
     peer_manager::{NodeIdentity, Peer, PeerFlags},
@@ -44,7 +44,8 @@ where
     TSink: Sink<Arc<PeerMessage>> + Clone + Unpin + Send + Sync + 'static,
     TSink::Error: Error + Send + Sync,
 {
-    let (comms, dht) = initialize_local_test_comms(executor, node_identity, publisher, data_path).unwrap();
+    let (comms, dht) =
+        initialize_local_test_comms(executor, node_identity, publisher, data_path, Duration::from_secs(1)).unwrap();
 
     for p in peers {
         let addr = p.control_service_address().clone();

@@ -205,7 +205,7 @@ pub fn generate_wallet_test_data<
         target: LOG_TARGET,
         "Spinning up Alice wallet to generate test transactions"
     );
-    let alice_temp_dir = format!("{}{}", data_path.clone(), random_string(8));
+    let alice_temp_dir = format!("{}/{}", data_path.clone(), random_string(8));
     let _ = std::fs::create_dir(&alice_temp_dir);
 
     let mut wallet_alice = create_wallet(
@@ -224,7 +224,7 @@ pub fn generate_wallet_test_data<
         target: LOG_TARGET,
         "Spinning up Bob wallet to generate test transactions"
     );
-    let bob_temp_dir = format!("{}{}", data_path.clone(), random_string(8));
+    let bob_temp_dir = format!("{}/{}", data_path.clone(), random_string(8));
     let _ = std::fs::create_dir(&bob_temp_dir);
 
     let mut wallet_bob = create_wallet(
@@ -250,6 +250,13 @@ pub fn generate_wallet_test_data<
         contacts[0].public_key.clone(),
         MicroTari::from(10_000),
         MicroTari::from(100),
+        "".to_string(),
+    ))?;
+
+    wallet.runtime.block_on(wallet.transaction_service.send_transaction(
+        contacts[0].public_key.clone(),
+        MicroTari::from(11_000),
+        MicroTari::from(110),
         "".to_string(),
     ))?;
 
@@ -301,6 +308,29 @@ pub fn generate_wallet_test_data<
             "".to_string(),
         ))?;
 
+    let txs = wallet
+        .runtime
+        .block_on(wallet.transaction_service.get_completed_transactions())
+        .unwrap();
+
+    let mut keys = Vec::new();
+
+    for k in txs.keys().take(2) {
+        keys.push(k);
+    }
+
+    // Broadcast a tx
+    wallet
+        .runtime
+        .block_on(wallet.transaction_service.test_broadcast_transaction(keys[0].clone()))
+        .unwrap();
+
+    // Mine a tx
+    wallet
+        .runtime
+        .block_on(wallet.transaction_service.test_mine_transaction(keys[1].clone()))
+        .unwrap();
+
     thread::sleep(Duration::from_millis(1000));
 
     let _ = wallet_alice.shutdown();
@@ -340,7 +370,7 @@ pub fn complete_sent_transaction<
                 fee: p.fee.clone(),
                 transaction: Transaction::new(Vec::new(), Vec::new(), Vec::new(), BlindingFactor::default()),
                 message: p.message.clone(),
-                status: TransactionStatus::Broadcast,
+                status: TransactionStatus::Completed,
                 timestamp: Utc::now().naive_utc(),
             };
             wallet.runtime.block_on(
@@ -383,6 +413,31 @@ pub fn receive_test_transaction<
     Ok(())
 }
 
+/// This function is only available for testing and development by the client of LibWallet. It simulates this node,
+/// who received a prior inbound transaction, accepting the Finalized Completed transaction from the Sender. That
+/// transaction then becomes a CompletedTransaction with the Broadcast status indicating it is in a base node Mempool
+/// but not yet mined
+pub fn finalize_received_transaction<
+    T: WalletBackend,
+    U: TransactionBackend + Clone,
+    V: OutputManagerBackend,
+    W: ContactsBackend,
+>(
+    wallet: &mut Wallet<T, U, V, W>,
+    tx_id: TxId,
+) -> Result<(), WalletError>
+{
+    wallet
+        .runtime
+        .block_on(wallet.transaction_service.test_finalize_transaction(tx_id))?;
+
+    Ok(())
+}
+
+/// This function is only available for testing and development by the client of LibWallet. This function will simulate
+/// the event when a CompletedTransaction that is in the Complete status is broadcast to the Mempool and its status
+/// moves to Broadcast. After this function is called the status of the CompletedTransaction becomes `Mined` and the
+/// funds that were pending become spent and available respectively.
 pub fn broadcast_transaction<
     T: WalletBackend,
     U: TransactionBackend + Clone,

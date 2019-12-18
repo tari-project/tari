@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use futures::Sink;
-use std::{error::Error, sync::Arc};
+use std::{error::Error, sync::Arc, time::Duration};
 use tari_comms::{
     builder::CommsNode,
     multiaddr::Multiaddr,
@@ -42,12 +42,20 @@ pub fn setup_comms_services<TSink>(
     peers: Vec<NodeIdentity>,
     publisher: InboundDomainConnector<TSink>,
     database_path: String,
+    discovery_request_timeout: Duration,
 ) -> (CommsNode, Dht)
 where
     TSink: Sink<Arc<PeerMessage>> + Clone + Unpin + Send + Sync + 'static,
     TSink::Error: Error + Send + Sync,
 {
-    let (comms, dht) = initialize_local_test_comms(executor, node_identity, publisher, &database_path).unwrap();
+    let (comms, dht) = initialize_local_test_comms(
+        executor,
+        node_identity,
+        publisher,
+        &database_path,
+        discovery_request_timeout,
+    )
+    .unwrap();
 
     for p in peers {
         let addr = p.control_service_address();

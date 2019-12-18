@@ -55,20 +55,24 @@
 //!     encumbered and appearing in the `PendingOutgoingBalance` and any change will appear in the
 //!     `PendingIncomingBalance`.
 //! 2.  Wait until the recipient replies to the sent transaction which will result in the `PendingOutboundTransaction`
-//!     becoming a `CompletedTransaction` with the `Broadcast` status. This means that the transaction has been
-//!     negotiated between the parties and is now broadcast to the Base Layer waiting to be mined. The funds are still
+//!     becoming a `CompletedTransaction` with the `Completed` status. This means that the transaction has been
+//!     negotiated between the parties and is now ready to be broadcast to the Base Layer. The funds are still
 //!     encumbered as pending because the transaction has not been mined yet.
-//! 3.  Wait until the transaction is mined. The `CompleteTransaction` status will then move from `Broadcast` to `Mined`
+//! 3.  The finalized `CompletedTransaction' will be sent back to the the receiver so that they have a copy.
+//! 4.  The wallet will broadcast the `CompletedTransaction` to a Base Node to be added to the mempool. its status will
+//!     from `Completed` to `Broadcast.
+//! 5.  Wait until the transaction is mined. The `CompleteTransaction` status will then move from `Broadcast` to `Mined`
 //!     and the pending funds will be spent and received.
 //!
 //! ## Receive a Transaction
 //! 1.  When a transaction is received it will appear as an `InboundTransaction` and the amount to be received will
 //!     appear as a `PendingIncomingBalance`. The wallet backend will be listening for these transactions and will
 //!     immediately reply to the sending wallet.
-//! 2.  This wallet will then monitor the Base Layer to detect when the Sender wallet will broadcast the
-//!     `CompletedTransaction` to the mempool i.e. the `CompletedTransaction` status is `Broadcast`. The funds are
-//!     still pending at this stage as the transaction has not been mined.
-//! 3.  This wallet will then monitor the Base Layer to see when the transaction is mined which means the
+//! 2.  The sender will send back the finalized `CompletedTransaction`
+//! 3.  This wallet will also broadcast the `CompletedTransaction` to a Base Node to be added to the mempool, its status
+//!     will move from `Completed` to `Broadcast`. This is done so that the Receiver can be sure the finalized
+//!     transaciton is broadcast.
+//! 6.  This wallet will then monitor the Base Layer to see when the transaction is mined which means the
 //!     `CompletedTransaction` status will become `Mined` and the funds will then move from the `PendingIncomingBalance`
 //!     to the `AvailableBalance`.
 //!
@@ -80,9 +84,11 @@
 //! ### Send Transaction with test functions
 //! 1.  Send Transaction as above to produce a `PendingOutboundTransaction`.
 //! 2.  Call the `complete_sent_transaction(...)` function with the tx_id of the sent transaction to simulate a reply.
-//!     This will move the `PendingOutboundTransaction` to become a `CompletedTransaction` with the `Broadcast` status
-//!     which means it has been broadcast to the Base Layer Mempool but not mined yet.
-//! 3.  Call the `mined_transaction(...)` function with the tx_id of the sent transaction which will change
+//!     This will move the `PendingOutboundTransaction` to become a `CompletedTransaction` with the `Completed` status.
+//! 3.  Call the 'broadcast_transaction(...)` function with the tx_id of the sent transaction and its status will move
+//!     from 'Completed' to 'Broadcast' which means it has been broadcast to the Base Layer Mempool but not mined yet.
+//!     from 'Completed' to 'Broadcast' which means it has been broadcast to the Base Layer Mempool but not mined yet.
+//! 4.  Call the `mined_transaction(...)` function with the tx_id of the sent transaction which will change
 //!     the status of the `CompletedTransaction` from `Broadcast` to `Mined`. The pending funds will also become
 //!     finalized as spent and available funds respectively.
 //!
@@ -98,6 +104,10 @@
 //! 3.  Call the `mined_transaction(...)` function with the tx_id of the received transaction which will
 //!     change the status of the `CompletedTransaction` from    `Broadcast` to `Mined`. The pending funds will also
 //!     become finalized as spent and available funds respectively
+
+#[cfg(test)]
+#[macro_use]
+extern crate lazy_static;
 
 extern crate libc;
 extern crate tari_wallet;
@@ -132,6 +142,7 @@ use tari_wallet::{
     testnet_utils::{
         broadcast_transaction,
         complete_sent_transaction,
+        finalize_received_transaction,
         generate_wallet_test_data,
         mine_transaction,
         receive_test_transaction,
@@ -146,6 +157,7 @@ pub type TariWallet = tari_wallet::wallet::Wallet<
     OutputManagerSqliteDatabase,
     ContactsServiceSqliteDatabase,
 >;
+
 pub type TariPublicKey = tari_comms::types::CommsPublicKey;
 pub type TariPrivateKey = tari_comms::types::CommsSecretKey;
 pub type TariCommsConfig = tari_p2p::initialization::CommsConfig;
@@ -1645,14 +1657,27 @@ pub unsafe extern "C" fn comms_config_destroy(wc: *mut TariCommsConfig) {
 /// `config` - The TariCommsConfig pointer
 /// `log_path` - An optional file path to the file where the logs will be written. If no log is required pass *null*
 /// pointer.
+/// `callback_received_transaction` - The callback function pointer matching the function signature
+/// `callback_received_transaction_reply` - The callback function pointer matching the function signature
+/// `callback_received_finalized_transaction` - The callback function pointer matching the function signature
+/// `callback_transaction_broadcast` - The callback function pointer matching the function signature
+/// `callback_transaction_mined` - The callback function pointer matching the function signature
+/// `callback_discovery_process_complete` - The callback function pointer matching the function signature
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter. ## Returns
+/// as an out parameter.
+/// ## Returns
 /// `*mut TariWallet` - Returns a pointer to a TariWallet, note that it returns ptr::null_mut()
 /// if config is null, a wallet error was encountered or if the runtime could not be created
 #[no_mangle]
 pub unsafe extern "C" fn wallet_create(
     config: *mut TariCommsConfig,
     log_path: *const c_char,
+    callback_received_transaction: unsafe extern "C" fn(*mut TariPendingInboundTransaction),
+    callback_received_transaction_reply: unsafe extern "C" fn(*mut TariCompletedTransaction),
+    callback_received_finalized_transaction: unsafe extern "C" fn(*mut TariCompletedTransaction),
+    callback_transaction_broadcast: unsafe extern "C" fn(*mut TariCompletedTransaction),
+    callback_transaction_mined: unsafe extern "C" fn(*mut TariCompletedTransaction),
+    callback_discovery_process_complete: unsafe extern "C" fn(c_ulonglong, bool),
     error_out: *mut c_int,
 ) -> *mut TariWallet
 {
@@ -1663,6 +1688,7 @@ pub unsafe extern "C" fn wallet_create(
         ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     }
+
     let mut logging_path_string = None;
     if !log_path.is_null() {
         logging_path_string = Some(CStr::from_ptr(log_path).to_str().unwrap().to_owned());
@@ -1692,12 +1718,25 @@ pub unsafe extern "C" fn wallet_create(
                 },
                 runtime,
                 wallet_backend,
-                transaction_backend,
+                transaction_backend.clone(),
                 output_manager_backend,
                 contacts_backend,
             );
+
             match w {
-                Ok(w) => Box::into_raw(Box::new(w)),
+                Ok(mut w) => {
+                    // Register callbacks
+                    w.set_callbacks(
+                        transaction_backend,
+                        callback_received_transaction,
+                        callback_received_transaction_reply,
+                        callback_received_finalized_transaction,
+                        callback_transaction_broadcast,
+                        callback_transaction_mined,
+                        callback_discovery_process_complete,
+                    );
+                    Box::into_raw(Box::new(w))
+                },
                 Err(e) => {
                     error = LibWalletError::from(e).code;
                     ptr::swap(error_out, &mut error as *mut c_int);
@@ -1833,20 +1872,98 @@ pub unsafe extern "C" fn wallet_test_complete_sent_transaction(
     }
 }
 
-/// This function will simulate the process when a completed transaction is detected as mined on
-/// the base layer. The function will update the status of the completed transaction AND complete
-/// the transaction on the Output Manager Service which will update the status of the outputs
+/// This function will simulate the process when a completed transaction is broadcast to
+/// the base layer mempool. The function will update the status of the completed transaction
 ///
 /// ## Arguments
 /// `wallet` - The TariWallet pointer
-/// `tx` - The TariCompletedTransaction pointer
+/// `tx` - The pending inbound transaction to operate on
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
 /// ## Returns
 /// `bool` - Returns if successful or not
 #[no_mangle]
-pub unsafe extern "C" fn wallet_test_mined(
+pub unsafe extern "C" fn wallet_test_finalize_received_transaction(
+    wallet: *mut TariWallet,
+    tx: *mut TariPendingInboundTransaction,
+    error_out: *mut c_int,
+) -> bool
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return false;
+    }
+
+    match finalize_received_transaction(&mut *wallet, (*tx).tx_id.clone()) {
+        Ok(_) => true,
+        Err(e) => {
+            error = LibWalletError::from(e).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            false
+        },
+    }
+}
+
+/// This function will simulate the process when a completed transaction is broadcast to
+/// the base layer mempool. The function will update the status of the completed transaction
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer
+/// `tx` - The completed transaction to operate on
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `bool` - Returns if successful or not
+#[no_mangle]
+pub unsafe extern "C" fn wallet_test_broadcast_transaction(
+    wallet: *mut TariWallet,
+    tx: *mut TariCompletedTransaction,
+    error_out: *mut c_int,
+) -> bool
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return false;
+    }
+
+    if tx.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("tx".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return false;
+    }
+
+    match broadcast_transaction(&mut *wallet, (*tx).tx_id.clone()) {
+        Ok(_) => true,
+        Err(e) => {
+            error = LibWalletError::from(e).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            false
+        },
+    }
+}
+
+/// This function will simulate the process when a completed transaction is detected as mined on
+/// the base layer. The function will update the status of the completed transaction AND complete
+/// the transaction on the Output Manager Service which will update the status of the outputs
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer
+/// `tx` - The completed transaction to operate on
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `bool` - Returns if successful or not
+#[no_mangle]
+pub unsafe extern "C" fn wallet_test_mine_transaction(
     wallet: *mut TariWallet,
     tx: *mut TariCompletedTransaction,
     error_out: *mut c_int,
@@ -1865,42 +1982,6 @@ pub unsafe extern "C" fn wallet_test_mined(
         return false;
     }
     match mine_transaction(&mut *wallet, (*tx).tx_id.clone()) {
-        Ok(_) => true,
-        Err(e) => {
-            error = LibWalletError::from(e).code;
-            ptr::swap(error_out, &mut error as *mut c_int);
-            false
-        },
-    }
-}
-
-/// This function simulates the detection of a `TariPendingInboundTransaction` as being broadcast
-/// to base layer which means the Pending transaction must become a `TariCompletedTransaction` with
-/// the `Broadcast` status.
-///
-/// ## Arguments
-/// `wallet` - The TariWallet pointer
-/// `tx` - The TariPendingInboundTransaction pointer
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter.
-///
-/// ## Returns
-/// `bool` - Returns if successful or not
-#[no_mangle]
-pub unsafe extern "C" fn wallet_test_transaction_broadcast(
-    wallet: *mut TariWallet,
-    tx: *mut TariPendingInboundTransaction,
-    error_out: *mut c_int,
-) -> bool
-{
-    let mut error = 0;
-    ptr::swap(error_out, &mut error as *mut c_int);
-    if wallet.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return false;
-    }
-    match broadcast_transaction(&mut *wallet, (*tx).tx_id.clone()) {
         Ok(_) => true,
         Err(e) => {
             error = LibWalletError::from(e).code;
@@ -2566,202 +2647,12 @@ pub unsafe extern "C" fn wallet_destroy(wallet: *mut TariWallet) {
     }
 }
 
-/// ------------------------------------- Callbacks -------------------------------------------- ///
-
-/// Registers a callback function for when a TariPendingInboundTransaction is received
-///
-/// ## Arguments
-/// `wallet` - The TariWallet pointer
-/// `call` - The callback function pointer matching the function signature
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter.
-///
-/// ## Returns
-/// `bool` - Returns if successful or not
-#[no_mangle]
-pub unsafe extern "C" fn wallet_callback_register_received_transaction(
-    wallet: *mut TariWallet,
-    call: unsafe extern "C" fn(*mut TariPendingInboundTransaction),
-    error_out: *mut c_int,
-) -> bool
-{
-    let mut error = 0;
-    ptr::swap(error_out, &mut error as *mut c_int);
-    if wallet.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return false;
-    }
-
-    let result = (*wallet).runtime.block_on(
-        (*wallet)
-            .transaction_service
-            .register_callback_received_transaction(call),
-    );
-    match result {
-        Ok(_) => true,
-        Err(e) => {
-            error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
-            ptr::swap(error_out, &mut error as *mut c_int);
-            false
-        },
-    }
-}
-
-/// Registers a callback function for when a reply is received for a TariPendingOutboundTransaction
-///
-/// ## Arguments
-/// `wallet` - The TariWallet pointer
-/// `call` - The callback function pointer matching the function signature
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter.
-///
-/// ## Returns
-/// `bool` - Returns if successful or not
-#[no_mangle]
-pub unsafe extern "C" fn wallet_callback_register_received_transaction_reply(
-    wallet: *mut TariWallet,
-    call: unsafe extern "C" fn(*mut TariCompletedTransaction),
-    error_out: *mut c_int,
-) -> bool
-{
-    let mut error = 0;
-    ptr::swap(error_out, &mut error as *mut c_int);
-    if wallet.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return false;
-    }
-
-    let result = (*wallet).runtime.block_on(
-        (*wallet)
-            .transaction_service
-            .register_callback_received_transaction_reply(call),
-    );
-    match result {
-        Ok(_) => true,
-        Err(_) => false,
-    }
-}
-
-/// Registers a callback function for when a Receiver receives a finalized transaction from a sender
-///
-/// ## Arguments
-/// `wallet` - The TariWallet pointer
-/// `call` - The callback function pointer matching the function signature
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter.
-///
-/// ## Returns
-/// `bool` - Returns if successful or not
-#[no_mangle]
-pub unsafe extern "C" fn wallet_callback_register_received_finalized_transaction(
-    wallet: *mut TariWallet,
-    call: unsafe extern "C" fn(*mut TariCompletedTransaction),
-    error_out: *mut c_int,
-) -> bool
-{
-    let mut error = 0;
-    ptr::swap(error_out, &mut error as *mut c_int);
-    let result = (*wallet).runtime.block_on(
-        (*wallet)
-            .transaction_service
-            .register_callback_received_finalized_transaction(call),
-    );
-    match result {
-        Ok(_) => true,
-        Err(e) => {
-            error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
-            ptr::swap(error_out, &mut error as *mut c_int);
-            false
-        },
-    }
-}
-
-/// Registers a callback function for when a TariCompletedTransaction is mined
-///
-/// ## Arguments
-/// `wallet` - The TariWallet pointer
-/// `call` - The callback function pointer matching the function signature
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter.
-///
-/// ## Returns
-/// `bool` - Returns if successful or not
-#[no_mangle]
-pub unsafe extern "C" fn wallet_callback_register_mined(
-    wallet: *mut TariWallet,
-    call: unsafe extern "C" fn(*mut TariCompletedTransaction),
-    error_out: *mut c_int,
-) -> bool
-{
-    let mut error = 0;
-    ptr::swap(error_out, &mut error as *mut c_int);
-    if wallet.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return false;
-    }
-
-    let result = (*wallet)
-        .runtime
-        .block_on((*wallet).transaction_service.register_callback_mined(call));
-    match result {
-        Ok(_) => true,
-        Err(e) => {
-            error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
-            ptr::swap(error_out, &mut error as *mut c_int);
-            false
-        },
-    }
-}
-
-/// Registers a callback function for when TariPendingInboundTransaction broadcast is detected
-///
-/// ## Arguments
-/// `wallet` - The TariWallet pointer
-/// `call` - The callback function pointer matching the function signature
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter.
-///
-/// ## Returns
-/// `bool` - Returns if successful or not
-#[no_mangle]
-pub unsafe extern "C" fn wallet_callback_register_transaction_broadcast(
-    wallet: *mut TariWallet,
-    call: unsafe extern "C" fn(*mut TariCompletedTransaction),
-    error_out: *mut c_int,
-) -> bool
-{
-    let mut error = 0;
-    ptr::swap(error_out, &mut error as *mut c_int);
-    if wallet.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return false;
-    }
-
-    let result = (*wallet).runtime.block_on(
-        (*wallet)
-            .transaction_service
-            .register_callback_transaction_broadcast(call),
-    );
-    match result {
-        Ok(_) => true,
-        Err(e) => {
-            error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
-            ptr::swap(error_out, &mut error as *mut c_int);
-            false
-        },
-    }
-}
-
 #[cfg(test)]
 mod test {
     extern crate libc;
     use crate::*;
     use libc::{c_char, c_uchar, c_uint};
-    use std::ffi::CString;
+    use std::{ffi::CString, sync::Mutex};
     use tari_wallet::{testnet_utils::random_string, transaction_service::storage::database::TransactionStatus};
     use tempdir::TempDir;
 
@@ -2769,33 +2660,80 @@ mod test {
         std::any::type_name::<T>().to_string()
     }
 
-    unsafe extern "C" fn completed_callback(tx: *mut TariCompletedTransaction) {
-        assert_eq!(tx.is_null(), false);
-        assert_eq!(
-            type_of((*tx).clone()),
-            std::any::type_name::<TariCompletedTransaction>()
-        );
-        println!("{:?}", (*tx).status);
-        assert_eq!((*tx).status, TransactionStatus::Broadcast);
-        completed_transaction_destroy(tx);
+    #[derive(Debug)]
+    struct CallbackState {
+        pub received_tx_callback_called: bool,
+        pub received_tx_reply_callback_called: bool,
+        pub received_finalized_tx_callback_called: bool,
+        pub broadcast_tx_callback_called: bool,
+        pub mined_tx_callback_called: bool,
+        pub discovery_send_callback_called: bool,
     }
 
-    unsafe extern "C" fn inbound_callback(tx: *mut TariPendingInboundTransaction) {
+    impl CallbackState {
+        fn new() -> Self {
+            Self {
+                received_tx_callback_called: false,
+                received_tx_reply_callback_called: false,
+                received_finalized_tx_callback_called: false,
+                broadcast_tx_callback_called: false,
+                mined_tx_callback_called: false,
+                discovery_send_callback_called: false,
+            }
+        }
+
+        fn reset(&mut self) {
+            self.received_tx_callback_called = false;
+            self.received_tx_reply_callback_called = false;
+            self.received_finalized_tx_callback_called = false;
+            self.broadcast_tx_callback_called = false;
+            self.mined_tx_callback_called = false;
+            self.discovery_send_callback_called = false;
+        }
+    }
+
+    lazy_static! {
+        static ref CALLBACK_STATE_FFI: Mutex<CallbackState> = {
+            let c = Mutex::new(CallbackState::new());
+            c
+        };
+    }
+
+    unsafe extern "C" fn received_tx_callback(tx: *mut TariPendingInboundTransaction) {
         assert_eq!(tx.is_null(), false);
         assert_eq!(
             type_of((*tx).clone()),
             std::any::type_name::<TariPendingInboundTransaction>()
         );
+        let mut lock = CALLBACK_STATE_FFI.lock().unwrap();
+        lock.received_tx_callback_called = true;
+        drop(lock);
         pending_inbound_transaction_destroy(tx);
     }
 
-    unsafe extern "C" fn mined_callback(tx: *mut TariCompletedTransaction) {
+    unsafe extern "C" fn received_tx_reply_callback(tx: *mut TariCompletedTransaction) {
         assert_eq!(tx.is_null(), false);
         assert_eq!(
             type_of((*tx).clone()),
             std::any::type_name::<TariCompletedTransaction>()
         );
-        assert_eq!((*tx).status, TransactionStatus::Mined);
+        assert_eq!((*tx).status, TransactionStatus::Completed);
+        let mut lock = CALLBACK_STATE_FFI.lock().unwrap();
+        lock.received_tx_reply_callback_called = true;
+        drop(lock);
+        completed_transaction_destroy(tx);
+    }
+
+    unsafe extern "C" fn received_tx_finalized_callback(tx: *mut TariCompletedTransaction) {
+        assert_eq!(tx.is_null(), false);
+        assert_eq!(
+            type_of((*tx).clone()),
+            std::any::type_name::<TariCompletedTransaction>()
+        );
+        assert_eq!((*tx).status, TransactionStatus::Completed);
+        let mut lock = CALLBACK_STATE_FFI.lock().unwrap();
+        lock.received_finalized_tx_callback_called = true;
+        drop(lock);
         completed_transaction_destroy(tx);
     }
 
@@ -2805,8 +2743,81 @@ mod test {
             type_of((*tx).clone()),
             std::any::type_name::<TariCompletedTransaction>()
         );
+        let mut lock = CALLBACK_STATE_FFI.lock().unwrap();
+        lock.broadcast_tx_callback_called = true;
+        drop(lock);
         assert_eq!((*tx).status, TransactionStatus::Broadcast);
         completed_transaction_destroy(tx);
+    }
+
+    unsafe extern "C" fn mined_callback(tx: *mut TariCompletedTransaction) {
+        assert_eq!(tx.is_null(), false);
+        assert_eq!(
+            type_of((*tx).clone()),
+            std::any::type_name::<TariCompletedTransaction>()
+        );
+        assert_eq!((*tx).status, TransactionStatus::Mined);
+        let mut lock = CALLBACK_STATE_FFI.lock().unwrap();
+        lock.mined_tx_callback_called = true;
+        drop(lock);
+        completed_transaction_destroy(tx);
+    }
+
+    unsafe extern "C" fn discovery_process_complete_callback(_tx_id: c_ulonglong, _result: bool) {
+        assert!(true);
+    }
+
+    unsafe extern "C" fn received_tx_callback_bob(tx: *mut TariPendingInboundTransaction) {
+        assert_eq!(tx.is_null(), false);
+        assert_eq!(
+            type_of((*tx).clone()),
+            std::any::type_name::<TariPendingInboundTransaction>()
+        );
+        pending_inbound_transaction_destroy(tx);
+    }
+
+    unsafe extern "C" fn received_tx_reply_callback_bob(tx: *mut TariCompletedTransaction) {
+        assert_eq!(tx.is_null(), false);
+        assert_eq!(
+            type_of((*tx).clone()),
+            std::any::type_name::<TariCompletedTransaction>()
+        );
+        assert_eq!((*tx).status, TransactionStatus::Completed);
+        completed_transaction_destroy(tx);
+    }
+
+    unsafe extern "C" fn received_tx_finalized_callback_bob(tx: *mut TariCompletedTransaction) {
+        assert_eq!(tx.is_null(), false);
+        assert_eq!(
+            type_of((*tx).clone()),
+            std::any::type_name::<TariCompletedTransaction>()
+        );
+        assert_eq!((*tx).status, TransactionStatus::Completed);
+        completed_transaction_destroy(tx);
+    }
+
+    unsafe extern "C" fn broadcast_callback_bob(tx: *mut TariCompletedTransaction) {
+        assert_eq!(tx.is_null(), false);
+        assert_eq!(
+            type_of((*tx).clone()),
+            std::any::type_name::<TariCompletedTransaction>()
+        );
+        assert_eq!((*tx).status, TransactionStatus::Broadcast);
+        completed_transaction_destroy(tx);
+    }
+
+    unsafe extern "C" fn mined_callback_bob(tx: *mut TariCompletedTransaction) {
+        assert_eq!(tx.is_null(), false);
+        assert_eq!(
+            type_of((*tx).clone()),
+            std::any::type_name::<TariCompletedTransaction>()
+        );
+        assert_eq!((*tx).status, TransactionStatus::Mined);
+        completed_transaction_destroy(tx);
+    }
+
+    unsafe extern "C" fn discovery_process_complete_callback_bob(_tx_id: c_ulonglong, _result: bool) {
+        assert!(true);
     }
 
     #[test]
@@ -2990,10 +3001,13 @@ mod test {
             byte_vector_destroy(contact_key_bytes);
         }
     }
-
     #[test]
     fn test_wallet_ffi() {
         unsafe {
+            let mut lock = CALLBACK_STATE_FFI.lock().unwrap();
+            lock.reset();
+            drop(lock);
+
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
             let secret_key_alice = private_key_generate();
@@ -3017,7 +3031,17 @@ mod test {
                 secret_key_alice,
                 error_ptr,
             );
-            let alice_wallet = wallet_create(alice_config, ptr::null(), error_ptr);
+            let alice_wallet = wallet_create(
+                alice_config,
+                ptr::null(),
+                received_tx_callback,
+                received_tx_reply_callback,
+                received_tx_finalized_callback,
+                broadcast_callback,
+                mined_callback,
+                discovery_process_complete_callback,
+                error_ptr,
+            );
             let secret_key_bob = private_key_generate();
             let public_key_bob = public_key_from_private_key(secret_key_bob.clone(), error_ptr);
             let db_name_bob = CString::new(random_string(8).as_str()).unwrap();
@@ -3038,7 +3062,17 @@ mod test {
                 secret_key_bob,
                 error_ptr,
             );
-            let bob_wallet = wallet_create(bob_config, ptr::null(), error_ptr);
+            let bob_wallet = wallet_create(
+                bob_config,
+                ptr::null(),
+                received_tx_callback_bob,
+                received_tx_reply_callback_bob,
+                received_tx_finalized_callback_bob,
+                broadcast_callback_bob,
+                mined_callback_bob,
+                discovery_process_complete_callback_bob,
+                error_ptr,
+            );
 
             let mut peer_added =
                 wallet_add_base_node_peer(alice_wallet, public_key_bob.clone(), address_bob_str, error_ptr);
@@ -3060,17 +3094,8 @@ mod test {
             private_key_destroy(test_contact_private_key);
             string_destroy(test_contact_alias as *mut c_char);
 
-            let mut callback = wallet_callback_register_received_transaction(alice_wallet, inbound_callback, error_ptr);
-            assert_eq!(callback, true);
-            callback = wallet_callback_register_received_transaction_reply(alice_wallet, completed_callback, error_ptr);
-            assert_eq!(callback, true);
-            callback = wallet_callback_register_mined(alice_wallet, mined_callback, error_ptr);
-            assert_eq!(callback, true);
-            callback = wallet_callback_register_transaction_broadcast(alice_wallet, broadcast_callback, error_ptr);
-            assert_eq!(callback, true);
             let generated = wallet_test_generate_data(alice_wallet, db_path_alice_str, error_ptr);
             assert_eq!(generated, true);
-
             assert_eq!(
                 (wallet_get_completed_transactions(&mut (*alice_wallet), error_ptr)).is_null(),
                 false
@@ -3083,7 +3108,28 @@ mod test {
                 (wallet_get_pending_outbound_transactions(&mut (*alice_wallet), error_ptr)).is_null(),
                 false
             );
-            // TODO: Test transaction collection and transaction methods
+
+            let inbound_transactions: std::collections::HashMap<
+                u64,
+                tari_wallet::transaction_service::storage::database::InboundTransaction,
+            > = (*alice_wallet)
+                .runtime
+                .block_on((*alice_wallet).transaction_service.get_pending_inbound_transactions())
+                .unwrap();
+
+            assert_eq!(inbound_transactions.len(), 0);
+
+            wallet_test_receive_transaction(alice_wallet, error_ptr);
+
+            let inbound_transactions: std::collections::HashMap<
+                u64,
+                tari_wallet::transaction_service::storage::database::InboundTransaction,
+            > = (*alice_wallet)
+                .runtime
+                .block_on((*alice_wallet).transaction_service.get_pending_inbound_transactions())
+                .unwrap();
+
+            assert_eq!(inbound_transactions.len(), 1);
 
             let completed_transactions: std::collections::HashMap<
                 u64,
@@ -3092,23 +3138,53 @@ mod test {
                 .runtime
                 .block_on((*alice_wallet).transaction_service.get_completed_transactions())
                 .unwrap();
-            let inbound_transactions: std::collections::HashMap<
-                u64,
-                tari_wallet::transaction_service::storage::database::InboundTransaction,
-            > = (*alice_wallet)
-                .runtime
-                .block_on((*alice_wallet).transaction_service.get_pending_inbound_transactions())
-                .unwrap();
+
+            let num_completed_tx_pre = completed_transactions.len();
+
             for (_k, v) in inbound_transactions {
-                wallet_test_transaction_broadcast(alice_wallet, Box::into_raw(Box::new(v.clone())), error_ptr);
+                let tx_ptr = Box::into_raw(Box::new(v.clone()));
+                wallet_test_finalize_received_transaction(alice_wallet, tx_ptr, error_ptr);
+                break;
             }
 
+            let completed_transactions: std::collections::HashMap<
+                u64,
+                tari_wallet::transaction_service::storage::database::CompletedTransaction,
+            > = (*alice_wallet)
+                .runtime
+                .block_on((*alice_wallet).transaction_service.get_completed_transactions())
+                .unwrap();
+
+            assert_eq!(num_completed_tx_pre + 1, completed_transactions.len());
+
+            // TODO: Test transaction collection and transaction methods
+            let completed_transactions: std::collections::HashMap<
+                u64,
+                tari_wallet::transaction_service::storage::database::CompletedTransaction,
+            > = (*alice_wallet)
+                .runtime
+                .block_on((*alice_wallet).transaction_service.get_completed_transactions())
+                .unwrap();
             for (_k, v) in completed_transactions {
-                wallet_test_mined(alice_wallet, Box::into_raw(Box::new(v.clone())), error_ptr);
+                if v.status == TransactionStatus::Completed {
+                    let tx_ptr = Box::into_raw(Box::new(v.clone()));
+                    wallet_test_broadcast_transaction(alice_wallet, tx_ptr, error_ptr);
+                    wallet_test_mine_transaction(alice_wallet, tx_ptr, error_ptr);
+                }
             }
 
             let contacts = wallet_get_contacts(alice_wallet, error_ptr);
             assert_eq!(contacts_get_length(contacts, error_ptr), 4);
+
+            let lock = CALLBACK_STATE_FFI.lock().unwrap();
+            assert!(lock.received_tx_callback_called);
+            assert!(lock.received_tx_reply_callback_called);
+            assert!(lock.received_finalized_tx_callback_called);
+            assert!(lock.broadcast_tx_callback_called);
+            assert!(lock.mined_tx_callback_called);
+            drop(lock);
+            // Not testing for the discovery_process_completed callback as its tricky to evoke and it is unit tested
+            // elsewhere
 
             // free string memory
             string_destroy(address_listener_alice_str as *mut c_char);

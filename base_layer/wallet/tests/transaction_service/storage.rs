@@ -192,6 +192,17 @@ pub fn test_db_backend<T: TransactionBackend>(backend: T) {
             TransactionStatus::Completed
         );
         #[cfg(feature = "test_harness")]
+        db.broadcast_completed_transaction(completed_txs[0].tx_id.clone())
+            .unwrap();
+        let retrieved_completed_txs = db.get_completed_transactions().unwrap();
+
+        assert!(retrieved_completed_txs.contains_key(&completed_txs[0].tx_id));
+        assert_eq!(
+            retrieved_completed_txs.get(&completed_txs[0].tx_id).unwrap().status,
+            TransactionStatus::Broadcast
+        );
+
+        #[cfg(feature = "test_harness")]
         db.mine_completed_transaction(completed_txs[0].tx_id.clone()).unwrap();
         let retrieved_completed_txs = db.get_completed_transactions().unwrap();
 
