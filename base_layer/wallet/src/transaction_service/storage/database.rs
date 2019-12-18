@@ -63,6 +63,9 @@ pub trait TransactionBackend: Send + Sync {
         tx_id: TxId,
         completed_transaction: CompletedTransaction,
     ) -> Result<(), TransactionStorageError>;
+    /// Indicated that a completed transaction has been broadcast to the mempools
+    #[cfg(feature = "test_harness")]
+    fn broadcast_completed_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionStorageError>;
     /// Indicated that a completed transaction has been detected as mined on the base layer
     #[cfg(feature = "test_harness")]
     fn mine_completed_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionStorageError>;
@@ -222,6 +225,11 @@ where T: TransactionBackend
         Ok(result)
     }
 
+    pub fn get_completed_transaction(&self, tx_id: TxId) -> Result<CompletedTransaction, TransactionStorageError> {
+        let result = fetch!(self, tx_id, CompletedTransaction)?;
+        Ok(result)
+    }
+
     pub fn get_pending_inbound_transactions(
         &self,
     ) -> Result<HashMap<TxId, InboundTransaction>, TransactionStorageError> {
@@ -287,6 +295,12 @@ where T: TransactionBackend
     ) -> Result<(), TransactionStorageError>
     {
         self.db.complete_inbound_transaction(tx_id, transaction)
+    }
+
+    /// Indicated that the specified completed transaction has been broadcast into the mempool
+    #[cfg(feature = "test_harness")]
+    pub fn broadcast_completed_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionStorageError> {
+        self.db.broadcast_completed_transaction(tx_id)
     }
 
     /// Indicated that the specified completed transaction has been detected as mined on the base layer

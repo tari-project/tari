@@ -1,4 +1,4 @@
-#![recursion_limit = "512"]
+#![recursion_limit = "1024"]
 #![feature(drain_filter)]
 #![feature(type_alias_impl_trait)]
 

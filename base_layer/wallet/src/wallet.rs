@@ -28,11 +28,13 @@ use crate::{
         storage::database::OutputManagerBackend,
         OutputManagerConfig,
         OutputManagerServiceInitializer,
+        TxId,
     },
     storage::database::{WalletBackend, WalletDatabase},
     transaction_service::{
+        callback_handler::CallbackHandler,
         handle::TransactionServiceHandle,
-        storage::database::TransactionBackend,
+        storage::database::{CompletedTransaction, InboundTransaction, TransactionBackend, TransactionDatabase},
         TransactionServiceInitializer,
     },
 };
@@ -196,6 +198,33 @@ where
             _v: PhantomData,
             _w: PhantomData,
         })
+    }
+
+    #[cfg(feature = "c_integration")]
+    pub fn set_callbacks(
+        &mut self,
+        backend: U,
+        callback_received_transaction: unsafe extern "C" fn(*mut InboundTransaction),
+        callback_received_transaction_reply: unsafe extern "C" fn(*mut CompletedTransaction),
+        callback_received_finalized_transaction: unsafe extern "C" fn(*mut CompletedTransaction),
+        callback_transaction_broadcast: unsafe extern "C" fn(*mut CompletedTransaction),
+        callback_transaction_mined: unsafe extern "C" fn(*mut CompletedTransaction),
+        callback_discovery_process_complete: unsafe extern "C" fn(TxId, bool),
+    )
+    {
+        let callback_handler = CallbackHandler::new(
+            TransactionDatabase::new(backend),
+            self.transaction_service.get_event_stream_fused(),
+            self.comms.shutdown_signal(),
+            callback_received_transaction,
+            callback_received_transaction_reply,
+            callback_received_finalized_transaction,
+            callback_transaction_broadcast,
+            callback_transaction_mined,
+            callback_discovery_process_complete,
+        );
+
+        self.runtime.spawn(callback_handler.start());
     }
 
     /// This method consumes the wallet so that the handles are dropped which will result in the services async loops

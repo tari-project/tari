@@ -81,6 +81,7 @@ pub fn initialize_local_test_comms<TSink>(
     node_identity: Arc<NodeIdentity>,
     connector: InboundDomainConnector<TSink>,
     data_path: &str,
+    discovery_request_timeout: Duration,
 ) -> Result<(CommsNode, Dht), CommsInitializationError>
 where
     TSink: Sink<Arc<PeerMessage>> + Unpin + Clone + Send + Sync + 'static,
@@ -136,7 +137,7 @@ where
     // Create a channel for outbound requests
     let mut dht = comms_dht::DhtBuilder::from_comms(&comms)
         .with_config(DhtConfig {
-            discovery_request_timeout: Duration::from_secs(1),
+            discovery_request_timeout,
             ..Default::default()
         })
         .finish();

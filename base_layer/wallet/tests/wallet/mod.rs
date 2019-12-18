@@ -20,8 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::support::utils::{event_stream_count, make_input, random_string};
-use std::{sync::Arc, time::Duration};
+use crate::support::utils::{make_input, random_string};
+use std::{
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 use tari_comms::{
     control_service::ControlServiceConfig,
     multiaddr::Multiaddr,
@@ -32,22 +35,28 @@ use tari_comms::{
 use tari_comms_dht::DhtConfig;
 use tari_crypto::keys::PublicKey;
 use tari_p2p::initialization::CommsConfig;
-use tari_test_utils::paths::with_temp_dir;
+use tari_test_utils::{collect_stream, paths::with_temp_dir};
 use tari_transactions::{tari_amount::MicroTari, types::CryptoFactories};
 #[cfg(feature = "test_harness")]
-use tari_wallet::testnet_utils::broadcast_transaction;
+use tari_wallet::testnet_utils::finalize_received_transaction;
 use tari_wallet::{
     contacts_service::storage::{database::Contact, memory_db::ContactsServiceMemoryDatabase},
     output_manager_service::storage::memory_db::OutputManagerMemoryDatabase,
     storage::memory_db::WalletMemoryDatabase,
-    transaction_service::{handle::TransactionEvent, storage::memory_db::TransactionMemoryDatabase},
+    testnet_utils::broadcast_transaction,
+    transaction_service::{
+        handle::TransactionEvent,
+        storage::{
+            database::{CompletedTransaction, InboundTransaction},
+            memory_db::TransactionMemoryDatabase,
+        },
+    },
     wallet::WalletConfig,
     Wallet,
 };
 #[cfg(feature = "test_harness")]
 use tempdir::TempDir;
 use tokio::runtime::Runtime;
-
 fn create_peer(public_key: CommsPublicKey, net_address: Multiaddr) -> Peer {
     Peer::new(
         public_key.clone(),
@@ -179,9 +188,20 @@ fn test_wallet() {
             ))
             .unwrap();
 
-        let mut result =
-            runtime.block_on(async { event_stream_count(alice_event_stream, 1, Duration::from_secs(10)).await });
-        assert_eq!(result.remove(&TransactionEvent::ReceivedTransactionReply), Some(1));
+        assert_eq!(
+            collect_stream!(
+                runtime,
+                alice_event_stream.map(|i| (*i).clone()),
+                take = 1,
+                timeout = Duration::from_secs(10)
+            )
+            .iter()
+            .fold(0, |acc, x| match x {
+                TransactionEvent::ReceivedTransactionReply(_) => acc + 1,
+                _ => acc,
+            }),
+            1
+        );
 
         let mut contacts = Vec::new();
         for i in 0..2 {
@@ -279,11 +299,92 @@ fn test_data_generation() {
         .block_on(wallet.transaction_service.get_completed_transactions())
         .unwrap();
     assert!(completed_tx.len() > 0);
+
+    wallet.shutdown().unwrap();
+}
+
+#[derive(Debug)]
+struct CallbackState {
+    pub received_tx_callback_called: bool,
+    pub received_tx_reply_callback_called: bool,
+    pub received_finalized_tx_callback_called: bool,
+    pub broadcast_tx_callback_called: bool,
+    pub mined_tx_callback_called: bool,
+    pub discovery_send_callback_called: bool,
+}
+
+impl CallbackState {
+    fn new() -> Self {
+        Self {
+            received_tx_callback_called: false,
+            received_tx_reply_callback_called: false,
+            received_finalized_tx_callback_called: false,
+            broadcast_tx_callback_called: false,
+            mined_tx_callback_called: false,
+            discovery_send_callback_called: false,
+        }
+    }
+
+    fn reset(&mut self) {
+        self.received_tx_callback_called = false;
+        self.received_tx_reply_callback_called = false;
+        self.received_finalized_tx_callback_called = false;
+        self.broadcast_tx_callback_called = false;
+        self.mined_tx_callback_called = false;
+        self.discovery_send_callback_called = false;
+    }
+}
+
+lazy_static! {
+    static ref CALLBACK_STATE_HARNESS: Mutex<CallbackState> = {
+        let c = Mutex::new(CallbackState::new());
+        c
+    };
+}
+
+unsafe extern "C" fn received_tx_callback(_tx: *mut InboundTransaction) {
+    assert_eq!(_tx.is_null(), false);
+    CALLBACK_STATE_HARNESS.lock().unwrap().received_tx_callback_called = true;
+    Box::from_raw(_tx);
+}
+
+unsafe extern "C" fn received_tx_reply_callback(_tx: *mut CompletedTransaction) {
+    assert_eq!(_tx.is_null(), false);
+    CALLBACK_STATE_HARNESS.lock().unwrap().received_tx_reply_callback_called = true;
+    Box::from_raw(_tx);
+}
+
+unsafe extern "C" fn received_finalized_tx_callback(_tx: *mut CompletedTransaction) {
+    assert_eq!(_tx.is_null(), false);
+    CALLBACK_STATE_HARNESS
+        .lock()
+        .unwrap()
+        .received_finalized_tx_callback_called = true;
+    Box::from_raw(_tx);
+}
+
+unsafe extern "C" fn broadcast_tx_callback(_tx: *mut CompletedTransaction) {
+    assert_eq!(_tx.is_null(), false);
+    CALLBACK_STATE_HARNESS.lock().unwrap().broadcast_tx_callback_called = true;
+    Box::from_raw(_tx);
+}
+
+unsafe extern "C" fn mined_tx_callback(_tx: *mut CompletedTransaction) {
+    assert_eq!(_tx.is_null(), false);
+    CALLBACK_STATE_HARNESS.lock().unwrap().mined_tx_callback_called = true;
+    Box::from_raw(_tx);
+}
+
+unsafe extern "C" fn discovery_send_callback(_tx_id: u64, _result: bool) {
+    CALLBACK_STATE_HARNESS.lock().unwrap().discovery_send_callback_called = true;
+    assert!(true);
 }
 
 #[cfg(feature = "test_harness")]
 #[test]
 fn test_test_harness() {
+    CALLBACK_STATE_HARNESS.lock().unwrap().reset();
+
     use rand::OsRng;
     use std::thread;
     use tari_wallet::{
@@ -334,15 +435,35 @@ fn test_test_harness() {
     };
 
     let runtime = Runtime::new().unwrap();
+    let tx_backend = TransactionMemoryDatabase::new();
     let mut alice_wallet = Wallet::new(
         config1,
         runtime,
         WalletMemoryDatabase::new(),
-        TransactionMemoryDatabase::new(),
+        tx_backend.clone(),
         OutputManagerMemoryDatabase::new(),
         ContactsServiceMemoryDatabase::new(),
     )
     .unwrap();
+
+    alice_wallet.set_callbacks(
+        tx_backend,
+        received_tx_callback,
+        received_tx_reply_callback,
+        received_finalized_tx_callback,
+        broadcast_tx_callback,
+        mined_tx_callback,
+        discovery_send_callback,
+    );
+
+    alice_wallet
+        .comms
+        .peer_manager()
+        .add_peer(create_peer(
+            bob_identity.public_key().clone(),
+            bob_identity.control_service_address(),
+        ))
+        .unwrap();
 
     alice_wallet
         .comms
@@ -402,6 +523,22 @@ fn test_test_harness() {
     assert_eq!(alice_pending_outbound.len(), 0);
     assert_eq!(alice_completed_tx.len(), 1);
     for (_k, v) in alice_completed_tx.clone().drain().take(1) {
+        assert_eq!(v.status, TransactionStatus::Completed);
+    }
+
+    broadcast_transaction(&mut alice_wallet, tx_id.clone()).unwrap();
+
+    let alice_pending_outbound = alice_wallet
+        .runtime
+        .block_on(alice_wallet.transaction_service.get_pending_outbound_transactions())
+        .unwrap();
+    let alice_completed_tx = alice_wallet
+        .runtime
+        .block_on(alice_wallet.transaction_service.get_completed_transactions())
+        .unwrap();
+    assert_eq!(alice_pending_outbound.len(), 0);
+    assert_eq!(alice_completed_tx.len(), 1);
+    for (_k, v) in alice_completed_tx.clone().drain().take(1) {
         assert_eq!(v.status, TransactionStatus::Broadcast);
     }
 
@@ -446,19 +583,24 @@ fn test_test_harness() {
     }
     assert!(inbound_tx_id.is_some());
 
-    broadcast_transaction(&mut alice_wallet, inbound_tx_id.clone().take().unwrap()).unwrap();
-
-    let alice_pending_inbound = alice_wallet
-        .runtime
-        .block_on(alice_wallet.transaction_service.get_pending_inbound_transactions())
-        .unwrap();
-
-    assert_eq!(alice_pending_inbound.len(), 0);
+    finalize_received_transaction(&mut alice_wallet, inbound_tx_id.clone().unwrap()).unwrap();
 
     let alice_completed_tx = alice_wallet
         .runtime
         .block_on(alice_wallet.transaction_service.get_completed_transactions())
         .unwrap();
+
+    assert_eq!(alice_completed_tx.len(), 2);
+    let tx = alice_completed_tx.get(&inbound_tx_id.clone().take().unwrap()).unwrap();
+    assert_eq!(tx.status, TransactionStatus::Completed);
+
+    broadcast_transaction(&mut alice_wallet, inbound_tx_id.clone().unwrap()).unwrap();
+
+    let alice_completed_tx = alice_wallet
+        .runtime
+        .block_on(alice_wallet.transaction_service.get_completed_transactions())
+        .unwrap();
+
     assert_eq!(alice_completed_tx.len(), 2);
     let tx = alice_completed_tx.get(&inbound_tx_id.clone().take().unwrap()).unwrap();
     assert_eq!(tx.status, TransactionStatus::Broadcast);
@@ -487,4 +629,12 @@ fn test_test_harness() {
         pre_mined_balance.pending_incoming_balance + pre_mined_balance.available_balance,
         post_mined_balance.available_balance
     );
+
+    let callback_state = CALLBACK_STATE_HARNESS.lock().unwrap();
+    assert!(callback_state.received_tx_callback_called);
+    assert!(callback_state.received_finalized_tx_callback_called);
+    assert!(callback_state.broadcast_tx_callback_called);
+    assert!(callback_state.mined_tx_callback_called);
+
+    alice_wallet.shutdown().unwrap();
 }

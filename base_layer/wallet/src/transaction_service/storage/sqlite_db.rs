@@ -310,6 +310,33 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
     }
 
     #[cfg(feature = "test_harness")]
+    fn broadcast_completed_transaction(&mut self, tx_id: u64) -> Result<(), TransactionStorageError> {
+        let conn = self
+            .database_connection_pool
+            .clone()
+            .get()
+            .map_err(|_| TransactionStorageError::R2d2Error)?;
+
+        match CompletedTransactionSql::find(&tx_id, &conn) {
+            Ok(v) => {
+                let _ = v.update(
+                    UpdateCompletedTransaction {
+                        status: Some(TransactionStatus::Broadcast),
+                    },
+                    &conn,
+                )?;
+            },
+            Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {
+                return Err(TransactionStorageError::ValueNotFound(
+                    DbKey::PendingInboundTransaction(tx_id),
+                ))
+            },
+            Err(e) => return Err(e),
+        };
+        Ok(())
+    }
+
+    #[cfg(feature = "test_harness")]
     fn mine_completed_transaction(&mut self, tx_id: u64) -> Result<(), TransactionStorageError> {
         let conn = self
             .database_connection_pool

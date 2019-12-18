@@ -22,7 +22,7 @@
 
 use crate::support::{
     comms_and_services::{create_dummy_message, setup_comms_services},
-    utils::{event_stream_count, make_input, random_string, TestParams},
+    utils::{make_input, random_string, TestParams},
 };
 use futures::{
     channel::{mpsc, mpsc::Sender},
@@ -45,7 +45,7 @@ use tari_p2p::{
     services::comms_outbound::CommsOutboundServiceInitializer,
 };
 use tari_service_framework::{reply_channel, StackBuilder};
-use tari_test_utils::paths::with_temp_dir;
+use tari_test_utils::{collect_stream, paths::with_temp_dir};
 use tari_transactions::{
     tari_amount::*,
     transaction::{KernelFeatures, OutputFeatures, Transaction},
@@ -88,6 +88,7 @@ pub fn setup_transaction_service<T: TransactionBackend + Clone + 'static>(
     factories: CryptoFactories,
     backend: T,
     database_path: String,
+    discovery_request_timeout: Duration,
 ) -> (TransactionServiceHandle, OutputManagerHandle, CommsNode)
 {
     let (publisher, subscription_factory) = pubsub_connector(runtime.executor(), 100);
@@ -98,6 +99,7 @@ pub fn setup_transaction_service<T: TransactionBackend + Clone + 'static>(
         peers,
         publisher,
         database_path,
+        discovery_request_timeout,
     );
 
     let fut = StackBuilder::new(runtime.executor(), comms.shutdown_signal())
@@ -238,6 +240,7 @@ fn manage_single_transaction<T: TransactionBackend + Clone + 'static>(
         factories.clone(),
         alice_backend,
         database_path.clone(),
+        Duration::from_secs(1),
     );
     let alice_event_stream = alice_ts.get_event_stream_fused();
 
@@ -276,11 +279,23 @@ fn manage_single_transaction<T: TransactionBackend + Clone + 'static>(
         factories.clone(),
         bob_backend,
         database_path,
+        Duration::from_secs(1),
     );
 
-    let mut result =
-        runtime.block_on(async { event_stream_count(alice_event_stream, 1, Duration::from_secs(10)).await });
-    assert_eq!(result.remove(&TransactionEvent::ReceivedTransactionReply), Some(1));
+    assert_eq!(
+        collect_stream!(
+            runtime,
+            alice_event_stream.map(|i| (*i).clone()),
+            take = 1,
+            timeout = Duration::from_secs(10)
+        )
+        .iter()
+        .fold(0, |acc, x| match x {
+            TransactionEvent::ReceivedTransactionReply(_) => acc + 1,
+            _ => acc,
+        }),
+        1
+    );
 
     let alice_pending_outbound = runtime.block_on(alice_ts.get_pending_outbound_transactions()).unwrap();
     let alice_completed_tx = runtime.block_on(alice_ts.get_completed_transactions()).unwrap();
@@ -393,6 +408,7 @@ fn manage_multiple_transactions<T: TransactionBackend + Clone + 'static>(
         factories.clone(),
         alice_backend,
         database_path.clone(),
+        Duration::from_secs(1),
     );
     let alice_event_stream = alice_ts.get_event_stream_fused();
 
@@ -439,6 +455,7 @@ fn manage_multiple_transactions<T: TransactionBackend + Clone + 'static>(
         factories.clone(),
         bob_backend,
         database_path.clone(),
+        Duration::from_secs(1),
     );
     let (mut carol_ts, mut carol_oms, carol_comms) = setup_transaction_service(
         &runtime,
@@ -448,6 +465,7 @@ fn manage_multiple_transactions<T: TransactionBackend + Clone + 'static>(
         factories.clone(),
         carol_backend,
         database_path,
+        Duration::from_secs(1),
     );
 
     let bob_event_stream = bob_ts.get_event_stream_fused();
@@ -475,11 +493,23 @@ fn manage_multiple_transactions<T: TransactionBackend + Clone + 'static>(
         ))
         .unwrap();
 
-    let mut result = runtime.block_on(event_stream_count(alice_event_stream, 5, Duration::from_secs(10)));
+    assert_eq!(
+        collect_stream!(
+            runtime,
+            alice_event_stream.map(|i| (*i).clone()),
+            take = 5,
+            timeout = Duration::from_secs(10)
+        )
+        .iter()
+        .fold(0, |acc, x| match x {
+            TransactionEvent::ReceivedTransactionReply(_) => acc + 1,
+            _ => acc,
+        }),
+        3
+    );
 
-    assert_eq!(result.remove(&TransactionEvent::ReceivedTransactionReply), Some(3));
+    let _ = collect_stream!(runtime, bob_event_stream, take = 5, timeout = Duration::from_secs(10));
 
-    runtime.block_on(event_stream_count(bob_event_stream, 5, Duration::from_secs(10)));
     let alice_pending_outbound = runtime.block_on(alice_ts.get_pending_outbound_transactions()).unwrap();
     let alice_completed_tx = runtime.block_on(alice_ts.get_completed_transactions()).unwrap();
     assert_eq!(alice_pending_outbound.len(), 0);
@@ -488,7 +518,7 @@ fn manage_multiple_transactions<T: TransactionBackend + Clone + 'static>(
     let bob_completed_tx = runtime.block_on(bob_ts.get_completed_transactions()).unwrap();
     assert_eq!(bob_pending_outbound.len(), 0);
     assert_eq!(bob_completed_tx.len(), 3);
-    runtime.block_on(event_stream_count(carol_event_stream, 2, Duration::from_secs(10)));
+    let _ = collect_stream!(runtime, carol_event_stream, take = 2, timeout = Duration::from_secs(10));
     let carol_pending_inbound = runtime.block_on(carol_ts.get_pending_inbound_transactions()).unwrap();
     let carol_completed_tx = runtime.block_on(carol_ts.get_completed_transactions()).unwrap();
     assert_eq!(carol_pending_inbound.len(), 0);
@@ -573,20 +603,34 @@ fn test_sending_repeated_tx_ids<T: TransactionBackend + Clone + 'static>(alice_b
     runtime.block_on(alice_tx_sender.send(tx_message.clone())).unwrap();
     runtime.block_on(alice_tx_sender.send(tx_message.clone())).unwrap();
 
-    let mut result = runtime.block_on(event_stream_count(alice_event_stream, 2, Duration::from_secs(10)));
+    let result = collect_stream!(
+        runtime,
+        alice_event_stream.map(|i| (*i).clone()),
+        take = 2,
+        timeout = Duration::from_secs(10)
+    );
 
     alice_outbound_service
         .wait_call_count(1, Duration::from_secs(10))
         .unwrap();
 
     assert_eq!(result.len(), 2);
-    assert_eq!(result.remove(&TransactionEvent::ReceivedTransaction), Some(1));
-    assert_eq!(
-        result.remove(&TransactionEvent::Error(
-            "Error handling Transaction Sender message".to_string()
-        )),
-        Some(1)
-    );
+    assert!(result
+        .iter()
+        .find(|i| if let TransactionEvent::ReceivedTransaction(_) = i {
+            true
+        } else {
+            false
+        })
+        .is_some());
+    assert!(result
+        .iter()
+        .find(|i| if let TransactionEvent::Error(s) = i {
+            s == &"Error handling Transaction Sender message".to_string()
+        } else {
+            false
+        })
+        .is_some());
 }
 
 #[test]
@@ -674,14 +718,19 @@ fn test_accepting_unknown_tx_id_and_malformed_reply<T: TransactionBackend + Clon
         .block_on(alice_tx_ack_sender.send(create_dummy_message(tx_reply.into(), &bob_node_identity.public_key())))
         .unwrap();
 
-    let mut result =
-        runtime.block_on(async { event_stream_count(alice_event_stream, 2, Duration::from_secs(10)).await });
-    assert_eq!(
-        result.remove(&TransactionEvent::Error(
-            "Error handling Transaction Recipient Reply message".to_string()
-        )),
-        Some(2)
-    );
+    assert!(collect_stream!(
+        runtime,
+        alice_event_stream.map(|i| (*i).clone()),
+        take = 2,
+        timeout = Duration::from_secs(10)
+    )
+    .iter()
+    .find(|i| if let TransactionEvent::Error(s) = i {
+        s == &"Error handling Transaction Recipient Reply message".to_string()
+    } else {
+        false
+    })
+    .is_some());
 }
 
 #[test]
@@ -729,14 +778,19 @@ fn finalize_tx_with_nonexistent_txid<T: TransactionBackend + Clone + 'static>(al
         )))
         .unwrap();
 
-    let mut result = runtime.block_on(event_stream_count(alice_event_stream, 1, Duration::from_secs(10)));
-
-    assert_eq!(
-        result.remove(&TransactionEvent::Error(
-            "Error handling Transaction Finalized message".to_string()
-        )),
-        Some(1)
-    );
+    assert!(collect_stream!(
+        runtime,
+        alice_event_stream.map(|i| (*i).clone()),
+        take = 1,
+        timeout = Duration::from_secs(10)
+    )
+    .iter()
+    .find(|i| if let TransactionEvent::Error(s) = i {
+        s == &"Error handling Transaction Finalized message".to_string()
+    } else {
+        false
+    })
+    .is_some());
 }
 
 #[test]
@@ -830,14 +884,19 @@ fn finalize_tx_with_incorrect_pubkey<T: TransactionBackend + Clone + 'static>(al
         )))
         .unwrap();
 
-    let mut result = runtime.block_on(event_stream_count(alice_event_stream, 2, Duration::from_secs(10)));
-
-    assert_eq!(
-        result.remove(&TransactionEvent::Error(
-            "Error handling Transaction Finalized message".to_string()
-        )),
-        Some(1)
-    );
+    assert!(collect_stream!(
+        runtime,
+        alice_event_stream.map(|i| (*i).clone()),
+        take = 2,
+        timeout = Duration::from_secs(10)
+    )
+    .iter()
+    .find(|i| if let TransactionEvent::Error(s) = i {
+        s == &"Error handling Transaction Finalized message".to_string()
+    } else {
+        false
+    })
+    .is_some());
 }
 
 #[test]
@@ -935,14 +994,19 @@ fn finalize_tx_with_missing_output<T: TransactionBackend + Clone + 'static>(alic
         )))
         .unwrap();
 
-    let mut result = runtime.block_on(event_stream_count(alice_event_stream, 2, Duration::from_secs(10)));
-
-    assert_eq!(
-        result.remove(&TransactionEvent::Error(
-            "Error handling Transaction Finalized message".to_string()
-        )),
-        Some(1)
-    );
+    assert!(collect_stream!(
+        runtime,
+        alice_event_stream.map(|i| (*i).clone()),
+        take = 2,
+        timeout = Duration::from_secs(10)
+    )
+    .iter()
+    .find(|i| if let TransactionEvent::Error(s) = i {
+        s == &"Error handling Transaction Finalized message".to_string()
+    } else {
+        false
+    })
+    .is_some());
 }
 
 #[test]
@@ -1008,7 +1072,7 @@ fn discovery_async_return_test() {
     )
     .unwrap();
 
-    // Carols's parameters
+    // Dave's parameters
     let dave_seed = PrivateKey::random(&mut rng);
     let dave_port = 30498 + port_offset;
     let dave_node_identity = NodeIdentity::random(
@@ -1026,6 +1090,7 @@ fn discovery_async_return_test() {
         factories.clone(),
         alice_backend,
         db_folder.clone(),
+        Duration::from_secs(1),
     );
     let alice_event_stream = alice_ts.get_event_stream_fused();
 
@@ -1041,6 +1106,7 @@ fn discovery_async_return_test() {
         factories.clone(),
         bob_backend,
         db_folder.clone(),
+        Duration::from_secs(1),
     );
 
     let (_utxo, uo1a) = make_input(&mut rng, MicroTari(5500), &factories.commitment);
@@ -1067,11 +1133,22 @@ fn discovery_async_return_test() {
         },
     };
     assert_ne!(initial_balance, runtime.block_on(alice_oms.get_balance()).unwrap());
-    let mut result = runtime.block_on(event_stream_count(alice_event_stream, 1, Duration::from_secs(10)));
-    assert_eq!(
-        result.remove(&TransactionEvent::TransactionSendDiscoveryFailure(tx_id)),
-        Some(1)
-    );
+
+    assert!(collect_stream!(
+        runtime,
+        alice_event_stream.map(|i| (*i).clone()),
+        take = 1,
+        timeout = Duration::from_secs(10)
+    )
+    .iter()
+    .find(
+        |i| if let TransactionEvent::TransactionSendDiscoveryComplete(t, result) = i {
+            t == &tx_id && !(*result)
+        } else {
+            false
+        }
+    )
+    .is_some());
 
     assert_eq!(initial_balance, runtime.block_on(alice_oms.get_balance()).unwrap());
 
@@ -1083,6 +1160,7 @@ fn discovery_async_return_test() {
         factories.clone(),
         dave_backend,
         db_folder,
+        Duration::from_secs(1),
     );
 
     let tx_id2 = match runtime.block_on(alice_ts.send_transaction(
@@ -1098,10 +1176,20 @@ fn discovery_async_return_test() {
         },
     };
     let alice_event_stream = alice_ts.get_event_stream_fused();
-    let mut result = runtime.block_on(event_stream_count(alice_event_stream, 3, Duration::from_secs(10)));
-
-    assert_eq!(
-        result.remove(&TransactionEvent::TransactionSendDiscoverySuccess(tx_id2)),
-        Some(1)
+    let result = collect_stream!(
+        runtime,
+        alice_event_stream.map(|i| (*i).clone()),
+        take = 3,
+        timeout = Duration::from_secs(10)
     );
+    assert!(result
+        .iter()
+        .find(
+            |i| if let TransactionEvent::TransactionSendDiscoveryComplete(t, result) = i {
+                t == &tx_id2 && *result
+            } else {
+                false
+            }
+        )
+        .is_some());
 }
