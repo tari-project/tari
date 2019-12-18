@@ -80,7 +80,7 @@ fn insert_and_fetch_kernel() {
     let hash = kernel.hash();
 
     let mut txn = DbTransaction::new();
-    txn.insert_kernel(kernel.clone());
+    txn.insert_kernel(kernel.clone(), true);
     assert!(store.commit(txn).is_ok());
     assert_eq!(store.fetch_kernel(hash), Ok(kernel));
 }
@@ -101,7 +101,7 @@ fn insert_and_fetch_header() {
     header.height = 42;
 
     let mut txn = DbTransaction::new();
-    txn.insert_header(header.clone());
+    txn.insert_header(header.clone(), true);
     assert!(store.commit(txn).is_ok());
     assert_eq!(
         store.fetch_header(0),
@@ -118,7 +118,7 @@ fn insert_and_fetch_utxo() {
     let hash = utxo.hash();
     assert_eq!(store.is_utxo(hash.clone()).unwrap(), false);
     let mut txn = DbTransaction::new();
-    txn.insert_utxo(utxo.clone());
+    txn.insert_utxo(utxo.clone(), true);
     assert!(store.commit(txn).is_ok());
     assert_eq!(store.is_utxo(hash.clone()).unwrap(), true);
     assert_eq!(store.fetch_utxo(hash), Ok(utxo));
@@ -148,7 +148,7 @@ fn multiple_threads() {
         let kernel = create_test_kernel(5.into(), 0);
         let hash = kernel.hash();
         let mut txn = DbTransaction::new();
-        txn.insert_kernel(kernel.clone());
+        txn.insert_kernel(kernel.clone(), true);
         assert!(store_a.commit(txn).is_ok());
         hash
     });
@@ -158,7 +158,7 @@ fn multiple_threads() {
         let kernel = create_test_kernel(10.into(), 0);
         let hash = kernel.hash();
         let mut txn = DbTransaction::new();
-        txn.insert_kernel(kernel.clone());
+        txn.insert_kernel(kernel.clone(), true);
         assert!(store_b.commit(txn).is_ok());
         hash
     });
@@ -191,8 +191,8 @@ fn utxo_and_rp_merkle_root() {
     assert_eq!(rp_mmr_check.push(&utxo2.proof.hash()).unwrap(), 2);
     // Store the UTXOs
     let mut txn = DbTransaction::new();
-    txn.insert_utxo(utxo1);
-    txn.insert_utxo(utxo2);
+    txn.insert_utxo(utxo1, true);
+    txn.insert_utxo(utxo2, true);
     assert!(store.commit(txn).is_ok());
     let root = store.fetch_mmr_root(MmrTree::Utxo).unwrap();
     let rp_root = store.fetch_mmr_root(MmrTree::RangeProof).unwrap();
@@ -218,8 +218,8 @@ fn header_merkle_root() {
     let hash1 = header1.hash();
     let hash2 = header2.hash();
     let mut txn = DbTransaction::new();
-    txn.insert_header(header1);
-    txn.insert_header(header2);
+    txn.insert_header(header1, true);
+    txn.insert_header(header2, true);
     assert!(store.commit(txn).is_ok());
     let root = store.fetch_mmr_root(MmrTree::Header).unwrap();
     let mut mmr_check = MutableMmr::<HashDigest, _>::new(Vec::new());
@@ -244,9 +244,9 @@ fn kernel_merkle_root() {
     let hash2 = kernel2.hash();
     let hash3 = kernel3.hash();
     let mut txn = DbTransaction::new();
-    txn.insert_kernel(kernel1);
-    txn.insert_kernel(kernel2);
-    txn.insert_kernel(kernel3);
+    txn.insert_kernel(kernel1, true);
+    txn.insert_kernel(kernel2, true);
+    txn.insert_kernel(kernel3, true);
     assert!(store.commit(txn).is_ok());
     let root = store.fetch_mmr_root(MmrTree::Kernel).unwrap();
     let mut mmr_check = MutableMmr::<HashDigest, _>::new(Vec::new());
@@ -267,7 +267,7 @@ fn utxo_and_rp_future_merkle_root() {
     let rp_hash2 = utxo2.proof.hash();
 
     let mut txn = DbTransaction::new();
-    txn.insert_utxo(utxo1);
+    txn.insert_utxo(utxo1, true);
     assert!(store.commit(txn).is_ok());
 
     let utxo_future_root = store
@@ -285,7 +285,7 @@ fn utxo_and_rp_future_merkle_root() {
     );
 
     let mut txn = DbTransaction::new();
-    txn.insert_utxo(utxo2);
+    txn.insert_utxo(utxo2, true);
     assert!(store.commit(txn).is_ok());
 
     assert_eq!(utxo_future_root, store.fetch_mmr_root(MmrTree::Utxo).unwrap().to_hex());
@@ -305,7 +305,7 @@ fn header_future_merkle_root() {
     let hash2 = header2.hash();
 
     let mut txn = DbTransaction::new();
-    txn.insert_header(header1);
+    txn.insert_header(header1, true);
     assert!(store.commit(txn).is_ok());
 
     let future_root = store
@@ -315,7 +315,7 @@ fn header_future_merkle_root() {
     assert_ne!(future_root, store.fetch_mmr_root(MmrTree::Header).unwrap().to_hex());
 
     let mut txn = DbTransaction::new();
-    txn.insert_header(header2);
+    txn.insert_header(header2, true);
     assert!(store.commit(txn).is_ok());
 
     assert_eq!(future_root, store.fetch_mmr_root(MmrTree::Header).unwrap().to_hex());
@@ -330,7 +330,7 @@ fn kernel_future_merkle_root() {
     let hash2 = kernel2.hash();
 
     let mut txn = DbTransaction::new();
-    txn.insert_kernel(kernel1);
+    txn.insert_kernel(kernel1, true);
     assert!(store.commit(txn).is_ok());
 
     let future_root = store
@@ -340,7 +340,7 @@ fn kernel_future_merkle_root() {
     assert_ne!(future_root, store.fetch_mmr_root(MmrTree::Kernel).unwrap().to_hex());
 
     let mut txn = DbTransaction::new();
-    txn.insert_kernel(kernel2);
+    txn.insert_kernel(kernel2, true);
     assert!(store.commit(txn).is_ok());
 
     assert_eq!(future_root, store.fetch_mmr_root(MmrTree::Kernel).unwrap().to_hex());
@@ -355,9 +355,9 @@ fn utxo_and_rp_mmr_proof() {
     let (utxo2, _) = create_utxo(MicroTari(10_000), &factories);
     let (utxo3, _) = create_utxo(MicroTari(15_000), &factories);
     let mut txn = DbTransaction::new();
-    txn.insert_utxo(utxo1.clone());
-    txn.insert_utxo(utxo2.clone());
-    txn.insert_utxo(utxo3.clone());
+    txn.insert_utxo(utxo1.clone(), true);
+    txn.insert_utxo(utxo2.clone(), true);
+    txn.insert_utxo(utxo3.clone(), true);
     assert!(store.commit(txn).is_ok());
 
     let root = store.fetch_mmr_only_root(MmrTree::Utxo).unwrap();
@@ -383,9 +383,9 @@ fn header_mmr_proof() {
     let mut header3 = BlockHeader::new(0);
     header3.height = 3;
     let mut txn = DbTransaction::new();
-    txn.insert_header(header1.clone());
-    txn.insert_header(header2.clone());
-    txn.insert_header(header3.clone());
+    txn.insert_header(header1.clone(), true);
+    txn.insert_header(header2.clone(), true);
+    txn.insert_header(header3.clone(), true);
     assert!(store.commit(txn).is_ok());
 
     let root = store.fetch_mmr_only_root(MmrTree::Header).unwrap();
@@ -405,9 +405,9 @@ fn kernel_mmr_proof() {
     let kernel2 = create_test_kernel(200.into(), 1);
     let kernel3 = create_test_kernel(300.into(), 2);
     let mut txn = DbTransaction::new();
-    txn.insert_kernel(kernel1.clone());
-    txn.insert_kernel(kernel2.clone());
-    txn.insert_kernel(kernel3.clone());
+    txn.insert_kernel(kernel1.clone(), true);
+    txn.insert_kernel(kernel2.clone(), true);
+    txn.insert_kernel(kernel3.clone(), true);
     assert!(store.commit(txn).is_ok());
 
     let root = store.fetch_mmr_only_root(MmrTree::Kernel).unwrap();
@@ -498,12 +498,12 @@ fn rewind_to_height() {
     let (tx5, inputs5, _) = tx!(10_000*uT, fee: 50*uT, inputs: 1, outputs: 1);
     let (tx6, inputs6, _) = tx!(10_000*uT, fee: 75*uT, inputs: 1, outputs: 1);
     let mut txn = DbTransaction::new();
-    txn.insert_utxo(inputs1[0].as_transaction_output(&factories).unwrap());
-    txn.insert_utxo(inputs2[0].as_transaction_output(&factories).unwrap());
-    txn.insert_utxo(inputs3[0].as_transaction_output(&factories).unwrap());
-    txn.insert_utxo(inputs4[0].as_transaction_output(&factories).unwrap());
-    txn.insert_utxo(inputs5[0].as_transaction_output(&factories).unwrap());
-    txn.insert_utxo(inputs6[0].as_transaction_output(&factories).unwrap());
+    txn.insert_utxo(inputs1[0].as_transaction_output(&factories).unwrap(), true);
+    txn.insert_utxo(inputs2[0].as_transaction_output(&factories).unwrap(), true);
+    txn.insert_utxo(inputs3[0].as_transaction_output(&factories).unwrap(), true);
+    txn.insert_utxo(inputs4[0].as_transaction_output(&factories).unwrap(), true);
+    txn.insert_utxo(inputs5[0].as_transaction_output(&factories).unwrap(), true);
+    txn.insert_utxo(inputs6[0].as_transaction_output(&factories).unwrap(), true);
     assert!(store.commit(txn).is_ok());
 
     let mut block1 = chain_block(&block0, vec![tx1.clone(), tx2.clone()]);
@@ -704,12 +704,12 @@ fn restore_mmr() {
     let (tx5, inputs5, _) = tx!(10_000*uT, fee: 50*uT, inputs: 1, outputs: 1);
     let (tx6, inputs6, _) = tx!(10_000*uT, fee: 75*uT, inputs: 1, outputs: 1);
     let mut txn = DbTransaction::new();
-    txn.insert_utxo(inputs1[0].as_transaction_output(&factories).unwrap());
-    txn.insert_utxo(inputs2[0].as_transaction_output(&factories).unwrap());
-    txn.insert_utxo(inputs3[0].as_transaction_output(&factories).unwrap());
-    txn.insert_utxo(inputs4[0].as_transaction_output(&factories).unwrap());
-    txn.insert_utxo(inputs5[0].as_transaction_output(&factories).unwrap());
-    txn.insert_utxo(inputs6[0].as_transaction_output(&factories).unwrap());
+    txn.insert_utxo(inputs1[0].as_transaction_output(&factories).unwrap(), true);
+    txn.insert_utxo(inputs2[0].as_transaction_output(&factories).unwrap(), true);
+    txn.insert_utxo(inputs3[0].as_transaction_output(&factories).unwrap(), true);
+    txn.insert_utxo(inputs4[0].as_transaction_output(&factories).unwrap(), true);
+    txn.insert_utxo(inputs5[0].as_transaction_output(&factories).unwrap(), true);
+    txn.insert_utxo(inputs6[0].as_transaction_output(&factories).unwrap(), true);
     assert!(store.commit(txn).is_ok());
 
     let mut block1 = chain_block(&block0, vec![tx1.clone(), tx2.clone()]);
@@ -811,3 +811,5 @@ fn store_and_retrieve_block_with_mmr_pruning_horizon() {
     assert_eq!(*store.fetch_block(2).unwrap().block(), block2);
     assert_eq!(*store.fetch_block(3).unwrap().block(), block3);
 }
+
+// TODO: add validate_horizon_state test

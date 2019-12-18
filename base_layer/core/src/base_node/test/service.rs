@@ -97,8 +97,8 @@ fn request_and_response_fetch_headers() {
     let mut headerb2 = BlockHeader::new(0);
     headerb2.height = 2;
     let mut txn = DbTransaction::new();
-    txn.insert_header(headerb1.clone());
-    txn.insert_header(headerb2.clone());
+    txn.insert_header(headerb1.clone(), true);
+    txn.insert_header(headerb2.clone(), true);
     assert!(bob_node.blockchain_db.commit(txn).is_ok());
 
     let mut headerc1 = BlockHeader::new(0);
@@ -106,8 +106,8 @@ fn request_and_response_fetch_headers() {
     let mut headerc2 = BlockHeader::new(0);
     headerc2.height = 2;
     let mut txn = DbTransaction::new();
-    txn.insert_header(headerc1.clone());
-    txn.insert_header(headerc2.clone());
+    txn.insert_header(headerc1.clone(), true);
+    txn.insert_header(headerc2.clone(), true);
     assert!(carol_node.blockchain_db.commit(txn).is_ok());
 
     // The request is sent to a random remote base node so the returned headers can be from bob or carol
@@ -142,12 +142,12 @@ fn request_and_response_fetch_kernels() {
     let hash2 = kernel2.hash();
 
     let mut txn = DbTransaction::new();
-    txn.insert_kernel(kernel1.clone());
-    txn.insert_kernel(kernel2.clone());
+    txn.insert_kernel(kernel1.clone(), true);
+    txn.insert_kernel(kernel2.clone(), true);
     assert!(bob_node.blockchain_db.commit(txn).is_ok());
     let mut txn = DbTransaction::new();
-    txn.insert_kernel(kernel1.clone());
-    txn.insert_kernel(kernel2.clone());
+    txn.insert_kernel(kernel1.clone(), true);
+    txn.insert_kernel(kernel2.clone(), true);
     assert!(carol_node.blockchain_db.commit(txn).is_ok());
 
     runtime.block_on(async {
@@ -184,12 +184,12 @@ fn request_and_response_fetch_utxos() {
     let hash2 = utxo2.hash();
 
     let mut txn = DbTransaction::new();
-    txn.insert_utxo(utxo1.clone());
-    txn.insert_utxo(utxo2.clone());
+    txn.insert_utxo(utxo1.clone(), true);
+    txn.insert_utxo(utxo2.clone(), true);
     assert!(bob_node.blockchain_db.commit(txn).is_ok());
     let mut txn = DbTransaction::new();
-    txn.insert_utxo(utxo1.clone());
-    txn.insert_utxo(utxo2.clone());
+    txn.insert_utxo(utxo1.clone(), true);
+    txn.insert_utxo(utxo2.clone(), true);
     assert!(carol_node.blockchain_db.commit(txn).is_ok());
 
     runtime.block_on(async {
@@ -265,9 +265,9 @@ fn request_and_response_fetch_mmr_state() {
 
     let block0 = add_block_and_update_header(&bob_node.blockchain_db, get_genesis_block());
     let mut txn = DbTransaction::new();
-    txn.insert_utxo(inputs1[0].as_transaction_output(&factories).unwrap());
-    txn.insert_utxo(inputs2[0].as_transaction_output(&factories).unwrap());
-    txn.insert_utxo(inputs3[0].as_transaction_output(&factories).unwrap());
+    txn.insert_utxo(inputs1[0].as_transaction_output(&factories).unwrap(), true);
+    txn.insert_utxo(inputs2[0].as_transaction_output(&factories).unwrap(), true);
+    txn.insert_utxo(inputs3[0].as_transaction_output(&factories).unwrap(), true);
     assert!(bob_node.blockchain_db.commit(txn).is_ok());
     let mut block1 = chain_block(&block0, vec![tx1.clone()]);
     block1 = add_block_and_update_header(&bob_node.blockchain_db, block1);
@@ -278,9 +278,9 @@ fn request_and_response_fetch_mmr_state() {
 
     let block0 = add_block_and_update_header(&carol_node.blockchain_db, get_genesis_block());
     let mut txn = DbTransaction::new();
-    txn.insert_utxo(inputs1[0].as_transaction_output(&factories).unwrap());
-    txn.insert_utxo(inputs2[0].as_transaction_output(&factories).unwrap());
-    txn.insert_utxo(inputs3[0].as_transaction_output(&factories).unwrap());
+    txn.insert_utxo(inputs1[0].as_transaction_output(&factories).unwrap(), true);
+    txn.insert_utxo(inputs2[0].as_transaction_output(&factories).unwrap(), true);
+    txn.insert_utxo(inputs3[0].as_transaction_output(&factories).unwrap(), true);
     assert!(carol_node.blockchain_db.commit(txn).is_ok());
     let mut block1 = chain_block(&block0, vec![tx1.clone()]);
     block1 = add_block_and_update_header(&carol_node.blockchain_db, block1);
@@ -523,9 +523,9 @@ fn local_get_new_block_template_and_get_new_block() {
     let (tx2, inputs2, _) = tx!(10_000*uT, fee: 20*uT, inputs: 1, outputs: 1);
     let (tx3, inputs3, _) = tx!(10_000*uT, fee: 30*uT, inputs: 1, outputs: 1);
     let mut txn = DbTransaction::new();
-    txn.insert_utxo(inputs1[0].as_transaction_output(&factories).unwrap());
-    txn.insert_utxo(inputs2[0].as_transaction_output(&factories).unwrap());
-    txn.insert_utxo(inputs3[0].as_transaction_output(&factories).unwrap());
+    txn.insert_utxo(inputs1[0].as_transaction_output(&factories).unwrap(), true);
+    txn.insert_utxo(inputs2[0].as_transaction_output(&factories).unwrap(), true);
+    txn.insert_utxo(inputs3[0].as_transaction_output(&factories).unwrap(), true);
     assert!(node.blockchain_db.commit(txn).is_ok());
     assert!(node.mempool.insert(Arc::new(tx1)).is_ok());
     assert!(node.mempool.insert(Arc::new(tx2)).is_ok());

@@ -61,21 +61,21 @@ impl DbTransaction {
     }
 
     /// Inserts a transaction kernel into the current transaction.
-    pub fn insert_kernel(&mut self, kernel: TransactionKernel) {
+    pub fn insert_kernel(&mut self, kernel: TransactionKernel, update_mmr: bool) {
         let hash = kernel.hash();
-        self.insert(DbKeyValuePair::TransactionKernel(hash, Box::new(kernel)));
+        self.insert(DbKeyValuePair::TransactionKernel(hash, Box::new(kernel), update_mmr));
     }
 
     /// Inserts a block header into the current transaction.
-    pub fn insert_header(&mut self, header: BlockHeader) {
+    pub fn insert_header(&mut self, header: BlockHeader, update_mmr: bool) {
         let height = header.height;
-        self.insert(DbKeyValuePair::BlockHeader(height, Box::new(header)));
+        self.insert(DbKeyValuePair::BlockHeader(height, Box::new(header), update_mmr));
     }
 
     /// Adds a UTXO into the current transaction and update the TXO MMR.
-    pub fn insert_utxo(&mut self, utxo: TransactionOutput) {
+    pub fn insert_utxo(&mut self, utxo: TransactionOutput, update_mmr: bool) {
         let hash = utxo.hash();
-        self.insert(DbKeyValuePair::UnspentOutput(hash, Box::new(utxo)));
+        self.insert(DbKeyValuePair::UnspentOutput(hash, Box::new(utxo), update_mmr));
     }
 
     /// Stores an orphan block. No checks are made as to whether this is actually an orphan. That responsibility lies
@@ -172,9 +172,9 @@ pub enum WriteOperation {
 #[derive(Debug)]
 pub enum DbKeyValuePair {
     Metadata(MetadataKey, MetadataValue),
-    BlockHeader(u64, Box<BlockHeader>),
-    UnspentOutput(HashOutput, Box<TransactionOutput>),
-    TransactionKernel(HashOutput, Box<TransactionKernel>),
+    BlockHeader(u64, Box<BlockHeader>, bool),
+    UnspentOutput(HashOutput, Box<TransactionOutput>, bool),
+    TransactionKernel(HashOutput, Box<TransactionKernel>, bool),
     OrphanBlock(HashOutput, Box<Block>),
 }
 

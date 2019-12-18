@@ -152,6 +152,8 @@ pub trait BlockchainBackend: Send + Sync {
         F: FnMut(Result<(HashOutput, Block), ChainStorageError>);
     /// Returns the height of the pruning horizon.
     fn fetch_pruning_horizon(&self) -> Result<u64, ChainStorageError>;
+    /// Returns the stored header with the highest corresponding height.
+    fn fetch_last_header(&self) -> Result<Option<BlockHeader>, ChainStorageError>;
 }
 
 // Private macro that pulls out all the boiler plate of extracting a DB query result from its variants
@@ -499,7 +501,7 @@ where T: BlockchainBackend
         }
         // The header now has the correct MMR roots; we can go ahead and save the block header and tidy up.
         let mut txn = DbTransaction::new();
-        txn.insert_header(header.clone());
+        txn.insert_header(header.clone(), true);
         txn.commit_block();
         // Uh oh. There was an error saving the header, so must revert the in/output and kernel commit.
         if let Err(e) = self.commit(txn) {
@@ -547,8 +549,8 @@ where T: BlockchainBackend
     {
         let mut txn = DbTransaction::new();
         txn.spend_inputs(&inputs);
-        outputs.iter().for_each(|utxo| txn.insert_utxo(utxo.clone()));
-        kernels.iter().for_each(|k| txn.insert_kernel(k.clone()));
+        outputs.iter().for_each(|utxo| txn.insert_utxo(utxo.clone(), true));
+        kernels.iter().for_each(|k| txn.insert_kernel(k.clone(), true));
         self.commit(txn)
     }
 
@@ -913,6 +915,19 @@ where T: BlockchainBackend
     // TODO debugging only. Remove before mainnet
     pub(crate) fn db(&self) -> Arc<T> {
         self.db.clone()
+    }
+
+    /// Perform validation on the horizon state of the blockchain and update the metadata.
+    pub fn validate_horizon_state(&self) -> Result<(), ChainStorageError> {
+        // TODO: #1138 Perform validation steps on the synced horizon blockchain state stored backend data. Check that
+        // header heights form a sequence, headers create a valid chain, check the accounting balance and proof
+        // of work.
+
+        if let Some(last_header) = self.db.fetch_last_header()? {
+            self.update_metadata(last_header.height, last_header.hash())?;
+        }
+
+        Ok(())
     }
 }
 

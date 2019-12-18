@@ -158,7 +158,7 @@ fn inbound_fetch_kernels() {
     let kernel = create_test_kernel(5.into(), 0);
     let hash = kernel.hash();
     let mut txn = DbTransaction::new();
-    txn.insert_kernel(kernel.clone());
+    txn.insert_kernel(kernel.clone(), true);
     assert!(store.commit(txn).is_ok());
 
     test_async(move |rt| {
@@ -208,7 +208,7 @@ fn inbound_fetch_headers() {
     let mut header = BlockHeader::new(0);
     header.height = 0;
     let mut txn = DbTransaction::new();
-    txn.insert_header(header.clone());
+    txn.insert_header(header.clone(), true);
     assert!(store.commit(txn).is_ok());
 
     test_async(move |rt| {
@@ -260,7 +260,7 @@ fn inbound_fetch_utxos() {
     let (utxo, _) = create_utxo(MicroTari(10_000), &factories);
     let hash = utxo.hash();
     let mut txn = DbTransaction::new();
-    txn.insert_utxo(utxo.clone());
+    txn.insert_utxo(utxo.clone(), true);
     assert!(store.commit(txn).is_ok());
 
     test_async(move |rt| {
