@@ -48,7 +48,7 @@ use tari_core::{
         MemoryDatabase,
         Validators,
     },
-    consensus::{ConsensusConstants, ConsensusManager},
+    consensus::ConsensusManager,
     mempool::{Mempool, MempoolConfig},
     proof_of_work::DiffAdjManager,
     validation::block_validators::{FullConsensusValidator, StatelessValidator},

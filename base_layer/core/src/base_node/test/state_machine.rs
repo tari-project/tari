@@ -23,7 +23,7 @@
 use crate::{
     base_node::{
         service::BaseNodeServiceConfig,
-        states::{HorizonInfo, HorizonSyncConfig, StateEvent},
+        states::{BlockSyncConfig, BlockSyncInfo, HorizonInfo, HorizonSyncConfig, StateEvent},
         BaseNodeStateMachine,
         BaseNodeStateMachineConfig,
     },
@@ -65,6 +65,7 @@ fn test_horizon_state_sync() {
             kernels_sync_chunk_size: 5,
             utxos_sync_chunk_size: 5,
         },
+        block_sync_config: BlockSyncConfig::default(),
     };
     let mut alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,
@@ -147,6 +148,183 @@ fn test_horizon_state_sync() {
         }
 
         assert_eq!(alice_node.blockchain_db.get_height(), Ok(Some(8)));
+    });
+
+    alice_node.comms.shutdown().unwrap();
+    bob_node.comms.shutdown().unwrap();
+}
+
+#[test]
+fn test_block_sync_from_horizon() {
+    let runtime = Runtime::new().unwrap();
+    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let mct_config = MerkleChangeTrackerConfig {
+        min_history_len: 2,
+        max_history_len: 4,
+    };
+    let (alice_node, bob_node) = create_network_with_2_base_nodes_with_config(
+        &runtime,
+        BaseNodeServiceConfig::default(),
+        mct_config,
+        MempoolServiceConfig::default(),
+        temp_dir.path().to_str().unwrap(),
+    );
+    let state_machine_config = BaseNodeStateMachineConfig::default();
+    let mut alice_state_machine = BaseNodeStateMachine::new(
+        &alice_node.blockchain_db,
+        &alice_node.outbound_nci,
+        state_machine_config,
+    );
+
+    let mut prev_block = add_block_and_update_header(&bob_node.blockchain_db, get_genesis_block());
+    for _ in 0..6 {
+        let next_block = chain_block(&prev_block, vec![]);
+        prev_block = add_block_and_update_header(&bob_node.blockchain_db, next_block);
+    }
+
+    runtime.block_on(async {
+        // Sync to horizon state
+        let horizon_block = bob_node
+            .blockchain_db
+            .fetch_mmr_base_leaf_nodes(MmrTree::Header, 0, 100)
+            .unwrap()
+            .total_leaf_count as u64;
+        let mut horizon_info = HorizonInfo::new(horizon_block);
+        horizon_info.next_event(&mut alice_state_machine).await;
+        assert_eq!(alice_node.blockchain_db.get_height(), Ok(Some(2)));
+
+        // Sync Blocks from horizon state to tip
+        let state_event = BlockSyncInfo {}.next_event(&mut alice_state_machine).await;
+        assert_eq!(state_event, StateEvent::BlocksSynchronized);
+
+        assert_eq!(
+            alice_node.blockchain_db.get_height(),
+            bob_node.blockchain_db.get_height()
+        );
+
+        let alice_utxo_mmr_state = alice_node
+            .blockchain_db
+            .fetch_mmr_base_leaf_nodes(MmrTree::Utxo, 0, 1000)
+            .unwrap();
+        let alice_kernel_mmr_state = alice_node
+            .blockchain_db
+            .fetch_mmr_base_leaf_nodes(MmrTree::Kernel, 0, 1000)
+            .unwrap();
+        let alice_rp_mmr_state = alice_node
+            .blockchain_db
+            .fetch_mmr_base_leaf_nodes(MmrTree::RangeProof, 0, 1000)
+            .unwrap();
+        let bob_utxo_mmr_state = alice_node
+            .blockchain_db
+            .fetch_mmr_base_leaf_nodes(MmrTree::Utxo, 0, 1000)
+            .unwrap();
+        let bob_kernel_mmr_state = alice_node
+            .blockchain_db
+            .fetch_mmr_base_leaf_nodes(MmrTree::Kernel, 0, 1000)
+            .unwrap();
+        let bob_rp_mmr_state = alice_node
+            .blockchain_db
+            .fetch_mmr_base_leaf_nodes(MmrTree::RangeProof, 0, 1000)
+            .unwrap();
+        assert_eq!(alice_utxo_mmr_state, bob_utxo_mmr_state);
+        assert_eq!(alice_kernel_mmr_state, bob_kernel_mmr_state);
+        assert_eq!(alice_rp_mmr_state, bob_rp_mmr_state);
+
+        // Block 0,1 and 2 will be beyond the pruning horizon, the rest are fetchable
+        let bob_tip_height = bob_node.blockchain_db.get_height().unwrap().unwrap();
+        for height in 0..bob_tip_height {
+            assert_eq!(
+                alice_node.blockchain_db.fetch_block(height),
+                bob_node.blockchain_db.fetch_block(height)
+            );
+        }
+    });
+
+    alice_node.comms.shutdown().unwrap();
+    bob_node.comms.shutdown().unwrap();
+}
+
+#[test]
+fn test_lagging_block_sync() {
+    let runtime = Runtime::new().unwrap();
+    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let mct_config = MerkleChangeTrackerConfig {
+        min_history_len: 10,
+        max_history_len: 20,
+    };
+    let (alice_node, bob_node) = create_network_with_2_base_nodes_with_config(
+        &runtime,
+        BaseNodeServiceConfig::default(),
+        mct_config,
+        MempoolServiceConfig::default(),
+        temp_dir.path().to_str().unwrap(),
+    );
+    let state_machine_config = BaseNodeStateMachineConfig::default();
+    let mut alice_state_machine = BaseNodeStateMachine::new(
+        &alice_node.blockchain_db,
+        &alice_node.outbound_nci,
+        state_machine_config,
+    );
+
+    let mut prev_block = add_block_and_update_header(&bob_node.blockchain_db, get_genesis_block());
+    alice_node.blockchain_db.add_block(prev_block.clone()).unwrap();
+    for _ in 0..4 {
+        let next_block = chain_block(&prev_block, vec![]);
+        prev_block = add_block_and_update_header(&bob_node.blockchain_db, next_block);
+        alice_node.blockchain_db.add_block(prev_block.clone()).unwrap();
+    }
+    for _ in 0..2 {
+        let next_block = chain_block(&prev_block, vec![]);
+        prev_block = add_block_and_update_header(&bob_node.blockchain_db, next_block);
+    }
+    assert_eq!(alice_node.blockchain_db.get_height(), Ok(Some(4)));
+    assert_eq!(bob_node.blockchain_db.get_height(), Ok(Some(6)));
+
+    runtime.block_on(async {
+        // Lagging state beyond horizon, sync remaining Blocks to tip
+        let state_event = BlockSyncInfo {}.next_event(&mut alice_state_machine).await;
+        assert_eq!(state_event, StateEvent::BlocksSynchronized);
+
+        assert_eq!(
+            alice_node.blockchain_db.get_height(),
+            bob_node.blockchain_db.get_height()
+        );
+
+        let alice_utxo_mmr_state = alice_node
+            .blockchain_db
+            .fetch_mmr_base_leaf_nodes(MmrTree::Utxo, 0, 1000)
+            .unwrap();
+        let alice_kernel_mmr_state = alice_node
+            .blockchain_db
+            .fetch_mmr_base_leaf_nodes(MmrTree::Kernel, 0, 1000)
+            .unwrap();
+        let alice_rp_mmr_state = alice_node
+            .blockchain_db
+            .fetch_mmr_base_leaf_nodes(MmrTree::RangeProof, 0, 1000)
+            .unwrap();
+        let bob_utxo_mmr_state = alice_node
+            .blockchain_db
+            .fetch_mmr_base_leaf_nodes(MmrTree::Utxo, 0, 1000)
+            .unwrap();
+        let bob_kernel_mmr_state = alice_node
+            .blockchain_db
+            .fetch_mmr_base_leaf_nodes(MmrTree::Kernel, 0, 1000)
+            .unwrap();
+        let bob_rp_mmr_state = alice_node
+            .blockchain_db
+            .fetch_mmr_base_leaf_nodes(MmrTree::RangeProof, 0, 1000)
+            .unwrap();
+        assert_eq!(alice_utxo_mmr_state, bob_utxo_mmr_state);
+        assert_eq!(alice_kernel_mmr_state, bob_kernel_mmr_state);
+        assert_eq!(alice_rp_mmr_state, bob_rp_mmr_state);
+
+        let bob_tip_height = bob_node.blockchain_db.get_height().unwrap().unwrap();
+        for height in 0..bob_tip_height {
+            assert_eq!(
+                alice_node.blockchain_db.fetch_block(height),
+                bob_node.blockchain_db.fetch_block(height)
+            );
+        }
     });
 
     alice_node.comms.shutdown().unwrap();

@@ -20,23 +20,46 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::base_node::states::{
-    fetching_horizon_state::HorizonInfo,
-    InitialSync,
-    ListeningInfo,
-    StateEvent,
-    StateEvent::FatalError,
+use crate::{
+    base_node::{
+        base_node::BaseNodeStateMachine,
+        states::{fetching_horizon_state::HorizonInfo, InitialSync, ListeningInfo, StateEvent},
+    },
+    chain_storage::{BlockchainBackend, ChainMetadata},
 };
 use log::*;
 
 const LOG_TARGET: &str = "base_node::block_sync";
 
+// The number of Blocks that can be requested in a single query from remote nodes.
+const BLOCK_SYNC_CHUNK_SIZE: usize = 2;
+
+/// Configuration for the Block Synchronization.
+#[derive(Clone, Copy)]
+pub struct BlockSyncConfig {
+    pub block_sync_chunk_size: usize,
+}
+
+impl Default for BlockSyncConfig {
+    fn default() -> Self {
+        Self {
+            block_sync_chunk_size: BLOCK_SYNC_CHUNK_SIZE,
+        }
+    }
+}
+
 pub struct BlockSyncInfo;
 
 impl BlockSyncInfo {
-    pub async fn next_event(&mut self) -> StateEvent {
+    pub async fn next_event<B: BlockchainBackend>(&mut self, shared: &mut BaseNodeStateMachine<B>) -> StateEvent {
         info!(target: LOG_TARGET, "Synchronizing missing blocks");
-        FatalError("Unimplemented".into())
+
+        if let Err(e) = synchronize_blocks(shared).await {
+            return StateEvent::FatalError(format!("Synchronizing blocks failed. {}", e));
+        }
+
+        info!(target: LOG_TARGET, "Block sync state has synchronised");
+        StateEvent::BlocksSynchronized
     }
 }
 
@@ -44,7 +67,7 @@ impl BlockSyncInfo {
 /// network.
 impl From<HorizonInfo> for BlockSyncInfo {
     fn from(_old: HorizonInfo) -> Self {
-        unimplemented!()
+        BlockSyncInfo {}
     }
 }
 
@@ -52,7 +75,7 @@ impl From<HorizonInfo> for BlockSyncInfo {
 /// from the network, or a reorg has occurred.
 impl From<ListeningInfo> for BlockSyncInfo {
     fn from(_old: ListeningInfo) -> Self {
-        unimplemented!()
+        BlockSyncInfo {}
     }
 }
 
@@ -60,6 +83,45 @@ impl From<ListeningInfo> for BlockSyncInfo {
 /// after being offline for some time.
 impl From<InitialSync> for BlockSyncInfo {
     fn from(_old: InitialSync) -> Self {
-        unimplemented!()
+        BlockSyncInfo {}
     }
+}
+
+async fn network_chain_tip<B: BlockchainBackend>(shared: &mut BaseNodeStateMachine<B>) -> Result<u64, String> {
+    let metadata_list = shared.comms.get_metadata().await.map_err(|e| e.to_string())?;
+    // TODO: Use heuristics to weed out outliers / dishonest nodes.
+    Ok(metadata_list
+        .into_iter()
+        .fold(ChainMetadata::default(), |best, current| {
+            if current.height_of_longest_chain.unwrap_or(0) >= best.height_of_longest_chain.unwrap_or(0) {
+                current
+            } else {
+                best
+            }
+        })
+        .height_of_longest_chain
+        .unwrap_or(0))
+}
+
+async fn synchronize_blocks<B: BlockchainBackend>(shared: &mut BaseNodeStateMachine<B>) -> Result<(), String> {
+    let start_height = match shared.db.get_height().map_err(|e| e.to_string())? {
+        Some(height) => height + 1,
+        None => 0u64,
+    };
+    let network_tip_height = network_chain_tip(shared).await?;
+
+    let height_indices = (start_height..=network_tip_height).collect::<Vec<u64>>();
+    for block_nums in height_indices.chunks(shared.config.block_sync_config.block_sync_chunk_size) {
+        let hist_blocks = shared
+            .comms
+            .fetch_blocks(block_nums.to_vec())
+            .await
+            .map_err(|e| e.to_string())?;
+
+        for hist_block in hist_blocks {
+            shared.db.add_block(hist_block.block).map_err(|e| e.to_string())?;
+        }
+    }
+
+    Ok(())
 }
