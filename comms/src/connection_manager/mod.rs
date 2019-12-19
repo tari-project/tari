@@ -26,8 +26,8 @@ pub use deprecated::*;
 
 cfg_next! {
     mod dial_state;
-    mod error;
     mod dialer;
+    mod error;
     mod listener;
     mod manager;
     mod peer_connection;
