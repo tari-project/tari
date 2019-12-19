@@ -78,6 +78,13 @@ impl DbTransaction {
         self.insert(DbKeyValuePair::UnspentOutput(hash, Box::new(utxo), update_mmr));
     }
 
+    #[cfg(test)]
+    /// Adds a UTXO into the current transaction and update the TXO MMR. This is a test only function used to ensure we
+    /// block duplicate entries. This function does not calculate the hash function but accepts one as a variable.
+    pub fn insert_utxo_with_hash(&mut self, hash: Vec<u8>, utxo: TransactionOutput, update_mmr: bool) {
+        self.insert(DbKeyValuePair::UnspentOutput(hash, Box::new(utxo), update_mmr));
+    }
+
     /// Stores an orphan block. No checks are made as to whether this is actually an orphan. That responsibility lies
     /// with the calling function.
     pub fn insert_orphan(&mut self, orphan: Block) {

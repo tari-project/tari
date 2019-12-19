@@ -59,7 +59,7 @@ where
     let key_buf = serialize(key)?;
     let val_buf = serialize(val)?;
     txn.access()
-        .put(&db, &key_buf, &val_buf, put::Flags::empty())
+        .put(&db, &key_buf, &val_buf, put::NOOVERWRITE)
         .map_err(|e| ChainStorageError::AccessError(e.to_string()))
 }
 
